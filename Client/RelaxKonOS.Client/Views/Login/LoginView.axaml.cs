@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using RelaxKonOS.Client.ViewModels.Login;
 using System.ComponentModel;
+using RelaxKonOS.Client.Services.Auth;
 
 namespace RelaxKonOS.Client.Views.Login;
 
@@ -9,6 +10,7 @@ public partial class LoginView : UserControl
 {
     private LoginViewModel? _viewModel;
     private bool _hostKeyDialogOpen;
+    private bool _certificateDialogOpen;
 
     public LoginView()
     {
@@ -18,9 +20,32 @@ public partial class LoginView : UserControl
 
     private void LoginView_DataContextChanged(object? sender, EventArgs e)
     {
-        if (_viewModel is not null) _viewModel.PropertyChanged -= LoginViewModel_PropertyChanged;
+        if (_viewModel is not null)
+        {
+            _viewModel.PropertyChanged -= LoginViewModel_PropertyChanged;
+            _viewModel.ConfirmServerCertificateAsync = null;
+        }
         _viewModel = DataContext as LoginViewModel;
-        if (_viewModel is not null) _viewModel.PropertyChanged += LoginViewModel_PropertyChanged;
+        if (_viewModel is not null)
+        {
+            _viewModel.PropertyChanged += LoginViewModel_PropertyChanged;
+            var viewModel = _viewModel;
+            viewModel.ConfirmServerCertificateAsync = review => ShowCertificateDialogAsync(viewModel, review);
+        }
+    }
+
+    private async Task<bool> ShowCertificateDialogAsync(LoginViewModel viewModel, ServerCertificateReview review)
+    {
+        if (_certificateDialogOpen || TopLevel.GetTopLevel(this) is not Window owner) return false;
+        _certificateDialogOpen = true;
+        try
+        {
+            return await new SshHostKeyDialog(viewModel.CertificateDialogTitle, viewModel.CertificateReviewText(review),
+                viewModel.CertificateFingerprintLabel, review.Fingerprint, viewModel.PreviousCertificateFingerprintLabel,
+                review.PreviousFingerprint ?? string.Empty, string.Empty, viewModel.TrustCertificateText,
+                viewModel.CancelText).ShowDialog<bool>(owner);
+        }
+        finally { _certificateDialogOpen = false; }
     }
 
     private void LoginViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -37,7 +62,10 @@ public partial class LoginView : UserControl
         try
         {
             var accepted = await new SshHostKeyDialog(
-                viewModel.HostKeyDialogTitle, viewModel.HostKeyMessage, viewModel.HostKeyFingerprint,
+                viewModel.HostKeyDialogTitle, viewModel.HostKeyMessage,
+                viewModel.ObservedFingerprintLabel, viewModel.HostKeyFingerprint,
+                viewModel.PinnedFingerprintLabel, viewModel.PreviousHostKeyFingerprint,
+                viewModel.PreviousHostKeyConfirmedText,
                 viewModel.ConfirmHostKeyText, viewModel.CancelText).ShowDialog<bool>(owner);
             if (accepted) await viewModel.ConfirmHostKeyFromDialogAsync();
             else viewModel.CancelHostKeyConfirmation();

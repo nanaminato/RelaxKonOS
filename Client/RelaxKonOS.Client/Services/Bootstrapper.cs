@@ -83,6 +83,9 @@ public static class Bootstrapper
         services.AddSingleton<ShortcutActivationRouter>();
 
         // Auth（登录模块）：typed HttpClient + 仅内存认证会话 + 登录视图模型。
+        services.AddSingleton(ServerCertificateTrust.Shared);
+        services.AddSingleton<Microsoft.Extensions.Http.IHttpMessageHandlerBuilderFilter, ServerCertificateHandlerFilter>();
+        services.ConfigureHttpClientDefaults(builder => builder.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler()));
         services.AddHttpClient<IRelaxKonOSClient, RelaxKonOSClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "auth"))
             .AddHttpMessageHandler<AcceptLanguageHandler>();
@@ -142,11 +145,7 @@ public static class Bootstrapper
         services.AddTransient<RelaxKonOS.Client.Services.Auth.UploadAuthenticationHandler>();
         services.AddHttpClient<RelaxKonOS.Client.Apps.Explorer.Uploads.IExplorerUploadChannel,
                 RelaxKonOS.Client.Apps.Explorer.Uploads.ExplorerUploadChannel>(http => http.Timeout = Timeout.InfiniteTimeSpan)
-            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
-            {
-                ConnectTimeout = TimeSpan.FromSeconds(15),
-                AllowAutoRedirect = false,
-            })
+            .ConfigurePrimaryHttpMessageHandler(sp => new ServerCertificateUploadHandler(sp.GetRequiredService<ServerCertificateTrust>()))
             .AddHttpMessageHandler<RelaxKonOS.Client.Services.Auth.UploadAuthenticationHandler>()
             .AddHttpMessageHandler<AcceptLanguageHandler>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Explorer.Uploads.UploadResumeJournal>();

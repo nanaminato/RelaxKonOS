@@ -105,19 +105,26 @@ public sealed class SshNetServerCenterTransport : IServerCenterSshTransport
         string command, string? inputLine, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(command);
-        return Task.Run(() =>
+        return Task.Run(async () =>
         {
             using var sshCommand = Client.CreateCommand(command);
-            using var input = sshCommand.CreateInputStream();
-            var execution = sshCommand.BeginExecute();
-            if (!string.IsNullOrEmpty(inputLine))
+            var execution = sshCommand.ExecuteAsync(cancellationToken);
+            // SSH.NET opens the channel during ExecuteAsync. Create stdin only after that,
+            // and close it before waiting so the remote command receives EOF.
+            using (var input = sshCommand.CreateInputStream())
             {
-                var bytes = Encoding.UTF8.GetBytes(inputLine + "\n");
-                input.Write(bytes, 0, bytes.Length);
-                input.Flush();
+                if (inputLine is not null)
+                {
+                    var bytes = Encoding.UTF8.GetBytes(inputLine + "\n");
+                    try
+                    {
+                        await input.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
+                        await input.FlushAsync(cancellationToken).ConfigureAwait(false);
+                    }
+                    finally { Array.Clear(bytes); }
+                }
             }
-
-            sshCommand.EndExecute(execution);
+            await execution.ConfigureAwait(false);
             return new ServerCenterSshCommandResult(sshCommand.ExitStatus ?? -1, sshCommand.Result, sshCommand.Error);
         }, cancellationToken);
     }

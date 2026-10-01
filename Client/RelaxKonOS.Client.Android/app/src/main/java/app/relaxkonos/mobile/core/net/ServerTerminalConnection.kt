@@ -42,6 +42,13 @@ class ServerTerminalConnection(
 ) : TerminalConnection {
     private val hub: HubConnection = HubConnectionBuilder.create(baseUrl.trimEnd('/') + "/hubs/terminals")
         .withAccessTokenProvider(Single.defer { Single.just(token() ?: "") })
+        .setHttpClientBuilderCallback { builder ->
+            builder.followRedirects(false).followSslRedirects(false)
+            if (baseUrl.startsWith("https://")) {
+                val (context, manager) = ServerCertificateTrust.tls(baseUrl)
+                builder.sslSocketFactory(context.socketFactory, manager)
+            }
+        }
         .build()
 
     init {

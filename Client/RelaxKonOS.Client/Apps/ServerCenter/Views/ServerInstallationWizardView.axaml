@@ -47,6 +47,7 @@
                             <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
                         </ComboBox.ItemTemplate>
                     </ComboBox>
+                    <TextBox IsVisible="{Binding ShowsSudoPassword}" Text="{Binding SudoPassword, Mode=TwoWay}" PasswordChar="●" PlaceholderText="{Binding SudoPasswordText}" />
                     <TextBlock Text="{Binding FileAccessText}" />
                     <ComboBox ItemsSource="{Binding FileAccesses}" SelectedItem="{Binding SelectedFileAccess}" HorizontalAlignment="Left" MinWidth="320">
                         <ComboBox.ItemTemplate>
@@ -80,8 +81,9 @@
                 </StackPanel>
 
                 <StackPanel Spacing="12" IsVisible="{Binding IsReviewStep}">
+                    <TextBlock Text="{Binding SourceChecksText}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
                     <TextBlock Text="{Binding ReviewStepTitle}" FontSize="17" FontWeight="SemiBold" />
-                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" ColumnSpacing="14" RowSpacing="10">
+                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="14" RowSpacing="10">
                         <TextBlock Text="{Binding ServerAndUserText}" Foreground="{DynamicResource TextSecondaryBrush}" />
                         <TextBlock Grid.Column="1" Text="{Binding TargetText}" TextWrapping="Wrap" />
                         <TextBlock Grid.Row="1" Text="{Binding ReleaseText}" Foreground="{DynamicResource TextSecondaryBrush}" />
@@ -92,10 +94,27 @@
                         <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedFileAccess.Label}" TextWrapping="Wrap" />
                         <TextBlock Grid.Row="4" Text="{Binding NetworkText}" Foreground="{DynamicResource TextSecondaryBrush}" />
                         <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding SelectedNetwork.Label}" TextWrapping="Wrap" />
+                        <TextBlock Grid.Row="5" Text="{Binding CertificateText}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <StackPanel Grid.Row="5" Grid.Column="1" Spacing="8">
+                            <TextBlock Text="{Binding SelectedCertificateMode.Label}" TextWrapping="Wrap" />
+                            <Grid IsVisible="{Binding IsCustomCertificate}" ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="6">
+                                <TextBlock Text="{Binding CertificateFormatText}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock Grid.Column="1" Text="{Binding SelectedCertificateFormat.Label}" TextWrapping="Wrap" />
+                                <TextBlock Grid.Row="1" Text="{Binding CertificateFileText}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <SelectableTextBlock Grid.Row="1" Grid.Column="1" Text="{Binding CertificateFileName}" TextWrapping="Wrap" />
+                                <TextBlock Grid.Row="2" Text="{Binding CertificatePrivateKeyFileText}" IsVisible="{Binding IsPemCertificate}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <SelectableTextBlock Grid.Row="2" Grid.Column="1" Text="{Binding CertificatePrivateKeyFileName}" IsVisible="{Binding IsPemCertificate}" TextWrapping="Wrap" />
+                            </Grid>
+                            <StackPanel IsVisible="{Binding IsSelfSignedCertificate}" Spacing="4">
+                                <TextBlock Text="{Binding SelfSignedNamesText}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                                <SelectableTextBlock Text="{Binding SelfSignedIdentities}" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </StackPanel>
                     </Grid>
                 </StackPanel>
 
                 <TextBlock Text="{Binding ErrorMessage}" IsVisible="{Binding HasError}" Classes="error" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding InstallingText}" IsVisible="{Binding IsBusy}" />
                 <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" />
             </StackPanel>
         </ScrollViewer>

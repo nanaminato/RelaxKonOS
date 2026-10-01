@@ -1,37 +1,54 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:services="clr-namespace:RelaxKonOS.Client.Services.ServerCenter"
              x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterHistoryPage"
              x:DataType="vm:ServerCenterViewModel">
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-    <StackPanel Spacing="18" Margin="0,0,12,0">
+    <Grid RowDefinitions="Auto,Auto,*" RowSpacing="18" Margin="0,0,12,0">
         <TextBlock Text="{Binding HistoryPageTitle}" FontSize="21" FontWeight="SemiBold" />
-        <TextBlock Text="{Binding SelectHostHint}" IsVisible="{Binding !SelectedHost}" TextWrapping="Wrap" />
-        <Border Classes="card" Padding="20" IsVisible="{Binding SelectedHost}">
-            <StackPanel Spacing="12">
+        <TextBlock Grid.Row="1" Text="{Binding SelectHostHint}" IsVisible="{Binding !SelectedHost}" TextWrapping="Wrap" />
+        <Border Grid.Row="2" Classes="card" Padding="20" IsVisible="{Binding SelectedHost}">
+            <Grid RowDefinitions="Auto,*,Auto" RowSpacing="12">
+                <StackPanel Spacing="12">
                 <TextBlock Text="{Binding SelectedHost.DisplayName}" FontSize="17" FontWeight="SemiBold" />
-                <Button Command="{Binding LoadOperationHistoryCommand}" Content="{Binding LoadOperationHistoryText}" HorizontalAlignment="Left" />
-                <ListBox ItemsSource="{Binding Operations}" SelectedItem="{Binding SelectedOperation}" MinHeight="240">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel Margin="6" Spacing="3">
-                                <TextBlock Text="{Binding Kind}" FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding State}" />
-                                <TextBlock Text="{Binding SafeMessage}" TextWrapping="Wrap" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-                <TextBox Text="{Binding SshPassword}" PasswordChar="●" PlaceholderText="{Binding SshPasswordLabel}" />
-                <ComboBox ItemsSource="{Binding Platforms}" SelectedItem="{Binding SelectedPlatform}"
-                          PlaceholderText="{Binding PlatformLabel}" HorizontalAlignment="Left" MinWidth="180">
-                    <ComboBox.ItemTemplate>
-                        <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
-                    </ComboBox.ItemTemplate>
-                </ComboBox>
-                <Button Command="{Binding RefreshOperationCommand}" Content="{Binding RefreshOperationText}" HorizontalAlignment="Left" />
-            </StackPanel>
+                <TextBox Text="{Binding SshPassword}" PasswordChar="●" PlaceholderText="{Binding DeploymentPasswordHint}" />
+                <WrapPanel ItemSpacing="12">
+                    <ComboBox ItemsSource="{Binding Platforms}" SelectedItem="{Binding SelectedPlatform}"
+                              PlaceholderText="{Binding PlatformLabel}" MinWidth="180">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <Button Command="{Binding LoadOperationHistoryCommand}" Content="{Binding LoadOperationHistoryText}" />
+                    <Button Command="{Binding RefreshOperationCommand}" Content="{Binding RefreshOperationText}" />
+                    <Button Command="{Binding ClearOperationHistoryCommand}" Content="{Binding ClearOperationHistoryText}" />
+                </WrapPanel>
+                </StackPanel>
+                <DataGrid Grid.Row="1" ItemsSource="{Binding Operations}" SelectedItem="{Binding SelectedOperation, Mode=TwoWay}"
+                          AutoGenerateColumns="False" IsReadOnly="True"
+                          SelectionMode="Single" CanUserSortColumns="True" CanUserResizeColumns="True"
+                          HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                          GridLinesVisibility="Horizontal" RowHeight="36">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="{loc:Loc server_center.history.time}" Binding="{ReflectionBinding StartedAtLocalText}"
+                                            SortMemberPath="StartedAtUtc" Width="230" MinWidth="160" />
+                        <DataGridTextColumn Header="{loc:Loc server_center.history.kind}" Binding="{ReflectionBinding Kind}"
+                                            SortMemberPath="Kind" Width="120" MinWidth="80" />
+                        <DataGridTextColumn Header="{loc:Loc server_center.history.state}" Binding="{ReflectionBinding State}"
+                                            SortMemberPath="State" Width="120" MinWidth="80" />
+                        <DataGridTemplateColumn Header="{loc:Loc server_center.history.message}" SortMemberPath="SafeMessage" Width="*" MinWidth="200">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate x:DataType="services:ServerCenterOperationRecord">
+                                    <TextBlock Text="{Binding SafeMessage}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                               Margin="8,0" ToolTip.Tip="{Binding SafeMessage}" />
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+                <TextBox Grid.Row="2" Text="{Binding OperationDetailsText, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="220" MinHeight="70" />
+            </Grid>
         </Border>
-    </StackPanel>
-    </ScrollViewer>
+    </Grid>
 </UserControl>

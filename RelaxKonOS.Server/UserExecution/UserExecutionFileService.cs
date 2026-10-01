@@ -37,10 +37,16 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
     public FileSystemEntryDto? GetInfo(string path) => Run<FileSystemEntryDto?>(UserExecutionOperationKind.FileGetInfo, path: path);
     public (Stream Stream, string ContentType, string FileName)? OpenRead(string path)
     {
-        var result = Run<DirectUserExecutionOperations.FileReadResult>(UserExecutionOperationKind.FileRead, path: path);
-        return new MemoryStream(Convert.FromBase64String(result.ContentBase64), writable: false) is { } stream
-            ? (stream, result.ContentType, result.FileName) : null;
+        var result = RunAsync<UserExecutionFileRead>(UserExecutionOperationKind.FileRead, path: path,
+            offset: 0, expectedBytes: 0).GetAwaiter().GetResult();
+        return (new UserExecutionReadStream(result.Length, async (offset, count, ct) =>
+        {
+            ct.ThrowIfCancellationRequested();
+            return await RunAsync<UserExecutionFileRead>(UserExecutionOperationKind.FileRead, path: path,
+                offset: offset, expectedBytes: count, cancellationToken: ct);
+        }), result.ContentType, result.FileName);
     }
+
     public async Task<FileEntryDto> WriteFileAsync(string path, Stream content, CancellationToken cancellationToken = default)
         => await RunAsync<FileEntryDto>(UserExecutionOperationKind.FileWrite, path, content: await ReadContentAsync(content, cancellationToken));
     public async Task<byte[]> ReadTextBytesAsync(string path, CancellationToken cancellationToken = default)
@@ -105,8 +111,10 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
 
     private async Task<T> RunAsync<T>(UserExecutionOperationKind operation, string? path = null, string? destinationPath = null, string? newName = null,
         string? fileName = null, bool overwrite = false, string? content = null, int? unixMode = null,
-        long? offset = null, long? expectedBytes = null, string? expectedSha256 = null)
+        long? offset = null, long? expectedBytes = null, string? expectedSha256 = null, CancellationToken cancellationToken = default)
     {
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, http.HttpContext?.RequestAborted ?? CancellationToken.None);
+        cancellation.Token.ThrowIfCancellationRequested();
         var principal = http.HttpContext?.User ?? throw new InvalidOperationException("User execution requires an authenticated HTTP request.");
         if (operation is UserExecutionOperationKind.FileWriteIfMatch or UserExecutionOperationKind.FileReadText
             && mode.Mode == ServerMode.System && IsRootSession(principal))
@@ -125,7 +133,7 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
                 // Root's closed Helper policy can intentionally exclude broad paths such as '/'.
                 // For observation only, fall back to the Server's *actual non-root* OS account.
                 // This never impersonates an arbitrary host user and it never broadens mutation.
-                return ReadAsServerIdentity<T>(operation, path!);
+                return ReadAsServerIdentity<T>(operation, path!, offset, expectedBytes);
             }
         }
         var context = contexts.Resolve(principal);
@@ -135,9 +143,9 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
         {
             var validation = new DirectUserExecutionService(mode).Validate(context, request);
             Throw(validation);
-            return await DirectAsync<T>(request);
+            return await DirectAsync<T>(request, cancellation.Token);
         }
-        var result = await transport.ExecuteAsync(request, http.HttpContext?.RequestAborted ?? CancellationToken.None);
+        var result = await transport.ExecuteAsync(request, cancellation.Token);
         if (operation is not (UserExecutionOperationKind.FileWriteIfMatch or UserExecutionOperationKind.FileReadText)
             && !result.Success && result.ProblemCode == UserExecutionProblemCode.AccessDenied)
         {
@@ -176,30 +184,24 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
             or UserExecutionOperationKind.FileGetInfo or UserExecutionOperationKind.FileGetProperties
             or UserExecutionOperationKind.FileRead;
 
-    private T ReadAsServerIdentity<T>(UserExecutionOperationKind operation, string path)
+    private T ReadAsServerIdentity<T>(UserExecutionOperationKind operation, string path, long? offset, long? expectedBytes)
     {
         object? result = operation switch
         {
             UserExecutionOperationKind.FileListDirectory => direct.GetDirectory(path),
             UserExecutionOperationKind.FileGetInfo => direct.GetInfo(path),
             UserExecutionOperationKind.FileGetProperties => direct.GetProperties(path),
-            UserExecutionOperationKind.FileRead => ReadAsServerIdentity(path),
+            UserExecutionOperationKind.FileRead => ReadAsServerIdentity(path, offset!.Value, expectedBytes!.Value),
             _ => throw new InvalidOperationException("Only root read operations can use the Server identity."),
         };
         return (T)result!;
     }
 
-    private DirectUserExecutionOperations.FileReadResult ReadAsServerIdentity(string path)
+    private UserExecutionFileRead ReadAsServerIdentity(string path, long offset, long count)
     {
         var read = direct.OpenRead(path) ?? throw new FileNotFoundException("File was not found.", path);
         using (read.Stream)
-        using (var copy = new MemoryStream())
-        {
-            read.Stream.CopyTo(copy);
-            if (copy.Length > UserExecutionProtocol.MaximumFileContentBytes)
-                throw new DirectUserExecutionOperations.ContentTooLargeException();
-            return new(Convert.ToBase64String(copy.ToArray()), read.FileName, read.ContentType);
-        }
+            return UserExecutionFileReads.Read(read.Stream, read.FileName, read.ContentType, offset, count);
     }
 
     private bool IsRootSession(System.Security.Claims.ClaimsPrincipal principal)
@@ -245,7 +247,7 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
             {
             UserExecutionOperationKind.FileListDirectory => await privileged.ListDirectoryAsync(source, path!, ct),
             UserExecutionOperationKind.FileGetInfo => await privileged.GetInfoAsync(source, path!, ct),
-            UserExecutionOperationKind.FileRead => await ReadPrivilegedAsync(source, path!, ct),
+            UserExecutionOperationKind.FileRead => await ReadPrivilegedAsync(source, path!, offset!.Value, expectedBytes!.Value, ct),
             UserExecutionOperationKind.FileWrite => await privileged.WriteAsync(source, path!, bytes!, ct),
             UserExecutionOperationKind.FileGetProperties => await privileged.GetPropertiesAsync(source, path!, ct),
             UserExecutionOperationKind.FileSetUnixPermissions => await privileged.SetUnixPermissionsAsync(source, path!, unixMode!.Value, ct),
@@ -268,16 +270,12 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
         { throw HostFileExecutionException.From(error); }
     }
 
-    private async Task<DirectUserExecutionOperations.FileReadResult> ReadPrivilegedAsync(
-        PrivilegedFileAuthorizationSource source, string path, CancellationToken ct)
+    private async Task<UserExecutionFileRead> ReadPrivilegedAsync(
+        PrivilegedFileAuthorizationSource source, string path, long offset, long count, CancellationToken ct)
     {
         var read = await privileged.OpenReadAsync(source, path, ct);
         using (read.Stream)
-        using (var copy = new MemoryStream())
-        {
-            await read.Stream.CopyToAsync(copy, ct);
-            return new(Convert.ToBase64String(copy.ToArray()), read.FileName, "application/octet-stream");
-        }
+            return UserExecutionFileReads.Read(read.Stream, read.FileName, "application/octet-stream", offset, count, ct);
     }
 
     private async Task<FileEntryDto> CommitPrivilegedAsync(PrivilegedFileAuthorizationSource source,
@@ -300,8 +298,8 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
     /// effective user. The operation mapping is shared with the local-identity backend so the two
     /// cannot drift; this path stays otherwise unchanged.
     /// </summary>
-    private async Task<T> DirectAsync<T>(UserExecutionRequest request)
-        => (T)(await DirectUserExecutionOperations.ExecuteAsync(direct, request))!;
+    private async Task<T> DirectAsync<T>(UserExecutionRequest request, CancellationToken cancellationToken)
+        => (T)(await DirectUserExecutionOperations.ExecuteAsync(direct, request, cancellationToken))!;
 
     private static async Task<string> ReadContentAsync(Stream content, CancellationToken cancellationToken)
     { await using var copy = new MemoryStream(); await content.CopyToAsync(copy, cancellationToken); if (copy.Length > UserExecutionProtocol.MaximumFileContentBytes) throw new IOException("File content is too large."); return Convert.ToBase64String(copy.ToArray()); }
@@ -312,7 +310,8 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
         {
             UserExecutionProblemCode.AccessDenied => "Access denied for the authenticated OS user.",
             UserExecutionProblemCode.NotFound => "User-execution path not found.",
-            UserExecutionProblemCode.InvalidRequest or UserExecutionProblemCode.ContentTooLarge => "Invalid user-execution file request.",
+            UserExecutionProblemCode.InvalidRequest => "Invalid user-execution file request.",
+            UserExecutionProblemCode.ContentTooLarge => "File content exceeds the single-operation limit.",
             UserExecutionProblemCode.Conflict => "User-execution file operation failed.",
             UserExecutionProblemCode.TimedOut => "User-execution file operation timed out.",
             // The identity itself may not be used for ordinary operations (root, a system account, an
@@ -335,8 +334,9 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
             case UserExecutionProblemCode.NotFound:
                 throw new FileNotFoundException(message);
             case UserExecutionProblemCode.InvalidRequest:
-            case UserExecutionProblemCode.ContentTooLarge:
                 throw new ArgumentException(message);
+            case UserExecutionProblemCode.ContentTooLarge:
+                throw new HostFileExecutionException(413, "content-too-large", message);
             case UserExecutionProblemCode.Conflict:
                 throw new IOException(message);
         }

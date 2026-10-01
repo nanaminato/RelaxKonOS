@@ -13,6 +13,19 @@
 set -euo pipefail
 
 protocol_version=1
+sudo_requested=false
+sudo_password=
+run_privileged() {
+  # Authenticate via stdin; the engine never inherits password input, including NOPASSWD policies.
+  sudo -S -k -p '' -- bash -c 'exec "$@" </dev/null' bash "$@" <<< "$sudo_password"
+}
+authenticate_sudo() {
+  [[ $sudo_requested == true ]] || return 0
+  [[ $options_mode == linuxSystem || $operation_kind == probe ]] || launcher_fail invalid_request "sudo is only supported for Linux System Mode"
+  if ! command -v sudo >/dev/null || ! run_privileged true >/dev/null 2>&1; then
+    launcher_fail elevation_required "sudo 验证失败：请检查 sudo 密码以及当前账号的 sudo 权限。"
+  fi
+}
 script_raw=${BASH_SOURCE[0]}
 staging_root=$(cd -- "$(dirname -- "$script_raw")" && pwd -P)
 request_path=$staging_root/request.json
@@ -132,6 +145,226 @@ record_json_only() {
 }
 
 # --- request -----------------------------------------------------------------------------------
+# The Linux host uses its standard Python 3 runtime for JSON and safe ZIP handling.
+# No RID-specific client executable is uploaded or required.
+deployment_python() {
+  python3 - "$@" <<'PY'
+import errno, hashlib, json, os, re, shutil, stat, sys, urllib.request, zipfile
+from pathlib import Path
+import datetime, ssl, subprocess, uuid, tempfile
+
+def recovery_trusted(path):
+    # Every ancestor must prevent non-root replacement, including symlink targets.
+    resolved = path.resolve(strict=True)
+    for item in [resolved, *resolved.parents]:
+        info = item.stat()
+        if info.st_uid != 0 or info.st_mode & 0o022:
+            raise ValueError('Untrusted installation path: ' + str(item))
+    return resolved
+
+def recovery_state(root=Path("/opt/relaxkonos"), data=Path("/var/lib/relaxkonos"), config=Path("/etc/relaxkonos")):
+    """Reconstruct only a verified, live installation at the fixed system paths."""
+    if os.geteuid() != 0: raise ValueError('Recovery requires root or authenticated sudo')
+    trusted = recovery_trusted
+    state = data/'install-state.json'
+    if state.exists() or state.is_symlink(): raise ValueError('An installation record already exists; use repair')
+    trusted(root)
+    if (root/'current').lstat().st_uid != 0: raise ValueError('Current version link is not root-owned')
+    current = trusted(root/'current')
+    if current.parent != root/'versions' or not re.fullmatch(r'[0-9A-Za-z][0-9A-Za-z.+_-]{0,127}', current.name):
+        raise ValueError('Current version does not point to a managed version directory')
+    def show(unit, field):
+        return subprocess.check_output(['systemctl','show',unit,'--property='+field,'--value'],text=True).strip()
+    for unit, folder, executable, user in (
+        ('relaxkonos-server.service','server','RelaxKonOS.Server','relaxkonos-server'),
+        ('relaxkonos-guardian.service','guardian','RelaxKonOS.Guardian.Agent','')):
+        binary = trusted(current/folder/executable)
+        with binary.open('rb') as binary_stream: magic = binary_stream.read(4)
+        if magic != b'\x7fELF': raise ValueError('Invalid deployed executable: ' + executable)
+        trusted(Path(show(unit,'FragmentPath')))
+        if show(unit,'ActiveState') != 'active' or show(unit,'User') not in ({user} if user else {'','root'}):
+            raise ValueError('Service is inactive or has an unexpected account: ' + unit)
+        if ('path='+str(binary)+' ;') not in show(unit,'ExecStart'):
+            raise ValueError('Unexpected service executable: ' + unit)
+    trusted(current/'privileged-helper/RelaxKonOS.PrivilegedHelper')
+    if Path(show('relaxkonos-server.service','WorkingDirectory')).resolve() != current/'server':
+        raise ValueError('Unexpected server working directory')
+    environment = dict(line.split('=',1) for line in trusted(config/'server.env').read_text().splitlines() if line and not line.startswith('#') and '=' in line)
+    if environment.get('Storage__DatabasePath') != str(data/'server/relaxkonos.db'):
+        raise ValueError('Server database is outside the managed data directory')
+    if not (data/'server/relaxkonos.db').is_file() or (current/'server/data').resolve() != data/'server':
+        raise ValueError('Managed database or server data link is missing')
+    listen = re.findall(r'(?:^|\s)ASPNETCORE_URLS=(https?://(?:127\.0\.0\.1|0\.0\.0\.0):[0-9]+)(?:\s|$)',show('relaxkonos-server.service','Environment'))
+    if len(listen) != 1: raise ValueError('Unsupported or ambiguous server listening address')
+    url = listen[0]; scheme, port = url.split('://')[0], int(url.rsplit(':',1)[1])
+    if not 1 <= port <= 65535: raise ValueError('Invalid server port')
+    certificate = 'none'
+    if scheme == 'https':
+        certificate_path = Path(environment.get('Kestrel__Certificates__Default__Path',''))
+        if certificate_path != data/'server/certificates/bootstrap.pfx': raise ValueError('Unexpected TLS certificate path')
+        # The server data directory is deliberately owned by the service account.
+        # Validate the fixed TLS files themselves rather than demanding root ownership
+        # of that writable parent, which would reject every normal installation.
+        for item in (certificate_path.parent, certificate_path):
+            info = item.lstat()
+            if item.is_symlink() or info.st_uid != 0 or info.st_mode & 0o022:
+                raise ValueError('Unexpected TLS file ownership or permissions')
+        if not environment.get('Kestrel__Certificates__Default__Password'): raise ValueError('TLS credential is missing')
+        certificate = 'custom' # Preserve the actual installed certificate; never rotate it during recovery.
+    with urllib.request.urlopen(f'{scheme}://127.0.0.1:{port}/healthz',timeout=15,context=ssl._create_unverified_context()) as response:
+        if response.status != 200: raise ValueError('Server health check failed')
+    def access(suffix):
+        lines = trusted(config/('privileged-helper-roots'+suffix)).read_text().splitlines()
+        if not lines or any(not line.startswith('/') for line in lines): raise ValueError('Invalid file access policy')
+        if lines == ['/']: return 'full'
+        expected = ['/etc/relaxkonos',str(data)] + (['/root'] if suffix == '-root' else [])
+        return 'restricted' if lines == expected else 'whitelist'
+    docker = config/'docker-access-user'
+    if docker.exists() and trusted(docker).read_text().strip() != 'relaxkonos-server': raise ValueError('Unexpected Docker access account')
+    value = dict(schemaVersion=2,installed=True,mode='linuxSystem',installationId="rki-"+uuid.uuid4().hex,version=current.name,
+                 previousVersion=None,installedAtUtc=datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                 installRoot=str(root),dataRoot=str(data),networkProfile='lan' if '0.0.0.0' in url else 'local',listenUrl=url,
+                 certificateMode=certificate,fileAccess=access(''),administratorFileAccess=access('-administrator'),
+                 rootFileAccess=access('-root'),dockerAccess=docker.exists())
+    trusted(data)
+    # Publish atomically without overwriting a record created by another operation.
+    descriptor, temporary = tempfile.mkstemp(prefix='.recovery-',dir=data)
+    try:
+        with os.fdopen(descriptor,'w') as output:
+            json.dump(value,output); output.flush(); os.fsync(output.fileno())
+        os.link(temporary,state)
+    finally: os.unlink(temporary)
+    print('Verified installation recovered: '+current.name)
+
+def unique(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result: raise ValueError('duplicate JSON field')
+        result[key] = value
+    return result
+
+def load(text): return json.loads(text, object_pairs_hook=unique)
+
+def stream_digest(stream):
+    digest = hashlib.sha256()
+    while chunk := stream.read(1024*1024): digest.update(chunk)
+    return digest.hexdigest()
+
+def request(path):
+    raw = Path(path).read_bytes()
+    if not 0 < len(raw) <= 65536 or b'\n' in raw or b'\r' in raw: raise ValueError('request size/line')
+    value = load(raw)
+    root = {'schemaVersion', 'operationId', 'kind', 'options'}
+    keys = {'source','network','retention','mode','version','packageUri','stagedPackageName',
+            'packageDigest','remotePackagePath','expectedInstallationId','serverPort','fileAccess',
+            'certificateMode','selfSignedIdentities','confirmed'}
+    if type(value) is not dict or set(value) - root: raise ValueError('request fields')
+    if type(value.get('schemaVersion')) is not int or value['schemaVersion'] != 1: raise ValueError('schema')
+    if not isinstance(value.get('operationId'), str) or not re.fullmatch(r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}',value['operationId']): raise ValueError('id')
+    if value.get('kind') not in {'probe','install','upgrade','repair','uninstall','status','rollback'}: raise ValueError('kind')
+    options = value.get('options')
+    if options is not None:
+        if type(options) is not dict or set(options) - keys: raise ValueError('options fields')
+        for key in ('source','network'):
+            if type(options.get(key)) is not str: raise ValueError('required string')
+        for key, item in options.items():
+            if key == 'confirmed': valid = type(item) is bool
+            elif key == 'serverPort': valid = item is None or type(item) is int
+            elif key in ('source','network','retention'): valid = type(item) is str
+            else: valid = item is None or type(item) is str
+            if not valid or isinstance(item,str) and any(ord(c)<32 for c in item): raise ValueError('option type')
+    return value
+
+class HttpsRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, url):
+        if not url.startswith('https://'): raise ValueError('HTTPS required')
+        return super().redirect_request(req, fp, code, msg, headers, url)
+
+def download(url, path, limit):
+    if not isinstance(url,str) or not url.startswith('https://'): raise ValueError('HTTPS required')
+    opener = urllib.request.build_opener(HttpsRedirect)
+    with opener.open(url, timeout=60) as source, open(path,'xb') as target:
+        total = 0
+        while chunk := source.read(1024*1024):
+            total += len(chunk)
+            if total > limit: raise ValueError('download too large')
+            target.write(chunk)
+
+def extract(source, runtime, kind, destination, archive):
+    if source == 'officialStable':
+        descriptor_path = str(destination) + '.json'
+        suffix = ('user-server/' if kind == 'user-server' else '') + runtime + '.json'
+        download('https://downloads.relaxkon.com/relaxkonos/stable/latest/' + suffix, descriptor_path, 1024*1024)
+        descriptor = load(Path(descriptor_path).read_text())
+        if descriptor.get('schemaVersion') != 1 or descriptor.get('runtime') != runtime or descriptor.get('packageKind') != kind or not re.fullmatch('[0-9a-fA-F]{64}',descriptor.get('sha256','')): raise ValueError('descriptor')
+        archive = str(destination) + '.zip'
+        download(descriptor['url'],archive,8*1024**3)
+        with open(archive,'rb') as stream: digest = stream_digest(stream)
+        if digest != descriptor['sha256'].lower(): raise ValueError('official checksum mismatch')
+    path = Path(archive)
+    if not path.is_file() or path.is_symlink(): raise ValueError('ZIP file missing or unsafe')
+    destination = Path(destination)
+    if destination.exists() or destination.is_symlink(): raise ValueError('destination exists')
+    with zipfile.ZipFile(path) as package:
+        entries = package.infolist()
+        if len(entries) > 20000 or sum(e.file_size for e in entries) > 8*1024**3: raise ValueError('package limits')
+        if shutil.disk_usage(destination.parent).free < sum(e.file_size for e in entries) + 64*1024**2:
+            raise OSError(errno.ENOSPC, 'Insufficient space for extracted package')
+        seen = set()
+        for entry in entries:
+            name = entry.filename.rstrip('/')
+            if not re.fullmatch(r'[A-Za-z0-9._/+\-]+',name) or any(p in ('','.', '..') for p in name.split('/')) or name.startswith('/') or name.casefold() in seen: raise ValueError('unsafe/duplicate ZIP path')
+            seen.add(name.casefold())
+            mode = (entry.external_attr >> 16) & 0o170000
+            if mode not in (0, stat.S_IFREG,stat.S_IFDIR): raise ValueError('unsupported ZIP entry')
+        manifest_entry = package.getinfo('manifest.json')
+        if manifest_entry.file_size > 1024*1024: raise ValueError('manifest too large')
+        manifest = load(package.read(manifest_entry))
+        if manifest.get('schemaVersion') != 1 or manifest.get('runtime') != runtime or manifest.get('packageKind') != kind or not re.fullmatch(r'[0-9A-Za-z][0-9A-Za-z._-]{0,63}',manifest.get('version','')): raise ValueError('package kind/runtime/version')
+        if source == 'officialStable' and manifest['version'] != descriptor.get('version'): raise ValueError('official version mismatch')
+        required = ['payload/linux/server/RelaxKonOS.Server','payload/linux/guardian/RelaxKonOS.Guardian.Agent']
+        if kind == 'server': required += ['payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper','deployment/bootstrap/install-relaxkonos.sh','deployment/linux/install-relaxkonos-services.sh']
+        else: required += ['deployment/user/relaxkon']
+        files = {e.filename:e for e in entries if not e.is_dir()}
+        if any(name not in files for name in required): raise ValueError('incomplete package')
+        if source == 'officialStable':
+            listed = manifest.get('files',[])
+            if len({f['path'] for f in listed}) != len(listed) or set(files) != {'manifest.json'} | {f['path'] for f in listed}: raise ValueError('file inventory')
+            for item in listed:
+                entry = files[item['path']]
+                with package.open(entry) as stream: digest = stream_digest(stream)
+                if entry.file_size != item['length'] or digest != item['sha256'].lower(): raise ValueError('file checksum')
+        destination.mkdir(mode=0o700)
+        try:
+            for name,entry in files.items():
+                target = destination / name
+                target.parent.mkdir(parents=True,exist_ok=True)
+                with package.open(entry) as src, target.open('xb') as dst: shutil.copyfileobj(src,dst)
+                target.chmod(0o700 if name.endswith('.sh') or name in required else 0o600)
+        except BaseException:
+            shutil.rmtree(destination, ignore_errors=True)
+            raise
+
+try:
+    action, *args = sys.argv[1:]
+    if action == 'validate': request(args[0])
+    elif action == 'text':
+        value = request(args[0]); key = args[1]
+        item = value.get(key, (value.get('options') or {}).get(key))
+        print(item if isinstance(item,str) else '',end='')
+    elif action == 'token':
+        value = request(args[0]); key = args[1]
+        print(json.dumps(value.get(key, (value.get('options') or {}).get(key)),separators=(',',':')),end='')
+    elif action == 'extract': extract(*args)
+    elif action == 'recover': recovery_state()
+    else: raise ValueError('unsupported helper action')
+except Exception as error:
+    print('Deployment input rejected: ' + str(error),file=sys.stderr)
+    sys.exit(73 if isinstance(error, OSError) and error.errno == errno.EDQUOT else
+             74 if isinstance(error, OSError) and error.errno == errno.ENOSPC else 1)
+PY
+}
+
 request_text=
 read_request() {
   [[ -f $request_path && ! -L $request_path ]] || launcher_fail invalid_request "request file is missing"
@@ -141,16 +374,14 @@ read_request() {
   request_text=$(<"$request_path")
   [[ $request_text != *$'\n'* ]] || launcher_fail invalid_request "request must be a single line of JSON"
   [[ $request_text == \{*\} ]] || launcher_fail invalid_request "request must be a JSON object"
-  local verifier=$staging_root/release-verifier
-  [[ -f $verifier && ! -L $verifier && -x $verifier ]] || launcher_fail package_unavailable "the strict request verifier is missing"
-  "$verifier" validate-request "$request_path" >/dev/null 2>&1 \
+  command -v python3 >/dev/null || launcher_fail not_supported "Python 3 is required on the Linux server for JSON and ZIP handling"
+  deployment_python validate "$request_path" >/dev/null 2>&1 \
     || launcher_fail invalid_request "request fields, types or JSON structure are invalid"
 }
 json_token() {
-  local key=$1
-  printf '%s' "$request_text" | grep -oE "\"$key\"[[:space:]]*:[[:space:]]*(\"[^\"]*\"|null|true|false|-?[0-9]+)" | head -n1 | sed -E "s/^\"$key\"[[:space:]]*:[[:space:]]*//" || true
+  deployment_python token "$request_path" "$1"
 }
-json_text() { local token; token=$(json_token "$1"); case "$token" in \"*\") printf '%s' "${token:1:${#token}-2}";; *) printf '';; esac; }
+json_text() { deployment_python text "$request_path" "$1"; }
 json_literal() { local token; token=$(json_token "$1"); printf '%s' "${token:-null}"; }
 
 # A client may only send the fields of ServerDeploymentRequest/ServerDeploymentOptions. Anything
@@ -162,7 +393,7 @@ assert_request_keys() {
   while IFS= read -r key; do
     [[ -n $key ]] || continue
     case "$key" in
-      schemaVersion|operationId|kind|options|source|network|retention|mode|version|packageUri|stagedPackageName|packageDigest|expectedInstallationId|serverPort|fileAccess|certificateMode|selfSignedIdentities|confirmed) ;;
+      schemaVersion|operationId|kind|options|source|network|retention|mode|version|packageUri|stagedPackageName|packageDigest|remotePackagePath|expectedInstallationId|serverPort|fileAccess|certificateMode|selfSignedIdentities|confirmed) ;;
       *) launcher_fail invalid_request "unsupported request field: $key" ;;
     esac
   done <<< "$keys"
@@ -178,6 +409,7 @@ options_version=
 options_package_uri=
 options_staged_name=
 options_package_digest=
+options_remote_path=
 options_expected_installation_id=
 options_server_port=
 options_file_access=
@@ -210,6 +442,7 @@ parse_request() {
   options_package_uri=$(json_text packageUri)
   options_staged_name=$(json_text stagedPackageName)
   options_package_digest=$(json_text packageDigest)
+  options_remote_path=$(json_text remotePackagePath)
   options_expected_installation_id=$(json_text expectedInstallationId)
   local port_raw; port_raw=$(json_literal serverPort); [[ $port_raw != null ]] && options_server_port=$port_raw
   options_file_access=$(json_text fileAccess)
@@ -248,7 +481,12 @@ parse_request() {
   case "$operation_kind" in
     install|upgrade)
       [[ -n $options_mode ]] || launcher_fail invalid_request "installation mode is required"
-      [[ -n $options_staged_name && -n $options_package_digest ]] || launcher_fail invalid_request "install and upgrade need a staged archive and SHA-256"
+      case "$options_source" in
+      officialStable) ;;
+      localBundle) [[ -n $options_staged_name ]] || launcher_fail invalid_request "a local ZIP name is required" ;;
+      remoteBundle) [[ $options_remote_path == /* && $options_remote_path == *.zip ]] || launcher_fail invalid_request "an absolute server ZIP path is required" ;;
+      *) launcher_fail invalid_request "unsupported installation source" ;;
+    esac
       ;;
     repair|rollback|uninstall|status) [[ -n $options_mode ]] || launcher_fail invalid_request "installation mode is required";;
   esac
@@ -262,13 +500,18 @@ system_install_root() { printf '/opt/relaxkonos'; }
 
 state_field() { # install-state file key
   local file=$1 key=$2
-  [[ -r $file ]] || return 0
-  sed -nE "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" "$file" | head -n1
+  read_state "$file" | sed -nE "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" | head -n1
 }
 state_flag() { # install-state file key
   local file=$1 key=$2
-  [[ -r $file ]] || return 0
-  sed -nE "s/.*\"$key\"[[:space:]]*:[[:space:]]*(true|false).*/\1/p" "$file" | head -n1
+  read_state "$file" | sed -nE "s/.*\"$key\"[[:space:]]*:[[:space:]]*(true|false).*/\1/p" | head -n1
+}
+read_state() {
+  if [[ -r $1 ]]; then cat -- "$1"
+  elif [[ $sudo_requested == true && $1 == "$(system_data_root)/install-state.json" ]]; then
+    run_privileged cat -- "$1" 2>/dev/null || true
+  fi
+  return 0
 }
 mode_install_state() {
   case "$1" in
@@ -279,10 +522,7 @@ mode_install_state() {
 mode_install_root() { case "$1" in linuxSystem|windowsSystem) system_install_root;; linuxUser) user_data_root;; esac; }
 mode_data_root() { case "$1" in linuxSystem|windowsSystem) system_data_root;; linuxUser) user_data_root;; esac; }
 mode_listen_url() {
-  case "$1" in
-    linuxSystem|windowsSystem) printf 'http://127.0.0.1:%s' "${options_server_port:-5000}";;
-    linuxUser) printf 'http://127.0.0.1:%s' "${RELAXKONOS_PORT:-5000}";;
-  esac
+  state_field "$(mode_install_state "$1")" listenUrl
 }
 mode_service_names() {
   case "$1" in
@@ -319,7 +559,7 @@ health_probe() { # mode -> true|false
     *)
       local url="http://127.0.0.1:${options_server_port:-5000}/healthz" arguments=(--fail --silent --max-time 4)
       local state; state="$(system_data_root)/install-state.json"
-      if [[ -r $state ]]; then
+      if [[ -r $state || $sudo_requested == true ]]; then
         local listen; listen=$(state_field "$state" listenUrl)
         [[ -n $listen ]] && url="${listen%/}/healthz"
         [[ $url == https://* ]] && arguments+=(--insecure)
@@ -332,13 +572,16 @@ existing_installation_state() {
   local candidate file
   for candidate in linuxSystem linuxUser; do
     file=$(mode_install_state "$candidate")
-    [[ -r $file ]] || continue
+    [[ -r $file || $sudo_requested == true && $candidate == linuxSystem ]] || continue
     if [[ $(state_flag "$file" installed) == true ]]; then printf '%s' "$file"; return; fi
   done
   for candidate in linuxSystem linuxUser; do
     file=$(mode_install_state "$candidate")
     [[ -r $file ]] && { printf '%s' "$file"; return; }
   done
+  # A fresh host has no state file. Absence is a successful lookup with an empty result;
+  # returning the last failed test would make `set -e` abort action_probe before its receipt.
+  return 0
 }
 
 probe_json() {
@@ -354,7 +597,7 @@ probe_json() {
   esac
   local elevated=false; [[ $EUID -eq 0 ]] && elevated=true
   local sudo_available=false
-  command -v sudo >/dev/null && command -v visudo >/dev/null && sudo_available=true
+  command -v sudo >/dev/null && sudo_available=true
   local systemd_available=false
   command -v systemctl >/dev/null && [[ -d /run/systemd/system ]] && systemd_available=true
   local disk
@@ -426,45 +669,66 @@ persist_digest() { umask 077; request_digest > "$(digest_path)"; chmod 600 -- "$
 # The launcher maps a fixed action onto the existing deployment engine. It never passes a caller
 # supplied path, service name or command; only the package directory it staged itself.
 require_package() {
-  local archive=$staging_root/$options_staged_name
-  local verifier=$staging_root/release-verifier
-  local path actual architecture kind
-  for path in "$archive" "$verifier"; do
-    [[ -f $path && ! -L $path ]] || launcher_fail package_unavailable "a required staged release file is missing or unsafe"
-  done
-  [[ -x $verifier ]] || launcher_fail package_unavailable "the staged release verifier is not executable"
-  actual=$(sha256sum -- "$archive" | cut -d' ' -f1)
-  [[ $actual == "$options_package_digest" ]] || launcher_fail package_digest_mismatch "the staged archive digest does not match the request"
+  local archive= architecture kind
   case "$(uname -m)" in
     x86_64) architecture=linux-x64;;
     aarch64) architecture=linux-arm64;;
     *) launcher_fail package_runtime_mismatch "this Linux architecture is unsupported";;
   esac
   case "$options_mode" in linuxUser) kind=user-server;; *) kind=server;; esac
+  case "$options_source" in
+    localBundle) archive=$staging_root/$options_staged_name;;
+    remoteBundle) archive=$options_remote_path;;
+  esac
   package_root=$staging_root/package-$operation_id
-  [[ ! -e $package_root && ! -L $package_root ]] || launcher_fail package_unavailable "the operation package directory already exists"
-  "$verifier" extract "$archive" "$kind" "$architecture" "$package_root" >/dev/null 2>&1 \
-    || launcher_fail package_manifest_invalid "the staged release could not be verified and extracted"
-  [[ -d $package_root && ! -L $package_root ]] || launcher_fail package_manifest_invalid "the staged release could not be extracted"
+  local extract_status=0
+  deployment_python extract "$options_source" "$architecture" "$kind" "$package_root" "$archive" >>"$(diagnostics_path)" 2>&1 || extract_status=$?
+  case "$extract_status" in
+    0) ;;
+    73) launcher_fail disk_quota_exceeded "服务器当前 SSH 用户的存储配额已耗尽，请清理本应用的安装暂存文件或调整配额后重试。";;
+    74) launcher_fail disk_space_insufficient "服务器安装暂存分区空间不足，请释放空间后重试。";;
+    *) launcher_fail package_manifest_invalid "the release could not be downloaded, checked or safely extracted";;
+  esac
 }
+
+cleanup_staged_payload() {
+  # Keep account-wide receipts and logs; remove only payloads from this validated staging directory.
+  [[ $staging_root =~ ^/tmp/relaxkonos-deploy\.[A-Za-z0-9]{8,32}$ && -O $staging_root && ! -L $staging_root ]] || return 0
+  rm -rf -- "$staging_root/package-$operation_id"
+  rm -f -- "$staging_root/package-$operation_id.zip" "$staging_root/package-$operation_id.json" \
+    "$staging_root/certificate.pfx" "$staging_root/certificate-password.txt"
+  if [[ $options_source == localBundle && $options_staged_name == server.zip ]]; then
+    rm -f -- "$staging_root/server.zip"
+  fi
+}
+
 user_engine_path() {
   [[ -x $package_root/deployment/user/relaxkon ]] && { printf '%s/deployment/user/relaxkon' "$package_root"; return; }
   local installed; installed="$(user_data_root)/server/current/user/relaxkon"
   [[ -x $installed ]] && { printf '%s' "$installed"; return; }
   launcher_fail not_supported "no User Mode deployment engine is available on this host"
 }
+system_engine_is_executable() {
+  # System installation scripts may be root-readable only. Resolve them with the
+  # same authenticated privileges that run_engine will use, not the SSH user's.
+  if [[ $sudo_requested == true && $options_mode == linuxSystem && $EUID -ne 0 ]]; then
+    run_privileged test -f "$1" && run_privileged test -x "$1"
+  else
+    [[ -f $1 && -x $1 ]]
+  fi
+}
 system_engine_path() {
   [[ -x $package_root/deployment/bootstrap/install-relaxkonos.sh ]] && { printf '%s/deployment/bootstrap/install-relaxkonos.sh' "$package_root"; return; }
   # The engine publishes its own deployment scripts beside the installation, so repair and rollback
   # work over SSH without re-uploading a package.
-  local installed="$(system_install_root)/deployment/bootstrap/install-relaxkonos.sh"
-  [[ -x $installed ]] && { printf '%s' "$installed"; return; }
+  local installed="$(system_install_root)/current/deployment/bootstrap/install-relaxkonos.sh"
+  system_engine_is_executable "$installed" && { printf '%s' "$installed"; return; }
   launcher_fail not_supported "no System Mode deployment engine is available on this host"
 }
 system_uninstall_engine_path() {
   [[ -x $package_root/deployment/bootstrap/uninstall-relaxkonos.sh ]] && { printf '%s/deployment/bootstrap/uninstall-relaxkonos.sh' "$package_root"; return; }
-  local installed="$(system_install_root)/deployment/bootstrap/uninstall-relaxkonos.sh"
-  [[ -x $installed ]] && { printf '%s' "$installed"; return; }
+  local installed="$(system_install_root)/current/deployment/bootstrap/uninstall-relaxkonos.sh"
+  system_engine_is_executable "$installed" && { printf '%s' "$installed"; return; }
   launcher_fail not_supported "no System Mode uninstall engine is available on this host"
 }
 
@@ -473,9 +737,14 @@ run_engine() { # command...
   umask 077
   launcher_note "running deployment engine: $1"
   set +e
-  "$@" > "$diagnostics" 2>&1
+  if [[ $sudo_requested == true && $options_mode == linuxSystem && $EUID -ne 0 ]]; then
+    run_privileged "$@" > "$diagnostics" 2>&1
+  else
+    "$@" > "$diagnostics" 2>&1
+  fi
   local status=$?
   set -e
+  printf '\nDeployment engine exit status: %s\n' "$status" >> "$diagnostics"
   chmod 600 -- "$diagnostics" 2>/dev/null || true
   return $status
 }
@@ -495,11 +764,12 @@ preflight_install() {
   installed=$(state_flag "$file" installed)
   case "$operation_kind" in
     install) [[ $installed != true ]] || launcher_fail already_installed "RelaxKonOS is already installed on this host; use upgrade or repair";;
-    upgrade|repair|rollback|uninstall) [[ $installed == true ]] || launcher_fail not_installed "RelaxKonOS is not installed on this host";;
+    repair) [[ $installed == true || $options_mode == linuxSystem ]] || launcher_fail not_installed "RelaxKonOS is not installed on this host";;
+    upgrade|rollback|uninstall) [[ $installed == true ]] || launcher_fail not_installed "RelaxKonOS is not installed on this host";;
   esac
   case "$options_mode" in
     linuxSystem)
-      [[ $EUID -eq 0 ]] || launcher_fail elevation_required "System Mode requires a root SSH session"
+      [[ $EUID -eq 0 || $sudo_requested == true ]] || launcher_fail elevation_required "System Mode requires root or authenticated sudo access"
       [[ $(sed -nE 's/^ID="?([^"]*)"?$/\1/p' /etc/os-release 2>/dev/null | head -n1) =~ ^(debian|ubuntu)$ ]] || launcher_fail os_unsupported "this Linux distribution is not supported for System Mode"
       ;;
     linuxUser) [[ $EUID -ne 0 ]] || launcher_fail elevation_required "User Mode must not run as root";;
@@ -557,18 +827,22 @@ action_install_like() {
   emit_event activating running "" "" "正在执行部署动作"
 
   local status=0 engine arguments
+  local package_check_args=()
+  [[ $options_source == officialStable ]] || package_check_args+=(--skip-file-checks)
   case "$options_mode" in
     linuxUser)
       engine=$(user_engine_path)
       case "$operation_kind" in
-        install) run_engine bash "$engine" install --bundle "$package_root" || status=$? ;;
-        upgrade) run_engine bash "$engine" upgrade --bundle "$package_root" || status=$? ;;
+        install) run_engine bash "$engine" install --bundle "$package_root" "${package_check_args[@]}" || status=$? ;;
+        upgrade) run_engine bash "$engine" upgrade --bundle "$package_root" "${package_check_args[@]}" || status=$? ;;
         repair) run_engine bash "$engine" repair || status=$? ;;
         rollback) run_engine bash "$engine" rollback || status=$? ;;
       esac
       ;;
     linuxSystem)
-      if [[ $operation_kind == rollback ]]; then
+      if [[ $operation_kind == repair && $(state_flag "$(mode_install_state "$options_mode")" installed) != true ]]; then
+        run_engine bash "$staging_root/relaxkonos-deploy.sh" --recover-state || status=$?
+      elif [[ $operation_kind == rollback ]]; then
         engine=$(system_engine_path)
         run_engine bash "$engine" --mode system --action rollback --non-interactive || status=$?
       else
@@ -578,7 +852,7 @@ action_install_like() {
         # staged package, so repair and rollback still work when no package was uploaded.
         case "$operation_kind" in
           install|upgrade)
-            arguments+=(--bundle "$package_root" --action "$operation_kind")
+            arguments+=(--bundle "$package_root" --action "$operation_kind" "${package_check_args[@]}")
             case "$options_network" in lan) arguments+=(--network lan);; *) arguments+=(--network local);; esac
             [[ -n $options_server_port ]] && arguments+=(--server-port "$options_server_port")
             if [[ -n $options_file_access ]]; then
@@ -679,6 +953,42 @@ action_uninstall() {
 
 # --- entry -------------------------------------------------------------------------------------
 case "${1:-}" in
+  --clear-operation)
+    operation_id=${2:-}
+    [[ $operation_id =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] || exit 64
+    operation_id=${operation_id,,}
+    ensure_journal
+    exec 8>"$lock_path"
+    flock -n 8 || exit 75
+    [[ -f $(record_path) && ! -L $(record_path) ]] || exit 66
+    if [[ -f $(record_path) ]]; then
+      python3 - "$(record_path)" "$operation_id" <<'PY'
+import json, sys
+with open(sys.argv[1], encoding='utf-8') as f:
+    receipt = json.load(f)
+if receipt.get('operationId') != sys.argv[2] or receipt.get('state') not in ('succeeded', 'failed', 'cancelled', 'interrupted'):
+    sys.exit(65)
+PY
+      [[ $? == 0 ]] || exit 65
+    fi
+    # Keep the request digest to prevent a cleared operation from executing again.
+    rm -f -- "$(diagnostics_path)" "$(events_path)" "$(record_path)"
+    exit $?
+    ;;
+  --recover-state)
+    deployment_python recover
+    exit $?
+    ;;
+  --diagnostics)
+    operation_id=${2:-}
+    [[ $operation_id =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] || exit 64
+    operation_id=${operation_id,,}
+    ensure_journal
+    [[ -f $(record_path) ]] || exit 66
+    [[ -f $(diagnostics_path) && ! -L $(diagnostics_path) ]] || exit 0
+    head -c 65536 -- "$(diagnostics_path)"
+    exit 0
+    ;;
   --query)
     operation_id=${2:-}
     [[ $operation_id =~ ^[0-9a-fA-F-]{36}$ ]] || { launcher_note "usage: $0 --query OPERATION_ID"; exit 64; }
@@ -695,15 +1005,21 @@ case "${1:-}" in
     exit 0
     ;;
   ''|--run) ;;
+  --run-with-sudo)
+    sudo_requested=true
+    IFS= read -r sudo_password || true
+    ;;
   *) launcher_note "usage: $0 [--run|--query OPERATION_ID|--list]"; exit 64;;
 esac
 
 ensure_journal
 read_request
 parse_request
+trap cleanup_staged_payload EXIT
 check_idempotency
 started_at=$(now_utc)
 persist_digest
+authenticate_sudo
 case "$operation_kind" in
   probe) action_probe;;
   status) action_status;;

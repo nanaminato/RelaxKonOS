@@ -65,8 +65,13 @@ public static partial class PrivilegedOperationExecutor
         if (request.Operation != PrivilegedOperationKind.DockerEngineServiceAction && request.DockerServiceAction is not null)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "docker service action fields require their dedicated operation");
 
-        if (request.Operation != PrivilegedOperationKind.FileUploadChunk && request.Offset is not null)
+        if (request.Operation is not (PrivilegedOperationKind.FileUploadChunk or PrivilegedOperationKind.FileRead) && request.Offset is not null)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "an offset requires the upload chunk operation");
+
+        if (request.Operation == PrivilegedOperationKind.FileRead
+            ? request.Offset is not >= 0 || request.ReadCount is not (>= 0 and <= RelaxKonOS.Protocol.UserExecution.UserExecutionFileReads.MaximumChunkBytes)
+            : request.ReadCount is not null)
+            return Fail(64, PrivilegedProblemCode.InvalidRequest, "invalid file read range");
 
         var isFileOperation = request.Operation is >= PrivilegedOperationKind.FileRead and <= PrivilegedOperationKind.FileCreateDirectory
             or >= PrivilegedOperationKind.FileGetSpecialLocations and <= PrivilegedOperationKind.FileCreateStaging;
@@ -103,7 +108,7 @@ public static partial class PrivilegedOperationExecutor
                         : Fail(69, PrivilegedProblemCode.UnsupportedOperation, "environment provider is unavailable on this platform"),
                 PrivilegedOperationKind.HostTimeRead or PrivilegedOperationKind.HostTimeApply => await RelaxKonOS.PrivilegedHelper.HostTimeOperations.ExecuteAsync(request),
                 PrivilegedOperationKind.HostIdentityRead or PrivilegedOperationKind.HostIdentityApply => await RelaxKonOS.PrivilegedHelper.HostIdentityOperations.ExecuteAsync(request),
-                PrivilegedOperationKind.FileRead => await ReadFileAsync(request.Path, fileRoots),
+                PrivilegedOperationKind.FileRead => await ReadFileAsync(request.Path, fileRoots, request.Offset!.Value, request.ReadCount!.Value),
                 PrivilegedOperationKind.FileListDirectory => ListDirectory(request.Path, fileRoots),
                 PrivilegedOperationKind.FileWrite => await WriteFileAsync(request.Path, request.ContentBase64, fileRoots),
                 PrivilegedOperationKind.FileDelete => Delete(request.Path, fileRoots),

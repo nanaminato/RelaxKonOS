@@ -14,7 +14,6 @@ $ErrorActionPreference = 'Stop'
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 if ($Version -notmatch '^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$') { throw 'Version may contain only letters, numbers, dot, underscore, and dash.' }
-$verifierProject = Join-Path $PSScriptRoot 'RelaxKonOS.ReleaseVerifier\RelaxKonOS.ReleaseVerifier.csproj'
 $launcherSource = Join-Path $projectRoot 'deployment\launcher'
 
 $platform = if ($Runtime.StartsWith('win-')) { 'windows' } else { 'linux' }
@@ -39,29 +38,12 @@ function Publish-Component([string] $Project, [string] $Destination, [string] $E
 }
 
 function Publish-DeploymentTools() {
-    # The remote launcher validates every JSON request before it acts.  It therefore needs the
-    # self-contained verifier even for probe/status operations; shipping only the scripts would
-    # tempt a client to bypass that boundary.  Tools sit beside packages, never inside a package
-    # selected by the host, so they are a client-controlled input to the staging flow.
+    # Client launchers are scripts; target-specific verifier executables are unnecessary.
     $launcherDirectory = Join-Path $OutputDirectory 'launcher'
     New-Item -ItemType Directory -Path $launcherDirectory -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $launcherSource 'RelaxKonOS-Deploy.ps1') -Destination (Join-Path $launcherDirectory 'RelaxKonOS-Deploy.ps1') -Force
     Copy-Item -LiteralPath (Join-Path $launcherSource 'relaxkonos-deploy.sh') -Destination (Join-Path $launcherDirectory 'relaxkonos-deploy.sh') -Force
 
-    $verifierOutput = Join-Path $launcherDirectory '.release-verifier-publish'
-    if (Test-Path -LiteralPath $verifierOutput) { Remove-Item -LiteralPath $verifierOutput -Recurse -Force }
-    & dotnet publish $verifierProject --configuration $Configuration --runtime $Runtime --self-contained true `
-        -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --output $verifierOutput
-    if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed for the deployment request verifier.' }
-
-    $publishedName = if ($platform -eq 'windows') { 'RelaxKonOS.ReleaseVerifier.exe' } else { 'RelaxKonOS.ReleaseVerifier' }
-    $verifierName = if ($platform -eq 'windows') { 'release-verifier.exe' } else { 'release-verifier' }
-    $publishedVerifier = Join-Path $verifierOutput $publishedName
-    if (-not (Test-Path -LiteralPath $publishedVerifier -PathType Leaf)) {
-        throw 'Verifier publish output did not contain the expected executable.'
-    }
-    Copy-Item -LiteralPath $publishedVerifier -Destination (Join-Path $launcherDirectory $verifierName) -Force
-    Remove-Item -LiteralPath $verifierOutput -Recurse -Force
     if ($platform -eq 'linux') { Convert-LinuxShellScriptsToLf $launcherDirectory }
 }
 
@@ -123,8 +105,7 @@ function Complete-Package($Package, [hashtable] $Payload) {
     Write-Host "SHA-256: $hash"
 }
 
-# Publish deployment tools once per RID. The desktop and Android server-centre release sources use
-# this stable output layout for every fixed launcher action, including the read-only probe.
+# Export launchers for manual SSH use. Desktop embeds them and Android packages them as assets.
 Publish-DeploymentTools
 
 $clientPackage = New-PackageDirectory 'client'

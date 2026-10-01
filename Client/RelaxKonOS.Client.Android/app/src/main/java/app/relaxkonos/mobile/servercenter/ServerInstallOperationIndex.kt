@@ -46,6 +46,12 @@ class ServerInstallOperationIndex(
     private val hostKeys: ServerHostKeyTrustStore,
 ) {
     @Synchronized
+    fun forget(reference: ServerInstallOperationReference) {
+        write(read().filterNot { it.hostId == reference.hostId && it.hostKeyAlgorithm == reference.hostKeyAlgorithm &&
+            it.hostKeyFingerprint == reference.hostKeyFingerprint && it.operationId == reference.operationId })
+    }
+
+    @Synchronized
     fun forgetHost(hostId: String) {
         require(ServerHostTargetRules.isHostId(hostId))
         val current = read()

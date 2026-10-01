@@ -60,6 +60,11 @@ enum class EndpointDiscoveryState { Idle, Checking, Found, InvalidAddress, Unava
  * way it finished. Nothing derived from it is persisted.
  */
 class LoginViewModel(application: Application) : AndroidViewModel(application) {
+    init { app.relaxkonos.mobile.core.net.ServerCertificateTrust.initialize(application) }
+    var certificateReview by mutableStateOf<app.relaxkonos.mobile.core.net.CertificateReview?>(null)
+        private set
+    private var certificateAnswer: kotlinx.coroutines.CompletableDeferred<Boolean>? = null
+    fun answerCertificate(accept: Boolean) { certificateAnswer?.complete(accept) }
     private val container: AppContainer get() = getApplication<RelaxKonApplication>().container
 
     private var revision by mutableStateOf(0)
@@ -391,6 +396,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         endpointDiscoveryState = EndpointDiscoveryState.Checking
         discoveryJob = viewModelScope.launch {
             resolve(entered)
+            if (ServerEndpointDiscovery.candidates(entered).any { app.relaxkonos.mobile.core.net.ServerCertificateTrust.review(it) != null }) return@launch
             submitResolved(activity)
         }
     }
@@ -491,7 +497,22 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
      * type, so the guard is not cosmetic.
      */
     private suspend fun resolve(entered: String) {
-        val result = ServerEndpointDiscovery.discover(entered)
+        var result = ServerEndpointDiscovery.discover(entered)
+        val review = ServerEndpointDiscovery.candidates(entered).firstNotNullOfOrNull {
+            app.relaxkonos.mobile.core.net.ServerCertificateTrust.review(it)
+        }
+        if (review != null && serverUrl == entered) {
+            val answer = kotlinx.coroutines.CompletableDeferred<Boolean>()
+            certificateAnswer = answer
+            certificateReview = review
+            try {
+                if (answer.await() && serverUrl == entered) {
+                    if (runCatching { app.relaxkonos.mobile.core.net.ServerCertificateTrust.trust(review) }.isSuccess)
+                        result = ServerEndpointDiscovery.discover(entered)
+                    else message = UiMessage(R.string.login_server_unavailable)
+                }
+            } finally { certificateReview = null; certificateAnswer = null }
+        }
         if (serverUrl == entered) {
             when (result) {
                 is EndpointDiscoveryResult.Found -> {

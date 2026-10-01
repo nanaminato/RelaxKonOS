@@ -6,6 +6,20 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 
 class TerminalTranscriptTest {
+    @Test fun `raw output preserves VT and UTF-8 split across frames for renderer switching`() {
+        val transcript = TerminalTranscript(retainRawOutput = true)
+        val bytes = "中".toByteArray(Charsets.UTF_8)
+        transcript.append(bytes.copyOfRange(0, 2))
+        assertEquals("", transcript.rawOutput)
+        transcript.append(bytes.copyOfRange(2, bytes.size))
+        transcript.append("\u001b[".toByteArray())
+        assertEquals("中\u001b[", transcript.rawOutput)
+        assertEquals("new", transcript.append("2J\u001b[Hnew".toByteArray()))
+        assertEquals("中\u001b[2J\u001b[Hnew", transcript.rawOutput)
+        transcript.resize(40, 12)
+        assertEquals("中\u001b[2J\u001b[Hnew", transcript.rawOutput)
+    }
+
     @Test fun `renders UTF-8 and terminal rewrites across transport chunks`() {
         val transcript = TerminalTranscript()
         val character = "中".toByteArray(Charsets.UTF_8)

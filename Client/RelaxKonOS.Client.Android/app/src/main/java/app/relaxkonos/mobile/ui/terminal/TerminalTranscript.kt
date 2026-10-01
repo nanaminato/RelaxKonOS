@@ -20,7 +20,7 @@ data class TerminalRenderFrame(
 )
 
 /** Bounded VT cell screen. Addresses and wide-character continuations belong to the viewport. */
-internal class TerminalTranscript(private val maximumLines: Int = 800) {
+internal class TerminalTranscript(private val maximumLines: Int = 800, private val retainRawOutput: Boolean = false) {
     private data class Cell(val text: String = " ", val width: Int = 1, val style: TerminalCellStyle = TerminalCellStyle())
     private class Screen(rows: Int) {
         val lines = MutableList(rows) { mutableListOf<Cell>() }
@@ -29,6 +29,8 @@ internal class TerminalTranscript(private val maximumLines: Int = 800) {
         var scrollTop = 0; var scrollBottom = rows - 1
         var wrapPending = false; var originMode = false
     }
+    var rawOutput: String = ""
+        private set
     private val decoder = Charsets.UTF_8.newDecoder()
         .onMalformedInput(CodingErrorAction.REPLACE).onUnmappableCharacter(CodingErrorAction.REPLACE)
     private var pending = byteArrayOf()
@@ -70,7 +72,7 @@ internal class TerminalTranscript(private val maximumLines: Int = 800) {
         return snapshot()
     }
 
-    fun clearLocal() { history.clear(); screen.lines.forEach { it.clear() }; snapshot() }
+    fun clearLocal() { rawOutput = ""; history.clear(); screen.lines.forEach { it.clear() }; snapshot() }
 
     fun append(bytes: ByteArray): String {
         val input = ByteBuffer.wrap(pending + bytes)
@@ -78,6 +80,7 @@ internal class TerminalTranscript(private val maximumLines: Int = 800) {
         decoder.decode(input, characters, false)
         pending = ByteArray(input.remaining()).also { input.get(it) }
         characters.flip()
+        if (retainRawOutput) rawOutput += characters.toString()
         while (characters.hasRemaining()) {
             val ch = characters.get()
             val high = highSurrogate

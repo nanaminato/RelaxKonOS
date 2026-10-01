@@ -169,6 +169,16 @@ class ServerCenterSshCredentialStore(
         vault.delete(record)
     }
 
+    /**
+     * 共享 Keystore alias 永久失效时，把整个 SSH 域标记为不可读。
+     *
+     * 域内只有一把 alias，它一旦失效，其中每一条记录都同等解不开；只把第一条标成失效、让
+     * 兄弟记录继续显示「已保存」是误导。记录与密文都保留，只有显式删除才会移除（D5）。
+     */
+    fun markAllInvalidated() {
+        vault.markAllInvalidated(VaultKind.Ssh)
+    }
+
     private fun endpointIdentity(host: String, port: Int): String =
         ServerHostTrustRules.endpointKey(host, port)
 

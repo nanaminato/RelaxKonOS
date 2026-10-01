@@ -22,6 +22,25 @@ public partial class LoginViewModel : ObservableObject
     private readonly string? _debugPassword = Environment.GetEnvironmentVariable(DebugPasswordEnvironmentVariable);
 #endif
 
+    public Func<ServerCertificateReview, Task<bool>>? ConfirmServerCertificateAsync { get; set; }
+    private string? _certificateTrustError;
+    public string CertificateDialogTitle => T("login.certificate.title", "Verify server TLS certificate");
+    public string TrustCertificateText => T("login.certificate.trust", "Trust this server certificate");
+    public string CertificateFingerprintLabel => T("login.certificate.fingerprint", "Certificate SHA-256 fingerprint");
+    public string PreviousCertificateFingerprintLabel => T("login.certificate.previous", "Previously trusted certificate");
+    public string CertificateReviewText(ServerCertificateReview review) => string.Format(
+        T("login.certificate.details", "Server: {0}\nSubject: {1}\nIssuer: {2}\nValid from: {3}\nValid until: {4}\n\nThe certificate is not trusted by the system or has changed. Verify its fingerprint before trusting it. Trust is saved only for this server address and certificate in RelaxKonOS."),
+        review.Origin, review.Subject, review.Issuer, review.NotBefore.ToString("g"), review.NotAfter.ToString("g"));
+
+    private string DescribeResolutionError(ServerEndpointResolution resolution) => _certificateTrustError ??
+        (resolution.CertificateIssue is { } review
+            ? review.CanTrust
+                ? T("login.error.certificate_untrusted", "The TLS certificate was not trusted. Confirm the server certificate to connect.")
+                : T("login.error.certificate_invalid", "The TLS certificate is expired, does not match the server name, or has another validation error. Correct the server certificate.")
+            : resolution.IsValidInput
+                ? T("login.error.server_unavailable", "Could not find a RelaxKonOS login endpoint at this address. Check the host and port.")
+                : T("login.error.invalid_server", "The server address is invalid. Enter a host name or a complete HTTP(S) address, for example: host:port."));
+
     private readonly IAuthSession _session;
     private readonly LoginLocalizationService _localization;
     private readonly ServerEndpointResolver _endpointResolver;
@@ -229,8 +248,16 @@ public partial class LoginViewModel : ObservableObject
     public string OwnerDeviceKeyPassphraseText => T("login.owner_device.passphrase", "Key-file passphrase");
     public string OwnerDeviceKeyPassphraseHint => T("login.owner_device.passphrase_hint", "Required only when Linux has no desktop keyring.");
     public string AcceptOwnerDevicePairingText => T("login.owner_device.accept", "Pair and sign in");
-    public string ConfirmHostKeyText => T("login.ssh_confirm_host_key", "I verified this fingerprint; trust and connect");
-    public string HostKeyDialogTitle => T("login.ssh_host_key_title", "Verify SSH host key");
+    // 首次固定与替换已固定的密钥共用同一个对话框，区别只在文案与是否需要并排展示被取代的旧指纹
+    // （判定见 SshHostKeyReviewRules）。
+    public string ConfirmHostKeyText => HostKeyReplacesPinnedKey
+        ? T("login.ssh_replace_host_key", "Accept the new fingerprint; trust and connect")
+        : T("login.ssh_confirm_host_key", "I verified this fingerprint; trust and connect");
+    public string HostKeyDialogTitle => HostKeyReplacesPinnedKey
+        ? T("login.ssh_host_key_changed_title", "SSH host key changed")
+        : T("login.ssh_host_key_title", "Verify SSH host key");
+    public string PinnedFingerprintLabel => T("login.ssh_pinned_fingerprint", "Fingerprint saved on this device");
+    public string ObservedFingerprintLabel => T("login.ssh_observed_fingerprint", "Fingerprint this handshake presented");
     public string CancelText => T("common.cancel", "Cancel");
 
     [ObservableProperty] private string _statusMessage = string.Empty;
@@ -239,6 +266,11 @@ public partial class LoginViewModel : ObservableObject
     [ObservableProperty] private bool _needsHostKeyConfirmation;
     [ObservableProperty] private string _hostKeyFingerprint = string.Empty;
     [ObservableProperty] private string _hostKeyMessage = string.Empty;
+
+    /// <summary>本次核对是「替换已固定的密钥」，而不是「首次固定」。</summary>
+    [ObservableProperty] private bool _hostKeyReplacesPinnedKey;
+    [ObservableProperty] private string _previousHostKeyFingerprint = string.Empty;
+    [ObservableProperty] private string _previousHostKeyConfirmedText = string.Empty;
 
     partial void OnServerUrlChanged(string value)
     {
@@ -292,9 +324,7 @@ public partial class LoginViewModel : ObservableObject
         var resolution = await ResolveServerEndpointAsync(ct);
         if (!resolution.IsResolved)
         {
-            ErrorMessage = resolution.IsValidInput
-                ? T("login.error.server_unavailable", "Could not find a RelaxKonOS login endpoint at this address. Check the host and port.")
-                : T("login.error.invalid_server", "The server address is invalid. Enter a host name or a complete HTTP(S) address, for example: host:port.");
+            ErrorMessage = DescribeResolutionError(resolution);
             HasError = true;
             StatusMessage = string.Empty;
             return;
@@ -368,7 +398,7 @@ public partial class LoginViewModel : ObservableObject
         var resolution = await ResolveServerEndpointAsync(ct);
         if (!resolution.IsResolved)
         {
-            ErrorMessage = T("login.error.server_unavailable", "Could not find a RelaxKonOS login endpoint at this address. Check the host and port.");
+            ErrorMessage = DescribeResolutionError(resolution);
             HasError = true;
             return;
         }
@@ -393,7 +423,7 @@ public partial class LoginViewModel : ObservableObject
         var resolution = await ResolveServerEndpointAsync(ct);
         if (!resolution.IsResolved)
         {
-            ErrorMessage = T("login.error.server_unavailable", "Could not find a RelaxKonOS login endpoint at this address. Check the host and port.");
+            ErrorMessage = DescribeResolutionError(resolution);
             HasError = true;
             return;
         }
@@ -583,7 +613,7 @@ public partial class LoginViewModel : ObservableObject
     /// <summary>Invoked by the address control when focus leaves it, before credentials are sent.</summary>
     public async Task DiscoverServerEndpointAsync(CancellationToken ct = default)
     {
-        if (UseSshLogin) return;
+        if (UseSshLogin || IsDiscoveringServer || IsConnecting) return;
         if (string.IsNullOrWhiteSpace(ServerUrl)) return;
 
         var enteredValue = ServerUrl;
@@ -591,9 +621,7 @@ public partial class LoginViewModel : ObservableObject
         if (UseSshLogin) return;
         if (resolution.IsResolved || !string.Equals(ServerUrl, enteredValue, StringComparison.Ordinal)) return;
 
-        ErrorMessage = resolution.IsValidInput
-            ? T("login.error.server_unavailable", "Could not find a RelaxKonOS login endpoint at this address. Check the host and port.")
-            : T("login.error.invalid_server", "The server address is invalid. Enter a host name or a complete HTTP(S) address, for example: host:port.");
+        ErrorMessage = DescribeResolutionError(resolution);
         HasError = true;
     }
 
@@ -602,8 +630,17 @@ public partial class LoginViewModel : ObservableObject
         _pendingHostKey = null;
         _pendingHost = null;
         NeedsHostKeyConfirmation = false;
+        HostKeyReplacesPinnedKey = false;
         HostKeyFingerprint = string.Empty;
+        PreviousHostKeyFingerprint = string.Empty;
+        PreviousHostKeyConfirmedText = string.Empty;
         HostKeyMessage = string.Empty;
+    }
+
+    partial void OnHostKeyReplacesPinnedKeyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ConfirmHostKeyText));
+        OnPropertyChanged(nameof(HostKeyDialogTitle));
     }
 
     /// <summary>Cancels a pending host-key decision without changing the trusted-host store.</summary>
@@ -670,11 +707,30 @@ public partial class LoginViewModel : ObservableObject
         {
             _pendingHost = target;
             _pendingHostKey = rejected.Observation;
-            HostKeyFingerprint = rejected.Observation.GroupedFingerprint;
-            HostKeyMessage = rejected.Trust == ServerHostKeyTrust.Changed
+            // 密钥变更时必须把被取代的那条固定记录一并取出交给用户：只看新指纹无法分辨
+            // 「重装/重建过的同一台机器」和「这个地址被另一台机器接管」（SshHostKeyReviewRules）。
+            ServerHostKeyRecord? previous = null;
+            if (rejected.Trust == ServerHostKeyTrust.Changed)
+            {
+                var known = await _hostKeys.LoadAsync(ct).ConfigureAwait(true);
+                previous = ServerHostTrustRules.Find(
+                    known, rejected.Observation.Host, rejected.Observation.Port, rejected.Observation.Algorithm);
+            }
+            var review = SshHostKeyReviewRules.Plan(rejected.Trust, rejected.Observation, previous);
+            HostKeyReplacesPinnedKey = review?.ReplacesPinnedKey == true;
+            HostKeyFingerprint = review is null ? string.Empty : rejected.Observation.GroupedFingerprint;
+            PreviousHostKeyFingerprint = review?.Previous is { } pinned
+                ? ServerHostTrustRules.GroupedFingerprint(pinned.Fingerprint)
+                : string.Empty;
+            PreviousHostKeyConfirmedText = review?.Previous is { } recorded
+                ? string.Format(
+                    T("login.ssh_pinned_fingerprint_confirmed_at", "Confirmed {0}"),
+                    recorded.ConfirmedAtUtc.LocalDateTime.ToString("g"))
+                : string.Empty;
+            HostKeyMessage = HostKeyReplacesPinnedKey
                 ? T("login.ssh_host_key_changed", "The SSH host key changed. Confirm the new fingerprint with the host administrator before trusting it.")
                 : T("login.ssh_host_key_unknown", "New SSH host key. Verify this fingerprint with the host administrator before trusting it.");
-            NeedsHostKeyConfirmation = true;
+            NeedsHostKeyConfirmation = review is not null;
             StatusMessage = string.Empty;
         }
         catch (OperationCanceledException) { StatusMessage = string.Empty; }
@@ -724,12 +780,30 @@ public partial class LoginViewModel : ObservableObject
     private async Task<ServerEndpointResolution> ResolveServerEndpointAsync(CancellationToken ct)
     {
         var enteredValue = ServerUrl;
+        _certificateTrustError = null;
         IsDiscoveringServer = true;
         StatusMessage = T("login.status.discovering_server", "Checking secure and standard server endpoints...");
         ClearError();
         try
         {
             var resolution = await _endpointResolver.ResolveAsync(enteredValue, ct);
+            if (resolution.CertificateIssue is { CanTrust: true } review && ConfirmServerCertificateAsync is { } confirm &&
+                !UseSshLogin && string.Equals(ServerUrl, enteredValue, StringComparison.Ordinal))
+            {
+                var accepted = await confirm(review);
+                if (accepted && !ct.IsCancellationRequested && !UseSshLogin && string.Equals(ServerUrl, enteredValue, StringComparison.Ordinal))
+                {
+                    try
+                    {
+                        _endpointResolver.TrustCertificate(review);
+                        resolution = await _endpointResolver.ResolveAsync(enteredValue, ct);
+                    }
+                    catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
+                    {
+                        _certificateTrustError = T("login.error.certificate_save_failed", "Could not save certificate trust. Retry the connection.");
+                    }
+                }
+            }
             if (UseSshLogin) return resolution;
             // A later edit wins over this asynchronous result.
             if (string.Equals(ServerUrl, enteredValue, StringComparison.Ordinal) && resolution.Endpoint is { } endpoint)

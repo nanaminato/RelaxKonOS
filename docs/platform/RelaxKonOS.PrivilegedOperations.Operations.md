@@ -111,7 +111,7 @@ Windows 的 UAC 确认只发生在部署/更新 Helper，或开发者启动管�
 - Nginx 的受管安装、卸载、配置/元数据文件写入、配置测试、启停和 reload 交给 Helper。安装/配置/启停分别检查 `NginxInstall`、`NginxConfigurationWrite`、`NginxLifecycle` 的精确目标授权。
 - Windows 受管 frpc/frps 由 Helper 持有进程、PID 生命周期和日志。启动/停止检查 `FrpLifecycle`，frpc 目标为拥有者的 profile GUID（D 格式），frps 目标为 `frps`。安装/修复/回滚/卸载仍检查 `FrpInstall`。Server 不用自己的低权限 token 重试这些受管操作；外部 FRP 可执行文件仍仅以 Server 普通身份运行，不进入特权路径。
 
-Helper 协议直接升级为 **1.2**；Server 与 Helper 必须同时更新。运行时请求只携带固定 runtime/action、受管版本与结构化 FRP 配置，不接受 executable、arguments、shell、环境变量或任意 PID。Windows Nginx 特权操作仅支持 Helper 安装的受管实例；外部实例不自动导入或提升。
+Helper 协议直接升级为 **1.3**；Server 与 Helper 必须同时更新。运行时请求只携带固定 runtime/action、受管版本与结构化 FRP 配置，不接受 executable、arguments、shell、环境变量或任意 PID。Windows Nginx 特权操作仅支持 Helper 安装的受管实例；外部实例不自动导入或提升。
 
 Helper 独立校验软件来源：Nginx 仅从固定 nginx.org HTTPS 发布地址获取官方 ZIP；上传 ZIP 必须与 Helper 获取的同版本官方包完全一致，因此该校验需要联网。FRP ZIP 必须匹配 Helper 管理员配置中的版本/RID/SHA-256 信任清单，默认清单与当前发行配置一致。新的 FRP pin 必须同时更新 Server 与 Helper 配置；不能由 HTTP 请求提交 hash 或下载 URL。上传/暂存包只能从 `runtimeArchiveRoots` 读取，拒绝链接、路径越界、超限和 ZIP traversal。
 

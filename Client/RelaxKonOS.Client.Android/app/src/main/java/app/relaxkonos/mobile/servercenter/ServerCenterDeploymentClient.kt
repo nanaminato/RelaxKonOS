@@ -26,7 +26,9 @@ class ServerCenterUploadAsset(
 
         fun launcher(assets: AssetManager, platform: ServerHostPlatform): ServerCenterUploadAsset {
             val name = if (platform == ServerHostPlatform.Windows) "RelaxKonOS-Deploy.ps1" else "relaxkonos-deploy.sh"
-            return ServerCenterUploadAsset(null) { assets.open(name) }
+            return ServerCenterUploadAsset(null) {
+                ByteArrayInputStream(assets.open(name).bufferedReader().use { it.readText() }.replace("\r\n", "\n").toByteArray())
+            }
         }
     }
 }
@@ -53,43 +55,32 @@ class ServerCenterDeploymentClient(private val transport: ServerCenterSshTranspo
         request: ServerDeploymentRequest,
         platform: ServerHostPlatform,
         launcher: ServerCenterUploadAsset,
-        verifier: ServerCenterUploadAsset,
         archiveFile: File? = null,
         expectedRuntime: ServerRuntimeIdentifier? = null,
+        certificate: ServerCenterUploadAsset? = null,
+        certificatePassword: String? = null,
         uploadProgress: ((Double) -> Unit)? = null,
     ): ServerCenterStagedOperation {
         check(transport.isConnected) { "A trusted SSH session is required." }
         val requestBytes = ServerDeploymentWire.writeRequest(request)
-        val needsArchive = request.kind == ServerDeploymentKind.Install || request.kind == ServerDeploymentKind.Upgrade
-        if (needsArchive) {
+        val installing = request.kind == ServerDeploymentKind.Install || request.kind == ServerDeploymentKind.Upgrade
+        val needsArchive = installing && request.options?.source == ServerPackageSourceKind.LocalBundle
+        if (installing) {
             val options = requireNotNull(request.options) { "Deployment options are required." }
-            val archive = requireNotNull(archiveFile) { "A release archive is required." }
-            val runtime = requireNotNull(expectedRuntime) { "The expected release RID is required." }
-            require(archive.isFile &&
-                ServerDeploymentInputRules.isSafeStagedPackageName(options.stagedPackageName) &&
-                ServerDeploymentInputRules.isSha256(options.packageDigest)) {
-                "A staged release and its SHA-256 are required."
-            }
+            val runtime = requireNotNull(expectedRuntime) { "The target RID is required." }
             require(modeMatchesPlatform(options.mode, platform)) { "Installation mode does not match the host platform." }
-            require(runtimeMatchesPlatform(runtime, platform)) { "Release RID does not match the host platform." }
-
-            val expectedKind = if (options.mode == ServerInstallMode.LinuxUser) {
-                ServerReleasePackageKind.UserServer
-            } else ServerReleasePackageKind.Server
-            val checkedRelease = ServerReleaseArchiveVerifier.verify(
-                archiveFile = archive,
-                expectedKind = expectedKind,
-                expectedRuntime = runtime,
-                expectedArchiveSha256 = options.packageDigest,
-            )
-            if (!checkedRelease.verified) {
-                throw IOException("${checkedRelease.problemCode}: release verification failed before upload.")
-            }
+            require(runtimeMatchesPlatform(runtime, platform)) { "Runtime does not match the host platform." }
+            if (needsArchive) require(archiveFile?.isFile == true &&
+                ServerDeploymentInputRules.isSafeStagedPackageName(options.stagedPackageName)) { "A local ZIP is required." }
+            if (options.source == ServerPackageSourceKind.RemoteBundle) require(
+                options.remotePackagePath?.endsWith(".zip", ignoreCase = true) == true &&
+                options.remotePackagePath.none { it.code < 32 }) { "A server ZIP path is required." }
+            require(options.source != ServerPackageSourceKind.DirectUrl) { "Choose the official release or a ZIP file." }
+            if (options.certificateMode == "custom") requireNotNull(certificate) { "A certificate is required." }
         }
 
         val directory = createPrivateDirectory(platform)
         val staged = ServerCenterStagedOperation(request.operationId.lowercase(), platform, directory)
-        upload(verifier, staged, if (platform == ServerHostPlatform.Windows) "release-verifier.exe" else "release-verifier")
         upload(launcher, staged, if (platform == ServerHostPlatform.Windows) "RelaxKonOS-Deploy.ps1" else "relaxkonos-deploy.sh")
         if (needsArchive) {
             upload(
@@ -99,18 +90,26 @@ class ServerCenterDeploymentClient(private val transport: ServerCenterSshTranspo
                 uploadProgress,
             )
         }
+        if (installing && request.options?.certificateMode == "custom") {
+            upload(certificate!!, staged, "certificate.pfx")
+            upload(ServerCenterUploadAsset.bytes((certificatePassword ?: "").toByteArray()), staged, "certificate-password.txt")
+        }
         upload(ServerCenterUploadAsset.bytes(requestBytes), staged, "request.json")
         if (platform == ServerHostPlatform.Linux) {
             val chmod = transport.run(
-                "chmod 700 '$directory/release-verifier' '$directory/relaxkonos-deploy.sh'",
+                "chmod 700 '$directory/relaxkonos-deploy.sh'",
             )
             if (!chmod.succeeded) throw IOException("Unable to mark the staged deployment tools executable.")
         }
         return staged
     }
 
-    suspend fun execute(staged: ServerCenterStagedOperation): ServerDeploymentOperation {
-        transport.run(launcherCommand(staged, action = LauncherAction.Run))
+    suspend fun execute(staged: ServerCenterStagedOperation, sudoPassword: String? = null): ServerDeploymentOperation {
+        val command = launcherCommand(staged, action = LauncherAction.Run)
+        if (sudoPassword != null) {
+            require(staged.platform == ServerHostPlatform.Linux && sudoPassword.none { it == '\r' || it == '\n' })
+            transport.runWithInput(command + "-with-sudo", sudoPassword)
+        } else transport.run(command)
         // SSH exit status is not proof of success. The persistent receipt is authoritative.
         return query(staged)
     }
@@ -146,6 +145,23 @@ class ServerCenterDeploymentClient(private val transport: ServerCenterSshTranspo
     suspend fun query(lookup: ServerCenterStagedLookup, operationId: String): ServerDeploymentOperation {
         require(validOperationId(operationId)) { "A canonical operation id is required." }
         return query(ServerCenterStagedOperation(operationId.lowercase(Locale.ROOT), lookup.platform, lookup.remoteDirectory))
+    }
+
+    suspend fun diagnostics(lookup: ServerCenterStagedLookup, operationId: String): String {
+        require(validOperationId(operationId))
+        val staged = ServerCenterStagedOperation(operationId.lowercase(Locale.ROOT), lookup.platform, lookup.remoteDirectory)
+        val result = transport.run(launcherCommand(staged, LauncherAction.Diagnostics))
+        if (!result.succeeded) throw IOException("The remote deployment log could not be read.")
+        return result.standardOutput.take(65536).replace(
+            Regex("(?im)(password|secret|token|authorization)(\\s*[:=]\\s*)[^\\r\\n]+"), "$1$2[redacted]")
+    }
+
+    suspend fun clearOperation(lookup: ServerCenterStagedLookup, operationId: String) {
+        require(validOperationId(operationId))
+        val staged = ServerCenterStagedOperation(operationId.lowercase(Locale.ROOT), lookup.platform, lookup.remoteDirectory)
+        if (!transport.run(launcherCommand(staged, LauncherAction.Clear)).succeeded) {
+            throw IOException("The remote operation could not be cleared.")
+        }
     }
 
     suspend fun query(staged: ServerCenterStagedOperation): ServerDeploymentOperation {
@@ -199,6 +215,8 @@ class ServerCenterDeploymentClient(private val transport: ServerCenterSshTranspo
                 LauncherAction.Run -> " --run"
                 LauncherAction.Query -> " --query ${staged.operationId}"
                 LauncherAction.List -> " --list"
+                LauncherAction.Diagnostics -> " --diagnostics ${staged.operationId}"
+                LauncherAction.Clear -> " --clear-operation ${staged.operationId}"
             }
             return "bash '${staged.remoteDirectory}/relaxkonos-deploy.sh'$argument"
         }
@@ -209,6 +227,8 @@ class ServerCenterDeploymentClient(private val transport: ServerCenterSshTranspo
                 LauncherAction.Run -> ""
                 LauncherAction.Query -> " -QueryOperationId '${staged.operationId}'"
                 LauncherAction.List -> " -ListOperations"
+                LauncherAction.Diagnostics -> " -DiagnosticsOperationId '${staged.operationId}'"
+                LauncherAction.Clear -> " -ClearOperationId '${staged.operationId}'"
             }
         return "powershell.exe -NoProfile -NonInteractive -EncodedCommand " +
             Base64Codec.encode(command.toByteArray(Charsets.UTF_16LE))
@@ -230,7 +250,7 @@ class ServerCenterDeploymentClient(private val transport: ServerCenterSshTranspo
                 runtime == ServerRuntimeIdentifier.WinArm64
         }
 
-    private enum class LauncherAction { Run, Query, List }
+    private enum class LauncherAction { Run, Query, List, Diagnostics, Clear }
 
     private companion object {
         val OPERATION_ID = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")

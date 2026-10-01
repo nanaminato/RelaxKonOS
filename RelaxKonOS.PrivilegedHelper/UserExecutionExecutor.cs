@@ -157,7 +157,7 @@ public static class UserExecutionExecutor
             UserExecutionOperationKind.GitConflictSnapshot => GitConflictFileAccess.Read(path!, request.FileName!),
             UserExecutionOperationKind.GitConflictWrite => GitConflictFileAccess.Write(path!, request.FileName!, Convert.FromBase64String(request.ContentBase64!), request.ExpectedSha256!),
             UserExecutionOperationKind.FileGetInfo => Info(path),
-            UserExecutionOperationKind.FileRead => await ReadAsync(path!),
+            UserExecutionOperationKind.FileRead => await ReadAsync(path!, request.Offset!.Value, request.ExpectedBytes!.Value),
             UserExecutionOperationKind.FileReadText => await ReadTextAsync(path!),
             UserExecutionOperationKind.FileWrite => await WriteAsync(path!, request.ContentBase64!),
             UserExecutionOperationKind.FileWriteIfMatch => GitTextFileWrite.ReplaceIfVersion(path!,
@@ -233,12 +233,10 @@ public static class UserExecutionExecutor
         return new(Convert.ToBase64String(bytes), Path.GetFileName(path), "text/plain");
     }
 
-    private static async Task<FileRead> ReadAsync(string path)
+    private static async Task<UserExecutionFileRead> ReadAsync(string path, long offset, long count)
     {
         await using var file = LinuxUserFileOperations.OpenRead(path);
-        if (file.Length > UserExecutionProtocol.MaximumFileContentBytes) throw new ContentTooLargeException();
-        var content = await ReadBoundedBytesAsync(file, UserExecutionProtocol.MaximumFileContentBytes);
-        return new(Convert.ToBase64String(content), Path.GetFileName(path), ContentType(path));
+        return UserExecutionFileReads.Read(file, Path.GetFileName(path), ContentType(path), offset, count);
     }
     private static Task<FileEntryDto> WriteAsync(string path, string content)
     {

@@ -81,7 +81,7 @@ internal static class WindowsUserExecutionExecutor
             UserExecutionOperationKind.GitConflictSnapshot => GitConflictFileAccess.Read(ValidatePath(request.Path!), request.FileName!),
             UserExecutionOperationKind.GitConflictWrite => GitConflictFileAccess.Write(ValidatePath(request.Path!), request.FileName!, Decode(request.ContentBase64!), request.ExpectedSha256!),
             UserExecutionOperationKind.FileGetInfo => GetInfo(ValidatePath(request.Path!)),
-            UserExecutionOperationKind.FileRead => Read(ValidatePath(request.Path!), cancellationToken),
+            UserExecutionOperationKind.FileRead => Read(ValidatePath(request.Path!), request.Offset!.Value, request.ExpectedBytes!.Value, cancellationToken),
             UserExecutionOperationKind.FileReadText => ReadText(ValidatePath(request.Path!), cancellationToken),
             UserExecutionOperationKind.FileWrite => Write(ValidatePath(request.Path!),
                 Decode(request.ContentBase64!), cancellationToken),
@@ -190,21 +190,11 @@ internal static class WindowsUserExecutionExecutor
         return new(Convert.ToBase64String(bytes), Path.GetFileName(path), "text/plain");
     }
 
-    private static FileRead Read(string path, CancellationToken cancellationToken)
+    private static UserExecutionFileRead Read(string path, long offset, long count, CancellationToken cancellationToken)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
             64 * 1024, FileOptions.SequentialScan);
-        if (stream.Length > UserExecutionProtocol.MaximumFileContentBytes) throw new ContentTooLargeException();
-        var content = new byte[checked((int)stream.Length)];
-        var offset = 0;
-        while (offset < content.Length)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var read = stream.Read(content, offset, content.Length - offset);
-            if (read == 0) throw new EndOfStreamException();
-            offset += read;
-        }
-        return new(Convert.ToBase64String(content), Path.GetFileName(path), ContentType(path));
+        return UserExecutionFileReads.Read(stream, Path.GetFileName(path), ContentType(path), offset, count, cancellationToken);
     }
 
     private static FileEntryDto Write(string path, byte[] content, CancellationToken cancellationToken)

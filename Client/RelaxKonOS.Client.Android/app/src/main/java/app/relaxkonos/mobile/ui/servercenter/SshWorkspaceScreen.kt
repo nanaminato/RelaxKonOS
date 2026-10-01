@@ -1,17 +1,31 @@
 package app.relaxkonos.mobile.ui.servercenter
 
+import android.net.Uri
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.collectAsState
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import app.relaxkonos.mobile.core.layout.LayoutState
+import app.relaxkonos.mobile.core.layout.layoutStateFor
+import app.relaxkonos.mobile.ui.more.AppearanceScreen
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -27,7 +41,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.relaxkonos.mobile.R
@@ -35,66 +53,96 @@ import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.servercenter.ServerHostTarget
 import app.relaxkonos.mobile.ui.common.PasswordTextField
 import app.relaxkonos.mobile.ui.common.SectionCard
+import app.relaxkonos.mobile.ui.common.SelectField
+import app.relaxkonos.mobile.ui.common.SelectOption
 import app.relaxkonos.mobile.ui.icons.DesktopIcon
 import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Spacing
 
-/** SSH keeps the same compact navigation shape as an authenticated RelaxKonOS session. */
+/** Uses the authenticated shell's window classes and inset ownership. */
 @Composable
 fun SshWorkspaceScreen(hostId: String, onClose: () -> Unit) {
     var page by rememberSaveable(hostId) { mutableIntStateOf(0) }
     val host = (LocalContext.current.applicationContext as RelaxKonApplication)
         .container.serverCenter.hosts().firstOrNull { it.hostId == hostId }
-    Scaffold(
-        containerColor = androidx.compose.ui.graphics.Color.Transparent,
-        bottomBar = {
-            NavigationBar {
-                NavigationBarItem(
-                    selected = page == 0,
-                    onClick = { page = 0 },
-                    icon = { DesktopIcon(DesktopIcons.navFiles, size = 26.dp) },
-                    label = { Text(stringResource(R.string.ssh_files_title)) },
-                )
-                NavigationBarItem(
-                    selected = page == 1,
-                    onClick = { page = 1 },
-                    icon = { DesktopIcon(DesktopIcons.navTerminal, size = 26.dp) },
-                    label = { Text(stringResource(R.string.ssh_terminal_title)) },
-                )
-                NavigationBarItem(
-                    selected = page == 2,
-                    onClick = { page = 2 },
-                    icon = { DesktopIcon(DesktopIcons.deployments, size = 26.dp) },
-                    label = { Text(stringResource(R.string.ssh_workspace_deploy)) },
-                )
-                NavigationBarItem(
-                    selected = page == 3,
-                    onClick = { page = 3 },
-                    icon = { DesktopIcon(DesktopIcons.system, size = 26.dp) },
-                    label = { Text(stringResource(R.string.ssh_workspace_system)) },
-                )
-                NavigationBarItem(
-                    selected = page == 4,
-                    onClick = { page = 4 },
-                    icon = { DesktopIcon(DesktopIcons.connections, size = 26.dp) },
-                    label = { Text(stringResource(R.string.ssh_forward_title)) },
-                )
-            }
-        },
-    ) { padding ->
+    val terminalTyping = page == 1 && WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    androidx.activity.compose.BackHandler { if (page != 3) page = 3 else onClose() }
+    val content: @Composable (Modifier) -> Unit = { contentModifier ->
         when (page) {
-            0 -> SshFilesScreen(hostId, Modifier.padding(padding))
-            1 -> SshTerminalScreen(hostId, onClose, Modifier.padding(padding))
-            2 -> DeploymentSetupScreen(host, Modifier.padding(padding))
-            3 -> SshSystemScreen(hostId, onClose, Modifier.padding(padding))
-            else -> SshForwardsScreen(hostId, Modifier.padding(padding))
+            0 -> SshFilesScreen(hostId, contentModifier)
+            1 -> SshTerminalScreen(hostId, onClose, contentModifier)
+            2 -> ServerMaintenanceScreen(host, contentModifier)
+            3 -> SshSystemScreen(hostId, onClose, contentModifier)
+            4 -> AppearanceScreen(onBack = { page = 3 }, modifier = contentModifier,
+                titleRes = R.string.ssh_workspace_settings)
+            else -> SshForwardsScreen(hostId, contentModifier)
+        }
+    }
+    SshWorkspaceLayout(page, { page = it }, terminalTyping, content = content)
+}
+
+@Composable
+internal fun SshWorkspaceLayout(
+    page: Int,
+    onSelect: (Int) -> Unit,
+    terminalTyping: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable (Modifier) -> Unit,
+) {
+    val destinations = listOf(
+        R.string.ssh_files_title to DesktopIcons.navFiles,
+        R.string.ssh_terminal_title to DesktopIcons.navTerminal,
+        R.string.ssh_workspace_deploy to DesktopIcons.deployments,
+        R.string.ssh_workspace_system to DesktopIcons.system,
+        R.string.ssh_workspace_settings to DesktopIcons.navMore,
+        R.string.ssh_forward_title to DesktopIcons.connections,
+    )
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        val layout = layoutStateFor(maxWidth)
+        if (layout == LayoutState.Compact) Scaffold(
+            containerColor = androidx.compose.ui.graphics.Color.Transparent,
+            bottomBar = {
+                if (!terminalTyping) NavigationBar(Modifier.testTag("ssh-workspace-bar")) {
+                    destinations.forEachIndexed { index, (label, icon) ->
+                        NavigationBarItem(selected = page == index, onClick = { onSelect(index) },
+                            icon = { DesktopIcon(icon, size = 26.dp) },
+                            label = { Text(stringResource(label), maxLines = 1) })
+                    }
+                }
+            },
+        ) { padding ->
+            content(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding))
+        } else Row(Modifier.fillMaxSize().safeDrawingPadding()) {
+            NavigationRail(
+                modifier = Modifier.fillMaxHeight().testTag("ssh-workspace-rail"),
+                containerColor = MaterialTheme.colorScheme.surface,
+                windowInsets = WindowInsets(0),
+                header = { DesktopIcon(DesktopIcons.brand, size = 36.dp,
+                    modifier = Modifier.padding(bottom = Spacing.md)) },
+            ) {
+                destinations.forEachIndexed { index, (label, icon) ->
+                    val destinationLabel = stringResource(label)
+                    NavigationRailItem(selected = page == index, onClick = { onSelect(index) },
+                        modifier = Modifier.semantics { contentDescription = destinationLabel },
+                        icon = { DesktopIcon(icon, size = 26.dp) },
+                        label = { if (layout == LayoutState.Expanded) Text(stringResource(label)) })
+                }
+            }
+            content(Modifier.weight(1f).fillMaxHeight().padding(horizontal = Spacing.xs))
         }
     }
 }
 
-/** Matches the desktop source → mode → review flow. Execution awaits packaged trusted assets. */
+/** Matches the desktop source → mode → review flow. Executes the embedded launcher with source-specific package checks. */
 @Composable
-private fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = Modifier) {
+internal fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = Modifier, onBusyChanged: (Boolean) -> Unit = {}) {
+    val installKey = remember(host?.hostId) { "install-${host?.hostId}-${host?.lastVerified?.verifiedAtEpochMillis}" }
+    val installer: ServerInstallViewModel = viewModel(key = installKey)
+    val installState by installer.state.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(installState.busy) { onBusyChanged(installState.busy) }
+    var bundleUri by rememberSaveable(host?.hostId) { mutableStateOf<String?>(null) }
+    var certificateUri by rememberSaveable(host?.hostId) { mutableStateOf<String?>(null) }
+    var privateKeyUri by rememberSaveable(host?.hostId) { mutableStateOf<String?>(null) }
     var step by rememberSaveable(host?.hostId) { mutableIntStateOf(0) }
     var source by rememberSaveable(host?.hostId) { mutableStateOf("official") }
     var bundleName by rememberSaveable(host?.hostId) { mutableStateOf("") }
@@ -108,14 +156,18 @@ private fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = 
     var certificateName by rememberSaveable(host?.hostId) { mutableStateOf("") }
     var privateKeyName by rememberSaveable(host?.hostId) { mutableStateOf("") }
     var certificatePassword by remember(host?.hostId) { mutableStateOf("") }
+    var sudoPassword by remember(host?.hostId) { mutableStateOf("") }
     var certificateNames by rememberSaveable(host?.hostId) { mutableStateOf("localhost,127.0.0.1") }
     val pickBundle = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        bundleUri = uri?.toString()
         bundleName = uri?.lastPathSegment.orEmpty()
     }
     val pickCertificate = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        certificateUri = uri?.toString()
         certificateName = uri?.lastPathSegment.orEmpty()
     }
     val pickPrivateKey = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        privateKeyUri = uri?.toString()
         privateKeyName = uri?.lastPathSegment.orEmpty()
     }
     val mayContinue = when (step) {
@@ -126,7 +178,9 @@ private fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = 
         else -> false
     }
 
-    Column(modifier.fillMaxSize()) {
+    // Resize the scroll viewport above the keyboard so TextField focus relocation
+    // can keep the edited field visible, including the final certificate names field.
+    Column(modifier.fillMaxSize().imePadding()) {
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = Spacing.lg),
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
@@ -139,9 +193,16 @@ private fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = 
                     subtitle = stringResource(R.string.ssh_workspace_deploy_draft),
                     leading = DesktopIcons.deployments,
                 ) {
-                    FilterChip(source == "official", { source = "official" }, { Text(stringResource(R.string.ssh_workspace_deploy_source_official)) })
-                    FilterChip(source == "local", { source = "local" }, { Text(stringResource(R.string.ssh_workspace_deploy_source_local)) })
-                    FilterChip(source == "remote", { source = "remote" }, { Text(stringResource(R.string.ssh_workspace_deploy_source_remote)) })
+                    SelectField(
+                        label = stringResource(R.string.ssh_workspace_deploy_step_source),
+                        options = listOf(
+                            SelectOption("official", stringResource(R.string.ssh_workspace_deploy_source_official)),
+                            SelectOption("local", stringResource(R.string.ssh_workspace_deploy_source_local)),
+                            SelectOption("remote", stringResource(R.string.ssh_workspace_deploy_source_remote)),
+                        ),
+                        value = source,
+                        onValueChange = { source = it },
+                    )
                     if (source == "local") {
                         OutlinedButton({ pickBundle.launch(arrayOf("application/zip", "application/octet-stream")) }) {
                             Text(stringResource(R.string.ssh_workspace_deploy_choose_bundle))
@@ -168,25 +229,58 @@ private fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = 
                     subtitle = stringResource(R.string.ssh_workspace_deploy_draft),
                     leading = DesktopIcons.deployments,
                 ) {
-                    Text(stringResource(R.string.ssh_workspace_deploy_mode), style = MaterialTheme.typography.labelLarge)
-                    FilterChip(mode == "automatic", { mode = "automatic" }, { Text(stringResource(R.string.ssh_workspace_deploy_automatic)) })
-                    FilterChip(mode == "linuxUser", { mode = "linuxUser" }, { Text(stringResource(R.string.ssh_workspace_deploy_linux_user)) })
-                    FilterChip(mode == "linuxSystem", { mode = "linuxSystem" }, { Text(stringResource(R.string.ssh_workspace_deploy_linux_system)) })
-                    FilterChip(mode == "windowsSystem", { mode = "windowsSystem" }, { Text(stringResource(R.string.ssh_workspace_deploy_windows_system)) })
-                    Text(stringResource(R.string.ssh_workspace_deploy_file_access), style = MaterialTheme.typography.labelLarge)
-                    FilterChip(fileAccess == "restricted", { fileAccess = "restricted" }, { Text(stringResource(R.string.ssh_workspace_deploy_restricted)) })
-                    FilterChip(fileAccess == "full", { fileAccess = "full" }, { Text(stringResource(R.string.ssh_workspace_deploy_full_access)) })
-                    Text(stringResource(R.string.ssh_workspace_deploy_network), style = MaterialTheme.typography.labelLarge)
-                    FilterChip(network == "loopback", { network = "loopback" }, { Text(stringResource(R.string.ssh_workspace_deploy_loopback)) })
-                    FilterChip(network == "lan", { network = "lan" }, { Text(stringResource(R.string.ssh_workspace_deploy_lan)) })
-                    Text(stringResource(R.string.ssh_workspace_deploy_certificate), style = MaterialTheme.typography.labelLarge)
-                    FilterChip(certificateMode == "none", { certificateMode = "none" }, { Text(stringResource(R.string.ssh_workspace_deploy_certificate_none)) })
-                    FilterChip(certificateMode == "custom", { certificateMode = "custom" }, { Text(stringResource(R.string.ssh_workspace_deploy_certificate_custom)) })
-                    FilterChip(certificateMode == "selfSigned", { certificateMode = "selfSigned" }, { Text(stringResource(R.string.ssh_workspace_deploy_certificate_self_signed)) })
+                    SelectField(
+                        label = stringResource(R.string.ssh_workspace_deploy_mode),
+                        options = listOf(
+                            SelectOption("automatic", stringResource(R.string.ssh_workspace_deploy_automatic)),
+                            SelectOption("linuxUser", stringResource(R.string.ssh_workspace_deploy_linux_user)),
+                            SelectOption("linuxSystem", stringResource(R.string.ssh_workspace_deploy_linux_system)),
+                            SelectOption("windowsSystem", stringResource(R.string.ssh_workspace_deploy_windows_system)),
+                        ),
+                        value = mode,
+                        onValueChange = { mode = it },
+                    )
+                    if (mode == "linuxSystem") PasswordTextField(sudoPassword, { sudoPassword = it },
+                        stringResource(R.string.ssh_workspace_deploy_sudo_password))
+                    SelectField(
+                        label = stringResource(R.string.ssh_workspace_deploy_file_access),
+                        options = listOf(
+                            SelectOption("restricted", stringResource(R.string.ssh_workspace_deploy_restricted)),
+                            SelectOption("full", stringResource(R.string.ssh_workspace_deploy_full_access)),
+                        ),
+                        value = fileAccess,
+                        onValueChange = { fileAccess = it },
+                    )
+                    SelectField(
+                        label = stringResource(R.string.ssh_workspace_deploy_network),
+                        options = listOf(
+                            SelectOption("loopback", stringResource(R.string.ssh_workspace_deploy_loopback)),
+                            SelectOption("lan", stringResource(R.string.ssh_workspace_deploy_lan)),
+                        ),
+                        value = network,
+                        onValueChange = { network = it },
+                        supportingText = stringResource(R.string.ssh_workspace_deploy_lan_note).takeIf { network == "lan" },
+                    )
+                    SelectField(
+                        label = stringResource(R.string.ssh_workspace_deploy_certificate),
+                        options = listOf(
+                            SelectOption("none", stringResource(R.string.ssh_workspace_deploy_certificate_none)),
+                            SelectOption("custom", stringResource(R.string.ssh_workspace_deploy_certificate_custom)),
+                            SelectOption("selfSigned", stringResource(R.string.ssh_workspace_deploy_certificate_self_signed)),
+                        ),
+                        value = certificateMode,
+                        onValueChange = { certificateMode = it },
+                    )
                     if (certificateMode == "custom") {
-                        Text(stringResource(R.string.ssh_workspace_deploy_certificate_format), style = MaterialTheme.typography.labelLarge)
-                        FilterChip(certificateFormat == "pfx", { certificateFormat = "pfx" }, { Text(stringResource(R.string.ssh_workspace_deploy_certificate_pfx)) })
-                        FilterChip(certificateFormat == "pem", { certificateFormat = "pem" }, { Text(stringResource(R.string.ssh_workspace_deploy_certificate_pem)) })
+                        SelectField(
+                            label = stringResource(R.string.ssh_workspace_deploy_certificate_format),
+                            options = listOf(
+                                SelectOption("pfx", stringResource(R.string.ssh_workspace_deploy_certificate_pfx)),
+                                SelectOption("pem", stringResource(R.string.ssh_workspace_deploy_certificate_pem)),
+                            ),
+                            value = certificateFormat,
+                            onValueChange = { certificateFormat = it },
+                        )
                         OutlinedButton({ pickCertificate.launch(arrayOf("*/*")) }) { Text(stringResource(R.string.ssh_workspace_deploy_choose_certificate)) }
                         if (certificateName.isNotBlank()) Text(certificateName, style = MaterialTheme.typography.bodySmall)
                         if (certificateFormat == "pem") {
@@ -230,7 +324,8 @@ private fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = 
                         "selfSigned" -> stringResource(R.string.ssh_workspace_deploy_certificate_self_signed)
                         else -> stringResource(R.string.ssh_workspace_deploy_certificate_none)
                     })
-                    Text(stringResource(R.string.ssh_workspace_deploy_unavailable), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.ssh_workspace_deploy_source_checks), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    installState.message?.let { Text(stringResource(it), color = MaterialTheme.colorScheme.primary) }
                 }
             }
         }
@@ -238,13 +333,23 @@ private fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = 
             Modifier.fillMaxWidth().padding(Spacing.lg),
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
-            if (step > 0) OutlinedButton(onClick = { step-- }, modifier = Modifier.weight(1f)) {
+            if (step > 0) OutlinedButton(onClick = { step-- }, enabled = !installState.busy, modifier = Modifier.weight(1f)) {
                 Text(stringResource(R.string.common_back))
             }
             if (step < 2) Button(onClick = { step++ }, enabled = mayContinue, modifier = Modifier.weight(1f)) {
                 Text(stringResource(R.string.ssh_workspace_deploy_next))
-            } else Button(onClick = {}, enabled = false, modifier = Modifier.weight(1f)) {
-                Text(stringResource(R.string.ssh_workspace_deploy_install))
+            } else Button(onClick = {
+                host?.let { installer.install(ServerInstallSelection(it.hostId, source,
+                    bundleUri?.let(Uri::parse), remoteBundlePath, mode, network, fileAccess,
+                    certificateMode, certificateFormat, certificateUri?.let(Uri::parse),
+                    privateKeyUri?.let(Uri::parse), certificatePassword, certificateNames, sudoPassword)) }
+                sudoPassword = ""
+            }, enabled = host != null && !installState.busy && !installState.installed, modifier = Modifier.weight(1f)) {
+                Text(stringResource(when {
+                    installState.installed -> R.string.ssh_workspace_deploy_installed
+                    host?.lastVerified?.installed == true -> R.string.installation_kind_upgrade
+                    else -> R.string.ssh_workspace_deploy_install
+                }))
             }
         }
     }

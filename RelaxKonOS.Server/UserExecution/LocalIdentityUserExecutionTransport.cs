@@ -52,7 +52,7 @@ public sealed class LocalIdentityUserExecutionTransport(LocalFileService direct,
             return Complete(request, new(false, Error: "invalid user-execution request", ProblemCode: UserExecutionProblemCode.InvalidRequest));
         try
         {
-            var value = await DirectUserExecutionOperations.ExecuteAsync(direct, request);
+            var value = await DirectUserExecutionOperations.ExecuteAsync(direct, request, cancellationToken);
             var output = Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(value, RelaxKonOSJsonOptions.Default));
             return Complete(request, new(true, output));
         }

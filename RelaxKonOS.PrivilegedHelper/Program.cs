@@ -85,22 +85,15 @@ public static async Task<int> RunOneShotAsync()
     return result.ExitCode;
 }
 
-static async Task<PrivilegedOperationResult> ReadFileAsync(string? path, IReadOnlyList<string> roots)
+static async Task<PrivilegedOperationResult> ReadFileAsync(string? path, IReadOnlyList<string> roots, long offset, int count)
 {
     var canonical = ValidatePath(path, roots);
-    if (OperatingSystem.IsLinux())
-    {
-        await using var file = RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.OpenRead(canonical);
-        if (file.Length > PrivilegedOperationProtocol.MaximumFileContentBytes)
-            return Fail(75, PrivilegedProblemCode.ContentTooLarge, "file content is too large");
-        using var content = new MemoryStream();
-        await file.CopyToAsync(content);
-        return new(true, OutputBase64: Convert.ToBase64String(content.ToArray()));
-    }
-    var bytes = await File.ReadAllBytesAsync(canonical);
-    if (bytes.Length > PrivilegedOperationProtocol.MaximumFileContentBytes)
-        return Fail(75, PrivilegedProblemCode.ContentTooLarge, "file content is too large");
-    return new(true, OutputBase64: Convert.ToBase64String(bytes));
+    await using var file = OperatingSystem.IsLinux()
+        ? RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.OpenRead(canonical)
+        : new FileStream(canonical, FileMode.Open, FileAccess.Read, FileShare.Read);
+    var chunk = RelaxKonOS.Protocol.UserExecution.UserExecutionFileReads.Read(file,
+        Path.GetFileName(canonical), "application/octet-stream", offset, count);
+    return new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(chunk, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default)));
 }
 
 static async Task<PrivilegedOperationResult> WriteFileAsync(string? path, string? contentBase64, IReadOnlyList<string> roots)

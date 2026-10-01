@@ -75,6 +75,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     [ObservableProperty] private string? _certificatePath;
     [ObservableProperty] private string? _certificatePrivateKeyPath;
     [ObservableProperty] private string _certificatePassword = string.Empty;
+    [ObservableProperty] private string _sudoPassword = string.Empty;
     [ObservableProperty] private string _selfSignedIdentities = "localhost,127.0.0.1";
     [ObservableProperty] private string _errorMessage = string.Empty;
     [ObservableProperty] private bool _isBusy;
@@ -88,15 +89,21 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     public string StepCounter => string.Format(Text("server_center.wizard.step_counter", "Step {0} of 3"), StepIndex + 1);
     public string BundleFileName => Path.GetFileName(IsRemoteBundle ? RemoteBundlePath : LocalBundlePath) ?? string.Empty;
     public bool HasBundle => IsRemoteBundle ? !string.IsNullOrWhiteSpace(RemoteBundlePath) : !string.IsNullOrWhiteSpace(LocalBundlePath);
-    public string SelectedSourceText => SelectedSource?.Label ?? string.Empty;
+    public string SelectedSourceText => (IsLocalBundle || IsRemoteBundle) && HasBundle
+        ? $"{SelectedSource?.Label} · {BundleFileName}"
+        : SelectedSource?.Label ?? string.Empty;
     public string SelectedModeText => SelectedMode?.Label ?? string.Empty;
+    public bool ShowsSudoPassword => SelectedMode?.Mode == ServerInstallMode.LinuxSystem;
+    public string SudoPasswordText => Text("server_center.wizard.sudo_password", "sudo password (leave blank to use the SSH password)");
     public string TargetText => _serverCenter.SelectedHost is { } target
         ? $"{target.DisplayName} · {target.SshUserName}"
         : string.Empty;
 
     public string Title => Text("server_center.wizard.title", "Install RelaxKonOS");
+    public string InstallingText => Text("server_center.wizard.installing", "Installing…");
     public string SourceStepTitle => Text("server_center.wizard.source_title", "Choose the release source");
     public string ModeStepTitle => Text("server_center.wizard.mode_title", "Choose the installation mode");
+    public string SourceChecksText => Text("server_center.wizard.source_checks", "Official packages are downloaded and verified on the server. Selected ZIPs receive layout and architecture checks.");
     public string ReviewStepTitle => Text("server_center.wizard.review_title", "Review and install");
     public string ServerAndUserText => Text("server_center.wizard.server_and_user", "Server and user");
     public string ReleaseText => Text("server_center.wizard.release", "Release");
@@ -106,6 +113,8 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     public string ShowHostAddressesText => Text("server_center.wizard.show_host_addresses", "View this host's IP addresses");
     public string CertificateText => Text("server_center.wizard.certificate", "TLS certificate");
     public string CertificateFormatText => Text("server_center.wizard.certificate_format", "Certificate format");
+    public string CertificateFileText => Text("server_center.wizard.certificate_file", "Certificate file");
+    public string CertificatePrivateKeyFileText => Text("server_center.wizard.certificate_private_key_file", "Private key file");
     public string ChooseCertificateText => IsPemCertificate
         ? Text("server_center.wizard.choose_pem_certificate", "Choose PEM certificate chain")
         : Text("server_center.wizard.choose_certificate", "Choose PFX certificate");
@@ -178,7 +187,11 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void Cancel() => _close();
+    private void Cancel()
+    {
+        SudoPassword = string.Empty;
+        _close();
+    }
 
     [RelayCommand(CanExecute = nameof(CanInstall))]
     private async Task InstallAsync()
@@ -210,7 +223,8 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
                 CertificatePath,
                 CertificatePrivateKeyPath,
                 CertificatePassword,
-                SelfSignedIdentities));
+                SelfSignedIdentities,
+                SudoPassword));
             if (succeeded)
                 _close();
             else
@@ -220,6 +234,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         }
         finally
         {
+            SudoPassword = string.Empty;
             IsBusy = false;
         }
     }
@@ -240,10 +255,17 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     partial void OnSelectedSourceChanged(InstallationSourceOption? value)
     {
         ErrorMessage = string.Empty;
+        OnPropertyChanged(nameof(SelectedSourceText));
         OnPropertyChanged(nameof(IsLocalBundle));
         OnPropertyChanged(nameof(IsRemoteBundle));
         OnPropertyChanged(nameof(BundleFileName));
         OnPropertyChanged(nameof(HasBundle));
+    }
+
+    partial void OnSelectedModeChanged(InstallationModeOption? value)
+    {
+        OnPropertyChanged(nameof(SelectedModeText));
+        OnPropertyChanged(nameof(ShowsSudoPassword));
     }
 
     partial void OnSelectedCertificateModeChanged(CertificateModeOption? value)
@@ -273,12 +295,14 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
 
     partial void OnLocalBundlePathChanged(string? value)
     {
+        OnPropertyChanged(nameof(SelectedSourceText));
         OnPropertyChanged(nameof(BundleFileName));
         OnPropertyChanged(nameof(HasBundle));
     }
 
     partial void OnRemoteBundlePathChanged(string? value)
     {
+        OnPropertyChanged(nameof(SelectedSourceText));
         OnPropertyChanged(nameof(BundleFileName));
         OnPropertyChanged(nameof(HasBundle));
     }

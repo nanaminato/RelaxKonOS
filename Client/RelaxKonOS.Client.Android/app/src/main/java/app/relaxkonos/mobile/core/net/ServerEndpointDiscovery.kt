@@ -42,13 +42,17 @@ object ServerEndpointDiscovery {
         val candidates = candidates(value)
         if (candidates.isEmpty()) return@withContext EndpointDiscoveryResult.InvalidAddress
 
-        candidates.firstOrNull(::isLoginEndpointAvailable)
-            ?.let(EndpointDiscoveryResult::Found)
-            ?: EndpointDiscoveryResult.Unavailable
+        for (candidate in candidates) {
+            ServerCertificateTrust.clear(candidate)
+            if (isLoginEndpointAvailable(candidate)) return@withContext EndpointDiscoveryResult.Found(candidate)
+            if (ServerCertificateTrust.review(candidate) != null) return@withContext EndpointDiscoveryResult.Unavailable
+        }
+        EndpointDiscoveryResult.Unavailable
     }
 
     private fun isLoginEndpointAvailable(serverUrl: String): Boolean = try {
         val connection = (URI(serverUrl + LOGIN_ROUTE).toURL().openConnection() as HttpURLConnection)
+        ServerCertificateTrust.configure(connection)
         try {
             connection.requestMethod = "OPTIONS"
             connection.instanceFollowRedirects = false

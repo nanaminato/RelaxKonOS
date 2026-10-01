@@ -13,7 +13,6 @@ case "$PACKAGE_KIND" in all|client|server|user-server) ;; *) echo 'Package kind 
 
 SCRIPT_DIRECTORY="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "$SCRIPT_DIRECTORY/../.." && pwd)"
-VERIFIER_PROJECT="$SCRIPT_DIRECTORY/RelaxKonOS.ReleaseVerifier/RelaxKonOS.ReleaseVerifier.csproj"
 OUTPUT_DIRECTORY="$(mkdir -p -- "$OUTPUT_DIRECTORY" && cd -- "$OUTPUT_DIRECTORY" && pwd)"
 
 new_package() {
@@ -34,20 +33,14 @@ publish_component() {
 }
 
 publish_deployment_tools() {
-  # `probe` uses the same strict JSON request validation as mutations, so the verifier is a required
-  # client-controlled staging asset for every launcher action, not an optional install-only helper.
-  local tools="$OUTPUT_DIRECTORY/launcher" temporary="$OUTPUT_DIRECTORY/launcher/.release-verifier-publish"
+  # Export scripts for manual SSH use; clients bundle their own copies.
+  local tools="$OUTPUT_DIRECTORY/launcher"
   mkdir -p -- "$tools"
   cp -- "$PROJECT_ROOT/deployment/launcher/relaxkonos-deploy.sh" "$tools/relaxkonos-deploy.sh"
   cp -- "$PROJECT_ROOT/deployment/launcher/RelaxKonOS-Deploy.ps1" "$tools/RelaxKonOS-Deploy.ps1"
   # Packaging may run from a Windows-mounted working tree; launchers uploaded to Linux must be LF.
   sed -i 's/\r$//' "$tools/relaxkonos-deploy.sh"
-  rm -rf -- "$temporary"
-  dotnet publish "$VERIFIER_PROJECT" --configuration "$CONFIGURATION" --runtime "$RUNTIME" --self-contained true \
-    -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --output "$temporary"
-  [[ -f "$temporary/RelaxKonOS.ReleaseVerifier" ]] || { echo 'Verifier publish output did not contain RelaxKonOS.ReleaseVerifier.' >&2; exit 1; }
-  install -m 700 "$temporary/RelaxKonOS.ReleaseVerifier" "$tools/release-verifier"
-  rm -rf -- "$temporary"
+
 }
 
 complete_package() {

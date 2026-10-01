@@ -1,3 +1,5 @@
+using RelaxKonOS.Protocol.UserExecution;
+using RelaxKonOS.Server.UserExecution;
 using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Common;
@@ -31,11 +33,12 @@ public sealed class PrivilegedFileService(IPrivilegedOperationTransport runner) 
 
     public async Task<(Stream Stream, string FileName)> OpenReadAsync(PrivilegedFileAuthorizationSource source, string path, CancellationToken cancellationToken = default)
     {
-        var result = await runner.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.FileRead,
-            Path: path, FileAuthorizationSource: source), cancellationToken);
-        if (!result.Success) throw ToException(result, path);
-        var bytes = Convert.FromBase64String(result.OutputBase64 ?? string.Empty);
-        return (new MemoryStream(bytes, writable: false), Path.GetFileName(path));
+        var metadata = await ReadChunkAsync(0, 0, cancellationToken);
+        return (new UserExecutionReadStream(metadata.Length, ReadChunkAsync), metadata.FileName);
+
+        Task<UserExecutionFileRead> ReadChunkAsync(long offset, int count, CancellationToken ct)
+            => SendAsync<UserExecutionFileRead>(new(PrivilegedOperationKind.FileRead,
+                Path: path, FileAuthorizationSource: source, Offset: offset, ReadCount: count), path, ct);
     }
 
     public async Task<FileEntryDto> WriteAsync(PrivilegedFileAuthorizationSource source, string path, Stream content, CancellationToken cancellationToken = default)
@@ -135,6 +138,7 @@ public sealed class PrivilegedFileService(IPrivilegedOperationTransport runner) 
 
     private static Exception ToException(PrivilegedOperationResult result, string path) => result.ProblemCode switch
     {
+        PrivilegedProblemCode.ContentTooLarge => new HostFileExecutionException(413, "content-too-large", "File content exceeds the single-operation limit."),
         PrivilegedProblemCode.NotFound => new FileNotFoundException(result.Error ?? "File not found", path),
         PrivilegedProblemCode.HelperUnavailable or PrivilegedProblemCode.TimedOut
             => new InvalidOperationException(result.Error ?? "Privileged helper unavailable"),

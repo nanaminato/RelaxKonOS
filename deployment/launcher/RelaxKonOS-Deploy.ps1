@@ -18,6 +18,8 @@
 param(
     # Replay the persistent record of an earlier operation instead of running a new one.
     [string] $QueryOperationId,
+    [string] $DiagnosticsOperationId,
+    [string] $ClearOperationId,
     # List the most recent operation records on this host.
     [switch] $ListOperations
 )
@@ -304,6 +306,7 @@ $optionsVersion = ''
 $optionsPackageUri = ''
 $optionsStagedName = ''
 $optionsPackageDigest = ''
+$optionsRemotePath = ''
 $optionsExpectedInstallationId = ''
 $optionsServerPort = $null
 $optionsFileAccess = ''
@@ -347,7 +350,7 @@ function Assert-RequestShape {
         Stop-Launcher 'server-deployment.invalid_request' 'options must be a JSON object'
     }
     $allowedOptions = @('source', 'network', 'retention', 'mode', 'version', 'packageUri', 'stagedPackageName',
-        'packageDigest', 'expectedInstallationId', 'serverPort', 'fileAccess', 'certificateMode', 'selfSignedIdentities', 'confirmed')
+        'packageDigest', 'remotePackagePath', 'expectedInstallationId', 'serverPort', 'fileAccess', 'certificateMode', 'selfSignedIdentities', 'confirmed')
     foreach ($key in $request['options'].Keys) {
         if ($allowedOptions -notcontains [string]$key) {
             Stop-Launcher 'server-deployment.invalid_request' "unsupported request field: $key"
@@ -407,6 +410,7 @@ function Parse-Request {
     $script:optionsPackageUri = Get-StringOption 'packageUri'
     $script:optionsStagedName = Get-StringOption 'stagedPackageName'
     $script:optionsPackageDigest = Get-StringOption 'packageDigest'
+    $script:optionsRemotePath = Get-StringOption 'remotePackagePath'
     $script:optionsExpectedInstallationId = Get-StringOption 'expectedInstallationId'
     $script:optionsFileAccess = Get-StringOption 'fileAccess'
     $script:optionsCertificateMode = Get-StringOption 'certificateMode'
@@ -464,8 +468,15 @@ function Parse-Request {
     }
     if ($kind -in @('install', 'upgrade')) {
         if (-not $script:optionsMode) { Stop-Launcher 'server-deployment.invalid_request' 'installation mode is required' }
-        if (-not $script:optionsStagedName -or -not $script:optionsPackageDigest) {
-            Stop-Launcher 'server-deployment.invalid_request' 'install and upgrade need a staged archive and SHA-256'
+        switch ($script:optionsSource) {
+            'officialStable' { }
+            'localBundle' { if (-not $script:optionsStagedName) { Stop-Launcher 'server-deployment.invalid_request' 'a local ZIP name is required' } }
+            'remoteBundle' {
+                if ($script:optionsRemotePath -notmatch '^[A-Za-z]:[\\/].*\.zip$' -or $script:optionsRemotePath -match '[\x00-\x1f]') {
+                    Stop-Launcher 'server-deployment.invalid_request' 'an absolute server ZIP path is required'
+                }
+            }
+            default { Stop-Launcher 'server-deployment.invalid_request' 'unsupported installation source' }
         }
     }
     if ($kind -in @('repair', 'rollback', 'uninstall', 'status') -and -not $script:optionsMode) {
@@ -476,7 +487,7 @@ function Parse-Request {
 function Test-VersionString([string] $Value) {
     if ([string]::IsNullOrWhiteSpace($Value) -or $Value.Length -gt 64) { return $false }
     foreach ($character in $Value.ToCharArray()) {
-        if (-not ([char]::IsAsciiLetterOrDigit($character) -or $character -eq '.' -or $character -eq '-' -or $character -eq '+')) { return $false }
+        if ($character -cnotmatch '^[A-Za-z0-9.+-]$') { return $false }
     }
     return ($Value -match '[0-9]')
 }
@@ -486,7 +497,7 @@ function Test-SafeStagedPackageName([string] $Value) {
     if ($Value.Contains('/') -or $Value.Contains('\') -or $Value.Contains('..')) { return $false }
     if (-not $Value.EndsWith('.zip', [StringComparison]::OrdinalIgnoreCase)) { return $false }
     foreach ($character in $Value.ToCharArray()) {
-        if (-not ([char]::IsAsciiLetterOrDigit($character) -or $character -eq '.' -or $character -eq '_' -or $character -eq '-')) { return $false }
+        if ($character -cnotmatch '^[A-Za-z0-9._-]$') { return $false }
     }
     return $true
 }
@@ -715,32 +726,113 @@ function Save-RequestDigest {
 # --- engine --------------------------------------------------------------------------------------
 # The launcher maps a fixed action onto the existing deployment engine. It never passes a caller
 # supplied path, service name or command; only the package directory it staged itself.
+function Get-OfficialFile([string] $Uri, [string] $Destination) {
+    if ($Uri -notmatch '^https://') { throw 'Official downloads require HTTPS.' }
+    $request = [Net.HttpWebRequest]::Create($Uri)
+    $request.AllowAutoRedirect = $false
+    for ($redirect = 0; $redirect -lt 6; $redirect++) {
+        $response = $request.GetResponse()
+        try {
+            if ([int]$response.StatusCode -ge 300 -and [int]$response.StatusCode -lt 400) {
+                $next = [Uri]::new($request.RequestUri, $response.Headers['Location'])
+                if ($next.Scheme -ne 'https') { throw 'Official redirects require HTTPS.' }
+                $request = [Net.HttpWebRequest]::Create($next)
+                $request.AllowAutoRedirect = $false
+                continue
+            }
+            $stream = $response.GetResponseStream()
+            $file = [IO.File]::Open($Destination, [IO.FileMode]::CreateNew)
+            try { $stream.CopyTo($file) } finally { $file.Dispose(); $stream.Dispose() }
+            return
+        } finally { $response.Dispose() }
+    }
+    throw 'Too many official download redirects.'
+}
+
 function Test-PackageAvailable {
-    # The engine consumes only bytes extracted here from the checked archive. A separately uploaded
-    # package/ directory is never an acceptable source, even if it has a plausible manifest.
-    $archive = Join-Path $stagingRoot $script:optionsStagedName
-    $verifier = Join-Path $stagingRoot 'release-verifier.exe'
-    foreach ($path in @($archive, $verifier)) {
-        if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or
-            ((Get-Item -LiteralPath $path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-            Stop-Launcher 'server-deployment.package_unavailable' 'a required staged release file is missing or unsafe'
-        }
-    }
-    $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($actual -ne $script:optionsPackageDigest) {
-        Stop-Launcher 'server-deployment.package_digest_mismatch' 'the staged archive digest does not match the request'
-    }
     $architecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
     if ($architecture -notin @('x64', 'arm64')) {
         Stop-Launcher 'server-deployment.package_runtime_mismatch' 'this Windows architecture is unsupported'
     }
+    $runtime = "win-$architecture"
     $script:packageRoot = Join-Path $stagingRoot ('package-' + $script:record.operationId)
     if (Test-Path -LiteralPath $script:packageRoot) {
         Stop-Launcher 'server-deployment.package_unavailable' 'the operation package directory already exists'
     }
-    & $verifier extract $archive server "win-$architecture" $script:packageRoot *> $null
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $script:packageRoot -PathType Container)) {
-        Stop-Launcher 'server-deployment.package_manifest_invalid' 'the staged release could not be verified and extracted'
+    try {
+        switch ($script:optionsSource) {
+            'officialStable' {
+                $descriptorPath = Join-Path $stagingRoot 'official-release.json'
+                Get-OfficialFile "https://downloads.relaxkon.com/relaxkonos/stable/latest/$runtime.json" $descriptorPath
+                if ((Get-Item -LiteralPath $descriptorPath).Length -gt 1048576) { throw 'Descriptor is too large.' }
+                $descriptor = ConvertFrom-StrictJsonObject ([IO.File]::ReadAllText($descriptorPath))
+                if ($descriptor.schemaVersion -ne 1 -or $descriptor.packageKind -ne 'server' -or
+                    $descriptor.runtime -ne $runtime -or $descriptor.sha256 -notmatch '^[0-9a-fA-F]{64}$') { throw 'Invalid official descriptor.' }
+                $archive = Join-Path $stagingRoot 'official-release.zip'
+                Get-OfficialFile $descriptor.url $archive
+                if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $descriptor.sha256) { throw 'Official release checksum mismatch.' }
+            }
+            'localBundle' { $archive = Join-Path $stagingRoot $script:optionsStagedName }
+            'remoteBundle' { $archive = $script:optionsRemotePath }
+            default { throw 'Unsupported installation source.' }
+        }
+        if (-not (Test-Path -LiteralPath $archive -PathType Leaf) -or
+            ((Get-Item -LiteralPath $archive -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'ZIP file is missing or unsafe.' }
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $zip = [IO.Compression.ZipFile]::OpenRead($archive)
+        try {
+            if ($zip.Entries.Count -gt 20000) { throw 'Too many ZIP entries.' }
+            $files = @{}; $seen = @{}; [long]$total = 0
+            foreach ($entry in $zip.Entries) {
+                $name = $entry.FullName.TrimEnd('/')
+                if ($name -notmatch '^[A-Za-z0-9._/+\-]+$' -or $name.StartsWith('/') -or
+                    ($name.Split('/') | Where-Object { $_ -in @('', '.', '..') }) -or
+                    $seen.ContainsKey($name)) { throw 'Unsafe or duplicate ZIP path.' }
+                foreach ($part in $name.Split('/')) {
+                    if ($part.EndsWith('.') -or $part -match '^(?i:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)') { throw 'Unsafe Windows ZIP path.' }
+                }
+                $seen[$name] = $true
+                $type = ($entry.ExternalAttributes -shr 16) -band 0xF000
+                if ($type -notin @(0, 0x8000, 0x4000)) { throw 'Unsupported ZIP entry.' }
+                $total += $entry.Length
+                if ($total -gt 8589934592) { throw 'ZIP payload is too large.' }
+                if (-not $entry.FullName.EndsWith('/')) { $files[$name] = $entry }
+            }
+            if (-not $files.ContainsKey('manifest.json') -or $files['manifest.json'].Length -gt 1048576) { throw 'Missing/oversized manifest.' }
+            $reader = [IO.StreamReader]::new($files['manifest.json'].Open())
+            try { $manifest = ConvertFrom-StrictJsonObject ($reader.ReadToEnd()) } finally { $reader.Dispose() }
+            if ($manifest.schemaVersion -ne 1 -or $manifest.packageKind -ne 'server' -or $manifest.runtime -ne $runtime -or
+                $manifest.version -notmatch '^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$') { throw 'Package kind, runtime or version does not match.' }
+            foreach ($name in @('payload/windows/server/RelaxKonOS.Server.exe', 'payload/windows/guardian/RelaxKonOS.Guardian.Agent.exe',
+                'payload/windows/privileged-helper/RelaxKonOS.PrivilegedHelper.exe', 'deployment/bootstrap/Install-RelaxKonOS.ps1')) {
+                if (-not $files.ContainsKey($name)) { throw 'Incomplete server package.' }
+            }
+            if ($script:optionsSource -eq 'officialStable') {
+                if ($manifest.version -ne $descriptor.version) { throw 'Official version mismatch.' }
+                $listed = @{}
+                foreach ($item in $manifest.files) {
+                    if ($listed.ContainsKey($item.path) -or -not $files.ContainsKey($item.path) -or $files[$item.path].Length -ne $item.length) { throw 'Invalid file inventory.' }
+                    $listed[$item.path] = $true
+                    $stream = $files[$item.path].Open(); $hash = [Security.Cryptography.SHA256]::Create()
+                    try { $actual = ([BitConverter]::ToString($hash.ComputeHash($stream)) -replace '-','') }
+                    finally { $stream.Dispose(); $hash.Dispose() }
+                    if ($actual -ne $item.sha256) { throw 'File checksum mismatch.' }
+                }
+                if ($files.Count -ne $listed.Count + 1) { throw 'File inventory does not match ZIP.' }
+            }
+            [IO.Directory]::CreateDirectory($script:packageRoot) | Out-Null
+            foreach ($name in $files.Keys) {
+                $target = [IO.Path]::GetFullPath((Join-Path $script:packageRoot $name))
+                $prefix = $script:packageRoot.TrimEnd('\') + '\'
+                if (-not $target.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'ZIP path escapes destination.' }
+                [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($target)) | Out-Null
+                $input = $files[$name].Open(); $output = [IO.File]::Open($target, [IO.FileMode]::CreateNew)
+                try { $input.CopyTo($output) } finally { $input.Dispose(); $output.Dispose() }
+            }
+        } finally { $zip.Dispose() }
+    } catch {
+        Write-Note $_.Exception.Message
+        Stop-Launcher 'server-deployment.package_manifest_invalid' 'the release could not be downloaded, checked or safely extracted'
     }
 }
 
@@ -862,7 +954,9 @@ function Invoke-InstallLikeAction {
     if (-not $engine) { Stop-Launcher 'server-deployment.not_supported' 'no System Mode deployment engine is available on this host' }
 
     $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $engine, '-NonInteractive', '-Action', $script:record.kind, '-Mode', $script:optionsMode)
-    if ($needsPackage) { $arguments += @('-BundlePath', $packageRoot) }
+    if ($needsPackage) {
+        $arguments += @('-BundlePath', $packageRoot)
+    }
     if ($null -ne $script:optionsServerPort) { $arguments += @('-ServerPort', [string]$script:optionsServerPort) }
     if ($script:optionsNetwork) { $arguments += @('-NetworkProfile', (Get-EngineNetworkProfile $script:optionsNetwork)) }
     if ($script:optionsFileAccess) { $arguments += @('-FileAccess', $script:optionsFileAccess) }
@@ -944,6 +1038,36 @@ function Invoke-UninstallAction {
 }
 
 # --- entry ---------------------------------------------------------------------------------------
+if ($ClearOperationId) {
+    if ($ClearOperationId -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') { exit 64 }
+    $script:record.operationId = $ClearOperationId.ToLowerInvariant()
+    Initialize-Journal
+    try { $script:lockStream = [IO.File]::Open($lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) }
+    catch { exit 75 }
+    $recordPath = Get-OperationRecordPath
+    if (-not (Test-Path -LiteralPath $recordPath -PathType Leaf)) { exit 66 }
+    if ((Get-Item -LiteralPath $recordPath -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { exit 65 }
+    if (Test-Path -LiteralPath $recordPath -PathType Leaf) {
+        $receipt = ConvertFrom-StrictJsonObject ([IO.File]::ReadAllText($recordPath))
+        if ($receipt.operationId -cne $script:record.operationId -or $receipt.state -cnotin @('succeeded', 'failed', 'cancelled', 'interrupted')) { exit 65 }
+    }
+    # Keep the request digest to prevent a cleared operation from executing again.
+    foreach ($path in @((Get-OperationDiagnosticsPath), (Get-OperationEventsPath), $recordPath)) {
+        if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
+    }
+    exit 0
+}
+if ($DiagnosticsOperationId) {
+    if ($DiagnosticsOperationId -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') { exit 64 }
+    $script:record.operationId = $DiagnosticsOperationId.ToLowerInvariant()
+    Initialize-Journal
+    $path = Get-OperationDiagnosticsPath
+    if (Test-Path -LiteralPath $path -PathType Leaf) {
+        $text = [IO.File]::ReadAllText($path)
+        [Console]::Write($text.Substring(0, [Math]::Min(65536, $text.Length)))
+    }
+    exit 0
+}
 if ($QueryOperationId) {
     if ($QueryOperationId -notmatch '^[0-9a-fA-F-]{36}$') {
         Write-Note "usage: $($MyInvocation.MyCommand.Name) -QueryOperationId <uuid> | -ListOperations"

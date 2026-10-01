@@ -64,7 +64,7 @@ class ServerTerminalControllerTest {
     private class Harness(val controller: ServerTerminalController, val auth: AuthSession, val gateway: FakeGateway,
         val owner: SessionState.Active, val connections: MutableList<FakeConnection>, val tokens: MutableList<String>)
 
-    private suspend fun TestScope.harness(configure: (FakeConnection, Int) -> Unit = { _, _ -> }): Harness {
+    private suspend fun TestScope.harness(nativeResponses: () -> Boolean = { true }, configure: (FakeConnection, Int) -> Unit = { _, _ -> }): Harness {
         val gateway = FakeGateway()
         gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession()) }
         gateway.onRefresh = { _, _ -> ApiResult.Success(AuthTokens("access-2", "refresh-2", null, null)) }
@@ -74,7 +74,7 @@ class ServerTerminalControllerTest {
         val tokens = mutableListOf<String>()
         val controller = ServerTerminalController(auth, backgroundScope, TerminalConnectionFactory { _, token, output, exit, closed ->
             FakeConnection(closed, output, exit).also { configure(it, connections.size); connections += it; tokens += token }
-        })
+        }, nativeResponses = nativeResponses)
         return Harness(controller, auth, gateway, auth.state.value as SessionState.Active, connections, tokens)
     }
 
@@ -85,6 +85,40 @@ class ServerTerminalControllerTest {
         assertEquals("first", h.controller.state.value.sessionId)
         assertTrue(h.controller.state.value.output.contains("prompt first"))
         assertTrue(h.controller.state.value.canInput)
+    }
+
+    @Test fun `both renderer outputs reset together when attaching another shell`() = runTest {
+        val h = harness()
+        h.controller.connect(h.owner); runCurrent()
+        val connection = h.connections.single()
+        val vt = "\u001b[2J\u001b[H\u001b[32m中>\u001b[0m"
+        connection.output(vt.toByteArray()); runCurrent()
+        assertEquals("中>", h.controller.state.value.output)
+        assertEquals("prompt first" + vt, h.controller.state.value.rawOutput)
+        h.controller.attach("second"); runCurrent()
+        assertEquals("prompt second", h.controller.state.value.output)
+        assertEquals("prompt second", h.controller.state.value.rawOutput)
+        assertEquals(1, h.connections.size)
+    }
+
+    @Test fun `renderer switching keeps one PTY and only the active renderer answers queries`() = runTest {
+        var native = false
+        val h = harness(nativeResponses = { native })
+        h.controller.connect(h.owner); runCurrent()
+        val connection = h.connections.single()
+        connection.output("\u001b[6n".toByteArray()); runCurrent()
+        assertTrue(connection.inputs.isEmpty())
+        assertTrue(h.controller.state.value.rawOutput.endsWith("\u001b[6n"))
+        native = true
+        connection.output("\u001b[6n".toByteArray()); runCurrent()
+        assertEquals(listOf("\u001b[1;13R"), connection.inputs)
+        assertEquals(listOf("first"), connection.attached)
+        assertEquals(1, h.connections.size)
+        h.controller.clearOutput()
+        assertEquals("", h.controller.state.value.rawOutput)
+        connection.output("\r\nnext".toByteArray()); runCurrent()
+        assertEquals("\r\nnext", h.controller.state.value.rawOutput)
+        h.controller.detach(); runCurrent()
     }
 
     @Test fun `empty list leaves a connected empty state until explicit new session`() = runTest {

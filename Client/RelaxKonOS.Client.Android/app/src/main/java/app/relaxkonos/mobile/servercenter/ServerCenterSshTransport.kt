@@ -84,6 +84,8 @@ class JschServerCenterTransport : ServerCenterSshTransport {
             }
 
             val created = jsch.getSession(endpoint.userName, endpoint.host, endpoint.port)
+            created.setServerAliveInterval(30_000)
+            created.setServerAliveCountMax(3)
             if (credential.kind == SshCredentialKind.Password) {
                 val passwordBytes = encodeUtf8(credential.secret)
                 try {
@@ -184,15 +186,16 @@ class JschServerCenterTransport : ServerCenterSshTransport {
         require(command.isNotBlank()) { "The command must not be blank." }
         // The one line of input is fed through the channel's stdin, never as a command argument, so a
         // sudo password stays out of the process list, the logs and the disk.
-        val input = if (inputLine.isNullOrEmpty()) null else (inputLine + "\n").toByteArray(Charsets.UTF_8)
-        return withContext(Dispatchers.IO) { execute(command, input) }
+        val input = inputLine?.let { (it + "\n").toByteArray(Charsets.UTF_8) }
+        return try { withContext(Dispatchers.IO) { execute(command, input) } }
+        finally { input?.fill(0) }
     }
 
     override suspend fun openTerminal(): ServerCenterSshTerminal = withContext(Dispatchers.IO) {
         val channel = requireSession().openChannel("shell") as ChannelShell
         try {
             channel.setPty(true)
-            channel.setPtyType("dumb")
+            channel.setPtyType("xterm-256color")
             channel.setPtySize(80, 24, 640, 384)
             val terminal = JschInteractiveTerminal(channel, channel.inputStream, channel.outputStream)
             channel.connect(CHANNEL_CONNECT_TIMEOUT_MILLIS)
@@ -531,8 +534,12 @@ internal class JschInteractiveTerminal(
         }
     }
 
-    override fun resize(columns: Int, rows: Int) {
-        if (channel.isConnected) channel.setPtySize(columns, rows, 0, 0)
+    override suspend fun resize(columns: Int, rows: Int) = withContext(Dispatchers.IO) {
+        // setPtySize sends an SSH packet synchronously. JSch swallows its exceptions, so a
+        // main-thread socket write can silently leave the cipher out of sync with the peer.
+        writerGate.withLock {
+            if (channel.isConnected) channel.setPtySize(columns, rows, 0, 0)
+        }
     }
 
     override fun close() {

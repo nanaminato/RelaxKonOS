@@ -7,7 +7,7 @@ namespace RelaxKonOS.Protocol.UserExecution;
 /// <summary>Protocol constants for the dedicated, local-only user-execution channel.</summary>
 public static class UserExecutionProtocol
 {
-    public const string Version = "1.5";
+    public const string Version = "1.6";
     // A 12 MiB payload expands to 16 MiB in base64; leave bounded room for the JSON envelope.
     public const int MaximumRequestBytes = 17 * 1024 * 1024;
     public const int MaximumFileContentBytes = 12 * 1024 * 1024;
@@ -98,6 +98,7 @@ public sealed record UserExecutionRequest(
     [property: JsonPropertyName("overwrite")] bool Overwrite = false,
     [property: JsonPropertyName("contentBase64")] string? ContentBase64 = null,
     [property: JsonPropertyName("unixMode")] int? UnixMode = null,
+    // For FileRead, Offset is the byte position and ExpectedBytes is the bounded read count.
     // Confirmed length of the staging file a chunk is appended at. It is never an offset the caller may
     // pick: the server derives it from the session index and the Helper verifies the file really is that
     // long before writing.

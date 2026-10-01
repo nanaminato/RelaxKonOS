@@ -7,8 +7,9 @@ namespace RelaxKonOS.Client.Services.Auth;
 /// Resolves the address entered on the sign-in screen without ever sending credentials.
 /// Bare host names are tried as HTTPS first and fall back to HTTP only when HTTPS is unavailable.
 /// </summary>
-public sealed class ServerEndpointResolver(HttpClient http)
+public sealed class ServerEndpointResolver(HttpClient http, ServerCertificateTrust certificateTrust)
 {
+    public void TrustCertificate(ServerCertificateReview review) => certificateTrust.Trust(review);
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(4);
 
     public async Task<ServerEndpointResolution> ResolveAsync(string value, CancellationToken ct = default)
@@ -19,11 +20,14 @@ public sealed class ServerEndpointResolver(HttpClient http)
 
         foreach (var candidate in candidates)
         {
+            certificateTrust.ClearReview(candidate);
             if (await IsLoginEndpointAvailableAsync(candidate, ct))
-                return new ServerEndpointResolution(candidate, IsValidInput: true);
+                return new ServerEndpointResolution(candidate, IsValidInput: true, null);
+            if (certificateTrust.GetReview(candidate) is { } review)
+                return new ServerEndpointResolution(null, IsValidInput: true, review);
         }
 
-        return new ServerEndpointResolution(null, IsValidInput: true);
+        return new ServerEndpointResolution(null, IsValidInput: true, null);
     }
 
     internal static IReadOnlyList<string> CreateCandidates(string value)
@@ -91,8 +95,8 @@ public sealed class ServerEndpointResolver(HttpClient http)
 }
 
 /// <summary>The resolved absolute server address, or a validation/probe failure.</summary>
-public sealed record ServerEndpointResolution(string? Endpoint, bool IsValidInput)
+public sealed record ServerEndpointResolution(string? Endpoint, bool IsValidInput, ServerCertificateReview? CertificateIssue)
 {
-    public static ServerEndpointResolution Invalid { get; } = new(null, IsValidInput: false);
+    public static ServerEndpointResolution Invalid { get; } = new(null, IsValidInput: false, null);
     public bool IsResolved => Endpoint is not null;
 }

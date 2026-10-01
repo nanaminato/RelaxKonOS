@@ -11,8 +11,53 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.Assert.assertFalse
+import org.junit.Assert.fail
 
 class ServerCenterDeploymentClientTest {
+    @Test fun `clear uses fixed action and rejects invalid identifiers`() = runTest {
+        val transport = FakeDeploymentTransport()
+        val client = ServerCenterDeploymentClient(transport)
+        val lookup = client.stageLookup(ServerHostPlatform.Linux, ServerCenterUploadAsset.bytes(byteArrayOf(1)))
+        val id = UUID.randomUUID().toString()
+        client.clearOperation(lookup, id)
+        assertTrue(transport.commands.last().endsWith(" --clear-operation $id"))
+        val count = transport.commands.size
+        try { client.clearOperation(lookup, "../../bad"); fail("Invalid id accepted") } catch (_: IllegalArgumentException) { }
+        assertEquals(count, transport.commands.size)
+        transport.clearExitStatus = 75
+        try { client.clearOperation(lookup, id); fail("Clear failure ignored") } catch (_: java.io.IOException) { }
+    }
+    @Test fun `details read fixed diagnostics action with bounded redacted text`() = runTest {
+        val transport = FakeDeploymentTransport()
+        val client = ServerCenterDeploymentClient(transport)
+        val lookup = client.stageLookup(ServerHostPlatform.Linux, ServerCenterUploadAsset.bytes(byteArrayOf(1)))
+        val id = UUID.randomUUID().toString()
+        val log = client.diagnostics(lookup, id)
+        assertTrue(transport.commands.last().endsWith(" --diagnostics $id"))
+        assertTrue(log.contains("[redacted]"))
+        assertFalse(log.contains("private-value"))
+        assertTrue(log.length <= 65536)
+        val count = transport.commands.size
+        try { client.diagnostics(lookup, "../../bad"); fail("Invalid id accepted") } catch (_: IllegalArgumentException) { }
+        assertEquals(count, transport.commands.size)
+    }
+
+    @Test
+    fun sudoPasswordUsesStdinAndAccountJournal() = runTest {
+        val transport = FakeDeploymentTransport()
+        val client = ServerCenterDeploymentClient(transport)
+        val staged = client.stage(ServerDeploymentRequest(1, UUID.randomUUID().toString(), ServerDeploymentKind.Probe),
+            ServerHostPlatform.Linux, ServerCenterUploadAsset.bytes("launcher".toByteArray()))
+        client.execute(staged, "sudo-secret")
+        assertEquals(listOf("sudo-secret"), transport.inputLines)
+        assertTrue(transport.commands.any { it.endsWith(" --run-with-sudo") })
+        assertTrue(transport.commands.none { "sudo-secret" in it })
+        assertTrue(transport.uploaded.values.none { "sudo-secret" in it.toString(Charsets.UTF_8) })
+        assertTrue(transport.commands.last().contains(" --query " + staged.operationId))
+        client.execute(staged, "")
+        assertEquals("", transport.inputLines.last())
+    }
 
     @Test
     fun `probe stages fixed assets and reads authoritative receipt`() = runTest {
@@ -30,13 +75,12 @@ class ServerCenterDeploymentClientTest {
             request = request,
             platform = ServerHostPlatform.Linux,
             launcher = ServerCenterUploadAsset.bytes("#!/bin/sh\n".toByteArray()),
-            verifier = ServerCenterUploadAsset.bytes("verifier".toByteArray()),
+
         )
 
         assertEquals(operationId, staged.operationId)
         assertEquals(
             setOf(
-                "/tmp/relaxkonos-deploy.abcdefgh/release-verifier",
                 "/tmp/relaxkonos-deploy.abcdefgh/relaxkonos-deploy.sh",
                 "/tmp/relaxkonos-deploy.abcdefgh/request.json",
             ),
@@ -114,19 +158,19 @@ class ServerCenterDeploymentClientTest {
     }
 
     @Test
-    fun `unsigned install archive is fully checked before upload`() = runTest {
+    fun `local install archive needs no official checksum before upload`() = runTest {
         val release = releaseArchive("payload/linux/server/RelaxKonOS.Server", "server bytes".toByteArray())
         try {
             val transport = FakeDeploymentTransport()
             val client = ServerCenterDeploymentClient(transport)
             val operationId = UUID.randomUUID().toString()
-            val request = installRequest(operationId, sha256(release.file.readBytes()))
+            val request = installRequest(operationId, sha256(release.file.readBytes())).let { it.copy(options = it.options!!.copy(packageDigest = null)) }
 
             client.stage(
                 request = request,
                 platform = ServerHostPlatform.Linux,
                 launcher = ServerCenterUploadAsset.bytes("launcher".toByteArray()),
-                verifier = ServerCenterUploadAsset.bytes("verifier".toByteArray()),
+
                 archiveFile = release.file,
                 expectedRuntime = ServerRuntimeIdentifier.LinuxX64,
             )
@@ -138,35 +182,18 @@ class ServerCenterDeploymentClientTest {
     }
 
     @Test
-    fun `tampered archive is rejected before remote staging`() = runTest {
-        val release = releaseArchive(
-            "payload/linux/server/RelaxKonOS.Server",
-            "tampered".toByteArray(),
-            listedPayload = "original".toByteArray(),
-        )
-        try {
+    fun `official and server sources stage no package or verifier`() = runTest {
+        for (source in listOf(ServerPackageSourceKind.OfficialStable, ServerPackageSourceKind.RemoteBundle)) {
             val transport = FakeDeploymentTransport()
-            val client = ServerCenterDeploymentClient(transport)
-            val request = installRequest(UUID.randomUUID().toString(), sha256(release.file.readBytes()))
-            var rejected = false
-            try {
-                client.stage(
-                    request = request,
-                    platform = ServerHostPlatform.Linux,
-                    launcher = ServerCenterUploadAsset.bytes("launcher".toByteArray()),
-                    verifier = ServerCenterUploadAsset.bytes("verifier".toByteArray()),
-                    archiveFile = release.file,
-                    expectedRuntime = ServerRuntimeIdentifier.LinuxX64,
-                )
-            } catch (_: java.io.IOException) {
-                rejected = true
-            }
-
-            assertTrue(rejected)
-            assertTrue(transport.commands.isEmpty())
-            assertTrue(transport.uploaded.isEmpty())
-        } finally {
-            release.file.delete()
+            val options = ServerDeploymentOptions(source, ServerNetworkProfile.Loopback,
+                mode = ServerInstallMode.LinuxUser,
+                remotePackagePath = if (source == ServerPackageSourceKind.RemoteBundle) "/home/alice/server.zip" else null)
+            ServerCenterDeploymentClient(transport).stage(
+                ServerDeploymentRequest(1, UUID.randomUUID().toString(), ServerDeploymentKind.Install, options),
+                ServerHostPlatform.Linux, ServerCenterUploadAsset.bytes("launcher".toByteArray()),
+                expectedRuntime = ServerRuntimeIdentifier.LinuxX64)
+            assertEquals(setOf("relaxkonos-deploy.sh", "request.json"),
+                transport.uploaded.keys.map { it.substringAfterLast('/') }.toSet())
         }
     }
 
@@ -181,7 +208,7 @@ class ServerCenterDeploymentClientTest {
                     request = installRequest(UUID.randomUUID().toString(), sha256(release.file.readBytes())),
                     platform = ServerHostPlatform.Linux,
                     launcher = ServerCenterUploadAsset.bytes(byteArrayOf(1)),
-                    verifier = ServerCenterUploadAsset.bytes(byteArrayOf(2)),
+
                     archiveFile = release.file,
                     expectedRuntime = ServerRuntimeIdentifier.WinX64,
                 )
@@ -234,10 +261,12 @@ private class FakeDeploymentTransport : ServerCenterSshTransport {
     override val isConnected: Boolean = true
     override val observedHostKey: ServerCenterHostKeyObservation? = null
     val commands = mutableListOf<String>()
+    val inputLines = mutableListOf<String?>()
     val uploaded = linkedMapOf<String, ByteArray>()
     val uploadOrder = mutableListOf<String>()
     var listedOperationId: String? = null
     var missingOperationId: String? = null
+    var clearExitStatus = 0
 
     override suspend fun connect(
         endpoint: ServerCenterSshEndpoint,
@@ -248,6 +277,8 @@ private class FakeDeploymentTransport : ServerCenterSshTransport {
     override suspend fun run(command: String): ServerCenterSshCommandResult {
         commands += command
         return when {
+            command.contains(" --clear-operation ") -> ServerCenterSshCommandResult(clearExitStatus, "", "")
+            command.contains(" --diagnostics ") -> ServerCenterSshCommandResult(0, "password=private-value\n" + "x".repeat(70000), "")
             command.contains("mktemp") -> ServerCenterSshCommandResult(
                 0, "/tmp/relaxkonos-deploy.abcdefgh\n", "",
             )
@@ -267,8 +298,10 @@ private class FakeDeploymentTransport : ServerCenterSshTransport {
         }
     }
 
-    override suspend fun runWithInput(command: String, inputLine: String?): ServerCenterSshCommandResult =
-        error("not used")
+    override suspend fun runWithInput(command: String, inputLine: String?): ServerCenterSshCommandResult {
+        inputLines += inputLine
+        return run(command)
+    }
 
     override suspend fun openTerminal(): ServerCenterSshTerminal = error("not used")
 

@@ -25,15 +25,33 @@
                 <TextBlock Text="{Binding EmptyHostsText}" IsVisible="{Binding !HasHosts}" />
                 <StackPanel IsVisible="{Binding SelectedHost}" Spacing="7">
                     <TextBlock Text="{Binding VerifiedStateText}" IsVisible="{Binding HasVerifiedState}" TextWrapping="Wrap" />
+                    <!-- 首次固定与替换已固定的密钥共用同一张核对卡片，区别只在是否需要并排展示被取代的
+                         旧指纹：只看新指纹无法分辨「重装/重建过的同一台机器」和「这个地址被另一台机器接管」。 -->
                     <Border IsVisible="{Binding NeedsHostKeyConfirmation}" BorderBrush="{DynamicResource BorderDefaultBrush}"
                             BorderThickness="1" Padding="12">
                         <StackPanel Spacing="8">
+                            <TextBlock Text="{Binding HostKeyReviewTitle}" FontWeight="SemiBold" TextWrapping="Wrap" />
                             <TextBlock Text="{Binding HostKeyReviewText}" TextWrapping="Wrap" />
-                            <TextBlock Text="{Binding HostKeyFingerprint}" FontFamily="Consolas" TextWrapping="Wrap" />
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                <Border Grid.Column="0" IsVisible="{Binding HostKeyReplacesPinnedKey}"
+                                        BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" Padding="8">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="{Binding PinnedFingerprintLabel}" FontSize="12" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding PreviousHostKeyFingerprint}" FontFamily="Consolas" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding PreviousHostKeyConfirmedText}" FontSize="12" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="1" BorderBrush="{DynamicResource BorderDefaultBrush}"
+                                        BorderThickness="1" Padding="8">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="{Binding ObservedFingerprintLabel}" FontSize="12" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding HostKeyFingerprint}" FontFamily="Consolas" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
                             <Button Command="{Binding ConfirmHostKeyCommand}" Content="{Binding ConfirmHostKeyText}" HorizontalAlignment="Left" />
                         </StackPanel>
                     </Border>
-                    <TextBlock Text="{Binding HostKeyChangedText}" IsVisible="{Binding HostKeyChanged}" Classes="error" TextWrapping="Wrap" />
                     <Button Command="{Binding RemoveHostCommand}" Content="{Binding RemoveText}" HorizontalAlignment="Left" />
                 </StackPanel>
             </StackPanel>

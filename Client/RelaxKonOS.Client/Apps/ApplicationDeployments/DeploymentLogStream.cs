@@ -32,7 +32,11 @@ internal sealed class DeploymentLogStream : IAsyncDisposable
                 if (session.EffectiveBaseUrl is null) return;
                 await using var hub = new HubConnectionBuilder()
                     .WithUrl(new Uri(new Uri(session.EffectiveBaseUrl), RelaxKonOSEndpoints.ApplicationDeploymentLogsHubPath.TrimStart('/')),
-                        options => options.AccessTokenProvider = () => session.GetAccessTokenAsync(TimeSpan.FromMinutes(1), ct: token))
+                        options =>
+                    {
+                        ServerCertificateTrust.ConfigureSignalR(options, new Uri(session.EffectiveBaseUrl));
+                        options.AccessTokenProvider = () => session.GetAccessTokenAsync(TimeSpan.FromMinutes(1), ct: token);
+                    })
                     .Build();
                 connection = hub;
                 using var handler = hub.On<DeploymentLiveLogSnapshot>(nameof(IApplicationDeploymentLogsClient.OnDeploymentLogs), receive);

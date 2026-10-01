@@ -4,6 +4,30 @@
 
 ## 1. 共同设备与发布检查
 
+2026-10-01 SSH 设置、双终端与平板导航：703 项 JVM 测试与 `assembleDebug` 通过，新增检查覆盖原生/原始 VT 输出并存、跨帧 UTF-8、清屏、resize/离页保留及重连/附加其它 shell 同步重置。SM-S9380 与 SM-X510（Android 16）均执行 `SshWorkspaceLayoutTest` 三项、`NativeTerminalTest` 一项及 `XtermTerminalTest` 一项通过：导航覆盖 360/700/1000dp 设置入口、底栏键盘折叠、侧栏独立视口和无障碍名称；原生模式验证首次连接成功后同步 PTY 尺寸及视口宽度变化；xterm.js 验证 Windows VT 重绘、查询响应和视口显隐尺寸。xterm.js 用例等待实际 fit/绘制完成后检查边界，避免在 200ms 尺寸稳定期前误报。完整终端测试包在平板 `keyboardShowAndHidePreserveTheUnsentDraft` 长时间等待后中止，不能记为整包通过。语言/主题/高对比度/终端选择的重启恢复、真实 SSH/Server 会话切换两种渲染器、平板分屏/旋转与复杂全屏程序仍需实机联调；导航测量用例不代表所有 SSH 页面已完成内容双栏。
+
+2026-10-01 键盘展开最后一行裁切：真机 Windows SSH 会话确认原屏幕底边为 196 CSS px，但 WebView 可视高度只有 188 px。addon-fit 只扣除 xterm 元素自身内边距，原来放在父容器的 12px 内边距未计入可用行列数。将内边距移入 xterm 元素后，键盘展开时为 12 行、屏幕底边 170px / 可视高度 188px；收起时为 16 行、底边 223px / 可视高度 235px，Windows 提示符保留。resize 前处于最新输出位置时 resize 后继续贴底；查看历史时保留滚动位置。设备回归检查新增屏幕右边/底边不超过视口的断言。
+
+2026-10-01 SSH 触摸滚动：真机 SM-S9380、已验证的 `192.168.1.9` Ubuntu SSH 会话中输出 100 行数字，使用真实 ADB 触摸滑动确认可从末尾浏览历史、反向滑动返回；历史 viewportY 为 78 时新输出使 baseY 从 88 增至 90，viewportY 仍为 78；触摸「回到最新输出」后 viewportY 回到 90 且按钮隐藏。APK 构建与 JVM 测试通过。尚需长文阅读、不同厂商触摸采样、长按复制与替代屏幕程序联调；这组证据不覆盖 Windows SSH 宿主。
+
+2026-10-01 真机 SSH xterm.js 空白修复：SM-S9380 上 WebView 已加载并接收到输出，但 `html/body` 百分比高度得到 0，终端容器只剩内边距，addon-fit 只能得到 1 行。终端容器改为固定铺满视口，新增设备回归断言检查容器高度与行数。修正版已安装到真机，由用户完成指纹解封后连接 `192.168.1.9`（实际宿主为 Ubuntu 26.04）；确认初始彩色提示符、`echo RELAXKON_SSH_CHECK` 回显、`clear` 重绘、反复键盘显隐（41×13 / 41×16）、SSH 文件页离页返回的同一会话，以及字号增减（38×15 / 41×16）均保持可见。APK 构建与 JVM 测试通过；此证据不代表 Windows SSH 宿主、旋转、复杂全屏程序或长时间高输出已通过。
+
+2026-10-01 SSH 终端使用本地 xterm.js：仅服务器中心 SSH 路径替换为完整 VT 模拟器，PTY 声明 `xterm-256color`；RelaxKonOS Server Hub 终端保持现有实现。JVM 检查覆盖 Windows 清屏/光标/颜色序列和跨帧原样传递、小视口尺寸及会话隔离。新增 WebView 重绘/终端查询响应/视口恢复设备测试；本轮模拟器执行因设备连接丢失失败，不能作为通过证据。用户负责实机联调：Windows SSH 初始提示符、`cls`、PowerShell 颜色、连续命令、键盘反复显隐、字号调整、会话切换及离页返回；检查长时间大量输出的内存与重放开销。既有 SSH 布局模拟器证据不覆盖新 WebView 渲染器。
+
+2026-10-01 操作记录：平台自动识别，「查看详情」通过可滚动、可复制的弹窗展示回执与按需读取日志，支持关闭按钮、返回键和窗口外点击关闭。「清除已结束记录」确认后删除列表中已核验结束的远端回执、事件和日志，同步移除本地索引，保留运行中、缺失及未核验记录与防重放请求摘要。`assembleDebug --offline`、`ServerCenterDeploymentClientTest`、`ServerInstallOperationIndexTest` 通过；Windows 清除入口的隔离测试 `Tests/Deployment/operation_history_checks.py` 三项通过，覆盖四种结束状态、运行/排队/未知/缺失/编号不匹配和写锁冲突；Linux 启动器 `bash -n` 通过。此前客户端测试覆盖固定 diagnostics 动作、无效 ID 拒绝、日志截断及敏感字段遮盖。实体手机弹窗关闭、清除确认与失败重试、长日志滚动/复制、真实 Linux/Windows SSH 清除与历史记录查询仍待验证。
+
+2026-10-01 Linux 监听地址回执：从受管安装记录读取 listenUrl，保留真实协议、绑定地址和端口；不再虚构 HTTP 回环地址。`ListenAddressChecks.ps1` 与 Android `assembleDebug --offline` 通过。实体设备刷新后与真实宿主配置的对照仍待执行。
+
+2026-10-01 安装维护子页：概览、环境检查、维护操作、操作记录已拆分，安装向导单独进入，详情字段可复制，子页切换重置滚动，返回先回概览。`assembleDebug --offline` 通过；实体手机上的窄屏标签滚动、长目录换行、TalkBack、系统返回键及键盘避让仍待验证。
+
+2026-10-01 SSH 安装与维护首页：进入部署页通过 SSH 执行 Probe 和 Status，展示系统、架构、磁盘、端口、依赖及安装模式/版本/路径/健康信息；未安装进入安装向导，已安装提供升级、修复和卸载，卸载默认保留数据，删除受管数据需明确勾选并确认。维护后重新读取 Status，再判定成功。`ServerMaintenanceTest` 与 `assembleDebug --offline` 通过；真实 Linux/Windows 宿主上的权限、修复、保留/删除数据卸载、卸载后重新安装，以及手机键盘和操作记录仍待验证。本轮未对真实宿主执行卸载。
+
+2026-10-01 自签名证书信任：登录探测显示地址、证书主题/签发者、有效期与新旧 SHA-256 指纹；确认记录仅限应用内地址、端口、叶证书。API、上传与 SignalR 终端复用该记录，保留主机名与有效期校验并禁用跨地址重定向。`ServerCertificateTrustTest` 和 `assembleDebug --offline` 通过，覆盖确认前拒绝、记录重载、主机/端口隔离、证书更换及过期拒绝。实体手机仍需验证首次确认/取消、应用重启、证书更换、错误主机名及终端连接；构建和 JVM 证据不代表设备检查通过。
+
+2026-10-01 SSH 部署表单键盘避让：滚动容器使用 IME 内边距，并消费 Scaffold 已应用的边距；`assembleDebug -Offline` 通过。实体手机仍需确认证书名称、sudo 密码与证书密码在键盘展开、收起及切换输入框时保持可见，底部操作可滚动到达。
+
+2026-10-01 sudo 安装验证：`ServerCenterDeploymentClientTest` 与 `assembleDebug` 通过，覆盖标准输入传密、免密提权入口和原 SSH 用户操作回执查询；共享启动器的 `Tests/Deployment/SudoElevationChecks.ps1` 通过密码/免密策略、引擎输入隔离、受保护状态读取、错误密码与权限拒绝的模拟检查。尚未执行真实 Ubuntu 26.04 管理账户的系统安装、升级、独立健康核验及实体 Android 设备检查；模拟结果不代表这些宿主检查通过。
+
 最小矩阵：一台手机竖/横屏、约 8 英寸与约 11 英寸平板；逐项覆盖中/英/日、浅/深/高对比、大字体、TalkBack、分屏、旋转、后台返回与进程回收。布局目标按具体页面检查，不以 Shell 断点计算通过替代页面分栏验收。
 
 | 范围 | 未关闭检查 |
@@ -13,6 +37,7 @@
 | Windows owner-device keys | 真 Windows 10/11 配对、邀请码过期/取消、QR 扫描/图片/粘贴确认、nonce 签名、锁屏窗口、密钥失效与撤销；Windows Server 不走工作站授权 |
 | 文件下载/预览 | MediaStore 下载目录与重名文案；缩略图→详细图、EXIF 方向、大图耗时、缓存预算/淘汰、显式授权才预览；Android org.json null 显示与 executionEligibility 解析 |
 | Server 终端布局 | API 35 平板模拟器已验证 8 项 IME/边距/大字体/草稿检查；厂商输入法、实体手机/平板、真实 PTY 和中文组合/复杂 VT 仍需执行 |
+| SSH 终端 | 平板模拟器已验证 6 项输入可见性、IME 发送、边距、大字体、草稿及离页返回/多会话控件检查；实体手机/厂商输入法、真实多 SSH 主机连续命令、后台保活与远端退出仍需联调 |
 | 发布 | Release 签名/渠道证书、HTTPS 网络策略、诊断脱敏、后台恢复与危险操作确认；按 [发布说明](../development/android-release.md) 执行 |
 | Lint | 2026-10-01 BP24-V5 实际运行失败：16 errors / 159 warnings / 12 hints；包括 BP19 API 23 文件排序兼容性与 BP20 Compose 资源读取问题，详情见本次记录，不能当作已通过 |
 
@@ -48,6 +73,11 @@
 | AD01-T4 | 上传断网；执行后断网；旋转与进程回收 | 可核实原操作，不重复安装、不误报成功 |
 | AD01-T5 | 升级失败、修复、卸载保留数据 | 真实结果可查；卸载后仍可进入服务器中心 |
 | AD01-T6 | 隧道端口变化或主机重装 | 同安装保留稳定身份；新安装不复用旧安装信任与登录绑定 |
+| AD01-T7 | 勾选「在本机保存 SSH 密码」后重新打开服务器中心（含重启应用），再点该主机 | 用一次指纹/锁屏确认即可连接，不再需要输入密码；取消勾选后已有记录仍在，只有「忘记已保存密码」才删除它 |
+| AD01-T8 | 同一设备保存两台以上主机，在工作区**系统页**点「切换主机」 | 已保存密码的主机就地切换工作区并显示新主机名；未保存密码的主机退回服务器中心表单，不出现第二个密码输入位置；文件、终端与部署页都没有主机条，也没有第二个切换入口 |
+| AD01-T9 | 新增一台连不上的主机（密码错、TCP 超时、端口无监听、主机名写错各一次） | 四种情况给出四句不同的可执行文案，不再共用「无法验证 SSH 连接」；`adb logcat -s RelaxKonSsh:D` 里的分类名与界面结论一致，且日志与界面都不出现端点、用户名或异常原文 |
+| AD01-T10 | 主机的 SSH 主机密钥在设备上已固定后发生变化（重装/重建密钥，或 DHCP 把该地址分给另一台机器），再点这台主机 | 弹出标题为「SSH 主机密钥已变更」的核对对话框，**并排展示旧指纹与它的确认日期、以及本次收到的新指纹**；确认后立刻用同一份密码重新握手进入工作区，且该端点的固定记录只剩新指纹一条。关闭对话框只留下「核对并接受后才能继续」的提示，不存在任何跳过核对的入口 |
+| AD01-T11 | 点开一台已保存密码的主机，进入工作区后看系统页 | 指纹/锁屏确认**只出现一次**（解封那一次），不再紧接着弹第二次加密保存的确认；系统页顶部是当前主机卡片（主机名 + `用户@地址:端口` + 「当前」标签）与「切换主机」，四个页面的内容与标题都不与状态栏、时钟重叠 |
 
 ## 4. AD02：Android 应用部署向导
 
@@ -118,6 +148,9 @@
 | AD07-T4 | 守护进程崩溃、重启与健康失败 | 策略在远端生效，手机只观察和提交操作 |
 | AD07-T5 | User Mode、错误 run-as 或权限不足 | 不跨账号执行，不因客户端输入绕过服务端限制 |
 | AD07-T6 | SSH 与 Server 终端互切、SSH 断线 | 身份清晰，准确说明任务是否仍存活 |
+| AD07-T6a | 实体手机连接真实 SSH 主机，键盘显隐、字号调整后连续发送命令 | 输入/光标始终可见；沿用同一 shell、不误报关闭；远端退出或断网时准确禁用输入 |
+| AD07-T6b | 同宿主两个 SSH 终端与不同宿主并行；切换部署/文件/系统、返回服务器中心及旋转 | 沿用每个原 shell；输出/草稿/隐藏状态隔离；关闭一个不影响其它连接；后台输出继续入有界缓冲 |
+| AD07-T6c | 重启/系统回收应用进程后重新打开 SSH 终端 | 旧会话/选中状态/草稿/输出清空，不显示待重连记录或重放命令；进入宿主终端建立新 shell；宿主资料和用户保存的凭据仍保留 |
 
 ## 10. AD08：Android 运维与恢复中心
 
@@ -138,6 +171,13 @@
 
 | 日期 | 检查与结果 | 证明范围 / 限制 |
 | --- | --- | --- |
+| 2026-09-30 | 工作区「切换主机」收进系统页：离线 `:app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest` 成功，96 类 / 691 JVM 用例，0 失败/错误/跳过；三语未增删键（各 1595 键一致）；`git diff --check` 通过 | `SshWorkspaceHeader` 与工作区的 `topBar` 一并删除，主机身份卡片（主机名 + `用户@地址:端口` + 「当前」）与「切换主机」移到 `SshSystemScreen` 顶部；文件、终端与部署页不再有主机条，也就没有第二个切换入口。少了 `topBar` 之后状态栏内边距由顶层 `Scaffold` 的 `contentWindowInsets` 提供。切换本身的判定与凭据路径未改（仍是 `planSshHostOpen` + `SshHostSwitcherDialog`），因此只需按 AD01-T8 复测入口位置；系统页新增卡片后可滚动，真机观感未在本轮复测 |
+| 2026-09-30 | SSH 连接不再重复请求指纹保存 + 工作区顶栏让出状态栏：离线 `:app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest` 成功，96 类 / 691 JVM 用例，0 失败/错误/跳过；`git diff --check` 通过 | 真机截图里「192.168.1.8:22 / codexdev@… / 切换主机」与状态栏时钟同高：`SshWorkspaceHeader` 作为 `Scaffold` 顶栏没有让出 `statusBarsPadding`，而 `Scaffold` 只按它量出的高度给下方内容留位。另：`beginVerification` 在每次握手成功后都按勾选框写保险箱，从保险箱解封来的密码因此被要求再加密一次（`VaultAccess.save` 会弹确认）。现在 `shouldSaveSshPassword` 增加密码来源这一个条件（`SshPasswordOrigin`），只有用户本次输入的密码才问；2 项新 JVM 用例覆盖「解封/会话内存来的都不再问」与「恰好一个来源值得问」。真机上的实际观感与指纹只弹一次未在本轮重测 |
+| 2026-09-30 | 主机密钥变更不再是无出口的阻断：离线 `:app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest` 成功，96 类 / 689 JVM 用例，0 失败/错误/跳过；中英日各 1595 键一致无重复；`git diff --check` 通过 | 改动前 `KeyChanged` 只有一行红字、没有任何动作，且密码/target 在返回时被清掉，用户无法接受新指纹；现在与首次固定共用一次显式核对，并排展示旧指纹与确认日期。新增 4 项 JVM 用例覆盖「首次见面不展示旧指纹」「变更必须携带被取代的固定记录」「Trusted/Failed 一律不弹指纹对话框」「两种确认共用同一条替换规则」。变更路径的真实触发（改主机密钥后重新握手）未在实体设备执行，需按 AD01-T10 联调；本轮仍未验证指纹/锁屏解封与保险箱实际写入 |
+| 2026-09-30 | SSH 握手失败归因：真机 `SM-S9380` 上新增主机报「无法验证 SSH 连接」，`adb logcat -s RelaxKonSsh:D` 里该次只有一个 `connect.begin` 加 `connect.failed: classification=connect_timed_out types=JSchException>SocketTimeoutException frames=Util.createSocket:387`，全程没有 `host_key.observed`；能连上的主机则先出现 `host_key.observed: trust=Trusted` 再 `connect.authenticated`。改动后离线 `:app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest` 成功，95 类 / 685 JVM 用例，0 失败/错误/跳过；中英日各 1592 键一致无重复；`git diff --check` 通过 | 失败发生在 TCP 建连阶段、主机密钥尚未交换，因此与指纹确认无关；同一手机 `toybox nc` 连该主机另一地址的 22 端口立即收到 SSH banner，而报错地址超时，主机侧 `ss`/防火墙未在本轮核对。12 项新用例覆盖九类原因、网络层原因优先于库消息、诊断名唯一稳定；实体设备上的四类失败文案（AD01-T9）与指纹解封、保险箱实际写入未在本轮重测 |
+| 2026-09-30 | SSH 凭据保存与主机切换：离线 `:app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest` 成功，94 类 / 673 JVM 用例，0 失败/错误/跳过；中英日各 1585 键一致无重复；`git diff --check` 通过 | 新增 4 项 JVM 用例覆盖「只有可用保存凭据才免输入直连」「三种索要密码的原因两两可区分」「未勾选或本机无法保护时不写入保险箱」；界面改动为服务器中心列表点开直连、保存密码勾选与状态行、忘记已保存密码、工作区「切换主机」。`VaultAccess` 指纹/锁屏解封、保险箱实际写入与真实 SSH 握手未执行，需按 AD01-T7/T8 在实体设备联调 |
+| 2026-09-30 | SSH 多会话与重启清空：离线 Debug 应用/测试 APK 构建成功，93 类 / 669 JVM 用例，0 失败/错误/跳过；`SshTerminalSessionsLayoutTest` 在 `emulator-5558` 1 项通过；中英日 1555 键一致无重复；`git diff --check` 通过 | 6 项 SSH 会话 JVM 用例覆盖重进页面、宿主/终端输入输出尺寸隔离、单独关闭、新应用实例从空列表开始且不重放旧输入、EOF/写失败及连接关闭竞态；持久保存接口与待重连恢复状态已移除。Compose 用例实际移除页面后返回，验证后台输出/草稿保留、新建/切换/发送/确认结束及其它会话存活。此前 5 项键盘布局检查通过，本次仅编译而未重跑。使用假传输，真实宿主/实体设备/长时间后台保活未执行 |
+| 2026-09-30 | SSH 输入修复：离线 `:app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest` 成功，92 类 / 663 JVM 用例，0 失败/错误/跳过；模拟器 `emulator-5558` instrumentation 的 `SshTerminalKeyboardLayoutTest` 5 项通过；`git diff --check` 通过 | 新增 3 项 JSch 终端用例验证尺寸请求离开调用线程、与输入互斥、尺寸变化后的连续写入/UTF-8 输出；5 项 Compose 用例覆盖手机/平板视口、真实系统 IME 和发送、大字体、已消费边距及草稿。传输用例使用记录请求的 JSch shell，未连接真实 SSH 主机；未操作实体手机 |
 | 2026-09-30 | 远端提交 `382196f2` 记录离线 `:app:assembleDebug :app:testDebugUnitTest --offline --no-daemon` 成功；61 类 / 522 JVM 用例，0 失败/错误/跳过；`git diff --check` 通过 | 固定活动屏幕/历史、Windows 清屏与光标重绘、缩放与跨帧解析；包含 14 个屏幕回归和 1 个控制器用例，以及键盘动画期间旧 Windows 重绘、尺寸合并/回到原尺寸、会话切换/附加期间变更。尺寸同步的 6 项场景在旧实现失败、修复后通过；真实手机 IME 与远端 Windows PowerShell 联调仍待验证。本轮合并未重新执行产品构建或测试 |
 | 2026-09-30 | `:app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest --offline --no-daemon` 成功；61 类 / 500 JVM 用例，0 失败/错误/跳过；中英日各 1024 键一致无重复 | 当前登录切换、徽标查询竞态、认证和终端等逻辑；未执行本轮实体设备验收 |
 | 2026-09-30 | API 35 平板模拟器 `emulator-5558` 直接 instrumentation：`TerminalKeyboardLayoutTest` 8 项通过 | 实际终端控件、真实系统 IME、手机/平板视口、已消费边距、大字体、草稿；截图 `app/build/reports/terminal-layout/terminal-real-keyboard.png`；不代表厂商 IME/实体设备/真实 PTY |
@@ -692,3 +732,14 @@ BP24 持续验证与文档同步不是新的 Android 编译环境搭建任务，
 | BP12 / BP09 | `ui/files/FilesScreen.kt:1827`、`ui/manage/docker/DockerScreen.kt:472` | 1 项 `StateFlowValueCalledInComposition`、2 项 `UnrememberedMutableState`；需修复 Compose 状态观察/状态创建 |
 
 - `adb devices -l` 实际返回空设备列表；没有执行 instrumentation、Compose 页面或手机/平板视觉/IME/旋转/后台/前台服务验收。真实 SSH/SFTP/SAF、Docker 更新/回滚/数据恢复、Ubuntu/Windows 设置写入、外部浏览器和通知仍保留在对应 BP 待验项。JVM 假传输/提供方检查和 instrumentation APK 打包不替代设备或真实宿主结果。
+
+### fix_ssh → master 合并验证（2026-10-01）
+
+- 合并基线：`master=fcae92b2`、`fix_ssh=cf342d96`。保留 master 的 BP 功能、完整 VT 字符单元解析/工作区设置和既有测试证据，以及 fix_ssh 的 SSH 多会话、xterm.js/原生切换、安装维护/证书信任和有界下载。冲突整合后，SSH 布局采用当前双参数 header/侧栏接口；工作区保留设置入口并增加本地转发目的地，设置仍为索引 4。Help 三语说明同步当前 SSH 安装能力，补齐两项日文系统指标资源。
+- Server 同时保留有界 `FileRead` 和严格独立的 `FileReadText`，用户执行协议统一升级为 `1.6`，Server/Helper 共用当前契约，没有旧请求适配。Server 两种渲染器共享原 PTY，原生解析器只在原生模式发送查询回复；切换不会重复应答，清屏同时清除原始 VT。新增 JVM 回归覆盖该交互以及后续输出不重新带入已清除历史。
+- 实际离线执行 `:app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest --offline --no-daemon` 成功；最终资源更新后的测试任务为 up-to-date，同一合并源码的上一轮实际执行 XML 为 **159 类 / 1014 用例，0 失败、0 错误、0 跳过**。生产/仪器源码编译和两份 APK 构建通过；本次未运行设备测试，分支中的既有实体设备记录不作为此次合并的设备验收。
+- Server.Tests（含 Server）、PrivilegedHelper 和桌面 ServerCenter.Tests（含桌面客户端）使用隔离输出 `bin/merge-fix-ssh/net10.0/`、`--no-restore` 构建成功；桌面构建沿用 `-p:UseAppHost=false -p:UsedAvaloniaProducts=`。Helper 0 警告；Server 保留 3 项 CA1416 与测试项目 1 项 NU1900，桌面保留 5 项警告。
+- 实际执行 Server `--file-download-only`、`--text-editor-only`（24 项）及 BP16 定义/模板、BP17 事件、BP22 宿主设置四专项均通过。桌面 ServerCenter.Tests 在自动审批允许临时用户证书密钥/回环 TLS 后完整通过（Linux Secret Service 写入按平台跳过）。Python 包来源 9 项、恢复 7 项、操作记录清除 3 项均通过，Windows `PackageSourceChecks.ps1` 通过；这些使用隔离测试夹具，不执行生产安装。
+- 三语各 **2531 个唯一键**、键集/占位符一致，**2469 个生产 Kotlin 文案引用**和 Android 本地文档链接通过。未重跑完整 lint，BP24-V5 的 lint 缺陷仍保留；真实 SSH、Docker/宿主写入和设备矩阵仍待验。
+- 额外尝试 `--user-execution-only` 被既有前置证书夹具阻止：`CertificateBindingChecks` 创建 `TestHostEnvironment` 前未创建 `certificate-binding` 目录，抛出 DirectoryNotFoundException，未进入目标专项。本次不改这项无关测试夹具，也不将该入口记为通过；用户执行分块读取与文本闭合请求形状分别由上述两个定向专项验证。
+- 服务器中心安装：仍需在真机验证文档提供者 ZIP/PFX/PEM 选择、Linux x64/arm64 与 Windows SSH 安装、官网描述符发布、断线恢复及自定义 TLS。Linux 服务端需预装 Python 3。

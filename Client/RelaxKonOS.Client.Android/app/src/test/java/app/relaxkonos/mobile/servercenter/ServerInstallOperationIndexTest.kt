@@ -52,6 +52,21 @@ class ServerInstallOperationIndexTest {
     }
 
     @Test
+    fun `clearing one reference preserves other operations and accounts`() {
+        val storage = MemoryInstallStorage()
+        val trust = ServerHostKeyTrustStore(InMemoryHostKeyStorage())
+        pin(trust, key)
+        val index = ServerInstallOperationIndex(storage, trust)
+        val removed = index.record(target, key, UUID.randomUUID().toString(), ServerHostPlatform.Linux)
+        val retained = index.record(target, key, UUID.randomUUID().toString(), ServerHostPlatform.Linux)
+        val other = index.record(otherUser, key, UUID.randomUUID().toString(), ServerHostPlatform.Linux)
+        index.forget(removed)
+        val reopened = ServerInstallOperationIndex(storage, trust)
+        assertEquals(listOf(retained), reopened.forTrustedHost(target, key))
+        assertEquals(listOf(other), reopened.forTrustedHost(otherUser, key))
+    }
+
+    @Test
     fun `corrupt references fail closed`() {
         val storage = MemoryInstallStorage()
         val trust = ServerHostKeyTrustStore(InMemoryHostKeyStorage())

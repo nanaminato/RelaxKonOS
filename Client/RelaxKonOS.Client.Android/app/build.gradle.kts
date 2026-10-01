@@ -83,6 +83,7 @@ dependencies {
     implementation("com.microsoft.signalr:signalr:10.0.6")
     // SignalR declares Gson as runtime-only; raw metric events need its JsonElement type at compile time.
     implementation("com.google.code.gson:gson:2.8.9")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // QR pairing: the system scanner handles live camera capture without a CAMERA permission; the
     // bundled ML Kit reader also handles a user-selected local image without waiting for a model download.
@@ -97,6 +98,7 @@ dependencies {
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.bouncycastle:bcpkix-jdk18on:1.80.2")
     // Real JSON parsing for wire contract tests instead of android.jar stubs.
     testImplementation("org.json:json:20250517")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")

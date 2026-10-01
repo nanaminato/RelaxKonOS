@@ -93,6 +93,8 @@ import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.ui.theme.Radius
 import app.relaxkonos.mobile.ui.theme.Spacing
+import app.relaxkonos.mobile.ui.theme.TerminalType
+import app.relaxkonos.mobile.ui.common.appContainer
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.compose.LifecycleStartEffect
@@ -101,6 +103,7 @@ import androidx.lifecycle.compose.LifecycleStartEffect
 class ServerTerminalViewModel(application: Application) : AndroidViewModel(application) {
     private val controller = ServerTerminalController(
         getApplication<RelaxKonApplication>().container.session, viewModelScope,
+        nativeResponses = { getApplication<RelaxKonApplication>().container.appearance.terminalType == TerminalType.Native },
     )
     val state = controller.state
     val presentation = TerminalPresentation()
@@ -176,7 +179,8 @@ fun ServerTerminalScreen(owner: SessionState.Active, modifier: Modifier = Modifi
     ServerTerminalContent(owner, state, { model.connect(owner) }, model::attach, model::send,
         model::resize, model::close, model::closeSessions, modifier,
         presentation = model.presentation, onClearOutput = model::clearOutput,
-        onReadSettings = { model.readSettings(owner) }, onSaveSettings = { model.saveSettings(owner, it) })
+        onReadSettings = { model.readSettings(owner) }, onSaveSettings = { model.saveSettings(owner, it) },
+        terminalType = appContainer().appearance.terminalType)
 }
 
 @Composable
@@ -195,6 +199,7 @@ internal fun ServerTerminalContent(
     onClearOutput: () -> Unit = {},
     onReadSettings: () -> Unit = {},
     onSaveSettings: (app.relaxkonos.mobile.core.net.TerminalSettings) -> Unit = {},
+    terminalType: TerminalType = TerminalType.Native,
 ) {
     val input = presentation.input
     val fontSize = presentation.localFontSize ?: presentation.settings.fontSize
@@ -413,6 +418,11 @@ internal fun ServerTerminalContent(
         TerminalOutputToolbar(presentation, state, matches.size, ::copyOutput, ::reviewClipboard, onClearOutput)
         state.exitCode?.let { Text(stringResource(R.string.terminal_exit_code, it), style = MaterialTheme.typography.bodySmall) }
     }, output = {
+        if (terminalType == TerminalType.Xterm) XtermTerminal(
+            sessionId = state.sessionId.orEmpty(), output = state.rawOutput,
+            fontSize = fontSize.toFloat() * fontScale, connected = state.canInput,
+            onSend = { onSend(it) }, onResize = onResize, modifier = Modifier.fillMaxSize(),
+        ) else
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val width = maxWidth.value
             val height = maxHeight.value

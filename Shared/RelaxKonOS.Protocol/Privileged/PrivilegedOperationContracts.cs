@@ -7,7 +7,7 @@ namespace RelaxKonOS.Protocol.Privileged;
 /// <summary>Versioning and size limits for the local Helper protocol.</summary>
 public static class PrivilegedOperationProtocol
 {
-    public const string Version = "1.2";
+    public const string Version = "1.3";
     public const int MaximumRequestBytes = 16 * 1024 * 1024;
     public const int MaximumFileContentBytes = 12 * 1024 * 1024;
 }
@@ -218,9 +218,9 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("contentBase64")] string? ContentBase64 = null,
     [property: JsonPropertyName("fileAuthorizationSource")] PrivilegedFileAuthorizationSource? FileAuthorizationSource = null,
     [property: JsonPropertyName("unixMode")] int? UnixMode = null,
-    /// <summary>Byte offset inside the staging file an upload chunk is appended at. Only read by
-    /// <see cref="PrivilegedOperationKind.FileUploadChunk"/>; unrelated operations must leave it null.</summary>
+    /// <summary>Byte offset for FileUploadChunk or FileRead; other operations leave it null.</summary>
     [property: JsonPropertyName("offset")] long? Offset = null,
+    [property: JsonPropertyName("readCount")] int? ReadCount = null,
     [property: JsonPropertyName("serviceId")] string? ServiceId = null,
     [property: JsonPropertyName("serviceAction")] PrivilegedServiceAction? ServiceAction = null,
     [property: JsonPropertyName("nginxServiceAction")] NginxSystemServiceAction? NginxServiceAction = null,

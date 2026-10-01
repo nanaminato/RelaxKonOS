@@ -5,6 +5,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -58,6 +61,7 @@ internal data class InstallRecoveryState(
     val loading: Boolean = false,
     val needsVerification: Boolean = false,
     val incomplete: Boolean = false,
+    val clearFailed: Boolean = false,
     val items: List<InstallReceiptItem> = emptyList(),
 )
 
@@ -68,7 +72,51 @@ class ServerInstallRecoveryViewModel(application: Application) : AndroidViewMode
     private var refreshJob: Job? = null
     private var generation = 0
 
-    fun refresh(hostId: String, platform: ServerHostPlatform) {
+    fun clearCompleted(hostId: String) {
+        val current = mutableState.value
+        if (current.hostId != hostId || current.loading) return
+        val references = current.items.filter { it.canClearHistory() }.map { it.reference }
+        if (references.isEmpty()) return
+        mutableState.value = current.copy(loading = true, clearFailed = false)
+        val request = ++generation
+        refreshJob = viewModelScope.launch {
+            val cleared = mutableSetOf<ServerInstallOperationReference>()
+            val secret = container.serverCenter.verifiedPasswordCopy(hostId)
+            if (secret == null) {
+                mutableState.value = current.copy(needsVerification = true, clearFailed = true)
+                return@launch
+            }
+            val credential = SshCredential(SshCredentialKind.Password, secret, null)
+            try {
+                withContext(Dispatchers.IO) {
+                    container.serverCenterConnections.connect(hostId, credential, System.currentTimeMillis()).use { session ->
+                        val key = requireNotNull(session.observedHostKey)
+                        check(references.all { it.hostKeyAlgorithm == key.algorithm && it.hostKeyFingerprint == key.fingerprint })
+                        val client = ServerCenterDeploymentClient(session.sshTransport)
+                        val platform = references.first().platform
+                        val lookup = client.stageLookup(platform, ServerCenterUploadAsset.launcher(getApplication<Application>().assets, platform))
+                        references.forEach { reference ->
+                            client.clearOperation(lookup, reference.operationId)
+                            container.serverInstallOperations.forget(reference)
+                            cleared.add(reference)
+                        }
+                    }
+                }
+                if (request == generation) mutableState.value = current.copy(
+                    items = current.items.filterNot { it.reference in cleared }, clearFailed = false)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (request == generation) mutableState.value = current.copy(
+                    items = current.items.filterNot { it.reference in cleared }, clearFailed = true)
+            } finally {
+                credential.clear()
+                secret.fill('\u0000')
+            }
+        }
+    }
+
+    fun refresh(hostId: String, platform: ServerHostPlatform? = null) {
         refreshJob?.cancel()
         val request = ++generation
         mutableState.value = InstallRecoveryState(hostId = hostId, platform = platform, loading = true)
@@ -97,10 +145,11 @@ class ServerInstallRecoveryViewModel(application: Application) : AndroidViewMode
         refreshJob = null
     }
 
-    private suspend fun readReceipts(hostId: String, platform: ServerHostPlatform, secret: CharArray): InstallRecoveryState {
+    private suspend fun readReceipts(hostId: String, knownPlatform: ServerHostPlatform?, secret: CharArray): InstallRecoveryState {
         val credential = SshCredential(SshCredentialKind.Password, secret, null)
         try {
             return container.serverCenterConnections.connect(hostId, credential, System.currentTimeMillis()).use { session ->
+                val platform = knownPlatform ?: if (session.sshTransport.run("uname -s").let { it.succeeded && it.standardOutput.trim() == "Linux" }) ServerHostPlatform.Linux else ServerHostPlatform.Windows
                 val key = requireNotNull(session.observedHostKey) { "A verified SSH host key is required." }
                 val index = container.serverInstallOperations
                 val local = index.forTrustedHost(session.target, key).filter { it.platform == platform }
@@ -118,7 +167,7 @@ class ServerInstallRecoveryViewModel(application: Application) : AndroidViewMode
                 }
                 val localById = local.associateBy { it.operationId }
                 val allIds = (remoteIds + local.map { it.operationId }).distinct()
-                if (remoteIds.size == 20 || allIds.size > 100) incomplete = true
+                if (allIds.size > 100) incomplete = true
                 val ids = allIds.take(100)
                 val items = ids.map { id ->
                     val reference = localById[id] ?: try {
@@ -153,32 +202,44 @@ class ServerInstallRecoveryViewModel(application: Application) : AndroidViewMode
 }
 
 @Composable
-internal fun ServerInstallRecoveryPanel(hostId: String) {
+internal fun ServerInstallRecoveryPanel(hostId: String, knownPlatform: ServerHostPlatform? = null) {
     val viewModel: ServerInstallRecoveryViewModel = viewModel()
     val state by viewModel.state.collectAsState()
-    var platformName by rememberSaveable(hostId) { mutableStateOf("") }
-    val platform = ServerHostPlatform.entries.firstOrNull { it.name == platformName }
-    LaunchedEffect(hostId, platform) { if (platform != null) viewModel.refresh(hostId, platform) }
+    val platform = knownPlatform ?: state.platform
+    var selectedOperationId by rememberSaveable(hostId) { mutableStateOf<String?>(null) }
+    var confirmClear by rememberSaveable(hostId) { mutableStateOf(false) }
+    LaunchedEffect(hostId, knownPlatform) { viewModel.refresh(hostId, knownPlatform) }
     DisposableEffect(hostId) { onDispose { viewModel.stop() } }
 
     HorizontalDivider()
     Text(stringResource(R.string.ssh_deploy_history_title), style = MaterialTheme.typography.titleMedium)
     Text(stringResource(R.string.ssh_deploy_history_note), style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant)
-    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-        FilterChip(platform == ServerHostPlatform.Linux, { platformName = ServerHostPlatform.Linux.name },
-            { Text(stringResource(R.string.ssh_deploy_host_linux)) })
-        FilterChip(platform == ServerHostPlatform.Windows, { platformName = ServerHostPlatform.Windows.name },
-            { Text(stringResource(R.string.ssh_deploy_host_windows)) })
-    }
-    if (platform != null) {
+    if (platform != null) Text(platform.name, style = MaterialTheme.typography.bodySmall)
+    Row {
         TextButton(onClick = { viewModel.refresh(hostId, platform) }, enabled = !state.loading) {
             Text(stringResource(R.string.common_refresh))
         }
+        TextButton(onClick = { confirmClear = true }, enabled = !state.loading && state.hostId == hostId &&
+            state.items.any { it.canClearHistory() }) {
+            Text(stringResource(R.string.server_operation_clear))
+        }
     }
+    if (confirmClear) AlertDialog(
+        onDismissRequest = { confirmClear = false },
+        title = { Text(stringResource(R.string.server_operation_clear)) },
+        text = { Text(stringResource(R.string.server_operation_clear_note)) },
+        confirmButton = {
+            TextButton(onClick = { confirmClear = false; selectedOperationId = null; viewModel.clearCompleted(hostId) }) {
+                Text(stringResource(R.string.server_operation_clear))
+            }
+        },
+        dismissButton = { TextButton(onClick = { confirmClear = false }) { Text(stringResource(R.string.common_cancel)) } },
+    )
     if (state.loading) CircularProgressIndicator()
     if (state.needsVerification) Text(stringResource(R.string.ssh_deploy_verify_again), color = MaterialTheme.colorScheme.error)
     if (state.incomplete) Text(stringResource(R.string.ssh_deploy_history_incomplete), color = MaterialTheme.colorScheme.error)
+    if (state.clearFailed) Text(stringResource(R.string.server_operation_clear_failed), color = MaterialTheme.colorScheme.error)
     if (platform != null && !state.loading && !state.needsVerification && !state.incomplete && state.items.isEmpty()) {
         Text(stringResource(R.string.ssh_deploy_history_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -192,6 +253,44 @@ internal fun ServerInstallRecoveryPanel(hostId: String) {
                 Text(stringResource(R.string.operations_checked, receipt.timestampUtc), style = MaterialTheme.typography.bodySmall)
                 receipt.problemCode?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
+            TextButton(onClick = { selectedOperationId = item.reference.operationId }) {
+                Text(stringResource(R.string.server_operation_details))
+            }
+        }
+    }
+    if (state.hostId == hostId && state.platform == platform) {
+        state.items.firstOrNull { it.reference.operationId == selectedOperationId }?.let { item ->
+            AlertDialog(
+                onDismissRequest = { selectedOperationId = null },
+                title = { Text(stringResource(R.string.server_operation_details)) },
+                confirmButton = {
+                    TextButton(onClick = { selectedOperationId = null }) {
+                        Text(stringResource(R.string.common_close))
+                    }
+                },
+                text = {
+                androidx.compose.foundation.text.selection.SelectionContainer {
+                    Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                        Text(item.reference.operationId, style = MaterialTheme.typography.bodySmall)
+                        Text(installReceiptStatus(item))
+                        item.receipt?.let { receipt ->
+                            Text("${receipt.kind} · ${receipt.phase} · ${receipt.state}")
+                            Text(stringResource(R.string.operations_checked, receipt.timestampUtc))
+                            receipt.problemCode?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                            Text(receipt.safeMessage.orEmpty())
+                            Text("${receipt.startedAtUtc.orEmpty()} → ${receipt.completedAtUtc.orEmpty()}")
+                            val result = receipt.result
+                            val snapshot = receipt.snapshot
+                            Text(listOfNotNull(receipt.installationId, result?.mode?.name ?: snapshot?.mode?.name,
+                                result?.version ?: snapshot?.version, result?.listenUrl ?: snapshot?.listenUrl,
+                                result?.installRoot ?: snapshot?.installRoot, result?.dataRoot ?: snapshot?.dataRoot).joinToString("\n"))
+                        }
+                        OperationLog(hostId, item.reference)
+                    }
+                }
+                },
+            )
         }
     }
 }
@@ -207,5 +306,39 @@ private fun installReceiptStatus(item: InstallReceiptItem): String = when (item.
         ServerDeploymentState.Cancelled -> stringResource(R.string.operations_cancelled)
         ServerDeploymentState.Interrupted -> stringResource(R.string.operations_interrupted)
         null -> stringResource(R.string.operations_unverified)
+    }
+}
+
+internal fun InstallReceiptItem.canClearHistory(): Boolean = check == InstallReceiptCheck.Verified &&
+    receipt?.state in setOf(ServerDeploymentState.Succeeded, ServerDeploymentState.Failed,
+        ServerDeploymentState.Cancelled, ServerDeploymentState.Interrupted)
+
+@Composable
+private fun OperationLog(hostId: String, reference: ServerInstallOperationReference) {
+    val container = (androidx.compose.ui.platform.LocalContext.current.applicationContext as RelaxKonApplication).container
+    val assets = androidx.compose.ui.platform.LocalContext.current.assets
+    var log by androidx.compose.runtime.remember(reference.operationId) { mutableStateOf<String?>(null) }
+    var failed by androidx.compose.runtime.remember(reference.operationId) { mutableStateOf(false) }
+    LaunchedEffect(hostId, reference.operationId) {
+        val secret = container.serverCenter.verifiedPasswordCopy(hostId)
+        if (secret == null) { failed = true; return@LaunchedEffect }
+        val credential = SshCredential(SshCredentialKind.Password, secret, null)
+        try {
+            log = withContext(Dispatchers.IO) {
+                container.serverCenterConnections.connect(hostId, credential, System.currentTimeMillis()).use { session ->
+                    val client = ServerCenterDeploymentClient(session.sshTransport)
+                    val lookup = client.stageLookup(reference.platform, ServerCenterUploadAsset.launcher(assets, reference.platform))
+                    client.diagnostics(lookup, reference.operationId)
+                }
+            }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { failed = true }
+        finally { credential.clear(); secret.fill('\u0000') }
+    }
+    when {
+        failed -> Text(stringResource(R.string.operations_unverified), color = MaterialTheme.colorScheme.error)
+        log == null -> CircularProgressIndicator()
+        log!!.isEmpty() -> Text(stringResource(R.string.server_operation_no_log))
+        else -> Text(log!!, style = MaterialTheme.typography.bodySmall)
     }
 }

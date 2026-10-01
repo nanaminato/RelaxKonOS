@@ -26,6 +26,15 @@ public partial class ServerCenterViewModel : ObservableObject
     private readonly LoginLocalizationService _localization;
     private ServerCenterHostKeyObservation? _pendingHostKey;
     private string? _selectedPlatformHostId;
+    private bool _refreshingHostSelection;
+    private readonly Dictionary<string, ServerHostSnapshotDto> _installationSnapshots = new();
+    private readonly Dictionary<string, ServerHostProbeDto> _hostProbes = new();
+    public string InstallationInfoTitle => T("server_center.installation.title", "Installed server details");
+    public string InstallationInfoNote => T("server_center.installation.note", "These facts reflect the SSH verification time. Use host preflight to refresh. Fields not returned by the host are shown as not provided.");
+    public IReadOnlyList<ServerInstallationDetail> InstallationDetails => SelectedHost is { } host
+        ? ServerInstallationDetails.Build(host, _installationSnapshots.GetValueOrDefault(host.HostId),
+            _hostProbes.GetValueOrDefault(host.HostId), T)
+        : Array.Empty<ServerInstallationDetail>();
 
     public ServerCenterViewModel(
         IHostTargetStore targets,
@@ -69,15 +78,34 @@ public partial class ServerCenterViewModel : ObservableObject
     [ObservableProperty] private string _statusMessage = string.Empty;
     [ObservableProperty] private string _errorMessage = string.Empty;
     [ObservableProperty] private bool _isBusy;
+    [ObservableProperty] private bool _installationWizardOpen;
+    [ObservableProperty] private bool _hasPreviousVersion;
+    [ObservableProperty] private bool _hasIncompleteInstallation;
+    [ObservableProperty] private string _maintenanceSudoPassword = string.Empty;
+    public bool HasManagedInstallation => SelectedHost?.LastVerified?.Installed == true;
+    public string UpdateText => T("server_center.update", "Update RelaxKonOS");
+    public string RecoverText => T("server_center.recover", "Recover installation");
+    public string IncompleteInstallationText => T("server_center.incomplete_installation", "Services exist but the managed installation record is missing. Recover the installation before updating or uninstalling.");
+    public string MaintenanceSudoPasswordText => T("server_center.wizard.sudo_password", "sudo password (leave blank to use the SSH password)");
+    [ObservableProperty] private string _operationDiagnostics = string.Empty;
+    public bool ShowWorkspaceProgress => IsBusy && !InstallationWizardOpen;
+    public string OperationDetailsText => SelectedOperation is { } operation
+        ? $"{operation.OperationId}\n{operation.Kind} · {operation.State} · {operation.Phase}\n{operation.ProblemCode}\n{operation.SafeMessage}\n{OperationDiagnostics}"
+        : string.Empty;
     [ObservableProperty] private string _sshPassword = string.Empty;
     [ObservableProperty] private string _hostKeyFingerprint = string.Empty;
     [ObservableProperty] private bool _needsHostKeyConfirmation;
+
+    /// <summary>本次核对是「替换已固定的密钥」，而不是「首次固定」。</summary>
+    [ObservableProperty] private bool _hostKeyReplacesPinnedKey;
+
     [ObservableProperty] private bool _hostKeyChanged;
+    [ObservableProperty] private string _previousHostKeyFingerprint = string.Empty;
+    [ObservableProperty] private string _previousHostKeyConfirmedText = string.Empty;
     [ObservableProperty] private HostPlatformOption? _selectedPlatform;
     [ObservableProperty] private string _verifiedStateText = string.Empty;
     [ObservableProperty] private string _lastProbeText = string.Empty;
     [ObservableProperty] private bool _deleteServerData;
-    [ObservableProperty] private string _uninstallNameConfirmation = string.Empty;
     [ObservableProperty] private ServerCenterOperationRecord? _selectedOperation;
 
     /// <summary>Workspace-owned modal presentation; the view model owns the deployment action only.</summary>
@@ -105,9 +133,20 @@ public partial class ServerCenterViewModel : ObservableObject
     public string SaveNewHostPasswordText => T("server_center.save_new_host_password", "Save this password securely on this device");
     public string DeploymentPasswordHint => T("server_center.deployment_password", "SSH password (leave blank to use the saved password)");
     public string SelectedTargetLabel => T("server_center.selected_target", "Server and user");
-    public string ConfirmHostKeyText => T("server_center.confirm_host_key", "I verified this fingerprint");
-    public string HostKeyReviewText => T("server_center.host_key_review", "Verify this SSH host-key fingerprint with the host administrator before trusting it:");
-    public string HostKeyChangedText => T("server_center.host_key_changed", "The SSH host key changed. Deployment is blocked until an administrator confirms it.");
+    // 首次固定与替换已固定的密钥共用一次核对，只有文案与是否需要并排展示旧指纹不同
+    // （判定见 SshHostKeyReviewRules）。密钥变更曾经只是一行红字、没有任何出口——而 DHCP 地址漂移、
+    // 克隆虚拟机或重装系统都会让指纹变化，用户必须有办法核对并接受新指纹后再继续。
+    public string ConfirmHostKeyText => HostKeyReplacesPinnedKey
+        ? T("server_center.host_key_replace_confirm", "Accept the new fingerprint")
+        : T("server_center.confirm_host_key", "I verified this fingerprint");
+    public string HostKeyReviewTitle => HostKeyReplacesPinnedKey
+        ? T("server_center.host_key_replace_title", "SSH host key changed")
+        : T("server_center.host_key_review_title", "Confirm SSH host key");
+    public string HostKeyReviewText => HostKeyReplacesPinnedKey
+        ? T("server_center.host_key_replace_message", "The fingerprint this host presented no longer matches the one saved on this device. A host rebuilt with new keys and another machine taking over this address under DHCP look exactly the same here. Accepting replaces the saved fingerprint; it is never replaced silently.")
+        : T("server_center.host_key_review", "Verify this SSH host-key fingerprint with the host administrator before trusting it:");
+    public string PinnedFingerprintLabel => T("server_center.pinned_fingerprint", "Fingerprint saved on this device");
+    public string ObservedFingerprintLabel => T("server_center.observed_fingerprint", "Fingerprint this handshake presented");
     public string PlatformLabel => T("server_center.host_platform", "Host platform");
     public string ProbeText => T("server_center.probe", "Run host preflight");
     public string ProbeHelpText => T("server_center.probe_help", "Preflight uploads the fixed deployment launcher, reads OS, architecture, permissions and current installation status, then saves a timestamped SSH verification.");
@@ -118,9 +157,9 @@ public partial class ServerCenterViewModel : ObservableObject
     public string RollbackText => T("server_center.rollback", "Restore previous version");
     public string UninstallText => T("server_center.uninstall", "Uninstall server");
     public string DeleteServerDataText => T("server_center.delete_data", "Also permanently delete managed data");
-    public string UninstallNameLabel => T("server_center.uninstall_name", "Type the server name to delete data");
     public string OperationHistoryText => T("server_center.operation_history", "Operation history");
     public string LoadOperationHistoryText => T("server_center.load_operation_history", "Load operation history");
+    public string ClearOperationHistoryText => T("server_center.clear_operation_history", "Clear completed records");
     public string RefreshOperationText => T("server_center.refresh_operation", "Refresh selected operation from host");
     public bool HasVerifiedState => !string.IsNullOrWhiteSpace(VerifiedStateText);
     public bool HasLastProbe => !string.IsNullOrWhiteSpace(LastProbeText);
@@ -245,13 +284,19 @@ public partial class ServerCenterViewModel : ObservableObject
         }
     }
 
+    [RelayCommand(CanExecute = nameof(CanRecover))]
+    private Task RecoverAsync(CancellationToken cancellationToken = default) =>
+        PerformInstalledOperationAsync(ServerDeploymentKind.Repair, ServerDataRetention.Retain, cancellationToken, recovering: true);
+
+    private bool CanRecover() => CanProbeHost() && HasIncompleteInstallation && SelectedPlatform?.Platform == HostPlatformKind.Linux;
+
     private bool CanRemoveHost() => !IsBusy && SelectedHost is not null;
 
     [RelayCommand(CanExecute = nameof(CanMaintain))]
     private Task RepairAsync(CancellationToken cancellationToken = default) =>
         PerformInstalledOperationAsync(ServerDeploymentKind.Repair, ServerDataRetention.Retain, cancellationToken);
 
-    [RelayCommand(CanExecute = nameof(CanMaintain))]
+    [RelayCommand(CanExecute = nameof(CanRollback))]
     private Task RollbackAsync(CancellationToken cancellationToken = default) =>
         PerformInstalledOperationAsync(ServerDeploymentKind.Rollback, ServerDataRetention.Retain, cancellationToken);
 
@@ -283,6 +328,30 @@ public partial class ServerCenterViewModel : ObservableObject
         }
     }
 
+    [RelayCommand(CanExecute = nameof(CanLoadOperationHistory))]
+    private async Task ClearOperationHistoryAsync(CancellationToken cancellationToken = default)
+    {
+        var target = SelectedHost;
+        if (target is null) return;
+        IsBusy = true;
+        ErrorMessage = string.Empty;
+        try
+        {
+            await _operationJournal.ClearCompletedAsync(target.HostId, cancellationToken).ConfigureAwait(true);
+            if (SelectedHost?.HostId == target.HostId)
+            {
+                SelectedOperation = null;
+                await ReloadOperationHistoryAsync(target.HostId, cancellationToken).ConfigureAwait(true);
+            }
+            StatusMessage = T("server_center.history_cleared", "Completed local records were cleared; unfinished operations and server receipts were retained.");
+        }
+        catch (Exception)
+        {
+            ErrorMessage = T("server_center.history_clear_failed", "Unable to clear local operation records.");
+        }
+        finally { IsBusy = false; }
+    }
+
     [RelayCommand(CanExecute = nameof(CanRefreshOperation))]
     private async Task RefreshOperationAsync(CancellationToken cancellationToken = default)
     {
@@ -298,7 +367,7 @@ public partial class ServerCenterViewModel : ObservableObject
             var tools = await _releaseSource.ResolveToolsAsync(platform.Platform, cancellationToken).ConfigureAwait(true);
             if (tools is null)
             {
-                ErrorMessage = T("server_center.tools_unavailable", "Deployment tools for this platform are unavailable in this client.");
+                ErrorMessage = T("server_center.install_script_unavailable", "The bundled installation script is unavailable. Rebuild or reinstall this client.");
                 return;
             }
             var credential = await ResolveCredentialAsync(target, cancellationToken).ConfigureAwait(true);
@@ -309,11 +378,14 @@ public partial class ServerCenterViewModel : ObservableObject
                 DateTimeOffset.UtcNow,
                 cancellationToken).ConfigureAwait(true);
             await using var launcher = tools.OpenLauncher();
-            await using var verifier = tools.OpenVerifier();
+
             var client = new ServerCenterDeploymentClient(session.Transport);
-            var staged = await client.StageQueryAsync(record.OperationId, platform.Platform, launcher, verifier, cancellationToken)
+            var staged = await client.StageQueryAsync(record.OperationId, platform.Platform, launcher, cancellationToken)
                 .ConfigureAwait(true);
             var receipt = await client.QueryAsync(staged, cancellationToken).ConfigureAwait(true);
+            var diagnostics = await client.ReadDiagnosticsAsync(staged, cancellationToken).ConfigureAwait(true);
+            if (credential is ServerCenterSshCredential.Password password && !string.IsNullOrEmpty(password.Secret))
+                diagnostics = diagnostics.Replace(password.Secret, "[redacted]", StringComparison.Ordinal);
             await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(target.HostId, receipt), cancellationToken)
                 .ConfigureAwait(true);
 
@@ -321,13 +393,14 @@ public partial class ServerCenterViewModel : ObservableObject
                 await ApplySnapshotAsync(target, receipt.Snapshot, cancellationToken).ConfigureAwait(true);
             StatusMessage = T("server_center.operation_refreshed", "The selected operation receipt was refreshed from the host.");
             await ReloadOperationHistoryAsync(target.HostId, cancellationToken).ConfigureAwait(true);
+            SelectedOperation = Operations.FirstOrDefault(item => item.OperationId == record.OperationId);
+            OperationDiagnostics = string.IsNullOrWhiteSpace(diagnostics)
+                ? T("server_center.diagnostics_empty", "The host returned no deployment log. This older operation may have no saved diagnostics; retry installation with the updated client.")
+                : diagnostics;
         }
         catch (ServerCenterHostKeyRejectedException rejected)
         {
-            _pendingHostKey = rejected.Observation;
-            HostKeyFingerprint = rejected.Observation.GroupedFingerprint;
-            NeedsHostKeyConfirmation = rejected.Trust == ServerHostKeyTrust.Unknown;
-            HostKeyChanged = rejected.Trust == ServerHostKeyTrust.Changed;
+            await ApplyHostKeyRejectionAsync(rejected, cancellationToken).ConfigureAwait(true);
         }
         catch (OperationCanceledException)
         {
@@ -336,6 +409,7 @@ public partial class ServerCenterViewModel : ObservableObject
         catch (Exception)
         {
             ErrorMessage = T("server_center.operation_refresh_failed", "The remote operation receipt could not be refreshed. Check SSH access and try again.");
+            OperationDiagnostics = T("server_center.diagnostics_failed", "Could not read the host deployment log. Check SSH access and refresh this operation again.");
         }
         finally
         {
@@ -347,13 +421,11 @@ public partial class ServerCenterViewModel : ObservableObject
     private async Task PerformInstalledOperationAsync(
         ServerDeploymentKind kind,
         ServerDataRetention retention,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool recovering = false)
     {
         var target = SelectedHost;
         var platform = SelectedPlatform;
         if (target is null || platform is null) return;
-        if (retention == ServerDataRetention.Delete &&
-            !string.Equals(UninstallNameConfirmation.Trim(), target.DisplayName, StringComparison.Ordinal)) return;
 
         IsBusy = true;
         ErrorMessage = string.Empty;
@@ -363,7 +435,7 @@ public partial class ServerCenterViewModel : ObservableObject
             var tools = await _releaseSource.ResolveToolsAsync(platform.Platform, cancellationToken).ConfigureAwait(true);
             if (tools is null)
             {
-                ErrorMessage = T("server_center.tools_unavailable", "Deployment tools for this platform are unavailable in this client.");
+                ErrorMessage = T("server_center.install_script_unavailable", "The bundled installation script is unavailable. Rebuild or reinstall this client.");
                 return;
             }
 
@@ -376,14 +448,22 @@ public partial class ServerCenterViewModel : ObservableObject
                 cancellationToken).ConfigureAwait(true);
             var probeReceipt = await ExecuteReadOnlyAsync(session, tools, ServerDeploymentKind.Probe, null, cancellationToken).ConfigureAwait(true);
             var probe = probeReceipt.Probe;
+            var sudoPassword = platform.Platform == HostPlatformKind.Linux && probe?.Elevated == false && probe.SudoAvailable && probe.ExistingMode != ServerInstallMode.LinuxUser
+                ? (!string.IsNullOrEmpty(MaintenanceSudoPassword) ? MaintenanceSudoPassword : (credential as ServerCenterSshCredential.Password)?.Secret ?? "") : null;
+            if (sudoPassword is not null)
+            {
+                probeReceipt = await ExecuteReadOnlyAsync(session, tools, ServerDeploymentKind.Probe, null, cancellationToken, sudoPassword).ConfigureAwait(true);
+                probe = probeReceipt.Probe;
+            }
             if (probe is null || !probe.OsSupported || !PlatformMatches(platform.Platform, probe.HostPlatform) ||
-                !probe.ExistingInstalled || probe.ExistingMode is null ||
-                !ServerInstallationId.IsValid(probe.ExistingInstallationId))
+                (recovering ? probe.ExistingInstalled || platform.Platform != HostPlatformKind.Linux :
+                !probe.ExistingInstalled || probe.ExistingMode is null || !ServerInstallationId.IsValid(probe.ExistingInstallationId)))
             {
                 ErrorMessage = T("server_center.maintenance_preflight_failed", "The host no longer reports a supported managed installation. This operation is blocked.");
                 return;
             }
 
+            var operationMode = recovering ? ServerInstallMode.LinuxSystem : probe.ExistingMode!.Value;
             var request = new ServerDeploymentRequest(
                 ServerDeploymentProtocol.Version,
                 Guid.NewGuid(),
@@ -392,7 +472,7 @@ public partial class ServerCenterViewModel : ObservableObject
                     ServerPackageSourceKind.OfficialStable,
                     ServerNetworkProfile.Loopback,
                     retention,
-                    probe.ExistingMode,
+                    operationMode,
                     null,
                     null,
                     null,
@@ -400,12 +480,12 @@ public partial class ServerCenterViewModel : ObservableObject
                     probe.ExistingInstallationId,
                     null,
                     Confirmed: true));
-            var receipt = await ExecuteFixedOperationAsync(session, tools, request, cancellationToken).ConfigureAwait(true);
+            var receipt = await ExecuteFixedOperationAsync(session, tools, request, cancellationToken, sudoPassword).ConfigureAwait(true);
 
             // Read the separate status receipt even after uninstall. The install identity is retained
             // locally only as a stable association for preserved data; it is never treated as live API health.
             var status = await ExecuteReadOnlyAsync(
-                session, tools, ServerDeploymentKind.Status, StatusOptions(probe.ExistingMode.Value), cancellationToken).ConfigureAwait(true);
+                session, tools, ServerDeploymentKind.Status, StatusOptions(operationMode), cancellationToken, sudoPassword).ConfigureAwait(true);
             if (status.Snapshot is null)
             {
                 ErrorMessage = T("server_center.status_missing", "The deployment finished, but no authoritative SSH-side status receipt was returned.");
@@ -413,7 +493,22 @@ public partial class ServerCenterViewModel : ObservableObject
             }
 
             await ApplySnapshotAsync(target, status.Snapshot, cancellationToken).ConfigureAwait(true);
+            HasIncompleteInstallation = false;
             LastProbeText = FormatProbe(probe);
+            if (receipt.State != ServerDeploymentState.Succeeded)
+            {
+                ErrorMessage = string.Format(
+                    T("server_center.maintenance_receipt_failed", "The operation did not succeed: {0}"),
+                    receipt.SafeMessage ?? receipt.ProblemCode ?? receipt.State.ToString());
+                return;
+            }
+            if (status.State != ServerDeploymentState.Succeeded ||
+                (kind == ServerDeploymentKind.Uninstall ? status.Snapshot.Installed :
+                    !status.Snapshot.Installed || !status.Snapshot.Healthy))
+            {
+                ErrorMessage = T("server_center.maintenance_verification_failed", "The host state after the operation does not confirm success. Check the operation record.");
+                return;
+            }
             StatusMessage = kind switch
             {
                 ServerDeploymentKind.Repair => T("server_center.repair_succeeded", "The current installation was repaired and verified through SSH."),
@@ -425,10 +520,7 @@ public partial class ServerCenterViewModel : ObservableObject
         }
         catch (ServerCenterHostKeyRejectedException rejected)
         {
-            _pendingHostKey = rejected.Observation;
-            HostKeyFingerprint = rejected.Observation.GroupedFingerprint;
-            NeedsHostKeyConfirmation = rejected.Trust == ServerHostKeyTrust.Unknown;
-            HostKeyChanged = rejected.Trust == ServerHostKeyTrust.Changed;
+            await ApplyHostKeyRejectionAsync(rejected, cancellationToken).ConfigureAwait(true);
         }
         catch (OperationCanceledException)
         {
@@ -442,13 +534,21 @@ public partial class ServerCenterViewModel : ObservableObject
         {
             SshPassword = string.Empty;
             DeleteServerData = false;
-            UninstallNameConfirmation = string.Empty;
             IsBusy = false;
         }
     }
 
     [RelayCommand(CanExecute = nameof(CanOpenInstallationWizard))]
-    private Task OpenInstallationWizardAsync() => ShowInstallationWizardAsync?.Invoke() ?? Task.CompletedTask;
+    private async Task OpenInstallationWizardAsync()
+    {
+        InstallationWizardOpen = true;
+        try { if (ShowInstallationWizardAsync is not null) await ShowInstallationWizardAsync(); }
+        finally { InstallationWizardOpen = false; }
+    }
+    partial void OnInstallationWizardOpenChanged(bool value) => OnPropertyChanged(nameof(ShowWorkspaceProgress));
+    [RelayCommand(CanExecute = nameof(CanMaintain))]
+    private Task UpdateAsync() => OpenInstallationWizardAsync();
+    partial void OnOperationDiagnosticsChanged(string value) => OnPropertyChanged(nameof(OperationDetailsText));
 
     public async Task<bool> DeployAsync(
         ServerInstallationOptions installation, CancellationToken cancellationToken = default)
@@ -460,14 +560,14 @@ public partial class ServerCenterViewModel : ObservableObject
         IsBusy = true;
         ErrorMessage = string.Empty;
         StatusMessage = string.Empty;
-        string? downloadedRemoteBundle = null;
         string? convertedCertificate = null;
+        var deploymentStage = "SSH";
         try
         {
             var tools = await _releaseSource.ResolveToolsAsync(platform.Platform, cancellationToken).ConfigureAwait(true);
             if (tools is null)
             {
-                ErrorMessage = T("server_center.tools_unavailable", "Deployment tools for this platform are unavailable in this client.");
+                ErrorMessage = T("server_center.install_script_unavailable", "The bundled installation script is unavailable. Rebuild or reinstall this client.");
                 return false;
             }
 
@@ -480,13 +580,32 @@ public partial class ServerCenterViewModel : ObservableObject
                 cancellationToken).ConfigureAwait(true);
             var probeReceipt = await ExecuteReadOnlyAsync(session, tools, ServerDeploymentKind.Probe, null, cancellationToken).ConfigureAwait(true);
             var probe = probeReceipt.Probe;
-            if (probe is null || !probe.OsSupported || probe.RuntimeIdentifier is null ||
-                !PlatformMatches(platform.Platform, probe.HostPlatform))
+            await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(target.HostId, probeReceipt), cancellationToken)
+                .ConfigureAwait(true);
+            if (probe is null)
             {
-                ErrorMessage = T("server_center.unsupported_host", "The selected platform does not match a supported target reported by the host preflight.");
+                ErrorMessage = probeReceipt.SafeMessage ?? T("server_center.probe_missing", "The host preflight returned no system information. Check the operation record.");
+                return false;
+            }
+            LastProbeText = FormatProbe(probe);
+            if (!PlatformMatches(platform.Platform, probe.HostPlatform))
+            {
+                ErrorMessage = string.Format(T("server_center.platform_mismatch", "Selected platform: {0}; SSH host platform: {1}. Choose the host platform."), platform.Platform, probe.HostPlatform);
+                return false;
+            }
+            if (probe.RuntimeIdentifier is null)
+            {
+                ErrorMessage = string.Format(T("server_center.architecture_unsupported", "The host CPU architecture {0} is unsupported. Supported architectures: x86_64 and arm64."), probe.Architecture);
+                return false;
+            }
+            if (!probe.OsSupported)
+            {
+                ErrorMessage = string.Format(T("server_center.os_unsupported", "The host reports {0} {1} ({2}). Supported Linux systems: Debian 12, Ubuntu 22.04/24.04/26.04."),
+                    probe.OsId ?? "?", probe.OsVersion ?? "?", probe.RuntimeIdentifier);
                 return false;
             }
 
+            var runtime = probe.RuntimeIdentifier.Value;
             var mode = installation.Mode ?? RecommendedMode(platform.Platform, probe);
             if (mode is null)
             {
@@ -497,6 +616,23 @@ public partial class ServerCenterViewModel : ObservableObject
             {
                 ErrorMessage = T("server_center.install_mode_unavailable", "The selected installation mode is not available for this SSH session.");
                 return false;
+            }
+            var sudoPassword = platform.Platform == HostPlatformKind.Linux && mode == ServerInstallMode.LinuxSystem && !probe.Elevated
+                ? (!string.IsNullOrEmpty(installation.SudoPassword) ? installation.SudoPassword
+                    : (credential as ServerCenterSshCredential.Password)?.Secret ?? string.Empty)
+                : null;
+            if (sudoPassword is not null)
+            {
+                deploymentStage = "sudo";
+                probeReceipt = await ExecuteReadOnlyAsync(session, tools, ServerDeploymentKind.Probe, null,
+                    cancellationToken, sudoPassword).ConfigureAwait(true);
+                if (probeReceipt.State != ServerDeploymentState.Succeeded || probeReceipt.Probe is null ||
+                    probeReceipt.Probe.RuntimeIdentifier != runtime || !probeReceipt.Probe.OsSupported)
+                {
+                    ErrorMessage = probeReceipt.SafeMessage ?? T("server_center.sudo_failed", "sudo authentication failed. Check the sudo password and account permissions.");
+                    return false;
+                }
+                probe = probeReceipt.Probe;
             }
             if (installation.CertificateMode == ServerCertificateMode.Custom && mode == ServerInstallMode.LinuxUser)
             {
@@ -511,39 +647,23 @@ public partial class ServerCenterViewModel : ObservableObject
                 return false;
             }
 
-            if (installation.Source == ServerPackageSourceKind.RemoteBundle)
+            ServerCenterReleaseAssets? release = null;
+            if (installation.Source == ServerPackageSourceKind.LocalBundle)
             {
-                if (string.IsNullOrWhiteSpace(installation.RemoteBundlePath) ||
-                    !installation.RemoteBundlePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                if (!string.IsNullOrWhiteSpace(installation.LocalBundlePath))
+                    release = await _releaseSource.ResolveLocalBundleAsync(platform.Platform,
+                        runtime, mode.Value, installation.LocalBundlePath, cancellationToken).ConfigureAwait(true);
+                if (release is null)
                 {
-                    ErrorMessage = T("server_center.remote_bundle_unavailable", "Choose a .zip release bundle from this SSH server.");
+                    ErrorMessage = T("server_center.local_bundle_unavailable", "Choose an available ZIP release bundle.");
                     return false;
                 }
-
-                downloadedRemoteBundle = Path.Combine(Path.GetTempPath(),
-                    "relaxkonos-server-release-" + Guid.NewGuid().ToString("N") + ".zip");
-                await using (var output = new FileStream(downloadedRemoteBundle, FileMode.CreateNew,
-                    FileAccess.Write, FileShare.None))
-                    await session.Transport.DownloadAsync(installation.RemoteBundlePath, output, cancellationToken).ConfigureAwait(true);
             }
-
-            var release = installation.Source switch
+            if (installation.Source == ServerPackageSourceKind.RemoteBundle &&
+                (string.IsNullOrWhiteSpace(installation.RemoteBundlePath) ||
+                 !installation.RemoteBundlePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)))
             {
-                ServerPackageSourceKind.OfficialStable => await _releaseSource.ResolveReleaseAsync(
-                    platform.Platform, probe.RuntimeIdentifier.Value, mode.Value, cancellationToken).ConfigureAwait(true),
-                ServerPackageSourceKind.LocalBundle when !string.IsNullOrWhiteSpace(installation.LocalBundlePath) =>
-                    await _releaseSource.ResolveLocalBundleAsync(
-                        platform.Platform, probe.RuntimeIdentifier.Value, mode.Value, installation.LocalBundlePath, cancellationToken).ConfigureAwait(true),
-                ServerPackageSourceKind.RemoteBundle when downloadedRemoteBundle is not null =>
-                    await _releaseSource.ResolveLocalBundleAsync(
-                        platform.Platform, probe.RuntimeIdentifier.Value, mode.Value, downloadedRemoteBundle, cancellationToken).ConfigureAwait(true),
-                _ => null
-            };
-            if (release is null)
-            {
-                ErrorMessage = installation.Source is ServerPackageSourceKind.LocalBundle or ServerPackageSourceKind.RemoteBundle
-                    ? T("server_center.local_bundle_unavailable", "The selected bundle is not a valid release for this host.")
-                    : T("server_center.release_unavailable", "No release is available for this host architecture and installation mode.");
+                ErrorMessage = T("server_center.remote_bundle_unavailable", "Choose a ZIP release bundle from this SSH server.");
                 return false;
             }
             if (!HasUsableCertificate(installation))
@@ -565,44 +685,48 @@ public partial class ServerCenterViewModel : ObservableObject
                     installation.Network,
                     ServerDataRetention.Retain,
                     mode,
-                    release.Version,
                     null,
-                    release.StagedPackageName,
-                    release.PackageDigest,
+                    null,
+                    release?.StagedPackageName,
+                    null,
                     kind == ServerDeploymentKind.Upgrade ? probe.ExistingInstallationId : null,
                     null,
                     installation.FileAccess,
                     installation.CertificateMode,
                     installation.SelfSignedIdentities,
-                    Confirmed: true));
-            await using var launcher = release.Tools.OpenLauncher();
-            await using var verifier = release.Tools.OpenVerifier();
-            await using var archive = release.OpenArchive();
+                    Confirmed: true, RemotePackagePath: installation.RemoteBundlePath));
+            await using var launcher = tools.OpenLauncher();
+
+            await using var archive = release?.OpenArchive();
             var client = new ServerCenterDeploymentClient(session.Transport);
             await using var certificate = installation.CertificateMode == ServerCertificateMode.Custom
                 ? File.OpenRead(convertedCertificate ?? installation.CertificatePath!) : null;
+            deploymentStage = "SFTP";
             var staged = await client.StageAsync(
-                request, platform.Platform, launcher, verifier, archive, release.Runtime,
+                request, platform.Platform, launcher, archive, runtime,
                 certificate, installation.CertificatePassword, cancellationToken).ConfigureAwait(true);
-            var receipt = await client.ExecuteAsync(staged, cancellationToken).ConfigureAwait(true);
+            deploymentStage = "install";
+            var receipt = await client.ExecuteAsync(staged, cancellationToken, sudoPassword).ConfigureAwait(true);
             await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(target.HostId, receipt), cancellationToken)
                 .ConfigureAwait(true);
 
+            if (receipt.State != ServerDeploymentState.Succeeded)
+            {
+                ErrorMessage = receipt.SafeMessage ?? T("server_center.install_failed", "Installation failed. Check the operation record.");
+                return false;
+            }
+
             // A successful launcher process is only a transport result.  Read a separate SSH-side
             // status receipt before declaring success or refreshing the local cached state.
+            deploymentStage = "status";
             var status = await ExecuteReadOnlyAsync(
-                session, tools, ServerDeploymentKind.Status, StatusOptions(mode.Value), cancellationToken).ConfigureAwait(true);
+                session, tools, ServerDeploymentKind.Status, StatusOptions(mode.Value), cancellationToken, sudoPassword).ConfigureAwait(true);
             if (status.Snapshot is null)
             {
                 ErrorMessage = T("server_center.status_missing", "The deployment finished, but no authoritative SSH-side status receipt was returned.");
                 return false;
             }
-            var verified = ServerHostTargetRules.ApplyVerifiedState(
-                target, ServerHostTargetRules.VerifiedStateFrom(status.Snapshot), DateTimeOffset.UtcNow);
-            var saved = await _targets.UpsertAsync(verified, cancellationToken).ConfigureAwait(true);
-            ReplaceHost(saved);
-            SelectedHost = saved;
-            VerifiedStateText = FormatSnapshot(saved.LastVerified!);
+            await ApplySnapshotAsync(target, status.Snapshot, cancellationToken).ConfigureAwait(true);
             LastProbeText = FormatProbe(probe);
             StatusMessage = kind == ServerDeploymentKind.Install
                 ? T("server_center.install_succeeded", "RelaxKonOS was installed and verified through SSH. Return to the login window to sign in.")
@@ -611,10 +735,7 @@ public partial class ServerCenterViewModel : ObservableObject
         }
         catch (ServerCenterHostKeyRejectedException rejected)
         {
-            _pendingHostKey = rejected.Observation;
-            HostKeyFingerprint = rejected.Observation.GroupedFingerprint;
-            NeedsHostKeyConfirmation = rejected.Trust == ServerHostKeyTrust.Unknown;
-            HostKeyChanged = rejected.Trust == ServerHostKeyTrust.Changed;
+            await ApplyHostKeyRejectionAsync(rejected, cancellationToken).ConfigureAwait(true);
             return false;
         }
         catch (OperationCanceledException)
@@ -622,18 +743,15 @@ public partial class ServerCenterViewModel : ObservableObject
             StatusMessage = string.Empty;
             return false;
         }
-        catch (Exception)
+        catch (Exception error)
         {
-            ErrorMessage = T("server_center.deploy_failed", "The server operation could not be completed. Its SSH-side receipt can be checked from this host later.");
+            // Never surface arbitrary exception messages: transport errors can contain credentials.
+            ErrorMessage = string.Format(T("server_center.deploy_failed_detail", "Server operation failed at {0} ({1}). Check the operation record."),
+                deploymentStage, error.GetType().Name);
             return false;
         }
         finally
         {
-            if (downloadedRemoteBundle is not null)
-            {
-                try { File.Delete(downloadedRemoteBundle); }
-                catch (IOException) { }
-            }
             if (convertedCertificate is not null)
             {
                 try { File.Delete(convertedCertificate); }
@@ -663,7 +781,7 @@ public partial class ServerCenterViewModel : ObservableObject
             var tools = await _releaseSource.ResolveToolsAsync(platform.Platform, cancellationToken).ConfigureAwait(true);
             if (tools is null)
             {
-                ErrorMessage = T("server_center.tools_unavailable", "Deployment tools for this platform are unavailable in this client.");
+                ErrorMessage = T("server_center.install_script_unavailable", "The bundled installation script is unavailable. Rebuild or reinstall this client.");
                 return;
             }
 
@@ -675,26 +793,30 @@ public partial class ServerCenterViewModel : ObservableObject
                 DateTimeOffset.UtcNow,
                 cancellationToken).ConfigureAwait(true);
             var probe = await ExecuteReadOnlyAsync(session, tools, ServerDeploymentKind.Probe, null, cancellationToken).ConfigureAwait(true);
+            var sudoPassword = platform.Platform == HostPlatformKind.Linux && probe.Probe?.Elevated == false && probe.Probe.SudoAvailable && probe.Probe.ExistingMode != ServerInstallMode.LinuxUser
+                ? (!string.IsNullOrEmpty(MaintenanceSudoPassword) ? MaintenanceSudoPassword : (credential as ServerCenterSshCredential.Password)?.Secret ?? "") : null;
+            if (sudoPassword is not null)
+                probe = await ExecuteReadOnlyAsync(session, tools, ServerDeploymentKind.Probe, null, cancellationToken, sudoPassword).ConfigureAwait(true);
+            if (probe.Probe is null) { ErrorMessage = probe.SafeMessage ?? T("server_center.sudo_failed", "sudo authentication failed."); return; }
 
             // Status is separate from reachability/preflight.  Query it in the same trusted session
             // so a host with a stopped API is not incorrectly offered a reinstall.
             var probeFacts = probe.Probe;
-            var statusMode = probeFacts is null ? null : StatusMode(platform.Platform, probeFacts);
+            var statusMode = probeFacts is null ? null : sudoPassword is not null && probeFacts.ExistingMode is null
+                ? ServerInstallMode.LinuxSystem : StatusMode(platform.Platform, probeFacts);
             if (statusMode is null)
             {
                 ErrorMessage = T("server_center.status_mode_missing", "The host did not report an installation mode that can be checked safely.");
                 return;
             }
             var status = await ExecuteReadOnlyAsync(
-                session, tools, ServerDeploymentKind.Status, StatusOptions(statusMode.Value), cancellationToken).ConfigureAwait(true);
+                session, tools, ServerDeploymentKind.Status, StatusOptions(statusMode.Value), cancellationToken, sudoPassword).ConfigureAwait(true);
+            HasPreviousVersion = !string.IsNullOrWhiteSpace(status.Snapshot?.PreviousVersion);
+            HasIncompleteInstallation = status.Snapshot?.Installed != true && platform.Platform == HostPlatformKind.Linux &&
+                (await session.Transport.RunAsync("systemctl is-active --quiet relaxkonos-server.service", cancellationToken).ConfigureAwait(true)).Succeeded;
             if (status.Snapshot is not null)
             {
-                var verified = ServerHostTargetRules.ApplyVerifiedState(
-                    target, ServerHostTargetRules.VerifiedStateFrom(status.Snapshot), DateTimeOffset.UtcNow);
-                var saved = await _targets.UpsertAsync(verified, cancellationToken).ConfigureAwait(true);
-                ReplaceHost(saved);
-                SelectedHost = saved;
-                VerifiedStateText = FormatSnapshot(saved.LastVerified!);
+                await ApplySnapshotAsync(target, status.Snapshot, cancellationToken).ConfigureAwait(true);
             }
             if (probe.Probe is not null)
                 LastProbeText = FormatProbe(probe.Probe);
@@ -702,10 +824,7 @@ public partial class ServerCenterViewModel : ObservableObject
         }
         catch (ServerCenterHostKeyRejectedException rejected)
         {
-            _pendingHostKey = rejected.Observation;
-            HostKeyFingerprint = rejected.Observation.GroupedFingerprint;
-            NeedsHostKeyConfirmation = rejected.Trust == ServerHostKeyTrust.Unknown;
-            HostKeyChanged = rejected.Trust == ServerHostKeyTrust.Changed;
+            await ApplyHostKeyRejectionAsync(rejected, cancellationToken).ConfigureAwait(true);
         }
         catch (OperationCanceledException)
         {
@@ -747,10 +866,7 @@ public partial class ServerCenterViewModel : ObservableObject
         }
         catch (ServerCenterHostKeyRejectedException rejected)
         {
-            _pendingHostKey = rejected.Observation;
-            HostKeyFingerprint = rejected.Observation.GroupedFingerprint;
-            NeedsHostKeyConfirmation = rejected.Trust == ServerHostKeyTrust.Unknown;
-            HostKeyChanged = rejected.Trust == ServerHostKeyTrust.Changed;
+            await ApplyHostKeyRejectionAsync(rejected, cancellationToken).ConfigureAwait(true);
         }
         catch (OperationCanceledException)
         {
@@ -805,10 +921,7 @@ public partial class ServerCenterViewModel : ObservableObject
         }
         catch (ServerCenterHostKeyRejectedException rejected)
         {
-            _pendingHostKey = rejected.Observation;
-            HostKeyFingerprint = rejected.Observation.GroupedFingerprint;
-            NeedsHostKeyConfirmation = rejected.Trust == ServerHostKeyTrust.Unknown;
-            HostKeyChanged = rejected.Trust == ServerHostKeyTrust.Changed;
+            await ApplyHostKeyRejectionAsync(rejected, cancellationToken).ConfigureAwait(true);
             return null;
         }
         catch (Exception)
@@ -842,10 +955,10 @@ public partial class ServerCenterViewModel : ObservableObject
         ErrorMessage = string.Empty;
         try
         {
+            // 首次固定与替换已固定的密钥在这里是同一个动作：用户已经看过（替换时还包括旧指纹）
+            // 并显式按下确认，Replace 语义由信任仓库保证同端点同算法只留一条。
             await _hostKeys.TrustAsync(endpoint, observation, cancellationToken).ConfigureAwait(true);
-            _pendingHostKey = null;
-            NeedsHostKeyConfirmation = false;
-            HostKeyFingerprint = string.Empty;
+            ClearPendingHostKey();
             StatusMessage = T("server_center.host_key_trusted", "Host key saved. Retry the deployment action.");
         }
         catch (Exception)
@@ -858,12 +971,61 @@ public partial class ServerCenterViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// 把一次被拒绝的握手翻译成「还差哪一步」，并在密钥变更时把被取代的那条固定记录一并取出。
+    /// 旧指纹必须与新指纹同时交给用户：只看新指纹无法区分「重装/重建过的同一台机器」和
+    /// 「这个地址被另一台机器接管」（判定见 <see cref="SshHostKeyReviewRules"/>）。
+    /// </summary>
+    private async Task ApplyHostKeyRejectionAsync(
+        ServerCenterHostKeyRejectedException rejected, CancellationToken cancellationToken)
+    {
+        var observation = rejected.Observation;
+        ServerHostKeyRecord? previous = null;
+        if (rejected.Trust == ServerHostKeyTrust.Changed)
+        {
+            var known = await _hostKeys.LoadAsync(cancellationToken).ConfigureAwait(true);
+            previous = ServerHostTrustRules.Find(known, observation.Host, observation.Port, observation.Algorithm);
+        }
+
+        var review = SshHostKeyReviewRules.Plan(rejected.Trust, observation, previous);
+        _pendingHostKey = observation;
+        NeedsHostKeyConfirmation = review is not null;
+        HostKeyReplacesPinnedKey = review?.ReplacesPinnedKey == true;
+        HostKeyChanged = review?.ReplacesPinnedKey == true;
+        HostKeyFingerprint = review is null ? string.Empty : observation.GroupedFingerprint;
+        PreviousHostKeyFingerprint = review?.Previous is { } pinned
+            ? ServerHostTrustRules.GroupedFingerprint(pinned.Fingerprint)
+            : string.Empty;
+        PreviousHostKeyConfirmedText = review?.Previous is { } recorded
+            ? string.Format(
+                T("server_center.pinned_fingerprint_confirmed_at", "Confirmed {0}"),
+                recorded.ConfirmedAtUtc.LocalDateTime.ToString("g"))
+            : string.Empty;
+    }
+
+    /// <summary>丢掉一次待核对的主机密钥，同时解除由它造成的写操作阻断。</summary>
+    private void ClearPendingHostKey()
+    {
+        _pendingHostKey = null;
+        NeedsHostKeyConfirmation = false;
+        HostKeyReplacesPinnedKey = false;
+        HostKeyChanged = false;
+        HostKeyFingerprint = string.Empty;
+        PreviousHostKeyFingerprint = string.Empty;
+        PreviousHostKeyConfirmedText = string.Empty;
+    }
+
     private bool CanProbeHost() => !IsBusy && SelectedHost is not null && !HostKeyChanged;
-    private bool CanOpenInstallationWizard() => !IsBusy && SelectedHost is not null && SelectedPlatform is not null && !HostKeyChanged;
+    private bool CanOpenInstallationWizard() => !IsBusy && SelectedHost is not null && SelectedPlatform is not null && !HostKeyChanged && !HasIncompleteInstallation;
+    partial void OnHasIncompleteInstallationChanged(bool value)
+    {
+        OpenInstallationWizardCommand.NotifyCanExecuteChanged();
+        RecoverCommand.NotifyCanExecuteChanged();
+    }
     private bool CanMaintain() => CanProbeHost() && SelectedPlatform is not null && HasLastProbe && SelectedHost?.LastVerified?.Installed == true;
-    private bool CanUninstall() => CanMaintain() &&
-                                   (!DeleteServerData || string.Equals(
-                                       UninstallNameConfirmation.Trim(), SelectedHost?.DisplayName, StringComparison.Ordinal));
+    private bool CanRollback() => CanMaintain() && HasPreviousVersion;
+    partial void OnHasPreviousVersionChanged(bool value) => RollbackCommand.NotifyCanExecuteChanged();
+    private bool CanUninstall() => CanMaintain();
     private bool CanLoadOperationHistory() => !IsBusy && SelectedHost is not null;
     private bool CanRefreshOperation() => !IsBusy && SelectedHost is not null && SelectedPlatform is not null &&
                                           SelectedOperation is not null && !HostKeyChanged;
@@ -885,38 +1047,53 @@ public partial class ServerCenterViewModel : ObservableObject
 
     partial void OnSelectedHostChanged(ServerHostTarget? value)
     {
+        // A selector may briefly clear its selection while its current item is replaced.
+        // Refreshing the same SSH target must not reset its detected platform or trust state.
+        if (_refreshingHostSelection) return;
         var changedTarget = !string.Equals(_selectedPlatformHostId, value?.HostId, StringComparison.Ordinal);
         _selectedPlatformHostId = value?.HostId;
-        _pendingHostKey = null;
-        NeedsHostKeyConfirmation = false;
-        HostKeyChanged = false;
-        HostKeyFingerprint = string.Empty;
+        ClearPendingHostKey();
         SshPassword = string.Empty;
-        if (changedTarget) SelectedPlatform = null;
+        if (changedTarget)
+        {
+            SelectedPlatform = null;
+            HasPreviousVersion = false;
+            HasIncompleteInstallation = false;
+            MaintenanceSudoPassword = string.Empty;
+        }
         VerifiedStateText = value?.LastVerified is { } verified ? FormatSnapshot(verified) : string.Empty;
         LastProbeText = string.Empty;
         DeleteServerData = false;
-        UninstallNameConfirmation = string.Empty;
         Operations.Clear();
         SelectedOperation = null;
         OnPropertyChanged(nameof(HasOperations));
         OnPropertyChanged(nameof(DeployText));
+        OnPropertyChanged(nameof(HasManagedInstallation));
+        OnPropertyChanged(nameof(InstallationDetails));
+        UpdateCommand.NotifyCanExecuteChanged();
         RemoveHostCommand.NotifyCanExecuteChanged();
         ConfirmHostKeyCommand.NotifyCanExecuteChanged();
         ProbeHostCommand.NotifyCanExecuteChanged();
         OpenInstallationWizardCommand.NotifyCanExecuteChanged();
+        RecoverCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
         LoadOperationHistoryCommand.NotifyCanExecuteChanged();
+        ClearOperationHistoryCommand.NotifyCanExecuteChanged();
         RefreshOperationCommand.NotifyCanExecuteChanged();
     }
     partial void OnIsBusyChanged(bool value)
     {
+        if (!value) MaintenanceSudoPassword = string.Empty;
+        UpdateCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(ShowWorkspaceProgress));
+        ClearOperationHistoryCommand.NotifyCanExecuteChanged();
         RemoveHostCommand.NotifyCanExecuteChanged();
         ConfirmHostKeyCommand.NotifyCanExecuteChanged();
         ProbeHostCommand.NotifyCanExecuteChanged();
         OpenInstallationWizardCommand.NotifyCanExecuteChanged();
+        RecoverCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
@@ -925,10 +1102,17 @@ public partial class ServerCenterViewModel : ObservableObject
     }
     partial void OnErrorMessageChanged(string value) => OnPropertyChanged(nameof(HasError));
     partial void OnNeedsHostKeyConfirmationChanged(bool value) => ConfirmHostKeyCommand.NotifyCanExecuteChanged();
+    partial void OnHostKeyReplacesPinnedKeyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ConfirmHostKeyText));
+        OnPropertyChanged(nameof(HostKeyReviewTitle));
+        OnPropertyChanged(nameof(HostKeyReviewText));
+    }
     partial void OnHostKeyChangedChanged(bool value)
     {
         ProbeHostCommand.NotifyCanExecuteChanged();
         OpenInstallationWizardCommand.NotifyCanExecuteChanged();
+        RecoverCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
@@ -939,6 +1123,7 @@ public partial class ServerCenterViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedPlatformText));
         ProbeHostCommand.NotifyCanExecuteChanged();
         OpenInstallationWizardCommand.NotifyCanExecuteChanged();
+        RecoverCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
@@ -946,28 +1131,39 @@ public partial class ServerCenterViewModel : ObservableObject
     }
     partial void OnLastProbeTextChanged(string value)
     {
+        UpdateCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
     }
     partial void OnDeleteServerDataChanged(bool value) => UninstallCommand.NotifyCanExecuteChanged();
-    partial void OnUninstallNameConfirmationChanged(string value) => UninstallCommand.NotifyCanExecuteChanged();
-    partial void OnSelectedOperationChanged(ServerCenterOperationRecord? value) => RefreshOperationCommand.NotifyCanExecuteChanged();
+    partial void OnSelectedOperationChanged(ServerCenterOperationRecord? value)
+    {
+        OperationDiagnostics = string.Empty;
+        OnPropertyChanged(nameof(OperationDetailsText));
+        RefreshOperationCommand.NotifyCanExecuteChanged();
+        if (value is not null && CanRefreshOperation())
+        {
+            OperationDiagnostics = T("server_center.diagnostics_loading", "Reading deployment log from host…");
+            _ = RefreshOperationCommand.ExecuteAsync(null);
+        }
+    }
 
     private async Task<ServerDeploymentOperationDto> ExecuteReadOnlyAsync(
         ServerCenterHostSession session,
         ServerCenterDeploymentTools tools,
         ServerDeploymentKind kind,
         ServerDeploymentOptions? options,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? sudoPassword = null)
     {
         var request = new ServerDeploymentRequest(ServerDeploymentProtocol.Version, Guid.NewGuid(), kind, options);
         await using var launcher = tools.OpenLauncher();
-        await using var verifier = tools.OpenVerifier();
+
         var client = new ServerCenterDeploymentClient(session.Transport);
         var staged = await client.StageAsync(
-            request, tools.Platform, launcher, verifier, null, null, null, null, cancellationToken).ConfigureAwait(true);
-        var receipt = await client.ExecuteAsync(staged, cancellationToken).ConfigureAwait(true);
+            request, tools.Platform, launcher, null, null, null, null, cancellationToken).ConfigureAwait(true);
+        var receipt = await client.ExecuteAsync(staged, cancellationToken, sudoPassword).ConfigureAwait(true);
         await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(session.Target.HostId, receipt), cancellationToken)
             .ConfigureAwait(true);
         return receipt;
@@ -977,14 +1173,15 @@ public partial class ServerCenterViewModel : ObservableObject
         ServerCenterHostSession session,
         ServerCenterDeploymentTools tools,
         ServerDeploymentRequest request,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? sudoPassword = null)
     {
         await using var launcher = tools.OpenLauncher();
-        await using var verifier = tools.OpenVerifier();
+
         var client = new ServerCenterDeploymentClient(session.Transport);
         var staged = await client.StageAsync(
-            request, tools.Platform, launcher, verifier, null, null, null, null, cancellationToken).ConfigureAwait(true);
-        var receipt = await client.ExecuteAsync(staged, cancellationToken).ConfigureAwait(true);
+            request, tools.Platform, launcher, null, null, null, null, cancellationToken).ConfigureAwait(true);
+        var receipt = await client.ExecuteAsync(staged, cancellationToken, sudoPassword).ConfigureAwait(true);
         await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(session.Target.HostId, receipt), cancellationToken)
             .ConfigureAwait(true);
         return receipt;
@@ -995,6 +1192,7 @@ public partial class ServerCenterViewModel : ObservableObject
         ServerHostSnapshotDto snapshot,
         CancellationToken cancellationToken)
     {
+        _installationSnapshots[target.HostId] = snapshot;
         var verified = ServerHostTargetRules.ApplyVerifiedState(
             target, ServerHostTargetRules.VerifiedStateFrom(snapshot), DateTimeOffset.UtcNow);
         var saved = await _targets.UpsertAsync(verified, cancellationToken).ConfigureAwait(true);
@@ -1014,15 +1212,28 @@ public partial class ServerCenterViewModel : ObservableObject
     private void ReplaceHost(ServerHostTarget host)
     {
         var incumbent = Hosts.FirstOrDefault(item => item.HostId == host.HostId);
-        if (incumbent is not null) Hosts.Remove(incumbent);
-        Hosts.Insert(0, host);
+        var refreshSelection = SelectedHost?.HostId == host.HostId;
+        _refreshingHostSelection = refreshSelection;
+        try
+        {
+            if (incumbent is not null) Hosts[Hosts.IndexOf(incumbent)] = host;
+            else Hosts.Insert(0, host);
+            if (refreshSelection) SelectedHost = host;
+        }
+        finally { _refreshingHostSelection = false; }
+        if (refreshSelection) OnSelectedHostChanged(host);
         OnPropertyChanged(nameof(HasHosts));
     }
 
-    private string FormatProbe(ServerHostProbeDto probe) => string.Format(
-        T("server_center.probe_summary", "{0} · {1} · {2}"),
-        probe.HostPlatform, probe.Architecture,
-        probe.Elevated ? T("server_center.elevated", "elevated") : T("server_center.not_elevated", "not elevated"));
+    private string FormatProbe(ServerHostProbeDto probe)
+    {
+        if (SelectedHost is { } host) _hostProbes[host.HostId] = probe;
+        OnPropertyChanged(nameof(InstallationDetails));
+        return string.Format(
+            T("server_center.probe_summary", "{0} · {1} · {2}"),
+            probe.HostPlatform, probe.Architecture,
+            probe.Elevated ? T("server_center.elevated", "elevated") : T("server_center.not_elevated", "not elevated"));
+    }
 
     private string FormatSnapshot(ServerHostVerifiedState state) => string.Format(
         T("server_center.verified_state", "Verified through SSH at {0}: {1}"),
@@ -1085,9 +1296,7 @@ public partial class ServerCenterViewModel : ObservableObject
         {
             HostPlatformKind.Windows when probe.Elevated => ServerInstallMode.WindowsSystem,
             HostPlatformKind.Windows => null,
-            // The fixed Linux launcher deliberately never accepts an interactive sudo password over
-            // this channel. Until a separately authenticated sudo elevation flow exists, only an
-            // already-root SSH session may select System Mode; otherwise use User Mode.
+            // Automatic mode stays unprivileged for non-root accounts; explicit System Mode can authenticate sudo.
             HostPlatformKind.Linux when probe.Elevated => ServerInstallMode.LinuxSystem,
             HostPlatformKind.Linux => ServerInstallMode.LinuxUser,
             _ => null
@@ -1098,7 +1307,7 @@ public partial class ServerCenterViewModel : ObservableObject
         (platform, mode) switch
         {
             (HostPlatformKind.Windows, ServerInstallMode.WindowsSystem) => probe.Elevated,
-            (HostPlatformKind.Linux, ServerInstallMode.LinuxSystem) => probe.Elevated,
+            (HostPlatformKind.Linux, ServerInstallMode.LinuxSystem) => probe.Elevated || probe.SudoAvailable,
             (HostPlatformKind.Linux, ServerInstallMode.LinuxUser) => true,
             _ => false
         };
@@ -1131,4 +1340,5 @@ public sealed record ServerInstallationOptions(
     string? CertificatePath,
     string? CertificatePrivateKeyPath,
     string CertificatePassword,
-    string SelfSignedIdentities);
+    string SelfSignedIdentities,
+    string SudoPassword = "");

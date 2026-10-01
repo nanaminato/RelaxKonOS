@@ -243,6 +243,15 @@ install -d -o root -g "$SERVICE_GROUP" -m 0711 "$DATA_ROOT" /var/lib/relaxkonos
 install -d -m 0700 "$GUARDIAN_DATA"
 install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 "$COMPOSE_DATA"
 install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 "$SERVER_DATA"
+# Stores with ContentRoot-relative defaults share the persistent service data root.
+SERVER_DATA_LINK="$(dirname "$SERVER_EXECUTABLE")/data"
+if [[ -L "$SERVER_DATA_LINK" ]]; then
+  [[ $(readlink "$SERVER_DATA_LINK") == "$SERVER_DATA" ]] || { echo 'Server data link points outside the configured data root.' >&2; exit 65; }
+elif [[ -e "$SERVER_DATA_LINK" ]]; then
+  echo 'Server payload data path must be a link to the configured persistent data root.' >&2; exit 65
+else
+  ln -s -- "$SERVER_DATA" "$SERVER_DATA_LINK"
+fi
 # The Server writes only its Nginx ownership marker here; Nginx itself remains configured by
 # the distribution-owned /etc/nginx/nginx.conf and nginx.service.
 install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 "$WEBSERVER_DATA"
@@ -352,6 +361,9 @@ Jwt__Secret=$JWT_SECRET
 GuardianAgent__SharedSecret=$SECRET
 GuardianAgent__PipeName=relaxkonos-guardian
 Storage__DatabasePath=$SERVER_DATA/relaxkonos.db
+Storage__WallpaperPath=$SERVER_DATA/wallpapers
+EventAlerts__DatabasePath=$(realpath -m --relative-to="$(dirname "$SERVER_EXECUTABLE")" "$SERVER_DATA/event-alerts.db")
+BackupRecovery__RootDirectory=$SERVER_DATA/backup-recovery
 DockerCompose__DataDirectory=$COMPOSE_DATA
 PrivilegedHelper__HelperPath=$PRIVILEGED_HELPER
 PrivilegedHelper__SudoPath=$(command -v sudo)

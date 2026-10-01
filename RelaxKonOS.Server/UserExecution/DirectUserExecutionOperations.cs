@@ -17,7 +17,7 @@ namespace RelaxKonOS.Server.UserExecution;
 /// </remarks>
 internal static class DirectUserExecutionOperations
 {
-    public static async Task<object?> ExecuteAsync(LocalFileService direct, UserExecutionRequest request)
+    public static async Task<object?> ExecuteAsync(LocalFileService direct, UserExecutionRequest request, CancellationToken cancellationToken = default)
         => request.Operation switch
         {
             UserExecutionOperationKind.FileGetSpecialLocations => direct.GetSpecialLocations(),
@@ -25,7 +25,7 @@ internal static class DirectUserExecutionOperations
             UserExecutionOperationKind.GitConflictWrite => GitConflictFileAccess.Write(request.Path!, request.FileName!, Convert.FromBase64String(request.ContentBase64!), request.ExpectedSha256!),
             UserExecutionOperationKind.FileListDirectory => direct.GetDirectory(request.Path),
             UserExecutionOperationKind.FileGetInfo => direct.GetInfo(request.Path!),
-            UserExecutionOperationKind.FileRead => ReadDirect(direct, request.Path!),
+            UserExecutionOperationKind.FileRead => ReadDirect(direct, request, cancellationToken),
             UserExecutionOperationKind.FileReadText => new FileReadResult(Convert.ToBase64String(await direct.ReadTextBytesAsync(request.Path!)), Path.GetFileName(request.Path!), "text/plain"),
             UserExecutionOperationKind.FileWrite => await direct.WriteFileAsync(request.Path!, Bytes(request.ContentBase64!)),
             UserExecutionOperationKind.FileWriteIfMatch => await direct.WriteFileIfMatchAsync(request.Path!,
@@ -47,16 +47,12 @@ internal static class DirectUserExecutionOperations
             _ => throw new ArgumentException("Unsupported user-execution operation."),
         };
 
-    private static FileReadResult ReadDirect(LocalFileService direct, string path)
+    private static UserExecutionFileRead ReadDirect(LocalFileService direct, UserExecutionRequest request, CancellationToken cancellationToken)
     {
-        var read = direct.OpenRead(path) ?? throw new FileNotFoundException("User-execution path not found.", path);
+        var read = direct.OpenRead(request.Path!) ?? throw new FileNotFoundException("User-execution path not found.", request.Path);
         using (read.Stream)
-        using (var copy = new MemoryStream())
-        {
-            read.Stream.CopyTo(copy);
-            if (copy.Length > UserExecutionProtocol.MaximumFileContentBytes) throw new ContentTooLargeException();
-            return new(Convert.ToBase64String(copy.ToArray()), read.FileName, read.ContentType);
-        }
+            return UserExecutionFileReads.Read(read.Stream, read.FileName, read.ContentType,
+                request.Offset!.Value, request.ExpectedBytes!.Value, cancellationToken);
     }
 
     private static bool DeleteDirect(LocalFileService direct, string path) { direct.Delete(path); return true; }

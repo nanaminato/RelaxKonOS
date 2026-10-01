@@ -47,7 +47,7 @@ static class LoginPickerChecks
             var viewModel = new LoginViewModel(
                 DispatchProxy.Create<IAuthSession, SavedProfileSessionStub>(),
                 new LoginLocalizationService(new LocalLanguageStore()),
-                new ServerEndpointResolver(new HttpClient()),
+                new ServerEndpointResolver(new HttpClient(), new ServerCertificateTrust(directory)),
                 new SshDesktopSession(null!),
                 targets,
                 new SshHostKeyTrustStore(directory),

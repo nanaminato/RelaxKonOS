@@ -32,10 +32,14 @@ public static class UserExecutionRequestPolicy
                 && noDestination && noName && noContent && noMode && noGit && noTerminal && noStaging
                 && !request.Overwrite,
             UserExecutionOperationKind.FileListDirectory or UserExecutionOperationKind.FileGetInfo
-                or UserExecutionOperationKind.FileRead or UserExecutionOperationKind.FileReadText or UserExecutionOperationKind.FileDelete
+                or UserExecutionOperationKind.FileReadText or UserExecutionOperationKind.FileDelete
                 or UserExecutionOperationKind.FileCreateDirectory or UserExecutionOperationKind.FileGetProperties
                 => !terminal && request.Path is not null && noDestination && noName && noContent
                     && noMode && noGit && noTerminal && noStaging && !request.Overwrite,
+            UserExecutionOperationKind.FileRead => !terminal && request.Path is not null
+                && noDestination && noName && noContent && noMode && noGit && noTerminal
+                && request.Offset is >= 0 && request.ExpectedBytes is >= 0 and <= UserExecutionFileReads.MaximumChunkBytes
+                && !request.Overwrite,
             UserExecutionOperationKind.FileWrite => !terminal && request.Path is not null
                 && noDestination && noName && request.ContentBase64 is not null && noMode
                 && noGit && noTerminal && noStaging && !request.Overwrite,

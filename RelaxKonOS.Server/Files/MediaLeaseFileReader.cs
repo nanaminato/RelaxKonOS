@@ -23,29 +23,34 @@ public sealed class MediaLeaseFileReader(LocalFileService direct, IUserExecution
         if (lease.ExecutionIdentity is null)
             throw new InvalidOperationException("The media lease has no effective OS identity.");
 
-        var result = await transport.ExecuteAsync(new UserExecutionRequest(lease.ExecutionIdentity,
-            UserExecutionOperationKind.FileRead, Path: lease.Path, OperationId: Guid.NewGuid()), cancellationToken);
-        if (!result.Success)
-            throw result.ProblemCode switch
-            {
-                UserExecutionProblemCode.AccessDenied => new UnauthorizedAccessException("Access denied for the media lease user."),
-                UserExecutionProblemCode.NotFound => new FileNotFoundException("Media file was not found.", lease.Path),
-                UserExecutionProblemCode.InvalidRequest or UserExecutionProblemCode.ContentTooLarge => new IOException("Media file cannot be served by user execution."),
-                UserExecutionProblemCode.TimedOut => new TimeoutException("Media file user execution timed out."),
-                _ => new InvalidOperationException("User-execution Helper is unavailable."),
-            };
+        var metadata = await ReadChunkAsync(0, 0, cancellationToken);
+        return (new UserExecutionReadStream(metadata.Length, ReadChunkAsync), metadata.ContentType, metadata.FileName);
 
-        try
+        async Task<UserExecutionFileRead> ReadChunkAsync(long offset, int count, CancellationToken ct)
         {
-            var payload = JsonSerializer.Deserialize<FileRead>(Convert.FromBase64String(result.OutputBase64!), RelaxKonOSJsonOptions.Default)
-                ?? throw new InvalidOperationException("User-execution Helper returned an empty media result.");
-            return (new MemoryStream(Convert.FromBase64String(payload.ContentBase64), writable: false), payload.ContentType, payload.FileName);
-        }
-        catch (Exception exception) when (exception is FormatException or JsonException)
-        {
-            throw new InvalidOperationException("User-execution Helper returned an invalid media result.");
+            var result = await transport.ExecuteAsync(new UserExecutionRequest(lease.ExecutionIdentity,
+                UserExecutionOperationKind.FileRead, Path: lease.Path, Offset: offset, ExpectedBytes: count, OperationId: Guid.NewGuid()), ct);
+            if (!result.Success)
+                throw result.ProblemCode switch
+                {
+                    UserExecutionProblemCode.AccessDenied => new UnauthorizedAccessException("Access denied for the media lease user."),
+                    UserExecutionProblemCode.NotFound => new FileNotFoundException("Media file was not found.", lease.Path),
+                    UserExecutionProblemCode.InvalidRequest or UserExecutionProblemCode.ContentTooLarge => new IOException("Media file cannot be served by user execution."),
+                    UserExecutionProblemCode.TimedOut => new TimeoutException("Media file user execution timed out."),
+                    _ => new InvalidOperationException("User-execution Helper is unavailable."),
+                };
+
+            try
+            {
+                var payload = JsonSerializer.Deserialize<UserExecutionFileRead>(Convert.FromBase64String(result.OutputBase64!), RelaxKonOSJsonOptions.Default)
+                    ?? throw new InvalidOperationException("User-execution Helper returned an empty media result.");
+                return payload;
+            }
+            catch (Exception exception) when (exception is FormatException or JsonException)
+            {
+                throw new InvalidOperationException("User-execution Helper returned an invalid media result.");
+            }
         }
     }
 
-    private sealed record FileRead(string ContentBase64, string FileName, string ContentType);
 }

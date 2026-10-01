@@ -82,6 +82,25 @@ fun LoginScreen(
         }
     }
     val activity = LocalContext.current as? FragmentActivity ?: return
+    viewModel.certificateReview?.let { review ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { viewModel.answerCertificate(false) },
+            title = { Text(stringResource(R.string.login_certificate_title)) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    Text(stringResource(R.string.login_certificate_scope))
+                    Text(review.origin)
+                    Text(review.subject)
+                    Text(review.issuer)
+                    Text("${review.validFrom}\n${review.validUntil}")
+                    Text("SHA-256\n${review.fingerprint}")
+                    review.previous?.let { Text(stringResource(R.string.login_certificate_previous, it)) }
+                }
+            },
+            confirmButton = { TextButton(onClick = { viewModel.answerCertificate(true) }) { Text(stringResource(R.string.login_certificate_trust)) } },
+            dismissButton = { TextButton(onClick = { viewModel.answerCertificate(false) }) { Text(stringResource(R.string.common_cancel)) } },
+        )
+    }
 
     val serverFocus = remember { FocusRequester() }
     val identifierFocus = remember { FocusRequester() }

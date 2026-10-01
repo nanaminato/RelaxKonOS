@@ -6,6 +6,7 @@ ACTION=install
 BUNDLE_PATH=
 RELEASE_URI=
 RELEASE_SHA256=
+SKIP_FILE_CHECKS=false
 RELEASE_CATALOG_BASE=https://downloads.relaxkon.com/relaxkonos/stable/latest
 INSTALL_ROOT=/opt/relaxkonos
 DATA_ROOT=/var/lib/relaxkonos
@@ -48,6 +49,7 @@ while [[ $# -gt 0 ]]; do
     --language) LANGUAGE="${2:-}"; shift 2 ;;
     --bundle) BUNDLE_PATH="${2:-}"; shift 2 ;;
     --release-uri) RELEASE_URI="${2:-}"; shift 2 ;;
+    --skip-file-checks) SKIP_FILE_CHECKS=true; shift ;;
     --release-sha256) RELEASE_SHA256="${2:-}"; shift 2 ;;
     --release-catalog-base) RELEASE_CATALOG_BASE="${2:-}"; shift 2 ;;
     --install-root) INSTALL_ROOT="${2:-}"; shift 2 ;;
@@ -237,7 +239,10 @@ publish_payload() { # bundle version
   [[ -d "$bundle/deployment" ]] || { echo 'The release bundle has no deployment engine.' >&2; exit 65; }
   cp -a "$bundle/deployment" "$root/deployment"
   chown -R root:root "$root"
-  chmod -R go-w "$root"
+  # Private SSH extraction uses 0700/0600. Published binaries must be readable and
+  # traversable by the service account, while remaining writable only by root.
+  chmod 0755 "$INSTALL_ROOT" "$(versions_root)"
+  chmod -R u=rwX,go=rX "$root"
   chmod 0755 "$root/server/RelaxKonOS.Server" "$root/guardian/RelaxKonOS.Guardian.Agent" "$root/privileged-helper/RelaxKonOS.PrivilegedHelper"
 }
 
@@ -336,6 +341,7 @@ if [[ "$ACTION" == install || "$ACTION" == upgrade ]]; then
   [[ -n "$BUNDLE_PATH" && -z "$RELEASE_URI" || -z "$BUNDLE_PATH" && -n "$RELEASE_URI" ]] || { echo 'Specify exactly one release source.' >&2; exit 64; }
 
   if [[ -n "$RELEASE_URI" ]]; then
+    SKIP_FILE_CHECKS=false
     [[ "$RELEASE_SHA256" =~ ^[A-Fa-f0-9]{64}$ ]] || { echo 'Online installs require a SHA-256 release checksum.' >&2; exit 64; }
     command -v curl >/dev/null || { echo 'curl is required for an online install.' >&2; exit 69; }
     command -v unzip >/dev/null || { echo 'unzip is required for an online install.' >&2; exit 69; }
@@ -355,7 +361,7 @@ if [[ "$ACTION" == install || "$ACTION" == upgrade ]]; then
 
   MANIFEST="$BUNDLE_PATH/manifest.json"
   INVENTORY="$BUNDLE_PATH/manifest.sha256"
-  [[ -f "$MANIFEST" && -f "$INVENTORY" && -f "$BUNDLE_PATH/payload/linux/server/RelaxKonOS.Server" && -f "$BUNDLE_PATH/payload/linux/guardian/RelaxKonOS.Guardian.Agent" && -f "$BUNDLE_PATH/payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper" && -f "$BUNDLE_PATH/deployment/linux/install-relaxkonos-services.sh" ]] || { echo 'Release bundle is incomplete or has an unsupported layout.' >&2; exit 65; }
+  [[ -f "$MANIFEST" && -f "$BUNDLE_PATH/payload/linux/server/RelaxKonOS.Server" && -f "$BUNDLE_PATH/payload/linux/guardian/RelaxKonOS.Guardian.Agent" && -f "$BUNDLE_PATH/payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper" && -f "$BUNDLE_PATH/deployment/linux/install-relaxkonos-services.sh" ]] || { echo 'Release bundle is incomplete or has an unsupported layout.' >&2; exit 65; }
   grep -Eq '"schemaVersion"[[:space:]]*:[[:space:]]*1' "$MANIFEST" && grep -Eq '"packageKind"[[:space:]]*:[[:space:]]*"server"' "$MANIFEST" || { echo 'Unsupported server release manifest.' >&2; exit 65; }
   grep -Eq "\"runtime\"[[:space:]]*:[[:space:]]*\"$CURRENT_RUNTIME\"" "$MANIFEST" || { echo "This release package is not compatible with $CURRENT_RUNTIME." >&2; exit 65; }
   MANIFEST_VERSION="$(sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$MANIFEST" | head -n1)"
@@ -366,11 +372,13 @@ if [[ "$ACTION" == install || "$ACTION" == upgrade ]]; then
     echo 'Release bundle contains a symbolic link or unsupported filesystem entry.' >&2
     exit 65
   fi
+  if [[ "$SKIP_FILE_CHECKS" != true ]]; then
   command -v sha256sum >/dev/null || { echo 'sha256sum is required to verify the release inventory.' >&2; exit 69; }
   if [[ -z "$TEMPORARY_DIRECTORY" ]]; then TEMPORARY_DIRECTORY="$(mktemp -d)"; fi
   ACTUAL_INVENTORY="$TEMPORARY_DIRECTORY/manifest.actual.sha256"
   (cd "$BUNDLE_PATH" && find . -type f ! -name manifest.json ! -name manifest.sha256 -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) > "$ACTUAL_INVENTORY"
   cmp --silent "$INVENTORY" "$ACTUAL_INVENTORY" || { echo 'Release file inventory verification failed.' >&2; exit 65; }
+  fi
 fi
 
 command -v systemctl >/dev/null && [[ -d /run/systemd/system ]] || { echo 'RelaxKonOS requires a systemd host.' >&2; exit 69; }
@@ -444,10 +452,16 @@ run_services_installer() { # version listenUrl
   return $status
 }
 verify_health() {
-  local arguments=(--fail --silent --max-time 15)
+  local deadline=$((SECONDS + 60)) arguments=(--fail --silent --max-time 2)
   [[ "$LISTEN_SCHEME" != https ]] || arguments+=(--insecure)
-  command -v curl >/dev/null && curl "${arguments[@]}" "${LISTEN_SCHEME}://127.0.0.1:$SERVER_PORT/healthz" >/dev/null && return 0
-  systemctl is-active --quiet relaxkonos-server.service
+  command -v curl >/dev/null || { echo 'curl is required to verify server health.' >&2; return 1; }
+  while (( SECONDS < deadline )); do
+    if curl "${arguments[@]}" "${LISTEN_SCHEME}://127.0.0.1:$SERVER_PORT/healthz" >/dev/null; then return 0; fi
+    sleep 1
+  done
+  echo 'Server health endpoint did not respond successfully within 60 seconds.' >&2
+  systemctl show relaxkonos-server.service --property=ActiveState --property=SubState --property=ExecMainStatus >&2 || true
+  return 1
 }
 
 case "$ACTION" in
