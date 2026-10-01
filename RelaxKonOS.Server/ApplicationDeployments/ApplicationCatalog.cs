@@ -26,7 +26,8 @@ internal static class ApplicationCatalog
     }
 
     internal sealed record Entry(string Id, string Version, string Purpose, string Description, string ImageReference, int ContainerPort,
-        ApplicationVolumeDto[] Volumes, Field[] Fields)
+        ApplicationVolumeDto[] Volumes, Field[] Fields,
+        string UpdateNotes = "The selected template image replaces the current workload. Operator configuration and managed data volumes are retained. Database migrations and volume data are not reversed by a revision rollback.")
     {
         public static Entry Web(string id, string version, string purpose, string description, string image, int port,
             string? volumePath, string? volumeName, string? secret = null) => new(id, version, purpose, description, image, port,
@@ -42,7 +43,7 @@ internal static class ApplicationCatalog
         public (CreateApplicationRequest Definition, DeploymentSourceInputDto Source) Bind(InstallCatalogApplicationRequest request)
         {
             var name = request.Name?.Trim();
-            if (!ApplicationDeploymentValidation.IsValidName(name))
+            if (!ApplicationDeploymentValidation.IsValidName(name) || request.HostPort is < 1 or > 65535)
                 throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.CatalogFieldInvalid, 400);
             var supplied = request.Fields ?? [];
             if (supplied.Any(x => x is null)
@@ -59,7 +60,7 @@ internal static class ApplicationCatalog
                     configuration.Add(new(field.EnvironmentName, value, field.Type == "secret"));
             }
             return (new(name!, ApplicationSourceKind.Image, ApplicationWorkloadKind.Web, ApplicationReadinessLevel.Http,
-                "/", ContainerPort, null, "127.0.0.1", new(1, 512L * 1024 * 1024, 512), Volumes, configuration),
+                "/", ContainerPort, request.HostPort, "127.0.0.1", new(1, 512L * 1024 * 1024, 512), Volumes, configuration),
                 new(ImageReference: ImageReference));
         }
     }

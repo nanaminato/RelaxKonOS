@@ -6,196 +6,232 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.core.auth.SessionState
-import app.relaxkonos.mobile.core.net.ApiResult
-import app.relaxkonos.mobile.core.net.OperationalAlert
-import app.relaxkonos.mobile.core.net.OperationalAlertDetail
-import app.relaxkonos.mobile.data.AlertNotificationCategory
-import app.relaxkonos.mobile.data.OperationDestinations
-import app.relaxkonos.mobile.data.OperationTarget
+import app.relaxkonos.mobile.core.net.*
+import app.relaxkonos.mobile.data.*
 import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.theme.Spacing
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.CoroutineScope
-
-internal data class AlertState(
-    val owner: SessionState.Active? = null,
-    val loading: Boolean = false,
-    val alerts: List<OperationalAlert> = emptyList(),
-    val nextCursor: String? = null,
-    val selectedId: String? = null,
-    val detail: OperationalAlertDetail? = null,
-    val error: Boolean = false,
-    val actionError: Boolean = false,
-)
+import java.text.DateFormat
+import java.util.Date
 
 internal class AlertViewModel(application: Application) : AndroidViewModel(application) {
-    private val container = getApplication<RelaxKonApplication>().container
-    var state by mutableStateOf(AlertState())
-        private set
-    private var generation = 0
-    private val requests = mutableSetOf<Job>()
+    val browser = EventAlertBrowser(getApplication<RelaxKonApplication>().container.eventAlerts, viewModelScope)
+    override fun onCleared() { browser.stop(); super.onCleared() }
+}
 
-    private fun observe(block: suspend CoroutineScope.() -> Unit) {
-        val job = viewModelScope.launch(block = block)
-        requests += job
-        job.invokeOnCompletion { requests -= job }
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun AlertPanel(owner: SessionState.Active, onOpenTarget: (OperationTarget) -> Unit) {
+    val model: AlertViewModel = viewModel()
+    val browser = model.browser
+    val state by browser.state.collectAsState()
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var resumed by remember(lifecycle) { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
+    DisposableEffect(lifecycle, browser) {
+        val observer = LifecycleEventObserver { _, _ -> resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer); browser.stop() }
     }
-
-    fun stopObserving(owner: SessionState.Active) {
-        if (state.owner !== owner) return
-        generation++
-        requests.toList().forEach(Job::cancel)
-        requests.clear()
-        state = AlertState()
+    LaunchedEffect(owner, resumed) { if (resumed) browser.activate(owner) else browser.stop() }
+    var confirmation by remember(owner, resumed) { mutableStateOf<Pair<OperationalAlert, AlertMutation>?>(null) }
+    val visible = state.owner === owner && state.active
+    HorizontalDivider()
+    Text(stringResource(R.string.operations_alerts), style = MaterialTheme.typography.titleMedium)
+    Text(stringResource(R.string.event_center_observation), style = MaterialTheme.typography.bodySmall)
+    AlertNotificationSettings(owner)
+    if (!visible) return
+    val summary = (state.summary as? ApiResult.Success)?.value
+    summary?.let {
+        Text(stringResource(R.string.event_center_summary, it.openCount, it.acknowledgedCount, it.unacknowledgedCriticalCount))
+        it.updatedAtMillis?.let { time -> Text(stringResource(R.string.event_center_summary_time, eventTime(time))) }
     }
-
-    fun refresh(owner: SessionState.Active) {
-        val request = ++generation
-        state = AlertState(owner = owner, loading = true)
-        observe {
-            try {
-                val result = container.eventAlerts.page(owner)
-                if (!current(owner, request)) return@observe
-                state = when (result) {
-                    is ApiResult.Success -> state.copy(loading = false, alerts = result.value.items, nextCursor = result.value.nextCursor)
-                    else -> state.copy(loading = false, error = true)
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                if (current(owner, request)) state = state.copy(loading = false, error = true)
+    if (state.summary != null && state.summary !is ApiResult.Success) AlertFailure(state.summary)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        FilterChip(selected = !state.eventsMode, onClick = { browser.filters(false, state.alertQuery, state.eventQuery) },
+            enabled = !state.actionBusy, label = { Text(stringResource(R.string.operations_alerts)) })
+        FilterChip(selected = state.eventsMode, onClick = { browser.filters(true, state.alertQuery, state.eventQuery) },
+            enabled = !state.actionBusy, label = { Text(stringResource(R.string.event_center_events)) })
+    }
+    if (!state.eventsMode) {
+        Text(stringResource(R.string.event_center_status))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            FilterChip(selected = state.alertQuery.status == null, enabled = !state.actionBusy,
+                onClick = { browser.filters(false, state.alertQuery.copy(status = null), state.eventQuery) }, label = { Text(stringResource(R.string.event_center_all)) })
+            AlertStatusFilter.entries.forEach { status -> FilterChip(selected = state.alertQuery.status == status,
+                enabled = !state.actionBusy, onClick = { browser.filters(false, state.alertQuery.copy(status = status), state.eventQuery) }, label = { Text(alertStatus(status.wire)) }) }
+        }
+    }
+    Text(stringResource(R.string.event_center_severity))
+    val severity = if (state.eventsMode) state.eventQuery.severity else state.alertQuery.severity
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        (listOf<EventSeverityFilter?>(null) + EventSeverityFilter.entries).forEach { value ->
+            FilterChip(selected = severity == value, enabled = !state.actionBusy, onClick = {
+                browser.filters(state.eventsMode, state.alertQuery.copy(severity = value), state.eventQuery.copy(severity = value))
+            }, label = { Text(if (value == null) stringResource(R.string.event_center_all) else alertSeverity(value.wire)) })
+        }
+    }
+    if (state.eventsMode) {
+        Text(stringResource(R.string.event_center_source))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            (listOf<EventSourceFilter?>(null) + EventSourceFilter.entries).forEach { source -> FilterChip(
+                selected = state.eventQuery.source == source, enabled = !state.actionBusy,
+                onClick = { browser.filters(true, state.alertQuery, state.eventQuery.copy(source = source)) },
+                label = { Text(if (source == null) stringResource(R.string.event_center_all) else eventSource(source.wire)) }) }
+        }
+        var type by remember(owner, state.eventQuery.type) { mutableStateOf(state.eventQuery.type.orEmpty()) }
+        OutlinedTextField(value = type, onValueChange = { if (it.length <= 128) type = it }, modifier = Modifier.fillMaxWidth(),
+            enabled = !state.actionBusy, singleLine = true, label = { Text(stringResource(R.string.event_center_type)) })
+        TextButton(enabled = !state.actionBusy, onClick = { browser.filters(true, state.alertQuery, state.eventQuery.copy(type = type.trim().ifEmpty { null })) }) {
+            Text(stringResource(R.string.event_center_apply))
+        }
+    }
+    TextButton(onClick = browser::refresh, enabled = !state.loading && !state.actionBusy) { Text(stringResource(R.string.common_refresh)) }
+    if (state.loading) Text(stringResource(R.string.event_center_loading))
+    state.checkedAtMillis?.let { Text(stringResource(R.string.event_center_checked, eventTime(it)), style = MaterialTheme.typography.bodySmall) }
+    if (state.readResult != null && state.readResult !is ApiResult.Success) AlertFailure(state.readResult)
+    if (state.readResult is ApiResult.Success && (if (state.eventsMode) state.events.isEmpty() else state.alerts.isEmpty())) Text(stringResource(R.string.operations_alerts_empty))
+    if (state.eventsMode) state.events.forEach { EventRow(owner, it, onOpenTarget) }
+    else state.alerts.forEach { alert -> ListRow(title = alertTitle(alert.type), subtitle = alert.problemCode,
+        supporting = stringResource(R.string.operations_alert_summary, alertSeverity(alert.severity), alertStatus(alert.status), alert.occurrenceCount),
+        selected = alert.id == state.selectedId, onClick = { browser.select(alert.id) }) }
+    if (state.atLimit) Text(stringResource(R.string.event_center_limit))
+    else if (state.nextCursor != null) TextButton(onClick = browser::more, enabled = !state.loading && !state.actionBusy) { Text(stringResource(R.string.event_center_more)) }
+    if (!state.eventsMode && state.selectedId != null) {
+        HorizontalDivider()
+        Text(stringResource(R.string.operations_alert_detail), style = MaterialTheme.typography.titleSmall)
+        if (state.detailLoading) Text(stringResource(R.string.event_center_loading))
+        if (state.detail != null && state.detail !is ApiResult.Success) AlertFailure(state.detail)
+        val detail = (state.detail as? ApiResult.Success)?.value
+        detail?.let { value ->
+            val alert = value.alert
+            Text(alertTitle(alert.type)); Text(alert.id, style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.operations_alert_summary, alertSeverity(alert.severity), alertStatus(alert.status), alert.occurrenceCount))
+            Text(alert.problemCode)
+            Text(stringResource(R.string.event_center_first_last, eventTime(alert.firstOccurredAtMillis), eventTime(alert.lastOccurredAtMillis)))
+            Text(stringResource(R.string.event_center_last_event, alert.lastEventId), style = MaterialTheme.typography.bodySmall)
+            alert.acknowledgedAtMillis?.let { Text(stringResource(R.string.event_center_acknowledged, eventTime(it), alert.acknowledgedByReference.orEmpty())) }
+            alert.resolutionReason?.let { Text(stringResource(R.string.event_center_reason_value, it)) }
+            OperationDestinations.alert(owner, alert)?.let { target -> OutlinedButton(onClick = { onOpenTarget(target) }) { Text(stringResource(R.string.operations_open_target)) } }
+            Text(stringResource(R.string.event_center_history), style = MaterialTheme.typography.titleSmall)
+            value.events.forEach { EventRow(owner, it, onOpenTarget) }
+            Text(stringResource(R.string.event_center_actions), style = MaterialTheme.typography.titleSmall)
+            value.actions.forEach { action ->
+                Text(stringResource(R.string.event_center_action_record, actionKind(action.kind), eventTime(action.createdAtMillis), action.actorReference.orEmpty(), action.note.orEmpty()), style = MaterialTheme.typography.bodySmall)
+            }
+            if (state.unknown) Text(stringResource(R.string.event_center_unknown), color = MaterialTheme.colorScheme.error)
+            else if (state.actionResult != null && state.actionResult !is ApiResult.Success) AlertFailure(state.actionResult)
+            if (state.actionResult is ApiResult.Success) Text(stringResource(R.string.event_center_action_saved))
+            TextButton(enabled = !state.actionBusy && !state.detailLoading, onClick = browser::reconcile) { Text(stringResource(R.string.event_center_reconcile)) }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                AlertMutation.entries.filter { canMutateAlert(alert, it) }.forEach { action -> OutlinedButton(
+                    enabled = !state.actionBusy && !state.unknown && !state.detailLoading,
+                    onClick = { confirmation = alert to action }) { Text(alertAction(action)) } }
             }
         }
     }
-
-    fun more(owner: SessionState.Active) {
-        val cursor = state.nextCursor ?: return
-        if (state.owner !== owner || state.loading) return
-        val request = generation
-        state = state.copy(loading = true)
-        observe {
-            val result = container.eventAlerts.page(owner, cursor)
-            if (!current(owner, request)) return@observe
-            state = when (result) {
-                is ApiResult.Success -> state.copy(loading = false,
-                    alerts = (state.alerts + result.value.items).distinctBy { it.id }, nextCursor = result.value.nextCursor)
-                else -> state.copy(loading = false, error = true)
-            }
-        }
+    confirmation?.let { (baseline, action) ->
+        AlertActionDialog(baseline, action, !state.actionBusy && !state.unknown && !state.detailLoading &&
+            (state.detail as? ApiResult.Success)?.value?.alert == baseline,
+            onDismiss = { confirmation = null }, onSubmit = { reason, expiry -> browser.mutate(baseline, action, reason, expiry); confirmation = null })
     }
-
-    fun select(owner: SessionState.Active, id: String) {
-        if (state.owner !== owner) return
-        val request = generation
-        state = state.copy(selectedId = id, detail = null, actionError = false)
-        observe {
-            val result = container.eventAlerts.detail(owner, id)
-            if (current(owner, request) && state.selectedId == id) {
-                state = state.copy(detail = (result as? ApiResult.Success)?.value,
-                    actionError = result !is ApiResult.Success)
-            }
-        }
-    }
-
-    fun acknowledge(owner: SessionState.Active, id: String) {
-        if (state.owner !== owner || state.selectedId != id) return
-        val request = generation
-        observe {
-            val result = container.eventAlerts.acknowledge(owner, id)
-            if (!current(owner, request)) return@observe
-            if (result is ApiResult.Success) {
-                state = state.copy(alerts = state.alerts.map { if (it.id == id) result.value else it }, actionError = false)
-                select(owner, id)
-            } else state = state.copy(actionError = true)
-        }
-    }
-
-    private fun current(owner: SessionState.Active, request: Int) =
-        state.owner === owner && container.session.state.value === owner && request == generation
 }
 
 @Composable
-internal fun AlertPanel(owner: SessionState.Active, onOpenTarget: (OperationTarget) -> Unit) {
-    val viewModel: AlertViewModel = viewModel()
-    val state = viewModel.state
-    LaunchedEffect(owner) { viewModel.refresh(owner) }
-    DisposableEffect(owner) { onDispose { viewModel.stopObserving(owner) } }
-    val visible = state.owner === owner
-    val selected = if (visible) state.alerts.firstOrNull { it.id == state.selectedId } else null
+private fun EventRow(owner: SessionState.Active, event: OperationalEvent, onOpenTarget: (OperationTarget) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(vertical = Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+        Text(alertTitle(event.type), style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(R.string.event_center_event_summary, eventTime(event.occurredAtMillis), alertSeverity(event.severity), eventSource(event.source), alertOutcome(event.outcome)))
+        Text(event.problemCode)
+        Text(stringResource(R.string.event_center_event_reference, event.resourceType, event.resourceReference, event.correlationId, event.operationId.orEmpty()), style = MaterialTheme.typography.bodySmall)
+        event.evidence?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        OperationDestinations.event(owner, event)?.let { target -> TextButton(onClick = { onOpenTarget(target) }) { Text(stringResource(R.string.operations_open_target)) } }
+    }
+}
 
-    HorizontalDivider()
-    Text(stringResource(R.string.operations_alerts), style = MaterialTheme.typography.titleMedium)
-    Text(stringResource(R.string.operations_alerts_note), style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant)
-    AlertNotificationSettings(owner)
-    TextButton(onClick = { viewModel.refresh(owner) }, enabled = visible && !state.loading) {
-        Text(stringResource(R.string.common_refresh))
-    }
-    if (visible && state.error) Text(stringResource(R.string.operations_alerts_unavailable), color = MaterialTheme.colorScheme.error)
-    if (visible && !state.loading && !state.error && state.alerts.isEmpty()) Text(stringResource(R.string.operations_alerts_empty))
-    if (visible) state.alerts.forEach { alert ->
-        ListRow(title = alertTitle(alert.type), subtitle = alert.problemCode,
-            supporting = stringResource(R.string.operations_alert_summary,
-                alertSeverity(alert.severity), alertStatus(alert.status), alert.occurrenceCount),
-            selected = alert.id == state.selectedId,
-            onClick = { viewModel.select(owner, alert.id) })
-    }
-    if (visible && state.nextCursor != null) TextButton(onClick = { viewModel.more(owner) }, enabled = !state.loading) {
-        Text(stringResource(R.string.operations_more_alerts))
-    }
-    if (selected != null) {
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            Text(stringResource(R.string.operations_alert_detail), style = MaterialTheme.typography.titleSmall)
-            Text(selected.problemCode)
-            Text(stringResource(R.string.operations_alert_count, selected.occurrenceCount))
-            state.detail?.events?.take(10)?.forEach { event ->
-                Text(stringResource(R.string.operations_alert_event, alertOutcome(event.outcome), event.problemCode),
-                    style = MaterialTheme.typography.bodySmall)
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AlertActionDialog(baseline: OperationalAlert, action: AlertMutation, ready: Boolean, onDismiss: () -> Unit, onSubmit: (String?, Long?) -> Unit) {
+    var reason by remember(baseline, action) { mutableStateOf("") }
+    var duration by remember(baseline, action) { mutableStateOf(10) }
+    val needsReason = action == AlertMutation.Resolve || action == AlertMutation.Suppress
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(alertAction(action)) }, text = {
+        Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()).imePadding(), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            Text(stringResource(R.string.event_center_confirm, alertTitle(baseline.type), alertStatus(baseline.status), baseline.occurrenceCount))
+            Text(stringResource(R.string.event_center_action_note))
+            if (action != AlertMutation.RemoveSuppression) OutlinedTextField(value = reason, onValueChange = { if (it.length <= 512) reason = it },
+                modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(if (needsReason) R.string.event_center_reason else R.string.event_center_optional_note)) })
+            if (action == AlertMutation.Suppress) FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                listOf(10, 30, 60).forEach { minutes -> FilterChip(selected = minutes == duration, onClick = { duration = minutes }, label = { Text(stringResource(R.string.event_center_minutes, minutes)) }) }
             }
-            if (state.actionError) Text(stringResource(R.string.operations_alert_action_failed), color = MaterialTheme.colorScheme.error)
-            if (selected.status.equals("open", true)) {
-                OutlinedButton(onClick = { viewModel.acknowledge(owner, selected.id) }) {
-                    Text(stringResource(R.string.operations_acknowledge))
-                }
-            }
-            OperationDestinations.alert(owner, selected)?.let { target ->
-                OutlinedButton(onClick = { onOpenTarget(target) }) {
-                    Text(stringResource(R.string.operations_open_target))
-                }
-            }
+            if (!ready) Text(stringResource(R.string.event_center_changed), color = MaterialTheme.colorScheme.error)
         }
+    }, confirmButton = { TextButton(enabled = ready && (!needsReason || reason.isNotBlank()), onClick = {
+        onSubmit(reason.trim().ifEmpty { null }, if (action == AlertMutation.Suppress) System.currentTimeMillis() + duration * 60_000L else null)
+    }) { Text(alertAction(action)) } }, dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } })
+}
+
+@Composable
+private fun AlertFailure(result: ApiResult<*>?) {
+    val key = when (result) {
+        is ApiResult.Problem -> when {
+            result.status == 403 -> R.string.event_center_forbidden
+            result.status == 404 -> R.string.event_center_not_found
+            result.code == "event-alerts.invalid_transition" -> R.string.event_center_changed
+            result.status == 400 -> R.string.event_center_invalid
+            else -> R.string.operations_alerts_unavailable
+        }
+        else -> R.string.operations_alerts_unavailable
     }
+    Text(stringResource(key), color = MaterialTheme.colorScheme.error)
+}
+
+private fun eventTime(value: Long?): String = value?.let { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(it)) }.orEmpty()
+@Composable
+private fun alertAction(action: AlertMutation): String = stringResource(when (action) {
+    AlertMutation.Acknowledge -> R.string.operations_acknowledge
+    AlertMutation.Resolve -> R.string.event_center_resolve
+    AlertMutation.Suppress -> R.string.event_center_suppress
+    AlertMutation.RemoveSuppression -> R.string.event_center_unsuppress
+})
+@Composable
+private fun actionKind(kind: String): String = when (kind.lowercase()) {
+    "acknowledged" -> alertAction(AlertMutation.Acknowledge)
+    "resolved" -> alertAction(AlertMutation.Resolve)
+    "suppressed" -> alertAction(AlertMutation.Suppress)
+    "suppression-removed" -> alertAction(AlertMutation.RemoveSuppression)
+    else -> kind
+}
+@Composable
+private fun eventSource(source: String): String {
+    val resource = when (source) {
+    "deployment" -> R.string.event_center_deployment
+    "certificate" -> R.string.event_center_certificate
+    "guardian" -> R.string.event_center_guardian
+    "docker" -> R.string.event_center_docker
+    "tunnel" -> R.string.event_center_tunnel
+    "eventCenter" -> R.string.event_center_internal
+    else -> return source
+    }
+    return stringResource(resource)
 }
 
 @Composable

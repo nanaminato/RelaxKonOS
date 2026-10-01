@@ -47,6 +47,12 @@ public sealed class RemoteApplicationDeploymentClient(HttpClient http, IAuthSess
     public Task<DeploymentOperationDto> DeployAsync(Guid applicationId, DeployApplicationRequest request, string idempotencyKey, CancellationToken cancellationToken = default) =>
         SendAsync<DeploymentOperationDto>(HttpMethod.Post, ApplicationDeploymentApiRoutes.Deploy(applicationId), request, idempotencyKey, cancellationToken);
 
+    public Task<CatalogApplicationUpdatePreviewDto> PreviewCatalogUpdateAsync(Guid applicationId, string templateVersion, CancellationToken cancellationToken = default) =>
+        SendAsync<CatalogApplicationUpdatePreviewDto>($"{ApplicationDeploymentApiRoutes.CatalogUpdate(applicationId)}?templateVersion={Uri.EscapeDataString(templateVersion)}", cancellationToken);
+
+    public Task<DeploymentOperationDto> UpdateCatalogAsync(Guid applicationId, UpdateCatalogApplicationRequest request, string idempotencyKey, CancellationToken cancellationToken = default) =>
+        SendAsync<DeploymentOperationDto>(HttpMethod.Post, ApplicationDeploymentApiRoutes.CatalogUpdate(applicationId), request, idempotencyKey, cancellationToken);
+
     public Task<DeploymentOperationDto> RollbackAsync(Guid applicationId, RollbackApplicationRequest request, string idempotencyKey, CancellationToken cancellationToken = default) =>
         SendAsync<DeploymentOperationDto>(HttpMethod.Post, ApplicationDeploymentApiRoutes.Rollback(applicationId), request, idempotencyKey, cancellationToken);
 

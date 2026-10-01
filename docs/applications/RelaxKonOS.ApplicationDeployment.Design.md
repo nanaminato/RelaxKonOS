@@ -87,7 +87,9 @@ Goal §2 把「单服务 Compose 项目」列入第一阶段范围，实施清�
 | GET | `/templates` | 四个模板的能力描述 | Read |
 | GET | `/catalog` | 可信、版本化的应用用途模板目录（不含可执行脚本） | Read |
 | GET | `/catalog/{templateId}` | 一个用途模板的受限字段与维护说明 | Read |
-| POST | `/catalog/install` | 用精确模板版本创建定义并排队首次部署 → `202` | Manage |
+| POST | `/catalog/install` | 用精确模板版本和显式宿主端口创建定义并排队首次部署 → `202` | Manage |
+| GET | `/applications/{id}/catalog-update?templateVersion=…` | 精确模板版本与当前定义/修订的只读更新预览 | Read |
+| POST | `/applications/{id}/catalog-update` | 明确确认精确版本，保留定义/秘密引用/卷并排队更新 → `202` | Manage |
 | GET | `/image-tags?repository=` | Docker Hub 公共仓库的最近 20 个非 `latest` tag；其他仓库保留手动填写 | Read |
 | GET | `/applications` | 应用列表（含观测状态） | Read |
 | POST | `/applications` | 创建应用定义 | Manage |
@@ -114,7 +116,7 @@ Goal §2 把「单服务 Compose 项目」列入第一阶段范围，实施清�
 
 `ApplicationCatalogTemplateDto` 是唯一的用途模板描述。它必须携带稳定 `id`、精确 `version`、发布者和 `source`，以及由服务端目录校验结果写入的 `trusted`。客户端只将 `trusted: true`、已知 `schemaVersion`、已知字段类型（`text`、`number`、`enum`、`secret`）、满足所需 capability 且与 Docker OS/架构相符的条目开放安装；这些检查只帮助用户，服务端在 `POST /catalog/install` 时仍按 ID/版本重新验证。目录字段不会携带脚本、Dockerfile、宿主路径或 UI 代码。
 
-安装成功后，`ApplicationDto` 和其不可变 `ApplicationRevisionDto` 都保留 `catalogTemplateId` 与 `catalogTemplateVersion`。后续目录刷新或模板撤回只影响新的安装选择，绝不修改、停止或替换已有实例；更新必须以一个明确的、可审计的后续操作进行。
+安装成功后，`ApplicationDto` 和其不可变 `ApplicationRevisionDto` 都保留 `catalogTemplateId` 与 `catalogTemplateVersion`。后续目录刷新或模板撤回只影响新的安装选择，绝不修改、停止或替换已有实例；更新使用 `CatalogApplicationUpdatePreviewDto` 和 `UpdateCatalogApplicationRequest`：精确目标 ID/版本、完整定义版本、当前绑定版本及当前修订 ID（必传，允许显式 null）。预览包含镜像差异、更新说明和阻断原因，不携带秘密。更新只选择受信目录镜像，保留用户定义与秘密版本；若当前定义不满足目标模板的端口/工作负载/必需挂载、字段和最低资源，先显式编辑定义。目录版本不会静默作用于实例；实例模板绑定只在修订激活成功时提交，失败保留旧绑定，回滚恢复所选修订绑定。当前目录没有新版本时返回 `application-catalog.already_current`。模板首次安装必传 `hostPort`（1–65535），保持 loopback 绑定，以满足 HTTP 就绪检查。
 
 ### 3.2 权限
 
@@ -146,7 +148,7 @@ Goal §2 把「单服务 Compose 项目」列入第一阶段范围，实施清�
 
 ### 3.4 严格请求契约
 
-四个输入 DTO（`DeploymentSourceInputDto`）、六个请求（`CreateApplicationRequest`、`UpdateApplicationRequest`、`DeployApplicationRequest`、`RollbackApplicationRequest`、`ApplicationLifecycleRequest`、`DeleteApplicationRequest`、`CreateDeploymentFileReferenceRequest`）全部标注 `[JsonUnmappedMemberHandling(Disallow)]`：未知字段一律**拒绝**而非忽略，因此契约不能被静默扩展。
+来源 DTO（`DeploymentSourceInputDto`）及请求（`CreateApplicationRequest`、`UpdateApplicationRequest`、`DeployApplicationRequest`、`RollbackApplicationRequest`、`ApplicationLifecycleRequest`、`DeleteApplicationRequest`、`CreateDeploymentFileReferenceRequest`、`InstallCatalogApplicationRequest`、`UpdateCatalogApplicationRequest`）全部标注 `[JsonUnmappedMemberHandling(Disallow)]`：未知字段一律**拒绝**而非忽略，因此契约不能被静默扩展。
 
 `DeploymentSourceInputDto` 的成员集合本身即安全边界——它**无法表达** shell 片段、Dockerfile、宿主路径或任意构建参数：
 
@@ -194,6 +196,8 @@ programEntry, arguments[], selfContained
 创建与更新定义不携带 `confirmed`：它们不触达运行实例。
 
 `UpdateApplicationRequest.expectedUpdatedAt` 必传，直接提交原 `ApplicationDto.updatedAt` 的完整 DateTimeOffset，不截断小数精度；缺失/默认值拒绝（400），写入锁内比较不一致返回 `application-deployment.definition_conflict`（409）。活动应用操作返回 `resource_conflict`。定义写入仍携带幂等键；相同键和同一载荷重试返回原回执，不重复轮换秘密。名称、运行参数、卷和配置只替换定义，来源/模板身份和不可变当前修订不在此请求中变更。
+
+`DeployApplicationRequest.expectedUpdatedAt` 同样必传，使用当前定义/创建回执的完整时间。Coordinator 在 Catalog 读取锁内核对版本并预留操作，定义编辑在同一锁内检查活动操作，关闭预览与排队之间的覆盖间隙；执行前再核对版本。相同幂等键先匹配原指纹，返回原操作，既有定义变化不阻断已经确认的同一请求重放。缺失/默认版本 400，过期版本 409；所有桌面、Android 创建、Git 与新修订调用直接采用此契约。
 
 机密轮换保留当前定义及所有保留修订引用的版本，并保留最近三个版本；只裁剪此次应用/变量的版本，不用该变量的引用集合裁剪别的应用或变量。
 

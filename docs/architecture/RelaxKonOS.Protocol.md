@@ -750,3 +750,5 @@ Workspace preferences GET 返回 `revision`，PUT 必须携带读取时的 `revi
 ### 应用部署定义更新（2026-10-01）
 
 `PUT /api/v1.0/application-deployments/applications/{id}` 的 `UpdateApplicationRequest` 必须携带完整 `expectedUpdatedAt`，来自原 `ApplicationDto.updatedAt`。缺失/默认值 400，原子写入时过期 409（`application-deployment.definition_conflict`），活动操作阻断。原幂等键/载荷返回原回执，不重复轮换秘密；更新定义不创建修订或替换容器。Shared、Server、桌面和 Android 同步使用当前必需字段，不保留无版本覆盖。领域边界见 [应用部署设计](../applications/RelaxKonOS.ApplicationDeployment.Design.md)。
+
+宿主 Settings Endpoint 的拒绝统一在 ProblemDetails 扩展 `problemCode` 写入稳定设置错误码，客户端不把 title 当机器契约。时区/环境/身份操作查询持有原协调锁；当状态为 Prepared 且服务端期限已过，持久转为 Failed/`settings.plan_expired`。Applying/Unknown/RecoveryRequired 不按期限当作未执行；已关闭计划的延迟 apply 返回原终态而不写宿主。期限与关单由 Server 时钟和持久操作记录决定，手机时间不能解除未知门禁。

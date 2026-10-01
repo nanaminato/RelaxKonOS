@@ -121,7 +121,7 @@ class DeploymentHttpTest {
                 "zip".byteInputStream()
             }
             val deployed = api.deployArchive("http://127.0.0.1:${server.address.port}", "token", applicationId,
-                (staged as ApiResult.Success).value.referenceId, definition, "deploy-key")
+                (staged as ApiResult.Success).value.referenceId, definition, "2026-10-01T00:00:00.1234567+00:00", "deploy-key")
             assertEquals(applicationId, (created as ApiResult.Success).value.id)
             assertEquals("deploy", (deployed as ApiResult.Success).value.kind)
             assertTrue(requests[0].second.contains("\"sourceKind\":\"pythonProject\""))
@@ -164,7 +164,7 @@ class DeploymentHttpTest {
                 ImageDeploymentDefinition("website", 8080, hostPort = 18080, readinessLevel = "process",
                     configuration = listOf(DeploymentConfigEntry("TOKEN", "not-in-summary", true))), "definition-key")
             assertEquals(applicationId, (created as ApiResult.Success).value.id)
-            val deployed = api.deployImage("http://127.0.0.1:${server.address.port}", "token", applicationId, "nginx:1.27", "deployment-key")
+            val deployed = api.deployImage("http://127.0.0.1:${server.address.port}", "token", applicationId, "nginx:1.27", "2026-10-01T00:00:00.1234567+00:00", "deployment-key")
             assertEquals(applicationId, (deployed as ApiResult.Success).value.applicationId)
             assertEquals(listOf("definition-key", "deployment-key"), requests.map { it.second })
             assertTrue(requests[0].third.contains("\"sourceKind\":\"image\""))

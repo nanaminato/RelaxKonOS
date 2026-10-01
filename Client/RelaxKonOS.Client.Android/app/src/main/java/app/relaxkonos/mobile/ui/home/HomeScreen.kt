@@ -125,6 +125,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 fun HomeScreen(
     session: SessionState.Active,
     layoutState: LayoutState,
+    onOpenHelp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val viewModel: HomeViewModel = viewModel()
@@ -141,6 +142,7 @@ fun HomeScreen(
         ScreenHeader(
             title = stringResource(R.string.nav_home),
             subtitle = session.workspaceName,
+            trailing = { androidx.compose.material3.TextButton(onClick = onOpenHelp) { Text(stringResource(R.string.help_title)) } },
         )
 
         viewModel.message?.let { banner ->

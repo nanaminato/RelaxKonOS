@@ -149,6 +149,14 @@ class AppContainer(context: Context) {
         serverHostTargets, serverCenterConnections, sshHostKeyTrust, serverInstallOperations,
     )
 
+    val sshForwards = app.relaxkonos.mobile.servercenter.SshLocalForwardManager(
+        serverCenterConnections, serverHostTargets, serverCenter::verifiedPasswordCopy,
+        { serverCenter.sshFilesHostId }, CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+        { lease -> app.relaxkonos.mobile.service.SshForwardForegroundService.start(appContext, lease) },
+        { appContext.stopService(android.content.Intent(appContext, app.relaxkonos.mobile.service.SshForwardForegroundService::class.java)) },
+    )
+    init { serverCenter.onWorkspaceClosed = sshForwards::clearWorkspace }
+
     /**
      * 受管登录的连接解析入口：把登录记录里的安装标识接到本机宿主资料。
      *
@@ -281,6 +289,8 @@ class AppContainer(context: Context) {
         app.relaxkonos.mobile.data.TunnelMutationJournal(app.relaxkonos.mobile.data.FileTunnelMutationStorage(appContext.noBackupFilesDir)))
     val proxy = app.relaxkonos.mobile.data.ProxyRepository(gateway, session, operationIndex,
         app.relaxkonos.mobile.data.ProxyRequestJournal(app.relaxkonos.mobile.data.FileProxyRequestStorage(appContext.noBackupFilesDir)))
+    val hostSettings = app.relaxkonos.mobile.data.HostSettingsRepository(gateway, session, elevations,
+        app.relaxkonos.mobile.data.HostSettingsJournal(app.relaxkonos.mobile.data.FileHostSettingsStorage(appContext.noBackupFilesDir)))
     val firewall = app.relaxkonos.mobile.data.FirewallRepository(gateway, session, elevations,
         app.relaxkonos.mobile.data.FirewallMutationJournal(app.relaxkonos.mobile.data.FileFirewallRequestStorage(appContext.noBackupFilesDir)))
     val smb = app.relaxkonos.mobile.data.SmbRepository(gateway, session, elevations,

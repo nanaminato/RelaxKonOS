@@ -39,6 +39,14 @@ internal static class SettingsOperationVerification
         Check((await reopened.RollbackAsync(actor, plan.PlanId, new(applied.ObservedRevision!), default)).State == SettingsOperationState.RolledBack,
             "Authorized rollback must restore and read back the original zone.");
         Check(provider.Zone == "Test/One", "Rollback lost the original zone.");
+        var expired = await coordinator.PreviewTimeAsync(actor, new(provider.Revision, "expired-read", new("Test/Two")), default);
+        var expiredRecord = journal.Read(expired.PlanId)!;
+        journal.Save(expiredRecord with { Plan = expiredRecord.Plan with { ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1) } });
+        Check((await reopened.GetAsync(actor, expired.PlanId, default)).State == SettingsOperationState.Failed,
+            "Only the server clock can atomically close an expired Prepared plan.");
+        var beforeLateApply = provider.Writes;
+        Check((await coordinator.ApplyTimeAsync(actor, expired.PlanId, default)).State == SettingsOperationState.Failed && provider.Writes == beforeLateApply,
+            "A delayed apply cannot execute after expiry was observed and persisted.");
         var uncertain = await coordinator.PreviewTimeAsync(actor, new(provider.Revision, "uncertain", new("Test/Two")), default);
         provider.ThrowAfterWrite = true;
         Check((await coordinator.ApplyTimeAsync(actor, uncertain.PlanId, default)).State == SettingsOperationState.Unknown,

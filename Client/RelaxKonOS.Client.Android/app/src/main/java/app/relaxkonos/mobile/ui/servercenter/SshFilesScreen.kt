@@ -5,17 +5,22 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -28,6 +33,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -35,9 +42,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -64,228 +76,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/**
- * SFTP-only browser for a host whose key was already trusted in Server Centre.
- *
- * The password is inherited from the just-verified workspace and never rendered here. Each operation opens a fresh, pinned SSH session,
- * so backgrounding or leaving this page cannot leave an unauthenticated transport around and a
- * changed host key still blocks every read and write.
- */
-class SshFilesViewModel(application: Application) : AndroidViewModel(application) {
-    private val app = getApplication<RelaxKonApplication>()
-    private val container = app.container
-    private val stateFlow = MutableStateFlow(SshFilesUiState())
-    val state = stateFlow.asStateFlow()
-
-    private var startedHostId: String? = null
-
-    fun start() {
-        if (state.value.hostId.isBlank() || startedHostId == state.value.hostId) return
-        startedHostId = state.value.hostId
-        reload()
-    }
-
-    fun reload() = execute { transport ->
-        val currentPath = state.value.path
-        val entries = transport.listDirectory(currentPath)
-        update { copy(entries = entries, connected = true, busy = false, problem = null) }
-    }
-
-    fun open(entry: SshFileEntry) {
-        if (entry.isDirectory && !entry.isSymbolicLink) {
-            update { copy(path = entry.path, selected = null, preview = SshPreview.None) }
-            reload()
-        } else {
-            update { copy(selected = entry, detailEntry = entry, preview = SshPreview.None) }
-            if (entry.isText) loadText(entry) else if (entry.isImage) loadImage(entry)
-        }
-    }
-
-    fun up() {
-        val current = state.value.path
-        if (current == "/") return
-        val parent = current.trimEnd('/').substringBeforeLast('/', missingDelimiterValue = "")
-            .ifBlank { "/" }
-        update { copy(path = parent, selected = null, preview = SshPreview.None) }
-        reload()
-    }
-
-    fun closeDetail() = update { copy(detailEntry = null, selected = null, preview = SshPreview.None) }
-
-    fun beginCreateDirectory() = update { copy(newDirectory = "") }
-    fun cancelCreateDirectory() = update { copy(newDirectory = null) }
-    fun setNewDirectory(value: String) = update { copy(newDirectory = value) }
-
-    fun createDirectory() {
-        val name = state.value.newDirectory?.trim().orEmpty()
-        if (!safeName(name)) {
-            update { copy(problem = "invalid-name") }
-            return
-        }
-        val destination = child(state.value.path, name)
-        update { copy(newDirectory = null) }
-        execute { transport ->
-            transport.createDirectory(destination)
-            reloadFromOperation(transport)
-        }
-    }
-
-    fun askDelete(entry: SshFileEntry) = update { copy(deleteTarget = entry) }
-    fun dismissDelete() = update { copy(deleteTarget = null) }
-
-    fun delete() {
-        val target = state.value.deleteTarget ?: return
-        update { copy(deleteTarget = null) }
-        execute { transport ->
-            transport.delete(target.path, recursive = target.isDirectory && !target.isSymbolicLink)
-            reloadFromOperation(transport)
-        }
-    }
-
-    fun beginRename(entry: SshFileEntry) = update { copy(renameTarget = entry, renameName = entry.name) }
-    fun cancelRename() = update { copy(renameTarget = null, renameName = "") }
-    fun setRename(value: String) = update { copy(renameName = value) }
-
-    fun rename() {
-        val target = state.value.renameTarget ?: return
-        val name = state.value.renameName.trim()
-        if (!safeName(name)) {
-            update { copy(problem = "invalid-name") }
-            return
-        }
-        update { copy(renameTarget = null, renameName = "") }
-        execute { transport ->
-            transport.rename(target.path, child(parentOf(target.path), name))
-            reloadFromOperation(transport)
-        }
-    }
-
-    /** Streams a document selected through SAF straight to the current SFTP directory. */
-    fun upload(uri: Uri) {
-        val name = displayName(uri)
-        if (!safeName(name)) {
-            update { copy(problem = "invalid-name") }
-            return
-        }
-        val destination = child(state.value.path, name)
-        execute { transport ->
-            val source = app.contentResolver.openInputStream(uri) ?: throw IllegalStateException("connection-failed")
-            source.use { transport.upload(it, contentLength(uri), destination, null) }
-            reloadFromOperation(transport)
-        }
-    }
-
-    fun requestDownload(entry: SshFileEntry) = update { copy(downloadTarget = entry, downloadLaunchPending = true) }
-    fun downloadLaunchHandled() = update { copy(downloadLaunchPending = false) }
-
-    /** Writes the SFTP stream into the user-selected SAF document; no broad storage permission is used. */
-    fun downloadTo(destination: Uri?) {
-        val target = state.value.downloadTarget ?: return
-        update { copy(downloadTarget = null, downloadLaunchPending = false) }
-        if (destination == null) return
-        execute { transport ->
-            val output = app.contentResolver.openOutputStream(destination) ?: throw IllegalStateException("connection-failed")
-            output.use { transport.download(target.path, it) }
-            update { copy(busy = false, problem = null) }
-        }
-    }
-
-    fun updateText(value: String) = update {
-        val open = preview as? SshPreview.Text ?: return
-        copy(preview = open.copy(content = value, changed = true))
-    }
-
-    fun saveText() {
-        val open = state.value.preview as? SshPreview.Text ?: return
-        execute { transport ->
-            val bytes = open.content.toByteArray(Charsets.UTF_8)
-            transport.upload(ByteArrayInputStream(bytes), bytes.size.toLong(), open.entry.path, null)
-            update { copy(preview = open.copy(changed = false), busy = false, problem = null) }
-        }
-    }
-
-    private fun loadText(entry: SshFileEntry) {
-        if ((entry.size ?: 0L) > MAX_TEXT_BYTES) {
-            update { copy(problem = "text-too-large") }
-            return
-        }
-        execute { transport ->
-            val bytes = ByteArrayOutputStream().use { buffer ->
-                transport.download(entry.path, buffer)
-                buffer.toByteArray()
-            }
-            if (bytes.size > MAX_TEXT_BYTES) throw IllegalStateException("text-too-large")
-            update {
-                copy(preview = SshPreview.Text(entry, bytes.toString(Charsets.UTF_8)), busy = false, problem = null)
-            }
-        }
-    }
-
-    private fun loadImage(entry: SshFileEntry) = execute { transport ->
-        val bytes = ByteArrayOutputStream().use { buffer ->
-            transport.download(entry.path, buffer)
-            buffer.toByteArray()
-        }
-        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-            ?: throw IllegalStateException("image-unreadable")
-        update { copy(preview = SshPreview.Image(entry, bitmap), busy = false, problem = null) }
-    }
-
-    private suspend fun reloadFromOperation(transport: app.relaxkonos.mobile.servercenter.ServerCenterSshTransport) {
-        val entries = transport.listDirectory(state.value.path)
-        update { copy(entries = entries, selected = null, preview = SshPreview.None, busy = false, problem = null) }
-    }
-
-    private fun execute(action: suspend (app.relaxkonos.mobile.servercenter.ServerCenterSshTransport) -> Unit) {
-        val secret = container.serverCenter.workspacePasswordCopy()
-        if (secret == null) {
-            update { copy(problem = "connection-failed") }
-            return
-        }
-        update { copy(busy = true, problem = null) }
-        viewModelScope.launch {
-            try {
-                container.serverCenterConnections.connect(
-                    state.value.hostId,
-                    SshCredential(SshCredentialKind.Password, secret, null),
-                    System.currentTimeMillis(),
-                ).use { session -> action(session.sshTransport) }
-            } catch (error: Exception) {
-                update { copy(busy = false, problem = error.message?.takeIf { it in SAFE_PROBLEMS } ?: "connection-failed") }
-            } finally {
-                secret.fill('\u0000')
-            }
-        }
-    }
-
-    fun setHost(hostId: String) {
-        if (state.value.hostId != hostId) {
-            startedHostId = null
-            stateFlow.value = SshFilesUiState(hostId = hostId)
-        }
-    }
-
-    private inline fun update(block: SshFilesUiState.() -> SshFilesUiState) = stateFlow.update(block)
-
-    private fun displayName(uri: Uri): String = app.contentResolver.query(
-        uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null,
-    )?.use { cursor ->
-        val column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-        if (column >= 0 && cursor.moveToFirst()) cursor.getString(column) else null
-    } ?: ""
-
-    private fun contentLength(uri: Uri): Long? = app.contentResolver.openAssetFileDescriptor(uri, "r")
-        ?.use { descriptor -> descriptor.length.takeIf { it >= 0 } }
-
-    private companion object {
-        const val MAX_TEXT_BYTES = 1_048_576L
-        val SAFE_PROBLEMS = setOf("text-too-large", "image-unreadable")
-        fun child(parent: String, name: String) = if (parent == "/") "/$name" else parent.trimEnd('/') + "/" + name
-        fun parentOf(path: String) = path.trimEnd('/').substringBeforeLast('/', "").ifBlank { "/" }
-        fun safeName(value: String) = value.isNotBlank() && value != "." && value != ".." && '/' !in value && '\\' !in value
-    }
-}
-
 data class SshFilesUiState(
     val hostId: String = "",
     val path: String = "/",
@@ -298,11 +88,38 @@ data class SshFilesUiState(
     val preview: SshPreview = SshPreview.None,
     val newDirectory: String? = null,
     val deleteTarget: SshFileEntry? = null,
+    val deleteEntries: List<SshFileEntry> = emptyList(),
     val renameTarget: SshFileEntry? = null,
     val renameName: String = "",
     val downloadTarget: SshFileEntry? = null,
     val downloadLaunchPending: Boolean = false,
-)
+    val downloadEntries: List<SshFileEntry> = emptyList(),
+    val downloadZip: Boolean = false,
+    val selecting: Boolean = false,
+    val selectedPaths: Set<String> = emptySet(),
+    val clipboard: SshClipboard? = null,
+    val unknown: Boolean = false,
+    val checked: List<SshFileCheck> = emptyList(),
+    val discardRequested: Boolean = false,
+    val writesSettling: Boolean = false,
+    val search: String = "",
+    val sort: SshFileSort = SshFileSort.Name,
+    val descending: Boolean = false,
+    val history: List<String> = listOf("/"),
+    val historyIndex: Int = 0,
+) {
+    val visibleEntries: List<SshFileEntry> get() {
+        val comparator: Comparator<SshFileEntry> = when (sort) {
+            SshFileSort.Name -> compareBy<SshFileEntry> { it.name.lowercase(java.util.Locale.ROOT) }
+            SshFileSort.Modified -> compareBy { it.modifiedAtEpochMillis ?: Long.MIN_VALUE }
+            SshFileSort.Type -> compareBy { if (it.isSymbolicLink) "link" else it.name.substringAfterLast('.', "").lowercase(java.util.Locale.ROOT) }
+            SshFileSort.Size -> compareBy { it.size ?: -1 }
+        }
+        return entries.filter { it.name.contains(search, ignoreCase = true) }
+            .sortedWith(compareByDescending<SshFileEntry> { it.isDirectory && !it.isSymbolicLink }.then(if (descending) comparator.reversed() else comparator))
+    }
+}
+enum class SshFileSort { Name, Modified, Type, Size }
 
 sealed interface SshPreview {
     data object None : SshPreview
@@ -310,26 +127,69 @@ sealed interface SshPreview {
     data class Image(val entry: SshFileEntry, val bitmap: Bitmap) : SshPreview
 }
 
-private val SshFileEntry.isText: Boolean get() = name.substringAfterLast('.', "").lowercase() in
+internal val SshFileEntry.isText: Boolean get() = name.substringAfterLast('.', "").lowercase() in
     setOf("txt", "md", "json", "xml", "yaml", "yml", "toml", "ini", "conf", "log", "sh", "kt", "java", "cs", "js", "ts", "py", "html", "css")
-private val SshFileEntry.isImage: Boolean get() = name.substringAfterLast('.', "").lowercase() in
+internal val SshFileEntry.isImage: Boolean get() = name.substringAfterLast('.', "").lowercase() in
     setOf("png", "jpg", "jpeg", "webp", "gif", "bmp")
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SshFilesScreen(hostId: String, modifier: Modifier = Modifier) {
+    val container = (LocalContext.current.applicationContext as RelaxKonApplication).container
+    key(hostId, container.serverCenter.workspaceRevision) { SshFilesContent(hostId, modifier) }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SshFilesContent(hostId: String, modifier: Modifier) {
     val model: SshFilesViewModel = viewModel()
-    LaunchedEffect(hostId) { model.setHost(hostId); model.start() }
+    val container = (LocalContext.current.applicationContext as RelaxKonApplication).container
+    val workspaceRevision = container.serverCenter.workspaceRevision
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var resumed by remember(lifecycle) { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
+    DisposableEffect(lifecycle, model) {
+        val observer = LifecycleEventObserver { _, _ -> resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer); model.stop() }
+    }
+    LaunchedEffect(hostId, workspaceRevision, resumed) { if (resumed) model.resume(hostId) else model.stop() }
     val state by model.state.collectAsState()
-    val pickUpload = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(model::upload) }
-    val saveDownload = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream"), model::downloadTo)
+    BackHandler(enabled = state.detailEntry != null) { model.closeDetail() }
+    var pendingUpload by remember(hostId, workspaceRevision) { mutableStateOf<List<Uri>>(emptyList()) }
+    var pendingTree by remember(hostId, workspaceRevision) { mutableStateOf<Uri?>(null) }
+    var pendingDownload by remember(hostId, workspaceRevision) { mutableStateOf<Pair<Boolean, Uri?>?>(null) }
+    var pasteConfirm by remember(hostId, workspaceRevision) { mutableStateOf<Pair<SshClipboard, String>?>(null) }
+    var adoptConfirm by remember(hostId, workspaceRevision) { mutableStateOf<List<SshFileCheck>?>(null) }
+    val pickUpload = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> pendingUpload = uris }
+    val pickTree = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> pendingTree = uri }
+    val saveDownload = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri -> pendingDownload = true to uri }
+    LaunchedEffect(resumed, pendingUpload, pendingTree, pendingDownload, state.busy, state.hostId) {
+        if (resumed && !model.state.value.busy && state.hostId == hostId && container.serverCenter.sshFilesHostId == hostId) {
+            if (pendingUpload.isNotEmpty()) { model.upload(pendingUpload); pendingUpload = emptyList() }
+            pendingTree?.let { model.upload(emptyList(), it); pendingTree = null }
+            pendingDownload?.let { model.downloadTo(it.second); pendingDownload = null }
+        }
+    }
     LaunchedEffect(state.downloadLaunchPending) {
         val target = state.downloadTarget
         if (state.downloadLaunchPending && target != null) {
             model.downloadLaunchHandled()
-            saveDownload.launch(target.name)
+            saveDownload.launch(if (state.downloadZip) target.name + ".zip" else target.name)
         }
     }
-    Column(modifier.fillMaxSize().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+        Text(stringResource(R.string.ssh_files_transfer_note), style = MaterialTheme.typography.bodySmall)
+        if (state.busy) TextButton(model::cancelTransfer) { Text(stringResource(R.string.common_cancel)) }
+        if (state.unknown) {
+            Text(stringResource(R.string.ssh_files_unknown), color = MaterialTheme.colorScheme.error)
+            TextButton(model::checkUnknown, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_check_unknown)) }
+            Column(Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState())) {
+            state.checked.forEach { check -> Text(stringResource(R.string.ssh_files_check_result, check.path, stringResource(when (check.exists) {
+                true -> R.string.ssh_files_exists; false -> R.string.ssh_files_missing; null -> R.string.ssh_files_check_failed
+            })), style = MaterialTheme.typography.bodySmall) }
+            }
+            TextButton(onClick = { adoptConfirm = state.checked }, enabled = !state.busy && !state.writesSettling && state.checked.isNotEmpty() && state.checked.all { it.exists != null }) { Text(stringResource(R.string.ssh_files_adopt_facts)) }
+        }
         state.problem?.let { Text(problemText(it), color = androidx.compose.material3.MaterialTheme.colorScheme.error) }
         if (!state.connected) {
             if (state.busy) CircularProgressIndicator()
@@ -340,7 +200,7 @@ fun SshFilesScreen(hostId: String, modifier: Modifier = Modifier) {
                 SshFileDetail(
                     entry = detail,
                     preview = state.preview,
-                    busy = state.busy,
+                    busy = state.busy || state.unknown,
                     onBack = model::closeDetail,
                     onDownload = { model.requestDownload(detail) },
                     onRename = { model.beginRename(detail) },
@@ -362,29 +222,60 @@ fun SshFilesScreen(hostId: String, modifier: Modifier = Modifier) {
                         DesktopIcon(DesktopIcons.refresh, contentDescription = stringResource(R.string.ssh_files_refresh))
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), modifier = Modifier.fillMaxWidth()) {
-                    OutlinedButton(model::beginCreateDirectory, enabled = !state.busy, modifier = Modifier.weight(1f)) {
-                        Text(stringResource(R.string.ssh_files_new_folder))
-                    }
-                    Button({ pickUpload.launch(arrayOf("*/*")) }, enabled = !state.busy, modifier = Modifier.weight(1f)) {
-                        Text(stringResource(R.string.ssh_files_upload))
+                var address by remember(hostId, state.path) { mutableStateOf(state.path) }
+                OutlinedTextField(value = address, onValueChange = { if (it.length <= 4096) address = it }, enabled = !state.busy, singleLine = true,
+                    modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ssh_files_address)) })
+                FlowRow {
+                    TextButton({ model.navigate(address) }, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_go)) }
+                    TextButton(model::backDirectory, enabled = !state.busy && state.historyIndex > 0) { Text(stringResource(R.string.ssh_files_back)) }
+                    TextButton(model::forwardDirectory, enabled = !state.busy && state.historyIndex < state.history.lastIndex) { Text(stringResource(R.string.ssh_files_forward)) }
+                }
+                OutlinedTextField(value = state.search, onValueChange = model::search, enabled = !state.busy, singleLine = true,
+                    modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ssh_files_search)) })
+                FlowRow {
+                    SshFileSort.entries.forEach { sort -> androidx.compose.material3.FilterChip(selected = state.sort == sort, onClick = { model.sort(sort) }, enabled = !state.busy,
+                        label = { Text(stringResource(when (sort) { SshFileSort.Name -> R.string.ssh_files_sort_name; SshFileSort.Modified -> R.string.ssh_files_sort_modified;
+                            SshFileSort.Type -> R.string.ssh_files_sort_type; SshFileSort.Size -> R.string.ssh_files_sort_size })) }) }
+                    TextButton(model::reverseSort, enabled = !state.busy) { Text(stringResource(if (state.descending) R.string.ssh_files_sort_descending else R.string.ssh_files_sort_ascending)) }
+                }
+                Text(stringResource(R.string.ssh_files_counts, state.visibleEntries.size, state.entries.size, state.selectedPaths.size))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(model::beginCreateDirectory, enabled = !state.busy && !state.unknown) { Text(stringResource(R.string.ssh_files_new_folder)) }
+                    Button({ pickUpload.launch(arrayOf("*/*")) }, enabled = !state.busy && !state.unknown) { Text(stringResource(R.string.ssh_files_upload)) }
+                    OutlinedButton({ pickTree.launch(null) }, enabled = !state.busy && !state.unknown) { Text(stringResource(R.string.ssh_files_upload_folder)) }
+                    TextButton(model::selectMode, enabled = !state.busy) { Text(stringResource(if (state.selecting) R.string.ssh_files_selection_done else R.string.ssh_files_select_multiple)) }
+                    if (state.selecting) TextButton(model::selectAllVisible, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_select_all)) }
+                    if (state.selectedPaths.isNotEmpty()) {
+                        TextButton({ model.clipboard(cut = false) }, enabled = !state.busy && !state.unknown) { Text(stringResource(R.string.ssh_files_copy)) }
+                        TextButton({ model.clipboard(cut = true) }, enabled = !state.busy && !state.unknown) { Text(stringResource(R.string.ssh_files_cut)) }
+                        TextButton({ model.askDelete() }, enabled = !state.busy && !state.unknown) { Text(stringResource(R.string.ssh_files_delete)) }
+                        TextButton({ model.requestDownload() }, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_download)) }
                     }
                 }
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                    state.entries.forEach { entry ->
+                state.clipboard?.let { clipboard ->
+                    Text(stringResource(R.string.ssh_files_clipboard, clipboard.entries.size, stringResource(if (clipboard.cut) R.string.ssh_files_cut else R.string.ssh_files_copy)))
+                    FlowRow {
+                        TextButton({ pasteConfirm = clipboard to state.path }, enabled = !state.busy && !state.unknown) { Text(stringResource(R.string.ssh_files_paste)) }
+                        TextButton(model::clearClipboard, enabled = !state.busy) { Text(stringResource(R.string.common_cancel)) }
+                    }
+                }
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                    state.visibleEntries.forEach { entry ->
                         ListRow(
                             title = entry.name,
                             subtitle = if (entry.isDirectory) stringResource(R.string.ssh_files_folder) else formatSize(entry.size),
                             supporting = formatTimestamp(entry.modifiedAtEpochMillis),
-                            leading = { IconBadge(DesktopIcons.fileFor(entry.name, entry.isDirectory)) },
-                            trailing = { SshEntryMenu(entry, model::beginRename, model::askDelete, model::requestDownload, state.busy) },
+                            leading = { if (state.selecting) Checkbox(checked = entry.path in state.selectedPaths, onCheckedChange = { model.toggle(entry) }, enabled = !state.busy)
+                                else IconBadge(DesktopIcons.fileFor(entry.name, entry.isDirectory)) },
+                            trailing = { SshEntryMenu(entry, model::beginRename, { model.askDelete(it) }, { model.requestDownload(it) },
+                                { model.clipboard(it, false) }, { model.clipboard(it, true) }, state.busy, state.unknown) },
                             onClick = { model.open(entry) },
-                            selected = state.selected?.path == entry.path,
+                            selected = if (state.selecting) entry.path in state.selectedPaths else state.selected?.path == entry.path,
                         )
                     }
                     state.selected?.takeIf { !it.isDirectory }?.let { selected ->
                         SectionCard(title = selected.name, subtitle = formatSize(selected.size), leading = DesktopIcons.fileFor(selected.name, false)) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                                 OutlinedButton({ model.requestDownload(selected) }, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_download)) }
                                 TextButton({ model.beginRename(selected) }, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_rename)) }
                                 TextButton({ model.askDelete(selected) }, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_delete)) }
@@ -396,9 +287,21 @@ fun SshFilesScreen(hostId: String, modifier: Modifier = Modifier) {
             }
         }
     }
+    if (state.discardRequested) AlertDialog(onDismissRequest = model::cancelDiscard,
+        title = { Text(stringResource(R.string.ssh_files_discard_title)) }, text = { Text(stringResource(R.string.ssh_files_discard_note)) },
+        confirmButton = { TextButton(model::discardDetail) { Text(stringResource(R.string.ssh_files_discard)) } },
+        dismissButton = { TextButton(model::cancelDiscard) { Text(stringResource(R.string.common_cancel)) } })
+    pasteConfirm?.let { (clipboard, path) -> AlertDialog(onDismissRequest = { pasteConfirm = null }, title = { Text(stringResource(R.string.ssh_files_paste)) },
+        text = { Text(stringResource(R.string.ssh_files_paste_confirm, clipboard.entries.size, path)) },
+        confirmButton = { TextButton(enabled = !state.busy && !state.unknown && state.clipboard == clipboard && state.path == path, onClick = { model.paste(); pasteConfirm = null }) { Text(stringResource(R.string.ssh_files_paste)) } },
+        dismissButton = { TextButton({ pasteConfirm = null }) { Text(stringResource(R.string.common_cancel)) } }) }
+    adoptConfirm?.let { checks -> AlertDialog(onDismissRequest = { adoptConfirm = null }, title = { Text(stringResource(R.string.ssh_files_adopt_facts)) },
+        text = { Text(stringResource(R.string.ssh_files_adopt_note)) },
+        confirmButton = { TextButton(enabled = !state.busy && !state.writesSettling && state.checked == checks && checks.isNotEmpty() && checks.all { it.exists != null }, onClick = { model.adoptFacts(); adoptConfirm = null }) { Text(stringResource(R.string.ssh_files_adopt_facts)) } },
+        dismissButton = { TextButton({ adoptConfirm = null }) { Text(stringResource(R.string.common_cancel)) } }) }
     state.newDirectory?.let { value -> NameDialog(stringResource(R.string.ssh_files_new_folder), value, model::setNewDirectory, model::createDirectory, model::cancelCreateDirectory) }
     state.renameTarget?.let { NameDialog(stringResource(R.string.ssh_files_rename), state.renameName, model::setRename, model::rename, model::cancelRename) }
-    state.deleteTarget?.let { entry -> ConfirmDangerousDialog(stringResource(R.string.ssh_files_delete), stringResource(R.string.ssh_files_delete_note, entry.name), stringResource(R.string.ssh_files_delete), model::delete, model::dismissDelete, state.busy) }
+    state.deleteTarget?.let { entry -> ConfirmDangerousDialog(stringResource(R.string.ssh_files_delete), if (state.deleteEntries.size == 1) stringResource(R.string.ssh_files_delete_note, entry.name) else stringResource(R.string.ssh_files_delete_many_note, state.deleteEntries.size), stringResource(R.string.ssh_files_delete), model::delete, model::dismissDelete, state.busy) }
 }
 
 @Composable
@@ -407,19 +310,25 @@ private fun SshEntryMenu(
     onRename: (SshFileEntry) -> Unit,
     onDelete: (SshFileEntry) -> Unit,
     onDownload: (SshFileEntry) -> Unit,
+    onCopy: (SshFileEntry) -> Unit,
+    onCut: (SshFileEntry) -> Unit,
     busy: Boolean,
+    unknown: Boolean,
 ) {
     var expanded by remember { mutableStateOf(false) }
     IconButton(onClick = { expanded = true }, enabled = !busy) {
         DesktopIcon(DesktopIcons.overflow, contentDescription = stringResource(R.string.ssh_files_actions))
     }
     DropdownMenu(expanded, { expanded = false }) {
-        if (!entry.isDirectory) DropdownMenuItem({ Text(stringResource(R.string.ssh_files_download)) }, { onDownload(entry); expanded = false })
-        DropdownMenuItem({ Text(stringResource(R.string.ssh_files_rename)) }, { onRename(entry); expanded = false })
-        DropdownMenuItem({ Text(stringResource(R.string.ssh_files_delete)) }, { onDelete(entry); expanded = false })
+        if (!entry.isSymbolicLink) DropdownMenuItem({ Text(stringResource(R.string.ssh_files_download)) }, { onDownload(entry); expanded = false })
+        DropdownMenuItem({ Text(stringResource(R.string.ssh_files_copy)) }, { onCopy(entry); expanded = false }, enabled = !unknown)
+        DropdownMenuItem({ Text(stringResource(R.string.ssh_files_cut)) }, { onCut(entry); expanded = false }, enabled = !unknown)
+        DropdownMenuItem({ Text(stringResource(R.string.ssh_files_rename)) }, { onRename(entry); expanded = false }, enabled = !unknown)
+        DropdownMenuItem({ Text(stringResource(R.string.ssh_files_delete)) }, { onDelete(entry); expanded = false }, enabled = !unknown)
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SshFileDetail(
     entry: SshFileEntry,
@@ -432,7 +341,7 @@ private fun SshFileDetail(
     onTextChanged: (String) -> Unit,
     onSaveText: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(Spacing.md), modifier = Modifier.verticalScroll(rememberScrollState())) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.md), modifier = Modifier.fillMaxWidth()) {
         ScreenHeader(
             title = entry.name,
             subtitle = entry.path,
@@ -445,7 +354,7 @@ private fun SshFileDetail(
             KeyValueRow(stringResource(R.string.ssh_files_property_modified), formatTimestamp(entry.modifiedAtEpochMillis).orEmpty())
         }
         SectionCard(title = stringResource(R.string.ssh_files_actions)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 OutlinedButton(onDownload, enabled = !busy) { Text(stringResource(R.string.ssh_files_download)) }
                 TextButton(onRename, enabled = !busy) { Text(stringResource(R.string.ssh_files_rename)) }
                 TextButton(onDelete, enabled = !busy) { Text(stringResource(R.string.ssh_files_delete)) }
@@ -461,7 +370,7 @@ private fun SshFileDetail(
     SshPreview.None -> Unit
     is SshPreview.Image -> Image(preview.bitmap.asImageBitmap(), preview.entry.name, Modifier.fillMaxWidth())
     is SshPreview.Text -> Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-        OutlinedTextField(preview.content, onChange, Modifier.fillMaxWidth(), label = { Text(preview.entry.name) }, minLines = 8, enabled = !busy)
+        OutlinedTextField(preview.content, onChange, Modifier.fillMaxWidth(), label = { Text(preview.entry.name) }, minLines = 8, maxLines = 20, enabled = !busy)
         Button(onSave, enabled = preview.changed && !busy) { Text(stringResource(R.string.ssh_files_save)) }
     }
 }
@@ -475,5 +384,10 @@ private fun SshFileDetail(
     "text-too-large" -> R.string.ssh_files_text_too_large
     "image-unreadable" -> R.string.ssh_files_image_unreadable
     "invalid-name" -> R.string.ssh_files_invalid_name
+    "transfer-limit" -> R.string.ssh_files_transfer_limit
+    "source-changed" -> R.string.ssh_files_source_changed
+    "symlink-transfer" -> R.string.ssh_files_symlink_transfer
+    "paste-self" -> R.string.ssh_files_paste_self
+    "destination-exists" -> R.string.ssh_files_destination_exists
     else -> R.string.ssh_files_connection_failed
 })

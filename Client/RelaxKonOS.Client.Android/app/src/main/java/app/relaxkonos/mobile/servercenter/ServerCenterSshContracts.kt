@@ -157,6 +157,11 @@ interface ServerCenterSshTransport : AutoCloseable {
     /** SFTP file-manager primitives.  They intentionally exclude executing user supplied commands. */
     suspend fun listDirectory(remotePath: String): List<SshFileEntry>
 
+    /** lstat, null only for an authoritative no-such-file response. */
+    suspend fun fileInfo(remotePath: String): SshFileEntry?
+    suspend fun uploadNew(content: InputStream, contentLength: Long?, remotePath: String)
+    suspend fun copyFile(sourcePath: String, destinationPath: String, maximumBytes: Long)
+
     suspend fun createDirectory(remotePath: String)
 
     suspend fun delete(remotePath: String, recursive: Boolean = false)
@@ -167,6 +172,12 @@ interface ServerCenterSshTransport : AutoCloseable {
      * 打开一条到远端 loopback 端口的隧道。[remotePort] 必须是远端自身的回环端口，
      * 不接受任意主机名，避免把隧道变成通用的端口转发工具。
      */
+    /** User-owned local forward, separate from a managed-login session. Both ends stay on loopback. */
+    fun openLocalForward(remotePort: Int, preferredLocalPort: Int?): ServerCenterSshTunnel
+
+    /** Checks a TCP connection to the remote loopback port through SSH; sends no application data. */
+    suspend fun testLoopbackPort(remotePort: Int): Boolean
+
     fun openLoopbackTunnel(remotePort: Int, basePath: String? = null): ServerCenterSshTunnel
 }
 

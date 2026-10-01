@@ -237,6 +237,7 @@ object ApplicationDeploymentRoutes {
     const val FILE_REFERENCES = "/api/v1.0/application-deployments/file-references"
     fun application(id: String): String = "$APPLICATIONS/${UUID.fromString(id)}"
     fun deploy(id: String): String = "${application(id)}/deploy"
+    fun catalogUpdate(id: String): String = "${application(id)}/catalog-update"
     fun rollback(id: String): String = "${application(id)}/rollback"
     fun delete(id: String): String = application(id)
     fun lifecycle(id: String, action: DeploymentLifecycleAction): String = "${application(id)}/${action.name.lowercase()}"

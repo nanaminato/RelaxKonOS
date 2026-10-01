@@ -27,6 +27,9 @@ public static class ApplicationDeploymentProblemCodes
     public const string CatalogFieldInvalid = "application-catalog.field_invalid";
     public const string CatalogSchemaUnsupported = "application-catalog.schema_unsupported";
 
+    public const string CatalogUpdateAlreadyCurrent = "application-catalog.already_current";
+    public const string CatalogUpdateDefinitionIncompatible = "application-catalog.definition_incompatible";
+
     // Preflight.
     public const string EngineUnavailable = "application-deployment.engine_unavailable";
     public const string EngineNotInstalled = "application-deployment.engine_not_installed";

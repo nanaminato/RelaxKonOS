@@ -23,6 +23,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -71,6 +73,14 @@ fun LoginScreen(
     onOpenOwnerDevicePairing: () -> Unit = {},
     viewModel: LoginViewModel = viewModel(),
 ) {
+    var showHelp by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    if (showHelp) androidx.compose.ui.window.Dialog(onDismissRequest = { showHelp = false },
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        androidx.compose.material3.Surface(Modifier.fillMaxSize().safeDrawingPadding()) {
+            app.relaxkonos.mobile.ui.more.HelpScreen(onBack = { showHelp = false }, onOpenRoute = null,
+                onOpenServerCenter = { showHelp = false; onOpenServerCenter() })
+        }
+    }
     val activity = LocalContext.current as? FragmentActivity ?: return
 
     val serverFocus = remember { FocusRequester() }
@@ -118,6 +128,7 @@ fun LoginScreen(
                 modifier = Modifier.align(Alignment.End),
                 horizontalAlignment = Alignment.End,
             ) {
+                TextButton(onClick = { showHelp = true }) { Text(stringResource(R.string.help_title)) }
                 TextButton(onClick = onOpenOwnerDevicePairing) {
                     Text(stringResource(R.string.owner_device_add))
                 }

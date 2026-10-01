@@ -23,6 +23,8 @@ public interface IRemoteApplicationDeploymentClient
     Task<DeploymentOperationDiagnosticsDto?> GetOperationDiagnosticsAsync(Guid operationId, CancellationToken cancellationToken = default);
 
     Task<DeploymentOperationDto> DeployAsync(Guid applicationId, DeployApplicationRequest request, string idempotencyKey, CancellationToken cancellationToken = default);
+    Task<CatalogApplicationUpdatePreviewDto> PreviewCatalogUpdateAsync(Guid applicationId, string templateVersion, CancellationToken cancellationToken = default);
+    Task<DeploymentOperationDto> UpdateCatalogAsync(Guid applicationId, UpdateCatalogApplicationRequest request, string idempotencyKey, CancellationToken cancellationToken = default);
     Task<DeploymentOperationDto> RollbackAsync(Guid applicationId, RollbackApplicationRequest request, string idempotencyKey, CancellationToken cancellationToken = default);
     Task<DeploymentOperationDto> LifecycleAsync(Guid applicationId, string action, ApplicationLifecycleRequest request, string idempotencyKey, CancellationToken cancellationToken = default);
     Task<DeploymentOperationDto> DeleteAsync(Guid applicationId, DeleteApplicationRequest request, string idempotencyKey, CancellationToken cancellationToken = default);

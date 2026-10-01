@@ -9,6 +9,7 @@
 | [产品、架构与交互](design/Product.Design.md) | 原生平台边界、导航、手机/平板、自适应、三语、多主题与无障碍 |
 | [Shell、认证与安全](design/Shell.Design.md) | 实际路由、导航栈、会话、提权与保险箱安全规则 |
 | [登录与本地凭据](design/LoginCredentials.Design.md) | 身份键、决策表、保存/失效/删除、密码明文生命周期 |
+| [移动端包方案](design/ApplicationPackages.Design.md) | 桌面 manifest/运行时调查、包类别与权限/版本/更新/移除、远端代理边界 |
 | [Windows 设备密钥](design/OwnerDeviceKeys.Design.md) | 工作站配对、Keystore 签名登录与授权边界 |
 
 ## 当前功能 `features/`
@@ -36,6 +37,9 @@
 | [终端、脚本与守护](features/TerminalAutomation.md) | Server/SSH 会话、双栏/草稿/搜索、工作区外观与 VT 单元、远端任务与工作负载 |
 | [进程守护](features/Guardian.md) | 完整定义/参数与健康策略、RunAs 审批、回执与读回、状态及有界实时日志 |
 | [任务管理与监控](features/TaskManager.md) | 完整指标/真实趋势/实时与快照降级、手机/平板详情、原实例终止、排序分页及前台隔离 |
+| [设置与应用管理](features/Settings.md) | 宿主环境/时区/名称预览、原操作恢复、Android 系统管理与本地/远端边界 |
+| [帮助与引导](features/Help.md) | 登录/首页入口、三语说明、能力门控任务与现有指南 |
+| [服务访问](features/ServiceAccess.md) | 站点/部署/SSH 实际地址、外部应用、凭据隔离及证书边界 |
 | [公共运行时安装](features/Installations.md) | 当前安装契约、包引用/上传、幂等提权、任务观察/取消与恢复边界 |
 | [任务、告警与恢复](features/OperationsRecovery.md) | 领域操作索引、诊断、前台通知、定义备份与预检 |
 
@@ -44,7 +48,7 @@
 | 文档 | 内容 |
 | --- | --- |
 | [部署剩余工作](plans/Deployment.md) | 首次安装、模板更新、构建回收、数据恢复与后台通知的代码缺口 |
-| [内置应用补齐](plans/BuiltInParity.md) | 桌面 25 个应用差异与 BP00–BP24；已实现流程见功能说明；后续终端/守护/监控等内置应用 |
+| [内置应用补齐](plans/BuiltInParity.md) | 桌面 25 个应用差异与 BP00–BP24；已实现流程见功能说明；当前补齐范围与独立验证边界 |
 
 ## 开发与发布 `development/`
 

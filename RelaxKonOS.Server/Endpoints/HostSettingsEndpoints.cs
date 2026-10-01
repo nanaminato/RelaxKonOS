@@ -67,6 +67,6 @@ public static class HostSettingsEndpoints
     private static async Task<IResult> ExecuteAsync(Func<Task<IResult>> action)
     {
         try { return await action(); }
-        catch (SettingsException error) { return Results.Problem(statusCode: error.StatusCode, title: error.Code); }
+        catch (SettingsException error) { return Results.Problem(statusCode: error.StatusCode, title: error.Code, extensions: new Dictionary<string, object?> { ["problemCode"] = error.Code }); }
     }
 }

@@ -1,9 +1,11 @@
 package app.relaxkonos.mobile.servercenter
 
 import app.relaxkonos.mobile.security.encodeUtf8
+import com.jcraft.jsch.ChannelDirectTCPIP
 import com.jcraft.jsch.ChannelExec
 import com.jcraft.jsch.ChannelShell
 import com.jcraft.jsch.ChannelSftp
+import com.jcraft.jsch.SftpException
 import com.jcraft.jsch.SftpATTRS
 import com.jcraft.jsch.HostKey
 import com.jcraft.jsch.HostKeyRepository
@@ -91,6 +93,8 @@ class JschServerCenterTransport : ServerCenterSshTransport {
                 }
                 created.setUserInfo(PasswordUserInfo(credential.secret))
             }
+            created.setServerAliveInterval(20_000)
+            created.setServerAliveCountMax(3)
             created.setConfig("StrictHostKeyChecking", "yes")
             // This repository deliberately exposes no JSch known_hosts list: trust is decided by
             // GuardedHostKeyRepository.check and our separately persisted pins. JSch's default
@@ -233,8 +237,8 @@ class JschServerCenterTransport : ServerCenterSshTransport {
         val sftp = openSftp()
         try {
             @Suppress("UNCHECKED_CAST")
-            val entries = sftp.ls(remotePath) as java.util.Vector<*>
-            entries.asSequence().map { it as ChannelSftp.LsEntry }
+            val entries = listEntries(sftp, remotePath)
+            entries.asSequence()
                 .filterNot { it.filename == "." || it.filename == ".." }
                 .map { entry ->
                     val attributes = entry.attrs
@@ -252,6 +256,42 @@ class JschServerCenterTransport : ServerCenterSshTransport {
         } finally {
             sftp.disconnect()
         }
+    }
+
+    override suspend fun fileInfo(remotePath: String): SshFileEntry? = withContext(Dispatchers.IO) {
+        val sftp = openSftp()
+        try { fileInfo(sftp, remotePath) } finally { sftp.disconnect() }
+    }
+    private fun fileInfo(sftp: ChannelSftp, path: String): SshFileEntry? = try {
+        val attributes = sftp.lstat(path)
+        SshFileEntry(path, path.trimEnd('/').substringAfterLast('/'), attributes.isDir, attributes.isLink,
+            if (attributes.isDir) null else attributes.size, attributes.mTime.toLong().takeIf { it > 0 }?.times(1000))
+    } catch (error: SftpException) {
+        if (error.id == ChannelSftp.SSH_FX_NO_SUCH_FILE) null else throw error
+    }
+    override suspend fun uploadNew(content: InputStream, contentLength: Long?, remotePath: String) = withContext(Dispatchers.IO) {
+        val sftp = openSftp()
+        try {
+            check(fileInfo(sftp, remotePath) == null) { "destination-exists" }
+            SshBoundedInputStream(content, contentLength?.coerceAtMost(SshFileTransferRules.MAX_BYTES) ?: SshFileTransferRules.MAX_BYTES).let { bounded ->
+                sftp.put(bounded, remotePath, ChannelSftp.OVERWRITE)
+                check(contentLength == null || bounded.count == contentLength) { "source-changed" }
+            }
+        } finally { sftp.disconnect() }
+    }
+    override suspend fun copyFile(sourcePath: String, destinationPath: String, maximumBytes: Long) = withContext(Dispatchers.IO) {
+        val reader = openSftp(); var writer: ChannelSftp? = null
+        try {
+            val destinationSftp = openSftp(); writer = destinationSftp
+            val source = fileInfo(reader, sourcePath) ?: error("source-changed")
+            check(!source.isDirectory && !source.isSymbolicLink && source.size == maximumBytes) { "source-changed" }
+            check(fileInfo(destinationSftp, destinationPath) == null) { "destination-exists" }
+            reader.get(sourcePath).use { input ->
+                val bounded = SshBoundedInputStream(input, maximumBytes)
+                destinationSftp.put(bounded, destinationPath, ChannelSftp.OVERWRITE)
+                check(bounded.count == maximumBytes) { "source-changed" }
+            }
+        } finally { writer?.disconnect(); reader.disconnect() }
     }
 
     override suspend fun createDirectory(remotePath: String) = withContext(Dispatchers.IO) {
@@ -281,6 +321,7 @@ class JschServerCenterTransport : ServerCenterSshTransport {
     override suspend fun rename(sourcePath: String, destinationPath: String) = withContext(Dispatchers.IO) {
         val sftp = openSftp()
         try {
+            check(fileInfo(sftp, destinationPath) == null) { "destination-exists" }
             sftp.rename(sourcePath, destinationPath)
         } finally {
             sftp.disconnect()
@@ -288,29 +329,36 @@ class JschServerCenterTransport : ServerCenterSshTransport {
     }
 
     override fun openLoopbackTunnel(remotePort: Int, basePath: String?): ServerCenterSshTunnel {
-        require(remotePort in 1..65535) { "The remote port must be between 1 and 65535." }
-        // Hard constraint: a tunnel that binds anywhere but loopback would expose an
-        // authenticated-only service to the local network. There is no configuration switch for this.
-        check(ServerTunnelRules.isAcceptableTunnelBindAddress(ServerTunnelRules.LOOPBACK_HOST)) {
-            "The tunnel bind address must be loopback."
-        }
+        return openForward(remotePort, null, basePath)
+    }
 
+    override fun openLocalForward(remotePort: Int, preferredLocalPort: Int?): ServerCenterSshTunnel =
+        openForward(remotePort, preferredLocalPort, null)
+
+    private fun openForward(remotePort: Int, preferredLocalPort: Int?, basePath: String?): ServerCenterSshTunnel {
+        require(remotePort in 1..65535)
+        require(preferredLocalPort == null || preferredLocalPort in 1024..65535)
         val active = requireSession()
-        val localPort = try {
-            // bind_address first, then local port (0 = OS-assigned), then the remote loopback target.
-            active.setPortForwardingL(
-                ServerTunnelRules.LOOPBACK_HOST,
-                ServerTunnelRules.EPHEMERAL_PORT,
-                ServerTunnelRules.LOOPBACK_HOST,
-                remotePort,
-            )
-        } catch (error: JSchException) {
-            throw IllegalStateException("Unable to open the loopback tunnel.", error)
-        }
+        val localPort = active.setPortForwardingL(ServerTunnelRules.LOOPBACK_HOST, preferredLocalPort ?: 0,
+            ServerTunnelRules.LOOPBACK_HOST, remotePort)
+        return JschLoopbackTunnel(this, localPort, basePath).also { tunnels += it }
+    }
 
-        val tunnel = JschLoopbackTunnel(this, localPort, basePath)
-        tunnels += tunnel
-        return tunnel
+    override suspend fun testLoopbackPort(remotePort: Int): Boolean = withContext(Dispatchers.IO) {
+        require(remotePort in 1..65535)
+        val channel = requireSession().openChannel("direct-tcpip") as ChannelDirectTCPIP
+        try {
+            channel.setHost(ServerTunnelRules.LOOPBACK_HOST)
+            channel.setPort(remotePort)
+            channel.setOrgIPAddress(ServerTunnelRules.LOOPBACK_HOST)
+            channel.setOrgPort(0)
+            channel.setInputStream(null)
+            channel.setOutputStream(object : OutputStream() { override fun write(value: Int) {}
+                override fun write(buffer: ByteArray, offset: Int, length: Int) {} })
+            channel.connect(CHANNEL_CONNECT_TIMEOUT_MILLIS)
+            channel.isConnected
+        } catch (_: JSchException) { false }
+        finally { channel.disconnect() }
     }
 
     override fun close() {
@@ -337,21 +385,35 @@ class JschServerCenterTransport : ServerCenterSshTransport {
         return channel
     }
 
-    private fun deleteDirectoryTree(sftp: ChannelSftp, path: String) {
-        @Suppress("UNCHECKED_CAST")
-        val entries = sftp.ls(path) as java.util.Vector<*>
-        for (item in entries) {
-            val entry = item as ChannelSftp.LsEntry
-            if (entry.filename == "." || entry.filename == "..") continue
-            val child = childPath(path, entry.filename)
-            val attrs: SftpATTRS = entry.attrs
-            if (attrs.isDir && !attrs.isLink) deleteDirectoryTree(sftp, child) else sftp.rm(child)
-        }
-        sftp.rmdir(path)
+    private fun listEntries(sftp: ChannelSftp, path: String): List<ChannelSftp.LsEntry> {
+        val entries = mutableListOf<ChannelSftp.LsEntry>()
+        sftp.ls(path, object : ChannelSftp.LsEntrySelector {
+            override fun select(entry: ChannelSftp.LsEntry): Int {
+                if (entry.filename == "." || entry.filename == "..") return ChannelSftp.LsEntrySelector.CONTINUE
+                check(SshFileTransferRules.safeName(entry.filename)) { "invalid-name" }
+                check(entries.size < SshFileTransferRules.MAX_ENTRIES) { "transfer-limit" }
+                entries += entry
+                return ChannelSftp.LsEntrySelector.CONTINUE
+            }
+        })
+        return entries
     }
-
-    private fun childPath(parent: String, name: String): String =
-        if (parent == "/") "/$name" else parent.trimEnd('/') + "/" + name
+    private fun deleteDirectoryTree(sftp: ChannelSftp, path: String) {
+        val plan = mutableListOf<Pair<String, SftpATTRS>>()
+        fun visit(current: String, depth: Int) {
+            check(depth <= SshFileTransferRules.MAX_DEPTH && plan.size < SshFileTransferRules.MAX_ENTRIES) { "transfer-limit" }
+            val attributes = sftp.lstat(current)
+            plan += current to attributes
+            if (attributes.isDir && !attributes.isLink) listEntries(sftp, current).forEach { visit(childPath(current, it.filename), depth + 1) }
+        }
+        visit(path, 0)
+        plan.asReversed().forEach { (current, before) ->
+            val actual = sftp.lstat(current)
+            check(actual.isDir == before.isDir && actual.isLink == before.isLink) { "source-changed" }
+            if (actual.isDir && !actual.isLink) sftp.rmdir(current) else sftp.rm(current)
+        }
+    }
+    private fun childPath(parent: String, name: String): String = SshFileTransferRules.child(parent, name)
 
     /**
      * 执行一条命令并等待结束。stdout 与 stderr 由两个读取线程并行排空：

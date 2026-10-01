@@ -13,9 +13,14 @@ import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.ui.common.*
 import app.relaxkonos.mobile.ui.manage.certificates.*
 import app.relaxkonos.mobile.ui.theme.Spacing
+import app.relaxkonos.mobile.RelaxKonApplication
+import androidx.compose.ui.platform.LocalContext
+import app.relaxkonos.mobile.data.ExternalServiceAddresses
 
 @Composable
 internal fun WebSiteList(server: WebServer, state: NginxState, canManage: Boolean, model: NginxViewModel, confirm: (Int, () -> Unit) -> Unit) {
+    val container = (LocalContext.current.applicationContext as RelaxKonApplication).container
+    val owner = container.activeSession
     Text(stringResource(R.string.websites_site_manager), style = MaterialTheme.typography.titleSmall)
     if (canManage && server.canRead && server.canTestConfiguration) OutlinedButton(enabled = !state.busy,
         onClick = { model.editSite(server) }) { Text(stringResource(R.string.websites_site_create)) }
@@ -28,6 +33,10 @@ internal fun WebSiteList(server: WebServer, state: NginxState, canManage: Boolea
                 Text(site.bindings.joinToString(", ") { "${it.domain}:${it.port}" }, style = MaterialTheme.typography.bodySmall)
                 Text(site.rootPath ?: stringResource(R.string.websites_site_proxy_only), style = MaterialTheme.typography.bodySmall)
                 SiteCertificateBinding(site, state.certificates)
+                ServiceAccess(ExternalServiceAddresses.site(site), ready = !state.busy && !state.loading) {
+                    owner != null && container.activeSession === owner &&
+                        (model.state.sites[server.id] as? ApiResult.Success)?.value?.any { it == site } == true
+                }
                 site.routes.forEach { Text("${it.path} → ${it.upstream}", style = MaterialTheme.typography.bodySmall) }
                 if (canManage && server.canTestConfiguration) Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     OutlinedButton(enabled = !state.busy && state.pendingSites.none { it.serverId == server.id && it.siteId == site.id },

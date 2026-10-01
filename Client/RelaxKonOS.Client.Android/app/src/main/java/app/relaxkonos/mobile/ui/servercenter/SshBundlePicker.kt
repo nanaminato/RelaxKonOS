@@ -11,6 +11,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalContext
+import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.ui.theme.Spacing
 
@@ -19,7 +24,15 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 internal fun SshBundlePicker(hostId: String, onDismiss: () -> Unit, onSelect: (String) -> Unit) {
     val model: SshFilesViewModel = viewModel(key = "ssh-bundle-picker-$hostId")
     val state by model.state.collectAsState()
-    LaunchedEffect(hostId) { model.setHost(hostId); model.reload() }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val revision = (LocalContext.current.applicationContext as RelaxKonApplication).container.serverCenter.workspaceRevision
+    var resumed by remember(lifecycle) { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
+    DisposableEffect(lifecycle, model) {
+        val observer = LifecycleEventObserver { _, _ -> resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer); model.stop() }
+    }
+    LaunchedEffect(hostId, revision, resumed) { if (resumed) model.resume(hostId) else model.stop() }
 
     Dialog(onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {

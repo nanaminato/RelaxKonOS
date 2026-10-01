@@ -26,6 +26,37 @@ class RelaxKonApi(
     private val clientVersion: String,
     private val deviceName: String = defaultDeviceName(),
 ) : RelaxKonGateway {
+    override suspend fun hostTime(serverUrl: String, accessToken: String) = webPublishingRead(serverUrl, accessToken, HostSettingsRoutes.ROOT + "/time", HostSettingsWire::time)
+    override suspend fun hostIdentity(serverUrl: String, accessToken: String) = webPublishingRead(serverUrl, accessToken, HostSettingsRoutes.ROOT + "/identity", HostSettingsWire::identity)
+    override suspend fun hostEnvironmentTarget(serverUrl: String, accessToken: String, scope: HostEnvironmentScope) = webPublishingRead(serverUrl, accessToken, HostSettingsRoutes.target(scope), HostSettingsWire::target)
+    override suspend fun hostEnvironment(serverUrl: String, accessToken: String, scope: HostEnvironmentScope, reveal: Boolean) = webPublishingRead(serverUrl, accessToken, HostSettingsRoutes.environment(scope, reveal), HostSettingsWire::environment)
+    override suspend fun previewHostSettings(serverUrl: String, accessToken: String, kind: HostSettingKind, expectedRevision: String, key: String,
+        value: String?, scope: HostEnvironmentScope?, mutation: HostEnvironmentMutation?, confirmHighImpact: Boolean): ApiResult<HostSettingsPlan> {
+        require(HostSettingsRules.revision(expectedRevision) && key.length in 1..128 && key.none { it.isISOControl() })
+        val body = JsonBody().string("expectedRevision", expectedRevision).string("idempotencyKey", key)
+        when (kind) {
+            HostSettingKind.Time -> body.raw("change", JSONObject().put("timeZoneId", requireNotNull(value)).toString())
+            HostSettingKind.Identity -> body.raw("change", JSONObject().put("hostName", requireNotNull(value)).toString())
+            HostSettingKind.Environment -> {
+                val m = requireNotNull(mutation)
+                body.string("scope", requireNotNull(scope).query).raw("change", JSONObject().put("confirmHighImpact", confirmHighImpact)
+                    .put("changes", JSONArray().put(JSONObject().put("name", m.name).put("operation", if (m.delete) "delete" else "set")
+                        .put("value", m.value ?: JSONObject.NULL).put("valueKind", if (m.expand) "expandString" else "string"))).toString())
+            }
+        }
+        return webPublishingCall("POST", serverUrl, HostSettingsRoutes.ROOT + "/${kind.path}/preview", accessToken, body, HostSettingsWire::plan)
+    }
+    override suspend fun applyHostSettings(serverUrl: String, accessToken: String, kind: HostSettingKind, planId: String) =
+        webPublishingCall("POST", serverUrl, HostSettingsRoutes.ROOT + "/${kind.path}/apply", accessToken,
+            JsonBody().string("planId", HostSettingsRules.id(planId)), HostSettingsWire::operation)
+    override suspend fun hostSettingsOperation(serverUrl: String, accessToken: String, id: String) =
+        webPublishingRead(serverUrl, accessToken, HostSettingsRoutes.operation(id), HostSettingsWire::operation)
+    override suspend fun rollbackHostSettings(serverUrl: String, accessToken: String, id: String, expectedRevision: String): ApiResult<HostSettingsOperation> {
+        require(HostSettingsRules.revision(expectedRevision))
+        return webPublishingCall("POST", serverUrl, HostSettingsRoutes.operation(id) + "/rollback", accessToken,
+            JsonBody().string("expectedRevision", expectedRevision), HostSettingsWire::operation)
+    }
+
     override suspend fun smbStatus(serverUrl: String, accessToken: String): ApiResult<SmbStatus> = webPublishingRead(serverUrl, accessToken, SmbRoutes.ROOT + "/status", SmbWire::status)
     override suspend fun smbCapabilities(serverUrl: String, accessToken: String): ApiResult<SmbCapabilities> = webPublishingRead(serverUrl, accessToken, SmbRoutes.ROOT + "/capabilities", SmbWire::capabilities)
     override suspend fun smbShares(serverUrl: String, accessToken: String): ApiResult<List<SmbShare>> = webPublishingRead(serverUrl, accessToken, SmbRoutes.ROOT + "/shares", SmbWire::shares)
@@ -91,14 +122,31 @@ class RelaxKonApi(
         is ApiResult.Problem -> result
         is ApiResult.Transport -> result
     }
-    override suspend fun alerts(serverUrl: String, accessToken: String, cursor: String?): ApiResult<OperationalAlertPage> =
-        eventAlertCall("GET", serverUrl, EventAlertRoutes.page(cursor), accessToken, null, EventAlertWire::page)
+    override suspend fun alerts(serverUrl: String, accessToken: String, cursor: String?, query: AlertQuery): ApiResult<OperationalAlertPage> =
+        eventAlertCall("GET", serverUrl, EventAlertRoutes.page(cursor, query), accessToken, null, EventAlertWire::page)
+
+    override suspend fun operationalEvents(serverUrl: String, accessToken: String, cursor: String?, query: EventQuery): ApiResult<OperationalEventPage> =
+        eventAlertCall("GET", serverUrl, EventAlertRoutes.events(cursor, query), accessToken, null, EventAlertWire::events)
+    override suspend fun eventAlertSummary(serverUrl: String, accessToken: String): ApiResult<EventAlertSummary> =
+        eventAlertCall("GET", serverUrl, EventAlertRoutes.SUMMARY, accessToken, null, EventAlertWire::summary)
+    override suspend fun mutateAlert(serverUrl: String, accessToken: String, id: String, action: AlertMutation, reason: String?, expiresAt: String?): ApiResult<OperationalAlert> {
+        val route = when (action) {
+            AlertMutation.Acknowledge -> EventAlertRoutes.acknowledgement(id)
+            AlertMutation.Resolve -> EventAlertRoutes.resolve(id)
+            AlertMutation.Suppress, AlertMutation.RemoveSuppression -> EventAlertRoutes.suppression(id)
+        }
+        val body = if (action == AlertMutation.RemoveSuppression) null else JsonBody().apply {
+            if (action == AlertMutation.Acknowledge) raw("note", reason?.let(JSONObject::quote) ?: "null")
+            else string("reason", reason)
+            if (action == AlertMutation.Suppress) string("expiresAt", expiresAt)
+        }
+        return eventAlertCall(if (action == AlertMutation.RemoveSuppression) "DELETE" else "POST", serverUrl, route, accessToken, body, EventAlertWire::alert)
+    }
 
     override suspend fun alertDetail(serverUrl: String, accessToken: String, id: String): ApiResult<OperationalAlertDetail> =
         eventAlertCall("GET", serverUrl, EventAlertRoutes.alert(id), accessToken, null, EventAlertWire::detail)
 
-    override suspend fun acknowledgeAlert(serverUrl: String, accessToken: String, id: String): ApiResult<OperationalAlert> =
-        eventAlertCall("POST", serverUrl, EventAlertRoutes.acknowledgement(id), accessToken, JsonBody(), EventAlertWire::alert)
+
 
     private suspend fun <T> eventAlertCall(method: String, serverUrl: String, route: String, accessToken: String,
         body: JsonBody?, parse: (String) -> T): ApiResult<T> = when (val result = execute(method, serverUrl, route, accessToken, body)) {
@@ -258,10 +306,10 @@ class RelaxKonApi(
         gitCall("POST", serverUrl, GitBuildRoutes.cancel(id), accessToken, JsonBody(), GitBuildWire::operation)
 
     override suspend fun deployGitBuild(serverUrl: String, accessToken: String, applicationId: String,
-        build: GitBuildOperation, key: String): ApiResult<DeploymentOperation> {
+        build: GitBuildOperation, expectedUpdatedAt: String, key: String): ApiResult<DeploymentOperation> {
         val source = JSONObject().put("imageReference", build.imageReference).put("gitBuildId", build.id).toString()
         return deploymentMutation("POST", serverUrl, ApplicationDeploymentRoutes.deploy(applicationId), accessToken,
-            JsonBody().raw("source", source).bool("confirmed", true), key, ApplicationDeploymentWire::acceptedOperation)
+            JsonBody().raw("source", source).string("expectedUpdatedAt", expectedUpdatedAt).bool("confirmed", true), key, ApplicationDeploymentWire::acceptedOperation)
     }
 
     private suspend fun <T> gitCall(method: String, serverUrl: String, route: String, accessToken: String,
@@ -566,10 +614,20 @@ class RelaxKonApi(
     override suspend fun applicationCatalog(serverUrl: String, accessToken: String): ApiResult<List<CatalogTemplate>> =
         deploymentRead(serverUrl, accessToken, ApplicationDeploymentRoutes.CATALOG, ApplicationDeploymentWire::catalog)
 
-    override suspend fun installCatalogApplication(serverUrl: String, accessToken: String, template: CatalogTemplate, name: String,
+    override suspend fun previewCatalogUpdate(serverUrl: String, accessToken: String, applicationId: String, templateVersion: String): ApiResult<CatalogApplicationUpdatePreview> =
+        deploymentRead(serverUrl, accessToken, "${ApplicationDeploymentRoutes.catalogUpdate(applicationId)}?templateVersion=${encode(templateVersion)}", CatalogApplicationUpdateWire::preview)
+
+    override suspend fun updateCatalogApplication(serverUrl: String, accessToken: String, preview: CatalogApplicationUpdatePreview,
+        idempotencyKey: String): ApiResult<DeploymentOperation> = deploymentMutation("POST", serverUrl,
+            ApplicationDeploymentRoutes.catalogUpdate(preview.applicationId), accessToken,
+            JsonBody().string("templateId", preview.target.id).string("templateVersion", preview.target.version)
+                .string("expectedUpdatedAt", preview.expectedUpdatedAt).raw("expectedRevisionId", preview.expectedRevisionId?.let(JSONObject::quote) ?: "null")
+                .string("currentTemplateVersion", preview.currentTemplateVersion).bool("confirmed", true), idempotencyKey, ApplicationDeploymentWire::acceptedOperation)
+
+    override suspend fun installCatalogApplication(serverUrl: String, accessToken: String, template: CatalogTemplate, name: String, hostPort: Int,
         fields: List<CatalogFieldValue>, idempotencyKey: String): ApiResult<DeploymentOperation> {
         val fieldJson = JSONArray().apply { fields.forEach { put(JSONObject().put("id", it.id).put("value", it.value)) } }
-        val body = JsonBody().string("templateId", template.id).string("templateVersion", template.version).string("name", name.trim())
+        val body = JsonBody().string("templateId", template.id).string("templateVersion", template.version).string("name", name.trim()).int("hostPort", hostPort)
             .raw("fields", fieldJson.toString()).bool("confirmed", true)
         return deploymentMutation("POST", serverUrl, ApplicationDeploymentRoutes.CATALOG_INSTALL, accessToken, body, idempotencyKey,
             ApplicationDeploymentWire::catalogInstall)
@@ -708,6 +766,7 @@ class RelaxKonApi(
         applicationId: String,
         archiveReferenceId: String,
         definition: ArchiveDeploymentDefinition,
+        expectedUpdatedAt: String,
         idempotencyKey: String,
     ): ApiResult<DeploymentOperation> {
         val source = JSONObject().apply {
@@ -719,18 +778,24 @@ class RelaxKonApi(
             if (definition.selfContained) put("selfContained", true)
         }.toString()
         return deploymentMutation("POST", serverUrl, ApplicationDeploymentRoutes.deploy(applicationId), accessToken,
-            JsonBody().raw("source", source).bool("confirmed", true), idempotencyKey, ApplicationDeploymentWire::acceptedOperation)
+            JsonBody().raw("source", source).string("expectedUpdatedAt", expectedUpdatedAt).bool("confirmed", true), idempotencyKey, ApplicationDeploymentWire::acceptedOperation)
     }
+
+    override suspend fun deployRevision(serverUrl: String, accessToken: String, applicationId: String,
+        source: DeploymentRevisionSource, expectedUpdatedAt: String, idempotencyKey: String): ApiResult<DeploymentOperation> =
+        deploymentMutation("POST", serverUrl, ApplicationDeploymentRoutes.deploy(applicationId), accessToken,
+            JsonBody().raw("source", source.json()).string("expectedUpdatedAt", expectedUpdatedAt).bool("confirmed", true), idempotencyKey, ApplicationDeploymentWire::acceptedOperation)
 
     override suspend fun deployImage(
         serverUrl: String,
         accessToken: String,
         applicationId: String,
         imageReference: String,
+        expectedUpdatedAt: String,
         idempotencyKey: String,
     ): ApiResult<DeploymentOperation> {
         val source = JSONObject().put("imageReference", imageReference.trim()).toString()
-        val body = JsonBody().raw("source", source).bool("confirmed", true)
+        val body = JsonBody().raw("source", source).string("expectedUpdatedAt", expectedUpdatedAt).bool("confirmed", true)
         return deploymentMutation("POST", serverUrl, ApplicationDeploymentRoutes.deploy(applicationId), accessToken, body, idempotencyKey,
             ApplicationDeploymentWire::acceptedOperation)
     }

@@ -90,6 +90,18 @@ internal sealed class ApplicationDeploymentCatalogStore
         }
     }
 
+    /// <summary>Serializes the definition check with operation reservation, without changing intent.</summary>
+    public T WithApplication<T>(Guid applicationId, Func<ApplicationRecord, T> read)
+    {
+        lock (gate)
+        {
+            EnsureAvailable();
+            var application = ledger.Applications.FirstOrDefault(x => x.Id == applicationId)
+                ?? throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ApplicationNotFound, 404);
+            return read(application);
+        }
+    }
+
     public ApplicationRecord Update(Guid applicationId, Func<ApplicationRecord, ApplicationRecord> update)
     {
         lock (gate)
@@ -159,11 +171,14 @@ internal sealed class ApplicationDeploymentCatalogStore
         lock (gate)
         {
             EnsureAvailable();
-            if (ledger.Revisions.All(x => x.Id != revisionId || x.ApplicationId != applicationId))
+            var revision = ledger.Revisions.FirstOrDefault(x => x.Id == revisionId && x.ApplicationId == applicationId);
+            if (revision is null)
                 throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.RevisionNotFound, 404);
             return Update(applicationId, application => application with
             {
                 CurrentRevisionId = revisionId,
+                CatalogTemplateId = revision.CatalogTemplateId,
+                CatalogTemplateVersion = revision.CatalogTemplateVersion,
                 DesiredState = ApplicationDesiredState.Running,
                 LastDeployedAt = deployedAt,
                 UpdatedAt = deployedAt,

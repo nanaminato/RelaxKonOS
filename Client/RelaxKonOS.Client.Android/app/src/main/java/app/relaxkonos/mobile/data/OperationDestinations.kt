@@ -3,6 +3,7 @@ package app.relaxkonos.mobile.data
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.InstallationService
 import app.relaxkonos.mobile.core.net.OperationalAlert
+import app.relaxkonos.mobile.core.net.OperationalEvent
 import app.relaxkonos.mobile.core.net.ServerCapabilities
 
 enum class OperationDestination { Deployment, Website, Compose, GitBuild, GitWorkspace, Script, WebServer, Certificate, Proxy, Tunnels, Docker, Guardian, Firewall, Smb, DockerControl }
@@ -52,11 +53,17 @@ object OperationDestinations {
         }
     }
 
-    fun alert(owner: SessionState.Active, alert: OperationalAlert): OperationTarget? {
-        val pair = when (alert.targetKind) {
+    fun alert(owner: SessionState.Active, alert: OperationalAlert): OperationTarget? =
+        remediation(owner, alert.targetKind, alert.targetResourceId, alert.targetOperationId)
+
+    fun event(owner: SessionState.Active, event: OperationalEvent): OperationTarget? =
+        remediation(owner, event.targetKind, event.targetResourceId, event.targetOperationId)
+
+    private fun remediation(owner: SessionState.Active, kind: String, resourceId: String?, operationId: String?): OperationTarget? {
+        val pair = when (kind) {
             "applicationDeployment", "applicationDeploymentOperation" -> ServerCapabilities.APPLICATION_DEPLOYMENTS to
-                alert.targetResourceId?.takeIf(String::isNotBlank)?.let { OperationTarget(OperationDestination.Deployment, it) }
-            "certificate" -> ServerCapabilities.CERTIFICATES to OperationTarget(OperationDestination.Certificate, alert.targetOperationId)
+                resourceId?.takeIf(String::isNotBlank)?.let { OperationTarget(OperationDestination.Deployment, it) }
+            "certificate" -> ServerCapabilities.CERTIFICATES to OperationTarget(OperationDestination.Certificate, operationId)
             "guardianOverview", "guardianWorkload" -> ServerCapabilities.GUARDIAN to OperationTarget(OperationDestination.Guardian)
             "dockerOverview" -> ServerCapabilities.DOCKER to OperationTarget(OperationDestination.Docker)
             "tunnelDefinition" -> ServerCapabilities.TUNNELS to OperationTarget(OperationDestination.Tunnels)

@@ -89,3 +89,5 @@ DevCli 现已接入 `environment-target`、`environment`、`preview-environment`
 
 
 环境页现已支持 PATH 分项追加、替换、删除和上下移动，按远程快照选择 `;`/`:`，保留重复、空项和顺序；删除最后一个分项表示空 PATH，删除整个变量仍使用独立 Delete。编辑先改变原始值，再明确暂存进批次。页面显示当前目录搜索和重复项提示，明确声明尚未检查远程路径存在性。草稿支持选中变量重编辑、从批次单独移除；移除使旧计划失效，需重新预览。重新加载掩码快照会清空原先揭示的选择与输入框。
+
+宿主设置查询对过期且仍为 Prepared 的计划在协调锁内写入 Failed/`settings.plan_expired`；延迟 apply 返回该终态，不执行旧写入。此规则同样适用于桌面和 Android；Applying/Unknown 不因超时被当作未执行。HostSettings 拒绝响应具有稳定 `problemCode` 扩展。

@@ -33,31 +33,36 @@ internal sealed class ApplicationDeploymentCoordinator(
     {
         ValidateKey(key);
 
-        var application = catalog.Find(request.ApplicationId)
-            ?? throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ApplicationNotFound, 404);
         var fingerprint = ApplicationDeploymentService.Fingerprint(request);
 
         lock (gate)
         {
             if (!ready || lifetime.ApplicationStopping.IsCancellationRequested)
                 throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.StoreUnavailable, 503);
-            var replay = operations.FindIdempotent(application.Id, request.Kind, actor, key, fingerprint);
-            if (replay is not null) return replay.Operation;
-            // The concurrency ceiling is decided before the record is written, so a rejected request
-            // never leaves a queued operation behind that nothing will ever run.
-            if (running.Count >= Math.Max(1, options.MaximumConcurrentOperations))
-                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ResourceConflict);
-
-            var entry = operations.Create(application.Id, application.Name, request.Kind, actor, key, fingerprint,
-                ApplicationDeploymentService.Resources(application.Id), out var created);
-            if (created)
+            return catalog.WithApplication(request.ApplicationId, application =>
             {
-                var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopping);
-                cancellations[entry.Operation.OperationId] = cancellation;
-                running[entry.Operation.OperationId] = Task.Run(
-                    () => RunAsync(entry.Operation, request, actor, cancellation), CancellationToken.None);
-            }
-            return entry.Operation;
+                var replay = operations.FindIdempotent(application.Id, request.Kind, actor, key, fingerprint);
+                if (replay is not null) return replay.Operation;
+                if (request.ExpectedUpdatedAt is { } expected && (expected == default || application.UpdatedAt != expected))
+                    throw new ApplicationDeploymentException(expected == default ? ApplicationDeploymentProblemCodes.InvalidRequest : ApplicationDeploymentProblemCodes.DefinitionConflict, expected == default ? 400 : 409);
+                if (request.CatalogUpdate is { } update)
+                    ApplicationCatalogUpdates.Validate(application, application.CurrentRevisionId is { } revisionId ? catalog.FindRevision(revisionId) : null, update);
+                // The concurrency ceiling is decided before the record is written, so a rejected request
+                // never leaves a queued operation behind that nothing will ever run.
+                if (running.Count >= Math.Max(1, options.MaximumConcurrentOperations))
+                    throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ResourceConflict);
+
+                var entry = operations.Create(application.Id, application.Name, request.Kind, actor, key, fingerprint,
+                    ApplicationDeploymentService.Resources(application.Id), out var created);
+                if (created)
+                {
+                    var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopping);
+                    cancellations[entry.Operation.OperationId] = cancellation;
+                    running[entry.Operation.OperationId] = Task.Run(
+                        () => RunAsync(entry.Operation, request, actor, cancellation), CancellationToken.None);
+                }
+                return entry.Operation;
+            });
         }
     }
 

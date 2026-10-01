@@ -53,7 +53,7 @@ public static class ApplicationDeploymentEndpoints
                         var template = ApplicationCatalog.Require(request.TemplateId, request.TemplateVersion);
                         var bound = template.Bind(request);
                         var application = await manager.CreateAsync(bound.Definition, actor, ct, template);
-                        var operation = coordinator.Start(new DeploymentRequest(application.Id, DeploymentOperationKind.Deploy, bound.Source), actor, Key(http));
+                        var operation = coordinator.Start(new DeploymentRequest(application.Id, DeploymentOperationKind.Deploy, bound.Source, ExpectedUpdatedAt: application.UpdatedAt), actor, Key(http));
                         return new CatalogApplicationInstallDto(application, operation, template.Id, template.Version);
                     });
                     return Results.Accepted(ApplicationDeploymentApiRoutes.Operation(installed.Operation.OperationId), installed);
@@ -112,10 +112,21 @@ public static class ApplicationDeploymentEndpoints
                 if (!request.Confirmed) return Problem(ApplicationDeploymentProblemCodes.ConfirmationRequired, 400);
                 _ = manager.Require(applicationId);
                 var operation = coordinator.Start(
-                    new DeploymentRequest(applicationId, DeploymentOperationKind.Deploy, request.Source),
+                    new DeploymentRequest(applicationId, DeploymentOperationKind.Deploy, request.Source, ExpectedUpdatedAt: request.ExpectedUpdatedAt),
                     Actor(http.User), Key(http));
                 return Accepted(operation);
             }))
+            .RequireAuthorization(ManagePolicy);
+
+        group.MapGet(ApplicationDeploymentApiRoutes.CatalogUpdatePattern,
+            (Guid applicationId, string templateVersion, ApplicationDeploymentManager manager) =>
+                Handle(() => Results.Ok(manager.CatalogUpdatePreview(applicationId, templateVersion))))
+            .RequireAuthorization(ReadPolicy);
+
+        group.MapPost(ApplicationDeploymentApiRoutes.CatalogUpdatePattern,
+            (Guid applicationId, UpdateCatalogApplicationRequest request, HttpContext http,
+                ApplicationDeploymentCoordinator coordinator) => Handle(() => Accepted(coordinator.Start(
+                    new DeploymentRequest(applicationId, DeploymentOperationKind.Deploy, CatalogUpdate: request), Actor(http.User), Key(http)))))
             .RequireAuthorization(ManagePolicy);
 
         group.MapPost(ApplicationDeploymentApiRoutes.RollbackPattern,

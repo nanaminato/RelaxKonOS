@@ -62,6 +62,7 @@ public sealed record UpdateApplicationRequest(
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record DeployApplicationRequest(
     [property: JsonPropertyName("source")] DeploymentSourceInputDto Source,
+    [property: JsonRequired, JsonPropertyName("expectedUpdatedAt")] DateTimeOffset ExpectedUpdatedAt,
     [property: JsonPropertyName("confirmed")] bool Confirmed = false);
 
 /// <summary>Queues a deployment that reuses an existing revision's image and configuration references.</summary>

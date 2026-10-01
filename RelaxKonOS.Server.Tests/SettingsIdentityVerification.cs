@@ -75,6 +75,14 @@ internal static class SettingsIdentityVerification
         Check(provider.PendingName == "Test-Old", "Rollback lost the original host name.");
 
         // A lost Helper result must stay Unknown and must never be replayed.
+        var expired = await coordinator.PreviewAsync(actor, new(provider.Revision, "expired-read", new("Test-Expired")), default);
+        var expiredRecord = journal.ReadIdentity(expired.PlanId)!;
+        journal.Save(expiredRecord with { Plan = expiredRecord.Plan with { ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1) } });
+        Check((await reopened.GetIfExistsAsync(actor, expired.PlanId, default))!.State == SettingsOperationState.Failed,
+            "Server must atomically close an expired Prepared identity plan.");
+        var beforeLateApply = provider.Writes;
+        Check((await coordinator.ApplyAsync(actor, expired.PlanId, default)).State == SettingsOperationState.Failed && provider.Writes == beforeLateApply,
+            "A delayed identity apply must not run after expiry closure.");
         var uncertain = await coordinator.PreviewAsync(actor, new(provider.Revision, "uncertain", new("Test-Renamed")), default);
         provider.ThrowAfterWrite = true;
         Check((await coordinator.ApplyAsync(actor, uncertain.PlanId, default)).State == SettingsOperationState.Unknown,

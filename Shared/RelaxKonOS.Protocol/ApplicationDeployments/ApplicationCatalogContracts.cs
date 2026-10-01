@@ -55,6 +55,7 @@ public sealed record InstallCatalogApplicationRequest(
     [property: JsonPropertyName("templateId")] string TemplateId,
     [property: JsonPropertyName("templateVersion")] string TemplateVersion,
     [property: JsonPropertyName("name")] string Name,
+    [property: JsonRequired, JsonPropertyName("hostPort")] int HostPort,
     [property: JsonPropertyName("fields")] IReadOnlyList<ApplicationCatalogFieldValueDto> Fields,
     [property: JsonPropertyName("confirmed")] bool Confirmed = false);
 

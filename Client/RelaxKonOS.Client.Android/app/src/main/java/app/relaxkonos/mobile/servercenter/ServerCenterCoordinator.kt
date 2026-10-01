@@ -29,6 +29,9 @@ class ServerCenterCoordinator(
     /** In-memory only credentials for hosts verified during this Server Centre session. */
     private val verifiedSessionPasswords = mutableMapOf<String, CharArray>()
 
+    var workspaceRevision by mutableIntStateOf(0)
+        private set
+
     var revision by mutableIntStateOf(0)
         private set
 
@@ -56,13 +59,19 @@ class ServerCenterCoordinator(
 
     fun openSshFiles(hostId: String, password: CharArray) {
         require(targets.find(hostId) != null) { "Unknown host target '$hostId'." }
+        if (sshFilesHostId != null) closeSshFiles()
         rememberVerifiedPassword(hostId, password)
+        workspaceRevision++
         sshFilesHostId = hostId
     }
 
     fun workspacePasswordCopy(): CharArray? = sshFilesHostId?.let(::verifiedPasswordCopy)
 
+    var onWorkspaceClosed: () -> Unit = {}
+
     fun closeSshFiles() {
+        onWorkspaceClosed()
+        workspaceRevision++
         sshFilesHostId = null
     }
 
@@ -112,6 +121,7 @@ class ServerCenterCoordinator(
         installOperations.forgetHost(hostId)
         val removed = targets.remove(hostId)
         if (removed) {
+            if (sshFilesHostId == hostId) closeSshFiles()
             verifiedSessionPasswords.remove(hostId)?.fill('\u0000')
             revision++
         }

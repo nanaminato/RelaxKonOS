@@ -22,6 +22,16 @@ fun interface DownloadSink {
  * The implementation is [RelaxKonApi]; route names and payload shapes stay owned by that class.
  */
 interface RelaxKonGateway {
+    suspend fun hostTime(serverUrl: String, accessToken: String): ApiResult<HostTimeSettings>
+    suspend fun hostIdentity(serverUrl: String, accessToken: String): ApiResult<HostIdentitySettings>
+    suspend fun hostEnvironmentTarget(serverUrl: String, accessToken: String, scope: HostEnvironmentScope): ApiResult<HostSettingsTarget>
+    suspend fun hostEnvironment(serverUrl: String, accessToken: String, scope: HostEnvironmentScope, reveal: Boolean): ApiResult<HostEnvironmentSettings>
+    suspend fun previewHostSettings(serverUrl: String, accessToken: String, kind: HostSettingKind, expectedRevision: String, key: String,
+        value: String?, scope: HostEnvironmentScope?, mutation: HostEnvironmentMutation?, confirmHighImpact: Boolean): ApiResult<HostSettingsPlan>
+    suspend fun applyHostSettings(serverUrl: String, accessToken: String, kind: HostSettingKind, planId: String): ApiResult<HostSettingsOperation>
+    suspend fun hostSettingsOperation(serverUrl: String, accessToken: String, id: String): ApiResult<HostSettingsOperation>
+    suspend fun rollbackHostSettings(serverUrl: String, accessToken: String, id: String, expectedRevision: String): ApiResult<HostSettingsOperation>
+
     suspend fun gitEngine(serverUrl: String, accessToken: String): ApiResult<GitEngine> = ApiResult.Transport("Git unavailable.")
     suspend fun gitDiff(serverUrl: String, accessToken: String, id: String, path: String, staged: Boolean, reference: String?): ApiResult<GitDiff> = ApiResult.Transport("Git unavailable.")
     suspend fun gitLog(serverUrl: String, accessToken: String, id: String, skip: Int, search: String): ApiResult<List<GitCommit>> = ApiResult.Transport("Git unavailable.")
@@ -101,12 +111,15 @@ interface RelaxKonGateway {
     suspend fun backupManifests(serverUrl: String, accessToken: String, applicationId: String): ApiResult<List<BackupManifest>> = ApiResult.Transport("Backup recovery unavailable.")
     suspend fun backupManifest(serverUrl: String, accessToken: String, backupId: String): ApiResult<BackupManifest> = ApiResult.Transport("Backup recovery unavailable.")
     suspend fun backupPreflight(serverUrl: String, accessToken: String, backupId: String): ApiResult<BackupPreflight> = ApiResult.Transport("Backup recovery unavailable.")
-    suspend fun alerts(serverUrl: String, accessToken: String, cursor: String?): ApiResult<OperationalAlertPage> =
+    suspend fun alerts(serverUrl: String, accessToken: String, cursor: String?, query: AlertQuery): ApiResult<OperationalAlertPage> =
         ApiResult.Transport("Operational alerts unavailable.")
+    suspend fun operationalEvents(serverUrl: String, accessToken: String, cursor: String?, query: EventQuery): ApiResult<OperationalEventPage> = ApiResult.Transport("Operational events unavailable.")
+    suspend fun eventAlertSummary(serverUrl: String, accessToken: String): ApiResult<EventAlertSummary> = ApiResult.Transport("Operational summary unavailable.")
+    suspend fun mutateAlert(serverUrl: String, accessToken: String, id: String, action: AlertMutation, reason: String?, expiresAt: String?): ApiResult<OperationalAlert> = ApiResult.Transport("Operational alert action unavailable.")
     suspend fun alertDetail(serverUrl: String, accessToken: String, id: String): ApiResult<OperationalAlertDetail> =
         ApiResult.Transport("Operational alert unavailable.")
-    suspend fun acknowledgeAlert(serverUrl: String, accessToken: String, id: String): ApiResult<OperationalAlert> =
-        ApiResult.Transport("Operational alert acknowledgement unavailable.")
+
+
     suspend fun scriptTasks(serverUrl: String, accessToken: String): ApiResult<ScriptTasksResult> = ApiResult.Transport("Scripts unavailable.")
     suspend fun scriptTask(serverUrl: String, accessToken: String, id: String): ApiResult<ScriptTaskResult> = ApiResult.Transport("Scripts unavailable.")
     suspend fun scriptSubmit(serverUrl: String, accessToken: String, request: ScriptRequest, key: String): ApiResult<ScriptTaskResult> = ApiResult.Transport("Scripts unavailable.")
@@ -132,7 +145,7 @@ interface RelaxKonGateway {
     suspend fun gitBuildStart(serverUrl: String, accessToken: String, request: GitBuildRequest, key: String): ApiResult<GitBuildOperation> = ApiResult.Transport("Git builds unavailable.")
     suspend fun gitBuildGet(serverUrl: String, accessToken: String, id: String): ApiResult<GitBuildOperation> = ApiResult.Transport("Git builds unavailable.")
     suspend fun gitBuildCancel(serverUrl: String, accessToken: String, id: String): ApiResult<GitBuildOperation> = ApiResult.Transport("Git builds unavailable.")
-    suspend fun deployGitBuild(serverUrl: String, accessToken: String, applicationId: String, build: GitBuildOperation, key: String): ApiResult<DeploymentOperation> = ApiResult.Transport("Git deployment unavailable.")
+    suspend fun deployGitBuild(serverUrl: String, accessToken: String, applicationId: String, build: GitBuildOperation, expectedUpdatedAt: String, key: String): ApiResult<DeploymentOperation> = ApiResult.Transport("Git deployment unavailable.")
     suspend fun webServers(serverUrl: String, accessToken: String): ApiResult<List<WebServer>> = ApiResult.Transport("Web servers are unavailable.")
     suspend fun webServerStatus(serverUrl: String, accessToken: String, instanceId: String): ApiResult<WebServerStatus> = ApiResult.Transport("Web server status is unavailable.")
     /** A server-side syntax check: it does not write, reload, or start the web server. */
@@ -214,7 +227,12 @@ interface RelaxKonGateway {
     suspend fun applicationCatalog(serverUrl: String, accessToken: String): ApiResult<List<CatalogTemplate>> =
         ApiResult.Transport("Application catalogue is unavailable.")
 
-    suspend fun installCatalogApplication(serverUrl: String, accessToken: String, template: CatalogTemplate, name: String,
+    suspend fun previewCatalogUpdate(serverUrl: String, accessToken: String, applicationId: String, templateVersion: String): ApiResult<CatalogApplicationUpdatePreview> =
+        ApiResult.Transport("Template update preview is unavailable.")
+    suspend fun updateCatalogApplication(serverUrl: String, accessToken: String, preview: CatalogApplicationUpdatePreview,
+        idempotencyKey: String): ApiResult<DeploymentOperation> = ApiResult.Transport("Template update submission is unavailable.")
+
+    suspend fun installCatalogApplication(serverUrl: String, accessToken: String, template: CatalogTemplate, name: String, hostPort: Int,
         fields: List<CatalogFieldValue>, idempotencyKey: String): ApiResult<DeploymentOperation> =
         ApiResult.Transport("Application catalogue install is unavailable.")
 
@@ -263,8 +281,13 @@ interface RelaxKonGateway {
         applicationId: String,
         archiveReferenceId: String,
         definition: ArchiveDeploymentDefinition,
+        expectedUpdatedAt: String,
         idempotencyKey: String,
     ): ApiResult<DeploymentOperation> = ApiResult.Transport("Archive deployment is unavailable.")
+
+    suspend fun deployRevision(serverUrl: String, accessToken: String, applicationId: String,
+        source: DeploymentRevisionSource, expectedUpdatedAt: String, idempotencyKey: String): ApiResult<DeploymentOperation> =
+        ApiResult.Transport("Deployment revision submission is unavailable.")
 
     /** Queues a confirmed image deployment and returns its durable operation record. */
     suspend fun deployImage(
@@ -272,6 +295,7 @@ interface RelaxKonGateway {
         accessToken: String,
         applicationId: String,
         imageReference: String,
+        expectedUpdatedAt: String,
         idempotencyKey: String,
     ): ApiResult<DeploymentOperation> = ApiResult.Transport("Image deployment is unavailable.")
 

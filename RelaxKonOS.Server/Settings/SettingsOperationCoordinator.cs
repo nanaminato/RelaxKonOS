@@ -77,6 +77,8 @@ public sealed class SettingsOperationCoordinator(SettingsOperationJournal journa
         var stored = Owned(principal, id);
         if (stored.Operation.State == SettingsOperationState.Applying)
             stored = SaveState(stored, stored.RollingBack ? SettingsOperationState.RecoveryRequired : SettingsOperationState.Unknown, "settings.operation.interrupted");
+        else if (stored.Operation.State == SettingsOperationState.Prepared && stored.Plan.ExpiresAt <= DateTimeOffset.UtcNow)
+            stored = SaveState(stored, SettingsOperationState.Failed, "settings.plan_expired");
         return stored.Operation;
     }
 

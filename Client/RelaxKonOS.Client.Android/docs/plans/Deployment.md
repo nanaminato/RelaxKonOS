@@ -23,8 +23,6 @@
 
 | 编号 | 尚需实现 | 归属 / 依赖 |
 | --- | --- | --- |
-| BP16-M2 | 既有实例的新镜像/归档修订入口，保留真实定义和独立修订来源 | BP16；桌面 DeployNewRevision 与当前部署契约 |
-| AD03-M4 | 模板更新说明、差异预览与精确版本的显式实例更新 | BP16；[应用部署](../features/ApplicationDeployments.md) |
 | AD05-M4 | 具体 DNS 服务商授权与内网发布集成，按明确需求启用 | BP03/BP05/BP07；不预先收集未接入的 DNS 凭据 |
 | AD06-M4 | 静态站点/其他构建模板、更新比较与按修订引用安全回收产物 | [Git 构建环境](../development/GitBuild.Ubuntu.md)；不得清掉已发布镜像 |
 | AD08-M3 | 卷/数据库一致性适配器、跨安装秘密重绑定、Android 恢复提交 | [共享备份契约](../../../../docs/applications/RelaxKonOS.BackupRecovery.Contract.md)；只有真实恢复演练后才声明数据恢复能力 |

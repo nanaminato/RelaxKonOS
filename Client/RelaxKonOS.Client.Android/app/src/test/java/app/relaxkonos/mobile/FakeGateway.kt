@@ -35,6 +35,23 @@ import java.io.InputStream
  * returned a default.
  */
 class FakeGateway : RelaxKonGateway {
+    var onHostTime: (suspend () -> ApiResult<HostTimeSettings>)? = null
+    var onHostIdentity: (suspend () -> ApiResult<HostIdentitySettings>)? = null
+    var onHostEnvironmentTarget: (suspend (HostEnvironmentScope) -> ApiResult<HostSettingsTarget>)? = null
+    var onHostEnvironment: (suspend (HostEnvironmentScope, Boolean) -> ApiResult<HostEnvironmentSettings>)? = null
+    var onHostPreview: (suspend (HostSettingKind, String, String, String?, HostEnvironmentScope?, HostEnvironmentMutation?, Boolean) -> ApiResult<HostSettingsPlan>)? = null
+    var onHostApply: (suspend (HostSettingKind, String) -> ApiResult<HostSettingsOperation>)? = null
+    var onHostOperation: (suspend (String) -> ApiResult<HostSettingsOperation>)? = null
+    var onHostRollback: (suspend (String, String) -> ApiResult<HostSettingsOperation>)? = null
+    override suspend fun hostTime(serverUrl: String, accessToken: String) = requireHandler(onHostTime, "hostTime")()
+    override suspend fun hostIdentity(serverUrl: String, accessToken: String) = requireHandler(onHostIdentity, "hostIdentity")()
+    override suspend fun hostEnvironmentTarget(serverUrl: String, accessToken: String, scope: HostEnvironmentScope) = requireHandler(onHostEnvironmentTarget, "hostEnvironmentTarget")(scope)
+    override suspend fun hostEnvironment(serverUrl: String, accessToken: String, scope: HostEnvironmentScope, reveal: Boolean) = requireHandler(onHostEnvironment, "hostEnvironment")(scope, reveal)
+    override suspend fun previewHostSettings(serverUrl: String, accessToken: String, kind: HostSettingKind, expectedRevision: String, key: String, value: String?, scope: HostEnvironmentScope?, mutation: HostEnvironmentMutation?, confirmHighImpact: Boolean) = requireHandler(onHostPreview, "hostPreview")(kind, expectedRevision, key, value, scope, mutation, confirmHighImpact)
+    override suspend fun applyHostSettings(serverUrl: String, accessToken: String, kind: HostSettingKind, planId: String) = requireHandler(onHostApply, "hostApply")(kind, planId)
+    override suspend fun hostSettingsOperation(serverUrl: String, accessToken: String, id: String) = requireHandler(onHostOperation, "hostOperation")(id)
+    override suspend fun rollbackHostSettings(serverUrl: String, accessToken: String, id: String, expectedRevision: String) = requireHandler(onHostRollback, "hostRollback")(id, expectedRevision)
+
     var onGuardianStatus: (suspend () -> ApiResult<GuardianStatus>)? = null
     var onGuardianWorkloads: (suspend () -> ApiResult<List<GuardianWorkload>>)? = null
     var onGuardianDefinition: (suspend (String) -> ApiResult<GuardianDefinitionResult>)? = null
@@ -94,10 +111,16 @@ class FakeGateway : RelaxKonGateway {
     override suspend fun smbUsers(serverUrl: String, accessToken: String) = onSmbUsers?.invoke() ?: error("Unexpected SMB users")
     override suspend fun smbConnection(serverUrl: String, accessToken: String) = onSmbConnection?.invoke() ?: error("Unexpected SMB connection")
     override suspend fun smbChange(serverUrl: String, accessToken: String, change: SmbChange, password: CharArray?) = onSmbChange?.invoke(change, password) ?: error("Unexpected SMB change")
+    var onAlerts: ((String?, AlertQuery) -> ApiResult<OperationalAlertPage>)? = null
+    var onEvents: ((String?, EventQuery) -> ApiResult<OperationalEventPage>)? = null
+    var onEventSummary: (() -> ApiResult<EventAlertSummary>)? = null
+    var onMutateAlert: ((String, AlertMutation, String?, String?) -> ApiResult<OperationalAlert>)? = null
+    override suspend fun alerts(serverUrl: String, accessToken: String, cursor: String?, query: AlertQuery) = onAlerts?.invoke(cursor, query) ?: error("Unexpected alert page")
+    override suspend fun operationalEvents(serverUrl: String, accessToken: String, cursor: String?, query: EventQuery) = onEvents?.invoke(cursor, query) ?: error("Unexpected event page")
+    override suspend fun eventAlertSummary(serverUrl: String, accessToken: String) = onEventSummary?.invoke() ?: error("Unexpected summary")
+    override suspend fun mutateAlert(serverUrl: String, accessToken: String, id: String, action: AlertMutation, reason: String?, expiresAt: String?) = onMutateAlert?.invoke(id, action, reason, expiresAt) ?: error("Unexpected alert mutation")
     var onAlertDetail: ((String) -> ApiResult<OperationalAlertDetail>)? = null
-    var onAcknowledgeAlert: ((String) -> ApiResult<OperationalAlert>)? = null
     override suspend fun alertDetail(serverUrl: String, accessToken: String, id: String) = onAlertDetail?.invoke(id) ?: error("Unexpected alert detail")
-    override suspend fun acknowledgeAlert(serverUrl: String, accessToken: String, id: String) = onAcknowledgeAlert?.invoke(id) ?: error("Unexpected alert acknowledgement")
     var onFirewallStatus: (() -> ApiResult<FirewallStatus>)? = null
     var onFirewallRules: (() -> ApiResult<List<FirewallRule>>)? = null
     var onChangeFirewall: ((FirewallChange, CharArray?) -> ApiResult<FirewallResult>)? = null
@@ -245,6 +268,13 @@ class FakeGateway : RelaxKonGateway {
 
     var onDeploymentApplications: (suspend (String, String) -> ApiResult<List<DeploymentApplication>>)? = null
     var onDeploymentSnapshot: (suspend (String, String, String) -> ApiResult<DeploymentSnapshot>)? = null
+    var onDeployRevision: suspend (String, DeploymentRevisionSource, String, String) -> ApiResult<DeploymentOperation> = { _, _, _, _ -> ApiResult.Transport(null) }
+    override suspend fun deployRevision(serverUrl: String, accessToken: String, applicationId: String, source: DeploymentRevisionSource, expectedUpdatedAt: String, idempotencyKey: String) =
+        onDeployRevision(applicationId, source, expectedUpdatedAt, idempotencyKey)
+    var onPreviewCatalogUpdate: suspend (String, String) -> ApiResult<CatalogApplicationUpdatePreview> = { _, _ -> ApiResult.Transport(null) }
+    override suspend fun previewCatalogUpdate(serverUrl: String, accessToken: String, applicationId: String, templateVersion: String) = onPreviewCatalogUpdate(applicationId, templateVersion)
+    var onUpdateCatalog: suspend (CatalogApplicationUpdatePreview, String) -> ApiResult<DeploymentOperation> = { _, _ -> ApiResult.Transport(null) }
+    override suspend fun updateCatalogApplication(serverUrl: String, accessToken: String, preview: CatalogApplicationUpdatePreview, idempotencyKey: String) = onUpdateCatalog(preview, idempotencyKey)
     var onUpdateDeploymentDefinition: suspend (String, DeploymentDefinitionUpdate, String) -> ApiResult<DeploymentApplication> = { _, _, _ -> ApiResult.Transport(null) }
     override suspend fun updateDeploymentDefinition(serverUrl: String, accessToken: String, applicationId: String, definition: DeploymentDefinitionUpdate, idempotencyKey: String) =
         onUpdateDeploymentDefinition(applicationId, definition, idempotencyKey)

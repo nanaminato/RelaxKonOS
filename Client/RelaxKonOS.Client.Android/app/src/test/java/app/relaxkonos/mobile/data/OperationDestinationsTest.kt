@@ -50,7 +50,7 @@ class OperationDestinationsTest {
 
     @Test fun `alert remediation uses fixed supported destinations and rejects arbitrary instructions`() {
         fun alert(kind: String, resource: String? = null, operation: String? = null) =
-            OperationalAlert("alert", "type", "error", "open", "code", 1, null, kind, resource, operation)
+            OperationalAlert("alert", "type", "error", "open", "code", 1, null, kind, resource, operation, 0, "event", null, null, null)
         val owner = owner(ServerCapabilities.PROXY, ServerCapabilities.CERTIFICATES, ServerCapabilities.GUARDIAN,
             ServerCapabilities.DOCKER, ServerCapabilities.TUNNELS, ServerCapabilities.APPLICATION_DEPLOYMENTS)
         assertEquals(OperationTarget(OperationDestination.Certificate, "original"), OperationDestinations.alert(owner, alert("certificate", "cert", "original")))

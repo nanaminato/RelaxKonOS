@@ -1,3 +1,17 @@
+if (args.Contains("--host-settings-only"))
+{
+    var settingsRoot = Path.Combine(Path.GetTempPath(), "relaxkon-host-settings-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(settingsRoot);
+    try
+    {
+        await SettingsOperationVerification.RunAsync(settingsRoot);
+        await SettingsIdentityVerification.RunAsync(settingsRoot);
+        await HostSettingsWireChecks.RunAsync(settingsRoot);
+    }
+    catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
+    finally { Directory.Delete(settingsRoot, recursive: true); }
+    return;
+}
 if (args.Contains("--process-termination-worker"))
 {
     Console.WriteLine("READY");
@@ -13,6 +27,12 @@ if (args.Contains("--performance-only"))
 {
     await ServerCoreChecks.VerifyPerformanceSamplerAsync();
     Console.WriteLine("Performance sampler checks passed.");
+    return;
+}
+if (args.Contains("--catalog-update-only"))
+{
+    try { await CatalogUpdateChecks.RunAsync(); }
+    catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
     return;
 }
 if (args.Contains("--deployment-definition-only"))
@@ -77,6 +97,15 @@ if (args.Contains("--frpc-state-only"))
     return;
 }
 Batteries_V2.Init();
+if (args.Contains("--event-alerts-only"))
+{
+    var eventRoot = Path.Combine(Path.GetTempPath(), $"relaxkonos-event-alerts-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(eventRoot);
+    try { await EventAlertChecks.VerifyAppendProjectionAndRecoveryAsync(eventRoot); }
+    finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(eventRoot, recursive: true); }
+    Console.WriteLine("Event projection, acknowledgement, sanitization, and suppression recovery checks passed.");
+    return;
+}
 if (args.Contains("--docker-resources-only"))
 {
     await DockerResourceChecks.RunAsync();

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -131,12 +132,16 @@ fun MobileNavHost(
             Routes.MORE_SERVER_INFORMATION,
             Routes.MORE_APPEARANCE,
             Routes.MORE_DIAGNOSTICS,
+            Routes.MORE_APPLICATIONS,
+            Routes.MORE_HELP,
+            Routes.MORE_HOST_SETTINGS,
             Routes.MORE_ABOUT,
-            -> MoreDestination(navigator, layoutState, onSignOut, onSwitchLogin, onOpenManagedProxy = { taskTarget = null; navigator.push(Routes.MANAGE_PROXY) })
+            -> MoreDestination(navigator, layoutState, onSignOut, onSwitchLogin, clearTaskTarget = { taskTarget = null }, onOpenManagedProxy = { taskTarget = null; navigator.push(Routes.MANAGE_PROXY) })
 
             else -> HomeScreen(
                 session = session,
                 layoutState = layoutState,
+                onOpenHelp = { navigator.select(Routes.MORE); navigator.push(Routes.MORE_HELP) },
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -242,9 +247,25 @@ private fun MoreDestination(
     layoutState: LayoutState,
     onSignOut: () -> Unit,
     onSwitchLogin: (SavedLogin?) -> Unit,
+    clearTaskTarget: () -> Unit,
     onOpenManagedProxy: () -> Unit,
 ) {
-    var pane by remember { mutableStateOf<String?>(null) }
+    var pane by remember { mutableStateOf<String?>(navigator.route.takeIf { it.startsWith("more/") }) }
+    LaunchedEffect(navigator.route, layoutState) {
+        if(layoutState == LayoutState.Expanded && navigator.route.startsWith("more/")) pane = navigator.route
+    }
+    val openFeature: (String) -> Unit = { target ->
+        if (target.startsWith("more/")) {
+            if(layoutState == LayoutState.Expanded) pane = target else navigator.push(target)
+        } else {
+            clearTaskTarget()
+            val destination = target.substringBefore('/')
+            navigator.select(destination)
+            navigator.popToDestinationRoot()
+            if(target != destination) navigator.push(target)
+        }
+    }
+
 
     if (layoutState == LayoutState.Expanded) {
         Row(Modifier.fillMaxSize()) {
@@ -258,7 +279,7 @@ private fun MoreDestination(
                 if (pane == null) {
                     EmptyHint(stringResource(R.string.more_select_section), Modifier.padding(16.dp))
                 } else {
-                    MorePane(route = pane!!, onBack = null, onSwitchLogin = onSwitchLogin, onOpenManagedProxy = onOpenManagedProxy)
+                    MorePane(route = pane!!, onOpenRoute = openFeature, onBack = null, onSwitchLogin = onSwitchLogin, onOpenManagedProxy = onOpenManagedProxy)
                 }
             }
         }
@@ -274,13 +295,14 @@ private fun MoreDestination(
             modifier = Modifier.fillMaxSize(),
         )
     } else {
-        MorePane(route = route, onBack = { navigator.pop() }, onSwitchLogin = onSwitchLogin, onOpenManagedProxy = onOpenManagedProxy)
+        MorePane(route = route, onOpenRoute = openFeature, onBack = { navigator.pop() }, onSwitchLogin = onSwitchLogin, onOpenManagedProxy = onOpenManagedProxy)
     }
 }
 
 /** One settings page, rendered either as a pushed page ([onBack] non-null) or as a pane. */
 @Composable
-private fun MorePane(route: String, onBack: (() -> Unit)?, onSwitchLogin: (SavedLogin?) -> Unit, onOpenManagedProxy: () -> Unit) {
+private fun MorePane(route: String, onOpenRoute: (String) -> Unit, onBack: (() -> Unit)?, onSwitchLogin: (SavedLogin?) -> Unit, onOpenManagedProxy: () -> Unit) {
+    val moreContainer = app.relaxkonos.mobile.ui.common.appContainer()
     when (route) {
         Routes.MORE_ACCOUNT_SECURITY -> AccountSecurityScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
         Routes.MORE_CONNECTIONS -> ConnectionsScreen(onBack = onBack, onSwitchLogin = onSwitchLogin, modifier = Modifier.fillMaxSize())
@@ -288,6 +310,11 @@ private fun MorePane(route: String, onBack: (() -> Unit)?, onSwitchLogin: (Saved
         Routes.MORE_NETWORK -> OutboundProxyScreen(onBack = onBack, onOpenManagedProxy = onOpenManagedProxy, modifier = Modifier.fillMaxSize())
         Routes.MORE_APPEARANCE -> AppearanceScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
         Routes.MORE_DIAGNOSTICS -> DiagnosticsScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
+        Routes.MORE_APPLICATIONS -> app.relaxkonos.mobile.ui.more.MobileApplicationsScreen(onBack = onBack,
+            onOpenRoute = onOpenRoute, modifier = Modifier.fillMaxSize())
+        Routes.MORE_HELP -> app.relaxkonos.mobile.ui.more.HelpScreen(onBack = onBack, onOpenRoute = onOpenRoute,
+            onOpenServerCenter = { moreContainer.serverCenter.open() }, modifier = Modifier.fillMaxSize())
+        Routes.MORE_HOST_SETTINGS -> app.relaxkonos.mobile.ui.more.HostSettingsScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
         Routes.MORE_ABOUT -> AboutScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
         else -> EmptyHint(stringResource(R.string.more_select_section))
     }

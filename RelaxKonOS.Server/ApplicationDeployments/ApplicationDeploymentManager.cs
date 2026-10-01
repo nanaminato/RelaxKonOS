@@ -191,6 +191,14 @@ internal sealed class ApplicationDeploymentManager(
         return await DescribeOneAsync(updated, cancellationToken);
     }
 
+    public CatalogApplicationUpdatePreviewDto CatalogUpdatePreview(Guid applicationId, string templateVersion)
+    {
+        var snapshot = catalog.ReadBackupSnapshot(applicationId);
+        var target = ApplicationCatalog.Require(snapshot.Application.CatalogTemplateId, templateVersion);
+        return ApplicationCatalogUpdates.Preview(snapshot.Application,
+            snapshot.Revisions.FirstOrDefault(x => x.Id == snapshot.Application.CurrentRevisionId), target, operations.GetActive(applicationId) is not null);
+    }
+
     public ApplicationRecord Require(Guid applicationId) => catalog.Find(applicationId)
         ?? throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ApplicationNotFound, 404);
 

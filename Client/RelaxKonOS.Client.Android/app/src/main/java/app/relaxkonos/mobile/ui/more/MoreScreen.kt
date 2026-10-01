@@ -62,6 +62,14 @@ fun MoreScreen(
         ScreenHeader(title = stringResource(R.string.more_title))
 
         SectionGroup {
+            SettingsRow(icon = DesktopIcons.about, titleRes = R.string.mobile_apps_title,
+                subtitleRes = R.string.mobile_apps_subtitle) { onOpenRoute(Routes.MORE_APPLICATIONS) }
+            SettingsRow(icon = DesktopIcons.about, titleRes = R.string.help_title,
+                subtitleRes = R.string.help_subtitle) { onOpenRoute(Routes.MORE_HELP) }
+
+            SettingsRow(icon = DesktopIcons.host, titleRes = R.string.host_settings_title,
+                subtitleRes = R.string.host_settings_subtitle) { onOpenRoute(Routes.MORE_HOST_SETTINGS) }
+
             if (ServerCapabilities.DOCKER in appContainer().capabilities) {
                 SettingsRow(icon = DesktopIcons.connections, titleRes = R.string.proxy_title,
                     subtitleRes = R.string.proxy_subtitle) { onOpenRoute(Routes.MORE_NETWORK) }

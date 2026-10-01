@@ -555,7 +555,7 @@ $env:JAVA_HOME = 'C:/Program Files/Android/openjdk/jdk-21.0.8'
 - 使用已有 SDK 用户目录实际执行 `adb devices -l`，列表为空。本次不重复启动此前已失败的模拟器，没有安装 APK或产生新的设备验收证据。BP15-T1–T5 的真实宿主/HTTP/Hub/设备检查仍未关闭；T5 的实现待办已完成，现为执行验收。
 
 
-### BP16-V1（2026-10-01，当前未提交工作树，BP16 仍在实现）
+### BP16-V1（2026-10-01，定义编辑阶段的历史执行快照；当前实现见 BP16-V2）
 
 - 已接入完整定义编辑、秘密版本保留/轮换、原登录/实例草稿清除、保存前摘要、必需完整 expectedUpdatedAt、预检/401 再核对、回执和完整读回、结果未知不重放，以及实例/修订的真实模板版本显示。完整行为见 [应用部署与模板](../features/ApplicationDeployments.md)。既有实例新镜像/归档修订入口、AD03-M4 模板更新说明/差异预览/显式精确版本更新仍未完成，不能把 BP16 标为已实现。
 - 最后 Gradle `:app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --offline --no-daemon` 成功：140 类、909 例，失败/错误/跳过 0，两个 APK 编译通过。相对 BP15-V2 新增 15 例：DeploymentDefinitionDraft 5、DeploymentDefinitionRepository 8、DeploymentDefinitionHttp 1、ApplicationDeploymentWire 增加 1。覆盖精确字节上限/含冒号卷路径/只读/普通配置空值与空格和等号、秘密引用/轮换与输入清除、非法资源和组合、删除字段、活动操作/亚毫秒旧版本拒绝、401 再预检、换登录取消、权限/读取失败/未知写入区分、不重发、完整回执/读回及真实本地 HttpServer 的当前 PUT/正文/认证/幂等头。既有创建/HTTP/浏览回归随全量通过。
@@ -569,3 +569,94 @@ $env:JAVA_HOME = 'C:/Program Files/Android/openjdk/jdk-21.0.8'
 | BP16-T1 | 手机/平板/横竖屏/IME/大字体/三语/主题，完整定义编辑 | 摘要/逐项配置和卷可达、字节值/长路径不截断、秘密不回显，切登录/实例与离页清除草稿 |
 | BP16-T2 | 实际 Server/Docker、部署执行中的定义编辑/外部并发/401/断网/回执丢失 | 真实权限、原版本冲突、活动操作阻断、保存不替换当前实例、未知不重发；再次明确读取后重新准备编辑 |
 | BP16-T3 | 实际秘密轮换/多修订/回滚与服务端重启 | 当前定义和旧修订所需秘密仍可物化；跨应用/变量隔离；容器及数据回滚边界分开核实 |
+
+### BP16-V2（2026-10-01，当前工作树；实现已接入，Android 环境跳过）
+
+- 完整定义编辑之外，既有实例的独立镜像/归档来源修订、精确参数、提交前完整定义摘要、当前模板版本说明/镜像差异预览及明确精确版本更新已接入。模板首次安装补齐显式宿主端口，避免无端口的 HTTP 就绪定义在执行前失败。实现行为见 [应用部署与模板](../features/ApplicationDeployments.md)。
+- 本机没有 Android 环境，按用户要求跳过 Gradle/JVM/应用与仪器 APK 构建、lint、Compose/手机/平板/IME/旋转/大字体/三语主题/API 23 验收。新增 `DeploymentRevisionSourceTest` 3 例、`DeploymentRevisionRepositoryTest` 7 例、`DeploymentRevisionHttpTest` 3 例，共 13 例测试源码；仅新增并静态核对，**没有执行**，不沿用 BP16-V1 的 909 例作为本次通过数。
+- 实际执行 `dotnet build RelaxKonOS.Server/RelaxKonOS.Server.csproj --no-restore -m:1 -v quiet` 通过（0 错误，3 项既有平台分析警告）；`dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -p:UsePrebuiltServerAssembly=true -m:1 -v quiet` 通过（0 错误）。标准项目引用构建受到既有依赖协商/Protocol 引用缺失影响；采用已有 prebuilt 测试路径，使用此次实际编译的 Server/Protocol，没有修改构建策略。
+- `dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --catalog-update-only` 通过。真实启动生产 loopback HTTP 路由，验证预览无副作用/秘密、完整亚毫秒定义版本、当前不可用旧模板版本仍可比较、模板端口/卷/必填秘密/最低资源阻断、当前版本无虚假更新、必需修订基线、401/403、无键/无确认/旧版无部署版本 400、普通部署过期版本 409 且不排队、相同键原操作/不同载荷冲突。真实 Coordinator/Service 在受控不可用 Engine 预检失败后保留旧定义、版本和修订；直接调用真实 Catalog 激活/回滚与重开账本验证模板绑定和配置/秘密引用保留。安装绑定专项验证明确的 hostPort 与旧版遗漏字段拒绝。
+- 同时执行 `--deployment-definition-only` 原完整定义/加密秘密保留专项通过。测试使用隔离临时目录与受控 Docker 接口，只读取列表/状态；没有拉取镜像、启动容器、进行实际更新/回滚或数据恢复。沙箱首次 loopback 运行被端口权限阻止，获自动审批后在沙箱外执行两项专项，最终正常退出。
+- 桌面实际执行 `dotnet build Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj --no-restore -p:UseAppHost=false -p:UsedAvaloniaProducts= -m:1 -v quiet` 通过，0 错误、5 项既有警告；新修订向导及客户端同步直接采用当前契约。没有执行桌面视觉验收。
+- 静态检查：三语各 2234 个唯一键，键集/占位符一致；2179 个生产 Kotlin 字符串引用存在；所有 Android deployImage/deployArchive/deployGitBuild/deployRevision 签名携带完整版本，旧在仓库调用已更新。文档链接及差异检查见本轮最终静态检查。
+
+| 编号 | 待验场景 | 核对点 |
+| --- | --- | --- |
+| BP16-T4 | Android 源码编译/JVM/仪器、手机/平板/IME/大字体/三语 | 新修订来源表单、空参数与长参数、固定确认按钮、归档选择取消/过期、实例/登录隔离；本机无 Android 环境，跳过 |
+| BP16-T5 | 实际 Docker 镜像/Java/.NET/Python 修订，真实 HTTP/401/并发/回执丢失 | 当前完整定义与秘密版本不覆盖；部署版本原子拒绝、原操作恢复与取消、安全恢复；当前登录内未知门禁不冒充跨进程持久恢复 |
+| BP16-T6 | 实际新目录版本、运行容器更新失败/成功/回滚、卷与数据库迁移 | 精确版本与镜像绑定，当前版本不伪造更新；实际模板更改要求明确编辑；数据不随镜像回滚，不把账本专项当实际恢复演练 |
+
+### BP17-V1（2026-10-01，当前工作树；实现已接入，Android 环境跳过）
+
+- BP17 完整事件/告警字段、动作历史、汇总、typed 筛选/分页、有界观察、四类明确动作和当前会话未知门禁已接入；行为与边界见 [任务与恢复](../features/OperationsRecovery.md)。现有 Server/Shared 契约直接消费，没有新旧 wire 适配或虚构通知策略 API。
+- 按用户要求跳过 Android Gradle/JVM/APK/lint/Compose/设备检查。`EventAlertRepositoryTest` 当前 7 例（含重写既有 2 例）、`EventAlertBrowserTest` 4 例、`EventAlertHttpTest` 1 例、`EventAlertWireTest` 新增 3 例均仅写入并静态核对，**没有执行**。覆盖错归属、完整读回、变化基线/来源门控、未知不重发、核实未出现预期状态仍阻断、提交后取消、原因/到期校验、游标去重/重复/失败/筛选隔离、离页停止、实际 HTTP 动作路由/正文无虚构键和完整 wire 必填字段。
+- 实际执行 `dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -p:UsePrebuiltServerAssembly=true -m:1 -v quiet` 成功（0 警告、0 错误）；`dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --event-alerts-only` 成功。新增入口仅隔离调用既有真实 SQLite/EventPublisher 专项：投影/重复聚合、脱敏证据、安全操作人引用、确认、不同操作 ID 的应用恢复、抑制后的恢复与备份恢复；没有真实 HTTP 权限/竞争、生产来源、Android 网络/通知的执行证据。
+- 静态三语检查：各 2278 个唯一键，键集/格式占位符一致；2218 个生产 Kotlin 字符串引用存在。Android 文档本地链接及差异检查通过。既有前台通知规则源码未改；首批 50 条、静默基线/冷却/类别偏好保持当前边界，未升级为可靠后台通知。
+
+| 编号 | 待验场景 | 核对点 |
+| --- | --- | --- |
+| BP17-T1 | Android 编译/JVM/Compose、手机/平板/IME/大字体/三语 | 全字段长文本、筛选、分页、详情/历史和动作对话框可达；本机无 Android 环境，跳过 |
+| BP17-T2 | 真实 HTTP 权限/严重抑制权限、401/并发/丢失回执/离页取消/换登录 | 无自动重发、完整复核/回读、预期状态未出现仍阻断；同步服务端动作没有 CAS，不把客户端预检当作原子保证 |
+| BP17-T3 | 真实前台通知/权限拒绝/类别切换/后台/来源恢复 | 首批告警与静默基线、冷却、注销清理、固定目标能力门控；当前不提供可靠后台通知 |
+
+### BP19-V1（2026-10-01，BP19-M1 已接入，Android 环境跳过）
+
+- 手机用户本地转发已接入，范围见 [服务器中心](../features/ServerCenter.md)。JSch 当前原语使用固定两端 loopback、独立 session、显式/系统端口和 direct-tcpip TCP 测试；新 `connectedDevice` 前台服务及通知停止接入。未声明整个 BP19 完成，SFTP/服务器中心剩余实现仍归 M2。
+- 按用户要求跳过 Gradle/JVM/APK/lint/Compose、设备与真实 SSH/前台服务测试。新增 `SshLocalForwardsTest` 6 例，仅写入并静态检查，**没有执行**：请求地址边界、独立会话/单条停止、端口冲突/替代失败保持停机、未知主机密钥拒绝并关闭、TCP 观察、断线不自动重连。既有两类 SSH 传输假实现同步采用新增原语，未加入旧接口适配。
+- 静态三语各 2309 个唯一键，键集/占位符一致，2249 个生产 Kotlin 文案引用存在；文档链接和 `git diff --check` 通过。前台服务类型/权限按 Android 官方说明核对，不将源码核对替代真实 Android 运行验收。
+
+| 编号 | 待验场景 | 核对点 |
+| --- | --- | --- |
+| BP19-T1 | Android 编译/JVM/手机/平板/IME/大字体/三语 | 五个 SSH 子页、长路径/端口/确认、修改失败/恢复、16 条上限；本机缺环境，跳过 |
+| BP19-T2 | 真 SSH/未知或变化密钥/端口冲突/目标不可达/网络中断 | 固定两端 loopback、实际分配端口、后台服务/单条停止、受管登录监听完全独立；TCP 测试不当健康证明 |
+| BP19-T3 | API 23/26/29/34/36、前台服务/通知拒绝/后台/旋转/移除任务/系统杀进程 | 明确停止入口、前台服务类型/权限、服务生命周期竞争/后台连接、监听释放、不自动恢复、密码复制清除 |
+
+### BP19-V2（2026-10-01，BP19-M2 已接入，Android 环境跳过）
+
+- SFTP 批量、目录、复制/剪切、删除、SAF/ZIP、实际流预算、路径历史/搜索排序和新工作区/迟到结果隔离已接入；完整行为和原始 SFTP 的并发/非事务边界见 [服务器中心](../features/ServerCenter.md)。首次安装执行属于 AD01，未伪造交付。
+- 新增 `SshFileTransfersTest` 8 例，仅写入与静态核对，**没有执行**。覆盖目录先行/流复制、剪切原语、已存在/自身目的地拒绝、元数据变化/链接拒绝、条目/深度/字节预算、真实 ZIP 编码/解码路径与字节、实际流超限/名称、不可读目标不当作不存在。假 SSH 传输同步新增 lstat/新文件上传/复制原语，没有旧契约适配。全部 Android Gradle/JVM/APK/lint/Compose/SAF/设备验证按用户要求跳过。
+- 静态三语各 2348 个唯一键，键集/占位符一致；2288 个生产 Kotlin 引用存在；Android 文档链接和差异检查通过。源代码核对不证明 Kotlin 编译或 Android 生命周期/库原语已经运行。
+
+| 编号 | 待验场景 | 核对点 |
+| --- | --- | --- |
+| BP19-T4 | Android 编译/JVM、手机/平板/IME/大字体、批量与目录/搜索排序 | 全页滚动、长名称/历史/多选/对话框、筛选不保留隐藏选择、文本返回保护、1000 条目录限制；本机无环境，跳过 |
+| BP19-T5 | 真实 Linux/Windows SFTP、SAF 多文件/树/输出提供方、ZIP、网络中断 | 元数据/权限/不存在区分、流式通道、链接不跟随、实际预算、来源变化/外部竞争、部分残留、无自动重放；SFTP 无原子版本/不覆盖条件 |
+| BP19-T6 | 前后台/选择器取消/迟到/换宿主/新工作区/旋转/断网/取消 | 原宿主/工作区/路径与密码归属、关闭 SSH 后停止、未知未结束时禁止事实采用、重新读取/明确采纳、进程退出无持久恢复 |
+
+### BP20-V1（2026-10-01，当前工作树；Android 环境跳过）
+
+- 部署/站点/运行 SSH 转发外部访问已接入，行为见 [服务访问](../features/ServiceAccess.md)。当前 Nginx TLS 443 与 HTTP 重定向规则核对生产 Server 配置生成代码。没有变更 Server/Shared wire。
+- `ExternalServiceAddressesTest` 6 例仅写入与静态核对，**未执行**：危险 URI 拒绝、稳定服务器主机/实际端口、受管登录/loopback 拒绝、实际站点 TLS/重定向、IPv6/IDN、运行转发地址。全部 Android 编译/JVM/APK/lint/Compose/设备测试按用户要求跳过。
+- 三语各 2357 唯一键，键集/占位符一致，2297 个生产 Kotlin 文案引用存在；文档链接与差异检查通过。
+- 待验 BP20-T1：手机/平板/三语/大字体、外部浏览器不存在、HTTPS 无效证书/loopback SAN、前后台服务存活、站点改动/换账号、真实 DNS/发布端口/SSH 与 HTTP/HTTPS。源码核对不等于可达性或 Android 运行验收。
+
+### BP21-V1（2026-10-01，平台方案完成）
+
+- 静态阅读当前 DeveloperPackageManifest、DeveloperPackageManager、AppPackageInstallerService、AppInstallerViewModel 与开发包说明，完成 [移动包方案](../design/ApplicationPackages.Design.md)。没有新 API、manifest 格式或包运行时实现，未对既有包做兼容扩展。
+- 已核对方案中的运行时/权限/版本/更新/移除和明确拒绝矩阵、Android 文档归属及本地链接。没有实际安装/启动任何扩展包；本机 Android 检查跳过。未来检查器和远端桌面代理不是本轮已实现项目。
+
+### BP22-V1（2026-10-01，当前工作树；实现已接入，Android 环境跳过）
+
+- 宿主设置和 Android 应用管理行为见 [设置](../features/Settings.md)。当前 DTO/route 直接对应 shared Settings；新增 stable problemCode 扩展、服务端锁内 Prepared 过期关单，桌面调用和共享状态模型不需要旧格式适配。应用管理使用实际签名客户端和 Android 系统设置，不虚构 .roapp 运行时/数据清除。
+- 实际执行 `dotnet build RelaxKonOS.Server/RelaxKonOS.Server.csproj --no-restore -m:1 -v quiet` 通过，0 错误、3 项既有 CA1416 警告。实际执行 `dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -p:UsePrebuiltServerAssembly=true -m:1 -v quiet` 通过，0 错误、0 警告。
+- 实际执行 `dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --host-settings-only` 通过：原有受控时区/主机名提供方验证及新增生产 HTTP 路由验证，覆盖 camelCase 实际枚举、稳定 428 problemCode、nullable 字段、授权前不写、相同 planId 不重放、三类 Server 过期终态和迟到 apply 拒绝。只使用临时加密账本/回环 HTTP/受控提供方，没有改变本机时区、名称、环境变量；不能当作 Ubuntu/Windows 平台写入验收。
+- Android 新增 `HostSettingsWireTest` 4 例、`HostSettingsRepositoryTest` 6 例、`HostSettingsHttpTest` 2 例，仅写入和静态核对，**没有执行**。覆盖当前枚举/null/遮蔽、Unicode/名称与空值/删除、原计划持久门禁/身份隔离/取消、错误目标拒绝、原计划提权重试、回滚快照、权威终态、HTTP body/路由/稳定拒绝。Android Gradle/JVM/APK/lint/Compose/设备检查按用户要求跳过。
+- 最终静态三语各 2441 唯一键，键集/占位符一致，2381 个生产 Kotlin 文案引用存在；Android 文档链接和差异检查通过。
+
+| 编号 | 待验场景 | 核对点 |
+| --- | --- | --- |
+| BP22-T1 | Android 编译/JVM/手机/平板/IME/大字体/三语 | 远端列表/建议/名称/环境空值/删除/扩展、确认固定按钮、草稿离页、系统应用设置；本机无环境，跳过 |
+| BP22-T2 | 真 Ubuntu/Windows 环境、时区/主机名、Helper 和管理员权限 | Linux machine/Windows user SID、遮蔽/揭示/PATH/权限到期、新进程/新登录/重启生效、不自动重启、并发 revision/回滚冲突 |
+| BP22-T3 | 前后台/换登录/取消/回执丢失/进程回收/手机时钟偏差 | 原计划 ID 归属及持久门禁，未测生命周期不冒充通过；Server 查询关单才解除 Prepared，Unknown 保持阻断 |
+
+### BP23-V1（2026-10-01，当前工作树；Android 环境跳过）
+
+- 登录/首页/更多的三语帮助、手机/平板任务导航、原生应用目录和既有指南链接已接入，见 [帮助](../features/Help.md)。明确区分未实现 AD01/第三方桌面包和可用管理任务。
+- `MobileFeatureCatalogTest` 3 例仅写入与静态核对，**没有执行**：无能力不造管理入口、各领域能力撤销/聚合、具体原生路由及排除项。Android 编译/JVM/APK/lint/Compose/设备测试跳过。三语/引用/文档检查沿用本轮最终结果。
+- BP23-T1 待验：登录前后、手机/平板/旋转、大字体/三语长段落、当前账号及能力变化、任务顶层导航/pane、首页帮助、外部仓库登录与无浏览器。现有项目指南链接由实际仓库 remote/default branch 与本地三语 content 核对，没有声明公网可达性已验证。
+
+### BP24-V4（2026-10-01，本轮 BP16–BP23 的验证边界）
+
+本轮按实现依赖推进至 BP23：BP18 不实施、BP21 交付平台方案；各阶段实现、源码测试和实际执行证据分别记录在 BP16/BP17/BP19/BP20/BP21/BP22/BP23 小节。Android 编译、JVM、APK、lint、Compose、设备全部按用户本机缺环境要求跳过；未安装 SDK 或用静态检查冒充 Kotlin 编译。BP16 Server/桌面构建和专项、BP17 实际事件账本专项、BP22 实际宿主设置专项及最终三语/引用/链接/差异检查已记录。真实 SSH/SAF、容器、前台服务和 Ubuntu/Windows 平台作用仍保留在集中待验矩阵。
+
+BP24 持续验证与文档同步不是新的 Android 编译环境搭建任务，也不能因跳过设备验证将未实现的 AD01/AD08 工作标为完成。后续任何实现变更只重跑受影响的必要检查；发现真实缺陷关联对应 BP，而非保留已完成的实现计划。

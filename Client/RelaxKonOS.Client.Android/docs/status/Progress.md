@@ -24,7 +24,7 @@
 | 防火墙 / BP07-M1 | UFW 状态/启停、默认策略、规则增删改、精确提权/账号确认、快照复核和未知提交核实 | 当前 Server 其他宿主不支持，设备/真实 UFW 验收见 Verification |
 | Git / AD06 | BP10 工作区分支/暂存/差异/历史/冲突、安装/原键恢复，BP11 共用编辑器；引用/固定 SHA、受限 Ubuntu BuildKit 任务、镜像发布关联 | 当前行为见 [Git](../features/Git.md)；M4 模板扩展与安全产物回收 |
 | 终端/脚本/守护 / AD07 | Server Hub 会话/恢复/扩展键、固定活动屏幕与有界历史、200ms 稳定期后的串行尺寸同步、独立 SSH 终端、持久结构化脚本任务、Agent 工作负载管理 | BP13 双栏/草稿/搜索/工作区外观和 VT 字符单元已接入；BP14 完整守护字段/审批/回执读回与状态/日志观察已接入 |
-| 任务/告警/恢复 / AD08 | 按领域 ID 观察（含运行时安装）、账号隔离无秘密索引、取消与本机隐藏、诊断导出、前台通知策略、备份创建/清单/只读预检 | Android 恢复提交、卷/数据库适配器、跨安装秘密、事件完整接入与可靠后台通知 |
+| 任务/告警/恢复 / AD08 | 按领域 ID 观察（含运行时安装）、账号隔离无秘密索引、取消与本机隐藏、诊断导出、前台通知策略、备份创建/清单/只读预检 | Android 恢复提交、卷/数据库适配器、跨安装秘密、事件源持久重放与可靠后台通知 |
 
 服务端已有无卷/无秘密定义恢复为新停机实例的路径，Android 未接入提交 UI。定义备份已验证不代表数据卷/数据库可以恢复。
 
@@ -32,7 +32,7 @@
 
 > 更新：2026-10-01。只追踪实现；测试状态与执行证据独立维护在 [Verification](Verification.md#12-bp-测试进度)。未执行测试可继续下一项，缺测试不回退实现状态。
 
-状态使用“未开始 / 进行中 / 部分实现 / 已实现 / 不实施”。BP01-M1 公共安装链路、BP02-M1 宿主自定义出站代理与 BP03-M1/M2 Nginx 与站点管理已接入，实际行为见 [Installations](../features/Installations.md) 、[OutboundProxy](../features/OutboundProxy.md) 、[Nginx](../features/Nginx.md) 与 [WebSites](../features/WebSites.md)。独立证书与站点/Kestrel 联动 BP04-M1/M2 亦已接入，行为见 [Certificates](../features/Certificates.md)。FRP 客户端/frps 与运行时 BP05-M1/M2 已接入，行为见 [Tunnels](../features/Tunnels.md)。Mihomo、受管出站代理、首批运维、UFW 防火墙、SMB 文件服务及 Docker 引擎/镜像源/资源管理已接入。BP11 共用编辑器和 BP10 Git 工作区已接入，BP12 文件与图片和 BP13 终端已接入，BP14 进程守护已接入，BP15 已接入，正在继续 BP16。不把桌面/Server 已有实现记为 Android 已实现，也不把既有 Android 部分功能当作整个 BP 项完成。
+状态使用“未开始 / 进行中 / 部分实现 / 已实现 / 不实施”。BP01-M1 公共安装链路、BP02-M1 宿主自定义出站代理与 BP03-M1/M2 Nginx 与站点管理已接入，实际行为见 [Installations](../features/Installations.md) 、[OutboundProxy](../features/OutboundProxy.md) 、[Nginx](../features/Nginx.md) 与 [WebSites](../features/WebSites.md)。独立证书与站点/Kestrel 联动 BP04-M1/M2 亦已接入，行为见 [Certificates](../features/Certificates.md)。FRP 客户端/frps 与运行时 BP05-M1/M2 已接入，行为见 [Tunnels](../features/Tunnels.md)。Mihomo、受管出站代理、首批运维、UFW 防火墙、SMB 文件服务及 Docker 引擎/镜像源/资源管理已接入。BP11 共用编辑器和 BP10 Git 工作区已接入，BP12 文件与图片和 BP13 终端已接入，BP14 进程守护已接入，BP15 已接入，BP16 已接入，BP17 事件与运维中心已接入，BP19 SSH 与 SFTP 已接入，BP20 服务访问已接入，BP21 移动包方案已完成，BP22 宿主设置与应用管理、BP23 帮助已接入；本轮实现推进至 BP23，BP24 验证独立跟踪。不把桌面/Server 已有实现记为 Android 已实现，也不把既有 Android 部分功能当作整个 BP 项完成。
 
 | 编号 | 实现状态 | 当前证据 / 剩余实现 | 下一步 |
 | --- | --- | --- | --- |
@@ -64,17 +64,22 @@
 | BP13 | 已实现 | `TerminalPresentation/Tools/ScreenLayout/Transcript`、Controller、当前 workspace 设置 Gateway/Repository：双栏、会话草稿/确认目标、搜索复制与本地清除、完整外观设置、修饰键、ANSI 样式/CJK 固定单元/备用屏幕/有界设备响应；行为见 [终端、脚本与守护](../features/TerminalAutomation.md) | BP16；833 JVM 例及两个 APK 构建通过，设备与真实 PTY 验证独立追踪 |
 | BP14 | 已实现 | `GuardianDraft/Repository/LogObserver/LogConnection/Screen`、当前 Gateway/API、桌面 Editor、Server/Agent：完整定义与精确参数、审批归属、预检/此次回执/完整读回、动作确认/未知核实、健康/恢复状态及有界实时日志/离页停止；行为见 [进程守护](../features/Guardian.md) | BP16；861 JVM 例/两个 APK 与 22 项 Server/桌面/实际 Agent 定义专项通过；真实生命周期、跨账号审批、Hub 与设备验收见 Verification |
 | BP15 | 已实现 | `PerformanceModels/Wire/Connection/Observer/MonitorPresentation/ViewModel/Screen`、`SystemProcessWire/Repository/ProcessPresentation/ManageViewModel/ProcessesScreen`、当前 Shared/Server/桌面：完整指标/静态身份/能力、真实历史/实时重连与快照降级、手机详情/平板双栏、进程筛选排序/分页/实例终止与原登录/前台隔离；API 23 严格时间工具同步修复证书/FRP/代理；行为见 [任务管理与监控](../features/TaskManager.md) | BP16；894 JVM/两个 APK、当前 .NET 采样专项通过；12 项实例终止及桌面构建证据保留，设备、真实 Linux/HTTP/Hub 验收见 Verification |
-| BP16 | 进行中 | `DeploymentDefinition/Draft/Dialog`、完整 Application/Revision 投影、Gateway/API/Repository、Shared/Server/桌面：完整定义编辑/精确秘密版本/原登录、必需 expectedUpdatedAt 冲突与回执/完整读回、未知不重放；修复 Server 历史秘密丢失与跨应用裁剪；实例/修订真实模板版本显示 | AD03-M4 更新说明、差异预览与显式模板版本更新；既有实例新镜像/归档修订 UI 和操作范围；定义备份/真实恢复保持分开，证据见 BP16-V1 |
-| BP22 | 未开始（本轮补齐） | 既有设置实现见第 1 节；新增动作见计划 | 按实现依赖推进 |
-| BP19、BP20、BP21、BP23 | 未开始（本轮补齐） | 新增动作见计划，按第三批拆分 | 复用既有终端/SSH/引导，遵守平台与排除范围 |
+| BP16 | 已实现 | `DeploymentDefinition/Draft/Dialog`、`DeploymentRevisionSource/Dialog`、`CatalogApplicationUpdate/UpdateDialog`、Gateway/API/Repository、Shared/Server/桌面：完整定义编辑、既有实例新镜像/归档修订、精确参数、必传部署版本的原子检查与操作预留、完整预览与明确模板版本更新、成功激活/回滚真实模板绑定；模板安装显式宿主端口修正；三语同步 | BP17；Android 构建/JVM/设备按本机无环境跳过，Server/桌面及静态证据见 BP16-V2，实际 Docker/数据恢复验收独立追踪 |
+| BP17 | 已实现 | `EventAlerts/Repository/Browser/AlertPanel`、Gateway/API：完整事件/告警/动作历史与汇总、状态/等级/来源/精确类型筛选、游标/去重/500 条上限、可见首批观察、受控确认/解决/抑制/解除、完整基线复核/回执读回/未知不重发、固定 capability 目标和三语；既有领域恢复/前台策略保留 | BP19；Android 构建/JVM/设备跳过，当前 Server 事件专项和静态证据见 BP17-V1；可靠后台通知独立归 AD08-M4 |
+| BP19-M1 | 已实现 | `SshLocalForwards/ForwardsScreen/ForwardForegroundService`、SSH Transport/Contracts、Coordinator/AppContainer：独立固定主机密钥/手机与远端 loopback、自动/显式端口/冲突拒绝、创建/修改重启/停止/测试/移除、有界内存状态、可停止前台通知、断线关闭/无自动重连和工作区清理；受管登录独立 | BP19-M2；Android 编译/JVM/设备跳过，静态和未执行测试源码见 BP19-V1 |
+| BP19-M2 | 已实现 | `SshFileTransfers/AndroidSshDocuments`、SSH Transport、`SshFilesViewModel/Screen/BundlePicker`：同宿主复制/剪切/批量删除、SAF 多文件/目录上传与 ZIP 导出、条目/层数/实际字节预算、名称/链接/来源复核、路径/历史/搜索排序、多选可见项、文本草稿确认、工作区/选择器/迟到回执隔离、停止连接和未知读取/明确事实采用；桌面逐动作表见 ServerCenter | BP20；Android/JVM/真实 SSH/SAF 验收跳过，源码与静态证据见 BP19-V2；AD01 独立继续跟踪 |
+| BP22 | 已实现 | `HostSettings` DTO/API/Repository/Journal/Screen：宿主环境/时区/名称、当前预览/应用/revision/原操作/回滚、持久未知门禁；Server 稳定错误码/权威过期终态；MobileApplicationsScreen 原生目录/版本/系统应用管理 | 实际 Server 构建与专项通过；Android/真实宿主跳过或待验，见 BP22-V1 |
+| BP20 | 已实现 | `ExternalServiceAddresses/ServiceAccess/DeploymentServiceAccess`：实际绑定/端口/转发地址、外部选择器、会话复核、关联站点前台读取、三语提示；见 ServiceAccess | Android 验证跳过，见 BP20-V1；包方案见 BP21 |
+| BP21 | 方案已完成 | 当前桌面 manifest/package manager/安装器已调查；ApplicationPackages.Design 明确逐类执行平台、权限/版本/更新/移除，当前拒绝 .roapp 与远端桌面代理 | 不声称实现手机第三方运行时/包检查 UI；设置边界见 BP22 |
+| BP23 | 已实现 | `HelpScreen/MobileFeatureCatalog` 与登录/首页/更多路由：三语连接/安装边界/任务/恢复、仅可用任务、既有指南外部链接；手机与平板路由分流 | Android 设备检查跳过，见 BP23-V1；不声明 AD01 首次安装已实现 |
 | BP18 | 不实施 | 本轮排除独立注册表应用；编号保留 | BP22 直接接具体设置契约 |
-| BP24 | 进行中 | 本次已建立实现/测试分离与第一批测试表；功能变更的测试代码和文档随各项更新 | 测试执行进度仅在 Verification 更新 |
+| BP24 | 进行中 | 本次已建立实现/测试分离与第一批测试表；功能变更的测试代码和文档随各项更新 | 测试执行进度仅在 Verification 更新；本轮专项/静态已记录，Android 环境按用户要求跳过 |
 
 每次实现交付更新对应行，注明文件/提交、已完成动作、剩余代码与下一项；后续拆分任务时替换组合行，编号保持稳定。代码缺陷关联对应 BP 编号，测试未执行不单独作为代码缺口。
 
 ## 3. 当前限制与下一步
 
-- BP06-M1 已接入，行为见 [Mihomo 代理管理器](../features/Proxy.md)。BP06-M2 已接入。BP02-M2 和 BP17-M1 首批聚合已接入，BP07-M1 已接入，BP08-M1 已接入，BP09-M1 已接入，BP09-M2、BP11 和 BP10 已接入，BP12 已接入，BP13 已接入，BP15 已接入，继续 BP16 应用部署及模板。BP03-M1/M2、BP04-M1/M2、BP05-M1/M2 已接入；剩余宿主/设备检查独立追踪，不阻止后续实现。
+- BP06-M1 已接入，行为见 [Mihomo 代理管理器](../features/Proxy.md)。BP06-M2 已接入。BP02-M2 和 BP17-M1 首批聚合已接入，BP07-M1 已接入，BP08-M1 已接入，BP09-M1 已接入，BP09-M2、BP11 和 BP10 已接入，BP12 已接入，BP13 已接入，BP15 已接入，BP16 应用部署及模板已接入，BP17 事件与运维中心已接入，BP19 SSH 与 SFTP 已接入，BP20 服务访问已接入，BP21 移动包方案已完成，BP22 宿主设置与应用管理、BP23 帮助已接入；本轮实现推进至 BP23，BP24 验证独立跟踪。BP03-M1/M2、BP04-M1/M2、BP05-M1/M2 已接入；剩余宿主/设备检查独立追踪，不阻止后续实现。
 - Android 证书管理/部署已接入现有 API；Server 证书写入仍调用固定拒绝的 `HostPrivilegeService`，需服务端迁移至受授权 Helper 后才能形成生产写入闭环，未伪造 capability 或绕过权限。
 - 公共安装链路已接入 Nginx、FRP 和 Mihomo 表单；其他服务表单仍随领域交付。完全丢失首次响应且已结束的任务不能从活动列表推断终态。
 - 现有能力表不等于全手机首次安装到公网访问闭环通过；首次安装还缺实现，其他领域的真实宿主/设备检查见集中验收清单。

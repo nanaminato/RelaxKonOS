@@ -69,7 +69,12 @@ public sealed class HostIdentityOperationCoordinator(SettingsOperationJournal jo
         using var lease = await journal.AcquireAsync(ct);
         if (journal.ReadIdentity(id) is null) return null;
         var stored = Owned(principal, id);
-        return stored.Operation.State == SettingsOperationState.Applying ? Interrupted(stored).Operation : stored.Operation;
+        if (stored.Operation.State == SettingsOperationState.Applying)
+            return Save(stored, stored.RollingBack ? SettingsOperationState.RecoveryRequired : SettingsOperationState.Unknown,
+                "settings.operation.interrupted").Operation;
+        if (stored.Operation.State == SettingsOperationState.Prepared && stored.Plan.ExpiresAt <= DateTimeOffset.UtcNow)
+            return Save(stored, SettingsOperationState.Failed, "settings.plan_expired").Operation;
+        return stored.Operation;
     }
 
     public async Task<SettingsOperation?> RollbackIfExistsAsync(ClaimsPrincipal principal, Guid id,

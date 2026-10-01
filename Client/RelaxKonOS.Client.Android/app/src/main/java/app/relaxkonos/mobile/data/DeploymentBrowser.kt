@@ -279,7 +279,7 @@ class DeploymentBrowser(
     }
 
     /** Installs the exact server catalogue version. Field values live only in this request path. */
-    fun installCatalog(template: CatalogTemplate, name: String, fields: List<CatalogFieldValue>) {
+    fun installCatalog(template: CatalogTemplate, name: String, hostPort: Int, fields: List<CatalogFieldValue>) {
         val owner = mutableState.value.owner ?: return
         if (ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities || template.schemaVersion != "1" || template.withdrawn) return
         listJob?.cancel()
@@ -287,7 +287,7 @@ class DeploymentBrowser(
         mutableState.update { it.copy(submitting = true, submission = null) }
         listJob = scope.launch {
             try {
-                val result = repository.installCatalog(owner, template, name, fields, UUID.randomUUID().toString())
+                val result = repository.installCatalog(owner, template, name, hostPort, fields, UUID.randomUUID().toString())
                 if (current(owner) && generation == listGeneration) {
                     mutableState.update { it.copy(submitting = false, submission = result, selectedId = (result as? ApiResult.Success)?.value?.applicationId ?: it.selectedId) }
                     if (result is ApiResult.Success) { refresh(); observeOperation(owner, result.value) }
@@ -296,6 +296,14 @@ class DeploymentBrowser(
                 if (current(owner) && generation == listGeneration) mutableState.update { it.copy(submitting = false) }
             }
         }
+    }
+
+    fun revisionAccepted(operation: DeploymentOperation) {
+        val owner = mutableState.value.owner ?: return
+        if (!current(owner) || mutableState.value.selectedId != operation.applicationId) return
+        mutableState.update { it.copy(submission = ApiResult.Success(operation)) }
+        refresh()
+        observeOperation(owner, operation)
     }
 
     fun lifecycle(action: DeploymentLifecycleAction) {

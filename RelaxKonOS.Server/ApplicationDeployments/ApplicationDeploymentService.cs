@@ -14,7 +14,9 @@ internal sealed record DeploymentRequest(
     DeploymentSourceInputDto? Source = null,
     Guid? RevisionId = null,
     bool Force = false,
-    bool DeleteVolumes = false);
+    bool DeleteVolumes = false,
+    UpdateCatalogApplicationRequest? CatalogUpdate = null,
+    DateTimeOffset? ExpectedUpdatedAt = null);
 
 /// <summary>
 /// Executes one deployment operation against the local Docker Engine. It owns the stage sequence,
@@ -54,6 +56,8 @@ internal sealed class ApplicationDeploymentService(
             request.DeleteVolumes ? "purge" : "-",
         };
         if (request.Source is { } source) parts.Add(Canonical(source));
+        parts.Add(request.ExpectedUpdatedAt?.ToString("O") ?? "-");
+        if (request.CatalogUpdate is { } update) parts.Add(System.Text.Json.JsonSerializer.Serialize(update));
         return ApplicationDeploymentValidation.Reference(string.Join('\u001e', parts));
     }
 
@@ -64,6 +68,14 @@ internal sealed class ApplicationDeploymentService(
     {
         var application = catalog.Find(request.ApplicationId)
             ?? throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ApplicationNotFound, 404);
+        if (request.ExpectedUpdatedAt is { } expected && application.UpdatedAt != expected)
+            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.DefinitionConflict);
+        if (request.CatalogUpdate is { } update)
+        {
+            var target = ApplicationCatalogUpdates.Validate(application, application.CurrentRevisionId is { } id ? catalog.FindRevision(id) : null, update);
+            application = application with { CatalogTemplateId = target.Id, CatalogTemplateVersion = target.Version };
+            request = request with { Source = new(ImageReference: target.ImageReference) };
+        }
         switch (request.Kind)
         {
             case DeploymentOperationKind.Deploy:

@@ -468,10 +468,12 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
         try
         {
             var targetId = applicationId;
+            var expectedUpdatedAt = existing?.UpdatedAt;
             if (Intent == DeploymentWizardIntent.Create)
             {
                 var created = await client.CreateApplicationAsync(BuildCreateRequest(), definitionIdempotencyKey);
                 targetId = created.Id;
+                expectedUpdatedAt = created.UpdatedAt;
             }
             else if (Intent == DeploymentWizardIntent.EditDefinition)
             {
@@ -491,7 +493,7 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
 
             OperationText = LocalizedStatus.Key(DeploymentText.Prefix + ".queuing");
             var operation = await client.DeployAsync(targetId!.Value,
-                new DeployApplicationRequest(BuildSource(), Confirmed: true), deploymentIdempotencyKey);
+                new DeployApplicationRequest(BuildSource(), expectedUpdatedAt!.Value, Confirmed: true), deploymentIdempotencyKey);
             Submitted = true;
             await PollAsync(operation);
         }

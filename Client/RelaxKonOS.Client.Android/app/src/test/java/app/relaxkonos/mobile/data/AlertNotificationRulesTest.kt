@@ -78,7 +78,7 @@ class AlertNotificationRulesTest {
 
     private fun alert(id: String, type: String = "deployment.operation_failed", status: String = "open",
         severity: String = "error", count: Int = 1) = OperationalAlert(id(id), type, severity, status,
-        "deployment.failed", count, 1_000_000L, "applicationDeployment", null, null)
+        "deployment.failed", count, 1_000_000L, "applicationDeployment", null, null, 1_000_000L, "event", null, null, null)
 
     private fun id(value: String): String = UUID.nameUUIDFromBytes(value.toByteArray(Charsets.UTF_8)).toString()
 }

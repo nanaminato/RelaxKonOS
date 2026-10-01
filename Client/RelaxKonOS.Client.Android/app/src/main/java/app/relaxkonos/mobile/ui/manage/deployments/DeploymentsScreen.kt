@@ -90,10 +90,10 @@ fun DeploymentsScreen(
         if (expanded) {
             Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {
                 DeploymentList(state, { browser.select(it) }, Modifier.weight(1f))
-                DeploymentDetail(state, browser, Modifier.weight(1.2f))
+                DeploymentDetail(state, browser, viewModel, Modifier.weight(1.2f))
             }
         } else if (showDetail) {
-            DeploymentDetail(state, browser, Modifier.weight(1f))
+            DeploymentDetail(state, browser, viewModel, Modifier.weight(1f))
         } else {
             DeploymentList(state, { browser.select(it); onOpenDetail() }, Modifier.weight(1f))
         }
@@ -129,7 +129,7 @@ fun DeploymentsScreen(
             runtime = (state.runtime as? ApiResult.Success)?.value,
             submitting = state.submitting,
             onDismiss = { if (!state.submitting) showCatalog = false },
-            onInstall = { template, name, fields -> browser.installCatalog(template, name, fields); showCatalog = false },
+            onInstall = { template, name, port, fields -> browser.installCatalog(template, name, port, fields); showCatalog = false },
         )
     }
 }
@@ -138,11 +138,13 @@ fun DeploymentsScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 private fun CatalogInstallDialog(
     templates: List<CatalogTemplate>, capabilities: Set<String>, runtime: DeploymentRuntime?, submitting: Boolean, onDismiss: () -> Unit,
-    onInstall: (CatalogTemplate, String, List<CatalogFieldValue>) -> Unit,
+    onInstall: (CatalogTemplate, String, Int, List<CatalogFieldValue>) -> Unit,
 ) {
     var selectedId by remember(templates) { mutableStateOf(templates.firstOrNull()?.id) }
     val template = templates.firstOrNull { it.id == selectedId }
     var name by remember(template) { mutableStateOf("") }
+    var hostPort by remember(template) { mutableStateOf("") }
+    val parsedHostPort = hostPort.toIntOrNull()?.takeIf { it in 1..65535 }
     var values by remember(template) { mutableStateOf(template?.fields?.associate { it.id to (it.defaultValue ?: "") }.orEmpty()) }
     val compatibility = template?.compatibility(capabilities, runtime)
     val supported = compatibility?.canInstall == true
@@ -184,6 +186,9 @@ private fun CatalogInstallDialog(
                 }
                 OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.deployments_name)) }, singleLine = true,
                     modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(hostPort, { hostPort = it }, label = { Text(stringResource(R.string.deployments_host_port)) }, singleLine = true,
+                    supportingText = { Text(stringResource(R.string.deployments_host_port_note)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth())
                 selected.fields.forEach { field ->
                     if (field.type == "enum") {
                         Text(field.label(), style = MaterialTheme.typography.labelLarge)
@@ -213,8 +218,8 @@ private fun CatalogInstallDialog(
                 ) {
                     TextButton(onClick = onDismiss, enabled = !submitting) { Text(stringResource(R.string.common_cancel)) }
                     template?.let { selected ->
-                        Button(onClick = { onInstall(selected, name, selected.fields.mapNotNull { field -> values[field.id]?.let { CatalogFieldValue(field.id, it) } }) },
-                            enabled = supported && complete && validValues && name.isNotBlank() && !submitting) { Text(stringResource(R.string.catalog_install)) }
+                        Button(onClick = { onInstall(selected, name, parsedHostPort!!, selected.fields.mapNotNull { field -> values[field.id]?.let { CatalogFieldValue(field.id, it) } }) },
+                            enabled = supported && complete && validValues && name.isNotBlank() && parsedHostPort != null && !submitting) { Text(stringResource(R.string.catalog_install)) }
                     }
                 }
             }
@@ -517,7 +522,7 @@ private fun wizardProblemField(problem: String): String = stringResource(when (p
 })
 
 @Composable
-private fun ServerArchivePicker(onDismiss: () -> Unit, onSelect: (String) -> Unit) {
+internal fun ServerArchivePicker(onDismiss: () -> Unit, onSelect: (String) -> Unit) {
     RemotePathPicker(kind = RemotePathKind.File,
         title = R.string.deployments_server_archive_title,
         onDismiss = onDismiss,
@@ -576,11 +581,13 @@ private fun DeploymentList(state: DeploymentBrowserState, onSelect: (String) -> 
 }
 
 @Composable
-private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentBrowser, modifier: Modifier) {
+private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentBrowser, viewModel: DeploymentsViewModel, modifier: Modifier) {
     val ownerKey = DeploymentOwnerKey(state.owner)
     var actionToConfirm by remember(ownerKey, state.selectedId) { mutableStateOf<DeploymentLifecycleAction?>(null) }
     var rollbackRevision by remember(ownerKey, state.selectedId) { mutableStateOf<DeploymentRevision?>(null) }
     var deleteConfirmation by remember(ownerKey, state.selectedId) { mutableStateOf(false) }
+    var updateTemplate by remember(ownerKey, state.selectedId) { mutableStateOf<DeploymentApplication?>(null) }
+    var newRevision by remember(ownerKey, state.selectedId) { mutableStateOf<DeploymentSnapshot?>(null) }
     var editDefinition by remember(ownerKey, state.selectedId) { mutableStateOf<DeploymentApplication?>(null) }
     LazyColumn(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         if (state.selectedId == null) item { EmptyHint(stringResource(R.string.deployments_select)) }
@@ -605,6 +612,9 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
                         Text(stringResource(R.string.deployments_ports,
                             app.hostPort?.let { "${app.bindAddress}:$it" } ?: stringResource(R.string.deployments_unpublished), app.containerPort))
                         app.domain?.let { Text(stringResource(R.string.deployments_domain, it)) }
+                        state.owner?.let { owner -> DeploymentServiceAccess(owner, app) {
+                            browser.state.value.owner === owner && (browser.state.value.detail as? ApiResult.Success)?.value?.application == app
+                        } }
                         if (app.driftProblemCode != null) Text(stringResource(R.string.deployments_drift), color = MaterialTheme.colorScheme.error)
                         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                             if (app.actualState == "running") {
@@ -622,6 +632,13 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
                         }
                         TextButton(onClick = { deleteConfirmation = true }, enabled = !state.submitting) {
                             Text(stringResource(R.string.deployment_delete), color = MaterialTheme.colorScheme.error)
+                        }
+                        if (app.catalogTemplateId != null) TextButton(onClick = { updateTemplate = app }, enabled = !state.submitting && snapshot.activeOperation == null && state.catalog is ApiResult.Success) {
+                            Text(stringResource(R.string.catalog_update_title))
+                        }
+                        TextButton(onClick = { viewModel.clearStagedArchive(); newRevision = snapshot }, enabled = !state.submitting && snapshot.activeOperation == null &&
+                            (state.runtime as? ApiResult.Success)?.value?.isAvailable == true) {
+                            Text(stringResource(R.string.deployments_new_revision))
                         }
                         TextButton(onClick = { editDefinition = app }, enabled = !state.submitting && snapshot.activeOperation == null) {
                             Text(stringResource(R.string.deployments_edit_definition))
@@ -685,6 +702,16 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
             null -> Unit
             else -> item { Text(result.deploymentFailure().text(), color = MaterialTheme.colorScheme.error) }
         }
+    }
+    updateTemplate?.let { application -> state.owner?.let { owner ->
+        CatalogUpdateDialog(owner, application, (state.catalog as? ApiResult.Success)?.value.orEmpty(), (state.runtime as? ApiResult.Success)?.value,
+            onDismiss = { updateTemplate = null }, onAccepted = browser::revisionAccepted)
+    } }
+    newRevision?.let { snapshot ->
+        state.owner?.let { owner -> DeploymentRevisionDialog(owner, snapshot,
+            (state.templates as? ApiResult.Success)?.value?.firstOrNull { it.sourceKind == snapshot.application.sourceKind },
+            state.stagedArchive, state.archiveStaging, viewModel::stageArchive, viewModel::stageServerArchive, viewModel::clearStagedArchive,
+            onDismiss = { viewModel.clearStagedArchive(); newRevision = null }, onAccepted = browser::revisionAccepted) }
     }
     editDefinition?.let { application ->
         state.owner?.let { owner -> DeploymentDefinitionDialog(owner, application, onDismiss = { editDefinition = null }, onSaved = browser::refresh) }
@@ -841,7 +868,7 @@ private fun label(value: String): String = stringResource(deploymentLabel(value)
 private fun revisionLabel(number: Int?): String = number?.toString() ?: stringResource(R.string.deployments_no_revision)
 
 @Composable
-private fun catalogBlockerText(blocker: CatalogInstallBlocker): String = stringResource(
+internal fun catalogBlockerText(blocker: CatalogInstallBlocker): String = stringResource(
     when (blocker) {
         CatalogInstallBlocker.UnsupportedSchema -> R.string.catalog_blocked_schema
         CatalogInstallBlocker.UntrustedSource -> R.string.catalog_blocked_trust
