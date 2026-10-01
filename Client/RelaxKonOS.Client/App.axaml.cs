@@ -80,6 +80,12 @@ public partial class App : Application
                         && mainWindow is not null)
                     {
                         replacingMainWindow = true;
+                        // The singleton window manager survives the shell window. End the old
+                        // workspace before another Server or SSH session can attach to it.
+                        Services.GetRequiredService<RelaxKonOS.Client.Services.SystemUi.SystemUiCoordinator>().HideOverview();
+                        var windows = Services.GetRequiredService<RelaxKonOS.WindowManager.IWindowManager>();
+                        foreach (var window in windows.Windows.ToArray())
+                            windows.Close(window);
                         mainWindow.Close();
                         mainWindow = null;
                         loginWindow = CreateLoginWindow();
