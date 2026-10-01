@@ -56,6 +56,13 @@ Check(!untrustedFileOpenResult.Succeeded,
     "普通应用仍不能把主机路径注入文件打开路由");
 
 var transport = new FakeTransport();
+var modeGate = typeof(RelaxKonOS.Client.ViewModels.ServerCenter.ServerCenterViewModel).GetMethod(
+    "CanUseInstallationMode", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+var sudoProbe = new ServerHostProbeDto(HostPlatformKind.Linux, "x86_64", ServerRuntimeIdentifier.LinuxX64,
+    "ubuntu", "26.04", true, false, true, true, null, null, null, null, null, null, false, [], DateTimeOffset.UtcNow);
+Check((bool)modeGate.Invoke(null, [HostPlatformKind.Linux, sudoProbe, ServerInstallMode.LinuxSystem])! &&
+    !(bool)modeGate.Invoke(null, [HostPlatformKind.Linux, sudoProbe with { SudoAvailable = false }, ServerInstallMode.LinuxSystem])!,
+    "普通 Linux SSH 账户有 sudo 时允许系统模式，没有 sudo 时仍阻止");
 var client = new ServerCenterDeploymentClient(transport);
 var operationId = Guid.NewGuid();
 var request = new ServerDeploymentRequest(ServerDeploymentProtocol.Version, operationId,
@@ -77,6 +84,14 @@ Check(transport.Commands.Any(command => command.StartsWith("chmod 700 ", StringC
     "Linux 内置启动器被设为可执行");
 
 var receipt = await client.ExecuteAsync(staged, CancellationToken.None);
+await client.ExecuteAsync(staged, CancellationToken.None, "sudo-secret");
+Check(transport.InputLines.SequenceEqual(new[] { "sudo-secret" }) &&
+    transport.Commands.Any(command => command.EndsWith(" --run-with-sudo", StringComparison.Ordinal)) &&
+    transport.Commands.All(command => !command.Contains("sudo-secret", StringComparison.Ordinal)) &&
+    transport.Uploaded.Values.All(bytes => !System.Text.Encoding.UTF8.GetString(bytes).Contains("sudo-secret", StringComparison.Ordinal)),
+    "sudo 密码仅通过标准输入传递，命令和上传文件不包含密码");
+await client.ExecuteAsync(staged, CancellationToken.None, "");
+Check(transport.InputLines[^1] == "", "免密 sudo 也走明确的提权入口");
 Check(receipt.OperationId == operationId && receipt.State == ServerDeploymentState.Failed,
     "执行后从持久记录读取权威回执");
 Check(transport.Commands[^2].Contains(" --run", StringComparison.Ordinal) &&
@@ -218,6 +233,7 @@ sealed class FakeTransport : IServerCenterSshTransport
     public Dictionary<string, byte[]> Uploaded { get; } = new(StringComparer.Ordinal);
     public List<string> UploadOrder { get; } = [];
     public List<string> Commands { get; } = [];
+    public List<string?> InputLines { get; } = [];
     public string? WindowsDirectory { get; init; }
 
     public Task ConnectAsync(ServerCenterSshEndpoint endpoint, ServerCenterSshCredential credential,
@@ -245,7 +261,11 @@ sealed class FakeTransport : IServerCenterSshTransport
     }
 
     public Task<ServerCenterSshCommandResult> RunWithInputAsync(string command, string? inputLine,
-        CancellationToken cancellationToken) => throw new NotSupportedException();
+        CancellationToken cancellationToken)
+    {
+        InputLines.Add(inputLine);
+        return RunAsync(command, cancellationToken);
+    }
 
     public async Task UploadAsync(Stream content, string remotePath, IProgress<double>? progress,
         CancellationToken cancellationToken)

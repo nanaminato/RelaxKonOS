@@ -116,7 +116,9 @@
     "server_center.remote_bundle_unavailable": "请选择此 SSH 服务器上的 .zip 发布包。",
     "server_center.certificate_unavailable": "所选证书文件不可用。",
     "server_center.certificate_mode_unavailable": "自定义 TLS 证书需要系统服务安装模式。",
-    "server_center.install_mode_unavailable": "所选安装模式不可用于当前 SSH 会话。",
+    "server_center.install_mode_unavailable": "所选安装模式不可用：Linux 系统模式需要 root 或可用的 sudo；Windows 系统模式需要管理员 SSH 会话。",
+    "server_center.wizard.sudo_password": "sudo 密码（留空使用 SSH 登录密码）",
+    "server_center.sudo_failed": "sudo 验证失败，请检查 sudo 密码和当前账号的 sudo 权限。",
     "server_center.status_missing": "部署已结束，但没有返回权威的 SSH 侧状态回执。",
     "server_center.install_succeeded": "已安装 RelaxKonOS 并通过 SSH 验证。请返回登录窗口登录。",
     "server_center.update_succeeded": "已更新 RelaxKonOS 并通过 SSH 验证。如果原会话已中断，请重新登录。",
@@ -141,6 +143,10 @@
     "server_center.operation_refreshed": "已从宿主刷新所选操作回执。",
     "server_center.operation_refresh_failed": "无法刷新远端操作回执。请检查 SSH 访问后重试。",
     "server_center.install_script_unavailable": "客户端内置安装脚本不可用，请重新构建或安装客户端。",
-    "server_center.wizard.source_checks": "官网包在服务器下载并自动校验；自行选择的 ZIP 仅检查结构、架构和安全解压。"
+    "server_center.wizard.source_checks": "官网包在服务器下载并自动校验；自行选择的 ZIP 仅检查结构、架构和安全解压。",
+    "server_center.probe_missing": "宿主预检未返回系统信息，请查看操作记录中的失败原因。",
+    "server_center.platform_mismatch": "所选平台是 {0}，SSH 主机报告的平台是 {1}。请选择主机实际的平台。",
+    "server_center.architecture_unsupported": "宿主 CPU 架构 {0} 暂不支持；支持 x86_64 和 arm64。",
+    "server_center.os_unsupported": "宿主报告的系统是 {0} {1}（{2}），尚未列入支持范围。目前支持 Debian 12、Ubuntu 22.04／24.04／26.04。"
   }
 }

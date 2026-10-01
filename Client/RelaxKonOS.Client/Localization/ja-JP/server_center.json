@@ -116,7 +116,9 @@
     "server_center.remote_bundle_unavailable": "この SSH サーバーから .zip リリースバンドルを選択してください。",
     "server_center.certificate_unavailable": "選択した証明書ファイルは利用できません。",
     "server_center.certificate_mode_unavailable": "カスタム TLS 証明書にはシステムサービスのインストールが必要です。",
-    "server_center.install_mode_unavailable": "選択したインストールモードは現在の SSH セッションでは利用できません。",
+    "server_center.install_mode_unavailable": "Linux システムモードには root または sudo が必要です。Windows には管理者 SSH セッションが必要です。",
+    "server_center.wizard.sudo_password": "sudo パスワード（空欄の場合は SSH パスワードを使用）",
+    "server_center.sudo_failed": "sudo 認証に失敗しました。パスワードとアカウントの sudo 権限を確認してください。",
     "server_center.status_missing": "デプロイは完了しましたが、権威ある SSH 側状態レシートが返されませんでした。",
     "server_center.install_succeeded": "RelaxKonOS をインストールし、SSH で検証しました。ログインウィンドウに戻ってサインインしてください。",
     "server_center.update_succeeded": "RelaxKonOS を更新し、SSH で検証しました。既存のセッションが中断された場合は再度サインインしてください。",
@@ -141,6 +143,10 @@
     "server_center.operation_refreshed": "選択した操作レシートをホストから更新しました。",
     "server_center.operation_refresh_failed": "リモート操作レシートを更新できませんでした。SSH アクセスを確認して再試行してください。",
     "server_center.install_script_unavailable": "内蔵インストールスクリプトを読み込めません。クライアントを再ビルドまたは再インストールしてください。",
-    "server_center.wizard.source_checks": "公式パッケージはサーバーでダウンロードして検証します。選択した ZIP は構造、アーキテクチャ、安全な展開を確認します。"
+    "server_center.wizard.source_checks": "公式パッケージはサーバーでダウンロードして検証します。選択した ZIP は構造、アーキテクチャ、安全な展開を確認します。",
+    "server_center.probe_missing": "ホストの事前確認からシステム情報が返されませんでした。操作記録を確認してください。",
+    "server_center.platform_mismatch": "選択したプラットフォームは {0}、SSH ホストは {1} です。ホストのプラットフォームを選択してください。",
+    "server_center.architecture_unsupported": "CPU アーキテクチャ {0} は未対応です。x86_64 と arm64 に対応しています。",
+    "server_center.os_unsupported": "ホストは {0} {1}（{2}）を報告していますが、対応範囲外です。Debian 12、Ubuntu 22.04/24.04/26.04 に対応しています。"
   }
 }

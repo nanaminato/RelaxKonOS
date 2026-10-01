@@ -182,8 +182,9 @@ class JschServerCenterTransport : ServerCenterSshTransport {
         require(command.isNotBlank()) { "The command must not be blank." }
         // The one line of input is fed through the channel's stdin, never as a command argument, so a
         // sudo password stays out of the process list, the logs and the disk.
-        val input = if (inputLine.isNullOrEmpty()) null else (inputLine + "\n").toByteArray(Charsets.UTF_8)
-        return withContext(Dispatchers.IO) { execute(command, input) }
+        val input = inputLine?.let { (it + "\n").toByteArray(Charsets.UTF_8) }
+        return try { withContext(Dispatchers.IO) { execute(command, input) } }
+        finally { input?.fill(0) }
     }
 
     override suspend fun openTerminal(): ServerCenterSshTerminal = withContext(Dispatchers.IO) {

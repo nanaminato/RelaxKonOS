@@ -104,8 +104,12 @@ class ServerCenterDeploymentClient(private val transport: ServerCenterSshTranspo
         return staged
     }
 
-    suspend fun execute(staged: ServerCenterStagedOperation): ServerDeploymentOperation {
-        transport.run(launcherCommand(staged, action = LauncherAction.Run))
+    suspend fun execute(staged: ServerCenterStagedOperation, sudoPassword: String? = null): ServerDeploymentOperation {
+        val command = launcherCommand(staged, action = LauncherAction.Run)
+        if (sudoPassword != null) {
+            require(staged.platform == ServerHostPlatform.Linux && sudoPassword.none { it == '\r' || it == '\n' })
+            transport.runWithInput(command + "-with-sudo", sudoPassword)
+        } else transport.run(command)
         // SSH exit status is not proof of success. The persistent receipt is authoritative.
         return query(staged)
     }

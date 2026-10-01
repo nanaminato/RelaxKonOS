@@ -47,6 +47,7 @@
                             <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
                         </ComboBox.ItemTemplate>
                     </ComboBox>
+                    <TextBox IsVisible="{Binding ShowsSudoPassword}" Text="{Binding SudoPassword, Mode=TwoWay}" PasswordChar="●" PlaceholderText="{Binding SudoPasswordText}" />
                     <TextBlock Text="{Binding FileAccessText}" />
                     <ComboBox ItemsSource="{Binding FileAccesses}" SelectedItem="{Binding SelectedFileAccess}" HorizontalAlignment="Left" MinWidth="320">
                         <ComboBox.ItemTemplate>

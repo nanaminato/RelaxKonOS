@@ -123,11 +123,18 @@ public sealed class ServerCenterDeploymentClient(IServerCenterSshTransport trans
     }
 
     public async Task<ServerDeploymentOperationDto> ExecuteAsync(
-        ServerCenterStagedOperation staged, CancellationToken cancellationToken)
+        ServerCenterStagedOperation staged, CancellationToken cancellationToken, string? sudoPassword = null)
     {
         ArgumentNullException.ThrowIfNull(staged);
-        await transport.RunAsync(LauncherCommand(staged, query: false), cancellationToken)
-            .ConfigureAwait(false);
+        if (sudoPassword is not null)
+        {
+            if (staged.Platform != HostPlatformKind.Linux || sudoPassword.Any(c => c is '\r' or '\n'))
+                throw new ArgumentException("A single-line Linux sudo password is required.");
+            await transport.RunWithInputAsync(LauncherCommand(staged, query: false) + "-with-sudo",
+                sudoPassword, cancellationToken).ConfigureAwait(false);
+        }
+        else
+            await transport.RunAsync(LauncherCommand(staged, query: false), cancellationToken).ConfigureAwait(false);
         // An SSH exit status is not proof of success. Query the persistent receipt even on a nonzero exit.
         return await QueryAsync(staged, cancellationToken).ConfigureAwait(false);
     }

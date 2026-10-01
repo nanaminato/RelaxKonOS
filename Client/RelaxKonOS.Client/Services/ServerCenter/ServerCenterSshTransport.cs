@@ -110,11 +110,12 @@ public sealed class SshNetServerCenterTransport : IServerCenterSshTransport
             using var sshCommand = Client.CreateCommand(command);
             using var input = sshCommand.CreateInputStream();
             var execution = sshCommand.BeginExecute();
-            if (!string.IsNullOrEmpty(inputLine))
+            if (inputLine is not null)
             {
                 var bytes = Encoding.UTF8.GetBytes(inputLine + "\n");
                 input.Write(bytes, 0, bytes.Length);
                 input.Flush();
+                Array.Clear(bytes);
             }
 
             sshCommand.EndExecute(execution);

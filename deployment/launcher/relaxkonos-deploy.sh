@@ -13,6 +13,19 @@
 set -euo pipefail
 
 protocol_version=1
+sudo_requested=false
+sudo_password=
+run_privileged() {
+  # Authenticate via stdin; the engine never inherits password input, including NOPASSWD policies.
+  sudo -S -k -p '' -- bash -c 'exec "$@" </dev/null' bash "$@" <<< "$sudo_password"
+}
+authenticate_sudo() {
+  [[ $sudo_requested == true ]] || return 0
+  [[ $options_mode == linuxSystem || $operation_kind == probe ]] || launcher_fail invalid_request "sudo is only supported for Linux System Mode"
+  if ! command -v sudo >/dev/null || ! run_privileged true >/dev/null 2>&1; then
+    launcher_fail elevation_required "sudo 验证失败：请检查 sudo 密码以及当前账号的 sudo 权限。"
+  fi
+}
 script_raw=${BASH_SOURCE[0]}
 staging_root=$(cd -- "$(dirname -- "$script_raw")" && pwd -P)
 request_path=$staging_root/request.json
@@ -399,13 +412,18 @@ system_install_root() { printf '/opt/relaxkonos'; }
 
 state_field() { # install-state file key
   local file=$1 key=$2
-  [[ -r $file ]] || return 0
-  sed -nE "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" "$file" | head -n1
+  read_state "$file" | sed -nE "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" | head -n1
 }
 state_flag() { # install-state file key
   local file=$1 key=$2
-  [[ -r $file ]] || return 0
-  sed -nE "s/.*\"$key\"[[:space:]]*:[[:space:]]*(true|false).*/\1/p" "$file" | head -n1
+  read_state "$file" | sed -nE "s/.*\"$key\"[[:space:]]*:[[:space:]]*(true|false).*/\1/p" | head -n1
+}
+read_state() {
+  if [[ -r $1 ]]; then cat -- "$1"
+  elif [[ $sudo_requested == true && $1 == "$(system_data_root)/install-state.json" ]]; then
+    run_privileged cat -- "$1" 2>/dev/null || true
+  fi
+  return 0
 }
 mode_install_state() {
   case "$1" in
@@ -456,7 +474,7 @@ health_probe() { # mode -> true|false
     *)
       local url="http://127.0.0.1:${options_server_port:-5000}/healthz" arguments=(--fail --silent --max-time 4)
       local state; state="$(system_data_root)/install-state.json"
-      if [[ -r $state ]]; then
+      if [[ -r $state || $sudo_requested == true ]]; then
         local listen; listen=$(state_field "$state" listenUrl)
         [[ -n $listen ]] && url="${listen%/}/healthz"
         [[ $url == https://* ]] && arguments+=(--insecure)
@@ -469,13 +487,16 @@ existing_installation_state() {
   local candidate file
   for candidate in linuxSystem linuxUser; do
     file=$(mode_install_state "$candidate")
-    [[ -r $file ]] || continue
+    [[ -r $file || $sudo_requested == true && $candidate == linuxSystem ]] || continue
     if [[ $(state_flag "$file" installed) == true ]]; then printf '%s' "$file"; return; fi
   done
   for candidate in linuxSystem linuxUser; do
     file=$(mode_install_state "$candidate")
     [[ -r $file ]] && { printf '%s' "$file"; return; }
   done
+  # A fresh host has no state file. Absence is a successful lookup with an empty result;
+  # returning the last failed test would make `set -e` abort action_probe before its receipt.
+  return 0
 }
 
 probe_json() {
@@ -491,7 +512,7 @@ probe_json() {
   esac
   local elevated=false; [[ $EUID -eq 0 ]] && elevated=true
   local sudo_available=false
-  command -v sudo >/dev/null && command -v visudo >/dev/null && sudo_available=true
+  command -v sudo >/dev/null && sudo_available=true
   local systemd_available=false
   command -v systemctl >/dev/null && [[ -d /run/systemd/system ]] && systemd_available=true
   local disk
@@ -605,7 +626,11 @@ run_engine() { # command...
   umask 077
   launcher_note "running deployment engine: $1"
   set +e
-  "$@" > "$diagnostics" 2>&1
+  if [[ $sudo_requested == true && $options_mode == linuxSystem && $EUID -ne 0 ]]; then
+    run_privileged "$@" > "$diagnostics" 2>&1
+  else
+    "$@" > "$diagnostics" 2>&1
+  fi
   local status=$?
   set -e
   chmod 600 -- "$diagnostics" 2>/dev/null || true
@@ -631,7 +656,7 @@ preflight_install() {
   esac
   case "$options_mode" in
     linuxSystem)
-      [[ $EUID -eq 0 ]] || launcher_fail elevation_required "System Mode requires a root SSH session"
+      [[ $EUID -eq 0 || $sudo_requested == true ]] || launcher_fail elevation_required "System Mode requires root or authenticated sudo access"
       [[ $(sed -nE 's/^ID="?([^"]*)"?$/\1/p' /etc/os-release 2>/dev/null | head -n1) =~ ^(debian|ubuntu)$ ]] || launcher_fail os_unsupported "this Linux distribution is not supported for System Mode"
       ;;
     linuxUser) [[ $EUID -ne 0 ]] || launcher_fail elevation_required "User Mode must not run as root";;
@@ -829,6 +854,10 @@ case "${1:-}" in
     exit 0
     ;;
   ''|--run) ;;
+  --run-with-sudo)
+    sudo_requested=true
+    IFS= read -r sudo_password || true
+    ;;
   *) launcher_note "usage: $0 [--run|--query OPERATION_ID|--list]"; exit 64;;
 esac
 
@@ -838,6 +867,7 @@ parse_request
 check_idempotency
 started_at=$(now_utc)
 persist_digest
+authenticate_sudo
 case "$operation_kind" in
   probe) action_probe;;
   status) action_status;;

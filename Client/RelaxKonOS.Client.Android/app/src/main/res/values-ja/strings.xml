@@ -1639,5 +1639,7 @@
     <string name="ssh_workspace_deploy_running">SSH 経由でインストール中です。中断した場合は再試行前に操作記録を確認してください。</string>
     <string name="ssh_workspace_deploy_success">インストールとサーバーの正常性確認が完了しました。</string>
     <string name="ssh_workspace_deploy_failed">インストールを確認できませんでした。SSH 検証、サーバーの依存関係、パッケージ構造、操作記録を確認してください。</string>
+    <string name="ssh_workspace_deploy_sudo_password">sudo パスワード（空欄の場合は SSH パスワードを使用）</string>
+    <string name="ssh_workspace_deploy_sudo_failed">sudo 認証に失敗しました。パスワードとアカウントの sudo 権限を確認してください。</string>
     <string name="ssh_workspace_deploy_verify">インストール前に SSH 接続を検証してください。</string>
 </resources>

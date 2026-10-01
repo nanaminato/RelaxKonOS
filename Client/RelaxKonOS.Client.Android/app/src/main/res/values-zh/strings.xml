@@ -1640,5 +1640,7 @@
     <string name="ssh_workspace_deploy_running">正在通过 SSH 安装；如连接中断，请先查看操作记录再重试。</string>
     <string name="ssh_workspace_deploy_success">安装完成，服务器健康检查已通过。</string>
     <string name="ssh_workspace_deploy_failed">未能确认安装成功，请检查 SSH 验证、服务器依赖、包结构和操作记录。</string>
+    <string name="ssh_workspace_deploy_sudo_password">sudo 密码（留空使用 SSH 登录密码）</string>
+    <string name="ssh_workspace_deploy_sudo_failed">sudo 验证失败，请检查 sudo 密码和当前账号的 sudo 权限。</string>
     <string name="ssh_workspace_deploy_verify">请先验证此主机的 SSH 连接再安装。</string>
 </resources>

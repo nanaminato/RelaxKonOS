@@ -120,6 +120,7 @@ private fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = 
     var certificateName by rememberSaveable(host?.hostId) { mutableStateOf("") }
     var privateKeyName by rememberSaveable(host?.hostId) { mutableStateOf("") }
     var certificatePassword by remember(host?.hostId) { mutableStateOf("") }
+    var sudoPassword by remember(host?.hostId) { mutableStateOf("") }
     var certificateNames by rememberSaveable(host?.hostId) { mutableStateOf("localhost,127.0.0.1") }
     val pickBundle = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         bundleUri = uri?.toString()
@@ -194,6 +195,8 @@ private fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = 
                         value = mode,
                         onValueChange = { mode = it },
                     )
+                    if (mode == "linuxSystem") PasswordTextField(sudoPassword, { sudoPassword = it },
+                        stringResource(R.string.ssh_workspace_deploy_sudo_password))
                     SelectField(
                         label = stringResource(R.string.ssh_workspace_deploy_file_access),
                         options = listOf(
@@ -294,7 +297,8 @@ private fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = 
                 host?.let { installer.install(ServerInstallSelection(it.hostId, source,
                     bundleUri?.let(Uri::parse), remoteBundlePath, mode, network, fileAccess,
                     certificateMode, certificateFormat, certificateUri?.let(Uri::parse),
-                    privateKeyUri?.let(Uri::parse), certificatePassword, certificateNames)) }
+                    privateKeyUri?.let(Uri::parse), certificatePassword, certificateNames, sudoPassword)) }
+                sudoPassword = ""
             }, enabled = host != null && !installState.busy, modifier = Modifier.weight(1f)) {
                 Text(stringResource(R.string.ssh_workspace_deploy_install))
             }

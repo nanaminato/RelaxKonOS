@@ -116,7 +116,9 @@
     "server_center.remote_bundle_unavailable": "Choose a .zip release bundle from this SSH server.",
     "server_center.certificate_unavailable": "The selected certificate files are unavailable.",
     "server_center.certificate_mode_unavailable": "A custom TLS certificate requires a system-service installation.",
-    "server_center.install_mode_unavailable": "The selected installation mode is not available for this SSH session.",
+    "server_center.install_mode_unavailable": "Linux System Mode requires root or sudo; Windows System Mode requires an administrator SSH session.",
+    "server_center.wizard.sudo_password": "sudo password (leave blank to use the SSH password)",
+    "server_center.sudo_failed": "sudo authentication failed. Check the sudo password and account permissions.",
     "server_center.status_missing": "The deployment finished, but no authoritative SSH-side status receipt was returned.",
     "server_center.install_succeeded": "RelaxKonOS was installed and verified through SSH. Return to the login window to sign in.",
     "server_center.update_succeeded": "RelaxKonOS was updated and verified through SSH. Sign in again if the existing session was interrupted.",
@@ -141,6 +143,10 @@
     "server_center.operation_refreshed": "The selected operation receipt was refreshed from the host.",
     "server_center.operation_refresh_failed": "The remote operation receipt could not be refreshed. Check SSH access and try again.",
     "server_center.install_script_unavailable": "The bundled installation script is unavailable. Rebuild or reinstall this client.",
-    "server_center.wizard.source_checks": "Official packages are downloaded and verified on the server. Selected ZIPs receive layout, architecture and safe extraction checks."
+    "server_center.wizard.source_checks": "Official packages are downloaded and verified on the server. Selected ZIPs receive layout, architecture and safe extraction checks.",
+    "server_center.probe_missing": "The host preflight returned no system information. Check the operation record.",
+    "server_center.platform_mismatch": "Selected platform: {0}; SSH host platform: {1}. Choose the host platform.",
+    "server_center.architecture_unsupported": "The host CPU architecture {0} is unsupported. Supported architectures: x86_64 and arm64.",
+    "server_center.os_unsupported": "The host reports {0} {1} ({2}), which is outside the supported systems. Supported Linux systems: Debian 12, Ubuntu 22.04/24.04/26.04."
   }
 }

@@ -34,6 +34,7 @@ internal data class ServerInstallSelection(
     val mode: String, val network: String, val fileAccess: String,
     val certificateMode: String, val certificateFormat: String,
     val certificate: Uri?, val privateKey: Uri?, val password: String, val identities: String,
+    val sudoPassword: String,
 )
 
 internal class ServerInstallViewModel(application: Application) : AndroidViewModel(application) {
@@ -56,6 +57,8 @@ internal class ServerInstallViewModel(application: Application) : AndroidViewMod
             } catch (cancelled: CancellationException) {
                 mutableState.value = ServerInstallState(message = R.string.ssh_workspace_deploy_failed)
                 throw cancelled
+            } catch (_: ServerInstallSudoException) {
+                mutableState.value = ServerInstallState(message = R.string.ssh_workspace_deploy_sudo_failed)
             } catch (_: Exception) {
                 mutableState.value = ServerInstallState(message = R.string.ssh_workspace_deploy_failed)
             } finally { secret.fill('\u0000') }
@@ -73,12 +76,12 @@ internal class ServerInstallViewModel(application: Application) : AndroidViewMod
                     ServerHostPlatform.Linux else ServerHostPlatform.Windows
                 val launcher = ServerCenterUploadAsset.launcher(getApplication<Application>().assets, platform)
                 val client = ServerCenterDeploymentClient(transport)
-                suspend fun read(kind: ServerDeploymentKind, options: ServerDeploymentOptions? = null): ServerDeploymentOperation {
+                suspend fun read(kind: ServerDeploymentKind, options: ServerDeploymentOptions? = null, sudoPassword: String? = null): ServerDeploymentOperation {
                     val staged = client.stage(ServerDeploymentRequest(ServerDeploymentProtocol.VERSION,
                         UUID.randomUUID().toString(), kind, options), platform, launcher)
-                    return client.execute(staged)
+                    return client.execute(staged, sudoPassword)
                 }
-                val probe = requireNotNull(read(ServerDeploymentKind.Probe).probe)
+                var probe = requireNotNull(read(ServerDeploymentKind.Probe).probe)
                 check(probe.osSupported)
                 val runtime = requireNotNull(probe.runtimeIdentifier)
                 val mode = when (selection.mode) {
@@ -88,8 +91,16 @@ internal class ServerInstallViewModel(application: Application) : AndroidViewMod
                     else -> if (platform == ServerHostPlatform.Windows) ServerInstallMode.WindowsSystem
                         else if (probe.elevated) ServerInstallMode.LinuxSystem else ServerInstallMode.LinuxUser
                 }
-                check(mode == ServerInstallMode.LinuxUser || probe.elevated)
+                check(mode == ServerInstallMode.LinuxUser || probe.elevated || mode == ServerInstallMode.LinuxSystem && probe.sudoAvailable)
                 check(mode != ServerInstallMode.LinuxUser || !probe.elevated && selection.certificateMode != "custom")
+                val sudoPassword = if (mode == ServerInstallMode.LinuxSystem && !probe.elevated)
+                    selection.sudoPassword.ifEmpty { String(secret) } else null
+                if (sudoPassword != null) {
+                    val elevatedProbe = read(ServerDeploymentKind.Probe, sudoPassword = sudoPassword)
+                    if (elevatedProbe.state != ServerDeploymentState.Succeeded || elevatedProbe.probe == null)
+                        throw ServerInstallSudoException()
+                    probe = elevatedProbe.probe
+                }
                 val source = when (selection.source) {
                     "local" -> ServerPackageSourceKind.LocalBundle
                     "remote" -> ServerPackageSourceKind.RemoteBundle
@@ -116,11 +127,12 @@ internal class ServerInstallViewModel(application: Application) : AndroidViewMod
                     platform, launcher, localZip, runtime, certificate, selection.password)
                 val index = container.serverInstallOperations
                 val reference = index.record(session.target, key, operationId, platform)
-                val receipt = client.execute(staged)
+                val receipt = client.execute(staged, sudoPassword)
                 index.markVerified(session.target, reference, key, System.currentTimeMillis())
+                if (receipt.problemCode == "server-deployment.elevation_required") throw ServerInstallSudoException()
                 check(receipt.state == ServerDeploymentState.Succeeded)
                 val status = requireNotNull(read(ServerDeploymentKind.Status,
-                    ServerDeploymentOptions(ServerPackageSourceKind.OfficialStable, ServerNetworkProfile.Loopback, mode = mode)).snapshot)
+                    ServerDeploymentOptions(ServerPackageSourceKind.OfficialStable, ServerNetworkProfile.Loopback, mode = mode), sudoPassword).snapshot)
                 container.serverCenter.recordVerifiedSnapshot(selection.hostId, status)
                 check(status.installed && status.healthy)
             }
@@ -160,3 +172,5 @@ internal class ServerInstallViewModel(application: Application) : AndroidViewMod
         } finally { password.fill('\u0000'); encoded.fill(0) }
     }
 }
+
+private class ServerInstallSudoException : Exception()

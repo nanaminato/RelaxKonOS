@@ -66,6 +66,41 @@ static class HostKeyReviewChecks
 
             await viewModel.LoadAsync();
             Check(viewModel.SelectedHost?.HostId == target.HostId, "主机记录已加载并被选中");
+            viewModel.SelectedPlatform = viewModel.Platforms.Single(p => p.Platform == HostPlatformKind.Linux);
+            System.Collections.Specialized.NotifyCollectionChangedEventHandler selectorRefresh = (_, _) => viewModel.SelectedHost = null;
+            viewModel.Hosts.CollectionChanged += selectorRefresh;
+            var refreshed = target with { DisplayName = "Refreshed host" };
+            typeof(ServerCenterViewModel).GetMethod("ReplaceHost", System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.NonPublic)!.Invoke(viewModel, [refreshed]);
+            viewModel.Hosts.CollectionChanged -= selectorRefresh;
+            Check(ReferenceEquals(viewModel.SelectedHost, refreshed) &&
+                  viewModel.SelectedPlatform?.Platform == HostPlatformKind.Linux &&
+                  viewModel.OpenInstallationWizardCommand.CanExecute(null),
+                "预检刷新同一主机时，即使选择器暂时清空，仍保留平台并允许安装");
+            viewModel.SelectedHost = null;
+            Check(viewModel.SelectedPlatform is null && !viewModel.OpenInstallationWizardCommand.CanExecute(null),
+                "用户主动取消主机选择仍清除平台并禁止安装");
+            viewModel.SelectedHost = refreshed;
+            viewModel.SelectedPlatform = viewModel.Platforms.Single(p => p.Platform == HostPlatformKind.Linux);
+            var wizard = new ServerInstallationWizardViewModel(viewModel, () => { },
+                () => Task.FromResult<string?>("/home/alice/server.zip"), () => Task.CompletedTask);
+            var summaryChanges = new List<string?>();
+            wizard.PropertyChanged += (_, args) => summaryChanges.Add(args.PropertyName);
+            wizard.SelectedSource = wizard.Sources.Single(s => s.Source == ServerPackageSourceKind.LocalBundle);
+            wizard.SetLocalBundle("RelaxKonOS-0.1.3-linux-x64-server.zip");
+            wizard.MoveNextCommand.Execute(null);
+            wizard.SelectedMode = wizard.Modes.Single(m => m.Mode == ServerInstallMode.LinuxUser);
+            wizard.MoveNextCommand.Execute(null);
+            Check(wizard.IsReviewStep && wizard.IsLocalBundle &&
+                  wizard.SelectedSourceText.Contains("RelaxKonOS-0.1.3-linux-x64-server.zip") &&
+                  summaryChanges.Contains(nameof(wizard.SelectedSourceText)) &&
+                  summaryChanges.Contains(nameof(wizard.SelectedModeText)),
+                "本地包与安装模式变更通知确认页，三步后仍保留本地来源和文件名");
+            wizard.SelectedSource = wizard.Sources.Single(s => s.Source == ServerPackageSourceKind.RemoteBundle);
+            await wizard.ChooseServerBundleCommand.ExecuteAsync(null);
+            Check(wizard.IsRemoteBundle && wizard.SelectedSourceText.Contains("server.zip"),
+                "服务器包选择同样刷新确认页文件名");
+            viewModel.SelectedPlatform = null;
             viewModel.SshPassword = "pw";
 
             await viewModel.ProbeHostCommand.ExecuteAsync(null);

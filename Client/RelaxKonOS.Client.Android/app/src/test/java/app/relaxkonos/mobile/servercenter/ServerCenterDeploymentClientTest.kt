@@ -15,6 +15,22 @@ import org.junit.Test
 class ServerCenterDeploymentClientTest {
 
     @Test
+    fun sudoPasswordUsesStdinAndAccountJournal() = runTest {
+        val transport = FakeDeploymentTransport()
+        val client = ServerCenterDeploymentClient(transport)
+        val staged = client.stage(ServerDeploymentRequest(1, UUID.randomUUID().toString(), ServerDeploymentKind.Probe),
+            ServerHostPlatform.Linux, ServerCenterUploadAsset.bytes("launcher".toByteArray()))
+        client.execute(staged, "sudo-secret")
+        assertEquals(listOf("sudo-secret"), transport.inputLines)
+        assertTrue(transport.commands.any { it.endsWith(" --run-with-sudo") })
+        assertTrue(transport.commands.none { "sudo-secret" in it })
+        assertTrue(transport.uploaded.values.none { "sudo-secret" in it.toString(Charsets.UTF_8) })
+        assertTrue(transport.commands.last().contains(" --query " + staged.operationId))
+        client.execute(staged, "")
+        assertEquals("", transport.inputLines.last())
+    }
+
+    @Test
     fun `probe stages fixed assets and reads authoritative receipt`() = runTest {
         val transport = FakeDeploymentTransport()
         val client = ServerCenterDeploymentClient(transport)
@@ -216,6 +232,7 @@ private class FakeDeploymentTransport : ServerCenterSshTransport {
     override val isConnected: Boolean = true
     override val observedHostKey: ServerCenterHostKeyObservation? = null
     val commands = mutableListOf<String>()
+    val inputLines = mutableListOf<String?>()
     val uploaded = linkedMapOf<String, ByteArray>()
     val uploadOrder = mutableListOf<String>()
     var listedOperationId: String? = null
@@ -249,8 +266,10 @@ private class FakeDeploymentTransport : ServerCenterSshTransport {
         }
     }
 
-    override suspend fun runWithInput(command: String, inputLine: String?): ServerCenterSshCommandResult =
-        error("not used")
+    override suspend fun runWithInput(command: String, inputLine: String?): ServerCenterSshCommandResult {
+        inputLines += inputLine
+        return run(command)
+    }
 
     override suspend fun openTerminal(): ServerCenterSshTerminal = error("not used")
 

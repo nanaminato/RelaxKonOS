@@ -1678,5 +1678,7 @@
     <string name="ssh_workspace_deploy_running">Installing through SSH. If interrupted, check the operation records before retrying.</string>
     <string name="ssh_workspace_deploy_success">Installation completed and server health verified.</string>
     <string name="ssh_workspace_deploy_failed">Installation could not be confirmed. Check SSH verification, server dependencies, package layout and operation records.</string>
+    <string name="ssh_workspace_deploy_sudo_password">sudo password (leave blank to use the SSH password)</string>
+    <string name="ssh_workspace_deploy_sudo_failed">sudo authentication failed. Check the sudo password and account permissions.</string>
     <string name="ssh_workspace_deploy_verify">Verify the SSH connection before installing.</string>
 </resources>

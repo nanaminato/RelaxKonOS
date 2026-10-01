@@ -75,6 +75,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     [ObservableProperty] private string? _certificatePath;
     [ObservableProperty] private string? _certificatePrivateKeyPath;
     [ObservableProperty] private string _certificatePassword = string.Empty;
+    [ObservableProperty] private string _sudoPassword = string.Empty;
     [ObservableProperty] private string _selfSignedIdentities = "localhost,127.0.0.1";
     [ObservableProperty] private string _errorMessage = string.Empty;
     [ObservableProperty] private bool _isBusy;
@@ -88,8 +89,12 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     public string StepCounter => string.Format(Text("server_center.wizard.step_counter", "Step {0} of 3"), StepIndex + 1);
     public string BundleFileName => Path.GetFileName(IsRemoteBundle ? RemoteBundlePath : LocalBundlePath) ?? string.Empty;
     public bool HasBundle => IsRemoteBundle ? !string.IsNullOrWhiteSpace(RemoteBundlePath) : !string.IsNullOrWhiteSpace(LocalBundlePath);
-    public string SelectedSourceText => SelectedSource?.Label ?? string.Empty;
+    public string SelectedSourceText => (IsLocalBundle || IsRemoteBundle) && HasBundle
+        ? $"{SelectedSource?.Label} · {BundleFileName}"
+        : SelectedSource?.Label ?? string.Empty;
     public string SelectedModeText => SelectedMode?.Label ?? string.Empty;
+    public bool ShowsSudoPassword => SelectedMode?.Mode == ServerInstallMode.LinuxSystem;
+    public string SudoPasswordText => Text("server_center.wizard.sudo_password", "sudo password (leave blank to use the SSH password)");
     public string TargetText => _serverCenter.SelectedHost is { } target
         ? $"{target.DisplayName} · {target.SshUserName}"
         : string.Empty;
@@ -179,7 +184,11 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void Cancel() => _close();
+    private void Cancel()
+    {
+        SudoPassword = string.Empty;
+        _close();
+    }
 
     [RelayCommand(CanExecute = nameof(CanInstall))]
     private async Task InstallAsync()
@@ -211,7 +220,8 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
                 CertificatePath,
                 CertificatePrivateKeyPath,
                 CertificatePassword,
-                SelfSignedIdentities));
+                SelfSignedIdentities,
+                SudoPassword));
             if (succeeded)
                 _close();
             else
@@ -221,6 +231,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         }
         finally
         {
+            SudoPassword = string.Empty;
             IsBusy = false;
         }
     }
@@ -241,10 +252,17 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     partial void OnSelectedSourceChanged(InstallationSourceOption? value)
     {
         ErrorMessage = string.Empty;
+        OnPropertyChanged(nameof(SelectedSourceText));
         OnPropertyChanged(nameof(IsLocalBundle));
         OnPropertyChanged(nameof(IsRemoteBundle));
         OnPropertyChanged(nameof(BundleFileName));
         OnPropertyChanged(nameof(HasBundle));
+    }
+
+    partial void OnSelectedModeChanged(InstallationModeOption? value)
+    {
+        OnPropertyChanged(nameof(SelectedModeText));
+        OnPropertyChanged(nameof(ShowsSudoPassword));
     }
 
     partial void OnSelectedCertificateModeChanged(CertificateModeOption? value)
@@ -274,12 +292,14 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
 
     partial void OnLocalBundlePathChanged(string? value)
     {
+        OnPropertyChanged(nameof(SelectedSourceText));
         OnPropertyChanged(nameof(BundleFileName));
         OnPropertyChanged(nameof(HasBundle));
     }
 
     partial void OnRemoteBundlePathChanged(string? value)
     {
+        OnPropertyChanged(nameof(SelectedSourceText));
         OnPropertyChanged(nameof(BundleFileName));
         OnPropertyChanged(nameof(HasBundle));
     }

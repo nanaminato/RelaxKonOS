@@ -98,6 +98,8 @@ location /api/v1.0/files/uploads/ {
 
 System Mode（需要 root）使用显式模式：
 
+服务器中心可由普通 SSH 管理账户显式选择 Linux 系统模式：安装前验证 sudo 密码和权限，部署引擎通过 sudo 执行，系统状态文件通过 sudo 核验。向导中的 sudo 密码留空时使用 SSH 登录密码；密码只通过 SSH 标准输入传递，不写入命令、请求或日志。无需 root SSH 登录或配置免密 sudo。暂存与操作日志保留在原 SSH 账户下，安装器不会改变这些目录的所有者。
+
 ```bash
 sudo ./deployment/bootstrap/install-relaxkonos.sh --mode system --bundle /mnt/RelaxKonOS-release
 ```

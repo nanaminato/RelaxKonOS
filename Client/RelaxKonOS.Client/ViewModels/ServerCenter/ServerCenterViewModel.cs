@@ -26,6 +26,7 @@ public partial class ServerCenterViewModel : ObservableObject
     private readonly LoginLocalizationService _localization;
     private ServerCenterHostKeyObservation? _pendingHostKey;
     private string? _selectedPlatformHostId;
+    private bool _refreshingHostSelection;
 
     public ServerCenterViewModel(
         IHostTargetStore targets,
@@ -490,13 +491,32 @@ public partial class ServerCenterViewModel : ObservableObject
                 cancellationToken).ConfigureAwait(true);
             var probeReceipt = await ExecuteReadOnlyAsync(session, tools, ServerDeploymentKind.Probe, null, cancellationToken).ConfigureAwait(true);
             var probe = probeReceipt.Probe;
-            if (probe is null || !probe.OsSupported || probe.RuntimeIdentifier is null ||
-                !PlatformMatches(platform.Platform, probe.HostPlatform))
+            await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(target.HostId, probeReceipt), cancellationToken)
+                .ConfigureAwait(true);
+            if (probe is null)
             {
-                ErrorMessage = T("server_center.unsupported_host", "The selected platform does not match a supported target reported by the host preflight.");
+                ErrorMessage = probeReceipt.SafeMessage ?? T("server_center.probe_missing", "The host preflight returned no system information. Check the operation record.");
+                return false;
+            }
+            LastProbeText = FormatProbe(probe);
+            if (!PlatformMatches(platform.Platform, probe.HostPlatform))
+            {
+                ErrorMessage = string.Format(T("server_center.platform_mismatch", "Selected platform: {0}; SSH host platform: {1}. Choose the host platform."), platform.Platform, probe.HostPlatform);
+                return false;
+            }
+            if (probe.RuntimeIdentifier is null)
+            {
+                ErrorMessage = string.Format(T("server_center.architecture_unsupported", "The host CPU architecture {0} is unsupported. Supported architectures: x86_64 and arm64."), probe.Architecture);
+                return false;
+            }
+            if (!probe.OsSupported)
+            {
+                ErrorMessage = string.Format(T("server_center.os_unsupported", "The host reports {0} {1} ({2}). Supported Linux systems: Debian 12, Ubuntu 22.04/24.04/26.04."),
+                    probe.OsId ?? "?", probe.OsVersion ?? "?", probe.RuntimeIdentifier);
                 return false;
             }
 
+            var runtime = probe.RuntimeIdentifier.Value;
             var mode = installation.Mode ?? RecommendedMode(platform.Platform, probe);
             if (mode is null)
             {
@@ -507,6 +527,22 @@ public partial class ServerCenterViewModel : ObservableObject
             {
                 ErrorMessage = T("server_center.install_mode_unavailable", "The selected installation mode is not available for this SSH session.");
                 return false;
+            }
+            var sudoPassword = platform.Platform == HostPlatformKind.Linux && mode == ServerInstallMode.LinuxSystem && !probe.Elevated
+                ? (!string.IsNullOrEmpty(installation.SudoPassword) ? installation.SudoPassword
+                    : (credential as ServerCenterSshCredential.Password)?.Secret ?? string.Empty)
+                : null;
+            if (sudoPassword is not null)
+            {
+                probeReceipt = await ExecuteReadOnlyAsync(session, tools, ServerDeploymentKind.Probe, null,
+                    cancellationToken, sudoPassword).ConfigureAwait(true);
+                if (probeReceipt.State != ServerDeploymentState.Succeeded || probeReceipt.Probe is null ||
+                    probeReceipt.Probe.RuntimeIdentifier != runtime || !probeReceipt.Probe.OsSupported)
+                {
+                    ErrorMessage = probeReceipt.SafeMessage ?? T("server_center.sudo_failed", "sudo authentication failed. Check the sudo password and account permissions.");
+                    return false;
+                }
+                probe = probeReceipt.Probe;
             }
             if (installation.CertificateMode == ServerCertificateMode.Custom && mode == ServerInstallMode.LinuxUser)
             {
@@ -526,7 +562,7 @@ public partial class ServerCenterViewModel : ObservableObject
             {
                 if (!string.IsNullOrWhiteSpace(installation.LocalBundlePath))
                     release = await _releaseSource.ResolveLocalBundleAsync(platform.Platform,
-                        probe.RuntimeIdentifier.Value, mode.Value, installation.LocalBundlePath, cancellationToken).ConfigureAwait(true);
+                        runtime, mode.Value, installation.LocalBundlePath, cancellationToken).ConfigureAwait(true);
                 if (release is null)
                 {
                     ErrorMessage = T("server_center.local_bundle_unavailable", "Choose an available ZIP release bundle.");
@@ -576,9 +612,9 @@ public partial class ServerCenterViewModel : ObservableObject
             await using var certificate = installation.CertificateMode == ServerCertificateMode.Custom
                 ? File.OpenRead(convertedCertificate ?? installation.CertificatePath!) : null;
             var staged = await client.StageAsync(
-                request, platform.Platform, launcher, archive, probe.RuntimeIdentifier.Value,
+                request, platform.Platform, launcher, archive, runtime,
                 certificate, installation.CertificatePassword, cancellationToken).ConfigureAwait(true);
-            var receipt = await client.ExecuteAsync(staged, cancellationToken).ConfigureAwait(true);
+            var receipt = await client.ExecuteAsync(staged, cancellationToken, sudoPassword).ConfigureAwait(true);
             await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(target.HostId, receipt), cancellationToken)
                 .ConfigureAwait(true);
 
@@ -591,7 +627,7 @@ public partial class ServerCenterViewModel : ObservableObject
             // A successful launcher process is only a transport result.  Read a separate SSH-side
             // status receipt before declaring success or refreshing the local cached state.
             var status = await ExecuteReadOnlyAsync(
-                session, tools, ServerDeploymentKind.Status, StatusOptions(mode.Value), cancellationToken).ConfigureAwait(true);
+                session, tools, ServerDeploymentKind.Status, StatusOptions(mode.Value), cancellationToken, sudoPassword).ConfigureAwait(true);
             if (status.Snapshot is null)
             {
                 ErrorMessage = T("server_center.status_missing", "The deployment finished, but no authoritative SSH-side status receipt was returned.");
@@ -912,6 +948,9 @@ public partial class ServerCenterViewModel : ObservableObject
 
     partial void OnSelectedHostChanged(ServerHostTarget? value)
     {
+        // A selector may briefly clear its selection while its current item is replaced.
+        // Refreshing the same SSH target must not reset its detected platform or trust state.
+        if (_refreshingHostSelection) return;
         var changedTarget = !string.Equals(_selectedPlatformHostId, value?.HostId, StringComparison.Ordinal);
         _selectedPlatformHostId = value?.HostId;
         ClearPendingHostKey();
@@ -989,7 +1028,8 @@ public partial class ServerCenterViewModel : ObservableObject
         ServerCenterDeploymentTools tools,
         ServerDeploymentKind kind,
         ServerDeploymentOptions? options,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? sudoPassword = null)
     {
         var request = new ServerDeploymentRequest(ServerDeploymentProtocol.Version, Guid.NewGuid(), kind, options);
         await using var launcher = tools.OpenLauncher();
@@ -997,7 +1037,7 @@ public partial class ServerCenterViewModel : ObservableObject
         var client = new ServerCenterDeploymentClient(session.Transport);
         var staged = await client.StageAsync(
             request, tools.Platform, launcher, null, null, null, null, cancellationToken).ConfigureAwait(true);
-        var receipt = await client.ExecuteAsync(staged, cancellationToken).ConfigureAwait(true);
+        var receipt = await client.ExecuteAsync(staged, cancellationToken, sudoPassword).ConfigureAwait(true);
         await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(session.Target.HostId, receipt), cancellationToken)
             .ConfigureAwait(true);
         return receipt;
@@ -1044,8 +1084,16 @@ public partial class ServerCenterViewModel : ObservableObject
     private void ReplaceHost(ServerHostTarget host)
     {
         var incumbent = Hosts.FirstOrDefault(item => item.HostId == host.HostId);
-        if (incumbent is not null) Hosts.Remove(incumbent);
-        Hosts.Insert(0, host);
+        var refreshSelection = SelectedHost?.HostId == host.HostId;
+        _refreshingHostSelection = refreshSelection;
+        try
+        {
+            if (incumbent is not null) Hosts[Hosts.IndexOf(incumbent)] = host;
+            else Hosts.Insert(0, host);
+            if (refreshSelection) SelectedHost = host;
+        }
+        finally { _refreshingHostSelection = false; }
+        if (refreshSelection) OnSelectedHostChanged(host);
         OnPropertyChanged(nameof(HasHosts));
     }
 
@@ -1115,9 +1163,7 @@ public partial class ServerCenterViewModel : ObservableObject
         {
             HostPlatformKind.Windows when probe.Elevated => ServerInstallMode.WindowsSystem,
             HostPlatformKind.Windows => null,
-            // The fixed Linux launcher deliberately never accepts an interactive sudo password over
-            // this channel. Until a separately authenticated sudo elevation flow exists, only an
-            // already-root SSH session may select System Mode; otherwise use User Mode.
+            // Automatic mode stays unprivileged for non-root accounts; explicit System Mode can authenticate sudo.
             HostPlatformKind.Linux when probe.Elevated => ServerInstallMode.LinuxSystem,
             HostPlatformKind.Linux => ServerInstallMode.LinuxUser,
             _ => null
@@ -1128,7 +1174,7 @@ public partial class ServerCenterViewModel : ObservableObject
         (platform, mode) switch
         {
             (HostPlatformKind.Windows, ServerInstallMode.WindowsSystem) => probe.Elevated,
-            (HostPlatformKind.Linux, ServerInstallMode.LinuxSystem) => probe.Elevated,
+            (HostPlatformKind.Linux, ServerInstallMode.LinuxSystem) => probe.Elevated || probe.SudoAvailable,
             (HostPlatformKind.Linux, ServerInstallMode.LinuxUser) => true,
             _ => false
         };
@@ -1161,4 +1207,5 @@ public sealed record ServerInstallationOptions(
     string? CertificatePath,
     string? CertificatePrivateKeyPath,
     string CertificatePassword,
-    string SelfSignedIdentities);
+    string SelfSignedIdentities,
+    string SudoPassword = "");

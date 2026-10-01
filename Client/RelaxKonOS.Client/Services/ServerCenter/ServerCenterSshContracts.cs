@@ -108,7 +108,7 @@ public interface IServerCenterSshTransport : IAsyncDisposable
     Task<ServerCenterSshCommandResult> RunAsync(string command, CancellationToken cancellationToken);
 
     /// <summary>
-    /// 在 PTY 中执行命令，并可写入一行输入。sudo 口令只送入当前交互会话，
+    /// 在 SSH 命令通道中执行命令，并可写入一行标准输入。sudo 口令只送入当前会话，
     /// 不进入命令行参数、日志或磁盘。
     /// </summary>
     Task<ServerCenterSshCommandResult> RunWithInputAsync(
