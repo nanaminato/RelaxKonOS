@@ -10,13 +10,12 @@ import java.util.Date
  *
  * The Server sends creation time as ISO-8601 UTC. A session started today is identified by its time
  * alone, while an older one keeps its date, so a chip can never read as "just now" when it is not.
- * The id suffix is what actually disambiguates two sessions of the same day.
+ * The caller supplies a readable name to distinguish sessions.
  *
- * An unparsable timestamp yields the id alone — the strip never shows a guessed time.
+ * An unparsable timestamp yields the session name alone — the strip never shows a guessed time.
  */
-internal fun terminalSessionLabel(createdAt: String, sessionId: String, nowMillis: Long): String {
-    val shortId = sessionId.take(8)
-    val createdMillis = IsoInstant.toEpochMillis(createdAt) ?: return shortId
+internal fun terminalSessionLabel(createdAt: String, sessionName: String, nowMillis: Long): String {
+    val createdMillis = IsoInstant.toEpochMillis(createdAt) ?: return sessionName
 
     val created = Calendar.getInstance().apply { timeInMillis = createdMillis }
     val now = Calendar.getInstance().apply { timeInMillis = nowMillis }
@@ -28,5 +27,5 @@ internal fun terminalSessionLabel(createdAt: String, sessionId: String, nowMilli
     } else {
         DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
     }
-    return "${formatter.format(Date(createdMillis))} · $shortId"
+    return "$sessionName · ${formatter.format(Date(createdMillis))}"
 }

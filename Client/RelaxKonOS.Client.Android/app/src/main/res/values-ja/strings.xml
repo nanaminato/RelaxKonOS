@@ -29,7 +29,7 @@
     <string name="password_hide">パスワードを隠す</string>
 
     <string name="login_title">サインイン</string>
-    <string name="login_subtitle">RelaxKonOS サーバーに接続します。パスワードはこの端末でセッションを開始するためだけに使われ、他のどこにも送信されません。</string>
+    <string name="login_subtitle">RelaxKonOS サーバーに接続します。パスワードはログインのためにこのサーバーへ送信されます。この端末への保存は任意です。</string>
     <string name="login_server_address">サーバーアドレス</string>
     <string name="login_server_checking">HTTPS と HTTP のエンドポイントを確認しています…</string>
     <string name="login_server_found">サーバーが見つかりました。優先エンドポイントを使用します。</string>
@@ -2576,4 +2576,5 @@
     <string name="terminal_type_xterm">xterm.js</string>
     <string name="ssh_workspace_system_disk">ディスク · %1$s</string>
     <string name="ssh_workspace_metric_unavailable">利用できません</string>
+    <string name="terminal_session_name">セッション %1$d</string>
 </resources>

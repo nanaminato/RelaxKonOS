@@ -303,7 +303,7 @@ internal fun ServerTerminalContent(
     presentation.pasteReview?.let { review -> AlertDialog(
         onDismissRequest = { presentation.pasteReview = null },
         title = { Text(stringResource(R.string.terminal_paste_title)) },
-        text = { Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) { Text(stringResource(R.string.terminal_paste_target, review.sessionId));
+        text = { Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) { Text(stringResource(R.string.terminal_paste_target, stringResource(R.string.terminal_session_name, state.sessions.indexOfFirst { it.sessionId == review.sessionId } + 1)));
             SelectionContainer { Text(TerminalInputPolicy.boundedText(review.payload, 2000)) }
             if (review.payload.length > 2000) Text(stringResource(R.string.terminal_paste_truncated, review.payload.length))
         } },
@@ -313,6 +313,9 @@ internal fun ServerTerminalContent(
         dismissButton = { TextButton(onClick = { presentation.pasteReview = null }) { Text(stringResource(R.string.common_cancel)) } },
     ) }
     if (presentation.settingsOpen) TerminalAppearanceDialog(presentation, onReadSettings, onSaveSettings)
+    val sessionNames = state.sessions.mapIndexed { index, session ->
+        session.sessionId to stringResource(R.string.terminal_session_name, index + 1)
+    }.toMap()
     closeReview?.let { (ids, target) -> AlertDialog(
         onDismissRequest = { closeReview = null },
         title = { Text(stringResource(R.string.terminal_close)) },
@@ -331,7 +334,7 @@ internal fun ServerTerminalContent(
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 items(state.sessions, key = { it.sessionId }) { session ->
                     val active = session.sessionId == state.sessionId
-                    val stamp = terminalSessionLabel(session.createdAt, session.sessionId, System.currentTimeMillis())
+                    val stamp = terminalSessionLabel(session.createdAt, sessionNames[session.sessionId].orEmpty(), System.currentTimeMillis())
                     TerminalSessionChip(if (active) "${stringResource(R.string.terminal_session_current)} · $stamp" else stamp,
                         active, "${stringResource(R.string.terminal_close)} · $stamp", state.connected && !state.busy,
                         { if (!active) onAttach(session.sessionId) }, { closeReview = listOf(session.sessionId) to stamp }, constrained = true)
@@ -343,7 +346,7 @@ internal fun ServerTerminalContent(
         if (compact) {
             val selectedSession = state.sessions.firstOrNull { it.sessionId == state.sessionId }
             val sessionLabel = selectedSession?.let {
-                terminalSessionLabel(it.createdAt, it.sessionId, System.currentTimeMillis())
+                terminalSessionLabel(it.createdAt, sessionNames[it.sessionId].orEmpty(), System.currentTimeMillis())
             }
             Text(listOfNotNull(owner.userName, sessionLabel).joinToString(" · "), style = MaterialTheme.typography.bodySmall,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -386,7 +389,7 @@ internal fun ServerTerminalContent(
                             menuOpen = false
                             val targets = state.sessions.filter { it.sessionId != state.sessionId }
                             closeReview = targets.map { it.sessionId } to targets.joinToString("\n") {
-                                terminalSessionLabel(it.createdAt, it.sessionId, System.currentTimeMillis())
+                                terminalSessionLabel(it.createdAt, sessionNames[it.sessionId].orEmpty(), System.currentTimeMillis())
                             }
                         })
                     }
@@ -402,7 +405,7 @@ internal fun ServerTerminalContent(
                 ) {
                     state.sessions.forEach { session ->
                         val active = session.sessionId == state.sessionId
-                        val stamp = terminalSessionLabel(session.createdAt, session.sessionId, System.currentTimeMillis())
+                        val stamp = terminalSessionLabel(session.createdAt, sessionNames[session.sessionId].orEmpty(), System.currentTimeMillis())
                         TerminalSessionChip(
                             label = if (active) "${stringResource(R.string.terminal_session_current)} · $stamp" else stamp,
                             active = active,

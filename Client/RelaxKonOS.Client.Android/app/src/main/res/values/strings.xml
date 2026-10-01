@@ -39,7 +39,7 @@
 
     <!-- Sign-in -->
     <string name="login_title">Sign in</string>
-    <string name="login_subtitle">Connect to a RelaxKonOS server. The password is used to open a session on this device and is sent nowhere else.</string>
+    <string name="login_subtitle">Connect to your RelaxKonOS server. Your password is sent to this server for sign-in. Saving it on this device is optional.</string>
     <string name="login_server_address">Server address</string>
     <string name="login_server_checking">Checking HTTPS and HTTP endpoints…</string>
     <string name="login_server_found">Server found. The preferred endpoint will be used.</string>
@@ -2614,4 +2614,5 @@
     <string name="terminal_type">Terminal type</string>
     <string name="terminal_type_native">Native (Server mode)</string>
     <string name="terminal_type_xterm">xterm.js</string>
+    <string name="terminal_session_name">Session %1$d</string>
 </resources>
