@@ -8,15 +8,15 @@ import org.junit.Test
 
 class TerminalSessionLabelTest {
     private val createdAt = "2026-09-29T15:08:11.9806172+00:00"
-    private val sessionId = "b65db7839f0d4e2a"
+    private val sessionName = "Session 1"
 
-    @Test fun `a session started today is labelled with its local time and id`() {
+    @Test fun `a session started today is labelled with its local time and name`() {
         val createdMillis = IsoInstant.toEpochMillis(createdAt)!!
         val time = DateFormat.getTimeInstance(DateFormat.MEDIUM).format(Date(createdMillis))
 
         assertEquals(
-            "$time · b65db783",
-            terminalSessionLabel(createdAt, sessionId, createdMillis + 1_000),
+            "Session 1 · $time",
+            terminalSessionLabel(createdAt, sessionName, createdMillis + 1_000),
         )
     }
 
@@ -25,13 +25,13 @@ class TerminalSessionLabelTest {
         val stamp = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(createdMillis))
 
         assertEquals(
-            "$stamp · b65db783",
-            terminalSessionLabel(createdAt, sessionId, createdMillis + 2L * 86_400_000),
+            "Session 1 · $stamp",
+            terminalSessionLabel(createdAt, sessionName, createdMillis + 2L * 86_400_000),
         )
     }
 
-    @Test fun `an unusable timestamp falls back to the id instead of a guessed time`() {
-        assertEquals("b65db783", terminalSessionLabel("", sessionId, System.currentTimeMillis()))
-        assertEquals("b65db783", terminalSessionLabel("2026-09-29", sessionId, System.currentTimeMillis()))
+    @Test fun `an unusable timestamp falls back to the name instead of a guessed time`() {
+        assertEquals("Session 1", terminalSessionLabel("", sessionName, System.currentTimeMillis()))
+        assertEquals("Session 1", terminalSessionLabel("2026-09-29", sessionName, System.currentTimeMillis()))
     }
 }
