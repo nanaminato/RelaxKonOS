@@ -735,6 +735,8 @@ BP24 持续验证与文档同步不是新的 Android 编译环境搭建任务，
 
 ### SM-X510 可用性修复（2026-10-01）
 
+- 后续Docker已在Ubuntu26.04安装为29.8.2/Compose5.5.1，真实API四类资源、Compose任务与应用定义的创建/读回/清理通过。部署页未安装空500已修复并在SM-X510复验；Docker资源相对年龄误判已修复，Repository14项通过，APK已安装。真正Docker Hub拉取和自动安装完整成功仍受宿主网络阻止，详情及新增问题见 [TabletUsability](TabletUsability.md)。
+
 - TAB-04/05 已按实体 SM-X510 和真实 Linux 宿主证据关闭：Guardian IPC 权限修复后脚本执行及临时工作负载完整创建/读回/启动/停止/删除通过；SSH 系统横屏普通及150%字体退出入口通过。SSH 文件折叠工具和 Docker/FRP/Mihomo 未安装状态已真机复验，具体边界及剩余项见 [TabletUsability.md](TabletUsability.md)。
 - 最终 Android 离线 APK 构建、安装通过；Server 构建和 Guardian 只读专项22项、安装脚本语法检查通过。Docker 安装后功能、文件传输及既有 lint 缺陷仍待验。
 

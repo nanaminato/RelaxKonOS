@@ -56,13 +56,20 @@ class DockerResourceRepository(private val gateway: RelaxKonGateway, private val
     }
     private suspend fun approved(owner: SessionState.Active, expected: DockerResourceFacts, target: DockerResourceTarget?): ApiResult<Unit> {
         val current = facts(owner); if (current !is ApiResult.Success) return failure(current)
-        if (current.value != expected) return ApiResult.Problem(409, "docker.resources.facts_changed", null)
+        if (current.value.approvalFacts() != expected.approvalFacts()) return ApiResult.Problem(409, "docker.resources.facts_changed", null)
         if (target != null && target.kind != DockerResourceKind.Images) {
             val detail = this.target(owner, target.kind, target.id); if (detail !is ApiResult.Success) return failure(detail)
             if (detail.value != target) return ApiResult.Problem(409, "docker.resources.facts_changed", null)
         }
         return ApiResult.Success(Unit)
     }
+    // CLI relative ages change while a confirmation is open; identity and state still gate writes.
+    private fun DockerResourceFacts.approvalFacts() = copy(
+        containers = containers?.map { it.copy(status = "") }?.sortedBy { it.id },
+        images = images?.map { it.copy(createdSince = "") }?.sortedWith(compareBy({ it.id }, { it.repository }, { it.tag })),
+        networks = networks?.sortedBy { it.id },
+        volumes = volumes?.sortedBy { it.name },
+    )
     private fun validate(facts: DockerResourceFacts, target: DockerResourceTarget?, change: DockerResourceChange) {
         require(facts.status.available && facts.containers != null && facts.images != null && facts.networks != null && facts.volumes != null)
         val action = change.action

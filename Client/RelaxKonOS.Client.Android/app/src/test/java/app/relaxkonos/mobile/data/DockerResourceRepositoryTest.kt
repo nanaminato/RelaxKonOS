@@ -59,6 +59,23 @@ class DockerResourceRepositoryTest {
         val result = repository.change(owner, facts, target, DockerResourceChange(DockerResourceAction.DeleteContainer, target.id))
         assertEquals("docker.resources.facts_changed", (result as ApiResult.Problem).code); assertTrue(repository.pending(owner).isEmpty())
     }
+    @Test fun `relative container and image ages do not block an unchanged creation`() = runTest {
+        val owner = signIn(); var calls = 0
+        gateway.onDockerContainers = { ApiResult.Success(facts.containers!!.map { it.copy(status = "Up 3 minutes") }) }
+        gateway.onDockerImages = { ApiResult.Success(facts.images!!.map { it.copy(createdSince = "2 hours ago") }) }
+        gateway.onDockerResourceChange = { calls++; ApiResult.Success(DockerOperation(true, "", emptyList(), false)) }
+        val change = DockerResourceChange(DockerResourceAction.CreateVolume, value = "test-data", driver = "local")
+        assertTrue(repository.change(owner, facts, null, change) is ApiResult.Success)
+        assertEquals(1, calls); assertTrue(repository.pending(owner).isEmpty())
+    }
+    @Test fun `real container state changes still block creation before writing`() = runTest {
+        val owner = signIn(); var calls = 0
+        gateway.onDockerContainers = { ApiResult.Success(facts.containers!!.map { it.copy(state = "exited", status = "Exited (0) 1 minute ago") }) }
+        gateway.onDockerResourceChange = { calls++; ApiResult.Success(DockerOperation(true, "", emptyList(), false)) }
+        val result = repository.change(owner, facts, null, DockerResourceChange(DockerResourceAction.CreateVolume, value = "test-data", driver = "local"))
+        assertEquals("docker.resources.facts_changed", (result as ApiResult.Problem).code)
+        assertEquals(0, calls); assertTrue(repository.pending(owner).isEmpty())
+    }
     @Test fun `managed resource and occupied or builtin network and stopped volume references refuse mutations`() = runTest {
         val owner = signIn()
         val managed = target.copy(container = detail.copy(labels = mapOf("relaxkonos.owner" to "application-deployment")))

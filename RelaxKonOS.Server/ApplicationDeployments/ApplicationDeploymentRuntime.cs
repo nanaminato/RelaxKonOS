@@ -65,6 +65,11 @@ internal sealed class ApplicationDeploymentRuntime(
     public async Task<IReadOnlyList<DockerContainerDto>> ListContainersAsync(CancellationToken cancellationToken)
     {
         try { return await engine.ListContainersAsync(cancellationToken); }
+        catch (DockerReadException exception)
+        {
+            throw new ApplicationDeploymentException(exception.ProblemCode == "docker.not_installed"
+                ? ApplicationDeploymentProblemCodes.EngineNotInstalled : ApplicationDeploymentProblemCodes.EngineUnavailable, 409);
+        }
         catch (Exception exception) when (exception is IOException or InvalidOperationException)
         {
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.EngineUnavailable, 409);
