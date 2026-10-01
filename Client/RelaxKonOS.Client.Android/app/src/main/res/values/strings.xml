@@ -20,6 +20,9 @@
     <string name="common_back">Back</string>
     <string name="common_cancel">Cancel</string>
     <string name="common_close">Close</string>
+    <string name="server_operation_clear">Clear completed records</string>
+    <string name="server_operation_clear_note">Delete the listed completed records, event history and logs from this server and remove their local indexes? Running, missing and unverified operations are retained. Request digests are retained to prevent replay.</string>
+    <string name="server_operation_clear_failed">Some records could not be cleared. Verify SSH access and retry.</string>
     <string name="common_collapse">Hide details</string>
     <string name="common_create">Create</string>
     <string name="common_delete">Delete</string>

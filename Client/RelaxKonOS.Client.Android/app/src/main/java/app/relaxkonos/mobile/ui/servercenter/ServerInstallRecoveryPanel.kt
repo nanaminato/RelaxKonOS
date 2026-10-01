@@ -5,6 +5,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -58,6 +61,7 @@ internal data class InstallRecoveryState(
     val loading: Boolean = false,
     val needsVerification: Boolean = false,
     val incomplete: Boolean = false,
+    val clearFailed: Boolean = false,
     val items: List<InstallReceiptItem> = emptyList(),
 )
 
@@ -67,6 +71,50 @@ class ServerInstallRecoveryViewModel(application: Application) : AndroidViewMode
     internal val state = mutableState.asStateFlow()
     private var refreshJob: Job? = null
     private var generation = 0
+
+    fun clearCompleted(hostId: String) {
+        val current = mutableState.value
+        if (current.hostId != hostId || current.loading) return
+        val references = current.items.filter { it.canClearHistory() }.map { it.reference }
+        if (references.isEmpty()) return
+        mutableState.value = current.copy(loading = true, clearFailed = false)
+        val request = ++generation
+        refreshJob = viewModelScope.launch {
+            val cleared = mutableSetOf<ServerInstallOperationReference>()
+            val secret = container.serverCenter.verifiedPasswordCopy(hostId)
+            if (secret == null) {
+                mutableState.value = current.copy(needsVerification = true, clearFailed = true)
+                return@launch
+            }
+            val credential = SshCredential(SshCredentialKind.Password, secret, null)
+            try {
+                withContext(Dispatchers.IO) {
+                    container.serverCenterConnections.connect(hostId, credential, System.currentTimeMillis()).use { session ->
+                        val key = requireNotNull(session.observedHostKey)
+                        check(references.all { it.hostKeyAlgorithm == key.algorithm && it.hostKeyFingerprint == key.fingerprint })
+                        val client = ServerCenterDeploymentClient(session.sshTransport)
+                        val platform = references.first().platform
+                        val lookup = client.stageLookup(platform, ServerCenterUploadAsset.launcher(getApplication<Application>().assets, platform))
+                        references.forEach { reference ->
+                            client.clearOperation(lookup, reference.operationId)
+                            container.serverInstallOperations.forget(reference)
+                            cleared.add(reference)
+                        }
+                    }
+                }
+                if (request == generation) mutableState.value = current.copy(
+                    items = current.items.filterNot { it.reference in cleared }, clearFailed = false)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (request == generation) mutableState.value = current.copy(
+                    items = current.items.filterNot { it.reference in cleared }, clearFailed = true)
+            } finally {
+                credential.clear()
+                secret.fill('\u0000')
+            }
+        }
+    }
 
     fun refresh(hostId: String, platform: ServerHostPlatform? = null) {
         refreshJob?.cancel()
@@ -158,7 +206,8 @@ internal fun ServerInstallRecoveryPanel(hostId: String, knownPlatform: ServerHos
     val viewModel: ServerInstallRecoveryViewModel = viewModel()
     val state by viewModel.state.collectAsState()
     val platform = knownPlatform ?: state.platform
-    var expanded by rememberSaveable(hostId) { mutableStateOf<String?>(null) }
+    var selectedOperationId by rememberSaveable(hostId) { mutableStateOf<String?>(null) }
+    var confirmClear by rememberSaveable(hostId) { mutableStateOf(false) }
     LaunchedEffect(hostId, knownPlatform) { viewModel.refresh(hostId, knownPlatform) }
     DisposableEffect(hostId) { onDispose { viewModel.stop() } }
 
@@ -167,14 +216,30 @@ internal fun ServerInstallRecoveryPanel(hostId: String, knownPlatform: ServerHos
     Text(stringResource(R.string.ssh_deploy_history_note), style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant)
     if (platform != null) Text(platform.name, style = MaterialTheme.typography.bodySmall)
-    run {
+    Row {
         TextButton(onClick = { viewModel.refresh(hostId, platform) }, enabled = !state.loading) {
             Text(stringResource(R.string.common_refresh))
         }
+        TextButton(onClick = { confirmClear = true }, enabled = !state.loading && state.hostId == hostId &&
+            state.items.any { it.canClearHistory() }) {
+            Text(stringResource(R.string.server_operation_clear))
+        }
     }
+    if (confirmClear) AlertDialog(
+        onDismissRequest = { confirmClear = false },
+        title = { Text(stringResource(R.string.server_operation_clear)) },
+        text = { Text(stringResource(R.string.server_operation_clear_note)) },
+        confirmButton = {
+            TextButton(onClick = { confirmClear = false; selectedOperationId = null; viewModel.clearCompleted(hostId) }) {
+                Text(stringResource(R.string.server_operation_clear))
+            }
+        },
+        dismissButton = { TextButton(onClick = { confirmClear = false }) { Text(stringResource(R.string.common_cancel)) } },
+    )
     if (state.loading) CircularProgressIndicator()
     if (state.needsVerification) Text(stringResource(R.string.ssh_deploy_verify_again), color = MaterialTheme.colorScheme.error)
     if (state.incomplete) Text(stringResource(R.string.ssh_deploy_history_incomplete), color = MaterialTheme.colorScheme.error)
+    if (state.clearFailed) Text(stringResource(R.string.server_operation_clear_failed), color = MaterialTheme.colorScheme.error)
     if (platform != null && !state.loading && !state.needsVerification && !state.incomplete && state.items.isEmpty()) {
         Text(stringResource(R.string.ssh_deploy_history_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -188,14 +253,31 @@ internal fun ServerInstallRecoveryPanel(hostId: String, knownPlatform: ServerHos
                 Text(stringResource(R.string.operations_checked, receipt.timestampUtc), style = MaterialTheme.typography.bodySmall)
                 receipt.problemCode?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
-            TextButton(onClick = { expanded = if (expanded == item.reference.operationId) null else item.reference.operationId }) {
+            TextButton(onClick = { selectedOperationId = item.reference.operationId }) {
                 Text(stringResource(R.string.server_operation_details))
             }
-            if (expanded == item.reference.operationId) {
+        }
+    }
+    if (state.hostId == hostId && state.platform == platform) {
+        state.items.firstOrNull { it.reference.operationId == selectedOperationId }?.let { item ->
+            AlertDialog(
+                onDismissRequest = { selectedOperationId = null },
+                title = { Text(stringResource(R.string.server_operation_details)) },
+                confirmButton = {
+                    TextButton(onClick = { selectedOperationId = null }) {
+                        Text(stringResource(R.string.common_close))
+                    }
+                },
+                text = {
                 androidx.compose.foundation.text.selection.SelectionContainer {
-                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                        Text(item.reference.operationId, style = MaterialTheme.typography.bodySmall)
+                        Text(installReceiptStatus(item))
                         item.receipt?.let { receipt ->
                             Text("${receipt.kind} · ${receipt.phase} · ${receipt.state}")
+                            Text(stringResource(R.string.operations_checked, receipt.timestampUtc))
+                            receipt.problemCode?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                             Text(receipt.safeMessage.orEmpty())
                             Text("${receipt.startedAtUtc.orEmpty()} → ${receipt.completedAtUtc.orEmpty()}")
                             val result = receipt.result
@@ -207,7 +289,8 @@ internal fun ServerInstallRecoveryPanel(hostId: String, knownPlatform: ServerHos
                         OperationLog(hostId, item.reference)
                     }
                 }
-            }
+                },
+            )
         }
     }
 }
@@ -225,6 +308,10 @@ private fun installReceiptStatus(item: InstallReceiptItem): String = when (item.
         null -> stringResource(R.string.operations_unverified)
     }
 }
+
+internal fun InstallReceiptItem.canClearHistory(): Boolean = check == InstallReceiptCheck.Verified &&
+    receipt?.state in setOf(ServerDeploymentState.Succeeded, ServerDeploymentState.Failed,
+        ServerDeploymentState.Cancelled, ServerDeploymentState.Interrupted)
 
 @Composable
 private fun OperationLog(hostId: String, reference: ServerInstallOperationReference) {

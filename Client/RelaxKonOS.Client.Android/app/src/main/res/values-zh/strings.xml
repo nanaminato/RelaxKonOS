@@ -12,6 +12,9 @@
     <string name="common_back">返回</string>
     <string name="common_cancel">取消</string>
     <string name="common_close">关闭</string>
+    <string name="server_operation_clear">清除已结束记录</string>
+    <string name="server_operation_clear_note">删除服务器上列表中的已结束记录、事件历史和日志，并清除手机上的对应索引？正在运行、回执缺失和无法核对的操作会保留。请求摘要会保留以防止重复执行。</string>
+    <string name="server_operation_clear_failed">部分记录未能清除，请确认 SSH 访问后重试。</string>
     <string name="common_collapse">收起详情</string>
     <string name="common_create">创建</string>
     <string name="common_delete">删除</string>
