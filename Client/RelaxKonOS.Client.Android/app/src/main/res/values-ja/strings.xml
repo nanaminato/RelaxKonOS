@@ -186,7 +186,6 @@
     <string name="ssh_workspace_system_platform">プラットフォーム</string>
     <string name="ssh_workspace_exit">SSH ワークスペースを終了</string>
     <string name="ssh_workspace_deploy">デプロイ</string>
-    <string name="ssh_workspace_deploy_unavailable">この Android ビルドには検証器と信頼できるリリース元がまだないため、インストールは利用できません。</string>
     <string name="ssh_deploy_history_title">インストール操作</string>
     <string name="ssh_deploy_history_note">ホストのプラットフォームを選び、検証済み SSH 接続で元の記録を確認します。インストールは再実行しません。</string>
     <string name="ssh_deploy_host_linux">Linux</string>
@@ -1635,4 +1634,10 @@
     <string name="frps_restart_required">保存した設定と実行中プロセスが異なります。停止して再起動すると適用されます。</string>
     <string name="frps_process_unverified">Server 再起動後の frps プロセス所有権は未確認です。ホストで所有権を復旧してください。不明なプロセスの停止をこのクライアントから確認することはできません。</string>
     <string name="frps_stop_failed">frps を停止できませんでした。次の操作の前に現在の状態を取得してください。</string>
+    <string name="error_content_too_large">ファイルの内容が、この操作に対するサーバーのサイズ制限を超えています。</string>
+    <string name="ssh_workspace_deploy_source_checks">公式パッケージはサーバーでダウンロードして検証します。選択した ZIP は構造、アーキテクチャ、安全な展開のみを確認します。</string>
+    <string name="ssh_workspace_deploy_running">SSH 経由でインストール中です。中断した場合は再試行前に操作記録を確認してください。</string>
+    <string name="ssh_workspace_deploy_success">インストールとサーバーの正常性確認が完了しました。</string>
+    <string name="ssh_workspace_deploy_failed">インストールを確認できませんでした。SSH 検証、サーバーの依存関係、パッケージ構造、操作記録を確認してください。</string>
+    <string name="ssh_workspace_deploy_verify">インストール前に SSH 接続を検証してください。</string>
 </resources>

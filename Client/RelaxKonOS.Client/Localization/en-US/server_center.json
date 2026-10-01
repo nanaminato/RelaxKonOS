@@ -54,7 +54,6 @@
     "server_center.host_addresses_failed": "Unable to read IP addresses from this SSH host.",
     "server_center.probe": "Run host preflight",
     "server_center.probe_help": "Preflight uploads the fixed deployment launcher, reads OS, architecture, permissions and current installation status, then saves a timestamped SSH verification.",
-    "server_center.tools_unavailable": "Deployment tools for this platform are unavailable in this client.",
     "server_center.probe_succeeded": "Host preflight and SSH-side status check completed.",
     "server_center.probe_failed": "Host preflight could not be completed. Check SSH access and the selected host platform.",
     "server_center.probe_summary": "{0} · {1} · {2}",
@@ -69,7 +68,7 @@
     "server_center.wizard.title": "Install RelaxKonOS",
     "server_center.wizard.step_counter": "Step {0} of 3",
     "server_center.wizard.source_title": "Choose the release source",
-    "server_center.wizard.source_official": "Official release",
+    "server_center.wizard.source_official": "Install from official website",
     "server_center.wizard.source_local": "Local release bundle",
     "server_center.wizard.source_server": "Bundle on this SSH server",
     "server_center.wizard.local_bundle": "Local release bundle",
@@ -113,7 +112,7 @@
     "server_center.elevation_required": "The selected installation mode requires an elevated SSH session or approved sudo access.",
     "server_center.installation_identity_missing": "The existing installation did not report a valid managed installation identity. Update is blocked.",
     "server_center.release_unavailable": "No release is available for this host architecture and installation mode.",
-    "server_center.local_bundle_unavailable": "The selected bundle is not a valid release for this host.",
+    "server_center.local_bundle_unavailable": "Choose a readable ZIP release bundle.",
     "server_center.remote_bundle_unavailable": "Choose a .zip release bundle from this SSH server.",
     "server_center.certificate_unavailable": "The selected certificate files are unavailable.",
     "server_center.certificate_mode_unavailable": "A custom TLS certificate requires a system-service installation.",
@@ -140,6 +139,8 @@
     "server_center.maintenance_failed": "The server operation could not be completed. Its SSH-side receipt can be checked from this host later.",
     "server_center.refresh_operation": "Refresh selected operation from host",
     "server_center.operation_refreshed": "The selected operation receipt was refreshed from the host.",
-    "server_center.operation_refresh_failed": "The remote operation receipt could not be refreshed. Check SSH access and try again."
+    "server_center.operation_refresh_failed": "The remote operation receipt could not be refreshed. Check SSH access and try again.",
+    "server_center.install_script_unavailable": "The bundled installation script is unavailable. Rebuild or reinstall this client.",
+    "server_center.wizard.source_checks": "Official packages are downloaded and verified on the server. Selected ZIPs receive layout, architecture and safe extraction checks."
   }
 }

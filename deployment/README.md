@@ -15,7 +15,7 @@ deployment/windows/Install-RelaxKonOSServices.ps1
 deployment/linux/install-relaxkonos-services.sh
 ```
 
-`manifest.json` 和下载描述文件使用 `schemaVersion: 1`，并明确标记 `packageKind`（`client`、`server` 或 `user-server`）；示例见 [release-manifest.example.json](./release-manifest.example.json)。清单列出每个包内文件的长度和 SHA-256；`manifest.sha256` 列出包内除 manifest 文件外的全部文件，Linux System Mode 安装器与 User Mode launcher 都会重算并精确比对该 inventory。线上安装由发布页同时提供 ZIP 的 SHA-256，安装器在解压前检查它。服务器中心客户端在上传 ZIP 前检查摘要、RID、清单、逐文件摘要和安全布局。当前发布包不要求签名密钥，也不生成签名伴随文件。
+`manifest.json` 和下载描述文件使用 `schemaVersion: 1`，并明确标记 `packageKind`（`client`、`server` 或 `user-server`）；示例见 [release-manifest.example.json](./release-manifest.example.json)。清单列出每个包内文件的长度和 SHA-256；`manifest.sha256` 列出包内除 manifest 文件外的全部文件，Linux System Mode 安装器与 User Mode launcher 都会重算并精确比对该 inventory。线上安装由发布页同时提供 ZIP 的 SHA-256，安装器在解压前检查它。服务器中心按来源处理：官网包在服务器下载并核对官方 ZIP 摘要及逐文件清单；用户选择的本地或服务器 ZIP 不要求官方摘要、不计算逐文件摘要，仍检查包类型、RID、必要文件、版本和安全解压布局。当前发布包不要求签名密钥，也不生成签名伴随文件。
 
 发布前可用仓库内的检查工具复核服务器 ZIP：
 
@@ -23,11 +23,11 @@ deployment/linux/install-relaxkonos-services.sh
 dotnet run --project ./deployment/packaging/RelaxKonOS.ReleaseVerifier -- verify ./artifacts/RelaxKonOS-0.1.0-win-x64-server.zip server win-x64
 ```
 
-服务器中心远端安装/升级的暂存目录须包含部署启动器、`request.json`、ZIP，以及按目标 RID 自包含的单文件检查器（Windows 名为 `release-verifier.exe`，Linux 名为可执行的 `release-verifier`）。检查器可用 `dotnet publish ./deployment/packaging/RelaxKonOS.ReleaseVerifier -c Release -r <目标RID> --self-contained true -p:PublishSingleFile=true` 构建；Linux 启动器也用它严格检查请求 JSON 的字段、类型与重复键。远端启动器核对 ZIP 摘要后调用检查器，验证 RID、包类型、清单和每个文件，再解到仅本次操作使用的目录。部署引擎只读取该目录。`install` 与 `upgrade` 的 `stagedPackageName` 和 `packageDigest` 均为必填。
+服务器中心部署脚本随客户端内置：桌面使用嵌入资源，Android 使用 APK assets。无需放置外部 `launcher/`、设置发布目录环境变量或准备目标 RID 的 `release-verifier`。Windows 使用系统 PowerShell/.NET，Linux 使用 Bash 和 Python 3 完成严格 JSON 解析及安全 ZIP 解压。
 
-桌面服务器中心从客户端目录读取 `launcher/` 和同目录的发布 ZIP；自行打包时可设置 `RELAXKONOS_RELEASE_ROOT` 指向打包产物目录。用户选取本地或 SSH 主机上的 ZIP 时，同样不需要发布公钥或签名文件。
+安装来源使用当前请求契约：`officialStable` 不上传 ZIP，由服务器读取官网描述符、下载并自动校验；`localBundle` 上传用户选择的 ZIP，`stagedPackageName` 为必填；`remoteBundle` 通过 `remotePackagePath` 引用服务器绝对路径，直接读取，不下载回客户端或重新上传。用户文件无需 `packageDigest`。所有来源仍拒绝路径穿越、重复 ZIP 路径、符号链接、不匹配的架构或包类型，并只将包解压到本次操作的私有目录。Linux 引擎对用户包使用 `--skip-file-checks`，仅省略摘要比对；官网包保留摘要检查。
 
-`New-RelaxKonOSRelease.ps1` 与 `package-relaxkonos.sh` 都会为其指定 RID 同时生成客户端可用的工具目录：`artifacts/launcher/RelaxKonOS-Deploy.ps1`、`artifacts/launcher/relaxkonos-deploy.sh`，以及该 RID 的 `release-verifier`（Windows 为 `.exe`）。这不是服务端 ZIP 的一部分；客户端将工具作为受控暂存资产上传，再由启动器用验证器校验请求。发布目录在移动给桌面或移动客户端前必须保留该 `launcher/` 目录。
+打包脚本仍导出 `artifacts/launcher/` 中的两种脚本，供维护者手动使用，但客户端运行不依赖这个目录。仓库的 `RelaxKonOS.ReleaseVerifier` 仍可用于发布前检查，不再发布或上传它作为安装依赖。
 
 操作记录和独占锁保存在暂存目录之外，因而不同客户端和断线后的新暂存目录仍会读取同一回执：Windows 已提升管理员操作为 `%ProgramData%\RelaxKonOS-Deployment`（未提升账号的只读探测使用 `%LOCALAPPDATA%\RelaxKonOS-Deployment`），Linux System Mode 为 `/var/lib/relaxkonos-deployment`，Linux User Mode 为 `${XDG_STATE_HOME:-$HOME/.local/state}/relaxkonos-deployment`。卸载数据时也保留该操作日志，以便查询卸载回执。
 
@@ -57,7 +57,7 @@ System Mode 安装时请选择 `*-server.zip` 或对应的 Server 发布目录�
 
 ## 官方在线来源
 
-安装器默认从 `https://downloads.relaxkon.com/relaxkonos/stable/latest/{rid}.json` 读取当前稳定版，其中 `{rid}` 是 `win-x64`、`win-arm64`、`linux-x64` 或 `linux-arm64`。该描述文件包含 ZIP 的 HTTPS 地址和 SHA-256；将通过验证的版本描述文件同步为 `latest/{rid}.json`，即可完成稳定版切换，无需修改安装器。
+安装器默认从 `https://downloads.relaxkon.com/relaxkonos/stable/latest/{rid}.json` 读取当前稳定版，其中 `{rid}` 是 `win-x64`、`win-arm64`、`linux-x64` 或 `linux-arm64`。该描述文件包含 ZIP 的 HTTPS 地址和 SHA-256；将通过验证的版本描述文件同步为 `latest/{rid}.json`，即可完成稳定版切换，无需修改安装器。Linux User Mode 的服务器中心安装使用独立的 `latest/user-server/{rid}.json`，其 `packageKind` 必须为 `user-server`；发布时需同时部署这份描述符。
 
 ## 反向代理与分块上传
 

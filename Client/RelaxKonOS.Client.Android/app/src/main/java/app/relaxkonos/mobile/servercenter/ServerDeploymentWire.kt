@@ -18,7 +18,7 @@ internal object ServerDeploymentWire {
             append(",\"options\":").append(options).append('}')
         }
         val bytes = json.toByteArray(Charsets.UTF_8)
-        require(bytes.size <= MAXIMUM_REQUEST_BYTES && '\\' !in json && '\n' !in json && '\r' !in json) {
+        require(bytes.size <= MAXIMUM_REQUEST_BYTES && '\n' !in json && '\r' !in json) {
             "Deployment request is too large or not a single line."
         }
         return bytes
@@ -88,6 +88,10 @@ internal object ServerDeploymentWire {
         append(",\"packageUri\":").append(options.packageUri.jsonString())
         append(",\"stagedPackageName\":").append(options.stagedPackageName.jsonString())
         append(",\"packageDigest\":").append(options.packageDigest.jsonString())
+        append(",\"remotePackagePath\":").append(options.remotePackagePath.jsonString())
+        append(",\"fileAccess\":").append(options.fileAccess.jsonString())
+        append(",\"certificateMode\":").append(options.certificateMode.jsonString())
+        append(",\"selfSignedIdentities\":").append(options.selfSignedIdentities.jsonString())
         append(",\"expectedInstallationId\":").append(options.expectedInstallationId.jsonString())
         append(",\"serverPort\":").append(options.serverPort ?: "null")
         append(",\"confirmed\":").append(options.confirmed).append('}')

@@ -10,13 +10,13 @@ public static class ServerDeploymentRequestWireValidation
     private static readonly HashSet<string> OptionKeys =
     [
         "source", "network", "retention", "mode", "version", "packageUri", "stagedPackageName",
-        "packageDigest", "expectedInstallationId", "serverPort", "fileAccess",
+        "packageDigest", "remotePackagePath", "expectedInstallationId", "serverPort", "fileAccess",
         "certificateMode", "selfSignedIdentities", "confirmed"
     ];
 
     public static bool IsStrictRequest(ReadOnlySpan<byte> json)
     {
-        if (json.IsEmpty || json.Length > 65536 || json.Contains((byte)'\\') || json.Contains((byte)'\n') ||
+        if (json.IsEmpty || json.Length > 65536 || json.Contains((byte)'\n') ||
             json.Contains((byte)'\r')) return false;
         try
         {
@@ -67,7 +67,7 @@ public static class ServerDeploymentRequestWireValidation
             {
                 "source" or "network" or "retention" => type == JsonValueKind.String,
                 "mode" or "version" or "packageUri" or "stagedPackageName" or
-                    "packageDigest" or "expectedInstallationId" or "fileAccess" or
+                    "packageDigest" or "remotePackagePath" or "expectedInstallationId" or "fileAccess" or
                     "certificateMode" or "selfSignedIdentities" =>
                     type is JsonValueKind.String or JsonValueKind.Null,
                 "serverPort" => type == JsonValueKind.Null ||

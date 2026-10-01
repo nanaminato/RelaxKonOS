@@ -17,10 +17,10 @@ public sealed record ServerDeploymentRequest(
 
 /// <summary>
 /// 动作参数。所有字段都是固定枚举或受限字符串；本地离线包先经 SFTP 上传到受控暂存目录，
-/// 请求里只携带受约束的文件名与摘要，绝不携带宿主路径。
+/// 用户文件只做结构检查；服务器文件使用显式的 RemotePackagePath，不能作为命令或删除路径。
 /// </summary>
-/// <param name="StagedPackageName">安装/升级必需的 ZIP 裸文件名。客户端先检查 ZIP，再上传到私有暂存目录；不得包含路径分隔符或符号链接。</param>
-/// <param name="PackageDigest">包 ZIP 的 SHA-256（十六进制）。远端必须核对摘要后才能执行。</param>
+/// <param name="StagedPackageName">本地文件来源必需的 ZIP 裸文件名。客户端上传到私有暂存目录；不得包含路径分隔符或符号链接。</param>
+/// <param name="PackageDigest">可选摘要元数据。用户文件不要求官方摘要；官网包从官方描述符取得并核对摘要。</param>
 /// <param name="ExpectedInstallationId">升级/修复/卸载/回滚必须与宿主实际安装标识一致，否则拒绝执行。</param>
 /// <param name="Confirmed">破坏性动作（卸载删除数据、升级中断服务）的显式确认。</param>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
@@ -38,7 +38,8 @@ public sealed record ServerDeploymentOptions(
     [property: JsonPropertyName("fileAccess")] ServerFileAccessScope? FileAccess = null,
     [property: JsonPropertyName("certificateMode")] ServerCertificateMode? CertificateMode = null,
     [property: JsonPropertyName("selfSignedIdentities")] string? SelfSignedIdentities = null,
-    [property: JsonPropertyName("confirmed")] bool Confirmed = false);
+    [property: JsonPropertyName("confirmed")] bool Confirmed = false,
+    [property: JsonPropertyName("remotePackagePath")] string? RemotePackagePath = null);
 
 /// <summary>
 /// 安装标识：由部署引擎在首次安装时签发并写入安装清单，此后作为受管隧道的稳定身份。

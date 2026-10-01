@@ -1,5 +1,8 @@
 package app.relaxkonos.mobile.ui.servercenter
 
+import android.net.Uri
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.collectAsState
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -96,9 +99,14 @@ fun SshWorkspaceScreen(hostId: String, onClose: () -> Unit) {
     }
 }
 
-/** Matches the desktop source → mode → review flow. Execution awaits packaged trusted assets. */
+/** Matches the desktop source → mode → review flow. Executes the embedded launcher with source-specific package checks. */
 @Composable
 private fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = Modifier) {
+    val installer: ServerInstallViewModel = viewModel(key = "install-${host?.hostId}")
+    val installState by installer.state.collectAsState()
+    var bundleUri by rememberSaveable(host?.hostId) { mutableStateOf<String?>(null) }
+    var certificateUri by rememberSaveable(host?.hostId) { mutableStateOf<String?>(null) }
+    var privateKeyUri by rememberSaveable(host?.hostId) { mutableStateOf<String?>(null) }
     var step by rememberSaveable(host?.hostId) { mutableIntStateOf(0) }
     var source by rememberSaveable(host?.hostId) { mutableStateOf("official") }
     var bundleName by rememberSaveable(host?.hostId) { mutableStateOf("") }
@@ -114,12 +122,15 @@ private fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = 
     var certificatePassword by remember(host?.hostId) { mutableStateOf("") }
     var certificateNames by rememberSaveable(host?.hostId) { mutableStateOf("localhost,127.0.0.1") }
     val pickBundle = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        bundleUri = uri?.toString()
         bundleName = uri?.lastPathSegment.orEmpty()
     }
     val pickCertificate = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        certificateUri = uri?.toString()
         certificateName = uri?.lastPathSegment.orEmpty()
     }
     val pickPrivateKey = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        privateKeyUri = uri?.toString()
         privateKeyName = uri?.lastPathSegment.orEmpty()
     }
     val mayContinue = when (step) {
@@ -265,7 +276,8 @@ private fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = 
                         "selfSigned" -> stringResource(R.string.ssh_workspace_deploy_certificate_self_signed)
                         else -> stringResource(R.string.ssh_workspace_deploy_certificate_none)
                     })
-                    Text(stringResource(R.string.ssh_workspace_deploy_unavailable), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.ssh_workspace_deploy_source_checks), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    installState.message?.let { Text(stringResource(it), color = MaterialTheme.colorScheme.primary) }
                 }
             }
         }
@@ -273,12 +285,17 @@ private fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = 
             Modifier.fillMaxWidth().padding(Spacing.lg),
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
-            if (step > 0) OutlinedButton(onClick = { step-- }, modifier = Modifier.weight(1f)) {
+            if (step > 0) OutlinedButton(onClick = { step-- }, enabled = !installState.busy, modifier = Modifier.weight(1f)) {
                 Text(stringResource(R.string.common_back))
             }
             if (step < 2) Button(onClick = { step++ }, enabled = mayContinue, modifier = Modifier.weight(1f)) {
                 Text(stringResource(R.string.ssh_workspace_deploy_next))
-            } else Button(onClick = {}, enabled = false, modifier = Modifier.weight(1f)) {
+            } else Button(onClick = {
+                host?.let { installer.install(ServerInstallSelection(it.hostId, source,
+                    bundleUri?.let(Uri::parse), remoteBundlePath, mode, network, fileAccess,
+                    certificateMode, certificateFormat, certificateUri?.let(Uri::parse),
+                    privateKeyUri?.let(Uri::parse), certificatePassword, certificateNames)) }
+            }, enabled = host != null && !installState.busy, modifier = Modifier.weight(1f)) {
                 Text(stringResource(R.string.ssh_workspace_deploy_install))
             }
         }

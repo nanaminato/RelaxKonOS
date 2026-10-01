@@ -414,7 +414,7 @@ internal static async Task VerifyUserExecutionBackendSelectionAsync()
         ("listing", () => transport.ExecuteAsync(new UserExecutionRequest(foreign,
             UserExecutionOperationKind.FileListDirectory, Path: foreignHome, OperationId: Guid.NewGuid()))),
         ("read", () => transport.ExecuteAsync(new UserExecutionRequest(foreign,
-            UserExecutionOperationKind.FileRead, Path: foreignFile, OperationId: Guid.NewGuid()))),
+            UserExecutionOperationKind.FileRead, Path: foreignFile, Offset: 0, ExpectedBytes: 0, OperationId: Guid.NewGuid()))),
         ("write", () => transport.ExecuteAsync(new UserExecutionRequest(foreign,
             UserExecutionOperationKind.FileWrite, Path: foreignFile,
             ContentBase64: Convert.ToBase64String([1, 2, 3]), OperationId: Guid.NewGuid()))),

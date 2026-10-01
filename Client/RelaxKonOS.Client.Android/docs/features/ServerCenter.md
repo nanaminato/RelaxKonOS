@@ -1,6 +1,6 @@
 # Android 服务器中心接入设计
 
-> 当前接入规范：宿主资料、主机密钥固定、SSH/SFTP、终端、受管隧道登录、安装回执查询与**可选的 SSH 凭据保存**已接入；首次安装执行仍未打通。实现与验证统一见 [当前状态](../status/Progress.md)，剩余工作见 [部署后续计划](../plans/Deployment.md)。
+> 当前接入规范：宿主资料、主机密钥固定、SSH/SFTP、终端、受管隧道登录、安装回执查询与**可选的 SSH 凭据保存**已接入；三来源首次安装与升级已接入。实现与验证统一见 [当前状态](../status/Progress.md)，剩余工作见 [部署后续计划](../plans/Deployment.md)。
 
 ## 1. 体验原则
 
@@ -84,6 +84,12 @@ Android 后台可中断客户端进程。包上传等需要持续本地传输的
 
 ## 5. 当前边界
 
-SSH 工作区提供文件、交互式终端、部署配置和 Windows / Linux 只读系统快照。系统页进入时和手动刷新时通过 SSH 采集 CPU 使用率、内存已用/总量、磁盘已用/总量、运行时间和系统版本。Linux 使用 `/proc` 和 `df`（排除内存文件系统），Windows 通过 PowerShell 调用原生 `GlobalMemoryStatusEx`、`GetSystemTimes`、`GetTickCount64` 和 .NET `DriveInfo`，不依赖 CIM/WMI 权限或服务；CPU 通过两次系统时间采样计算；CPU 不可用时标记暂不可用并保留内存和磁盘。PowerShell 固定以纯文本输出，避免 SSH 默认 shell 影响输出格式；无需安装 RelaxKonOS 服务。刷新失败时保留本页上次快照并提示失败，切换主机使用独立页面状态。部署配置的来源/模式选择是草稿；最后的首次安装按钮仍不可用。安装回执查询只暂存 APK 内的固定启动器并执行读取，不执行安装 `--run`。
+SSH 工作区提供文件、交互式终端、部署配置和 Windows / Linux 只读系统快照。系统页进入时和手动刷新时通过 SSH 采集 CPU 使用率、内存已用/总量、磁盘已用/总量、运行时间和系统版本。Linux 使用 `/proc` 和 `df`（排除内存文件系统），Windows 通过 PowerShell 调用原生 `GlobalMemoryStatusEx`、`GetSystemTimes`、`GetTickCount64` 和 .NET `DriveInfo`，不依赖 CIM/WMI 权限或服务；CPU 通过两次系统时间采样计算；CPU 不可用时标记暂不可用并保留内存和磁盘。PowerShell 固定以纯文本输出，避免 SSH 默认 shell 影响输出格式；无需安装 RelaxKonOS 服务。刷新失败时保留本页上次快照并提示失败，切换主机使用独立页面状态。部署配置通过内置启动器执行安装或升级，并独立核验 SSH 状态和健康。安装回执查询只暂存 APK 内的固定启动器并执行读取，不执行安装 `--run`。
 
-可信校验器、发布资产获取、安装页面调用链、健康核实与完整安装恢复交付见 [部署后续计划](../plans/Deployment.md)。真实 SSH、主机密钥变化、隧道换端口、后台回收及卸载检查集中见 [验收清单](../status/Verification.md)。
+完整维护界面、应用级观察、上传恢复与登录回填的剩余交付见 [部署后续计划](../plans/Deployment.md)。真实 SSH、主机密钥变化、隧道换端口、后台回收及卸载检查集中见 [验收清单](../status/Verification.md)。
+
+## 安装来源与执行
+
+安装表单已接通 SSH 执行：官网包在服务器下载并自动核对摘要；手机选择的 ZIP 先从文档提供者复制到私有缓存，再上传；服务器选择的 ZIP 以绝对路径直接读取。自行选择的包仅检查结构、架构、必要文件和安全解压，不要求官方摘要。两种部署脚本直接包含在 APK assets 中，Linux 主机需要 Python 3，不再上传自包含验证程序。
+
+安装前使用可信 SSH 会话预检系统、架构、权限和已有安装标识；提交前记录操作 ID，断线后可从操作记录核对结果。只有安装回执成功且独立 SSH 状态检查显示已安装、健康才显示完成。自动模式在非 root Linux 会话选择 User Mode，root 选择 System Mode，Windows 选择系统安装。自定义证书支持 PFX 或 PEM 证书链加未加密 PKCS#8/RSA 私钥，并在手机转换为 PFX 上传；证书口令不写入请求 JSON。

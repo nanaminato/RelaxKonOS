@@ -10,7 +10,7 @@ namespace RelaxKonOS.Client.Services.ServerCenter;
 public sealed record ServerCenterStagedOperation(Guid OperationId, HostPlatformKind Platform, string RemoteDirectory);
 
 /// <summary>
-/// Stages the checked release and fixed deployment tools through the built-in SSH/SFTP transport.
+/// Stages the embedded launcher and, for local sources, the user ZIP through SSH/SFTP.
 /// </summary>
 public sealed class ServerCenterDeploymentClient(IServerCenterSshTransport transport)
 {
@@ -23,7 +23,6 @@ public sealed class ServerCenterDeploymentClient(IServerCenterSshTransport trans
         ServerDeploymentRequest request,
         HostPlatformKind platform,
         Stream launcher,
-        Stream verifier,
         Stream? archive,
         ServerRuntimeIdentifier? expectedRuntime,
         Stream? certificate,
@@ -32,10 +31,9 @@ public sealed class ServerCenterDeploymentClient(IServerCenterSshTransport trans
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(launcher);
-        ArgumentNullException.ThrowIfNull(verifier);
         if (!transport.IsConnected) throw new InvalidOperationException("A trusted SSH session is required.");
-        if (!launcher.CanRead || !verifier.CanRead || !launcher.CanSeek || !verifier.CanSeek)
-            throw new ArgumentException("Seekable launcher and verifier streams are required.");
+        if (!launcher.CanRead || !launcher.CanSeek)
+            throw new ArgumentException("Seekable launcher streams are required.");
         if (request.SchemaVersion != ServerDeploymentProtocol.Version || request.OperationId == Guid.Empty)
             throw new ArgumentException("The deployment request is invalid.", nameof(request));
 
@@ -43,55 +41,53 @@ public sealed class ServerCenterDeploymentClient(IServerCenterSshTransport trans
         if (!ServerDeploymentRequestWireValidation.IsStrictRequest(requestBytes))
             throw new ArgumentException("The deployment request is not a strict wire request.", nameof(request));
 
-        var needsArchive = request.Kind is ServerDeploymentKind.Install or ServerDeploymentKind.Upgrade;
-        var needsCertificate = request.Options?.CertificateMode == ServerCertificateMode.Custom;
-        if (needsArchive)
+        var installing = request.Kind is ServerDeploymentKind.Install or ServerDeploymentKind.Upgrade;
+        var needsArchive = installing && request.Options?.Source == ServerPackageSourceKind.LocalBundle;
+        var needsCertificate = installing && request.Options?.CertificateMode == ServerCertificateMode.Custom;
+        if (installing)
         {
-            if (archive is null || !archive.CanSeek ||
-                expectedRuntime is null ||
-                !ServerDeploymentInputRules.IsSafeStagedPackageName(request.Options?.StagedPackageName) ||
-                !ServerDeploymentInputRules.IsSha256(request.Options?.PackageDigest))
-                throw new ArgumentException("A staged release and its SHA-256 are required.");
+            var options = request.Options ?? throw new ArgumentException("Deployment options are required.");
+            if (options.Mode is null || expectedRuntime is null)
+                throw new ArgumentException("Installation mode and target runtime are required.");
+            if (needsArchive && (archive is null || !archive.CanRead || !archive.CanSeek ||
+                !ServerDeploymentInputRules.IsSafeStagedPackageName(options.StagedPackageName)))
+                throw new ArgumentException("A readable local ZIP is required.");
+            if (options.Source == ServerPackageSourceKind.RemoteBundle &&
+                (string.IsNullOrWhiteSpace(options.RemotePackagePath) ||
+                 !options.RemotePackagePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ||
+                 options.RemotePackagePath.Any(char.IsControl)))
+                throw new ArgumentException("A server ZIP path is required.");
+            if (options.Source == ServerPackageSourceKind.DirectUrl)
+                throw new ArgumentException("Use the official release or choose a ZIP file.");
             if (needsCertificate && (certificate is null || !certificate.CanRead || !certificate.CanSeek))
-                throw new ArgumentException("A readable staged certificate is required for custom TLS.");
-            if (platform == HostPlatformKind.Windows && request.Options?.Mode != ServerInstallMode.WindowsSystem ||
-                platform == HostPlatformKind.Linux && request.Options?.Mode is not
-                    (ServerInstallMode.LinuxSystem or ServerInstallMode.LinuxUser))
+                throw new ArgumentException("A readable certificate is required for custom TLS.");
+            if (platform == HostPlatformKind.Windows && options.Mode != ServerInstallMode.WindowsSystem ||
+                platform == HostPlatformKind.Linux && options.Mode is not (ServerInstallMode.LinuxSystem or ServerInstallMode.LinuxUser))
                 throw new ArgumentException("The installation mode does not match the host platform.");
             if (platform == HostPlatformKind.Windows !=
                 (expectedRuntime is ServerRuntimeIdentifier.WinX64 or ServerRuntimeIdentifier.WinArm64))
-                throw new ArgumentException("The release RID does not match the host platform.");
-
-            var kind = request.Options!.Mode == ServerInstallMode.LinuxUser
-                ? ServerReleasePackageKind.UserServer : ServerReleasePackageKind.Server;
-            var checkedRelease = ServerReleaseArchiveVerifier.Verify(
-                archive, kind, expectedRuntime.Value, request.Options.PackageDigest);
-            if (!checkedRelease.Verified)
-                throw new InvalidDataException($"{checkedRelease.ProblemCode}: release verification failed before upload.");
+                throw new ArgumentException("The runtime does not match the host platform.");
         }
 
         var directory = await CreatePrivateDirectoryAsync(platform, cancellationToken).ConfigureAwait(false);
         var staged = new ServerCenterStagedOperation(request.OperationId, platform, directory);
-        await UploadFromStartAsync(verifier, staged, platform == HostPlatformKind.Windows
-            ? "release-verifier.exe" : "release-verifier", cancellationToken).ConfigureAwait(false);
         await UploadFromStartAsync(launcher, staged, platform == HostPlatformKind.Windows
             ? "RelaxKonOS-Deploy.ps1" : "relaxkonos-deploy.sh", cancellationToken).ConfigureAwait(false);
         if (needsArchive)
         {
             await UploadFromStartAsync(archive!, staged, request.Options!.StagedPackageName!, cancellationToken)
                 .ConfigureAwait(false);
-            if (needsCertificate)
-            {
-                await UploadFromStartAsync(certificate!, staged, "certificate.pfx", cancellationToken).ConfigureAwait(false);
-                await UploadBytesAsync(Encoding.UTF8.GetBytes(certificatePassword ?? string.Empty), staged,
-                    "certificate-password.txt", cancellationToken).ConfigureAwait(false);
-            }
+        }
+        if (needsCertificate)
+        {
+            await UploadFromStartAsync(certificate!, staged, "certificate.pfx", cancellationToken).ConfigureAwait(false);
+            await UploadBytesAsync(Encoding.UTF8.GetBytes(certificatePassword ?? string.Empty), staged,
+                "certificate-password.txt", cancellationToken).ConfigureAwait(false);
         }
         await UploadBytesAsync(requestBytes, staged, "request.json", cancellationToken).ConfigureAwait(false);
         if (platform == HostPlatformKind.Linux)
         {
-            var chmod = await transport.RunAsync("chmod 700 '" + directory + "/release-verifier' '" +
-                directory + "/relaxkonos-deploy.sh'", cancellationToken).ConfigureAwait(false);
+            var chmod = await transport.RunAsync("chmod 700 '" + directory + "/relaxkonos-deploy.sh'", cancellationToken).ConfigureAwait(false);
             if (!chmod.Succeeded) throw new IOException("Unable to mark the staged deployment tools executable.");
         }
         return staged;
@@ -106,26 +102,21 @@ public sealed class ServerCenterDeploymentClient(IServerCenterSshTransport trans
         Guid operationId,
         HostPlatformKind platform,
         Stream launcher,
-        Stream verifier,
         CancellationToken cancellationToken)
     {
         if (operationId == Guid.Empty) throw new ArgumentException("An operation id is required.", nameof(operationId));
         ArgumentNullException.ThrowIfNull(launcher);
-        ArgumentNullException.ThrowIfNull(verifier);
         if (!transport.IsConnected) throw new InvalidOperationException("A trusted SSH session is required.");
-        if (!launcher.CanRead || !verifier.CanRead || !launcher.CanSeek || !verifier.CanSeek)
-            throw new ArgumentException("Seekable launcher and verifier streams are required.");
+        if (!launcher.CanRead || !launcher.CanSeek)
+            throw new ArgumentException("Seekable launcher streams are required.");
 
         var directory = await CreatePrivateDirectoryAsync(platform, cancellationToken).ConfigureAwait(false);
         var staged = new ServerCenterStagedOperation(operationId, platform, directory);
-        await UploadFromStartAsync(verifier, staged, platform == HostPlatformKind.Windows
-            ? "release-verifier.exe" : "release-verifier", cancellationToken).ConfigureAwait(false);
         await UploadFromStartAsync(launcher, staged, platform == HostPlatformKind.Windows
             ? "RelaxKonOS-Deploy.ps1" : "relaxkonos-deploy.sh", cancellationToken).ConfigureAwait(false);
         if (platform == HostPlatformKind.Linux)
         {
-            var chmod = await transport.RunAsync("chmod 700 '" + directory + "/release-verifier' '" +
-                directory + "/relaxkonos-deploy.sh'", cancellationToken).ConfigureAwait(false);
+            var chmod = await transport.RunAsync("chmod 700 '" + directory + "/relaxkonos-deploy.sh'", cancellationToken).ConfigureAwait(false);
             if (!chmod.Succeeded) throw new IOException("Unable to mark the staged deployment tools executable.");
         }
         return staged;

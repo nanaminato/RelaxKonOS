@@ -17,13 +17,13 @@ namespace RelaxKonOS.Server.UserExecution;
 /// </remarks>
 internal static class DirectUserExecutionOperations
 {
-    public static async Task<object?> ExecuteAsync(LocalFileService direct, UserExecutionRequest request)
+    public static async Task<object?> ExecuteAsync(LocalFileService direct, UserExecutionRequest request, CancellationToken cancellationToken = default)
         => request.Operation switch
         {
             UserExecutionOperationKind.FileGetSpecialLocations => direct.GetSpecialLocations(),
             UserExecutionOperationKind.FileListDirectory => direct.GetDirectory(request.Path),
             UserExecutionOperationKind.FileGetInfo => direct.GetInfo(request.Path!),
-            UserExecutionOperationKind.FileRead => ReadDirect(direct, request.Path!),
+            UserExecutionOperationKind.FileRead => ReadDirect(direct, request, cancellationToken),
             UserExecutionOperationKind.FileWrite => await direct.WriteFileAsync(request.Path!, Bytes(request.ContentBase64!)),
             UserExecutionOperationKind.FileWriteIfMatch => await direct.WriteFileIfMatchAsync(request.Path!,
                 Convert.FromBase64String(request.ContentBase64!), request.ExpectedSha256!),
@@ -44,16 +44,12 @@ internal static class DirectUserExecutionOperations
             _ => throw new ArgumentException("Unsupported user-execution operation."),
         };
 
-    private static FileReadResult ReadDirect(LocalFileService direct, string path)
+    private static UserExecutionFileRead ReadDirect(LocalFileService direct, UserExecutionRequest request, CancellationToken cancellationToken)
     {
-        var read = direct.OpenRead(path) ?? throw new FileNotFoundException("User-execution path not found.", path);
+        var read = direct.OpenRead(request.Path!) ?? throw new FileNotFoundException("User-execution path not found.", request.Path);
         using (read.Stream)
-        using (var copy = new MemoryStream())
-        {
-            read.Stream.CopyTo(copy);
-            if (copy.Length > UserExecutionProtocol.MaximumFileContentBytes) throw new ContentTooLargeException();
-            return new(Convert.ToBase64String(copy.ToArray()), read.FileName, read.ContentType);
-        }
+            return UserExecutionFileReads.Read(read.Stream, read.FileName, read.ContentType,
+                request.Offset!.Value, request.ExpectedBytes!.Value, cancellationToken);
     }
 
     private static bool DeleteDirect(LocalFileService direct, string path) { direct.Delete(path); return true; }
@@ -62,7 +58,6 @@ internal static class DirectUserExecutionOperations
     private static bool DeleteStagingDirect(LocalFileService direct, string path) => direct.DeleteStagingFile(path);
     private static MemoryStream Bytes(string content) => new(Convert.FromBase64String(content), writable: false);
 
-    internal sealed record FileReadResult(string ContentBase64, string FileName, string ContentType);
 
     /// <summary>
     /// Derives from <see cref="IOException"/> so that existing callers which classify in-process

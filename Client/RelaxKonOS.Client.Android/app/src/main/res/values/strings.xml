@@ -198,7 +198,6 @@
     <string name="ssh_workspace_system_platform">Platform</string>
     <string name="ssh_workspace_exit">Exit SSH workspace</string>
     <string name="ssh_workspace_deploy">Deploy</string>
-    <string name="ssh_workspace_deploy_unavailable">Installation is not available in this Android build until the verifier and trusted release source are packaged.</string>
     <string name="ssh_deploy_history_title">Installation operations</string>
     <string name="ssh_deploy_history_note">Select the host platform to check saved receipts over verified SSH. Checking never repeats an installation.</string>
     <string name="ssh_deploy_host_linux">Linux</string>
@@ -1674,4 +1673,10 @@
     <string name="frps_restart_required">Saved configuration differs from the running process. Stop and restart to apply it.</string>
     <string name="frps_process_unverified">The frps process is unverified after Server restart. Recover process ownership on the host; this client cannot confirm stopping an unknown process.</string>
     <string name="frps_stop_failed">frps could not be stopped. Read current state before taking another action.</string>
+    <string name="error_content_too_large">The file content exceeds the server’s limit for this operation.</string>
+    <string name="ssh_workspace_deploy_source_checks">Official releases are downloaded and verified on the server. Selected ZIPs receive only layout, architecture and safe extraction checks.</string>
+    <string name="ssh_workspace_deploy_running">Installing through SSH. If interrupted, check the operation records before retrying.</string>
+    <string name="ssh_workspace_deploy_success">Installation completed and server health verified.</string>
+    <string name="ssh_workspace_deploy_failed">Installation could not be confirmed. Check SSH verification, server dependencies, package layout and operation records.</string>
+    <string name="ssh_workspace_deploy_verify">Verify the SSH connection before installing.</string>
 </resources>

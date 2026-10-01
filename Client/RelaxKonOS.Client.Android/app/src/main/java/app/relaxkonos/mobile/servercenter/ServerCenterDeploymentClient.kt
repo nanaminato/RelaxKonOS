@@ -26,7 +26,9 @@ class ServerCenterUploadAsset(
 
         fun launcher(assets: AssetManager, platform: ServerHostPlatform): ServerCenterUploadAsset {
             val name = if (platform == ServerHostPlatform.Windows) "RelaxKonOS-Deploy.ps1" else "relaxkonos-deploy.sh"
-            return ServerCenterUploadAsset(null) { assets.open(name) }
+            return ServerCenterUploadAsset(null) {
+                ByteArrayInputStream(assets.open(name).bufferedReader().use { it.readText() }.replace("\r\n", "\n").toByteArray())
+            }
         }
     }
 }
@@ -53,43 +55,32 @@ class ServerCenterDeploymentClient(private val transport: ServerCenterSshTranspo
         request: ServerDeploymentRequest,
         platform: ServerHostPlatform,
         launcher: ServerCenterUploadAsset,
-        verifier: ServerCenterUploadAsset,
         archiveFile: File? = null,
         expectedRuntime: ServerRuntimeIdentifier? = null,
+        certificate: ServerCenterUploadAsset? = null,
+        certificatePassword: String? = null,
         uploadProgress: ((Double) -> Unit)? = null,
     ): ServerCenterStagedOperation {
         check(transport.isConnected) { "A trusted SSH session is required." }
         val requestBytes = ServerDeploymentWire.writeRequest(request)
-        val needsArchive = request.kind == ServerDeploymentKind.Install || request.kind == ServerDeploymentKind.Upgrade
-        if (needsArchive) {
+        val installing = request.kind == ServerDeploymentKind.Install || request.kind == ServerDeploymentKind.Upgrade
+        val needsArchive = installing && request.options?.source == ServerPackageSourceKind.LocalBundle
+        if (installing) {
             val options = requireNotNull(request.options) { "Deployment options are required." }
-            val archive = requireNotNull(archiveFile) { "A release archive is required." }
-            val runtime = requireNotNull(expectedRuntime) { "The expected release RID is required." }
-            require(archive.isFile &&
-                ServerDeploymentInputRules.isSafeStagedPackageName(options.stagedPackageName) &&
-                ServerDeploymentInputRules.isSha256(options.packageDigest)) {
-                "A staged release and its SHA-256 are required."
-            }
+            val runtime = requireNotNull(expectedRuntime) { "The target RID is required." }
             require(modeMatchesPlatform(options.mode, platform)) { "Installation mode does not match the host platform." }
-            require(runtimeMatchesPlatform(runtime, platform)) { "Release RID does not match the host platform." }
-
-            val expectedKind = if (options.mode == ServerInstallMode.LinuxUser) {
-                ServerReleasePackageKind.UserServer
-            } else ServerReleasePackageKind.Server
-            val checkedRelease = ServerReleaseArchiveVerifier.verify(
-                archiveFile = archive,
-                expectedKind = expectedKind,
-                expectedRuntime = runtime,
-                expectedArchiveSha256 = options.packageDigest,
-            )
-            if (!checkedRelease.verified) {
-                throw IOException("${checkedRelease.problemCode}: release verification failed before upload.")
-            }
+            require(runtimeMatchesPlatform(runtime, platform)) { "Runtime does not match the host platform." }
+            if (needsArchive) require(archiveFile?.isFile == true &&
+                ServerDeploymentInputRules.isSafeStagedPackageName(options.stagedPackageName)) { "A local ZIP is required." }
+            if (options.source == ServerPackageSourceKind.RemoteBundle) require(
+                options.remotePackagePath?.endsWith(".zip", ignoreCase = true) == true &&
+                options.remotePackagePath.none { it.code < 32 }) { "A server ZIP path is required." }
+            require(options.source != ServerPackageSourceKind.DirectUrl) { "Choose the official release or a ZIP file." }
+            if (options.certificateMode == "custom") requireNotNull(certificate) { "A certificate is required." }
         }
 
         val directory = createPrivateDirectory(platform)
         val staged = ServerCenterStagedOperation(request.operationId.lowercase(), platform, directory)
-        upload(verifier, staged, if (platform == ServerHostPlatform.Windows) "release-verifier.exe" else "release-verifier")
         upload(launcher, staged, if (platform == ServerHostPlatform.Windows) "RelaxKonOS-Deploy.ps1" else "relaxkonos-deploy.sh")
         if (needsArchive) {
             upload(
@@ -99,10 +90,14 @@ class ServerCenterDeploymentClient(private val transport: ServerCenterSshTranspo
                 uploadProgress,
             )
         }
+        if (installing && request.options?.certificateMode == "custom") {
+            upload(certificate!!, staged, "certificate.pfx")
+            upload(ServerCenterUploadAsset.bytes((certificatePassword ?: "").toByteArray()), staged, "certificate-password.txt")
+        }
         upload(ServerCenterUploadAsset.bytes(requestBytes), staged, "request.json")
         if (platform == ServerHostPlatform.Linux) {
             val chmod = transport.run(
-                "chmod 700 '$directory/release-verifier' '$directory/relaxkonos-deploy.sh'",
+                "chmod 700 '$directory/relaxkonos-deploy.sh'",
             )
             if (!chmod.succeeded) throw IOException("Unable to mark the staged deployment tools executable.")
         }

@@ -54,7 +54,6 @@
     "server_center.host_addresses_failed": "この SSH ホストから IP アドレスを読み取れません。",
     "server_center.probe": "ホスト事前チェックを実行",
     "server_center.probe_help": "事前チェックでは固定のデプロイランチャーをアップロードし、OS、アーキテクチャ、権限、現在のインストール状態を読み取り、時刻付きの SSH 検証結果を保存します。",
-    "server_center.tools_unavailable": "選択したプラットフォーム用に構成された信頼済みデプロイツールがこのクライアントにありません。",
     "server_center.probe_succeeded": "ホスト事前チェックと SSH 側の状態確認が完了しました。",
     "server_center.probe_failed": "ホスト事前チェックを完了できませんでした。SSH 接続と選択したホストプラットフォームを確認してください。",
     "server_center.probe_summary": "{0} · {1} · {2}",
@@ -69,7 +68,7 @@
     "server_center.wizard.title": "RelaxKonOS をインストール",
     "server_center.wizard.step_counter": "ステップ {0} / 3",
     "server_center.wizard.source_title": "リリースソースを選択",
-    "server_center.wizard.source_official": "公式リリース",
+    "server_center.wizard.source_official": "公式サイトからインストール",
     "server_center.wizard.source_local": "ローカルリリースバンドル",
     "server_center.wizard.source_server": "この SSH サーバー上のバンドル",
     "server_center.wizard.local_bundle": "ローカルリリースバンドル",
@@ -113,7 +112,7 @@
     "server_center.elevation_required": "選択したインストールモードには昇格済み SSH セッションまたは承認済み sudo アクセスが必要です。",
     "server_center.installation_identity_missing": "既存のインストールから有効な管理対象インストール ID が報告されなかったため、更新はブロックされました。",
     "server_center.release_unavailable": "このホストのアーキテクチャとインストールモードに利用できるリリースがありません。",
-    "server_center.local_bundle_unavailable": "選択したバンドルはこのホストに対応していないか、整合性チェックに失敗しました。",
+    "server_center.local_bundle_unavailable": "読み取り可能な ZIP パッケージを選択してください。",
     "server_center.remote_bundle_unavailable": "この SSH サーバーから .zip リリースバンドルを選択してください。",
     "server_center.certificate_unavailable": "選択した証明書ファイルは利用できません。",
     "server_center.certificate_mode_unavailable": "カスタム TLS 証明書にはシステムサービスのインストールが必要です。",
@@ -140,6 +139,8 @@
     "server_center.maintenance_failed": "サーバー操作を完了できませんでした。このホストから後で SSH 側のレシートを確認できます。",
     "server_center.refresh_operation": "選択した操作をホストから更新",
     "server_center.operation_refreshed": "選択した操作レシートをホストから更新しました。",
-    "server_center.operation_refresh_failed": "リモート操作レシートを更新できませんでした。SSH アクセスを確認して再試行してください。"
+    "server_center.operation_refresh_failed": "リモート操作レシートを更新できませんでした。SSH アクセスを確認して再試行してください。",
+    "server_center.install_script_unavailable": "内蔵インストールスクリプトを読み込めません。クライアントを再ビルドまたは再インストールしてください。",
+    "server_center.wizard.source_checks": "公式パッケージはサーバーでダウンロードして検証します。選択した ZIP は構造、アーキテクチャ、安全な展開を確認します。"
   }
 }

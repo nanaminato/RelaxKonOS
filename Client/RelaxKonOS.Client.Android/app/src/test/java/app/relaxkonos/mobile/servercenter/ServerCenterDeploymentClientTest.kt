@@ -30,13 +30,12 @@ class ServerCenterDeploymentClientTest {
             request = request,
             platform = ServerHostPlatform.Linux,
             launcher = ServerCenterUploadAsset.bytes("#!/bin/sh\n".toByteArray()),
-            verifier = ServerCenterUploadAsset.bytes("verifier".toByteArray()),
+
         )
 
         assertEquals(operationId, staged.operationId)
         assertEquals(
             setOf(
-                "/tmp/relaxkonos-deploy.abcdefgh/release-verifier",
                 "/tmp/relaxkonos-deploy.abcdefgh/relaxkonos-deploy.sh",
                 "/tmp/relaxkonos-deploy.abcdefgh/request.json",
             ),
@@ -114,19 +113,19 @@ class ServerCenterDeploymentClientTest {
     }
 
     @Test
-    fun `unsigned install archive is fully checked before upload`() = runTest {
+    fun `local install archive needs no official checksum before upload`() = runTest {
         val release = releaseArchive("payload/linux/server/RelaxKonOS.Server", "server bytes".toByteArray())
         try {
             val transport = FakeDeploymentTransport()
             val client = ServerCenterDeploymentClient(transport)
             val operationId = UUID.randomUUID().toString()
-            val request = installRequest(operationId, sha256(release.file.readBytes()))
+            val request = installRequest(operationId, sha256(release.file.readBytes())).let { it.copy(options = it.options!!.copy(packageDigest = null)) }
 
             client.stage(
                 request = request,
                 platform = ServerHostPlatform.Linux,
                 launcher = ServerCenterUploadAsset.bytes("launcher".toByteArray()),
-                verifier = ServerCenterUploadAsset.bytes("verifier".toByteArray()),
+
                 archiveFile = release.file,
                 expectedRuntime = ServerRuntimeIdentifier.LinuxX64,
             )
@@ -138,35 +137,18 @@ class ServerCenterDeploymentClientTest {
     }
 
     @Test
-    fun `tampered archive is rejected before remote staging`() = runTest {
-        val release = releaseArchive(
-            "payload/linux/server/RelaxKonOS.Server",
-            "tampered".toByteArray(),
-            listedPayload = "original".toByteArray(),
-        )
-        try {
+    fun `official and server sources stage no package or verifier`() = runTest {
+        for (source in listOf(ServerPackageSourceKind.OfficialStable, ServerPackageSourceKind.RemoteBundle)) {
             val transport = FakeDeploymentTransport()
-            val client = ServerCenterDeploymentClient(transport)
-            val request = installRequest(UUID.randomUUID().toString(), sha256(release.file.readBytes()))
-            var rejected = false
-            try {
-                client.stage(
-                    request = request,
-                    platform = ServerHostPlatform.Linux,
-                    launcher = ServerCenterUploadAsset.bytes("launcher".toByteArray()),
-                    verifier = ServerCenterUploadAsset.bytes("verifier".toByteArray()),
-                    archiveFile = release.file,
-                    expectedRuntime = ServerRuntimeIdentifier.LinuxX64,
-                )
-            } catch (_: java.io.IOException) {
-                rejected = true
-            }
-
-            assertTrue(rejected)
-            assertTrue(transport.commands.isEmpty())
-            assertTrue(transport.uploaded.isEmpty())
-        } finally {
-            release.file.delete()
+            val options = ServerDeploymentOptions(source, ServerNetworkProfile.Loopback,
+                mode = ServerInstallMode.LinuxUser,
+                remotePackagePath = if (source == ServerPackageSourceKind.RemoteBundle) "/home/alice/server.zip" else null)
+            ServerCenterDeploymentClient(transport).stage(
+                ServerDeploymentRequest(1, UUID.randomUUID().toString(), ServerDeploymentKind.Install, options),
+                ServerHostPlatform.Linux, ServerCenterUploadAsset.bytes("launcher".toByteArray()),
+                expectedRuntime = ServerRuntimeIdentifier.LinuxX64)
+            assertEquals(setOf("relaxkonos-deploy.sh", "request.json"),
+                transport.uploaded.keys.map { it.substringAfterLast('/') }.toSet())
         }
     }
 
@@ -181,7 +163,7 @@ class ServerCenterDeploymentClientTest {
                     request = installRequest(UUID.randomUUID().toString(), sha256(release.file.readBytes())),
                     platform = ServerHostPlatform.Linux,
                     launcher = ServerCenterUploadAsset.bytes(byteArrayOf(1)),
-                    verifier = ServerCenterUploadAsset.bytes(byteArrayOf(2)),
+
                     archiveFile = release.file,
                     expectedRuntime = ServerRuntimeIdentifier.WinX64,
                 )

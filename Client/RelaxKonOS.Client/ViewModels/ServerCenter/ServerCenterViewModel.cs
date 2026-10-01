@@ -315,7 +315,7 @@ public partial class ServerCenterViewModel : ObservableObject
             var tools = await _releaseSource.ResolveToolsAsync(platform.Platform, cancellationToken).ConfigureAwait(true);
             if (tools is null)
             {
-                ErrorMessage = T("server_center.tools_unavailable", "Deployment tools for this platform are unavailable in this client.");
+                ErrorMessage = T("server_center.install_script_unavailable", "The bundled installation script is unavailable. Rebuild or reinstall this client.");
                 return;
             }
             var credential = await ResolveCredentialAsync(target, cancellationToken).ConfigureAwait(true);
@@ -326,9 +326,9 @@ public partial class ServerCenterViewModel : ObservableObject
                 DateTimeOffset.UtcNow,
                 cancellationToken).ConfigureAwait(true);
             await using var launcher = tools.OpenLauncher();
-            await using var verifier = tools.OpenVerifier();
+
             var client = new ServerCenterDeploymentClient(session.Transport);
-            var staged = await client.StageQueryAsync(record.OperationId, platform.Platform, launcher, verifier, cancellationToken)
+            var staged = await client.StageQueryAsync(record.OperationId, platform.Platform, launcher, cancellationToken)
                 .ConfigureAwait(true);
             var receipt = await client.QueryAsync(staged, cancellationToken).ConfigureAwait(true);
             await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(target.HostId, receipt), cancellationToken)
@@ -377,7 +377,7 @@ public partial class ServerCenterViewModel : ObservableObject
             var tools = await _releaseSource.ResolveToolsAsync(platform.Platform, cancellationToken).ConfigureAwait(true);
             if (tools is null)
             {
-                ErrorMessage = T("server_center.tools_unavailable", "Deployment tools for this platform are unavailable in this client.");
+                ErrorMessage = T("server_center.install_script_unavailable", "The bundled installation script is unavailable. Rebuild or reinstall this client.");
                 return;
             }
 
@@ -471,14 +471,13 @@ public partial class ServerCenterViewModel : ObservableObject
         IsBusy = true;
         ErrorMessage = string.Empty;
         StatusMessage = string.Empty;
-        string? downloadedRemoteBundle = null;
         string? convertedCertificate = null;
         try
         {
             var tools = await _releaseSource.ResolveToolsAsync(platform.Platform, cancellationToken).ConfigureAwait(true);
             if (tools is null)
             {
-                ErrorMessage = T("server_center.tools_unavailable", "Deployment tools for this platform are unavailable in this client.");
+                ErrorMessage = T("server_center.install_script_unavailable", "The bundled installation script is unavailable. Rebuild or reinstall this client.");
                 return false;
             }
 
@@ -522,39 +521,23 @@ public partial class ServerCenterViewModel : ObservableObject
                 return false;
             }
 
-            if (installation.Source == ServerPackageSourceKind.RemoteBundle)
+            ServerCenterReleaseAssets? release = null;
+            if (installation.Source == ServerPackageSourceKind.LocalBundle)
             {
-                if (string.IsNullOrWhiteSpace(installation.RemoteBundlePath) ||
-                    !installation.RemoteBundlePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                if (!string.IsNullOrWhiteSpace(installation.LocalBundlePath))
+                    release = await _releaseSource.ResolveLocalBundleAsync(platform.Platform,
+                        probe.RuntimeIdentifier.Value, mode.Value, installation.LocalBundlePath, cancellationToken).ConfigureAwait(true);
+                if (release is null)
                 {
-                    ErrorMessage = T("server_center.remote_bundle_unavailable", "Choose a .zip release bundle from this SSH server.");
+                    ErrorMessage = T("server_center.local_bundle_unavailable", "Choose an available ZIP release bundle.");
                     return false;
                 }
-
-                downloadedRemoteBundle = Path.Combine(Path.GetTempPath(),
-                    "relaxkonos-server-release-" + Guid.NewGuid().ToString("N") + ".zip");
-                await using (var output = new FileStream(downloadedRemoteBundle, FileMode.CreateNew,
-                    FileAccess.Write, FileShare.None))
-                    await session.Transport.DownloadAsync(installation.RemoteBundlePath, output, cancellationToken).ConfigureAwait(true);
             }
-
-            var release = installation.Source switch
+            if (installation.Source == ServerPackageSourceKind.RemoteBundle &&
+                (string.IsNullOrWhiteSpace(installation.RemoteBundlePath) ||
+                 !installation.RemoteBundlePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)))
             {
-                ServerPackageSourceKind.OfficialStable => await _releaseSource.ResolveReleaseAsync(
-                    platform.Platform, probe.RuntimeIdentifier.Value, mode.Value, cancellationToken).ConfigureAwait(true),
-                ServerPackageSourceKind.LocalBundle when !string.IsNullOrWhiteSpace(installation.LocalBundlePath) =>
-                    await _releaseSource.ResolveLocalBundleAsync(
-                        platform.Platform, probe.RuntimeIdentifier.Value, mode.Value, installation.LocalBundlePath, cancellationToken).ConfigureAwait(true),
-                ServerPackageSourceKind.RemoteBundle when downloadedRemoteBundle is not null =>
-                    await _releaseSource.ResolveLocalBundleAsync(
-                        platform.Platform, probe.RuntimeIdentifier.Value, mode.Value, downloadedRemoteBundle, cancellationToken).ConfigureAwait(true),
-                _ => null
-            };
-            if (release is null)
-            {
-                ErrorMessage = installation.Source is ServerPackageSourceKind.LocalBundle or ServerPackageSourceKind.RemoteBundle
-                    ? T("server_center.local_bundle_unavailable", "The selected bundle is not a valid release for this host.")
-                    : T("server_center.release_unavailable", "No release is available for this host architecture and installation mode.");
+                ErrorMessage = T("server_center.remote_bundle_unavailable", "Choose a ZIP release bundle from this SSH server.");
                 return false;
             }
             if (!HasUsableCertificate(installation))
@@ -576,28 +559,34 @@ public partial class ServerCenterViewModel : ObservableObject
                     installation.Network,
                     ServerDataRetention.Retain,
                     mode,
-                    release.Version,
                     null,
-                    release.StagedPackageName,
-                    release.PackageDigest,
+                    null,
+                    release?.StagedPackageName,
+                    null,
                     kind == ServerDeploymentKind.Upgrade ? probe.ExistingInstallationId : null,
                     null,
                     installation.FileAccess,
                     installation.CertificateMode,
                     installation.SelfSignedIdentities,
-                    Confirmed: true));
-            await using var launcher = release.Tools.OpenLauncher();
-            await using var verifier = release.Tools.OpenVerifier();
-            await using var archive = release.OpenArchive();
+                    Confirmed: true, RemotePackagePath: installation.RemoteBundlePath));
+            await using var launcher = tools.OpenLauncher();
+
+            await using var archive = release?.OpenArchive();
             var client = new ServerCenterDeploymentClient(session.Transport);
             await using var certificate = installation.CertificateMode == ServerCertificateMode.Custom
                 ? File.OpenRead(convertedCertificate ?? installation.CertificatePath!) : null;
             var staged = await client.StageAsync(
-                request, platform.Platform, launcher, verifier, archive, release.Runtime,
+                request, platform.Platform, launcher, archive, probe.RuntimeIdentifier.Value,
                 certificate, installation.CertificatePassword, cancellationToken).ConfigureAwait(true);
             var receipt = await client.ExecuteAsync(staged, cancellationToken).ConfigureAwait(true);
             await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(target.HostId, receipt), cancellationToken)
                 .ConfigureAwait(true);
+
+            if (receipt.State != ServerDeploymentState.Succeeded)
+            {
+                ErrorMessage = receipt.SafeMessage ?? T("server_center.install_failed", "Installation failed. Check the operation record.");
+                return false;
+            }
 
             // A successful launcher process is only a transport result.  Read a separate SSH-side
             // status receipt before declaring success or refreshing the local cached state.
@@ -637,11 +626,6 @@ public partial class ServerCenterViewModel : ObservableObject
         }
         finally
         {
-            if (downloadedRemoteBundle is not null)
-            {
-                try { File.Delete(downloadedRemoteBundle); }
-                catch (IOException) { }
-            }
             if (convertedCertificate is not null)
             {
                 try { File.Delete(convertedCertificate); }
@@ -671,7 +655,7 @@ public partial class ServerCenterViewModel : ObservableObject
             var tools = await _releaseSource.ResolveToolsAsync(platform.Platform, cancellationToken).ConfigureAwait(true);
             if (tools is null)
             {
-                ErrorMessage = T("server_center.tools_unavailable", "Deployment tools for this platform are unavailable in this client.");
+                ErrorMessage = T("server_center.install_script_unavailable", "The bundled installation script is unavailable. Rebuild or reinstall this client.");
                 return;
             }
 
@@ -1009,10 +993,10 @@ public partial class ServerCenterViewModel : ObservableObject
     {
         var request = new ServerDeploymentRequest(ServerDeploymentProtocol.Version, Guid.NewGuid(), kind, options);
         await using var launcher = tools.OpenLauncher();
-        await using var verifier = tools.OpenVerifier();
+
         var client = new ServerCenterDeploymentClient(session.Transport);
         var staged = await client.StageAsync(
-            request, tools.Platform, launcher, verifier, null, null, null, null, cancellationToken).ConfigureAwait(true);
+            request, tools.Platform, launcher, null, null, null, null, cancellationToken).ConfigureAwait(true);
         var receipt = await client.ExecuteAsync(staged, cancellationToken).ConfigureAwait(true);
         await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(session.Target.HostId, receipt), cancellationToken)
             .ConfigureAwait(true);
@@ -1026,10 +1010,10 @@ public partial class ServerCenterViewModel : ObservableObject
         CancellationToken cancellationToken)
     {
         await using var launcher = tools.OpenLauncher();
-        await using var verifier = tools.OpenVerifier();
+
         var client = new ServerCenterDeploymentClient(session.Transport);
         var staged = await client.StageAsync(
-            request, tools.Platform, launcher, verifier, null, null, null, null, cancellationToken).ConfigureAwait(true);
+            request, tools.Platform, launcher, null, null, null, null, cancellationToken).ConfigureAwait(true);
         var receipt = await client.ExecuteAsync(staged, cancellationToken).ConfigureAwait(true);
         await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(session.Target.HostId, receipt), cancellationToken)
             .ConfigureAwait(true);

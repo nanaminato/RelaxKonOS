@@ -62,21 +62,19 @@ var request = new ServerDeploymentRequest(ServerDeploymentProtocol.Version, oper
     ServerDeploymentKind.Probe,
     new ServerDeploymentOptions(ServerPackageSourceKind.OfficialStable, ServerNetworkProfile.Loopback));
 using var launcher = new MemoryStream("#!/bin/sh\n"u8.ToArray());
-using var verifier = new MemoryStream("verifier"u8.ToArray());
-var staged = await client.StageAsync(request, HostPlatformKind.Linux, launcher, verifier,
+var staged = await client.StageAsync(request, HostPlatformKind.Linux, launcher,
     null, null, null, null, CancellationToken.None);
 Check(staged.OperationId == operationId && staged.RemoteDirectory.StartsWith("/tmp/relaxkonos-deploy.",
     StringComparison.Ordinal), "预检操作使用私有远端暂存目录");
 Check(transport.Uploaded.Keys.Order().SequenceEqual(new[]
     {
         "/tmp/relaxkonos-deploy.abcdefgh/relaxkonos-deploy.sh",
-        "/tmp/relaxkonos-deploy.abcdefgh/release-verifier",
         "/tmp/relaxkonos-deploy.abcdefgh/request.json"
     }.Order()), "只上传固定部署资产与请求");
 Check(transport.UploadOrder[^1].EndsWith("/request.json", StringComparison.Ordinal),
     "请求在全部执行资产上传后写入");
 Check(transport.Commands.Any(command => command.StartsWith("chmod 700 ", StringComparison.Ordinal)),
-    "Linux 验证器和启动器被设为可执行");
+    "Linux 内置启动器被设为可执行");
 
 var receipt = await client.ExecuteAsync(staged, CancellationToken.None);
 Check(receipt.OperationId == operationId && receipt.State == ServerDeploymentState.Failed,
@@ -91,7 +89,7 @@ var invalidRequest = request with { Kind = ServerDeploymentKind.Install };
 var blocked = false;
 try
 {
-    await refusingClient.StageAsync(invalidRequest, HostPlatformKind.Linux, launcher, verifier,
+    await refusingClient.StageAsync(invalidRequest, HostPlatformKind.Linux, launcher,
         null, null, null, null, CancellationToken.None);
 }
 catch (ArgumentException) { blocked = true; }
@@ -119,10 +117,10 @@ var installRequest = new ServerDeploymentRequest(ServerDeploymentProtocol.Versio
     ServerDeploymentKind.Install,
     new ServerDeploymentOptions(ServerPackageSourceKind.LocalBundle, ServerNetworkProfile.Loopback,
         Mode: ServerInstallMode.LinuxSystem, Version: "0.1.0", StagedPackageName: "server.zip",
-        PackageDigest: unsignedDigest, Confirmed: true));
+        PackageDigest: null, Confirmed: true));
 var unsignedTransport = new FakeTransport();
 var unsignedClient = new ServerCenterDeploymentClient(unsignedTransport);
-await unsignedClient.StageAsync(installRequest, HostPlatformKind.Linux, launcher, verifier,
+await unsignedClient.StageAsync(installRequest, HostPlatformKind.Linux, launcher,
     unsignedArchive, ServerRuntimeIdentifier.LinuxX64, null, null, CancellationToken.None);
 Check(unsignedTransport.Uploaded.Keys.Any(path => path.EndsWith("/server.zip", StringComparison.Ordinal)) &&
       !unsignedTransport.Uploaded.Keys.Any(path => path.Contains("release-public", StringComparison.Ordinal)),
@@ -131,17 +129,45 @@ Check(unsignedTransport.Uploaded.Keys.Any(path => path.EndsWith("/server.zip", S
 var windows = new FakeTransport { WindowsDirectory =
     @"C:\Users\runner\AppData\Local\Temp\relaxkonos-deploy-0123456789abcdef0123456789abcdef" };
 var windowsClient = new ServerCenterDeploymentClient(windows);
-var windowsStage = await windowsClient.StageAsync(request, HostPlatformKind.Windows, launcher, verifier,
+var windowsStage = await windowsClient.StageAsync(request, HostPlatformKind.Windows, launcher,
     null, null, null, null, CancellationToken.None);
 Check(windowsStage.Platform == HostPlatformKind.Windows &&
-      windows.Uploaded.Keys.Any(path => path.EndsWith("/release-verifier.exe", StringComparison.Ordinal)),
-    "Windows 暂存使用目标平台验证器文件名");
+      windows.Uploaded.Keys.Any(path => path.EndsWith("/RelaxKonOS-Deploy.ps1", StringComparison.Ordinal)),
+    "Windows 暂存使用内置 PowerShell 启动器");
 
 var recovery = new FakeTransport();
+foreach (var source in new[] { ServerPackageSourceKind.OfficialStable, ServerPackageSourceKind.RemoteBundle })
+{
+    var sourceTransport = new FakeTransport();
+    var sourceRequest = installRequest with { OperationId = Guid.NewGuid(), Options = installRequest.Options! with
+    {
+        Source = source, StagedPackageName = null, PackageDigest = null,
+        RemotePackagePath = source == ServerPackageSourceKind.RemoteBundle ? "/home/alice/server.zip" : null
+    }};
+    await new ServerCenterDeploymentClient(sourceTransport).StageAsync(sourceRequest, HostPlatformKind.Linux,
+        launcher, null, ServerRuntimeIdentifier.LinuxX64, null, null, CancellationToken.None);
+    Check(sourceTransport.Uploaded.Keys.Select(Path.GetFileName).Order().SequenceEqual(
+        new[] { "relaxkonos-deploy.sh", "request.json" }.Order()), $"{source} 只上传脚本与请求");
+}
+var embeddedTools = await new FileServerCenterReleaseSource().ResolveToolsAsync(HostPlatformKind.Linux);
+using (var embedded = embeddedTools!.OpenLauncher())
+using (var reader = new StreamReader(embedded))
+{
+    var text = reader.ReadToEnd();
+    Check(text.StartsWith("#!/usr/bin/env bash") && !text.Contains('\r'), "桌面内置完整 LF 部署脚本，无需外部目录");
+}
+var remoteWindowsOptions = installRequest.Options! with
+{
+    Source = ServerPackageSourceKind.RemoteBundle, Mode = ServerInstallMode.WindowsSystem,
+    RemotePackagePath = @"C:\packages\服务器包.zip", StagedPackageName = null, PackageDigest = null
+};
+Check(ServerDeploymentRequestWireValidation.IsStrictRequest(JsonSerializer.SerializeToUtf8Bytes(
+    installRequest with { Options = remoteWindowsOptions }, RelaxKonOSJsonOptions.Default)),
+    "服务器 Windows 路径及 Unicode 通过严格请求检查");
 var recoveryClient = new ServerCenterDeploymentClient(recovery);
 var recoveryId = Guid.NewGuid();
 var recoveryStage = await recoveryClient.StageQueryAsync(
-    recoveryId, HostPlatformKind.Linux, launcher, verifier, CancellationToken.None);
+    recoveryId, HostPlatformKind.Linux, launcher, CancellationToken.None);
 Check(recoveryStage.OperationId == recoveryId &&
       recovery.Uploaded.Keys.All(path => !path.EndsWith("/request.json", StringComparison.Ordinal)),
     "断线恢复仅上传固定查询工具而不创建新部署请求");

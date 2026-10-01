@@ -80,6 +80,7 @@
                 </StackPanel>
 
                 <StackPanel Spacing="12" IsVisible="{Binding IsReviewStep}">
+                    <TextBlock Text="{Binding SourceChecksText}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
                     <TextBlock Text="{Binding ReviewStepTitle}" FontSize="17" FontWeight="SemiBold" />
                     <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" ColumnSpacing="14" RowSpacing="10">
                         <TextBlock Text="{Binding ServerAndUserText}" Foreground="{DynamicResource TextSecondaryBrush}" />

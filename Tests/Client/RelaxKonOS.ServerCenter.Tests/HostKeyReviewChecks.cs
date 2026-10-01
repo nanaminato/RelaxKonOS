@@ -155,13 +155,8 @@ sealed class StubReleaseSource : IServerCenterReleaseSource
     public Task<ServerCenterDeploymentTools?> ResolveToolsAsync(
         HostPlatformKind platform, CancellationToken cancellationToken = default) =>
         Task.FromResult<ServerCenterDeploymentTools?>(new ServerCenterDeploymentTools(
-            platform, "relaxkonos-deploy.sh", "release-verifier",
-            () => new MemoryStream("#!/bin/sh\n"u8.ToArray()),
-            () => new MemoryStream("verifier"u8.ToArray())));
-
-    public Task<ServerCenterReleaseAssets?> ResolveReleaseAsync(
-        HostPlatformKind platform, ServerRuntimeIdentifier runtime, ServerInstallMode mode,
-        CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            platform, "relaxkonos-deploy.sh",
+            () => new MemoryStream("#!/bin/sh\n"u8.ToArray())));
 
     public Task<ServerCenterReleaseAssets?> ResolveLocalBundleAsync(
         HostPlatformKind platform, ServerRuntimeIdentifier runtime, ServerInstallMode mode,

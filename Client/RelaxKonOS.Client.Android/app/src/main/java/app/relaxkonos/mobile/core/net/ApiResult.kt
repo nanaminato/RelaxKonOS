@@ -17,6 +17,7 @@ sealed interface ApiResult<out T> {
 
 /** Stable problem codes this client branches on. Anything else is rendered as a generic error. */
 object ProblemCodes {
+    const val CONTENT_TOO_LARGE = "content-too-large"
     const val INVALID_CREDENTIAL = "invalid-credential"
 
     /**

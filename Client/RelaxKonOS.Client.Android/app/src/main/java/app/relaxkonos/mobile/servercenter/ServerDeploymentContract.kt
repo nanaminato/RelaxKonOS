@@ -44,8 +44,8 @@ enum class ServerInstallMode { LinuxSystem, LinuxUser, WindowsSystem }
 /** 服务端网络监听选项。默认仅 loopback。 */
 enum class ServerNetworkProfile { Loopback, Lan, ReverseProxy }
 
-/** 安装/升级包来源。所有来源都须通过清单与摘要检查。 */
-enum class ServerPackageSourceKind { OfficialStable, LocalBundle, DirectUrl }
+/** 官网包检查摘要；用户包只检查结构、架构和安全解压。 */
+enum class ServerPackageSourceKind { OfficialStable, LocalBundle, RemoteBundle, DirectUrl }
 
 /** 已确认的主机密钥状态。变化时必须阻断所有写操作。 */
 enum class ServerHostKeyTrust { Unknown, Trusted, Changed }
@@ -193,7 +193,7 @@ data class ServerDeploymentModeCapabilities(
     val serviceNames: List<String>,
 )
 
-/** 动作参数。所有字段都是固定枚举或受限字符串，绝不携带宿主路径。 */
+/** 服务器文件通过 remotePackagePath 只读引用，不能作为命令或删除路径。 */
 data class ServerDeploymentOptions(
     val source: ServerPackageSourceKind,
     val network: ServerNetworkProfile,
@@ -206,6 +206,10 @@ data class ServerDeploymentOptions(
     val expectedInstallationId: String? = null,
     val serverPort: Int? = null,
     val confirmed: Boolean = false,
+    val remotePackagePath: String? = null,
+    val fileAccess: String? = null,
+    val certificateMode: String? = null,
+    val selfSignedIdentities: String? = null,
 )
 
 /** 远端部署启动器的唯一入口请求。[operationId] 同时作为幂等键。 */

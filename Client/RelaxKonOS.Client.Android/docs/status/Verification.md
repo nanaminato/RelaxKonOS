@@ -356,3 +356,5 @@ dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --f
 
 - 站点并发/CAS 与严格契约、证书绑定/实时选择器事实/部署重放、创建重放、FRP applied-state/协议/TOML 安全检查通过。三语 XML 各 1554 个唯一字符串键、无重复且键集一致；`git diff --check` 通过。
 - 未执行整套 Server.Tests、Android lint/仪器测试/手机平板交互，也未执行真实 Nginx/ACME/FRP 网络、安装或 Windows Helper 验收。`--frps-only` 的 shell 夹具要求 Linux；frpc 生命周期夹具在 Windows 跳过，所以本轮未将其计为通过。原有 Linux 夹具历史证据继续保留。
+
+- 服务器中心安装：仍需在真机验证文档提供者 ZIP/PFX/PEM 选择、Linux x64/arm64 与 Windows SSH 安装、官网描述符发布、断线恢复及自定义 TLS。Linux 服务端需预装 Python 3。

@@ -57,6 +57,7 @@ fun genericProblemMessage(): UiMessage = UiMessage(R.string.error_generic)
  */
 fun problemMessage(code: String): UiMessage = UiMessage(
     when (code) {
+        ProblemCodes.CONTENT_TOO_LARGE -> R.string.error_content_too_large
         ProblemCodes.INVALID_CREDENTIAL -> R.string.error_invalid_credential
         ProblemCodes.LOGIN_RATE_LIMITED -> R.string.error_login_rate_limited
         // A 503 about the server's own authentication backend, never about the typed password. It gets

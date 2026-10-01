@@ -132,6 +132,138 @@ record_json_only() {
 }
 
 # --- request -----------------------------------------------------------------------------------
+# The Linux host uses its standard Python 3 runtime for JSON and safe ZIP handling.
+# No RID-specific client executable is uploaded or required.
+deployment_python() {
+  python3 - "$@" <<'PY'
+import hashlib, json, os, re, shutil, stat, sys, urllib.request, zipfile
+from pathlib import Path
+
+def unique(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result: raise ValueError('duplicate JSON field')
+        result[key] = value
+    return result
+
+def load(text): return json.loads(text, object_pairs_hook=unique)
+
+def stream_digest(stream):
+    digest = hashlib.sha256()
+    while chunk := stream.read(1024*1024): digest.update(chunk)
+    return digest.hexdigest()
+
+def request(path):
+    raw = Path(path).read_bytes()
+    if not 0 < len(raw) <= 65536 or b'\n' in raw or b'\r' in raw: raise ValueError('request size/line')
+    value = load(raw)
+    root = {'schemaVersion', 'operationId', 'kind', 'options'}
+    keys = {'source','network','retention','mode','version','packageUri','stagedPackageName',
+            'packageDigest','remotePackagePath','expectedInstallationId','serverPort','fileAccess',
+            'certificateMode','selfSignedIdentities','confirmed'}
+    if type(value) is not dict or set(value) - root: raise ValueError('request fields')
+    if type(value.get('schemaVersion')) is not int or value['schemaVersion'] != 1: raise ValueError('schema')
+    if not isinstance(value.get('operationId'), str) or not re.fullmatch(r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}',value['operationId']): raise ValueError('id')
+    if value.get('kind') not in {'probe','install','upgrade','repair','uninstall','status','rollback'}: raise ValueError('kind')
+    options = value.get('options')
+    if options is not None:
+        if type(options) is not dict or set(options) - keys: raise ValueError('options fields')
+        for key in ('source','network'):
+            if type(options.get(key)) is not str: raise ValueError('required string')
+        for key, item in options.items():
+            if key == 'confirmed': valid = type(item) is bool
+            elif key == 'serverPort': valid = item is None or type(item) is int
+            elif key in ('source','network','retention'): valid = type(item) is str
+            else: valid = item is None or type(item) is str
+            if not valid or isinstance(item,str) and any(ord(c)<32 for c in item): raise ValueError('option type')
+    return value
+
+class HttpsRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, url):
+        if not url.startswith('https://'): raise ValueError('HTTPS required')
+        return super().redirect_request(req, fp, code, msg, headers, url)
+
+def download(url, path, limit):
+    if not isinstance(url,str) or not url.startswith('https://'): raise ValueError('HTTPS required')
+    opener = urllib.request.build_opener(HttpsRedirect)
+    with opener.open(url, timeout=60) as source, open(path,'xb') as target:
+        total = 0
+        while chunk := source.read(1024*1024):
+            total += len(chunk)
+            if total > limit: raise ValueError('download too large')
+            target.write(chunk)
+
+def extract(source, runtime, kind, destination, archive):
+    if source == 'officialStable':
+        descriptor_path = str(destination) + '.json'
+        suffix = ('user-server/' if kind == 'user-server' else '') + runtime + '.json'
+        download('https://downloads.relaxkon.com/relaxkonos/stable/latest/' + suffix, descriptor_path, 1024*1024)
+        descriptor = load(Path(descriptor_path).read_text())
+        if descriptor.get('schemaVersion') != 1 or descriptor.get('runtime') != runtime or descriptor.get('packageKind') != kind or not re.fullmatch('[0-9a-fA-F]{64}',descriptor.get('sha256','')): raise ValueError('descriptor')
+        archive = str(destination) + '.zip'
+        download(descriptor['url'],archive,8*1024**3)
+        with open(archive,'rb') as stream: digest = stream_digest(stream)
+        if digest != descriptor['sha256'].lower(): raise ValueError('official checksum mismatch')
+    path = Path(archive)
+    if not path.is_file() or path.is_symlink(): raise ValueError('ZIP file missing or unsafe')
+    destination = Path(destination)
+    if destination.exists() or destination.is_symlink(): raise ValueError('destination exists')
+    with zipfile.ZipFile(path) as package:
+        entries = package.infolist()
+        if len(entries) > 20000 or sum(e.file_size for e in entries) > 8*1024**3: raise ValueError('package limits')
+        seen = set()
+        for entry in entries:
+            name = entry.filename.rstrip('/')
+            if not re.fullmatch(r'[A-Za-z0-9._/+\-]+',name) or any(p in ('','.', '..') for p in name.split('/')) or name.startswith('/') or name.casefold() in seen: raise ValueError('unsafe/duplicate ZIP path')
+            seen.add(name.casefold())
+            mode = (entry.external_attr >> 16) & 0o170000
+            if mode not in (0, stat.S_IFREG,stat.S_IFDIR): raise ValueError('unsupported ZIP entry')
+        manifest_entry = package.getinfo('manifest.json')
+        if manifest_entry.file_size > 1024*1024: raise ValueError('manifest too large')
+        manifest = load(package.read(manifest_entry))
+        if manifest.get('schemaVersion') != 1 or manifest.get('runtime') != runtime or manifest.get('packageKind') != kind or not re.fullmatch(r'[0-9A-Za-z][0-9A-Za-z._-]{0,63}',manifest.get('version','')): raise ValueError('package kind/runtime/version')
+        if source == 'officialStable' and manifest['version'] != descriptor.get('version'): raise ValueError('official version mismatch')
+        required = ['payload/linux/server/RelaxKonOS.Server','payload/linux/guardian/RelaxKonOS.Guardian.Agent']
+        if kind == 'server': required += ['payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper','deployment/bootstrap/install-relaxkonos.sh','deployment/linux/install-relaxkonos-services.sh']
+        else: required += ['deployment/user/relaxkon']
+        files = {e.filename:e for e in entries if not e.is_dir()}
+        if any(name not in files for name in required): raise ValueError('incomplete package')
+        if source == 'officialStable':
+            listed = manifest.get('files',[])
+            if len({f['path'] for f in listed}) != len(listed) or set(files) != {'manifest.json'} | {f['path'] for f in listed}: raise ValueError('file inventory')
+            for item in listed:
+                entry = files[item['path']]
+                with package.open(entry) as stream: digest = stream_digest(stream)
+                if entry.file_size != item['length'] or digest != item['sha256'].lower(): raise ValueError('file checksum')
+        destination.mkdir(mode=0o700)
+        try:
+            for name,entry in files.items():
+                target = destination / name
+                target.parent.mkdir(parents=True,exist_ok=True)
+                with package.open(entry) as src, target.open('xb') as dst: shutil.copyfileobj(src,dst)
+                target.chmod(0o700 if name.endswith('.sh') or name in required else 0o600)
+        except BaseException:
+            shutil.rmtree(destination)
+            raise
+
+try:
+    action, *args = sys.argv[1:]
+    if action == 'validate': request(args[0])
+    elif action == 'text':
+        value = request(args[0]); key = args[1]
+        item = value.get(key, (value.get('options') or {}).get(key))
+        print(item if isinstance(item,str) else '',end='')
+    elif action == 'token':
+        value = request(args[0]); key = args[1]
+        print(json.dumps(value.get(key, (value.get('options') or {}).get(key)),separators=(',',':')),end='')
+    elif action == 'extract': extract(*args)
+    else: raise ValueError('unsupported helper action')
+except Exception as error:
+    print('Deployment input rejected: ' + str(error),file=sys.stderr)
+    sys.exit(1)
+PY
+}
+
 request_text=
 read_request() {
   [[ -f $request_path && ! -L $request_path ]] || launcher_fail invalid_request "request file is missing"
@@ -141,16 +273,14 @@ read_request() {
   request_text=$(<"$request_path")
   [[ $request_text != *$'\n'* ]] || launcher_fail invalid_request "request must be a single line of JSON"
   [[ $request_text == \{*\} ]] || launcher_fail invalid_request "request must be a JSON object"
-  local verifier=$staging_root/release-verifier
-  [[ -f $verifier && ! -L $verifier && -x $verifier ]] || launcher_fail package_unavailable "the strict request verifier is missing"
-  "$verifier" validate-request "$request_path" >/dev/null 2>&1 \
+  command -v python3 >/dev/null || launcher_fail not_supported "Python 3 is required on the Linux server for JSON and ZIP handling"
+  deployment_python validate "$request_path" >/dev/null 2>&1 \
     || launcher_fail invalid_request "request fields, types or JSON structure are invalid"
 }
 json_token() {
-  local key=$1
-  printf '%s' "$request_text" | grep -oE "\"$key\"[[:space:]]*:[[:space:]]*(\"[^\"]*\"|null|true|false|-?[0-9]+)" | head -n1 | sed -E "s/^\"$key\"[[:space:]]*:[[:space:]]*//" || true
+  deployment_python token "$request_path" "$1"
 }
-json_text() { local token; token=$(json_token "$1"); case "$token" in \"*\") printf '%s' "${token:1:${#token}-2}";; *) printf '';; esac; }
+json_text() { deployment_python text "$request_path" "$1"; }
 json_literal() { local token; token=$(json_token "$1"); printf '%s' "${token:-null}"; }
 
 # A client may only send the fields of ServerDeploymentRequest/ServerDeploymentOptions. Anything
@@ -162,7 +292,7 @@ assert_request_keys() {
   while IFS= read -r key; do
     [[ -n $key ]] || continue
     case "$key" in
-      schemaVersion|operationId|kind|options|source|network|retention|mode|version|packageUri|stagedPackageName|packageDigest|expectedInstallationId|serverPort|fileAccess|certificateMode|selfSignedIdentities|confirmed) ;;
+      schemaVersion|operationId|kind|options|source|network|retention|mode|version|packageUri|stagedPackageName|packageDigest|remotePackagePath|expectedInstallationId|serverPort|fileAccess|certificateMode|selfSignedIdentities|confirmed) ;;
       *) launcher_fail invalid_request "unsupported request field: $key" ;;
     esac
   done <<< "$keys"
@@ -178,6 +308,7 @@ options_version=
 options_package_uri=
 options_staged_name=
 options_package_digest=
+options_remote_path=
 options_expected_installation_id=
 options_server_port=
 options_file_access=
@@ -210,6 +341,7 @@ parse_request() {
   options_package_uri=$(json_text packageUri)
   options_staged_name=$(json_text stagedPackageName)
   options_package_digest=$(json_text packageDigest)
+  options_remote_path=$(json_text remotePackagePath)
   options_expected_installation_id=$(json_text expectedInstallationId)
   local port_raw; port_raw=$(json_literal serverPort); [[ $port_raw != null ]] && options_server_port=$port_raw
   options_file_access=$(json_text fileAccess)
@@ -248,7 +380,12 @@ parse_request() {
   case "$operation_kind" in
     install|upgrade)
       [[ -n $options_mode ]] || launcher_fail invalid_request "installation mode is required"
-      [[ -n $options_staged_name && -n $options_package_digest ]] || launcher_fail invalid_request "install and upgrade need a staged archive and SHA-256"
+      case "$options_source" in
+      officialStable) ;;
+      localBundle) [[ -n $options_staged_name ]] || launcher_fail invalid_request "a local ZIP name is required" ;;
+      remoteBundle) [[ $options_remote_path == /* && $options_remote_path == *.zip ]] || launcher_fail invalid_request "an absolute server ZIP path is required" ;;
+      *) launcher_fail invalid_request "unsupported installation source" ;;
+    esac
       ;;
     repair|rollback|uninstall|status) [[ -n $options_mode ]] || launcher_fail invalid_request "installation mode is required";;
   esac
@@ -426,27 +563,22 @@ persist_digest() { umask 077; request_digest > "$(digest_path)"; chmod 600 -- "$
 # The launcher maps a fixed action onto the existing deployment engine. It never passes a caller
 # supplied path, service name or command; only the package directory it staged itself.
 require_package() {
-  local archive=$staging_root/$options_staged_name
-  local verifier=$staging_root/release-verifier
-  local path actual architecture kind
-  for path in "$archive" "$verifier"; do
-    [[ -f $path && ! -L $path ]] || launcher_fail package_unavailable "a required staged release file is missing or unsafe"
-  done
-  [[ -x $verifier ]] || launcher_fail package_unavailable "the staged release verifier is not executable"
-  actual=$(sha256sum -- "$archive" | cut -d' ' -f1)
-  [[ $actual == "$options_package_digest" ]] || launcher_fail package_digest_mismatch "the staged archive digest does not match the request"
+  local archive= architecture kind
   case "$(uname -m)" in
     x86_64) architecture=linux-x64;;
     aarch64) architecture=linux-arm64;;
     *) launcher_fail package_runtime_mismatch "this Linux architecture is unsupported";;
   esac
   case "$options_mode" in linuxUser) kind=user-server;; *) kind=server;; esac
+  case "$options_source" in
+    localBundle) archive=$staging_root/$options_staged_name;;
+    remoteBundle) archive=$options_remote_path;;
+  esac
   package_root=$staging_root/package-$operation_id
-  [[ ! -e $package_root && ! -L $package_root ]] || launcher_fail package_unavailable "the operation package directory already exists"
-  "$verifier" extract "$archive" "$kind" "$architecture" "$package_root" >/dev/null 2>&1 \
-    || launcher_fail package_manifest_invalid "the staged release could not be verified and extracted"
-  [[ -d $package_root && ! -L $package_root ]] || launcher_fail package_manifest_invalid "the staged release could not be extracted"
+  deployment_python extract "$options_source" "$architecture" "$kind" "$package_root" "$archive" >>"$(diagnostics_path)" 2>&1 \
+    || launcher_fail package_manifest_invalid "the release could not be downloaded, checked or safely extracted"
 }
+
 user_engine_path() {
   [[ -x $package_root/deployment/user/relaxkon ]] && { printf '%s/deployment/user/relaxkon' "$package_root"; return; }
   local installed; installed="$(user_data_root)/server/current/user/relaxkon"
@@ -557,12 +689,14 @@ action_install_like() {
   emit_event activating running "" "" "正在执行部署动作"
 
   local status=0 engine arguments
+  local package_check_args=()
+  [[ $options_source == officialStable ]] || package_check_args+=(--skip-file-checks)
   case "$options_mode" in
     linuxUser)
       engine=$(user_engine_path)
       case "$operation_kind" in
-        install) run_engine bash "$engine" install --bundle "$package_root" || status=$? ;;
-        upgrade) run_engine bash "$engine" upgrade --bundle "$package_root" || status=$? ;;
+        install) run_engine bash "$engine" install --bundle "$package_root" "${package_check_args[@]}" || status=$? ;;
+        upgrade) run_engine bash "$engine" upgrade --bundle "$package_root" "${package_check_args[@]}" || status=$? ;;
         repair) run_engine bash "$engine" repair || status=$? ;;
         rollback) run_engine bash "$engine" rollback || status=$? ;;
       esac
@@ -578,7 +712,7 @@ action_install_like() {
         # staged package, so repair and rollback still work when no package was uploaded.
         case "$operation_kind" in
           install|upgrade)
-            arguments+=(--bundle "$package_root" --action "$operation_kind")
+            arguments+=(--bundle "$package_root" --action "$operation_kind" "${package_check_args[@]}")
             case "$options_network" in lan) arguments+=(--network lan);; *) arguments+=(--network local);; esac
             [[ -n $options_server_port ]] && arguments+=(--server-port "$options_server_port")
             if [[ -n $options_file_access ]]; then

@@ -43,6 +43,15 @@ if (args.Contains("--frpc-state-only"))
     Console.WriteLine("FRP applied-state, protocol, and TOML safety checks passed.");
     return;
 }
+if (args.Contains("--file-download-only"))
+{
+    var downloadRoot = Path.Combine(Path.GetTempPath(), $"relaxkonos-file-download-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(downloadRoot);
+    try { await FileDownloadChecks.RunAsync(downloadRoot); }
+    finally { Directory.Delete(downloadRoot, recursive: true); }
+    Console.WriteLine("Large file download, range, cancellation, and chunk-bound checks passed.");
+    return;
+}
 Batteries_V2.Init();
 if (args.Contains("--frps-only"))
 {
@@ -117,6 +126,7 @@ try
         ServerCoreChecks.VerifyLinuxUserStagingOperations(root);
         await ServerCoreChecks.VerifyUserExecutionFailsClosedAsync();
         await ServerCoreChecks.VerifyUserExecutionBackendSelectionAsync();
+        await FileDownloadChecks.RunAsync(root);
         await ServerCoreChecks.VerifyWindowsUserExecutionTransportAsync();
         Console.WriteLine("User-execution contract checks passed.");
         return;
@@ -215,6 +225,7 @@ await NetworkProxyTunnelChecks.VerifyFrpRuntimeInstallAndRollbackAsync(root);
     ServerCoreChecks.VerifyLinuxUserStagingOperations(root);
     await ServerCoreChecks.VerifyUserExecutionFailsClosedAsync();
     await ServerCoreChecks.VerifyUserExecutionBackendSelectionAsync();
+    await FileDownloadChecks.RunAsync(root);
     await ServerCoreChecks.VerifyWindowsUserExecutionTransportAsync();
     ServerCoreChecks.VerifyHostElevationCapabilityScope(root);
     ServerCoreChecks.VerifyAppPermissionEvaluator();

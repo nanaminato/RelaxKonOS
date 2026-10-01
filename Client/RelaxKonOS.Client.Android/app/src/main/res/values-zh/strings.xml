@@ -187,7 +187,6 @@
     <string name="ssh_workspace_system_platform">平台</string>
     <string name="ssh_workspace_exit">退出 SSH 工作区</string>
     <string name="ssh_workspace_deploy">部署</string>
-    <string name="ssh_workspace_deploy_unavailable">此 Android 构建仍缺少校验器和可信发布源，因此暂不能安装。</string>
     <string name="ssh_deploy_history_title">安装操作</string>
     <string name="ssh_deploy_history_note">选择宿主平台，通过已验证的 SSH 核对原回执；查询不会重新安装。</string>
     <string name="ssh_deploy_host_linux">Linux</string>
@@ -1636,4 +1635,10 @@
     <string name="frps_restart_required">保存的配置与运行进程不同。停止并重启后应用。</string>
     <string name="frps_process_unverified">Server 重启后无法核实 frps 进程归属。请在宿主恢复归属；客户端不能确认停止未知进程。</string>
     <string name="frps_stop_failed">无法停止 frps。采取下一动作前请读取当前状态。</string>
+    <string name="error_content_too_large">文件内容超过服务器对此操作的大小限制。</string>
+    <string name="ssh_workspace_deploy_source_checks">官网包在服务器下载并自动校验；自行选择的 ZIP 仅检查结构、架构和安全解压。</string>
+    <string name="ssh_workspace_deploy_running">正在通过 SSH 安装；如连接中断，请先查看操作记录再重试。</string>
+    <string name="ssh_workspace_deploy_success">安装完成，服务器健康检查已通过。</string>
+    <string name="ssh_workspace_deploy_failed">未能确认安装成功，请检查 SSH 验证、服务器依赖、包结构和操作记录。</string>
+    <string name="ssh_workspace_deploy_verify">请先验证此主机的 SSH 连接再安装。</string>
 </resources>

@@ -79,7 +79,7 @@ internal static class WindowsUserExecutionExecutor
             UserExecutionOperationKind.FileListDirectory => List(ValidatePath(request.Path!)),
             UserExecutionOperationKind.FileGetSpecialLocations => SpecialLocations(homeDirectory),
             UserExecutionOperationKind.FileGetInfo => GetInfo(ValidatePath(request.Path!)),
-            UserExecutionOperationKind.FileRead => Read(ValidatePath(request.Path!), cancellationToken),
+            UserExecutionOperationKind.FileRead => Read(ValidatePath(request.Path!), request.Offset!.Value, request.ExpectedBytes!.Value, cancellationToken),
             UserExecutionOperationKind.FileWrite => Write(ValidatePath(request.Path!),
                 Decode(request.ContentBase64!), cancellationToken),
             UserExecutionOperationKind.FileWriteIfMatch => GitTextFileWrite.ReplaceIfVersion(
@@ -180,21 +180,11 @@ internal static class WindowsUserExecutionExecutor
             : ToInfo(ToFileEntry(new FileInfo(path)));
     }
 
-    private static FileRead Read(string path, CancellationToken cancellationToken)
+    private static UserExecutionFileRead Read(string path, long offset, long count, CancellationToken cancellationToken)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
             64 * 1024, FileOptions.SequentialScan);
-        if (stream.Length > UserExecutionProtocol.MaximumFileContentBytes) throw new ContentTooLargeException();
-        var content = new byte[checked((int)stream.Length)];
-        var offset = 0;
-        while (offset < content.Length)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var read = stream.Read(content, offset, content.Length - offset);
-            if (read == 0) throw new EndOfStreamException();
-            offset += read;
-        }
-        return new(Convert.ToBase64String(content), Path.GetFileName(path), ContentType(path));
+        return UserExecutionFileReads.Read(stream, Path.GetFileName(path), ContentType(path), offset, count, cancellationToken);
     }
 
     private static FileEntryDto Write(string path, byte[] content, CancellationToken cancellationToken)
@@ -492,7 +482,6 @@ internal static class WindowsUserExecutionExecutor
     private static UserExecutionResult Fail(UserExecutionProblemCode code, string message)
         => new(false, Error: message, ProblemCode: code);
     private readonly record struct LocalAccount(string Username, string Domain, string HomeDirectory);
-    private sealed record FileRead(string ContentBase64, string FileName, string ContentType);
     private sealed class ContentTooLargeException : Exception { }
     private sealed class UserExecutionUnsupportedException : Exception { }
 }

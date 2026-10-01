@@ -155,7 +155,7 @@ public static class UserExecutionExecutor
             UserExecutionOperationKind.FileListDirectory => List(path!),
             UserExecutionOperationKind.FileGetSpecialLocations => Special(home),
             UserExecutionOperationKind.FileGetInfo => Info(path),
-            UserExecutionOperationKind.FileRead => await ReadAsync(path!),
+            UserExecutionOperationKind.FileRead => await ReadAsync(path!, request.Offset!.Value, request.ExpectedBytes!.Value),
             UserExecutionOperationKind.FileWrite => await WriteAsync(path!, request.ContentBase64!),
             UserExecutionOperationKind.FileWriteIfMatch => GitTextFileWrite.ReplaceIfVersion(path!,
                 Convert.FromBase64String(request.ContentBase64!), request.ExpectedSha256!),
@@ -223,12 +223,10 @@ public static class UserExecutionExecutor
         => path is null ? null : LinuxUserFileOperations.GetMetadata(path) is { } metadata
             ? ToInfo(metadata)
             : null;
-    private static async Task<FileRead> ReadAsync(string path)
+    private static async Task<UserExecutionFileRead> ReadAsync(string path, long offset, long count)
     {
         await using var file = LinuxUserFileOperations.OpenRead(path);
-        if (file.Length > UserExecutionProtocol.MaximumFileContentBytes) throw new ContentTooLargeException();
-        var content = await ReadBoundedBytesAsync(file, UserExecutionProtocol.MaximumFileContentBytes);
-        return new(Convert.ToBase64String(content), Path.GetFileName(path), ContentType(path));
+        return UserExecutionFileReads.Read(file, Path.GetFileName(path), ContentType(path), offset, count);
     }
     private static Task<FileEntryDto> WriteAsync(string path, string content)
     {
@@ -411,7 +409,6 @@ public static class UserExecutionExecutor
         public bool TryReserve(int count) => Interlocked.Add(ref _used, count) <= maximumBytes;
     }
     private readonly record struct Account(string Name, string Home, uint Uid, uint Gid);
-    private sealed record FileRead(string ContentBase64, string FileName, string ContentType);
     private sealed record GitResult(bool Success, int ExitCode, string Output, string Error);
     [StructLayout(LayoutKind.Sequential)] private struct Passwd { public IntPtr Name, Password; public uint Uid, Gid; public IntPtr Gecos, Home, Shell; }
     [DllImport(LibC)] private static extern uint geteuid();
