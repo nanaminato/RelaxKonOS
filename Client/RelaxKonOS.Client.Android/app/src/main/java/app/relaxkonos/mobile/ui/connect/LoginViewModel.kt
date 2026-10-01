@@ -118,15 +118,11 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
     val logins: List<SavedLogin> get() = revision.let { container.profiles.all() }
 
-    val hasLogins: Boolean get() = logins.isNotEmpty()
-
     /** Paired Windows controllers are independent of password login records and stay discoverable here. */
     val pairedOwnerDeviceServiceIds: List<String>
         get() = revision.let {
             container.ownerDeviceKeys.registrations().map { it.serviceId }.distinct().sorted()
         }
-
-    val hasConnectionEntries: Boolean get() = hasLogins || pairedOwnerDeviceServiceIds.isNotEmpty()
 
     /**
      * Whether the debug-only plaintext store may stand in for the vault.

@@ -183,10 +183,8 @@ fun LoginScreen(
 
                     // Connection choices are setup actions, so they come before the address they
                     // may fill. A selected saved item starts connecting immediately when possible.
-                    if (viewModel.hasConnectionEntries) {
-                        OutlinedButton(onClick = { viewModel.openConnections() }, modifier = Modifier.fillMaxWidth()) {
-                            Text(stringResource(R.string.connections_title))
-                        }
+                    OutlinedButton(onClick = { viewModel.openConnections() }, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.connections_title))
                     }
 
                     OutlinedTextField(
