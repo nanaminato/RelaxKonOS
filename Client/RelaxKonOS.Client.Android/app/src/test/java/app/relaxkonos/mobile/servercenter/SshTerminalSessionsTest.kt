@@ -14,6 +14,40 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SshTerminalSessionsTest {
+    @Test fun `native and xterm views retain output through navigation resize and reconnect`() = runTest {
+        val h = Harness(this)
+        val id = h.manager.create("host-a")!!; runCurrent()
+        val shell = h.shells.single().second
+        val chunks = listOf("old\r\n", "\u001b[", "2J\u001b[H", "\u001b[32m中>\u001b[0m")
+        for (chunk in chunks) { shell.output.send(chunk); runCurrent() }
+        h.manager.updateDraft(id, "unsent")
+        h.manager.resize(id, 48, 12); runCurrent()
+        h.manager.enter("host-a"); runCurrent()
+        val state = h.manager.state.value.selectedForHost("host-a")!!
+        assertEquals(chunks.joinToString(""), state.output)
+        assertEquals("中>", state.transcript)
+        assertEquals("unsent", state.draft)
+        assertEquals(1, h.shells.size)
+        assertFalse(shell.closed.isCompleted)
+        shell.output.close(); runCurrent()
+        h.manager.reconnect(id); runCurrent()
+        assertEquals("", h.manager.state.value.sessions.single().output)
+        assertEquals("", h.manager.state.value.sessions.single().transcript)
+        h.shells.last().second.output.send("new>"); runCurrent()
+        assertEquals("new>", h.manager.state.value.sessions.single().transcript)
+    }
+
+    @Test fun `Windows redraw sequences and split frames reach emulator unchanged`() = runTest {
+        val h = Harness(this)
+        val id = h.manager.create("host-a")!!; runCurrent()
+        val shell = h.shells.single().second
+        val chunks = listOf("Windows\r\nC:\\>", "\u001b[", "2J\u001b[H", "\u001b[32mC:\\>\u001b[0m")
+        for (chunk in chunks) { shell.output.send(chunk); runCurrent() }
+        h.manager.resize(id, 8, 2); runCurrent()
+        assertEquals(chunks.joinToString(""), h.manager.state.value.sessions.single().output)
+        assertEquals(listOf(8 to 2), shell.sizes)
+        assertEquals(1, h.shells.size)
+    }
     private class Shell : ServerCenterSshTerminal {
         val output = Channel<String>(Channel.UNLIMITED)
         val input = mutableListOf<String>()

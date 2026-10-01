@@ -1,7 +1,6 @@
 package app.relaxkonos.mobile.ui.servercenter
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -14,7 +13,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -39,19 +37,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.RelaxKonApplication
@@ -62,6 +60,8 @@ import app.relaxkonos.mobile.ui.icons.DesktopIcon
 import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.terminal.TerminalScreenLayout
 import app.relaxkonos.mobile.ui.theme.Spacing
+import app.relaxkonos.mobile.ui.theme.TerminalType
+import app.relaxkonos.mobile.ui.terminal.NativeTerminal
 
 @Composable
 fun SshTerminalScreen(hostId: String, onClose: () -> Unit, modifier: Modifier = Modifier) {
@@ -77,7 +77,7 @@ fun SshTerminalScreen(hostId: String, onClose: () -> Unit, modifier: Modifier = 
         { columns, rows -> model.resize(state.sessionId, columns, rows) }, onClose,
         { model.updateDraft(state.sessionId, it) }, { model.concealInput(state.sessionId, it) },
         { model.fontSize(state.sessionId, it) }, sessions, all.sessions.size < SshTerminalSessions.MAX_SESSIONS, model::select,
-        { model.create(hostId) }, model::end, modifier)
+        { model.create(hostId) }, model::end, modifier, terminalType = container.appearance.terminalType)
 }
 
 @Composable
@@ -99,6 +99,7 @@ internal fun SshTerminalContent(
     onEnd: (String) -> Unit,
     modifier: Modifier = Modifier,
     imeInsets: WindowInsets = WindowInsets.ime,
+    terminalType: TerminalType = TerminalType.Xterm,
 ) {
     val input = state.draft
     val concealInput = state.concealInput
@@ -108,9 +109,7 @@ internal fun SshTerminalContent(
     val fontSize = state.fontSize
     var menuOpen by remember { mutableStateOf(false) }
     var endReview by remember { mutableStateOf<String?>(null) }
-    val scroll = remember(state.sessionId) { androidx.compose.foundation.ScrollState(0) }
     val fontScale = LocalDensity.current.fontScale
-    LaunchedEffect(state.output, scroll.maxValue) { scroll.scrollTo(scroll.maxValue) }
 
     fun sendLine() {
         if (!state.connected) return
@@ -206,26 +205,18 @@ internal fun SshTerminalContent(
         if (state.sessionId.isEmpty() && !compact) Text(stringResource(R.string.ssh_terminal_empty),
             style = MaterialTheme.typography.bodySmall)
     }, output = {
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            val width = maxWidth.value
-            val height = maxHeight.value
-            LaunchedEffect(width, height, fontSize, fontScale, state.connected, state.sessionId) {
-                if (state.connected) onResize(
-                    ((width - 2 * Spacing.md.value) / (fontSize * fontScale * 0.61f)).toInt(),
-                    ((height - 2 * Spacing.md.value) / (fontSize * fontScale * 1.5f)).toInt(),
-                )
-            }
-            Surface(
-                modifier = Modifier.fillMaxSize(), color = Color(0xFF101820),
-                contentColor = Color(0xFFF2F5F7), shape = MaterialTheme.shapes.medium,
-            ) {
-                SelectionContainer {
-                    Column(Modifier.verticalScroll(scroll).padding(Spacing.md)) {
-                        Text(state.output, fontFamily = FontFamily.Monospace, fontSize = fontSize.sp,
-                            lineHeight = (fontSize * 1.5f).sp)
-                    }
-                }
-            }
+        if (terminalType == TerminalType.Native) NativeTerminal(
+            state.sessionId, state.transcript, fontSize, onResize,
+            Modifier.fillMaxSize().testTag("ssh-terminal-output"), connected = state.connected,
+        ) else
+        Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF101820),
+            shape = MaterialTheme.shapes.medium) {
+            app.relaxkonos.mobile.ui.terminal.XtermTerminal(
+                sessionId = state.sessionId, output = state.output,
+                fontSize = fontSize * fontScale, connected = state.connected,
+                onSend = onSend, onResize = onResize,
+                modifier = Modifier.fillMaxSize().clip(MaterialTheme.shapes.medium).testTag("ssh-terminal-output"),
+            )
         }
     }, keys = {
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {

@@ -14,6 +14,8 @@ import androidx.core.os.LocaleListCompat
 /** Colour mode offered in appearance settings. The explicit choice always beats the system value. */
 enum class ColorMode { FollowSystem, Light, Dark }
 
+enum class TerminalType { Native, Xterm }
+
 /**
  * Languages the app ships, matching `app/src/main/res/values*`, `res/xml/locales_config.xml` and the
  * `androidResources.localeFilters` list in `app/build.gradle.kts`.
@@ -53,6 +55,11 @@ enum class AppLanguage(val tag: String) {
  */
 class AppearancePreferences(context: Context) {
     private val preferences = context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+
+    var terminalType: TerminalType
+        get() = TerminalType.entries.firstOrNull { it.name == preferences.getString("terminalType", null) }
+            ?: TerminalType.Xterm
+        set(value) { preferences.edit().putString("terminalType", value.name).apply() }
 
     var colorMode: ColorMode
         get() = runCatching { ColorMode.valueOf(preferences.getString(KEY_COLOR_MODE, null) ?: ColorMode.FollowSystem.name) }
@@ -99,6 +106,12 @@ class AppearancePreferences(context: Context) {
  * the live Keystore probe so turning the master switch off can never leave a stale "usable" answer.
  */
 class AppearanceState(private val preferences: AppearancePreferences) {
+    private var terminalTypeState by mutableStateOf(preferences.terminalType)
+    val terminalType: TerminalType get() = terminalTypeState
+    fun setTerminalType(value: TerminalType) {
+        preferences.terminalType = value
+        terminalTypeState = value
+    }
     private var colorModeState by mutableStateOf(preferences.colorMode)
 
     private var highContrastState by mutableStateOf(preferences.highContrast)

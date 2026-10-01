@@ -21,6 +21,7 @@ import app.relaxkonos.mobile.ui.common.SectionLabel
 import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.ui.theme.AppLanguage
 import app.relaxkonos.mobile.ui.theme.ColorMode
+import app.relaxkonos.mobile.ui.theme.TerminalType
 import app.relaxkonos.mobile.ui.theme.Spacing
 import app.relaxkonos.mobile.ui.theme.applyAppLanguage
 
@@ -40,6 +41,7 @@ import app.relaxkonos.mobile.ui.theme.applyAppLanguage
 fun AppearanceScreen(
     onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    titleRes: Int = R.string.appearance_title,
 ) {
     val appearance = appContainer().appearance
 
@@ -48,9 +50,21 @@ fun AppearanceScreen(
         verticalArrangement = Arrangement.spacedBy(Spacing.lg),
     ) {
         ScreenHeader(
-            title = stringResource(R.string.appearance_title),
+            title = stringResource(titleRes),
             onBack = onBack,
         )
+
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            SectionLabel(stringResource(R.string.terminal_type))
+            SectionGroup {
+                ChoiceRow(R.string.terminal_type_native, appearance.terminalType == TerminalType.Native) {
+                    appearance.setTerminalType(TerminalType.Native)
+                }
+                ChoiceRow(R.string.terminal_type_xterm, appearance.terminalType == TerminalType.Xterm) {
+                    appearance.setTerminalType(TerminalType.Xterm)
+                }
+            }
+        }
 
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
             SectionLabel(stringResource(R.string.appearance_color_mode))

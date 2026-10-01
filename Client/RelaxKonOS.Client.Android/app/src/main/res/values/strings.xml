@@ -1715,4 +1715,9 @@
     <string name="server_maintenance_actions_note">Upgrade selects a new package. Repair fixes the current installation. Uninstall asks whether to retain managed data.</string>
     <string name="server_operation_details">View details</string>
     <string name="server_operation_no_log">No deployment engine log for this operation.</string>
+    <string name="terminal_latest_output">Latest output</string>
+    <string name="ssh_workspace_settings">Settings</string>
+    <string name="terminal_type">Terminal type</string>
+    <string name="terminal_type_native">Native (Server mode)</string>
+    <string name="terminal_type_xterm">xterm.js</string>
 </resources>

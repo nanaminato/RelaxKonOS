@@ -1676,4 +1676,9 @@
     <string name="server_maintenance_actions_note">更新は新しいパッケージを選択します。修復は現在のインストールを修正します。削除時に管理データの保持を選択できます。</string>
     <string name="server_operation_details">詳細を表示</string>
     <string name="server_operation_no_log">この操作のデプロイログはありません。</string>
+    <string name="terminal_latest_output">最新の出力へ</string>
+    <string name="ssh_workspace_settings">設定</string>
+    <string name="terminal_type">ターミナルの種類</string>
+    <string name="terminal_type_native">ネイティブ（Server モード）</string>
+    <string name="terminal_type_xterm">xterm.js</string>
 </resources>

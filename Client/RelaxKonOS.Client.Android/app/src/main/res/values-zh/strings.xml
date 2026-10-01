@@ -1677,4 +1677,9 @@
     <string name="server_maintenance_actions_note">升级可选择新发布包；修复处理当前安装；卸载时可选择保留受管数据。</string>
     <string name="server_operation_details">查看详情</string>
     <string name="server_operation_no_log">此操作没有部署引擎日志。</string>
+    <string name="terminal_latest_output">回到最新输出</string>
+    <string name="ssh_workspace_settings">设置</string>
+    <string name="terminal_type">终端类型</string>
+    <string name="terminal_type_native">原生终端（Server 模式）</string>
+    <string name="terminal_type_xterm">xterm.js</string>
 </resources>

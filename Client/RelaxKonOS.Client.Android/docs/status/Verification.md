@@ -4,6 +4,16 @@
 
 ## 1. 共同设备与发布检查
 
+2026-10-01 SSH 设置、双终端与平板导航：703 项 JVM 测试与 `assembleDebug` 通过，新增检查覆盖原生/原始 VT 输出并存、跨帧 UTF-8、清屏、resize/离页保留及重连/附加其它 shell 同步重置。SM-S9380 与 SM-X510（Android 16）均执行 `SshWorkspaceLayoutTest` 三项、`NativeTerminalTest` 一项及 `XtermTerminalTest` 一项通过：导航覆盖 360/700/1000dp 设置入口、底栏键盘折叠、侧栏独立视口和无障碍名称；原生模式验证首次连接成功后同步 PTY 尺寸及视口宽度变化；xterm.js 验证 Windows VT 重绘、查询响应和视口显隐尺寸。xterm.js 用例等待实际 fit/绘制完成后检查边界，避免在 200ms 尺寸稳定期前误报。完整终端测试包在平板 `keyboardShowAndHidePreserveTheUnsentDraft` 长时间等待后中止，不能记为整包通过。语言/主题/高对比度/终端选择的重启恢复、真实 SSH/Server 会话切换两种渲染器、平板分屏/旋转与复杂全屏程序仍需实机联调；导航测量用例不代表所有 SSH 页面已完成内容双栏。
+
+2026-10-01 键盘展开最后一行裁切：真机 Windows SSH 会话确认原屏幕底边为 196 CSS px，但 WebView 可视高度只有 188 px。addon-fit 只扣除 xterm 元素自身内边距，原来放在父容器的 12px 内边距未计入可用行列数。将内边距移入 xterm 元素后，键盘展开时为 12 行、屏幕底边 170px / 可视高度 188px；收起时为 16 行、底边 223px / 可视高度 235px，Windows 提示符保留。resize 前处于最新输出位置时 resize 后继续贴底；查看历史时保留滚动位置。设备回归检查新增屏幕右边/底边不超过视口的断言。
+
+2026-10-01 SSH 触摸滚动：真机 SM-S9380、已验证的 `192.168.1.9` Ubuntu SSH 会话中输出 100 行数字，使用真实 ADB 触摸滑动确认可从末尾浏览历史、反向滑动返回；历史 viewportY 为 78 时新输出使 baseY 从 88 增至 90，viewportY 仍为 78；触摸「回到最新输出」后 viewportY 回到 90 且按钮隐藏。APK 构建与 JVM 测试通过。尚需长文阅读、不同厂商触摸采样、长按复制与替代屏幕程序联调；这组证据不覆盖 Windows SSH 宿主。
+
+2026-10-01 真机 SSH xterm.js 空白修复：SM-S9380 上 WebView 已加载并接收到输出，但 `html/body` 百分比高度得到 0，终端容器只剩内边距，addon-fit 只能得到 1 行。终端容器改为固定铺满视口，新增设备回归断言检查容器高度与行数。修正版已安装到真机，由用户完成指纹解封后连接 `192.168.1.9`（实际宿主为 Ubuntu 26.04）；确认初始彩色提示符、`echo RELAXKON_SSH_CHECK` 回显、`clear` 重绘、反复键盘显隐（41×13 / 41×16）、SSH 文件页离页返回的同一会话，以及字号增减（38×15 / 41×16）均保持可见。APK 构建与 JVM 测试通过；此证据不代表 Windows SSH 宿主、旋转、复杂全屏程序或长时间高输出已通过。
+
+2026-10-01 SSH 终端使用本地 xterm.js：仅服务器中心 SSH 路径替换为完整 VT 模拟器，PTY 声明 `xterm-256color`；RelaxKonOS Server Hub 终端保持现有实现。JVM 检查覆盖 Windows 清屏/光标/颜色序列和跨帧原样传递、小视口尺寸及会话隔离。新增 WebView 重绘/终端查询响应/视口恢复设备测试；本轮模拟器执行因设备连接丢失失败，不能作为通过证据。用户负责实机联调：Windows SSH 初始提示符、`cls`、PowerShell 颜色、连续命令、键盘反复显隐、字号调整、会话切换及离页返回；检查长时间大量输出的内存与重放开销。既有 SSH 布局模拟器证据不覆盖新 WebView 渲染器。
+
 2026-10-01 操作记录：平台自动识别，「查看详情」通过可滚动、可复制的弹窗展示回执与按需读取日志，支持关闭按钮、返回键和窗口外点击关闭。「清除已结束记录」确认后删除列表中已核验结束的远端回执、事件和日志，同步移除本地索引，保留运行中、缺失及未核验记录与防重放请求摘要。`assembleDebug --offline`、`ServerCenterDeploymentClientTest`、`ServerInstallOperationIndexTest` 通过；Windows 清除入口的隔离测试 `Tests/Deployment/operation_history_checks.py` 三项通过，覆盖四种结束状态、运行/排队/未知/缺失/编号不匹配和写锁冲突；Linux 启动器 `bash -n` 通过。此前客户端测试覆盖固定 diagnostics 动作、无效 ID 拒绝、日志截断及敏感字段遮盖。实体手机弹窗关闭、清除确认与失败重试、长日志滚动/复制、真实 Linux/Windows SSH 清除与历史记录查询仍待验证。
 
 2026-10-01 Linux 监听地址回执：从受管安装记录读取 listenUrl，保留真实协议、绑定地址和端口；不再虚构 HTTP 回环地址。`ListenAddressChecks.ps1` 与 Android `assembleDebug --offline` 通过。实体设备刷新后与真实宿主配置的对照仍待执行。

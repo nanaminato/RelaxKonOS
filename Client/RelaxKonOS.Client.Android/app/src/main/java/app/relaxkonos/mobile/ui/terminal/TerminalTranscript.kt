@@ -5,7 +5,9 @@ import java.nio.CharBuffer
 import java.nio.charset.CodingErrorAction
 
 /** Bounded VT text screen. Cursor addresses refer to the viewport, never to scrollback. */
-internal class TerminalTranscript(private val maximumLines: Int = 800) {
+internal class TerminalTranscript(private val maximumLines: Int = 800, private val retainRawOutput: Boolean = false) {
+    var rawOutput: String = ""
+        private set
     private val decoder = Charsets.UTF_8.newDecoder()
         .onMalformedInput(CodingErrorAction.REPLACE).onUnmappableCharacter(CodingErrorAction.REPLACE)
     private var pending = byteArrayOf()
@@ -53,6 +55,7 @@ internal class TerminalTranscript(private val maximumLines: Int = 800) {
         decoder.decode(input, characters, false)
         pending = ByteArray(input.remaining()).also { input.get(it) }
         characters.flip()
+        if (retainRawOutput) rawOutput += characters.toString()
         while (characters.hasRemaining()) consume(characters.get())
         return snapshot()
     }

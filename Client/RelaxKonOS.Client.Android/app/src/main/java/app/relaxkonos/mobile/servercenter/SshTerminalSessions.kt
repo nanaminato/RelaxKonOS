@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import app.relaxkonos.mobile.ui.terminal.TerminalTranscript
 
 data class SshTerminalUiState(
     val sessionId: String = "",
@@ -21,6 +22,7 @@ data class SshTerminalUiState(
     val connected: Boolean = false,
     val problem: Boolean = false,
     val output: String = "",
+    val transcript: String = "",
     val draft: String = "",
     val concealInput: Boolean = false,
     val fontSize: Int = 13,
@@ -61,6 +63,7 @@ class SshTerminalSessions(
     private val runtimes = mutableMapOf<String, Runtime>()
 
     private class Runtime(scope: CoroutineScope) {
+        val transcript = TerminalTranscript()
         val job = SupervisorJob(scope.coroutineContext[Job])
         val scope = CoroutineScope(scope.coroutineContext + job)
         var connection: SshTerminalConnection? = null
@@ -100,7 +103,7 @@ class SshTerminalSessions(
         stopRuntime(id)
         val runtime = Runtime(scope)
         runtimes[id] = runtime
-        update(id) { it.copy(connecting = true, connected = false, problem = false, output = "") }
+        update(id) { it.copy(connecting = true, connected = false, problem = false, output = "", transcript = "") }
         runtime.scope.launch {
             try {
                 val connection = connector.connect(session.hostId)
@@ -110,7 +113,9 @@ class SshTerminalSessions(
                 while (current(id, runtime)) {
                     val output = connection.terminal.read() ?: break
                     // Keep VT sequences intact. The terminal emulator owns parsing and screen state.
-                    if (current(id, runtime)) update(id) { it.copy(output = it.output + output) }
+                    if (current(id, runtime)) update(id) {
+                        it.copy(output = it.output + output, transcript = runtime.transcript.append(output.toByteArray(Charsets.UTF_8)))
+                    }
                 }
                 if (current(id, runtime)) update(id) { it.copy(connecting = false, connected = false) }
             } catch (_: CancellationException) {
@@ -127,6 +132,7 @@ class SshTerminalSessions(
 
     fun send(id: String, value: String) = operate(id) { it.write(value) }
     fun resize(id: String, columns: Int, rows: Int) = operate(id) {
+        runtimes[id]?.let { runtime -> update(id) { state -> state.copy(transcript = runtime.transcript.resize(columns, rows)) } }
         it.resize(columns.coerceIn(2, 500), rows.coerceIn(1, 200))
     }
 

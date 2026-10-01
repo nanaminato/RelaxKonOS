@@ -13,6 +13,14 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import app.relaxkonos.mobile.core.layout.LayoutState
+import app.relaxkonos.mobile.core.layout.layoutStateFor
+import app.relaxkonos.mobile.ui.more.AppearanceScreen
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -33,6 +41,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -48,53 +59,74 @@ import app.relaxkonos.mobile.ui.icons.DesktopIcon
 import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Spacing
 
-/** SSH keeps the same compact navigation shape as an authenticated RelaxKonOS session. */
+/** Uses the authenticated shell's window classes and inset ownership. */
 @Composable
 fun SshWorkspaceScreen(hostId: String, onClose: () -> Unit) {
     var page by rememberSaveable(hostId) { mutableIntStateOf(0) }
     val host = (LocalContext.current.applicationContext as RelaxKonApplication)
         .container.serverCenter.hosts().firstOrNull { it.hostId == hostId }
     val terminalTyping = page == 1 && WindowInsets.ime.getBottom(LocalDensity.current) > 0
-    Scaffold(
-        containerColor = androidx.compose.ui.graphics.Color.Transparent,
-        // 这里**没有** topBar：主机是谁、换一台主机这两件事只属于系统页（`SshSystemScreen`）。
-        // 少了这条 TopBar，`Scaffold` 的 `contentWindowInsets` 会自己把状态栏那一段加进
-        // 内边距里，各页仍然不会被时钟压住。
-        bottomBar = {
-            if (!terminalTyping)
-            NavigationBar {
-                NavigationBarItem(
-                    selected = page == 0,
-                    onClick = { page = 0 },
-                    icon = { DesktopIcon(DesktopIcons.navFiles, size = 26.dp) },
-                    label = { Text(stringResource(R.string.ssh_files_title)) },
-                )
-                NavigationBarItem(
-                    selected = page == 1,
-                    onClick = { page = 1 },
-                    icon = { DesktopIcon(DesktopIcons.navTerminal, size = 26.dp) },
-                    label = { Text(stringResource(R.string.ssh_terminal_title)) },
-                )
-                NavigationBarItem(
-                    selected = page == 2,
-                    onClick = { page = 2 },
-                    icon = { DesktopIcon(DesktopIcons.deployments, size = 26.dp) },
-                    label = { Text(stringResource(R.string.ssh_workspace_deploy)) },
-                )
-                NavigationBarItem(
-                    selected = page == 3,
-                    onClick = { page = 3 },
-                    icon = { DesktopIcon(DesktopIcons.system, size = 26.dp) },
-                    label = { Text(stringResource(R.string.ssh_workspace_system)) },
-                )
-            }
-        },
-    ) { padding ->
+    androidx.activity.compose.BackHandler { if (page != 3) page = 3 else onClose() }
+    val content: @Composable (Modifier) -> Unit = { contentModifier ->
         when (page) {
-            0 -> SshFilesScreen(hostId, Modifier.padding(padding))
-            1 -> SshTerminalScreen(hostId, onClose, Modifier.padding(padding).consumeWindowInsets(padding))
-            2 -> ServerMaintenanceScreen(host, Modifier.padding(padding).consumeWindowInsets(padding))
-            else -> SshSystemScreen(hostId, onClose, Modifier.padding(padding))
+            0 -> SshFilesScreen(hostId, contentModifier)
+            1 -> SshTerminalScreen(hostId, onClose, contentModifier)
+            2 -> ServerMaintenanceScreen(host, contentModifier)
+            3 -> SshSystemScreen(hostId, onClose, contentModifier)
+            else -> AppearanceScreen(onBack = { page = 3 }, modifier = contentModifier,
+                titleRes = R.string.ssh_workspace_settings)
+        }
+    }
+    SshWorkspaceLayout(page, { page = it }, terminalTyping, content = content)
+}
+
+@Composable
+internal fun SshWorkspaceLayout(
+    page: Int,
+    onSelect: (Int) -> Unit,
+    terminalTyping: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable (Modifier) -> Unit,
+) {
+    val destinations = listOf(
+        R.string.ssh_files_title to DesktopIcons.navFiles,
+        R.string.ssh_terminal_title to DesktopIcons.navTerminal,
+        R.string.ssh_workspace_deploy to DesktopIcons.deployments,
+        R.string.ssh_workspace_system to DesktopIcons.system,
+        R.string.ssh_workspace_settings to DesktopIcons.navMore,
+    )
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        val layout = layoutStateFor(maxWidth)
+        if (layout == LayoutState.Compact) Scaffold(
+            containerColor = androidx.compose.ui.graphics.Color.Transparent,
+            bottomBar = {
+                if (!terminalTyping) NavigationBar(Modifier.testTag("ssh-workspace-bar")) {
+                    destinations.forEachIndexed { index, (label, icon) ->
+                        NavigationBarItem(selected = page == index, onClick = { onSelect(index) },
+                            icon = { DesktopIcon(icon, size = 26.dp) },
+                            label = { Text(stringResource(label), maxLines = 1) })
+                    }
+                }
+            },
+        ) { padding ->
+            content(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding))
+        } else Row(Modifier.fillMaxSize().safeDrawingPadding()) {
+            NavigationRail(
+                modifier = Modifier.fillMaxHeight().testTag("ssh-workspace-rail"),
+                containerColor = MaterialTheme.colorScheme.surface,
+                windowInsets = WindowInsets(0),
+                header = { DesktopIcon(DesktopIcons.brand, size = 36.dp,
+                    modifier = Modifier.padding(bottom = Spacing.md)) },
+            ) {
+                destinations.forEachIndexed { index, (label, icon) ->
+                    val destinationLabel = stringResource(label)
+                    NavigationRailItem(selected = page == index, onClick = { onSelect(index) },
+                        modifier = Modifier.semantics { contentDescription = destinationLabel },
+                        icon = { DesktopIcon(icon, size = 26.dp) },
+                        label = { if (layout == LayoutState.Expanded) Text(stringResource(label)) })
+                }
+            }
+            content(Modifier.weight(1f).fillMaxHeight().padding(horizontal = Spacing.xs))
         }
     }
 }

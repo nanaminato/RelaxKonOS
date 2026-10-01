@@ -76,7 +76,7 @@ class SshTerminalKeyboardLayoutTest {
         editor.assertIsDisplayed().assertHeightIsAtLeast(56.dp)
         editor.performTextInput("echo 手机输入")
         rule.onNodeWithText("echo 手机输入").assertIsDisplayed()
-        rule.onNodeWithText(state.output).assertIsDisplayed()
+        rule.onNodeWithTag("ssh-terminal-output").assertIsDisplayed()
         val window = rule.onNodeWithTag("window").fetchSemanticsNode().boundsInRoot
         assertTrue(editor.fetchSemanticsNode().boundsInRoot.bottom <= window.bottom)
     }
@@ -143,7 +143,7 @@ class SshTerminalKeyboardLayoutTest {
         assertTrue(editor.fetchSemanticsNode().boundsInRoot.bottom <= window.bottom - keyboardBottom.get())
         editor.performImeAction()
         rule.runOnIdle { assertEquals(listOf("echo 手机输入\r"), sent) }
-        rule.onNodeWithText(state.output).assertIsDisplayed()
+        rule.onNodeWithTag("ssh-terminal-output").assertIsDisplayed()
         editor.assertIsDisplayed()
     }
 }

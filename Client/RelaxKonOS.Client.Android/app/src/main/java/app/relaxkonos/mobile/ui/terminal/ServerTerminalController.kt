@@ -42,7 +42,7 @@ internal class ServerTerminalController(
     private var generation = 0
     private var owner: SessionState.Active? = null
     private var selectedId: String? = null
-    private var transcript = TerminalTranscript()
+    private var transcript = TerminalTranscript(retainRawOutput = true)
     private var columns = 80
     private var rows = 24
     private var appliedSize = columns to rows
@@ -52,7 +52,7 @@ internal class ServerTerminalController(
         if (connectionJob?.isActive == true || mutable.value.connected) return
         if (owner != null && (owner?.serviceId != active.serviceId || owner?.userName != active.userName)) {
             selectedId = null
-            transcript = TerminalTranscript()
+            transcript = TerminalTranscript(retainRawOutput = true)
             mutable.value = ServerTerminalState()
         }
         owner = active
@@ -86,7 +86,9 @@ internal class ServerTerminalController(
                         connectionClosed = false
                         val created = factory.create(url, token,
                             { bytes -> scope.launch {
-                                if (current == generation && transport === candidate) mutable.update { it.copy(output = transcript.append(bytes)) }
+                                if (current == generation && transport === candidate) mutable.update {
+                                    it.copy(output = transcript.append(bytes), rawOutput = transcript.rawOutput)
+                                }
                             } },
                             { code -> scope.launch {
                                 if (current == generation && transport === candidate) mutable.update {
@@ -135,7 +137,7 @@ internal class ServerTerminalController(
                     if (target != null) attachTo(activeConnection, target, current)
                     else if (saved != null) {
                         selectedId = null
-                        mutable.update { it.copy(sessionId = null, output = "", exitCode = null) }
+                        mutable.update { it.copy(sessionId = null, output = "", rawOutput = "", exitCode = null) }
                     }
                     if (connectionClosed) error("The terminal disconnected while attaching.")
                     mutable.update { it.copy(connecting = false, connected = true, error = false, retryAttempt = 0) }
@@ -165,8 +167,8 @@ internal class ServerTerminalController(
     private suspend fun attachTo(connection: TerminalConnection, id: String?, current: Int) {
         resizeJob?.cancel()
         resizeJob = null
-        transcript = TerminalTranscript().also { it.resize(columns, rows) }
-        mutable.update { it.copy(output = "", sessionLost = false, sessionId = null, exitCode = null) }
+        transcript = TerminalTranscript(retainRawOutput = true).also { it.resize(columns, rows) }
+        mutable.update { it.copy(output = "", rawOutput = "", sessionLost = false, sessionId = null, exitCode = null) }
         val attachColumns = columns
         val attachRows = rows
         appliedSize = attachColumns to attachRows
@@ -276,7 +278,7 @@ internal class ServerTerminalController(
         mutable.update { it.copy(sessions = sessions) }
         if (sessionId == selectedId) {
             selectedId = null
-            mutable.update { it.copy(sessionId = null, output = "", exitCode = null) }
+            mutable.update { it.copy(sessionId = null, output = "", rawOutput = "", exitCode = null) }
             sessions.firstOrNull()?.let { attachTo(connection, it.sessionId, current) }
         }
     }
@@ -316,6 +318,7 @@ data class ServerTerminalState(
     val sessionId: String? = null,
     val sessions: List<TerminalSessionSummary> = emptyList(),
     val output: String = "",
+    val rawOutput: String = "",
     val exitCode: Int? = null,
 ) {
     val canInput: Boolean get() = connected && !busy && sessionId != null && exitCode == null

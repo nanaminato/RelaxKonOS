@@ -67,6 +67,8 @@ import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.ui.theme.Radius
 import app.relaxkonos.mobile.ui.theme.Spacing
+import app.relaxkonos.mobile.ui.theme.TerminalType
+import app.relaxkonos.mobile.ui.common.appContainer
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.compose.LifecycleStartEffect
@@ -96,7 +98,8 @@ fun ServerTerminalScreen(owner: SessionState.Active, modifier: Modifier = Modifi
         onStopOrDispose { model.detach() }
     }
     ServerTerminalContent(owner, state, { model.connect(owner) }, model::attach, model::send,
-        model::resize, model::close, model::closeOtherSessions, modifier)
+        model::resize, model::close, model::closeOtherSessions, modifier,
+        terminalType = appContainer().appearance.terminalType)
 }
 
 @Composable
@@ -111,6 +114,7 @@ internal fun ServerTerminalContent(
     onCloseOthers: () -> Unit,
     modifier: Modifier = Modifier,
     imeInsets: WindowInsets = WindowInsets.ime,
+    terminalType: TerminalType = TerminalType.Native,
 ) {
     var input by remember { mutableStateOf("") }
     var pasteReview by remember { mutableStateOf<String?>(null) }
@@ -245,6 +249,11 @@ internal fun ServerTerminalContent(
         }
         state.exitCode?.let { Text(stringResource(R.string.terminal_exit_code, it), style = MaterialTheme.typography.bodySmall) }
     }, output = {
+        if (terminalType == TerminalType.Xterm) XtermTerminal(
+            sessionId = state.sessionId.orEmpty(), output = state.rawOutput,
+            fontSize = fontSize * fontScale, connected = state.canInput,
+            onSend = { onSend(it) }, onResize = onResize, modifier = Modifier.fillMaxSize(),
+        ) else
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val width = maxWidth.value
             val height = maxHeight.value
