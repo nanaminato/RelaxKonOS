@@ -23,6 +23,9 @@ public sealed record ServerCenterOperationRecord(
     DateTimeOffset? CompletedAtUtc,
     DateTimeOffset UpdatedAtUtc)
 {
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string StartedAtLocalText => StartedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss zzz");
+
     /// <summary>由远端权威回执生成或更新一条本地索引记录。</summary>
     public static ServerCenterOperationRecord From(string hostId, ServerDeploymentOperationDto receipt)
     {

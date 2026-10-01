@@ -15,7 +15,10 @@
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <StackPanel Margin="6" Spacing="3">
-                                <TextBlock Text="{Binding Kind}" FontWeight="SemiBold" />
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+                                    <TextBlock Text="{Binding Kind}" FontWeight="SemiBold" />
+                                    <TextBlock Grid.Column="1" Text="{Binding StartedAtLocalText}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                                </Grid>
                                 <TextBlock Text="{Binding State}" />
                                 <TextBlock Text="{Binding SafeMessage}" TextWrapping="Wrap" />
                             </StackPanel>
