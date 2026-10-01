@@ -49,6 +49,9 @@ public interface IServerCenterOperationJournal
     /// <summary>写入或按 <c>operationId</c> 更新一条记录。</summary>
     Task RecordAsync(ServerCenterOperationRecord record, CancellationToken cancellationToken = default);
 
+    /// <summary>清除指定宿主的已结束记录，保留尚未完成操作的回执索引。</summary>
+    Task ClearCompletedAsync(string hostId, CancellationToken cancellationToken = default);
+
     Task<ServerCenterOperationRecord?> FindAsync(Guid operationId, CancellationToken cancellationToken = default);
 }
 
@@ -122,6 +125,20 @@ public sealed class ServerCenterOperationJournal : IServerCenterOperationJournal
         {
             _gate.Release();
         }
+    }
+
+    public async Task ClearCompletedAsync(string hostId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(hostId);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var records = await ReadUnlockedAsync(cancellationToken).ConfigureAwait(false);
+            var remaining = records.Where(record => !string.Equals(record.HostId, hostId, StringComparison.Ordinal) ||
+                !ServerDeploymentLifecycle.IsTerminalState(record.State)).ToList();
+            await WriteUnlockedAsync(remaining, cancellationToken).ConfigureAwait(false);
+        }
+        finally { _gate.Release(); }
     }
 
     private async Task<IReadOnlyList<ServerCenterOperationRecord>> LoadAllAsync(CancellationToken cancellationToken)

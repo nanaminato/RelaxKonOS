@@ -56,6 +56,28 @@ Check(!untrustedFileOpenResult.Succeeded,
     "普通应用仍不能把主机路径注入文件打开路由");
 
 var transport = new FakeTransport();
+var historyDirectory = Path.Combine(Path.GetTempPath(), "relaxkonos-history-" + Guid.NewGuid().ToString("N"));
+try
+{
+    var journal = new ServerCenterOperationJournal(historyDirectory);
+    var now = DateTimeOffset.UtcNow;
+    var finished = new ServerCenterOperationRecord(Guid.NewGuid(), "host-a", ServerDeploymentKind.Probe,
+        ServerDeploymentState.Succeeded, ServerDeploymentPhase.Completed, 1, null, null, null, now, now, now);
+    var pending = finished with { OperationId = Guid.NewGuid(), State = ServerDeploymentState.Running, CompletedAtUtc = null };
+    var otherHost = finished with { OperationId = Guid.NewGuid(), HostId = "host-b" };
+    await journal.RecordAsync(finished);
+    await journal.RecordAsync(pending);
+    await journal.RecordAsync(otherHost);
+    await journal.ClearCompletedAsync("host-a");
+    var reopened = new ServerCenterOperationJournal(historyDirectory);
+    Check((await reopened.LoadAsync("host-a")).Single().OperationId == pending.OperationId &&
+        (await reopened.LoadAsync("host-b")).Single().OperationId == otherHost.OperationId &&
+        await reopened.FindAsync(finished.OperationId) is null,
+        "清除记录持久生效，保留未完成操作和其他主机记录");
+    await reopened.ClearCompletedAsync("host-a");
+    Check((await reopened.LoadAsync("host-a")).Count == 1, "重复清除记录不会删除未完成操作");
+}
+finally { if (Directory.Exists(historyDirectory)) Directory.Delete(historyDirectory, recursive: true); }
 var modeGate = typeof(RelaxKonOS.Client.ViewModels.ServerCenter.ServerCenterViewModel).GetMethod(
     "CanUseInstallationMode", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
 var sudoProbe = new ServerHostProbeDto(HostPlatformKind.Linux, "x86_64", ServerRuntimeIdentifier.LinuxX64,

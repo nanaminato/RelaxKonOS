@@ -1,6 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:services="clr-namespace:RelaxKonOS.Client.Services.ServerCenter"
              x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterHistoryPage"
              x:DataType="vm:ServerCenterViewModel">
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -10,21 +12,32 @@
         <Border Classes="card" Padding="20" IsVisible="{Binding SelectedHost}">
             <StackPanel Spacing="12">
                 <TextBlock Text="{Binding SelectedHost.DisplayName}" FontSize="17" FontWeight="SemiBold" />
-                <Button Command="{Binding LoadOperationHistoryCommand}" Content="{Binding LoadOperationHistoryText}" HorizontalAlignment="Left" />
-                <ListBox ItemsSource="{Binding Operations}" SelectedItem="{Binding SelectedOperation}" MinHeight="240">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel Margin="6" Spacing="3">
-                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
-                                    <TextBlock Text="{Binding Kind}" FontWeight="SemiBold" />
-                                    <TextBlock Grid.Column="1" Text="{Binding StartedAtLocalText}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
-                                </Grid>
-                                <TextBlock Text="{Binding State}" />
-                                <TextBlock Text="{Binding SafeMessage}" TextWrapping="Wrap" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                <WrapPanel ItemSpacing="12">
+                    <Button Command="{Binding LoadOperationHistoryCommand}" Content="{Binding LoadOperationHistoryText}" />
+                    <Button Command="{Binding ClearOperationHistoryCommand}" Content="{Binding ClearOperationHistoryText}" />
+                </WrapPanel>
+                <DataGrid ItemsSource="{Binding Operations}" SelectedItem="{Binding SelectedOperation, Mode=TwoWay}"
+                          MinHeight="240" MaxHeight="420" AutoGenerateColumns="False" IsReadOnly="True"
+                          SelectionMode="Single" CanUserSortColumns="True" CanUserResizeColumns="True"
+                          HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                          GridLinesVisibility="Horizontal" RowHeight="36">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="{loc:Loc server_center.history.time}" Binding="{ReflectionBinding StartedAtLocalText}"
+                                            SortMemberPath="StartedAtUtc" Width="230" MinWidth="160" />
+                        <DataGridTextColumn Header="{loc:Loc server_center.history.kind}" Binding="{ReflectionBinding Kind}"
+                                            SortMemberPath="Kind" Width="120" MinWidth="80" />
+                        <DataGridTextColumn Header="{loc:Loc server_center.history.state}" Binding="{ReflectionBinding State}"
+                                            SortMemberPath="State" Width="120" MinWidth="80" />
+                        <DataGridTemplateColumn Header="{loc:Loc server_center.history.message}" SortMemberPath="SafeMessage" Width="*" MinWidth="200">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate x:DataType="services:ServerCenterOperationRecord">
+                                    <TextBlock Text="{Binding SafeMessage}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                               Margin="8,0" ToolTip.Tip="{Binding SafeMessage}" />
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
                 <TextBox Text="{Binding SshPassword}" PasswordChar="●" PlaceholderText="{Binding SshPasswordLabel}" />
                 <ComboBox ItemsSource="{Binding Platforms}" SelectedItem="{Binding SelectedPlatform}"
                           PlaceholderText="{Binding PlatformLabel}" HorizontalAlignment="Left" MinWidth="180">

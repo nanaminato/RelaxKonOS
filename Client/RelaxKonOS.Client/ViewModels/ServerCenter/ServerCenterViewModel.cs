@@ -139,6 +139,7 @@ public partial class ServerCenterViewModel : ObservableObject
     public string UninstallNameLabel => T("server_center.uninstall_name", "Type the server name to delete data");
     public string OperationHistoryText => T("server_center.operation_history", "Operation history");
     public string LoadOperationHistoryText => T("server_center.load_operation_history", "Load operation history");
+    public string ClearOperationHistoryText => T("server_center.clear_operation_history", "Clear completed records");
     public string RefreshOperationText => T("server_center.refresh_operation", "Refresh selected operation from host");
     public bool HasVerifiedState => !string.IsNullOrWhiteSpace(VerifiedStateText);
     public bool HasLastProbe => !string.IsNullOrWhiteSpace(LastProbeText);
@@ -299,6 +300,30 @@ public partial class ServerCenterViewModel : ObservableObject
         {
             IsBusy = false;
         }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanLoadOperationHistory))]
+    private async Task ClearOperationHistoryAsync(CancellationToken cancellationToken = default)
+    {
+        var target = SelectedHost;
+        if (target is null) return;
+        IsBusy = true;
+        ErrorMessage = string.Empty;
+        try
+        {
+            await _operationJournal.ClearCompletedAsync(target.HostId, cancellationToken).ConfigureAwait(true);
+            if (SelectedHost?.HostId == target.HostId)
+            {
+                SelectedOperation = null;
+                await ReloadOperationHistoryAsync(target.HostId, cancellationToken).ConfigureAwait(true);
+            }
+            StatusMessage = T("server_center.history_cleared", "Completed local records were cleared; unfinished operations and server receipts were retained.");
+        }
+        catch (Exception)
+        {
+            ErrorMessage = T("server_center.history_clear_failed", "Unable to clear local operation records.");
+        }
+        finally { IsBusy = false; }
     }
 
     [RelayCommand(CanExecute = nameof(CanRefreshOperation))]
@@ -972,10 +997,12 @@ public partial class ServerCenterViewModel : ObservableObject
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
         LoadOperationHistoryCommand.NotifyCanExecuteChanged();
+        ClearOperationHistoryCommand.NotifyCanExecuteChanged();
         RefreshOperationCommand.NotifyCanExecuteChanged();
     }
     partial void OnIsBusyChanged(bool value)
     {
+        ClearOperationHistoryCommand.NotifyCanExecuteChanged();
         RemoveHostCommand.NotifyCanExecuteChanged();
         ConfirmHostKeyCommand.NotifyCanExecuteChanged();
         ProbeHostCommand.NotifyCanExecuteChanged();
