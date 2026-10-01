@@ -87,6 +87,20 @@ class ServerTerminalControllerTest {
         assertTrue(h.controller.state.value.canInput)
     }
 
+    @Test fun `both renderer outputs reset together when attaching another shell`() = runTest {
+        val h = harness()
+        h.controller.connect(h.owner); runCurrent()
+        val connection = h.connections.single()
+        val vt = "\u001b[2J\u001b[H\u001b[32m中>\u001b[0m"
+        connection.output(vt.toByteArray()); runCurrent()
+        assertEquals("中>", h.controller.state.value.output)
+        assertEquals("prompt first" + vt, h.controller.state.value.rawOutput)
+        h.controller.attach("second"); runCurrent()
+        assertEquals("prompt second", h.controller.state.value.output)
+        assertEquals("prompt second", h.controller.state.value.rawOutput)
+        assertEquals(1, h.connections.size)
+    }
+
     @Test fun `empty list leaves a connected empty state until explicit new session`() = runTest {
         val h = harness { c, _ -> c.listed = emptyList() }
         h.controller.connect(h.owner); runCurrent()
