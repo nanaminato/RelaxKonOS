@@ -13,7 +13,7 @@ class InstallationRequestJournalTest {
     }
     private fun owner(host: String = "a", account: String = "alice") = SessionState.Active(
         host, "https://example.test", account, "workspace", setOf(ServerCapabilities.WEB_SERVER), "linux",
-        ExecutionEligibility(true, null, false), true)
+        ExecutionEligibility(true, null, false), true, workspaceId = "11111111-1111-1111-1111-111111111111")
 
     @Test fun `unknown request survives restart with original key and owner isolation`() {
         val storage = Storage()

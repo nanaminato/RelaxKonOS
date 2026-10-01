@@ -16,6 +16,8 @@
 | 文档 | 内容 |
 | --- | --- |
 | [服务器中心](features/ServerCenter.md) | SSH 信任、文件/终端、稳定身份与隧道、安装回执；首次安装仍缺执行链路 |
+| [文件与 Git 共用编辑器](features/TextEditor.md) | Unicode 编码/BOM/换行、查找替换/语法显示、条件保存、冲突和离页保护 |
+| [文件与图片](features/Files.md) | 筛选排序、多选与远端剪贴板、逐项结果、属性/权限及有界图片查看 |
 | [文件传输](features/FileTransfers.md) | 分块上传、源暂存、续传、前台通知与清理 |
 | [应用部署与模板](features/ApplicationDeployments.md) | 四来源七步向导、日志、版本/回滚、可信动态模板 |
 | [宿主出站代理](features/OutboundProxy.md) | 设置/Docker 共用宿主偏好、四消费范围、重启确认与状态核实 |
@@ -30,7 +32,7 @@
 | [宿主防火墙](features/Firewall.md) | UFW 状态/默认策略/规则、一次账号确认、提权后快照复核与未知结果核实 |
 | [FRP 隧道与运行时](features/Tunnels.md) | 受管/外部运行时、三来源安装与回滚、frpc 配置/Token/隧道、frps 配置/启停/审计及未知请求核实 |
 | [网站发布](features/WebPublishing.md) | 诊断、确认式 HTTPS、发布恢复和访问观测 |
-| [Git 编辑与构建](features/Git.md) | 受限文本编辑、固定 SHA、隔离构建与产物发布 |
+| [Git 工作区与构建](features/Git.md) | 分支/暂存/差异/历史/冲突、Git 安装与恢复、固定 SHA 隔离构建与产物发布 |
 | [终端、脚本与守护](features/TerminalAutomation.md) | Server/SSH 会话、输入/恢复、远端任务与工作负载 |
 | [公共运行时安装](features/Installations.md) | 当前安装契约、包引用/上传、幂等提权、任务观察/取消与恢复边界 |
 | [任务、告警与恢复](features/OperationsRecovery.md) | 领域操作索引、诊断、前台通知、定义备份与预检 |
@@ -40,7 +42,7 @@
 | 文档 | 内容 |
 | --- | --- |
 | [部署剩余工作](plans/Deployment.md) | 首次安装、模板更新、构建回收、数据恢复与后台通知的代码缺口 |
-| [内置应用补齐](plans/BuiltInParity.md) | 桌面 25 个应用差异与 BP00–BP24；已实现流程见功能说明；后续 Git/编辑器等内置应用 |
+| [内置应用补齐](plans/BuiltInParity.md) | 桌面 25 个应用差异与 BP00–BP24；已实现流程见功能说明；后续终端/守护/监控等内置应用 |
 
 ## 开发与发布 `development/`
 

@@ -22,11 +22,8 @@ class GitRepositoryClient(
     suspend fun status(owner: SessionState.Active, id: String) = call(owner) { url, token -> gateway.gitStatus(url, token, id) }
     suspend fun textFile(owner: SessionState.Active, id: String, path: String) =
         call(owner) { url, token -> gateway.gitTextFile(url, token, id, path) }
-    suspend fun save(owner: SessionState.Active, id: String, baseline: GitTextFile, content: String) =
+    suspend fun save(owner: SessionState.Active, id: String, baseline: RemoteTextFile, content: String) =
         call(owner) { url, token -> gateway.gitSaveTextFile(url, token, id, baseline, content) }
-    suspend fun commit(owner: SessionState.Active, id: String, path: String, message: String) =
-        call(owner) { url, token -> gateway.gitCommit(url, token, id, path, message) }
-    suspend fun push(owner: SessionState.Active, id: String) = call(owner) { url, token -> gateway.gitPush(url, token, id) }
     suspend fun credentials(owner: SessionState.Active) = call(owner) { url, token -> gateway.gitBuildCredentials(url, token) }
     suspend fun setCredential(owner: SessionState.Active, name: String, tokenValue: String) =
         call(owner) { url, token -> gateway.gitBuildSetCredential(url, token, name, tokenValue) }

@@ -165,11 +165,123 @@ public static class GitConflictChecks
         var rootDiff = await service.GetDiffAsync(id, user, path, @ref: rootSha);
         Check(rootDiff.Patch.Contains("+base", StringComparison.Ordinal) && rootDiff.Additions == 1,
             "Root commit diff is compared with the empty tree");
+        Check((await service.GetCommitDetailAsync(id, user, rootSha)).ChangedFiles.Single().Path == path,
+            "Commit details decode exact Unicode filenames");
+        var (renameDir, renameId) = await Setup("rename-paths");
+        const string oldName = " old 文件.txt", newName = " new 文件.txt";
+        await File.WriteAllTextAsync(Path.Combine(renameDir, oldName), "rename content\n");
+        await Run(renameDir, "add", "--", oldName); await Run(renameDir, "commit", "-m", "rename base");
+        await Run(renameDir, "mv", "--", oldName, newName);
+        var renamed = (await service.GetStatusAsync(renameId, user)).Staged.Single();
+        Check(renamed.Path == newName && renamed.OldPath == oldName, "Status preserves quoted Unicode rename pairs and leading whitespace");
+        await service.CommitAsync(renameId, user, new("rename", []));
+        var renameSha = (await Run(renameDir, "rev-parse", "HEAD")).Trim();
+        var renameDetail = (await service.GetCommitDetailAsync(renameId, user, renameSha)).ChangedFiles.Single();
+        Check(renameDetail.Path == newName && renameDetail.OldPath == oldName, "Commit detail preserves exact old and new rename names");
         const string untrackedPath = "new preview.txt";
         await File.WriteAllTextAsync(Path.Combine(dir, untrackedPath), "new file\n");
         var untrackedDiff = await service.GetDiffAsync(id, user, untrackedPath);
         Check(untrackedDiff.Patch.Contains("+new file", StringComparison.Ordinal) && untrackedDiff.Additions == 1,
             "Untracked file diff is compared with an empty file");
+        Check(untrackedDiff.Version.Length == 64 && untrackedDiff.Version == (await service.GetDiffAsync(id, user, untrackedPath)).Version,
+            "Diff versions are stable full-patch hashes");
+        await File.WriteAllTextAsync(Path.Combine(dir, untrackedPath), "changed file\n");
+        Check((await service.GetDiffAsync(id, user, untrackedPath)).Version != untrackedDiff.Version,
+            "Diff version changes when contents change without changing status");
+        Check((await service.StageAsync(id, user, new([untrackedPath]))).Success, "Explicit staging succeeds");
+        var stagedDiff = await service.GetDiffAsync(id, user, untrackedPath, staged: true);
+        await File.WriteAllTextAsync(Path.Combine(dir, untrackedPath), "unstaged content\n");
+        Check((await service.GetDiffAsync(id, user, untrackedPath, staged: true)).Version == stagedDiff.Version,
+            "Staged patch ignores later unstaged content");
+        var commitMessage = "snapshot commit\n\nfirst body line\n" + new string('f', 40) + "\x01not a record\nlast body line";
+        Check((await service.CommitAsync(id, user, new(commitMessage, []))).Success, "Empty commit paths commit only the index");
+        Check((await Run(dir, "show", $"HEAD:{untrackedPath}")).Trim() == "changed file", "Committed content is the staged version");
+        Check((await File.ReadAllTextAsync(Path.Combine(dir, untrackedPath))) == "unstaged content\n", "Unstaged contents survive commit");
+        var history = await service.GetLogAsync(id, user, 1);
+        Check(history.Count == 1 && history[0].Subject == "snapshot commit" && history[0].Body!.Contains("not a record\nlast body line"),
+            "Multiline history body preserves separators without inventing commits");
+        var secondPage = await service.GetLogAsync(id, user, 1, 1);
+        Check(secondPage.Count == 1 && secondPage[0].Sha != history[0].Sha, "History limit and skip work");
+        Check((await service.GetCommitDetailAsync(id, user, history[0].Sha)).ChangedFiles.Single().Path == untrackedPath,
+            "Commit detail reads the exact file identity");
+        var branchRows = await service.ListBranchesAsync(id, user);
+        Check(branchRows.Single(row => row.IsCurrent).Sha == history[0].Sha, "Branch rows carry exact ref tip versions");
+        foreach (var (dto, field) in new (object Dto, string Field)[] {
+                     (await service.GetStatusAsync(id, user), "configVersion"), (branchRows[0], "sha"), (rootDiff, "version") })
+        {
+            var json = System.Text.Json.JsonSerializer.SerializeToNode(dto, dto.GetType(), RelaxKonOSJsonOptions.Default)!.AsObject();
+            json.Remove(field);
+            try { System.Text.Json.JsonSerializer.Deserialize(json.ToJsonString(), dto.GetType(), RelaxKonOSJsonOptions.Default); throw new Exception("Missing version should fail"); }
+            catch (System.Text.Json.JsonException) { Check(true, "Shared DTO rejects a missing current version field without a legacy default"); }
+        }
+        var statusBeforeRemote = await service.GetStatusAsync(id, user);
+        await Run(dir, "remote", "add", "origin", "https://user:private-token@example.invalid/repo");
+        var statusWithRemote = await service.GetStatusAsync(id, user);
+        Check(statusBeforeRemote.ConfigVersion != statusWithRemote.ConfigVersion && statusBeforeRemote.Branch == statusWithRemote.Branch,
+            "Remote destinations change the config version even when branch and status do not change");
+        Check(!System.Text.Json.JsonSerializer.Serialize(statusWithRemote, RelaxKonOSJsonOptions.Default).Contains("private-token"),
+            "Status exposes only the config digest, never credentialed remote URLs");
+        await Run(dir, "config", "--add", "remote.origin.pushurl", "https://example.invalid/first");
+        await Run(dir, "config", "--add", "remote.origin.pushurl", "https://example.invalid/second");
+        var multiplePush = await service.GetStatusAsync(id, user);
+        await Run(dir, "config", "--replace-all", "remote.origin.pushurl", "https://example.invalid/changed", "https://example.invalid/first");
+        Check((await service.GetStatusAsync(id, user)).ConfigVersion != multiplePush.ConfigVersion,
+            "All push destinations participate in the version, including a non-final URL");
+        Check(UserExecutionGitPolicy.IsAllowed(["config", "--list", "--null"]) && !UserExecutionGitPolicy.IsAllowed(["config", "remote.origin.url", "replacement"]),
+            "Config fingerprint command is read-only and the closed Git policy still denies writes");
+        Check((await service.StageAsync(id, user, new([untrackedPath]))).Success, "Working-tree edit can be staged independently");
+        Check((await service.UnstageAsync(id, user, new([untrackedPath]))).Success, "Explicit unstage succeeds");
+        Check((await service.GetStatusAsync(id, user)).Staged.Count == 0 &&
+              await File.ReadAllTextAsync(Path.Combine(dir, untrackedPath)) == "unstaged content\n", "Unstage preserves the working tree");
+        var binaryPath = "binary data.bin";
+        await File.WriteAllBytesAsync(Path.Combine(dir, binaryPath), [0, 1, 2, 3]);
+        var binaryDiff = await service.GetDiffAsync(id, user, binaryPath);
+        await File.WriteAllBytesAsync(Path.Combine(dir, binaryPath), [0, 1, 2, 4]);
+        var changedBinary = await service.GetDiffAsync(id, user, binaryPath);
+        Check(binaryDiff.Binary && changedBinary.Binary && binaryDiff.Patch == "" && binaryDiff.Version != changedBinary.Version,
+            "Binary versions protect content hidden from textual presentation");
+        await File.WriteAllTextAsync(Path.Combine(dir, "large.txt"), string.Concat(Enumerable.Repeat("large content line\n", 15000)));
+        var large = await service.GetDiffAsync(id, user, "large.txt");
+        await File.AppendAllTextAsync(Path.Combine(dir, "large.txt"), "changed tail\n");
+        Check(large.Truncated && (await service.GetDiffAsync(id, user, "large.txt")).Version != large.Version,
+            "Truncated patches retain a full-content version");
+        try { await service.GetDiffAsync(id, user, path, @ref: "missing-reference"); throw new Exception("Invalid diff should fail"); }
+        catch (InvalidOperationException) { Check(true, "Unreadable diff never becomes empty success"); }
+        var unborn = Path.Combine(root, "unborn"); Directory.CreateDirectory(unborn); await Run(unborn, "init", "-b", "main");
+        var unbornId = (await service.RegisterRepositoryAsync(new("unborn", unborn), user)).Id;
+        Check((await service.GetLogAsync(Guid.Parse(unbornId), user)).Count == 0, "Unborn branches legitimately have empty history");
+        await File.WriteAllTextAsync(Path.Combine(unborn, ".git", "config"), "[broken config");
+        foreach (var read in new Func<Task>[] {
+                     async () => { await service.GetStatusAsync(Guid.Parse(unbornId), user); },
+                     async () => { await service.GetLogAsync(Guid.Parse(unbornId), user); },
+                     async () => { await service.ListRemotesAsync(Guid.Parse(unbornId), user); } })
+        {
+            try { await read(); throw new Exception("Corrupt config should fail"); }
+            catch (InvalidOperationException) { Check(true, "Unreadable config fails closed instead of projecting empty repository facts"); }
+        }
+        var snapshot = GitConflictFileAccess.Read(dir, untrackedPath);
+        Check(snapshot.CanEdit && snapshot.Content == "unstaged content\n", "Ordinary conflict snapshot carries content and raw-byte hash");
+        Check(!GitConflictFileAccess.Write(dir, untrackedPath, System.Text.Encoding.UTF8.GetBytes("new"), new string('0', 64)),
+            "Conditional conflict write rejects a stale raw-byte hash");
+        Check(GitConflictFileAccess.Write(dir, "missing.txt", System.Text.Encoding.UTF8.GetBytes("created"), "deleted"),
+            "A missing conflict result is created without overwrite");
+        Check(!GitConflictFileAccess.Write(dir, "missing.txt", System.Text.Encoding.UTF8.GetBytes("overwrite"), "deleted"),
+            "A concurrently created conflict result is preserved");
+        Check(GitConflictFileAccess.Read(dir, "missing-parent/missing.txt").Hash == "deleted", "A missing parent is a deleted working-tree result");
+        Check(GitConflictFileAccess.Write(dir, "missing-parent/missing.txt", System.Text.Encoding.UTF8.GetBytes("created"), "deleted"),
+            "A deleted nested result can be created under the ordinary identity");
+        Check(!GitConflictFileAccess.Read(dir, binaryPath).CanEdit && !GitConflictFileAccess.Read(dir, "large.txt").CanEdit,
+            "Snapshot refuses binary and oversized editable content");
+        foreach (var operation in new[] { UserExecutionOperationKind.GitConflictSnapshot, UserExecutionOperationKind.GitConflictWrite })
+        {
+            var request = new UserExecutionRequest(new(HostPlatformKind.Linux, "1000", "alice", "/home/alice"), operation,
+                Path: "/repo", FileName: "a 文件.txt", ContentBase64: operation == UserExecutionOperationKind.GitConflictWrite ? "YQ==" : null,
+                ExpectedSha256: operation == UserExecutionOperationKind.GitConflictWrite ? "deleted" : null, OperationId: Guid.NewGuid());
+            Check(UserExecutionRequestPolicy.IsValid(request, false) && !UserExecutionRequestPolicy.IsValid(request with { FileName = "../outside" }, false),
+                "Conflict Helper request has a closed repository-relative path");
+            Check(!UserExecutionRequestPolicy.IsValid(request with { Version = "1.4" }, false) &&
+                  !UserExecutionRequestPolicy.IsValid(request with { GitArguments = ["status"] }, false), "Conflict Helper request rejects old versions and unrelated fields");
+        }
 
         var blocks = GitConflictBlock.Parse("before\r\n<<<<<<< HEAD\r\nours\r\n||||||| base\r\nbase\r\n=======\r\ntheirs\r\n>>>>>>> topic\r\nafter\r\n");
         Check(blocks.Count == 1 && blocks[0].Ours == "ours\r\n" && blocks[0].Theirs == "theirs\r\n" && blocks[0].Line == 2, "Diff3 block excludes base and preserves CRLF");

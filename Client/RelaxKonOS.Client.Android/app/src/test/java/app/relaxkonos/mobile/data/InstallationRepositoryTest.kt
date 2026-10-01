@@ -74,6 +74,24 @@ class InstallationRepositoryTest {
         assertTrue(runCatching { repository.prepare(owner, InstallationKind.Upgrade, DockerInstallationRequest(true)) }.isFailure)
     }
 
+    @Test fun `Git install grants exact capability and preserves original key with typed confirmed request`() = runTest {
+        val owner = signIn(capability = ServerCapabilities.GIT); val keys = mutableListOf<String>()
+        val current = operation.copy(service = InstallationService.Git)
+        gateway.onStartInstallation = { kind, request, key ->
+            assertEquals(InstallationKind.Install, kind); assertEquals(GitInstallationRequest(true), request); keys += key
+            if (keys.size == 1) ApiResult.Problem(403, ProblemCodes.ELEVATION_REQUIRED, null) else ApiResult.Success(current)
+        }
+        gateway.onElevation = { _, _, capability, target, _, _ ->
+            assertEquals("gitPackageInstall", capability); assertEquals("git", target); ApiResult.Success(ElevationGrant(true, null))
+        }
+        val password = "host-admin-secret".toCharArray()
+        val intent = repository.prepare(owner, InstallationKind.Install, GitInstallationRequest(true))
+        assertTrue(repository.submit(intent, ElevationAnswerProvider { _, _ -> ElevationAnswer("root", password) }) is ApiResult.Success)
+        assertEquals(listOf(intent.pending.key, intent.pending.key), keys); assertTrue(password.all { it == '\u0000' })
+        assertTrue(repository.pending(owner).isEmpty()); assertEquals("Git", index.forOwner(owner).single().resourceId)
+        assertTrue(runCatching { repository.prepare(owner, InstallationKind.Upgrade, GitInstallationRequest(true)) }.isFailure)
+    }
+
     @Test fun `transport ambiguity is retained and explicit replay queries facts with same key`() = runTest {
         val owner = signIn()
         val keys = mutableListOf<String>()

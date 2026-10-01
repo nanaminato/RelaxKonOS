@@ -114,6 +114,7 @@ fun MobileNavHost(
                 onOpenFirewall = { taskTarget = null; navigator.push(Routes.MANAGE_FIREWALL) },
                 onOpenProxy = { taskTarget = it; navigator.push(Routes.MANAGE_PROXY) },
                 onOpenCompose = { taskTarget = it; navigator.push(Routes.MANAGE_DOCKER) },
+                onOpenGit = { taskTarget = null; navigator.push(Routes.MANAGE_GIT) },
                 onOpenGitBuild = { taskTarget = it; navigator.push(Routes.MANAGE_GIT) },
                 onOpenScript = { taskTarget = it; navigator.push(Routes.MANAGE_SCRIPTS) },
                 onOpenDocker = { taskTarget = null; navigator.push(Routes.MANAGE_DOCKER) },

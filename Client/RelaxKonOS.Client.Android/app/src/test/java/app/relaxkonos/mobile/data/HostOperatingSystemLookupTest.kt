@@ -171,7 +171,7 @@ class HostOperatingSystemLookupTest {
     fun `managed active session uses its current tunnel without persisting the loopback address`() = runTest {
         profiles.upsert(managed)
         val active = SessionState.Active(managed.serviceId, "http://127.0.0.1:32001", "nana", "studio",
-            emptySet(), "linux", ExecutionEligibility.Available)
+            emptySet(), "linux", ExecutionEligibility.Available, workspaceId = "11111111-1111-1111-1111-111111111111")
         answer(ApiResult.Success(HostOperatingSystemKind.Ubuntu))
         lookup.resolve(listOf(managed.serviceId), active)
         answer(ApiResult.Success(HostOperatingSystemKind.Windows11))

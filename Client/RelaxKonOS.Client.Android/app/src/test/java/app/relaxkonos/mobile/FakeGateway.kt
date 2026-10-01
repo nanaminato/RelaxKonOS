@@ -252,6 +252,7 @@ class FakeGateway : RelaxKonGateway {
     var onElevation: (suspend (String, String, String, String, CharArray?, String?) -> ApiResult<ElevationGrant>)? = null
     var onFileElevation: (suspend (String, String, String, String?, CharArray?, List<String>, Boolean, String?) -> ApiResult<FileElevationGrant>)? = null
     var onListDirectory: (suspend (String, String, String) -> ApiResult<DirectoryListing>)? = null
+    var onSetFilePermissions: (suspend (String, String, String, Int) -> ApiResult<RemoteFileProperties>)? = null
     var onFileProperties: (suspend (String, String, String) -> ApiResult<RemoteFileProperties>)? = null
     var onCreateDirectory: (suspend (String, String, String) -> ApiResult<Unit>)? = null
     var onDelete: (suspend (String, String, String) -> ApiResult<Unit>)? = null
@@ -362,6 +363,14 @@ class FakeGateway : RelaxKonGateway {
         listDirectoryPaths += path
         return requireHandler(onListDirectory, "listDirectory")(serverUrl, accessToken, path)
     }
+
+    override suspend fun setFilePermissions(serverUrl: String, accessToken: String, path: String, unixMode: Int): ApiResult<RemoteFileProperties> =
+        requireHandler(onSetFilePermissions, "setFilePermissions")(serverUrl, accessToken, path, unixMode)
+
+    var onTerminalSettings: (suspend (String) -> ApiResult<app.relaxkonos.mobile.core.net.TerminalSettings>)? = null
+    var onSaveTerminalSettings: (suspend (String, app.relaxkonos.mobile.core.net.TerminalSettings) -> ApiResult<app.relaxkonos.mobile.core.net.TerminalSettings>)? = null
+    override suspend fun terminalSettings(serverUrl: String, accessToken: String, workspaceId: String) = requireNotNull(onTerminalSettings)(workspaceId)
+    override suspend fun saveTerminalSettings(serverUrl: String, accessToken: String, workspaceId: String, settings: app.relaxkonos.mobile.core.net.TerminalSettings) = requireNotNull(onSaveTerminalSettings)(workspaceId, settings)
 
     override suspend fun fileProperties(serverUrl: String, accessToken: String, path: String): ApiResult<RemoteFileProperties> =
         requireHandler(onFileProperties, "fileProperties")(serverUrl, accessToken, path)
@@ -506,4 +515,4 @@ fun loginSession(
         accessTokenExpiresAtMillis = null,
         refreshTokenExpiresAtMillis = null,
     ),
-)
+ workspaceId = "11111111-1111-1111-1111-111111111111")

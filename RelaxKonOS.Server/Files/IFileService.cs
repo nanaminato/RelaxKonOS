@@ -26,6 +26,9 @@ public interface IFileService
     /// <summary>打开文件用于下载。返回 (stream, contentType, fileName)。不存在返回 null。</summary>
     (Stream Stream, string ContentType, string FileName)? OpenRead(string path);
 
+    /// <summary>Read at most 256 KiB under the effective identity, rejecting larger files before transfer.</summary>
+    Task<byte[]> ReadTextBytesAsync(string path, CancellationToken cancellationToken = default);
+
     /// <summary>以提供的字节覆盖保存文件，并返回保存后的文件元数据。</summary>
     Task<FileEntryDto> WriteFileAsync(string path, Stream content, CancellationToken cancellationToken = default);
 

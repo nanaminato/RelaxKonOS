@@ -41,7 +41,8 @@ data class OperationCenterSnapshot(val items: List<ObservedOperation>, val incom
     val pendingFirewall: List<PendingFirewallChange> = emptyList(),
     val pendingSmb: List<PendingSmbMutation> = emptyList(),
     val pendingDockerControl: List<PendingDockerControl> = emptyList(),
-    val pendingDockerResources: List<PendingDockerResource> = emptyList())
+    val pendingDockerResources: List<PendingDockerResource> = emptyList(),
+    val pendingGit: List<PendingGitMutation> = emptyList())
 
 /** Reads each domain's own durable record. Discovery also recovers operations not yet in the local index. */
 class OperationCenter(
@@ -63,6 +64,7 @@ class OperationCenter(
     private val smb: SmbRepository,
     private val dockerControl: DockerControlRepository,
     private val dockerResources: DockerResourceRepository,
+    private val gitWorkspace: GitWorkspaceRepository,
 ) {
     suspend fun refresh(owner: SessionState.Active): OperationCenterSnapshot {
         verify(owner)
@@ -176,7 +178,8 @@ class OperationCenter(
             if (ServerCapabilities.FIREWALL in owner.capabilities) firewall.pending(owner) else emptyList(),
             if (ServerCapabilities.FILE_SERVICES in owner.capabilities) smb.pending(owner) else emptyList(),
             if (ServerCapabilities.DOCKER in owner.capabilities) dockerControl.pending(owner) else emptyList(),
-            if (ServerCapabilities.DOCKER in owner.capabilities) dockerResources.pending(owner) else emptyList())
+            if (ServerCapabilities.DOCKER in owner.capabilities) dockerResources.pending(owner) else emptyList(),
+            if (ServerCapabilities.GIT in owner.capabilities) gitWorkspace.pending(owner) else emptyList())
     }
 
     suspend fun diagnostics(owner: SessionState.Active, item: ObservedOperation): ApiResult<List<String>> {

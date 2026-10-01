@@ -2,6 +2,11 @@ package app.relaxkonos.mobile.ui.files
 
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.ui.draw.clipToBounds
+import kotlin.math.min
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.rememberTransformableState
@@ -24,14 +29,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -52,9 +52,6 @@ import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Layout
 import app.relaxkonos.mobile.ui.theme.Radius
 import app.relaxkonos.mobile.ui.theme.Spacing
-
-/** The most zoom the full-screen viewer allows, so a pinch cannot lose the picture off-screen. */
-private const val MAX_VIEWER_ZOOM = 8f
 
 /**
  * What the file detail pane shows above the properties of the selected entry.
@@ -274,82 +271,78 @@ private fun DownloadProgress(preview: ImagePreview.Downloading) {
  */
 @Composable
 fun ImagePreviewViewer(viewModel: FilesViewModel) {
-    if (!viewModel.viewerOpen) {
-        return
-    }
+    if (!viewModel.viewerOpen) return
     val entry = viewModel.selected ?: return
-    val preview = viewModel.preview as? ImagePreview.Ready ?: return
-    val bitmap = preview.image ?: preview.placeholder ?: return
+    val preview = viewModel.preview
+    val entries = viewModel.viewerEntries
+    val index = entries.indexOfFirst { it.path == entry.path }
     val density = LocalDensity.current
-
-    Dialog(
-        onDismissRequest = viewModel::closeViewer,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+    Dialog(onDismissRequest = viewModel::closeViewer,
+        properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.fillMaxSize()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(Spacing.lg),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.lg),
-                ) {
-                    Text(
-                        text = entry.name,
-                        style = MaterialTheme.typography.titleSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    TextButton(onClick = viewModel::closeViewer) {
-                        Text(stringResource(R.string.common_close))
+                Row(Modifier.fillMaxWidth().padding(Spacing.md), verticalAlignment = Alignment.CenterVertically) {
+                    Text(entry.name, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    TextButton(onClick = viewModel::closeViewer) { Text(stringResource(R.string.common_close)) }
+                }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { viewModel.switchViewer(-1) }, enabled = index > 0) {
+                        Text(stringResource(R.string.files_image_previous))
+                    }
+                    Text(stringResource(R.string.files_image_position, index + 1, entries.size))
+                    TextButton(onClick = { viewModel.switchViewer(1) }, enabled = index >= 0 && index < entries.lastIndex) {
+                        Text(stringResource(R.string.files_image_next))
+                    }
+                    TextButton(onClick = { viewModel.changeViewerTransform(viewModel.viewerTransform.fit()) }) {
+                        Text(stringResource(R.string.files_image_fit))
+                    }
+                    TextButton(onClick = { viewModel.changeViewerTransform(viewModel.viewerTransform.copy(zoom =
+                        (viewModel.viewerTransform.zoom / 1.25f).coerceAtLeast(.25f))) }) { Text("−") }
+                    Text(stringResource(R.string.files_image_zoom, (viewModel.viewerTransform.zoom * 100).toInt()))
+                    TextButton(onClick = { viewModel.changeViewerTransform(viewModel.viewerTransform.copy(zoom =
+                        (viewModel.viewerTransform.zoom * 1.25f).coerceAtMost(8f))) }) { Text("+") }
+                    TextButton(onClick = { viewModel.changeViewerTransform(viewModel.viewerTransform.rotate()) }) {
+                        Text(stringResource(R.string.files_image_rotate))
                     }
                 }
-
-                BoxWithConstraints(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-                    contentAlignment = Alignment.Center,
-                ) {
+                BoxWithConstraints(Modifier.fillMaxWidth().weight(1f).clipToBounds()
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) {
                     LaunchedEffect(maxWidth, maxHeight) {
                         with(density) { viewModel.setPreviewBounds(maxWidth.roundToPx(), maxHeight.roundToPx()) }
                     }
-                    ZoomableImage(bitmap, entry.name)
+                    when (preview) {
+                        is ImagePreview.Ready -> (preview.image ?: preview.placeholder)?.let { bitmap ->
+                            val widthPx = with(density) { maxWidth.toPx() }
+                            val heightPx = with(density) { maxHeight.toPx() }
+                            val transform = viewModel.viewerTransform.bounded(widthPx, heightPx, bitmap.width, bitmap.height)
+                            LaunchedEffect(transform) { viewModel.changeViewerTransform(transform) }
+                            val rotated = transform.turns % 2 != 0
+                            val base = min(widthPx / (if (rotated) bitmap.height else bitmap.width),
+                                heightPx / (if (rotated) bitmap.width else bitmap.height))
+                            val gestures = rememberTransformableState { zoom, pan, _ ->
+                                viewModel.changeViewerTransform(viewModel.viewerTransform.copy(
+                                    zoom = viewModel.viewerTransform.zoom * zoom,
+                                    x = viewModel.viewerTransform.x + pan.x, y = viewModel.viewerTransform.y + pan.y)
+                                    .bounded(widthPx, heightPx, bitmap.width, bitmap.height))
+                            }
+                            Box(Modifier.fillMaxSize().transformable(gestures), contentAlignment = Alignment.Center) {
+                                Image(bitmap.asImageBitmap(), entry.name, contentScale = ContentScale.Fit,
+                                    modifier = Modifier.requiredSize(with(density) { (bitmap.width * base).toDp() },
+                                        with(density) { (bitmap.height * base).toDp() }).graphicsLayer(
+                                        scaleX = transform.zoom, scaleY = transform.zoom,
+                                        translationX = transform.x, translationY = transform.y,
+                                        rotationZ = transform.turns * 90f))
+                            }
+                        }
+                        is ImagePreview.Downloading -> DownloadProgress(preview)
+                        is ImagePreview.Unavailable -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(preview.message.text(), modifier = Modifier.padding(Spacing.md))
+                            PreviewActions(viewModel, preview)
+                        }
+                        ImagePreview.Hidden -> Text(stringResource(R.string.common_loading))
+                    }
                 }
             }
         }
     }
-}
-
-/**
- * The image with pinch-zoom and panning.
- *
- * Zoom starts at 1 (fit) and panning is dropped when it returns there, so a picture can never be left
- * scaled down or pushed off-screen with no way back: there is no state to recover from, only the
- * unzoomed view.
- */
-@Composable
-private fun ZoomableImage(bitmap: Bitmap, description: String) {
-    var scale by remember { mutableStateOf(1f) }
-    var offset by remember { mutableStateOf(Offset.Zero) }
-    val transformable = rememberTransformableState { zoomChange, panChange, _ ->
-        scale = (scale * zoomChange).coerceIn(1f, MAX_VIEWER_ZOOM)
-        offset = if (scale <= 1f) Offset.Zero else offset + panChange
-    }
-
-    Image(
-        bitmap = bitmap.asImageBitmap(),
-        contentDescription = description,
-        contentScale = ContentScale.Fit,
-        modifier = Modifier
-            .fillMaxSize()
-            .graphicsLayer(
-                scaleX = scale,
-                scaleY = scale,
-                translationX = offset.x,
-                translationY = offset.y,
-            )
-            .transformable(state = transformable),
-    )
 }

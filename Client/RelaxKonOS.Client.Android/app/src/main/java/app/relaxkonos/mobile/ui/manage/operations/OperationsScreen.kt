@@ -76,6 +76,7 @@ internal data class OperationsState(
     val pendingCertificates: List<app.relaxkonos.mobile.data.PendingCertificateRequest> = emptyList(),
     val pendingTunnels: List<app.relaxkonos.mobile.data.PendingTunnelMutation> = emptyList(),
     val pendingProxy: List<app.relaxkonos.mobile.data.PendingProxyRequest> = emptyList(),
+    val pendingGit: List<app.relaxkonos.mobile.data.PendingGitMutation> = emptyList(),
     val pendingDockerResources: List<app.relaxkonos.mobile.data.PendingDockerResource> = emptyList(),
     val pendingDockerControl: List<app.relaxkonos.mobile.data.PendingDockerControl> = emptyList(),
     val pendingSmb: List<app.relaxkonos.mobile.data.PendingSmbMutation> = emptyList(),
@@ -99,7 +100,7 @@ internal class OperationsViewModel(application: Application) : AndroidViewModel(
 
     fun poll(owner: SessionState.Active) {
         if (state.owner !== owner || state.loading || refreshJob?.isActive == true || state.cancelling || state.cancelRequested || state.hideRequested) return
-        if (state.items.any { it.check == OperationCheck.Unavailable || it.state in setOf("queued", "running", "cancelling") } || state.error || state.pendingInstallations.isNotEmpty() || state.pendingSites.isNotEmpty() || state.pendingCertificates.isNotEmpty() || state.pendingTunnels.isNotEmpty() || state.pendingProxy.isNotEmpty() || state.pendingWebServers.isNotEmpty() || state.pendingFirewall.isNotEmpty() || state.pendingSmb.isNotEmpty() || state.pendingDockerControl.isNotEmpty() || state.pendingDockerResources.isNotEmpty())
+        if (state.items.any { it.check == OperationCheck.Unavailable || it.state in setOf("queued", "running", "cancelling") } || state.error || state.pendingInstallations.isNotEmpty() || state.pendingSites.isNotEmpty() || state.pendingCertificates.isNotEmpty() || state.pendingTunnels.isNotEmpty() || state.pendingProxy.isNotEmpty() || state.pendingWebServers.isNotEmpty() || state.pendingFirewall.isNotEmpty() || state.pendingSmb.isNotEmpty() || state.pendingDockerControl.isNotEmpty() || state.pendingDockerResources.isNotEmpty() || state.pendingGit.isNotEmpty())
             refresh(owner, quiet = true)
     }
 
@@ -131,7 +132,7 @@ internal class OperationsViewModel(application: Application) : AndroidViewModel(
                 if (current(owner, request)) {
                     state = state.copy(loading = false, items = items,
                         selectedKey = state.selectedKey?.takeIf { key -> items.any { (it.reference.domain to it.reference.operationId) == key } },
-                        error = snapshot.incomplete || cancellationUnverified, pendingInstallations = snapshot.pendingInstallations, pendingSites = snapshot.pendingSites, pendingCertificates = snapshot.pendingCertificates, pendingTunnels = snapshot.pendingTunnels, pendingProxy = snapshot.pendingProxy, pendingWebServers = snapshot.pendingWebServers, pendingFirewall = snapshot.pendingFirewall, pendingSmb = snapshot.pendingSmb, pendingDockerControl = snapshot.pendingDockerControl, pendingDockerResources = snapshot.pendingDockerResources)
+                        error = snapshot.incomplete || cancellationUnverified, pendingInstallations = snapshot.pendingInstallations, pendingSites = snapshot.pendingSites, pendingCertificates = snapshot.pendingCertificates, pendingTunnels = snapshot.pendingTunnels, pendingProxy = snapshot.pendingProxy, pendingWebServers = snapshot.pendingWebServers, pendingFirewall = snapshot.pendingFirewall, pendingSmb = snapshot.pendingSmb, pendingDockerControl = snapshot.pendingDockerControl, pendingDockerResources = snapshot.pendingDockerResources, pendingGit = snapshot.pendingGit)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -209,6 +210,7 @@ fun OperationsScreen(
     onOpenProxy: (String?) -> Unit,
     onOpenCompose: (String) -> Unit,
     onOpenGitBuild: (String) -> Unit,
+    onOpenGit: () -> Unit,
     onOpenScript: (String) -> Unit,
     onOpenDocker: () -> Unit,
     onOpenGuardian: () -> Unit,
@@ -231,6 +233,7 @@ fun OperationsScreen(
             OperationDestination.Deployment -> onOpenDeployment(requireNotNull(target.id))
             OperationDestination.Website -> onOpenWebsite(requireNotNull(target.id))
             OperationDestination.Compose -> onOpenCompose(requireNotNull(target.id))
+            OperationDestination.GitWorkspace -> onOpenGit()
             OperationDestination.GitBuild -> onOpenGitBuild(requireNotNull(target.id))
             OperationDestination.Script -> onOpenScript(requireNotNull(target.id))
             OperationDestination.WebServer -> onOpenWebServers()
@@ -313,6 +316,10 @@ fun OperationsScreen(
         if (visible) state.pendingProxy.forEach {
             Text(stringResource(R.string.mihomo_pending), color = MaterialTheme.colorScheme.error)
             TextButton(onClick = { onOpenProxy(null) }) { Text(stringResource(R.string.mihomo_title)) }
+        }
+        if (visible) state.pendingGit.forEach {
+            Text(stringResource(R.string.gw_unknown), color = MaterialTheme.colorScheme.error)
+            TextButton(onClick = onOpenGit) { Text(stringResource(R.string.git_title)) }
         }
         if (visible) state.pendingDockerResources.forEach {
             Text(stringResource(R.string.docker_resources_pending), color = MaterialTheme.colorScheme.error)

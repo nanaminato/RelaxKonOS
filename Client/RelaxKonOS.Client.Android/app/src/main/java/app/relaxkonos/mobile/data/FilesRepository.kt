@@ -34,8 +34,18 @@ class FilesRepository(
         ) { serverUrl, accessToken -> gateway.listDirectory(serverUrl, accessToken, path) }
     }
 
-    suspend fun properties(path: String): ApiResult<RemoteFileProperties> =
-        session.authenticated { serverUrl, accessToken -> gateway.fileProperties(serverUrl, accessToken, path) }
+    suspend fun properties(path: String, provider: ElevationAnswerProvider = ElevationAnswerProvider.Declines): ApiResult<RemoteFileProperties> =
+        elevations.withPathElevation(path, FileElevationCapabilities.READ, provider = provider) { url, token ->
+            gateway.fileProperties(url, token, path)
+        }
+
+    suspend fun setPermissions(path: String, mode: Int, provider: ElevationAnswerProvider): ApiResult<RemoteFileProperties> {
+        require(mode in 0..0xfff)
+        return elevations.withPathElevation(path, FileElevationCapabilities.WRITE, provider = provider) { url, token ->
+            gateway.setFilePermissions(url, token, path, mode)
+        }
+    }
+
 
     suspend fun createDirectory(path: String, provider: ElevationAnswerProvider): ApiResult<Unit> =
         elevations.withPathElevation(

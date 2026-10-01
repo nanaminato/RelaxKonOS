@@ -43,6 +43,14 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
     }
     public async Task<FileEntryDto> WriteFileAsync(string path, Stream content, CancellationToken cancellationToken = default)
         => await RunAsync<FileEntryDto>(UserExecutionOperationKind.FileWrite, path, content: await ReadContentAsync(content, cancellationToken));
+    public async Task<byte[]> ReadTextBytesAsync(string path, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var result = await RunAsync<DirectUserExecutionOperations.FileReadResult>(UserExecutionOperationKind.FileReadText, path);
+        var bytes = Convert.FromBase64String(result.ContentBase64);
+        if (bytes.Length > TextFileCodec.MaximumBytes) throw new InvalidDataException("Text file is too large.");
+        return bytes;
+    }
     public Task<bool> WriteFileIfMatchAsync(string path, byte[] content, string expectedSha256,
         CancellationToken cancellationToken = default)
     {
@@ -100,8 +108,9 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
         long? offset = null, long? expectedBytes = null, string? expectedSha256 = null)
     {
         var principal = http.HttpContext?.User ?? throw new InvalidOperationException("User execution requires an authenticated HTTP request.");
-        if (operation == UserExecutionOperationKind.FileWriteIfMatch && mode.Mode == ServerMode.System && IsRootSession(principal))
-            throw new UnauthorizedAccessException("Git editing requires an ordinary host identity.");
+        if (operation is UserExecutionOperationKind.FileWriteIfMatch or UserExecutionOperationKind.FileReadText
+            && mode.Mode == ServerMode.System && IsRootSession(principal))
+            throw new UnauthorizedAccessException("Text editing requires an ordinary host identity.");
         if (mode.Mode == ServerMode.System && IsRootSession(principal))
         {
             try
@@ -129,7 +138,7 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
             return await DirectAsync<T>(request);
         }
         var result = await transport.ExecuteAsync(request, http.HttpContext?.RequestAborted ?? CancellationToken.None);
-        if (operation != UserExecutionOperationKind.FileWriteIfMatch
+        if (operation is not (UserExecutionOperationKind.FileWriteIfMatch or UserExecutionOperationKind.FileReadText)
             && !result.Success && result.ProblemCode == UserExecutionProblemCode.AccessDenied)
         {
             PrivilegedFileAuthorizationSource? source;

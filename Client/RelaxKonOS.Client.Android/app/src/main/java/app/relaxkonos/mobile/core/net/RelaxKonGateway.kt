@@ -22,6 +22,16 @@ fun interface DownloadSink {
  * The implementation is [RelaxKonApi]; route names and payload shapes stay owned by that class.
  */
 interface RelaxKonGateway {
+    suspend fun gitEngine(serverUrl: String, accessToken: String): ApiResult<GitEngine> = ApiResult.Transport("Git unavailable.")
+    suspend fun gitDiff(serverUrl: String, accessToken: String, id: String, path: String, staged: Boolean, reference: String?): ApiResult<GitDiff> = ApiResult.Transport("Git unavailable.")
+    suspend fun gitLog(serverUrl: String, accessToken: String, id: String, skip: Int, search: String): ApiResult<List<GitCommit>> = ApiResult.Transport("Git unavailable.")
+    suspend fun gitCommitDetail(serverUrl: String, accessToken: String, id: String, sha: String): ApiResult<GitCommitDetail> = ApiResult.Transport("Git unavailable.")
+    suspend fun gitConflicts(serverUrl: String, accessToken: String, id: String): ApiResult<GitConflictState> = ApiResult.Transport("Git unavailable.")
+    suspend fun gitConflict(serverUrl: String, accessToken: String, id: String, path: String): ApiResult<GitConflictFile> = ApiResult.Transport("Git unavailable.")
+    suspend fun gitMutation(serverUrl: String, accessToken: String, id: String, change: GitMutation): ApiResult<GitOperation> = ApiResult.Transport("Git unavailable.")
+    suspend fun textFile(serverUrl: String, accessToken: String, path: String): ApiResult<RemoteTextFile> = ApiResult.Transport("Text editing unavailable.")
+    suspend fun saveTextFile(serverUrl: String, accessToken: String, file: RemoteTextFile, content: String): ApiResult<RemoteTextFile> = ApiResult.Transport("Text editing unavailable.")
+    suspend fun createTextFile(serverUrl: String, accessToken: String, path: String, content: String, encoding: String, bom: Boolean): ApiResult<RemoteTextFile> = ApiResult.Transport("Text editing unavailable.")
     suspend fun smbStatus(serverUrl: String, accessToken: String): ApiResult<SmbStatus>
     suspend fun smbCapabilities(serverUrl: String, accessToken: String): ApiResult<SmbCapabilities>
     suspend fun smbShares(serverUrl: String, accessToken: String): ApiResult<List<SmbShare>>
@@ -112,10 +122,8 @@ interface RelaxKonGateway {
     suspend fun gitRegisterRepository(serverUrl: String, accessToken: String, name: String, path: String): ApiResult<GitRepository> = ApiResult.Transport("Git unavailable.")
     suspend fun gitBranches(serverUrl: String, accessToken: String, id: String): ApiResult<List<GitBranch>> = ApiResult.Transport("Git unavailable.")
     suspend fun gitStatus(serverUrl: String, accessToken: String, id: String): ApiResult<GitStatus> = ApiResult.Transport("Git unavailable.")
-    suspend fun gitTextFile(serverUrl: String, accessToken: String, id: String, path: String): ApiResult<GitTextFile> = ApiResult.Transport("Git editing unavailable.")
-    suspend fun gitSaveTextFile(serverUrl: String, accessToken: String, id: String, file: GitTextFile, content: String): ApiResult<GitTextFile> = ApiResult.Transport("Git editing unavailable.")
-    suspend fun gitCommit(serverUrl: String, accessToken: String, id: String, path: String, message: String): ApiResult<GitOperation> = ApiResult.Transport("Git unavailable.")
-    suspend fun gitPush(serverUrl: String, accessToken: String, id: String): ApiResult<GitOperation> = ApiResult.Transport("Git unavailable.")
+    suspend fun gitTextFile(serverUrl: String, accessToken: String, id: String, path: String): ApiResult<RemoteTextFile> = ApiResult.Transport("Git editing unavailable.")
+    suspend fun gitSaveTextFile(serverUrl: String, accessToken: String, id: String, file: RemoteTextFile, content: String): ApiResult<RemoteTextFile> = ApiResult.Transport("Git editing unavailable.")
     suspend fun gitBuildCredentials(serverUrl: String, accessToken: String): ApiResult<List<GitBuildCredential>> = ApiResult.Transport("Git builds unavailable.")
     suspend fun gitBuildSetCredential(serverUrl: String, accessToken: String, name: String, token: String): ApiResult<GitBuildCredential> = ApiResult.Transport("Git builds unavailable.")
     suspend fun gitBuildResolve(serverUrl: String, accessToken: String, url: String, reference: String, credentialId: String?): ApiResult<GitBuildResolved> = ApiResult.Transport("Git builds unavailable.")
@@ -354,9 +362,14 @@ interface RelaxKonGateway {
         administratorUsername: String?,
     ): ApiResult<FileElevationGrant>
 
+    suspend fun terminalSettings(serverUrl: String, accessToken: String, workspaceId: String): ApiResult<TerminalSettings>
+    suspend fun saveTerminalSettings(serverUrl: String, accessToken: String, workspaceId: String, settings: TerminalSettings): ApiResult<TerminalSettings>
+
     suspend fun listDirectory(serverUrl: String, accessToken: String, path: String): ApiResult<DirectoryListing>
 
     suspend fun fileProperties(serverUrl: String, accessToken: String, path: String): ApiResult<RemoteFileProperties>
+
+    suspend fun setFilePermissions(serverUrl: String, accessToken: String, path: String, unixMode: Int): ApiResult<RemoteFileProperties>
 
     suspend fun createDirectory(serverUrl: String, accessToken: String, path: String): ApiResult<Unit>
 

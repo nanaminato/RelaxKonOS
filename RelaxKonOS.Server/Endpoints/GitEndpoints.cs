@@ -175,7 +175,7 @@ public static class GitEndpoints
             catch (IOException) { return Results.Problem(statusCode: 409, type: ProblemBase + "text-busy"); }
         });
 
-        group.MapPut("/repositories/{id}/text-file", async (Guid id, string path, GitSaveTextFileRequest request,
+        group.MapPut("/repositories/{id}/text-file", async (Guid id, string path, RelaxKonOS.Protocol.Files.SaveTextFileRequest request,
             ClaimsPrincipal principal, RelaxKonOS.Server.Git.GitTextEditor editor, CancellationToken ct) =>
         {
             try

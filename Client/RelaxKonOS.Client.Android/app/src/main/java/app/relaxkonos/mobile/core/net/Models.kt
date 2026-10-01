@@ -49,6 +49,7 @@ data class LoginSession(
     val server: ServerDescriptor,
     val tokens: AuthTokens,
     val executionEligibility: ExecutionEligibility = ExecutionEligibility.Available,
+    val workspaceId: String,
 )
 
 /** A short-lived nonce that an enrolled owner device signs instead of sending a host password. */
@@ -90,6 +91,9 @@ data class RemoteEntry(
     val sizeBytes: Long?,
     val modifiedAtMillis: Long?,
     val mimeType: String?,
+    val isHidden: Boolean = false,
+    val isSystem: Boolean = false,
+    val isDrive: Boolean = false,
 )
 
 data class DirectoryListing(val path: String, val name: String, val entries: List<RemoteEntry>)
@@ -103,6 +107,8 @@ data class RemoteFileProperties(
     val modifiedMillis: Long?,
     val permissions: String,
     val unixMode: Int?,
+    val accessedMillis: Long? = null,
+    val attributes: String = "",
 )
 
 data class DiskUsage(val id: String, val usedBytes: Long, val totalBytes: Long, val percent: Double)

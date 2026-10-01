@@ -392,6 +392,39 @@ class ServerTerminalControllerTest {
         h.controller.detach(); runCurrent()
     }
 
+    @Test fun `bulk close only targets confirmed ids despite newly discovered sessions`() = runTest {
+        val h = harness(); h.controller.connect(h.owner); runCurrent()
+        val connection = h.connections.single(); connection.listed += summary("unconfirmed")
+        h.controller.closeSessions(listOf("second")); runCurrent()
+        assertEquals(listOf("first", "unconfirmed"), connection.listed.map { it.sessionId })
+        assertEquals("first", h.controller.state.value.sessionId); h.controller.detach(); runCurrent()
+    }
+    @Test fun `local clear does not send input and leaves parser cursor coordinates intact`() = runTest {
+        val h = harness(); h.controller.connect(h.owner); runCurrent(); val connection = h.connections.single()
+        h.controller.clearOutput(); assertEquals("", h.controller.state.value.output); assertTrue(connection.inputs.isEmpty())
+        connection.output("\r\nnext".toByteArray()); runCurrent(); assertTrue(h.controller.state.value.output.contains("next"))
+        assertEquals(1, connection.attached.size); h.controller.detach(); runCurrent()
+    }
+    @Test fun `explicit owner reset discards transcript and selected session without killing remote PTY`() = runTest {
+        val h = harness(); h.controller.connect(h.owner); runCurrent(); h.controller.attach("second"); runCurrent()
+        h.controller.resetOwner(); runCurrent()
+        assertEquals(ServerTerminalState(), h.controller.state.value); assertEquals(1, h.connections.first().stops)
+        assertEquals(2, h.connections.first().listed.size)
+        h.controller.connect(h.owner); runCurrent(); assertEquals(listOf("first"), h.connections.last().attached)
+        h.controller.detach(); runCurrent()
+    }
+
+
+    @Test fun `current terminal device queries receive replies but detached callbacks cannot send`() = runTest {
+        val h = harness(); h.controller.connect(h.owner); runCurrent(); val connection = h.connections.single()
+        connection.output("\u001b[2J\u001b[H中\u001b[6n".toByteArray()); runCurrent()
+        assertEquals("\u001b[1;3R", connection.inputs.single())
+        assertEquals("中 ", h.controller.state.value.frame.text)
+        h.controller.detach(); runCurrent()
+        connection.output("\u001b[6n".toByteArray()); runCurrent()
+        assertEquals(1, connection.inputs.size)
+    }
+
     companion object {
         private fun summary(id: String, exited: Boolean = false) = TerminalSessionSummary().also { it.sessionId = id; it.hasExited = exited }
     }

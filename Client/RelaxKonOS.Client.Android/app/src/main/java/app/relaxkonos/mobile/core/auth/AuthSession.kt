@@ -36,6 +36,7 @@ sealed interface SessionState {
          */
         val executionEligibility: ExecutionEligibility,
         val privilegedOperations: Boolean = false,
+        val workspaceId: String,
     ) : SessionState
 }
 
@@ -274,6 +275,7 @@ class AuthSession(
             effectiveBaseUrl = connection.effectiveBaseUrl,
             userName = session.userName,
             workspaceName = session.workspaceName,
+            workspaceId = session.workspaceId,
             capabilities = session.server.capabilities,
             serverPlatform = session.server.platform,
             executionEligibility = session.executionEligibility,

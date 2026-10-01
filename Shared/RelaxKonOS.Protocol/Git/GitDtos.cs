@@ -34,6 +34,7 @@ public sealed record GitStatusDto(
     [property: JsonPropertyName("unstaged")] IReadOnlyList<GitFileChangeDto> Unstaged,
     [property: JsonPropertyName("untracked")] IReadOnlyList<GitFileChangeDto> Untracked,
     [property: JsonPropertyName("conflicts")] IReadOnlyList<GitFileChangeDto> Conflicts,
+    [property: JsonPropertyName("configVersion"), JsonRequired] string ConfigVersion,
     [property: JsonPropertyName("upstream")] string? Upstream = null,
     [property: JsonPropertyName("ahead")] int Ahead = 0,
     [property: JsonPropertyName("behind")] int Behind = 0,
@@ -49,6 +50,7 @@ public sealed record GitFileChangeDto(
 /// <summary>Branch item.</summary>
 public sealed record GitBranchDto(
     [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("sha"), JsonRequired] string Sha,
     [property: JsonPropertyName("isRemote")] bool IsRemote = false,
     [property: JsonPropertyName("isCurrent")] bool IsCurrent = false,
     [property: JsonPropertyName("isDefault")] bool IsDefault = false,
@@ -96,22 +98,13 @@ public sealed record GitCommitDetailDto(
 /// <summary>Single file diff text and stats.</summary>
 public sealed record GitDiffDto(
     [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("version"), JsonRequired] string Version,
     [property: JsonPropertyName("oldPath")] string? OldPath = null,
     [property: JsonPropertyName("patch")] string Patch = "",
     [property: JsonPropertyName("additions")] int Additions = 0,
     [property: JsonPropertyName("deletions")] int Deletions = 0,
     [property: JsonPropertyName("binary")] bool Binary = false,
     [property: JsonPropertyName("truncated")] bool Truncated = false);
-
-/// <summary>A UTF-8 working-tree file and the exact bytes its editor must compare at save time.</summary>
-public sealed record GitTextFileDto(
-    [property: JsonPropertyName("path")] string Path,
-    [property: JsonPropertyName("content")] string Content,
-    [property: JsonPropertyName("version")] string Version);
-
-public sealed record GitSaveTextFileRequest(
-    [property: JsonPropertyName("content")] string Content,
-    [property: JsonPropertyName("expectedVersion")] string ExpectedVersion);
 
 /// <summary>Generic operation result for pull/push/merge/revert/checkout.</summary>
 public sealed record GitOperationResult(

@@ -6,21 +6,24 @@ import java.io.FileOutputStream
 import java.io.OutputStream
 import java.security.MessageDigest
 
-/**
- * The destination of one preview download.
- *
- * A preview is a copy made *for looking at*, not a download: it lands in the app's own cache, and the
- * app may delete it again without asking. That is the whole difference from `DownloadTarget` — one ends
- * in a file the user keeps in Downloads and expects to find tomorrow, the other in bytes that are only
- * ever read by the image viewer — and it is why the two do not share a type.
- *
- * Bytes are written straight to the final name rather than to a temporary file that is renamed on
- * success, because a rename cannot tell a complete file from a truncated one. What can is the size the
- * server already reported: [ImagePreviewCache.cached] only accepts a file whose length matches, so a
- * transfer cut short by a crash is treated as a miss instead of being decoded into a half image.
- */
-class PreviewTarget(val file: File) : DownloadSink {
-    override fun open(): OutputStream = FileOutputStream(file)
+/** A private staging download. Only a confirmed, size-checked transfer becomes a cache hit. */
+class PreviewTarget(val file: File, private val destination: File, private val expectedLength: Long?, private val release: () -> Unit) : DownloadSink {
+    override fun open(): OutputStream = object : java.io.FilterOutputStream(FileOutputStream(file)) {
+        private var written = 0L
+        override fun write(value: Int) { checkLength(1); out.write(value) }
+        override fun write(bytes: ByteArray, offset: Int, count: Int) { checkLength(count); out.write(bytes, offset, count) }
+        private fun checkLength(count: Int) {
+            if (written + count > ImagePreviewCache.CACHE_BUDGET_BYTES) throw java.io.IOException("Image preview exceeds cache budget.")
+            written += count
+        }
+    }
+    fun commit(received: Long): File {
+        require(received > 0 && file.length() == received && (expectedLength == null || expectedLength == received))
+        java.nio.file.Files.move(file.toPath(), destination.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        release()
+        return destination
+    }
+    fun discard() { file.delete(); release() }
 }
 
 /**
@@ -28,14 +31,14 @@ class PreviewTarget(val file: File) : DownloadSink {
  *
  * ## Identity, not names
  *
- * An entry is keyed by the server, the remote path and the file's size and modification time, hashed
+ * An entry is keyed by the server/account namespace, the remote path and the file's size and modification time, hashed
  * into a fixed-length name. Three things follow from that, and all three are the reason for it:
  *
  *  - A remote path is not a file name: it can contain `/`, `\`, `:` and anything else a Windows path
  *    is allowed to hold, none of which can appear in one.
  *  - A file that changed on the host produces a different key, so an edited image is re-fetched
  *    instead of being shown from a stale copy.
- *  - Two servers are two namespaces, so the same path on two hosts is two entries.
+ *  - Servers and accounts have independent namespaces, including the same path on one host.
  *
  * ## Size
  *
@@ -44,6 +47,7 @@ class PreviewTarget(val file: File) : DownloadSink {
  * is already decoded in memory, which is to say nothing the user can see.
  */
 class ImagePreviewCache(private val directory: File) {
+    private val activeStaging = mutableSetOf<String>()
     /**
      * The cached copy of one remote file, or `null` when there is none to reuse.
      *
@@ -60,11 +64,15 @@ class ImagePreviewCache(private val directory: File) {
         return file
     }
 
-    /** Opens the destination for a fresh copy. Any earlier partial copy of the same revision is replaced. */
-    fun create(scope: String, remotePath: String, sizeBytes: Long?, modifiedMillis: Long?): PreviewTarget {
+    /** Independent staging files prevent a cancelled old transfer from overwriting a newer preview. */
+    @Synchronized fun create(scope: String, remotePath: String, sizeBytes: Long?, modifiedMillis: Long?): PreviewTarget {
         directory.mkdirs()
         trim()
-        return PreviewTarget(fileNameFor(scope, remotePath, sizeBytes, modifiedMillis))
+        require(sizeBytes == null || sizeBytes <= CACHE_BUDGET_BYTES)
+        val destination = fileNameFor(scope, remotePath, sizeBytes, modifiedMillis)
+        val staging = File(directory, destination.name + "." + java.util.UUID.randomUUID() + ".part")
+        activeStaging += staging.name
+        return PreviewTarget(staging, destination, sizeBytes) { synchronized(this) { activeStaging -= staging.name; trim() } }
     }
 
     /** Records that [file] was used just now, so the least recently *viewed* image is evicted first. */
@@ -73,8 +81,10 @@ class ImagePreviewCache(private val directory: File) {
     }
 
     /** Deletes the least recently used entries until the cache fits inside [budgetBytes]. */
-    fun trim(budgetBytes: Long = CACHE_BUDGET_BYTES) {
+    @Synchronized fun trim(budgetBytes: Long = CACHE_BUDGET_BYTES) {
         val files = directory.listFiles().orEmpty()
+        val stagingName = Regex("preview-[0-9a-f]{40}\\.preview\\.[0-9a-f-]{36}\\.part")
+        files.filter { stagingName.matches(it.name) && it.name !in activeStaging }.forEach { it.delete() }
         val entries = files.mapNotNull { file ->
             file.takeIf { it.isFile && it.name.endsWith(PREVIEW_SUFFIX) }
                 ?.let { PreviewEntry(it.name, it.length(), it.lastModified()) }

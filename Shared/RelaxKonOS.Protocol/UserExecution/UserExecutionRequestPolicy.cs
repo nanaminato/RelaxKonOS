@@ -13,7 +13,7 @@ public static class UserExecutionRequestPolicy
             || request.OperationId is not { } operationId || operationId == Guid.Empty
             || !Enum.IsDefined(request.Operation))
             return false;
-        if (request.Operation != UserExecutionOperationKind.FileWriteIfMatch && request.ExpectedSha256 is not null)
+        if (request.Operation is not (UserExecutionOperationKind.FileWriteIfMatch or UserExecutionOperationKind.GitConflictWrite) && request.ExpectedSha256 is not null)
             return false;
 
         var noDestination = request.DestinationPath is null;
@@ -32,7 +32,7 @@ public static class UserExecutionRequestPolicy
                 && noDestination && noName && noContent && noMode && noGit && noTerminal && noStaging
                 && !request.Overwrite,
             UserExecutionOperationKind.FileListDirectory or UserExecutionOperationKind.FileGetInfo
-                or UserExecutionOperationKind.FileRead or UserExecutionOperationKind.FileDelete
+                or UserExecutionOperationKind.FileRead or UserExecutionOperationKind.FileReadText or UserExecutionOperationKind.FileDelete
                 or UserExecutionOperationKind.FileCreateDirectory or UserExecutionOperationKind.FileGetProperties
                 => !terminal && request.Path is not null && noDestination && noName && noContent
                     && noMode && noGit && noTerminal && noStaging && !request.Overwrite,
@@ -72,6 +72,13 @@ public static class UserExecutionRequestPolicy
             UserExecutionOperationKind.GitExecute => !terminal && request.Path is not null
                 && noDestination && noName && noContent && noMode && request.GitArguments is not null
                 && noTerminal && noStaging && !request.Overwrite,
+            UserExecutionOperationKind.GitConflictSnapshot => !terminal && request.Path is not null
+                && noDestination && request.NewName is null && Git.GitConflictFileAccess.IsRelativePath(request.FileName)
+                && noContent && noMode && noGit && noTerminal && noStaging && !request.Overwrite,
+            UserExecutionOperationKind.GitConflictWrite => !terminal && request.Path is not null
+                && noDestination && request.NewName is null && Git.GitConflictFileAccess.IsRelativePath(request.FileName)
+                && request.ContentBase64 is not null && noMode && noGit && noTerminal && noStaging && !request.Overwrite
+                && (request.ExpectedSha256 == "deleted" || request.ExpectedSha256 is { Length: 64 } hash && hash.All(Uri.IsHexDigit)),
             UserExecutionOperationKind.TerminalStart => terminal && request.Path is not null
                 && noDestination && noName && noContent && noMode && noGit && noStaging
                 && request.TerminalColumns is not null && request.TerminalRows is not null

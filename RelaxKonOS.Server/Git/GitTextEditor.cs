@@ -1,4 +1,4 @@
-using System.Text;
+using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Server.Files;
 
@@ -7,41 +7,19 @@ namespace RelaxKonOS.Server.Git;
 /// <summary>Small working-tree text edits under the same effective OS identity as Files.</summary>
 public sealed class GitTextEditor(IGitRepositoryService repositories, IFileService files)
 {
-    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
-    public async Task<GitTextFileDto> ReadAsync(Guid repositoryId, Guid userId, string relativePath, CancellationToken cancellationToken)
+    public async Task<TextFileDto> ReadAsync(Guid repositoryId, Guid userId, string relativePath, CancellationToken cancellationToken)
     {
         var path = await ResolveAsync(repositoryId, userId, relativePath, cancellationToken);
-        var opened = files.OpenRead(path) ?? throw new FileNotFoundException("Git text file not found.");
-        using (opened.Stream)
-        using (var buffer = new MemoryStream())
-        {
-            var chunk = new byte[8192];
-            int count;
-            while ((count = await opened.Stream.ReadAsync(chunk, cancellationToken)) > 0)
-            {
-                if (buffer.Length + count > GitTextFileWrite.MaximumBytes)
-                    throw new InvalidDataException("Git text file is too large.");
-                buffer.Write(chunk, 0, count);
-            }
-            var bytes = buffer.ToArray();
-            var content = StrictUtf8.GetString(bytes);
-            if (content.Contains('\0')) throw new InvalidDataException("Binary files cannot be edited as text.");
-            return new GitTextFileDto(relativePath, content, GitTextFileWrite.Version(bytes));
-        }
+        return (await new TextFileEditor(files).ReadAsync(path, cancellationToken)) with { Path = relativePath };
     }
 
-    public async Task<GitTextFileDto?> SaveAsync(Guid repositoryId, Guid userId, string relativePath,
-        GitSaveTextFileRequest request, CancellationToken cancellationToken)
+    public async Task<TextFileDto?> SaveAsync(Guid repositoryId, Guid userId, string relativePath,
+        SaveTextFileRequest request, CancellationToken cancellationToken)
     {
-        if (request.Content is null || request.ExpectedVersion is null || request.Content.Contains('\0'))
-            throw new ArgumentException("Only UTF-8 text can be saved.");
-        var bytes = StrictUtf8.GetBytes(request.Content);
-        if (bytes.Length > GitTextFileWrite.MaximumBytes) throw new InvalidDataException("Git text file is too large.");
         var path = await ResolveAsync(repositoryId, userId, relativePath, cancellationToken);
-        if (!await files.WriteFileIfMatchAsync(path, bytes, request.ExpectedVersion, cancellationToken))
-            return null;
-        return new GitTextFileDto(relativePath, request.Content, GitTextFileWrite.Version(bytes));
+        var saved = await new TextFileEditor(files).SaveAsync(path, request, cancellationToken);
+        return saved is null ? null : saved with { Path = relativePath };
     }
 
     private async Task<string> ResolveAsync(Guid repositoryId, Guid userId,

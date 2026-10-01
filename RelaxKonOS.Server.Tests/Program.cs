@@ -1,3 +1,8 @@
+if (args.Contains("--text-editor-only"))
+{
+    await TextEditorChecks.RunAsync();
+    return;
+}
 if (args.Length == 3 && args[0] == "--user-execution-copy-worker")
 {
     RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.Copy(args[1], args[2], overwrite: true);
@@ -108,6 +113,22 @@ if (args.Contains("--frpc-lifecycle-only"))
 }
 
 
+if (args.Contains("--git-conflicts-only"))
+{
+    var gitRoot = Path.Combine(Path.GetTempPath(), $"relaxkonos-git-checks-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(gitRoot);
+    try { await GitConflictChecks.RunAsync(gitRoot); }
+    catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
+    finally
+    {
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        foreach (var file in Directory.EnumerateFiles(gitRoot, "*", SearchOption.AllDirectories))
+            File.SetAttributes(file, File.GetAttributes(file) & ~FileAttributes.ReadOnly);
+        Directory.Delete(gitRoot, recursive: true);
+    }
+    return;
+}
+
 var root = Path.Combine(Path.GetTempPath(), $"relaxkonos-server-tests-{Guid.NewGuid():N}");
 Directory.CreateDirectory(root);
 try
@@ -160,7 +181,6 @@ try
         Console.WriteLine("User-execution contract checks passed.");
         return;
     }
-    if (args.Contains("--git-conflicts-only")) { await GitConflictChecks.RunAsync(root); return; }
     if (args.Contains("--performance-only")) { await ServerCoreChecks.VerifyPerformanceSamplerAsync(); Console.WriteLine("Performance sampler checks passed."); return; }
     if (args.Contains("--helper-allowlist-only")) { await DeveloperUserSidAllowListVerification.RunAsync(); return; }
     if (args.Contains("--host-os-only")) { HostOperatingSystemChecks.Run(); return; }

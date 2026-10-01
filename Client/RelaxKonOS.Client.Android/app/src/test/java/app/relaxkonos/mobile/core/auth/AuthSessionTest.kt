@@ -135,7 +135,7 @@ class AuthSessionTest {
                         reason = ExecutionEligibilityReasons.RESERVED_IDENTITY,
                         privilegedFilesAvailable = true,
                     ),
-                ),
+                 workspaceId = "11111111-1111-1111-1111-111111111111"),
             )
         }
 

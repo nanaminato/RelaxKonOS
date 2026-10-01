@@ -25,6 +25,7 @@ class OperationCenterTest {
     private val smbJournal = SmbMutationJournal(Storage())
     private val dockerResources = DockerResourceJournal(Storage())
     private val dockerJournal = DockerControlJournal(Storage())
+    private val gitJournal = GitWorkspaceJournal(Storage())
     private val center = OperationCenter(session, index, DeploymentRepository(gateway, session, index),
         WebPublishingRepository(gateway, session, elevation, index), DockerRepository(gateway, session, index, testDockerGate(dockerJournal)),
         GitRepositoryClient(gateway, session, index), ScriptTaskRepository(gateway, session, index),
@@ -38,8 +39,15 @@ class OperationCenterTest {
         FirewallRepository(gateway, session, elevation, FirewallMutationJournal(Storage())),
         SmbRepository(gateway, session, elevation, smbJournal),
         DockerControlRepository(gateway, session, dockerJournal, testDockerGate(dockerJournal)),
-        DockerResourceRepository(gateway, session, dockerResources, testDockerGate(dockerJournal, dockerResources)))
+        DockerResourceRepository(gateway, session, dockerResources, testDockerGate(dockerJournal, dockerResources)),
+        GitWorkspaceRepository(gateway, session, gitJournal) { ApiResult.Success(Unit) })
     private val id = "11111111-1111-1111-1111-111111111111"
+    @Test fun `Git unknown synchronous result appears without a fake remote operation and respects capability removal`() = runTest {
+        val owner = signIn(ServerCapabilities.GIT); gitJournal.begin(owner, id, GitAction.Push)
+        val snapshot = center.refresh(owner)
+        assertEquals(1, snapshot.pendingGit.size); assertTrue(snapshot.items.isEmpty())
+        val removed = signIn(); assertTrue(center.refresh(removed).pendingGit.isEmpty()); assertEquals(1, gitJournal.pending(removed).size)
+    }
     private suspend fun signIn(vararg capabilities: String): SessionState.Active {
         gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession().let {
             it.copy(server = it.server.copy(capabilities = capabilities.toSet(), privilegedOperations = false))

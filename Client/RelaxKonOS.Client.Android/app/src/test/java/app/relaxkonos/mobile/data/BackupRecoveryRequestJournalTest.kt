@@ -17,7 +17,7 @@ class BackupRecoveryRequestJournalTest {
     private fun owner(service: String, account: String) = SessionState.Active(
         service, "https://example.test", account, "workspace", emptySet(), "linux",
         ExecutionEligibility(true, null, false),
-    )
+     workspaceId = "11111111-1111-1111-1111-111111111111")
 
     @Test
     fun `pending key survives restart repeats for same owner and is isolated`() {

@@ -133,7 +133,7 @@ public sealed partial class LocalGitRepositoryService(
         var result = await RunGitAsync(gitPath, repo.Path, ["status", "--porcelain=v2", "--branch", "-uall"], cancellationToken);
         if (!result.Success)
             throw new InvalidOperationException($"git status failed: {result.Error}");
-        return ParseStatus(result.Output);
+        return ParseStatus(result.Output, await ReadConfigVersionAsync(gitPath, repo.Path, cancellationToken));
     }
 
     public async Task<IReadOnlyList<GitBranchDto>> ListBranchesAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
@@ -144,7 +144,7 @@ public sealed partial class LocalGitRepositoryService(
         // Keep the full refname in addition to its display name.  A branch name is
         // allowed to contain '/', so it cannot tell us whether the ref is local or
         // remote (for example, a perfectly valid local branch is feature/login).
-        var fmt = "%(refname)%09%(refname:short)%09%(upstream:short)%09%(upstream:track)%09%(HEAD)";
+        var fmt = "%(refname)%09%(refname:short)%09%(upstream:short)%09%(upstream:track)%09%(HEAD)%09%(objectname)";
         var result = await RunGitAsync(gitPath, repo.Path,
             ["for-each-ref", $"--format={fmt}", "refs/heads", "refs/remotes"], cancellationToken);
         if (!result.Success)
@@ -154,7 +154,7 @@ public sealed partial class LocalGitRepositoryService(
         foreach (var line in result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
         {
             var parts = line.Split('\t');
-            if (parts.Length < 5) continue;
+            if (parts.Length < 6) throw new InvalidOperationException("Invalid Git branch record.");
             var fullRefName = parts[0];
             var name = parts[1];
             var upstream = parts[2].Length > 0 ? parts[2] : null;
@@ -167,7 +167,7 @@ public sealed partial class LocalGitRepositoryService(
             if (isRemote && fullRefName.EndsWith("/HEAD", StringComparison.OrdinalIgnoreCase))
                 continue;
             var (ahead, behind) = ParseTrack(track);
-            branches.Add(new GitBranchDto(name, isRemote, isHead, false, upstream, ahead, behind));
+            branches.Add(new GitBranchDto(name, parts[5].Trim(), isRemote, isHead, false, upstream, ahead, behind));
         }
         return branches;
     }
@@ -675,11 +675,11 @@ public sealed partial class LocalGitRepositoryService(
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
         var gitPath = ResolveGitPathOrThrow();
-        // tformat 会在每条 commit 后自动追加换行（不含最后一条尾部多余空行）；字段间用 \x01(SOH) 分隔，避免与 subject/body 中的制表符/空格冲突
-        var format = "%H%x01%h%x01%an%x01%ae%x01%aI%x01%s%x01%b";
+        // NUL fields preserve multiline bodies and avoid inventing records from body lines.
+        var format = "%H%x00%h%x00%an%x00%ae%x00%aI%x00%s%x00%b%x00";
         limit = Math.Clamp(limit, 1, 500);
         skip = Math.Max(skip, 0);
-        var args = new List<string> { "log", $"--pretty=tformat:{format}", "--date=iso-strict", $"-n {limit}", $"--skip={skip}" };
+        var args = new List<string> { "log", $"--pretty=tformat:{format}", "--date=iso-strict", "-n", limit.ToString(System.Globalization.CultureInfo.InvariantCulture), $"--skip={skip}" };
         if (!string.IsNullOrWhiteSpace(query?.Search))
         {
             args.Add($"--grep={query.Search}");
@@ -716,28 +716,27 @@ public sealed partial class LocalGitRepositoryService(
         }
         var result = await RunGitAsync(gitPath, repo.Path, args, cancellationToken);
         if (!result.Success)
-            throw new InvalidOperationException($"git log failed: {result.Error}");
+        {
+            var head = await RunGitAsync(gitPath, repo.Path, ["rev-parse", "--verify", "HEAD"], cancellationToken);
+            var symbolic = await RunGitAsync(gitPath, repo.Path, ["symbolic-ref", "--quiet", "HEAD"], cancellationToken);
+            // An unborn branch legitimately has an empty history; an unreadable repository does not.
+            if (!head.Success && head.ExitCode == 128 && symbolic.Success && query?.Reference is null)
+            {
+                var reference = await RunGitAsync(gitPath, repo.Path, ["show-ref", "--verify", "--quiet", symbolic.Output.Trim()], cancellationToken);
+                if (reference.ExitCode == 1) return [];
+            }
+            throw new InvalidOperationException("Git history could not be read.");
+        }
 
         var commits = new List<GitCommitDto>();
-        // 先按行拆分每条 commit，再对单条 commit 按 SOH(\x01) 拆 7 个字段 — body 为空也不会丢失字段占位
-        var lines = result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        foreach (var raw in lines)
+        var fields = result.Output.Split('\0');
+        for (var i = 0; i + 6 < fields.Length; i += 7)
         {
-            var line = raw.TrimEnd('\r');
-            if (string.IsNullOrEmpty(line)) continue;
-            // 限制最多拆 7 段，第 7 段(body)可包含后续的分隔符字符
-            var parts = line.Split('\x01', 7, StringSplitOptions.None);
-            if (parts.Length < 6) continue;
-            var sha = parts[0].Trim();
-            var shortSha = parts[1].Trim();
-            var author = parts[2];
-            var email = parts[3];
-            var date = parts[4];
-            var subject = parts[5];
-            var body = parts.Length > 6 ? parts[6] : null;
-            if (string.IsNullOrEmpty(body)) body = null;
-            if (string.IsNullOrEmpty(sha)) continue;
-            commits.Add(new GitCommitDto(sha, shortSha, author, email, date, subject, body));
+            var sha = fields[i].Trim('\r', '\n');
+            if (sha.Length is not (40 or 64) || !sha.All(Uri.IsHexDigit))
+                throw new InvalidOperationException("Invalid Git history record.");
+            commits.Add(new GitCommitDto(sha, fields[i + 1], fields[i + 2], fields[i + 3], fields[i + 4], fields[i + 5],
+                string.IsNullOrEmpty(fields[i + 6]) ? null : fields[i + 6]));
         }
         return commits;
     }
@@ -788,7 +787,7 @@ public sealed partial class LocalGitRepositoryService(
         if (!isCommitDiff && !staged)
         {
             var untracked = await RunGitAsync(gitPath, repo.Path,
-                ["ls-files", "--others", "--exclude-standard", "--", path], cancellationToken);
+                ["--literal-pathspecs", "ls-files", "--others", "--exclude-standard", "--", path], cancellationToken);
             isUntracked = untracked.Success && untracked.Output
                 .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
                 .Any(candidate => string.Equals(candidate, path, StringComparison.Ordinal));
@@ -796,49 +795,56 @@ public sealed partial class LocalGitRepositoryService(
 
         List<string> args;
         if (isCommitDiff)
-            args = ["show", "--format=", "--no-color", "--find-renames", @ref!, "--", path];
+            args = ["--literal-pathspecs", "show", "--format=", "--no-color", "--binary", "--no-ext-diff", "--no-textconv", "--find-renames", @ref!, "--", path];
         else if (isUntracked)
             // git diff normally excludes untracked files; compare it to an empty file instead.
-            args = ["diff", "--no-index", "--no-color", "--", "/dev/null", path];
+            args = ["--literal-pathspecs", "diff", "--no-index", "--no-color", "--binary", "--no-ext-diff", "--no-textconv", "--", "/dev/null", path];
         else
         {
-            args = ["diff", "--no-color"];
+            args = ["--literal-pathspecs", "diff", "--no-color", "--binary", "--no-ext-diff", "--no-textconv"];
             if (staged) args.Add("--cached");
             args.Add("--");
             args.Add(path);
         }
 
         var result = await RunGitAsync(gitPath, repo.Path, [.. args], cancellationToken);
+        // Git --no-index uses exit 1 for a successful comparison containing differences.
+        // Other errors must not be projected as an empty, apparently unchanged file.
+        if (!result.Success && (!isUntracked || result.ExitCode != 1))
+            throw new InvalidOperationException("Git diff could not be read.");
+        var version = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(result.Output))).ToLowerInvariant();
         var patch = result.Output;
         var truncated = false;
         if (patch.Length > MaxDiffPatchSize)
         {
             var statArgs = isCommitDiff
-                ? new List<string> { "show", "--format=", "--stat", @ref!, "--", path }
+                ? new List<string> { "--literal-pathspecs", "show", "--no-ext-diff", "--no-textconv", "--format=", "--stat", @ref!, "--", path }
                 : isUntracked
-                    ? new List<string> { "diff", "--no-index", "--stat", "--", "/dev/null", path }
-                    : new List<string> { "diff", "--stat" };
+                    ? new List<string> { "--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", "--no-index", "--stat", "--", "/dev/null", path }
+                    : new List<string> { "--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", "--stat" };
             if (!isCommitDiff && !isUntracked && staged) statArgs.Add("--cached");
             if (!isCommitDiff && !isUntracked) { statArgs.Add("--"); statArgs.Add(path); }
             var statResult = await RunGitAsync(gitPath, repo.Path, [.. statArgs], cancellationToken);
+            if (!statResult.Success && (!isUntracked || statResult.ExitCode != 1)) throw new InvalidOperationException("Git diff statistics could not be read.");
             patch = statResult.Output;
             truncated = true;
         }
 
         var numstatArgs = isCommitDiff
-            ? new List<string> { "show", "--format=", "--numstat", @ref!, "--", path }
+            ? new List<string> { "--literal-pathspecs", "show", "--no-ext-diff", "--no-textconv", "--format=", "--numstat", @ref!, "--", path }
             : isUntracked
-                ? new List<string> { "diff", "--no-index", "--numstat", "--", "/dev/null", path }
-                : new List<string> { "diff", "--numstat" };
+                ? new List<string> { "--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", "--no-index", "--numstat", "--", "/dev/null", path }
+                : new List<string> { "--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", "--numstat" };
         if (!isCommitDiff && !isUntracked && staged) numstatArgs.Add("--cached");
         if (!isCommitDiff && !isUntracked) { numstatArgs.Add("--"); numstatArgs.Add(path); }
         var numstat = await RunGitAsync(gitPath, repo.Path, [.. numstatArgs], cancellationToken);
+        if (!numstat.Success && (!isUntracked || numstat.ExitCode != 1)) throw new InvalidOperationException("Git diff statistics could not be read.");
         var (additions, deletions) = ParseNumstat(numstat.Output);
 
-        var isBinary = patch.Contains("Binary files", StringComparison.OrdinalIgnoreCase) ||
-                       patch.Contains("GIT binary patch", StringComparison.OrdinalIgnoreCase);
+        var isBinary = result.Output.Contains("Binary files", StringComparison.OrdinalIgnoreCase) ||
+                       result.Output.Contains("GIT binary patch", StringComparison.OrdinalIgnoreCase);
 
-        return new GitDiffDto(path, null, isBinary ? "" : patch, additions, deletions, isBinary, truncated);
+        return new GitDiffDto(path, version, null, isBinary ? "" : patch, additions, deletions, isBinary, truncated);
     }
 
     public async Task<GitOperationResult> RevertAsync(Guid id, Guid userId, GitRevertRequest request, CancellationToken cancellationToken = default)
@@ -912,7 +918,7 @@ public sealed partial class LocalGitRepositoryService(
         var gitPath = ResolveGitPathOrThrow();
         return await WithWriteLockAsync(id, async () =>
         {
-            var args = new List<string> { "add", "--" };
+            var args = new List<string> { "--literal-pathspecs", "add", "--" };
             args.AddRange(request.Paths);
             var result = await RunGitAsync(gitPath, repo.Path, [.. args], cancellationToken);
             return new GitOperationResult(result.Success, "stage", Message: result.Success ? null : result.Error);
@@ -932,7 +938,7 @@ public sealed partial class LocalGitRepositoryService(
         var gitPath = ResolveGitPathOrThrow();
         return await WithWriteLockAsync(id, async () =>
         {
-            var args = new List<string> { "restore", "--staged", "--" };
+            var args = new List<string> { "--literal-pathspecs", "restore", "--staged", "--" };
             args.AddRange(request.Paths);
             var result = await RunGitAsync(gitPath, repo.Path, [.. args], cancellationToken);
 
@@ -940,7 +946,7 @@ public sealed partial class LocalGitRepositoryService(
             // Removing just the index entries is the equivalent safe unstage operation in that state.
             if (!result.Success && result.Error.Contains("could not resolve HEAD", StringComparison.OrdinalIgnoreCase))
             {
-                var fallbackArgs = new List<string> { "rm", "--cached", "--ignore-unmatch", "--" };
+                var fallbackArgs = new List<string> { "--literal-pathspecs", "rm", "--cached", "--ignore-unmatch", "--" };
                 fallbackArgs.AddRange(request.Paths);
                 result = await RunGitAsync(gitPath, repo.Path, [.. fallbackArgs], cancellationToken);
             }
@@ -1099,7 +1105,7 @@ public sealed partial class LocalGitRepositoryService(
         // 时会自动禁用彩色输出，所以这里直接省略即可，避免子命令不认该参数导致命令失败。
         var result = await RunGitAsync(gitPath, repoPath, ["remote", "-v"], cancellationToken);
         if (!result.Success)
-            return Array.Empty<GitRemoteDto>();
+            throw new InvalidOperationException("Git remotes could not be read.");
 
         // git remote -v 输出形如:
         //   origin  https://example.com/repo.git (fetch)
@@ -1161,12 +1167,21 @@ public sealed partial class LocalGitRepositoryService(
         if (string.IsNullOrEmpty(gitPath)) return ("unknown", null, 0, 0, false, 0);
         var result = await RunGitAsync(gitPath, repoPath, ["status", "--porcelain=v2", "--branch", "-uall"], cancellationToken);
         if (!result.Success) return ("unknown", null, 0, 0, false, 0);
-        var status = ParseStatus(result.Output);
+        var status = ParseStatus(result.Output, await ReadConfigVersionAsync(gitPath, repoPath, cancellationToken));
         var uncommitted = status.Staged.Count + status.Unstaged.Count + status.Untracked.Count + status.Conflicts.Count;
         return (status.Branch, status.Upstream, status.Ahead, status.Behind, status.IsDetached, uncommitted);
     }
 
-    private static GitStatusDto ParseStatus(string output)
+    private async Task<string> ReadConfigVersionAsync(string gitPath, string root, CancellationToken ct)
+    {
+        var config = await RunGitAsync(gitPath, root, ["config", "--list", "--null"], ct);
+        if (!config.Success || config.Output.Length > 1024 * 1024) throw new InvalidOperationException("Git configuration could not be read.");
+        // Includes all fetch/push URLs, branch mappings and refspecs. Raw config can contain credentials;
+        // only an opaque digest leaves the ordinary execution boundary through the HTTP status DTO.
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(config.Output))).ToLowerInvariant();
+    }
+
+    private static GitStatusDto ParseStatus(string output, string configVersion)
     {
         string branch = "unknown";
         string? upstream = null;
@@ -1230,7 +1245,7 @@ public sealed partial class LocalGitRepositoryService(
             }
             else if (line.StartsWith("? "))
             {
-                var filePath = line[2..].Trim();
+                var filePath = line[2..];
                 if (!string.IsNullOrEmpty(filePath))
                 {
                     // Handle quoted paths (git quotes paths with special chars)
@@ -1240,7 +1255,7 @@ public sealed partial class LocalGitRepositoryService(
                 }
             }
         }
-        return new GitStatusDto(branch, staged, unstaged, untracked, conflicts, upstream, ahead, behind, isDetached);
+        return new GitStatusDto(branch, staged, unstaged, untracked, conflicts, configVersion, upstream, ahead, behind, isDetached);
     }
 
     /// <summary>从 porcelain v2 状态行取最后一段路径（可能含空格）：跳过前 n 个空格分隔的字段，剩余即路径。
@@ -1254,24 +1269,19 @@ public sealed partial class LocalGitRepositoryService(
             var sp = remaining.IndexOf(' ');
             if (sp < 0) return ("", null); // 字段不足
             remaining = remaining[(sp + 1)..];
-            // 跳过连续空格（通常只有一个）
-            while (remaining.Length > 0 && remaining[0] == ' ') remaining = remaining[1..];
         }
 
         var tail = remaining.ToString();
-        // Handle quoted paths
-        if (tail.StartsWith('"') && tail.EndsWith('"'))
-            tail = UnquotePath(tail);
-        
-        // type 2 的 rename/copy 行：路径部分是 path⇥orig_path（TAB 分隔）
+        // Split the raw rename separator before unquoting each C-style quoted path.
+        // Whitespace is part of a filename and must not be trimmed.
         var tab = tail.IndexOf('\t');
         if (tab >= 0)
         {
-            var path = tail[..tab].Trim();
-            var orig = tail[(tab + 1)..].Trim();
-            return (path, string.IsNullOrEmpty(orig) ? null : orig);
+            var path = UnquotePath(tail[..tab]);
+            var original = UnquotePath(tail[(tab + 1)..]);
+            return (path, original.Length == 0 ? null : original);
         }
-        return (tail.Trim(), null);
+        return (UnquotePath(tail), null);
     }
 
     /// <summary>Unquote a git path that was quoted because it contains special characters.
@@ -1374,9 +1384,9 @@ public sealed partial class LocalGitRepositoryService(
             var status = parts[0];
             var kind = MapStatusChar(status[0]);
             if ((status[0] is 'R' or 'C') && parts.Length >= 3)
-                files.Add(new GitFileChangeDto(parts[2], parts[1], kind));
+                files.Add(new GitFileChangeDto(UnquotePath(parts[2]), UnquotePath(parts[1]), kind));
             else
-                files.Add(new GitFileChangeDto(parts[1], Status: kind));
+                files.Add(new GitFileChangeDto(UnquotePath(parts[1]), Status: kind));
         }
         return files;
     }
@@ -1466,7 +1476,7 @@ public sealed partial class LocalGitRepositoryService(
                     GitArguments: arguments, OperationId: Guid.NewGuid()), cancellationToken);
                 if (!response.Success || string.IsNullOrWhiteSpace(response.OutputBase64)) return new CommandResult(false, "", "user_execution_unavailable");
                 var result = JsonSerializer.Deserialize<GitExecutionResult>(Convert.FromBase64String(response.OutputBase64), RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default);
-                return result is null ? new CommandResult(false, "", "user_execution_invalid_result") : new CommandResult(result.Success, result.Output, result.Error);
+                return result is null ? new CommandResult(false, "", "user_execution_invalid_result") : new CommandResult(result.Success, result.Output, result.Error, result.ExitCode);
             }
             catch (Exception exception) when (exception is UserExecutionException or InvalidOperationException or JsonException or FormatException)
             { return new CommandResult(false, "", "user_execution_unavailable"); }
@@ -1522,7 +1532,7 @@ public sealed partial class LocalGitRepositoryService(
                         "Git operation {GitOperation} failed with exit code {ExitCode}. InteractiveCredentialPrompt={InteractiveCredentialPrompt}",
                         operation, process.ExitCode, HasInteractiveCredentialPrompt(error));
                 }
-                return new CommandResult(success, output, error);
+                return new CommandResult(success, output, error, process.ExitCode);
             }
             catch (OperationCanceledException)
             {
@@ -1566,6 +1576,6 @@ public sealed partial class LocalGitRepositoryService(
         }
     }
 
-    private sealed record CommandResult(bool Success, string Output, string Error);
+    private sealed record CommandResult(bool Success, string Output, string Error, int ExitCode = -1);
     private sealed record GitExecutionResult(bool Success, int ExitCode, string Output, string Error);
 }

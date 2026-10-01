@@ -78,8 +78,11 @@ internal static class WindowsUserExecutionExecutor
         {
             UserExecutionOperationKind.FileListDirectory => List(ValidatePath(request.Path!)),
             UserExecutionOperationKind.FileGetSpecialLocations => SpecialLocations(homeDirectory),
+            UserExecutionOperationKind.GitConflictSnapshot => GitConflictFileAccess.Read(ValidatePath(request.Path!), request.FileName!),
+            UserExecutionOperationKind.GitConflictWrite => GitConflictFileAccess.Write(ValidatePath(request.Path!), request.FileName!, Decode(request.ContentBase64!), request.ExpectedSha256!),
             UserExecutionOperationKind.FileGetInfo => GetInfo(ValidatePath(request.Path!)),
             UserExecutionOperationKind.FileRead => Read(ValidatePath(request.Path!), cancellationToken),
+            UserExecutionOperationKind.FileReadText => ReadText(ValidatePath(request.Path!), cancellationToken),
             UserExecutionOperationKind.FileWrite => Write(ValidatePath(request.Path!),
                 Decode(request.ContentBase64!), cancellationToken),
             UserExecutionOperationKind.FileWriteIfMatch => GitTextFileWrite.ReplaceIfVersion(
@@ -178,6 +181,13 @@ internal static class WindowsUserExecutionExecutor
         return attributes.HasFlag(FileAttributes.Directory)
             ? ToDirectoryEntry(new DirectoryInfo(path))
             : ToInfo(ToFileEntry(new FileInfo(path)));
+    }
+
+    private static FileRead ReadText(string path, CancellationToken cancellationToken)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var bytes = RelaxKonOS.Protocol.Files.TextFileCodec.ReadBytesAsync(stream, cancellationToken).GetAwaiter().GetResult();
+        return new(Convert.ToBase64String(bytes), Path.GetFileName(path), "text/plain");
     }
 
     private static FileRead Read(string path, CancellationToken cancellationToken)

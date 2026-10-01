@@ -21,9 +21,12 @@ internal static class DirectUserExecutionOperations
         => request.Operation switch
         {
             UserExecutionOperationKind.FileGetSpecialLocations => direct.GetSpecialLocations(),
+            UserExecutionOperationKind.GitConflictSnapshot => GitConflictFileAccess.Read(request.Path!, request.FileName!),
+            UserExecutionOperationKind.GitConflictWrite => GitConflictFileAccess.Write(request.Path!, request.FileName!, Convert.FromBase64String(request.ContentBase64!), request.ExpectedSha256!),
             UserExecutionOperationKind.FileListDirectory => direct.GetDirectory(request.Path),
             UserExecutionOperationKind.FileGetInfo => direct.GetInfo(request.Path!),
             UserExecutionOperationKind.FileRead => ReadDirect(direct, request.Path!),
+            UserExecutionOperationKind.FileReadText => new FileReadResult(Convert.ToBase64String(await direct.ReadTextBytesAsync(request.Path!)), Path.GetFileName(request.Path!), "text/plain"),
             UserExecutionOperationKind.FileWrite => await direct.WriteFileAsync(request.Path!, Bytes(request.ContentBase64!)),
             UserExecutionOperationKind.FileWriteIfMatch => await direct.WriteFileIfMatchAsync(request.Path!,
                 Convert.FromBase64String(request.ContentBase64!), request.ExpectedSha256!),

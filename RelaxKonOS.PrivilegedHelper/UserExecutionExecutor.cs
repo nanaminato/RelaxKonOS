@@ -154,8 +154,11 @@ public static class UserExecutionExecutor
         {
             UserExecutionOperationKind.FileListDirectory => List(path!),
             UserExecutionOperationKind.FileGetSpecialLocations => Special(home),
+            UserExecutionOperationKind.GitConflictSnapshot => GitConflictFileAccess.Read(path!, request.FileName!),
+            UserExecutionOperationKind.GitConflictWrite => GitConflictFileAccess.Write(path!, request.FileName!, Convert.FromBase64String(request.ContentBase64!), request.ExpectedSha256!),
             UserExecutionOperationKind.FileGetInfo => Info(path),
             UserExecutionOperationKind.FileRead => await ReadAsync(path!),
+            UserExecutionOperationKind.FileReadText => await ReadTextAsync(path!),
             UserExecutionOperationKind.FileWrite => await WriteAsync(path!, request.ContentBase64!),
             UserExecutionOperationKind.FileWriteIfMatch => GitTextFileWrite.ReplaceIfVersion(path!,
                 Convert.FromBase64String(request.ContentBase64!), request.ExpectedSha256!),
@@ -223,6 +226,13 @@ public static class UserExecutionExecutor
         => path is null ? null : LinuxUserFileOperations.GetMetadata(path) is { } metadata
             ? ToInfo(metadata)
             : null;
+    private static async Task<FileRead> ReadTextAsync(string path)
+    {
+        await using var stream = LinuxUserFileOperations.OpenRead(path);
+        var bytes = await RelaxKonOS.Protocol.Files.TextFileCodec.ReadBytesAsync(stream);
+        return new(Convert.ToBase64String(bytes), Path.GetFileName(path), "text/plain");
+    }
+
     private static async Task<FileRead> ReadAsync(string path)
     {
         await using var file = LinuxUserFileOperations.OpenRead(path);

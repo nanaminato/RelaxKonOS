@@ -20,9 +20,24 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.input.key.*
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -43,9 +58,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
@@ -77,12 +100,64 @@ class ServerTerminalViewModel(application: Application) : AndroidViewModel(appli
         getApplication<RelaxKonApplication>().container.session, viewModelScope,
     )
     val state = controller.state
-    fun connect(owner: SessionState.Active) = controller.connect(owner)
+    val presentation = TerminalPresentation()
+    private val container get() = getApplication<RelaxKonApplication>().container
+    private var settingsJob: kotlinx.coroutines.Job? = null
+    private var activeOwner: SessionState.Active? = null
+    init {
+        viewModelScope.launch { container.session.state.collect { state ->
+            val owner = state as? SessionState.Active
+            if (activeOwner !== owner) {
+                settingsJob?.cancel(); activeOwner = owner; presentation.bindOwner(owner)
+                controller.resetOwner()
+            }
+        } }
+    }
+    fun connect(owner: SessionState.Active) {
+        if (activeOwner !== owner) { settingsJob?.cancel(); activeOwner = owner; presentation.bindOwner(owner) }
+        controller.connect(owner)
+        if (!presentation.settingsVerified && settingsJob?.isActive != true) readSettings(owner)
+    }
+    fun readSettings(owner: SessionState.Active) {
+        if (settingsJob?.isActive == true) return
+        presentation.settingsBusy = true
+        settingsJob = viewModelScope.launch {
+            try {
+                val result = container.terminalSettings.read(owner)
+                if (activeOwner !== owner) return@launch
+                presentation.settingsVerified = result is app.relaxkonos.mobile.core.net.ApiResult.Success
+                if (result is app.relaxkonos.mobile.core.net.ApiResult.Success) { presentation.settings = result.value; presentation.settingsMessage = null }
+                else presentation.settingsMessage = app.relaxkonos.mobile.ui.common.UiMessage(R.string.terminal_settings_unavailable)
+            } finally { if (activeOwner === owner) presentation.settingsBusy = false }
+        }
+    }
+    fun saveSettings(owner: SessionState.Active, value: app.relaxkonos.mobile.core.net.TerminalSettings) {
+        if (settingsJob?.isActive == true || !presentation.settingsVerified) return
+        val expected = presentation.settings
+        presentation.settingsBusy = true
+        settingsJob = viewModelScope.launch {
+            try {
+                val result = container.terminalSettings.save(owner, expected, value)
+                if (activeOwner !== owner) return@launch
+                when (result) {
+                    is app.relaxkonos.mobile.core.net.ApiResult.Success -> {
+                        presentation.settings = result.value; presentation.localFontSize = null; presentation.settingsMessage = app.relaxkonos.mobile.ui.common.UiMessage(R.string.terminal_settings_saved)
+                    }
+                    else -> {
+                        presentation.settingsVerified = false
+                        presentation.settingsMessage = app.relaxkonos.mobile.ui.common.UiMessage(
+                            if (result is app.relaxkonos.mobile.core.net.ApiResult.Problem && result.status < 500) R.string.terminal_settings_changed else R.string.terminal_settings_unknown)
+                    }
+                }
+            } finally { if (activeOwner === owner) presentation.settingsBusy = false }
+        }
+    }
     fun attach(id: String?) = controller.attach(id)
     fun send(text: String) = controller.send(text)
     fun resize(columns: Int, rows: Int) = controller.resize(columns, rows)
     fun close(sessionId: String) = controller.close(sessionId)
-    fun closeOtherSessions() = controller.closeOtherSessions()
+    fun closeSessions(ids: List<String>) = controller.closeSessions(ids)
+    fun clearOutput() = controller.clearOutput()
     fun detach() = controller.detach()
     override fun onCleared() { detach(); super.onCleared() }
 }
@@ -96,7 +171,9 @@ fun ServerTerminalScreen(owner: SessionState.Active, modifier: Modifier = Modifi
         onStopOrDispose { model.detach() }
     }
     ServerTerminalContent(owner, state, { model.connect(owner) }, model::attach, model::send,
-        model::resize, model::close, model::closeOtherSessions, modifier)
+        model::resize, model::close, model::closeSessions, modifier,
+        presentation = model.presentation, onClearOutput = model::clearOutput,
+        onReadSettings = { model.readSettings(owner) }, onSaveSettings = { model.saveSettings(owner, it) })
 }
 
 @Composable
@@ -108,66 +185,147 @@ internal fun ServerTerminalContent(
     onSend: (String) -> Boolean,
     onResize: (Int, Int) -> Unit,
     onCloseSession: (String) -> Unit,
-    onCloseOthers: () -> Unit,
+    onCloseSessions: (List<String>) -> Unit,
     modifier: Modifier = Modifier,
     imeInsets: WindowInsets = WindowInsets.ime,
+    presentation: TerminalPresentation = remember(owner) { TerminalPresentation().apply { bindOwner(owner) } },
+    onClearOutput: () -> Unit = {},
+    onReadSettings: () -> Unit = {},
+    onSaveSettings: (app.relaxkonos.mobile.core.net.TerminalSettings) -> Unit = {},
 ) {
-    var input by remember { mutableStateOf("") }
-    var pasteReview by remember { mutableStateOf<String?>(null) }
-    var ctrlNext by remember { mutableStateOf(false) }
-    var altNext by remember { mutableStateOf(false) }
-    var fontSize by rememberSaveable { mutableStateOf(13) }
-    var menuOpen by remember { mutableStateOf(false) }
-    var closeReview by remember { mutableStateOf<Pair<String?, String>?>(null) }
+    val input = presentation.input
+    val fontSize = presentation.localFontSize ?: presentation.settings.fontSize
+    val clipboard = LocalClipboard.current
+    val clipboardContext = LocalContext.current
+    var textLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    val matches = remember(state.frame.text, presentation.search) { TerminalInputPolicy.matches(state.frame.text, presentation.search) }
+    fun cellSpan(cell: TerminalCellStyle): SpanStyle {
+        val normalForeground = cell.foreground?.let { Color(0xff000000L or it.toLong()) } ?: terminalColor(presentation.settings.foregroundColor)
+        val normalBackground = cell.background?.let { Color(0xff000000L or it.toLong()) } ?: terminalColor(presentation.settings.backgroundColor)
+        val background = if (cell.inverse) normalForeground else normalBackground
+        val foreground = if (cell.concealed) background else if (cell.inverse) normalBackground else normalForeground
+        val decorations = listOfNotNull(TextDecoration.Underline.takeIf { cell.underline }, TextDecoration.LineThrough.takeIf { cell.strike })
+        return SpanStyle(color = foreground.copy(alpha = if (cell.faint) 0.6f else 1f), background = background,
+            fontWeight = if (cell.bold) FontWeight.Bold else FontWeight.Normal,
+            fontStyle = if (cell.italic) FontStyle.Italic else FontStyle.Normal,
+            textDecoration = if (decorations.isEmpty()) TextDecoration.None else TextDecoration.combine(decorations))
+    }
+    fun searchSpan(index: Int) = SpanStyle(background = if (index == presentation.searchIndex) Color(0xFFFFCC66) else Color(0xFF665500),
+        color = if (index == presentation.searchIndex) Color.Black else Color.White)
+    val highlighted = remember(state.frame, presentation.settings, matches, presentation.searchIndex) { buildAnnotatedString {
+        var offset = 0
+        state.frame.glyphs.forEach { glyph ->
+            append(state.frame.text.substring(offset, glyph.start))
+            appendInlineContent("cell-${glyph.start}", state.frame.text.substring(glyph.start, glyph.end))
+            offset = glyph.end
+        }
+        append(state.frame.text.substring(offset))
+        state.frame.styles.forEach { run -> addStyle(cellSpan(run.style), run.start, run.end) }
+        matches.forEachIndexed { index, match -> addStyle(searchSpan(index), match.start, match.end) }
+    } }
+    fun fontChange(delta: Int) { presentation.localFontSize = (fontSize + delta).coerceIn(8.0, 40.0) }
+    var menuOpen by remember(owner) { mutableStateOf(false) }
+    var closeReview by remember(owner) { mutableStateOf<Pair<List<String>, String>?>(null) }
     val scroll = rememberScrollState()
     val uiScope = rememberCoroutineScope()
-    var followOutput by remember { mutableStateOf(true) }
-    val fontScale = LocalDensity.current.fontScale
-    val decreaseFontLabel = stringResource(R.string.terminal_font_smaller)
-    val increaseFontLabel = stringResource(R.string.terminal_font_larger)
-    val sessionActionsLabel = stringResource(R.string.terminal_session_actions)
-    LaunchedEffect(state.sessionId) { ctrlNext = false; altNext = false; followOutput = true }
-    LaunchedEffect(scroll) {
-        snapshotFlow { scroll.isScrollInProgress to scroll.value }.collect { (scrolling, value) ->
-            if (scrolling) followOutput = value >= scroll.maxValue - 24
-        }
-    }
-    LaunchedEffect(state.output, followOutput) { if (followOutput) scroll.scrollTo(scroll.maxValue) }
-    fun sendLine() {
-        if (!state.canInput) return
-        if (input.contains('\n') && !ctrlNext && !altNext) pasteReview = input + "\r"
-        else {
-            val payload = if (ctrlNext && input.length == 1) {
-                ((input[0].uppercaseChar().code) and 0x1f).toChar().toString()
-            } else if (ctrlNext || altNext) input else input + "\r"
-            if (onSend(if (altNext) "\u001b$payload" else payload)) {
-                input = ""
-                ctrlNext = false
-                altNext = false
+    fun copyOutput() { uiScope.launch {
+        runCatching { clipboard.setClipEntry(ClipEntry(android.content.ClipData.newPlainText("Terminal", state.output))) }
+            .onFailure { presentation.clipboardFailed = true }
+    } }
+    fun reviewClipboard() { uiScope.launch {
+        runCatching {
+            val value = clipboard.getClipEntry()?.clipData?.getItemAt(0)?.coerceToText(clipboardContext)?.toString()
+            if (presentation.matchesOwner(owner) && (value == null || !presentation.preparePaste(value))) presentation.clipboardFailed = true
+        }.onFailure { if (presentation.matchesOwner(owner)) presentation.clipboardFailed = true }
+    } }
+
+
+    val density = LocalDensity.current
+    val fontScale = density.fontScale
+    val textMeasurer = rememberTextMeasurer()
+    val terminalStyle = TextStyle(fontFamily = terminalFont(presentation.settings.fontFamily), fontSize = fontSize.toFloat().sp, lineHeight = (fontSize * 1.5).toFloat().sp)
+    val cellWidth = with(density) { textMeasurer.measure("0", terminalStyle).size.width.toDp().value }
+    // Android fallback CJK/emoji fonts can have a different advance from the Latin monospace font.
+    // Fixed-width placeholders keep VT cells aligned while alternate text remains selectable/copyable.
+    val inlineCells = remember(state.frame, terminalStyle, cellWidth, fontScale, matches, presentation.settings, presentation.searchIndex) {
+        var matchIndex = 0
+        state.frame.glyphs.associate { glyph ->
+            while (matchIndex < matches.size && matches[matchIndex].end <= glyph.start) matchIndex++
+            val match = matches.getOrNull(matchIndex)?.takeIf { it.start < glyph.end }
+            val cellStyle = terminalStyle.merge(cellSpan(glyph.style)).let { if (match == null) it else it.merge(searchSpan(matchIndex)) }
+            "cell-${glyph.start}" to InlineTextContent(Placeholder((cellWidth * glyph.width / fontScale).sp,
+                (fontSize * 1.5).toFloat().sp, PlaceholderVerticalAlign.TextCenter)) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(state.frame.text.substring(glyph.start, glyph.end), style = cellStyle, softWrap = false, maxLines = 1)
+                }
             }
         }
     }
-    if (pasteReview != null) AlertDialog(
-        onDismissRequest = { pasteReview = null },
+
+    val decreaseFontLabel = stringResource(R.string.terminal_font_smaller)
+    val increaseFontLabel = stringResource(R.string.terminal_font_larger)
+    val sessionActionsLabel = stringResource(R.string.terminal_session_actions)
+    LaunchedEffect(state.sessionId) { presentation.bindSession(state.sessionId) }
+    LaunchedEffect(matches.size) { presentation.searchIndex = presentation.searchIndex.coerceIn(0, (matches.size - 1).coerceAtLeast(0)) }
+    LaunchedEffect(presentation.searchIndex, presentation.search, textLayout) {
+        val match = matches.getOrNull(presentation.searchIndex)
+        val layout = textLayout
+        if (presentation.searchOpen && match != null && layout != null && match.start < layout.layoutInput.text.length) {
+            presentation.followOutput = false
+            scroll.scrollTo(layout.getBoundingBox(match.start).top.toInt().coerceAtLeast(0))
+        }
+    }
+    LaunchedEffect(scroll) {
+        snapshotFlow { scroll.isScrollInProgress to scroll.value }.collect { (scrolling, value) ->
+            if (scrolling) presentation.followOutput = value >= scroll.maxValue - 24
+        }
+    }
+    LaunchedEffect(state.output, presentation.followOutput) { if (presentation.followOutput) scroll.scrollTo(scroll.maxValue) }
+    fun sendLine() {
+        if (!state.canInput) return
+        val payload = presentation.payload()
+        if (TerminalInputPolicy.needsReview(input)) presentation.prepareDraftReview()
+        else if (onSend(payload)) presentation.sent()
+    }
+    presentation.pasteReview?.let { review -> AlertDialog(
+        onDismissRequest = { presentation.pasteReview = null },
         title = { Text(stringResource(R.string.terminal_paste_title)) },
-        text = { SelectionContainer { Text(pasteReview.orEmpty().take(2000)) } },
-        confirmButton = { TextButton(enabled = state.canInput, onClick = {
-            if (onSend(pasteReview.orEmpty())) { input = ""; pasteReview = null }
-        }) {
-            Text(stringResource(R.string.terminal_send)) } },
-        dismissButton = { TextButton(onClick = { pasteReview = null }) { Text(stringResource(R.string.common_cancel)) } },
-    )
-    closeReview?.let { (id, target) -> AlertDialog(
+        text = { Column { Text(stringResource(R.string.terminal_paste_target, review.sessionId));
+            SelectionContainer { Text(review.payload.take(2000)) }
+            if (review.payload.length > 2000) Text(stringResource(R.string.terminal_paste_truncated, review.payload.length))
+        } },
+        confirmButton = { TextButton(enabled = state.canInput && presentation.canPaste(state.sessionId), onClick = {
+            if (presentation.canPaste(state.sessionId) && onSend(if (state.frame.bracketedPaste && !review.clearDraft) "\u001b[200~" + review.payload + "\u001b[201~" else review.payload)) presentation.acceptedPaste()
+        }) { Text(stringResource(R.string.terminal_send)) } },
+        dismissButton = { TextButton(onClick = { presentation.pasteReview = null }) { Text(stringResource(R.string.common_cancel)) } },
+    ) }
+    if (presentation.settingsOpen) TerminalAppearanceDialog(presentation, onReadSettings, onSaveSettings)
+    closeReview?.let { (ids, target) -> AlertDialog(
         onDismissRequest = { closeReview = null },
         title = { Text(stringResource(R.string.terminal_close)) },
         text = { Text(stringResource(R.string.terminal_close_confirm, target)) },
         confirmButton = { TextButton(enabled = state.connected && !state.busy, onClick = {
-            if (id == null) onCloseOthers() else onCloseSession(id)
+            if (ids.size == 1) onCloseSession(ids.single()) else onCloseSessions(ids)
             closeReview = null
         }) { Text(stringResource(R.string.terminal_close)) } },
         dismissButton = { TextButton(onClick = { closeReview = null }) { Text(stringResource(R.string.common_cancel)) } },
     ) }
-    TerminalScreenLayout(modifier = modifier, imeInsets = imeInsets, header = { compact ->
+    TerminalScreenLayout(modifier = modifier, imeInsets = imeInsets, sidebar = {
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            Text(stringResource(R.string.terminal_sessions_title), style = MaterialTheme.typography.titleSmall)
+            if (!state.connected && !state.connecting) Button(onClick = onConnect) { Text(stringResource(R.string.terminal_reconnect)) }
+            else Button(onClick = { onAttach(null) }, enabled = state.connected && !state.busy) { Text(stringResource(R.string.terminal_new)) }
+            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                items(state.sessions, key = { it.sessionId }) { session ->
+                    val active = session.sessionId == state.sessionId
+                    val stamp = terminalSessionLabel(session.createdAt, session.sessionId, System.currentTimeMillis())
+                    TerminalSessionChip(if (active) "${stringResource(R.string.terminal_session_current)} · $stamp" else stamp,
+                        active, "${stringResource(R.string.terminal_close)} · $stamp", state.connected && !state.busy,
+                        { if (!active) onAttach(session.sessionId) }, { closeReview = listOf(session.sessionId) to stamp }, constrained = true)
+                }
+            }
+        }
+    }, header = { compact, wide ->
         // Keep long server addresses to one line so they cannot consume the terminal viewport.
         if (compact) {
             val selectedSession = state.sessions.firstOrNull { it.sessionId == state.sessionId }
@@ -200,10 +358,10 @@ internal fun ServerTerminalContent(
                         Text(stringResource(R.string.terminal_new), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
-                TextButton(onClick = { fontSize = (fontSize - 1).coerceAtLeast(9) }, enabled = fontSize > 9,
+                TextButton(onClick = { fontChange(-1) }, enabled = fontSize > 8,
                     contentPadding = PaddingValues(horizontal = Spacing.xs),
                     modifier = Modifier.width(48.dp).semantics { contentDescription = decreaseFontLabel }) { Text("A−") }
-                TextButton(onClick = { fontSize = (fontSize + 1).coerceAtMost(24) }, enabled = fontSize < 24,
+                TextButton(onClick = { fontChange(1) }, enabled = fontSize < 40,
                     contentPadding = PaddingValues(horizontal = Spacing.xs),
                     modifier = Modifier.width(48.dp).semantics { contentDescription = increaseFontLabel }) { Text("A+") }
                 if (state.sessions.size > 1) Box {
@@ -213,14 +371,15 @@ internal fun ServerTerminalContent(
                         val target = stringResource(R.string.terminal_close_others)
                         DropdownMenuItem(text = { Text(target) }, onClick = {
                             menuOpen = false
-                            closeReview = null to state.sessions.filter { it.sessionId != state.sessionId }.joinToString("\n") {
+                            val targets = state.sessions.filter { it.sessionId != state.sessionId }
+                            closeReview = targets.map { it.sessionId } to targets.joinToString("\n") {
                                 terminalSessionLabel(it.createdAt, it.sessionId, System.currentTimeMillis())
                             }
                         })
                     }
                 }
             }
-            if (state.sessions.isNotEmpty()) {
+            if (!wide && state.sessions.isNotEmpty()) {
                 // One scrolling row rather than a growing column. `Product.Design.md` gives a phone
                 // a single focused session, so switching and pruning must never take rows away from the
                 // terminal — which is exactly what a vertical session list did, one session at a time.
@@ -237,33 +396,42 @@ internal fun ServerTerminalContent(
                             closeLabel = "${stringResource(R.string.terminal_close)} · $stamp",
                             enabled = state.connected && !state.busy,
                             onSelect = { if (!active) onAttach(session.sessionId) },
-                            onClose = { closeReview = session.sessionId to stamp },
+                            onClose = { closeReview = listOf(session.sessionId) to stamp },
                         )
                     }
                 }
             }
         }
+        TerminalOutputToolbar(presentation, state, matches.size, ::copyOutput, ::reviewClipboard, onClearOutput)
         state.exitCode?.let { Text(stringResource(R.string.terminal_exit_code, it), style = MaterialTheme.typography.bodySmall) }
     }, output = {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val width = maxWidth.value
             val height = maxHeight.value
-            LaunchedEffect(width, height, fontSize, fontScale) {
+            LaunchedEffect(width, height, fontSize, fontScale, cellWidth) {
                 // Text size is in scaled pixels; subtract the actual transcript padding first.
-                onResize(((width - 2 * Spacing.md.value) / (fontSize * fontScale * 0.61f)).toInt(),
+                onResize(((width - 2 * Spacing.md.value) / cellWidth).toInt(),
                     ((height - 2 * Spacing.md.value) / (fontSize * fontScale * 1.5f)).toInt())
             }
-            Surface(Modifier.fillMaxSize(), color = Color(0xFF101820), contentColor = Color(0xFFF2F5F7), shape = MaterialTheme.shapes.medium) {
+            Surface(Modifier.fillMaxSize(), color = terminalColor(presentation.settings.backgroundColor), contentColor = terminalColor(presentation.settings.foregroundColor), shape = MaterialTheme.shapes.medium) {
                 Box {
                     SelectionContainer { Column(Modifier.fillMaxSize().verticalScroll(scroll)
                         .horizontalScroll(rememberScrollState()).padding(Spacing.md)) {
                         if (state.output.isEmpty() && state.connected && !state.busy && state.sessionId == null)
                             Text(stringResource(R.string.terminal_empty), color = Color(0xFFB7C5D0))
-                        else Text(state.output, fontFamily = FontFamily.Monospace, fontSize = fontSize.sp,
-                            lineHeight = (fontSize * 1.5f).sp, softWrap = false)
+                        else Text(highlighted, inlineContent = inlineCells, style = terminalStyle, softWrap = false, onTextLayout = { textLayout = it },
+                            modifier = Modifier.testTag("terminal-output").drawBehind {
+                                val layout = textLayout
+                                val cursor = state.frame.cursor
+                                if (state.canInput && layout != null && cursor != null && cursor < layout.layoutInput.text.length) {
+                                    val bounds = layout.getBoundingBox(cursor)
+                                    drawRect(terminalColor(presentation.settings.cursorColor), Offset(bounds.left, bounds.top),
+                                        Size(bounds.width.coerceAtLeast(cellWidth * density.density), bounds.height), style = Stroke(1.dp.toPx()))
+                                }
+                            })
                     } }
-                    if (!followOutput && state.output.isNotEmpty()) TextButton(
-                        onClick = { followOutput = true; uiScope.launch { scroll.scrollTo(scroll.maxValue) } },
+                    if (!presentation.followOutput && state.output.isNotEmpty()) TextButton(
+                        onClick = { presentation.followOutput = true; uiScope.launch { scroll.scrollTo(scroll.maxValue) } },
                         modifier = Modifier.align(Alignment.BottomEnd).background(MaterialTheme.colorScheme.surface, CircleShape),
                     ) { Text(stringResource(R.string.terminal_latest)) }
                 }
@@ -271,18 +439,30 @@ internal fun ServerTerminalContent(
         }
     }, keys = {
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            OutlinedButton(onClick = { ctrlNext = !ctrlNext }, enabled = state.canInput) {
-                Text(if (ctrlNext) "Ctrl ✓" else "Ctrl")
+            OutlinedButton(onClick = { presentation.ctrlNext = !presentation.ctrlNext }, enabled = state.canInput) {
+                Text(if (presentation.ctrlNext) "Ctrl ✓" else "Ctrl")
             }
-            OutlinedButton(onClick = { altNext = !altNext }, enabled = state.canInput) {
-                Text(if (altNext) "Alt ✓" else "Alt")
+            OutlinedButton(onClick = { presentation.altNext = !presentation.altNext }, enabled = state.canInput) {
+                Text(if (presentation.altNext) "Alt ✓" else "Alt")
             }
-            listOf("Esc" to "\u001b", "Tab" to "\t", "Ctrl+C" to "\u0003", "↑" to "\u001b[A", "↓" to "\u001b[B", "←" to "\u001b[D", "→" to "\u001b[C")
-                .forEach { (label, key) -> OutlinedButton(onClick = { onSend(key) }, enabled = state.canInput) { Text(label) } }
+            TerminalExtendedKeys
+                .forEach { (label, key) -> OutlinedButton(onClick = {
+                    if (onSend(terminalKeyPayload(key, presentation.ctrlNext, presentation.altNext, applicationCursor = state.frame.applicationCursor))) {
+                        presentation.ctrlNext = false; presentation.altNext = false
+                    }
+                }, enabled = state.canInput) { Text(label) } }
         }
     }, input = { compact ->
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(value = input, onValueChange = { input = it }, modifier = Modifier.weight(1f).heightIn(min = 56.dp),
+            OutlinedTextField(value = input, onValueChange = presentation::edit, modifier = Modifier.weight(1f).heightIn(min = 56.dp).onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) false
+                else if (event.isCtrlPressed && event.isShiftPressed && event.key == Key.V) { reviewClipboard(); true }
+                else if (event.isCtrlPressed && event.isShiftPressed && event.key == Key.C) { copyOutput(); true }
+                else if (event.isCtrlPressed && event.isShiftPressed && event.key == Key.F) { presentation.searchOpen = !presentation.searchOpen; true }
+                else if (event.key == Key.Enter && !event.isShiftPressed) { sendLine(); true }
+                else if (state.canInput && input.isEmpty()) terminalHardwarePayload(event, state.frame.applicationCursor)?.let { onSend(it); true } ?: false
+                else false
+            },
                 label = { Text(stringResource(R.string.terminal_input)) }, enabled = state.canInput,
                 maxLines = if (compact) 1 else 3,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send), keyboardActions = KeyboardActions(onSend = { sendLine() }))
@@ -306,11 +486,13 @@ private fun TerminalSessionChip(
     enabled: Boolean,
     onSelect: () -> Unit,
     onClose: () -> Unit,
+    constrained: Boolean = false,
 ) {
     val container = if (active) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest
     val content = if (active) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
     Row(
         modifier = Modifier
+            .then(if (constrained) Modifier.fillMaxWidth() else Modifier)
             .clip(RoundedCornerShape(Radius.pill))
             .background(container)
             .clickable(enabled = enabled, role = Role.Tab, onClick = onSelect)
@@ -318,7 +500,8 @@ private fun TerminalSessionChip(
             .padding(start = Spacing.md, end = Spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = content, maxLines = 1)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = content, maxLines = 1,
+            overflow = TextOverflow.Ellipsis, modifier = if (constrained) Modifier.weight(1f) else Modifier)
         // The glyph is not a word, so the accessible name is set here rather than left as "multiplication sign".
         IconButton(onClick = onClose, enabled = enabled, modifier = Modifier.semantics { contentDescription = closeLabel }) {
             Text("×", style = MaterialTheme.typography.labelMedium, color = content)

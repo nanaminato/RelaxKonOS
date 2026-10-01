@@ -33,6 +33,13 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
         return Task.FromResult(GitTextFileWrite.ReplaceIfVersion(path, content, expectedSha256));
     }
 
+    public async Task<byte[]> ReadTextBytesAsync(string path, CancellationToken cancellationToken = default)
+    {
+        var opened = OpenRead(path) ?? throw new FileNotFoundException("Text file not found.");
+        using var stream = opened.Stream;
+        return await TextFileCodec.ReadBytesAsync(stream, cancellationToken);
+    }
+
     public IReadOnlyList<DriveDto> GetDrives()
     {
         if (mode.Mode == ServerMode.User)

@@ -75,7 +75,7 @@ class ImagePreviewCacheTest {
     @Test
     fun `a complete copy is reused`() {
         val bytes = byteArrayOf(1, 2, 3, 4)
-        cache.create("https://host", "C:\\pics\\a.png", bytes.size.toLong(), 20).file.writeBytes(bytes)
+        cache.create("https://host", "C:\\pics\\a.png", bytes.size.toLong(), 20).let { target -> target.file.writeBytes(bytes); target.commit(bytes.size.toLong()) }
 
         assertEquals(bytes.size.toLong(), cache.cached("https://host", "C:\\pics\\a.png", 4, 20)?.length())
     }
@@ -98,9 +98,52 @@ class ImagePreviewCacheTest {
 
     @Test
     fun `a copy of an unannounced length is reused when it has bytes`() {
-        cache.create("https://host", "C:\\pics\\a.png", null, 20).file.writeBytes(byteArrayOf(1, 2))
+        cache.create("https://host", "C:\\pics\\a.png", null, 20).let { target -> target.file.writeBytes(byteArrayOf(1, 2)); target.commit(2) }
 
         assertNotNull(cache.cached("https://host", "C:\\pics\\a.png", null, 20))
+    }
+
+    @Test fun `unconfirmed full length transfer is not a cache hit`() {
+        val target = cache.create("host", "/pic", 4, 20)
+        target.file.writeBytes(ByteArray(4))
+        assertNull(cache.cached("host", "/pic", 4, 20))
+        assertTrue(runCatching { target.commit(3) }.isFailure)
+        target.discard()
+        assertFalse(target.file.exists())
+    }
+    @Test fun `stale transfer cleanup cannot delete a newer confirmed cache entry`() {
+        val old = cache.create("host", "/pic", 4, 20)
+        val fresh = cache.create("host", "/pic", 4, 20)
+        assertFalse(old.file == fresh.file)
+        old.file.writeBytes(byteArrayOf(1, 1, 1, 1))
+        fresh.file.writeBytes(byteArrayOf(2, 2, 2, 2)); fresh.commit(4)
+        old.discard()
+        assertEquals(listOf<Byte>(2, 2, 2, 2), cache.cached("host", "/pic", 4, 20)!!.readBytes().toList())
+    }
+    @Test fun `accounts on one host have independent cache namespaces`() {
+        val alice = "host\u0000alice"; val bob = "host\u0000bob"
+        cache.create(alice, "/pic", 4, 20).let { it.file.writeBytes(ByteArray(4)); it.commit(4) }
+        assertNotNull(cache.cached(alice, "/pic", 4, 20))
+        assertNull(cache.cached(bob, "/pic", 4, 20))
+    }
+    @Test fun `preview sink bounds actual bytes including unknown sizes`() {
+        assertTrue(runCatching { cache.create("host", "/big", ImagePreviewCache.CACHE_BUDGET_BYTES + 1, 0) }.isFailure)
+        val target = cache.create("host", "/big", null, 0)
+        assertTrue(runCatching { target.open().use { out ->
+            val chunk = ByteArray(1024 * 1024)
+            repeat(65) { out.write(chunk) }
+        } }.isFailure)
+        assertEquals(ImagePreviewCache.CACHE_BUDGET_BYTES, target.file.length())
+        target.discard()
+    }
+
+    @Test fun `cache restart removes orphan staging but retains active and foreign files`() {
+        val active = cache.create("host", "/pic", 4, 0)
+        active.file.writeBytes(ByteArray(4))
+        cache.trim(); assertTrue(active.file.exists())
+        val foreign = File(directory, "foreign.part").apply { writeBytes(byteArrayOf(1)) }
+        ImagePreviewCache(directory).trim()
+        assertFalse(active.file.exists()); assertTrue(foreign.exists())
     }
 
     // ---- Eviction ------------------------------------------------------
@@ -141,10 +184,8 @@ class ImagePreviewCacheTest {
 
     @Test
     fun `trim deletes the files the policy chose`() {
-        val kept = cache.create("https://host", "C:\\pics\\kept.png", 10, 2).file
-        val dropped = cache.create("https://host", "C:\\pics\\dropped.png", 10, 1).file
-        kept.writeBytes(ByteArray(10))
-        dropped.writeBytes(ByteArray(10))
+        val kept = cache.create("https://host", "C:\\pics\\kept.png", 10, 2).let { it.file.writeBytes(ByteArray(10)); it.commit(10) }
+        val dropped = cache.create("https://host", "C:\\pics\\dropped.png", 10, 1).let { it.file.writeBytes(ByteArray(10)); it.commit(10) }
         dropped.setLastModified(1_000L)
         kept.setLastModified(2_000L)
 

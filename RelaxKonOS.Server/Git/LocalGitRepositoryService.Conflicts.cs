@@ -1,5 +1,11 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
+using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Files;
+using RelaxKonOS.Protocol.UserExecution;
+using RelaxKonOS.Server.UserExecution;
+using RelaxKonOS.Server.Files;
 using Microsoft.EntityFrameworkCore;
 using RelaxKonOS.Protocol.Git;
 
@@ -24,7 +30,7 @@ public sealed partial class LocalGitRepositoryService
             var result = await RunGitAsync(git, root, ["rev-parse", "--git-path", marker], ct);
             if (!result.Success) throw new InvalidOperationException(result.Error);
             var path = Path.GetFullPath(result.Output.Trim(), root);
-            if (File.Exists(path) || Directory.Exists(path)) return operation;
+            if (await ConflictFileCallAsync<FileSystemEntryDto?>(UserExecutionOperationKind.FileGetInfo, path, null, null, null, ct) is not null) return operation;
         }
         return null;
     }
@@ -35,10 +41,6 @@ public sealed partial class LocalGitRepositoryService
             path.Split('/', '\\').Any(p => p is ".git" or ".."))
             throw new ArgumentException("Invalid conflict path.");
         var target = Path.GetFullPath(path, root);
-        for (var current = target; current != Path.GetFullPath(root); current = Path.GetDirectoryName(current)!)
-            if ((File.Exists(current) || Directory.Exists(current)) &&
-                (File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
-                throw new ArgumentException("Symbolic links cannot be edited in the conflict editor.");
         return target;
     }
 
@@ -69,21 +71,13 @@ public sealed partial class LocalGitRepositoryService
             if (blob.Output.Contains('\0') || blob.Output.Contains('\uFFFD')) editable = false;
             else versions[int.Parse(fields[2])] = blob.Output;
         }
-        string? working = null;
-        string workHash = "deleted";
-        if (File.Exists(target))
-        {
-            await using var stream = File.OpenRead(target);
-            workHash = Convert.ToHexString(await SHA256.HashDataAsync(stream, ct));
-            if (stream.Length > MaxDiffPatchSize) editable = false;
-            else
-            {
-                try { working = new UTF8Encoding(false, true).GetString(await File.ReadAllBytesAsync(target, ct)); }
-                catch (DecoderFallbackException) { editable = false; }
-                if (working?.Contains('\0') == true) editable = false;
-            }
-        }
+        var snapshot = await ConflictFileCallAsync<GitConflictSnapshot>(UserExecutionOperationKind.GitConflictSnapshot,
+            root, path, null, null, ct);
+        var working = snapshot.Content;
+        var workHash = snapshot.Hash;
+        editable &= snapshot.CanEdit;
         var head = await RunGitAsync(git, root, ["rev-parse", "HEAD"], ct);
+        if (!head.Success) throw new InvalidOperationException("Cannot read conflict HEAD.");
         var revision = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(entries.Output + workHash + head.Output)));
         return new(path, revision, editable ? versions[1] : null, editable ? versions[2] : null,
             editable ? versions[3] : null, editable ? working : null, editable);
@@ -109,9 +103,21 @@ public sealed partial class LocalGitRepositoryService
                         return new(false, "resolve", Message: "Only UTF-8 text up to 200 KiB can be edited.");
                     if (request.Content.Split('\n').Any(line => line.StartsWith("<<<<<<<") || line.StartsWith("=======") || line.StartsWith(">>>>>>>") || line.StartsWith("|||||||")))
                         return new(false, "resolve", Message: "Remove conflict markers before saving.");
-                    await File.WriteAllTextAsync(target, request.Content, new UTF8Encoding(false), cancellationToken);
+                    var snapshot = await ConflictFileCallAsync<GitConflictSnapshot>(UserExecutionOperationKind.GitConflictSnapshot,
+                        repo.Path, request.Path, null, null, cancellationToken);
+                    // Recheck the revision before an ordinary-identity, conditional file write.
+                    if ((await ReadConflictAsync(git, repo.Path, request.Path, cancellationToken)).Revision != current.Revision)
+                        return new(false, "resolve", Message: "File changed. Reload before resolving.");
+                    var bytes = new UTF8Encoding(false, true).GetBytes(request.Content);
+                    if (!await ConflictFileCallAsync<bool>(UserExecutionOperationKind.GitConflictWrite, repo.Path, request.Path,
+                            Convert.ToBase64String(bytes), snapshot.Hash, cancellationToken))
+                        return new(false, "resolve", Message: "File changed. Reload before resolving.");
                 }
-                else if (request.Choice == "delete") File.Delete(target);
+                else if (request.Choice == "delete")
+                {
+                    var delete = await RunGitAsync(git, repo.Path, ["--literal-pathspecs", "rm", "-f", "--", request.Path], cancellationToken);
+                    return new(delete.Success, "resolve", Message: delete.Success ? null : delete.Error);
+                }
                 else
                 {
                     var stage = request.Choice == "ours" ? "2" : "3";
@@ -145,4 +151,29 @@ public sealed partial class LocalGitRepositoryService
             return new(result.Success, operation, await TryGetConflictPathsAsync(git, repo.Path, cancellationToken), result.Success ? null : result.Error);
         });
     }
+    private async Task<T> ConflictFileCallAsync<T>(UserExecutionOperationKind operation, string root, string? relative,
+        string? content, string? expectedHash, CancellationToken ct)
+    {
+        if (serverMode.Mode == ServerMode.System)
+        {
+            var principal = http.HttpContext?.User ?? throw new InvalidOperationException("Authenticated identity required.");
+            UserExecutionContext context;
+            using (var scope = executionScopes.CreateScope())
+                context = scope.ServiceProvider.GetRequiredService<IUserExecutionContextResolver>().Resolve(principal);
+            var response = await executionTransport.ExecuteAsync(new UserExecutionRequest(context.Identity, operation,
+                Path: root, FileName: relative, ContentBase64: content, ExpectedSha256: expectedHash, OperationId: Guid.NewGuid()), ct);
+            if (!response.Success || response.OutputBase64 is null) throw new InvalidOperationException("Conflict file access is unavailable.");
+            return JsonSerializer.Deserialize<T>(Convert.FromBase64String(response.OutputBase64), RelaxKonOSJsonOptions.Default)!;
+        }
+        ct.ThrowIfCancellationRequested();
+        object? value = operation switch
+        {
+            UserExecutionOperationKind.FileGetInfo => new LocalFileService(serverMode).GetInfo(root),
+            UserExecutionOperationKind.GitConflictSnapshot => GitConflictFileAccess.Read(root, relative!),
+            UserExecutionOperationKind.GitConflictWrite => GitConflictFileAccess.Write(root, relative!, Convert.FromBase64String(content!), expectedHash!),
+            _ => throw new ArgumentException("Invalid conflict I/O operation."),
+        };
+        return (T)value!;
+    }
+
 }

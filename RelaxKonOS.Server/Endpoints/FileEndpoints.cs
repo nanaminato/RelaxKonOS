@@ -2,6 +2,7 @@ using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Mvc;
 using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.Identity;
@@ -37,6 +38,19 @@ public static class FileEndpoints
                         exception.ProblemCode, exception.Message);
                 }
             });
+
+        files.MapGet(FileApiRoutes.Text, (string path, IFileService fs, CancellationToken ct) =>
+            TextResult(async () => Results.Ok(await new TextFileEditor(fs).ReadAsync(path, ct))))
+            .RequireAuthorization(FileAuthorizationPolicies.Read).WithTags("Files");
+        files.MapPut(FileApiRoutes.Text, (string path, SaveTextFileRequest request, IFileService fs, CancellationToken ct) =>
+            TextResult(async () => await new TextFileEditor(fs).SaveAsync(path, request, ct) is { } saved
+                ? Results.Ok(saved) : Problem(409, "text-file-changed", "File changed", "Reload the file before saving.")))
+            .RequireAuthorization(FileAuthorizationPolicies.Write).WithTags("Files")
+            .WithMetadata(new RequestSizeLimitAttribute(2 * 1024 * 1024));
+        files.MapPost(FileApiRoutes.Text, (string path, CreateTextFileRequest request, IFileService fs, CancellationToken ct) =>
+            TextResult(async () => Results.Ok(await new TextFileEditor(fs).CreateAsync(path, request, ct))))
+            .RequireAuthorization(FileAuthorizationPolicies.Write).WithTags("Files")
+            .WithMetadata(new RequestSizeLimitAttribute(2 * 1024 * 1024));
 
         // GET drives
         files.MapGet(FileApiRoutes.Drives, (HttpContext http, IFileService fs, IHostFileAuthorizationService authorizations) =>
@@ -426,6 +440,19 @@ public static class FileEndpoints
         .WithTags("Files");
 
         return app;
+    }
+
+    private static async Task<IResult> TextResult(Func<Task<IResult>> action)
+    {
+        try { return await action(); }
+        catch (InvalidDataException) { return Problem(422, "text-file-invalid", "Invalid text", "Binary or oversized content cannot be edited."); }
+        catch (System.Text.DecoderFallbackException) { return Problem(422, "text-file-invalid", "Invalid encoding", "The file is not valid Unicode text."); }
+        catch (System.Text.EncoderFallbackException) { return Problem(422, "text-file-invalid", "Invalid encoding", "The content is not valid Unicode text."); }
+        catch (FileNotFoundException) { return Problem(404, "not-found", "Not found", "Text file not found."); }
+        catch (DirectoryNotFoundException) { return Problem(404, "not-found", "Not found", "Target directory not found."); }
+        catch (UnauthorizedAccessException) { return Problem(403, "access-denied", "Access denied", "Conditional text editing requires an ordinary host identity with direct file access."); }
+        catch (ArgumentException) { return Problem(400, "text-file-invalid", "Invalid text request", "Check the path, encoding and version."); }
+        catch (IOException) { return Problem(503, "text-file-unavailable", "File unavailable", "Refresh to verify the file before trying again."); }
     }
 
     private static bool CanListRootDirectory(IFileService files)

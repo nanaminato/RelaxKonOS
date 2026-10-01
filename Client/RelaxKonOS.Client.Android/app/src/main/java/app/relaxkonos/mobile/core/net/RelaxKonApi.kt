@@ -155,6 +155,49 @@ class RelaxKonApi(
         is ApiResult.Transport -> result
     }
 
+    override suspend fun textFile(serverUrl: String, accessToken: String, path: String): ApiResult<RemoteTextFile> =
+        gitCall("GET", serverUrl, TextEditorRoutes.file(path), accessToken, null, TextEditorWire::file)
+
+    override suspend fun saveTextFile(serverUrl: String, accessToken: String, file: RemoteTextFile, content: String): ApiResult<RemoteTextFile> =
+        gitCall("PUT", serverUrl, TextEditorRoutes.file(file.path), accessToken,
+            JsonBody().string("content", content).string("expectedVersion", file.version)
+                .string("encoding", file.encoding).bool("bom", file.bom), TextEditorWire::file)
+
+    override suspend fun createTextFile(serverUrl: String, accessToken: String, path: String, content: String, encoding: String, bom: Boolean): ApiResult<RemoteTextFile> =
+        gitCall("POST", serverUrl, TextEditorRoutes.file(path), accessToken,
+            JsonBody().string("content", content).string("encoding", encoding).bool("bom", bom), TextEditorWire::file)
+
+    override suspend fun gitEngine(serverUrl: String, accessToken: String): ApiResult<GitEngine> =
+        gitCall("GET", serverUrl, GitWorkspaceRoutes.ENGINE, accessToken, null, GitWorkspaceWire::engine)
+    override suspend fun gitDiff(serverUrl: String, accessToken: String, id: String, path: String, staged: Boolean, reference: String?): ApiResult<GitDiff> =
+        gitCall("GET", serverUrl, GitWorkspaceRoutes.diff(id, path, staged, reference), accessToken, null, GitWorkspaceWire::diff)
+    override suspend fun gitLog(serverUrl: String, accessToken: String, id: String, skip: Int, search: String): ApiResult<List<GitCommit>> =
+        gitCall("GET", serverUrl, GitWorkspaceRoutes.log(id, skip, search), accessToken, null, GitWorkspaceWire::log)
+    override suspend fun gitCommitDetail(serverUrl: String, accessToken: String, id: String, sha: String): ApiResult<GitCommitDetail> =
+        gitCall("GET", serverUrl, GitWorkspaceRoutes.commit(id, sha), accessToken, null, GitWorkspaceWire::detail)
+    override suspend fun gitConflicts(serverUrl: String, accessToken: String, id: String): ApiResult<GitConflictState> =
+        gitCall("GET", serverUrl, GitWorkspaceRoutes.conflicts(id), accessToken, null, GitWorkspaceWire::conflicts)
+    override suspend fun gitConflict(serverUrl: String, accessToken: String, id: String, path: String): ApiResult<GitConflictFile> =
+        gitCall("GET", serverUrl, GitWorkspaceRoutes.conflict(id, path), accessToken, null, GitWorkspaceWire::conflict)
+    override suspend fun gitMutation(serverUrl: String, accessToken: String, id: String, change: GitMutation): ApiResult<GitOperation> {
+        GitWorkspacePolicy.validate(change)
+        val body = when (change.action) {
+            GitAction.Checkout -> JsonBody().string("branch", requireNotNull(change.branch)).bool("createIfMissing", false)
+            GitAction.CreateBranch -> JsonBody().string("name", requireNotNull(change.branch)).bool("checkout", true).bool("track", false).bool("resetExisting", false)
+            GitAction.Stage, GitAction.Unstage -> JsonBody().raw("paths", JSONArray(change.paths).toString())
+            GitAction.Commit -> JsonBody().string("message", requireNotNull(change.message)).raw("paths", "[]").bool("amend", false)
+            GitAction.Pull -> JsonBody().string("strategy", change.strategy)
+            GitAction.Push -> JsonBody().bool("saveCredentials", false)
+            GitAction.Resolve -> JsonBody().string("path", requireNotNull(change.conflict).path).string("revision", change.conflict.revision)
+                .string("choice", requireNotNull(change.choice)).apply { change.content?.let { string("content", it) } }
+            GitAction.Continue, GitAction.Abort -> JsonBody().string("operation", requireNotNull(change.operation)).string("action", if (change.action == GitAction.Continue) "continue" else "abort")
+            GitAction.Fetch -> JsonBody()
+            GitAction.DeleteBranch -> null
+        }
+        return gitCall(if (change.action == GitAction.DeleteBranch) "DELETE" else "POST", serverUrl,
+            GitWorkspaceRoutes.mutation(id, change), accessToken, body, GitWire::operation)
+    }
+
     override suspend fun gitRepositories(serverUrl: String, accessToken: String): ApiResult<List<GitRepository>> =
         gitCall("GET", serverUrl, GitRoutes.REPOSITORIES, accessToken, null, GitWire::repositories)
 
@@ -168,19 +211,13 @@ class RelaxKonApi(
     override suspend fun gitStatus(serverUrl: String, accessToken: String, id: String): ApiResult<GitStatus> =
         gitCall("GET", serverUrl, GitRoutes.status(id), accessToken, null, GitWire::status)
 
-    override suspend fun gitTextFile(serverUrl: String, accessToken: String, id: String, path: String): ApiResult<GitTextFile> =
+    override suspend fun gitTextFile(serverUrl: String, accessToken: String, id: String, path: String): ApiResult<RemoteTextFile> =
         gitCall("GET", serverUrl, GitRoutes.textFile(id, path), accessToken, null, GitWire::textFile)
 
-    override suspend fun gitSaveTextFile(serverUrl: String, accessToken: String, id: String, file: GitTextFile, content: String): ApiResult<GitTextFile> =
+    override suspend fun gitSaveTextFile(serverUrl: String, accessToken: String, id: String, file: RemoteTextFile, content: String): ApiResult<RemoteTextFile> =
         gitCall("PUT", serverUrl, GitRoutes.textFile(id, file.path), accessToken,
-            JsonBody().string("content", content).string("expectedVersion", file.version), GitWire::textFile)
-
-    override suspend fun gitCommit(serverUrl: String, accessToken: String, id: String, path: String, message: String): ApiResult<GitOperation> =
-        gitCall("POST", serverUrl, GitRoutes.commit(id), accessToken,
-            JsonBody().string("message", message).raw("paths", JSONArray().put(path).toString()).bool("amend", false), GitWire::operation)
-
-    override suspend fun gitPush(serverUrl: String, accessToken: String, id: String): ApiResult<GitOperation> =
-        gitCall("POST", serverUrl, GitRoutes.push(id), accessToken, JsonBody(), GitWire::operation)
+            JsonBody().string("content", content).string("expectedVersion", file.version)
+                .string("encoding", file.encoding).bool("bom", file.bom), GitWire::textFile)
 
     override suspend fun gitBuildCredentials(serverUrl: String, accessToken: String): ApiResult<List<GitBuildCredential>> =
         gitCall("GET", serverUrl, GitBuildRoutes.CREDENTIALS, accessToken, null, GitBuildWire::credentials)
@@ -981,6 +1018,16 @@ class RelaxKonApi(
         }
     }
 
+    override suspend fun terminalSettings(serverUrl: String, accessToken: String, workspaceId: String): ApiResult<TerminalSettings> =
+        webPublishingRead(serverUrl, accessToken, TerminalSettingsWire.route(workspaceId), TerminalSettingsWire::parse)
+
+    override suspend fun saveTerminalSettings(serverUrl: String, accessToken: String, workspaceId: String, settings: TerminalSettings): ApiResult<TerminalSettings> =
+        when (val result = execute("PUT", serverUrl, TerminalSettingsWire.route(workspaceId), accessToken, TerminalSettingsWire.body(settings))) {
+            is ApiResult.Success -> runCatching { TerminalSettingsWire.parse(result.value) }.fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed terminal settings.") })
+            is ApiResult.Problem -> result
+            is ApiResult.Transport -> result
+        }
+
     override suspend fun listDirectory(serverUrl: String, accessToken: String, path: String): ApiResult<DirectoryListing> {
         val query = "?path=" + encode(path)
         return when (val parsed = execute("GET", serverUrl, FileRoutes.LIST + query, accessToken, null)) {
@@ -999,6 +1046,9 @@ class RelaxKonApi(
                         sizeBytes = item.optNullableLong("size"),
                         modifiedAtMillis = IsoInstant.toEpochMillis(item.optString("modified")),
                         mimeType = null,
+                        isHidden = item.getBoolean("isHidden"),
+                        isSystem = item.getBoolean("isSystem"),
+                        isDrive = item.getString("type") == "drive",
                     )
                 }
                 val files = json.optJSONArray("files")
@@ -1011,6 +1061,8 @@ class RelaxKonApi(
                         sizeBytes = item.optNullableLong("size"),
                         modifiedAtMillis = IsoInstant.toEpochMillis(item.optString("modified")),
                         mimeType = item.optNullableString("mimeType"),
+                        isHidden = item.getBoolean("isHidden"),
+                        isSystem = item.getBoolean("isSystem"),
                     )
                 }
                 DirectoryListing(
@@ -1029,21 +1081,34 @@ class RelaxKonApi(
         return when (val parsed = execute("GET", serverUrl, FileRoutes.PROPERTIES + query, accessToken, null)) {
             is ApiResult.Problem -> parsed
             is ApiResult.Transport -> parsed
-            is ApiResult.Success -> runCatching {
-                val json = JSONObject(parsed.value)
-                RemoteFileProperties(
-                    path = json.getString("path"),
-                    name = json.getString("name"),
-                    isDirectory = json.optString("type") == "directory",
-                    sizeBytes = json.optNullableLong("size"),
-                    createdMillis = IsoInstant.toEpochMillis(json.optString("created")),
-                    modifiedMillis = IsoInstant.toEpochMillis(json.optString("modified")),
-                    permissions = json.optString("permissions"),
-                    unixMode = json.optInt("unixMode", -1).takeIf { it >= 0 },
-                )
-            }.fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed file properties.") })
+            is ApiResult.Success -> parseFileProperties(parsed.value)
         }
     }
+
+    override suspend fun setFilePermissions(serverUrl: String, accessToken: String, path: String, unixMode: Int): ApiResult<RemoteFileProperties> =
+        when (val result = execute("PUT", serverUrl, FileRoutes.PERMISSIONS, accessToken,
+            JsonBody().string("path", path).int("unixMode", unixMode))) {
+            is ApiResult.Success -> parseFileProperties(result.value)
+            is ApiResult.Problem -> result
+            is ApiResult.Transport -> result
+        }
+
+    private fun parseFileProperties(raw: String): ApiResult<RemoteFileProperties> = runCatching {
+        val json = JSONObject(raw)
+        require(json.has("unixMode"))
+        require(json.getString("type") in setOf("file", "directory", "drive"))
+        RemoteFileProperties(
+            path = json.getString("path"), name = json.getString("name"),
+            isDirectory = json.getString("type") != "file",
+            sizeBytes = json.optNullableLong("size"),
+            createdMillis = IsoInstant.toEpochMillis(json.optString("created")),
+            modifiedMillis = IsoInstant.toEpochMillis(json.optString("modified")),
+            permissions = json.getString("permissions"),
+            unixMode = if (json.isNull("unixMode")) null else json.getInt("unixMode").also { require(it in 0..0xfff) },
+            accessedMillis = IsoInstant.toEpochMillis(json.optString("accessed")),
+            attributes = json.getString("attributes"),
+        )
+    }.fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed file properties.") })
 
     override suspend fun createDirectory(serverUrl: String, accessToken: String, path: String): ApiResult<Unit> =
         execute("POST", serverUrl, FileRoutes.DIRECTORY + "?path=" + encode(path), accessToken, null).asUnit()
@@ -1376,8 +1441,10 @@ class RelaxKonApi(
                     val buffer = ByteArray(BUFFER_SIZE)
                     var copied = 0L
                     while (true) {
+                        kotlinx.coroutines.currentCoroutineContext().ensureActive()
                         val count = input.read(buffer)
                         if (count < 0) break
+                        kotlinx.coroutines.currentCoroutineContext().ensureActive()
                         output.write(buffer, 0, count)
                         copied += count
                         onProgress?.invoke(copied, total)
@@ -1506,7 +1573,8 @@ class RelaxKonApi(
         LoginSession(
             // `UserDto` names the field `username`; reading `name` left the account blank on the home page.
             userName = json.getJSONObject("user").optString("username"),
-            workspaceName = json.getJSONObject("workspace").optString("name"),
+            workspaceName = json.getJSONObject("workspace").getString("name"),
+            workspaceId = json.getJSONObject("workspace").getString("id").also { require(java.util.UUID.fromString(it).toString().equals(it, ignoreCase = true)) },
             server = ServerDescriptor(
                 platform = server.optString("platform"),
                 capabilities = (0 until capabilities.length()).map { capabilities.getString(it) }.toSet(),
@@ -1601,6 +1669,7 @@ private object FileRoutes {
     private const val V1 = "/api/v1.0"
     const val LIST = "$V1/files/list"
     const val PROPERTIES = "$V1/files/properties"
+    const val PERMISSIONS = "$V1/files/permissions"
     const val ELEVATION = "$V1/files/elevation"
     const val DIRECTORY = "$V1/files/directory"
     const val DELETE = "$V1/files"

@@ -6,8 +6,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class OperationDestinationsTest {
+    @Test fun `Git installation opens the native workspace only for the current capability and owner`() {
+        val owner = owner(ServerCapabilities.GIT)
+        assertEquals(OperationTarget(OperationDestination.GitWorkspace), OperationDestinations.operation(owner, reference(OperationDomain.Installation, "Git")))
+        assertNull(OperationDestinations.installation(owner(), "Git"))
+        assertNull(OperationDestinations.operation(owner, reference(OperationDomain.Installation, "Git").copy(account = "other")))
+    }
     private fun owner(vararg capabilities: String) = SessionState.Active("server", "https://example.test", "alice", "workspace",
-        capabilities.toSet(), "linux", ExecutionEligibility(true, null, true))
+        capabilities.toSet(), "linux", ExecutionEligibility(true, null, true), workspaceId = "11111111-1111-1111-1111-111111111111")
     private fun reference(domain: OperationDomain, resource: String = "target") = OperationReference("server", "alice", domain, resource, "original-op", 0)
 
     @Test fun `first batch installation links exist only for delivered forms and current capability`() {

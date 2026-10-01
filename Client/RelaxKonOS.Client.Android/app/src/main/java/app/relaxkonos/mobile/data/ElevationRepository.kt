@@ -218,9 +218,13 @@ class ElevationRepository(
         includeDescendants: Boolean,
         provider: ElevationAnswerProvider,
     ): ElevationOutcome {
+        val owner = session.state.value as? SessionState.Active
+            ?: return ElevationOutcome.Rejected(ProblemCodes.UNAUTHORIZED, credentialDiscarded = false)
         val answer = provider.answer(capability, path) ?: return ElevationOutcome.Cancelled
         val result = try {
+            verifyOwner(owner)
             session.authenticated { serverUrl, accessToken ->
+                verifyOwner(owner)
                 gateway.requestFileElevation(
                     serverUrl = serverUrl,
                     accessToken = accessToken,
@@ -235,6 +239,7 @@ class ElevationRepository(
         } finally {
             answer.password.fill('\u0000')
         }
+        verifyOwner(owner)
         return when (result) {
             is ApiResult.Success -> if (result.value.elevated) {
                 rememberGrant(capability, path, result.value.expiresAtMillis ?: (System.currentTimeMillis() + DEFAULT_GRANT_MILLIS))
@@ -261,14 +266,19 @@ class ElevationRepository(
         provider: ElevationAnswerProvider,
         call: suspend (serverUrl: String, accessToken: String) -> ApiResult<T>,
     ): ApiResult<T> {
-        val first = session.authenticated(call)
-        if (first !is ApiResult.Problem || first.code != ProblemCodes.ELEVATION_REQUIRED) {
-            return first
+        val owner = session.state.value as? SessionState.Active
+            ?: return ApiResult.Problem(401, ProblemCodes.UNAUTHORIZED, null)
+        val guardedCall: suspend (String, String) -> ApiResult<T> = { url, token ->
+            verifyOwner(owner)
+            call(url, token).also { verifyOwner(owner) }
         }
-
+        val first = session.authenticated(guardedCall)
+        verifyOwner(owner)
+        if (first !is ApiResult.Problem || first.code != ProblemCodes.ELEVATION_REQUIRED) return first
         val outcome = elevatePath(path, capability, relatedPaths, includeDescendants, provider)
+        verifyOwner(owner)
         return when (outcome) {
-            is ElevationOutcome.Granted -> session.authenticated(call)
+            is ElevationOutcome.Granted -> session.authenticated(guardedCall).also { verifyOwner(owner) }
             is ElevationOutcome.Rejected -> ApiResult.Problem(403, outcome.code, null)
             is ElevationOutcome.Transport -> ApiResult.Transport(outcome.detail)
             ElevationOutcome.Cancelled -> first

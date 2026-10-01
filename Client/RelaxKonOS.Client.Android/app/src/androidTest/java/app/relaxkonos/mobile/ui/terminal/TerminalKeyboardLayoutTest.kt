@@ -33,6 +33,7 @@ import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.ExecutionEligibility
 import app.relaxkonos.mobile.core.net.TerminalSessionSummary
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import androidx.test.platform.app.InstrumentationRegistry
@@ -43,7 +44,7 @@ import java.util.concurrent.atomic.AtomicInteger
 /** Exercises the actual terminal UI under deterministic keyboard and shell inset budgets. */
 class TerminalKeyboardLayoutTest {
     @get:Rule val rule = createComposeRule()
-    private val owner = SessionState.Active("server", "https://host:5090", "nana", "studio", emptySet(), "linux", ExecutionEligibility.Available)
+    private val owner = SessionState.Active("server", "https://host:5090", "nana", "studio", emptySet(), "linux", ExecutionEligibility.Available, workspaceId = "11111111-1111-1111-1111-111111111111")
     private val state = ServerTerminalState(
         connected = true, sessionId = "first", output = "nana@server:~$ ps\nprompt-visible",
         sessions = listOf("first", "second").map { id -> TerminalSessionSummary().also { it.sessionId = id } },
@@ -156,5 +157,75 @@ class TerminalKeyboardLayoutTest {
         evidence.outputStream().use { stream ->
             instrumentation.uiAutomation.takeScreenshot().compress(Bitmap.CompressFormat.PNG, 100, stream)
         }
+    }
+
+    @Test fun wideViewportUsesSessionSidebarAndLeavesEditorInTheTerminalColumn() {
+        show(960.dp, 600.dp, 0.dp)
+        val sidebar = rule.onNodeWithTag("terminal-session-sidebar").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val output = rule.onNodeWithTag("terminal-output").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val editor = rule.onNode(hasSetTextAction()).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertTrue(output.left >= sidebar.right)
+        assertTrue(editor.left >= sidebar.right)
+    }
+
+    @Test fun fontAndKeyboardConstraintsCollapseSidebarWithoutLosingDraft() {
+        val scale = mutableStateOf(1f)
+        val keyboard = mutableStateOf(0.dp)
+        rule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, scale.value)) {
+                MaterialTheme {
+                    Box(Modifier.size(960.dp, 600.dp)) {
+                        ServerTerminalContent(owner, state, {}, {}, { true }, { _, _ -> }, {}, {}, imeInsets = WindowInsets(bottom = keyboard.value))
+                    }
+                }
+            }
+        }
+        rule.onNode(hasSetTextAction()).performTextInput("keep draft")
+        rule.onNodeWithTag("terminal-session-sidebar").assertIsDisplayed()
+        rule.runOnIdle { scale.value = 1.5f; keyboard.value = 330.dp }
+        rule.onNodeWithTag("terminal-session-sidebar").assertDoesNotExist()
+        rule.onNodeWithText("keep draft").assertIsDisplayed()
+        rule.onNode(hasSetTextAction()).assertHeightIsAtLeast(56.dp)
+    }
+
+    @Test fun sessionSwitchRestoresDraftAndCancelsAReviewedPasteToThePreviousSession() {
+        val selected = mutableStateOf("first")
+        val presentation = TerminalPresentation().apply { bindOwner(owner) }
+        rule.setContent {
+            MaterialTheme {
+                Box(Modifier.size(960.dp, 600.dp)) {
+                    ServerTerminalContent(owner, state.copy(sessionId = selected.value), {}, { selected.value = it ?: "new" }, { true }, { _, _ -> }, {}, {},
+                        imeInsets = WindowInsets(0), presentation = presentation)
+                }
+            }
+        }
+        rule.onNode(hasSetTextAction()).performTextInput("first draft")
+        rule.runOnIdle { presentation.preparePaste("echo first\necho second") }
+        rule.runOnIdle { selected.value = "second" }
+        rule.waitForIdle()
+        rule.runOnIdle { assertEquals(null, presentation.pasteReview) }
+        rule.onNode(hasSetTextAction()).performTextInput("second draft")
+        rule.runOnIdle { selected.value = "first" }
+        rule.onNodeWithText("first draft").assertIsDisplayed()
+    }
+
+    @Test fun ansiAndWideOutputUsesRenderedTextAndSearchWithoutSendingInput() {
+        val transcript = TerminalTranscript()
+        val plain = transcript.append("\u001b[31m红色\u001b[0m 日本語 😀\u001b[?25l".toByteArray())
+        val presentation = TerminalPresentation().apply { bindOwner(owner) }
+        val writes = AtomicInteger()
+        rule.setContent {
+            MaterialTheme {
+                Box(Modifier.size(960.dp, 600.dp)) {
+                    ServerTerminalContent(owner, state.copy(output = plain, frame = transcript.frame), {}, {}, { writes.incrementAndGet(); true }, { _, _ -> }, {}, {},
+                        imeInsets = WindowInsets(0), presentation = presentation)
+                }
+            }
+        }
+        rule.onNodeWithTag("terminal-output").assertIsDisplayed()
+        rule.runOnIdle { presentation.searchOpen = true; presentation.search = "日本語" }
+        rule.onNodeWithText(transcript.frame.text).assertIsDisplayed()
+        rule.runOnIdle { assertEquals(0, writes.get()) }
     }
 }

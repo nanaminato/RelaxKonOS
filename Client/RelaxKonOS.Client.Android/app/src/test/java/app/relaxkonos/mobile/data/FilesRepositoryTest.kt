@@ -16,6 +16,7 @@ import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class FilesRepositoryTest {
@@ -159,4 +160,27 @@ class FilesRepositoryTest {
         assertTrue(result is ApiResult.Success)
         assertEquals(2, attempts)
     }
+    @Test fun `permissions elevate exactly one entry with write capability and preserve special bits`() = runTest {
+        signIn(); var sends = 0
+        gateway.onSetFilePermissions = { _, _, path, mode ->
+            assertEquals("/srv/ 文件 * ", path); assertEquals(0x9ed, mode); sends++
+            if (sends == 1) ApiResult.Problem(403, ProblemCodes.ELEVATION_REQUIRED, null)
+            else ApiResult.Success(app.relaxkonos.mobile.core.net.RemoteFileProperties(path, " 文件 * ", false, 4, null, null, "-rwsr-xr-x", mode))
+        }
+        gateway.onFileElevation = { _, _, path, capability, _, related, descendants, _ ->
+            assertEquals("/srv/ 文件 * ", path); assertEquals("write", capability); assertFalse(descendants); assertTrue(related.isEmpty())
+            ApiResult.Success(FileElevationGrant(true, true, null))
+        }
+        assertTrue(repository.setPermissions("/srv/ 文件 * ", 0x9ed, ElevationAnswerProvider { _, _ -> ElevationAnswer("admin", "pw".toCharArray()) }) is ApiResult.Success)
+        assertEquals(2, sends)
+    }
+    @Test fun `properties never raise authorization without explicit request and stale owner cannot retry`() = runTest {
+        signIn(); var prompts = 0; var sends = 0
+        gateway.onFileProperties = { _, _, _ -> sends++; ApiResult.Problem(403, ProblemCodes.ELEVATION_REQUIRED, null) }
+        assertTrue(repository.properties("/srv/a") is ApiResult.Problem); assertEquals(1, sends)
+        val result = runCatching { repository.properties("/srv/a", ElevationAnswerProvider { _, _ -> prompts++; signIn(); ElevationAnswer("admin", "pw".toCharArray()) }) }
+        assertTrue(result.exceptionOrNull() is kotlinx.coroutines.CancellationException)
+        assertEquals(1, prompts); assertEquals(2, sends)
+    }
+
 }

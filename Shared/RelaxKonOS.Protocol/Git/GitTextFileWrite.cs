@@ -12,7 +12,7 @@ public static class GitTextFileWrite
     /// <summary>Returns false when another writer changed the file. Never creates a new file.</summary>
     public static bool ReplaceIfVersion(string path, byte[] content, string expectedVersion)
     {
-        if (content.Length > MaximumBytes || expectedVersion.Length != 64
+        if (content.Length > MaximumBytes || expectedVersion is null || expectedVersion.Length != 64
             || !expectedVersion.All(Uri.IsHexDigit))
             throw new ArgumentException("Invalid conditional text write.");
         using var file = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);

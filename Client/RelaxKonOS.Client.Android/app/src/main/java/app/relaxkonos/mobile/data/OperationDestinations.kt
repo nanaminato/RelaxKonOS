@@ -5,7 +5,7 @@ import app.relaxkonos.mobile.core.net.InstallationService
 import app.relaxkonos.mobile.core.net.OperationalAlert
 import app.relaxkonos.mobile.core.net.ServerCapabilities
 
-enum class OperationDestination { Deployment, Website, Compose, GitBuild, Script, WebServer, Certificate, Proxy, Tunnels, Docker, Guardian, Firewall, Smb, DockerControl }
+enum class OperationDestination { Deployment, Website, Compose, GitBuild, GitWorkspace, Script, WebServer, Certificate, Proxy, Tunnels, Docker, Guardian, Firewall, Smb, DockerControl }
 data class OperationTarget(val destination: OperationDestination, val id: String? = null)
 
 /** Only implemented native destinations; server-provided URLs and commands never become navigation. */
@@ -43,12 +43,12 @@ object OperationDestinations {
         val kind = InstallationService.entries.firstOrNull { it.name == service } ?: return null
         if (kind.capability !in owner.capabilities) return null
         return when (kind) {
+            InstallationService.Git -> OperationTarget(OperationDestination.GitWorkspace)
             InstallationService.Docker -> OperationTarget(OperationDestination.DockerControl)
             InstallationService.Smb -> OperationTarget(OperationDestination.Smb)
             InstallationService.Nginx -> OperationTarget(OperationDestination.WebServer)
             InstallationService.Frp -> OperationTarget(OperationDestination.Tunnels)
             InstallationService.Mihomo -> OperationTarget(OperationDestination.Proxy)
-            else -> null
         }
     }
 

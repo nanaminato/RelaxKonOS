@@ -16,7 +16,7 @@ class OperationIndexTest {
     private fun owner(service: String, account: String) = SessionState.Active(
         service, "http://127.0.0.1:20000", account, "workspace", emptySet(), "linux",
         ExecutionEligibility(true, null, true),
-    )
+     workspaceId = "11111111-1111-1111-1111-111111111111")
 
     @Test
     fun `references survive restart and remain isolated by server and account`() {

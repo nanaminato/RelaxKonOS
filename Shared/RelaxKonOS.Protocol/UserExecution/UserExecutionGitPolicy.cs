@@ -40,8 +40,9 @@ public static class UserExecutionGitPolicy
                 return false;
         }
 
-        // The domain reads two branch settings. It never writes arbitrary Git configuration.
+        // The domain reads branch settings and hashes the full effective configuration. It never writes Git configuration.
         return command != "config"
+            || arguments.Count == commandIndex + 3 && arguments[commandIndex + 1] == "--list" && arguments[commandIndex + 2] == "--null"
             || arguments.Count == commandIndex + 3 && arguments[commandIndex + 1] == "--get"
             && !arguments[commandIndex + 2].StartsWith("-", StringComparison.Ordinal);
     }

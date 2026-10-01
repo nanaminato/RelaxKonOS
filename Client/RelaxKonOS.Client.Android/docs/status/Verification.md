@@ -180,6 +180,9 @@
 | BP09-M1 | 已执行 17 例 | JVM/APK 全量 736 例、Server 引擎和镜像源 HTTP 专项通过 | 未执行 | 未执行 | 未执行 | Linux 安装/Helper 与全容器影响、Windows Desktop CLI、真实镜像源消费、断线/并发、手机平板/IME/大字体 |
 | BP08-M1 | 已执行 20 例 | JVM/APK 全量 719 例及 Server SMB 专项通过 | 未执行 | 未执行 | 未执行 | Samba 包/服务/凭据、共享访问、Windows ACL/安全/漂移、断线/并发、手机平板/IME/大字体 |
 | BP07-M1 | 已准备 11 例 | JVM/APK 11 例及 Server 只读专项通过 | 未执行 | 未执行 | 未执行 | UFW 实际启停/规则/授权、管理路径中断、并发编号、手机平板/IME/大字体 |
+| BP10 | 已执行 20 例 | 全量 JVM 784 例/Debug APK、Server/Helper 编译与 Git 89 项专项、桌面编译通过；证据 BP10-V1 | 未执行 | 未执行 | 未执行 | Git 安装/真实 Helper 身份、真实私有远端/并发/断网/原键、手机平板/旋转/IME/大字体/三语视觉 |
+| BP11 | 已执行 10 例 | 全量 JVM 764 例/Debug APK、Server/Helper 编译与文本专项、桌面编译通过；证据 BP11-V1 | 未执行 | 未执行 | 未执行 | 编码/真实 Helper 身份、外部并发/断网、手机平板/旋转/IME/大字体/三语视觉 |
+| BP12 | 已执行 21 例 | 全量 JVM 805 例/Debug APK、三语/链接/差异静态检查通过；证据 BP12-V1 | 未执行 | 未执行 | 未执行 | 真机/平板多选/剪贴板/属性与图片缩放旋转；真实 Linux/Windows 权限、部分目录错误、断网/停止/并发、真实授权与进程回收 |
 | BP17-M1 | 已准备并执行 9 例 | JVM/APK 通过，原任务/归属/能力/告警专项通过 | 未执行 | 未执行 | 未执行 | 新领域观察/取消/修复入口、离页/旋转/重连、三语与归属 |
 
 用例准备列只追踪该 BP 新增测试代码和可执行场景，不把本文的场景概述当作已准备；自动化列分别注明编译/构建和测试结果；两者结论不同时写“部分通过”并列出范围。设备列细分手机/平板、IME/大字体和三语；宿主列细分版本/模式/服务能力与联网条件，宿主明确不支持的动作可写“不适用”并说明依据。新增证据按编号写日期、提交、命令/人工步骤、环境、结果和未覆盖项，再更新对应单元格；BP01-M1 的静态检查证据见下文，不代替 Android 执行结果。
@@ -430,3 +433,57 @@ dotnet RelaxKonOS.Server.Tests/bin/bp09-resource-validation/RelaxKonOS.Server.Te
 - 桌面共享 DTO 调用方编译通过：`dotnet build Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj --no-restore -p:UseAppHost=false -p:UsedAvaloniaProducts= -m:1 -v quiet`，0 错误、5 个既有警告。最初正常编译被 Avalonia 外部遥测日志目录写入权限阻止；读取已有 BuildServices targets 后，使用该参数跳过遥测任务，未修改项目文件或安装依赖。
 - 三语 XML 各 1890 个唯一键，键集/占位符一致、Kotlin 字符串资源引用有效；当前文档本地链接存在，`git diff --check` 通过。无图标资产修改。
 - 未执行实际 Docker Engine 的创建/拉取/生命周期/强制操作、网络/卷数据及引用竞争、真实归属/镜像源/代理消费、进程回收/多客户端并发、手机平板/三语视觉/IME/大字体、lint 或仪器测试。快照复核没有服务端原子 CAS；当前记录不标记这些宿主/设备验收通过。
+
+### BP11-V1（2026-10-01，当前未提交工作树）
+
+- Windows，Gradle 9.7.1/JDK 21.0.8，沿用 BP06-M1-V1 离线命令 `:app:testDebugUnitTest :app:assembleDebug --offline --no-daemon -p Client/RelaxKonOS.Client.Android --console=plain`。115 类、764 例，失败/错误/跳过均为 0，Debug APK 生成。新增 TextEditorTest 3、TextEditorRepositoryTest 3、TextEditingTest 4，共 10 例，验证当前严格格式/编码字节限制、实际本地 HTTP 的 GET/PUT/POST/Git PUT、完整条件格式/路径编码/Bearer/无伪任务键、错误回执/失联不重放、会话变化与晚到响应、CRLF/CR 输入/粘贴/光标及混合换行保留。
+- Server/Helper 构建：`dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -p:UseAppHost=false -p:OutDir=E:/riderprojects/RelaxKon/RelaxKonOS/RelaxKonOS.Server.Tests/bin/bp11-text-validation/ -v quiet`；执行 `dotnet RelaxKonOS.Server.Tests/bin/bp11-text-validation/RelaxKonOS.Server.Tests.dll --text-editor-only`。24 条专项检查通过：五编码精确 BOM 字节往返、混合换行、非法 Unicode/二进制/编码大小、有界文件读取、新建与已有目标保护/暂存清理、CAS/冲突保留、另存编码、当前 DTO/Helper 闭合请求。使用隔离临时目录及 LocalFileService，不派发真实 Helper 提权。
+- 桌面：`dotnet build Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj --no-restore -p:UseAppHost=false -p:UsedAvaloniaProducts= -m:1 -v quiet`，0 错误，5 个既有警告。Server 构建保留 NU1900 离线漏洞数据及既有平台警告。初次 Android 编译修正了类型/Compose 捕获和旧引用；文本专项发现新建暂存名不符合文件服务命名规则，修正后重建与专项通过。初次失败的 Windows 崩溃处理进程已按本次测试命令精确清理。
+- 未执行真机/模拟器、仪器测试或 lint、真实 Linux/Windows Helper 的用户身份与权限、文件系统外部并发/崩溃/磁盘满/符号链接竞争、进程回收后的未知写入、手机平板/旋转/IME/大字体/三语视觉。文本读取和条件保存没有 root/临时提权兜底；这类保护路径编辑不标为支持。客户端 HTTP 测试不替代真实 Server HTTP/授权集成验收。既有内容接口及桌面通用编辑器不自动获得 text 路由的 CAS 行为。
+
+- BP11 静态检查：三语各 1908 个唯一字符串键，键集一致、Kotlin 字符串引用有效，Android 文档本地文件链接存在，`git diff --check` 通过。无图标资产变更。
+
+### BP10-V1（2026-10-01，当前未提交工作树）
+
+- Windows，Gradle 9.7.1/JDK 21.0.8，沿用 BP06-M1-V1 的离线 `:app:testDebugUnitTest :app:assembleDebug` 命令。118 类、784 例，失败/错误/跳过均为 0，Debug APK 生成。新增 GitWorkspaceTest 4、GitWorkspaceRepositoryTest 11、GitWorkspaceJournalTest 2，InstallationRepositoryTest、OperationCenterTest、OperationDestinationsTest 各增加 1，共 20 例。真实本地 HttpServer 验证 12 种修改请求的方法/路径/正文/Bearer、索引提交空 paths、非强制/非 amend、冲突 revision/选择/继续/中止，且没有伪任务键或凭据正文。
+- JVM 用例覆盖严格当前 configVersion/分支 SHA/diff version、相对路径/分支规则、编辑冲突标记/编码大小、丢失响应不重放、账户隔离/损坏存储拒绝写、显式事实采用、401 重试前复核、二进制/截断内容版本改变、分支尖端/远端配置改变、安装阻断、错误回执/回读失联、普通身份门禁、冲突操作/版本变化、晚到响应和原账号标记。Git 安装验证精确 `gitPackageInstall/git`、原请求键、密码清零及不支持 Upgrade；任务中心没有伪造同步操作 ID。
+- 以下命令通过，0 错误；构建保留 NU1900 离线漏洞数据与既有 CA1416 警告：
+
+```powershell
+dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -p:UseAppHost=false -p:OutDir=E:/riderprojects/RelaxKon/RelaxKonOS/RelaxKonOS.Server.Tests/bin/bp10-validation/ -v quiet
+dotnet RelaxKonOS.Server.Tests/bin/bp10-validation/RelaxKonOS.Server.Tests.dll --git-conflicts-only
+dotnet RelaxKonOS.Server.Tests/bin/bp10-validation/RelaxKonOS.Server.Tests.dll --text-editor-only
+```
+
+- Git 专项 89 项通过：使用隔离临时 SQLite/工作树及实际本机 Git CLI，验证 merge/rebase/revert/cherry-pick/squash、修改/删除/二进制/嵌套缺失目标、旧 revision 拒绝、继续/中止、工作树 `.git` 文件、SHA/CAS/无覆盖、Unicode/重命名两端/前导空格、索引提交保留未暂存内容、多行历史/分页/提交详情、必需字段缺失拒绝、二进制/截断全量版本、全配置与多 push URL 指纹/无凭据 HTTP DTO、坏配置/差异读取失败拒绝、unborn 空历史，以及 Helper 1.5 封闭请求/旧版本拒绝。没有访问外部 Git 远端；Pull 使用临时本机 `.` 远端，不修改真实仓库。BP11 文本 24 项回归通过。
+- 桌面当前共享 DTO 调用方构建：`dotnet build Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj --no-restore -p:UseAppHost=false -p:UsedAvaloniaProducts= -m:1 -v quiet`，0 错误、5 个既有警告。最初 Git 专项入口经过无关证书夹具失败，已前移隔离入口；Windows 临时 Git 对象只读属性清理已处理。新增安装测试首次错误使用 Docker capability，修正为 Git 后全量通过。
+- 静态检查：三语 XML 各 1989 个唯一键、键集/占位符一致，Kotlin 字符串引用有效，Android 文档本地文件链接存在，`git diff --check` 通过。无图标资产改动。
+- 未执行真实 Linux Git 包安装/取消/断网/原键回执、Linux 降权或 Windows impersonation 的真实身份/权限、SSH/HTTPS 私有远端认证和推送、真实 Server HTTP 授权集成、外部多客户端/文件系统/符号链接竞争、崩溃/磁盘满/进程回收恢复、手机平板/配置重建/未保存关闭/IME/大字体/三语视觉、lint 或仪器测试。工作区复核不是服务端仓库事务 CAS；普通文件条件写入不保证外部 Git 状态与文件一起原子更新。既有隔离构建/发布未在本轮重新执行。
+
+### BP12-V1（2026-10-01，当前未提交工作树）
+
+- Windows，Gradle 9.7.1/JDK 21.0.8，离线执行完整 JVM 回归与 Debug APK。122 类、805 例，失败/错误/跳过均为 0。新增 FileBrowserPolicyTest 4、FileBatchRunnerTest 5、ViewerTransformTest 3、FileBrowserWireTest 2，FilesRepositoryTest 增加 2、ImagePreviewCacheTest 增加 5，共 21 例。
+
+```powershell
+$env:JAVA_HOME = 'C:/Program Files/Android/openjdk/jdk-21.0.8'
+& 'E:/environments/gradle-9.7.1-all/gradle-9.7.1/bin/gradle.bat' `
+  :app:testDebugUnitTest :app:assembleDebug --offline --no-daemon `
+  -p Client/RelaxKonOS.Client.Android --console=plain
+```
+
+- 实际本地 HttpServer 验证当前列表/属性/权限接口的方法、路径、Bearer、Unicode/原始空格路径、模式特殊位、属性与访问时间、隐藏/系统/驱动器字段和畸形字段拒绝。未启动真实 RelaxKonOS Server HTTP、Helper 或修改宿主权限；消费现有 Protocol 字段和权限路由，BP12 没有改动共享线协议或增加替代路由。
+- Repository/BatchRunner 验证逐项成功与 4xx 未完成、Transport/5xx 未知停止且不重发、未执行余项、授权被取消后一次提示即停止、等当前项目返回再停止、旧账户不派发/不发布结果，以及显式路径 `write` 授权范围和特殊位保持。新增授权期间切账户回归复现文件提权入口的旧请求问题，修复后通过；旧管理员答案在发送前拒绝且清零。
+- 纯策略验证宿主隐藏标志、目录优先/排序/过滤、500 项上限/根保护、目录后代和重复选择归并、Windows 分隔符/大小写、绝对目标与点段/自身后代拒绝、原始名称空格、八进制。图片变换验证旋转后适配、偏移边界、重置及异常手势值；没有在 JVM 中运行真实 BitmapFactory/Compose 布局。
+- 真实临时文件验证独立预览暂存、未确认完整文件不可命中、长度检查、迟到清理不删除新缓存、宿主同账户/跨账户命名空间、实际写入 64 MiB 上限、清除进程遗留暂存且保留活动/非所属文件。文件操作的 ViewModel 与预览/下载绑定会话和请求代次，防止迟到响应覆盖新选择；旋转/离页实际 UI 行为仍需要设备验收。
+- 静态检查：中/英/日 XML 各 2048 个唯一键，键集与占位符多重集一致，Kotlin 字符串引用有效，Android 文档本地文件链接存在，`git diff --check` 通过；沿用桌面图标，没有新增或更改图标资产。
+- 构建生成 `app/build/outputs/apk/debug/app-debug.apk`；报告 `app/build/test-results/testDebugUnitTest/`。未执行 lint、instrumentation、模拟器或真机视觉；未执行真实 Linux/Windows 文件系统、POSIX chmod/Windows ACL、Helper 提权、源/目标并发变化、磁盘满、复制部分失败、真实网络中断与应用进程回收。BP10/BP11 的 .NET 证据保留原范围，本次未重新运行 .NET 套件。
+
+未关闭验收：
+
+| ID | 场景 | 预期 |
+| --- | --- | --- |
+| BP12-T1 | 手机/平板、横竖屏、大字体、三语、目录属性、多选筛选/排序/刷新/改名 | 操作入口可达，选择和详情不跳到其他文件，隐藏选择计数准确 |
+| BP12-T2 | 多目录复制/移动/删除，目标重名、磁盘满、子项权限失败、网络中断、停止竞争 | 不覆盖目标；完整/部分/未知与未执行分开；当前项目事实准确；无自动重发或虚假回滚 |
+| BP12-T3 | Linux 0000/4755/7777、特殊位、目录非递归；Windows ACL、受限身份、显式授权及弹窗中切账户 | 平台门控和实际模式正确；不扩大路径授权，不向新会话发送旧请求/密码 |
+| BP12-T4 | EXIF/长宽图、大图、64 MiB/未知长度、快速切图、失败/授权、缩放拖动/旋转/适配/关闭 | 真实 Compose 旋转后完整适配，不拖出画布；读取和暂存有界；旧图不覆盖新图，无重复传输 |
+| BP12-T5 | 批量、授权或图片下载期间旋转/离页/回收进程，再登录相同或不同账户 | 内存状态在配置变更中保留；进程回收不自动恢复副作用；缓存隔离且遗留暂存清理；分块续传原链路不回归 |

@@ -9,6 +9,7 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -62,6 +64,11 @@ import app.relaxkonos.mobile.core.net.RemoteEntry
 import app.relaxkonos.mobile.core.net.RemoteFileProperties
 import app.relaxkonos.mobile.core.net.ServerCapabilities
 import app.relaxkonos.mobile.core.net.UploadProblemCodes
+import app.relaxkonos.mobile.data.FileBrowserPolicy
+import app.relaxkonos.mobile.data.FileSort
+import app.relaxkonos.mobile.data.FileBatchAction
+import app.relaxkonos.mobile.data.FileBatchReport
+import app.relaxkonos.mobile.data.FileBatchRunner
 import app.relaxkonos.mobile.data.DownloadTarget
 import app.relaxkonos.mobile.data.ElevationAnswerProvider
 import app.relaxkonos.mobile.data.PickedDocument
@@ -97,6 +104,7 @@ import app.relaxkonos.mobile.ui.icons.DesktopIcon
 import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Spacing
 import java.io.File
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
@@ -155,6 +163,166 @@ private val DEFAULT_PREVIEW_BOX = IntSize(1080, 1080)
 class FilesViewModel(application: Application) : AndroidViewModel(application) {
     private val container: AppContainer get() = getApplication<RelaxKonApplication>().container
 
+    var query by mutableStateOf("")
+    var showHidden by mutableStateOf(false)
+    var sort by mutableStateOf(FileSort.Name)
+    var sortDescending by mutableStateOf(false)
+    var selectionMode by mutableStateOf(false)
+        private set
+    var checkedPaths by mutableStateOf<Set<String>>(emptySet())
+        private set
+    val visibleEntries get() = FileBrowserPolicy.visible(listing?.entries.orEmpty(), query, showHidden, sort, sortDescending)
+    private val backPaths = mutableListOf<String>()
+    private val forwardPaths = mutableListOf<String>()
+    var canGoBack by mutableStateOf(false)
+        private set
+    var canGoForward by mutableStateOf(false)
+        private set
+    var mutationBusy by mutableStateOf(false)
+        private set
+    var batchTarget by mutableStateOf<FileBatchTarget?>(null)
+        private set
+    var batchRunning by mutableStateOf(false)
+        private set
+    var batchStopRequested by mutableStateOf(false)
+        private set
+    var batchProgress by mutableStateOf(0)
+        private set
+    var batchTotal by mutableStateOf(0)
+        private set
+    var batchPath by mutableStateOf("")
+        private set
+    var batchReport by mutableStateOf<FileBatchReport?>(null)
+        private set
+    var clipboard by mutableStateOf<FileBatchTarget?>(null)
+        private set
+    var permissionsOpen by mutableStateOf(false)
+        private set
+    var permissionInput by mutableStateOf("")
+    var propertiesNeedsElevation by mutableStateOf(false)
+        private set
+    var viewerTransform by mutableStateOf(ViewerTransform())
+        private set
+    private var mutationJob: Job? = null
+    private var propertiesJob: Job? = null
+    private var propertyRequest = 0L
+    val canMutate get() = !mutationBusy && !batchRunning && transfer == null && batchReport == null &&
+        container.activeSession?.executionEligibility?.available == true && !container.uploads.isRunning && transferJob == null
+    val checkedEntries get() = listing?.entries.orEmpty().filter { it.path in checkedPaths }
+
+    fun toggleSelection() {
+        if (batchRunning) return
+        selectionMode = !selectionMode
+        checkedPaths = emptySet()
+    }
+    fun check(entry: RemoteEntry) {
+        if (entry.path !in checkedPaths && checkedPaths.size >= FileBrowserPolicy.MAX_BATCH) return
+        if (!batchRunning && FileBrowserPolicy.mutable(entry)) checkedPaths = if (entry.path in checkedPaths)
+            checkedPaths - entry.path else checkedPaths + entry.path
+    }
+    fun selectVisible() { if (!batchRunning) checkedPaths = visibleEntries.filter(FileBrowserPolicy::mutable)
+        .take(FileBrowserPolicy.MAX_BATCH).map { it.path }.toSet() }
+    fun copySelection(move: Boolean) {
+        if (checkedEntries.isEmpty() || !canMutate) return
+        clipboard = FileBatchTarget(FileBrowserPolicy.snapshot(checkedEntries), if (move) FileBatchAction.Move else FileBatchAction.Copy)
+    }
+    fun requestBatchDelete() {
+        if (checkedEntries.isNotEmpty() && canMutate) batchTarget = FileBatchTarget(FileBrowserPolicy.snapshot(checkedEntries), FileBatchAction.Delete)
+    }
+    fun paste() { if (canMutate && path.isNotBlank()) batchTarget = clipboard }
+    fun cancelBatchTarget() { batchTarget = null }
+    fun stopBatch() { batchStopRequested = true }
+    fun dismissBatchReport() { batchReport = null }
+    fun clearClipboard() { if (!batchRunning) clipboard = null }
+    fun confirmBatch(directory: String?) {
+        val target = batchTarget ?: return
+        if (!canMutate) return
+        if (target.action != FileBatchAction.Delete &&
+            !FileBrowserPolicy.validDestination(target.entries, directory.orEmpty())) {
+            message = UiMessage(R.string.files_invalid_destination); return
+        }
+        batchTarget = null
+        runBatch(target) { entry -> container.files.childOf(directory!!, entry.name) }
+    }
+    private fun runBatch(target: FileBatchTarget, destination: (RemoteEntry) -> String) {
+        val owner = container.activeSession ?: return
+        if (!canMutate) return
+        batchRunning = true
+        batchStopRequested = false
+        batchProgress = 0
+        batchTotal = target.entries.size
+        mutationJob = viewModelScope.launch {
+            try {
+                val result = FileBatchRunner(container.files, container.session).run(owner, target.entries, target.action,
+                    destination, container.elevationAnswers, { batchStopRequested }) { index, entry ->
+                    batchProgress = index; batchPath = entry.path
+                }
+                if (container.activeSession !== owner) return@launch
+                batchReport = result
+                result.completed.forEach { entryPath -> container.recentOperations.record(when (target.action) {
+                    FileBatchAction.Copy -> RecentOperationKind.Copy
+                    FileBatchAction.Move -> RecentOperationKind.Move
+                    FileBatchAction.Delete -> RecentOperationKind.Delete
+                }, entryPath) }
+                checkedPaths = checkedPaths - result.completed.toSet()
+                if (target.action != FileBatchAction.Copy && selected?.path in result.completed) select(null)
+                if (target === clipboard && target.action == FileBatchAction.Move) {
+                    val remaining = target.entries.filterNot { it.path in result.completed }
+                    clipboard = if (remaining.isEmpty()) null else target.copy(entries = remaining)
+                }
+                reload()
+            } finally {
+                if (container.activeSession === owner) { batchRunning = false; mutationJob = null }
+            }
+        }
+    }
+    fun openPermissions() {
+        val mode = properties?.unixMode ?: return
+        if (!canMutate) return
+        permissionInput = FileBrowserPolicy.formatMode(mode)
+        permissionsOpen = true
+    }
+    fun closePermissions() { if (!mutationBusy) permissionsOpen = false }
+    fun savePermissions() {
+        val target = selected ?: return
+        val mode = FileBrowserPolicy.parseMode(permissionInput) ?: return
+        val owner = container.activeSession ?: return
+        if (!canMutate) return
+        mutationBusy = true
+        mutationJob = viewModelScope.launch {
+            try {
+                val result = container.files.setPermissions(target.path, mode, container.elevationAnswers)
+                if (container.activeSession !== owner) return@launch
+                if (result is ApiResult.Success && result.value.path == target.path && result.value.unixMode == mode) {
+                    if (selected?.path == target.path) properties = result.value
+                    permissionsOpen = false
+                    message = UiMessage(R.string.files_permissions_saved, tone = StatusTone.Success)
+                } else {
+                    message = if (result is ApiResult.Transport || result is ApiResult.Success ||
+                        (result is ApiResult.Problem && result.status >= 500)) UiMessage(R.string.files_mutation_unknown)
+                        else result.failureMessage()
+                    permissionsOpen = false
+                    if (selected?.path == target.path) loadProperties(target.path)
+                }
+            } finally { if (container.activeSession === owner) { mutationBusy = false; mutationJob = null } }
+        }
+    }
+    fun reloadProperties(authorize: Boolean = false) { selected?.let { loadProperties(it.path, authorize) } }
+    fun changeViewerTransform(transform: ViewerTransform) { viewerTransform = transform }
+    val viewerEntries get() = visibleEntries.filter { it.isDecodableImage() }
+    fun switchViewer(delta: Int) {
+        val entries = viewerEntries
+        val index = entries.indexOfFirst { it.path == selected?.path }
+        val next = entries.getOrNull(index + delta) ?: return
+        select(next)
+        viewerOpen = true
+    }
+
+    var editorOpen by mutableStateOf(false)
+    var editorPath by mutableStateOf<String?>(null)
+
+    fun editText(path: String? = null) { editorPath = path; editorOpen = true }
+
     var path by mutableStateOf("")
         private set
 
@@ -192,6 +360,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         private set
 
     private var transferJob: Job? = null
+    private var transferGeneration = 0L
     private var directoryJob: Job? = null
     private var directoryRequest = 0L
 
@@ -339,8 +508,25 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     fun refresh() = reload()
 
     fun open(nextPath: String) {
+        if (batchRunning || mutationBusy || nextPath == path) return
+        backPaths.add(path); if (backPaths.size > 100) backPaths.removeAt(0)
+        forwardPaths.clear(); updateHistory()
+        navigate(nextPath)
+    }
+    fun goBack() {
+        if (!canGoBack || batchRunning || mutationBusy) return
+        forwardPaths.add(path); navigate(backPaths.removeAt(backPaths.lastIndex)); updateHistory()
+    }
+    fun goForward() {
+        if (!canGoForward || batchRunning || mutationBusy) return
+        backPaths.add(path); navigate(forwardPaths.removeAt(forwardPaths.lastIndex)); updateHistory()
+    }
+    private fun updateHistory() { canGoBack = backPaths.isNotEmpty(); canGoForward = forwardPaths.isNotEmpty() }
+    private fun navigate(nextPath: String) {
         path = nextPath
-        // Leaving a directory also leaves the entry the detail pane was describing, preview included.
+        listing = null
+        query = ""
+        checkedPaths = emptySet()
         select(null)
         reload()
     }
@@ -367,6 +553,12 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     fun select(entry: RemoteEntry?) {
         // Whatever was loading belonged to the previous selection and is worthless now.
         cancelPreview()
+        propertyRequest++
+        propertiesJob?.cancel()
+        propertiesLoading = false
+        propertiesNeedsElevation = false
+        permissionsOpen = false
+        viewerTransform = ViewerTransform()
         selected = entry
         properties = null
         preview = ImagePreview.Hidden
@@ -388,6 +580,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun openNewDirectory() {
+        if (!canMutate || path.isBlank()) return
         newDirectoryOpen = true
     }
 
@@ -396,25 +589,30 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun confirmNewDirectory(name: String) {
+        if (!FileBrowserPolicy.validName(name) || !canMutate || path.isBlank()) return
+        val owner = container.activeSession ?: return
         newDirectoryOpen = false
         val target = container.files.childOf(path, name)
-        viewModelScope.launch {
-            loading = true
-            when (val result = container.files.createDirectory(target, container.elevationAnswers)) {
+        mutationBusy = true
+        mutationJob = viewModelScope.launch {
+            try {
+            val result = container.files.createDirectory(target, container.elevationAnswers)
+            if (container.activeSession !== owner) return@launch
+            when (result) {
                 is ApiResult.Success -> {
                     message = UiMessage(R.string.files_created, listOf(target), tone = StatusTone.Success)
                     container.recentOperations.record(RecentOperationKind.CreateDirectory, target)
                     reload()
                 }
 
-                else -> message = result.failureMessage()
+                else -> message = mutationFailure(result)
             }
-            loading = false
+            } finally { if (container.activeSession === owner) { mutationBusy = false; mutationJob = null } }
         }
     }
 
     fun requestRename(entry: RemoteEntry) {
-        renameTarget = entry
+        if (canMutate && FileBrowserPolicy.mutable(entry)) renameTarget = entry
     }
 
     fun cancelRename() {
@@ -423,26 +621,37 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
 
     fun confirmRename(newName: String) {
         val target = renameTarget ?: return
+        val owner = container.activeSession ?: return
+        if (!FileBrowserPolicy.validName(newName) || !canMutate) return
         renameTarget = null
-        viewModelScope.launch {
-            loading = true
-            when (val result = container.files.rename(target.path, newName, container.elevationAnswers)) {
+        mutationBusy = true
+        mutationJob = viewModelScope.launch {
+            try {
+            val result = container.files.rename(target.path, newName, container.elevationAnswers)
+            if (container.activeSession !== owner) return@launch
+            when (result) {
                 is ApiResult.Success -> {
                     container.recentOperations.record(RecentOperationKind.Rename, target.path)
+                    val newPath = container.files.childOf(container.files.parentOf(target.path), newName)
+                    checkedPaths = checkedPaths.map { if (it == target.path) newPath else it }.toSet()
+                    clipboard = clipboard?.let { copy -> copy.copy(entries = copy.entries.map {
+                        if (it.path == target.path) it.copy(path = newPath, name = newName) else it
+                    }) }
+                    if (selected?.path == target.path) select(target.copy(path = newPath, name = newName))
                     reload()
                 }
-                else -> message = result.failureMessage()
+                else -> message = mutationFailure(result)
             }
-            loading = false
+            } finally { if (container.activeSession === owner) { mutationBusy = false; mutationJob = null } }
         }
     }
 
     fun requestDelete(entry: RemoteEntry) {
-        deleteTarget = entry
+        if (canMutate && FileBrowserPolicy.mutable(entry)) deleteTarget = entry
     }
 
     fun requestTransfer(entry: RemoteEntry, move: Boolean) {
-        transferTarget = TransferTarget(entry, move)
+        if (canMutate && FileBrowserPolicy.mutable(entry)) transferTarget = TransferTarget(entry, move)
     }
 
     fun cancelTransferTarget() {
@@ -451,36 +660,10 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
 
     fun confirmTransfer(destinationPath: String) {
         val request = transferTarget ?: return
+        if (!canMutate || !FileBrowserPolicy.validRemotePath(destinationPath) || destinationPath == request.entry.path ||
+            (request.entry.isDirectory && !FileBrowserPolicy.validDestination(listOf(request.entry), destinationPath))) return
         transferTarget = null
-        if (destinationPath.isBlank() || transfer != null) {
-            return
-        }
-        val label = request.entry.path
-        transfer = Transfer(label = label, kind = if (request.move) TransferKind.Move else TransferKind.Copy)
-        transferJob = viewModelScope.launch {
-            try {
-                val result = if (request.move) {
-                    container.files.move(request.entry.path, destinationPath, container.elevationAnswers)
-                } else {
-                    container.files.copy(request.entry.path, destinationPath, container.elevationAnswers)
-                }
-                if (result is ApiResult.Success) {
-                    container.recentOperations.record(
-                        if (request.move) RecentOperationKind.Move else RecentOperationKind.Copy,
-                        request.entry.path,
-                    )
-                    if (request.move && selected?.path == request.entry.path) select(null)
-                    reload()
-                } else {
-                    message = result.failureMessage()
-                }
-            } catch (_: CancellationException) {
-                // The transfer card disappears; cancellation is an expected user action.
-            } finally {
-                transfer = null
-                transferJob = null
-            }
-        }
+        runBatch(FileBatchTarget(listOf(request.entry), if (request.move) FileBatchAction.Move else FileBatchAction.Copy)) { destinationPath }
     }
 
     fun cancelDelete() {
@@ -489,22 +672,9 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
 
     fun confirmDelete() {
         val target = deleteTarget ?: return
+        if (!canMutate) return
         deleteTarget = null
-        viewModelScope.launch {
-            loading = true
-            when (val result = container.files.delete(target.path, container.elevationAnswers)) {
-                is ApiResult.Success -> {
-                    container.recentOperations.record(RecentOperationKind.Delete, target.path)
-                    if (selected?.path == target.path) {
-                        select(null)
-                    }
-                    reload()
-                }
-
-                else -> message = result.failureMessage()
-            }
-            loading = false
-        }
+        runBatch(FileBatchTarget(listOf(target), FileBatchAction.Delete)) { "" }
     }
 
     /**
@@ -517,9 +687,11 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
      * somewhere that outlives both routes (`FileTransferCard`, `FileMessageBanner`).
      */
     fun download(entry: RemoteEntry) {
-        if (transfer != null) {
+        if (transfer != null || batchRunning || mutationBusy) {
             return
         }
+        val owner = container.activeSession ?: return
+        val generation = ++transferGeneration
         transfer = Transfer(label = entry.path, kind = TransferKind.Download)
         transferJob = viewModelScope.launch {
             var target: DownloadTarget? = null
@@ -537,12 +709,14 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
                 target = destination
                 val result = container.files.download(entry.path, destination, container.elevationAnswers) { written, total ->
                     viewModelScope.launch(Dispatchers.Main.immediate) {
+                        if (generation == transferGeneration && container.activeSession === owner)
                         transfer = transfer?.takeIf { it.kind == TransferKind.Download }?.copy(
                             transferredBytes = written,
                             totalBytes = total,
                         )
                     }
                 }
+                if (generation != transferGeneration || container.activeSession !== owner) return@launch
                 when (result) {
                     is ApiResult.Success -> {
                         // Pending until this call: the file becomes visible to the rest of the device
@@ -552,6 +726,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
                         val committed = withContext(Dispatchers.IO) { runCatching { destination.commit() } }
                         if (committed.isSuccess) {
                             target = null
+                            if (generation != transferGeneration || container.activeSession !== owner) return@launch
                             container.recentOperations.record(RecentOperationKind.Download, entry.path)
                             message = UiMessage(R.string.files_downloaded, listOf(destination.location), tone = StatusTone.Success)
                         } else {
@@ -566,8 +741,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
                 // A refused, failed or cancelled transfer leaves no file: on the shared Downloads
                 // collection an abandoned row would be a corrupt entry for the whole device to see.
                 target?.let { runCatching { it.discard() } }
-                transfer = null
-                transferJob = null
+                if (generation == transferGeneration && container.activeSession === owner) { transfer = null; transferJob = null }
             }
         }
     }
@@ -585,34 +759,28 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun upload(uri: Uri) {
         if (isUploadBusy()) return
+        val owner = container.activeSession ?: return
         val directory = path
-        if (directory.isBlank()) {
-            message = UiMessage(R.string.files_upload_needs_folder)
-            return
-        }
+        if (directory.isBlank()) { message = UiMessage(R.string.files_upload_needs_folder); return }
+        val generation = ++transferGeneration
+        transfer = Transfer(label = getApplication<Application>().getString(R.string.files_upload_preparing), kind = TransferKind.Upload)
         transferJob = viewModelScope.launch {
-            // Reading a document's metadata and opening it are the provider's work — a cloud-backed file
-            // can take seconds — so neither happens on the main thread.
-            val document = withContext(Dispatchers.IO) {
-                runCatching { container.uploadDocuments.open(uri.toString()) }.getOrNull()
+            try {
+                val document = withContext(Dispatchers.IO) { runCatching { container.uploadDocuments.open(uri.toString()) }.getOrNull() }
+                if (generation != transferGeneration || container.activeSession !== owner) return@launch
+                if (document == null) { message = UiMessage(R.string.files_upload_unreadable); return@launch }
+                if (document.length != null && isSingleShotLength(document.length!!)) uploadSingleShot(document, directory, owner, generation)
+                else startResumable(document, directory)
+            } catch (_: CancellationException) {
+                // The request is not replayed when the user cancels or switches owner.
+            } finally {
+                if (generation == transferGeneration && container.activeSession === owner) { transferJob = null; transfer = null }
             }
-            if (document == null) {
-                message = UiMessage(R.string.files_upload_unreadable)
-                transferJob = null
-                return@launch
-            }
-            val length = document.length
-            if (length != null && isSingleShotLength(length)) {
-                uploadSingleShot(document, directory)
-            } else {
-                startResumable(document, directory)
-            }
-            transferJob = null
         }
     }
 
     /** True while either route is busy; only one transfer runs at a time. */
-    private fun isUploadBusy(): Boolean = transfer != null || container.uploads.isRunning
+    private fun isUploadBusy(): Boolean = transfer != null || transferJob != null || batchRunning || mutationBusy || container.uploads.isRunning
 
     /**
      * Hands the document to the resumable coordinator.
@@ -650,7 +818,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
      * refuses to report one — is answered by the server with `upload-too-large-for-single-shot`, and that
      * specific refusal falls through to the resumable route rather than failing the upload.
      */
-    private suspend fun uploadSingleShot(document: PickedDocument, directory: String) {
+    private suspend fun uploadSingleShot(document: PickedDocument, directory: String, owner: SessionState.Active, generation: Long) {
         val app = getApplication<RelaxKonApplication>()
         val name = document.displayName.ifBlank { app.getString(R.string.files_upload_default_name) }
         transfer = Transfer(label = name, kind = TransferKind.Upload, totalBytes = document.length)
@@ -658,6 +826,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
             withContext(Dispatchers.IO) { document.open() }.use { input ->
                 container.files.upload(directory, name, input, document.length, container.elevationAnswers) { written ->
                     viewModelScope.launch(Dispatchers.Main.immediate) {
+                        if (generation == transferGeneration && container.activeSession === owner)
                         transfer = transfer?.takeIf { it.kind == TransferKind.Upload }?.copy(transferredBytes = written)
                     }
                 }
@@ -666,6 +835,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
             if (it is CancellationException) throw it
             ApiResult.Transport(it.message)
         }
+        if (generation != transferGeneration || container.activeSession !== owner) return
         transfer = null
         when (result) {
             is ApiResult.Success -> {
@@ -677,9 +847,13 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
             is ApiResult.Problem if result.code == UploadProblemCodes.TOO_LARGE_FOR_SINGLE_SHOT ->
                 startResumable(document, directory)
 
-            else -> message = result.failureMessage()
+            else -> message = mutationFailure(result)
         }
     }
+
+    private fun mutationFailure(result: ApiResult<*>): UiMessage? =
+        if (result is ApiResult.Transport || (result is ApiResult.Problem && result.status >= 500))
+            UiMessage(R.string.files_mutation_unknown) else result.failureMessage()
 
     /** Continues an unfinished upload the coordinator remembers. */
     fun resumeUpload(entry: UploadResumeEntry) {
@@ -699,6 +873,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     fun dismissUpload() = container.uploads.dismiss()
 
     fun cancelActiveTransfer() {
+        transferGeneration++
         transferJob?.cancel()
         transferJob = null
         transfer = null
@@ -778,8 +953,10 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
      */
     private fun loadPreview(entry: RemoteEntry, authorize: Boolean) {
         val generation = previewGeneration
+        val owner = container.activeSession ?: return
+        val scope = "${owner.serviceId}\u0000${owner.userName}"
         previewJob = viewModelScope.launch {
-            val scope = container.activeSession?.serviceId.orEmpty()
+            try {
             // Reading the cache is stat calls and, on a miss, a directory listing followed by an
             // eviction pass. None of that belongs on the main thread, for the same reason the download
             // destination is not created there.
@@ -789,11 +966,16 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
             // Only when a transfer is actually coming. A picture that is already in the cache decodes in
             // milliseconds, and asking the server for a copy of it that cannot improve on that would be
             // a request, a read and a render spent on a frame nobody would have noticed.
+            if (generation != previewGeneration || container.activeSession !== owner) return@launch
             if (cached == null) {
                 prefetchThumbnail(entry, generation)
             }
-            val file = cached ?: downloadPreview(entry, scope, generation, authorize) ?: return@launch
+            val file = cached ?: downloadPreview(entry, scope, generation, authorize, owner) ?: return@launch
             decodePreview(file, generation)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                if (generation == previewGeneration) preview = ImagePreview.Unavailable(UiMessage(R.string.files_preview_failed), false)
+            }
         }
     }
 
@@ -818,7 +1000,9 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
      */
     private fun prefetchThumbnail(entry: RemoteEntry, generation: Int) {
         thumbnailJob?.cancel()
+        val owner = container.activeSession ?: return
         thumbnailJob = viewModelScope.launch {
+            if (generation != previewGeneration || container.activeSession !== owner) return@launch
             val result = try {
                 container.files.thumbnail(entry.path, SERVER_THUMBNAIL_EDGE_PX, ElevationAnswerProvider.Declines)
             } catch (cancelled: CancellationException) {
@@ -856,46 +1040,34 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         scope: String,
         generation: Int,
         authorize: Boolean,
+        owner: SessionState.Active,
     ): File? {
+        if (entry.sizeBytes != null && entry.sizeBytes > app.relaxkonos.mobile.data.ImagePreviewCache.CACHE_BUDGET_BYTES) {
+            if (generation == previewGeneration) preview = ImagePreview.Unavailable(UiMessage(R.string.files_preview_too_large), false)
+            return null
+        }
         val target = withContext(Dispatchers.IO) {
             container.imagePreviews.create(scope, entry.path, entry.sizeBytes, entry.modifiedAtMillis)
         }
-        if (generation == previewGeneration) {
-            // A thumbnail that beat the first byte is carried in from here: it has to be on screen for
-            // the whole of the transfer, not from the first progress callback onwards.
-            preview = ImagePreview.Downloading(0, entry.sizeBytes, thumbnail = thumbnail)
-        }
-        val result = container.files.download(
-            path = entry.path,
-            target = target,
-            provider = if (authorize) container.elevationAnswers else ElevationAnswerProvider.Declines,
-        ) { written, total ->
-            viewModelScope.launch(Dispatchers.Main.immediate) {
-                if (generation == previewGeneration) {
-                    // The announced length comes first and stays: a server that omits or mislabels it
-                    // mid-stream must not turn a bar with a denominator into one without.
-                    preview = ImagePreview.Downloading(written, total ?: entry.sizeBytes, thumbnail = thumbnail)
+        try {
+            if (generation != previewGeneration || container.activeSession !== owner) return null
+            if (generation == previewGeneration) preview = ImagePreview.Downloading(0, entry.sizeBytes, thumbnail)
+            val result = container.files.download(entry.path, target,
+                if (authorize) container.elevationAnswers else ElevationAnswerProvider.Declines) { written, total ->
+                viewModelScope.launch(Dispatchers.Main.immediate) {
+                    if (generation == previewGeneration) preview = ImagePreview.Downloading(written, total ?: entry.sizeBytes, thumbnail)
                 }
             }
-        }
-        if (result is ApiResult.Success) {
-            return target.file
-        }
-        if (generation == previewGeneration) {
-            // A transfer that was refused, failed or interrupted leaves nothing usable, and a
-            // truncated file left in the cache would be handed to the decoder the next time round.
-            withContext(Dispatchers.IO) { runCatching { target.file.delete() } }
-            val needsElevation = result is ApiResult.Problem && result.code == ProblemCodes.ELEVATION_REQUIRED
-            preview = ImagePreview.Unavailable(
-                message = if (needsElevation) {
-                    UiMessage(R.string.files_preview_elevation)
-                } else {
-                    result.failureMessage() ?: UiMessage(R.string.files_preview_failed)
-                },
-                needsElevation = needsElevation,
-            )
-        }
-        return null
+            if (generation != previewGeneration) return null
+            if (result is ApiResult.Success) {
+                val committed = withContext(Dispatchers.IO) { runCatching { target.commit(result.value) } }
+                if (committed.isSuccess) return committed.getOrThrow()
+            }
+            val elevation = result is ApiResult.Problem && result.code == ProblemCodes.ELEVATION_REQUIRED
+            if (generation == previewGeneration) preview = ImagePreview.Unavailable(
+                if (elevation) UiMessage(R.string.files_preview_elevation) else UiMessage(R.string.files_preview_failed), elevation)
+            return null
+        } finally { withContext(NonCancellable + Dispatchers.IO) { target.discard() } }
     }
 
     /**
@@ -959,14 +1131,25 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun loadProperties(targetPath: String) {
+    private fun loadProperties(targetPath: String, authorize: Boolean = false) {
+        val owner = container.activeSession ?: return
+        val request = ++propertyRequest
+        propertiesJob?.cancel()
         propertiesLoading = true
-        viewModelScope.launch {
-            when (val result = container.files.properties(targetPath)) {
-                is ApiResult.Success -> properties = result.value
-                else -> message = result.failureMessage()
-            }
-            propertiesLoading = false
+        properties = null
+        propertiesNeedsElevation = false
+        propertiesJob = viewModelScope.launch {
+            try {
+                val result = container.files.properties(targetPath, if (authorize) container.elevationAnswers else ElevationAnswerProvider.Declines)
+                if (request != propertyRequest || container.activeSession !== owner || selected?.path != targetPath) return@launch
+                when (result) {
+                    is ApiResult.Success -> if (result.value.path == targetPath) properties = result.value
+                    else -> {
+                        propertiesNeedsElevation = result is ApiResult.Problem && result.code == ProblemCodes.ELEVATION_REQUIRED
+                        if (!propertiesNeedsElevation) message = result.failureMessage()
+                    }
+                }
+            } finally { if (request == propertyRequest && container.activeSession === owner) propertiesLoading = false }
         }
     }
 
@@ -981,6 +1164,11 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
                     is ApiResult.Success -> if (request == directoryRequest) {
                         listing = result.value
                         path = result.value.path
+                        checkedPaths = checkedPaths.intersect(result.value.entries.map { it.path }.toSet())
+                        selected?.let { old ->
+                            val current = result.value.entries.firstOrNull { it.path == old.path }
+                            if (current != old) select(current)
+                        }
                     }
 
                     else -> if (request == directoryRequest) {
@@ -998,9 +1186,21 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Clears every screen-owned value that is meaningful only to one authenticated server session. */
     private fun resetForSessionBoundary() {
+        mutationJob?.cancel(); mutationJob = null
+        propertyRequest++; propertiesJob?.cancel(); propertiesJob = null
+        checkedPaths = emptySet(); selectionMode = false; clipboard = null
+        batchTarget = null; batchReport = null; batchRunning = false; batchStopRequested = false
+        batchPath = ""; batchProgress = 0; batchTotal = 0; mutationBusy = false
+        backPaths.clear(); forwardPaths.clear(); updateHistory()
+        query = ""; showHidden = false; sort = FileSort.Name; sortDescending = false
+        permissionsOpen = false; permissionInput = ""; propertiesNeedsElevation = false
+        viewerTransform = ViewerTransform()
+        editorOpen = false
+        editorPath = null
         directoryRequest++
         directoryJob?.cancel()
         directoryJob = null
+        transferGeneration++
         transferJob?.cancel()
         transferJob = null
         cancelPreview()
@@ -1030,6 +1230,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
 }
 
 data class TransferTarget(val entry: RemoteEntry, val move: Boolean)
+data class FileBatchTarget(val entries: List<RemoteEntry>, val action: FileBatchAction)
 
 /**
  * The file list.
@@ -1073,18 +1274,21 @@ fun FilesScreen(
     val uploadRunning = viewModel.uploadState.collectAsStateValue()?.isRunning == true
 
     var menuForPath by remember { mutableStateOf<String?>(null) }
+    var locationOpen by remember { mutableStateOf(false) }
+    if (locationOpen) FileLocationDialog(viewModel) { locationOpen = false }
 
     Column(
         modifier = modifier.fillMaxSize().padding(Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
         ScreenHeader(title = stringResource(R.string.nav_files))
+        TextButton(onClick = { viewModel.editText() }, enabled = viewModel.canMutate) { Text(stringResource(R.string.editor_new)) }
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
-            FilledTonalIconButton(onClick = { viewModel.goUp() }, enabled = viewModel.canGoUp) {
+            FilledTonalIconButton(onClick = { viewModel.goUp() }, enabled = viewModel.canGoUp && !viewModel.batchRunning && !viewModel.mutationBusy) {
                 DesktopIcon(
                     icon = DesktopIcons.parentDirectory,
                     size = 24.dp,
@@ -1104,15 +1308,21 @@ fun FilesScreen(
             }
         }
 
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+            TextButton(onClick = viewModel::goBack, enabled = viewModel.canGoBack && !viewModel.batchRunning && !viewModel.mutationBusy) { Text(stringResource(R.string.files_back)) }
+            TextButton(onClick = viewModel::goForward, enabled = viewModel.canGoForward && !viewModel.batchRunning && !viewModel.mutationBusy) { Text(stringResource(R.string.files_forward)) }
+            TextButton(onClick = { locationOpen = true }, enabled = !viewModel.batchRunning && !viewModel.mutationBusy) { Text(stringResource(R.string.files_go_directory)) }
+        }
+        FileBrowserControls(viewModel)
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            OutlinedButton(onClick = { viewModel.openNewDirectory() }, modifier = Modifier.weight(1f)) {
+            OutlinedButton(onClick = { viewModel.openNewDirectory() }, enabled = viewModel.canMutate && viewModel.path.isNotBlank(), modifier = Modifier.weight(1f)) {
                 DesktopIcon(icon = DesktopIcons.newFolder, size = 18.dp)
                 Spacer(Modifier.width(Spacing.sm))
                 Text(stringResource(R.string.files_action_new_directory))
             }
             Button(
                 onClick = { pickUpload.launch(arrayOf("*/*")) },
-                enabled = viewModel.transfer == null && !uploadRunning,
+                enabled = viewModel.canMutate && viewModel.path.isNotBlank() && !uploadRunning,
                 modifier = Modifier.weight(1f),
             ) {
                 DesktopIcon(icon = DesktopIcons.upload, size = 18.dp)
@@ -1126,7 +1336,8 @@ fun FilesScreen(
         FileResumableUploadsCard(viewModel)
 
         val listing = viewModel.listing
-        if (listing == null || listing.entries.isEmpty()) {
+        val visible = viewModel.visibleEntries
+        if (listing == null || visible.isEmpty()) {
             EmptyState(
                 text = stringResource(if (viewModel.loading) R.string.common_loading else R.string.files_empty),
                 icon = DesktopIcons.notice,
@@ -1137,14 +1348,16 @@ fun FilesScreen(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(Spacing.xs),
             ) {
-                items(listing.entries, key = { it.path }) { entry ->
+                items(visible, key = { it.path }) { entry ->
                     FileEntryRow(
                         entry = entry,
                         menuOpen = menuForPath == entry.path,
                         onOpenMenu = { menuForPath = entry.path },
                         onCloseMenu = { menuForPath = null },
                         onOpen = {
-                            if (entry.isDirectory) {
+                            if (viewModel.selectionMode) {
+                                viewModel.check(entry)
+                            } else if (entry.isDirectory) {
                                 viewModel.open(entry.path)
                             } else {
                                 viewModel.select(entry)
@@ -1152,6 +1365,7 @@ fun FilesScreen(
                             }
                         },
                         viewModel = viewModel,
+                        onDetails = { viewModel.select(entry); onOpenDetail() },
                     )
                 }
             }
@@ -1190,6 +1404,14 @@ fun FileMessageBanner(viewModel: FilesViewModel, modifier: Modifier = Modifier) 
  */
 @Composable
 fun FileTransferCard(viewModel: FilesViewModel, modifier: Modifier = Modifier) {
+    if (viewModel.batchRunning) {
+        ProgressSheet(title = stringResource(R.string.files_batch_running), detail = viewModel.batchPath,
+            progress = viewModel.batchProgress.toFloat() / viewModel.batchTotal.coerceAtLeast(1), collapsed = false,
+            onCollapsedChange = {}, onCancel = if (viewModel.batchStopRequested) null else viewModel::stopBatch,
+            footnote = stringResource(if (viewModel.batchStopRequested) R.string.files_batch_stopping else R.string.files_batch_stop_hint),
+            modifier = modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm))
+        return
+    }
     val transfer = viewModel.transfer ?: return
     ProgressSheet(
         title = stringResource(
@@ -1396,18 +1618,24 @@ private fun FileEntryRow(
     onCloseMenu: () -> Unit,
     onOpen: () -> Unit,
     viewModel: FilesViewModel,
+    onDetails: () -> Unit,
 ) {
     ListRow(
         title = entry.name,
         supporting = listOfNotNull(
-            stringResource(if (entry.isDirectory) R.string.files_kind_directory else R.string.files_kind_file),
+            stringResource(if (entry.isDrive) R.string.files_kind_drive else if (entry.isDirectory) R.string.files_kind_directory else R.string.files_kind_file),
             formatSize(entry.sizeBytes),
             formatTimestamp(entry.modifiedAtMillis),
         ).joinToString(" · "),
-        leading = { IconBadge(icon = DesktopIcons.fileFor(entry.name, entry.isDirectory)) },
+        leading = { IconBadge(icon = if (entry.isDrive) DesktopIcons.storage else DesktopIcons.fileFor(entry.name, entry.isDirectory)) },
+        selected = entry.path in viewModel.checkedPaths || entry.path == viewModel.selected?.path,
         trailing = {
-            Box {
-                IconButton(onClick = onOpenMenu) {
+            if (viewModel.selectionMode) {
+                Checkbox(checked = entry.path in viewModel.checkedPaths,
+                    onCheckedChange = { viewModel.check(entry) },
+                    enabled = !viewModel.batchRunning && FileBrowserPolicy.mutable(entry))
+            } else Box {
+                IconButton(onClick = onOpenMenu, enabled = !viewModel.batchRunning && !viewModel.mutationBusy) {
                     DesktopIcon(
                         icon = DesktopIcons.overflow,
                         size = 24.dp,
@@ -1415,8 +1643,11 @@ private fun FileEntryRow(
                     )
                 }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = onCloseMenu) {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.files_detail_title)) },
+                        onClick = { onCloseMenu(); onDetails() })
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.files_action_rename)) },
+                        enabled = viewModel.canMutate && FileBrowserPolicy.mutable(entry),
                         leadingIcon = { DesktopIcon(icon = DesktopIcons.rename, size = 20.dp) },
                         onClick = {
                             onCloseMenu()
@@ -1425,6 +1656,7 @@ private fun FileEntryRow(
                     )
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.files_action_copy)) },
+                        enabled = viewModel.canMutate && FileBrowserPolicy.mutable(entry),
                         leadingIcon = { DesktopIcon(icon = DesktopIcons.copy, size = 20.dp) },
                         onClick = {
                             onCloseMenu()
@@ -1433,6 +1665,7 @@ private fun FileEntryRow(
                     )
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.files_action_move)) },
+                        enabled = viewModel.canMutate && FileBrowserPolicy.mutable(entry),
                         leadingIcon = { DesktopIcon(icon = DesktopIcons.move, size = 20.dp) },
                         onClick = {
                             onCloseMenu()
@@ -1441,6 +1674,7 @@ private fun FileEntryRow(
                     )
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.common_delete)) },
+                        enabled = viewModel.canMutate && FileBrowserPolicy.mutable(entry),
                         leadingIcon = { DesktopIcon(icon = DesktopIcons.delete, size = 20.dp) },
                         onClick = {
                             onCloseMenu()
@@ -1497,15 +1731,21 @@ fun FileDetailScreen(
             verticalArrangement = Arrangement.spacedBy(Spacing.lg),
         ) {
             FileImagePreview(viewModel)
+            if (entry.isDirectory) OutlinedButton(onClick = { viewModel.open(entry.path) }) {
+                Text(stringResource(R.string.files_open_directory))
+            }
+            if (!entry.isDirectory) OutlinedButton(onClick = { viewModel.editText(entry.path) }, enabled = !viewModel.batchRunning && !viewModel.mutationBusy) {
+                Text(stringResource(R.string.editor_open))
+            }
 
             SectionCard(
                 title = entry.name,
-                leading = DesktopIcons.fileFor(entry.name, entry.isDirectory),
+                leading = if (entry.isDrive) DesktopIcons.storage else DesktopIcons.fileFor(entry.name, entry.isDirectory),
             ) {
                 KeyValueRow(stringResource(R.string.files_label_path), entry.path)
                 KeyValueRow(
                     stringResource(R.string.files_label_kind),
-                    stringResource(if (entry.isDirectory) R.string.files_kind_directory else R.string.files_kind_file),
+                    stringResource(if (entry.isDrive) R.string.files_kind_drive else if (entry.isDirectory) R.string.files_kind_directory else R.string.files_kind_file),
                 )
                 formatSize(properties?.sizeBytes ?: entry.sizeBytes)?.let {
                     KeyValueRow(stringResource(R.string.files_label_size), it)
@@ -1516,12 +1756,25 @@ fun FileDetailScreen(
                 formatTimestamp(properties?.createdMillis)?.let {
                     KeyValueRow(stringResource(R.string.files_label_created), it)
                 }
-                if (container.capabilities.contains(ServerCapabilities.POSIX_PERMISSIONS)) {
-                    properties?.permissions?.takeIf { it.isNotBlank() }?.let {
-                        KeyValueRow(stringResource(R.string.files_label_permissions), it)
+                formatTimestamp(properties?.accessedMillis)?.let {
+                    KeyValueRow(stringResource(R.string.files_label_accessed), it)
+                }
+                properties?.attributes?.takeIf { it.isNotBlank() }?.let {
+                    KeyValueRow(stringResource(R.string.files_label_attributes), it)
+                }
+                properties?.permissions?.takeIf { it.isNotBlank() }?.let {
+                    KeyValueRow(stringResource(R.string.files_label_permissions), it)
+                }
+                if (container.capabilities.contains(ServerCapabilities.POSIX_PERMISSIONS) && properties?.unixMode != null) {
+                    KeyValueRow(stringResource(R.string.files_permissions_octal), FileBrowserPolicy.formatMode(properties.unixMode))
+                    OutlinedButton(onClick = viewModel::openPermissions, enabled = viewModel.canMutate) {
+                        Text(stringResource(R.string.files_permissions_edit))
                     }
                 }
                 if (properties == null) {
+                    TextButton(onClick = { viewModel.reloadProperties(viewModel.propertiesNeedsElevation) }, enabled = !viewModel.propertiesLoading) {
+                        Text(stringResource(if (viewModel.propertiesNeedsElevation) R.string.files_preview_authorize else R.string.common_retry))
+                    }
                     Text(
                         stringResource(
                             if (viewModel.propertiesLoading) R.string.common_loading else R.string.files_detail_unavailable,
@@ -1571,6 +1824,11 @@ fun FileDetailScreen(
 /** Shared overlay for both list and detail routes, so compact detail actions never become inert. */
 @Composable
 fun FileOperationOverlays(viewModel: FilesViewModel) {
+    val owner = appContainer().session.state.value as? SessionState.Active
+    FileBatchOverlays(viewModel)
+    FilePermissionDialog(viewModel)
+    if (viewModel.editorOpen && owner != null) app.relaxkonos.mobile.ui.editor.TextEditorDialog(
+        owner, viewModel.editorPath, onSaved = { viewModel.refresh() }, onClose = { viewModel.editorOpen = false })
     if (viewModel.newDirectoryOpen) {
         NewDirectoryDialog(
             parentPath = viewModel.path,
@@ -1622,7 +1880,7 @@ private fun NewDirectoryDialog(parentPath: String, onDismiss: () -> Unit, onConf
             }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(name.trim()) }, enabled = name.isNotBlank()) {
+            Button(onClick = { onConfirm(name) }, enabled = FileBrowserPolicy.validName(name)) {
                 Text(stringResource(R.string.common_create))
             }
         },
@@ -1649,7 +1907,7 @@ private fun RenameDialog(entry: RemoteEntry, onDismiss: () -> Unit, onConfirm: (
             }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(name.trim()) }, enabled = name.isNotBlank() && name != entry.name) {
+            Button(onClick = { onConfirm(name) }, enabled = FileBrowserPolicy.validName(name) && name != entry.name) {
                 Text(stringResource(R.string.common_save))
             }
         },
@@ -1682,7 +1940,7 @@ private fun TransferDialog(request: TransferTarget, onDismiss: () -> Unit, onCon
             }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(destination.trim()) }, enabled = destination.isNotBlank() && destination != request.entry.path) {
+            Button(onClick = { onConfirm(destination) }, enabled = destination.isNotBlank() && destination != request.entry.path) {
                 Text(stringResource(if (request.move) R.string.files_action_move else R.string.files_action_copy))
             }
         },
