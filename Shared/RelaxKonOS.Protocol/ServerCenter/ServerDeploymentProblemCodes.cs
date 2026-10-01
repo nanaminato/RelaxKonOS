@@ -61,8 +61,6 @@ public static class ServerDeploymentProblemCodes
     public const string Failed = "server-deployment.failed";
     public const string DiskQuotaExceeded = "server-deployment.disk_quota_exceeded";
     public const string DiskSpaceInsufficient = "server-deployment.disk_space_insufficient";
-    public const string DiskQuotaExceeded = "server-deployment.disk_quota_exceeded";
-    public const string DiskSpaceInsufficient = "server-deployment.disk_space_insufficient";
     public const string Cancelled = "server-deployment.cancelled";
     public const string Interrupted = "server-deployment.interrupted";
     public const string RecoveryUnknown = "server-deployment.recovery_unknown";
