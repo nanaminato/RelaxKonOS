@@ -147,6 +147,15 @@ class ServerCenterDeploymentClient(private val transport: ServerCenterSshTranspo
         return query(ServerCenterStagedOperation(operationId.lowercase(Locale.ROOT), lookup.platform, lookup.remoteDirectory))
     }
 
+    suspend fun diagnostics(lookup: ServerCenterStagedLookup, operationId: String): String {
+        require(validOperationId(operationId))
+        val staged = ServerCenterStagedOperation(operationId.lowercase(Locale.ROOT), lookup.platform, lookup.remoteDirectory)
+        val result = transport.run(launcherCommand(staged, LauncherAction.Diagnostics))
+        if (!result.succeeded) throw IOException("The remote deployment log could not be read.")
+        return result.standardOutput.take(65536).replace(
+            Regex("(?im)(password|secret|token|authorization)(\\s*[:=]\\s*)[^\\r\\n]+"), "$1$2[redacted]")
+    }
+
     suspend fun query(staged: ServerCenterStagedOperation): ServerDeploymentOperation {
         val result = transport.run(launcherCommand(staged, action = LauncherAction.Query))
         if (result.exitStatus == 66) throw ServerDeploymentReceiptMissingException()
@@ -198,6 +207,7 @@ class ServerCenterDeploymentClient(private val transport: ServerCenterSshTranspo
                 LauncherAction.Run -> " --run"
                 LauncherAction.Query -> " --query ${staged.operationId}"
                 LauncherAction.List -> " --list"
+                LauncherAction.Diagnostics -> " --diagnostics ${staged.operationId}"
             }
             return "bash '${staged.remoteDirectory}/relaxkonos-deploy.sh'$argument"
         }
@@ -208,6 +218,7 @@ class ServerCenterDeploymentClient(private val transport: ServerCenterSshTranspo
                 LauncherAction.Run -> ""
                 LauncherAction.Query -> " -QueryOperationId '${staged.operationId}'"
                 LauncherAction.List -> " -ListOperations"
+                LauncherAction.Diagnostics -> " -DiagnosticsOperationId '${staged.operationId}'"
             }
         return "powershell.exe -NoProfile -NonInteractive -EncodedCommand " +
             Base64Codec.encode(command.toByteArray(Charsets.UTF_16LE))
@@ -229,7 +240,7 @@ class ServerCenterDeploymentClient(private val transport: ServerCenterSshTranspo
                 runtime == ServerRuntimeIdentifier.WinArm64
         }
 
-    private enum class LauncherAction { Run, Query, List }
+    private enum class LauncherAction { Run, Query, List, Diagnostics }
 
     private companion object {
         val OPERATION_ID = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")

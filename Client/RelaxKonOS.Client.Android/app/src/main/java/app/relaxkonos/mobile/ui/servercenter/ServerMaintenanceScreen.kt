@@ -106,8 +106,13 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
             DeploymentSetupScreen(host, Modifier.weight(1f), onBusyChanged = { installing = it })
         } else Column(Modifier.fillMaxSize().verticalScroll(pageScroll).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
             Text(stringResource(R.string.server_maintenance_title), style = MaterialTheme.typography.titleLarge)
-            Text("${host?.displayName.orEmpty()} · ${host?.sshHost.orEmpty()}:${host?.sshPort ?: 22}", style = MaterialTheme.typography.bodySmall)
-            ScrollableTabRow(selectedTabIndex = page, edgePadding = Spacing.xs) {
+            val address = host?.let { "${it.sshHost}:${it.sshPort}" }.orEmpty()
+            val name = host?.displayName.orEmpty()
+            Text(if (name.isBlank() || name == address || name == host?.sshHost) address else "$name · $address",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            PrimaryScrollableTabRow(selectedTabIndex = page, edgePadding = Spacing.xs,
+                containerColor = androidx.compose.ui.graphics.Color.Transparent,
+                contentColor = MaterialTheme.colorScheme.primary) {
                 listOf(R.string.server_maintenance_overview, R.string.server_maintenance_environment,
                     R.string.server_maintenance_actions, R.string.server_maintenance_history).forEachIndexed { index, title ->
                     Tab(selected = page == index, onClick = { page = index }, text = { Text(stringResource(title)) })
@@ -154,7 +159,8 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
                 } else if (page == 2) Button(onClick = { wizard = true }, enabled = !state.busy && state.probe?.osSupported == true) { Text(stringResource(R.string.ssh_workspace_deploy_install)) }
             }
             if (state.complete) Text(stringResource(R.string.server_maintenance_complete))
-            if (page == 3 && host != null) ServerInstallRecoveryPanel(host.hostId)
+            if (page == 3 && host != null) ServerInstallRecoveryPanel(host.hostId,
+                state.probe?.let { if (it.hostPlatform.equals("linux", true)) ServerHostPlatform.Linux else ServerHostPlatform.Windows })
         }
     }
     if (uninstall) AlertDialog(onDismissRequest = { uninstall = false }, title = { Text(stringResource(R.string.server_maintenance_uninstall)) },

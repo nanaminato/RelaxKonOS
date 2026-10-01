@@ -4,6 +4,10 @@
 
 ## 1. 共同设备与发布检查
 
+2026-10-01 操作记录修复：平台自动识别，每条记录支持展开回执与按需读取日志。`ServerCenterDeploymentClientTest` 和 `assembleDebug --offline` 通过，覆盖固定 diagnostics 动作、无效 ID 拒绝、日志截断及敏感字段遮盖。实体手机长日志滚动/复制、Windows 宿主日志和真实历史记录查询仍待验证。
+
+2026-10-01 Linux 监听地址回执：从受管安装记录读取 listenUrl，保留真实协议、绑定地址和端口；不再虚构 HTTP 回环地址。`ListenAddressChecks.ps1` 与 Android `assembleDebug --offline` 通过。实体设备刷新后与真实宿主配置的对照仍待执行。
+
 2026-10-01 安装维护子页：概览、环境检查、维护操作、操作记录已拆分，安装向导单独进入，详情字段可复制，子页切换重置滚动，返回先回概览。`assembleDebug --offline` 通过；实体手机上的窄屏标签滚动、长目录换行、TalkBack、系统返回键及键盘避让仍待验证。
 
 2026-10-01 SSH 安装与维护首页：进入部署页通过 SSH 执行 Probe 和 Status，展示系统、架构、磁盘、端口、依赖及安装模式/版本/路径/健康信息；未安装进入安装向导，已安装提供升级、修复和卸载，卸载默认保留数据，删除受管数据需明确勾选并确认。维护后重新读取 Status，再判定成功。`ServerMaintenanceTest` 与 `assembleDebug --offline` 通过；真实 Linux/Windows 宿主上的权限、修复、保留/删除数据卸载、卸载后重新安装，以及手机键盘和操作记录仍待验证。本轮未对真实宿主执行卸载。

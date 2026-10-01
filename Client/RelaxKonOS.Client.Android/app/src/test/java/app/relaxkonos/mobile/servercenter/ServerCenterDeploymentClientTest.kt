@@ -11,8 +11,24 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.Assert.assertFalse
+import org.junit.Assert.fail
 
 class ServerCenterDeploymentClientTest {
+    @Test fun `details read fixed diagnostics action with bounded redacted text`() = runTest {
+        val transport = FakeDeploymentTransport()
+        val client = ServerCenterDeploymentClient(transport)
+        val lookup = client.stageLookup(ServerHostPlatform.Linux, ServerCenterUploadAsset.bytes(byteArrayOf(1)))
+        val id = UUID.randomUUID().toString()
+        val log = client.diagnostics(lookup, id)
+        assertTrue(transport.commands.last().endsWith(" --diagnostics $id"))
+        assertTrue(log.contains("[redacted]"))
+        assertFalse(log.contains("private-value"))
+        assertTrue(log.length <= 65536)
+        val count = transport.commands.size
+        try { client.diagnostics(lookup, "../../bad"); fail("Invalid id accepted") } catch (_: IllegalArgumentException) { }
+        assertEquals(count, transport.commands.size)
+    }
 
     @Test
     fun sudoPasswordUsesStdinAndAccountJournal() = runTest {
@@ -247,6 +263,7 @@ private class FakeDeploymentTransport : ServerCenterSshTransport {
     override suspend fun run(command: String): ServerCenterSshCommandResult {
         commands += command
         return when {
+            command.contains(" --diagnostics ") -> ServerCenterSshCommandResult(0, "password=private-value\n" + "x".repeat(70000), "")
             command.contains("mktemp") -> ServerCenterSshCommandResult(
                 0, "/tmp/relaxkonos-deploy.abcdefgh\n", "",
             )

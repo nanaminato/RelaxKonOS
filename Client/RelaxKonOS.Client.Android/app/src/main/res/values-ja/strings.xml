@@ -1671,4 +1671,6 @@
     <string name="server_maintenance_services">サービス</string>
     <string name="server_maintenance_identity">インストール ID</string>
     <string name="server_maintenance_actions_note">更新は新しいパッケージを選択します。修復は現在のインストールを修正します。削除時に管理データの保持を選択できます。</string>
+    <string name="server_operation_details">詳細を表示</string>
+    <string name="server_operation_no_log">この操作のデプロイログはありません。</string>
 </resources>

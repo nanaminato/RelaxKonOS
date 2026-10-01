@@ -522,10 +522,7 @@ mode_install_state() {
 mode_install_root() { case "$1" in linuxSystem|windowsSystem) system_install_root;; linuxUser) user_data_root;; esac; }
 mode_data_root() { case "$1" in linuxSystem|windowsSystem) system_data_root;; linuxUser) user_data_root;; esac; }
 mode_listen_url() {
-  case "$1" in
-    linuxSystem|windowsSystem) printf 'http://127.0.0.1:%s' "${options_server_port:-5000}";;
-    linuxUser) printf 'http://127.0.0.1:%s' "${RELAXKONOS_PORT:-5000}";;
-  esac
+  state_field "$(mode_install_state "$1")" listenUrl
 }
 mode_service_names() {
   case "$1" in

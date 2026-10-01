@@ -1672,4 +1672,6 @@
     <string name="server_maintenance_services">服务</string>
     <string name="server_maintenance_identity">安装标识</string>
     <string name="server_maintenance_actions_note">升级可选择新发布包；修复处理当前安装；卸载时可选择保留受管数据。</string>
+    <string name="server_operation_details">查看详情</string>
+    <string name="server_operation_no_log">此操作没有部署引擎日志。</string>
 </resources>

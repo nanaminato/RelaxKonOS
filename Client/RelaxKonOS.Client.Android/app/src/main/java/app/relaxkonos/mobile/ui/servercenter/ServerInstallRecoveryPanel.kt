@@ -68,7 +68,7 @@ class ServerInstallRecoveryViewModel(application: Application) : AndroidViewMode
     private var refreshJob: Job? = null
     private var generation = 0
 
-    fun refresh(hostId: String, platform: ServerHostPlatform) {
+    fun refresh(hostId: String, platform: ServerHostPlatform? = null) {
         refreshJob?.cancel()
         val request = ++generation
         mutableState.value = InstallRecoveryState(hostId = hostId, platform = platform, loading = true)
@@ -97,10 +97,11 @@ class ServerInstallRecoveryViewModel(application: Application) : AndroidViewMode
         refreshJob = null
     }
 
-    private suspend fun readReceipts(hostId: String, platform: ServerHostPlatform, secret: CharArray): InstallRecoveryState {
+    private suspend fun readReceipts(hostId: String, knownPlatform: ServerHostPlatform?, secret: CharArray): InstallRecoveryState {
         val credential = SshCredential(SshCredentialKind.Password, secret, null)
         try {
             return container.serverCenterConnections.connect(hostId, credential, System.currentTimeMillis()).use { session ->
+                val platform = knownPlatform ?: if (session.sshTransport.run("uname -s").let { it.succeeded && it.standardOutput.trim() == "Linux" }) ServerHostPlatform.Linux else ServerHostPlatform.Windows
                 val key = requireNotNull(session.observedHostKey) { "A verified SSH host key is required." }
                 val index = container.serverInstallOperations
                 val local = index.forTrustedHost(session.target, key).filter { it.platform == platform }
@@ -118,7 +119,7 @@ class ServerInstallRecoveryViewModel(application: Application) : AndroidViewMode
                 }
                 val localById = local.associateBy { it.operationId }
                 val allIds = (remoteIds + local.map { it.operationId }).distinct()
-                if (remoteIds.size == 20 || allIds.size > 100) incomplete = true
+                if (allIds.size > 100) incomplete = true
                 val ids = allIds.take(100)
                 val items = ids.map { id ->
                     val reference = localById[id] ?: try {
@@ -153,25 +154,20 @@ class ServerInstallRecoveryViewModel(application: Application) : AndroidViewMode
 }
 
 @Composable
-internal fun ServerInstallRecoveryPanel(hostId: String) {
+internal fun ServerInstallRecoveryPanel(hostId: String, knownPlatform: ServerHostPlatform? = null) {
     val viewModel: ServerInstallRecoveryViewModel = viewModel()
     val state by viewModel.state.collectAsState()
-    var platformName by rememberSaveable(hostId) { mutableStateOf("") }
-    val platform = ServerHostPlatform.entries.firstOrNull { it.name == platformName }
-    LaunchedEffect(hostId, platform) { if (platform != null) viewModel.refresh(hostId, platform) }
+    val platform = knownPlatform ?: state.platform
+    var expanded by rememberSaveable(hostId) { mutableStateOf<String?>(null) }
+    LaunchedEffect(hostId, knownPlatform) { viewModel.refresh(hostId, knownPlatform) }
     DisposableEffect(hostId) { onDispose { viewModel.stop() } }
 
     HorizontalDivider()
     Text(stringResource(R.string.ssh_deploy_history_title), style = MaterialTheme.typography.titleMedium)
     Text(stringResource(R.string.ssh_deploy_history_note), style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant)
-    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-        FilterChip(platform == ServerHostPlatform.Linux, { platformName = ServerHostPlatform.Linux.name },
-            { Text(stringResource(R.string.ssh_deploy_host_linux)) })
-        FilterChip(platform == ServerHostPlatform.Windows, { platformName = ServerHostPlatform.Windows.name },
-            { Text(stringResource(R.string.ssh_deploy_host_windows)) })
-    }
-    if (platform != null) {
+    if (platform != null) Text(platform.name, style = MaterialTheme.typography.bodySmall)
+    run {
         TextButton(onClick = { viewModel.refresh(hostId, platform) }, enabled = !state.loading) {
             Text(stringResource(R.string.common_refresh))
         }
@@ -192,6 +188,26 @@ internal fun ServerInstallRecoveryPanel(hostId: String) {
                 Text(stringResource(R.string.operations_checked, receipt.timestampUtc), style = MaterialTheme.typography.bodySmall)
                 receipt.problemCode?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
+            TextButton(onClick = { expanded = if (expanded == item.reference.operationId) null else item.reference.operationId }) {
+                Text(stringResource(R.string.server_operation_details))
+            }
+            if (expanded == item.reference.operationId) {
+                androidx.compose.foundation.text.selection.SelectionContainer {
+                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                        item.receipt?.let { receipt ->
+                            Text("${receipt.kind} · ${receipt.phase} · ${receipt.state}")
+                            Text(receipt.safeMessage.orEmpty())
+                            Text("${receipt.startedAtUtc.orEmpty()} → ${receipt.completedAtUtc.orEmpty()}")
+                            val result = receipt.result
+                            val snapshot = receipt.snapshot
+                            Text(listOfNotNull(receipt.installationId, result?.mode?.name ?: snapshot?.mode?.name,
+                                result?.version ?: snapshot?.version, result?.listenUrl ?: snapshot?.listenUrl,
+                                result?.installRoot ?: snapshot?.installRoot, result?.dataRoot ?: snapshot?.dataRoot).joinToString("\n"))
+                        }
+                        OperationLog(hostId, item.reference)
+                    }
+                }
+            }
         }
     }
 }
@@ -207,5 +223,35 @@ private fun installReceiptStatus(item: InstallReceiptItem): String = when (item.
         ServerDeploymentState.Cancelled -> stringResource(R.string.operations_cancelled)
         ServerDeploymentState.Interrupted -> stringResource(R.string.operations_interrupted)
         null -> stringResource(R.string.operations_unverified)
+    }
+}
+
+@Composable
+private fun OperationLog(hostId: String, reference: ServerInstallOperationReference) {
+    val container = (androidx.compose.ui.platform.LocalContext.current.applicationContext as RelaxKonApplication).container
+    val assets = androidx.compose.ui.platform.LocalContext.current.assets
+    var log by androidx.compose.runtime.remember(reference.operationId) { mutableStateOf<String?>(null) }
+    var failed by androidx.compose.runtime.remember(reference.operationId) { mutableStateOf(false) }
+    LaunchedEffect(hostId, reference.operationId) {
+        val secret = container.serverCenter.verifiedPasswordCopy(hostId)
+        if (secret == null) { failed = true; return@LaunchedEffect }
+        val credential = SshCredential(SshCredentialKind.Password, secret, null)
+        try {
+            log = withContext(Dispatchers.IO) {
+                container.serverCenterConnections.connect(hostId, credential, System.currentTimeMillis()).use { session ->
+                    val client = ServerCenterDeploymentClient(session.sshTransport)
+                    val lookup = client.stageLookup(reference.platform, ServerCenterUploadAsset.launcher(assets, reference.platform))
+                    client.diagnostics(lookup, reference.operationId)
+                }
+            }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { failed = true }
+        finally { credential.clear(); secret.fill('\u0000') }
+    }
+    when {
+        failed -> Text(stringResource(R.string.operations_unverified), color = MaterialTheme.colorScheme.error)
+        log == null -> CircularProgressIndicator()
+        log!!.isEmpty() -> Text(stringResource(R.string.server_operation_no_log))
+        else -> Text(log!!, style = MaterialTheme.typography.bodySmall)
     }
 }

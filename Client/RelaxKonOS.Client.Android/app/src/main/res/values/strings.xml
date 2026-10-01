@@ -1710,4 +1710,6 @@
     <string name="server_maintenance_services">Services</string>
     <string name="server_maintenance_identity">Installation ID</string>
     <string name="server_maintenance_actions_note">Upgrade selects a new package. Repair fixes the current installation. Uninstall asks whether to retain managed data.</string>
+    <string name="server_operation_details">View details</string>
+    <string name="server_operation_no_log">No deployment engine log for this operation.</string>
 </resources>
