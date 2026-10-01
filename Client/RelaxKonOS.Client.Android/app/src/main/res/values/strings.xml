@@ -1681,4 +1681,9 @@
     <string name="ssh_workspace_deploy_sudo_password">sudo password (leave blank to use the SSH password)</string>
     <string name="ssh_workspace_deploy_sudo_failed">sudo authentication failed. Check the sudo password and account permissions.</string>
     <string name="ssh_workspace_deploy_verify">Verify the SSH connection before installing.</string>
+    <string name="ssh_workspace_deploy_installed">Installed</string>
+    <string name="login_certificate_title">Trust server certificate?</string>
+    <string name="login_certificate_trust">Trust</string>
+    <string name="login_certificate_scope">Trust applies only to this server address, port and certificate. Check its SHA-256 fingerprint before continuing.</string>
+    <string name="login_certificate_previous">Previously trusted SHA-256: %1$s</string>
 </resources>

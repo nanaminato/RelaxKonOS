@@ -1643,4 +1643,9 @@
     <string name="ssh_workspace_deploy_sudo_password">sudo 密码（留空使用 SSH 登录密码）</string>
     <string name="ssh_workspace_deploy_sudo_failed">sudo 验证失败，请检查 sudo 密码和当前账号的 sudo 权限。</string>
     <string name="ssh_workspace_deploy_verify">请先验证此主机的 SSH 连接再安装。</string>
+    <string name="ssh_workspace_deploy_installed">已安装</string>
+    <string name="login_certificate_title">信任服务器证书？</string>
+    <string name="login_certificate_trust">信任</string>
+    <string name="login_certificate_scope">信任仅限此服务器地址、端口和证书。请核对 SHA-256 指纹后继续。</string>
+    <string name="login_certificate_previous">原来信任的 SHA-256：%1$s</string>
 </resources>

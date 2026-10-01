@@ -27,7 +27,8 @@ import org.bouncycastle.asn1.pkcs.PrivateKeyInfo
 import org.bouncycastle.asn1.pkcs.RSAPrivateKey
 import org.bouncycastle.asn1.x509.AlgorithmIdentifier
 
-internal data class ServerInstallState(val busy: Boolean = false, val message: Int? = null)
+internal data class ServerInstallState(val busy: Boolean = false, val message: Int? = null,
+    val installed: Boolean = false)
 
 internal data class ServerInstallSelection(
     val hostId: String, val source: String, val bundle: Uri?, val remotePath: String,
@@ -43,7 +44,7 @@ internal class ServerInstallViewModel(application: Application) : AndroidViewMod
     val state = mutableState.asStateFlow()
 
     fun install(selection: ServerInstallSelection) {
-        if (mutableState.value.busy) return
+        if (mutableState.value.busy || mutableState.value.installed) return
         mutableState.value = ServerInstallState(true, R.string.ssh_workspace_deploy_running)
         viewModelScope.launch {
             val secret = container.serverCenter.verifiedPasswordCopy(selection.hostId)
@@ -53,7 +54,7 @@ internal class ServerInstallViewModel(application: Application) : AndroidViewMod
             }
             try {
                 withContext(Dispatchers.IO) { execute(selection, secret) }
-                mutableState.value = ServerInstallState(message = R.string.ssh_workspace_deploy_success)
+                mutableState.value = ServerInstallState(message = R.string.ssh_workspace_deploy_success, installed = true)
             } catch (cancelled: CancellationException) {
                 mutableState.value = ServerInstallState(message = R.string.ssh_workspace_deploy_failed)
                 throw cancelled

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,7 +18,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -93,7 +93,7 @@ fun SshWorkspaceScreen(hostId: String, onClose: () -> Unit) {
         when (page) {
             0 -> SshFilesScreen(hostId, Modifier.padding(padding))
             1 -> SshTerminalScreen(hostId, onClose, Modifier.padding(padding).consumeWindowInsets(padding))
-            2 -> DeploymentSetupScreen(host, Modifier.padding(padding))
+            2 -> DeploymentSetupScreen(host, Modifier.padding(padding).consumeWindowInsets(padding))
             else -> SshSystemScreen(hostId, onClose, Modifier.padding(padding))
         }
     }
@@ -142,7 +142,9 @@ private fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = 
         else -> false
     }
 
-    Column(modifier.fillMaxSize()) {
+    // Resize the scroll viewport above the keyboard so TextField focus relocation
+    // can keep the edited field visible, including the final certificate names field.
+    Column(modifier.fillMaxSize().imePadding()) {
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = Spacing.lg),
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
@@ -155,9 +157,16 @@ private fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = 
                     subtitle = stringResource(R.string.ssh_workspace_deploy_draft),
                     leading = DesktopIcons.deployments,
                 ) {
-                    FilterChip(source == "official", { source = "official" }, { Text(stringResource(R.string.ssh_workspace_deploy_source_official)) })
-                    FilterChip(source == "local", { source = "local" }, { Text(stringResource(R.string.ssh_workspace_deploy_source_local)) })
-                    FilterChip(source == "remote", { source = "remote" }, { Text(stringResource(R.string.ssh_workspace_deploy_source_remote)) })
+                    SelectField(
+                        label = stringResource(R.string.ssh_workspace_deploy_step_source),
+                        options = listOf(
+                            SelectOption("official", stringResource(R.string.ssh_workspace_deploy_source_official)),
+                            SelectOption("local", stringResource(R.string.ssh_workspace_deploy_source_local)),
+                            SelectOption("remote", stringResource(R.string.ssh_workspace_deploy_source_remote)),
+                        ),
+                        value = source,
+                        onValueChange = { source = it },
+                    )
                     if (source == "local") {
                         OutlinedButton({ pickBundle.launch(arrayOf("application/zip", "application/octet-stream")) }) {
                             Text(stringResource(R.string.ssh_workspace_deploy_choose_bundle))
@@ -299,8 +308,12 @@ private fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = 
                     certificateMode, certificateFormat, certificateUri?.let(Uri::parse),
                     privateKeyUri?.let(Uri::parse), certificatePassword, certificateNames, sudoPassword)) }
                 sudoPassword = ""
-            }, enabled = host != null && !installState.busy, modifier = Modifier.weight(1f)) {
-                Text(stringResource(R.string.ssh_workspace_deploy_install))
+            }, enabled = host != null && !installState.busy && !installState.installed, modifier = Modifier.weight(1f)) {
+                Text(stringResource(when {
+                    installState.installed -> R.string.ssh_workspace_deploy_installed
+                    host?.lastVerified?.installed == true -> R.string.installation_kind_upgrade
+                    else -> R.string.ssh_workspace_deploy_install
+                }))
             }
         }
     }

@@ -1642,4 +1642,9 @@
     <string name="ssh_workspace_deploy_sudo_password">sudo パスワード（空欄の場合は SSH パスワードを使用）</string>
     <string name="ssh_workspace_deploy_sudo_failed">sudo 認証に失敗しました。パスワードとアカウントの sudo 権限を確認してください。</string>
     <string name="ssh_workspace_deploy_verify">インストール前に SSH 接続を検証してください。</string>
+    <string name="ssh_workspace_deploy_installed">インストール済み</string>
+    <string name="login_certificate_title">サーバー証明書を信頼しますか？</string>
+    <string name="login_certificate_trust">信頼</string>
+    <string name="login_certificate_scope">このアドレス、ポート、証明書だけを信頼します。SHA-256 指紋を確認してください。</string>
+    <string name="login_certificate_previous">以前の SHA-256：%1$s</string>
 </resources>

@@ -1397,6 +1397,8 @@ class RelaxKonApi(
     ): HttpURLConnection {
         val url = URL(serverUrl.trim().trimEnd('/') + path)
         return (url.openConnection() as HttpURLConnection).apply {
+            ServerCertificateTrust.configure(this)
+            instanceFollowRedirects = false
             requestMethod = method
             connectTimeout = CONNECT_TIMEOUT_MILLIS
             readTimeout = readTimeoutMillis
