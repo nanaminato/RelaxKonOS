@@ -15,5 +15,5 @@ public interface ISystemMetricsProvider
     Task<IReadOnlyList<ProcessInfoDto>> ListProcessesAsync(CancellationToken ct = default);
 
     /// <summary>结束指定进程。权限不足时返回 <c>RequiresElevation=true</c>（RelaxKonOS 不自动提权）。</summary>
-    Task<KillProcessResultDto> KillProcessAsync(int processId, bool force = false, CancellationToken ct = default);
+    Task<KillProcessResultDto> KillProcessAsync(int processId, DateTimeOffset expectedStartTime, CancellationToken ct = default);
 }

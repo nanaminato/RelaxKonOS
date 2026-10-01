@@ -3,7 +3,7 @@
 > 状态：实施中（性能采样、协议、REST/Hub、Avalonia 主链路已迁移）
 > 建立日期：2026-08-24
 > 适用范围：`.NET 10` Server、Avalonia Client、Windows/Linux 宿主机
-> 本文是后续 Goal 模式的执行基线。现有实现与设计见 [`RelaxKonOS.TaskManager.md`](./RelaxKonOS.TaskManager.md)；实施完成前，以现有文档描述的行为为准。
+> 本文是后续 Goal 模式的执行基线。现有实现与设计见 [`RelaxKonOS.TaskManager.md`](./RelaxKonOS.TaskManager.md)；实施完成前，以现有文档描述的行为为准。当前实例终止已采用必需 `TerminateProcessRequest.expectedStartTime` 和四字段 `KillProcessResultDto`；不支持 PID-only/force 旧请求。
 
 ### 当前实施备注
 
@@ -153,10 +153,10 @@ Linux 适配器必须过滤或标记 loop、ram、zram、重复的 device-mapper
 | REST | `GET /api/v1.0/system/performance/snapshot` | 当前有效快照；首次进入、重连和测试的降级路径。读取即申请一次有界 demand，因此没有实时订阅者时也会就地产出样本 |
 | REST | `GET /api/v1.0/system/performance/history?seconds=60` | 最近有效点；上限 60，不能作长期查询 |
 | SignalR | `/hubs/performance` | 性能实时订阅 Hub |
-| Server → Client | `performanceSnapshot` | `PerformanceRealtimeSnapshotDto` |
-| Client → Server | `subscribePerformance` / `unsubscribePerformance` | 显式控制接收；断开自动取消 |
-| REST | `GET /api/v1.0/system/processes?...` | 按需、可分页的进程查询 |
-| REST | `DELETE /api/v1.0/system/processes/{id}` | 结束进程；保持不自动提权 |
+| Server → Client | `OnPerformanceSnapshot` | `PerformanceRealtimeSnapshotDto` |
+| Client → Server | `Subscribe` / `Unsubscribe` | 显式控制接收；断开自动取消 |
+| REST | `GET /api/v1.0/system/processes/query?...` | 按需、可分页的进程查询 |
+| REST | `DELETE /api/v1.0/system/processes/{id}` | 必需 expectedStartTime 正文；实例终止，观察退出后成功，不自动提权 |
 
 所有路径、Hub 名和事件名必须定义在 `Shared/RelaxKonOS.Protocol`；Server 与 Client 禁止硬编码。Hub 使用 JWT 认证并遵循现有 SignalR JSON 选项。初始渲染顺序：取 `info` → 取 `history`/`snapshot` → 建连并订阅 → 按 `Sequence` 丢弃过期或重复事件。
 

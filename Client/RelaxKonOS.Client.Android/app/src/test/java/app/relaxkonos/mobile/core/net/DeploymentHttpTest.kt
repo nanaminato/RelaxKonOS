@@ -91,7 +91,8 @@ class DeploymentHttpTest {
         val requests = mutableListOf<Pair<String, String>>()
         val application = """{"id":"$applicationId","name":"worker","sourceKind":"pythonProject","workloadKind":"worker",
             "desiredState":"stopped","actualState":"unknown","readinessLevel":"process","containerPort":8000,
-            "hostPort":null,"bindAddress":"127.0.0.1","currentRevisionNumber":null,"containerName":null,"domain":null,"driftProblemCode":null}"""
+            "hostPort":null,"bindAddress":"127.0.0.1","currentRevisionNumber":null,"containerName":null,"domain":null,"driftProblemCode":null,"siteId":null,"catalogTemplateId":null,"catalogTemplateVersion":null,
+            "healthCheckPath":null,"limits":{"cpuCores":null,"memoryBytes":null,"pidsLimit":null},"volumes":[],"configuration":[],"updatedAt":"2026-10-01T00:00:00Z"}"""
         val operation = """{"operationId":"op-archive","applicationId":"$applicationId","kind":"deploy","state":"queued",
             "stage":"queued","progress":null,"problemCode":null,"recoveryProblemCode":null,"createdAt":"2026-09-27T00:00:00Z","cancellable":true}"""
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
@@ -143,7 +144,8 @@ class DeploymentHttpTest {
         val applicationId = "d3708cc7-3e7e-42ad-b498-11466a48af23"
         val application = """{"id":"$applicationId","name":"website","sourceKind":"image","workloadKind":"web",
             "desiredState":"stopped","actualState":"unknown","readinessLevel":"http","containerPort":8080,
-            "hostPort":null,"bindAddress":"127.0.0.1","currentRevisionNumber":null,"containerName":null,"domain":null,"driftProblemCode":null}"""
+            "hostPort":null,"bindAddress":"127.0.0.1","currentRevisionNumber":null,"containerName":null,"domain":null,"driftProblemCode":null,"siteId":null,"catalogTemplateId":null,"catalogTemplateVersion":null,
+            "healthCheckPath":null,"limits":{"cpuCores":null,"memoryBytes":null,"pidsLimit":null},"volumes":[],"configuration":[],"updatedAt":"2026-10-01T00:00:00Z"}"""
         val operation = """{"operationId":"op-1","applicationId":"$applicationId","kind":"deploy","state":"queued",
             "stage":"queued","progress":null,"problemCode":null,"recoveryProblemCode":null,"createdAt":"2026-09-27T00:00:00Z","cancellable":true}"""
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)

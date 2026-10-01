@@ -217,6 +217,7 @@
     "application-deployment.permission_denied": "此账户无权执行该操作。",
     "application-deployment.idempotency_required": "此操作需要一个幂等键。",
     "application-deployment.idempotency_conflict": "该幂等键已用于不同的请求。",
+    "application-deployment.definition_conflict": "打开草稿后定义已发生变化，请重新加载后再编辑。",
     "application-deployment.resource_conflict": "另一个操作正在处理此应用。",
     "application-deployment.name_conflict": "已存在同名应用。",
     "application-deployment.confirmation_required": "此操作需要确认。",

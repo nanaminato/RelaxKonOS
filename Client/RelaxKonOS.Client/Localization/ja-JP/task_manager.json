@@ -80,6 +80,10 @@
         "task_manager.metric.l2_cache": "L2 キャッシュ",
         "task_manager.metric.l3_cache": "L3 キャッシュ",
         "task_manager.metric.per_second": "/秒",
-        "task_manager.metric.placeholder": "—"
+        "task_manager.metric.placeholder": "—",
+        "task_manager.termination.instance_changed": "元のプロセスは変更されました。一覧を更新して対象を選び直してください。",
+        "task_manager.termination.permission_denied": "ホスト OS が終了を拒否しました。ホスト側の権限を確認してください。",
+        "task_manager.termination.unverified": "終了は未確認です。一覧を更新してください。自動で再送しないでください。",
+        "task_manager.termination.failed": "プロセスを終了できませんでした。一覧を更新し、ホストを確認してください。"
     }
 }

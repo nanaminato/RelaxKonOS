@@ -224,6 +224,8 @@ class AppContainer(context: Context) {
 
     val elevations = ElevationRepository(gateway, session, vault)
 
+    val guardian = app.relaxkonos.mobile.data.GuardianRepository(gateway, session)
+
     val terminalSettings = app.relaxkonos.mobile.data.TerminalSettingsRepository(gateway, session)
 
     val files = FilesRepository(gateway, session, elevations)

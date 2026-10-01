@@ -48,9 +48,9 @@ object ManagedFrpsWire {
         ManagedFrps(getString("bindAddress"), requireNotNull(port("bindPort")), ranges, port("vhostHttpPort"), port("vhostHttpsPort"), getBoolean("forceTls"),
             getBoolean("tokenConfigured"), getBoolean("dashboardEnabled"), getString("dashboardAddress"), port("dashboardPort"), text("dashboardUser"),
             getBoolean("dashboardPasswordConfigured"), state, revision, applied, getString("problemCode"),
-            if (isNull("startedAt")) null else java.time.Instant.parse(getString("startedAt")).toEpochMilli())
+            if (isNull("startedAt")) null else IsoInstant.requireEpochMillis(getString("startedAt")))
     }
     fun audit(payload: String) = JSONArray(payload).let { array -> List(array.length()) { i -> array.getJSONObject(i).let { j ->
-        TunnelAudit(java.time.Instant.parse(j.getString("timestamp")).toEpochMilli(), j.getString("action"), j.getString("result"), j.getString("problemCode"))
+        TunnelAudit(IsoInstant.requireEpochMillis(j.getString("timestamp")), j.getString("action"), j.getString("result"), j.getString("problemCode"))
     } }.also { require(it.size <= 200) } }
 }

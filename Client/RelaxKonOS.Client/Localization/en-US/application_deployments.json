@@ -217,6 +217,7 @@
     "application-deployment.permission_denied": "This account may not perform that action.",
     "application-deployment.idempotency_required": "This action needs an idempotency key.",
     "application-deployment.idempotency_conflict": "The idempotency key was already used for a different request.",
+    "application-deployment.definition_conflict": "The definition changed after this draft was opened. Reload it before editing.",
     "application-deployment.resource_conflict": "Another operation is already working on this application.",
     "application-deployment.name_conflict": "An application with that name already exists.",
     "application-deployment.confirmation_required": "This action must be confirmed.",

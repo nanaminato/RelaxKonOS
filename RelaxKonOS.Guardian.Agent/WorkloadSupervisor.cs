@@ -91,7 +91,7 @@ internal sealed partial class WorkloadSupervisor
             return new GuardianAgentResponse(false, "guardian.workload_running");
         _workloads[normalizedDefinition.Id] = new ManagedWorkload(normalizedDefinition) { DesiredState = normalizedDefinition.EnabledOnBoot ? "Running" : "Stopped" };
         await PersistAsync(cancellationToken);
-        return new GuardianAgentResponse(true, string.Empty);
+        return new GuardianAgentResponse(true, string.Empty, Definition: normalizedDefinition);
     }
 
     private async Task<GuardianAgentResponse> ApplyAsync(string? workloadId, Func<ManagedWorkload, CancellationToken, Task> action, CancellationToken cancellationToken)

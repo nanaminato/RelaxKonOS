@@ -1,8 +1,15 @@
 package app.relaxkonos.mobile.data
 
 import app.relaxkonos.mobile.core.auth.AuthSession
+import app.relaxkonos.mobile.core.auth.SessionState
+import app.relaxkonos.mobile.core.net.ProcessKillResult
+import kotlinx.coroutines.CancellationException
+import app.relaxkonos.mobile.core.net.ProblemCodes
 import app.relaxkonos.mobile.core.net.ApiResult
+import app.relaxkonos.mobile.core.net.PerformanceInfo
+import app.relaxkonos.mobile.core.net.NetworkAddress
 import app.relaxkonos.mobile.core.net.PerformanceSnapshot
+import app.relaxkonos.mobile.core.net.ProcessSort
 import app.relaxkonos.mobile.core.net.ProcessPage
 import app.relaxkonos.mobile.core.net.RelaxKonGateway
 
@@ -12,32 +19,33 @@ class SystemRepository(
     private val session: AuthSession,
 ) {
     suspend fun performance(): ApiResult<PerformanceSnapshot> =
-        session.authenticated { serverUrl, accessToken -> gateway.performanceSnapshot(serverUrl, accessToken) }
+        owned { serverUrl, accessToken -> gateway.performanceSnapshot(serverUrl, accessToken) }
 
-    suspend fun processes(page: Int, pageSize: Int, filter: String?): ApiResult<ProcessPage> =
-        session.authenticated { serverUrl, accessToken ->
-            gateway.queryProcesses(serverUrl, accessToken, page, pageSize, filter)
+    suspend fun performance(owner: SessionState.Active): ApiResult<PerformanceSnapshot> =
+        owned(owner) { url, token -> gateway.performanceSnapshot(url, token) }
+    suspend fun performanceInfo(owner: SessionState.Active): ApiResult<PerformanceInfo> =
+        owned(owner) { url, token -> gateway.performanceInfo(url, token) }
+    suspend fun performanceHistory(owner: SessionState.Active): ApiResult<List<PerformanceSnapshot>> =
+        owned(owner) { url, token -> gateway.performanceHistory(url, token) }
+    suspend fun networkAddresses(owner: SessionState.Active): ApiResult<List<NetworkAddress>> =
+        owned(owner) { url, token -> gateway.networkAddresses(url, token) }
+
+    suspend fun processes(owner: SessionState.Active, page: Int, pageSize: Int, filter: String?, sort: ProcessSort, descending: Boolean): ApiResult<ProcessPage> =
+        owned(owner) { serverUrl, accessToken ->
+            gateway.queryProcesses(serverUrl, accessToken, page, pageSize, filter, sort, descending)
         }
 
-    /**
-     * Ends a process.
-     *
-     * Killing a process the signed-in account does not own is an `elevation-required` operation, and
-     * the elevation target is the process id because that is what the server authorizes.
-     */
-    suspend fun killProcess(
-        pid: Int,
-        force: Boolean,
-        elevations: ElevationRepository,
-        provider: ElevationAnswerProvider,
-    ): ApiResult<Unit> = elevations.withElevation(
-        capability = HOST_CAPABILITY_NATIVE_SERVICE_ACTION,
-        target = pid.toString(),
-        provider = provider,
-    ) { serverUrl, accessToken -> gateway.killProcess(serverUrl, accessToken, pid, force) }
-
-    private companion object {
-        /** Mirrors `HostElevationCapability.NativeServiceAction`. */
-        const val HOST_CAPABILITY_NATIVE_SERVICE_ACTION = "nativeServiceAction"
+    /** This endpoint uses host OS permissions, not the native-service elevation grant. */
+    suspend fun killProcess(owner: SessionState.Active, pid: Int, expectedStartTime: String): ApiResult<ProcessKillResult> {
+        return owned(owner) { url, token -> gateway.killProcess(url, token, pid, expectedStartTime) }
+    }
+    private suspend fun <T> owned(call: suspend (String, String) -> ApiResult<T>): ApiResult<T> {
+        val owner = session.state.value as? SessionState.Active ?: return ApiResult.Problem(401, ProblemCodes.UNAUTHORIZED, null)
+        return owned(owner, call)
+    }
+    private suspend fun <T> owned(owner: SessionState.Active, call: suspend (String, String) -> ApiResult<T>): ApiResult<T> {
+        fun guard() { if (session.state.value !== owner) throw CancellationException("System observer owner changed") }
+        guard()
+        return session.authenticated { url, token -> guard(); call(url, token).also { guard() } }.also { guard() }
     }
 }

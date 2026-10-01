@@ -231,7 +231,7 @@ Server MVC（`AddControllers().AddJsonOptions`）与 SignalR（`AddSignalR().Add
 | GET    | `/api/v1.0/system/performance/snapshot`           | —                                   | `PerformanceRealtimeSnapshotDto` / 503（等待窗口内仍无有效样本） | JWT |
 | GET    | `/api/v1.0/system/performance/history?seconds=60` | query: `seconds`（1–60）              | `PerformanceRealtimeSnapshotDto[]`           | JWT |
 | GET    | `/api/v1.0/system/processes/query`                | page/pageSize/filter/sort/direction | `ProcessPageDto`                             | JWT |
-| DELETE | `/api/v1.0/system/processes/{id}?force=`          | query: `force`（可选）                  | `KillProcessResultDto`                       | JWT |
+| DELETE | `/api/v1.0/system/processes/{id}`          | JSON: `TerminateProcessRequest`（必需 expectedStartTime）                  | `KillProcessResultDto`                       | JWT |
 
 `GET /system/performance/snapshot` 是首进、重连与没有实时订阅的客户端的降级路径，因此**读取本身构成 demand**：当前无人需要采集时，服务端为该请求申请一段有界采样窗口（窗口需覆盖建立差分基线所需的两个采样周期），窗口内取到有效样本即返回，仍取不到才返回 `503` + `type: .../performance-not-ready`。客户端必须按问题码渲染该状态，不得当作连接失败。demand 一释放采样立即回到空闲，`订阅期间才采集`的成本规则不变。
 
@@ -745,3 +745,8 @@ Workspace preferences GET 返回 `revision`，PUT 必须携带读取时的 `revi
 `Protocol/Settings/HostIdentityContracts.cs` 定义 `HostIdentityState`（生效名称、待生效名称、平台上报的最大长度、内容 revision、观测时间、provider）、`HostIdentitySnapshot`、`HostnameChange` 与 `HostnamePreviewRequest`。`HostIdentityValidation` 校验单一 RFC 952/1123 标签，并按调用方给出的最大长度判定，客户端因此使用远程快照上报的上限而不是本机平台的猜测。宿主主机名路由为 `/host-settings/identity` 的 GET/preview/apply，需要 `HostIdentityChange` 对 `host/identity` 的授权；目标固定为 `hostMachine`，不接受调用方指定目标。操作状态与恢复记录写入 Server 独立加密日志的 `identity_operations` 表。
 
 设置通知只包含 settingId、scope、Workspace 资源标识和版本，授权订阅后通过 GET 重读；不广播偏好/环境值。当前仅 Workspace 通知已接通，宿主设置通知仍在实施。DNS DTO/领域接入尚未完成，不能视为已有可用路由。
+
+
+### 应用部署定义更新（2026-10-01）
+
+`PUT /api/v1.0/application-deployments/applications/{id}` 的 `UpdateApplicationRequest` 必须携带完整 `expectedUpdatedAt`，来自原 `ApplicationDto.updatedAt`。缺失/默认值 400，原子写入时过期 409（`application-deployment.definition_conflict`），活动操作阻断。原幂等键/载荷返回原回执，不重复轮换秘密；更新定义不创建修订或替换容器。Shared、Server、桌面和 Android 同步使用当前必需字段，不保留无版本覆盖。领域边界见 [应用部署设计](../applications/RelaxKonOS.ApplicationDeployment.Design.md)。

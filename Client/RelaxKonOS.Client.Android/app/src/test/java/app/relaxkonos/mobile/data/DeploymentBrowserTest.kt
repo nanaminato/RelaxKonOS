@@ -19,7 +19,7 @@ class DeploymentBrowserTest {
     private val capabilities = setOf(ServerCapabilities.APPLICATION_DEPLOYMENTS, ServerCapabilities.DOCKER)
     private val runtime = DeploymentRuntime(true, "", "28", "linux", "amd64")
     private val app = DeploymentApplication("id-1", "first", "image", "web", "running", "unknown", "http",
-        null, null, 80, null, "127.0.0.1", null, null, null)
+        null, null, 80, null, "127.0.0.1", null, null, null, null, null, "/", DeploymentLimits(null, null, null), emptyList(), emptyList(), "2026-10-01T00:00:00Z")
 
     private suspend fun signIn(user: String = "nana", caps: Set<String> = capabilities, url: String = "https://server.local") {
         gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession(userName = user, capabilities = caps)) }
@@ -149,8 +149,8 @@ class DeploymentBrowserTest {
 
     @Test fun `rollback ignores the current revision and queues a selected older revision once`() = runTest {
         signIn(); reads()
-        val current = DeploymentRevision("revision-current", 2, "image@sha256:current", true)
-        val older = DeploymentRevision("revision-older", 1, "image@sha256:older", false)
+        val current = DeploymentRevision("revision-current", 2, "image@sha256:current", true, null, null)
+        val older = DeploymentRevision("revision-older", 1, "image@sha256:older", false, null, null)
         gateway.onDeploymentSnapshot = { _, _, _ -> ApiResult.Success(DeploymentSnapshot(app, listOf(current, older), emptyList(), null)) }
         val calls = mutableListOf<List<String>>()
         gateway.onRollbackDeployment = { _, _, applicationId, revisionId, key ->

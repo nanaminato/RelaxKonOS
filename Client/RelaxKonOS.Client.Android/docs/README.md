@@ -19,7 +19,7 @@
 | [文件与 Git 共用编辑器](features/TextEditor.md) | Unicode 编码/BOM/换行、查找替换/语法显示、条件保存、冲突和离页保护 |
 | [文件与图片](features/Files.md) | 筛选排序、多选与远端剪贴板、逐项结果、属性/权限及有界图片查看 |
 | [文件传输](features/FileTransfers.md) | 分块上传、源暂存、续传、前台通知与清理 |
-| [应用部署与模板](features/ApplicationDeployments.md) | 四来源七步向导、日志、版本/回滚、可信动态模板 |
+| [应用部署与模板](features/ApplicationDeployments.md) | 四来源七步向导、完整定义编辑/冲突读回、日志、版本/回滚、可信动态模板 |
 | [宿主出站代理](features/OutboundProxy.md) | 设置/Docker 共用宿主偏好、四消费范围、重启确认与状态核实 |
 | [Docker 引擎与镜像源](features/DockerEngine.md) | Linux 安装/原任务恢复、全宿主生命周期、账户镜像源 CRUD/选择与未知同步写入核实 |
 | [Docker 资源](features/DockerResources.md) | 容器详情/统计/完整创建/生命周期、镜像/网络/卷动作、归属保护及未知结果门禁 |
@@ -33,7 +33,9 @@
 | [FRP 隧道与运行时](features/Tunnels.md) | 受管/外部运行时、三来源安装与回滚、frpc 配置/Token/隧道、frps 配置/启停/审计及未知请求核实 |
 | [网站发布](features/WebPublishing.md) | 诊断、确认式 HTTPS、发布恢复和访问观测 |
 | [Git 工作区与构建](features/Git.md) | 分支/暂存/差异/历史/冲突、Git 安装与恢复、固定 SHA 隔离构建与产物发布 |
-| [终端、脚本与守护](features/TerminalAutomation.md) | Server/SSH 会话、输入/恢复、远端任务与工作负载 |
+| [终端、脚本与守护](features/TerminalAutomation.md) | Server/SSH 会话、双栏/草稿/搜索、工作区外观与 VT 单元、远端任务与工作负载 |
+| [进程守护](features/Guardian.md) | 完整定义/参数与健康策略、RunAs 审批、回执与读回、状态及有界实时日志 |
+| [任务管理与监控](features/TaskManager.md) | 完整指标/真实趋势/实时与快照降级、手机/平板详情、原实例终止、排序分页及前台隔离 |
 | [公共运行时安装](features/Installations.md) | 当前安装契约、包引用/上传、幂等提权、任务观察/取消与恢复边界 |
 | [任务、告警与恢复](features/OperationsRecovery.md) | 领域操作索引、诊断、前台通知、定义备份与预检 |
 

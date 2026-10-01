@@ -664,6 +664,7 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
         Name.Trim(),
         WorkloadKind,
         ReadinessLevel,
+        existing!.UpdatedAt,
         IsReadinessHttp ? HealthCheckPath.Trim() : null,
         ParsePort(ContainerPort) ?? 8080,
         ParseOptionalPort(HostPort),

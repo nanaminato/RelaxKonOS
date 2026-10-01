@@ -2,7 +2,6 @@ package app.relaxkonos.mobile.core.net
 
 import org.json.JSONArray
 import org.json.JSONObject
-import java.time.Instant
 
 enum class ProxyRuntimeState(val wire: String) {
     NotInstalled("notInstalled"), Installing("installing"), Stopped("stopped"), Starting("starting"), Running("running"),
@@ -72,7 +71,7 @@ object ProxyWire {
     private fun profile(j: JSONObject) = ProxyProfile(id(j, "id"), j.getString("name"), j.getString("engineId").also { require(it == "mihomo") }, j.getBoolean("isActive"), j.getLong("revision").also { require(it > 0) })
     fun profiles(payload: String) = array(payload) { profile(it) }
     fun subscription(payload: String) = subscription(JSONObject(payload))
-    private fun subscription(j: JSONObject) = ProxySubscription(id(j, "id"), j.getString("name"), id(j, "profileId"), j.getBoolean("isActive"), j.text("lastUpdatedAt")?.let { Instant.parse(it).toEpochMilli() })
+    private fun subscription(j: JSONObject) = ProxySubscription(id(j, "id"), j.getString("name"), id(j, "profileId"), j.getBoolean("isActive"), j.text("lastUpdatedAt")?.let { IsoInstant.requireEpochMillis(it) })
     fun subscriptions(payload: String) = array(payload) { subscription(it) }
     fun overview(payload: String) = JSONObject(payload).let { j ->
         val health = j.getJSONObject("health"); val engine = j.getJSONObject("engineCapabilities")

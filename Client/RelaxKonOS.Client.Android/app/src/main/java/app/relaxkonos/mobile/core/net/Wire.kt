@@ -1,6 +1,9 @@
 package app.relaxkonos.mobile.core.net
 
 import java.io.OutputStream
+import java.util.Date
+import java.util.GregorianCalendar
+import java.util.Locale
 import java.util.Calendar
 import java.util.TimeZone
 
@@ -103,78 +106,40 @@ class JsonBody {
     }
 }
 
-/**
- * ISO-8601 parsing without `java.time`.
- *
- * The module keeps `minSdk 23`, and core library desugaring is not part of this slice, so the
- * handful of timestamps the client displays are parsed here. Only the shapes the server actually
- * emits are accepted: `yyyy-MM-ddTHH:mm:ss[.fff][Z|±HH:MM]`. An unparsable value yields `null` and
- * the UI simply omits the timestamp instead of showing a wrong one.
- */
+/** Current DateTimeOffset wire timestamps on API 23+, with strict proleptic Gregorian validation. */
 object IsoInstant {
-    /**
-     * Renders an epoch millisecond count in the shape [toEpochMillis] accepts.
-     *
-     * Only used to tell the server when the source file was last modified, so second precision is
-     * plenty — and it round-trips through the parser above, which is what the server compares against.
-     */
+    private val timestamp = Regex("""(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,7}))?(Z|[+-]\d{2}:\d{2})""")
+
+    /** Request timestamp formatting always uses wire digits, independent of the phone language. */
     fun fromEpochMillis(millis: Long): String {
-        val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = millis }
-        return "%04d-%02d-%02dT%02d:%02d:%02dZ".format(
-            calendar.get(Calendar.YEAR),
-            calendar.get(Calendar.MONTH) + 1,
-            calendar.get(Calendar.DAY_OF_MONTH),
-            calendar.get(Calendar.HOUR_OF_DAY),
-            calendar.get(Calendar.MINUTE),
-            calendar.get(Calendar.SECOND),
-        )
+        val calendar = GregorianCalendar(TimeZone.getTimeZone("UTC")).apply {
+            gregorianChange = Date(Long.MIN_VALUE); timeInMillis = millis
+        }
+        return String.format(Locale.ROOT, "%04d-%02d-%02dT%02d:%02d:%02dZ",
+            calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH) + 1, calendar.get(Calendar.DAY_OF_MONTH),
+            calendar.get(Calendar.HOUR_OF_DAY), calendar.get(Calendar.MINUTE), calendar.get(Calendar.SECOND))
     }
 
+    /** Presentation uses millisecond resolution. Instance identity callers keep the original full string. */
     fun toEpochMillis(value: String?): Long? {
-        if (value.isNullOrBlank()) {
-            return null
+        if (value == null || value.length !in 20..33) return null
+        return runCatching { requireEpochMillis(value) }.getOrNull()
+    }
+    fun requireEpochMillis(value: String): Long {
+        require(value.length in 20..33)
+        val parts = requireNotNull(timestamp.matchEntire(value)).groupValues
+        val year = parts[1].toInt(); require(year in 1..9999)
+        val calendar = GregorianCalendar(TimeZone.getTimeZone("UTC")).apply {
+            gregorianChange = Date(Long.MIN_VALUE); isLenient = false; clear()
+            set(year, parts[2].toInt() - 1, parts[3].toInt(), parts[4].toInt(), parts[5].toInt(), parts[6].toInt())
+            set(Calendar.MILLISECOND, parts[7].padEnd(3, '0').take(3).toInt())
         }
-        return try {
-            // The shape is `yyyy-MM-ddTHH:mm:ss`, so the separator sits at index 10. Anything else is
-            // rejected rather than guessed at.
-            val separator = value.indexOf('T')
-            if (separator != 10) {
-                return null
-            }
-            val year = value.substring(0, 4).toInt()
-            val month = value.substring(5, 7).toInt()
-            val day = value.substring(8, 10).toInt()
-            var rest = value.substring(11)
-
-            var offsetSeconds = 0
-            when {
-                rest.endsWith("Z") -> rest = rest.dropLast(1)
-                else -> {
-                    val signIndex = rest.indexOfLast { it == '+' || it == '-' }
-                    if (signIndex > 0) {
-                        val sign = if (rest[signIndex] == '-') -1 else 1
-                        val offset = rest.substring(signIndex + 1)
-                        offsetSeconds = sign * (offset.substring(0, 2).toInt() * 3600 + offset.substring(3, 5).toInt() * 60)
-                        rest = rest.substring(0, signIndex)
-                    }
-                }
-            }
-
-            val fractionIndex = rest.indexOf('.')
-            val millis = if (fractionIndex >= 0) {
-                rest.substring(fractionIndex + 1).padEnd(3, '0').take(3).toInt()
-            } else {
-                0
-            }
-            val time = if (fractionIndex >= 0) rest.substring(0, fractionIndex) else rest
-
-            Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
-                clear()
-                set(year, month - 1, day, time.substring(0, 2).toInt(), time.substring(3, 5).toInt(), time.substring(6, 8).toInt())
-                set(Calendar.MILLISECOND, millis)
-            }.timeInMillis - offsetSeconds * 1000L
-        } catch (_: Exception) {
-            null
+        val zone = parts[8]
+        val offsetMinutes = if (zone == "Z") 0 else {
+            val hours = zone.substring(1, 3).toInt(); val minutes = zone.substring(4, 6).toInt()
+            require(hours in 0..14 && minutes in 0..59 && (hours != 14 || minutes == 0))
+            (hours * 60 + minutes) * if (zone[0] == '-') -1 else 1
         }
+        return calendar.timeInMillis - offsetMinutes * 60_000L
     }
 }

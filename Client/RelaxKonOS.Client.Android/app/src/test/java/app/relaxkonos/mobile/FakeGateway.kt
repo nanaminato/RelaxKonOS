@@ -15,7 +15,10 @@ import app.relaxkonos.mobile.core.net.ElevationGrant
 import app.relaxkonos.mobile.core.net.FileElevationGrant
 import app.relaxkonos.mobile.core.net.HostOperatingSystemKind
 import app.relaxkonos.mobile.core.net.LoginSession
+import app.relaxkonos.mobile.core.net.PerformanceInfo
+import app.relaxkonos.mobile.core.net.NetworkAddress
 import app.relaxkonos.mobile.core.net.PerformanceSnapshot
+import app.relaxkonos.mobile.core.net.ProcessSort
 import app.relaxkonos.mobile.core.net.ProcessPage
 import app.relaxkonos.mobile.core.net.RelaxKonGateway
 import app.relaxkonos.mobile.core.net.RemoteFileProperties
@@ -32,6 +35,21 @@ import java.io.InputStream
  * returned a default.
  */
 class FakeGateway : RelaxKonGateway {
+    var onGuardianStatus: (suspend () -> ApiResult<GuardianStatus>)? = null
+    var onGuardianWorkloads: (suspend () -> ApiResult<List<GuardianWorkload>>)? = null
+    var onGuardianDefinition: (suspend (String) -> ApiResult<GuardianDefinitionResult>)? = null
+    var onGuardianLogs: (suspend (String) -> ApiResult<List<GuardianLog>>)? = null
+    var onGuardianSave: (suspend (GuardianDefinition, GuardianApproval?) -> ApiResult<GuardianDefinitionResult>)? = null
+    var onGuardianAction: (suspend (String, String) -> ApiResult<GuardianOperation>)? = null
+    var onGuardianDelete: (suspend (String) -> ApiResult<GuardianOperation>)? = null
+    override suspend fun guardianStatus(serverUrl: String, accessToken: String) = requireHandler(onGuardianStatus, "guardianStatus")()
+    override suspend fun guardianWorkloads(serverUrl: String, accessToken: String) = requireHandler(onGuardianWorkloads, "guardianWorkloads")()
+    override suspend fun guardianDefinition(serverUrl: String, accessToken: String, id: String) = requireHandler(onGuardianDefinition, "guardianDefinition")(id)
+    override suspend fun guardianLogs(serverUrl: String, accessToken: String, id: String) = requireHandler(onGuardianLogs, "guardianLogs")(id)
+    override suspend fun guardianSave(serverUrl: String, accessToken: String, definition: GuardianDefinition, approval: GuardianApproval?) = requireHandler(onGuardianSave, "guardianSave")(definition, approval)
+    override suspend fun guardianAction(serverUrl: String, accessToken: String, id: String, action: String) = requireHandler(onGuardianAction, "guardianAction")(id, action)
+    override suspend fun guardianDelete(serverUrl: String, accessToken: String, id: String) = requireHandler(onGuardianDelete, "guardianDelete")(id)
+
     var onSmbStatus: (() -> ApiResult<SmbStatus>)? = null
     var onSmbCapabilities: (() -> ApiResult<SmbCapabilities>)? = null
     var onSmbShares: (() -> ApiResult<List<SmbShare>>)? = null
@@ -227,6 +245,9 @@ class FakeGateway : RelaxKonGateway {
 
     var onDeploymentApplications: (suspend (String, String) -> ApiResult<List<DeploymentApplication>>)? = null
     var onDeploymentSnapshot: (suspend (String, String, String) -> ApiResult<DeploymentSnapshot>)? = null
+    var onUpdateDeploymentDefinition: suspend (String, DeploymentDefinitionUpdate, String) -> ApiResult<DeploymentApplication> = { _, _, _ -> ApiResult.Transport(null) }
+    override suspend fun updateDeploymentDefinition(serverUrl: String, accessToken: String, applicationId: String, definition: DeploymentDefinitionUpdate, idempotencyKey: String) =
+        onUpdateDeploymentDefinition(applicationId, definition, idempotencyKey)
     var onDeploymentRuntime: (suspend (String, String) -> ApiResult<DeploymentRuntime>)? = null
     var onDeploymentTemplates: (suspend (String, String) -> ApiResult<List<DeploymentTemplate>>)? = null
     var onDeploymentLogs: (suspend (String, String, String, Int) -> ApiResult<DeploymentLog>)? = null
@@ -260,9 +281,12 @@ class FakeGateway : RelaxKonGateway {
     var onMove: (suspend (String, String, String, String) -> ApiResult<Unit>)? = null
     var onCopy: (suspend (String, String, String, String) -> ApiResult<Unit>)? = null
     var onUpload: (suspend (String, String, String, String, InputStream, Long?, ((Long) -> Unit)?) -> ApiResult<Unit>)? = null
+    var onPerformanceInfo: (suspend (String, String) -> ApiResult<PerformanceInfo>)? = null
+    var onPerformanceHistory: (suspend (String, String) -> ApiResult<List<PerformanceSnapshot>>)? = null
+    var onNetworkAddresses: (suspend (String, String) -> ApiResult<List<NetworkAddress>>)? = null
     var onPerformance: (suspend (String, String) -> ApiResult<PerformanceSnapshot>)? = null
-    var onProcesses: (suspend (String, String, Int, Int, String?) -> ApiResult<ProcessPage>)? = null
-    var onKill: (suspend (String, String, Int, Boolean) -> ApiResult<Unit>)? = null
+    var onProcesses: (suspend (String, String, Int, Int, String?, ProcessSort, Boolean) -> ApiResult<ProcessPage>)? = null
+    var onKill: (suspend (String, String, Int, String) -> ApiResult<ProcessKillResult>)? = null
     var onDownload: (suspend (String, String, String, DownloadSink, ((Long, Long?) -> Unit)?) -> ApiResult<Long>)? = null
     var onThumbnail: (suspend (String, String, String, Int) -> ApiResult<ByteArray>)? = null
     var onCreateUploadSession:
@@ -288,7 +312,7 @@ class FakeGateway : RelaxKonGateway {
     val elevationTargets = mutableListOf<String>()
     val elevationAccounts = mutableListOf<String?>()
     val listDirectoryPaths = mutableListOf<String>()
-    val killCalls = mutableListOf<Pair<Int, Boolean>>()
+    val killCalls = mutableListOf<Pair<Int, String>>()
 
     /** Abandoned sessions, so a test can assert that cancel really told the server. */
     val abortedUploadIds = mutableListOf<String>()
@@ -464,6 +488,12 @@ class FakeGateway : RelaxKonGateway {
         return requireHandler(onAbortUpload, "abortUpload")(serverUrl, accessToken, uploadId)
     }
 
+    override suspend fun performanceInfo(serverUrl: String, accessToken: String): ApiResult<PerformanceInfo> =
+        requireHandler(onPerformanceInfo, "performanceInfo")(serverUrl, accessToken)
+    override suspend fun performanceHistory(serverUrl: String, accessToken: String): ApiResult<List<PerformanceSnapshot>> =
+        requireHandler(onPerformanceHistory, "performanceHistory")(serverUrl, accessToken)
+    override suspend fun networkAddresses(serverUrl: String, accessToken: String): ApiResult<List<NetworkAddress>> =
+        requireHandler(onNetworkAddresses, "networkAddresses")(serverUrl, accessToken)
     override suspend fun performanceSnapshot(serverUrl: String, accessToken: String): ApiResult<PerformanceSnapshot> =
         requireHandler(onPerformance, "performanceSnapshot")(serverUrl, accessToken)
     override suspend fun queryProcesses(
@@ -472,11 +502,13 @@ class FakeGateway : RelaxKonGateway {
         page: Int,
         pageSize: Int,
         filter: String?,
-    ): ApiResult<ProcessPage> = requireHandler(onProcesses, "queryProcesses")(serverUrl, accessToken, page, pageSize, filter)
+        sort: ProcessSort,
+        descending: Boolean,
+    ): ApiResult<ProcessPage> = requireHandler(onProcesses, "queryProcesses")(serverUrl, accessToken, page, pageSize, filter, sort, descending)
 
-    override suspend fun killProcess(serverUrl: String, accessToken: String, pid: Int, force: Boolean): ApiResult<Unit> {
-        killCalls += pid to force
-        return requireHandler(onKill, "killProcess")(serverUrl, accessToken, pid, force)
+    override suspend fun killProcess(serverUrl: String, accessToken: String, pid: Int, expectedStartTime: String): ApiResult<ProcessKillResult> {
+        killCalls += pid to expectedStartTime
+        return requireHandler(onKill, "killProcess")(serverUrl, accessToken, pid, expectedStartTime)
     }
 
     override suspend fun download(

@@ -183,6 +183,8 @@
 | BP10 | 已执行 20 例 | 全量 JVM 784 例/Debug APK、Server/Helper 编译与 Git 89 项专项、桌面编译通过；证据 BP10-V1 | 未执行 | 未执行 | 未执行 | Git 安装/真实 Helper 身份、真实私有远端/并发/断网/原键、手机平板/旋转/IME/大字体/三语视觉 |
 | BP11 | 已执行 10 例 | 全量 JVM 764 例/Debug APK、Server/Helper 编译与文本专项、桌面编译通过；证据 BP11-V1 | 未执行 | 未执行 | 未执行 | 编码/真实 Helper 身份、外部并发/断网、手机平板/旋转/IME/大字体/三语视觉 |
 | BP12 | 已执行 21 例 | 全量 JVM 805 例/Debug APK、三语/链接/差异静态检查通过；证据 BP12-V1 | 未执行 | 未执行 | 未执行 | 真机/平板多选/剪贴板/属性与图片缩放旋转；真实 Linux/Windows 权限、部分目录错误、断网/停止/并发、真实授权与进程回收 |
+| BP13 | 已准备并执行 28 例 | 通过：125 类/833 JVM 例、应用/仪器 APK及三语/链接/差异静态检查；证据 BP13-V1 | 环境受限 | 未执行 | 未执行 | 12 项 Compose 用例、真实 PTY/全屏程序、字体/选区/IME/旋转及三语视觉 |
+| BP14 | 已执行 28 例 | 130 类/861 JVM 例、两个 APK、22 项 Server/桌面/实际 Agent 定义专项通过；证据 BP14-V1 | 未执行 | 未执行 | 定义保存/读回已执行 | 跨账号审批/真实进程生命周期、真实 HTTP/SignalR 互通、手机/平板/IME/旋转/三语视觉 |
 | BP17-M1 | 已准备并执行 9 例 | JVM/APK 通过，原任务/归属/能力/告警专项通过 | 未执行 | 未执行 | 未执行 | 新领域观察/取消/修复入口、离页/旋转/重连、三语与归属 |
 
 用例准备列只追踪该 BP 新增测试代码和可执行场景，不把本文的场景概述当作已准备；自动化列分别注明编译/构建和测试结果；两者结论不同时写“部分通过”并列出范围。设备列细分手机/平板、IME/大字体和三语；宿主列细分版本/模式/服务能力与联网条件，宿主明确不支持的动作可写“不适用”并说明依据。新增证据按编号写日期、提交、命令/人工步骤、环境、结果和未覆盖项，再更新对应单元格；BP01-M1 的静态检查证据见下文，不代替 Android 执行结果。
@@ -487,3 +489,83 @@ $env:JAVA_HOME = 'C:/Program Files/Android/openjdk/jdk-21.0.8'
 | BP12-T3 | Linux 0000/4755/7777、特殊位、目录非递归；Windows ACL、受限身份、显式授权及弹窗中切账户 | 平台门控和实际模式正确；不扩大路径授权，不向新会话发送旧请求/密码 |
 | BP12-T4 | EXIF/长宽图、大图、64 MiB/未知长度、快速切图、失败/授权、缩放拖动/旋转/适配/关闭 | 真实 Compose 旋转后完整适配，不拖出画布；读取和暂存有界；旧图不覆盖新图，无重复传输 |
 | BP12-T5 | 批量、授权或图片下载期间旋转/离页/回收进程，再登录相同或不同账户 | 内存状态在配置变更中保留；进程回收不自动恢复副作用；缓存隔离且遗留暂存清理；分块续传原链路不回归 |
+
+
+### BP13-V1（2026-10-01，当前未提交工作树）
+
+- 实际完成的 `:app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --offline --no-daemon` 使用 Gradle 9.7.1/JDK 21.0.8：125 类、833 例，失败/错误/跳过均为 0。相对 BP12 新增 28 例：TerminalSettingsTest 2、TerminalSettingsRepositoryTest 5、TerminalPresentationTest 9、TerminalTranscriptTest 增加 8、ServerTerminalControllerTest 增加 4。
+- 测试覆盖当前六字段与 GUID 路由/真实本地 HTTP、保存预读/回读/未知结果/401 重试竞争/身份隔离、草稿/粘贴目标/剪贴板草稿保留、输入与搜索上限/代理对、双栏断点、VT 修饰键、ANSI 基本/256/RGB 色/属性重置、跨帧输出/宽字符覆盖增删/边界换行与 resize、旗帜/ZWJ/组合标记、备用屏幕、原点/线框/可见光标/当前模式、有界设备查询及 detach 后回调拒绝。
+- 当前固定格 InlineTextContent 绘制、父文本选择/子字形禁选、宽字光标、可滚动确认预览、单字形 64 UTF-16 上限均随完整构建通过；新增用例验证宽字/组合字形事实与 100,000 个组合标记输入有界。字符宽度直接读取 TextLayoutResult 的小数推进量，避免整数包围盒造成累计错位；查找跳转同时调整横纵滚动。缓存 Compose 1.10.0 源码确认相关 API 后进行实际编译，未以源码存在代替编译证据。
+- TerminalKeyboardLayoutTest 从 8 项增至 12 项，新增宽屏侧栏/剩余输入宽度、字体/IME 收起侧栏并保留草稿、会话草稿恢复与撤销旧粘贴、ANSI/CJK 输出和搜索无发送。12 项已随上述最后成功构建编译，未在本次设备上执行；2026-09-30 的 8 项证据仅覆盖当时版本。
+- 本次未发现连接设备/现成 AVD；使用 SDK 缓存的 API 35 x86_64 平板镜像，在工作区忽略目录 `artifacts/bp13-ui/` 创建唯一验证 AVD。WHPX 检查报告可用，但启动失败 `Failed to setup partition, hr=c0350005`；软件模式的 `emulator-5580` 持续 offline，未进入可运行测试环境。核实进程路径、专用 AVD 名称与父子关系后，仅停止本次实例；日志保留在该目录。没有安装 APK、执行 instrumentation 或产生新视觉通过证据。
+- 三语各 2070 个唯一字符串键，键集、占位符多重集一致，Kotlin 字符串引用有效；图标未改动。Android 本地文档链接及 `git diff --check` 通过；本次未执行 lint。BP13 消费当前 Shared workspace/terminal-settings 契约，没有更改 Shared/Server 路由或增加兼容格式，未重跑 .NET 套件。
+
+### BP13 未关闭检查（设备/宿主均未执行）
+
+| 编号 | 场景 | 核对点 |
+| --- | --- | --- |
+| BP13-T1 | 12 项 Compose 回归及实体手机/平板、横竖屏/大字体、真实 IME | 双栏使用剩余宽度；输入/输出可见；旋转/IME 不清草稿、不发送；侧栏正确收起 |
+| BP13-T2 | Linux/Windows 实际 PTY、彩色输出/CJK/emoji/全屏备用屏幕 | 光标、宽字推进和选区/复制/搜索一致；查询响应和应用键/括号粘贴符合实际程序；保留界限与长输出性能 |
+| BP13-T3 | 多会话切换/关闭确认、断网/临期刷新、后台/离页、换账号/进程回收 | 只发送到明确目标，只关闭已确认 ID；重连原 ID、不重发命令；草稿隔离、不落盘 |
+| BP13-T4 | 桌面与 Android 共用外观、并发更改、401/断网/成功回执丢失 | 六字段不丢失、小数字号可显示；未知只回读，无自动重发；不把当前无 CAS 的契约描述为原子防覆盖 |
+| BP13-T5 | 三语/主题、CJK 后备字体与原生文本选区、长粘贴/批量关闭/设置弹窗 | 固定格字形/光标/搜索高亮正确，替代文本复制保持原 Unicode；确认按钮可达，地址/会话名称不会挤掉主要内容 |
+
+
+### BP14-V1（2026-10-01，当前未提交工作树）
+
+- 当前完整定义、参数数组与健康数值投影、结构化草稿、RunAs 身份/审批、预检、保存回执/读回、动作确认、原登录/ID 隔离、状态与有界实时日志已接入。成功 upsert 的当前 AgentResponse 必须携带实际保存 Definition，Android 直接消费这一契约；无旧格式回退。没有添加字段或替代路由，Shared 注释、Server/Agent、桌面、Android 与文档一起更新。
+- 完整 Gradle JVM/应用及仪器 APK 构建通过：130 类、861 例，失败/错误/跳过为 0。BP14 新增 28 项：GuardianContracts 5、GuardianDraft 4、GuardianRepository 9、GuardianLogObserver 8、GuardianApi 2；涉及所有定义字段/空值/多行、数字/URI 约束、平台身份比较、冲突、规范化身份回执、读回不符、未知不重发、401 再预检、登录切换、原订阅重连、迟到事件、离页连接取消和日志界限。HTTP 契约用例通过本地 HttpServer 验证路由/认证、完整请求/审批和显式失败；没有连接真实 Server。
+- `dotnet build Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj --no-restore` 通过，0 错误、5 个既有警告。Server 构建通过；专项 `dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -p:UseAppHost=false -p:OutDir=E:/riderprojects/RelaxKon/RelaxKonOS/RelaxKonOS.Server.Tests/bin/bp14-validation/ -v quiet` 及 `dotnet RelaxKonOS.Server.Tests/bin/bp14-validation/RelaxKonOS.Server.Tests.dll --guardian-read-only` 通过 22 项。缓存 NuGet 漏洞数据获取有 NU1900 警告，不影响编译执行。
+- 专项使用唯一临时 named pipe 验证成功空列表与失败/缺载荷的区别，未安装/未配置显式拒绝；直接测试桌面保存字段与精确原数组。Windows 实际 WorkloadSupervisor 在隔离临时目录、当前 Windows 账户/SID 下执行一次不开机启用的定义 upsert，核对完整回执、GET definition 与持久文件一致。没有启动/停止子进程，没有管理员审批，没有安装或运行 Guardian 服务；日志 Hub 只编译，未执行真实网络互通。
+- 三语资源键/占位符、文档本地链接及差异检查见本次静态检查；没有执行 BP14 设备仪器、实际手机/平板/IME/旋转/大字体/主题或三语视觉。BP13 的 emulator 环境限制仍见其验收记录，不把构建或 JVM 回归写为设备验收。
+
+| 编号 | 待验场景 | 核对点 |
+| --- | --- | --- |
+| BP14-T1 | 手机/平板/旋转/大字体/IME/三语主题 | 列表与详情/双栏、参数增删和空/多行输入、停止/健康数值、固定保存按钮、草稿及离页确认 |
+| BP14-T2 | Linux/Windows Agent 与实际跨账户审批 | RunAs 名称/UID/SID、管理员成功/失败、身份改变、程序 PATH/路径/权限、完整保存回执与读回 |
+| BP14-T3 | 实际启动/停止/退出/崩溃/健康与开机恢复 | 期望与实际状态、退出码/问题、退避/预算/健康失败数，动作确认使用原 ID；未知仅核实 |
+| BP14-T4 | 真实 HTTP/SignalR、401/断网、后台/离页/目标与登录切换 | 原订阅重连、快照替换、有界截断、读取失败不伪造空快照；观察停止，动作不重放 |
+| BP14-T5 | 保存并发、回执丢失与进程回收 | 再预检及完整读回，未知门禁/明确读取；不声称当前预检具备原子 CAS |
+
+
+### BP15-V1（2026-10-01，当前未提交工作树，BP15 仍在实现）
+
+- 已接入原实例终止与当前四字段回执、原登录请求隔离、进程过滤/排序/方向/分页/采样时间、RESUMED 读取与离页取消。完整性能静态/实时/health/文件系统/磁盘/网络模型及 info/snapshot/history/addresses 读取已接入；监控完整展示、趋势、Hub/重连/状态及自适应详情尚未完成，不将整个 BP15 标为已实现。
+- 最后实际执行 `:app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --offline --no-daemon` 成功：133 类、874 例，失败/错误/跳过 0。相对 BP14 新增 13 例：SystemProcessWire 3、SystemRepository 4、PerformanceWire 6；既有 ProcessHttp 用例同时更新当前启动时间/sampledAt 与查询排序/方向。测试覆盖完整精度启动时间、HTTP 200 失败回执、未知不重发、原登录前后切换、完整性能字段/显式 null/真实 0/大于 2^53 的 Long、畸形/缺字段拒绝、历史顺序/重复/60 点界限，以及本地 HttpServer 的当前路由/认证/正文/查询。没有连接实际 Server。
+- `dotnet build Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj --no-restore -v quiet` 通过，0 错误、5 个既有警告。`dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -p:UseAppHost=false -p:OutDir=E:/riderprojects/RelaxKon/RelaxKonOS/RelaxKonOS.Server.Tests/bin/bp15-validation/ -v quiet` 及 `dotnet RelaxKonOS.Server.Tests/bin/bp15-validation/RelaxKonOS.Server.Tests.dll --process-termination-only` 通过 12 项：3 项 Linux /proc 状态纯 fixture（制表符/空格/缺失畸形 UID），5 项无 OS 副作用的输入/取消/当前 JSON 精度和回执，4 项自行启动的隔离子进程就绪/旧实例拒绝/实际终止并观察退出/已退出拒绝。只操作测试创建的这一子进程，没有枚举并终止现有应用。构建存在 NU1900 离线漏洞元数据与 3 项既有平台分析警告。
+- Windows 专项实际执行同一内核句柄终止路径；Linux UID fixture 在 Windows 上运行，未实际执行 Linux pidfd/syscall、真实 User 模式 UID 可见性或实际宿主权限拒绝。未运行真实 HTTP DELETE endpoint、真实 Hub、压力/并发 PID 复用或服务端重启。
+- 最后三语各 2118 个唯一键，键集和格式占位符多重集一致；2063 个 Kotlin 字符串引用存在。Android 本地文档链接与 `git diff --check` 通过。APK 编译通过，不代表设备运行；未执行 lint、仪器测试或手机/平板视觉验收。后台/离页门控与 Compose 生命周期本次只编译，未通过设备验证。
+
+| 编号 | 待验场景 | 核对点 |
+| --- | --- | --- |
+| BP15-T1 | 实际 Linux x64/arm64 pidfd、Windows、宿主权限与 User 模式 | 原启动时间精度、同实例终止/退出观察、未知/旧内核明确拒绝、UID 可见性、无自动提权 |
+| BP15-T2 | 真实 Server HTTP DELETE 与 HTTP 200 失败、断网/回执丢失/401/换登录 | 不误记成功、不自动重发、旧确认和迟到结果隔离；核实只读列表 |
+| BP15-T3 | 手机/平板、横竖屏/大字体/IME/三语/主题、过滤排序分页 | 当前行实例、按钮和确认可达；分页失败不改变成功页面，总数收缩能回到末页 |
+| BP15-T4 | 前台/后台/离页、操作中旋转与登录变化 | 只读轮询和请求停止，已提交终止不因离页重发，不以迟到回执重新启动后台读取 |
+| BP15-T5 | 真实性能 Hub/历史、重连/Server 重启、能力缺失、慢网 | 完整指标一致、真实 null/0、序列基线和趋势界限、实时/重连/降级状态；实现见 BP15-V2，执行验收仍待完成 |
+
+
+### BP15-V2（2026-10-01，当前未提交工作树）
+
+- BP15 完整指标/静态能力、实时订阅/重连与快照降级、真实时间历史趋势、监控和进程手机详情/平板双栏已接入；实现范围见 TaskManager 功能文档。当前 Shared/Server 性能契约直接消费，没有增加旧路由/旧格式。进程实例与权限专项保留 BP15-V1 的实际执行范围。
+- 最后实际 Gradle JVM/应用和仪器 APK 构建成功：137 类、894 例，失败/错误/跳过 0。相对 V1 新增 20 例：PerformanceObserver 10（历史合并/重复、Server 重启、新登录、401、403 终止、有限重试与降级/停止、静默连接、取消握手、初始读取切登录、60 秒/60 点界限），MonitorPresentation 3（稳定域/热插拔、剩余宽高/字体、真实空缺/过期/倒序与 0），PerformanceSignalR 2（实际 GsonHubProtocol/InvocationBinder 解析当前事件，null/大整数保留和缺字段拒绝），ProcessPresentation 2（同实例刷新及不可验证/旧实例清除），WireTest 增加 3（严格日期/偏移、完整原时间与 year 1、Locale.ROOT）。真实 SignalR 帧解码在 JVM 执行，不等同于真实 HTTP/WebSocket/Hub 建连。
+- 主源码移除 java.time 使用，证书、frpc/frps、Mihomo 及 BP15 读取统一到 API 23 的严格 Calendar 工具；既有对应 wire 回归随完整 894 例通过。未实际运行 Android API 23/24/25，最低版本设备/模拟器验证仍未关闭。显式 Gson 编译依赖使用当前 SignalR runtime 的 2.8.9，不要求额外下载或格式适配。
+- Server.Tests bp15-validation 构建成功（0 错误、1 个 NU1900 离线漏洞元数据警告），当前 `--performance-only` 调用实际 PerformanceSampler/History/SubscriptionRegistry 的既有专项并通过。Windows 本次使用 FakePerformanceSource 验证相邻计数 CPU/磁盘/网络速率、无人订阅不采样、首有效 sequence、历史清除、有界 REST demand 和结束后停止；没有执行 Linux 原始采集分支，没有实际硬件压力或真实 Hub。该旗标移至独立入口，避免运行无关持久化前置检查。
+- 三语各 2193 个唯一键，键集/格式占位符一致；2138 个 Kotlin 字符串引用存在，生产 Kotlin 无 java.time 引用。最终文档本地链接与差异检查另见静态检查。本次未执行 lint、BP15 Compose 仪器或设备视觉。
+- 使用已有 SDK 用户目录实际执行 `adb devices -l`，列表为空。本次不重复启动此前已失败的模拟器，没有安装 APK或产生新的设备验收证据。BP15-T1–T5 的真实宿主/HTTP/Hub/设备检查仍未关闭；T5 的实现待办已完成，现为执行验收。
+
+
+### BP16-V1（2026-10-01，当前未提交工作树，BP16 仍在实现）
+
+- 已接入完整定义编辑、秘密版本保留/轮换、原登录/实例草稿清除、保存前摘要、必需完整 expectedUpdatedAt、预检/401 再核对、回执和完整读回、结果未知不重放，以及实例/修订的真实模板版本显示。完整行为见 [应用部署与模板](../features/ApplicationDeployments.md)。既有实例新镜像/归档修订入口、AD03-M4 模板更新说明/差异预览/显式精确版本更新仍未完成，不能把 BP16 标为已实现。
+- 最后 Gradle `:app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --offline --no-daemon` 成功：140 类、909 例，失败/错误/跳过 0，两个 APK 编译通过。相对 BP15-V2 新增 15 例：DeploymentDefinitionDraft 5、DeploymentDefinitionRepository 8、DeploymentDefinitionHttp 1、ApplicationDeploymentWire 增加 1。覆盖精确字节上限/含冒号卷路径/只读/普通配置空值与空格和等号、秘密引用/轮换与输入清除、非法资源和组合、删除字段、活动操作/亚毫秒旧版本拒绝、401 再预检、换登录取消、权限/读取失败/未知写入区分、不重发、完整回执/读回及真实本地 HttpServer 的当前 PUT/正文/认证/幂等头。既有创建/HTTP/浏览回归随全量通过。
+- Server.Tests 当前 `bp16-validation` 构建及 `--deployment-definition-only` 通过。专项实际启动生产 ApplicationDeploymentEndpoints 的 loopback HTTP，使用测试身份验证/权限和只返回空容器列表的 IDockerEngineService；实际执行当前 Manager、Catalog/Secret/DefinitionMutation/Operation 存储、DataProtection 加密与重新打开。验证 401/403、无幂等键/旧版无 expectedUpdatedAt 400、完整字段与固定实例/模板身份、版本递增、相同键不重复轮换/写入、旧版本 409/活动操作阻断、没有排队部署或修改当前不可变修订、秘密不进入回执/幂等账本、多次轮换后保留当前定义/历史修订引用、不会裁剪另一个应用的固定秘密，以及重新打开后的秘密可取回。
+- 该实际专项发现并修复 Server 秘密轮换丢失旧版本及把当前变量引用集合用于别的应用裁剪的缺陷；现在只裁剪当前应用/变量，保留引用版本与最近三个版本。测试只创建隔离临时应用/修订/秘密和账本，不调用 Docker 写操作，不拉取或运行测试镜像，不把固定修订 fixture/秘密读取当作实际运行容器或真实数据恢复。
+- 桌面：`dotnet build Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj --no-restore -p:UseAppHost=false -p:UsedAvaloniaProducts= -m:1 -v quiet` 通过，0 错误、5 个既有警告。标准命令被已有 Avalonia 外部遥测日志目录权限阻止，使用已核实 targets 的参数跳过遥测任务；未修改项目构建策略。Server.Tests 构建保留 NU1900 离线漏洞数据警告与 3 项既有平台分析警告。专项密钥目录使用 DirectoryInfo 固定在此次夹具，失败运行的测试进程已按 PID 和精确命令行核实后清理；最终专项正常退出。
+- 三语各 2212 个唯一键，键集/格式占位符一致；2157 个 Kotlin 字符串引用存在。Android 本地文档链接及 `git diff --check` 通过。未执行 lint、BP16 Compose 仪器/真实设备视觉、真实 Docker 更新与回滚、实际数据/秘密恢复、生产身份授权、服务端执行中重启/并发压力；这些与实现缺口分开追踪。
+
+| 编号 | 待验场景 | 核对点 |
+| --- | --- | --- |
+| BP16-T1 | 手机/平板/横竖屏/IME/大字体/三语/主题，完整定义编辑 | 摘要/逐项配置和卷可达、字节值/长路径不截断、秘密不回显，切登录/实例与离页清除草稿 |
+| BP16-T2 | 实际 Server/Docker、部署执行中的定义编辑/外部并发/401/断网/回执丢失 | 真实权限、原版本冲突、活动操作阻断、保存不替换当前实例、未知不重发；再次明确读取后重新准备编辑 |
+| BP16-T3 | 实际秘密轮换/多修订/回滚与服务端重启 | 当前定义和旧修订所需秘密仍可物化；跨应用/变量隔离；容器及数据回滚边界分开核实 |

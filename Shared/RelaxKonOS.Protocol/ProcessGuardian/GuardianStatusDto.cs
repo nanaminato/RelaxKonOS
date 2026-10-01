@@ -55,5 +55,6 @@ public sealed record UpsertGuardianWorkloadRequest(
 public sealed record GuardianAgentRequest(string SharedSecret, string Command, string? WorkloadId = null,
     ProcessDefinitionDto? Definition = null, CorrelationContext? Correlation = null,
     ScriptTaskDefinitionDto? Script = null, string? OwnerIdentity = null);
+/// <summary>Successful definition reads and workload upserts include the complete saved Definition.</summary>
 public sealed record GuardianAgentResponse(bool Success, string ProblemCode, GuardianStatusDto? Status = null, IReadOnlyList<GuardianWorkloadDto>? Workloads = null, IReadOnlyList<GuardianLogEntryDto>? Logs = null, IReadOnlyList<GuardianAuditEntryDto>? Audits = null, ProcessDefinitionDto? Definition = null,
     IReadOnlyList<ScriptTaskDto>? Scripts = null, ScriptTaskDto? ScriptTask = null);

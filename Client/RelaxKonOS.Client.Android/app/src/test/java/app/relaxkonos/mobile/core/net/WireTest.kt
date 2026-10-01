@@ -98,4 +98,27 @@ class WireTest {
             clear()
             set(year, month - 1, day, hour, minute, second)
         }.timeInMillis
+    @Test fun `current timestamps reject impossible dates and offsets instead of normalizing them`() {
+        for (value in listOf("2026-02-29T00:00:00Z", "2026-13-01T00:00:00Z", "2026-01-01T24:00:00Z",
+            "2026-01-01T00:00:60Z", "2026-01-01T00:00:00+14:01", "2026-01-01T00:00:00+01:60",
+            "2026-01-01T00:00:00", "0000-01-01T00:00:00Z")) {
+            assertEquals(null, IsoInstant.toEpochMillis(value))
+            org.junit.Assert.assertTrue(runCatching { IsoInstant.requireEpochMillis(value) }.isFailure)
+        }
+        assertEquals(java.time.Instant.parse("2024-02-29T00:00:00Z").toEpochMilli(), IsoInstant.requireEpochMillis("2024-02-29T00:00:00Z"))
+    }
+    @Test fun `full ticks and offset timestamps retain the original process identity string`() {
+        val value = "2026-10-01T09:00:00.1234567+09:00"
+        assertEquals(java.time.OffsetDateTime.parse(value).toInstant().toEpochMilli(), IsoInstant.requireEpochMillis(value))
+        assertEquals(value, SystemProcessWire.startTime(value))
+        assertEquals(java.time.Instant.parse("0001-01-01T00:00:00Z").toEpochMilli(), IsoInstant.requireEpochMillis("0001-01-01T00:00:00Z"))
+    }
+    @Test fun `wire formatting does not use localized digits`() {
+        val previous = java.util.Locale.getDefault()
+        try {
+            java.util.Locale.setDefault(java.util.Locale("ar"))
+            assertEquals("1970-01-01T00:00:00Z", IsoInstant.fromEpochMillis(0))
+        } finally { java.util.Locale.setDefault(previous) }
+    }
+
 }

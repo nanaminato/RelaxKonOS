@@ -1,5 +1,12 @@
 package app.relaxkonos.mobile.ui.manage.processes
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.ui.platform.LocalDensity
+import app.relaxkonos.mobile.core.net.RemoteProcess
+import app.relaxkonos.mobile.ui.manage.monitor.monitorUsesTwoPanes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,13 +17,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,6 +35,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import app.relaxkonos.mobile.core.net.ProcessSort
+import app.relaxkonos.mobile.ui.common.appContainer
+import app.relaxkonos.mobile.ui.common.formatTimestamp
+import app.relaxkonos.mobile.core.net.IsoInstant
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.ui.common.ConfirmDangerousDialog
 import app.relaxkonos.mobile.ui.common.EmptyState
@@ -47,9 +64,8 @@ private const val PROCESS_REFRESH_INTERVAL_MILLIS = 6_000L
 /**
  * Process list.
  *
- * Paged because the server paginates, and sorted by CPU on the server side so the client cannot
- * disagree with it about ordering. Ending a process is a dangerous operation, so it goes through the
- * naming confirmation and then the elevation dialog.
+ * Paging, filtering and the selected ordering are applied by the server. Ending a process is a dangerous operation, so it goes through the
+ * confirmation of the original instance; host OS permissions remain authoritative.
  *
  * The rows live in a [SectionGroup] rather than loose on the backdrop: a process list is a set of
  * interchangeable entries, and a shared container is what says so.
@@ -61,20 +77,19 @@ fun ProcessesScreen(
 ) {
     val viewModel: ManageViewModel = viewModel()
 
-    // Process CPU is a difference between adjacent server samples. Keep this screen subscribed
-    // long enough to receive the second sample instead of leaving the initial all-zero baseline
-    // on screen indefinitely. The interval is intentionally longer than the server's five-second
-    // sampling window.
-    LaunchedEffect(viewModel.processesAvailable) {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val auth by appContainer().session.state.collectAsStateWithLifecycle()
+    LaunchedEffect(lifecycle, auth, viewModel.processesAvailable) {
         if (!viewModel.processesAvailable) return@LaunchedEffect
-        viewModel.loadProcesses(1)
-        while (true) {
-            delay(PROCESS_REFRESH_INTERVAL_MILLIS)
-            viewModel.loadProcesses()
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            try {
+                viewModel.startProcessObserving()
+                while (true) { delay(PROCESS_REFRESH_INTERVAL_MILLIS); viewModel.loadProcesses() }
+            } finally { viewModel.stopProcessObserving() }
         }
     }
-
-    var forceKill by remember { mutableStateOf(false) }
+    DisposableEffect(viewModel) { onDispose { viewModel.stopProcessObserving() } }
+    var sorting by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier.fillMaxSize().padding(Spacing.lg),
@@ -82,7 +97,7 @@ fun ProcessesScreen(
     ) {
         ScreenHeader(
             title = stringResource(R.string.manage_processes_title),
-            onBack = onBack,
+            onBack = if (viewModel.processSelected != null) ({ viewModel.selectProcess(null) }) else onBack,
         )
 
         viewModel.processMessage?.let { banner ->
@@ -92,6 +107,8 @@ fun ProcessesScreen(
                 onDismiss = { viewModel.dismissProcessMessage() },
             )
         }
+
+        viewModel.killMessage?.let { message -> ErrorBanner(message.text(), onRetry = { viewModel.loadProcesses() }, onDismiss = { viewModel.dismissKillMessage() }) }
 
         if (!viewModel.processesAvailable) {
             EmptyState(
@@ -114,9 +131,26 @@ fun ProcessesScreen(
                 leadingIcon = { DesktopIcon(icon = DesktopIcons.search, size = 20.dp) },
                 shape = MaterialTheme.shapes.medium,
             )
-            Button(onClick = { viewModel.loadProcesses(1) }, enabled = !viewModel.processesLoading) {
+            Button(onClick = { viewModel.searchProcesses() }, enabled = !viewModel.processesLoading) {
                 Text(stringResource(R.string.common_search))
             }
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            androidx.compose.foundation.layout.Box {
+                TextButton(onClick = { sorting = true }, enabled = !viewModel.processesLoading) {
+                    Text(stringResource(processSortLabel(viewModel.processSort)))
+                }
+                DropdownMenu(expanded = sorting, onDismissRequest = { sorting = false }) {
+                    ProcessSort.entries.forEach { sort -> DropdownMenuItem(text = { Text(stringResource(processSortLabel(sort))) },
+                        onClick = { sorting = false; viewModel.changeProcessSort(sort) }) }
+                }
+            }
+            TextButton(onClick = { viewModel.toggleProcessDirection() }, enabled = !viewModel.processesLoading) {
+                Text(stringResource(if (viewModel.processDescending) R.string.manage_processes_descending else R.string.manage_processes_ascending))
+            }
+            viewModel.processSampledAt?.let { time -> Text(stringResource(R.string.manage_processes_sampled_at,
+                formatTimestamp(IsoInstant.toEpochMillis(time)).orEmpty()), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f)) }
         }
 
         if (viewModel.processItems.isEmpty()) {
@@ -127,26 +161,20 @@ fun ProcessesScreen(
                 icon = DesktopIcons.processes,
             )
         } else {
-            SectionGroup(modifier = Modifier.weight(1f)) {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                    items(viewModel.processItems, key = { it.pid }) { process ->
-                        ListRow(
-                            title = process.name,
-                            subtitle = stringResource(R.string.manage_processes_pid, process.pid),
-                            supporting = listOfNotNull(
-                                stringResource(R.string.manage_processes_cpu, process.cpuPercent),
-                                formatSize(process.memoryBytes),
-                                process.userName,
-                            ).joinToString(" · "),
-                            leading = { IconBadge(icon = DesktopIcons.processes) },
-                            trailing = {
-                                TextButton(
-                                    onClick = { viewModel.requestKill(process) },
-                                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                                ) { Text(stringResource(R.string.manage_processes_kill)) }
-                            },
-                        )
+            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                val split = monitorUsesTwoPanes(maxWidth.value, maxHeight.value, LocalDensity.current.fontScale)
+                BackHandler(enabled = !split && viewModel.processSelected != null) { viewModel.selectProcess(null) }
+                if (split) {
+                    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {
+                        ProcessList(viewModel, Modifier.width((360 * LocalDensity.current.fontScale).coerceAtMost(460f).dp))
+                        val selected = viewModel.processSelected
+                        if (selected != null) ProcessDetails(selected, viewModel, Modifier.weight(1f))
+                        else Text(stringResource(R.string.manage_processes_select_details), modifier = Modifier.weight(1f))
                     }
+                } else {
+                    val selected = viewModel.processSelected
+                    if (selected != null) ProcessDetails(selected, viewModel, Modifier.fillMaxSize())
+                    else ProcessList(viewModel, Modifier.fillMaxSize())
                 }
             }
 
@@ -179,20 +207,60 @@ fun ProcessesScreen(
     viewModel.killTarget?.let { process ->
         ConfirmDangerousDialog(
             title = stringResource(R.string.manage_processes_kill_title),
-            message = stringResource(R.string.manage_processes_kill_message, process.name, process.pid),
+            message = stringResource(R.string.manage_processes_kill_instance_message, process.name, process.pid, process.startTime.orEmpty()),
             confirmLabel = stringResource(R.string.manage_processes_kill),
             busy = viewModel.processesLoading,
-            onConfirm = { viewModel.confirmKill(forceKill) },
+            onConfirm = { viewModel.confirmKill() },
             onDismiss = {
-                forceKill = false
                 viewModel.cancelKill()
             },
-            extraContent = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = forceKill, onCheckedChange = { forceKill = it })
-                    Text(stringResource(R.string.manage_processes_kill_force))
-                }
-            },
         )
+    }
+}
+
+private fun processSortLabel(sort: ProcessSort): Int = when (sort) {
+    ProcessSort.Cpu -> R.string.manage_processes_sort_cpu
+    ProcessSort.Memory -> R.string.manage_processes_sort_memory
+    ProcessSort.Name -> R.string.manage_processes_sort_name
+    ProcessSort.Pid -> R.string.manage_processes_sort_pid
+}
+
+@Composable
+private fun ProcessList(model: ManageViewModel, modifier: Modifier) {
+    SectionGroup(modifier) {
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            items(model.processItems, key = { "${it.pid}:${it.startTime}" }) { process ->
+                ListRow(title = process.name, subtitle = stringResource(R.string.manage_processes_pid, process.pid),
+                    supporting = listOfNotNull(stringResource(R.string.manage_processes_cpu, process.cpuPercent), formatSize(process.memoryBytes), process.userName).joinToString(" · "),
+                    leading = { IconBadge(icon = DesktopIcons.processes) },
+                    onClick = { model.selectProcess(process) }, selected = model.processSelected?.let { it.pid == process.pid && it.startTime == process.startTime } == true)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProcessDetails(process: RemoteProcess, model: ManageViewModel, modifier: Modifier) {
+    val rows = listOf(
+        R.string.manage_processes_sort_name to process.name,
+        R.string.manage_processes_sort_pid to process.pid.toString(),
+        R.string.manage_processes_sort_cpu to stringResource(R.string.home_value_percent, process.cpuPercent),
+        R.string.manage_processes_sort_memory to formatSize(process.memoryBytes).orEmpty(),
+        R.string.home_label_user to (process.userName ?: stringResource(R.string.monitor_unknown)),
+        R.string.monitor_thread_count to stringResource(R.string.monitor_count, process.threadCount.toLong()),
+        R.string.manage_processes_started_at to (process.startTime ?: stringResource(R.string.monitor_unknown)),
+    )
+    LazyColumn(modifier, verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+        items(rows) { (label, value) ->
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                Text(stringResource(label), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SelectionContainer { Text(value, style = MaterialTheme.typography.bodyLarge) }
+            }
+        }
+        item {
+            Button(onClick = { model.requestKill(process) }, enabled = process.startTime != null && !model.processesLoading,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text(stringResource(R.string.manage_processes_kill)) }
+            if (process.startTime == null) Text(stringResource(R.string.manage_processes_instance_unavailable))
+        }
     }
 }

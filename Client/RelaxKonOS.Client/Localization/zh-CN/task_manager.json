@@ -80,6 +80,10 @@
         "task_manager.metric.l2_cache": "L2 缓存",
         "task_manager.metric.l3_cache": "L3 缓存",
         "task_manager.metric.per_second": "/秒",
-        "task_manager.metric.placeholder": "—"
+        "task_manager.metric.placeholder": "—",
+        "task_manager.termination.instance_changed": "原进程实例已变化，请刷新并重新选择目标。",
+        "task_manager.termination.permission_denied": "宿主 OS 拒绝结束进程，请在宿主调整权限。",
+        "task_manager.termination.unverified": "结束结果尚未确认，请刷新核实；不要自动重发。",
+        "task_manager.termination.failed": "未能结束进程，请刷新并检查宿主。"
     }
 }

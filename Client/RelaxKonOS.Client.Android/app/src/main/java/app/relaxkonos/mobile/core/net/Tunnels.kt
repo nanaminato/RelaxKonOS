@@ -50,7 +50,7 @@ object TunnelRoutes {
 object TunnelWire {
     private inline fun <reified T : Enum<T>> enum(value: String, wire: (T) -> String): T = enumValues<T>().single { wire(it) == value }
     private fun JSONObject.id(key: String) = InstallationRoutes.canonicalId(getString(key)).also { require(it != "00000000-0000-0000-0000-000000000000") }
-    private fun JSONObject.time(key: String) = java.time.Instant.parse(getString(key)).toEpochMilli()
+    private fun JSONObject.time(key: String) = IsoInstant.requireEpochMillis(getString(key))
     private fun JSONObject.optionalTime(key: String) = if (isNull(key)) null else time(key)
     private fun JSONObject.text(key: String): String? = if (isNull(key)) null else getString(key)
     private fun JSONObject.port(key: String) = getInt(key).also { require(it in 1..65535) }

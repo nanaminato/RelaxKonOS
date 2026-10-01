@@ -181,6 +181,8 @@ Protocol 放于 `Shared/RelaxKonOS.Protocol/ProcessGuardian/`，仅以 DTO、路
 
 创建或更新定义时，`RunAs` 是持久化字段；任何用户为其他账户指定 `RunAs` 时，POST/PATCH 都额外携带一次性的管理员认证数据。认证错误统一返回 `guardian.run_as_admin_authentication_failed`，缺少认证返回 `guardian.run_as_admin_authentication_required`；账户无效、平台无法启动或路径无权访问分别使用不同问题码，不能把密码或账户探测细节返回给客户端。
 
+当前实现的定义读取及成功 upsert 回执携带完整 `Definition`，upsert 的回执来自 Agent 此次实际持久化的规范定义。`GET /workloads`、工作负载日志与审计读取失败返回显式问题（Agent 不可用等为 503，工作负载不存在为 404），不以成功空数组替代失败。日志 Hub 初次读取失败不注册订阅，后续读取失败保留上次快照；客户端可根据独立状态读取显示过期事实。
+
 `IProcessGuardianService`（Server）和 `IGuardianAgentClient`（IPC）实现两层边界。当前实现以受共享机密认证的本机 named pipe（Unix 上由 .NET 映射为本机 socket）传递一行 JSON 请求/响应；`GuardianAgent:SharedSecret` 必须由受保护的宿主配置注入，Agent 从 `RELAXKONOS_GUARDIAN_SHARED_SECRET` 读取，绝不写入仓储或 HTTP DTO。调用超时、取消、断线和幂等键必须贯穿两层；Agent 事件通过 Server 过滤后使用 SignalR 推送。只有日志尾部/增量事件可流式传输，历史日志按游标分页并应用大小限制。
 
 `ProcessDefinition`/`LaunchSpec` 增加已规范化的 `RunAs` 标识及实际生效身份的只读回显。用于任何跨账户指定的管理员账户名和密码是一次性 HTTP 请求数据：只在 Server 的 HTTPS 边界内校验，绝不进入 `ProcessDefinition`、`LaunchSpec`、SQLite、重放快照或 Agent IPC。Agent 不重新解释 UI 权限规则，只验证 IPC 对端、目标账户与平台启动条件；这样 Server 是唯一的授权决策点，Agent 是唯一的进程创建者。

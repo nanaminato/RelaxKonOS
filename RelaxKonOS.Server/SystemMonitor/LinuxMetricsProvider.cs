@@ -140,11 +140,19 @@ internal static class LinuxProcessMetadata
         catch { return new(null, 0); }
     }
 
-    private static LinuxProcessStatus ReadStatus(int pid)
+    public static uint? ReadUid(int pid)
+    {
+        try { return ReadStatus(pid).Uid; }
+        catch { return null; }
+    }
+
+    private static LinuxProcessStatus ReadStatus(int pid) => ParseStatus(File.ReadLines($"/proc/{pid}/status"));
+
+    internal static LinuxProcessStatus ParseStatus(IEnumerable<string> lines)
     {
         uint? uid = null;
         var threads = 0;
-        foreach (var line in File.ReadLines($"/proc/{pid}/status"))
+        foreach (var line in lines)
         {
             if (line.StartsWith("Uid:", StringComparison.Ordinal))
                 uid = ParseFirstUInt(line.AsSpan(4));
@@ -183,7 +191,7 @@ internal static class LinuxProcessMetadata
         return map;
     }
 
-    private readonly record struct LinuxProcessStatus(uint? Uid, int ThreadCount);
+    internal readonly record struct LinuxProcessStatus(uint? Uid, int ThreadCount);
 }
 
 internal readonly record struct LinuxProcessDetails(string? UserName, int ThreadCount);

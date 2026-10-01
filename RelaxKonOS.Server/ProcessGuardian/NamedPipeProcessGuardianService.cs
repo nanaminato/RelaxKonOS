@@ -21,7 +21,10 @@ public sealed class NamedPipeProcessGuardianService(GuardianAgentOptions options
     }
 
     public async Task<IReadOnlyList<GuardianWorkloadDto>> ListWorkloadsAsync(CancellationToken cancellationToken = default)
-        => (await SendAsync(new GuardianAgentRequest(options.SharedSecret, "list"), cancellationToken))?.Workloads ?? Array.Empty<GuardianWorkloadDto>();
+        {
+        var response = await SendAsync(new GuardianAgentRequest(options.SharedSecret, "list"), cancellationToken);
+        return ReadResult(response, response?.Workloads);
+    }
 
     public async Task<GuardianAgentResponse> GetDefinitionAsync(string workloadId, CancellationToken cancellationToken = default)
         => await SendAsync(new GuardianAgentRequest(options.SharedSecret, "definition", workloadId), cancellationToken) ?? new GuardianAgentResponse(false, "guardian.agent_unavailable");
@@ -39,10 +42,23 @@ public sealed class NamedPipeProcessGuardianService(GuardianAgentOptions options
     }
 
     public async Task<IReadOnlyList<GuardianLogEntryDto>> ListLogsAsync(string workloadId, CancellationToken cancellationToken = default)
-        => (await SendAsync(new GuardianAgentRequest(options.SharedSecret, "logs", workloadId), cancellationToken))?.Logs ?? Array.Empty<GuardianLogEntryDto>();
+        {
+        var response = await SendAsync(new GuardianAgentRequest(options.SharedSecret, "logs", workloadId), cancellationToken);
+        return ReadResult(response, response?.Logs);
+    }
 
     public async Task<IReadOnlyList<GuardianAuditEntryDto>> ListAuditAsync(CancellationToken cancellationToken = default)
-        => (await SendAsync(new GuardianAgentRequest(options.SharedSecret, "audit"), cancellationToken))?.Audits ?? Array.Empty<GuardianAuditEntryDto>();
+        {
+        var response = await SendAsync(new GuardianAgentRequest(options.SharedSecret, "audit"), cancellationToken);
+        return ReadResult(response, response?.Audits);
+    }
+
+    private static IReadOnlyList<T> ReadResult<T>(GuardianAgentResponse? response, IReadOnlyList<T>? value)
+    {
+        if (response is null) throw new GuardianReadException("guardian.agent_unavailable");
+        if (!response.Success) throw new GuardianReadException(response.ProblemCode);
+        return value ?? throw new GuardianReadException("guardian.agent_invalid_response");
+    }
 
     public async Task<GuardianAgentResponse> ListScriptsAsync(string ownerIdentity, CancellationToken cancellationToken = default)
         => await SendAsync(new GuardianAgentRequest(options.SharedSecret, "script-list", OwnerIdentity: ownerIdentity), cancellationToken)

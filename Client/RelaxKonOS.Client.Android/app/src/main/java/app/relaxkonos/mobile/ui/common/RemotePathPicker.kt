@@ -25,16 +25,17 @@ fun RemotePathField(
     @StringRes label: Int,
     kind: RemotePathKind,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     var browsing by remember { mutableStateOf(false) }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         OutlinedTextField(value, onValueChange, label = { Text(stringResource(label)) },
-            singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedButton(onClick = { browsing = true }) {
+            singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = enabled)
+        OutlinedButton(onClick = { browsing = true }, enabled = enabled) {
             Text(stringResource(R.string.remote_path_browse))
         }
     }
-    if (browsing) RemotePathPicker(
+    if (browsing && enabled) RemotePathPicker(
         kind = kind,
         initialPath = value,
         title = label,

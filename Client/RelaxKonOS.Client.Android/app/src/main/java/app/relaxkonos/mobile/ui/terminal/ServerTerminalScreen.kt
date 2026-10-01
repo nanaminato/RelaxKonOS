@@ -26,6 +26,7 @@ import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -67,12 +68,14 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
@@ -227,10 +230,11 @@ internal fun ServerTerminalContent(
     var menuOpen by remember(owner) { mutableStateOf(false) }
     var closeReview by remember(owner) { mutableStateOf<Pair<List<String>, String>?>(null) }
     val scroll = rememberScrollState()
+    val outputHorizontal = rememberScrollState()
     val uiScope = rememberCoroutineScope()
     fun copyOutput() { uiScope.launch {
         runCatching { clipboard.setClipEntry(ClipEntry(android.content.ClipData.newPlainText("Terminal", state.output))) }
-            .onFailure { presentation.clipboardFailed = true }
+            .onFailure { if (presentation.matchesOwner(owner)) presentation.clipboardFailed = true }
     } }
     fun reviewClipboard() { uiScope.launch {
         runCatching {
@@ -243,8 +247,9 @@ internal fun ServerTerminalContent(
     val density = LocalDensity.current
     val fontScale = density.fontScale
     val textMeasurer = rememberTextMeasurer()
-    val terminalStyle = TextStyle(fontFamily = terminalFont(presentation.settings.fontFamily), fontSize = fontSize.toFloat().sp, lineHeight = (fontSize * 1.5).toFloat().sp)
-    val cellWidth = with(density) { textMeasurer.measure("0", terminalStyle).size.width.toDp().value }
+    val terminalStyle = TextStyle(fontFamily = terminalFont(presentation.settings.fontFamily), fontSize = fontSize.toFloat().sp, lineHeight = (fontSize * 1.5).toFloat().sp, textDirection = TextDirection.Ltr)
+    val cellAdvance = textMeasurer.measure("0", terminalStyle).getHorizontalPosition(1, true)
+    val cellWidth = cellAdvance / density.density
     // Android fallback CJK/emoji fonts can have a different advance from the Latin monospace font.
     // Fixed-width placeholders keep VT cells aligned while alternate text remains selectable/copyable.
     val inlineCells = remember(state.frame, terminalStyle, cellWidth, fontScale, matches, presentation.settings, presentation.searchIndex) {
@@ -256,7 +261,8 @@ internal fun ServerTerminalContent(
             "cell-${glyph.start}" to InlineTextContent(Placeholder((cellWidth * glyph.width / fontScale).sp,
                 (fontSize * 1.5).toFloat().sp, PlaceholderVerticalAlign.TextCenter)) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(state.frame.text.substring(glyph.start, glyph.end), style = cellStyle, softWrap = false, maxLines = 1)
+                    DisableSelection { Text(state.frame.text.substring(glyph.start, glyph.end), style = cellStyle, softWrap = false, maxLines = 1,
+                        modifier = Modifier.clearAndSetSemantics {}) }
                 }
             }
         }
@@ -265,14 +271,16 @@ internal fun ServerTerminalContent(
     val decreaseFontLabel = stringResource(R.string.terminal_font_smaller)
     val increaseFontLabel = stringResource(R.string.terminal_font_larger)
     val sessionActionsLabel = stringResource(R.string.terminal_session_actions)
-    LaunchedEffect(state.sessionId) { presentation.bindSession(state.sessionId) }
+    LaunchedEffect(state.sessionId) { presentation.bindSession(state.sessionId); outputHorizontal.scrollTo(0) }
     LaunchedEffect(matches.size) { presentation.searchIndex = presentation.searchIndex.coerceIn(0, (matches.size - 1).coerceAtLeast(0)) }
     LaunchedEffect(presentation.searchIndex, presentation.search, textLayout) {
         val match = matches.getOrNull(presentation.searchIndex)
         val layout = textLayout
         if (presentation.searchOpen && match != null && layout != null && match.start < layout.layoutInput.text.length) {
             presentation.followOutput = false
-            scroll.scrollTo(layout.getBoundingBox(match.start).top.toInt().coerceAtLeast(0))
+            val bounds = layout.getBoundingBox(match.start)
+            scroll.scrollTo(bounds.top.toInt().coerceAtLeast(0))
+            outputHorizontal.scrollTo(bounds.left.toInt().coerceAtLeast(0))
         }
     }
     LaunchedEffect(scroll) {
@@ -290,8 +298,8 @@ internal fun ServerTerminalContent(
     presentation.pasteReview?.let { review -> AlertDialog(
         onDismissRequest = { presentation.pasteReview = null },
         title = { Text(stringResource(R.string.terminal_paste_title)) },
-        text = { Column { Text(stringResource(R.string.terminal_paste_target, review.sessionId));
-            SelectionContainer { Text(review.payload.take(2000)) }
+        text = { Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) { Text(stringResource(R.string.terminal_paste_target, review.sessionId));
+            SelectionContainer { Text(TerminalInputPolicy.boundedText(review.payload, 2000)) }
             if (review.payload.length > 2000) Text(stringResource(R.string.terminal_paste_truncated, review.payload.length))
         } },
         confirmButton = { TextButton(enabled = state.canInput && presentation.canPaste(state.sessionId), onClick = {
@@ -303,7 +311,7 @@ internal fun ServerTerminalContent(
     closeReview?.let { (ids, target) -> AlertDialog(
         onDismissRequest = { closeReview = null },
         title = { Text(stringResource(R.string.terminal_close)) },
-        text = { Text(stringResource(R.string.terminal_close_confirm, target)) },
+        text = { Text(stringResource(R.string.terminal_close_confirm, target), modifier = Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) },
         confirmButton = { TextButton(enabled = state.connected && !state.busy, onClick = {
             if (ids.size == 1) onCloseSession(ids.single()) else onCloseSessions(ids)
             closeReview = null
@@ -416,7 +424,7 @@ internal fun ServerTerminalContent(
             Surface(Modifier.fillMaxSize(), color = terminalColor(presentation.settings.backgroundColor), contentColor = terminalColor(presentation.settings.foregroundColor), shape = MaterialTheme.shapes.medium) {
                 Box {
                     SelectionContainer { Column(Modifier.fillMaxSize().verticalScroll(scroll)
-                        .horizontalScroll(rememberScrollState()).padding(Spacing.md)) {
+                        .horizontalScroll(outputHorizontal).padding(Spacing.md)) {
                         if (state.output.isEmpty() && state.connected && !state.busy && state.sessionId == null)
                             Text(stringResource(R.string.terminal_empty), color = Color(0xFFB7C5D0))
                         else Text(highlighted, inlineContent = inlineCells, style = terminalStyle, softWrap = false, onTextLayout = { textLayout = it },
@@ -426,7 +434,7 @@ internal fun ServerTerminalContent(
                                 if (state.canInput && layout != null && cursor != null && cursor < layout.layoutInput.text.length) {
                                     val bounds = layout.getBoundingBox(cursor)
                                     drawRect(terminalColor(presentation.settings.cursorColor), Offset(bounds.left, bounds.top),
-                                        Size(bounds.width.coerceAtLeast(cellWidth * density.density), bounds.height), style = Stroke(1.dp.toPx()))
+                                        Size(bounds.width.coerceAtLeast(cellWidth * density.density * state.frame.cursorWidth), bounds.height), style = Stroke(1.dp.toPx()))
                                 }
                             })
                     } }

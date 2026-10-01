@@ -15,6 +15,7 @@ public static class ApplicationDeploymentProblemCodes
     public const string IdempotencyRequired = "application-deployment.idempotency_required";
     public const string IdempotencyConflict = "application-deployment.idempotency_conflict";
     public const string ResourceConflict = "application-deployment.resource_conflict";
+    public const string DefinitionConflict = "application-deployment.definition_conflict";
     public const string NameConflict = "application-deployment.name_conflict";
     public const string ConfirmationRequired = "application-deployment.confirmation_required";
     public const string NotCancellable = "application-deployment.not_cancellable";

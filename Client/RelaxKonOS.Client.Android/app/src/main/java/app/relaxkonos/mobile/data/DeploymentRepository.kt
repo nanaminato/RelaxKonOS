@@ -51,6 +51,45 @@ class DeploymentRepository(
     suspend fun installCatalog(owner: SessionState.Active, template: CatalogTemplate, name: String, fields: List<CatalogFieldValue>, key: String): ApiResult<DeploymentOperation> =
         read(owner) { url, token -> gateway.installCatalogApplication(url, token, template, name, fields, key) }
 
+    /** Each authentication retry repeats the baseline check; a lost response is never replayed. */
+    suspend fun saveDefinition(owner: SessionState.Active, baseline: DeploymentApplication, definition: DeploymentDefinitionUpdate, key: String): DeploymentDefinitionSave {
+        var dispatched = false
+        val result = read(owner) { url, token ->
+            when (val before = gateway.deploymentSnapshot(url, token, baseline.id)) {
+                is ApiResult.Success -> {
+                    verifyOwner(owner)
+                    val snapshot = before.value
+                    if (snapshot.application.id != baseline.id) return@read ApiResult.Transport("Unexpected deployment identity.")
+                    if (snapshot.application.updatedAt != definition.expectedUpdatedAt || definition.expectedUpdatedAt != baseline.updatedAt)
+                        return@read ApiResult.Problem(409, "application-deployment.definition_conflict", null)
+                    if (snapshot.activeOperation != null) return@read ApiResult.Problem(409, "application-deployment.resource_conflict", null)
+                }
+                is ApiResult.Problem -> return@read before
+                is ApiResult.Transport -> return@read before
+            }
+            verifyOwner(owner)
+            dispatched = true
+            when (val saved = gateway.updateDeploymentDefinition(url, token, baseline.id, definition, key)) {
+                is ApiResult.Success -> {
+                    verifyOwner(owner)
+                    val receipt = saved.value
+                    if (!definition.matchesReceipt(receipt, baseline)) return@read ApiResult.Transport("Deployment definition receipt did not match.")
+                    when (val after = gateway.deploymentSnapshot(url, token, baseline.id)) {
+                        is ApiResult.Success -> {
+                            verifyOwner(owner)
+                            if (!receipt.sameStoredDefinition(after.value.application)) ApiResult.Transport("Deployment definition readback did not match.")
+                            else ApiResult.Success(after.value.application)
+                        }
+                        else -> ApiResult.Transport("Deployment definition readback is unavailable.")
+                    }
+                }
+                is ApiResult.Problem -> saved
+                is ApiResult.Transport -> saved
+            }
+        }
+        return DeploymentDefinitionSave(result, dispatched && (result is ApiResult.Transport || result is ApiResult.Problem && result.status >= 500))
+    }
+
     suspend fun createImageDefinition(owner: SessionState.Active, definition: ImageDeploymentDefinition, key: String): ApiResult<DeploymentApplication> =
         read(owner) { url, token -> gateway.createImageDeployment(url, token, definition, key) }
 
@@ -73,7 +112,7 @@ class DeploymentRepository(
         deploymentKey: String,
     ): ApiResult<DeploymentOperation> = read(owner) { url, token ->
         when (val created = gateway.createImageDeployment(url, token, definition, definitionKey)) {
-            is ApiResult.Success -> gateway.deployImage(url, token, created.value.id, imageReference, deploymentKey)
+            is ApiResult.Success -> { verifyOwner(owner); gateway.deployImage(url, token, created.value.id, imageReference, deploymentKey) }
             is ApiResult.Problem -> created
             is ApiResult.Transport -> created
         }
@@ -94,7 +133,7 @@ class DeploymentRepository(
         deploymentKey: String,
     ): ApiResult<DeploymentOperation> = read(owner) { url, token ->
         when (val created = gateway.createArchiveDeployment(url, token, definition, definitionKey)) {
-            is ApiResult.Success -> gateway.deployArchive(url, token, created.value.id, archiveReferenceId, definition, deploymentKey)
+            is ApiResult.Success -> { verifyOwner(owner); gateway.deployArchive(url, token, created.value.id, archiveReferenceId, definition, deploymentKey) }
             is ApiResult.Problem -> created
             is ApiResult.Transport -> created
         }
@@ -131,4 +170,32 @@ class DeploymentRepository(
         }
         result
     }
+
+    private fun verifyOwner(owner: SessionState.Active) {
+        if (session.state.value !== owner) throw CancellationException("Deployment session changed")
+    }
 }
+
+data class DeploymentDefinitionSave(val result: ApiResult<DeploymentApplication>, val mayHaveSaved: Boolean)
+
+/** Compare every writable field and the server-owned identity; secret bodies never enter readback. */
+internal fun DeploymentDefinitionUpdate.matchesReceipt(actual: DeploymentApplication, baseline: DeploymentApplication): Boolean =
+    actual.id == baseline.id && actual.sourceKind == baseline.sourceKind && actual.catalogTemplateId == baseline.catalogTemplateId &&
+        actual.catalogTemplateVersion == baseline.catalogTemplateVersion && actual.updatedAt != expectedUpdatedAt &&
+        name == actual.name && workloadKind == actual.workloadKind && readinessLevel == actual.readinessLevel &&
+        healthCheckPath == actual.healthCheckPath && containerPort == actual.containerPort && hostPort == actual.hostPort &&
+        bindAddress == actual.bindAddress && limits == actual.limits && volumes == actual.volumes && siteId == actual.siteId &&
+        configuration.size == actual.configuration.size && configuration.all { expected ->
+            actual.configuration.singleOrNull { it.name == expected.name }?.let { observed ->
+                observed.isSecret == expected.isSecret && if (!expected.isSecret) observed.value == expected.value && observed.secretVersion == null
+                else observed.value == null && if (expected.value == null) observed.secretVersion == expected.secretVersion
+                else observed.secretVersion != null && observed.secretVersion > (expected.secretVersion ?: 0)
+            } == true
+        }
+
+internal fun DeploymentApplication.sameStoredDefinition(other: DeploymentApplication): Boolean =
+    id == other.id && updatedAt == other.updatedAt && name == other.name && sourceKind == other.sourceKind &&
+        workloadKind == other.workloadKind && readinessLevel == other.readinessLevel && healthCheckPath == other.healthCheckPath &&
+        containerPort == other.containerPort && hostPort == other.hostPort && bindAddress == other.bindAddress && limits == other.limits &&
+        volumes == other.volumes && configuration == other.configuration && siteId == other.siteId &&
+        catalogTemplateId == other.catalogTemplateId && catalogTemplateVersion == other.catalogTemplateVersion

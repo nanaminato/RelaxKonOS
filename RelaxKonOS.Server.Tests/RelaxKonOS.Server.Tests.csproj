@@ -7,6 +7,7 @@
     <PrebuiltServerAssemblyPath Condition="'$(PrebuiltServerAssemblyPath)' == ''">../RelaxKonOS.Server/bin/Debug/net10.0/RelaxKonOS.Server.dll</PrebuiltServerAssemblyPath>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../RelaxKonOS.Guardian.Agent/RelaxKonOS.Guardian.Agent.csproj" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsManagedRuntimePolicy.cs" Link="WindowsManagedRuntimePolicy.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsManagedRuntimeHost.cs" Link="WindowsManagedRuntimeHost.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsRuntimeConfigurationWriter.cs" Link="WindowsRuntimeConfigurationWriter.cs" />
@@ -23,6 +24,7 @@
     <Compile Include="../RelaxKonOS.PrivilegedHelper/DeveloperUserSidAllowList.cs" Link="DeveloperUserSidAllowList.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsPrivilegedPipeSecurity.cs" Link="WindowsPrivilegedPipeSecurity.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsFeatureInstallationState.cs" Link="WindowsFeatureInstallationState.cs" />
+    <Compile Include="../Client/RelaxKonOS.Client/Apps/ProcessGuardian/GuardianDefinitionEditor.cs" Link="GuardianDefinitionEditor.cs" />
     <Compile Include="../Client/RelaxKonOS.Client/Apps/Git/GitConflictBlock.cs" Link="GitConflictBlock.cs" />
     <ProjectReference Include="../Framework/RelaxKonOS.Core/RelaxKonOS.Core.csproj" Condition="'$(UsePrebuiltServerAssembly)' != 'true'" />
     <ProjectReference Include="../RelaxKonOS.Server/RelaxKonOS.Server.csproj" Condition="'$(UsePrebuiltServerAssembly)' != 'true'" />

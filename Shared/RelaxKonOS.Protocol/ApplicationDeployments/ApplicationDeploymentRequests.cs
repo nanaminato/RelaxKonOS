@@ -40,12 +40,15 @@ public sealed record CreateApplicationRequest(
 /// <summary>
 /// Replaces the stored application definition. Runtime fields are applied by the next deployment,
 /// because changing ports, limits, or mounts requires replacing the container instance.
+/// The full observed UpdatedAt value is required and compared atomically at commit; a stale draft
+/// conflicts instead of overwriting a newer definition. Replays retain their original idempotency key.
 /// </summary>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record UpdateApplicationRequest(
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("workloadKind")] ApplicationWorkloadKind WorkloadKind,
     [property: JsonPropertyName("readinessLevel")] ApplicationReadinessLevel ReadinessLevel,
+    [property: JsonRequired, JsonPropertyName("expectedUpdatedAt")] DateTimeOffset ExpectedUpdatedAt,
     [property: JsonPropertyName("healthCheckPath")] string? HealthCheckPath = null,
     [property: JsonPropertyName("containerPort")] int ContainerPort = 8080,
     [property: JsonPropertyName("hostPort")] int? HostPort = null,

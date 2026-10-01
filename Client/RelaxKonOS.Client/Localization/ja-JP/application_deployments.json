@@ -217,6 +217,7 @@
     "application-deployment.permission_denied": "このアカウントにはこの操作の権限がありません。",
     "application-deployment.idempotency_required": "この操作には冪等キーが必要です。",
     "application-deployment.idempotency_conflict": "この冪等キーは別のリクエストで使用済みです。",
+    "application-deployment.definition_conflict": "下書きを開いた後に定義が変更されました。再読み込みしてから編集してください。",
     "application-deployment.resource_conflict": "このアプリケーションに対して別の操作が実行中です。",
     "application-deployment.name_conflict": "同名のアプリケーションが既に存在します。",
     "application-deployment.confirmation_required": "この操作には確認が必要です。",

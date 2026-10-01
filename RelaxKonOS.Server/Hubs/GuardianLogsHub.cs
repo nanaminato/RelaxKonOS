@@ -15,9 +15,12 @@ public sealed class GuardianLogsHub(
     public async Task<IReadOnlyList<GuardianLogEntryDto>> Subscribe(string workloadId)
     {
         if (string.IsNullOrWhiteSpace(workloadId)) throw new HubException("A workload ID is required.");
+        IReadOnlyList<GuardianLogEntryDto> logs;
+        try { logs = await guardian.ListLogsAsync(workloadId, Context.ConnectionAborted); }
+        catch (GuardianReadException exception) { throw new HubException(exception.ProblemCode); }
         await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(workloadId), Context.ConnectionAborted);
         subscriptions.Subscribe(Context.ConnectionId, workloadId);
-        return await guardian.ListLogsAsync(workloadId, Context.ConnectionAborted);
+        return logs;
     }
 
     public async Task Unsubscribe(string workloadId)

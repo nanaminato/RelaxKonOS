@@ -133,14 +133,14 @@ class RelaxKonApi(
         guardianCall("GET", serverUrl, GuardianRoutes.STATUS, accessToken, null, GuardianWire::status)
     override suspend fun guardianWorkloads(serverUrl: String, accessToken: String): ApiResult<List<GuardianWorkload>> =
         guardianCall("GET", serverUrl, GuardianRoutes.WORKLOADS, accessToken, null, GuardianWire::workloads)
-    override suspend fun guardianDefinition(serverUrl: String, accessToken: String, id: String): ApiResult<GuardianDefinition?> =
+    override suspend fun guardianDefinition(serverUrl: String, accessToken: String, id: String): ApiResult<GuardianDefinitionResult> =
         guardianCall("GET", serverUrl, GuardianRoutes.workload(id), accessToken, null, GuardianWire::definition)
     override suspend fun guardianLogs(serverUrl: String, accessToken: String, id: String): ApiResult<List<GuardianLog>> =
         guardianCall("GET", serverUrl, GuardianRoutes.logs(id), accessToken, null, GuardianWire::logs)
-    override suspend fun guardianSave(serverUrl: String, accessToken: String, definition: GuardianDefinition, approval: GuardianApproval?): ApiResult<GuardianOperation> {
+    override suspend fun guardianSave(serverUrl: String, accessToken: String, definition: GuardianDefinition, approval: GuardianApproval?): ApiResult<GuardianDefinitionResult> {
         val body = JsonBody().raw("definition", GuardianWire.definitionJson(definition))
         if (approval != null) body.objectField("runAsApproval", JsonBody().string("username", approval.username).secret("password", approval.password))
-        return guardianCall("POST", serverUrl, GuardianRoutes.WORKLOADS, accessToken, body, GuardianWire::operation)
+        return guardianCall("POST", serverUrl, GuardianRoutes.WORKLOADS, accessToken, body, GuardianWire::definition)
     }
     override suspend fun guardianAction(serverUrl: String, accessToken: String, id: String, action: String): ApiResult<GuardianOperation> =
         guardianCall("POST", serverUrl, GuardianRoutes.action(id, action), accessToken, JsonBody(), GuardianWire::operation)
@@ -661,6 +661,11 @@ class RelaxKonApi(
         return deploymentMutation("POST", serverUrl, ApplicationDeploymentRoutes.APPLICATIONS, accessToken, body, idempotencyKey,
             ApplicationDeploymentWire::createdApplication)
     }
+
+    override suspend fun updateDeploymentDefinition(
+        serverUrl: String, accessToken: String, applicationId: String, definition: DeploymentDefinitionUpdate, idempotencyKey: String,
+    ): ApiResult<DeploymentApplication> = deploymentMutation("PUT", serverUrl, ApplicationDeploymentRoutes.application(applicationId),
+        accessToken, DeploymentDefinitionWire.body(definition), idempotencyKey, ApplicationDeploymentWire::createdApplication)
 
     override suspend fun deploymentImageTags(serverUrl: String, accessToken: String, repository: String): ApiResult<DeploymentImageTags> =
         deploymentRead(serverUrl, accessToken,
@@ -1296,36 +1301,25 @@ class RelaxKonApi(
     override suspend fun abortUpload(serverUrl: String, accessToken: String, uploadId: String): ApiResult<Unit> =
         execute("DELETE", serverUrl, FileRoutes.upload(uploadId), accessToken, null).asUnit()
 
-    override suspend fun performanceSnapshot(serverUrl: String, accessToken: String): ApiResult<PerformanceSnapshot> {
-        return when (val parsed = execute("GET", serverUrl, SystemRoutes.PERFORMANCE_SNAPSHOT, accessToken, null)) {
-            is ApiResult.Problem -> parsed
-            is ApiResult.Transport -> parsed
-            is ApiResult.Success -> runCatching {
-                val json = JSONObject(parsed.value)
-                val cpu = json.getJSONObject("cpu")
-                val memory = json.getJSONObject("memory")
-                val health = json.optJSONObject("health")
-                val filesystems = json.optJSONArray("filesystems") ?: JSONArray()
-                PerformanceSnapshot(
-                    cpuPercent = cpu.optDouble("totalPercent", 0.0),
-                    memoryUsedBytes = memory.optLong("usedBytes"),
-                    memoryTotalBytes = memory.optLong("totalBytes"),
-                    uptimeSeconds = json.optLong("uptimeSeconds"),
-                    filesystems = (0 until filesystems.length()).map { index ->
-                        val item = filesystems.getJSONObject(index)
-                        DiskUsage(
-                            id = item.optString("id"),
-                            usedBytes = item.optLong("usedBytes"),
-                            totalBytes = item.optLong("totalBytes"),
-                            percent = item.optDouble("percent", 0.0),
-                        )
-                    },
-                    isStale = health?.optBoolean("isStale") ?: false,
-                    lastSampleMillis = IsoInstant.toEpochMillis(health?.optString("lastSuccessfulSampleAt")),
-                )
-            }.fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed performance snapshot.") })
+    override suspend fun performanceSnapshot(serverUrl: String, accessToken: String): ApiResult<PerformanceSnapshot> =
+        readPerformance(serverUrl, accessToken, SystemRoutes.PERFORMANCE_SNAPSHOT, PerformanceWire::snapshot)
+
+    override suspend fun performanceInfo(serverUrl: String, accessToken: String): ApiResult<PerformanceInfo> =
+        readPerformance(serverUrl, accessToken, SystemRoutes.PERFORMANCE_INFO, PerformanceWire::info)
+
+    override suspend fun performanceHistory(serverUrl: String, accessToken: String): ApiResult<List<PerformanceSnapshot>> =
+        readPerformance(serverUrl, accessToken, SystemRoutes.PERFORMANCE_HISTORY + "?seconds=60", PerformanceWire::history)
+
+    override suspend fun networkAddresses(serverUrl: String, accessToken: String): ApiResult<List<NetworkAddress>> =
+        readPerformance(serverUrl, accessToken, SystemRoutes.NETWORK_ADDRESSES, PerformanceWire::addresses)
+
+    private suspend fun <T> readPerformance(url: String, token: String, route: String, parse: (String) -> T): ApiResult<T> =
+        when (val result = execute("GET", url, route, token, null)) {
+            is ApiResult.Success -> runCatching { parse(result.value) }
+                .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed performance response.") })
+            is ApiResult.Problem -> result
+            is ApiResult.Transport -> result
         }
-    }
 
     override suspend fun queryProcesses(
         serverUrl: String,
@@ -1333,11 +1327,14 @@ class RelaxKonApi(
         page: Int,
         pageSize: Int,
         filter: String?,
+        sort: ProcessSort,
+        descending: Boolean,
     ): ApiResult<ProcessPage> {
+        require(page > 0 && pageSize in 1..500 && (filter?.length ?: 0) <= 512)
         val query = buildString {
             append("?page=").append(page)
             append("&pageSize=").append(pageSize)
-            append("&sort=cpu&direction=desc")
+            append("&sort=").append(sort.wireName).append("&direction=").append(if (descending) "desc" else "asc")
             if (!filter.isNullOrBlank()) {
                 append("&filter=").append(encode(filter))
             }
@@ -1345,29 +1342,21 @@ class RelaxKonApi(
         return when (val parsed = execute("GET", serverUrl, SystemRoutes.PROCESS_QUERY + query, accessToken, null)) {
             is ApiResult.Problem -> parsed
             is ApiResult.Transport -> parsed
-            is ApiResult.Success -> runCatching {
-                val json = JSONObject(parsed.value)
-                val items = json.optJSONArray("items") ?: JSONArray()
-                ProcessPage(
-                    items = (0 until items.length()).map { index ->
-                        val item = items.getJSONObject(index)
-                        RemoteProcess(
-                            pid = item.getInt("id"),
-                            name = item.getString("name"),
-                            cpuPercent = item.optDouble("cpuPercent", 0.0),
-                            memoryBytes = item.optLong("memoryBytes"),
-                            userName = item.optNullableString("userName"),
-                            threadCount = item.optInt("threadCount"),
-                        )
-                    },
-                    totalCount = json.optInt("totalCount"),
-                )
-            }.fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed process page.") })
+            is ApiResult.Success -> runCatching { SystemProcessWire.page(parsed.value) }
+                .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed process page.") })
         }
     }
 
-    override suspend fun killProcess(serverUrl: String, accessToken: String, pid: Int, force: Boolean): ApiResult<Unit> =
-        execute("DELETE", serverUrl, SystemRoutes.processKill(pid) + "?force=$force", accessToken, null).asUnit()
+    override suspend fun killProcess(serverUrl: String, accessToken: String, pid: Int, expectedStartTime: String): ApiResult<ProcessKillResult> {
+        require(pid > 0); SystemProcessWire.startTime(expectedStartTime)
+        return when (val result = execute("DELETE", serverUrl, SystemRoutes.processKill(pid), accessToken,
+            JsonBody().string("expectedStartTime", expectedStartTime))) {
+            is ApiResult.Success -> runCatching { SystemProcessWire.kill(result.value) }
+                .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed process termination receipt.") })
+            is ApiResult.Problem -> result
+            is ApiResult.Transport -> result
+        }
+    }
 
     /** Streams a remote file into [sink]. Used by the download action. */
     override suspend fun download(
@@ -1733,6 +1722,9 @@ internal fun JSONObject.optNullableString(name: String): String? =
 private object SystemRoutes {
     private const val V1 = "/api/v1.0"
     const val PERFORMANCE_SNAPSHOT = "$V1/system/performance/snapshot"
+    const val PERFORMANCE_INFO = "$V1/system/performance/info"
+    const val PERFORMANCE_HISTORY = "$V1/system/performance/history"
+    const val NETWORK_ADDRESSES = "$V1/system/network-addresses"
     const val PROCESS_QUERY = "$V1/system/processes/query"
 
     fun processKill(pid: Int) = "$V1/system/processes/$pid"

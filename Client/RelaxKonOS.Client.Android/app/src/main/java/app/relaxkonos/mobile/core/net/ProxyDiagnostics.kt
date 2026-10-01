@@ -2,7 +2,6 @@ package app.relaxkonos.mobile.core.net
 
 import org.json.JSONObject
 import org.json.JSONArray
-import java.time.Instant
 
 data class ProxyTunSettings(val stack: String, val deviceName: String, val autoRoute: Boolean, val strictRoute: Boolean,
     val autoDetectInterface: Boolean, val dnsHijack: String, val mtu: Int) {
@@ -38,13 +37,13 @@ object ProxyDiagnosticsWire {
         ProxySettings(j.getBoolean("systemProxyEnabled"), j.getBoolean("allowLan"), j.getBoolean("dnsEnabled"), j.getBoolean("ipv6Enabled"), j.getBoolean("unifiedDelay"),
             j.getString("logLevel"), j.getInt("mixedPort").also { require(it in 1..65535) }, j.getBoolean("allowInsecureSubscriptionSources"), j.getString("systemProxyHost"), tun, system)
     }
-    fun recovery(payload: String) = JSONObject(payload).let { ProxyRecovery(it.getBoolean("recoveryRequired"), it.getBoolean("hasRecoveryMarker"), if (it.isNull("markerCreatedAt")) null else Instant.parse(it.getString("markerCreatedAt")).toEpochMilli(), it.getString("problemCode")) }
+    fun recovery(payload: String) = JSONObject(payload).let { ProxyRecovery(it.getBoolean("recoveryRequired"), it.getBoolean("hasRecoveryMarker"), if (it.isNull("markerCreatedAt")) null else IsoInstant.requireEpochMillis(it.getString("markerCreatedAt")), it.getString("problemCode")) }
     fun traffic(payload: String) = JSONObject(payload).let { j ->
         fun count(key: String) = j.getLong(key).also { require(it >= 0) }
         ProxyTraffic(count("uploadBytesPerSecond"), count("downloadBytesPerSecond"), count("uploadTotalBytes"), count("downloadTotalBytes"), count("memoryBytes"), j.getString("problemCode"))
     }
-    fun connections(payload: String) = array(payload, 10000) { j -> ProxyConnection(j.getString("id"), j.getString("network"), j.getString("source"), j.getString("destination"), j.getString("rule"), j.getString("chains"), Instant.parse(j.getString("startedAt")).toEpochMilli()) }
-    fun logs(payload: String) = array(payload, 500) { j -> ProxyLog(Instant.parse(j.getString("timestamp")).toEpochMilli(), j.getString("level"), j.getString("message")) }
+    fun connections(payload: String) = array(payload, 10000) { j -> ProxyConnection(j.getString("id"), j.getString("network"), j.getString("source"), j.getString("destination"), j.getString("rule"), j.getString("chains"), IsoInstant.requireEpochMillis(j.getString("startedAt"))) }
+    fun logs(payload: String) = array(payload, 500) { j -> ProxyLog(IsoInstant.requireEpochMillis(j.getString("timestamp")), j.getString("level"), j.getString("message")) }
     fun dns(payload: String) = JSONObject(payload).let { ProxyDns(it.getBoolean("enabled"), it.getBoolean("hijackEnabled"), if (it.isNull("mode")) null else it.getString("mode"), it.getString("problemCode")) }
     fun geoData(payload: String) = JSONObject(payload).let { ProxyGeoData(it.getBoolean("isConfigured"), if (it.isNull("sizeBytes")) null else it.getLong("sizeBytes").also { size -> require(size >= 0) }) }
     private fun <T> array(payload: String, max: Int, parse: (JSONObject) -> T) = JSONArray(payload).let { a -> require(a.length() <= max); List(a.length()) { parse(a.getJSONObject(it)) } }

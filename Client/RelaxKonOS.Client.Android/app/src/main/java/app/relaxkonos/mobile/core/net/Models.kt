@@ -111,18 +111,6 @@ data class RemoteFileProperties(
     val attributes: String = "",
 )
 
-data class DiskUsage(val id: String, val usedBytes: Long, val totalBytes: Long, val percent: Double)
-
-data class PerformanceSnapshot(
-    val cpuPercent: Double,
-    val memoryUsedBytes: Long,
-    val memoryTotalBytes: Long,
-    val uptimeSeconds: Long,
-    val filesystems: List<DiskUsage>,
-    val isStale: Boolean,
-    val lastSampleMillis: Long?,
-)
-
 data class RemoteProcess(
     val pid: Int,
     val name: String,
@@ -130,9 +118,10 @@ data class RemoteProcess(
     val memoryBytes: Long,
     val userName: String?,
     val threadCount: Int,
+    val startTime: String?,
 )
 
-data class ProcessPage(val items: List<RemoteProcess>, val totalCount: Int)
+data class ProcessPage(val items: List<RemoteProcess>, val totalCount: Int, val sampledAt: String)
 
 /**
  * State of one resumable upload session, mirroring `UploadSessionDto`.

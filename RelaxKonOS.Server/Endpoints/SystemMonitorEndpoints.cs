@@ -55,10 +55,10 @@ public static class SystemMonitorEndpoints
            .RequireAuthorization()
            .WithTags("System Performance");
 
-        // DELETE system/processes/{id}?force= — 结束进程；权限不足返回 requiresElevation
+        // DELETE system/processes/{id} with required expectedStartTime — terminate the confirmed instance.
         app.MapDelete(SystemMonitorApiRoutes.ProcessKill,
-            (int id, bool? force, IProcessService processes, CancellationToken ct)
-                => processes.KillAsync(id, force ?? false, ct))
+            (int id, [Microsoft.AspNetCore.Mvc.FromBody] TerminateProcessRequest request, IProcessService processes, CancellationToken ct)
+                => processes.KillAsync(id, request.ExpectedStartTime, ct))
            .RequireAuthorization()
            .WithTags("System");
 

@@ -84,36 +84,8 @@ public abstract class SystemMetricsProviderBase : ISystemMetricsProvider
         return Task.FromResult<IReadOnlyList<ProcessInfoDto>>(list);
     }
 
-    public Task<KillProcessResultDto> KillProcessAsync(int processId, bool force = false, CancellationToken ct = default)
-    {
-        try
-        {
-            var p = Process.GetProcessById(processId);
-            try
-            {
-                // Kill(entireProcessTree: false) — 仅终止目标进程，不波及子进程
-                p.Kill(entireProcessTree: false);
-                p.WaitForExit(3000);
-                return Task.FromResult(new KillProcessResultDto(true, false, null));
-            }
-            finally { p.Dispose(); }
-        }
-        catch (ArgumentException)
-        {
-            return Task.FromResult(new KillProcessResultDto(false, false, $"进程不存在（id={processId}）。"));
-        }
-        catch (System.ComponentModel.Win32Exception ex)
-        {
-            // 权限不足错误码：Windows ERROR_ACCESS_DENIED=5；Linux EPERM=1 / EACCES=13 → 需宿主 OS 提权
-            var requiresElevation = ex.NativeErrorCode is 5 or 1 or 13;
-            return Task.FromResult(new KillProcessResultDto(false, requiresElevation,
-                requiresElevation ? $"权限不足，无法结束进程 {processId}（需在宿主 OS 提升权限，例如 sudo kill / UAC 运行）。" : ex.Message));
-        }
-        catch (Exception ex)
-        {
-            return Task.FromResult(new KillProcessResultDto(false, false, ex.Message));
-        }
-    }
+    public Task<KillProcessResultDto> KillProcessAsync(int processId, DateTimeOffset expectedStartTime, CancellationToken ct = default)
+        => Task.Run(() => ProcessInstanceTermination.Terminate(processId, expectedStartTime, ct), ct);
 
     // ── 平台特定：CPU 与内存 ──
 

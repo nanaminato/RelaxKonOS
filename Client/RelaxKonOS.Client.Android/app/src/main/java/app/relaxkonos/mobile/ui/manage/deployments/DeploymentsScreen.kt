@@ -52,8 +52,9 @@ fun DeploymentsScreen(
     LaunchedEffect(state.owner, initialApplicationId) {
         if (available && initialApplicationId != null) browser.select(initialApplicationId)
     }
-    var showCreate by remember { mutableStateOf(false) }
-    var showCatalog by remember { mutableStateOf(false) }
+    val ownerKey = DeploymentOwnerKey(state.owner)
+    var showCreate by remember(ownerKey) { mutableStateOf(false) }
+    var showCatalog by remember(ownerKey) { mutableStateOf(false) }
     Column(modifier.fillMaxSize().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         ScreenHeader(
             title = stringResource(R.string.deployments_title),
@@ -576,9 +577,11 @@ private fun DeploymentList(state: DeploymentBrowserState, onSelect: (String) -> 
 
 @Composable
 private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentBrowser, modifier: Modifier) {
-    var actionToConfirm by remember { mutableStateOf<DeploymentLifecycleAction?>(null) }
-    var rollbackRevision by remember { mutableStateOf<DeploymentRevision?>(null) }
-    var deleteConfirmation by remember { mutableStateOf(false) }
+    val ownerKey = DeploymentOwnerKey(state.owner)
+    var actionToConfirm by remember(ownerKey, state.selectedId) { mutableStateOf<DeploymentLifecycleAction?>(null) }
+    var rollbackRevision by remember(ownerKey, state.selectedId) { mutableStateOf<DeploymentRevision?>(null) }
+    var deleteConfirmation by remember(ownerKey, state.selectedId) { mutableStateOf(false) }
+    var editDefinition by remember(ownerKey, state.selectedId) { mutableStateOf<DeploymentApplication?>(null) }
     LazyColumn(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         if (state.selectedId == null) item { EmptyHint(stringResource(R.string.deployments_select)) }
         if (state.detailLoading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
@@ -620,6 +623,9 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
                         TextButton(onClick = { deleteConfirmation = true }, enabled = !state.submitting) {
                             Text(stringResource(R.string.deployment_delete), color = MaterialTheme.colorScheme.error)
                         }
+                        TextButton(onClick = { editDefinition = app }, enabled = !state.submitting && snapshot.activeOperation == null) {
+                            Text(stringResource(R.string.deployments_edit_definition))
+                        }
                     }
                 }
                 item { BackupRecoveryCard(state.owner, app.id) }
@@ -660,6 +666,7 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
                 items(snapshot.revisions, key = { it.id }) { revision ->
                     SectionCard(title = stringResource(R.string.deployments_revision_number, revision.number)) {
                         Text(revision.imageReference, style = MaterialTheme.typography.bodySmall)
+                        revision.catalogTemplateId?.let { Text(stringResource(R.string.catalog_instance_version, it, revision.catalogTemplateVersion.orEmpty()), style = MaterialTheme.typography.bodySmall) }
                         if (revision.isCurrent) {
                             Text(stringResource(R.string.deployments_current), color = MaterialTheme.colorScheme.primary)
                         } else {
@@ -678,6 +685,9 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
             null -> Unit
             else -> item { Text(result.deploymentFailure().text(), color = MaterialTheme.colorScheme.error) }
         }
+    }
+    editDefinition?.let { application ->
+        state.owner?.let { owner -> DeploymentDefinitionDialog(owner, application, onDismiss = { editDefinition = null }, onSaved = browser::refresh) }
     }
     actionToConfirm?.let { action ->
         AlertDialog(
@@ -848,6 +858,12 @@ private const val MAXIMUM_LOG_TAIL = 1_000
 private const val LOG_TAIL_GROWTH = 5
 
 private fun nextLogTail(current: Int): Int = (current * LOG_TAIL_GROWTH).coerceAtMost(MAXIMUM_LOG_TAIL)
+
+/** Drafts and confirmations belong to one login instance, even when its visible account fields match. */
+private class DeploymentOwnerKey(private val owner: SessionState.Active?) {
+    override fun equals(other: Any?): Boolean = other is DeploymentOwnerKey && owner === other.owner
+    override fun hashCode(): Int = System.identityHashCode(owner)
+}
 
 @Composable
 private fun CheckedAt(millis: Long) {

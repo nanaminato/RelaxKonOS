@@ -23,6 +23,6 @@ public interface ITaskManagerClient
     Task<ProcessPageDto> QueryProcessesAsync(int page = 1, int pageSize = 100, string? filter = null,
         string? sort = null, bool descending = true, CancellationToken ct = default);
 
-    /// <summary>结束指定进程。force=true 强制终止。权限不足返回 RequiresElevation=true。</summary>
-    Task<KillProcessResultDto> KillProcessAsync(int processId, bool force = false, CancellationToken ct = default);
+    /// <summary>结束已确认的 PID/启动时间实例。权限不足返回 RequiresElevation=true。</summary>
+    Task<KillProcessResultDto> KillProcessAsync(int processId, DateTimeOffset expectedStartTime, CancellationToken ct = default);
 }

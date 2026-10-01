@@ -81,20 +81,27 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
     private async Task KillProcessAsync()
     {
         var process = SelectedProcess;
-        if (process is null) return;
+        if (process?.StartTime is null) return;
         KillFeedback = LocalizedText.Format("task_manager.process.terminating", process.Name, process.Id);
         try
         {
-            var result = await _client.KillProcessAsync(process.Id, force: false);
+            var result = await _client.KillProcessAsync(process.Id, process.StartTime.Value);
             if (result.Success) { KillFeedback = LocalizedText.Format("task_manager.process.terminated", process.Name, process.Id); SelectedProcess = null; }
-            else if (result.RequiresElevation) KillFeedback = LocalizedText.Format("task_manager.process.elevation_required", process.Name, process.Id, result.Error);
-            else KillFeedback = LocalizedText.Format("task_manager.process.termination_failed", result.Error);
+            else if (result.RequiresElevation) KillFeedback = LocalizedText.Format("task_manager.process.elevation_required", process.Name, process.Id, TerminationProblem(result));
+            else KillFeedback = LocalizedText.Format("task_manager.process.termination_failed", TerminationProblem(result));
             await RefreshProcessesAsync();
         }
         catch (Exception ex) { KillFeedback = LocalizedText.Format("task_manager.process.termination_failed", ex.Message); }
     }
 
-    private bool CanKill => SelectedProcess is not null;
+    private static string TerminationProblem(KillProcessResultDto result) => LocalizedText.Get(result.ProblemCode switch
+    {
+        "process.instance_changed" or "process.not_found" => "task_manager.termination.instance_changed",
+        "process.permission_denied" => "task_manager.termination.permission_denied",
+        "process.termination_unverified" => "task_manager.termination.unverified",
+        _ => "task_manager.termination.failed",
+    });
+    private bool CanKill => SelectedProcess?.StartTime is not null;
     partial void OnSelectedProcessChanged(ProcessInfoDto? value) => KillProcessCommand.NotifyCanExecuteChanged();
     [RelayCommand] private void SwitchToPerformance() => ActiveTab = TaskManagerTab.Performance;
     [RelayCommand] private void SwitchToProcesses() => ActiveTab = TaskManagerTab.Processes;

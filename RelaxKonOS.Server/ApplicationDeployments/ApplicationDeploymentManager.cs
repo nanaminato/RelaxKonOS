@@ -150,30 +150,43 @@ internal sealed class ApplicationDeploymentManager(
     /// </summary>
     public async Task<ApplicationDto> UpdateAsync(Guid applicationId, UpdateApplicationRequest request, CancellationToken cancellationToken)
     {
-        Require(applicationId);
-        // Definition fields become a revision snapshot during deployment. Letting an update race the
-        // worker would make the operator's stored intent and the candidate's snapshot ambiguous.
+        var baseline = Require(applicationId);
+        if (request.ExpectedUpdatedAt == default)
+            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.InvalidRequest, 400);
+        if (baseline.UpdatedAt != request.ExpectedUpdatedAt)
+            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.DefinitionConflict, 409);
         if (operations.GetActive(applicationId) is not null)
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ResourceConflict);
         var volumes = Volumes(request.Volumes);
+        // The secret store reads retained catalog references during rotation. Resolve outside the
+        // catalog lock to keep the stores' lock order consistent; an uncommitted secret version is
+        // never selected by a definition or revision.
         var configuration = Configuration(applicationId, request.Configuration, allowExistingVersions: true);
         var definition = Validate(applicationId, request.Name, request.WorkloadKind, request.ReadinessLevel, request.HealthCheckPath,
             request.ContainerPort, request.HostPort, request.BindAddress, request.Limits, volumes, configuration, request.SiteId);
-
-        var updated = catalog.Update(applicationId, application => application with
+        var updated = catalog.Update(applicationId, application =>
         {
-            Name = definition.Name,
-            WorkloadKind = definition.WorkloadKind,
-            ReadinessLevel = definition.ReadinessLevel,
-            HealthCheckPath = definition.HealthCheckPath,
-            ContainerPort = definition.ContainerPort,
-            HostPort = definition.HostPort,
-            BindAddress = definition.BindAddress,
-            Limits = definition.Limits,
-            Volumes = volumes,
-            Configuration = configuration,
-            SiteId = definition.SiteId,
-            UpdatedAt = DateTimeOffset.UtcNow,
+            // Checking again under the write lock closes the gap between validation and commit.
+            if (application.UpdatedAt != request.ExpectedUpdatedAt)
+                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.DefinitionConflict, 409);
+            if (operations.GetActive(applicationId) is not null)
+                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ResourceConflict);
+            var now = DateTimeOffset.UtcNow;
+            return application with
+            {
+                Name = definition.Name,
+                WorkloadKind = definition.WorkloadKind,
+                ReadinessLevel = definition.ReadinessLevel,
+                HealthCheckPath = definition.HealthCheckPath,
+                ContainerPort = definition.ContainerPort,
+                HostPort = definition.HostPort,
+                BindAddress = definition.BindAddress,
+                Limits = definition.Limits,
+                Volumes = volumes,
+                Configuration = configuration,
+                SiteId = definition.SiteId,
+                UpdatedAt = now > application.UpdatedAt ? now : application.UpdatedAt.AddTicks(1),
+            };
         });
         return await DescribeOneAsync(updated, cancellationToken);
     }

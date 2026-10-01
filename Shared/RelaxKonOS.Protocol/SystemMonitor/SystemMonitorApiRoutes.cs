@@ -23,6 +23,6 @@ public static class SystemMonitorApiRoutes
     /// <summary>获取服务端所有可用的非回环 IPv4/IPv6 地址（GET，需 JWT）。</summary>
     public const string NetworkAddresses = $"/{V1}/system/network-addresses";
 
-    /// <summary>结束进程（DELETE，需 JWT）。route: id。返回 KillProcessResultDto。</summary>
+    /// <summary>结束已确认进程实例（DELETE，需 JWT）。route: id；JSON: TerminateProcessRequest。返回 KillProcessResultDto。</summary>
     public const string ProcessKill = $"/{V1}/system/processes/{{id}}";
 }

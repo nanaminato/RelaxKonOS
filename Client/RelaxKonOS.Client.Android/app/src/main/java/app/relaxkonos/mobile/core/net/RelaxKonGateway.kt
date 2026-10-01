@@ -111,13 +111,13 @@ interface RelaxKonGateway {
     suspend fun scriptTask(serverUrl: String, accessToken: String, id: String): ApiResult<ScriptTaskResult> = ApiResult.Transport("Scripts unavailable.")
     suspend fun scriptSubmit(serverUrl: String, accessToken: String, request: ScriptRequest, key: String): ApiResult<ScriptTaskResult> = ApiResult.Transport("Scripts unavailable.")
     suspend fun scriptCancel(serverUrl: String, accessToken: String, id: String): ApiResult<ScriptTaskResult> = ApiResult.Transport("Scripts unavailable.")
-    suspend fun guardianStatus(serverUrl: String, accessToken: String): ApiResult<GuardianStatus> = ApiResult.Transport("Guardian unavailable.")
-    suspend fun guardianWorkloads(serverUrl: String, accessToken: String): ApiResult<List<GuardianWorkload>> = ApiResult.Transport("Guardian unavailable.")
-    suspend fun guardianDefinition(serverUrl: String, accessToken: String, id: String): ApiResult<GuardianDefinition?> = ApiResult.Transport("Guardian unavailable.")
-    suspend fun guardianLogs(serverUrl: String, accessToken: String, id: String): ApiResult<List<GuardianLog>> = ApiResult.Transport("Guardian unavailable.")
-    suspend fun guardianSave(serverUrl: String, accessToken: String, definition: GuardianDefinition, approval: GuardianApproval?): ApiResult<GuardianOperation> = ApiResult.Transport("Guardian unavailable.")
-    suspend fun guardianAction(serverUrl: String, accessToken: String, id: String, action: String): ApiResult<GuardianOperation> = ApiResult.Transport("Guardian unavailable.")
-    suspend fun guardianDelete(serverUrl: String, accessToken: String, id: String): ApiResult<GuardianOperation> = ApiResult.Transport("Guardian unavailable.")
+    suspend fun guardianStatus(serverUrl: String, accessToken: String): ApiResult<GuardianStatus>
+    suspend fun guardianWorkloads(serverUrl: String, accessToken: String): ApiResult<List<GuardianWorkload>>
+    suspend fun guardianDefinition(serverUrl: String, accessToken: String, id: String): ApiResult<GuardianDefinitionResult>
+    suspend fun guardianLogs(serverUrl: String, accessToken: String, id: String): ApiResult<List<GuardianLog>>
+    suspend fun guardianSave(serverUrl: String, accessToken: String, definition: GuardianDefinition, approval: GuardianApproval?): ApiResult<GuardianDefinitionResult>
+    suspend fun guardianAction(serverUrl: String, accessToken: String, id: String, action: String): ApiResult<GuardianOperation>
+    suspend fun guardianDelete(serverUrl: String, accessToken: String, id: String): ApiResult<GuardianOperation>
     suspend fun gitRepositories(serverUrl: String, accessToken: String): ApiResult<List<GitRepository>> = ApiResult.Transport("Git unavailable.")
     suspend fun gitRegisterRepository(serverUrl: String, accessToken: String, name: String, path: String): ApiResult<GitRepository> = ApiResult.Transport("Git unavailable.")
     suspend fun gitBranches(serverUrl: String, accessToken: String, id: String): ApiResult<List<GitBranch>> = ApiResult.Transport("Git unavailable.")
@@ -205,6 +205,7 @@ interface RelaxKonGateway {
 
     suspend fun deploymentApplications(serverUrl: String, accessToken: String): ApiResult<List<DeploymentApplication>>
     suspend fun deploymentSnapshot(serverUrl: String, accessToken: String, applicationId: String): ApiResult<DeploymentSnapshot>
+    suspend fun updateDeploymentDefinition(serverUrl: String, accessToken: String, applicationId: String, definition: DeploymentDefinitionUpdate, idempotencyKey: String): ApiResult<DeploymentApplication>
     suspend fun deploymentRuntime(serverUrl: String, accessToken: String): ApiResult<DeploymentRuntime>
 
     suspend fun deploymentTemplates(serverUrl: String, accessToken: String): ApiResult<List<DeploymentTemplate>> =
@@ -446,6 +447,9 @@ interface RelaxKonGateway {
     suspend fun abortUpload(serverUrl: String, accessToken: String, uploadId: String): ApiResult<Unit>
 
     suspend fun performanceSnapshot(serverUrl: String, accessToken: String): ApiResult<PerformanceSnapshot>
+    suspend fun performanceInfo(serverUrl: String, accessToken: String): ApiResult<PerformanceInfo>
+    suspend fun performanceHistory(serverUrl: String, accessToken: String): ApiResult<List<PerformanceSnapshot>>
+    suspend fun networkAddresses(serverUrl: String, accessToken: String): ApiResult<List<NetworkAddress>>
 
     suspend fun queryProcesses(
         serverUrl: String,
@@ -453,9 +457,11 @@ interface RelaxKonGateway {
         page: Int,
         pageSize: Int,
         filter: String?,
+        sort: ProcessSort,
+        descending: Boolean,
     ): ApiResult<ProcessPage>
 
-    suspend fun killProcess(serverUrl: String, accessToken: String, pid: Int, force: Boolean): ApiResult<Unit>
+    suspend fun killProcess(serverUrl: String, accessToken: String, pid: Int, expectedStartTime: String): ApiResult<ProcessKillResult>
 
     /** Streams a remote file into [sink]. [onProgress] receives written bytes and total bytes when known. */
     suspend fun download(

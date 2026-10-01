@@ -46,10 +46,13 @@ public sealed class ProcessSampler(
         return new ProcessPageDto(all.Skip((safePage - 1) * safePageSize).Take(safePageSize).ToArray(), all.Length, snapshot.SampledAt);
     }
 
-    public Task<KillProcessResultDto> KillAsync(int processId, bool force, CancellationToken cancellationToken = default)
-        => !IsVisibleToCurrentMode(processId)
-            ? Task.FromResult(new KillProcessResultDto(false, false, "user-mode-process-not-owned"))
-            : legacyControl.KillProcessAsync(processId, force, cancellationToken);
+    public async Task<KillProcessResultDto> KillAsync(int processId, DateTimeOffset expectedStartTime, CancellationToken cancellationToken = default)
+    {
+        if (!IsVisibleToCurrentMode(processId)) return new(false, false, "process.user_mode_not_owned", null);
+        var result = await legacyControl.KillProcessAsync(processId, expectedStartTime, cancellationToken);
+        lock (_gate) _latest = _latest with { SampledAt = DateTimeOffset.MinValue };
+        return result;
+    }
 
     private async Task EnsureFreshAsync(CancellationToken cancellationToken)
     {
@@ -140,18 +143,9 @@ public sealed class ProcessSampler(
     {
         if (mode.Mode != ServerMode.User) return true;
         if (!OperatingSystem.IsLinux()) return false;
-        return TryGetUid(pid) == mode.Describe().ExecutionIdentity.Uid;
-    }
-
-    private static int? TryGetUid(int pid)
-    {
-        try
-        {
-            var uidLine = File.ReadLines($"/proc/{pid}/status").FirstOrDefault(x => x.StartsWith("Uid:", StringComparison.Ordinal));
-            var value = uidLine?.Split(' ', StringSplitOptions.RemoveEmptyEntries).Skip(1).FirstOrDefault();
-            return int.TryParse(value, out var uid) ? uid : null;
-        }
-        catch { return null; }
+        var uid = RelaxKonOS.Server.SystemMonitor.LinuxProcessMetadata.ReadUid(pid);
+        var owner = mode.Describe().ExecutionIdentity.Uid;
+        return uid is { } actual && owner >= 0 && actual == (uint)owner;
     }
 
     private readonly record struct ProcessInstanceKey(int Id, DateTimeOffset? StartTime);

@@ -1,3 +1,31 @@
+if (args.Contains("--process-termination-worker"))
+{
+    Console.WriteLine("READY");
+    await Task.Delay(Timeout.Infinite);
+    return;
+}
+if (args.Contains("--process-termination-only"))
+{
+    await ProcessTerminationChecks.RunAsync();
+    return;
+}
+if (args.Contains("--performance-only"))
+{
+    await ServerCoreChecks.VerifyPerformanceSamplerAsync();
+    Console.WriteLine("Performance sampler checks passed.");
+    return;
+}
+if (args.Contains("--deployment-definition-only"))
+{
+    try { await DeploymentDefinitionChecks.RunAsync(); }
+    catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
+    return;
+}
+if (args.Contains("--guardian-read-only"))
+{
+    await GuardianReadChecks.RunAsync();
+    return;
+}
 if (args.Contains("--text-editor-only"))
 {
     await TextEditorChecks.RunAsync();
@@ -181,7 +209,6 @@ try
         Console.WriteLine("User-execution contract checks passed.");
         return;
     }
-    if (args.Contains("--performance-only")) { await ServerCoreChecks.VerifyPerformanceSamplerAsync(); Console.WriteLine("Performance sampler checks passed."); return; }
     if (args.Contains("--helper-allowlist-only")) { await DeveloperUserSidAllowListVerification.RunAsync(); return; }
     if (args.Contains("--host-os-only")) { HostOperatingSystemChecks.Run(); return; }
     if (args.Contains("--thumbnails-only")) { ImageThumbnailChecks.Run(root); Console.WriteLine("Thumbnail checks passed."); return; }

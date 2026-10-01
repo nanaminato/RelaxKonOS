@@ -81,6 +81,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("com.microsoft.signalr:signalr:10.0.6")
+    // SignalR declares Gson as runtime-only; raw metric events need its JsonElement type at compile time.
+    implementation("com.google.code.gson:gson:2.8.9")
 
     // QR pairing: the system scanner handles live camera capture without a CAMERA permission; the
     // bundled ML Kit reader also handles a user-selected local image without waiting for a model download.

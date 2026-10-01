@@ -14,7 +14,7 @@ public static class ProcessGuardianEndpoints
     {
         var group = app.MapGroup($"/{RelaxKonOS.Protocol.Common.RelaxKonOSEndpoints.ApiVersionPrefix}/guardian").RequireAuthorization().WithTags("Process Guardian");
         group.MapGet("/status", (RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service, CancellationToken ct) => service.GetStatusAsync(ct));
-        group.MapGet("/workloads", (RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service, CancellationToken ct) => service.ListWorkloadsAsync(ct));
+        group.MapGet("/workloads", (RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service, CancellationToken ct) => ReadAsync(() => service.ListWorkloadsAsync(ct)));
         group.MapGet("/workloads/{id}", (string id, RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service, CancellationToken ct) => service.GetDefinitionAsync(id, ct));
         group.MapPost("/workloads", (
             UpsertGuardianWorkloadRequest request,
@@ -39,8 +39,8 @@ public static class ProcessGuardianEndpoints
         });
         group.MapDelete("/workloads/{id}", (string id, RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service, CancellationToken ct) => service.DeleteAsync(id, ct));
         group.MapPost("/workloads/{id}/{action}", (string id, string action, RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service, CancellationToken ct) => service.ApplyActionAsync(id, action, ct));
-        group.MapGet("/workloads/{id}/logs", (string id, RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service, CancellationToken ct) => service.ListLogsAsync(id, ct));
-        group.MapGet("/audit", (RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service, CancellationToken ct) => service.ListAuditAsync(ct));
+        group.MapGet("/workloads/{id}/logs", (string id, RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service, CancellationToken ct) => ReadAsync(() => service.ListLogsAsync(id, ct)));
+        group.MapGet("/audit", (RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service, CancellationToken ct) => ReadAsync(() => service.ListAuditAsync(ct)));
         group.MapGet("/scripts", (HttpContext http, IUserExecutionContextResolver contexts,
             RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service, CancellationToken ct) =>
         {
@@ -93,6 +93,16 @@ public static class ProcessGuardianEndpoints
         group.MapPost("/agent/installation/plan", (RelaxKonOS.Server.ProcessGuardian.IGuardianAgentInstaller installer, CancellationToken ct) => installer.CreatePlanAsync(ct))
             .AddEndpointFilter(new ServerModeEndpointFilter(ServerHostFeature.AgentInstallation));
         return app;
+    }
+
+    private static async Task<IResult> ReadAsync<T>(Func<Task<IReadOnlyList<T>>> read)
+    {
+        try { return Results.Ok(await read()); }
+        catch (RelaxKonOS.Server.ProcessGuardian.GuardianReadException exception)
+        {
+            return Results.Problem(statusCode: exception.ProblemCode == "guardian.workload_not_found" ? 404 : 503,
+                title: "Guardian read failed", extensions: new Dictionary<string, object?> { ["problemCode"] = exception.ProblemCode });
+        }
     }
 
     private static (string Account, string Stable)? ResolveScriptIdentity(HttpContext http, IUserExecutionContextResolver contexts)

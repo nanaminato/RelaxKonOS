@@ -54,6 +54,9 @@ internal fun deploymentProblem(code: String): UiMessage = when (code) {
     "application-deployment.permission_denied" -> UiMessage(R.string.deployments_permission)
     "application-deployment.application_not_found" -> UiMessage(R.string.deployments_not_found)
     "application-deployment.store_unavailable" -> UiMessage(R.string.deployments_store_unavailable)
+    "application-deployment.definition_conflict" -> UiMessage(R.string.deployments_definition_conflict)
+    "application-deployment.resource_conflict" -> UiMessage(R.string.deployments_definition_busy)
+    "application-deployment.secret_version_missing" -> UiMessage(R.string.deployments_secret_missing)
     "application-deployment.platform_unsupported" -> UiMessage(R.string.deployments_platform_unsupported)
     else -> problemMessage(code)
 }

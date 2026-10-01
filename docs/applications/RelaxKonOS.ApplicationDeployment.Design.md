@@ -193,6 +193,10 @@ programEntry, arguments[], selfContained
 
 创建与更新定义不携带 `confirmed`：它们不触达运行实例。
 
+`UpdateApplicationRequest.expectedUpdatedAt` 必传，直接提交原 `ApplicationDto.updatedAt` 的完整 DateTimeOffset，不截断小数精度；缺失/默认值拒绝（400），写入锁内比较不一致返回 `application-deployment.definition_conflict`（409）。活动应用操作返回 `resource_conflict`。定义写入仍携带幂等键；相同键和同一载荷重试返回原回执，不重复轮换秘密。名称、运行参数、卷和配置只替换定义，来源/模板身份和不可变当前修订不在此请求中变更。
+
+机密轮换保留当前定义及所有保留修订引用的版本，并保留最近三个版本；只裁剪此次应用/变量的版本，不用该变量的引用集合裁剪别的应用或变量。
+
 ## 5. 模板契约
 
 模板只生成**构建定义**与**启动定义**，绝不各自复制容器管理逻辑。

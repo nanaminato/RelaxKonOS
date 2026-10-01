@@ -49,10 +49,10 @@ public sealed class TaskManagerClient : ITaskManagerClient
         return SendAsync<ProcessPageDto>(HttpMethod.Get, SystemMonitorApiRoutes.ProcessQuery + "?" + string.Join("&", query), ct: ct);
     }
 
-    public Task<KillProcessResultDto> KillProcessAsync(int processId, bool force = false, CancellationToken ct = default)
+    public Task<KillProcessResultDto> KillProcessAsync(int processId, DateTimeOffset expectedStartTime, CancellationToken ct = default)
         => SendAsync<KillProcessResultDto>(HttpMethod.Delete,
             SystemMonitorApiRoutes.ProcessKill.Replace("{id}", processId.ToString(System.Globalization.CultureInfo.InvariantCulture)),
-            query: ("force", force ? "true" : null), ct: ct);
+            body: new TerminateProcessRequest(expectedStartTime), ct: ct);
 
     // ---- helpers（与 BrowserClient 同模式）----
 

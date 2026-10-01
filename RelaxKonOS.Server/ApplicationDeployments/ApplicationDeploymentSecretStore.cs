@@ -54,18 +54,18 @@ internal sealed class ApplicationDeploymentSecretStore
             var existing = ledger.Entries.Where(x => x.ApplicationId == applicationId && x.Name == name).ToArray();
             var version = existing.Select(x => x.Version).DefaultIfEmpty(0).Max() + 1;
             var protectedValue = protector.Protect(value);
-            var retained = ledger.Entries.Where(x => x.ApplicationId != applicationId || x.Name != name).ToList();
-            retained.Add(new SecretEntry(applicationId, name, version, protectedValue));
             // A revision names the exact secret version it needs. Retaining merely the newest
             // versions breaks a catalogued rollback after several rotations, so every version
             // referenced by a retained revision (or the current definition) is protected. Three
-            // newest unreferenced values remain for a just-failed rotation to be retried.
+            // newest values remain for a just-failed rotation to be retried.
             var required = RequiredVersions(applicationId, name);
-            var trimmed = retained
-                .GroupBy(x => (x.ApplicationId, x.Name))
-                .SelectMany(group => group.Where(entry => required.Contains(entry.Version))
-                    .Concat(group.OrderByDescending(entry => entry.Version).Take(3))
-                    .DistinctBy(entry => entry.Version))
+            var versions = existing.Append(new SecretEntry(applicationId, name, version, protectedValue)).ToArray();
+            var preserved = versions.Where(entry => required.Contains(entry.Version))
+                .Concat(versions.OrderByDescending(entry => entry.Version).Take(3)).DistinctBy(entry => entry.Version);
+            // Prune only the rotated application's named secret. Applying its required-version set
+            // to another secret would discard versions referenced by that other secret's revisions.
+            var trimmed = ledger.Entries.Where(x => x.ApplicationId != applicationId || x.Name != name)
+                .Concat(preserved)
                 .ToArray();
             Commit(new(trimmed));
             return version;

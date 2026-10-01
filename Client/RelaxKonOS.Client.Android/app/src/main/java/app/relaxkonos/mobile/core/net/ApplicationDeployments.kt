@@ -5,7 +5,7 @@ import org.json.JSONObject
 import java.util.UUID
 import java.util.Locale
 
-/** Read-only projections of Protocol/ApplicationDeployments. Configuration values are not retained. */
+/** Current definition and runtime facts. Secret bodies are rejected in every response. */
 data class DeploymentApplication(
     val id: String,
     val name: String,
@@ -24,11 +24,20 @@ data class DeploymentApplication(
     val domain: String?,
     val driftProblemCode: String?,
     /** The exact product template used to create this instance, if any. */
-    val catalogTemplateId: String? = null,
-    val catalogTemplateVersion: String? = null,
+    val catalogTemplateId: String?,
+    val catalogTemplateVersion: String?,
+    val healthCheckPath: String?,
+    val limits: DeploymentLimits,
+    val volumes: List<DeploymentVolume>,
+    val configuration: List<DeploymentDefinitionConfig>,
+    /** Full server timestamp is the optimistic definition version; never truncate its ticks. */
+    val updatedAt: String,
 )
 
-data class DeploymentRevision(val id: String, val number: Int, val imageReference: String, val isCurrent: Boolean)
+data class DeploymentRevision(
+    val id: String, val number: Int, val imageReference: String, val isCurrent: Boolean,
+    val catalogTemplateId: String?, val catalogTemplateVersion: String?,
+)
 
 /** Bounded, server-sanitized workload output. Android never receives an unbounded log stream here. */
 data class DeploymentLog(val lines: List<String>, val truncated: Boolean)
@@ -245,7 +254,10 @@ internal object ApplicationDeploymentWire {
         DeploymentSnapshot(
             application(json.getJSONObject("application")),
             json.getJSONArray("revisions").objects {
-                DeploymentRevision(it.getString("id"), it.getInt("number"), it.getString("imageReference"), it.getBoolean("isCurrent"))
+                DeploymentRevision(it.getString("id"), it.getInt("number"), it.getString("imageReference"), it.getBoolean("isCurrent"),
+                    it.nullableText("catalogTemplateId"), it.nullableText("catalogTemplateVersion")).also { revision ->
+                    require((revision.catalogTemplateId == null) == (revision.catalogTemplateVersion == null))
+                }
             },
             json.getJSONArray("operations").objects(::operation),
             if (json.isNull("activeOperation")) null else operation(json.getJSONObject("activeOperation")),
@@ -317,7 +329,11 @@ internal object ApplicationDeploymentWire {
         json.nullableText("containerName"), json.getInt("containerPort"), json.nullableInt("hostPort"),
         json.getString("bindAddress"), json.nullableText("siteId"), json.nullableText("domain"), json.nullableText("driftProblemCode"),
         json.nullableText("catalogTemplateId"), json.nullableText("catalogTemplateVersion"),
-    )
+        json.nullableText("healthCheckPath"), DeploymentDefinitionWire.limits(json.getJSONObject("limits")),
+        DeploymentDefinitionWire.volumes(json.getJSONArray("volumes")),
+        DeploymentDefinitionWire.configuration(json.getJSONArray("configuration")),
+        json.getString("updatedAt").also { IsoInstant.requireEpochMillis(it) },
+    ).also { require((it.catalogTemplateId == null) == (it.catalogTemplateVersion == null)) }
 
     private fun operation(json: JSONObject) = DeploymentOperation(
         json.getString("operationId"), json.getString("applicationId"), json.getString("kind"), json.getString("state"), json.getString("stage"),
@@ -325,9 +341,14 @@ internal object ApplicationDeploymentWire {
         IsoInstant.toEpochMillis(json.getString("createdAt")), json.getBoolean("cancellable"),
     )
 
-    private fun JSONObject.nullableText(key: String): String? =
-        if (isNull(key)) null else getString(key).takeIf { it.isNotBlank() }
-    private fun JSONObject.nullableInt(key: String): Int? = if (isNull(key)) null else getInt(key)
+    private fun JSONObject.nullableText(key: String): String? {
+        require(has(key)) { "Missing $key" }
+        return if (isNull(key)) null else (get(key) as? String ?: error("Invalid $key"))
+    }
+    private fun JSONObject.nullableInt(key: String): Int? {
+        require(has(key)) { "Missing $key" }
+        return if (isNull(key)) null else getInt(key)
+    }
     private fun <T> JSONArray.objects(parse: (JSONObject) -> T): List<T> =
         (0 until length()).map { parse(getJSONObject(it)) }
     private fun JSONArray.strings(): List<String> = (0 until length()).map(::getString)

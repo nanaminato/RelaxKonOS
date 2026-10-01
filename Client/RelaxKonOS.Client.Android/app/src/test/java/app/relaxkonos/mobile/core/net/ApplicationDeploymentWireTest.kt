@@ -12,7 +12,10 @@ class ApplicationDeploymentWireTest {
         "hostPort":null, "bindAddress":"127.0.0.1", "currentRevisionNumber":null,
         "containerName":null, "domain":null, "driftProblemCode":null,
         "catalogTemplateId":"personal-site", "catalogTemplateVersion":"1.0.0",
-        "configuration":[{"name":"TOKEN","value":"must-not-be-retained","isSecret":true}]
+        "siteId":null, "healthCheckPath":"/health", "limits":{"cpuCores":1.5,"memoryBytes":16777217,"pidsLimit":512},
+        "volumes":[{"name":"data","containerPath":"/app/data:live","readOnly":true}],
+        "updatedAt":"2026-10-01T00:00:00.1234567+00:00",
+        "configuration":[{"name":"TOKEN","value":null,"isSecret":true,"secretVersion":7}]
     }"""
 
     @Test fun `routes match the authoritative protocol version and encode only UUIDs`() {
@@ -35,7 +38,30 @@ class ApplicationDeploymentWireTest {
         assertEquals("personal-site", app.catalogTemplateId)
         assertEquals("1.0.0", app.catalogTemplateVersion)
         assertEquals("unknown", app.actualState)
-        assertFalse(app.toString().contains("must-not-be-retained"))
+        assertNull(app.configuration.single().value)
+        assertEquals(7, app.configuration.single().secretVersion)
+        assertEquals("/health", app.healthCheckPath)
+        assertEquals(16777217L, app.limits.memoryBytes)
+        assertEquals("/app/data:live", app.volumes.single().containerPath)
+        assertTrue(app.volumes.single().readOnly)
+        assertEquals("2026-10-01T00:00:00.1234567+00:00", app.updatedAt)
+    }
+
+    @Test fun `missing definition fields malformed secret metadata and secret bodies reject the response`() {
+        for (field in listOf("limits", "volumes", "configuration", "updatedAt", "healthCheckPath", "catalogTemplateId", "catalogTemplateVersion")) {
+            val json = JSONObject(application).apply { remove(field) }
+            assertThrows(Exception::class.java) { ApplicationDeploymentWire.applications("[$json]") }
+        }
+        for (field in listOf("value", "secretVersion")) {
+            val json = JSONObject(application)
+            json.getJSONArray("configuration").getJSONObject(0).remove(field)
+            assertThrows(Exception::class.java) { ApplicationDeploymentWire.applications("[$json]") }
+        }
+        val exposed = JSONObject(application)
+        exposed.getJSONArray("configuration").getJSONObject(0).put("value", "must-not-be-retained")
+        assertThrows(Exception::class.java) { ApplicationDeploymentWire.applications("[$exposed]") }
+        assertThrows(Exception::class.java) { ApplicationDeploymentWire.applications("[${JSONObject(application).put("catalogTemplateId", JSONObject.NULL)}]") }
+        assertThrows(Exception::class.java) { ApplicationDeploymentWire.applications("[${JSONObject(application).put("updatedAt", "2026-02-30T00:00:00Z")}]") }
     }
 
     @Test fun `missing required runtime state rejects the response`() {
@@ -52,7 +78,7 @@ class ApplicationDeploymentWireTest {
         val operation = """{"operationId":"op-1","applicationId":"d3708cc7-3e7e-42ad-b498-11466a48af23","kind":"deploy","state":"running","stage":"pulling",
             "progress":null,"problemCode":null,"recoveryProblemCode":null,"createdAt":"2026-09-26T12:00:00Z","cancellable":true}"""
         val snapshot = ApplicationDeploymentWire.snapshot("""{"application":$application,
-            "revisions":[{"id":"rev-1","number":1,"imageReference":"image@sha256:abc","isCurrent":false}],
+            "revisions":[{"id":"rev-1","number":1,"imageReference":"image@sha256:abc","isCurrent":false,"catalogTemplateId":"personal-site","catalogTemplateVersion":"0.9.0"}],
             "operations":[],"activeOperation":$operation}""")
         assertTrue(snapshot.operations.isEmpty())
         assertEquals("pulling", snapshot.activeOperation!!.stage)
@@ -61,6 +87,7 @@ class ApplicationDeploymentWireTest {
         assertTrue(snapshot.activeOperation.cancellable)
         assertNotNull(snapshot.activeOperation.createdAtMillis)
         assertFalse(snapshot.revisions.single().isCurrent)
+        assertEquals("0.9.0", snapshot.revisions.single().catalogTemplateVersion)
     }
 
     @Test fun `runtime missing and runtime available are authoritative booleans`() {

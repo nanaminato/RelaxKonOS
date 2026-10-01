@@ -51,7 +51,7 @@ object CertificateRoutes {
 object CertificateWire {
     private inline fun <reified T : Enum<T>> enum(value: String, wire: (T) -> String): T = enumValues<T>().single { wire(it) == value }
     private fun JSONObject.id(name: String) = InstallationRoutes.canonicalId(getString(name)).also { require(it != "00000000-0000-0000-0000-000000000000") }
-    private fun JSONObject.time(name: String): Long? = if (isNull(name)) null else java.time.Instant.parse(getString(name)).toEpochMilli()
+    private fun JSONObject.time(name: String): Long? = if (isNull(name)) null else IsoInstant.requireEpochMillis(getString(name))
     private fun JSONObject.text(name: String): String? = if (isNull(name)) null else getString(name)
     private fun JSONArray.strings() = List(length()) { getString(it) }
     fun list(payload: String): List<ManagedCertificate> = JSONArray(payload).let { json -> List(json.length()) { record(json.getJSONObject(it)) }.also { records -> require(records.map { it.id }.distinct().size == records.size) } }
