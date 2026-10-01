@@ -191,7 +191,7 @@ class JschServerCenterTransport : ServerCenterSshTransport {
         val channel = requireSession().openChannel("shell") as ChannelShell
         try {
             channel.setPty(true)
-            channel.setPtyType("dumb")
+            channel.setPtyType("xterm-256color")
             channel.setPtySize(80, 24, 640, 384)
             val terminal = JschInteractiveTerminal(channel, channel.inputStream, channel.outputStream)
             channel.connect(CHANNEL_CONNECT_TIMEOUT_MILLIS)

@@ -12,6 +12,9 @@
     <string name="common_back">戻る</string>
     <string name="common_cancel">キャンセル</string>
     <string name="common_close">閉じる</string>
+    <string name="server_operation_clear">終了した記録を消去</string>
+    <string name="server_operation_clear_note">一覧にある終了した記録、イベント履歴、ログをサーバーから削除し、端末の索引も消去しますか？実行中、記録が見つからない操作、未確認の操作は保持します。再実行を防ぐためリクエストのダイジェストは保持します。</string>
+    <string name="server_operation_clear_failed">一部の記録を消去できませんでした。SSH 接続を確認して再試行してください。</string>
     <string name="common_collapse">詳細を隠す</string>
     <string name="common_create">作成</string>
     <string name="common_delete">削除</string>

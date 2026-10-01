@@ -19,6 +19,7 @@ param(
     # Replay the persistent record of an earlier operation instead of running a new one.
     [string] $QueryOperationId,
     [string] $DiagnosticsOperationId,
+    [string] $ClearOperationId,
     # List the most recent operation records on this host.
     [switch] $ListOperations
 )
@@ -1037,6 +1038,25 @@ function Invoke-UninstallAction {
 }
 
 # --- entry ---------------------------------------------------------------------------------------
+if ($ClearOperationId) {
+    if ($ClearOperationId -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') { exit 64 }
+    $script:record.operationId = $ClearOperationId.ToLowerInvariant()
+    Initialize-Journal
+    try { $script:lockStream = [IO.File]::Open($lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) }
+    catch { exit 75 }
+    $recordPath = Get-OperationRecordPath
+    if (-not (Test-Path -LiteralPath $recordPath -PathType Leaf)) { exit 66 }
+    if ((Get-Item -LiteralPath $recordPath -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { exit 65 }
+    if (Test-Path -LiteralPath $recordPath -PathType Leaf) {
+        $receipt = ConvertFrom-StrictJsonObject ([IO.File]::ReadAllText($recordPath))
+        if ($receipt.operationId -cne $script:record.operationId -or $receipt.state -cnotin @('succeeded', 'failed', 'cancelled', 'interrupted')) { exit 65 }
+    }
+    # Keep the request digest to prevent a cleared operation from executing again.
+    foreach ($path in @((Get-OperationDiagnosticsPath), (Get-OperationEventsPath), $recordPath)) {
+        if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
+    }
+    exit 0
+}
 if ($DiagnosticsOperationId) {
     if ($DiagnosticsOperationId -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') { exit 64 }
     $script:record.operationId = $DiagnosticsOperationId.ToLowerInvariant()

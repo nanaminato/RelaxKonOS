@@ -4,7 +4,7 @@
 
 ## 1. 共同设备与发布检查
 
-2026-10-01 操作记录修复：平台自动识别，每条记录支持展开回执与按需读取日志。`ServerCenterDeploymentClientTest` 和 `assembleDebug --offline` 通过，覆盖固定 diagnostics 动作、无效 ID 拒绝、日志截断及敏感字段遮盖。实体手机长日志滚动/复制、Windows 宿主日志和真实历史记录查询仍待验证。
+2026-10-01 操作记录：平台自动识别，「查看详情」通过可滚动、可复制的弹窗展示回执与按需读取日志，支持关闭按钮、返回键和窗口外点击关闭。「清除已结束记录」确认后删除列表中已核验结束的远端回执、事件和日志，同步移除本地索引，保留运行中、缺失及未核验记录与防重放请求摘要。`assembleDebug --offline`、`ServerCenterDeploymentClientTest`、`ServerInstallOperationIndexTest` 通过；Windows 清除入口的隔离测试 `Tests/Deployment/operation_history_checks.py` 三项通过，覆盖四种结束状态、运行/排队/未知/缺失/编号不匹配和写锁冲突；Linux 启动器 `bash -n` 通过。此前客户端测试覆盖固定 diagnostics 动作、无效 ID 拒绝、日志截断及敏感字段遮盖。实体手机弹窗关闭、清除确认与失败重试、长日志滚动/复制、真实 Linux/Windows SSH 清除与历史记录查询仍待验证。
 
 2026-10-01 Linux 监听地址回执：从受管安装记录读取 listenUrl，保留真实协议、绑定地址和端口；不再虚构 HTTP 回环地址。`ListenAddressChecks.ps1` 与 Android `assembleDebug --offline` 通过。实体设备刷新后与真实宿主配置的对照仍待执行。
 

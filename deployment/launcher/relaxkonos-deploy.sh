@@ -953,6 +953,28 @@ action_uninstall() {
 
 # --- entry -------------------------------------------------------------------------------------
 case "${1:-}" in
+  --clear-operation)
+    operation_id=${2:-}
+    [[ $operation_id =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] || exit 64
+    operation_id=${operation_id,,}
+    ensure_journal
+    exec 8>"$lock_path"
+    flock -n 8 || exit 75
+    [[ -f $(record_path) && ! -L $(record_path) ]] || exit 66
+    if [[ -f $(record_path) ]]; then
+      python3 - "$(record_path)" "$operation_id" <<'PY'
+import json, sys
+with open(sys.argv[1], encoding='utf-8') as f:
+    receipt = json.load(f)
+if receipt.get('operationId') != sys.argv[2] or receipt.get('state') not in ('succeeded', 'failed', 'cancelled', 'interrupted'):
+    sys.exit(65)
+PY
+      [[ $? == 0 ]] || exit 65
+    fi
+    # Keep the request digest to prevent a cleared operation from executing again.
+    rm -f -- "$(diagnostics_path)" "$(events_path)" "$(record_path)"
+    exit $?
+    ;;
   --recover-state)
     deployment_python recover
     exit $?

@@ -15,6 +15,19 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.fail
 
 class ServerCenterDeploymentClientTest {
+    @Test fun `clear uses fixed action and rejects invalid identifiers`() = runTest {
+        val transport = FakeDeploymentTransport()
+        val client = ServerCenterDeploymentClient(transport)
+        val lookup = client.stageLookup(ServerHostPlatform.Linux, ServerCenterUploadAsset.bytes(byteArrayOf(1)))
+        val id = UUID.randomUUID().toString()
+        client.clearOperation(lookup, id)
+        assertTrue(transport.commands.last().endsWith(" --clear-operation $id"))
+        val count = transport.commands.size
+        try { client.clearOperation(lookup, "../../bad"); fail("Invalid id accepted") } catch (_: IllegalArgumentException) { }
+        assertEquals(count, transport.commands.size)
+        transport.clearExitStatus = 75
+        try { client.clearOperation(lookup, id); fail("Clear failure ignored") } catch (_: java.io.IOException) { }
+    }
     @Test fun `details read fixed diagnostics action with bounded redacted text`() = runTest {
         val transport = FakeDeploymentTransport()
         val client = ServerCenterDeploymentClient(transport)
@@ -253,6 +266,7 @@ private class FakeDeploymentTransport : ServerCenterSshTransport {
     val uploadOrder = mutableListOf<String>()
     var listedOperationId: String? = null
     var missingOperationId: String? = null
+    var clearExitStatus = 0
 
     override suspend fun connect(
         endpoint: ServerCenterSshEndpoint,
@@ -263,6 +277,7 @@ private class FakeDeploymentTransport : ServerCenterSshTransport {
     override suspend fun run(command: String): ServerCenterSshCommandResult {
         commands += command
         return when {
+            command.contains(" --clear-operation ") -> ServerCenterSshCommandResult(clearExitStatus, "", "")
             command.contains(" --diagnostics ") -> ServerCenterSshCommandResult(0, "password=private-value\n" + "x".repeat(70000), "")
             command.contains("mktemp") -> ServerCenterSshCommandResult(
                 0, "/tmp/relaxkonos-deploy.abcdefgh\n", "",

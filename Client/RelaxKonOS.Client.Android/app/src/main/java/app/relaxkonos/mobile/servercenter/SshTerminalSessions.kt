@@ -106,11 +106,11 @@ class SshTerminalSessions(
                 val connection = connector.connect(session.hostId)
                 runtime.connection = connection
                 if (!current(id, runtime)) return@launch
-                val transcript = SshTerminalTranscript()
                 update(id) { it.copy(connecting = false, connected = true) }
                 while (current(id, runtime)) {
                     val output = connection.terminal.read() ?: break
-                    if (current(id, runtime)) update(id) { it.copy(output = transcript.append(output)) }
+                    // Keep VT sequences intact. The terminal emulator owns parsing and screen state.
+                    if (current(id, runtime)) update(id) { it.copy(output = it.output + output) }
                 }
                 if (current(id, runtime)) update(id) { it.copy(connecting = false, connected = false) }
             } catch (_: CancellationException) {
@@ -127,7 +127,7 @@ class SshTerminalSessions(
 
     fun send(id: String, value: String) = operate(id) { it.write(value) }
     fun resize(id: String, columns: Int, rows: Int) = operate(id) {
-        it.resize(columns.coerceIn(20, 300), rows.coerceIn(5, 100))
+        it.resize(columns.coerceIn(2, 500), rows.coerceIn(1, 200))
     }
 
     private fun operate(id: String, action: suspend (ServerCenterSshTerminal) -> Unit) {
