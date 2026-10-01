@@ -42,6 +42,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
@@ -160,6 +161,10 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
     var pendingDownload by remember(hostId, workspaceRevision) { mutableStateOf<Pair<Boolean, Uri?>?>(null) }
     var pasteConfirm by remember(hostId, workspaceRevision) { mutableStateOf<Pair<SshClipboard, String>?>(null) }
     var adoptConfirm by remember(hostId, workspaceRevision) { mutableStateOf<List<SshFileCheck>?>(null) }
+    var showTransferHelp by remember(hostId) { mutableStateOf(false) }
+    var editAddress by remember(hostId) { mutableStateOf(false) }
+    var showSort by remember(hostId) { mutableStateOf(false) }
+    var fileActions by remember(hostId) { mutableStateOf(false) }
     val pickUpload = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> pendingUpload = uris }
     val pickTree = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> pendingTree = uri }
     val saveDownload = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri -> pendingDownload = true to uri }
@@ -178,7 +183,7 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
         }
     }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-        Text(stringResource(R.string.ssh_files_transfer_note), style = MaterialTheme.typography.bodySmall)
+        if (state.busy) Text(stringResource(R.string.ssh_files_transfer_note), style = MaterialTheme.typography.bodySmall)
         if (state.busy) TextButton(model::cancelTransfer) { Text(stringResource(R.string.common_cancel)) }
         if (state.unknown) {
             Text(stringResource(R.string.ssh_files_unknown), color = MaterialTheme.colorScheme.error)
@@ -209,7 +214,10 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
                     onSaveText = model::saveText,
                 )
             } else {
-                Text(stringResource(R.string.ssh_files_title), style = MaterialTheme.typography.headlineSmall)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.ssh_files_title), modifier = Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall)
+                    TextButton(onClick = { showTransferHelp = true }) { Text(stringResource(R.string.ssh_files_transfer_help)) }
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -217,33 +225,52 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
                     IconButton(onClick = model::up, enabled = state.path != "/" && !state.busy) {
                         DesktopIcon(DesktopIcons.upload, contentDescription = stringResource(R.string.ssh_files_up))
                     }
-                    Text(state.path, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { editAddress = !editAddress }, modifier = Modifier.weight(1f), enabled = !state.busy) {
+                        Text(state.path, modifier = Modifier.fillMaxWidth(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    IconButton(onClick = model::backDirectory, enabled = !state.busy && state.historyIndex > 0) {
+                        DesktopIcon(DesktopIcons.back, contentDescription = stringResource(R.string.ssh_files_back))
+                    }
                     IconButton(onClick = model::reload, enabled = !state.busy) {
                         DesktopIcon(DesktopIcons.refresh, contentDescription = stringResource(R.string.ssh_files_refresh))
                     }
                 }
                 var address by remember(hostId, state.path) { mutableStateOf(state.path) }
+                if (editAddress) {
                 OutlinedTextField(value = address, onValueChange = { if (it.length <= 4096) address = it }, enabled = !state.busy, singleLine = true,
                     modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ssh_files_address)) })
                 FlowRow {
-                    TextButton({ model.navigate(address) }, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_go)) }
-                    TextButton(model::backDirectory, enabled = !state.busy && state.historyIndex > 0) { Text(stringResource(R.string.ssh_files_back)) }
+                    TextButton({ model.navigate(address); editAddress = false }, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_go)) }
                     TextButton(model::forwardDirectory, enabled = !state.busy && state.historyIndex < state.history.lastIndex) { Text(stringResource(R.string.ssh_files_forward)) }
+                    TextButton({ editAddress = false }) { Text(stringResource(R.string.common_cancel)) }
                 }
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(value = state.search, onValueChange = model::search, enabled = !state.busy, singleLine = true,
-                    modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ssh_files_search)) })
+                    modifier = Modifier.weight(1f), label = { Text(stringResource(R.string.ssh_files_search)) })
+                    TextButton(onClick = { showSort = !showSort }) { Text(stringResource(R.string.ssh_files_sort)) }
+                }
+                if (showSort) {
                 FlowRow {
                     SshFileSort.entries.forEach { sort -> androidx.compose.material3.FilterChip(selected = state.sort == sort, onClick = { model.sort(sort) }, enabled = !state.busy,
                         label = { Text(stringResource(when (sort) { SshFileSort.Name -> R.string.ssh_files_sort_name; SshFileSort.Modified -> R.string.ssh_files_sort_modified;
                             SshFileSort.Type -> R.string.ssh_files_sort_type; SshFileSort.Size -> R.string.ssh_files_sort_size })) }) }
                     TextButton(model::reverseSort, enabled = !state.busy) { Text(stringResource(if (state.descending) R.string.ssh_files_sort_descending else R.string.ssh_files_sort_ascending)) }
                 }
-                Text(stringResource(R.string.ssh_files_counts, state.visibleEntries.size, state.entries.size, state.selectedPaths.size))
+                }
+                Text(stringResource(R.string.ssh_files_counts, state.visibleEntries.size, state.entries.size, state.selectedPaths.size), style = MaterialTheme.typography.bodySmall)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), modifier = Modifier.fillMaxWidth()) {
-                    OutlinedButton(model::beginCreateDirectory, enabled = !state.busy && !state.unknown) { Text(stringResource(R.string.ssh_files_new_folder)) }
                     Button({ pickUpload.launch(arrayOf("*/*")) }, enabled = !state.busy && !state.unknown) { Text(stringResource(R.string.ssh_files_upload)) }
-                    OutlinedButton({ pickTree.launch(null) }, enabled = !state.busy && !state.unknown) { Text(stringResource(R.string.ssh_files_upload_folder)) }
                     TextButton(model::selectMode, enabled = !state.busy) { Text(stringResource(if (state.selecting) R.string.ssh_files_selection_done else R.string.ssh_files_select_multiple)) }
+                    androidx.compose.foundation.layout.Box {
+                        TextButton(onClick = { fileActions = true }, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_more)) }
+                        DropdownMenu(expanded = fileActions, onDismissRequest = { fileActions = false }) {
+                            DropdownMenuItem(text = { Text(stringResource(R.string.ssh_files_new_folder)) }, enabled = !state.unknown,
+                                onClick = { fileActions = false; model.beginCreateDirectory() })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.ssh_files_upload_folder)) }, enabled = !state.unknown,
+                                onClick = { fileActions = false; pickTree.launch(null) })
+                        }
+                    }
                     if (state.selecting) TextButton(model::selectAllVisible, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_select_all)) }
                     if (state.selectedPaths.isNotEmpty()) {
                         TextButton({ model.clipboard(cut = false) }, enabled = !state.busy && !state.unknown) { Text(stringResource(R.string.ssh_files_copy)) }
@@ -287,6 +314,10 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
             }
         }
     }
+    if (showTransferHelp) AlertDialog(onDismissRequest = { showTransferHelp = false },
+        title = { Text(stringResource(R.string.ssh_files_transfer_help)) },
+        text = { Text(stringResource(R.string.ssh_files_transfer_note)) },
+        confirmButton = { TextButton(onClick = { showTransferHelp = false }) { Text(stringResource(R.string.common_close)) } })
     if (state.discardRequested) AlertDialog(onDismissRequest = model::cancelDiscard,
         title = { Text(stringResource(R.string.ssh_files_discard_title)) }, text = { Text(stringResource(R.string.ssh_files_discard_note)) },
         confirmButton = { TextButton(model::discardDetail) { Text(stringResource(R.string.ssh_files_discard)) } },

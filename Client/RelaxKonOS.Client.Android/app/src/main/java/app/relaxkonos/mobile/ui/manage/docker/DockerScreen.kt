@@ -338,6 +338,7 @@ fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialSt
     val viewModel: DockerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val state = viewModel.state
     val available = state.owner?.capabilities?.contains(ServerCapabilities.DOCKER) == true
+    val notInstalled = (state.status as? ApiResult.Success)?.value?.problemCode == "docker.not_installed"
     var composer by remember { mutableStateOf(false) }
     var composeDraft by remember { mutableStateOf(DEFAULT_COMPOSE) }
     var destructive by remember { mutableStateOf<Pair<DockerRemoval, () -> Unit>?>(null) }
@@ -349,16 +350,19 @@ fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialSt
     Column(modifier.fillMaxSize().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         ScreenHeader(
             title = stringResource(R.string.docker_title), onBack = onBack,
-            trailing = { Row { TextButton(onClick = { picker.launch(arrayOf("text/yaml", "application/x-yaml", "text/plain")) }, enabled = available) { Text(stringResource(R.string.docker_import)) }
-                TextButton(onClick = { composer = true }, enabled = available) { Text(stringResource(R.string.docker_new_stack)) }
+            trailing = { Row { if (!notInstalled) { TextButton(onClick = { picker.launch(arrayOf("text/yaml", "application/x-yaml", "text/plain")) }, enabled = available) { Text(stringResource(R.string.docker_import)) }
+                TextButton(onClick = { composer = true }, enabled = available) { Text(stringResource(R.string.docker_new_stack)) } }
                 TextButton(onClick = viewModel::refresh, enabled = available && !state.loading) { Text(stringResource(R.string.common_refresh)) } } },
         )
         if (!available) { EmptyHint(stringResource(R.string.error_capability_missing)); return@Column }
         state.message?.let { message -> ErrorBanner(message.text(), viewModel::refresh, viewModel::dismissMessage, tone = message.tone) }
         if (state.loading || state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        TextButton(onClick = onOpenResources) { Text(stringResource(R.string.docker_resources_title)) }
-        TextButton(onClick = onOpenControl) { Text(stringResource(R.string.docker_control_title)) }
+        if (!notInstalled) TextButton(onClick = onOpenResources) { Text(stringResource(R.string.docker_resources_title)) }
+        TextButton(onClick = onOpenControl) { Text(stringResource(if (notInstalled) R.string.docker_control_install else R.string.docker_control_title)) }
         TextButton(onClick = onOpenProxy) { Text(stringResource(R.string.proxy_title)) }
+        if (notInstalled) {
+            EmptyHint(stringResource(R.string.runtime_install_hint, "Docker"))
+        } else {
         DockerStatusCard(state.status)
         LazyColumn(verticalArrangement = Arrangement.spacedBy(Spacing.md), modifier = Modifier.weight(1f)) {
             item {
@@ -370,6 +374,7 @@ fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialSt
             item { SimpleList(stringResource(R.string.docker_images), state.images) { "${it.repository}:${it.tag} · ${it.size}" } }
             item { SimpleList(stringResource(R.string.docker_volumes), state.volumes) { "${it.name} · ${it.driver}" } }
             item { SimpleList(stringResource(R.string.docker_networks), state.networks) { "${it.name} · ${it.driver}" } }
+        }
         }
     }
     if (composer) DockerComposer(

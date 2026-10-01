@@ -37,6 +37,7 @@ private data class ProxyConfirmation(val action: () -> Unit)
     var recovering by remember(owner, epoch) { mutableStateOf(false) }
     var attemptedInitial by remember(owner, epoch, initialOperationId) { mutableStateOf(false) }
     var networkSection by remember(owner, epoch) { mutableStateOf(false) }
+    var showRecovery by remember(owner, epoch) { mutableStateOf(false) }
     LaunchedEffect(owner, epoch) { if (available) model.refresh() }
     LaunchedEffect(owner, epoch, initialOperationId, state.busy) {
         if (available && initialOperationId != null && !state.busy && !attemptedInitial) { attemptedInitial = true; model.recoverOperation(initialOperationId) }
@@ -48,6 +49,7 @@ private data class ProxyConfirmation(val action: () -> Unit)
         if (state.installationVerified && state.installation?.state?.active == true && !state.busy) { delay(1500); model.pollInstall() }
     }
     val overview = (state.overview as? ApiResult.Success)?.value
+    val notInstalled = overview?.runtime?.state == ProxyRuntimeState.NotInstalled
     val profiles = (state.profiles as? ApiResult.Success)?.value
     val subscriptions = (state.subscriptions as? ApiResult.Success)?.value
     val current = profiles?.firstOrNull { it.id == selected }
@@ -72,13 +74,14 @@ private data class ProxyConfirmation(val action: () -> Unit)
         }
         FlowRow {
             TextButton(enabled = !state.busy, onClick = model::refresh) { Text(stringResource(R.string.common_refresh)) }
-            if (canManage) OutlinedButton(enabled = !state.busy && state.installation?.state?.active != true, onClick = { install = true }) { Text(stringResource(R.string.mihomo_runtime_manage)) }
+            if (canManage) OutlinedButton(enabled = !state.busy && state.installation?.state?.active != true, onClick = { install = true }) { Text(if (notInstalled) stringResource(R.string.runtime_install_action, "Mihomo") else stringResource(R.string.mihomo_runtime_manage)) }
         }
         if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         state.problemCode?.let { Text(proxyProblemLabel(it), color = MaterialTheme.colorScheme.error) }
         if (state.uncertain) Text(stringResource(R.string.mihomo_uncertain), color = MaterialTheme.colorScheme.error)
         state.observedAtMillis?.let { Text(stringResource(R.string.mihomo_observed, DateFormat.getDateTimeInstance().format(Date(it))), style = MaterialTheme.typography.bodySmall) }
         if (overview == null) Text(stringResource(R.string.mihomo_unavailable)) else {
+            if (notInstalled) Text(stringResource(R.string.runtime_install_hint, "Mihomo")) else {
             Text(proxyRuntimeLabel(overview.runtime.state), style = MaterialTheme.typography.titleMedium)
             overview.runtime.version?.let { Text(stringResource(R.string.tunnels_version_value, it)) }
             overview.runtime.previousVersion?.let { Text(stringResource(R.string.tunnels_previous_version, it)) }
@@ -91,6 +94,7 @@ private data class ProxyConfirmation(val action: () -> Unit)
                     OutlinedButton(enabled = ready && supported, onClick = { confirm = ProxyConfirmation { model.queue(action) } }) { Text(proxyActionLabel(action)) }
                 }
             }
+            }
         }
         state.operation?.let { operation ->
             Text(operation.operationId, style = MaterialTheme.typography.bodySmall)
@@ -98,7 +102,8 @@ private data class ProxyConfirmation(val action: () -> Unit)
             if (state.operationVerified) { Text(proxyStageLabel(operation.stage)); operation.problemCode.takeIf(String::isNotBlank)?.let { Text(proxyProblemLabel(it)) } }
             TextButton(enabled = !state.busy, onClick = model::pollOperation) { Text(stringResource(R.string.common_refresh)) }
         }
-        TextButton(enabled = !state.busy, onClick = { recoveredId = ""; recoverInstallation = false; recovering = true }) { Text(stringResource(R.string.mihomo_recover_operation)) }
+        if (notInstalled) TextButton(onClick = { showRecovery = !showRecovery }) { Text(stringResource(R.string.runtime_recovery_tools)) }
+        if (!notInstalled || showRecovery) TextButton(enabled = !state.busy, onClick = { recoveredId = ""; recoverInstallation = false; recovering = true }) { Text(stringResource(R.string.mihomo_recover_operation)) }
         state.installation?.let { operation ->
             Text(operation.operationId, style = MaterialTheme.typography.bodySmall)
             if (state.installationVerified) {
@@ -114,7 +119,7 @@ private data class ProxyConfirmation(val action: () -> Unit)
             Text(stringResource(R.string.mihomo_install_pending), color = MaterialTheme.colorScheme.error)
             if (canManage && model.hasIntent) TextButton(enabled = !state.busy, onClick = { confirm = ProxyConfirmation(model::retryInstall) }) { Text(stringResource(R.string.common_retry)) }
         }
-        if (canManage) TextButton(enabled = !state.busy, onClick = { recoveredId = ""; identified = false; recoverInstallation = true; recovering = true }) { Text(stringResource(R.string.mihomo_recover_installation)) }
+        if (canManage && (!notInstalled || showRecovery)) TextButton(enabled = !state.busy, onClick = { recoveredId = ""; identified = false; recoverInstallation = true; recovering = true }) { Text(stringResource(R.string.mihomo_recover_installation)) }
         state.pending.forEach { pending ->
             Text(stringResource(R.string.mihomo_pending), color = MaterialTheme.colorScheme.error)
             Text(pending.key, style = MaterialTheme.typography.bodySmall)
@@ -127,7 +132,10 @@ private data class ProxyConfirmation(val action: () -> Unit)
                     onClick = { confirm = ProxyConfirmation { model.accept(pending) } }) { Text(stringResource(R.string.mihomo_accept_facts)) }
             }
         }
-        if (networkSection) { key(owner, epoch) { ProxyNetworkPanel(model, canManage, ready) { action -> confirm = ProxyConfirmation(action) } }; return@Column }
+        if (networkSection) {
+            if (!notInstalled) key(owner, epoch) { ProxyNetworkPanel(model, canManage, ready) { action -> confirm = ProxyConfirmation(action) } }
+            return@Column
+        }
         HorizontalDivider()
         Text(stringResource(R.string.mihomo_subscriptions), style = MaterialTheme.typography.titleMedium)
         if (canManage) FlowRow {
@@ -157,6 +165,7 @@ private data class ProxyConfirmation(val action: () -> Unit)
                 }
             }
         }
+        if (!notInstalled) {
         HorizontalDivider()
         Text(stringResource(R.string.mihomo_nodes), style = MaterialTheme.typography.titleMedium)
         if (!connected) Text(stringResource(R.string.mihomo_controller_unavailable)) else {
@@ -180,6 +189,7 @@ private data class ProxyConfirmation(val action: () -> Unit)
             (state.delay as? ApiResult.Success)?.value?.let { result ->
                 Text(result.proxyName + " · " + if (result.timedOut || result.delayMilliseconds == null) stringResource(R.string.mihomo_timeout) else stringResource(R.string.mihomo_delay_result, result.delayMilliseconds))
             }
+        }
         }
     }
     if (install) key(owner, epoch) { ProxyInstallEditor(model) { install = false } }

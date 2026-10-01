@@ -59,15 +59,16 @@ private data class ControlConfirmation(val facts: DockerControlFacts, val change
         if (visible && state.resourcePending) Text(stringResource(R.string.docker_resources_pending), color = MaterialTheme.colorScheme.error)
         Text(stringResource(R.string.docker_runtime), style = MaterialTheme.typography.titleLarge)
         if (facts == null) Text(stringResource(R.string.docker_control_unverified)) else {
-            Text(stringResource(if (facts.status.available) R.string.docker_control_running else R.string.docker_control_unavailable))
+            val notInstalled = facts.status.problemCode == "docker.not_installed"
+            Text(stringResource(if (notInstalled) R.string.docker_control_not_installed else if (facts.status.available) R.string.docker_control_running else R.string.docker_control_unavailable))
             if (facts.status.serverVersion.isNotEmpty()) Text(facts.status.serverVersion)
             Text(listOf(facts.status.operatingSystem, facts.status.architecture).filter(String::isNotBlank).joinToString(" / "))
-            if (facts.status.problemCode.isNotBlank()) Text(controlProblem(facts.status.problemCode))
+            if (!notInstalled && facts.status.problemCode.isNotBlank()) Text(controlProblem(facts.status.problemCode))
             state.checkedAtMillis?.let { Text(stringResource(R.string.operations_checked, DateFormat.getDateTimeInstance().format(Date(it)))) }
             if (owner.serverPlatform.equals("linux", true)) Text(stringResource(R.string.docker_control_linux))
             else Text(stringResource(R.string.docker_control_windows))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                if (manage) DockerEngineAction.entries.forEach { action ->
+                if (manage && !notInstalled) DockerEngineAction.entries.forEach { action ->
                     val kind = when (action) { DockerEngineAction.Start -> DockerControlKind.EngineStart; DockerEngineAction.Stop -> DockerControlKind.EngineStop; DockerEngineAction.Restart -> DockerControlKind.EngineRestart }
                     OutlinedButton(enabled = ready && draft == null && (action == DockerEngineAction.Start || facts.status.available),
                         onClick = { confirmation = ControlConfirmation(facts, DockerControlChange(kind)) }) { Text(controlActionLabel(kind)) }

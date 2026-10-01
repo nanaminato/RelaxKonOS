@@ -2615,4 +2615,11 @@
     <string name="terminal_type_native">Native (Server mode)</string>
     <string name="terminal_type_xterm">xterm.js</string>
     <string name="terminal_session_name">Session %1$d</string>
+    <string name="ssh_files_transfer_help">Transfer details</string>
+    <string name="ssh_files_sort">Sort</string>
+    <string name="ssh_files_more">More</string>
+    <string name="runtime_install_hint">%1$s is not installed on this server. Install it to use this feature.</string>
+    <string name="runtime_install_action">Install %1$s</string>
+    <string name="guardian_agent_permission">The server cannot access the Guardian service. Repair the server installation and refresh.</string>
+    <string name="runtime_recovery_tools">Recover a previous operation</string>
 </resources>

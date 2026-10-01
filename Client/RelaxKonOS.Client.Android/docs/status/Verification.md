@@ -733,6 +733,11 @@ BP24 持续验证与文档同步不是新的 Android 编译环境搭建任务，
 
 - `adb devices -l` 实际返回空设备列表；没有执行 instrumentation、Compose 页面或手机/平板视觉/IME/旋转/后台/前台服务验收。真实 SSH/SFTP/SAF、Docker 更新/回滚/数据恢复、Ubuntu/Windows 设置写入、外部浏览器和通知仍保留在对应 BP 待验项。JVM 假传输/提供方检查和 instrumentation APK 打包不替代设备或真实宿主结果。
 
+### SM-X510 可用性修复（2026-10-01）
+
+- TAB-04/05 已按实体 SM-X510 和真实 Linux 宿主证据关闭：Guardian IPC 权限修复后脚本执行及临时工作负载完整创建/读回/启动/停止/删除通过；SSH 系统横屏普通及150%字体退出入口通过。SSH 文件折叠工具和 Docker/FRP/Mihomo 未安装状态已真机复验，具体边界及剩余项见 [TabletUsability.md](TabletUsability.md)。
+- 最终 Android 离线 APK 构建、安装通过；Server 构建和 Guardian 只读专项22项、安装脚本语法检查通过。Docker 安装后功能、文件传输及既有 lint 缺陷仍待验。
+
 ### fix_ssh → master 合并验证（2026-10-01）
 
 - 合并基线：`master=fcae92b2`、`fix_ssh=cf342d96`。保留 master 的 BP 功能、完整 VT 字符单元解析/工作区设置和既有测试证据，以及 fix_ssh 的 SSH 多会话、xterm.js/原生切换、安装维护/证书信任和有界下载。冲突整合后，SSH 布局采用当前双参数 header/侧栏接口；工作区保留设置入口并增加本地转发目的地，设置仍为索引 4。Help 三语说明同步当前 SSH 安装能力，补齐两项日文系统指标资源。

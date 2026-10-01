@@ -2576,4 +2576,11 @@
     <string name="terminal_type_native">原生终端（Server 模式）</string>
     <string name="terminal_type_xterm">xterm.js</string>
     <string name="terminal_session_name">会话 %1$d</string>
+    <string name="ssh_files_transfer_help">传输说明</string>
+    <string name="ssh_files_sort">排序</string>
+    <string name="ssh_files_more">更多</string>
+    <string name="runtime_install_hint">此服务器尚未安装 %1$s。安装后即可使用此功能。</string>
+    <string name="runtime_install_action">安装 %1$s</string>
+    <string name="guardian_agent_permission">服务器无法访问守护服务。请修复服务器安装后刷新。</string>
+    <string name="runtime_recovery_tools">恢复之前的操作</string>
 </resources>

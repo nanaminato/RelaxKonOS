@@ -2577,4 +2577,11 @@
     <string name="ssh_workspace_system_disk">ディスク · %1$s</string>
     <string name="ssh_workspace_metric_unavailable">利用できません</string>
     <string name="terminal_session_name">セッション %1$d</string>
+    <string name="ssh_files_transfer_help">転送について</string>
+    <string name="ssh_files_sort">並べ替え</string>
+    <string name="ssh_files_more">その他</string>
+    <string name="runtime_install_hint">このサーバーには %1$s がインストールされていません。インストールしてこの機能を利用できます。</string>
+    <string name="runtime_install_action">%1$s をインストール</string>
+    <string name="guardian_agent_permission">サーバーが監視サービスにアクセスできません。サーバーのインストールを修復して更新してください。</string>
+    <string name="runtime_recovery_tools">以前の操作を復元</string>
 </resources>

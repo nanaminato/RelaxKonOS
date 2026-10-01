@@ -447,6 +447,9 @@ Wants=network-online.target
 
 [Service]
 Type=notify
+Group=$SERVICE_GROUP
+# The root Agent owns the Unix pipe; only its Server group may connect.
+UMask=0007
 EnvironmentFile=/etc/relaxkonos/guardian.env
 ExecStart=$GUARDIAN_EXECUTABLE
 Restart=always

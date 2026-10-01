@@ -85,6 +85,7 @@ data class GuardianUiState(
 )
 
 private fun guardianProblemLabel(code: String?): Int = when (code) {
+    "guardian.agent_permission_denied" -> R.string.guardian_agent_permission
     "guardian.run_as_identity_mismatch" -> R.string.guardian_identity_changed
     "guardian.run_as_launch_failed", "guardian.run_as_permission_denied", "guardian.run_as_platform_not_supported" -> R.string.guardian_launch_failed
     "guardian.definition_changed" -> R.string.guardian_definition_changed
@@ -141,7 +142,8 @@ class GuardianViewModel(application: Application) : AndroidViewModel(application
                     unknown = if (reconcile && status is ApiResult.Success && workloads is ApiResult.Success) false else old.unknown,
                     stale = status !is ApiResult.Success || workloads !is ApiResult.Success || status.value.running != true,
                     error = status !is ApiResult.Success || workloads !is ApiResult.Success,
-                    problemCode = (workloads as? ApiResult.Problem)?.code ?: (status as? ApiResult.Problem)?.code) }
+                    problemCode = (workloads as? ApiResult.Problem)?.code ?: (status as? ApiResult.Problem)?.code
+                        ?: (status as? ApiResult.Success)?.value?.problemCode?.takeIf(String::isNotBlank)) }
                 if (workloads is ApiResult.Success && mutable.value.selectedId != null && workloads.value.none { it.id == mutable.value.selectedId }) select(null)
             } finally { if (current(active)) mutable.update { it.copy(loading = false) } }
         }

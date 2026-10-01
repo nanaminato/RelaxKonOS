@@ -62,6 +62,8 @@ private fun scriptStateLabel(state: String): Int = when (state) {
 }
 
 private fun scriptProblemLabel(code: String?): Int = when (code) {
+    "guardian.agent_permission_denied" -> R.string.guardian_agent_permission
+    "guardian.agent_unavailable", "guardian.agent_timeout", "guardian.agent_not_configured" -> R.string.guardian_agent_failed
     "guardian.script_timeout" -> R.string.scripts_timeout_reason
     "guardian.script_agent_restarted" -> R.string.scripts_agent_restart_reason
     "guardian.script_launch_failed", "guardian.run_as_launch_failed", "guardian.run_as_platform_not_supported" -> R.string.scripts_launch_reason
@@ -77,14 +79,15 @@ class ScriptsViewModel(application: Application) : AndroidViewModel(application)
     fun load(active: SessionState.Active) {
         if (owner !== active) { owner = active; mutable.value = ScriptsUiState() }
         if (mutable.value.loading) return
-        mutable.update { it.copy(loading = true) }
+        mutable.update { it.copy(loading = true, error = false, problemCode = null) }
         viewModelScope.launch {
             val result = container.scriptTasks.tasks(active)
             if (owner !== active) return@launch
             mutable.update { old -> when (result) {
                 is ApiResult.Success -> old.copy(loading = false, tasks = result.value.tasks,
                     error = !result.value.success, problemCode = result.value.problemCode.takeIf(String::isNotBlank))
-                else -> old.copy(loading = false, error = true)
+                is ApiResult.Problem -> old.copy(loading = false, error = true, problemCode = result.code)
+                is ApiResult.Transport -> old.copy(loading = false, error = true, problemCode = null)
             } }
         }
     }

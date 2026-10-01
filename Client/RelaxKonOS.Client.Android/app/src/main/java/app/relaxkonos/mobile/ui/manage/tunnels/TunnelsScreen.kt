@@ -42,6 +42,8 @@ import java.util.Date
         if (state.installationVerified && state.installation?.state?.active == true && !state.busy) { delay(1500); model.pollInstall() }
     }
     val facts = (state.facts as? ApiResult.Success)?.value
+    val runtime = (state.runtime as? ApiResult.Success)?.value
+    val notInstalled = runtime?.state == TunnelRuntimeState.NotInstalled
     LaunchedEffect(owner, epoch, frpsSection, state.selectedId, state.busy, facts?.observedAtMillis) {
         if (!frpsSection && state.selectedId != null && !state.busy && facts?.definitions?.any { it.profileId == state.selectedId && it.state in setOf(TunnelConnectionState.Starting, TunnelConnectionState.Connected) } == true) {
             delay(3000); model.observe()
@@ -61,20 +63,21 @@ import java.util.Date
             TextButton(enabled = !state.busy, onClick = model::refresh) { Text(stringResource(R.string.common_refresh)) }
             if (canManage) {
                 OutlinedButton(enabled = !state.busy && state.pending.isEmpty(), onClick = { model.editProfile() }) { Text(stringResource(R.string.tunnels_profile_create)) }
-                OutlinedButton(enabled = !state.busy && state.installation?.state?.active != true, onClick = { install = true }) { Text(stringResource(R.string.tunnels_runtime_manage)) }
+                OutlinedButton(enabled = !state.busy && state.installation?.state?.active != true, onClick = { install = true }) { Text(if (notInstalled) stringResource(R.string.runtime_install_action, "FRP") else stringResource(R.string.tunnels_runtime_manage)) }
             }
         }
         if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         state.problemCode?.let { Text(tunnelProblemLabel(it), color = MaterialTheme.colorScheme.error) }
         if (state.uncertain) Text(stringResource(R.string.tunnels_uncertain), color = MaterialTheme.colorScheme.error)
         Text(stringResource(R.string.tunnels_runtime_title), style = MaterialTheme.typography.titleSmall)
-        val runtime = (state.runtime as? ApiResult.Success)?.value
         if (runtime == null) Text(stringResource(R.string.tunnels_unknown)) else {
+            if (notInstalled) Text(stringResource(R.string.runtime_install_hint, "FRP")) else {
             Text(tunnelRuntimeLabel(runtime.state)); runtime.version?.let { Text(stringResource(R.string.tunnels_version_value, it)) }
             runtime.previousVersion?.let { Text(stringResource(R.string.tunnels_previous_version, it)) }
             runtime.executablePath?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             Text(stringResource(if (runtime.integrityVerified) R.string.tunnels_integrity_verified else R.string.tunnels_integrity_unverified))
             runtime.problemCode.takeIf(String::isNotBlank)?.let { Text(tunnelProblemLabel(it)) }
+            }
         }
         state.installation?.let { operation ->
             Text(operation.operationId, style = MaterialTheme.typography.bodySmall)
@@ -91,7 +94,7 @@ import java.util.Date
             Text(stringResource(R.string.tunnels_install_pending), color = MaterialTheme.colorScheme.error)
             if (model.hasIntent && canManage) TextButton(enabled = !state.busy, onClick = { confirm = TunnelConfirmation(R.string.tunnels_install_retry_confirm, "FRP", model::retryInstall) }) { Text(stringResource(R.string.common_retry)) }
         }
-        TextButton(enabled = !state.busy, onClick = { operationId = ""; originalIdentified = false; recover = true }) { Text(stringResource(R.string.tunnels_install_recover)) }
+        TextButton(enabled = !state.busy, onClick = { operationId = ""; originalIdentified = false; recover = true }) { Text(stringResource(if (notInstalled) R.string.runtime_recovery_tools else R.string.tunnels_install_recover)) }
         state.pending.forEach { pending ->
             Text(stringResource(R.string.tunnels_pending, tunnelMutationLabel(pending.action), if (pending.action.frps) "frps" else pending.target ?: "—"), color = MaterialTheme.colorScheme.error)
             if (pending.action.frps) {
