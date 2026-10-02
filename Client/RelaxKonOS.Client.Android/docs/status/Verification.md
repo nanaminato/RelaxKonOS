@@ -4,6 +4,8 @@
 
 ## 1. 共同设备与发布检查
 
+2026-10-02 终端进入：SignalR/TLS 连接构造已移至 IO，先绘制终端加载界面再创建完整渲染器；连接期间跳过旧历史布局，xterm 模式跳过未使用的原生字形布局，并在本地 WebView 加载完成前显示提示。1,023 项 JVM 测试与 Debug APK 构建通过，新增检查确认连接构造不在控制器线程执行。SM-X510 的 `TerminalLoadingTest` 三项、`NativeTerminalTest` 一项及 `XtermTerminalTest` 一项通过，覆盖首帧加载、初始化前离页取消、失败退出加载、原生尺寸同步和 WebView 重绘。真实 Linux 会话两次文件→终端切换均保持原会话与未发送草稿，测试草稿已清理，没有发送远端命令。未执行修正前后耗时基准、大量历史输出、慢网络或其它手机机型的性能验收；完整终端矩阵继续保留。
+
 2026-10-02 安装器修复包 `0.2.0-privilege-c631d379-fix1` 升级后，SM-X510 重新登录成功，主页继续显示当前 Linux 账户及系统状态，无证书更换确认；证书指纹保留的主机侧验证见 [宿主授权验证](../../../../docs/platform/RelaxKonOS.HostPrivilegeRouting.Goal.md#linux-局域网实测)。本机未勾选保存密码。此证据不等同于平板已完成环境变量变更或证书显式重新生成流程。
 
 2026-10-02 SM-X510 授权联调：离线 `assembleDebug` 通过，最新 Debug APK 安装到实体平板。使用 `nanami` 登录升级后的 Ubuntu 26.04 Server（提交 `c631d379`）成功，主页显示 Linux 与当前账户；管理→防火墙加载 UFW 当前快照，无第二次密码提示。主机防火墙原本停用，本次未启用、修改策略或增删规则。普通用户授权弹窗、空管理员候选、取消/重试、指纹与实际变更尚未在平板验证；宿主 API 的管理员/root/普通用户、精确文件授权、会话隔离及 sudoers 撤权结果见 [宿主授权验证](../../../../docs/platform/RelaxKonOS.HostPrivilegeRouting.Goal.md#linux-局域网实测)。截图位于本地 ignored `artifacts/linux-privilege-live/tablet-firewall.png`，未纳入仓库。

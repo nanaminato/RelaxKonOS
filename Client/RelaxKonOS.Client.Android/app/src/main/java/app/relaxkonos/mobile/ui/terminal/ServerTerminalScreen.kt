@@ -176,11 +176,13 @@ fun ServerTerminalScreen(owner: SessionState.Active, modifier: Modifier = Modifi
         model.connect(owner)
         onStopOrDispose { model.detach() }
     }
-    ServerTerminalContent(owner, state, { model.connect(owner) }, model::attach, model::send,
-        model::resize, model::close, model::closeSessions, modifier,
-        presentation = model.presentation, onClearOutput = model::clearOutput,
-        onReadSettings = { model.readSettings(owner) }, onSaveSettings = { model.saveSettings(owner, it) },
-        terminalType = appContainer().appearance.terminalType)
+    TerminalEntry(owner, modifier) {
+        ServerTerminalContent(owner, state, { model.connect(owner) }, model::attach, model::send,
+            model::resize, model::close, model::closeSessions, Modifier.fillMaxSize(),
+            presentation = model.presentation, onClearOutput = model::clearOutput,
+            onReadSettings = { model.readSettings(owner) }, onSaveSettings = { model.saveSettings(owner, it) },
+            terminalType = appContainer().appearance.terminalType)
+    }
 }
 
 @Composable
@@ -203,10 +205,14 @@ internal fun ServerTerminalContent(
 ) {
     val input = presentation.input
     val fontSize = presentation.localFontSize ?: presentation.settings.fontSize
+    val waiting = state.connecting || state.busy && state.sessionId == null
+    // Do not rebuild retained history behind a connection spinner, or build native glyphs for xterm.
+    val renderFrame = if (!waiting && terminalType == TerminalType.Native) state.frame else TerminalRenderFrame()
     val clipboard = LocalClipboard.current
     val clipboardContext = LocalContext.current
     var textLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
-    val matches = remember(state.frame.text, presentation.search) { TerminalInputPolicy.matches(state.frame.text, presentation.search) }
+    val searchText = if (waiting) "" else state.frame.text
+    val matches = remember(searchText, presentation.search) { TerminalInputPolicy.matches(searchText, presentation.search) }
     fun cellSpan(cell: TerminalCellStyle): SpanStyle {
         val normalForeground = cell.foreground?.let { Color(0xff000000L or it.toLong()) } ?: terminalColor(presentation.settings.foregroundColor)
         val normalBackground = cell.background?.let { Color(0xff000000L or it.toLong()) } ?: terminalColor(presentation.settings.backgroundColor)
@@ -220,16 +226,16 @@ internal fun ServerTerminalContent(
     }
     fun searchSpan(index: Int) = SpanStyle(background = if (index == presentation.searchIndex) Color(0xFFFFCC66) else Color(0xFF665500),
         color = if (index == presentation.searchIndex) Color.Black else Color.White)
-    val highlighted = remember(state.frame, presentation.settings, matches, presentation.searchIndex) { buildAnnotatedString {
+    val highlighted = remember(renderFrame, presentation.settings, matches, presentation.searchIndex) { buildAnnotatedString {
         var offset = 0
-        state.frame.glyphs.forEach { glyph ->
-            append(state.frame.text.substring(offset, glyph.start))
-            appendInlineContent("cell-${glyph.start}", state.frame.text.substring(glyph.start, glyph.end))
+        renderFrame.glyphs.forEach { glyph ->
+            append(renderFrame.text.substring(offset, glyph.start))
+            appendInlineContent("cell-${glyph.start}", renderFrame.text.substring(glyph.start, glyph.end))
             offset = glyph.end
         }
-        append(state.frame.text.substring(offset))
-        state.frame.styles.forEach { run -> addStyle(cellSpan(run.style), run.start, run.end) }
-        matches.forEachIndexed { index, match -> addStyle(searchSpan(index), match.start, match.end) }
+        append(renderFrame.text.substring(offset))
+        renderFrame.styles.forEach { run -> addStyle(cellSpan(run.style), run.start, run.end) }
+        if (terminalType == TerminalType.Native) matches.forEachIndexed { index, match -> addStyle(searchSpan(index), match.start, match.end) }
     } }
     fun fontChange(delta: Int) { presentation.localFontSize = (fontSize + delta).coerceIn(8.0, 40.0) }
     var menuOpen by remember(owner) { mutableStateOf(false) }
@@ -257,16 +263,16 @@ internal fun ServerTerminalContent(
     val cellWidth = cellAdvance / density.density
     // Android fallback CJK/emoji fonts can have a different advance from the Latin monospace font.
     // Fixed-width placeholders keep VT cells aligned while alternate text remains selectable/copyable.
-    val inlineCells = remember(state.frame, terminalStyle, cellWidth, fontScale, matches, presentation.settings, presentation.searchIndex) {
+    val inlineCells = remember(renderFrame, terminalStyle, cellWidth, fontScale, matches, presentation.settings, presentation.searchIndex) {
         var matchIndex = 0
-        state.frame.glyphs.associate { glyph ->
+        renderFrame.glyphs.associate { glyph ->
             while (matchIndex < matches.size && matches[matchIndex].end <= glyph.start) matchIndex++
             val match = matches.getOrNull(matchIndex)?.takeIf { it.start < glyph.end }
             val cellStyle = terminalStyle.merge(cellSpan(glyph.style)).let { if (match == null) it else it.merge(searchSpan(matchIndex)) }
             "cell-${glyph.start}" to InlineTextContent(Placeholder((cellWidth * glyph.width / fontScale).sp,
                 (fontSize * 1.5).toFloat().sp, PlaceholderVerticalAlign.TextCenter)) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    DisableSelection { Text(state.frame.text.substring(glyph.start, glyph.end), style = cellStyle, softWrap = false, maxLines = 1,
+                    DisableSelection { Text(renderFrame.text.substring(glyph.start, glyph.end), style = cellStyle, softWrap = false, maxLines = 1,
                         modifier = Modifier.clearAndSetSemantics {}) }
                 }
             }
@@ -421,42 +427,45 @@ internal fun ServerTerminalContent(
         TerminalOutputToolbar(presentation, state, matches.size, ::copyOutput, ::reviewClipboard, onClearOutput)
         state.exitCode?.let { Text(stringResource(R.string.terminal_exit_code, it), style = MaterialTheme.typography.bodySmall) }
     }, output = {
-        if (terminalType == TerminalType.Xterm) XtermTerminal(
-            sessionId = state.sessionId.orEmpty(), output = state.rawOutput,
-            fontSize = fontSize.toFloat() * fontScale, connected = state.canInput,
-            onSend = { onSend(it) }, onResize = onResize, modifier = Modifier.fillMaxSize(),
-        ) else
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            val width = maxWidth.value
-            val height = maxHeight.value
-            LaunchedEffect(width, height, fontSize, fontScale, cellWidth) {
-                // Text size is in scaled pixels; subtract the actual transcript padding first.
-                onResize(((width - 2 * Spacing.md.value) / cellWidth).toInt(),
-                    ((height - 2 * Spacing.md.value) / (fontSize * fontScale * 1.5f)).toInt())
-            }
-            Surface(Modifier.fillMaxSize(), color = terminalColor(presentation.settings.backgroundColor), contentColor = terminalColor(presentation.settings.foregroundColor), shape = MaterialTheme.shapes.medium) {
-                Box {
-                    SelectionContainer { Column(Modifier.fillMaxSize().verticalScroll(scroll)
-                        .horizontalScroll(outputHorizontal).padding(Spacing.md)) {
-                        if (state.output.isEmpty() && state.connected && !state.busy && state.sessionId == null)
-                            Text(stringResource(R.string.terminal_empty), color = Color(0xFFB7C5D0))
-                        else Text(highlighted, inlineContent = inlineCells, style = terminalStyle, softWrap = false, onTextLayout = { textLayout = it },
-                            modifier = Modifier.testTag("terminal-output").drawBehind {
-                                val layout = textLayout
-                                val cursor = state.frame.cursor
-                                if (state.canInput && layout != null && cursor != null && cursor < layout.layoutInput.text.length) {
-                                    val bounds = layout.getBoundingBox(cursor)
-                                    drawRect(terminalColor(presentation.settings.cursorColor), Offset(bounds.left, bounds.top),
-                                        Size(bounds.width.coerceAtLeast(cellWidth * density.density * state.frame.cursorWidth), bounds.height), style = Stroke(1.dp.toPx()))
-                                }
-                            })
-                    } }
-                    if (!presentation.followOutput && state.output.isNotEmpty()) TextButton(
-                        onClick = { presentation.followOutput = true; uiScope.launch { scroll.scrollTo(scroll.maxValue) } },
-                        modifier = Modifier.align(Alignment.BottomEnd).background(MaterialTheme.colorScheme.surface, CircleShape),
-                    ) { Text(stringResource(R.string.terminal_latest)) }
+        Box(Modifier.fillMaxSize()) {
+            if (terminalType == TerminalType.Xterm) XtermTerminal(
+                sessionId = state.sessionId.orEmpty(), output = state.rawOutput,
+                fontSize = fontSize.toFloat() * fontScale, connected = state.canInput,
+                onSend = { onSend(it) }, onResize = onResize, modifier = Modifier.fillMaxSize(),
+            ) else
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val width = maxWidth.value
+                val height = maxHeight.value
+                LaunchedEffect(width, height, fontSize, fontScale, cellWidth) {
+                    // Text size is in scaled pixels; subtract the actual transcript padding first.
+                    onResize(((width - 2 * Spacing.md.value) / cellWidth).toInt(),
+                        ((height - 2 * Spacing.md.value) / (fontSize * fontScale * 1.5f)).toInt())
+                }
+                Surface(Modifier.fillMaxSize(), color = terminalColor(presentation.settings.backgroundColor), contentColor = terminalColor(presentation.settings.foregroundColor), shape = MaterialTheme.shapes.medium) {
+                    Box {
+                        SelectionContainer { Column(Modifier.fillMaxSize().verticalScroll(scroll)
+                            .horizontalScroll(outputHorizontal).padding(Spacing.md)) {
+                            if (state.output.isEmpty() && state.connected && !state.busy && state.sessionId == null)
+                                Text(stringResource(R.string.terminal_empty), color = Color(0xFFB7C5D0))
+                            else Text(highlighted, inlineContent = inlineCells, style = terminalStyle, softWrap = false, onTextLayout = { textLayout = it },
+                                modifier = Modifier.testTag("terminal-output").drawBehind {
+                                    val layout = textLayout
+                                    val cursor = state.frame.cursor
+                                    if (state.canInput && layout != null && cursor != null && cursor < layout.layoutInput.text.length) {
+                                        val bounds = layout.getBoundingBox(cursor)
+                                        drawRect(terminalColor(presentation.settings.cursorColor), Offset(bounds.left, bounds.top),
+                                            Size(bounds.width.coerceAtLeast(cellWidth * density.density * state.frame.cursorWidth), bounds.height), style = Stroke(1.dp.toPx()))
+                                    }
+                                })
+                        } }
+                        if (!presentation.followOutput && state.output.isNotEmpty()) TextButton(
+                            onClick = { presentation.followOutput = true; uiScope.launch { scroll.scrollTo(scroll.maxValue) } },
+                            modifier = Modifier.align(Alignment.BottomEnd).background(MaterialTheme.colorScheme.surface, CircleShape),
+                        ) { Text(stringResource(R.string.terminal_latest)) }
+                    }
                 }
             }
+            if (state.connecting || state.busy && state.sessionId == null) TerminalLoading(connecting = state.connecting)
         }
     }, keys = {
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {

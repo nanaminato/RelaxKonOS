@@ -9,6 +9,12 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import org.json.JSONObject
@@ -31,6 +37,7 @@ internal class TerminalBridge(private val view: WebView) {
 internal class XtermView(context: android.content.Context) : WebView(context) {
     val bridge = TerminalBridge(this)
     private var ready = false
+    var onReady: () -> Unit = {}
     private var applied = ""
     private var output = ""
     private var fontSize = 13f
@@ -58,8 +65,10 @@ internal class XtermView(context: android.content.Context) : WebView(context) {
                 return WebResourceResponse(type, "UTF-8", context.assets.open("terminal/$name"))
             }
             override fun onPageFinished(view: WebView, url: String) {
+                if (!bridge.active) return
                 ready = true
                 flush()
+                onReady()
             }
         }
         loadUrl("https://terminal.local/terminal/index.html")
@@ -91,6 +100,7 @@ internal class XtermView(context: android.content.Context) : WebView(context) {
     }
 
     fun release() {
+        onReady = {}
         bridge.active = false
         removeJavascriptInterface("NativeTerminal")
         stopLoading()
@@ -102,11 +112,15 @@ internal class XtermView(context: android.content.Context) : WebView(context) {
 internal fun XtermTerminal(sessionId: String, output: String, fontSize: Float, connected: Boolean,
     onSend: (String) -> Unit, onResize: (Int, Int) -> Unit, modifier: Modifier = Modifier) {
     key(sessionId) {
-        AndroidView(factory = { XtermView(it) }, modifier = modifier,
-            onRelease = { it.release() }, update = {
-                it.bridge.send = onSend
-                it.bridge.resize = onResize
-                it.update(output, fontSize, connected)
-            })
+        var initialized by remember { mutableStateOf(false) }
+        Box(modifier) {
+            AndroidView(factory = { XtermView(it).apply { onReady = { initialized = true } } }, modifier = Modifier.fillMaxSize(),
+                onRelease = { it.release() }, update = {
+                    it.bridge.send = onSend
+                    it.bridge.resize = onResize
+                    it.update(output, fontSize, connected)
+                })
+            if (!initialized) TerminalLoading()
+        }
     }
 }
