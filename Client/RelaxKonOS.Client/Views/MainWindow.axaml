@@ -76,29 +76,21 @@
              the connection bar. -->
         <Grid x:Name="Root" Margin="{DynamicResource HostTitleBarMargin}" PointerMoved="Root_OnPointerMoved">
             <ContentControl x:Name="ShellHost" />
-            <!-- Covers the hand-off from the login window until the selected desktop has
-                 registered its window hosts and restored its desktop state. The scrim is the
-                 palette's own overlay role; the message sits on a raised card so it stays legible
-                 in both colour modes instead of relying on white-on-brand-blue. -->
-            <Border x:Name="DesktopLoadingOverlay" Background="{DynamicResource OverlayScrimBrush}" ZIndex="50">
-                <Border Classes="card" Width="280" Padding="24" HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <StackPanel Spacing="14">
-                        <Border Width="56" Height="56" CornerRadius="{DynamicResource OverlayCornerRadius}"
-                                Background="{DynamicResource AccentMutedBrush}"
-                                BorderBrush="{DynamicResource BorderDefaultBrush}"
-                                BorderThickness="{DynamicResource ControlBorderThickness}">
-                            <UniformGrid Columns="2" Rows="2" Width="28" Height="28" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <Border Background="{DynamicResource AccentBrush}" Margin="2" /><Border Background="{DynamicResource AccentBrush}" Margin="2" />
-                                <Border Background="{DynamicResource AccentBrush}" Margin="2" /><Border Background="{DynamicResource AccentBrush}" Margin="2" />
-                            </UniformGrid>
-                        </Border>
-                        <TextBlock Text="{loc:Loc shell.desktop_loading.title}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="18"
-                                   FontWeight="SemiBold" TextAlignment="Center" />
-                        <TextBlock Text="{loc:Loc shell.desktop_loading.description}" Classes="subtle" FontSize="12"
-                                   TextAlignment="Center" TextWrapping="Wrap" />
-                        <ProgressBar IsIndeterminate="True" Height="4" />
-                    </StackPanel>
-                </Border>
+            <!-- The opaque launch screen hides the empty host and partially restored desktop
+                 until the selected shell has registered its surfaces and restored its state. -->
+            <Border x:Name="DesktopLoadingOverlay" Background="{DynamicResource AppBackgroundBrush}" ZIndex="50">
+                <StackPanel Width="320" Spacing="16" Margin="24"
+                            HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Image Source="/Assets/RelaxKonOS-client-icon.png" Width="112" Height="112"
+                           Stretch="Uniform" HorizontalAlignment="Center" />
+                    <TextBlock Text="RelaxKonOS" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="28"
+                               FontWeight="Light" TextAlignment="Center" />
+                    <TextBlock Text="{loc:Loc shell.desktop_loading.title}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="16"
+                               TextAlignment="Center" />
+                    <ProgressBar IsIndeterminate="True" Width="180" Height="4" HorizontalAlignment="Center" />
+                    <TextBlock Text="{loc:Loc shell.desktop_loading.description}" Classes="subtle" FontSize="12"
+                               TextAlignment="Center" TextWrapping="Wrap" />
+                </StackPanel>
             </Border>
         </Grid>
 

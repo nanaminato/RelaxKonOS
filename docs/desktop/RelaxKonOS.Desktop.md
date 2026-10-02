@@ -30,6 +30,8 @@
 
 ### 2.1 标题栏与系统控制
 
+进入桌面时，宿主先显示不透明的主题背景、居中的 RelaxKonOS Logo、产品名、动态进度条及本地化加载提示。加载画面完成首轮布局和渲染后才开始初始化 Shell；工作区偏好、窗口宿主和桌面状态恢复完成后隐藏加载层，再显示首次设置对话框。加载层覆盖整个桌面内容区，避免空宿主或尚未恢复完成的桌面透出灰色背景。
+
 `MainWindow.axaml` 设 `WindowDecorations="None"` + `WindowState="Maximized"` + `MinWidth=800 MinHeight=520`，自绘：
 
 - **标题栏**（`WindowTitleBar`，高 34）：`PointerPressed` → `BeginMoveDrag`（仅 `WindowState == Normal` 时）。

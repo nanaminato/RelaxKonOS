@@ -46,6 +46,7 @@ public partial class MainWindow : Window
         SizeChanged += (_, _) => ApplyConnectionBarOffset();
         DataContextChanged += async (_, _) => await AttachShellAsync();
         Opened += async (_, _) => await AttachShellAsync();
+        Closed += (_, _) => ++_desktopLoadGeneration;
         // System shortcuts must run before a managed application's own key handler.  They own
         // desktop-wide navigation, whereas application shortcuts are only meaningful inside the
         // active window.  The existing XAML KeyDown hook remains the bubbling fallback for the
@@ -67,11 +68,16 @@ public partial class MainWindow : Window
 
     private async Task AttachShellAsync()
     {
-        if (DataContext is not DesktopShellViewModel shell) return;
+        // DataContext is assigned before Show(). Wait for Opened so initialization cannot
+        // delay the first logo frame or run twice during the login-to-desktop hand-off.
+        if (!IsVisible || DataContext is not DesktopShellViewModel shell) return;
 
         var generation = ++_desktopLoadGeneration;
         var started = DateTime.UtcNow;
         DesktopLoadingOverlay.IsVisible = true;
+        // Let the initial layout/render run before shell construction and state restoration.
+        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+        if (generation != _desktopLoadGeneration) return;
         shell.RequestToggleHostFullScreen = () => SetFullScreen(!_isFullScreen);
         shell.ReadHostFileClipboardAsync = () => HostFileClipboard.ReadAsync(Clipboard);
         shell.MarkRemoteFileCopyAsync = () => HostFileClipboard.MarkRemoteCopyAsync(Clipboard);
