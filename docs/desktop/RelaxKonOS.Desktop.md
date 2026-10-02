@@ -30,6 +30,14 @@ Windows 实测追踪发现，点击后重新打开预览时，鼠标仍在缩略
 
 ---
 
+## 内存与资源生命周期
+
+设置同步的相同 `VisibleAppIds` 内容不触发桌面重建；手动刷新复用 ID、显示元数据和图标路径均未变化的应用条目，保留选择状态。替换或移除条目时，在桌面与开始菜单绑定更新后释放旧图标。受管窗口切换状态复用已解码图标，窗口关闭释放图标及缩略图；设置应用的列表、详情图片和 Shell 固定 Dock 图片也由各自所有者释放。`AppIconImageLoader.Load` 每次返回独立拥有的图片，调用方必须在解除显示引用后释放它，不依赖 GC 回收原生像素内存。
+
+本地化 ViewModel 使用弱事件订阅，使全局语言服务不保留废弃窗口与对话框对象。设置页统一实现可重复调用的 `Dispose`，退出时退订设置、语言和各页的目录/会话事件。宿主窗口关闭时停止连接栏计时器，退订全局事件、清除宿主回调并解除 Shell 与旧宿主的连接；选定 Shell 可在下次登录时重新挂载。
+
+`RelaxKonOS.WindowPreviews.Tests` 同时验证 200 次相同偏好应用和桌面刷新、窗口状态变化的图标复用、废弃本地化对象的可回收性、设置页退订，以及 1,200 次图标加载/释放期间的私有内存增长。内存检查不在加载循环后强制 GC，以覆盖原生图片释放延迟的问题；真实客户端长期空闲仍需在目标机器上验收。
+
 ## 1. 模块定位
 
 登录成功后，`App.axaml.cs` 把桌面 `MainWindow`（顶层 Avalonia `Window`，`WindowDecorations=None`）显示给用户。`MainWindow` 内部承载由 `ShellRuntime` 激活的 `IDesktopShell`（每个 Shell 提供自己的桌面、启动器、任务栏/Dock 与 `WindowManager` surface）。完整的 launcher 契约、可回滚切换和扩展包边界见 [`RelaxKonOS.ShellLauncher.Goal.md`](./RelaxKonOS.ShellLauncher.Goal.md)；本文档覆盖宿主窗口控制与模态机制。
