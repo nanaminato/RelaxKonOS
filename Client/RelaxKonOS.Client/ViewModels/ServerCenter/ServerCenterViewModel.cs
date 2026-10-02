@@ -82,6 +82,10 @@ public partial class ServerCenterViewModel : ObservableObject
     [ObservableProperty] private bool _hasPreviousVersion;
     [ObservableProperty] private bool _hasIncompleteInstallation;
     [ObservableProperty] private string _maintenanceSudoPassword = string.Empty;
+    [ObservableProperty] private bool _repairLanCertificate;
+    [ObservableProperty] private string _repairCertificateIdentities = "localhost,127.0.0.1";
+    public string RepairCertificateText => T("server_center.repair_certificate", "Regenerate the LAN self-signed certificate during repair");
+    public string RepairCertificateNote => T("server_center.repair_certificate_note", "Enter the current LAN IP or DNS names, separated by commas. Repair restarts the service; clients must trust the new certificate again.");
     public bool HasManagedInstallation => SelectedHost?.LastVerified?.Installed == true;
     public string UpdateText => T("server_center.update", "Update RelaxKonOS");
     public string RecoverText => T("server_center.recover", "Recover installation");
@@ -464,6 +468,13 @@ public partial class ServerCenterViewModel : ObservableObject
             }
 
             var operationMode = recovering ? ServerInstallMode.LinuxSystem : probe.ExistingMode!.Value;
+            var rotateCertificate = kind == ServerDeploymentKind.Repair && !recovering && RepairLanCertificate;
+            if (rotateCertificate && (operationMode == ServerInstallMode.LinuxUser ||
+                string.IsNullOrWhiteSpace(RepairCertificateIdentities)))
+            {
+                ErrorMessage = T("server_center.repair_certificate_invalid", "Certificate repair requires a system-service installation and at least one IP or DNS name.");
+                return;
+            }
             var request = new ServerDeploymentRequest(
                 ServerDeploymentProtocol.Version,
                 Guid.NewGuid(),
@@ -479,6 +490,8 @@ public partial class ServerCenterViewModel : ObservableObject
                     null,
                     probe.ExistingInstallationId,
                     null,
+                    CertificateMode: rotateCertificate ? ServerCertificateMode.SelfSigned : null,
+                    SelfSignedIdentities: rotateCertificate ? RepairCertificateIdentities.Trim() : null,
                     Confirmed: true));
             var receipt = await ExecuteFixedOperationAsync(session, tools, request, cancellationToken, sudoPassword).ConfigureAwait(true);
 

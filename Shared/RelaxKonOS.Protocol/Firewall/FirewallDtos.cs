@@ -26,17 +26,13 @@ public sealed record FirewallRuleDto(
     public string AddressFamily { get; init; } = "IPv4";
 }
 
-/// <summary>One-shot credential confirmation. It is ignored for root and must never be persisted.</summary>
-public sealed record FirewallCredentialConfirmation(string Password);
-
 public sealed record CreateFirewallRuleRequest(
     string Action,
     string Direction,
     string Protocol,
     string Source,
     string Destination,
-    string Port,
-    FirewallCredentialConfirmation? CredentialConfirmation);
+    string Port);
 
 /// <summary>
 /// Replaces the numbered UFW rule in place. The rule itself remains structured so
@@ -48,16 +44,12 @@ public sealed record UpdateFirewallRuleRequest(
     string Protocol,
     string Source,
     string Destination,
-    string Port,
-    FirewallCredentialConfirmation? CredentialConfirmation);
+    string Port);
 
-public sealed record UpdateFirewallEnabledRequest(bool Enabled, FirewallCredentialConfirmation? CredentialConfirmation);
+public sealed record UpdateFirewallEnabledRequest(bool Enabled);
 
 public sealed record UpdateFirewallDefaultsRequest(
     string IncomingPolicy,
-    string OutgoingPolicy,
-    FirewallCredentialConfirmation? CredentialConfirmation);
-
-public sealed record DeleteFirewallRuleRequest(FirewallCredentialConfirmation? CredentialConfirmation);
+    string OutgoingPolicy);
 
 public sealed record FirewallOperationResult(bool Success, string ProblemCode = "");

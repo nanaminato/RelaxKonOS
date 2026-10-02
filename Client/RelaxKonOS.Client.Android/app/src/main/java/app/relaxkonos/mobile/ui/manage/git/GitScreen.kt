@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.git
 
+import app.relaxkonos.mobile.ui.common.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -25,13 +26,12 @@ import java.util.UUID
 @Composable
 fun GitScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modifier = Modifier,
     initialBuildId: String? = null) {
-    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg),
-        verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-        ScreenHeader(title = stringResource(R.string.git_title), onBack = onBack,
-            subtitle = stringResource(R.string.git_subtitle))
-        GitWorkspaceSection(owner)
-        HorizontalDivider()
-        GitBuildSection(owner, initialBuildId)
+    var section by rememberSaveable(owner) { mutableStateOf(if (initialBuildId == null) "workspace" else "build") }
+    LaunchedEffect(initialBuildId) { if (initialBuildId != null) section = "build" }
+    WorkspaceColumn(stringResource(R.string.git_title), onBack,
+        listOf(WorkspaceDestination("workspace", R.string.workspace_workspace), WorkspaceDestination("branches", R.string.workspace_branches), WorkspaceDestination("history", R.string.workspace_history), WorkspaceDestination("conflicts", R.string.workspace_conflicts), WorkspaceDestination("build", R.string.workspace_build)), section, { section = it }, modifier, stateKey = owner) {
+        GitWorkspaceSection(owner, section)
+        WorkspaceSection(section == "build") { GitBuildSection(owner, initialBuildId) }
     }
 }
 

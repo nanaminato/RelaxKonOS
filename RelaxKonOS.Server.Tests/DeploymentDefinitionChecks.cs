@@ -130,6 +130,16 @@ internal static class DeploymentDefinitionChecks
             Check(blocked.StatusCode == HttpStatusCode.Conflict && (await blocked.Content.ReadAsStringAsync()).Contains(ApplicationDeploymentProblemCodes.ResourceConflict),
                 "An active application operation must block definition replacement.");
         Check(((DefinitionReadEngine)(object)engine).Calls.All(call => call == nameof(IDockerEngineService.ListContainersAsync)), "Definition verification must not execute Docker actions.");
+        var readEngine = (DefinitionReadEngine)(object)engine;
+        foreach (var problem in new[] { "docker.not_installed", "docker.permission_denied", "docker.unavailable" })
+        {
+            readEngine.ReadProblem = problem;
+            using var response = await http.GetAsync(ApplicationDeploymentApiRoutes.Applications);
+            var applications = await response.Content.ReadFromJsonAsync<ApplicationDto[]>(RelaxKonOSJsonOptions.Default);
+            Check(response.IsSuccessStatusCode && applications!.Single().ActualState == ApplicationActualState.Unknown,
+                "Docker read failure must preserve definitions with unknown observed state instead of returning HTTP 500: " + problem);
+        }
+        readEngine.ReadProblem = null;
         var other = await manager.CreateAsync(new CreateApplicationRequest("other-app", ApplicationSourceKind.Image, ApplicationWorkloadKind.Worker,
             ApplicationReadinessLevel.Process, HealthCheckPath: null, Configuration: [new("OTHER", "other_1", true)]), "definition-test", default);
         for (var index = 2; index <= 4; index++) secrets.Set(other.Id, "OTHER", "other_" + index);
@@ -160,9 +170,12 @@ internal static class DeploymentDefinitionChecks
 public class DefinitionReadEngine : DispatchProxy
 {
     public List<string> Calls { get; } = [];
+    public string? ReadProblem { get; set; }
     protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
     {
         Calls.Add(targetMethod!.Name);
+        if (targetMethod.Name == nameof(IDockerEngineService.ListContainersAsync) && ReadProblem is { } problem)
+            throw new DockerReadException(problem);
         return targetMethod.Name == nameof(IDockerEngineService.ListContainersAsync)
             ? Task.FromResult<IReadOnlyList<DockerContainerDto>>([])
             : throw new NotSupportedException("Docker writes are outside the definition fixture.");

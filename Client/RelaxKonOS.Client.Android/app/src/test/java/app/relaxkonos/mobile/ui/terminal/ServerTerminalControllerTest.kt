@@ -24,6 +24,20 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ServerTerminalControllerTest {
+    @Test fun `connection construction runs off the controller thread`() = runTest {
+        val caller = Thread.currentThread().id
+        val constructed = CompletableDeferred<Long>()
+        val h = harness(creationDispatcher = kotlinx.coroutines.Dispatchers.IO) { _, _ ->
+            constructed.complete(Thread.currentThread().id)
+        }
+        h.controller.connect(h.owner)
+        runCurrent()
+        val thread = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            kotlinx.coroutines.withTimeout(5000) { constructed.await() }
+        }
+        assertNotEquals(caller, thread)
+        h.controller.detach()
+    }
     private class FakeConnection(val closed: () -> Unit, val output: (ByteArray) -> Unit, val exited: (Int) -> Unit) : TerminalConnection {
         var listed = listOf(summary("first"), summary("second"))
         var startFailure: Exception? = null
@@ -64,7 +78,9 @@ class ServerTerminalControllerTest {
     private class Harness(val controller: ServerTerminalController, val auth: AuthSession, val gateway: FakeGateway,
         val owner: SessionState.Active, val connections: MutableList<FakeConnection>, val tokens: MutableList<String>)
 
-    private suspend fun TestScope.harness(nativeResponses: () -> Boolean = { true }, configure: (FakeConnection, Int) -> Unit = { _, _ -> }): Harness {
+    private suspend fun TestScope.harness(nativeResponses: () -> Boolean = { true },
+        creationDispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.test.StandardTestDispatcher(testScheduler),
+        configure: (FakeConnection, Int) -> Unit = { _, _ -> }): Harness {
         val gateway = FakeGateway()
         gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession()) }
         gateway.onRefresh = { _, _ -> ApiResult.Success(AuthTokens("access-2", "refresh-2", null, null)) }
@@ -74,7 +90,7 @@ class ServerTerminalControllerTest {
         val tokens = mutableListOf<String>()
         val controller = ServerTerminalController(auth, backgroundScope, TerminalConnectionFactory { _, token, output, exit, closed ->
             FakeConnection(closed, output, exit).also { configure(it, connections.size); connections += it; tokens += token }
-        }, nativeResponses = nativeResponses)
+        }, nativeResponses = nativeResponses, connectionDispatcher = creationDispatcher)
         return Harness(controller, auth, gateway, auth.state.value as SessionState.Active, connections, tokens)
     }
 

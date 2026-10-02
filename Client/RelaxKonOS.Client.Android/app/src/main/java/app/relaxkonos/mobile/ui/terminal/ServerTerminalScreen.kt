@@ -72,6 +72,7 @@ import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -176,11 +177,11 @@ fun ServerTerminalScreen(owner: SessionState.Active, modifier: Modifier = Modifi
         model.connect(owner)
         onStopOrDispose { model.detach() }
     }
-    ServerTerminalContent(owner, state, { model.connect(owner) }, model::attach, model::send,
-        model::resize, model::close, model::closeSessions, modifier,
-        presentation = model.presentation, onClearOutput = model::clearOutput,
-        onReadSettings = { model.readSettings(owner) }, onSaveSettings = { model.saveSettings(owner, it) },
-        terminalType = appContainer().appearance.terminalType)
+        ServerTerminalContent(owner, state, { model.connect(owner) }, model::attach, model::send,
+            model::resize, model::close, model::closeSessions, modifier,
+            presentation = model.presentation, onClearOutput = model::clearOutput,
+            onReadSettings = { model.readSettings(owner) }, onSaveSettings = { model.saveSettings(owner, it) },
+            terminalType = appContainer().appearance.terminalType)
 }
 
 @Composable
@@ -203,10 +204,15 @@ internal fun ServerTerminalContent(
 ) {
     val input = presentation.input
     val fontSize = presentation.localFontSize ?: presentation.settings.fontSize
+    val waiting = state.connecting || state.busy && state.sessionId == null
+    var outputReady by remember(owner) { mutableStateOf(false) }
+    // Do not rebuild retained history behind a connection spinner, or build native glyphs for xterm.
+    val renderFrame = if (outputReady && !waiting && terminalType == TerminalType.Native) state.frame else TerminalRenderFrame()
     val clipboard = LocalClipboard.current
     val clipboardContext = LocalContext.current
     var textLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
-    val matches = remember(state.frame.text, presentation.search) { TerminalInputPolicy.matches(state.frame.text, presentation.search) }
+    val searchText = if (waiting || !outputReady) "" else state.frame.text
+    val matches = remember(searchText, presentation.search) { TerminalInputPolicy.matches(searchText, presentation.search) }
     fun cellSpan(cell: TerminalCellStyle): SpanStyle {
         val normalForeground = cell.foreground?.let { Color(0xff000000L or it.toLong()) } ?: terminalColor(presentation.settings.foregroundColor)
         val normalBackground = cell.background?.let { Color(0xff000000L or it.toLong()) } ?: terminalColor(presentation.settings.backgroundColor)
@@ -220,16 +226,16 @@ internal fun ServerTerminalContent(
     }
     fun searchSpan(index: Int) = SpanStyle(background = if (index == presentation.searchIndex) Color(0xFFFFCC66) else Color(0xFF665500),
         color = if (index == presentation.searchIndex) Color.Black else Color.White)
-    val highlighted = remember(state.frame, presentation.settings, matches, presentation.searchIndex) { buildAnnotatedString {
+    val highlighted = remember(renderFrame, presentation.settings, matches, presentation.searchIndex) { buildAnnotatedString {
         var offset = 0
-        state.frame.glyphs.forEach { glyph ->
-            append(state.frame.text.substring(offset, glyph.start))
-            appendInlineContent("cell-${glyph.start}", state.frame.text.substring(glyph.start, glyph.end))
+        renderFrame.glyphs.forEach { glyph ->
+            append(renderFrame.text.substring(offset, glyph.start))
+            appendInlineContent("cell-${glyph.start}", renderFrame.text.substring(glyph.start, glyph.end))
             offset = glyph.end
         }
-        append(state.frame.text.substring(offset))
-        state.frame.styles.forEach { run -> addStyle(cellSpan(run.style), run.start, run.end) }
-        matches.forEachIndexed { index, match -> addStyle(searchSpan(index), match.start, match.end) }
+        append(renderFrame.text.substring(offset))
+        renderFrame.styles.forEach { run -> addStyle(cellSpan(run.style), run.start, run.end) }
+        if (terminalType == TerminalType.Native) matches.forEachIndexed { index, match -> addStyle(searchSpan(index), match.start, match.end) }
     } }
     fun fontChange(delta: Int) { presentation.localFontSize = (fontSize + delta).coerceIn(8.0, 40.0) }
     var menuOpen by remember(owner) { mutableStateOf(false) }
@@ -257,16 +263,16 @@ internal fun ServerTerminalContent(
     val cellWidth = cellAdvance / density.density
     // Android fallback CJK/emoji fonts can have a different advance from the Latin monospace font.
     // Fixed-width placeholders keep VT cells aligned while alternate text remains selectable/copyable.
-    val inlineCells = remember(state.frame, terminalStyle, cellWidth, fontScale, matches, presentation.settings, presentation.searchIndex) {
+    val inlineCells = remember(renderFrame, terminalStyle, cellWidth, fontScale, matches, presentation.settings, presentation.searchIndex) {
         var matchIndex = 0
-        state.frame.glyphs.associate { glyph ->
+        renderFrame.glyphs.associate { glyph ->
             while (matchIndex < matches.size && matches[matchIndex].end <= glyph.start) matchIndex++
             val match = matches.getOrNull(matchIndex)?.takeIf { it.start < glyph.end }
             val cellStyle = terminalStyle.merge(cellSpan(glyph.style)).let { if (match == null) it else it.merge(searchSpan(matchIndex)) }
             "cell-${glyph.start}" to InlineTextContent(Placeholder((cellWidth * glyph.width / fontScale).sp,
                 (fontSize * 1.5).toFloat().sp, PlaceholderVerticalAlign.TextCenter)) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    DisableSelection { Text(state.frame.text.substring(glyph.start, glyph.end), style = cellStyle, softWrap = false, maxLines = 1,
+                    DisableSelection { Text(renderFrame.text.substring(glyph.start, glyph.end), style = cellStyle, softWrap = false, maxLines = 1,
                         modifier = Modifier.clearAndSetSemantics {}) }
                 }
             }
@@ -303,7 +309,7 @@ internal fun ServerTerminalContent(
     presentation.pasteReview?.let { review -> AlertDialog(
         onDismissRequest = { presentation.pasteReview = null },
         title = { Text(stringResource(R.string.terminal_paste_title)) },
-        text = { Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) { Text(stringResource(R.string.terminal_paste_target, review.sessionId));
+        text = { Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) { Text(stringResource(R.string.terminal_paste_target, stringResource(R.string.terminal_session_name, state.sessions.indexOfFirst { it.sessionId == review.sessionId } + 1)));
             SelectionContainer { Text(TerminalInputPolicy.boundedText(review.payload, 2000)) }
             if (review.payload.length > 2000) Text(stringResource(R.string.terminal_paste_truncated, review.payload.length))
         } },
@@ -313,6 +319,9 @@ internal fun ServerTerminalContent(
         dismissButton = { TextButton(onClick = { presentation.pasteReview = null }) { Text(stringResource(R.string.common_cancel)) } },
     ) }
     if (presentation.settingsOpen) TerminalAppearanceDialog(presentation, onReadSettings, onSaveSettings)
+    val sessionNames = state.sessions.mapIndexed { index, session ->
+        session.sessionId to stringResource(R.string.terminal_session_name, index + 1)
+    }.toMap()
     closeReview?.let { (ids, target) -> AlertDialog(
         onDismissRequest = { closeReview = null },
         title = { Text(stringResource(R.string.terminal_close)) },
@@ -331,7 +340,7 @@ internal fun ServerTerminalContent(
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 items(state.sessions, key = { it.sessionId }) { session ->
                     val active = session.sessionId == state.sessionId
-                    val stamp = terminalSessionLabel(session.createdAt, session.sessionId, System.currentTimeMillis())
+                    val stamp = terminalSessionLabel(session.createdAt, sessionNames[session.sessionId].orEmpty(), System.currentTimeMillis())
                     TerminalSessionChip(if (active) "${stringResource(R.string.terminal_session_current)} · $stamp" else stamp,
                         active, "${stringResource(R.string.terminal_close)} · $stamp", state.connected && !state.busy,
                         { if (!active) onAttach(session.sessionId) }, { closeReview = listOf(session.sessionId) to stamp }, constrained = true)
@@ -343,7 +352,7 @@ internal fun ServerTerminalContent(
         if (compact) {
             val selectedSession = state.sessions.firstOrNull { it.sessionId == state.sessionId }
             val sessionLabel = selectedSession?.let {
-                terminalSessionLabel(it.createdAt, it.sessionId, System.currentTimeMillis())
+                terminalSessionLabel(it.createdAt, sessionNames[it.sessionId].orEmpty(), System.currentTimeMillis())
             }
             Text(listOfNotNull(owner.userName, sessionLabel).joinToString(" · "), style = MaterialTheme.typography.bodySmall,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -386,7 +395,7 @@ internal fun ServerTerminalContent(
                             menuOpen = false
                             val targets = state.sessions.filter { it.sessionId != state.sessionId }
                             closeReview = targets.map { it.sessionId } to targets.joinToString("\n") {
-                                terminalSessionLabel(it.createdAt, it.sessionId, System.currentTimeMillis())
+                                terminalSessionLabel(it.createdAt, sessionNames[it.sessionId].orEmpty(), System.currentTimeMillis())
                             }
                         })
                     }
@@ -402,7 +411,7 @@ internal fun ServerTerminalContent(
                 ) {
                     state.sessions.forEach { session ->
                         val active = session.sessionId == state.sessionId
-                        val stamp = terminalSessionLabel(session.createdAt, session.sessionId, System.currentTimeMillis())
+                        val stamp = terminalSessionLabel(session.createdAt, sessionNames[session.sessionId].orEmpty(), System.currentTimeMillis())
                         TerminalSessionChip(
                             label = if (active) "${stringResource(R.string.terminal_session_current)} · $stamp" else stamp,
                             active = active,
@@ -418,42 +427,47 @@ internal fun ServerTerminalContent(
         TerminalOutputToolbar(presentation, state, matches.size, ::copyOutput, ::reviewClipboard, onClearOutput)
         state.exitCode?.let { Text(stringResource(R.string.terminal_exit_code, it), style = MaterialTheme.typography.bodySmall) }
     }, output = {
-        if (terminalType == TerminalType.Xterm) XtermTerminal(
-            sessionId = state.sessionId.orEmpty(), output = state.rawOutput,
-            fontSize = fontSize.toFloat() * fontScale, connected = state.canInput,
-            onSend = { onSend(it) }, onResize = onResize, modifier = Modifier.fillMaxSize(),
-        ) else
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            val width = maxWidth.value
-            val height = maxHeight.value
-            LaunchedEffect(width, height, fontSize, fontScale, cellWidth) {
-                // Text size is in scaled pixels; subtract the actual transcript padding first.
-                onResize(((width - 2 * Spacing.md.value) / cellWidth).toInt(),
-                    ((height - 2 * Spacing.md.value) / (fontSize * fontScale * 1.5f)).toInt())
-            }
-            Surface(Modifier.fillMaxSize(), color = terminalColor(presentation.settings.backgroundColor), contentColor = terminalColor(presentation.settings.foregroundColor), shape = MaterialTheme.shapes.medium) {
-                Box {
-                    SelectionContainer { Column(Modifier.fillMaxSize().verticalScroll(scroll)
-                        .horizontalScroll(outputHorizontal).padding(Spacing.md)) {
-                        if (state.output.isEmpty() && state.connected && !state.busy && state.sessionId == null)
-                            Text(stringResource(R.string.terminal_empty), color = Color(0xFFB7C5D0))
-                        else Text(highlighted, inlineContent = inlineCells, style = terminalStyle, softWrap = false, onTextLayout = { textLayout = it },
-                            modifier = Modifier.testTag("terminal-output").drawBehind {
-                                val layout = textLayout
-                                val cursor = state.frame.cursor
-                                if (state.canInput && layout != null && cursor != null && cursor < layout.layoutInput.text.length) {
-                                    val bounds = layout.getBoundingBox(cursor)
-                                    drawRect(terminalColor(presentation.settings.cursorColor), Offset(bounds.left, bounds.top),
-                                        Size(bounds.width.coerceAtLeast(cellWidth * density.density * state.frame.cursorWidth), bounds.height), style = Stroke(1.dp.toPx()))
-                                }
-                            })
-                    } }
-                    if (!presentation.followOutput && state.output.isNotEmpty()) TextButton(
-                        onClick = { presentation.followOutput = true; uiScope.launch { scroll.scrollTo(scroll.maxValue) } },
-                        modifier = Modifier.align(Alignment.BottomEnd).background(MaterialTheme.colorScheme.surface, CircleShape),
-                    ) { Text(stringResource(R.string.terminal_latest)) }
+        TerminalEntry(owner, Modifier.fillMaxSize().clipToBounds().testTag("terminal-output-region"), onReady = { outputReady = true }) {
+        Box(Modifier.fillMaxSize()) {
+            if (terminalType == TerminalType.Xterm) XtermTerminal(
+                sessionId = state.sessionId.orEmpty(), output = state.rawOutput,
+                fontSize = fontSize.toFloat() * fontScale, connected = state.canInput,
+                onSend = { onSend(it) }, onResize = onResize, modifier = Modifier.fillMaxSize(),
+            ) else
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val width = maxWidth.value
+                val height = maxHeight.value
+                LaunchedEffect(width, height, fontSize, fontScale, cellWidth) {
+                    // Text size is in scaled pixels; subtract the actual transcript padding first.
+                    onResize(((width - 2 * Spacing.md.value) / cellWidth).toInt(),
+                        ((height - 2 * Spacing.md.value) / (fontSize * fontScale * 1.5f)).toInt())
+                }
+                Surface(Modifier.fillMaxSize(), color = terminalColor(presentation.settings.backgroundColor), contentColor = terminalColor(presentation.settings.foregroundColor), shape = MaterialTheme.shapes.medium) {
+                    Box {
+                        SelectionContainer { Column(Modifier.fillMaxSize().verticalScroll(scroll)
+                            .horizontalScroll(outputHorizontal).padding(Spacing.md)) {
+                            if (state.output.isEmpty() && state.connected && !state.busy && state.sessionId == null)
+                                Text(stringResource(R.string.terminal_empty), color = Color(0xFFB7C5D0))
+                            else Text(highlighted, inlineContent = inlineCells, style = terminalStyle, softWrap = false, onTextLayout = { textLayout = it },
+                                modifier = Modifier.testTag("terminal-output").drawBehind {
+                                    val layout = textLayout
+                                    val cursor = state.frame.cursor
+                                    if (state.canInput && layout != null && cursor != null && cursor < layout.layoutInput.text.length) {
+                                        val bounds = layout.getBoundingBox(cursor)
+                                        drawRect(terminalColor(presentation.settings.cursorColor), Offset(bounds.left, bounds.top),
+                                            Size(bounds.width.coerceAtLeast(cellWidth * density.density * state.frame.cursorWidth), bounds.height), style = Stroke(1.dp.toPx()))
+                                    }
+                                })
+                        } }
+                        if (!presentation.followOutput && state.output.isNotEmpty()) TextButton(
+                            onClick = { presentation.followOutput = true; uiScope.launch { scroll.scrollTo(scroll.maxValue) } },
+                            modifier = Modifier.align(Alignment.BottomEnd).background(MaterialTheme.colorScheme.surface, CircleShape),
+                        ) { Text(stringResource(R.string.terminal_latest)) }
+                    }
                 }
             }
+            if (state.connecting || state.busy && state.sessionId == null) TerminalLoading(connecting = state.connecting)
+        }
         }
     }, keys = {
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {

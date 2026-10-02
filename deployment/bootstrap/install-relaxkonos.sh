@@ -297,7 +297,7 @@ if [[ "$ROOT_FILE_ACCESS" == whitelist && -z "$ROOT_FILE_ROOTS_FILE" ]]; then
 fi
 [[ "$ADMINISTRATOR_FILE_ACCESS" != whitelist || -f "$ADMINISTRATOR_FILE_ROOTS_FILE" ]] || { echo '--administrator-file-roots is required for whitelist access.' >&2; exit 64; }
 [[ "$ROOT_FILE_ACCESS" != whitelist || -f "$ROOT_FILE_ROOTS_FILE" ]] || { echo '--root-file-roots is required for whitelist access.' >&2; exit 64; }
-if [[ "$CERTIFICATE_MODE" == custom ]]; then
+if [[ "$CERTIFICATE_MODE" == custom && ( "$ACTION" == install || -n "$CERTIFICATE_PATH" ) ]]; then
   [[ -f "$CERTIFICATE_PATH" ]] || { echo '--certificate-path must be an existing PFX file for custom certificates.' >&2; exit 64; }
   if [[ -n "$CERTIFICATE_PASSWORD_FILE" ]]; then
     [[ -f "$CERTIFICATE_PASSWORD_FILE" ]] || { echo '--certificate-password-file must exist.' >&2; exit 64; }
@@ -308,11 +308,12 @@ elif [[ -n "$CERTIFICATE_PATH$CERTIFICATE_PASSWORD_FILE" ]]; then
 fi
 if [[ "$CERTIFICATE_MODE" == self-signed ]]; then SELF_SIGNED_IDENTITIES="${SELF_SIGNED_IDENTITIES:-localhost,127.0.0.1}"; fi
 
-# Repair and rollback re-apply the TLS material that is already installed rather than rotating it.
+# Upgrade, repair and rollback keep the installed TLS identity unless repair explicitly rotates it.
 # The existing PFX is re-imported through the custom-certificate path so the certificate identity a
 # client already saw stays stable.
 SERVICES_CERTIFICATE_MODE="$CERTIFICATE_MODE"
-if [[ ( "$ACTION" == repair || "$ACTION" == rollback ) && "$CERTIFICATE_MODE" != none ]]; then
+if [[ "$ACTION" != install && "$CERTIFICATE_MODE" != none && -z "$CERTIFICATE_PATH" &&
+      !( "$ACTION" == repair && "$CERTIFICATE_MODE_SET" == true && "$CERTIFICATE_MODE" == self-signed ) ]]; then
   installed_certificate="$DATA_ROOT/server/certificates/bootstrap.pfx"
   [[ -f "$installed_certificate" ]] || { echo 'The installed TLS certificate is missing; reinstall is required.' >&2; exit 65; }
   recorded_certificate_password="$(sed -nE 's/^Kestrel__Certificates__Default__Password=(.*)$/\1/p' /etc/relaxkonos/server.env 2>/dev/null | head -n1)"
@@ -331,7 +332,7 @@ if [[ "$ACTION" == install || "$ACTION" == upgrade ]]; then
   if [[ -z "$BUNDLE_PATH" && -z "$RELEASE_URI" ]]; then
     RUNTIME="$CURRENT_RUNTIME"
     command -v curl >/dev/null || { echo 'curl is required to load the official release descriptor.' >&2; exit 69; }
-    TEMPORARY_DIRECTORY="$(mktemp -d)"
+    [[ -n "$TEMPORARY_DIRECTORY" ]] || TEMPORARY_DIRECTORY="$(mktemp -d)"
     descriptor="$TEMPORARY_DIRECTORY/$RUNTIME.json"
     curl --fail --location --silent --show-error "${RELEASE_CATALOG_BASE%/}/$RUNTIME.json" --output "$descriptor"
     RELEASE_URI="$(sed -nE 's/.*"url"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$descriptor" | head -n1)"
@@ -360,25 +361,17 @@ if [[ "$ACTION" == install || "$ACTION" == upgrade ]]; then
   [[ -d "$BUNDLE_PATH" ]] || { echo 'Bundle path must be a release directory or ZIP archive.' >&2; exit 64; }
 
   MANIFEST="$BUNDLE_PATH/manifest.json"
-  INVENTORY="$BUNDLE_PATH/manifest.sha256"
   [[ -f "$MANIFEST" && -f "$BUNDLE_PATH/payload/linux/server/RelaxKonOS.Server" && -f "$BUNDLE_PATH/payload/linux/guardian/RelaxKonOS.Guardian.Agent" && -f "$BUNDLE_PATH/payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper" && -f "$BUNDLE_PATH/deployment/linux/install-relaxkonos-services.sh" ]] || { echo 'Release bundle is incomplete or has an unsupported layout.' >&2; exit 65; }
-  grep -Eq '"schemaVersion"[[:space:]]*:[[:space:]]*1' "$MANIFEST" && grep -Eq '"packageKind"[[:space:]]*:[[:space:]]*"server"' "$MANIFEST" || { echo 'Unsupported server release manifest.' >&2; exit 65; }
-  grep -Eq "\"runtime\"[[:space:]]*:[[:space:]]*\"$CURRENT_RUNTIME\"" "$MANIFEST" || { echo "This release package is not compatible with $CURRENT_RUNTIME." >&2; exit 65; }
-  MANIFEST_VERSION="$(sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$MANIFEST" | head -n1)"
-  [[ "$MANIFEST_VERSION" =~ ^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$ ]] || { echo 'The release manifest has no usable version.' >&2; exit 65; }
   # The ZIP checksum only covers transport. The extracted bundle is additionally checked against the
   # packaged inventory, so a tampered or partially copied local bundle is rejected before staging.
   if [[ -n "$(find "$BUNDLE_PATH" -mindepth 1 \( -type l -o \( ! -type d -a ! -type f \) \) -print -quit)" ]]; then
     echo 'Release bundle contains a symbolic link or unsupported filesystem entry.' >&2
     exit 65
   fi
-  if [[ "$SKIP_FILE_CHECKS" != true ]]; then
-  command -v sha256sum >/dev/null || { echo 'sha256sum is required to verify the release inventory.' >&2; exit 69; }
-  if [[ -z "$TEMPORARY_DIRECTORY" ]]; then TEMPORARY_DIRECTORY="$(mktemp -d)"; fi
-  ACTUAL_INVENTORY="$TEMPORARY_DIRECTORY/manifest.actual.sha256"
-  (cd "$BUNDLE_PATH" && find . -type f ! -name manifest.json ! -name manifest.sha256 -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) > "$ACTUAL_INVENTORY"
-  cmp --silent "$INVENTORY" "$ACTUAL_INVENTORY" || { echo 'Release file inventory verification failed.' >&2; exit 65; }
-  fi
+  command -v python3 >/dev/null || { echo 'Python 3 is required to verify the release manifest.' >&2; exit 69; }
+  inventory_arguments=()
+  [[ "$SKIP_FILE_CHECKS" != true ]] || inventory_arguments+=(--skip-checks)
+  MANIFEST_VERSION="$(python3 "$(dirname -- "${BASH_SOURCE[0]}")/../verify-release-inventory.py" "$BUNDLE_PATH" server "$CURRENT_RUNTIME" "${inventory_arguments[@]}")" || exit 65
 fi
 
 command -v systemctl >/dev/null && [[ -d /run/systemd/system ]] || { echo 'RelaxKonOS requires a systemd host.' >&2; exit 69; }

@@ -35,39 +35,40 @@ class FirewallRepositoryTest {
         return session.state.value as SessionState.Active
     }
     @Test fun `lost mutation persists no secrets forbids replay and facts need explicit adoption`() = runTest {
-        val owner = signIn(); var calls = 0; val password = "private-secret".toCharArray()
-        gateway.onChangeFirewall = { _, _ -> calls++; ApiResult.Transport(null) }
-        assertTrue(repository.change(owner, facts, change, password, ElevationAnswerProvider.Declines) is ApiResult.Transport)
-        assertTrue(password.all { it == '\u0000' }); assertFalse(storage.bytes!!.decodeToString().contains("private-secret"))
+        val owner = signIn(); var calls = 0
+        gateway.onChangeFirewall = { _ -> calls++; ApiResult.Transport(null) }
+        assertTrue(repository.change(owner, facts, change, ElevationAnswerProvider.Declines) is ApiResult.Transport)
+        assertFalse(storage.bytes!!.decodeToString().contains("password"))
         repository.facts(owner); val pending = FirewallMutationJournal(storage).pending(owner).single()
-        assertTrue(runCatching { repository.change(owner, facts, change, null, ElevationAnswerProvider.Declines) }.isFailure)
+        assertTrue(runCatching { repository.change(owner, facts, change, ElevationAnswerProvider.Declines) }.isFailure)
         assertEquals(1, calls)
         assertTrue(repository.acceptFacts(owner, pending) is ApiResult.Success); assertTrue(repository.pending(owner).isEmpty())
     }
-    @Test fun `changed rule numbering or policy refuses mutation before password leaves device`() = runTest {
+    @Test fun `changed rule numbering or policy refuses mutation before authorization`() = runTest {
         val owner = signIn(); gateway.onFirewallStatus = { ApiResult.Success(status.copy(isEnabled = true)) }
-        val password = "pw".toCharArray()
-        val result = repository.change(owner, facts, change, password, ElevationAnswerProvider.Declines)
+        val result = repository.change(owner, facts, change, ElevationAnswerProvider.Declines)
         assertEquals("firewall.facts_changed", (result as ApiResult.Problem).code)
-        assertTrue(password.all { it == '\u0000' }); assertTrue(repository.pending(owner).isEmpty())
+        assertTrue(repository.pending(owner).isEmpty())
     }
-    @Test fun `domain elevation refusal retries only exact capability and target and zeroes both passwords`() = runTest {
-        val owner = signIn(); val own = "own-secret".toCharArray(); val admin = "admin-secret".toCharArray(); var count = 0
-        gateway.onChangeFirewall = { submitted, password ->
-            assertEquals(change, submitted); assertEquals("own-secret", String(password!!)); count++
+    @Test fun `domain elevation refusal retries exact target with one administrator authentication`() = runTest {
+        val owner = signIn(); val admin = "admin-secret".toCharArray(); var count = 0
+        gateway.onChangeFirewall = { submitted ->
+            assertEquals(change, submitted); count++
             ApiResult.Success(if (count == 1) FirewallResult(false, "firewall.elevation_required") else FirewallResult(true, ""))
         }
-        gateway.onElevation = { _, _, capability, target, _, _ ->
-            assertEquals("firewallChange", capability); assertEquals("ufw", target); ApiResult.Success(ElevationGrant(true, null))
+        gateway.onElevation = { _, _, capability, target, password, account ->
+            assertEquals("firewallChange", capability); assertEquals("ufw", target)
+            assertEquals("alice", account); assertEquals("admin-secret", String(password!!))
+            ApiResult.Success(ElevationGrant(true, null))
         }
-        assertTrue(repository.change(owner, facts, change, own, ElevationAnswerProvider { _, _ -> ElevationAnswer("root", admin) }) is ApiResult.Success)
-        assertEquals(2, count); assertTrue(own.all { it == '\u0000' }); assertTrue(admin.all { it == '\u0000' }); assertTrue(repository.pending(owner).isEmpty())
+        assertTrue(repository.change(owner, facts, change, ElevationAnswerProvider { _, _ -> ElevationAnswer("alice", admin) }) is ApiResult.Success)
+        assertEquals(2, count); assertTrue(admin.all { it == '\u0000' }); assertTrue(repository.pending(owner).isEmpty())
     }
     @Test fun `snapshot is reread after elevation prompt before numbered writes`() = runTest {
         val owner = signIn(); var calls = 0
-        gateway.onChangeFirewall = { _, _ -> calls++; ApiResult.Success(FirewallResult(false, "firewall.elevation_required")) }
+        gateway.onChangeFirewall = { _ -> calls++; ApiResult.Success(FirewallResult(false, "firewall.elevation_required")) }
         gateway.onElevation = { _, _, _, _, _, _ -> gateway.onFirewallStatus = { ApiResult.Success(status.copy(isEnabled = true)) }; ApiResult.Success(ElevationGrant(true, null)) }
-        val result = repository.change(owner, facts, change, null, ElevationAnswerProvider { _, _ -> ElevationAnswer("root", "pw".toCharArray()) })
+        val result = repository.change(owner, facts, change, ElevationAnswerProvider { _, _ -> ElevationAnswer("alice", "pw".toCharArray()) })
         assertEquals("firewall.facts_changed", (result as ApiResult.Problem).code); assertEquals(1, calls)
     }
     @Test fun `unavailable backend does not invent empty verified rules and observers cannot mutate`() = runTest {
@@ -75,24 +76,22 @@ class FirewallRepositoryTest {
         gateway.onFirewallRules = { error("Unavailable backend cannot read rules") }
         assertFalse((repository.facts(owner) as ApiResult.Success).value.status.isAvailable)
         val observer = signIn(manage = false)
-        assertTrue(runCatching { repository.change(observer, facts, change, null, ElevationAnswerProvider.Declines) }.isFailure)
+        assertTrue(runCatching { repository.change(observer, facts, change, ElevationAnswerProvider.Declines) }.isFailure)
         assertTrue(repository.pending(observer).isEmpty())
     }
     @Test fun `corrupt journal and switched sessions cannot discard unknown original changes`() = runTest {
         val owner = signIn(); storage.bytes = byteArrayOf(1, 2)
-        assertTrue(runCatching { repository.change(owner, facts, change, null, ElevationAnswerProvider.Declines) }.isFailure)
+        assertTrue(runCatching { repository.change(owner, facts, change, ElevationAnswerProvider.Declines) }.isFailure)
         storage.bytes = null; signIn(account = "bob")
         assertTrue(runCatching { repository.facts(owner) }.exceptionOrNull() is CancellationException)
     }
-    @Test fun `cancelling a waiting mutation still clears its password`() = runTest {
+    @Test fun `cancelling a waiting mutation cannot replay an uncertain change`() = runTest {
         val owner = signIn(); val prompt = CompletableDeferred<Unit>(); val neverAnswered = CompletableDeferred<ElevationAnswer?>()
-        gateway.onChangeFirewall = { _, _ -> ApiResult.Success(FirewallResult(false, "firewall.elevation_required")) }
-        val first = launch { repository.change(owner, facts, change, null, ElevationAnswerProvider { _, _ -> prompt.complete(Unit); neverAnswered.await() }) }
+        gateway.onChangeFirewall = { _ -> ApiResult.Success(FirewallResult(false, "firewall.elevation_required")) }
+        val first = launch { repository.change(owner, facts, change, ElevationAnswerProvider { _, _ -> prompt.complete(Unit); neverAnswered.await() }) }
         prompt.await()
-        val password = "waiting-secret".toCharArray()
-        val waiting = launch { repository.change(owner, facts, change, password, ElevationAnswerProvider.Declines) }
+        val waiting = launch { repository.change(owner, facts, change, ElevationAnswerProvider.Declines) }
         yield(); waiting.cancelAndJoin()
-        assertTrue(password.all { it == '\u0000' })
         first.cancelAndJoin()
         assertEquals(1, repository.pending(owner).size)
     }

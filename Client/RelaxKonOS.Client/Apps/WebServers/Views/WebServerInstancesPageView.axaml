@@ -95,6 +95,7 @@
                     <StackPanel IsVisible="{Binding IsIntegratedServer}" Spacing="8">
                         <TextBlock Text="{loc:Loc webservers.integrated.help}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
                         <Button Content="{loc:Loc webservers.action.reload}" Command="{Binding ReloadCommand}" HorizontalAlignment="Left" />
+                        <Button Content="{loc:Loc webservers.managed.uninstall}" Command="{Binding UninstallManagedCommand}" HorizontalAlignment="Left" IsVisible="{Binding SelectedServer.Capabilities.CanUninstall}" />
                     </StackPanel>
                     <StackPanel IsVisible="{Binding IsIntegratedOrManagedServer}" Spacing="6">
                         <TextBlock Text="{loc:Loc webservers.acme.help}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />

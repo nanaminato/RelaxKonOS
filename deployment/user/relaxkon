@@ -162,12 +162,10 @@ verify_bundle() {
   grep -Eq '"files"[[:space:]]*:[[:space:]]*\[' "$manifest" || fail "bundle manifest has no file inventory"
   ! find "$bundle" -type l -print -quit | grep -q . || fail "bundle must not contain symbolic links"
   if [[ $skip_file_checks != true ]]; then
-  (cd "$bundle" && sha256sum --check --status manifest.sha256) || fail "bundle file checksum verification failed"
-  # The checksum file must represent exactly the extracted payload rather than merely a subset.
-  local listed actual
-  listed=$(awk '{ print substr($0, 67) }' "$bundle/manifest.sha256" | LC_ALL=C sort)
-  actual=$(cd "$bundle" && find . -type f ! -name manifest.json ! -name manifest.sha256 -print | LC_ALL=C sort)
-  [[ $listed == "$actual" ]] || fail "bundle file inventory does not match its contents"
+    command -v python3 >/dev/null || fail "Python 3 is required to verify the release inventory"
+    local runtime
+    case "$(uname -m)" in x86_64) runtime=linux-x64 ;; aarch64|arm64) runtime=linux-arm64 ;; *) fail "unsupported architecture" ;; esac
+    python3 "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/../verify-release-inventory.py" "$bundle" user-server "$runtime" >/dev/null || fail "bundle file inventory verification failed"
   fi
 }
 # Stage the new version beside the active one and switch the current symlink atomically, so an
@@ -185,6 +183,7 @@ install_bundle() {
   cp -a -- "$bundle/payload/linux/server" "$stage/server"
   cp -a -- "$bundle/payload/linux/guardian" "$stage/guardian"
   cp -a -- "$bundle/deployment/user" "$stage/user"
+  cp -- "$bundle/deployment/verify-release-inventory.py" "$stage/verify-release-inventory.py"
   chmod -R go-rwx -- "$stage"
   mv -- "$stage" "$destination"
   printf '%s\n' "$version"

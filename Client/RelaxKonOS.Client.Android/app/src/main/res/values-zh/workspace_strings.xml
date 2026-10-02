@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="workspace_overview">概览</string>
+    <string name="workspace_profiles">配置与订阅</string>
+    <string name="workspace_nodes">节点</string>
+    <string name="workspace_connections">连接</string>
+    <string name="workspace_logs">日志</string>
+    <string name="workspace_settings">设置</string>
+    <string name="workspace_workspace">工作区</string>
+    <string name="workspace_branches">分支</string>
+    <string name="workspace_history">历史</string>
+    <string name="workspace_conflicts">冲突</string>
+    <string name="workspace_build">构建</string>
+    <string name="workspace_instances">实例</string>
+    <string name="workspace_sites">站点</string>
+    <string name="workspace_publish">应用网站发布</string>
+    <string name="workspace_shares">共享</string>
+    <string name="workspace_users">用户</string>
+    <string name="workspace_certificates">证书</string>
+    <string name="workspace_operations">操作与恢复</string>
+    <string name="workspace_runtime">运行时</string>
+    <string name="workspace_tunnels">隧道与配置</string>
+    <string name="workspace_versions">版本</string>
+    <string name="workspace_backup">备份与恢复</string>
+    <string name="workspace_compose">编排</string>
+    <string name="workspace_containers">容器</string>
+    <string name="workspace_images">镜像</string>
+    <string name="workspace_mirrors">镜像源</string>
+    <string name="workspace_proxy">宿主代理</string>
+    <string name="workspace_networks">网络</string>
+    <string name="workspace_volumes">卷</string>
+    <string name="workspace_performance">性能</string>
+    <string name="workspace_processes">进程</string>
+    <string name="workspace_scope_host">远端宿主设置</string>
+    <string name="workspace_scope_android">Android 本机设置</string>
+    <string name="workspace_taskmanager">任务管理器</string>
+    <string name="workspace_taskmanager_note">性能、进程与所选目标详情</string>
+    <string name="workspace_scope_connection">Android 与服务器连接</string>
+</resources>

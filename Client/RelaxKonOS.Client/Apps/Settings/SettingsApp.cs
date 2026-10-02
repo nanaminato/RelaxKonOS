@@ -116,7 +116,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
             try { return (await authorize(null, null)).Elevated; }
             catch (RelaxKonOSAuthException error) when (error.Type.EndsWith("/elevation-password-required", StringComparison.Ordinal))
             {
-                var defaultAdministrator = session.CurrentServer?.Platform == HostPlatformKind.Linux ? "root" : session.CurrentUser?.Username ?? string.Empty;
+                var defaultAdministrator = string.Empty;
                 var authorized = await context.WindowManager.ShowSystemDialogAsync<bool>(
                     LocalizedText.Get(titleKey), dialog =>
                     {

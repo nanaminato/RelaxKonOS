@@ -137,7 +137,7 @@ internal fun SshTerminalContent(
     endReview?.let { id -> AlertDialog(
         onDismissRequest = { endReview = null },
         title = { Text(stringResource(R.string.terminal_close)) },
-        text = { Text(stringResource(R.string.terminal_close_confirm, id.take(8))) },
+        text = { Text(stringResource(R.string.terminal_close_confirm, stringResource(R.string.terminal_session_name, sessions.indexOfFirst { it.sessionId == id } + 1))) },
         confirmButton = { TextButton(onClick = { onEnd(id); endReview = null }) { Text(stringResource(R.string.terminal_close)) } },
         dismissButton = { TextButton(onClick = { endReview = null }) { Text(stringResource(R.string.common_cancel)) } },
     ) }
@@ -150,7 +150,7 @@ internal fun SshTerminalContent(
                 DropdownMenuItem(text = { Text(stringResource(R.string.terminal_new)) },
                     onClick = { menuOpen = false; onNew() }, enabled = canCreate)
                 sessions.forEach { session ->
-                    DropdownMenuItem(text = { Text(sshSessionLabel(session)) },
+                    DropdownMenuItem(text = { Text(sshSessionLabel(session, sessions.indexOf(session) + 1)) },
                         onClick = { menuOpen = false; onSelect(session.sessionId) })
                 }
                 if (state.sessionId.isNotEmpty()) DropdownMenuItem(text = { Text(stringResource(R.string.terminal_close)) },
@@ -201,7 +201,7 @@ internal fun SshTerminalContent(
         if (!compact && !wide && sessions.isNotEmpty()) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             sessions.forEach { session -> FilterChip(selected = session.sessionId == state.sessionId,
-                onClick = { onSelect(session.sessionId) }, label = { Text(sshSessionLabel(session)) }) }
+                onClick = { onSelect(session.sessionId) }, label = { Text(sshSessionLabel(session, sessions.indexOf(session) + 1)) }) }
         }
         if (state.sessionId.isEmpty() && !compact) Text(stringResource(R.string.ssh_terminal_empty),
             style = MaterialTheme.typography.bodySmall)
@@ -211,7 +211,7 @@ internal fun SshTerminalContent(
             Text(stringResource(R.string.terminal_sessions_title), style = MaterialTheme.typography.titleMedium)
             sessions.forEach { session ->
                 FilterChip(selected = session.sessionId == state.sessionId,
-                    onClick = { onSelect(session.sessionId) }, label = { Text(sshSessionLabel(session)) })
+                    onClick = { onSelect(session.sessionId) }, label = { Text(sshSessionLabel(session, sessions.indexOf(session) + 1)) })
             }
         }
     }, output = {
@@ -268,12 +268,12 @@ internal fun SshTerminalContent(
 }
 
 @Composable
-private fun sshSessionLabel(session: SshTerminalUiState): String {
+private fun sshSessionLabel(session: SshTerminalUiState, number: Int): String {
     val status = stringResource(when {
         session.connecting -> R.string.ssh_terminal_connecting
         session.connected -> R.string.ssh_terminal_connected
         session.problem -> R.string.ssh_terminal_failed
         else -> R.string.ssh_terminal_disconnected
     })
-    return "${session.sessionId.take(8)} · $status"
+    return "${stringResource(R.string.terminal_session_name, number)} · $status"
 }

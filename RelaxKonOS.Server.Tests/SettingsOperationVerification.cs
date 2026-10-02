@@ -14,7 +14,7 @@ internal static class SettingsOperationVerification
         var protection = DataProtectionProvider.Create(keys);
         var journal = new SettingsOperationJournal(environment, protection);
         var provider = new ControlledTimeProvider();
-        var grants = new HostElevationSessionStore();
+        var grants = new HostElevationSessionStore(new TestHostAccountPrivilegeService(), new UploadSessionChecks.SystemMode(), new HostElevationSessionState());
         var coordinator = new SettingsOperationCoordinator(journal, provider, grants);
         var actor = Principal();
         var request = new TimeZonePreviewRequest(provider.Revision, "time-test", new("Test/Two"));

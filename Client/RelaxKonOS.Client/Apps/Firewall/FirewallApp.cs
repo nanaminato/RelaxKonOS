@@ -32,10 +32,9 @@ public sealed class FirewallApp : RemoteApplicationBase
             context.ShowWindow(LocalizedText.Get("application.relaxkonos.firewall.display_name"), new TextBlock { Text = LocalizedText.Get("firewall.login_required"), Margin = new Avalonia.Thickness(24), TextWrapping = Avalonia.Media.TextWrapping.Wrap }, new Rect(180, 160, 470, 180), Manifest.IconGlyph, false, false, false);
             return;
         }
-        var viewModel = new FirewallViewModel(client, session, context.Permissions);
+        var viewModel = new FirewallViewModel(client, context.Permissions);
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.firewall.display_name"), CreateView(viewModel), new Rect(70, 55, 1160, 760), Manifest.IconGlyph);
         viewModel.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window, problemCode);
-        viewModel.RequestPasswordAsync = () => RequestPasswordAsync(context, window);
         viewModel.ShowRuleEditorAsync = editing => ShowRuleEditorAsync(context, window, viewModel, editing);
         _ = viewModel.StartAsync();
     }
@@ -167,27 +166,4 @@ public sealed class FirewallApp : RemoteApplicationBase
         return field;
     }
 
-    private static Task<string?> RequestPasswordAsync(AppContext context, RelaxKonOS.WindowManager.ManagedWindow owner) =>
-        context.ShowDialogAsync<string?>(owner, LocalizedText.Get("firewall.password_dialog.title"), dialog =>
-        {
-            var password = new TextBox { PasswordChar = '•', PlaceholderText = LocalizedText.Get("firewall.password_placeholder") };
-            var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right };
-            var cancel = new Button { Content = LocalizedText.Get("common.cancel") };
-            cancel.Click += (_, _) => dialog.Cancel();
-            var confirm = new Button { Content = LocalizedText.Get("common.ok"), Classes = { "primary" } };
-            confirm.Click += (_, _) => dialog.Close(password.Text);
-            actions.Children.Add(cancel);
-            actions.Children.Add(confirm);
-            return new StackPanel
-            {
-                Spacing = 12,
-                Margin = new Avalonia.Thickness(20),
-                Children =
-                {
-                    new TextBlock { Text = LocalizedText.Get("firewall.password_dialog.message"), TextWrapping = Avalonia.Media.TextWrapping.Wrap },
-                    password,
-                    actions,
-                },
-            };
-        }, new RelaxKonOS.Core.Primitives.Size(420, 180));
 }

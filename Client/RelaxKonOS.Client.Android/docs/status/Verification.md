@@ -4,6 +4,24 @@
 
 ## 1. 共同设备与发布检查
 
+2026-10-02 安装来源与自行下载：Mihomo、FRP、Windows Nginx 共用来源选择组件，服务器文件浏览/引用、手机 SAF 选包/上传和宿主下载入口均保留，新增与所选版本匹配的官方 URL、文字选择、复制与系统浏览器打开。“我要自行下载”只用于 Install；链接操作不会提交安装。Windows Nginx 默认采用版本目录稳定版，变更版本清除旧包引用；SAF 回调校验原宿主会话。24 项定向 JVM 测试通过（ProxyHttpTest 3、TunnelHttpTest 3、WebServerManagementHttpTest 4、InstallationRepositoryTest 14）；Debug/AndroidTest APK 构建通过。emulator-5554 的 InstallationPackagePickerTest 三项通过，覆盖来源切换、服务器浏览入口、手机选择回调、锁定状态、官方 URL 展示与实际复制、版本变更后隐藏旧链接。最终 APK 已安装至该模拟器。此证据不覆盖 Windows Nginx 或 FRP 的真实宿主安装，也不代表实体手机外部浏览器、下载管理器及文件提供者已验收。
+
+2026-10-02 Mihomo 版本选择宿主联调：在 192.168.1.5（Ubuntu 26.04 x64）更新 Server，保留数据、证书及 Guardian 配置。普通用户登录、受信版本列表、推荐标记、Linux amd64 下载地址、无效版本 404、管理员提权均通过。官方 v1.19.30 归档 SHA-256 为 `cf06ce2c7d1421bdbda14ee4a5b6046672dc35ebf8eecd8e77504ec3c0ed9a84`；归档上传后安装成功，运行时为 running / integrityVerified=true，systemd 服务 active / enabled。Server 重启后控制器可达、health=healthy、TUN disabled。Linux `--mihomo-runtime-only` 专项测试通过，覆盖受信重定向、不安全地址及循环拒绝、缓冲尾部上传长度与完整重读。修复 GitHub 归档重定向、下载总超时及上传流关闭前登记长度的问题；Linux 服务安装脚本新增私有 HOME，持久化 DataProtection 密钥。测试机旧临时密钥无法恢复，旧控制器密钥已备份后重新生成。宿主直接联网下载安装仍未通过（连接超时/下载失败），本次真实安装使用官方归档上传；Android 真机版本下拉交互尚未验收。
+
+2026-10-02 输出绘制边界：输出视口与 WebView 容器裁剪绘制，xterm 的加载提示等待 Chromium 首帧可绘制后撤下。Debug 与 AndroidTest APK 构建通过；SM-X510 和 `Medium_Phone_2` 分别执行 `TerminalLoadingTest` 六项与 `XtermTerminalTest` 一项，共各七项全部通过。新增 360×700dp / 1000×600dp 像素检查确认 WebView 初始化前后，输出上方背景保持可见，身份和输入区仍显示。最新 APK 已安装到两台设备。用户确认原录屏来自 Medium Phone(2)；该模拟器连接真实 Linux 既有会话后录制文件→终端过渡，逐帧检查确认身份、工具、扩展键及输入区与局部加载同时显示，输出出现后未遮挡其它组件；没有发送命令或新建会话。本地 ignored 证据为 `artifacts/terminal-entry-fixed.mp4`。模拟器验证前遇到 system 无响应，重启后完成；临时登录用显示密度已恢复原值。此录屏证据不代替其它实体手机或耗时基准验证。
+
+2026-10-02 终端进入：身份、会话、工具和输入区立即显示，渲染初始化和加载提示仅限输出视口。SignalR/TLS 连接构造在 IO 执行；连接期间跳过旧历史布局，xterm 模式跳过未使用的原生字形布局，并在本地 WebView 加载完成前显示提示。连接调度改动的 1,023 项 JVM 测试通过，新增检查确认连接构造不在控制器线程执行。本轮 Debug 与 AndroidTest APK 构建通过，修正版已安装到 SM-X510；`TerminalLoadingTest` 四项全部通过，新增真实页面 1000×600dp 用例在暂停首帧时确认侧栏、扩展键及输入区可见，加载边界等于输出视口且不与侧栏、输入区重叠，推进时钟后加载退出。原有首帧加载、初始化前离页取消、失败退出加载检查继续通过。上一轮 `NativeTerminalTest` 和 `XtermTerminalTest` 各一项通过，真实 Linux 会话两次文件→终端切换均保持原会话与未发送草稿，草稿已清理，没有发送远端命令。未执行修正前后耗时基准、大量历史输出、慢网络或其它手机机型的性能验收；完整终端矩阵继续保留。
+
+2026-10-02 安装器修复包 `0.2.0-privilege-c631d379-fix1` 升级后，SM-X510 重新登录成功，主页继续显示当前 Linux 账户及系统状态，无证书更换确认；证书指纹保留的主机侧验证见 [宿主授权验证](../../../../docs/platform/RelaxKonOS.HostPrivilegeRouting.Goal.md#linux-局域网实测)。本机未勾选保存密码。此证据不等同于平板已完成环境变量变更或证书显式重新生成流程。
+
+2026-10-02 SM-X510 授权联调：离线 `assembleDebug` 通过，最新 Debug APK 安装到实体平板。使用 `nanami` 登录升级后的 Ubuntu 26.04 Server（提交 `c631d379`）成功，主页显示 Linux 与当前账户；管理→防火墙加载 UFW 当前快照，无第二次密码提示。主机防火墙原本停用，本次未启用、修改策略或增删规则。普通用户授权弹窗、空管理员候选、取消/重试、指纹与实际变更尚未在平板验证；宿主 API 的管理员/root/普通用户、精确文件授权、会话隔离及 sudoers 撤权结果见 [宿主授权验证](../../../../docs/platform/RelaxKonOS.HostPrivilegeRouting.Goal.md#linux-局域网实测)。截图位于本地 ignored `artifacts/linux-privilege-live/tablet-firewall.png`，未纳入仓库。
+
+宿主授权：离线 `:app:testDebugUnitTest` 全部通过，覆盖新版防火墙请求无密码字段、一次管理员认证/一次重试、事实变化拒绝、未知结果持久且不重放。共享 Server `--host-operation-authorization-only` 通过，覆盖动态管理员撤权、Alias、User Mode、精确 grant、文件来源、当前 Windows SID/UAC 令牌比对及真实 HTTP 目标归属；`--host-settings-only` 通过。仍须在 Linux 隔离宿主验证锁定 root、非 root sudo 管理员、普通用户、撤权、真实 UFW 和 Helper 副作用；Windows 域组/撤权和真实 Helper，以及手机/平板确认、取消、指纹和跨服务器账户提示均待实机验收。
+
+2026-10-02 局域网自签证书修复：`ServerMaintenanceOptionsTest` 4 项、`ServerMaintenanceTest` 1 项、`ServerCenterDeploymentClientTest` 11 项与离线 `assembleDebug` 通过。覆盖普通修复保留证书/数据、Linux/Windows 系统修复的当前 IP 请求序列化、User Mode 拒绝、空/非法名称拒绝，以及卸载/回滚隔离证书参数。共享启动器 `Tests/Deployment/certificate_repair_checks.py` 2 项通过，覆盖默认保留、显式重新生成、回滚保留及旧引擎拒绝；Bash/PowerShell 启动器语法检查通过。尚未通过 Android 实机执行证书更换；手机/平板的大字体、TalkBack、键盘避让、确认/取消、切换宿主表单隔离、断线回执查询与重新登录核对新指纹，以及真实 Windows 修复均待验证。此前 SSH 直接修复 Linux 宿主的证据不代表移动端端到端验收。
+
+2026-10-02 PN-01–10 导航改造：Kotlin 编译、1,022 项 JVM 测试与 Debug APK 构建通过，SM-X510 的 `WorkspaceNavigationTest` 六项通过，覆盖草稿/不重放提交、360dp/2 倍字体固定导航与分类滚动、保存恢复及所有者变化清理、隐藏面板不占当前视口、八分类横向触达、标题返回按钮位于分类栏上方与当前页离页处理委托。设置返回栈新增两项 JVM 检查通过。各应用真实领域操作、手机真机、三语/主题/TalkBack、断线与恢复、Windows/Linux 能力门控和真实账户切换仍待验收，见 [导航对照状态](PhoneNavigationParity.md)。
+
 2026-10-01 SSH 设置、双终端与平板导航：703 项 JVM 测试与 `assembleDebug` 通过，新增检查覆盖原生/原始 VT 输出并存、跨帧 UTF-8、清屏、resize/离页保留及重连/附加其它 shell 同步重置。SM-S9380 与 SM-X510（Android 16）均执行 `SshWorkspaceLayoutTest` 三项、`NativeTerminalTest` 一项及 `XtermTerminalTest` 一项通过：导航覆盖 360/700/1000dp 设置入口、底栏键盘折叠、侧栏独立视口和无障碍名称；原生模式验证首次连接成功后同步 PTY 尺寸及视口宽度变化；xterm.js 验证 Windows VT 重绘、查询响应和视口显隐尺寸。xterm.js 用例等待实际 fit/绘制完成后检查边界，避免在 200ms 尺寸稳定期前误报。完整终端测试包在平板 `keyboardShowAndHidePreserveTheUnsentDraft` 长时间等待后中止，不能记为整包通过。语言/主题/高对比度/终端选择的重启恢复、真实 SSH/Server 会话切换两种渲染器、平板分屏/旋转与复杂全屏程序仍需实机联调；导航测量用例不代表所有 SSH 页面已完成内容双栏。
 
 2026-10-01 键盘展开最后一行裁切：真机 Windows SSH 会话确认原屏幕底边为 196 CSS px，但 WebView 可视高度只有 188 px。addon-fit 只扣除 xterm 元素自身内边距，原来放在父容器的 12px 内边距未计入可用行列数。将内边距移入 xterm 元素后，键盘展开时为 12 行、屏幕底边 170px / 可视高度 188px；收起时为 16 行、底边 223px / 可视高度 235px，Windows 提示符保留。resize 前处于最新输出位置时 resize 后继续贴底；查看历史时保留滚动位置。设备回归检查新增屏幕右边/底边不超过视口的断言。
@@ -14,7 +32,7 @@
 
 2026-10-01 SSH 终端使用本地 xterm.js：仅服务器中心 SSH 路径替换为完整 VT 模拟器，PTY 声明 `xterm-256color`；RelaxKonOS Server Hub 终端保持现有实现。JVM 检查覆盖 Windows 清屏/光标/颜色序列和跨帧原样传递、小视口尺寸及会话隔离。新增 WebView 重绘/终端查询响应/视口恢复设备测试；本轮模拟器执行因设备连接丢失失败，不能作为通过证据。用户负责实机联调：Windows SSH 初始提示符、`cls`、PowerShell 颜色、连续命令、键盘反复显隐、字号调整、会话切换及离页返回；检查长时间大量输出的内存与重放开销。既有 SSH 布局模拟器证据不覆盖新 WebView 渲染器。
 
-2026-10-01 操作记录：平台自动识别，「查看详情」通过可滚动、可复制的弹窗展示回执与按需读取日志，支持关闭按钮、返回键和窗口外点击关闭。「清除已结束记录」确认后删除列表中已核验结束的远端回执、事件和日志，同步移除本地索引，保留运行中、缺失及未核验记录与防重放请求摘要。`assembleDebug --offline`、`ServerCenterDeploymentClientTest`、`ServerInstallOperationIndexTest` 通过；Windows 清除入口的隔离测试 `Tests/Deployment/operation_history_checks.py` 三项通过，覆盖四种结束状态、运行/排队/未知/缺失/编号不匹配和写锁冲突；Linux 启动器 `bash -n` 通过。此前客户端测试覆盖固定 diagnostics 动作、无效 ID 拒绝、日志截断及敏感字段遮盖。实体手机弹窗关闭、清除确认与失败重试、长日志滚动/复制、真实 Linux/Windows SSH 清除与历史记录查询仍待验证。
+2026-10-01 操作记录：平台自动识别，「查看详情」通过可滚动、可复制的弹窗展示回执与按需读取日志，支持关闭按钮、返回键和窗口外点击关闭。「清除已结束记录」确认后删除列表中已核验结束的远端回执、事件和日志，同步移除本地索引，保留运行中、缺失及未核验记录与防重放请求摘要。`assembleDebug --offline`、`ServerCenterDeploymentClientTest`、`ServerInstallOperationIndexTest` 通过；Windows 清除入口的隔离测试 `Tests/Deployment/operation_history_checks.py` 五项通过，覆盖四种结束状态、运行/排队/未知/缺失/编号不匹配和写锁冲突；Linux 启动器 `bash -n` 通过。此前客户端测试覆盖固定 diagnostics 动作、无效 ID 拒绝、日志截断及敏感字段遮盖。实体手机弹窗关闭、清除确认与失败重试、长日志滚动/复制、真实 Linux/Windows SSH 清除与历史记录查询仍待验证。
 
 2026-10-01 Linux 监听地址回执：从受管安装记录读取 listenUrl，保留真实协议、绑定地址和端口；不再虚构 HTTP 回环地址。`ListenAddressChecks.ps1` 与 Android `assembleDebug --offline` 通过。实体设备刷新后与真实宿主配置的对照仍待执行。
 
@@ -732,6 +750,31 @@ BP24 持续验证与文档同步不是新的 Android 编译环境搭建任务，
 | BP12 / BP09 | `ui/files/FilesScreen.kt:1827`、`ui/manage/docker/DockerScreen.kt:472` | 1 项 `StateFlowValueCalledInComposition`、2 项 `UnrememberedMutableState`；需修复 Compose 状态观察/状态创建 |
 
 - `adb devices -l` 实际返回空设备列表；没有执行 instrumentation、Compose 页面或手机/平板视觉/IME/旋转/后台/前台服务验收。真实 SSH/SFTP/SAF、Docker 更新/回滚/数据恢复、Ubuntu/Windows 设置写入、外部浏览器和通知仍保留在对应 BP 待验项。JVM 假传输/提供方检查和 instrumentation APK 打包不替代设备或真实宿主结果。
+
+### SM-X510 可用性修复（2026-10-01）
+
+- 后续Docker已在Ubuntu26.04安装为29.8.2/Compose5.5.1，真实API四类资源、Compose任务与应用定义的创建/读回/清理通过。部署页未安装空500已修复并在SM-X510复验；Docker资源相对年龄误判已修复，Repository14项通过，APK已安装。真正Docker Hub拉取和自动安装完整成功仍受宿主网络阻止，详情及新增问题见 [TabletUsability](TabletUsability.md)。
+
+- TAB-04/05 已按实体 SM-X510 和真实 Linux 宿主证据关闭：Guardian IPC 权限修复后脚本执行及临时工作负载完整创建/读回/启动/停止/删除通过；SSH 系统横屏普通及150%字体退出入口通过。SSH 文件折叠工具和 Docker/FRP/Mihomo 未安装状态已真机复验，具体边界及剩余项见 [TabletUsability.md](TabletUsability.md)。
+- 最终 Android 离线 APK 构建、安装通过；Server 构建和 Guardian 只读专项22项、安装脚本语法检查通过。Docker 安装后功能、文件传输及既有 lint 缺陷仍待验。
+
+### 其他管理页界面统一（2026-10-02）
+
+- 覆盖 Mihomo、网站/Nginx、Docker 引擎/镜像源/资源记录、防火墙、证书列表/操作及脚本任务卡片。新增通用管理卡片和三语操作记录文案，导航与模块文档同步。
+- 离线 Debug APK 构建及 1023 项 JVM 单元测试通过；三语 XML、重复键、键集一致性、管理页资源引用和差异空白检查通过。
+- 未执行设备或真实宿主验收。待验：手机/平板卡片与大字体、记录页切换和空状态、网站发布跳转/观察、Mihomo 初始任务恢复、Docker 跨资源记录及独立恢复标记读取、日志显式展开、防火墙草稿切换保护、证书及脚本详情操作。
+
+### FRP 界面易用性（2026-10-02）
+
+- 离线 `:app:assembleDebug :app:testDebugUnitTest` 通过（1023 用例，0 失败/错误）；三语 XML、重复键、键集一致性与隧道文案引用检查通过，差异空白检查通过。
+- 卡片覆盖运行时、配置列表/详情、隧道与宿主 frps；操作记录独立承接安装/升级/修复/卸载任务、恢复/取消/原请求重试、待核实写入、最近动作结果和 frps 日志审计。
+- 未执行设备或真实 FRP 宿主验证。待验：手机/平板分栏与大字体换行、卡片选中、编辑器/键盘、运行时提交后的记录页、事实读取失败时的恢复入口、frps 待核实采用以及记录页无重复详情。
+
+### SMB 界面易用性（2026-10-02）
+
+- Debug APK 构建和 JVM 单元测试通过（1023 用例，0 失败/错误）；三语 XML、重复键、键集一致性和 SMB 文案引用检查通过。
+- 待设备验收：手机与 600 dp 以上平板、150% 字体、软键盘下的权限输入、账户快捷选择、折叠设置保留、地址复制和草稿切换确认；本次未执行设备测试或真实 SMB 连接验证。
+- 操作记录独立页签已完成；安装提交自动跳转、任务恢复/取消/原请求重试、待核实变更与最近回执集中展示。待设备补验：四页切换不重复展示任务详情、事实读取失败仍可进入操作记录、草稿切换保护和待核实跳转入口。
 
 ### fix_ssh → master 合并验证（2026-10-01）
 

@@ -8,6 +8,20 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class WebServerManagementHttpTest {
+    @Test fun `manual Windows nginx download uses host route without an installation mutation`() = runTest {
+        serve(200, """{"version":"1.30.0","url":"https://nginx.org/download/nginx-1.30.0.zip"}""") { url, requests ->
+            val result = RelaxKonApi("test", "test").webServerInstallDownload(url, "token", "1.30.0")
+            assertEquals(WebServerInstallDownload("1.30.0", "https://nginx.org/download/nginx-1.30.0.zip"), (result as ApiResult.Success).value)
+            assertEquals(1, requests.size)
+            assertEquals("GET", requests.single().method)
+            assertEquals("/api/v1.0/webservers/managed/download?version=1.30.0", requests.single().route)
+            assertEquals("Bearer token", requests.single().token)
+            assertNull(requests.single().key)
+        }
+        serve(404, "") { url, _ ->
+            assertFalse(RelaxKonApi("test", "test").webServerInstallDownload(url, "token", "invalid") is ApiResult.Success)
+        }
+    }
     private data class Request(val method: String, val route: String, val token: String?, val key: String?, val body: String)
     private suspend fun serve(code: Int, payload: String, block: suspend (String, List<Request>) -> Unit) {
         val requests = mutableListOf<Request>()

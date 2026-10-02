@@ -1,6 +1,6 @@
 # RelaxKonOS 跨平台特权操作与 Helper（Goal 执行版）
 
-> Linux System Mode 的管理员认证与文件路由以 [宿主管理员身份与执行路由 Goal](./RelaxKonOS.HostPrivilegeRouting.Goal.md) 为准。本文下方“Linux 只验证当前登录账户密码”的表述是原阶段实施记录，已不再描述当前文件提权接口；其他 Host capability 不因文件路由改造而自动获得管理员权限。
+> 当前跨平台管理员认证、文件来源和非文件动态授权以 [宿主管理员身份与执行路由 Goal](./RelaxKonOS.HostPrivilegeRouting.Goal.md) 为准。自动授权仅适用于经宿主系统认证且当前策略仍有效的管理员；普通用户/Alias 使用精确临时 grant。
 
 > 2026-09-07 设置能力补充：[`SettingsSystem.Goal`](../desktop/RelaxKonOS.SettingsSystem.Goal.md) 允许新增结构化宿主环境变量、时区、主机名与 DNS 操作。环境配置数据与特权进程启动环境必须隔离；禁止通用执行的原则保持不变。本文部分“当前状态”为早期基线，实施前应核对已存在的 Windows 管道与封闭操作实现。
 
@@ -46,7 +46,7 @@ Windows Helper 服务必须同时满足：
 
 当前 `IIdentityProvider.Verify` 足以复验密码，但 Windows 的“当前登录用户密码”不必然是管理员密码。Windows 版本必须新增一个 Server-only 的宿主管理员验证边界：使用 `LogonUser` 得到临时 token，并检查其是否属于 local/domain Administrators；token 立即释放，密码、token 和 SID 不写日志或持久化。
 
-客户端需要复用已有系统认证窗口，但 Windows 允许输入管理员账户名和密码（默认可预填当前用户名，不能假定是 `Administrator`）。Linux 可继续使用当前登录用户密码的现有体验；是否允许 Linux 以另一个 sudo 管理员认证必须作为独立安全决策，不能静默扩权。
+客户端复用统一系统认证窗口。Windows/Linux 均允许输入有效管理员账户及其密码，无可靠候选时账户留空；Linux 非 root 管理员须有以 root 执行固定 Helper 的 sudoers 资格。系统认证管理员免重复密码，Alias 不继承此资格。
 
 认证成功后，Session Store 为**当前 access-token 的 `jti`** 写入精确的操作能力与目标范围，TTL 固定五分钟。JWT 刷新、退出登录、失效或 Helper 拒绝都使授权不可用；不得把授权绑定为长期用户名、Workspace 或 Client 进程状态。
 
@@ -100,7 +100,7 @@ Endpoint 不传递密码给 Helper；Helper 不解析 JWT，不接触 HTTP，也
 
 ### 3.3 授权模型
 
-每个高风险 Endpoint 首先执行原有普通权限检查与业务确认，再尝试非特权路径。仅当确实得到可识别的权限不足结果时返回稳定的 `elevation-required` problem code。Client 才显示系统管理员认证窗口，并携带**结构化 capability + 已规范化目标**申请 5 分钟授权，然后重试一次。
+每个高风险 Endpoint 保留普通权限检查与业务确认。普通操作优先使用当前用户权限；封闭系统操作检查当前宿主管理员资格或精确临时 grant。系统认证管理员每次重新查询资格，不重复密码、不缓存自动管理员身份。其他会话收到 `elevation-required` 后才显示账户留空/已有可信选择的管理员认证窗口，按**结构化 capability + 已规范化目标**申请五分钟授权并重试一次。
 
 授权记录至少为：
 
@@ -221,10 +221,10 @@ deployment/windows/
 
 在 Goal 1 之前必须由产品/安全负责人明确确认：
 
-1. Windows 管理员认证是否允许输入与当前 JWT 用户不同的宿主管理员账户；推荐允许，并审计其安全引用而非密码。
+1. 已确认：Windows 允许输入与当前 JWT 用户不同的有效宿主管理员账户；系统认证管理员资格按 canonical SID 动态查询。
 2. Windows Helper 的服务账户是否固定为 LocalSystem；推荐固定，避免额外可管理高权限账户。
-3. Linux 是否继续只接受当前登录用户的 PAM 密码，还是支持显式 sudo 管理员账户；推荐先保持当前语义。
-4. Firewall Helper 是迁入统一 service 还是作为等价的受限 Helper 保留；两者都必须满足统一审计与 capability 授权。
+3. 已确认：Linux 支持显式 sudo 管理员账户；PAM 只验证凭据，固定 Helper 的 root sudoers 查询另行验证管理员资格。
+4. 已实施：Firewall 使用统一封闭 Helper operation 和 `firewallChange` / `ufw` 授权，不保留独立当前用户密码路径。
 5. Goal 0 审计后哪些历史“安装器”能力不能安全结构化，需先降级为 `manual-host-action-required`。
 
 未完成这些决策或 Goal 0 清单前，不应开始 Windows Helper Service 或批量替换 Nginx/服务代码。

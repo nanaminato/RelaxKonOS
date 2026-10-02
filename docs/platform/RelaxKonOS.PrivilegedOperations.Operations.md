@@ -4,6 +4,12 @@
 LocalSystem 或 Administrator 身份运行；所有成功的宿主特权操作必须有 Helper transport
 审计记录。
 
+## 登录身份与操作授权
+
+System Mode 中，只有经宿主系统认证且当前策略仍有效的管理员/root 可免重复密码；Alias 与普通用户通过所选有效管理员取得精确、五分钟、令牌绑定授权。账户输入不按平台猜测 root/Administrator。Linux 管理员资格是允许该 NSS 账户以 root 执行固定 Helper 的 sudoers 委托；Server 服务账户自身的启动规则不代表登录用户有管理权限。Windows 按 canonical SID 查询 Administrators 成员，不依赖英文账户/组名。撤权后的下一次操作重新检查；Helper 故障拒绝执行，不改用高权限 Server。
+
+Windows 当前用户自己的环境变量按 SID 归属授权，系统 store 单独授权。防火墙变更不再携带密码，仅在统一提权入口认证；跨账户 Guardian/脚本仍需本次显式管理员审批。User Mode 不提供特权授权。
+
 ## Linux
 
 使用发布包中的 `deployment/linux/install-relaxkonos-services.sh` 安装。安装程序会：

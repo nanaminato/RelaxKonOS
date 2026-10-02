@@ -9,6 +9,8 @@ import app.relaxkonos.mobile.core.net.TerminalSessionSummary
 import app.relaxkonos.mobile.core.net.terminalConnectionFailure
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
@@ -32,6 +34,7 @@ internal class ServerTerminalController(
         ServerTerminalConnection(url, { token }, output, exit, disconnect)
     },
     private val nativeResponses: () -> Boolean = { true },
+    private val connectionDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val mutable = MutableStateFlow(ServerTerminalState())
     val state = mutable.asStateFlow()
@@ -81,34 +84,36 @@ internal class ServerTerminalController(
                         }
                         var candidate: TerminalConnection? = null
                         connectionClosed = false
-                        val created = factory.create(url, token,
-                            { bytes -> scope.launch {
-                                if (current == generation && transport === candidate) {
-                                    mutable.update { it.copy(output = transcript.append(bytes), frame = transcript.frame, rawOutput = transcript.rawOutput) }
-                                    val responses = transcript.drainResponses()
-                                    if (nativeResponses() && responses.isNotEmpty()) inputMutex.withLock {
-                                        if (nativeResponses() && current == generation && transport === candidate) {
-                                            try { candidate?.input(responses.joinToString("").toByteArray(Charsets.UTF_8)) }
-                                            catch (cancelled: CancellationException) { throw cancelled }
-                                            catch (_: Exception) { if (current == generation) mutable.update { it.copy(error = true) } }
+                        val created = withContext(connectionDispatcher) {
+                            factory.create(url, token,
+                                { bytes -> scope.launch {
+                                    if (current == generation && transport === candidate) {
+                                        mutable.update { it.copy(output = transcript.append(bytes), frame = transcript.frame, rawOutput = transcript.rawOutput) }
+                                        val responses = transcript.drainResponses()
+                                        if (nativeResponses() && responses.isNotEmpty()) inputMutex.withLock {
+                                            if (nativeResponses() && current == generation && transport === candidate) {
+                                                try { candidate?.input(responses.joinToString("").toByteArray(Charsets.UTF_8)) }
+                                                catch (cancelled: CancellationException) { throw cancelled }
+                                                catch (_: Exception) { if (current == generation) mutable.update { it.copy(error = true) } }
+                                            }
                                         }
                                     }
-                                }
-                            } },
-                            { code -> scope.launch {
-                                if (current == generation && transport === candidate) mutable.update {
-                                    it.copy(exitCode = code, sessions = it.sessions.filterNot { session -> session.sessionId == it.sessionId })
-                                }
-                            } },
-                            { scope.launch {
-                                if (current == generation && connection === candidate) connectionClosed = true
-                                if (current == generation && transport === candidate && mutable.value.connected) {
-                                    mutable.update { it.copy(connected = false, busy = false) }
-                                    connectionJob?.cancel()
-                                    connectionJob = null
-                                    connect(active)
-                                }
-                            } })
+                                } },
+                                { code -> scope.launch {
+                                    if (current == generation && transport === candidate) mutable.update {
+                                        it.copy(exitCode = code, sessions = it.sessions.filterNot { session -> session.sessionId == it.sessionId })
+                                    }
+                                } },
+                                { scope.launch {
+                                    if (current == generation && connection === candidate) connectionClosed = true
+                                    if (current == generation && transport === candidate && mutable.value.connected) {
+                                        mutable.update { it.copy(connected = false, busy = false) }
+                                        connectionJob?.cancel()
+                                        connectionJob = null
+                                        connect(active)
+                                    }
+                                } })
+                        }
                         candidate = created
                         connection = created
                         try {

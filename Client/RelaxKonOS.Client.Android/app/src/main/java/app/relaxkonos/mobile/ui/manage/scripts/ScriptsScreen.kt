@@ -13,6 +13,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedCard
+import app.relaxkonos.mobile.ui.common.ManagementCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -62,6 +64,8 @@ private fun scriptStateLabel(state: String): Int = when (state) {
 }
 
 private fun scriptProblemLabel(code: String?): Int = when (code) {
+    "guardian.agent_permission_denied" -> R.string.guardian_agent_permission
+    "guardian.agent_unavailable", "guardian.agent_timeout", "guardian.agent_not_configured" -> R.string.guardian_agent_failed
     "guardian.script_timeout" -> R.string.scripts_timeout_reason
     "guardian.script_agent_restarted" -> R.string.scripts_agent_restart_reason
     "guardian.script_launch_failed", "guardian.run_as_launch_failed", "guardian.run_as_platform_not_supported" -> R.string.scripts_launch_reason
@@ -77,14 +81,15 @@ class ScriptsViewModel(application: Application) : AndroidViewModel(application)
     fun load(active: SessionState.Active) {
         if (owner !== active) { owner = active; mutable.value = ScriptsUiState() }
         if (mutable.value.loading) return
-        mutable.update { it.copy(loading = true) }
+        mutable.update { it.copy(loading = true, error = false, problemCode = null) }
         viewModelScope.launch {
             val result = container.scriptTasks.tasks(active)
             if (owner !== active) return@launch
             mutable.update { old -> when (result) {
                 is ApiResult.Success -> old.copy(loading = false, tasks = result.value.tasks,
                     error = !result.value.success, problemCode = result.value.problemCode.takeIf(String::isNotBlank))
-                else -> old.copy(loading = false, error = true)
+                is ApiResult.Problem -> old.copy(loading = false, error = true, problemCode = result.code)
+                is ApiResult.Transport -> old.copy(loading = false, error = true, problemCode = null)
             } }
         }
     }
@@ -165,14 +170,15 @@ fun ScriptsScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modi
             Button(onClick = { editing = true }) { Text(stringResource(R.string.scripts_new)) }
         }
         state.tasks.forEach { task ->
-            OutlinedButton(onClick = { model.select(task.id) }, modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.fillMaxWidth()) {
+            OutlinedCard(onClick = { model.select(task.id) }, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text(task.executablePath)
                     Text("${task.createdAt} · ${stringResource(scriptStateLabel(task.state))}", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
         state.selected?.let { task ->
+            ManagementCard {
             Text(task.executablePath, style = MaterialTheme.typography.titleMedium)
             Text("${task.runAs} · ${stringResource(scriptStateLabel(task.state))} · ${task.exitCode?.toString() ?: "—"}")
             task.problemCode?.let { Text(stringResource(scriptProblemLabel(it))) }
@@ -183,6 +189,7 @@ fun ScriptsScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modi
             SelectionContainer { Column { task.output.forEach { line ->
                 Text("${line.timestamp} [${line.stream}] ${line.text}", style = MaterialTheme.typography.bodySmall)
             } } }
+            }
         }
     }
 }
@@ -197,7 +204,7 @@ private fun ScriptEditor(owner: SessionState.Active, onBack: () -> Unit, onSubmi
     var timeout by remember { mutableStateOf("300") }
     var runAs by remember { mutableStateOf(owner.userName) }
     var adminName by remember(owner) {
-        mutableStateOf(if (owner.serverPlatform.contains("windows", ignoreCase = true)) "Administrator" else "root")
+        mutableStateOf("")
     }
     var adminPassword by remember { mutableStateOf("") }
     val environmentLines = environment.lines().filter(String::isNotBlank)

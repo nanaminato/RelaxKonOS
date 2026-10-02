@@ -78,7 +78,7 @@ public sealed class HostElevationBroker(HttpClient http, IAuthSession session, I
         {
             var account = new TextBox
             {
-                Text = session.CurrentServer?.Platform == HostPlatformKind.Linux ? "root" : session.CurrentUser?.Username,
+                Text = string.Empty,
                 PlaceholderText = LocalizedText.Get("explorer.operations.elevation_account"),
             };
             var password = new TextBox { PasswordChar = '•', PlaceholderText = LocalizedText.Get("settings.host_time.password") };

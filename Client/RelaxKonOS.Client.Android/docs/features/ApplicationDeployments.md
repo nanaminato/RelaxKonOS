@@ -8,6 +8,8 @@
 
 共享执行语义由 [部署设计](../../../../docs/applications/RelaxKonOS.ApplicationDeployment.Design.md) 和 [实施进度](../../../../docs/applications/RelaxKonOS.ApplicationDeployment.Progress.md) 维护。Android 不执行宿主构建命令，不维护另一套运行时版本表。
 
+Docker 未安装、权限不足或不可达时，服务端仍返回已保存的应用定义，实际运行状态为未知；空定义列表显示尚未创建应用。运行环境卡片独立说明 Engine 状态，不能将依赖读取异常变为空 HTTP 500 或推断容器已停止。
+
 ## 2. 七步部署向导
 
 应用与来源 → 代码或镜像 → 运行参数与就绪检查 → 配置与资源 → 代理站点 → 确认 → 进度。归档可来自手机系统文件选择器或受控服务器文件引用；镜像支持标签查询。配置包含普通/秘密变量、命名卷与 CPU/内存/PID 限制，摘要不回显秘密，可只保存定义或立即部署。

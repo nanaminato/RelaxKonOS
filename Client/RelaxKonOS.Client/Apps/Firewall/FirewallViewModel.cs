@@ -1,7 +1,6 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Net;
 using RelaxKonOS.Client.Localization;
-using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Privileged;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -11,17 +10,15 @@ using RelaxKonOS.Protocol.Firewall;
 
 namespace RelaxKonOS.Client.Apps.Firewall;
 
-/// <summary>Window-local Linux UFW editor state. Passwords are requested one-shot and never retained by the view model.</summary>
+/// <summary>Window-local Linux UFW editor state; host authorization belongs to the shared broker.</summary>
 public sealed partial class FirewallViewModel : ObservableObject
 {
     private readonly IRemoteFirewallClient _client;
-    private readonly IAuthSession _session;
     private readonly IAppPermissionScope _permissions;
 
-    public FirewallViewModel(IRemoteFirewallClient client, IAuthSession session, IAppPermissionScope permissions)
+    public FirewallViewModel(IRemoteFirewallClient client, IAppPermissionScope permissions)
     {
         _client = client;
-        _session = session;
         _permissions = permissions;
         Policies = [Option("allow", "firewall.choice.allow"), Option("deny", "firewall.choice.deny"), Option("reject", "firewall.choice.reject")];
         Actions = [.. Policies, Option("limit", "firewall.choice.limit")];
@@ -58,9 +55,6 @@ public sealed partial class FirewallViewModel : ObservableObject
     [ObservableProperty] private string _destination = string.Empty;
     [ObservableProperty] private string _port = string.Empty;
 
-    public bool IsRoot => string.Equals(_session.CurrentUser?.Username, "root", StringComparison.Ordinal);
-    /// <summary>Provided by the window so a credential is collected only for the pending operation.</summary>
-    public Func<Task<string?>>? RequestPasswordAsync { get; set; }
     /// <summary>Provided by the window to surface unavailable privileged operations prominently.</summary>
     public Func<string?, Task>? ShowPrivilegedHelperUnavailableAsync { get; set; }
     /// <summary>Provided by the window because editing is rendered in a window-owned modal dialog.</summary>
@@ -113,14 +107,14 @@ public sealed partial class FirewallViewModel : ObservableObject
     }
 
     [RelayCommand(CanExecute = nameof(CanEnable))]
-    private Task EnableAsync() => ApplyAsync(confirmation => _client.SetEnabledAsync(new UpdateFirewallEnabledRequest(true, confirmation)));
+    private Task EnableAsync() => ApplyAsync(() => _client.SetEnabledAsync(new UpdateFirewallEnabledRequest(true)));
 
     [RelayCommand(CanExecute = nameof(CanDisable))]
-    private Task DisableAsync() => ApplyAsync(confirmation => _client.SetEnabledAsync(new UpdateFirewallEnabledRequest(false, confirmation)));
+    private Task DisableAsync() => ApplyAsync(() => _client.SetEnabledAsync(new UpdateFirewallEnabledRequest(false)));
 
     [RelayCommand(CanExecute = nameof(CanManage))]
-    private Task SaveDefaultsAsync() => ApplyAsync(confirmation => _client.SetDefaultsAsync(new UpdateFirewallDefaultsRequest(
-        SelectedIncomingPolicy?.Value ?? "deny", SelectedOutgoingPolicy?.Value ?? "allow", confirmation)));
+    private Task SaveDefaultsAsync() => ApplyAsync(() => _client.SetDefaultsAsync(new UpdateFirewallDefaultsRequest(
+        SelectedIncomingPolicy?.Value ?? "deny", SelectedOutgoingPolicy?.Value ?? "allow")));
 
     [RelayCommand(CanExecute = nameof(CanManage))]
     private async Task ShowAddRuleEditorAsync()
@@ -140,7 +134,7 @@ public sealed partial class FirewallViewModel : ObservableObject
     public async Task<bool> AddRuleAsync()
     {
         if (!TryBuildRule(out var rule)) return false;
-        var success = await ApplyAsync(confirmation => _client.CreateRuleAsync(rule with { CredentialConfirmation = confirmation }));
+        var success = await ApplyAsync(() => _client.CreateRuleAsync(rule));
         if (success) ClearEditor();
         return success;
     }
@@ -148,8 +142,8 @@ public sealed partial class FirewallViewModel : ObservableObject
     public async Task<bool> UpdateRuleAsync()
     {
         if (SelectedRule is null || !TryBuildRule(out var rule)) return false;
-        var success = await ApplyAsync(confirmation => _client.UpdateRuleAsync(SelectedRule.Number,
-            new UpdateFirewallRuleRequest(rule.Action, rule.Direction, rule.Protocol, rule.Source, rule.Destination, rule.Port, confirmation)));
+        var success = await ApplyAsync(() => _client.UpdateRuleAsync(SelectedRule.Number,
+            new UpdateFirewallRuleRequest(rule.Action, rule.Direction, rule.Protocol, rule.Source, rule.Destination, rule.Port)));
         if (success) ClearEditor();
         return success;
     }
@@ -158,7 +152,7 @@ public sealed partial class FirewallViewModel : ObservableObject
     private async Task DeleteRuleAsync()
     {
         if (SelectedRule is null) return;
-        if (await ApplyAsync(confirmation => _client.DeleteRuleAsync(SelectedRule.Number, new DeleteFirewallRuleRequest(confirmation)))) ClearEditor();
+        if (await ApplyAsync(() => _client.DeleteRuleAsync(SelectedRule.Number))) ClearEditor();
     }
 
     [RelayCommand(CanExecute = nameof(CanManage))]
@@ -206,11 +200,11 @@ public sealed partial class FirewallViewModel : ObservableObject
         }
 
         rule = new CreateFirewallRuleRequest(SelectedAction?.Value ?? "allow", SelectedDirection?.Value ?? "in", SelectedProtocol?.Value ?? "tcp",
-            NormalizeEndpoint(Source), NormalizeEndpoint(Destination), string.IsNullOrEmpty(port) ? "any" : port, null);
+            NormalizeEndpoint(Source), NormalizeEndpoint(Destination), string.IsNullOrEmpty(port) ? "any" : port);
         return true;
     }
 
-    private async Task<bool> ApplyAsync(Func<FirewallCredentialConfirmation?, Task<FirewallOperationResult>> operation)
+    private async Task<bool> ApplyAsync(Func<Task<FirewallOperationResult>> operation)
     {
         // CanExecute only controls the UI. Check again here so invoking a command directly
         // can never turn a read-only firewall grant into a host configuration change.
@@ -220,19 +214,11 @@ public sealed partial class FirewallViewModel : ObservableObject
             return false;
         }
 
-        FirewallCredentialConfirmation? confirmation = null;
-        if (!IsRoot)
-        {
-            var password = await (RequestPasswordAsync?.Invoke() ?? Task.FromResult<string?>(null));
-            if (password is null) return false;
-            confirmation = new FirewallCredentialConfirmation(password);
-        }
-
         IsLoading = true;
         var success = false;
         try
         {
-            var result = await operation(confirmation);
+            var result = await operation();
             StatusText = result.Success ? LocalizedText.Ref("firewall.operation.succeeded") : LocalizedText.Ref("firewall.operation.failed", ProblemText(result.ProblemCode));
             if (!result.Success) await ShowPrivilegedHelperUnavailableAsyncIfNeeded(result.ProblemCode);
             success = result.Success;

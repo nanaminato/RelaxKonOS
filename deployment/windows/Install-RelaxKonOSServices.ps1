@@ -153,7 +153,12 @@ function Install-BootstrapCertificate {
     Fill-CryptographicRandomBytes $passwordBytes
     $password = [Convert]::ToBase64String($passwordBytes)
     $securePassword = ConvertTo-SecureString -String $password -AsPlainText -Force
-    $temporaryCertificate = New-SelfSignedCertificate -DnsName $identities -CertStoreLocation 'Cert:\CurrentUser\My' -KeyAlgorithm RSA -KeyLength 3072 -HashAlgorithm SHA256 -NotAfter ([DateTime]::UtcNow.AddYears(5))
+    $sanEntries = @($identities | ForEach-Object {
+        $ipAddress = $null
+        if ([Net.IPAddress]::TryParse($_, [ref]$ipAddress)) { 'IPAddress=' + $ipAddress.ToString() }
+        else { 'DNS=' + $_ }
+    })
+    $temporaryCertificate = New-SelfSignedCertificate -Subject ('CN=' + $identities[0]) -TextExtension @('2.5.29.17={text}' + ($sanEntries -join '&')) -CertStoreLocation 'Cert:\CurrentUser\My' -KeyAlgorithm RSA -KeyLength 3072 -HashAlgorithm SHA256 -NotAfter ([DateTime]::UtcNow.AddYears(5))
     try {
         Export-PfxCertificate -Cert $temporaryCertificate -FilePath $destination -Password $securePassword -Force | Out-Null
     } finally {

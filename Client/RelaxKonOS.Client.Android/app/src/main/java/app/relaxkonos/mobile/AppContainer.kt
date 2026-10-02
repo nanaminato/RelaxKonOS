@@ -432,18 +432,12 @@ class AppContainer(context: Context) {
     /**
      * The administrator account suggested by the elevation prompt.
      *
-     * A saved account takes precedence. Otherwise, use the host platform convention while leaving the
-     * field editable; the password itself stays sealed inside the elevation vault and is released
+     * Only a saved account is suggested; platform names do not prove administrator status.
+     * The field stays editable; the password itself stays sealed inside the elevation vault and is released
      * exclusively through an authorized [VaultAccess.load].
      */
     fun suggestedAdministratorAccount(): String =
-        vault.records(VaultKind.Elevation).firstOrNull()?.account ?: when ((session.state.value as? SessionState.Active)
-            ?.serverPlatform
-            ?.lowercase()) {
-            "windows" -> "Administrator"
-            "linux" -> "root"
-            else -> ""
-        }
+        vault.records(VaultKind.Elevation).firstOrNull { it.serviceId == session.serviceId }?.account ?: ""
 
     /**
      * The debug-only plaintext credential for one identity, or `null` when there is none.

@@ -61,21 +61,23 @@ public sealed class InstallationFileReferenceStore(IHostEnvironment environment,
         var destination = Path.Combine(uploadRoot, id + ".package");
         try
         {
-            await using var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920,
-                FileOptions.Asynchronous | FileOptions.SequentialScan);
-            var buffer = new byte[81920];
-            long total = 0;
-            while (true)
+            await using (var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920,
+                FileOptions.Asynchronous | FileOptions.SequentialScan))
             {
-                var read = await content.ReadAsync(buffer, cancellationToken);
-                if (read == 0) break;
-                total += read;
-                if (total > MaximumUploadedPackageBytes)
+                var buffer = new byte[81920];
+                long total = 0;
+                while (true)
+                {
+                    var read = await content.ReadAsync(buffer, cancellationToken);
+                    if (read == 0) break;
+                    total += read;
+                    if (total > MaximumUploadedPackageBytes)
+                        throw new InstallationException(InstallationProblemCodes.FileReferenceUnavailable, 400);
+                    await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+                }
+                if (total == 0 || declaredLength is { } length && length != total)
                     throw new InstallationException(InstallationProblemCodes.FileReferenceUnavailable, 400);
-                await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
             }
-            if (total == 0 || declaredLength is { } length && length != total)
-                throw new InstallationException(InstallationProblemCodes.FileReferenceUnavailable, 400);
             return RegisterStaged(service, actor, destination, safeFileName, () => DeleteStaged(destination));
         }
         catch

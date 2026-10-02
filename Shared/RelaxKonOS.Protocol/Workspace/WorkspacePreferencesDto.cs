@@ -103,13 +103,16 @@ public sealed record WorkspacePreferencesDto
     /// <summary>内置壁纸 key 前缀（客户端预设目录使用）。</summary>
     public const string BuiltInWallpaperPrefix = "builtin:";
 
+    /// <summary>Default desktop photograph, shipped with the client; only its key is synchronized.</summary>
+    public const string DefaultWallpaperKey = BuiltInWallpaperPrefix + "alpine-lake";
+
     /// <summary>Workspace 托管图片壁纸的 key 前缀。前缀后的值是服务端生成的 blob id，
     /// 因此不会把宿主机路径暴露或同步到其他设备。</summary>
     public const string CustomWallpaperPrefix = "custom:";
 
     // This must be a fresh object: tracked SQLite owned entities are mutated in place.
     public static WorkspacePreferencesDto Default => new(
-        WallpaperKey: BuiltInWallpaperPrefix + "bloom",
+        WallpaperKey: DefaultWallpaperKey,
         TimeFormat: TimeFormat24H,
         DateFormat: "yyyy/M/d",
         Language: "en-US",

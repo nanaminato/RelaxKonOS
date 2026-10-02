@@ -7,6 +7,24 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ProxyHttpTest {
+    @Test fun `runtime releases use authenticated host catalog`() = runTest {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/api/v1.0/proxy/runtime/releases") { exchange ->
+            assertEquals("GET", exchange.requestMethod)
+            assertEquals("Bearer token", exchange.requestHeaders.getFirst("Authorization"))
+            val bytes = """[{"version":"v1.19.30","url":"https://example.test/archive","recommended":true}]""".toByteArray()
+            exchange.sendResponseHeaders(200, bytes.size.toLong())
+            exchange.responseBody.use { it.write(bytes) }; exchange.close()
+        }
+        server.start()
+        try {
+            val result = RelaxKonApi("test", "test").proxyReleases("http://127.0.0.1:${server.address.port}", "token")
+            assertTrue(result is ApiResult.Success)
+            assertEquals(ProxyRelease("v1.19.30", "https://example.test/archive", true), (result as ApiResult.Success).value.single())
+            assertTrue(ProxyWire.releases("[]").isEmpty())
+            assertTrue(runCatching { ProxyWire.releases("""[{"version":"v1","url":"https://example.test"}]""") }.isFailure)
+        } finally { server.stop(0) }
+    }
     @Test fun `TUN uses profile body and stable key while settings PUT retains nested options`() = runTest {
         val requests = mutableListOf<List<String>>(); val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         server.createContext("/") { exchange ->

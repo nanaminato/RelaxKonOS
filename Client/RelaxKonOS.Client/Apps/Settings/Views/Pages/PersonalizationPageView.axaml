@@ -77,7 +77,6 @@
         <Border Classes="card">
             <StackPanel Spacing="10">
                 <TextBlock Text="{loc:Loc settings.system_style}" Classes="title" />
-                <TextBlock Text="{loc:Loc settings.system_style.description}" Opacity="0.7" TextWrapping="Wrap" />
                 <ComboBox ItemsSource="{Binding SystemStyleChoices}"
                           SelectedValue="{Binding SelectedSystemStyleId, Mode=TwoWay}"
                           SelectedValueBinding="{Binding Id}">
@@ -91,14 +90,12 @@
                         </DataTemplate>
                     </ComboBox.ItemTemplate>
                 </ComboBox>
-                <TextBlock Text="{Binding SystemStyleSummary}" Classes="subtle" TextWrapping="Wrap" />
                 <TextBlock Text="{Binding SystemStyleProblem}" Foreground="{DynamicResource DangerBrush}"
                            IsVisible="{Binding HasSystemStyleProblem}" TextWrapping="Wrap" />
                 <Button Content="{loc:Loc settings.system_style.apply_recommended}"
                         Command="{Binding ApplyRecommendedStyleCommand}"
-                        IsEnabled="{Binding !IsUsingRecommendedStyle}"
+                        IsVisible="{Binding !IsUsingRecommendedStyle}"
                         HorizontalAlignment="Left" />
-                <TextBlock Text="{loc:Loc settings.system_style.independent_hint}" Classes="subtle" TextWrapping="Wrap" />
             </StackPanel>
         </Border>
 
@@ -106,7 +103,6 @@
         <Border Classes="card">
             <StackPanel Spacing="10">
                 <TextBlock Text="{loc:Loc settings.desktop_layout}" Classes="title" />
-                <TextBlock Text="{loc:Loc settings.shell.description}" Opacity="0.7" TextWrapping="Wrap" />
                 <ComboBox ItemsSource="{Binding ShellChoices}"
                           SelectedValue="{Binding SelectedShellId, Mode=TwoWay}"
                           SelectedValueBinding="{Binding Id}">
@@ -120,7 +116,6 @@
                         </DataTemplate>
                     </ComboBox.ItemTemplate>
                 </ComboBox>
-                <TextBlock Text="{loc:Loc settings.shell.separate_hint}" Classes="subtle" TextWrapping="Wrap" />
             </StackPanel>
         </Border>
 
@@ -128,22 +123,36 @@
         <Border Classes="card">
             <StackPanel Spacing="10">
                 <TextBlock Text="{loc:Loc settings.wallpaper}" Classes="title" />
-                <TextBlock Text="{loc:Loc settings.wallpaper.description}" Opacity="0.7" />
                 <Button Content="{loc:Loc settings.wallpaper.choose_image}"
                         Command="{Binding ChooseImageCommand}"
                         HorizontalAlignment="Left" />
-                <TextBlock Text="{loc:Loc settings.wallpaper.sync_hint}" Opacity="0.6" FontSize="12" />
                 <ListBox ItemsSource="{Binding Wallpapers}"
                          SelectedIndex="{Binding WallpaperIndex, Mode=TwoWay}"
-                         Background="Transparent" BorderThickness="0" Padding="0">
+                         Background="Transparent" BorderThickness="0" Padding="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                    <ListBox.Styles>
+                        <Style Selector="ListBoxItem" x:DataType="ss:WallpaperOption">
+                            <Setter Property="Padding" Value="6" />
+                            <Setter Property="Margin" Value="3" />
+                            <Setter Property="BorderThickness" Value="2" />
+                            <Setter Property="BorderBrush" Value="Transparent" />
+                            <Setter Property="CornerRadius" Value="6" />
+                            <Setter Property="ToolTip.Tip" Value="{Binding Name}" />
+                            <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
+                        </Style>
+                        <Style Selector="ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+                            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                        </Style>
+                    </ListBox.Styles>
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
                     <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="ss:WallpaperOption">
-                            <Grid ColumnDefinitions="44,*" Height="40" Margin="0,2">
-                                <Border Grid.Column="0" Width="36" Height="26" CornerRadius="4"
-                                        Background="{Binding Brush}" VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="1" Text="{Binding Name}"
-                                           VerticalAlignment="Center" Margin="10,0,0,0" />
-                            </Grid>
+                            <Border Width="128" Height="72" CornerRadius="4" Background="{Binding Brush}" />
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>

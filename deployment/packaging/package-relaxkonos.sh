@@ -44,25 +44,20 @@ publish_deployment_tools() {
 }
 
 complete_package() {
-  local kind="$1" payload="$2" hash files line path length digest separator=
+  local kind="$1" payload="$2" hash files path length digest separator=
   # A bundle is never trusted based on its top-level archive checksum alone: installers also
   # verify this deterministic inventory after extraction, so a partially copied local bundle is
   # rejected before it can become the active version.
-  (cd "$BUNDLE" && find . -type f ! -name manifest.json ! -name manifest.sha256 -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) > "$BUNDLE/manifest.sha256"
   files='['
-  while IFS= read -r line; do
-    digest=${line:0:64}
-    path=${line:66}
+  while IFS= read -r -d '' path; do
     path=${path#./}
-    [[ $digest =~ ^[0-9a-f]{64}$ && $path =~ ^[A-Za-z0-9._/+\-]+$ && $path != *..* ]] \
+    [[ $path =~ ^[A-Za-z0-9._/+\-]+$ && $path != *..* ]] \
       || { echo 'The release contains a path that cannot be represented safely in the manifest.' >&2; exit 65; }
+    digest=$(sha256sum -- "$BUNDLE/$path" | cut -d' ' -f1)
     length=$(stat -c %s -- "$BUNDLE/$path")
     files+="${separator}{\"path\":\"$path\",\"length\":$length,\"sha256\":\"$digest\"}"
     separator=,
-  done < "$BUNDLE/manifest.sha256"
-  digest=$(sha256sum -- "$BUNDLE/manifest.sha256" | cut -d' ' -f1)
-  length=$(stat -c %s -- "$BUNDLE/manifest.sha256")
-  files+="${separator}{\"path\":\"manifest.sha256\",\"length\":$length,\"sha256\":\"$digest\"}"
+  done < <(cd "$BUNDLE" && find . -type f ! -name manifest.json -print0 | LC_ALL=C sort -z)
   files+=']'
   printf '{"schemaVersion":1,"packageKind":"%s","version":"%s","runtime":"%s","supportedSystems":["debian-12","ubuntu-22.04","ubuntu-24.04","ubuntu-26.04"],"payload":{"linux":{%s}},"files":%s}\n' \
     "$kind" "$VERSION" "$RUNTIME" "$payload" "$files" > "$BUNDLE/manifest.json"
@@ -90,6 +85,7 @@ if [[ $PACKAGE_KIND == all || $PACKAGE_KIND == server ]]; then
   publish_component 'RelaxKonOS.Guardian.Agent/RelaxKonOS.Guardian.Agent.csproj' guardian RelaxKonOS.Guardian.Agent
   publish_component 'RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj' privileged-helper RelaxKonOS.PrivilegedHelper
   mkdir -p "$BUNDLE/deployment"
+  cp -- "$PROJECT_ROOT/deployment/verify-release-inventory.py" "$BUNDLE/deployment/verify-release-inventory.py"
   cp -a "$PROJECT_ROOT/deployment/bootstrap" "$BUNDLE/deployment/bootstrap"
   cp -a "$PROJECT_ROOT/deployment/linux" "$BUNDLE/deployment/linux"
   complete_package server '"server":"payload/linux/server/RelaxKonOS.Server","guardian":"payload/linux/guardian/RelaxKonOS.Guardian.Agent","privilegedHelper":"payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper"'
@@ -101,6 +97,7 @@ if [[ $PACKAGE_KIND == all || $PACKAGE_KIND == user-server ]]; then
   publish_component 'RelaxKonOS.Server/RelaxKonOS.Server.csproj' server RelaxKonOS.Server
   publish_component 'RelaxKonOS.Guardian.Agent/RelaxKonOS.Guardian.Agent.csproj' guardian RelaxKonOS.Guardian.Agent
   mkdir -p "$BUNDLE/deployment"
+  cp -- "$PROJECT_ROOT/deployment/verify-release-inventory.py" "$BUNDLE/deployment/verify-release-inventory.py"
   cp -a "$PROJECT_ROOT/deployment/user" "$BUNDLE/deployment/user"
   complete_package user-server '"server":"payload/linux/server/RelaxKonOS.Server","guardian":"payload/linux/guardian/RelaxKonOS.Guardian.Agent","launcher":"deployment/user/relaxkon"'
 fi

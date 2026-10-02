@@ -15,6 +15,7 @@ class WebServerRepository(private val gateway: RelaxKonGateway, private val sess
     suspend fun discover(owner: SessionState.Active) = read(owner) { url, token -> gateway.discoverWebServers(url, token) }
     suspend fun candidates(owner: SessionState.Active) = read(owner) { url, token -> gateway.webServerCandidates(url, token) }
     suspend fun catalog(owner: SessionState.Active) = read(owner) { url, token -> gateway.webServerInstallCatalog(url, token) }
+    suspend fun download(owner: SessionState.Active, version: String) = read(owner) { url, token -> gateway.webServerInstallDownload(url, token, version) }
     fun pending(owner: SessionState.Active): List<PendingWebServerRequest> { verify(owner); return journal.pending(owner) }
 
     suspend fun integrate(owner: SessionState.Active, candidate: WebServerCandidate, provider: ElevationAnswerProvider) =

@@ -10,6 +10,14 @@
 
 > **面向的对象是用户后台工作负载，而非 RelaxKonOS.Server。**例如，自包含 .NET 应用可直接登记发布后的可执行文件；依赖运行时的 .NET 应用可登记绝对路径或 Agent `PATH` 中的 `dotnet` 并将 `MyApp.dll` 作为独立参数；Spring Boot 可登记绝对路径或 Agent `PATH` 中的 `java` 并使用 `-jar`、`app.jar` 等独立参数。路径不再有 Guardian 白名单；实际访问权限由目标运行账户和宿主 OS 决定。RelaxKonOS Server 的健康监控是安装程序创建的受保护基础设施规则，不会出现在用户可编辑的 workload 列表中。
 
+### Linux IPC 权限
+
+系统部署中 Guardian 以 root 运行，Server 以独立服务账户运行。Guardian 的 systemd unit 设置 `Group` 为 Server 的服务组，并使用 `UMask=0007`；本地命名管道对应的 Unix 套接字由 root 拥有，仅 root 和该服务组可连接，不向其他用户开放。安装器随服务账户生成这一配置；用户态部署仍由同一 UID 使用私有权限。Server 将 IPC 权限拒绝转换为 `guardian.agent_permission_denied`，客户端提示修复服务器安装后刷新，而不是未处理的 HTTP 500。
+
+### Linux IPC 权限
+
+系统部署中 Guardian 以 root 运行，Server 以独立服务账户运行。Guardian 的 systemd unit 设置 `Group` 为 Server 的服务组，并使用 `UMask=0007`；本地命名管道对应的 Unix 套接字由 root 拥有，仅 root 和该服务组可连接，不向其他用户开放。安装器随服务账户生成这一配置；用户态部署仍由同一 UID 使用私有权限。Server 将 IPC 权限拒绝转换为 `guardian.agent_permission_denied`，客户端提示修复服务器安装后刷新，而不是未处理的 HTTP 500。
+
 ### Windows 正式部署布局
 
 Windows 部署脚本默认采用以下布局。它只注册服务和生成机器配置；发布/安装包必须先将两个 self-contained 发布产物放到对应位置。
@@ -115,7 +123,7 @@ Failed -- budget exhausted ---------> CrashLoop
 | 任意已登录用户（包括 `root`/宿主管理员） | 自己 | 否 |
 | 任意已登录用户（包括 `root`/宿主管理员） | 任意其他有效宿主账户（包括 `root`/`Administrator`） | 是 |
 
-管理员认证对话框默认填入 Linux 的 `root`、Windows 的 `Administrator`；任何跨账户指定都必须在该次提交中输入实际管理员密码。Server 立即用 `IIdentityProvider` 校验该账户、确认其当前为宿主管理员，并只把成功/失败结果用于本次定义变更。密码不写入定义、SQLite、审计、日志、浏览器存储或 Agent IPC，也不缓存为令牌；失败时不泄露账户是否存在。
+管理员认证对话框不按平台预填账户；任何跨账户指定都必须在该次提交中输入实际管理员密码。Server 立即通过统一 `IHostAdministratorAuthenticator` 验证凭据和当前宿主管理资格，并只把成功/失败结果用于本次定义变更。密码不写入定义、SQLite、审计、日志、浏览器存储或 Agent IPC，也不缓存为令牌；失败时不泄露账户是否存在。
 
 用户工作负载不设 Owner、路径根或逐工作负载 ACL：任意已登录 RelaxKonOS 用户均可创建、修改、启动、停止、删除任意工作负载，也可停止 RelaxKonOS 自身登记的工作负载。`RunAs` 是唯一的额外认证点；管理员密码只授权这一次跨账户保存，不会在之后的启动、重启或开机恢复时再次索要。
 
@@ -162,7 +170,7 @@ Windows 的 SCM 支持服务的 `auto`、`demand`、`disabled`、`delayed-auto` 
 └─ Agent（状态、安装/修复、版本、诊断）
 ```
 
-编辑向导的最后一步是不可绕过的“审查”：显示规范化后的可执行路径、每个参数、可访问路径、端口健康检查、重启预算、秘密引用数量，以及 `RunAs` 的请求账户、实际账户和权限检查结果。只要把 `RunAs` 改为非当前登录身份，审查页就在提交前显示管理员账户/密码的一次性认证框（默认 `root` 或 `Administrator`）；认证框不支持“记住密码”。启动/停止/重启的单项操作可立即执行；批量操作和强制停止要求展示影响列表。
+编辑向导的最后一步是不可绕过的“审查”：显示规范化后的可执行路径、每个参数、可访问路径、端口健康检查、重启预算、秘密引用数量，以及 `RunAs` 的请求账户、实际账户和权限检查结果。只要把 `RunAs` 改为非当前登录身份，审查页就在提交前显示管理员账户/密码的一次性认证框（账户不按平台预填）；认证框不支持“记住密码”。启动/停止/重启的单项操作可立即执行；批量操作和强制停止要求展示影响列表。
 
 ### 4.2 服务端契约（拟定）
 

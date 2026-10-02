@@ -1584,7 +1584,7 @@ webserver.install_elevation_required
 
 ### 30.2 Provider、能力与输入校验
 
-`IWebServerProvider` 仅描述 Provider 能力；实际可用能力由 `WebServerInstance + ManagementMode + 当前权限` 共同决定。未受管 Nginx 仅作为集成候选项，不构成 `WebServerInstance`，不得宣称具备“管理站点/修改配置/重载”的能力；`Integrated` 仅可修改 RelaxKonOS ownership 的目录；`Managed` 才可提供安装、升级和卸载。
+`IWebServerProvider` 仅描述 Provider 能力；实际可用能力由 `WebServerInstance + ManagementMode + 当前权限` 共同决定。未受管 Nginx 仅作为集成候选项，不构成 `WebServerInstance`，不得宣称具备“管理站点/修改配置/重载”的能力；`Integrated` 的站点写入仅可修改 RelaxKonOS ownership 的目录。卸载以实例的 `CanUninstall` 为准：受管安装支持卸载；已接管、使用 `/usr/sbin/nginx` 与 `/etc/nginx/nginx.conf` 且宿主提供 APT 的系统安装也支持通过公共安装契约卸载，Server 执行前重新核实接管状态。外部自定义实例不支持卸载。
 
 `WebSiteProxyRoute.Upstream` 不是可直接写入 Nginx 的任意 URI。服务端必须拒绝 URI 凭据、控制字符、未知 scheme 和未声明端口，规范化主机名并在解析后再次校验地址，防止 DNS rebinding。当前版本仅支持显式确认的 `http`/`https` 上游；对 loopback、私网、链路本地和元数据地址的代理采用管理员可见的策略，不能让站点表单成为 SSRF 或内网扫描接口。路径前缀必须是以 `/` 开头的受限路径，静态根目录必须是服务器上存在、非符号链接的绝对目录。
 
@@ -1599,7 +1599,7 @@ webserver.install_elevation_required
 5. 用原子 rename 提交 RelaxKonOS-owned 文件，再执行 reload 并验证退出码和运行状态。
 6. 失败时恢复磁盘上的前一版本；注意 Nginx reload 失败通常继续运行旧 worker，因此“运行中配置”和“磁盘配置”都必须报告并分别恢复。每一步写入 OperationId、快照 ID、问题码和脱敏诊断。
 
-卸载或删除站点只能删除带有 RelaxKonOS ownership 标记且 hash 匹配的文件，永不递归删除用户目录。
+删除站点只能删除带有 RelaxKonOS ownership 标记且 hash 匹配的文件，永不递归删除用户目录。受管安装卸载可删除专用安装目录；APT 系统安装卸载在确认停机和配置删除影响后，由 Helper 清除固定 Nginx 系统包及其包配置，不递归删除用户站点内容目录。
 
 ### 30.4 Protocol、异步操作与审计
 

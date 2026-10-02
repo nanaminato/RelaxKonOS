@@ -1,9 +1,7 @@
-using System.Diagnostics;
-using System.Runtime.InteropServices;
-using System.Runtime.Versioning;
 using RelaxKonOS.Protocol.ProcessGuardian;
 using RelaxKonOS.Server.Identity;
 using RelaxKonOS.Server.HostMode;
+using RelaxKonOS.Server.Privileged;
 
 namespace RelaxKonOS.Server.ProcessGuardian;
 
@@ -18,7 +16,7 @@ public interface IRunAsAuthorizationService
 
 public sealed record RunAsAuthorizationResult(bool Success, string ProblemCode, string? RunAs = null, string? StableIdentity = null);
 
-public sealed class RunAsAuthorizationService(IIdentityProvider identities, IServerModeResolver mode) : IRunAsAuthorizationService
+public sealed class RunAsAuthorizationService(IIdentityProvider identities, IServerModeResolver mode, IHostAdministratorAuthenticator administrators) : IRunAsAuthorizationService
 {
     public RunAsAuthorizationResult Authorize(string requester, string? requestedRunAs, RunAsAdministratorApproval? approval)
     {
@@ -56,8 +54,8 @@ public sealed class RunAsAuthorizationService(IIdentityProvider identities, ISer
 
             // Deliberately collapse bad passwords, missing accounts, and non-administrators to one
             // result, so this endpoint cannot be used to enumerate administrator accounts.
-            var verified = identities.Verify(approval.Username, approval.Password);
-            if (!verified.Success || !IsHostAdministrator(approval.Username))
+            var verified = administrators.Authenticate(requester, approval.Username, approval.Password);
+            if (!verified.Succeeded)
                 return new RunAsAuthorizationResult(false, "guardian.run_as_admin_authentication_failed");
 
             return new RunAsAuthorizationResult(true, string.Empty, target, stableIdentity);
@@ -71,69 +69,4 @@ public sealed class RunAsAuthorizationService(IIdentityProvider identities, ISer
         ? string.Equals(left.Trim(), right.Trim(), StringComparison.OrdinalIgnoreCase)
         : string.Equals(left.Trim(), right.Trim(), StringComparison.Ordinal);
 
-    private static bool IsHostAdministrator(string username)
-    {
-        if (OperatingSystem.IsLinux()) return IsLinuxAdministrator(username);
-        if (OperatingSystem.IsWindows()) return IsWindowsAdministrator(username);
-        return false;
-    }
-
-    private static bool IsLinuxAdministrator(string username)
-    {
-        if (string.Equals(username.Trim(), "root", StringComparison.Ordinal)) return true;
-
-        try
-        {
-            var start = new ProcessStartInfo(File.Exists("/usr/bin/id") ? "/usr/bin/id" : "id")
-            {
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            };
-            start.ArgumentList.Add("-nG");
-            start.ArgumentList.Add(username.Trim());
-            using var process = Process.Start(start);
-            if (process is null || !process.WaitForExit(2_000) || process.ExitCode != 0) return false;
-            var groups = process.StandardOutput.ReadToEnd().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-            return groups.Any(group => group is "sudo" or "wheel" or "admin");
-        }
-        catch { return false; }
-    }
-
-    [SupportedOSPlatform("windows")]
-    private static bool IsWindowsAdministrator(string username)
-    {
-        IntPtr buffer = IntPtr.Zero;
-        try
-        {
-            const int localGroupInfoLevel = 0;
-            const int includeIndirect = 1;
-            var result = NetUserGetLocalGroups(null, username.Trim(), localGroupInfoLevel, includeIndirect,
-                out buffer, -1, out var count, out _);
-            if (result != 0) return false;
-            var size = Marshal.SizeOf<LocalGroupUsersInfo0>();
-            for (var index = 0; index < count; index++)
-            {
-                var entry = Marshal.PtrToStructure<LocalGroupUsersInfo0>(buffer + index * size);
-                var name = Marshal.PtrToStringUni(entry.Name);
-                if (string.Equals(name, "Administrators", StringComparison.OrdinalIgnoreCase)) return true;
-            }
-            return false;
-        }
-        finally
-        {
-            if (buffer != IntPtr.Zero) NetApiBufferFree(buffer);
-        }
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct LocalGroupUsersInfo0 { public IntPtr Name; }
-
-    [DllImport("Netapi32.dll", CharSet = CharSet.Unicode)]
-    private static extern int NetUserGetLocalGroups(string? serverName, string userName, int level, int flags,
-        out IntPtr buffer, int preferredMaximumLength, out int entriesRead, out int totalEntries);
-
-    [DllImport("Netapi32.dll")]
-    private static extern int NetApiBufferFree(IntPtr buffer);
 }

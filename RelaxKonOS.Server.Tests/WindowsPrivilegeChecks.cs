@@ -104,7 +104,7 @@ internal static class WindowsPrivilegeChecks
             TunnelTlsMode.Force, TunnelRuntimeMode.Managed, null, 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
         var service = new ProfileService(owner, profile);
         var context = new DefaultHttpContext { User = Principal(owner, "access-a") };
-        var grants = new HostElevationSessionStore(); var calls = 0;
+        var grants = new HostElevationSessionStore(new TestHostAccountPrivilegeService(), new UploadSessionChecks.SystemMode(), new HostElevationSessionState()); var calls = 0;
         Task<TunnelOperationResultDto> Operation() { calls++; return Task.FromResult(new TunnelOperationResultDto(true, TunnelConnectionState.Starting)); }
         var method = typeof(TunnelEndpoints).GetMethod("ProfileLifecycleAsync", BindingFlags.NonPublic | BindingFlags.Static)!;
         Task<IResult> Invoke() => (Task<IResult>)method.Invoke(null, [id, context, service, grants, (Func<Task<TunnelOperationResultDto>>)Operation, CancellationToken.None])!;

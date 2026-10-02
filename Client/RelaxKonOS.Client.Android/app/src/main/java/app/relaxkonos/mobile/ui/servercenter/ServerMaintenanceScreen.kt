@@ -35,7 +35,8 @@ internal class ServerMaintenanceViewModel(application: Application) : AndroidVie
     private val container = (application as RelaxKonApplication).container
     private val mutable = MutableStateFlow(MaintenanceState())
     val state = mutable.asStateFlow()
-    fun run(hostId: String, kind: ServerDeploymentKind = ServerDeploymentKind.Status, purge: Boolean = false, sudo: String = "") {
+    fun run(hostId: String, kind: ServerDeploymentKind = ServerDeploymentKind.Status, purge: Boolean = false, sudo: String = "",
+        repairCertificate: Boolean = false, certificateIdentities: String = "") {
         if (mutable.value.busy) return
         mutable.value = mutable.value.copy(busy = true, error = null, complete = false)
         viewModelScope.launch {
@@ -66,8 +67,8 @@ internal class ServerMaintenanceViewModel(application: Application) : AndroidVie
                         val before = requireNotNull(action(ServerDeploymentKind.Status, options, password).snapshot)
                         if (kind != ServerDeploymentKind.Status) {
                             check(before.installed && ServerInstallationId.isValid(before.installationId))
-                            action(kind, options.copy(expectedInstallationId = before.installationId, confirmed = true,
-                                retention = if (purge) ServerDataRetention.Delete else ServerDataRetention.Retain), password)
+                            action(kind, maintenanceOptions(kind, mode, requireNotNull(before.installationId), purge,
+                                repairCertificate, certificateIdentities), password)
                         }
                         val after = if (kind == ServerDeploymentKind.Status) before else requireNotNull(action(ServerDeploymentKind.Status, options, password).snapshot)
                         container.serverCenter.recordVerifiedSnapshot(hostId, after)
@@ -94,6 +95,12 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
     var uninstall by remember { mutableStateOf(false) }
     var purge by remember { mutableStateOf(false) }
     var sudo by remember { mutableStateOf("") }
+    var repairCertificate by rememberSaveable(host?.hostId) { mutableStateOf(false) }
+    var certificateIdentities by rememberSaveable(host?.hostId) {
+        mutableStateOf(listOf("localhost", "127.0.0.1", host?.sshHost.orEmpty()).filter(String::isNotBlank).distinct().joinToString(","))
+    }
+    var confirmCertificateRepair by remember(host?.hostId) { mutableStateOf(false) }
+    val identitiesValid = runCatching { normalizeRepairCertificateIdentities(certificateIdentities) }.isSuccess
     androidx.activity.compose.BackHandler(enabled = wizard || page != 0) {
         if (!installing && !state.busy) {
             if (wizard) wizard = false else page = 0
@@ -154,7 +161,26 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
                     Text(stringResource(R.string.server_maintenance_actions_note), style = MaterialTheme.typography.bodySmall)
                     PasswordTextField(sudo, { sudo = it }, stringResource(R.string.ssh_workspace_deploy_sudo_password))
                     Button(onClick = { wizard = true }, enabled = !state.busy) { Text(stringResource(R.string.installation_kind_upgrade)) }
-                    OutlinedButton(onClick = { host?.let { model.run(it.hostId, ServerDeploymentKind.Repair, sudo = sudo) }; sudo = "" }, enabled = !state.busy) { Text(stringResource(R.string.server_maintenance_repair)) }
+                    val certificateRepairSupported = snapshot.mode == ServerInstallMode.LinuxSystem || snapshot.mode == ServerInstallMode.WindowsSystem
+                    if (certificateRepairSupported) {
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            Checkbox(repairCertificate, { repairCertificate = it }, enabled = !state.busy)
+                            Text(stringResource(R.string.server_maintenance_repair_certificate), modifier = Modifier.weight(1f))
+                        }
+                        if (repairCertificate) {
+                            Text(stringResource(R.string.server_maintenance_repair_certificate_note), style = MaterialTheme.typography.bodySmall)
+                            OutlinedTextField(certificateIdentities, { certificateIdentities = it },
+                                label = { Text(stringResource(R.string.ssh_workspace_deploy_certificate_names)) },
+                                modifier = Modifier.fillMaxWidth(), enabled = !state.busy, isError = !identitiesValid)
+                            if (!identitiesValid) Text(stringResource(R.string.server_maintenance_repair_certificate_invalid), color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                    OutlinedButton(onClick = {
+                        if (repairCertificate && certificateRepairSupported) confirmCertificateRepair = true
+                        else { host?.let { model.run(it.hostId, ServerDeploymentKind.Repair, sudo = sudo) }; sudo = "" }
+                    }, enabled = !state.busy && (!repairCertificate || !certificateRepairSupported || identitiesValid)) {
+                        Text(stringResource(R.string.server_maintenance_repair))
+                    }
                     OutlinedButton(onClick = { purge = false; uninstall = true }, enabled = !state.busy) { Text(stringResource(R.string.server_maintenance_uninstall)) }
                 } else if (page == 2) Button(onClick = { wizard = true }, enabled = !state.busy && state.probe?.osSupported == true) { Text(stringResource(R.string.ssh_workspace_deploy_install)) }
             }
@@ -167,6 +193,19 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
         text = { Column { Text(stringResource(R.string.server_maintenance_uninstall_note)); Row { Checkbox(purge, { purge = it }); Text(stringResource(R.string.server_maintenance_purge)) } } },
         confirmButton = { TextButton(onClick = { uninstall = false; host?.let { model.run(it.hostId, ServerDeploymentKind.Uninstall, purge, sudo) }; sudo = "" }) { Text(stringResource(R.string.server_maintenance_uninstall)) } },
         dismissButton = { TextButton(onClick = { uninstall = false }) { Text(stringResource(R.string.common_cancel)) } })
+    if (confirmCertificateRepair) AlertDialog(onDismissRequest = { confirmCertificateRepair = false },
+        title = { Text(stringResource(R.string.server_maintenance_repair_certificate)) },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            Text(stringResource(R.string.server_maintenance_repair_certificate_note))
+            Text(certificateIdentities)
+        } },
+        confirmButton = { TextButton(onClick = {
+            confirmCertificateRepair = false
+            host?.let { model.run(it.hostId, ServerDeploymentKind.Repair, sudo = sudo,
+                repairCertificate = true, certificateIdentities = certificateIdentities) }
+            sudo = ""
+        }, enabled = !state.busy && identitiesValid) { Text(stringResource(R.string.server_maintenance_repair)) } },
+        dismissButton = { TextButton(onClick = { confirmCertificateRepair = false }) { Text(stringResource(R.string.common_cancel)) } })
 }
 
 @Composable

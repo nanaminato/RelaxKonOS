@@ -243,6 +243,7 @@ install -d -o root -g "$SERVICE_GROUP" -m 0711 "$DATA_ROOT" /var/lib/relaxkonos
 install -d -m 0700 "$GUARDIAN_DATA"
 install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 "$COMPOSE_DATA"
 install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 "$SERVER_DATA"
+install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0700 "$DATA_ROOT/server-home"
 # Stores with ContentRoot-relative defaults share the persistent service data root.
 SERVER_DATA_LINK="$(dirname "$SERVER_EXECUTABLE")/data"
 if [[ -L "$SERVER_DATA_LINK" ]]; then
@@ -254,6 +255,7 @@ else
 fi
 # The Server writes only its Nginx ownership marker here; Nginx itself remains configured by
 # the distribution-owned /etc/nginx/nginx.conf and nginx.service.
+install -d -o root -g "$SERVICE_GROUP" -m 0710 "$DATA_ROOT/webserver"
 install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 "$WEBSERVER_DATA"
 
 install_docker_access_policy() {
@@ -447,6 +449,9 @@ Wants=network-online.target
 
 [Service]
 Type=notify
+Group=$SERVICE_GROUP
+# The root Agent owns the Unix pipe; only its Server group may connect.
+UMask=0007
 EnvironmentFile=/etc/relaxkonos/guardian.env
 ExecStart=$GUARDIAN_EXECUTABLE
 Restart=always
@@ -464,6 +469,7 @@ Wants=network-online.target relaxkonos-guardian.service
 [Service]
 Type=simple
 EnvironmentFile=/etc/relaxkonos/server.env
+Environment=HOME=$DATA_ROOT/server-home
 Environment=ASPNETCORE_URLS=$SERVER_LISTEN_URL
 User=$SERVICE_USER
 Group=$SERVICE_GROUP

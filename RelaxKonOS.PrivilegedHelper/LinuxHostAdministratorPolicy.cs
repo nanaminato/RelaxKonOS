@@ -35,6 +35,8 @@ internal static class LinuxHostAdministratorPolicy
         start.ArgumentList.Add("-l");
         start.ArgumentList.Add("-U");
         start.ArgumentList.Add(username);
+        start.ArgumentList.Add("-u");
+        start.ArgumentList.Add("root");
         start.ArgumentList.Add("--");
         start.ArgumentList.Add(helper);
         TrustedProcessEnvironment.Apply(start);

@@ -1,5 +1,7 @@
 package app.relaxkonos.mobile.ui.manage.docker
 
+import app.relaxkonos.mobile.ui.common.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import android.app.Application
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -334,10 +336,11 @@ private fun operationKind(kind: DockerStackOperationKind): String = stringResour
 )
 
 @Composable
-fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialStackName: String? = null, onOpenResources: () -> Unit, onOpenControl: () -> Unit, onOpenProxy: () -> Unit) {
+fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialStackName: String? = null, section: String = "overview") {
     val viewModel: DockerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val state = viewModel.state
     val available = state.owner?.capabilities?.contains(ServerCapabilities.DOCKER) == true
+    val notInstalled = (state.status as? ApiResult.Success)?.value?.problemCode == "docker.not_installed"
     var composer by remember { mutableStateOf(false) }
     var composeDraft by remember { mutableStateOf(DEFAULT_COMPOSE) }
     var destructive by remember { mutableStateOf<Pair<DockerRemoval, () -> Unit>?>(null) }
@@ -349,27 +352,28 @@ fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialSt
     Column(modifier.fillMaxSize().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         ScreenHeader(
             title = stringResource(R.string.docker_title), onBack = onBack,
-            trailing = { Row { TextButton(onClick = { picker.launch(arrayOf("text/yaml", "application/x-yaml", "text/plain")) }, enabled = available) { Text(stringResource(R.string.docker_import)) }
-                TextButton(onClick = { composer = true }, enabled = available) { Text(stringResource(R.string.docker_new_stack)) }
+            trailing = { Row { if (!notInstalled && section == "compose") { TextButton(onClick = { picker.launch(arrayOf("text/yaml", "application/x-yaml", "text/plain")) }, enabled = available) { Text(stringResource(R.string.docker_import)) }
+                TextButton(onClick = { composer = true }, enabled = available) { Text(stringResource(R.string.docker_new_stack)) } }
                 TextButton(onClick = viewModel::refresh, enabled = available && !state.loading) { Text(stringResource(R.string.common_refresh)) } } },
         )
         if (!available) { EmptyHint(stringResource(R.string.error_capability_missing)); return@Column }
         state.message?.let { message -> ErrorBanner(message.text(), viewModel::refresh, viewModel::dismissMessage, tone = message.tone) }
         if (state.loading || state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        TextButton(onClick = onOpenResources) { Text(stringResource(R.string.docker_resources_title)) }
-        TextButton(onClick = onOpenControl) { Text(stringResource(R.string.docker_control_title)) }
-        TextButton(onClick = onOpenProxy) { Text(stringResource(R.string.proxy_title)) }
+        if (notInstalled) {
+            EmptyHint(stringResource(R.string.runtime_install_hint, "Docker"))
+        } else {
         DockerStatusCard(state.status)
         LazyColumn(verticalArrangement = Arrangement.spacedBy(Spacing.md), modifier = Modifier.weight(1f)) {
-            item {
+            if (section == "compose") item {
                 DockerStacks(state, viewModel,
                     onDelete = { destructive = DockerRemoval.Stack(it.name) to { viewModel.stackAction(it, "delete", confirmed = true) } },
                     onCancel = viewModel::cancelOperation)
             }
-            item { SimpleList(stringResource(R.string.docker_containers), state.containers) { "${it.names} · ${it.status}" } }
-            item { SimpleList(stringResource(R.string.docker_images), state.images) { "${it.repository}:${it.tag} · ${it.size}" } }
-            item { SimpleList(stringResource(R.string.docker_volumes), state.volumes) { "${it.name} · ${it.driver}" } }
-            item { SimpleList(stringResource(R.string.docker_networks), state.networks) { "${it.name} · ${it.driver}" } }
+            if (section == "overview") item { SimpleList(stringResource(R.string.docker_containers), state.containers) { "${it.names} · ${it.status}" } }
+            if (section == "overview") item { SimpleList(stringResource(R.string.docker_images), state.images) { "${it.repository}:${it.tag} · ${it.size}" } }
+            if (section == "overview") item { SimpleList(stringResource(R.string.docker_volumes), state.volumes) { "${it.name} · ${it.driver}" } }
+            if (section == "overview") item { SimpleList(stringResource(R.string.docker_networks), state.networks) { "${it.name} · ${it.driver}" } }
+        }
         }
     }
     if (composer) DockerComposer(

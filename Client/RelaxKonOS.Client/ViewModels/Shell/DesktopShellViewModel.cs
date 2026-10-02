@@ -9,6 +9,7 @@ using RelaxKonOS.Client.Apps.Settings;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Client.Services.Diagnostics;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Client.Services.DesktopRestore;
 using RelaxKonOS.Client.Services.VirtualSystemDrive;
@@ -30,7 +31,7 @@ namespace RelaxKonOS.Client.ViewModels.Shell;
 /// Root view-model for the RelaxKonOS desktop shell. Owns the window manager facade exposed to
 /// the view, the desktop / start menu application entries, the taskbar window list and the clock.
 /// </summary>
-public partial class DesktopShellViewModel : ObservableObject
+public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewContext
 {
     private readonly WindowManagerService _windowManager;
     private readonly ApplicationManager _applications;
@@ -101,9 +102,9 @@ public partial class DesktopShellViewModel : ObservableObject
         _shortcuts = shortcuts;
         _shortcutRouter = shortcutRouter;
 
-        _windowManager.WindowOpened += (_, _) => RefreshTaskbarGroups();
-        _windowManager.WindowClosed += (_, _) => RefreshTaskbarGroups();
-        _windowManager.ActiveWindowChanged += (_, _) => RefreshTaskbarGroups();
+        _windowManager.WindowOpened += (_, _) => { TraceTaskbar("manager.windowOpened"); RefreshTaskbarGroups(); };
+        _windowManager.WindowClosed += (_, _) => { TraceTaskbar("manager.windowClosed"); RefreshTaskbarGroups(); };
+        _windowManager.ActiveWindowChanged += (_, _) => { TraceTaskbar("manager.activeChanged"); RefreshTaskbarGroups(); };
         _applications.RegistryChanged += (_, _) => Dispatcher.UIThread.Post(PopulateDesktop);
         _session.StateChanged += (_, state) => Dispatcher.UIThread.Post(() =>
         {
@@ -201,6 +202,7 @@ public partial class DesktopShellViewModel : ObservableObject
     /// <summary>Populate desktop + start menu from registered applications. Call after DI registration.</summary>
     public void PopulateDesktop()
     {
+        var previousEntries = StartApps.ToDictionary(entry => entry.Id);
         var compatibleEntries = _applications.Registered
             // An app that needs a connected Linux Server must not be advertised on a Windows
             // Server desktop or Start menu. Launch still performs the same check for defense in depth.
@@ -210,7 +212,12 @@ public partial class DesktopShellViewModel : ObservableObject
                     ? application.Id.Value is "relaxkonos.terminal" or "relaxkonos.server-center" or "relaxkonos.ssh-files"
                         or "relaxkonos.codeeditor" or "relaxkonos.imageviewer"
                     : application.Id.Value is not ("relaxkonos.server-center" or "relaxkonos.ssh-files")))
-            .Select(i => new AppEntryViewModel(Localize(i), _applications))
+            .Select(i =>
+            {
+                var info = Localize(i);
+                return previousEntries.TryGetValue(info.Id, out var existing) && existing.Matches(info)
+                    ? existing : new AppEntryViewModel(info, _applications);
+            })
             .ToList();
 
         // ── Start 菜单始终显示全部兼容应用，并按名称保持稳定的“全部应用”列表顺序 ──
@@ -239,6 +246,11 @@ public partial class DesktopShellViewModel : ObservableObject
         }
 
         RefreshDesktopItems();
+        // Both desktop and start-menu bindings now point at the new entries. Release only
+        // replaced/removed images; unchanged entries retain their selection and decoded icon.
+        var retained = compatibleEntries.ToHashSet();
+        foreach (var entry in previousEntries.Values)
+            if (!retained.Contains(entry)) entry.Dispose();
         var shortcutGeneration = ++_shortcutLoadGeneration;
         if (_sshDesktop.IsConnected) DesktopShortcuts.Clear();
         else _ = RefreshDesktopShortcutsAsync(shortcutGeneration);
@@ -747,6 +759,7 @@ public partial class DesktopShellViewModel : ObservableObject
     [RelayCommand]
     private void ToggleTaskbarGroup(TaskbarGroupViewModel group)
     {
+        TraceTaskbar("vm.icon.toggle", new { app = group.AppId.ToString(), count = group.WindowCount });
         IsStartOpen = false;
 
         if (group.HasMultipleWindows)
@@ -759,7 +772,10 @@ public partial class DesktopShellViewModel : ObservableObject
         }
 
         if (group.Windows.FirstOrDefault() is { } window)
+        {
+            OpenTaskbarGroup = null;
             ToggleSingleTaskbarWindow(window);
+        }
     }
 
     private void ToggleSingleTaskbarWindow(ManagedWindow window)
@@ -775,28 +791,75 @@ public partial class DesktopShellViewModel : ObservableObject
     [RelayCommand]
     private void ActivateTaskbarWindow(ManagedWindow window)
     {
+        TraceTaskbar("vm.activate.begin", new { window = window.Info.Id.ToString(), state = window.State.ToString(), window.IsActive });
+        // Collapse the focused preview first, then give the application final focus.
+        // Activation refreshes window groups and must not dismantle a still-focused card.
+        OpenTaskbarGroup = null;
         if (window.State == WindowState.Minimized)
             _windowManager.Restore(window);
         else
             _windowManager.Focus(window);
-        OpenTaskbarGroup = null;
+        TraceTaskbar("vm.activate.end", new { window = window.Info.Id.ToString(), state = window.State.ToString(), window.IsActive });
     }
 
     [RelayCommand]
     private void CloseTaskbarWindow(ManagedWindow window)
-        => _windowManager.Close(window);
+    {
+        TraceTaskbar("vm.window.close", new { window = window.Info.Id.ToString() });
+        _windowManager.Close(window);
+    }
 
     public bool IsTaskbarPreviewOpen => OpenTaskbarGroup is not null;
 
+    System.Windows.Input.ICommand ITaskbarPreviewContext.ActivateTaskbarWindowCommand => ActivateTaskbarWindowCommand;
+    System.Windows.Input.ICommand ITaskbarPreviewContext.CloseTaskbarWindowCommand => CloseTaskbarWindowCommand;
+    System.Windows.Input.ICommand ITaskbarPreviewContext.CloseTaskbarPreviewCommand => CloseTaskbarPreviewCommand;
+
+    public void ShowTaskbarPreview(TaskbarGroupViewModel group)
+    {
+        TraceTaskbar("vm.preview.request", new { app = group.AppId.ToString(), count = group.WindowCount });
+        if (!_settings.ShowTaskbarWindowPreviews || _windowManager.IsSystemModalOpen || group.WindowCount == 0)
+        {
+            TraceTaskbar("vm.preview.blocked", new { app = group.AppId.ToString(), count = group.WindowCount });
+            return;
+        }
+        IsStartOpen = false;
+        OpenTaskbarGroup = group;
+    }
+
     private void ApplyVisualEffects()
     {
+        TraceTaskbar("vm.effects.changed");
         _windowManager.SetVisualEffects(_settings.ShowWindowShadows, _settings.ShowWindowContentsWhileDragging);
         if (!_settings.ShowTaskbarWindowPreviews)
             OpenTaskbarGroup = null;
     }
 
     [RelayCommand]
-    private void CloseTaskbarPreview() => OpenTaskbarGroup = null;
+    private void CloseTaskbarPreview()
+    {
+        TraceTaskbar("vm.preview.closeCommand");
+        OpenTaskbarGroup = null;
+    }
+
+    partial void OnOpenTaskbarGroupChanging(TaskbarGroupViewModel? oldValue, TaskbarGroupViewModel? newValue)
+        => TraceTaskbar("vm.group.changing", new { from = oldValue?.AppId.ToString(), to = newValue?.AppId.ToString() });
+
+    private void TraceTaskbar(string eventName, object? details = null)
+        => TaskbarPreviewDiagnostics.Record(eventName, new
+        {
+            group = OpenTaskbarGroup?.AppId.ToString(),
+            previewsEnabled = _settings.ShowTaskbarWindowPreviews,
+            modal = _windowManager.IsSystemModalOpen,
+            startOpen = IsStartOpen,
+            active = _windowManager.ActiveWindow?.Info.Id.ToString(),
+            windows = _windowManager.Windows.Select(window => new
+            {
+                id = window.Info.Id.ToString(), app = window.Info.OwnerAppId.ToString(),
+                state = window.State.ToString(), window.IsActive, window.IsModalDialog,
+            }).ToArray(),
+            details,
+        });
 
     private void LaunchApplication(string id)
     {
@@ -963,6 +1026,7 @@ public partial class DesktopShellViewModel : ObservableObject
 
     private void RefreshTaskbarGroups()
     {
+        TraceTaskbar("vm.groups.refresh.begin");
         var groupedWindows = _windowManager.Windows
             // Modal dialogs belong to their owner. Showing them here lets taskbar activation
             // select the blocked owner, which breaks the modal focus contract.
@@ -975,8 +1039,6 @@ public partial class DesktopShellViewModel : ObservableObject
             if (groupedWindows.Remove(group.AppId, out var windows))
             {
                 group.Update(windows);
-                if (ReferenceEquals(OpenTaskbarGroup, group) && !group.HasMultipleWindows)
-                    OpenTaskbarGroup = null;
             }
             else
             {
@@ -997,6 +1059,7 @@ public partial class DesktopShellViewModel : ObservableObject
                 displayName,
                 windows));
         }
+        TraceTaskbar("vm.groups.refresh.end", new { groups = TaskbarGroups.Select(group => new { app = group.AppId.ToString(), count = group.WindowCount }).ToArray() });
     }
 
     private void StartClock()

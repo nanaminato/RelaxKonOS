@@ -1,5 +1,14 @@
 internal static class WebServerChecks
 {
+internal static void VerifyUninstallCapabilities()
+{
+    TestAssert.Assert(NginxWebServerManager.CanUninstallInstallation(true, false, false, "nginx.exe", null), "Managed installation must support uninstall.");
+    TestAssert.Assert(NginxWebServerManager.CanUninstallInstallation(false, true, true, "/usr/sbin/nginx", "/etc/nginx/nginx.conf"), "Integrated APT installation must support uninstall.");
+    TestAssert.Assert(!NginxWebServerManager.CanUninstallInstallation(false, true, false, "/usr/sbin/nginx", "/etc/nginx/nginx.conf"), "Unintegrated host installation must not support uninstall.");
+    TestAssert.Assert(!NginxWebServerManager.CanUninstallInstallation(false, false, true, "/usr/sbin/nginx", "/etc/nginx/nginx.conf"), "APT must be available for system-package uninstall.");
+    TestAssert.Assert(!NginxWebServerManager.CanUninstallInstallation(false, true, true, "/opt/nginx", "/etc/nginx/nginx.conf"), "External executable must not enable package uninstall.");
+    TestAssert.Assert(!NginxWebServerManager.CanUninstallInstallation(false, true, true, "/usr/sbin/nginx", "/opt/nginx.conf"), "External configuration must not enable package uninstall.");
+}
 internal static void VerifySiteConcurrency()
 {
     var timestamp = DateTimeOffset.Parse("2026-09-30T00:00:00.1234567Z");

@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.docker
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -25,7 +26,7 @@ private data class MirrorDraft(val id: String? = null, val name: String = "", va
 private data class ControlConfirmation(val facts: DockerControlFacts, val change: DockerControlChange)
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable fun DockerControlScreen(onBack: () -> Unit, onOpenProxy: () -> Unit, modifier: Modifier = Modifier) {
+@Composable fun DockerControlScreen(onBack: () -> Unit, modifier: Modifier = Modifier, mirrorsOnly: Boolean = false, recordsOnly: Boolean = false, active: Boolean = true) {
     val model: DockerControlViewModel = viewModel(); val owner = appContainer().activeSession; val state = model.state
     val visible = state.owner === owner; val facts = state.facts.takeIf { visible }
     val manage = visible && owner?.privilegedOperations == true
@@ -43,31 +44,35 @@ private data class ControlConfirmation(val facts: DockerControlFacts, val change
         if (visible && state.installationVerified && state.installation?.state?.active == true && !state.busy) { delay(1500); model.pollInstall() }
     }
     DisposableEffect(owner) { onDispose { model.stop() } }
-    BackHandler(draft != null) { navigate { draft = null } }
+    BackHandler(active && draft != null) { navigate { draft = null } }
     Column(modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-        ScreenHeader(stringResource(R.string.docker_control_title), onBack = { navigate(onBack) })
+        ScreenHeader(stringResource(if (recordsOnly) R.string.workspace_records else if (mirrorsOnly) R.string.workspace_mirrors else R.string.docker_title), onBack = { navigate(onBack) })
         if (owner?.capabilities?.contains(ServerCapabilities.DOCKER) != true) { Text(stringResource(R.string.error_capability_missing)); return@Column }
         TextButton(enabled = !state.busy, onClick = { navigate { draft = null; model.refresh() } }) { Text(stringResource(R.string.common_refresh)) }
-        TextButton(onClick = { navigate(onOpenProxy) }) { Text(stringResource(R.string.proxy_title)) }
         if (visible && state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (visible) state.problem?.let { Text(controlProblem(it), color = MaterialTheme.colorScheme.error) }
-        if (visible) state.pending.forEach { pending ->
+        if (visible && recordsOnly) state.pending.forEach { pending ->
+            ManagementCard {
             Text(stringResource(R.string.docker_control_pending), color = MaterialTheme.colorScheme.error)
             Text(controlActionLabel(pending.kind))
             OutlinedButton(enabled = !state.busy, onClick = { model.accept(pending) }) { Text(stringResource(R.string.docker_control_accept)) }
+            }
         }
         if (visible && state.resourcePending) Text(stringResource(R.string.docker_resources_pending), color = MaterialTheme.colorScheme.error)
+WorkspaceSection(!mirrorsOnly && !recordsOnly) {
+        ManagementCard {
         Text(stringResource(R.string.docker_runtime), style = MaterialTheme.typography.titleLarge)
         if (facts == null) Text(stringResource(R.string.docker_control_unverified)) else {
-            Text(stringResource(if (facts.status.available) R.string.docker_control_running else R.string.docker_control_unavailable))
+            val notInstalled = facts.status.problemCode == "docker.not_installed"
+            Text(stringResource(if (notInstalled) R.string.docker_control_not_installed else if (facts.status.available) R.string.docker_control_running else R.string.docker_control_unavailable))
             if (facts.status.serverVersion.isNotEmpty()) Text(facts.status.serverVersion)
             Text(listOf(facts.status.operatingSystem, facts.status.architecture).filter(String::isNotBlank).joinToString(" / "))
-            if (facts.status.problemCode.isNotBlank()) Text(controlProblem(facts.status.problemCode))
+            if (!notInstalled && facts.status.problemCode.isNotBlank()) Text(controlProblem(facts.status.problemCode))
             state.checkedAtMillis?.let { Text(stringResource(R.string.operations_checked, DateFormat.getDateTimeInstance().format(Date(it)))) }
             if (owner.serverPlatform.equals("linux", true)) Text(stringResource(R.string.docker_control_linux))
             else Text(stringResource(R.string.docker_control_windows))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                if (manage) DockerEngineAction.entries.forEach { action ->
+                if (manage && !notInstalled) DockerEngineAction.entries.forEach { action ->
                     val kind = when (action) { DockerEngineAction.Start -> DockerControlKind.EngineStart; DockerEngineAction.Stop -> DockerControlKind.EngineStop; DockerEngineAction.Restart -> DockerControlKind.EngineRestart }
                     OutlinedButton(enabled = ready && draft == null && (action == DockerEngineAction.Start || facts.status.available),
                         onClick = { confirmation = ControlConfirmation(facts, DockerControlChange(kind)) }) { Text(controlActionLabel(kind)) }
@@ -80,9 +85,37 @@ private data class ControlConfirmation(val facts: DockerControlFacts, val change
                 }
             }
         }
-        if (visible && state.pendingInstallation) Text(stringResource(R.string.installation_pending, installationServiceLabel(InstallationService.Docker), installationKindLabel(InstallationKind.Install)), color = MaterialTheme.colorScheme.error)
+        }
+}
+        WorkspaceSection(recordsOnly) {
+        val recordModel: DockerResourceViewModel = viewModel(key = "docker-resources-all")
+        val recordState = recordModel.state
+        LaunchedEffect(owner, recordState.owner, recordsOnly) { if (recordsOnly && recordState.owner === owner) recordModel.refresh() }
+        if (recordState.owner === owner) recordState.pending.forEach { marker -> ManagementCard {
+            Text(resourceActionLabel(marker.action)); marker.target?.let { Text(it) }
+            TextButton(enabled = !recordState.busy, onClick = recordModel::refresh) { Text(stringResource(R.string.common_refresh)) }
+            OutlinedButton(enabled = !recordState.busy && recordState.facts?.status?.available == true, onClick = { recordModel.accept(marker) }) { Text(stringResource(R.string.docker_control_accept)) }
+        } }
+        DockerResourceKind.entries.forEach { kind ->
+            val resourceModel: DockerResourceViewModel = viewModel(key = "docker-resources-${kind.name}")
+            val resourceState = resourceModel.state
+            if (resourceState.owner === owner) {
+                resourceState.result?.let { result -> ManagementCard {
+                    var showLog by remember(owner, kind, result) { mutableStateOf(false) }
+                    Text(resourceKindLabel(kind), style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(if (resourceState.pending.isNotEmpty()) R.string.docker_control_unverified else if (result.success) R.string.docker_operation_complete else R.string.docker_operation_failed))
+                    result.problemCode.takeIf(String::isNotBlank)?.let { Text(controlProblem(it)) }
+                    if (result.logLines.isNotEmpty()) TextButton(onClick = { showLog = !showLog }) { Text(stringResource(if (showLog) R.string.docker_resources_hide_sensitive else R.string.docker_resources_show_sensitive)) }
+                    if (showLog) result.logLines.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    if (result.logTruncated) Text(stringResource(R.string.docker_resources_truncated))
+                } }
+            }
+        }
+        if (visible && state.pendingInstallation && manage) OutlinedButton(enabled = !state.busy && state.pending.isEmpty() && state.installation?.state?.active != true && (state.installation == null || state.installationVerified || state.pendingInstallation), onClick = { install = true }) { Text(stringResource(R.string.common_retry)) }
+                if (visible && state.pendingInstallation) Text(stringResource(R.string.installation_pending, installationServiceLabel(InstallationService.Docker), installationKindLabel(InstallationKind.Install)), color = MaterialTheme.colorScheme.error)
         if (manage) TextButton(enabled = !state.busy, onClick = { identified = false; recover = true }) { Text(stringResource(R.string.installation_recover)) }
         if (visible) state.installation?.let { operation ->
+            ManagementCard {
             Text(operation.operationId, style = MaterialTheme.typography.bodySmall)
             if (state.installationVerified) {
                 Text(installationStateLabel(operation.state)); Text(installationStageLabel(operation.stage))
@@ -90,7 +123,10 @@ private data class ControlConfirmation(val facts: DockerControlFacts, val change
                 operation.problemCode?.let { Text(installationProblemLabel(it)) }
                 if (operation.state.active && operation.cancellable && manage) OutlinedButton(enabled = !state.busy, onClick = { cancel = true }) { Text(stringResource(R.string.operations_request_cancel)) }
             } else Text(stringResource(R.string.docker_control_unverified))
+            }
         }
+        }
+WorkspaceSection(mirrorsOnly) {
         Text(stringResource(R.string.docker_control_mirrors), style = MaterialTheme.typography.titleLarge)
         Text(stringResource(R.string.docker_control_mirror_note))
         if (facts != null) {
@@ -100,6 +136,7 @@ private data class ControlConfirmation(val facts: DockerControlFacts, val change
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
                     if (wide || draft == null) Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                         facts.mirrors.forEach { mirror ->
+                            ManagementCard {
                             Text(if (mirror.default) stringResource(R.string.docker_control_default_mirror) else mirror.name, style = MaterialTheme.typography.titleMedium)
                             if (!mirror.default) Text(mirror.endpoint)
                             if (mirror.selected) Text(stringResource(R.string.docker_control_selected))
@@ -109,6 +146,7 @@ private data class ControlConfirmation(val facts: DockerControlFacts, val change
                                     TextButton(enabled = ready && draft == null, onClick = { draft = MirrorDraft(mirror.id, mirror.name, mirror.endpoint) }) { Text(stringResource(R.string.docker_control_edit_mirror)) }
                                     TextButton(enabled = ready && draft == null, onClick = { confirmation = ControlConfirmation(facts, DockerControlChange(DockerControlKind.MirrorDelete, mirror.id)) }) { Text(stringResource(R.string.common_delete)) }
                                 }
+                            }
                             }
                         }
                     }
@@ -125,7 +163,8 @@ private data class ControlConfirmation(val facts: DockerControlFacts, val change
                 }
             }
         }
-    }
+}
+            }
     confirmation?.let { pending -> AlertDialog(onDismissRequest = { confirmation = null }, title = { Text(controlActionLabel(pending.change.kind)) }, text = { Column {
         if (pending.change.engine != null) Text(stringResource(R.string.docker_control_engine_warning))
         else {

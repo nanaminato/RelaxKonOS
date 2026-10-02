@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using Avalonia.Utilities;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Services;
@@ -22,8 +23,6 @@ namespace RelaxKonOS.Client.Localization;
 /// </summary>
 public abstract class LocalizedObservableObject : ObservableObject
 {
-    private readonly IDisposable? _languageSubscription;
-
     protected LocalizedObservableObject() : this(null)
     {
     }
@@ -40,9 +39,10 @@ public abstract class LocalizedObservableObject : ObservableObject
         // The language change is raised on the UI thread by LocalizationService, so a plain
         // handler is safe. Re-notifying with an empty property name refreshes every binding,
         // which is exactly what a live computed property needs.
-        void OnLanguageChanged(object? sender, SystemLanguageChangedEventArgs args) => RefreshLocalizedProperties();
-        service.LanguageChanged += OnLanguageChanged;
-        _languageSubscription = new LanguageSubscription(service, OnLanguageChanged);
+        // The singleton must not retain closed view models, including transient dialog/row VMs
+        // which have no explicit disposal lifecycle. The handler's target is this VM itself.
+        WeakEventHandlerManager.Subscribe<LocalizationService, SystemLanguageChangedEventArgs, LocalizedObservableObject>(
+            service, nameof(LocalizationService.LanguageChanged), OnLanguageChanged);
     }
 
     /// <summary>Re-reads every localized property. Called when the display language changes.</summary>
@@ -64,8 +64,5 @@ public abstract class LocalizedObservableObject : ObservableObject
         }
     }
 
-    private sealed class LanguageSubscription(LocalizationService service, EventHandler<SystemLanguageChangedEventArgs> handler) : IDisposable
-    {
-        public void Dispose() => service.LanguageChanged -= handler;
-    }
+    private void OnLanguageChanged(object? sender, SystemLanguageChangedEventArgs args) => RefreshLocalizedProperties();
 }

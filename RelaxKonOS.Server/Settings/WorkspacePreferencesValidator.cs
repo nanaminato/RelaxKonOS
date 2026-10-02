@@ -10,38 +10,46 @@ public static class WorkspacePreferencesValidator
     /// DefaultApps 去重（按 scheme，后者覆盖前者）并剔除空值。
     /// DesktopDisplay 字段归一化校验 VisibleAppIds 列表。
     /// DesktopExperience 是颜色/系统风格/桌面 Shell 的唯一来源：三者互相独立，缺一不可。</summary>
-    public static bool TryNormalize(WorkspacePreferencesDto request, out WorkspacePreferencesDto preferences)
+    public static bool TryNormalize(WorkspacePreferencesDto request, out WorkspacePreferencesDto preferences, out string? invalidField)
     {
         preferences = WorkspacePreferencesDto.Default;
 
+        invalidField = "wallpaperKey";
         var wallpaperKey = request.WallpaperKey?.Trim();
         if (string.IsNullOrWhiteSpace(wallpaperKey) || wallpaperKey.Length > 128)
             return false;
         if (!wallpaperKey.StartsWith(WorkspacePreferencesDto.BuiltInWallpaperPrefix, StringComparison.OrdinalIgnoreCase)
             && !TryGetCustomWallpaperId(wallpaperKey, out _))
             return false;
+        invalidField = "timeFormat";
         var timeFormat = request.TimeFormat?.Trim();
         if (timeFormat != WorkspacePreferencesDto.TimeFormat24H
             && timeFormat != WorkspacePreferencesDto.TimeFormat12H)
             return false;
+        invalidField = "dateFormat";
         var dateFormat = request.DateFormat?.Trim();
         if (string.IsNullOrWhiteSpace(dateFormat) || dateFormat.Length > 32)
             return false;
+        invalidField = "language";
         var language = request.Language?.Trim();
         if (language is { Length: > 16 })
             return false;
+        invalidField = "region";
         var region = request.Region?.Trim();
         if (region is { Length: > 16 })
             return false;
+        invalidField = "notepadDefaultEncoding";
         var notepadEncoding = request.NotepadDefaultEncoding?.Trim();
         if (string.IsNullOrEmpty(notepadEncoding)) notepadEncoding = TextEncodingPreferences.Default;
         if (!TextEncodingPreferences.IsSupported(notepadEncoding))
             return false;
+        invalidField = "codeEditorDefaultEncoding";
         var codeEditorEncoding = request.CodeEditorDefaultEncoding?.Trim();
         if (string.IsNullOrEmpty(codeEditorEncoding)) codeEditorEncoding = TextEncodingPreferences.Default;
         if (!TextEncodingPreferences.IsSupported(codeEditorEncoding))
             return false;
 
+        invalidField = "defaultApps";
         var sourceApps = request.DefaultApps ?? new List<DefaultAppMappingDto>();
         if (sourceApps.Count > 64)
             return false;
@@ -59,6 +67,7 @@ public static class WorkspacePreferencesValidator
         }
 
         // ── DesktopDisplaySettings 归一化 ──
+        invalidField = "desktopDisplay.visibleAppIds";
         var desktopDisplay = request.DesktopDisplay ?? DesktopDisplaySettingsDto.Default;
         var visibleAppIdsSource = desktopDisplay.VisibleAppIds ?? new List<string>();
         if (visibleAppIdsSource.Count > 256)
@@ -87,7 +96,7 @@ public static class WorkspacePreferencesValidator
             ShowTaskbarWindowPreviews = desktopDisplay.ShowTaskbarWindowPreviews,
         };
 
-        if (!TryNormalizeDesktopExperience(request.DesktopExperience, out var desktopExperience))
+        if (!TryNormalizeDesktopExperience(request.DesktopExperience, out var desktopExperience, out invalidField))
             return false;
 
         preferences = new WorkspacePreferencesDto(
@@ -96,6 +105,7 @@ public static class WorkspacePreferencesValidator
             string.IsNullOrEmpty(region) ? WorkspacePreferencesDto.Default.Region : region,
             deduped.Values.ToList(), notepadEncoding, codeEditorEncoding,
             normalizedDesktopDisplay, desktopExperience);
+        invalidField = null;
         return true;
     }
 
@@ -106,27 +116,39 @@ public static class WorkspacePreferencesValidator
     /// </summary>
     private static bool TryNormalizeDesktopExperience(
         DesktopExperiencePreferencesDto? request,
-        out DesktopExperiencePreferencesDto experience)
+        out DesktopExperiencePreferencesDto experience,
+        out string? invalidField)
     {
         experience = DesktopExperiencePreferencesDto.Default;
         var source = request ?? DesktopExperiencePreferencesDto.Default;
 
+        invalidField = "desktopExperience.appearance";
         if (!TryNormalizeAppearance(source.Appearance, out var appearance))
             return false;
 
+        invalidField = "desktopExperience.systemStyleId";
         var systemStyleId = source.SystemStyleId?.Trim();
         if (string.IsNullOrEmpty(systemStyleId) || !IsValidStyleId(systemStyleId))
             return false;
 
+        invalidField = "desktopExperience.shell.shellId";
         var requestedShell = source.Shell ?? new ShellSelectionDto("relaxkonos.windows-like");
         var shellId = NormalizeShellId(requestedShell.ShellId);
         if (!IsValidShellId(shellId))
             return false;
         var packageId = requestedShell.PackageId?.Trim();
         var packageVersion = requestedShell.PackageVersion?.Trim();
-        if (packageId is { Length: > 128 } || packageVersion is { Length: > 64 }) return false;
-        if (shellId.StartsWith("relaxkonos.", StringComparison.Ordinal) &&
-            (!string.IsNullOrEmpty(packageId) || !string.IsNullOrEmpty(packageVersion))) return false;
+        invalidField = "desktopExperience.shell.packageId";
+        if (packageId is { Length: > 128 }) return false;
+        invalidField = "desktopExperience.shell.packageVersion";
+        if (packageVersion is { Length: > 64 }) return false;
+        if (shellId.StartsWith("relaxkonos.", StringComparison.Ordinal))
+        {
+            invalidField = "desktopExperience.shell.packageId";
+            if (!string.IsNullOrEmpty(packageId)) return false;
+            invalidField = "desktopExperience.shell.packageVersion";
+            if (!string.IsNullOrEmpty(packageVersion)) return false;
+        }
 
         experience = new DesktopExperiencePreferencesDto
         {
@@ -134,6 +156,7 @@ public static class WorkspacePreferencesValidator
             SystemStyleId = systemStyleId,
             Shell = new ShellSelectionDto(shellId, packageId, packageVersion),
         };
+        invalidField = null;
         return true;
     }
 
@@ -205,7 +228,7 @@ public static class WorkspacePreferencesValidator
     private static bool TryNormalizeThemeColors(Dictionary<string, string>? source, out Dictionary<string, string> colors)
     {
         colors = new(StringComparer.OrdinalIgnoreCase);
-        if (source is null || source.Count is 0 or > 56) return false;
+        if (source is null || source.Count == 0 || source.Count > ThemePaletteContract.ColorTokens.Count) return false;
         foreach (var (key, value) in source)
         {
             if (string.IsNullOrWhiteSpace(key) || !ThemePaletteContract.ColorTokens.Contains(key) || !IsHexColor8(value)) return false;

@@ -32,7 +32,7 @@ public sealed class FileServicesApp : RemoteApplicationBase
         vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Smb, "relaxkonos.file-services", () => vm.RefreshCommand.ExecuteAsync(null));
         var window = context.ShowWindow(LocalizedText.Get("file_services.title"), InstallationPanel.Wrap(new FileServicesWorkspace(vm), vm.Installation), new Rect(90, 80, 960, 720), Manifest.IconGlyph);
         var files = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
-        var defaultAdministrator = session.CurrentServer?.Platform == HostPlatformKind.Linux ? "root" : session.CurrentUser?.Username ?? string.Empty;
+        var defaultAdministrator = string.Empty;
         vm.RequestHostAdministratorCredentialsAsync = error => context.WindowManager.ShowSystemDialogAsync<HostAdministratorCredentials?>(
             LocalizedText.Get("file_services.host_password"),
             dialog => new HostAdministratorCredentialsDialogView(dialog, LocalizedText.Get("file_services.host_password_message"), error, defaultAdministrator), new Size(460, 250));

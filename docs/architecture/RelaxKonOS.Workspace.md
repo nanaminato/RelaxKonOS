@@ -136,7 +136,7 @@ Desktop State 表示桌面环境状态，包含：Wallpaper、Theme、Desktop La
 
 | 字段 | 类型 | 含义 | 默认值 |
 |------|------|------|--------|
-| `wallpaperKey` | `string` | 壁纸标识。前缀 `builtin:` 表示内置壁纸，`custom:` 表示 Workspace 托管图片 blob id。 | `builtin:bloom` |
+| `wallpaperKey` | `string` | 壁纸标识。前缀 `builtin:` 表示客户端打包的图片或渐变背景，仅同步标识；`custom:` 表示 Workspace 托管图片 blob id。 | `builtin:alpine-lake` |
 | `theme` | `ThemeKind` enum | 明亮/暗黑主题。 | `Light` |
 | `themePreferences.styleId` | `string` | 主题风格标识。 | `relaxkonos` |
 | `themePreferences.paletteId` | `string` | 调色板标识。`builtin:relaxkonos-blue` 为默认；可选择自定义调色板（见下）。 | `builtin:relaxkonos-blue` |
@@ -152,7 +152,7 @@ Desktop State 表示桌面环境状态，包含：Wallpaper、Theme、Desktop La
 
 ```text
 Desktop
-  Wallpaper: builtin:bloom
+  Wallpaper: builtin:alpine-lake
   Theme:     Dark  (palette = builtin:relaxkonos-blue)
   Icons:     Browser, Terminal, Explorer    (desktopDisplay.visibleAppIds 过滤)
 ```

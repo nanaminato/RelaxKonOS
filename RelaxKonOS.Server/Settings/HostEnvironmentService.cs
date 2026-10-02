@@ -61,6 +61,9 @@ public sealed class HostEnvironmentService(IUserRepository users, IHostElevation
     public void RequireGrant(ClaimsPrincipal principal, SettingsTarget target, HostElevationCapability capability)
     {
         if (ResolveTarget(principal, target.Scope) != target) throw new SettingsException(403, "settings.environment.identity_mismatch");
+        // This is the authenticated account's own Windows environment store, not a host-admin
+        // operation. The canonical SID/target ownership check above remains mandatory.
+        if (OperatingSystem.IsWindows() && target.Scope == SettingsScope.HostUser) return;
         if (!grants.IsGranted(principal, capability, target.ResourceId)) throw new SettingsException(428, "settings.environment.authorization_required");
     }
 

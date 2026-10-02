@@ -16,6 +16,11 @@ public sealed class MihomoRuntimeManifest
         new(SupportedVersion, "linux-arm64", "mihomo-linux-arm64-v1.19.30.gz", "gz", "58896873736d28628f66de3677c8654fa0f180662523148e136cff4f6e890069"),
     ];
 
+    public IReadOnlyList<RelaxKonOS.Protocol.Proxy.ProxyRuntimeReleaseDto> Available() => Releases
+        .Where(release => release.Rid == CurrentRid() && release.IsTrusted())
+        .Select(release => new RelaxKonOS.Protocol.Proxy.ProxyRuntimeReleaseDto(release.Version, release.DownloadUri.ToString(), release.Version == SupportedVersion))
+        .ToArray();
+
     public MihomoRuntimeRelease? Find(string? version) => Releases.SingleOrDefault(release =>
         release.Version == (string.IsNullOrWhiteSpace(version) ? SupportedVersion : version)
         && release.Rid == CurrentRid() && release.IsTrusted());

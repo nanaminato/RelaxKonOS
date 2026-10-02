@@ -7,6 +7,7 @@ namespace RelaxKonOS.WindowManager;
 /// <summary>Loads package and application-resource icons without allowing a bad icon to affect app launch.</summary>
 public static class AppIconImageLoader
 {
+    /// <summary>Returns a newly owned image. The caller must dispose it after removing its UI bindings.</summary>
     public static IImage? Load(string? iconPath)
     {
         if (string.IsNullOrWhiteSpace(iconPath)) return null;

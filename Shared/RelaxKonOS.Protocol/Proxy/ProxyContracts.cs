@@ -76,6 +76,7 @@ public static class ProxyApiRoutes
     public const string OperationsPattern = "/operations/{operationId:guid}";
     public const string RuntimeExternalDetection = Runtime + "/detect-external";
     public const string RuntimeDownload = Runtime + "/download";
+    public const string RuntimeReleases = Runtime + "/releases";
     public const string Lifecycle = Proxy + "/lifecycle/{action}";
     public const string TunEnable = Tun + "/enable";
     public const string TunDisable = Tun + "/disable";
@@ -197,6 +198,7 @@ public sealed record SelectProxyGroupRequest(string Proxy);
 public sealed record ProxyTunRequest(Guid ProfileId);
 public sealed record ProxyRuntimeRequest(string EngineId, string? Version = null, string? ExternalPath = null);
 public sealed record ProxyRuntimeDownloadDto(string Version, string Url);
+public sealed record ProxyRuntimeReleaseDto(string Version, string Url, bool Recommended);
 public sealed record ProxyLifecycleRequest(bool Confirmed = false);
 public sealed record ApplyProxyConfigurationRequest(string Yaml);
 public sealed record UpdateProxySettingsRequest(bool SystemProxyEnabled, bool AllowLan, bool DnsEnabled, bool Ipv6Enabled, bool UnifiedDelay,

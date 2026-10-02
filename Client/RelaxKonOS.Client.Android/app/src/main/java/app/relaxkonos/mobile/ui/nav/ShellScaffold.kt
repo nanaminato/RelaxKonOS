@@ -138,12 +138,10 @@ fun ShellScaffold(
                         NavigationRailItem(
                             selected = navigator.currentDestination == destination.route,
                             onClick = { select(destination) },
-                            icon = { DesktopIcon(icon = destination.iconRes, size = 26.dp) },
+                            icon = { DesktopIcon(icon = destination.iconRes, size = 26.dp,
+                                contentDescription = stringResource(destination.labelRes)) },
                             label = {
-                                // A compact rail must stay narrow; the label is dropped below 840dp.
-                                if (layoutState == LayoutState.Expanded) {
-                                    Text(stringResource(destination.labelRes))
-                                }
+                                Text(stringResource(destination.labelRes), maxLines = 1)
                             },
                         )
                     }

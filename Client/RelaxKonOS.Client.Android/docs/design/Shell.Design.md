@@ -382,7 +382,7 @@ connect/login（统一表单；密码框 value 始终只表示本次手动输入
 | 服务端信任模型 | 密码只在验证瞬间持有，不落库/不日志 | 不因移动端保存密码而改变 |
 | 能力门控 | `ServerDescriptorDto.capabilities` + `ServerCapabilities` 常量 | 直接复用，不新增发现端点 |
 
-桌面端与移动端的手动认证均发送 `administratorUsername`；Linux 默认建议 `root`，其 PAM 密码被锁定时可改用其他经宿主 sudo 策略认可的管理员账户。移动端保存管理员账户与密码时继续把账户名作为保险箱记录键。
+桌面端与移动端的手动认证均发送 `administratorUsername`；不按平台猜测 root/Administrator，未知候选时账户留空。移动端仅建议当前服务器保存的管理员账户，其密码仍需显式授权释放。Linux 可使用经固定 Helper 的 root sudoers 策略认可的非 root 管理员账户及其自身密码。系统账户认证的管理员无需重复密码，资格由 Server 每次重新检查；Alias 需显式宿主管理员认证。移动端保存管理员账户与密码时继续把账户名作为保险箱记录键。
 
 ### 5.8 决策记录
 

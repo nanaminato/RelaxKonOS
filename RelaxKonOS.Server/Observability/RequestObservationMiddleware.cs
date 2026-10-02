@@ -33,7 +33,7 @@ public sealed class RequestObservationMiddleware(RequestDelegate next)
         finally
         {
             var status = context.Response.StatusCode;
-            var important = status >= 500 || timer.ElapsedMilliseconds >= options.SlowRequestThresholdMs || status == StatusCodes.Status401Unauthorized || status == StatusCodes.Status403Forbidden;
+            var important = status >= 400 || timer.ElapsedMilliseconds >= options.SlowRequestThresholdMs;
             if (important || Random.Shared.NextDouble() < options.SuccessfulRequestSampleRate)
             {
                 var route = (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText ?? "unmatched";

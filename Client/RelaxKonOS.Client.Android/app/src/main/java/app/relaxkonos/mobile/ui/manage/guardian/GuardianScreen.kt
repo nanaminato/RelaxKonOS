@@ -85,6 +85,7 @@ data class GuardianUiState(
 )
 
 private fun guardianProblemLabel(code: String?): Int = when (code) {
+    "guardian.agent_permission_denied" -> R.string.guardian_agent_permission
     "guardian.run_as_identity_mismatch" -> R.string.guardian_identity_changed
     "guardian.run_as_launch_failed", "guardian.run_as_permission_denied", "guardian.run_as_platform_not_supported" -> R.string.guardian_launch_failed
     "guardian.definition_changed" -> R.string.guardian_definition_changed
@@ -141,7 +142,8 @@ class GuardianViewModel(application: Application) : AndroidViewModel(application
                     unknown = if (reconcile && status is ApiResult.Success && workloads is ApiResult.Success) false else old.unknown,
                     stale = status !is ApiResult.Success || workloads !is ApiResult.Success || status.value.running != true,
                     error = status !is ApiResult.Success || workloads !is ApiResult.Success,
-                    problemCode = (workloads as? ApiResult.Problem)?.code ?: (status as? ApiResult.Problem)?.code) }
+                    problemCode = (workloads as? ApiResult.Problem)?.code ?: (status as? ApiResult.Problem)?.code
+                        ?: (status as? ApiResult.Success)?.value?.problemCode?.takeIf(String::isNotBlank)) }
                 if (workloads is ApiResult.Success && mutable.value.selectedId != null && workloads.value.none { it.id == mutable.value.selectedId }) select(null)
             } finally { if (current(active)) mutable.update { it.copy(loading = false) } }
         }
@@ -336,7 +338,7 @@ private fun GuardianEditor(owner: SessionState.Active, draft: GuardianDraft, sta
     var readConfirm by remember(draft) { mutableStateOf(false) }
     var discard by remember(draft) { mutableStateOf(false) }
     var approvalTarget by remember(draft) { mutableStateOf<GuardianDefinition?>(null) }
-    var adminName by remember(draft) { mutableStateOf(if (owner.serverPlatform.contains("windows", true)) "Administrator" else "root") }
+    var adminName by remember(draft) { mutableStateOf("") }
     var password by remember(draft) { mutableStateOf("") }
     DisposableEffect(owner, draft) { onDispose { password = "" } }
     fun close() { if (!state.loading) { if (draft.dirty(owner.serverPlatform)) discard = true else onCancel() } }

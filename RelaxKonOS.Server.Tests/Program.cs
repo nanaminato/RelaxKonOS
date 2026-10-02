@@ -1,3 +1,54 @@
+if (args.Contains("--mihomo-runtime-only"))
+{
+    if (MihomoRuntimeManifest.CurrentRid() != "linux-x64")
+        throw new PlatformNotSupportedException("Mihomo runtime checks require Linux x64.");
+    var runtimeRoot = Path.Combine(Path.GetTempPath(), "relaxkon-mihomo-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(runtimeRoot);
+    try
+    {
+        await NetworkProxyTunnelChecks.VerifyMihomoRuntimeSafetyAsync(runtimeRoot);
+        var references = new RelaxKonOS.Server.Installations.InstallationFileReferenceStore(new TestHostEnvironment(runtimeRoot),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<RelaxKonOS.Server.Installations.InstallationFileReferenceStore>.Instance);
+        var package = Enumerable.Range(0, 81921).Select(index => (byte)(index % 251)).ToArray();
+        var reference = await references.StageUploadAsync(RelaxKonOS.Protocol.Installations.InstallationServiceId.Mihomo, "test",
+            "fixture.gz", new MemoryStream(package), package.Length, CancellationToken.None);
+        TestAssert.Assert(reference.Length == package.Length, "An uploaded package reference omitted buffered bytes.");
+        using var source = references.Open(RelaxKonOS.Protocol.Installations.InstallationServiceId.Mihomo, "test", reference.Id);
+        using var received = new MemoryStream();
+        await source.Stream.CopyToAsync(received);
+        TestAssert.Assert(received.ToArray().SequenceEqual(package), "The uploaded package could not be reopened intact.");
+    }
+    finally { Directory.Delete(runtimeRoot, recursive: true); }
+    Console.WriteLine("Mihomo runtime checks passed.");
+    return;
+}
+if (args.Contains("--webserver-only"))
+{
+    WebServerChecks.VerifyUninstallCapabilities();
+    WebServerChecks.VerifySiteConcurrency();
+    await WebServerChecks.VerifyWebServerProviderRoutingAsync();
+    var webRoot = Path.Combine(Path.GetTempPath(), "relaxkon-webserver-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(webRoot);
+    try
+    {
+        await WebServerChecks.VerifyDeploymentAndNginxSnapshotsAsync(webRoot);
+        await WebServerChecks.VerifyOperationIdempotencyAsync(webRoot);
+    }
+    finally
+    {
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        Directory.Delete(webRoot, recursive: true);
+    }
+    Console.WriteLine("Web-server checks passed.");
+    return;
+}
+if (args.Contains("--host-operation-authorization-only"))
+{
+    HostOperationAuthorizationChecks.Run();
+    HostFileRoutingChecks.Run();
+    await HostElevationWireChecks.RunAsync();
+    return;
+}
 if (args.Contains("--host-settings-only"))
 {
     var settingsRoot = Path.Combine(Path.GetTempPath(), "relaxkon-host-settings-" + Guid.NewGuid().ToString("N"));
@@ -66,6 +117,7 @@ if (args.Length == 5 && args[0] == "--installed-windows-user-execution")
 
 if (args.Contains("--webserver-sites-only"))
 {
+    WebServerChecks.VerifyUninstallCapabilities();
     WebServerChecks.VerifySiteConcurrency();
     Console.WriteLine("Web site concurrency and contract checks passed.");
     return;
@@ -199,6 +251,12 @@ var root = Path.Combine(Path.GetTempPath(), $"relaxkonos-server-tests-{Guid.NewG
 Directory.CreateDirectory(root);
 try
 {
+    // The focused settings suite must run before unrelated certificate/host checks.
+    if (args.Contains("--settings-only", StringComparer.Ordinal))
+    {
+        await SettingsSystemVerification.RunAsync(root);
+        return;
+    }
     await CertificateOperationReplayChecks.RunAsync(Path.Combine(root, "certificate-replay"));
     await CertificateBindingChecks.RunAsync(Path.Combine(root, "certificate-binding"));
     FrpcAppliedStateChecks.Run();
@@ -262,7 +320,6 @@ try
     if (args.Contains("--host-file-routing-only")) { HostFileRoutingChecks.Run(); return; }
     if (args.Contains("--terminal-contract-only")) { TerminalHubContractChecks.Run(); return; }
     if (args.Contains("--alias-only")) { await AliasLoginVerification.RunAsync(root); return; }
-    var settingsOnly = args.Contains("--settings-only", StringComparer.Ordinal);
     var fileOperationsOnly = args.Contains("--file-operations-only", StringComparer.Ordinal);
     if (fileOperationsOnly)
     {
@@ -273,9 +330,8 @@ try
     // reported even in environments where the alias HTTP suite cannot run.
     TerminalHubContractChecks.Run();
     await AliasLoginVerification.RunAsync(root);
-    if (!fileOperationsOnly || settingsOnly) await SettingsSystemVerification.RunAsync(root);
-    if (!settingsOnly || fileOperationsOnly) await FileOperationChecks.RunAsync(root);
-    if (settingsOnly || fileOperationsOnly) return;
+    await SettingsSystemVerification.RunAsync(root);
+    await FileOperationChecks.RunAsync(root);
     await ServerCoreChecks.VerifyPrivilegedOperationProtocolAsync();
     await WindowsPrivilegeChecks.RunAsync(root);
     await DeveloperUserSidAllowListVerification.RunAsync();
@@ -285,6 +341,7 @@ try
     ImageThumbnailChecks.Run(root);
     await UploadSessionChecks.RunAsync(root);
     HostFileRoutingChecks.Run();
+    HostOperationAuthorizationChecks.Run();
     await CertificateChecks.VerifyCertificateStoreAndSniAsync(root);
     CertificateChecks.VerifyCertificateApiRoutes();
     await HostStorageChecks.VerifyRenewalRetryAsync(root);

@@ -12,6 +12,7 @@ public static class ThemePaletteDefaults
         ["Success"]="#107C10", ["SuccessMuted"]="#DFF6DD", ["Warning"]="#C77A00", ["WarningMuted"]="#FFF4CE", ["Danger"]="#C42B1C", ["DangerHover"]="#B3271D", ["DangerPressed"]="#8F2117", ["Info"]="#2369A7",
         ["TaskbarBackground"]="#F7F7F7", ["TaskbarForeground"]="#1F1F1F", ["StartMenuBackground"]="#FFFFFF", ["WindowFrameBackground"]="#FFFFFF", ["WindowTitleBarBackground"]="#F5F5F5", ["WindowTitleForeground"]="#202020", ["WindowInactiveTitleForeground"]="#4F4F4F",
         ["OverlayScrim"]="#66000000", ["Shadow"]="#22000000", ["DesktopIconHover"]="#220078D4", ["DesktopIconSelected"]="#330078D4",
+        ["DesktopItemLabelForeground"]="#FFFFFF", ["DesktopItemLabelShadow"]="#CC000000",
         ["CardShadow"]="#22000000", ["FlyoutShadow"]="#22000000", ["DialogScrim"]="#3D000000", ["ChartGridLine"]="#E5EBF5",
         ["ChartSeries1"]="#0078D4", ["ChartSeries2"]="#107C10", ["ChartSeries3"]="#C77A00", ["ChartSeries4"]="#C42B1C", ["ChartSeries5"]="#7B61FF", ["ChartSeries6"]="#008272", ["ChartSeries7"]="#B146C2", ["ChartSeries8"]="#2369A7",
     };
@@ -25,6 +26,7 @@ public static class ThemePaletteDefaults
         ["Success"]="#6CCB5F", ["SuccessMuted"]="#183C1B", ["Warning"]="#FFD166", ["WarningMuted"]="#4A3B14", ["Danger"]="#FF7262", ["DangerHover"]="#FF8C80", ["DangerPressed"]="#D94D40", ["Info"]="#6AB8FF",
         ["TaskbarBackground"]="#242424", ["TaskbarForeground"]="#F5F5F5", ["StartMenuBackground"]="#2B2B2B", ["WindowFrameBackground"]="#2B2B2B", ["WindowTitleBarBackground"]="#333333", ["WindowTitleForeground"]="#F5F5F5", ["WindowInactiveTitleForeground"]="#B0B0B0",
         ["OverlayScrim"]="#99000000", ["Shadow"]="#66000000", ["DesktopIconHover"]="#334CC2FF", ["DesktopIconSelected"]="#554CC2FF",
+        ["DesktopItemLabelForeground"]="#FFFFFF", ["DesktopItemLabelShadow"]="#CC000000",
         ["CardShadow"]="#66000000", ["FlyoutShadow"]="#66000000", ["DialogScrim"]="#66000000", ["ChartGridLine"]="#515151",
         ["ChartSeries1"]="#4CC2FF", ["ChartSeries2"]="#6CCB5F", ["ChartSeries3"]="#FFD166", ["ChartSeries4"]="#FF7262", ["ChartSeries5"]="#B9A7FF", ["ChartSeries6"]="#4FD1C5", ["ChartSeries7"]="#E9A8F2", ["ChartSeries8"]="#6AB8FF",
     };

@@ -67,8 +67,8 @@ class RelaxKonApi(
             if (change.kind == SmbChangeKind.Password) JsonBody().secret("password", requireNotNull(password)) else change.share?.body(), SmbWire::receipt)
     override suspend fun firewallStatus(serverUrl: String, accessToken: String): ApiResult<FirewallStatus> = webPublishingRead(serverUrl, accessToken, FirewallRoutes.ROOT + "/status", FirewallWire::status)
     override suspend fun firewallRules(serverUrl: String, accessToken: String): ApiResult<List<FirewallRule>> = webPublishingRead(serverUrl, accessToken, FirewallRoutes.ROOT + "/rules", FirewallWire::rules)
-    override suspend fun changeFirewall(serverUrl: String, accessToken: String, change: FirewallChange, password: CharArray?): ApiResult<FirewallResult> =
-        webPublishingCall(FirewallRoutes.method(change.kind), serverUrl, FirewallRoutes.route(change), accessToken, change.body(password), FirewallWire::result)
+    override suspend fun changeFirewall(serverUrl: String, accessToken: String, change: FirewallChange): ApiResult<FirewallResult> =
+        webPublishingCall(FirewallRoutes.method(change.kind), serverUrl, FirewallRoutes.route(change), accessToken, change.body(), FirewallWire::result)
     override suspend fun proxySettings(serverUrl: String, accessToken: String): ApiResult<ProxySettings> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.ROOT + "/settings", ProxyDiagnosticsWire::settings)
     override suspend fun proxyRecovery(serverUrl: String, accessToken: String): ApiResult<ProxyRecovery> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.ROOT + "/recovery", ProxyDiagnosticsWire::recovery)
     override suspend fun proxyTun(serverUrl: String, accessToken: String): ApiResult<ProxyRecovery> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.ROOT + "/tun", ProxyDiagnosticsWire::recovery)
@@ -87,6 +87,7 @@ class RelaxKonApi(
     override suspend fun proxyRouting(serverUrl: String, accessToken: String): ApiResult<ProxyRoutingMode> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.ROUTING, ProxyWire::routing)
     override suspend fun proxyDownloadOptions(serverUrl: String, accessToken: String): ApiResult<Boolean> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.SUBSCRIPTIONS + "/download-options", ProxyWire::downloadOptions)
     override suspend fun proxyOperation(serverUrl: String, accessToken: String, id: String): ApiResult<ProxyOperation> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.operation(id), ProxyWire::operation)
+    override suspend fun proxyReleases(serverUrl: String, accessToken: String): ApiResult<List<ProxyRelease>> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.ROOT + "/runtime/releases", ProxyWire::releases)
     override suspend fun proxyDownload(serverUrl: String, accessToken: String, version: String): ApiResult<ProxyDownload> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.ROOT + "/runtime/download?version=" + ProxyRoutes.segment(version), ProxyWire::download)
     override suspend fun proxyQueue(serverUrl: String, accessToken: String, action: ProxyAction, target: String?, key: String): ApiResult<String> = deploymentMutation("POST", serverUrl, ProxyRoutes.action(action, target), accessToken, if (action == ProxyAction.EnableTun) JsonBody().string("profileId", InstallationRoutes.canonicalId(requireNotNull(target))) else JsonBody(), key, ProxyWire::accepted)
     override suspend fun saveProxyProfile(serverUrl: String, accessToken: String, id: String?, request: ProxyProfileRequest): ApiResult<ProxyProfile> = webPublishingCall(if (id == null) "POST" else "PUT", serverUrl, id?.let(ProxyRoutes::profile) ?: ProxyRoutes.PROFILES, accessToken, request.body(), ProxyWire::profile)
@@ -458,6 +459,8 @@ class RelaxKonApi(
         webPublishingRead(serverUrl, accessToken, WebPublishingRoutes.candidates(), WebPublishingWire::candidates)
     override suspend fun webServerInstallCatalog(serverUrl: String, accessToken: String): ApiResult<WebServerInstallCatalog> =
         webPublishingRead(serverUrl, accessToken, WebPublishingRoutes.catalog(), WebPublishingWire::catalog)
+    override suspend fun webServerInstallDownload(serverUrl: String, accessToken: String, version: String): ApiResult<WebServerInstallDownload> =
+        webPublishingRead(serverUrl, accessToken, WebPublishingRoutes.installDownload(version), WebPublishingWire::installDownload)
     override suspend fun integrateWebServer(serverUrl: String, accessToken: String, candidateId: String, confirmed: Boolean,
         idempotencyKey: String): ApiResult<WebServerOperation> = webPublishingMutation(serverUrl, accessToken,
         WebPublishingRoutes.integrate(candidateId), JsonBody().bool("confirmed", confirmed), idempotencyKey, WebPublishingWire::operation)

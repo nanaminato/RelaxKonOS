@@ -1,5 +1,7 @@
 package app.relaxkonos.mobile.ui.manage
 
+import app.relaxkonos.mobile.ui.common.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import android.app.Application
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
@@ -241,7 +243,6 @@ private data class ManageDomain(
 @Composable
 fun ManageScreen(
     onOpenMonitor: () -> Unit,
-    onOpenProcesses: () -> Unit,
     onOpenDeployments: () -> Unit,
     onOpenDocker: () -> Unit,
     onOpenGit: () -> Unit,
@@ -298,25 +299,8 @@ fun ManageScreen(
             add(ManageDomain(R.string.guardian_title, R.string.guardian_subtitle, R.drawable.ic_app_processguardian, onOpenGuardian))
             add(ManageDomain(R.string.scripts_title, R.string.scripts_subtitle, R.drawable.ic_app_terminal, onOpenScripts))
         }
-        if (container.capabilities.contains(ServerCapabilities.METRICS)) {
-            add(
-                ManageDomain(
-                    R.string.manage_monitor_title,
-                    R.string.manage_monitor_subtitle,
-                    DesktopIcons.system,
-                    onOpenMonitor,
-                ),
-            )
-        }
-        if (container.capabilities.contains(ServerCapabilities.PROCESSES)) {
-            add(
-                ManageDomain(
-                    R.string.manage_processes_title,
-                    R.string.manage_processes_subtitle,
-                    DesktopIcons.processes,
-                    onOpenProcesses,
-                ),
-            )
+        if (container.capabilities.contains(ServerCapabilities.METRICS) || container.capabilities.contains(ServerCapabilities.PROCESSES)) {
+            add(ManageDomain(R.string.workspace_taskmanager, R.string.workspace_taskmanager_note, DesktopIcons.system, onOpenMonitor))
         }
     }
 

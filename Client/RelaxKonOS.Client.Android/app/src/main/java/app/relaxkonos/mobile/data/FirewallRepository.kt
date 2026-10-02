@@ -18,7 +18,7 @@ class FirewallRepository(private val gateway: RelaxKonGateway, private val sessi
         return if (rules is ApiResult.Success) ApiResult.Success(FirewallFacts(status.value, rules.value)) else failure(rules)
     }
     suspend fun change(owner: SessionState.Active, expected: FirewallFacts, change: FirewallChange,
-        password: CharArray?, provider: ElevationAnswerProvider): ApiResult<FirewallResult> = try {
+        provider: ElevationAnswerProvider): ApiResult<FirewallResult> =
         mutations.withLock {
             verify(owner); require(owner.privilegedOperations && expected.status.isAvailable)
             change.validate(); require(journal.pending(owner).isEmpty())
@@ -31,15 +31,14 @@ class FirewallRepository(private val gateway: RelaxKonGateway, private val sessi
                 val latest = facts(owner)
                 if (latest !is ApiResult.Success) return@withElevation failure(latest)
                 if (latest.value != expected) return@withElevation ApiResult.Problem(409, "firewall.facts_changed", null)
-                gateway.changeFirewall(url, token, change, password).let {
+                gateway.changeFirewall(url, token, change).let {
                     if (it is ApiResult.Success && !it.value.success && it.value.problemCode == "firewall.elevation_required")
                         ApiResult.Problem(403, ProblemCodes.ELEVATION_REQUIRED, null) else it
                 }
             }
             verify(owner)
             // Only explicit pre-mutation authorization refusals prove that no host change occurred.
-            val refused = result is ApiResult.Problem && result.code in setOf(ProblemCodes.ELEVATION_REQUIRED, ProblemCodes.UNAUTHORIZED) ||
-                result is ApiResult.Success && !result.value.success && result.value.problemCode in setOf("firewall.password_required", "firewall.password_invalid", "firewall.invalid_requester")
+            val refused = result is ApiResult.Problem && result.code in setOf(ProblemCodes.ELEVATION_REQUIRED, ProblemCodes.UNAUTHORIZED)
             if (refused) journal.complete(pending)
             else if (result is ApiResult.Success && result.value.success) {
                 val confirmed = facts(owner)
@@ -47,7 +46,6 @@ class FirewallRepository(private val gateway: RelaxKonGateway, private val sessi
             }
             result
         }
-    } finally { password?.fill('\u0000') }
     suspend fun acceptFacts(owner: SessionState.Active, pending: PendingFirewallChange): ApiResult<FirewallFacts> = mutations.withLock {
         verify(owner); require(pending in journal.pending(owner))
         facts(owner).also { if (it is ApiResult.Success && it.value.status.isAvailable) journal.complete(pending) }

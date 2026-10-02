@@ -16,6 +16,7 @@ class ProxyRepository(private val gateway: RelaxKonGateway, private val session:
     suspend fun subscriptions(owner: SessionState.Active) = read(owner, gateway::proxySubscriptions)
     suspend fun groups(owner: SessionState.Active) = read(owner, gateway::proxyGroups)
     suspend fun routing(owner: SessionState.Active) = read(owner, gateway::proxyRouting)
+    suspend fun releases(owner: SessionState.Active) = read(owner, gateway::proxyReleases)
     suspend fun downloadOptions(owner: SessionState.Active) = read(owner, gateway::proxyDownloadOptions)
     suspend fun download(owner: SessionState.Active, version: String) = read(owner) { u, t -> gateway.proxyDownload(u, t, version) }
     suspend fun settings(owner: SessionState.Active) = read(owner, gateway::proxySettings)

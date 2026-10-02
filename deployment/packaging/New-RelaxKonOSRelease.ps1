@@ -125,6 +125,9 @@ foreach ($target in @(
     $serverPayload[$target.ManifestName] = "payload/$platform/$($target.Name)/$($target.Executable)"
 }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'deployment\bootstrap') -Destination (Join-Path $serverPackage.Directory 'deployment\bootstrap') -Recurse -Force
+if ($platform -eq 'linux') {
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'deployment\verify-release-inventory.py') -Destination (Join-Path $serverPackage.Directory 'deployment\verify-release-inventory.py') -Force
+}
 Copy-Item -LiteralPath (Join-Path $projectRoot ("deployment\$platform")) -Destination (Join-Path $serverPackage.Directory ("deployment\$platform")) -Recurse -Force
 if ($platform -eq 'linux') { Convert-LinuxShellScriptsToLf $serverPackage.Directory }
 Complete-Package $serverPackage $serverPayload

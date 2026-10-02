@@ -43,6 +43,8 @@ bld/
 [Ll]og/
 [Ll]ogs/
 wallpapers/
+!Client/RelaxKonOS.Client/Assets/Wallpapers/
+!Client/RelaxKonOS.Client/Assets/Wallpapers/**
 RelaxKonOS.Server/data/docker-compose/
 RelaxKonOS.Server/data/
 .workbuddy/

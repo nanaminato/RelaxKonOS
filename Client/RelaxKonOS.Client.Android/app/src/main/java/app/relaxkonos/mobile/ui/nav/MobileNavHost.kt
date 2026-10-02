@@ -1,5 +1,8 @@
 package app.relaxkonos.mobile.ui.nav
 
+import app.relaxkonos.mobile.ui.common.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import app.relaxkonos.mobile.ui.theme.Spacing
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -82,13 +85,12 @@ fun MobileNavHost(
                 onBack = { navigator.pop() },
                 initialApplicationId = taskTarget,
             )
-            Routes.MANAGE_DOCKER_RESOURCES -> app.relaxkonos.mobile.ui.manage.docker.DockerResourceScreen(
-                onBack = { navigator.pop() }, onOpenControl = { navigator.push(Routes.MANAGE_DOCKER_CONTROL) },
-                onOpenCompose = { taskTarget = it; navigator.push(Routes.MANAGE_DOCKER) },
-                onOpenApplication = { taskTarget = it; navigator.push(Routes.MANAGE_DEPLOYMENTS) }, modifier = Modifier.fillMaxSize())
-            Routes.MANAGE_DOCKER_CONTROL -> app.relaxkonos.mobile.ui.manage.docker.DockerControlScreen(onBack = { navigator.pop() }, onOpenProxy = { navigator.push(Routes.MORE_NETWORK) }, modifier = Modifier.fillMaxSize())
-            Routes.MANAGE_DOCKER -> DockerScreen(onOpenResources = { navigator.push(Routes.MANAGE_DOCKER_RESOURCES) }, onOpenControl = { navigator.push(Routes.MANAGE_DOCKER_CONTROL) }, onBack = { navigator.pop() }, onOpenProxy = { navigator.push(Routes.MORE_NETWORK) }, initialStackName = taskTarget,
-                modifier = Modifier.fillMaxSize())
+            Routes.MANAGE_DOCKER, Routes.MANAGE_DOCKER_RESOURCES, Routes.MANAGE_DOCKER_CONTROL ->
+                app.relaxkonos.mobile.ui.manage.docker.DockerWorkspace(
+                    initialSection = when (navigator.route) { Routes.MANAGE_DOCKER_RESOURCES -> "containers"; Routes.MANAGE_DOCKER_CONTROL -> "overview"; else -> "overview" },
+                    initialStack = taskTarget, onBack = { navigator.pop() },
+                    onOpenApplication = { taskTarget = it; navigator.push(Routes.MANAGE_DEPLOYMENT_DETAIL) },
+                    onOpenManagedProxy = { taskTarget = null; navigator.push(Routes.MANAGE_PROXY) }, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_GIT -> GitScreen(owner = session, onBack = { navigator.pop() },
                 initialBuildId = taskTarget, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_WEBSITES -> WebsitesScreen(onBack = { navigator.pop() },
@@ -125,8 +127,8 @@ fun MobileNavHost(
             Routes.FILES, Routes.FILES_DETAIL -> FilesDestination(navigator, layoutState)
             Routes.MANAGE, Routes.MANAGE_MONITOR, Routes.MANAGE_PROCESSES ->
                 ManageDestination(navigator, layoutState, clearTaskTarget = { taskTarget = null })
-            Routes.MORE_NETWORK -> OutboundProxyScreen(onBack = { navigator.pop() }, onOpenManagedProxy = { taskTarget = null; navigator.push(Routes.MANAGE_PROXY) }, modifier = Modifier.fillMaxSize())
             Routes.MORE,
+            Routes.MORE_NETWORK,
             Routes.MORE_ACCOUNT_SECURITY,
             Routes.MORE_CONNECTIONS,
             Routes.MORE_SERVER_INFORMATION,
@@ -190,7 +192,6 @@ private fun ManageDestination(navigator: MobileNavigator, layoutState: LayoutSta
         Row(Modifier.fillMaxSize()) {
             ManageScreen(
                 onOpenMonitor = { viewModel.openPane(Routes.MANAGE_MONITOR) },
-                onOpenProcesses = { viewModel.openPane(Routes.MANAGE_PROCESSES) },
                 onOpenDeployments = { clearTaskTarget(); navigator.push(Routes.MANAGE_DEPLOYMENTS) },
                 onOpenDocker = { clearTaskTarget(); navigator.push(Routes.MANAGE_DOCKER) },
                 onOpenGit = { clearTaskTarget(); navigator.push(Routes.MANAGE_GIT) },
@@ -206,8 +207,8 @@ private fun ManageDestination(navigator: MobileNavigator, layoutState: LayoutSta
                 modifier = Modifier.weight(1f),
             )
             when (viewModel.expandedPane) {
-                Routes.MANAGE_MONITOR -> MonitorScreen(onBack = null, modifier = Modifier.weight(1.2f))
-                Routes.MANAGE_PROCESSES -> ProcessesScreen(onBack = null, modifier = Modifier.weight(1.2f))
+                Routes.MANAGE_MONITOR -> app.relaxkonos.mobile.ui.manage.TaskManagerWorkspace("performance", null, Modifier.weight(1.2f))
+                Routes.MANAGE_PROCESSES -> app.relaxkonos.mobile.ui.manage.TaskManagerWorkspace("processes", null, Modifier.weight(1.2f))
                 else -> Text(
                     text = stringResource(R.string.manage_select_domain),
                     modifier = Modifier.weight(1.2f).padding(16.dp),
@@ -219,11 +220,10 @@ private fun ManageDestination(navigator: MobileNavigator, layoutState: LayoutSta
     }
 
     when (navigator.route) {
-        Routes.MANAGE_MONITOR -> MonitorScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
-        Routes.MANAGE_PROCESSES -> ProcessesScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
+        Routes.MANAGE_MONITOR -> app.relaxkonos.mobile.ui.manage.TaskManagerWorkspace("performance", { navigator.pop() }, Modifier.fillMaxSize())
+        Routes.MANAGE_PROCESSES -> app.relaxkonos.mobile.ui.manage.TaskManagerWorkspace("processes", { navigator.pop() }, Modifier.fillMaxSize())
         else -> ManageScreen(
             onOpenMonitor = { navigator.push(Routes.MANAGE_MONITOR) },
-            onOpenProcesses = { navigator.push(Routes.MANAGE_PROCESSES) },
             onOpenDeployments = { clearTaskTarget(); navigator.push(Routes.MANAGE_DEPLOYMENTS) },
             onOpenDocker = { clearTaskTarget(); navigator.push(Routes.MANAGE_DOCKER) },
             onOpenGit = { clearTaskTarget(); navigator.push(Routes.MANAGE_GIT) },
@@ -256,7 +256,7 @@ private fun MoreDestination(
     }
     val openFeature: (String) -> Unit = { target ->
         if (target.startsWith("more/")) {
-            if(layoutState == LayoutState.Expanded) pane = target else navigator.push(target)
+            if(layoutState == LayoutState.Expanded) pane = target else navigator.replaceTop(target)
         } else {
             clearTaskTarget()
             val destination = target.substringBefore('/')
@@ -279,7 +279,7 @@ private fun MoreDestination(
                 if (pane == null) {
                     EmptyHint(stringResource(R.string.more_select_section), Modifier.padding(16.dp))
                 } else {
-                    MorePane(route = pane!!, onOpenRoute = openFeature, onBack = null, onSwitchLogin = onSwitchLogin, onOpenManagedProxy = onOpenManagedProxy)
+                    SettingsWorkspace(route = pane!!, onOpenRoute = openFeature, onBack = null, onSwitchLogin = onSwitchLogin, onOpenManagedProxy = onOpenManagedProxy)
                 }
             }
         }
@@ -295,7 +295,7 @@ private fun MoreDestination(
             modifier = Modifier.fillMaxSize(),
         )
     } else {
-        MorePane(route = route, onOpenRoute = openFeature, onBack = { navigator.pop() }, onSwitchLogin = onSwitchLogin, onOpenManagedProxy = onOpenManagedProxy)
+        SettingsWorkspace(route = route, onOpenRoute = openFeature, onBack = { navigator.pop() }, onSwitchLogin = onSwitchLogin, onOpenManagedProxy = onOpenManagedProxy)
     }
 }
 
@@ -317,5 +317,44 @@ private fun MorePane(route: String, onOpenRoute: (String) -> Unit, onBack: (() -
         Routes.MORE_HOST_SETTINGS -> app.relaxkonos.mobile.ui.more.HostSettingsScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
         Routes.MORE_ABOUT -> AboutScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
         else -> EmptyHint(stringResource(R.string.more_select_section))
+    }
+}
+
+@Composable
+private fun SettingsWorkspace(route: String, onOpenRoute: (String) -> Unit, onBack: (() -> Unit)?,
+    onSwitchLogin: (SavedLogin?) -> Unit, onOpenManagedProxy: () -> Unit) {
+    val pages = listOf(
+        WorkspaceDestination(Routes.MORE_APPEARANCE, R.string.more_appearance),
+        WorkspaceDestination(Routes.MORE_APPLICATIONS, R.string.mobile_apps_title),
+        WorkspaceDestination(Routes.MORE_CONNECTIONS, R.string.more_connections),
+        WorkspaceDestination(Routes.MORE_ACCOUNT_SECURITY, R.string.more_account_security),
+        WorkspaceDestination(Routes.MORE_HOST_SETTINGS, R.string.host_settings_title),
+        WorkspaceDestination(Routes.MORE_SERVER_INFORMATION, R.string.more_server_information),
+        WorkspaceDestination(Routes.MORE_NETWORK, R.string.workspace_proxy),
+        WorkspaceDestination(Routes.MORE_DIAGNOSTICS, R.string.more_diagnostics),
+        WorkspaceDestination(Routes.MORE_HELP, R.string.help_title),
+        WorkspaceDestination(Routes.MORE_ABOUT, R.string.more_about),
+    ).filter { it.id != Routes.MORE_NETWORK || app.relaxkonos.mobile.core.net.ServerCapabilities.DOCKER in app.relaxkonos.mobile.ui.common.appContainer().capabilities }
+    val screenTitle = stringResource(when (route) {
+        Routes.MORE_APPEARANCE -> R.string.appearance_title
+        Routes.MORE_ACCOUNT_SECURITY -> R.string.account_security_title
+        Routes.MORE_CONNECTIONS -> R.string.connections_title
+        Routes.MORE_NETWORK -> R.string.proxy_title
+        Routes.MORE_DIAGNOSTICS -> R.string.diagnostics_title
+        Routes.MORE_ABOUT -> R.string.about_title
+        else -> pages.first { it.id == route }.title
+    })
+    WorkspaceFrame(screenTitle, subtitle = stringResource(when (route) {
+            Routes.MORE_HOST_SETTINGS, Routes.MORE_SERVER_INFORMATION, Routes.MORE_NETWORK -> R.string.workspace_scope_host
+            Routes.MORE_CONNECTIONS, Routes.MORE_DIAGNOSTICS -> R.string.workspace_scope_connection
+            else -> R.string.workspace_scope_android
+        }), pages = pages, selected = route, onSelect = onOpenRoute, onBack = onBack) {
+        androidx.compose.runtime.key(appContainer().activeSession) { Box(Modifier.weight(1f)) {
+            pages.forEach { page -> androidx.compose.runtime.key(page.id) {
+                WorkspaceSection(route == page.id, Modifier.fillMaxSize()) {
+                    MorePane(page.id, onOpenRoute, onBack.takeIf { route == page.id }, onSwitchLogin, onOpenManagedProxy)
+                }
+            } }
+        } }
     }
 }

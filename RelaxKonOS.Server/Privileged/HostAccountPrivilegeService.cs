@@ -48,8 +48,12 @@ public sealed class HostAccountPrivilegeService(IPrivilegedOperationTransport he
 
     public HostAccountPrivilege Classify(PlatformUserInfo identity)
     {
-        if (mode.Mode != ServerMode.System || identity.Platform != HostPlatformKind.Linux)
+        if (mode.Mode != ServerMode.System)
             return HostAccountPrivilege.StandardUser;
+        if (identity.Platform == HostPlatformKind.Windows && OperatingSystem.IsWindows())
+            return WindowsAdministratorMembership.IsAccountAdministrator(identity.Uid)
+                ? HostAccountPrivilege.HostAdministrator : HostAccountPrivilege.StandardUser;
+        if (identity.Platform != HostPlatformKind.Linux) return HostAccountPrivilege.StandardUser;
         if (identity.Uid == "0" && identity.Username == "root") return HostAccountPrivilege.HostRoot;
         if (!uint.TryParse(identity.Uid, out var uid) || uid < 1000 || uid == 65534)
             return HostAccountPrivilege.StandardUser;

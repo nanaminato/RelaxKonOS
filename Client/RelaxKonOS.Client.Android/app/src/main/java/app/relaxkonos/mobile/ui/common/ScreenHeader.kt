@@ -10,6 +10,7 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -38,6 +39,15 @@ fun ScreenHeader(
     backAlignment: Alignment.Vertical = Alignment.CenterVertically,
     trailing: (@Composable () -> Unit)? = null,
 ) {
+    val workspace = LocalWorkspaceHeader.current
+    if (workspace != null && workspace.screenTitle == title) {
+        SideEffect {
+            workspace.back = onBack
+            workspace.hasBack = onBack != null
+        }
+        trailing?.invoke()
+        return
+    }
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         val titleContent: @Composable (Modifier) -> Unit = { titleModifier ->
             Column(titleModifier) {

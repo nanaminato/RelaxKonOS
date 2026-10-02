@@ -17,10 +17,10 @@ public sealed class HostAdministratorAuthenticator(IIdentityProvider identities,
             return new(false, "privileged-feature-unavailable", "none");
         if (string.IsNullOrWhiteSpace(password)) return new(false, "elevation-password-required", "none");
         if (OperatingSystem.IsWindows())
-            return AuthenticateWindows(administratorUsername ?? currentUsername, password);
+            return AuthenticateWindows(string.IsNullOrWhiteSpace(administratorUsername) ? currentUsername : administratorUsername.Trim(), password);
         if (!OperatingSystem.IsLinux()) return new(false, "host-administrator-authentication-unsupported", "none");
 
-        var administrator = string.IsNullOrWhiteSpace(administratorUsername) ? "root" : administratorUsername.Trim();
+        var administrator = string.IsNullOrWhiteSpace(administratorUsername) ? currentUsername : administratorUsername.Trim();
         var verification = identities.Verify(administrator, password);
         if (verification.Error == CredentialError.Unknown)
             return new(false, "host-administrator-authentication-unavailable", "none");

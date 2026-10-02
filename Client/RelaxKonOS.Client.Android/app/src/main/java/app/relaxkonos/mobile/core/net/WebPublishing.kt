@@ -103,6 +103,7 @@ object WebPublishingRoutes {
     fun candidates(): String = "$WEBSERVERS/integration-candidates"
     fun integrate(id: String): String = "${candidates()}/${segment(id)}/integrate"
     fun catalog(): String = "$WEBSERVERS/managed/catalog"
+    fun installDownload(version: String): String = "$WEBSERVERS/managed/download?version=" + java.net.URLEncoder.encode(version, "UTF-8")
     fun lifecycle(id: String, action: WebServerAction): String = "${server(id)}/lifecycle/${action.route}"
     fun operation(id: String): String = "$WEBSERVERS/operations/${InstallationRoutes.canonicalId(id)}"
     fun cancel(id: String): String = "${operation(id)}/cancel"
@@ -135,6 +136,9 @@ internal object WebPublishingWire {
     fun catalog(payload: String): WebServerInstallCatalog = JSONObject(payload).let { json ->
         WebServerInstallCatalog(json.nullableText("mainlineVersion"), json.nullableText("stableVersion"),
             json.getJSONArray("versions").strings(), json.getString("problemCode"))
+    }
+    fun installDownload(payload: String): WebServerInstallDownload = JSONObject(payload).let {
+        WebServerInstallDownload(it.getString("version"), it.getString("url"))
     }
 
     fun operation(payload: String): WebServerOperation = JSONObject(payload).let { json ->

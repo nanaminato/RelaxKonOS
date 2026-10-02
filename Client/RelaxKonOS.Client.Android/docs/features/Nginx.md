@@ -1,5 +1,9 @@
 # Android Nginx 管理
 
+发现、安装、接管、卸载和生命周期操作集中于实例页。站点页直接使用实例页选中的 Nginx，不显示实例列表或发现入口；未选择时提示先去实例页选择。手机从实例详情返回列表仍保留选择。Ubuntu 安装在 APT 操作前检查所有权标记目录写权限；部署脚本授予服务组对 `webserver` 父目录的穿越权限。
+
+实例列表使用可点击卡片，集中显示版本、路径与受管/集成身份。网站工作区增加“操作记录”页，Nginx 安装及维护任务、恢复/重试、站点提交核实和发布结果/历史均集中于此；实例和站点页不重复显示记录详情，有待处理任务时提供跳转入口。应用发布提交后进入记录页。
+
 > BP03-M1/M2 已接入。Android 编译/测试及手机、平板、Ubuntu/Windows 真实宿主验收本轮按用户要求跳过；未执行范围见 [Verification](../status/Verification.md#bp03-m1-静态证据与未执行范围2026-09-30)。通用站点编辑、删除和同步提交核实见 [站点管理](WebSites.md)。
 
 “管理 → 网站”提供 Nginx 管理、既有站点诊断及应用 HTTPS 发布。入口按 `server.web-server` 门控；安装、接管、生命周期和卸载按钮另要求当前登录会话允许宿主提权。手机从实例列表进入详情，平板在可用宽度达到 600 dp 时显示实例与详情两栏；安装表单滚动并保留确认/关闭按钮，支持 IME 避让。
@@ -17,7 +21,7 @@
 
 发现调用当前 `/webservers/discover`，分别读取受管实例和未接管候选。候选显示版本、可执行文件及配置路径；接管前说明备份、受管 include、配置校验和可能的 reload 影响。请求使用 `confirmed=true`、稳定幂等键及候选目标的 `nginxConfigurationWrite` 授权。
 
-实例详情显示管理模式、宿主路径、运行状态和配置检查结果；状态查询失败显示未知，不显示已停止。动作按当前实例的 `canStart/canStop/canRestart/canReload` 展示，不给外部接管实例伪造完整启停能力。启停/重启/重载使用 `nginxLifecycle`；ACME HTTP-01 使用配置写授权，明确说明不自动开放防火墙或证明公网可达。仅 `managed` 且 `canUninstall` 的实例可通过公共安装契约卸载，并确认停机影响。
+实例详情显示管理模式、宿主路径、运行状态和配置检查结果；状态查询失败显示未知，不显示已停止。动作按当前实例的 `canStart/canStop/canRestart/canReload` 展示，不给外部接管实例伪造完整启停能力。启停/重启/重载使用 `nginxLifecycle`；ACME HTTP-01 使用配置写授权，明确说明不自动开放防火墙或证明公网可达。卸载按 `canUninstall` 展示，通过公共安装契约提交，并确认停机与删除影响。Windows 支持受管安装；Ubuntu 另支持已接管、使用 `/usr/sbin/nginx` 和 `/etc/nginx/nginx.conf` 的 APT 系统安装，卸载会清除系统包及其包配置。外部自定义安装不授予卸载能力。存在活动或待核实的实例/安装任务时禁用卸载，完成后刷新实例和站点事实。
 
 ## 操作与恢复
 
@@ -28,3 +32,7 @@ Web 操作与安装操作使用各自的状态机。Web 操作展示原 ID、终
 当前 Server 没有 Web 操作集合或按请求键查询端点，接管端点还会先确认候选是否仍存在。因此，若接管响应完全丢失且候选已消失，重放可能返回 404；不能据此推断成功或取消原请求。已知 ID 可恢复；未知 ID 保留待核实，需取得服务端操作 ID 后查询。取消结果仍须结合实例状态与配置检查确认，不把取消任务解释为副作用已回滚。
 
 源码入口：`WebServerManagement.kt`、`WebPublishing.kt`、Gateway/API、`WebServerRepository.kt`、`WebServerRequestJournal.kt`、`NginxViewModel.kt`、`NginxManager.kt`、OperationIndex/OperationCenter。
+
+## Windows 宿主安装来源
+
+Android 管理 Windows Nginx 时支持服务器下载官方包、服务器已有 ZIP、手机选择 ZIP，以及“我要自行下载”的官方下载链接、复制与浏览器打开。版本目录可用时默认选择稳定版。统一交互和校验边界见 [公共安装来源](Installations.md#安装来源与自行下载)；Linux Nginx 保持宿主包管理器安装。

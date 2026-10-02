@@ -145,7 +145,7 @@ internal static void VerifyFileElevationSessionScope(string root)
     var sibling = Path.Combine(root, "unrelated", "file.txt");
     var principal = Principal("jwt-one");
     var otherPrincipal = Principal("jwt-two");
-    var store = new FileElevationSessionStore(new HostElevationSessionStore());
+    var store = new FileElevationSessionStore(new HostElevationSessionStore(new TestHostAccountPrivilegeService(), new UploadSessionChecks.SystemMode(), new HostElevationSessionState()));
 
     var expiry = store.Grant(principal, FileElevationCapability.Write, directory, includeDescendants: true);
     TestAssert.Assert(expiry > DateTimeOffset.UtcNow.AddMinutes(4), "File elevation grant did not retain the five-minute lifetime.");
@@ -1151,7 +1151,7 @@ internal static void VerifyHostElevationCapabilityScope(string root)
     var nestedFile = Path.Combine(directory, "nested", "file.txt");
     var principal = Principal("capability-jwt");
     var otherPrincipal = Principal("capability-other-jwt");
-    var store = new HostElevationSessionStore();
+    var store = new HostElevationSessionStore(new TestHostAccountPrivilegeService(), new UploadSessionChecks.SystemMode(), new HostElevationSessionState());
 
     store.Grant(principal, HostElevationCapability.FileCopy, directory, includeDescendants: true, "test");
     TestAssert.Assert(store.IsGranted(principal, HostElevationCapability.FileCopy, nestedFile), "Capability grant did not cover its descendant scope.");
@@ -1297,7 +1297,7 @@ internal static void VerifySmbProtocolAndElevationContract()
     var securitySnapshotProperties = typeof(SmbWindowsServerSecuritySnapshot).GetProperties().Select(x => x.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
     TestAssert.Assert(securitySnapshotProperties.SetEquals(["SnapshotHash", "Smb1Enabled", "Smb2Enabled", "AuthenticatedUserSharingEnabled", "NullSessionsDisabled", "Compliant"]),
         "Windows security snapshots must expose only the non-secret baseline state and hash.");
-    var store = new HostElevationSessionStore(); var first = Principal("smb-jti-one"); var second = Principal("smb-jti-two");
+    var store = new HostElevationSessionStore(new TestHostAccountPrivilegeService(), new UploadSessionChecks.SystemMode(), new HostElevationSessionState()); var first = Principal("smb-jti-one"); var second = Principal("smb-jti-two");
     store.Grant(first, HostElevationCapability.SmbManage, "smb:managed", false, "test");
     TestAssert.Assert(store.IsGranted(first, HostElevationCapability.SmbManage, "smb:managed"), "Exact SMB elevation grant was not honored.");
     TestAssert.Assert(!store.IsGranted(first, HostElevationCapability.SmbManage, "smb:other") && !store.IsGranted(second, HostElevationCapability.SmbManage, "smb:managed"),

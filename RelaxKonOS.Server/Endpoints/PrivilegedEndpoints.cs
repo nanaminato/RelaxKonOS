@@ -15,8 +15,11 @@ public static class PrivilegedEndpoints
     {
         app.MapPost(PrivilegedApiRoutes.Elevation, (HostElevationRequest request, HttpContext http,
             IHostAdministratorAuthenticator administrators, IHostElevationSessionStore elevations,
-            RelaxKonOS.Server.Settings.IHostEnvironmentService environment, OwnerDeviceKeyService ownerDevices) =>
+            RelaxKonOS.Server.Settings.IHostEnvironmentService environment, OwnerDeviceKeyService ownerDevices,
+            RelaxKonOS.Server.HostMode.IServerModeResolver mode) =>
         {
+            if (mode.Mode != RelaxKonOS.Protocol.Common.ServerMode.System)
+                return Problem(403, "privileged-feature-unavailable", "当前部署不提供特权操作。");
             if (!Enum.IsDefined(request.Capability)) return Problem(400, "elevation-capability-invalid", "授权能力无效。");
             if (request.Capability is >= HostElevationCapability.FileRead and <= HostElevationCapability.FileUpload)
                 return Problem(400, "file-elevation-capability-invalid", "文件操作必须使用文件授权入口。");
@@ -30,26 +33,13 @@ public static class PrivilegedEndpoints
                     var scope = request.Target == "host/environment/machine" ? RelaxKonOS.Protocol.Settings.SettingsScope.HostMachine : RelaxKonOS.Protocol.Settings.SettingsScope.HostUser;
                     if (environment.ResolveTarget(http.User, scope).ResourceId != request.Target)
                         return Problem(403, "environment-target-denied", "环境目标不属于当前认证身份。");
+                    if (OperatingSystem.IsWindows() && scope == RelaxKonOS.Protocol.Settings.SettingsScope.HostUser)
+                        return Results.Ok(new HostElevationResult(true));
                 }
                 catch (RelaxKonOS.Server.Settings.SettingsException error) { return Problem(error.StatusCode, error.Code, "环境身份映射失败。"); }
             }
-            // Environment has two Windows stores, but Linux deliberately exposes only the PAM
-            // machine-login store. Do not fabricate a Linux per-user target merely to retain a
-            // Windows-shaped elevation bundle.
-            var environmentScopes = OperatingSystem.IsLinux()
-                ? new[] { RelaxKonOS.Protocol.Settings.SettingsScope.HostMachine }
-                : new[] { RelaxKonOS.Protocol.Settings.SettingsScope.HostUser, RelaxKonOS.Protocol.Settings.SettingsScope.HostMachine };
-            // An older single-capability environment grant is deliberately upgraded on the
-            // next request; only a complete three-capability grant for every supported store can skip verification.
-            var environmentBundleAlreadyGranted = isEnvironmentCapability
-                && environmentScopes
-                    .All(scope => new[]
-                    {
-                        HostElevationCapability.HostEnvironmentRead,
-                        HostElevationCapability.HostEnvironmentReveal,
-                        HostElevationCapability.HostEnvironmentChange,
-                    }.All(capability => elevations.IsGranted(http.User, capability, environment.ResolveTarget(http.User, scope).ResourceId)));
-            if (environmentBundleAlreadyGranted || !isEnvironmentCapability && elevations.IsGranted(http.User, request.Capability, request.Target))
+            // Current administrators are revalidated here; no automatic grant is cached.
+            if (elevations.IsGranted(http.User, request.Capability, request.Target))
                 return Results.Ok(new HostElevationResult(true));
             var authentication = ownerDevices.IsOwner(http.User)
                 ? new HostAdministratorAuthenticationResult(true, string.Empty, "windows-owner-device")
@@ -57,16 +47,14 @@ public static class PrivilegedEndpoints
             if (!authentication.Succeeded) return Problem(403, authentication.ProblemCode, "宿主管理员认证未通过，未执行操作。");
             try
             {
-                // Environment variables are one Windows control-panel action.  A successful
-                // administrator verification grants the read, reveal, and change capabilities
-                // for both stores owned by this authenticated user, rather than prompting once
-                // to open the dialog and again for every edit.  All grants remain token-bound
-                // and expire together after the normal short session lifetime.
+                // A manual authorization covers only the requested store. Read, reveal and change
+                // expire together; authorizing the user's store must not authorize the machine.
                 if (isEnvironmentCapability)
                 {
-                    var targets = environmentScopes.Select(scope => environment.ResolveTarget(http.User, scope)).ToArray();
+                    var scope = request.Target == "host/environment/machine"
+                        ? RelaxKonOS.Protocol.Settings.SettingsScope.HostMachine : RelaxKonOS.Protocol.Settings.SettingsScope.HostUser;
+                    var target = environment.ResolveTarget(http.User, scope);
                     DateTimeOffset environmentExpires = default;
-                    foreach (var target in targets)
                     foreach (var capability in new[]
                     {
                         HostElevationCapability.HostEnvironmentRead,

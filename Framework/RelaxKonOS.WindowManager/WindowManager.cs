@@ -400,8 +400,12 @@ public sealed class WindowManager : IWindowManager
                 ActiveWindowChanged?.Invoke(this, null);
         }
 
-        WindowClosed?.Invoke(this, window);
-        UpdateFullScreenHostInteractivity();
+        try { WindowClosed?.Invoke(this, window); }
+        finally
+        {
+            window.ReleaseImages();
+            UpdateFullScreenHostInteractivity();
+        }
     }
 
     private void CloseModalSession(IModalSession session)
@@ -486,6 +490,7 @@ public sealed class WindowManager : IWindowManager
             return;
 
         _preMinimizeState[window.Info.Id] = window.Info.State;
+        window.Thumbnail.Refresh(force: true);
         CancelOwnedModalSessions(window);
         SetState(window, WindowState.Minimized);
         UpdateFullScreenHostInteractivity();

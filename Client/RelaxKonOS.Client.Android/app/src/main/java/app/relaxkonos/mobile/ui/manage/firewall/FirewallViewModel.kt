@@ -26,23 +26,19 @@ internal class FirewallViewModel(application: Application) : AndroidViewModel(ap
     fun accept(pending: PendingFirewallChange) = work { owner ->
         container.firewall.acceptFacts(owner, pending); verify(owner); load(owner)
     }
-    fun change(expected: FirewallFacts, change: FirewallChange, password: CharArray?) {
-        if (state.busy || state.owner == null) { password?.fill('\u0000'); return }
+    fun change(expected: FirewallFacts, change: FirewallChange) {
         work { owner ->
-            try {
-                val result = container.firewall.change(owner, expected, change, password, container.elevationAnswers)
-                verify(owner)
-                val problem = when (result) {
-                    is ApiResult.Problem -> result.code
-                    is ApiResult.Transport -> "firewall.unverified"
-                    is ApiResult.Success -> result.value.problemCode.takeIf(String::isNotBlank)
-                }
-                val success = result is ApiResult.Success && result.value.success
-                load(owner)
-                state = state.copy(problem = problem ?: state.problem, saved = state.saved + if (success) 1 else 0)
-            } finally { password?.fill('\u0000') }
+            val result = container.firewall.change(owner, expected, change, container.elevationAnswers)
+            verify(owner)
+            val problem = when (result) {
+                is ApiResult.Problem -> result.code
+                is ApiResult.Transport -> "firewall.unverified"
+                is ApiResult.Success -> result.value.problemCode.takeIf(String::isNotBlank)
+            }
+            val success = result is ApiResult.Success && result.value.success
+            load(owner)
+            state = state.copy(problem = problem ?: state.problem, saved = state.saved + if (success) 1 else 0)
         }
-        job?.invokeOnCompletion { password?.fill('\u0000') }
     }
     private suspend fun load(owner: SessionState.Active) {
         val result = container.firewall.facts(owner); verify(owner)

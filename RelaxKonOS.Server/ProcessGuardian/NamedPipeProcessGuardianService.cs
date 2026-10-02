@@ -1,4 +1,5 @@
 using System.IO.Pipes;
+using System.Net.Sockets;
 using System.Text.Json;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.ProcessGuardian;
@@ -96,6 +97,9 @@ public sealed class NamedPipeProcessGuardianService(GuardianAgentOptions options
             return string.IsNullOrWhiteSpace(line) ? null : JsonSerializer.Deserialize<GuardianAgentResponse>(line, RelaxKonOSJsonOptions.Default);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return new GuardianAgentResponse(false, "guardian.agent_timeout"); }
+        catch (UnauthorizedAccessException) { return new GuardianAgentResponse(false, "guardian.agent_permission_denied"); }
+        catch (SocketException exception) { return new GuardianAgentResponse(false,
+            exception.SocketErrorCode == SocketError.AccessDenied ? "guardian.agent_permission_denied" : "guardian.agent_unavailable"); }
         catch (IOException) { return new GuardianAgentResponse(false, "guardian.agent_unavailable"); }
         catch (JsonException) { return new GuardianAgentResponse(false, "guardian.agent_invalid_response"); }
         finally { _pipeGate.Release(); }

@@ -103,9 +103,9 @@ fun SshSystemScreen(hostId: String, onExit: () -> Unit, modifier: Modifier = Mod
     var switcherOpen by remember(hostId) { mutableStateOf(false) }
     LaunchedEffect(hostId) { model.refresh(hostId) }
     val snapshot = state.snapshot
+    Column(modifier.fillMaxSize()) {
     Column(
-        // 多了当前主机卡片之后这一页不再保证一屏放得下，因此改成可滚动：小屏上至少能滚到退出按钮。
-        modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg),
+        Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
         SectionCard(
@@ -142,7 +142,8 @@ fun SshSystemScreen(hostId: String, onExit: () -> Unit, modifier: Modifier = Mod
                 state.problem -> Text(stringResource(R.string.ssh_workspace_system_unavailable), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        OutlinedButton(onClick = onExit, modifier = Modifier.fillMaxWidth()) {
+    }
+        OutlinedButton(onClick = onExit, modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg, vertical = Spacing.sm)) {
             Text(stringResource(R.string.ssh_workspace_exit))
         }
     }

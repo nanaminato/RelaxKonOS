@@ -958,7 +958,7 @@ function Invoke-InstallLikeAction {
         $arguments += @('-BundlePath', $packageRoot)
     }
     if ($null -ne $script:optionsServerPort) { $arguments += @('-ServerPort', [string]$script:optionsServerPort) }
-    if ($script:optionsNetwork) { $arguments += @('-NetworkProfile', (Get-EngineNetworkProfile $script:optionsNetwork)) }
+    if ($script:optionsNetwork -and $script:record.kind -in @('install', 'upgrade')) { $arguments += @('-NetworkProfile', (Get-EngineNetworkProfile $script:optionsNetwork)) }
     if ($script:optionsFileAccess) { $arguments += @('-FileAccess', $script:optionsFileAccess) }
     if ($script:optionsCertificateMode -eq 'custom') {
         $certificate = Join-Path $stagingRoot 'certificate.pfx'; $password = Join-Path $stagingRoot 'certificate-password.txt'
@@ -969,6 +969,10 @@ function Invoke-InstallLikeAction {
     }
     if ($script:optionsCertificateMode -eq 'selfSigned') {
         if (-not $script:optionsSelfSignedIdentities) { Stop-Launcher 'server-deployment.invalid_request' 'self-signed certificate names are required' }
+        if ($script:record.kind -eq 'repair' -and
+            -not ([IO.File]::ReadAllText($engine).Contains("`$Action -eq 'repair' -and `$PSBoundParameters.ContainsKey('CertificateMode') -and `$CertificateMode -eq 'self-signed'"))) {
+            Stop-Launcher 'server-deployment.not_supported' 'installed deployment scripts cannot regenerate certificates during repair; upgrade the server first'
+        }
         $arguments += @('-CertificateMode', 'self-signed', '-SelfSignedIdentities', $script:optionsSelfSignedIdentities)
     }
     if ($script:optionsExpectedInstallationId) { $arguments += @('-ExpectedInstallationId', $script:optionsExpectedInstallationId) }

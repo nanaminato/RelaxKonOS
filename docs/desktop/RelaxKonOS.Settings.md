@@ -16,6 +16,14 @@ Server `Settings/IWorkspaceSettingsService` 管理偏好验证和版本比较。
 
 ## 当前页面与保存状态
 
+设置请求失败自动写入客户端 `%LOCALAPPDATA%/RelaxKonOS/logs/workspace-preferences-YYYYMMDD.jsonl`（每文件上限 2 MiB，最多保留一个轮换文件，清理七天前日志）。记录操作、Workspace、预期 revision、异常类型、HTTP 状态与服务端返回的 correlation ID；不记录令牌、请求/响应正文或异常消息。界面按网络、登录/权限、无效设置、需要重载及服务端失败显示本地化提示，仍保留草稿；冲突必须显式重载，不自动覆盖远端版本。令牌刷新后按稳定服务、登录会话和 Workspace 确认保存 revision，避免下一次保存误用旧版本。
+
+开发服务端未配置 `Observability:LogDirectory` 时默认写入输出目录 `data/logs/runtime-YYYYMMDD.jsonl`；安装版使用配置的运行日志目录。所有 HTTP 4xx/5xx 请求均记录完成事件，不受成功请求采样率影响。客户端和服务端日志可按 correlation ID 对照。历史上未开启文件日志的开发请求无法追溯；这些默认值仅对重启后的开发服务端生效。
+
+回归验证：`dotnet run --project Tests/Client/RelaxKonOS.WorkspacePreferences.Tests` 覆盖令牌刷新后连续保存、旧登录/其他服务响应隔离、HTTP 错误分类、草稿保留、取消请求不能覆盖重试及客户端日志不含令牌/正文；`dotnet run --project RelaxKonOS.Server.Tests -- --settings-only` 覆盖完整调色板导入和 HTTP 保存、失败请求零采样仍记录关联日志及原有并发/持久化检查。
+
+内置桌面布局的 Workspace 与设备本地选择均只保存 `shellId`；描述器的内置实现版本不属于外部包信息。Settings 与桌面快捷切换共用 `ShellSettings.SelectShell`，外部桌面继续携带包 ID 和版本。服务端拒绝无效偏好时返回 `invalidField`，并记录同一 correlation ID 的 `input.rejected` 事件，只包含固定字段路径，不包含字段值。回归覆盖真实个性化页切换三种内置布局，再修改颜色/壁纸，以及外部包元数据保留。
+
 当前保留系统、个性化、时间和语言、网络、应用、默认应用、开发者、关于九页及已有壁纸、调色板、系统风格和 Shell 布局能力。Docker Hub 镜像源属于 Docker 管理器的“镜像源”页，不在设置应用中展示。个性化页已拆为“颜色与模式”“系统风格”“桌面布局”三张卡片（见下节）。保存状态支持中文、英文、日文；失败保留草稿并可重试，冲突保留草稿，提供明确的“放弃草稿并重载”操作；重载失败仍保留草稿。逐字段冲突合并体验、首页、账户和辅助功能仍按 Goal 推进，尚未验收。
 
 现有八页使用注册的 Route 导航，共用单色矢量图标；顶部持续显示当前远程连接、用户、Workspace 与分类路径，支持返回历史。小于 760 个逻辑像素时折叠侧栏，使用分类选择框。搜索先查询本地不可变索引，再异步合并远程目录；包括标题、关键词和同义词，显示分类、范围及服务端能力原因，连接切换清除旧目录。Ctrl+F 聚焦搜索、方向键浏览、Enter 或双击打开、Escape 退出搜索。当前结果定位到页面，settingId 控件聚焦与全部详情页仍待完成。页面内容本身的窄布局、200% 缩放及屏幕阅读器体验尚未实测。
@@ -25,16 +33,16 @@ Server `Settings/IWorkspaceSettingsService` 管理偏好验证和版本比较。
 个性化页把原先混为一谈的“主题”拆成三张独立卡片，对应 `DesktopExperiencePreferencesDto` 的三个字段：
 
 1. **颜色与模式**：`ThemeKind` 模式、调色板 ID、强调色覆盖与自定义调色板，写 `DesktopExperience.Appearance`。
-2. **系统风格**：风格下拉（`SystemStyleChoices`）、当前风格摘要、不可用提示与“采用此 Shell 推荐的系统风格”按钮，写 `DesktopExperience.SystemStyleId`。
-3. **桌面布局**：Shell 选择，写 `DesktopExperience.Shell`；卡片内明确说明其与系统风格相互独立。
+2. **系统风格**：风格下拉（`SystemStyleChoices`）、不可用提示与“使用推荐风格”按钮，写 `DesktopExperience.SystemStyleId`；已经使用当前桌面推荐风格时隐藏按钮，不展示尺寸参数和实现说明。
+3. **桌面布局**：Shell 选择，写 `DesktopExperience.Shell`；卡片仅保留标题和选择控件。
 
 关键约定：
 
 - **颜色与形状互不牵连。** 改调色板不会改变菜单布局或窗口控制按钮位置；改系统风格不会篡改调色板。
 - **可用性是设备本地事实。** 若本机缺少所选风格，`SystemStyleRegistry` 保留该条目与原因，页面显示“此设备未安装”并继续使用最近有效的可渲染风格；**不静默改写用户的偏好**。
-- **推荐映射只是按钮。** “采用此 Shell 推荐的系统风格”由 `SystemStyleIds.RecommendedForShell` 驱动，需用户显式点击，不随 Shell 切换隐式生效。
+- **推荐映射只是按钮。** “使用推荐风格”由 `SystemStyleIds.RecommendedForShell` 驱动，需用户显式点击，不随 Shell 切换隐式生效。
 - 本地搜索条目由 `workspace.theme` / `workspace.shell` 改为 `workspace.colors` / `workspace.systemStyle` / `workspace.desktopLayout`（含中英日同义词）。
-- 三语言 `settings.json` 已补齐 `settings.colors_and_mode`、`settings.palette_scope_hint`、`settings.system_style.*`、`settings.desktop_layout`、`settings.shell.separate_hint` 与全部 `systemstyle.*` 问题码文案。
+- 三语言 `settings.json` 已补齐 `settings.colors_and_mode`、`settings.palette_scope_hint`、`settings.system_style.*`、`settings.desktop_layout` 与全部 `systemstyle.*` 问题码文案；移除了系统风格和桌面布局卡片不再显示的说明与尺寸参数标签。
 
 系统风格层本身的令牌、recipe、清单校验与运行时链路见 [`RelaxKonOS.SystemStyle.md`](./RelaxKonOS.SystemStyle.md)。页面当前只通过编译与契约测试，**尚未做视觉与交互验收**。
 
@@ -71,7 +79,7 @@ Windows provider 只读固定 `ComputerName` 注册表位置并用 `SetComputerN
 
 `IHostEnvironmentService` 已注册为独立 typed HttpClient，提供目标解析、默认掩码读取、显式揭示、预览、按 planId 应用、操作查询和带 revision 回滚。读取、揭示、修改分别请求 `HostEnvironmentRead`、`HostEnvironmentReveal`、`HostEnvironmentChange` 精确资源授权；调用者按需要依次请求，服务不隐式扩张权限或缓存密码、原始环境值。
 
-新增 `GET /api/v1.0/host-settings/environment/target?scope=hostUser|hostMachine`，只返回当前认证用户经 Server 验证映射的 `SettingsTarget`，不读取环境、不调用 Helper、不授予权限，响应禁止缓存。客户端通过此入口取得授权目标，不从本地设备猜测远程 SID/UID。环境值读取仍必须有读取授权，揭示另需揭示授权。
+新增 `GET /api/v1.0/host-settings/environment/target?scope=hostUser|hostMachine`，只返回当前认证用户经 Server 验证映射的 `SettingsTarget`，不读取环境、不调用 Helper、不授予权限，响应禁止缓存。客户端通过此入口取得授权目标，不从本地设备猜测远程 SID/UID。Windows 当前认证用户自己的环境 store 经 canonical SID 归属检查后无需管理员认证；系统 store 的读/揭示/修改需当前管理员资格或精确临时 grant。手动授权的三项 capability 仅覆盖所选 store，不扩展到另一 store；系统认证管理员每次重新检查资格。
 
 时区和环境服务共用 `HostSettingsService` 的连接冻结与 HTTP 流程：取得 token 前后及响应解析后校验 Server/用户/会话，禁用重定向和写请求重试，不经过可重放的认证 handler。环境服务尚未接入设置编辑 UI、SDK 或终端，不能据此宣称环境变量纵向切片完成。
 

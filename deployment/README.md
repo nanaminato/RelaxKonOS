@@ -8,14 +8,16 @@
 
 ```text
 manifest.json
-manifest.sha256
+deployment/verify-release-inventory.py
 payload/windows/{server,guardian,privileged-helper}/...
 payload/linux/{server,guardian,privileged-helper}/...
 deployment/windows/Install-RelaxKonOSServices.ps1
 deployment/linux/install-relaxkonos-services.sh
 ```
 
-`manifest.json` 和下载描述文件使用 `schemaVersion: 1`，并明确标记 `packageKind`（`client`、`server` 或 `user-server`）；示例见 [release-manifest.example.json](./release-manifest.example.json)。清单列出每个包内文件的长度和 SHA-256；`manifest.sha256` 列出包内除 manifest 文件外的全部文件，Linux System Mode 安装器与 User Mode launcher 都会重算并精确比对该 inventory。线上安装由发布页同时提供 ZIP 的 SHA-256，安装器在解压前检查它。服务器中心按来源处理：官网包在服务器下载并核对官方 ZIP 摘要及逐文件清单；用户选择的本地或服务器 ZIP 不要求官方摘要、不计算逐文件摘要，仍检查包类型、RID、必要文件、版本和安全解压布局。当前发布包不要求签名密钥，也不生成签名伴随文件。
+`manifest.json` 和下载描述文件使用 `schemaVersion: 1`，并明确标记 `packageKind`（`client`、`server` 或 `user-server`）；示例见 [release-manifest.example.json](./release-manifest.example.json)。JSON 清单是唯一的逐文件清单，列出包内除 `manifest.json` 外每个文件的长度和 SHA-256；Linux System Mode 安装器与 User Mode launcher 用 Python 3 重算摘要并精确比对文件集合，拒绝缺失、额外、重复或不安全路径，不再依赖独立的 `manifest.sha256`。线上安装由发布页同时提供 ZIP 的 SHA-256，安装器在解压前检查它。服务器中心按来源处理：官网包在服务器下载并核对官方 ZIP 摘要及逐文件清单；用户选择的本地或服务器 ZIP 不要求官方摘要、不计算逐文件摘要，仍检查包类型、RID、必要文件、版本和安全解压布局。当前发布包不要求签名密钥，也不生成签名伴随文件。
+
+System Mode 升级、普通修复和回滚默认沿用已安装的 TLS 证书及密码，保留客户端信任的证书身份。只有修复时显式要求重新生成自签证书，或提供新的自有 PFX，才替换证书；升级不隐式生成新证书。
 
 发布前可用仓库内的检查工具复核服务器 ZIP：
 
@@ -159,3 +161,12 @@ or inconsistent installation must be repaired before its managed state can be re
 ## 桌面 HTTPS 证书信任
 
 桌面登录在发送凭据前探测登录端点。遇到有效但未受系统信任的自签名证书时，显示服务器地址、主题、签发者、有效期和 SHA-256 指纹，由用户选择信任或取消。确认记录保存于本机应用数据目录的 `RelaxKonOS/servercenter/tls-certificate-pins.json`，仅适用于相同服务器地址、端口和证书指纹，不修改操作系统信任库。登录、API、上传和 SignalR HTTP/WebSocket 连接共用该记录。证书变化时停止连接并展示新旧指纹重新确认；过期、主机名不匹配或其他证书链错误仍拒绝连接。拒绝 HTTPS 证书后不会自动降级到 HTTP。
+
+## 修复局域网自签证书
+
+服务器中心的“修复当前安装”重新应用当前版本的服务配置并执行健康检查，默认保留现有 TLS 证书。
+局域网 IP 改变时，可勾选“修复时重新生成局域网自签证书”，填写访问用的 IP 或域名（逗号分隔），例如
+`localhost,127.0.0.1,192.168.1.5`，然后执行修复。此操作适用于 Linux/Windows 系统服务安装，
+会替换安装证书并重启服务；客户端需要核对并重新信任新证书。未勾选时保持原证书。
+修复保留已记录的监听地址、端口及数据，不自动将局域网监听切换为回环监听。
+此功能需要包含上述更新的客户端与服务器部署脚本；旧安装应先升级服务器部署脚本所在的版本。

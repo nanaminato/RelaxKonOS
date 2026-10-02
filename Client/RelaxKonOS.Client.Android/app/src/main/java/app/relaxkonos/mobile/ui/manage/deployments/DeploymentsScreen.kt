@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.deployments
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -589,118 +590,143 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
     var updateTemplate by remember(ownerKey, state.selectedId) { mutableStateOf<DeploymentApplication?>(null) }
     var newRevision by remember(ownerKey, state.selectedId) { mutableStateOf<DeploymentSnapshot?>(null) }
     var editDefinition by remember(ownerKey, state.selectedId) { mutableStateOf<DeploymentApplication?>(null) }
-    LazyColumn(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-        if (state.selectedId == null) item { EmptyHint(stringResource(R.string.deployments_select)) }
-        if (state.detailLoading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-        state.detailCheckedAtMillis?.let { item { CheckedAt(it) } }
-        when (val result = state.detail) {
-            is ApiResult.Success -> {
-                val snapshot = result.value
-                val app = snapshot.application
-                item {
-                    SectionCard(title = app.name, subtitle = stringResource(R.string.deployments_overview)) {
-                        Text(stringResource(R.string.deployments_actual, label(app.actualState)))
-                        Text(stringResource(R.string.deployments_desired, label(app.desiredState)))
-                        Text(stringResource(R.string.deployments_revision, revisionLabel(app.currentRevisionNumber)))
-                        if (app.catalogTemplateId != null && app.catalogTemplateVersion != null) {
-                            Text(stringResource(R.string.catalog_instance_version, app.catalogTemplateId, app.catalogTemplateVersion))
-                        }
-                        Text(stringResource(R.string.deployments_source, label(app.sourceKind)))
-                        Text(stringResource(R.string.deployments_workload, label(app.workloadKind)))
-                        Text(stringResource(R.string.deployments_readiness, label(app.readinessLevel)))
-                        app.containerName?.let { Text(stringResource(R.string.deployments_container, it)) }
-                        Text(stringResource(R.string.deployments_ports,
-                            app.hostPort?.let { "${app.bindAddress}:$it" } ?: stringResource(R.string.deployments_unpublished), app.containerPort))
-                        app.domain?.let { Text(stringResource(R.string.deployments_domain, it)) }
-                        state.owner?.let { owner -> DeploymentServiceAccess(owner, app) {
-                            browser.state.value.owner === owner && (browser.state.value.detail as? ApiResult.Success)?.value?.application == app
-                        } }
-                        if (app.driftProblemCode != null) Text(stringResource(R.string.deployments_drift), color = MaterialTheme.colorScheme.error)
-                        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                            if (app.actualState == "running") {
-                                TextButton(onClick = { actionToConfirm = DeploymentLifecycleAction.Stop }, enabled = !state.submitting) {
-                                    Text(stringResource(R.string.deployment_stop))
-                                }
-                                TextButton(onClick = { actionToConfirm = DeploymentLifecycleAction.Restart }, enabled = !state.submitting) {
-                                    Text(stringResource(R.string.deployment_restart))
-                                }
-                            } else if (app.actualState == "stopped") {
-                                TextButton(onClick = { browser.lifecycle(DeploymentLifecycleAction.Start) }, enabled = !state.submitting) {
-                                    Text(stringResource(R.string.deployment_start))
+    var section by rememberSaveable(ownerKey, state.selectedId) { mutableStateOf("overview") }
+    Column(modifier.fillMaxSize()) {
+        (state.detail as? ApiResult.Success)?.value?.application?.let { Text(it.name, style = MaterialTheme.typography.titleMedium) }
+        WorkspaceNavigation(listOf(WorkspaceDestination("overview", R.string.workspace_overview), WorkspaceDestination("versions", R.string.workspace_versions), WorkspaceDestination("operations", R.string.workspace_operations), WorkspaceDestination("logs", R.string.workspace_logs), WorkspaceDestination("backup", R.string.workspace_backup)), section, { section = it })
+        key(ownerKey, state.selectedId) {
+            listOf("overview", "versions", "operations", "logs", "backup").forEach { pane ->
+                key(pane) {
+                    WorkspaceSection(section == pane, Modifier.weight(1f)) {
+                        if (pane == "backup") {
+                            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                                (state.detail as? ApiResult.Success)?.value?.let { snapshot ->
+                                    snapshot.activeOperation?.let { OperationCard(it, stringResource(R.string.deployments_active)) }
+                                    BackupRecoveryCard(state.owner, snapshot.application.id)
                                 }
                             }
-                        }
-                        TextButton(onClick = { deleteConfirmation = true }, enabled = !state.submitting) {
-                            Text(stringResource(R.string.deployment_delete), color = MaterialTheme.colorScheme.error)
-                        }
-                        if (app.catalogTemplateId != null) TextButton(onClick = { updateTemplate = app }, enabled = !state.submitting && snapshot.activeOperation == null && state.catalog is ApiResult.Success) {
-                            Text(stringResource(R.string.catalog_update_title))
-                        }
-                        TextButton(onClick = { viewModel.clearStagedArchive(); newRevision = snapshot }, enabled = !state.submitting && snapshot.activeOperation == null &&
-                            (state.runtime as? ApiResult.Success)?.value?.isAvailable == true) {
-                            Text(stringResource(R.string.deployments_new_revision))
-                        }
-                        TextButton(onClick = { editDefinition = app }, enabled = !state.submitting && snapshot.activeOperation == null) {
-                            Text(stringResource(R.string.deployments_edit_definition))
-                        }
-                    }
-                }
-                item { BackupRecoveryCard(state.owner, app.id) }
-                snapshot.activeOperation?.let { operation ->
-                    item { OperationCard(operation, stringResource(R.string.deployments_active), if (operation.cancellable && !state.submitting) ({ browser.cancel(operation) }) else null) }
-                }
-                item { Text(stringResource(R.string.deployments_logs), style = MaterialTheme.typography.titleMedium) }
-                if (state.logsLoading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-                when (val logs = state.logs) {
-                    is ApiResult.Success -> item {
-                        SectionCard(title = stringResource(if (logs.value.truncated) R.string.deployments_logs_truncated else R.string.deployments_logs_recent)) {
-                            if (logs.value.lines.isEmpty()) Text(stringResource(R.string.deployments_logs_empty))
-                            logs.value.lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
-                            state.loadedLogTail?.takeIf { logs.value.truncated && it < MAXIMUM_LOG_TAIL }?.let { tail ->
-                                TextButton(onClick = browser::loadMoreLogs, enabled = !state.logsLoading) {
-                                    Text(stringResource(R.string.deployments_logs_load_more, nextLogTail(tail)))
+                        } else LazyColumn(Modifier.fillMaxSize(), state = androidx.compose.foundation.lazy.rememberLazyListState(), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                            if (state.selectedId == null) item { EmptyHint(stringResource(R.string.deployments_select)) }
+                            if (state.detailLoading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                            state.detailCheckedAtMillis?.let { item { CheckedAt(it) } }
+                            when (val result = state.detail) {
+                                is ApiResult.Success -> {
+                                    val snapshot = result.value
+                                    val app = snapshot.application
+                                    if (pane == "overview") item {
+                                        SectionCard(title = app.name, subtitle = stringResource(R.string.deployments_overview)) {
+                                            Text(stringResource(R.string.deployments_actual, label(app.actualState)))
+                                            Text(stringResource(R.string.deployments_desired, label(app.desiredState)))
+                                            Text(stringResource(R.string.deployments_revision, revisionLabel(app.currentRevisionNumber)))
+                                            if (app.catalogTemplateId != null && app.catalogTemplateVersion != null) {
+                                                Text(stringResource(R.string.catalog_instance_version, app.catalogTemplateId, app.catalogTemplateVersion))
+                                            }
+                                            Text(stringResource(R.string.deployments_source, label(app.sourceKind)))
+                                            Text(stringResource(R.string.deployments_workload, label(app.workloadKind)))
+                                            Text(stringResource(R.string.deployments_readiness, label(app.readinessLevel)))
+                                            app.containerName?.let { Text(stringResource(R.string.deployments_container, it)) }
+                                            Text(stringResource(R.string.deployments_ports,
+                                            app.hostPort?.let { "${app.bindAddress}:$it" } ?: stringResource(R.string.deployments_unpublished), app.containerPort))
+                                            app.domain?.let { Text(stringResource(R.string.deployments_domain, it)) }
+                                            state.owner?.let { owner -> DeploymentServiceAccess(owner, app) {
+                                                    browser.state.value.owner === owner && (browser.state.value.detail as? ApiResult.Success)?.value?.application == app
+                                                } }
+                                            if (app.driftProblemCode != null) Text(stringResource(R.string.deployments_drift), color = MaterialTheme.colorScheme.error)
+                                            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                                                if (app.actualState == "running") {
+                                                    TextButton(onClick = { actionToConfirm = DeploymentLifecycleAction.Stop }, enabled = !state.submitting) {
+                                                        Text(stringResource(R.string.deployment_stop))
+                                                    }
+                                                    TextButton(onClick = { actionToConfirm = DeploymentLifecycleAction.Restart }, enabled = !state.submitting) {
+                                                        Text(stringResource(R.string.deployment_restart))
+                                                    }
+                                                } else if (app.actualState == "stopped") {
+                                                    TextButton(onClick = { browser.lifecycle(DeploymentLifecycleAction.Start) }, enabled = !state.submitting) {
+                                                        Text(stringResource(R.string.deployment_start))
+                                                    }
+                                                }
+                                            }
+                                            TextButton(onClick = { deleteConfirmation = true }, enabled = !state.submitting) {
+                                                Text(stringResource(R.string.deployment_delete), color = MaterialTheme.colorScheme.error)
+                                            }
+                                            if (app.catalogTemplateId != null) TextButton(onClick = { updateTemplate = app }, enabled = !state.submitting && snapshot.activeOperation == null && state.catalog is ApiResult.Success) {
+                                                Text(stringResource(R.string.catalog_update_title))
+                                            }
+                                            TextButton(onClick = { viewModel.clearStagedArchive(); newRevision = snapshot }, enabled = !state.submitting && snapshot.activeOperation == null &&
+                                            (state.runtime as? ApiResult.Success)?.value?.isAvailable == true) {
+                                                Text(stringResource(R.string.deployments_new_revision))
+                                            }
+                                            TextButton(onClick = { editDefinition = app }, enabled = !state.submitting && snapshot.activeOperation == null) {
+                                                Text(stringResource(R.string.deployments_edit_definition))
+                                            }
+                                        }
+                                    }
+                                    snapshot.activeOperation?.let { operation ->
+                                        item { OperationCard(operation, stringResource(R.string.deployments_active), if (operation.cancellable && !state.submitting) ({ browser.cancel(operation) }) else null) }
+                                    }
+                                    if (pane == "logs") {
+                                        item { Text(stringResource(R.string.deployments_logs), style = MaterialTheme.typography.titleMedium) }
+                                        if (state.logsLoading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                                        when (val logs = state.logs) {
+                                            is ApiResult.Success -> item {
+                                                SectionCard(title = stringResource(if (logs.value.truncated) R.string.deployments_logs_truncated else R.string.deployments_logs_recent)) {
+                                                    if (logs.value.lines.isEmpty()) Text(stringResource(R.string.deployments_logs_empty))
+                                                    logs.value.lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+                                                    state.loadedLogTail?.takeIf { logs.value.truncated && it < MAXIMUM_LOG_TAIL }?.let { tail ->
+                                                        TextButton(onClick = browser::loadMoreLogs, enabled = !state.logsLoading) {
+                                                            Text(stringResource(R.string.deployments_logs_load_more, nextLogTail(tail)))
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            null -> item {
+                                                SectionCard(title = stringResource(R.string.deployments_logs_recent)) {
+                                                    Text(stringResource(R.string.deployments_logs_on_demand), style = MaterialTheme.typography.bodySmall)
+                                                    TextButton(onClick = { browser.loadLogs() }, enabled = !state.logsLoading) {
+                                                        Text(stringResource(R.string.deployments_logs_load_initial, INITIAL_LOG_TAIL))
+                                                    }
+                                                }
+                                            }
+                                            else -> item {
+                                                Text(logs.deploymentFailure().text(), color = MaterialTheme.colorScheme.error)
+                                                TextButton(onClick = { browser.loadLogs() }, enabled = !state.logsLoading) {
+                                                    Text(stringResource(R.string.deployments_logs_retry))
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (pane == "versions") {
+                                        item { Text(stringResource(R.string.deployments_revisions), style = MaterialTheme.typography.titleMedium) }
+                                        if (snapshot.revisions.isEmpty()) item { EmptyHint(stringResource(R.string.deployments_no_revisions)) }
+                                        items(snapshot.revisions, key = { it.id }) { revision ->
+                                            SectionCard(title = stringResource(R.string.deployments_revision_number, revision.number)) {
+                                                Text(revision.imageReference, style = MaterialTheme.typography.bodySmall)
+                                                revision.catalogTemplateId?.let { Text(stringResource(R.string.catalog_instance_version, it, revision.catalogTemplateVersion.orEmpty()), style = MaterialTheme.typography.bodySmall) }
+                                                if (revision.isCurrent) {
+                                                    Text(stringResource(R.string.deployments_current), color = MaterialTheme.colorScheme.primary)
+                                                } else {
+                                                    TextButton(onClick = { rollbackRevision = revision }, enabled = !state.submitting) {
+                                                        Text(stringResource(R.string.deployment_rollback))
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (pane == "operations") {
+                                        item { Text(stringResource(R.string.deployments_operations), style = MaterialTheme.typography.titleMedium) }
+                                        if (snapshot.operations.isEmpty()) item { EmptyHint(stringResource(R.string.deployments_no_operations)) }
+                                        items(snapshot.operations.filter { it.operationId != snapshot.activeOperation?.operationId }, key = { it.operationId }) {
+                                            OperationCard(it, label(it.kind))
+                                        }
+                                    }
                                 }
+                                null -> Unit
+                                else -> item { Text(result.deploymentFailure().text(), color = MaterialTheme.colorScheme.error) }
                             }
                         }
                     }
-                    null -> item {
-                        SectionCard(title = stringResource(R.string.deployments_logs_recent)) {
-                            Text(stringResource(R.string.deployments_logs_on_demand), style = MaterialTheme.typography.bodySmall)
-                            TextButton(onClick = { browser.loadLogs() }, enabled = !state.logsLoading) {
-                                Text(stringResource(R.string.deployments_logs_load_initial, INITIAL_LOG_TAIL))
-                            }
-                        }
-                    }
-                    else -> item {
-                        Text(logs.deploymentFailure().text(), color = MaterialTheme.colorScheme.error)
-                        TextButton(onClick = { browser.loadLogs() }, enabled = !state.logsLoading) {
-                            Text(stringResource(R.string.deployments_logs_retry))
-                        }
-                    }
-                }
-                item { Text(stringResource(R.string.deployments_revisions), style = MaterialTheme.typography.titleMedium) }
-                if (snapshot.revisions.isEmpty()) item { EmptyHint(stringResource(R.string.deployments_no_revisions)) }
-                items(snapshot.revisions, key = { it.id }) { revision ->
-                    SectionCard(title = stringResource(R.string.deployments_revision_number, revision.number)) {
-                        Text(revision.imageReference, style = MaterialTheme.typography.bodySmall)
-                        revision.catalogTemplateId?.let { Text(stringResource(R.string.catalog_instance_version, it, revision.catalogTemplateVersion.orEmpty()), style = MaterialTheme.typography.bodySmall) }
-                        if (revision.isCurrent) {
-                            Text(stringResource(R.string.deployments_current), color = MaterialTheme.colorScheme.primary)
-                        } else {
-                            TextButton(onClick = { rollbackRevision = revision }, enabled = !state.submitting) {
-                                Text(stringResource(R.string.deployment_rollback))
-                            }
-                        }
-                    }
-                }
-                item { Text(stringResource(R.string.deployments_operations), style = MaterialTheme.typography.titleMedium) }
-                if (snapshot.operations.isEmpty()) item { EmptyHint(stringResource(R.string.deployments_no_operations)) }
-                items(snapshot.operations.filter { it.operationId != snapshot.activeOperation?.operationId }, key = { it.operationId }) {
-                    OperationCard(it, label(it.kind))
                 }
             }
-            null -> Unit
-            else -> item { Text(result.deploymentFailure().text(), color = MaterialTheme.colorScheme.error) }
         }
     }
     updateTemplate?.let { application -> state.owner?.let { owner ->
