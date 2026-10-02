@@ -1,13 +1,14 @@
 using System.Text.Json.Serialization;
 using RelaxKonOS.Protocol.Settings;
 using RelaxKonOS.Protocol.Observability;
+using RelaxKonOS.Protocol.Proxy;
 
 namespace RelaxKonOS.Protocol.Privileged;
 
 /// <summary>Versioning and size limits for the local Helper protocol.</summary>
 public static class PrivilegedOperationProtocol
 {
-    public const string Version = "1.3";
+    public const string Version = "1.4";
     public const int MaximumRequestBytes = 16 * 1024 * 1024;
     public const int MaximumFileContentBytes = 12 * 1024 * 1024;
 }
@@ -56,6 +57,8 @@ public enum PrivilegedOperationKind
     ProxyMihomoServiceAction,
     ProxyMihomoInstallSystemService,
     ProxyMihomoRemoveSystemService,
+    LinuxSystemProxyRead,
+    LinuxSystemProxyApply,
     GitPackageInstall,
     DockerEngineInstall,
     HostTimeRead,
@@ -226,6 +229,7 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("nginxServiceAction")] NginxSystemServiceAction? NginxServiceAction = null,
     [property: JsonPropertyName("packageVersion")] string? PackageVersion = null,
     [property: JsonPropertyName("proxyMihomoServiceAction")] ProxyMihomoServiceAction? ProxyMihomoServiceAction = null,
+    [property: JsonPropertyName("linuxSystemProxy")] LinuxSystemProxyConfiguration? LinuxSystemProxy = null,
     [property: JsonPropertyName("firewallEnabled")] bool? FirewallEnabled = null,
     [property: JsonPropertyName("firewallNumberedStatus")] bool? FirewallNumberedStatus = null,
     [property: JsonPropertyName("firewallIncomingPolicy")] FirewallDefaultPolicy? FirewallIncomingPolicy = null,
@@ -275,6 +279,7 @@ public sealed record PrivilegedOperationResult(
     [property: JsonPropertyName("error")] string? Error = null,
     [property: JsonPropertyName("problemCode")] PrivilegedProblemCode ProblemCode = PrivilegedProblemCode.None,
     [property: JsonPropertyName("hostEnvironment")] PrivilegedEnvironmentState? HostEnvironment = null,
+    [property: JsonPropertyName("systemProxyCapabilities")] ProxySystemProxyCapabilities? SystemProxyCapabilities = null,
     [property: JsonPropertyName("hostTime")] HostTimeState? HostTime = null,
     [property: JsonPropertyName("hostIdentity")] HostIdentityState? HostIdentity = null,
     [property: JsonPropertyName("systemAuthenticationResult")] SystemAuthenticationResult? SystemAuthenticationResult = null,
@@ -282,3 +287,6 @@ public sealed record PrivilegedOperationResult(
     [property: JsonPropertyName("nginxRunning")] bool? NginxRunning = null,
     [property: JsonPropertyName("windowsProcess")] WindowsManagedProcessSnapshot? WindowsProcess = null,
     [property: JsonPropertyName("version")] string Version = PrivilegedOperationProtocol.Version);
+
+/// <summary>Fixed Linux proxy writers; no executable, arbitrary variable, path, or target user can be supplied.</summary>
+public sealed record LinuxSystemProxyConfiguration(bool Enabled, string Host, int Port, bool UseDefaultBypass, string BypassList, bool Enforce = false);

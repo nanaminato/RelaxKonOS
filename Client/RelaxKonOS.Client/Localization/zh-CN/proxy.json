@@ -273,5 +273,13 @@
     "proxy.problem.http_401": "当前 RelaxKonOS 会话已失去授权，请重新登录。",
     "proxy.problem.response_empty": "服务器返回了空的代理响应。",
     "proxy.problem.unknown": "发生了未知代理错误。"
-  }
+  },
+    "proxy.system_proxy_linux_scope": "为新的 PAM 登录会话写入全局代理变量，当前未检测到支持的本地图形会话。已有进程和独立 systemd 服务沿用各自的设置。",
+    "proxy.system_proxy_linux_desktop_scope": "设置所有已登录的本地 GNOME/KDE 用户的代理，并为新的 PAM 登录会话写入全局代理变量。已有终端进程和独立 systemd 服务沿用各自的设置。",
+    "proxy.system_proxy_windows_scope": "作用于交互式运行服务端的 Windows 用户。",
+    "proxy.system_proxy_linux_bypass": "默认绕过 localhost、127.0.0.1 和 ::1。自定义主机、域名或网段用逗号或分号分隔，具体匹配方式取决于使用代理的程序。",
+    "proxy.problem.system_proxy_conflict": "宿主代理设置被其他程序修改或恢复未完成。请关闭并恢复系统代理后重试。",
+    "proxy.system_proxy_unavailable": "当前宿主会话的自动代理设置不可用。",
+    "proxy.system_proxy_windows_bypass": "绕过条目用分号分隔。",
+    "proxy.system_proxy_mode_hint_enabled": "系统代理已开启，遵循宿主代理设置的应用使用 Mihomo。"
 }

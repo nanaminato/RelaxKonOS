@@ -41,6 +41,7 @@ import app.relaxkonos.mobile.core.net.*
     ProxyRoutingMode.Rule -> R.string.mihomo_state_rule; ProxyRoutingMode.Global -> R.string.mihomo_state_global; ProxyRoutingMode.Direct -> R.string.mihomo_state_direct
 })
 @Composable internal fun proxyProblemLabel(code: String) = stringResource(when {
+    code == "proxy.system_proxy_conflict" -> R.string.mihomo_system_proxy_conflict
     code.startsWith("proxy.runtime_") || code == "proxy.external_runtime_invalid" -> R.string.mihomo_problem_runtime
     code.startsWith("proxy.config_") -> R.string.mihomo_problem_config
     code.startsWith("proxy.subscription_") -> R.string.mihomo_problem_subscription

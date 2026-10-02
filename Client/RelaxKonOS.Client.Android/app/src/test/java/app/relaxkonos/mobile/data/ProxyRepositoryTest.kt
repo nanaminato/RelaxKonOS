@@ -23,7 +23,7 @@ class ProxyRepositoryTest {
         return session.state.value as SessionState.Active
     }
     private fun facts() {
-        gateway.onProxyOverview = { ApiResult.Success(ProxyOverview(ProxyRuntime("managed", ProxyRuntimeState.Running, "1", null, true, ""), null, false, true, "healthy", "", true, true, false, "linux", false)) }
+        gateway.onProxyOverview = { ApiResult.Success(ProxyOverview(ProxyRuntime("managed", ProxyRuntimeState.Running, "1", null, true, ""), null, false, true, "healthy", "", true, true, false, "linux", false, ProxySystemProxyCapabilities(true, false, true, false))) }
         gateway.onProxyProfiles = { ApiResult.Success(emptyList()) }; gateway.onProxySubscriptions = { ApiResult.Success(emptyList()) }
     }
     @Test fun `lost queue response replays exact key only explicitly and accepted ID survives read failure`() = runTest {

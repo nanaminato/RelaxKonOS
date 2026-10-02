@@ -1781,10 +1781,10 @@
     <string name="mihomo_connection_close">Close connection</string>
     <string name="mihomo_connections_bounded">Showing the first 200 connections.</string>
     <string name="mihomo_logs">Latest 100 host log entries</string>
-    <string name="mihomo_settings_note">Saving applies the full host settings. It may reload Mihomo, change host DNS or Windows proxy, and interrupt management. TUN activation remains a separate action.</string>
+    <string name="mihomo_settings_note">Saving applies the full host settings. It may reload Mihomo, change host DNS or the system proxy, and interrupt management. TUN activation remains a separate action.</string>
     <string name="mihomo_mixed_port">Mixed listener port</string>
-    <string name="mihomo_system_proxy">Enable host Windows system proxy</string>
-    <string name="mihomo_system_proxy_unsupported">System proxy editing requires a Windows host.</string>
+    <string name="mihomo_system_proxy">Enable host system proxy</string>
+    <string name="mihomo_system_proxy_unsupported">Automatic proxy configuration is unavailable in this host session.</string>
     <string name="mihomo_system_host">Host proxy address</string>
     <string name="mihomo_allow_lan">Allow LAN clients</string>
     <string name="mihomo_dns_enabled">Enable host DNS</string>
@@ -2698,4 +2698,10 @@
     <string name="mihomo_tun_stack">TUN stack</string>
     <string name="mihomo_proxy_endpoint">Proxy address: %1$s:%2$d</string>
     <string name="mihomo_proxy_host_follows_listener">The proxy address follows the listening address in Mihomo settings.</string>
+    <string name="mihomo_system_proxy_linux_scope">Writes global proxy variables for new PAM login sessions. No supported local desktop session is currently detected. Existing processes and independent systemd services keep their own settings.</string>
+    <string name="mihomo_system_proxy_linux_desktop_scope">Configures all currently logged-in local GNOME/KDE users and global proxy variables for new PAM logins. Existing terminal processes and independent systemd services keep their own settings.</string>
+    <string name="mihomo_system_proxy_windows_scope">Applies to the Windows user running the server in an interactive session.</string>
+    <string name="mihomo_system_proxy_linux_bypass">Default bypass: localhost, 127.0.0.1 and ::1. Separate custom hosts, domains or networks with commas or semicolons; matching depends on the consuming application.</string>
+    <string name="mihomo_system_proxy_conflict">Host proxy settings changed externally or restoration is incomplete. Disable and restore the system proxy, then retry.</string>
+    <string name="mihomo_system_proxy_restore">Disable and restore system proxy</string>
 </resources>

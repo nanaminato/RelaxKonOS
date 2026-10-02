@@ -273,5 +273,13 @@
     "proxy.problem.http_401": "Your RelaxKonOS session is no longer authorized. Sign in again.",
     "proxy.problem.response_empty": "The Server returned an empty proxy response.",
     "proxy.problem.unknown": "An unknown proxy error occurred."
-  }
+  },
+    "proxy.system_proxy_linux_scope": "Writes global proxy variables for new PAM login sessions. No supported local desktop session is currently detected. Existing processes and independent systemd services keep their own settings.",
+    "proxy.system_proxy_linux_desktop_scope": "Configures all currently logged-in local GNOME/KDE users and global proxy variables for new PAM logins. Existing terminal processes and independent systemd services keep their own settings.",
+    "proxy.system_proxy_windows_scope": "Applies to the Windows user running the server in an interactive session.",
+    "proxy.system_proxy_linux_bypass": "Default bypass: localhost, 127.0.0.1 and ::1. Separate custom hosts, domains or networks with commas or semicolons; matching depends on the consuming application.",
+    "proxy.problem.system_proxy_conflict": "Host proxy settings changed externally or restoration is incomplete. Disable and restore the system proxy, then retry.",
+    "proxy.system_proxy_unavailable": "Automatic proxy configuration is unavailable in this host session.",
+    "proxy.system_proxy_windows_bypass": "Separate bypass entries with semicolons.",
+    "proxy.system_proxy_mode_hint_enabled": "System proxy is enabled for applications that follow the configured host proxy."
 }

@@ -41,6 +41,7 @@ public static class ProxyProblemCodes
     public const string IdempotencyKeyRequired = "proxy.idempotency_key_required";
     public const string PermissionDenied = "proxy.permission_denied";
     public const string NotSupported = "proxy.not_supported";
+    public const string SystemProxyConflict = "proxy.system_proxy_conflict";
     public const string SubscriptionInvalid = "proxy.subscription_invalid";
     public const string SubscriptionFetchFailed = "proxy.subscription_fetch_failed";
     public const string SubscriptionSystemProxyUnavailable = "proxy.subscription_system_proxy_unavailable";
@@ -104,7 +105,15 @@ public sealed record ProxyPlatformCapabilities(
     [property: JsonPropertyName("supportsDnsHijack")] bool SupportsDnsHijack,
     [property: JsonPropertyName("supportsNamedPipeController")] bool SupportsNamedPipeController,
     [property: JsonPropertyName("supportsUnixSocketController")] bool SupportsUnixSocketController,
+    [property: JsonPropertyName("systemProxy"), JsonRequired] ProxySystemProxyCapabilities SystemProxy,
     [property: JsonPropertyName("problemCode")] string ProblemCode = "");
+
+/// <summary>Actual host writers, not an inference from the host's operating-system name.</summary>
+public sealed record ProxySystemProxyCapabilities(
+    [property: JsonPropertyName("supported"), JsonRequired] bool Supported,
+    [property: JsonPropertyName("supportsPac"), JsonRequired] bool SupportsPac,
+    [property: JsonPropertyName("loginEnvironment"), JsonRequired] bool LoginEnvironment,
+    [property: JsonPropertyName("desktopSession"), JsonRequired] bool DesktopSession);
 
 public sealed record ProxyHealthDto(
     [property: JsonPropertyName("runtimeState")] ProxyRuntimeState RuntimeState,
@@ -169,7 +178,7 @@ public sealed record ProxyTunSettingsDto(
 {
     public static ProxyTunSettingsDto Default { get; } = new("mixed", "Mihomo", true, false, true, "any:53", 1500);
 }
-/// <summary>Windows Internet Settings values owned by RelaxKonOS. PAC uses Windows auto-detection; it never accepts an untrusted PAC URL.</summary>
+/// <summary>Managed host proxy options. PAC auto-detection is available only when the platform advertises it.</summary>
 public sealed record ProxySystemProxyOptionsDto(
     bool UsePac = false,
     bool GuardEnabled = false,

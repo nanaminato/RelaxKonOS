@@ -61,6 +61,7 @@ public interface IProxySettingsService
 {
     Task<ProxySettingsDto> GetAsync(CancellationToken cancellationToken);
     Task<string?> UpdateAsync(UpdateProxySettingsRequest request, CancellationToken cancellationToken);
+    Task<string?> ReconcileSystemProxyAsync(bool startup, CancellationToken cancellationToken);
 }
 
 public interface IProxyGeoDataService

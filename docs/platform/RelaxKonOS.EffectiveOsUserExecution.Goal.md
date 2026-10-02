@@ -327,7 +327,7 @@ Linux 上用 root（或任何 UID < 1000 的账户、nobody）登录时，认证
 
 ## 有界文件下载协议
 
-当前用户执行协议为 `1.6`，提权协议为 `1.3`；Server 与 Helper 必须一起更新。`FileRead` 不再返回整个文件：用户执行请求必须携带非负的 `offset` 和 `expectedBytes`，提权请求必须携带 `offset` 和 `readCount`，读取长度均为 0 至 1 MiB。长度 0 只打开文件并返回元数据；响应为 `UserExecutionFileRead`（本块 Base64、文件名、内容类型、文件总长度）。旧的整文件请求形状直接拒绝。独立 `FileReadText` 保留当前受限文本编辑语义，使用 TextFileCodec 验证格式与大小；它不接收分块下载字段，也不允许通过提权降级绕过普通宿主身份。
+当前用户执行协议为 `1.6`，提权协议为 `1.4`；Server 与 Helper 必须一起更新。`FileRead` 不再返回整个文件：用户执行请求必须携带非负的 `offset` 和 `expectedBytes`，提权请求必须携带 `offset` 和 `readCount`，读取长度均为 0 至 1 MiB。长度 0 只打开文件并返回元数据；响应为 `UserExecutionFileRead`（本块 Base64、文件名、内容类型、文件总长度）。旧的整文件请求形状直接拒绝。独立 `FileReadText` 保留当前受限文本编辑语义，使用 TextFileCodec 验证格式与大小；它不接收分块下载字段，也不允许通过提权降级绕过普通宿主身份。
 
 下载和媒体服务使用可 seek 的有界读取流，HTTP Range 继续可用。每块重新经过原有身份或提权授权边界；最多保留一块内容，不把文件总大小与 12 MiB 单次内容上限混淆。读取中发现长度变化或短读时中断响应；已开始发送的响应无法再改成 ProblemDetails。发送前的超限拒绝保留 `413 / content-too-large`。
 

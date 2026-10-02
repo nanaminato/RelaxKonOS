@@ -5,11 +5,12 @@ using RelaxKonOS.Server.Proxy;
 
 namespace RelaxKonOS.Server.Proxy.Mihomo;
 
-/// <summary>Keeps the user-level Windows proxy values aligned with the saved RelaxKonOS settings when the optional guard is enabled.</summary>
+/// <summary>Recovers interrupted host proxy writes on startup and maintains the configured Windows/Linux proxy guard.</summary>
 public sealed class SystemProxyGuardHostedService(IProxySettingsService settings, ILogger<SystemProxyGuardHostedService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        var startup = true;
         while (!stoppingToken.IsCancellationRequested)
         {
             var delay = TimeSpan.FromSeconds(30);
@@ -18,9 +19,9 @@ public sealed class SystemProxyGuardHostedService(IProxySettingsService settings
                 var current = await settings.GetAsync(stoppingToken);
                 var options = current.SystemProxy ?? ProxySystemProxyOptionsDto.Default;
                 delay = TimeSpan.FromSeconds(Math.Clamp(options.GuardIntervalSeconds, 5, 3_600));
-                if (OperatingSystem.IsWindows() && current.SystemProxyEnabled && options.GuardEnabled
-                    && !MihomoSettingsService.ApplyWindowsSystemProxy(true, current.SystemProxyHost, current.MixedPort, options))
-                    logger.LogWarning("System proxy guard could not update Windows Internet Settings.");
+                var problem = await settings.ReconcileSystemProxyAsync(startup, stoppingToken);
+                if (problem is null) startup = false;
+                if (problem is not null) logger.LogWarning("System proxy reconciliation failed. ProblemCode={ProblemCode}", problem);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
             catch (Exception exception) { logger.LogWarning(exception, "System proxy guard iteration failed."); }

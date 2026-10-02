@@ -1743,10 +1743,10 @@
     <string name="mihomo_connection_close">关闭连接</string>
     <string name="mihomo_connections_bounded">仅显示前 200 个连接。</string>
     <string name="mihomo_logs">宿主最近 100 条日志</string>
-    <string name="mihomo_settings_note">保存应用完整宿主设置，可能重载 Mihomo、改变宿主 DNS 或 Windows 代理并中断管理。TUN 启用仍是单独操作。</string>
+    <string name="mihomo_settings_note">保存应用完整宿主设置，可能重载 Mihomo、改变宿主 DNS 或系统代理并中断管理。TUN 启用仍是单独操作。</string>
     <string name="mihomo_mixed_port">混合监听端口</string>
-    <string name="mihomo_system_proxy">启用宿主 Windows 系统代理</string>
-    <string name="mihomo_system_proxy_unsupported">系统代理编辑要求 Windows 宿主。</string>
+    <string name="mihomo_system_proxy">启用宿主系统代理</string>
+    <string name="mihomo_system_proxy_unsupported">当前宿主会话的自动代理设置不可用。</string>
     <string name="mihomo_system_host">宿主代理地址</string>
     <string name="mihomo_allow_lan">允许局域网客户端</string>
     <string name="mihomo_dns_enabled">启用宿主 DNS</string>
@@ -2659,4 +2659,10 @@
     <string name="mihomo_tun_stack">TUN 协议栈</string>
     <string name="mihomo_proxy_endpoint">代理地址：%1$s:%2$d</string>
     <string name="mihomo_proxy_host_follows_listener">代理地址跟随 Mihomo 设置中的监听地址。</string>
+    <string name="mihomo_system_proxy_linux_scope">为新的 PAM 登录会话写入全局代理变量，当前未检测到支持的本地图形会话。已有进程和独立 systemd 服务沿用各自的设置。</string>
+    <string name="mihomo_system_proxy_linux_desktop_scope">设置所有已登录的本地 GNOME/KDE 用户的代理，并为新的 PAM 登录会话写入全局代理变量。已有终端进程和独立 systemd 服务沿用各自的设置。</string>
+    <string name="mihomo_system_proxy_windows_scope">作用于交互式运行服务端的 Windows 用户。</string>
+    <string name="mihomo_system_proxy_linux_bypass">默认绕过 localhost、127.0.0.1 和 ::1。自定义主机、域名或网段用逗号或分号分隔，具体匹配方式取决于使用代理的程序。</string>
+    <string name="mihomo_system_proxy_conflict">宿主代理设置被其他程序修改或恢复未完成。请关闭并恢复系统代理后重试。</string>
+    <string name="mihomo_system_proxy_restore">关闭并恢复系统代理</string>
 </resources>

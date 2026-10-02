@@ -161,6 +161,15 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
     public string MemoryUsage => FormatTraffic(Traffic?.MemoryBytes);
     public bool IsTunAvailable => Overview?.PlatformCapabilities.SupportsTun == true;
     public bool IsTunEnabled => Overview?.Health.TunState == ProxyTunState.Enabled;
+    public bool IsSystemProxyAvailable => Overview?.PlatformCapabilities.SystemProxy.Supported == true;
+    public bool IsSystemProxyPacAvailable => Overview?.PlatformCapabilities.SystemProxy.SupportsPac == true;
+    public bool IsSystemProxyOptionsEditable => IsSystemProxyAvailable && CanManage;
+    public string SystemProxyScopeHint => LocalizedText.Get(!IsSystemProxyAvailable ? "proxy.system_proxy_unavailable"
+        : Overview?.PlatformCapabilities.SystemProxy.LoginEnvironment == true
+            ? Overview.PlatformCapabilities.SystemProxy.DesktopSession ? "proxy.system_proxy_linux_desktop_scope" : "proxy.system_proxy_linux_scope"
+            : "proxy.system_proxy_windows_scope");
+    public string SystemProxyBypassHint => LocalizedText.Get(Overview?.PlatformCapabilities.SystemProxy.LoginEnvironment == true
+        ? "proxy.system_proxy_linux_bypass" : "proxy.system_proxy_windows_bypass");
     public bool IsSystemProxySettingsSelected => !IsTunSettingsSelected;
     public string NetworkSettingsDialogTitle => LocalizedText.Get(IsTunSettingsSelected
         ? "proxy.tun_managed_settings"
@@ -174,7 +183,7 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
     public bool TunAutoDetectInterface { get => TunSettings.AutoDetectInterface; set => SetTunSettings(TunSettings with { AutoDetectInterface = value }); }
     public string TunDnsHijack { get => TunSettings.DnsHijack; set => SetTunSettings(TunSettings with { DnsHijack = value }); }
     public int TunMtu { get => TunSettings.Mtu; set => SetTunSettings(TunSettings with { Mtu = value }); }
-    public string SystemProxyModeHint => LocalizedText.Get(SystemProxyEnabled
+    public string SystemProxyModeHint => LocalizedText.Get(!IsSystemProxyAvailable ? "proxy.system_proxy_unavailable" : SystemProxyEnabled
         ? "proxy.system_proxy_mode_hint_enabled"
         : "proxy.system_proxy_mode_hint_disabled");
     public string TunModeHint => LocalizedText.Get("proxy.tun_mode_hint");
@@ -330,7 +339,8 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
         try
         {
             IsBusy = true;
-            await repository.UpdateSettingsAsync(new UpdateProxySettingsRequest(SystemProxyEnabled, AllowLan, DnsEnabled, Ipv6Enabled, UnifiedDelay, LogLevel, MixedPort, AllowInsecureSubscriptionSources, SystemProxyHost, TunSettings, SystemProxyOptions));
+            var proxyOptions = SystemProxyOptions with { UsePac = SystemProxyOptions.UsePac && IsSystemProxyPacAvailable };
+            await repository.UpdateSettingsAsync(new UpdateProxySettingsRequest(SystemProxyEnabled, AllowLan, DnsEnabled, Ipv6Enabled, UnifiedDelay, LogLevel, MixedPort, AllowInsecureSubscriptionSources, SystemProxyHost, TunSettings, proxyOptions));
             _persistedMixedPort = MixedPort;
             if (requiresRestart)
             {
@@ -542,14 +552,14 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
     }
 
     /// <summary>The overview switch is deliberately immediate, unlike the editable form which has an explicit Save button.</summary>
-    [RelayCommand(CanExecute = nameof(CanManage))]
+    [RelayCommand(CanExecute = nameof(CanManageSystemProxy))]
     private async Task ToggleSystemProxyAsync()
     {
         SystemProxyEnabled = !SystemProxyEnabled;
         await SaveSettingsAsync();
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanManageSystemProxy))]
     private Task ShowSystemProxySettingsDialogAsync() => OpenNetworkSettingsDialogAsync?.Invoke(false) ?? Task.CompletedTask;
 
     [RelayCommand]
@@ -633,6 +643,7 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
     }
 
     private bool CanRefresh => !IsBusy;
+    private bool CanManageSystemProxy => CanManage && Settings is not null && (IsSystemProxyAvailable || SystemProxyEnabled);
     private bool CanManage => HasManagePermission && !IsBusy;
     private bool CanInstallRuntime => CanManage && RuntimeIsNotInstalled;
     private bool CanInstallRuntimeFromServerFile => CanInstallRuntime && RequestServerRuntimePackageAsync is not null;
@@ -726,6 +737,7 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
         OnPropertyChanged(nameof(TunStack)); OnPropertyChanged(nameof(TunDeviceName)); OnPropertyChanged(nameof(TunAutoRoute));
         OnPropertyChanged(nameof(TunStrictRoute)); OnPropertyChanged(nameof(TunAutoDetectInterface)); OnPropertyChanged(nameof(TunDnsHijack)); OnPropertyChanged(nameof(TunMtu));
         SaveSettingsCommand.NotifyCanExecuteChanged();
+        ToggleSystemProxyCommand.NotifyCanExecuteChanged(); ShowSystemProxySettingsDialogCommand.NotifyCanExecuteChanged();
     }
     partial void OnIsTunSettingsSelectedChanged(bool value)
     {
@@ -765,6 +777,9 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
         ConfigureGeoDataFromServerFileCommand.NotifyCanExecuteChanged();
         EnableTunCommand.NotifyCanExecuteChanged(); DisableTunCommand.NotifyCanExecuteChanged(); EmergencyDisableCommand.NotifyCanExecuteChanged(); ToggleTunCommand.NotifyCanExecuteChanged();
         ToggleSystemProxyCommand.NotifyCanExecuteChanged();
+        ShowSystemProxySettingsDialogCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(IsSystemProxyAvailable)); OnPropertyChanged(nameof(IsSystemProxyPacAvailable));
+        OnPropertyChanged(nameof(IsSystemProxyOptionsEditable)); OnPropertyChanged(nameof(SystemProxyScopeHint)); OnPropertyChanged(nameof(SystemProxyBypassHint));
         CreateProfileCommand.NotifyCanExecuteChanged(); ActivateProfileCommand.NotifyCanExecuteChanged(); DeleteProfileCommand.NotifyCanExecuteChanged();
         UpdateAllSubscriptionsCommand.NotifyCanExecuteChanged();
         ImportSubscriptionCommand.NotifyCanExecuteChanged(); ViewRuntimeSubscriptionsCommand.NotifyCanExecuteChanged(); ActivateSubscriptionCommand.NotifyCanExecuteChanged();

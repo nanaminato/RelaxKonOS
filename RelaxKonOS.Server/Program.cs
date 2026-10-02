@@ -151,6 +151,7 @@ builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyEngineRegistry, Rela
 builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Platform.IProxyPrivilegedOperations, RelaxKonOS.Server.Proxy.Platform.NativeMihomoPrivilegedOperations>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyPlatformPaths, RelaxKonOS.Server.Proxy.Platform.ProxyPlatformPaths>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyPlatformService, RelaxKonOS.Server.Proxy.Platform.ProxyPlatformService>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Platform.IHostSystemProxyService, RelaxKonOS.Server.Proxy.Platform.HostSystemProxyService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyDiagnosticLogStore, RelaxKonOS.Server.Proxy.ProxyDiagnosticLogStore>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeManifest>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.IMihomoRuntimeProbe, RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeProbe>();

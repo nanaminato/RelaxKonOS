@@ -62,6 +62,10 @@ public static partial class PrivilegedOperationExecutor
         if (request.Operation != PrivilegedOperationKind.DockerEngineConfigureProxy && request.DockerProxy is not null)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "docker proxy fields require their dedicated operation");
 
+        if (request.Operation is not (PrivilegedOperationKind.LinuxSystemProxyRead or PrivilegedOperationKind.LinuxSystemProxyApply)
+            && request.LinuxSystemProxy is not null)
+            return Fail(64, PrivilegedProblemCode.InvalidRequest, "Linux system proxy fields require their dedicated operation");
+
         if (request.Operation != PrivilegedOperationKind.DockerEngineServiceAction && request.DockerServiceAction is not null)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "docker service action fields require their dedicated operation");
 
@@ -101,6 +105,9 @@ public static partial class PrivilegedOperationExecutor
                 : null;
             return request.Operation switch
             {
+                PrivilegedOperationKind.LinuxSystemProxyRead or PrivilegedOperationKind.LinuxSystemProxyApply => OperatingSystem.IsLinux()
+                    ? LinuxSystemProxyOperations.Execute(request)
+                    : Fail(69, PrivilegedProblemCode.UnsupportedOperation, "Linux system proxy is unavailable on this platform"),
                 PrivilegedOperationKind.HostEnvironmentRead or PrivilegedOperationKind.HostEnvironmentApply => OperatingSystem.IsWindows()
                     ? RelaxKonOS.PrivilegedHelper.WindowsEnvironmentOperations.Execute(request)
                     : OperatingSystem.IsLinux()

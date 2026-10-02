@@ -1742,10 +1742,10 @@
     <string name="mihomo_connection_close">接続を閉じる</string>
     <string name="mihomo_connections_bounded">最初の 200 件の接続を表示しています。</string>
     <string name="mihomo_logs">ホストの最新 100 件のログ</string>
-    <string name="mihomo_settings_note">保存はすべてのホスト設定を適用します。Mihomo、DNS や Windows プロキシの変更で管理接続が中断する場合があります。TUN の有効化は別操作です。</string>
+    <string name="mihomo_settings_note">保存はすべてのホスト設定を適用します。Mihomo、DNS や システムプロキシの変更で管理接続が中断する場合があります。TUN の有効化は別操作です。</string>
     <string name="mihomo_mixed_port">混合リスナーポート</string>
-    <string name="mihomo_system_proxy">ホストの Windows システムプロキシを有効化</string>
-    <string name="mihomo_system_proxy_unsupported">システムプロキシの編集は Windows ホストが必要です。</string>
+    <string name="mihomo_system_proxy">ホストのシステムプロキシを有効化</string>
+    <string name="mihomo_system_proxy_unsupported">このホストセッションではプロキシの自動設定を利用できません。</string>
     <string name="mihomo_system_host">ホストのプロキシアドレス</string>
     <string name="mihomo_allow_lan">LAN クライアントを許可</string>
     <string name="mihomo_dns_enabled">ホスト DNS を有効化</string>
@@ -1760,8 +1760,8 @@
     <string name="mihomo_strict_route">厳密なルーティング</string>
     <string name="mihomo_auto_detect">送信インターフェースを検出</string>
     <string name="mihomo_dns_hijack">DNS リダイレクト先</string>
-    <string name="mihomo_pac">Windows プロキシ自動検出</string>
-    <string name="mihomo_guard">Windows プロキシ設定を保護</string>
+    <string name="mihomo_pac">システムプロキシ自動検出</string>
+    <string name="mihomo_guard">システムプロキシ設定を保護</string>
     <string name="mihomo_guard_interval">保護の間隔（5–3600 秒）</string>
     <string name="mihomo_default_bypass">既定のローカルネットワーク除外を使用</string>
     <string name="mihomo_bypass">Windows 除外リスト</string>
@@ -2660,4 +2660,10 @@
     <string name="mihomo_tun_stack">TUN スタック</string>
     <string name="mihomo_proxy_endpoint">プロキシアドレス：%1$s:%2$d</string>
     <string name="mihomo_proxy_host_follows_listener">プロキシアドレスは Mihomo 設定の待ち受けアドレスに従います。</string>
+    <string name="mihomo_system_proxy_linux_scope">新しい PAM ログイン用のグローバルプロキシ変数を設定します。対応するローカルデスクトップセッションは検出されていません。既存プロセスと個別の systemd サービスは各自の設定を使います。</string>
+    <string name="mihomo_system_proxy_linux_desktop_scope">ログイン中のすべてのローカル GNOME/KDE ユーザーと、新しい PAM ログイン用のプロキシ変数を設定します。既存の端末プロセスと個別の systemd サービスは各自の設定を使います。</string>
+    <string name="mihomo_system_proxy_windows_scope">対話セッションでサーバーを実行している Windows ユーザーに適用します。</string>
+    <string name="mihomo_system_proxy_linux_bypass">既定の除外は localhost、127.0.0.1、::1 です。ホスト、ドメイン、ネットワークをカンマかセミコロンで区切ってください。実際の照合はアプリによります。</string>
+    <string name="mihomo_system_proxy_conflict">ホストのプロキシ設定が外部で変更されたか、復元が未完了です。システムプロキシを無効化して復元後に再試行してください。</string>
+    <string name="mihomo_system_proxy_restore">システムプロキシを無効化して復元</string>
 </resources>

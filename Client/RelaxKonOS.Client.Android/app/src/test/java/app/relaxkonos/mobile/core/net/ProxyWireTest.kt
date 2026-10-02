@@ -2,11 +2,28 @@ package app.relaxkonos.mobile.core.net
 
 import org.junit.Assert.*
 import org.junit.Test
+import org.json.JSONObject
 
 internal const val PROXY_ID = "11111111-1111-1111-1111-111111111111"
 internal const val PROXY_PROFILE = """{"id":"11111111-1111-1111-1111-111111111111","name":"Work","engineId":"mihomo","isActive":true,"revision":2}"""
-internal const val PROXY_OVERVIEW = """{"runtime":{"mode":"managed","state":"running","version":"1.19.0","previousVersion":null,"integrityVerified":true,"problemCode":""},"activeProfile":null,"health":{"tunState":"disabled","controllerReachable":true,"managementRouteSafe":true,"state":"healthy","problemCode":""},"engineCapabilities":{"supportsGroups":true,"supportsConfigurationValidation":true,"supportsConnections":true,"supportsBoundedLogs":true,"supportsDnsStatus":true},"platformCapabilities":{"supportsTun":false,"supportsAutoRoute":false,"supportsDnsHijack":false},"operatingSystem":"linux","recovery":{"recoveryRequired":false}}"""
+internal const val PROXY_OVERVIEW = """{"runtime":{"mode":"managed","state":"running","version":"1.19.0","previousVersion":null,"integrityVerified":true,"problemCode":""},"activeProfile":null,"health":{"tunState":"disabled","controllerReachable":true,"managementRouteSafe":true,"state":"healthy","problemCode":""},"engineCapabilities":{"supportsGroups":true,"supportsConfigurationValidation":true,"supportsConnections":true,"supportsBoundedLogs":true,"supportsDnsStatus":true},"platformCapabilities":{"supportsTun":false,"supportsAutoRoute":false,"supportsDnsHijack":false,"systemProxy":{"supported":true,"supportsPac":false,"loginEnvironment":true,"desktopSession":true}},"operatingSystem":"linux","recovery":{"recoveryRequired":false}}"""
 class ProxyWireTest {
+    @Test fun `system proxy capability is explicit and required`() {
+        val linux = ProxyWire.overview(PROXY_OVERVIEW)
+        assertTrue(linux.systemProxy.supported)
+        assertTrue(linux.systemProxy.loginEnvironment)
+        assertTrue(linux.systemProxy.desktopSession)
+        assertFalse(linux.systemProxy.supportsPac)
+        val json = JSONObject(PROXY_OVERVIEW)
+        json.put("operatingSystem", "Windows")
+        val platform = json.getJSONObject("platformCapabilities")
+        platform.getJSONObject("systemProxy").put("supported", false)
+        assertFalse(ProxyWire.overview(json.toString()).systemProxy.supported)
+        platform.getJSONObject("systemProxy").remove("loginEnvironment")
+        assertTrue(runCatching { ProxyWire.overview(json.toString()) }.isFailure)
+        platform.remove("systemProxy")
+        assertTrue(runCatching { ProxyWire.overview(json.toString()) }.isFailure)
+    }
     @Test fun `current overview and profile enums are strict`() {
         assertEquals(ProxyRuntimeState.Running, ProxyWire.overview(PROXY_OVERVIEW).runtime.state)
         assertFalse(ProxyWire.overview(PROXY_OVERVIEW).supportsTun)

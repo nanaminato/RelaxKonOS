@@ -24,9 +24,12 @@ data class ProxySubscription(val id: String, val name: String, val profileId: St
 data class ProxyGroup(val name: String, val type: String, val selected: String?, val proxies: List<String>) {
     val selectable get() = type.equals("Selector", true)
 }
+data class ProxySystemProxyCapabilities(val supported: Boolean, val supportsPac: Boolean, val loginEnvironment: Boolean, val desktopSession: Boolean)
+
 data class ProxyOverview(val runtime: ProxyRuntime, val activeProfile: ProxyProfile?, val controllerReachable: Boolean,
     val managementRouteSafe: Boolean, val health: String, val problemCode: String, val supportsGroups: Boolean,
     val supportsValidation: Boolean, val supportsTun: Boolean, val operatingSystem: String?, val recoveryRequired: Boolean,
+    val systemProxy: ProxySystemProxyCapabilities,
     val supportsConnections: Boolean = false, val supportsLogs: Boolean = false, val supportsDns: Boolean = false,
     val supportsAutoRoute: Boolean = false, val supportsDnsHijack: Boolean = false, val tunState: String = "disabled")
 data class ProxyOperation(val operationId: String, val kind: String, val state: ProxyOperationState, val stage: String, val problemCode: String)
@@ -80,6 +83,10 @@ object ProxyWire {
             health.getBoolean("controllerReachable"), health.getBoolean("managementRouteSafe"), health.getString("state"), health.getString("problemCode"),
             engine.getBoolean("supportsGroups"), engine.getBoolean("supportsConfigurationValidation"), j.getJSONObject("platformCapabilities").getBoolean("supportsTun"),
             j.text("operatingSystem"), j.getJSONObject("recovery").getBoolean("recoveryRequired"),
+            j.getJSONObject("platformCapabilities").getJSONObject("systemProxy").let { proxy ->
+                ProxySystemProxyCapabilities(proxy.getBoolean("supported"), proxy.getBoolean("supportsPac"),
+                    proxy.getBoolean("loginEnvironment"), proxy.getBoolean("desktopSession"))
+            },
             engine.getBoolean("supportsConnections"), engine.getBoolean("supportsBoundedLogs"), engine.getBoolean("supportsDnsStatus"),
             j.getJSONObject("platformCapabilities").getBoolean("supportsAutoRoute"), j.getJSONObject("platformCapabilities").getBoolean("supportsDnsHijack"),
             health.getString("tunState").also { require(it in setOf("disabled", "enabling", "enabled", "disabling", "recovering", "failed")) })

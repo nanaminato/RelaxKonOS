@@ -34,7 +34,7 @@ import java.util.Date
             interval != original.systemProxy?.guardIntervalSeconds?.toString().orEmpty()) discard = true
         else dismiss()
     }
-    val windows = overview.operatingSystem?.contains("Windows", true) == true
+    val systemProxySupported = overview.systemProxy.supported
     val enabled = !state.busy
     val valid = when (section) {
         ProxySettingsSection.Mihomo -> port.toIntOrNull() in 1..65535
@@ -42,7 +42,7 @@ import java.util.Date
             mtu.toIntOrNull() in 576..9000 && it.deviceName.matches(Regex("[A-Za-z0-9_.-]{1,64}")) &&
                 (!it.strictRoute || it.autoRoute)
         } == true && overview.supportsTun
-        ProxySettingsSection.SystemProxy -> windows && (draft.systemProxy?.let {
+        ProxySettingsSection.SystemProxy -> (!draft.systemProxyEnabled || systemProxySupported) && (draft.systemProxy?.let {
             interval.toIntOrNull() in 5..3600 && it.bypassList.length <= 4096 && it.bypassList.none(Char::isISOControl)
         } ?: true)
     }
@@ -110,18 +110,25 @@ import java.util.Date
                         Text(stringResource(R.string.mihomo_tun_options), style = MaterialTheme.typography.bodySmall)
                     }
                     ProxySettingsSection.SystemProxy -> {
-                        ProxySettingsSwitch(draft.systemProxyEnabled, enabled && windows, R.string.mihomo_system_proxy) {
+                        Text(stringResource(when {
+                            !systemProxySupported -> R.string.mihomo_system_proxy_unsupported
+                            overview.systemProxy.loginEnvironment && overview.systemProxy.desktopSession -> R.string.mihomo_system_proxy_linux_desktop_scope
+                            overview.systemProxy.loginEnvironment -> R.string.mihomo_system_proxy_linux_scope
+                            else -> R.string.mihomo_system_proxy_windows_scope
+                        }), style = MaterialTheme.typography.bodySmall)
+                        ProxySettingsSwitch(draft.systemProxyEnabled, enabled && (systemProxySupported || draft.systemProxyEnabled), R.string.mihomo_system_proxy) {
                             draft = draft.copy(systemProxyEnabled = it)
                         }
                         Text(stringResource(R.string.mihomo_proxy_endpoint, draft.systemProxyHost, draft.mixedPort),
                             style = MaterialTheme.typography.bodySmall)
                         Text(stringResource(R.string.mihomo_proxy_host_follows_listener), style = MaterialTheme.typography.bodySmall)
                         draft.systemProxy?.let { options ->
-                            ProxySettingsSwitch(options.usePac, enabled && windows, R.string.mihomo_pac) { draft = draft.copy(systemProxy = options.copy(usePac = it)) }
-                            ProxySettingsSwitch(options.guardEnabled, enabled && windows, R.string.mihomo_guard) { draft = draft.copy(systemProxy = options.copy(guardEnabled = it)) }
-                            ProxyText(interval, enabled && windows, R.string.mihomo_guard_interval) { interval = it }
-                            ProxySettingsSwitch(options.useDefaultBypass, enabled && windows, R.string.mihomo_default_bypass) { draft = draft.copy(systemProxy = options.copy(useDefaultBypass = it)) }
-                            ProxyText(options.bypassList, enabled && windows, R.string.mihomo_bypass) { draft = draft.copy(systemProxy = options.copy(bypassList = it)) }
+                            if (overview.systemProxy.supportsPac) ProxySettingsSwitch(options.usePac, enabled && systemProxySupported, R.string.mihomo_pac) { draft = draft.copy(systemProxy = options.copy(usePac = it)) }
+                            if (overview.systemProxy.loginEnvironment) Text(stringResource(R.string.mihomo_system_proxy_linux_bypass), style = MaterialTheme.typography.bodySmall)
+                            ProxySettingsSwitch(options.guardEnabled, enabled && systemProxySupported, R.string.mihomo_guard) { draft = draft.copy(systemProxy = options.copy(guardEnabled = it)) }
+                            ProxyText(interval, enabled && systemProxySupported, R.string.mihomo_guard_interval) { interval = it }
+                            ProxySettingsSwitch(options.useDefaultBypass, enabled && systemProxySupported, R.string.mihomo_default_bypass) { draft = draft.copy(systemProxy = options.copy(useDefaultBypass = it)) }
+                            ProxyText(options.bypassList, enabled && systemProxySupported, R.string.mihomo_bypass) { draft = draft.copy(systemProxy = options.copy(bypassList = it)) }
                         }
                     }
                 }
@@ -136,7 +143,8 @@ import java.util.Date
                 model.saveSettings(when (section) {
                     ProxySettingsSection.Mihomo -> draft.copy(mixedPort = port.toInt())
                     ProxySettingsSection.Tun -> draft.copy(tun = draft.tun?.copy(mtu = mtu.toInt()))
-                    ProxySettingsSection.SystemProxy -> draft.copy(systemProxy = draft.systemProxy?.copy(guardIntervalSeconds = interval.toInt()))
+                    ProxySettingsSection.SystemProxy -> draft.copy(systemProxy = draft.systemProxy?.copy(guardIntervalSeconds = interval.toInt(),
+                        usePac = draft.systemProxy?.usePac == true && overview.systemProxy.supportsPac))
                 })
             }) { Text(stringResource(R.string.common_save)) }
         }, dismissButton = { TextButton(enabled = enabled, onClick = close) { Text(stringResource(R.string.common_cancel)) } })

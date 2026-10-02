@@ -1,3 +1,9 @@
+if (args.Contains("--system-proxy-only"))
+{
+    try { await SystemProxyChecks.RunAsync(); }
+    catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
+    return;
+}
 if (args.Contains("--proxy-controller-only"))
 {
     await NetworkProxyTunnelChecks.VerifyMihomoControllerSafetyAsync();
@@ -377,6 +383,7 @@ try
     await ApplicationDeploymentProgressVerification.RunAsync(root);
     NetworkProxyTunnelChecks.VerifyTunnelProtocolContract();
     NetworkProxyTunnelChecks.VerifyProxyProtocolContract();
+    await SystemProxyChecks.RunAsync();
     await NetworkProxyTunnelChecks.VerifyMihomoControllerSafetyAsync();
     await NetworkProxyTunnelChecks.VerifyMihomoLiveStreamsAsync();
     await NetworkProxyTunnelChecks.VerifyMihomoProxyGroupOrderingAsync(root);

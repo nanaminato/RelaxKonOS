@@ -2,6 +2,8 @@ using RelaxKonOS.Client.Services;
 using System.Diagnostics;
 using System.Globalization;
 using RelaxKonOS.Protocol.Workspace;
+LinuxSystemProxyChecks.Run();
+if (args.Contains("--linux-system-proxy-only")) return;
 if (SystemLanguageResolver.Resolve(CultureInfo.GetCultureInfo("zh-TW")) != "zh-CN"
     || SystemLanguageResolver.Resolve(CultureInfo.GetCultureInfo("ja-JP")) != "ja-JP"
     || SystemLanguageResolver.Resolve(CultureInfo.GetCultureInfo("fr-FR")) != "en-US"

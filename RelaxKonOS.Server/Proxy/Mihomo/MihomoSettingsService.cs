@@ -14,6 +14,7 @@ public sealed class MihomoSettingsService(
     IMihomoControllerClient controller,
     IProxyControllerSecretStore controllerSecrets,
     MihomoControllerOptions controllerOptions,
+    Platform.IHostSystemProxyService systemProxyService,
     ILogger<MihomoSettingsService>? logger = null) : IProxySettingsService, IProxyTunRuntimeController
 {
     private static readonly HashSet<string> LogLevels = new(StringComparer.OrdinalIgnoreCase) { "silent", "error", "warning", "info", "debug" };
@@ -25,7 +26,11 @@ public sealed class MihomoSettingsService(
     public async Task<string?> UpdateAsync(UpdateProxySettingsRequest request, CancellationToken cancellationToken)
     {
         if (request.MixedPort is < 1 or > 65535 || !LogLevels.Contains(request.LogLevel)) return ProxyProblemCodes.ConfigInvalid;
-        if (request.SystemProxyEnabled && !OperatingSystem.IsWindows()) return ProxyProblemCodes.NotSupported;
+        if (request.SystemProxyEnabled)
+        {
+            var capabilities = await systemProxyService.GetCapabilitiesAsync(cancellationToken);
+            if (!capabilities.Supported || request.SystemProxy?.UsePac == true && !capabilities.SupportsPac) return ProxyProblemCodes.NotSupported;
+        }
         var systemProxyHost = NormalizeSystemProxyHost(request.SystemProxyHost);
         if (systemProxyHost is null) return ProxyProblemCodes.ConfigInvalid;
         var tun = request.Tun ?? ProxyTunSettingsDto.Default;
@@ -79,17 +84,26 @@ public sealed class MihomoSettingsService(
                     await controller.ReloadAsync(cancellationToken);
                     return ProxyProblemCodes.ConfigApplyFailed;
                 }
-                // Updating unrelated Mihomo settings must not require a per-user Windows proxy
-                // writer.  A transition that enables or disables the system proxy does.
-                if ((settings.SystemProxyEnabled || previous.SystemProxyEnabled)
-                    && !ApplyWindowsSystemProxy(settings.SystemProxyEnabled, settings.SystemProxyHost, settings.MixedPort, settings.SystemProxy ?? ProxySystemProxyOptionsDto.Default))
+                var proxyProblem = await systemProxyService.ApplyAsync(settings, previous, enforce: false, cancellationToken);
+                // An absent Helper must not block unrelated Mihomo settings while the proxy is off.
+                // Startup reconciliation still retries, so an interrupted root-side write can recover.
+                if (!settings.SystemProxyEnabled && !previous.SystemProxyEnabled
+                    && proxyProblem == ProxyProblemCodes.PrivilegedOperationUnavailable) proxyProblem = null;
+                if (proxyProblem is not null)
                 {
-                    logger?.LogWarning("Proxy settings update could not apply the Windows system proxy. Enabled={Enabled} Port={Port}", settings.SystemProxyEnabled, settings.MixedPort);
+                    logger?.LogWarning("Proxy settings update could not apply the host system proxy. ProblemCode={ProblemCode}", proxyProblem);
                     await File.WriteAllTextAsync(active, original, cancellationToken);
                     if (controllerAvailable) await controller.ReloadAsync(cancellationToken);
-                    return ProxyProblemCodes.PrivilegedOperationUnavailable;
+                    return proxyProblem;
                 }
-                await WriteAsync(settings, cancellationToken);
+                try { await WriteAsync(settings, cancellationToken); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException or OperationCanceledException)
+                {
+                    var rollback = await systemProxyService.ApplyAsync(previous, settings, enforce: true, CancellationToken.None);
+                    await File.WriteAllTextAsync(active, original, CancellationToken.None);
+                    if (controllerAvailable) await controller.ReloadAsync(CancellationToken.None);
+                    return rollback ?? ProxyProblemCodes.ConfigApplyFailed;
+                }
                 logger?.LogInformation("Proxy settings updated. SystemProxyEnabled={SystemProxyEnabled} AllowLan={AllowLan} DnsEnabled={DnsEnabled} MixedPort={MixedPort} TunEnabled={TunEnabled}",
                     settings.SystemProxyEnabled, settings.AllowLan, settings.DnsEnabled, settings.MixedPort, tunActivation.Enabled);
                 return null;
@@ -98,6 +112,19 @@ public sealed class MihomoSettingsService(
         }
         catch (IOException) { return ProxyProblemCodes.ConfigApplyFailed; }
         catch (UnauthorizedAccessException) { return ProxyProblemCodes.PrivilegedOperationUnavailable; }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<string?> ReconcileSystemProxyAsync(bool startup, CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var settings = await ReadAsync(cancellationToken) ?? Defaults;
+            var guarded = settings.SystemProxyEnabled && settings.SystemProxy?.GuardEnabled == true;
+            if (!startup && !guarded) return null;
+            return await systemProxyService.ApplyAsync(settings, settings, enforce: guarded, cancellationToken);
+        }
         finally { _gate.Release(); }
     }
 

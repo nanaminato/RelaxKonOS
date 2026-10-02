@@ -66,6 +66,7 @@ sealed class StaticProxySettingsService : IProxySettingsService
     public Task<ProxySettingsDto> GetAsync(CancellationToken cancellationToken) =>
         Task.FromResult(new ProxySettingsDto(false, false, true, true, false, "warning", 7890));
 
+    public Task<string?> ReconcileSystemProxyAsync(bool startup, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
     public Task<string?> UpdateAsync(UpdateProxySettingsRequest request, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
 }
 
@@ -75,6 +76,7 @@ sealed class TestProxySettingsService(int mixedPort) : IProxySettingsService
     public Task<ProxySettingsDto> GetAsync(CancellationToken cancellationToken) =>
         Task.FromResult(new ProxySettingsDto(false, false, true, true, false, "warning", mixedPort));
 
+    public Task<string?> ReconcileSystemProxyAsync(bool startup, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
     public Task<string?> UpdateAsync(UpdateProxySettingsRequest request, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
 }
 

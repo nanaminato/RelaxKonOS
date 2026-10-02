@@ -63,7 +63,8 @@ internal static class ManagedOutboundProxyChecks
     {
         internal ProxySettingsDto Current { get; set; } = new(false, false, true, true, false, "warning", port);
         public Task<ProxySettingsDto> GetAsync(CancellationToken cancellationToken) => Task.FromResult(Current);
-        public Task<string?> UpdateAsync(UpdateProxySettingsRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<string?> ReconcileSystemProxyAsync(bool startup, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
+    public Task<string?> UpdateAsync(UpdateProxySettingsRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     private sealed class LocalHttpResponder : IAsyncDisposable

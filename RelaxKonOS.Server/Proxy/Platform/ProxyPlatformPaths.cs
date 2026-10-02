@@ -24,19 +24,20 @@ public sealed class ProxyPlatformPaths : IProxyPlatformPaths
 }
 
 /// <summary>Pure capability detection. It never changes firewall, Defender, routes, DNS, or services.</summary>
-public sealed class ProxyPlatformService : IProxyPlatformService
+public sealed class ProxyPlatformService(IHostSystemProxyService systemProxy) : IProxyPlatformService
 {
-    public Task<RelaxKonOS.Protocol.Proxy.ProxyPlatformCapabilities> GetCapabilitiesAsync(CancellationToken cancellationToken)
+    public async Task<RelaxKonOS.Protocol.Proxy.ProxyPlatformCapabilities> GetCapabilitiesAsync(CancellationToken cancellationToken)
     {
         var supported = OperatingSystem.IsWindows() || OperatingSystem.IsLinux();
         var tunAvailable = OperatingSystem.IsWindows() || File.Exists("/dev/net/tun");
-        return Task.FromResult(new RelaxKonOS.Protocol.Proxy.ProxyPlatformCapabilities(
+        return new RelaxKonOS.Protocol.Proxy.ProxyPlatformCapabilities(
             SupportsTun: supported && tunAvailable,
             SupportsAutoRoute: supported,
             SupportsAutoRedirect: false,
             SupportsDnsHijack: supported,
             SupportsNamedPipeController: OperatingSystem.IsWindows(),
             SupportsUnixSocketController: OperatingSystem.IsLinux(),
-            ProblemCode: supported ? "" : RelaxKonOS.Protocol.Proxy.ProxyProblemCodes.PlatformCapabilityUnavailable));
+            SystemProxy: await systemProxy.GetCapabilitiesAsync(cancellationToken),
+            ProblemCode: supported ? "" : RelaxKonOS.Protocol.Proxy.ProxyProblemCodes.PlatformCapabilityUnavailable);
     }
 }

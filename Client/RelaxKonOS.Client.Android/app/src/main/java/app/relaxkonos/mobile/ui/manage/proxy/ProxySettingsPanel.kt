@@ -39,7 +39,7 @@ internal enum class ProxySettingsSection(val title: Int) {
     val overview = (state.overview as? ApiResult.Success)?.value
     val settings = (state.settings as? ApiResult.Success)?.value
     val recovery = (state.recovery as? ApiResult.Success)?.value
-    val windows = overview?.operatingSystem?.contains("Windows", true) == true
+    val systemProxySupported = overview?.systemProxy?.supported == true
     var diagnosticsExpanded by rememberSaveable { mutableStateOf(false) }
 
     ManagementCard {
@@ -78,16 +78,21 @@ internal enum class ProxySettingsSection(val title: Int) {
         HorizontalDivider()
         ProxyNetworkSettingRow(
             title = R.string.mihomo_system_proxy_title,
-            summary = if (windows || settings?.systemProxyEnabled == true) stringResource(when (settings?.systemProxyEnabled) {
+            summary = if (systemProxySupported || settings?.systemProxyEnabled == true) stringResource(when (settings?.systemProxyEnabled) {
                 true -> R.string.mihomo_on; false -> R.string.mihomo_off; null -> R.string.mihomo_unverified
             }) else stringResource(if (overview == null) R.string.mihomo_unverified else R.string.mihomo_system_proxy_unsupported),
             checked = settings?.systemProxyEnabled == true,
-            enabled = canManage && ready && settings != null && (windows || settings.systemProxyEnabled),
+            enabled = canManage && ready && settings != null && (systemProxySupported || settings.systemProxyEnabled),
             change = toggleSystemProxy,
             editTitle = ProxySettingsSection.SystemProxy.title,
-            canEdit = canManage && ready && settings != null && windows,
+            canEdit = canManage && ready && settings != null && (systemProxySupported || settings.systemProxyEnabled),
             edit = { edit(ProxySettingsSection.SystemProxy) }
         )
+        if (canManage && state.problemCode == "proxy.system_proxy_conflict") {
+            TextButton(enabled = ready, onClick = { toggleSystemProxy(false) }) {
+                Text(stringResource(R.string.mihomo_system_proxy_restore))
+            }
+        }
         if (recovery == null || recovery.recoveryRequired || recovery.problemCode.isNotBlank()) {
             Text(if (recovery == null) stringResource(R.string.mihomo_unverified)
                 else stringResource(R.string.mihomo_recovery_required), color = MaterialTheme.colorScheme.error)

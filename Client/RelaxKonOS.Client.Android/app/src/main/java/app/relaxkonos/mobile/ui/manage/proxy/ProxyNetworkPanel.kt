@@ -24,7 +24,8 @@ import java.util.Date
         if (section == "settings") {
             ProxySettingsPanel(state, canManage, ready, edit = { editing = it }, configureGeo = { configuringGeo = true },
                 toggleTun = { enabled -> confirm { model.queue(if (enabled) ProxyAction.EnableTun else ProxyAction.DisableTun, if (enabled) overview?.activeProfile?.id else null) } },
-                toggleSystemProxy = { enabled -> settings?.let { confirm { model.saveSettings(it.copy(systemProxyEnabled = enabled)) } } },
+                toggleSystemProxy = { enabled -> settings?.let { confirm { model.saveSettings(it.copy(systemProxyEnabled = enabled,
+                    systemProxy = it.systemProxy?.copy(usePac = it.systemProxy.usePac && overview?.systemProxy?.supportsPac == true))) } } },
                 emergency = { confirm { model.queue(ProxyAction.EmergencyDisableTun) } },
                 refreshDns = { model.diagnostics("settings") })
         } else {
