@@ -20,7 +20,7 @@ internal static class HostSettingsWireChecks
     {
         var provider = new TimeProvider();
         var principal = new ClaimsPrincipal(new ClaimsIdentity([new("sub", Guid.NewGuid().ToString()), new("jti", Guid.NewGuid().ToString())], "test"));
-        var grants = new HostElevationSessionStore();
+        var grants = new HostElevationSessionStore(new TestHostAccountPrivilegeService(), new UploadSessionChecks.SystemMode());
         var journal = new SettingsOperationJournal(new TestHostEnvironment(root), DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(root,"wire-keys"))));
         var coordinator = new SettingsOperationCoordinator(journal,provider,grants);
         var builder = WebApplication.CreateBuilder();

@@ -660,7 +660,6 @@ if (OperatingSystem.IsLinux())
     builder.Services.AddSingleton<RelaxKonOS.Server.Firewall.IHostFirewallService, RelaxKonOS.Server.Firewall.LinuxUfwFirewallService>();
 else
     builder.Services.AddSingleton<RelaxKonOS.Server.Firewall.IHostFirewallService, RelaxKonOS.Server.Firewall.UnavailableHostFirewallService>();
-builder.Services.AddSingleton<RelaxKonOS.Server.Firewall.IFirewallChangeAuthorizationService, RelaxKonOS.Server.Firewall.FirewallChangeAuthorizationService>();
 
 // Web Server V1: host-global Nginx discovery/read state plus an explicitly confirmed,
 // marker-owned conf.d integration. It never accepts shell text or elevation credentials from HTTP.

@@ -200,7 +200,7 @@ private fun ScriptEditor(owner: SessionState.Active, onBack: () -> Unit, onSubmi
     var timeout by remember { mutableStateOf("300") }
     var runAs by remember { mutableStateOf(owner.userName) }
     var adminName by remember(owner) {
-        mutableStateOf(if (owner.serverPlatform.contains("windows", ignoreCase = true)) "Administrator" else "root")
+        mutableStateOf("")
     }
     var adminPassword by remember { mutableStateOf("") }
     val environmentLines = environment.lines().filter(String::isNotBlank)

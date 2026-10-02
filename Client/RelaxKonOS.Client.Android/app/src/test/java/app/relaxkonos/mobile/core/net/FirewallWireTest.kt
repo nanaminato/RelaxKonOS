@@ -20,6 +20,6 @@ class FirewallWireTest {
         listOf("example.test", "1.2.3.4;reboot", "300.1.1.1", "::1/129", "1.2.3.4/33", "1.2.3.4/", "any/0").forEach { assertFalse(it, FirewallValues.endpoint(it)) }
         listOf("1", "65535", "80:443", "any", "").forEach { assertTrue(FirewallValues.port(it)) }
         listOf("0", "65536", "443:80", "80;shutdown", "80:81:82").forEach { assertFalse(FirewallValues.port(it)) }
-        assertFalse(FirewallChange(FirewallChangeKind.Delete, 1).body("private-secret".toCharArray()).toString().contains("private-secret"))
+        assertFalse(FirewallChange(FirewallChangeKind.Delete, 1).body().toString().contains("credentialConfirmation"))
     }
 }

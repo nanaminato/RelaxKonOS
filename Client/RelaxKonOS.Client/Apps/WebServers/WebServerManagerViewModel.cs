@@ -103,7 +103,6 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     private Guid? _currentOperationId;
     private string? localPackageReference;
 
-    public bool IsRoot => string.Equals(_session.CurrentUser?.Username, "root", StringComparison.Ordinal);
     /// <summary>Provided by the window to surface unavailable privileged operations prominently.</summary>
     public Func<string?, Task>? ShowPrivilegedHelperUnavailableAsync { get; set; }
     public bool IsWindowsServer => _session.CurrentServer?.Platform == HostPlatformKind.Windows;

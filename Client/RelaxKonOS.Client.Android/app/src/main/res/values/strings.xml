@@ -1840,8 +1840,6 @@
     <string name="firewall_confirm">Confirm host firewall change</string>
     <string name="firewall_management_warning">This can block the current management connection and hosted services. Allow the management address and port first. If the connection is lost, reconnect and inspect current host facts; this API has no automatic rollback or replay key.</string>
     <string name="firewall_number">Rule number: %1$d</string>
-    <string name="firewall_own_password_note">Enter the host password for authenticated account %1$s. This confirms one change only and is never saved. Administrator elevation may also be required.</string>
-    <string name="firewall_password">Current account host password</string>
     <string name="firewall_discard">Discard unsaved firewall edits?</string>
     <string name="firewall_discard_help">The draft will be discarded before opening the selected destination.</string>
     <string name="firewall_allow">Allow</string>
@@ -1850,7 +1848,6 @@
     <string name="firewall_limit">Rate limit</string>
     <string name="firewall_any">Any</string>
     <string name="firewall_conflict">Host rules or policies changed. Refresh and confirm the current rule before submitting.</string>
-    <string name="firewall_password_failed">Current account password confirmation was refused</string>
     <string name="firewall_permission">Host authorization is required or unavailable</string>
     <string name="firewall_edit">Edit rule</string>
     <string name="firewall_submit">Confirm change</string>
@@ -2622,4 +2619,7 @@
     <string name="runtime_install_action">Install %1$s</string>
     <string name="guardian_agent_permission">The server cannot access the Guardian service. Repair the server installation and refresh.</string>
     <string name="runtime_recovery_tools">Recover a previous operation</string>
+    <string name="server_maintenance_repair_certificate">Regenerate the LAN self-signed certificate during repair</string>
+    <string name="server_maintenance_repair_certificate_note">Enter the current LAN IP or DNS names, separated by commas. This replaces the certificate and restarts the service. Verify and trust the new certificate when connecting again. Older server deployment scripts must be upgraded first.</string>
+    <string name="server_maintenance_repair_certificate_invalid">Enter at least one IP or DNS name, separated by commas.</string>
 </resources>

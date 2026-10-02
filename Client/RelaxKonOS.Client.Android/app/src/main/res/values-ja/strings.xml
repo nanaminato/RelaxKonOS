@@ -1801,8 +1801,6 @@
     <string name="firewall_confirm">ホストの変更を確認</string>
     <string name="firewall_management_warning">現在の管理接続とホスト上のサービスが遮断される可能性があります。先に管理アドレスとポートを許可してください。切断時は再接続して状態を確認します。この API に自動ロールバックや再実行キーはありません。</string>
     <string name="firewall_number">ルール番号：%1$d</string>
-    <string name="firewall_own_password_note">認証済みアカウント %1$s のホストパスワードを入力してください。この変更のみを確認し、保存しません。管理者権限も必要な場合があります。</string>
-    <string name="firewall_password">現在のアカウントのホストパスワード</string>
     <string name="firewall_discard">未保存の編集を破棄しますか？</string>
     <string name="firewall_discard_help">選択した画面を開く前に下書きを破棄します。</string>
     <string name="firewall_allow">許可</string>
@@ -1811,7 +1809,6 @@
     <string name="firewall_limit">レート制限</string>
     <string name="firewall_any">すべて</string>
     <string name="firewall_conflict">ホストのルールまたはポリシーが変更されました。更新して現在のルールを確認してください。</string>
-    <string name="firewall_password_failed">現在のアカウントのパスワード確認が拒否されました</string>
     <string name="firewall_permission">ホストの承認が必要または利用不可</string>
     <string name="firewall_edit">ルールを編集</string>
     <string name="firewall_submit">変更を確認</string>
@@ -2584,4 +2581,7 @@
     <string name="runtime_install_action">%1$s をインストール</string>
     <string name="guardian_agent_permission">サーバーが監視サービスにアクセスできません。サーバーのインストールを修復して更新してください。</string>
     <string name="runtime_recovery_tools">以前の操作を復元</string>
+    <string name="server_maintenance_repair_certificate">修復時に LAN の自己署名証明書を再生成</string>
+    <string name="server_maintenance_repair_certificate_note">現在の LAN IP またはドメイン名をカンマ区切りで入力してください。証明書が置き換えられ、サービスが再起動します。再接続時に新しい証明書を確認して信頼してください。古いサーバーのデプロイスクリプトは先に更新してください。</string>
+    <string name="server_maintenance_repair_certificate_invalid">少なくとも一つの IP またはドメイン名をカンマ区切りで入力してください。</string>
 </resources>

@@ -67,8 +67,8 @@ class RelaxKonApi(
             if (change.kind == SmbChangeKind.Password) JsonBody().secret("password", requireNotNull(password)) else change.share?.body(), SmbWire::receipt)
     override suspend fun firewallStatus(serverUrl: String, accessToken: String): ApiResult<FirewallStatus> = webPublishingRead(serverUrl, accessToken, FirewallRoutes.ROOT + "/status", FirewallWire::status)
     override suspend fun firewallRules(serverUrl: String, accessToken: String): ApiResult<List<FirewallRule>> = webPublishingRead(serverUrl, accessToken, FirewallRoutes.ROOT + "/rules", FirewallWire::rules)
-    override suspend fun changeFirewall(serverUrl: String, accessToken: String, change: FirewallChange, password: CharArray?): ApiResult<FirewallResult> =
-        webPublishingCall(FirewallRoutes.method(change.kind), serverUrl, FirewallRoutes.route(change), accessToken, change.body(password), FirewallWire::result)
+    override suspend fun changeFirewall(serverUrl: String, accessToken: String, change: FirewallChange): ApiResult<FirewallResult> =
+        webPublishingCall(FirewallRoutes.method(change.kind), serverUrl, FirewallRoutes.route(change), accessToken, change.body(), FirewallWire::result)
     override suspend fun proxySettings(serverUrl: String, accessToken: String): ApiResult<ProxySettings> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.ROOT + "/settings", ProxyDiagnosticsWire::settings)
     override suspend fun proxyRecovery(serverUrl: String, accessToken: String): ApiResult<ProxyRecovery> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.ROOT + "/recovery", ProxyDiagnosticsWire::recovery)
     override suspend fun proxyTun(serverUrl: String, accessToken: String): ApiResult<ProxyRecovery> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.ROOT + "/tun", ProxyDiagnosticsWire::recovery)

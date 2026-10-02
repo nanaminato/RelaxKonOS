@@ -26,7 +26,7 @@ data class FirewallChange(val kind: FirewallChangeKind, val number: Int? = null,
         }
         if (kind in setOf(FirewallChangeKind.Replace, FirewallChangeKind.Delete)) require(number in 1..10_000)
     }
-    fun body(password: CharArray?): JsonBody {
+    fun body(): JsonBody {
         validate()
         val body = JsonBody()
         when (kind) {
@@ -38,8 +38,6 @@ data class FirewallChange(val kind: FirewallChangeKind, val number: Int? = null,
             }
             FirewallChangeKind.Delete -> Unit
         }
-        if (password != null) body.objectField("credentialConfirmation", JsonBody().secret("password", password))
-        else body.raw("credentialConfirmation", "null")
         return body
     }
 }

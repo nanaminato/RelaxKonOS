@@ -71,7 +71,7 @@ Windows provider 只读固定 `ComputerName` 注册表位置并用 `SetComputerN
 
 `IHostEnvironmentService` 已注册为独立 typed HttpClient，提供目标解析、默认掩码读取、显式揭示、预览、按 planId 应用、操作查询和带 revision 回滚。读取、揭示、修改分别请求 `HostEnvironmentRead`、`HostEnvironmentReveal`、`HostEnvironmentChange` 精确资源授权；调用者按需要依次请求，服务不隐式扩张权限或缓存密码、原始环境值。
 
-新增 `GET /api/v1.0/host-settings/environment/target?scope=hostUser|hostMachine`，只返回当前认证用户经 Server 验证映射的 `SettingsTarget`，不读取环境、不调用 Helper、不授予权限，响应禁止缓存。客户端通过此入口取得授权目标，不从本地设备猜测远程 SID/UID。环境值读取仍必须有读取授权，揭示另需揭示授权。
+新增 `GET /api/v1.0/host-settings/environment/target?scope=hostUser|hostMachine`，只返回当前认证用户经 Server 验证映射的 `SettingsTarget`，不读取环境、不调用 Helper、不授予权限，响应禁止缓存。客户端通过此入口取得授权目标，不从本地设备猜测远程 SID/UID。Windows 当前认证用户自己的环境 store 经 canonical SID 归属检查后无需管理员认证；系统 store 的读/揭示/修改需当前管理员资格或精确临时 grant。手动授权的三项 capability 仅覆盖所选 store，不扩展到另一 store；系统认证管理员每次重新检查资格。
 
 时区和环境服务共用 `HostSettingsService` 的连接冻结与 HTTP 流程：取得 token 前后及响应解析后校验 Server/用户/会话，禁用重定向和写请求重试，不经过可重放的认证 handler。环境服务尚未接入设置编辑 UI、SDK 或终端，不能据此宣称环境变量纵向切片完成。
 

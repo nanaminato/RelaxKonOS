@@ -871,6 +871,7 @@ action_install_like() {
             arguments+=(--action repair)
             if [[ $options_certificate_mode == selfSigned ]]; then
               [[ -n $options_self_signed_identities ]] || launcher_fail invalid_request "self-signed certificate names are required"
+              grep -Fq '"$CERTIFICATE_MODE_SET" == true && "$CERTIFICATE_MODE" == self-signed' "$engine" || launcher_fail not_supported "installed deployment scripts cannot regenerate certificates during repair; upgrade the server first"
               arguments+=(--certificate-mode self-signed --self-signed-identities "$options_self_signed_identities")
             fi
             ;;

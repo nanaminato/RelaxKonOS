@@ -1,3 +1,10 @@
+if (args.Contains("--host-operation-authorization-only"))
+{
+    HostOperationAuthorizationChecks.Run();
+    HostFileRoutingChecks.Run();
+    await HostElevationWireChecks.RunAsync();
+    return;
+}
 if (args.Contains("--host-settings-only"))
 {
     var settingsRoot = Path.Combine(Path.GetTempPath(), "relaxkon-host-settings-" + Guid.NewGuid().ToString("N"));
@@ -285,6 +292,7 @@ try
     ImageThumbnailChecks.Run(root);
     await UploadSessionChecks.RunAsync(root);
     HostFileRoutingChecks.Run();
+    HostOperationAuthorizationChecks.Run();
     await CertificateChecks.VerifyCertificateStoreAndSniAsync(root);
     CertificateChecks.VerifyCertificateApiRoutes();
     await HostStorageChecks.VerifyRenewalRetryAsync(root);

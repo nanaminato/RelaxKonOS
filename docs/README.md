@@ -90,7 +90,7 @@ RelaxKonOS 采用状态同步模式（非像素流）：Client 本地渲染 UI�
 
 内置进程守护已落地（ProcessGuardian）：独立 Guardian Agent 进程、本机认证 IPC（命名管道）、工作负载声明持久化、启停重启与 SignalR 日志广播。健康检查及 systemd/SCM 服务适配仍在设计中。详见 [`RelaxKonOS.ProcessGuardian.md`](./applications/RelaxKonOS.ProcessGuardian.md)。
 
-内置防火墙应用已落地（Firewall）：仅 Linux Server + UFW，支持读取状态与编号规则、修改启用状态和默认策略、添加或删除经过结构化校验的规则。root 会话无需再次验证；其他用户每次变更均以其自身密码通过 PAM 一次性确认。Windows Server 不显示此应用。详见 [`RelaxKonOS.Firewall.md`](./applications/RelaxKonOS.Firewall.md)。
+内置防火墙应用已落地（Firewall）：仅 Linux Server + UFW，支持读取状态与编号规则、修改启用状态和默认策略、添加或删除经过结构化校验的规则。已通过系统认证的 root/管理员会话无需重复密码；其他会话通过统一管理员认证取得精确临时授权。Windows Server 不显示此应用。详见 [`RelaxKonOS.Firewall.md`](./applications/RelaxKonOS.Firewall.md)。
 
 内置证书管理器已落地基础闭环：ACME 证书列表、申请前预检、异步申请/取消、续期、Kestrel 部署、吊销和删除；客户端使用概览/证书列表多页工作区，申请操作在可滚动的模态对话框中完成。DNS-01、Wildcard 与 IIS/Nginx/Apache 部署仍属后续阶段。Web Server 管理器已实现 Nginx MVP：实例与站点发现、配置快照、操作流水及管理员确认后的最小集成；更多 Provider 仍在设计中。
 
@@ -284,7 +284,7 @@ Application Package
 | **DockerManager** | 本机 Docker Engine 的检测/安装引导、容器/镜像/镜像源/Stack/网络/卷管理 | 已实现（状态检测、资源只读列表、容器启停重启/拉取镜像/镜像源选择/Compose 校验部署停止/网络与卷管理；详见 [`RelaxKonOS.DockerManager.md`](./applications/RelaxKonOS.DockerManager.md)） |
 | **ApplicationDeployments** | 镜像/Java/.NET/Python 应用的定义、不可变发布版本、部署/启停/回滚、日志与可选反向代理 | 已实现待验证（与 DockerManager 分离的独立内置应用；协议冻结 + Server 领域层 + 客户端向导与三语文本均已实现，各工程编译通过；**所有运行期行为未在真实 Docker 上验证**，T01–T15 跳过；单服务 Compose 项目部署未实现。详见 [设计](./applications/RelaxKonOS.ApplicationDeployment.Design.md) 与 [进度](./applications/RelaxKonOS.ApplicationDeployment.Progress.md)） |
 | **ProcessGuardian** | 受守护工作负载、健康检查、自动恢复、日志与原生服务管理 | 已实现（独立 Agent、本机认证 IPC、工作负载声明持久化与启停重启；SignalR `/hubs/guardian-logs` 日志广播；健康/服务适配设计中，详见 [`RelaxKonOS.ProcessGuardian.md`](./applications/RelaxKonOS.ProcessGuardian.md)） |
-| **Firewall** | Linux Server UFW 防火墙状态、默认策略与规则管理 | 已实现（Linux 专用；root 会话免再次验证，其他用户 PAM 一次性确认） |
+| **Firewall** | Linux Server UFW 防火墙状态、默认策略与规则管理 | 已实现（Linux 专用；系统管理员动态授权，其他会话精确管理员认证） |
 | **CertificateManager** | 本机 ACME 证书申请、部署与续期 | 已实现（基础 UI、预检、申请/取消、续期、Kestrel 部署、吊销与删除、自签证书；DNS-01/Wildcard、Nginx/Apache/IIS 部署、部署审计落 HostGlobal，详见 [`RelaxKonOS.CertificateManager.md`](./applications/RelaxKonOS.CertificateManager.md)） |
 | **WebServerManager** | Nginx 发现、最小侵入集成与托管 | 已实现 MVP（实例/站点/配置快照/操作流水、已安装 Nginx 确认、审计落 HostGlobal；更多 Provider 设计中，详见 [`RelaxKonOS.WebServerManager.Design.md`](./applications/RelaxKonOS.WebServerManager.Design.md)） |
 | **GitClient** | 远端宿主机 Git 仓库版本控制（仓库登记、分支、提交、拉取含冲突解决、推送、历史 Log、Remotes） | 已实现 MVP（跨平台 `git` CLI 调用、凭据委托宿主 OS；详见 [`RelaxKonOS.GitClient.md`](./applications/RelaxKonOS.GitClient.md)） |

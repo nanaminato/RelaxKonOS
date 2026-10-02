@@ -16,7 +16,7 @@ internal static class FirewallReadChecks
         transport.Result = new(true, OutputBase64: Convert.ToBase64String(Encoding.UTF8.GetBytes("Status: inactive\n")));
         TestAssert.Assert((await firewall.ListRulesAsync(CancellationToken.None)).Count == 0, "A successful empty status should remain a verified empty list.");
         var before = transport.Calls;
-        var invalid = await firewall.CreateRuleAsync(new("allow", "in", "tcp", "any;reboot", "any", "443", null), CancellationToken.None);
+        var invalid = await firewall.CreateRuleAsync(new("allow", "in", "tcp", "any;reboot", "any", "443"), CancellationToken.None);
         TestAssert.Assert(!invalid.Success && transport.Calls == before, "Invalid structured firewall rule reached the helper.");
         Console.WriteLine("Firewall failed-read, paired-rule and structured validation checks passed.");
     }

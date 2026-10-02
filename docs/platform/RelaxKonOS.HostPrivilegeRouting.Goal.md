@@ -2,7 +2,7 @@
 
 > 状态：实施中。Linux 路由、三类文件根策略及客户端契约已接入代码；Linux 多账户实机、安全重试与发布验收尚未完成，不能据此宣称目标全部可用。
 >
-> 建立日期：2026-09-26。范围：Linux System Mode 的登录身份、文件执行路由与特权文件策略；Windows 仅统一产品语义，具体启用仍受既有 Windows Helper 验收门约束。
+> 建立日期：2026-09-26。范围：System Mode 的宿主身份、文件路由和非文件封闭能力授权；Windows 管理员身份已按 canonical SID 查询，Helper 副作用仍需实机验收。
 >
 > 提案来源：[「梳理管理员密码逻辑」分享会话](https://chatgpt.com/share/6ab7a84a-f770-83e9-9045-261242543513)。用户已确认采用会话最后提出的“三层执行身份 + 自动路由”方向；前半段“所有 Linux 用户均再次输入管理员密码”由本方案取代。
 
@@ -18,17 +18,18 @@ Server 在生产部署中继续以低权限 `relaxkonos-server` 运行。登录�
 
 `HostAdministrator` 的普通文件仍归该账户所有。仅在必要时转入 Helper，不能把管理员的所有文件操作预先改为 root。`HostRoot` 不是放宽 `UserExecutionProtocol.IsEligibleLinuxUserId` 或让 UID 0 进入降权 worker，而是独立的特权执行路由。Terminal、Git、Guardian、部署等操作需分别完成封闭能力、安全审查与实机验收；文件路由完成不等于这些领域自动获得 root 执行。
 
-## 2. 与当前实现的差异
+## 2. 当前实现
 
-| 位置 | 当前基线 | 目标变化 |
-| --- | --- | --- |
-| `HostAdministratorAuthenticator` | Linux 仅 `Verify(currentUsername, password)`，忽略 `administratorUsername`，也不检验管理员资格 | 标准用户手动提权时，使用指定管理员账户的 PAM 凭据，并独立检验宿主管理资格；默认建议 `root`，允许修改 |
-| `UserExecutionEligibilityRules` | Linux UID 0 一律 `ReservedIdentity`，登录响应与执行解析器共用此结果 | 将“普通 worker 可执行”与“会话可进行封闭特权执行”拆开；root 在 System Mode 获得直接 Helper 路由，User Mode 不变 |
-| `UserExecutionFileService` 与 `FileEndpoints` | System Mode 文件操作先走当前用户 transport；权限不足时，仅现有 `IFileElevationSessionStore` grant 命中才走 `IPrivilegedFileService` | 使用统一的路由决策：Standard 显式 grant、Administrator 严格的权限不足自动回退、Root 直接 Helper；若 root 的 Helper 范围拒绝只读请求，仅以 Server 实际非 root 身份观察 |
-| `PrivilegedOperationPolicy` 与 Linux 安装器 | Helper 用一份全局 `FileAllowedRoots`；Linux 默认 `restricted`，`full` 把 `/` 对全部可达特权文件请求开放 | 文件 scope 按授权来源与身份等级分开；任何扩大到 `/` 的配置不得顺带扩大标准用户临时 grant |
-| 桌面 Explorer | Linux 隐藏管理员账户框，因服务端忽略该值 | 标准用户手动提权时显示可编辑的 Linux 管理员账户；对管理员/root 会话不弹重复认证窗 |
-
-既有 [有效 OS 执行身份 Goal](./RelaxKonOS.EffectiveOsUserExecution.Goal.md) 中“权限不足不得自动提权、root 不可作为执行身份”的规则，以及 [跨平台特权操作 Goal](./RelaxKonOS.PrivilegedOperations.Goal.md) 中“Linux 只验证当前登录用户密码”的决定，在本 Goal 实施范围内将由上表的新规则取代。它们目前仍描述已实现行为；实施时必须同步修订，不能留下两个互相矛盾的规范。
+- `HostAccountPrivilegeService` 从 canonical OS binding 推导身份；只有 `amr=system` 会话可自动取得管理员资格，Alias 需显式补充宿主管理员认证。
+- Linux 非 root 管理员资格由 root Helper 查询当前 sudoers 是否允许该 NSS 账户/UID **以 root 执行固定 Helper**；不凭 `sudo`/`wheel` 组名推断。该规则表示 RelaxKonOS 的封闭操作管理委托，不等于任意 root shell 授权。
+- Windows 用 Authz 按 canonical SID 查询当前本地/间接/域组中的 Administrators SID，不依赖英文组名或 Administrator 账户名。策略查询失败拒绝自动授权。
+- `HostElevationSessionStore.IsGranted` 对非文件能力在每次请求重新分类系统账户；自动授权不写入五分钟缓存，撤权后的下一次请求重新需要显式授权。普通用户仍使用 capability、target、subject 和 jti 绑定的五分钟 grant。
+- 文件保持独立的 Standard/Administrator/Root 授权来源和 Helper 范围；文件权限不足不会预先把普通操作改成 root 执行。Windows 文件自动路由仍需 Helper 实机验证。
+- 桌面及 Android 不再硬编码 root/Administrator；未知候选账户留空，Android 仅建议当前服务器已保存的管理员账户。服务端省略管理员账户时验证当前规范化会话账户。
+- Windows 当前用户自己的环境变量无需管理员认证；系统环境变量仍须管理员资格/精确 grant。手动环境授权仅覆盖所请求的 store，不向另一个 store 扩展。
+- 防火墙统一使用 `firewallChange` / `ufw` 授权；移除独立当前用户密码确认、旧密码 DTO 和 DELETE 请求体。保留操作确认与安全的一次重试。
+- Guardian/脚本跨账户运行继续要求本次显式管理员审批（不授予任意 root 命令），但管理员凭据与资格检查复用统一认证器，不再凭组名授予权限。
+- User Mode 不接受自动或手动宿主 grant，也不弹出可跨账户提权的入口。
 
 ## 3. 冻结的身份和授权模型
 
@@ -44,7 +45,7 @@ Server 在生产部署中继续以低权限 `relaxkonos-server` 运行。登录�
 
 `root` 以 UID 0 判定。非 root 管理员不能仅凭 `sudo` 或 `wheel` 组名判定，因为发行版和 sudoers 配置各异。Goal 0 必须冻结并实现一个**由 root 管理、可验证、可审计**的 Linux administrator policy：它明确列出 RelaxKonOS 可接受的管理员账户/组与宿主 sudo 授权的关系，并在资格查询时验证 canonical UID、组和策略仍有效。安装器不得从客户端请求或用户可写文件读取此策略；不认识的发行版、策略错误或 NSS 不可用时不得授予自动提权。验收须覆盖 Ubuntu/Debian 的 sudo 配置、非 sudo 管理员、直接 sudoers 用户项、root 密码被锁定及账户撤权。
 
-管理员用户名默认显示 `root` 只是 UI 建议值；root 没有可用 PAM 密码时，用户可以输入其他**已获认可**的管理员账户。PAM 成功仅证明密码正确，不能代替管理员资格检查。无效凭据与“账户并非管理员”返回不同稳定 problem code；不能回退验证当前普通用户的密码。
+管理员账户输入不按平台猜测默认值；root 没有可用 PAM 密码时，可使用其他**已获认可**的管理员账户及其自身密码。PAM 成功仅证明密码正确，不能代替管理员资格检查。无效凭据与“账户并非管理员”返回不同稳定 problem code；不能回退验证当前普通用户的密码。
 
 ### 3.3 按请求选择执行路径
 
@@ -78,8 +79,8 @@ Server 在生产部署中继续以低权限 `relaxkonos-server` 运行。登录�
 ## 4. 范围与非目标
 
 - **本轮必须完成**：Linux System Mode 的账户等级与管理员认证；root 文件直达 Helper 及策略拒绝后的 Server 身份只读观察；非 root 管理员文件权限不足后的安全自动路由；标准用户精确临时授权；Helper 分层文件策略；桌面 Explorer 和相关客户端提示；安装、运维、测试和现有 Goal 文档同步。
-- **按领域另行验收**：Terminal、Git、Guardian、应用部署、系统服务与其他 Host capability。它们可复用身份等级和授权决策，但不因文件路由完成而自动获得 root shell、任意命令或任意目标权限。
-- **Windows 对齐**：产品规则可对应“普通账户显式管理员认证、管理员账户以自己身份优先、确需权限时走 LocalSystem Helper”；Windows 具体用户执行和自动路由必须通过既有 Windows Server 实机验证门，不在设计文档中宣称已启用。
+- **按领域另行验收**：Terminal、Git、Guardian、应用部署与系统服务的实际副作用。现有非文件 Host capability 已复用动态管理员决策，仍不授予 root shell、任意命令或任意目标权限。
+- **Windows 对齐**：产品规则可对应“普通账户显式管理员认证、管理员账户以自己身份优先、确需权限时走 LocalSystem Helper”；Windows SID 分类及非文件自动授权已接入；具体用户执行与 Helper 副作用仍须通过 Windows Server 实机验证。
 - **User Mode**：保持单用户、无 root Helper 的现有边界；不支持“登录 root 后静默跨账户提权”。
 - 不为 root 新建普通执行账户，不把 Server 服务改为 root，不提供通用 `run`、shell 或由客户端指定可执行文件的接口。
 
@@ -129,3 +130,7 @@ Explorer 对 Standard 显示可修改管理员账户和密码；对 Administrato
 - `/etc/relaxkonos/privileged-helper-roots`、`-administrator`、`-root` 分别约束三类来源。默认均为 restricted，root 额外包含 `/root`；三个 `full` 配置互不继承。显式启用 `--root-file-access full` 表示信任低权限 Server 进程的会话判断：现有 Helper 接收 Server 提供的授权来源，无法抵抗已被攻陷的 Server 伪造来源。该选项只适用于接受此信任边界的部署。
 - 特权文件 Helper 现会在每次 Linux 文件请求开始时以 `openat(O_NOFOLLOW)` 固定授权根目录，并以其目录描述符逐层解析后续组件；父目录替换、叶子链接读取和链接 chmod 均拒绝，不能在路径验证后被改写到策略范围外。写入、复制与删除使用同父目录事务；删除一经移入隐藏事务即为逻辑提交，异常后的递归清理由恢复流程完成。跨文件系统移动在目标复制提交后若源删除失败，仍以冲突失败且绝不自动重放。
 - 尚须在 Linux 隔离环境验证 PAM 锁定 root、sudoers 直接用户项和撤权、UID 漂移、多账户 owner、Helper 停止及并发重试。上述实机安全验收前，不应将本 Goal 标为完成或在生产启用广泛 `/` 文件范围。
+
+## 8. 统一宿主授权验证（2026-10-02）
+
+解决方案构建、管理员授权矩阵、当前 Windows SID/UAC 令牌比对、文件授权来源及主机设置协调器回归通过。HTTP 提权回归覆盖管理员撤权、Alias 补充认证和目标归属。Android JVM 测试验证新版防火墙请求不含密码、一次授权/一次重试及未知结果不重放。Linux PAM、root 锁定、sudoers 撤权与真实 UFW/Windows Helper 的多账户副作用仍需隔离实机验收。

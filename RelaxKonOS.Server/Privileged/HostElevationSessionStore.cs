@@ -5,17 +5,24 @@ using RelaxKonOS.Protocol.Privileged;
 
 namespace RelaxKonOS.Server.Privileged;
 
-/// <summary>In-memory five-minute grants, bound to one access-token jti, subject, capability and canonical target.</summary>
-public sealed class HostElevationSessionStore : IHostElevationSessionStore
+/// <summary>Revalidates automatic host authorization for each non-file operation, otherwise
+/// checks in-memory five-minute grants bound to jti, subject, capability and canonical target.</summary>
+public sealed class HostElevationSessionStore(IHostAccountPrivilegeService privileges,
+    RelaxKonOS.Server.HostMode.IServerModeResolver mode) : IHostElevationSessionStore
 {
     private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(5);
     private readonly ConcurrentDictionary<string, ElevationGrant> _grants = new(StringComparer.Ordinal);
 
     public bool IsGranted(ClaimsPrincipal principal, HostElevationCapability capability, string target)
     {
+        if (mode.Mode != RelaxKonOS.Protocol.Common.ServerMode.System || !Enum.IsDefined(capability)) return false;
         PruneExpired();
         if (!TryIdentity(principal, out var tokenId, out var subject)) return false;
         var canonical = CanonicalTarget(capability, target);
+        // Automatic authorization is recomputed for every operation and is never cached as a
+        // five-minute grant. File routing keeps its separate authorization-source/root policy.
+        if (!IsFileCapability(capability) && privileges.Classify(principal)
+            is HostAccountPrivilege.HostAdministrator or HostAccountPrivilege.HostRoot) return true;
         return _grants.Any(pair => pair.Value.ExpiresAt > DateTimeOffset.UtcNow
             && pair.Value.Capability == capability
             && string.Equals(pair.Value.Subject, subject, StringComparison.Ordinal)
@@ -27,6 +34,8 @@ public sealed class HostElevationSessionStore : IHostElevationSessionStore
     public DateTimeOffset Grant(ClaimsPrincipal principal, HostElevationCapability capability, string target,
         bool includeDescendants, string authenticationMethod, string? correlationId = null)
     {
+        if (mode.Mode != RelaxKonOS.Protocol.Common.ServerMode.System)
+            throw new InvalidOperationException("User Mode does not provide host elevation grants.");
         if (!TryIdentity(principal, out var tokenId, out var subject))
             throw new InvalidOperationException("The access token has no id or subject.");
         // Service, package, certificate and network capabilities are always exact-resource

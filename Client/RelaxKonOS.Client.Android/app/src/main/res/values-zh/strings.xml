@@ -1802,8 +1802,6 @@
     <string name="firewall_confirm">确认宿主防火墙变更</string>
     <string name="firewall_management_warning">此操作可能阻断当前管理连接和宿主服务。请先放行管理地址与端口。若断线，请重连后核实宿主事实；当前 API 没有自动回滚或重放键。</string>
     <string name="firewall_number">规则编号：%1$d</string>
-    <string name="firewall_own_password_note">输入当前认证账号 %1$s 的宿主密码，仅确认本次变更，不会保存；可能另需管理员提权。</string>
-    <string name="firewall_password">当前账号宿主密码</string>
     <string name="firewall_discard">放弃未保存的防火墙编辑？</string>
     <string name="firewall_discard_help">打开所选目标前将放弃草稿。</string>
     <string name="firewall_allow">允许</string>
@@ -1812,7 +1810,6 @@
     <string name="firewall_limit">限速</string>
     <string name="firewall_any">任意</string>
     <string name="firewall_conflict">宿主规则或策略已变化，请刷新并确认当前规则后再提交。</string>
-    <string name="firewall_password_failed">当前账号密码确认被拒绝</string>
     <string name="firewall_permission">需要宿主授权或授权不可用</string>
     <string name="firewall_edit">编辑规则</string>
     <string name="firewall_submit">确认变更</string>
@@ -2583,4 +2580,7 @@
     <string name="runtime_install_action">安装 %1$s</string>
     <string name="guardian_agent_permission">服务器无法访问守护服务。请修复服务器安装后刷新。</string>
     <string name="runtime_recovery_tools">恢复之前的操作</string>
+    <string name="server_maintenance_repair_certificate">修复时重新生成局域网自签证书</string>
+    <string name="server_maintenance_repair_certificate_note">填写当前局域网 IP 或域名，用逗号分隔。此操作会替换证书并重启服务，重新连接时需要核对并信任新证书。旧版服务器部署脚本需先升级。</string>
+    <string name="server_maintenance_repair_certificate_invalid">请填写至少一个 IP 或域名，用逗号分隔。</string>
 </resources>

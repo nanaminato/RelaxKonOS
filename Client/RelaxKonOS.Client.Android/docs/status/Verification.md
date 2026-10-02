@@ -4,6 +4,10 @@
 
 ## 1. 共同设备与发布检查
 
+宿主授权：离线 `:app:testDebugUnitTest` 全部通过，覆盖新版防火墙请求无密码字段、一次管理员认证/一次重试、事实变化拒绝、未知结果持久且不重放。共享 Server `--host-operation-authorization-only` 通过，覆盖动态管理员撤权、Alias、User Mode、精确 grant、文件来源、当前 Windows SID/UAC 令牌比对及真实 HTTP 目标归属；`--host-settings-only` 通过。仍须在 Linux 隔离宿主验证锁定 root、非 root sudo 管理员、普通用户、撤权、真实 UFW 和 Helper 副作用；Windows 域组/撤权和真实 Helper，以及手机/平板确认、取消、指纹和跨服务器账户提示均待实机验收。
+
+2026-10-02 局域网自签证书修复：`ServerMaintenanceOptionsTest` 4 项、`ServerMaintenanceTest` 1 项、`ServerCenterDeploymentClientTest` 11 项与离线 `assembleDebug` 通过。覆盖普通修复保留证书/数据、Linux/Windows 系统修复的当前 IP 请求序列化、User Mode 拒绝、空/非法名称拒绝，以及卸载/回滚隔离证书参数。共享启动器 `Tests/Deployment/certificate_repair_checks.py` 2 项通过，覆盖默认保留、显式重新生成、回滚保留及旧引擎拒绝；Bash/PowerShell 启动器语法检查通过。尚未通过 Android 实机执行证书更换；手机/平板的大字体、TalkBack、键盘避让、确认/取消、切换宿主表单隔离、断线回执查询与重新登录核对新指纹，以及真实 Windows 修复均待验证。此前 SSH 直接修复 Linux 宿主的证据不代表移动端端到端验收。
+
 2026-10-01 SSH 设置、双终端与平板导航：703 项 JVM 测试与 `assembleDebug` 通过，新增检查覆盖原生/原始 VT 输出并存、跨帧 UTF-8、清屏、resize/离页保留及重连/附加其它 shell 同步重置。SM-S9380 与 SM-X510（Android 16）均执行 `SshWorkspaceLayoutTest` 三项、`NativeTerminalTest` 一项及 `XtermTerminalTest` 一项通过：导航覆盖 360/700/1000dp 设置入口、底栏键盘折叠、侧栏独立视口和无障碍名称；原生模式验证首次连接成功后同步 PTY 尺寸及视口宽度变化；xterm.js 验证 Windows VT 重绘、查询响应和视口显隐尺寸。xterm.js 用例等待实际 fit/绘制完成后检查边界，避免在 200ms 尺寸稳定期前误报。完整终端测试包在平板 `keyboardShowAndHidePreserveTheUnsentDraft` 长时间等待后中止，不能记为整包通过。语言/主题/高对比度/终端选择的重启恢复、真实 SSH/Server 会话切换两种渲染器、平板分屏/旋转与复杂全屏程序仍需实机联调；导航测量用例不代表所有 SSH 页面已完成内容双栏。
 
 2026-10-01 键盘展开最后一行裁切：真机 Windows SSH 会话确认原屏幕底边为 196 CSS px，但 WebView 可视高度只有 188 px。addon-fit 只扣除 xterm 元素自身内边距，原来放在父容器的 12px 内边距未计入可用行列数。将内边距移入 xterm 元素后，键盘展开时为 12 行、屏幕底边 170px / 可视高度 188px；收起时为 16 行、底边 223px / 可视高度 235px，Windows 提示符保留。resize 前处于最新输出位置时 resize 后继续贴底；查看历史时保留滚动位置。设备回归检查新增屏幕右边/底边不超过视口的断言。

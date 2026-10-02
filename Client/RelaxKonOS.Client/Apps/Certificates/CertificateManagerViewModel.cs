@@ -65,7 +65,6 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasPreflightResult))]
     private LocalizedStatus _preflightText;
 
-    public bool IsRoot => string.Equals(_session.CurrentUser?.Username, "root", StringComparison.Ordinal);
     public bool HasOperationActivity => !string.IsNullOrWhiteSpace(OperationText);
     public bool HasPreflightResult => !string.IsNullOrWhiteSpace(PreflightText);
 

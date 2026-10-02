@@ -265,7 +265,7 @@ public sealed class ProcessGuardianApp : RemoteApplicationBase
         {
             var username = new TextBox
             {
-                    Text = session.CurrentServer?.Platform == HostPlatformKind.Windows ? "Administrator" : "root",
+                    Text = string.Empty,
                 PlaceholderText = LocalizedText.Get("guardian.admin_approval.username"),
             };
             var password = new TextBox { PasswordChar = '•', PlaceholderText = LocalizedText.Get("guardian.admin_approval.password") };

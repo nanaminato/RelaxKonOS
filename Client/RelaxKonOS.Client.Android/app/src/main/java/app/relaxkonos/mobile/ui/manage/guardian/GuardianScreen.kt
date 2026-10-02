@@ -338,7 +338,7 @@ private fun GuardianEditor(owner: SessionState.Active, draft: GuardianDraft, sta
     var readConfirm by remember(draft) { mutableStateOf(false) }
     var discard by remember(draft) { mutableStateOf(false) }
     var approvalTarget by remember(draft) { mutableStateOf<GuardianDefinition?>(null) }
-    var adminName by remember(draft) { mutableStateOf(if (owner.serverPlatform.contains("windows", true)) "Administrator" else "root") }
+    var adminName by remember(draft) { mutableStateOf("") }
     var password by remember(draft) { mutableStateOf("") }
     DisposableEffect(owner, draft) { onDispose { password = "" } }
     fun close() { if (!state.loading) { if (draft.dirty(owner.serverPlatform)) discard = true else onCancel() } }

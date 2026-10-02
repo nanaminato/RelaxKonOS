@@ -3,7 +3,7 @@ using RelaxKonOS.Protocol.Privileged;
 
 namespace RelaxKonOS.Server.Privileged;
 
-/// <summary>JWT-jti-scoped, short-lived authorization for one structured host capability.</summary>
+/// <summary>Current administrator policy or JWT-jti-scoped temporary authorization for a structured capability.</summary>
 public interface IHostElevationSessionStore
 {
     bool IsGranted(ClaimsPrincipal principal, HostElevationCapability capability, string target);

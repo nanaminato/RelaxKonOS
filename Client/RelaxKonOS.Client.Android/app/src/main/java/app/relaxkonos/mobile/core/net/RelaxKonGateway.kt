@@ -50,7 +50,7 @@ interface RelaxKonGateway {
     suspend fun smbChange(serverUrl: String, accessToken: String, change: SmbChange, password: CharArray?): ApiResult<SmbReceipt>
     suspend fun firewallStatus(serverUrl: String, accessToken: String): ApiResult<FirewallStatus>
     suspend fun firewallRules(serverUrl: String, accessToken: String): ApiResult<List<FirewallRule>>
-    suspend fun changeFirewall(serverUrl: String, accessToken: String, change: FirewallChange, password: CharArray?): ApiResult<FirewallResult>
+    suspend fun changeFirewall(serverUrl: String, accessToken: String, change: FirewallChange): ApiResult<FirewallResult>
     suspend fun proxySettings(serverUrl: String, accessToken: String): ApiResult<ProxySettings>
     suspend fun proxyRecovery(serverUrl: String, accessToken: String): ApiResult<ProxyRecovery>
     suspend fun proxyTun(serverUrl: String, accessToken: String): ApiResult<ProxyRecovery>

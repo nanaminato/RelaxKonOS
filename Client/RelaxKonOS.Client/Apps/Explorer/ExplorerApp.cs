@@ -239,8 +239,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
     private static Task<AdministratorCredentials?> RequestAdministratorCredentialsAsync(AppContext context, string title, string prompt)
     {
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
-        var defaultAccount = session?.CurrentServer?.Platform == HostPlatformKind.Linux
-            ? "root" : session?.CurrentUser?.Username;
+        var defaultAccount = string.Empty;
         return context.WindowManager.ShowSystemDialogAsync<AdministratorCredentials?>(title, dialog =>
         {
             var account = new TextBox
@@ -254,7 +253,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
             var confirm = new Button { Content = LocalizedText.Get("common.ok"), Classes = { "primary" } };
             confirm.Click += (_, _) =>
             {
-                // Linux 默认建议 root；密码被锁定时可改用其他已获认可的管理员账户。
+                // Administrator credentials belong to the selected host account, not a platform default.
                 var typed = account.Text?.Trim();
                 dialog.Close(new AdministratorCredentials(
                     string.IsNullOrEmpty(typed) ? defaultAccount ?? string.Empty : typed,

@@ -123,10 +123,10 @@ class FakeGateway : RelaxKonGateway {
     override suspend fun alertDetail(serverUrl: String, accessToken: String, id: String) = onAlertDetail?.invoke(id) ?: error("Unexpected alert detail")
     var onFirewallStatus: (() -> ApiResult<FirewallStatus>)? = null
     var onFirewallRules: (() -> ApiResult<List<FirewallRule>>)? = null
-    var onChangeFirewall: ((FirewallChange, CharArray?) -> ApiResult<FirewallResult>)? = null
+    var onChangeFirewall: ((FirewallChange) -> ApiResult<FirewallResult>)? = null
     override suspend fun firewallStatus(serverUrl: String, accessToken: String) = onFirewallStatus?.invoke() ?: error("Unexpected firewall status")
     override suspend fun firewallRules(serverUrl: String, accessToken: String) = onFirewallRules?.invoke() ?: error("Unexpected firewall rules")
-    override suspend fun changeFirewall(serverUrl: String, accessToken: String, change: FirewallChange, password: CharArray?) = onChangeFirewall?.invoke(change, password) ?: error("Unexpected firewall change")
+    override suspend fun changeFirewall(serverUrl: String, accessToken: String, change: FirewallChange) = onChangeFirewall?.invoke(change) ?: error("Unexpected firewall change")
     var onProxySettings: suspend () -> ApiResult<ProxySettings> = { error("Unexpected proxy diagnostic call") }
     override suspend fun proxySettings(serverUrl: String, accessToken: String): ApiResult<ProxySettings> = onProxySettings()
     var onProxyRecovery: suspend () -> ApiResult<ProxyRecovery> = { error("Unexpected proxy diagnostic call") }

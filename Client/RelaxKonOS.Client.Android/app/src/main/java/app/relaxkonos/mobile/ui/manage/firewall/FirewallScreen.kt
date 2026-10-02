@@ -8,7 +8,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.R
@@ -31,13 +30,12 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
     var defaults by remember(owner) { mutableStateOf<Pair<String, String>?>(null) }
     var selected by remember(owner) { mutableStateOf<Int?>(null) }
     var confirmation by remember(owner) { mutableStateOf<FirewallConfirmation?>(null) }
-    var password by remember(owner) { mutableStateOf("") }
     var leave by remember(owner) { mutableStateOf<(() -> Unit)?>(null) }
     val dirty = draft != null || defaults != null
     val navigate: (() -> Unit) -> Unit = { action -> if (dirty) leave = action else action() }
     LaunchedEffect(owner, state.owner) { if (owner != null && visible) model.refresh() }
     LaunchedEffect(owner, state.saved) { if (visible && state.saved > 0) { draft = null; defaults = null } }
-    DisposableEffect(owner) { onDispose { model.stop(); password = "" } }
+    DisposableEffect(owner) { onDispose { model.stop() } }
     BackHandler(dirty) { navigate { draft = null; defaults = null; selected = null } }
 
     Column(modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
@@ -105,7 +103,7 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
         }
     }
     val pending = confirmation
-    if (pending != null) AlertDialog(onDismissRequest = { confirmation = null; password = "" }, title = { Text(stringResource(R.string.firewall_confirm)) },
+    if (pending != null) AlertDialog(onDismissRequest = { confirmation = null }, title = { Text(stringResource(R.string.firewall_confirm)) },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Text(stringResource(R.string.firewall_management_warning))
             Text(firewallChangeLabel(pending.change.kind))
@@ -113,14 +111,10 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
             pending.change.number?.let { Text(stringResource(R.string.firewall_number, it)) }
             pending.change.enabled?.let { Text(stringResource(if (it) R.string.firewall_enable else R.string.firewall_disable)) }
             pending.change.incoming?.let { Text(stringResource(R.string.firewall_defaults_value, firewallValue(it), firewallValue(pending.change.outgoing))) }
-            if (owner?.userName != "root") {
-                Text(stringResource(R.string.firewall_own_password_note, owner?.userName.orEmpty()))
-                OutlinedTextField(password, { password = it }, label = { Text(stringResource(R.string.firewall_password)) }, singleLine = true, visualTransformation = PasswordVisualTransformation())
-            }
-        } }, confirmButton = { Button(enabled = ready && (owner?.userName == "root" || password.isNotEmpty()), onClick = {
-            val secret = if (owner?.userName == "root") null else password.toCharArray(); password = ""; confirmation = null
-            model.change(pending.expected, pending.change, secret)
-        }) { Text(stringResource(R.string.firewall_submit)) } }, dismissButton = { TextButton(onClick = { confirmation = null; password = "" }) { Text(stringResource(R.string.common_cancel)) } })
+        } }, confirmButton = { Button(enabled = ready, onClick = {
+            confirmation = null
+            model.change(pending.expected, pending.change)
+        }) { Text(stringResource(R.string.firewall_submit)) } }, dismissButton = { TextButton(onClick = { confirmation = null }) { Text(stringResource(R.string.common_cancel)) } })
     if (leave != null) AlertDialog(onDismissRequest = { leave = null }, title = { Text(stringResource(R.string.firewall_discard)) },
         text = { Text(stringResource(R.string.firewall_discard_help)) }, confirmButton = { TextButton(onClick = { val action = leave; leave = null; action?.invoke() }) { Text(stringResource(R.string.firewall_submit)) } },
         dismissButton = { TextButton(onClick = { leave = null }) { Text(stringResource(R.string.common_cancel)) } })
@@ -141,7 +135,6 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
 }
 @Composable private fun firewallProblem(code: String) = stringResource(when (code) {
     "firewall.facts_changed" -> R.string.firewall_conflict
-    "firewall.password_required", "firewall.password_invalid", "firewall.invalid_requester" -> R.string.firewall_password_failed
     "firewall.ufw_not_installed", "firewall.not_supported", "firewall.unsupported_platform" -> R.string.firewall_unavailable
     "elevation-required", "firewall.elevation_required", "firewall.permission_denied", "firewall.privileged_proxy_required" -> R.string.firewall_permission
     else -> R.string.firewall_unverified
