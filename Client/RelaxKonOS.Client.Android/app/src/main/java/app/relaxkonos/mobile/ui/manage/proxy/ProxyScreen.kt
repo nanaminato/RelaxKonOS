@@ -18,6 +18,7 @@ import app.relaxkonos.mobile.ui.common.*
 import app.relaxkonos.mobile.ui.manage.operations.*
 import app.relaxkonos.mobile.ui.theme.Spacing
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import java.text.DateFormat
 import java.util.Date
 
@@ -59,19 +60,22 @@ private data class ProxyConfirmation(val action: () -> Unit)
         (state.operation == null || state.operationVerified && !state.operation.state.active) &&
         (state.installation == null || state.installationVerified && !state.installation.state.active) && !state.pendingInstallation
     val connected = overview?.controllerReachable == true
-    LaunchedEffect(owner, epoch, networkSection, connected, state.busy, state.diagnosticsAtMillis, state.uncertain) {
-        if (networkSection && connected && !state.busy && !state.uncertain) {
-            if (state.diagnosticsAtMillis == null) model.diagnostics()
-            else if ((state.traffic as? ApiResult.Success)?.value?.problemCode?.isBlank() == true) { delay(3000); model.diagnostics() }
+    LaunchedEffect(owner, epoch, section, connected, state.uncertain) {
+        if (networkSection && connected && !state.uncertain) {
+            while (isActive) {
+                model.diagnostics(section)
+                delay(3000)
+            }
         }
     }
     BackHandler(section == "profiles" && selected != null && editor == null && !state.busy) { selected = null }
-    WorkspaceColumn(stringResource(R.string.mihomo_title), onBack, listOf(WorkspaceDestination("overview", R.string.workspace_overview), WorkspaceDestination("profiles", R.string.workspace_profiles), WorkspaceDestination("nodes", R.string.workspace_nodes), WorkspaceDestination("connections", R.string.workspace_connections), WorkspaceDestination("logs", R.string.workspace_logs), WorkspaceDestination("settings", R.string.workspace_settings), WorkspaceDestination("records", R.string.workspace_records)), section, { section = it }, modifier, stateKey = owner to epoch) {
+    // Retained sections own their item spacing; hidden sections must not add root gaps.
+    WorkspaceColumn(stringResource(R.string.mihomo_title), onBack, listOf(WorkspaceDestination("overview", R.string.workspace_overview), WorkspaceDestination("profiles", R.string.workspace_profiles), WorkspaceDestination("nodes", R.string.workspace_nodes), WorkspaceDestination("connections", R.string.workspace_connections), WorkspaceDestination("logs", R.string.workspace_logs), WorkspaceDestination("settings", R.string.workspace_settings), WorkspaceDestination("records", R.string.workspace_records)), section, { section = it }, modifier, stateKey = owner to epoch, contentSpacing = 0.dp, contentPadding = PaddingValues(horizontal = Spacing.lg, vertical = Spacing.sm)) {
         if (!available) { Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn }
 WorkspaceSection(section == "overview") {
         ManagementCard {
         Text(stringResource(R.string.mihomo_intro))
-        FlowRow {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             TextButton(enabled = !state.busy, onClick = model::refresh) { Text(stringResource(R.string.common_refresh)) }
             if (canManage) OutlinedButton(enabled = !state.busy && state.installation?.state?.active != true, onClick = { install = true }) { Text(if (notInstalled) stringResource(R.string.runtime_install_action, "Mihomo") else stringResource(R.string.mihomo_runtime_manage)) }
         }
@@ -87,7 +91,7 @@ WorkspaceSection(section == "overview") {
             Text(stringResource(if (overview.runtime.integrityVerified) R.string.tunnels_integrity_verified else R.string.tunnels_integrity_unverified))
             overview.runtime.problemCode.takeIf(String::isNotBlank)?.let { Text(proxyProblemLabel(it)) }
             overview.problemCode.takeIf(String::isNotBlank)?.let { Text(proxyProblemLabel(it)) }
-            if (canManage) FlowRow {
+            if (canManage) FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 ProxyAction.entries.filter { it in setOf(ProxyAction.Start, ProxyAction.Stop, ProxyAction.Restart) }.forEach { action ->
                     val supported = overview.runtime.state in setOf(ProxyRuntimeState.Stopped, ProxyRuntimeState.Running, ProxyRuntimeState.Degraded, ProxyRuntimeState.Failed)
                     OutlinedButton(enabled = ready && supported, onClick = { confirm = ProxyConfirmation { model.queue(action) } }) { Text(proxyActionLabel(action)) }
@@ -97,7 +101,7 @@ WorkspaceSection(section == "overview") {
         }
         }
 }
-        if (section != "records" && (state.pending.isNotEmpty() || state.pendingInstallation || state.uncertain || state.operation?.state?.active == true || state.installation?.state?.active == true)) TextButton(onClick = { section = "records" }) { Text(stringResource(R.string.workspace_records_attention)) }
+        if (section != "records" && (state.pending.isNotEmpty() || state.pendingInstallation || state.uncertain || state.operation?.state?.active == true || state.installation?.state?.active == true)) TextButton(modifier = Modifier.padding(vertical = Spacing.sm), onClick = { section = "records" }) { Text(stringResource(R.string.workspace_records_attention)) }
         WorkspaceSection(section == "records") {
         if (state.operation == null && state.installation == null && state.pending.isEmpty() && !state.pendingInstallation) ManagementCard { Text(stringResource(R.string.workspace_records_empty)) }
                 state.operation?.let { operation ->
@@ -147,9 +151,8 @@ WorkspaceSection(section == "overview") {
             if (!notInstalled) key(owner, epoch) { ProxyNetworkPanel(model, canManage, ready, section) { action -> confirm = ProxyConfirmation(action) } }
         }
 WorkspaceSection(section == "profiles") {
-        HorizontalDivider()
         Text(stringResource(R.string.mihomo_subscriptions), style = MaterialTheme.typography.titleMedium)
-        if (canManage) FlowRow {
+        if (canManage) FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             OutlinedButton(enabled = ready, onClick = { editor = "subscription" }) { Text(stringResource(R.string.mihomo_import)) }
             TextButton(enabled = ready && !subscriptions.isNullOrEmpty(), onClick = { confirm = ProxyConfirmation { model.queue(ProxyAction.RefreshAll) } }) { Text(stringResource(R.string.mihomo_refresh_all)) }
         }
@@ -157,7 +160,7 @@ WorkspaceSection(section == "profiles") {
             ManagementCard {
             Text(subscription.name + if (subscription.active) " · " + stringResource(R.string.mihomo_active) else "")
             subscription.lastUpdatedAtMillis?.let { Text(DateFormat.getDateTimeInstance().format(Date(it)), style = MaterialTheme.typography.bodySmall) }
-            if (canManage) FlowRow {
+            if (canManage) FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 TextButton(enabled = ready, onClick = { confirm = ProxyConfirmation { model.queue(ProxyAction.RefreshSubscription, subscription.id) } }) { Text(stringResource(R.string.common_refresh)) }
                 TextButton(enabled = ready, onClick = { confirm = ProxyConfirmation { model.queue(ProxyAction.ActivateSubscription, subscription.id) } }) { Text(stringResource(R.string.mihomo_activate)) }
             }
@@ -171,7 +174,7 @@ WorkspaceSection(section == "profiles") {
                 ManagementCard {
                 Text(profile.name, style = MaterialTheme.typography.titleSmall)
                 Text(stringResource(R.string.mihomo_revision, profile.revision))
-                if (canManage) FlowRow {
+                if (canManage) FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     TextButton(enabled = ready, onClick = { editor = "profile" }) { Text(stringResource(R.string.tunnels_edit)) }
                     TextButton(enabled = ready && !profile.active, onClick = { confirm = ProxyConfirmation { model.activate(profile) } }) { Text(stringResource(R.string.mihomo_activate)) }
                     TextButton(enabled = ready && overview?.supportsValidation == true, onClick = { editor = "yaml" }) { Text(stringResource(R.string.mihomo_apply_yaml)) }
@@ -183,31 +186,13 @@ WorkspaceSection(section == "profiles") {
 }
         WorkspaceSection(section == "nodes") {
         if (!notInstalled) {
-        HorizontalDivider()
-        Text(stringResource(R.string.mihomo_nodes), style = MaterialTheme.typography.titleMedium)
         if (!connected) Text(stringResource(R.string.mihomo_controller_unavailable)) else {
             val routing = (state.routing as? ApiResult.Success)?.value
-            FlowRow { ProxyRoutingMode.entries.forEach { mode ->
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) { ProxyRoutingMode.entries.forEach { mode ->
                 FilterChip(selected = routing == mode, enabled = canManage && ready && routing != null,
                     onClick = { confirm = ProxyConfirmation { model.routing(mode) } }, label = { Text(proxyRoutingLabel(mode)) })
             } }
-            val groups = (state.groups as? ApiResult.Success)?.value
-            if (groups == null) Text(stringResource(R.string.mihomo_unavailable)) else groups.forEach { group ->
-                ManagementCard {
-                Text(group.name, style = MaterialTheme.typography.titleSmall)
-                group.proxies.forEach { proxy -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    Text(proxy, modifier = Modifier.weight(1f))
-                    if (group.selected == proxy) Text(stringResource(R.string.mihomo_active))
-                    if (canManage) {
-                        if (group.selectable) TextButton(enabled = ready && group.selected != proxy, onClick = { confirm = ProxyConfirmation { model.select(group, proxy) } }) { Text(stringResource(R.string.mihomo_select)) }
-                        TextButton(enabled = ready, onClick = { model.delay(group.name, proxy, "https://www.gstatic.com/generate_204") }) { Text(stringResource(R.string.mihomo_test_delay)) }
-                    }
-                } }
-                }
-            }
-            (state.delay as? ApiResult.Success)?.value?.let { result ->
-                Text(result.proxyName + " · " + if (result.timedOut || result.delayMilliseconds == null) stringResource(R.string.mihomo_timeout) else stringResource(R.string.mihomo_delay_result, result.delayMilliseconds))
-            }
+            key(owner, epoch) { ProxyNodesPanel(state, canManage, ready, model::refresh, model::select, model::testGroup) }
         }
         }
 }

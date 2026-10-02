@@ -38,6 +38,8 @@
     "proxy.status.subscription_imported": "订阅已导入并完成配置校验。",
     "proxy.status.subscription_none": "没有可查看的运行时订阅。",
     "proxy.proxies": "代理组",
+    "proxy.connections_empty": "暂无活动连接。经由这台服务器代理的请求会显示在这里，每 3 秒自动刷新。",
+    "proxy.connections_count": "{0} 个活动连接",
     "proxy.connections": "连接",
     "proxy.current_node": "当前节点",
     "proxy.overview.enabled": "已启用",

@@ -99,7 +99,9 @@ class JsonBody {
                 char == '\n' -> target.write("\\n".toByteArray(Charsets.UTF_8))
                 char == '\r' -> target.write("\\r".toByteArray(Charsets.UTF_8))
                 char == '\t' -> target.write("\\t".toByteArray(Charsets.UTF_8))
-                char < ' ' -> target.write("\\u%04x".format(char.code).toByteArray(Charsets.UTF_8))
+                // UTF-16 surrogate halves cannot be encoded as UTF-8 independently. JSON
+                // escapes preserve the pair for flags/emoji in node names and credentials.
+                char < ' ' || char in '\uD800'..'\uDFFF' -> target.write("\\u%04x".format(char.code).toByteArray(Charsets.UTF_8))
                 else -> target.write(char.toString().toByteArray(Charsets.UTF_8))
             }
         }

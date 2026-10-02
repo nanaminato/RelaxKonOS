@@ -11,20 +11,23 @@ import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.data.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
 internal data class ProxyState(val busy: Boolean = false, val overview: ApiResult<ProxyOverview>? = null,
     val profiles: ApiResult<List<ProxyProfile>>? = null, val subscriptions: ApiResult<List<ProxySubscription>>? = null,
     val groups: ApiResult<List<ProxyGroup>>? = null, val routing: ApiResult<ProxyRoutingMode>? = null,
     val releases: ApiResult<List<ProxyRelease>>? = null,
     val downloadOptions: Boolean = false, val download: ApiResult<ProxyDownload>? = null,
-    val delay: ApiResult<ProxyDelay>? = null, val pending: List<PendingProxyRequest> = emptyList(),
+    val delays: Map<String, ApiResult<ProxyDelay>> = emptyMap(), val testingProxies: Set<String> = emptySet(),
+    val testingGroup: String? = null, val pending: List<PendingProxyRequest> = emptyList(),
     val operation: ProxyOperation? = null, val operationVerified: Boolean = false,
     val installation: InstallationOperation? = null, val installationVerified: Boolean = false, val pendingInstallation: Boolean = false,
     val reference: InstallationFileReference? = null, val uploadBytes: Long? = null,
     val settings: ApiResult<ProxySettings>? = null, val recovery: ApiResult<ProxyRecovery>? = null,
     val traffic: ApiResult<ProxyTraffic>? = null, val connections: ApiResult<List<ProxyConnection>>? = null,
     val logs: ApiResult<List<ProxyLog>>? = null, val dns: ApiResult<ProxyDns>? = null, val geoData: ApiResult<ProxyGeoData>? = null,
-    val diagnosticsAtMillis: Long? = null, val problemCode: String? = null, val uncertain: Boolean = false, val savedEpoch: Int = 0, val observedAtMillis: Long? = null)
+    val diagnosticsBusy: Boolean = false, val diagnosticsSection: String? = null, val diagnosticsAtMillis: Long? = null, val problemCode: String? = null, val uncertain: Boolean = false, val savedEpoch: Int = 0, val observedAtMillis: Long? = null)
 internal class ProxyViewModel(application: Application) : AndroidViewModel(application) {
     private val container get() = getApplication<RelaxKonApplication>().container
     private var owner: SessionState.Active? = null
@@ -98,18 +101,70 @@ internal class ProxyViewModel(application: Application) : AndroidViewModel(appli
     fun routing(mode: ProxyRoutingMode) = mutation { active -> container.proxy.routing(active, mode) }
     fun saveSettings(settings: ProxySettings) = mutation { active -> container.proxy.saveSettings(active, settings) }
     fun configureGeoData(path: String) = mutation { active -> container.proxy.configureGeoData(active, path) }
-    fun closeConnection(id: String) = mutation { active -> container.proxy.closeConnection(active, id) }
-    fun diagnostics() = work { active ->
-        val overview = (state.overview as? ApiResult.Success)?.value ?: return@work
-        val traffic = container.proxy.traffic(active)
-        val connections = if (overview.supportsConnections) container.proxy.connections(active) else null
-        val logs = if (overview.supportsLogs) container.proxy.logs(active) else null
-        val dns = if (overview.supportsDns) container.proxy.dns(active) else null; verify(active)
-        state = state.copy(traffic = traffic, connections = connections, logs = logs, dns = dns, diagnosticsAtMillis = System.currentTimeMillis())
-        listOfNotNull(traffic, connections, logs, dns).forEach { failure(it) }
+    fun closeConnection(id: String) = work { active ->
+        val result = container.proxy.closeConnection(active, id); verify(active); failure(result)
+        if (result is ApiResult.Success) {
+            val current = (state.connections as? ApiResult.Success)?.value
+            state = state.copy(connections = current?.let { ApiResult.Success(it.filterNot { connection -> connection.id == id }) })
+        }
     }
-    fun delay(group: String, proxy: String, url: String) = work { active ->
-        val result = container.proxy.delay(active, group, proxy, url.trim(), 5000); verify(active); failure(result); state = state.copy(delay = result)
+    fun diagnostics(section: String) {
+        val active = container.activeSession ?: return
+        val overview = (state.overview as? ApiResult.Success)?.value ?: return
+        if (state.busy || state.diagnosticsBusy || !overview.controllerReachable) return
+        state = state.copy(diagnosticsBusy = true)
+        viewModelScope.launch {
+            try {
+                coroutineScope {
+                    when (section) {
+                        "connections" -> {
+                            val traffic = async { container.proxy.traffic(active) }
+                            val connections = async { if (overview.supportsConnections) container.proxy.connections(active) else null }
+                            val rows = connections.await(); verify(active)
+                            // Render connections before waiting for the flow counters.
+                            state = state.copy(connections = rows)
+                            val counters = traffic.await(); verify(active)
+                            state = state.copy(traffic = counters)
+                        }
+                        "logs" -> {
+                            val logs = if (overview.supportsLogs) container.proxy.logs(active) else null; verify(active)
+                            val previous = (state.logs as? ApiResult.Success)?.value.orEmpty()
+                            state = state.copy(logs = if (logs is ApiResult.Success)
+                                ApiResult.Success((logs.value + previous).distinct().sortedByDescending { it.timestampMillis }.take(500)) else logs)
+                        }
+                        "settings" -> {
+                            val dns = if (overview.supportsDns) container.proxy.dns(active) else null; verify(active)
+                            state = state.copy(dns = dns)
+                        }
+                    }
+                }
+                verify(active)
+                state = state.copy(diagnosticsSection = section, diagnosticsAtMillis = System.currentTimeMillis())
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                if (container.activeSession === active) when (section) {
+                    "connections" -> state = state.copy(connections = ApiResult.Transport(null))
+                    "logs" -> state = state.copy(logs = ApiResult.Transport(null))
+                    "settings" -> state = state.copy(dns = ApiResult.Transport(null))
+                }
+            } finally {
+                if (container.activeSession === active) state = state.copy(diagnosticsBusy = false)
+            }
+        }
+    }
+    fun testGroup(group: ProxyGroup) = work { active ->
+        val names = group.proxies.toSet()
+        state = state.copy(testingGroup = group.name, testingProxies = names, delays = state.delays - names)
+        try {
+            testProxyGroupLatency(group,
+                test = { proxy -> container.proxy.delay(active, group.name, proxy, "https://www.gstatic.com/generate_204", 5000) },
+                onResult = { proxy, result ->
+                    verify(active)
+                    state = state.copy(delays = state.delays + (proxy to result), testingProxies = state.testingProxies - proxy)
+                })
+        } finally {
+            if (container.activeSession === active) state = state.copy(testingGroup = null, testingProxies = emptySet())
+        }
     }
     private fun mutation(call: suspend (SessionState.Active) -> ApiResult<*>) = work { active ->
         val result = call(active); verify(active); failure(result)

@@ -1,3 +1,10 @@
+if (args.Contains("--proxy-controller-only"))
+{
+    await NetworkProxyTunnelChecks.VerifyMihomoControllerSafetyAsync();
+    await NetworkProxyTunnelChecks.VerifyMihomoLiveStreamsAsync();
+    Console.WriteLine("Mihomo controller stream and connection checks passed.");
+    return;
+}
 if (args.Contains("--mihomo-runtime-only"))
 {
     if (MihomoRuntimeManifest.CurrentRid() != "linux-x64")
@@ -279,6 +286,7 @@ try
         await ProxyConfigurationChecks.VerifyProxyTunSafetyAsync(root);
         await ProxyConfigurationChecks.VerifyMihomoTunActivationPreservationAsync(root);
         await NetworkProxyTunnelChecks.VerifyMihomoControllerSafetyAsync();
+    await NetworkProxyTunnelChecks.VerifyMihomoLiveStreamsAsync();
         await NetworkProxyTunnelChecks.VerifyMihomoProxyGroupOrderingAsync(root);
         await NetworkProxyTunnelChecks.VerifyProxyDiagnosticLogsAsync(root);
         await NetworkProxyTunnelChecks.VerifyMihomoRuntimeSafetyAsync(root);
@@ -367,6 +375,7 @@ try
     NetworkProxyTunnelChecks.VerifyTunnelProtocolContract();
     NetworkProxyTunnelChecks.VerifyProxyProtocolContract();
     await NetworkProxyTunnelChecks.VerifyMihomoControllerSafetyAsync();
+    await NetworkProxyTunnelChecks.VerifyMihomoLiveStreamsAsync();
     await NetworkProxyTunnelChecks.VerifyMihomoProxyGroupOrderingAsync(root);
     await NetworkProxyTunnelChecks.VerifyProxyDiagnosticLogsAsync(root);
     await NetworkProxyTunnelChecks.VerifyLinuxMihomoRuntimeLinkActivationAsync(root);

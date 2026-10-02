@@ -1665,6 +1665,16 @@
     <string name="mihomo_revision">修订：%1$d</string>
     <string name="mihomo_apply_yaml">校验并应用 YAML</string>
     <string name="mihomo_nodes">路由和节点</string>
+    <string name="mihomo_nodes_hint">横向切换分组，点击节点即可选中。闪电按钮测试整个分组。</string>
+    <string name="mihomo_nodes_empty">暂无代理分组，请先激活订阅或配置。</string>
+    <string name="mihomo_group_summary">%1$s · %2$d 个节点</string>
+    <string name="mihomo_selected_node">当前选中：%1$s</string>
+    <string name="mihomo_group_automatic">此分组自动选择节点。</string>
+    <string name="mihomo_test_group_delay">测试 %1$s 分组内所有节点的延迟</string>
+    <string name="mihomo_group_testing">正在测试 %1$s · %2$d/%3$d</string>
+    <string name="mihomo_node_testing">测试中…</string>
+    <string name="mihomo_node_untested">未测试</string>
+    <string name="mihomo_node_test_failed">测试失败</string>
     <string name="mihomo_controller_unavailable">控制器不可用。启动宿主运行时并刷新后再修改节点。</string>
     <string name="mihomo_select">选择</string>
     <string name="mihomo_test_delay">测试延迟</string>
@@ -2635,4 +2645,7 @@
     <string name="installation_download_then_select">下载后，在下方选择服务器或手机上的安装包，确认后才会安装。</string>
     <string name="installation_download_copied">链接已复制</string>
     <string name="installation_download_action_failed">无法复制或打开链接。</string>
+    <string name="mihomo_connections_empty">暂无活动连接。每 3 秒自动刷新；经由这台服务器代理的请求会显示在这里。</string>
+    <string name="mihomo_connections_count">%1$d 个活动连接</string>
+    <string name="mihomo_logs_empty">暂未收到日志，新日志会自动刷新。</string>
 </resources>

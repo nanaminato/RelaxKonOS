@@ -38,6 +38,8 @@
     "proxy.status.subscription_imported": "Subscription imported and configuration validated.",
     "proxy.status.subscription_none": "There is no active runtime subscription to view.",
     "proxy.proxies": "Proxy groups",
+    "proxy.connections_empty": "No active connections. Requests routed through this server appear here; refreshes every 3 seconds.",
+    "proxy.connections_count": "{0} active connections",
     "proxy.connections": "Connections",
     "proxy.current_node": "Current node",
     "proxy.overview.enabled": "Enabled",

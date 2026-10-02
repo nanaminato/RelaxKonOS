@@ -50,7 +50,8 @@ internal static async Task VerifyMihomoControllerSafetyAsync()
             "/proxies" => "{\"proxies\":{\"AUTO\":{\"type\":\"Selector\",\"now\":\"node-a\",\"all\":[\"node-a\",\"node-b\"]}}}",
             "/traffic" => "{\"up\":12,\"down\":34,\"upTotal\":56,\"downTotal\":78}",
             "/memory" => "{\"inuse\":90,\"oslimit\":0}",
-            _ when request.RequestUri.PathAndQuery.StartsWith("/logs", StringComparison.Ordinal) => "[{\"time\":\"2026-08-31T00:00:00Z\",\"type\":\"info\",\"payload\":\"Authorization: Bearer controller-secret token=private-value\"}]",
+            "/connections" => "{\"connections\":null}",
+            _ when request.RequestUri.PathAndQuery.StartsWith("/logs", StringComparison.Ordinal) => "{\"type\":\"info\",\"payload\":\"Authorization: Bearer controller-secret token=private-value\"}\n",
             _ => "{}",
         };
         await Task.CompletedTask;
@@ -62,6 +63,8 @@ internal static async Task VerifyMihomoControllerSafetyAsync()
     var traffic = await client.GetTrafficAsync(CancellationToken.None);
     TestAssert.Assert(traffic is { UploadBytesPerSecond: 12, DownloadBytesPerSecond: 34, UploadTotalBytes: 56, DownloadTotalBytes: 78, MemoryBytes: 90 },
         "Mihomo traffic was not mapped to neutral counters.");
+    var emptyConnections = await client.GetConnectionsAsync(CancellationToken.None);
+    TestAssert.Assert(emptyConnections.Succeeded && emptyConnections.Value!.Count == 0, "Mihomo null tracker slice must represent an empty connection list.");
     var logs = await client.GetLogsAsync(10, CancellationToken.None);
     var log = logs.Value?.Single();
     TestAssert.Assert(logs.Succeeded && log is not null && !log.Message.Contains("controller-secret", StringComparison.Ordinal)
@@ -97,6 +100,51 @@ internal static async Task VerifyMihomoControllerSafetyAsync()
     var rejectedReloadClient = new MihomoControllerClient(new HttpClient(rejectedReloadHandler), new StaticProxySecretStore(), new MihomoControllerOptions { Endpoint = new Uri("http://127.0.0.1:9090/") });
     TestAssert.Assert(await rejectedReloadClient.ReloadAsync(CancellationToken.None) == ProxyProblemCodes.ConfigApplyFailed,
         "An HTTP configuration rejection was misclassified as an unavailable controller.");
+}
+
+internal static async Task VerifyMihomoLiveStreamsAsync()
+{
+    var options = new MihomoControllerOptions { Endpoint = new Uri("http://127.0.0.1:9090/"), TimeoutSeconds = 2 };
+    var handler = new DelegateHandler(request => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+    {
+        Content = new StreamContent(new OpenControllerStream(request.RequestUri!.AbsolutePath switch
+        {
+            "/traffic" => "{\"up\":12,\"down\":34,\"upTotal\":56,\"downTotal\":78}\n",
+            "/memory" => "{\"inuse\":90}\n",
+            "/connections" => "{\"connections\":[{\"id\":\"fixture\",\"metadata\":{\"network\":\"tcp\",\"sourceIP\":\"::1\",\"sourcePort\":\"1234\",\"destinationIP\":\"192.0.2.1\",\"destinationPort\":\"443\",\"host\":\"example.test\"},\"rule\":\"Domain\",\"chains\":[\"DIRECT\"],\"start\":\"2026-10-02T00:00:00Z\"}]}",
+            _ => "{\"type\":\"info\",\"payload\":\"token=private-value\"}\n",
+        }, complete: request.RequestUri.AbsolutePath == "/connections")),
+    }));
+    var client = new MihomoControllerClient(new HttpClient(handler), new StaticProxySecretStore(), options);
+    var watch = System.Diagnostics.Stopwatch.StartNew();
+    var traffic = await client.GetTrafficAsync(CancellationToken.None);
+    TestAssert.Assert(traffic.ProblemCode == "" && traffic.MemoryBytes == 90 && watch.Elapsed < TimeSpan.FromSeconds(1),
+        "An endless flow stream must return its first sample without waiting for EOF.");
+    var connections = await client.GetConnectionsAsync(CancellationToken.None);
+    TestAssert.Assert(connections.Value?.Single() is { Network: "tcp", Source: "[::1]:1234", Destination: "example.test:443", Chains: "DIRECT" },
+        "Connection metadata, host and endpoint ports were not mapped.");
+    var logs = await client.GetLogsAsync(1, CancellationToken.None);
+    TestAssert.Assert(logs.Succeeded && logs.Value!.Count == 1 && !logs.Value[0].Message.Contains("private-value"),
+        "A live NDJSON log must be sampled and sanitized without EOF.");
+    var quietClient = new MihomoControllerClient(new HttpClient(new QuietControllerHandler()), new StaticProxySecretStore(), options);
+    var quietLogs = await quietClient.GetLogsAsync(10, CancellationToken.None);
+    TestAssert.Assert(quietLogs.Succeeded && quietLogs.Value!.Count == 0, "A quiet log window was reported as a timeout failure.");
+    using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+    var propagated = false;
+    try { await client.GetTrafficAsync(cancelled.Token); } catch (OperationCanceledException) { propagated = true; }
+    TestAssert.Assert(propagated, "Caller cancellation must propagate out of live sampling.");
+    var oversized = new MihomoControllerClient(new HttpClient(new DelegateHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        { Content = new StreamContent(new OpenControllerStream(new string('x', 65_537))) }))), new StaticProxySecretStore(), options);
+    TestAssert.Assert((await oversized.GetTrafficAsync(CancellationToken.None)).ProblemCode == ProxyProblemCodes.ControllerResponseInvalid,
+        "A stream without a bounded JSON line was accepted.");
+    var unauthorized = new MihomoControllerClient(new HttpClient(new DelegateHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.Unauthorized)))), new StaticProxySecretStore(), options);
+    TestAssert.Assert((await unauthorized.GetLogsAsync(10, CancellationToken.None)).ProblemCode == ProxyProblemCodes.ControllerAuthenticationFailed,
+        "Stream authentication errors must remain distinguishable from quiet logs.");
+    var engine = new MihomoEngine(unauthorized, new UnavailableMihomoConfigurationValidator(), new TestProxyPaths(Path.GetTempPath()));
+    var failedRead = false;
+    try { await engine.GetConnectionsAsync(CancellationToken.None); }
+    catch (ProxyObservationException error) { failedRead = error.ProblemCode == ProxyProblemCodes.ControllerAuthenticationFailed; }
+    TestAssert.Assert(failedRead, "A failed connection read must not become a successful empty list.");
 }
 
 internal static async Task VerifyMihomoProxyGroupOrderingAsync(string root)
@@ -445,4 +493,41 @@ internal static async Task VerifyTunnelSecretLifecycleAsync(string root)
     TestAssert.Assert(await service.DeleteProfileAsync(created.Id, user, CancellationToken.None), "Unused profile could not be deleted.");
 }
 
+}
+
+internal sealed class QuietControllerHandler : HttpMessageHandler
+{
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        await Task.Delay(Timeout.Infinite, cancellationToken);
+        throw new InvalidOperationException();
+    }
+}
+internal sealed class OpenControllerStream(string payload, bool complete = false) : Stream
+{
+    private readonly byte[] _payload = Encoding.UTF8.GetBytes(payload);
+    private int _position;
+    public override bool CanRead => true;
+    public override bool CanSeek => false;
+    public override bool CanWrite => false;
+    public override long Length => throw new NotSupportedException();
+    public override long Position { get => _position; set => throw new NotSupportedException(); }
+    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_position == _payload.Length)
+        {
+            if (complete) return 0;
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+        }
+        var length = Math.Min(buffer.Length, _payload.Length - _position);
+        _payload.AsMemory(_position, length).CopyTo(buffer); _position += length;
+        return length;
+    }
+    public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+    public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    public override void Flush() { }
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
 }

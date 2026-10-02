@@ -50,6 +50,8 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
     [ObservableProperty] private ProxySubscriptionDto? _selectedSubscription;
     [ObservableProperty] private ProxyGroupItem? _selectedGroup;
     [ObservableProperty] private ProxyConnectionDto? _selectedConnection;
+    [ObservableProperty] private bool _isRefreshingConnections;
+    [ObservableProperty] private LocalizedStatus _connectionStatus = LocalizedText.Ref("proxy.status.loading");
     [ObservableProperty] private string _profileName = string.Empty;
     [ObservableProperty] private string _selectedProxy = string.Empty;
     [ObservableProperty] private ProxyRoutingMode _routingMode = ProxyRoutingMode.Rule;
@@ -237,7 +239,7 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
             await Task.WhenAll(
                 LoadOptionalAsync(() => repository.ListGroupsAsync(), ReplaceGroups),
                 LoadOptionalAsync(() => repository.GetRoutingModeAsync(), value => RoutingMode = value.Mode),
-                LoadOptionalAsync(() => repository.ListConnectionsAsync(), values => Replace(Connections, values)),
+                RefreshConnectionsAsync(),
                 RefreshTrafficAsync(),
                 LoadOptionalAsync(() => repository.ListLogsAsync(), values => Replace(Logs, values)),
                 LoadOptionalAsync(() => repository.GetDnsStatusAsync(), value => DnsStatus = value));
@@ -251,6 +253,33 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
         }
         catch (Exception exception) { SetFailureStatus(exception); }
         finally { IsBusy = false; }
+    }
+
+    [RelayCommand]
+    public async Task RefreshConnectionsAsync()
+    {
+        if (IsRefreshingConnections) return;
+        IsRefreshingConnections = true;
+        try
+        {
+            var connections = await repository.ListConnectionsAsync();
+            var selectedId = SelectedConnection?.Id;
+            Replace(Connections, connections);
+            SelectedConnection = Connections.FirstOrDefault(item => item.Id == selectedId);
+            ConnectionStatus = Connections.Count == 0 ? LocalizedText.Ref("proxy.connections_empty")
+                : LocalizedText.Ref("proxy.connections_count", Connections.Count);
+            OnPropertyChanged(nameof(RunningConnectionCount));
+        }
+        catch (Exception exception) when (exception is ProxyRequestException or HttpRequestException or OperationCanceledException
+            or InvalidOperationException or System.Text.Json.JsonException)
+        {
+            Connections.Clear(); SelectedConnection = null;
+            OnPropertyChanged(nameof(RunningConnectionCount));
+            ConnectionStatus = LocalizedText.Ref("proxy.status.failed", (object?)FormatProblemCode(
+                exception is ProxyRequestException request ? request.ProblemCode
+                    : exception is OperationCanceledException ? ProxyProblemCodes.ControllerTimeout : ProxyProblemCodes.ControllerUnavailable));
+        }
+        finally { IsRefreshingConnections = false; }
     }
 
     /// <summary>Small live overview refresh; it deliberately avoids reloading profiles or logs.</summary>
@@ -556,6 +585,8 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
             SelectedConnection = null;
             OnPropertyChanged(nameof(RunningConnectionCount));
             StatusText = LocalizedText.Ref("proxy.status.connection_closed");
+            ConnectionStatus = Connections.Count == 0 ? LocalizedText.Ref("proxy.connections_empty")
+                : LocalizedText.Ref("proxy.connections_count", Connections.Count);
         }
         catch (Exception exception) { SetFailureStatus(exception); }
         finally { IsBusy = false; }

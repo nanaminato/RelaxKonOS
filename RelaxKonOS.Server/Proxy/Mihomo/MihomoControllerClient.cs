@@ -1,4 +1,6 @@
 using System.Net;
+using System.Buffers;
+using System.IO.Pipelines;
 using System.Net.Http.Headers;
 using System.Net.Sockets;
 using System.Diagnostics;
@@ -137,15 +139,19 @@ public sealed class MihomoControllerClient : IMihomoControllerClient
         if (!result.Succeeded) return ControllerResult<IReadOnlyList<ProxyConnectionDto>>.Failure(result.ProblemCode);
         try
         {
-            if (!result.Value!.RootElement.TryGetProperty("connections", out var connections) || connections.ValueKind != JsonValueKind.Array)
+            if (!result.Value!.RootElement.TryGetProperty("connections", out var connections))
+                return ControllerResult<IReadOnlyList<ProxyConnectionDto>>.Failure(ProxyProblemCodes.ControllerResponseInvalid);
+            // Mihomo serializes its nil slice as null when no trackers are active.
+            if (connections.ValueKind == JsonValueKind.Null) return ControllerResult<IReadOnlyList<ProxyConnectionDto>>.Success([]);
+            if (connections.ValueKind != JsonValueKind.Array)
                 return ControllerResult<IReadOnlyList<ProxyConnectionDto>>.Failure(ProxyProblemCodes.ControllerResponseInvalid);
             var mapped = new List<ProxyConnectionDto>();
             foreach (var item in connections.EnumerateArray().Take(2_000))
             {
                 var id = GetString(item, "id");
                 if (string.IsNullOrWhiteSpace(id)) continue;
-                mapped.Add(new ProxyConnectionDto(id, GetString(item, "network") ?? "unknown", GetString(item, "metadata", "sourceIP") ?? "",
-                    GetString(item, "metadata", "destinationIP") ?? "", GetString(item, "rule") ?? "", GetString(item, "chains") ?? "",
+                mapped.Add(new ProxyConnectionDto(id, GetString(item, "metadata", "network") ?? "unknown", ConnectionEndpoint(item, false),
+                    ConnectionEndpoint(item, true), GetString(item, "rule") ?? "", GetString(item, "chains") ?? "",
                     GetDateTime(item, "start") ?? DateTimeOffset.MinValue));
             }
             return ControllerResult<IReadOnlyList<ProxyConnectionDto>>.Success(mapped);
@@ -155,7 +161,7 @@ public sealed class MihomoControllerClient : IMihomoControllerClient
 
     public async Task<ProxyTrafficDto> GetTrafficAsync(CancellationToken cancellationToken)
     {
-        var result = await GetJsonAsync("traffic", cancellationToken);
+        var result = await GetStreamSampleAsync("traffic", cancellationToken);
         if (!result.Succeeded) return new(0, 0, 0, 0, 0, result.ProblemCode);
         long uploadRate;
         long downloadRate;
@@ -170,7 +176,7 @@ public sealed class MihomoControllerClient : IMihomoControllerClient
         }
         finally { result.Value?.Dispose(); }
 
-        var memoryResult = await GetJsonAsync("memory", cancellationToken);
+        var memoryResult = await GetStreamSampleAsync("memory", cancellationToken);
         if (!memoryResult.Succeeded) return new(0, 0, 0, 0, 0, memoryResult.ProblemCode);
         try
         {
@@ -188,18 +194,23 @@ public sealed class MihomoControllerClient : IMihomoControllerClient
     public async Task<ControllerResult<IReadOnlyList<ProxyLogEntryDto>>> GetLogsAsync(int limit, CancellationToken cancellationToken)
     {
         var bounded = Math.Clamp(limit, 1, _options.MaximumLogEntries);
-        var result = await GetJsonAsync("logs?limit=" + bounded.ToString(System.Globalization.CultureInfo.InvariantCulture), cancellationToken);
+        var result = await ReadJsonLinesAsync("logs?level=info", bounded, TimeSpan.FromSeconds(1), quietIsSuccess: true, cancellationToken);
         if (!result.Succeeded) return ControllerResult<IReadOnlyList<ProxyLogEntryDto>>.Failure(result.ProblemCode);
         try
         {
-            var logs = result.Value!.RootElement.ValueKind == JsonValueKind.Array ? result.Value.RootElement
-                : result.Value.RootElement.TryGetProperty("logs", out var collection) ? collection : default;
-            if (logs.ValueKind != JsonValueKind.Array) return ControllerResult<IReadOnlyList<ProxyLogEntryDto>>.Failure(ProxyProblemCodes.ControllerResponseInvalid);
-            return ControllerResult<IReadOnlyList<ProxyLogEntryDto>>.Success(logs.EnumerateArray().Take(bounded).Select(item =>
-                new ProxyLogEntryDto(GetDateTime(item, "time") ?? DateTimeOffset.UtcNow, GetString(item, "type") ?? "info",
-                    ProxyLogSanitizer.Sanitize(GetString(item, "payload") ?? GetString(item, "message"), _options.MaximumLogMessageLength))).ToArray());
+            var logs = new List<ProxyLogEntryDto>();
+            foreach (var line in result.Value!)
+            {
+                using var document = JsonDocument.Parse(line);
+                var item = document.RootElement;
+                if (item.ValueKind != JsonValueKind.Object || GetString(item, "type") is not { } level || GetString(item, "payload") is not { } message)
+                    return ControllerResult<IReadOnlyList<ProxyLogEntryDto>>.Failure(ProxyProblemCodes.ControllerResponseInvalid);
+                logs.Add(new ProxyLogEntryDto(DateTimeOffset.UtcNow, level,
+                    ProxyLogSanitizer.Sanitize(message, _options.MaximumLogMessageLength)));
+            }
+            return ControllerResult<IReadOnlyList<ProxyLogEntryDto>>.Success(logs);
         }
-        finally { result.Value?.Dispose(); }
+        catch (JsonException) { return ControllerResult<IReadOnlyList<ProxyLogEntryDto>>.Failure(ProxyProblemCodes.ControllerResponseInvalid); }
     }
 
     public async Task<ProxyDnsStatusDto> GetDnsStatusAsync(CancellationToken cancellationToken)
@@ -293,6 +304,85 @@ public sealed class MihomoControllerClient : IMihomoControllerClient
 
     private async Task<string?> SetRoutingModeCoreAsync(string body, CancellationToken cancellationToken) =>
         (await SendAsync(HttpMethod.Put, "configs", new StringContent(body, Encoding.UTF8, "application/json"), cancellationToken)).ProblemCode;
+
+    private async Task<ControllerResult<JsonDocument>> GetStreamSampleAsync(string path, CancellationToken cancellationToken)
+    {
+        var result = await ReadJsonLinesAsync(path, 1, TimeSpan.FromSeconds(_options.TimeoutSeconds), quietIsSuccess: false, cancellationToken);
+        if (!result.Succeeded) return ControllerResult<JsonDocument>.Failure(result.ProblemCode);
+        try { return ControllerResult<JsonDocument>.Success(JsonDocument.Parse(result.Value!.Single())); }
+        catch (JsonException) { return ControllerResult<JsonDocument>.Failure(ProxyProblemCodes.ControllerResponseInvalid); }
+    }
+
+    // Mihomo emits NDJSON indefinitely. Dispose each subscription after a bounded sample,
+    // rather than waiting for end-of-body. Quiet log streams may not even flush headers.
+    private async Task<ControllerResult<IReadOnlyList<string>>> ReadJsonLinesAsync(string path, int limit,
+        TimeSpan observationWindow, bool quietIsSuccess, CancellationToken cancellationToken)
+    {
+        const int maximumLineBytes = 65_536;
+        var lines = new List<string>();
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(observationWindow);
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, path);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await _secrets.GetOrCreateAsync(deadline.Token));
+            using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+            if (!response.IsSuccessStatusCode)
+                return ControllerResult<IReadOnlyList<string>>.Failure(response.StatusCode == HttpStatusCode.Unauthorized
+                    ? ProxyProblemCodes.ControllerAuthenticationFailed : ProxyProblemCodes.ControllerUnavailable);
+            await using var stream = await response.Content.ReadAsStreamAsync(deadline.Token);
+            var reader = PipeReader.Create(stream, new StreamPipeReaderOptions(leaveOpen: true));
+            try
+            {
+                while (lines.Count < limit)
+                {
+                    var read = await reader.ReadAsync(deadline.Token);
+                    var buffer = read.Buffer;
+                    while (lines.Count < limit && buffer.PositionOf((byte)'\n') is { } newline)
+                    {
+                        var line = buffer.Slice(0, newline);
+                        if (line.Length > maximumLineBytes) return ControllerResult<IReadOnlyList<string>>.Failure(ProxyProblemCodes.ControllerResponseInvalid);
+                        if (!line.IsEmpty) lines.Add(Encoding.UTF8.GetString(line.ToArray()));
+                        buffer = buffer.Slice(buffer.GetPosition(1, newline));
+                    }
+                    if (buffer.Length > maximumLineBytes) return ControllerResult<IReadOnlyList<string>>.Failure(ProxyProblemCodes.ControllerResponseInvalid);
+                    if (read.IsCompleted)
+                    {
+                        if (lines.Count < limit && !buffer.IsEmpty) lines.Add(Encoding.UTF8.GetString(buffer.ToArray()));
+                        reader.AdvanceTo(read.Buffer.End);
+                        break;
+                    }
+                    reader.AdvanceTo(buffer.Start, buffer.End);
+                }
+            }
+            finally { await reader.CompleteAsync(); }
+            return lines.Count > 0 || quietIsSuccess
+                ? ControllerResult<IReadOnlyList<string>>.Success(lines)
+                : ControllerResult<IReadOnlyList<string>>.Failure(ProxyProblemCodes.ControllerResponseInvalid);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return quietIsSuccess ? ControllerResult<IReadOnlyList<string>>.Success(lines)
+                : ControllerResult<IReadOnlyList<string>>.Failure(ProxyProblemCodes.ControllerTimeout);
+        }
+        catch (ProxyControllerSecretException) { return ControllerResult<IReadOnlyList<string>>.Failure(ProxyProblemCodes.ControllerUnavailable); }
+        catch (HttpRequestException exception)
+        {
+            LogTransportFailure(exception);
+            return ControllerResult<IReadOnlyList<string>>.Failure(ProxyProblemCodes.ControllerUnavailable);
+        }
+        catch (IOException) { return ControllerResult<IReadOnlyList<string>>.Failure(ProxyProblemCodes.ControllerUnavailable); }
+    }
+
+    private static string ConnectionEndpoint(JsonElement item, bool destination)
+    {
+        var address = destination
+            ? GetString(item, "metadata", "host") : GetString(item, "metadata", "sourceIP");
+        if (string.IsNullOrWhiteSpace(address)) address = GetString(item, "metadata", destination ? "destinationIP" : "sourceIP") ?? "";
+        var port = GetString(item, "metadata", destination ? "destinationPort" : "sourcePort");
+        if (string.IsNullOrWhiteSpace(port)) return address;
+        return (address.Contains(':') ? "[" + address + "]" : address) + ":" + port;
+    }
 
     private async Task<ControllerResult<JsonDocument>> GetJsonAsync(string path, CancellationToken cancellationToken)
     {

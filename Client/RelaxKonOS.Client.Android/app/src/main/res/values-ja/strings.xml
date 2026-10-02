@@ -1664,6 +1664,16 @@
     <string name="mihomo_revision">リビジョン：%1$d</string>
     <string name="mihomo_apply_yaml">YAML を検証して適用</string>
     <string name="mihomo_nodes">ルーティングとノード</string>
+    <string name="mihomo_nodes_hint">グループを切り替え、ノードをタップして選択します。稲妻ボタンでグループ全体をテストできます。</string>
+    <string name="mihomo_nodes_empty">プロキシグループがありません。サブスクリプションまたは設定を有効にしてください。</string>
+    <string name="mihomo_group_summary">%1$s · %2$d ノード</string>
+    <string name="mihomo_selected_node">選択中：%1$s</string>
+    <string name="mihomo_group_automatic">このグループはノードを自動選択します。</string>
+    <string name="mihomo_test_group_delay">%1$s の全ノードの遅延をテスト</string>
+    <string name="mihomo_group_testing">%1$s をテスト中 · %2$d/%3$d</string>
+    <string name="mihomo_node_testing">テスト中…</string>
+    <string name="mihomo_node_untested">未テスト</string>
+    <string name="mihomo_node_test_failed">テスト失敗</string>
     <string name="mihomo_controller_unavailable">コントローラーを利用できません。ホストを起動して再読み込みしてください。</string>
     <string name="mihomo_select">選択</string>
     <string name="mihomo_test_delay">遅延テスト</string>
@@ -2636,4 +2646,7 @@
     <string name="installation_download_then_select">ダウンロード後、下でサーバーまたは端末上のパッケージを選択してください。インストールには確認が必要です。</string>
     <string name="installation_download_copied">リンクをコピーしました</string>
     <string name="installation_download_action_failed">リンクをコピーまたは開くことができませんでした。</string>
+    <string name="mihomo_connections_empty">アクティブな接続はありません。3 秒ごとに更新し、このサーバーを経由するリクエストを表示します。</string>
+    <string name="mihomo_connections_count">アクティブな接続：%1$d 件</string>
+    <string name="mihomo_logs_empty">ログはまだありません。新しいログは自動で更新されます。</string>
 </resources>

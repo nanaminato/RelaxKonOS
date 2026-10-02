@@ -28,9 +28,15 @@ public sealed class ProxyLifecycleService(
         var active = (await profiles.ListAsync(cancellationToken)).FirstOrDefault(item => item.IsActive);
         var recoveryState = await recovery.GetStatusAsync(cancellationToken);
         var health = await engine.GetHealthAsync(cancellationToken);
+        var connectionCount = 0;
+        if (health.ControllerReachable)
+        {
+            try { connectionCount = (await engine.GetConnectionsAsync(cancellationToken)).Count; }
+            catch (ProxyObservationException error) { health = health with { State = ProxyHealthState.Degraded, ProblemCode = error.ProblemCode }; }
+        }
         return new ProxyOverviewDto(MihomoEngine.Id, await engine.GetCapabilitiesAsync(cancellationToken), await platform.GetCapabilitiesAsync(cancellationToken),
             await runtime.GetAsync(MihomoEngine.Id, cancellationToken), health, health.TunState == ProxyTunState.Enabled ? ProxyOperatingMode.Tun : ProxyOperatingMode.ListenerOnly,
-            active, (await engine.GetConnectionsAsync(cancellationToken)).Count, recoveryState, RuntimeInformation.OSDescription);
+            active, connectionCount, recoveryState, RuntimeInformation.OSDescription);
     }
 
     public async Task<string?> ExecuteLifecycleAsync(ProxyLifecycleAction action, CancellationToken cancellationToken)

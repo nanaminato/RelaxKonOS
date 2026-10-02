@@ -3,6 +3,11 @@ using RelaxKonOS.Server.Installations;
 
 namespace RelaxKonOS.Server.Proxy;
 
+public sealed class ProxyObservationException(string problemCode) : Exception(problemCode)
+{
+    public string ProblemCode { get; } = problemCode;
+}
+
 /// <summary>Engine-neutral Server boundary. Concrete controller schemas never cross it.</summary>
 public interface IProxyEngine
 {

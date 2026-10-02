@@ -9,3 +9,5 @@ Windows System Mode 中，Mihomo 由 LocalSystem 权限助手启动和停止；S
 TUN 的启停属于安全事务，而不是某项设置或某个订阅配置的属性。因此任何一次配置重写——修改设置、切换订阅配置或是 TUN 事务本身——都必须显式写明 `tun.enable` 与 `route-exclude-address`：前两者从当前生效的 `active.yaml` 读回并原样保留，否则一次无关的设置保存就会静默拆除适配器；后者是管理路由的安全边界，若只保留 `enable: true` 而丢掉它，auto-route 会吞掉管理网络。
 
 TUN 状态是**观测值而非记账值**：`MihomoEngine` 通过控制器读取运行时的 `tun.enable` 得到 `TunState`（并据此决定 `ProxyOperatingMode`），恢复标记只用于表达"事务是否完成"。已完成的事务标记若与引擎自述矛盾（引擎报告 TUN 未启用），说明运行时被事务之外的方式重配过，此时先走常规恢复流程确认管理路由，再丢弃该标记；无法观测时不得据此清除任何持久状态，未完成的标记则始终要求恢复。
+
+Server 使用 `ResponseHeadersRead` 有界采样 Mihomo 的 NDJSON 接口：流量和内存各取第一条完整记录，日志最多观察 1 秒且单行不超过 64 KiB；安静日志流返回空列表，调用方取消仍传播。连接协议从 `metadata.network` 读取，端点包含端口，目标优先显示域名；Mihomo 的 `connections: null` 表示零连接。控制器读取失败时 `GET /api/v1.0/proxy/connections` 返回带问题码的 503，不能伪装成成功空列表。桌面连接页每 3 秒单独刷新，保持仍存在的选中项，显示连接数量、空状态或读取失败；离开页面停止定时器。

@@ -173,7 +173,11 @@ public static class ProxyEndpoints
             await audit.RecordAsync(Actor(context.User), "group.proxy.delay", string.IsNullOrEmpty(delay.ProblemCode) ? "succeeded" : "failed", delay.ProblemCode, ct);
             return string.IsNullOrEmpty(delay.ProblemCode) ? Results.Ok(delay) : Problem(delay.ProblemCode, StatusCodes.Status400BadRequest);
         }).RequireAuthorization("ProxyManage").WithTags("Proxy");
-        app.MapGet(ProxyApiRoutes.Connections, async (IProxyEngineRegistry engines, CancellationToken ct) => Results.Ok(await engines.Find("mihomo")!.GetConnectionsAsync(ct))).RequireAuthorization("ProxyRead").WithTags("Proxy");
+        app.MapGet(ProxyApiRoutes.Connections, async (IProxyEngineRegistry engines, CancellationToken ct) =>
+        {
+            try { return Results.Ok(await engines.Find("mihomo")!.GetConnectionsAsync(ct)); }
+            catch (ProxyObservationException error) { return Problem(error.ProblemCode, StatusCodes.Status503ServiceUnavailable); }
+        }).RequireAuthorization("ProxyRead").WithTags("Proxy");
         app.MapGet(ProxyApiRoutes.Traffic, (IProxyEngineRegistry engines, CancellationToken ct) => engines.Find("mihomo")!.GetTrafficAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
         app.MapDelete(Route(ProxyApiRoutes.ConnectionPattern), async (string connectionId, IProxyEngineRegistry engines, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
         {

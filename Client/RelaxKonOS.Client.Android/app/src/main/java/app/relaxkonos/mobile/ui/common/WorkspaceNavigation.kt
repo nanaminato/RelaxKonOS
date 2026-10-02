@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.unit.Dp
 import app.relaxkonos.mobile.ui.theme.Spacing
 
 data class WorkspaceDestination(val id: String, @param:StringRes val title: Int)
@@ -63,6 +64,8 @@ private val ScrollsSaver = Saver<MutableMap<String, ScrollState>, Map<String, In
 fun WorkspaceColumn(
     title: String, onBack: (() -> Unit)?, pages: List<WorkspaceDestination>, selected: String,
     onSelect: (String) -> Unit, modifier: Modifier = Modifier, stateKey: Any? = null,
+    contentSpacing: Dp = Spacing.md,
+    contentPadding: PaddingValues = PaddingValues(Spacing.lg),
     content: @Composable ColumnScope.() -> Unit,
 ) {
     key(stateKey) {
@@ -70,8 +73,8 @@ fun WorkspaceColumn(
     Column(modifier.fillMaxSize().imePadding()) {
         ScreenHeader(title, onBack = onBack, modifier = Modifier.padding(Spacing.lg))
         WorkspaceNavigation(pages, selected, onSelect)
-        Column(Modifier.weight(1f).verticalScroll(scrolls.getOrPut(selected) { ScrollState(0) }).padding(Spacing.lg),
-            verticalArrangement = Arrangement.spacedBy(Spacing.md), content = content)
+        Column(Modifier.weight(1f).verticalScroll(scrolls.getOrPut(selected) { ScrollState(0) }).padding(contentPadding),
+            verticalArrangement = Arrangement.spacedBy(contentSpacing), content = content)
     }
     }
 }

@@ -7,6 +7,34 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ProxyHttpTest {
+    @Test fun `node selection preserves emoji names in the actual HTTP body`() = runTest {
+        val group = "CrossWall (克洛斯)"
+        val proxy = "🇺🇸美国自动选择"
+        var received = false
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/") { exchange ->
+            assertEquals("PUT", exchange.requestMethod)
+            assertEquals("${ProxyRoutes.GROUPS}/$group/selection", exchange.requestURI.path)
+            assertEquals(proxy, org.json.JSONObject(exchange.requestBody.readBytes().decodeToString()).getString("proxy"))
+            assertEquals("Bearer token", exchange.requestHeaders.getFirst("Authorization"))
+            received = true
+            exchange.sendResponseHeaders(204, -1); exchange.close()
+        }
+        server.start()
+        try {
+            assertTrue(RelaxKonApi("test", "test").selectProxyNode("http://127.0.0.1:${server.address.port}", "token", group, proxy) is ApiResult.Success)
+            assertTrue(received)
+        } finally { server.stop(0) }
+    }
+
+    @Test fun `JSON strings and character array credentials preserve supplementary characters`() {
+        val value = "🇯🇵日本 🧑‍💻 \"quoted\" \\ path\n"
+        val body = JsonBody().string("name", value).secret("password", value.toCharArray())
+        val result = org.json.JSONObject(body.toByteArray().decodeToString())
+        assertEquals(value, result.getString("name"))
+        assertEquals(value, result.getString("password"))
+    }
+
     @Test fun `runtime releases use authenticated host catalog`() = runTest {
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         server.createContext("/api/v1.0/proxy/runtime/releases") { exchange ->

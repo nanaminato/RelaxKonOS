@@ -786,3 +786,12 @@ BP24 持续验证与文档同步不是新的 Android 编译环境搭建任务，
 - 三语各 **2531 个唯一键**、键集/占位符一致，**2469 个生产 Kotlin 文案引用**和 Android 本地文档链接通过。未重跑完整 lint，BP24-V5 的 lint 缺陷仍保留；真实 SSH、Docker/宿主写入和设备矩阵仍待验。
 - 额外尝试 `--user-execution-only` 被既有前置证书夹具阻止：`CertificateBindingChecks` 创建 `TestHostEnvironment` 前未创建 `certificate-binding` 目录，抛出 DirectoryNotFoundException，未进入目标专项。本次不改这项无关测试夹具，也不将该入口记为通过；用户执行分块读取与文本闭合请求形状分别由上述两个定向专项验证。
 - 服务器中心安装：仍需在真机验证文档提供者 ZIP/PFX/PEM 选择、Linux x64/arm64 与 Windows SSH 安装、官网描述符发布、断线恢复及自定义 TLS。Linux 服务端需预装 Python 3。
+
+## Mihomo 紧凑节点页（2026-10-02）
+
+- Windows 本地 Gradle 9.7.1，执行 `:app:testDebugUnitTest :app:assembleDebug`：**161 类 / 1030 用例，0 失败、0 错误、0 跳过**，Debug APK 生成。新增整组测速三例覆盖四并发、完整分组/去重、单节点失败隔离和会话取消；真实 HTTP 与 JSON 两例覆盖国旗/ZWJ 节点名及 CharArray 凭据的非 BMP 字符。
+- SM-X510 / Android 16 上运行 `ProxyNodesPanelTest`：**3 用例，0 失败、0 错误、0 跳过**。覆盖 320dp 两列、点击直接提交选择、横向标签只展示当前组、自动组只读、闪电测试当前组、忙碌状态门控和卡片内结果。之后仅修改共享 JSON 字符编码，全量 JVM/APK 再次通过；未重跑仪器测试。
+- Ubuntu 26.04 / Linux x64 实际宿主升级到当前仓库 `7c8a3730` 构建包，Server/Guardian/Mihomo 均 active，HTTPS 健康检查 200，TLS 证书摘要保留。对版本目录变更导致的既有 Data Protection 作用域问题做了一次维护性重保护，控制器凭据和订阅地址明文未导出，保留数据库快照和原加密文件。真实登录、9 个分组/163 个节点读取、单节点延迟和选择/读回/恢复原选择通过。
+- 仪器测试框架卸载了被测应用并清除了设备本地记录；已重新安装最终 Debug APK、恢复上述宿主连接与核验过的证书信任。后续更新使用 `adb install -r`，不再执行会卸载应用的 connected 测试。其他旧本地记录没有备份，不能宣称已恢复。
+- 最终 APK 在同一设备连接真实宿主：点击带国旗的“美国自动选择”卡片后服务器读回一致，再点击恢复原“自动选择”，均无需额外确认。闪电按钮一次完成当前 CrossWall 37 个节点的批量测速，真机观察到逐节点毫秒结果及完成计数更新，结束后无测试中状态；最终截图已保存到本地构建 artifacts。
+- 未验证其他实体手机、150% 字体、横屏和英/日设备视觉矩阵；三语新增十项文案已核对。完整 lint 未重跑。

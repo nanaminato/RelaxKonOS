@@ -1703,6 +1703,16 @@
     <string name="mihomo_revision">Revision: %1$d</string>
     <string name="mihomo_apply_yaml">Validate and apply YAML</string>
     <string name="mihomo_nodes">Routing and nodes</string>
+    <string name="mihomo_nodes_hint">Choose a group, then tap a node to select it. The lightning button tests the whole group.</string>
+    <string name="mihomo_nodes_empty">No proxy groups are available. Activate a subscription or configuration first.</string>
+    <string name="mihomo_group_summary">%1$s · %2$d nodes</string>
+    <string name="mihomo_selected_node">Selected: %1$s</string>
+    <string name="mihomo_group_automatic">This group selects nodes automatically.</string>
+    <string name="mihomo_test_group_delay">Test latency for every node in %1$s</string>
+    <string name="mihomo_group_testing">Testing %1$s · %2$d/%3$d</string>
+    <string name="mihomo_node_testing">Testing…</string>
+    <string name="mihomo_node_untested">Not tested</string>
+    <string name="mihomo_node_test_failed">Test failed</string>
     <string name="mihomo_controller_unavailable">Controller unavailable. Start the host runtime and refresh before changing nodes.</string>
     <string name="mihomo_select">Select</string>
     <string name="mihomo_test_delay">Test latency</string>
@@ -2674,4 +2684,7 @@
     <string name="installation_download_then_select">After downloading, select the package on the server or this phone below. Installing still requires confirmation.</string>
     <string name="installation_download_copied">Link copied</string>
     <string name="installation_download_action_failed">Could not copy or open the link.</string>
+    <string name="mihomo_connections_empty">No active connections. This page refreshes every 3 seconds; requests routed through this server will appear here.</string>
+    <string name="mihomo_connections_count">%1$d active connections</string>
+    <string name="mihomo_logs_empty">No logs received yet. Recent entries refresh automatically.</string>
 </resources>

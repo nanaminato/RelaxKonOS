@@ -21,7 +21,9 @@ import java.util.Date
     val state = model.state; val overview = (state.overview as? ApiResult.Success)?.value
     val settings = (state.settings as? ApiResult.Success)?.value; val recovery = (state.recovery as? ApiResult.Success)?.value
     var editing by remember { mutableStateOf(false) }; var configuringGeo by remember { mutableStateOf(false) }
-WorkspaceSection(section == "settings") {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+    if (section == "settings") {
+
     Text(stringResource(R.string.mihomo_network_title), style = MaterialTheme.typography.titleMedium)
     Text(stringResource(R.string.mihomo_host_network_note))
     if (recovery == null) Text(stringResource(R.string.mihomo_unverified)) else {
@@ -31,7 +33,7 @@ WorkspaceSection(section == "settings") {
         recovery.problemCode.takeIf(String::isNotBlank)?.let { Text(proxyProblemLabel(it)) }
     }
     overview?.let { Text(proxyTunLabel(it.tunState)) }
-    if (canManage) FlowRow {
+    if (canManage) FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         if (overview?.supportsTun == true) {
             OutlinedButton(enabled = ready && overview.controllerReachable && overview.managementRouteSafe && overview.activeProfile != null && recovery?.hasMarker == false,
                 onClick = { confirm { model.queue(ProxyAction.EnableTun, overview.activeProfile?.id) } }) { Text(stringResource(R.string.mihomo_tun_enable)) }
@@ -49,48 +51,77 @@ WorkspaceSection(section == "settings") {
     Text(stringResource(when { geo == null -> R.string.mihomo_unverified; geo.configured -> R.string.mihomo_geodata_configured; else -> R.string.mihomo_geodata_missing }))
     geo?.sizeBytes?.let { Text(stringResource(R.string.mihomo_bytes, it)) }
     if (canManage) TextButton(enabled = ready, onClick = { configuringGeo = true }) { Text(stringResource(R.string.mihomo_geodata_select)) }
-}
-            HorizontalDivider()
-    Text(stringResource(R.string.mihomo_diagnostics), style = MaterialTheme.typography.titleMedium)
-    TextButton(enabled = !state.busy && overview != null, onClick = model::diagnostics) { Text(stringResource(R.string.common_refresh)) }
-    state.diagnosticsAtMillis?.let { Text(stringResource(R.string.mihomo_observed, DateFormat.getDateTimeInstance().format(Date(it))), style = MaterialTheme.typography.bodySmall) }
-WorkspaceSection(section == "connections") {
-    val traffic = (state.traffic as? ApiResult.Success)?.value
-    if (traffic != null && traffic.problemCode.isBlank()) {
-        Text(stringResource(R.string.mihomo_traffic_rate, traffic.uploadPerSecond, traffic.downloadPerSecond))
-        Text(stringResource(R.string.mihomo_traffic_total, traffic.uploadTotal, traffic.downloadTotal, traffic.memoryBytes))
-    } else if (state.traffic != null) Text(stringResource(R.string.mihomo_unverified))
-}
-        WorkspaceSection(section == "settings") {
-    if (overview?.supportsDns == true) {
-        val dns = (state.dns as? ApiResult.Success)?.value
-        Text(stringResource(R.string.mihomo_dns_status), style = MaterialTheme.typography.titleSmall)
-        if (dns != null && dns.problemCode.isBlank()) Text(stringResource(R.string.mihomo_dns_summary,
-            stringResource(if (dns.enabled) R.string.mihomo_on else R.string.mihomo_off), stringResource(if (dns.hijackEnabled) R.string.mihomo_on else R.string.mihomo_off), dns.mode ?: "—"))
-        else Text(stringResource(R.string.mihomo_unverified))
+        HorizontalDivider()
     }
-}
-        WorkspaceSection(section == "connections") {
-    if (overview?.supportsConnections == true) {
-        Text(stringResource(R.string.mihomo_connections), style = MaterialTheme.typography.titleSmall)
-        val connections = (state.connections as? ApiResult.Success)?.value
-        if (connections == null) Text(stringResource(R.string.mihomo_unverified)) else connections.take(200).forEach { connection ->
-            Text(connection.network + " · " + connection.source + " → " + connection.destination)
-            Text(connection.rule + " · " + connection.chains, style = MaterialTheme.typography.bodySmall)
-            if (canManage) TextButton(enabled = ready, onClick = { confirm { model.closeConnection(connection.id) } }) { Text(stringResource(R.string.mihomo_connection_close)) }
-        }
-        if (connections != null && connections.size > 200) Text(stringResource(R.string.mihomo_connections_bounded))
-    }
-}
-        WorkspaceSection(section == "logs") {
-    if (overview?.supportsLogs == true) {
-        Text(stringResource(R.string.mihomo_logs), style = MaterialTheme.typography.titleSmall)
-        val logs = (state.logs as? ApiResult.Success)?.value
-        if (logs == null) Text(stringResource(R.string.mihomo_unverified)) else logs.forEach { log ->
-            Text(DateFormat.getTimeInstance().format(Date(log.timestampMillis)) + " · " + log.level + " · " + log.message, style = MaterialTheme.typography.bodySmall)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Text(stringResource(when (section) {
+            "connections" -> R.string.mihomo_connections
+            "logs" -> R.string.mihomo_logs
+            else -> R.string.mihomo_diagnostics
+        }), style = MaterialTheme.typography.titleMedium)
+        TextButton(enabled = !state.busy && !state.diagnosticsBusy && overview?.controllerReachable == true,
+            onClick = { model.diagnostics(section) }) {
+            if (state.diagnosticsBusy) {
+                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(Spacing.sm))
+            }
+            Text(stringResource(R.string.common_refresh))
         }
     }
-}
+    if (state.diagnosticsSection == section) state.diagnosticsAtMillis?.let {
+        Text(stringResource(R.string.mihomo_observed, DateFormat.getDateTimeInstance().format(Date(it))), style = MaterialTheme.typography.bodySmall)
+    }
+    if (overview?.controllerReachable != true) Text(stringResource(R.string.mihomo_controller_unavailable), color = MaterialTheme.colorScheme.error)
+    when (section) {
+        "connections" -> {
+            val traffic = (state.traffic as? ApiResult.Success)?.value
+            if (traffic != null && traffic.problemCode.isBlank()) ManagementCard {
+                Text(stringResource(R.string.mihomo_traffic_rate, traffic.uploadPerSecond, traffic.downloadPerSecond))
+                Text(stringResource(R.string.mihomo_traffic_total, traffic.uploadTotal, traffic.downloadTotal, traffic.memoryBytes), style = MaterialTheme.typography.bodySmall)
+            } else if (state.traffic != null) Text(traffic?.problemCode?.takeIf(String::isNotBlank)?.let { proxyProblemLabel(it) }
+                ?: stringResource(R.string.mihomo_unverified), color = MaterialTheme.colorScheme.error)
+            if (overview?.supportsConnections == true) {
+                val connections = (state.connections as? ApiResult.Success)?.value
+                when {
+                    connections == null -> Text((state.connections as? ApiResult.Problem)?.code?.let { proxyProblemLabel(it) }
+                        ?: stringResource(R.string.mihomo_unverified), color = MaterialTheme.colorScheme.error)
+                    connections.isEmpty() -> ManagementCard { Text(stringResource(R.string.mihomo_connections_empty)) }
+                    else -> {
+                        Text(stringResource(R.string.mihomo_connections_count, connections.size), style = MaterialTheme.typography.labelLarge)
+                        connections.take(200).forEach { connection -> ManagementCard {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                Text(connection.network.uppercase() + " · " + connection.destination,
+                                    modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                                if (canManage) TextButton(enabled = ready,
+                                    onClick = { confirm { model.closeConnection(connection.id) } }) { Text(stringResource(R.string.mihomo_connection_close)) }
+                            }
+                            Text(connection.source + " → " + connection.destination, style = MaterialTheme.typography.bodySmall)
+                            Text(connection.rule + " · " + connection.chains, style = MaterialTheme.typography.bodySmall)
+                        } }
+                        if (connections.size > 200) Text(stringResource(R.string.mihomo_connections_bounded))
+                    }
+                }
+            }
+        }
+        "logs" -> if (overview?.supportsLogs == true) {
+            val logs = (state.logs as? ApiResult.Success)?.value
+            if (logs == null) Text((state.logs as? ApiResult.Problem)?.code?.let { proxyProblemLabel(it) }
+                ?: stringResource(R.string.mihomo_unverified))
+            else if (logs.isEmpty()) Text(stringResource(R.string.mihomo_logs_empty))
+            else logs.forEach { log ->
+                Text(DateFormat.getTimeInstance().format(Date(log.timestampMillis)) + " · " + log.level + " · " + log.message, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        "settings" -> if (overview?.supportsDns == true) {
+            val dns = (state.dns as? ApiResult.Success)?.value
+            Text(stringResource(R.string.mihomo_dns_status), style = MaterialTheme.typography.titleSmall)
+            if (dns != null && dns.problemCode.isBlank()) Text(stringResource(R.string.mihomo_dns_summary,
+                stringResource(if (dns.enabled) R.string.mihomo_on else R.string.mihomo_off), stringResource(if (dns.hijackEnabled) R.string.mihomo_on else R.string.mihomo_off), dns.mode ?: "—"))
+            else Text(stringResource(R.string.mihomo_unverified))
+        }
+    }
+    }
             if (editing && settings != null && overview != null) ProxySettingsEditor(settings, overview, model) { editing = false }
     if (configuringGeo) ProxyGeoDataEditor(model) { configuringGeo = false }
 }
