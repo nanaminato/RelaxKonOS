@@ -64,6 +64,7 @@
 | [当前实现与进度](status/Progress.md) | 当前功能、代码缺口、BP 实现状态与下一项 |
 | [测试进度与验收](status/Verification.md) | 独立 BP 测试进度、已有执行证据与设备/宿主/故障矩阵；保留 AD 验收 ID 与 Compose 部分通过事实 |
 | [SM-X510 页面巡检与可用性](status/TabletUsability.md) | Server/SSH 实机首轮证据、操作便利性问题与逐项复验标准 |
+| [手机与桌面页面结构差异](status/PhoneNavigationParity.md) | 8 个应用的单页/有限切换差异、任务管理与设置入口分散、PN-01–10 改进目标与手机复验标准 |
 
 ## 维护规则
 
