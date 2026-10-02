@@ -47,6 +47,7 @@ import app.relaxkonos.mobile.core.net.*
     else -> R.string.certificates_stage_unknown
 })
 @Composable fun certificateProblemLabel(code: String) = stringResource(when (code) {
+    "elevation-required" -> R.string.error_elevation_required
     "certificate.admin_required", "certificate.port80_elevation_required", "certificate.deployment_elevation_required" -> R.string.certificates_admin_required
     "certificate.domains_invalid", "certificate.request_invalid", "certificate.key_algorithm_invalid", "certificate.validity_days_invalid", "certificate.challenge_mode_invalid", "certificate.wildcard_requires_dns01" -> R.string.certificates_problem_input
     "certificate.terms_not_accepted" -> R.string.certificates_problem_terms

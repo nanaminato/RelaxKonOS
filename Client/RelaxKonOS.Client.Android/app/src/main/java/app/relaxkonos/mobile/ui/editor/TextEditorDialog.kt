@@ -237,8 +237,8 @@ fun TextEditorDialog(owner: SessionState.Active, path: String?, repositoryId: St
             dismissButton = { TextButton(onClick = { saveAsDialog = false }, enabled = !editor.busy) { Text(stringResource(R.string.common_cancel)) } })
         if (confirmClose) AlertDialog(onDismissRequest = { confirmClose = false }, title = { Text(stringResource(R.string.editor_unsaved)) },
             text = { Text(stringResource(R.string.editor_unsaved_note)) },
-            confirmButton = { TextButton(onClick = { editor.clear(); onClose() }) { Text(stringResource(R.string.git_discard_draft)) } },
-            dismissButton = { TextButton(onClick = { confirmClose = false }) { Text(stringResource(R.string.common_cancel)) } })
+            confirmButton = { TextButton(onClick = { editor.clear(); onClose() }) { Text(stringResource(R.string.editor_discard_changes)) } },
+            dismissButton = { TextButton(onClick = { confirmClose = false }) { Text(stringResource(R.string.editor_continue_editing)) } })
     }
 }
 

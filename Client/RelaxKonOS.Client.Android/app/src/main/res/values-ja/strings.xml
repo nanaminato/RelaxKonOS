@@ -1999,6 +1999,8 @@
     <string name="editor_replace_all">すべて置換</string>
     <string name="editor_destination">新規ファイルのサーバー上の絶対パス（既存ファイルは上書きしません）</string>
     <string name="editor_save_as">名前を付けて保存</string>
+    <string name="editor_discard_changes">変更を破棄</string>
+    <string name="editor_continue_editing">編集を続ける</string>
     <string name="editor_unsaved">未保存の変更を破棄しますか？</string>
     <string name="editor_unsaved_note">閉じると下書きが消去されます。保存結果が未確認の場合、閉じてもサーバーへの書き込みは取り消されません。</string>
     <string name="gw_engine_ready">Git を利用できます</string>
@@ -2117,7 +2119,8 @@
     <string name="files_mutation_unknown">結果を確認できません。元項目と保存先、または再取得した属性を確認して次の操作を判断してください。自動再試行は行いません。</string>
     <string name="files_permissions_edit">権限を編集</string>
     <string name="files_permissions_saved">権限を保存して再取得しました。</string>
-    <string name="files_permissions_scope">この項目だけに適用します。配下の項目は変更しません。</string>
+    <string name="files_permissions_scope">既定ではこの項目だけに適用します。再帰変更はシンボリックリンクを除外し、失敗時に一部が変更済みの場合があります。</string>
+    <string name="files_permissions_recursive">配下のすべての項目にも適用</string>
     <string name="files_permissions_octal">8 進数の権限（0000–7777）</string>
     <string name="files_permissions_owner">所有者</string>
     <string name="files_permissions_group">グループ</string>

@@ -3,6 +3,8 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Client.Services.Privileged;
+using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.Certificates;
 using RelaxKonOS.Protocol.Common;
 
@@ -13,7 +15,7 @@ namespace RelaxKonOS.Client.Apps.Certificates;
 /// Idempotency-Key header (server-enforced); each invocation generates a fresh key. Retrying an accepted intent must retain its original key;
 /// issuing another invocation creates a new intent. 202 Accepted responses carry the operation dto in the body.
 /// </summary>
-public sealed class RemoteCertificateClient(HttpClient http, IAuthSession session) : IRemoteCertificateClient
+public sealed class RemoteCertificateClient(HttpClient http, IAuthSession session, IHostElevationBroker elevations) : IRemoteCertificateClient
 {
     public Task<IReadOnlyList<CertificateDto>> ListAsync(CancellationToken cancellationToken = default)
         => SendAsync<IReadOnlyList<CertificateDto>>(HttpMethod.Get, CertificateApiRoutes.Certificates, null, null, cancellationToken);
@@ -28,7 +30,11 @@ public sealed class RemoteCertificateClient(HttpClient http, IAuthSession sessio
         => SendAsync<CertificateOperationDto>(HttpMethod.Post, CertificateApiRoutes.Request, request, NewKey(), cancellationToken);
 
     public Task<CertificateOperationDto> CreateSelfSignedAsync(CreateSelfSignedCertificateRequest request, CancellationToken cancellationToken = default)
-        => SendAsync<CertificateOperationDto>(HttpMethod.Post, CertificateApiRoutes.SelfSigned, request, NewKey(), cancellationToken);
+    {
+        var key = NewKey();
+        return elevations.ExecuteAsync(HostElevationCapability.CertificateCreateSelfSigned, "certificates/self-signed",
+            () => SendAsync<CertificateOperationDto>(HttpMethod.Post, CertificateApiRoutes.SelfSigned, request, key, cancellationToken), cancellationToken);
+    }
 
     public Task<KestrelCertificateDeploymentDto> GetKestrelDeploymentAsync(Guid id, CancellationToken cancellationToken = default)
         => SendAsync<KestrelCertificateDeploymentDto>(HttpMethod.Get, CertificateApiRoutes.Deploy.Replace("{id}", id.ToString("N")), null, null, cancellationToken);

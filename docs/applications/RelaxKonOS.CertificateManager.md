@@ -1432,3 +1432,5 @@ certificate_renewal_attempts     certificate_audit_entries
 ### 35.7 平台范围与验收
 
 V1 的支持目标为 **Ubuntu 24.04 LTS** 与 **Windows Server 2016 及以上**。实现前分别验证：管理员检测、文件 ACL、短暂 TCP 80 监听、Kestrel 换证、证书目录恢复、IPv4/IPv6 WebRoot、取消/断线恢复和权限不足降级。Anvil 引入前还需在中央包管理中锁定版本，并记录许可证、.NET 10 与两个目标平台的兼容性、离线部署和升级策略。
+
+自签名证书创建在 HTTP 入口验证 `CertificateCreateSelfSigned` 能力、`certificates/self-signed` 精确目标的会话授权。缺少授权返回 HTTP 403 / `elevation-required`，客户端通过统一提权流程认证后以原幂等键重试一次。创建仅写入 Server 自有证书存储，不要求 Server 进程以 root/Administrator 运行；其他证书动作的宿主进程权限约束保持现有契约。

@@ -120,6 +120,10 @@ fun FilePermissionDialog(vm: FilesViewModel) {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Text(vm.selected?.path.orEmpty())
                 Text(stringResource(R.string.files_permissions_scope))
+                if (vm.selected?.isDirectory == true) Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Checkbox(checked = vm.permissionRecursive, onCheckedChange = { vm.permissionRecursive = it }, enabled = !vm.mutationBusy)
+                    Text(stringResource(R.string.files_permissions_recursive))
+                }
                 OutlinedTextField(vm.permissionInput, { vm.permissionInput = it }, singleLine = true, enabled = !vm.mutationBusy,
                     label = { Text(stringResource(R.string.files_permissions_octal)) }, isError = mode == null)
                 val labels = listOf(R.string.files_permissions_owner, R.string.files_permissions_group, R.string.files_permissions_others)

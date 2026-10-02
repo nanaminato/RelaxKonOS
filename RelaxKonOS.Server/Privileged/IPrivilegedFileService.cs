@@ -8,7 +8,7 @@ public interface IPrivilegedFileService
     Task<IReadOnlyList<SpecialLocationDto>> GetSpecialLocationsAsync(PrivilegedFileAuthorizationSource source, string home, CancellationToken cancellationToken = default);
     Task<FileSystemEntryDto?> GetInfoAsync(PrivilegedFileAuthorizationSource source, string path, CancellationToken cancellationToken = default);
     Task<FilePropertiesDto?> GetPropertiesAsync(PrivilegedFileAuthorizationSource source, string path, CancellationToken cancellationToken = default);
-    Task<FilePropertiesDto> SetUnixPermissionsAsync(PrivilegedFileAuthorizationSource source, string path, int unixMode, CancellationToken cancellationToken = default);
+    Task<FilePropertiesDto> SetUnixPermissionsAsync(PrivilegedFileAuthorizationSource source, string path, int unixMode, bool recursive, CancellationToken cancellationToken = default);
     Task<DirectoryDto> ListDirectoryAsync(PrivilegedFileAuthorizationSource source, string path, CancellationToken cancellationToken = default);
     Task<(Stream Stream, string FileName)> OpenReadAsync(PrivilegedFileAuthorizationSource source, string path, CancellationToken cancellationToken = default);
     Task<FileEntryDto> WriteAsync(PrivilegedFileAuthorizationSource source, string path, Stream content, CancellationToken cancellationToken = default);

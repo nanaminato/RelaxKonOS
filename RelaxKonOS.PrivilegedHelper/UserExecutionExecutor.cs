@@ -169,7 +169,7 @@ public static class UserExecutionExecutor
             UserExecutionOperationKind.FileUpload => await UploadAsync(path!, request.FileName!, request.ContentBase64!, home),
             UserExecutionOperationKind.FileCreateDirectory => Create(path!),
             UserExecutionOperationKind.FileGetProperties => Properties(path!),
-            UserExecutionOperationKind.FileSetUnixPermissions => SetMode(path!, request.UnixMode),
+            UserExecutionOperationKind.FileSetUnixPermissions => SetMode(path!, request.UnixMode, request.Recursive),
             UserExecutionOperationKind.FileCreateStaging => CreateStaging(path!),
             UserExecutionOperationKind.FileAppendStaging => AppendStaging(path!, request.Offset!.Value,
                 request.ExpectedBytes!.Value, request.ContentBase64!),
@@ -278,7 +278,7 @@ public static class UserExecutionExecutor
         var metadata = LinuxUserFileOperations.GetMetadata(path);
         return metadata is null ? null : ToProperties(metadata);
     }
-    private static FilePropertiesDto SetMode(string path, int? mode) { if (mode is < 0 or > 0xfff or null) throw new ArgumentException(); return ToProperties(LinuxUserFileOperations.SetUnixFileMode(path, (UnixFileMode)mode.Value)); }
+    private static FilePropertiesDto SetMode(string path, int? mode, bool recursive) { if (mode is < 0 or > 0xfff or null) throw new ArgumentException(); return ToProperties(LinuxUserFileOperations.SetUnixFileMode(path, (UnixFileMode)mode.Value, recursive)); }
     private static FileEntryDto FileEntry(FileInfo f, string? reportedPath = null) => new(reportedPath ?? f.FullName, f.Name, f.Extension, f.Length, f.CreationTimeUtc, f.LastWriteTimeUtc, f.LastAccessTimeUtc, f.Attributes.HasFlag(FileAttributes.Hidden), f.Attributes.HasFlag(FileAttributes.System), ContentType(reportedPath ?? f.FullName));
     private static LinuxUserFileOperations.LinuxPathMetadata RequiredMetadata(string path)
         => LinuxUserFileOperations.GetMetadata(path) ?? throw new FileNotFoundException();

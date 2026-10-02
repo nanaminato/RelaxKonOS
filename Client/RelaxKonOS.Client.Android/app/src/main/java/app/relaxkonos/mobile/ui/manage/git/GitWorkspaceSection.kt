@@ -258,8 +258,8 @@ private fun GitConflictDialog(file: GitConflictFile, model: GitWorkspaceViewMode
         }
         model.state.preview?.let { GitConfirmation(it, model) }
         if (confirmClose) AlertDialog(onDismissRequest = { confirmClose = false }, title = { Text(stringResource(R.string.editor_unsaved)) }, text = { Text(stringResource(R.string.editor_unsaved_note)) },
-            confirmButton = { TextButton(onClick = { model.closeConflict() }) { Text(stringResource(R.string.git_discard_draft)) } },
-            dismissButton = { TextButton(onClick = { confirmClose = false }) { Text(stringResource(R.string.common_cancel)) } })
+            confirmButton = { TextButton(onClick = { model.closeConflict() }) { Text(stringResource(R.string.editor_discard_changes)) } },
+            dismissButton = { TextButton(onClick = { confirmClose = false }) { Text(stringResource(R.string.editor_continue_editing)) } })
     }
 }
 

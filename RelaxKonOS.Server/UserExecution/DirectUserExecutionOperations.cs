@@ -31,7 +31,7 @@ internal static class DirectUserExecutionOperations
             UserExecutionOperationKind.FileWriteIfMatch => await direct.WriteFileIfMatchAsync(request.Path!,
                 Convert.FromBase64String(request.ContentBase64!), request.ExpectedSha256!),
             UserExecutionOperationKind.FileGetProperties => direct.GetProperties(request.Path!),
-            UserExecutionOperationKind.FileSetUnixPermissions => direct.SetUnixPermissions(request.Path!, request.UnixMode!.Value),
+            UserExecutionOperationKind.FileSetUnixPermissions => direct.SetUnixPermissions(request.Path!, request.UnixMode!.Value, request.Recursive),
             UserExecutionOperationKind.FileDelete => DeleteDirect(direct, request.Path!),
             UserExecutionOperationKind.FileRename => direct.Rename(request.Path!, request.NewName!),
             UserExecutionOperationKind.FileMove => direct.Move(request.Path!, request.DestinationPath!, request.Overwrite),

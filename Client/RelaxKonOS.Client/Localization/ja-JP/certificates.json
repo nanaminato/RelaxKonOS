@@ -120,6 +120,7 @@
     "certificates.problem.direct_http01_unsupported": "このサーバーでは直接 HTTP-01 検証はサポートされていません。",
     "certificates.problem.port80_unavailable": "選択したチャレンジの種類ではポート 80 を使用できません。",
     "certificates.problem.port80_elevation_required": "このチャレンジの種類でポート 80 を使用するには管理者権限が必要です。",
+    "certificates.problem.elevation_required": "自己署名証明書の作成には管理者の承認が必要です。認証後に再試行してください。入力内容は保持されています。",
     "certificates.problem.admin_required": "この証明書操作には、管理者権限で実行されている RelaxKonOS Server が必要です。",
     "certificates.problem.deployment_elevation_required": "この証明書をデプロイするには、管理者権限で実行されている RelaxKonOS Server が必要です。",
     "certificates.problem.public_reachability_confirmation_required": "証明書を要求する前に公開到達性を確認してください。",

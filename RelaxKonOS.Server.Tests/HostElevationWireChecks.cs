@@ -75,6 +75,13 @@ public static class HostElevationWireChecks
         await Grant(new(HostElevationCapability.HostIdentityChange, "host/identity"), HttpStatusCode.Forbidden);
         await Grant(request with { Target = "host/environment/user/another-sid" }, HttpStatusCode.Forbidden);
         await Grant(new(HostElevationCapability.FileRead, Path.GetFullPath("test")), HttpStatusCode.BadRequest);
+        var selfSignedRequest = new HostElevationRequest(HostElevationCapability.CertificateCreateSelfSigned, "certificates/self-signed");
+        await Grant(selfSignedRequest, HttpStatusCode.Forbidden);
+        await Grant(selfSignedRequest with { AdministratorUsername = "alice", Password = "test-password" }, HttpStatusCode.OK);
+        var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", "wire-user"), new Claim("jti", "alias-token"), new Claim("amr", "alias")], "test"));
+        Assert(store.IsGranted(principal, HostElevationCapability.CertificateCreateSelfSigned, "certificates/self-signed"), "Certificate creation grant was not recognized");
+        Assert(!store.IsGranted(principal, HostElevationCapability.CertificateCreateSelfSigned, "certificates/other"), "Certificate grant crossed targets");
+        Assert(!store.IsGranted(principal, HostElevationCapability.NginxConfigurationWrite, "certificates/self-signed"), "Certificate grant crossed capabilities");
         Console.WriteLine("Host elevation HTTP checks passed: administrator revalidation, alias challenge, exact grants and target ownership.");
     }
 

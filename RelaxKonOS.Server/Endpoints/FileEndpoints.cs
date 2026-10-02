@@ -231,7 +231,7 @@ public static class FileEndpoints
         {
             if (string.IsNullOrWhiteSpace(request.Path))
                 return Problem(400, "invalid-path", "Invalid path", "Path cannot be empty.");
-            try { return Results.Ok(fs.SetUnixPermissions(request.Path, request.UnixMode)); }
+            try { return Results.Ok(fs.SetUnixPermissions(request.Path, request.UnixMode, request.Recursive)); }
             catch (PlatformNotSupportedException ex) { return Problem(409, "unsupported-operation", "Unsupported operation", ex.Message); }
             catch (FileNotFoundException ex) { return Problem(404, "not-found", "Not found", ex.Message); }
             catch (UnauthorizedAccessException ex) { return Problem(403, "elevation-required", "需要管理员权限", ex.Message); }

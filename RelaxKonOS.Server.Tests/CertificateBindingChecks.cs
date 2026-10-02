@@ -36,6 +36,15 @@ internal static class CertificateBindingChecks
             new CertificateRenewalAttemptRepository(environment, configuration, options), NullLogger<CertificateOperationStore>.Instance);
         var manager = new CertificateManager(certificates, null!, null!, ledger, registry,
             new CertificateDeploymentRepository(environment, configuration), server, new BindingPrivileges(), new TestApplicationLifetime(), NullLogger<CertificateManager>.Instance);
+        var unprivilegedManager = new CertificateManager(certificates, null!, null!, ledger, registry,
+            new CertificateDeploymentRepository(environment, configuration), server, new UnprivilegedBindingPrivileges(), new TestApplicationLifetime(), NullLogger<CertificateManager>.Instance);
+        var created = await unprivilegedManager.CreateSelfSignedAsync("unprivileged-self-signed",
+            new CreateSelfSignedCertificateRequest(["192.168.1.5"]), "alice", CancellationToken.None);
+        TestAssert.Assert(created.OperationId != Guid.Empty, "Self-signed creation still requires an administrator Server process.");
+        var createdResult = await TestOperations.WaitForCertificateOperationAsync(ledger, created.OperationId);
+        TestAssert.Assert(createdResult.State == CertificateOperationState.Succeeded, "Self-signed creation failed in the Server-owned store.");
+        var createdCertificate = await certificates.GetAsync(created.CertificateId!.Value, CancellationToken.None);
+        TestAssert.Assert(createdCertificate?.Kind == CertificateKind.SelfSigned && createdCertificate.Domains.SequenceEqual(["192.168.1.5"]), "Self-signed IP certificate was not saved.");
         var facts = await manager.GetKestrelDeploymentAsync(id, CancellationToken.None);
         TestAssert.Assert(facts.CertificateExists && facts.Registered && !facts.HttpsConfigured && facts.HostNames.SequenceEqual(["one.example.test"]), "GET confused issuance, registration, and listeners.");
         var rejected = await manager.DeployKestrelAsync(id, "request", "alice", CancellationToken.None);
@@ -54,6 +63,7 @@ internal static class CertificateBindingChecks
         TestAssert.Assert(replay.OperationId == deployed.OperationId, "Lost deployment response could not recover original operation after facts changed.");
         TestAssert.Assert(registry.Select("one.example.test") == wildcard, "Deleted exact binding did not fall back to the surviving default.");
     }
+    private sealed class UnprivilegedBindingPrivileges : IHostPrivilegeService { public bool IsAdministrator => false; }
     private sealed class BindingPrivileges : IHostPrivilegeService { public bool IsAdministrator => true; }
     private sealed class BindingServer : IServer
     {

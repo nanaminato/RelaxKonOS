@@ -628,14 +628,14 @@ static PrivilegedOperationResult GetProperties(string? path, IReadOnlyList<strin
         mode is { } value ? Convert.ToString(value, 8) : attributes.ToString(), attributes.ToString(), mode));
 }
 
-static PrivilegedOperationResult SetUnixPermissions(string? path, int? unixMode, IReadOnlyList<string> roots)
+static PrivilegedOperationResult SetUnixPermissions(string? path, int? unixMode, bool recursive, IReadOnlyList<string> roots)
 {
     if (!OperatingSystem.IsLinux() || unixMode is null or < 0 or > 0xFFF)
         throw new ArgumentException("invalid Unix mode");
     var canonical = ValidatePath(path, roots);
     if (OperatingSystem.IsLinux())
         return FileOutput(Properties(RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.SetUnixFileMode(canonical,
-            (UnixFileMode)unixMode.Value)));
+            (UnixFileMode)unixMode.Value, recursive)));
     if (!File.Exists(canonical) && !Directory.Exists(canonical)) throw new FileNotFoundException();
     File.SetUnixFileMode(canonical, (UnixFileMode)unixMode.Value);
     return GetProperties(canonical, roots);

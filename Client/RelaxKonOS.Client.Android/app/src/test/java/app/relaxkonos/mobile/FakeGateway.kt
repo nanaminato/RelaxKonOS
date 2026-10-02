@@ -305,7 +305,7 @@ class FakeGateway : RelaxKonGateway {
     var onElevation: (suspend (String, String, String, String, CharArray?, String?) -> ApiResult<ElevationGrant>)? = null
     var onFileElevation: (suspend (String, String, String, String?, CharArray?, List<String>, Boolean, String?) -> ApiResult<FileElevationGrant>)? = null
     var onListDirectory: (suspend (String, String, String) -> ApiResult<DirectoryListing>)? = null
-    var onSetFilePermissions: (suspend (String, String, String, Int) -> ApiResult<RemoteFileProperties>)? = null
+    var onSetFilePermissions: (suspend (String, String, String, Int, Boolean) -> ApiResult<RemoteFileProperties>)? = null
     var onFileProperties: (suspend (String, String, String) -> ApiResult<RemoteFileProperties>)? = null
     var onCreateDirectory: (suspend (String, String, String) -> ApiResult<Unit>)? = null
     var onDelete: (suspend (String, String, String) -> ApiResult<Unit>)? = null
@@ -420,8 +420,8 @@ class FakeGateway : RelaxKonGateway {
         return requireHandler(onListDirectory, "listDirectory")(serverUrl, accessToken, path)
     }
 
-    override suspend fun setFilePermissions(serverUrl: String, accessToken: String, path: String, unixMode: Int): ApiResult<RemoteFileProperties> =
-        requireHandler(onSetFilePermissions, "setFilePermissions")(serverUrl, accessToken, path, unixMode)
+    override suspend fun setFilePermissions(serverUrl: String, accessToken: String, path: String, unixMode: Int, recursive: Boolean): ApiResult<RemoteFileProperties> =
+        requireHandler(onSetFilePermissions, "setFilePermissions")(serverUrl, accessToken, path, unixMode, recursive)
 
     var onTerminalSettings: (suspend (String) -> ApiResult<app.relaxkonos.mobile.core.net.TerminalSettings>)? = null
     var onSaveTerminalSettings: (suspend (String, app.relaxkonos.mobile.core.net.TerminalSettings) -> ApiResult<app.relaxkonos.mobile.core.net.TerminalSettings>)? = null

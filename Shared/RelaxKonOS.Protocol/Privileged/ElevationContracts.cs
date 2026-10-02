@@ -18,6 +18,7 @@ public enum HostElevationCapability
     NginxInstall,
     NginxLifecycle,
     NginxConfigurationWrite,
+    CertificateCreateSelfSigned,
     ProxyServiceAction,
     FirewallChange,
     GitPackageInstall,

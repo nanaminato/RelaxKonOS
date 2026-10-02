@@ -1158,9 +1158,9 @@ class RelaxKonApi(
         }
     }
 
-    override suspend fun setFilePermissions(serverUrl: String, accessToken: String, path: String, unixMode: Int): ApiResult<RemoteFileProperties> =
+    override suspend fun setFilePermissions(serverUrl: String, accessToken: String, path: String, unixMode: Int, recursive: Boolean): ApiResult<RemoteFileProperties> =
         when (val result = execute("PUT", serverUrl, FileRoutes.PERMISSIONS, accessToken,
-            JsonBody().string("path", path).int("unixMode", unixMode))) {
+            JsonBody().string("path", path).int("unixMode", unixMode).bool("recursive", recursive))) {
             is ApiResult.Success -> parseFileProperties(result.value)
             is ApiResult.Problem -> result
             is ApiResult.Transport -> result

@@ -21,9 +21,9 @@ public sealed class PrivilegedFileService(IPrivilegedOperationTransport runner) 
         => SendAsync<FilePropertiesDto?>(new(PrivilegedOperationKind.FileGetProperties,
             Path: path, FileAuthorizationSource: source), path, cancellationToken);
 
-    public Task<FilePropertiesDto> SetUnixPermissionsAsync(PrivilegedFileAuthorizationSource source, string path, int unixMode, CancellationToken cancellationToken = default)
+    public Task<FilePropertiesDto> SetUnixPermissionsAsync(PrivilegedFileAuthorizationSource source, string path, int unixMode, bool recursive, CancellationToken cancellationToken = default)
         => SendAsync<FilePropertiesDto>(new(PrivilegedOperationKind.FileSetUnixPermissions,
-            Path: path, FileAuthorizationSource: source, UnixMode: unixMode), path, cancellationToken);
+            Path: path, FileAuthorizationSource: source, UnixMode: unixMode, Recursive: recursive), path, cancellationToken);
 
     public async Task<DirectoryDto> ListDirectoryAsync(PrivilegedFileAuthorizationSource source, string path, CancellationToken cancellationToken = default)
     {

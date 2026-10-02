@@ -1,5 +1,7 @@
 using RelaxKonOS.Protocol.Certificates;
 using RelaxKonOS.Server.HostMode;
+using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Server.Privileged;
 
 namespace RelaxKonOS.Server.Endpoints;
 
@@ -14,8 +16,15 @@ public static class CertificateEndpoints
         group.MapPost(CertificateApiRoutes.PreflightPattern, (CertificatePreflightRequest request, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) => manager.PreflightAsync(request, ct));
         group.MapPost(CertificateApiRoutes.CollectionPattern, async (RequestCertificateRequest request, HttpContext context, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) =>
             await StartAsync(context, key => manager.RequestAsync(key, request, Actor(context), ct)));
-        group.MapPost(CertificateApiRoutes.SelfSignedPattern, async (CreateSelfSignedCertificateRequest request, HttpContext context, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) =>
-            await StartAsync(context, key => manager.CreateSelfSignedAsync(key, request, Actor(context), ct)));
+        group.MapPost(CertificateApiRoutes.SelfSignedPattern, async (CreateSelfSignedCertificateRequest request, HttpContext context,
+            IHostElevationSessionStore elevations, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) =>
+        {
+            if (!elevations.IsGranted(context.User, HostElevationCapability.CertificateCreateSelfSigned, "certificates/self-signed"))
+                return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
+                    type: "https://relaxkonos.app/problems/elevation-required",
+                    extensions: new Dictionary<string, object?> { ["problemCode"] = "elevation-required" });
+            return await StartAsync(context, key => manager.CreateSelfSignedAsync(key, request, Actor(context), ct));
+        });
         group.MapGet(CertificateApiRoutes.DeployPattern, (Guid id, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) =>
             manager.GetKestrelDeploymentAsync(id, ct));
         group.MapPost(CertificateApiRoutes.DeployPattern, async (Guid id, HttpContext context, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) =>

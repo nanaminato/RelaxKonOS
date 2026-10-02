@@ -124,7 +124,7 @@ public sealed class SshExplorerClient(SshDesktopSession session) : IExplorerClie
     public Task<FileElevationResult> ElevateFileAccessAsync(string path, FileElevationCapability capability, string? password = null, string? administratorUsername = null, CancellationToken ct = default) => Unsupported<FileElevationResult>();
     public Task<FileElevationResult> ElevateFileOperationAsync(IReadOnlyList<string> directoryPaths, FileElevationCapability capability, string? password = null, string? administratorUsername = null, CancellationToken ct = default) => Unsupported<FileElevationResult>();
     public Task<FilePropertiesDto?> GetPropertiesAsync(string path, CancellationToken ct = default) => Unsupported<FilePropertiesDto?>();
-    public Task<FilePropertiesDto> SetUnixPermissionsAsync(string path, int unixMode, CancellationToken ct = default) => Unsupported<FilePropertiesDto>();
+    public Task<FilePropertiesDto> SetUnixPermissionsAsync(string path, int unixMode, bool recursive, CancellationToken ct = default) => Unsupported<FilePropertiesDto>();
     public Task<FileSystemEntryDto> CopyAsync(string sourcePath, string destinationPath, bool overwrite = false, CancellationToken ct = default) => Unsupported<FileSystemEntryDto>();
 
     private async Task<T> ExecuteAsync<T>(Func<SftpClient, T> action, CancellationToken ct)

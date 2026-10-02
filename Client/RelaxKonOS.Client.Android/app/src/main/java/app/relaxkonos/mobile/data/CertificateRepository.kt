@@ -8,7 +8,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 class CertificateRepository(private val gateway: RelaxKonGateway, private val session: AuthSession,
-    private val index: OperationIndex, private val journal: CertificateRequestJournal) {
+    private val index: OperationIndex, private val journal: CertificateRequestJournal, private val elevations: ElevationRepository) {
     private val mutations = Mutex()
     fun pending(owner: SessionState.Active): List<PendingCertificateRequest> { verify(owner); return journal.pending(owner) }
     suspend fun list(owner: SessionState.Active) = read(owner) { url, token -> gateway.certificates(url, token) }
@@ -23,7 +23,7 @@ class CertificateRepository(private val gateway: RelaxKonGateway, private val se
     suspend fun preflight(owner: SessionState.Active, domains: List<String>, challenge: CertificateChallenge) =
         read(owner) { url, token -> gateway.certificatePreflight(url, token, domains, challenge) }
 
-    suspend fun submit(owner: SessionState.Active, action: CertificateAction, target: String?, body: JsonBody): ApiResult<CertificateOperation> = mutations.withLock {
+    suspend fun submit(owner: SessionState.Active, provider: ElevationAnswerProvider, action: CertificateAction, target: String?, body: JsonBody): ApiResult<CertificateOperation> = mutations.withLock {
         verify(owner); require(owner.privilegedOperations && ServerCapabilities.CERTIFICATES in owner.capabilities)
         val id = target?.let(InstallationRoutes::canonicalId)
         require((id == null) == (action in setOf(CertificateAction.Issue, CertificateAction.SelfSigned)))
@@ -41,7 +41,12 @@ class CertificateRepository(private val gateway: RelaxKonGateway, private val se
             if (facts !is ApiResult.Success) return@withLock when (facts) { is ApiResult.Problem -> facts; is ApiResult.Transport -> facts; else -> error("Unreachable") }
         }
         journal.update(pending.copy(attempted = true))
-        val result = read(owner) { url, token -> gateway.certificateMutation(url, token, action, id, body, pending.key) }
+        val mutation: suspend (String, String) -> ApiResult<CertificateOperation> = { url, token ->
+            verify(owner); gateway.certificateMutation(url, token, action, id, body, pending.key)
+        }
+        val result = if (action == CertificateAction.SelfSigned)
+            elevations.withElevation("certificateCreateSelfSigned", "certificates/self-signed", provider, mutation).also { verify(owner) }
+        else read(owner, mutation)
         if (result is ApiResult.Success) {
             if (result.value.kind != action || result.value.certificateId == null || (id != null && result.value.certificateId != id)) return@withLock ApiResult.Transport(null)
             journal.update(pending.copy(operationId = result.value.operationId, attempted = true))

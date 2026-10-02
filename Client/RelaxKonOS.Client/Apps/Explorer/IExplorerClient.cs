@@ -47,7 +47,7 @@ public interface IExplorerClient
     Task<FilePropertiesDto?> GetPropertiesAsync(string path, CancellationToken ct = default);
 
     /// <summary>更新远程 Linux 文件或目录的 POSIX 权限位。</summary>
-    Task<FilePropertiesDto> SetUnixPermissionsAsync(string path, int unixMode, CancellationToken ct = default);
+    Task<FilePropertiesDto> SetUnixPermissionsAsync(string path, int unixMode, bool recursive, CancellationToken ct = default);
 
     /// <summary>创建目录（POST /files/directory）。</summary>
     Task<FileSystemEntryDto> CreateDirectoryAsync(string path, CancellationToken ct = default);

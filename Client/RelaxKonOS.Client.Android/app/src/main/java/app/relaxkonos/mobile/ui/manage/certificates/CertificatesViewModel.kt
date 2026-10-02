@@ -72,7 +72,7 @@ internal class CertificatesViewModel(application: Application) : AndroidViewMode
         val body = draft.body() ?: return@work
         if (!draft.selfSigned && (state.preflight as? ApiResult.Success)?.value?.canProceed != true) return@work
         state = state.copy(draftLocked = true)
-        val result = container.certificates.submit(active, draft.action, null, body)
+        val result = container.certificates.submit(active, container.elevationAnswers, draft.action, null, body)
         observe(active, result)
         state = state.copy(draftLocked = state.pending.any { it.target == null && it.attempted } && (result as? ApiResult.Problem)?.code != "certificate.original_request_pending")
         if (result is ApiResult.Success) closeAfterSubmit()
@@ -87,7 +87,7 @@ internal class CertificatesViewModel(application: Application) : AndroidViewMode
                 failure(current); state = state.copy(problemCode = "certificate.deployment_not_ready"); return@work
             }
         }
-        val result = container.certificates.submit(active, action, certificate.id, JsonBody().apply {
+        val result = container.certificates.submit(active, container.elevationAnswers, action, certificate.id, JsonBody().apply {
             if (action in setOf(CertificateAction.Delete, CertificateAction.Revoke)) bool("confirmed", true)
         })
         observe(active, result)
@@ -112,7 +112,7 @@ internal class CertificatesViewModel(application: Application) : AndroidViewMode
     fun retry(pending: PendingCertificateRequest) {
         if (pending.operationId != null) { recover(pending.operationId, pending); return }
         val id = pending.target ?: return
-        work { active -> observe(active, container.certificates.submit(active, pending.action, id, JsonBody().apply {
+        work { active -> observe(active, container.certificates.submit(active, container.elevationAnswers, pending.action, id, JsonBody().apply {
             if (pending.action in setOf(CertificateAction.Delete, CertificateAction.Revoke)) bool("confirmed", true)
         })) }
     }
