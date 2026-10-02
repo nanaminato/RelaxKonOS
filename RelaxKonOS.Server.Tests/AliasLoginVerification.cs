@@ -89,7 +89,8 @@ internal static class AliasLoginVerification
         services.AddScoped<CanonicalUserResolver>();
         services.AddScoped<LoginAuthenticationService>();
         services.AddScoped<AliasCredentialService>();
-        services.AddSingleton<IHostElevationSessionStore, HostElevationSessionStore>();
+        services.AddSingleton<HostElevationSessionState>();
+        services.AddScoped<IHostElevationSessionStore, HostElevationSessionStore>();
         services.Configure<AuthSecurityOptions>(options => options.IpFailureLimit = 1000);
         var jwt = new JwtOptions { Secret = "alias-test-signing-secret-01234567890123456789" };
         services.Configure<JwtOptions>(options => { options.Secret = jwt.Secret; });

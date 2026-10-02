@@ -22,7 +22,8 @@ public static class HostElevationWireChecks
     {
         var privileges = new TestHostAccountPrivilegeService { Level = HostAccountPrivilege.HostAdministrator };
         var mode = new UploadSessionChecks.SystemMode();
-        var store = new HostElevationSessionStore(privileges, mode);
+        var state = new HostElevationSessionState();
+        var store = new HostElevationSessionStore(privileges, mode, state);
         var administrator = new Administrator();
         var method = "system";
         var builder = WebApplication.CreateBuilder();
@@ -30,7 +31,9 @@ public static class HostElevationWireChecks
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddAuthorization();
         builder.Services.AddSingleton<IServerModeResolver>(mode);
-        builder.Services.AddSingleton<IHostElevationSessionStore>(store);
+        builder.Services.AddSingleton<IHostAccountPrivilegeService>(privileges);
+        builder.Services.AddSingleton(state);
+        builder.Services.AddScoped<IHostElevationSessionStore, HostElevationSessionStore>();
         builder.Services.AddSingleton<IHostAdministratorAuthenticator>(administrator);
         builder.Services.AddSingleton<IHostEnvironmentService, EnvironmentTargets>();
         builder.Services.AddSingleton<OwnerDeviceKeyService>();
