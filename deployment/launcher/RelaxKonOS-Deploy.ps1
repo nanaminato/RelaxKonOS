@@ -958,7 +958,7 @@ function Invoke-InstallLikeAction {
         $arguments += @('-BundlePath', $packageRoot)
     }
     if ($null -ne $script:optionsServerPort) { $arguments += @('-ServerPort', [string]$script:optionsServerPort) }
-    if ($script:optionsNetwork) { $arguments += @('-NetworkProfile', (Get-EngineNetworkProfile $script:optionsNetwork)) }
+    if ($script:optionsNetwork -and $script:record.kind -in @('install', 'upgrade')) { $arguments += @('-NetworkProfile', (Get-EngineNetworkProfile $script:optionsNetwork)) }
     if ($script:optionsFileAccess) { $arguments += @('-FileAccess', $script:optionsFileAccess) }
     if ($script:optionsCertificateMode -eq 'custom') {
         $certificate = Join-Path $stagingRoot 'certificate.pfx'; $password = Join-Path $stagingRoot 'certificate-password.txt'

@@ -345,7 +345,8 @@ if (-not $installationId) { $installationId = New-InstallationId }
 # Upgrade, repair and rollback re-apply the TLS material that is already installed rather than
 # rotating it. The existing PFX is re-imported through the custom-certificate path so the
 # certificate identity a client already saw stays stable.
-if ($Action -ne 'install' -and $CertificateMode -ne 'none' -and -not $PSBoundParameters.ContainsKey('CertificatePath')) {
+if ($Action -ne 'install' -and $CertificateMode -ne 'none' -and -not $PSBoundParameters.ContainsKey('CertificatePath') -and
+    -not ($Action -eq 'repair' -and $PSBoundParameters.ContainsKey('CertificateMode') -and $CertificateMode -eq 'self-signed')) {
     $installedCertificate = Join-Path $DataRoot 'server\certificates\bootstrap.pfx'
     if (-not (Test-Path -LiteralPath $installedCertificate -PathType Leaf)) {
         throw 'The installed TLS certificate is missing; reinstall is required.'

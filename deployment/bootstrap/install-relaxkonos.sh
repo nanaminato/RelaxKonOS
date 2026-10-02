@@ -312,7 +312,8 @@ if [[ "$CERTIFICATE_MODE" == self-signed ]]; then SELF_SIGNED_IDENTITIES="${SELF
 # The existing PFX is re-imported through the custom-certificate path so the certificate identity a
 # client already saw stays stable.
 SERVICES_CERTIFICATE_MODE="$CERTIFICATE_MODE"
-if [[ ( "$ACTION" == repair || "$ACTION" == rollback ) && "$CERTIFICATE_MODE" != none ]]; then
+if [[ ( "$ACTION" == repair || "$ACTION" == rollback ) && "$CERTIFICATE_MODE" != none &&
+      !( "$ACTION" == repair && "$CERTIFICATE_MODE_SET" == true && "$CERTIFICATE_MODE" == self-signed ) ]]; then
   installed_certificate="$DATA_ROOT/server/certificates/bootstrap.pfx"
   [[ -f "$installed_certificate" ]] || { echo 'The installed TLS certificate is missing; reinstall is required.' >&2; exit 65; }
   recorded_certificate_password="$(sed -nE 's/^Kestrel__Certificates__Default__Password=(.*)$/\1/p' /etc/relaxkonos/server.env 2>/dev/null | head -n1)"
