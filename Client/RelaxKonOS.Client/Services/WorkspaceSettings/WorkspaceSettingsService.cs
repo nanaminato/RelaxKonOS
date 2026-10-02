@@ -28,9 +28,16 @@ public sealed class WorkspaceSettingsService : IWorkspaceSettingsService
 
     public async Task<WorkspacePreferencesDto> SaveAsync(string serverUrl, string accessToken, Guid workspaceId, WorkspacePreferencesDto preferences, CancellationToken ct = default)
     {
+        var serviceId = _session.ServiceId;
+        var sessionId = _session.CurrentSession?.Id;
+        var isCurrentTarget = _session.State == AuthSessionState.Authenticated
+            && _session.EffectiveBaseUrl == serverUrl && _session.CurrentWorkspace?.Id == workspaceId;
         var saved = await SendAsync<WorkspacePreferencesDto>(HttpMethod.Put, serverUrl, accessToken, workspaceId, preferences, ct);
-        if (_session.State == AuthSessionState.Authenticated && _session.EffectiveBaseUrl == serverUrl
-            && _session.CurrentWorkspace?.Id == workspaceId && _session.Tokens?.AccessToken == accessToken)
+        // Access tokens can rotate while the authenticated handler sends the request. Acknowledge
+        // by stable login identity, while rejecting responses from an earlier login/workspace.
+        if (isCurrentTarget && serviceId is not null && _session.State == AuthSessionState.Authenticated
+            && _session.ServiceId == serviceId && _session.CurrentSession?.Id == sessionId
+            && _session.CurrentWorkspace?.Id == workspaceId)
             _settings.AcknowledgePreferences(preferences.Revision, saved.Revision);
         return saved;
     }
@@ -44,23 +51,37 @@ public sealed class WorkspaceSettingsService : IWorkspaceSettingsService
         };
         if (body is not null)
             req.Content = JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default);
-        using var resp = await _http.SendAsync(req, ct);
-        if (!resp.IsSuccessStatusCode)
-            await EnsureSuccessAsync(resp, ct);
-        return await resp.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, ct)
-            ?? throw new RelaxKonOSAuthException(NoBodyProblem());
+        Guid? correlationId = null;
+        try
+        {
+            using var resp = await _http.SendAsync(req, ct);
+            if (resp.Headers.TryGetValues("X-RelaxKonOS-Correlation-Id", out var values)
+                && Guid.TryParse(values.FirstOrDefault(), out var id)) correlationId = id;
+            if (!resp.IsSuccessStatusCode) await EnsureSuccessAsync(resp, ct);
+            return await resp.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, ct)
+                ?? throw new RelaxKonOSAuthException(NoBodyProblem());
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception exception)
+        {
+            WorkspacePreferencesDiagnostics.Record(method == HttpMethod.Put ? "save" : "load",
+                workspaceId, (body as WorkspacePreferencesDto)?.Revision, exception, correlationId);
+            throw;
+        }
     }
 
     private static async Task EnsureSuccessAsync(HttpResponseMessage resp, CancellationToken ct)
     {
         ProblemDetails? problem = null;
         try { problem = await resp.Content.ReadFromJsonAsync<ProblemDetails>(RelaxKonOSJsonOptions.Default, ct); }
-        catch { /* 非 JSON 错误体回退通用错误 */ }
-        throw problem is null
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (System.Text.Json.JsonException) { /* 非 JSON 错误体回退通用错误 */ }
+        catch (NotSupportedException) { /* 非 JSON 错误体回退通用错误 */ }
+        throw problem is null || string.IsNullOrWhiteSpace(problem.Title)
             ? new RelaxKonOSAuthException(new ProblemDetails(
                 "https://relaxkonos.app/problems/http-error", $"HTTP {(int)resp.StatusCode}",
                 (int)resp.StatusCode, resp.ReasonPhrase, null))
-            : new RelaxKonOSAuthException(problem);
+            : new RelaxKonOSAuthException(problem with { Status = (int)resp.StatusCode });
     }
 
     private static ProblemDetails NoBodyProblem()

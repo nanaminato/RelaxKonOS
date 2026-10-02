@@ -17,7 +17,9 @@ public sealed class WorkspacePreferencesEditor : ObservableObject, IDisposable
     private CancellationTokenSource? _pending;
     private Draft? _draft;
     private PreferencesSaveState _state;
+    private PreferencesSaveFailure _failure;
     public PreferencesSaveState State { get => _state; private set => SetProperty(ref _state, value); }
+    public PreferencesSaveFailure Failure { get => _failure; private set => SetProperty(ref _failure, value); }
     public bool HasDraft => _draft is not null;
 
     public WorkspacePreferencesEditor(IWorkspaceSettingsService service, IAuthSession session, DefaultAppRegistry registry)
@@ -68,9 +70,9 @@ public sealed class WorkspacePreferencesEditor : ObservableObject, IDisposable
             return snapshot;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return null; }
-        catch
+        catch (Exception exception)
         {
-            if (ReferenceEquals(_draft, draft) && IsCurrent(draft)) State = PreferencesSaveState.Failed;
+            if (ReferenceEquals(_draft, draft) && IsCurrent(draft)) SetFailure(exception);
             return null;
         }
     }
@@ -97,7 +99,7 @@ public sealed class WorkspacePreferencesEditor : ObservableObject, IDisposable
             if (debounce) await Task.Delay(300, pending.Token);
             if (!IsCurrent(draft)) return;
             var saved = await _service.SaveAsync(CurrentBaseUrl(), _session.Tokens!.AccessToken, draft.WorkspaceId, draft.Value, pending.Token);
-            if (!ReferenceEquals(_draft, draft) || !IsCurrent(draft)) return;
+            if (!ReferenceEquals(_draft, draft) || !ReferenceEquals(_pending, pending) || !IsCurrent(draft)) return;
             _draft = null;
             OnPropertyChanged(nameof(HasDraft));
             State = saved.PersistedRevision == saved.Revision ? PreferencesSaveState.Saved : PreferencesSaveState.Accepted;
@@ -113,20 +115,23 @@ public sealed class WorkspacePreferencesEditor : ObservableObject, IDisposable
             }
         }
         catch (OperationCanceledException) when (pending.IsCancellationRequested) { }
-        catch (RelaxKonOSAuthException ex)
+        catch (Exception exception)
         {
-            if (ReferenceEquals(_draft, draft) && IsCurrent(draft))
-                State = ex.Status == 409 ? PreferencesSaveState.Conflict : PreferencesSaveState.Failed;
-        }
-        catch
-        {
-            if (ReferenceEquals(_draft, draft) && IsCurrent(draft)) State = PreferencesSaveState.Failed;
+            if (ReferenceEquals(_draft, draft) && ReferenceEquals(_pending, pending) && IsCurrent(draft))
+                SetFailure(exception);
         }
         finally
         {
             if (ReferenceEquals(_pending, pending)) _pending = null;
             pending.Dispose();
         }
+    }
+
+    private void SetFailure(Exception exception)
+    {
+        Failure = WorkspacePreferencesDiagnostics.Classify(exception);
+        State = exception is RelaxKonOSAuthException { Status: 409 }
+            ? PreferencesSaveState.Conflict : PreferencesSaveState.Failed;
     }
 
     /// <summary>

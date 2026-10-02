@@ -18,7 +18,7 @@ internal static class SettingsIdentityVerification
         var protection = DataProtectionProvider.Create(keys);
         var journal = new SettingsOperationJournal(environment, protection);
         var provider = new ControlledIdentityProvider();
-        var grants = new HostElevationSessionStore(new TestHostAccountPrivilegeService(), new UploadSessionChecks.SystemMode());
+        var grants = new HostElevationSessionStore(new TestHostAccountPrivilegeService(), new UploadSessionChecks.SystemMode(), new HostElevationSessionState());
         var coordinator = new HostIdentityOperationCoordinator(journal, provider, grants);
         var actor = Principal();
 

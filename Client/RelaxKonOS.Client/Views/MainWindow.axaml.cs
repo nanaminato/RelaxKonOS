@@ -30,15 +30,17 @@ public partial class MainWindow : Window
     private WindowState _windowStateBeforeFullScreen = WindowState.Maximized;
     private readonly LocalizationService _localization;
     private SystemUiCoordinator? _systemUi;
+    private DesktopShellViewModel? _attachedShell;
     private int _desktopLoadGeneration;
     private bool _isDisconnecting;
     private readonly DoubleTransition _disconnectOverlayFade = new() { Property = OpacityProperty };
+    private readonly CancellationTokenSource _desktopLifetime = new();
 
     public MainWindow()
     {
         InitializeComponent();
         _localization = App.Services.GetRequiredService<LocalizationService>();
-        _localization.LanguageChanged += (_, _) => RefreshLocalizedText();
+        _localization.LanguageChanged += OnLanguageChanged;
         RefreshLocalizedText();
         DisconnectingOverlay.Transitions = new Transitions { _disconnectOverlayFade };
         _hideBarTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
@@ -46,6 +48,7 @@ public partial class MainWindow : Window
         SizeChanged += (_, _) => ApplyConnectionBarOffset();
         DataContextChanged += async (_, _) => await AttachShellAsync();
         Opened += async (_, _) => await AttachShellAsync();
+        Closed += OnClosed;
         // System shortcuts must run before a managed application's own key handler.  They own
         // desktop-wide navigation, whereas application shortcuts are only meaningful inside the
         // active window.  The existing XAML KeyDown hook remains the bubbling fallback for the
@@ -62,21 +65,54 @@ public partial class MainWindow : Window
     {
         _systemUi = App.Services.GetRequiredService<SystemUiCoordinator>();
         WindowOverview.DataContext = _systemUi;
-        _systemUi.Changed += (_, _) => WindowOverview.IsVisible = _systemUi.IsOverviewVisible;
+        _systemUi.Changed += OnSystemUiChanged;
+    }
+
+    private void OnLanguageChanged(object? sender, RelaxKonOS.AppSDK.SystemLanguageChangedEventArgs e) => RefreshLocalizedText();
+    private void OnSystemUiChanged(object? sender, EventArgs e) => WindowOverview.IsVisible = _systemUi!.IsOverviewVisible;
+
+    private void OnClosed(object? sender, EventArgs e)
+    {
+        ++_desktopLoadGeneration;
+        _desktopLifetime.Cancel();
+        _desktopLifetime.Dispose();
+        _hideBarTimer.Stop();
+        _localization.LanguageChanged -= OnLanguageChanged;
+        if (_systemUi is not null) _systemUi.Changed -= OnSystemUiChanged;
+        if (_attachedShell is { } shell)
+        {
+            if (shell.RequestToggleHostFullScreen?.Target == this) shell.RequestToggleHostFullScreen = null;
+            if (shell.ReadHostFileClipboardAsync?.Target == this) shell.ReadHostFileClipboardAsync = null;
+            if (shell.MarkRemoteFileCopyAsync?.Target == this) shell.MarkRemoteFileCopyAsync = null;
+        }
+        _attachedShell = null;
+        if (App.Services.GetService<ShellRuntime>() is { } runtime)
+            _ = runtime.DetachHostAsync(ShellHost);
     }
 
     private async Task AttachShellAsync()
     {
-        if (DataContext is not DesktopShellViewModel shell) return;
+        // DataContext is assigned before Show(). Wait for Opened so initialization cannot
+        // delay the first logo frame or run twice during the login-to-desktop hand-off.
+        if (!IsVisible || DataContext is not DesktopShellViewModel shell) return;
+        var cancellationToken = _desktopLifetime.Token;
 
         var generation = ++_desktopLoadGeneration;
         var started = DateTime.UtcNow;
         DesktopLoadingOverlay.IsVisible = true;
+        // Let the initial layout/render run before shell construction and state restoration.
+        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+        if (generation != _desktopLoadGeneration) return;
+        _attachedShell = shell;
         shell.RequestToggleHostFullScreen = () => SetFullScreen(!_isFullScreen);
         shell.ReadHostFileClipboardAsync = () => HostFileClipboard.ReadAsync(Clipboard);
         shell.MarkRemoteFileCopyAsync = () => HostFileClipboard.MarkRemoteCopyAsync(Clipboard);
         shell.IsHostFullScreen = _isFullScreen;
-        await App.Services.GetRequiredService<ShellRuntime>().AttachAsync(ShellHost, shell);
+        try
+        {
+            await App.Services.GetRequiredService<ShellRuntime>().AttachAsync(ShellHost, shell, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return; }
 
         // A tiny minimum keeps a cached shell from flashing a blank frame between Login and Desktop.
         var remaining = TimeSpan.FromMilliseconds(420) - (DateTime.UtcNow - started);

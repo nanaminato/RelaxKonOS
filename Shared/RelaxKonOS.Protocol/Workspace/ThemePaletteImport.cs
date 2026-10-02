@@ -46,7 +46,8 @@ public static class ThemePaletteImport
         return false;
     }
 
-    private static bool AreValidColors(Dictionary<string, string>? colors) => colors is { Count: > 0 and <= 56 }
+    private static bool AreValidColors(Dictionary<string, string>? colors) => colors is { Count: > 0 }
+        && colors.Count <= ThemePaletteContract.ColorTokens.Count
         && colors.All(pair => ThemePaletteContract.ColorTokens.Contains(pair.Key) && ThemePaletteDefaults.IsColor(pair.Value));
 
     private static Dictionary<string, string> NormalizeColors(Dictionary<string, string> colors) => colors

@@ -63,6 +63,21 @@ public sealed class ShellRuntime
     public event EventHandler<string>? ShellChanged;
     public event EventHandler<string>? ShellActivationFailed;
 
+    /// <summary>Release a closed host while retaining the selected shell for the next sign-in.</summary>
+    public async Task DetachHostAsync(ContentControl host)
+    {
+        await _switchGate.WaitAsync();
+        try
+        {
+            // A replacement window may already have attached while a switch was finishing.
+            if (!ReferenceEquals(_host, host)) return;
+            _windows.Detach();
+            host.Content = null;
+            _host = null;
+        }
+        finally { _switchGate.Release(); }
+    }
+
     public async Task AttachAsync(ContentControl host, DesktopShellViewModel workspace, CancellationToken cancellationToken = default)
     {
         if (ReferenceEquals(_host, host) && ReferenceEquals(_state.Snapshot, workspace) && _active is not null)
@@ -75,6 +90,7 @@ public sealed class ShellRuntime
         // Shell preference synchronization is asynchronous. Selecting before it completes
         // briefly activates the default desktop and can overwrite an external-shell choice.
         await workspace.EnsureWorkspacePreferencesAsync();
+        cancellationToken.ThrowIfCancellationRequested();
         if (!ReferenceEquals(previousHost, host) && previousHost is not null)
             previousHost.Content = null;
         _host = host;
@@ -83,10 +99,12 @@ public sealed class ShellRuntime
         _state.Publish(workspace, _desktopState.Current);
         _overlays.Configure(workspace);
         var local = await _preferences.LoadAsync();
+        cancellationToken.ThrowIfCancellationRequested();
         var requested = ShellApi.ResolveId(_settings.ShellSelection?.ShellId ?? local.ShellId);
         if (!_catalog.TryGet(requested, out var descriptor) || !descriptor.IsAvailable)
             requested = ShellApi.DefaultShellId;
         await SwitchAsync(requested, persist: false, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         await workspace.RestoreDesktopStateAsync(cancellationToken);
         // First-time desktop setup shows a modal dialog. It must not run while the host's
         // "Getting your desktop ready" overlay is still covering the shell, or the user
@@ -101,6 +119,7 @@ public sealed class ShellRuntime
         await _switchGate.WaitAsync(cancellationToken);
         try
         {
+            if (_host is null) return false;
             if (intentVersion is not null && intentVersion != Volatile.Read(ref _switchIntentVersion)) return false;
             var id = ShellApi.ResolveId(requestedId);
             if (_active is not null && id == _activeShellId)
@@ -157,10 +176,12 @@ public sealed class ShellRuntime
                     // while an external package is rediscovered. Only an explicit persisted
                     // selection is allowed to replace the user's stored shell intent.
                     var ownsCurrentIntent = intentVersion is null || intentVersion == Volatile.Read(ref _switchIntentVersion);
-                    if (persist && ownsCurrentIntent && _settings.SelectedShellId != _activeShellId)
-                        _settings.SelectedShellId = _activeShellId;
                     if (persist && ownsCurrentIntent)
-                        await _preferences.SaveAsync(_activeShellId, candidate.Descriptor.PackageId, candidate.Descriptor.Version);
+                    {
+                        _settings.SelectShell(candidate.Descriptor);
+                        var selection = _settings.ShellSelection;
+                        await _preferences.SaveAsync(selection.ShellId, selection.PackageId, selection.PackageVersion);
+                    }
                     ShellChanged?.Invoke(this, _activeShellId);
                     if (old is not null) await DisposeQuietly(old);
                     return true;
@@ -201,7 +222,7 @@ public sealed class ShellRuntime
     {
         var id = ShellApi.ResolveId(shellId);
         if (_catalog.TryGet(id, out var shell))
-            _settings.ShellSelection = new ShellSelectionDto(id, shell.PackageId, shell.Version);
+            _settings.SelectShell(shell);
         else
             _settings.SelectedShellId = id;
         // The ShellSelectionChanged event above starts the versioned transition. Returning here
@@ -440,7 +461,7 @@ internal sealed class DesktopShellStateAdapter : IDisposable
             .Select(shell => new ShellDesktopStyleEntry(shell.Id, shell.DisplayName, shell.Version))
             .ToArray();
         return new ShellDesktopState(applications, entries, _workspace.AreDesktopIconsVisible, desktopStyles,
-            _workspace.Settings.CurrentWallpaper, ThemeResources.Brush("TextPrimaryBrush"));
+            _workspace.Settings.CurrentWallpaper, ThemeResources.Brush("DesktopItemLabelForegroundBrush"));
     }
 
     private static ShellDesktopEntry? ToEntry(object item) => item switch

@@ -66,14 +66,16 @@ var isDevelopment = environmentName.Equals(Environments.Development, StringCompa
 builder.Configuration.AddJsonFile("appsettings.host.json", optional: true, reloadOnChange: false);
 // Critical privileged operations fail closed when their security audit cannot be persisted. A
 // Rider/dotnet-run development process has no installer-managed audit path, so give it a stable,
-// user-writable location beside the Debug output. Production always requires an explicit
-// machine-protected path and is unaffected by this fallback.
-if (isDevelopment && string.IsNullOrWhiteSpace(builder.Configuration["Observability:AuditDatabasePath"]))
+// user-writable location beside the Debug output, including runtime logs for failed requests.
+// Production paths are installer-managed and unaffected by these development defaults.
+if (isDevelopment)
 {
-    builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
-    {
-        ["Observability:AuditDatabasePath"] = Path.Combine(AppContext.BaseDirectory, "data", "security-audit.db")
-    });
+    var developmentObservability = new Dictionary<string, string?>();
+    if (string.IsNullOrWhiteSpace(builder.Configuration["Observability:AuditDatabasePath"]))
+        developmentObservability["Observability:AuditDatabasePath"] = Path.Combine(AppContext.BaseDirectory, "data", "security-audit.db");
+    if (string.IsNullOrWhiteSpace(builder.Configuration["Observability:LogDirectory"]))
+        developmentObservability["Observability:LogDirectory"] = Path.Combine(AppContext.BaseDirectory, "data", "logs");
+    builder.Configuration.AddInMemoryCollection(developmentObservability);
 }
 var observabilityOptions = builder.Configuration.GetSection(ObservabilityOptions.SectionName).Get<ObservabilityOptions>() ?? new ObservabilityOptions();
 observabilityOptions.Validate(!isDevelopment);
@@ -551,8 +553,9 @@ builder.Services.AddSingleton<RelaxKonOS.Server.UserExecution.IUserExecutionTran
                     : new RelaxKonOS.Server.UserExecution.DisabledUserExecutionTransport(),
         });
 builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IPrivilegedFileService, RelaxKonOS.Server.Privileged.PrivilegedFileService>();
-builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IHostElevationSessionStore, RelaxKonOS.Server.Privileged.HostElevationSessionStore>();
-builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IFileElevationSessionStore, RelaxKonOS.Server.Privileged.FileElevationSessionStore>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.HostElevationSessionState>();
+builder.Services.AddScoped<RelaxKonOS.Server.Privileged.IHostElevationSessionStore, RelaxKonOS.Server.Privileged.HostElevationSessionStore>();
+builder.Services.AddScoped<RelaxKonOS.Server.Privileged.IFileElevationSessionStore, RelaxKonOS.Server.Privileged.FileElevationSessionStore>();
 builder.Services.AddScoped<RelaxKonOS.Server.Privileged.IHostAdministratorAuthenticator, RelaxKonOS.Server.Privileged.HostAdministratorAuthenticator>();
 builder.Services.AddScoped<RelaxKonOS.Server.Privileged.IHostAccountPrivilegeService, RelaxKonOS.Server.Privileged.HostAccountPrivilegeService>();
 builder.Services.AddScoped<RelaxKonOS.Server.Privileged.IHostFileAuthorizationService, RelaxKonOS.Server.Privileged.HostFileAuthorizationService>();
@@ -639,7 +642,7 @@ builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerEngineControlServi
 var guardianOptions = builder.Configuration.GetSection("GuardianAgent").Get<RelaxKonOS.Server.ProcessGuardian.GuardianAgentOptions>() ?? new RelaxKonOS.Server.ProcessGuardian.GuardianAgentOptions();
 builder.Services.AddSingleton(guardianOptions);
 builder.Services.AddSingleton<RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService, RelaxKonOS.Server.ProcessGuardian.NamedPipeProcessGuardianService>();
-builder.Services.AddSingleton<RelaxKonOS.Server.ProcessGuardian.IRunAsAuthorizationService, RelaxKonOS.Server.ProcessGuardian.RunAsAuthorizationService>();
+builder.Services.AddScoped<RelaxKonOS.Server.ProcessGuardian.IRunAsAuthorizationService, RelaxKonOS.Server.ProcessGuardian.RunAsAuthorizationService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.ProcessGuardian.IGuardianAgentInstaller, RelaxKonOS.Server.ProcessGuardian.GuardianAgentInstaller>();
 builder.Services.AddSingleton(builder.Configuration.GetSection("GuardianNativeServices").Get<RelaxKonOS.Server.ProcessGuardian.NativeServiceAdapterOptions>() ?? new RelaxKonOS.Server.ProcessGuardian.NativeServiceAdapterOptions());
 builder.Services.AddSingleton<RelaxKonOS.Server.ProcessGuardian.INativeServiceAdapter, RelaxKonOS.Server.ProcessGuardian.NativeServiceAdapter>();

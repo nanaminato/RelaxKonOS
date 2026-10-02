@@ -93,6 +93,8 @@ public sealed record ExternalAppSettingsDocument(
 /// <summary>Host-mediated desktop appearance operations available to package applications.</summary>
 public interface IDesktopAppearance
 {
+    /// <summary>Selects a shipped photograph or gradient using its complete <c>builtin:</c>
+    /// identifier (for example <c>builtin:alpine-lake</c>). No image file is uploaded.</summary>
     Task<AppCapabilityResult> SetWallpaperAsync(string wallpaperKey, CancellationToken cancellationToken = default);
 }
 

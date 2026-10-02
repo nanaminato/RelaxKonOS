@@ -139,6 +139,9 @@ Client/RelaxKonOS.Client/
 | 状态 | `Success`、`SuccessMuted`、`Warning`、`WarningMuted`、`Danger`、`DangerHover`、`DangerPressed`、`Info` |
 | 桌面与窗口 | `TaskbarBackground`、`TaskbarForeground`、`StartMenuBackground`、`WindowFrameBackground`、`WindowTitleBarBackground`、`WindowTitleForeground`、`WindowInactiveTitleForeground` |
 | 透明层 | `OverlayScrim`、`DialogScrim`、`ShadowColor`、`DesktopIconHover`、`DesktopIconSelected` |
+| 壁纸上的图标名称 | `DesktopItemLabelForeground`、`DesktopItemLabelShadow` |
+
+桌面图标名称统一使用 `TextBlock.desktop-label` 共享样式，不沿用窗口表面的 `TextPrimary`。浅色与深色模式的内置调色板均以白色文字（`#FFFFFF`）搭配深色柔和阴影（`#CC000000`），阴影模糊半径为 3、向下偏移 1。外部桌面收到同一名称前景色，并可复用共享样式。自定义调色板必须提供这两个语义颜色；应保持文字与阴影明显区分。该处理改善照片上的可读性，但不保证任意复杂图片的所有区域都满足固定对比度。
 
 还应有这些非颜色令牌：`ControlPadding`、`ContentFont`、`ContentFontSize`（保留在 `TokenContract.axaml`）。原本列在此处的 `ControlCornerRadius`、`OverlayCornerRadius`、`WindowCornerRadius`、`ControlHeight`、`TransitionFast` **已移交系统风格层**，作为 `SystemStyleTokenContract` 的令牌实现；`ElevationLow` / `ElevationMedium` 尚未实现（阴影目前由风格的 `WindowShadowDepth` / `WindowShadowOpacity` 与调色板 `Shadow` 合成）。颜色契约不再定义任何形状数值。
 

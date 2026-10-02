@@ -84,7 +84,7 @@ public static partial class RegistryEndpoints
                 WorkspacePreferencesDto? preferences;
                 try { preferences = request.Value.Deserialize<WorkspacePreferencesDto>(RelaxKonOSJsonOptions.Default); }
                 catch (JsonException) { return Results.BadRequest(); }
-                if (preferences is null || !WorkspacePreferencesValidator.TryNormalize(preferences, out var normalized))
+                if (preferences is null || !WorkspacePreferencesValidator.TryNormalize(preferences, out var normalized, out _))
                     return Results.BadRequest(new { message = "Invalid workspace preferences." });
                 valueJson = JsonSerializer.Serialize(normalized with { Revision = null }, RelaxKonOSJsonOptions.Default);
             }

@@ -29,7 +29,7 @@ public sealed class WorkspaceSettingsService(IRegistryRepository registry) : IWo
                 WorkspaceConfigurationRegistry.DesktopPath, WorkspaceConfigurationRegistry.DefaultValueName)!;
         }
         var value = JsonSerializer.Deserialize<WorkspacePreferencesDto>(entry.ValueJson, RelaxKonOSJsonOptions.Default);
-        if (value is null || !WorkspacePreferencesValidator.TryNormalize(value, out var normalized))
+        if (value is null || !WorkspacePreferencesValidator.TryNormalize(value, out var normalized, out _))
             throw new InvalidDataException("Stored workspace preferences are invalid; they have not been overwritten.");
         normalized.Revision = entry.Revision;
         normalized.PersistedRevision = entry.AppliedRevision;
@@ -39,7 +39,7 @@ public sealed class WorkspaceSettingsService(IRegistryRepository registry) : IWo
     public WorkspacePreferencesDto? Save(Workspace workspace, WorkspacePreferencesDto draft, string actor)
     {
         if (draft.Revision is not > 0) throw new ArgumentException("settings.revision_required");
-        if (!WorkspacePreferencesValidator.TryNormalize(draft, out var normalized))
+        if (!WorkspacePreferencesValidator.TryNormalize(draft, out var normalized, out _))
             throw new ArgumentException("Invalid workspace preferences.");
         var saved = registry.CompareExchange(CreateEntry(workspace, normalized, actor), draft.Revision.Value);
         if (saved is null) return null;

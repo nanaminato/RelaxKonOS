@@ -251,6 +251,12 @@ var root = Path.Combine(Path.GetTempPath(), $"relaxkonos-server-tests-{Guid.NewG
 Directory.CreateDirectory(root);
 try
 {
+    // The focused settings suite must run before unrelated certificate/host checks.
+    if (args.Contains("--settings-only", StringComparer.Ordinal))
+    {
+        await SettingsSystemVerification.RunAsync(root);
+        return;
+    }
     await CertificateOperationReplayChecks.RunAsync(Path.Combine(root, "certificate-replay"));
     await CertificateBindingChecks.RunAsync(Path.Combine(root, "certificate-binding"));
     FrpcAppliedStateChecks.Run();
@@ -314,7 +320,6 @@ try
     if (args.Contains("--host-file-routing-only")) { HostFileRoutingChecks.Run(); return; }
     if (args.Contains("--terminal-contract-only")) { TerminalHubContractChecks.Run(); return; }
     if (args.Contains("--alias-only")) { await AliasLoginVerification.RunAsync(root); return; }
-    var settingsOnly = args.Contains("--settings-only", StringComparer.Ordinal);
     var fileOperationsOnly = args.Contains("--file-operations-only", StringComparer.Ordinal);
     if (fileOperationsOnly)
     {
@@ -325,9 +330,8 @@ try
     // reported even in environments where the alias HTTP suite cannot run.
     TerminalHubContractChecks.Run();
     await AliasLoginVerification.RunAsync(root);
-    if (!fileOperationsOnly || settingsOnly) await SettingsSystemVerification.RunAsync(root);
-    if (!settingsOnly || fileOperationsOnly) await FileOperationChecks.RunAsync(root);
-    if (settingsOnly || fileOperationsOnly) return;
+    await SettingsSystemVerification.RunAsync(root);
+    await FileOperationChecks.RunAsync(root);
     await ServerCoreChecks.VerifyPrivilegedOperationProtocolAsync();
     await WindowsPrivilegeChecks.RunAsync(root);
     await DeveloperUserSidAllowListVerification.RunAsync();

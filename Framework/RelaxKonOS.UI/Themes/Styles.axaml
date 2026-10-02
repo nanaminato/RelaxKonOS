@@ -1,5 +1,12 @@
 <Styles xmlns="https://github.com/avaloniaui">
   <!-- Shared state vocabulary: application pages reuse these states instead of inventing local colours. -->
+  <!-- Wallpaper labels need their own contrast pair, independent of window surface text. -->
+  <Style Selector="TextBlock.desktop-label">
+    <Setter Property="Foreground" Value="{DynamicResource DesktopItemLabelForegroundBrush}" />
+    <Setter Property="Effect">
+      <DropShadowEffect Color="{DynamicResource DesktopItemLabelShadowColor}" BlurRadius="3" OffsetX="0" OffsetY="1" Opacity="1" />
+    </Setter>
+  </Style>
   <Style Selector="Button"><Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" /><Setter Property="Background" Value="Transparent" /><Setter Property="BorderThickness" Value="0" /><Setter Property="Padding" Value="{DynamicResource ControlPadding}" /><Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" /><Setter Property="MinHeight" Value="{DynamicResource ControlHeight}" /><Setter Property="FontFamily" Value="{DynamicResource ContentFont}" /><Setter Property="Template"><ControlTemplate><ContentPresenter Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" Padding="{TemplateBinding Padding}" HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" /></ControlTemplate></Setter></Style>
   <Style Selector="Button:pointerover"><Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" /></Style>
   <Style Selector="Button:pressed"><Setter Property="Background" Value="{DynamicResource SurfacePressedBrush}" /></Style>

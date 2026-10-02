@@ -20,6 +20,8 @@ using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Registry;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Hubs;
+using RelaxKonOS.Server.Observability;
+using System.Text.Json;
 
 internal static class SettingsSystemVerification
 {
@@ -80,7 +82,14 @@ internal static class SettingsSystemVerification
         builder.Services.AddSingleton<IWorkspaceSettingsService, WorkspaceSettingsService>();
         builder.Services.AddSingleton<WorkspaceWallpaperStore>();
         builder.Services.Configure<StorageOptions>(_ => { });
+        var logDirectory = Path.Combine(root, "request-logs");
+        builder.Services.AddSingleton(new ObservabilityOptions { LogDirectory = logDirectory, SuccessfulRequestSampleRate = 0 });
+        builder.Services.AddSingleton<ICorrelationContextAccessor, CorrelationContextAccessor>();
+        builder.Services.AddSingleton<IObservabilitySanitizer, ObservabilitySanitizer>();
+        builder.Services.AddSingleton<IRuntimeLogSink, JsonRuntimeLogSink>();
+        builder.Services.AddSingleton<IEventLogger, EventLogger>();
         await using var app = builder.Build();
+        app.UseMiddleware<RequestObservationMiddleware>();
         // Test-only authenticated principals exercise production authorization/ownership checks.
         // This harness is bound solely to ephemeral loopback, never a remote configuration target.
         app.Use(async (context, next) =>
@@ -96,6 +105,8 @@ internal static class SettingsSystemVerification
         app.MapRegistryEndpoints();
         app.MapHub<SettingsChangesHub>(RelaxKonOSEndpoints.SettingsChangesHubPath);
         await app.StartAsync();
+        var rejectedRequests = new List<(string Correlation, int Status)>();
+        var validationFailures = new List<(string Correlation, string Field)>();
         try
         {
             var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
@@ -103,12 +114,23 @@ internal static class SettingsSystemVerification
             var route = WorkspaceApiRoutes.Preferences.Replace("{id}", workspace.Id.ToString());
             var initial = await http.GetFromJsonAsync<WorkspacePreferencesDto>(route, RelaxKonOSJsonOptions.Default);
             Check(initial?.Revision > 0, "HTTP GET must return a preference revision.");
+            Check(initial!.WallpaperKey == WorkspacePreferencesDto.DefaultWallpaperKey,
+                "A workspace without a wallpaper preference must use the bundled photograph.");
             using var missing = await http.PutAsJsonAsync(route, initial! with { Revision = null }, RelaxKonOSJsonOptions.Default);
             Check((int)missing.StatusCode == 428, "HTTP PUT without revision must return 428.");
             using var saved = await http.PutAsJsonAsync(route, WithMode(initial!, ThemeKind.Dark), RelaxKonOSJsonOptions.Default);
             Check(saved.IsSuccessStatusCode, "Versioned HTTP preference write failed.");
             using var stale = await http.PutAsJsonAsync(route, initial!, RelaxKonOSJsonOptions.Default);
             Check(stale.StatusCode == HttpStatusCode.Conflict, "Stale HTTP PUT must return 409.");
+            using var invalid = await http.PutAsJsonAsync(route, initial! with { TimeFormat = "invalid" }, RelaxKonOSJsonOptions.Default);
+            var invalidProblem = await invalid.Content.ReadFromJsonAsync<ProblemDetails>(RelaxKonOSJsonOptions.Default);
+            Check(invalid.StatusCode == HttpStatusCode.BadRequest && invalidProblem is { Status: 400, Title: "settings.invalid_preferences" },
+                "Invalid settings must return a structured 400 problem.");
+            var invalidBody = JsonSerializer.Deserialize<JsonElement>(await invalid.Content.ReadAsStringAsync());
+            Check(invalidBody.GetProperty("invalidField").GetString() == "timeFormat", "A validation rejection must identify the invalid field.");
+            validationFailures.Add((invalid.Headers.GetValues(RequestObservationMiddleware.CorrelationHeader).Single(), "timeFormat"));
+            foreach (var rejected in new[] { missing, stale, invalid })
+                rejectedRequests.Add((rejected.Headers.GetValues(RequestObservationMiddleware.CorrelationHeader).Single(), (int)rejected.StatusCode));
             using var foreignRequest = new HttpRequestMessage(HttpMethod.Get, route);
             foreignRequest.Headers.Add("X-Test-Subject", Guid.NewGuid().ToString());
             using var foreign = await http.SendAsync(foreignRequest);
@@ -128,6 +150,65 @@ internal static class SettingsSystemVerification
             Check(registryStale.StatusCode == HttpStatusCode.Conflict, "The registry editor must not bypass preference revisions.");
             using var deleted = await http.DeleteAsync(RegistryApiRoutes.Entries + "?scope=Workspace&path=Workspace%5CDesktop&name=%28Default%29");
             Check(deleted.StatusCode == HttpStatusCode.Conflict, "Deleting managed preferences must not reset their revision.");
+            foreach (var preset in new[] { "alpine-lake", "ocean-waves", "desert-dunes", "bloom" })
+            {
+                var current = (await http.GetFromJsonAsync<WorkspacePreferencesDto>(route, RelaxKonOSJsonOptions.Default))!;
+                var key = WorkspacePreferencesDto.BuiltInWallpaperPrefix + preset;
+                using var selected = await http.PutAsJsonAsync(route,
+                    current with { WallpaperKey = key }, RelaxKonOSJsonOptions.Default);
+                selected.EnsureSuccessStatusCode();
+                var roundTrip = (await http.GetFromJsonAsync<WorkspacePreferencesDto>(route, RelaxKonOSJsonOptions.Default))!;
+                Check(roundTrip.WallpaperKey == key, "The server must persist built-in wallpaper identifiers without an image blob.");
+            }
+            Check(!Directory.EnumerateFiles(Path.Combine(root, "data", "wallpapers"), "*", SearchOption.AllDirectories).Any(),
+                "Selecting built-in photographs or gradients must not create server image files.");
+            foreach (var shellId in new[] { "relaxkonos.windows-like", "relaxkonos.macos-like", "relaxkonos.ubuntu-like" })
+            {
+                var current = (await http.GetFromJsonAsync<WorkspacePreferencesDto>(route, RelaxKonOSJsonOptions.Default))!;
+                using var wrongMetadata = await http.PutAsJsonAsync(route, current with
+                {
+                    DesktopExperience = current.DesktopExperience! with { Shell = new ShellSelectionDto(shellId, packageVersion: "1.0.0") }
+                }, RelaxKonOSJsonOptions.Default);
+                var rejectedBody = await wrongMetadata.Content.ReadFromJsonAsync<JsonElement>();
+                Check(wrongMetadata.StatusCode == HttpStatusCode.BadRequest
+                    && rejectedBody.GetProperty("invalidField").GetString() == "desktopExperience.shell.packageVersion",
+                    "Built-in package metadata must be rejected with the exact invalid field.");
+                var correlation = wrongMetadata.Headers.GetValues(RequestObservationMiddleware.CorrelationHeader).Single();
+                rejectedRequests.Add((correlation, 400));
+                validationFailures.Add((correlation, "desktopExperience.shell.packageVersion"));
+                using var selected = await http.PutAsJsonAsync(route, current with
+                {
+                    DesktopExperience = current.DesktopExperience! with { Shell = new ShellSelectionDto(shellId) }
+                }, RelaxKonOSJsonOptions.Default);
+                selected.EnsureSuccessStatusCode();
+                var restored = (await http.GetFromJsonAsync<WorkspacePreferencesDto>(route, RelaxKonOSJsonOptions.Default))!;
+                Check(restored.DesktopExperience!.Shell is { PackageId: null, PackageVersion: null }
+                    && restored.DesktopExperience.Shell.ShellId == shellId, "Built-in layout selection lost its ID-only intent.");
+                using var changed = await http.PutAsJsonAsync(route, WithMode(restored, ThemeKind.Dark) with
+                {
+                    WallpaperKey = "builtin:alpine-lake"
+                }, RelaxKonOSJsonOptions.Default);
+                changed.EnsureSuccessStatusCode();
+            }
+            var exportedPalette = new ThemePaletteDto
+            {
+                FormatVersion = 2, Id = "full-palette", Name = "Full exported palette",
+                LightColors = ThemePaletteDefaults.Resolve(AppearancePreferencesDto.Default, dark: false),
+                DarkColors = ThemePaletteDefaults.Resolve(AppearancePreferencesDto.Default, dark: true),
+            };
+            Check(exportedPalette.LightColors.Count == ThemePaletteContract.ColorTokens.Count,
+                "The exported palette must include every current color role.");
+            Check(ThemePaletteImport.TryNormalize(exportedPalette, [], null, out var importedPalette, out _),
+                "A full current palette export cannot be imported.");
+            var paletteSnapshot = (await http.GetFromJsonAsync<WorkspacePreferencesDto>(route, RelaxKonOSJsonOptions.Default))!;
+            using var paletteSaved = await http.PutAsJsonAsync(route, paletteSnapshot with
+            {
+                DesktopExperience = paletteSnapshot.DesktopExperience! with
+                {
+                    Appearance = new AppearancePreferencesDto { PaletteId = "custom:" + importedPalette!.Id, CustomPalettes = [importedPalette] }
+                }
+            }, RelaxKonOSJsonOptions.Default);
+            Check(paletteSaved.IsSuccessStatusCode, "A full imported palette could not be saved through the preference endpoint.");
             await SettingsNotificationsVerification.RunAsync(address, owner, workspace.Id, async () =>
             {
                 var current = (await http.GetFromJsonAsync<WorkspacePreferencesDto>(route, RelaxKonOSJsonOptions.Default))!;
@@ -135,9 +216,22 @@ internal static class SettingsSystemVerification
                 response.EnsureSuccessStatusCode();
                 return (await response.Content.ReadFromJsonAsync<WorkspacePreferencesDto>(RelaxKonOSJsonOptions.Default))!.Revision!.Value;
             });
-            Console.WriteLine("Settings HTTP verification passed: 428, 409, cross-user read/write denial, registry bypass rejection.");
         }
         finally { await app.StopAsync(); }
+        // Drain request middleware before reading files: a response body can arrive before its
+        // completion event is appended, even though the runtime sink itself is synchronous.
+        var entries = Directory.EnumerateFiles(logDirectory, "*.jsonl").SelectMany(File.ReadLines)
+            .Select(line => JsonSerializer.Deserialize<JsonElement>(line)).ToArray();
+        foreach (var (correlation, status) in rejectedRequests)
+            Check(entries.Any(entry => entry.GetProperty("correlationId").GetString() == correlation
+                && entry.GetProperty("problemCode").GetString() == $"http.{status}"),
+                "A rejected preference request was lost when successful request sampling was disabled.");
+        foreach (var (correlation, field) in validationFailures)
+            Check(entries.Any(entry => entry.GetProperty("correlationId").GetString() == correlation
+                && entry.GetProperty("eventName").GetString() == "input.rejected"
+                && entry.GetProperty("message").GetString() == $"Workspace preference validation rejected field: {field}."),
+                "Validation diagnostics did not record the exact field for the failed request.");
+        Console.WriteLine("Settings HTTP verification passed: built-in layout switches followed by color/wallpaper saves, exact validation fields, structured 400/428/409, correlated failure logs at zero sampling, full palette import/save, cross-user denial, registry bypass rejection, built-in wallpapers without image blobs.");
     }
 
     /// <summary>Colour mode now lives under DesktopExperience; these helpers keep the checks readable.</summary>

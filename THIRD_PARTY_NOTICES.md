@@ -2,6 +2,8 @@
 
 本文件列出 RelaxKonOS 所使用的第三方资产（源码移植、NuGet 包等）的归属与许可信息。
 
+桌面内置的三张风景壁纸使用 [Unsplash License](https://unsplash.com/license)，保留图片作者的原始权利，不受本项目原创代码许可约束。作者、图片原始页面、下载地址和文件校验值见 [壁纸来源记录](Client/RelaxKonOS.Client/Assets/Wallpapers/README.md)。
+
 ---
 
 ## 项目许可说明

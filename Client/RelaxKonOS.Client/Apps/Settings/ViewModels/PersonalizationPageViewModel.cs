@@ -39,43 +39,58 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
         _systemStyles = systemStyles ?? RelaxKonOS.Client.App.Services.GetRequiredService<ISystemStyleRegistry>();
         RefreshShellChoices();
         RefreshSystemStyleChoices();
-        _shellCatalog.Changed += (_, _) => RefreshShellChoices();
-        _systemStyles.Changed += (_, _) => RefreshSystemStyleChoices();
-        _localization.LanguageChanged += (_, _) => { RefreshShellChoices(); RefreshSystemStyleChoices(); };
-        // Theme 变化（含外部 Apply 加载）时刷新三个 RadioButton 绑定。
-        Settings.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(ShellSettings.Appearance))
-            {
-                OnPropertyChanged(nameof(Theme));
-                OnPropertyChanged(nameof(IsLightTheme));
-                OnPropertyChanged(nameof(IsDarkTheme));
-                OnPropertyChanged(nameof(IsSystemTheme));
-                OnPropertyChanged(nameof(PalettePreview));
-                OnPropertyChanged(nameof(PaletteId));
-                AccentInput = Settings.Appearance.AccentOverride ?? string.Empty;
-                OnPropertyChanged(nameof(PaletteChoices));
-                OnPropertyChanged(nameof(SelectedCustomPalette));
-                OnPropertyChanged(nameof(HasSelectedCustomPalette));
-                OnPropertyChanged(nameof(HasAccentOverride));
-            }
-            else if (e.PropertyName == nameof(ShellSettings.SystemStyleId))
-            {
-                OnPropertyChanged(nameof(SelectedSystemStyleId));
-                OnPropertyChanged(nameof(SystemStyleSummary));
-                OnPropertyChanged(nameof(SystemStyleProblem));
-                OnPropertyChanged(nameof(HasSystemStyleProblem));
-                OnPropertyChanged(nameof(IsUsingRecommendedStyle));
-            }
-            else if (e.PropertyName == nameof(ShellSettings.SelectedShellId))
-            {
-                // Preferences may arrive after Settings is already open. Keep the ComboBox in
-                // sync without treating that inbound update as another user selection.
-                OnPropertyChanged(nameof(SelectedShellId));
-                OnPropertyChanged(nameof(IsUsingRecommendedStyle));
-            }
-        };
+        _shellCatalog.Changed += OnShellCatalogChanged;
+        _systemStyles.Changed += OnSystemStylesChanged;
         _accentInput = Settings.Appearance.AccentOverride ?? string.Empty;
+    }
+
+    private void OnShellCatalogChanged(object? sender, EventArgs e) => RefreshShellChoices();
+    private void OnSystemStylesChanged(object? sender, EventArgs e) => RefreshSystemStyleChoices();
+
+    protected override void OnLanguageChanged(object? sender, RelaxKonOS.AppSDK.SystemLanguageChangedEventArgs e)
+    {
+        RefreshShellChoices();
+        RefreshSystemStyleChoices();
+        base.OnLanguageChanged(sender, e);
+    }
+
+    protected override void OnSettingsChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        base.OnSettingsChanged(sender, e);
+        if (e.PropertyName == nameof(ShellSettings.Appearance))
+        {
+            OnPropertyChanged(nameof(Theme));
+            OnPropertyChanged(nameof(IsLightTheme));
+            OnPropertyChanged(nameof(IsDarkTheme));
+            OnPropertyChanged(nameof(IsSystemTheme));
+            OnPropertyChanged(nameof(PalettePreview));
+            OnPropertyChanged(nameof(PaletteId));
+            AccentInput = Settings.Appearance.AccentOverride ?? string.Empty;
+            OnPropertyChanged(nameof(PaletteChoices));
+            OnPropertyChanged(nameof(SelectedCustomPalette));
+            OnPropertyChanged(nameof(HasSelectedCustomPalette));
+            OnPropertyChanged(nameof(HasAccentOverride));
+        }
+        else if (e.PropertyName == nameof(ShellSettings.SystemStyleId))
+        {
+            OnPropertyChanged(nameof(SelectedSystemStyleId));
+            OnPropertyChanged(nameof(SystemStyleProblem));
+            OnPropertyChanged(nameof(HasSystemStyleProblem));
+            OnPropertyChanged(nameof(IsUsingRecommendedStyle));
+        }
+        else if (e.PropertyName == nameof(ShellSettings.SelectedShellId))
+        {
+            // Preferences may arrive after Settings is already open. Keep the ComboBox in
+            // sync without treating that inbound update as another user selection.
+            OnPropertyChanged(nameof(SelectedShellId));
+            OnPropertyChanged(nameof(IsUsingRecommendedStyle));
+        }
+    }
+
+    protected override void DisposeCore()
+    {
+        _shellCatalog.Changed -= OnShellCatalogChanged;
+        _systemStyles.Changed -= OnSystemStylesChanged;
     }
 
     public override string Route => "personalization";
@@ -84,7 +99,13 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
 
     // ── 颜色与模式 ──────────────────────────────────────────────────────────────
 
-    public IReadOnlyList<RelaxKonOS.Client.Services.WallpaperOption> Wallpapers => Settings.Wallpapers;
+    public IReadOnlyList<WallpaperOption> Wallpapers => Settings.Wallpapers.Select(option => option.Key switch
+    {
+        "alpine-lake" => option with { Name = T("settings.wallpaper.alpine_lake", option.Name) },
+        "ocean-waves" => option with { Name = T("settings.wallpaper.ocean_waves", option.Name) },
+        "desert-dunes" => option with { Name = T("settings.wallpaper.desert_dunes", option.Name) },
+        _ => option,
+    }).ToArray();
 
     public ThemeKind Theme
     {
@@ -130,7 +151,14 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
     public int WallpaperIndex
     {
         get => Settings.WallpaperIndex;
-        set { Settings.WallpaperIndex = value; Save(); }
+        set
+        {
+            // ListBox can emit -1 while rebuilding localized choices or showing a custom
+            // image. That is not a user request to change the workspace wallpaper.
+            if (value < 0 || value >= Settings.Wallpapers.Count || value == Settings.WallpaperIndex) return;
+            Settings.WallpaperIndex = value;
+            Save();
+        }
     }
 
     private string _accentInput = string.Empty;
@@ -283,25 +311,6 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
 
     public bool HasSystemStyleProblem => !string.IsNullOrEmpty(SystemStyleProblem);
 
-    /// <summary>Human-readable summary of the tokens a user actually notices when a style changes.</summary>
-    public string SystemStyleSummary
-    {
-        get
-        {
-            if (!_systemStyles.TryGetManifest(Settings.SystemStyleId, out var manifest, out _))
-                return string.Empty;
-            var tokens = manifest.ResolveTokens(Settings.Appearance.Mode == ThemeKind.Dark);
-            return string.Join(" · ", new[]
-            {
-                Token(tokens, "WindowTitleBarHeight", "settings.system_style.token.title_bar", "Title bar"),
-                Token(tokens, "WindowCornerRadius", "settings.system_style.token.window_radius", "Window corners"),
-                Token(tokens, "MenuCornerRadius", "settings.system_style.token.menu_radius", "Menu corners"),
-                Token(tokens, "TaskbarHeight", "settings.system_style.token.taskbar", "Taskbar"),
-                Token(tokens, "MinimumHitTarget", "settings.system_style.token.hit_target", "Minimum target"),
-            });
-        }
-    }
-
     /// <summary>True when the current style already matches what the selected shell recommends.</summary>
     public bool IsUsingRecommendedStyle =>
         string.Equals(Settings.SystemStyleId, RecommendedSystemStyleId, StringComparison.Ordinal);
@@ -320,14 +329,6 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
         Save();
     }
 
-    private string Token(IReadOnlyDictionary<string, double> tokens, string key, string labelKey, string fallback)
-    {
-        var value = tokens.TryGetValue(key, out var declared)
-            ? declared
-            : SystemStyleTokenContract.DefaultOf(key);
-        return $"{T(labelKey, fallback)} {value:0.#}";
-    }
-
     private void RefreshSystemStyleChoices()
     {
         var next = _systemStyles.Available
@@ -342,7 +343,6 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
         if (_systemStyleChoices.SequenceEqual(next)) return;
         _systemStyleChoices = next;
         OnPropertyChanged(nameof(SystemStyleChoices));
-        OnPropertyChanged(nameof(SystemStyleSummary));
         OnPropertyChanged(nameof(SystemStyleProblem));
         OnPropertyChanged(nameof(HasSystemStyleProblem));
         OnPropertyChanged(nameof(IsUsingRecommendedStyle));
@@ -380,11 +380,7 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
             // Store the package identity along with the cross-device shell intent.  Resolving
             // remains device-local, but retaining this metadata prevents an external shell
             // choice from being reduced to a bare ID on the next launch.
-            if (Settings.ShellSelection.ShellId == id
-                && Settings.ShellSelection.PackageId == shell.PackageId
-                && Settings.ShellSelection.PackageVersion == shell.Version) return;
-            Settings.ShellSelection = new ShellSelectionDto(id, shell.PackageId, shell.Version);
-            Save();
+            if (Settings.SelectShell(shell)) Save();
         }
     }
 

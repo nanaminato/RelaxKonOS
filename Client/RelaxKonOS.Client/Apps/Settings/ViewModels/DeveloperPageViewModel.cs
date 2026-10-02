@@ -18,6 +18,8 @@ public sealed class DeveloperPageViewModel : SettingsPageViewModel
         NetworkInspector = new NetworkInspectorLauncherViewModel(developerMode, networkInspector, localization);
     }
 
+    protected override void DisposeCore() => NetworkInspector.Dispose();
+
     public override string Route => "developer";
     public override string DisplayNameKey => "settings.page.developer";
     public override string DisplayName => "Developer";
@@ -25,18 +27,20 @@ public sealed class DeveloperPageViewModel : SettingsPageViewModel
     public NetworkInspectorLauncherViewModel NetworkInspector { get; }
 }
 
-public sealed partial class NetworkInspectorLauncherViewModel : ObservableObject
+public sealed partial class NetworkInspectorLauncherViewModel : ObservableObject, IDisposable
 {
     private readonly DeveloperModeService _developerMode;
     private readonly NetworkInspectorWindowService _networkInspector;
+    private readonly LocalizationService _localization;
 
     public NetworkInspectorLauncherViewModel(DeveloperModeService developerMode, NetworkInspectorWindowService networkInspector,
         LocalizationService localization)
     {
         _developerMode = developerMode;
         _networkInspector = networkInspector;
-        _developerMode.Changed += (_, _) => Refresh();
-        localization.LanguageChanged += (_, _) => Refresh();
+        _localization = localization;
+        _developerMode.Changed += OnDeveloperModeChanged;
+        _localization.LanguageChanged += OnLanguageChanged;
     }
 
     public bool CanOpen => _networkInspector.CanOpen;
@@ -45,6 +49,15 @@ public sealed partial class NetworkInspectorLauncherViewModel : ObservableObject
 
     [RelayCommand]
     private void Open() => _networkInspector.Open();
+
+    public void Dispose()
+    {
+        _developerMode.Changed -= OnDeveloperModeChanged;
+        _localization.LanguageChanged -= OnLanguageChanged;
+    }
+
+    private void OnDeveloperModeChanged(object? sender, EventArgs e) => Refresh();
+    private void OnLanguageChanged(object? sender, RelaxKonOS.AppSDK.SystemLanguageChangedEventArgs e) => Refresh();
 
     private void Refresh()
     {

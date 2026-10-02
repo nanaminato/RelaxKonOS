@@ -101,8 +101,8 @@ public sealed record ShellDesktopState(
     /// </summary>
     IBrush? Wallpaper = null,
     /// <summary>
-    /// Theme-resolved foreground used for desktop item labels by built-in shells. External
-    /// shells may use their own presentation, but receive this value to remain theme-consistent.
+    /// Wallpaper-label foreground, separate from window surface text. External shells can use
+    /// the shared TextBlock.desktop-label style for the matching palette-resolved text shadow.
     /// </summary>
     IBrush? DesktopItemLabelForeground = null);
 

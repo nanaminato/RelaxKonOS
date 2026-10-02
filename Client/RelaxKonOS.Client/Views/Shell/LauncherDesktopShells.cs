@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
@@ -38,6 +39,7 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
     private LocalizationService? _localization;
     private EventHandler<SystemLanguageChangedEventArgs>? _languageChanged;
     private Window? _topLevel;
+    private readonly List<IDisposable> _ownedIcons = [];
     private static readonly object DesktopEntryMarker = new();
 
     /// <summary>
@@ -57,6 +59,7 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
             ?? throw new InvalidOperationException("The client did not publish a desktop workspace state.");
         _root.DataContext = _vm;
         _root.PointerPressed += OnRootPointerPressed;
+        _root.DetachedFromVisualTree += OnDetachedFromVisualTree;
         _root.Background = _vm.Settings.CurrentWallpaper;
         _wallpaperChanged = (_, args) =>
         {
@@ -94,13 +97,14 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
     }
 
     public virtual Task DeactivateAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-    public ValueTask DisposeAsync()
+    public virtual ValueTask DisposeAsync()
     {
         if (_vm is not null && _wallpaperChanged is not null)
             _vm.Settings.PropertyChanged -= _wallpaperChanged;
         if (_localization is not null && _languageChanged is not null)
             _localization.LanguageChanged -= _languageChanged;
         _root.PointerPressed -= OnRootPointerPressed;
+        _root.DetachedFromVisualTree -= OnDetachedFromVisualTree;
         if (_topLevel is not null) _topLevel.Deactivated -= OnTopLevelDeactivated;
         _topLevel = null;
         _wallpaperChanged = null;
@@ -108,10 +112,25 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         _localization = null;
         _context = null;
         _vm = null;
+        foreach (var icon in _ownedIcons) icon.Dispose();
+        _ownedIcons.Clear();
         return ValueTask.CompletedTask;
     }
 
+    protected IImage? LoadDockIcon(string iconName)
+    {
+        var image = AppIconImageLoader.Load($"avares://RelaxKonOS.Client/Assets/AppIcons/{iconName}.png");
+        if (image is IDisposable owned) _ownedIcons.Add(owned);
+        return image;
+    }
+
     protected abstract void BuildLayout(DesktopShellViewModel vm);
+
+    private void OnDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        if (_topLevel is not null) _topLevel.Deactivated -= OnTopLevelDeactivated;
+        _topLevel = null;
+    }
 
     /// <summary>
     /// Shell-facing host commands, available once the shell has been initialized. A shell may only
@@ -283,8 +302,8 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         {
             Text = name, MaxWidth = 108, MaxLines = 2, TextWrapping = TextWrapping.Wrap,
             TextAlignment = TextAlignment.Center, TextTrimming = DesktopNameTrimming,
-            Foreground = ThemeResources.Brush("TextPrimaryBrush"),
         };
+        label.Classes.Add("desktop-label");
         // Desktop icons are narrow, so a long name is shortened to a preview. The untouched name
         // stays reachable from the tooltip rather than being silently lost to the ellipsis.
         ToolTip.SetTip(label, name);
@@ -426,11 +445,28 @@ internal sealed class DesktopSelectionBorderThicknessConverter : IValueConverter
 
 public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltInShells.Windows)
 {
+    private WindowsTaskbarPreview? _previews;
+
     protected override void BuildLayout(DesktopShellViewModel vm)
     {
+        _previews = new WindowsTaskbarPreview(_root, vm);
         var layout = new WindowsShellLayoutView();
         layout.Compose(Desktop(vm), WindowsTaskbar(vm, Actions), WindowsLauncher(vm));
         _root.Children.Add(layout);
+        _root.Children.Add(_previews.Host);
+    }
+
+    public override Task DeactivateAsync(CancellationToken cancellationToken)
+    {
+        _previews?.Dismiss();
+        return base.DeactivateAsync(cancellationToken);
+    }
+
+    public override ValueTask DisposeAsync()
+    {
+        _previews?.Dispose();
+        _previews = null;
+        return base.DisposeAsync();
     }
 
     /// <summary>
@@ -531,7 +567,7 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
         };
     }
 
-    private static Control WindowsTaskbar(DesktopShellViewModel vm, IShellActions? actions)
+    private Control WindowsTaskbar(DesktopShellViewModel vm, IShellActions? actions)
     {
         var bar = new Border
         {
@@ -611,7 +647,7 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
         return bar;
     }
 
-    private static Button WindowsTaskbarButton(DesktopShellViewModel vm, TaskbarGroupViewModel group)
+    private Button WindowsTaskbarButton(DesktopShellViewModel vm, TaskbarGroupViewModel group)
     {
         var content = new Grid { RowDefinitions = new RowDefinitions("*,3") };
         var icon = AppIcon(group, 23);
@@ -640,7 +676,8 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
         };
         ThemeResources.Bind(button, Control.WidthProperty, "TaskbarIconSize");
         ThemeResources.Bind(button, Control.HeightProperty, "TaskbarIconSize");
-        ToolTip.SetTip(button, group.DisplayName);
+        AutomationProperties.SetName(button, group.DisplayName);
+        _previews?.Register(button, group);
         return button;
     }
 
@@ -713,7 +750,11 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
     protected override void BuildLayout(DesktopShellViewModel vm)
     {
         var layout = new MacosShellLayoutView();
-        layout.Compose(MacosMenuBar(vm), Desktop(vm), MacosDock(vm), MacosLaunchpad(vm));
+        var desktop = Desktop(vm);
+        // Launchpad replaces the desktop presentation without closing its windows or changing
+        // the user's icon visibility preference. Hiding the surface also prevents click-through.
+        desktop.Bind(Visual.IsVisibleProperty, new Binding("!" + nameof(vm.IsStartOpen)));
+        layout.Compose(MacosMenuBar(vm), desktop, MacosDock(vm), MacosLaunchpad(vm));
         _root.Children.Add(layout);
     }
 
@@ -780,7 +821,7 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
         return bar;
     }
 
-    private static Control MacosDock(DesktopShellViewModel vm)
+    private Control MacosDock(DesktopShellViewModel vm)
     {
         var dock = new Border
         {
@@ -821,6 +862,7 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
         ThemeResources.Bind(overlay, Border.BackgroundProperty, "OverlayScrimBrush");
         overlay.Bind(Visual.IsVisibleProperty, new Binding(nameof(vm.IsStartOpen)));
         overlay.PointerPressed += (_, _) => vm.CloseStartCommand.Execute(null);
+        overlay.KeyBindings.Add(new KeyBinding { Gesture = KeyGesture.Parse("Escape"), Command = vm.CloseStartCommand });
         var layout = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), RowSpacing = 26, Margin = new Thickness(80, 58, 80, 78) };
         var search = new TextBox
         {
@@ -871,7 +913,7 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
             TextWrapping = TextWrapping.Wrap,
             HorizontalAlignment = HorizontalAlignment.Center,
         };
-        ThemeResources.Bind(name, TextBlock.ForegroundProperty, "TextPrimaryBrush");
+        name.Classes.Add("desktop-label");
         Grid.SetRow(name, 1);
         content.Children.Add(name);
         var button = new Button
@@ -902,9 +944,9 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
     }
 
     /// <summary>Creates a fixed Dock shortcut with the same raster app-icon treatment as running apps.</summary>
-    private static Button MacosDockButton(string iconName, string tooltip, System.Windows.Input.ICommand command)
+    private Button MacosDockButton(string iconName, string tooltip, System.Windows.Input.ICommand command)
     {
-        var image = AppIconImageLoader.Load($"avares://RelaxKonOS.Client/Assets/AppIcons/{iconName}.png");
+        var image = LoadDockIcon(iconName);
         return MacosInteractiveButton(new Image
         {
             Source = image,
@@ -1157,7 +1199,7 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
         return bar;
     }
 
-    private static Control UbuntuDock(DesktopShellViewModel vm)
+    private Control UbuntuDock(DesktopShellViewModel vm)
     {
         var dock = new Border
         {
@@ -1243,9 +1285,9 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
     }
 
     /// <summary>Creates a fixed Ubuntu Dock shortcut using the packaged raster application icon.</summary>
-    private static Button UbuntuDockButton(string iconName, string tooltip, System.Windows.Input.ICommand command)
+    private Button UbuntuDockButton(string iconName, string tooltip, System.Windows.Input.ICommand command)
     {
-        var image = AppIconImageLoader.Load($"avares://RelaxKonOS.Client/Assets/AppIcons/{iconName}.png");
+        var image = LoadDockIcon(iconName);
         var button = new Button
         {
             Content = new Image
@@ -1258,6 +1300,9 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
                 VerticalAlignment = VerticalAlignment.Center,
             },
             Command = command,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center,
             Padding = new Thickness(0),
             Background = Brushes.Transparent,
             BorderBrush = Brushes.Transparent,

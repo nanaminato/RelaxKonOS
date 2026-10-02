@@ -15,6 +15,7 @@ public static class ThemePaletteContract
         "Success", "SuccessMuted", "Warning", "WarningMuted", "Danger", "DangerHover", "DangerPressed", "Info",
         "TaskbarBackground", "TaskbarForeground", "StartMenuBackground", "WindowFrameBackground", "WindowTitleBarBackground",
         "WindowTitleForeground", "WindowInactiveTitleForeground", "OverlayScrim", "Shadow", "DesktopIconHover", "DesktopIconSelected",
+        "DesktopItemLabelForeground", "DesktopItemLabelShadow",
         "CardShadow", "FlyoutShadow", "DialogScrim", "ChartGridLine", "ChartSeries1", "ChartSeries2", "ChartSeries3", "ChartSeries4",
         "ChartSeries5", "ChartSeries6", "ChartSeries7", "ChartSeries8",
     };
