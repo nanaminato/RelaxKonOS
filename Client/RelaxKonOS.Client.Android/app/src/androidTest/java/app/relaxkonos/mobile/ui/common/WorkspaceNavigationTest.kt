@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import app.relaxkonos.mobile.R
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -25,6 +26,40 @@ class WorkspaceNavigationTest {
     @get:Rule val rule = createComposeRule()
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     private fun tab(id: Int) = rule.onNodeWithText(context.getString(id))
+
+    @Test fun framePlacesBackAboveTabsAndKeepsTheActivePagesLeavePolicy() {
+        val events = mutableListOf<String>()
+        rule.setContent {
+            MaterialTheme {
+                var selected by remember { mutableStateOf("overview") }
+                WorkspaceFrame("Workspace", screenTitle = "Page $selected", pages = listOf(
+                    WorkspaceDestination("overview", R.string.workspace_overview),
+                    WorkspaceDestination("logs", R.string.workspace_logs),
+                ), selected = selected, onSelect = { selected = it }, onBack = { events += "exit" }) {
+                    Box(Modifier.weight(1f)) {
+                        listOf("overview", "logs").forEach { page -> key(page) {
+                            WorkspaceSection(selected == page) {
+                                ScreenHeader("Page $page", onBack = { events += page },
+                                    trailing = { TextButton(onClick = {}) { Text("Action $page") } })
+                                Text("Content $page")
+                            }
+                        } }
+                    }
+                }
+            }
+        }
+        val back = rule.onNodeWithContentDescription(context.getString(R.string.common_back))
+        val backBounds = back.fetchSemanticsNode().boundsInRoot
+        assertTrue(tab(R.string.workspace_overview).fetchSemanticsNode().boundsInRoot.top >= backBounds.bottom)
+        rule.onNodeWithText("Page overview").assertDoesNotExist()
+        rule.onNodeWithText("Action overview").assertIsDisplayed()
+        back.performClick()
+        tab(R.string.workspace_logs).performClick()
+        back.performClick()
+        tab(R.string.workspace_overview).performClick()
+        back.performClick()
+        rule.runOnIdle { assertEquals(listOf("overview", "logs", "overview"), events) }
+    }
 
     @Test fun allEightCategoriesAreReachableOnANarrowScreen() {
         rule.setContent {

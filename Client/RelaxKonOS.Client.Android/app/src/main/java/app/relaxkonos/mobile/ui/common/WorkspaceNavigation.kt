@@ -16,6 +16,30 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 
 data class WorkspaceDestination(val id: String, @param:StringRes val title: Int)
 
+internal class WorkspaceHeader(val screenTitle: String, initialBack: (() -> Unit)?) {
+    var back: (() -> Unit)? = initialBack
+    var hasBack by mutableStateOf(initialBack != null)
+}
+
+internal val LocalWorkspaceHeader = compositionLocalOf<WorkspaceHeader?> { null }
+
+/** The workspace owns the title and navigation; the active page owns its back/leave policy. */
+@Composable
+fun WorkspaceFrame(
+    title: String, screenTitle: String = title, subtitle: String? = null,
+    pages: List<WorkspaceDestination>, selected: String, onSelect: (String) -> Unit,
+    onBack: (() -> Unit)?, modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val header = remember(selected, screenTitle) { WorkspaceHeader(screenTitle, onBack) }
+    Column(modifier.fillMaxSize().imePadding()) {
+        ScreenHeader(title, subtitle = subtitle, onBack = if (header.hasBack) ({ header.back?.invoke() }) else null,
+            modifier = Modifier.padding(Spacing.lg))
+        WorkspaceNavigation(pages, selected, onSelect)
+        CompositionLocalProvider(LocalWorkspaceHeader provides header) { content() }
+    }
+}
+
 /** Stable, reachable navigation above the content, including narrow screens and large text. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,7 +86,11 @@ fun WorkspaceSection(visible: Boolean, modifier: Modifier = Modifier, content: @
     if (visible) visited = true
     if (!visited) return
     Layout(modifier = if (visible) modifier else Modifier.clearAndSetSemantics {},
-        content = { Column(verticalArrangement = Arrangement.spacedBy(Spacing.md), content = content) }) { children, constraints ->
+        content = {
+            CompositionLocalProvider(LocalWorkspaceHeader provides LocalWorkspaceHeader.current.takeIf { visible }) {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.md), content = content)
+            }
+        }) { children, constraints ->
         if (visible) {
             val child = children.single().measure(constraints)
             layout(child.width, child.height) { child.placeRelative(0, 0) }

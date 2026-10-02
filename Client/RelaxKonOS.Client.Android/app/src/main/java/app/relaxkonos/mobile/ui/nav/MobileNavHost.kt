@@ -335,13 +335,20 @@ private fun SettingsWorkspace(route: String, onOpenRoute: (String) -> Unit, onBa
         WorkspaceDestination(Routes.MORE_HELP, R.string.help_title),
         WorkspaceDestination(Routes.MORE_ABOUT, R.string.more_about),
     ).filter { it.id != Routes.MORE_NETWORK || app.relaxkonos.mobile.core.net.ServerCapabilities.DOCKER in app.relaxkonos.mobile.ui.common.appContainer().capabilities }
-    Column(Modifier.fillMaxSize()) {
-        Text(stringResource(when (route) {
+    val screenTitle = stringResource(when (route) {
+        Routes.MORE_APPEARANCE -> R.string.appearance_title
+        Routes.MORE_ACCOUNT_SECURITY -> R.string.account_security_title
+        Routes.MORE_CONNECTIONS -> R.string.connections_title
+        Routes.MORE_NETWORK -> R.string.proxy_title
+        Routes.MORE_DIAGNOSTICS -> R.string.diagnostics_title
+        Routes.MORE_ABOUT -> R.string.about_title
+        else -> pages.first { it.id == route }.title
+    })
+    WorkspaceFrame(screenTitle, subtitle = stringResource(when (route) {
             Routes.MORE_HOST_SETTINGS, Routes.MORE_SERVER_INFORMATION, Routes.MORE_NETWORK -> R.string.workspace_scope_host
             Routes.MORE_CONNECTIONS, Routes.MORE_DIAGNOSTICS -> R.string.workspace_scope_connection
             else -> R.string.workspace_scope_android
-        }), modifier = Modifier.padding(Spacing.sm))
-        WorkspaceNavigation(pages, route, onOpenRoute)
+        }), pages = pages, selected = route, onSelect = onOpenRoute, onBack = onBack) {
         androidx.compose.runtime.key(appContainer().activeSession) { Box(Modifier.weight(1f)) {
             pages.forEach { page -> androidx.compose.runtime.key(page.id) {
                 WorkspaceSection(route == page.id, Modifier.fillMaxSize()) {

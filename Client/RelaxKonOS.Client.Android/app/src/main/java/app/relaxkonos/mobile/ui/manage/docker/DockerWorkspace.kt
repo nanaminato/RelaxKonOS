@@ -34,8 +34,14 @@ fun DockerWorkspace(initialSection: String, initialStack: String?, onBack: () ->
         WorkspaceDestination("networks", R.string.workspace_networks),
         WorkspaceDestination("volumes", R.string.workspace_volumes),
     )
-    Column(modifier.fillMaxSize().imePadding()) {
-        WorkspaceNavigation(pages, section) { section = it }
+    val screenTitle = stringResource(when (section) {
+        "overview", "compose" -> R.string.docker_title
+        "mirrors" -> R.string.workspace_mirrors
+        "proxy" -> R.string.proxy_title
+        else -> R.string.docker_resources_title
+    })
+    WorkspaceFrame(stringResource(R.string.docker_title), screenTitle = screenTitle,
+        pages = pages, selected = section, onSelect = { section = it }, onBack = onBack, modifier = modifier) {
         val state = control.state
         if (state.owner === owner && section !in setOf("overview", "mirrors") &&
             (state.pending.isNotEmpty() || state.resourcePending || state.pendingInstallation || state.installation?.state?.active == true)) {

@@ -12,7 +12,7 @@
 
 2026-10-02 局域网自签证书修复：`ServerMaintenanceOptionsTest` 4 项、`ServerMaintenanceTest` 1 项、`ServerCenterDeploymentClientTest` 11 项与离线 `assembleDebug` 通过。覆盖普通修复保留证书/数据、Linux/Windows 系统修复的当前 IP 请求序列化、User Mode 拒绝、空/非法名称拒绝，以及卸载/回滚隔离证书参数。共享启动器 `Tests/Deployment/certificate_repair_checks.py` 2 项通过，覆盖默认保留、显式重新生成、回滚保留及旧引擎拒绝；Bash/PowerShell 启动器语法检查通过。尚未通过 Android 实机执行证书更换；手机/平板的大字体、TalkBack、键盘避让、确认/取消、切换宿主表单隔离、断线回执查询与重新登录核对新指纹，以及真实 Windows 修复均待验证。此前 SSH 直接修复 Linux 宿主的证据不代表移动端端到端验收。
 
-2026-10-02 PN-01–10 导航改造：Kotlin 编译、1,022 项 JVM 测试与 Debug APK 构建通过，SM-X510 的 `WorkspaceNavigationTest` 五项通过，覆盖草稿/不重放提交、360dp/2 倍字体固定导航与分类滚动、保存恢复及所有者变化清理、隐藏面板不占当前视口、八分类横向触达。设置返回栈新增两项 JVM 检查通过。各应用真实领域操作、手机真机、三语/主题/TalkBack、断线与恢复、Windows/Linux 能力门控和真实账户切换仍待验收，见 [导航对照状态](PhoneNavigationParity.md)。
+2026-10-02 PN-01–10 导航改造：Kotlin 编译、1,022 项 JVM 测试与 Debug APK 构建通过，SM-X510 的 `WorkspaceNavigationTest` 六项通过，覆盖草稿/不重放提交、360dp/2 倍字体固定导航与分类滚动、保存恢复及所有者变化清理、隐藏面板不占当前视口、八分类横向触达、标题返回按钮位于分类栏上方与当前页离页处理委托。设置返回栈新增两项 JVM 检查通过。各应用真实领域操作、手机真机、三语/主题/TalkBack、断线与恢复、Windows/Linux 能力门控和真实账户切换仍待验收，见 [导航对照状态](PhoneNavigationParity.md)。
 
 2026-10-01 SSH 设置、双终端与平板导航：703 项 JVM 测试与 `assembleDebug` 通过，新增检查覆盖原生/原始 VT 输出并存、跨帧 UTF-8、清屏、resize/离页保留及重连/附加其它 shell 同步重置。SM-S9380 与 SM-X510（Android 16）均执行 `SshWorkspaceLayoutTest` 三项、`NativeTerminalTest` 一项及 `XtermTerminalTest` 一项通过：导航覆盖 360/700/1000dp 设置入口、底栏键盘折叠、侧栏独立视口和无障碍名称；原生模式验证首次连接成功后同步 PTY 尺寸及视口宽度变化；xterm.js 验证 Windows VT 重绘、查询响应和视口显隐尺寸。xterm.js 用例等待实际 fit/绘制完成后检查边界，避免在 200ms 尺寸稳定期前误报。完整终端测试包在平板 `keyboardShowAndHidePreserveTheUnsentDraft` 长时间等待后中止，不能记为整包通过。语言/主题/高对比度/终端选择的重启恢复、真实 SSH/Server 会话切换两种渲染器、平板分屏/旋转与复杂全屏程序仍需实机联调；导航测量用例不代表所有 SSH 页面已完成内容双栏。
 
