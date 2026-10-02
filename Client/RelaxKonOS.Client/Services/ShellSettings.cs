@@ -183,7 +183,10 @@ public sealed partial class ShellSettings : ObservableObject
         // ── 桌面显示配置 ──
         var dd = prefs.DesktopDisplay ?? DesktopDisplaySettingsDto.Default;
         ShowBuiltInApps = dd.ShowBuiltInApps;
-        VisibleAppIds = new List<string>(dd.VisibleAppIds ?? new List<string>());
+        var visibleAppIds = dd.VisibleAppIds ?? [];
+        // A polling read of unchanged preferences must not rebuild the entire desktop.
+        if (!VisibleAppIds.SequenceEqual(visibleAppIds, StringComparer.Ordinal))
+            VisibleAppIds = new List<string>(visibleAppIds);
         ShowServerDesktopFiles = dd.ShowServerDesktopFiles;
         ShowServerDesktopShortcuts = dd.ShowServerDesktopShortcuts;
         HasCompletedFirstTimeSetup = dd.HasCompletedFirstTimeSetup;

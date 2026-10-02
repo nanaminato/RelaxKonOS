@@ -33,6 +33,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     private readonly WallpaperService? _wallpapers;
     private readonly WorkspacePreferencesEditor _editor;
     private bool _initialized;
+    private bool _disposed;
 
     public SettingsViewModel(
         ShellSettings settings,
@@ -195,10 +196,12 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         DisposeNavigation();
         _editor.PropertyChanged -= OnEditorChanged;
         if (_registry is not null) _registry.Changed -= OnMappingsChanged;
-        foreach (var page in Pages.OfType<IDisposable>())
+        foreach (var page in Pages)
             page.Dispose();
     }
 }

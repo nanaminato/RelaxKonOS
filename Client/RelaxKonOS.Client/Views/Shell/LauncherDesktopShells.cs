@@ -39,6 +39,7 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
     private LocalizationService? _localization;
     private EventHandler<SystemLanguageChangedEventArgs>? _languageChanged;
     private Window? _topLevel;
+    private readonly List<IDisposable> _ownedIcons = [];
     private static readonly object DesktopEntryMarker = new();
 
     /// <summary>
@@ -58,6 +59,7 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
             ?? throw new InvalidOperationException("The client did not publish a desktop workspace state.");
         _root.DataContext = _vm;
         _root.PointerPressed += OnRootPointerPressed;
+        _root.DetachedFromVisualTree += OnDetachedFromVisualTree;
         _root.Background = _vm.Settings.CurrentWallpaper;
         _wallpaperChanged = (_, args) =>
         {
@@ -102,6 +104,7 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         if (_localization is not null && _languageChanged is not null)
             _localization.LanguageChanged -= _languageChanged;
         _root.PointerPressed -= OnRootPointerPressed;
+        _root.DetachedFromVisualTree -= OnDetachedFromVisualTree;
         if (_topLevel is not null) _topLevel.Deactivated -= OnTopLevelDeactivated;
         _topLevel = null;
         _wallpaperChanged = null;
@@ -109,10 +112,25 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         _localization = null;
         _context = null;
         _vm = null;
+        foreach (var icon in _ownedIcons) icon.Dispose();
+        _ownedIcons.Clear();
         return ValueTask.CompletedTask;
     }
 
+    protected IImage? LoadDockIcon(string iconName)
+    {
+        var image = AppIconImageLoader.Load($"avares://RelaxKonOS.Client/Assets/AppIcons/{iconName}.png");
+        if (image is IDisposable owned) _ownedIcons.Add(owned);
+        return image;
+    }
+
     protected abstract void BuildLayout(DesktopShellViewModel vm);
+
+    private void OnDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        if (_topLevel is not null) _topLevel.Deactivated -= OnTopLevelDeactivated;
+        _topLevel = null;
+    }
 
     /// <summary>
     /// Shell-facing host commands, available once the shell has been initialized. A shell may only
@@ -803,7 +821,7 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
         return bar;
     }
 
-    private static Control MacosDock(DesktopShellViewModel vm)
+    private Control MacosDock(DesktopShellViewModel vm)
     {
         var dock = new Border
         {
@@ -926,9 +944,9 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
     }
 
     /// <summary>Creates a fixed Dock shortcut with the same raster app-icon treatment as running apps.</summary>
-    private static Button MacosDockButton(string iconName, string tooltip, System.Windows.Input.ICommand command)
+    private Button MacosDockButton(string iconName, string tooltip, System.Windows.Input.ICommand command)
     {
-        var image = AppIconImageLoader.Load($"avares://RelaxKonOS.Client/Assets/AppIcons/{iconName}.png");
+        var image = LoadDockIcon(iconName);
         return MacosInteractiveButton(new Image
         {
             Source = image,
@@ -1181,7 +1199,7 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
         return bar;
     }
 
-    private static Control UbuntuDock(DesktopShellViewModel vm)
+    private Control UbuntuDock(DesktopShellViewModel vm)
     {
         var dock = new Border
         {
@@ -1267,9 +1285,9 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
     }
 
     /// <summary>Creates a fixed Ubuntu Dock shortcut using the packaged raster application icon.</summary>
-    private static Button UbuntuDockButton(string iconName, string tooltip, System.Windows.Input.ICommand command)
+    private Button UbuntuDockButton(string iconName, string tooltip, System.Windows.Input.ICommand command)
     {
-        var image = AppIconImageLoader.Load($"avares://RelaxKonOS.Client/Assets/AppIcons/{iconName}.png");
+        var image = LoadDockIcon(iconName);
         var button = new Button
         {
             Content = new Image

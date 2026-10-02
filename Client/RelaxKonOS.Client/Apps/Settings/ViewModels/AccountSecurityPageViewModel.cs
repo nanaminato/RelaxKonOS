@@ -10,7 +10,7 @@ using QRCoder;
 
 namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 
-public sealed partial class AccountSecurityPageViewModel : SettingsPageViewModel, IDisposable
+public sealed partial class AccountSecurityPageViewModel : SettingsPageViewModel
 {
     private readonly AccountSecurityClient client;
     private readonly IAuthSession session;
@@ -179,5 +179,5 @@ public sealed partial class AccountSecurityPageViewModel : SettingsPageViewModel
         }
         catch (OperationCanceledException) { }
     }
-    public void Dispose() { disposed = true; lifetime.Cancel(); lifetime.Dispose(); session.StateChanged -= OnSessionChanged; PairingQrCode?.Dispose(); }
+    protected override void DisposeCore() { disposed = true; lifetime.Cancel(); lifetime.Dispose(); session.StateChanged -= OnSessionChanged; PairingQrCode?.Dispose(); }
 }

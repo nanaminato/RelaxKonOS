@@ -39,42 +39,58 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
         _systemStyles = systemStyles ?? RelaxKonOS.Client.App.Services.GetRequiredService<ISystemStyleRegistry>();
         RefreshShellChoices();
         RefreshSystemStyleChoices();
-        _shellCatalog.Changed += (_, _) => RefreshShellChoices();
-        _systemStyles.Changed += (_, _) => RefreshSystemStyleChoices();
-        _localization.LanguageChanged += (_, _) => { RefreshShellChoices(); RefreshSystemStyleChoices(); };
-        // Theme 变化（含外部 Apply 加载）时刷新三个 RadioButton 绑定。
-        Settings.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(ShellSettings.Appearance))
-            {
-                OnPropertyChanged(nameof(Theme));
-                OnPropertyChanged(nameof(IsLightTheme));
-                OnPropertyChanged(nameof(IsDarkTheme));
-                OnPropertyChanged(nameof(IsSystemTheme));
-                OnPropertyChanged(nameof(PalettePreview));
-                OnPropertyChanged(nameof(PaletteId));
-                AccentInput = Settings.Appearance.AccentOverride ?? string.Empty;
-                OnPropertyChanged(nameof(PaletteChoices));
-                OnPropertyChanged(nameof(SelectedCustomPalette));
-                OnPropertyChanged(nameof(HasSelectedCustomPalette));
-                OnPropertyChanged(nameof(HasAccentOverride));
-            }
-            else if (e.PropertyName == nameof(ShellSettings.SystemStyleId))
-            {
-                OnPropertyChanged(nameof(SelectedSystemStyleId));
-                OnPropertyChanged(nameof(SystemStyleProblem));
-                OnPropertyChanged(nameof(HasSystemStyleProblem));
-                OnPropertyChanged(nameof(IsUsingRecommendedStyle));
-            }
-            else if (e.PropertyName == nameof(ShellSettings.SelectedShellId))
-            {
-                // Preferences may arrive after Settings is already open. Keep the ComboBox in
-                // sync without treating that inbound update as another user selection.
-                OnPropertyChanged(nameof(SelectedShellId));
-                OnPropertyChanged(nameof(IsUsingRecommendedStyle));
-            }
-        };
+        _shellCatalog.Changed += OnShellCatalogChanged;
+        _systemStyles.Changed += OnSystemStylesChanged;
         _accentInput = Settings.Appearance.AccentOverride ?? string.Empty;
+    }
+
+    private void OnShellCatalogChanged(object? sender, EventArgs e) => RefreshShellChoices();
+    private void OnSystemStylesChanged(object? sender, EventArgs e) => RefreshSystemStyleChoices();
+
+    protected override void OnLanguageChanged(object? sender, RelaxKonOS.AppSDK.SystemLanguageChangedEventArgs e)
+    {
+        RefreshShellChoices();
+        RefreshSystemStyleChoices();
+        base.OnLanguageChanged(sender, e);
+    }
+
+    protected override void OnSettingsChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        base.OnSettingsChanged(sender, e);
+        if (e.PropertyName == nameof(ShellSettings.Appearance))
+        {
+            OnPropertyChanged(nameof(Theme));
+            OnPropertyChanged(nameof(IsLightTheme));
+            OnPropertyChanged(nameof(IsDarkTheme));
+            OnPropertyChanged(nameof(IsSystemTheme));
+            OnPropertyChanged(nameof(PalettePreview));
+            OnPropertyChanged(nameof(PaletteId));
+            AccentInput = Settings.Appearance.AccentOverride ?? string.Empty;
+            OnPropertyChanged(nameof(PaletteChoices));
+            OnPropertyChanged(nameof(SelectedCustomPalette));
+            OnPropertyChanged(nameof(HasSelectedCustomPalette));
+            OnPropertyChanged(nameof(HasAccentOverride));
+        }
+        else if (e.PropertyName == nameof(ShellSettings.SystemStyleId))
+        {
+            OnPropertyChanged(nameof(SelectedSystemStyleId));
+            OnPropertyChanged(nameof(SystemStyleProblem));
+            OnPropertyChanged(nameof(HasSystemStyleProblem));
+            OnPropertyChanged(nameof(IsUsingRecommendedStyle));
+        }
+        else if (e.PropertyName == nameof(ShellSettings.SelectedShellId))
+        {
+            // Preferences may arrive after Settings is already open. Keep the ComboBox in
+            // sync without treating that inbound update as another user selection.
+            OnPropertyChanged(nameof(SelectedShellId));
+            OnPropertyChanged(nameof(IsUsingRecommendedStyle));
+        }
+    }
+
+    protected override void DisposeCore()
+    {
+        _shellCatalog.Changed -= OnShellCatalogChanged;
+        _systemStyles.Changed -= OnSystemStylesChanged;
     }
 
     public override string Route => "personalization";

@@ -9,7 +9,7 @@ using RelaxKonOS.Runtime;
 namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 
 /// <summary>Top-level editor for URI scheme and file-extension default application mappings.</summary>
-public sealed partial class DefaultAppsPageViewModel : SettingsPageViewModel, IDisposable
+public sealed partial class DefaultAppsPageViewModel : SettingsPageViewModel
 {
     private readonly ApplicationManager _apps;
 
@@ -27,12 +27,13 @@ public sealed partial class DefaultAppsPageViewModel : SettingsPageViewModel, ID
     public ObservableCollection<string> AvailableSchemes { get; } = new();
     public ObservableCollection<DefaultAppMappingViewModel> Mappings { get; } = new();
 
-    public void Dispose() => _apps.RegistryChanged -= OnRegistryChanged;
+    protected override void DisposeCore() => _apps.RegistryChanged -= OnRegistryChanged;
 
     private void OnRegistryChanged(object? sender, EventArgs eventArgs) => Dispatcher.UIThread.Post(RefreshApplications);
 
     private void RefreshApplications()
     {
+        if (IsDisposed) return;
         var apps = _apps.Registered;
         Replace(AvailableApps, apps.Select(app => new AppOption(app.Id.Value, app.DisplayName, app.FileExtensions, app.UriSchemes)));
         Replace(AvailableSchemes, new[] { "http", "https", "mailto", "ftp" }

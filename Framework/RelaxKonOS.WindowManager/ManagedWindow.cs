@@ -14,6 +14,7 @@ namespace RelaxKonOS.WindowManager;
 /// </summary>
 public partial class ManagedWindow : ObservableObject
 {
+    private string? _loadedIconPath;
     // Use standard Unicode symbols instead of Segoe MDL2 private-use code points.
     // The latter render as arbitrary letters/boxes when the Windows-only font is absent.
     public const string MinimizeGlyph = "\u2212";
@@ -64,7 +65,13 @@ public partial class ManagedWindow : ObservableObject
     {
         Title = Info.Title;
         IconGlyph = Info.IconGlyph;
-        IconImage = AppIconImageLoader.Load(Info.IconPath);
+        if (_loadedIconPath != Info.IconPath)
+        {
+            var previous = IconImage;
+            IconImage = AppIconImageLoader.Load(Info.IconPath);
+            _loadedIconPath = Info.IconPath;
+            (previous as IDisposable)?.Dispose();
+        }
         State = Info.State;
         CanMinimize = Info.CanMinimize;
         CanMaximize = Info.CanMaximize;
@@ -72,6 +79,14 @@ public partial class ManagedWindow : ObservableObject
     }
 
     partial void OnIconImageChanged(IImage? value) => OnPropertyChanged(nameof(HasIconImage));
+
+    internal void ReleaseImages()
+    {
+        Thumbnail.Dispose();
+        var previous = IconImage;
+        IconImage = null;
+        (previous as IDisposable)?.Dispose();
+    }
 
     public event EventHandler? FocusRequested;
     public event EventHandler? CloseRequested;

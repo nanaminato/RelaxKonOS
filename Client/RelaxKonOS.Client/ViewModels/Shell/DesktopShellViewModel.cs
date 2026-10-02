@@ -202,6 +202,7 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     /// <summary>Populate desktop + start menu from registered applications. Call after DI registration.</summary>
     public void PopulateDesktop()
     {
+        var previousEntries = StartApps.ToDictionary(entry => entry.Id);
         var compatibleEntries = _applications.Registered
             // An app that needs a connected Linux Server must not be advertised on a Windows
             // Server desktop or Start menu. Launch still performs the same check for defense in depth.
@@ -211,7 +212,12 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
                     ? application.Id.Value is "relaxkonos.terminal" or "relaxkonos.server-center" or "relaxkonos.ssh-files"
                         or "relaxkonos.codeeditor" or "relaxkonos.imageviewer"
                     : application.Id.Value is not ("relaxkonos.server-center" or "relaxkonos.ssh-files")))
-            .Select(i => new AppEntryViewModel(Localize(i), _applications))
+            .Select(i =>
+            {
+                var info = Localize(i);
+                return previousEntries.TryGetValue(info.Id, out var existing) && existing.Matches(info)
+                    ? existing : new AppEntryViewModel(info, _applications);
+            })
             .ToList();
 
         // ── Start 菜单始终显示全部兼容应用，并按名称保持稳定的“全部应用”列表顺序 ──
@@ -240,6 +246,11 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
         }
 
         RefreshDesktopItems();
+        // Both desktop and start-menu bindings now point at the new entries. Release only
+        // replaced/removed images; unchanged entries retain their selection and decoded icon.
+        var retained = compatibleEntries.ToHashSet();
+        foreach (var entry in previousEntries.Values)
+            if (!retained.Contains(entry)) entry.Dispose();
         var shortcutGeneration = ++_shortcutLoadGeneration;
         if (_sshDesktop.IsConnected) DesktopShortcuts.Clear();
         else _ = RefreshDesktopShortcutsAsync(shortcutGeneration);

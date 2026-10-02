@@ -263,6 +263,7 @@ Check(new[] { "view.created", "icon.enter", "host.pointerMove", "card.press", "c
 Check(!traceLines.Any(line => line.Contains("Preview document") || line.Contains("First real document")),
     "Trace excludes window titles and document content.");
 Console.WriteLine($"Interaction trace: {TaskbarPreviewDiagnostics.FilePath}");
+MemoryLifecycleChecks.Run(settings, localization, services);
 Console.WriteLine($"PASS: window preview rendering, caching, native fallback, activation and close lifecycle. QA image: {output}");
 }
 catch (Exception exception)

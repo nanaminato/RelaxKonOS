@@ -10,7 +10,7 @@ using RelaxKonOS.Protocol.Settings;
 
 namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 
-public sealed partial class EnvironmentPageViewModel : SettingsPageViewModel, IDisposable
+public sealed partial class EnvironmentPageViewModel : SettingsPageViewModel
 {
     private readonly IHostEnvironmentService _service;
     private readonly IAuthSession _session;
@@ -337,6 +337,6 @@ public sealed partial class EnvironmentPageViewModel : SettingsPageViewModel, ID
         if (_disposed || _connection is null || _service.IsCurrent(_connection)) return;
         _lifetime.Cancel(); _lifetime.Dispose(); _lifetime = new(); _connection = null; Clear();
     });
-    public void Dispose()
+    protected override void DisposeCore()
     { _disposed = true; _lifetime.Cancel(); _lifetime.Dispose(); _session.StateChanged -= SessionChanged; Clear(); }
 }

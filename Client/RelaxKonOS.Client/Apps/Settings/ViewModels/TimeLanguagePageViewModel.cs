@@ -6,7 +6,7 @@ using RelaxKonOS.Protocol.Workspace;
 namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 
 /// <summary>Workspace display formats and a separate, explicitly targeted remote host time editor.</summary>
-public sealed partial class TimeLanguagePageViewModel : SettingsPageViewModel, IDisposable
+public sealed partial class TimeLanguagePageViewModel : SettingsPageViewModel
 {
     private readonly LocalizationService _localization;
 
@@ -16,22 +16,20 @@ public sealed partial class TimeLanguagePageViewModel : SettingsPageViewModel, I
         HostTime = hostTime;
         _localization = localization;
         LanguageOptions = BuildLanguageOptions();
-        Settings.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName is nameof(TimeFormat) or nameof(Language))
-                OnPropertyChanged(nameof(TimeSample));
-            if (e.PropertyName is nameof(DateFormat) or nameof(Language))
-                OnPropertyChanged(nameof(DateSample));
-            if (e.PropertyName == nameof(Language))
-                OnPropertyChanged(nameof(SelectedLanguage));
-        };
-        _localization.LanguageChanged += (_, _) =>
-        {
-            LanguageOptions = BuildLanguageOptions();
-            OnPropertyChanged(nameof(SelectedLanguage));
-            OnPropertyChanged(nameof(TimeSample));
-            OnPropertyChanged(nameof(DateSample));
-        };
+    }
+
+    protected override void OnSettingsChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        base.OnSettingsChanged(sender, e);
+        if (e.PropertyName is nameof(TimeFormat) or nameof(Language)) OnPropertyChanged(nameof(TimeSample));
+        if (e.PropertyName is nameof(DateFormat) or nameof(Language)) OnPropertyChanged(nameof(DateSample));
+        if (e.PropertyName == nameof(Language)) OnPropertyChanged(nameof(SelectedLanguage));
+    }
+
+    protected override void OnLanguageChanged(object? sender, RelaxKonOS.AppSDK.SystemLanguageChangedEventArgs e)
+    {
+        LanguageOptions = BuildLanguageOptions();
+        base.OnLanguageChanged(sender, e);
     }
 
     public override string Route => "time-language";
@@ -87,7 +85,7 @@ public sealed partial class TimeLanguagePageViewModel : SettingsPageViewModel, I
     }
 
     public HostTimeEditorViewModel HostTime { get; }
-    public void Dispose() => HostTime.Dispose();
+    protected override void DisposeCore() => HostTime.Dispose();
 
     public string TimeSample => FormatTime(DateTime.Now);
     public string DateSample => FormatDate(DateTime.Now);

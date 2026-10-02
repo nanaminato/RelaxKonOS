@@ -400,9 +400,12 @@ public sealed class WindowManager : IWindowManager
                 ActiveWindowChanged?.Invoke(this, null);
         }
 
-        WindowClosed?.Invoke(this, window);
-        window.Thumbnail.Dispose();
-        UpdateFullScreenHostInteractivity();
+        try { WindowClosed?.Invoke(this, window); }
+        finally
+        {
+            window.ReleaseImages();
+            UpdateFullScreenHostInteractivity();
+        }
     }
 
     private void CloseModalSession(IModalSession session)

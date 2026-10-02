@@ -9,7 +9,7 @@ namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 
 /// <summary>「系统」页：连接与账户信息（版本 / Server URL / 用户 / Workspace / 设备 / 连接状态），
 /// 以及归属远程机器的真实主机名编辑入口。</summary>
-public sealed partial class SystemPageViewModel : SettingsPageViewModel, IDisposable
+public sealed partial class SystemPageViewModel : SettingsPageViewModel
 {
     private readonly IAuthSession _session;
 
@@ -69,7 +69,7 @@ public sealed partial class SystemPageViewModel : SettingsPageViewModel, IDispos
     /// <summary>The remote machine's host name; it is never the client device's own name.</summary>
     public HostIdentityEditorViewModel HostIdentity { get; }
 
-    public void Dispose() => HostIdentity.Dispose();
+    protected override void DisposeCore() => HostIdentity.Dispose();
 
     [RelayCommand]
     private Task OpenEnvironmentVariablesAsync() => RequestEnvironmentVariablesAsync?.Invoke() ?? Task.CompletedTask;

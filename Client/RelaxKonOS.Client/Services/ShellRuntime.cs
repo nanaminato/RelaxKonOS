@@ -63,6 +63,21 @@ public sealed class ShellRuntime
     public event EventHandler<string>? ShellChanged;
     public event EventHandler<string>? ShellActivationFailed;
 
+    /// <summary>Release a closed host while retaining the selected shell for the next sign-in.</summary>
+    public async Task DetachHostAsync(ContentControl host)
+    {
+        await _switchGate.WaitAsync();
+        try
+        {
+            // A replacement window may already have attached while a switch was finishing.
+            if (!ReferenceEquals(_host, host)) return;
+            _windows.Detach();
+            host.Content = null;
+            _host = null;
+        }
+        finally { _switchGate.Release(); }
+    }
+
     public async Task AttachAsync(ContentControl host, DesktopShellViewModel workspace, CancellationToken cancellationToken = default)
     {
         if (ReferenceEquals(_host, host) && ReferenceEquals(_state.Snapshot, workspace) && _active is not null)
@@ -75,6 +90,7 @@ public sealed class ShellRuntime
         // Shell preference synchronization is asynchronous. Selecting before it completes
         // briefly activates the default desktop and can overwrite an external-shell choice.
         await workspace.EnsureWorkspacePreferencesAsync();
+        cancellationToken.ThrowIfCancellationRequested();
         if (!ReferenceEquals(previousHost, host) && previousHost is not null)
             previousHost.Content = null;
         _host = host;
@@ -83,10 +99,12 @@ public sealed class ShellRuntime
         _state.Publish(workspace, _desktopState.Current);
         _overlays.Configure(workspace);
         var local = await _preferences.LoadAsync();
+        cancellationToken.ThrowIfCancellationRequested();
         var requested = ShellApi.ResolveId(_settings.ShellSelection?.ShellId ?? local.ShellId);
         if (!_catalog.TryGet(requested, out var descriptor) || !descriptor.IsAvailable)
             requested = ShellApi.DefaultShellId;
         await SwitchAsync(requested, persist: false, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         await workspace.RestoreDesktopStateAsync(cancellationToken);
         // First-time desktop setup shows a modal dialog. It must not run while the host's
         // "Getting your desktop ready" overlay is still covering the shell, or the user
@@ -101,6 +119,7 @@ public sealed class ShellRuntime
         await _switchGate.WaitAsync(cancellationToken);
         try
         {
+            if (_host is null) return false;
             if (intentVersion is not null && intentVersion != Volatile.Read(ref _switchIntentVersion)) return false;
             var id = ShellApi.ResolveId(requestedId);
             if (_active is not null && id == _activeShellId)

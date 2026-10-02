@@ -18,7 +18,7 @@ using RelaxKonOS.WindowManager;
 namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 
 /// <summary>Installed applications and the detail view for one selected application.</summary>
-public sealed partial class AppsPageViewModel : SettingsPageViewModel, IDisposable
+public sealed partial class AppsPageViewModel : SettingsPageViewModel
 {
     private readonly ApplicationManager _apps;
     private readonly DeveloperPackageManager _packages;
@@ -39,7 +39,6 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel, IDisposab
         _localization = localization;
         _browserClient = browserClient;
         _apps.RegistryChanged += OnRegistryChanged;
-        _localization.LanguageChanged += OnLanguageChanged;
         RefreshApplications();
     }
 
@@ -94,21 +93,30 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel, IDisposab
         ? T("settings.apps.uninstall_available", "This third-party application can be uninstalled from this device.")
         : T("settings.apps.built_in", "Built-in applications are managed by RelaxKonOS and cannot be uninstalled here.");
 
-    public void Dispose()
+    protected override void DisposeCore()
     {
         _apps.RegistryChanged -= OnRegistryChanged;
-        _localization.LanguageChanged -= OnLanguageChanged;
+        SelectedAppIconImage = null;
+        foreach (var entry in RegisteredApps) entry.Dispose();
+        RegisteredApps.Clear();
     }
 
     private void OnRegistryChanged(object? sender, EventArgs eventArgs) => Dispatcher.UIThread.Post(RefreshApplications);
-    private void OnLanguageChanged(object? sender, SystemLanguageChangedEventArgs eventArgs) => Dispatcher.UIThread.Post(RefreshApplications);
+    protected override void OnLanguageChanged(object? sender, SystemLanguageChangedEventArgs eventArgs)
+    {
+        base.OnLanguageChanged(sender, eventArgs);
+        Dispatcher.UIThread.Post(RefreshApplications);
+    }
 
     private void RefreshApplications()
     {
+        if (IsDisposed) return;
+        var previous = RegisteredApps.ToArray();
         var apps = _apps.Registered.Select(Localize).Select(app => new SettingsAppEntry(app)).ToArray();
         Replace(RegisteredApps, apps);
         if (SelectedApp is not null)
             SelectedApp = apps.FirstOrDefault(app => app.Id == SelectedApp.Id)?.App;
+        foreach (var entry in previous) entry.Dispose();
     }
 
     [RelayCommand]
@@ -255,7 +263,7 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel, IDisposab
 
     partial void OnSelectedAppChanged(ApplicationInfo? value)
     {
-        SelectedAppIconImage = AppIconImageLoader.Load(value?.IconPath);
+        SelectedAppIconImage = IsDisposed ? null : AppIconImageLoader.Load(value?.IconPath);
         OnPropertyChanged(nameof(HasSelectedAppPermissions));
         OnPropertyChanged(nameof(CanUninstallSelectedApp));
         OnPropertyChanged(nameof(SelectedAppPermissionSummary));
@@ -276,6 +284,7 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel, IDisposab
 
     partial void OnActionStatusChanged(LocalizedStatus value) => OnPropertyChanged(nameof(HasActionStatus));
     partial void OnSelectedAppIconImageChanged(IImage? value) => OnPropertyChanged(nameof(HasSelectedAppIconImage));
+    partial void OnSelectedAppIconImageChanged(IImage? oldValue, IImage? newValue) => (oldValue as IDisposable)?.Dispose();
     partial void OnBrowserLinkOpenTargetChanged(BrowserLinkOpenTarget value)
     {
         OnPropertyChanged(nameof(OpenBrowserLinksInBuiltInBrowser));
@@ -309,8 +318,9 @@ public enum AppsSubpage
 }
 
 /// <summary>Presentation data for an installed app; image loading matches desktop and start-menu entries.</summary>
-public sealed class SettingsAppEntry
+public sealed class SettingsAppEntry : IDisposable
 {
+    private bool _disposed;
     public SettingsAppEntry(ApplicationInfo app)
     {
         App = app;
@@ -325,4 +335,10 @@ public sealed class SettingsAppEntry
     public string Version => App.Version;
     public IImage? IconImage { get; }
     public bool HasIconImage => IconImage is not null;
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        (IconImage as IDisposable)?.Dispose();
+    }
 }
