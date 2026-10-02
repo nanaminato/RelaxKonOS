@@ -16,4 +16,4 @@ BP07-M1 提供“管理 → 防火墙”原生页面，按 `server.firewall` 门
 
 “任务与恢复”另列未知防火墙提交并返回本页。读取事实不会自行清除标记，用户明确“读取并采用当前事实”后才能再提交；这表示采用当前状态，不证明原请求的终态。离页/切账号取消客户端观察并丢弃旧响应，取消观察不代表远端变更取消。
 
-构建、JVM/本地 HTTP 和 Server 夹具证据见 [Verification](../status/Verification.md#bp07-m1-v1)。未在真实 UFW、Windows Helper、手机或平板执行启停/规则副作用；真实管理路径中断与多客户端并发仍待验收。
+当前测试状态与剩余验收见 [Verification](../status/Verification.md#1-bp-测试进度)。未在真实 UFW、Windows Helper、手机或平板执行启停/规则副作用；真实管理路径中断与多客户端并发仍待验收。

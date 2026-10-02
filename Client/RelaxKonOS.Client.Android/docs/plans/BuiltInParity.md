@@ -2,7 +2,7 @@
 
 > 更新：2026-10-01。状态：公共安装 BP01-M1、宿主自定义代理 BP02-M1、Nginx 与通用站点管理 BP03-M1/M2 已接入，独立证书与站点/Kestrel 联动 BP04-M1/M2 已接入，FRP 客户端/frps/运行时 BP05-M1/M2 已接入，BP06-M1/M2、BP02-M2 和 BP17-M1 第一批聚合已接入，BP07-M1、BP08-M1 已接入，BP09-M1/M2 已接入；BP11 共用编辑器、BP10 Git 工作区已接入，BP12 文件与图片已接入，BP13 终端已接入，BP14 进程守护已接入，BP15 任务管理与监控已接入，BP16 应用部署及模板已接入，下一项为 BP17 事件与运维中心。
 > 用户已确认对照对象是 Android 手机端与桌面端。
-> 本文维护差异清单、实施范围与推进顺序；实现进度见 [Progress](../status/Progress.md#2-bp-实现进度)，测试进度见 [Verification](../status/Verification.md#12-bp-测试进度)。两者独立记录，未测试不阻止下一步实现，也不代表验收通过。
+> 本文维护差异清单、实施范围与推进顺序；实现进度见 [Progress](../status/Progress.md#2-bp-实现进度)，BP 级测试进度见 [Verification](../status/Verification.md#1-bp-测试进度)。两者独立记录，未测试不阻止下一步实现，也不代表验收通过。
 
 ## 1. 对照依据与范围
 
@@ -95,7 +95,7 @@ BP01-M1 已接入安装任务观察；BP17-M1 首批聚合已交付，后续领�
 
 ### 4.1 当前交付与后续边界
 
-BP01-M1 的公共数据链路、安装任务恢复/观察/取消和功能文档已交付，已完成拆分不再保留在本计划。当前行为见 [公共运行时安装](../features/Installations.md)，实现证据见 [Progress](../status/Progress.md#2-bp-实现进度)，未执行检查见 [Verification](../status/Verification.md#12-bp-测试进度)。公共链路不替代各服务表单；Nginx 服务表单和实例闭环已由 BP03-M1 接入，其他服务仍随其领域交付。
+BP01-M1 的公共数据链路、安装任务恢复/观察/取消和功能文档已交付，已完成拆分不再保留在本计划。当前行为见 [公共运行时安装](../features/Installations.md)，实现证据见 [Progress](../status/Progress.md#2-bp-实现进度)，未执行检查见 [Verification](../status/Verification.md#1-bp-测试进度)。公共链路不替代各服务表单；Nginx 服务表单和实例闭环已由 BP03-M1 接入，其他服务仍随其领域交付。
 
 BP02-M1 已交付宿主自定义代理，当前行为见 [宿主出站代理](../features/OutboundProxy.md)，已完成拆分从本计划移除。BP03-M1 已交付 Nginx 安装、发现、接管与实例生命周期，已完成交付从本计划移除；行为见 [Nginx 管理](../features/Nginx.md)。BP03-M2 已交付通用站点增删改、版本冲突与同步提交事实核实，已完成交付从本计划移除，行为见 [站点管理](../features/WebSites.md)。BP04-M1 已交付独立证书生命周期与原任务恢复，已完成交付从本计划移除；行为见 [证书管理](../features/Certificates.md)。BP04-M2 已交付显式证书选择、状态/有效期/SAN 门控、Kestrel 实际部署查询与原键/ID 恢复，已完成拆分从本计划移除；行为见 [证书管理](../features/Certificates.md) 和 [站点管理](../features/WebSites.md)。BP05-M1 已交付固定版本运行时管理、frpc 配置/Token/四协议隧道、应用/停止与事实核实，已完成拆分从本计划移除，行为见 [FRP 客户端与运行时](../features/Tunnels.md)。BP05-M2 已交付 frps 配置/秘密/生命周期/日志/审计与版本/未知事实核实，已完成拆分从本计划移除，行为见 [FRP 隧道与运行时](../features/Tunnels.md)。BP06-M1 已接入运行时安装/生命周期、配置/订阅和节点，行为见 [Mihomo 代理管理器](../features/Proxy.md)。BP06-M2 宿主网络/恢复和诊断也已接入。BP02-M2 受管来源与消费联动、BP17-M1 首批聚合也已交付，行为见 [宿主出站代理](../features/OutboundProxy.md) 和 [任务与恢复](../features/OperationsRecovery.md)。BP07-M1 已接入，行为见 [宿主防火墙](../features/Firewall.md)。BP08-M1 已接入，行为见 [SMB 文件服务](../features/Smb.md)。BP09-M1/M2 已接入，行为见 [引擎与镜像源](../features/DockerEngine.md) 和 [Docker 资源](../features/DockerResources.md)。BP11 文件/Git 共用编辑器和 BP10 Git 工作区已接入，BP12 文件与图片也已接入，BP13 终端已接入，BP14 进程守护已接入，BP15 任务管理与监控已接入，BP16 应用部署及模板已接入，BP17 事件与运维中心已接入，BP19 SSH 本地转发与 SFTP 已接入，BP20 服务访问已接入，BP21 移动包方案已完成，BP22 设置与 BP23 帮助已接入；本轮 BP 实现推进至 BP23，BP24 验证独立跟踪。BP01-M1/BP02-M1/BP03-M1/M2/BP04-M1/M2/BP05-M1/M2 剩余检查不作为后续实现依赖；各提交的测试证据见 Verification；若后续检查发现真实代码缺陷，在 Progress 关联受影响的实现待办。
 
@@ -133,7 +133,7 @@ BP02-M1 已交付宿主自定义代理，当前行为见 [宿主出站代理](..
 ## 6. 实现与测试独立追踪
 
 - 本文只维护范围、依赖和未实现交付；[Progress](../status/Progress.md#2-bp-实现进度) 是实现状态的唯一记录，包含编号、实现状态、代码证据、剩余代码与下一步。
-- [Verification](../status/Verification.md#12-bp-测试进度) 是测试状态的唯一记录，分别追踪自动化构建/测试、设备交互、Ubuntu/Windows 宿主验收，并保留真实执行证据。
+- [Verification](../status/Verification.md#1-bp-测试进度) 是测试状态的唯一记录，按 BP 分别追踪自动化构建/测试、设备交互、Ubuntu/Windows 宿主验收，只保留未关闭检查与缺陷；逐次执行记录由 Git 保存。
 - 实现状态使用“未开始 / 进行中 / 部分实现 / 已实现 / 不实施”；测试状态使用“未执行 / 进行中 / 部分通过 / 通过 / 失败 / 环境受限 / 不适用”。环境受限写明缺失条件，不视为通过；不适用写明原因。
 - 更新实现后即可按实现依赖推进下一项；即使没有执行任何测试，也不把当前项锁定为未实现或要求停下等待环境。实现进度不因测试缺失回退，测试通过也不自动补齐缺失代码。
 - 测试发现真实缺陷时，在 Progress 关联缺陷及受影响动作；已实现部分保留，仍需修改的部分标为“部分实现”。失败结果继续保留在 Verification，不以推进下一项掩盖失败。

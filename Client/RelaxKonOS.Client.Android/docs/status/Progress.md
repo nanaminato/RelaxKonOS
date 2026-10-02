@@ -2,9 +2,9 @@
 
 宿主授权已统一：系统认证管理员/root 由 Server 动态检查资格，非文件操作不再重复输入密码；普通用户/Alias 显式认证所选管理员。账户提示只使用当前服务器的已保存账户，无候选时留空。防火墙已移除独立当前用户密码及旧请求字段，复用统一授权和一次重试；跨账户 Guardian/脚本仍需本次显式审批。验证范围见 [Verification](Verification.md)。
 
-> 更新：2026-10-02。本文件维护当前实现事实与代码缺口；测试进度和已有验证证据统一见 [Verification](Verification.md)；详细行为见 [文档目录](../README.md)，未关闭测试见 [验收清单](Verification.md)，未实现功能见 [部署后续工作](../plans/Deployment.md) 与 [内置应用补齐计划](../plans/BuiltInParity.md)。
+> 更新：2026-10-02。本文件维护当前实现事实与代码缺口；BP 级测试进度、未关闭检查与缺陷统一见 [Verification](Verification.md)；详细行为见 [文档目录](../README.md)，未实现功能见 [部署后续工作](../plans/Deployment.md) 与 [内置应用补齐计划](../plans/BuiltInParity.md)。
 >
-> 已移除重复修复流水账、旧环境路径、过时“待实现”步骤和已完成目标。历史完整记录可查 Git；各轮真实验证范围见 Verification，未验证项目不标成通过。
+> 已移除重复修复流水账、旧环境路径、过时“待实现”步骤和已完成目标。历史完整记录可查 Git；未关闭检查与缺陷见 Verification，未验证项目不标成通过。
 
 PN-01–10 应用内导航已实现：Docker、Mihomo、FRP、Git、Web、SMB、证书、部署详情、任务管理器和设置均提供固定分类入口；分类切换保留已访问面板，性能/进程观察按可见页控制。当前行为见 [应用内功能导航](../features/ApplicationNavigation.md)，设备证据及剩余矩阵见 [导航对照状态](PhoneNavigationParity.md)。
 
@@ -38,7 +38,7 @@ Mihomo 节点页已改为横向分组标签、按宽度显示 1–4 列的紧凑
 
 ## 2. BP 实现进度
 
-> 更新：2026-10-01。只追踪实现；测试状态与执行证据独立维护在 [Verification](Verification.md#12-bp-测试进度)。未执行测试可继续下一项，缺测试不回退实现状态。
+> 更新：2026-10-01。只追踪实现；BP 级测试状态与未关闭检查独立维护在 [Verification](Verification.md#1-bp-测试进度)。未执行测试可继续下一项，缺测试不回退实现状态。
 
 状态使用“未开始 / 进行中 / 部分实现 / 已实现 / 不实施”。BP01-M1 公共安装链路、BP02-M1 宿主自定义出站代理与 BP03-M1/M2 Nginx 与站点管理已接入，实际行为见 [Installations](../features/Installations.md) 、[OutboundProxy](../features/OutboundProxy.md) 、[Nginx](../features/Nginx.md) 与 [WebSites](../features/WebSites.md)。独立证书与站点/Kestrel 联动 BP04-M1/M2 亦已接入，行为见 [Certificates](../features/Certificates.md)。FRP 客户端/frps 与运行时 BP05-M1/M2 已接入，行为见 [Tunnels](../features/Tunnels.md)。Mihomo、受管出站代理、首批运维、UFW 防火墙、SMB 文件服务及 Docker 引擎/镜像源/资源管理已接入。BP11 共用编辑器和 BP10 Git 工作区已接入，BP12 文件与图片和 BP13 终端已接入，BP14 进程守护已接入，BP15 已接入，BP16 已接入，BP17 事件与运维中心已接入，BP19 SSH 与 SFTP 已接入，BP20 服务访问已接入，BP21 移动包方案已完成，BP22 宿主设置与应用管理、BP23 帮助已接入；本轮实现推进至 BP23，BP24 验证独立跟踪。不把桌面/Server 已有实现记为 Android 已实现，也不把既有 Android 部分功能当作整个 BP 项完成。
 
@@ -81,7 +81,7 @@ Mihomo 节点页已改为横向分组标签、按宽度显示 1–4 列的紧凑
 | BP21 | 方案已完成 | 当前桌面 manifest/package manager/安装器已调查；ApplicationPackages.Design 明确逐类执行平台、权限/版本/更新/移除，当前拒绝 .roapp 与远端桌面代理 | 不声称实现手机第三方运行时/包检查 UI；设置边界见 BP22 |
 | BP23 | 已实现 | `HelpScreen/MobileFeatureCatalog` 与登录/首页/更多路由：三语连接/安装边界/任务/恢复、仅可用任务、既有指南外部链接；手机与平板路由分流 | Android 构建及 3 项目录 JVM 通过，见 BP24-V5；设备/导航/外部浏览器待验；AD01 安装观察/上传恢复/登录回填等剩余工作独立跟踪 |
 | BP18 | 不实施 | 本轮排除独立注册表应用；编号保留 | BP22 直接接具体设置契约 |
-| BP24 | 进行中 | 本次已建立实现/测试分离与第一批测试表；功能变更的测试代码和文档随各项更新 | 本轮基础证据见 Verification BP24-V5：970 JVM 全通过、Server 四专项通过，lint 16 错误待修；无连接设备，真实宿主/设备矩阵未关闭 |
+| BP24 | 进行中 | 本次已建立实现/测试分离与第一批测试表；功能变更的测试代码和文档随各项更新 | lint 16 错误待修、真实宿主与设备矩阵未关闭，见 [Verification](Verification.md#1-bp-测试进度) |
 
 每次实现交付更新对应行，注明文件/提交、已完成动作、剩余代码与下一项；后续拆分任务时替换组合行，编号保持稳定。代码缺陷关联对应 BP 编号，测试未执行不单独作为代码缺口。
 
@@ -96,4 +96,4 @@ Mihomo 节点页已改为横向分组标签、按宽度显示 1–4 列的紧凑
 - SSH 工作区已提供设置页，复用应用语言、主题及高对比度；原生终端（原 Server 文本模式）与 APK 内置 xterm.js 6.0.0 / addon-fit 0.11.0 可持久切换，并同时作用于 SSH 与 Server Hub。切换保留当前 PTY、SSH 草稿与输出；工作区按 600/840dp 使用底栏/紧凑侧栏/带文字侧栏，平板终端键盘展开保留侧栏。原始 VT 在进程内累计用于渲染器恢复，大量输出的有界状态保存仍需优化；实体宿主与完整设置切换验收见 Verification。
 - 登录密码被服务端拒绝不会自动删除；管理员提权凭据被明确拒绝会删除，网络/5xx 无结论保留。弱生物识别设备只能通过设备锁解封连接凭据，不能保存提权密码。debug 无锁屏兜底明文且标注未加密，release 不提供。
 - 原登录“已知系统不再查询”、没有 SignalR、终端/Docker/守护待实现、创建备份按钮未开放等描述均已被当前实现取代，不保留旧结论。
-- 已完成修复不再追加流水账；发生行为变化时修改对应规范和实现表，验证证据与未关闭检查统一维护在 Verification。构建方式与图标同步见 [开发发布](../development/android-release.md)。
+- 已完成修复不再追加流水账；发生行为变化时修改对应规范和实现表，未关闭检查与缺陷统一维护在 Verification。构建方式与图标同步见 [开发发布](../development/android-release.md)。

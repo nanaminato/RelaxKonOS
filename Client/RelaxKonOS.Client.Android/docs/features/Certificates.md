@@ -2,7 +2,7 @@
 
 证书列表使用可点击卡片，集中显示域名、状态和到期时间。现有操作分类将任务与待核实请求各自成卡，通用恢复入口仅在操作页显示，没有任务时显示明确空状态；证书详情和生命周期门禁保留。
 
-> BP04-M1/M2 已接入。独立生命周期、站点证书选择与 Kestrel 部署均已接入。实现证据见 [Progress](../status/Progress.md#2-bp-实现进度)，执行与未执行范围见 [Verification](../status/Verification.md#bp04-m1-执行证据与未执行范围2026-09-30)。
+> BP04-M1/M2 已接入。独立生命周期、站点证书选择与 Kestrel 部署均已接入。实现证据见 [Progress](../status/Progress.md#2-bp-实现进度)，未执行范围见 [Verification](../status/Verification.md#1-bp-测试进度)。
 
 “管理 → 证书管理”按 `server.certificates` 门控，不依赖网站权限。手机列表进入详情，600 dp 以上显示列表与详情两栏；表单滚动并避让 IME。读不到清单或详情时显示未取得/原记录缺失，不能当作空清单。
 

@@ -1,6 +1,6 @@
 # Android SMB 文件服务
 
-> BP08-M1 已接入。自动化证据和设备/宿主待验收项目见 [Verification](../status/Verification.md#bp08-m1-v1)。共享协议与宿主实现见仓库 [SMB 运维说明](../../../../docs/services/file-services/RelaxKonOS.FileServices.Smb.Operations.md)，本文仅说明 Android 行为。
+> BP08-M1 已接入。自动化证据和设备/宿主待验收项目见 [Verification](../status/Verification.md#1-bp-测试进度)。共享协议与宿主实现见仓库 [SMB 运维说明](../../../../docs/services/file-services/RelaxKonOS.FileServices.Smb.Operations.md)，本文仅说明 Android 行为。
 
 ## 入口与当前事实
 

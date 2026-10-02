@@ -44,4 +44,4 @@
 
 桌面窗口的树形导航、拖放、本机剪贴板导入、系统进程打开方式不复制为 Android 控件。手机采用明确的远端目录选择、SAF 上传、文件/图片/编辑器入口及本机下载，不能将桌面关联程序当作宿主或 Android 应用运行。
 
-实现进度见 [Progress](../status/Progress.md)，自动化证据和设备/真实宿主检查见 [Verification](../status/Verification.md#12-bp-测试进度)。
+实现进度见 [Progress](../status/Progress.md)，自动化状态和设备/真实宿主检查见 [Verification](../status/Verification.md#1-bp-测试进度)。

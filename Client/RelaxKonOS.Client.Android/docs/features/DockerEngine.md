@@ -4,7 +4,7 @@
 
 服务器明确返回 `docker.not_installed` 时，Docker 首页只显示安装入口和一条未安装引导，不展示依赖引擎的 Compose/容器/镜像/网络/卷读取错误或创建入口。引擎管理页显示未安装事实与安装操作，隐藏没有运行时可执行的启停按钮；读取失败、权限拒绝或运行时停止不能当作未安装。镜像源配置仍可独立管理，组件安装后的资源功能继续按已有流程展示。
 
-> BP09-M1 已接入。容器/镜像/网络/卷新增管理动作接续 BP09-M2；已有 Compose 行为见 [Docker 与 Compose](DockerCompose.md)。测试证据和设备/宿主待验收项目见 [Verification](../status/Verification.md#bp09-m1-v1)。
+> BP09-M1 已接入。容器/镜像/网络/卷新增管理动作接续 BP09-M2；已有 Compose 行为见 [Docker 与 Compose](DockerCompose.md)。测试状态和设备/宿主待验收项目见 [Verification](../status/Verification.md#1-bp-测试进度)。
 
 ## 引擎与安装
 
