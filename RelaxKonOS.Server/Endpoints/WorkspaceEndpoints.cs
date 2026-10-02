@@ -6,6 +6,8 @@ using RelaxKonOS.Protocol.Desktop;
 using RelaxKonOS.Protocol.Workspace;
 using RelaxKonOS.Server.ConfigurationRegistry;
 using RelaxKonOS.Server.Storage;
+using RelaxKonOS.Server.Observability;
+using RelaxKonOS.Protocol.Observability;
 
 namespace RelaxKonOS.Server.Endpoints;
 
@@ -42,17 +44,23 @@ public static class WorkspaceEndpoints
         }).RequireAuthorization().WithTags("Workspace");
 
         app.MapPut(WorkspaceApiRoutes.Preferences, async (Guid id, WorkspacePreferencesDto request, ClaimsPrincipal principal,
-            IWorkspaceRepository workspaces, IWorkspaceSettingsService preferencesService, WorkspaceWallpaperStore wallpapers) =>
+            IWorkspaceRepository workspaces, IWorkspaceSettingsService preferencesService, WorkspaceWallpaperStore wallpapers,
+            IEventLogger events) =>
         {
             var workspace = FindAuthorizedWorkspace(id, principal, workspaces);
             if (workspace is null)
                 return Results.NotFound();
 
-            if (!WorkspacePreferencesValidator.TryNormalize(request, out var normalized))
-                return Results.BadRequest(new { message = "Invalid workspace preferences." });
+            if (!WorkspacePreferencesValidator.TryNormalize(request, out var normalized, out var invalidField))
+            {
+                events.Write(new(ObservabilityEventCatalog.InputRejected, ObservabilitySeverity.Warning, ObservabilityOutcome.Failed,
+                    "server", $"Workspace preference validation rejected field: {invalidField}.", "settings.invalid_preferences"));
+                return Results.Problem(statusCode: 400, title: "settings.invalid_preferences",
+                    extensions: new Dictionary<string, object?> { ["invalidField"] = invalidField });
+            }
 
             if (request.Revision is null) return Results.Problem(statusCode: 428, title: "settings.revision_required");
-            if (request.Revision <= 0) return Results.BadRequest(new { message = "Invalid preference revision." });
+            if (request.Revision <= 0) return Results.Problem(statusCode: 400, title: "settings.invalid_revision");
             normalized.Revision = request.Revision;
             var previousKey = preferencesService.Read(workspace).WallpaperKey;
             var saved = preferencesService.Save(workspace, normalized, workspace.UserId.ToString("D"));

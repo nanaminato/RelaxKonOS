@@ -16,6 +16,14 @@ Server `Settings/IWorkspaceSettingsService` 管理偏好验证和版本比较。
 
 ## 当前页面与保存状态
 
+设置请求失败自动写入客户端 `%LOCALAPPDATA%/RelaxKonOS/logs/workspace-preferences-YYYYMMDD.jsonl`（每文件上限 2 MiB，最多保留一个轮换文件，清理七天前日志）。记录操作、Workspace、预期 revision、异常类型、HTTP 状态与服务端返回的 correlation ID；不记录令牌、请求/响应正文或异常消息。界面按网络、登录/权限、无效设置、需要重载及服务端失败显示本地化提示，仍保留草稿；冲突必须显式重载，不自动覆盖远端版本。令牌刷新后按稳定服务、登录会话和 Workspace 确认保存 revision，避免下一次保存误用旧版本。
+
+开发服务端未配置 `Observability:LogDirectory` 时默认写入输出目录 `data/logs/runtime-YYYYMMDD.jsonl`；安装版使用配置的运行日志目录。所有 HTTP 4xx/5xx 请求均记录完成事件，不受成功请求采样率影响。客户端和服务端日志可按 correlation ID 对照。历史上未开启文件日志的开发请求无法追溯；这些默认值仅对重启后的开发服务端生效。
+
+回归验证：`dotnet run --project Tests/Client/RelaxKonOS.WorkspacePreferences.Tests` 覆盖令牌刷新后连续保存、旧登录/其他服务响应隔离、HTTP 错误分类、草稿保留、取消请求不能覆盖重试及客户端日志不含令牌/正文；`dotnet run --project RelaxKonOS.Server.Tests -- --settings-only` 覆盖完整调色板导入和 HTTP 保存、失败请求零采样仍记录关联日志及原有并发/持久化检查。
+
+内置桌面布局的 Workspace 与设备本地选择均只保存 `shellId`；描述器的内置实现版本不属于外部包信息。Settings 与桌面快捷切换共用 `ShellSettings.SelectShell`，外部桌面继续携带包 ID 和版本。服务端拒绝无效偏好时返回 `invalidField`，并记录同一 correlation ID 的 `input.rejected` 事件，只包含固定字段路径，不包含字段值。回归覆盖真实个性化页切换三种内置布局，再修改颜色/壁纸，以及外部包元数据保留。
+
 当前保留系统、个性化、时间和语言、网络、应用、默认应用、开发者、关于九页及已有壁纸、调色板、系统风格和 Shell 布局能力。Docker Hub 镜像源属于 Docker 管理器的“镜像源”页，不在设置应用中展示。个性化页已拆为“颜色与模式”“系统风格”“桌面布局”三张卡片（见下节）。保存状态支持中文、英文、日文；失败保留草稿并可重试，冲突保留草稿，提供明确的“放弃草稿并重载”操作；重载失败仍保留草稿。逐字段冲突合并体验、首页、账户和辅助功能仍按 Goal 推进，尚未验收。
 
 现有八页使用注册的 Route 导航，共用单色矢量图标；顶部持续显示当前远程连接、用户、Workspace 与分类路径，支持返回历史。小于 760 个逻辑像素时折叠侧栏，使用分类选择框。搜索先查询本地不可变索引，再异步合并远程目录；包括标题、关键词和同义词，显示分类、范围及服务端能力原因，连接切换清除旧目录。Ctrl+F 聚焦搜索、方向键浏览、Enter 或双击打开、Escape 退出搜索。当前结果定位到页面，settingId 控件聚焦与全部详情页仍待完成。页面内容本身的窄布局、200% 缩放及屏幕阅读器体验尚未实测。

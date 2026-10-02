@@ -141,7 +141,7 @@ public sealed partial class ShellSettings : ObservableObject
             OnPropertyChanged(nameof(SelectedShellId));
         }
         if (!string.Equals(ShellSelection.ShellId, value, StringComparison.Ordinal))
-            ShellSelection = new ShellSelectionDto(value, ShellSelection.PackageId, ShellSelection.PackageVersion);
+            ShellSelection = new ShellSelectionDto(value);
         ShellSelectionChanged?.Invoke(this, value);
     }
 
@@ -150,6 +150,17 @@ public sealed partial class ShellSettings : ObservableObject
         var normalized = ShellApi.ResolveId(value?.ShellId);
         if (!string.Equals(SelectedShellId, normalized, StringComparison.Ordinal))
             SelectedShellId = normalized;
+    }
+
+    /// <summary>Built-in layouts synchronize only their ID; versions identify external packages.</summary>
+    public bool SelectShell(ShellDescriptor descriptor)
+    {
+        var selection = descriptor.Source == ShellSourceKind.BuiltIn
+            ? new ShellSelectionDto(descriptor.Id)
+            : new ShellSelectionDto(descriptor.Id, descriptor.PackageId, descriptor.Version);
+        if (ShellSelection == selection) return false;
+        ShellSelection = selection;
+        return true;
     }
 
     /// <summary>将服务端偏好应用到本地活状态（登录加载 / 设置编辑后回写）。</summary>

@@ -157,10 +157,12 @@ public sealed class ShellRuntime
                     // while an external package is rediscovered. Only an explicit persisted
                     // selection is allowed to replace the user's stored shell intent.
                     var ownsCurrentIntent = intentVersion is null || intentVersion == Volatile.Read(ref _switchIntentVersion);
-                    if (persist && ownsCurrentIntent && _settings.SelectedShellId != _activeShellId)
-                        _settings.SelectedShellId = _activeShellId;
                     if (persist && ownsCurrentIntent)
-                        await _preferences.SaveAsync(_activeShellId, candidate.Descriptor.PackageId, candidate.Descriptor.Version);
+                    {
+                        _settings.SelectShell(candidate.Descriptor);
+                        var selection = _settings.ShellSelection;
+                        await _preferences.SaveAsync(selection.ShellId, selection.PackageId, selection.PackageVersion);
+                    }
                     ShellChanged?.Invoke(this, _activeShellId);
                     if (old is not null) await DisposeQuietly(old);
                     return true;
@@ -201,7 +203,7 @@ public sealed class ShellRuntime
     {
         var id = ShellApi.ResolveId(shellId);
         if (_catalog.TryGet(id, out var shell))
-            _settings.ShellSelection = new ShellSelectionDto(id, shell.PackageId, shell.Version);
+            _settings.SelectShell(shell);
         else
             _settings.SelectedShellId = id;
         // The ShellSelectionChanged event above starts the versioned transition. Returning here

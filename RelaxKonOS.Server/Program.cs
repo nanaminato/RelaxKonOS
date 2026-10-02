@@ -66,14 +66,16 @@ var isDevelopment = environmentName.Equals(Environments.Development, StringCompa
 builder.Configuration.AddJsonFile("appsettings.host.json", optional: true, reloadOnChange: false);
 // Critical privileged operations fail closed when their security audit cannot be persisted. A
 // Rider/dotnet-run development process has no installer-managed audit path, so give it a stable,
-// user-writable location beside the Debug output. Production always requires an explicit
-// machine-protected path and is unaffected by this fallback.
-if (isDevelopment && string.IsNullOrWhiteSpace(builder.Configuration["Observability:AuditDatabasePath"]))
+// user-writable location beside the Debug output, including runtime logs for failed requests.
+// Production paths are installer-managed and unaffected by these development defaults.
+if (isDevelopment)
 {
-    builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
-    {
-        ["Observability:AuditDatabasePath"] = Path.Combine(AppContext.BaseDirectory, "data", "security-audit.db")
-    });
+    var developmentObservability = new Dictionary<string, string?>();
+    if (string.IsNullOrWhiteSpace(builder.Configuration["Observability:AuditDatabasePath"]))
+        developmentObservability["Observability:AuditDatabasePath"] = Path.Combine(AppContext.BaseDirectory, "data", "security-audit.db");
+    if (string.IsNullOrWhiteSpace(builder.Configuration["Observability:LogDirectory"]))
+        developmentObservability["Observability:LogDirectory"] = Path.Combine(AppContext.BaseDirectory, "data", "logs");
+    builder.Configuration.AddInMemoryCollection(developmentObservability);
 }
 var observabilityOptions = builder.Configuration.GetSection(ObservabilityOptions.SectionName).Get<ObservabilityOptions>() ?? new ObservabilityOptions();
 observabilityOptions.Validate(!isDevelopment);

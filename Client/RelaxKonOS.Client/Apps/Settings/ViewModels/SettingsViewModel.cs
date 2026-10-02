@@ -148,7 +148,10 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     /// </summary>
     public string SaveStatus => _editor.State == PreferencesSaveState.Idle
         ? string.Empty
-        : LocalizedText.Get("settings.save." + _editor.State.ToString().ToLowerInvariant());
+        : LocalizedText.Get("settings.save." + (_editor.State == PreferencesSaveState.Failed
+            && _editor.Failure != PreferencesSaveFailure.Unexpected
+                ? "failed_" + _editor.Failure.ToString().ToLowerInvariant()
+                : _editor.State.ToString().ToLowerInvariant()));
     public bool CanDiscard => _editor.HasDraft && _editor.State != PreferencesSaveState.Saving;
     public bool CanRetry => _editor.State == PreferencesSaveState.Failed;
 
