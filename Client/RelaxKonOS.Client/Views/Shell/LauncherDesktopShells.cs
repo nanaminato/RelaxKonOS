@@ -713,7 +713,11 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
     protected override void BuildLayout(DesktopShellViewModel vm)
     {
         var layout = new MacosShellLayoutView();
-        layout.Compose(MacosMenuBar(vm), Desktop(vm), MacosDock(vm), MacosLaunchpad(vm));
+        var desktop = Desktop(vm);
+        // Launchpad replaces the desktop presentation without closing its windows or changing
+        // the user's icon visibility preference. Hiding the surface also prevents click-through.
+        desktop.Bind(Visual.IsVisibleProperty, new Binding("!" + nameof(vm.IsStartOpen)));
+        layout.Compose(MacosMenuBar(vm), desktop, MacosDock(vm), MacosLaunchpad(vm));
         _root.Children.Add(layout);
     }
 
@@ -821,6 +825,7 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
         ThemeResources.Bind(overlay, Border.BackgroundProperty, "OverlayScrimBrush");
         overlay.Bind(Visual.IsVisibleProperty, new Binding(nameof(vm.IsStartOpen)));
         overlay.PointerPressed += (_, _) => vm.CloseStartCommand.Execute(null);
+        overlay.KeyBindings.Add(new KeyBinding { Gesture = KeyGesture.Parse("Escape"), Command = vm.CloseStartCommand });
         var layout = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), RowSpacing = 26, Margin = new Thickness(80, 58, 80, 78) };
         var search = new TextBox
         {
@@ -871,7 +876,7 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
             TextWrapping = TextWrapping.Wrap,
             HorizontalAlignment = HorizontalAlignment.Center,
         };
-        ThemeResources.Bind(name, TextBlock.ForegroundProperty, "TextPrimaryBrush");
+        name.Classes.Add("desktop-label");
         Grid.SetRow(name, 1);
         content.Children.Add(name);
         var button = new Button

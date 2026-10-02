@@ -224,6 +224,8 @@ public interface IShellActions
 | macOS-like | 稀疏桌面图标、Launchpad 风格应用概览 | 底部居中 Dock：运行指示、多窗口弹出预览 | Dock 不自动隐藏时从底部扣除 |
 | Ubuntu-like | GNOME 风格背景和应用概览 | 顶部状态栏 + 左侧 Dock（可自动隐藏） | 顶部栏和可见 Dock 之外 |
 
+macOS-like 启动台展开时暂时隐藏普通桌面 surface（图标与应用窗口），关闭后恢复，不改变图标显示偏好、窗口状态或运行中的应用。壁纸继续作为启动台背景，应用名称复用 `TextBlock.desktop-label` 的浅色文字与深色阴影，避免半透明遮罩下的内容重叠与低对比度。Dock 位于启动台之上并保持可操作；点击启动台空白处或按 Escape 关闭。
+
 首期允许四个 Shell 复用 `DesktopWorkspaceState`、通用图标控件、文件上下文菜单的行动模型及统一的窗口缩略图数据；不得复用同一整棵 `DesktopShellView`。视觉“像某系统”只使用通用交互范式与自有资源，不复制厂商图标、壁纸、商标或系统资源。
 
 Shell 必须处理的最小交互：
