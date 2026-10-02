@@ -628,7 +628,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         if (!string.IsNullOrWhiteSpace(path))
         {
             SiteRootPath = path;
-            SiteGrantNginxReadAccess = IsLinuxServer;
+            SiteGrantNginxReadAccess = true;
         }
     }
 

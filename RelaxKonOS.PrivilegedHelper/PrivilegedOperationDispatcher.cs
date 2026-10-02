@@ -135,7 +135,9 @@ public static partial class PrivilegedOperationExecutor
                 PrivilegedOperationKind.NginxWriteManagedFile => await WriteNginxManagedFileAsync(request.Path, request.ContentBase64),
                 PrivilegedOperationKind.NginxMoveManagedFile => MoveNginxManagedFile(request.Path, request.DestinationPath, request.Overwrite),
                 PrivilegedOperationKind.NginxDeleteManagedFile => DeleteNginxManagedFile(request.Path),
-                PrivilegedOperationKind.NginxGrantStaticSiteReadAccess => await GrantNginxStaticSiteReadAccessAsync(request.Path),
+                PrivilegedOperationKind.NginxGrantStaticSiteReadAccess => OperatingSystem.IsWindows()
+                    ? GrantWindowsNginxStaticSiteReadAccess(request.Path, policy.WindowsRuntimes)
+                    : await GrantNginxStaticSiteReadAccessAsync(request.Path),
                 PrivilegedOperationKind.ProxyMihomoServiceAction => await ApplyProxyMihomoServiceActionAsync(request.ProxyMihomoServiceAction),
                 PrivilegedOperationKind.ProxyMihomoInstallSystemService => await InstallProxyMihomoSystemServiceAsync(),
                 PrivilegedOperationKind.ProxyMihomoRemoveSystemService => RemoveProxyMihomoSystemService(),

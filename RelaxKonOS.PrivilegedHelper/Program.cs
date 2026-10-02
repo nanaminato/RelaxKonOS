@@ -806,6 +806,14 @@ static async Task<PrivilegedOperationResult> GrantNginxStaticSiteReadAccessAsync
     return new(true);
 }
 
+[System.Runtime.Versioning.SupportedOSPlatform("windows")]
+static PrivilegedOperationResult GrantWindowsNginxStaticSiteReadAccess(string? path, WindowsManagedRuntimePolicy? policy)
+{
+    if (policy is null) return Fail(64, PrivilegedProblemCode.ResourceNotAllowed, "Windows Nginx runtime policy is unavailable");
+    WindowsNginxStaticSiteAccess.Grant(path, policy);
+    return new(true);
+}
+
 static string ValidateNginxStaticSiteDirectory(string? path)
 {
     if (string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path)) throw new UnauthorizedAccessException();

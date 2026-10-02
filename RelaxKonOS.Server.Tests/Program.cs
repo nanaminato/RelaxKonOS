@@ -253,6 +253,7 @@ var root = Path.Combine(Path.GetTempPath(), $"relaxkonos-server-tests-{Guid.NewG
 Directory.CreateDirectory(root);
 try
 {
+    if (args.Contains("--windows-privileges-only")) { await WindowsPrivilegeChecks.RunAsync(root); return; }
     // The focused settings suite must run before unrelated certificate/host checks.
     if (args.Contains("--settings-only", StringComparer.Ordinal))
     {
@@ -265,7 +266,6 @@ try
     ObservabilityChecks.VerifyProtocolAndSanitization();
     await BackupRecoveryKeyProviderChecks.RunAsync(root);
     await EventAlertChecks.VerifyAppendProjectionAndRecoveryAsync(root);
-    if (args.Contains("--windows-privileges-only")) { await WindowsPrivilegeChecks.RunAsync(root); return; }
     if (args.Contains("--proxy-geodata-only"))
     {
         await ProxyConfigurationChecks.VerifyMihomoGeoDataStagingAsync(root);
