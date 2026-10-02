@@ -33,6 +33,7 @@ fun DockerWorkspace(initialSection: String, initialStack: String?, onBack: () ->
         WorkspaceDestination("proxy", R.string.workspace_proxy),
         WorkspaceDestination("networks", R.string.workspace_networks),
         WorkspaceDestination("volumes", R.string.workspace_volumes),
+        WorkspaceDestination("records", R.string.workspace_records),
     )
     val screenTitle = stringResource(when (section) {
         "overview", "compose" -> R.string.docker_title
@@ -43,9 +44,9 @@ fun DockerWorkspace(initialSection: String, initialStack: String?, onBack: () ->
     WorkspaceFrame(stringResource(R.string.docker_title), screenTitle = screenTitle,
         pages = pages, selected = section, onSelect = { section = it }, onBack = onBack, modifier = modifier) {
         val state = control.state
-        if (state.owner === owner && section !in setOf("overview", "mirrors") &&
+        if (state.owner === owner && section != "records" &&
             (state.pending.isNotEmpty() || state.resourcePending || state.pendingInstallation || state.installation?.state?.active == true)) {
-            TextButton(onClick = { section = "overview" }) {
+            TextButton(onClick = { section = "records" }) {
                 Text(stringResource(R.string.workspace_operations) + " · " +
                     (state.installation?.operationId ?: stringResource(R.string.docker_control_pending)))
             }
@@ -57,6 +58,9 @@ fun DockerWorkspace(initialSection: String, initialStack: String?, onBack: () ->
             WorkspaceSection(section == "mirrors", Modifier.fillMaxSize()) {
                 DockerControlScreen(onBack, { section = "proxy" }, mirrorsOnly = true, active = section == "mirrors")
             }
+            WorkspaceSection(section == "records", Modifier.fillMaxSize()) {
+                DockerControlScreen(onBack, { section = "proxy" }, recordsOnly = true, active = section == "records")
+            }
             WorkspaceSection(section == "compose", Modifier.fillMaxSize()) {
                 DockerScreen(onBack, initialStackName = requestedStack, onOpenResources = { section = "containers" },
                     onOpenControl = { section = "overview" }, onOpenProxy = { section = "proxy" }, section = "compose")
@@ -64,7 +68,7 @@ fun DockerWorkspace(initialSection: String, initialStack: String?, onBack: () ->
             DockerResourceKind.entries.forEach { kind ->
                 val id = kind.name.lowercase()
                 key(kind) { WorkspaceSection(section == id, Modifier.fillMaxSize()) {
-                    DockerResourceScreen(onBack, { section = "overview" }, { stack -> requestedStack = stack; section = "compose" },
+                    DockerResourceScreen(onBack, { section = "records" }, { stack -> requestedStack = stack; section = "compose" },
                         onOpenApplication, resourceKind = kind, active = section == id)
                 } }
             }

@@ -1,5 +1,7 @@
 # Android 宿主防火墙
 
+页面分为概览与操作记录，概览将当前状态/默认策略及对应操作集中成卡，每条规则单独成卡。待核实写入与读取并接受当前事实只在操作记录页显示，概览提供简短跳转；没有标记时显示空状态。页签切换沿用未保存规则/默认策略的放弃确认，确认后才清理草稿。
+
 BP07-M1 提供“管理 → 防火墙”原生页面，按 `server.firewall` 门控。当前共享契约由 Linux UFW 实现；Windows/其他宿主按返回的 `isAvailable=false` 展示不可用，不将未启用解释为不支持，也不提供手机防火墙或任意命令执行。
 
 `Firewall.kt` 直接投影 [共享 DTO](../../../../Shared/RelaxKonOS.Protocol/Firewall/FirewallDtos.cs) 和 [当前路由](../../../../Shared/RelaxKonOS.Protocol/Firewall/FirewallApiRoutes.cs)。状态显示启用、后端、版本、入站/出站默认策略与核验时间；规则保持服务端编号和 IPv4、IPv6、IPv4 + IPv6 逻辑配对。规则读取失败不显示“没有规则”：Server 以 503 和稳定问题码返回读取失败，成功的空集合才表示当前没有规则。

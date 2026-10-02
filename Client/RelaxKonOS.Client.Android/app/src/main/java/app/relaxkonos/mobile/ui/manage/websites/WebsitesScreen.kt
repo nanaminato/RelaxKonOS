@@ -182,20 +182,21 @@ fun WebsitesScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initial
             state.selectedApplicationId != initialApplicationId) viewModel.selectApplication(initialApplicationId)
     }
 
-    WorkspaceColumn(stringResource(R.string.websites_title), onBack, listOf(WorkspaceDestination("instances", R.string.workspace_instances), WorkspaceDestination("sites", R.string.workspace_sites), WorkspaceDestination("publish", R.string.workspace_publish)), section, { section = it }, modifier, stateKey = container.activeSession to viewModel.sessionEpoch) {
+    WorkspaceColumn(stringResource(R.string.websites_title), onBack, listOf(WorkspaceDestination("instances", R.string.workspace_instances), WorkspaceDestination("sites", R.string.workspace_sites), WorkspaceDestination("publish", R.string.workspace_publish), WorkspaceDestination("records", R.string.workspace_records)), section, { section = it }, modifier, stateKey = container.activeSession to viewModel.sessionEpoch) {
         if (!available) {
             EmptyHint(stringResource(R.string.error_capability_missing))
             return@WorkspaceColumn
         }
         Text(stringResource(R.string.websites_publish_note), style = MaterialTheme.typography.bodySmall)
         if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-        WorkspaceSection(section != "publish") { NginxManager(onChanged = viewModel::refresh, section = section) }
-        WorkspaceSection(section == "publish") { androidx.compose.runtime.key(viewModel.sessionEpoch) { WebsitePublisher(state, viewModel) } }
+        WorkspaceSection(section != "publish") { NginxManager(onChanged = viewModel::refresh, section = section, onRecords = { section = "records" }) }
+        WorkspaceSection(section == "publish") { androidx.compose.runtime.key(viewModel.sessionEpoch) { WebsitePublisher(state, viewModel) { section = "records" } } }
+        WorkspaceSection(section == "records") { SectionCard(stringResource(R.string.websites_publish_title)) { PublicationResult(state, viewModel) } }
     }
 }
 
 @Composable
-private fun WebsitePublisher(state: WebsitesState, viewModel: WebsitesViewModel) {
+private fun WebsitePublisher(state: WebsitesState, viewModel: WebsitesViewModel, onSubmitted: () -> Unit) {
     val servers = (state.servers as? ApiResult.Success)?.value.orEmpty().filter { it.server.canRead && it.server.canTestConfiguration }
     val applications = (state.applications as? ApiResult.Success)?.value.orEmpty().filter { it.actualState.equals("running", true) }
     if (servers.isEmpty() || applications.isEmpty()) return
@@ -241,9 +242,8 @@ private fun WebsitePublisher(state: WebsitesState, viewModel: WebsitesViewModel)
         }
         Button(
             enabled = !state.publishing && domain.isNotBlank() && ((useExistingCertificate && certificateReady) || (!useExistingCertificate && email.isNotBlank() && acceptedTerms && publicReachability)),
-            onClick = { viewModel.publish(domain, email, if (useExistingCertificate) selectedCertificate?.id else null, acceptedTerms, publicReachability) },
+            onClick = { viewModel.publish(domain, email, if (useExistingCertificate) selectedCertificate?.id else null, acceptedTerms, publicReachability); onSubmitted() },
         ) { Text(stringResource(if (state.publishing) R.string.websites_publishing else R.string.websites_publish)) }
-        PublicationResult(state, viewModel)
     }
 }
 

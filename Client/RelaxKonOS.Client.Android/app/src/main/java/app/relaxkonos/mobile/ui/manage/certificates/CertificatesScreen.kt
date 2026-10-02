@@ -49,7 +49,7 @@ fun CertificatesScreen(onBack: () -> Unit, initialOperationId: String? = null, m
                 OutlinedButton(onClick = { model.create(false) }, enabled = !state.busy) { Text(stringResource(R.string.certificates_issue)) }
                 OutlinedButton(onClick = { model.create(true) }, enabled = !state.busy) { Text(stringResource(R.string.certificates_self_signed)) }
             }
-            TextButton(onClick = { recoverPending = null; recoverId = ""; recovery = true }, enabled = !state.busy) { Text(stringResource(R.string.certificates_recover)) }
+            if (section == "operations") TextButton(onClick = { recoverPending = null; recoverId = ""; recovery = true }, enabled = !state.busy) { Text(stringResource(R.string.certificates_recover)) }
         }
         if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (state.uncertain) Text(stringResource(R.string.certificates_uncertain), color = MaterialTheme.colorScheme.error)
@@ -81,8 +81,9 @@ fun CertificatesScreen(onBack: () -> Unit, initialOperationId: String? = null, m
         }
         }
         WorkspaceSection(section == "operations") {
+        if (state.operation == null && state.pending.isEmpty()) ManagementCard { Text(stringResource(R.string.workspace_records_empty)) }
         state.operation?.let { operation ->
-            HorizontalDivider()
+            ManagementCard {
             Text(certificateActionLabel(operation.kind), style = MaterialTheme.typography.titleSmall)
             Text(operation.operationId, style = MaterialTheme.typography.bodySmall)
             operation.certificateId?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -96,13 +97,16 @@ fun CertificatesScreen(onBack: () -> Unit, initialOperationId: String? = null, m
                 KestrelFacts(state.deployments[id], (state.list as? ApiResult.Success)?.value?.firstOrNull { it.id == id })
                 TextButton(enabled = !state.busy, onClick = { model.inspectDeployment(id) }) { Text(stringResource(R.string.certificates_deployment_refresh)) }
             }
+            }
         }
         state.pending.forEach { pending ->
+            ManagementCard {
             Text(stringResource(R.string.certificates_pending, certificateActionLabel(pending.action), pending.target ?: stringResource(R.string.certificates_new_target)), style = MaterialTheme.typography.bodySmall)
             if (pending.target != null && canManage) TextButton(enabled = !state.busy, onClick = {
                 confirm = R.string.certificates_retry_confirm to { model.retry(pending) }
             }) { Text(stringResource(R.string.common_retry)) }
             TextButton(enabled = !state.busy, onClick = { recoverPending = pending; recoverId = pending.operationId.orEmpty(); recovery = true }) { Text(stringResource(R.string.certificates_recover)) }
+            }
         }
         }
     }
@@ -123,7 +127,7 @@ private fun CertificateList(state: CertificatesState, model: CertificatesViewMod
         is ApiResult.Success -> {
             if (result.value.isEmpty()) Text(stringResource(R.string.certificates_empty))
             result.value.forEach { certificate ->
-                TextButton(enabled = !state.busy, onClick = { model.select(certificate.id) }) { Column {
+                OutlinedCard(enabled = !state.busy, onClick = { model.select(certificate.id) }, modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text(certificate.primaryDomain, style = MaterialTheme.typography.titleSmall)
                     Text(certificateStatusLabel(certificate.status))
                     certificate.notAfterMillis?.let { Text(stringResource(R.string.certificates_expires, date(it)), style = MaterialTheme.typography.bodySmall) }

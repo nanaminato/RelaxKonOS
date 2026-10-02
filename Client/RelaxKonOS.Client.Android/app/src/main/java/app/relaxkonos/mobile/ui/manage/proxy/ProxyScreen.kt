@@ -42,7 +42,7 @@ private data class ProxyConfirmation(val action: () -> Unit)
     var showRecovery by remember(owner, epoch) { mutableStateOf(false) }
     LaunchedEffect(owner, epoch) { if (available) model.refresh() }
     LaunchedEffect(owner, epoch, initialOperationId, state.busy) {
-        if (available && initialOperationId != null && !state.busy && !attemptedInitial) { attemptedInitial = true; model.recoverOperation(initialOperationId) }
+        if (available && initialOperationId != null && !state.busy && !attemptedInitial) { attemptedInitial = true; section = "records"; model.recoverOperation(initialOperationId) }
     }
     LaunchedEffect(owner, epoch, state.operation?.operationId, state.operation?.state, state.busy, state.operationVerified) {
         if (state.operationVerified && state.operation?.state?.active == true && !state.busy) { delay(1500); model.pollOperation() }
@@ -66,9 +66,10 @@ private data class ProxyConfirmation(val action: () -> Unit)
         }
     }
     BackHandler(section == "profiles" && selected != null && editor == null && !state.busy) { selected = null }
-    WorkspaceColumn(stringResource(R.string.mihomo_title), onBack, listOf(WorkspaceDestination("overview", R.string.workspace_overview), WorkspaceDestination("profiles", R.string.workspace_profiles), WorkspaceDestination("nodes", R.string.workspace_nodes), WorkspaceDestination("connections", R.string.workspace_connections), WorkspaceDestination("logs", R.string.workspace_logs), WorkspaceDestination("settings", R.string.workspace_settings)), section, { section = it }, modifier, stateKey = owner to epoch) {
+    WorkspaceColumn(stringResource(R.string.mihomo_title), onBack, listOf(WorkspaceDestination("overview", R.string.workspace_overview), WorkspaceDestination("profiles", R.string.workspace_profiles), WorkspaceDestination("nodes", R.string.workspace_nodes), WorkspaceDestination("connections", R.string.workspace_connections), WorkspaceDestination("logs", R.string.workspace_logs), WorkspaceDestination("settings", R.string.workspace_settings), WorkspaceDestination("records", R.string.workspace_records)), section, { section = it }, modifier, stateKey = owner to epoch) {
         if (!available) { Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn }
 WorkspaceSection(section == "overview") {
+        ManagementCard {
         Text(stringResource(R.string.mihomo_intro))
         FlowRow {
             TextButton(enabled = !state.busy, onClick = model::refresh) { Text(stringResource(R.string.common_refresh)) }
@@ -94,16 +95,23 @@ WorkspaceSection(section == "overview") {
             }
             }
         }
+        }
 }
+        if (section != "records" && (state.pending.isNotEmpty() || state.pendingInstallation || state.uncertain || state.operation?.state?.active == true || state.installation?.state?.active == true)) TextButton(onClick = { section = "records" }) { Text(stringResource(R.string.workspace_records_attention)) }
+        WorkspaceSection(section == "records") {
+        if (state.operation == null && state.installation == null && state.pending.isEmpty() && !state.pendingInstallation) ManagementCard { Text(stringResource(R.string.workspace_records_empty)) }
                 state.operation?.let { operation ->
+            ManagementCard {
             Text(operation.operationId, style = MaterialTheme.typography.bodySmall)
             Text(if (state.operationVerified) proxyOperationLabel(operation.state) else stringResource(R.string.mihomo_unverified))
             if (state.operationVerified) { Text(proxyStageLabel(operation.stage)); operation.problemCode.takeIf(String::isNotBlank)?.let { Text(proxyProblemLabel(it)) } }
             TextButton(enabled = !state.busy, onClick = model::pollOperation) { Text(stringResource(R.string.common_refresh)) }
+            }
         }
         if (notInstalled) TextButton(onClick = { showRecovery = !showRecovery }) { Text(stringResource(R.string.runtime_recovery_tools)) }
         if (!notInstalled || showRecovery) TextButton(enabled = !state.busy, onClick = { recoveredId = ""; recoverInstallation = false; recovering = true }) { Text(stringResource(R.string.mihomo_recover_operation)) }
         state.installation?.let { operation ->
+            ManagementCard {
             Text(operation.operationId, style = MaterialTheme.typography.bodySmall)
             if (state.installationVerified) {
                 Text(installationKindLabel(operation.kind) + " · " + installationStateLabel(operation.state)); Text(installationStageLabel(operation.stage))
@@ -113,6 +121,7 @@ WorkspaceSection(section == "overview") {
             TextButton(enabled = !state.busy, onClick = model::pollInstall) { Text(stringResource(R.string.common_refresh)) }
             if (canManage && state.installationVerified && operation.state.active && operation.cancellable) TextButton(enabled = !state.busy,
                 onClick = { confirm = ProxyConfirmation(model::cancelInstall) }) { Text(stringResource(R.string.common_cancel)) }
+            }
         }
         if (state.pendingInstallation) {
             Text(stringResource(R.string.mihomo_install_pending), color = MaterialTheme.colorScheme.error)
@@ -120,6 +129,7 @@ WorkspaceSection(section == "overview") {
         }
         if (canManage && (!notInstalled || showRecovery)) TextButton(enabled = !state.busy, onClick = { recoveredId = ""; identified = false; recoverInstallation = true; recovering = true }) { Text(stringResource(R.string.mihomo_recover_installation)) }
         state.pending.forEach { pending ->
+            ManagementCard {
             Text(stringResource(R.string.mihomo_pending), color = MaterialTheme.colorScheme.error)
             Text(pending.key, style = MaterialTheme.typography.bodySmall)
             if (pending.action != null) {
@@ -130,6 +140,8 @@ WorkspaceSection(section == "overview") {
                 TextButton(enabled = !state.busy && overview != null && profiles != null && subscriptions != null,
                     onClick = { confirm = ProxyConfirmation { model.accept(pending) } }) { Text(stringResource(R.string.mihomo_accept_facts)) }
             }
+            }
+        }
         }
         WorkspaceSection(networkSection) {
             if (!notInstalled) key(owner, epoch) { ProxyNetworkPanel(model, canManage, ready, section) { action -> confirm = ProxyConfirmation(action) } }
@@ -142,11 +154,13 @@ WorkspaceSection(section == "profiles") {
             TextButton(enabled = ready && !subscriptions.isNullOrEmpty(), onClick = { confirm = ProxyConfirmation { model.queue(ProxyAction.RefreshAll) } }) { Text(stringResource(R.string.mihomo_refresh_all)) }
         }
         if (subscriptions == null) Text(stringResource(R.string.mihomo_unavailable)) else subscriptions.forEach { subscription ->
+            ManagementCard {
             Text(subscription.name + if (subscription.active) " · " + stringResource(R.string.mihomo_active) else "")
             subscription.lastUpdatedAtMillis?.let { Text(DateFormat.getDateTimeInstance().format(Date(it)), style = MaterialTheme.typography.bodySmall) }
             if (canManage) FlowRow {
                 TextButton(enabled = ready, onClick = { confirm = ProxyConfirmation { model.queue(ProxyAction.RefreshSubscription, subscription.id) } }) { Text(stringResource(R.string.common_refresh)) }
                 TextButton(enabled = ready, onClick = { confirm = ProxyConfirmation { model.queue(ProxyAction.ActivateSubscription, subscription.id) } }) { Text(stringResource(R.string.mihomo_activate)) }
+            }
             }
         }
         HorizontalDivider()
@@ -154,6 +168,7 @@ WorkspaceSection(section == "profiles") {
         if (canManage) OutlinedButton(enabled = ready, onClick = { selected = null; editor = "profile" }) { Text(stringResource(R.string.mihomo_create_profile)) }
         if (profiles == null) Text(stringResource(R.string.mihomo_unavailable)) else BoxWithProfileList(profiles, selected, { selected = it }) {
             current?.let { profile ->
+                ManagementCard {
                 Text(profile.name, style = MaterialTheme.typography.titleSmall)
                 Text(stringResource(R.string.mihomo_revision, profile.revision))
                 if (canManage) FlowRow {
@@ -161,6 +176,7 @@ WorkspaceSection(section == "profiles") {
                     TextButton(enabled = ready && !profile.active, onClick = { confirm = ProxyConfirmation { model.activate(profile) } }) { Text(stringResource(R.string.mihomo_activate)) }
                     TextButton(enabled = ready && overview?.supportsValidation == true, onClick = { editor = "yaml" }) { Text(stringResource(R.string.mihomo_apply_yaml)) }
                     TextButton(enabled = ready && !profile.active, onClick = { confirm = ProxyConfirmation { model.delete(profile) } }) { Text(stringResource(R.string.common_delete)) }
+                }
                 }
             }
         }
@@ -177,6 +193,7 @@ WorkspaceSection(section == "profiles") {
             } }
             val groups = (state.groups as? ApiResult.Success)?.value
             if (groups == null) Text(stringResource(R.string.mihomo_unavailable)) else groups.forEach { group ->
+                ManagementCard {
                 Text(group.name, style = MaterialTheme.typography.titleSmall)
                 group.proxies.forEach { proxy -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text(proxy, modifier = Modifier.weight(1f))
@@ -186,6 +203,7 @@ WorkspaceSection(section == "profiles") {
                         TextButton(enabled = ready, onClick = { model.delay(group.name, proxy, "https://www.gstatic.com/generate_204") }) { Text(stringResource(R.string.mihomo_test_delay)) }
                     }
                 } }
+                }
             }
             (state.delay as? ApiResult.Success)?.value?.let { result ->
                 Text(result.proxyName + " · " + if (result.timedOut || result.delayMilliseconds == null) stringResource(R.string.mihomo_timeout) else stringResource(R.string.mihomo_delay_result, result.delayMilliseconds))
@@ -194,7 +212,7 @@ WorkspaceSection(section == "profiles") {
         }
 }
             }
-    if (install) key(owner, epoch) { ProxyInstallEditor(model) { install = false } }
+    if (install) key(owner, epoch) { ProxyInstallEditor(model, onSubmitted = { section = "records" }) { install = false } }
     editor?.let { kind -> key(owner, epoch, kind, current?.id) { ProxyEditor(kind, current, model) { editor = null } } }
     confirm?.let { request -> AlertDialog(onDismissRequest = { confirm = null }, title = { Text(stringResource(R.string.tunnels_confirm)) },
         text = { Text(stringResource(R.string.mihomo_change_confirm)) }, confirmButton = { Button(enabled = !state.busy, onClick = { confirm = null; request.action() }) { Text(stringResource(R.string.tunnels_confirm)) } },
@@ -209,7 +227,11 @@ WorkspaceSection(section == "profiles") {
 
 @Composable private fun BoxWithProfileList(profiles: List<ProxyProfile>, selected: String?, select: (String?) -> Unit, detail: @Composable () -> Unit) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val list: @Composable () -> Unit = { profiles.forEach { profile -> TextButton(onClick = { select(profile.id) }) { Text(profile.name + if (profile.active) " · " + stringResource(R.string.mihomo_active) else "") } } }
+        val list: @Composable () -> Unit = { Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) { profiles.forEach { profile -> OutlinedCard(onClick = { select(profile.id) }, modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            Text(profile.name, style = MaterialTheme.typography.titleMedium)
+            if (profile.active) Text(stringResource(R.string.mihomo_active), color = MaterialTheme.colorScheme.primary)
+            Text(stringResource(R.string.mihomo_revision, profile.revision), style = MaterialTheme.typography.bodySmall)
+        } } } } }
         if (maxWidth >= 600.dp) Row { Column(Modifier.weight(1f)) { list() }; Column(Modifier.weight(2f)) { detail() } }
         else Column { if (selected == null) list() else { TextButton(onClick = { select(null) }) { Text(stringResource(R.string.common_back)) }; detail() } }
     }

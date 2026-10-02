@@ -13,6 +13,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedCard
+import app.relaxkonos.mobile.ui.common.ManagementCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -168,14 +170,15 @@ fun ScriptsScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modi
             Button(onClick = { editing = true }) { Text(stringResource(R.string.scripts_new)) }
         }
         state.tasks.forEach { task ->
-            OutlinedButton(onClick = { model.select(task.id) }, modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.fillMaxWidth()) {
+            OutlinedCard(onClick = { model.select(task.id) }, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text(task.executablePath)
                     Text("${task.createdAt} · ${stringResource(scriptStateLabel(task.state))}", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
         state.selected?.let { task ->
+            ManagementCard {
             Text(task.executablePath, style = MaterialTheme.typography.titleMedium)
             Text("${task.runAs} · ${stringResource(scriptStateLabel(task.state))} · ${task.exitCode?.toString() ?: "—"}")
             task.problemCode?.let { Text(stringResource(scriptProblemLabel(it))) }
@@ -186,6 +189,7 @@ fun ScriptsScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modi
             SelectionContainer { Column { task.output.forEach { line ->
                 Text("${line.timestamp} [${line.stream}] ${line.text}", style = MaterialTheme.typography.bodySmall)
             } } }
+            }
         }
     }
 }

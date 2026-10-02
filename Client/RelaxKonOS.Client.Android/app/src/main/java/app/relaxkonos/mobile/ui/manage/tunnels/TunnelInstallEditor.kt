@@ -16,7 +16,7 @@ import app.relaxkonos.mobile.ui.common.*
 import app.relaxkonos.mobile.ui.manage.operations.installationKindLabel
 import app.relaxkonos.mobile.ui.theme.Spacing
 
-@Composable internal fun TunnelInstallEditor(model: TunnelsViewModel, dismiss: () -> Unit) {
+@Composable internal fun TunnelInstallEditor(model: TunnelsViewModel, onSubmitted: () -> Unit, dismiss: () -> Unit) {
     val container = appContainer(); val owner = remember { container.activeSession }
     val state = model.state; val original = model.currentIntent; val request = original?.request as? FrpInstallationRequest
     var kind by remember { mutableStateOf(original?.kind ?: InstallationKind.Install) }
@@ -63,7 +63,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
         } }, confirmButton = { Button(enabled = !state.busy && confirmed && state.installation?.state?.active != true &&
             (model.hasIntent || ((rollback || kind == InstallationKind.Uninstall || version.trim().matches(Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,31}"))) &&
                 (kind != InstallationKind.Install || source == 0 || state.reference?.expired() == false))),
-            onClick = { model.install(kind, version.takeUnless { rollback || kind == InstallationKind.Uninstall }, rollback, kind == InstallationKind.Install && source != 0) }) {
+            onClick = { onSubmitted(); model.install(kind, version.takeUnless { rollback || kind == InstallationKind.Uninstall }, rollback, kind == InstallationKind.Install && source != 0) }) {
             Text(stringResource(if (model.hasIntent || state.pendingInstallation) R.string.common_retry else R.string.tunnels_confirm))
         } }, dismissButton = { TextButton(enabled = !state.busy, onClick = dismiss) { Text(stringResource(R.string.common_close)) } })
 }

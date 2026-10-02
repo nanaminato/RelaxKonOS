@@ -44,16 +44,12 @@ private data class ResourceConfirmation(val facts: DockerResourceFacts, val targ
         if (owner?.capabilities?.contains(ServerCapabilities.DOCKER) != true) { Text(stringResource(R.string.error_capability_missing)); return@Column }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             TextButton(enabled = !state.busy, onClick = { navigate { draft = null; model.refresh() } }) { Text(stringResource(R.string.common_refresh)) }
-            TextButton(onClick = { navigate(onOpenControl) }) { Text(stringResource(R.string.docker_control_title)) }
+            TextButton(onClick = { navigate(onOpenControl) }) { Text(stringResource(R.string.workspace_records)) }
         }
         if (visible && state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (visible) state.problem?.let { Text(controlProblem(it), color = MaterialTheme.colorScheme.error) }
         if (visible && state.blocked != null) Text(controlProblem(state.blocked), color = MaterialTheme.colorScheme.error)
-        if (visible) state.pending.forEach { marker ->
-            Text(stringResource(R.string.docker_resources_pending), color = MaterialTheme.colorScheme.error)
-            Text(resourceActionLabel(marker.action)); marker.target?.let { Text(it) }
-            OutlinedButton(enabled = !state.busy && facts?.status?.available == true, onClick = { navigate { draft = null; model.accept(marker) } }) { Text(stringResource(R.string.docker_control_accept)) }
-        }
+        if (visible && (state.pending.isNotEmpty() || state.result != null)) TextButton(onClick = { navigate(onOpenControl) }) { Text(stringResource(R.string.workspace_records)) }
         if (facts == null) Text(stringResource(R.string.docker_control_unverified))
         else if (!facts.status.available) { Text(stringResource(R.string.docker_control_unavailable)); Text(controlProblem(facts.status.problemCode)) }
         else {
@@ -112,12 +108,6 @@ private data class ResourceConfirmation(val facts: DockerResourceFacts, val targ
                 if (maxWidth >= 600.dp) Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) { Column(Modifier.weight(1f)) { listing() }; Column(Modifier.weight(1f)) { detail() } }
                 else Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) { listing(); detail() }
             }
-        }
-        if (visible) state.result?.let { result ->
-            Text(stringResource(if (state.pending.isNotEmpty()) R.string.docker_control_unverified else if (result.success) R.string.docker_operation_complete else R.string.docker_operation_failed))
-            result.problemCode.takeIf(String::isNotBlank)?.let { Text(controlProblem(it)) }
-            if (reveal) result.logLines.forEach { Text(it) }
-            if (result.logTruncated) Text(stringResource(R.string.docker_resources_truncated))
         }
     }
     confirmation?.let { frozen -> AlertDialog(onDismissRequest = { confirmation = null }, title = { Text(resourceActionLabel(frozen.change.action)) }, text = { Column {

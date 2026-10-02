@@ -10,6 +10,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
@@ -32,6 +34,7 @@ import java.util.Date
     val canManage = available && owner?.privilegedOperations == true
     var confirm by remember(owner, epoch) { mutableStateOf<TunnelConfirmation?>(null) }
     var section by rememberSaveable(owner, epoch) { mutableStateOf("overview") }
+    var advanced by rememberSaveable(owner, epoch) { mutableStateOf(false) }
     val frpsSection = section == "frps"
     var install by remember(owner, epoch) { mutableStateOf(false) }
     var tokenProfile by remember(owner, epoch) { mutableStateOf<TunnelProfile?>(null) }
@@ -52,58 +55,90 @@ import java.util.Date
         }
     }
     BackHandler(section in setOf("profiles", "logs") && state.selectedId != null && state.profileDraft == null && state.definitionDraft == null && !state.busy) { model.select(null) }
-    WorkspaceColumn(stringResource(R.string.tunnels_title), onBack, listOf(WorkspaceDestination("overview", R.string.workspace_overview), WorkspaceDestination("profiles", R.string.workspace_tunnels), WorkspaceDestination("runtime", R.string.workspace_runtime), WorkspaceDestination("logs", R.string.workspace_logs), WorkspaceDestination("frps", R.string.frps_server_tab)), section, { section = it }, modifier, stateKey = owner to epoch) {
+    WorkspaceColumn(stringResource(R.string.tunnels_title), onBack, listOf(WorkspaceDestination("overview", R.string.workspace_overview), WorkspaceDestination("profiles", R.string.workspace_tunnels), WorkspaceDestination("runtime", R.string.workspace_runtime), WorkspaceDestination("logs", R.string.workspace_logs), WorkspaceDestination("frps", R.string.frps_server_tab), WorkspaceDestination("records", R.string.tunnels_records)), section, { section = it }, modifier, stateKey = owner to epoch) {
         if (!available) { Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn }
-        WorkspaceSection(frpsSection) { key(owner, epoch) { ManagedFrpsManager(model, state, canManage, active = frpsSection) { section = "profiles" } } }
-        Text(stringResource(R.string.tunnels_intro))
+        if (section == "overview") Text(stringResource(R.string.tunnels_overview_help))
+        if (!canManage) Text(stringResource(R.string.tunnels_observer), style = MaterialTheme.typography.bodySmall)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             TextButton(enabled = !state.busy, onClick = model::refresh) { Text(stringResource(R.string.common_refresh)) }
             if (canManage) {
-                OutlinedButton(enabled = !state.busy && state.pending.isEmpty(), onClick = { model.editProfile() }) { Text(stringResource(R.string.tunnels_profile_create)) }
-                OutlinedButton(enabled = !state.busy && state.installation?.state?.active != true, onClick = { install = true }) { Text(if (notInstalled) stringResource(R.string.runtime_install_action, "FRP") else stringResource(R.string.tunnels_runtime_manage)) }
+                if (section in setOf("overview", "profiles")) Button(enabled = !state.busy && state.pending.isEmpty(), onClick = { model.editProfile() }) { Text(stringResource(R.string.tunnels_profile_create)) }
             }
         }
         if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         state.problemCode?.let { Text(tunnelProblemLabel(it), color = MaterialTheme.colorScheme.error) }
-        if (state.uncertain) Text(stringResource(R.string.tunnels_uncertain), color = MaterialTheme.colorScheme.error)
+        if (section != "records" && (state.uncertain || state.pending.isNotEmpty() || state.pendingInstallation || state.installation != null && !state.installationVerified)) TextButton(onClick = { section = "records" }) { Text(stringResource(R.string.tunnels_records_attention)) }
+        WorkspaceSection(frpsSection) { key(owner, epoch) { ManagedFrpsManager(model, state, canManage, active = frpsSection) } }
 WorkspaceSection(section in setOf("overview", "runtime")) {
-        Text(stringResource(R.string.tunnels_runtime_title), style = MaterialTheme.typography.titleSmall)
+        TunnelCard {
+        Text(stringResource(R.string.tunnels_runtime_title), style = MaterialTheme.typography.titleMedium)
         if (runtime == null) Text(stringResource(R.string.tunnels_unknown)) else {
             if (notInstalled) Text(stringResource(R.string.runtime_install_hint, "FRP")) else {
-            Text(tunnelRuntimeLabel(runtime.state)); runtime.version?.let { Text(stringResource(R.string.tunnels_version_value, it)) }
+            TunnelBadge(tunnelRuntimeLabel(runtime.state), runtime.state in setOf(TunnelRuntimeState.Running, TunnelRuntimeState.Available))
+            runtime.version?.let { Text(stringResource(R.string.tunnels_version_value, it)) }
+            TextButton(onClick = { advanced = !advanced }) { Text(stringResource(if (advanced) R.string.tunnels_advanced_hide else R.string.tunnels_advanced)) }
+            if (advanced) {
             runtime.previousVersion?.let { Text(stringResource(R.string.tunnels_previous_version, it)) }
             runtime.executablePath?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             Text(stringResource(if (runtime.integrityVerified) R.string.tunnels_integrity_verified else R.string.tunnels_integrity_unverified))
+            }
             runtime.problemCode.takeIf(String::isNotBlank)?.let { Text(tunnelProblemLabel(it)) }
             }
         }
+        if (canManage) OutlinedButton(enabled = !state.busy && !state.pendingInstallation && state.installation?.state?.active != true, onClick = { install = true }) { Text(if (notInstalled) stringResource(R.string.runtime_install_action, "FRP") else stringResource(R.string.tunnels_runtime_manage)) }
+        }
+        if (section == "overview") facts?.let { observed -> TunnelCard {
+            Text(stringResource(R.string.tunnels_profiles), style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.tunnels_checked, tunnelDate(observed.observedAtMillis)), style = MaterialTheme.typography.bodySmall)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                OutlinedButton(onClick = { section = "profiles" }) { Text(stringResource(R.string.tunnels_profiles) + " · " + observed.profiles.size) }
+                OutlinedButton(onClick = { section = "profiles" }) { Text(stringResource(R.string.workspace_tunnels) + " · " + observed.definitions.size) }
+            }
+            if (observed.profiles.isEmpty()) Text(stringResource(R.string.tunnels_profiles_empty))
+        } }
 }
+        WorkspaceSection(section == "records") {
+        if (state.uncertain) Text(stringResource(R.string.tunnels_uncertain), color = MaterialTheme.colorScheme.error)
                 state.installation?.let { operation ->
+            TunnelCard {
             Text(operation.operationId, style = MaterialTheme.typography.bodySmall)
             if (state.installationVerified) {
-                Text(installationKindLabel(operation.kind) + " · " + installationStateLabel(operation.state))
+                Text(installationKindLabel(operation.kind), style = MaterialTheme.typography.titleMedium)
+                TunnelBadge(installationStateLabel(operation.state), operation.state == InstallationState.Succeeded)
                 Text(installationStageLabel(operation.stage)); operation.progress?.let { Text(stringResource(R.string.installation_stage_progress, it)) }
                 operation.problemCode?.takeIf(String::isNotBlank)?.let { Text(tunnelProblemLabel(it)) }
             } else Text(stringResource(R.string.tunnels_unknown))
             TextButton(enabled = !state.busy, onClick = model::pollInstall) { Text(stringResource(R.string.common_refresh)) }
             if (canManage && state.installationVerified && operation.state.active && operation.cancellable) TextButton(enabled = !state.busy,
                 onClick = { confirm = TunnelConfirmation(R.string.tunnels_cancel_install_confirm, operation.operationId, model::cancelInstall) }) { Text(stringResource(R.string.common_cancel)) }
+            }
         }
-        if (state.pendingInstallation) {
+        if (state.pendingInstallation) TunnelCard {
             Text(stringResource(R.string.tunnels_install_pending), color = MaterialTheme.colorScheme.error)
             if (model.hasIntent && canManage) TextButton(enabled = !state.busy, onClick = { confirm = TunnelConfirmation(R.string.tunnels_install_retry_confirm, "FRP", model::retryInstall) }) { Text(stringResource(R.string.common_retry)) }
         }
         TextButton(enabled = !state.busy, onClick = { operationId = ""; originalIdentified = false; recover = true }) { Text(stringResource(if (notInstalled) R.string.runtime_recovery_tools else R.string.tunnels_install_recover)) }
         state.pending.forEach { pending ->
+            TunnelCard {
             Text(stringResource(R.string.tunnels_pending, tunnelMutationLabel(pending.action), if (pending.action.frps) "frps" else pending.target ?: "—"), color = MaterialTheme.colorScheme.error)
             if (pending.action.frps) {
                 Text(stringResource(R.string.frps_pending_note))
-                TextButton(onClick = { section = "frps" }) { Text(stringResource(R.string.frps_server_tab)) }
+                TextButton(enabled = !state.busy, onClick = model::observeFrps) { Text(stringResource(R.string.tunnels_inspect)) }
+                if (state.frps is ApiResult.Success) TextButton(enabled = !state.busy, onClick = { confirm = TunnelConfirmation(R.string.tunnels_accept_confirm, "frps") { model.accept(pending) } }) { Text(stringResource(R.string.tunnels_accept)) }
             } else {
                 Text(stringResource(R.string.tunnels_pending_note))
                 TextButton(enabled = !state.busy, onClick = model::observe) { Text(stringResource(R.string.tunnels_inspect)) }
                 if (facts != null) TextButton(enabled = !state.busy, onClick = { confirm = TunnelConfirmation(R.string.tunnels_accept_confirm, pending.target ?: pending.profileId ?: "FRP") { model.accept(pending) } }) { Text(stringResource(R.string.tunnels_accept)) }
             }
+            }
+        }
+        state.action?.let { result -> TunnelCard {
+            Text(stringResource(R.string.frps_client_tab), style = MaterialTheme.typography.titleSmall)
+            if (result is ApiResult.Success) { Text(stringResource(if (result.value.succeeded) R.string.tunnels_action_succeeded else R.string.tunnels_action_failed)); TunnelBadge(tunnelConnectionLabel(result.value.state), result.value.state == TunnelConnectionState.Connected) }
+            else Text(stringResource(R.string.tunnels_uncertain))
+        } }
+        if (state.installation == null && !state.pendingInstallation && state.pending.isEmpty() && state.action == null && state.frpsAction == null && state.frpsAudit == null && state.frpsLogs == null) TunnelCard { Text(stringResource(R.string.tunnels_records_empty)) }
+        key(owner, epoch) { ManagedFrpsManager(model, state, canManage, active = false, records = true) }
         }
 WorkspaceSection(section in setOf("profiles", "logs")) {
         if (facts == null) Text(stringResource(R.string.tunnels_unavailable)) else BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -121,7 +156,7 @@ WorkspaceSection(section in setOf("profiles", "logs")) {
         }
 }
             }
-    if (install) key(owner, epoch) { TunnelInstallEditor(model) { install = false } }
+    if (install) key(owner, epoch) { TunnelInstallEditor(model, onSubmitted = { section = "records" }) { install = false } }
     if (state.frpsDraft != null) key(owner, epoch) { ManagedFrpsEditor(model, state) }
     if (state.profileDraft != null) key(owner, epoch) { TunnelProfileEditor(state, model) }
     if (state.definitionDraft != null) key(owner, epoch) { TunnelDefinitionEditor(state, model) }
@@ -144,12 +179,23 @@ WorkspaceSection(section in setOf("profiles", "logs")) {
         text = { Column { Text(request.target); Text(stringResource(request.message)) } }, confirmButton = { Button(onClick = { confirm = null; request.action() }) { Text(stringResource(R.string.tunnels_confirm)) } },
         dismissButton = { TextButton(onClick = { confirm = null }) { Text(stringResource(R.string.common_cancel)) } }) }
 }
+@OptIn(ExperimentalLayoutApi::class)
 @Composable private fun ProfileList(facts: TunnelFacts, state: TunnelsState, model: TunnelsViewModel) {
     Text(stringResource(R.string.tunnels_profiles), style = MaterialTheme.typography.titleSmall)
     if (facts.profiles.isEmpty()) Text(stringResource(R.string.tunnels_profiles_empty))
-    facts.profiles.forEach { profile -> TextButton(enabled = !state.busy, onClick = { model.select(profile.id) }) {
-        Text(profile.name + " · " + profile.host + ":" + profile.port)
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+    facts.profiles.forEach { profile -> OutlinedCard(enabled = !state.busy, onClick = { model.select(profile.id) }, modifier = Modifier.fillMaxWidth(),
+        border = BorderStroke(if (state.selectedId == profile.id) 2.dp else 1.dp, if (state.selectedId == profile.id) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)) {
+        Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            Text(profile.name, style = MaterialTheme.typography.titleMedium)
+            Text(profile.host + ":" + profile.port, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                TunnelBadge(tunnelModeLabel(profile.runtimeMode)); TunnelBadge(tunnelTlsLabel(profile.tls))
+                facts.definitions.filter { it.profileId == profile.id }.map { it.state }.distinct().forEach { connection -> TunnelBadge(tunnelConnectionLabel(connection), connection == TunnelConnectionState.Connected) }
+            }
+        }
     } }
+    }
     Text(stringResource(R.string.tunnels_checked, tunnelDate(facts.observedAtMillis)), style = MaterialTheme.typography.bodySmall)
 }
 @OptIn(ExperimentalLayoutApi::class)
@@ -159,6 +205,7 @@ WorkspaceSection(section in setOf("profiles", "logs")) {
     val enabled = !state.busy && state.pending.isEmpty() && state.installation?.state?.active != true
     Text(profile.name, style = MaterialTheme.typography.titleMedium); Text(profile.id, style = MaterialTheme.typography.bodySmall)
 WorkspaceSection(section != "logs") {
+    TunnelCard {
     Text(profile.host + ":" + profile.port); Text(tunnelModeLabel(profile.runtimeMode) + " · " + tunnelAuthLabel(profile.auth) + " · " + tunnelTlsLabel(profile.tls))
     profile.externalPath?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
     Text(stringResource(if (profile.tokenConfigured) R.string.tunnels_token_configured else R.string.tunnels_token_absent))
@@ -171,21 +218,24 @@ WorkspaceSection(section != "logs") {
         TextButton(enabled = enabled && facts.definitions.none { it.profileId == profile.id }, onClick = { confirm(R.string.tunnels_profile_delete_confirm, profile.name + " · " + profile.id) { model.deleteProfile(profile) } }) { Text(stringResource(R.string.common_delete)) }
         OutlinedButton(enabled = enabled, onClick = { model.editDefinition(profile.id) }) { Text(stringResource(R.string.tunnels_definition_create)) }
     }
-    state.action?.let { when (it) {
-        is ApiResult.Success -> { Text(stringResource(if (it.value.succeeded) R.string.tunnels_action_succeeded else R.string.tunnels_action_failed)); Text(tunnelConnectionLabel(it.value.state)) }
-        else -> Text(stringResource(R.string.tunnels_uncertain))
-    } }
+    }
     val definitions = facts.definitions.filter { it.profileId == profile.id }
     if (definitions.isEmpty()) Text(stringResource(R.string.tunnels_definitions_empty))
     definitions.forEach { definition ->
-        HorizontalDivider(); Text(definition.name + " · " + definition.protocol.wire.uppercase(), style = MaterialTheme.typography.titleSmall)
-        Text(definition.localHost + ":" + definition.localPort + " → " + (definition.remotePort?.toString() ?: definition.domain.orEmpty()))
-        Text(tunnelConnectionLabel(definition.state)); Text(stringResource(if (definition.enabled) R.string.tunnels_enabled else R.string.tunnels_disabled))
+        TunnelCard {
+        Text(definition.name + " · " + definition.protocol.wire.uppercase(), style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.tunnels_local_help), style = MaterialTheme.typography.bodySmall)
+        SelectionContainer { Text(definition.localHost + ":" + definition.localPort + " → " + (definition.remotePort?.let { profile.host + ":" + it } ?: definition.domain.orEmpty())) }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            TunnelBadge(tunnelConnectionLabel(definition.state), definition.state == TunnelConnectionState.Connected)
+            TunnelBadge(stringResource(if (definition.enabled) R.string.tunnels_enabled else R.string.tunnels_disabled), definition.enabled)
+        }
         Text(stringResource(R.string.tunnels_revision, definition.revision))
         definition.problemCode.takeIf(String::isNotBlank)?.let { Text(tunnelProblemLabel(it), color = MaterialTheme.colorScheme.error) }
-        if (canManage) FlowRow {
+        if (canManage) FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             TextButton(enabled = enabled, onClick = { model.editDefinition(profile.id, definition) }) { Text(stringResource(R.string.tunnels_edit)) }
-            TextButton(enabled = enabled, onClick = { confirm(R.string.tunnels_definition_delete_confirm, definition.name + " · " + definition.id) { model.deleteDefinition(definition) } }) { Text(stringResource(R.string.common_delete)) }
+            TextButton(enabled = enabled, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error), onClick = { confirm(R.string.tunnels_definition_delete_confirm, definition.name + " · " + definition.id) { model.deleteDefinition(definition) } }) { Text(stringResource(R.string.common_delete)) }
+        }
         }
     }
     Text(stringResource(R.string.tunnels_connection_note), style = MaterialTheme.typography.bodySmall)

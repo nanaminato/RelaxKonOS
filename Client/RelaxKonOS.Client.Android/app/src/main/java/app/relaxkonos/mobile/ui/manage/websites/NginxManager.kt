@@ -21,7 +21,7 @@ import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun NginxManager(onChanged: () -> Unit, section: String) {
+internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () -> Unit) {
     val model: NginxViewModel = viewModel()
     val state = model.state
     val sessionEpoch = model.sessionEpoch
@@ -43,12 +43,13 @@ internal fun NginxManager(onChanged: () -> Unit, section: String) {
     }
     LaunchedEffect(state.siteGeneration) { if (state.siteGeneration > 0) onChanged() }
     SectionCard(stringResource(R.string.nginx_title)) {
+        if (section != "records" && (state.uncertain || state.pending.isNotEmpty() || state.pendingInstallation || state.operation?.state?.active == true || state.installation?.state?.active == true)) TextButton(onClick = onRecords) { Text(stringResource(R.string.workspace_records_attention)) }
+        WorkspaceSection(section != "records") {
         Text(stringResource(R.string.nginx_intro), style = MaterialTheme.typography.bodySmall)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             TextButton(onClick = model::refresh, enabled = !state.busy) { Text(stringResource(R.string.nginx_discover)) }
             if (canManage && state.system != HostOperatingSystemKind.Unknown && state.servers.none { it.managementMode == "managed" } && (state.system != HostOperatingSystemKind.Ubuntu || (state.servers.isEmpty() && state.candidates.isEmpty())))
                 OutlinedButton(onClick = { installDialog = true }, enabled = !state.busy && state.installation?.state?.active != true && !state.uncertain) { Text(stringResource(R.string.nginx_install)) }
-            TextButton(onClick = { recoveryDialog = true }, enabled = !state.busy) { Text(stringResource(R.string.nginx_recover)) }
         }
         if (state.busy || state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (state.uncertain) Text(stringResource(R.string.nginx_uncertain), color = MaterialTheme.colorScheme.error)
@@ -79,6 +80,9 @@ internal fun NginxManager(onChanged: () -> Unit, section: String) {
                 }
             }
         }
+        }
+        WorkspaceSection(section == "records") {
+        TextButton(onClick = { recoveryDialog = true }, enabled = !state.busy) { Text(stringResource(R.string.nginx_recover)) }
         WebSiteRecovery(state, model) { message, action -> confirmation = message to action }
         state.pending.forEach { pending ->
             Text(stringResource(R.string.nginx_pending, pending.target), style = MaterialTheme.typography.bodySmall)
@@ -91,6 +95,7 @@ internal fun NginxManager(onChanged: () -> Unit, section: String) {
         }
         if (state.pendingInstallation) Text(stringResource(R.string.nginx_pending_installation), style = MaterialTheme.typography.bodySmall)
         state.operation?.let { operation ->
+            ManagementCard {
             Text(stringResource(R.string.nginx_operation, operation.operationId, nginxOperationStateLabel(operation.state)))
             if (operation.problemCode.isNotBlank()) Text(nginxProblemLabel(operation.problemCode), color = MaterialTheme.colorScheme.error)
             operation.snapshotId?.let { Text(stringResource(R.string.nginx_snapshot, it), style = MaterialTheme.typography.bodySmall) }
@@ -98,8 +103,10 @@ internal fun NginxManager(onChanged: () -> Unit, section: String) {
             if (operation.state.active && canManage) TextButton(enabled = !state.busy, onClick = {
                 confirmation = R.string.operations_cancel_explanation to model::cancelWeb
             }) { Text(stringResource(R.string.operations_request_cancel)) }
+            }
         }
         state.installation?.let { operation ->
+            ManagementCard {
             Text(stringResource(R.string.nginx_operation, operation.operationId, installationStateLabel(operation.state)))
             Text(installationStageLabel(operation.stage))
             operation.progress?.let { Text(stringResource(R.string.installation_stage_progress, it)) }
@@ -108,6 +115,8 @@ internal fun NginxManager(onChanged: () -> Unit, section: String) {
             if (operation.state.active && operation.cancellable && canManage) TextButton(enabled = !state.busy, onClick = {
                 confirmation = R.string.operations_cancel_explanation to model::cancelInstallation
             }) { Text(stringResource(R.string.operations_request_cancel)) }
+            }
+        }
         }
     }
     confirmation?.let { (message, action) ->
@@ -130,8 +139,13 @@ internal fun NginxManager(onChanged: () -> Unit, section: String) {
 @Composable
 private fun InstanceList(state: NginxState, model: NginxViewModel) {
     state.servers.forEach { server ->
-        TextButton(onClick = { model.select(server.id) }, modifier = Modifier.fillMaxWidth()) {
-            Text("Nginx ${server.version ?: "—"}\n${server.id}")
+        OutlinedCard(onClick = { model.select(server.id) }, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                Text("Nginx ${server.version ?: "—"}", style = MaterialTheme.typography.titleMedium)
+                Text(server.id, style = MaterialTheme.typography.bodySmall)
+                Text(server.executablePath, style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(if (server.managementMode == "managed") R.string.nginx_managed else R.string.nginx_integrated))
+            }
         }
     }
 }

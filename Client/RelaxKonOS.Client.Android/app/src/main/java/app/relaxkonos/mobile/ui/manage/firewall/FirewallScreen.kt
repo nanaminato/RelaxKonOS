@@ -6,6 +6,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -26,6 +27,7 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
     val visible = state.owner === owner
     val facts = if (visible) state.facts else null
     val ready = visible && !state.busy && owner?.privilegedOperations == true && facts?.status?.isAvailable == true && state.pending.isEmpty()
+    var section by rememberSaveable(owner) { mutableStateOf("overview") }
     var draft by remember(owner) { mutableStateOf<FirewallRule?>(null) }
     var defaults by remember(owner) { mutableStateOf<Pair<String, String>?>(null) }
     var selected by remember(owner) { mutableStateOf<Int?>(null) }
@@ -38,18 +40,24 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
     DisposableEffect(owner) { onDispose { model.stop() } }
     BackHandler(dirty) { navigate { draft = null; defaults = null; selected = null } }
 
-    Column(modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-        ScreenHeader(stringResource(R.string.firewall_title), onBack = { navigate(onBack) })
+    WorkspaceColumn(stringResource(R.string.firewall_title), { navigate(onBack) }, listOf(WorkspaceDestination("overview", R.string.workspace_overview), WorkspaceDestination("records", R.string.workspace_records)), section,
+        { destination -> navigate { draft = null; defaults = null; section = destination } }, modifier, stateKey = owner) {
         Text(stringResource(R.string.firewall_intro))
-        if (owner?.capabilities?.contains(ServerCapabilities.FIREWALL) != true) { Text(stringResource(R.string.error_capability_missing)); return@Column }
+        if (owner?.capabilities?.contains(ServerCapabilities.FIREWALL) != true) { Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn }
         TextButton(enabled = !state.busy, onClick = { navigate { draft = null; defaults = null; model.refresh() } }) { Text(stringResource(R.string.common_refresh)) }
         if (visible && state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (visible) state.problem?.let { Text(firewallProblem(it), color = MaterialTheme.colorScheme.error) }
-        if (visible) state.pending.forEach { pending ->
+        if (visible && section != "records" && state.pending.isNotEmpty()) TextButton(onClick = { navigate { draft = null; defaults = null; section = "records" } }) { Text(stringResource(R.string.workspace_records_attention)) }
+        if (visible && section == "records") state.pending.forEach { pending ->
+            ManagementCard {
             Text(stringResource(R.string.firewall_pending), color = MaterialTheme.colorScheme.error)
             OutlinedButton(enabled = !state.busy, onClick = { model.accept(pending) }) { Text(stringResource(R.string.firewall_accept_facts)) }
+            }
         }
+        if (visible && section == "records" && state.pending.isEmpty()) ManagementCard { Text(stringResource(R.string.workspace_records_empty)) }
+        WorkspaceSection(section == "overview") {
         if (facts == null) Text(stringResource(R.string.firewall_unverified)) else {
+            ManagementCard {
             Text(stringResource(if (!facts.status.isAvailable) R.string.firewall_unavailable else if (facts.status.isEnabled) R.string.firewall_enabled else R.string.firewall_disabled))
             Text(facts.status.backend, style = MaterialTheme.typography.bodySmall)
             facts.status.version?.let { Text(it) }
@@ -61,6 +69,7 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
                 }
                 OutlinedButton(enabled = ready && !dirty, onClick = { defaults = (facts.status.defaultIncomingPolicy ?: "deny") to (facts.status.defaultOutgoingPolicy ?: "allow") }) { Text(stringResource(R.string.firewall_defaults)) }
                 OutlinedButton(enabled = ready && !dirty, onClick = { selected = null; draft = FirewallRule(0, "allow", "in", "tcp", "any", "any", "", "IPv4 + IPv6") }) { Text(stringResource(R.string.firewall_create)) }
+            }
             }
             if (defaults != null) {
                 FirewallChoices(stringResource(R.string.firewall_incoming), FirewallValues.policies, defaults!!.first) { defaults = it to defaults!!.second }
@@ -74,9 +83,11 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
                     if (expanded || draft == null) Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                         if (facts.rules.isEmpty()) Text(stringResource(R.string.firewall_empty))
                         facts.rules.forEach { rule ->
+                            ManagementCard {
                             ListRow(title = "${rule.number} · ${firewallValue(rule.action)} · ${firewallValue(rule.direction)}", subtitle = "${rule.source} → ${rule.destination}:${rule.port}",
                                 supporting = "${firewallValue(rule.protocol)} · ${rule.addressFamily}", selected = selected == rule.number,
                                 onClick = { navigate { selected = rule.number; draft = null; defaults = null } })
+                            }
                         }
                     }
                     val rule = draft
@@ -101,6 +112,7 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
                 }
             }
         }
+    }
     }
     val pending = confirmation
     if (pending != null) AlertDialog(onDismissRequest = { confirmation = null }, title = { Text(stringResource(R.string.firewall_confirm)) },
