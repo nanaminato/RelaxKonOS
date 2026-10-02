@@ -12,12 +12,17 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System.Windows.Input;
 using Microsoft.Extensions.DependencyInjection;
+using System.Text.Json;
 using RelaxKonOS.Client.Services;
+using RelaxKonOS.Client.Services.Diagnostics;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Client.Services.Theming;
 using RelaxKonOS.Client.Services.SystemUi;
 using RelaxKonOS.Client.Views.Shell;
 using RelaxKonOS.Client.ViewModels.Shell;
+using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Runtime;
+using RelaxKonOS.Shell;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.WindowManager;
 using WindowManagerService = RelaxKonOS.WindowManager.WindowManager;
@@ -26,6 +31,7 @@ using WindowRect = RelaxKonOS.Core.Primitives.Rect;
 
 try
 {
+TaskbarPreviewDiagnostics.Initialize(Path.Combine(AppContext.BaseDirectory, "preview-qa", "logs"));
 AppBuilder.Configure<PreviewTestApp>().UseSkia()
     .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).SetupWithoutStarting();
 using var appearance = new AppearanceService(Application.Current!, new SystemStyleRegistry());
@@ -111,6 +117,10 @@ var single = new TaskbarGroupViewModel(first.Info.OwnerAppId, "First app", [firs
 var multiple = new TaskbarGroupViewModel(second.Info.OwnerAppId, "Second app", [first, second]);
 taskbarPreviews.Register(left, single);
 taskbarPreviews.Register(right, multiple);
+PointerEventArgs? lastIconExit = null;
+PointerEventArgs? lastRightExit = null;
+left.PointerExited += (_, args) => lastIconExit = args;
+right.PointerExited += (_, args) => lastRightExit = args;
 Pump(30);
 var leftPoint = left.TranslatePoint(new Point(20, 20), host)!.Value;
 host.MouseMove(leftPoint);
@@ -118,11 +128,30 @@ Pump(120);
 Check(previewState.OpenTaskbarGroup is null, "Passing briefly over an icon does not open a preview.");
 Pump(350);
 Check(ReferenceEquals(previewState.OpenTaskbarGroup, single), "Hover opens a single-window preview after the delay.");
-var panel = taskbarPreviews.Host.Children.OfType<Border>().Single();
+var panel = taskbarPreviews.Host.Children.OfType<Border>().Single(border => border.Child is ScrollViewer);
+PointerEventArgs? lastPanelExit = null;
+panel.PointerExited += (_, args) => lastPanelExit = args;
+var gapPoint = left.TranslatePoint(new Point(20, -3), host)!.Value;
+host.MouseMove(gapPoint);
+Pump(320);
+Check(ReferenceEquals(previewState.OpenTaskbarGroup, single),
+    "Crossing slowly through the gap between the icon and its preview does not dismiss the strip.");
 var panelPoint = panel.TranslatePoint(new Point(80, 70), host)!.Value;
 host.MouseMove(panelPoint);
 Pump(500);
 Check(ReferenceEquals(previewState.OpenTaskbarGroup, single), "Moving from the icon into its preview keeps it open.");
+foreach (var localPoint in new[] { new Point(20, 20), new Point(180, 20), new Point(80, 120), new Point(4, 80) })
+{
+    host.MouseMove(panel.TranslatePoint(localPoint, host)!.Value);
+    Pump(320);
+    Check(ReferenceEquals(previewState.OpenTaskbarGroup, single),
+        "Moving between preview title, controls, image and padding keeps the strip open.");
+}
+// Model an icon's leave notification arriving after the panel has already received enter.
+left.RaiseEvent(lastIconExit ?? throw new Exception("The icon did not receive a pointer exit."));
+Pump(320);
+Check(ReferenceEquals(previewState.OpenTaskbarGroup, single),
+    "A stale icon-exit timer cannot dismiss a preview while the pointer is still inside it.");
 var rightPoint = right.TranslatePoint(new Point(20, 20), host)!.Value;
 host.MouseMove(rightPoint);
 Pump(50);
@@ -153,9 +182,37 @@ Pump(50);
 var activateButton = panel.GetVisualDescendants().OfType<Button>().Single(button =>
     ReferenceEquals(button.Command, previewState.ActivateTaskbarWindowCommand) && ReferenceEquals(button.CommandParameter, first));
 var activatePoint = activateButton.TranslatePoint(new Point(80, 60), host)!.Value;
+host.MouseMove(activatePoint);
+Pump(30);
 host.MouseDown(activatePoint, MouseButton.Left);
 host.MouseUp(activatePoint, MouseButton.Left);
 Check(first.IsActive && previewState.OpenTaskbarGroup is null, "Clicking a taskbar thumbnail activates the window and dismisses the strip.");
+host.MouseMove(leftPoint);
+Pump(30);
+Check(left.IsPointerOver, "The next icon receives a fresh hover after the thumbnail click.");
+right.RaiseEvent(lastRightExit ?? throw new Exception("The second icon did not receive a pointer exit."));
+left.RaiseEvent(lastIconExit ?? throw new Exception("The first icon did not receive a pointer exit."));
+Pump(450);
+Check(ReferenceEquals(previewState.OpenTaskbarGroup, single),
+    "After a thumbnail click, a late leave event from the previous application cannot cancel the next hover.");
+host.MouseMove(panel.TranslatePoint(new Point(80, 70), host)!.Value);
+Pump(320);
+Check(ReferenceEquals(previewState.OpenTaskbarGroup, single), "The next preview remains usable after reopening by hover.");
+// Replay the production trace: after a click, the parent hover flag becomes false
+// although native input coordinates remain inside the thumbnail. Headless normally
+// keeps that flag correct, so inject only the contradictory flag/leave notification.
+typeof(InputElement).GetProperty(nameof(InputElement.IsPointerOver))!.SetValue(panel, false);
+Check(!panel.IsPointerOver, "Regression fixture reproduces the false parent hover flag from the Windows trace.");
+panel.RaiseEvent(lastPanelExit ?? throw new Exception("The panel did not receive a pointer exit."));
+Pump(320);
+Check(ReferenceEquals(previewState.OpenTaskbarGroup, single),
+    "A false panel hover flag after a thumbnail click cannot close a preview while input coordinates are inside.");
+host.MouseMove(new Point(10, 10));
+typeof(InputElement).GetProperty(nameof(InputElement.IsPointerOver))!.SetValue(panel, true);
+Pump(320);
+Check(previewState.OpenTaskbarGroup is null,
+    "Leaving the preview closes it even when its parent hover flag is stale and true.");
+taskbarPreviews.Dismiss();
 var disposableWindow = manager.Create(new WindowCreateOptions(new AppId("preview.closable"), "Closable document",
     new Border { Background = Brushes.Gold }, new WindowRect(150, 130, 500, 350), IconGlyph: "□"));
 multiple.Update([first, disposableWindow]);
@@ -179,7 +236,33 @@ Check(!second.Thumbnail.HasImage, "Closing releases the frame cache.");
 Check(overview.Items.All(item => item.WindowId != second.Info.Id), "Closed windows disappear from task view.");
 manager.Close(first);
 Check(!overview.IsOverviewVisible, "Closing the final window dismisses task view.");
+RunDesktopShellInteractionRegression(host, settings, localization, services);
 host.Close();
+using (var startup = JsonDocument.Parse(File.ReadLines(TaskbarPreviewDiagnostics.FilePath).First()))
+{
+    Check(startup.RootElement.GetProperty("event").GetString() == "session.start"
+        && startup.RootElement.GetProperty("data").GetProperty("buildId").GetGuid() != Guid.Empty,
+        "Trace identifies the running executable and client build.");
+}
+var traceLines = File.ReadAllLines(TaskbarPreviewDiagnostics.FilePath);
+var traceEvents = new List<string>();
+long previousSequence = 0;
+foreach (var line in traceLines)
+{
+    using var entry = JsonDocument.Parse(line);
+    var sequence = entry.RootElement.GetProperty("seq").GetInt64();
+    CheckSequence(sequence == ++previousSequence);
+    traceEvents.Add(entry.RootElement.GetProperty("event").GetString()!);
+}
+Check(traceEvents.Count(name => name == "vm.activate.begin") == 6
+    && traceEvents.Count(name => name == "vm.activate.end") == 6,
+    "Trace records all six real-shell thumbnail activations from start to completion.");
+Check(new[] { "view.created", "icon.enter", "host.pointerMove", "card.press", "card.release", "card.click", "card.captureLost",
+        "open.timerOrSwitch", "close.timer", "dismiss.begin", "group.changed.hidden", "manager.activeChanged" }
+    .All(traceEvents.Contains), "Trace covers pointer capture, timers, dismissal and activation in event order.");
+Check(!traceLines.Any(line => line.Contains("Preview document") || line.Contains("First real document")),
+    "Trace excludes window titles and document content.");
+Console.WriteLine($"Interaction trace: {TaskbarPreviewDiagnostics.FilePath}");
 Console.WriteLine($"PASS: window preview rendering, caching, native fallback, activation and close lifecycle. QA image: {output}");
 }
 catch (Exception exception)
@@ -188,12 +271,104 @@ catch (Exception exception)
     Environment.Exit(1);
 }
 
+static void CheckSequence(bool valid)
+{
+    if (!valid) throw new Exception("Trace sequence is incomplete or unordered.");
+}
+
 static void Pump(int milliseconds)
 {
     using var cancellation = new CancellationTokenSource(milliseconds);
     Dispatcher.UIThread.MainLoop(cancellation.Token);
     AvaloniaHeadlessPlatform.ForceRenderTimerTick();
     Dispatcher.UIThread.RunJobs();
+}
+
+static void RunDesktopShellInteractionRegression(Window host, ShellSettings settings,
+    LocalizationService localization, IServiceProvider services)
+{
+    var windows = new WindowManagerService();
+    var session = System.Reflection.DispatchProxy.Create<IAuthSession, UnusedPreviewServices>();
+    // This fixture exercises only the actual window/taskbar commands; no remote file,
+    // workspace persistence, application launch or desktop restoration operation is invoked.
+    var vm = new DesktopShellViewModel(windows, new ApplicationManager(windows, services), settings,
+        localization, session, new SshDesktopSession(null!), () => { },
+        null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!);
+    var store = new ShellStateStore();
+    store.Publish(vm);
+    var surfaces = new PreviewSurfaceRegistry(windows);
+    var shell = new WindowsLikeDesktopShell();
+    shell.InitializeAsync(new ShellPresentationContext(store, null!, null!, surfaces, null!), CancellationToken.None)
+        .GetAwaiter().GetResult();
+    host.Content = shell.View;
+    windows.Attach(surfaces.Surfaces!.WindowHost);
+    windows.AttachFullScreenHost(surfaces.Surfaces.FullScreenWindowHost);
+    shell.ActivateAsync(CancellationToken.None).GetAwaiter().GetResult();
+    Pump(50);
+    var app = new AppId("real.preview.tests");
+    var first = windows.Create(new WindowCreateOptions(app, "First real document",
+        new Border { Background = Brushes.Crimson }, new WindowRect(30, 30, 500, 350), IconGlyph: "□"));
+    var second = windows.Create(new WindowCreateOptions(app, "Second real document",
+        new Border { Background = Brushes.RoyalBlue }, new WindowRect(80, 80, 500, 350), IconGlyph: "□"));
+    Pump(50);
+    var group = vm.TaskbarGroups.Single();
+    vm.ShowTaskbarPreview(group);
+    Pump(50);
+    var beforeFocus = shell.View.GetVisualDescendants().OfType<Button>().Single(button =>
+        ReferenceEquals(button.Command, vm.ActivateTaskbarWindowCommand) && ReferenceEquals(button.CommandParameter, first));
+    windows.Focus(first);
+    Pump(50);
+    var afterFocus = shell.View.GetVisualDescendants().OfType<Button>().Single(button =>
+        ReferenceEquals(button.Command, vm.ActivateTaskbarWindowCommand) && ReferenceEquals(button.CommandParameter, first));
+    Check(ReferenceEquals(beforeFocus, afterFocus), "Real shell: activating a window preserves the existing preview controls and pointer state.");
+    vm.CloseTaskbarPreviewCommand.Execute(null);
+    var other = windows.Create(new WindowCreateOptions(new AppId("real.preview.other"), "Another application",
+        new Border { Background = Brushes.Gold }, new WindowRect(120, 120, 500, 350), IconGlyph: "□"));
+    var otherGroup = vm.TaskbarGroups.Single(item => item.AppId == other.Info.OwnerAppId);
+    for (var round = 0; round < 6; round++)
+    {
+        if (round == 4) windows.Close(second);
+        var currentGroup = round == 2 ? otherGroup : group;
+        host.MouseMove(new Point(1100, 100));
+        Pump(320);
+        var icon = shell.View.GetVisualDescendants().OfType<Button>().Single(button =>
+            ReferenceEquals(button.Command, vm.ToggleTaskbarGroupCommand) && ReferenceEquals(button.CommandParameter, currentGroup));
+        var point = icon.TranslatePoint(new Point(20, 20), host)!.Value;
+        host.MouseMove(point);
+        if (round == 0)
+        {
+            Pump(30);
+            host.MouseDown(point, MouseButton.Left);
+            host.MouseUp(point, MouseButton.Left);
+            Pump(50);
+        }
+        else Pump(450);
+        Check(ReferenceEquals(vm.OpenTaskbarGroup, currentGroup), $"Real shell round {round + 1}: preview opens again after the previous thumbnail click.");
+        var target = round == 2 ? other : round >= 4 || round % 2 == 0 ? first : second;
+        var card = shell.View.GetVisualDescendants().OfType<Button>().Single(button =>
+            ReferenceEquals(button.Command, vm.ActivateTaskbarWindowCommand) && ReferenceEquals(button.CommandParameter, target));
+        var cardPoint = card.TranslatePoint(new Point(80, 60), host)!.Value;
+        host.MouseMove(cardPoint);
+        Pump(500);
+        Check(ReferenceEquals(vm.OpenTaskbarGroup, currentGroup), $"Real shell round {round + 1}: hovering the thumbnail keeps the preview usable.");
+        var activeChanges = !target.IsActive;
+        var previewCollapsedBeforeActivation = false;
+        EventHandler<ManagedWindow?> observedActivation = (_, window) =>
+        {
+            if (ReferenceEquals(window, target)) previewCollapsedBeforeActivation = vm.OpenTaskbarGroup is null;
+        };
+        windows.ActiveWindowChanged += observedActivation;
+        host.MouseDown(cardPoint, MouseButton.Left);
+        host.MouseUp(cardPoint, MouseButton.Left);
+        windows.ActiveWindowChanged -= observedActivation;
+        Pump(50);
+        Check(target.IsActive && vm.OpenTaskbarGroup is null, $"Real shell round {round + 1}: clicking the thumbnail activates the window.");
+        if (activeChanges) Check(previewCollapsedBeforeActivation, "Real shell: the preview releases focus before application activation.");
+    }
+    windows.Close(first);
+    windows.Close(second);
+    windows.Close(other);
+    shell.DisposeAsync().GetAwaiter().GetResult();
 }
 
 static void Check(bool condition, string message)
@@ -255,4 +430,23 @@ internal sealed class PreviewContext : ObservableObject, ITaskbarPreviewContext
     }
 
     public void ShowTaskbarPreview(TaskbarGroupViewModel group) => OpenTaskbarGroup = group;
+}
+
+public class UnusedPreviewServices : System.Reflection.DispatchProxy
+{
+    protected override object? Invoke(System.Reflection.MethodInfo? method, object?[]? args)
+    {
+        if (method!.Name.StartsWith("add_", StringComparison.Ordinal) || method.Name.StartsWith("remove_", StringComparison.Ordinal)) return null;
+        if (method.Name.StartsWith("get_", StringComparison.Ordinal))
+            return method.ReturnType.IsValueType ? Activator.CreateInstance(method.ReturnType) : null;
+        throw new InvalidOperationException($"Unexpected remote service invocation in a taskbar test: {method.Name}");
+    }
+}
+
+internal sealed class PreviewSurfaceRegistry(WindowManagerService windows) : IShellSurfaceRegistry
+{
+    public ShellSurfaces? Surfaces { get; private set; }
+    public void Register(ShellSurfaces surfaces) => Surfaces = surfaces;
+    public void Clear() => Surfaces = null;
+    public void UpdateWorkArea(WindowRect workArea) => windows.SetHostBounds(workArea);
 }

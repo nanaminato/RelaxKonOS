@@ -36,9 +36,17 @@ public sealed partial class TaskbarGroupViewModel : ObservableObject
 
     public void Update(IEnumerable<ManagedWindow> windows)
     {
-        Windows.Clear();
-        foreach (var window in windows)
-            Windows.Add(window);
+        // Focus changes refresh taskbar metadata too. Preserve existing entries so their
+        // preview controls, focus and pointer capture survive an activation notification.
+        var desired = windows.ToList();
+        for (var index = Windows.Count - 1; index >= 0; index--)
+            if (!desired.Contains(Windows[index])) Windows.RemoveAt(index);
+        for (var index = 0; index < desired.Count; index++)
+        {
+            var current = Windows.IndexOf(desired[index]);
+            if (current < 0) Windows.Insert(index, desired[index]);
+            else if (current != index) Windows.Move(current, index);
+        }
 
         OnPropertyChanged(nameof(WindowCount));
         OnPropertyChanged(nameof(HasMultipleWindows));
