@@ -8,14 +8,16 @@
 
 ```text
 manifest.json
-manifest.sha256
+deployment/verify-release-inventory.py
 payload/windows/{server,guardian,privileged-helper}/...
 payload/linux/{server,guardian,privileged-helper}/...
 deployment/windows/Install-RelaxKonOSServices.ps1
 deployment/linux/install-relaxkonos-services.sh
 ```
 
-`manifest.json` 和下载描述文件使用 `schemaVersion: 1`，并明确标记 `packageKind`（`client`、`server` 或 `user-server`）；示例见 [release-manifest.example.json](./release-manifest.example.json)。清单列出每个包内文件的长度和 SHA-256；`manifest.sha256` 列出包内除 manifest 文件外的全部文件，Linux System Mode 安装器与 User Mode launcher 都会重算并精确比对该 inventory。线上安装由发布页同时提供 ZIP 的 SHA-256，安装器在解压前检查它。服务器中心按来源处理：官网包在服务器下载并核对官方 ZIP 摘要及逐文件清单；用户选择的本地或服务器 ZIP 不要求官方摘要、不计算逐文件摘要，仍检查包类型、RID、必要文件、版本和安全解压布局。当前发布包不要求签名密钥，也不生成签名伴随文件。
+`manifest.json` 和下载描述文件使用 `schemaVersion: 1`，并明确标记 `packageKind`（`client`、`server` 或 `user-server`）；示例见 [release-manifest.example.json](./release-manifest.example.json)。JSON 清单是唯一的逐文件清单，列出包内除 `manifest.json` 外每个文件的长度和 SHA-256；Linux System Mode 安装器与 User Mode launcher 用 Python 3 重算摘要并精确比对文件集合，拒绝缺失、额外、重复或不安全路径，不再依赖独立的 `manifest.sha256`。线上安装由发布页同时提供 ZIP 的 SHA-256，安装器在解压前检查它。服务器中心按来源处理：官网包在服务器下载并核对官方 ZIP 摘要及逐文件清单；用户选择的本地或服务器 ZIP 不要求官方摘要、不计算逐文件摘要，仍检查包类型、RID、必要文件、版本和安全解压布局。当前发布包不要求签名密钥，也不生成签名伴随文件。
+
+System Mode 升级、普通修复和回滚默认沿用已安装的 TLS 证书及密码，保留客户端信任的证书身份。只有修复时显式要求重新生成自签证书，或提供新的自有 PFX，才替换证书；升级不隐式生成新证书。
 
 发布前可用仓库内的检查工具复核服务器 ZIP：
 

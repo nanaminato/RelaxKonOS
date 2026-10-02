@@ -134,3 +134,18 @@ Explorer 对 Standard 显示可修改管理员账户和密码；对 Administrato
 ## 8. 统一宿主授权验证（2026-10-02）
 
 解决方案构建、管理员授权矩阵、当前 Windows SID/UAC 令牌比对、文件授权来源及主机设置协调器回归通过。HTTP 提权回归覆盖管理员撤权、Alias 补充认证和目标归属。Android JVM 测试验证新版防火墙请求不含密码、一次授权/一次重试及未知结果不重放。Linux PAM、root 锁定、sudoers 撤权与真实 UFW/Windows Helper 的多账户副作用仍需隔离实机验收。
+
+### Linux 局域网实测
+
+2026-10-02，在 Ubuntu 26.04 x64 主机部署提交 `c631d379` 的 `0.2.0-privilege-c631d379` 包，Server 保持 `relaxkonos-server` 身份；Server/Guardian active，HTTPS `/ready` 返回 200。沿用主机已有三类 full 文件策略，没有扩大范围。
+
+- `nanami`、root 和新建普通账户通过真实 PAM 登录。管理员/root 的系统环境变更及 UFW capability 授权无需密码；普通账户缺密码和提供自身密码分别返回 `elevation-password-required`、`elevation-account-not-administrator`，指定有效管理员后取得五分钟授权。
+- 临时账户增加仅允许以 root 运行固定 Helper 的 sudoers 用户项后，同一会话立即取得自动授权；删除该项后下一次请求立即拒绝。未修改现有管理员的组或规则。
+- root-owned 0700 目录内的 0600 测试文件：管理员/root 读取成功，普通账户未经认证返回 403；显式管理员认证后指定文件可读，另一个文件仍返回 403，新登录会话也不能继承授权；五分钟到期后原会话再次读取返回 403。
+- 管理员与普通账户各自在家目录创建目录成功，owner 分别保持本人 UID/GID。
+- 用户批准后，`nanami` 无需二次认证即可读取系统环境快照、预览并写入独立测试变量，操作返回 Applied；Helper 写入后的 `/etc/environment` 保持 root:root 0644。通过对应 operation rollback 返回 RolledBack，恢复后的文件与 root 私有备份逐字节一致，重新登录后的快照 revision 也恢复为原值。手工提交错误 revision 返回 409，没有覆盖当前文件。
+- 未执行 UFW 实际变更、root 锁定、UID 漂移、Helper 停止、并发重试及完整文件操作矩阵；不可将本次结果视为全部发布验收。平板证据见 Android 自有 [Verification](../../Client/RelaxKonOS.Client.Android/docs/status/Verification.md)。
+
+安装器两项缺陷已修复并实测：Linux 与 PowerShell 包统一采用 `manifest.json` 逐文件清单，System/User Mode 共享 JSON inventory 验证器；Linux upgrade 默认复用已安装 PFX 和密码，显式 repair 重新生成证书的入口仍保留。部署 Python 回归 29 项通过，Windows 包来源、版本引擎和启动健康检查通过；新 server ZIP 的 816 个文件通过发布校验器。主机直接升级至 `0.2.0-privilege-c631d379-fix1`，未使用 `--skip-file-checks`；证书 SHA-256 与升级前一致，Server/Guardian active、HTTPS `/ready` 200。
+
+测试账户清理同时移除本轮创建的数据库账户、workspace、默认 registry 和登录凭据，保留审计记录与现有用户；修改前建立 root 私有 SQLite 备份并核对其他账户不变、外键完整性正常。不能只删除 OS 测试用户而保留数据库绑定，否则下一次 Server 启动的身份预检会拒绝启动。系统测试账户、测试文件及临时 sudoers 已全部移除。

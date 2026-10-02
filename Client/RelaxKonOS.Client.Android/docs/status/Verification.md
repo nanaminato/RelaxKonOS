@@ -4,6 +4,10 @@
 
 ## 1. 共同设备与发布检查
 
+2026-10-02 安装器修复包 `0.2.0-privilege-c631d379-fix1` 升级后，SM-X510 重新登录成功，主页继续显示当前 Linux 账户及系统状态，无证书更换确认；证书指纹保留的主机侧验证见 [宿主授权验证](../../../../docs/platform/RelaxKonOS.HostPrivilegeRouting.Goal.md#linux-局域网实测)。本机未勾选保存密码。此证据不等同于平板已完成环境变量变更或证书显式重新生成流程。
+
+2026-10-02 SM-X510 授权联调：离线 `assembleDebug` 通过，最新 Debug APK 安装到实体平板。使用 `nanami` 登录升级后的 Ubuntu 26.04 Server（提交 `c631d379`）成功，主页显示 Linux 与当前账户；管理→防火墙加载 UFW 当前快照，无第二次密码提示。主机防火墙原本停用，本次未启用、修改策略或增删规则。普通用户授权弹窗、空管理员候选、取消/重试、指纹与实际变更尚未在平板验证；宿主 API 的管理员/root/普通用户、精确文件授权、会话隔离及 sudoers 撤权结果见 [宿主授权验证](../../../../docs/platform/RelaxKonOS.HostPrivilegeRouting.Goal.md#linux-局域网实测)。截图位于本地 ignored `artifacts/linux-privilege-live/tablet-firewall.png`，未纳入仓库。
+
 宿主授权：离线 `:app:testDebugUnitTest` 全部通过，覆盖新版防火墙请求无密码字段、一次管理员认证/一次重试、事实变化拒绝、未知结果持久且不重放。共享 Server `--host-operation-authorization-only` 通过，覆盖动态管理员撤权、Alias、User Mode、精确 grant、文件来源、当前 Windows SID/UAC 令牌比对及真实 HTTP 目标归属；`--host-settings-only` 通过。仍须在 Linux 隔离宿主验证锁定 root、非 root sudo 管理员、普通用户、撤权、真实 UFW 和 Helper 副作用；Windows 域组/撤权和真实 Helper，以及手机/平板确认、取消、指纹和跨服务器账户提示均待实机验收。
 
 2026-10-02 局域网自签证书修复：`ServerMaintenanceOptionsTest` 4 项、`ServerMaintenanceTest` 1 项、`ServerCenterDeploymentClientTest` 11 项与离线 `assembleDebug` 通过。覆盖普通修复保留证书/数据、Linux/Windows 系统修复的当前 IP 请求序列化、User Mode 拒绝、空/非法名称拒绝，以及卸载/回滚隔离证书参数。共享启动器 `Tests/Deployment/certificate_repair_checks.py` 2 项通过，覆盖默认保留、显式重新生成、回滚保留及旧引擎拒绝；Bash/PowerShell 启动器语法检查通过。尚未通过 Android 实机执行证书更换；手机/平板的大字体、TalkBack、键盘避让、确认/取消、切换宿主表单隔离、断线回执查询与重新登录核对新指纹，以及真实 Windows 修复均待验证。此前 SSH 直接修复 Linux 宿主的证据不代表移动端端到端验收。
