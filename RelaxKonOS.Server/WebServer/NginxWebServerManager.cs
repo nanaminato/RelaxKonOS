@@ -323,6 +323,8 @@ internal sealed partial class NginxWebServerManager(
             if (request.GrantNginxReadAccess && site.RootPath is not null
                 && !(await privilegedNginx.GrantStaticSiteReadAccessAsync(site.RootPath, cancellationToken)).Success)
                 throw new WebServerSiteApplyException("webserver.site_permission_grant_failed");
+            if (site.RootPath is not null && (!Directory.Exists(site.RootPath) || IsSymbolicLink(site.RootPath)))
+                throw new WebServerSiteValidationException("webserver.site_root_invalid");
             if (index >= 0) sites[index] = site; else sites.Add(site);
             var applyProblem = await WriteSiteConfigurationAsync(instance, site, cancellationToken);
             if (applyProblem is not null)
@@ -461,7 +463,7 @@ internal sealed partial class NginxWebServerManager(
         if (hasLocalCertificate && privateKeyPath is null) privateKeyPath = certificatePath;
         if (hasManagedCertificate && hasLocalCertificate) return false;
         problem = "webserver.site_root_invalid";
-        if (!TryNormalizeRootPath(request.RootPath, out var root)) return false;
+        if (!TryNormalizeRootPath(request.RootPath, out var root, requireAccessibleDirectory: !request.GrantNginxReadAccess)) return false;
         var routes = new List<WebServerProxyRouteDto>();
         foreach (var route in request.Routes ?? [])
         {
@@ -481,7 +483,7 @@ internal sealed partial class NginxWebServerManager(
         return true;
     }
 
-    private static bool TryNormalizeRootPath(string? supplied, out string? root)
+    private static bool TryNormalizeRootPath(string? supplied, out string? root, bool requireAccessibleDirectory)
     {
         root = null;
         if (string.IsNullOrWhiteSpace(supplied)) return true;
@@ -489,7 +491,9 @@ internal sealed partial class NginxWebServerManager(
         {
             if (!Path.IsPathFullyQualified(supplied.Trim())) return false;
             var fullPath = Path.GetFullPath(supplied.Trim());
-            if (!Directory.Exists(fullPath) || IsSymbolicLink(fullPath) || fullPath.Any(char.IsControl)
+            // The privileged ACL operation validates existence and symlinks before granting access.
+            // A restricted parent may hide an otherwise valid directory from the Server until then.
+            if ((requireAccessibleDirectory && (!Directory.Exists(fullPath) || IsSymbolicLink(fullPath))) || fullPath.Any(char.IsControl)
                 || fullPath.IndexOfAny([' ', '\t', '"', '\'', ';', '#', '{', '}', '$']) >= 0) return false;
             root = fullPath;
             return true;

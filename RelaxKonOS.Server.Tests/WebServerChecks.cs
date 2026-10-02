@@ -1,5 +1,21 @@
 internal static class WebServerChecks
 {
+internal static void VerifyStaticSiteRootValidation()
+{
+    var normalize = typeof(NginxWebServerManager).GetMethod("TryNormalizeRootPath", BindingFlags.Static | BindingFlags.NonPublic)
+        ?? throw new InvalidOperationException("Static-site root validator was not found.");
+    bool Accepts(string? path, bool requireAccessibleDirectory)
+        => (bool)normalize.Invoke(null, [path, null, requireAccessibleDirectory])!;
+    var unavailable = Path.Combine(Path.GetTempPath(), "relaxkon-unavailable-" + Guid.NewGuid().ToString("N"));
+    TestAssert.Assert(Accepts(unavailable, false), "Directory visibility must be deferred until the privileged grant.");
+    TestAssert.Assert(!Accepts(unavailable, true), "A missing directory without an ACL grant must be rejected.");
+    TestAssert.Assert(Accepts(Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar), true), "An accessible directory was rejected.");
+    TestAssert.Assert(Accepts(null, false), "Proxy-only sites must not require a static root.");
+    foreach (var invalid in new[] { "relative/site", unavailable + ";injected", unavailable + "\nchild", unavailable + "/bad$name" })
+    {
+        TestAssert.Assert(!Accepts(invalid, false), "ACL grants must not bypass static-root syntax validation.");
+    }
+}
 internal static void VerifyUninstallCapabilities()
 {
     TestAssert.Assert(NginxWebServerManager.CanUninstallInstallation(true, false, false, "nginx.exe", null), "Managed installation must support uninstall.");

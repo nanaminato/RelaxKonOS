@@ -24,6 +24,7 @@ if (args.Contains("--mihomo-runtime-only"))
 }
 if (args.Contains("--webserver-only"))
 {
+    WebServerChecks.VerifyStaticSiteRootValidation();
     WebServerChecks.VerifyUninstallCapabilities();
     WebServerChecks.VerifySiteConcurrency();
     await WebServerChecks.VerifyWebServerProviderRoutingAsync();
@@ -117,6 +118,7 @@ if (args.Length == 5 && args[0] == "--installed-windows-user-execution")
 
 if (args.Contains("--webserver-sites-only"))
 {
+    WebServerChecks.VerifyStaticSiteRootValidation();
     WebServerChecks.VerifyUninstallCapabilities();
     WebServerChecks.VerifySiteConcurrency();
     Console.WriteLine("Web site concurrency and contract checks passed.");
@@ -358,6 +360,7 @@ try
     await ProxyConfigurationChecks.VerifyProxyTunSafetyAsync(root);
     await ProxyConfigurationChecks.VerifyMihomoTunActivationPreservationAsync(root);
     await ProxyConfigurationChecks.VerifyHostNetworkSafetyDiscoveryAsync();
+    WebServerChecks.VerifyStaticSiteRootValidation();
     WebServerChecks.VerifySiteConcurrency();
     await WebServerChecks.VerifyDeploymentAndNginxSnapshotsAsync(root);
     await WebServerChecks.VerifyWebServerProviderRoutingAsync();
