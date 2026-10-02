@@ -1254,8 +1254,9 @@
     <string name="nginx_acme">启用 ACME HTTP-01</string>
     <string name="nginx_acme_confirm">启用 ACME challenge include 并重载配置？此操作不会开放防火墙端口，也不表示公网已可达。</string>
     <string name="nginx_lifecycle_confirm">执行此生命周期变更？现有网站连接可能中断。</string>
-    <string name="nginx_uninstall">卸载受管 Nginx</string>
-    <string name="nginx_uninstall_confirm">停止并移除 RelaxKonOS 受管 Nginx？托管网站将不可用；此入口仅允许移除受管安装。</string>
+    <string name="websites_select_instance">请先在实例页选择 Nginx。</string>
+    <string name="nginx_uninstall">卸载 Nginx</string>
+    <string name="nginx_uninstall_confirm">停止并卸载选中的 Nginx？托管网站将不可用。Ubuntu 会移除系统 Nginx 包及其包配置；Windows 会移除受管安装。</string>
     <string name="nginx_windows_install">Windows 安装官方 Nginx ZIP。选择与包匹配的版本，或由服务器下载。</string>
     <string name="nginx_ubuntu_install">Ubuntu 通过 APT 安装 Nginx。安装系统包及配置需要宿主管理员授权。</string>
     <string name="nginx_source">安装来源</string>
@@ -1788,6 +1789,8 @@
     <string name="firewall_enabled_change">变更防火墙启用状态</string>
     <string name="firewall_defaults_value">默认策略：入站 %1$s；出站 %2$s</string>
     <string name="firewall_defaults">编辑默认策略</string>
+    <string name="firewall_policy_title">默认策略</string>
+    <string name="firewall_unknown_value">未知</string>
     <string name="firewall_create">创建规则</string>
     <string name="firewall_incoming">入站</string>
     <string name="firewall_outgoing">出站</string>
@@ -1802,8 +1805,10 @@
     <string name="firewall_confirm">确认宿主防火墙变更</string>
     <string name="firewall_management_warning">此操作可能阻断当前管理连接和宿主服务。请先放行管理地址与端口。若断线，请重连后核实宿主事实；当前 API 没有自动回滚或重放键。</string>
     <string name="firewall_number">规则编号：%1$d</string>
-    <string name="firewall_discard">放弃未保存的防火墙编辑？</string>
-    <string name="firewall_discard_help">打开所选目标前将放弃草稿。</string>
+    <string name="firewall_discard">放弃未保存的修改？</string>
+    <string name="firewall_discard_help">当前修改尚未保存，放弃后将丢失。</string>
+    <string name="firewall_discard_action">放弃修改</string>
+    <string name="firewall_continue_editing">继续编辑</string>
     <string name="firewall_allow">允许</string>
     <string name="firewall_deny">拒绝</string>
     <string name="firewall_reject">拒绝并响应</string>

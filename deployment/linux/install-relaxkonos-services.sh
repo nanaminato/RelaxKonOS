@@ -254,6 +254,7 @@ else
 fi
 # The Server writes only its Nginx ownership marker here; Nginx itself remains configured by
 # the distribution-owned /etc/nginx/nginx.conf and nginx.service.
+install -d -o root -g "$SERVICE_GROUP" -m 0710 "$DATA_ROOT/webserver"
 install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 "$WEBSERVER_DATA"
 
 install_docker_access_policy() {

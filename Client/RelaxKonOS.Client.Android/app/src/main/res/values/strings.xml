@@ -1292,8 +1292,9 @@
     <string name="nginx_acme">Enable ACME HTTP-01</string>
     <string name="nginx_acme_confirm">Enable the ACME challenge include and reload configuration? This does not open firewall ports or prove public reachability.</string>
     <string name="nginx_lifecycle_confirm">Apply this lifecycle change? Existing website connections may be interrupted.</string>
-    <string name="nginx_uninstall">Uninstall managed Nginx</string>
-    <string name="nginx_uninstall_confirm">Stop and remove the RelaxKonOS managed Nginx installation? Hosted websites will become unavailable. Integrated external installations cannot be removed here.</string>
+    <string name="websites_select_instance">Select Nginx on the Instances page first.</string>
+    <string name="nginx_uninstall">Uninstall Nginx</string>
+    <string name="nginx_uninstall_confirm">Stop and uninstall the selected Nginx? Hosted websites will become unavailable. Ubuntu removes the system Nginx package and its package configuration; Windows removes the managed installation.</string>
     <string name="nginx_windows_install">Windows installs an official Nginx ZIP. Select a release version matching the archive, or download on the server.</string>
     <string name="nginx_ubuntu_install">Ubuntu installs Nginx through APT. Package installation and configuration require host administrator authorization.</string>
     <string name="nginx_source">Package source</string>
@@ -1825,6 +1826,8 @@
     <string name="firewall_disable">Disable firewall</string>
     <string name="firewall_enabled_change">Change firewall enabled state</string>
     <string name="firewall_defaults_value">Defaults: incoming %1$s; outgoing %2$s</string>
+    <string name="firewall_policy_title">Default policies</string>
+    <string name="firewall_unknown_value">Unknown</string>
     <string name="firewall_defaults">Edit default policies</string>
     <string name="firewall_create">Create rule</string>
     <string name="firewall_incoming">Incoming</string>
@@ -1840,8 +1843,10 @@
     <string name="firewall_confirm">Confirm host firewall change</string>
     <string name="firewall_management_warning">This can block the current management connection and hosted services. Allow the management address and port first. If the connection is lost, reconnect and inspect current host facts; this API has no automatic rollback or replay key.</string>
     <string name="firewall_number">Rule number: %1$d</string>
-    <string name="firewall_discard">Discard unsaved firewall edits?</string>
-    <string name="firewall_discard_help">The draft will be discarded before opening the selected destination.</string>
+    <string name="firewall_discard">Discard unsaved changes?</string>
+    <string name="firewall_discard_help">Your changes have not been saved and will be lost if discarded.</string>
+    <string name="firewall_discard_action">Discard changes</string>
+    <string name="firewall_continue_editing">Continue editing</string>
     <string name="firewall_allow">Allow</string>
     <string name="firewall_deny">Deny</string>
     <string name="firewall_reject">Reject with response</string>

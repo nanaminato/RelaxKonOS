@@ -30,15 +30,18 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
     var section by rememberSaveable(owner) { mutableStateOf("overview") }
     var draft by remember(owner) { mutableStateOf<FirewallRule?>(null) }
     var defaults by remember(owner) { mutableStateOf<Pair<String, String>?>(null) }
+    var initialDraft by remember(owner) { mutableStateOf<FirewallRule?>(null) }
+    var initialDefaults by remember(owner) { mutableStateOf<Pair<String, String>?>(null) }
     var selected by remember(owner) { mutableStateOf<Int?>(null) }
     var confirmation by remember(owner) { mutableStateOf<FirewallConfirmation?>(null) }
     var leave by remember(owner) { mutableStateOf<(() -> Unit)?>(null) }
-    val dirty = draft != null || defaults != null
+    val editing = draft != null || defaults != null
+    val dirty = (draft != null && draft != initialDraft) || (defaults != null && defaults != initialDefaults)
     val navigate: (() -> Unit) -> Unit = { action -> if (dirty) leave = action else action() }
     LaunchedEffect(owner, state.owner) { if (owner != null && visible) model.refresh() }
     LaunchedEffect(owner, state.saved) { if (visible && state.saved > 0) { draft = null; defaults = null } }
     DisposableEffect(owner) { onDispose { model.stop() } }
-    BackHandler(dirty) { navigate { draft = null; defaults = null; selected = null } }
+    BackHandler(editing) { navigate { draft = null; defaults = null } }
 
     WorkspaceColumn(stringResource(R.string.firewall_title), { navigate(onBack) }, listOf(WorkspaceDestination("overview", R.string.workspace_overview), WorkspaceDestination("records", R.string.workspace_records)), section,
         { destination -> navigate { draft = null; defaults = null; section = destination } }, modifier, stateKey = owner) {
@@ -58,29 +61,54 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
         WorkspaceSection(section == "overview") {
         if (facts == null) Text(stringResource(R.string.firewall_unverified)) else {
             ManagementCard {
-            Text(stringResource(if (!facts.status.isAvailable) R.string.firewall_unavailable else if (facts.status.isEnabled) R.string.firewall_enabled else R.string.firewall_disabled))
-            Text(facts.status.backend, style = MaterialTheme.typography.bodySmall)
-            facts.status.version?.let { Text(it) }
-            Text(stringResource(R.string.firewall_defaults_value, firewallValue(facts.status.defaultIncomingPolicy), firewallValue(facts.status.defaultOutgoingPolicy)))
+            Surface(shape = MaterialTheme.shapes.medium, color = when {
+                !facts.status.isAvailable -> MaterialTheme.colorScheme.errorContainer
+                facts.status.isEnabled -> MaterialTheme.colorScheme.primaryContainer
+                else -> MaterialTheme.colorScheme.surfaceVariant
+            }) {
+                Text(stringResource(if (!facts.status.isAvailable) R.string.firewall_unavailable else if (facts.status.isEnabled) R.string.firewall_enabled else R.string.firewall_disabled),
+                    Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm), style = MaterialTheme.typography.titleMedium)
+            }
+            Text(listOfNotNull(facts.status.backend.uppercase(), facts.status.version).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.firewall_policy_title), style = MaterialTheme.typography.titleSmall)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.firewall_incoming), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(firewallValue(facts.status.defaultIncomingPolicy))
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.firewall_outgoing), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(firewallValue(facts.status.defaultOutgoingPolicy))
+                }
+            }
             state.checkedAtMillis?.let { Text(stringResource(R.string.operations_checked, DateFormat.getDateTimeInstance().format(Date(it)))) }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                OutlinedButton(enabled = ready && !dirty, onClick = { confirmation = FirewallConfirmation(facts, FirewallChange(FirewallChangeKind.Enabled, enabled = !facts.status.isEnabled)) }) {
+                OutlinedButton(enabled = ready && !editing, onClick = { confirmation = FirewallConfirmation(facts, FirewallChange(FirewallChangeKind.Enabled, enabled = !facts.status.isEnabled)) }) {
                     Text(stringResource(if (facts.status.isEnabled) R.string.firewall_disable else R.string.firewall_enable))
                 }
-                OutlinedButton(enabled = ready && !dirty, onClick = { defaults = (facts.status.defaultIncomingPolicy ?: "deny") to (facts.status.defaultOutgoingPolicy ?: "allow") }) { Text(stringResource(R.string.firewall_defaults)) }
-                OutlinedButton(enabled = ready && !dirty, onClick = { selected = null; draft = FirewallRule(0, "allow", "in", "tcp", "any", "any", "", "IPv4 + IPv6") }) { Text(stringResource(R.string.firewall_create)) }
+                OutlinedButton(enabled = ready && !editing, onClick = {
+                    initialDefaults = (facts.status.defaultIncomingPolicy ?: "deny") to (facts.status.defaultOutgoingPolicy ?: "allow")
+                    defaults = initialDefaults
+                }) { Text(stringResource(R.string.firewall_defaults)) }
+                OutlinedButton(enabled = ready && !editing, onClick = {
+                    selected = null
+                    initialDraft = FirewallRule(0, "allow", "in", "tcp", "any", "any", "", "IPv4 + IPv6")
+                    draft = initialDraft
+                }) { Text(stringResource(R.string.firewall_create)) }
             }
             }
-            if (defaults != null) {
+            if (defaults != null && confirmation == null && leave == null) AlertDialog(
+                onDismissRequest = { navigate { defaults = null } }, modifier = Modifier.imePadding(),
+                title = { Text(stringResource(R.string.firewall_defaults)) },
+                text = { Column(Modifier.heightIn(max = 430.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 FirewallChoices(stringResource(R.string.firewall_incoming), FirewallValues.policies, defaults!!.first) { defaults = it to defaults!!.second }
                 FirewallChoices(stringResource(R.string.firewall_outgoing), FirewallValues.policies, defaults!!.second) { defaults = defaults!!.first to it }
-                Button(enabled = ready, onClick = { confirmation = FirewallConfirmation(facts, FirewallChange(FirewallChangeKind.Defaults, incoming = defaults!!.first, outgoing = defaults!!.second)) }) { Text(stringResource(R.string.common_save)) }
-                TextButton(onClick = { defaults = null }) { Text(stringResource(R.string.common_cancel)) }
-            }
+                } },
+                confirmButton = { Button(enabled = ready, onClick = { confirmation = FirewallConfirmation(facts, FirewallChange(FirewallChangeKind.Defaults, incoming = defaults!!.first, outgoing = defaults!!.second)) }) { Text(stringResource(R.string.common_save)) } },
+                dismissButton = { TextButton(onClick = { navigate { defaults = null } }) { Text(stringResource(R.string.common_cancel)) } })
             BoxWithConstraints(Modifier.fillMaxWidth()) {
-                val expanded = maxWidth >= 600.dp
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                    if (expanded || draft == null) Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                         if (facts.rules.isEmpty()) Text(stringResource(R.string.firewall_empty))
                         facts.rules.forEach { rule ->
                             ManagementCard {
@@ -91,23 +119,26 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
                         }
                     }
                     val rule = draft
-                    if (rule != null) Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    if (rule != null && confirmation == null && leave == null) AlertDialog(
+                        onDismissRequest = { navigate { draft = null } }, modifier = Modifier.imePadding(),
+                        title = { Text(stringResource(if (rule.number == 0) R.string.firewall_create else R.string.firewall_edit)) },
+                        text = { Column(Modifier.heightIn(max = 430.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                         FirewallChoices(stringResource(R.string.firewall_action), FirewallValues.actions, rule.action) { draft = rule.copy(action = it) }
                         FirewallChoices(stringResource(R.string.firewall_direction), FirewallValues.directions, rule.direction) { draft = rule.copy(direction = it) }
                         FirewallChoices(stringResource(R.string.firewall_protocol), FirewallValues.protocols, rule.protocol) { draft = rule.copy(protocol = it) }
-                        OutlinedTextField(rule.source, { draft = rule.copy(source = it) }, label = { Text(stringResource(R.string.firewall_source)) }, singleLine = true)
-                        OutlinedTextField(rule.destination, { draft = rule.copy(destination = it) }, label = { Text(stringResource(R.string.firewall_destination)) }, singleLine = true)
-                        OutlinedTextField(rule.port, { draft = rule.copy(port = it) }, label = { Text(stringResource(R.string.firewall_port)) }, singleLine = true)
+                        OutlinedTextField(rule.source, { draft = rule.copy(source = it) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.firewall_source)) }, singleLine = true)
+                        OutlinedTextField(rule.destination, { draft = rule.copy(destination = it) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.firewall_destination)) }, singleLine = true)
+                        OutlinedTextField(rule.port, { draft = rule.copy(port = it) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.firewall_port)) }, singleLine = true)
                         Text(stringResource(R.string.firewall_rule_help), style = MaterialTheme.typography.bodySmall)
+                        } }, confirmButton = {
                         val change = FirewallChange(if (rule.number == 0) FirewallChangeKind.Create else FirewallChangeKind.Replace, rule.number.takeIf { it > 0 }, rule = rule)
                         Button(enabled = ready && runCatching { change.validate() }.isSuccess, onClick = { confirmation = FirewallConfirmation(facts, change) }) { Text(stringResource(R.string.common_save)) }
-                        TextButton(onClick = { draft = null }) { Text(stringResource(R.string.common_cancel)) }
-                    }
+                        }, dismissButton = { TextButton(onClick = { navigate { draft = null } }) { Text(stringResource(R.string.common_cancel)) } })
                 }
             }
             facts.rules.firstOrNull { it.number == selected }?.let { rule ->
-                if (!dirty) FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    OutlinedButton(enabled = ready, onClick = { draft = rule }) { Text(stringResource(R.string.firewall_edit)) }
+                if (!editing) FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    OutlinedButton(enabled = ready, onClick = { initialDraft = rule; draft = rule }) { Text(stringResource(R.string.firewall_edit)) }
                     OutlinedButton(enabled = ready, onClick = { confirmation = FirewallConfirmation(facts, FirewallChange(FirewallChangeKind.Delete, rule.number)) }) { Text(stringResource(R.string.common_delete)) }
                 }
             }
@@ -128,8 +159,8 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
             model.change(pending.expected, pending.change)
         }) { Text(stringResource(R.string.firewall_submit)) } }, dismissButton = { TextButton(onClick = { confirmation = null }) { Text(stringResource(R.string.common_cancel)) } })
     if (leave != null) AlertDialog(onDismissRequest = { leave = null }, title = { Text(stringResource(R.string.firewall_discard)) },
-        text = { Text(stringResource(R.string.firewall_discard_help)) }, confirmButton = { TextButton(onClick = { val action = leave; leave = null; action?.invoke() }) { Text(stringResource(R.string.firewall_submit)) } },
-        dismissButton = { TextButton(onClick = { leave = null }) { Text(stringResource(R.string.common_cancel)) } })
+        text = { Text(stringResource(R.string.firewall_discard_help)) }, confirmButton = { TextButton(onClick = { val action = leave; leave = null; action?.invoke() }) { Text(stringResource(R.string.firewall_discard_action)) } },
+        dismissButton = { TextButton(onClick = { leave = null }) { Text(stringResource(R.string.firewall_continue_editing)) } })
 }
 @OptIn(ExperimentalLayoutApi::class)
 @Composable private fun FirewallChoices(label: String, values: List<String>, selected: String, onSelect: (String) -> Unit) {
@@ -143,7 +174,7 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
 @Composable private fun firewallValue(value: String?): String = when (value) {
     "allow" -> stringResource(R.string.firewall_allow); "deny" -> stringResource(R.string.firewall_deny); "reject" -> stringResource(R.string.firewall_reject)
     "limit" -> stringResource(R.string.firewall_limit); "in" -> stringResource(R.string.firewall_incoming); "out" -> stringResource(R.string.firewall_outgoing)
-    "any" -> stringResource(R.string.firewall_any); "tcp" -> "TCP"; "udp" -> "UDP"; else -> stringResource(R.string.firewall_unverified)
+    "any" -> stringResource(R.string.firewall_any); "tcp" -> "TCP"; "udp" -> "UDP"; else -> stringResource(R.string.firewall_unknown_value)
 }
 @Composable private fun firewallProblem(code: String) = stringResource(when (code) {
     "firewall.facts_changed" -> R.string.firewall_conflict

@@ -9,6 +9,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -29,6 +30,7 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
     val canManage = owner?.privilegedOperations == true
     var installDialog by remember(owner, sessionEpoch) { mutableStateOf(false) }
     var recoveryDialog by remember(owner, sessionEpoch) { mutableStateOf(false) }
+    var instanceDetailsVisible by remember(owner, sessionEpoch) { mutableStateOf(false) }
     var confirmation by remember(owner, sessionEpoch) { mutableStateOf<Pair<Int, () -> Unit>?>(null) }
     LaunchedEffect(owner, sessionEpoch) { if (owner != null) model.refresh() }
     LaunchedEffect(owner, sessionEpoch, state.operation?.operationId, state.operation?.state, state.installation?.operationId, state.installation?.state, state.busy) {
@@ -42,33 +44,43 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
         }
     }
     LaunchedEffect(state.siteGeneration) { if (state.siteGeneration > 0) onChanged() }
-    SectionCard(stringResource(R.string.nginx_title)) {
+    SectionCard(stringResource(if (section == "sites") R.string.websites_site_manager else R.string.nginx_title)) {
         if (section != "records" && (state.uncertain || state.pending.isNotEmpty() || state.pendingInstallation || state.operation?.state?.active == true || state.installation?.state?.active == true)) TextButton(onClick = onRecords) { Text(stringResource(R.string.workspace_records_attention)) }
         WorkspaceSection(section != "records") {
+        WorkspaceSection(section == "instances") {
         Text(stringResource(R.string.nginx_intro), style = MaterialTheme.typography.bodySmall)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             TextButton(onClick = model::refresh, enabled = !state.busy) { Text(stringResource(R.string.nginx_discover)) }
             if (canManage && state.system != HostOperatingSystemKind.Unknown && state.servers.none { it.managementMode == "managed" } && (state.system != HostOperatingSystemKind.Ubuntu || (state.servers.isEmpty() && state.candidates.isEmpty())))
                 OutlinedButton(onClick = { installDialog = true }, enabled = !state.busy && state.installation?.state?.active != true && !state.uncertain) { Text(stringResource(R.string.nginx_install)) }
         }
+        }
         if (state.busy || state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (state.uncertain) Text(stringResource(R.string.nginx_uncertain), color = MaterialTheme.colorScheme.error)
         state.problemCode?.let { Text(nginxProblemLabel(it), color = MaterialTheme.colorScheme.error) }
         if (state.catalog?.problemCode?.isNotBlank() == true) Text(nginxProblemLabel(state.catalog.problemCode), color = MaterialTheme.colorScheme.error)
         if (state.servers.isEmpty() && !state.loading) Text(stringResource(R.string.websites_no_servers))
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
+        if (section == "sites") {
             val selected = state.servers.firstOrNull { it.id == state.selectedId }
-            if (maxWidth >= 600.dp) Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                Column(Modifier.weight(1f)) { InstanceList(state, model) }
-                Column(Modifier.weight(2f)) { selected?.let { InstanceDetails(it, state, canManage, model, section) { message, action -> confirmation = message to action } } }
-            } else Column {
-                if (selected == null) InstanceList(state, model) else {
-                    TextButton(onClick = { model.select(null) }) { Text(stringResource(R.string.common_back)) }
-                    InstanceDetails(selected, state, canManage, model, section) { message, action -> confirmation = message to action }
-                }
+            if (selected == null) Text(stringResource(R.string.websites_select_instance))
+            else {
+                Text("Nginx ${selected.version ?: "—"} · ${selected.executablePath}", style = MaterialTheme.typography.bodySmall)
+                WebSiteList(selected, state, canManage, model) { message, action -> confirmation = message to action }
             }
         }
-        if (state.candidates.isNotEmpty()) {
+        WorkspaceSection(section == "instances") { BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val selected = state.servers.firstOrNull { it.id == state.selectedId }
+            if (maxWidth >= 600.dp) Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                Column(Modifier.weight(1f)) { InstanceList(state) { model.select(it); instanceDetailsVisible = true } }
+                Column(Modifier.weight(2f)) { selected?.let { InstanceDetails(it, state, canManage, model, section, onRecords) { message, action -> confirmation = message to action } } }
+            } else Column {
+                if (selected == null || !instanceDetailsVisible) InstanceList(state) { model.select(it); instanceDetailsVisible = true } else {
+                    TextButton(onClick = { instanceDetailsVisible = false }) { Text(stringResource(R.string.common_back)) }
+                    InstanceDetails(selected, state, canManage, model, section, onRecords) { message, action -> confirmation = message to action }
+                }
+            }
+        } }
+        if (section == "instances" && state.candidates.isNotEmpty()) {
             Text(stringResource(R.string.nginx_candidates), style = MaterialTheme.typography.titleSmall)
             state.candidates.forEach { candidate ->
                 Text(candidate.executablePath, style = MaterialTheme.typography.bodySmall)
@@ -137,9 +149,9 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
 }
 
 @Composable
-private fun InstanceList(state: NginxState, model: NginxViewModel) {
+private fun InstanceList(state: NginxState, onSelect: (String) -> Unit) {
     state.servers.forEach { server ->
-        OutlinedCard(onClick = { model.select(server.id) }, modifier = Modifier.fillMaxWidth()) {
+        OutlinedCard(onClick = { onSelect(server.id) }, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Text("Nginx ${server.version ?: "—"}", style = MaterialTheme.typography.titleMedium)
                 Text(server.id, style = MaterialTheme.typography.bodySmall)
@@ -152,7 +164,7 @@ private fun InstanceList(state: NginxState, model: NginxViewModel) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun InstanceDetails(server: WebServer, state: NginxState, canManage: Boolean, model: NginxViewModel, section: String,
+private fun InstanceDetails(server: WebServer, state: NginxState, canManage: Boolean, model: NginxViewModel, section: String, onRecords: () -> Unit,
     confirm: (Int, () -> Unit) -> Unit) {
     Text(stringResource(if (server.managementMode == "managed") R.string.nginx_managed else R.string.nginx_integrated))
     Text(server.executablePath, style = MaterialTheme.typography.bodySmall)
@@ -170,7 +182,6 @@ private fun InstanceDetails(server: WebServer, state: NginxState, canManage: Boo
         test.valid -> R.string.websites_config_valid
         else -> R.string.websites_config_invalid }))
     test?.problemCode?.takeIf(String::isNotBlank)?.let { Text(nginxProblemLabel(it)) }
-    WorkspaceSection(section == "sites") { WebSiteList(server, state, canManage, model, confirm) }
 WorkspaceSection(section == "instances") {
     if (canManage) FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         WebServerAction.entries.filter { it.supported(server) }.forEach { action ->
@@ -179,8 +190,8 @@ WorkspaceSection(section == "instances") {
                 Text(nginxActionLabel(action))
             }
         }
-        if (server.canUninstall && server.managementMode == "managed") OutlinedButton(enabled = !state.busy && state.installation?.state?.active != true && !state.pendingInstallation && !model.hasIntent,
-            onClick = { confirm(R.string.nginx_uninstall_confirm) { model.install(null, false, InstallationKind.Uninstall) } }) { Text(stringResource(R.string.nginx_uninstall)) }
+        if (server.canUninstall) OutlinedButton(enabled = !state.busy && !state.loading && state.operation?.state?.active != true && state.pending.none { it.target == server.id } && state.installation?.state?.active != true && !state.pendingInstallation && !model.hasIntent,
+            onClick = { confirm(R.string.nginx_uninstall_confirm) { model.uninstall(server); onRecords() } }) { Text(stringResource(R.string.nginx_uninstall)) }
     }}
 
 }
@@ -224,7 +235,10 @@ private fun NginxInstallDialog(model: NginxViewModel, dismiss: () -> Unit) {
             state.uploadBytes?.let { Text(stringResource(R.string.nginx_upload_bytes, it)) }
             if (state.uncertain) Text(stringResource(R.string.nginx_uncertain), color = MaterialTheme.colorScheme.error)
             state.problemCode?.let { Text(nginxProblemLabel(it), color = MaterialTheme.colorScheme.error) }
-            Row { Checkbox(confirmed, { confirmed = it }, enabled = !state.busy); Text(stringResource(R.string.nginx_install_confirm)) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(confirmed, { confirmed = it }, enabled = !state.busy)
+                Text(stringResource(R.string.nginx_install_confirm))
+            }
         } },
         confirmButton = { Button(enabled = !state.busy && confirmed && (model.hasIntent || (!state.pendingInstallation &&
             (!windows || (version.matches(Regex("[0-9]+\\.[0-9]+\\.[0-9]+")) && (source == 0 || state.reference?.expired() == false))))),
@@ -269,6 +283,7 @@ internal fun nginxProblemLabel(code: String): String = when {
         "webserver.config_test_failed", "webserver.include_context_not_supported", "webserver.configuration_not_found" -> R.string.nginx_config_failed
         "webserver.managed_required", "webserver.reload_not_permitted", "webserver.install_unsupported_platform", "webserver.acme_integration_required" -> R.string.nginx_unsupported
         "webserver.privileged_helper_unavailable" -> R.string.nginx_helper_failed
+        "webserver.install_failed", "webserver.uninstall_failed" -> R.string.installation_problem_failed
         "webserver.operation_cancelled" -> R.string.operations_cancelled
         "webserver.acme_no_managed_sites" -> R.string.nginx_acme_no_sites
         else -> R.string.error_generic

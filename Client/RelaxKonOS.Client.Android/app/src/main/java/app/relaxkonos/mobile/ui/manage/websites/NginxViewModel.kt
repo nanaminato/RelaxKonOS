@@ -178,6 +178,13 @@ internal class NginxViewModel(application: Application) : AndroidViewModel(appli
         }
     }
     fun integrate(candidate: WebServerCandidate) = webMutation { active -> container.webServers.integrate(active, candidate, container.elevationAnswers) }
+    fun uninstall(server: WebServer) {
+        if (state.selectedId != server.id || state.servers.none { it.id == server.id && it.canUninstall } ||
+            state.busy || state.loading || state.operation?.state?.active == true ||
+            state.pending.any { it.target == server.id } || state.installation?.state?.active == true ||
+            state.pendingInstallation || intent != null) return
+        install(null, false, InstallationKind.Uninstall)
+    }
     fun lifecycle(server: WebServer, action: WebServerAction) = webMutation { active -> container.webServers.lifecycle(active, server, action, container.elevationAnswers) }
     fun resume(pending: PendingWebServerRequest) = webMutation { active -> container.webServers.resume(active, pending, container.elevationAnswers) }
     fun recover(id: String) = webMutation { active -> container.webServers.recoverById(active, id.trim()) }

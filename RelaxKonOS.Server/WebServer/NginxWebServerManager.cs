@@ -790,7 +790,7 @@ internal sealed partial class NginxWebServerManager(
             CanStart: isManaged,
             CanStop: isManaged,
             CanRestart: isManaged,
-            CanUninstall: isManaged);
+            CanUninstall: CanUninstallInstallation(isManaged, CanUseBuiltInInstaller(), integrated, executable, configPath));
         var instance = new WebServerDto(InstanceId(executable), ProviderKey, WebServerType.Nginx, mode, executable, configPath, version, DateTimeOffset.UtcNow, capabilities);
         await metadata.UpsertInstanceAsync(instance, cancellationToken);
         return instance;
@@ -1020,7 +1020,8 @@ internal sealed partial class NginxWebServerManager(
             return await InstallWindowsManagedAsync(layout, request, progress, cancellationToken);
         await progress.ReportAsync("installing_package", cancellationToken);
         var install = await RunInstallerAsync(layout, null, cancellationToken);
-        if (!install.Success) return new WebServerOperationResult(ToWebServerProblem(install.ProblemCode, "webserver.install_failed"));
+        if (!install.Success) return new WebServerOperationResult(install.ProblemCode == PrivilegedProblemCode.AccessDenied
+            ? "webserver.install_elevation_required" : ToWebServerProblem(install.ProblemCode, "webserver.install_failed"));
         await progress.ReportAsync("verifying_layout", cancellationToken);
         if (!File.Exists(layout.ExecutablePath) || IsSymbolicLink(layout.ExecutablePath) || !Directory.Exists(layout.Root) || IsSymbolicLink(layout.Root))
             return new WebServerOperationResult("webserver.install_layout_invalid");
@@ -1126,10 +1127,16 @@ internal sealed partial class NginxWebServerManager(
             var result = await privilegedNginx.ApplyWindowsRuntimeAsync(WindowsManagedRuntimeAction.Uninstall, cancellationToken: cancellationToken);
             return new(result.Success ? "" : ToWebServerProblem(result.ProblemCode, "webserver.uninstall_failed"));
         }
-        if (!IsManagedInstallation(layout)) return new WebServerOperationResult("webserver.managed_required");
+        var isManaged = IsManagedInstallation(layout);
+        if (!isManaged)
+        {
+            var integrated = await DetectAsync(layout.ExecutablePath, null, cancellationToken);
+            if (integrated?.Capabilities.CanUninstall != true)
+                return new WebServerOperationResult("webserver.managed_required");
+        }
         if (UsesSystemPackageManagedService())
         {
-            await StopLegacyCustomManagedInstanceAsync(layout, cancellationToken);
+            if (isManaged) await StopLegacyCustomManagedInstanceAsync(layout, cancellationToken);
             _ = await RunSystemdNginxAsync("disable", cancellationToken, "--now");
         }
         else
@@ -1144,7 +1151,7 @@ internal sealed partial class NginxWebServerManager(
                 logger.LogWarning("Could not remove the APT-installed Nginx package for a managed installation. Executable={Executable}", layout.ExecutablePath);
                 return new WebServerOperationResult(ToWebServerProblem(uninstall.ProblemCode, "webserver.uninstall_failed"));
             }
-            Directory.Delete(layout.Root, recursive: true);
+            if (isManaged) Directory.Delete(layout.Root, recursive: true);
             return new WebServerOperationResult("");
         }
         catch (UnauthorizedAccessException) { return new WebServerOperationResult("webserver.install_elevation_required"); }
@@ -1169,6 +1176,11 @@ internal sealed partial class NginxWebServerManager(
 
     private static bool CanUseBuiltInInstaller() => OperatingSystem.IsLinux() && File.Exists("/usr/bin/apt-get");
 
+    internal static bool CanUninstallInstallation(bool managed, bool supportsApt, bool integrated,
+        string executable, string? configuration) => managed ||
+        (supportsApt && integrated && string.Equals(executable, "/usr/sbin/nginx", StringComparison.Ordinal)
+            && string.Equals(configuration, "/etc/nginx/nginx.conf", StringComparison.Ordinal));
+
     // Arbitrary host-configured installers are deliberately not supported. Package installation
     // uses the fixed, Helper-owned apt operation; other platforms report not-supported.
     private Task<NginxInstallResult> RunInstallerAsync(ManagedLayout layout, string? version, CancellationToken cancellationToken) =>
@@ -1177,6 +1189,22 @@ internal sealed partial class NginxWebServerManager(
     private async Task<NginxInstallResult> RunBuiltInLinuxInstallerAsync(ManagedLayout layout, string? version, CancellationToken cancellationToken)
     {
         if (!CanUseBuiltInInstaller()) return new(false, PrivilegedProblemCode.UnsupportedOperation);
+        // Check service-account storage before APT changes the host, so a missing marker
+        // permission does not leave a successfully installed package reported as failed.
+        try
+        {
+            if (IsSymbolicLink(layout.Root)) return new(false, PrivilegedProblemCode.AccessDenied);
+            Directory.CreateDirectory(layout.Root);
+            var probe = Path.Combine(layout.Root, $".write-probe-{Guid.NewGuid():N}");
+            await using (var stream = new FileStream(probe, FileMode.CreateNew, FileAccess.Write,
+                FileShare.None, 1, FileOptions.DeleteOnClose))
+                await stream.FlushAsync(cancellationToken);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            logger.LogError(exception, "The service account cannot write the managed Nginx marker root. ManagedMarkerRoot={ManagedMarkerRoot}", layout.Root);
+            return new(false, PrivilegedProblemCode.AccessDenied);
+        }
         logger.LogInformation("Installing the APT Nginx package. RequestedVersion={RequestedVersion}, ManagedMarkerRoot={ManagedMarkerRoot}", version ?? "<default>", layout.Root);
         var package = await privilegedNginx.InstallPackageAsync(version, cancellationToken);
         if (!package.Success)

@@ -1,3 +1,23 @@
+if (args.Contains("--webserver-only"))
+{
+    WebServerChecks.VerifyUninstallCapabilities();
+    WebServerChecks.VerifySiteConcurrency();
+    await WebServerChecks.VerifyWebServerProviderRoutingAsync();
+    var webRoot = Path.Combine(Path.GetTempPath(), "relaxkon-webserver-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(webRoot);
+    try
+    {
+        await WebServerChecks.VerifyDeploymentAndNginxSnapshotsAsync(webRoot);
+        await WebServerChecks.VerifyOperationIdempotencyAsync(webRoot);
+    }
+    finally
+    {
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        Directory.Delete(webRoot, recursive: true);
+    }
+    Console.WriteLine("Web-server checks passed.");
+    return;
+}
 if (args.Contains("--host-operation-authorization-only"))
 {
     HostOperationAuthorizationChecks.Run();
@@ -73,6 +93,7 @@ if (args.Length == 5 && args[0] == "--installed-windows-user-execution")
 
 if (args.Contains("--webserver-sites-only"))
 {
+    WebServerChecks.VerifyUninstallCapabilities();
     WebServerChecks.VerifySiteConcurrency();
     Console.WriteLine("Web site concurrency and contract checks passed.");
     return;
