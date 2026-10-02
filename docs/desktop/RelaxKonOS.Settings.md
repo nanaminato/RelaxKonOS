@@ -25,16 +25,16 @@ Server `Settings/IWorkspaceSettingsService` 管理偏好验证和版本比较。
 个性化页把原先混为一谈的“主题”拆成三张独立卡片，对应 `DesktopExperiencePreferencesDto` 的三个字段：
 
 1. **颜色与模式**：`ThemeKind` 模式、调色板 ID、强调色覆盖与自定义调色板，写 `DesktopExperience.Appearance`。
-2. **系统风格**：风格下拉（`SystemStyleChoices`）、当前风格摘要、不可用提示与“采用此 Shell 推荐的系统风格”按钮，写 `DesktopExperience.SystemStyleId`。
-3. **桌面布局**：Shell 选择，写 `DesktopExperience.Shell`；卡片内明确说明其与系统风格相互独立。
+2. **系统风格**：风格下拉（`SystemStyleChoices`）、不可用提示与“使用推荐风格”按钮，写 `DesktopExperience.SystemStyleId`；已经使用当前桌面推荐风格时隐藏按钮，不展示尺寸参数和实现说明。
+3. **桌面布局**：Shell 选择，写 `DesktopExperience.Shell`；卡片仅保留标题和选择控件。
 
 关键约定：
 
 - **颜色与形状互不牵连。** 改调色板不会改变菜单布局或窗口控制按钮位置；改系统风格不会篡改调色板。
 - **可用性是设备本地事实。** 若本机缺少所选风格，`SystemStyleRegistry` 保留该条目与原因，页面显示“此设备未安装”并继续使用最近有效的可渲染风格；**不静默改写用户的偏好**。
-- **推荐映射只是按钮。** “采用此 Shell 推荐的系统风格”由 `SystemStyleIds.RecommendedForShell` 驱动，需用户显式点击，不随 Shell 切换隐式生效。
+- **推荐映射只是按钮。** “使用推荐风格”由 `SystemStyleIds.RecommendedForShell` 驱动，需用户显式点击，不随 Shell 切换隐式生效。
 - 本地搜索条目由 `workspace.theme` / `workspace.shell` 改为 `workspace.colors` / `workspace.systemStyle` / `workspace.desktopLayout`（含中英日同义词）。
-- 三语言 `settings.json` 已补齐 `settings.colors_and_mode`、`settings.palette_scope_hint`、`settings.system_style.*`、`settings.desktop_layout`、`settings.shell.separate_hint` 与全部 `systemstyle.*` 问题码文案。
+- 三语言 `settings.json` 已补齐 `settings.colors_and_mode`、`settings.palette_scope_hint`、`settings.system_style.*`、`settings.desktop_layout` 与全部 `systemstyle.*` 问题码文案；移除了系统风格和桌面布局卡片不再显示的说明与尺寸参数标签。
 
 系统风格层本身的令牌、recipe、清单校验与运行时链路见 [`RelaxKonOS.SystemStyle.md`](./RelaxKonOS.SystemStyle.md)。页面当前只通过编译与契约测试，**尚未做视觉与交互验收**。
 

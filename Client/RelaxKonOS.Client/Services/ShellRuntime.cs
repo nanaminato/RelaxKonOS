@@ -440,7 +440,7 @@ internal sealed class DesktopShellStateAdapter : IDisposable
             .Select(shell => new ShellDesktopStyleEntry(shell.Id, shell.DisplayName, shell.Version))
             .ToArray();
         return new ShellDesktopState(applications, entries, _workspace.AreDesktopIconsVisible, desktopStyles,
-            _workspace.Settings.CurrentWallpaper, ThemeResources.Brush("TextPrimaryBrush"));
+            _workspace.Settings.CurrentWallpaper, ThemeResources.Brush("DesktopItemLabelForegroundBrush"));
     }
 
     private static ShellDesktopEntry? ToEntry(object item) => item switch

@@ -283,8 +283,8 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         {
             Text = name, MaxWidth = 108, MaxLines = 2, TextWrapping = TextWrapping.Wrap,
             TextAlignment = TextAlignment.Center, TextTrimming = DesktopNameTrimming,
-            Foreground = ThemeResources.Brush("TextPrimaryBrush"),
         };
+        label.Classes.Add("desktop-label");
         // Desktop icons are narrow, so a long name is shortened to a preview. The untouched name
         // stays reachable from the tooltip rather than being silently lost to the ellipsis.
         ToolTip.SetTip(label, name);

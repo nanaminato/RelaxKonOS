@@ -429,18 +429,18 @@ WorkspacePreferencesDto
 个性化页由单一“主题”下拉拆成三张卡片（`PersonalizationPageView.axaml` + `PersonalizationPageViewModel.cs`）：
 
 1. **颜色与模式**：模式（浅/深/跟随系统）、调色板、强调色、自定义调色板导入导出。
-2. **系统风格**：风格下拉（`SystemStyleChoices`）、当前风格摘要（`SystemStyleSummary`）、
+2. **系统风格**：风格下拉（`SystemStyleChoices`）、
    不可用提示（`SystemStyleProblem` / `HasSystemStyleProblem`）、
-   “采用此 Shell 推荐的系统风格”按钮（`ApplyRecommendedStyle`，由 `IsUsingRecommendedStyle` 控制可用性）。
-3. **桌面布局**：Shell 选择，附“与系统风格相互独立”的说明。
+   “使用推荐风格”按钮（`ApplyRecommendedStyle`，已经使用推荐风格时由 `IsUsingRecommendedStyle` 隐藏）。不展示令牌数值与实现说明。
+3. **桌面布局**：标题和 Shell 选择，不展示实现或保存规则说明。
 
 `SettingsViewModel.Navigation.cs` 的本地搜索条目由 `workspace.theme` / `workspace.shell`
 改为 `workspace.colors` / `workspace.systemStyle` / `workspace.desktopLayout`（含中英日同义词）。
 
 本地化 `Localization/{zh-CN,en-US,ja-JP}/settings.json` 新增：
-`settings.colors_and_mode`(+description)、`settings.palette_scope_hint`、`settings.system_style`(+description、
-`windows_like`/`macos_like`/`ubuntu_like`、`unavailable_format`、`apply_recommended`、`independent_hint`、`token.*`)、
-`settings.desktop_layout`、`settings.shell.separate_hint`，以及全部 `systemstyle.*` 问题码文案。
+`settings.colors_and_mode`(+description)、`settings.palette_scope_hint`、`settings.system_style`（
+`windows_like`/`macos_like`/`ubuntu_like`、`unavailable_format`、`apply_recommended`）、
+`settings.desktop_layout`，以及全部 `systemstyle.*` 问题码文案。系统风格与桌面布局的冗余说明、尺寸参数标签已从页面及本地化资源中移除。
 
 ---
 
