@@ -916,7 +916,11 @@ public sealed record WebSiteProxyRoute
 
 站点还可选择为每个监听端口写入 IPv6 listener；启用 HTTPS 后可将 HTTP 请求重定向到 TLS listener。这样同一张 SAN 或通配符证书会绑定到该站点的所有域名。
 
-在 Linux 上，选择静态目录后可显式授予 Nginx worker 读取权限。该操作使用 POSIX ACL：只给该 worker 读取内容、穿越父目录的权限，不修改所有者，也不授予写入权限；`/etc`、`/proc`、`/sys`、`/dev`、`/run` 与 `/root` 不可作为此操作目标。
+选择静态目录后可显式授予 Nginx worker 读取权限。保存时先校验路径格式与站点定义，再由权限助手校验目录并授权，最后由 Server 复查目录存在性与符号链接；避免私有父目录使 Server 在授权前误判目录不存在。
+
+Linux 使用 POSIX ACL，给 worker 读取内容、穿越父目录的权限，并给实际 Server 服务账户父目录穿行权限；不修改所有者，也不授予写入权限。`/etc`、`/proc`、`/sys`、`/dev`、`/run` 与 `/root` 不可作为目标。
+
+Windows 使用 NTFS ACL，给启动托管 Nginx 的 Helper 身份读取和执行权限，给机器配置中的 Server/开发客户端 SID 目录属性读取与穿行权限。内容目录的继承规则覆盖后续文件，并显式处理已有受保护子目录与文件；保留原有所有者、继承保护和拒绝规则，不新增写入权限。仅支持已存在的本地目录，不允许卷根、UNC、Windows 系统目录、Helper 私有运行时以及 Nginx 程序/配置目录（允许 `sites` 子目录），拒绝目标、父路径或内容树中的重解析点。内容树最多包含 100,000 个目录和文件。
 
 未来 IISProvider 可以将同一模型转换为 IIS Binding / Rewrite 配置。
 

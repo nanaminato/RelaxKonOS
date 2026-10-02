@@ -31,6 +31,7 @@ if (args.Contains("--mihomo-runtime-only"))
 }
 if (args.Contains("--webserver-only"))
 {
+    WebServerChecks.VerifyStaticSiteRootValidation();
     WebServerChecks.VerifyUninstallCapabilities();
     WebServerChecks.VerifySiteConcurrency();
     await WebServerChecks.VerifyWebServerProviderRoutingAsync();
@@ -124,6 +125,7 @@ if (args.Length == 5 && args[0] == "--installed-windows-user-execution")
 
 if (args.Contains("--webserver-sites-only"))
 {
+    WebServerChecks.VerifyStaticSiteRootValidation();
     WebServerChecks.VerifyUninstallCapabilities();
     WebServerChecks.VerifySiteConcurrency();
     Console.WriteLine("Web site concurrency and contract checks passed.");
@@ -258,6 +260,7 @@ var root = Path.Combine(Path.GetTempPath(), $"relaxkonos-server-tests-{Guid.NewG
 Directory.CreateDirectory(root);
 try
 {
+    if (args.Contains("--windows-privileges-only")) { await WindowsPrivilegeChecks.RunAsync(root); return; }
     // The focused settings suite must run before unrelated certificate/host checks.
     if (args.Contains("--settings-only", StringComparer.Ordinal))
     {
@@ -270,7 +273,6 @@ try
     ObservabilityChecks.VerifyProtocolAndSanitization();
     await BackupRecoveryKeyProviderChecks.RunAsync(root);
     await EventAlertChecks.VerifyAppendProjectionAndRecoveryAsync(root);
-    if (args.Contains("--windows-privileges-only")) { await WindowsPrivilegeChecks.RunAsync(root); return; }
     if (args.Contains("--proxy-geodata-only"))
     {
         await ProxyConfigurationChecks.VerifyMihomoGeoDataStagingAsync(root);
@@ -366,6 +368,7 @@ try
     await ProxyConfigurationChecks.VerifyProxyTunSafetyAsync(root);
     await ProxyConfigurationChecks.VerifyMihomoTunActivationPreservationAsync(root);
     await ProxyConfigurationChecks.VerifyHostNetworkSafetyDiscoveryAsync();
+    WebServerChecks.VerifyStaticSiteRootValidation();
     WebServerChecks.VerifySiteConcurrency();
     await WebServerChecks.VerifyDeploymentAndNginxSnapshotsAsync(root);
     await WebServerChecks.VerifyWebServerProviderRoutingAsync();

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using RelaxKonOS.PrivilegedHelper;
 using RelaxKonOS.Server.Endpoints;
+using System.Security.AccessControl;
 
 internal static class WindowsPrivilegeChecks
 {
@@ -64,6 +65,7 @@ internal static class WindowsPrivilegeChecks
         TestAssert.Assert(!(await unavailable.ExecuteAsync(new(WindowsManagedRuntime.Frps, WindowsManagedRuntimeAction.Start))).Success, "Missing Helper silently succeeded.");
         if (OperatingSystem.IsWindows())
         {
+            VerifyStaticSiteAccess(root, policy);
             await VerifyGrantsAsync();
             await VerifyUntrustedRuntimeAsync(policy);
         }
@@ -75,6 +77,64 @@ internal static class WindowsPrivilegeChecks
         try { operation(); }
         catch (Exception error) when (error is UnauthorizedAccessException or ArgumentException or InvalidOperationException) { return; }
         throw new InvalidOperationException(message);
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static void VerifyStaticSiteAccess(string root, WindowsManagedRuntimePolicy policy)
+    {
+        var site = Path.Combine(root, "public-site");
+        var nested = Path.Combine(site, "assets");
+        Directory.CreateDirectory(nested);
+        var file = Path.Combine(nested, "index.html");
+        File.WriteAllText(file, "site fixture");
+        var worker = new System.Security.Principal.SecurityIdentifier("S-1-5-80-101-102-103-104-105");
+        var reader = new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.LocalServiceSid, null);
+        var nestedInfo = new DirectoryInfo(nested);
+        var nestedSecurity = nestedInfo.GetAccessControl();
+        nestedSecurity.SetAccessRuleProtection(true, true);
+        nestedInfo.SetAccessControl(nestedSecurity);
+        var info = new FileInfo(file);
+        var before = info.GetAccessControl();
+        before.SetAccessRuleProtection(true, true);
+        before.PurgeAccessRules(worker);
+        before.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(reader,
+            System.Security.AccessControl.FileSystemRights.WriteData, System.Security.AccessControl.AccessControlType.Deny));
+        info.SetAccessControl(before);
+        var owner = before.GetOwner(typeof(System.Security.Principal.SecurityIdentifier));
+        WindowsNginxStaticSiteAccess.GrantContentAccess([site, nested], [file], worker, [reader]);
+        var after = info.GetAccessControl();
+        TestAssert.Assert(Equals(owner, after.GetOwner(typeof(System.Security.Principal.SecurityIdentifier))), "Static-site grant changed ownership.");
+        TestAssert.Assert(after.AreAccessRulesProtected, "Static-site grant changed inheritance protection.");
+        var fileRules = after.GetAccessRules(true, false, typeof(System.Security.Principal.SecurityIdentifier))
+            .Cast<System.Security.AccessControl.FileSystemAccessRule>().ToArray();
+        TestAssert.Assert(fileRules.Any(rule => rule.IdentityReference.Equals(worker)
+            && rule.AccessControlType == System.Security.AccessControl.AccessControlType.Allow
+            && (rule.FileSystemRights & System.Security.AccessControl.FileSystemRights.ReadAndExecute) == System.Security.AccessControl.FileSystemRights.ReadAndExecute),
+            "Nginx cannot read a file with protected inheritance after the grant.");
+        TestAssert.Assert(fileRules.Where(rule => rule.IdentityReference.Equals(worker)).All(rule =>
+            (rule.FileSystemRights & (System.Security.AccessControl.FileSystemRights.Write
+                | System.Security.AccessControl.FileSystemRights.ChangePermissions | System.Security.AccessControl.FileSystemRights.TakeOwnership)) == 0),
+            "Static-site grant added write or ownership permissions for Nginx.");
+        TestAssert.Assert(fileRules.Any(rule => rule.IdentityReference.Equals(reader)
+            && rule.AccessControlType == System.Security.AccessControl.AccessControlType.Deny), "Static-site grant removed an existing deny rule.");
+        var directoryRules = new DirectoryInfo(site).GetAccessControl().GetAccessRules(true, false, typeof(System.Security.Principal.SecurityIdentifier))
+            .Cast<System.Security.AccessControl.FileSystemAccessRule>().Where(rule => rule.IdentityReference.Equals(reader)).ToArray();
+        TestAssert.Assert(directoryRules.Any(rule => (rule.FileSystemRights & System.Security.AccessControl.FileSystemRights.ReadAttributes) != 0),
+            "Server cannot validate static-root metadata after the grant.");
+        TestAssert.Assert(directoryRules.All(rule => (rule.FileSystemRights & (System.Security.AccessControl.FileSystemRights.Write
+            | System.Security.AccessControl.FileSystemRights.ReadData | System.Security.AccessControl.FileSystemRights.ChangePermissions)) == 0),
+            "Server received content or write access instead of metadata and traversal access.");
+        TestAssert.Assert(nestedInfo.GetAccessControl().AreAccessRulesProtected, "Static-site grant changed child-directory inheritance protection.");
+        var futureFile = Path.Combine(nested, "future.html");
+        File.WriteAllText(futureFile, "new content");
+        TestAssert.Assert(new FileInfo(futureFile).GetAccessControl().GetAccessRules(false, true, typeof(System.Security.Principal.SecurityIdentifier))
+            .Cast<System.Security.AccessControl.FileSystemAccessRule>().Any(rule => rule.IdentityReference.Equals(worker)
+                && rule.AccessControlType == System.Security.AccessControl.AccessControlType.Allow
+                && (rule.FileSystemRights & System.Security.AccessControl.FileSystemRights.ReadAndExecute) == System.Security.AccessControl.FileSystemRights.ReadAndExecute),
+            "Future static content did not inherit Nginx read access.");
+        Directory.CreateDirectory(policy.PrivateRoot);
+        foreach (var invalid in new[] { policy.PrivateRoot, root, Path.GetPathRoot(site)!, @"\\server\share", "relative/site" })
+            ExpectDenied(() => WindowsNginxStaticSiteAccess.Grant(invalid, policy), "Unsafe static-site root accepted: " + invalid);
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]

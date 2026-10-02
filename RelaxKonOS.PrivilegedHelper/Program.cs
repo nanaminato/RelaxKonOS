@@ -756,8 +756,8 @@ static PrivilegedOperationResult DeleteNginxManagedFile(string? path)
     return new(true);
 }
 
-/// <summary>Grants only the configured Nginx worker account enough ACL access to serve an
-/// explicitly selected public directory. It never changes ownership or grants write access.</summary>
+/// <summary>Grants the configured Nginx worker read access and the Server ancestor traversal
+/// for an explicitly selected public directory. It never changes ownership or grants write access.</summary>
 static async Task<PrivilegedOperationResult> GrantNginxStaticSiteReadAccessAsync(string? path)
 {
     if (!OperatingSystem.IsLinux() || !File.Exists("/usr/bin/setfacl"))
@@ -765,12 +765,22 @@ static async Task<PrivilegedOperationResult> GrantNginxStaticSiteReadAccessAsync
     var directory = ValidateNginxStaticSiteDirectory(path);
     var worker = ResolveNginxWorkerUser();
     if (worker is null) return Fail(64, PrivilegedProblemCode.InvalidRequest, "Nginx worker account could not be determined");
+    var service = await RunFixedCommandWithOutputAsync("/usr/bin/systemctl",
+        ["show", "relaxkonos-server.service", "--property=User", "--value"], "Server account could not be determined");
+    if (!service.Success) return service;
+    var serverUser = DecodeUtf8(service.OutputBase64)?.Trim();
+    if (string.IsNullOrEmpty(serverUser)) serverUser = "root";
+    if (!System.Text.RegularExpressions.Regex.IsMatch(serverUser, @"\A[a-z_][a-z0-9_-]{0,31}\z")
+        || !File.ReadLines("/etc/passwd").Any(line => line.StartsWith(serverUser + ":", StringComparison.Ordinal)))
+        return Fail(64, PrivilegedProblemCode.InvalidRequest, "Server account could not be determined");
 
     // An execute-only ACL on ancestors permits traversal without making their contents listable.
     var ancestor = Directory.GetParent(directory)?.FullName;
     while (!string.IsNullOrEmpty(ancestor) && ancestor != "/")
     {
-        var traversable = await RunFixedCommandAsync("/usr/bin/setfacl", ["-m", $"u:{worker}:--x", ancestor],
+        var traversalAcl = serverUser == "root" || serverUser == worker
+            ? $"u:{worker}:--x" : $"u:{worker}:--x,u:{serverUser}:--x";
+        var traversable = await RunFixedCommandAsync("/usr/bin/setfacl", ["-m", traversalAcl, ancestor],
             TimeSpan.FromSeconds(30), "could not grant Nginx directory traversal");
         if (!traversable.Success) return traversable;
         ancestor = Directory.GetParent(ancestor)?.FullName;
@@ -793,6 +803,14 @@ static async Task<PrivilegedOperationResult> GrantNginxStaticSiteReadAccessAsync
             TimeSpan.FromSeconds(30), "could not set default Nginx read access");
         if (!defaults.Success) return defaults;
     }
+    return new(true);
+}
+
+[System.Runtime.Versioning.SupportedOSPlatform("windows")]
+static PrivilegedOperationResult GrantWindowsNginxStaticSiteReadAccess(string? path, WindowsManagedRuntimePolicy? policy)
+{
+    if (policy is null) return Fail(64, PrivilegedProblemCode.ResourceNotAllowed, "Windows Nginx runtime policy is unavailable");
+    WindowsNginxStaticSiteAccess.Grant(path, policy);
     return new(true);
 }
 
