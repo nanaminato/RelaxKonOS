@@ -69,6 +69,7 @@ interface RelaxKonGateway {
     suspend fun proxyRouting(serverUrl: String, accessToken: String): ApiResult<ProxyRoutingMode>
     suspend fun proxyDownloadOptions(serverUrl: String, accessToken: String): ApiResult<Boolean>
     suspend fun proxyOperation(serverUrl: String, accessToken: String, id: String): ApiResult<ProxyOperation>
+    suspend fun proxyReleases(serverUrl: String, accessToken: String): ApiResult<List<ProxyRelease>>
     suspend fun proxyDownload(serverUrl: String, accessToken: String, version: String): ApiResult<ProxyDownload>
     suspend fun proxyQueue(serverUrl: String, accessToken: String, action: ProxyAction, target: String?, key: String): ApiResult<String>
     suspend fun saveProxyProfile(serverUrl: String, accessToken: String, id: String?, request: ProxyProfileRequest): ApiResult<ProxyProfile>
@@ -86,6 +87,7 @@ interface RelaxKonGateway {
     suspend fun discoverWebServers(serverUrl: String, accessToken: String): ApiResult<List<WebServer>>
     suspend fun webServerCandidates(serverUrl: String, accessToken: String): ApiResult<List<WebServerCandidate>>
     suspend fun webServerInstallCatalog(serverUrl: String, accessToken: String): ApiResult<WebServerInstallCatalog>
+    suspend fun webServerInstallDownload(serverUrl: String, accessToken: String, version: String): ApiResult<WebServerInstallDownload>
     suspend fun integrateWebServer(serverUrl: String, accessToken: String, candidateId: String, confirmed: Boolean,
         idempotencyKey: String): ApiResult<WebServerOperation>
     suspend fun webServerLifecycle(serverUrl: String, accessToken: String, instanceId: String, action: WebServerAction,

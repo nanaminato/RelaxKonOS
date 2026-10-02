@@ -2658,4 +2658,20 @@
     <string name="workspace_records">Operation records</string>
     <string name="workspace_records_attention">An operation needs attention. Open operation records.</string>
     <string name="workspace_records_empty">No operation records are currently available.</string>
+    <string name="mihomo_release_select">Select a release</string>
+    <string name="mihomo_release_recommended">%1$s (recommended)</string>
+    <string name="mihomo_releases_refresh">Refresh available releases</string>
+    <string name="mihomo_releases_empty">No trusted release is available for this host.</string>
+    <string name="mihomo_releases_failed">Could not load releases. Please retry.</string>
+    <string name="installation_package_source">Package source</string>
+    <string name="installation_source_host">Server downloads the official package</string>
+    <string name="installation_source_server">Select a package on the server</string>
+    <string name="installation_source_phone">Select a package on this phone</string>
+    <string name="installation_download_myself">I want to download it myself</string>
+    <string name="installation_download_loading">Getting the official download link…</string>
+    <string name="installation_download_copy">Copy link</string>
+    <string name="installation_download_open">Open download link</string>
+    <string name="installation_download_then_select">After downloading, select the package on the server or this phone below. Installing still requires confirmation.</string>
+    <string name="installation_download_copied">Link copied</string>
+    <string name="installation_download_action_failed">Could not copy or open the link.</string>
 </resources>

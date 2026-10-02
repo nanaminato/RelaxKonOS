@@ -146,7 +146,18 @@ internal static async Task VerifyMihomoRuntimeSafetyAsync(string root)
     var release = new MihomoRuntimeRelease(MihomoRuntimeManifest.SupportedVersion, "linux-x64", "mihomo-linux-amd64-v1.19.30.gz", "gz", digest);
     var paths = new TestProxyPaths(Path.Combine(root, "mihomo-runtime"));
     var privileged = new TestProxyPrivilegedOperations();
-    var manager = new MihomoRuntimeManager(paths, new FixtureHttpClientFactory(archive), privileged, new TestMihomoRuntimeProbe(), new HealthyMihomoController(), new StaticProxySecretStore(), new MihomoControllerOptions(), new MihomoRuntimeManifest { Releases = [release] });
+    var manager = new MihomoRuntimeManager(paths, new FixtureHttpClientFactory(archive, "https://release-assets.githubusercontent.com/fixture"), privileged, new TestMihomoRuntimeProbe(), new HealthyMihomoController(), new StaticProxySecretStore(), new MihomoControllerOptions(), new MihomoRuntimeManifest { Releases = [release] });
+
+    foreach (var redirect in new[] { "http://release-assets.githubusercontent.com/fixture", "https://untrusted.example/fixture", "https://github.com/loop" })
+    {
+        var rejectedPrivileges = new TestProxyPrivilegedOperations();
+        var rejectedManager = new MihomoRuntimeManager(new TestProxyPaths(Path.Combine(root, Guid.NewGuid().ToString("N"))),
+            new FixtureHttpClientFactory(archive, redirect), rejectedPrivileges, new TestMihomoRuntimeProbe(), new HealthyMihomoController(),
+            new StaticProxySecretStore(), new MihomoControllerOptions(), new MihomoRuntimeManifest { Releases = [release] });
+        var rejected = await rejectedManager.InstallManagedAsync(MihomoEngine.Id, release.Version, CancellationToken.None);
+        TestAssert.Assert(rejected.ProblemCode == ProxyProblemCodes.RuntimeIntegrityFailed && !rejectedPrivileges.InstalledService,
+            "Mihomo accepted an unsafe redirect or redirect loop.");
+    }
 
     var missingExternal = await manager.DetectExternalAsync(MihomoEngine.Id, Path.Combine(root, "does-not-exist"), CancellationToken.None);
     TestAssert.Assert(missingExternal.ProblemCode == ProxyProblemCodes.ExternalRuntimeInvalid && missingExternal.ExternalPathConfigured,

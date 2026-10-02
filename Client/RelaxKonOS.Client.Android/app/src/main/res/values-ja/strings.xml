@@ -2620,4 +2620,20 @@
     <string name="workspace_records">操作記録</string>
     <string name="workspace_records_attention">対応が必要な操作があります。操作記録を開いてください。</string>
     <string name="workspace_records_empty">現在表示できる操作記録はありません。</string>
+    <string name="mihomo_release_select">リリースを選択</string>
+    <string name="mihomo_release_recommended">%1$s（推奨）</string>
+    <string name="mihomo_releases_refresh">利用可能なバージョンを更新</string>
+    <string name="mihomo_releases_empty">このホストに対応する信頼済みリリースがありません。</string>
+    <string name="mihomo_releases_failed">バージョンを取得できませんでした。再試行してください。</string>
+    <string name="installation_package_source">インストール元</string>
+    <string name="installation_source_host">サーバーで公式パッケージをダウンロード</string>
+    <string name="installation_source_server">サーバー上のパッケージを選択</string>
+    <string name="installation_source_phone">この端末のパッケージを選択</string>
+    <string name="installation_download_myself">自分でダウンロードする</string>
+    <string name="installation_download_loading">公式ダウンロードリンクを取得中…</string>
+    <string name="installation_download_copy">リンクをコピー</string>
+    <string name="installation_download_open">ダウンロードリンクを開く</string>
+    <string name="installation_download_then_select">ダウンロード後、下でサーバーまたは端末上のパッケージを選択してください。インストールには確認が必要です。</string>
+    <string name="installation_download_copied">リンクをコピーしました</string>
+    <string name="installation_download_action_failed">リンクをコピーまたは開くことができませんでした。</string>
 </resources>

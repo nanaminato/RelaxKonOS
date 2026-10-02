@@ -156,6 +156,7 @@ class FakeGateway : RelaxKonGateway {
     override suspend fun proxyDownloadOptions(serverUrl: String, accessToken: String): ApiResult<Boolean> = error("Unexpected proxy call")
     var onProxyOperation: suspend (String) -> ApiResult<ProxyOperation> = { _ -> error("Unexpected proxy call") }
     override suspend fun proxyOperation(serverUrl: String, accessToken: String, id: String): ApiResult<ProxyOperation> = onProxyOperation(id)
+    override suspend fun proxyReleases(serverUrl: String, accessToken: String): ApiResult<List<ProxyRelease>> = error("Unexpected proxy call")
     override suspend fun proxyDownload(serverUrl: String, accessToken: String, version: String): ApiResult<ProxyDownload> = error("Unexpected proxy call")
     var onProxyQueue: suspend (ProxyAction, String?, String) -> ApiResult<String> = { _, _, _ -> error("Unexpected proxy call") }
     override suspend fun proxyQueue(serverUrl: String, accessToken: String, action: ProxyAction, target: String?, key: String): ApiResult<String> = onProxyQueue(action, target, key)
@@ -235,6 +236,7 @@ class FakeGateway : RelaxKonGateway {
     override suspend fun discoverWebServers(serverUrl: String, accessToken: String): ApiResult<List<WebServer>> = onWebDiscover()
     override suspend fun webServerCandidates(serverUrl: String, accessToken: String): ApiResult<List<WebServerCandidate>> = ApiResult.Success(emptyList())
     override suspend fun webServerInstallCatalog(serverUrl: String, accessToken: String): ApiResult<WebServerInstallCatalog> = ApiResult.Success(WebServerInstallCatalog(null, null, emptyList(), ""))
+    override suspend fun webServerInstallDownload(serverUrl: String, accessToken: String, version: String): ApiResult<WebServerInstallDownload> = error("Unexpected download call")
     override suspend fun integrateWebServer(serverUrl: String, accessToken: String, candidateId: String, confirmed: Boolean, idempotencyKey: String): ApiResult<WebServerOperation> = ApiResult.Transport(null)
     override suspend fun webServerLifecycle(serverUrl: String, accessToken: String, instanceId: String, action: WebServerAction, idempotencyKey: String): ApiResult<WebServerOperation> = onWebLifecycle(instanceId, action, idempotencyKey)
     override suspend fun webServerOperation(serverUrl: String, accessToken: String, operationId: String): ApiResult<WebServerOperation> = onWebOperation(operationId)

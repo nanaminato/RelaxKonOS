@@ -169,7 +169,7 @@ internal class TunnelsViewModel(application: Application) : AndroidViewModel(app
     fun detect(path: String) = work { active -> val result = container.tunnels.detect(active, path); verify(active); state = state.copy(detected = result); failure(result) }
     fun logs(profileId: String) = work { active -> val result = container.tunnels.logs(active, profileId); verify(active); state = state.copy(logs = result, logsAtMillis = System.currentTimeMillis()); failure(result) }
     fun download(version: String) = work { active -> val result = container.tunnels.download(active, version); verify(active); state = state.copy(download = result); failure(result) }
-    fun clearReference() { if (!state.busy && intent == null) state = state.copy(reference = null, download = null) }
+    fun clearReference() { if (!state.busy && intent == null) state = state.copy(reference = null) }
     fun reference(path: String) = work { active -> val result = container.installations.fileReference(active, InstallationService.Frp, path); verify(active); state = state.copy(reference = (result as? ApiResult.Success)?.value); failure(result) }
     fun upload(uri: Uri) = work { active ->
         val document = container.uploadDocuments.open(uri.toString()) ?: run { state = state.copy(problemCode = InstallationProblemCodes.FILE_REFERENCE_UNAVAILABLE); return@work }

@@ -27,7 +27,7 @@ sealed class CapturingLogger<T> : ILogger<T>
         => Entries.Add(formatter(state, exception));
 }
 
-sealed class FixtureHttpClientFactory(byte[] payload) : IHttpClientFactory, IOutboundProxyHttpClientFactory
+sealed class FixtureHttpClientFactory(byte[] payload, string? redirect = null) : IHttpClientFactory, IOutboundProxyHttpClientFactory
 {
     public string? LastClientName { get; private set; }
     public string? LastUserAgent { get; private set; }
@@ -35,7 +35,7 @@ sealed class FixtureHttpClientFactory(byte[] payload) : IHttpClientFactory, IOut
     public HttpClient CreateClient(string name)
     {
         LastClientName = name;
-        return new(new FixtureHandler(payload, request => LastUserAgent = request.Headers.UserAgent.ToString()));
+        return new(new FixtureHandler(payload, request => LastUserAgent = request.Headers.UserAgent.ToString(), redirect));
     }
 
     public Task<HttpClient> CreateAsync(OutboundProxyTarget target, TimeSpan timeout, CancellationToken cancellationToken = default)
@@ -45,11 +45,17 @@ sealed class FixtureHttpClientFactory(byte[] payload) : IHttpClientFactory, IOut
         return Task.FromResult(client);
     }
 
-    private sealed class FixtureHandler(byte[] payload, Action<HttpRequestMessage> inspect) : HttpMessageHandler
+    private sealed class FixtureHandler(byte[] payload, Action<HttpRequestMessage> inspect, string? redirect) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             inspect(request);
+            if (redirect is not null && request.RequestUri!.Host == "github.com")
+            {
+                var response = new HttpResponseMessage(HttpStatusCode.Redirect);
+                response.Headers.Location = new Uri(redirect);
+                return Task.FromResult(response);
+            }
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(payload) });
         }
     }

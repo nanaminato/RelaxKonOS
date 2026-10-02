@@ -32,3 +32,7 @@ Web 操作与安装操作使用各自的状态机。Web 操作展示原 ID、终
 当前 Server 没有 Web 操作集合或按请求键查询端点，接管端点还会先确认候选是否仍存在。因此，若接管响应完全丢失且候选已消失，重放可能返回 404；不能据此推断成功或取消原请求。已知 ID 可恢复；未知 ID 保留待核实，需取得服务端操作 ID 后查询。取消结果仍须结合实例状态与配置检查确认，不把取消任务解释为副作用已回滚。
 
 源码入口：`WebServerManagement.kt`、`WebPublishing.kt`、Gateway/API、`WebServerRepository.kt`、`WebServerRequestJournal.kt`、`NginxViewModel.kt`、`NginxManager.kt`、OperationIndex/OperationCenter。
+
+## Windows 宿主安装来源
+
+Android 管理 Windows Nginx 时支持服务器下载官方包、服务器已有 ZIP、手机选择 ZIP，以及“我要自行下载”的官方下载链接、复制与浏览器打开。版本目录可用时默认选择稳定版。统一交互和校验边界见 [公共安装来源](Installations.md#安装来源与自行下载)；Linux Nginx 保持宿主包管理器安装。

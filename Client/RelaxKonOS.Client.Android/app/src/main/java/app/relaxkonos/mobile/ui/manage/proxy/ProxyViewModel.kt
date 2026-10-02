@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 internal data class ProxyState(val busy: Boolean = false, val overview: ApiResult<ProxyOverview>? = null,
     val profiles: ApiResult<List<ProxyProfile>>? = null, val subscriptions: ApiResult<List<ProxySubscription>>? = null,
     val groups: ApiResult<List<ProxyGroup>>? = null, val routing: ApiResult<ProxyRoutingMode>? = null,
+    val releases: ApiResult<List<ProxyRelease>>? = null,
     val downloadOptions: Boolean = false, val download: ApiResult<ProxyDownload>? = null,
     val delay: ApiResult<ProxyDelay>? = null, val pending: List<PendingProxyRequest> = emptyList(),
     val operation: ProxyOperation? = null, val operationVerified: Boolean = false,
@@ -114,6 +115,9 @@ internal class ProxyViewModel(application: Application) : AndroidViewModel(appli
         val result = call(active); verify(active); failure(result)
         if (result is ApiResult.Success) state = state.copy(savedEpoch = state.savedEpoch + 1)
         load(active)
+    }
+    fun loadReleases() = work { active ->
+        val result = container.proxy.releases(active); verify(active); failure(result); state = state.copy(releases = result)
     }
     fun download(version: String) = work { active ->
         val result = container.proxy.download(active, version); verify(active); failure(result); state = state.copy(download = result)

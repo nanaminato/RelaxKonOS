@@ -17,6 +17,7 @@ internal data class NginxState(
     val servers: List<WebServer> = emptyList(), val candidates: List<WebServerCandidate> = emptyList(),
     val statuses: Map<String, WebServerStatus> = emptyMap(), val tests: Map<String, WebServerConfigTest> = emptyMap(),
     val selectedId: String? = null, val catalog: WebServerInstallCatalog? = null,
+    val download: ApiResult<WebServerInstallDownload>? = null,
     val system: HostOperatingSystemKind = HostOperatingSystemKind.Unknown,
     val reference: InstallationFileReference? = null, val uploadBytes: Long? = null,
     val operation: WebServerOperation? = null, val installation: InstallationOperation? = null,
@@ -47,6 +48,9 @@ internal class NginxViewModel(application: Application) : AndroidViewModel(appli
     }
     fun select(id: String?) { state = state.copy(selectedId = id) }
     fun clearReference() { if (!state.busy && intent == null) state = state.copy(reference = null) }
+    fun download(version: String) = work { active ->
+        val result = container.webServers.download(active, version); verify(active); failure(result); state = state.copy(download = result)
+    }
     fun refresh() = work { active -> load(active) }
     private suspend fun load(active: SessionState.Active) {
         state = state.copy(loading = true)

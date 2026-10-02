@@ -274,6 +274,7 @@ public sealed class MihomoRuntimeManager(
             }
             catch (RuntimeInstallException exception) { await WriteDiagnosticAsync("warning", "Managed Mihomo installation failed: " + exception.ProblemCode, cancellationToken); return Failure(before, exception.ProblemCode); }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { await WriteDiagnosticAsync("warning", "Managed Mihomo installation timed out during a runtime operation.", cancellationToken); return Failure(before, ProxyProblemCodes.RuntimeHealthCheckFailed); }
+            catch (HttpRequestException exception) { await WriteDiagnosticAsync("warning", "Managed Mihomo download failed: " + exception.HttpRequestError, cancellationToken); return Failure(before, ProxyProblemCodes.RuntimeHealthCheckFailed); }
             catch (IOException) { await WriteDiagnosticAsync("warning", "Managed Mihomo installation encountered a file-system error.", cancellationToken); return Failure(before, ProxyProblemCodes.RuntimeIntegrityFailed); }
             catch (UnauthorizedAccessException) { await WriteDiagnosticAsync("warning", "Managed Mihomo installation was denied access to a protected host resource.", cancellationToken); return Failure(before, ProxyProblemCodes.PrivilegedOperationUnavailable); }
         }
@@ -350,12 +351,35 @@ public sealed class MihomoRuntimeManager(
 
     private async Task DownloadAndVerifyAsync(MihomoRuntimeRelease release, string destination, CancellationToken cancellationToken)
     {
-        using var client = await httpClients.CreateAsync(OutboundProxyTarget.RuntimeDownloads, TimeSpan.FromSeconds(30), cancellationToken);
-        using var response = await client.GetAsync(release.DownloadUri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        using var downloadTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        downloadTimeout.CancelAfter(TimeSpan.FromMinutes(5));
+        var downloadToken = downloadTimeout.Token;
+        using var client = await httpClients.CreateAsync(OutboundProxyTarget.RuntimeDownloads, TimeSpan.FromMinutes(5), downloadToken);
+        using var response = await GetReleaseResponseAsync(client, release.DownloadUri, downloadToken);
         if (!response.IsSuccessStatusCode || response.Content.Headers.ContentLength > MihomoRuntimeManifest.MaximumArchiveBytes)
             throw new RuntimeInstallException(ProxyProblemCodes.RuntimeIntegrityFailed);
-        await using var input = await response.Content.ReadAsStreamAsync(cancellationToken);
-        await CopyAndVerifyArchiveAsync(release, input, destination, cancellationToken);
+        await using var input = await response.Content.ReadAsStreamAsync(downloadToken);
+        await CopyAndVerifyArchiveAsync(release, input, destination, downloadToken);
+    }
+
+    private static async Task<HttpResponseMessage> GetReleaseResponseAsync(HttpClient client, Uri uri, CancellationToken cancellationToken)
+    {
+        for (var redirects = 0; ; redirects++)
+        {
+            var response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            if (response.StatusCode is not (HttpStatusCode.MovedPermanently or HttpStatusCode.Redirect or HttpStatusCode.SeeOther
+                or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect)) return response;
+            var location = response.Headers.Location;
+            response.Dispose();
+            if (redirects >= 5 || location is null)
+                throw new RuntimeInstallException(ProxyProblemCodes.RuntimeIntegrityFailed);
+            uri = location.IsAbsoluteUri ? location : new Uri(uri, location);
+            if (uri.Scheme != Uri.UriSchemeHttps || uri.Port != 443 || !string.IsNullOrEmpty(uri.UserInfo)
+                || !(uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase)
+                    || uri.Host.Equals("release-assets.githubusercontent.com", StringComparison.OrdinalIgnoreCase)
+                    || uri.Host.Equals("objects.githubusercontent.com", StringComparison.OrdinalIgnoreCase)))
+                throw new RuntimeInstallException(ProxyProblemCodes.RuntimeIntegrityFailed);
+        }
     }
 
     private async Task CopyAndVerifyArchiveAsync(MihomoRuntimeRelease release, Stream input, string destination, CancellationToken cancellationToken)

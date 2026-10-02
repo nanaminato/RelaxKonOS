@@ -1,3 +1,27 @@
+if (args.Contains("--mihomo-runtime-only"))
+{
+    if (MihomoRuntimeManifest.CurrentRid() != "linux-x64")
+        throw new PlatformNotSupportedException("Mihomo runtime checks require Linux x64.");
+    var runtimeRoot = Path.Combine(Path.GetTempPath(), "relaxkon-mihomo-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(runtimeRoot);
+    try
+    {
+        await NetworkProxyTunnelChecks.VerifyMihomoRuntimeSafetyAsync(runtimeRoot);
+        var references = new RelaxKonOS.Server.Installations.InstallationFileReferenceStore(new TestHostEnvironment(runtimeRoot),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<RelaxKonOS.Server.Installations.InstallationFileReferenceStore>.Instance);
+        var package = Enumerable.Range(0, 81921).Select(index => (byte)(index % 251)).ToArray();
+        var reference = await references.StageUploadAsync(RelaxKonOS.Protocol.Installations.InstallationServiceId.Mihomo, "test",
+            "fixture.gz", new MemoryStream(package), package.Length, CancellationToken.None);
+        TestAssert.Assert(reference.Length == package.Length, "An uploaded package reference omitted buffered bytes.");
+        using var source = references.Open(RelaxKonOS.Protocol.Installations.InstallationServiceId.Mihomo, "test", reference.Id);
+        using var received = new MemoryStream();
+        await source.Stream.CopyToAsync(received);
+        TestAssert.Assert(received.ToArray().SequenceEqual(package), "The uploaded package could not be reopened intact.");
+    }
+    finally { Directory.Delete(runtimeRoot, recursive: true); }
+    Console.WriteLine("Mihomo runtime checks passed.");
+    return;
+}
 if (args.Contains("--webserver-only"))
 {
     WebServerChecks.VerifyUninstallCapabilities();

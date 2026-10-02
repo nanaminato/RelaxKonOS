@@ -31,6 +31,7 @@ data class ProxyOverview(val runtime: ProxyRuntime, val activeProfile: ProxyProf
     val supportsAutoRoute: Boolean = false, val supportsDnsHijack: Boolean = false, val tunState: String = "disabled")
 data class ProxyOperation(val operationId: String, val kind: String, val state: ProxyOperationState, val stage: String, val problemCode: String)
 data class ProxyDelay(val proxyName: String, val delayMilliseconds: Int?, val timedOut: Boolean, val problemCode: String)
+data class ProxyRelease(val version: String, val url: String, val recommended: Boolean)
 data class ProxyDownload(val version: String, val url: String)
 data class ProxyProfileRequest(val name: String, val expectedRevision: Long? = null) {
     fun body(): JsonBody { require(name.isNotBlank() && name.length <= 128); return JsonBody().string("name", name.trim()).string("engineId", "mihomo").raw("expectedRevision", expectedRevision?.toString() ?: "null") }
@@ -88,6 +89,7 @@ object ProxyWire {
     fun accepted(payload: String) = id(JSONObject(payload), "operationId")
     fun operation(payload: String) = JSONObject(payload).let { j -> ProxyOperation(id(j, "operationId"), j.getString("kind"), ProxyOperationState.entries.single { it.wire == j.getString("state") }, j.getString("stage"), j.getString("problemCode")) }
     fun delay(payload: String) = JSONObject(payload).let { j -> ProxyDelay(j.getString("proxyName"), if (j.isNull("delayMilliseconds")) null else j.getInt("delayMilliseconds").also { require(it >= 0) }, j.getBoolean("timedOut"), j.getString("problemCode")) }
+    fun releases(payload: String) = array(payload) { ProxyRelease(it.getString("version"), it.getString("url"), it.getBoolean("recommended")) }
     fun download(payload: String) = JSONObject(payload).let { ProxyDownload(it.getString("version"), it.getString("url")) }
     fun downloadOptions(payload: String) = JSONObject(payload).getBoolean("systemProxyAvailable")
     private fun <T> array(payload: String, parse: (JSONObject) -> T) = JSONArray(payload).let { a -> require(a.length() <= 10000); List(a.length()) { parse(a.getJSONObject(it)) } }

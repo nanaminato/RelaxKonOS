@@ -4,6 +4,10 @@
 
 ## 1. 共同设备与发布检查
 
+2026-10-02 安装来源与自行下载：Mihomo、FRP、Windows Nginx 共用来源选择组件，服务器文件浏览/引用、手机 SAF 选包/上传和宿主下载入口均保留，新增与所选版本匹配的官方 URL、文字选择、复制与系统浏览器打开。“我要自行下载”只用于 Install；链接操作不会提交安装。Windows Nginx 默认采用版本目录稳定版，变更版本清除旧包引用；SAF 回调校验原宿主会话。24 项定向 JVM 测试通过（ProxyHttpTest 3、TunnelHttpTest 3、WebServerManagementHttpTest 4、InstallationRepositoryTest 14）；Debug/AndroidTest APK 构建通过。emulator-5554 的 InstallationPackagePickerTest 三项通过，覆盖来源切换、服务器浏览入口、手机选择回调、锁定状态、官方 URL 展示与实际复制、版本变更后隐藏旧链接。最终 APK 已安装至该模拟器。此证据不覆盖 Windows Nginx 或 FRP 的真实宿主安装，也不代表实体手机外部浏览器、下载管理器及文件提供者已验收。
+
+2026-10-02 Mihomo 版本选择宿主联调：在 192.168.1.5（Ubuntu 26.04 x64）更新 Server，保留数据、证书及 Guardian 配置。普通用户登录、受信版本列表、推荐标记、Linux amd64 下载地址、无效版本 404、管理员提权均通过。官方 v1.19.30 归档 SHA-256 为 `cf06ce2c7d1421bdbda14ee4a5b6046672dc35ebf8eecd8e77504ec3c0ed9a84`；归档上传后安装成功，运行时为 running / integrityVerified=true，systemd 服务 active / enabled。Server 重启后控制器可达、health=healthy、TUN disabled。Linux `--mihomo-runtime-only` 专项测试通过，覆盖受信重定向、不安全地址及循环拒绝、缓冲尾部上传长度与完整重读。修复 GitHub 归档重定向、下载总超时及上传流关闭前登记长度的问题；Linux 服务安装脚本新增私有 HOME，持久化 DataProtection 密钥。测试机旧临时密钥无法恢复，旧控制器密钥已备份后重新生成。宿主直接联网下载安装仍未通过（连接超时/下载失败），本次真实安装使用官方归档上传；Android 真机版本下拉交互尚未验收。
+
 2026-10-02 输出绘制边界：输出视口与 WebView 容器裁剪绘制，xterm 的加载提示等待 Chromium 首帧可绘制后撤下。Debug 与 AndroidTest APK 构建通过；SM-X510 和 `Medium_Phone_2` 分别执行 `TerminalLoadingTest` 六项与 `XtermTerminalTest` 一项，共各七项全部通过。新增 360×700dp / 1000×600dp 像素检查确认 WebView 初始化前后，输出上方背景保持可见，身份和输入区仍显示。最新 APK 已安装到两台设备。用户确认原录屏来自 Medium Phone(2)；该模拟器连接真实 Linux 既有会话后录制文件→终端过渡，逐帧检查确认身份、工具、扩展键及输入区与局部加载同时显示，输出出现后未遮挡其它组件；没有发送命令或新建会话。本地 ignored 证据为 `artifacts/terminal-entry-fixed.mp4`。模拟器验证前遇到 system 无响应，重启后完成；临时登录用显示密度已恢复原值。此录屏证据不代替其它实体手机或耗时基准验证。
 
 2026-10-02 终端进入：身份、会话、工具和输入区立即显示，渲染初始化和加载提示仅限输出视口。SignalR/TLS 连接构造在 IO 执行；连接期间跳过旧历史布局，xterm 模式跳过未使用的原生字形布局，并在本地 WebView 加载完成前显示提示。连接调度改动的 1,023 项 JVM 测试通过，新增检查确认连接构造不在控制器线程执行。本轮 Debug 与 AndroidTest APK 构建通过，修正版已安装到 SM-X510；`TerminalLoadingTest` 四项全部通过，新增真实页面 1000×600dp 用例在暂停首帧时确认侧栏、扩展键及输入区可见，加载边界等于输出视口且不与侧栏、输入区重叠，推进时钟后加载退出。原有首帧加载、初始化前离页取消、失败退出加载检查继续通过。上一轮 `NativeTerminalTest` 和 `XtermTerminalTest` 各一项通过，真实 Linux 会话两次文件→终端切换均保持原会话与未发送草稿，草稿已清理，没有发送远端命令。未执行修正前后耗时基准、大量历史输出、慢网络或其它手机机型的性能验收；完整终端矩阵继续保留。
