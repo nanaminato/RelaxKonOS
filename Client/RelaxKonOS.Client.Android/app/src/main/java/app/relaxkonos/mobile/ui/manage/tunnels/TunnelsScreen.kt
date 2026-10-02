@@ -91,8 +91,8 @@ WorkspaceSection(section in setOf("overview", "runtime")) {
             Text(stringResource(R.string.tunnels_profiles), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(R.string.tunnels_checked, tunnelDate(observed.observedAtMillis)), style = MaterialTheme.typography.bodySmall)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                OutlinedButton(onClick = { section = "profiles" }) { Text(stringResource(R.string.tunnels_profiles) + " · " + observed.profiles.size) }
-                OutlinedButton(onClick = { section = "profiles" }) { Text(stringResource(R.string.workspace_tunnels) + " · " + observed.definitions.size) }
+                Text(stringResource(R.string.tunnels_profiles) + " · " + observed.profiles.size)
+                Text(stringResource(R.string.workspace_tunnels) + " · " + observed.definitions.size)
             }
             if (observed.profiles.isEmpty()) Text(stringResource(R.string.tunnels_profiles_empty))
         } }

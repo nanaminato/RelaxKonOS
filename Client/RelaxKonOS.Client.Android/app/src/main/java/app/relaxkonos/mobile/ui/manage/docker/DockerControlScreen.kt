@@ -26,7 +26,7 @@ private data class MirrorDraft(val id: String? = null, val name: String = "", va
 private data class ControlConfirmation(val facts: DockerControlFacts, val change: DockerControlChange)
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable fun DockerControlScreen(onBack: () -> Unit, onOpenProxy: () -> Unit, modifier: Modifier = Modifier, mirrorsOnly: Boolean = false, recordsOnly: Boolean = false, active: Boolean = true) {
+@Composable fun DockerControlScreen(onBack: () -> Unit, modifier: Modifier = Modifier, mirrorsOnly: Boolean = false, recordsOnly: Boolean = false, active: Boolean = true) {
     val model: DockerControlViewModel = viewModel(); val owner = appContainer().activeSession; val state = model.state
     val visible = state.owner === owner; val facts = state.facts.takeIf { visible }
     val manage = visible && owner?.privilegedOperations == true
@@ -49,7 +49,6 @@ private data class ControlConfirmation(val facts: DockerControlFacts, val change
         ScreenHeader(stringResource(if (recordsOnly) R.string.workspace_records else if (mirrorsOnly) R.string.workspace_mirrors else R.string.docker_title), onBack = { navigate(onBack) })
         if (owner?.capabilities?.contains(ServerCapabilities.DOCKER) != true) { Text(stringResource(R.string.error_capability_missing)); return@Column }
         TextButton(enabled = !state.busy, onClick = { navigate { draft = null; model.refresh() } }) { Text(stringResource(R.string.common_refresh)) }
-        TextButton(onClick = { navigate(onOpenProxy) }) { Text(stringResource(R.string.proxy_title)) }
         if (visible && state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (visible) state.problem?.let { Text(controlProblem(it), color = MaterialTheme.colorScheme.error) }
         if (visible && recordsOnly) state.pending.forEach { pending ->

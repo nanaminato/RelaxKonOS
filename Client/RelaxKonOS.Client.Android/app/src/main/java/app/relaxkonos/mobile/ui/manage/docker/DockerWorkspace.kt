@@ -53,17 +53,16 @@ fun DockerWorkspace(initialSection: String, initialStack: String?, onBack: () ->
         }
         key(owner) { Box(Modifier.weight(1f)) {
             WorkspaceSection(section == "overview", Modifier.fillMaxSize()) {
-                DockerControlScreen(onBack, { section = "proxy" }, active = section == "overview")
+                DockerControlScreen(onBack, active = section == "overview")
             }
             WorkspaceSection(section == "mirrors", Modifier.fillMaxSize()) {
-                DockerControlScreen(onBack, { section = "proxy" }, mirrorsOnly = true, active = section == "mirrors")
+                DockerControlScreen(onBack, mirrorsOnly = true, active = section == "mirrors")
             }
             WorkspaceSection(section == "records", Modifier.fillMaxSize()) {
-                DockerControlScreen(onBack, { section = "proxy" }, recordsOnly = true, active = section == "records")
+                DockerControlScreen(onBack, recordsOnly = true, active = section == "records")
             }
             WorkspaceSection(section == "compose", Modifier.fillMaxSize()) {
-                DockerScreen(onBack, initialStackName = requestedStack, onOpenResources = { section = "containers" },
-                    onOpenControl = { section = "overview" }, onOpenProxy = { section = "proxy" }, section = "compose")
+                DockerScreen(onBack, initialStackName = requestedStack, section = "compose")
             }
             DockerResourceKind.entries.forEach { kind ->
                 val id = kind.name.lowercase()

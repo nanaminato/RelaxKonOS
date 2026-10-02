@@ -336,7 +336,7 @@ private fun operationKind(kind: DockerStackOperationKind): String = stringResour
 )
 
 @Composable
-fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialStackName: String? = null, onOpenResources: () -> Unit, onOpenControl: () -> Unit, onOpenProxy: () -> Unit, section: String = "overview") {
+fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialStackName: String? = null, section: String = "overview") {
     val viewModel: DockerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val state = viewModel.state
     val available = state.owner?.capabilities?.contains(ServerCapabilities.DOCKER) == true
@@ -359,9 +359,6 @@ fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialSt
         if (!available) { EmptyHint(stringResource(R.string.error_capability_missing)); return@Column }
         state.message?.let { message -> ErrorBanner(message.text(), viewModel::refresh, viewModel::dismissMessage, tone = message.tone) }
         if (state.loading || state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (!notInstalled) TextButton(onClick = onOpenResources) { Text(stringResource(R.string.docker_resources_title)) }
-        TextButton(onClick = onOpenControl) { Text(stringResource(if (notInstalled) R.string.docker_control_install else R.string.docker_control_title)) }
-        TextButton(onClick = onOpenProxy) { Text(stringResource(R.string.proxy_title)) }
         if (notInstalled) {
             EmptyHint(stringResource(R.string.runtime_install_hint, "Docker"))
         } else {

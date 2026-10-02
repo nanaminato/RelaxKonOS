@@ -109,14 +109,10 @@ WorkspaceSection(section == "overview") {
             if (facts.shares != null || facts.users != null) SmbPanel {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     facts.shares?.let { shares ->
-                        OutlinedButton(onClick = { navigate { draft = null; section = "shares" } }) {
-                            Text(stringResource(R.string.workspace_shares) + " · " + shares.size)
-                        }
+                        Text(stringResource(R.string.workspace_shares) + " · " + shares.size)
                     }
                     facts.users?.let { users ->
-                        OutlinedButton(onClick = { navigate { draft = null; section = "users" } }) {
-                            Text(stringResource(R.string.workspace_users) + " · " + users.size)
-                        }
+                        Text(stringResource(R.string.workspace_users) + " · " + users.size)
                     }
                 }
             }

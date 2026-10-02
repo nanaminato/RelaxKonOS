@@ -63,8 +63,6 @@ fun CertificatesScreen(onBack: () -> Unit, initialOperationId: String? = null, m
             val certificates = (state.list as? ApiResult.Success)?.value
             SectionCard(stringResource(R.string.workspace_certificates), subtitle = certificates?.size?.toString()) {
                 Text(stringResource(R.string.certificates_intro))
-                TextButton(onClick = { section = "certificates" }) { Text(stringResource(R.string.workspace_certificates)) }
-                TextButton(onClick = { section = "operations" }) { Text(stringResource(R.string.workspace_operations)) }
             }
         }
         WorkspaceSection(section == "certificates") {
