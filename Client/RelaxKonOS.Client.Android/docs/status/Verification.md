@@ -12,7 +12,7 @@
 
 2026-10-02 局域网自签证书修复：`ServerMaintenanceOptionsTest` 4 项、`ServerMaintenanceTest` 1 项、`ServerCenterDeploymentClientTest` 11 项与离线 `assembleDebug` 通过。覆盖普通修复保留证书/数据、Linux/Windows 系统修复的当前 IP 请求序列化、User Mode 拒绝、空/非法名称拒绝，以及卸载/回滚隔离证书参数。共享启动器 `Tests/Deployment/certificate_repair_checks.py` 2 项通过，覆盖默认保留、显式重新生成、回滚保留及旧引擎拒绝；Bash/PowerShell 启动器语法检查通过。尚未通过 Android 实机执行证书更换；手机/平板的大字体、TalkBack、键盘避让、确认/取消、切换宿主表单隔离、断线回执查询与重新登录核对新指纹，以及真实 Windows 修复均待验证。此前 SSH 直接修复 Linux 宿主的证据不代表移动端端到端验收。
 
-手机页面分类与桌面任务路径的便利性尚未验收。2026-10-02 的代码检查及 PN-01–10 对照见 [手机与桌面页面结构差异](PhoneNavigationParity.md)，具体复验场景见该文第 6 节：分类触达、长内容切换、返回/草稿、运维上下文和手机布局均待执行。本次文档检查不构成手机真机通过证据。
+2026-10-02 PN-01–10 导航改造：Kotlin 编译、1,022 项 JVM 测试与 Debug APK 构建通过，SM-X510 的 `WorkspaceNavigationTest` 五项通过，覆盖草稿/不重放提交、360dp/2 倍字体固定导航与分类滚动、保存恢复及所有者变化清理、隐藏面板不占当前视口、八分类横向触达。设置返回栈新增两项 JVM 检查通过。各应用真实领域操作、手机真机、三语/主题/TalkBack、断线与恢复、Windows/Linux 能力门控和真实账户切换仍待验收，见 [导航对照状态](PhoneNavigationParity.md)。
 
 2026-10-01 SSH 设置、双终端与平板导航：703 项 JVM 测试与 `assembleDebug` 通过，新增检查覆盖原生/原始 VT 输出并存、跨帧 UTF-8、清屏、resize/离页保留及重连/附加其它 shell 同步重置。SM-S9380 与 SM-X510（Android 16）均执行 `SshWorkspaceLayoutTest` 三项、`NativeTerminalTest` 一项及 `XtermTerminalTest` 一项通过：导航覆盖 360/700/1000dp 设置入口、底栏键盘折叠、侧栏独立视口和无障碍名称；原生模式验证首次连接成功后同步 PTY 尺寸及视口宽度变化；xterm.js 验证 Windows VT 重绘、查询响应和视口显隐尺寸。xterm.js 用例等待实际 fit/绘制完成后检查边界，避免在 200ms 尺寸稳定期前误报。完整终端测试包在平板 `keyboardShowAndHidePreserveTheUnsentDraft` 长时间等待后中止，不能记为整包通过。语言/主题/高对比度/终端选择的重启恢复、真实 SSH/Server 会话切换两种渲染器、平板分屏/旋转与复杂全屏程序仍需实机联调；导航测量用例不代表所有 SSH 页面已完成内容双栏。
 
@@ -24,7 +24,7 @@
 
 2026-10-01 SSH 终端使用本地 xterm.js：仅服务器中心 SSH 路径替换为完整 VT 模拟器，PTY 声明 `xterm-256color`；RelaxKonOS Server Hub 终端保持现有实现。JVM 检查覆盖 Windows 清屏/光标/颜色序列和跨帧原样传递、小视口尺寸及会话隔离。新增 WebView 重绘/终端查询响应/视口恢复设备测试；本轮模拟器执行因设备连接丢失失败，不能作为通过证据。用户负责实机联调：Windows SSH 初始提示符、`cls`、PowerShell 颜色、连续命令、键盘反复显隐、字号调整、会话切换及离页返回；检查长时间大量输出的内存与重放开销。既有 SSH 布局模拟器证据不覆盖新 WebView 渲染器。
 
-2026-10-01 操作记录：平台自动识别，「查看详情」通过可滚动、可复制的弹窗展示回执与按需读取日志，支持关闭按钮、返回键和窗口外点击关闭。「清除已结束记录」确认后删除列表中已核验结束的远端回执、事件和日志，同步移除本地索引，保留运行中、缺失及未核验记录与防重放请求摘要。`assembleDebug --offline`、`ServerCenterDeploymentClientTest`、`ServerInstallOperationIndexTest` 通过；Windows 清除入口的隔离测试 `Tests/Deployment/operation_history_checks.py` 三项通过，覆盖四种结束状态、运行/排队/未知/缺失/编号不匹配和写锁冲突；Linux 启动器 `bash -n` 通过。此前客户端测试覆盖固定 diagnostics 动作、无效 ID 拒绝、日志截断及敏感字段遮盖。实体手机弹窗关闭、清除确认与失败重试、长日志滚动/复制、真实 Linux/Windows SSH 清除与历史记录查询仍待验证。
+2026-10-01 操作记录：平台自动识别，「查看详情」通过可滚动、可复制的弹窗展示回执与按需读取日志，支持关闭按钮、返回键和窗口外点击关闭。「清除已结束记录」确认后删除列表中已核验结束的远端回执、事件和日志，同步移除本地索引，保留运行中、缺失及未核验记录与防重放请求摘要。`assembleDebug --offline`、`ServerCenterDeploymentClientTest`、`ServerInstallOperationIndexTest` 通过；Windows 清除入口的隔离测试 `Tests/Deployment/operation_history_checks.py` 五项通过，覆盖四种结束状态、运行/排队/未知/缺失/编号不匹配和写锁冲突；Linux 启动器 `bash -n` 通过。此前客户端测试覆盖固定 diagnostics 动作、无效 ID 拒绝、日志截断及敏感字段遮盖。实体手机弹窗关闭、清除确认与失败重试、长日志滚动/复制、真实 Linux/Windows SSH 清除与历史记录查询仍待验证。
 
 2026-10-01 Linux 监听地址回执：从受管安装记录读取 listenUrl，保留真实协议、绑定地址和端口；不再虚构 HTTP 回环地址。`ListenAddressChecks.ps1` 与 Android `assembleDebug --offline` 通过。实体设备刷新后与真实宿主配置的对照仍待执行。
 

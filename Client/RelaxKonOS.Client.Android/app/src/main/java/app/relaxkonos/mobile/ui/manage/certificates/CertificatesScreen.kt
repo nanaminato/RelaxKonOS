@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.certificates
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -26,6 +27,8 @@ fun CertificatesScreen(onBack: () -> Unit, initialOperationId: String? = null, m
     val state = model.state
     val epoch = model.sessionEpoch
     val owner = appContainer().activeSession
+    var section by rememberSaveable(owner, epoch) { mutableStateOf(if (initialOperationId == null) "overview" else "operations") }
+    LaunchedEffect(initialOperationId) { if (initialOperationId != null) section = "operations" }
     val available = owner?.capabilities?.contains(ServerCapabilities.CERTIFICATES) == true
     val canManage = available && owner?.privilegedOperations == true
     var confirm by remember(owner, epoch) { mutableStateOf<Pair<Int, () -> Unit>?>(null) }
@@ -36,10 +39,9 @@ fun CertificatesScreen(onBack: () -> Unit, initialOperationId: String? = null, m
     LaunchedEffect(owner, epoch, state.operation?.operationId, state.operation?.state, state.busy) {
         if (state.operation?.state?.active == true && !state.busy) { delay(1500); model.poll() }
     }
-    BackHandler(state.selectedId != null && state.draft == null && !state.busy) { model.select(null) }
-    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-        ScreenHeader(stringResource(R.string.certificates_title), onBack = onBack)
-        if (!available) { Text(stringResource(R.string.error_capability_missing)); return@Column }
+    BackHandler(section == "certificates" && state.selectedId != null && state.draft == null && !state.busy) { model.select(null) }
+    WorkspaceColumn(stringResource(R.string.certificates_title), onBack, listOf(WorkspaceDestination("overview", R.string.workspace_overview), WorkspaceDestination("certificates", R.string.workspace_certificates), WorkspaceDestination("operations", R.string.workspace_operations)), section, { section = it }, modifier, stateKey = owner to epoch) {
+        if (!available) { Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn }
         Text(stringResource(R.string.certificates_intro), style = MaterialTheme.typography.bodySmall)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             TextButton(onClick = model::refresh, enabled = !state.busy) { Text(stringResource(R.string.common_refresh)) }
@@ -52,6 +54,20 @@ fun CertificatesScreen(onBack: () -> Unit, initialOperationId: String? = null, m
         if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (state.uncertain) Text(stringResource(R.string.certificates_uncertain), color = MaterialTheme.colorScheme.error)
         state.problemCode?.let { Text(certificateProblemLabel(it), color = MaterialTheme.colorScheme.error) }
+        if (section != "operations" && (state.pending.isNotEmpty() || state.operation != null)) {
+            TextButton(onClick = { section = "operations" }) {
+                Text(stringResource(R.string.workspace_operations) + " · " + (state.operation?.operationId ?: state.pending.size.toString()))
+            }
+        }
+        WorkspaceSection(section == "overview") {
+            val certificates = (state.list as? ApiResult.Success)?.value
+            SectionCard(stringResource(R.string.workspace_certificates), subtitle = certificates?.size?.toString()) {
+                Text(stringResource(R.string.certificates_intro))
+                TextButton(onClick = { section = "certificates" }) { Text(stringResource(R.string.workspace_certificates)) }
+                TextButton(onClick = { section = "operations" }) { Text(stringResource(R.string.workspace_operations)) }
+            }
+        }
+        WorkspaceSection(section == "certificates") {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             if (maxWidth >= 600.dp) Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
                 Column(Modifier.weight(1f)) { CertificateList(state, model) }
@@ -63,6 +79,8 @@ fun CertificatesScreen(onBack: () -> Unit, initialOperationId: String? = null, m
                 }
             }
         }
+        }
+        WorkspaceSection(section == "operations") {
         state.operation?.let { operation ->
             HorizontalDivider()
             Text(certificateActionLabel(operation.kind), style = MaterialTheme.typography.titleSmall)
@@ -85,6 +103,7 @@ fun CertificatesScreen(onBack: () -> Unit, initialOperationId: String? = null, m
                 confirm = R.string.certificates_retry_confirm to { model.retry(pending) }
             }) { Text(stringResource(R.string.common_retry)) }
             TextButton(enabled = !state.busy, onClick = { recoverPending = pending; recoverId = pending.operationId.orEmpty(); recovery = true }) { Text(stringResource(R.string.certificates_recover)) }
+        }
         }
     }
     if (state.draft != null) key(owner, epoch) { CertificateEditor(state, model) }

@@ -18,11 +18,11 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable internal fun ManagedFrpsManager(model: TunnelsViewModel, state: TunnelsState, canManage: Boolean, onClient: () -> Unit) {
+@Composable internal fun ManagedFrpsManager(model: TunnelsViewModel, state: TunnelsState, canManage: Boolean, active: Boolean, onClient: () -> Unit) {
     var confirm by remember { mutableStateOf<Triple<Int, String, () -> Unit>?>(null) }
     val current = (state.frps as? ApiResult.Success)?.value
-    LaunchedEffect(current?.state, state.frpsAtMillis, state.busy, state.frpsDraft == null) {
-        if (current?.state?.active == true && !state.busy && state.frpsDraft == null) { delay(3000); model.observeFrps() }
+    LaunchedEffect(active, current?.state, state.frpsAtMillis, state.busy, state.frpsDraft == null) {
+        if (active && current?.state?.active == true && !state.busy && state.frpsDraft == null) { delay(3000); model.observeFrps() }
     }
     Text(stringResource(R.string.frps_intro))
     TextButton(enabled = !state.busy, onClick = model::observeFrps) { Text(stringResource(R.string.common_refresh)) }

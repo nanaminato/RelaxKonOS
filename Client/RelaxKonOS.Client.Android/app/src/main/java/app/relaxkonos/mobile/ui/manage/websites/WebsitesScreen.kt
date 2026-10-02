@@ -1,5 +1,7 @@
 package app.relaxkonos.mobile.ui.manage.websites
 
+import app.relaxkonos.mobile.ui.common.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import android.app.Application
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -171,6 +173,8 @@ fun WebsitesScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initial
     val viewModel: WebsitesViewModel = viewModel()
     val state = viewModel.state
     val container = app.relaxkonos.mobile.ui.common.appContainer()
+    var section by rememberSaveable(container.activeSession, viewModel.sessionEpoch) { mutableStateOf(if (initialApplicationId == null) "instances" else "publish") }
+    androidx.compose.runtime.LaunchedEffect(initialApplicationId) { if (initialApplicationId != null) section = "publish" }
     val available = container.capabilities.contains(ServerCapabilities.WEB_SERVER)
     androidx.compose.runtime.LaunchedEffect(container.activeSession, viewModel.sessionEpoch, available) { if (available && state.servers == null) viewModel.refresh() }
     androidx.compose.runtime.LaunchedEffect(initialApplicationId, state.applications) {
@@ -178,23 +182,15 @@ fun WebsitesScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initial
             state.selectedApplicationId != initialApplicationId) viewModel.selectApplication(initialApplicationId)
     }
 
-    Column(
-        modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg),
-        verticalArrangement = Arrangement.spacedBy(Spacing.md),
-    ) {
-        ScreenHeader(
-            title = stringResource(R.string.websites_title), onBack = onBack,
-            trailing = { TextButton(onClick = viewModel::refresh, enabled = available && !state.loading) { Text(stringResource(R.string.common_refresh)) } },
-        )
+    WorkspaceColumn(stringResource(R.string.websites_title), onBack, listOf(WorkspaceDestination("instances", R.string.workspace_instances), WorkspaceDestination("sites", R.string.workspace_sites), WorkspaceDestination("publish", R.string.workspace_publish)), section, { section = it }, modifier, stateKey = container.activeSession to viewModel.sessionEpoch) {
         if (!available) {
             EmptyHint(stringResource(R.string.error_capability_missing))
-            return@Column
+            return@WorkspaceColumn
         }
         Text(stringResource(R.string.websites_publish_note), style = MaterialTheme.typography.bodySmall)
         if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-        NginxManager(onChanged = viewModel::refresh)
-        androidx.compose.runtime.key(viewModel.sessionEpoch) { WebsitePublisher(state, viewModel) }
-        WebsiteServers(state, state.certificates, state.applications)
+        WorkspaceSection(section != "publish") { NginxManager(onChanged = viewModel::refresh, section = section) }
+        WorkspaceSection(section == "publish") { androidx.compose.runtime.key(viewModel.sessionEpoch) { WebsitePublisher(state, viewModel) } }
     }
 }
 

@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.git
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -25,7 +26,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 import kotlinx.coroutines.delay
 
 @Composable
-internal fun GitWorkspaceSection(owner: SessionState.Active) {
+internal fun GitWorkspaceSection(owner: SessionState.Active, section: String) {
     val model: GitWorkspaceViewModel = viewModel()
     val state = model.state
     var name by remember(owner) { mutableStateOf("") }
@@ -70,12 +71,14 @@ internal fun GitWorkspaceSection(owner: SessionState.Active) {
                 onClick = { model.select(repository.id) }, enabled = !state.busy, label = { Text(repository.name) }) }
         }
         if (state.repositories.isEmpty()) Text(stringResource(R.string.git_no_repositories))
+WorkspaceSection(section == "workspace") {
         Text(stringResource(R.string.git_register_title), style = MaterialTheme.typography.titleMedium)
         Text(stringResource(R.string.git_register_note), style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(name, { name = it }, enabled = !state.busy, label = { Text(stringResource(R.string.git_register_name)) }, modifier = Modifier.fillMaxWidth())
         RemotePathField(directory, { directory = it }, R.string.git_register_path, RemotePathKind.Directory, modifier = Modifier.fillMaxWidth())
         OutlinedButton(onClick = { model.register(name, directory) }, enabled = owner.executionEligibility.available && !state.busy && name.isNotBlank() && directory.isNotBlank()) { Text(stringResource(R.string.git_register)) }
-    }
+}
+            }
     if (facts != null) {
         Text(stringResource(R.string.git_branch_status, facts.status.branch, facts.status.ahead, facts.status.behind))
         Text(stringResource(R.string.gw_upstream, facts.status.upstream ?: stringResource(R.string.gw_no_upstream)))
@@ -118,10 +121,10 @@ internal fun GitWorkspaceSection(owner: SessionState.Active) {
                     Button(onClick = { model.prepare(GitMutation(GitAction.Commit, message = model.commitMessage)) }, enabled = ordinary && facts.status.staged.isNotEmpty() && model.commitMessage.isNotBlank() && model.commitMessage.length <= 16384) { Text(stringResource(R.string.git_commit)) }
                 }
             }
-            if (maxWidth >= 720.dp) Row(horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {
-                Box(Modifier.weight(1f)) { branches() }; Box(Modifier.weight(1f)) { changes() }
-            } else Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) { branches(); changes() }
+            WorkspaceSection(section == "branches") { branches() }
+            WorkspaceSection(section == "workspace") { changes() }
         }
+WorkspaceSection(section == "conflicts") {
         if (facts.conflicts.operation != null || facts.conflicts.paths.isNotEmpty()) {
             Text(stringResource(R.string.gw_conflicts), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error)
             Text(stringResource(operationLabel(facts.conflicts.operation)))
@@ -133,8 +136,12 @@ internal fun GitWorkspaceSection(owner: SessionState.Active) {
                 }
             }
         }
+}
+        WorkspaceSection(section == "workspace") {
         OutlinedTextField(path, { path = it }, label = { Text(stringResource(R.string.git_file_path)) }, modifier = Modifier.fillMaxWidth())
         OutlinedButton(onClick = { editor = path }, enabled = ordinary && GitWorkspacePolicy.path(path)) { Text(stringResource(R.string.git_open_file)) }
+}
+        WorkspaceSection(section == "history") {
         Text(stringResource(R.string.gw_history), style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(search, { search = it }, enabled = !state.busy, label = { Text(stringResource(R.string.gw_history_search)) }, modifier = Modifier.fillMaxWidth())
         OutlinedButton(onClick = { model.history(0, search) }, enabled = !state.busy) { Text(stringResource(R.string.gw_history_load)) }
@@ -151,7 +158,8 @@ internal fun GitWorkspaceSection(owner: SessionState.Active) {
             SelectionContainer { Text(stringResource(R.string.gw_parents, detail.parents.joinToString(" · "))) }
             detail.changedFiles.forEach { file -> TextButton(onClick = { model.showDiff(file.path, false, detail.sha) }, enabled = !state.busy) { Text(file.path) } }
         }
-        state.diff?.let { GitPatch(it) }
+}
+                state.diff?.let { GitPatch(it) }
     }
     if (state.conflict == null) state.preview?.let { GitConfirmation(it, model) }
     state.conflict?.let { GitConflictDialog(it, model, ready) }

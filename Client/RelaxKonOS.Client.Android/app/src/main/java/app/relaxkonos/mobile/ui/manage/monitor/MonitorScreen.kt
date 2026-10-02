@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.monitor
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
@@ -31,12 +32,13 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 import kotlinx.coroutines.awaitCancellation
 
 @Composable
-fun MonitorScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
+fun MonitorScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, active: Boolean = true) {
     val model: MonitorViewModel = viewModel()
     val state by model.state.collectAsStateWithLifecycle()
     val auth by appContainer().session.state.collectAsStateWithLifecycle()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    LaunchedEffect(lifecycle, auth, model.available) {
+    LaunchedEffect(active, lifecycle, auth, model.available) {
+        if (!active || !model.available) return@LaunchedEffect
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             try { model.observe(); awaitCancellation() } finally { model.stopObserving() }
         }
@@ -64,7 +66,7 @@ fun MonitorScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
         if (resources.isEmpty()) { EmptyHint(stringResource(if (state.phase == PerformancePhase.Connecting) R.string.common_loading else R.string.manage_monitor_empty)); return@Column }
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             val split = monitorUsesTwoPanes(maxWidth.value, maxHeight.value, LocalDensity.current.fontScale)
-            BackHandler(enabled = !split && model.selected != null) { model.select(null) }
+            BackHandler(enabled = active && !split && model.selected != null) { model.select(null) }
             val selected = model.selected?.let { key -> resources.firstOrNull { it.key == key.key } } ?: if (split) resources.firstOrNull() else null
             if (split) {
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {

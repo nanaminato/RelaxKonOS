@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.proxy
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -36,7 +37,8 @@ private data class ProxyConfirmation(val action: () -> Unit)
     var identified by remember(owner, epoch) { mutableStateOf(false) }
     var recovering by remember(owner, epoch) { mutableStateOf(false) }
     var attemptedInitial by remember(owner, epoch, initialOperationId) { mutableStateOf(false) }
-    var networkSection by remember(owner, epoch) { mutableStateOf(false) }
+    var section by rememberSaveable(owner, epoch) { mutableStateOf("overview") }
+    val networkSection = section in setOf("connections", "logs", "settings")
     var showRecovery by remember(owner, epoch) { mutableStateOf(false) }
     LaunchedEffect(owner, epoch) { if (available) model.refresh() }
     LaunchedEffect(owner, epoch, initialOperationId, state.busy) {
@@ -63,15 +65,11 @@ private data class ProxyConfirmation(val action: () -> Unit)
             else if ((state.traffic as? ApiResult.Success)?.value?.problemCode?.isBlank() == true) { delay(3000); model.diagnostics() }
         }
     }
-    BackHandler(selected != null && editor == null && !state.busy) { selected = null }
-    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-        ScreenHeader(stringResource(R.string.mihomo_title), onBack = onBack)
-        if (!available) { Text(stringResource(R.string.error_capability_missing)); return@Column }
+    BackHandler(section == "profiles" && selected != null && editor == null && !state.busy) { selected = null }
+    WorkspaceColumn(stringResource(R.string.mihomo_title), onBack, listOf(WorkspaceDestination("overview", R.string.workspace_overview), WorkspaceDestination("profiles", R.string.workspace_profiles), WorkspaceDestination("nodes", R.string.workspace_nodes), WorkspaceDestination("connections", R.string.workspace_connections), WorkspaceDestination("logs", R.string.workspace_logs), WorkspaceDestination("settings", R.string.workspace_settings)), section, { section = it }, modifier, stateKey = owner to epoch) {
+        if (!available) { Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn }
+WorkspaceSection(section == "overview") {
         Text(stringResource(R.string.mihomo_intro))
-        FlowRow {
-            TextButton(onClick = { networkSection = false }) { Text(stringResource(R.string.mihomo_profile_tab)) }
-            TextButton(onClick = { networkSection = true }) { Text(stringResource(R.string.mihomo_network_tab)) }
-        }
         FlowRow {
             TextButton(enabled = !state.busy, onClick = model::refresh) { Text(stringResource(R.string.common_refresh)) }
             if (canManage) OutlinedButton(enabled = !state.busy && state.installation?.state?.active != true, onClick = { install = true }) { Text(if (notInstalled) stringResource(R.string.runtime_install_action, "Mihomo") else stringResource(R.string.mihomo_runtime_manage)) }
@@ -96,7 +94,8 @@ private data class ProxyConfirmation(val action: () -> Unit)
             }
             }
         }
-        state.operation?.let { operation ->
+}
+                state.operation?.let { operation ->
             Text(operation.operationId, style = MaterialTheme.typography.bodySmall)
             Text(if (state.operationVerified) proxyOperationLabel(operation.state) else stringResource(R.string.mihomo_unverified))
             if (state.operationVerified) { Text(proxyStageLabel(operation.stage)); operation.problemCode.takeIf(String::isNotBlank)?.let { Text(proxyProblemLabel(it)) } }
@@ -132,10 +131,10 @@ private data class ProxyConfirmation(val action: () -> Unit)
                     onClick = { confirm = ProxyConfirmation { model.accept(pending) } }) { Text(stringResource(R.string.mihomo_accept_facts)) }
             }
         }
-        if (networkSection) {
-            if (!notInstalled) key(owner, epoch) { ProxyNetworkPanel(model, canManage, ready) { action -> confirm = ProxyConfirmation(action) } }
-            return@Column
+        WorkspaceSection(networkSection) {
+            if (!notInstalled) key(owner, epoch) { ProxyNetworkPanel(model, canManage, ready, section) { action -> confirm = ProxyConfirmation(action) } }
         }
+WorkspaceSection(section == "profiles") {
         HorizontalDivider()
         Text(stringResource(R.string.mihomo_subscriptions), style = MaterialTheme.typography.titleMedium)
         if (canManage) FlowRow {
@@ -165,6 +164,8 @@ private data class ProxyConfirmation(val action: () -> Unit)
                 }
             }
         }
+}
+        WorkspaceSection(section == "nodes") {
         if (!notInstalled) {
         HorizontalDivider()
         Text(stringResource(R.string.mihomo_nodes), style = MaterialTheme.typography.titleMedium)
@@ -191,7 +192,8 @@ private data class ProxyConfirmation(val action: () -> Unit)
             }
         }
         }
-    }
+}
+            }
     if (install) key(owner, epoch) { ProxyInstallEditor(model) { install = false } }
     editor?.let { kind -> key(owner, epoch, kind, current?.id) { ProxyEditor(kind, current, model) { editor = null } } }
     confirm?.let { request -> AlertDialog(onDismissRequest = { confirm = null }, title = { Text(stringResource(R.string.tunnels_confirm)) },

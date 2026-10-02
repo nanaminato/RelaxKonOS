@@ -53,6 +53,13 @@ class MobileNavigator(initialDestination: String) {
         this.route = route
     }
 
+    /** Switch an application's category without growing its back stack. */
+    fun replaceTop(route: String) {
+        val stack = stackOf(currentDestination)
+        if (stack.isEmpty()) stack.add(route) else stack[stack.lastIndex] = route
+        this.route = route
+    }
+
     /** Pops one sub-route. Returns false when the destination is already at its root. */
     fun pop(): Boolean {
         val stack = stackOf(currentDestination)

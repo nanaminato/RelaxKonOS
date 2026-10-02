@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.websites
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -20,7 +21,7 @@ import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun NginxManager(onChanged: () -> Unit) {
+internal fun NginxManager(onChanged: () -> Unit, section: String) {
     val model: NginxViewModel = viewModel()
     val state = model.state
     val sessionEpoch = model.sessionEpoch
@@ -58,11 +59,11 @@ internal fun NginxManager(onChanged: () -> Unit) {
             val selected = state.servers.firstOrNull { it.id == state.selectedId }
             if (maxWidth >= 600.dp) Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
                 Column(Modifier.weight(1f)) { InstanceList(state, model) }
-                Column(Modifier.weight(2f)) { selected?.let { InstanceDetails(it, state, canManage, model) { message, action -> confirmation = message to action } } }
+                Column(Modifier.weight(2f)) { selected?.let { InstanceDetails(it, state, canManage, model, section) { message, action -> confirmation = message to action } } }
             } else Column {
                 if (selected == null) InstanceList(state, model) else {
                     TextButton(onClick = { model.select(null) }) { Text(stringResource(R.string.common_back)) }
-                    InstanceDetails(selected, state, canManage, model) { message, action -> confirmation = message to action }
+                    InstanceDetails(selected, state, canManage, model, section) { message, action -> confirmation = message to action }
                 }
             }
         }
@@ -137,7 +138,7 @@ private fun InstanceList(state: NginxState, model: NginxViewModel) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun InstanceDetails(server: WebServer, state: NginxState, canManage: Boolean, model: NginxViewModel,
+private fun InstanceDetails(server: WebServer, state: NginxState, canManage: Boolean, model: NginxViewModel, section: String,
     confirm: (Int, () -> Unit) -> Unit) {
     Text(stringResource(if (server.managementMode == "managed") R.string.nginx_managed else R.string.nginx_integrated))
     Text(server.executablePath, style = MaterialTheme.typography.bodySmall)
@@ -155,7 +156,8 @@ private fun InstanceDetails(server: WebServer, state: NginxState, canManage: Boo
         test.valid -> R.string.websites_config_valid
         else -> R.string.websites_config_invalid }))
     test?.problemCode?.takeIf(String::isNotBlank)?.let { Text(nginxProblemLabel(it)) }
-    WebSiteList(server, state, canManage, model, confirm)
+    WorkspaceSection(section == "sites") { WebSiteList(server, state, canManage, model, confirm) }
+WorkspaceSection(section == "instances") {
     if (canManage) FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         WebServerAction.entries.filter { it.supported(server) }.forEach { action ->
             OutlinedButton(enabled = !state.busy && state.pending.none { it.target == server.id } && state.operation?.state?.active != true,
@@ -165,7 +167,8 @@ private fun InstanceDetails(server: WebServer, state: NginxState, canManage: Boo
         }
         if (server.canUninstall && server.managementMode == "managed") OutlinedButton(enabled = !state.busy && state.installation?.state?.active != true && !state.pendingInstallation && !model.hasIntent,
             onClick = { confirm(R.string.nginx_uninstall_confirm) { model.install(null, false, InstallationKind.Uninstall) } }) { Text(stringResource(R.string.nginx_uninstall)) }
-    }
+    }}
+
 }
 
 @Composable

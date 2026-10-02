@@ -16,6 +16,7 @@
 
 | 文档 | 内容 |
 | --- | --- |
+| [应用内功能导航](features/ApplicationNavigation.md) | 十项管理应用的固定分类、状态保留、返回与范围标识 |
 | [服务器中心](features/ServerCenter.md) | SSH 信任、文件/终端、稳定身份与隧道、安装回执；首次安装仍缺执行链路 |
 | [文件与 Git 共用编辑器](features/TextEditor.md) | Unicode 编码/BOM/换行、查找替换/语法显示、条件保存、冲突和离页保护 |
 | [文件与图片](features/Files.md) | 筛选排序、多选与远端剪贴板、逐项结果、属性/权限及有界图片查看 |
@@ -64,7 +65,7 @@
 | [当前实现与进度](status/Progress.md) | 当前功能、代码缺口、BP 实现状态与下一项 |
 | [测试进度与验收](status/Verification.md) | 独立 BP 测试进度、已有执行证据与设备/宿主/故障矩阵；保留 AD 验收 ID 与 Compose 部分通过事实 |
 | [SM-X510 页面巡检与可用性](status/TabletUsability.md) | Server/SSH 实机首轮证据、操作便利性问题与逐项复验标准 |
-| [手机与桌面页面结构差异](status/PhoneNavigationParity.md) | 8 个应用的单页/有限切换差异、任务管理与设置入口分散、PN-01–10 改进目标与手机复验标准 |
+| [手机与桌面页面结构差异](status/PhoneNavigationParity.md) | PN-01–10 已实现结构、导航组件设备证据与尚待验收范围 |
 
 ## 维护规则
 

@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.proxy
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -16,10 +17,11 @@ import java.text.DateFormat
 import java.util.Date
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable internal fun ProxyNetworkPanel(model: ProxyViewModel, canManage: Boolean, ready: Boolean, confirm: (() -> Unit) -> Unit) {
+@Composable internal fun ProxyNetworkPanel(model: ProxyViewModel, canManage: Boolean, ready: Boolean, section: String, confirm: (() -> Unit) -> Unit) {
     val state = model.state; val overview = (state.overview as? ApiResult.Success)?.value
     val settings = (state.settings as? ApiResult.Success)?.value; val recovery = (state.recovery as? ApiResult.Success)?.value
     var editing by remember { mutableStateOf(false) }; var configuringGeo by remember { mutableStateOf(false) }
+WorkspaceSection(section == "settings") {
     Text(stringResource(R.string.mihomo_network_title), style = MaterialTheme.typography.titleMedium)
     Text(stringResource(R.string.mihomo_host_network_note))
     if (recovery == null) Text(stringResource(R.string.mihomo_unverified)) else {
@@ -47,15 +49,19 @@ import java.util.Date
     Text(stringResource(when { geo == null -> R.string.mihomo_unverified; geo.configured -> R.string.mihomo_geodata_configured; else -> R.string.mihomo_geodata_missing }))
     geo?.sizeBytes?.let { Text(stringResource(R.string.mihomo_bytes, it)) }
     if (canManage) TextButton(enabled = ready, onClick = { configuringGeo = true }) { Text(stringResource(R.string.mihomo_geodata_select)) }
-    HorizontalDivider()
+}
+            HorizontalDivider()
     Text(stringResource(R.string.mihomo_diagnostics), style = MaterialTheme.typography.titleMedium)
     TextButton(enabled = !state.busy && overview != null, onClick = model::diagnostics) { Text(stringResource(R.string.common_refresh)) }
     state.diagnosticsAtMillis?.let { Text(stringResource(R.string.mihomo_observed, DateFormat.getDateTimeInstance().format(Date(it))), style = MaterialTheme.typography.bodySmall) }
+WorkspaceSection(section == "connections") {
     val traffic = (state.traffic as? ApiResult.Success)?.value
     if (traffic != null && traffic.problemCode.isBlank()) {
         Text(stringResource(R.string.mihomo_traffic_rate, traffic.uploadPerSecond, traffic.downloadPerSecond))
         Text(stringResource(R.string.mihomo_traffic_total, traffic.uploadTotal, traffic.downloadTotal, traffic.memoryBytes))
     } else if (state.traffic != null) Text(stringResource(R.string.mihomo_unverified))
+}
+        WorkspaceSection(section == "settings") {
     if (overview?.supportsDns == true) {
         val dns = (state.dns as? ApiResult.Success)?.value
         Text(stringResource(R.string.mihomo_dns_status), style = MaterialTheme.typography.titleSmall)
@@ -63,6 +69,8 @@ import java.util.Date
             stringResource(if (dns.enabled) R.string.mihomo_on else R.string.mihomo_off), stringResource(if (dns.hijackEnabled) R.string.mihomo_on else R.string.mihomo_off), dns.mode ?: "—"))
         else Text(stringResource(R.string.mihomo_unverified))
     }
+}
+        WorkspaceSection(section == "connections") {
     if (overview?.supportsConnections == true) {
         Text(stringResource(R.string.mihomo_connections), style = MaterialTheme.typography.titleSmall)
         val connections = (state.connections as? ApiResult.Success)?.value
@@ -73,6 +81,8 @@ import java.util.Date
         }
         if (connections != null && connections.size > 200) Text(stringResource(R.string.mihomo_connections_bounded))
     }
+}
+        WorkspaceSection(section == "logs") {
     if (overview?.supportsLogs == true) {
         Text(stringResource(R.string.mihomo_logs), style = MaterialTheme.typography.titleSmall)
         val logs = (state.logs as? ApiResult.Success)?.value
@@ -80,7 +90,8 @@ import java.util.Date
             Text(DateFormat.getTimeInstance().format(Date(log.timestampMillis)) + " · " + log.level + " · " + log.message, style = MaterialTheme.typography.bodySmall)
         }
     }
-    if (editing && settings != null && overview != null) ProxySettingsEditor(settings, overview, model) { editing = false }
+}
+            if (editing && settings != null && overview != null) ProxySettingsEditor(settings, overview, model) { editing = false }
     if (configuringGeo) ProxyGeoDataEditor(model) { configuringGeo = false }
 }
 

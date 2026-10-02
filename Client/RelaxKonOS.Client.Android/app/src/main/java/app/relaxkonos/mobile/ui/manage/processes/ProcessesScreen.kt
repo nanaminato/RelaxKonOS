@@ -1,5 +1,7 @@
 package app.relaxkonos.mobile.ui.manage.processes
 
+import app.relaxkonos.mobile.ui.common.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.width
@@ -74,13 +76,14 @@ private const val PROCESS_REFRESH_INTERVAL_MILLIS = 6_000L
 fun ProcessesScreen(
     onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    active: Boolean = true,
 ) {
     val viewModel: ManageViewModel = viewModel()
 
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val auth by appContainer().session.state.collectAsStateWithLifecycle()
-    LaunchedEffect(lifecycle, auth, viewModel.processesAvailable) {
-        if (!viewModel.processesAvailable) return@LaunchedEffect
+    LaunchedEffect(active, lifecycle, auth, viewModel.processesAvailable) {
+        if (!active || !viewModel.processesAvailable) return@LaunchedEffect
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             try {
                 viewModel.startProcessObserving()
@@ -163,7 +166,7 @@ fun ProcessesScreen(
         } else {
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                 val split = monitorUsesTwoPanes(maxWidth.value, maxHeight.value, LocalDensity.current.fontScale)
-                BackHandler(enabled = !split && viewModel.processSelected != null) { viewModel.selectProcess(null) }
+                BackHandler(enabled = active && !split && viewModel.processSelected != null) { viewModel.selectProcess(null) }
                 if (split) {
                     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {
                         ProcessList(viewModel, Modifier.width((360 * LocalDensity.current.fontScale).coerceAtMost(460f).dp))

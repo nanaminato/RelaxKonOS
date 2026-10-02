@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.tunnels
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -30,7 +31,8 @@ import java.util.Date
     val available = owner?.capabilities?.contains(ServerCapabilities.TUNNELS) == true
     val canManage = available && owner?.privilegedOperations == true
     var confirm by remember(owner, epoch) { mutableStateOf<TunnelConfirmation?>(null) }
-    var frpsSection by remember(owner, epoch) { mutableStateOf(false) }
+    var section by rememberSaveable(owner, epoch) { mutableStateOf("overview") }
+    val frpsSection = section == "frps"
     var install by remember(owner, epoch) { mutableStateOf(false) }
     var tokenProfile by remember(owner, epoch) { mutableStateOf<TunnelProfile?>(null) }
     var secret by remember(owner, epoch) { mutableStateOf("") }
@@ -49,15 +51,10 @@ import java.util.Date
             delay(3000); model.observe()
         }
     }
-    BackHandler(!frpsSection && state.selectedId != null && state.profileDraft == null && state.definitionDraft == null && !state.busy) { model.select(null) }
-    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-        ScreenHeader(stringResource(R.string.tunnels_title), onBack = onBack)
-        if (!available) { Text(stringResource(R.string.error_capability_missing)); return@Column }
-        FlowRow {
-            TextButton(enabled = state.frpsDraft == null, onClick = { frpsSection = false }) { Text(stringResource(R.string.frps_client_tab)) }
-            TextButton(enabled = state.profileDraft == null && state.definitionDraft == null, onClick = { frpsSection = true }) { Text(stringResource(R.string.frps_server_tab)) }
-        }
-        if (frpsSection) { key(owner, epoch) { ManagedFrpsManager(model, state, canManage) { frpsSection = false } }; return@Column }
+    BackHandler(section in setOf("profiles", "logs") && state.selectedId != null && state.profileDraft == null && state.definitionDraft == null && !state.busy) { model.select(null) }
+    WorkspaceColumn(stringResource(R.string.tunnels_title), onBack, listOf(WorkspaceDestination("overview", R.string.workspace_overview), WorkspaceDestination("profiles", R.string.workspace_tunnels), WorkspaceDestination("runtime", R.string.workspace_runtime), WorkspaceDestination("logs", R.string.workspace_logs), WorkspaceDestination("frps", R.string.frps_server_tab)), section, { section = it }, modifier, stateKey = owner to epoch) {
+        if (!available) { Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn }
+        WorkspaceSection(frpsSection) { key(owner, epoch) { ManagedFrpsManager(model, state, canManage, active = frpsSection) { section = "profiles" } } }
         Text(stringResource(R.string.tunnels_intro))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             TextButton(enabled = !state.busy, onClick = model::refresh) { Text(stringResource(R.string.common_refresh)) }
@@ -69,6 +66,7 @@ import java.util.Date
         if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         state.problemCode?.let { Text(tunnelProblemLabel(it), color = MaterialTheme.colorScheme.error) }
         if (state.uncertain) Text(stringResource(R.string.tunnels_uncertain), color = MaterialTheme.colorScheme.error)
+WorkspaceSection(section in setOf("overview", "runtime")) {
         Text(stringResource(R.string.tunnels_runtime_title), style = MaterialTheme.typography.titleSmall)
         if (runtime == null) Text(stringResource(R.string.tunnels_unknown)) else {
             if (notInstalled) Text(stringResource(R.string.runtime_install_hint, "FRP")) else {
@@ -79,7 +77,8 @@ import java.util.Date
             runtime.problemCode.takeIf(String::isNotBlank)?.let { Text(tunnelProblemLabel(it)) }
             }
         }
-        state.installation?.let { operation ->
+}
+                state.installation?.let { operation ->
             Text(operation.operationId, style = MaterialTheme.typography.bodySmall)
             if (state.installationVerified) {
                 Text(installationKindLabel(operation.kind) + " · " + installationStateLabel(operation.state))
@@ -99,27 +98,29 @@ import java.util.Date
             Text(stringResource(R.string.tunnels_pending, tunnelMutationLabel(pending.action), if (pending.action.frps) "frps" else pending.target ?: "—"), color = MaterialTheme.colorScheme.error)
             if (pending.action.frps) {
                 Text(stringResource(R.string.frps_pending_note))
-                TextButton(onClick = { frpsSection = true }) { Text(stringResource(R.string.frps_server_tab)) }
+                TextButton(onClick = { section = "frps" }) { Text(stringResource(R.string.frps_server_tab)) }
             } else {
                 Text(stringResource(R.string.tunnels_pending_note))
                 TextButton(enabled = !state.busy, onClick = model::observe) { Text(stringResource(R.string.tunnels_inspect)) }
                 if (facts != null) TextButton(enabled = !state.busy, onClick = { confirm = TunnelConfirmation(R.string.tunnels_accept_confirm, pending.target ?: pending.profileId ?: "FRP") { model.accept(pending) } }) { Text(stringResource(R.string.tunnels_accept)) }
             }
         }
+WorkspaceSection(section in setOf("profiles", "logs")) {
         if (facts == null) Text(stringResource(R.string.tunnels_unavailable)) else BoxWithConstraints(Modifier.fillMaxWidth()) {
             val selected = facts.profiles.firstOrNull { it.id == state.selectedId }
             if (maxWidth >= 600.dp) Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
                 Column(Modifier.weight(1f)) { ProfileList(facts, state, model) }
-                Column(Modifier.weight(2f)) { ProfileDetail(selected, facts, state, model, canManage,
+                Column(Modifier.weight(2f)) { ProfileDetail(selected, facts, state, model, canManage, section,
                     { message, target, action -> confirm = TunnelConfirmation(message, target, action) }, { tokenProfile = it; secret = "" }) }
             } else Column {
                 if (state.selectedId == null) ProfileList(facts, state, model) else {
                     TextButton(enabled = !state.busy, onClick = { model.select(null) }) { Text(stringResource(R.string.common_back)) }
-                    ProfileDetail(selected, facts, state, model, canManage, { message, target, action -> confirm = TunnelConfirmation(message, target, action) }, { tokenProfile = it; secret = "" })
+                    ProfileDetail(selected, facts, state, model, canManage, section, { message, target, action -> confirm = TunnelConfirmation(message, target, action) }, { tokenProfile = it; secret = "" })
                 }
             }
         }
-    }
+}
+            }
     if (install) key(owner, epoch) { TunnelInstallEditor(model) { install = false } }
     if (state.frpsDraft != null) key(owner, epoch) { ManagedFrpsEditor(model, state) }
     if (state.profileDraft != null) key(owner, epoch) { TunnelProfileEditor(state, model) }
@@ -153,10 +154,11 @@ import java.util.Date
 }
 @OptIn(ExperimentalLayoutApi::class)
 @Composable private fun ProfileDetail(profile: TunnelProfile?, facts: TunnelFacts, state: TunnelsState, model: TunnelsViewModel, canManage: Boolean,
-    confirm: (Int, String, () -> Unit) -> Unit, token: (TunnelProfile) -> Unit) {
+    section: String, confirm: (Int, String, () -> Unit) -> Unit, token: (TunnelProfile) -> Unit) {
     if (profile == null) { Text(stringResource(if (state.selectedId == null) R.string.tunnels_select_profile else R.string.tunnels_missing)); return }
     val enabled = !state.busy && state.pending.isEmpty() && state.installation?.state?.active != true
     Text(profile.name, style = MaterialTheme.typography.titleMedium); Text(profile.id, style = MaterialTheme.typography.bodySmall)
+WorkspaceSection(section != "logs") {
     Text(profile.host + ":" + profile.port); Text(tunnelModeLabel(profile.runtimeMode) + " · " + tunnelAuthLabel(profile.auth) + " · " + tunnelTlsLabel(profile.tls))
     profile.externalPath?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
     Text(stringResource(if (profile.tokenConfigured) R.string.tunnels_token_configured else R.string.tunnels_token_absent))
@@ -187,6 +189,8 @@ import java.util.Date
         }
     }
     Text(stringResource(R.string.tunnels_connection_note), style = MaterialTheme.typography.bodySmall)
+}
+        WorkspaceSection(section == "logs") {
     TextButton(enabled = !state.busy, onClick = { model.logs(profile.id) }) { Text(stringResource(R.string.tunnels_logs)) }
     when (val logs = state.logs) {
         is ApiResult.Success -> {
@@ -197,7 +201,8 @@ import java.util.Date
         }
         null -> Unit
         else -> Text(stringResource(R.string.tunnels_unknown))
-    }
+    }}
+
 }
 internal fun tunnelDate(value: Long) = DateFormat.getDateTimeInstance().format(Date(value))
 

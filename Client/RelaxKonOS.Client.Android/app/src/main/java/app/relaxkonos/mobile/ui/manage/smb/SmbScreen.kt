@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.smb
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -30,7 +31,7 @@ private data class SmbConfirmation(val expected: SmbFacts, val change: SmbChange
     val canManage = visible && owner?.privilegedOperations == true
     val ready = canManage && !state.busy && state.pending.isEmpty() && !state.pendingInstallation && state.installation?.state?.active != true &&
         (state.installation == null || state.installationVerified) && facts?.capabilities?.supported == true && facts.status.state.manageable
-    var tab by remember(owner) { mutableIntStateOf(0) }
+    var section by rememberSaveable(owner) { mutableStateOf("overview") }
     var selected by remember(owner) { mutableStateOf<String?>(null) }
     var draft by remember(owner) { mutableStateOf<SmbDraft?>(null) }
     var confirmation by remember(owner) { mutableStateOf<SmbConfirmation?>(null) }
@@ -45,11 +46,16 @@ private data class SmbConfirmation(val expected: SmbFacts, val change: SmbChange
         if (visible && state.installationVerified && state.installation?.state?.active == true && !state.busy) { delay(1500); model.pollInstall() }
     }
     DisposableEffect(owner) { onDispose { model.stop(); password = ""; passwordAgain = "" } }
-    BackHandler(draft != null || selected != null) { navigate { draft = null; selected = null } }
-    Column(modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-        ScreenHeader(stringResource(R.string.smb_title), onBack = { navigate(onBack) })
+    BackHandler(section == "shares" && (draft != null || selected != null)) { navigate { draft = null; selected = null } }
+    val pages = buildList {
+        add(WorkspaceDestination("overview", R.string.workspace_overview))
+        if (facts?.capabilities?.managedSharesSupported == true) add(WorkspaceDestination("shares", R.string.workspace_shares))
+        if (facts?.capabilities?.sambaCredentialsSupported == true) add(WorkspaceDestination("users", R.string.workspace_users))
+    }
+    LaunchedEffect(pages) { if (pages.none { it.id == section }) section = "overview" }
+    WorkspaceColumn(stringResource(R.string.smb_title), { navigate(onBack) }, pages, section, { section = it }, modifier, stateKey = owner) {
         Text(stringResource(R.string.smb_intro))
-        if (owner?.capabilities?.contains(ServerCapabilities.FILE_SERVICES) != true) { Text(stringResource(R.string.error_capability_missing)); return@Column }
+        if (owner?.capabilities?.contains(ServerCapabilities.FILE_SERVICES) != true) { Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn }
         TextButton(enabled = !state.busy, onClick = { navigate { draft = null; model.refresh() } }) { Text(stringResource(R.string.common_refresh)) }
         if (visible && state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (visible) state.problem?.let { Text(smbProblem(it), color = MaterialTheme.colorScheme.error) }
@@ -60,6 +66,7 @@ private data class SmbConfirmation(val expected: SmbFacts, val change: SmbChange
             OutlinedButton(enabled = !state.busy, onClick = { model.accept(pending) }) { Text(stringResource(R.string.smb_accept_facts)) }
         }
         if (facts == null) Text(stringResource(R.string.smb_unverified)) else {
+WorkspaceSection(section == "overview") {
             Text(smbStateLabel(facts.status.state), style = MaterialTheme.typography.titleMedium)
             facts.status.version?.let { Text(it) }
             Text(stringResource(if (facts.status.serviceActive) R.string.smb_service_active else R.string.smb_service_inactive))
@@ -78,7 +85,8 @@ private data class SmbConfirmation(val expected: SmbFacts, val change: SmbChange
                     OutlinedButton(enabled = ready && allowed && draft == null, onClick = { confirmation = SmbConfirmation(facts, SmbChange(action)) }) { Text(smbActionLabel(action)) }
                 }
             }
-        }
+}
+                }
         if (visible && state.pendingInstallation) Text(stringResource(R.string.installation_pending, installationServiceLabel(InstallationService.Smb), installationKindLabel(InstallationKind.Install)), color = MaterialTheme.colorScheme.error)
         if (canManage) TextButton(enabled = !state.busy, onClick = { identified = false; recover = true }) { Text(stringResource(R.string.installation_recover)) }
         if (visible) state.installation?.let { operation ->
@@ -91,11 +99,7 @@ private data class SmbConfirmation(val expected: SmbFacts, val change: SmbChange
         }
         if (visible) state.receipt?.let { Text(stringResource(R.string.smb_receipt_id, it.operationId), style = MaterialTheme.typography.bodySmall); Text(stringResource(R.string.smb_receipt_note)) }
         if (facts != null && facts.capabilities.supported && facts.status.state.manageable) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                FilterChip(tab == 0, { navigate { draft = null; selected = null; tab = 0 } }, label = { Text(stringResource(R.string.smb_shares)) })
-                if (facts.capabilities.sambaCredentialsSupported) FilterChip(tab == 1, { navigate { draft = null; selected = null; tab = 1 } }, label = { Text(stringResource(R.string.smb_users)) })
-            }
-            if (tab == 0 && facts.capabilities.managedSharesSupported) {
+            if (section == "shares" && facts.capabilities.managedSharesSupported) {
                 OutlinedButton(enabled = ready && draft == null, onClick = { selected = null; draft = SmbDraft() }) { Text(stringResource(R.string.smb_create)) }
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
                     val wide = maxWidth >= 600.dp
@@ -125,7 +129,7 @@ private data class SmbConfirmation(val expected: SmbFacts, val change: SmbChange
                         }
                     }
                 }
-            } else if (tab == 1 && facts.capabilities.sambaCredentialsSupported) {
+            } else if (section == "users" && facts.capabilities.sambaCredentialsSupported) {
                 Text(stringResource(R.string.smb_users_note))
                 if (facts.users?.isEmpty() == true) Text(stringResource(R.string.smb_no_users))
                 facts.users.orEmpty().forEach { user ->

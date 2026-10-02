@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.docker
 
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -20,11 +21,11 @@ import java.util.UUID
 private data class ResourceConfirmation(val facts: DockerResourceFacts, val target: DockerResourceTarget?, val change: DockerResourceChange)
 @OptIn(ExperimentalLayoutApi::class)
 @Composable fun DockerResourceScreen(onBack: () -> Unit, onOpenControl: () -> Unit, onOpenCompose: (String) -> Unit,
-    onOpenApplication: (String) -> Unit, modifier: Modifier = Modifier) {
-    val model: DockerResourceViewModel = viewModel(); val owner = appContainer().activeSession; val state = model.state
+    onOpenApplication: (String) -> Unit, modifier: Modifier = Modifier, resourceKind: DockerResourceKind? = null, active: Boolean = true) {
+    val model: DockerResourceViewModel = viewModel(key = "docker-resources-${resourceKind?.name ?: "all"}"); val owner = appContainer().activeSession; val state = model.state
     val visible = owner === state.owner; val facts = state.facts.takeIf { visible }; val target = state.target.takeIf { visible }
     val ready = visible && owner?.privilegedOperations == true && !state.busy && state.blocked == null && state.pending.isEmpty() && facts?.status?.available == true
-    var kind by remember(owner) { mutableStateOf(DockerResourceKind.Containers) }
+    var kind by remember(owner) { mutableStateOf(resourceKind ?: DockerResourceKind.Containers) }
     var draft by remember(owner) { mutableStateOf<DockerResourceDraft?>(null) }
     var confirmation by remember(owner) { mutableStateOf<ResourceConfirmation?>(null) }
     var leave by remember(owner) { mutableStateOf<(() -> Unit)?>(null) }
@@ -33,11 +34,11 @@ private data class ResourceConfirmation(val facts: DockerResourceFacts, val targ
     fun confirm(change: DockerResourceChange) { facts?.let { confirmation = ResourceConfirmation(it, target.takeIf { change.target != null }, change) } }
     LaunchedEffect(owner, state.owner) { if (visible && owner != null) model.refresh() }
     LaunchedEffect(owner, state.saved) { if (visible && state.saved > 0) draft = null }
-    LaunchedEffect(owner, target?.id, target?.container?.state, state.busy, draft, confirmation) {
-        if (visible && target?.container?.state == "running" && !state.busy && draft == null && confirmation == null) { delay(3000); model.pollStats() }
+    LaunchedEffect(active, owner, target?.id, target?.container?.state, state.busy, draft, confirmation) {
+        if (active && visible && target?.container?.state == "running" && !state.busy && draft == null && confirmation == null) { delay(3000); model.pollStats() }
     }
     DisposableEffect(owner) { onDispose { model.stop() } }
-    BackHandler(draft != null) { navigate { draft = null } }
+    BackHandler(active && draft != null) { navigate { draft = null } }
     Column(modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         ScreenHeader(stringResource(R.string.docker_resources_title), onBack = { navigate(onBack) })
         if (owner?.capabilities?.contains(ServerCapabilities.DOCKER) != true) { Text(stringResource(R.string.error_capability_missing)); return@Column }
@@ -56,7 +57,7 @@ private data class ResourceConfirmation(val facts: DockerResourceFacts, val targ
         if (facts == null) Text(stringResource(R.string.docker_control_unverified))
         else if (!facts.status.available) { Text(stringResource(R.string.docker_control_unavailable)); Text(controlProblem(facts.status.problemCode)) }
         else {
-            FlowRow { DockerResourceKind.entries.forEach { item -> FilterChip(selected = kind == item, enabled = !state.busy,
+            if (resourceKind == null) FlowRow { DockerResourceKind.entries.forEach { item -> FilterChip(selected = kind == item, enabled = !state.busy,
                 onClick = { navigate { draft = null; kind = item; model.refresh() } }, label = { Text(resourceKindLabel(item)) }) } }
             val create = when (kind) { DockerResourceKind.Containers -> DockerResourceAction.CreateContainer; DockerResourceKind.Images -> DockerResourceAction.PullImage; DockerResourceKind.Networks -> DockerResourceAction.CreateNetwork; DockerResourceKind.Volumes -> DockerResourceAction.CreateVolume }
             if (owner.privilegedOperations) OutlinedButton(enabled = ready && draft == null, onClick = { draft = DockerResourceDraft(create, driver = if (kind == DockerResourceKind.Networks) "bridge" else "local") }) { Text(resourceActionLabel(create)) }

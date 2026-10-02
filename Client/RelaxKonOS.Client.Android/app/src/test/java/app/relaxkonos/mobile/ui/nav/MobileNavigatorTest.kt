@@ -18,6 +18,29 @@ import org.junit.Test
  * are product behaviour rather than an implementation detail of a navigation library.
  */
 class MobileNavigatorTest {
+    @Test
+    fun `settings categories return directly to their directory`() {
+        val navigator = MobileNavigator(Routes.MORE)
+        navigator.push(Routes.MORE_APPEARANCE)
+        navigator.replaceTop(Routes.MORE_ACCOUNT_SECURITY)
+        navigator.replaceTop(Routes.MORE_ABOUT)
+        assertTrue(navigator.pop())
+        assertEquals(Routes.MORE, navigator.route)
+        assertFalse(navigator.pop())
+    }
+
+    @Test
+    fun `replacing a category preserves other destinations and the parent page`() {
+        val navigator = MobileNavigator(Routes.FILES)
+        navigator.push(Routes.FILES_DETAIL)
+        navigator.select(Routes.MORE)
+        navigator.replaceTop(Routes.MORE_APPEARANCE)
+        navigator.select(Routes.FILES)
+        assertEquals(Routes.FILES_DETAIL, navigator.route)
+        navigator.select(Routes.MORE)
+        assertTrue(navigator.pop())
+        assertEquals(Routes.MORE, navigator.route)
+    }
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     fun `the first sub-route push invalidates a route observer`() = runTest {
