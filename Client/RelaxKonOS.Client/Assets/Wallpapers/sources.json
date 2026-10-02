@@ -1,0 +1,32 @@
+{
+  "license": "https://unsplash.com/license",
+  "height": 1440,
+  "photos": [
+    {
+      "key": "builtin:alpine-lake",
+      "sha256": "15875e7267e7e7851584522f742f339cca45997bca89f78b6957f75ffa8510bd",
+      "source": "https://unsplash.com/photos/landscape-photography-of-mountain-surrounded-by-pine-trees-and-body-of-water-4qKVQYOluDk",
+      "photographer": "Yoshi Takekawa",
+      "download": "https://images.unsplash.com/photo-1476041178066-aa562074def7?fit=crop&fm=jpg&q=85&w=2560&h=1440",
+      "file": "alpine-lake.jpg"
+    },
+    {
+      "key": "builtin:ocean-waves",
+      "sha256": "35e9e873311dbb42c1e9fea3b52e0f883ea5a535f0deda37e57020a89f9537c3",
+      "source": "https://unsplash.com/photos/aerial-photography-of-seashore-DKnXlH_r3x4",
+      "photographer": "Paul Hanaoka",
+      "download": "https://images.unsplash.com/photo-1496805713444-03e7b6eca934?fit=crop&fm=jpg&q=85&w=2560&h=1440",
+      "file": "ocean-waves.jpg"
+    },
+    {
+      "key": "builtin:desert-dunes",
+      "sha256": "72551a84c675075e032b43a5ecc73da2bce5e5fb4512a607cd4ef426af627750",
+      "source": "https://unsplash.com/photos/sand-dunes-at-daytime-ShQbbBBvoPM",
+      "photographer": "Matt Artz",
+      "download": "https://images.unsplash.com/photo-1509223397999-28fd1c5f11f5?fit=crop&fm=jpg&q=85&w=2560&h=1440",
+      "file": "desert-dunes.jpg"
+    }
+  ],
+  "width": 2560,
+  "verifiedOn": "2026-10-02"
+}

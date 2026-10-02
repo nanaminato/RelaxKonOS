@@ -84,7 +84,13 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
 
     // ── 颜色与模式 ──────────────────────────────────────────────────────────────
 
-    public IReadOnlyList<RelaxKonOS.Client.Services.WallpaperOption> Wallpapers => Settings.Wallpapers;
+    public IReadOnlyList<WallpaperOption> Wallpapers => Settings.Wallpapers.Select(option => option.Key switch
+    {
+        "alpine-lake" => option with { Name = T("settings.wallpaper.alpine_lake", option.Name) },
+        "ocean-waves" => option with { Name = T("settings.wallpaper.ocean_waves", option.Name) },
+        "desert-dunes" => option with { Name = T("settings.wallpaper.desert_dunes", option.Name) },
+        _ => option,
+    }).ToArray();
 
     public ThemeKind Theme
     {
@@ -130,7 +136,14 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
     public int WallpaperIndex
     {
         get => Settings.WallpaperIndex;
-        set { Settings.WallpaperIndex = value; Save(); }
+        set
+        {
+            // ListBox can emit -1 while rebuilding localized choices or showing a custom
+            // image. That is not a user request to change the workspace wallpaper.
+            if (value < 0 || value >= Settings.Wallpapers.Count || value == Settings.WallpaperIndex) return;
+            Settings.WallpaperIndex = value;
+            Save();
+        }
     }
 
     private string _accentInput = string.Empty;

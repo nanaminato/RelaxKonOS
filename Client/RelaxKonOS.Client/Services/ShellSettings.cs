@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using CommunityToolkit.Mvvm.ComponentModel;
 using RelaxKonOS.Protocol.Desktop;
 using RelaxKonOS.Protocol.Workspace;
@@ -69,6 +70,9 @@ public sealed partial class ShellSettings : ObservableObject
         _language = WorkspacePreferencesDto.Default.Language;
         Wallpapers =
         [
+            new WallpaperOption("alpine-lake", "Alpine Lake", Photograph("alpine-lake")),
+            new WallpaperOption("ocean-waves", "Ocean Waves", Photograph("ocean-waves")),
+            new WallpaperOption("desert-dunes", "Desert Dunes", Photograph("desert-dunes")),
             new WallpaperOption("bloom", "Bloom", Gradient("#EAF4FF", "#D7EAFF", "#B9D9F7")),
             new WallpaperOption("aurora", "Aurora", Gradient("#E7F8F2", "#D4F0E7", "#B6DFD2")),
             new WallpaperOption("sunset", "Sunset", Gradient("#FFF0E8", "#FFE1D2", "#F6C5B3")),
@@ -185,8 +189,15 @@ public sealed partial class ShellSettings : ObservableObject
             // an already-loaded custom image when the server selected the default preset.
             SetBuiltInWallpaper(index);
         }
-        // Preference refreshes are frequent. Do not replace an already-rendering custom image
-        // with the Bloom fallback while its identical key is fetched again.
+        // Missing/unavailable presets use the shipped photograph. Explicit gradient choices
+        // above are preserved, and custom images retain their identity while downloading.
+        else if (string.IsNullOrWhiteSpace(prefs.WallpaperKey)
+                 || !prefs.WallpaperKey.StartsWith(WorkspacePreferencesDto.CustomWallpaperPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            WallpaperIndex = 0;
+            SetBuiltInWallpaper(0);
+        }
+        // Preference refreshes must not replace an already-rendering custom image.
         else if (!HasLoadedCustomWallpaper(prefs.WallpaperKey))
             SetUnloadedCustomWallpaper(prefs.WallpaperKey);
     }
@@ -234,6 +245,7 @@ public sealed partial class ShellSettings : ObservableObject
     {
         if (!TryIndexForKey(key, out var idx)) return false;
         WallpaperIndex = idx;
+        SetBuiltInWallpaper(idx);
         return true;
     }
 
@@ -259,10 +271,9 @@ public sealed partial class ShellSettings : ObservableObject
     private bool TryIndexForKey(string? key, out int index)
     {
         index = 0;
-        if (string.IsNullOrWhiteSpace(key)) return false;
-        var bare = key.StartsWith(WorkspacePreferencesDto.BuiltInWallpaperPrefix, StringComparison.OrdinalIgnoreCase)
-            ? key[WorkspacePreferencesDto.BuiltInWallpaperPrefix.Length..]
-            : key;
+        if (string.IsNullOrWhiteSpace(key)
+            || !key.StartsWith(WorkspacePreferencesDto.BuiltInWallpaperPrefix, StringComparison.OrdinalIgnoreCase)) return false;
+        var bare = key[WorkspacePreferencesDto.BuiltInWallpaperPrefix.Length..];
         for (var i = 0; i < Wallpapers.Count; i++)
             if (string.Equals(Wallpapers[i].Key, bare, StringComparison.OrdinalIgnoreCase))
             {
@@ -309,6 +320,14 @@ public sealed partial class ShellSettings : ObservableObject
         brush.GradientStops.Add(new GradientStop(Color.Parse(c1), 0.55));
         brush.GradientStops.Add(new GradientStop(Color.Parse(c2), 1));
         return brush;
+    }
+
+    private static IBrush Photograph(string key)
+    {
+        using var stream = AssetLoader.Open(new Uri($"avares://RelaxKonOS.Client/Assets/Wallpapers/{key}.jpg"));
+        // Built-in bitmaps live with this singleton's preset list; custom-image disposal must
+        // never dispose them. The same brush supplies the desktop and Settings thumbnail.
+        return new ImageBrush(new Bitmap(stream)) { Stretch = Stretch.UniformToFill };
     }
 
 }

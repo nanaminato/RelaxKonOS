@@ -103,6 +103,8 @@ internal static class SettingsSystemVerification
             var route = WorkspaceApiRoutes.Preferences.Replace("{id}", workspace.Id.ToString());
             var initial = await http.GetFromJsonAsync<WorkspacePreferencesDto>(route, RelaxKonOSJsonOptions.Default);
             Check(initial?.Revision > 0, "HTTP GET must return a preference revision.");
+            Check(initial!.WallpaperKey == WorkspacePreferencesDto.DefaultWallpaperKey,
+                "A workspace without a wallpaper preference must use the bundled photograph.");
             using var missing = await http.PutAsJsonAsync(route, initial! with { Revision = null }, RelaxKonOSJsonOptions.Default);
             Check((int)missing.StatusCode == 428, "HTTP PUT without revision must return 428.");
             using var saved = await http.PutAsJsonAsync(route, WithMode(initial!, ThemeKind.Dark), RelaxKonOSJsonOptions.Default);
@@ -128,6 +130,18 @@ internal static class SettingsSystemVerification
             Check(registryStale.StatusCode == HttpStatusCode.Conflict, "The registry editor must not bypass preference revisions.");
             using var deleted = await http.DeleteAsync(RegistryApiRoutes.Entries + "?scope=Workspace&path=Workspace%5CDesktop&name=%28Default%29");
             Check(deleted.StatusCode == HttpStatusCode.Conflict, "Deleting managed preferences must not reset their revision.");
+            foreach (var preset in new[] { "alpine-lake", "ocean-waves", "desert-dunes", "bloom" })
+            {
+                var current = (await http.GetFromJsonAsync<WorkspacePreferencesDto>(route, RelaxKonOSJsonOptions.Default))!;
+                var key = WorkspacePreferencesDto.BuiltInWallpaperPrefix + preset;
+                using var selected = await http.PutAsJsonAsync(route,
+                    current with { WallpaperKey = key }, RelaxKonOSJsonOptions.Default);
+                selected.EnsureSuccessStatusCode();
+                var roundTrip = (await http.GetFromJsonAsync<WorkspacePreferencesDto>(route, RelaxKonOSJsonOptions.Default))!;
+                Check(roundTrip.WallpaperKey == key, "The server must persist built-in wallpaper identifiers without an image blob.");
+            }
+            Check(!Directory.EnumerateFiles(Path.Combine(root, "data", "wallpapers"), "*", SearchOption.AllDirectories).Any(),
+                "Selecting built-in photographs or gradients must not create server image files.");
             await SettingsNotificationsVerification.RunAsync(address, owner, workspace.Id, async () =>
             {
                 var current = (await http.GetFromJsonAsync<WorkspacePreferencesDto>(route, RelaxKonOSJsonOptions.Default))!;
@@ -135,7 +149,7 @@ internal static class SettingsSystemVerification
                 response.EnsureSuccessStatusCode();
                 return (await response.Content.ReadFromJsonAsync<WorkspacePreferencesDto>(RelaxKonOSJsonOptions.Default))!.Revision!.Value;
             });
-            Console.WriteLine("Settings HTTP verification passed: 428, 409, cross-user read/write denial, registry bypass rejection.");
+            Console.WriteLine("Settings HTTP verification passed: 428, 409, cross-user read/write denial, registry bypass rejection, built-in wallpapers without image blobs.");
         }
         finally { await app.StopAsync(); }
     }
