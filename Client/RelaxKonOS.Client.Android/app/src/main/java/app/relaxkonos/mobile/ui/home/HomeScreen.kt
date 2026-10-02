@@ -44,7 +44,7 @@ import app.relaxkonos.mobile.data.RecentOperation
 import app.relaxkonos.mobile.data.RecentOperationKind
 import app.relaxkonos.mobile.ui.common.DiskRow
 import app.relaxkonos.mobile.ui.common.EmptyHint
-import app.relaxkonos.mobile.ui.common.ErrorBanner
+import app.relaxkonos.mobile.ui.common.ActionFeedback
 import app.relaxkonos.mobile.ui.common.ExecutionEligibilityNotice
 import app.relaxkonos.mobile.ui.common.IconBadge
 import app.relaxkonos.mobile.ui.common.KeyValueRow
@@ -146,7 +146,7 @@ fun HomeScreen(
         )
 
         viewModel.message?.let { banner ->
-            ErrorBanner(
+            ActionFeedback(
                 message = banner.text(),
                 onRetry = { viewModel.refresh() },
                 onDismiss = { viewModel.dismissMessage() },

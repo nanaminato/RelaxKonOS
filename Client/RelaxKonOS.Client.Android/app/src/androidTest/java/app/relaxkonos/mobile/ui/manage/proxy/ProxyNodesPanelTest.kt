@@ -57,6 +57,8 @@ class ProxyNodesPanelTest {
     }
 
     @Test fun busyGroupShowsPerNodeResultsAndBlocksDuplicateRequests() {
+        // Indeterminate Material progress must not keep the test clock advancing forever.
+        rule.mainClock.autoAdvance = false
         var writes = 0
         val state = ProxyState(busy = true, groups = ApiResult.Success(listOf(manual)), testingGroup = "Manual",
             testingProxies = setOf("Node C"), delays = mapOf("Node A" to ApiResult.Success(ProxyDelay("Node A", 42, false, "")),
@@ -66,6 +68,7 @@ class ProxyNodesPanelTest {
                 ProxyNodesPanel(state, true, false, {}, { _, _ -> writes++ }, { writes++ })
             }
         } }
+        rule.mainClock.advanceTimeByFrame()
         rule.onNodeWithText("Node B").assertIsNotEnabled()
         rule.onNodeWithContentDescription(context.getString(R.string.mihomo_test_group_delay, "Manual")).assertIsNotEnabled()
         rule.onNodeWithText(context.getString(R.string.mihomo_delay_result, 42)).assertIsDisplayed()

@@ -40,7 +40,7 @@ import app.relaxkonos.mobile.servercenter.ServerHostTrustRules
 import app.relaxkonos.mobile.servercenter.SshFailureReason
 import app.relaxkonos.mobile.servercenter.planSshHostKeyReview
 import app.relaxkonos.mobile.ui.common.ConfirmDangerousDialog
-import app.relaxkonos.mobile.ui.common.ErrorBanner
+import app.relaxkonos.mobile.ui.common.ActionFeedback
 import app.relaxkonos.mobile.ui.common.IconBadge
 import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.common.PasswordTextField
@@ -165,7 +165,7 @@ private fun ServerCenterContent(
             onBack = onClose,
         )
         state.message?.let { message ->
-            ErrorBanner(
+            ActionFeedback(
                 message = message.text(),
                 onRetry = null,
                 onDismiss = onDismissMessage,

@@ -42,6 +42,7 @@ import java.util.Date
     var recover by remember(owner, epoch) { mutableStateOf(false) }
     var operationId by remember(owner, epoch) { mutableStateOf("") }
     var originalIdentified by remember(owner, epoch) { mutableStateOf(false) }
+    OperationMessageDialog(if (state.busy) null else state.problemCode?.let { tunnelProblemLabel(it) } ?: if (state.uncertain) stringResource(R.string.tunnels_uncertain) else null, tone = if (state.problemCode == null) StatusTone.Warning else StatusTone.Danger)
     LaunchedEffect(owner, epoch) { if (available) model.refresh() }
     LaunchedEffect(owner, epoch, state.installation?.operationId, state.installation?.state, state.busy, state.installationVerified) {
         if (state.installationVerified && state.installation?.state?.active == true && !state.busy) { delay(1500); model.pollInstall() }
@@ -66,7 +67,6 @@ import java.util.Date
             }
         }
         if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        state.problemCode?.let { Text(tunnelProblemLabel(it), color = MaterialTheme.colorScheme.error) }
         if (section != "records" && (state.uncertain || state.pending.isNotEmpty() || state.pendingInstallation || state.installation != null && !state.installationVerified)) TextButton(onClick = { section = "records" }) { Text(stringResource(R.string.tunnels_records_attention)) }
         WorkspaceSection(frpsSection) { key(owner, epoch) { ManagedFrpsManager(model, state, canManage, active = frpsSection) } }
 WorkspaceSection(section in setOf("overview", "runtime")) {
@@ -98,7 +98,7 @@ WorkspaceSection(section in setOf("overview", "runtime")) {
         } }
 }
         WorkspaceSection(section == "records") {
-        if (state.uncertain) Text(stringResource(R.string.tunnels_uncertain), color = MaterialTheme.colorScheme.error)
+
                 state.installation?.let { operation ->
             TunnelCard {
             Text(operation.operationId, style = MaterialTheme.typography.bodySmall)

@@ -30,7 +30,7 @@ fun MobileApplicationsScreen(onBack:(()->Unit)?,onOpenRoute:(String)->Unit,modif
                 try { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.fromParts("package",context.packageName,null)));failed=false }
                 catch(_:Exception){failed=true}
             }) { Text(stringResource(R.string.mobile_apps_os_open)) }
-            if(failed) Text(stringResource(R.string.error_generic),color=MaterialTheme.colorScheme.error)
+            OperationMessageDialog(if (failed) stringResource(R.string.error_generic) else null, onDismiss = { failed = false })
         }
         SectionCard(stringResource(R.string.mobile_apps_builtin)) {
             Text(stringResource(R.string.mobile_apps_builtin_note))

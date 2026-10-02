@@ -2649,4 +2649,6 @@
     <string name="mihomo_connections_empty">アクティブな接続はありません。3 秒ごとに更新し、このサーバーを経由するリクエストを表示します。</string>
     <string name="mihomo_connections_count">アクティブな接続：%1$d 件</string>
     <string name="mihomo_logs_empty">ログはまだありません。新しいログは自動で更新されます。</string>
+    <string name="operation_error_title">操作に失敗しました</string>
+    <string name="operation_warning_title">警告</string>
 </resources>

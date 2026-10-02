@@ -76,6 +76,7 @@ internal class OutboundProxyEditor(
     fun save() { if (canSubmit) review = ProxyReview.Save(requireNotNull(draft)) }
     fun clear() { if (canSubmit) review = ProxyReview.Clear }
     fun leave(onBack: () -> Unit) { if (!busy) { if (dirty) { navigation = onBack; review = ProxyReview.Leave } else onBack() } }
+    fun dismissMessage() { message = null }
     fun dismiss() { review = null; navigation = null }
     fun confirm(onBack: (() -> Unit)?) {
         if (closed || busy || !isCurrentOwner()) return
@@ -157,7 +158,7 @@ fun OutboundProxyScreen(onBack: (() -> Unit)?, onOpenManagedProxy: (() -> Unit)?
             EmptyHint(stringResource(R.string.error_capability_missing)); return@Column
         }
         Text(stringResource(R.string.proxy_host_scope))
-        editor.message?.let { Text(it.text(), color = if (it.tone == StatusTone.Success) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error) }
+        editor.message?.let { ActionFeedback(it.text(), onRetry = null, onDismiss = editor::dismissMessage, tone = it.tone) }
         if (editor.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         val status = editor.status
         val draft = editor.draft
@@ -219,7 +220,7 @@ fun OutboundProxyScreen(onBack: (() -> Unit)?, onOpenManagedProxy: (() -> Unit)?
 }
 
 @Composable private fun ProxyToggle(label: Int, checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.md), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         Text(stringResource(label), Modifier.weight(1f))
         Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
     }

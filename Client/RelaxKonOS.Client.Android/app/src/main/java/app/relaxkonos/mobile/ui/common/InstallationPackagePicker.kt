@@ -104,7 +104,7 @@ internal fun ManualPackageDownload(
             }
             Text(stringResource(R.string.installation_download_then_select))
             if (copied) Text(stringResource(R.string.installation_download_copied))
-            if (failed) Text(stringResource(R.string.installation_download_action_failed), color = MaterialTheme.colorScheme.error)
+            OperationMessageDialog(if (failed) stringResource(R.string.installation_download_action_failed) else null, onDismiss = { failed = false })
         }
     }
 }

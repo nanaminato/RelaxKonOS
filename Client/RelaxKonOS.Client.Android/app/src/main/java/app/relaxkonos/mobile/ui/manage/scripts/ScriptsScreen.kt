@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.scripts
 
+import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import android.app.Application
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -164,7 +165,7 @@ fun ScriptsScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modi
         ScreenHeader(title = stringResource(R.string.scripts_title), onBack = onBack)
         Text(stringResource(R.string.scripts_identity, owner.userName))
         if (state.loading) Text(stringResource(R.string.scripts_loading))
-        if (state.error) Text(stringResource(R.string.scripts_failed), color = MaterialTheme.colorScheme.error)
+        OperationMessageDialog(if (state.error && !state.loading) stringResource(R.string.scripts_failed) else null)
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             OutlinedButton(onClick = { model.load(owner) }) { Text(stringResource(R.string.common_refresh)) }
             Button(onClick = { editing = true }) { Text(stringResource(R.string.scripts_new)) }

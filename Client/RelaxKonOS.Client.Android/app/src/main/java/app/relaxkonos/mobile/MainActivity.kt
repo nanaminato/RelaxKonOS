@@ -26,7 +26,7 @@ import app.relaxkonos.mobile.security.model.SavedLogin
 import app.relaxkonos.mobile.data.ForegroundAlertNotifier
 import app.relaxkonos.mobile.ui.common.AppBackdrop
 import app.relaxkonos.mobile.ui.common.ElevationDialog
-import app.relaxkonos.mobile.ui.common.ErrorBanner
+import app.relaxkonos.mobile.ui.common.ActionFeedback
 import app.relaxkonos.mobile.ui.common.LocalAppContainer
 import app.relaxkonos.mobile.ui.common.collectAsStateValue
 import app.relaxkonos.mobile.ui.common.text
@@ -182,7 +182,7 @@ private fun RelaxKonApp(container: AppContainer) {
             }
 
             container.pendingNotice?.let { notice ->
-                ErrorBanner(
+                ActionFeedback(
                     message = notice.text(),
                     onRetry = null,
                     onDismiss = container::dismissNotice,

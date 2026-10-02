@@ -2687,4 +2687,6 @@
     <string name="mihomo_connections_empty">No active connections. This page refreshes every 3 seconds; requests routed through this server will appear here.</string>
     <string name="mihomo_connections_count">%1$d active connections</string>
     <string name="mihomo_logs_empty">No logs received yet. Recent entries refresh automatically.</string>
+    <string name="operation_error_title">Operation failed</string>
+    <string name="operation_warning_title">Warning</string>
 </resources>

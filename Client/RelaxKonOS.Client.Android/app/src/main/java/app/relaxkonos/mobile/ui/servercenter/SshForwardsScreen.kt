@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.servercenter
 
+import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -36,7 +37,7 @@ internal fun SshForwardsScreen(hostId: String, modifier: Modifier = Modifier) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) TextButton(onClick = { permission.launch(Manifest.permission.POST_NOTIFICATIONS) }) { Text(stringResource(R.string.ssh_forward_notification_enable)) }
         Button(enabled = !state.busy, onClick = { editor = null to SshLocalForwardRequest(8080) }) { Text(stringResource(R.string.ssh_forward_add)) }
         if (state.busy) Text(stringResource(R.string.ssh_forward_busy))
-        state.problem?.let { problem -> Text(stringResource(when (problem) {
+        OperationMessageDialog(state.problem?.takeUnless { state.busy }?.let { problem -> stringResource(when (problem) {
             "invalid" -> R.string.ssh_forward_invalid
             "credential" -> R.string.ssh_forward_credential
             "trust" -> R.string.ssh_forward_trust
@@ -44,7 +45,7 @@ internal fun SshForwardsScreen(hostId: String, modifier: Modifier = Modifier) {
             "test" -> R.string.ssh_forward_test_failed
             "service" -> R.string.ssh_forward_service_failed
             else -> R.string.ssh_forward_connect_failed
-        }), color = MaterialTheme.colorScheme.error) }
+        }) })
         val items = state.items.filter { it.hostId == hostId }
         if (items.isEmpty()) Text(stringResource(R.string.ssh_forward_empty))
         items.forEach { row ->

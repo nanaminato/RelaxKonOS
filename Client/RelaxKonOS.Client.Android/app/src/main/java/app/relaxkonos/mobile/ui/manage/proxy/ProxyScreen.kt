@@ -41,6 +41,7 @@ private data class ProxyConfirmation(val action: () -> Unit)
     var section by rememberSaveable(owner, epoch) { mutableStateOf("overview") }
     val networkSection = section in setOf("connections", "logs", "settings")
     var showRecovery by remember(owner, epoch) { mutableStateOf(false) }
+    OperationMessageDialog(if (state.busy) null else state.problemCode?.let { proxyProblemLabel(it) } ?: if (state.uncertain) stringResource(R.string.mihomo_uncertain) else null, tone = if (state.problemCode == null) StatusTone.Warning else StatusTone.Danger)
     LaunchedEffect(owner, epoch) { if (available) model.refresh() }
     LaunchedEffect(owner, epoch, initialOperationId, state.busy) {
         if (available && initialOperationId != null && !state.busy && !attemptedInitial) { attemptedInitial = true; section = "records"; model.recoverOperation(initialOperationId) }
@@ -80,8 +81,7 @@ WorkspaceSection(section == "overview") {
             if (canManage) OutlinedButton(enabled = !state.busy && state.installation?.state?.active != true, onClick = { install = true }) { Text(if (notInstalled) stringResource(R.string.runtime_install_action, "Mihomo") else stringResource(R.string.mihomo_runtime_manage)) }
         }
         if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        state.problemCode?.let { Text(proxyProblemLabel(it), color = MaterialTheme.colorScheme.error) }
-        if (state.uncertain) Text(stringResource(R.string.mihomo_uncertain), color = MaterialTheme.colorScheme.error)
+
         state.observedAtMillis?.let { Text(stringResource(R.string.mihomo_observed, DateFormat.getDateTimeInstance().format(Date(it))), style = MaterialTheme.typography.bodySmall) }
         if (overview == null) Text(stringResource(R.string.mihomo_unavailable)) else {
             if (notInstalled) Text(stringResource(R.string.runtime_install_hint, "Mihomo")) else {
@@ -236,11 +236,10 @@ WorkspaceSection(section == "profiles") {
             if (kind == "subscription") {
                 Text(stringResource(R.string.mihomo_subscription_note))
                 OutlinedTextField(content, { content = it }, enabled = !state.busy, singleLine = true, visualTransformation = PasswordVisualTransformation(), label = { Text(stringResource(R.string.mihomo_source_url)) })
-                ProxyDownloadRoute.entries.forEach { option -> Row { RadioButton(route == option, { route = option }, enabled = !state.busy && (option == ProxyDownloadRoute.Direct || state.downloadOptions)); Text(stringResource(if (option == ProxyDownloadRoute.Direct) R.string.mihomo_download_direct else R.string.mihomo_download_system)) } }
+                ProxyDownloadRoute.entries.forEach { option -> Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { RadioButton(route == option, { route = option }, enabled = !state.busy && (option == ProxyDownloadRoute.Direct || state.downloadOptions)); Text(stringResource(if (option == ProxyDownloadRoute.Direct) R.string.mihomo_download_direct else R.string.mihomo_download_system)) } }
             }
             if (kind != "profile") ProxyCheck(confirmed, !state.busy, R.string.mihomo_apply_confirm) { confirmed = it }
-            state.problemCode?.let { Text(proxyProblemLabel(it), color = MaterialTheme.colorScheme.error) }
-            if (state.uncertain) Text(stringResource(R.string.mihomo_uncertain), color = MaterialTheme.colorScheme.error)
+
         } }, confirmButton = { Button(enabled = !state.busy && state.pending.isEmpty() && name.length <= 128 && when (kind) {
             "profile" -> name.isNotBlank(); "yaml" -> confirmed && content.isNotBlank(); else -> confirmed && content.length <= 16384 && runCatching { java.net.URI(content.trim()).let { it.scheme in setOf("https", "http") && it.host != null && it.userInfo == null } }.getOrDefault(false)
         }, onClick = { when (kind) { "profile" -> model.saveProfile(profile, name); "yaml" -> model.apply(requireNotNull(profile), content); else -> model.import(content, name, route) } }) { Text(stringResource(R.string.common_save)) } },
@@ -248,4 +247,4 @@ WorkspaceSection(section == "profiles") {
     if (discard) AlertDialog(onDismissRequest = { discard = false }, text = { Text(stringResource(R.string.mihomo_discard)) }, confirmButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_close)) } }, dismissButton = { TextButton(onClick = { discard = false }) { Text(stringResource(R.string.common_cancel)) } })
 }
 @Composable internal fun ProxyText(value: String, enabled: Boolean, label: Int, change: (String) -> Unit) { OutlinedTextField(value, change, enabled = enabled, singleLine = true, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(label)) }) }
-@Composable internal fun ProxyCheck(value: Boolean, enabled: Boolean, label: Int, change: (Boolean) -> Unit) { Row { Checkbox(value, change, enabled = enabled); Text(stringResource(label)) } }
+@Composable internal fun ProxyCheck(value: Boolean, enabled: Boolean, label: Int, change: (Boolean) -> Unit) { Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(value, change, enabled = enabled); Text(stringResource(label)) } }

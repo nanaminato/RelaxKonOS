@@ -164,7 +164,7 @@ fun HostSettingsScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
             HostSettingKind.entries.forEach { kind -> FilterChip(selected=kind == editor.kind,onClick={editor.select(kind)},enabled=!editor.busy&&!editor.dirty,
                 label={Text(stringResource(kind.label()))}) }
         }
-        editor.error?.let { Text(stringResource(it),color=MaterialTheme.colorScheme.error) }
+        OperationMessageDialog(editor.error?.takeUnless { editor.busy }?.let { stringResource(it) })
         if (editor.references.any { it.unresolved }) Text(stringResource(R.string.host_settings_pending),color=MaterialTheme.colorScheme.error)
         if (editor.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         when(editor.kind) {
@@ -210,12 +210,12 @@ fun HostSettingsScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
                     }
                     if(facts.variables.size>100) Text(stringResource(R.string.host_settings_limit))
                     OutlinedTextField(editor.name,{if(it.length<=255) editor.name=it; editor.highImpact=false},label={Text(stringResource(R.string.host_settings_variable))},singleLine=true,enabled=!editor.busy,modifier=Modifier.fillMaxWidth())
-                    Row { Checkbox(editor.delete,{editor.delete=it},enabled=!editor.busy); Text(stringResource(R.string.host_settings_delete)) }
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(editor.delete,{editor.delete=it},enabled=!editor.busy); Text(stringResource(R.string.host_settings_delete)) }
                     if(!editor.delete) {
                         OutlinedTextField(editor.value,{if(it.length<=32767) editor.value=it},label={Text(stringResource(R.string.host_settings_value))},enabled=!editor.busy,maxLines=8,modifier=Modifier.fillMaxWidth())
-                        if(owner.serverPlatform.equals("windows",true)) Row { Checkbox(editor.expand,{editor.expand=it},enabled=!editor.busy); Text(stringResource(R.string.host_settings_expand)) }
+                        if(owner.serverPlatform.equals("windows",true)) Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(editor.expand,{editor.expand=it},enabled=!editor.busy); Text(stringResource(R.string.host_settings_expand)) }
                     }
-                    if(HostSettingsRules.highImpact(editor.name,owner.serverPlatform.equals("windows",true))) Row { Checkbox(editor.highImpact,{editor.highImpact=it},enabled=!editor.busy); Text(stringResource(R.string.host_settings_high_impact)) }
+                    if(HostSettingsRules.highImpact(editor.name,owner.serverPlatform.equals("windows",true))) Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(editor.highImpact,{editor.highImpact=it},enabled=!editor.busy); Text(stringResource(R.string.host_settings_high_impact)) }
                 }
             }
         }

@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.deployments
 
+import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -93,12 +94,12 @@ internal fun DeploymentRevisionDialog(
                     Text(stringResource(R.string.deployments_source, stringResource(deploymentLabel(baseline.sourceKind))))
                     snapshot.revisions.firstOrNull { it.isCurrent }?.let { Text(stringResource(R.string.deployments_revision_from, it.imageReference)) }
                     if (!supported) Text(stringResource(R.string.deployments_revision_unsupported), color = MaterialTheme.colorScheme.error)
-                    if (unknown) Text(stringResource(R.string.deployments_revision_unknown), color = MaterialTheme.colorScheme.error)
+
                     if (snapshot.activeOperation != null) Text(stringResource(R.string.deployments_definition_busy), color = MaterialTheme.colorScheme.error)
                     when (val outcome = result) {
                         null -> Unit
                         is ApiResult.Success -> Text(stringResource(R.string.deployments_queued, outcome.value.operationId), color = MaterialTheme.colorScheme.primary)
-                        else -> Text(outcome.deploymentFailure().text(), color = MaterialTheme.colorScheme.error)
+                        else -> OperationMessageDialog(outcome.deploymentFailure().text() + if (unknown) "\n\n${stringResource(R.string.deployments_revision_unknown)}" else "", eventKey = outcome)
                     }
                     if (unknown || result != null && result !is ApiResult.Success || snapshot.activeOperation != null)
                         TextButton(onClick = ::reload, enabled = !busy) { Text(stringResource(R.string.deployments_revision_read_current)) }
@@ -116,7 +117,7 @@ internal fun DeploymentRevisionDialog(
                             }
                             archive?.let { Text(it.fileName) }
                             if (expired) Text(stringResource(R.string.deployments_revision_archive_expired), color = MaterialTheme.colorScheme.error)
-                            if (stagedArchive != null && stagedArchive !is ApiResult.Success) Text(stagedArchive.deploymentFailure().text(), color = MaterialTheme.colorScheme.error)
+                            if (stagedArchive != null && stagedArchive !is ApiResult.Success) OperationMessageDialog(stagedArchive.deploymentFailure().text(), eventKey = stagedArchive)
                             RevisionText(baseImage, { baseImage = it }, R.string.deployments_base_image, editable)
                             template?.defaultBaseImage?.let { Text(stringResource(R.string.deployments_revision_default_base, it), style = MaterialTheme.typography.bodySmall) }
                             RevisionText(runtime, { runtime = it }, R.string.deployments_runtime_version, editable)

@@ -125,13 +125,13 @@ fun FilePermissionDialog(vm: FilesViewModel) {
                 val labels = listOf(R.string.files_permissions_owner, R.string.files_permissions_group, R.string.files_permissions_others)
                 labels.forEachIndexed { index, label ->
                     Text(stringResource(label))
-                    Row(Modifier.horizontalScroll(rememberScrollState())) {
+                    Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                         listOf(R.string.files_permissions_read, R.string.files_permissions_write, R.string.files_permissions_execute).forEachIndexed { bit, name ->
                             val mask = 1 shl (8 - index * 3 - bit)
                             Checkbox(checked = mode != null && mode and mask != 0, enabled = mode != null && !vm.mutationBusy,
                                 onCheckedChange = { checked -> if (mode != null) vm.permissionInput = FileBrowserPolicy.formatMode(
                                     if (checked) mode or mask else mode and mask.inv()) })
-                            Text(stringResource(name), modifier = Modifier.padding(top = Spacing.md))
+                            Text(stringResource(name))
                         }
                     }
                 }

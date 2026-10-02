@@ -43,7 +43,7 @@ import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.auth.CredentialStatus
 import app.relaxkonos.mobile.core.auth.LoginDecision
 import app.relaxkonos.mobile.security.VaultUnlockMode
-import app.relaxkonos.mobile.ui.common.ErrorBanner
+import app.relaxkonos.mobile.ui.common.ActionFeedback
 import app.relaxkonos.mobile.ui.common.PasswordTextField
 import app.relaxkonos.mobile.ui.common.text
 import app.relaxkonos.mobile.ui.icons.DesktopIcon
@@ -174,7 +174,7 @@ fun LoginScreen(
                     )
 
                     viewModel.message?.let { banner ->
-                        ErrorBanner(
+                        ActionFeedback(
                             message = banner.text(),
                             onRetry = null,
                             onDismiss = { viewModel.dismissMessage() },

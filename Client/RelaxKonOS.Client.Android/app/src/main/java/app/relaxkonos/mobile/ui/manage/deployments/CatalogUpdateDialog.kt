@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.deployments
 
+import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -85,13 +86,13 @@ internal fun CatalogUpdateDialog(owner: SessionState.Active, initial: Deployment
                             Text(stringResource(R.string.deployments_replacement_note), color = MaterialTheme.colorScheme.error)
                         }
                         null -> Unit
-                        else -> Text(loaded.deploymentFailure().text(), color = MaterialTheme.colorScheme.error)
+                        else -> OperationMessageDialog(loaded.deploymentFailure().text(), eventKey = loaded)
                     }
-                    if (unknown) Text(stringResource(R.string.deployments_revision_unknown), color = MaterialTheme.colorScheme.error)
+
                     when (val outcome = result) {
                         is ApiResult.Success -> Text(stringResource(R.string.deployments_queued, outcome.value.operationId), color = MaterialTheme.colorScheme.primary)
                         null -> Unit
-                        else -> Text(outcome.deploymentFailure().text(), color = MaterialTheme.colorScheme.error)
+                        else -> OperationMessageDialog(outcome.deploymentFailure().text() + if (unknown) "\n\n${stringResource(R.string.deployments_revision_unknown)}" else "", eventKey = outcome)
                     }
                     if (result !is ApiResult.Success) TextButton(onClick = {
                         busy = true

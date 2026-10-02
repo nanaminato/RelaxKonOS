@@ -31,8 +31,7 @@ internal fun ProxyNodesPanel(state: ProxyState, canManage: Boolean, ready: Boole
             Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.common_refresh))
         }
     }
-    state.problemCode?.let { Text(proxyProblemLabel(it), color = MaterialTheme.colorScheme.error) }
-    if (state.uncertain) Text(stringResource(R.string.mihomo_uncertain), color = MaterialTheme.colorScheme.error)
+
     if (groups == null) { Text(stringResource(R.string.mihomo_unavailable)); return }
     if (groups.isEmpty()) { Text(stringResource(R.string.mihomo_nodes_empty)); return }
     val index = groups.indexOfFirst { it.name == selectedName }.takeIf { it >= 0 } ?: 0

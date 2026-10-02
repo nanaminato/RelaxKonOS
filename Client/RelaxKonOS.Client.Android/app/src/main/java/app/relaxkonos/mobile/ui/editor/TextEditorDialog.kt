@@ -1,5 +1,7 @@
 package app.relaxkonos.mobile.ui.editor
 
+import app.relaxkonos.mobile.ui.common.StatusTone
+import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import android.app.Application
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -166,8 +168,8 @@ fun TextEditorDialog(owner: SessionState.Active, path: String?, repositoryId: St
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text(editor.baseline?.path ?: stringResource(R.string.editor_new), style = MaterialTheme.typography.titleSmall)
                     Text(stringResource(R.string.editor_limit), style = MaterialTheme.typography.bodySmall)
-                    if (editor.failed) Text(stringResource(R.string.editor_failed), color = MaterialTheme.colorScheme.error)
-                    if (editor.unknown) Text(stringResource(R.string.editor_unknown), color = MaterialTheme.colorScheme.error)
+                    OperationMessageDialog(if (editor.busy) null else if (editor.failed) stringResource(R.string.editor_failed) else if (editor.unknown) stringResource(R.string.editor_unknown) else null, tone = if (editor.failed) StatusTone.Danger else StatusTone.Warning)
+
                     if (editor.saved) Text(stringResource(R.string.editor_saved), color = MaterialTheme.colorScheme.primary)
                     if (!editor.valid) Text(stringResource(R.string.editor_invalid), color = MaterialTheme.colorScheme.error)
                     editor.latest?.let { latest ->
@@ -182,7 +184,7 @@ fun TextEditorDialog(owner: SessionState.Active, path: String?, repositoryId: St
                         TextEditorPolicy.encodings.forEach { format -> FilterChip(editor.encoding == format,
                             onClick = { editor.format(format) }, enabled = !editor.busy, label = { Text(format.uppercase()) }) }
                     }
-                    Row { Checkbox(editor.bom, onCheckedChange = editor::setBomEnabled, enabled = !editor.busy && editor.encoding == "utf-8"); Text("BOM") }
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(editor.bom, onCheckedChange = editor::setBomEnabled, enabled = !editor.busy && editor.encoding == "utf-8"); Text("BOM") }
                     Text(stringResource(R.string.editor_newline, editor.baseline?.newline ?: "none"))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                         listOf("lf", "crlf", "cr").forEach { kind -> TextButton(onClick = { editor.newline(kind) }, enabled = !editor.busy) { Text(kind.uppercase()) } }

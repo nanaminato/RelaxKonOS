@@ -82,7 +82,7 @@ import app.relaxkonos.mobile.data.isSingleShotLength
 import app.relaxkonos.mobile.service.UploadForegroundService
 import app.relaxkonos.mobile.ui.common.ConfirmDangerousDialog
 import app.relaxkonos.mobile.ui.common.EmptyState
-import app.relaxkonos.mobile.ui.common.ErrorBanner
+import app.relaxkonos.mobile.ui.common.ActionFeedback
 import app.relaxkonos.mobile.ui.common.IconBadge
 import app.relaxkonos.mobile.ui.common.KeyValueRow
 import app.relaxkonos.mobile.ui.common.ListRow
@@ -684,7 +684,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
      * mounted to finish or to be reported: in the Compact and Medium layouts the file detail is a
      * pushed page, so the list is out of the composition while the download runs, and anything the
      * download needs — the progress card, the result message, the confirmation — has to come from
-     * somewhere that outlives both routes (`FileTransferCard`, `FileMessageBanner`).
+     * somewhere that outlives both routes (`FileTransferCard`, `FileActionFeedback`).
      */
     fun download(entry: RemoteEntry) {
         if (transfer != null || batchRunning || mutationBusy) {
@@ -1382,9 +1382,9 @@ fun FilesScreen(
  * result only on the way back — long after the moment it describes.
  */
 @Composable
-fun FileMessageBanner(viewModel: FilesViewModel, modifier: Modifier = Modifier) {
+fun FileActionFeedback(viewModel: FilesViewModel, modifier: Modifier = Modifier) {
     viewModel.message?.let { banner ->
-        ErrorBanner(
+        ActionFeedback(
             message = banner.text(),
             onRetry = { viewModel.refresh() },
             onDismiss = { viewModel.dismissMessage() },

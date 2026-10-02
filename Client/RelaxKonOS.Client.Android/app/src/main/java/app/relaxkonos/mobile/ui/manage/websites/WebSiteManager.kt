@@ -127,8 +127,7 @@ internal fun WebSiteEditor(state: NginxState, model: NginxViewModel) {
             }
             Text(stringResource(R.string.websites_site_tls_note), style = MaterialTheme.typography.bodySmall)
             if (draft.request() == null) Text(stringResource(R.string.websites_site_validation), color = MaterialTheme.colorScheme.error)
-            state.problemCode?.let { Text(nginxProblemLabel(it), color = MaterialTheme.colorScheme.error) }
-            if (state.uncertain || pending) Text(stringResource(R.string.websites_site_result_unknown), color = MaterialTheme.colorScheme.error)
+
             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (draft.expectedUpdatedAt != null) {
                 TextButton(enabled = !state.busy, onClick = { model.inspectSites(draft.serverId) }) { Text(stringResource(R.string.websites_site_inspect)) }
@@ -148,5 +147,5 @@ internal fun WebSiteEditor(state: NginxState, model: NginxViewModel) {
 }
 @Composable
 private fun SiteCheck(checked: Boolean, label: Int, enabled: Boolean, update: (Boolean) -> Unit) {
-    Row { Checkbox(checked, update, enabled = enabled); Text(stringResource(label)) }
+    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(checked, update, enabled = enabled); Text(stringResource(label)) }
 }

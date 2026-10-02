@@ -157,8 +157,8 @@ import kotlinx.coroutines.delay
             Text(stringResource(R.string.frps_dashboard_note), style = MaterialTheme.typography.bodySmall)
             }
             if (draft.request(token, password) == null) Text(stringResource(R.string.frps_invalid), color = MaterialTheme.colorScheme.error)
-            state.problemCode?.let { Text(tunnelProblemLabel(it), color = MaterialTheme.colorScheme.error) }
-            if (state.uncertain || state.pending.isNotEmpty()) Text(stringResource(R.string.tunnels_uncertain), color = MaterialTheme.colorScheme.error)
+
+            if (state.pending.isNotEmpty()) Text(stringResource(R.string.tunnels_uncertain), color = MaterialTheme.colorScheme.error)
             TextButton(enabled = !locked, onClick = { confirm = R.string.tunnels_reload_confirm }) { Text(stringResource(R.string.tunnels_reload)) }
         } }, confirmButton = { Button(enabled = !locked && draft.request(token, password) != null, onClick = { confirm = R.string.frps_save_confirm }) { Text(stringResource(R.string.common_save)) } },
         dismissButton = { TextButton(enabled = !state.busy, onClick = ::close) { Text(stringResource(R.string.common_close)) } })

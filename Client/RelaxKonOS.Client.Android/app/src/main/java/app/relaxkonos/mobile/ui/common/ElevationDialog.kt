@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.common
 
+import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -117,9 +118,7 @@ fun ElevationDialog(container: AppContainer) {
                         Text(stringResource(R.string.elevation_save_credential))
                     }
                 }
-                message?.let {
-                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                }
+                OperationMessageDialog(message.takeUnless { busy }, onDismiss = { message = null })
             }
         },
         confirmButton = {

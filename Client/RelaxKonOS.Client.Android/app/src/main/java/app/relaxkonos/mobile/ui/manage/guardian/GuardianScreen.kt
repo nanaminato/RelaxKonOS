@@ -1,5 +1,7 @@
 package app.relaxkonos.mobile.ui.manage.guardian
 
+import app.relaxkonos.mobile.ui.common.OperationMessageDialog
+import app.relaxkonos.mobile.ui.common.StatusTone
 import android.app.Application
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.WindowInsets
@@ -243,8 +245,7 @@ fun GuardianScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Mod
         if (state.loading) Text(stringResource(R.string.guardian_loading))
         state.status?.let { status -> Text(stringResource(if (status.running) R.string.guardian_running else R.string.guardian_unavailable)) }
         if (state.stale) Text(stringResource(R.string.guardian_stale), color = MaterialTheme.colorScheme.error)
-        if (state.unknown) Text(stringResource(R.string.guardian_unknown), color = MaterialTheme.colorScheme.error)
-        if (state.error) Text(stringResource(guardianProblemLabel(state.problemCode)), color = MaterialTheme.colorScheme.error)
+        OperationMessageDialog(if (state.loading) null else if (state.error) stringResource(guardianProblemLabel(state.problemCode)) else if (state.unknown) stringResource(R.string.guardian_unknown) else null, tone = if (state.error) StatusTone.Danger else StatusTone.Warning)
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             OutlinedButton(onClick = { model.load(owner) }, enabled = !state.loading) { Text(stringResource(R.string.common_refresh)) }
             Button(onClick = { model.beginEdit(GuardianDefinition(UUID.randomUUID().toString(), "", "", emptyList(), "", false, 15, 3, null, owner.userName, null), true) },
@@ -361,8 +362,7 @@ private fun GuardianEditor(owner: SessionState.Active, draft: GuardianDraft, sta
     Column(modifier.fillMaxSize().windowInsetsPadding(WindowInsets.ime).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         ScreenHeader(title = stringResource(R.string.guardian_editor), onBack = { close() })
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            if (state.unknown) Text(stringResource(R.string.guardian_unknown), color = MaterialTheme.colorScheme.error)
-            if (state.error) Text(stringResource(guardianProblemLabel(state.problemCode)), color = MaterialTheme.colorScheme.error)
+            OperationMessageDialog(if (state.loading) null else if (state.error) stringResource(guardianProblemLabel(state.problemCode)) else if (state.unknown) stringResource(R.string.guardian_unknown) else null, tone = if (state.error) StatusTone.Danger else StatusTone.Warning)
             if (state.unknown || state.error) OutlinedButton(onClick = { if (draft.dirty(owner.serverPlatform)) readConfirm = true else onRead() }, enabled = !state.loading) { Text(stringResource(R.string.guardian_read_current)) }
             OutlinedTextField(draft.name, { draft.name = it }, label = { Text(stringResource(R.string.guardian_name)) }, modifier = Modifier.fillMaxWidth(), enabled = !state.loading)
             RemotePathField(draft.executable, { draft.executable = it }, R.string.guardian_executable, RemotePathKind.File, modifier = Modifier.fillMaxWidth(), enabled = !state.loading)
@@ -379,7 +379,7 @@ private fun GuardianEditor(owner: SessionState.Active, draft: GuardianDraft, sta
             RemotePathField(draft.directory, { draft.directory = it }, R.string.guardian_directory, RemotePathKind.Directory, modifier = Modifier.fillMaxWidth(), enabled = !state.loading)
             OutlinedTextField(draft.runAs, { draft.runAs = it }, label = { Text(stringResource(R.string.guardian_run_as)) }, modifier = Modifier.fillMaxWidth(), enabled = !state.loading)
             draft.initial.runAsIdentity?.let { Text(stringResource(R.string.guardian_stable_identity, it), style = MaterialTheme.typography.bodySmall) }
-            Row { Checkbox(draft.enabled, { draft.enabled = it }, enabled = !state.loading); Text(stringResource(R.string.guardian_boot), modifier = Modifier.padding(top = Spacing.sm)) }
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(draft.enabled, { draft.enabled = it }, enabled = !state.loading); Text(stringResource(R.string.guardian_boot)) }
             OutlinedTextField(draft.stopTimeout, { draft.stopTimeout = it }, label = { Text(stringResource(R.string.guardian_stop_timeout)) }, enabled = !state.loading)
             OutlinedTextField(draft.attempts, { draft.attempts = it }, label = { Text(stringResource(R.string.guardian_restart_attempts)) }, enabled = !state.loading)
             Text(stringResource(R.string.guardian_health_type))

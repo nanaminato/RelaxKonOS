@@ -36,6 +36,6 @@ fun ServiceAccess(addresses: List<ExternalServiceAddress>, ready: Boolean = true
                 } else failed = true
             }) { Text(stringResource(R.string.service_access_open)) }
         }
-        if (failed) Text(stringResource(R.string.service_access_failed), color = MaterialTheme.colorScheme.error)
+        OperationMessageDialog(if (failed) stringResource(R.string.service_access_failed) else null, onDismiss = { failed = false })
     }
 }

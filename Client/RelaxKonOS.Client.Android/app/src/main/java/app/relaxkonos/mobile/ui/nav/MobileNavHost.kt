@@ -27,7 +27,7 @@ import app.relaxkonos.mobile.security.model.SavedLogin
 import app.relaxkonos.mobile.core.layout.LayoutState
 import app.relaxkonos.mobile.ui.common.EmptyHint
 import app.relaxkonos.mobile.ui.files.FileDetailScreen
-import app.relaxkonos.mobile.ui.files.FileMessageBanner
+import app.relaxkonos.mobile.ui.files.FileActionFeedback
 import app.relaxkonos.mobile.ui.files.FileOperationOverlays
 import app.relaxkonos.mobile.ui.files.FileTransferCard
 import app.relaxkonos.mobile.ui.files.FileUploadCard
@@ -164,7 +164,7 @@ private fun FilesDestination(navigator: MobileNavigator, layoutState: LayoutStat
     val viewModel: FilesViewModel = viewModel()
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            FileMessageBanner(viewModel)
+            FileActionFeedback(viewModel)
             Box(Modifier.weight(1f)) {
                 if (layoutState == LayoutState.Expanded) {
                     Row(Modifier.fillMaxSize()) {
@@ -265,7 +265,6 @@ private fun MoreDestination(
             if(target != destination) navigator.push(target)
         }
     }
-
 
     if (layoutState == LayoutState.Expanded) {
         Row(Modifier.fillMaxSize()) {

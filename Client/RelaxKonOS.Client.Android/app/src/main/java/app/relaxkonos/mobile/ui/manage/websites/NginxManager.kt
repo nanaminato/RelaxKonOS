@@ -32,6 +32,7 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
     var recoveryDialog by remember(owner, sessionEpoch) { mutableStateOf(false) }
     var instanceDetailsVisible by remember(owner, sessionEpoch) { mutableStateOf(false) }
     var confirmation by remember(owner, sessionEpoch) { mutableStateOf<Pair<Int, () -> Unit>?>(null) }
+    OperationMessageDialog(if (state.busy) null else state.problemCode?.let { nginxProblemLabel(it) } ?: if (state.uncertain) stringResource(R.string.nginx_uncertain) else null, tone = if (state.problemCode == null) StatusTone.Warning else StatusTone.Danger)
     LaunchedEffect(owner, sessionEpoch) { if (owner != null) model.refresh() }
     LaunchedEffect(owner, sessionEpoch, state.operation?.operationId, state.operation?.state, state.installation?.operationId, state.installation?.state, state.busy) {
         if ((state.operation?.state?.active == true || state.installation?.state?.active == true) && !state.busy) {
@@ -56,8 +57,7 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
         }
         }
         if (state.busy || state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (state.uncertain) Text(stringResource(R.string.nginx_uncertain), color = MaterialTheme.colorScheme.error)
-        state.problemCode?.let { Text(nginxProblemLabel(it), color = MaterialTheme.colorScheme.error) }
+
         if (state.catalog?.problemCode?.isNotBlank() == true) Text(nginxProblemLabel(state.catalog.problemCode), color = MaterialTheme.colorScheme.error)
         if (state.servers.isEmpty() && !state.loading) Text(stringResource(R.string.websites_no_servers))
         if (section == "sites") {
@@ -237,8 +237,7 @@ private fun NginxInstallDialog(model: NginxViewModel, dismiss: () -> Unit) {
             }
             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             state.uploadBytes?.let { Text(stringResource(R.string.nginx_upload_bytes, it)) }
-            if (state.uncertain) Text(stringResource(R.string.nginx_uncertain), color = MaterialTheme.colorScheme.error)
-            state.problemCode?.let { Text(nginxProblemLabel(it), color = MaterialTheme.colorScheme.error) }
+
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(confirmed, { confirmed = it }, enabled = !state.busy)
                 Text(stringResource(R.string.nginx_install_confirm))

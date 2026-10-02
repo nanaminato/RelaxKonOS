@@ -85,7 +85,7 @@ fun DeploymentsScreen(
         state.submission?.let { result ->
             when (result) {
                 is ApiResult.Success -> Text(stringResource(R.string.deployments_queued, result.value.operationId), color = MaterialTheme.colorScheme.primary)
-                else -> Text(result.deploymentFailure().text(), color = MaterialTheme.colorScheme.error)
+                else -> OperationMessageDialog(result.deploymentFailure().text(), eventKey = result)
             }
         }
         if (expanded) {
@@ -330,7 +330,7 @@ private fun DeploymentCreateDialog(
                                         }
                                     } else Text(stringResource(R.string.deployments_tags_unavailable), style = MaterialTheme.typography.bodySmall)
                                     null -> Unit
-                                    else -> Text(result.deploymentFailure().text(), color = MaterialTheme.colorScheme.error)
+                                    else -> OperationMessageDialog(result.deploymentFailure().text(), eventKey = result)
                                 }
                             }
                             if (form.isArchive) {
@@ -349,7 +349,7 @@ private fun DeploymentCreateDialog(
                                 }
                                 if (form.archiveName.isNotBlank()) Text(form.archiveName)
                                 if (stagedArchive != null && stagedArchive !is ApiResult.Success)
-                                    Text(stagedArchive.deploymentFailure().text(), color = MaterialTheme.colorScheme.error)
+                                    OperationMessageDialog(stagedArchive.deploymentFailure().text(), eventKey = stagedArchive)
                                 OutlinedTextField(form.baseImage, { form.baseImage = it }, label = { Text(stringResource(R.string.deployments_base_image)) },
                                     singleLine = true, modifier = Modifier.fillMaxWidth())
                                 OutlinedTextField(form.programEntry, { form.programEntry = it }, label = { Text(stringResource(R.string.deployments_program_entry)) },
@@ -452,12 +452,12 @@ private fun DeploymentCreateDialog(
                                         }
                                     }
                                 }
-                                else -> Text(result.deploymentFailure().text(), color = MaterialTheme.colorScheme.error)
+                                else -> OperationMessageDialog(result.deploymentFailure().text(), eventKey = result)
                             }
                             when (val saved = definitionSubmission) {
                                 is ApiResult.Success -> Text(stringResource(R.string.deployments_definition_saved, saved.value.name))
                                 null -> Unit
-                                else -> Text(saved.deploymentFailure().text(), color = MaterialTheme.colorScheme.error)
+                                else -> OperationMessageDialog(saved.deploymentFailure().text(), eventKey = saved)
                             }
                         }
                     }
@@ -551,7 +551,7 @@ private fun DeploymentList(state: DeploymentBrowserState, onSelect: (String) -> 
                     }
                     null -> Text(stringResource(if (ServerCapabilities.DOCKER !in state.owner!!.capabilities)
                         R.string.deployments_runtime_missing else R.string.common_loading))
-                    else -> Text(runtime.runtimeFailure().text(), color = MaterialTheme.colorScheme.error)
+                    else -> OperationMessageDialog(runtime.runtimeFailure().text(), eventKey = runtime)
                 }
             }
         }
@@ -576,7 +576,7 @@ private fun DeploymentList(state: DeploymentBrowserState, onSelect: (String) -> 
                 }
             }
             null -> Unit
-            else -> item { Text(result.deploymentFailure().text(), color = MaterialTheme.colorScheme.error) }
+            else -> item { OperationMessageDialog(result.deploymentFailure().text(), eventKey = result) }
         }
     }
 }
@@ -688,7 +688,7 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
                                                 }
                                             }
                                             else -> item {
-                                                Text(logs.deploymentFailure().text(), color = MaterialTheme.colorScheme.error)
+                                                OperationMessageDialog(logs.deploymentFailure().text(), eventKey = logs)
                                                 TextButton(onClick = { browser.loadLogs() }, enabled = !state.logsLoading) {
                                                     Text(stringResource(R.string.deployments_logs_retry))
                                                 }
@@ -721,7 +721,7 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
                                     }
                                 }
                                 null -> Unit
-                                else -> item { Text(result.deploymentFailure().text(), color = MaterialTheme.colorScheme.error) }
+                                else -> item { OperationMessageDialog(result.deploymentFailure().text(), eventKey = result) }
                             }
                         }
                     }
@@ -853,7 +853,7 @@ private fun BackupRecoveryCard(owner: SessionState.Active?, applicationId: Strin
         when (state.creation) {
             is ApiResult.Success -> Text(stringResource(R.string.backup_recovery_created))
             null -> Unit
-            else -> Text(stringResource(R.string.backup_recovery_create_failed), color = MaterialTheme.colorScheme.error)
+            else -> OperationMessageDialog(stringResource(R.string.backup_recovery_create_failed), eventKey = state.creation)
         }
         val selected = state.selectedBackupId
         if (selected != null && state.preflight == null) {
@@ -865,12 +865,11 @@ private fun BackupRecoveryCard(owner: SessionState.Active?, applicationId: Strin
         }
         when (val preflight = state.preflight) {
             is ApiResult.Success -> {
-                Text(if (preflight.value.canRestore) stringResource(R.string.backup_recovery_ready_new_instance)
-                    else stringResource(R.string.backup_recovery_blocked), color = if (preflight.value.canRestore) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
-                preflight.value.blockers.forEach { Text(it, color = MaterialTheme.colorScheme.error) }
+                if (preflight.value.canRestore) Text(stringResource(R.string.backup_recovery_ready_new_instance), color = MaterialTheme.colorScheme.primary)
+                else OperationMessageDialog((listOf(stringResource(R.string.backup_recovery_blocked)) + preflight.value.blockers).joinToString("\n"), eventKey = preflight, tone = StatusTone.Warning)
             }
             null -> Unit
-            else -> Text(stringResource(R.string.backup_recovery_preflight_failed), color = MaterialTheme.colorScheme.error)
+            else -> OperationMessageDialog(stringResource(R.string.backup_recovery_preflight_failed), eventKey = preflight)
         }
     }
 }

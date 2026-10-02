@@ -41,7 +41,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
     AlertDialog(onDismissRequest = dismiss, modifier = Modifier.imePadding(), title = { Text(stringResource(R.string.mihomo_runtime_manage)) },
         text = { Column(Modifier.heightIn(max = 430.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Text(stringResource(R.string.mihomo_install_note))
-            InstallationKind.entries.forEach { option -> Row { RadioButton(kind == option, { kind = option; rollback = false; source = InstallationPackageSource.HostDownload; model.clearReference() }, enabled = !locked); Text(installationKindLabel(option)) } }
+            InstallationKind.entries.forEach { option -> Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { RadioButton(kind == option, { kind = option; rollback = false; source = InstallationPackageSource.HostDownload; model.clearReference() }, enabled = !locked); Text(installationKindLabel(option)) } }
             if (kind == InstallationKind.Repair) ProxyCheck(rollback, !locked, R.string.tunnels_rollback) { rollback = it; model.clearReference() }
             if (rollback) Text(stringResource(R.string.tunnels_rollback_note))
             if (!rollback && kind != InstallationKind.Uninstall) {
@@ -77,8 +77,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
             }
             state.uploadBytes?.let { Text(stringResource(R.string.nginx_upload_bytes, it)) }
             if (state.pendingInstallation) Text(stringResource(R.string.tunnels_install_restore_note), color = MaterialTheme.colorScheme.error)
-            state.problemCode?.let { Text(proxyProblemLabel(it), color = MaterialTheme.colorScheme.error) }
-            if (state.uncertain) Text(stringResource(R.string.mihomo_uncertain), color = MaterialTheme.colorScheme.error)
+
             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             ProxyCheck(confirmed, !state.busy, R.string.mihomo_install_confirm) { confirmed = it }
         } }, confirmButton = { Button(enabled = !state.busy && confirmed && state.installation?.state?.active != true &&

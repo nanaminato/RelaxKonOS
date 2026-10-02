@@ -46,7 +46,7 @@ private data class ResourceConfirmation(val facts: DockerResourceFacts, val targ
             TextButton(enabled = !state.busy, onClick = { navigate { draft = null; model.refresh() } }) { Text(stringResource(R.string.common_refresh)) }
         }
         if (visible && state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (visible) state.problem?.let { Text(controlProblem(it), color = MaterialTheme.colorScheme.error) }
+        OperationMessageDialog(state.problem?.takeIf { visible && !state.busy }?.let { controlProblem(it) })
         if (visible && state.blocked != null) Text(controlProblem(state.blocked), color = MaterialTheme.colorScheme.error)
         if (visible && (state.pending.isNotEmpty() || state.result != null)) TextButton(onClick = { navigate(onOpenControl) }) { Text(stringResource(R.string.workspace_records)) }
         if (facts == null) Text(stringResource(R.string.docker_control_unverified))
@@ -116,7 +116,7 @@ private data class ResourceConfirmation(val facts: DockerResourceFacts, val targ
         if (frozen.change.action == DockerResourceAction.DeleteContainer) Text(stringResource(R.string.docker_resources_container_warning))
         if (frozen.change.action == DockerResourceAction.DeleteImage) Text(stringResource(R.string.docker_resources_image_warning))
         if (frozen.change.action == DockerResourceAction.DeleteVolume) Text(stringResource(R.string.docker_resources_volume_warning))
-        if (frozen.change.action in listOf(DockerResourceAction.DeleteContainer, DockerResourceAction.Stop)) Row { Checkbox(checked = frozen.change.force, onCheckedChange = { confirmation = frozen.copy(change = frozen.change.copy(force = it)) }); Text(stringResource(if (frozen.change.action == DockerResourceAction.Stop) R.string.docker_resources_force_stop else R.string.docker_resources_force)) }
+        if (frozen.change.action in listOf(DockerResourceAction.DeleteContainer, DockerResourceAction.Stop)) Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(checked = frozen.change.force, onCheckedChange = { confirmation = frozen.copy(change = frozen.change.copy(force = it)) }); Text(stringResource(if (frozen.change.action == DockerResourceAction.Stop) R.string.docker_resources_force_stop else R.string.docker_resources_force)) }
     } }, confirmButton = { Button(enabled = !state.busy, onClick = { confirmation = null; model.change(frozen.facts, frozen.target, frozen.change) }) { Text(stringResource(R.string.docker_resources_apply)) } }, dismissButton = { TextButton(onClick = { confirmation = null }) { Text(stringResource(R.string.common_cancel)) } }) }
     leave?.let { action -> AlertDialog(onDismissRequest = { leave = null }, title = { Text(stringResource(R.string.docker_resources_discard)) },
         confirmButton = { Button(onClick = { leave = null; draft = null; confirmation = null; action() }) { Text(stringResource(R.string.docker_resources_discard)) } },

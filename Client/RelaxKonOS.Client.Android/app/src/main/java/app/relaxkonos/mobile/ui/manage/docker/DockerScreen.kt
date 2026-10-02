@@ -60,7 +60,7 @@ import app.relaxkonos.mobile.core.net.DockerVolume
 import app.relaxkonos.mobile.core.net.DockerVolumeDetails
 import app.relaxkonos.mobile.core.net.ServerCapabilities
 import app.relaxkonos.mobile.ui.common.EmptyHint
-import app.relaxkonos.mobile.ui.common.ErrorBanner
+import app.relaxkonos.mobile.ui.common.ActionFeedback
 import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionCard
@@ -357,7 +357,7 @@ fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialSt
                 TextButton(onClick = viewModel::refresh, enabled = available && !state.loading) { Text(stringResource(R.string.common_refresh)) } } },
         )
         if (!available) { EmptyHint(stringResource(R.string.error_capability_missing)); return@Column }
-        state.message?.let { message -> ErrorBanner(message.text(), viewModel::refresh, viewModel::dismissMessage, tone = message.tone) }
+        state.message?.let { message -> ActionFeedback(message.text(), viewModel::refresh, viewModel::dismissMessage, tone = message.tone) }
         if (state.loading || state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (notInstalled) {
             EmptyHint(stringResource(R.string.runtime_install_hint, "Docker"))

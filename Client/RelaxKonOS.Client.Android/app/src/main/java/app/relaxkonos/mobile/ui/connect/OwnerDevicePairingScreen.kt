@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.connect
 
+import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -145,13 +146,7 @@ fun OwnerDevicePairingScreen(modifier: Modifier = Modifier, onClose: () -> Unit)
             modifier = Modifier.fillMaxWidth(),
         ) { Text(stringResource(R.string.owner_device_scan_image)) }
 
-        scanMessage?.let { message ->
-            Text(
-                stringResource(message),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-            )
-        }
+        OperationMessageDialog(scanMessage?.let { stringResource(it) }, onDismiss = { scanMessage = null })
 
         Button(
             onClick = {

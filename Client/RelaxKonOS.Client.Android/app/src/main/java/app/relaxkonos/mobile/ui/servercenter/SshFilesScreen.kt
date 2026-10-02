@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.servercenter
 
+import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -195,7 +196,7 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
             }
             TextButton(onClick = { adoptConfirm = state.checked }, enabled = !state.busy && !state.writesSettling && state.checked.isNotEmpty() && state.checked.all { it.exists != null }) { Text(stringResource(R.string.ssh_files_adopt_facts)) }
         }
-        state.problem?.let { Text(problemText(it), color = androidx.compose.material3.MaterialTheme.colorScheme.error) }
+        OperationMessageDialog(state.problem?.takeUnless { state.busy }?.let { problemText(it) })
         if (!state.connected) {
             if (state.busy) CircularProgressIndicator()
             else OutlinedButton(model::reload, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.common_retry)) }

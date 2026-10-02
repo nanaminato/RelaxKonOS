@@ -126,7 +126,7 @@ private fun GitBuildSection(owner: SessionState.Active, initialBuildId: String?)
 
     Text(stringResource(R.string.git_build_title), style = MaterialTheme.typography.titleLarge)
     Text(stringResource(R.string.git_build_note), style = MaterialTheme.typography.bodySmall)
-    problem?.let { Text(stringResource(R.string.git_problem, it), color = MaterialTheme.colorScheme.error) }
+    OperationMessageDialog(problem?.let { stringResource(R.string.git_problem, it) }, onDismiss = { problem = null })
     notice?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
     OutlinedTextField(url, { url = it; resolved = null; buildKey = null; remoteRefs = emptyList() },
         label = { Text(stringResource(R.string.git_build_url)) }, singleLine = true, modifier = Modifier.fillMaxWidth())

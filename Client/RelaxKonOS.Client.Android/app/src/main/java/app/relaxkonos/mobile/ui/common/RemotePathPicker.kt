@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.common
 
+import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -106,11 +107,7 @@ fun RemotePathPicker(
                     }
                 }
                 if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-                error?.let { message ->
-                    Text(stringResource(R.string.remote_path_load_failed, message.text()),
-                        color = MaterialTheme.colorScheme.error)
-                    TextButton(onClick = { refresh++ }) { Text(stringResource(R.string.common_retry)) }
-                }
+                OperationMessageDialog(error?.takeUnless { loading }?.let { stringResource(R.string.remote_path_load_failed, it.text()) }, onDismiss = { error = null }, onRetry = { refresh++ })
                 listing?.let { result ->
                     val entries = result.entries.filter { it.isDirectory ||
                         (kind == RemotePathKind.File && fileFilter(it.name)) }

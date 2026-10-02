@@ -27,7 +27,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.auth.SavedCredentialState
 import app.relaxkonos.mobile.core.auth.credentialStatus
-import app.relaxkonos.mobile.ui.common.ErrorBanner
+import app.relaxkonos.mobile.ui.common.ActionFeedback
 import app.relaxkonos.mobile.ui.common.IconBadge
 import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.common.StatusChip
@@ -70,7 +70,7 @@ fun SshHostSwitcherDialog(currentHostId: String, onDismiss: () -> Unit) {
                 )
                 // 解封被拒、握手失败或「已保存但没保存上」都要在这里说出来，不能让对话框空转。
                 state.message?.let { message ->
-                    ErrorBanner(
+                    ActionFeedback(
                         message = message.text(),
                         onRetry = null,
                         onDismiss = viewModel::dismissMessage,

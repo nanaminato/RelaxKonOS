@@ -28,6 +28,7 @@ fun CertificatesScreen(onBack: () -> Unit, initialOperationId: String? = null, m
     val epoch = model.sessionEpoch
     val owner = appContainer().activeSession
     var section by rememberSaveable(owner, epoch) { mutableStateOf(if (initialOperationId == null) "overview" else "operations") }
+    OperationMessageDialog(if (state.busy) null else state.problemCode?.let { certificateProblemLabel(it) } ?: if (state.uncertain) stringResource(R.string.certificates_uncertain) else null, tone = if (state.problemCode == null) StatusTone.Warning else StatusTone.Danger)
     LaunchedEffect(initialOperationId) { if (initialOperationId != null) section = "operations" }
     val available = owner?.capabilities?.contains(ServerCapabilities.CERTIFICATES) == true
     val canManage = available && owner?.privilegedOperations == true
@@ -52,8 +53,7 @@ fun CertificatesScreen(onBack: () -> Unit, initialOperationId: String? = null, m
             if (section == "operations") TextButton(onClick = { recoverPending = null; recoverId = ""; recovery = true }, enabled = !state.busy) { Text(stringResource(R.string.certificates_recover)) }
         }
         if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (state.uncertain) Text(stringResource(R.string.certificates_uncertain), color = MaterialTheme.colorScheme.error)
-        state.problemCode?.let { Text(certificateProblemLabel(it), color = MaterialTheme.colorScheme.error) }
+
         if (section != "operations" && (state.pending.isNotEmpty() || state.operation != null)) {
             TextButton(onClick = { section = "operations" }) {
                 Text(stringResource(R.string.workspace_operations) + " · " + (state.operation?.operationId ?: state.pending.size.toString()))
@@ -213,17 +213,17 @@ private fun CertificateEditor(state: CertificatesState, model: CertificatesViewM
             Text(stringResource(if (draft.selfSigned) R.string.certificates_self_signed_note else R.string.certificates_challenge_note))
             if (state.pending.any { it.target == null }) Text(stringResource(R.string.certificates_restore_form_note))
             OutlinedTextField(draft.domainsText, { model.update(draft.copy(domainsText = it)) }, enabled = !locked, label = { Text(stringResource(R.string.certificates_domains)) }, modifier = Modifier.fillMaxWidth())
-            CertificateKey.entries.forEach { key -> Row { RadioButton(draft.key == key, { model.update(draft.copy(key = key)) }, enabled = !locked); Text(certificateKeyLabel(key)) } }
+            CertificateKey.entries.forEach { key -> Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { RadioButton(draft.key == key, { model.update(draft.copy(key = key)) }, enabled = !locked); Text(certificateKeyLabel(key)) } }
             if (draft.selfSigned) OutlinedTextField(draft.validityDays, { model.update(draft.copy(validityDays = it)) }, enabled = !locked, singleLine = true, label = { Text(stringResource(R.string.certificates_validity_days)) })
             else {
-                CertificateChallenge.entries.forEach { challenge -> Row {
+                CertificateChallenge.entries.forEach { challenge -> Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                     RadioButton(draft.challenge == challenge, { model.update(draft.copy(challenge = challenge)) }, enabled = !locked)
                     Text(certificateChallengeLabel(challenge))
                 } }
                 if (draft.challenge == CertificateChallenge.Dns01) Text(stringResource(R.string.certificates_dns_unavailable), color = MaterialTheme.colorScheme.error)
                 OutlinedTextField(draft.email, { model.update(draft.copy(email = it)) }, enabled = !locked, singleLine = true, label = { Text(stringResource(R.string.certificates_email)) }, modifier = Modifier.fillMaxWidth())
-                Row { Checkbox(draft.acceptedTerms, { model.update(draft.copy(acceptedTerms = it)) }, enabled = !locked); Text(stringResource(R.string.certificates_terms)) }
-                Row { Checkbox(draft.reachable, { model.update(draft.copy(reachable = it)) }, enabled = !locked); Text(stringResource(R.string.certificates_public_confirm)) }
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(draft.acceptedTerms, { model.update(draft.copy(acceptedTerms = it)) }, enabled = !locked); Text(stringResource(R.string.certificates_terms)) }
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(draft.reachable, { model.update(draft.copy(reachable = it)) }, enabled = !locked); Text(stringResource(R.string.certificates_public_confirm)) }
                 OutlinedButton(enabled = !state.busy && draft.domains() != null, onClick = model::preflight) { Text(stringResource(R.string.certificates_preflight)) }
                 val preflight = (state.preflight as? ApiResult.Success)?.value
                 preflight?.let { facts ->
@@ -241,8 +241,7 @@ private fun CertificateEditor(state: CertificatesState, model: CertificatesViewM
                 state.preflightAtMillis?.let { Text(stringResource(R.string.certificates_checked, date(it)), style = MaterialTheme.typography.bodySmall) }
             }
             if (draft.body() == null) Text(stringResource(R.string.certificates_validation), color = MaterialTheme.colorScheme.error)
-            state.problemCode?.let { Text(certificateProblemLabel(it), color = MaterialTheme.colorScheme.error) }
-            if (state.uncertain || state.draftLocked) Text(stringResource(R.string.certificates_uncertain), color = MaterialTheme.colorScheme.error)
+
             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         } }, confirmButton = { Button(enabled = !state.busy && draft.body() != null && (draft.selfSigned || (state.preflight as? ApiResult.Success)?.value?.canProceed == true), onClick = { submit = true }) {
             Text(stringResource(if (state.draftLocked) R.string.common_retry else R.string.certificates_submit))

@@ -224,18 +224,18 @@ private fun WebsitePublisher(state: WebsitesState, viewModel: WebsitesViewModel,
             }
         }
         OutlinedTextField(domain, { domain = it.trim() }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.websites_domain)) }, singleLine = true)
-        androidx.compose.foundation.layout.Row {
+        androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Checkbox(checked = useExistingCertificate, onCheckedChange = { useExistingCertificate = it }, enabled = !state.publishing)
             Text(stringResource(R.string.websites_use_existing_certificate))
         }
         if (useExistingCertificate) ManagedCertificatePicker(state.certificates, listOf(domain), selectedCertificateId, !state.publishing) { selectedCertificateId = it }
         if (!useExistingCertificate) {
             OutlinedTextField(email, { email = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.websites_contact_email)) }, singleLine = true)
-            androidx.compose.foundation.layout.Row {
+            androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Checkbox(checked = acceptedTerms, onCheckedChange = { acceptedTerms = it })
                 Text(stringResource(R.string.websites_accept_terms))
             }
-            androidx.compose.foundation.layout.Row {
+            androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Checkbox(checked = publicReachability, onCheckedChange = { publicReachability = it })
                 Text(stringResource(R.string.websites_public_reachability))
             }

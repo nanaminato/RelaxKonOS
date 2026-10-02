@@ -50,7 +50,7 @@ private data class ControlConfirmation(val facts: DockerControlFacts, val change
         if (owner?.capabilities?.contains(ServerCapabilities.DOCKER) != true) { Text(stringResource(R.string.error_capability_missing)); return@Column }
         TextButton(enabled = !state.busy, onClick = { navigate { draft = null; model.refresh() } }) { Text(stringResource(R.string.common_refresh)) }
         if (visible && state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (visible) state.problem?.let { Text(controlProblem(it), color = MaterialTheme.colorScheme.error) }
+        OperationMessageDialog(state.problem?.takeIf { visible && !state.busy }?.let { controlProblem(it) })
         if (visible && recordsOnly) state.pending.forEach { pending ->
             ManagementCard {
             Text(stringResource(R.string.docker_control_pending), color = MaterialTheme.colorScheme.error)
@@ -185,7 +185,7 @@ WorkspaceSection(mirrorsOnly) {
         confirmButton = { Button(onClick = { cancel = false; model.cancelInstall() }) { Text(stringResource(R.string.common_cancel)) } }, dismissButton = { TextButton(onClick = { cancel = false }) { Text(stringResource(R.string.common_close)) } })
     if (recover) AlertDialog(onDismissRequest = { recover = false }, title = { Text(stringResource(R.string.installation_recover)) }, text = { Column {
         Text(stringResource(R.string.installation_recover_help)); OutlinedTextField(id, { id = it }, singleLine = true, label = { Text(stringResource(R.string.installation_operation_id)) })
-        if (state.pendingInstallation) Row { Checkbox(identified, { identified = it }); Text(stringResource(R.string.docker_control_identify)) }
+        if (state.pendingInstallation) Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(identified, { identified = it }); Text(stringResource(R.string.docker_control_identify)) }
     } }, confirmButton = { Button(enabled = !state.busy && (!state.pendingInstallation || identified) && runCatching { InstallationRoutes.operation(id.trim()) }.isSuccess,
         onClick = { recover = false; model.recoverInstall(id, identified) }) { Text(stringResource(R.string.common_refresh)) } }, dismissButton = { TextButton(onClick = { recover = false }) { Text(stringResource(R.string.common_cancel)) } })
 }

@@ -96,8 +96,8 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 }
 @Composable private fun EditorStatus(state: TunnelsState, invalid: Boolean) {
     if (invalid) Text(stringResource(R.string.tunnels_validation), color = MaterialTheme.colorScheme.error)
-    state.problemCode?.let { Text(tunnelProblemLabel(it), color = MaterialTheme.colorScheme.error) }
-    if (state.uncertain || state.pending.isNotEmpty()) Text(stringResource(R.string.tunnels_uncertain), color = MaterialTheme.colorScheme.error)
+
+    if (state.pending.isNotEmpty()) Text(stringResource(R.string.tunnels_uncertain), color = MaterialTheme.colorScheme.error)
     if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
 }
 @Composable private fun EditorConfirmation(visible: Boolean, target: String, message: Int, dismiss: () -> Unit, submit: () -> Unit) {

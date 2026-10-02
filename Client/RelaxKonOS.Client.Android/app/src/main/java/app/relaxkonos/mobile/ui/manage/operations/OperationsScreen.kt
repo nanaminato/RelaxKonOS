@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.operations
 
+import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import android.app.Application
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -300,7 +301,7 @@ fun OperationsScreen(
         }
         if (tab == 0) {
         if (!visible || state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (visible && state.error) Text(stringResource(R.string.operations_refresh_failed), color = MaterialTheme.colorScheme.error)
+        OperationMessageDialog(if (visible && state.error && !state.loading) stringResource(R.string.operations_refresh_failed) else null)
         if (visible && !state.loading && state.items.isEmpty() && !state.error) {
             Text(stringResource(R.string.operations_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

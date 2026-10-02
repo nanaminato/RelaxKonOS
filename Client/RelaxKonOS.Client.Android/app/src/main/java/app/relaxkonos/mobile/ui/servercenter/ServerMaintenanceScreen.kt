@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.servercenter
 
+import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -127,7 +128,7 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
             }
             TextButton(onClick = { host?.let { model.run(it.hostId, sudo = sudo) } }, enabled = !state.busy) { Text(stringResource(R.string.server_maintenance_check)) }
             if (state.busy) CircularProgressIndicator()
-            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            OperationMessageDialog(state.error.takeUnless { state.busy })
             if (page != 3) state.snapshot?.let { snapshot ->
                 if (page == 0) {
                     Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
@@ -190,7 +191,7 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
         }
     }
     if (uninstall) AlertDialog(onDismissRequest = { uninstall = false }, title = { Text(stringResource(R.string.server_maintenance_uninstall)) },
-        text = { Column { Text(stringResource(R.string.server_maintenance_uninstall_note)); Row { Checkbox(purge, { purge = it }); Text(stringResource(R.string.server_maintenance_purge)) } } },
+        text = { Column { Text(stringResource(R.string.server_maintenance_uninstall_note)); Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(purge, { purge = it }); Text(stringResource(R.string.server_maintenance_purge)) } } },
         confirmButton = { TextButton(onClick = { uninstall = false; host?.let { model.run(it.hostId, ServerDeploymentKind.Uninstall, purge, sudo) }; sudo = "" }) { Text(stringResource(R.string.server_maintenance_uninstall)) } },
         dismissButton = { TextButton(onClick = { uninstall = false }) { Text(stringResource(R.string.common_cancel)) } })
     if (confirmCertificateRepair) AlertDialog(onDismissRequest = { confirmCertificateRepair = false },

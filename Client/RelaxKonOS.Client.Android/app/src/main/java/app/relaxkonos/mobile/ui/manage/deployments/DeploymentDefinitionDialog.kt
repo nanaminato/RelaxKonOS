@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.deployments
 
+import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -87,11 +88,11 @@ internal fun DeploymentDefinitionDialog(owner: SessionState.Active, baseline: De
                     draft.baseline.catalogTemplateId?.let { Text(stringResource(R.string.catalog_instance_version, it, draft.baseline.catalogTemplateVersion.orEmpty())) }
                     if (loadedCurrent) Text(stringResource(R.string.deployments_definition_loaded), color = MaterialTheme.colorScheme.primary)
                     if (pending) Text(stringResource(R.string.deployments_definition_busy), color = MaterialTheme.colorScheme.error)
-                    if (unknown) Text(stringResource(R.string.deployments_definition_unknown), color = MaterialTheme.colorScheme.error)
+
                     when (val outcome = result) {
                         is ApiResult.Success -> Text(stringResource(R.string.deployments_definition_saved, outcome.value.name), color = MaterialTheme.colorScheme.primary)
                         null -> Unit
-                        else -> Text(outcome.deploymentFailure().text(), color = MaterialTheme.colorScheme.error)
+                        else -> OperationMessageDialog(outcome.deploymentFailure().text() + if (unknown) "\n\n${stringResource(R.string.deployments_definition_unknown)}" else "", eventKey = outcome)
                     }
                     if (result != null && !saved || pending) TextButton(onClick = ::loadCurrent, enabled = !busy) { Text(stringResource(R.string.deployments_definition_load_current)) }
                     if (!preview) {

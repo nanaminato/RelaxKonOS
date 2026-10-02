@@ -1,5 +1,7 @@
 package app.relaxkonos.mobile.ui.manage.operations
 
+import app.relaxkonos.mobile.ui.common.OperationMessageDialog
+import app.relaxkonos.mobile.ui.common.StatusTone
 import android.Manifest
 import android.app.Application
 import android.content.pm.PackageManager
@@ -137,7 +139,7 @@ internal fun AlertPanel(owner: SessionState.Active, onOpenTarget: (OperationTarg
             value.actions.forEach { action ->
                 Text(stringResource(R.string.event_center_action_record, actionKind(action.kind), eventTime(action.createdAtMillis), action.actorReference.orEmpty(), action.note.orEmpty()), style = MaterialTheme.typography.bodySmall)
             }
-            if (state.unknown) Text(stringResource(R.string.event_center_unknown), color = MaterialTheme.colorScheme.error)
+            if (state.unknown) OperationMessageDialog(if (state.actionBusy) null else stringResource(R.string.event_center_unknown), tone = StatusTone.Warning)
             else if (state.actionResult != null && state.actionResult !is ApiResult.Success) AlertFailure(state.actionResult)
             if (state.actionResult is ApiResult.Success) Text(stringResource(R.string.event_center_action_saved))
             TextButton(enabled = !state.actionBusy && !state.detailLoading, onClick = browser::reconcile) { Text(stringResource(R.string.event_center_reconcile)) }
@@ -201,7 +203,7 @@ private fun AlertFailure(result: ApiResult<*>?) {
         }
         else -> R.string.operations_alerts_unavailable
     }
-    Text(stringResource(key), color = MaterialTheme.colorScheme.error)
+    OperationMessageDialog(stringResource(key), eventKey = result)
 }
 
 private fun eventTime(value: Long?): String = value?.let { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(it)) }.orEmpty()
@@ -270,7 +272,7 @@ private fun AlertNotificationSettings(owner: SessionState.Active) {
     }
     Text(stringResource(R.string.alert_notifications_foreground_note), style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant)
-    if (policyError) Text(stringResource(R.string.alert_notifications_save_failed), color = MaterialTheme.colorScheme.error)
+    OperationMessageDialog(if (policyError) stringResource(R.string.alert_notifications_save_failed) else null, onDismiss = { policyError = false })
     val systemDisabled = permissionDenied || (enabled.isNotEmpty() &&
         !NotificationManagerCompat.from(context).areNotificationsEnabled())
     if (systemDisabled) Text(stringResource(R.string.alert_notifications_permission_off),

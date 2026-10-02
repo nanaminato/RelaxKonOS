@@ -61,7 +61,7 @@ fun MonitorScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, active: 
             Text(stringResource(R.string.monitor_sample_time, formatTimestamp(IsoInstant.toEpochMillis(sample.timestamp)).orEmpty()), style = MaterialTheme.typography.bodySmall)
             if (sample.health.isStale || sample.health.error != null) Text(stringResource(R.string.monitor_sample_unhealthy), color = MaterialTheme.colorScheme.error)
         }
-        state.problem?.failureMessage()?.let { problem -> ErrorBanner(problem.text(), onRetry = model::retry, onDismiss = model::dismissProblem) }
+        state.problem?.failureMessage()?.let { problem -> ActionFeedback(problem.text(), onRetry = model::retry, onDismiss = model::dismissProblem) }
         if (!model.available) { EmptyHint(stringResource(R.string.error_capability_missing)); return@Column }
         if (resources.isEmpty()) { EmptyHint(stringResource(if (state.phase == PerformancePhase.Connecting) R.string.common_loading else R.string.manage_monitor_empty)); return@Column }
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {

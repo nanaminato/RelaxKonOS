@@ -168,8 +168,7 @@ import java.util.Date
                 ProxyText(options.bypassList, !state.busy && windows, R.string.mihomo_bypass) { draft = draft.copy(systemProxy = options.copy(bypassList = it)) }
             }
             ProxyCheck(confirmed, !state.busy, R.string.mihomo_apply_confirm) { confirmed = it }
-            state.problemCode?.let { Text(proxyProblemLabel(it), color = MaterialTheme.colorScheme.error) }
-            if (state.uncertain) Text(stringResource(R.string.mihomo_uncertain), color = MaterialTheme.colorScheme.error)
+
         }
     }, confirmButton = { Button(enabled = !state.busy && confirmed && valid && state.pending.isEmpty(), onClick = {
         model.saveSettings(draft.copy(mixedPort = port.toInt(), tun = draft.tun?.copy(mtu = mtu.toInt()), systemProxy = draft.systemProxy?.copy(guardIntervalSeconds = interval.toInt())))
@@ -183,8 +182,7 @@ import java.util.Date
         Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
             Text(stringResource(R.string.mihomo_geodata_note)); RemotePathField(path, { path = it }, R.string.mihomo_geodata_path, RemotePathKind.File)
             ProxyCheck(confirmed, !model.state.busy, R.string.mihomo_apply_confirm) { confirmed = it }
-            model.state.problemCode?.let { Text(proxyProblemLabel(it), color = MaterialTheme.colorScheme.error) }
-            if (model.state.uncertain) Text(stringResource(R.string.mihomo_uncertain), color = MaterialTheme.colorScheme.error)
+
         }
     }, confirmButton = { Button(enabled = !model.state.busy && confirmed && path.isNotBlank() && model.state.pending.isEmpty(), onClick = { model.configureGeoData(path) }) { Text(stringResource(R.string.common_save)) } }, dismissButton = { TextButton(enabled = !model.state.busy, onClick = dismiss) { Text(stringResource(R.string.common_cancel)) } })
 }

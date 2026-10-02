@@ -48,7 +48,7 @@ internal fun GitWorkspaceSection(owner: SessionState.Active, section: String) {
     val ordinary = ready && facts?.conflicts?.let { it.operation == null && it.paths.isEmpty() } == true
     if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
     if (!owner.executionEligibility.available) Text(stringResource(R.string.gw_identity_unavailable), color = MaterialTheme.colorScheme.error)
-    state.problem?.let { GitWorkspaceProblem(it) }
+    GitWorkspaceProblem(state.problem.takeUnless { state.busy })
     if (state.saved) Text(stringResource(R.string.gw_receipt), color = MaterialTheme.colorScheme.primary)
     state.engine?.let { engine ->
         Text(stringResource(if (engine.available) R.string.gw_engine_ready else R.string.gw_engine_missing), style = MaterialTheme.typography.titleMedium)
@@ -227,7 +227,6 @@ private fun GitConflictDialog(file: GitConflictFile, model: GitWorkspaceViewMode
             Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 ScreenHeader(stringResource(R.string.gw_conflict_editor), onBack = ::close, subtitle = file.path)
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    model.state.problem?.let { GitWorkspaceProblem(it) }
                     Text(stringResource(R.string.gw_conflict_note), style = MaterialTheme.typography.bodySmall)
                     listOf(R.string.gw_base to file.base, R.string.gw_ours to file.ours, R.string.gw_theirs to file.theirs).forEach { (title, content) ->
                         Text(stringResource(title), style = MaterialTheme.typography.titleMedium)
@@ -299,7 +298,8 @@ private fun GitInstallation(state: GitWorkspaceState, model: GitWorkspaceViewMod
 }
 
 @Composable
-private fun GitWorkspaceProblem(code: String) {
+private fun GitWorkspaceProblem(code: String?) {
+    if (code == null) { OperationMessageDialog(null); return }
     val label = when (code) {
         "git.workspace.credentials" -> R.string.gw_credentials
         "git.workspace.facts_changed", "git.conflict.revision_mismatch" -> R.string.gw_facts_changed
@@ -309,7 +309,7 @@ private fun GitWorkspaceProblem(code: String) {
         "git.workspace.identity_unavailable" -> R.string.gw_identity_unavailable
         else -> R.string.gw_unverified
     }
-    Text(stringResource(label), color = MaterialTheme.colorScheme.error)
+    OperationMessageDialog(stringResource(label))
 }
 private fun actionLabel(action: GitAction) = when (action) {
     GitAction.Checkout -> R.string.gw_checkout; GitAction.CreateBranch -> R.string.gw_create_branch; GitAction.DeleteBranch -> R.string.gw_delete_branch

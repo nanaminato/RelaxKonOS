@@ -242,9 +242,9 @@ internal fun SshTerminalContent(
         }
     }, input = { compact ->
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-            if (!compact) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            if (!compact) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Checkbox(checked = concealInput, onCheckedChange = onConcealChange)
-                Text(stringResource(R.string.ssh_terminal_hide_input), modifier = Modifier.padding(top = Spacing.sm))
+                Text(stringResource(R.string.ssh_terminal_hide_input))
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                 verticalAlignment = Alignment.CenterVertically) {

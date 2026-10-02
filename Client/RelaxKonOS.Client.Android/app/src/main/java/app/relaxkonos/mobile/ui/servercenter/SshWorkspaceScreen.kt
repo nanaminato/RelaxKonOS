@@ -1,5 +1,7 @@
 package app.relaxkonos.mobile.ui.servercenter
 
+import app.relaxkonos.mobile.ui.common.OperationMessageDialog
+import app.relaxkonos.mobile.ui.common.StatusTone
 import android.net.Uri
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.collectAsState
@@ -325,7 +327,10 @@ internal fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier =
                         else -> stringResource(R.string.ssh_workspace_deploy_certificate_none)
                     })
                     Text(stringResource(R.string.ssh_workspace_deploy_source_checks), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    installState.message?.let { Text(stringResource(it), color = MaterialTheme.colorScheme.primary) }
+                    installState.message?.let {
+                        if (it == R.string.ssh_workspace_deploy_success) Text(stringResource(it), color = MaterialTheme.colorScheme.primary)
+                        else OperationMessageDialog(stringResource(it), tone = if (it == R.string.ssh_workspace_deploy_verify) StatusTone.Warning else StatusTone.Danger)
+                    }
                 }
             }
         }

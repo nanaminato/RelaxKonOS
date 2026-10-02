@@ -65,7 +65,7 @@ private data class SmbConfirmation(val expected: SmbFacts, val change: SmbChange
         if (owner?.capabilities?.contains(ServerCapabilities.FILE_SERVICES) != true) { Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn }
         TextButton(enabled = !state.busy, onClick = { navigate { draft = null; model.refresh() } }) { Text(stringResource(R.string.common_refresh)) }
         if (visible && state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (visible) state.problem?.let { SmbPanel { Text(smbProblem(it), color = MaterialTheme.colorScheme.error) } }
+        OperationMessageDialog(state.problem?.takeIf { visible && !state.busy }?.let { smbProblem(it) })
         if (visible && section != "records" && (state.pending.isNotEmpty() || state.pendingInstallation || state.installation != null && !state.installationVerified)) {
             TextButton(onClick = { navigate { draft = null; section = "records" } }) { Text(stringResource(R.string.smb_records_attention)) }
         }

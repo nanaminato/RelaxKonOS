@@ -48,7 +48,7 @@ import app.relaxkonos.mobile.core.net.IsoInstant
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.ui.common.ConfirmDangerousDialog
 import app.relaxkonos.mobile.ui.common.EmptyState
-import app.relaxkonos.mobile.ui.common.ErrorBanner
+import app.relaxkonos.mobile.ui.common.ActionFeedback
 import app.relaxkonos.mobile.ui.common.IconBadge
 import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.common.ScreenHeader
@@ -104,14 +104,14 @@ fun ProcessesScreen(
         )
 
         viewModel.processMessage?.let { banner ->
-            ErrorBanner(
+            ActionFeedback(
                 message = banner.text(),
                 onRetry = { viewModel.loadProcesses() },
                 onDismiss = { viewModel.dismissProcessMessage() },
             )
         }
 
-        viewModel.killMessage?.let { message -> ErrorBanner(message.text(), onRetry = { viewModel.loadProcesses() }, onDismiss = { viewModel.dismissKillMessage() }) }
+        viewModel.killMessage?.let { message -> ActionFeedback(message.text(), onRetry = { viewModel.loadProcesses() }, onDismiss = { viewModel.dismissKillMessage() }) }
 
         if (!viewModel.processesAvailable) {
             EmptyState(

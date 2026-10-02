@@ -18,8 +18,8 @@ data class UiMessage(
      * How the message should read.
      *
      * Most of what a screen has to report is a refusal, so the default is danger. An action that
-     * succeeded says so in the success tone instead of borrowing the red of a failure — while the
-     * banner stays one component, so the two can never drift into different layouts.
+     * succeeded says so in the success tone instead of borrowing the red of a failure — the shared
+     * feedback component presents errors and warnings in a dialog and success inline.
      */
     val tone: StatusTone = StatusTone.Danger,
 )
