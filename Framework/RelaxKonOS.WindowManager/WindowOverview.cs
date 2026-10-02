@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using Avalonia.Media;
+using Avalonia.Threading;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
 using RelaxKonOS.Core.Windows;
@@ -26,12 +27,7 @@ public sealed record WindowOverviewItem(
     IImage? IconImage,
     bool IsActive,
     WindowState State,
-    /// <summary>
-    /// v1 always reports <c>false</c>: there is no safe, cheap way to capture a WebView or a
-    /// native child window, so the overview renders an icon + title card instead. The flag exists
-    /// so a later implementation can opt in per window without changing this contract.
-    /// </summary>
-    bool IsThumbnailAvailable)
+    WindowThumbnail Thumbnail)
 {
     public bool HasIconImage => IconImage is not null;
 
@@ -108,10 +104,12 @@ public sealed class WindowOverviewController : IWindowOverviewController, IDispo
     private bool _isVisible;
     private int _selectedIndex = -1;
     private bool _disposed;
+    private readonly DispatcherTimer _previewTimer = new() { Interval = TimeSpan.FromMilliseconds(350) };
 
     public WindowOverviewController(IWindowManager manager)
     {
         _manager = manager;
+        _previewTimer.Tick += OnPreviewTick;
         _manager.WindowOpened += OnWindowOpened;
         _manager.WindowClosed += OnWindowClosed;
         _manager.ActiveWindowChanged += OnActiveWindowChanged;
@@ -135,6 +133,8 @@ public sealed class WindowOverviewController : IWindowOverviewController, IDispo
         if (_items.Count == 0 || _isVisible) return false;
 
         _isVisible = true;
+        RefreshThumbnails();
+        _previewTimer.Start();
         // Selection starts on the window after the active one, so a single confirm switches away
         // instead of being a no-op - the behaviour every desktop task switcher has. A modal may
         // currently own focus but be excluded from this system surface; in that case start at the
@@ -149,6 +149,7 @@ public sealed class WindowOverviewController : IWindowOverviewController, IDispo
     {
         if (!_isVisible) return;
         _isVisible = false;
+        _previewTimer.Stop();
         Raise();
     }
 
@@ -273,7 +274,7 @@ public sealed class WindowOverviewController : IWindowOverviewController, IDispo
             window.IconImage,
             info.IsFocused,
             info.State,
-            IsThumbnailAvailable: false);
+            window.Thumbnail);
     }
 
     /// <summary>
@@ -302,7 +303,11 @@ public sealed class WindowOverviewController : IWindowOverviewController, IDispo
             return;
 
         var index = IndexOfWindow(window.Info.Id);
-        if (index >= 0) _items[index] = Project(window);
+        if (index >= 0)
+        {
+            _items[index] = Project(window);
+            Raise();
+        }
     }
 
     private void OnWindowOpened(object? sender, ManagedWindow window)
@@ -335,10 +340,20 @@ public sealed class WindowOverviewController : IWindowOverviewController, IDispo
 
     private void Raise() => Changed?.Invoke(this, EventArgs.Empty);
 
+    private void OnPreviewTick(object? sender, EventArgs e) => RefreshThumbnails();
+
+    private void RefreshThumbnails()
+    {
+        foreach (var window in _manager.Windows.Where(window => !window.IsModalDialog))
+            window.Thumbnail.Refresh();
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
+        _previewTimer.Stop();
+        _previewTimer.Tick -= OnPreviewTick;
         _manager.WindowOpened -= OnWindowOpened;
         _manager.WindowClosed -= OnWindowClosed;
         _manager.ActiveWindowChanged -= OnActiveWindowChanged;

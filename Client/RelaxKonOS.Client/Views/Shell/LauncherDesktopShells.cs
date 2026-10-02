@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
@@ -94,7 +95,7 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
     }
 
     public virtual Task DeactivateAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-    public ValueTask DisposeAsync()
+    public virtual ValueTask DisposeAsync()
     {
         if (_vm is not null && _wallpaperChanged is not null)
             _vm.Settings.PropertyChanged -= _wallpaperChanged;
@@ -426,11 +427,28 @@ internal sealed class DesktopSelectionBorderThicknessConverter : IValueConverter
 
 public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltInShells.Windows)
 {
+    private WindowsTaskbarPreview? _previews;
+
     protected override void BuildLayout(DesktopShellViewModel vm)
     {
+        _previews = new WindowsTaskbarPreview(_root, vm);
         var layout = new WindowsShellLayoutView();
         layout.Compose(Desktop(vm), WindowsTaskbar(vm, Actions), WindowsLauncher(vm));
         _root.Children.Add(layout);
+        _root.Children.Add(_previews.Host);
+    }
+
+    public override Task DeactivateAsync(CancellationToken cancellationToken)
+    {
+        _previews?.Dismiss();
+        return base.DeactivateAsync(cancellationToken);
+    }
+
+    public override ValueTask DisposeAsync()
+    {
+        _previews?.Dispose();
+        _previews = null;
+        return base.DisposeAsync();
     }
 
     /// <summary>
@@ -531,7 +549,7 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
         };
     }
 
-    private static Control WindowsTaskbar(DesktopShellViewModel vm, IShellActions? actions)
+    private Control WindowsTaskbar(DesktopShellViewModel vm, IShellActions? actions)
     {
         var bar = new Border
         {
@@ -611,7 +629,7 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
         return bar;
     }
 
-    private static Button WindowsTaskbarButton(DesktopShellViewModel vm, TaskbarGroupViewModel group)
+    private Button WindowsTaskbarButton(DesktopShellViewModel vm, TaskbarGroupViewModel group)
     {
         var content = new Grid { RowDefinitions = new RowDefinitions("*,3") };
         var icon = AppIcon(group, 23);
@@ -640,7 +658,8 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
         };
         ThemeResources.Bind(button, Control.WidthProperty, "TaskbarIconSize");
         ThemeResources.Bind(button, Control.HeightProperty, "TaskbarIconSize");
-        ToolTip.SetTip(button, group.DisplayName);
+        AutomationProperties.SetName(button, group.DisplayName);
+        _previews?.Register(button, group);
         return button;
     }
 

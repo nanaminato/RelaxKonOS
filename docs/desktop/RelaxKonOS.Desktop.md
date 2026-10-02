@@ -8,6 +8,20 @@
 
 ---
 
+## Windows 任务栏预览与任务视图（2026-10）
+
+内置 Windows-like 桌面的运行中应用图标在悬停 400ms 后显示窗口预览；单窗口显示一张卡片，多窗口横向排列。鼠标移入面板保持显示，移出图标与面板 250ms 后关闭；切换到另一应用图标时立即换组。点击缩略图恢复并激活窗口，标题栏的关闭按钮关闭该窗口；点击外部、按 `Esc`、宿主失去焦点或切换 Shell 都会关闭面板并取消等待中的悬停。面板锚定图标上方并限制在宿主范围内，多窗口超宽时横向滚动。
+
+任务栏与宿主任务视图共用每个 `ManagedWindow` 的 `WindowThumbnail`。普通 Avalonia 内容通过受控 `VisualBrush` 快照缩放到不超过 480×300 像素，面板打开期间约每 350ms 更新，多个消费者共享帧并节流。最小化前保存最后一帧，最小化期间不截图、不恢复窗口；关闭窗口释放缓存。包含 `NativeControlHost`（例如原生 WebView）的窗口使用图标与标题卡片，不重建应用或截取宿主屏幕。
+
+任务视图继续由宿主 `SystemUiCoordinator` 管理，窗口选择、关闭、键盘导航和入场动效复用现有实现。预览面板位于 Shell 内部，层级低于全屏窗口和系统模态覆盖层。设置中的 `ShowTaskbarWindowPreviews` 控制任务栏预览；关闭此设置时，多窗口图标点击直接切换到选定窗口。
+
+本版范围为 RelaxKonOS 内部窗口，不包含虚拟桌面管理、悬停缩略图时临时透视桌面的 Peek 效果或 Windows 宿主全局快捷键接管。Windows 系统可能优先处理 `Win+Tab`，客户端任务栏的任务视图按钮是可靠入口。
+
+验证命令：`dotnet run --project Tests/Client/RelaxKonOS.WindowPreviews.Tests/RelaxKonOS.WindowPreviews.Tests.csproj -p:UsedAvaloniaProducts=`。测试使用 Headless + Skia 验证真实像素、最小化缓存、恢复刷新、原生内容降级、关闭清理、悬停延迟、移入保持、换组、屏幕边缘定位与 `Esc`；截图输出到测试项目的 `bin/Debug/net10.0/preview-qa/`。`UsedAvaloniaProducts` 仅在验证命令中置空以跳过构建遥测。真实 Windows、高 DPI、深色模式及大量窗口的人工验收仍需执行。
+
+---
+
 ## 1. 模块定位
 
 登录成功后，`App.axaml.cs` 把桌面 `MainWindow`（顶层 Avalonia `Window`，`WindowDecorations=None`）显示给用户。`MainWindow` 内部承载由 `ShellRuntime` 激活的 `IDesktopShell`（每个 Shell 提供自己的桌面、启动器、任务栏/Dock 与 `WindowManager` surface）。完整的 launcher 契约、可回滚切换和扩展包边界见 [`RelaxKonOS.ShellLauncher.Goal.md`](./RelaxKonOS.ShellLauncher.Goal.md)；本文档覆盖宿主窗口控制与模态机制。

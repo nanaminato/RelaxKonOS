@@ -122,6 +122,7 @@
             </StackPanel>
 
             <Grid Grid.Row="1">
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
                 <ItemsControl x:Name="PART_Cards" Classes="overview-cards"
                               ItemsSource="{Binding Cards}"
                               HorizontalAlignment="Center"
@@ -139,13 +140,15 @@
                                     Classes.active="{Binding Item.IsActive}"
                                     Classes.minimized="{Binding Item.IsMinimized}">
                                 <Grid>
-                                    <!-- A real thumbnail is not available in v1, so the card degrades
-                                         to an icon + title, exactly as the design allows. -->
                                     <Button Classes="overview-card-open"
                                             AutomationProperties.Name="{Binding Item.Title}"
                                             Click="CardOpen_OnClick">
                                         <Grid RowDefinitions="*,Auto">
+                                            <Image Grid.Row="0" Margin="10,30,10,8" Stretch="Uniform"
+                                                   Source="{Binding Item.Thumbnail.Image}"
+                                                   IsVisible="{Binding Item.Thumbnail.HasImage}" />
                                             <StackPanel Grid.Row="0" Spacing="12"
+                                                        IsVisible="{Binding !Item.Thumbnail.HasImage}"
                                                         HorizontalAlignment="Center" VerticalAlignment="Center">
                                                 <Image Width="52" Height="52" Stretch="Uniform"
                                                        Source="{Binding Item.IconImage}"
@@ -168,6 +171,7 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+                </ScrollViewer>
 
                 <TextBlock Text="{loc:Loc shell.overview.empty}"
                            IsVisible="{Binding !HasWindows}"

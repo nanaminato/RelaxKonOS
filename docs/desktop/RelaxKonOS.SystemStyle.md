@@ -380,7 +380,7 @@ C# 构造的 UI 必须消费**会跟随主题变化**的令牌，因此：
 | 窗口 chrome recipe | `Framework/RelaxKonOS.WindowManager/RemoteWindow.cs` + `Themes/RemoteWindowTheme.axaml` | `ChromeRecipeProperty` 通过 `GetResourceObservable` 镜像 `SystemStyle.WindowChrome` → `:chrome-*` 伪类；**已在屏幕上的窗口切换风格后会即时换装** |
 | 窗口概览投影 | `Framework/RelaxKonOS.WindowManager/WindowOverview.cs` | 只读 `WindowOverviewItem` + `IWindowOverviewController`；不含 `ManagedWindow`，概览无法改 z 序或访问应用 |
 | 系统 UI 协调器 | `Client/RelaxKonOS.Client/Services/SystemUi/SystemUiCoordinator.cs` | 概览可见性与全局快捷键的唯一权威；`Win+Tab`/`Alt+Tab`/`Esc`/方向键/Enter/Delete 在此归一处理 |
-| 概览视图 | `Client/RelaxKonOS.Client/Views/Shell/WindowOverviewView.axaml(.cs)` | 三种 task switcher recipe；卡片降级为「图标 + 标题」（无缩略图）；入场动效使用 `OverviewEnterDuration` |
+| 概览视图 | `Client/RelaxKonOS.Client/Views/Shell/WindowOverviewView.axaml(.cs)` | 三种 task switcher recipe；普通窗口展示共享的受控缩略图，原生嵌入内容使用「图标 + 标题」；入场动效使用 `OverviewEnterDuration` |
 | 宿主叠加层 | `Client/RelaxKonOS.Client/Views/MainWindow.axaml(.cs)` | `WindowOverview` 以 `ZIndex=100` 覆盖全部 Shell 表面，并**自身充当 `InputBackdrop`**：可见时下层不可点击，隐藏时不参与命中测试 |
 
 **层级与输入规则（Plan §7.2 的四层）**：选定 Shell chrome / `WindowHost` → `FullScreenWindowHost` →
@@ -533,8 +533,9 @@ dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --s
   当前每次 `Alt+Tab` 立即切换一个窗口（等价于快速切换），没有按住不放的预览态。
 - **macOS-like / Ubuntu-like 桌面没有可视化的任务切换入口**：这两种桌面本来就不放按钮
   （Mission Control 用 F3/手势，GNOME 用 Super），当前只由键盘快捷键触发，且 **F3/Super 未接线**。
-- **概览卡片始终使用图标 + 标题降级形态**：`IsThumbnailAvailable` 恒为 `false`，
-  没有实现任何受控缩略图，也没有验证「窗口很多时」的网格观感。
+- **概览缩略图已于 2026-10 实现首版**：普通窗口与 Windows-like 任务栏共用受控快照，
+  原生嵌入内容仍使用图标 + 标题；Headless 像素与交互验证通过，真实平台大量窗口观感待验收。
+  交互、缓存与验证入口见 [`RelaxKonOS.Desktop.md`](./RelaxKonOS.Desktop.md)。
 - **`ReducedMotion` 仍是显式开关**，未接入平台「减少动态效果」设置；
   不过 `SystemStyleResourceBuilder` 已把**所有** `Duration` 令牌折叠为 `ReducedMotionDuration`，
   因此一旦该开关打开，概览入场动效等会自然退化为瞬时。
@@ -565,8 +566,8 @@ Plan §8 的五个阶段均已落地。仍未完成的是**验收性**工作，�
    在此之前不要把「已实施」对外表述为「已验证」。
 2. **接通平台「减少动态效果」设置**，使 `AppearanceService` 不必依赖显式开关。
 3. **为 macOS-like / Ubuntu-like 补上键盘入口**（F3 等），或在文档中明确只支持键盘快捷键的现状。
-4. **概览缩略图**：若要实现，必须走受控快照路径——不得为取缩略图重建应用、泄漏隐藏窗口、
-   绕过 WebView 安全限制或阻塞 UI 线程（Plan §7.1 的原文约束）。
+4. **概览缩略图回归**：首版已走受控快照路径，继续验证大量窗口、原生内容降级和性能；
+   不得为取缩略图重建应用、泄漏隐藏窗口或绕过 WebView 安全限制。
 5. **第三方 style manifest 的开放门槛**：先完成 §11.3 回归，再接入包加载器
    （`SystemStyleRegistry.Register(manifest, isBuiltIn: false)` 已就绪）。
 

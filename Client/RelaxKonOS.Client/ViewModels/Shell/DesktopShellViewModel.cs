@@ -30,7 +30,7 @@ namespace RelaxKonOS.Client.ViewModels.Shell;
 /// Root view-model for the RelaxKonOS desktop shell. Owns the window manager facade exposed to
 /// the view, the desktop / start menu application entries, the taskbar window list and the clock.
 /// </summary>
-public partial class DesktopShellViewModel : ObservableObject
+public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewContext
 {
     private readonly WindowManagerService _windowManager;
     private readonly ApplicationManager _applications;
@@ -788,6 +788,18 @@ public partial class DesktopShellViewModel : ObservableObject
 
     public bool IsTaskbarPreviewOpen => OpenTaskbarGroup is not null;
 
+    System.Windows.Input.ICommand ITaskbarPreviewContext.ActivateTaskbarWindowCommand => ActivateTaskbarWindowCommand;
+    System.Windows.Input.ICommand ITaskbarPreviewContext.CloseTaskbarWindowCommand => CloseTaskbarWindowCommand;
+    System.Windows.Input.ICommand ITaskbarPreviewContext.CloseTaskbarPreviewCommand => CloseTaskbarPreviewCommand;
+
+    public void ShowTaskbarPreview(TaskbarGroupViewModel group)
+    {
+        if (!_settings.ShowTaskbarWindowPreviews || _windowManager.IsSystemModalOpen || group.WindowCount == 0)
+            return;
+        IsStartOpen = false;
+        OpenTaskbarGroup = group;
+    }
+
     private void ApplyVisualEffects()
     {
         _windowManager.SetVisualEffects(_settings.ShowWindowShadows, _settings.ShowWindowContentsWhileDragging);
@@ -975,8 +987,6 @@ public partial class DesktopShellViewModel : ObservableObject
             if (groupedWindows.Remove(group.AppId, out var windows))
             {
                 group.Update(windows);
-                if (ReferenceEquals(OpenTaskbarGroup, group) && !group.HasMultipleWindows)
-                    OpenTaskbarGroup = null;
             }
             else
             {

@@ -462,7 +462,9 @@ MainWindow
   可靠入口是任务栏「任务视图」按钮与 `IShellActions.ShowWindowOverview()`。
 - **`Alt+Tab` 无「按住预览、松开激活」的会话语义**，当前为逐次即时切换。
 - **macOS-like / Ubuntu-like 无可视化切换入口**（仅键盘），且 F3/Super 未接线。
-- **概览卡片始终是图标 + 标题降级形态**：`IsThumbnailAvailable` 恒为 `false`，未实现任何缩略图。
+- **概览缩略图于 2026-10 补齐首版**：普通窗口使用与 Windows-like 任务栏共用的受控快照，
+  原生嵌入内容使用图标 + 标题；缓存生命周期与悬停交互经 Headless 验证，真实平台回归待执行。
+  细节与测试命令见 [`RelaxKonOS.Desktop.md`](./RelaxKonOS.Desktop.md)。
 - **高 DPI / 窄窗口 / 触摸 / 低性能 / 三平台回归未执行**。
 - 外置 style manifest 生产路径未接通（门禁已实现并测试）。
 - `RelaxKonOS.Server.Tests` 有起点既有的失败（`Bundled GEO data could not be staged.`，HEAD `8cd4147f` 可复现）。

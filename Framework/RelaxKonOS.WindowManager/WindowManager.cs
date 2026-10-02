@@ -401,6 +401,7 @@ public sealed class WindowManager : IWindowManager
         }
 
         WindowClosed?.Invoke(this, window);
+        window.Thumbnail.Dispose();
         UpdateFullScreenHostInteractivity();
     }
 
@@ -486,6 +487,7 @@ public sealed class WindowManager : IWindowManager
             return;
 
         _preMinimizeState[window.Info.Id] = window.Info.State;
+        window.Thumbnail.Refresh(force: true);
         CancelOwnedModalSessions(window);
         SetState(window, WindowState.Minimized);
         UpdateFullScreenHostInteractivity();

@@ -25,12 +25,14 @@ public partial class ManagedWindow : ObservableObject
     {
         Info = info;
         View = view;
+        Thumbnail = new WindowThumbnail(view);
         IsModalDialog = isModalDialog;
         Sync();
     }
 
     public WindowInfo Info { get; }
     public RemoteWindow View { get; }
+    public WindowThumbnail Thumbnail { get; }
 
     /// <summary>Whether this window is a transient modal dialog rather than an application task.</summary>
     public bool IsModalDialog { get; }
