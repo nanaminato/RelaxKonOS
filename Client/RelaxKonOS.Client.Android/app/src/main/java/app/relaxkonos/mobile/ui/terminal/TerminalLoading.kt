@@ -13,14 +13,15 @@ import androidx.compose.ui.res.stringResource
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.ui.theme.Spacing
 
-/** Let the destination paint before loading terminal text/layout or creating an Android renderer. */
+/** Let terminal chrome paint before loading text/layout or creating the output renderer. */
 @Composable
-internal fun TerminalEntry(owner: Any, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+internal fun TerminalEntry(owner: Any, modifier: Modifier = Modifier, onReady: () -> Unit = {}, content: @Composable () -> Unit) {
     var ready by remember(owner) { mutableStateOf(false) }
     LaunchedEffect(owner) {
         withFrameNanos { }
         withFrameNanos { }
         ready = true
+        onReady()
     }
     Box(modifier) {
         if (ready) content() else TerminalLoading()

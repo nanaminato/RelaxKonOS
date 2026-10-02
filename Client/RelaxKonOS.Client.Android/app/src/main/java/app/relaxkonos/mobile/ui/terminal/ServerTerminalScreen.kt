@@ -72,6 +72,7 @@ import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -176,13 +177,11 @@ fun ServerTerminalScreen(owner: SessionState.Active, modifier: Modifier = Modifi
         model.connect(owner)
         onStopOrDispose { model.detach() }
     }
-    TerminalEntry(owner, modifier) {
         ServerTerminalContent(owner, state, { model.connect(owner) }, model::attach, model::send,
-            model::resize, model::close, model::closeSessions, Modifier.fillMaxSize(),
+            model::resize, model::close, model::closeSessions, modifier,
             presentation = model.presentation, onClearOutput = model::clearOutput,
             onReadSettings = { model.readSettings(owner) }, onSaveSettings = { model.saveSettings(owner, it) },
             terminalType = appContainer().appearance.terminalType)
-    }
 }
 
 @Composable
@@ -206,12 +205,13 @@ internal fun ServerTerminalContent(
     val input = presentation.input
     val fontSize = presentation.localFontSize ?: presentation.settings.fontSize
     val waiting = state.connecting || state.busy && state.sessionId == null
+    var outputReady by remember(owner) { mutableStateOf(false) }
     // Do not rebuild retained history behind a connection spinner, or build native glyphs for xterm.
-    val renderFrame = if (!waiting && terminalType == TerminalType.Native) state.frame else TerminalRenderFrame()
+    val renderFrame = if (outputReady && !waiting && terminalType == TerminalType.Native) state.frame else TerminalRenderFrame()
     val clipboard = LocalClipboard.current
     val clipboardContext = LocalContext.current
     var textLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
-    val searchText = if (waiting) "" else state.frame.text
+    val searchText = if (waiting || !outputReady) "" else state.frame.text
     val matches = remember(searchText, presentation.search) { TerminalInputPolicy.matches(searchText, presentation.search) }
     fun cellSpan(cell: TerminalCellStyle): SpanStyle {
         val normalForeground = cell.foreground?.let { Color(0xff000000L or it.toLong()) } ?: terminalColor(presentation.settings.foregroundColor)
@@ -427,6 +427,7 @@ internal fun ServerTerminalContent(
         TerminalOutputToolbar(presentation, state, matches.size, ::copyOutput, ::reviewClipboard, onClearOutput)
         state.exitCode?.let { Text(stringResource(R.string.terminal_exit_code, it), style = MaterialTheme.typography.bodySmall) }
     }, output = {
+        TerminalEntry(owner, Modifier.fillMaxSize().clipToBounds().testTag("terminal-output-region"), onReady = { outputReady = true }) {
         Box(Modifier.fillMaxSize()) {
             if (terminalType == TerminalType.Xterm) XtermTerminal(
                 sessionId = state.sessionId.orEmpty(), output = state.rawOutput,
@@ -466,6 +467,7 @@ internal fun ServerTerminalContent(
                 }
             }
             if (state.connecting || state.busy && state.sessionId == null) TerminalLoading(connecting = state.connecting)
+        }
         }
     }, keys = {
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {

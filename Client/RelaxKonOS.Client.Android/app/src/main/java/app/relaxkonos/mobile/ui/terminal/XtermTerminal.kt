@@ -16,6 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.viewinterop.AndroidView
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
@@ -68,7 +69,13 @@ internal class XtermView(context: android.content.Context) : WebView(context) {
                 if (!bridge.active) return
                 ready = true
                 flush()
-                onReady()
+                // Page load completion precedes Chromium's first composited frame.
+                // Keep the Compose output placeholder until that frame can actually be drawn.
+                postVisualStateCallback(0, object : WebView.VisualStateCallback() {
+                    override fun onComplete(requestId: Long) {
+                        if (bridge.active) onReady()
+                    }
+                })
             }
         }
         loadUrl("https://terminal.local/terminal/index.html")
@@ -113,8 +120,8 @@ internal fun XtermTerminal(sessionId: String, output: String, fontSize: Float, c
     onSend: (String) -> Unit, onResize: (Int, Int) -> Unit, modifier: Modifier = Modifier) {
     key(sessionId) {
         var initialized by remember { mutableStateOf(false) }
-        Box(modifier) {
-            AndroidView(factory = { XtermView(it).apply { onReady = { initialized = true } } }, modifier = Modifier.fillMaxSize(),
+        Box(modifier.clipToBounds()) {
+            AndroidView(factory = { XtermView(it).apply { onReady = { initialized = true } } }, modifier = Modifier.fillMaxSize().clipToBounds(),
                 onRelease = { it.release() }, update = {
                     it.bridge.send = onSend
                     it.bridge.resize = onResize
