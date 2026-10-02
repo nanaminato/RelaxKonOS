@@ -81,7 +81,8 @@ public static partial class PrivilegedOperationExecutor
             or >= PrivilegedOperationKind.FileGetSpecialLocations and <= PrivilegedOperationKind.FileCreateStaging;
         if (isFileOperation != (request.FileAuthorizationSource is not null)
             || request.FileAuthorizationSource is { } fileSource && !Enum.IsDefined(fileSource)
-            || request.UnixMode is not null && request.Operation != PrivilegedOperationKind.FileSetUnixPermissions)
+            || request.UnixMode is not null && request.Operation != PrivilegedOperationKind.FileSetUnixPermissions
+            || request.Recursive && request.Operation != PrivilegedOperationKind.FileSetUnixPermissions)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "file authorization shape is invalid");
         var fileRoots = isFileOperation ? policy.FileRoots(request.FileAuthorizationSource!.Value) : Array.Empty<string>();
         try
@@ -129,7 +130,7 @@ public static partial class PrivilegedOperationExecutor
                 PrivilegedOperationKind.FileGetSpecialLocations => GetSpecialLocations(request.Path, fileRoots),
                 PrivilegedOperationKind.FileGetInfo => GetInfo(request.Path, fileRoots),
                 PrivilegedOperationKind.FileGetProperties => GetProperties(request.Path, fileRoots),
-                PrivilegedOperationKind.FileSetUnixPermissions => SetUnixPermissions(request.Path, request.UnixMode, fileRoots),
+                PrivilegedOperationKind.FileSetUnixPermissions => SetUnixPermissions(request.Path, request.UnixMode, request.Recursive, fileRoots),
                 PrivilegedOperationKind.FileGetStagingLength => GetStagingLength(request.Path, fileRoots),
                 PrivilegedOperationKind.FileDeleteStaging => DeleteStaging(request.Path, fileRoots),
                 PrivilegedOperationKind.FileCreateStaging => CreateStaging(request.Path, fileRoots),

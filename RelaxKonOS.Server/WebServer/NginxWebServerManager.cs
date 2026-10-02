@@ -320,9 +320,13 @@ internal sealed partial class NginxWebServerManager(
                 logger.LogWarning("Nginx site save rejected because the sites directory is a symbolic link. InstanceId={InstanceId}, SitesDirectory={SitesDirectory}", instance.Id, directory);
                 return null;
             }
-            if (request.GrantNginxReadAccess && site.RootPath is not null
-                && !(await privilegedNginx.GrantStaticSiteReadAccessAsync(site.RootPath, cancellationToken)).Success)
-                throw new WebServerSiteApplyException("webserver.site_permission_grant_failed");
+            if (request.GrantNginxReadAccess && site.RootPath is not null)
+            {
+                var grant = await privilegedNginx.GrantStaticSiteReadAccessAsync(site.RootPath, cancellationToken);
+                if (!grant.Success)
+                    throw new WebServerSiteApplyException(grant.ProblemCode == PrivilegedProblemCode.DependencyMissing
+                        ? "webserver.site_acl_package_required" : "webserver.site_permission_grant_failed");
+            }
             if (site.RootPath is not null && (!Directory.Exists(site.RootPath) || IsSymbolicLink(site.RootPath)))
                 throw new WebServerSiteValidationException("webserver.site_root_invalid");
             if (index >= 0) sites[index] = site; else sites.Add(site);

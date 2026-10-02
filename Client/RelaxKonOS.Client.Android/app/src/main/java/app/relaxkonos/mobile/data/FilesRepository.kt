@@ -39,10 +39,10 @@ class FilesRepository(
             gateway.fileProperties(url, token, path)
         }
 
-    suspend fun setPermissions(path: String, mode: Int, provider: ElevationAnswerProvider): ApiResult<RemoteFileProperties> {
+    suspend fun setPermissions(path: String, mode: Int, recursive: Boolean, provider: ElevationAnswerProvider): ApiResult<RemoteFileProperties> {
         require(mode in 0..0xfff)
-        return elevations.withPathElevation(path, FileElevationCapabilities.WRITE, provider = provider) { url, token ->
-            gateway.setFilePermissions(url, token, path, mode)
+        return elevations.withPathElevation(path, FileElevationCapabilities.WRITE, includeDescendants = recursive, provider = provider) { url, token ->
+            gateway.setFilePermissions(url, token, path, mode, recursive)
         }
     }
 

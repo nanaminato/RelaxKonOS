@@ -484,7 +484,7 @@ static async Task<PrivilegedOperationResult> InstallNginxPackageAsync(string? ve
     var update = await RunAptAsync( ["update"], TimeSpan.FromMinutes(10), "nginx package update failed");
     if (!update.Success) return update;
     var package = string.IsNullOrWhiteSpace(version) ? "nginx" : "nginx=" + version.Trim();
-    return await RunAptAsync( ["install", "--yes", "--no-install-recommends", package], TimeSpan.FromMinutes(10), "nginx package install failed");
+    return await RunAptAsync( ["install", "--yes", "--no-install-recommends", package, "acl"], TimeSpan.FromMinutes(10), "nginx package install failed");
 }
 
 static Task<PrivilegedOperationResult> UninstallNginxPackageAsync() => !OperatingSystem.IsLinux() || !File.Exists("/usr/bin/apt-get")
@@ -628,14 +628,14 @@ static PrivilegedOperationResult GetProperties(string? path, IReadOnlyList<strin
         mode is { } value ? Convert.ToString(value, 8) : attributes.ToString(), attributes.ToString(), mode));
 }
 
-static PrivilegedOperationResult SetUnixPermissions(string? path, int? unixMode, IReadOnlyList<string> roots)
+static PrivilegedOperationResult SetUnixPermissions(string? path, int? unixMode, bool recursive, IReadOnlyList<string> roots)
 {
     if (!OperatingSystem.IsLinux() || unixMode is null or < 0 or > 0xFFF)
         throw new ArgumentException("invalid Unix mode");
     var canonical = ValidatePath(path, roots);
     if (OperatingSystem.IsLinux())
         return FileOutput(Properties(RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.SetUnixFileMode(canonical,
-            (UnixFileMode)unixMode.Value)));
+            (UnixFileMode)unixMode.Value, recursive)));
     if (!File.Exists(canonical) && !Directory.Exists(canonical)) throw new FileNotFoundException();
     File.SetUnixFileMode(canonical, (UnixFileMode)unixMode.Value);
     return GetProperties(canonical, roots);
@@ -760,8 +760,10 @@ static PrivilegedOperationResult DeleteNginxManagedFile(string? path)
 /// for an explicitly selected public directory. It never changes ownership or grants write access.</summary>
 static async Task<PrivilegedOperationResult> GrantNginxStaticSiteReadAccessAsync(string? path)
 {
-    if (!OperatingSystem.IsLinux() || !File.Exists("/usr/bin/setfacl"))
+    if (!OperatingSystem.IsLinux())
         return Fail(64, PrivilegedProblemCode.UnsupportedOperation, "Nginx static-site ACL support is unavailable");
+    if (!File.Exists("/usr/bin/setfacl"))
+        return Fail(64, PrivilegedProblemCode.DependencyMissing, "Nginx static-site ACL support requires the acl package");
     var directory = ValidateNginxStaticSiteDirectory(path);
     var worker = ResolveNginxWorkerUser();
     if (worker is null) return Fail(64, PrivilegedProblemCode.InvalidRequest, "Nginx worker account could not be determined");

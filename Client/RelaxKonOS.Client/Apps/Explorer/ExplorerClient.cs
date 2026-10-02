@@ -109,9 +109,9 @@ public sealed class ExplorerClient : IExplorerClient
         return await ReadAsync<FilePropertiesDto>(resp, ct);
     }
 
-    public Task<FilePropertiesDto> SetUnixPermissionsAsync(string path, int unixMode, CancellationToken ct = default)
+    public Task<FilePropertiesDto> SetUnixPermissionsAsync(string path, int unixMode, bool recursive, CancellationToken ct = default)
         => SendAsync<FilePropertiesDto>(HttpMethod.Put, FileApiRoutes.Permissions,
-            body: new UpdateUnixPermissionsRequest(path, unixMode), ct: ct);
+            body: new UpdateUnixPermissionsRequest(path, unixMode, recursive), ct: ct);
 
     public Task<FileSystemEntryDto> CreateDirectoryAsync(string path, CancellationToken ct = default)
         => SendAsync<FileSystemEntryDto>(HttpMethod.Post, FileApiRoutes.Directory, query: ("path", path), ct: ct);

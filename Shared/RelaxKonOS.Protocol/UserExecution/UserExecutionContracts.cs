@@ -98,6 +98,7 @@ public sealed record UserExecutionRequest(
     [property: JsonPropertyName("overwrite")] bool Overwrite = false,
     [property: JsonPropertyName("contentBase64")] string? ContentBase64 = null,
     [property: JsonPropertyName("unixMode")] int? UnixMode = null,
+    [property: JsonPropertyName("recursive")] bool Recursive = false,
     // For FileRead, Offset is the byte position and ExpectedBytes is the bounded read count.
     // Confirmed length of the staging file a chunk is appended at. It is never an offset the caller may
     // pick: the server derives it from the session index and the Helper verifies the file really is that

@@ -404,6 +404,7 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
 
     private static string ProblemText(string? problemCode)
     {
+        if (problemCode == "elevation-required") return LocalizedText.Get("certificates.problem.elevation_required");
         if (string.IsNullOrWhiteSpace(problemCode) || !problemCode.StartsWith("certificate.", StringComparison.Ordinal))
             return LocalizedText.Get("certificates.problem.unknown");
         return LocalizedText.Get($"certificates.problem.{problemCode["certificate.".Length..]}", LocalizedText.Get("certificates.problem.unknown"));

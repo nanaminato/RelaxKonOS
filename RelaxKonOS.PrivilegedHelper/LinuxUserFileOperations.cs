@@ -414,24 +414,54 @@ public static class LinuxUserFileOperations
         }
     }
 
-    public static LinuxPathMetadata SetUnixFileMode(string path, UnixFileMode mode)
+    public static LinuxPathMetadata SetUnixFileMode(string path, UnixFileMode mode, bool recursive)
     {
         path = NormalizePath(path);
         if (Path.GetPathRoot(path) == path)
         {
             using var root = OpenDirectoryHandle(path);
+            if (recursive) ChangeDescendantModes(root, mode);
             ChangeMode(DescriptorPath(root), mode);
             return Metadata(path, StatHandle(root), reparsePoint: false);
         }
         using var parent = OpenParentDirectory(path, out var name);
         var reparsePoint = IsSymbolicLink(StatAt(parent, name));
-        if (AllowedRoots.Value is not null && reparsePoint)
-            throw new UnauthorizedAccessException("A symbolic link cannot be changed through a privileged file root.");
-        using var handle = AllowedRoots.Value is null
+        if (reparsePoint && (recursive || AllowedRoots.Value is not null))
+            throw new UnauthorizedAccessException("Symbolic links cannot have their permissions changed.");
+        using var handle = AllowedRoots.Value is null && !recursive
             ? OpenPathHandleAtFollowing(parent, name)
             : OpenPathWithinRoot(parent, name);
+        if (recursive && IsSymbolicLink(StatHandle(handle)))
+            throw new UnauthorizedAccessException("A symbolic link cannot be changed recursively.");
+        if (recursive && IsDirectory(StatHandle(handle)))
+        {
+            using var directory = OpenDirectoryHandleUnrestricted(DescriptorPath(handle));
+            ChangeDescendantModes(directory, mode);
+        }
         ChangeMode(DescriptorPath(handle), mode);
         return Metadata(path, StatHandle(handle), reparsePoint);
+    }
+
+    private static void ChangeDescendantModes(SafeFileHandle directory, UnixFileMode mode)
+    {
+        foreach (var entry in Directory.EnumerateFileSystemEntries(DescriptorPath(directory)))
+        {
+            var name = Path.GetFileName(entry);
+            var stat = StatAt(directory, name);
+            if (IsSymbolicLink(stat)) continue;
+            if (IsDirectory(stat))
+            {
+                using var child = OpenDirectoryHandleAt(directory, name);
+                ChangeDescendantModes(child, mode);
+                ChangeMode(DescriptorPath(child), mode);
+            }
+            else
+            {
+                using var child = OpenPathWithinRoot(directory, name);
+                if (IsSymbolicLink(StatHandle(child))) continue;
+                ChangeMode(DescriptorPath(child), mode);
+            }
+        }
     }
 
     internal static T WithAnchoredDirectory<T>(string path, Func<string, T> action)

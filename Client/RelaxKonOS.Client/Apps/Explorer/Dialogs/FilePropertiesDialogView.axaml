@@ -98,6 +98,7 @@
                         </Border>
                     </Grid>
 
+                    <CheckBox Content="{loc:Loc explorer.permissions.recursive}" IsChecked="{Binding RecursivePermissions}" IsVisible="{Binding IsDirectory}" IsEnabled="{Binding !IsSavingPermissions}" />
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
                         <TextBlock Text="{Binding PermissionStatus}" FontSize="12" Opacity="0.72" TextWrapping="Wrap" VerticalAlignment="Center" />
                         <Button Grid.Column="1" Content="{loc:Loc explorer.save_permissions}" Command="{Binding SavePermissionsCommand}"

@@ -711,12 +711,32 @@ internal static void VerifyLinuxUserFileOperationCommit(string root)
         "Descriptor-relative directory creation did not preserve existing symlink semantics.");
 
     var modeTarget = Path.Combine(operationRoot, "mode-target.txt");
+    var modeTree = Path.Combine(operationRoot, "mode-tree");
+    var modeChild = Path.Combine(modeTree, "child");
+    Directory.CreateDirectory(modeChild);
+    var modeLeaf = Path.Combine(modeChild, "leaf.txt");
+    File.WriteAllText(modeLeaf, "leaf");
+    var externalModeFile = Path.Combine(operationRoot, "external-mode.txt");
+    File.WriteAllText(externalModeFile, "external");
+    File.SetUnixFileMode(externalModeFile, UnixFileMode.UserRead);
+    File.CreateSymbolicLink(Path.Combine(modeChild, "external-link"), externalModeFile);
+    Directory.CreateSymbolicLink(Path.Combine(modeChild, "cycle"), modeTree);
+    var beforeLeaf = File.GetUnixFileMode(modeLeaf);
+    var treeMode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.SetUnixFileMode(modeTree, treeMode, false);
+    TestAssert.Assert(File.GetUnixFileMode(modeLeaf) == beforeLeaf,
+        "Nonrecursive permission changes must leave descendants unchanged.");
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.SetUnixFileMode(modeTree, treeMode, true);
+    TestAssert.Assert(File.GetUnixFileMode(modeTree) == treeMode
+        && File.GetUnixFileMode(modeChild) == treeMode && File.GetUnixFileMode(modeLeaf) == treeMode
+        && File.GetUnixFileMode(externalModeFile) == UnixFileMode.UserRead,
+        "Recursive permission changes must update all descendants and skip links and cycles.");
     var modeLink = Path.Combine(operationRoot, "mode-link.txt");
     File.WriteAllText(modeTarget, "mode");
     File.CreateSymbolicLink(modeLink, modeTarget);
     File.SetUnixFileMode(modeTarget, UnixFileMode.None);
     var modeMetadata = RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.SetUnixFileMode(modeLink,
-        UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        UnixFileMode.UserRead | UnixFileMode.UserWrite, false);
     TestAssert.Assert(File.GetUnixFileMode(modeTarget)
             == (UnixFileMode.UserRead | UnixFileMode.UserWrite)
         && modeMetadata.Attributes.HasFlag(FileAttributes.ReparsePoint)

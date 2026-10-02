@@ -1324,6 +1324,7 @@
     <string name="websites_site_changed">站点在打开后已被修改或移除。请刷新并核对最新定义后再保存或删除。</string>
     <string name="websites_site_conflict">已有站点占用了此名称或域名/监听器组合。请刷新并调整定义。</string>
     <string name="websites_site_config_failed">配置校验或上游解析失败。请修正定义并核实宿主配置。</string>
+    <string name="websites_site_acl_package_required">服务器缺少 acl 软件包，无法自动授予静态网站目录权限。请由管理员在服务器上运行 sudo apt-get install acl，安装后重新保存；当前站点草稿已保留。</string>
     <string name="websites_site_apply_failed">站点变更未能完成。请在重试前核实定义、Nginx 配置和权限。</string>
     <string name="certificates_title">证书管理</string>
     <string name="certificates_subtitle">签发、查看与管理宿主证书</string>
@@ -1999,6 +2000,8 @@
     <string name="editor_replace_all">全部替换</string>
     <string name="editor_destination">新文件完整服务器路径（已有目标不会覆盖）</string>
     <string name="editor_save_as">另存为</string>
+    <string name="editor_discard_changes">放弃修改</string>
+    <string name="editor_continue_editing">继续编辑</string>
     <string name="editor_unsaved">放弃未保存内容？</string>
     <string name="editor_unsaved_note">关闭后草稿将被清除。保存结果待核实时，关闭不会撤销服务器写入。</string>
     <string name="gw_engine_ready">Git 可用</string>
@@ -2117,7 +2120,8 @@
     <string name="files_mutation_unknown">结果未确认。请检查源与目标或重新读取属性后再决定下一步，不会自动重试。</string>
     <string name="files_permissions_edit">编辑权限</string>
     <string name="files_permissions_saved">权限已保存并读回。</string>
-    <string name="files_permissions_scope">仅修改此项目，不递归修改后代。</string>
+    <string name="files_permissions_scope">默认仅修改此项目。递归修改跳过符号链接，失败时可能已修改部分项目。</string>
+    <string name="files_permissions_recursive">递归修改所有后代</string>
     <string name="files_permissions_octal">八进制权限（0000–7777）</string>
     <string name="files_permissions_owner">所有者</string>
     <string name="files_permissions_group">所属组</string>
@@ -2665,4 +2669,6 @@
     <string name="mihomo_system_proxy_linux_bypass">默认绕过 localhost、127.0.0.1 和 ::1。自定义主机、域名或网段用逗号或分号分隔，具体匹配方式取决于使用代理的程序。</string>
     <string name="mihomo_system_proxy_conflict">宿主代理设置被其他程序修改或恢复未完成。请关闭并恢复系统代理后重试。</string>
     <string name="mihomo_system_proxy_restore">关闭并恢复系统代理</string>
+    <string name="editor_format">文件格式</string>
+    <string name="editor_search_replace">查找替换</string>
 </resources>

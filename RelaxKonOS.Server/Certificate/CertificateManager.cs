@@ -113,7 +113,6 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
     public async Task<CertificateOperationDto> CreateSelfSignedAsync(string idempotencyKey, CreateSelfSignedCertificateRequest request, string? actor, CancellationToken cancellationToken)
     {
         if (request is null) return Failure("create-self-signed", "certificate.request_invalid");
-        if (!privileges.IsAdministrator) return Failure("create-self-signed", "certificate.admin_required");
         if (await operations.FindRequestAsync(idempotencyKey, Guid.Empty, "create-self-signed", actor, cancellationToken) is { } replay) return replay;
         if (!Enum.IsDefined(request.KeyAlgorithm)) return Failure("create-self-signed", "certificate.key_algorithm_invalid");
         if (request.ValidityDays is < 1 or > 825) return Failure("create-self-signed", "certificate.validity_days_invalid");

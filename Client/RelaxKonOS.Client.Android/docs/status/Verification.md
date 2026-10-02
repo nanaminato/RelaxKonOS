@@ -14,6 +14,8 @@ Mihomo 设置页定向 Compose 检查 4 项通过：360dp 窄布局下的三个�
 
 ## 1. BP 测试进度
 
+文件权限递归选项：`FileBrowserWireTest` 与 `FilesRepositoryTest` 定向 JVM 测试通过，覆盖 `recursive=true/false` 请求及递归写授权范围。目录/文件混合树、符号链接和循环链接跳过、权限收紧及中途失败的实际 Linux 宿主行为，以及手机/平板权限弹窗仍待验证。
+
 每个 BP 只记一行：已实现的落点（对应功能文档）与目前仍没有对应验证的部分。用例准备、命令、环境与当次结果由提交和 Git 保存，不在本文重复。
 
 | 编号 | 已实现（文档） | 目前没有对应的部分 |
@@ -35,7 +37,7 @@ Mihomo 设置页定向 Compose 检查 4 项通过：360dp 窄布局下的三个�
 | BP09-M1 | [Docker 引擎与镜像源](../features/DockerEngine.md) | 真实 Linux Docker 安装与 Helper、Windows Desktop CLI、镜像源 TLS 与实际拉取、并发 |
 | BP09-M2 | [Docker 资源](../features/DockerResources.md) | 真实 Engine CRUD 与引用竞争、stdout/stderr 日志、进程回收与多客户端并发 |
 | BP10 | [Git 工作区与构建](../features/Git.md) | 真实 Git 安装与 Helper 身份、私有远端认证与推送、断网/原键、手机平板旋转与三语视觉 |
-| BP11 | [文件与 Git 共用编辑器](../features/TextEditor.md) | 真实 Helper 身份与权限、外部并发/崩溃/磁盘满、进程回收后的未知写入、设备矩阵 |
+| BP11 | [文件与 Git 共用编辑器](../features/TextEditor.md) | 真实 Helper 身份与权限、外部并发/崩溃/磁盘满、进程回收后的未知写入、设备矩阵；编辑器辅助弹窗、正文独立滚动、查找选区、另存为路径的手机/平板、IME、大字体与旋转检查 |
 | BP12 | [文件与图片](../features/Files.md) | BP12-T1–T5（见第 4 节） |
 | BP13 | [终端、脚本与守护](../features/TerminalAutomation.md) | BP13-T1–T5 |
 | BP14 | [进程守护](../features/Guardian.md) | BP14-T1–T5 |

@@ -396,7 +396,7 @@ interface RelaxKonGateway {
 
     suspend fun fileProperties(serverUrl: String, accessToken: String, path: String): ApiResult<RemoteFileProperties>
 
-    suspend fun setFilePermissions(serverUrl: String, accessToken: String, path: String, unixMode: Int): ApiResult<RemoteFileProperties>
+    suspend fun setFilePermissions(serverUrl: String, accessToken: String, path: String, unixMode: Int, recursive: Boolean): ApiResult<RemoteFileProperties>
 
     suspend fun createDirectory(serverUrl: String, accessToken: String, path: String): ApiResult<Unit>
 

@@ -43,3 +43,5 @@ ACME 证书可续期和撤销，已撤销证书不提供续期；自签名不提
 已知原任务按 ID 查询；丢失响应时保留原键，显式重试先读证书和运行时事实，不能仅由“指纹一致”判为原请求成功。取消或网络失败后也可单独读取部署事实。服务器重启恢复受管的既有健康版本，跳过已撤销元数据；新版本激活失败保留旧选择。事实查询属于服务器观察，不证明公网反代、手机握手或客户端信任。
 
 源码入口：`Certificates.kt`、Gateway/API、`CertificateRepository.kt`、`CertificateRequestJournal.kt`、`CertificateDraft.kt`、`CertificatesViewModel.kt`、`CertificatesScreen.kt`、`CertificateLabels.kt`、`CertificateUsage.kt`、`CertificateBinding.kt`、OperationIndex/OperationCenter、导航与管理入口。
+
+自签名创建通过 `certificateCreateSelfSigned` / `certificates/self-signed` 会话授权。服务端返回标准 `elevation-required` 时打开统一管理员认证弹窗；成功后用相同请求键重试一次，取消或拒绝保留表单，不把 Server 普通服务账户当作权限失败。其他证书动作仍遵循各自现有权限契约。

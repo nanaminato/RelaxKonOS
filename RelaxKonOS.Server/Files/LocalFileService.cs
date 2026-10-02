@@ -353,7 +353,7 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
         return null;
     }
 
-    public FilePropertiesDto SetUnixPermissions(string path, int unixMode)
+    public FilePropertiesDto SetUnixPermissions(string path, int unixMode, bool recursive)
     {
         EnsureUserModePath(path);
         if (!OperatingSystem.IsLinux())
@@ -363,7 +363,18 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
         if (!Exists(path))
             throw new FileNotFoundException("Path does not exist.", path);
 
-        File.SetUnixFileMode(path, (UnixFileMode)unixMode);
+        void Apply(string entry)
+        {
+            EnsureUserModePath(entry);
+            var attributes = File.GetAttributes(entry);
+            if (recursive && (attributes & FileAttributes.ReparsePoint) != 0)
+                throw new IOException("Symbolic links cannot have their permissions changed.");
+            if (recursive && (attributes & FileAttributes.Directory) != 0)
+                foreach (var child in Directory.EnumerateFileSystemEntries(entry))
+                    if ((File.GetAttributes(child) & FileAttributes.ReparsePoint) == 0) Apply(child);
+            File.SetUnixFileMode(entry, (UnixFileMode)unixMode);
+        }
+        Apply(path);
         return GetProperties(path)!;
     }
 

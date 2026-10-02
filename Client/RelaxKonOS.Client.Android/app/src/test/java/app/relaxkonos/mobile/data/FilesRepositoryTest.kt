@@ -160,18 +160,19 @@ class FilesRepositoryTest {
         assertTrue(result is ApiResult.Success)
         assertEquals(2, attempts)
     }
-    @Test fun `permissions elevate exactly one entry with write capability and preserve special bits`() = runTest {
+    @Test fun `recursive permissions elevate descendants with write capability and preserve special bits`() = runTest {
         signIn(); var sends = 0
-        gateway.onSetFilePermissions = { _, _, path, mode ->
+        gateway.onSetFilePermissions = { _, _, path, mode, recursive ->
+            assertTrue(recursive)
             assertEquals("/srv/ 文件 * ", path); assertEquals(0x9ed, mode); sends++
             if (sends == 1) ApiResult.Problem(403, ProblemCodes.ELEVATION_REQUIRED, null)
             else ApiResult.Success(app.relaxkonos.mobile.core.net.RemoteFileProperties(path, " 文件 * ", false, 4, null, null, "-rwsr-xr-x", mode))
         }
         gateway.onFileElevation = { _, _, path, capability, _, related, descendants, _ ->
-            assertEquals("/srv/ 文件 * ", path); assertEquals("write", capability); assertFalse(descendants); assertTrue(related.isEmpty())
+            assertEquals("/srv/ 文件 * ", path); assertEquals("write", capability); assertTrue(descendants); assertTrue(related.isEmpty())
             ApiResult.Success(FileElevationGrant(true, true, null))
         }
-        assertTrue(repository.setPermissions("/srv/ 文件 * ", 0x9ed, ElevationAnswerProvider { _, _ -> ElevationAnswer("admin", "pw".toCharArray()) }) is ApiResult.Success)
+        assertTrue(repository.setPermissions("/srv/ 文件 * ", 0x9ed, true, ElevationAnswerProvider { _, _ -> ElevationAnswer("admin", "pw".toCharArray()) }) is ApiResult.Success)
         assertEquals(2, sends)
     }
     @Test fun `properties never raise authorization without explicit request and stale owner cannot retry`() = runTest {

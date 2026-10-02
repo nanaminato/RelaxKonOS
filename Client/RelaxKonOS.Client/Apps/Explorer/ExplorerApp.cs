@@ -578,7 +578,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
             {
                 DataContext = new FilePropertiesDialogViewModel(
                     properties,
-                    unixMode => client.SetUnixPermissionsAsync(properties.Path, unixMode),
+                    (unixMode, recursive) => client.SetUnixPermissionsAsync(properties.Path, unixMode, recursive),
                     () => dialog.Close(true)),
             }, new RelaxKonOS.Core.Primitives.Size(720, 620));
         };

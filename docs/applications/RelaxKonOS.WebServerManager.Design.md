@@ -1637,3 +1637,5 @@ V1 支持目标为 **Ubuntu 24.04 LTS** 与 **Windows Server 2016 及以上**。
 UI 必须使用 `webserver.*` 三语言本地化 key，显示管理模式、实际能力、权限不足、用户配置变更冲突、风险确认、操作进度和可恢复建议。验收至少覆盖：两平台检测；未集成候选项不写入；Integrated 的 include 上下文；并发修改锁；`nginx -t` 失败；reload 失败回退；取消/断线重连；管理员/非管理员降级；以及配置、日志和审计的秘密脱敏。
 
 受管 HTTPS 站点保存还需证书 Issued/Active、处于有效期内且 SAN 覆盖全部域名绑定；规范化 IDN/IP，单层通配符不覆盖 apex、多层或 IP。校验在版本检查后、权限/include/配置副作用前执行，不可用返回 `webserver.site_certificate_not_usable`，不覆盖返回 `webserver.site_certificate_domain_mismatch`。宿主 PEM 路径模式不通过元数据推断有效期或客户端信任。
+
+Linux 静态目录自动授权依赖 `acl` 软件包（`/usr/bin/setfacl`）。保存时缺少依赖返回 `webserver.site_acl_package_required`，客户端提示管理员在服务器执行 `sudo apt-get install acl` 后重新保存并保留草稿。此失败不会写入站点配置或元数据。通过内置 APT 流程安装 Nginx 时一并安装 `acl`。

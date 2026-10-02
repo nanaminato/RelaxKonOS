@@ -314,7 +314,7 @@ class AppContainer(context: Context) {
             app.relaxkonos.mobile.data.FileSiteMutationStorage(appContext.noBackupFilesDir)))
     val certificates = app.relaxkonos.mobile.data.CertificateRepository(gateway, session, operationIndex,
         app.relaxkonos.mobile.data.CertificateRequestJournal(
-            app.relaxkonos.mobile.data.FileCertificateRequestStorage(appContext.noBackupFilesDir)))
+            app.relaxkonos.mobile.data.FileCertificateRequestStorage(appContext.noBackupFilesDir)), elevations)
     val tunnels = app.relaxkonos.mobile.data.TunnelRepository(gateway, session, elevations,
         app.relaxkonos.mobile.data.TunnelMutationJournal(app.relaxkonos.mobile.data.FileTunnelMutationStorage(appContext.noBackupFilesDir)))
     val proxy = app.relaxkonos.mobile.data.ProxyRepository(gateway, session, operationIndex,

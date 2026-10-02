@@ -198,6 +198,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var permissionsOpen by mutableStateOf(false)
         private set
+    var permissionRecursive by mutableStateOf(false)
     var permissionInput by mutableStateOf("")
     var propertiesNeedsElevation by mutableStateOf(false)
         private set
@@ -279,6 +280,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     fun openPermissions() {
         val mode = properties?.unixMode ?: return
         if (!canMutate) return
+        permissionRecursive = false
         permissionInput = FileBrowserPolicy.formatMode(mode)
         permissionsOpen = true
     }
@@ -291,7 +293,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         mutationBusy = true
         mutationJob = viewModelScope.launch {
             try {
-                val result = container.files.setPermissions(target.path, mode, container.elevationAnswers)
+                val result = container.files.setPermissions(target.path, mode, permissionRecursive && target.isDirectory, container.elevationAnswers)
                 if (container.activeSession !== owner) return@launch
                 if (result is ApiResult.Success && result.value.path == target.path && result.value.unixMode == mode) {
                     if (selected?.path == target.path) properties = result.value

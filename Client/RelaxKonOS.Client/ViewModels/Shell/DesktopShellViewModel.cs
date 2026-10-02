@@ -701,8 +701,8 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
         _activationDiagnostics.Record($"Desktop file context: {message}");
 
     /// <summary>Used by the desktop-owned properties window to persist POSIX permission edits.</summary>
-    public Task<FilePropertiesDto> SetDesktopUnixPermissionsAsync(string path, int unixMode) =>
-        _files.SetUnixPermissionsAsync(path, unixMode);
+    public Task<FilePropertiesDto> SetDesktopUnixPermissionsAsync(string path, int unixMode, bool recursive) =>
+        _files.SetUnixPermissionsAsync(path, unixMode, recursive);
 
     [RelayCommand]
     private void ShowDesktopEntryInExplorer(DesktopFileEntryViewModel? item)

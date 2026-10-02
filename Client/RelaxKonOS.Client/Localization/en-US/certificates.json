@@ -120,6 +120,7 @@
     "certificates.problem.direct_http01_unsupported": "Direct HTTP-01 validation is not supported on this server.",
     "certificates.problem.port80_unavailable": "Port 80 is unavailable for the selected challenge type.",
     "certificates.problem.port80_elevation_required": "Administrator privileges are required to use port 80 for this challenge type.",
+    "certificates.problem.elevation_required": "Creating a self-signed certificate requires administrator authorization. Authenticate and retry; your draft is retained.",
     "certificates.problem.admin_required": "This certificate operation requires RelaxKonOS Server to run with administrator privileges.",
     "certificates.problem.deployment_elevation_required": "Deploying this certificate requires RelaxKonOS Server to run with administrator privileges.",
     "certificates.problem.public_reachability_confirmation_required": "Confirm public reachability before requesting the certificate.",

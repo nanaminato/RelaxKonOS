@@ -195,6 +195,7 @@ public enum PrivilegedProblemCode
     InvalidProtocol,
     InvalidRequest,
     UnsupportedOperation,
+    DependencyMissing,
     InvalidPath,
     ResourceNotAllowed,
     NotFound,
@@ -221,6 +222,7 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("contentBase64")] string? ContentBase64 = null,
     [property: JsonPropertyName("fileAuthorizationSource")] PrivilegedFileAuthorizationSource? FileAuthorizationSource = null,
     [property: JsonPropertyName("unixMode")] int? UnixMode = null,
+    [property: JsonPropertyName("recursive")] bool Recursive = false,
     /// <summary>Byte offset for FileUploadChunk or FileRead; other operations leave it null.</summary>
     [property: JsonPropertyName("offset")] long? Offset = null,
     [property: JsonPropertyName("readCount")] int? ReadCount = null,

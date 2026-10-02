@@ -276,6 +276,7 @@ internal fun nginxProblemLabel(code: String): String = when {
         "webserver.site_changed" -> R.string.websites_site_changed
         "webserver.site_already_exists", "webserver.site_binding_conflict", "webserver.site_conflict" -> R.string.websites_site_conflict
         "webserver.site_config_test_failed", "webserver.site_upstream_unresolvable" -> R.string.websites_site_config_failed
+        "webserver.site_acl_package_required" -> R.string.websites_site_acl_package_required
         "webserver.site_save_failed", "webserver.site_delete_failed", "webserver.site_reload_failed", "webserver.site_permission_grant_failed" -> R.string.websites_site_apply_failed
         "webserver.site_name_invalid", "webserver.site_server_name_required", "webserver.site_port_invalid", "webserver.site_server_name_invalid",
         "webserver.site_certificate_required", "webserver.site_certificate_file_invalid", "webserver.site_root_invalid", "webserver.site_route_path_invalid",

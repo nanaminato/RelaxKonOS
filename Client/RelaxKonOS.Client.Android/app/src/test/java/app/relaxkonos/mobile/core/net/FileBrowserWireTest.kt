@@ -21,12 +21,15 @@ class FileBrowserWireTest {
             val api = RelaxKonApi("test", "test"); val url = "http://127.0.0.1:${server.address.port}"
             val read = api.fileProperties(url, "token", "/srv/ 文件 * ") as ApiResult.Success
             assertEquals(2541, read.value.unixMode); assertEquals("Normal", read.value.attributes); assertNotNull(read.value.accessedMillis)
-            assertTrue(api.setFilePermissions(url, "token", read.value.path, 2541) is ApiResult.Success)
+            assertTrue(api.setFilePermissions(url, "token", read.value.path, 2541, true) is ApiResult.Success)
             assertEquals("GET", requests[0][0]); assertTrue(requests[0][1].startsWith("/api/v1.0/files/properties?path="))
             assertTrue(requests[0][1].contains("%E6%96%87%E4%BB%B6"))
             assertEquals("PUT", requests[1][0]); assertEquals("/api/v1.0/files/permissions", requests[1][1])
             assertEquals("/srv/ 文件 * ", JSONObject(requests[1][2]).getString("path")); assertEquals(2541, JSONObject(requests[1][2]).getInt("unixMode"))
             assertTrue(requests.all { it[3] == "Bearer token" })
+            assertTrue(JSONObject(requests[1][2]).getBoolean("recursive"))
+            assertTrue(api.setFilePermissions(url, "token", read.value.path, 2541, false) is ApiResult.Success)
+            assertFalse(JSONObject(requests[2][2]).getBoolean("recursive"))
         } finally { server.stop(0) }
     }
     @Test fun `listing consumes host flags and drive kinds and malformed properties do not become usable`() = runTest {

@@ -9,14 +9,14 @@ namespace RelaxKonOS.Client.Apps.Explorer.Dialogs;
 public sealed partial class FilePropertiesDialogViewModel : ObservableObject
 {
     private readonly Action _close;
-    private readonly Func<int, Task<FilePropertiesDto>>? _saveUnixPermissions;
+    private readonly Func<int, bool, Task<FilePropertiesDto>>? _saveUnixPermissions;
     private bool _initializingPermissions;
     private bool _synchronizingPermissionOctalInput;
     private int _specialPermissionBits;
 
     public FilePropertiesDialogViewModel(
         FilePropertiesDto properties,
-        Func<int, Task<FilePropertiesDto>>? saveUnixPermissions,
+        Func<int, bool, Task<FilePropertiesDto>>? saveUnixPermissions,
         Action close)
     {
         _close = close;
@@ -25,6 +25,8 @@ public sealed partial class FilePropertiesDialogViewModel : ObservableObject
     }
 
     [ObservableProperty] private FilePropertiesDto _properties = null!;
+    [ObservableProperty] private bool _recursivePermissions;
+    public bool IsDirectory => Properties.Type == FileSystemEntryType.Directory;
     [ObservableProperty] private bool _ownerRead;
     [ObservableProperty] private bool _ownerWrite;
     [ObservableProperty] private bool _ownerExecute;
@@ -47,6 +49,7 @@ public sealed partial class FilePropertiesDialogViewModel : ObservableObject
     partial void OnPropertiesChanged(FilePropertiesDto value)
     {
         OnPropertyChanged(nameof(SizeText));
+        OnPropertyChanged(nameof(IsDirectory));
         InitializePermissions();
     }
 
@@ -99,7 +102,7 @@ public sealed partial class FilePropertiesDialogViewModel : ObservableObject
         PermissionStatus = LocalizedText.Get("explorer.permissions.saving");
         try
         {
-            Properties = await _saveUnixPermissions(CurrentUnixMode);
+            Properties = await _saveUnixPermissions(CurrentUnixMode, IsDirectory && RecursivePermissions);
             PermissionStatus = LocalizedText.Format("explorer.permissions.saved", PermissionOctalInput);
         }
         catch (Exception ex)

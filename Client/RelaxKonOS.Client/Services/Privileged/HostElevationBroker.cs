@@ -125,7 +125,7 @@ public sealed class HostElevationBroker(HttpClient http, IAuthSession session, I
     private static bool IsGrantRequired(Exception exception) => exception switch
     {
         RelaxKonOSAuthException error => error.Status == (int)HttpStatusCode.Forbidden && HasProblem(error, "elevation-required"),
-        HttpRequestException { StatusCode: HttpStatusCode.Forbidden } error => string.Equals(error.Message, "webserver.elevation_required", StringComparison.Ordinal),
+        HttpRequestException { StatusCode: HttpStatusCode.Forbidden } error => error.Message is "webserver.elevation_required" or "elevation-required",
         _ => false,
     };
     private static bool HasProblem(RelaxKonOSAuthException exception, string suffix) => exception.Type.EndsWith('/' + suffix, StringComparison.Ordinal);

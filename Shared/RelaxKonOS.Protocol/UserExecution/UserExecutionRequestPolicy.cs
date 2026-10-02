@@ -16,6 +16,9 @@ public static class UserExecutionRequestPolicy
         if (request.Operation is not (UserExecutionOperationKind.FileWriteIfMatch or UserExecutionOperationKind.GitConflictWrite) && request.ExpectedSha256 is not null)
             return false;
 
+        if (request.Recursive && request.Operation != UserExecutionOperationKind.FileSetUnixPermissions)
+            return false;
+
         var noDestination = request.DestinationPath is null;
         var noName = request.NewName is null && request.FileName is null;
         var noContent = request.ContentBase64 is null;

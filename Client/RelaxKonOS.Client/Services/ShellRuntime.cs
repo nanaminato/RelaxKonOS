@@ -493,7 +493,7 @@ public sealed class DesktopShellOverlayService : IShellOverlayService
         vm.RequestDesktopOpenWithAsync = (apps, extension) => Dialog<OpenWithChoice>(vm, LocalizedText.Get("explorer.open_with"), new Size(500, 360), done => new OpenWithDialogView
         { DataContext = new OpenWithDialogViewModel(apps, extension, done) });
         vm.ShowDesktopPropertiesAsync = properties => Dialog<bool>(vm, LocalizedText.Get("explorer.properties"), new Size(720, 620), done => new FilePropertiesDialogView
-        { DataContext = new FilePropertiesDialogViewModel(properties, mode => vm.SetDesktopUnixPermissionsAsync(properties.Path, mode), () => done(true)) });
+        { DataContext = new FilePropertiesDialogViewModel(properties, (mode, recursive) => vm.SetDesktopUnixPermissionsAsync(properties.Path, mode, recursive), () => done(true)) });
         vm.ShowDesktopPasteErrorAsync = async message => await Dialog<bool>(vm, LocalizedText.Get("explorer.paste"), new Size(460, 210), done =>
         {
             var button = new Button { Content = LocalizedText.Get("common.ok"), HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right };

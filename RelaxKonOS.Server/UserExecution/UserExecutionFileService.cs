@@ -67,7 +67,7 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
             content: Convert.ToBase64String(content), expectedSha256: expectedSha256);
     }
     public FilePropertiesDto? GetProperties(string path) => Run<FilePropertiesDto?>(UserExecutionOperationKind.FileGetProperties, path: path);
-    public FilePropertiesDto SetUnixPermissions(string path, int unixMode) => Run<FilePropertiesDto>(UserExecutionOperationKind.FileSetUnixPermissions, path: path, unixMode: unixMode);
+    public FilePropertiesDto SetUnixPermissions(string path, int unixMode, bool recursive) => Run<FilePropertiesDto>(UserExecutionOperationKind.FileSetUnixPermissions, path: path, unixMode: unixMode, recursive: recursive);
     public void CreateDirectory(string path) => Run<bool>(UserExecutionOperationKind.FileCreateDirectory, path: path);
     public void Delete(string path) => Run<bool>(UserExecutionOperationKind.FileDelete, path: path);
     public FileSystemEntryDto Rename(string sourcePath, string newName) => Run<FileSystemEntryDto>(UserExecutionOperationKind.FileRename, path: sourcePath, newName: newName);
@@ -106,12 +106,12 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
         => Run<FileEntryDto>(UserExecutionOperationKind.FileCommitStaging, path: stagingPath, destinationPath: destinationPath);
 
     private T Run<T>(UserExecutionOperationKind operation, string? path = null, string? destinationPath = null, string? newName = null,
-        string? fileName = null, bool overwrite = false, string? content = null, int? unixMode = null)
-        => RunAsync<T>(operation, path, destinationPath, newName, fileName, overwrite, content, unixMode).GetAwaiter().GetResult();
+        string? fileName = null, bool overwrite = false, string? content = null, int? unixMode = null, bool recursive = false)
+        => RunAsync<T>(operation, path, destinationPath, newName, fileName, overwrite, content, unixMode, recursive: recursive).GetAwaiter().GetResult();
 
     private async Task<T> RunAsync<T>(UserExecutionOperationKind operation, string? path = null, string? destinationPath = null, string? newName = null,
         string? fileName = null, bool overwrite = false, string? content = null, int? unixMode = null,
-        long? offset = null, long? expectedBytes = null, string? expectedSha256 = null, CancellationToken cancellationToken = default)
+        long? offset = null, long? expectedBytes = null, string? expectedSha256 = null, CancellationToken cancellationToken = default, bool recursive = false)
     {
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, http.HttpContext?.RequestAborted ?? CancellationToken.None);
         cancellation.Token.ThrowIfCancellationRequested();
@@ -125,7 +125,7 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
             {
                 return await RunPrivilegedAsync<T>(
                     RequireRootAuthorization(principal, Capability(operation), TargetPaths(operation, path, destinationPath, newName)), operation, path,
-                    destinationPath, newName, fileName, overwrite, content, unixMode, offset, expectedBytes);
+                    destinationPath, newName, fileName, overwrite, content, unixMode, offset, expectedBytes, recursive);
             }
             catch (HostFileExecutionException error) when (error.ProblemCode == "access-denied"
                 && CanReadAsServerIdentity(operation))
@@ -138,7 +138,7 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
         }
         var context = contexts.Resolve(principal);
         var request = new UserExecutionRequest(context.Identity, operation, path, destinationPath, newName, fileName, overwrite,
-            content, unixMode, offset, expectedBytes, OperationId: Guid.NewGuid(), ExpectedSha256: expectedSha256);
+            content, UnixMode: unixMode, Recursive: recursive, Offset: offset, ExpectedBytes: expectedBytes, OperationId: Guid.NewGuid(), ExpectedSha256: expectedSha256);
         if (mode.Mode == ServerMode.User)
         {
             var validation = new DirectUserExecutionService(mode).Validate(context, request);
@@ -156,7 +156,7 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
             catch (UnauthorizedAccessException) { throw new HostFileExecutionException(403, "identity-changed", "Host identity is no longer valid."); }
             if (source is { } granted)
                 return await RunPrivilegedAsync<T>(granted, operation, path, destinationPath,
-                    newName, fileName, overwrite, content, unixMode, offset, expectedBytes);
+                    newName, fileName, overwrite, content, unixMode, offset, expectedBytes, recursive);
         }
         Throw(result);
         try { return JsonSerializer.Deserialize<T>(Convert.FromBase64String(result.OutputBase64!), RelaxKonOSJsonOptions.Default)!; }
@@ -235,7 +235,7 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
 
     private async Task<T> RunPrivilegedAsync<T>(PrivilegedFileAuthorizationSource source,
         UserExecutionOperationKind operation, string? path, string? destinationPath, string? newName,
-        string? fileName, bool overwrite, string? content, int? unixMode, long? offset, long? expectedBytes)
+        string? fileName, bool overwrite, string? content, int? unixMode, long? offset, long? expectedBytes, bool recursive)
     {
         var ct = http.HttpContext?.RequestAborted ?? CancellationToken.None;
         using var bytes = content is null ? null : new MemoryStream(Convert.FromBase64String(content), writable: false);
@@ -250,7 +250,7 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
             UserExecutionOperationKind.FileRead => await ReadPrivilegedAsync(source, path!, offset!.Value, expectedBytes!.Value, ct),
             UserExecutionOperationKind.FileWrite => await privileged.WriteAsync(source, path!, bytes!, ct),
             UserExecutionOperationKind.FileGetProperties => await privileged.GetPropertiesAsync(source, path!, ct),
-            UserExecutionOperationKind.FileSetUnixPermissions => await privileged.SetUnixPermissionsAsync(source, path!, unixMode!.Value, ct),
+            UserExecutionOperationKind.FileSetUnixPermissions => await privileged.SetUnixPermissionsAsync(source, path!, unixMode!.Value, recursive, ct),
             UserExecutionOperationKind.FileDelete => await DeletePrivilegedAsync(source, path!, ct),
             UserExecutionOperationKind.FileRename => await privileged.RenameAsync(source, path!, newName!, ct),
             UserExecutionOperationKind.FileMove => await privileged.MoveAsync(source, path!, destinationPath!, overwrite, ct),

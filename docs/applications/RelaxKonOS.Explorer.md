@@ -148,7 +148,9 @@ Jaya 原架构通过 `ServiceLocator` 反射扫描 `Jaya.Provider.*.dll` 加载�
 | `GET /files/content?path=` | `string path` | 原始文件字节流 | `not-found` / `access-denied` / `invalid-path` |
 | `PUT /files/content?path=` | `string path` + 请求体字节流 | `FileEntryDto` | `not-found` / `access-denied` / `io-error` / `invalid-path` |
 | `GET /files/properties?path=` | `string path` | `FilePropertiesDto`（404 if 缺） | `not-found` / `access-denied` / `invalid-path` |
-| `PUT /files/permissions` | body `UpdateUnixPermissionsRequest` | `FilePropertiesDto` | `not-found` / `access-denied` / `invalid-path` / `invalid-mode` / `unsupported-operation` |
+| `PUT /files/permissions` | body `UpdateUnixPermissionsRequest`（`path`、`unixMode`、`recursive`） | `FilePropertiesDto` | `not-found` / `access-denied` / `invalid-path` / `invalid-mode` / `unsupported-operation` |
+
+Windows/Linux 桌面端的 POSIX 权限编辑默认仅修改当前项目；目录属性提供“递归修改所有后代”复选框，勾选后将同一模式应用至目录及其所有后代，跳过符号链接。先修改后代再修改父目录；失败可能留下部分修改，不保证回滚。该能力由远端 Linux 宿主提供，Windows 宿主的权限摘要仍只读。
 | `POST /files/directory?path=` | `string path` | `Results.Created(path, FileSystemEntryDto)` | `already-exists` / `access-denied` |
 | `DELETE /files?path=` | `string path` | `Results.NoContent()` | `not-found` / `access-denied` / `io-error` |
 | `POST /files/rename` | body `RenameRequest` | `FileSystemEntryDto` | `not-found` / `already-exists` / `access-denied` |
