@@ -1324,6 +1324,7 @@
     <string name="websites_site_changed">站点在打开后已被修改或移除。请刷新并核对最新定义后再保存或删除。</string>
     <string name="websites_site_conflict">已有站点占用了此名称或域名/监听器组合。请刷新并调整定义。</string>
     <string name="websites_site_config_failed">配置校验或上游解析失败。请修正定义并核实宿主配置。</string>
+    <string name="websites_site_acl_package_required">服务器缺少 acl 软件包，无法自动授予静态网站目录权限。请由管理员在服务器上运行 sudo apt-get install acl，安装后重新保存；当前站点草稿已保留。</string>
     <string name="websites_site_apply_failed">站点变更未能完成。请在重试前核实定义、Nginx 配置和权限。</string>
     <string name="certificates_title">证书管理</string>
     <string name="certificates_subtitle">签发、查看与管理宿主证书</string>

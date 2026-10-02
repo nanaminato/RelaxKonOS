@@ -209,6 +209,7 @@
     "webservers.problem.operation_cancelled": "Web 服务器操作已取消。",
     "webservers.problem.site_name_invalid": "站点名称不能为空，且最多 80 个字符；仅使用字母、数字、空格、连字符或下划线。",
     "webservers.problem.site_root_invalid": "静态网站目录必须是服务器上已存在的绝对目录，且不能是符号链接。",
+    "webservers.problem.site_acl_package_required": "服务器缺少 acl 软件包，无法自动授予静态网站目录权限。请由管理员在服务器上运行 sudo apt-get install acl，安装后重新保存；当前站点草稿已保留。",
     "webservers.problem.site_permission_grant_failed": "无法向 Nginx 工作进程授予所选静态网站目录的访问权限。",
     "webservers.problem.site_content_required": "请添加静态网站目录或至少一条代理路由。",
     "webservers.problem.site_route_path_invalid": "代理路径必须以 / 开头，并使用类似 /api/ 的简单路径前缀。",

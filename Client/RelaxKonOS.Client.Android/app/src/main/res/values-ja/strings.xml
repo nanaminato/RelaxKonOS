@@ -1323,6 +1323,7 @@
     <string name="websites_site_changed">サイトを開いた後に変更または削除されました。最新の定義を更新して確認してから保存または削除してください。</string>
     <string name="websites_site_conflict">別のサイトがこの名前またはドメイン/待受の組み合わせを使用しています。更新して定義を調整してください。</string>
     <string name="websites_site_config_failed">設定検証または転送先の名前解決に失敗しました。定義を修正してサーバーの設定を確認してください。</string>
+    <string name="websites_site_acl_package_required">静的サイトのディレクトリ権限を付与するには、サーバーに acl パッケージが必要です。管理者がサーバーで sudo apt-get install acl を実行した後、再度保存してください。入力内容は保持されています。</string>
     <string name="websites_site_apply_failed">サイトの変更を完了できませんでした。再試行する前に定義、Nginx の設定、権限を確認してください。</string>
     <string name="certificates_title">証明書管理</string>
     <string name="certificates_subtitle">ホスト証明書の発行・確認・管理</string>

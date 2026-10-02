@@ -484,7 +484,7 @@ static async Task<PrivilegedOperationResult> InstallNginxPackageAsync(string? ve
     var update = await RunAptAsync( ["update"], TimeSpan.FromMinutes(10), "nginx package update failed");
     if (!update.Success) return update;
     var package = string.IsNullOrWhiteSpace(version) ? "nginx" : "nginx=" + version.Trim();
-    return await RunAptAsync( ["install", "--yes", "--no-install-recommends", package], TimeSpan.FromMinutes(10), "nginx package install failed");
+    return await RunAptAsync( ["install", "--yes", "--no-install-recommends", package, "acl"], TimeSpan.FromMinutes(10), "nginx package install failed");
 }
 
 static Task<PrivilegedOperationResult> UninstallNginxPackageAsync() => !OperatingSystem.IsLinux() || !File.Exists("/usr/bin/apt-get")
@@ -760,8 +760,10 @@ static PrivilegedOperationResult DeleteNginxManagedFile(string? path)
 /// for an explicitly selected public directory. It never changes ownership or grants write access.</summary>
 static async Task<PrivilegedOperationResult> GrantNginxStaticSiteReadAccessAsync(string? path)
 {
-    if (!OperatingSystem.IsLinux() || !File.Exists("/usr/bin/setfacl"))
+    if (!OperatingSystem.IsLinux())
         return Fail(64, PrivilegedProblemCode.UnsupportedOperation, "Nginx static-site ACL support is unavailable");
+    if (!File.Exists("/usr/bin/setfacl"))
+        return Fail(64, PrivilegedProblemCode.DependencyMissing, "Nginx static-site ACL support requires the acl package");
     var directory = ValidateNginxStaticSiteDirectory(path);
     var worker = ResolveNginxWorkerUser();
     if (worker is null) return Fail(64, PrivilegedProblemCode.InvalidRequest, "Nginx worker account could not be determined");

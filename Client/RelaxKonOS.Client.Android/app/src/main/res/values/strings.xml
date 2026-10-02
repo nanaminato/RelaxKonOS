@@ -1362,6 +1362,7 @@
     <string name="websites_site_changed">The site was changed or removed after you opened it. Refresh and review the latest definition before saving or deleting.</string>
     <string name="websites_site_conflict">Another site already owns this name or domain/listener combination. Refresh and adjust the definition.</string>
     <string name="websites_site_config_failed">Configuration validation or upstream resolution failed. Correct the definition and inspect the host configuration.</string>
+    <string name="websites_site_acl_package_required">The server requires the acl package to grant static-site directory access. Ask an administrator to run sudo apt-get install acl on the server, then save again. Your site draft is retained.</string>
     <string name="websites_site_apply_failed">The site change could not be completed. Inspect the definition, Nginx configuration and permissions before retrying.</string>
     <string name="certificates_title">Certificates</string>
     <string name="certificates_subtitle">Issue, inspect and manage host certificates</string>

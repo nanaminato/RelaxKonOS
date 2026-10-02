@@ -192,6 +192,7 @@ public enum PrivilegedProblemCode
     InvalidProtocol,
     InvalidRequest,
     UnsupportedOperation,
+    DependencyMissing,
     InvalidPath,
     ResourceNotAllowed,
     NotFound,

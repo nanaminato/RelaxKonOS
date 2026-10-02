@@ -209,6 +209,7 @@
     "webservers.problem.operation_cancelled": "The web server operation was cancelled.",
     "webservers.problem.site_name_invalid": "Enter a site name of up to 80 characters using only letters, numbers, spaces, hyphens, or underscores.",
     "webservers.problem.site_root_invalid": "The static-site directory must be an existing absolute directory on the server and cannot be a symbolic link.",
+    "webservers.problem.site_acl_package_required": "The server requires the acl package to grant static-site directory access. Ask an administrator to run sudo apt-get install acl on the server, then save again. Your site draft is retained.",
     "webservers.problem.site_permission_grant_failed": "Could not grant the Nginx worker access to the selected static-site directory.",
     "webservers.problem.site_content_required": "Add a static-site directory or at least one proxy route.",
     "webservers.problem.site_route_path_invalid": "Each proxy path must start with / and use a simple path prefix such as /api/.",
