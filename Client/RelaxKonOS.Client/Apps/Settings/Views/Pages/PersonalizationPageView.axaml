@@ -128,22 +128,36 @@
         <Border Classes="card">
             <StackPanel Spacing="10">
                 <TextBlock Text="{loc:Loc settings.wallpaper}" Classes="title" />
-                <TextBlock Text="{loc:Loc settings.wallpaper.description}" Opacity="0.7" />
                 <Button Content="{loc:Loc settings.wallpaper.choose_image}"
                         Command="{Binding ChooseImageCommand}"
                         HorizontalAlignment="Left" />
-                <TextBlock Text="{loc:Loc settings.wallpaper.sync_hint}" Opacity="0.6" FontSize="12" />
                 <ListBox ItemsSource="{Binding Wallpapers}"
                          SelectedIndex="{Binding WallpaperIndex, Mode=TwoWay}"
-                         Background="Transparent" BorderThickness="0" Padding="0">
+                         Background="Transparent" BorderThickness="0" Padding="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                    <ListBox.Styles>
+                        <Style Selector="ListBoxItem" x:DataType="ss:WallpaperOption">
+                            <Setter Property="Padding" Value="6" />
+                            <Setter Property="Margin" Value="3" />
+                            <Setter Property="BorderThickness" Value="2" />
+                            <Setter Property="BorderBrush" Value="Transparent" />
+                            <Setter Property="CornerRadius" Value="6" />
+                            <Setter Property="ToolTip.Tip" Value="{Binding Name}" />
+                            <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
+                        </Style>
+                        <Style Selector="ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+                            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                        </Style>
+                    </ListBox.Styles>
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
                     <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="ss:WallpaperOption">
-                            <Grid ColumnDefinitions="88,*" Height="56" Margin="0,2">
-                                <Border Grid.Column="0" Width="80" Height="45" CornerRadius="4"
-                                        Background="{Binding Brush}" VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="1" Text="{Binding Name}"
-                                           VerticalAlignment="Center" Margin="10,0,0,0" />
-                            </Grid>
+                            <Border Width="128" Height="72" CornerRadius="4" Background="{Binding Brush}" />
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
