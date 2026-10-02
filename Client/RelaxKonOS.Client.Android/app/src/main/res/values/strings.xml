@@ -2698,4 +2698,6 @@
     <string name="mihomo_tun_stack">TUN stack</string>
     <string name="mihomo_proxy_endpoint">Proxy address: %1$s:%2$d</string>
     <string name="mihomo_proxy_host_follows_listener">The proxy address follows the listening address in Mihomo settings.</string>
+    <string name="editor_format">File format</string>
+    <string name="editor_search_replace">Find and replace</string>
 </resources>

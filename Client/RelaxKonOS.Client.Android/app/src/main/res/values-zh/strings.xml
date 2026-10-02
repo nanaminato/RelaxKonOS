@@ -2659,4 +2659,6 @@
     <string name="mihomo_tun_stack">TUN 协议栈</string>
     <string name="mihomo_proxy_endpoint">代理地址：%1$s:%2$d</string>
     <string name="mihomo_proxy_host_follows_listener">代理地址跟随 Mihomo 设置中的监听地址。</string>
+    <string name="editor_format">文件格式</string>
+    <string name="editor_search_replace">查找替换</string>
 </resources>
