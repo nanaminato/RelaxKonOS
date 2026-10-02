@@ -1719,7 +1719,6 @@
     <string name="mihomo_state_start">启动</string>
     <string name="mihomo_state_stop">停止</string>
     <string name="mihomo_state_restart">重启</string>
-    <string name="mihomo_network_title">宿主网络与恢复</string>
     <string name="mihomo_host_network_note">TUN 和系统代理作用于服务器，不是手机。服务端保护实际管理路径，启用 TUN 前请保留其他宿主访问路径。</string>
     <string name="mihomo_recovery_required">宿主需要恢复</string>
     <string name="mihomo_recovery_clear">未报告中断恢复</string>
@@ -1728,8 +1727,6 @@
     <string name="mihomo_tun_disable">关闭宿主 TUN</string>
     <string name="mihomo_tun_emergency">紧急关闭 TUN 并恢复</string>
     <string name="mihomo_tun_unsupported">此宿主不支持 TUN。</string>
-    <string name="mihomo_settings">Mihomo 宿主设置</string>
-    <string name="mihomo_settings_summary">混合端口：%1$d · 系统代理：%2$s · DNS：%3$s</string>
     <string name="mihomo_on">开启</string>
     <string name="mihomo_off">关闭</string>
     <string name="mihomo_geodata">GeoData</string>
@@ -2650,4 +2647,16 @@
     <string name="mihomo_logs_empty">暂未收到日志，新日志会自动刷新。</string>
     <string name="operation_error_title">操作失败</string>
     <string name="operation_warning_title">警告</string>
+    <string name="mihomo_general_settings">Mihomo 设置</string>
+    <string name="mihomo_system_settings">系统设置</string>
+    <string name="mihomo_tun_mode">宿主 TUN</string>
+    <string name="mihomo_tun_settings">TUN 设置</string>
+    <string name="mihomo_system_proxy_title">系统代理</string>
+    <string name="mihomo_system_proxy_settings">系统代理设置</string>
+    <string name="mihomo_general_summary">混合端口：%1$d · 日志级别：%2$s</string>
+    <string name="mihomo_diagnostics_show">查看 DNS 诊断</string>
+    <string name="mihomo_diagnostics_hide">收起 DNS 诊断</string>
+    <string name="mihomo_tun_stack">TUN 协议栈</string>
+    <string name="mihomo_proxy_endpoint">代理地址：%1$s:%2$d</string>
+    <string name="mihomo_proxy_host_follows_listener">代理地址跟随 Mihomo 设置中的监听地址。</string>
 </resources>

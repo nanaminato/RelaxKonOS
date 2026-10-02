@@ -1757,7 +1757,6 @@
     <string name="mihomo_state_start">Start</string>
     <string name="mihomo_state_stop">Stop</string>
     <string name="mihomo_state_restart">Restart</string>
-    <string name="mihomo_network_title">Host networking and recovery</string>
     <string name="mihomo_host_network_note">TUN and system proxy affect the server, not the phone. The server protects the observed management route. Keep another host access path available before enabling TUN.</string>
     <string name="mihomo_recovery_required">Host recovery required</string>
     <string name="mihomo_recovery_clear">No interrupted recovery reported</string>
@@ -1766,8 +1765,6 @@
     <string name="mihomo_tun_disable">Disable host TUN</string>
     <string name="mihomo_tun_emergency">Emergency TUN recovery</string>
     <string name="mihomo_tun_unsupported">TUN is unsupported on this host.</string>
-    <string name="mihomo_settings">Mihomo host settings</string>
-    <string name="mihomo_settings_summary">Mixed port: %1$d · System proxy: %2$s · DNS: %3$s</string>
     <string name="mihomo_on">On</string>
     <string name="mihomo_off">Off</string>
     <string name="mihomo_geodata">GeoData</string>
@@ -2689,4 +2686,16 @@
     <string name="mihomo_logs_empty">No logs received yet. Recent entries refresh automatically.</string>
     <string name="operation_error_title">Operation failed</string>
     <string name="operation_warning_title">Warning</string>
+    <string name="mihomo_general_settings">Mihomo settings</string>
+    <string name="mihomo_system_settings">System settings</string>
+    <string name="mihomo_tun_mode">Host TUN</string>
+    <string name="mihomo_tun_settings">TUN settings</string>
+    <string name="mihomo_system_proxy_title">System proxy</string>
+    <string name="mihomo_system_proxy_settings">System proxy settings</string>
+    <string name="mihomo_general_summary">Mixed port: %1$d · Log level: %2$s</string>
+    <string name="mihomo_diagnostics_show">Show DNS diagnostics</string>
+    <string name="mihomo_diagnostics_hide">Hide DNS diagnostics</string>
+    <string name="mihomo_tun_stack">TUN stack</string>
+    <string name="mihomo_proxy_endpoint">Proxy address: %1$s:%2$d</string>
+    <string name="mihomo_proxy_host_follows_listener">The proxy address follows the listening address in Mihomo settings.</string>
 </resources>

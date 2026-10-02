@@ -8,6 +8,8 @@
 
 当前验证：Debug APK 与测试 APK 构建成功；全量 JVM 1030 项通过，三语资源和 138 个图标同步检查通过。SM-X510 真机完成 `nanami`、`root` 登录到 `192.168.1.5:5000`，一次真实 HTTP 401 以操作失败弹窗显示；Mihomo 宿主设置中 Windows 系统代理、允许局域网、DNS、IPv6 行与标签中心误差不超过 0.5 px。未提交宿主设置变更。截图在本地 `app/build/reports/ui-validation/`。
 
+Mihomo 设置页定向 Compose 检查 4 项通过：360dp 窄布局下的三个独立编辑入口与 DNS 折叠、观察者只读、管理路径不安全或写入未核实仍可紧急关闭、失败 TUN 恢复标记允许关闭并阻止再次启用。运行设备为 SM-X510；连续执行遇到测试 Activity 空闲等待，剩余两项改为单项执行通过。未提交宿主网络变更；独立弹窗的三语、大字体、IME 与实际宿主保存仍待验证。
+
 新增 Compose 真机用例 5 项通过（4 项操作反馈行为、1 项窄表单标签对齐）；节点选择和忙碌测速展示用例也已通过。忙碌状态用例使用手动时钟避免无穷进度动画干扰。部分连续／逐项执行仍出现设备测试 Activity 空闲等待，分组切换用例本次未完成，不记为通过。待补手机与旋转/大字体/三语逐页面视觉矩阵；SM-S9380 无线 ADB 在本次验证中断开。
 
 ## 1. BP 测试进度
@@ -259,8 +261,8 @@
 
 ### 5.3 设备与模拟器环境限制
 
-- 本机 `adb devices -l` 为空；WHPX 启动模拟器失败（`Failed to setup partition, hr=c0350005`），软件模式实例持续 offline，当前无可运行的设备环境。
-- 离线 `connectedDebugAndroidTest` 因缺 UTP `gradle-work-action:32.4.1` 缓存无法调度，终端布局检查改用已编译 APK 与 `adb shell am instrument` 执行。
+- 本机可连接 SM-X510 无线 ADB；SM-S9380 当前未连接。WHPX 启动模拟器失败（`Failed to setup partition, hr=c0350005`），软件模式实例持续 offline。
+- 离线 `connectedDebugAndroidTest` 已可调度 SM-X510，但连续执行可能卡在测试 Activity 空闲等待；单项 `adb shell am instrument` 可完成定向检查。
 - API 23–25 最低版本设备/模拟器未验证；`java.time` 已从生产源码移除，但未在最低版本实际运行。
 
 ### 5.4 交互与可用性（待设备复验）

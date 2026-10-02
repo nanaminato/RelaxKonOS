@@ -1718,7 +1718,6 @@
     <string name="mihomo_state_start">起動</string>
     <string name="mihomo_state_stop">停止</string>
     <string name="mihomo_state_restart">再起動</string>
-    <string name="mihomo_network_title">ホストのネットワークと復元</string>
     <string name="mihomo_host_network_note">TUN とシステムプロキシはサーバーに適用されます。サーバーは実際の管理経路を保護します。TUN を有効にする前に別のアクセス経路を確保してください。</string>
     <string name="mihomo_recovery_required">ホストの復元が必要</string>
     <string name="mihomo_recovery_clear">中断した復元の報告なし</string>
@@ -1727,8 +1726,6 @@
     <string name="mihomo_tun_disable">ホスト TUN を無効化</string>
     <string name="mihomo_tun_emergency">TUN の緊急停止と復元</string>
     <string name="mihomo_tun_unsupported">このホストは TUN に対応していません。</string>
-    <string name="mihomo_settings">Mihomo ホスト設定</string>
-    <string name="mihomo_settings_summary">混合ポート：%1$d · システムプロキシ：%2$s · DNS：%3$s</string>
     <string name="mihomo_on">有効</string>
     <string name="mihomo_off">無効</string>
     <string name="mihomo_geodata">GeoData</string>
@@ -2651,4 +2648,16 @@
     <string name="mihomo_logs_empty">ログはまだありません。新しいログは自動で更新されます。</string>
     <string name="operation_error_title">操作に失敗しました</string>
     <string name="operation_warning_title">警告</string>
+    <string name="mihomo_general_settings">Mihomo 設定</string>
+    <string name="mihomo_system_settings">システム設定</string>
+    <string name="mihomo_tun_mode">ホスト TUN</string>
+    <string name="mihomo_tun_settings">TUN 設定</string>
+    <string name="mihomo_system_proxy_title">システムプロキシ</string>
+    <string name="mihomo_system_proxy_settings">システムプロキシ設定</string>
+    <string name="mihomo_general_summary">混合ポート：%1$d · ログレベル：%2$s</string>
+    <string name="mihomo_diagnostics_show">DNS 診断を表示</string>
+    <string name="mihomo_diagnostics_hide">DNS 診断を閉じる</string>
+    <string name="mihomo_tun_stack">TUN スタック</string>
+    <string name="mihomo_proxy_endpoint">プロキシアドレス：%1$s:%2$d</string>
+    <string name="mihomo_proxy_host_follows_listener">プロキシアドレスは Mihomo 設定の待ち受けアドレスに従います。</string>
 </resources>
