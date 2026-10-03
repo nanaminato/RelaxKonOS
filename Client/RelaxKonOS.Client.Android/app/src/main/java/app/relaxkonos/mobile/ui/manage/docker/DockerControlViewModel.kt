@@ -14,7 +14,16 @@ import kotlinx.coroutines.sync.withLock
 internal data class DockerControlState(val owner: SessionState.Active? = null, val busy: Boolean = false,
     val facts: DockerControlFacts? = null, val pending: List<PendingDockerControl> = emptyList(),
     val installation: InstallationOperation? = null, val installationVerified: Boolean = false, val pendingInstallation: Boolean = false,
-    val resourcePending: Boolean = false, val checkedAtMillis: Long? = null, val problem: String? = null, val saved: Int = 0)
+    val resourcePending: Boolean = false, val checkedAtMillis: Long? = null, val problem: String? = null, val saved: Int = 0,
+    val installationLookupId: String? = null, val installationLookupMissing: Boolean = false, val installationLookupFailed: Boolean = false)
+/** A missing historical receipt must not invalidate the independently verified engine facts. */
+internal fun DockerControlState.installationLookupFailure(id: String?, result: ApiResult<*>): DockerControlState = copy(
+    installationVerified = false,
+    installationLookupId = id,
+    installationLookupMissing = result is ApiResult.Problem && result.status == 404,
+    installationLookupFailed = true,
+)
+
 internal class DockerControlViewModel(application: Application) : AndroidViewModel(application) {
     private val container get() = getApplication<RelaxKonApplication>().container
     private var job: Job? = null
@@ -31,17 +40,21 @@ internal class DockerControlViewModel(application: Application) : AndroidViewMod
             val known = container.installations.pending(owner).firstOrNull { it.service == InstallationService.Docker && it.operationId != null }
             if (known != null) {
                 val result = container.installations.recover(owner, known); verify(owner)
-                if (result is ApiResult.Success && result.value != null) installResult(owner, ApiResult.Success(result.value))
-                else state = state.copy(installationVerified = false)
+                if (result is ApiResult.Success && result.value != null) installResult(owner, ApiResult.Success(result.value), observing = true)
+                else state = state.installationLookupFailure(known.operationId, result)
                 return@work
             }
             val active = container.installations.active(owner, InstallationService.Docker); verify(owner)
-            if (active is ApiResult.Success && active.value != null) installResult(owner, ApiResult.Success(active.value))
+            if (active is ApiResult.Success && active.value != null) installResult(owner, ApiResult.Success(active.value), observing = true)
             else if (active is ApiResult.Success) {
                 val id = state.installation?.operationId ?: container.operationIndex.forOwner(owner).firstOrNull {
                     it.domain == OperationDomain.Installation && it.resourceId == InstallationService.Docker.name }?.operationId
-                if (id != null) installResult(owner, container.installations.operation(owner, id))
-            } else state = state.copy(installationVerified = false)
+                if (id != null) {
+                    val result = container.installations.operation(owner, id); verify(owner)
+                    if (result is ApiResult.Success) installResult(owner, result, observing = true)
+                    else state = state.installationLookupFailure(id, result)
+                }
+            } else state = state.installationLookupFailure(state.installationLookupId, active)
         }
     }
     fun change(expected: DockerControlFacts, change: DockerControlChange) = work { owner ->
@@ -79,12 +92,14 @@ internal class DockerControlViewModel(application: Application) : AndroidViewMod
         installResult(owner, result)
         if (result is ApiResult.Success && result.value.service == InstallationService.Docker && result.value.kind == InstallationKind.Install) intent = null
     }
-    private suspend fun installResult(owner: SessionState.Active, result: ApiResult<InstallationOperation>) {
+    private suspend fun installResult(owner: SessionState.Active, result: ApiResult<InstallationOperation>, observing: Boolean = false) {
         verify(owner)
         state = state.copy(pendingInstallation = container.installations.pending(owner).any { it.service == InstallationService.Docker })
         if (result is ApiResult.Success && result.value.service == InstallationService.Docker && result.value.kind == InstallationKind.Install) {
-            state = state.copy(installation = result.value, installationVerified = true, problem = result.value.problemCode)
-            if (!result.value.state.active) load(owner)
+            state = state.copy(installation = result.value, installationVerified = true,
+                installationLookupId = result.value.operationId, installationLookupMissing = false, installationLookupFailed = false,
+                problem = if (observing) state.problem else result.value.problemCode)
+            if (!observing && !result.value.state.active) load(owner)
         } else state = state.copy(installationVerified = false, problem = problem(result) ?: "docker.control.unverified")
     }
     private suspend fun load(owner: SessionState.Active) {

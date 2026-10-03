@@ -2717,4 +2717,5 @@
     <string name="taskmanager_clear_filter">清空</string>
     <string name="taskmanager_back_to_list">返回进程列表</string>
     <string name="docker_access_restart_required">Docker 已安装并已授予访问权限。请在主机上重启 RelaxKonOS Server，再刷新验证连接。</string>
+    <string name="docker_installation_record_note">安装记录暂时无法核验，不影响已读取的当前 Docker 引擎状态。可按原操作 ID 恢复查询；结果未知的安装请求仍需核实。</string>
 </resources>

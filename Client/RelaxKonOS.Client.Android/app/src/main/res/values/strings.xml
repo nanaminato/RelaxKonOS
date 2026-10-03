@@ -2756,4 +2756,5 @@
     <string name="taskmanager_clear_filter">Clear</string>
     <string name="taskmanager_back_to_list">Back to list</string>
     <string name="docker_access_restart_required">Docker is installed and access has been granted. Restart RelaxKonOS Server on the host, then refresh to verify the connection.</string>
+    <string name="docker_installation_record_note">The installation receipt could not be verified. This does not invalidate the current Docker engine status. Recover the original operation by ID; pending submissions remain unresolved.</string>
 </resources>

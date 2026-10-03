@@ -114,6 +114,11 @@ WorkspaceSection(!mirrorsOnly && !recordsOnly) {
         if (visible && state.pendingInstallation && manage) OutlinedButton(enabled = !state.busy && state.pending.isEmpty() && state.installation?.state?.active != true && (state.installation == null || state.installationVerified || state.pendingInstallation), onClick = { install = true }) { ActionLabel(R.string.common_retry) }
                 if (visible && state.pendingInstallation) Text(stringResource(R.string.installation_pending, installationServiceLabel(InstallationService.Docker), installationKindLabel(InstallationKind.Install)), color = MaterialTheme.colorScheme.error)
         if (manage) TextButton(enabled = !state.busy, onClick = { identified = false; recover = true }) { Text(stringResource(R.string.installation_recover)) }
+        if (visible && state.installationLookupFailed) ManagementCard {
+            state.installationLookupId?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            Text(stringResource(if (state.installationLookupMissing) R.string.operations_missing else R.string.operations_unverified))
+            Text(stringResource(R.string.docker_installation_record_note))
+        }
         if (visible) state.installation?.let { operation ->
             ManagementCard {
             Text(operation.operationId, style = MaterialTheme.typography.bodySmall)
@@ -122,7 +127,7 @@ WorkspaceSection(!mirrorsOnly && !recordsOnly) {
                 operation.progress?.let { Text(stringResource(R.string.installation_stage_progress, it)) }
                 operation.problemCode?.let { Text(installationProblemLabel(it)) }
                 if (operation.state.active && operation.cancellable && manage) OutlinedButton(enabled = !state.busy, onClick = { cancel = true }) { Text(stringResource(R.string.operations_request_cancel)) }
-            } else Text(stringResource(R.string.docker_control_unverified))
+            } else Text(stringResource(R.string.operations_unverified))
             }
         }
         }
