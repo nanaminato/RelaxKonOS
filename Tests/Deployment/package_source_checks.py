@@ -29,6 +29,22 @@ class PackageSourceChecks(unittest.TestCase):
         for source in ('localBundle','remoteBundle'):
             self.extract(source,target=source)
             self.assertEqual((self.root/source/next(iter(self.files))).read_bytes(),b'server')
+    def test_system_package_requires_uninstall_engine(self):
+        self.manifest['packageKind'] = 'server'
+        self.files.update({
+            'payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper': b'helper',
+            'deployment/bootstrap/install-relaxkonos.sh': b'#!/bin/bash\n',
+            'deployment/linux/install-relaxkonos-services.sh': b'#!/bin/bash\n',
+        })
+        self.package()
+        with self.assertRaisesRegex(ValueError, 'incomplete package'):
+            helper['extract']('localBundle', 'linux-x64', 'server', self.root/'missing', str(self.archive))
+        self.assertFalse((self.root/'missing').exists())
+        self.files['deployment/bootstrap/uninstall-relaxkonos.sh'] = b'#!/bin/bash\n'
+        self.package()
+        helper['extract']('localBundle', 'linux-x64', 'server', self.root/'complete', str(self.archive))
+        self.assertTrue((self.root/'complete/deployment/bootstrap/uninstall-relaxkonos.sh').is_file())
+
     def test_wrong_architecture(self):
         self.package()
         with self.assertRaises(ValueError): self.extract(runtime='linux-arm64')

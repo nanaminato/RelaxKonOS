@@ -238,6 +238,8 @@ publish_payload() { # bundle version
   # binary set through the installer from the release that just failed.
   [[ -d "$bundle/deployment" ]] || { echo 'The release bundle has no deployment engine.' >&2; exit 65; }
   cp -a "$bundle/deployment" "$root/deployment"
+  # ZIP extraction on Windows-produced bundles may not preserve executable bits.
+  chmod 0755 "$root/deployment/bootstrap/install-relaxkonos.sh" "$root/deployment/bootstrap/uninstall-relaxkonos.sh" "$root/deployment/linux/install-relaxkonos-services.sh"
   chown -R root:root "$root"
   # Private SSH extraction uses 0700/0600. Published binaries must be readable and
   # traversable by the service account, while remaining writable only by root.
@@ -361,7 +363,7 @@ if [[ "$ACTION" == install || "$ACTION" == upgrade ]]; then
   [[ -d "$BUNDLE_PATH" ]] || { echo 'Bundle path must be a release directory or ZIP archive.' >&2; exit 64; }
 
   MANIFEST="$BUNDLE_PATH/manifest.json"
-  [[ -f "$MANIFEST" && -f "$BUNDLE_PATH/payload/linux/server/RelaxKonOS.Server" && -f "$BUNDLE_PATH/payload/linux/guardian/RelaxKonOS.Guardian.Agent" && -f "$BUNDLE_PATH/payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper" && -f "$BUNDLE_PATH/deployment/linux/install-relaxkonos-services.sh" ]] || { echo 'Release bundle is incomplete or has an unsupported layout.' >&2; exit 65; }
+  [[ -f "$MANIFEST" && -f "$BUNDLE_PATH/payload/linux/server/RelaxKonOS.Server" && -f "$BUNDLE_PATH/payload/linux/guardian/RelaxKonOS.Guardian.Agent" && -f "$BUNDLE_PATH/payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper" && -f "$BUNDLE_PATH/deployment/bootstrap/install-relaxkonos.sh" && -f "$BUNDLE_PATH/deployment/bootstrap/uninstall-relaxkonos.sh" && -f "$BUNDLE_PATH/deployment/linux/install-relaxkonos-services.sh" ]] || { echo 'Release bundle is incomplete or has an unsupported layout.' >&2; exit 65; }
   # The ZIP checksum only covers transport. The extracted bundle is additionally checked against the
   # packaged inventory, so a tampered or partially copied local bundle is rejected before staging.
   if [[ -n "$(find "$BUNDLE_PATH" -mindepth 1 \( -type l -o \( ! -type d -a ! -type f \) \) -print -quit)" ]]; then

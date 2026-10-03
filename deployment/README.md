@@ -63,6 +63,8 @@ Linux 打包宿主还需提供 `zip`、`sha256sum` 与 `stat`。
 
 System Mode 安装时请选择 `*-server.zip` 或对应的 Server 发布目录；User Mode 请选择 `*-user-server.zip` 解压后的发布目录。
 
+Linux System Mode 发布安装目录时，显式把安装、卸载和服务部署脚本设为 `0755`，避免 Windows 制作的 ZIP 经普通解压后没有执行位。服务器中心通过 Bash 执行安装与卸载引擎，按实际执行身份检查文件存在且可读；安装包缺少卸载引擎时，在安装前拒绝该包。现有安装若遇到 `no System Mode uninstall engine is available on this host`，应先检查 `/opt/relaxkonos/current/deployment/bootstrap/uninstall-relaxkonos.sh` 是否存在，以及经 sudo 执行时能否读取；脚本存在但没有执行位时，可将其权限修复为 `0755` 后重新发起卸载。
+
 ## 官方在线来源
 
 安装器默认从 `https://downloads.relaxkon.com/relaxkonos/stable/latest/{rid}.json` 读取当前稳定版，其中 `{rid}` 是 `win-x64`、`win-arm64`、`linux-x64` 或 `linux-arm64`。该描述文件包含 ZIP 的 HTTPS 地址和 SHA-256；将通过验证的版本描述文件同步为 `latest/{rid}.json`，即可完成稳定版切换，无需修改安装器。Linux User Mode 的服务器中心安装使用独立的 `latest/user-server/{rid}.json`，其 `packageKind` 必须为 `user-server`；发布时需同时部署这份描述符。
