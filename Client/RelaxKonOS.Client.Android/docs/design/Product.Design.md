@@ -183,7 +183,8 @@ Git 的受限编辑和构建链路已接入；其他内置应用缺口见 [补�
   - **启动图标也走这条链路**：`android:icon` / `android:roundIcon` 指向 `@mipmap/ic_launcher` / `@mipmap/ic_launcher_round`，由同一脚本从 `RelaxKonOS-client-icon.png` 派生——`mipmap-*dpi/` 是 API 25 及以下的整块位图（圆角方形与圆形各一套），`mipmap-anydpi-v26/` 是自适应图标。
   - **桌面端图标是透明背景的标记，自适应图标必须有一层背景**，因此背景取应用自己的背景渐变（`Palette.kt` 的 `backdropStart`/`backdropEnd`，即 `res/drawable/ic_launcher_background.xml`）：桌面端也把标记画在这层浅色表面上（标题栏、登录页横幅），两边因此是同一观感，而不是另起一个品牌底色。主色作底会让标记中段的深蓝糊进背景，这是刻意避开的。
   - 标记在自适应画布上占 0.48，使其墨迹落在 72dp 遮罩圆内约 1dp 处，圆形遮罩也不会裁到它；整块位图没有遮罩，方形取 0.70、圆形取 0.68。
-  - 镜像分两组，职责与桌面端一致（桌面 Dock 用应用图标，Explorer 工具栏与文件类型用字形）：`ic_app_*` 是自带上色的圆角方形应用图标，只用于顶层目的地与产品标识（底部导航、rail 头部、登录页品牌标记、首页 hero）；`ic_sys_*` 是透明彩色字形，用于页面内的表头、列表行、按钮与文件类型。
+  - 资源区分应用底板与透明字形，职责与桌面端一致（桌面 Dock 用应用图标，Explorer 工具栏与文件类型用字形）：`ic_app_*` 是自带上色的圆角方形应用图标，只用于顶层目的地与产品标识（底部导航、rail 头部、登录页品牌标记、首页 hero）；`ic_sys_*` 是透明彩色字形，用于页面内的操作、列表行与文件类型；`ic_fluent_*` 是下述设置与管理入口的官方线条字形。
+  - 设置与管理入口使用微软官方 **Fluent System Icons Regular 24px**：`Assets/IconSources/FluentSystemIcons/` 保留未修改的 SVG、来源清单与 MIT 许可证，`Tools/Mobile/render-fluent-icons.cjs` 将官方轮廓以统一蓝色 `#2563EB` 渲染至共享的 `Assets/Icons/Fluent/`，再由同一同步脚本派生为 `ic_fluent_*`。保留原始视口、线宽与留白，不加立体渐变或应用底板。应用、帮助、宿主设置、代理、连接、服务器、诊断、关于、任务恢复、证书等入口按各自语义映射，Docker 与 Git 保留现有品牌标识；APK 内保留 `res/raw/fluent_system_icons_license.txt`。
   - 位图**不做主题染色**：素材自带配色与形状，套上主题色会被压成剪影。`IconBadge` 因此用中性底色而不是 `primaryContainer`——蓝底衬黄文件夹就是染色徽章的典型坏结果。
   - 素材为 128px 见方、放在 `drawable-nodpi`（不带密度，最大 32dp 槽位在 xxxhdpi 上仍 1:1 采样）；192px 原件会多出约两兆谁也用不到的像素。
   - 桌面端确实没有的两类：上传/下载（桌面把这两个动作放在无图标的菜单里）与密码显隐（桌面登录页没有该控件）。前者取集合中语义最近的箭头，后者保留 `res/drawable/ic_password_visible|hidden.xml` 自绘矢量。

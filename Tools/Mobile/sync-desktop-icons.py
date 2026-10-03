@@ -7,6 +7,7 @@ of truth; this script derives the Android copies and is the only supported way t
 Source                                        Destination
   Assets/AppIcons/<name>.png                    res/drawable-nodpi/ic_app_<name>.png
   Assets/Icons/Explorer/<name>.png              res/drawable-nodpi/ic_sys_<name with '-' as '_'>.png
+  Assets/Icons/Fluent/<name>.png                res/drawable-nodpi/ic_fluent_<name>.png
   Assets/RelaxKonOS-client-icon.png             res/drawable-nodpi/ic_app_brand.png
   Assets/RelaxKonOS-client-icon.png             the launcher icon (see below)
 
@@ -131,6 +132,9 @@ def sources() -> list[tuple[pathlib.Path, str]]:
 
     for path in sorted((DESKTOP_ASSETS / "Icons" / "Explorer").glob("*.png")):
         found.append((path, f"ic_sys_{path.stem.replace('-', '_')}"))
+
+    for path in sorted((DESKTOP_ASSETS / "Icons" / "Fluent").glob("*.png")):
+        found.append((path, f"ic_fluent_{path.stem}"))
 
     missing = [str(path) for path, _ in found if not path.exists()]
     if missing:

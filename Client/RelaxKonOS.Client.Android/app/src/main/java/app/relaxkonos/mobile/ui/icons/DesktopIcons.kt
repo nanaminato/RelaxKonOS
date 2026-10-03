@@ -21,16 +21,19 @@ import app.relaxkonos.mobile.R
  * `Tools/Mobile/sync-desktop-icons.py`; this object is the only place that maps an Android meaning onto
  * one of those files, which is what keeps the two clients in step and keeps a rename in one place.
  *
- * ## Two groups, used for two different things
+ * ## Destination tiles and page glyphs
  *
- * The desktop partitions the same way, and the split is worth keeping:
+ * The shared assets distinguish destination tiles from page glyphs:
  *
  *  - `ic_app_*` are self-contained rounded-square tiles (the desktop's dock, launchpad and window
  *    marks). They answer "which destination is this", so they are used for the shell's top-level
  *    destinations and the product mark — never inside a page, where they would nest inside the badge
  *    the row already draws.
  *  - `ic_sys_*` are transparent glyphs (the desktop Explorer's toolbar and file types). They answer
- *    "which row or which action is this", so they are what every list row, header and button uses.
+ *    "which row or which action is this", and serve file types and in-page actions.
+ *  - `ic_fluent_*` are Microsoft's official Fluent System Icons Regular glyphs, kept as SVG
+ *    originals in `Assets/IconSources/FluentSystemIcons` and rendered into `Assets/Icons/Fluent`.
+ *    Settings and management entries use these distinct semantic outlines on the neutral row badge.
  *
  * ## Where the desktop set has no counterpart
  *
@@ -68,25 +71,67 @@ object DesktopIcons {
 
     // ---- Page headers and settings rows -------------------------------
 
+    @DrawableRes
+    val applications = R.drawable.ic_fluent_applications
+
+    @DrawableRes
+    val help = R.drawable.ic_fluent_help
+
+    @DrawableRes
+    val hostSettings = R.drawable.ic_fluent_host_settings
+
+    @DrawableRes
+    val outboundProxy = R.drawable.ic_fluent_outbound_proxy
+
+    @DrawableRes
+    val operations = R.drawable.ic_fluent_operations
+
+    @DrawableRes
+    val certificates = R.drawable.ic_fluent_certificates
+
+    @DrawableRes
+    val websites = R.drawable.ic_fluent_websites
+
+    @DrawableRes
+    val tunnels = R.drawable.ic_fluent_tunnels
+
+    @DrawableRes
+    val smb = R.drawable.ic_fluent_smb
+
+    @DrawableRes
+    val firewall = R.drawable.ic_fluent_firewall
+
+    @DrawableRes
+    val proxy = R.drawable.ic_fluent_proxy
+
+    @DrawableRes
+    val guardian = R.drawable.ic_fluent_guardian
+
+    @DrawableRes
+    val scripts = R.drawable.ic_fluent_scripts
+
+    @DrawableRes
+    val monitor = R.drawable.ic_fluent_monitor
+
     /** The host this session is on; leads the home identity panel. */
     @DrawableRes
-    val host = R.drawable.ic_app_webservers
+    val host = R.drawable.ic_fluent_host
 
     @DrawableRes
     val system = R.drawable.ic_sys_navigation_computer
 
     @DrawableRes
-    val deployments = R.drawable.ic_app_application_deployments
+    val deployments = R.drawable.ic_fluent_deployments
 
     @DrawableRes
     val storage = R.drawable.ic_sys_navigation_drive
 
     @DrawableRes
-    val connections = R.drawable.ic_sys_navigation_network
+    val connections = R.drawable.ic_fluent_connections
 
-    /** The vaults and the fingerprint switch; the desktop Explorer draws `.env` files the same way. */
+    /** Account security: a shield and lock, distinct from saved server connections. */
     @DrawableRes
-    val credentials = R.drawable.ic_sys_file_env
+    val credentials = R.drawable.ic_fluent_credentials
 
     @DrawableRes
     val capabilities = R.drawable.ic_sys_toolbar_list_view
@@ -99,13 +144,13 @@ object DesktopIcons {
     val processes = R.drawable.ic_sys_toolbar_list_view
 
     @DrawableRes
-    val diagnostics = R.drawable.ic_sys_toolbar_info
+    val diagnostics = R.drawable.ic_fluent_diagnostics
 
     @DrawableRes
-    val appearance = R.drawable.ic_sys_toolbar_settings
+    val appearance = R.drawable.ic_fluent_appearance
 
     @DrawableRes
-    val about = R.drawable.ic_sys_file_document
+    val about = R.drawable.ic_fluent_about
 
     /** "Nothing here" and "the server cannot serve this" placeholders. */
     @DrawableRes

@@ -8,6 +8,8 @@ import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.ExecutionEligibilityReasons
 import app.relaxkonos.mobile.core.net.ProblemCodes
 import app.relaxkonos.mobile.data.ReminderKind
+import app.relaxkonos.mobile.data.ReminderPreference
+import app.relaxkonos.mobile.security.UnlockFailure
 
 /** A localised message: a resource id plus optional format arguments. */
 data class UiMessage(
@@ -67,6 +69,25 @@ fun genericProblemMessage(): UiMessage = UiMessage(R.string.error_generic)
  * site is the only place that knows which it is holding.
  */
 fun UiMessage.withReminder(kind: ReminderKind?): UiMessage = if (kind == null) this else copy(reminder = kind)
+
+/**
+ * The one unlock verdict a screen may let the user answer for good — and only while that answer does
+ * not already stand.
+ *
+ * "No lock screen can unseal a saved password" describes the device, so pressing again cannot read
+ * differently: it is the only unlock failure that carries an offer, and it carries the same
+ * [ReminderKind.SavedPasswordUnavailable] wherever it is shown (sign-in, server centre, elevation).
+ * A lockout, an invalidated key or tampering each leave the user something to do, so they stay loud.
+ *
+ * A **blocking** dialog cannot use the source-side suppression that a floating notice uses: the
+ * elevation dialog shows this sentence so the user knows the authorization did not go through, and
+ * skipping it would make pressing Authorize look inert. Hence the answered check lives here, and the
+ * offer simply stops being made while the sentence keeps being shown.
+ */
+internal fun silenceableUnlockVerdict(failure: UnlockFailure, preference: ReminderPreference): ReminderKind? =
+    ReminderKind.SavedPasswordUnavailable.takeIf {
+        failure == UnlockFailure.Unavailable && !preference.isSilenced(it)
+    }
 
 /**
  * Maps a stable problem code to the sentence the user should read.

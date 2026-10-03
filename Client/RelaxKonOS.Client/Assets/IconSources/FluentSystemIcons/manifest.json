@@ -1,0 +1,113 @@
+{
+  "source": "https://github.com/microsoft/fluentui-system-icons",
+  "snapshotDate": "2026-10-03",
+  "size": 192,
+  "color": "#2563EB",
+  "icons": {
+    "applications": {
+      "file": "applications.svg",
+      "upstreamName": "Apps",
+      "url": "https://github.com/microsoft/fluentui-system-icons/blob/main/assets/Apps/SVG/ic_fluent_apps_24_regular.svg"
+    },
+    "help": {
+      "file": "help.svg",
+      "upstreamName": "Book Question Mark",
+      "url": "https://github.com/microsoft/fluentui-system-icons/blob/main/assets/Book%20Question%20Mark/SVG/ic_fluent_book_question_mark_24_regular.svg"
+    },
+    "host_settings": {
+      "file": "host_settings.svg",
+      "upstreamName": "Settings",
+      "url": "https://github.com/microsoft/fluentui-system-icons/blob/main/assets/Settings/SVG/ic_fluent_settings_24_regular.svg"
+    },
+    "outbound_proxy": {
+      "file": "outbound_proxy.svg",
+      "upstreamName": "Globe Arrow Forward",
+      "url": "https://github.com/microsoft/fluentui-system-icons/blob/main/assets/Globe%20Arrow%20Forward/SVG/ic_fluent_globe_arrow_forward_24_regular.svg"
+    },
+    "connections": {
+      "file": "connections.svg",
+      "upstreamName": "Plug Connected",
+      "url": "https://github.com/microsoft/fluentui-system-icons/blob/main/assets/Plug%20Connected/SVG/ic_fluent_plug_connected_24_regular.svg"
+    },
+    "host": {
+      "file": "host.svg",
+      "upstreamName": "Server",
+      "url": "https://github.com/microsoft/fluentui-system-icons/blob/main/assets/Server/SVG/ic_fluent_server_24_regular.svg"
+    },
+    "credentials": {
+      "file": "credentials.svg",
+      "upstreamName": "Shield Lock",
+      "url": "https://github.com/microsoft/fluentui-system-icons/blob/main/assets/Shield%20Lock/SVG/ic_fluent_shield_lock_24_regular.svg"
+    },
+    "appearance": {
+      "file": "appearance.svg",
+      "upstreamName": "Paint Brush",
+      "url": "https://github.com/microsoft/fluentui-system-icons/blob/main/assets/Paint%20Brush/SVG/ic_fluent_paint_brush_24_regular.svg"
+    },
+    "diagnostics": {
+      "file": "diagnostics.svg",
+      "upstreamName": "Pulse",
+      "url": "https://github.com/microsoft/fluentui-system-icons/blob/main/assets/Pulse/SVG/ic_fluent_pulse_24_regular.svg"
+    },
+    "about": {
+      "file": "about.svg",
+      "upstreamName": "Info",
+      "url": "https://github.com/microsoft/fluentui-system-icons/blob/main/assets/Info/SVG/ic_fluent_info_24_regular.svg"
+    },
+    "operations": {
+      "file": "operations.svg",
+      "upstreamName": "Clipboard Task",
+      "url": "https://github.com/microsoft/fluentui-system-icons/blob/main/assets/Clipboard%20Task/SVG/ic_fluent_clipboard_task_24_regular.svg"
+    },
+    "certificates": {
+      "file": "certificates.svg",
+      "upstreamName": "Certificate",
+      "url": "https://github.com/microsoft/fluentui-system-icons/blob/main/assets/Certificate/SVG/ic_fluent_certificate_24_regular.svg"
+    },
+    "deployments": {
+      "file": "deployments.svg",
+      "upstreamName": "Box Arrow Up",
+      "url": "https://github.com/microsoft/fluentui-system-icons/blob/main/assets/Box%20Arrow%20Up/SVG/ic_fluent_box_arrow_up_24_regular.svg"
+    },
+    "websites": {
+      "file": "websites.svg",
+      "upstreamName": "Globe",
+      "url": "https://github.com/microsoft/fluentui-system-icons/blob/main/assets/Globe/SVG/ic_fluent_globe_24_regular.svg"
+    },
+    "tunnels": {
+      "file": "tunnels.svg",
+      "upstreamName": "Arrow Bidirectional Up Down",
+      "url": "https://github.com/microsoft/fluentui-system-icons/blob/main/assets/Arrow%20Bidirectional%20Up%20Down/SVG/ic_fluent_arrow_bidirectional_up_down_24_regular.svg"
+    },
+    "smb": {
+      "file": "smb.svg",
+      "upstreamName": "Folder People",
+      "url": "https://github.com/microsoft/fluentui-system-icons/blob/main/assets/Folder%20People/SVG/ic_fluent_folder_people_24_regular.svg"
+    },
+    "firewall": {
+      "file": "firewall.svg",
+      "upstreamName": "Shield",
+      "url": "https://github.com/microsoft/fluentui-system-icons/blob/main/assets/Shield/SVG/ic_fluent_shield_24_regular.svg"
+    },
+    "proxy": {
+      "file": "proxy.svg",
+      "upstreamName": "Arrow Routing",
+      "url": "https://github.com/microsoft/fluentui-system-icons/blob/main/assets/Arrow%20Routing/SVG/ic_fluent_arrow_routing_24_regular.svg"
+    },
+    "guardian": {
+      "file": "guardian.svg",
+      "upstreamName": "Shield Checkmark",
+      "url": "https://github.com/microsoft/fluentui-system-icons/blob/main/assets/Shield%20Checkmark/SVG/ic_fluent_shield_checkmark_24_regular.svg"
+    },
+    "scripts": {
+      "file": "scripts.svg",
+      "upstreamName": "Code",
+      "url": "https://github.com/microsoft/fluentui-system-icons/blob/main/assets/Code/SVG/ic_fluent_code_24_regular.svg"
+    },
+    "monitor": {
+      "file": "monitor.svg",
+      "upstreamName": "Desktop Pulse",
+      "url": "https://github.com/microsoft/fluentui-system-icons/blob/main/assets/Desktop%20Pulse/SVG/ic_fluent_desktop_pulse_24_regular.svg"
+    }
+  }
+}

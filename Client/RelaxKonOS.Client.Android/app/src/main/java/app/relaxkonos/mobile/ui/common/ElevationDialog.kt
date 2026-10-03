@@ -26,7 +26,6 @@ import androidx.fragment.app.FragmentActivity
 import app.relaxkonos.mobile.AppContainer
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.data.ElevationAnswer
-import app.relaxkonos.mobile.data.ReminderKind
 import app.relaxkonos.mobile.security.UnlockFailure
 import app.relaxkonos.mobile.security.VaultKind
 import app.relaxkonos.mobile.security.VaultOperation
@@ -82,22 +81,6 @@ fun ElevationDialog(container: AppContainer) {
     val saveTitle = stringResource(R.string.vault_save_elevation_title)
     val saveSubtitle = stringResource(R.string.vault_save_elevation_subtitle)
     val cancelLabel = stringResource(R.string.common_cancel)
-
-    /**
-     * The one verdict in this dialog that is a fact about the device rather than about this attempt,
-     * and only while the user has not already answered it.
-     *
-     * "No lock screen can unseal a saved password" will not read differently on the next press, so it
-     * may be answered for good — the same [ReminderKind.SavedPasswordUnavailable] the sign-in and
-     * server-centre screens offer for the same sentence. A lockout, an invalidated key or tampering
-     * each leave the user something to do, so they keep interrupting.
-     */
-    fun silenceableVerdict(failure: UnlockFailure): ReminderKind? =
-        if (failure == UnlockFailure.Unavailable && !reminders.isSilenced(ReminderKind.SavedPasswordUnavailable)) {
-            ReminderKind.SavedPasswordUnavailable
-        } else {
-            null
-        }
 
     AlertDialog(
         onDismissRequest = { container.elevationPrompts.cancel() },
@@ -200,7 +183,7 @@ fun ElevationDialog(container: AppContainer) {
                                 answer.password.fill('\u0000')
                                 storeRequested = false
                                 message = unlockFailureMessage(outcome.failure)
-                                    .withReminder(silenceableVerdict(outcome.failure))
+                                    .withReminder(silenceableUnlockVerdict(outcome.failure, reminders))
                             }
                         }
                     }
@@ -240,7 +223,7 @@ fun ElevationDialog(container: AppContainer) {
                                         // offer: unlocking a saved record is where
                                         // `SavedPasswordUnavailable` reads most literally.
                                         message = unlockFailureMessage(outcome.failure)
-                                            .withReminder(silenceableVerdict(outcome.failure))
+                                            .withReminder(silenceableUnlockVerdict(outcome.failure, reminders))
                                     }
                                 }
                             }

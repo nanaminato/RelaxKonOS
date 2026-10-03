@@ -265,7 +265,7 @@ fun ManageScreen(
             container.capabilities.contains(ServerCapabilities.EVENT_ALERTS) ||
             container.capabilities.contains(ServerCapabilities.CERTIFICATES) || container.capabilities.contains(ServerCapabilities.TUNNELS) || container.capabilities.contains(ServerCapabilities.PROXY) || container.capabilities.contains(ServerCapabilities.FIREWALL)) {
             add(ManageDomain(R.string.operations_title, R.string.operations_subtitle,
-                DesktopIcons.notice, onOpenOperations))
+                DesktopIcons.operations, onOpenOperations))
         }
         if (container.capabilities.contains(ServerCapabilities.DOCKER)) {
             add(ManageDomain(R.string.docker_title, R.string.docker_subtitle, R.drawable.ic_app_docker, onOpenDocker))
@@ -278,29 +278,29 @@ fun ManageScreen(
                 DesktopIcons.deployments, onOpenDeployments))
         }
         if (container.capabilities.contains(ServerCapabilities.WEB_SERVER)) {
-            add(ManageDomain(R.string.websites_title, R.string.websites_subtitle, R.drawable.ic_app_webservers, onOpenWebsites))
+            add(ManageDomain(R.string.websites_title, R.string.websites_subtitle, DesktopIcons.websites, onOpenWebsites))
         }
         if (container.capabilities.contains(ServerCapabilities.CERTIFICATES)) {
-            add(ManageDomain(R.string.certificates_title, R.string.certificates_subtitle, DesktopIcons.notice, onOpenCertificates))
+            add(ManageDomain(R.string.certificates_title, R.string.certificates_subtitle, DesktopIcons.certificates, onOpenCertificates))
         }
         if (container.capabilities.contains(ServerCapabilities.TUNNELS)) {
-            add(ManageDomain(R.string.tunnels_title, R.string.tunnels_subtitle, R.drawable.ic_app_tunnels, onOpenTunnels))
+            add(ManageDomain(R.string.tunnels_title, R.string.tunnels_subtitle, DesktopIcons.tunnels, onOpenTunnels))
         }
         if (container.capabilities.contains(ServerCapabilities.FILE_SERVICES)) {
-            add(ManageDomain(R.string.smb_title, R.string.smb_intro, R.drawable.ic_app_file_services, onOpenSmb))
+            add(ManageDomain(R.string.smb_title, R.string.smb_intro, DesktopIcons.smb, onOpenSmb))
         }
         if (container.capabilities.contains(ServerCapabilities.FIREWALL)) {
-            add(ManageDomain(R.string.firewall_title, R.string.firewall_intro, R.drawable.ic_app_firewall, onOpenFirewall))
+            add(ManageDomain(R.string.firewall_title, R.string.firewall_intro, DesktopIcons.firewall, onOpenFirewall))
         }
         if (container.capabilities.contains(ServerCapabilities.PROXY)) {
-            add(ManageDomain(R.string.mihomo_title, R.string.mihomo_intro, R.drawable.ic_app_proxy, onOpenProxy))
+            add(ManageDomain(R.string.mihomo_title, R.string.mihomo_intro, DesktopIcons.proxy, onOpenProxy))
         }
         if (container.capabilities.contains(ServerCapabilities.GUARDIAN)) {
-            add(ManageDomain(R.string.guardian_title, R.string.guardian_subtitle, R.drawable.ic_app_processguardian, onOpenGuardian))
-            add(ManageDomain(R.string.scripts_title, R.string.scripts_subtitle, R.drawable.ic_app_terminal, onOpenScripts))
+            add(ManageDomain(R.string.guardian_title, R.string.guardian_subtitle, DesktopIcons.guardian, onOpenGuardian))
+            add(ManageDomain(R.string.scripts_title, R.string.scripts_subtitle, DesktopIcons.scripts, onOpenScripts))
         }
         if (container.capabilities.contains(ServerCapabilities.METRICS) || container.capabilities.contains(ServerCapabilities.PROCESSES)) {
-            add(ManageDomain(R.string.workspace_taskmanager, R.string.workspace_taskmanager_note, DesktopIcons.system, onOpenMonitor))
+            add(ManageDomain(R.string.workspace_taskmanager, R.string.workspace_taskmanager_note, DesktopIcons.monitor, onOpenMonitor))
         }
     }
 
