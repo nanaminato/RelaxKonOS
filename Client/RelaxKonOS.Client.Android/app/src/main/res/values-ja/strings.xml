@@ -348,6 +348,7 @@
     <string name="connections_delete_message">%1$s（%2$s）のログインと、それに保存したパスワードを削除しますか？</string>
 
     <string name="home_session_title">セッション</string>
+    <string name="home_connection_remote">リモートサーバー</string>
     <string name="home_label_server">サーバー</string>
     <string name="home_label_user">アカウント</string>
     <string name="home_label_workspace">ワークスペース</string>
@@ -2730,7 +2731,7 @@
     <string name="login_tunnel_passphrase">秘密鍵のパスフレーズ（任意）</string>
     <string name="login_tunnel_remember">SSH 認証情報を安全に保存</string>
     <string name="login_tunnel_reuse_server">SSH に Server と同じユーザー名とパスワードを使用</string>
-    <string name="login_tunnel_reuse_hint">下の Server ログイン欄に共通のユーザー名とパスワードを入力してください。パスワード認証のみ対応します。</string>
+    <string name="login_tunnel_reuse_hint">共通パスワードは一つだけ保存します。下の保存設定を SSH と Server に共用し、保存と解除はそれぞれ指紋認証一回で行います。パスワード認証のみ対応します。</string>
     <string name="login_tunnel_server_password_required">SSH 認証に使用する Server パスワードを入力してください。</string>
     <string name="login_tunnel_hint">サーバーアドレスは SSH ホスト上のサービスです（例：http://127.0.0.1:5000）。ローカルポートは自動設定されます。SSH とサーバーの認証情報は別々に入力します。</string>
     <string name="login_tunnel_test">接続をテスト</string>

@@ -47,9 +47,9 @@ class LoginTunnelController(private val container: AppContainer) {
     val profiles get() = container.loginTunnels.all()
     fun answerHostKey(accept: Boolean) { answer?.complete(accept) }
     fun profile(remoteUrl: String, serverUserName: String) = SshLoginTunnelProfile.create(
-        host, port.toInt(), if (useServerCredentials) serverUserName else userName, remoteUrl)
+        host, port.toInt(), if (useServerCredentials) serverUserName else userName, remoteUrl).copy(useServerCredentials = useServerCredentials)
     fun select(profile: SshLoginTunnelProfile) {
-        setReuseServerCredentials(false)
+        setReuseServerCredentials(profile.useServerCredentials)
         enabled = true; host = profile.host; port = profile.port.toString(); userName = profile.userName
         secret = ""; passphrase = ""; identity = null
         configurationOpen = false
@@ -116,7 +116,7 @@ class LoginTunnelController(private val container: AppContainer) {
             verifiedCredential = SshCredential(credential.kind, credential.secret.copyOf(), credential.passphrase?.copyOf())
             verifiedEndpoint = "${profile.host}:${profile.port}:${profile.userName}"
             container.loginTunnels.save(profile)
-            if (rememberCredential && (useServerCredentials || secret.isNotEmpty())) {
+            if (!useServerCredentials && rememberCredential && secret.isNotEmpty()) {
                 val mode = container.unlockMode(VaultKind.Ssh)
                 val saved = if (mode == null) null else container.sshCredentials.save(mode, profile.host, profile.port, profile.userName, credential, activity,
                     activity.getString(R.string.vault_save_connection_title), profile.displayText,

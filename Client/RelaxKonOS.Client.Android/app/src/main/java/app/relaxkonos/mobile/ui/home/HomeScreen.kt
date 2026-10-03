@@ -92,6 +92,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     val recentOperations get() = container.recentOperations.entries
 
+    fun connectionDescription(serviceId: String): String? {
+        container.loginTunnels.all().firstOrNull { it.serviceId == serviceId }?.let {
+            return "${it.host}:${it.port} → ${it.remoteUrl}"
+        }
+        container.managedLogins.hostFor(serviceId)?.let { return it.displayName }
+        return serviceId.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+    }
+
     fun refresh() {
         if (!metricsAvailable || loading) {
             return
@@ -153,7 +161,7 @@ fun HomeScreen(
             )
         }
 
-        IdentityCard(session)
+        IdentityCard(session, viewModel.connectionDescription(session.serviceId))
 
         // The login response already answered whether this identity may open anything at all. Saying
         // so here — on the landing screen, before the user reaches for a folder — is the difference
@@ -291,7 +299,7 @@ private fun MetricsBlock(snapshot: PerformanceSnapshot) {
  * is a tile, and a second rounded square around it would read as two containers.
  */
 @Composable
-private fun IdentityCard(session: SessionState.Active) {
+private fun IdentityCard(session: SessionState.Active, connectionDescription: String?) {
     val colors = MaterialTheme.relaxKon
     Box(
         modifier = Modifier
@@ -315,10 +323,10 @@ private fun IdentityCard(session: SessionState.Active) {
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        session.serviceId,
+                        connectionDescription ?: stringResource(R.string.home_connection_remote),
                         style = MaterialTheme.typography.bodySmall,
                         color = colors.onHeroMuted,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }

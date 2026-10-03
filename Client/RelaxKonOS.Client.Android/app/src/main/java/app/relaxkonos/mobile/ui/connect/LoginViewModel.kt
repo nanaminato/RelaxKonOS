@@ -418,6 +418,10 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 is LoginDecision.ManualPassword, LoginDecision.UnlockSavedCredential -> Unit
                 else -> { submitResolved(activity); return }
             }
+            if (tunnel.useServerCredentials) {
+                submitSharedTunnel(activity)
+                return
+            }
             isLoggingIn = true
             discoveryJob?.cancel()
             discoveryJob = viewModelScope.launch {
@@ -948,10 +952,70 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         return try { pending.await() } finally { certificateAnswer = null; certificateReview = null }
     }
     private suspend fun openLoginTunnel(activity: FragmentActivity, testOnly: Boolean = false) {
-        val password = passwordText.toCharArray()
+        val password = if (tunnel.useServerCredentials) sharedTunnelPassword(activity) ?: throw TunnelCancelledException()
+            else passwordText.toCharArray()
         try {
             tunnel.open(activity, serverUrl, identifier, password, testOnly, ::confirmTunnelCertificate)
         } finally { password.fill('\u0000') }
+    }
+
+    /** One connection-vault authorization supplies both SSH and Server authentication. */
+    private suspend fun sharedTunnelPassword(activity: FragmentActivity): CharArray? {
+        if (passwordText.isNotEmpty()) return passwordText.toCharArray()
+        val record = storedRecord()
+        val mode = vaultUnlockMode
+        if (record != null && mode != null) {
+            return when (val result = unseal(record, activity, mode)) {
+                is VaultOperation.Success -> result.value
+                VaultOperation.Cancelled -> null
+                is VaultOperation.Failed -> {
+                    if (result.failure == UnlockFailure.KeyInvalidated) {
+                        container.vault.markAllInvalidated(VaultKind.Connection)
+                        revision++
+                    }
+                    message = unlockFailureMessage(result.failure)
+                    null
+                }
+            }
+        }
+        container.debugCredential(selectedLogin.serviceId, selectedLogin.normalizedIdentifier)?.let { return it }
+        message = UiMessage(R.string.login_tunnel_server_password_required)
+        focusRequest = LoginField.Password
+        return null
+    }
+
+    private fun submitSharedTunnel(activity: FragmentActivity) {
+        isLoggingIn = true
+        discoveryJob?.cancel()
+        discoveryJob = viewModelScope.launch {
+            var credential: CharArray? = null
+            var handedToLogin = false
+            val typed = passwordText.isNotEmpty()
+            val record = storedRecord()
+            try {
+                val password = sharedTunnelPassword(activity) ?: return@launch
+                credential = password
+                tunnel.open(activity, serverUrl, identifier, password, confirmCertificate = ::confirmTunnelCertificate)
+                if (typed) {
+                    handedToLogin = true
+                    signInWithTypedPassword(activity, password)
+                } else {
+                    submitUnsealed(selectedLogin, record, password)
+                }
+            } catch (_: TunnelCancelledException) {
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                tunnel.configurationOpen = true
+                message = UiMessage((error as? LoginTunnelFailure)?.messageResource ?: R.string.login_tunnel_failed)
+            } finally {
+                if (!handedToLogin) {
+                    credential?.fill('\u0000')
+                    finishTunnelLogin()
+                    isLoggingIn = false
+                }
+            }
+        }
     }
 
     fun testTunnel(activity: FragmentActivity) {

@@ -25,10 +25,12 @@ class SshLoginTunnelProfileTest {
         try {
             val profile = SshLoginTunnelProfile.create("example.com", 22, "alice", "http://127.0.0.1:5000")
             val store = LoginTunnelStore(directory)
-            store.save(profile); store.save(profile); store.save(profile.copy(userName = "bob"))
+            val shared = profile.copy(useServerCredentials = true)
+            assertEquals(profile.serviceId, shared.serviceId)
+            store.save(profile); store.save(shared); store.save(profile.copy(userName = "bob"))
             val loaded = LoginTunnelStore(directory).all()
             assertEquals(2, loaded.size)
-            assertTrue(loaded.contains(profile))
+            assertTrue(loaded.contains(shared))
         } finally { directory.deleteRecursively() }
     }
 }

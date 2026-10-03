@@ -55,7 +55,9 @@ fun LoginTunnelOptions(viewModel: LoginViewModel, activity: FragmentActivity) {
                 label = stringResource(R.string.login_tunnel_secret), enabled = !viewModel.isLoggingIn)
         }
         }
-        LoginCheckboxRow(tunnel.rememberCredential, stringResource(R.string.login_tunnel_remember), !viewModel.isLoggingIn) { tunnel.rememberCredential = it }
+        if (!tunnel.useServerCredentials) {
+            LoginCheckboxRow(tunnel.rememberCredential, stringResource(R.string.login_tunnel_remember), !viewModel.isLoggingIn) { tunnel.rememberCredential = it }
+        }
         }
         OutlinedButton(onClick = { viewModel.testTunnel(activity) }, enabled = !viewModel.isLoggingIn) {
             Text(stringResource(R.string.login_tunnel_test))

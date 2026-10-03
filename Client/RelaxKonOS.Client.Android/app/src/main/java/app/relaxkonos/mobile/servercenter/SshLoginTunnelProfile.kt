@@ -5,7 +5,7 @@ import java.security.MessageDigest
 import java.io.*
 
 /** Device-local settings only; passwords and keys live in the SSH vault. */
-data class SshLoginTunnelProfile(val host: String, val port: Int, val userName: String, val remoteUrl: String) {
+data class SshLoginTunnelProfile(val host: String, val port: Int, val userName: String, val remoteUrl: String, val useServerCredentials: Boolean = false) {
     val serviceId: String get() = IDENTITY_PREFIX + MessageDigest.getInstance("SHA-256")
         .digest("$host\n$port\n$userName\n$remoteUrl".toByteArray(Charsets.UTF_8))
         .joinToString("") { "%02x".format(it.toInt() and 255) }
@@ -36,10 +36,10 @@ class LoginTunnelStore(private val directory: File) {
         if (!file.isFile) return emptyList()
         return try {
             DataInputStream(file.inputStream()).use { input ->
-                require(input.readInt() == 1)
+                require(input.readInt() == 2)
                 val count = input.readInt()
                 require(count in 0..1000)
-                List(count) { SshLoginTunnelProfile.create(input.readUTF(), input.readInt(), input.readUTF(), input.readUTF()) }
+                List(count) { SshLoginTunnelProfile.create(input.readUTF(), input.readInt(), input.readUTF(), input.readUTF()).copy(useServerCredentials = input.readBoolean()) }
             }
         } catch (_: Exception) { emptyList() }
     }
@@ -48,8 +48,8 @@ class LoginTunnelStore(private val directory: File) {
         directory.mkdirs()
         val temporary = File(directory, "login-tunnels.bin.tmp")
         DataOutputStream(temporary.outputStream()).use { output ->
-            output.writeInt(1); output.writeInt(profiles.size)
-            profiles.forEach { output.writeUTF(it.host); output.writeInt(it.port); output.writeUTF(it.userName); output.writeUTF(it.remoteUrl) }
+            output.writeInt(2); output.writeInt(profiles.size)
+            profiles.forEach { output.writeUTF(it.host); output.writeInt(it.port); output.writeUTF(it.userName); output.writeUTF(it.remoteUrl); output.writeBoolean(it.useServerCredentials) }
         }
         java.nio.file.Files.move(temporary.toPath(), file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
     }

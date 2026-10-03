@@ -349,6 +349,7 @@
     <string name="connections_delete_message">删除 %1$s（%2$s）的登录记录，以及为它保存的密码？</string>
 
     <string name="home_session_title">会话</string>
+    <string name="home_connection_remote">远程服务器</string>
     <string name="home_label_server">服务器</string>
     <string name="home_label_user">账户</string>
     <string name="home_label_workspace">工作区</string>
@@ -2729,7 +2730,7 @@
     <string name="login_tunnel_passphrase">私钥口令（可选）</string>
     <string name="login_tunnel_remember">安全保存 SSH 凭据</string>
     <string name="login_tunnel_reuse_server">SSH 使用与 Server 相同的用户名和密码</string>
-    <string name="login_tunnel_reuse_hint">请在下方 Server 登录字段填写共用的用户名和密码，仅适用于密码认证。</string>
+    <string name="login_tunnel_reuse_hint">共用密码只保存一份。下方保存开关同时用于 SSH 和 Server；保存和解锁各只需一次指纹验证。仅适用于密码认证。</string>
     <string name="login_tunnel_server_password_required">请填写 Server 密码，以便用于 SSH 认证。</string>
     <string name="login_tunnel_hint">服务器地址指 SSH 主机上的服务，例如 http://127.0.0.1:5000。本地端口自动分配，SSH 与服务器账号分别填写。</string>
     <string name="login_tunnel_test">测试连接</string>
