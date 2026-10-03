@@ -19,7 +19,7 @@
         "task_manager.uptime": "⏱ 运行时间：",
         "task_manager.filter_placeholder": "按名称、PID 或用户筛选…",
         "task_manager.end_task": "结束任务",
-        "task_manager.end_task_tooltip": "结束所选进程（如有需要，请在宿主操作系统中提升权限）",
+        "task_manager.end_task_tooltip": "结束所选进程（如有需要，请在服务器操作系统中提升权限）",
         "task_manager.threads": "线程",
         "task_manager.status.collecting": "正在收集系统数据…",
         "task_manager.status.updated": "已更新 — {0:HH:mm:ss}  CPU {1:0.0}%  进程 {2}",
@@ -82,8 +82,8 @@
         "task_manager.metric.per_second": "/秒",
         "task_manager.metric.placeholder": "—",
         "task_manager.termination.instance_changed": "原进程实例已变化，请刷新并重新选择目标。",
-        "task_manager.termination.permission_denied": "宿主 OS 拒绝结束进程，请在宿主调整权限。",
+        "task_manager.termination.permission_denied": "服务器 OS 拒绝结束进程，请在服务器调整权限。",
         "task_manager.termination.unverified": "结束结果尚未确认，请刷新核实；不要自动重发。",
-        "task_manager.termination.failed": "未能结束进程，请刷新并检查宿主。"
+        "task_manager.termination.failed": "未能结束进程，请刷新并检查服务器。"
     }
 }

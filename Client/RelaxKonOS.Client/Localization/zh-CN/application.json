@@ -30,7 +30,7 @@
         "application.relaxkonos.docker.display_name": "Docker 管理器",
         "application.relaxkonos.docker.description": "管理 RelaxKonOS Server 本机 Docker Engine",
         "application.relaxkonos.processguardian.display_name": "进程守护程序",
-        "application.relaxkonos.processguardian.description": "查看由 RelaxKonOS Guardian Agent 守护的工作负载",
+        "application.relaxkonos.processguardian.description": "查看由 RelaxKonOS Guardian Agent 守护的程序",
         "application.relaxkonos.port-forwarding.display_name": "端口转发",
         "application.relaxkonos.port-forwarding.description": "管理到 RelaxKonOS Server loopback 服务的本机 SSH 隧道",
         "application.relaxkonos.firewall.display_name": "防火墙",

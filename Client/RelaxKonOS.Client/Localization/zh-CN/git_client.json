@@ -319,7 +319,7 @@
         "git.vm.failed_format": "失败：{0}",
         "git.vm.pull_progress": "正在拉取…",
         "git.vm.pulled": "拉取成功",
-        "git.vm.credentials_required": "需要 Git 凭据 — 请在宿主 OS 上配置",
+        "git.vm.credentials_required": "需要 Git 凭据 — 请在服务器 OS 上配置",
         "git.vm.pull_failed_format": "拉取失败：{0}",
         "git.vm.push_progress": "正在推送…",
         "git.vm.pushed": "推送成功",

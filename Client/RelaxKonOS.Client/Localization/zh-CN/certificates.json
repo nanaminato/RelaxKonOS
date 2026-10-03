@@ -79,7 +79,7 @@
     "certificates.list": "证书",
     "certificates.list_hint": "选择证书后可部署、续期、吊销或删除。",
     "certificates.overview.total": "此服务器上的证书",
-    "certificates.overview.total_hint": "受管证书保存在 RelaxKonOS Server 上。",
+    "certificates.overview.total_hint": "RelaxKonOS 管理的证书保存在 RelaxKonOS Server 上。",
     "certificates.overview.actions": "快捷操作",
     "certificates.overview.safety_hint": "证书申请会在联系证书颁发机构前执行服务器端预检。私钥始终不会离开服务器。",
     "certificates.error.request_failed": "请求失败。请检查连接和服务端日志后重试。",
