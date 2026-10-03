@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.ui.servercenter.SshWorkspaceLayout
+import app.relaxkonos.mobile.ui.servercenter.SshManagementTabs
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -20,7 +21,7 @@ import org.junit.Test
 class SshWorkspaceLayoutTest {
     @get:Rule val rule = createComposeRule()
 
-    @Test fun phoneSettingsDestinationAndKeyboardNavigation() {
+    @Test fun phoneManagementDestinationAndKeyboardNavigation() {
         val page = mutableIntStateOf(0)
         rule.setContent {
             MaterialTheme {
@@ -32,8 +33,10 @@ class SshWorkspaceLayoutTest {
             }
         }
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        rule.onNodeWithText(context.getString(R.string.ssh_workspace_settings)).performClick()
-        rule.onNodeWithText("page-4").assertIsDisplayed()
+        rule.onNodeWithText(context.getString(R.string.ssh_workspace_management)).performClick()
+        rule.onNodeWithText("page-3").assertIsDisplayed()
+        rule.onNodeWithText(context.getString(R.string.ssh_workspace_settings)).assertDoesNotExist()
+        rule.onNodeWithText(context.getString(R.string.ssh_forward_title)).assertDoesNotExist()
         rule.runOnIdle { page.intValue = 1 }
         rule.onNodeWithTag("ssh-workspace-bar").assertDoesNotExist()
         rule.onNodeWithText("page-1").assertIsDisplayed()
@@ -41,6 +44,21 @@ class SshWorkspaceLayoutTest {
 
     @Test fun mediumWidthUsesRailBesideContentWhileTyping() = checkRail(700)
     @Test fun expandedWidthUsesRailBesideContentWhileTyping() = checkRail(1000)
+
+    @Test fun managementTabsSwitchBetweenAllThreeTools() {
+        val selected = mutableIntStateOf(0)
+        rule.setContent {
+            MaterialTheme { SshManagementTabs(selected.intValue, { selected.intValue = it }) }
+        }
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val labels = listOf(R.string.ssh_workspace_system, R.string.ssh_workspace_settings, R.string.ssh_forward_title)
+        labels.forEach { label ->
+            rule.onNodeWithText(context.getString(label)).performClick().assertIsSelected()
+            labels.filter { it != label }.forEach {
+                rule.onNodeWithText(context.getString(it)).assertIsNotSelected()
+            }
+        }
+    }
 
     private fun checkRail(width: Int) {
         rule.setContent {
@@ -55,6 +73,6 @@ class SshWorkspaceLayoutTest {
         val content = rule.onNodeWithTag("workspace-content").fetchSemanticsNode().boundsInRoot
         assertTrue("The rail must leave a separate terminal viewport", content.left >= rail.right)
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        rule.onNodeWithContentDescription(context.getString(R.string.ssh_workspace_settings)).assertExists()
+        rule.onNodeWithContentDescription(context.getString(R.string.ssh_workspace_management)).assertExists()
     }
 }

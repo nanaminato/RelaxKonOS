@@ -193,6 +193,7 @@
     <string name="ssh_terminal_retry">Reconnect</string>
     <string name="ssh_terminal_hide_input">Hide input</string>
     <string name="ssh_terminal_empty">Create an SSH session to open a terminal.</string>
+    <string name="ssh_workspace_management">Manage</string>
     <string name="ssh_workspace_system">System</string>
     <string name="ssh_workspace_system_subtitle">Resource status for %1$s</string>
     <string name="ssh_workspace_system_unavailable">Unable to read host resources. Check the connection and host command permissions, then refresh.</string>

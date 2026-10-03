@@ -182,6 +182,7 @@
     <string name="ssh_terminal_retry">重新连接</string>
     <string name="ssh_terminal_hide_input">隐藏输入</string>
     <string name="ssh_terminal_empty">新建 SSH 会话以打开终端。</string>
+    <string name="ssh_workspace_management">管理</string>
     <string name="ssh_workspace_system">系统</string>
     <string name="ssh_workspace_system_subtitle">%1$s 的资源状态</string>
     <string name="ssh_workspace_system_unavailable">无法读取主机资源，请检查连接和主机命令权限后刷新。</string>
