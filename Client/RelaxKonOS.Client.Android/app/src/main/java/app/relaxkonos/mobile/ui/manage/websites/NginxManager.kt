@@ -9,6 +9,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import app.relaxkonos.mobile.data.NginxDiagnostics
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -29,14 +32,19 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
     val owner = appContainer().activeSession
     val canManage = owner?.privilegedOperations == true
     var installDialog by remember(owner, sessionEpoch) { mutableStateOf(false) }
+    var diagnostics by remember { mutableStateOf<String?>(null) }
+    val clipboard = LocalClipboardManager.current
     var recoveryDialog by remember(owner, sessionEpoch) { mutableStateOf(false) }
     var instanceDetailsVisible by remember(owner, sessionEpoch) { mutableStateOf(false) }
     var confirmation by remember(owner, sessionEpoch) { mutableStateOf<Pair<Int, () -> Unit>?>(null) }
     OperationMessageDialog(if (state.busy) null else state.problemCode?.let { nginxProblemLabel(it) } ?: if (state.uncertain) stringResource(R.string.nginx_uncertain) else null, tone = if (state.problemCode == null) StatusTone.Warning else StatusTone.Danger)
-    LaunchedEffect(owner, sessionEpoch) { if (owner != null) model.refresh() }
-    LaunchedEffect(owner, sessionEpoch, state.operation?.operationId, state.operation?.state, state.installation?.operationId, state.installation?.state, state.busy) {
-        if ((state.operation?.state?.active == true || state.installation?.state?.active == true) && !state.busy) {
-            delay(1500); model.pollTasks()
+    LaunchedEffect(owner, sessionEpoch, section) { if (owner != null) model.refresh() }
+    LaunchedEffect(owner, sessionEpoch) {
+        while (owner != null) {
+            delay(1500)
+            if (!model.state.busy && (model.state.operation?.state?.active == true || model.state.installation?.state?.active == true)) {
+                model.pollTasks()
+            }
         }
     }
     LaunchedEffect(state.operation?.operationId, state.operation?.state, state.installation?.operationId, state.installation?.state) {
@@ -45,6 +53,13 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
         }
     }
     LaunchedEffect(state.siteGeneration) { if (state.siteGeneration > 0) onChanged() }
+    TextButton(onClick = { diagnostics = NginxDiagnostics.snapshot() }) { Text(stringResource(R.string.nginx_diagnostics)) }
+    diagnostics?.let { trace ->
+        AlertDialog(onDismissRequest = { diagnostics = null }, title = { Text(stringResource(R.string.nginx_diagnostics)) },
+            text = { Text(trace, modifier = Modifier.heightIn(max = 430.dp).verticalScroll(rememberScrollState()), style = MaterialTheme.typography.bodySmall) },
+            confirmButton = { TextButton(onClick = { clipboard.setText(AnnotatedString(trace)) }) { Text(stringResource(R.string.nginx_copy_diagnostics)) } },
+            dismissButton = { TextButton(onClick = { diagnostics = null }) { Text(stringResource(R.string.common_close)) } })
+    }
     SectionCard(stringResource(if (section == "sites") R.string.websites_site_manager else R.string.nginx_title)) {
         if (section != "records" && (state.uncertain || state.pending.isNotEmpty() || state.pendingInstallation || state.operation?.state?.active == true || state.installation?.state?.active == true)) TextButton(onClick = onRecords) { Text(stringResource(R.string.workspace_records_attention)) }
         WorkspaceSection(section != "records") {
@@ -189,6 +204,17 @@ private fun InstanceDetails(server: WebServer, state: NginxState, canManage: Boo
         else -> R.string.websites_config_invalid }))
     test?.problemCode?.takeIf(String::isNotBlank)?.let { Text(nginxProblemLabel(it)) }
 WorkspaceSection(section == "instances") {
+    if (canManage) {
+        val blocker = when {
+            state.busy || state.loading -> R.string.nginx_controls_refreshing
+            state.installation?.state?.active == true -> R.string.nginx_controls_installation_running
+            state.operation?.state?.active == true -> R.string.nginx_controls_operation_running
+            state.pending.any { it.target == server.id } || state.pendingInstallation || model.hasIntent -> R.string.nginx_controls_pending
+            state.uncertain -> R.string.nginx_controls_unverified
+            else -> null
+        }
+        blocker?.let { Text(stringResource(it), style = MaterialTheme.typography.bodySmall) }
+    }
     if (canManage) FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         WebServerAction.entries.filter { it.supported(server) }.forEach { action ->
             OutlinedButton(enabled = !model.mutationsBlocked && state.pending.none { it.target == server.id },

@@ -62,6 +62,8 @@ internal class GitWorkspaceViewModel(application: Application) : AndroidViewMode
         if (result !is ApiResult.Success) load(owner)
     }
     fun dismissPreview() { state = state.copy(preview = null) }
+    fun dismissDiff() { state = state.copy(diff = null) }
+    fun dismissDetail() { state = state.copy(detail = null, diff = null) }
     fun confirm() = work { owner ->
         val preview = state.preview ?: return@work; state = state.copy(preview = null)
         val result = container.gitWorkspace.change(owner, preview); verify(owner)

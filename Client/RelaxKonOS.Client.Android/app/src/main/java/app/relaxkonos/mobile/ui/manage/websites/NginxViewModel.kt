@@ -53,6 +53,7 @@ internal class NginxViewModel(application: Application) : AndroidViewModel(appli
     }
     fun refresh() = work { active -> load(active) }
     private suspend fun load(active: SessionState.Active) {
+        NginxDiagnostics.event("load.begin epoch=$sessionEpoch web=${state.operation?.state} install=${state.installation?.state}")
         state = state.copy(loading = true)
         val servers = container.webServers.discover(active)
         val candidates = container.webServers.candidates(active)
@@ -73,25 +74,41 @@ internal class NginxViewModel(application: Application) : AndroidViewModel(appli
                 .firstOrNull { it.domain == OperationDomain.Installation && it.resourceId == InstallationService.Nginx.name }?.operationId
             if (knownId != null) installation = container.installations.operation(active, knownId)
         }
+        // Refresh existing IDs too: the operation center may have observed completion while this
+        // ViewModel still holds the original queued/running response.
+        val webId = state.operation?.operationId ?: container.operationIndex.forOwner(active)
+            .firstOrNull { it.domain == OperationDomain.WebServer }?.operationId
+        val webOperation = webId?.let { container.webServers.operation(active, it) }
+        val installationPending = container.installations.pending(active).filter { it.service == InstallationService.Nginx }
+        for (pending in installationPending.filter { it.operationId != null }) {
+            container.installations.recover(active, pending)
+        }
+        NginxDiagnostics.event("load.results servers=${NginxDiagnostics.result(servers)} candidates=${NginxDiagnostics.result(candidates)} system=${NginxDiagnostics.result(system)} installation=${NginxDiagnostics.result(installation)} web=${NginxDiagnostics.result(webOperation)}")
         verify(active)
         val values = (servers as? ApiResult.Success)?.value.orEmpty()
+        if (active.privilegedOperations) {
+            val refreshedWeb = (webOperation as? ApiResult.Success)?.value
+            val refreshedInstallation = (installation as? ApiResult.Success)?.value
+            container.webServers.reconcileIntegrationIntents(active, values, tests,
+                factsVerified = servers is ApiResult.Success && candidates is ApiResult.Success && installation is ApiResult.Success &&
+                    (webId == null || webOperation is ApiResult.Success),
+                tasksActive = refreshedWeb?.state?.active == true || refreshedInstallation?.state?.active == true ||
+                    container.installations.pending(active).any { it.service == InstallationService.Nginx } || intent != null)
+        }
         state = state.copy(loading = false, servers = values,
             sites = sites, certificates = certificates,
             pendingSites = container.webSites.pending(active),
             candidates = (candidates as? ApiResult.Success)?.value.orEmpty(), statuses = statuses, tests = tests,
             selectedId = state.selectedId?.takeIf { id -> values.any { it.id == id } },
             catalog = (catalog as? ApiResult.Success)?.value, system = (system as? ApiResult.Success)?.value ?: HostOperatingSystemKind.Unknown,
-            installation = (installation as? ApiResult.Success)?.value ?: state.installation,
+            installation = if (installation is ApiResult.Success) installation.value else state.installation,
+            operation = (webOperation as? ApiResult.Success)?.value ?: state.operation,
             pending = container.webServers.pending(active),
             pendingInstallation = container.installations.pending(active).any { it.service == InstallationService.Nginx },
             problemCode = listOf(servers, candidates, catalog).filterIsInstance<ApiResult.Problem>().firstOrNull()?.code,
             uncertain = servers !is ApiResult.Success || candidates !is ApiResult.Success || system !is ApiResult.Success ||
                 (catalog != null && catalog !is ApiResult.Success) || (installation != null && installation !is ApiResult.Success))
-        if (state.operation == null) container.operationIndex.forOwner(active).firstOrNull { it.domain == OperationDomain.WebServer }?.let { record ->
-            val result = container.webServers.operation(active, record.operationId)
-            verify(active)
-            if (result is ApiResult.Success) state = state.copy(operation = result.value)
-        }
+
     }
     fun refreshCertificates() = work { active ->
         val result = if (ServerCapabilities.CERTIFICATES in active.capabilities) container.certificates.list(active) else null
@@ -274,16 +291,28 @@ internal class NginxViewModel(application: Application) : AndroidViewModel(appli
     private fun work(block: suspend (SessionState.Active) -> Unit) {
         val active = container.activeSession ?: return
         if (owner !== active) { owner = active; intent = null; state = NginxState(); sessionEpoch++ }
-        if (state.busy || state.loading) return
+        if (state.busy || state.loading) {
+            NginxDiagnostics.event("work.skipped busy=${state.busy} loading=${state.loading} epoch=$sessionEpoch")
+            return
+        }
+        NginxDiagnostics.event("work.begin epoch=$sessionEpoch")
         state = state.copy(busy = true, problemCode = null, uncertain = false)
         viewModelScope.launch {
             try { block(active) }
-            catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) {
+            catch (cancelled: CancellationException) { NginxDiagnostics.event("work.cancelled epoch=$sessionEpoch"); throw cancelled }
+            catch (error: Exception) {
+                NginxDiagnostics.event("work.exception type=${error.javaClass.simpleName} epoch=$sessionEpoch")
                 if (container.activeSession === active) state = state.copy(uncertain = true,
                     pendingSites = runCatching { container.webSites.pending(active) }.getOrDefault(state.pendingSites))
             }
-            finally { if (container.activeSession === active) state = state.copy(busy = false, loading = false) }
+            finally {
+                if (container.activeSession === active) state = state.copy(busy = false, loading = false)
+                NginxDiagnostics.event("work.end ownerCurrent=${container.activeSession === active} busy=${state.busy} loading=${state.loading} uncertain=${state.uncertain} intent=${intent != null} web=${state.operation?.state} install=${state.installation?.state} pendingInstall=${state.pendingInstallation}")
+                state.pending.forEach { NginxDiagnostics.event("block.pending-web action=${it.action} target=${it.target} attempted=${it.attempted} operation=${it.operationId}") }
+                if (container.activeSession === active) container.installations.pending(active).filter { it.service == InstallationService.Nginx }.forEach {
+                    NginxDiagnostics.event("block.pending-install kind=${it.kind} attempted=${it.attempted} operation=${it.operationId}")
+                }
+            }
         }
     }
     private fun verify(active: SessionState.Active) { if (container.activeSession !== active) throw CancellationException("Nginx session changed") }

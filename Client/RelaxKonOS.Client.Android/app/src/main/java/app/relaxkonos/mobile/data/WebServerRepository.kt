@@ -42,6 +42,23 @@ class WebServerRepository(private val gateway: RelaxKonGateway, private val sess
         return submit(owner, pending, provider)
     }
 
+    /** Ends superseded integration intents, without assigning them another request's operation ID. */
+    fun reconcileIntegrationIntents(owner: SessionState.Active, servers: List<WebServer>, tests: Map<String, WebServerConfigTest>,
+        factsVerified: Boolean, tasksActive: Boolean): Int {
+        verifyManagement(owner)
+        if (!factsVerified || tasksActive) return 0
+        val superseded = journal.pending(owner).filter { pending ->
+            pending.action == "integrate" && pending.operationId == null &&
+                servers.any { it.id == pending.target && it.managementMode in setOf("managed", "integrated") && it.canRead && it.canTestConfiguration } &&
+                tests[pending.target]?.valid == true
+        }
+        superseded.forEach { pending ->
+            journal.complete(pending)
+            NginxDiagnostics.event("web.intent.superseded target=${pending.target} reason=managed-instance-verified originalOutcome=unknown")
+        }
+        return superseded.size
+    }
+
     /** Explicitly ends local recovery tracking; never claims the original request succeeded or cancels it. */
     fun acceptIntegrationFacts(owner: SessionState.Active, pending: PendingWebServerRequest) {
         verifyManagement(owner)
@@ -55,6 +72,7 @@ class WebServerRepository(private val gateway: RelaxKonGateway, private val sess
         require(owner.privilegedOperations && ServerCapabilities.WEB_SERVER in owner.capabilities)
         val knownId = pending.operationId
         if (knownId != null) return@withLock operation(owner, knownId).also { if (it is ApiResult.Success) journal.complete(pending) }
+        NginxDiagnostics.event("web.submit action=${pending.action} target=${pending.target} attempted=${pending.attempted} knownId=$knownId")
         journal.update(pending.copy(attempted = true))
         val action = if (pending.action == "integrate") null else WebServerAction.entries.single { it.route == pending.action }
         val result = elevations.withElevation(action?.elevation ?: "nginxConfigurationWrite", pending.target, provider) { url, token ->
@@ -62,6 +80,7 @@ class WebServerRepository(private val gateway: RelaxKonGateway, private val sess
             if (action == null) gateway.integrateWebServer(url, token, pending.target, true, pending.key)
             else gateway.webServerLifecycle(url, token, pending.target, action, pending.key)
         }
+        NginxDiagnostics.event("web.response ${NginxDiagnostics.result(result)} operation=${(result as? ApiResult.Success)?.value?.operationId} state=${(result as? ApiResult.Success)?.value?.state}")
         verify(owner)
         if (result is ApiResult.Success) {
             if (result.value.instanceId != pending.target || result.value.kind != (action?.kind ?: "integrate"))
@@ -69,6 +88,7 @@ class WebServerRepository(private val gateway: RelaxKonGateway, private val sess
             journal.update(pending.copy(operationId = result.value.operationId, attempted = true))
             record(owner, result.value)
             journal.complete(pending)
+            NginxDiagnostics.event("web.journal.completed operation=${result.value.operationId}")
         }
         if (result is ApiResult.Problem && !pending.attempted && result.status in setOf(400, 401, 403, 404)) journal.complete(pending)
         result

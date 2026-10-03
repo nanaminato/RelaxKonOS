@@ -11,6 +11,7 @@ public static class GitConflictChecks
 {
     public static async Task RunAsync(string root)
     {
+        await GitRegistrationChecks.RunAsync(root);
         var git = new HostGitCli().ResolveGitPath() ?? throw new Exception("Git is required for conflict integration tests.");
         var options = new DbContextOptionsBuilder<RelaxKonOSDbContext>().UseSqlite($"Data Source={Path.Combine(root, "git.sqlite")};Pooling=False").Options;
         var factory = new Factory(options);

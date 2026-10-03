@@ -93,6 +93,58 @@ class WebServerRepositoryTest {
         assertEquals(listOf(other), journal.pending(owner))
         assertTrue(index.forOwner(owner).isEmpty())
     }
+    @Test fun `refresh original operation observes completion without replay and releases known pending record`() = runTest {
+        val owner = signIn()
+        val pending = journal.begin(owner, server.id, "reload")
+        journal.update(pending.copy(attempted = true, operationId = operation.operationId))
+        var calls = 0
+        gateway.onWebOperation = { id ->
+            assertEquals(operation.operationId, id)
+            calls++
+            ApiResult.Success(operation.copy(state = if (calls == 1) WebServerOperationState.Running else WebServerOperationState.Succeeded))
+        }
+        gateway.onWebLifecycle = { _, _, _ -> error("A state refresh must not replay the mutation") }
+        val initial = (repository.operation(owner, operation.operationId) as ApiResult.Success).value
+        val refreshed = (repository.operation(owner, initial.operationId) as ApiResult.Success).value
+        assertTrue(initial.state.active)
+        assertFalse(refreshed.state.active)
+        assertTrue(journal.pending(owner).isEmpty())
+        assertEquals(2, calls)
+    }
+    @Test fun `verified managed instance supersedes orphan integration without replay or inventing success`() = runTest {
+        val owner = signIn()
+        val pending = journal.begin(owner, server.id, "integrate")
+        journal.update(pending.copy(attempted = true))
+        gateway.onWebLifecycle = { _, _, _ -> error("Reconciliation must be local and read-only") }
+        assertEquals(1, repository.reconcileIntegrationIntents(owner, listOf(server), mapOf(server.id to WebServerConfigTest(true, "")), true, false))
+        assertTrue(journal.pending(owner).isEmpty())
+        assertTrue(index.forOwner(owner).isEmpty())
+        gateway.onWebLifecycle = { _, _, _ -> ApiResult.Success(operation) }
+        assertTrue(repository.lifecycle(owner, server, WebServerAction.Reload, ElevationAnswerProvider.Declines) is ApiResult.Success)
+    }
+    @Test fun `unverified active invalid or different instance never clears orphan intent`() = runTest {
+        val owner = signIn()
+        val pending = journal.begin(owner, server.id, "integrate")
+        journal.update(pending.copy(attempted = true))
+        val valid = mapOf(server.id to WebServerConfigTest(true, ""))
+        assertEquals(0, repository.reconcileIntegrationIntents(owner, listOf(server), valid, false, false))
+        assertEquals(0, repository.reconcileIntegrationIntents(owner, listOf(server), valid, true, true))
+        assertEquals(0, repository.reconcileIntegrationIntents(owner, listOf(server), emptyMap(), true, false))
+        assertEquals(0, repository.reconcileIntegrationIntents(owner, listOf(server), mapOf(server.id to WebServerConfigTest(false, "invalid")), true, false))
+        assertEquals(0, repository.reconcileIntegrationIntents(owner, listOf(server.copy(id = "other")), valid, true, false))
+        assertEquals(1, journal.pending(owner).size)
+    }
+    @Test fun `lifecycle and known operation intents require original operation recovery`() = runTest {
+        val owner = signIn()
+        val lifecycle = journal.begin(owner, server.id, "reload")
+        val another = journal.begin(owner, "another", "integrate")
+        journal.update(another.copy(attempted = true, operationId = operation.operationId))
+        val instances = listOf(server, server.copy(id = "another"))
+        val valid = instances.associate { it.id to WebServerConfigTest(true, "") }
+        assertEquals(0, repository.reconcileIntegrationIntents(owner, instances, valid, true, false))
+        assertEquals(2, journal.pending(owner).size)
+        assertTrue(lifecycle in journal.pending(owner))
+    }
     @Test fun `different action cannot replace unresolved original key`() = runTest {
         val owner = signIn()
         val pending = journal.begin(owner, server.id, "reload")

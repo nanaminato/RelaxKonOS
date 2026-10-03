@@ -2,4 +2,11 @@
 <resources>
     <string name="nginx_accept_facts">Accept current instance state</string>
     <string name="nginx_accept_facts_confirm">Refresh and verify the current managed instance, then end local tracking of this unresolved integration request? This does not prove the original request succeeded and does not cancel any server task. Continue only after confirming the server operation has ended.</string>
+    <string name="nginx_controls_refreshing">Refreshing instance and task state…</string>
+    <string name="nginx_controls_installation_running">Installation is still running. Controls will become available when it finishes.</string>
+    <string name="nginx_controls_operation_running">An instance operation is still running. Refresh its status in operation records.</string>
+    <string name="nginx_controls_pending">An unresolved request is blocking controls. Review it in operation records.</string>
+    <string name="nginx_controls_unverified">Some server state could not be verified. Refresh the instance before continuing.</string>
+    <string name="nginx_diagnostics">Nginx diagnostics</string>
+    <string name="nginx_copy_diagnostics">Copy diagnostics</string>
 </resources>

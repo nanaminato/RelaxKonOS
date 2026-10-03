@@ -40,6 +40,7 @@ class InstallationRepository(
         val owner = intent.owner
         verify(owner)
         val saved = journal.pending(owner).firstOrNull { it.key == intent.pending.key }
+        NginxDiagnostics.event("install.submit service=${intent.request.service} kind=${intent.kind} saved=${saved != null} attempted=${saved?.attempted} knownId=${saved?.operationId}")
         val knownId = saved?.operationId
         if (saved != null && knownId != null) {
             return@withLock operation(owner, knownId).also { if (it is ApiResult.Success) journal.complete(saved) }
@@ -66,6 +67,7 @@ class InstallationRepository(
             verify(owner)
             gateway.startInstallation(url, token, intent.kind, intent.request, intent.pending.key)
         }
+        NginxDiagnostics.event("install.response ${NginxDiagnostics.result(result)} operation=${(result as? ApiResult.Success)?.value?.operationId} state=${(result as? ApiResult.Success)?.value?.state}")
         verify(owner)
         when (result) {
             is ApiResult.Success -> {

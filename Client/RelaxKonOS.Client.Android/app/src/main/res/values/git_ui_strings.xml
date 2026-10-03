@@ -1,0 +1,19 @@
+<resources>
+    <string name="git_expand">Expand</string>
+    <string name="git_collapse">Collapse</string>
+    <string name="git_sync">Remote sync</string>
+    <string name="git_branch_filter">Find a branch</string>
+    <string name="git_local_branches">Local</string>
+    <string name="git_remote_branches">Remote</string>
+    <string name="git_current_branch">Current branch</string>
+    <string name="git_no_results">No matching branches</string>
+    <string name="git_file_count">%1$d files</string>
+    <string name="git_stage_all">Stage this group</string>
+    <string name="git_unstage_all">Unstage this group</string>
+    <string name="git_build_source">New build · repository and reference</string>
+    <string name="git_build_options">Build options</string>
+    <string name="git_build_empty">No builds yet. Configure a repository above to start.</string>
+    <string name="git_build_logs">Build logs</string>
+    <string name="git_selected">Selected</string>
+    <string name="git_build_interrupted">Interrupted / unknown</string>
+</resources>

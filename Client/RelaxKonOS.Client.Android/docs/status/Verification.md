@@ -56,7 +56,7 @@ Mihomo 设置页定向 Compose 检查 4 项通过：360dp 窄布局下的三个�
 | BP08-M1 | [SMB 文件服务](../features/Smb.md) | 真实 Samba 包/服务/凭据、TCP 445 传输、Windows SMB Server/ACL/漂移、设备矩阵 |
 | BP09-M1 | [Docker 引擎与镜像源](../features/DockerEngine.md) | 真实 Linux Docker 安装与 Helper、Windows Desktop CLI、镜像源 TLS 与实际拉取、并发 |
 | BP09-M2 | [Docker 资源](../features/DockerResources.md) | 真实 Engine CRUD 与引用竞争、stdout/stderr 日志、进程回收与多客户端并发 |
-| BP10 | [Git 工作区与构建](../features/Git.md) | 真实 Git 安装与 Helper 身份、私有远端认证与推送、断网/原键、手机平板旋转与三语视觉 |
+| BP10 | [Git 工作区与构建](../features/Git.md) | 真实 Git 安装与 Helper 身份、私有远端认证与推送、断网/原键；仓库下拉、批量暂存确认、分支筛选、历史/差异全屏对话框、构建折叠面板的手机/平板、旋转、大字体与三语视觉 |
 | BP11 | [文件与 Git 共用编辑器](../features/TextEditor.md) | 真实 Helper 身份与权限、外部并发/崩溃/磁盘满、进程回收后的未知写入、设备矩阵；编辑器辅助弹窗、正文独立滚动、查找选区、另存为路径的手机/平板、IME、大字体与旋转检查 |
 | BP12 | [文件与图片](../features/Files.md) | BP12-T1–T5（见第 4 节） |
 | BP13 | [终端、脚本与守护](../features/TerminalAutomation.md) | BP13-T1–T5 |

@@ -1,0 +1,19 @@
+<resources>
+    <string name="git_expand">展開</string>
+    <string name="git_collapse">折りたたむ</string>
+    <string name="git_sync">リモート同期</string>
+    <string name="git_branch_filter">ブランチを検索</string>
+    <string name="git_local_branches">ローカル</string>
+    <string name="git_remote_branches">リモート</string>
+    <string name="git_current_branch">現在のブランチ</string>
+    <string name="git_no_results">一致するブランチはありません</string>
+    <string name="git_file_count">%1$d ファイル</string>
+    <string name="git_stage_all">このグループをステージ</string>
+    <string name="git_unstage_all">このグループのステージを解除</string>
+    <string name="git_build_source">新規ビルド · リポジトリと参照</string>
+    <string name="git_build_options">ビルド設定</string>
+    <string name="git_build_empty">ビルドはありません。上の新規ビルドからリポジトリを設定してください。</string>
+    <string name="git_build_logs">ビルドログ</string>
+    <string name="git_selected">選択中</string>
+    <string name="git_build_interrupted">中断 / 不明</string>
+</resources>

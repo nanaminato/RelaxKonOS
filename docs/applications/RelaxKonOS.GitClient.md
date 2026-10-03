@@ -15,6 +15,8 @@
 
 ## 1. 定位
 
+仓库注册和路径探测仅在服务端校验绝对路径格式，随后由 Git 的有效执行身份打开工作目录并执行 `rev-parse --is-inside-work-tree`。System 模式使用当前登录账号绑定的宿主身份经用户执行助手检查；User 模式使用当前进程身份。不得先用服务账号的 `Directory.Exists` 判断用户工作树是否存在，否则私有家目录会被误判为不存在。目录不可访问、不存在或不是工作树时不写入注册记录，无需放宽用户家目录权限。
+
 GitClient 是 RelaxKonOS 的内置版本控制客户端，参考 TortoiseGit / Git Extensions。
 
 - **架构归属**：§6.2 Remote Service Application —— UI 完全在 Client 本地渲染；仓库状态、提交历史、分支列表与变更结果**真源在 Server 端通过 `git` 实时采集**（不持久化运行时状态，每次请求都是当下快照）。

@@ -90,11 +90,10 @@ public sealed partial class LocalGitRepositoryService(
     {
         if (!Path.IsPathRooted(registration.Path))
             throw new ArgumentException("Repository path must be absolute.", nameof(registration.Path));
-        if (!Directory.Exists(registration.Path))
-            throw new ArgumentException("Repository path does not exist.", nameof(registration.Path));
-
         var gitPath = ResolveGitPathOrThrow();
 
+        // Opening the working directory and checking the worktree must use the same
+        // execution identity. The service account need not be able to traverse a user's home.
         var revParse = await RunGitAsync(gitPath, registration.Path, ["rev-parse", "--is-inside-work-tree"], cancellationToken);
         if (!revParse.Success || !revParse.Output.Trim().Equals("true", StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException("The path is not a Git repository.", nameof(registration.Path));
@@ -962,13 +961,10 @@ public sealed partial class LocalGitRepositoryService(
             throw new ArgumentException("Repository path must not be empty.", nameof(path));
         if (!Path.IsPathRooted(path))
             throw new ArgumentException("Repository path must be absolute.", nameof(path));
-        if (!Directory.Exists(path))
-            throw new ArgumentException("Repository path does not exist.", nameof(path));
-
         var gitPath = gitCli.ResolveGitPath()
             ?? throw new InvalidOperationException("Git executable not found on the host.");
 
-        // 是否是 git 仓库
+        // Let the effective Git identity open the directory, as in registration.
         var revParse = await RunGitAsync(gitPath, path, ["rev-parse", "--is-inside-work-tree"], cancellationToken);
         if (!revParse.Success || !revParse.Output.Trim().Equals("true", StringComparison.OrdinalIgnoreCase))
             return new GitRepositoryProbeDto(false);
