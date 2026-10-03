@@ -1,13 +1,11 @@
 package app.relaxkonos.mobile.ui.servercenter
 
-import android.app.Application
 import android.graphics.BitmapFactory
 import android.net.Uri
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
 import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.servercenter.*
 import app.relaxkonos.mobile.ui.common.TransferProgress
+import app.relaxkonos.mobile.service.SshTransferForegroundService
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.OutputStream
@@ -19,9 +17,9 @@ import kotlinx.coroutines.flow.update
 data class SshClipboard(val hostId: String, val entries: List<SshFileEntry>, val cut: Boolean)
 data class SshFileCheck(val path: String, val exists: Boolean?)
 
-class SshFilesViewModel(application: Application) : AndroidViewModel(application) {
-    private val app = getApplication<RelaxKonApplication>()
-    private val container = app.container
+class SshFilesController(private val app: RelaxKonApplication) {
+    private val container get() = app.container
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val documents = AndroidSshDocuments(app.contentResolver)
     private val mutable = MutableStateFlow(SshFilesUiState())
     val state = mutable.asStateFlow()
@@ -33,15 +31,19 @@ class SshFilesViewModel(application: Application) : AndroidViewModel(application
     private var job: Job? = null; private var connection: ServerCenterHostSession? = null
     private var workspaceRevision = -1
     private val uncertain = mutableMapOf<String, Set<String>>()
+    val transferLease: Int get() = generation
+    val transferring: Boolean get() = state.value.busy && state.value.transfer != null
 
     fun resume(hostId: String) {
         val revision = container.serverCenter.workspaceRevision
         if (state.value.hostId != hostId || workspaceRevision != revision) { stop(); mutable.value = SshFilesUiState(hostId = hostId, unknown = hostId in uncertain, writesSettling = writeRequests.any { it.hostId == hostId && it.sent }); workspaceRevision = revision }
-        active = true; reload()
+        active = true; if (!state.value.busy) reload()
     }
     fun stop() { activeRequest?.takeIf { it.sent && it.targets != null }?.let(::markUnknown); active = false; generation++; job?.cancel(); connection?.close(); connection = null; mutable.update { it.copy(busy = false, connected = false, transfer = null) } }
     fun cancelTransfer() { stop(); active = true }
-    override fun onCleared() { stop(); super.onCleared() }
+    fun detach() { if (!transferring) stop() }
+    fun close() { stop(); scope.cancel() }
+    fun keeperStopped(lease: Int) { if (lease == generation && transferring) cancelTransfer() }
     fun reload() {
         val path = state.value.path
         execute { transport, _ -> val entries = transport.listDirectory(path); { old -> old.copy(entries = entries, connected = true, selectedPaths = emptySet(), checked = emptyList()) } }
@@ -96,7 +98,7 @@ class SshFilesViewModel(application: Application) : AndroidViewModel(application
         val snapshot = state.value; val clipboard = snapshot.clipboard ?: return
         if (clipboard.hostId != snapshot.hostId) return
         val targets = clipboard.entries.flatMap { listOf(it.path, SshFileTransferRules.child(snapshot.path, it.name)) }
-        execute(targets) { transport, dispatch ->
+        execute(targets, transfer = TransferProgress(clipboard.entries.first().name)) { transport, dispatch ->
             SshFileTransfers(transport).copy(clipboard.entries, snapshot.path, clipboard.cut, dispatch)
             val entries = transport.listDirectory(snapshot.path)
             return@execute { old -> old.copy(entries = entries, clipboard = if (clipboard.cut) null else old.clipboard, detailEntry = null, selected = null, preview = SshPreview.None) }
@@ -256,9 +258,10 @@ class SshFilesViewModel(application: Application) : AndroidViewModel(application
         val epoch = ++generation; val workspaceEpoch = workspaceRevision; val request = Request(snapshot.hostId, writeTargets); activeRequest = request; if (writeTargets != null) writeRequests += request; var completed = false
         fun verify() { if (!active || epoch != generation || container.serverCenter.workspaceRevision != workspaceEpoch || state.value.hostId != snapshot.hostId || container.serverCenter.sshFilesHostId != snapshot.hostId) throw CancellationException("SFTP workspace changed") }
         mutable.update { it.copy(busy = true, problem = null, checked = emptyList(), transfer = transfer, uploading = uploading) }
-        job = viewModelScope.launch {
+        job = scope.launch {
             var session: ServerCenterHostSession? = null
             try {
+                if (transfer != null) SshTransferForegroundService.start(app, epoch)
                 session = container.serverCenterConnections.connect(snapshot.hostId, SshCredential(SshCredentialKind.Password, secret, null), System.currentTimeMillis())
                 verify(); connection = session
                 val result = action(session.sshTransport) { verify(); request.sent = true }

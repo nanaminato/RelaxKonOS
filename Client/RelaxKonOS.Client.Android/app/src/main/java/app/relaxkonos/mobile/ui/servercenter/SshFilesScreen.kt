@@ -52,9 +52,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalContext
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.servercenter.SshCredential
@@ -146,17 +143,17 @@ fun SshFilesScreen(hostId: String, modifier: Modifier = Modifier) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SshFilesContent(hostId: String, modifier: Modifier) {
-    val model: SshFilesViewModel = viewModel()
     val container = (LocalContext.current.applicationContext as RelaxKonApplication).container
+    val model = container.sshFiles
     val workspaceRevision = container.serverCenter.workspaceRevision
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var resumed by remember(lifecycle) { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
     DisposableEffect(lifecycle, model) {
         val observer = LifecycleEventObserver { _, _ -> resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
         lifecycle.addObserver(observer)
-        onDispose { lifecycle.removeObserver(observer); model.stop() }
+        onDispose { lifecycle.removeObserver(observer); model.detach() }
     }
-    LaunchedEffect(hostId, workspaceRevision, resumed) { if (resumed) model.resume(hostId) else model.stop() }
+    LaunchedEffect(hostId, workspaceRevision, resumed) { if (resumed) model.resume(hostId) else model.detach() }
     val state by model.state.collectAsState()
     BackHandler(enabled = state.detailEntry != null) { model.closeDetail() }
     var pendingUpload by remember(hostId, workspaceRevision) { mutableStateOf<List<Uri>>(emptyList()) }
@@ -185,13 +182,11 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
             saveDownload.launch(if (state.downloadZip) target.name + ".zip" else target.name)
         }
     }
-    state.transfer?.let { transfer ->
-        app.relaxkonos.mobile.ui.common.TransferProgressDialog(
-            stringResource(if (state.uploading) R.string.files_uploading else R.string.files_downloading),
-            transfer, model::cancelTransfer,
-        )
-    }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+        state.transfer?.let { transfer ->
+            Text(transfer.fileName)
+            app.relaxkonos.mobile.ui.common.TransferProgressContent(transfer)
+        }
         if (state.busy) Text(stringResource(R.string.ssh_files_transfer_note), style = MaterialTheme.typography.bodySmall)
         if (state.busy) TextButton(model::cancelTransfer) { Text(stringResource(R.string.common_cancel)) }
         if (state.unknown) {

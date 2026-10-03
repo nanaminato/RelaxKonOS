@@ -10,7 +10,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -22,7 +21,9 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 /** Browses the already trusted SSH workspace using the same SFTP session rules as its Files tab. */
 @Composable
 internal fun SshBundlePicker(hostId: String, onDismiss: () -> Unit, onSelect: (String) -> Unit) {
-    val model: SshFilesViewModel = viewModel(key = "ssh-bundle-picker-$hostId")
+    val app = LocalContext.current.applicationContext as RelaxKonApplication
+    val model = remember(app, hostId) { SshFilesController(app) }
+    DisposableEffect(model) { onDispose { model.close() } }
     val state by model.state.collectAsState()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val revision = (LocalContext.current.applicationContext as RelaxKonApplication).container.serverCenter.workspaceRevision

@@ -9,6 +9,24 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SshFileTransfersTest {
+    @Test fun `cancelling a batch before its next write preserves completed files without writing remaining files`() = runTest {
+        val sftp = MemorySftp()
+        val first = sftp.file("/source/a.txt", "abc")
+        val second = sftp.file("/source/b.txt", "def")
+        var writes = 0
+        try {
+            SshFileTransfers(sftp.transport).copy(listOf(first, second), "/destination", false) {
+                if (++writes == 2) throw kotlinx.coroutines.CancellationException("user cancelled")
+            }
+            fail("Cancellation must escape the batch")
+        } catch (_: kotlinx.coroutines.CancellationException) {
+            assertEquals(listOf("copy:/destination/a.txt"), sftp.writes)
+            assertTrue(sftp.entries.containsKey("/destination/a.txt"))
+            assertFalse(sftp.entries.containsKey("/destination/b.txt"))
+            assertTrue(sftp.entries.containsKey(first.path))
+            assertTrue(sftp.entries.containsKey(second.path))
+        }
+    }
     @Test fun `ZIP export reports aggregate source bytes across multiple files`() = runTest {
         val sftp = MemorySftp()
         val first = sftp.file("/source/a.txt", "abc")

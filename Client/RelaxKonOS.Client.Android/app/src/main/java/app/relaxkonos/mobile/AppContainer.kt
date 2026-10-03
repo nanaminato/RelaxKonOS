@@ -185,7 +185,8 @@ class AppContainer(context: Context) {
         { lease -> app.relaxkonos.mobile.service.SshForwardForegroundService.start(appContext, lease) },
         { appContext.stopService(android.content.Intent(appContext, app.relaxkonos.mobile.service.SshForwardForegroundService::class.java)) },
     )
-    init { serverCenter.onWorkspaceClosed = sshForwards::clearWorkspace }
+    val sshFiles by lazy { app.relaxkonos.mobile.ui.servercenter.SshFilesController(context.applicationContext as RelaxKonApplication) }
+    init { serverCenter.onWorkspaceClosed = { sshForwards.clearWorkspace(); sshFiles.stop() } }
 
     /**
      * 受管登录的连接解析入口：把登录记录里的安装标识接到本机宿主资料。

@@ -62,6 +62,10 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
         <service
+            android:name=".service.SshTransferForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+        <service
             android:name=".service.SshForwardForegroundService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
