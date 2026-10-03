@@ -86,11 +86,12 @@ public sealed class MihomoInstallationService(IProxyRuntimeManager runtime, IMih
         Check(!options.Rollback || kind == InstallationOperationKind.Repair, InstallationProblemCodes.InvalidRequest);
         Check(string.IsNullOrWhiteSpace(options.FileReferenceId) || kind == InstallationOperationKind.Install && !options.Rollback, InstallationProblemCodes.InvalidRequest);
         await progress.ReportAsync(new(options.Rollback ? InstallationStage.RollingBack : InstallationStage.Preparing), ct);
-        // The current activation/rollback transaction must run to a safe conclusion once entered.
+        // Downloading is cancellable; the runtime manager protects the activation transaction.
         var result = kind == InstallationOperationKind.Uninstall ? await runtime.UninstallManagedAsync("mihomo", CancellationToken.None)
             : options.Rollback ? await runtime.RollbackManagedAsync("mihomo", CancellationToken.None)
             : string.IsNullOrWhiteSpace(options.FileReferenceId)
-                ? await runtime.InstallManagedAsync("mihomo", options.Version, stage => progress.ReportAsync(new(Stage(stage))), CancellationToken.None)
+                ? await runtime.InstallManagedAsync("mihomo", options.Version,
+                    stage => progress.ReportAsync(new(Stage(stage), Cancellable: stage == "downloading")), ct)
                 : await InstallFromArchiveAsync(options, actor, progress, ct);
         Check(string.IsNullOrEmpty(result.ProblemCode), result.ProblemCode);
         await progress.ReportAsync(new(InstallationStage.HealthChecking));

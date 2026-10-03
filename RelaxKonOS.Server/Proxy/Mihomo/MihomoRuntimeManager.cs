@@ -223,6 +223,10 @@ public sealed class MihomoRuntimeManager(
                 }
 
                 await ReportStageAsync(stageReporter, "activating");
+                // The stage reporter atomically closes cancellation before any host mutation.
+                // Once activation starts, finish it or restore the previous runtime safely.
+                cancellationToken.ThrowIfCancellationRequested();
+                cancellationToken = CancellationToken.None;
                 var runtimeOperation = before?.ActiveVersion is { Length: > 0 }
                     ? await privileged.ReplaceRuntimeAsync(new ReplaceProxyRuntimeOperation(MihomoEngine.Id, release.Version, ReleaseDirectoryId(release.Version)), cancellationToken)
                     : await privileged.InstallRuntimeAsync(new InstallProxyRuntimeOperation(MihomoEngine.Id, release.Version, ReleaseDirectoryId(release.Version)), cancellationToken);

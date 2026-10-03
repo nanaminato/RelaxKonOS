@@ -17,17 +17,21 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
     private readonly SemaphoreSlim submitGate = new(1, 1);
     private Task? observation;
     private string? pendingKey;
+    private CancellationTokenSource? transferCancellation;
+    private InstallationStage transferStage;
+    [ObservableProperty] private bool isTransferring;
+    partial void OnIsTransferringChanged(bool value) => OnOperationChanged(Operation);
     public Func<string?, Task>? ShowPrivilegedHelperUnavailableAsync { get; set; }
     [ObservableProperty] private InstallationOperationDto? operation;
     [ObservableProperty] private string connectionText = "";
-    public bool IsActive => Operation?.State is InstallationOperationState.Queued or InstallationOperationState.Running;
-    public bool IsIndeterminate => IsActive && Operation?.Progress is null;
-    public int Progress => Operation?.Progress ?? 0;
-    public string StageText => Operation is null ? "" : LocalizedText.Get("installation.stage." + Operation.Stage)
+    public bool IsActive => IsTransferring || Operation?.State is InstallationOperationState.Queued or InstallationOperationState.Running;
+    public bool IsIndeterminate => IsTransferring || IsActive && Operation?.Progress is null;
+    public int Progress => IsTransferring ? 0 : Operation?.Progress ?? 0;
+    public string StageText => IsTransferring ? LocalizedText.Get("installation.stage." + transferStage) : Operation is null ? "" : LocalizedText.Get("installation.stage." + Operation.Stage)
         + (Operation.Progress is { } value ? $" ({value}%)" : "")
         + (Operation.ProblemCode is { Length: > 0 } code ? " · " + FormatProblemCode(code) : "");
     public bool HasMessage => !string.IsNullOrWhiteSpace(StageText) || !string.IsNullOrWhiteSpace(ConnectionText);
-    private bool CanCancel => IsActive && Operation?.Cancellable == true;
+    private bool CanCancel => IsTransferring || IsActive && Operation?.Cancellable == true;
     partial void OnOperationChanged(InstallationOperationDto? value)
     {
         OnPropertyChanged(nameof(IsActive)); OnPropertyChanged(nameof(IsIndeterminate)); OnPropertyChanged(nameof(Progress)); OnPropertyChanged(nameof(StageText)); OnPropertyChanged(nameof(HasMessage));
@@ -101,10 +105,21 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
     /// <summary>Fetches a fixed publisher URL through the desktop host, then uploads the finished
     /// archive to the server's actor-bound installation staging area.</summary>
     public async Task<string?> DownloadAndUploadPackageAsync(string url, string fileName)
+        => await TransferPackageAsync(InstallationStage.Downloading,
+            token => client.DownloadAndUploadPackageAsync(service, url, fileName, token));
+
+    private async Task<string?> TransferPackageAsync(InstallationStage stage,
+        Func<CancellationToken, Task<InstallationFileReferenceDto?>> transfer)
     {
+        if (IsActive) return null;
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        transferCancellation = cancellation;
+        transferStage = stage;
+        ConnectionText = string.Empty;
+        IsTransferring = true;
         try
         {
-            var reference = await client.DownloadAndUploadPackageAsync(service, url, fileName, lifetime.Token);
+            var reference = await transfer(cancellation.Token);
             ConnectionText = string.Empty;
             return reference?.Id;
         }
@@ -113,31 +128,26 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
             ConnectionText = FormatProblemCode(error.ProblemCode);
             await ShowHelperFailureAsync(error.ProblemCode);
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            if (!lifetime.IsCancellationRequested)
+            {
+                Operation = null;
+                ConnectionText = LocalizedText.Get("installation.stage." + InstallationStage.Cancelled);
+            }
+        }
         catch { ConnectionText = LocalizedText.Get("installation.connection_unavailable"); }
+        finally { IsTransferring = false; transferCancellation = null; }
         return null;
     }
 
     public async Task<string?> UploadPackageAsync(string fileName, Stream content)
-    {
-        try
-        {
-            var reference = await client.UploadPackageAsync(service, fileName, content, lifetime.Token);
-            ConnectionText = string.Empty;
-            return reference?.Id;
-        }
-        catch (InstallationApiException error)
-        {
-            ConnectionText = FormatProblemCode(error.ProblemCode);
-            await ShowHelperFailureAsync(error.ProblemCode);
-        }
-        catch (OperationCanceledException) { }
-        catch { ConnectionText = LocalizedText.Get("installation.connection_unavailable"); }
-        return null;
-    }
+        => await TransferPackageAsync(InstallationStage.Copying,
+            token => client.UploadPackageAsync(service, fileName, content, token));
 
     public async Task RestoreAsync()
     {
+        if (IsTransferring) return;
         if (observation is { IsCompleted: false }) return;
         try
         {
@@ -204,6 +214,7 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
     [RelayCommand(CanExecute = nameof(CanCancel))]
     private async Task CancelAsync()
     {
+        if (transferCancellation is { } transfer) { transfer.Cancel(); return; }
         try { Operation = await client.CancelAsync(Operation!.OperationId, lifetime.Token) ?? Operation; }
         catch { ConnectionText = LocalizedText.Get("installation.cancel_unavailable"); }
     }
