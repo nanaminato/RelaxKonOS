@@ -20,7 +20,7 @@ internal partial class SshHostKeyDialog : Window
         Title = title;
         MessageText.Text = message;
         ObservedLabel.Text = observedLabel;
-        FingerprintText.Text = fingerprint;
+        FingerprintText.Text = FormatFingerprint(fingerprint);
         ConfirmButton.Content = confirmText;
         CancelButton.Content = cancelText;
 
@@ -29,9 +29,21 @@ internal partial class SshHostKeyDialog : Window
         {
             PinnedPanel.IsVisible = true;
             PinnedLabel.Text = pinnedLabel;
-            PinnedFingerprintText.Text = previousFingerprint;
+            PinnedFingerprintText.Text = FormatFingerprint(previousFingerprint);
             PinnedConfirmedText.Text = pinnedConfirmedText;
+            PinnedConfirmedText.IsVisible = !string.IsNullOrWhiteSpace(pinnedConfirmedText);
         }
+    }
+
+    private static string FormatFingerprint(string fingerprint)
+    {
+        // TLS SHA-256 uses 64 hex characters. Keep SSH's SHA256/base64 representation intact.
+        if (fingerprint.Length != 64 || !fingerprint.All(Uri.IsHexDigit))
+            return fingerprint;
+
+        return string.Join("\n", Enumerable.Range(0, 2).Select(row =>
+            string.Join(" ", Enumerable.Range(0, 8).Select(group =>
+                fingerprint.Substring(row * 32 + group * 4, 4)))));
     }
 
     private void Cancel_Click(object? sender, RoutedEventArgs e) => Close(false);

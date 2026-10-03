@@ -14,6 +14,7 @@ void Check(bool condition, string label)
     Console.WriteLine($"PASS {++passed}: {label}");
 }
 FileBrowserPresentationChecks.Run(Check);
+ImageViewerChecks.Run(Check);
 await HostFileClipboardChecks.RunAsync(Check);
 Check(ExplorerBreadcrumb.ParentPath("/home/alice") == "/home", "POSIX parent");
 Check(ExplorerBreadcrumb.ParentPath("/") is null, "POSIX root goes to Computer");

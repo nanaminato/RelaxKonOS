@@ -1,3 +1,4 @@
+using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Localization;
@@ -6,7 +7,7 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace RelaxKonOS.Client.Apps.ImageViewer.ViewModels;
 
-/// <summary>Loads and displays a remote image using Avalonia's built-in bitmap decoder.</summary>
+/// <summary>Loads remote bitmap and vector images for display.</summary>
 public sealed partial class ImageViewerViewModel : LocalizedObservableObject, IDisposable
 {
     private readonly IExplorerClient? _files;
@@ -21,7 +22,7 @@ public sealed partial class ImageViewerViewModel : LocalizedObservableObject, ID
         _isSshSession = isSshSession;
     }
 
-    [ObservableProperty] private Bitmap? _imageSource;
+    [ObservableProperty] private IImage? _imageSource;
     [ObservableProperty] private string? _currentPath;
     [ObservableProperty] private LocalizedStatus _statusText = LocalizedText.Ref("image_viewer.status.open_hint");
     [ObservableProperty] private int _pixelWidth;
@@ -49,7 +50,7 @@ public sealed partial class ImageViewerViewModel : LocalizedObservableObject, ID
     partial void OnPixelWidthChanged(int value) => OnPropertyChanged(nameof(DimensionsText));
     partial void OnPixelHeightChanged(int value) => OnPropertyChanged(nameof(DimensionsText));
     partial void OnZoomPercentChanged(int value) => UpdateDisplaySize();
-    partial void OnImageSourceChanged(Bitmap? value) => OnPropertyChanged(nameof(HasImage));
+    partial void OnImageSourceChanged(IImage? value) => OnPropertyChanged(nameof(HasImage));
 
     [RelayCommand]
     private void ZoomIn() => ZoomPercent = Math.Min(400, ZoomPercent + 25);
@@ -102,20 +103,19 @@ public sealed partial class ImageViewerViewModel : LocalizedObservableObject, ID
                 return;
             }
 
-            using var stream = new MemoryStream(bytes, writable: false);
-            var bitmap = new Bitmap(stream);
+            var image = ImageViewerDecoder.Load(path, bytes);
             if (ct.IsCancellationRequested)
             {
-                bitmap.Dispose();
+                (image as IDisposable)?.Dispose();
                 return;
             }
 
             var previous = ImageSource;
-            ImageSource = bitmap;
-            previous?.Dispose();
+            ImageSource = image;
+            (previous as IDisposable)?.Dispose();
             CurrentPath = path;
-            PixelWidth = bitmap.PixelSize.Width;
-            PixelHeight = bitmap.PixelSize.Height;
+            PixelWidth = image is Bitmap bitmap ? bitmap.PixelSize.Width : checked((int)Math.Ceiling(image.Size.Width));
+            PixelHeight = image is Bitmap raster ? raster.PixelSize.Height : checked((int)Math.Ceiling(image.Size.Height));
             ZoomPercent = 100;
             FitToView();
             StatusText = LocalizedText.Ref("image_viewer.status.opened", Path.GetFileName(path), DimensionsText);
@@ -139,7 +139,7 @@ public sealed partial class ImageViewerViewModel : LocalizedObservableObject, ID
     {
         _loadCts?.Cancel();
         _loadCts?.Dispose();
-        ImageSource?.Dispose();
+        (ImageSource as IDisposable)?.Dispose();
     }
 
     private void UpdateDisplaySize()

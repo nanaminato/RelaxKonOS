@@ -15,7 +15,7 @@ namespace RelaxKonOS.Client.Apps.ImageViewer;
 public sealed class ImageViewerApp : RemoteApplicationBase, IFileOpenApplication
 {
     public static IReadOnlyList<string> SupportedExtensions { get; } =
-    [".png", ".apng", ".jpg", ".jpeg", ".jpe", ".jfif", ".gif", ".bmp", ".dib", ".webp", ".ico"];
+    [".png", ".apng", ".jpg", ".jpeg", ".jpe", ".jfif", ".gif", ".bmp", ".dib", ".webp", ".ico", ".svg"];
 
     public override ApplicationManifest Manifest { get; } = new(
         Id: new AppId("relaxkonos.imageviewer"),

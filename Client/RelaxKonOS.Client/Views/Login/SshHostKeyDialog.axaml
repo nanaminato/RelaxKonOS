@@ -4,29 +4,28 @@
         Width="640" MinHeight="230" SizeToContent="Height"
         CanResize="False" WindowStartupLocation="CenterOwner">
     <Grid Margin="20" RowDefinitions="Auto,Auto,Auto" RowSpacing="16">
-        <TextBlock x:Name="MessageText" TextWrapping="Wrap" />
-        <!-- 密钥变更时左侧显示被取代的旧指纹：只看新指纹无法分辨「重装/重建过的同一台机器」
-             和「这个地址被另一台机器接管」，因此两者必须并排出现。 -->
-        <Grid Grid.Row="1" ColumnDefinitions="Auto,*" ColumnSpacing="10">
-            <Border x:Name="PinnedPanel" Grid.Column="0" IsVisible="False" Background="{DynamicResource SurfaceBrush}"
-                    BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" Padding="10">
-                <StackPanel Spacing="4">
-                    <TextBlock x:Name="PinnedLabel" FontSize="12" TextWrapping="Wrap" />
-                    <TextBlock x:Name="PinnedFingerprintText" FontFamily="Consolas" TextWrapping="Wrap" />
-                    <TextBlock x:Name="PinnedConfirmedText" FontSize="12" TextWrapping="Wrap" />
+        <TextBlock x:Name="MessageText" TextWrapping="Wrap" LineHeight="22" />
+        <!-- 每个指纹使用完整宽度，避免长指纹挤压相邻内容；旧记录仅在变更时展示。 -->
+        <StackPanel Grid.Row="1" Spacing="12">
+            <Border Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" Padding="16" CornerRadius="8">
+                <StackPanel Spacing="8">
+                    <TextBlock x:Name="ObservedLabel" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <SelectableTextBlock x:Name="FingerprintText" FontFamily="Consolas,monospace" FontSize="14" LineHeight="22" TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
-            <Border Grid.Column="1" Background="{DynamicResource SurfaceBrush}"
-                    BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" Padding="10">
-                <StackPanel Spacing="4">
-                    <TextBlock x:Name="ObservedLabel" FontSize="12" TextWrapping="Wrap" />
-                    <TextBlock x:Name="FingerprintText" FontFamily="Consolas" TextWrapping="Wrap" />
+            <Border x:Name="PinnedPanel" IsVisible="False" Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" Padding="16" CornerRadius="8">
+                <StackPanel Spacing="8">
+                    <TextBlock x:Name="PinnedLabel" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <SelectableTextBlock x:Name="PinnedFingerprintText" FontFamily="Consolas,monospace" FontSize="14" LineHeight="22" TextWrapping="Wrap" />
+                    <TextBlock x:Name="PinnedConfirmedText" FontSize="12" TextWrapping="Wrap" IsVisible="False" />
                 </StackPanel>
             </Border>
-        </Grid>
+        </StackPanel>
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-            <Button x:Name="CancelButton" Click="Cancel_Click" />
-            <Button x:Name="ConfirmButton" Classes="primary" Click="Confirm_Click" />
+            <Button x:Name="CancelButton" MinWidth="80" MinHeight="40" HorizontalContentAlignment="Center" Click="Cancel_Click" />
+            <Button x:Name="ConfirmButton" MinHeight="40" Padding="16,8" HorizontalContentAlignment="Center" Classes="primary" Click="Confirm_Click" />
         </StackPanel>
     </Grid>
 </Window>
