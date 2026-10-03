@@ -14,12 +14,16 @@ import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
 
 data class CertificateReview(val origin: String, val subject: String, val issuer: String,
-    val fingerprint: String, val previous: String?, val validFrom: String, val validUntil: String)
+    val fingerprint: String, val previous: String?, val validFrom: String, val validUntil: String,
+    val trustScope: String? = null)
 
 /** Application-local leaf pins; platform hostname validation remains enabled. */
 object ServerCertificateTrust {
     private lateinit var preferences: SharedPreferences
     private val reviews = ConcurrentHashMap<String, CertificateReview>()
+    private val tunnelScopes = ConcurrentHashMap<String, String>()
+    fun bindTunnel(endpoint: String, serviceId: String) { tunnelScopes[origin(endpoint)] = serviceId }
+    fun unbindTunnel(endpoint: String) { val target = origin(endpoint); tunnelScopes.remove(target); reviews.remove(target) }
     fun initialize(context: Context) {
         initialize(context.applicationContext.getSharedPreferences("server-certificate-pins", Context.MODE_PRIVATE))
     }
@@ -31,7 +35,7 @@ object ServerCertificateTrust {
     fun clear(value: String) { reviews.remove(origin(value)) }
     fun trust(review: CertificateReview) {
         check(reviews[review.origin] == review)
-        check(preferences.edit().putString(review.origin, review.fingerprint).commit())
+        check(preferences.edit().putString(review.trustScope ?: review.origin, review.fingerprint).commit())
         reviews.remove(review.origin)
     }
     fun configure(connection: java.net.HttpURLConnection) {
@@ -40,6 +44,7 @@ object ServerCertificateTrust {
     }
     fun tls(endpoint: String): Pair<SSLContext, X509TrustManager> {
         val target = origin(endpoint)
+        val scope = tunnelScopes[target] ?: target
         val factory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
         factory.init(null as KeyStore?)
         val platform = factory.trustManagers.filterIsInstance<X509TrustManager>().single()
@@ -53,7 +58,7 @@ object ServerCertificateTrust {
                 if (usage != null && "1.3.6.1.5.5.7.3.1" !in usage && "2.5.29.37.0" !in usage)
                     throw CertificateException("Certificate is not valid for server authentication")
                 val fingerprint = MessageDigest.getInstance("SHA-256").digest(leaf.encoded).joinToString("") { "%02X".format(it) }
-                val previous = if (::preferences.isInitialized) preferences.getString(target, null) else null
+                val previous = if (::preferences.isInitialized) preferences.getString(scope, null) else null
                 var platformError: CertificateException? = null
                 try { platform.checkServerTrusted(chain, authType) } catch (error: CertificateException) { platformError = error }
                 // Only a valid, genuinely self-signed leaf may bypass missing platform trust.
@@ -62,7 +67,7 @@ object ServerCertificateTrust {
                 if (platformError != null && !selfSigned) throw platformError
                 if (previous == fingerprint || previous == null && platformError == null) return
                 reviews[target] = CertificateReview(target, leaf.subjectX500Principal.name, leaf.issuerX500Principal.name,
-                    fingerprint, previous, leaf.notBefore.toString(), leaf.notAfter.toString())
+                    fingerprint, previous, leaf.notBefore.toString(), leaf.notAfter.toString(), scope)
                 throw CertificateException("Server certificate requires explicit confirmation")
             }
         }

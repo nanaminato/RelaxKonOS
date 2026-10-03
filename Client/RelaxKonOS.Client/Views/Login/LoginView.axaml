@@ -50,7 +50,7 @@
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel>
             <Border Classes="login-divider" />
-            <Grid Margin="32,22,32,18" IsSharedSizeScope="True">
+            <Grid Margin="32,22,32,18" IsSharedSizeScope="True" IsEnabled="{Binding !IsConnecting}">
                 <StackPanel Spacing="0">
                 <Grid Margin="0,0,0,14" ColumnDefinitions="Auto,*">
                     <TextBlock Classes="login-label" Text="{Binding LoginModeLabel}" />
@@ -148,6 +148,26 @@
                         Padding="0" Background="Transparent" BorderThickness="0"
                         Foreground="{DynamicResource AccentBrush}" />
 
+                <StackPanel IsVisible="{Binding !UseSshLogin}" Margin="0,12,0,0" Spacing="8" IsEnabled="{Binding !IsConnecting}">
+                    <CheckBox IsChecked="{Binding UseLoginTunnel}" Content="{Binding TunnelToggleText}" />
+                    <StackPanel IsVisible="{Binding TunnelOptionsVisible}" Spacing="8">
+                        <TextBlock Text="{Binding TunnelHintText}" TextWrapping="Wrap" />
+                        <ComboBox ItemsSource="{Binding SavedTunnels}" SelectedItem="{Binding SelectedTunnel}" HorizontalAlignment="Stretch" />
+                        <Button Command="{Binding ToggleTunnelConfigurationCommand}" Content="{Binding ConfigureTunnelText}" HorizontalAlignment="Left" />
+                        <StackPanel IsVisible="{Binding ShowTunnelConfiguration}" Spacing="8">
+                        <Grid ColumnDefinitions="*,100" ColumnSpacing="8">
+                            <TextBox Text="{Binding TunnelHost}" PlaceholderText="{Binding TunnelHostText}" />
+                            <TextBox Grid.Column="1" Text="{Binding TunnelPort}" PlaceholderText="{Binding TunnelPortText}" />
+                        </Grid>
+                        <TextBox Text="{Binding TunnelUserName}" PlaceholderText="{Binding TunnelUserText}" />
+                        <CheckBox IsChecked="{Binding TunnelUsePrivateKey}" Content="{Binding TunnelKeyText}" />
+                        <TextBox Text="{Binding TunnelSecret}" PasswordChar="●" AcceptsReturn="{Binding TunnelUsePrivateKey}" PlaceholderText="{Binding TunnelSecretText}" />
+                        <TextBox IsVisible="{Binding TunnelUsePrivateKey}" Text="{Binding TunnelPassphrase}" PasswordChar="●" PlaceholderText="{Binding TunnelPassphraseText}" />
+                        <CheckBox IsChecked="{Binding RememberSshCredential}" Content="{Binding RememberSshText}" />
+                        </StackPanel>
+                        <Button Command="{Binding TestTunnelCommand}" Content="{Binding TestTunnelText}" HorizontalAlignment="Left" />
+                    </StackPanel>
+                </StackPanel>
                 <CheckBox IsVisible="{Binding StandardAuthenticationVisible}" IsChecked="{Binding RememberServer}" Content="{Binding RememberServerText}"
                           Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12" Margin="0,12,0,0" />
                 <CheckBox IsVisible="{Binding StandardAuthenticationVisible}" IsChecked="{Binding RememberPassword}" IsEnabled="{Binding RememberServer}"

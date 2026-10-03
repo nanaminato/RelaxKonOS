@@ -50,7 +50,7 @@
 连接B + nanami    ─┘
 ```
 
-- `Username` 是协议里的 **`identifier`**（[`LoginRequest`](../../../../Shared/RelaxKonOS.Protocol/Identity/LoginRequest.cs) 的字段名）。`ServiceId` 在直连时是规范化的持久服务器 URL，在服务器中心管理的 SSH 隧道连接中则是经过核实的安装 ID。
+- `Username` 是协议里的 **`identifier`**（[`LoginRequest`](../../../../Shared/RelaxKonOS.Protocol/Identity/LoginRequest.cs) 的字段名）。`ServiceId` 在直连时是规范化的持久服务器 URL，在服务器中心管理的 SSH 隧道连接中则是经过核实的安装 ID；登录页普通 SSH 隧道使用独立的 `ssh-tunnel:` 配置身份，详见 [登录页 SSH 隧道](../features/LoginSshTunnel.md)。
 - 本机稳定身份：`loginId(serviceId, identifier)`。保险箱和登录档案只使用这个身份；临时 `http://127.0.0.1:<port>` 不得写入其中。
 - 直连 URL 归一化会小写 scheme 与 host、去除默认端口和结尾斜杠、丢弃 query / fragment，同时保留可能区分大小写的 path。`identifier` 只去首尾空白，**不折叠大小写**。
 - 本次请求地址是 `effectiveBaseUrl`。直连时它等于 URL 型 `serviceId`；隧道时它可以随重连换端口，但 `serviceId` 不变。
@@ -60,12 +60,12 @@
 
 ### 2.2 `SavedLogin` 与 `SavedCredential` 分离
 
-`SavedLogin` 只保存非敏感登录资料；其逻辑唯一键是 `(ServiceId, Username)`。在 Android 中，`ServiceId` 是直连规范化 URL 或受管安装 ID，`Username` 是协议中的 `identifier`。
+`SavedLogin` 只保存非敏感登录资料；其逻辑唯一键是 `(ServiceId, Username)`。在 Android 中，`ServiceId` 是直连规范化 URL、受管安装 ID 或普通 SSH 隧道配置身份，`Username` 是协议中的 `identifier`。
 
 | `SavedLogin` 字段 | 用途 |
 | --- | --- |
 | `Id` | 稳定的本地登录记录标识 |
-| `ServiceId` | 直连规范化 URL，或受管连接的安装 ID；不保存临时隧道端口 |
+| `ServiceId` | 直连规范化 URL、受管连接的安装 ID，或普通 SSH 隧道配置身份；不保存临时隧道端口 |
 | `Username` | 登录标识 |
 | `DisplayName` | 可选的用户可读标签；无来源时不展示空值 |
 | `HasSavedCredential` | 供列表和登录页显示的非敏感状态投影 |
@@ -136,7 +136,7 @@ fun credentialState(record: VaultRecord?, unlockMode: VaultUnlockMode?): SavedCr
 
 | ViewModel 状态（§9） | 落点 | 说明 |
 | --- | --- | --- |
-| `SelectedLogin` | `SelectedLogin` | 直连时由 `serverUrl` + `identifier` 输入派生；受管连接由已验证安装 ID、当前隧道地址和 `identifier` 构造 |
+| `SelectedLogin` | `SelectedLogin` | 直连时由 `serverUrl` + `identifier` 输入派生；受管连接由已验证安装 ID、当前隧道地址和 `identifier` 构造；普通 SSH 隧道由稳定配置身份、当前隧道地址和 `identifier` 构造 |
 | `HasSavedCredential` | `SavedLogin.HasSavedCredential` + `credentialState` 复核 | 持久化的非敏感显示投影，不构成安全边界，见 §4.2 |
 | `PasswordText` | `OutlinedTextField.value` | 提交后立即置空 |
 | `UseBiometricProtection` | `AppearanceState.fingerprintEnabled` | 已有的全局指纹总开关（Shell §5.5） |

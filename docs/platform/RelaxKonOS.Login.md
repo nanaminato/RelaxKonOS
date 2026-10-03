@@ -14,6 +14,16 @@
 
 ## 1. 模块定位
 
+### 登录页 SSH 隧道连接
+
+桌面 Server 登录页提供“通过 SSH 隧道连接”、已保存隧道选择、SSH 主机/端口/用户名、密码或 PEM/OpenSSH 私钥、可选私钥口令、独立的 SSH 凭据安全保存选项，以及“测试连接”。原有 SSH 登录方式继续用于 SSH 工作区。Android 详细设计由 [Android 登录页 SSH 隧道文档](../../Client/RelaxKonOS.Client.Android/docs/features/LoginSshTunnel.md) 维护。
+
+启用隧道后，Server 地址指 SSH 主机上的 `http://127.0.0.1:5000` 等 HTTP(S) 回环服务。点击连接先核验 SSH 主机指纹，再自动分配本机回环端口并登录 Server；SSH 与 Server 账号独立。测试成功后释放测试隧道，当前登录页内暂存已验证 SSH 凭据供正式连接使用；勾选安全保存才写入 SSH 凭据仓库。正式登录隧道随认证会话保留，登出或会话失效后关闭。
+
+`ServerServiceIdKind.SshTunnelProfile` 的稳定身份为 `ssh-tunnel:` 加规范化 SSH 主机、端口、SSH 用户与远端 URL 的 SHA-256；本机临时端口仅出现在 `EffectiveBaseUrl`。不同端点不共享登录凭据；这种配置身份与受管安装身份分开维护。非敏感配置写入设备本地 `login-tunnels.json`，登录与 SSH 密码/私钥仍使用各自的系统安全存储。
+
+HTTPS 验证不绕过名称不匹配或有效期错误，证书须匹配请求的 `127.0.0.1`。确认的证书指纹按稳定隧道身份保存；临时 HTTPS origin 的信任域映射只在隧道存活期间存在，换端口保持信任，关闭后不向其他服务扩展。当前支持单台 SSH 主机的回环服务，不支持跳板机、反向代理子路径和自动后台重建；连接中断后重新登录。
+
 ### 1.1 参考 Windows mstsc
 
 RelaxKonOS 登录模块参考 Windows Server 远程桌面连接工具 **mstsc** 的交互范式：启动先弹独立登录窗口，输入"地址 + 用户名 + 密码"→ 连接成功后进入桌面。

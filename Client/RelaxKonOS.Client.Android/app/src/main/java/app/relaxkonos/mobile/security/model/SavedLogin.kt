@@ -9,7 +9,8 @@ import app.relaxkonos.mobile.servercenter.ServerServiceIdKind
 
 /**
  * A remembered login. [serviceId] is a canonical URL for direct connections and a verified
- * installation id for managed tunnels. A temporary loopback address is never persisted here.
+ * installation id for managed tunnels or a stable SSH login tunnel profile id. A temporary loopback
+ * address is never persisted here.
  */
 data class SavedLogin(
     val serviceId: String,
@@ -52,7 +53,9 @@ data class SavedLogin(
     val credentialKey: String get() = recordId(VaultKind.Connection, serviceId, identifier)
 
     val serviceIdKind: ServerServiceIdKind
-        get() = if (ServerInstallationId.isValid(serviceId)) {
+        get() = if (serviceId.startsWith(app.relaxkonos.mobile.servercenter.SshLoginTunnelProfile.IDENTITY_PREFIX)) {
+            ServerServiceIdKind.SshTunnelProfile
+        } else if (ServerInstallationId.isValid(serviceId)) {
             ServerServiceIdKind.ManagedInstallation
         } else ServerServiceIdKind.DirectUrl
 

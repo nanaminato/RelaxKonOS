@@ -107,6 +107,7 @@ public static class Bootstrapper
         services.AddSingleton<IApplicationCompatibilityEvaluator>(sp => sp.GetRequiredService<ApplicationCompatibilityService>());
         services.AddSingleton<IApplicationCompatibilityNotifier>(sp => sp.GetRequiredService<ApplicationCompatibilityService>());
         services.AddSingleton<LoginViewModel>();
+        services.AddSingleton<LoginTunnelStore>();
 
         // 服务器中心：宿主管理资料、主机密钥固定、SSH 凭据与内置 SSH/SFTP 传输。
         // 这些存储都只写本机，且 SSH 凭据使用独立于登录凭据的安全存储槽。

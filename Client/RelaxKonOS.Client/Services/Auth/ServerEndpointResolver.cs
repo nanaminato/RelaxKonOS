@@ -10,6 +10,8 @@ namespace RelaxKonOS.Client.Services.Auth;
 public sealed class ServerEndpointResolver(HttpClient http, ServerCertificateTrust certificateTrust)
 {
     public void TrustCertificate(ServerCertificateReview review) => certificateTrust.Trust(review);
+    public void BindTunnelCertificateScope(string endpoint, string serviceId) => certificateTrust.BindTunnel(endpoint, serviceId);
+    public void UnbindTunnelCertificateScope(string endpoint) => certificateTrust.UnbindTunnel(endpoint);
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(4);
 
     public async Task<ServerEndpointResolution> ResolveAsync(string value, CancellationToken ct = default)

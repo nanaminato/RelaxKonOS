@@ -55,5 +55,18 @@ class ServerCertificateTrustTest {
         ServerCertificateTrust.clear(origin)
         rejected(origin, certificate(3, System.currentTimeMillis() - 3600000))
         assertNull(ServerCertificateTrust.review(origin))
+        val tunnelA = "https://127.0.0.1:51000"
+        val tunnelB = "https://127.0.0.1:52000"
+        ServerCertificateTrust.bindTunnel(tunnelA, "ssh-tunnel:profile-a")
+        rejected(tunnelA)
+        ServerCertificateTrust.trust(requireNotNull(ServerCertificateTrust.review(tunnelA)))
+        ServerCertificateTrust.unbindTunnel(tunnelA)
+        ServerCertificateTrust.bindTunnel(tunnelB, "ssh-tunnel:profile-a")
+        validate(tunnelB)
+        rejected(tunnelA)
+        ServerCertificateTrust.unbindTunnel(tunnelB)
+        ServerCertificateTrust.bindTunnel(tunnelB, "ssh-tunnel:profile-b")
+        rejected(tunnelB)
+        ServerCertificateTrust.unbindTunnel(tunnelB)
     }
 }

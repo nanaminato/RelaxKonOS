@@ -20,6 +20,8 @@ static void Check(bool condition, string message)
 }
 
 InstallationDetailsChecks.Run();
+LoginTunnelChecks.Run();
+await LoginTunnelFlowChecks.RunAsync();
 await CertificateTrustChecks.RunAsync();
 
 var sshOptions = new SshTransportOptions(

@@ -38,6 +38,20 @@ static class CertificateTrustChecks
             chain.Build(expired);
             Check(!trust.Validate(origin, expired, chain, SslPolicyErrors.RemoteCertificateChainErrors) &&
                 trust.GetReview(origin.ToString())?.CanTrust == false, "过期证书不提供信任绕过");
+            chain.Build(certificate);
+            var firstTunnel = new Uri("https://127.0.0.1:51000");
+            var secondTunnel = new Uri("https://127.0.0.1:52000");
+            trust.BindTunnel(firstTunnel.ToString(), "ssh-tunnel:profile-a");
+            Check(!trust.Validate(firstTunnel, certificate, chain, SslPolicyErrors.RemoteCertificateChainErrors), "隧道证书首次连接需要确认");
+            trust.Trust(trust.GetReview(firstTunnel.ToString())!);
+            trust.UnbindTunnel(firstTunnel.ToString());
+            trust.BindTunnel(secondTunnel.ToString(), "ssh-tunnel:profile-a");
+            Check(trust.Validate(secondTunnel, certificate, chain, SslPolicyErrors.RemoteCertificateChainErrors), "隧道换本地端口仍使用同一证书信任");
+            Check(!trust.Validate(firstTunnel, certificate, chain, SslPolicyErrors.RemoteCertificateChainErrors), "关闭隧道后不信任复用该端口的其他服务");
+            trust.UnbindTunnel(secondTunnel.ToString());
+            trust.BindTunnel(secondTunnel.ToString(), "ssh-tunnel:profile-b");
+            Check(!trust.Validate(secondTunnel, certificate, chain, SslPolicyErrors.RemoteCertificateChainErrors), "不同 SSH 连接不共享证书信任");
+            trust.UnbindTunnel(secondTunnel.ToString());
             await CheckHttpsProbeAsync(directory, certificate);
         }
         finally { Directory.Delete(directory, recursive: true); }

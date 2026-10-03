@@ -1,5 +1,7 @@
 # Android 当前实现状态
 
+登录页已支持普通 SSH 隧道：密码/私钥认证、首次与变化的主机指纹确认、独立 SSH 保险箱、测试连接、自动本地端口、保存配置与连接管理一键登录。隧道由应用会话持有并随退出释放；HTTPS 证书信任绑定稳定连接配置身份。详见 [登录页 SSH 隧道](../features/LoginSshTunnel.md)，设备验证范围见 [Verification](Verification.md)。
+
 宿主授权已统一：系统认证管理员/root 由 Server 动态检查资格，非文件操作不再重复输入密码；普通用户/Alias 显式认证所选管理员。账户提示只使用当前服务器的已保存账户，无候选时留空。防火墙已移除独立当前用户密码及旧请求字段，复用统一授权和一次重试；跨账户 Guardian/脚本仍需本次显式审批。验证范围见 [Verification](Verification.md)。
 
 > 更新：2026-10-02。本文件维护当前实现事实与代码缺口；BP 级测试进度、未关闭检查与缺陷统一见 [Verification](Verification.md)；详细行为见 [文档目录](../README.md)，未实现功能见 [部署后续工作](../plans/Deployment.md) 与 [内置应用补齐计划](../plans/BuiltInParity.md)。

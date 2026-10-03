@@ -139,6 +139,17 @@ class AppContainer(context: Context) {
     )
 
     val sshCredentials = ServerCenterSshCredentialStore(vault, vaultAccess)
+    val loginTunnels = app.relaxkonos.mobile.servercenter.LoginTunnelStore(appContext.noBackupFilesDir)
+    private var loginTunnelClose: (() -> Unit)? = null
+    private val loginTunnelGate = Any()
+    fun adoptLoginTunnel(close: () -> Unit) {
+        val previous = synchronized(loginTunnelGate) {
+            val previous = loginTunnelClose
+            loginTunnelClose = close
+            previous
+        }
+        runCatching { previous?.invoke() }
+    }
 
     /**
      * 连接解析器：把宿主目标与 SSH 凭据变成一条会话，并维护 loopback 隧道的稳定身份。
@@ -271,6 +282,22 @@ class AppContainer(context: Context) {
     val ownerDevices = OwnerDeviceAuthenticationService(gateway, ownerDeviceKeys)
 
     val session = AuthSession(gateway, ownerDevices = ownerDevices)
+    init {
+        appScope.launch {
+            session.state.collect { state ->
+                if (state is SessionState.SignedOut && session.state.value is SessionState.SignedOut) {
+                    val owned = synchronized(loginTunnelGate) {
+                        if (session.state.value is SessionState.SignedOut) {
+                            val owned = loginTunnelClose
+                            loginTunnelClose = null
+                            owned
+                        } else null
+                    }
+                    runCatching { owned?.invoke() }
+                }
+            }
+        }
+    }
 
     val elevations = ElevationRepository(gateway, session, vault)
 

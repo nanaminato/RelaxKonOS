@@ -82,6 +82,22 @@ fun LoginScreen(
         }
     }
     val activity = LocalContext.current as? FragmentActivity ?: return
+    viewModel.tunnel.review?.let { rejected ->
+        val container = (activity.application as app.relaxkonos.mobile.RelaxKonApplication).container
+        val previous = container.sshHostKeyTrust.find(rejected.observation.host, rejected.observation.port, rejected.observation.algorithm)
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { viewModel.tunnel.answerHostKey(false) },
+            title = { Text(stringResource(R.string.login_tunnel_verify)) },
+            text = { Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(stringResource(R.string.login_tunnel_verify_hint))
+                Text("${rejected.observation.host}:${rejected.observation.port}")
+                previous?.let { Text(stringResource(R.string.login_tunnel_previous)); Text(it.fingerprint) }
+                Text(stringResource(R.string.login_tunnel_observed)); Text(rejected.observation.groupedFingerprint)
+            } },
+            confirmButton = { TextButton(onClick = { viewModel.tunnel.answerHostKey(true) }) { Text(stringResource(R.string.login_tunnel_trust)) } },
+            dismissButton = { TextButton(onClick = { viewModel.tunnel.answerHostKey(false) }) { Text(stringResource(R.string.common_cancel)) } },
+        )
+    }
     viewModel.certificateReview?.let { review ->
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { viewModel.answerCertificate(false) },
@@ -202,6 +218,7 @@ fun LoginScreen(
                         enabled = !viewModel.isLoggingIn && viewModel.managedHostName == null,
                         shape = MaterialTheme.shapes.medium,
                     )
+                    LoginTunnelOptions(viewModel, activity)
                     OutlinedTextField(
                         value = viewModel.identifier,
                         onValueChange = { viewModel.changeIdentifier(it) },

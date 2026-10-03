@@ -59,7 +59,7 @@ public partial class LoginViewModel : ObservableObject
 
     public LoginViewModel(IAuthSession session, LoginLocalizationService localization, ServerEndpointResolver endpointResolver,
         SshDesktopSession sshDesktop, IHostTargetStore sshTargets, ISshHostKeyTrustStore hostKeys,
-        ISshCredentialStore sshCredentials)
+        ISshCredentialStore sshCredentials, IServerCenterConnectionResolver tunnelConnections, LoginTunnelStore tunnelStore)
     {
         _session = session;
         _localization = localization;
@@ -68,6 +68,16 @@ public partial class LoginViewModel : ObservableObject
         _sshTargets = sshTargets;
         _hostKeys = hostKeys;
         _sshCredentials = sshCredentials;
+        _tunnelConnections = tunnelConnections;
+        _tunnelStore = tunnelStore;
+        _session.StateChanged += (_, _) =>
+        {
+            if (_session.State == AuthSessionState.Unauthenticated && !IsConnecting)
+            {
+                _verifiedTunnelCredential = null;
+                _ = ReleaseLoginTunnelAsync();
+            }
+        };
         SavedProfiles = new ObservableCollection<SavedLoginProfile>();
 #if DEBUG
         // Development-only convenience for local integration testing. This is deliberately
@@ -90,6 +100,7 @@ public partial class LoginViewModel : ObservableObject
 
     partial void OnUseSshLoginChanged(bool value)
     {
+        OnPropertyChanged(nameof(TunnelOptionsVisible));
         OnPropertyChanged(nameof(OwnerDeviceAvailable));
         OnPropertyChanged(nameof(WindowsOwnerDeviceBootstrapAvailable));
         if (value) ShowOwnerDeviceOptions = false;
@@ -229,7 +240,7 @@ public partial class LoginViewModel : ObservableObject
         : T("login.connection_settings_description", "RelaxKonOS will open the workspace using this computer's name and local display settings.");
     public string ClientNameText => T("login.client_name", "RelaxKonOS Remote Desktop Client");
     public string ConnectText => T("common.connect", "Connect");
-    public bool OwnerDeviceAvailable => !UseSshLogin;
+    public bool OwnerDeviceAvailable => !UseSshLogin && !UseLoginTunnel;
     public bool StandardAuthenticationVisible => !ShowOwnerDeviceOptions;
     public bool PasswordAuthenticationVisible => StandardAuthenticationVisible && ShowOptions;
     public bool WindowsOwnerDeviceBootstrapAvailable => OperatingSystem.IsWindows() && !UseSshLogin;
@@ -324,16 +335,19 @@ public partial class LoginViewModel : ObservableObject
             await ConnectSshAsync(ct);
             return;
         }
-        var resolution = await ResolveServerEndpointAsync(ct);
-        if (!resolution.IsResolved)
+        ServerConnectionIdentity? identity = null;
+        if (!UseLoginTunnel)
         {
-            ErrorMessage = DescribeResolutionError(resolution);
-            HasError = true;
-            StatusMessage = string.Empty;
-            return;
+            var resolution = await ResolveServerEndpointAsync(ct);
+            if (!resolution.IsResolved)
+            {
+                ErrorMessage = DescribeResolutionError(resolution);
+                HasError = true;
+                StatusMessage = string.Empty;
+                return;
+            }
+            identity = ServerConnectionIdentityRules.Direct(resolution.Endpoint!);
         }
-
-        var serverUrl = resolution.Endpoint!;
 
         IsConnecting = true;
         StatusMessage = T("login.status.connecting", "Connecting...");
@@ -341,15 +355,16 @@ public partial class LoginViewModel : ObservableObject
 
         try
         {
+            if (UseLoginTunnel) identity = await OpenLoginTunnelAsync(ct);
             var request = new LoginRequest(
                 Identifier, Password,
                 ClientPlatform: DetectClientPlatform(),
                 DeviceName: Environment.MachineName,
                 ClientVersion: Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0");
-            // A hand-entered address is always a direct login: its canonical URL is the stable identity,
-            // while the resolved endpoint is only this session's transport address.
+            // The stable identity comes from the selected transport; a tunnel's local port is never saved.
             await _session.LoginAsync(
-                ServerConnectionIdentityRules.Direct(serverUrl), request, RememberServer, RememberPassword, ct);
+                identity!, request, RememberServer, RememberPassword, ct);
+            _verifiedTunnelCredential = null;
             StatusMessage = T("login.status.opening_desktop", "Connected. Opening desktop...");
         }
         catch (RelaxKonOSAuthException ex)
@@ -374,8 +389,16 @@ public partial class LoginViewModel : ObservableObject
         {
             StatusMessage = string.Empty;
         }
+        catch (Exception ex) when (UseLoginTunnel)
+        {
+            ShowTunnelConfiguration = true;
+            HasError = true;
+            ErrorMessage = TunnelError(ex);
+            StatusMessage = string.Empty;
+        }
         finally
         {
+            if (_session.State != AuthSessionState.Authenticated) await ReleaseLoginTunnelAsync();
             IsConnecting = false;
         }
     }
@@ -545,9 +568,17 @@ public partial class LoginViewModel : ObservableObject
     private void ApplySelectedProfile(SavedLoginProfile profile)
     {
         if (UseSshLogin) return;
+        UseLoginTunnel = profile.ServiceIdKind == ServerServiceIdKind.SshTunnelProfile;
+        if (UseLoginTunnel)
+        {
+            var tunnel = SavedTunnels.FirstOrDefault(p => p.ServiceId == profile.ServiceId);
+            SelectedTunnel = tunnel;
+            if (tunnel is not null) OnSelectedTunnelChanged(tunnel);
+            else { ServerUrl = ""; ErrorMessage = T("login.tunnel.missing", "The saved SSH tunnel configuration is missing. Configure it again."); HasError = true; }
+        }
         // A managed-tunnel profile has no address to refill until its SSH tunnel is resolved; only a
         // direct profile carries the canonical URL that belongs in this field.
-        ServerUrl = profile.DirectServerUrl ?? string.Empty;
+        if (!UseLoginTunnel) ServerUrl = profile.DirectServerUrl ?? string.Empty;
         Identifier = profile.Identifier;
 #if DEBUG
         // Keep the debug credential authoritative even when a remembered profile has no password.
@@ -616,7 +647,7 @@ public partial class LoginViewModel : ObservableObject
     /// <summary>Invoked by the address control when focus leaves it, before credentials are sent.</summary>
     public async Task DiscoverServerEndpointAsync(CancellationToken ct = default)
     {
-        if (UseSshLogin || IsDiscoveringServer || IsConnecting) return;
+        if (UseSshLogin || UseLoginTunnel || IsDiscoveringServer || IsConnecting) return;
         if (string.IsNullOrWhiteSpace(ServerUrl)) return;
 
         var enteredValue = ServerUrl;

@@ -18,6 +18,7 @@
 | --- | --- |
 | [应用内功能导航](features/ApplicationNavigation.md) | 十项管理应用的固定分类、状态保留、返回与范围标识 |
 | [服务器中心](features/ServerCenter.md) | SSH 信任、文件/终端、稳定身份与隧道、安装回执；首次安装仍缺执行链路 |
+| [登录页 SSH 隧道](features/LoginSshTunnel.md) | SSH 密码/私钥、一键登录、连接配置、会话生命周期与证书信任 |
 | [文件与 Git 共用编辑器](features/TextEditor.md) | Unicode 编码/BOM/换行、查找替换/语法显示、条件保存、冲突和离页保护 |
 | [文件与图片](features/Files.md) | 筛选排序、多选与远端剪贴板、逐项结果、属性/权限及有界图片查看 |
 | [文件传输](features/FileTransfers.md) | 分块上传、源暂存、续传、前台通知与清理 |

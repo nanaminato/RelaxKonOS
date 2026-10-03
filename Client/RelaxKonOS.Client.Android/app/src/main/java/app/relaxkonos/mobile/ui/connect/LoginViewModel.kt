@@ -70,10 +70,14 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     private val container: AppContainer get() = getApplication<RelaxKonApplication>().container
 
     private var revision by mutableStateOf(0)
-    private val initialDirectLogin = container.profiles.all().firstOrNull { it.directServerUrl != null }
+    private val initialLogin = container.profiles.all().firstOrNull { login ->
+        login.directServerUrl != null || container.loginTunnels.all().any { it.serviceId == login.serviceId }
+    }
+    private val initialTunnel = container.loginTunnels.all().firstOrNull { it.serviceId == initialLogin?.serviceId }
+    val tunnel = LoginTunnelController(container).also { controller -> initialTunnel?.let(controller::select) }
 
-    var serverUrl by mutableStateOf(initialDirectLogin?.directServerUrl.orEmpty())
-    var identifier by mutableStateOf(initialDirectLogin?.identifier.orEmpty())
+    var serverUrl by mutableStateOf(initialTunnel?.remoteUrl ?: initialLogin?.directServerUrl.orEmpty())
+    var identifier by mutableStateOf(initialLogin?.identifier.orEmpty())
 
     /** Only ever what was typed this time. A saved password is never written here (§3, §6.2). */
     var passwordText by mutableStateOf("")
@@ -113,7 +117,14 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     private var hostLookupJob: Job? = null
 
     /** The identity the form currently describes, i.e. the `(Service, Username)` pair (§2.1). */
-    val selectedLogin: SelectedLogin get() = SelectedLogin.direct(serverUrl, identifier)
+    val selectedLogin: SelectedLogin get() = if (tunnel.enabled) {
+        val connection = tunnel.identity ?: runCatching {
+            val profile = tunnel.profile(serverUrl)
+            app.relaxkonos.mobile.servercenter.ServerConnectionIdentity(
+                app.relaxkonos.mobile.servercenter.ServerServiceIdKind.SshTunnelProfile, profile.serviceId, profile.remoteUrl)
+        }.getOrNull()
+        if (connection == null) SelectedLogin.direct("", identifier) else SelectedLogin.resolved(connection, identifier)
+    } else SelectedLogin.direct(serverUrl, identifier)
 
     /** How this device can unseal a credential right now, or `null` when it cannot unseal anything. */
     val vaultUnlockMode: VaultUnlockMode? get() = container.unlockMode(VaultKind.Connection)
@@ -272,6 +283,21 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
      * authorization happens later, when the saved password is actually needed (§7.1).
      */
     fun select(login: SavedLogin) {
+        if (login.serviceIdKind == app.relaxkonos.mobile.servercenter.ServerServiceIdKind.SshTunnelProfile) {
+            val profile = tunnel.profiles.firstOrNull { it.serviceId == login.serviceId }
+            if (profile == null) { message = UiMessage(R.string.login_tunnel_missing); return }
+            tunnel.select(profile)
+            managedHostName = null
+            serverUrl = profile.remoteUrl
+            identifier = login.identifier
+            passwordText = ""
+            connectionsOpen = false
+            focusRequest = null
+            windowUnlocked = windowUnlocked - loginIdOf(login.serviceId, login.identifier)
+            message = null
+            return
+        }
+        tunnel.enabled = false
         val directUrl = login.directServerUrl
         if (directUrl == null) {
             selectManaged(login)
@@ -294,7 +320,8 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     fun connectSavedLogin(activity: FragmentActivity, login: SavedLogin) {
         if (isLoggingIn) return
         select(login)
-        if (login.directServerUrl != null) {
+        if (login.serviceIdKind == app.relaxkonos.mobile.servercenter.ServerServiceIdKind.SshTunnelProfile && selectedLogin.serviceId != login.serviceId) return
+        if (login.directServerUrl != null || login.serviceIdKind == app.relaxkonos.mobile.servercenter.ServerServiceIdKind.SshTunnelProfile) {
             submit(activity)
         }
     }
@@ -384,6 +411,32 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
      * to choose the sentence a transport failure shows; the request itself is always attempted.
      */
     fun submit(activity: FragmentActivity) {
+        if (isLoggingIn) return
+        if (tunnel.enabled) {
+            if (runCatching { tunnel.profile(serverUrl) }.isFailure) { message = UiMessage(R.string.login_tunnel_invalid); return }
+            when (decision) {
+                is LoginDecision.ManualPassword, LoginDecision.UnlockSavedCredential -> Unit
+                else -> { submitResolved(activity); return }
+            }
+            isLoggingIn = true
+            discoveryJob?.cancel()
+            discoveryJob = viewModelScope.launch {
+                try {
+                    tunnel.open(activity, serverUrl, confirmCertificate = ::confirmTunnelCertificate)
+                    isLoggingIn = false
+                    submitResolved(activity)
+                } catch (_: TunnelCancelledException) {
+                    isLoggingIn = false
+                } catch (cancelled: CancellationException) {
+                    isLoggingIn = false; throw cancelled
+                } catch (error: Exception) {
+                    isLoggingIn = false
+                    tunnel.configurationOpen = true
+                    message = UiMessage((error as? LoginTunnelFailure)?.messageResource ?: R.string.login_tunnel_failed)
+                }
+            }
+            return
+        }
         val entered = serverUrl
         if (entered.isBlank()) {
             submitResolved(activity)
@@ -480,6 +533,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
      * answer belongs. A newer edit always cancels the older probe.
      */
     fun discoverServerEndpoint() {
+        if (tunnel.enabled) return
         val entered = serverUrl
         if (entered.isBlank() || isLoggingIn) return
 
@@ -584,6 +638,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                     identifier = login.normalizedIdentifier,
                     password = credential,
                 ) {
+                    tunnel.adopt()
                     rememberLogin(login)
                     if (rememberCredential) {
                         storeCredential(activity, login, credential)
@@ -605,6 +660,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } finally {
                 credential.fill('\u0000')
+                finishTunnelLogin()
                 isLoggingIn = false
             }
         }
@@ -678,6 +734,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 message = UiMessage(R.string.error_generic)
                     .withDebugDetail(error.message ?: error::class.java.simpleName)
             } finally {
+                finishTunnelLogin()
                 isLoggingIn = false
             }
         }
@@ -692,7 +749,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
      */
     private suspend fun submitUnsealed(login: SelectedLogin, record: VaultRecord?, credential: CharArray) {
         try {
-            val result = container.session.login(login.connectionIdentity, login.normalizedIdentifier, credential) {}
+            val result = container.session.login(login.connectionIdentity, login.normalizedIdentifier, credential) { tunnel.adopt() }
             VaultDiagnostics.trace(
                 "login.result",
                 when (result) {
@@ -821,7 +878,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 serviceId = login.serviceId,
                 identifier = login.normalizedIdentifier,
                 lastUsedEpochMillis = System.currentTimeMillis(),
-                displayName = existing?.displayName,
+                displayName = if (tunnel.enabled) runCatching { tunnel.profile(serverUrl).displayText }.getOrNull() else existing?.displayName,
                 hasSavedCredential = container.vault
                     .record(VaultKind.Connection, login.serviceId, login.normalizedIdentifier) != null,
                 // Signing in is not a reason to forget what the host already told us about itself.
@@ -842,7 +899,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun loginIdOf(serviceId: String, identifier: String): String = loginId(serviceId, identifier)
 
-    private fun directConnection() = if (managedHostName == null && serverUrl.isNotBlank()) {
+    private fun directConnection() = if (!tunnel.enabled && managedHostName == null && serverUrl.isNotBlank()) {
         runCatching { app.relaxkonos.mobile.servercenter.ServerConnectionIdentityRules.direct(serverUrl) }.getOrNull()
     } else {
         null
@@ -880,6 +937,29 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     }.withDebugDetail(result.detail)
 
     private fun promptTitle() = getApplication<Application>().getString(R.string.vault_unlock_title)
+    private fun finishTunnelLogin() {
+        if (container.session.state.value is app.relaxkonos.mobile.core.auth.SessionState.Active) tunnel.adopt()
+        else tunnel.close()
+    }
+    private suspend fun confirmTunnelCertificate(review: app.relaxkonos.mobile.core.net.CertificateReview): Boolean {
+        val pending = kotlinx.coroutines.CompletableDeferred<Boolean>()
+        certificateAnswer = pending
+        certificateReview = review
+        return try { pending.await() } finally { certificateAnswer = null; certificateReview = null }
+    }
+    fun testTunnel(activity: FragmentActivity) {
+        if (isLoggingIn || !tunnel.enabled) return
+        if (runCatching { tunnel.profile(serverUrl) }.isFailure) { message = UiMessage(R.string.login_tunnel_invalid); return }
+        isLoggingIn = true
+        viewModelScope.launch {
+            try { tunnel.open(activity, serverUrl, testOnly = true, confirmCertificate = ::confirmTunnelCertificate); message = UiMessage(R.string.login_tunnel_ready) }
+            catch (_: TunnelCancelledException) { }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { tunnel.configurationOpen = true; message = UiMessage((error as? LoginTunnelFailure)?.messageResource ?: R.string.login_tunnel_failed) }
+            finally { tunnel.close(); isLoggingIn = false }
+        }
+    }
+    override fun onCleared() { tunnel.close(); tunnel.clearCredential(); super.onCleared() }
 
     private fun promptSubtitle(target: String) =
         getApplication<Application>().getString(R.string.vault_unlock_subtitle, target)

@@ -32,15 +32,18 @@ public enum RememberedProfileSaveResult
 /// <summary>
 /// A saved login addressed by its stable <c>(serviceId, identifier)</c> pair.
 /// <para><see cref="ServiceId"/> is the canonical server URL for a direct login and the verified
-/// installation id for a managed tunnel. A temporary loopback address is never persisted, so changing a
+/// installation id for a managed tunnel or a stable SSH login tunnel profile id. A temporary loopback address is never persisted, so changing a
 /// tunnel's local port cannot create a second record or orphan the credential.</para>
 /// <para>Password, when opted into, only ever exists in encrypted OS credential storage.</para>
 /// </summary>
 public sealed record SavedLoginProfile(string ServiceId, string Identifier, string? Password, DateTimeOffset LastUsedAt)
 {
+    public string? DisplayName { get; init; }
     public bool HasPassword => !string.IsNullOrWhiteSpace(Password);
 
-    public ServerServiceIdKind ServiceIdKind => ServerInstallationId.IsValid(ServiceId)
+    public ServerServiceIdKind ServiceIdKind => ServiceId.StartsWith(SshLoginTunnelProfile.IdentityPrefix, StringComparison.Ordinal)
+        ? ServerServiceIdKind.SshTunnelProfile
+        : ServerInstallationId.IsValid(ServiceId)
         ? ServerServiceIdKind.ManagedInstallation
         : ServerServiceIdKind.DirectUrl;
 
@@ -55,7 +58,7 @@ public sealed record SavedLoginProfile(string ServiceId, string Identifier, stri
     /// a managed profile has no address to show until its SSH tunnel is resolved, so it falls back to the
     /// verified installation id rather than rendering an empty row. Never exposes credentials.
     /// </summary>
-    public string DisplayText => DirectServerUrl ?? ServiceId;
+    public string DisplayText => DisplayName ?? DirectServerUrl ?? ServiceId;
 
     public override string ToString() => DisplayText;
 

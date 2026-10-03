@@ -51,7 +51,9 @@ static class LoginPickerChecks
                 new SshDesktopSession(null!),
                 targets,
                 new SshHostKeyTrustStore(directory),
-                credentials);
+                credentials,
+                new ServerCenterConnectionResolver(new SshHostKeyTrustStore(directory), targets, new SshNetServerCenterTransportFactory()),
+                new LoginTunnelStore(directory));
 
             // 可编辑下拉框把地址文本回写成选择结果：文本命中一条记录即选中它，否则清空选择，
             // 并且 Avalonia 的双向绑定立刻把这个选择发布给视图模型。
@@ -119,6 +121,7 @@ class SavedProfileSessionStub : DispatchProxy
     protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
     {
         "GetSavedProfilesAsync" => Task.FromResult<IReadOnlyList<SavedLoginProfile>>([]),
+        "add_StateChanged" or "remove_StateChanged" => null,
         _ => throw new NotSupportedException(method?.Name)
     };
 }

@@ -99,7 +99,7 @@ public enum ServerDataScope { Program, Configuration, Database, Secrets, Logs, C
 /// 传输地址（<c>effectiveBaseUrl</c>）永远不是身份，也不得长期保存。
 /// </summary>
 [JsonConverter(typeof(JsonStringEnumConverter<ServerServiceIdKind>))]
-public enum ServerServiceIdKind { DirectUrl, ManagedInstallation }
+public enum ServerServiceIdKind { DirectUrl, ManagedInstallation, SshTunnelProfile }
 
 /// <summary>发布包的种类。</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<ServerReleasePackageKind>))]

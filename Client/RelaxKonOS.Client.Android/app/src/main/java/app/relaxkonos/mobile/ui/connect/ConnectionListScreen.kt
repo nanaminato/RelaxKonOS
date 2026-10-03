@@ -233,10 +233,11 @@ private fun SwipeableSavedLoginEntry(
         Surface(shape = RoundedCornerShape(Radius.md), color = MaterialTheme.colorScheme.surface) {
             ListRow(
                 title = login.displayName ?: login.serviceId,
-                subtitle = login.displayName?.let { login.serviceId },
+                subtitle = login.displayName?.let { login.directServerUrl },
                 supporting = listOf(
                     stringResource(
-                        if (login.directServerUrl == null) R.string.connections_managed_server
+                        if (login.serviceIdKind == app.relaxkonos.mobile.servercenter.ServerServiceIdKind.SshTunnelProfile) R.string.login_tunnel_toggle
+                        else if (login.directServerUrl == null) R.string.connections_managed_server
                         else R.string.connections_direct_server,
                     ),
                     login.identifier,

@@ -24,6 +24,7 @@ public partial class LoginView : UserControl
         {
             _viewModel.PropertyChanged -= LoginViewModel_PropertyChanged;
             _viewModel.ConfirmServerCertificateAsync = null;
+            _viewModel.ConfirmTunnelHostKeyAsync = null;
         }
         _viewModel = DataContext as LoginViewModel;
         if (_viewModel is not null)
@@ -31,6 +32,15 @@ public partial class LoginView : UserControl
             _viewModel.PropertyChanged += LoginViewModel_PropertyChanged;
             var viewModel = _viewModel;
             viewModel.ConfirmServerCertificateAsync = review => ShowCertificateDialogAsync(viewModel, review);
+            viewModel.ConfirmTunnelHostKeyAsync = async (rejected, previous) =>
+            {
+                if (TopLevel.GetTopLevel(this) is not Window owner) return false;
+                return await new SshHostKeyDialog(viewModel.HostKeyDialogTitle,
+                    $"{rejected.Observation.Host}:{rejected.Observation.Port}\n{viewModel.TunnelVerifyHint}",
+                    viewModel.ObservedFingerprintLabel, rejected.Observation.GroupedFingerprint,
+                    viewModel.PinnedFingerprintLabel, previous ?? "",
+                    "", viewModel.ConfirmHostKeyText, viewModel.CancelText).ShowDialog<bool>(owner);
+            };
         }
     }
 

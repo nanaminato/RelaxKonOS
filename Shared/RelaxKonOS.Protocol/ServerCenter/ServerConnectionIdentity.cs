@@ -4,14 +4,17 @@ namespace RelaxKonOS.Protocol.ServerCenter;
 
 /// <summary>
 /// 一次登录连接的稳定身份与当前传输地址。
-/// <para><see cref="ServiceId"/> 是稳定身份：直连时是规范化的持久服务器 URL，受管 SSH 隧道时是安装标识。</para>
+/// <para><see cref="ServiceId"/> 是稳定身份：直连为持久 URL，受管隧道为安装标识，普通 SSH 登录隧道为配置身份。</para>
 /// <para><see cref="EffectiveBaseUrl"/> 是本次会话的实际 HTTP 地址：直连时等于持久 URL，隧道时可能是动态选取的
 /// loopback 端口。它永远不能作为凭据键，也不得作为长期保存的服务器身份。</para>
 /// </summary>
 public sealed record ServerConnectionIdentity(
     ServerServiceIdKind Kind,
     string ServiceId,
-    string EffectiveBaseUrl);
+    string EffectiveBaseUrl)
+{
+    public string? DisplayName { get; init; }
+}
 
 /// <summary>
 /// 连接身份与传输地址的分离规则。登录记录与连接保险箱以 <c>(serviceId, identifier)</c> 为键；

@@ -57,7 +57,7 @@ enum class ServerDataRetention { Retain, Delete }
 enum class ServerDataScope { Program, Configuration, Database, Secrets, Logs, Cache, State }
 
 /** 一次登录连接的稳定身份种类。传输地址永远不是身份。 */
-enum class ServerServiceIdKind { DirectUrl, ManagedInstallation }
+enum class ServerServiceIdKind { DirectUrl, ManagedInstallation, SshTunnelProfile }
 
 /** 发布包种类。 */
 enum class ServerReleasePackageKind { Server, UserServer }

@@ -10,7 +10,10 @@ namespace RelaxKonOS.Client.Services.Auth;
 
 public sealed record ServerCertificateReview(string Origin, string Subject, string Issuer,
     string Fingerprint, string? PreviousFingerprint, DateTime NotBefore, DateTime NotAfter,
-    string Errors, bool CanTrust);
+    string Errors, bool CanTrust)
+{
+    public string? TrustScope { get; init; }
+}
 
 /// <summary>Explicit leaf-certificate pins scoped to an HTTPS origin, never OS-wide trust.</summary>
 public sealed class ServerCertificateTrust
@@ -18,6 +21,14 @@ public sealed class ServerCertificateTrust
     public static ServerCertificateTrust Shared { get; } = new();
     private readonly ConcurrentDictionary<string, string> _pins = new();
     private readonly ConcurrentDictionary<string, ServerCertificateReview> _reviews = new();
+    private readonly ConcurrentDictionary<string, string> _tunnelScopes = new();
+    public void BindTunnel(string endpoint, string serviceId) => _tunnelScopes[Origin(new Uri(endpoint))] = serviceId;
+    public void UnbindTunnel(string endpoint)
+    {
+        var origin = Origin(new Uri(endpoint));
+        _tunnelScopes.TryRemove(origin, out _);
+        _reviews.TryRemove(origin, out _);
+    }
     private readonly string _path;
     private readonly object _gate = new();
 
@@ -43,7 +54,8 @@ public sealed class ServerCertificateTrust
         if (certificate is null) return false;
         var origin = Origin(uri);
         var fingerprint = Convert.ToHexString(SHA256.HashData(certificate.RawData));
-        var previous = _pins.GetValueOrDefault(origin);
+        var scope = _tunnelScopes.GetValueOrDefault(origin) ?? origin;
+        var previous = _pins.GetValueOrDefault(scope);
         var now = DateTime.UtcNow;
         var validDates = now >= certificate.NotBefore.ToUniversalTime() && now <= certificate.NotAfter.ToUniversalTime();
         var permittedErrors = (errors & ~SslPolicyErrors.RemoteCertificateChainErrors) == 0;
@@ -56,7 +68,7 @@ public sealed class ServerCertificateTrust
             return true;
         }
         _reviews[origin] = new(origin, certificate.Subject, certificate.Issuer, fingerprint, previous,
-            certificate.NotBefore, certificate.NotAfter, errors.ToString(), canTrust);
+            certificate.NotBefore, certificate.NotAfter, errors.ToString(), canTrust) { TrustScope = scope };
         return false;
     }
 
@@ -67,12 +79,12 @@ public sealed class ServerCertificateTrust
             if (!review.CanTrust || _reviews.GetValueOrDefault(review.Origin) != review)
                 throw new InvalidOperationException("The certificate observation is no longer current.");
             var pins = _pins.ToDictionary(p => p.Key, p => p.Value);
-            pins[review.Origin] = review.Fingerprint;
+            pins[review.TrustScope ?? review.Origin] = review.Fingerprint;
             Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
             var temporary = _path + ".tmp";
             File.WriteAllText(temporary, JsonSerializer.Serialize(pins));
             File.Move(temporary, _path, overwrite: true);
-            _pins[review.Origin] = review.Fingerprint;
+            _pins[review.TrustScope ?? review.Origin] = review.Fingerprint;
             _reviews.TryRemove(review.Origin, out _);
         }
     }
