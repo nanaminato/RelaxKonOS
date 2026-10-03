@@ -224,6 +224,12 @@ internal static async Task VerifyOperationIdempotencyAsync(string root)
     var webFirst = await webOperations.StartAsync("same-key", "nginx-test", "reload", "test", _ => Task.FromResult(WebServerOperationResult.Success), CancellationToken.None);
     var webDuplicate = await webOperations.StartAsync("same-key", "nginx-test", "reload", "test", _ => Task.FromResult(new WebServerOperationResult("webserver.should_not_run")), CancellationToken.None);
     TestAssert.Assert(webFirst.OperationId == webDuplicate.OperationId, "WebServer idempotency key created duplicate work.");
+    TestAssert.Assert((await webOperations.FindRequestAsync("same-key", "nginx-test", "reload", "test", CancellationToken.None))?.OperationId == webFirst.OperationId,
+        "Original web-server request could not be recovered without rediscovery.");
+    TestAssert.Assert(await webOperations.FindRequestAsync("same-key", "nginx-test", "reload", "another-user", CancellationToken.None) is null,
+        "Web-server request recovery exposed another actor's operation.");
+    TestAssert.Assert(await webOperations.FindRequestAsync("different-key", "nginx-test", "reload", "test", CancellationToken.None) is null,
+        "Web-server request recovery matched a different key.");
     TestAssert.Assert((await TestOperations.WaitForWebOperationAsync(webOperations, webFirst.OperationId)).State == WebServerOperationState.Succeeded, "WebServer operation did not complete.");
 }
 
@@ -238,6 +244,9 @@ internal static async Task VerifyWebServerProviderRoutingAsync()
     var integrated = await manager.IntegrateCandidateAsync(provider.Candidate.Id, "candidate-routing", new IntegrateWebServerRequest(true), "test", CancellationToken.None);
     TestAssert.Assert(integrated?.State == WebServerOperationState.Succeeded && provider.IntegratedCandidateId == provider.Candidate.Id,
         "Web Server Manager did not route candidate integration to its provider.");
+    provider.CandidateVisible = false;
+    TestAssert.Assert((await manager.IntegrateCandidateAsync(provider.Candidate.Id, "candidate-routing", new IntegrateWebServerRequest(true), "test", CancellationToken.None))?.InstanceId == provider.Candidate.Id,
+        "Web Server Manager blocked provider recovery after a candidate disappeared.");
     TestAssert.Assert(await manager.IntegrateCandidateAsync("unknown", "candidate-routing-unknown", new IntegrateWebServerRequest(true), "test", CancellationToken.None) is null,
         "Web Server Manager routed an unknown integration candidate.");
     var status = await manager.GetStatusAsync(provider.Instance.Id, CancellationToken.None);

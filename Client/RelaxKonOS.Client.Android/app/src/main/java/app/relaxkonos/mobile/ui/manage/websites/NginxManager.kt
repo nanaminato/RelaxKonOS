@@ -41,7 +41,7 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
     }
     LaunchedEffect(state.operation?.operationId, state.operation?.state, state.installation?.operationId, state.installation?.state) {
         if (state.operation?.state?.active == false || state.installation?.state?.active == false) {
-            model.refresh(); onChanged()
+            onChanged()
         }
     }
     LaunchedEffect(state.siteGeneration) { if (state.siteGeneration > 0) onChanged() }
@@ -53,7 +53,7 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             TextButton(onClick = model::refresh, enabled = !state.busy) { Text(stringResource(R.string.nginx_discover)) }
             if (canManage && state.system != HostOperatingSystemKind.Unknown && state.servers.none { it.managementMode == "managed" } && (state.system != HostOperatingSystemKind.Ubuntu || (state.servers.isEmpty() && state.candidates.isEmpty())))
-                OutlinedButton(onClick = { installDialog = true }, enabled = !state.busy && state.installation?.state?.active != true && !state.uncertain) { Text(stringResource(R.string.nginx_install)) }
+                OutlinedButton(onClick = { installDialog = true }, enabled = !model.mutationsBlocked) { Text(stringResource(R.string.nginx_install)) }
         }
         }
         if (state.busy || state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -86,7 +86,7 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
                 Text(candidate.executablePath, style = MaterialTheme.typography.bodySmall)
                 Text(candidate.configurationPath ?: stringResource(R.string.nginx_configuration_missing), style = MaterialTheme.typography.bodySmall)
                 Text(candidate.version ?: stringResource(R.string.websites_version_unknown))
-                if (canManage) OutlinedButton(enabled = !state.busy && state.pending.none { it.target == candidate.id },
+                if (canManage) OutlinedButton(enabled = !state.busy && state.pending.none { it.target == candidate.id } && !model.mutationsBlocked,
                     onClick = { confirmation = R.string.nginx_integrate_confirm to { model.integrate(candidate) } }) {
                     Text(stringResource(R.string.nginx_integrate))
                 }
@@ -98,8 +98,14 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
         WebSiteRecovery(state, model) { message, action -> confirmation = message to action }
         state.pending.forEach { pending ->
             Text(stringResource(R.string.nginx_pending, pending.target), style = MaterialTheme.typography.bodySmall)
-            if (canManage) TextButton(enabled = !state.busy, onClick = { confirmation = R.string.nginx_retry_confirm to { model.resume(pending) } }) {
+            if (canManage) TextButton(enabled = !state.busy && !state.loading && state.installation?.state?.active != true && state.operation?.state?.active != true, onClick = { confirmation = R.string.nginx_retry_confirm to { model.resume(pending) } }) {
                 Text(stringResource(R.string.common_retry))
+            }
+            if (canManage && pending.action == "integrate" && pending.operationId == null &&
+                state.servers.any { it.id == pending.target } && state.tests[pending.target]?.valid == true) {
+                TextButton(enabled = !model.mutationsBlocked, onClick = {
+                    confirmation = R.string.nginx_accept_facts_confirm to { model.acceptIntegrationFacts(pending) }
+                }) { Text(stringResource(R.string.nginx_accept_facts)) }
             }
         }
         if (model.hasIntent && canManage) TextButton(enabled = !state.busy, onClick = model::retryInstallation) {
@@ -137,7 +143,7 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
             dismissButton = { TextButton(onClick = { confirmation = null }) { Text(stringResource(R.string.common_cancel)) } })
     }
     WebSiteEditor(state, model)
-    if (installDialog) NginxInstallDialog(model) { installDialog = false }
+    if (installDialog) NginxInstallDialog(model, onSubmitted = { installDialog = false; onRecords() }) { installDialog = false }
     if (recoveryDialog) {
         var id by remember { mutableStateOf("") }
         AlertDialog(onDismissRequest = { recoveryDialog = false }, title = { Text(stringResource(R.string.nginx_recover)) },
@@ -185,7 +191,7 @@ private fun InstanceDetails(server: WebServer, state: NginxState, canManage: Boo
 WorkspaceSection(section == "instances") {
     if (canManage) FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         WebServerAction.entries.filter { it.supported(server) }.forEach { action ->
-            OutlinedButton(enabled = !state.busy && state.pending.none { it.target == server.id } && state.operation?.state?.active != true,
+            OutlinedButton(enabled = !model.mutationsBlocked && state.pending.none { it.target == server.id },
                 onClick = { confirm(if (action == WebServerAction.EnableAcmeHttp01) R.string.nginx_acme_confirm else R.string.nginx_lifecycle_confirm) { model.lifecycle(server, action) } }) {
                 Text(nginxActionLabel(action))
             }
@@ -197,7 +203,7 @@ WorkspaceSection(section == "instances") {
 }
 
 @Composable
-private fun NginxInstallDialog(model: NginxViewModel, dismiss: () -> Unit) {
+private fun NginxInstallDialog(model: NginxViewModel, onSubmitted: () -> Unit, dismiss: () -> Unit) {
     val container = appContainer()
     val owner = remember { container.activeSession }
     val state = model.state
@@ -217,7 +223,7 @@ private fun NginxInstallDialog(model: NginxViewModel, dismiss: () -> Unit) {
     }
     val initialOperationId = remember { state.installation?.operationId }
     LaunchedEffect(state.installation?.operationId) {
-        if (state.installation != null && state.installation.operationId != initialOperationId) dismiss()
+        if (state.installation != null && state.installation.operationId != initialOperationId) onSubmitted()
     }
     AlertDialog(onDismissRequest = dismiss, modifier = Modifier.imePadding(), title = { Text(stringResource(R.string.nginx_install)) },
         text = { Column(Modifier.heightIn(max = 430.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {

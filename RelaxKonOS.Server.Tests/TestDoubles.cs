@@ -290,9 +290,10 @@ sealed class FakeWebServerProvider : IWebServerProvider
     public WebServerIntegrationCandidateDto Candidate { get; } = new("fake-candidate", "fake", WebServerType.Nginx,
         "/fake/candidate-nginx", "/fake/nginx.conf", "test", DateTimeOffset.UtcNow);
     public string? IntegratedCandidateId { get; private set; }
+    public bool CandidateVisible { get; set; } = true;
 
     public Task<IReadOnlyList<WebServerDto>> DiscoverAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<WebServerDto>>([Instance]);
-    public Task<IReadOnlyList<WebServerIntegrationCandidateDto>> ListIntegrationCandidatesAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<WebServerIntegrationCandidateDto>>([Candidate]);
+    public Task<IReadOnlyList<WebServerIntegrationCandidateDto>> ListIntegrationCandidatesAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<WebServerIntegrationCandidateDto>>(CandidateVisible ? [Candidate] : []);
     public Task<WebServerStatusDto?> GetStatusAsync(string instanceId, CancellationToken cancellationToken) => Task.FromResult<WebServerStatusDto?>(instanceId == Instance.Id ? new WebServerStatusDto(instanceId, WebServerRuntimeState.Running) : null);
     public Task<WebServerConfigTestResultDto?> TestConfigurationAsync(string instanceId, CancellationToken cancellationToken) => Task.FromResult<WebServerConfigTestResultDto?>(null);
     public Task<WebServerOperationDto?> IntegrateCandidateAsync(string candidateId, string idempotencyKey, IntegrateWebServerRequest request, string? actor, CancellationToken cancellationToken)

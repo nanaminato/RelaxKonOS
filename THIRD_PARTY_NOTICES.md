@@ -78,7 +78,6 @@ RelaxKonOS 通过 NuGet 引用以下第三方包（版本声明集中于 [`Direc
 | 包 | 许可 | 用途 |
 |----|------|------|
 | `Avalonia` / `Avalonia.Themes.Fluent` / `Avalonia.Fonts.Inter` / `Avalonia.Desktop` | MIT | UI 框架 |
-| `AvaloniaUI.DiagnosticsSupport` | MIT | 调试工具 |
 | `CommunityToolkit.Mvvm` | MIT | MVVM 源生成器（`[ObservableProperty]` / `[RelayCommand]`） |
 | `Microsoft.Extensions.DependencyInjection` / `.Abstractions` / `.Http` | MIT | DI 容器 |
 | `Microsoft.AspNetCore.SignalR.Client` | MIT | 终端 Remote Mode SignalR 客户端 |
@@ -99,11 +98,15 @@ ImageSharp 3.x 采用 **Six Labors Split License v1.0**（双分支许可），�
 
 RelaxKonOS 以 **Non-Commercial Source-Available License** 发布（见 [`LICENSE`](./LICENSE)），落在这个分支里，
 因此本仓库及其非商业衍生分发可依 Apache-2.0 使用 ImageSharp，无需单独购买商业许可。**注意**：若将来以本项目的
-商业许可对外提供 RelaxKonOS，ImageSharp 的商业分支条件需要重新评估——Apache-2.0 分支的前提是「Source Available
-许可的软件」，而非本项目自身的商业条款。
+商业许可对外提供 RelaxKonOS，ImageSharp 的适用条件需要重新评估。本项目自身的商业许可不自动授予第三方组件的使用权。
+
+第 2 条另有独立条件：年总营收（annual gross revenue）**低于 100 万美元**的营利公司或个人，
+即使作为直接包依赖使用，也可按 Apache-2.0 获得授权。这里计算的是使用主体的年总营收，
+不是 RelaxKonOS 单个产品的收入或利润。因此，满足此条件时商业发行也无需购买 ImageSharp 商业许可；
+达到该金额且不满足其他 Apache-2.0 分支条件时，应重新评估商业授权。
 
 - 用途：Server 端 `GET /api/v1.0/files/thumbnail` 的缩略图渲染（`RelaxKonOS.Server/Files/ImageThumbnailRenderer.cs`）。
 - 版本：`3.1.12`（版本声明与选型理由见 [`Directory.Packages.props`](./Directory.Packages.props)）。选 3.1.x 而非
   2.1.x 的技术原因是 `DecoderOptions.MaxFrames`：缩略图必须只解一帧，否则动图会按帧数放大内存占用。
 - 纯托管实现、无原生依赖，Windows / Linux / macOS 行为一致。
-- 上游许可全文：<https://github.com/SixLabors/ImageSharp/blob/main/LICENSE>
+- 当前版本许可全文：<https://github.com/SixLabors/ImageSharp/blob/v3.1.12/LICENSE>

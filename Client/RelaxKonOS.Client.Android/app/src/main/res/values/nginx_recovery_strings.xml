@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nginx_accept_facts">Accept current instance state</string>
+    <string name="nginx_accept_facts_confirm">Refresh and verify the current managed instance, then end local tracking of this unresolved integration request? This does not prove the original request succeeded and does not cancel any server task. Continue only after confirming the server operation has ended.</string>
+</resources>

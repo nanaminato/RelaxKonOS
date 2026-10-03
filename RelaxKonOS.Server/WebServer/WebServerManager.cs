@@ -50,9 +50,10 @@ internal sealed class WebServerManager(IEnumerable<IWebServerProvider> providers
     {
         foreach (var provider in _providers)
         {
-            var candidates = await provider.ListIntegrationCandidatesAsync(cancellationToken);
-            if (candidates.Any(candidate => string.Equals(candidate.Id, candidateId, StringComparison.Ordinal)))
-                return await provider.IntegrateCandidateAsync(candidateId, idempotencyKey, request, actor, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            // Providers also own recovery after integration removes a candidate from discovery.
+            var operation = await provider.IntegrateCandidateAsync(candidateId, idempotencyKey, request, actor, cancellationToken);
+            if (operation is not null) return operation;
         }
         return null;
     }

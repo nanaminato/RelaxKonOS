@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nginx_accept_facts">現在のインスタンス状態を受け入れる</string>
+    <string name="nginx_accept_facts_confirm">現在の管理対象インスタンスを更新・確認し、この連携リクエストのローカル追跡を終了しますか？元のリクエストの成功を証明するものではなく、サーバータスクもキャンセルしません。サーバー操作の終了を確認してから続行してください。</string>
+</resources>

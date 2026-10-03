@@ -137,6 +137,9 @@ internal sealed partial class NginxWebServerManager(
 
     public async Task<WebServerOperationDto?> IntegrateCandidateAsync(string candidateId, string idempotencyKey, IntegrateWebServerRequest request, string? actor, CancellationToken cancellationToken)
     {
+        // A successful integration removes the candidate. Recover the original request before rediscovery.
+        if (request.Confirmed && await operations.FindRequestAsync(idempotencyKey, candidateId, "integrate", actor, cancellationToken) is { } original)
+            return original;
         var candidate = (await ListIntegrationCandidatesAsync(cancellationToken)).FirstOrDefault(item => item.Id == candidateId);
         if (candidate is null)
         {

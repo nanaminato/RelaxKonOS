@@ -69,6 +69,30 @@ class WebServerRepositoryTest {
         assertTrue(repository.lifecycle(owner, server, WebServerAction.Reload, ElevationAnswerProvider.Declines) is ApiResult.Problem)
         assertTrue(journal.pending(owner).isEmpty())
     }
+    @Test fun `initial not found releases request but ambiguous replay keeps evidence`() = runTest {
+        val owner = signIn()
+        gateway.onWebLifecycle = { _, _, _ -> ApiResult.Problem(404, "", null) }
+        repository.lifecycle(owner, server, WebServerAction.Reload, ElevationAnswerProvider.Declines)
+        assertTrue(journal.pending(owner).isEmpty())
+        gateway.onWebLifecycle = { _, _, _ -> ApiResult.Transport(null) }
+        repository.lifecycle(owner, server, WebServerAction.Reload, ElevationAnswerProvider.Declines)
+        val pending = journal.pending(owner).single()
+        gateway.onWebDiscover = { ApiResult.Success(listOf(server)) }
+        gateway.onWebLifecycle = { _, _, _ -> ApiResult.Problem(404, "", null) }
+        repository.resume(owner, pending, ElevationAnswerProvider.Declines)
+        assertEquals(pending, journal.pending(owner).single())
+    }
+    @Test fun `explicit integration fact acceptance clears only selected local recovery record`() = runTest {
+        val owner = signIn()
+        val integration = journal.begin(owner, server.id, "integrate")
+        journal.update(integration.copy(attempted = true))
+        val unresolved = journal.pending(owner).single()
+        val other = journal.begin(owner, "another-instance", "reload")
+        assertTrue(runCatching { repository.acceptIntegrationFacts(owner, other) }.isFailure)
+        repository.acceptIntegrationFacts(owner, unresolved)
+        assertEquals(listOf(other), journal.pending(owner))
+        assertTrue(index.forOwner(owner).isEmpty())
+    }
     @Test fun `different action cannot replace unresolved original key`() = runTest {
         val owner = signIn()
         val pending = journal.begin(owner, server.id, "reload")

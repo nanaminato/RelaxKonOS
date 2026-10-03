@@ -42,6 +42,13 @@ class WebServerRepository(private val gateway: RelaxKonGateway, private val sess
         return submit(owner, pending, provider)
     }
 
+    /** Explicitly ends local recovery tracking; never claims the original request succeeded or cancels it. */
+    fun acceptIntegrationFacts(owner: SessionState.Active, pending: PendingWebServerRequest) {
+        verifyManagement(owner)
+        require(pending in journal.pending(owner) && pending.action == "integrate" && pending.operationId == null)
+        journal.complete(pending)
+    }
+
     private suspend fun submit(owner: SessionState.Active, pending: PendingWebServerRequest,
         provider: ElevationAnswerProvider): ApiResult<WebServerOperation> = mutations.withLock {
         verify(owner)
@@ -63,7 +70,7 @@ class WebServerRepository(private val gateway: RelaxKonGateway, private val sess
             record(owner, result.value)
             journal.complete(pending)
         }
-        if (result is ApiResult.Problem && !pending.attempted && result.status in setOf(400, 401, 403)) journal.complete(pending)
+        if (result is ApiResult.Problem && !pending.attempted && result.status in setOf(400, 401, 403, 404)) journal.complete(pending)
         result
     }
     suspend fun operation(owner: SessionState.Active, id: String): ApiResult<WebServerOperation> =

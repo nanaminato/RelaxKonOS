@@ -67,7 +67,12 @@ internal class NginxViewModel(application: Application) : AndroidViewModel(appli
             if (server.canTestConfiguration) (container.webPublishing.configTest(active, server.id) as? ApiResult.Success)?.value?.let { tests[server.id] = it }
         }
         val certificates = if (ServerCapabilities.CERTIFICATES in active.capabilities) container.webPublishing.certificates(active) else null
-        val installation = if (active.privilegedOperations) container.installations.active(active, InstallationService.Nginx) else null
+        var installation = if (active.privilegedOperations) container.installations.active(active, InstallationService.Nginx) else null
+        if (installation is ApiResult.Success && installation.value == null) {
+            val knownId = state.installation?.operationId ?: container.operationIndex.forOwner(active)
+                .firstOrNull { it.domain == OperationDomain.Installation && it.resourceId == InstallationService.Nginx.name }?.operationId
+            if (knownId != null) installation = container.installations.operation(active, knownId)
+        }
         verify(active)
         val values = (servers as? ApiResult.Success)?.value.orEmpty()
         state = state.copy(loading = false, servers = values,
@@ -179,9 +184,16 @@ internal class NginxViewModel(application: Application) : AndroidViewModel(appli
         if (result is ApiResult.Success) {
             intent = null
             state = state.copy(installation = result.value, reference = null, pendingInstallation = false)
+            if (!result.value.state.active) load(active)
         }
     }
-    fun integrate(candidate: WebServerCandidate) = webMutation { active -> container.webServers.integrate(active, candidate, container.elevationAnswers) }
+    val mutationsBlocked get() = state.busy || state.loading || state.uncertain ||
+        state.operation?.state?.active == true || state.installation?.state?.active == true ||
+        state.pendingInstallation || intent != null
+    fun integrate(candidate: WebServerCandidate) {
+        if (mutationsBlocked || state.candidates.none { it.id == candidate.id } || state.pending.any { it.target == candidate.id }) return
+        webMutation { active -> container.webServers.integrate(active, candidate, container.elevationAnswers) }
+    }
     fun uninstall(server: WebServer) {
         if (state.selectedId != server.id || state.servers.none { it.id == server.id && it.canUninstall } ||
             state.busy || state.loading || state.operation?.state?.active == true ||
@@ -189,37 +201,68 @@ internal class NginxViewModel(application: Application) : AndroidViewModel(appli
             state.pendingInstallation || intent != null) return
         install(null, false, InstallationKind.Uninstall)
     }
-    fun lifecycle(server: WebServer, action: WebServerAction) = webMutation { active -> container.webServers.lifecycle(active, server, action, container.elevationAnswers) }
-    fun resume(pending: PendingWebServerRequest) = webMutation { active -> container.webServers.resume(active, pending, container.elevationAnswers) }
+    fun lifecycle(server: WebServer, action: WebServerAction) {
+        if (mutationsBlocked || state.pending.any { it.target == server.id }) return
+        val current = state.servers.firstOrNull { it.id == server.id } ?: return
+        if (!action.supported(current)) return
+        webMutation { active -> container.webServers.lifecycle(active, current, action, container.elevationAnswers) }
+    }
+    fun resume(pending: PendingWebServerRequest) {
+        if (state.busy || state.loading || state.operation?.state?.active == true || state.installation?.state?.active == true || state.pendingInstallation || intent != null) return
+        webMutation { active -> container.webServers.resume(active, pending, container.elevationAnswers) }
+    }
+    fun acceptIntegrationFacts(pending: PendingWebServerRequest) = work { active ->
+        load(active)
+        if (state.uncertain || state.operation?.state?.active == true || state.installation?.state?.active == true ||
+            state.pendingInstallation || pending.action != "integrate" || pending.operationId != null ||
+            state.servers.none { it.id == pending.target } || state.tests[pending.target]?.valid != true) return@work
+        container.webServers.acceptIntegrationFacts(active, pending)
+        state = state.copy(pending = container.webServers.pending(active))
+    }
     fun recover(id: String) = webMutation { active -> container.webServers.recoverById(active, id.trim()) }
     private fun webMutation(call: suspend (SessionState.Active) -> ApiResult<WebServerOperation>) = work { active ->
         val result = call(active); verify(active); failure(result)
         if (result is ApiResult.Success) state = state.copy(operation = result.value)
         state = state.copy(pending = container.webServers.pending(active))
+        if (result is ApiResult.Success && !result.value.state.active) load(active)
     }
     fun pollTasks() = work { active ->
+        var completed = false
         state.operation?.takeIf { it.state.active }?.let { operation ->
             val result = container.webServers.operation(active, operation.operationId)
             verify(active); failure(result)
-            if (result is ApiResult.Success) state = state.copy(operation = result.value)
+            if (result is ApiResult.Success) {
+                state = state.copy(operation = result.value)
+                completed = !result.value.state.active
+            }
         }
         state.installation?.takeIf { it.state.active }?.let { operation ->
             val result = container.installations.operation(active, operation.operationId)
             verify(active); failure(result)
-            if (result is ApiResult.Success) state = state.copy(installation = result.value)
+            if (result is ApiResult.Success) {
+                state = state.copy(installation = result.value)
+                completed = completed || !result.value.state.active
+            }
         }
+        if (completed) load(active)
     }
     fun pollWeb() = webMutation { active -> container.webServers.operation(active, requireNotNull(state.operation).operationId) }
     fun cancelWeb() = webMutation { active -> container.webServers.cancel(active, requireNotNull(state.operation).operationId) }
     fun pollInstallation() = work { active ->
         val result = container.installations.operation(active, requireNotNull(state.installation).operationId)
         verify(active); failure(result)
-        if (result is ApiResult.Success) state = state.copy(installation = result.value)
+        if (result is ApiResult.Success) {
+            state = state.copy(installation = result.value)
+            if (!result.value.state.active) load(active)
+        }
     }
     fun cancelInstallation() = work { active ->
         val result = container.installations.cancel(active, requireNotNull(state.installation).operationId)
         verify(active); failure(result)
-        if (result is ApiResult.Success) state = state.copy(installation = result.value)
+        if (result is ApiResult.Success) {
+            state = state.copy(installation = result.value)
+            if (!result.value.state.active) load(active)
+        }
     }
     fun retryInstallation() { if (intent != null) install(null, false) }
     val intentVersion get() = (intent?.request as? NginxInstallationRequest)?.version

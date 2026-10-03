@@ -69,6 +69,19 @@ internal sealed class WebServerOperationStore
         return operation.ToDto();
     }
 
+    public async Task<WebServerOperationDto?> FindRequestAsync(string idempotencyKey, string instanceId, string kind,
+        string? actor, CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (!_byIdempotency.TryGetValue($"{kind}:{instanceId}:{idempotencyKey}", out var id)) return null;
+            var operation = _operations[id];
+            return string.Equals(operation.Actor, actor, StringComparison.Ordinal) ? operation.ToDto() : null;
+        }
+        finally { _gate.Release(); }
+    }
+
     public async Task<WebServerOperationDto?> GetAsync(Guid operationId, CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken);
