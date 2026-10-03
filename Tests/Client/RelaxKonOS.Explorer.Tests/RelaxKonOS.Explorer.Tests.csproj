@@ -8,11 +8,14 @@
   <!-- Exercise the production view model without bootstrapping the desktop or a server. -->
   <ItemGroup>
     <PackageReference Include="Avalonia.Controls.DataGrid" />
+    <PackageReference Include="Avalonia.Headless" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <ProjectReference Include="../../../Shared/RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/ViewModels/ExplorerViewModel.cs" Link="ExplorerViewModel.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/Controls/ExplorerIcon.cs" Link="Controls/ExplorerIcon.cs" />
+    <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/Controls/FileBrowserPresentation.cs" Link="Controls/FileBrowserPresentation.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/IExplorerClient.cs" Link="IExplorerClient.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/RemoteFileClipboard.cs" Link="RemoteFileClipboard.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/HostFileClipboard.cs" Link="HostFileClipboard.cs" />

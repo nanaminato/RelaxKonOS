@@ -29,7 +29,6 @@ import kotlinx.coroutines.delay
     }
     if (!records) {
     Text(stringResource(R.string.frps_intro))
-    TextButton(enabled = !state.busy, onClick = model::observeFrps) { ActionLabel(R.string.common_refresh) }
     if (current == null) Text(stringResource(R.string.tunnels_unknown)) else {
         TunnelCard {
         Text(stringResource(R.string.frps_server_tab), style = MaterialTheme.typography.titleMedium)

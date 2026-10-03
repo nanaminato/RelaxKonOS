@@ -638,7 +638,8 @@
     <string name="about_client_platform">プラットフォーム</string>
     <string name="about_client_platform_value">Android</string>
     <string name="about_licenses_title">ライセンス</string>
-    <string name="about_licenses_body">RelaxKonOS はサードパーティのコンポーネントを含みます。その告知はリポジトリ直下の THIRD_PARTY_NOTICES.md に記載されています。</string>
+    <string name="about_licenses_body">サードパーティの著作権表示とライセンス全文をアプリ内でオフラインで閲覧できます。</string>
+    <string name="about_licenses_view">ライセンスを表示</string>
     <string name="deployments_title">アプリのデプロイ</string>
     <string name="deployments_subtitle">アプリ、実行環境、最近の操作を確認</string>
     <string name="deployments_read_only">このバージョンは閲覧専用です。作成や起動・停止の操作は未対応です。</string>
@@ -2719,4 +2720,5 @@
     <string name="taskmanager_back_to_list">プロセス一覧に戻る</string>
     <string name="docker_access_restart_required">Docker をインストールし、アクセス権を付与しました。ホストの RelaxKonOS Server を再起動してから更新し、接続を確認してください。</string>
     <string name="docker_installation_record_note">インストール記録を確認できません。現在の Docker エンジン状態には影響しません。元の操作 ID で復旧してください。未確認の送信結果は引き続き確認が必要です。</string>
+    <string name="remote_path_no_matches">一致するファイルまたはフォルダーはありません。</string>
 </resources>

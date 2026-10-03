@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.scripts
 
+import app.relaxkonos.mobile.ui.common.PageActionRow
 import app.relaxkonos.mobile.ui.common.ActionLabel
 import app.relaxkonos.mobile.ui.common.ExecutionStatusChip
 import app.relaxkonos.mobile.ui.common.ActivityIndicator
@@ -169,10 +170,11 @@ fun ScriptsScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modi
         Text(stringResource(R.string.scripts_identity, owner.userName))
         if (state.loading) ActivityIndicator(stringResource(R.string.scripts_loading))
         OperationMessageDialog(if (state.error && !state.loading) stringResource(R.string.scripts_failed) else null)
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        PageActionRow(refresh = {
             OutlinedButton(onClick = { model.load(owner) }, enabled = !state.loading) { ActionLabel(R.string.common_refresh) }
+        }, actions = {
             Button(onClick = { editing = true }, enabled = !state.loading) { Text(stringResource(R.string.scripts_new)) }
-        }
+        })
         state.tasks.forEach { task ->
             OutlinedCard(onClick = { model.select(task.id) }, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {

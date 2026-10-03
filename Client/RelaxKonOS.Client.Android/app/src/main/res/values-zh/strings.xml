@@ -639,7 +639,8 @@
     <string name="about_client_platform">平台</string>
     <string name="about_client_platform_value">Android</string>
     <string name="about_licenses_title">开源许可</string>
-    <string name="about_licenses_body">RelaxKonOS 包含第三方组件，其许可声明列于仓库根目录的 THIRD_PARTY_NOTICES.md。</string>
+    <string name="about_licenses_body">第三方组件的版权声明与许可全文已内置，可离线阅读。</string>
+    <string name="about_licenses_view">查看许可</string>
     <string name="deployments_title">应用部署</string>
     <string name="deployments_subtitle">查看应用、运行环境与近期操作</string>
     <string name="deployments_read_only">当前版本提供只读查看；创建和启停等操作尚未接入。</string>
@@ -2718,4 +2719,5 @@
     <string name="taskmanager_back_to_list">返回进程列表</string>
     <string name="docker_access_restart_required">Docker 已安装并已授予访问权限。请在主机上重启 RelaxKonOS Server，再刷新验证连接。</string>
     <string name="docker_installation_record_note">安装记录暂时无法核验，不影响已读取的当前 Docker 引擎状态。可按原操作 ID 恢复查询；结果未知的安装请求仍需核实。</string>
+    <string name="remote_path_no_matches">没有匹配的文件或目录。</string>
 </resources>

@@ -13,6 +13,7 @@ void Check(bool condition, string label)
     if (!condition) throw new Exception(label);
     Console.WriteLine($"PASS {++passed}: {label}");
 }
+FileBrowserPresentationChecks.Run(Check);
 await HostFileClipboardChecks.RunAsync(Check);
 Check(ExplorerBreadcrumb.ParentPath("/home/alice") == "/home", "POSIX parent");
 Check(ExplorerBreadcrumb.ParentPath("/") is null, "POSIX root goes to Computer");
@@ -156,11 +157,12 @@ vm.SortBy(ExplorerSortField.Name);
 ExplorerViewPreferences? savedView = null;
 vm.SaveViewPreferencesAsync = preferences => { savedView = preferences; return Task.CompletedTask; };
 vm.IsCompactView = true;
+vm.ViewModeIndex = (int)ExplorerViewMode.LargeIcons;
 await vm.SaveDefaultViewCommand.ExecuteAsync(null);
 Check(savedView is { IsCompactView: true, SortField: ExplorerSortField.Name }, "Default view command captures current preferences");
 var restored = new ExplorerViewModel(client);
 restored.ApplyViewPreferences(savedView!);
-Check(restored.IsCompactView && restored.SortField == ExplorerSortField.Name, "Saved view restores on a new view model");
+Check(restored.ViewMode == ExplorerViewMode.LargeIcons && restored.IsCompactView && restored.SortField == ExplorerSortField.Name, "Saved view restores on a new view model");
 restored.ApplyViewPreferences(new((ExplorerSortField)999));
 Check(restored.SortField == ExplorerSortField.Name, "Unknown persisted sort field falls back to Name");
 vm.SaveViewPreferencesAsync = _ => throw new IOException("Conflict");

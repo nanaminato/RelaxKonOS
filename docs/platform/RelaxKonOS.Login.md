@@ -360,3 +360,7 @@ Linux 服务端部署要求系统提供 PAM 运行库（Ubuntu 的 `libpam0g`，
 Linux 客户端将连接元数据写入 `${XDG_DATA_HOME:-~/.local/share}/RelaxKonOS/remembered-connections.json`（实际根目录由 .NET `LocalApplicationData` 解析）。文件仅含服务器地址、用户名、最后使用时间及空密码字段，父目录强制为 `0700`，文件强制为 `0600`。密码单独保存在桌面 Secret Service（如 GNOME Keyring/KWallet 提供的 Freedesktop Secret Service）中。启动时两层数据按服务器地址和用户名合并；Secret Service 不存在、未启动或未解锁时，连接列表仍可读取，但不会回填密码。旧版本只存在 Secret Service 中的聚合记录仍可读取，并会在下次成功保存时生成连接元数据文件。
 
 旧版本的单条加密会话在首次读取时会迁移为一条新的连接记录。若保存的密码已失效，客户端会保留该服务器和用户名，但移除失效密码并提示用户重新输入；网络暂时不可达不会删除任何已保存连接。退出远程桌面只会注销当前会话，不会清除本地已保存连接，行为与 mstsc 的已保存凭据一致。
+
+## 登录输入空白处理
+
+桌面登录表单在提交时对用户名和密码去除首尾空白，保留大小写和内部空格，认证请求与保存记录使用同一组值；此规则也适用于 SSH 登录。Android 的输入与已保存凭据规则见 [Android 登录凭据设计](../../Client/RelaxKonOS.Client.Android/docs/design/LoginCredentials.Design.md)。

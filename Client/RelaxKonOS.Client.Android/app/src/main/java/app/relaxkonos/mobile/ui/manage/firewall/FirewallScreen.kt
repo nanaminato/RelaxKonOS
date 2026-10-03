@@ -47,7 +47,9 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
         { destination -> navigate { draft = null; defaults = null; section = destination } }, modifier, stateKey = owner) {
         Text(stringResource(R.string.firewall_intro))
         if (owner?.capabilities?.contains(ServerCapabilities.FIREWALL) != true) { Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn }
-        TextButton(enabled = !state.busy, onClick = { navigate { draft = null; defaults = null; model.refresh() } }) { ActionLabel(R.string.common_refresh) }
+        PageActionRow(refresh = {
+            TextButton(enabled = !state.busy, onClick = { navigate { draft = null; defaults = null; model.refresh() } }) { ActionLabel(R.string.common_refresh) }
+        })
         RefreshProgressIndicator(visible = visible && state.busy)
         OperationMessageDialog(state.problem?.takeIf { visible && !state.busy }?.let { firewallProblem(it) })
         if (visible && section != "records" && state.pending.isNotEmpty()) TextButton(onClick = { navigate { draft = null; defaults = null; section = "records" } }) { Text(stringResource(R.string.workspace_records_attention)) }

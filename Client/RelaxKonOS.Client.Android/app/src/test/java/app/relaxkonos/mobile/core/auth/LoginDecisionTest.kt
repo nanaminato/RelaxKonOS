@@ -53,10 +53,16 @@ class LoginDecisionTest {
         assertEquals("typed", String((decision as LoginDecision.ManualPassword).password))
     }
 
-    /** Emptiness is the test, not blankness: a password may contain spaces and is never trimmed. */
     @Test
-    fun `a password of spaces counts as a typed password`() {
-        assertTrue(decide(password = " ") is LoginDecision.ManualPassword)
+    fun `manual passwords trim surrounding whitespace and preserve internal spaces`() {
+        val decision = decide(password = " \t pass word \n ") as LoginDecision.ManualPassword
+        assertEquals("pass word", String(decision.password))
+    }
+
+    @Test
+    fun `whitespace only input follows the empty password decision`() {
+        assertEquals(LoginDecision.RequirePassword(CredentialGap.Absent), decide(password = " \t\n "))
+        assertEquals(LoginDecision.UnlockSavedCredential, decide(password = "   ", credential = SavedCredentialState.Available))
     }
 
     /** Row 4: with the field empty, a usable stored password is unsealed rather than asked for. */

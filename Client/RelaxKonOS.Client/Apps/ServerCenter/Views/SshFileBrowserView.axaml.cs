@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using RelaxKonOS.Client.Apps.Explorer.Controls;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -26,6 +27,7 @@ internal partial class SshFileBrowserView : UserControl
     public static readonly StyledProperty<string> SizeSortGlyphProperty =
         AvaloniaProperty.Register<SshFileBrowserView, string>(nameof(SizeSortGlyph));
 
+    private readonly FileBrowserPresentation _presentation;
     private readonly SshDesktopSession _session;
     private readonly Func<string, bool> _canOpenFile;
     private readonly Func<string, bool> _openFile;
@@ -79,6 +81,9 @@ internal partial class SshFileBrowserView : UserControl
             ? T("server_center.wizard.bundle_file_type", "RelaxKonOS release bundle") + " (*.zip)"
             : string.Empty;
         EntriesGrid.SelectionMode = IsPackagePicker ? DataGridSelectionMode.Single : DataGridSelectionMode.Extended;
+        _presentation = new FileBrowserPresentation(EntriesHost, EntriesGrid, () => !_busy);
+        _presentation.Items.AddHandler(PointerPressedEvent, EntriesGrid_PointerPressed, RoutingStrategies.Tunnel);
+        _presentation.Items.DoubleTapped += EntriesGrid_DoubleTapped;
         NavigationTree.ItemsSource = _navigationNodes;
         _viewReady = true;
         // The grid marks pointer presses as handled while it updates the selection, so the
@@ -99,6 +104,12 @@ internal partial class SshFileBrowserView : UserControl
             await NavigateAsync(".");
         };
         UpdateControls();
+    }
+
+    private void ViewModeBox_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_presentation is not null && ViewModeBox.SelectedIndex >= 0)
+            _presentation.SetMode((ExplorerViewMode)ViewModeBox.SelectedIndex);
     }
 
     private void EntriesGrid_LayoutUpdated(object? sender, EventArgs e)
@@ -215,8 +226,9 @@ internal partial class SshFileBrowserView : UserControl
     private void EntriesGrid_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (!e.GetCurrentPoint(EntriesGrid).Properties.IsRightButtonPressed) return;
-        if (FindDataContext<SshFileEntry>(e.Source) is { } entry && !Selection().Contains(entry))
-            EntriesGrid.SelectedItem = entry;
+        var entry = FindDataContext<SshFileEntry>(e.Source);
+        if (entry is null) _presentation.ClearSelection();
+        else if (!Selection().Contains(entry)) EntriesGrid.SelectedItem = entry;
     }
 
     private void EntriesGrid_SortHeaderPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -251,7 +263,7 @@ internal partial class SshFileBrowserView : UserControl
     private async void EntriesGrid_DoubleTapped(object? sender, TappedEventArgs e)
     {
         // Activate the row under the pointer rather than the previous selection.
-        var entry = FindDataContext<SshFileEntry>(e.Source) ?? EntriesGrid.SelectedItem as SshFileEntry;
+        var entry = FindDataContext<SshFileEntry>(e.Source);
         if (entry is not null) await OpenEntryAsync(entry);
     }
 
@@ -307,6 +319,7 @@ internal partial class SshFileBrowserView : UserControl
 
     private async void View_KeyDown(object? sender, KeyEventArgs e)
     {
+        if (e.Handled && e.Key == Key.Escape) return;
         if (e.Source is TextBox && e.Key is not (Key.F5 or Key.L)) return;
         if (e.Key == Key.F5) { e.Handled = true; await RefreshAsync(); }
         else if (e.Key == Key.F2) { e.Handled = true; await RenameAsync(); }
@@ -321,11 +334,11 @@ internal partial class SshFileBrowserView : UserControl
         else if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.Key == Key.A)
         {
             e.Handled = true;
-            EntriesGrid.SelectAll();
+            if (!IsPackagePicker) EntriesGrid.SelectAll();
         }
         else if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.Key == Key.F) { e.Handled = true; SearchBox.Focus(); }
         else if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.Key == Key.L) { e.Handled = true; SetAddressEditing(true); }
-        else if (e.Key == Key.Escape) { e.Handled = true; EntriesGrid.SelectedItems.Clear(); }
+        else if (e.Key == Key.Escape) { e.Handled = true; _presentation.ClearSelection(); }
     }
 
     private SftpClient OpenClient()

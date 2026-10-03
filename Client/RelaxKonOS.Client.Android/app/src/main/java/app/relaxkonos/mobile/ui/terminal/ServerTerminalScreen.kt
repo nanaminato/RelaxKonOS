@@ -51,6 +51,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -387,8 +392,10 @@ internal fun ServerTerminalContent(
                     contentPadding = PaddingValues(horizontal = Spacing.xs),
                     modifier = Modifier.width(48.dp).semantics { contentDescription = increaseFontLabel }) { Text("A+") }
                 if (state.sessions.size > 1) Box {
-                    TextButton(onClick = { menuOpen = true }, enabled = state.connected && !state.busy,
-                        modifier = Modifier.width(48.dp).semantics { contentDescription = sessionActionsLabel }) { Text("⋮") }
+                    IconButton(onClick = { menuOpen = true }, enabled = state.connected && !state.busy,
+                        modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.MoreVert, contentDescription = sessionActionsLabel, modifier = Modifier.size(24.dp))
+                    }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         val target = stringResource(R.string.terminal_close_others)
                         DropdownMenuItem(text = { Text(target) }, onClick = {
@@ -534,9 +541,8 @@ private fun TerminalSessionChip(
     ) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = content, maxLines = 1,
             overflow = TextOverflow.Ellipsis, modifier = if (constrained) Modifier.weight(1f) else Modifier)
-        // The glyph is not a word, so the accessible name is set here rather than left as "multiplication sign".
-        IconButton(onClick = onClose, enabled = enabled, modifier = Modifier.semantics { contentDescription = closeLabel }) {
-            Text("×", style = MaterialTheme.typography.labelMedium, color = content)
+        IconButton(onClick = onClose, enabled = enabled, modifier = Modifier.size(48.dp)) {
+            Icon(Icons.Default.Close, contentDescription = closeLabel, tint = content, modifier = Modifier.size(24.dp))
         }
     }
 }

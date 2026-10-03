@@ -2,6 +2,7 @@ package app.relaxkonos.mobile.ui.common
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -45,7 +46,7 @@ fun ScreenHeader(
             workspace.back = onBack
             workspace.hasBack = onBack != null
         }
-        trailing?.invoke()
+        if (trailing != null) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) { trailing() }
         return
     }
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
@@ -85,7 +86,7 @@ fun ScreenHeader(
                     backButton()
                     titleContent(Modifier.weight(1f))
                 }
-                trailing()
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) { trailing() }
             }
         } else {
             Row(

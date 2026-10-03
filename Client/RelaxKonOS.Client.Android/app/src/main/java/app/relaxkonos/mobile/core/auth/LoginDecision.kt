@@ -50,8 +50,7 @@ enum class CredentialGap {
  * 5. otherwise the password has to be typed, and [CredentialGap] explains why.
  *
  * Empty passwords are never submitted: `LoginRequest.password` is required and the server rejects it
- * (§5.1, D8). The password field is compared for emptiness rather than blankness because a password may
- * legitimately contain spaces, and trimming a password would send something the user did not type.
+ * (§5.1, D8). Manually entered passwords are trimmed at submission; internal spaces are preserved.
  */
 fun decideLogin(
     selected: SelectedLogin,
@@ -66,7 +65,7 @@ fun decideLogin(
 
     isLoggingIn -> null
 
-    passwordText.isNotEmpty() -> LoginDecision.ManualPassword(passwordText.toCharArray())
+    passwordText.isNotBlank() -> LoginDecision.ManualPassword(passwordText.trim().toCharArray())
 
     credential == SavedCredentialState.Available -> LoginDecision.UnlockSavedCredential
 

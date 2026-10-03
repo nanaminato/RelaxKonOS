@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.operations
 
+import app.relaxkonos.mobile.ui.common.PageActionRow
 import app.relaxkonos.mobile.ui.common.ActionLabel
 import app.relaxkonos.mobile.ui.common.ActivityIndicator
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
@@ -108,7 +109,9 @@ internal fun AlertPanel(owner: SessionState.Active, onOpenTarget: (OperationTarg
             Text(stringResource(R.string.event_center_apply))
         }
     }
-    TextButton(onClick = browser::refresh, enabled = !state.loading && !state.actionBusy) { ActionLabel(R.string.common_refresh) }
+    PageActionRow(refresh = {
+        TextButton(onClick = browser::refresh, enabled = !state.loading && !state.actionBusy) { ActionLabel(R.string.common_refresh) }
+    })
     if (state.loading) ActivityIndicator(stringResource(R.string.event_center_loading))
     state.checkedAtMillis?.let { Text(stringResource(R.string.event_center_checked, eventTime(it)), style = MaterialTheme.typography.bodySmall) }
     if (state.readResult != null && state.readResult !is ApiResult.Success) AlertFailure(state.readResult)

@@ -76,10 +76,11 @@ private data class ProxyConfirmation(val action: () -> Unit)
 WorkspaceSection(section == "overview") {
         ManagementCard {
         Text(stringResource(R.string.mihomo_intro))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        PageActionRow(refresh = {
             TextButton(enabled = !state.busy, onClick = model::refresh) { ActionLabel(R.string.common_refresh) }
+        }, actions = {
             if (canManage) OutlinedButton(enabled = !state.busy && state.installation?.state?.active != true, onClick = { install = true }) { Text(if (notInstalled) stringResource(R.string.runtime_install_action, "Mihomo") else stringResource(R.string.mihomo_runtime_manage)) }
-        }
+        })
         RefreshProgressIndicator(visible = state.busy)
 
         state.observedAtMillis?.let { Text(stringResource(R.string.mihomo_observed, DateFormat.getDateTimeInstance().format(Date(it))), style = MaterialTheme.typography.bodySmall) }
@@ -109,7 +110,9 @@ WorkspaceSection(section == "overview") {
             Text(operation.operationId, style = MaterialTheme.typography.bodySmall)
             ExecutionStatusChip(if (state.operationVerified) proxyOperationLabel(operation.state) else stringResource(R.string.mihomo_unverified), if (state.operationVerified) operation.state.wire else null)
             if (state.operationVerified) { Text(proxyStageLabel(operation.stage)); operation.problemCode.takeIf(String::isNotBlank)?.let { Text(proxyProblemLabel(it)) } }
-            TextButton(enabled = !state.busy, onClick = model::pollOperation) { ActionLabel(R.string.common_refresh) }
+            PageActionRow(refresh = {
+                TextButton(enabled = !state.busy, onClick = model::pollOperation) { ActionLabel(R.string.common_refresh) }
+            })
             }
         }
         if (notInstalled) TextButton(onClick = { showRecovery = !showRecovery }) { Text(stringResource(R.string.runtime_recovery_tools)) }
@@ -122,7 +125,9 @@ WorkspaceSection(section == "overview") {
                 operation.progress?.let { Text(stringResource(R.string.installation_stage_progress, it)) }
                 operation.problemCode?.takeIf(String::isNotBlank)?.let { Text(proxyProblemLabel(it)) }
             } else Text(stringResource(R.string.mihomo_unverified))
-            TextButton(enabled = !state.busy, onClick = model::pollInstall) { ActionLabel(R.string.common_refresh) }
+            PageActionRow(refresh = {
+                TextButton(enabled = !state.busy, onClick = model::pollInstall) { ActionLabel(R.string.common_refresh) }
+            })
             if (canManage && state.installationVerified && operation.state.active && operation.cancellable) TextButton(enabled = !state.busy,
                 onClick = { confirm = ProxyConfirmation(model::cancelInstall) }) { Text(stringResource(R.string.common_cancel)) }
             }
@@ -160,10 +165,11 @@ WorkspaceSection(section == "profiles") {
             ManagementCard {
             Text(subscription.name + if (subscription.active) " · " + stringResource(R.string.mihomo_active) else "")
             subscription.lastUpdatedAtMillis?.let { Text(DateFormat.getDateTimeInstance().format(Date(it)), style = MaterialTheme.typography.bodySmall) }
-            if (canManage) FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                TextButton(enabled = ready, onClick = { confirm = ProxyConfirmation { model.queue(ProxyAction.RefreshSubscription, subscription.id) } }) { ActionLabel(R.string.common_refresh) }
+            if (canManage) PageActionRow(refresh = {
+                    TextButton(enabled = ready, onClick = { confirm = ProxyConfirmation { model.queue(ProxyAction.RefreshSubscription, subscription.id) } }) { ActionLabel(R.string.common_refresh) }
+            }, actions = {
                 TextButton(enabled = ready, onClick = { confirm = ProxyConfirmation { model.queue(ProxyAction.ActivateSubscription, subscription.id) } }) { Text(stringResource(R.string.mihomo_activate)) }
-            }
+            })
             }
         }
         HorizontalDivider()

@@ -55,7 +55,7 @@ ExplorerApp (RemoteApplicationBase)
     └── Grid（主体）
         ├── NavigationView（左：TreeView 懒加载）
         ├── GridSplitter
-        └── ExplorerView（右：DataGrid + 列标题 + 空视图提示）
+        └── ExplorerView（右：详细信息 / 列表 / 小图标 / 大图标 + 空视图提示）
 ```
 
 ### 2.3 去插件化
@@ -303,7 +303,7 @@ services.AddSingleton<IRemoteApplication, RelaxKonOS.Client.Apps.Explorer.Explor
 - **网络节点浏览**：当前"网络"节点为占位，点击仅显示状态栏文本。后续接入 SMB/SSH 网络共享浏览（Server 端需扩展 `IFileService` 支持非本地路径）。
 - **统一图标库**：当前导航树与条目网格均用 emoji，跨平台渲染差异（Windows Segoe UI Emoji / Linux Noto Color Emoji）。后续引 `Material.Icons.Avalonia`（或同类矢量图标库）统一替换全部图标，届时与 Ribbon 一起做（避免半 emoji 半矢量的中间态）。
 - **预览/详情面板**：移植 Jaya `PreviewView` / `DetailsView`（图片/文本预览、文件属性详情）。
-- **视图模式切换**：Details/Icons/List/Tiles/Content（Jaya `PaneConfigModel.ViewMode`）。
+- **更多视图**：后续可增加 Tiles/Content 和缩略图；详细信息、列表、小图标、大图标已实现。
 - **权限提升**：危险操作（如删除系统目录）委托宿主 OS（Linux: sudo / Windows: UAC、RunAs）——project_memory 硬约束。
 - **目录 watch**：SignalR Hub 推送目录变化（`FileSystemWatcher` → Hub → Client 刷新）。
 - **大文件流式**：分块上传/断点续传，设计与实现规格见 [`RelaxKonOS.FileUpload.Design.md`](../architecture/RelaxKonOS.FileUpload.Design.md)。已实现：声明长度 ≤ 4 MiB 的文件仍走单发 `multipart/form-data`；更大的走分块会话（`POST/PATCH/GET /api/v1.0/files/uploads`），只发送尚未确认的字节，失败/重启后从服务端权威偏移继续。上传通道使用独立的 `HttpClient`（不缓冲正文、整请求无超时、由 60 秒分片停滞看门狗负责），因此不再受客户端整包缓冲、整请求超时与服务端请求体上限的三重限制。反向代理需要放宽 `/api/v1.0/files/uploads` 前缀的请求体与超时，见 [`deployment/README.md`](../../deployment/README.md)。
@@ -329,3 +329,11 @@ services.AddSingleton<IRemoteApplication, RelaxKonOS.Client.Apps.Explorer.Explor
 11. **特殊位置枚举必须经 `Directory.Exists` 过滤**，禁止返回失效快捷入口；`GetSpecialLocations` 在 Linux 下必须 `HOME` 环境变量兜底（`Environment.SpecialFolder.UserProfile` 在 headless 服务进程可能为空）。Downloads 不在 `SpecialFolder` 枚举中需手动 `Path.Combine(home, "Downloads")` 拼接。
 12. **导航树选中同步必须防循环**：用 `_isSyncingTreeSelection` 标志仅抑制 `SyncTreeSelectionAsync → OnSelectedNodeChanged → NavigateToAsync` 反向边；同步点在 `NavigateToAsyncCore` 末尾（路径服务端确认后），不在 `OnAddressbarPathChanged`（每按键触发，路径半成品无意义）。`FindAndExpandNodeAsync` 下钻时直接 `await OnNodeExpandRequested(node)` 绕过 `IsExpanded` setter 的 fire-and-forget。
 13. **路径比较跨平台**：用 `OperatingSystem.IsLinux()` 区分大小写敏感性（Linux `Ordinal` / Windows `OrdinalIgnoreCase`）；`NormalizePath` 对 Linux "/" 根特殊处理（不能 trim 成空串），对非法字符 try/catch 兜底返回原值。
+
+### 视图与框选（2026-10-03）
+
+普通文件浏览器和 SSH 文件浏览器均提供详细信息、列表、小图标、大图标四种视图。切换视图保留所选条目，文件菜单、键盘操作和选择状态共用；普通文件浏览器继续支持行内重命名、剪切淡化和文件拖放。
+
+从条目区域的空白处按住左键拖动可框选，选择框与条目相交即选中；Ctrl / Shift 框选追加现有选择，普通空白点击清空选择。拖至上下边缘自动滚动；Escape 取消正在进行的框选并恢复原选择。列标题、滚动条、重命名编辑器和条目本身不启动框选。单选文件选择器限制选择数量为一。
+
+普通浏览器“设为默认视图”同时保存 `ViewMode`（Details=0、List=1、SmallIcons=2、LargeIcons=3）；设置契约 schemaVersion=2，直接采用当前格式，不解析旧版本设置。SSH 视图模式在当前窗口内保留。

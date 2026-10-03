@@ -56,18 +56,22 @@ import java.util.Date
         }
     }
     BackHandler(section in setOf("profiles", "logs") && state.selectedId != null && state.profileDraft == null && state.definitionDraft == null && !state.busy) { model.select(null) }
-    WorkspaceColumn(stringResource(R.string.tunnels_title), onBack, listOf(WorkspaceDestination("overview", R.string.workspace_overview), WorkspaceDestination("profiles", R.string.workspace_tunnels), WorkspaceDestination("runtime", R.string.workspace_runtime), WorkspaceDestination("logs", R.string.workspace_logs), WorkspaceDestination("frps", R.string.frps_server_tab), WorkspaceDestination("records", R.string.tunnels_records)), section, { section = it }, modifier, stateKey = owner to epoch) {
+    WorkspaceColumn(stringResource(R.string.tunnels_title), onBack, listOf(WorkspaceDestination("overview", R.string.workspace_overview), WorkspaceDestination("profiles", R.string.workspace_tunnels), WorkspaceDestination("runtime", R.string.workspace_runtime), WorkspaceDestination("logs", R.string.workspace_logs), WorkspaceDestination("frps", R.string.frps_server_tab), WorkspaceDestination("records", R.string.tunnels_records)), section, { section = it }, modifier, stateKey = owner to epoch,
+        contentSpacing = Spacing.sm, contentPadding = PaddingValues(Spacing.md)) {
         if (!available) { Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn }
         if (section == "overview") Text(stringResource(R.string.tunnels_overview_help))
         if (!canManage) Text(stringResource(R.string.tunnels_observer), style = MaterialTheme.typography.bodySmall)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            TextButton(enabled = !state.busy, onClick = model::refresh) { ActionLabel(R.string.common_refresh) }
+        PageActionRow(refresh = {
+            TextButton(enabled = !state.busy, onClick = { if (frpsSection) model.observeFrps() else model.refresh() }) { ActionLabel(R.string.common_refresh) }
+        }, actions = {
             if (canManage) {
                 if (section in setOf("overview", "profiles")) Button(enabled = !state.busy && state.pending.isEmpty(), onClick = { model.editProfile() }) { Text(stringResource(R.string.tunnels_profile_create)) }
             }
-        }
+        })
         RefreshProgressIndicator(visible = state.busy)
         if (section != "records" && (state.uncertain || state.pending.isNotEmpty() || state.pendingInstallation || state.installation != null && !state.installationVerified)) TextButton(onClick = { section = "records" }) { Text(stringResource(R.string.tunnels_records_attention)) }
+        // A gap-free container prevents retained, hidden tabs from adding blank rows.
+        Column(Modifier.fillMaxWidth()) {
         WorkspaceSection(frpsSection) { key(owner, epoch) { ManagedFrpsManager(model, state, canManage, active = frpsSection) } }
 WorkspaceSection(section in setOf("overview", "runtime")) {
         TunnelCard {
@@ -108,7 +112,9 @@ WorkspaceSection(section in setOf("overview", "runtime")) {
                 Text(installationStageLabel(operation.stage)); operation.progress?.let { Text(stringResource(R.string.installation_stage_progress, it)) }
                 operation.problemCode?.takeIf(String::isNotBlank)?.let { Text(tunnelProblemLabel(it)) }
             } else Text(stringResource(R.string.tunnels_unknown))
-            TextButton(enabled = !state.busy, onClick = model::pollInstall) { ActionLabel(R.string.common_refresh) }
+            PageActionRow(refresh = {
+                TextButton(enabled = !state.busy, onClick = model::pollInstall) { ActionLabel(R.string.common_refresh) }
+            })
             if (canManage && state.installationVerified && operation.state.active && operation.cancellable) TextButton(enabled = !state.busy,
                 onClick = { confirm = TunnelConfirmation(R.string.tunnels_cancel_install_confirm, operation.operationId, model::cancelInstall) }) { Text(stringResource(R.string.common_cancel)) }
             }
@@ -156,6 +162,7 @@ WorkspaceSection(section in setOf("profiles", "logs")) {
         }
 }
             }
+    }
     if (install) key(owner, epoch) { TunnelInstallEditor(model, onSubmitted = { section = "records" }) { install = false } }
     if (state.frpsDraft != null) key(owner, epoch) { ManagedFrpsEditor(model, state) }
     if (state.profileDraft != null) key(owner, epoch) { TunnelProfileEditor(state, model) }

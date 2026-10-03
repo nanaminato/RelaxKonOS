@@ -132,7 +132,9 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
             Text(stringResource(R.string.nginx_operation, operation.operationId, nginxOperationStateLabel(operation.state)))
             if (operation.problemCode.isNotBlank()) Text(nginxProblemLabel(operation.problemCode), color = MaterialTheme.colorScheme.error)
             operation.snapshotId?.let { Text(stringResource(R.string.nginx_snapshot, it), style = MaterialTheme.typography.bodySmall) }
-            TextButton(enabled = !state.busy, onClick = model::pollWeb) { ActionLabel(R.string.common_refresh) }
+            PageActionRow(refresh = {
+                TextButton(enabled = !state.busy, onClick = model::pollWeb) { ActionLabel(R.string.common_refresh) }
+            })
             if (operation.state.active && canManage) TextButton(enabled = !state.busy, onClick = {
                 confirmation = R.string.operations_cancel_explanation to model::cancelWeb
             }) { Text(stringResource(R.string.operations_request_cancel)) }
@@ -144,7 +146,9 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
             Text(installationStageLabel(operation.stage))
             operation.progress?.let { Text(stringResource(R.string.installation_stage_progress, it)) }
             operation.problemCode?.let { Text(nginxProblemLabel(it), color = MaterialTheme.colorScheme.error) }
-            TextButton(enabled = !state.busy, onClick = model::pollInstallation) { ActionLabel(R.string.common_refresh) }
+            PageActionRow(refresh = {
+                TextButton(enabled = !state.busy, onClick = model::pollInstallation) { ActionLabel(R.string.common_refresh) }
+            })
             if (operation.state.active && operation.cancellable && canManage) TextButton(enabled = !state.busy, onClick = {
                 confirmation = R.string.operations_cancel_explanation to model::cancelInstallation
             }) { Text(stringResource(R.string.operations_request_cancel)) }

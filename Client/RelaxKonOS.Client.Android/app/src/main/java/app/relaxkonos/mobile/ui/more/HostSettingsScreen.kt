@@ -119,7 +119,6 @@ internal class HostSettingsEditor(val owner: SessionState.Active, private val re
         existingVariable = variable != null; environmentEditing = true
     }
     fun discard() { environmentEditing = false; existingVariable = false; name = ""; value = when(kind) { HostSettingKind.Time -> time?.zoneId.orEmpty(); HostSettingKind.Identity -> identity?.pendingName.orEmpty(); else -> "" }; delete = false; expand = false; plan = null }
-    fun editVariable(v: HostEnvironmentVariable) { if (!busy) { name = v.name; value = v.rawValue.orEmpty(); delete = false; expand = v.valueKind == "expandString" } }
     fun preview() {
         if (!canPreview) return
         val selected = kind
@@ -243,34 +242,24 @@ fun HostSettingsScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
                     KeyValueRow(stringResource(R.string.host_settings_observed),facts.observedAt)
                     Text(stringResource(R.string.host_settings_variable_count,facts.variables.size))
                     facts.variables.forEach { variable ->
-                        TextButton(onClick={editor.editVariable(variable)},enabled=!editor.busy) { Text(variable.name) }
+                        TextButton(onClick={editor.beginEnvironmentEdit(editor.environmentScope,variable)},enabled=!editor.busy && !editor.dirty && !editor.environmentEditing && variable.rawValue != null) { Text(variable.name) }
                         Text(variable.rawValue ?: stringResource(R.string.host_settings_masked),style=MaterialTheme.typography.bodySmall)
                         variable.expandedPreview?.takeIf { it!=variable.rawValue }?.let { Text(stringResource(R.string.host_settings_expanded,it),style=MaterialTheme.typography.bodySmall) }
                         if(variable.warnings.isNotEmpty()) Text(stringResource(R.string.host_settings_warning),style=MaterialTheme.typography.bodySmall)
                     }
-                    OutlinedTextField(editor.name,{if(it.length<=255) editor.name=it},label={Text(stringResource(R.string.host_settings_variable))},singleLine=true,enabled=!editor.busy,modifier=Modifier.fillMaxWidth())
-                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(editor.delete,{editor.delete=it},enabled=!editor.busy); Text(stringResource(R.string.host_settings_delete)) }
-                    if(!editor.delete) {
-                        if (owner.serverPlatform.equals("windows",true) && editor.name.equals("PATH",true)) {
-                            key(editor.name, editor.environmentScope) {
-                                EnvironmentPathList(editor.value, !editor.busy) { editor.value = it }
-                            }
-                        } else {
-                        OutlinedTextField(editor.value,{if(it.length<=32767) editor.value=it},label={Text(stringResource(R.string.host_settings_value))},enabled=!editor.busy,maxLines=8,modifier=Modifier.fillMaxWidth())
-                        }
-                        if(owner.serverPlatform.equals("windows",true)) Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(editor.expand,{editor.expand=it},enabled=!editor.busy); Text(stringResource(R.string.host_settings_expand)) }
-                    }
+                    TextButton(onClick={editor.beginEnvironmentEdit(editor.environmentScope,null)},enabled=!editor.busy && !editor.dirty && !editor.environmentEditing) { Text(stringResource(R.string.host_settings_path_new)) }
                 }
                 }
 
             }
         }
-        FlowRow(horizontalArrangement=Arrangement.spacedBy(Spacing.sm)) {
-            TextButton(onClick={editor.load()},enabled=!editor.busy&&!editor.dirty) { ActionLabel(R.string.common_refresh) }
+        PageActionRow(refresh = {
+                TextButton(onClick={editor.load()},enabled=!editor.busy&&!editor.dirty) { ActionLabel(R.string.common_refresh) }
+        }, actions = {
             TextButton(onClick={editor.discard()},enabled=!editor.busy&&editor.dirty) { Text(stringResource(R.string.host_settings_discard)) }
-            if (!(owner.serverPlatform.equals("windows",true) && editor.kind == HostSettingKind.Environment))
+            if (editor.kind != HostSettingKind.Environment)
                 Button(onClick={editor.preview()},enabled=editor.canPreview) { Text(stringResource(R.string.host_settings_preview)) }
-        }
+        })
         val visibleReferences = editor.references.filter { it.kind == editor.kind }.take(20)
         if (visibleReferences.isNotEmpty()) Text(stringResource(R.string.host_settings_history),style=MaterialTheme.typography.titleMedium)
         visibleReferences.forEach { ref ->
@@ -299,18 +288,29 @@ fun HostSettingsScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
                 Text(stringResource(R.string.host_settings_delete))
                 Text(editor.name)
             } else {
-                if(editor.name.equals("PATH",true)) {
-                    key(editor.name,editor.environmentScope) { EnvironmentPathList(editor.value,!editor.busy) { editor.value=it } }
+                if(editor.name.equals("PATH",ignoreCase=editor.environment?.caseSensitiveNames == false)) {
+                    key(editor.name,editor.environmentScope) { EnvironmentPathList(editor.value,requireNotNull(editor.environment).pathSeparator,!editor.busy) { editor.value=it } }
                 } else {
                     OutlinedTextField(editor.value,{if(it.length<=32767) editor.value=it},
                         label={Text(stringResource(R.string.host_settings_value))},enabled=!editor.busy,
                         minLines=6,maxLines=12,modifier=Modifier.fillMaxWidth())
                 }
+                if(owner.serverPlatform.equals("windows",true)) {
                 Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                     Checkbox(editor.expand,{editor.expand=it},enabled=!editor.busy)
                     Text(stringResource(R.string.host_settings_expand))
                 }
                 Text(stringResource(R.string.host_settings_expand_hint),style=MaterialTheme.typography.bodySmall)
+                }
+                if(!owner.serverPlatform.equals("windows",true) && editor.existingVariable) {
+                    Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                        Checkbox(editor.delete,{editor.delete=it},enabled=!editor.busy)
+                        Text(stringResource(R.string.host_settings_delete))
+                    }
+                }
+            }
+            if(editor.delete && !owner.serverPlatform.equals("windows",true)) {
+                TextButton(onClick={editor.delete=false},enabled=!editor.busy) { Text(stringResource(R.string.common_edit)) }
             }
             if(editor.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         }
@@ -336,13 +336,15 @@ fun HostSettingsScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
 @Composable
 private fun SettingsReview(title:String,confirm:String,onDismiss:()->Unit,onConfirm:()->Unit,confirmEnabled:Boolean=true,dismissEnabled:Boolean=true,content:@Composable ColumnScope.()->Unit) {
     Dialog(onDismissRequest={if(dismissEnabled) onDismiss()},properties=DialogProperties(usePlatformDefaultWidth=false)) {
-        Surface(Modifier.widthIn(max=900.dp).fillMaxWidth().fillMaxHeight(0.85f).imePadding().padding(Spacing.md),shape=MaterialTheme.shapes.large) {
-            Column(Modifier.padding(Spacing.lg),verticalArrangement=Arrangement.spacedBy(Spacing.md)) {
-                Text(title,style=MaterialTheme.typography.titleLarge)
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(Spacing.sm),content=content)
-                FlowRow(horizontalArrangement=Arrangement.spacedBy(Spacing.sm)) {
-                    TextButton(onClick=onDismiss,enabled=dismissEnabled) { Text(stringResource(R.string.common_cancel)) }
-                    Button(onClick=onConfirm,enabled=confirmEnabled) { Text(confirm) }
+        BoxWithConstraints(Modifier.imePadding().padding(Spacing.md)) {
+            Surface(Modifier.widthIn(max=560.dp).fillMaxWidth().heightIn(max=maxHeight * 0.85f),shape=MaterialTheme.shapes.large) {
+                Column(Modifier.padding(Spacing.lg),verticalArrangement=Arrangement.spacedBy(Spacing.md)) {
+                    Text(title,style=MaterialTheme.typography.titleLarge)
+                    Column(Modifier.weight(1f,fill=false).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(Spacing.sm),content=content)
+                    FlowRow(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(Spacing.sm,androidx.compose.ui.Alignment.End)) {
+                        TextButton(onClick=onDismiss,enabled=dismissEnabled) { Text(stringResource(R.string.common_cancel)) }
+                        Button(onClick=onConfirm,enabled=confirmEnabled) { Text(confirm) }
+                    }
                 }
             }
         }
@@ -353,13 +355,13 @@ private fun effectLabel(value:String) = when(value) { "immediate" -> R.string.ho
 private fun stateLabel(value:String) = when(value) { "prepared" -> R.string.host_settings_prepared; "applying" -> R.string.host_settings_applying; "applied" -> R.string.host_settings_applied; "failed" -> R.string.host_settings_failed; "partiallyApplied" -> R.string.host_settings_partial; "unknown" -> R.string.host_settings_unknown; "awaitingConfirmation" -> R.string.host_settings_awaiting; "rolledBack" -> R.string.host_settings_rolled_back; "recoveryRequired" -> R.string.host_settings_recovery; else -> R.string.host_settings_unknown }
 
 @Composable
-private fun EnvironmentPathList(value: String, enabled: Boolean, onValueChange: (String) -> Unit) {
+private fun EnvironmentPathList(value: String, separator: String, enabled: Boolean, onValueChange: (String) -> Unit) {
     var selected by remember { mutableIntStateOf(-1) }
     val entryFocus = remember { FocusRequester() }
-    val entries = value.split(';')
+    val entries = value.split(separator)
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     fun update(next: List<String>, index: Int) {
-        val raw = next.joinToString(";")
+        val raw = next.joinToString(separator)
         if (raw.length <= 32767) {
             selected = index.coerceAtMost(next.lastIndex)
             onValueChange(raw)
@@ -401,7 +403,7 @@ private fun EnvironmentPathList(value: String, enabled: Boolean, onValueChange: 
             }
             if(!wide) FlowRow(horizontalArrangement=Arrangement.spacedBy(Spacing.sm),content={actions()})
             OutlinedTextField(if(hasSelection) entries[selected] else "",{ text ->
-                if(!text.contains(';') && hasSelection) {
+                if(!text.contains(separator) && hasSelection) {
                     val next=entries.toMutableList(); next[selected]=text; update(next,selected)
                 }
             },enabled=enabled && hasSelection,label={Text(stringResource(R.string.host_settings_value))},modifier=Modifier.fillMaxWidth().focusRequester(entryFocus))

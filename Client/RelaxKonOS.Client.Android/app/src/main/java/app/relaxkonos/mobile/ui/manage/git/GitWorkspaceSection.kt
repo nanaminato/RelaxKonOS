@@ -73,12 +73,16 @@ internal fun GitWorkspaceSection(owner: SessionState.Active, section: String, on
                 Text(stringResource(if (engine.available) R.string.gw_engine_ready else R.string.gw_engine_missing), style = MaterialTheme.typography.titleMedium)
                 engine.version?.let { SelectionContainer { Text(it) } }
             }
-            OutlinedButton(onClick = model::refresh, enabled = !state.busy) { ActionLabel(R.string.common_refresh) }
+            PageActionRow(refresh = {
+                OutlinedButton(onClick = model::refresh, enabled = !state.busy) { ActionLabel(R.string.common_refresh) }
+            })
             GitInstallation(state, model, owner)
         }
     }
     if (section != "environment") {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        PageActionRow(refresh = {
+            TextButton(onClick = model::refresh, enabled = !state.busy) { ActionLabel(R.string.common_refresh) }
+        }, actions = {
             if (section != "repositories" && state.repositories.isNotEmpty()) Box {
                 OutlinedButton(onClick = { repositoryMenu = true }, enabled = !state.busy) {
                     Text(state.repositories.firstOrNull { it.id == state.selectedId }?.name ?: stringResource(R.string.git_repositories))
@@ -91,9 +95,8 @@ internal fun GitWorkspaceSection(owner: SessionState.Active, section: String, on
                     DropdownMenuItem(text = { Text(stringResource(R.string.git_repositories)) }, onClick = { repositoryMenu = false; onSelectSection("repositories") })
                 }
             }
-            TextButton(onClick = model::refresh, enabled = !state.busy) { ActionLabel(R.string.common_refresh) }
             if (section == "workspace" && facts != null) TextButton(onClick = { openFile = true }, enabled = ordinary) { Text(stringResource(R.string.git_open_file)) }
-        }
+        })
         if (state.engine?.available == false || state.pendingInstallation || state.installation?.state?.active == true) {
             Text(stringResource(R.string.git_environment_required), style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { onSelectSection("environment") }) { Text(stringResource(R.string.git_open_environment)) }
@@ -417,10 +420,11 @@ private fun GitInstallation(state: GitWorkspaceState, model: GitWorkspaceViewMod
         operation.progress?.let { Text(stringResource(R.string.installation_stage_progress, it)) }
         operation.problemCode?.let { Text(app.relaxkonos.mobile.ui.manage.operations.installationProblemLabel(it), color = MaterialTheme.colorScheme.error) }
         if (!state.installationVerified) Text(stringResource(R.string.gw_install_unverified))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        PageActionRow(refresh = {
             TextButton(onClick = model::pollInstall, enabled = !state.busy) { ActionLabel(R.string.common_refresh) }
+        }, actions = {
             OutlinedButton(onClick = model::cancelInstall, enabled = !state.busy && state.installationVerified && operation.state.active && operation.cancellable) { Text(stringResource(R.string.gw_cancel_install)) }
-        }
+        })
     }
     if (allowed) {
         GitPanel(stringResource(R.string.gw_recover_install), collapsible = true, initiallyExpanded = state.pendingInstallation) {

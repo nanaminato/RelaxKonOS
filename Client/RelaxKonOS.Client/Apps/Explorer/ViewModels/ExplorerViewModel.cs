@@ -90,6 +90,13 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _searchText = string.Empty;
     [ObservableProperty] private bool _showHiddenFiles;
     [ObservableProperty] private bool _isCompactView;
+    [ObservableProperty] private ExplorerViewMode _viewMode;
+    public int ViewModeIndex
+    {
+        get => (int)ViewMode;
+        set { if (Enum.IsDefined(typeof(ExplorerViewMode), value)) ViewMode = (ExplorerViewMode)value; }
+    }
+    partial void OnViewModeChanged(ExplorerViewMode value) => OnPropertyChanged(nameof(ViewModeIndex));
     [ObservableProperty] private ExplorerSortField _sortField;
     [ObservableProperty] private bool _sortDescending;
     public int SortIndex
@@ -104,13 +111,14 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         set { _saveViewPreferencesAsync = value; SaveDefaultViewCommand.NotifyCanExecuteChanged(); }
     }
     public bool CanSaveDefaultView => SaveViewPreferencesAsync is not null && !IsBusy;
-    public ExplorerViewPreferences ViewPreferences => new(SortField, SortDescending, ShowHiddenFiles, IsCompactView);
+    public ExplorerViewPreferences ViewPreferences => new(SortField, SortDescending, ShowHiddenFiles, IsCompactView, ViewMode);
     public void ApplyViewPreferences(ExplorerViewPreferences preferences)
     {
         SortField = Enum.IsDefined(preferences.SortField) ? preferences.SortField : ExplorerSortField.Name;
         SortDescending = preferences.SortDescending;
         ShowHiddenFiles = preferences.ShowHiddenFiles;
         IsCompactView = preferences.IsCompactView;
+        ViewMode = Enum.IsDefined(preferences.ViewMode) ? preferences.ViewMode : ExplorerViewMode.Details;
     }
     public string NameColumnHeader => SortHeader("common.name", ExplorerSortField.Name);
     public string ModifiedColumnHeader => SortHeader("explorer.modified", ExplorerSortField.Modified);

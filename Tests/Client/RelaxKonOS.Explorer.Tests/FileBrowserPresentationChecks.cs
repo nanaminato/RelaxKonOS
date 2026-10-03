@@ -1,0 +1,127 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Templates;
+using Avalonia.Headless;
+using Avalonia.Input;
+using Avalonia.Markup.Xaml.Styling;
+using Avalonia.Themes.Fluent;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
+using RelaxKonOS.Client.Apps.Explorer.Controls;
+using RelaxKonOS.Client.Apps.Explorer.Models;
+
+internal static class FileBrowserPresentationChecks
+{
+    public static void Run(Action<bool, string> check)
+    {
+        AppBuilder.Configure<TestApp>().UseHeadless(new AvaloniaHeadlessPlatformOptions()).SetupWithoutStarting();
+        var entries = new[] { "one", "two", "three" };
+        var grid = new DataGrid { ItemsSource = entries, SelectionMode = DataGridSelectionMode.Extended, AutoGenerateColumns = false };
+        grid.Columns.Add(new DataGridTemplateColumn
+        {
+            Width = new DataGridLength(180),
+            CellTemplate = new FuncDataTemplate<string>((entry, _) => new Grid
+            {
+                Children = { new TextBlock { Text = entry, Height = 28 } },
+            }),
+        });
+        var host = new Grid { Background = Avalonia.Media.Brushes.Transparent };
+        host.Children.Add(grid);
+        var enabled = true;
+        var presentation = new FileBrowserPresentation(host, grid, () => enabled);
+        var window = new Window { Width = 600, Height = 400, Content = host };
+        window.Show();
+        Pump();
+        foreach (var mode in Enum.GetValues<ExplorerViewMode>())
+        {
+            grid.SelectedItem = entries[0];
+            presentation.SetMode(mode);
+            Pump();
+            check(grid.SelectedItems.Contains(entries[0]) && presentation.Items.SelectedItems!.Contains(entries[0]), $"{mode}: switching preserves selection");
+            var active = mode == ExplorerViewMode.Details ? (Control)grid : presentation.Items;
+            var containers = active.GetVisualDescendants().OfType<Control>().Where(c => c is DataGridRow or ListBoxItem).ToArray();
+            check(containers.Length == 3, $"{mode}: all file containers render");
+            var origin = containers[0].TranslatePoint(default, host)!.Value;
+            // Start to the right of the entries and drag back across the first row/item.
+            var begin = new Point(560, origin.Y + 2);
+            var end = new Point(origin.X + 2, origin.Y + containers[0].Bounds.Height - 2);
+            window.MouseDown(begin, MouseButton.Left);
+            window.MouseMove(end);
+            window.MouseUp(end, MouseButton.Left);
+            Pump();
+            check(grid.SelectedItems.Contains(entries[0]), $"{mode}: background drag selects intersecting file");
+            window.MouseDown(new Point(550, 300), MouseButton.Left);
+            window.MouseUp(new Point(550, 300), MouseButton.Left);
+            check(grid.SelectedItems.Count == 0, $"{mode}: background click clears selection");
+        }
+        presentation.SetMode(ExplorerViewMode.SmallIcons);
+        Pump();
+        presentation.Items.SelectedItems!.Add(entries[1]);
+        check(grid.SelectedItems.Contains(entries[1]), "Icon click selection reaches command selection");
+        grid.SelectAll();
+        check(presentation.Items.SelectedItems.Count == 3, "Ctrl+A command selection reaches icon view");
+        presentation.SetMode(ExplorerViewMode.LargeIcons);
+        Pump();
+        grid.SelectedItem = entries[2];
+        var first = presentation.Items.GetVisualDescendants().OfType<ListBoxItem>().First();
+        var firstPoint = first.TranslatePoint(default, host)!.Value;
+        var below = new Point(firstPoint.X + first.Bounds.Width - 2, 280);
+        var inside = new Point(firstPoint.X + 2, firstPoint.Y + 2);
+        window.MouseDown(below, MouseButton.Left, RawInputModifiers.Control);
+        window.MouseMove(inside, RawInputModifiers.Control);
+        window.MouseUp(inside, MouseButton.Left, RawInputModifiers.Control);
+        check(grid.SelectedItems.Contains(entries[0]) && grid.SelectedItems.Contains(entries[2]) && !grid.SelectedItems.Contains(entries[1]),
+            "Ctrl rubber-band adds intersecting icons and preserves prior selection");
+        check(grid.SelectedItem is not null, "Icon multi-selection retains command primary entry");
+        window.MouseDown(below, MouseButton.Left);
+        window.MouseMove(inside);
+        window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+        window.MouseUp(inside, MouseButton.Left);
+        check(grid.SelectedItems.Contains(entries[0]) && grid.SelectedItems.Contains(entries[2]), "Escape restores pre-drag selection");
+        grid.SelectionMode = DataGridSelectionMode.Single;
+        window.MouseDown(new Point(560, 280), MouseButton.Left);
+        window.MouseMove(inside);
+        window.MouseUp(inside, MouseButton.Left);
+        check(grid.SelectedItems.Count == 1 && presentation.Items.SelectedItems!.Count == 1, "Picker rubber-band obeys single selection");
+        grid.ItemsSource = new[] { "new-folder-file" };
+        Pump();
+        check(presentation.Items.ItemCount == 1 && grid.SelectedItems.Count == 0, "Directory refresh replaces icon items and clears old selection");
+        enabled = false;
+        window.MouseDown(new Point(550, 300), MouseButton.Left);
+        window.MouseMove(new Point(1, 1));
+        window.MouseUp(new Point(1, 1), MouseButton.Left);
+        check(grid.SelectedItems.Count == 0, "Busy browser rejects rubber-band selection");
+        enabled = true;
+        grid.SelectionMode = DataGridSelectionMode.Extended;
+        grid.ItemsSource = Enumerable.Range(0, 80).Select(i => $"file-{i}").ToArray();
+        presentation.SetMode(ExplorerViewMode.List);
+        Pump();
+        var scroll = presentation.Items.GetVisualDescendants().OfType<ScrollViewer>().First();
+        window.MouseDown(new Point(550, 40), MouseButton.Left);
+        window.MouseMove(new Point(2, 395));
+        using (var cancellation = new CancellationTokenSource(450)) Dispatcher.UIThread.MainLoop(cancellation.Token);
+        window.MouseUp(new Point(2, 395), MouseButton.Left);
+        check(scroll.Offset.Y > 0 && grid.SelectedItems.Count > 10, "Rubber-band scrolls at the edge and selects newly exposed entries");
+        window.Close();
+        SynchronizationContext.SetSynchronizationContext(null);
+    }
+
+    private static void Pump()
+    {
+        Dispatcher.UIThread.RunJobs();
+        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+        Dispatcher.UIThread.RunJobs();
+    }
+
+    private sealed class TestApp : Application
+    {
+        public override void Initialize()
+        {
+            Styles.Add(new FluentTheme());
+            Styles.Add(new StyleInclude(new Uri("avares://RelaxKonOS.Explorer.Tests/"))
+            {
+                Source = new Uri("avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml"),
+            });
+        }
+    }
+}

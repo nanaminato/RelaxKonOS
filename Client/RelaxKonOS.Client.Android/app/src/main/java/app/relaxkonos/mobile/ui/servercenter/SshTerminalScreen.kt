@@ -1,4 +1,8 @@
 package app.relaxkonos.mobile.ui.servercenter
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.size
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -145,7 +149,9 @@ internal fun SshTerminalContent(
     val actions: @Composable () -> Unit = {
         androidx.compose.foundation.layout.Box {
             val actionsLabel = stringResource(R.string.terminal_session_actions)
-            IconButton(onClick = { menuOpen = true }, modifier = Modifier.semantics { contentDescription = actionsLabel }) { Text("⋮") }
+            IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.Default.MoreVert, contentDescription = actionsLabel, modifier = Modifier.size(24.dp))
+            }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                 DropdownMenuItem(text = { Text(stringResource(R.string.terminal_new)) },
                     onClick = { menuOpen = false; onNew() }, enabled = canCreate)

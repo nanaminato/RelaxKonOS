@@ -63,7 +63,9 @@ private data class SmbConfirmation(val expected: SmbFacts, val change: SmbChange
         Text(stringResource(R.string.smb_intro))
         if (!canManage) Text(stringResource(R.string.smb_observer_help), style = MaterialTheme.typography.bodySmall)
         if (owner?.capabilities?.contains(ServerCapabilities.FILE_SERVICES) != true) { Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn }
-        TextButton(enabled = !state.busy, onClick = { navigate { draft = null; model.refresh() } }) { ActionLabel(R.string.common_refresh) }
+        PageActionRow(refresh = {
+            TextButton(enabled = !state.busy, onClick = { navigate { draft = null; model.refresh() } }) { ActionLabel(R.string.common_refresh) }
+        })
         RefreshProgressIndicator(visible = visible && state.busy)
         OperationMessageDialog(state.problem?.takeIf { visible && !state.busy }?.let { smbProblem(it) })
         if (visible && section != "records" && (state.pending.isNotEmpty() || state.pendingInstallation || state.installation != null && !state.installationVerified)) {

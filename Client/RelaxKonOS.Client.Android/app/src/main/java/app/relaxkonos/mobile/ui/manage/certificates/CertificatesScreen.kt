@@ -44,14 +44,15 @@ fun CertificatesScreen(onBack: () -> Unit, initialOperationId: String? = null, m
     WorkspaceColumn(stringResource(R.string.certificates_title), onBack, listOf(WorkspaceDestination("overview", R.string.workspace_overview), WorkspaceDestination("certificates", R.string.workspace_certificates), WorkspaceDestination("operations", R.string.workspace_operations)), section, { section = it }, modifier, stateKey = owner to epoch) {
         if (!available) { Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn }
         Text(stringResource(R.string.certificates_intro), style = MaterialTheme.typography.bodySmall)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        PageActionRow(refresh = {
             TextButton(onClick = model::refresh, enabled = !state.busy) { ActionLabel(R.string.common_refresh) }
+        }, actions = {
             if (canManage) {
                 OutlinedButton(onClick = { model.create(false) }, enabled = !state.busy) { Text(stringResource(R.string.certificates_issue)) }
                 OutlinedButton(onClick = { model.create(true) }, enabled = !state.busy) { Text(stringResource(R.string.certificates_self_signed)) }
             }
             if (section == "operations") TextButton(onClick = { recoverPending = null; recoverId = ""; recovery = true }, enabled = !state.busy) { Text(stringResource(R.string.certificates_recover)) }
-        }
+        })
         RefreshProgressIndicator(visible = state.busy)
 
         if (section != "operations" && (state.pending.isNotEmpty() || state.operation != null)) {
@@ -88,7 +89,9 @@ fun CertificatesScreen(onBack: () -> Unit, initialOperationId: String? = null, m
             if (state.operationVerified) { ExecutionStatusChip(certificateOperationStateLabel(operation.state), operation.state.wire); Text(certificateStageLabel(operation.stage)) }
             else Text(stringResource(R.string.certificates_unknown), color = MaterialTheme.colorScheme.error)
             operation.problemCode.takeIf(String::isNotBlank)?.let { Text(certificateProblemLabel(it), color = MaterialTheme.colorScheme.error) }
-            TextButton(onClick = model::poll, enabled = !state.busy) { ActionLabel(R.string.common_refresh) }
+            PageActionRow(refresh = {
+                TextButton(onClick = model::poll, enabled = !state.busy) { ActionLabel(R.string.common_refresh) }
+            })
             if (state.operationVerified && operation.state.active) TextButton(enabled = !state.busy, onClick = { confirm = R.string.certificates_cancel_confirm to model::cancel }) { Text(stringResource(R.string.common_cancel)) }
             Text(stringResource(R.string.certificates_cancel_note), style = MaterialTheme.typography.bodySmall)
             if (operation.kind == CertificateAction.DeployKestrel) operation.certificateId?.let { id ->

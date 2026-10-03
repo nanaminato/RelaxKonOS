@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using RelaxKonOS.Client.Apps.Explorer.Controls;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -20,6 +22,7 @@ public partial class ExplorerMainView : UserControl
         DataFormat.CreateInProcessFormat<ExplorerDragPayload>("relaxkonos/explorer-entries");
     private const double MinimumDragDistance = 5;
 
+    private readonly FileBrowserPresentation _presentation;
     private PointerPressedEventArgs? _dragTrigger;
     private FileSystemEntryDto? _dragEntry;
     private IReadOnlyList<FileSystemEntryDto>? _preservedDragSelection;
@@ -41,6 +44,13 @@ public partial class ExplorerMainView : UserControl
     {
         InitializeComponent();
         _entryContextMenu = EntriesGrid.ContextMenu;
+        _presentation = new FileBrowserPresentation(EntriesScrollViewer, EntriesGrid, () => ViewModel is { IsBusy: false });
+        _presentation.Items.AddHandler(PointerPressedEvent, EntriesGrid_PointerPressed, RoutingStrategies.Tunnel);
+        _presentation.Items.PointerMoved += EntriesGrid_PointerMoved;
+        _presentation.Items.PointerReleased += EntriesGrid_PointerReleased;
+        _presentation.Items.DoubleTapped += EntriesGrid_DoubleTapped;
+        _presentation.Items.KeyDown += EntriesGrid_KeyDown;
+        DragDrop.SetAllowDrop(_presentation.Items, true);
         EntriesGrid.AddHandler(PointerPressedEvent, EntriesGrid_PointerPressed, RoutingStrategies.Tunnel);
         EntriesGrid.AddHandler(PointerPressedEvent, EntriesGrid_SortHeaderPointerPressed, RoutingStrategies.Tunnel);
         EntriesGrid.AddHandler(PointerReleasedEvent, EntriesGrid_SortHeaderPointerReleased, RoutingStrategies.Tunnel);
@@ -57,9 +67,30 @@ public partial class ExplorerMainView : UserControl
 
     private void ExplorerMainView_DataContextChanged(object? sender, EventArgs e)
     {
-        if (_attachedViewModel is not null) _attachedViewModel.RequestRenameFocus = null;
+        if (_attachedViewModel is not null)
+        {
+            _attachedViewModel.RequestRenameFocus = null;
+            _attachedViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        }
         _attachedViewModel = ViewModel;
-        if (_attachedViewModel is not null) _attachedViewModel.RequestRenameFocus = FocusRenameEditor;
+        if (_attachedViewModel is not null)
+        {
+            _attachedViewModel.RequestRenameFocus = FocusRenameEditor;
+            _attachedViewModel.PropertyChanged += ViewModel_PropertyChanged;
+            _presentation.SetMode(_attachedViewModel.ViewMode);
+        }
+    }
+
+    private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ExplorerViewModel.ViewMode) && ViewModel is { } vm)
+            _presentation.SetMode(vm.ViewMode);
+    }
+
+    private void ViewModeBox_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_presentation is not null && ViewModel is { } vm && ViewModeBox.SelectedIndex >= 0)
+            vm.ViewModeIndex = ViewModeBox.SelectedIndex;
     }
 
     /// <summary>Moves keyboard focus to the current-folder address field.</summary>
@@ -95,7 +126,7 @@ public partial class ExplorerMainView : UserControl
     {
         if (e.Key != Key.Escape) return;
         if (ViewModel is { } vm) vm.SearchText = string.Empty;
-        EntriesGrid.Focus();
+        _presentation.Focus();
         e.Handled = true;
     }
 
@@ -132,7 +163,7 @@ public partial class ExplorerMainView : UserControl
         if (e.Key == Key.Escape)
         {
             ViewModel?.CancelAddressEdit();
-            EntriesGrid.Focus();
+            _presentation.Focus();
             e.Handled = true;
         }
         else if (e.Key == Key.Enter && sender is TextBox tb)
@@ -188,7 +219,8 @@ public partial class ExplorerMainView : UserControl
         if (point.Properties.IsRightButtonPressed)
         {
             EntriesGrid.ContextMenu = entry is null ? EntriesScrollViewer.ContextMenu : _entryContextMenu;
-            if (entry is null) EntriesGrid.SelectedItems.Clear();
+            _presentation.Items.ContextMenu = EntriesGrid.ContextMenu;
+            if (entry is null) _presentation.ClearSelection();
             else if (!EntriesGrid.SelectedItems.Contains(entry)) EntriesGrid.SelectedItem = entry;
             return;
         }
@@ -206,7 +238,7 @@ public partial class ExplorerMainView : UserControl
         {
             _preservedDragSelection = ViewModel.GetDragEntries(entry);
             _toggleSelectionOnRelease = e.KeyModifiers == KeyModifiers.Control;
-            EntriesGrid.Focus();
+            _presentation.Focus();
             e.Handled = true;
         }
     }
@@ -244,7 +276,7 @@ public partial class ExplorerMainView : UserControl
             if (_toggleSelectionOnRelease) EntriesGrid.SelectedItems.Remove(entry);
             else
             {
-                EntriesGrid.SelectedItems.Clear();
+                _presentation.ClearSelection();
                 EntriesGrid.SelectedItem = entry;
             }
         }
@@ -308,7 +340,7 @@ public partial class ExplorerMainView : UserControl
                 return path;
 
             // Empty space in the file list represents the directory currently being viewed.
-            if (ReferenceEquals(control, EntriesGrid) || ReferenceEquals(control, EntriesScrollViewer))
+            if (ReferenceEquals(control, EntriesGrid) || ReferenceEquals(control, _presentation.Items) || ReferenceEquals(control, EntriesScrollViewer))
                 return ViewModel?.AddressbarPath;
         }
 
@@ -351,10 +383,11 @@ public partial class ExplorerMainView : UserControl
 
     private void FocusRenameEditor(FileSystemEntryDto entry)
     {
-        EntriesGrid.ScrollIntoView(entry, null);
+        if (EntriesGrid.IsVisible) EntriesGrid.ScrollIntoView(entry, null);
+        else _presentation.Items.ScrollIntoView(entry);
         Dispatcher.UIThread.Post(() =>
         {
-            var editor = EntriesGrid.GetVisualDescendants().OfType<TextBox>()
+            var editor = EntriesScrollViewer.GetVisualDescendants().OfType<TextBox>()
                 .FirstOrDefault(textBox => textBox.Classes.Contains("inline-rename")
                     && ReferenceEquals(textBox.DataContext, entry));
             if (editor is null) return;
@@ -375,7 +408,7 @@ public partial class ExplorerMainView : UserControl
         if (e.Key == Key.Escape)
         {
             vm.CancelRename();
-            EntriesGrid.Focus();
+            _presentation.Focus();
             e.Handled = true;
         }
         else if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.None)
@@ -398,7 +431,7 @@ public partial class ExplorerMainView : UserControl
         if (!ReferenceEquals(vm.EditingEntry, entry)) return;
         if (await vm.CommitRenameAsync())
         {
-            EntriesGrid.Focus();
+            _presentation.Focus();
             return;
         }
 

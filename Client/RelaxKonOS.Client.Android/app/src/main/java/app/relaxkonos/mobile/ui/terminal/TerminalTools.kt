@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -75,7 +78,9 @@ internal fun TerminalOutputToolbar(p: TerminalPresentation, state: ServerTermina
             label = { Text(stringResource(R.string.terminal_search_count, if (count == 0) 0 else p.searchIndex + 1, count)) })
         TextButton(onClick = { p.searchIndex = (p.searchIndex - 1 + count) % count }, enabled = count > 0) { Text("‹") }
         TextButton(onClick = { p.searchIndex = (p.searchIndex + 1) % count }, enabled = count > 0) { Text("›") }
-        TextButton(onClick = { p.searchOpen = false; p.search = "" }) { Text("×") }
+        IconButton(onClick = { p.searchOpen = false; p.search = "" }, modifier = Modifier.size(48.dp)) {
+            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_close), modifier = Modifier.size(24.dp))
+        }
     } else Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
         TextButton(onClick = { p.searchOpen = true }) { Text(stringResource(R.string.terminal_search)) }
         TextButton(onClick = onCopy, enabled = state.output.isNotEmpty()) { Text(stringResource(R.string.terminal_copy_output)) }

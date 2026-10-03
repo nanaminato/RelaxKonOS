@@ -112,7 +112,13 @@
                     </MenuFlyout>
                 </Button.Flyout>
             </Button>
-            <TextBlock Text="{loc:Loc explorer.sort}" VerticalAlignment="Center" Margin="8,0,6,0" />
+            <ComboBox x:Name="ViewModeBox" Width="112" Margin="0,0,10,0" SelectionChanged="ViewModeBox_SelectionChanged" SelectedIndex="0">
+                    <ComboBoxItem Content="{loc:Loc explorer.view.details}" />
+                    <ComboBoxItem Content="{loc:Loc explorer.view.list}" />
+                    <ComboBoxItem Content="{loc:Loc explorer.view.small_icons}" />
+                    <ComboBoxItem Content="{loc:Loc explorer.view.large_icons}" />
+                </ComboBox>
+                <TextBlock Text="{loc:Loc explorer.sort}" VerticalAlignment="Center" Margin="8,0,6,0" />
             <ComboBox x:Name="SortBox" Width="112" SelectedIndex="0" Margin="0,0,10,0"
                       SelectionChanged="SortBox_SelectionChanged">
                 <ComboBoxItem Content="{loc:Loc ssh_files.name}" />
@@ -156,7 +162,8 @@
             <!-- 与 Windows 资源管理器一致的详细信息列表：列使用固定像素宽度，视口剩余的宽度
                  保持空白而不是被某一列拉伸；横向滚动由 DataGrid 自身承担，纵向滚动条始终贴在
                  整个区域的最右侧；列头分隔线可拖动调整任意列宽。 -->
-            <DataGrid Grid.Column="2"
+            <Grid Grid.Column="2" x:Name="EntriesHost" Background="{DynamicResource SurfaceBrush}">
+            <DataGrid
                       x:Name="EntriesGrid"
                       SelectionMode="Extended"
                       SelectionChanged="EntriesGrid_SelectionChanged"
@@ -284,6 +291,7 @@
                     </ContextMenu>
                 </DataGrid.ContextMenu>
             </DataGrid>
+            </Grid>
         </Grid>
 
         <!-- Picker mode follows the signed-in server Explorer: folders stay navigable, only a

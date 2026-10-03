@@ -24,7 +24,9 @@ internal fun WebSiteList(server: WebServer, state: NginxState, canManage: Boolea
     Text(stringResource(R.string.websites_site_manager), style = MaterialTheme.typography.titleSmall)
     if (canManage && server.canRead && server.canTestConfiguration) OutlinedButton(enabled = !state.busy,
         onClick = { model.editSite(server) }) { Text(stringResource(R.string.websites_site_create)) }
-    TextButton(enabled = !state.busy, onClick = { model.inspectSites(server.id) }) { ActionLabel(R.string.common_refresh) }
+    PageActionRow(refresh = {
+        TextButton(enabled = !state.busy, onClick = { model.inspectSites(server.id) }) { ActionLabel(R.string.common_refresh) }
+    })
     when (val sites = state.sites[server.id]) {
         is ApiResult.Success -> {
             if (sites.value.isEmpty()) Text(stringResource(R.string.websites_no_sites))
@@ -123,7 +125,9 @@ internal fun WebSiteEditor(state: NginxState, model: NginxViewModel) {
                 ManagedCertificatePicker(state.certificates, draft.bindings.map { it.domain }, draft.certificateId, !locked) {
                     model.updateSiteDraft(draft.copy(certificateId = it))
                 }
-                TextButton(enabled = !state.busy, onClick = model::refreshCertificates) { ActionLabel(R.string.common_refresh) }
+                PageActionRow(refresh = {
+                    TextButton(enabled = !state.busy, onClick = model::refreshCertificates) { ActionLabel(R.string.common_refresh) }
+        })
             }
             Text(stringResource(R.string.websites_site_tls_note), style = MaterialTheme.typography.bodySmall)
             if (draft.request() == null) Text(stringResource(R.string.websites_site_validation), color = MaterialTheme.colorScheme.error)

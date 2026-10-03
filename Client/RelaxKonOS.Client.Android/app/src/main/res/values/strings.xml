@@ -676,7 +676,8 @@
     <string name="about_client_platform">Platform</string>
     <string name="about_client_platform_value">Android</string>
     <string name="about_licenses_title">Licences</string>
-    <string name="about_licenses_body">RelaxKonOS includes third-party components. Their notices are listed in THIRD_PARTY_NOTICES.md in the repository root.</string>
+    <string name="about_licenses_body">Third-party acknowledgements and license text are included in the app and available offline.</string>
+    <string name="about_licenses_view">View licenses</string>
     <string name="deployments_title">Application deployments</string>
     <string name="deployments_subtitle">Inspect applications, runtime and recent operations</string>
     <string name="deployments_read_only">Read-only access in this version. Creation and lifecycle actions are not yet available.</string>
@@ -2757,4 +2758,5 @@
     <string name="taskmanager_back_to_list">Back to list</string>
     <string name="docker_access_restart_required">Docker is installed and access has been granted. Restart RelaxKonOS Server on the host, then refresh to verify the connection.</string>
     <string name="docker_installation_record_note">The installation receipt could not be verified. This does not invalidate the current Docker engine status. Recover the original operation by ID; pending submissions remain unresolved.</string>
+    <string name="remote_path_no_matches">No matching files or folders.</string>
 </resources>

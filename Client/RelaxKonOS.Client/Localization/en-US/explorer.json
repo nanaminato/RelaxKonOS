@@ -1,6 +1,11 @@
 {
     "Culture": "en-US",
     "Strings": {
+        "explorer.view.details": "Details",
+        "explorer.view.list": "List",
+        "explorer.view.small_icons": "Small icons",
+        "explorer.view.large_icons": "Large icons",
+
         "explorer.operations.download": "Downloading to host",
         "explorer.login_required": "File Explorer requires sign-in.\nConnect to a RelaxKonOS Server before starting this app.",
         "explorer.error.not_signed_in": "Not signed in; file services are unavailable.",

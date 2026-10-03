@@ -316,6 +316,9 @@ public partial class LoginViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanConnect))]
     private async Task ConnectAsync(CancellationToken ct)
     {
+        // Normalize once at submission so authentication and saved profiles use the same values.
+        Identifier = Identifier.Trim();
+        Password = Password.Trim();
         if (UseSshLogin)
         {
             await ConnectSshAsync(ct);

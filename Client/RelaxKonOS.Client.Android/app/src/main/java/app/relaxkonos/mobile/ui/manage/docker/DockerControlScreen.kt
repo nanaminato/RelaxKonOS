@@ -48,7 +48,9 @@ private data class ControlConfirmation(val facts: DockerControlFacts, val change
     Column(modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         ScreenHeader(stringResource(if (recordsOnly) R.string.workspace_records else if (mirrorsOnly) R.string.workspace_mirrors else R.string.docker_title), onBack = { navigate(onBack) })
         if (owner?.capabilities?.contains(ServerCapabilities.DOCKER) != true) { Text(stringResource(R.string.error_capability_missing)); return@Column }
-        TextButton(enabled = !state.busy, onClick = { navigate { draft = null; model.refresh() } }) { ActionLabel(R.string.common_refresh) }
+        PageActionRow(refresh = {
+            TextButton(enabled = !state.busy, onClick = { navigate { draft = null; model.refresh() } }) { ActionLabel(R.string.common_refresh) }
+        })
         RefreshProgressIndicator(visible = visible && state.busy)
         OperationMessageDialog(state.problem?.takeIf { visible && !state.busy }?.let { controlProblem(it) })
         if (visible && recordsOnly) state.pending.forEach { pending ->
@@ -93,7 +95,9 @@ WorkspaceSection(!mirrorsOnly && !recordsOnly) {
         LaunchedEffect(owner, recordState.owner, recordsOnly) { if (recordsOnly && recordState.owner === owner) recordModel.refresh() }
         if (recordState.owner === owner) recordState.pending.forEach { marker -> ManagementCard {
             Text(resourceActionLabel(marker.action)); marker.target?.let { Text(it) }
-            TextButton(enabled = !recordState.busy, onClick = recordModel::refresh) { ActionLabel(R.string.common_refresh) }
+            PageActionRow(refresh = {
+                TextButton(enabled = !recordState.busy, onClick = recordModel::refresh) { ActionLabel(R.string.common_refresh) }
+            })
             OutlinedButton(enabled = !recordState.busy && recordState.facts?.status?.available == true, onClick = { recordModel.accept(marker) }) { Text(stringResource(R.string.docker_control_accept)) }
         } }
         DockerResourceKind.entries.forEach { kind ->

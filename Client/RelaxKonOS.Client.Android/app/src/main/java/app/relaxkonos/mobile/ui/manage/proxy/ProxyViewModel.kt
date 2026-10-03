@@ -92,11 +92,11 @@ internal class ProxyViewModel(application: Application) : AndroidViewModel(appli
         state = state.copy(operationVerified = result is ApiResult.Success, operation = (result as? ApiResult.Success)?.value ?: state.operation)
         if (result is ApiResult.Success && result.value.problemCode.isNotBlank()) state = state.copy(problemCode = result.value.problemCode)
     }
-    fun saveProfile(profile: ProxyProfile?, name: String) = mutation { active -> container.proxy.saveProfile(active, profile?.id, ProxyProfileRequest(name, profile?.revision)) }
+    fun saveProfile(profile: ProxyProfile?, name: String) = mutation { active -> container.proxy.saveProfile(active, profile?.id, ProxyProfileRequest(name.trim(), profile?.revision)) }
     fun activate(profile: ProxyProfile) = mutation { active -> container.proxy.activateProfile(active, profile.id) }
     fun delete(profile: ProxyProfile) = mutation { active -> container.proxy.deleteProfile(active, profile.id) }
     fun apply(profile: ProxyProfile, yaml: String) = mutation { active -> container.proxy.apply(active, profile.id, yaml) }
-    fun import(url: String, name: String, route: ProxyDownloadRoute) = mutation { active -> container.proxy.import(active, ProxyImportRequest(url.trim(), name, route)) }
+    fun import(url: String, name: String, route: ProxyDownloadRoute) = mutation { active -> container.proxy.import(active, ProxyImportRequest(url.trim(), name.trim(), route)) }
     fun select(group: ProxyGroup, proxy: String) = mutation { active -> container.proxy.select(active, group, proxy) }
     fun routing(mode: ProxyRoutingMode) = mutation { active -> container.proxy.routing(active, mode) }
     fun saveSettings(settings: ProxySettings) = mutation { active -> container.proxy.saveSettings(active, settings) }

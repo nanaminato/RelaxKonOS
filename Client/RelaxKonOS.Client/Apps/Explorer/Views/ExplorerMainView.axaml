@@ -87,6 +87,12 @@
                         </Button.Flyout>
                     </Button>
                 </StackPanel>
+                <ComboBox x:Name="ViewModeBox" Width="112" Margin="0,0,10,0" SelectionChanged="ViewModeBox_SelectionChanged" SelectedIndex="{Binding ViewModeIndex, Mode=TwoWay}">
+                    <ComboBoxItem Content="{loc:Loc explorer.view.details}" />
+                    <ComboBoxItem Content="{loc:Loc explorer.view.list}" />
+                    <ComboBoxItem Content="{loc:Loc explorer.view.small_icons}" />
+                    <ComboBoxItem Content="{loc:Loc explorer.view.large_icons}" />
+                </ComboBox>
                 <TextBlock Text="{loc:Loc explorer.sort}" VerticalAlignment="Center" Margin="0,0,6,0" />
                 <ComboBox SelectedIndex="{Binding SortIndex, Mode=TwoWay}" Width="112" Margin="0,0,10,0">
                     <ComboBoxItem Content="{loc:Loc common.name}" />

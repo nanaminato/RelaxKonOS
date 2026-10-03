@@ -194,7 +194,8 @@ fun credentialState(record: VaultRecord?, unlockMode: VaultUnlockMode?): SavedCr
 
 要点：
 
-- **第 3 行优先于第 4 行。** 只要 `PasswordText` 非空，本次就明确使用用户手动输入的密码，旧的 `SavedCredential` 本次忽略——**但不删除、不覆盖**。
+- **提交时去除首尾空白。** 登录标识和手动输入的密码在提交时 trim，保留大小写与内部空格；下表的密码「空 / 非空」以 trim 后的值为准。保存的凭据解封后直接使用。
+- **第 3 行优先于第 4 行。** 只要 `PasswordText` trim 后非空，本次就明确使用用户手动输入的密码，旧的 `SavedCredential` 本次忽略——**但不删除、不覆盖**。
 - **只有一个「登录」按钮。** 按钮不区分「指纹登录」与「密码登录」两条分支；点击后统一按本表决策，避免两条路径互不回落（G1）。
 - **不允许空密码登录。** 资料 §4 的例外「除非目标服务本身明确支持空密码」在 RelaxKonOS 不成立：[`LoginRequest.Password`](../../../../Shared/RelaxKonOS.Protocol/Identity/LoginRequest.cs) 是必填 `string`，服务端空字段返回 `400 invalid-input`（[`RelaxKonOS.Login.md`](../../../../docs/platform/RelaxKonOS.Login.md) §4.5）。因此不引入空密码分支。
 

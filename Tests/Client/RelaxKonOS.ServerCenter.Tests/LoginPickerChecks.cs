@@ -88,6 +88,14 @@ static class LoginPickerChecks
             viewModel.UseSshLogin = true;
             Check(viewModel.ServerUrl == "example.internal:2222" && viewModel.Identifier == "operator",
                 "没有匹配记录时保留用户输入的地址与用户名");
+
+            // Invalid target stops before network access, after submission normalizes the form.
+            viewModel.ServerUrl = "invalid host:2222";
+            viewModel.Identifier = " \toperator \r\n";
+            viewModel.Password = " \tpass word \r\n";
+            await viewModel.ConnectCommand.ExecuteAsync(null);
+            Check(viewModel.Identifier == "operator" && viewModel.Password == "pass word",
+                "登录提交去除用户名和密码首尾空白并保留内部空格");
         }
         finally
         {

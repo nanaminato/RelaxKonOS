@@ -16,11 +16,18 @@ fun Properties.requiredSigningValue(name: String): String =
     getProperty(name)?.takeIf(String::isNotBlank)
         ?: error("The local Android signing properties file is missing '$name'.")
 
+// Package the canonical notices without maintaining a second copy in Android sources.
+val generateLicenseAssets = tasks.register<Copy>("generateLicenseAssets") {
+    from(rootProject.layout.projectDirectory.file("../../THIRD_PARTY_NOTICES.md"))
+    into(layout.buildDirectory.dir("generated/licenseAssets"))
+}
+
 android {
     namespace = "app.relaxkonos.mobile"
     compileSdk = 36
 
     sourceSets.getByName("main").assets.srcDir("../../../deployment/launcher")
+    sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/licenseAssets").get().asFile)
 
     defaultConfig {
         applicationId = "app.relaxkonos.mobile"
@@ -57,6 +64,8 @@ android {
         buildConfig = true
     }
 }
+
+tasks.named("preBuild") { dependsOn(generateLicenseAssets) }
 
 tasks.matching { it.name == "preReleaseBuild" }.configureEach {
     doFirst {

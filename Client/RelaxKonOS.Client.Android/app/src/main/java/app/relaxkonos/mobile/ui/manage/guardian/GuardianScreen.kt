@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.guardian
 
+import app.relaxkonos.mobile.ui.common.PageActionRow
 import app.relaxkonos.mobile.ui.common.ActionLabel
 import app.relaxkonos.mobile.ui.common.ExecutionStatusChip
 import app.relaxkonos.mobile.ui.common.ActivityIndicator
@@ -30,8 +31,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -43,6 +42,11 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -249,11 +253,12 @@ fun GuardianScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Mod
         state.status?.let { status -> ExecutionStatusChip(stringResource(if (status.running) R.string.guardian_running else R.string.guardian_unavailable), if (status.running) "running" else null, task = false) }
         if (state.stale) Text(stringResource(R.string.guardian_stale), color = MaterialTheme.colorScheme.error)
         OperationMessageDialog(if (state.loading) null else if (state.error) stringResource(guardianProblemLabel(state.problemCode)) else if (state.unknown) stringResource(R.string.guardian_unknown) else null, tone = if (state.error) StatusTone.Danger else StatusTone.Warning)
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        PageActionRow(refresh = {
             OutlinedButton(onClick = { model.load(owner) }, enabled = !state.loading) { ActionLabel(R.string.common_refresh) }
+        }, actions = {
             Button(onClick = { model.beginEdit(GuardianDefinition(UUID.randomUUID().toString(), "", "", emptyList(), "", false, 15, 3, null, owner.userName, null), true) },
                 enabled = state.status?.running == true && !state.loading && !state.unknown) { Text(stringResource(R.string.guardian_create)) }
-        }
+        })
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             if (maxWidth >= 840.dp && maxHeight >= 240.dp) {
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {
@@ -377,7 +382,9 @@ private fun GuardianEditor(owner: SessionState.Active, draft: GuardianDraft, sta
                     OutlinedTextField(value, { draft.arguments[index] = it }, modifier = Modifier.weight(1f), enabled = !state.loading, maxLines = 4,
                         label = { Text(stringResource(R.string.guardian_argument_number, index + 1)) })
                     val removeLabel = stringResource(R.string.guardian_remove_argument, index + 1)
-                    TextButton(onClick = { draft.arguments.removeAt(index) }, enabled = !state.loading, modifier = Modifier.semantics { contentDescription = removeLabel }) { Text("×") }
+                    IconButton(onClick = { draft.arguments.removeAt(index) }, enabled = !state.loading, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = removeLabel, modifier = Modifier.size(24.dp))
+                    }
                 }
             }
             OutlinedButton(onClick = { draft.arguments.add("") }, enabled = !state.loading && draft.arguments.size < 128) { Text(stringResource(R.string.guardian_add_argument)) }

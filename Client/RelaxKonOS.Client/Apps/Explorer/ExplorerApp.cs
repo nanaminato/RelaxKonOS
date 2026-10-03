@@ -310,11 +310,11 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
                 if (revision is null)
                 {
                     var latest = await settings.GetAsync(appId, AppSettingsScope.Workspace, key);
-                    if (latest is { SchemaVersion: not 1 }) throw new InvalidOperationException(LocalizedText.Get("explorer.view_version_unsupported"));
+                    if (latest is { SchemaVersion: not 2 }) throw new InvalidOperationException(LocalizedText.Get("explorer.view_version_unsupported"));
                     revision = latest?.Revision ?? 0;
                 }
                 var saved = await settings.SaveAsync(appId, AppSettingsScope.Workspace, key,
-                    JsonSerializer.SerializeToElement(preferences), schemaVersion: 1, expectedRevision: revision);
+                    JsonSerializer.SerializeToElement(preferences), schemaVersion: 2, expectedRevision: revision);
                 revision = saved.Revision;
             };
             viewModel.IsBusy = true;
@@ -322,7 +322,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
             {
                 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
                 var stored = await settings.GetAsync(appId, AppSettingsScope.Workspace, key, timeout.Token);
-                if (stored is { SchemaVersion: not 1 }) throw new InvalidOperationException(LocalizedText.Get("explorer.view_version_unsupported"));
+                if (stored is { SchemaVersion: not 2 }) throw new InvalidOperationException(LocalizedText.Get("explorer.view_version_unsupported"));
                 revision = stored?.Revision ?? 0;
                 if (stored is not null && stored.Value.Deserialize<ExplorerViewPreferences>() is { } preferences)
                     viewModel.ApplyViewPreferences(preferences);

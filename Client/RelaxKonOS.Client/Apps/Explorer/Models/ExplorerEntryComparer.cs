@@ -60,8 +60,11 @@ public sealed class ExplorerEntryComparer(ExplorerSortField field, bool descendi
     }
 }
 
+public enum ExplorerViewMode { Details, List, SmallIcons, LargeIcons }
+
 public sealed record ExplorerViewPreferences(
     ExplorerSortField SortField = ExplorerSortField.Name,
     bool SortDescending = false,
     bool ShowHiddenFiles = false,
-    bool IsCompactView = false);
+    bool IsCompactView = false,
+    ExplorerViewMode ViewMode = ExplorerViewMode.Details);
