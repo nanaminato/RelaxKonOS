@@ -148,7 +148,7 @@ class ServerTerminalViewModel(application: Application) : AndroidViewModel(appli
                 if (activeOwner !== owner) return@launch
                 when (result) {
                     is app.relaxkonos.mobile.core.net.ApiResult.Success -> {
-                        presentation.settings = result.value; presentation.localFontSize = null; presentation.settingsMessage = app.relaxkonos.mobile.ui.common.UiMessage(R.string.terminal_settings_saved)
+                        presentation.settings = result.value; presentation.localFontSize = null; presentation.settingsMessage = app.relaxkonos.mobile.ui.common.UiMessage(R.string.terminal_settings_saved, tone = app.relaxkonos.mobile.ui.common.StatusTone.Success)
                     }
                     else -> {
                         presentation.settingsVerified = false

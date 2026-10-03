@@ -32,6 +32,7 @@ import app.relaxkonos.mobile.ui.common.IconBadge
 import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.common.StatusChip
 import app.relaxkonos.mobile.ui.common.StatusTone
+import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.ui.common.text
 import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Spacing
@@ -71,10 +72,10 @@ fun SshHostSwitcherDialog(currentHostId: String, onDismiss: () -> Unit) {
                 // 解封被拒、握手失败或「已保存但没保存上」都要在这里说出来，不能让对话框空转。
                 state.message?.let { message ->
                     ActionFeedback(
-                        message = message.text(),
+                        message = message,
                         onRetry = null,
                         onDismiss = viewModel::dismissMessage,
-                        tone = message.tone,
+                        reminders = appContainer().notices,
                     )
                 }
                 if (switching) {

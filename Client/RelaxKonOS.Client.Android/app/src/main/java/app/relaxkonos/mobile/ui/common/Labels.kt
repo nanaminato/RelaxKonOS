@@ -7,6 +7,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.FileElevationCapabilities
+import app.relaxkonos.mobile.data.ReminderKind
 import app.relaxkonos.mobile.security.UnlockFailure
 import java.text.DateFormat
 import java.util.Date
@@ -58,6 +59,22 @@ private fun unlockFailureRes(failure: UnlockFailure): Int = when (failure) {
     UnlockFailure.Unavailable -> R.string.vault_failure_unavailable
     UnlockFailure.Tampered -> R.string.vault_failure_tampered
     UnlockFailure.Unknown -> R.string.vault_failure_unknown
+}
+
+/**
+ * Localised name of a reminder the user has silenced, listed on the account-and-security page.
+ *
+ * The mapping is exhaustive on purpose: a new [ReminderKind] cannot reach the settings page without a
+ * sentence of its own, and neither the enum name nor its storage key is ever rendered
+ * (`Shell.Design.md` §8).
+ */
+@Composable
+fun reminderLabel(kind: ReminderKind): String = stringResource(reminderLabelRes(kind))
+
+fun reminderLabelRes(kind: ReminderKind): Int = when (kind) {
+    ReminderKind.LoginCredentialNotSavedDevice -> R.string.reminder_login_credential_not_saved_device
+    ReminderKind.SavedPasswordUnavailable -> R.string.reminder_saved_password_unavailable
+    ReminderKind.ServerCenterCredentialNotSaved -> R.string.reminder_server_center_credential_not_saved
 }
 
 /** Platform-localised file size, or `null` when the server did not report one. */

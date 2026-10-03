@@ -22,6 +22,7 @@ import app.relaxkonos.mobile.core.auth.loginId
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.EndpointDiscoveryResult
 import app.relaxkonos.mobile.core.net.ServerEndpointDiscovery
+import app.relaxkonos.mobile.data.ReminderKind
 import app.relaxkonos.mobile.security.BiometricCapability
 import app.relaxkonos.mobile.security.UnlockFailure
 import app.relaxkonos.mobile.security.VaultDiagnostics
@@ -36,6 +37,7 @@ import app.relaxkonos.mobile.ui.common.problemMessage
 import app.relaxkonos.mobile.ui.common.unlockFailureLabel
 import app.relaxkonos.mobile.ui.common.unlockFailureMessage
 import app.relaxkonos.mobile.ui.common.withDebugDetail
+import app.relaxkonos.mobile.ui.common.withReminder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -760,10 +762,17 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 container.profiles.setHasSavedCredential(login.serviceId, login.normalizedIdentifier, true)
                 VaultDiagnostics.trace("login.debug-store", "saved unencrypted (debug build, device has no lock screen)")
                 revision++
-                container.showNotice(UiMessage(R.string.login_credential_saved_debug))
+                container.showNotice(UiMessage(R.string.login_credential_saved_debug, tone = app.relaxkonos.mobile.ui.common.StatusTone.Warning))
                 return
             }
-            container.showNotice(UiMessage(R.string.login_credential_not_saved))
+            container.showNotice(
+                UiMessage(
+                    R.string.login_credential_not_saved,
+                    tone = app.relaxkonos.mobile.ui.common.StatusTone.Warning,
+                    // 这是本机的结构性结论：再登录多少次都一样，所以允许用户关掉它。
+                    reminder = ReminderKind.LoginCredentialNotSavedDevice,
+                ),
+            )
             return
         }
         val outcome = try {
@@ -787,12 +796,16 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             is VaultOperation.Success ->
                 container.profiles.setHasSavedCredential(login.serviceId, login.normalizedIdentifier, true)
 
-            VaultOperation.Cancelled -> container.showNotice(UiMessage(R.string.login_credential_not_saved))
+            VaultOperation.Cancelled -> container.showNotice(UiMessage(R.string.login_credential_not_saved, tone = app.relaxkonos.mobile.ui.common.StatusTone.Warning))
 
             is VaultOperation.Failed -> container.showNotice(
                 UiMessage(
                     R.string.login_credential_not_saved_reason,
                     listOf(unlockFailureLabel(getApplication<Application>(), outcome.failure)),
+                ).withReminder(
+                    // 只有「本机没有可用的解锁方式」才是设备结论。锁定、密钥失效、被篡改都指望着用户
+                    // 做点什么，一律保留每次提醒。
+                    if (outcome.failure == UnlockFailure.Unavailable) ReminderKind.SavedPasswordUnavailable else null,
                 ),
             )
         }

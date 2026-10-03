@@ -588,6 +588,11 @@
     <string name="account_security_debug_record_note">暗号化せずに保存: デバッグビルドで、この端末に画面ロックがありません。</string>
     <string name="account_security_delete_title">このパスワードを削除</string>
     <string name="account_security_delete_message">%2$s の %1$s に保存されたパスワードを削除しますか？</string>
+    <string name="account_security_reminders">リマインダー</string>
+    <string name="account_security_reminders_note">これらのリマインダーは、この端末で再表示しない設定になっています。スイッチを切ると再び表示されます。</string>
+    <string name="reminder_login_credential_not_saved_device">この端末はパスワードの保存に対応していません</string>
+    <string name="reminder_saved_password_unavailable">指紋による解錠が利用できません</string>
+    <string name="reminder_server_center_credential_not_saved">この端末に SSH パスワードを保存できません</string>
 
     <string name="biometric_strength_strong">強力な指紋（Class 3）</string>
     <string name="biometric_strength_weak">弱い生体認証（Class 2）</string>
@@ -2655,7 +2660,10 @@
     <string name="mihomo_connections_count">アクティブな接続：%1$d 件</string>
     <string name="mihomo_logs_empty">ログはまだありません。新しいログは自動で更新されます。</string>
     <string name="operation_error_title">操作に失敗しました</string>
+    <string name="operation_success_title">操作が完了しました</string>
+    <string name="operation_info_title">お知らせ</string>
     <string name="operation_warning_title">警告</string>
+    <string name="notice_do_not_remind">今後表示しない</string>
     <string name="mihomo_general_settings">Mihomo 設定</string>
     <string name="mihomo_system_settings">システム設定</string>
     <string name="mihomo_tun_mode">ホスト TUN</string>

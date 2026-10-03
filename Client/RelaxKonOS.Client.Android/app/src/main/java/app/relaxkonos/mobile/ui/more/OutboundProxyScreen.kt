@@ -158,7 +158,7 @@ fun OutboundProxyScreen(onBack: (() -> Unit)?, onOpenManagedProxy: (() -> Unit)?
             EmptyHint(stringResource(R.string.error_capability_missing)); return@Column
         }
         Text(stringResource(R.string.proxy_host_scope))
-        editor.message?.let { ActionFeedback(it.text(), onRetry = null, onDismiss = editor::dismissMessage, tone = it.tone) }
+        editor.message?.let { ActionFeedback(it, onRetry = null, onDismiss = editor::dismissMessage) }
         if (editor.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         val status = editor.status
         val draft = editor.draft

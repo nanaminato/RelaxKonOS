@@ -183,9 +183,10 @@ private fun RelaxKonApp(container: AppContainer) {
 
             container.pendingNotice?.let { notice ->
                 ActionFeedback(
-                    message = notice.text(),
+                    message = notice,
                     onRetry = null,
                     onDismiss = container::dismissNotice,
+                    reminders = container.notices,
                     // This banner floats over whatever screen is current, so it owns its own inset.
                     modifier = Modifier
                         .align(Alignment.TopCenter)

@@ -22,6 +22,8 @@ import app.relaxkonos.mobile.data.ElevationRepository
 import app.relaxkonos.mobile.data.FileProfileStorage
 import app.relaxkonos.mobile.data.FilesRepository
 import app.relaxkonos.mobile.data.HostOperatingSystemLookup
+import app.relaxkonos.mobile.data.NoticePreferenceStore
+import app.relaxkonos.mobile.data.SharedPreferencesNoticeStorage
 import app.relaxkonos.mobile.data.FileOperationIndexStorage
 import app.relaxkonos.mobile.data.ImageDecoder
 import app.relaxkonos.mobile.data.ImagePreviewCache
@@ -218,7 +220,16 @@ class AppContainer(context: Context) {
     var pendingNotice by mutableStateOf<UiMessage?>(null)
         private set
 
+    /**
+     * 本机的「不再提醒」偏好。只记键，不记文案、账号或地址；可在「账户与安全」里恢复。
+     */
+    val notices = NoticePreferenceStore(SharedPreferencesNoticeStorage(appContext))
+
     fun showNotice(notice: UiMessage) {
+        // 静音在**源头**生效，而不是渲染时：一条已经关掉的提醒不该在被丢弃前先重组一遍，否则
+        // 「不再提醒」只是把弹窗闪没了而已。带 reminder 的句子到此为止，不再有任何副作用。
+        val reminder = notice.reminder
+        if (reminder != null && notices.isSilenced(reminder)) return
         pendingNotice = notice
     }
 

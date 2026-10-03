@@ -147,7 +147,7 @@ fun HomeScreen(
 
         viewModel.message?.let { banner ->
             ActionFeedback(
-                message = banner.text(),
+                message = banner,
                 onRetry = { viewModel.refresh() },
                 onDismiss = { viewModel.dismissMessage() },
             )

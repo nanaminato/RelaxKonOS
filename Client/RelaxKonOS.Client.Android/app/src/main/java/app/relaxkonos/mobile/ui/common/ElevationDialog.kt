@@ -1,6 +1,5 @@
 package app.relaxkonos.mobile.ui.common
 
-import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,6 +26,7 @@ import androidx.fragment.app.FragmentActivity
 import app.relaxkonos.mobile.AppContainer
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.data.ElevationAnswer
+import app.relaxkonos.mobile.data.ReminderKind
 import app.relaxkonos.mobile.security.UnlockFailure
 import app.relaxkonos.mobile.security.VaultKind
 import app.relaxkonos.mobile.security.VaultOperation
@@ -69,8 +69,11 @@ fun ElevationDialog(container: AppContainer) {
     }
     var password by remember { mutableStateOf("") }
     var storeRequested by remember { mutableStateOf(false) }
-    var message by remember { mutableStateOf<String?>(null) }
+    // A message rather than a string: the outcome of the save step decides both how it reads and
+    // whether it is one of the verdicts this device will keep repeating.
+    var message by remember { mutableStateOf<UiMessage?>(null) }
     var busy by remember { mutableStateOf(false) }
+    val reminders = container.notices
 
     // Every string the click handlers need is resolved here: an `onClick` lambda is not a composable
     // context and a coroutine is not one either.
@@ -79,8 +82,22 @@ fun ElevationDialog(container: AppContainer) {
     val saveTitle = stringResource(R.string.vault_save_elevation_title)
     val saveSubtitle = stringResource(R.string.vault_save_elevation_subtitle)
     val cancelLabel = stringResource(R.string.common_cancel)
-    val missingFieldsLabel = stringResource(R.string.elevation_missing_fields)
-    val notStoredLabel = stringResource(R.string.elevation_credential_not_stored)
+
+    /**
+     * The one verdict in this dialog that is a fact about the device rather than about this attempt,
+     * and only while the user has not already answered it.
+     *
+     * "No lock screen can unseal a saved password" will not read differently on the next press, so it
+     * may be answered for good — the same [ReminderKind.SavedPasswordUnavailable] the sign-in and
+     * server-centre screens offer for the same sentence. A lockout, an invalidated key or tampering
+     * each leave the user something to do, so they keep interrupting.
+     */
+    fun silenceableVerdict(failure: UnlockFailure): ReminderKind? =
+        if (failure == UnlockFailure.Unavailable && !reminders.isSilenced(ReminderKind.SavedPasswordUnavailable)) {
+            ReminderKind.SavedPasswordUnavailable
+        } else {
+            null
+        }
 
     AlertDialog(
         onDismissRequest = { container.elevationPrompts.cancel() },
@@ -118,7 +135,18 @@ fun ElevationDialog(container: AppContainer) {
                         Text(stringResource(R.string.elevation_save_credential))
                     }
                 }
-                OperationMessageDialog(message.takeUnless { busy }, onDismiss = { message = null })
+                OperationMessageDialog(
+                    message = message?.takeUnless { busy }?.let { it.text() },
+                    eventKey = message,
+                    tone = message?.tone ?: StatusTone.Danger,
+                    onDismiss = { message = null },
+                    // Unlike a floating notice, this sentence is load-bearing: it is the only thing that
+                    // says the authorization did not go through and that pressing Authorize again
+                    // continues without saving (§5.4 rule 2). So it is never skipped — what an answered
+                    // reminder removes here is the offer, and that is decided where the message is set.
+                    reminder = message?.reminder,
+                    onSilenceReminder = { kind -> reminders.silence(kind) },
+                )
             }
         },
         confirmButton = {
@@ -126,7 +154,7 @@ fun ElevationDialog(container: AppContainer) {
                 enabled = !busy,
                 onClick = {
                     if (account.isBlank() || password.isEmpty()) {
-                        message = missingFieldsLabel
+                        message = UiMessage(R.string.elevation_missing_fields)
                         return@Button
                     }
                     val answer = ElevationAnswer(account.trim(), password.toCharArray())
@@ -157,7 +185,10 @@ fun ElevationDialog(container: AppContainer) {
                             VaultOperation.Cancelled -> {
                                 answer.password.fill('\u0000')
                                 storeRequested = false
-                                message = notStoredLabel
+                                // The user dismissed the confirmation himself, so this stays a warning he
+                                // keeps seeing — the same reading as the sign-in and server-centre
+                                // screens give the same outcome.
+                                message = UiMessage(R.string.elevation_credential_not_stored, tone = StatusTone.Warning)
                             }
                             is VaultOperation.Failed -> {
                                 if (outcome.failure == UnlockFailure.KeyInvalidated) {
@@ -168,7 +199,8 @@ fun ElevationDialog(container: AppContainer) {
                                 }
                                 answer.password.fill('\u0000')
                                 storeRequested = false
-                                message = unlockFailureLabel(context, outcome.failure)
+                                message = unlockFailureMessage(outcome.failure)
+                                    .withReminder(silenceableVerdict(outcome.failure))
                             }
                         }
                     }
@@ -204,7 +236,11 @@ fun ElevationDialog(container: AppContainer) {
                                             container.vault.markAllInvalidated(VaultKind.Elevation)
                                             vaultRevision++
                                         }
-                                        message = unlockFailureLabel(context, outcome.failure)
+                                        // The same sentence as the save branch, so it carries the same
+                                        // offer: unlocking a saved record is where
+                                        // `SavedPasswordUnavailable` reads most literally.
+                                        message = unlockFailureMessage(outcome.failure)
+                                            .withReminder(silenceableVerdict(outcome.failure))
                                     }
                                 }
                             }

@@ -35,6 +35,7 @@ import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionCard
 import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.ui.common.formatTimestamp
+import app.relaxkonos.mobile.ui.common.reminderLabel
 import app.relaxkonos.mobile.ui.icons.ServerPlatformBadge
 import app.relaxkonos.mobile.ui.theme.Spacing
 
@@ -236,6 +237,30 @@ fun AccountSecurityScreen(
             onClick = { confirmClearAll = true },
             enabled = connectionRecords.isNotEmpty() || elevationRecords.isNotEmpty() || debugRecord != null,
         ) { Text(stringResource(R.string.account_security_clear_all)) }
+
+        // 「不再提醒」是用户在某次提示里做的选择，所以这里必须能看见它、也能撤掉它。只在真的静音过
+        // 东西时出现：一个空的分组只会让人以为自己关掉过什么（`Shell.Design.md` §3.4）。
+        val silenced = remember(revision) { container.notices.silenced() }
+        if (silenced.isNotEmpty()) {
+            SectionCard(stringResource(R.string.account_security_reminders)) {
+                silenced.forEach { kind ->
+                    val restore: () -> Unit = {
+                        container.notices.setSilenced(kind, false)
+                        revision++
+                    }
+                    ListRow(
+                        title = reminderLabel(kind),
+                        trailing = { Switch(checked = true, onCheckedChange = { restore() }) },
+                        onClick = { restore() },
+                    )
+                }
+                Text(
+                    stringResource(R.string.account_security_reminders_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 
     if (confirmDisable) {

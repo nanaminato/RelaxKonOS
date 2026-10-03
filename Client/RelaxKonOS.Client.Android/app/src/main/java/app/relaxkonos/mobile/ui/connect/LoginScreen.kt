@@ -175,7 +175,7 @@ fun LoginScreen(
 
                     viewModel.message?.let { banner ->
                         ActionFeedback(
-                            message = banner.text(),
+                            message = banner,
                             onRetry = null,
                             onDismiss = { viewModel.dismissMessage() },
                         )

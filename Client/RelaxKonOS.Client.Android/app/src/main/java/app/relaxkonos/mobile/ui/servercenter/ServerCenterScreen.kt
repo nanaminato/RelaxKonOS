@@ -46,6 +46,7 @@ import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.common.PasswordTextField
 import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionCard
+import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.ui.common.text
 import app.relaxkonos.mobile.ui.icons.DesktopIcon
 import app.relaxkonos.mobile.ui.icons.DesktopIcons
@@ -166,10 +167,11 @@ private fun ServerCenterContent(
         )
         state.message?.let { message ->
             ActionFeedback(
-                message = message.text(),
+                message = message,
                 onRetry = null,
                 onDismiss = onDismissMessage,
-                tone = message.tone,
+                // 「本机存不下密码」这类结论可以在这里被一次关掉（`Shell.Design.md` §3.4）。
+                reminders = appContainer().notices,
             )
         }
         ManagedHosts(state, onOpenHost = onOpenHost, onManageHost = onManageHost)

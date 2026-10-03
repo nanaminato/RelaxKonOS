@@ -105,13 +105,13 @@ fun ProcessesScreen(
 
         viewModel.processMessage?.let { banner ->
             ActionFeedback(
-                message = banner.text(),
+                message = banner,
                 onRetry = { viewModel.loadProcesses() },
                 onDismiss = { viewModel.dismissProcessMessage() },
             )
         }
 
-        viewModel.killMessage?.let { message -> ActionFeedback(message.text(), onRetry = { viewModel.loadProcesses() }, onDismiss = { viewModel.dismissKillMessage() }) }
+        viewModel.killMessage?.let { message -> ActionFeedback(message, onRetry = { viewModel.loadProcesses() }, onDismiss = { viewModel.dismissKillMessage() }) }
 
         if (!viewModel.processesAvailable) {
             EmptyState(

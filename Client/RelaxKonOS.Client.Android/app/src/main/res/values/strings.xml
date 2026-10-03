@@ -623,6 +623,11 @@
     <string name="account_security_debug_record_note">Saved unencrypted: debug build, and this device has no screen lock.</string>
     <string name="account_security_delete_title">Delete this password</string>
     <string name="account_security_delete_message">Delete the saved password for %1$s on %2$s?</string>
+    <string name="account_security_reminders">Reminders</string>
+    <string name="account_security_reminders_note">These reminders are set to not appear again on this device. Turn one off to bring it back.</string>
+    <string name="reminder_login_credential_not_saved_device">Saved password not supported on this device</string>
+    <string name="reminder_saved_password_unavailable">Fingerprint unlocking unavailable</string>
+    <string name="reminder_server_center_credential_not_saved">SSH password not saved on this device</string>
 
     <string name="biometric_strength_strong">Strong fingerprint (Class 3)</string>
     <string name="biometric_strength_weak">Weak biometric (Class 2)</string>
@@ -2693,7 +2698,10 @@
     <string name="mihomo_connections_count">%1$d active connections</string>
     <string name="mihomo_logs_empty">No logs received yet. Recent entries refresh automatically.</string>
     <string name="operation_error_title">Operation failed</string>
+    <string name="operation_success_title">Operation completed</string>
+    <string name="operation_info_title">Information</string>
     <string name="operation_warning_title">Warning</string>
+    <string name="notice_do_not_remind">Do not remind me again</string>
     <string name="mihomo_general_settings">Mihomo settings</string>
     <string name="mihomo_system_settings">System settings</string>
     <string name="mihomo_tun_mode">Host TUN</string>

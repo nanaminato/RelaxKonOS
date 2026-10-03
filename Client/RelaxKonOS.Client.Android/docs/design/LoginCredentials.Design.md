@@ -293,6 +293,13 @@ fun decideLogin(
 
 两条入口是**同类动作**，因此画成同一种形状：品牌标记下方的两个文字链接，同侧对齐，谁也不占一整行。这条界面里唯一的主动作是「登录」，把「安装或管理服务器」画成整宽描边按钮会把它误报成第二个主按钮；文字链接既保持它可达，也保持它与「添加 Windows 10/11 设备」的并列关系。两者上下排列而不是并排，是因为英文/日文文案在小屏上一行放不下两条链接。
 
+「已登录，但密码没有保存」这类提示有两条分支，只有其中一条能关掉（`Shell.Design.md` §3.4）：
+
+| 分支 | 原因 | 「不再提醒」 |
+| --- | --- | --- |
+| `unlockMode` 为 `null` 或解封失败为 `Unavailable` | 本机没有可用的保险箱或指纹/锁屏 | 提供（`LoginCredentialNotSavedDevice` / `SavedPasswordUnavailable`） |
+| 用户取消保存、锁定、密钥失效、被篡改 | 本次操作的结果，用户有补救动作 | 不提供，每次都要说 |
+
 ### 6.2 「已保存密码」怎么表达
 
 - **`PasswordText` 永远是纯粹的本次输入**，为空时输入框就是空的。
@@ -472,6 +479,7 @@ CredentialStore(密文)
 | `data/ConnectionProfileStore.kt`、`HostOperatingSystemLookup.kt` | 连接档案、每次打开列表/登录成功后的系统徽标重新核实；失败保留最后观测，迟到响应不能覆盖新结果 |
 | `security/model/SavedLogin.kt`、`security/CredentialVault.kt` | 保存身份、保险箱、失效标记与按身份删除 |
 | `core/auth/AuthSession.kt` | 稳定 serviceId、当前 effectiveBaseUrl、刷新与注销 |
+| `data/NoticePreferenceStore.kt` | 本机「不再提醒」偏好；只存键，可读回、可恢复 |
 | `ui/icons/ServerPlatformBadge.kt` | 登录选择、连接和密码列表共用系统徽标 |
 
 ## 10. 验证归属

@@ -9,6 +9,8 @@ import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.core.auth.CredentialGap
 import app.relaxkonos.mobile.core.auth.SavedCredentialState
 import app.relaxkonos.mobile.core.auth.credentialState
+import app.relaxkonos.mobile.data.ReminderKind
+import app.relaxkonos.mobile.security.UnlockFailure
 import app.relaxkonos.mobile.security.VaultKind
 import app.relaxkonos.mobile.security.VaultOperation
 import app.relaxkonos.mobile.security.VaultUnlockMode
@@ -26,6 +28,7 @@ import app.relaxkonos.mobile.servercenter.shouldSaveSshPassword
 import app.relaxkonos.mobile.ui.common.StatusTone
 import app.relaxkonos.mobile.ui.common.UiMessage
 import app.relaxkonos.mobile.ui.common.unlockFailureMessage
+import app.relaxkonos.mobile.ui.common.withReminder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -413,10 +416,19 @@ class ServerCenterViewModel(application: Application) : AndroidViewModel(applica
         refresh {
             copy(
                 message = when (outcome) {
-                    null -> UiMessage(R.string.server_center_password_not_saved)
+                    // `null` 只有一个来源：本机没有可保护密码的解锁方式（`saveCredential` 的第一个
+                    // 提前返回）。因此这是设备结论，可以不再提醒。
+                    null -> UiMessage(
+                        R.string.server_center_password_not_saved,
+                        tone = StatusTone.Warning,
+                        reminder = ReminderKind.ServerCenterCredentialNotSaved,
+                    )
                     is VaultOperation.Success -> UiMessage(R.string.server_center_password_saved, tone = StatusTone.Success)
-                    VaultOperation.Cancelled -> UiMessage(R.string.server_center_password_not_saved)
-                    is VaultOperation.Failed -> unlockFailureMessage(outcome.failure)
+                    // 用户自己取消了保存，下次仍可能想保存；这里不给「不再提醒」。
+                    VaultOperation.Cancelled -> UiMessage(R.string.server_center_password_not_saved, tone = StatusTone.Warning)
+                    is VaultOperation.Failed -> unlockFailureMessage(outcome.failure).withReminder(
+                        if (outcome.failure == UnlockFailure.Unavailable) ReminderKind.SavedPasswordUnavailable else null,
+                    )
                 },
             )
         }

@@ -54,7 +54,7 @@ internal fun deploymentProblem(code: String): UiMessage = when (code) {
     "application-deployment.permission_denied" -> UiMessage(R.string.deployments_permission)
     "application-deployment.application_not_found" -> UiMessage(R.string.deployments_not_found)
     "application-deployment.store_unavailable" -> UiMessage(R.string.deployments_store_unavailable)
-    "application-catalog.already_current" -> UiMessage(R.string.catalog_update_current)
+    "application-catalog.already_current" -> UiMessage(R.string.catalog_update_current, tone = app.relaxkonos.mobile.ui.common.StatusTone.Info)
     "application-catalog.definition_incompatible" -> UiMessage(R.string.catalog_update_definition)
     "application-catalog.template_version_unavailable" -> UiMessage(R.string.catalog_update_unavailable)
     "application-deployment.revision_unknown" -> UiMessage(R.string.deployments_revision_unknown)

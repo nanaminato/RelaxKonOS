@@ -1372,11 +1372,10 @@ fun FilesScreen(
 fun FileActionFeedback(viewModel: FilesViewModel, modifier: Modifier = Modifier) {
     viewModel.message?.let { banner ->
         ActionFeedback(
-            message = banner.text(),
+            message = banner,
             onRetry = { viewModel.refresh() },
             onDismiss = { viewModel.dismissMessage() },
             modifier = modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
-            tone = banner.tone,
         )
     }
 }

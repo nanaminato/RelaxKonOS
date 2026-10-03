@@ -7,6 +7,7 @@ import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.ExecutionEligibilityReasons
 import app.relaxkonos.mobile.core.net.ProblemCodes
+import app.relaxkonos.mobile.data.ReminderKind
 
 /** A localised message: a resource id plus optional format arguments. */
 data class UiMessage(
@@ -22,6 +23,14 @@ data class UiMessage(
      * feedback component presents errors and warnings in a dialog and success inline.
      */
     val tone: StatusTone = StatusTone.Danger,
+    /**
+     * Set only when the sentence is the consequence of a stable property of this device, in which
+     * case the dialog offers "do not remind me again" ([ReminderKind]).
+     *
+     * A per-attempt outcome — a cancellation, a lockout, a network failure — leaves this `null` on
+     * purpose: those are exactly the messages a retry must be able to surface again.
+     */
+    val reminder: ReminderKind? = null,
 )
 
 @Composable
@@ -48,6 +57,16 @@ fun UiMessage.withDebugDetail(detail: String?): UiMessage {
 
 /** The sentence shown for a problem the client has no specific mapping for. */
 fun genericProblemMessage(): UiMessage = UiMessage(R.string.error_generic)
+
+/**
+ * Offers "do not remind me again" for a message whose reason is a device capability rather than an
+ * outcome of the attempt, and leaves every other message untouched.
+ *
+ * The `null` case is the common one and is deliberately a no-op instead of a clear: a shared sentence
+ * (an unlock failure, say) is silenceable for one reason and must stay loud for the rest, and the call
+ * site is the only place that knows which it is holding.
+ */
+fun UiMessage.withReminder(kind: ReminderKind?): UiMessage = if (kind == null) this else copy(reminder = kind)
 
 /**
  * Maps a stable problem code to the sentence the user should read.

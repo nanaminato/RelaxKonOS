@@ -589,6 +589,11 @@
     <string name="account_security_debug_record_note">未加密保存：调试构建，且本机没有锁屏。</string>
     <string name="account_security_delete_title">删除这个密码</string>
     <string name="account_security_delete_message">删除 %2$s 上 %1$s 的已保存密码？</string>
+    <string name="account_security_reminders">提醒</string>
+    <string name="account_security_reminders_note">这些提醒已在本机被设为不再显示。关闭开关即可让它们重新出现。</string>
+    <string name="reminder_login_credential_not_saved_device">本机不支持保存密码</string>
+    <string name="reminder_saved_password_unavailable">本机无法使用指纹解锁</string>
+    <string name="reminder_server_center_credential_not_saved">本机未保存 SSH 密码</string>
 
     <string name="biometric_strength_strong">强指纹（Class 3）</string>
     <string name="biometric_strength_weak">弱生物识别（Class 2）</string>
@@ -2654,7 +2659,10 @@
     <string name="mihomo_connections_count">%1$d 个活动连接</string>
     <string name="mihomo_logs_empty">暂未收到日志，新日志会自动刷新。</string>
     <string name="operation_error_title">操作失败</string>
+    <string name="operation_success_title">操作成功</string>
+    <string name="operation_info_title">提示</string>
     <string name="operation_warning_title">警告</string>
+    <string name="notice_do_not_remind">不再提醒</string>
     <string name="mihomo_general_settings">Mihomo 设置</string>
     <string name="mihomo_system_settings">系统设置</string>
     <string name="mihomo_tun_mode">宿主 TUN</string>

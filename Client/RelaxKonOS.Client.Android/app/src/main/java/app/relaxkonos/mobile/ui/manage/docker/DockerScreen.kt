@@ -357,7 +357,7 @@ fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialSt
                 TextButton(onClick = viewModel::refresh, enabled = available && !state.loading) { Text(stringResource(R.string.common_refresh)) } } },
         )
         if (!available) { EmptyHint(stringResource(R.string.error_capability_missing)); return@Column }
-        state.message?.let { message -> ActionFeedback(message.text(), viewModel::refresh, viewModel::dismissMessage, tone = message.tone) }
+        state.message?.let { message -> ActionFeedback(message, viewModel::refresh, viewModel::dismissMessage) }
         if (state.loading || state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (notInstalled) {
             EmptyHint(stringResource(R.string.runtime_install_hint, "Docker"))

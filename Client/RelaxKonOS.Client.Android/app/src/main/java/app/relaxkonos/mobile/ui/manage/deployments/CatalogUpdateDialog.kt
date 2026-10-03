@@ -86,13 +86,14 @@ internal fun CatalogUpdateDialog(owner: SessionState.Active, initial: Deployment
                             Text(stringResource(R.string.deployments_replacement_note), color = MaterialTheme.colorScheme.error)
                         }
                         null -> Unit
-                        else -> OperationMessageDialog(loaded.deploymentFailure().text(), eventKey = loaded)
+                        else -> OperationMessageDialog(loaded.deploymentFailure().text(), eventKey = loaded, tone = loaded.deploymentFailure().tone)
                     }
 
                     when (val outcome = result) {
                         is ApiResult.Success -> Text(stringResource(R.string.deployments_queued, outcome.value.operationId), color = MaterialTheme.colorScheme.primary)
                         null -> Unit
-                        else -> OperationMessageDialog(outcome.deploymentFailure().text() + if (unknown) "\n\n${stringResource(R.string.deployments_revision_unknown)}" else "", eventKey = outcome)
+                        else -> OperationMessageDialog(outcome.deploymentFailure().text() + if (unknown) "\n\n${stringResource(R.string.deployments_revision_unknown)}" else "", eventKey = outcome,
+                            tone = if (unknown) app.relaxkonos.mobile.ui.common.StatusTone.Warning else outcome.deploymentFailure().tone)
                     }
                     if (result !is ApiResult.Success) TextButton(onClick = {
                         busy = true
