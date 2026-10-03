@@ -127,7 +127,7 @@ private class LegacyTarget(private val file: File) : DownloadTarget {
     }
 }
 
-private fun ContentResolver.resolvedDisplayName(uri: Uri): String? = runCatching {
+internal fun ContentResolver.resolvedDisplayName(uri: Uri): String? = runCatching {
     query(uri, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
         if (cursor.moveToFirst()) cursor.getString(0) else null
     }

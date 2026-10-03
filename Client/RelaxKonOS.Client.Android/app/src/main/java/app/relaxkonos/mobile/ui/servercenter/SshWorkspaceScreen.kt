@@ -3,6 +3,7 @@ package app.relaxkonos.mobile.ui.servercenter
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import app.relaxkonos.mobile.ui.common.StatusTone
 import android.net.Uri
+import app.relaxkonos.mobile.data.resolvedDisplayName
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.collectAsState
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -36,6 +37,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.Tab
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -67,22 +70,44 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 @Composable
 fun SshWorkspaceScreen(hostId: String, onClose: () -> Unit) {
     var page by rememberSaveable(hostId) { mutableIntStateOf(0) }
+    var managementPage by rememberSaveable(hostId) { mutableIntStateOf(0) }
     val host = (LocalContext.current.applicationContext as RelaxKonApplication)
         .container.serverCenter.hosts().firstOrNull { it.hostId == hostId }
     val terminalTyping = page == 1 && WindowInsets.ime.getBottom(LocalDensity.current) > 0
-    androidx.activity.compose.BackHandler { if (page != 3) page = 3 else onClose() }
+    androidx.activity.compose.BackHandler {
+        if (page != 3) { page = 3; managementPage = 0 }
+        else if (managementPage != 0) managementPage = 0
+        else onClose()
+    }
     val content: @Composable (Modifier) -> Unit = { contentModifier ->
         when (page) {
             0 -> SshFilesScreen(hostId, contentModifier)
             1 -> SshTerminalScreen(hostId, onClose, contentModifier)
             2 -> ServerMaintenanceScreen(host, contentModifier)
-            3 -> SshSystemScreen(hostId, onClose, contentModifier)
-            4 -> AppearanceScreen(onBack = { page = 3 }, modifier = contentModifier,
-                titleRes = R.string.ssh_workspace_settings)
-            else -> SshForwardsScreen(hostId, contentModifier)
+            3 -> Column(contentModifier) {
+                SshManagementTabs(managementPage, { managementPage = it })
+                val body = Modifier.weight(1f).fillMaxWidth()
+                when (managementPage) {
+                    0 -> SshSystemScreen(hostId, onClose, body)
+                    1 -> AppearanceScreen(onBack = { managementPage = 0 }, modifier = body,
+                        titleRes = R.string.ssh_workspace_settings)
+                    2 -> SshForwardsScreen(hostId, body)
+                }
+            }
         }
     }
     SshWorkspaceLayout(page, { page = it }, terminalTyping, content = content)
+}
+
+@Composable
+internal fun SshManagementTabs(selected: Int, onSelect: (Int) -> Unit) {
+    val labels = listOf(R.string.ssh_workspace_system, R.string.ssh_workspace_settings, R.string.ssh_forward_title)
+    PrimaryTabRow(selectedTabIndex = selected) {
+        labels.forEachIndexed { index, label ->
+            Tab(selected = selected == index, onClick = { onSelect(index) },
+                text = { Text(stringResource(label)) })
+        }
+    }
 }
 
 @Composable
@@ -97,9 +122,7 @@ internal fun SshWorkspaceLayout(
         R.string.ssh_files_title to DesktopIcons.navFiles,
         R.string.ssh_terminal_title to DesktopIcons.navTerminal,
         R.string.ssh_workspace_deploy to DesktopIcons.deployments,
-        R.string.ssh_workspace_system to DesktopIcons.system,
-        R.string.ssh_workspace_settings to DesktopIcons.navMore,
-        R.string.ssh_forward_title to DesktopIcons.connections,
+        R.string.ssh_workspace_management to DesktopIcons.navMore,
     )
     BoxWithConstraints(modifier.fillMaxSize()) {
         val layout = layoutStateFor(maxWidth)
@@ -140,6 +163,7 @@ internal fun SshWorkspaceLayout(
 /** Matches the desktop source → mode → review flow. Executes the embedded launcher with source-specific package checks. */
 @Composable
 internal fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = Modifier, onBusyChanged: (Boolean) -> Unit = {}) {
+    val resolver = LocalContext.current.contentResolver
     val hostId = host?.hostId
     val installKey = remember(hostId) { "install-${host?.hostId}-${host?.lastVerified?.verifiedAtEpochMillis}" }
     val installer: ServerInstallViewModel = viewModel(key = installKey)
@@ -167,15 +191,15 @@ internal fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier =
     var certificateNames by rememberSaveable(hostId) { mutableStateOf("localhost,127.0.0.1") }
     val pickBundle = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         bundleUri = uri?.toString()
-        bundleName = uri?.lastPathSegment.orEmpty()
+        bundleName = uri?.let { resolver.resolvedDisplayName(it) }.orEmpty()
     }
     val pickCertificate = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         certificateUri = uri?.toString()
-        certificateName = uri?.lastPathSegment.orEmpty()
+        certificateName = uri?.let { resolver.resolvedDisplayName(it) }.orEmpty()
     }
     val pickPrivateKey = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         privateKeyUri = uri?.toString()
-        privateKeyName = uri?.lastPathSegment.orEmpty()
+        privateKeyName = uri?.let { resolver.resolvedDisplayName(it) }.orEmpty()
     }
     val mayContinue = when (step) {
         0 -> source == "official" || (source == "local" && bundleName.isNotBlank()) ||
