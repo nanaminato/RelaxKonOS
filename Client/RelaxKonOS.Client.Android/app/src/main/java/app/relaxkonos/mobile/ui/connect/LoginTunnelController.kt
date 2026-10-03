@@ -22,6 +22,14 @@ class LoginTunnelController(private val container: AppContainer) {
     var secret by mutableStateOf("")
     var passphrase by mutableStateOf("")
     var usePrivateKey by mutableStateOf(false)
+    var useServerCredentials by mutableStateOf(false)
+        private set
+    fun setReuseServerCredentials(value: Boolean) {
+        useServerCredentials = value
+        clearCredential()
+        secret = ""; passphrase = ""
+        if (value) usePrivateKey = false
+    }
     var rememberCredential by mutableStateOf(false)
     var configurationOpen by mutableStateOf(true)
     var statusResource by mutableStateOf<Int?>(null)
@@ -38,23 +46,33 @@ class LoginTunnelController(private val container: AppContainer) {
         private set
     val profiles get() = container.loginTunnels.all()
     fun answerHostKey(accept: Boolean) { answer?.complete(accept) }
-    fun profile(remoteUrl: String) = SshLoginTunnelProfile.create(host, port.toInt(), userName, remoteUrl)
+    fun profile(remoteUrl: String, serverUserName: String) = SshLoginTunnelProfile.create(
+        host, port.toInt(), if (useServerCredentials) serverUserName else userName, remoteUrl)
     fun select(profile: SshLoginTunnelProfile) {
+        setReuseServerCredentials(false)
         enabled = true; host = profile.host; port = profile.port.toString(); userName = profile.userName
         secret = ""; passphrase = ""; identity = null
         configurationOpen = false
     }
 
-    suspend fun open(activity: FragmentActivity, remoteUrl: String, testOnly: Boolean = false,
+    internal fun enteredCredential(serverPassword: CharArray): SshCredential? = when {
+        useServerCredentials -> {
+            if (serverPassword.isEmpty()) throw LoginTunnelFailure(R.string.login_tunnel_server_password_required)
+            SshCredential(SshCredentialKind.Password, serverPassword.copyOf(), null)
+        }
+        secret.isNotEmpty() -> SshCredential(
+            if (usePrivateKey) SshCredentialKind.PrivateKey else SshCredentialKind.Password,
+            secret.toCharArray(), passphrase.takeIf { it.isNotEmpty() }?.toCharArray())
+        else -> null
+    }
+
+    suspend fun open(activity: FragmentActivity, remoteUrl: String, serverUserName: String, serverPassword: CharArray, testOnly: Boolean = false,
         confirmCertificate: suspend (app.relaxkonos.mobile.core.net.CertificateReview) -> Boolean) {
         close()
-        val profile = profile(remoteUrl)
+        val profile = profile(remoteUrl, serverUserName)
         val endpoint = ServerCenterSshEndpoint.create(profile.host, profile.port, profile.userName)
         val target = ServerHostTargetRules.create(profile.host, profile.port, profile.userName, null, System.currentTimeMillis())
-        val credential = if (secret.isNotEmpty()) {
-            SshCredential(if (usePrivateKey) SshCredentialKind.PrivateKey else SshCredentialKind.Password,
-                secret.toCharArray(), passphrase.takeIf { it.isNotEmpty() }?.toCharArray())
-        } else if (verifiedEndpoint == "${profile.host}:${profile.port}:${profile.userName}" && verifiedCredential != null) {
+        val credential = enteredCredential(serverPassword) ?: if (verifiedEndpoint == "${profile.host}:${profile.port}:${profile.userName}" && verifiedCredential != null) {
             verifiedCredential!!.let { SshCredential(it.kind, it.secret.copyOf(), it.passphrase?.copyOf()) }
         } else {
             val record = container.sshCredentials.record(profile.host, profile.port, profile.userName)
@@ -98,7 +116,7 @@ class LoginTunnelController(private val container: AppContainer) {
             verifiedCredential = SshCredential(credential.kind, credential.secret.copyOf(), credential.passphrase?.copyOf())
             verifiedEndpoint = "${profile.host}:${profile.port}:${profile.userName}"
             container.loginTunnels.save(profile)
-            if (rememberCredential && secret.isNotEmpty()) {
+            if (rememberCredential && (useServerCredentials || secret.isNotEmpty())) {
                 val mode = container.unlockMode(VaultKind.Ssh)
                 val saved = if (mode == null) null else container.sshCredentials.save(mode, profile.host, profile.port, profile.userName, credential, activity,
                     activity.getString(R.string.vault_save_connection_title), profile.displayText,

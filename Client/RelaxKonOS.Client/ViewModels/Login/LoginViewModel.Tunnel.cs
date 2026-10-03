@@ -28,6 +28,13 @@ public partial class LoginViewModel
     [ObservableProperty] private string _tunnelPassphrase = "";
     [ObservableProperty] private bool _tunnelUsePrivateKey;
     [ObservableProperty] private bool _rememberSshCredential;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SeparateTunnelCredentials))]
+    private bool _useServerCredentialsForTunnel;
+    [ObservableProperty] private string _tunnelCredentialStatus = "";
+    private int _credentialLookupVersion;
+    public bool SeparateTunnelCredentials => !UseServerCredentialsForTunnel;
+    public string ReuseServerCredentialsText => T("login.tunnel.reuse_server", "Use the Server username and password for SSH");
     [ObservableProperty] private bool _showTunnelConfiguration = true;
     public string ConfigureTunnelText => T("login.tunnel.configure", "Configure SSH tunnel");
     public bool TunnelOptionsVisible => UseLoginTunnel && !UseSshLogin;
@@ -57,9 +64,48 @@ public partial class LoginViewModel
         else { _verifiedTunnelCredential = null; TunnelSecret = TunnelPassphrase = ""; }
     }
 
+    partial void OnUseServerCredentialsForTunnelChanged(bool value)
+    {
+        _verifiedTunnelCredential = null;
+        TunnelSecret = TunnelPassphrase = "";
+        if (value)
+        {
+            TunnelUsePrivateKey = false;
+            ShowOptions = true;
+        }
+        _ = RefreshTunnelCredentialStatusAsync();
+    }
+    partial void OnTunnelHostChanged(string value) => _ = RefreshTunnelCredentialStatusAsync();
+    partial void OnTunnelPortChanged(string value) => _ = RefreshTunnelCredentialStatusAsync();
+    partial void OnTunnelUserNameChanged(string value) => _ = RefreshTunnelCredentialStatusAsync();
+
+    public async Task RefreshTunnelCredentialStatusAsync()
+    {
+        var version = ++_credentialLookupVersion;
+        TunnelCredentialStatus = "";
+        var user = UseServerCredentialsForTunnel ? Identifier : TunnelUserName;
+        if (!int.TryParse(TunnelPort, out var port) || !ServerHostTargetRules.IsValidEndpoint(TunnelHost, port, user)) return;
+        try
+        {
+            var record = await _sshCredentials.FindAsync(ServerCenterSshEndpoint.Create(TunnelHost, port, user));
+            if (version != _credentialLookupVersion) return;
+            if (record is not null)
+            {
+                RememberSshCredential = true;
+                TunnelCredentialStatus = T("login.tunnel.saved", "SSH credentials are saved securely. Leave the SSH credential field empty to use them.");
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.Cryptography.CryptographicException or ArgumentException)
+        {
+            if (version == _credentialLookupVersion)
+                TunnelCredentialStatus = T("login.tunnel.load_failed", "Saved SSH credentials could not be read. Enter them again or retry.");
+        }
+    }
+
     partial void OnSelectedTunnelChanged(SshLoginTunnelProfile? value)
     {
         if (value is null || IsConnecting) return;
+        UseServerCredentialsForTunnel = false;
         UseLoginTunnel = true;
         TunnelHost = value.Host;
         TunnelPort = value.Port.ToString();
@@ -67,6 +113,7 @@ public partial class LoginViewModel
         ServerUrl = value.RemoteUrl;
         TunnelSecret = TunnelPassphrase = "";
         ShowTunnelConfiguration = false;
+        _ = RefreshTunnelCredentialStatusAsync();
     }
     [RelayCommand]
     private void ToggleTunnelConfiguration() => ShowTunnelConfiguration = !ShowTunnelConfiguration;
@@ -86,11 +133,16 @@ public partial class LoginViewModel
     private async Task<ServerConnectionIdentity> OpenLoginTunnelAsync(CancellationToken ct)
     {
         if (!int.TryParse(TunnelPort, out var port)) throw new ArgumentException(TunnelPortText);
-        var profile = SshLoginTunnelProfile.Create(TunnelHost, port, TunnelUserName, ServerUrl);
+        var profile = SshLoginTunnelProfile.Create(TunnelHost, port,
+            UseServerCredentialsForTunnel ? Identifier : TunnelUserName, ServerUrl);
         var target = ServerHostTargetRules.Create(profile.Host, profile.Port, profile.UserName, null, DateTimeOffset.UtcNow);
         var endpoint = ServerCenterSshEndpoint.Create(profile.Host, profile.Port, profile.UserName);
         var resolver = _tunnelConnections;
-        var credential = !string.IsNullOrEmpty(TunnelSecret)
+        var credential = UseServerCredentialsForTunnel
+            ? !string.IsNullOrEmpty(Password)
+                ? (ServerCenterSshCredential)new ServerCenterSshCredential.Password(Password)
+                : throw new LoginTunnelException(T("login.tunnel.server_password_required", "Enter the Server password to use it for SSH."))
+            : !string.IsNullOrEmpty(TunnelSecret)
             ? TunnelUsePrivateKey
                 ? (ServerCenterSshCredential)new ServerCenterSshCredential.PrivateKey(TunnelSecret, TunnelPassphrase)
                 : new ServerCenterSshCredential.Password(TunnelSecret)
@@ -116,6 +168,20 @@ public partial class LoginViewModel
                 await _hostKeys.TrustAsync(endpoint, rejected.Observation, ct);
                 _loginTunnelSession = await resolver.ConnectAsync(target, credential, await resolver.PrepareHostKeyGuardAsync(target, ct), ct);
             }
+            // Persist after SSH authentication, even if the remote Server probe or login fails.
+            if (RememberSshCredential)
+            {
+                ++_credentialLookupVersion;
+                SshCredentialSaveResult saved;
+                try { saved = await _sshCredentials.SaveAsync(SshCredentialRecord.From(endpoint, credential, DateTimeOffset.UtcNow), ct); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.Cryptography.CryptographicException)
+                {
+                    saved = SshCredentialSaveResult.WriteFailed;
+                }
+                TunnelCredentialStatus = saved == SshCredentialSaveResult.Saved
+                    ? T("login.tunnel.saved", "SSH credentials are saved securely. Leave the SSH credential field empty to use them.")
+                    : T("login.tunnel.not_saved", "Connected, but SSH credentials could not be saved securely.");
+            }
             StatusMessage = T("login.tunnel.checking", "SSH connected. Checking remote Server...");
             var remote = new Uri(profile.RemoteUrl);
             _loginTunnel = _loginTunnelSession.Transport.OpenLoopbackTunnel(remote.Port, remote.AbsolutePath);
@@ -131,8 +197,6 @@ public partial class LoginViewModel
             if (!check.IsResolved) throw new LoginTunnelException(DescribeResolutionError(check));
             _verifiedTunnelCredential = (SshCredentialRecord.CredentialIdentity(profile.Host, profile.Port, profile.UserName), credential);
             if (RememberServer) { _tunnelStore.Save(profile); OnPropertyChanged(nameof(SavedTunnels)); }
-            if (RememberSshCredential && await _sshCredentials.SaveAsync(SshCredentialRecord.From(endpoint, credential, DateTimeOffset.UtcNow), ct) != SshCredentialSaveResult.Saved)
-                StatusMessage = T("login.tunnel.not_saved", "Connected, but SSH credentials could not be saved securely.");
             return identity;
         }
         catch { await ReleaseLoginTunnelAsync(); throw; }

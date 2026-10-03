@@ -1,6 +1,7 @@
 {
     "Culture": "zh-CN",
     "Strings": {
+        "login.saved_connections": "已保存的连接",
         "login.tunnel.configure": "配置 SSH 隧道",
         "login.tunnel.not_saved": "已连接，但 SSH 凭据未能安全保存。",
         "login.tunnel.invalid": "请填写有效的 SSH 主机、端口、用户名及远端 HTTP(S) 回环服务地址。",
@@ -13,6 +14,10 @@
         "login.tunnel.secret": "SSH 密码或私钥",
         "login.tunnel.passphrase": "私钥口令（可选）",
         "login.tunnel.remember": "安全保存 SSH 凭据",
+        "login.tunnel.reuse_server": "SSH 使用与 Server 相同的用户名和密码",
+        "login.tunnel.saved": "SSH 凭据已安全保存；SSH 密码或私钥留空时将自动使用。",
+        "login.tunnel.load_failed": "无法读取已保存的 SSH 凭据，请重新填写或重试。",
+        "login.tunnel.server_password_required": "请填写 Server 密码，以便用于 SSH 认证。",
         "login.tunnel.hint": "服务器地址指 SSH 主机上的服务，例如 http://127.0.0.1:5000。本地端口自动分配，SSH 与服务器账号分别填写。",
         "login.tunnel.test": "测试连接",
         "login.tunnel.failed": "SSH 隧道连接失败。请检查 SSH 主机、凭据及远端服务地址；使用 HTTPS 时，证书须有效且匹配 127.0.0.1。",

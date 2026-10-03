@@ -144,11 +144,7 @@ fun LoginScreen(
         else -> R.string.login_action_connect
     }
 
-    Column(
-        modifier = modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(Spacing.lg),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Top,
-    ) {
+    LoginPageLayout(modifier) {
         Column(
             modifier = Modifier.fillMaxWidth().widthIn(max = 520.dp),
             horizontalAlignment = Alignment.CenterHorizontally,

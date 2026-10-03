@@ -84,15 +84,16 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Classes="login-label" Text="{Binding ComputerLabel}" />
-                        <ComboBox Classes="connection-input" Grid.Column="1" IsVisible="{Binding !UseSshLogin}"
+                        <StackPanel Grid.Column="1" IsVisible="{Binding !UseSshLogin}" Spacing="6">
+                        <TextBox x:Name="ServerAddressInput" Classes="connection-input" Text="{Binding ServerUrl, Mode=TwoWay}"
+                                 HorizontalAlignment="Stretch" MinWidth="440"
+                                 PlaceholderText="host:port" LostFocus="ServerAddress_LostFocus" />
+                        <ComboBox x:Name="SavedServerPicker" Classes="connection-input"
                                   ItemsSource="{Binding SavedProfiles}"
-                                  SelectedItem="{Binding SelectedProfile}"
-                                  IsEditable="True"
-                                  Text="{Binding ServerUrl}"
+                                  SelectedItem="{Binding SelectedProfile, Mode=TwoWay}"
                                   HorizontalAlignment="Stretch"
                                   MinWidth="440"
-                                  PlaceholderText="host:port"
-                                  LostFocus="ServerAddress_LostFocus">
+                                  PlaceholderText="{Binding SavedConnectionsText}">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding DisplayText}" MinHeight="32"
@@ -100,6 +101,7 @@
                                 </DataTemplate>
                             </ComboBox.ItemTemplate>
                         </ComboBox>
+                        </StackPanel>
                         <ComboBox Classes="connection-input" Grid.Column="1" IsVisible="{Binding UseSshLogin}"
                                   ItemsSource="{Binding SavedSshHosts}" SelectedItem="{Binding SelectedSshHost}"
                                   IsEditable="True" Text="{Binding ServerUrl, Mode=TwoWay}" MinWidth="440" PlaceholderText="host:22">
@@ -159,12 +161,16 @@
                             <TextBox Text="{Binding TunnelHost}" PlaceholderText="{Binding TunnelHostText}" />
                             <TextBox Grid.Column="1" Text="{Binding TunnelPort}" PlaceholderText="{Binding TunnelPortText}" />
                         </Grid>
-                        <TextBox Text="{Binding TunnelUserName}" PlaceholderText="{Binding TunnelUserText}" />
-                        <CheckBox IsChecked="{Binding TunnelUsePrivateKey}" Content="{Binding TunnelKeyText}" />
-                        <TextBox Text="{Binding TunnelSecret}" PasswordChar="●" AcceptsReturn="{Binding TunnelUsePrivateKey}" PlaceholderText="{Binding TunnelSecretText}" />
-                        <TextBox IsVisible="{Binding TunnelUsePrivateKey}" Text="{Binding TunnelPassphrase}" PasswordChar="●" PlaceholderText="{Binding TunnelPassphraseText}" />
+                        <CheckBox x:Name="ReuseServerCredentialsToggle" IsChecked="{Binding UseServerCredentialsForTunnel}" Content="{Binding ReuseServerCredentialsText}" />
+                        <StackPanel x:Name="SeparateSshCredentials" IsVisible="{Binding SeparateTunnelCredentials}" Spacing="8">
+                            <TextBox Text="{Binding TunnelUserName}" PlaceholderText="{Binding TunnelUserText}" />
+                            <CheckBox IsChecked="{Binding TunnelUsePrivateKey}" Content="{Binding TunnelKeyText}" />
+                            <TextBox Text="{Binding TunnelSecret}" PasswordChar="●" AcceptsReturn="{Binding TunnelUsePrivateKey}" PlaceholderText="{Binding TunnelSecretText}" />
+                            <TextBox IsVisible="{Binding TunnelUsePrivateKey}" Text="{Binding TunnelPassphrase}" PasswordChar="●" PlaceholderText="{Binding TunnelPassphraseText}" />
+                        </StackPanel>
                         <CheckBox IsChecked="{Binding RememberSshCredential}" Content="{Binding RememberSshText}" />
                         </StackPanel>
+                        <TextBlock Text="{Binding TunnelCredentialStatus}" TextWrapping="Wrap" />
                         <Button Command="{Binding TestTunnelCommand}" Content="{Binding TestTunnelText}" HorizontalAlignment="Left" />
                     </StackPanel>
                 </StackPanel>

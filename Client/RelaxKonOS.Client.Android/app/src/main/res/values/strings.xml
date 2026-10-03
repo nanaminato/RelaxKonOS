@@ -2767,6 +2767,9 @@
     <string name="login_tunnel_secret">SSH password or private key</string>
     <string name="login_tunnel_passphrase">Private key passphrase (optional)</string>
     <string name="login_tunnel_remember">Save SSH credentials securely</string>
+    <string name="login_tunnel_reuse_server">Use the Server username and password for SSH</string>
+    <string name="login_tunnel_reuse_hint">Enter the shared username and password in the Server fields below. Password authentication only.</string>
+    <string name="login_tunnel_server_password_required">Enter the Server password to use it for SSH.</string>
     <string name="login_tunnel_hint">Server address is on the SSH host, e.g. http://127.0.0.1:5000. The local port is automatic. SSH and Server credentials are separate.</string>
     <string name="login_tunnel_test">Test connection</string>
     <string name="login_tunnel_failed">SSH tunnel connection failed. Check the SSH host, credentials and remote Server address; for HTTPS, verify that its certificate is valid for 127.0.0.1.</string>

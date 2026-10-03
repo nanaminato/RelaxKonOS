@@ -14,9 +14,8 @@ import app.relaxkonos.mobile.ui.common.PasswordTextField
 @Composable
 fun LoginTunnelOptions(viewModel: LoginViewModel, activity: FragmentActivity) {
     val tunnel = viewModel.tunnel
-    Row {
-        Checkbox(checked = tunnel.enabled, onCheckedChange = { tunnel.close(); tunnel.clearCredential(); tunnel.enabled = it }, enabled = !viewModel.isLoggingIn)
-        Text(stringResource(R.string.login_tunnel_toggle))
+    LoginCheckboxRow(tunnel.enabled, stringResource(R.string.login_tunnel_toggle), !viewModel.isLoggingIn) {
+        tunnel.close(); tunnel.clearCredential(); tunnel.enabled = it
     }
     if (!tunnel.enabled) return
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -27,7 +26,7 @@ fun LoginTunnelOptions(viewModel: LoginViewModel, activity: FragmentActivity) {
                 Text(profile.displayText)
             }
         }
-        Text("${tunnel.userName}@${tunnel.host}:${tunnel.port}", style = MaterialTheme.typography.bodySmall)
+        Text("${if (tunnel.useServerCredentials) viewModel.identifier else tunnel.userName}@${tunnel.host}:${tunnel.port}", style = MaterialTheme.typography.bodySmall)
         TextButton(onClick = { tunnel.configurationOpen = !tunnel.configurationOpen }, enabled = !viewModel.isLoggingIn) {
             Text(stringResource(R.string.login_tunnel_configure))
         }
@@ -36,12 +35,15 @@ fun LoginTunnelOptions(viewModel: LoginViewModel, activity: FragmentActivity) {
             singleLine = true, enabled = !viewModel.isLoggingIn, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(value = tunnel.port, onValueChange = { tunnel.port = it }, label = { Text(stringResource(R.string.login_tunnel_port)) },
             singleLine = true, enabled = !viewModel.isLoggingIn, modifier = Modifier.fillMaxWidth())
+        LoginCheckboxRow(tunnel.useServerCredentials, stringResource(R.string.login_tunnel_reuse_server), !viewModel.isLoggingIn) {
+            tunnel.setReuseServerCredentials(it)
+        }
+        if (tunnel.useServerCredentials) {
+            Text(stringResource(R.string.login_tunnel_reuse_hint), style = MaterialTheme.typography.bodySmall)
+        } else {
         OutlinedTextField(value = tunnel.userName, onValueChange = { tunnel.userName = it }, label = { Text(stringResource(R.string.login_tunnel_user)) },
             singleLine = true, enabled = !viewModel.isLoggingIn, modifier = Modifier.fillMaxWidth())
-        Row {
-            Checkbox(checked = tunnel.usePrivateKey, onCheckedChange = { tunnel.usePrivateKey = it }, enabled = !viewModel.isLoggingIn)
-            Text(stringResource(R.string.login_tunnel_key))
-        }
+        LoginCheckboxRow(tunnel.usePrivateKey, stringResource(R.string.login_tunnel_key), !viewModel.isLoggingIn) { tunnel.usePrivateKey = it }
         if (tunnel.usePrivateKey) {
             OutlinedTextField(value = tunnel.secret, onValueChange = { tunnel.secret = it },
                 label = { Text(stringResource(R.string.login_tunnel_secret)) }, visualTransformation = PasswordVisualTransformation(),
@@ -52,10 +54,8 @@ fun LoginTunnelOptions(viewModel: LoginViewModel, activity: FragmentActivity) {
             PasswordTextField(value = tunnel.secret, onValueChange = { tunnel.secret = it },
                 label = stringResource(R.string.login_tunnel_secret), enabled = !viewModel.isLoggingIn)
         }
-        Row {
-            Checkbox(checked = tunnel.rememberCredential, onCheckedChange = { tunnel.rememberCredential = it }, enabled = !viewModel.isLoggingIn)
-            Text(stringResource(R.string.login_tunnel_remember))
         }
+        LoginCheckboxRow(tunnel.rememberCredential, stringResource(R.string.login_tunnel_remember), !viewModel.isLoggingIn) { tunnel.rememberCredential = it }
         }
         OutlinedButton(onClick = { viewModel.testTunnel(activity) }, enabled = !viewModel.isLoggingIn) {
             Text(stringResource(R.string.login_tunnel_test))

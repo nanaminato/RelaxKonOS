@@ -1,6 +1,7 @@
 {
     "Culture": "en-US",
     "Strings": {
+        "login.saved_connections": "Saved connections",
         "login.tunnel.configure": "Configure SSH tunnel",
         "login.tunnel.not_saved": "Connected, but SSH credentials could not be saved securely.",
         "login.tunnel.invalid": "Enter a valid SSH host, port, username and remote HTTP(S) loopback URL.",
@@ -13,6 +14,10 @@
         "login.tunnel.secret": "SSH password or private key",
         "login.tunnel.passphrase": "Private key passphrase (optional)",
         "login.tunnel.remember": "Save SSH credentials securely",
+        "login.tunnel.reuse_server": "Use the Server username and password for SSH",
+        "login.tunnel.saved": "SSH credentials are saved securely. Leave the SSH credential field empty to use them.",
+        "login.tunnel.load_failed": "Saved SSH credentials could not be read. Enter them again or retry.",
+        "login.tunnel.server_password_required": "Enter the Server password to use it for SSH.",
         "login.tunnel.hint": "Server address is on the SSH host, e.g. http://127.0.0.1:5000. The local port is automatic. SSH and Server credentials are separate.",
         "login.tunnel.test": "Test connection",
         "login.tunnel.failed": "SSH tunnel connection failed. Check the SSH host, credentials and remote Server address; for HTTPS, verify that its certificate is valid for 127.0.0.1.",

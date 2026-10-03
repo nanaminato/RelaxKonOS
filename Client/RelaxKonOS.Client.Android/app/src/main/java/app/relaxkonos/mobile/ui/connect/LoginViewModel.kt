@@ -119,7 +119,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     /** The identity the form currently describes, i.e. the `(Service, Username)` pair (§2.1). */
     val selectedLogin: SelectedLogin get() = if (tunnel.enabled) {
         val connection = tunnel.identity ?: runCatching {
-            val profile = tunnel.profile(serverUrl)
+            val profile = tunnel.profile(serverUrl, identifier)
             app.relaxkonos.mobile.servercenter.ServerConnectionIdentity(
                 app.relaxkonos.mobile.servercenter.ServerServiceIdKind.SshTunnelProfile, profile.serviceId, profile.remoteUrl)
         }.getOrNull()
@@ -413,7 +413,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     fun submit(activity: FragmentActivity) {
         if (isLoggingIn) return
         if (tunnel.enabled) {
-            if (runCatching { tunnel.profile(serverUrl) }.isFailure) { message = UiMessage(R.string.login_tunnel_invalid); return }
+            if (runCatching { tunnel.profile(serverUrl, identifier) }.isFailure) { message = UiMessage(R.string.login_tunnel_invalid); return }
             when (decision) {
                 is LoginDecision.ManualPassword, LoginDecision.UnlockSavedCredential -> Unit
                 else -> { submitResolved(activity); return }
@@ -422,7 +422,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             discoveryJob?.cancel()
             discoveryJob = viewModelScope.launch {
                 try {
-                    tunnel.open(activity, serverUrl, confirmCertificate = ::confirmTunnelCertificate)
+                    openLoginTunnel(activity)
                     isLoggingIn = false
                     submitResolved(activity)
                 } catch (_: TunnelCancelledException) {
@@ -878,7 +878,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 serviceId = login.serviceId,
                 identifier = login.normalizedIdentifier,
                 lastUsedEpochMillis = System.currentTimeMillis(),
-                displayName = if (tunnel.enabled) runCatching { tunnel.profile(serverUrl).displayText }.getOrNull() else existing?.displayName,
+                displayName = if (tunnel.enabled) runCatching { tunnel.profile(serverUrl, identifier).displayText }.getOrNull() else existing?.displayName,
                 hasSavedCredential = container.vault
                     .record(VaultKind.Connection, login.serviceId, login.normalizedIdentifier) != null,
                 // Signing in is not a reason to forget what the host already told us about itself.
@@ -947,12 +947,19 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         certificateReview = review
         return try { pending.await() } finally { certificateAnswer = null; certificateReview = null }
     }
+    private suspend fun openLoginTunnel(activity: FragmentActivity, testOnly: Boolean = false) {
+        val password = passwordText.toCharArray()
+        try {
+            tunnel.open(activity, serverUrl, identifier, password, testOnly, ::confirmTunnelCertificate)
+        } finally { password.fill('\u0000') }
+    }
+
     fun testTunnel(activity: FragmentActivity) {
         if (isLoggingIn || !tunnel.enabled) return
-        if (runCatching { tunnel.profile(serverUrl) }.isFailure) { message = UiMessage(R.string.login_tunnel_invalid); return }
+        if (runCatching { tunnel.profile(serverUrl, identifier) }.isFailure) { message = UiMessage(R.string.login_tunnel_invalid); return }
         isLoggingIn = true
         viewModelScope.launch {
-            try { tunnel.open(activity, serverUrl, testOnly = true, confirmCertificate = ::confirmTunnelCertificate); message = UiMessage(R.string.login_tunnel_ready) }
+            try { openLoginTunnel(activity, testOnly = true); message = UiMessage(R.string.login_tunnel_ready) }
             catch (_: TunnelCancelledException) { }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) { tunnel.configurationOpen = true; message = UiMessage((error as? LoginTunnelFailure)?.messageResource ?: R.string.login_tunnel_failed) }

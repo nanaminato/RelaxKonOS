@@ -18,6 +18,12 @@
 
 桌面 Server 登录页提供“通过 SSH 隧道连接”、已保存隧道选择、SSH 主机/端口/用户名、密码或 PEM/OpenSSH 私钥、可选私钥口令、独立的 SSH 凭据安全保存选项，以及“测试连接”。原有 SSH 登录方式继续用于 SSH 工作区。Android 详细设计由 [Android 登录页 SSH 隧道文档](../../Client/RelaxKonOS.Client.Android/docs/features/LoginSshTunnel.md) 维护。
 
+Server 地址输入框与已保存连接选择器分开。选择器只显示记录摘要，选中后回填远端 URL、Server 账号及 SSH 配置；摘要不会写入地址框。切换到隧道模式后，尚未完成的直连探测不得覆盖远端地址或弹出直连证书确认。`Tests/Client/RelaxKonOS.Login.Tests` 使用实际 Avalonia 控件验证记录切换、账号独立回填和手动地址编辑。
+
+桌面隧道配置提供“SSH 使用与 Server 相同的用户名和密码”，由用户显式勾选，仅用于密码认证。启用后隐藏独立 SSH 凭据输入并展开 Server 凭据编辑；连接和测试使用当前 Server 用户名与密码，缺少密码时提示填写，不回退到其他 SSH 身份。选择另一条隧道记录时恢复独立模式。SSH 与 Server 的安全保存选项仍分别控制各自仓库。
+
+SSH 认证成功后，勾选安全保存即写入平台凭据仓库，不依赖远端 Server 探测或登录成功。已保存凭据按 SSH 主机、端口和用户查询；输入框保持空白并显示“已安全保存”，下次连接自动读取。保存失败或读取失败使用独立提示，不被连接/测试成功状态覆盖。Windows DPAPI 写入、仓库重新加载、新页面空输入连接、显式复用与缺少密码拒绝、远端不可达时保存及保存失败提示由 `LoginTunnelFlowChecks` 覆盖；实际 SSH 主机交互仍需实机验证。
+
 启用隧道后，Server 地址指 SSH 主机上的 `http://127.0.0.1:5000` 等 HTTP(S) 回环服务。点击连接先核验 SSH 主机指纹，再自动分配本机回环端口并登录 Server；SSH 与 Server 账号独立。测试成功后释放测试隧道，当前登录页内暂存已验证 SSH 凭据供正式连接使用；勾选安全保存才写入 SSH 凭据仓库。正式登录隧道随认证会话保留，登出或会话失效后关闭。
 
 `ServerServiceIdKind.SshTunnelProfile` 的稳定身份为 `ssh-tunnel:` 加规范化 SSH 主机、端口、SSH 用户与远端 URL 的 SHA-256；本机临时端口仅出现在 `EffectiveBaseUrl`。不同端点不共享登录凭据；这种配置身份与受管安装身份分开维护。非敏感配置写入设备本地 `login-tunnels.json`，登录与 SSH 密码/私钥仍使用各自的系统安全存储。

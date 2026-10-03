@@ -1,6 +1,7 @@
 {
     "Culture": "ja-JP",
     "Strings": {
+        "login.saved_connections": "保存した接続",
         "login.tunnel.configure": "SSH トンネルを設定",
         "login.tunnel.not_saved": "接続しましたが、SSH 認証情報を安全に保存できませんでした。",
         "login.tunnel.invalid": "有効な SSH ホスト、ポート、ユーザー名、リモート HTTP(S) ループバック URL を入力してください。",
@@ -13,6 +14,10 @@
         "login.tunnel.secret": "SSH パスワードまたは秘密鍵",
         "login.tunnel.passphrase": "秘密鍵のパスフレーズ（任意）",
         "login.tunnel.remember": "SSH 認証情報を安全に保存",
+        "login.tunnel.reuse_server": "SSH に Server と同じユーザー名とパスワードを使用",
+        "login.tunnel.saved": "SSH 認証情報は安全に保存されています。SSH パスワードまたは秘密鍵を空欄にすると使用されます。",
+        "login.tunnel.load_failed": "保存した SSH 認証情報を読み取れません。再入力するか、再試行してください。",
+        "login.tunnel.server_password_required": "SSH 認証に使用する Server パスワードを入力してください。",
         "login.tunnel.hint": "サーバーアドレスは SSH ホスト上のサービスです（例：http://127.0.0.1:5000）。ローカルポートは自動設定されます。SSH とサーバーの認証情報は別々に入力します。",
         "login.tunnel.test": "接続をテスト",
         "login.tunnel.failed": "SSH トンネル接続に失敗しました。SSH ホスト、認証情報、リモートサーバーのアドレスを確認してください。HTTPS の証明書は 127.0.0.1 に対して有効である必要があります。",

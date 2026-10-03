@@ -225,6 +225,7 @@ public partial class LoginViewModel : ObservableObject
         ? T("login.owner_device.server_only", "For paired-device sign-in, only this Server address is required. Your private key identifies your account.")
         : T("login.credentials_instructions", "The credentials below will be used when connecting.");
     public string ComputerLabel => T("login.computer", "Computer:");
+    public string SavedConnectionsText => T("login.saved_connections", "Saved connections");
     public string IdentifierLabel => T("login.username", "Identifier:");
     public string PasswordLabel => T("login.password", "Password:");
     public string IdentifierPlaceholder => T("login.username_placeholder", "For example: alice");
@@ -293,6 +294,7 @@ public partial class LoginViewModel : ObservableObject
     {
         ClearPendingHostKey();
         ClearError();
+        if (UseServerCredentialsForTunnel) _ = RefreshTunnelCredentialStatusAsync();
     }
     partial void OnPasswordChanged(string value) => ClearError();
     partial void OnRememberServerChanged(bool value)
@@ -652,7 +654,7 @@ public partial class LoginViewModel : ObservableObject
 
         var enteredValue = ServerUrl;
         var resolution = await ResolveServerEndpointAsync(ct);
-        if (UseSshLogin) return;
+        if (UseSshLogin || UseLoginTunnel) return;
         if (resolution.IsResolved || !string.Equals(ServerUrl, enteredValue, StringComparison.Ordinal)) return;
 
         ErrorMessage = DescribeResolutionError(resolution);
@@ -822,10 +824,10 @@ public partial class LoginViewModel : ObservableObject
         {
             var resolution = await _endpointResolver.ResolveAsync(enteredValue, ct);
             if (resolution.CertificateIssue is { CanTrust: true } review && ConfirmServerCertificateAsync is { } confirm &&
-                !UseSshLogin && string.Equals(ServerUrl, enteredValue, StringComparison.Ordinal))
+                !UseSshLogin && !UseLoginTunnel && string.Equals(ServerUrl, enteredValue, StringComparison.Ordinal))
             {
                 var accepted = await confirm(review);
-                if (accepted && !ct.IsCancellationRequested && !UseSshLogin && string.Equals(ServerUrl, enteredValue, StringComparison.Ordinal))
+                if (accepted && !ct.IsCancellationRequested && !UseSshLogin && !UseLoginTunnel && string.Equals(ServerUrl, enteredValue, StringComparison.Ordinal))
                 {
                     try
                     {
@@ -838,7 +840,7 @@ public partial class LoginViewModel : ObservableObject
                     }
                 }
             }
-            if (UseSshLogin) return resolution;
+            if (UseSshLogin || UseLoginTunnel) return resolution;
             // A later edit wins over this asynchronous result.
             if (string.Equals(ServerUrl, enteredValue, StringComparison.Ordinal) && resolution.Endpoint is { } endpoint)
             {

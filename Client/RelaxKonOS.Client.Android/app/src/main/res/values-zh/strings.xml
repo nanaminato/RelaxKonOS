@@ -2728,6 +2728,9 @@
     <string name="login_tunnel_secret">SSH 密码或私钥</string>
     <string name="login_tunnel_passphrase">私钥口令（可选）</string>
     <string name="login_tunnel_remember">安全保存 SSH 凭据</string>
+    <string name="login_tunnel_reuse_server">SSH 使用与 Server 相同的用户名和密码</string>
+    <string name="login_tunnel_reuse_hint">请在下方 Server 登录字段填写共用的用户名和密码，仅适用于密码认证。</string>
+    <string name="login_tunnel_server_password_required">请填写 Server 密码，以便用于 SSH 认证。</string>
     <string name="login_tunnel_hint">服务器地址指 SSH 主机上的服务，例如 http://127.0.0.1:5000。本地端口自动分配，SSH 与服务器账号分别填写。</string>
     <string name="login_tunnel_test">测试连接</string>
     <string name="login_tunnel_failed">SSH 隧道连接失败。请检查 SSH 主机、凭据及远端服务地址；使用 HTTPS 时，证书须有效且匹配 127.0.0.1。</string>
