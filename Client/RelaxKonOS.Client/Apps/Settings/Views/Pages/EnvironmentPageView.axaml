@@ -1,7 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels" xmlns:protocol="clr-namespace:RelaxKonOS.Protocol.Settings;assembly=RelaxKonOS.Protocol"
  xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.EnvironmentPageView" x:DataType="vm:EnvironmentPageViewModel"
- Background="{DynamicResource SurfaceBrush}" Width="760">
+ Background="{DynamicResource SurfaceBrush}">
   <UserControl.Styles>
     <Style Selector="ListBox.windows-environment-list > ListBoxItem:selected">
       <Setter Property="Background" Value="{DynamicResource SelectionBackgroundBrush}" />
@@ -14,13 +14,13 @@
   <Grid IsVisible="{Binding IsWindowsEnvironment}" Margin="14" RowDefinitions="*,*,Auto" RowSpacing="16">
     <GroupBox Header="{loc:Loc settings.environment.user_variables}" Padding="10">
       <Grid RowDefinitions="*,Auto" RowSpacing="12">
-        <Border BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" MinHeight="190"><ListBox Classes="windows-environment-list" ItemsSource="{Binding UserVariables}" SelectedItem="{Binding SelectedUserVariable, Mode=TwoWay}" SelectionMode="Single" BorderThickness="0"><ListBox.ItemTemplate><DataTemplate x:DataType="protocol:EnvironmentVariable"><Grid ColumnDefinitions="190,*" Margin="6,3"><TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" /><TextBlock Grid.Column="1" Text="{Binding RawValue}" TextTrimming="CharacterEllipsis" /></Grid></DataTemplate></ListBox.ItemTemplate></ListBox></Border>
+        <Border BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" MinHeight="80"><ListBox Classes="windows-environment-list" ItemsSource="{Binding UserVariables}" SelectedItem="{Binding SelectedUserVariable, Mode=TwoWay}" SelectionMode="Single" BorderThickness="0"><ListBox.ItemTemplate><DataTemplate x:DataType="protocol:EnvironmentVariable"><Grid ColumnDefinitions="2*,5*" Margin="6,3"><TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" /><TextBlock Grid.Column="1" Text="{Binding RawValue}" TextTrimming="CharacterEllipsis" /></Grid></DataTemplate></ListBox.ItemTemplate></ListBox></Border>
         <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8"><Button Content="{loc:Loc common.new}" Command="{Binding NewUserVariableCommand}" /><Button Content="{loc:Loc settings.environment.edit}" Command="{Binding EditUserVariableCommand}" /><Button Content="{loc:Loc common.delete}" Command="{Binding DeleteUserVariableCommand}" /></StackPanel>
       </Grid>
     </GroupBox>
     <GroupBox Grid.Row="1" Header="{loc:Loc settings.environment.system_variables}" Padding="10">
       <Grid RowDefinitions="*,Auto" RowSpacing="12">
-        <Border BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" MinHeight="190"><ListBox Classes="windows-environment-list" ItemsSource="{Binding SystemVariables}" SelectedItem="{Binding SelectedSystemVariable, Mode=TwoWay}" SelectionMode="Single" BorderThickness="0"><ListBox.ItemTemplate><DataTemplate x:DataType="protocol:EnvironmentVariable"><Grid ColumnDefinitions="190,*" Margin="6,3"><TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" /><TextBlock Grid.Column="1" Text="{Binding RawValue}" TextTrimming="CharacterEllipsis" /></Grid></DataTemplate></ListBox.ItemTemplate></ListBox></Border>
+        <Border BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" MinHeight="80"><ListBox Classes="windows-environment-list" ItemsSource="{Binding SystemVariables}" SelectedItem="{Binding SelectedSystemVariable, Mode=TwoWay}" SelectionMode="Single" BorderThickness="0"><ListBox.ItemTemplate><DataTemplate x:DataType="protocol:EnvironmentVariable"><Grid ColumnDefinitions="2*,5*" Margin="6,3"><TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" /><TextBlock Grid.Column="1" Text="{Binding RawValue}" TextTrimming="CharacterEllipsis" /></Grid></DataTemplate></ListBox.ItemTemplate></ListBox></Border>
         <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8"><Button Content="{loc:Loc common.new}" Command="{Binding NewSystemVariableCommand}" /><Button Content="{loc:Loc settings.environment.edit}" Command="{Binding EditSystemVariableCommand}" /><Button Content="{loc:Loc common.delete}" Command="{Binding DeleteSystemVariableCommand}" /></StackPanel>
       </Grid>
     </GroupBox>

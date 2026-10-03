@@ -2483,9 +2483,9 @@
     <string name="host_settings_hostname_rule">最多 %1$d 个字母、数字及中间连字符；不能全为数字。</string>
     <string name="host_settings_machine">整台宿主</string>
     <string name="host_settings_user">宿主用户</string>
-    <string name="host_settings_environment_note">默认遮蔽所有值，揭示需授权。空字符串是有效值，删除会移除变量；编辑替换完整值。</string>
-    <string name="host_settings_read">授权读取</string>
-    <string name="host_settings_reveal">授权揭示值</string>
+    <string name="host_settings_environment_note">需要权限时会自动申请授权，授权后完整显示所有值。空字符串是有效值，删除会移除变量；编辑替换完整值。</string>
+    <string name="host_settings_environment_authorization_required">需要授权</string>
+    <string name="host_settings_environment_retry">再次申请权限</string>
     <string name="host_settings_variable_count">%1$d 个变量</string>
     <string name="host_settings_masked">值已遮蔽</string>
     <string name="host_settings_expanded">展开预览：%1$s</string>
@@ -2494,12 +2494,12 @@
     <string name="host_settings_variable">变量名</string>
     <string name="host_settings_delete">删除此变量</string>
     <string name="host_settings_value">完整值（可为空）</string>
-    <string name="host_settings_expand">Windows 可展开值</string>
-    <string name="host_settings_high_impact">我确认此变更可能影响宿主执行与新登录。</string>
+    <string name="host_settings_expand">展开值中的环境变量引用</string>
+    <string name="host_settings_expand_hint" formatted="false">例如：%USERPROFILE% 会替换为用户目录路径。</string>
     <string name="host_settings_discard">放弃草稿</string>
     <string name="host_settings_preview">预览变更</string>
     <string name="host_settings_apply">应用此计划</string>
-    <string name="host_settings_history">宿主设置操作</string>
+    <string name="host_settings_history">变更记录</string>
     <string name="host_settings_query">查询原操作</string>
     <string name="host_settings_rollback">回滚原操作</string>
     <string name="host_settings_review_note">确认精确远端目标与差异。服务端预览不展示环境变量值；不会自动请求重启。</string>
@@ -2709,4 +2709,9 @@
     <string name="server_progress_uninstalling">正在卸载，请稍候…</string>
     <string name="server_progress_upgrading">正在更新，请稍候…</string>
     <string name="server_progress_verifying">正在核验操作结果…</string>
+    <string name="host_settings_path_entries">PATH 分项</string>
+    <string name="host_settings_path_new">新建</string>
+    <string name="host_settings_path_up">上移</string>
+    <string name="host_settings_path_down">下移</string>
+    <string name="host_settings_path_empty">（空项）</string>
 </resources>

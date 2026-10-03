@@ -288,10 +288,15 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                                 };
                                 var pathEditor = new EnvironmentPathEditor(existing?.RawValue ?? "", isPath, windows ? ";" : ":");
                                 var pathEntry = new Avalonia.Controls.TextBox { MaxLength = EnvironmentValidation.MaximumValueLength };
-                                var pathList = new Avalonia.Controls.ListBox { ItemsSource = pathEditor.Entries, MinHeight = 230, SelectionMode = Avalonia.Controls.SelectionMode.Single };
+                                var pathList = new Avalonia.Controls.ListBox { ItemsSource = pathEditor.Entries, MinHeight = 80, SelectionMode = Avalonia.Controls.SelectionMode.Single };
                                 pathList.Classes.Add("windows-path-editor");
                                 pathList.Bind(Avalonia.Controls.Primitives.SelectingItemsControl.SelectedItemProperty,
                                     new Binding(nameof(EnvironmentPathEditor.SelectedEntry)) { Source = pathEditor, Mode = BindingMode.TwoWay });
+                                pathEditor.PropertyChanged += (_, args) =>
+                                {
+                                    if (args.PropertyName == nameof(EnvironmentPathEditor.SelectedEntry) && pathEditor.SelectedEntry is { } entry)
+                                        pathList.ScrollIntoView(entry);
+                                };
                                 pathList.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<EnvironmentPathEntry>((_, _) =>
                                 {
                                     var text = new Avalonia.Controls.TextBlock { Margin = new Avalonia.Thickness(8, 4), TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis };
@@ -330,10 +335,12 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                                 AddPathButton("settings.environment.path_up", () =>
                                 {
                                     pathEditor.MoveSelected(-1);
+                                    if (pathEditor.SelectedEntry is { } entry) pathList.ScrollIntoView(entry);
                                 });
                                 AddPathButton("settings.environment.path_down", () =>
                                 {
                                     pathEditor.MoveSelected(1);
+                                    if (pathEditor.SelectedEntry is { } entry) pathList.ScrollIntoView(entry);
                                 });
                                 browse = new Avalonia.Controls.Button { Content = LocalizedText.Get("settings.environment.browse"), IsEnabled = !isPath };
                                 if (isPath)
@@ -370,9 +377,10 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                                         existing?.ValueKind ?? EnvironmentValueKind.String);
                                     dialog.Close(true);
                                 };
-                                var content = new Avalonia.Controls.StackPanel
+                                var content = new Avalonia.Controls.Grid
                                 {
-                                    Margin = new Avalonia.Thickness(20, 0, 20, 12), Spacing = 10,
+                                    Margin = new Avalonia.Thickness(20, 0, 20, 12), RowSpacing = 10,
+                                    RowDefinitions = new Avalonia.Controls.RowDefinitions("Auto,*,Auto,Auto"),
                                 };
                                 content.Children.Add(new Avalonia.Controls.TextBlock { Text = LocalizedText.Get(isPath ? "settings.environment.path_entries" : "settings.environment.value") });
                                 if (isPath)
@@ -381,10 +389,25 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                                     pathEditorLayout.Children.Add(pathList);
                                     Avalonia.Controls.Grid.SetColumn(pathButtons, 1);
                                     pathEditorLayout.Children.Add(pathButtons);
+                                    pathEditorLayout.SizeChanged += (_, args) =>
+                                    {
+                                        var narrow = args.NewSize.Width < 420;
+                                        pathEditorLayout.ColumnDefinitions = new Avalonia.Controls.ColumnDefinitions(narrow ? "*" : "*,Auto");
+                                        pathEditorLayout.RowDefinitions = new Avalonia.Controls.RowDefinitions(narrow ? "*,Auto" : "*");
+                                        Avalonia.Controls.Grid.SetColumn(pathButtons, narrow ? 0 : 1);
+                                        Avalonia.Controls.Grid.SetRow(pathButtons, narrow ? 1 : 0);
+                                        pathButtons.Orientation = narrow ? Avalonia.Layout.Orientation.Horizontal : Avalonia.Layout.Orientation.Vertical;
+                                        pathButtons.Spacing = narrow ? 2 : 7;
+                                        foreach (var button in pathButtons.Children.OfType<Avalonia.Controls.Button>())
+                                            button.MinWidth = narrow ? 0 : 82;
+                                    };
+                                    Avalonia.Controls.Grid.SetRow(pathEditorLayout, 1);
                                     content.Children.Add(pathEditorLayout);
+                                    Avalonia.Controls.Grid.SetRow(pathEntry, 2);
                                     content.Children.Add(pathEntry);
                                 }
-                                else content.Children.Add(value);
+                                else { Avalonia.Controls.Grid.SetRow(value, 1); content.Children.Add(value); }
+                                Avalonia.Controls.Grid.SetRow(browse, 3);
                                 content.Children.Add(browse);
                                 var footer = new Avalonia.Controls.StackPanel
                                 {
@@ -403,13 +426,8 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                                 };
                                 var editorLayout = new Avalonia.Controls.Grid { RowDefinitions = new Avalonia.Controls.RowDefinitions("Auto,*,Auto") };
                                 editorLayout.Children.Add(nameHeader);
-                                var scrollableContent = new Avalonia.Controls.ScrollViewer
-                                {
-                                    Content = content,
-                                    VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
-                                };
-                                Avalonia.Controls.Grid.SetRow(scrollableContent, 1);
-                                editorLayout.Children.Add(scrollableContent);
+                                Avalonia.Controls.Grid.SetRow(content, 1);
+                                editorLayout.Children.Add(content);
                                 Avalonia.Controls.Grid.SetRow(footer, 2);
                                 editorLayout.Children.Add(footer);
                                 return editorLayout;
@@ -702,6 +720,8 @@ internal sealed partial class EnvironmentPathEditor : ObservableObject
         var destination = index + offset;
         if (index < 0 || destination < 0 || destination >= Entries.Count) return;
         Entries.Move(index, destination);
+        // ListBox may clear selection while processing the collection move.
+        SelectedEntry = entry;
     }
 }
 

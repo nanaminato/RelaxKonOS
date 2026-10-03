@@ -2482,9 +2482,9 @@
     <string name="host_settings_hostname_rule">最大 %1$d 文字。英数字と途中のハイフンを使用でき、数字のみは不可です。</string>
     <string name="host_settings_machine">ホスト全体</string>
     <string name="host_settings_user">ホストユーザー</string>
-    <string name="host_settings_environment_note">値は既定で非表示です。表示には承認が必要です。空の値は保存され、削除は変数を除去します。編集は値全体を置き換えます。</string>
-    <string name="host_settings_read">承認して読み込む</string>
-    <string name="host_settings_reveal">承認して値を表示</string>
+    <string name="host_settings_environment_note">必要な場合は自動的に承認を求め、承認後はすべての値を表示します。空の値は保存され、削除は変数を除去します。編集は値全体を置き換えます。</string>
+    <string name="host_settings_environment_authorization_required">承認が必要です</string>
+    <string name="host_settings_environment_retry">もう一度承認を申請</string>
     <string name="host_settings_variable_count">変数 %1$d 件</string>
     <string name="host_settings_masked">値は非表示</string>
     <string name="host_settings_expanded">展開プレビュー：%1$s</string>
@@ -2493,12 +2493,12 @@
     <string name="host_settings_variable">変数名</string>
     <string name="host_settings_delete">この変数を削除</string>
     <string name="host_settings_value">値全体（空の値も可）</string>
-    <string name="host_settings_expand">Windows 展開可能な値</string>
-    <string name="host_settings_high_impact">この変更がホストでの実行や新しいログインに影響することを確認しました。</string>
+    <string name="host_settings_expand">値の環境変数参照を展開</string>
+    <string name="host_settings_expand_hint" formatted="false">例：%USERPROFILE% はユーザーディレクトリのパスに置き換わります。</string>
     <string name="host_settings_discard">下書きを破棄</string>
     <string name="host_settings_preview">変更を確認</string>
     <string name="host_settings_apply">この計画を適用</string>
-    <string name="host_settings_history">ホスト設定の操作</string>
+    <string name="host_settings_history">変更履歴</string>
     <string name="host_settings_query">元の操作を確認</string>
     <string name="host_settings_rollback">元の操作をロールバック</string>
     <string name="host_settings_review_note">対象ホストと差分を確認してください。環境変数の値はプレビューに表示されません。再起動は自動実行しません。</string>
@@ -2710,4 +2710,9 @@
     <string name="server_progress_uninstalling">アンインストール中です。しばらくお待ちください…</string>
     <string name="server_progress_upgrading">更新中です。しばらくお待ちください…</string>
     <string name="server_progress_verifying">操作結果を確認しています…</string>
+    <string name="host_settings_path_entries">PATH の項目</string>
+    <string name="host_settings_path_new">新規</string>
+    <string name="host_settings_path_up">上へ</string>
+    <string name="host_settings_path_down">下へ</string>
+    <string name="host_settings_path_empty">（空の項目）</string>
 </resources>

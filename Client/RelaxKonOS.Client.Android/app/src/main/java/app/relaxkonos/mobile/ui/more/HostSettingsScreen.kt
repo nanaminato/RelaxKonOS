@@ -2,6 +2,12 @@ package app.relaxkonos.mobile.ui.more
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -28,11 +34,15 @@ internal class HostSettingsEditor(val owner: SessionState.Active, private val re
     var time by mutableStateOf<HostTimeSettings?>(null); private set
     var identity by mutableStateOf<HostIdentitySettings?>(null); private set
     var environment by mutableStateOf<HostEnvironmentSettings?>(null); private set
+    var windowsEnvironments by mutableStateOf<Map<HostEnvironmentScope, HostEnvironmentSettings>>(emptyMap()); private set
+    var environmentAuthorizationScopes by mutableStateOf<Set<HostEnvironmentScope>>(emptySet()); private set
+    var environmentEditing by mutableStateOf(false); private set
+    var existingVariable by mutableStateOf(false); private set
+    var environmentAuthorizationRequired by mutableStateOf(false); private set
     var value by mutableStateOf("")
     var name by mutableStateOf("")
     var delete by mutableStateOf(false)
     var expand by mutableStateOf(false)
-    var highImpact by mutableStateOf(false)
     var busy by mutableStateOf(false); private set
     var resumed by mutableStateOf(false); private set
     var error by mutableStateOf<Int?>(null); private set
@@ -51,37 +61,65 @@ internal class HostSettingsEditor(val owner: SessionState.Active, private val re
     val canPreview get() = resumed && !busy && owner.privilegedOperations && references.none { it.unresolved } && when(kind) {
         HostSettingKind.Time -> time?.let { value in it.zones && value != it.zoneId } == true
         HostSettingKind.Identity -> identity?.let { HostSettingsRules.hostname(value,it.maximumLength) && value != it.pendingName } == true
-        HostSettingKind.Environment -> environment != null && HostSettingsRules.mutation(HostEnvironmentMutation(name,delete,if(delete) null else value,expand && !delete),windows) &&
-            (!HostSettingsRules.highImpact(name,windows) || highImpact)
+        HostSettingKind.Environment -> environment != null && HostSettingsRules.mutation(HostEnvironmentMutation(name,delete,if(delete) null else value,expand && !delete),windows)
     }
     fun lifecycle(active: Boolean) {
         if (closed || active == resumed) return
         resumed = active
-        if (active) load(false, false) else {
-            generation++; job?.cancel(); busy = false; environment = null; time = null; identity = null; value = ""; name = ""; plan = null
-            rollbackReview = null; leaveReview = false; delete = false; expand = false; highImpact = false
+        if (active) load() else {
+            generation++; job?.cancel(); busy = false; windowsEnvironments = emptyMap(); environmentAuthorizationScopes = emptySet(); environmentEditing = false; environment = null; time = null; identity = null; value = ""; name = ""; plan = null
+            rollbackReview = null; leaveReview = false; delete = false; expand = false
         }
     }
     fun close() { lifecycle(false); closed = true }
     fun select(kind: HostSettingKind, scope: HostEnvironmentScope = environmentScope) {
         if (busy || dirty || !resumed) return
         this.kind = kind; environmentScope = scope; time = null; identity = null; environment = null
-        value = ""; name = ""; delete = false; expand = false; highImpact = false; plan = null
-        load(false,false)
+        value = ""; name = ""; delete = false; expand = false; plan = null
+        load()
     }
-    fun load(reveal: Boolean, authorize: Boolean) {
+    fun load() {
         if (!resumed || busy || dirty) return
         execute {
             references = repository.references(owner)
             when(kind) {
                 HostSettingKind.Time -> consume(repository.time(owner)) { time = it; value = it.zoneId }
                 HostSettingKind.Identity -> consume(repository.identity(owner)) { identity = it; value = it.pendingName }
-                HostSettingKind.Environment -> consume(repository.environment(owner,environmentScope,reveal,if(authorize) provider else ElevationAnswerProvider.Declines)) { environment = it }
+                HostSettingKind.Environment -> loadEnvironment()
+
             }
         }
     }
-    fun discard() { name = ""; value = when(kind) { HostSettingKind.Time -> time?.zoneId.orEmpty(); HostSettingKind.Identity -> identity?.pendingName.orEmpty(); else -> "" }; delete = false; expand = false; highImpact = false; plan = null }
-    fun editVariable(v: HostEnvironmentVariable) { if (!busy) { name = v.name; value = v.rawValue.orEmpty(); delete = false; expand = v.valueKind == "expandString"; highImpact = false } }
+    private suspend fun loadEnvironment() {
+        environment = null
+        environmentAuthorizationRequired = false
+        windowsEnvironments = emptyMap()
+        environmentAuthorizationScopes = emptySet()
+        val scopes = if (windows) listOf(HostEnvironmentScope.HostUser, HostEnvironmentScope.HostMachine) else listOf(environmentScope)
+        for (targetScope in scopes) {
+            val result = repository.environment(owner,targetScope,true,provider)
+            if (result is ApiResult.Problem && (result.status in setOf(401,403) ||
+                    result.code in setOf(ProblemCodes.ELEVATION_REQUIRED,"settings.elevation_required","settings.environment.authorization_required"))) {
+                if (current() && resumed) {
+                    environmentAuthorizationScopes = environmentAuthorizationScopes + targetScope
+                    environmentAuthorizationRequired = true
+                }
+            } else consume(result) {
+                windowsEnvironments = windowsEnvironments + (targetScope to it)
+                if (targetScope == environmentScope) environment = it
+            }
+        }
+    }
+    fun beginEnvironmentEdit(scope: HostEnvironmentScope, variable: HostEnvironmentVariable?, removing: Boolean = false) {
+        if (busy || dirty || !resumed) return
+        val facts = windowsEnvironments[scope] ?: return
+        environmentScope = scope; environment = facts
+        name = variable?.name.orEmpty(); value = variable?.rawValue.orEmpty()
+        expand = variable?.valueKind == "expandString"; delete = removing
+        existingVariable = variable != null; environmentEditing = true
+    }
+    fun discard() { environmentEditing = false; existingVariable = false; name = ""; value = when(kind) { HostSettingKind.Time -> time?.zoneId.orEmpty(); HostSettingKind.Identity -> identity?.pendingName.orEmpty(); else -> "" }; delete = false; expand = false; plan = null }
+    fun editVariable(v: HostEnvironmentVariable) { if (!busy) { name = v.name; value = v.rawValue.orEmpty(); delete = false; expand = v.valueKind == "expandString" } }
     fun preview() {
         if (!canPreview) return
         val selected = kind
@@ -89,7 +127,8 @@ internal class HostSettingsEditor(val owner: SessionState.Active, private val re
         val target = when(kind) { HostSettingKind.Time -> requireNotNull(time).target; HostSettingKind.Identity -> requireNotNull(identity).target; HostSettingKind.Environment -> requireNotNull(environment).target }
         val mutation = if(kind == HostSettingKind.Environment) HostEnvironmentMutation(name,delete,if(delete) null else value,expand && !delete) else null
         val entered = if(mutation == null) value else null
-        val confirmed = highImpact
+        // Opening the preview leads to the explicit apply confirmation; no extra checkbox.
+        val confirmed = mutation != null && HostSettingsRules.highImpact(mutation.name,windows)
         execute { consume(repository.preview(owner,selected,revision,target,entered,environmentScope,mutation,confirmed,provider)) { plan = it } }
     }
     fun dismissPlan() { plan = null }
@@ -99,7 +138,7 @@ internal class HostSettingsEditor(val owner: SessionState.Active, private val re
         plan = null
         execute(true) {
             try { consume(repository.apply(owner,kind,reviewed,provider)) { operations = operations + (it.id to it) } }
-            finally { if (current() && currentCoroutineContext().isActive) { references = repository.references(owner); discard(); environment = null; time = null; identity = null; value = "" } }
+            finally { if (current() && currentCoroutineContext().isActive) { references = repository.references(owner); discard(); environment = null; time = null; identity = null; value = ""; if (kind == HostSettingKind.Environment) loadEnvironment() } }
         }
     }
     fun query(ref: HostSettingsReference) { if (resumed && !busy) execute { consume(repository.operation(owner,ref)) { operations = operations + (it.id to it) }; references = repository.references(owner) } }
@@ -109,7 +148,7 @@ internal class HostSettingsEditor(val owner: SessionState.Active, private val re
         val review = rollbackReview ?: return; rollbackReview = null
         if (!resumed || busy) return
         execute(true) { try { consume(repository.rollback(owner,review.first,review.second,provider)) { operations = operations + (it.id to it) } }
-            finally { if(current() && currentCoroutineContext().isActive) { references = repository.references(owner); discard(); time = null; identity = null; environment = null; value = "" } } }
+            finally { if(current() && currentCoroutineContext().isActive) { references = repository.references(owner); discard(); time = null; identity = null; environment = null; value = ""; if (kind == HostSettingKind.Environment) loadEnvironment() } } }
     }
     fun leave(onBack: () -> Unit) { if (!busy) { if(dirty) leaveReview = true else onBack() } }
     fun dismissLeave() { leaveReview = false }
@@ -188,44 +227,53 @@ fun HostSettingsScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
                 Text(stringResource(R.string.host_settings_hostname_rule,facts.maximumLength),style=MaterialTheme.typography.bodySmall)
             }
             HostSettingKind.Environment -> {
-                if (owner.serverPlatform.equals("windows",true)) FlowRow(horizontalArrangement=Arrangement.spacedBy(Spacing.sm)) {
-                    HostEnvironmentScope.entries.forEach { s -> FilterChip(selected=editor.environmentScope==s,onClick={editor.select(HostSettingKind.Environment,s)},enabled=!editor.busy&&!editor.dirty,
-                        label={Text(stringResource(if(s==HostEnvironmentScope.HostMachine) R.string.host_settings_machine else R.string.host_settings_user))}) }
-                }
                 Text(stringResource(R.string.host_settings_environment_note),style=MaterialTheme.typography.bodySmall)
-                FlowRow(horizontalArrangement=Arrangement.spacedBy(Spacing.sm)) {
-                    TextButton(onClick={editor.load(false,true)},enabled=!editor.busy&&!editor.dirty) { Text(stringResource(R.string.host_settings_read)) }
-                    TextButton(onClick={editor.load(true,true)},enabled=!editor.busy&&!editor.dirty) { Text(stringResource(R.string.host_settings_reveal)) }
+                if (!owner.serverPlatform.equals("windows",true) && editor.environmentAuthorizationRequired && !editor.busy) {
+                    Text(stringResource(R.string.host_settings_environment_authorization_required),color=MaterialTheme.colorScheme.error)
+                    Button(onClick={editor.load()},enabled=!editor.dirty) { Text(stringResource(R.string.host_settings_environment_retry)) }
                 }
+                if (owner.serverPlatform.equals("windows",true)) {
+                    listOf(HostEnvironmentScope.HostUser, HostEnvironmentScope.HostMachine).forEach { targetScope ->
+                        WindowsEnvironmentGroup(editor, targetScope)
+                    }
+                } else {
                 editor.environment?.let { facts ->
                     Text(facts.target.resourceId,style=MaterialTheme.typography.bodySmall)
                     Text(stringResource(effectLabel(facts.effectiveState)))
                     KeyValueRow(stringResource(R.string.host_settings_observed),facts.observedAt)
                     Text(stringResource(R.string.host_settings_variable_count,facts.variables.size))
-                    facts.variables.take(100).forEach { variable ->
+                    facts.variables.forEach { variable ->
                         TextButton(onClick={editor.editVariable(variable)},enabled=!editor.busy) { Text(variable.name) }
                         Text(variable.rawValue ?: stringResource(R.string.host_settings_masked),style=MaterialTheme.typography.bodySmall)
                         variable.expandedPreview?.takeIf { it!=variable.rawValue }?.let { Text(stringResource(R.string.host_settings_expanded,it),style=MaterialTheme.typography.bodySmall) }
                         if(variable.warnings.isNotEmpty()) Text(stringResource(R.string.host_settings_warning),style=MaterialTheme.typography.bodySmall)
                     }
-                    if(facts.variables.size>100) Text(stringResource(R.string.host_settings_limit))
-                    OutlinedTextField(editor.name,{if(it.length<=255) editor.name=it; editor.highImpact=false},label={Text(stringResource(R.string.host_settings_variable))},singleLine=true,enabled=!editor.busy,modifier=Modifier.fillMaxWidth())
+                    OutlinedTextField(editor.name,{if(it.length<=255) editor.name=it},label={Text(stringResource(R.string.host_settings_variable))},singleLine=true,enabled=!editor.busy,modifier=Modifier.fillMaxWidth())
                     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(editor.delete,{editor.delete=it},enabled=!editor.busy); Text(stringResource(R.string.host_settings_delete)) }
                     if(!editor.delete) {
+                        if (owner.serverPlatform.equals("windows",true) && editor.name.equals("PATH",true)) {
+                            key(editor.name, editor.environmentScope) {
+                                EnvironmentPathList(editor.value, !editor.busy) { editor.value = it }
+                            }
+                        } else {
                         OutlinedTextField(editor.value,{if(it.length<=32767) editor.value=it},label={Text(stringResource(R.string.host_settings_value))},enabled=!editor.busy,maxLines=8,modifier=Modifier.fillMaxWidth())
+                        }
                         if(owner.serverPlatform.equals("windows",true)) Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(editor.expand,{editor.expand=it},enabled=!editor.busy); Text(stringResource(R.string.host_settings_expand)) }
                     }
-                    if(HostSettingsRules.highImpact(editor.name,owner.serverPlatform.equals("windows",true))) Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(editor.highImpact,{editor.highImpact=it},enabled=!editor.busy); Text(stringResource(R.string.host_settings_high_impact)) }
                 }
+                }
+
             }
         }
         FlowRow(horizontalArrangement=Arrangement.spacedBy(Spacing.sm)) {
-            TextButton(onClick={editor.load(false,false)},enabled=!editor.busy&&!editor.dirty) { Text(stringResource(R.string.common_refresh)) }
+            TextButton(onClick={editor.load()},enabled=!editor.busy&&!editor.dirty) { Text(stringResource(R.string.common_refresh)) }
             TextButton(onClick={editor.discard()},enabled=!editor.busy&&editor.dirty) { Text(stringResource(R.string.host_settings_discard)) }
-            Button(onClick={editor.preview()},enabled=editor.canPreview) { Text(stringResource(R.string.host_settings_preview)) }
+            if (!(owner.serverPlatform.equals("windows",true) && editor.kind == HostSettingKind.Environment))
+                Button(onClick={editor.preview()},enabled=editor.canPreview) { Text(stringResource(R.string.host_settings_preview)) }
         }
-        Text(stringResource(R.string.host_settings_history),style=MaterialTheme.typography.titleMedium)
-        editor.references.take(20).forEach { ref ->
+        val visibleReferences = editor.references.filter { it.kind == editor.kind }.take(20)
+        if (visibleReferences.isNotEmpty()) Text(stringResource(R.string.host_settings_history),style=MaterialTheme.typography.titleMedium)
+        visibleReferences.forEach { ref ->
             SectionCard(stringResource(ref.kind.label())) {
                 Text(ref.id,style=MaterialTheme.typography.bodySmall)
                 Text(ref.target.resourceId,style=MaterialTheme.typography.bodySmall)
@@ -236,6 +284,35 @@ fun HostSettingsScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
                     if(op?.state=="applied"&&op.observedRevision!=null) TextButton(onClick={editor.reviewRollback(ref)},enabled=!editor.busy&&owner.privilegedOperations&&editor.references.none { it.unresolved }) { Text(stringResource(R.string.host_settings_rollback)) }
                 }
             }
+        }
+    }
+    if (editor.environmentEditing && editor.resumed && editor.plan == null) {
+        SettingsReview(
+            title=stringResource(if(editor.environmentScope == HostEnvironmentScope.HostUser) R.string.host_settings_user else R.string.host_settings_machine),
+            confirm=stringResource(R.string.host_settings_preview), onDismiss={if(!editor.busy) editor.discard()},
+            onConfirm=editor::preview, confirmEnabled=editor.canPreview, dismissEnabled=!editor.busy
+        ) {
+            OutlinedTextField(editor.name,{if(it.length<=255) { editor.name=it }},
+                readOnly=editor.existingVariable,label={Text(stringResource(R.string.host_settings_variable))},
+                singleLine=true,enabled=!editor.busy,modifier=Modifier.fillMaxWidth())
+            if (editor.delete) {
+                Text(stringResource(R.string.host_settings_delete))
+                Text(editor.name)
+            } else {
+                if(editor.name.equals("PATH",true)) {
+                    key(editor.name,editor.environmentScope) { EnvironmentPathList(editor.value,!editor.busy) { editor.value=it } }
+                } else {
+                    OutlinedTextField(editor.value,{if(it.length<=32767) editor.value=it},
+                        label={Text(stringResource(R.string.host_settings_value))},enabled=!editor.busy,
+                        minLines=6,maxLines=12,modifier=Modifier.fillMaxWidth())
+                }
+                Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                    Checkbox(editor.expand,{editor.expand=it},enabled=!editor.busy)
+                    Text(stringResource(R.string.host_settings_expand))
+                }
+                Text(stringResource(R.string.host_settings_expand_hint),style=MaterialTheme.typography.bodySmall)
+            }
+            if(editor.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         }
     }
     editor.plan?.let { plan ->
@@ -257,15 +334,15 @@ fun HostSettingsScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
     if(editor.leaveReview) SettingsReview(stringResource(R.string.host_settings_discard),stringResource(R.string.host_settings_discard),editor::dismissLeave,{editor.discard();editor.dismissLeave();onBack?.invoke()}) { Text(stringResource(R.string.host_settings_leave)) }
 }
 @Composable
-private fun SettingsReview(title:String,confirm:String,onDismiss:()->Unit,onConfirm:()->Unit,content:@Composable ColumnScope.()->Unit) {
-    Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
-        Surface(Modifier.fillMaxWidth().fillMaxHeight(0.85f).imePadding().padding(Spacing.md),shape=MaterialTheme.shapes.large) {
+private fun SettingsReview(title:String,confirm:String,onDismiss:()->Unit,onConfirm:()->Unit,confirmEnabled:Boolean=true,dismissEnabled:Boolean=true,content:@Composable ColumnScope.()->Unit) {
+    Dialog(onDismissRequest={if(dismissEnabled) onDismiss()},properties=DialogProperties(usePlatformDefaultWidth=false)) {
+        Surface(Modifier.widthIn(max=900.dp).fillMaxWidth().fillMaxHeight(0.85f).imePadding().padding(Spacing.md),shape=MaterialTheme.shapes.large) {
             Column(Modifier.padding(Spacing.lg),verticalArrangement=Arrangement.spacedBy(Spacing.md)) {
                 Text(title,style=MaterialTheme.typography.titleLarge)
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(Spacing.sm),content=content)
                 FlowRow(horizontalArrangement=Arrangement.spacedBy(Spacing.sm)) {
-                    TextButton(onClick=onDismiss) { Text(stringResource(R.string.common_cancel)) }
-                    Button(onClick=onConfirm) { Text(confirm) }
+                    TextButton(onClick=onDismiss,enabled=dismissEnabled) { Text(stringResource(R.string.common_cancel)) }
+                    Button(onClick=onConfirm,enabled=confirmEnabled) { Text(confirm) }
                 }
             }
         }
@@ -274,3 +351,94 @@ private fun SettingsReview(title:String,confirm:String,onDismiss:()->Unit,onConf
 private fun HostSettingKind.label() = when(this) { HostSettingKind.Time -> R.string.host_settings_time; HostSettingKind.Identity -> R.string.host_settings_identity; HostSettingKind.Environment -> R.string.host_settings_environment }
 private fun effectLabel(value:String) = when(value) { "immediate" -> R.string.host_settings_immediate; "newProcess" -> R.string.host_settings_new_process; "newLogin" -> R.string.host_settings_new_login; "serviceRestart" -> R.string.host_settings_service_restart; "hostRestart" -> R.string.host_settings_host_restart; else -> R.string.host_settings_unknown }
 private fun stateLabel(value:String) = when(value) { "prepared" -> R.string.host_settings_prepared; "applying" -> R.string.host_settings_applying; "applied" -> R.string.host_settings_applied; "failed" -> R.string.host_settings_failed; "partiallyApplied" -> R.string.host_settings_partial; "unknown" -> R.string.host_settings_unknown; "awaitingConfirmation" -> R.string.host_settings_awaiting; "rolledBack" -> R.string.host_settings_rolled_back; "recoveryRequired" -> R.string.host_settings_recovery; else -> R.string.host_settings_unknown }
+
+@Composable
+private fun EnvironmentPathList(value: String, enabled: Boolean, onValueChange: (String) -> Unit) {
+    var selected by remember { mutableIntStateOf(-1) }
+    val entryFocus = remember { FocusRequester() }
+    val entries = value.split(';')
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    fun update(next: List<String>, index: Int) {
+        val raw = next.joinToString(";")
+        if (raw.length <= 32767) {
+            selected = index.coerceAtMost(next.lastIndex)
+            onValueChange(raw)
+        }
+    }
+    LaunchedEffect(selected, value) {
+        if (selected in entries.indices) listState.animateScrollToItem(selected)
+    }
+    val hasSelection = selected in entries.indices
+    Text(stringResource(R.string.host_settings_path_entries), style=MaterialTheme.typography.titleSmall)
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val wide = maxWidth >= 600.dp
+        val actions: @Composable () -> Unit = {
+            TextButton(onClick={ update(entries + "", entries.size) },enabled=enabled) { Text(stringResource(R.string.host_settings_path_new)) }
+            TextButton(onClick={entryFocus.requestFocus()},enabled=enabled && hasSelection) { Text(stringResource(R.string.common_edit)) }
+            TextButton(onClick={ update(entries.filterIndexed { index, _ -> index != selected }, selected) },enabled=enabled && hasSelection) { Text(stringResource(R.string.common_delete)) }
+            TextButton(onClick={
+                val next=entries.toMutableList(); val index=selected
+                java.util.Collections.swap(next,index,index-1); update(next,index-1)
+            },enabled=enabled && hasSelection && selected>0) { Text(stringResource(R.string.host_settings_path_up)) }
+            TextButton(onClick={
+                val next=entries.toMutableList(); val index=selected
+                java.util.Collections.swap(next,index,index+1); update(next,index+1)
+            },enabled=enabled && hasSelection && selected<entries.lastIndex) { Text(stringResource(R.string.host_settings_path_down)) }
+        }
+        Column(verticalArrangement=Arrangement.spacedBy(Spacing.sm)) {
+            Row(horizontalArrangement=Arrangement.spacedBy(Spacing.sm)) {
+                LazyColumn(Modifier.weight(1f).heightIn(max=320.dp),state=listState) {
+                    itemsIndexed(entries) { index, entry ->
+                        Surface(onClick={selected=index},enabled=enabled,
+                            color=if(selected==index) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
+                            modifier=Modifier.fillMaxWidth()) {
+                            Text(entry.ifEmpty { stringResource(R.string.host_settings_path_empty) },
+                                modifier=Modifier.padding(Spacing.md),style=MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+                if(wide) Column(content={actions()})
+            }
+            if(!wide) FlowRow(horizontalArrangement=Arrangement.spacedBy(Spacing.sm),content={actions()})
+            OutlinedTextField(if(hasSelection) entries[selected] else "",{ text ->
+                if(!text.contains(';') && hasSelection) {
+                    val next=entries.toMutableList(); next[selected]=text; update(next,selected)
+                }
+            },enabled=enabled && hasSelection,label={Text(stringResource(R.string.host_settings_value))},modifier=Modifier.fillMaxWidth().focusRequester(entryFocus))
+        }
+    }
+}
+
+@Composable
+private fun WindowsEnvironmentGroup(editor: HostSettingsEditor, targetScope: HostEnvironmentScope) {
+    val facts=editor.windowsEnvironments[targetScope]
+    var selectedName by remember(facts?.revision,targetScope) { mutableStateOf<String?>(null) }
+    val selected=facts?.variables?.firstOrNull { it.name==selectedName }
+    val enabled=!editor.busy && !editor.dirty && !editor.environmentEditing
+    SectionCard(stringResource(if(targetScope==HostEnvironmentScope.HostUser) R.string.host_settings_user else R.string.host_settings_machine)) {
+        if(facts!=null) {
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max=280.dp)) {
+                itemsIndexed(facts.variables,key={_,variable -> variable.name}) { _,variable ->
+                    Surface(onClick={selectedName=variable.name},enabled=enabled,
+                        color=if(selectedName==variable.name) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
+                        modifier=Modifier.fillMaxWidth()) {
+                        Row(Modifier.padding(Spacing.sm),horizontalArrangement=Arrangement.spacedBy(Spacing.sm)) {
+                            Text(variable.name,Modifier.weight(0.4f),maxLines=1,overflow=TextOverflow.Ellipsis)
+                            Text(variable.rawValue ?: stringResource(R.string.host_settings_masked),Modifier.weight(0.6f),maxLines=1,overflow=TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+            }
+            FlowRow(horizontalArrangement=Arrangement.spacedBy(Spacing.sm)) {
+                TextButton(onClick={editor.beginEnvironmentEdit(targetScope,null)},enabled=enabled) { Text(stringResource(R.string.host_settings_path_new)) }
+                TextButton(onClick={editor.beginEnvironmentEdit(targetScope,selected)},enabled=enabled && selected!=null && selected.rawValue!=null) { Text(stringResource(R.string.common_edit)) }
+                TextButton(onClick={editor.beginEnvironmentEdit(targetScope,selected,true)},enabled=enabled && selected!=null) { Text(stringResource(R.string.common_delete)) }
+            }
+        } else if(targetScope in editor.environmentAuthorizationScopes) {
+            Text(stringResource(R.string.host_settings_environment_authorization_required),color=MaterialTheme.colorScheme.error)
+            TextButton(onClick=editor::load,enabled=enabled) { Text(stringResource(R.string.host_settings_environment_retry)) }
+        } else if(!editor.busy) {
+            Text(stringResource(R.string.host_settings_unavailable))
+        }
+    }
+}

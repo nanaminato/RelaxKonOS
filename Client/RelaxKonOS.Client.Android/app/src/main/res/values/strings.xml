@@ -2522,9 +2522,9 @@
     <string name="host_settings_hostname_rule">Up to %1$d letters, digits and inner hyphens; not all digits.</string>
     <string name="host_settings_machine">Host machine</string>
     <string name="host_settings_user">Host user</string>
-    <string name="host_settings_environment_note">Values are masked by default. Reveal requires authorization. An empty value is stored; Delete removes the variable. Edits replace the full value.</string>
-    <string name="host_settings_read">Authorize and read</string>
-    <string name="host_settings_reveal">Authorize and reveal values</string>
+    <string name="host_settings_environment_note">Authorization is requested automatically when needed. Authorized values are shown in full. An empty value is stored; Delete removes the variable. Edits replace the full value.</string>
+    <string name="host_settings_environment_authorization_required">Authorization required</string>
+    <string name="host_settings_environment_retry">Request authorization again</string>
     <string name="host_settings_variable_count">%1$d variables</string>
     <string name="host_settings_masked">Value hidden</string>
     <string name="host_settings_expanded">Expanded preview: %1$s</string>
@@ -2533,12 +2533,12 @@
     <string name="host_settings_variable">Variable name</string>
     <string name="host_settings_delete">Delete this variable</string>
     <string name="host_settings_value">Full value (empty is allowed)</string>
-    <string name="host_settings_expand">Windows expandable value</string>
-    <string name="host_settings_high_impact">I confirm this change can affect host execution and new logins.</string>
+    <string name="host_settings_expand">Expand environment variable references in the value</string>
+    <string name="host_settings_expand_hint" formatted="false">For example, %USERPROFILE% is replaced with the user profile path.</string>
     <string name="host_settings_discard">Discard draft</string>
     <string name="host_settings_preview">Preview change</string>
     <string name="host_settings_apply">Apply this plan</string>
-    <string name="host_settings_history">Host setting operations</string>
+    <string name="host_settings_history">Change history</string>
     <string name="host_settings_query">Read original operation</string>
     <string name="host_settings_rollback">Roll back original operation</string>
     <string name="host_settings_review_note">Confirm the exact remote target and differences. Environment values stay hidden in the server preview. No automatic restart is requested.</string>
@@ -2748,4 +2748,9 @@
     <string name="server_progress_uninstalling">Uninstalling, please wait…</string>
     <string name="server_progress_upgrading">Updating, please wait…</string>
     <string name="server_progress_verifying">Verifying the operation result…</string>
+    <string name="host_settings_path_entries">PATH entries</string>
+    <string name="host_settings_path_new">New</string>
+    <string name="host_settings_path_up">Move up</string>
+    <string name="host_settings_path_down">Move down</string>
+    <string name="host_settings_path_empty">(empty)</string>
 </resources>
