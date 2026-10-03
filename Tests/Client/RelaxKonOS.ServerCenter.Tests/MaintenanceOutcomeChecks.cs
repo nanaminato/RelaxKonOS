@@ -9,7 +9,7 @@ static class MaintenanceOutcomeChecks
 {
     public static async Task RunAsync()
     {
-        foreach (var scenario in new[] { "failed", "still-installed", "removed" })
+        foreach (var scenario in new[] { "failed", "still-installed", "removed", "removed-unsupported" })
         {
             var directory = Path.Combine(Path.GetTempPath(), "relaxkonos-maintenance-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(directory);
@@ -35,7 +35,7 @@ static class MaintenanceOutcomeChecks
                 vm.SshPassword = "test-only";
                 await vm.UninstallCommand.ExecuteAsync(null);
                 var saved = await targets.FindAsync(target.HostId);
-                if (scenario == "removed")
+                if (scenario.StartsWith("removed", StringComparison.Ordinal))
                 {
                     Check(!vm.HasError && !vm.HasManagedInstallation && saved?.LastVerified?.Installed == false,
                         "卸载成功按远端状态刷新界面及持久缓存");
@@ -81,9 +81,9 @@ sealed class MaintenanceTransport(string scenario, string installationId) : ISer
         var request = _requests[operationId];
         var time = DateTimeOffset.UtcNow;
         var failed = request.Kind == ServerDeploymentKind.Uninstall && scenario == "failed";
-        var installed = scenario != "removed";
+        var installed = !scenario.StartsWith("removed", StringComparison.Ordinal);
         var probe = request.Kind == ServerDeploymentKind.Probe ? new ServerHostProbeDto(
-            HostPlatformKind.Linux, "x86_64", ServerRuntimeIdentifier.LinuxX64, "ubuntu", "24.04", true,
+            HostPlatformKind.Linux, "x86_64", ServerRuntimeIdentifier.LinuxX64, "ubuntu", "24.04", scenario != "removed-unsupported",
             true, true, true, null, null, null, installationId, ServerInstallMode.LinuxSystem, "0.1.3", true, [], time) : null;
         var snapshot = request.Kind == ServerDeploymentKind.Status ? new ServerHostSnapshotDto(
             installationId, installed, ServerInstallMode.LinuxSystem, "0.1.3", null, "/opt/relaxkonos",
@@ -109,6 +109,9 @@ sealed class MaintenanceTransport(string scenario, string installationId) : ISer
         var request = await JsonSerializer.DeserializeAsync<ServerDeploymentRequest>(content,
             RelaxKonOSJsonOptions.Default, cancellationToken);
         _requests[request!.OperationId] = request;
+        if (scenario == "removed-unsupported" && request.Kind == ServerDeploymentKind.Uninstall &&
+            request.Options?.AllowUnsupportedSystem != true)
+            throw new Exception("Maintenance lost the opted-in Linux platform option.");
     }
     public Task DownloadAsync(string remotePath, Stream destination, CancellationToken cancellationToken) => throw new NotSupportedException();
     public IServerCenterSshTunnel OpenLoopbackTunnel(int remotePort, string? basePath = null) => throw new NotSupportedException();

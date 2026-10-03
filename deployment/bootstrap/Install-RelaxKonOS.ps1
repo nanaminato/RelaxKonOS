@@ -33,6 +33,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$InstallerBoundParameters = @{} + $PSBoundParameters
 
 $Text = @{
     'zh-CN' = @{ title = 'RelaxKonOS 服务端安装器'; source = '选择安装来源：1) 官方稳定版（默认）  2) 本地发布目录  3) 自定义发布 ZIP URL'; local = '本地发布目录'; remote = '发布 ZIP URL'; hash = '发布 ZIP 的 SHA-256'; network = '网络模式：1) 仅本机（推荐）  2) 局域网 HTTP'; file = '权限助手文件范围：1) 仅 RelaxKonOS 数据目录（推荐）  2) 白名单  3) 所有本地磁盘'; confirm = '确认开始安装？[Y/n]'; elevation = '需要管理员权限，正在请求 UAC 提升。'; done = '安装完成。'; health = '健康检查通过。'; lan = '局域网模式不会自动开放防火墙；请仅为受信任来源创建入站规则。' }
@@ -308,7 +309,7 @@ $existingState = Read-InstallState
 # Upgrade, repair and rollback continue an existing installation: parameters the caller did not
 # explicitly set are inherited from the recorded installation instead of silently reset to defaults.
 function Resolve-Setting([string] $Name, $Explicit, $Recorded, $Default) {
-    if ($PSBoundParameters.ContainsKey($Name)) { return $Explicit }
+    if ($script:InstallerBoundParameters.ContainsKey($Name)) { return $Explicit }
     if ($null -ne $Recorded -and -not [string]::IsNullOrWhiteSpace([string]$Recorded)) { return $Recorded }
     return $Default
 }

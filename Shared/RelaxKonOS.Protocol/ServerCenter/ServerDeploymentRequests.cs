@@ -39,7 +39,21 @@ public sealed record ServerDeploymentOptions(
     [property: JsonPropertyName("certificateMode")] ServerCertificateMode? CertificateMode = null,
     [property: JsonPropertyName("selfSignedIdentities")] string? SelfSignedIdentities = null,
     [property: JsonPropertyName("confirmed")] bool Confirmed = false,
-    [property: JsonPropertyName("remotePackagePath")] string? RemotePackagePath = null);
+    [property: JsonPropertyName("remotePackagePath")] string? RemotePackagePath = null,
+    [property: JsonPropertyName("language")] string? Language = null,
+    [property: JsonPropertyName("releaseCatalogBaseUri")] string? ReleaseCatalogBaseUri = null,
+    [property: JsonPropertyName("installRoot")] string? InstallRoot = null,
+    [property: JsonPropertyName("dataRoot")] string? DataRoot = null,
+    [property: JsonPropertyName("configRoot")] string? ConfigRoot = null,
+    [property: JsonPropertyName("stateRoot")] string? StateRoot = null,
+    [property: JsonPropertyName("cacheRoot")] string? CacheRoot = null,
+    [property: JsonPropertyName("fileRoots")] IReadOnlyList<string>? FileRoots = null,
+    [property: JsonPropertyName("administratorFileAccess")] ServerFileAccessScope? AdministratorFileAccess = null,
+    [property: JsonPropertyName("administratorFileRoots")] IReadOnlyList<string>? AdministratorFileRoots = null,
+    [property: JsonPropertyName("rootFileAccess")] ServerFileAccessScope? RootFileAccess = null,
+    [property: JsonPropertyName("rootFileRoots")] IReadOnlyList<string>? RootFileRoots = null,
+    [property: JsonPropertyName("dockerAccess")] bool DockerAccess = false,
+    [property: JsonPropertyName("allowUnsupportedSystem")] bool AllowUnsupportedSystem = false);
 
 /// <summary>
 /// 安装标识：由部署引擎在首次安装时签发并写入安装清单，此后作为受管隧道的稳定身份。

@@ -182,12 +182,14 @@ class ServerCenterDeploymentClientTest {
     }
 
     @Test
-    fun `official and server sources stage no package or verifier`() = runTest {
-        for (source in listOf(ServerPackageSourceKind.OfficialStable, ServerPackageSourceKind.RemoteBundle)) {
+    fun `host download and server sources stage no package or verifier`() = runTest {
+        for (source in listOf(ServerPackageSourceKind.OfficialStable, ServerPackageSourceKind.RemoteBundle, ServerPackageSourceKind.DirectUrl)) {
             val transport = FakeDeploymentTransport()
             val options = ServerDeploymentOptions(source, ServerNetworkProfile.Loopback,
                 mode = ServerInstallMode.LinuxUser,
-                remotePackagePath = if (source == ServerPackageSourceKind.RemoteBundle) "/home/alice/server.zip" else null)
+                remotePackagePath = if (source == ServerPackageSourceKind.RemoteBundle) "/home/alice/server.zip" else null,
+                packageUri = if (source == ServerPackageSourceKind.DirectUrl) "https://example.invalid/server.zip" else null,
+                packageDigest = if (source == ServerPackageSourceKind.DirectUrl) "a".repeat(64) else null)
             ServerCenterDeploymentClient(transport).stage(
                 ServerDeploymentRequest(1, UUID.randomUUID().toString(), ServerDeploymentKind.Install, options),
                 ServerHostPlatform.Linux, ServerCenterUploadAsset.bytes("launcher".toByteArray()),

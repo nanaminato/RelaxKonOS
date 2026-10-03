@@ -459,7 +459,7 @@ public partial class ServerCenterViewModel : ObservableObject
                 probeReceipt = await ExecuteReadOnlyAsync(session, tools, ServerDeploymentKind.Probe, null, cancellationToken, sudoPassword).ConfigureAwait(true);
                 probe = probeReceipt.Probe;
             }
-            if (probe is null || !probe.OsSupported || !PlatformMatches(platform.Platform, probe.HostPlatform) ||
+            if (probe is null || probe.RuntimeIdentifier is null || recovering && !probe.OsSupported || !PlatformMatches(platform.Platform, probe.HostPlatform) ||
                 (recovering ? probe.ExistingInstalled || platform.Platform != HostPlatformKind.Linux :
                 !probe.ExistingInstalled || probe.ExistingMode is null || !ServerInstallationId.IsValid(probe.ExistingInstallationId)))
             {
@@ -492,7 +492,9 @@ public partial class ServerCenterViewModel : ObservableObject
                     null,
                     CertificateMode: rotateCertificate ? ServerCertificateMode.SelfSigned : null,
                     SelfSignedIdentities: rotateCertificate ? RepairCertificateIdentities.Trim() : null,
-                    Confirmed: true));
+                    Confirmed: true,
+                    Language: _localization.CurrentLanguage,
+                    AllowUnsupportedSystem: operationMode == ServerInstallMode.LinuxSystem && !probe.OsSupported));
             var receipt = await ExecuteFixedOperationAsync(session, tools, request, cancellationToken, sudoPassword).ConfigureAwait(true);
 
             // Read the separate status receipt even after uninstall. The install identity is retained
@@ -611,7 +613,7 @@ public partial class ServerCenterViewModel : ObservableObject
                 ErrorMessage = string.Format(T("server_center.architecture_unsupported", "The host CPU architecture {0} is unsupported. Supported architectures: x86_64 and arm64."), probe.Architecture);
                 return false;
             }
-            if (!probe.OsSupported)
+            if (!probe.OsSupported && !installation.AllowUnsupportedSystem)
             {
                 ErrorMessage = string.Format(T("server_center.os_unsupported", "The host reports {0} {1} ({2}). Supported Linux systems: Debian 12, Ubuntu 22.04/24.04/26.04."),
                     probe.OsId ?? "?", probe.OsVersion ?? "?", probe.RuntimeIdentifier);
@@ -640,7 +642,7 @@ public partial class ServerCenterViewModel : ObservableObject
                 probeReceipt = await ExecuteReadOnlyAsync(session, tools, ServerDeploymentKind.Probe, null,
                     cancellationToken, sudoPassword).ConfigureAwait(true);
                 if (probeReceipt.State != ServerDeploymentState.Succeeded || probeReceipt.Probe is null ||
-                    probeReceipt.Probe.RuntimeIdentifier != runtime || !probeReceipt.Probe.OsSupported)
+                    probeReceipt.Probe.RuntimeIdentifier != runtime || (!probeReceipt.Probe.OsSupported && !installation.AllowUnsupportedSystem))
                 {
                     ErrorMessage = probeReceipt.SafeMessage ?? T("server_center.sudo_failed", "sudo authentication failed. Check the sudo password and account permissions.");
                     return false;
@@ -699,15 +701,27 @@ public partial class ServerCenterViewModel : ObservableObject
                     ServerDataRetention.Retain,
                     mode,
                     null,
-                    null,
+                    installation.PackageUri,
                     release?.StagedPackageName,
-                    null,
+                    installation.PackageDigest,
                     kind == ServerDeploymentKind.Upgrade ? probe.ExistingInstallationId : null,
-                    null,
-                    installation.FileAccess,
+                    installation.ServerPort,
+                    mode == ServerInstallMode.LinuxUser ? ServerFileAccessScope.Restricted : installation.FileAccess,
                     installation.CertificateMode,
                     installation.SelfSignedIdentities,
-                    Confirmed: true, RemotePackagePath: installation.RemoteBundlePath));
+                    Confirmed: true, RemotePackagePath: installation.RemoteBundlePath,
+                    Language: _localization.CurrentLanguage, ReleaseCatalogBaseUri: installation.ReleaseCatalogBaseUri,
+                    InstallRoot: mode == ServerInstallMode.LinuxUser ? null : installation.InstallRoot, DataRoot: installation.DataRoot,
+                    ConfigRoot: mode == ServerInstallMode.LinuxUser ? installation.ConfigRoot : null,
+                    StateRoot: mode == ServerInstallMode.LinuxUser ? installation.StateRoot : null,
+                    CacheRoot: mode == ServerInstallMode.LinuxUser ? installation.CacheRoot : null,
+                    FileRoots: mode == ServerInstallMode.LinuxUser ? null : installation.FileRoots,
+                    AdministratorFileAccess: mode == ServerInstallMode.LinuxSystem ? installation.AdministratorFileAccess : null,
+                    AdministratorFileRoots: mode == ServerInstallMode.LinuxSystem ? installation.AdministratorFileRoots : null,
+                    RootFileAccess: mode == ServerInstallMode.LinuxSystem ? installation.RootFileAccess : null,
+                    RootFileRoots: mode == ServerInstallMode.LinuxSystem ? installation.RootFileRoots : null,
+                    DockerAccess: mode == ServerInstallMode.LinuxSystem && installation.DockerAccess,
+                    AllowUnsupportedSystem: platform.Platform == HostPlatformKind.Linux && installation.AllowUnsupportedSystem));
             await using var launcher = tools.OpenLauncher();
 
             await using var archive = release?.OpenArchive();
@@ -1354,4 +1368,11 @@ public sealed record ServerInstallationOptions(
     string? CertificatePrivateKeyPath,
     string CertificatePassword,
     string SelfSignedIdentities,
-    string SudoPassword = "");
+    string SudoPassword = "",
+    int ServerPort = 5000,
+    string? PackageUri = null, string? PackageDigest = null, string? ReleaseCatalogBaseUri = null,
+    string? InstallRoot = null, string? DataRoot = null, string? ConfigRoot = null,
+    string? StateRoot = null, string? CacheRoot = null,
+    IReadOnlyList<string>? FileRoots = null, ServerFileAccessScope? AdministratorFileAccess = null,
+    IReadOnlyList<string>? AdministratorFileRoots = null, ServerFileAccessScope? RootFileAccess = null,
+    IReadOnlyList<string>? RootFileRoots = null, bool DockerAccess = false, bool AllowUnsupportedSystem = false);

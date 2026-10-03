@@ -11,7 +11,10 @@ public static class ServerDeploymentRequestWireValidation
     [
         "source", "network", "retention", "mode", "version", "packageUri", "stagedPackageName",
         "packageDigest", "remotePackagePath", "expectedInstallationId", "serverPort", "fileAccess",
-        "certificateMode", "selfSignedIdentities", "confirmed"
+        "certificateMode", "selfSignedIdentities", "confirmed", "language", "releaseCatalogBaseUri",
+        "installRoot", "dataRoot", "configRoot", "stateRoot", "cacheRoot", "fileRoots",
+        "administratorFileAccess", "administratorFileRoots", "rootFileAccess", "rootFileRoots",
+        "dockerAccess", "allowUnsupportedSystem"
     ];
 
     public static bool IsStrictRequest(ReadOnlySpan<byte> json)
@@ -68,11 +71,15 @@ public static class ServerDeploymentRequestWireValidation
                 "source" or "network" or "retention" => type == JsonValueKind.String,
                 "mode" or "version" or "packageUri" or "stagedPackageName" or
                     "packageDigest" or "remotePackagePath" or "expectedInstallationId" or "fileAccess" or
-                    "certificateMode" or "selfSignedIdentities" =>
+                    "certificateMode" or "selfSignedIdentities" or "language" or "releaseCatalogBaseUri" or
+                    "installRoot" or "dataRoot" or "configRoot" or "stateRoot" or "cacheRoot" or
+                    "administratorFileAccess" or "rootFileAccess" =>
                     type is JsonValueKind.String or JsonValueKind.Null,
                 "serverPort" => type == JsonValueKind.Null ||
                                 type == JsonValueKind.Number && property.Value.TryGetInt32(out _),
-                "confirmed" => type is JsonValueKind.True or JsonValueKind.False,
+                "confirmed" or "dockerAccess" or "allowUnsupportedSystem" => type is JsonValueKind.True or JsonValueKind.False,
+                "fileRoots" or "administratorFileRoots" or "rootFileRoots" => type == JsonValueKind.Null ||
+                    type == JsonValueKind.Array && property.Value.EnumerateArray().All(item => item.ValueKind == JsonValueKind.String),
                 _ => false
             };
             if (!valid) return false;

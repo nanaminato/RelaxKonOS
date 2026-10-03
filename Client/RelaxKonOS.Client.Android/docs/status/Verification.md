@@ -14,6 +14,10 @@ Mihomo 设置页定向 Compose 检查 4 项通过：360dp 窄布局下的三个�
 
 2026-10-02 Linux 系统代理续验：Android 测试 APK 构建通过；`emulator-5554` 上 `ProxySettingsPanelTest` 8 项与 `ProxySettingsEditorTest` 3 项均通过，覆盖 Linux 编辑入口/开关、不可用时关闭与冲突恢复、登录环境/桌面范围说明、PAC 按能力显示及保存确认门控。测试使用模拟宿主能力，未修改真实宿主设置。服务端 `--system-proxy-only` 与 Settings `--linux-system-proxy-only` 专项通过，覆盖能力/PAC 门控、应用与持久化失败回滚、环境/GNOME/KDE 原值恢复、用户修改保留和并发守护。真实 Linux PAM 新登录、GNOME/KDE 应用联网与重启恢复仍待宿主实测。
 
+### 服务端安装参数覆盖
+
+桌面客户端与 Android 编译通过；Android 全量 JVM 1034 项通过，新增安装参数 wire 与自定义 HTTPS 来源的服务器中心定向检查通过。共享协议检查、Windows 安装参数与显式设置、Linux 引擎参数/用户模式目录与端口、目录定位权限、包来源/摘要、恢复与监听地址夹具检查通过。尚未进行真实宿主安装或设备界面验收；自定义目录的完整升级/回滚/卸载、独立管理员/root 白名单、Docker 授权、自定义 HTTPS/发布目录和非标准 Linux 明确允许仍需真实宿主矩阵验证。
+
 ## 1. BP 测试进度
 
 文件权限递归选项：`FileBrowserWireTest` 与 `FilesRepositoryTest` 定向 JVM 测试通过，覆盖 `recursive=true/false` 请求及递归写授权范围。目录/文件混合树、符号链接和循环链接跳过、权限收紧及中途失败的实际 Linux 宿主行为，以及手机/平板权限弹窗仍待验证。

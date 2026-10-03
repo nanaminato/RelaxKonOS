@@ -36,7 +36,27 @@ internal data class ServerInstallSelection(
     val certificateMode: String, val certificateFormat: String,
     val certificate: Uri?, val privateKey: Uri?, val password: String, val identities: String,
     val sudoPassword: String,
+    val advanced: ServerInstallAdvancedOptions = ServerInstallAdvancedOptions(),
 )
+
+internal data class ServerInstallAdvancedOptions(
+    val serverPort: String = "5000",
+    val packageUri: String = "",
+    val packageDigest: String = "",
+    val releaseCatalogBaseUri: String = "",
+    val installRoot: String = "",
+    val dataRoot: String = "",
+    val configRoot: String = "",
+    val stateRoot: String = "",
+    val cacheRoot: String = "",
+    val fileRoots: String = "",
+    val administratorFileAccess: String = "restricted",
+    val administratorFileRoots: String = "",
+    val rootFileAccess: String = "restricted",
+    val rootFileRoots: String = "",
+    val dockerAccess: Boolean = false,
+    val allowUnsupportedSystem: Boolean = false,
+) : java.io.Serializable
 
 internal class ServerInstallViewModel(application: Application) : AndroidViewModel(application) {
     private val container = (application as RelaxKonApplication).container
@@ -83,7 +103,7 @@ internal class ServerInstallViewModel(application: Application) : AndroidViewMod
                     return client.execute(staged, sudoPassword)
                 }
                 var probe = requireNotNull(read(ServerDeploymentKind.Probe).probe)
-                check(probe.osSupported)
+                check(probe.osSupported || platform == ServerHostPlatform.Linux && selection.advanced.allowUnsupportedSystem)
                 val runtime = requireNotNull(probe.runtimeIdentifier)
                 val mode = when (selection.mode) {
                     "linuxUser" -> ServerInstallMode.LinuxUser
@@ -105,6 +125,7 @@ internal class ServerInstallViewModel(application: Application) : AndroidViewMod
                 val source = when (selection.source) {
                     "local" -> ServerPackageSourceKind.LocalBundle
                     "remote" -> ServerPackageSourceKind.RemoteBundle
+                    "url" -> ServerPackageSourceKind.DirectUrl
                     else -> ServerPackageSourceKind.OfficialStable
                 }
                 if (source == ServerPackageSourceKind.LocalBundle) {
@@ -122,7 +143,24 @@ internal class ServerInstallViewModel(application: Application) : AndroidViewMod
                     mode = mode, stagedPackageName = if (localZip != null) "server.zip" else null,
                     remotePackagePath = if (source == ServerPackageSourceKind.RemoteBundle) selection.remotePath else null,
                     expectedInstallationId = if (probe.existingInstalled) probe.existingInstallationId else null,
-                    fileAccess = selection.fileAccess, certificateMode = selection.certificateMode,
+                    serverPort = selection.advanced.serverPort.toInt(),
+                    packageUri = selection.advanced.packageUri.takeIf { source == ServerPackageSourceKind.DirectUrl },
+                    packageDigest = selection.advanced.packageDigest.takeIf { source == ServerPackageSourceKind.DirectUrl },
+                    language = when (java.util.Locale.getDefault().language) { "zh" -> "zh-CN"; "ja" -> "ja-JP"; else -> "en-US" },
+                    releaseCatalogBaseUri = selection.advanced.releaseCatalogBaseUri.trim().takeIf { it.isNotEmpty() },
+                    installRoot = selection.advanced.installRoot.trim().takeIf { it.isNotEmpty() && mode != ServerInstallMode.LinuxUser },
+                    dataRoot = selection.advanced.dataRoot.trim().takeIf { it.isNotEmpty() },
+                    configRoot = selection.advanced.configRoot.trim().takeIf { it.isNotEmpty() && mode == ServerInstallMode.LinuxUser },
+                    stateRoot = selection.advanced.stateRoot.trim().takeIf { it.isNotEmpty() && mode == ServerInstallMode.LinuxUser },
+                    cacheRoot = selection.advanced.cacheRoot.trim().takeIf { it.isNotEmpty() && mode == ServerInstallMode.LinuxUser },
+                    fileRoots = selection.advanced.fileRoots.lines().map(String::trim).filter(String::isNotEmpty).takeIf { selection.fileAccess == "whitelist" && mode != ServerInstallMode.LinuxUser },
+                    administratorFileAccess = selection.advanced.administratorFileAccess.takeIf { mode == ServerInstallMode.LinuxSystem },
+                    administratorFileRoots = selection.advanced.administratorFileRoots.lines().map(String::trim).filter(String::isNotEmpty).takeIf { selection.advanced.administratorFileAccess == "whitelist" && mode == ServerInstallMode.LinuxSystem },
+                    rootFileAccess = selection.advanced.rootFileAccess.takeIf { mode == ServerInstallMode.LinuxSystem },
+                    rootFileRoots = selection.advanced.rootFileRoots.lines().map(String::trim).filter(String::isNotEmpty).takeIf { selection.advanced.rootFileAccess == "whitelist" && mode == ServerInstallMode.LinuxSystem },
+                    dockerAccess = selection.advanced.dockerAccess && mode == ServerInstallMode.LinuxSystem,
+                    allowUnsupportedSystem = selection.advanced.allowUnsupportedSystem && platform == ServerHostPlatform.Linux,
+                    fileAccess = if (mode == ServerInstallMode.LinuxUser) "restricted" else selection.fileAccess, certificateMode = selection.certificateMode,
                     selfSignedIdentities = selection.identities.takeIf { selection.certificateMode == "selfSigned" }, confirmed = true)
                 val staged = client.stage(ServerDeploymentRequest(ServerDeploymentProtocol.VERSION, operationId, kind, options),
                     platform, launcher, localZip, runtime, certificate, selection.password)

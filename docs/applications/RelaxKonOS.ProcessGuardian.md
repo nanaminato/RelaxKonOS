@@ -6,7 +6,7 @@
 >
 > 当前状态：**已实现**独立 Guardian Agent 可执行体、本机认证 IPC、工作负载声明持久化、启动/停止/重启/删除、退出退避、健康检查、审计，以及 Windows/Linux 的服务部署脚本。`RunAs` 已实现为工作负载的声明字段、Server 一次性管理员认证和 Linux Agent 的受控 `runuser` 启动；Windows 跨账户令牌启动、内置 Server/Agent 的服务账户变更、正式安装包、可视化安装向导、日志轮转和完整原生服务管理仍待完成；Server 不会替代 Agent 守护任何用户工作负载。
 >
-> 当前 Agent 启动时必须由宿主配置 `RELAXKONOS_GUARDIAN_SHARED_SECRET`。仓库现提供 Windows/Linux 部署脚本，用于一次性注册 Server 和 Agent 系统服务、生成受 ACL 保护的配置及 IPC 密钥；最终安装包应调用这些脚本，最终用户无需手动把 Agent 配置成服务。**当前尚未有接入客户端或 Server 的成品安装向导。**用户可登记任意位置的现有绝对可执行文件，或填写 Agent `PATH` 中的程序名；工作目录仍必须为绝对路径。Agent 仍拒绝 `cmd`、PowerShell、`sh` 和 `bash` 作为隐式 shell 入口。
+> 当前 Agent 启动时必须由宿主配置 `RELAXKONOS_GUARDIAN_SHARED_SECRET`。仓库现提供 Windows/Linux 部署脚本，用于一次性注册 Server 和 Agent 系统服务、生成受 ACL 保护的配置及 IPC 密钥；最终安装包应调用这些脚本，最终用户无需手动把 Agent 配置成服务。客户端服务器中心已接入安装与维护流程，并调用发布包中的部署引擎注册系统服务；真实宿主验收见[服务器中心](../platform/RelaxKonOS.ServerCenter.Goal.md)。用户可登记任意位置的现有绝对可执行文件，或填写 Agent `PATH` 中的程序名；工作目录仍必须为绝对路径。Agent 仍拒绝 `cmd`、PowerShell、`sh` 和 `bash` 作为隐式 shell 入口。
 
 > **面向的对象是用户后台工作负载，而非 RelaxKonOS.Server。**例如，自包含 .NET 应用可直接登记发布后的可执行文件；依赖运行时的 .NET 应用可登记绝对路径或 Agent `PATH` 中的 `dotnet` 并将 `MyApp.dll` 作为独立参数；Spring Boot 可登记绝对路径或 Agent `PATH` 中的 `java` 并使用 `-jar`、`app.jar` 等独立参数。路径不再有 Guardian 白名单；实际访问权限由目标运行账户和宿主 OS 决定。RelaxKonOS Server 的健康监控是安装程序创建的受保护基础设施规则，不会出现在用户可编辑的 workload 列表中。
 

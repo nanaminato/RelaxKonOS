@@ -75,7 +75,7 @@ class ServerCenterDeploymentClient(private val transport: ServerCenterSshTranspo
             if (options.source == ServerPackageSourceKind.RemoteBundle) require(
                 options.remotePackagePath?.endsWith(".zip", ignoreCase = true) == true &&
                 options.remotePackagePath.none { it.code < 32 }) { "A server ZIP path is required." }
-            require(options.source != ServerPackageSourceKind.DirectUrl) { "Choose the official release or a ZIP file." }
+            require(options.source != ServerPackageSourceKind.DirectUrl || options.packageUri?.startsWith("https://") == true && options.packageDigest?.matches(Regex("[0-9a-fA-F]{64}")) == true) { "A custom HTTPS URL and SHA-256 are required." }
             if (options.certificateMode == "custom") requireNotNull(certificate) { "A certificate is required." }
         }
 

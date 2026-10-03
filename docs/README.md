@@ -9,7 +9,7 @@
 > - 用户 Workspace 模型见 [`RelaxKonOS.Workspace.md`](./architecture/RelaxKonOS.Workspace.md)
 > - 注册表与配置同步架构见 [`RelaxKonOS.Registry.md`](./architecture/RelaxKonOS.Registry.md)（设计中）
 > - 登录与身份模型见 [`RelaxKonOS.Authentication.md`](./platform/RelaxKonOS.Authentication.md)
-> - 桌面与 Android 客户端的一体化服务端安装、更新、卸载流程见 [`RelaxKonOS.ServerCenter.Goal.md`](./platform/RelaxKonOS.ServerCenter.Goal.md)（设计完成，待实施）
+> - 桌面与 Android 客户端的一体化服务端安装、更新、卸载流程见 [`RelaxKonOS.ServerCenter.Goal.md`](./platform/RelaxKonOS.ServerCenter.Goal.md)（客户端流程已接入，真实宿主验收状态见实现记录）
 > - 独立登录别名与关闭系统账号直接登录的 Goal 设计见 [`RelaxKonOS.AliasLogin.Goal.md`](./platform/RelaxKonOS.AliasLogin.Goal.md)（待实施）
 > - 认证限流与登录防护建议见 [`RelaxKonOS.Authentication.Hardening.md`](./platform/RelaxKonOS.Authentication.Hardening.md)
 > - 安全设计见 [`RelaxKonOS.Security.md`](./platform/RelaxKonOS.Security.md)

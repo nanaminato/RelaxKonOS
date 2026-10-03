@@ -7,10 +7,10 @@
 set -euo pipefail
 
 command_name=${0##*/}
-data_root=${XDG_DATA_HOME:-"$HOME/.local/share"}/relaxkonos
-config_root=${XDG_CONFIG_HOME:-"$HOME/.config"}/relaxkonos
-state_root=${XDG_STATE_HOME:-"$HOME/.local/state"}/relaxkonos
-cache_root=${XDG_CACHE_HOME:-"$HOME/.cache"}/relaxkonos
+data_root=${RELAXKONOS_USER_DATA_ROOT:-${XDG_DATA_HOME:-"$HOME/.local/share"}/relaxkonos}
+config_root=${RELAXKONOS_USER_CONFIG_ROOT:-${XDG_CONFIG_HOME:-"$HOME/.config"}/relaxkonos}
+state_root=${RELAXKONOS_USER_STATE_ROOT:-${XDG_STATE_HOME:-"$HOME/.local/state"}/relaxkonos}
+cache_root=${RELAXKONOS_USER_CACHE_ROOT:-${XDG_CACHE_HOME:-"$HOME/.cache"}/relaxkonos}
 port=${RELAXKONOS_PORT:-5000}
 lifecycle_lock_held=false
 skip_file_checks=false

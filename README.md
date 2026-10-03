@@ -245,150 +245,18 @@ RelaxKonOS/
 
 ## 🚀 快速开始
 
-### 选择安装方式
+### 通过客户端安装服务端
 
-RelaxKonOS 的**服务端**有三种安装方式，用途互不重叠。普通用户请只按「用户模式」操作，不要照搬管理员或开发者的步骤。
+1. 从[官网下载页](https://relaxkon.com/downloads)取得适合自己设备的客户端，打开**服务器中心**。
+2. 添加目标主机的 SSH 地址、端口与账号，核对主机密钥，完成环境检查。
+3. 选择官方稳定版、本地 ZIP、服务器上的 ZIP 或自定义 HTTPS 下载；系统模式使用 `*-server.zip`，用户模式使用 `*-user-server.zip`。
+4. 选择 Linux 系统模式、Linux 用户模式或 Windows 系统模式。系统模式需要 root／sudo 或已提升管理员权限；Linux 用户模式使用普通账号，不需要 sudo。
+5. 配置端口、程序与数据目录、网络、TLS 和文件访问范围。Linux 系统模式还可分别设置管理员与 root 范围、Docker 授权和非标准系统选项；用户模式可设置数据、配置、状态和缓存目录。
+6. 审阅并确认安装，等待操作回执和健康检查，再返回客户端登录。
 
-| 方式 | 平台 | 权限要求 | 适用场景 | 入口 |
-| --- | --- | --- | --- | --- |
-| **用户模式（User Mode）** | 仅 Linux | **不需要 sudo**，并且拒绝以 root 运行 | 个人在已有的普通账号下自建一份服务端；仅监听 `127.0.0.1` | [`deployment/user/`](./deployment/user/) |
-| 系统模式（System Mode） | Linux（systemd）/ Windows Server | 需要 root 或管理员 | 多用户生产部署：注册系统服务、权限助手与防火墙规则 | [一键服务端安装器](./deployment/README.md) |
-| 开发者模式（Developer Mode） | 全平台 | 需要 .NET 10 SDK | 参与 RelaxKonOS 自身开发，构建与调试应用包 | [从源码运行](#从源码运行开发者) |
+更新、修复、回滚与卸载都通过服务器中心完成，卸载默认保留数据。完整步骤与各参数的适用范围见[安装指南](https://relaxkon.com/docs/zh-CN/latest/getting-started/installation)及[用户模式指南](https://relaxkon.com/docs/zh-CN/latest/getting-started/user-mode)。
 
-**客户端**与服务端是相互独立的压缩包：客户端只需下载 ZIP、解压后直接运行，**不需要**安装到服务器上。
-
-> 官网[下载页](https://relaxkon.com/downloads)给出稳定通道的安装命令、包名与 SHA-256 校验和；离线服务器可直接取其中的服务端 ZIP。
-
-### 用户模式安装（Linux，无 sudo）
-
-用户模式面向「我只想在自己的 Linux 账号下跑一份服务端」的场景。它只用你的 XDG 目录，**不创建 systemd 系统服务、不修改 PAM / sudoers / 防火墙 / `/etc`**，也不需要一个常驻的权限助手。
-
-#### 前置条件
-
-- 一个**普通（非 root）Linux 账号**。安装脚本与生命周期命令都会显式拒绝 root 身份，`sudo` 反而会让它失败。
-- 系统命令：`bash`、`realpath`、`stat`、`find`、`sha256sum`、`flock`。缺少 `flock`（通常在 `util-linux` 中）会直接报错。
-- 若从 HTTPS 发布地址在线安装，还需要 `curl` 与 `unzip`。
-- 一份 **`*-user-server.zip`** 发布包（或 `--release-uri` + `--release-sha256`）。包内 `manifest.json` 必须声明 `packageKind: "user-server"`，客户端包与服务端包都会被拒绝。
-- 不需要 systemd，不需要 sudo，不需要 root。
-
-#### 安装步骤
-
-```bash
-# 1. 以目标账号解压 user-server 发布包（不要用 sudo）
-unzip RelaxKonOS-<version>-linux-x64-user-server.zip -d RelaxKonOS-user-server
-
-# 2. 执行用户模式安装器（--mode user 是必需的）
-./RelaxKonOS-user-server/deployment/user/install-relaxkonos.sh \
-  --mode user \
-  --bundle ./RelaxKonOS-user-server
-```
-
-安装器会依次校验 bundle 完整性、`manifest.json` 的 `packageKind`、全部文件的 SHA-256 与文件清单，然后把版本落到 `bin/relaxkon` 这个稳定命令路径下。它**不会**修改你的 `PATH`。
-
-也可以从官方发布地址在线安装（必须同时给出 SHA-256）：
-
-```bash
-./deployment/user/install-relaxkonos.sh \
-  --mode user \
-  --release-uri https://<host>/relaxkonos/stable/<version>/linux-x64/server/<archive>.zip \
-  --release-sha256 <64-hex-sha256>
-```
-
-#### 安装位置
-
-用户模式只写入当前账号的 XDG 目录，全部权限为 `0700` / `0600`：
-
-| 用途 | 默认路径 |
-| --- | --- |
-| 程序与版本目录 | `${XDG_DATA_HOME:-$HOME/.local/share}/relaxkonos/`（`server/versions/<version>/`、`server/current` 软链） |
-| 生命周期命令 | `${XDG_DATA_HOME:-$HOME/.local/share}/relaxkonos/bin/relaxkon` |
-| 配置与密钥 | `${XDG_CONFIG_HOME:-$HOME/.config}/relaxkonos/`（`appsettings.user.json`、`secrets/guardian.secret`） |
-| 运行状态 | `${XDG_STATE_HOME:-$HOME/.local/state}/relaxkonos/`（PID、控制套接字、`install-state.json`、SQLite 数据库） |
-| 日志 | `${XDG_STATE_HOME:-$HOME/.local/state}/relaxkonos/logs/{server,guardian}.log` |
-| 下载缓存 | `${XDG_CACHE_HOME:-$HOME/.cache}/relaxkonos/` |
-
-#### 启动与验证
-
-```bash
-# 把命令路径存成变量，后续命令都基于它
-RELAXKON=""${XDG_DATA_HOME:-$HOME/.local/share}/relaxkonos/bin/relaxkon""
-
-"$RELAXKON" start      # 后台启动 Server 与同 UID 的 Guardian，并等待就绪
-"$RELAXKON" status     # 期望输出：RelaxKonOS User Mode is running (pid <n>, loopback 127.0.0.1:5000).
-```
-
-`status` 会通过用户私有的控制套接字（`…/relaxkonos/run/server.sock`，权限 `0600`）探测 `/ready`，因此它比「进程还在不在」更严格：只要套接字没就绪，就会明确报出未就绪而不是假装成功。
-
-其他常用命令：
-
-```bash
-"$RELAXKON" start --foreground   # 前台运行，便于直接观察日志
-"$RELAXKON" stop                 # 停止 Server 与 Guardian
-```
-
-服务端默认监听 `http://127.0.0.1:5000`；端口可用环境变量覆盖：
-
-```bash
-RELAXKONOS_PORT=5100 "$RELAXKON" start
-```
-
-**远程连接**：用户模式只绑定回环地址，所以请用 SSH 本地转发把端口带到你自己的机器上，再把客户端指向本机地址：
-
-```bash
-ssh -L 5000:127.0.0.1:5000 <user>@<server>
-```
-
-#### 升级
-
-```bash
-"$RELAXKON" upgrade --bundle ./RelaxKonOS-<new-version>-linux-x64-user-server
-```
-
-升级会先停止服务、安装新版本、重新启动并等待就绪；如果就绪检查失败，会自动回滚到升级前的版本。
-
-> 同一个版本号不能被重复安装。升级时请使用新的版本号。
-
-#### 卸载
-
-```bash
-"$RELAXKON" uninstall
-```
-
-它会先停止服务，再删除上文表格中的 data / config / state / cache 四个目录。
-
-> ⚠️ `uninstall` 会一并删除数据库、配置、密钥与日志，**不可恢复**。如需保留数据，请先备份 `${XDG_STATE_HOME:-$HOME/.local/state}/relaxkonos/` 与 `${XDG_CONFIG_HOME:-$HOME/.config}/relaxkonos/`。
-
-#### 常见问题
-
-| 现象 | 原因与处理 |
-| --- | --- |
-| `User Mode must not be installed as root.` | 用了 `sudo` 或已经切到 root。请换回普通账号重新执行。 |
-| `--mode user or --mode system is required.` | 漏写 `--mode user`（或用了 `--mode system` 却没加 `sudo`）。 |
-| `not a complete user-server bundle` | 解压的不是 `*-user-server` 包，或包不完整（缺少 `manifest.json`、`payload/`、`deployment/user/relaxkon`）。 |
-| `bundle is not a user-server manifest` | 包的 `manifest.json` 不是 `packageKind: "user-server"`。请下载用户态服务端包。 |
-| `bundle file checksum verification failed` | 传输损坏。重新下载并核对官方公布的 SHA-256 后重试。 |
-| `another RelaxKonOS lifecycle operation is already running` | 另一个终端持有生命周期锁（`…/relaxkonos/run/launcher.lock`）。等它结束再执行。 |
-| `flock is required for safe User Mode lifecycle operations` | 系统缺少 `flock`（`util-linux`）。先安装再重试。 |
-| `status` 提示进程在跑但控制套接字未就绪 | 先看 `logs/server.log`；通常是首次启动仍在初始化，或端口被占用。 |
-| `version already installed: <version>` | 该版本已安装。换用新版本号，或先 `uninstall` 再安装。 |
-
-### 系统模式（管理员 / 生产部署）
-
-Linux 需要 root，并用显式模式调用安装器；Windows 需要在管理员 PowerShell 中执行：
-
-```bash
-# Linux System Mode：注册 systemd 服务、权限助手与 sudoers 规则
-sudo ./deployment/bootstrap/install-relaxkonos.sh --mode system --bundle /mnt/RelaxKonOS-release
-```
-
-```powershell
-# Windows Server：注册 Windows 服务与权限助手
-& .\deployment\bootstrap\Install-RelaxKonOS.ps1 -BundlePath 'D:\RelaxKonOS-release'
-```
-
-系统模式会生成并保护 JWT 与组件 IPC 密钥，安装 Server、Guardian Agent 与权限助手，并完成健康检查。完整参数、网络模式（仅本机 / 局域网 / 反向代理）、证书模式与离线安装见[一键服务端安装器](./deployment/README.md)。
-
-> 客户端分发（便携 ZIP 与 Windows MSIX）见 [`deployment/ClientDistribution.md`](./deployment/ClientDistribution.md)。
+维护者的部署引擎、参数对应关系、打包和手动诊断见 [`deployment/README.md`](./deployment/README.md)；客户端分发见 [`deployment/ClientDistribution.md`](./deployment/ClientDistribution.md)。
 
 ### 从源码运行（开发者）
 

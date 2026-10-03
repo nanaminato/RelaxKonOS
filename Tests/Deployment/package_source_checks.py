@@ -77,6 +77,23 @@ class PackageSourceChecks(unittest.TestCase):
             descriptor['sha256']=hashlib.sha256(self.archive.read_bytes()).hexdigest()
             with self.assertRaises(ValueError):self.extract('officialStable',target='bad-file')
         finally:helper['download']=original
+    def test_custom_https_digest(self):
+        self.package()
+        options={'source':'directUrl','network':'loopback','packageUri':'https://example.invalid/release.zip',
+                 'packageDigest':hashlib.sha256(self.archive.read_bytes()).hexdigest()}
+        path=self.root/'request.json'
+        def write(): path.write_text(json.dumps({'schemaVersion':1,'operationId':'12345678-1234-1234-1234-123456789abc','kind':'install','options':options}),encoding='utf-8')
+        write()
+        original=helper['download']
+        helper['download']=lambda url,target,limit: Path(target).write_bytes(self.archive.read_bytes())
+        try:
+            helper['extract']('directUrl','linux-x64','user-server',str(self.root/'custom'),'',str(path))
+            self.assertTrue((self.root/'custom/manifest.json').is_file())
+            options['packageDigest']='0'*64;write()
+            with self.assertRaises(ValueError):helper['extract']('directUrl','linux-x64','user-server',str(self.root/'bad-custom'),'',str(path))
+            self.assertFalse((self.root/'bad-custom').exists())
+        finally:helper['download']=original
+
     def test_strict_json(self):
         value={'schemaVersion':1,'operationId':'12345678-1234-1234-1234-123456789abc','kind':'install',
                'options':{'source':'remoteBundle','network':'loopback','remotePackagePath':'/home/a/服务器包.zip'}}

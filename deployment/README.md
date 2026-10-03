@@ -1,4 +1,41 @@
-# RelaxKonOS 一键服务端安装
+# RelaxKonOS 部署引擎与维护者指南
+
+普通用户从客户端的服务器中心安装和维护服务端。本文保留部署引擎、打包与手动诊断，供维护者使用；官网安装入口统一见[安装指南](https://relaxkon.com/docs/zh-CN/latest/getting-started/installation)。
+
+## 安装参数与客户端对应关系
+
+桌面与 Android 使用同一结构化请求。下表覆盖 Windows / Linux System Mode 引导脚本及 Linux User Mode 生命周期安装入口的全部专用参数；PowerShell 通用调试参数与 `--help` 属于维护者诊断。
+
+| 引擎参数 | 客户端输入或自动处理 |
+| --- | --- |
+| `-Language` / `--language` | 自动跟随客户端中、英、日语言；启动器固定语言枚举 |
+| `-Action` / `--action` | 首次安装、升级、修复、回滚由客户端操作决定；卸载调用独立引擎 |
+| `-Mode` / `--mode` | Linux System、Linux User、Windows System 或按预检自动选择 |
+| `-BundlePath` / `--bundle` | 本地 ZIP 上传或服务器绝对 ZIP 路径，经安全解压后传递本次私有发布目录 |
+| `-ReleaseUri` / `--release-uri` | 自定义 HTTPS ZIP 下载来源，由启动器下载后传给安装引擎 |
+| `-ReleaseSha256` / `--release-sha256` | 自定义 HTTPS 来源必填的 SHA-256；官方来源自动取得描述符摘要 |
+| `-ReleaseCatalogBaseUri` / `--release-catalog-base` | 可选 HTTPS 发布目录地址；留空使用官网稳定通道。User Mode 自动追加 `user-server/` |
+| `-InstallRoot` / `--install-root` | 系统模式的程序绝对目录 |
+| `-DataRoot` / `--data-root` | 系统持久数据目录或用户模式程序／数据根 |
+| `--config-root` / `--state-root` / `--cache-root` | 用户模式的配置、状态、缓存绝对目录；留空使用 XDG 默认值 |
+| `-NetworkProfile` / `--network` | 系统模式仅本机／LAN；用户模式固定 loopback |
+| `-ServerPort` / `--server-port` / `--port` | 1–65535；初装默认 5000，升级向导从已有监听地址取得端口 |
+| `-CertificateMode` / `--certificate-mode` | 系统模式无证书、自有 PFX 或自签名；客户端另外支持把 PEM 证书链与私钥转换为 PFX |
+| `-CertificatePath` / `--certificate-path` | 客户端选择证书文件后安全上传的私有暂存路径 |
+| `-CertificatePassword` | 证书密码输入，不在审阅页显示；实际通过私有密码文件传递 |
+| `-CertificatePasswordFile` / `--certificate-password-file` | 客户端自动生成并上传私有密码文件，生命周期结束清理 |
+| `-SelfSignedIdentities` / `--self-signed-identities` | 逗号分隔的自签名证书名称 |
+| `-FileAccess` / `--file-access` | 系统模式受限／白名单／全部文件 |
+| `-FileRootsFile` / `--file-roots` | 白名单目录逐行输入；启动器生成 Windows JSON 数组或 Linux 逐行策略文件 |
+| `--administrator-file-access` / `--administrator-file-roots` | Linux 系统模式管理员身份的独立范围及白名单 |
+| `--root-file-access` / `--root-file-roots` | Linux 系统模式 root 身份的独立范围及白名单 |
+| `--docker-access` | Linux 系统模式显式 Docker 授权，默认关闭 |
+| `--allow-unsupported-system` | Linux 显式允许非标准系统，仍执行架构、权限与依赖检查 |
+| `-ExpectedInstallationId` / `--expected-installation-id` | 客户端读取并核对既有安装身份，阻断过期操作 |
+| `-NonInteractive` / `--non-interactive` | 自动启用；最终确认由客户端审阅页及维护确认界面承担 |
+| `--skip-file-checks` | 由来源策略控制：用户文件省略逐文件摘要，官网包强制校验；自定义 HTTPS ZIP 必须核对用户指定的归档摘要。客户端不提供跳过官网校验的开关 |
+
+配置目录定位分别保存在 Windows `%ProgramData%\RelaxKonOS-Deployment\roots.json`、Linux System `/var/lib/relaxkonos-deployment-location/roots.json` 与 Linux User 默认 XDG 状态下的 `relaxkonos-deployment/user-roots.json`。后续探测、修复、更新、回滚和卸载读取这些定位及安装状态，不假定默认目录。定位由受管身份写入，保留数据卸载后也保留定位。部署锁与回执仍使用固定宿主目录，不随自定义数据根漂移。
 
 发布制品分为 `client`、`server` 与 `user-server` 三种包。`server` 包是 System Mode，包含已 `dotnet publish` 的 Server、Guardian Agent、权限助手和平台部署引擎；`user-server` 是无 sudo 的 Linux User Mode，包含 Server、同 UID Guardian 和用户 launcher，但不包含权限助手、sudoers 或系统服务安装器；`client` 包只包含桌面 Client。
 

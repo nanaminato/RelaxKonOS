@@ -210,6 +210,20 @@ data class ServerDeploymentOptions(
     val fileAccess: String? = null,
     val certificateMode: String? = null,
     val selfSignedIdentities: String? = null,
+    val language: String? = null,
+    val releaseCatalogBaseUri: String? = null,
+    val installRoot: String? = null,
+    val dataRoot: String? = null,
+    val configRoot: String? = null,
+    val stateRoot: String? = null,
+    val cacheRoot: String? = null,
+    val fileRoots: List<String>? = null,
+    val administratorFileAccess: String? = null,
+    val administratorFileRoots: List<String>? = null,
+    val rootFileAccess: String? = null,
+    val rootFileRoots: List<String>? = null,
+    val dockerAccess: Boolean = false,
+    val allowUnsupportedSystem: Boolean = false,
 )
 
 /** 远端部署启动器的唯一入口请求。[operationId] 同时作为幂等键。 */

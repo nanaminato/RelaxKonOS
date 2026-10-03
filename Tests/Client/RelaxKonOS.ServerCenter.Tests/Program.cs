@@ -181,12 +181,14 @@ Check(windowsStage.Platform == HostPlatformKind.Windows &&
     "Windows 暂存使用内置 PowerShell 启动器");
 
 var recovery = new FakeTransport();
-foreach (var source in new[] { ServerPackageSourceKind.OfficialStable, ServerPackageSourceKind.RemoteBundle })
+foreach (var source in new[] { ServerPackageSourceKind.OfficialStable, ServerPackageSourceKind.RemoteBundle, ServerPackageSourceKind.DirectUrl })
 {
     var sourceTransport = new FakeTransport();
     var sourceRequest = installRequest with { OperationId = Guid.NewGuid(), Options = installRequest.Options! with
     {
-        Source = source, StagedPackageName = null, PackageDigest = null,
+        Source = source, StagedPackageName = null,
+        PackageUri = source == ServerPackageSourceKind.DirectUrl ? "https://example.invalid/server.zip" : null,
+        PackageDigest = source == ServerPackageSourceKind.DirectUrl ? new string('a', 64) : null,
         RemotePackagePath = source == ServerPackageSourceKind.RemoteBundle ? "/home/alice/server.zip" : null
     }};
     await new ServerCenterDeploymentClient(sourceTransport).StageAsync(sourceRequest, HostPlatformKind.Linux,

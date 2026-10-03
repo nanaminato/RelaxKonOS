@@ -94,6 +94,20 @@ internal object ServerDeploymentWire {
         append(",\"selfSignedIdentities\":").append(options.selfSignedIdentities.jsonString())
         append(",\"expectedInstallationId\":").append(options.expectedInstallationId.jsonString())
         append(",\"serverPort\":").append(options.serverPort ?: "null")
+        append(",\"language\":").append(options.language.jsonString())
+        append(",\"releaseCatalogBaseUri\":").append(options.releaseCatalogBaseUri.jsonString())
+        append(",\"installRoot\":").append(options.installRoot.jsonString())
+        append(",\"dataRoot\":").append(options.dataRoot.jsonString())
+        append(",\"configRoot\":").append(options.configRoot.jsonString())
+        append(",\"stateRoot\":").append(options.stateRoot.jsonString())
+        append(",\"cacheRoot\":").append(options.cacheRoot.jsonString())
+        append(",\"fileRoots\":").append(options.fileRoots.jsonStrings())
+        append(",\"administratorFileAccess\":").append(options.administratorFileAccess.jsonString())
+        append(",\"administratorFileRoots\":").append(options.administratorFileRoots.jsonStrings())
+        append(",\"rootFileAccess\":").append(options.rootFileAccess.jsonString())
+        append(",\"rootFileRoots\":").append(options.rootFileRoots.jsonStrings())
+        append(",\"dockerAccess\":").append(options.dockerAccess)
+        append(",\"allowUnsupportedSystem\":").append(options.allowUnsupportedSystem)
         append(",\"confirmed\":").append(options.confirmed).append('}')
     }
 
@@ -160,6 +174,8 @@ internal object ServerDeploymentWire {
 
     private val UUID_PATTERN = Regex("^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$")
 }
+
+private fun List<String>?.jsonStrings(): String = this?.joinToString(",", "[", "]") { ServerCenterJson.quote(it) } ?: "null"
 
 private fun String?.jsonString(): String = this?.let(ServerCenterJson::quote) ?: "null"
 private fun Enum<*>?.jsonEnum(): String = this?.wireName()?.let(ServerCenterJson::quote) ?: "null"

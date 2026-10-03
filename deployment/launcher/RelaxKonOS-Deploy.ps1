@@ -298,6 +298,10 @@ function ConvertFrom-StrictJsonObject([string] $Text) {
 $script:requestText = ''
 $request = $null
 
+$optionsInstallRoot = ''
+$optionsDataRoot = ''
+$optionsLanguage = 'auto'
+$optionsCatalog = ''
 $optionsSource = 'officialStable'
 $optionsNetwork = 'loopback'
 $optionsRetention = 'retain'
@@ -350,7 +354,7 @@ function Assert-RequestShape {
         Stop-Launcher 'server-deployment.invalid_request' 'options must be a JSON object'
     }
     $allowedOptions = @('source', 'network', 'retention', 'mode', 'version', 'packageUri', 'stagedPackageName',
-        'packageDigest', 'remotePackagePath', 'expectedInstallationId', 'serverPort', 'fileAccess', 'certificateMode', 'selfSignedIdentities', 'confirmed')
+        'packageDigest', 'remotePackagePath', 'expectedInstallationId', 'serverPort', 'fileAccess', 'certificateMode', 'selfSignedIdentities', 'confirmed', 'language', 'releaseCatalogBaseUri', 'installRoot', 'dataRoot', 'configRoot', 'stateRoot', 'cacheRoot', 'fileRoots', 'administratorFileAccess', 'administratorFileRoots', 'rootFileAccess', 'rootFileRoots', 'dockerAccess', 'allowUnsupportedSystem')
     foreach ($key in $request['options'].Keys) {
         if ($allowedOptions -notcontains [string]$key) {
             Stop-Launcher 'server-deployment.invalid_request' "unsupported request field: $key"
@@ -415,6 +419,36 @@ function Parse-Request {
     $script:optionsFileAccess = Get-StringOption 'fileAccess'
     $script:optionsCertificateMode = Get-StringOption 'certificateMode'
     $script:optionsSelfSignedIdentities = Get-StringOption 'selfSignedIdentities'
+    $script:optionsLanguage = Get-StringOption 'language'
+    if (-not $script:optionsLanguage) { $script:optionsLanguage = 'auto' }
+    if ($script:optionsLanguage -notin @('auto', 'zh-CN', 'en-US', 'ja-JP')) { Stop-Launcher 'server-deployment.invalid_request' 'unsupported language' }
+    $script:optionsCatalog = Get-StringOption 'releaseCatalogBaseUri'
+    if ($script:optionsCatalog -and $script:optionsCatalog -notmatch '^https://[^\s]+$') { Stop-Launcher 'server-deployment.invalid_request' 'HTTPS catalog required' }
+    $script:optionsInstallRoot = Get-StringOption 'installRoot'
+    $script:optionsDataRoot = Get-StringOption 'dataRoot'
+    foreach ($path in @($script:optionsInstallRoot, $script:optionsDataRoot)) {
+        if ($path -and ($path -notmatch '^[A-Za-z]:[\\/].+' -or $path -match '[\x00-\x1f]' -or [IO.Path]::GetFullPath($path).TrimEnd('\') -eq [IO.Path]::GetPathRoot($path).TrimEnd('\'))) {
+            Stop-Launcher 'server-deployment.invalid_request' 'absolute non-root directories required'
+        }
+    }
+    foreach ($name in @('configRoot','stateRoot','cacheRoot','administratorFileAccess','rootFileAccess')) {
+        if (Get-StringOption $name) { Stop-Launcher 'server-deployment.invalid_request' 'Linux options are unavailable on Windows' }
+    }
+    foreach ($name in @('dockerAccess','allowUnsupportedSystem')) {
+        $flag = Get-LiteralOption $name
+        if ($null -ne $flag -and $flag -isnot [bool]) { Stop-Launcher 'server-deployment.invalid_request' "$name must be boolean" }
+        if ($flag) { Stop-Launcher 'server-deployment.invalid_request' 'Linux options are unavailable on Windows' }
+    }
+    foreach ($name in @('fileRoots','administratorFileRoots','rootFileRoots')) {
+        $roots = Get-LiteralOption $name
+        if ($null -ne $roots) {
+            if ($roots -isnot [Collections.IList] -or $roots.Count -gt 128) { Stop-Launcher 'server-deployment.invalid_request' 'file roots must be a bounded array' }
+            foreach ($item in $roots) {
+                if ($item -isnot [string] -or $item -notmatch '^[A-Za-z]:[\\/]' -or $item -match '[\x00-\x1f]') { Stop-Launcher 'server-deployment.invalid_request' 'absolute file roots required' }
+            }
+            if ($name -ne 'fileRoots' -and $roots.Count) { Stop-Launcher 'server-deployment.invalid_request' 'Linux file roots are unavailable on Windows' }
+        }
+    }
 
     $port = Get-LiteralOption 'serverPort'
     if ($null -ne $port) {
@@ -470,6 +504,7 @@ function Parse-Request {
         if (-not $script:optionsMode) { Stop-Launcher 'server-deployment.invalid_request' 'installation mode is required' }
         switch ($script:optionsSource) {
             'officialStable' { }
+            'directUrl' { if (-not $script:optionsPackageUri -or -not $script:optionsPackageDigest) { Stop-Launcher 'server-deployment.invalid_request' 'HTTPS URL and SHA-256 required' } }
             'localBundle' { if (-not $script:optionsStagedName) { Stop-Launcher 'server-deployment.invalid_request' 'a local ZIP name is required' } }
             'remoteBundle' {
                 if ($script:optionsRemotePath -notmatch '^[A-Za-z]:[\\/].*\.zip$' -or $script:optionsRemotePath -match '[\x00-\x1f]') {
@@ -503,18 +538,35 @@ function Test-SafeStagedPackageName([string] $Value) {
 }
 
 # --- host facts ----------------------------------------------------------------------------------
+function Get-ManagedRoot([string] $Key, [string] $Override, [string] $Default) {
+    if ($Override) { return $Override }
+    $locator = Join-Path $env:ProgramData 'RelaxKonOS-Deployment\roots.json'
+    if (Test-Path -LiteralPath $locator -PathType Leaf) {
+        if (((Get-Item -LiteralPath $locator -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Unsafe root locator.' }
+        $roots = ConvertFrom-StrictJsonObject ([IO.File]::ReadAllText($locator))
+        if ($roots[$Key]) { return [string]$roots[$Key] }
+    }
+    return $Default
+}
+function Save-ManagedRoots {
+    $locator = Join-Path $env:ProgramData 'RelaxKonOS-Deployment\roots.json'
+    $roots = @{ installRoot = Get-ModeInstallRoot 'windowsSystem'; dataRoot = Get-ModeDataRoot 'windowsSystem' }
+    [IO.File]::WriteAllText($locator, ($roots | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
+    & icacls $locator /inheritance:r /grant:r 'SYSTEM:F' 'Administrators:F' 'Users:R' | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Could not protect managed root locator.' }
+}
 function Get-ModeInstallState([string] $Mode) {
-    if ($Mode -eq 'windowsSystem') { return (Join-Path $env:ProgramData 'RelaxKonOS\install-state.json') }
+    if ($Mode -eq 'windowsSystem') { return (Join-Path (Get-ModeDataRoot $Mode) 'install-state.json') }
     return ''
 }
 
 function Get-ModeInstallRoot([string] $Mode) {
-    if ($Mode -eq 'windowsSystem') { return (Join-Path $env:ProgramFiles 'RelaxKonOS') }
+    if ($Mode -eq 'windowsSystem') { return (Get-ManagedRoot 'installRoot' $script:optionsInstallRoot (Join-Path $env:ProgramFiles 'RelaxKonOS')) }
     return ''
 }
 
 function Get-ModeDataRoot([string] $Mode) {
-    if ($Mode -eq 'windowsSystem') { return (Join-Path $env:ProgramData 'RelaxKonOS') }
+    if ($Mode -eq 'windowsSystem') { return (Get-ManagedRoot 'dataRoot' $script:optionsDataRoot (Join-Path $env:ProgramData 'RelaxKonOS')) }
     return ''
 }
 
@@ -763,7 +815,8 @@ function Test-PackageAvailable {
         switch ($script:optionsSource) {
             'officialStable' {
                 $descriptorPath = Join-Path $stagingRoot 'official-release.json'
-                Get-OfficialFile "https://downloads.relaxkon.com/relaxkonos/stable/latest/$runtime.json" $descriptorPath
+                $catalog = if ($script:optionsCatalog) { $script:optionsCatalog.TrimEnd('/') } else { 'https://downloads.relaxkon.com/relaxkonos/stable/latest' }
+                Get-OfficialFile "$catalog/$runtime.json" $descriptorPath
                 if ((Get-Item -LiteralPath $descriptorPath).Length -gt 1048576) { throw 'Descriptor is too large.' }
                 $descriptor = ConvertFrom-StrictJsonObject ([IO.File]::ReadAllText($descriptorPath))
                 if ($descriptor.schemaVersion -ne 1 -or $descriptor.packageKind -ne 'server' -or
@@ -771,6 +824,11 @@ function Test-PackageAvailable {
                 $archive = Join-Path $stagingRoot 'official-release.zip'
                 Get-OfficialFile $descriptor.url $archive
                 if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $descriptor.sha256) { throw 'Official release checksum mismatch.' }
+            }
+            'directUrl' {
+                $archive = Join-Path $stagingRoot 'custom-release.zip'
+                Get-OfficialFile $script:optionsPackageUri $archive
+                if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $script:optionsPackageDigest) { throw 'Release checksum mismatch.' }
             }
             'localBundle' { $archive = Join-Path $stagingRoot $script:optionsStagedName }
             'remoteBundle' { $archive = $script:optionsRemotePath }
@@ -900,7 +958,9 @@ function Invoke-Preflight {
         Stop-Launcher 'server-deployment.elevation_required' 'Windows System Mode requires an elevated administrator SSH session'
     }
     if ($null -eq $script:optionsServerPort) { return }
-    if ((Test-LoopbackPortOpen $script:optionsServerPort) -and $script:record.kind -in @('install', 'upgrade')) {
+    $recordedUrl = Get-StateField $state 'listenUrl'
+    $reusesPort = $script:record.kind -eq 'upgrade' -and $recordedUrl -and ([Uri]$recordedUrl).Port -eq $script:optionsServerPort
+    if ((Test-LoopbackPortOpen $script:optionsServerPort) -and $script:record.kind -in @('install', 'upgrade') -and -not $reusesPort) {
         Stop-Launcher 'server-deployment.port_unavailable' 'the requested port is already in use'
     }
 }
@@ -954,12 +1014,21 @@ function Invoke-InstallLikeAction {
     if (-not $engine) { Stop-Launcher 'server-deployment.not_supported' 'no System Mode deployment engine is available on this host' }
 
     $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $engine, '-NonInteractive', '-Action', $script:record.kind, '-Mode', $script:optionsMode)
+    $arguments += @('-Language', $script:optionsLanguage, '-InstallRoot', (Get-ModeInstallRoot $script:optionsMode), '-DataRoot', (Get-ModeDataRoot $script:optionsMode))
     if ($needsPackage) {
         $arguments += @('-BundlePath', $packageRoot)
     }
     if ($null -ne $script:optionsServerPort) { $arguments += @('-ServerPort', [string]$script:optionsServerPort) }
     if ($script:optionsNetwork -and $script:record.kind -in @('install', 'upgrade')) { $arguments += @('-NetworkProfile', (Get-EngineNetworkProfile $script:optionsNetwork)) }
     if ($script:optionsFileAccess) { $arguments += @('-FileAccess', $script:optionsFileAccess) }
+    $roots = Get-LiteralOption 'fileRoots'
+    if ($null -ne $roots -and $roots.Count -gt 0) {
+        if ($script:optionsFileAccess -ne 'whitelist') { Stop-Launcher 'server-deployment.invalid_request' 'roots require whitelist access' }
+        $rootsFile = Join-Path $stagingRoot 'file-roots.json'
+        [IO.File]::WriteAllText($rootsFile, (ConvertTo-Json -InputObject @($roots) -Compress), [Text.UTF8Encoding]::new($false))
+        $arguments += @('-FileRootsFile', $rootsFile)
+    }
+    if ($needsPackage -and $script:optionsCertificateMode -eq 'none') { $arguments += @('-CertificateMode', 'none') }
     if ($script:optionsCertificateMode -eq 'custom') {
         $certificate = Join-Path $stagingRoot 'certificate.pfx'; $password = Join-Path $stagingRoot 'certificate-password.txt'
         if (-not (Test-Path -LiteralPath $certificate -PathType Leaf) -or -not (Test-Path -LiteralPath $password -PathType Leaf)) {
@@ -986,6 +1055,7 @@ function Invoke-InstallLikeAction {
 
     $state = Read-InstallState (Get-ModeInstallState $script:optionsMode)
     $installed = Get-StateFlag $state 'installed'
+    Save-ManagedRoots
     $script:record.installationId = Get-StateField $state 'installationId'
     Write-Event 'healthChecking' 'running' $null '' '正在核验 loopback 健康'
     $healthy = Test-LoopbackHealth $script:optionsMode $state
@@ -1014,7 +1084,7 @@ function Invoke-UninstallAction {
     $engine = Get-UninstallEnginePath
     if (-not $engine) { Stop-Launcher 'server-deployment.not_supported' 'no System Mode uninstall engine is available on this host' }
 
-    $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $engine, '-NonInteractive', '-Mode', $script:optionsMode)
+    $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $engine, '-NonInteractive', '-Mode', $script:optionsMode, '-Language', $script:optionsLanguage, '-InstallRoot', (Get-ModeInstallRoot $script:optionsMode), '-DataRoot', (Get-ModeDataRoot $script:optionsMode))
     if ($script:optionsRetention -eq 'delete') {
         $arguments += @('-RemoveData', '-ConfirmRemoveData')
     }

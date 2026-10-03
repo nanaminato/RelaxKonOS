@@ -57,8 +57,10 @@ public sealed class ServerCenterDeploymentClient(IServerCenterSshTransport trans
                  !options.RemotePackagePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ||
                  options.RemotePackagePath.Any(char.IsControl)))
                 throw new ArgumentException("A server ZIP path is required.");
-            if (options.Source == ServerPackageSourceKind.DirectUrl)
-                throw new ArgumentException("Use the official release or choose a ZIP file.");
+            if (options.Source == ServerPackageSourceKind.DirectUrl &&
+                (!Uri.TryCreate(options.PackageUri, UriKind.Absolute, out var uri) || uri.Scheme != "https" ||
+                 !ServerDeploymentInputRules.IsSha256(options.PackageDigest)))
+                throw new ArgumentException("A custom HTTPS URL and SHA-256 are required.");
             if (needsCertificate && (certificate is null || !certificate.CanRead || !certificate.CanSeek))
                 throw new ArgumentException("A readable certificate is required for custom TLS.");
             if (platform == HostPlatformKind.Windows && options.Mode != ServerInstallMode.WindowsSystem ||

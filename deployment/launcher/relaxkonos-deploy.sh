@@ -257,7 +257,7 @@ def request(path):
     root = {'schemaVersion', 'operationId', 'kind', 'options'}
     keys = {'source','network','retention','mode','version','packageUri','stagedPackageName',
             'packageDigest','remotePackagePath','expectedInstallationId','serverPort','fileAccess',
-            'certificateMode','selfSignedIdentities','confirmed'}
+            'certificateMode','selfSignedIdentities','confirmed','language','releaseCatalogBaseUri','installRoot','dataRoot','configRoot','stateRoot','cacheRoot','fileRoots','administratorFileAccess','administratorFileRoots','rootFileAccess','rootFileRoots','dockerAccess','allowUnsupportedSystem'}
     if type(value) is not dict or set(value) - root: raise ValueError('request fields')
     if type(value.get('schemaVersion')) is not int or value['schemaVersion'] != 1: raise ValueError('schema')
     if not isinstance(value.get('operationId'), str) or not re.fullmatch(r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}',value['operationId']): raise ValueError('id')
@@ -268,7 +268,8 @@ def request(path):
         for key in ('source','network'):
             if type(options.get(key)) is not str: raise ValueError('required string')
         for key, item in options.items():
-            if key == 'confirmed': valid = type(item) is bool
+            if key in ('confirmed','dockerAccess','allowUnsupportedSystem'): valid = type(item) is bool
+            elif key in ('fileRoots','administratorFileRoots','rootFileRoots'): valid = item is None or type(item) is list and len(item) <= 128 and all(type(p) is str and p.startswith('/') and not any(ord(c)<32 for c in p) for p in item)
             elif key == 'serverPort': valid = item is None or type(item) is int
             elif key in ('source','network','retention'): valid = type(item) is str
             else: valid = item is None or type(item) is str
@@ -290,11 +291,17 @@ def download(url, path, limit):
             if total > limit: raise ValueError('download too large')
             target.write(chunk)
 
-def extract(source, runtime, kind, destination, archive):
+def extract(source, runtime, kind, destination, archive, request_path=None):
+    options = (request(request_path).get('options') or {}) if request_path else {}
+    if source == 'directUrl':
+        archive = str(destination) + '.zip'
+        download(options['packageUri'], archive, 8*1024**3)
+        with open(archive,'rb') as stream: digest = stream_digest(stream)
+        if digest != options['packageDigest'].lower(): raise ValueError('release checksum mismatch')
     if source == 'officialStable':
         descriptor_path = str(destination) + '.json'
         suffix = ('user-server/' if kind == 'user-server' else '') + runtime + '.json'
-        download('https://downloads.relaxkon.com/relaxkonos/stable/latest/' + suffix, descriptor_path, 1024*1024)
+        download((options.get('releaseCatalogBaseUri') or 'https://downloads.relaxkon.com/relaxkonos/stable/latest').rstrip('/') + '/' + suffix, descriptor_path, 1024*1024)
         descriptor = load(Path(descriptor_path).read_text())
         if descriptor.get('schemaVersion') != 1 or descriptor.get('runtime') != runtime or descriptor.get('packageKind') != kind or not re.fullmatch('[0-9a-fA-F]{64}',descriptor.get('sha256','')): raise ValueError('descriptor')
         archive = str(destination) + '.zip'
@@ -356,7 +363,7 @@ try:
         value = request(args[0]); key = args[1]
         print(json.dumps(value.get(key, (value.get('options') or {}).get(key)),separators=(',',':')),end='')
     elif action == 'extract': extract(*args)
-    elif action == 'recover': recovery_state()
+    elif action == 'recover': recovery_state(Path(args[0]), Path(args[1])) if args else recovery_state()
     else: raise ValueError('unsupported helper action')
 except Exception as error:
     print('Deployment input rejected: ' + str(error),file=sys.stderr)
@@ -393,7 +400,7 @@ assert_request_keys() {
   while IFS= read -r key; do
     [[ -n $key ]] || continue
     case "$key" in
-      schemaVersion|operationId|kind|options|source|network|retention|mode|version|packageUri|stagedPackageName|packageDigest|remotePackagePath|expectedInstallationId|serverPort|fileAccess|certificateMode|selfSignedIdentities|confirmed) ;;
+      schemaVersion|operationId|kind|options|source|network|retention|mode|version|packageUri|stagedPackageName|packageDigest|remotePackagePath|expectedInstallationId|serverPort|fileAccess|certificateMode|selfSignedIdentities|confirmed|language|releaseCatalogBaseUri|installRoot|dataRoot|configRoot|stateRoot|cacheRoot|fileRoots|administratorFileAccess|administratorFileRoots|rootFileAccess|rootFileRoots|dockerAccess|allowUnsupportedSystem) ;;
       *) launcher_fail invalid_request "unsupported request field: $key" ;;
     esac
   done <<< "$keys"
@@ -416,6 +423,17 @@ options_file_access=
 options_certificate_mode=
 options_self_signed_identities=
 options_confirmed=false
+options_language=auto
+options_catalog=
+options_install_root=
+options_data_root=
+options_config_root=
+options_state_root=
+options_cache_root=
+options_administrator_access=
+options_root_access=
+options_docker=false
+options_allow_unsupported=false
 
 parse_request() {
   assert_request_keys
@@ -448,6 +466,26 @@ parse_request() {
   options_file_access=$(json_text fileAccess)
   options_certificate_mode=$(json_text certificateMode)
   options_self_signed_identities=$(json_text selfSignedIdentities)
+  options_language=$(json_text language); options_language=${options_language:-auto}
+  options_catalog=$(json_text releaseCatalogBaseUri)
+  options_install_root=$(json_text installRoot)
+  options_data_root=$(json_text dataRoot)
+  options_config_root=$(json_text configRoot)
+  options_state_root=$(json_text stateRoot)
+  options_cache_root=$(json_text cacheRoot)
+  options_administrator_access=$(json_text administratorFileAccess)
+  options_root_access=$(json_text rootFileAccess)
+  [[ $(json_literal dockerAccess) != true ]] || options_docker=true
+  [[ $(json_literal allowUnsupportedSystem) != true ]] || options_allow_unsupported=true
+  case "$options_language" in auto|zh-CN|en-US|ja-JP) ;; *) launcher_fail invalid_request "unsupported language" ;; esac
+  [[ -z $options_catalog || $options_catalog =~ ^https://[^[:space:]]+$ ]] || launcher_fail invalid_request "HTTPS catalog required"
+  local path scope
+  for path in "$options_install_root" "$options_data_root" "$options_config_root" "$options_state_root" "$options_cache_root"; do
+    [[ -z $path || $path == /* && $path != / && $path != *$'\n'* ]] || launcher_fail invalid_request "absolute non-root directories required"
+  done
+  for scope in "$options_administrator_access" "$options_root_access"; do
+    case "${scope:-unset}" in unset|restricted|full|whitelist) ;; *) launcher_fail invalid_request "unsupported file access scope" ;; esac
+  done
   local confirmed_raw; confirmed_raw=$(json_literal confirmed); [[ $confirmed_raw == true ]] && options_confirmed=true
 
   case "$options_source" in officialStable|localBundle|remoteBundle|directUrl) ;; *) launcher_fail invalid_request "unsupported package source" ;; esac
@@ -481,8 +519,14 @@ parse_request() {
   case "$operation_kind" in
     install|upgrade)
       [[ -n $options_mode ]] || launcher_fail invalid_request "installation mode is required"
+      if [[ $options_mode == linuxUser ]]; then
+        [[ $options_network == loopback && ${options_certificate_mode:-none} == none && $options_docker == false &&
+           -z $options_install_root && ${options_file_access:-restricted} == restricted &&
+           -z $options_administrator_access && -z $options_root_access ]] || launcher_fail invalid_request "system options are unavailable in User Mode"
+      fi
       case "$options_source" in
       officialStable) ;;
+      directUrl) [[ -n $options_package_uri && -n $options_package_digest ]] || launcher_fail invalid_request "HTTPS URL and SHA-256 required" ;;
       localBundle) [[ -n $options_staged_name ]] || launcher_fail invalid_request "a local ZIP name is required" ;;
       remoteBundle) [[ $options_remote_path == /* && $options_remote_path == *.zip ]] || launcher_fail invalid_request "an absolute server ZIP path is required" ;;
       *) launcher_fail invalid_request "unsupported installation source" ;;
@@ -493,10 +537,48 @@ parse_request() {
 }
 
 # --- host facts --------------------------------------------------------------------------------
-user_state_root() { printf '%s/relaxkonos' "${XDG_STATE_HOME:-$HOME/.local/state}"; }
-user_data_root() { printf '%s/relaxkonos' "${XDG_DATA_HOME:-$HOME/.local/share}"; }
-system_data_root() { printf '/var/lib/relaxkonos'; }
-system_install_root() { printf '/opt/relaxkonos'; }
+managed_root() { # mode key override default
+  if [[ -n $3 ]]; then printf '%s' "$3"; return; fi
+  local locator=/var/lib/relaxkonos-deployment-location/roots.json
+  [[ $1 != linuxUser ]] || locator="${XDG_STATE_HOME:-$HOME/.local/state}/relaxkonos-deployment/user-roots.json"
+  python3 - "$locator" "$2" "$4" "$1" <<'ROOTS'
+import json, os, stat, sys
+from pathlib import Path
+path,key,default,mode=sys.argv[1:]
+p=Path(path)
+if p.exists():
+    info=p.lstat()
+    if p.is_symlink() or info.st_uid != (os.getuid() if mode=='linuxUser' else 0) or info.st_mode & 0o022: raise ValueError('unsafe root locator')
+    value=json.loads(p.read_text()).get(key) or default
+else: value=default
+if not value.startswith('/') or value=='/' or any(ord(c)<32 for c in value): raise ValueError('invalid managed root')
+print(value,end='')
+ROOTS
+}
+user_state_root() { managed_root linuxUser stateRoot "$options_state_root" "${XDG_STATE_HOME:-$HOME/.local/state}/relaxkonos"; }
+user_data_root() { managed_root linuxUser dataRoot "$options_data_root" "${XDG_DATA_HOME:-$HOME/.local/share}/relaxkonos"; }
+user_config_root() { managed_root linuxUser configRoot "$options_config_root" "${XDG_CONFIG_HOME:-$HOME/.config}/relaxkonos"; }
+user_cache_root() { managed_root linuxUser cacheRoot "$options_cache_root" "${XDG_CACHE_HOME:-$HOME/.cache}/relaxkonos"; }
+system_data_root() { managed_root linuxSystem dataRoot "$options_data_root" /var/lib/relaxkonos; }
+system_install_root() { managed_root linuxSystem installRoot "$options_install_root" /opt/relaxkonos; }
+save_managed_roots() {
+  local locator json
+  if [[ $options_mode == linuxUser ]]; then
+    locator="${XDG_STATE_HOME:-$HOME/.local/state}/relaxkonos-deployment/user-roots.json"
+    json=$(printf '{"dataRoot":%s,"stateRoot":%s,"configRoot":%s,"cacheRoot":%s}' "$(json_string_or_null "$(user_data_root)")" "$(json_string_or_null "$(user_state_root)")" "$(json_string_or_null "$(user_config_root)")" "$(json_string_or_null "$(user_cache_root)")")
+    (umask 077; printf '%s' "$json" > "$locator")
+  else
+    locator=/var/lib/relaxkonos-deployment-location/roots.json
+    json=$(printf '{"installRoot":%s,"dataRoot":%s}' "$(json_string_or_null "$(system_install_root)")" "$(json_string_or_null "$(system_data_root)")")
+    run_engine python3 -c 'import pathlib,sys,os; p=pathlib.Path(sys.argv[1]); p.parent.mkdir(mode=0o755,exist_ok=True); assert not p.parent.is_symlink() and p.parent.stat().st_uid==0 and p.parent.stat().st_mode & 0o022==0 and not p.is_symlink(); p.write_text(sys.argv[2]); os.chmod(p,0o644)' "$locator" "$json"
+  fi
+}
+write_roots_file() {
+  local token; token=$(json_literal "$1")
+  [[ $token != null ]] || return 0
+  python3 -c 'import json,sys; from pathlib import Path; Path(sys.argv[2]).write_text("\n".join(json.loads(sys.argv[1]))+"\n")' "$token" "$staging_root/$1.txt"
+  chmod 600 "$staging_root/$1.txt"
+}
 
 state_field() { # install-state file key
   local file=$1 key=$2
@@ -682,7 +764,7 @@ require_package() {
   esac
   package_root=$staging_root/package-$operation_id
   local extract_status=0
-  deployment_python extract "$options_source" "$architecture" "$kind" "$package_root" "$archive" >>"$(diagnostics_path)" 2>&1 || extract_status=$?
+  deployment_python extract "$options_source" "$architecture" "$kind" "$package_root" "$archive" "$request_path" >>"$(diagnostics_path)" 2>&1 || extract_status=$?
   case "$extract_status" in
     0) ;;
     73) launcher_fail disk_quota_exceeded "服务器当前 SSH 用户的存储配额已耗尽，请清理本应用的安装暂存文件或调整配额后重试。";;
@@ -771,7 +853,7 @@ preflight_install() {
   case "$options_mode" in
     linuxSystem)
       [[ $EUID -eq 0 || $sudo_requested == true ]] || launcher_fail elevation_required "System Mode requires root or authenticated sudo access"
-      [[ $(sed -nE 's/^ID="?([^"]*)"?$/\1/p' /etc/os-release 2>/dev/null | head -n1) =~ ^(debian|ubuntu)$ ]] || launcher_fail os_unsupported "this Linux distribution is not supported for System Mode"
+      [[ $options_allow_unsupported == true || $(sed -nE 's/^ID="?([^"]*)"?$/\1/p' /etc/os-release 2>/dev/null | head -n1) =~ ^(debian|ubuntu)$ ]] || launcher_fail os_unsupported "this Linux distribution is not supported for System Mode"
       ;;
     linuxUser) [[ $EUID -ne 0 ]] || launcher_fail elevation_required "User Mode must not run as root";;
     *) launcher_fail not_supported "the Windows System Mode engine is not available on a Linux host";;
@@ -779,7 +861,8 @@ preflight_install() {
   [[ -n $options_server_port ]] || return 0
   if (exec 3<>"/dev/tcp/127.0.0.1/$options_server_port") 2>/dev/null; then
     exec 3<&- 3>&- 2>/dev/null || true
-    if [[ $operation_kind == install || $operation_kind == upgrade ]]; then launcher_fail port_unavailable "the requested port is already in use"; fi
+    local installed_url; installed_url=$(state_field "$(mode_install_state "$options_mode")" listenUrl)
+    if [[ $operation_kind == install || $operation_kind == upgrade && $installed_url != *:"$options_server_port" ]]; then launcher_fail port_unavailable "the requested port is already in use"; fi
   fi
 }
 
@@ -833,22 +916,24 @@ action_install_like() {
   case "$options_mode" in
     linuxUser)
       engine=$(user_engine_path)
+      local user_env=(env "RELAXKONOS_PORT=${options_server_port:-$(state_field "$(mode_install_state linuxUser)" listenUrl | sed -nE 's/.*:([0-9]+)$/\1/p')}" "RELAXKONOS_USER_DATA_ROOT=$(user_data_root)" "RELAXKONOS_USER_STATE_ROOT=$(user_state_root)" "RELAXKONOS_USER_CONFIG_ROOT=$(user_config_root)" "RELAXKONOS_USER_CACHE_ROOT=$(user_cache_root)")
       case "$operation_kind" in
-        install) run_engine bash "$engine" install --bundle "$package_root" "${package_check_args[@]}" || status=$? ;;
-        upgrade) run_engine bash "$engine" upgrade --bundle "$package_root" "${package_check_args[@]}" || status=$? ;;
-        repair) run_engine bash "$engine" repair || status=$? ;;
-        rollback) run_engine bash "$engine" rollback || status=$? ;;
+        install) run_engine "${user_env[@]}" bash "$engine" install --port "${options_server_port:-5000}" --bundle "$package_root" "${package_check_args[@]}" || status=$? ;;
+        upgrade) run_engine "${user_env[@]}" bash "$engine" upgrade --bundle "$package_root" "${package_check_args[@]}" || status=$? ;;
+        repair) run_engine "${user_env[@]}" bash "$engine" repair || status=$? ;;
+        rollback) run_engine "${user_env[@]}" bash "$engine" rollback || status=$? ;;
       esac
       ;;
     linuxSystem)
       if [[ $operation_kind == repair && $(state_flag "$(mode_install_state "$options_mode")" installed) != true ]]; then
-        run_engine bash "$staging_root/relaxkonos-deploy.sh" --recover-state || status=$?
+        run_engine bash "$staging_root/relaxkonos-deploy.sh" --recover-state "$(system_install_root)" "$(system_data_root)" || status=$?
       elif [[ $operation_kind == rollback ]]; then
         engine=$(system_engine_path)
-        run_engine bash "$engine" --mode system --action rollback --non-interactive || status=$?
+        run_engine bash "$engine" --mode system --action rollback --non-interactive --install-root "$(system_install_root)" --data-root "$(system_data_root)" || status=$?
       else
         engine=$(system_engine_path)
-        arguments=(bash "$engine" --mode system --non-interactive)
+        arguments=(bash "$engine" --mode system --non-interactive --language "$options_language" --install-root "$(system_install_root)" --data-root "$(system_data_root)")
+        [[ $options_allow_unsupported != true ]] || arguments+=(--allow-unsupported-system)
         # Upgrade and repair continue an existing installation; only install and upgrade consume the
         # staged package, so repair and rollback still work when no package was uploaded.
         case "$operation_kind" in
@@ -857,8 +942,18 @@ action_install_like() {
             case "$options_network" in lan) arguments+=(--network lan);; *) arguments+=(--network local);; esac
             [[ -n $options_server_port ]] && arguments+=(--server-port "$options_server_port")
             if [[ -n $options_file_access ]]; then
-              arguments+=(--file-access "$options_file_access" --administrator-file-access "$options_file_access" --root-file-access "$options_file_access")
+              arguments+=(--file-access "$options_file_access")
             fi
+            [[ -z $options_administrator_access ]] || arguments+=(--administrator-file-access "$options_administrator_access")
+            [[ -z $options_root_access ]] || arguments+=(--root-file-access "$options_root_access")
+            [[ $options_docker != true ]] || arguments+=(--docker-access)
+            local roots_key flag scope
+            for roots_key in fileRoots administratorFileRoots rootFileRoots; do
+              case "$roots_key" in fileRoots) flag=--file-roots;; administratorFileRoots) flag=--administrator-file-roots;; rootFileRoots) flag=--root-file-roots;; esac
+              write_roots_file "$roots_key"
+              [[ ! -f $staging_root/$roots_key.txt ]] || arguments+=("$flag" "$staging_root/$roots_key.txt")
+            done
+            if [[ $options_certificate_mode == none ]]; then arguments+=(--certificate-mode none); fi
             if [[ $options_certificate_mode == custom ]]; then
               [[ -f $staging_root/certificate.pfx && -f $staging_root/certificate-password.txt ]] || launcher_fail invalid_request "custom certificate files are unavailable"
               arguments+=(--certificate-mode custom --certificate-path "$staging_root/certificate.pfx" --certificate-password-file "$staging_root/certificate-password.txt")
@@ -888,6 +983,7 @@ action_install_like() {
     exit 1
   fi
 
+  save_managed_roots
   local file installed healthy
   file=$(mode_install_state "$options_mode")
   installed=$(state_flag "$file" installed); [[ -n $installed ]] || installed=false
@@ -920,20 +1016,21 @@ action_uninstall() {
   case "$options_mode" in
     linuxUser)
       engine=$(user_engine_path)
+      local user_env=(env "RELAXKONOS_USER_DATA_ROOT=$(user_data_root)" "RELAXKONOS_USER_STATE_ROOT=$(user_state_root)" "RELAXKONOS_USER_CONFIG_ROOT=$(user_config_root)" "RELAXKONOS_USER_CACHE_ROOT=$(user_cache_root)")
       if [[ $options_retention == delete ]]; then
-        run_engine bash "$engine" uninstall --delete-data --confirm-delete-data || status=$?
+        run_engine "${user_env[@]}" bash "$engine" uninstall --delete-data --confirm-delete-data || status=$?
         retained=false
       else
-        run_engine bash "$engine" uninstall --retain-data || status=$?
+        run_engine "${user_env[@]}" bash "$engine" uninstall --retain-data || status=$?
       fi
       ;;
     linuxSystem)
       engine=$(system_uninstall_engine_path)
       if [[ $options_retention == delete ]]; then
-        run_engine bash "$engine" --non-interactive --remove-data || status=$?
+        run_engine bash "$engine" --install-root "$(system_install_root)" --data-root "$(system_data_root)" --non-interactive --remove-data || status=$?
         retained=false
       else
-        run_engine bash "$engine" --non-interactive || status=$?
+        run_engine bash "$engine" --install-root "$(system_install_root)" --data-root "$(system_data_root)" --non-interactive || status=$?
       fi
       ;;
   esac
@@ -984,7 +1081,7 @@ PY
     exit $?
     ;;
   --recover-state)
-    deployment_python recover
+    deployment_python recover "${2:-/opt/relaxkonos}" "${3:-/var/lib/relaxkonos}"
     exit $?
     ;;
   --diagnostics)

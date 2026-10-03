@@ -20,6 +20,11 @@
                             <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
                         </ComboBox.ItemTemplate>
                     </ComboBox>
+                    <StackPanel Spacing="8" IsVisible="{Binding IsDirectUrl}">
+                        <TextBlock Text="{Binding PackageUriLabel}" /><TextBox Text="{Binding PackageUri, Mode=TwoWay}" />
+                        <TextBlock Text="{Binding PackageDigestLabel}" /><TextBox Text="{Binding PackageDigest, Mode=TwoWay}" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding ReleaseCatalogLabel}" /><TextBox Text="{Binding ReleaseCatalogBaseUri, Mode=TwoWay}" />
                     <StackPanel Spacing="8" IsVisible="{Binding IsLocalBundle}">
                         <TextBlock Text="{Binding LocalBundleText}" />
                         <WrapPanel ItemSpacing="10">
@@ -49,20 +54,42 @@
                     </ComboBox>
                     <TextBox IsVisible="{Binding ShowsSudoPassword}" Text="{Binding SudoPassword, Mode=TwoWay}" PasswordChar="●" PlaceholderText="{Binding SudoPasswordText}" />
                     <TextBlock Text="{Binding FileAccessText}" />
-                    <ComboBox ItemsSource="{Binding FileAccesses}" SelectedItem="{Binding SelectedFileAccess}" HorizontalAlignment="Left" MinWidth="320">
+                    <ComboBox IsVisible="{Binding IsSystemMode}" ItemsSource="{Binding FileAccesses}" SelectedItem="{Binding SelectedFileAccess}" HorizontalAlignment="Left" MinWidth="320">
                         <ComboBox.ItemTemplate>
                             <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
                         </ComboBox.ItemTemplate>
                     </ComboBox>
+                    <TextBlock Text="{Binding AdvancedLabel}" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding ServerPortLabel}" /><TextBox Text="{Binding ServerPortText, Mode=TwoWay}" />
+                    <TextBlock Text="{Binding DataRootLabel}" /><TextBox Text="{Binding DataRoot, Mode=TwoWay}" />
+                    <StackPanel IsVisible="{Binding IsSystemMode}" Spacing="8">
+                        <TextBlock Text="{Binding InstallRootLabel}" /><TextBox Text="{Binding InstallRoot, Mode=TwoWay}" />
+                        <TextBox IsVisible="{Binding IsFileWhitelist}" PlaceholderText="{Binding FileRootsLabel}" Text="{Binding FileRoots, Mode=TwoWay}" AcceptsReturn="True" MinHeight="80" />
+                    </StackPanel>
+                    <StackPanel IsVisible="{Binding IsUserMode}" Spacing="8">
+                        <TextBlock Text="{Binding ConfigRootLabel}" /><TextBox Text="{Binding ConfigRoot, Mode=TwoWay}" />
+                        <TextBlock Text="{Binding StateRootLabel}" /><TextBox Text="{Binding StateRoot, Mode=TwoWay}" />
+                        <TextBlock Text="{Binding CacheRootLabel}" /><TextBox Text="{Binding CacheRoot, Mode=TwoWay}" />
+                    </StackPanel>
+                    <StackPanel IsVisible="{Binding IsLinuxSystemMode}" Spacing="8">
+                        <TextBlock Text="{Binding AdministratorAccessLabel}" />
+                        <ComboBox IsVisible="{Binding IsSystemMode}" ItemsSource="{Binding FileAccesses}" SelectedItem="{Binding SelectedAdministratorFileAccess}"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+                        <TextBox IsVisible="{Binding IsAdministratorWhitelist}" PlaceholderText="{Binding FileRootsLabel}" Text="{Binding AdministratorFileRoots, Mode=TwoWay}" AcceptsReturn="True" MinHeight="80" />
+                        <TextBlock Text="{Binding RootAccessLabel}" />
+                        <ComboBox IsVisible="{Binding IsSystemMode}" ItemsSource="{Binding FileAccesses}" SelectedItem="{Binding SelectedRootFileAccess}"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+                        <TextBox IsVisible="{Binding IsRootWhitelist}" PlaceholderText="{Binding FileRootsLabel}" Text="{Binding RootFileRoots, Mode=TwoWay}" AcceptsReturn="True" MinHeight="80" />
+                        <CheckBox Content="{Binding DockerAccessLabel}" IsChecked="{Binding DockerAccess}" />
+                    </StackPanel>
+                    <CheckBox IsVisible="{Binding IsLinuxHost}" Content="{Binding AllowUnsupportedLabel}" IsChecked="{Binding AllowUnsupportedSystem}" />
                     <TextBlock Text="{Binding NetworkText}" />
-                    <ComboBox ItemsSource="{Binding Networks}" SelectedItem="{Binding SelectedNetwork}" HorizontalAlignment="Left" MinWidth="320">
+                    <ComboBox IsVisible="{Binding IsSystemMode}" ItemsSource="{Binding Networks}" SelectedItem="{Binding SelectedNetwork}" HorizontalAlignment="Left" MinWidth="320">
                         <ComboBox.ItemTemplate>
                             <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
                         </ComboBox.ItemTemplate>
                     </ComboBox>
                     <Button Content="{Binding ShowHostAddressesText}" Command="{Binding ShowHostAddressesCommand}" HorizontalAlignment="Left" />
                     <TextBlock Text="{Binding CertificateText}" />
-                    <ComboBox ItemsSource="{Binding CertificateModes}" SelectedItem="{Binding SelectedCertificateMode}" HorizontalAlignment="Left" MinWidth="320">
+                    <ComboBox IsVisible="{Binding IsSystemMode}" ItemsSource="{Binding CertificateModes}" SelectedItem="{Binding SelectedCertificateMode}" HorizontalAlignment="Left" MinWidth="320">
                         <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate>
                     </ComboBox>
                     <StackPanel Spacing="8" IsVisible="{Binding IsCustomCertificate}">
@@ -72,7 +99,7 @@
                         </ComboBox>
                         <WrapPanel ItemSpacing="10"><Button Content="{Binding ChooseCertificateText}" Click="ChooseCertificate_Click" /><TextBlock Text="{Binding CertificateFileName}" VerticalAlignment="Center" /></WrapPanel>
                         <WrapPanel ItemSpacing="10" IsVisible="{Binding IsPemCertificate}"><Button Content="{Binding ChoosePrivateKeyText}" Click="ChoosePrivateKey_Click" /><TextBlock Text="{Binding CertificatePrivateKeyFileName}" VerticalAlignment="Center" /></WrapPanel>
-                        <TextBox Text="{Binding CertificatePassword, Mode=TwoWay}" PasswordChar="●" Watermark="Certificate password (optional)" />
+                        <TextBox Text="{Binding CertificatePassword, Mode=TwoWay}" PasswordChar="●" PlaceholderText="Certificate password (optional)" />
                     </StackPanel>
                     <StackPanel Spacing="6" IsVisible="{Binding IsSelfSignedCertificate}">
                         <TextBlock Text="{Binding SelfSignedNamesText}" />
@@ -83,6 +110,7 @@
                 <StackPanel Spacing="12" IsVisible="{Binding IsReviewStep}">
                     <TextBlock Text="{Binding SourceChecksText}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
                     <TextBlock Text="{Binding ReviewStepTitle}" FontSize="17" FontWeight="SemiBold" />
+                    <SelectableTextBlock Text="{Binding AdvancedReviewText}" TextWrapping="Wrap" />
                     <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="14" RowSpacing="10">
                         <TextBlock Text="{Binding ServerAndUserText}" Foreground="{DynamicResource TextSecondaryBrush}" />
                         <TextBlock Grid.Column="1" Text="{Binding TargetText}" TextWrapping="Wrap" />

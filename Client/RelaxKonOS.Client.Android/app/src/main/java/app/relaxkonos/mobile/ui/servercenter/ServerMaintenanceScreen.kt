@@ -69,7 +69,8 @@ internal class ServerMaintenanceViewModel(application: Application) : AndroidVie
                         if (kind != ServerDeploymentKind.Status) {
                             check(before.installed && ServerInstallationId.isValid(before.installationId))
                             action(kind, maintenanceOptions(kind, mode, requireNotNull(before.installationId), purge,
-                                repairCertificate, certificateIdentities), password)
+                                repairCertificate, certificateIdentities).copy(
+                                    allowUnsupportedSystem = mode == ServerInstallMode.LinuxSystem && !probe.osSupported), password)
                         }
                         val after = if (kind == ServerDeploymentKind.Status) before else requireNotNull(action(ServerDeploymentKind.Status, options, password).snapshot)
                         container.serverCenter.recordVerifiedSnapshot(hostId, after)
@@ -144,7 +145,7 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
                     if (snapshot.installed) {
                         Button(onClick = { page = 2 }, enabled = !state.busy) { Text(stringResource(R.string.server_maintenance_actions)) }
                         OutlinedButton(onClick = { page = 1 }) { Text(stringResource(R.string.server_maintenance_environment)) }
-                    } else Button(onClick = { wizard = true }, enabled = !state.busy && state.probe?.osSupported == true) { Text(stringResource(R.string.ssh_workspace_deploy_install)) }
+                    } else Button(onClick = { wizard = true }, enabled = !state.busy && state.probe?.runtimeIdentifier != null) { Text(stringResource(R.string.ssh_workspace_deploy_install)) }
                 }
                 if (page == 1) state.probe?.let {
                     Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
@@ -183,7 +184,7 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
                         Text(stringResource(R.string.server_maintenance_repair))
                     }
                     OutlinedButton(onClick = { purge = false; uninstall = true }, enabled = !state.busy) { Text(stringResource(R.string.server_maintenance_uninstall)) }
-                } else if (page == 2) Button(onClick = { wizard = true }, enabled = !state.busy && state.probe?.osSupported == true) { Text(stringResource(R.string.ssh_workspace_deploy_install)) }
+                } else if (page == 2) Button(onClick = { wizard = true }, enabled = !state.busy && state.probe?.runtimeIdentifier != null) { Text(stringResource(R.string.ssh_workspace_deploy_install)) }
             }
             if (state.complete) Text(stringResource(R.string.server_maintenance_complete))
             if (page == 3 && host != null) ServerInstallRecoveryPanel(host.hostId,

@@ -2672,4 +2672,22 @@
     <string name="mihomo_system_proxy_restore">システムプロキシを無効化して復元</string>
     <string name="editor_format">ファイル形式</string>
     <string name="editor_search_replace">検索と置換</string>
+    <string name="server_install_advanced">詳細インストール設定</string>
+    <string name="server_install_server_port">サーバーポート（1–65535）</string>
+    <string name="server_install_package_uri">リリース ZIP の HTTPS URL</string>
+    <string name="server_install_package_digest">リリース ZIP の SHA-256</string>
+    <string name="server_install_release_catalog">リリースカタログ HTTPS URL（空欄で公式）</string>
+    <string name="server_install_install_root">プログラムディレクトリ（空欄で既定）</string>
+    <string name="server_install_data_root">データディレクトリ（空欄で既定）</string>
+    <string name="server_install_config_root">設定ディレクトリ（ユーザーモード）</string>
+    <string name="server_install_state_root">状態ディレクトリ（ユーザーモード）</string>
+    <string name="server_install_cache_root">キャッシュディレクトリ（ユーザーモード）</string>
+    <string name="server_install_file_roots">許可する絶対ディレクトリ（1 行に 1 件）</string>
+    <string name="server_install_administrator_access">管理者のファイルアクセス範囲</string>
+    <string name="server_install_root_access">root のファイルアクセス範囲</string>
+    <string name="server_install_docker_access">Docker アクセスを許可（Linux システムモード）</string>
+    <string name="server_install_allow_unsupported">対応一覧外の Linux システムを許可</string>
+    <string name="server_install_options_invalid">ポート、HTTPS URL、SHA-256、許可ディレクトリを確認してください。</string>
+    <string name="server_install_source_url">カスタム HTTPS ダウンロード</string>
+    <string name="server_install_file_access_whitelist">許可ディレクトリ</string>
 </resources>

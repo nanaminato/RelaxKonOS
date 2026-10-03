@@ -24,18 +24,21 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         [
             new(ServerPackageSourceKind.OfficialStable, Text("server_center.wizard.source_official", "Official release")),
             new(ServerPackageSourceKind.LocalBundle, Text("server_center.wizard.source_local", "Local release bundle")),
-            new(ServerPackageSourceKind.RemoteBundle, Text("server_center.wizard.source_server", "Bundle on this SSH server"))
+            new(ServerPackageSourceKind.RemoteBundle, Text("server_center.wizard.source_server", "Bundle on this SSH server")),
+            new(ServerPackageSourceKind.DirectUrl, Text("server_center.wizard.source_url", "Custom HTTPS download"))
         ];
         SelectedSource = Sources[0];
 
         Modes = BuildModes(serverCenter.SelectedPlatform?.Platform);
-        SelectedMode = Modes[0];
         FileAccesses =
         [
             new(ServerFileAccessScope.Restricted, Text("server_center.wizard.file_access_restricted", "RelaxKonOS data only (recommended)")),
+            new(ServerFileAccessScope.Whitelist, Text("server_center.wizard.file_access_whitelist", "Selected directories")),
             new(ServerFileAccessScope.Full, Text("server_center.wizard.file_access_full", "All local files"))
         ];
         SelectedFileAccess = FileAccesses[0];
+        SelectedAdministratorFileAccess = FileAccesses[0];
+        SelectedRootFileAccess = FileAccesses[0];
         Networks =
         [
             new(ServerNetworkProfile.Loopback, Text("server_center.wizard.network_loopback", "Local only (recommended)")),
@@ -48,8 +51,11 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
             new(ServerCertificateMode.Custom, Text("server_center.wizard.certificate_custom", "Use a custom certificate")),
             new(ServerCertificateMode.SelfSigned, Text("server_center.wizard.certificate_self_signed", "Generate a self-signed certificate"))
         ];
-        SelectedCertificateMode = CertificateModes[0];
+        var installedUrl = serverCenter.SelectedHost?.LastVerified?.ListenUrl;
+        SelectedCertificateMode = CertificateModes[installedUrl?.StartsWith("https://", StringComparison.OrdinalIgnoreCase) == true ? 2 : 0];
+        if (Uri.TryCreate(installedUrl, UriKind.Absolute, out var installedUri)) ServerPortText = installedUri.Port.ToString();
         SelectedCertificateFormat = CertificateFormats[0];
+        SelectedMode = Modes.FirstOrDefault(option => option.Mode == serverCenter.SelectedHost?.LastVerified?.Mode) ?? Modes[0];
     }
 
     public IReadOnlyList<InstallationSourceOption> Sources { get; }
@@ -80,6 +86,33 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     [ObservableProperty] private string _errorMessage = string.Empty;
     [ObservableProperty] private bool _isBusy;
 
+    [ObservableProperty] private string _serverPortText = "5000";
+    [ObservableProperty] private string? _packageUri;
+    [ObservableProperty] private string? _packageDigest;
+    [ObservableProperty] private string? _releaseCatalogBaseUri;
+    [ObservableProperty] private string? _installRoot;
+    [ObservableProperty] private string? _dataRoot;
+    [ObservableProperty] private string? _configRoot;
+    [ObservableProperty] private string? _stateRoot;
+    [ObservableProperty] private string? _cacheRoot;
+    [ObservableProperty] private string? _fileRoots;
+    [ObservableProperty] private string? _administratorFileRoots;
+    [ObservableProperty] private string? _rootFileRoots;
+    [ObservableProperty] private FileAccessOption? _selectedAdministratorFileAccess;
+    [ObservableProperty] private FileAccessOption? _selectedRootFileAccess;
+    [ObservableProperty] private bool _dockerAccess;
+    [ObservableProperty] private bool _allowUnsupportedSystem;
+    public bool IsDirectUrl => SelectedSource?.Source == ServerPackageSourceKind.DirectUrl;
+    public bool IsSystemMode => SelectedMode?.Mode != ServerInstallMode.LinuxUser;
+    public bool IsUserMode => SelectedMode?.Mode == ServerInstallMode.LinuxUser;
+    public bool IsLinuxSystemMode => SelectedMode?.Mode == ServerInstallMode.LinuxSystem;
+    public bool IsLinuxHost => _serverCenter.SelectedPlatform?.Platform == HostPlatformKind.Linux;
+    public bool IsFileWhitelist => SelectedFileAccess?.Scope == ServerFileAccessScope.Whitelist;
+    public bool IsAdministratorWhitelist => SelectedAdministratorFileAccess?.Scope == ServerFileAccessScope.Whitelist;
+    public bool IsRootWhitelist => SelectedRootFileAccess?.Scope == ServerFileAccessScope.Whitelist;
+    private static string? Optional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    private static IReadOnlyList<string>? Roots(string? value) => Optional(value) is null ? null : value!.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
     public bool IsSourceStep => StepIndex == 0;
     public bool IsModeStep => StepIndex == 1;
     public bool IsReviewStep => StepIndex == 2;
@@ -91,7 +124,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     public bool HasBundle => IsRemoteBundle ? !string.IsNullOrWhiteSpace(RemoteBundlePath) : !string.IsNullOrWhiteSpace(LocalBundlePath);
     public string SelectedSourceText => (IsLocalBundle || IsRemoteBundle) && HasBundle
         ? $"{SelectedSource?.Label} · {BundleFileName}"
-        : SelectedSource?.Label ?? string.Empty;
+        : IsDirectUrl ? $"{SelectedSource?.Label} · {PackageUri}" : SelectedSource?.Label ?? string.Empty;
     public string SelectedModeText => SelectedMode?.Label ?? string.Empty;
     public bool ShowsSudoPassword => SelectedMode?.Mode == ServerInstallMode.LinuxSystem;
     public string SudoPasswordText => Text("server_center.wizard.sudo_password", "sudo password (leave blank to use the SSH password)");
@@ -99,6 +132,32 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         ? $"{target.DisplayName} · {target.SshUserName}"
         : string.Empty;
 
+    public string AdvancedLabel => Text("server_center.wizard.advanced", "Advanced installation options");
+    public string ServerPortLabel => Text("server_center.wizard.server_port", "Server port (1–65535)");
+    public string PackageUriLabel => Text("server_center.wizard.package_uri", "Release ZIP HTTPS URL");
+    public string PackageDigestLabel => Text("server_center.wizard.package_digest", "Release ZIP SHA-256");
+    public string ReleaseCatalogLabel => Text("server_center.wizard.release_catalog", "Release catalog HTTPS base (blank = official)");
+    public string InstallRootLabel => Text("server_center.wizard.install_root", "Program directory (blank = default)");
+    public string DataRootLabel => Text("server_center.wizard.data_root", "Data directory (blank = default)");
+    public string ConfigRootLabel => Text("server_center.wizard.config_root", "Configuration directory (User Mode)");
+    public string StateRootLabel => Text("server_center.wizard.state_root", "State directory (User Mode)");
+    public string CacheRootLabel => Text("server_center.wizard.cache_root", "Cache directory (User Mode)");
+    public string FileRootsLabel => Text("server_center.wizard.file_roots", "Allowed absolute directories, one per line");
+    public string AdministratorAccessLabel => Text("server_center.wizard.administrator_access", "Administrator file access");
+    public string RootAccessLabel => Text("server_center.wizard.root_access", "Root file access");
+    public string DockerAccessLabel => Text("server_center.wizard.docker_access", "Authorize server access to Docker (Linux System)");
+    public string AllowUnsupportedLabel => Text("server_center.wizard.allow_unsupported", "Allow a Linux system outside the supported matrix");
+    public string OptionsInvalidLabel => Text("server_center.wizard.options_invalid", "Check the port, HTTPS URL, SHA-256 and whitelist directories.");
+    public string SourceUrlLabel => Text("server_center.wizard.source_url", "Custom HTTPS download");
+    public string WhitelistLabel => Text("server_center.wizard.file_access_whitelist", "Selected directories");
+    public string AdvancedReviewText => string.Join("\n", new[] {
+        $"{ServerPortLabel}: {ServerPortText}", $"{DataRootLabel}: {DataRoot}",
+        IsSystemMode ? $"{InstallRootLabel}: {InstallRoot}" : $"{ConfigRootLabel}: {ConfigRoot}\n{StateRootLabel}: {StateRoot}\n{CacheRootLabel}: {CacheRoot}",
+        IsFileWhitelist ? $"{FileRootsLabel}: {FileRoots}" : string.Empty,
+        IsLinuxSystemMode ? $"{AdministratorAccessLabel}: {SelectedAdministratorFileAccess?.Label}\n{AdministratorFileRoots}\n{RootAccessLabel}: {SelectedRootFileAccess?.Label}\n{RootFileRoots}\n{DockerAccessLabel}: {DockerAccess}" : string.Empty,
+        IsLinuxHost ? $"{AllowUnsupportedLabel}: {AllowUnsupportedSystem}" : string.Empty,
+        $"{ReleaseCatalogLabel}: {ReleaseCatalogBaseUri}", IsDirectUrl ? $"SHA-256: {PackageDigest}" : string.Empty
+    }.Where(value => !string.IsNullOrWhiteSpace(value)));
     public string Title => Text("server_center.wizard.title", "Install RelaxKonOS");
     public string InstallingText => Text("server_center.wizard.installing", "Installing…");
     public string SourceStepTitle => Text("server_center.wizard.source_title", "Choose the release source");
@@ -177,6 +236,11 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
             ErrorMessage = BundleRequiredText;
             return;
         }
+        if (IsSourceStep && IsDirectUrl && (!Uri.TryCreate(PackageUri, UriKind.Absolute, out var uri) || uri.Scheme != "https" || !ServerDeploymentInputRules.IsSha256(PackageDigest))) { ErrorMessage = OptionsInvalidLabel; return; }
+        if (IsModeStep && (!int.TryParse(ServerPortText, out var port) || port is < 1 or > 65535 ||
+            IsSystemMode && (IsFileWhitelist && Roots(FileRoots) is not { Count: > 0 } ||
+            IsLinuxSystemMode && (IsAdministratorWhitelist && Roots(AdministratorFileRoots) is not { Count: > 0 } || IsRootWhitelist && Roots(RootFileRoots) is not { Count: > 0 })))) { ErrorMessage = OptionsInvalidLabel; return; }
+        ErrorMessage = string.Empty;
         StepIndex++;
     }
 
@@ -224,7 +288,11 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
                 CertificatePrivateKeyPath,
                 CertificatePassword,
                 SelfSignedIdentities,
-                SudoPassword));
+                SudoPassword, int.Parse(ServerPortText), Optional(PackageUri), Optional(PackageDigest), Optional(ReleaseCatalogBaseUri),
+                Optional(InstallRoot), Optional(DataRoot), Optional(ConfigRoot), Optional(StateRoot), Optional(CacheRoot),
+                IsFileWhitelist ? Roots(FileRoots) : null, SelectedAdministratorFileAccess?.Scope,
+                IsAdministratorWhitelist ? Roots(AdministratorFileRoots) : null, SelectedRootFileAccess?.Scope,
+                IsRootWhitelist ? Roots(RootFileRoots) : null, DockerAccess, AllowUnsupportedSystem));
             if (succeeded)
                 _close();
             else
@@ -248,6 +316,8 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         OnPropertyChanged(nameof(IsModeStep));
         OnPropertyChanged(nameof(IsReviewStep));
         OnPropertyChanged(nameof(StepCounter));
+        OnPropertyChanged(nameof(AdvancedReviewText));
+        OnPropertyChanged(nameof(SelectedSourceText));
         MoveNextCommand.NotifyCanExecuteChanged();
         InstallCommand.NotifyCanExecuteChanged();
     }
@@ -257,6 +327,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         ErrorMessage = string.Empty;
         OnPropertyChanged(nameof(SelectedSourceText));
         OnPropertyChanged(nameof(IsLocalBundle));
+        OnPropertyChanged(nameof(IsDirectUrl));
         OnPropertyChanged(nameof(IsRemoteBundle));
         OnPropertyChanged(nameof(BundleFileName));
         OnPropertyChanged(nameof(HasBundle));
@@ -266,8 +337,13 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(SelectedModeText));
         OnPropertyChanged(nameof(ShowsSudoPassword));
+        OnPropertyChanged(nameof(IsSystemMode)); OnPropertyChanged(nameof(IsUserMode)); OnPropertyChanged(nameof(IsLinuxSystemMode));
+        if (value?.Mode == ServerInstallMode.LinuxUser) { SelectedNetwork = Networks[0]; SelectedCertificateMode = CertificateModes[0]; SelectedFileAccess = FileAccesses[0]; }
     }
 
+    partial void OnSelectedFileAccessChanged(FileAccessOption? value) => OnPropertyChanged(nameof(IsFileWhitelist));
+    partial void OnSelectedAdministratorFileAccessChanged(FileAccessOption? value) => OnPropertyChanged(nameof(IsAdministratorWhitelist));
+    partial void OnSelectedRootFileAccessChanged(FileAccessOption? value) => OnPropertyChanged(nameof(IsRootWhitelist));
     partial void OnSelectedCertificateModeChanged(CertificateModeOption? value)
     {
         OnPropertyChanged(nameof(IsCustomCertificate));

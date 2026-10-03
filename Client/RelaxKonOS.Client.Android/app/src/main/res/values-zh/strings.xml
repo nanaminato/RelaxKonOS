@@ -2671,4 +2671,22 @@
     <string name="mihomo_system_proxy_restore">关闭并恢复系统代理</string>
     <string name="editor_format">文件格式</string>
     <string name="editor_search_replace">查找替换</string>
+    <string name="server_install_advanced">高级安装选项</string>
+    <string name="server_install_server_port">服务端端口（1–65535）</string>
+    <string name="server_install_package_uri">发布 ZIP 的 HTTPS 地址</string>
+    <string name="server_install_package_digest">发布 ZIP 的 SHA-256</string>
+    <string name="server_install_release_catalog">发布目录 HTTPS 地址（留空使用官网）</string>
+    <string name="server_install_install_root">程序目录（留空使用默认值）</string>
+    <string name="server_install_data_root">数据目录（留空使用默认值）</string>
+    <string name="server_install_config_root">配置目录（用户模式）</string>
+    <string name="server_install_state_root">状态目录（用户模式）</string>
+    <string name="server_install_cache_root">缓存目录（用户模式）</string>
+    <string name="server_install_file_roots">允许的绝对目录，每行一个</string>
+    <string name="server_install_administrator_access">管理员文件访问范围</string>
+    <string name="server_install_root_access">root 文件访问范围</string>
+    <string name="server_install_docker_access">授权服务端访问 Docker（Linux 系统模式）</string>
+    <string name="server_install_allow_unsupported">允许使用支持列表之外的 Linux 系统</string>
+    <string name="server_install_options_invalid">请检查端口、HTTPS 地址、SHA-256 和白名单目录。</string>
+    <string name="server_install_source_url">自定义 HTTPS 下载</string>
+    <string name="server_install_file_access_whitelist">指定目录白名单</string>
 </resources>

@@ -2710,4 +2710,22 @@
     <string name="mihomo_system_proxy_restore">Disable and restore system proxy</string>
     <string name="editor_format">File format</string>
     <string name="editor_search_replace">Find and replace</string>
+    <string name="server_install_advanced">Advanced installation options</string>
+    <string name="server_install_server_port">Server port (1–65535)</string>
+    <string name="server_install_package_uri">Release ZIP HTTPS URL</string>
+    <string name="server_install_package_digest">Release ZIP SHA-256</string>
+    <string name="server_install_release_catalog">Release catalog HTTPS base (blank = official)</string>
+    <string name="server_install_install_root">Program directory (blank = default)</string>
+    <string name="server_install_data_root">Data directory (blank = default)</string>
+    <string name="server_install_config_root">Configuration directory (User Mode)</string>
+    <string name="server_install_state_root">State directory (User Mode)</string>
+    <string name="server_install_cache_root">Cache directory (User Mode)</string>
+    <string name="server_install_file_roots">Allowed absolute directories, one per line</string>
+    <string name="server_install_administrator_access">Administrator file access</string>
+    <string name="server_install_root_access">Root file access</string>
+    <string name="server_install_docker_access">Authorize server access to Docker (Linux System)</string>
+    <string name="server_install_allow_unsupported">Allow a Linux system outside the supported matrix</string>
+    <string name="server_install_options_invalid">Check the port, HTTPS URL, SHA-256 and whitelist directories.</string>
+    <string name="server_install_source_url">Custom HTTPS download</string>
+    <string name="server_install_file_access_whitelist">Selected directories</string>
 </resources>
