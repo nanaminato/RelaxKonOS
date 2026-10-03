@@ -132,8 +132,22 @@ internal sealed class FileBrowserPresentation
         End();
         _mode = mode;
         var selection = _details.SelectedItems.Cast<object>().ToArray();
-        Items.ItemsPanel = new FuncTemplate<Panel?>(() => mode == ExplorerViewMode.List
-            ? new StackPanel() : new WrapPanel { Orientation = Orientation.Horizontal });
+        var list = mode == ExplorerViewMode.List;
+        Items.SetValue(ScrollViewer.HorizontalScrollBarVisibilityProperty, list ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled);
+        Items.SetValue(ScrollViewer.VerticalScrollBarVisibilityProperty, list ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto);
+        Items.Styles.Clear();
+        Items.Styles.Add(new Style(selector => selector.OfType<ListBoxItem>())
+        {
+            Setters =
+            {
+                new Setter(Layoutable.HorizontalAlignmentProperty, HorizontalAlignment.Left),
+                new Setter(TemplatedControl.PaddingProperty, list ? new Thickness(4, 1) : new Thickness(12, 6)),
+            },
+        });
+        Items.ItemsPanel = new FuncTemplate<Panel?>(() => new WrapPanel
+        {
+            Orientation = list ? Orientation.Vertical : Orientation.Horizontal,
+        });
         // Reuse the actual name-cell template, including rename editors, cut opacity and link icons.
         var template = ((DataGridTemplateColumn)_details.Columns[0]).CellTemplate!;
         Items.ItemTemplate = new FuncDataTemplate<object>((entry, _) =>
@@ -142,16 +156,37 @@ internal sealed class FileBrowserPresentation
             content.DataContext = entry;
             var large = mode == ExplorerViewMode.LargeIcons;
             content.Width = mode == ExplorerViewMode.List ? 260 : large ? 128 : 210;
+            if (list)
+            {
+                content.Height = 24;
+                content.Margin = new Thickness(0);
+            }
             if (large && content is Grid grid)
             {
+                // Give every icon the same tile and label area, independent of name length.
+                grid.Margin = new Thickness(0);
+                grid.Height = 104;
+                grid.VerticalAlignment = VerticalAlignment.Top;
+                grid.ColumnSpacing = 0;
+                grid.RowSpacing = 4;
                 grid.ColumnDefinitions = new ColumnDefinitions("*");
-                grid.RowDefinitions = new RowDefinitions("Auto,Auto");
+                grid.RowDefinitions = new RowDefinitions("64,*");
                 foreach (var child in grid.Children)
                 {
                     Grid.SetColumn(child, 0);
                     Grid.SetRow(child, child is ExplorerIcon ? 0 : 1);
                     child.HorizontalAlignment = HorizontalAlignment.Center;
-                    if (child is ExplorerIcon) child.Width = child.Height = 48;
+                    if (child is ExplorerIcon)
+                    {
+                        child.Width = child.Height = 48;
+                        child.VerticalAlignment = VerticalAlignment.Center;
+                    }
+                    else
+                    {
+                        child.HorizontalAlignment = HorizontalAlignment.Stretch;
+                        child.VerticalAlignment = VerticalAlignment.Top;
+                        child.Margin = new Thickness(4, 0);
+                    }
                     if (child is TextBlock text) { text.MaxLines = 2; text.TextWrapping = TextWrapping.Wrap; text.TextAlignment = TextAlignment.Center; }
                 }
             }
@@ -218,17 +253,22 @@ internal sealed class FileBrowserPresentation
         var scroller = active.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
         if (scroller is not null)
         {
-            var step = point.Y < 24 ? -12 : point.Y > _host.Bounds.Height - 24 ? 12 : 0;
+            var horizontal = _mode == ExplorerViewMode.List;
+            var edge = horizontal ? point.X : point.Y;
+            var length = horizontal ? _host.Bounds.Width : _host.Bounds.Height;
+            var step = edge < 24 ? -12 : edge > length - 24 ? 12 : 0;
             if (step != 0)
             {
-                var old = scroller.Offset.Y;
-                scroller.Offset = new Vector(scroller.Offset.X, Math.Clamp(old + step, 0, Math.Max(0, scroller.Extent.Height - scroller.Viewport.Height)));
-                var delta = scroller.Offset.Y - old;
-                _start = new Point(start.X, start.Y - delta);
+                var old = scroller.Offset;
+                scroller.Offset = horizontal
+                    ? new Vector(Math.Clamp(old.X + step, 0, Math.Max(0, scroller.Extent.Width - scroller.Viewport.Width)), old.Y)
+                    : new Vector(old.X, Math.Clamp(old.Y + step, 0, Math.Max(0, scroller.Extent.Height - scroller.Viewport.Height)));
+                var delta = scroller.Offset - old;
+                _start = start - delta;
                 foreach (var entry in _geometry.Keys.ToArray())
                 {
                     var rect = _geometry[entry];
-                    _geometry[entry] = new Rect(rect.X, rect.Y - delta, rect.Width, rect.Height);
+                    _geometry[entry] = new Rect(rect.Position - delta, rect.Size);
                 }
                 bounds = new Rect(_start.Value, point).Normalize();
             }

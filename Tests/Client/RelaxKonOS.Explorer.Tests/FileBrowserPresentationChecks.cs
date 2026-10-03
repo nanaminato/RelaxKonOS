@@ -22,7 +22,12 @@ internal static class FileBrowserPresentationChecks
             Width = new DataGridLength(180),
             CellTemplate = new FuncDataTemplate<string>((entry, _) => new Grid
             {
-                Children = { new TextBlock { Text = entry, Height = 28 } },
+                ColumnDefinitions = new ColumnDefinitions("Auto,*"),
+                Children =
+                {
+                    new ExplorerIcon { Width = 22, Height = 22 },
+                    new TextBlock { Text = entry, Height = 28, [Grid.ColumnProperty] = 1 },
+                },
             }),
         });
         grid.Columns.Add(new DataGridTemplateColumn
@@ -56,6 +61,21 @@ internal static class FileBrowserPresentationChecks
             var active = mode == ExplorerViewMode.Details ? (Control)grid : presentation.Items;
             var containers = active.GetVisualDescendants().OfType<Control>().Where(c => c is DataGridRow or ListBoxItem).ToArray();
             check(containers.Length == 3, $"{mode}: all file containers render");
+            if (mode == ExplorerViewMode.LargeIcons)
+            {
+                var labels = containers.Select(c => c.GetVisualDescendants().OfType<TextBlock>().First()).ToArray();
+                check(labels.All(label => label.Bounds.Width >= 120), "Large icon labels use the full tile width even for short names");
+                check(containers.Select(c => c.Bounds.Height).Distinct().Count() == 1,
+                    "Large icon tiles have a uniform height");
+                check(containers.All(container =>
+                {
+                    var icon = container.GetVisualDescendants().OfType<ExplorerIcon>().Single();
+                    var label = container.GetVisualDescendants().OfType<TextBlock>().First();
+                    var iconOrigin = icon.TranslatePoint(default, container)!.Value;
+                    var labelOrigin = label.TranslatePoint(default, container)!.Value;
+                    return Math.Abs(iconOrigin.X + icon.Bounds.Width / 2 - labelOrigin.X - label.Bounds.Width / 2) < 0.1;
+                }), "Large icons and filenames share the same horizontal center");
+            }
             var origin = containers[0].TranslatePoint(default, host)!.Value;
             // Start to the right of the entries and drag back across the first row/item.
             var begin = new Point(560, origin.Y + 2);
@@ -111,15 +131,23 @@ internal static class FileBrowserPresentationChecks
         check(grid.SelectedItems.Count == 0, "Busy browser rejects rubber-band selection");
         enabled = true;
         grid.SelectionMode = DataGridSelectionMode.Extended;
+        window.Height = 410;
         grid.ItemsSource = Enumerable.Range(0, 80).Select(i => $"file-{i}").ToArray();
         presentation.SetMode(ExplorerViewMode.List);
         Pump();
         var scroll = presentation.Items.GetVisualDescendants().OfType<ScrollViewer>().First();
-        window.MouseDown(new Point(550, 40), MouseButton.Left);
-        window.MouseMove(new Point(2, 395));
+        var listItems = presentation.Items.GetVisualDescendants().OfType<ListBoxItem>().ToArray();
+        check(listItems[1].Bounds.X == listItems[0].Bounds.X && listItems[1].Bounds.Y > listItems[0].Bounds.Y
+            && listItems.Any(item => item.Bounds.X > listItems[0].Bounds.X && item.Bounds.Y == listItems[0].Bounds.Y),
+            "List fills downwards before wrapping into columns");
+        check(scroll.Extent.Width > scroll.Viewport.Width && scroll.Extent.Height <= scroll.Viewport.Height,
+            "List overflow scrolls horizontally within the viewport height");
+        var listBottom = listItems.Where(item => item.Bounds.X == listItems[0].Bounds.X).Max(item => item.TranslatePoint(default, host)!.Value.Y + item.Bounds.Height);
+        window.MouseDown(new Point(1, listBottom + 1), MouseButton.Left);
+        window.MouseMove(new Point(595, 2));
         using (var cancellation = new CancellationTokenSource(450)) Dispatcher.UIThread.MainLoop(cancellation.Token);
-        window.MouseUp(new Point(2, 395), MouseButton.Left);
-        check(scroll.Offset.Y > 0 && grid.SelectedItems.Count > 10, "Rubber-band scrolls at the edge and selects newly exposed entries");
+        window.MouseUp(new Point(595, 2), MouseButton.Left);
+        check(scroll.Offset.X > 0 && grid.SelectedItems.Count > 10, "List rubber-band scrolls horizontally and selects newly exposed entries");
         window.Close();
         SynchronizationContext.SetSynchronizationContext(null);
     }

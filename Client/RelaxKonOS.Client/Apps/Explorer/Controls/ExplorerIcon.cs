@@ -39,6 +39,7 @@ public sealed class ExplorerIcon : Control
             : ExplorerIconAssetResolver.ForEntry(EntryType ?? FileSystemEntryType.File, FileName, Link);
         var bitmap = ExplorerIconAssetLoader.Load(assetName);
         if (bitmap is not null && Bounds.Width > 0 && Bounds.Height > 0)
-            context.DrawImage(bitmap, Bounds);
+            // Drawing coordinates are local to the control; Bounds also contains its parent offset.
+            context.DrawImage(bitmap, new Rect(Bounds.Size));
     }
 }
