@@ -1,6 +1,7 @@
 {
     "Culture": "ja-JP",
     "Strings": {
+        "explorer.operations.download": "ホストにダウンロード",
         "explorer.login_required": "ファイル エクスプローラーを使用するにはサインインが必要です。\nこのアプリを起動する前に RelaxKonOS Server に接続してください。",
         "explorer.error.not_signed_in": "サインインしていないため、ファイルサービスを利用できません。",
         "explorer.computer": "コンピューター",

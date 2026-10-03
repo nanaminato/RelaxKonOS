@@ -272,12 +272,18 @@ class JschServerCenterTransport : ServerCenterSshTransport {
     } catch (error: SftpException) {
         if (error.id == ChannelSftp.SSH_FX_NO_SUCH_FILE) null else throw error
     }
-    override suspend fun uploadNew(content: InputStream, contentLength: Long?, remotePath: String) = withContext(Dispatchers.IO) {
+    override suspend fun uploadNew(content: InputStream, contentLength: Long?, remotePath: String, progress: ((Long) -> Unit)?) = withContext(Dispatchers.IO) {
         val sftp = openSftp()
         try {
             check(fileInfo(sftp, remotePath) == null) { "destination-exists" }
             SshBoundedInputStream(content, contentLength?.coerceAtMost(SshFileTransferRules.MAX_BYTES) ?: SshFileTransferRules.MAX_BYTES).let { bounded ->
-                sftp.put(bounded, remotePath, ChannelSftp.OVERWRITE)
+                var transferred = 0L
+                val monitor = progress?.let { report -> object : SftpProgressMonitor {
+                    override fun init(op: Int, src: String?, dest: String?, max: Long) { report(0) }
+                    override fun count(count: Long): Boolean { transferred += count; report(transferred); return true }
+                    override fun end() = Unit
+                } }
+                sftp.put(bounded, remotePath, monitor, ChannelSftp.OVERWRITE)
                 check(contentLength == null || bounded.count == contentLength) { "source-changed" }
             }
         } finally { sftp.disconnect() }
@@ -666,17 +672,19 @@ internal class PasswordUserInfo(private val password: CharArray) : UserInfo, UIK
  * 把 SFTP 的字节计数换算成进度。只有调用方给出了长度才上报比例，
  * 否则界面宁可不动，也不编造一个看似真实的百分比。
  */
-private class FractionProgressMonitor(
+internal class FractionProgressMonitor(
     private val contentLength: Long?,
     private val report: (Double) -> Unit,
 ) : SftpProgressMonitor {
+    private var transferred = 0L
 
-    override fun init(op: Int, src: String?, dest: String?, max: Long) = Unit
+    override fun init(op: Int, src: String?, dest: String?, max: Long) { transferred = 0; report(0.0) }
 
     override fun count(count: Long): Boolean {
+        transferred += count
         val total = contentLength
         if (total != null && total > 0) {
-            report((count.toDouble() / total).coerceIn(0.0, 1.0))
+            report((transferred.toDouble() / total).coerceIn(0.0, 1.0))
         }
         return true
     }

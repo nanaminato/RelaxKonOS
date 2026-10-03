@@ -8,6 +8,7 @@ namespace RelaxKonOS.Client.Services.ServerCenter;
 
 /// <summary>Remote staging identity. Keep this with the operation id until the authoritative receipt is read.</summary>
 public sealed record ServerCenterStagedOperation(Guid OperationId, HostPlatformKind Platform, string RemoteDirectory);
+public sealed record ServerDeploymentTransfer(long Bytes, long? Total);
 
 /// <summary>
 /// Stages the embedded launcher and, for local sources, the user ZIP through SSH/SFTP.
@@ -27,7 +28,8 @@ public sealed class ServerCenterDeploymentClient(IServerCenterSshTransport trans
         ServerRuntimeIdentifier? expectedRuntime,
         Stream? certificate,
         string? certificatePassword,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IProgress<double>? uploadProgress = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(launcher);
@@ -77,7 +79,7 @@ public sealed class ServerCenterDeploymentClient(IServerCenterSshTransport trans
             ? "RelaxKonOS-Deploy.ps1" : "relaxkonos-deploy.sh", cancellationToken).ConfigureAwait(false);
         if (needsArchive)
         {
-            await UploadFromStartAsync(archive!, staged, request.Options!.StagedPackageName!, cancellationToken)
+            await UploadFromStartAsync(archive!, staged, request.Options!.StagedPackageName!, cancellationToken, uploadProgress)
                 .ConfigureAwait(false);
         }
         if (needsCertificate)
@@ -125,20 +127,73 @@ public sealed class ServerCenterDeploymentClient(IServerCenterSshTransport trans
     }
 
     public async Task<ServerDeploymentOperationDto> ExecuteAsync(
-        ServerCenterStagedOperation staged, CancellationToken cancellationToken, string? sudoPassword = null)
+        ServerCenterStagedOperation staged, CancellationToken cancellationToken, string? sudoPassword = null,
+        IProgress<ServerDeploymentTransfer?>? transferProgress = null)
     {
         ArgumentNullException.ThrowIfNull(staged);
-        if (sudoPassword is not null)
+        using var pollingCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var polling = transferProgress is null ? Task.CompletedTask : PollTransferAsync(staged, transferProgress, pollingCancellation.Token);
+        try
         {
-            if (staged.Platform != HostPlatformKind.Linux || sudoPassword.Any(c => c is '\r' or '\n'))
-                throw new ArgumentException("A single-line Linux sudo password is required.");
-            await transport.RunWithInputAsync(LauncherCommand(staged, query: false) + "-with-sudo",
-                sudoPassword, cancellationToken).ConfigureAwait(false);
+            if (sudoPassword is not null)
+            {
+                if (staged.Platform != HostPlatformKind.Linux || sudoPassword.Any(c => c is '\r' or '\n'))
+                    throw new ArgumentException("A single-line Linux sudo password is required.");
+                await transport.RunWithInputAsync(LauncherCommand(staged, query: false) + "-with-sudo",
+                    sudoPassword, cancellationToken).ConfigureAwait(false);
+            }
+            else
+                await transport.RunAsync(LauncherCommand(staged, query: false), cancellationToken).ConfigureAwait(false);
+            // An SSH exit status is not proof of success. Query the persistent receipt even on a nonzero exit.
+            return await QueryAsync(staged, cancellationToken).ConfigureAwait(false);
         }
-        else
-            await transport.RunAsync(LauncherCommand(staged, query: false), cancellationToken).ConfigureAwait(false);
-        // An SSH exit status is not proof of success. Query the persistent receipt even on a nonzero exit.
-        return await QueryAsync(staged, cancellationToken).ConfigureAwait(false);
+        finally
+        {
+            await pollingCancellation.CancelAsync().ConfigureAwait(false);
+            await polling.ConfigureAwait(false);
+            transferProgress?.Report(null);
+        }
+    }
+
+    private async Task PollTransferAsync(ServerCenterStagedOperation staged, IProgress<ServerDeploymentTransfer?> progress, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                // Validate the staging identity before constructing another fixed command.
+                _ = LauncherCommand(staged, query: true);
+                var path = RemotePath(staged, "transfer.json");
+                var script = "$p='" + path.Replace("'", "''", StringComparison.Ordinal) +
+                    "';if(Test-Path -LiteralPath $p){[Console]::Write([IO.File]::ReadAllText($p))}";
+                var command = staged.Platform == HostPlatformKind.Linux
+                    ? $"if [ -f '{path}' ]; then head -c 1024 '{path}'; fi"
+                    : "powershell.exe -NoProfile -NonInteractive -EncodedCommand " + Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeout.CancelAfter(TimeSpan.FromSeconds(3));
+                var result = await transport.RunAsync(command, timeout.Token).ConfigureAwait(false);
+                if (result.Succeeded)
+                    progress.Report(string.IsNullOrWhiteSpace(result.StandardOutput) ? null : ReadTransfer(result.StandardOutput.Trim().TrimStart('\uFEFF'), staged.OperationId));
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
+            catch (Exception) { /* Progress is advisory; the operation receipt remains authoritative. */ }
+            try { await Task.Delay(750, ct).ConfigureAwait(false); }
+            catch (OperationCanceledException) { break; }
+        }
+    }
+
+    internal static ServerDeploymentTransfer? ReadTransfer(string json, Guid operationId)
+    {
+        if (json.Length > 1024) throw new InvalidDataException("Transfer record is too large.");
+        using var document = JsonDocument.Parse(json);
+        var fields = document.RootElement;
+        if (fields.EnumerateObject().Count() != 4 || fields.GetProperty("operationId").GetGuid() != operationId)
+            throw new InvalidDataException("Invalid transfer identity.");
+        var bytes = fields.GetProperty("bytes").GetInt64();
+        long? total = fields.GetProperty("total").ValueKind == JsonValueKind.Null ? null : fields.GetProperty("total").GetInt64();
+        if (bytes is < 0 or > 8_589_934_592L || total is < 0 or > 8_589_934_592L)
+            throw new InvalidDataException("Invalid transfer size.");
+        return fields.GetProperty("active").GetBoolean() ? new(bytes, total) : null;
     }
 
     public async Task<ServerDeploymentOperationDto> QueryAsync(
@@ -199,10 +254,10 @@ public sealed class ServerCenterDeploymentClient(IServerCenterSshTransport trans
     }
 
     private async Task UploadFromStartAsync(Stream source, ServerCenterStagedOperation staged,
-        string fileName, CancellationToken cancellationToken)
+        string fileName, CancellationToken cancellationToken, IProgress<double>? progress = null)
     {
         source.Position = 0;
-        await transport.UploadAsync(source, RemotePath(staged, fileName), null, cancellationToken)
+        await transport.UploadAsync(source, RemotePath(staged, fileName), progress, cancellationToken)
             .ConfigureAwait(false);
     }
 

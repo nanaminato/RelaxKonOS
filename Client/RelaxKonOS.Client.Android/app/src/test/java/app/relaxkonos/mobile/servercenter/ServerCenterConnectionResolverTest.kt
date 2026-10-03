@@ -227,7 +227,7 @@ private class FakeTransport(private val portSequence: List<Int>) : ServerCenterS
     override fun openLocalForward(remotePort: Int, preferredLocalPort: Int?): ServerCenterSshTunnel = error("not used")
     override suspend fun testLoopbackPort(remotePort: Int): Boolean = error("not used")
     override suspend fun fileInfo(remotePath: String): SshFileEntry? = error("not used")
-    override suspend fun uploadNew(content: InputStream, contentLength: Long?, remotePath: String) = error("not used")
+    override suspend fun uploadNew(content: InputStream, contentLength: Long?, remotePath: String, progress: ((Long) -> Unit)?) = error("not used")
     override suspend fun copyFile(sourcePath: String, destinationPath: String, maximumBytes: Long) = error("not used")
     override fun openLoopbackTunnel(remotePort: Int, basePath: String?): ServerCenterSshTunnel {
         val port = portSequence[portIndex.coerceAtMost(portSequence.lastIndex)]

@@ -7,6 +7,9 @@ import java.io.IOException
 import java.io.InputStream
 import java.util.Locale
 import java.util.UUID
+import kotlinx.coroutines.*
+
+data class ServerDeploymentTransfer(val bytes: Long, val total: Long?)
 
 enum class ServerHostPlatform { Linux, Windows }
 
@@ -104,14 +107,40 @@ class ServerCenterDeploymentClient(private val transport: ServerCenterSshTranspo
         return staged
     }
 
-    suspend fun execute(staged: ServerCenterStagedOperation, sudoPassword: String? = null): ServerDeploymentOperation {
-        val command = launcherCommand(staged, action = LauncherAction.Run)
-        if (sudoPassword != null) {
-            require(staged.platform == ServerHostPlatform.Linux && sudoPassword.none { it == '\r' || it == '\n' })
-            transport.runWithInput(command + "-with-sudo", sudoPassword)
-        } else transport.run(command)
-        // SSH exit status is not proof of success. The persistent receipt is authoritative.
-        return query(staged)
+    suspend fun execute(staged: ServerCenterStagedOperation, sudoPassword: String? = null,
+        transferProgress: ((ServerDeploymentTransfer?) -> Unit)? = null): ServerDeploymentOperation = coroutineScope {
+        val polling = transferProgress?.let { report -> launch {
+            while (isActive) {
+                try { report(readTransfer(staged)) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { /* Progress is advisory; the receipt remains authoritative. */ }
+                delay(750)
+            }
+        } }
+        try {
+            val command = launcherCommand(staged, action = LauncherAction.Run)
+            if (sudoPassword != null) {
+                require(staged.platform == ServerHostPlatform.Linux && sudoPassword.none { it == '\r' || it == '\n' })
+                transport.runWithInput(command + "-with-sudo", sudoPassword)
+            } else transport.run(command)
+            // SSH exit status is not proof of success. The persistent receipt is authoritative.
+            query(staged)
+        } finally { polling?.cancelAndJoin(); transferProgress?.invoke(null) }
+    }
+
+    private suspend fun readTransfer(staged: ServerCenterStagedOperation): ServerDeploymentTransfer? {
+        val path = remotePath(staged, "transfer.json")
+        val command = if (staged.platform == ServerHostPlatform.Linux) {
+            require(LINUX_STAGING_PATH.matches(staged.remoteDirectory))
+            "if [ -f '$path' ]; then head -c 1024 '$path'; fi"
+        } else {
+            require(WINDOWS_STAGING_PATH.matches(staged.remoteDirectory))
+            val script = "\$p='${path.replace("'", "''")}';if(Test-Path -LiteralPath \$p){[Console]::Write([IO.File]::ReadAllText(\$p))}"
+            "powershell.exe -NoProfile -NonInteractive -EncodedCommand " + Base64Codec.encode(script.toByteArray(Charsets.UTF_16LE))
+        }
+        val result = transport.run(command)
+        if (!result.succeeded || result.standardOutput.isBlank()) return null
+        return readDeploymentTransfer(result.standardOutput.trim().removePrefix("\uFEFF"), staged.operationId)
     }
 
     /** Stages the fixed launcher without a request, package or verifier; lookup never enters --run. */

@@ -102,6 +102,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     [ObservableProperty] private FileAccessOption? _selectedRootFileAccess;
     [ObservableProperty] private bool _dockerAccess;
     [ObservableProperty] private bool _allowUnsupportedSystem;
+    public bool IsOfficialSource => SelectedSource?.Source == ServerPackageSourceKind.OfficialStable;
     public bool IsDirectUrl => SelectedSource?.Source == ServerPackageSourceKind.DirectUrl;
     public bool IsSystemMode => SelectedMode?.Mode != ServerInstallMode.LinuxUser;
     public bool IsUserMode => SelectedMode?.Mode == ServerInstallMode.LinuxUser;
@@ -156,10 +157,10 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         IsFileWhitelist ? $"{FileRootsLabel}: {FileRoots}" : string.Empty,
         IsLinuxSystemMode ? $"{AdministratorAccessLabel}: {SelectedAdministratorFileAccess?.Label}\n{AdministratorFileRoots}\n{RootAccessLabel}: {SelectedRootFileAccess?.Label}\n{RootFileRoots}\n{DockerAccessLabel}: {DockerAccess}" : string.Empty,
         IsLinuxHost ? $"{AllowUnsupportedLabel}: {AllowUnsupportedSystem}" : string.Empty,
-        $"{ReleaseCatalogLabel}: {ReleaseCatalogBaseUri}", IsDirectUrl ? $"SHA-256: {PackageDigest}" : string.Empty
+        IsOfficialSource ? $"{ReleaseCatalogLabel}: {ReleaseCatalogBaseUri}" : string.Empty, IsDirectUrl ? $"SHA-256: {PackageDigest}" : string.Empty
     }.Where(value => !string.IsNullOrWhiteSpace(value)));
     public string Title => Text("server_center.wizard.title", "Install RelaxKonOS");
-    public string InstallingText => Text("server_center.wizard.installing", "Installing…");
+    public ServerCenterViewModel Progress => _serverCenter;
     public string SourceStepTitle => Text("server_center.wizard.source_title", "Choose the release source");
     public string ModeStepTitle => Text("server_center.wizard.mode_title", "Choose the installation mode");
     public string SourceChecksText => Text("server_center.wizard.source_checks", "Official packages are downloaded and verified on the server. Selected ZIPs receive layout and architecture checks.");
@@ -288,7 +289,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
                 CertificatePrivateKeyPath,
                 CertificatePassword,
                 SelfSignedIdentities,
-                SudoPassword, int.Parse(ServerPortText), Optional(PackageUri), Optional(PackageDigest), Optional(ReleaseCatalogBaseUri),
+                SudoPassword, int.Parse(ServerPortText), Optional(PackageUri), Optional(PackageDigest), IsOfficialSource ? Optional(ReleaseCatalogBaseUri) : null,
                 Optional(InstallRoot), Optional(DataRoot), Optional(ConfigRoot), Optional(StateRoot), Optional(CacheRoot),
                 IsFileWhitelist ? Roots(FileRoots) : null, SelectedAdministratorFileAccess?.Scope,
                 IsAdministratorWhitelist ? Roots(AdministratorFileRoots) : null, SelectedRootFileAccess?.Scope,
@@ -325,6 +326,8 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     partial void OnSelectedSourceChanged(InstallationSourceOption? value)
     {
         ErrorMessage = string.Empty;
+        OnPropertyChanged(nameof(IsOfficialSource));
+        OnPropertyChanged(nameof(AdvancedReviewText));
         OnPropertyChanged(nameof(SelectedSourceText));
         OnPropertyChanged(nameof(IsLocalBundle));
         OnPropertyChanged(nameof(IsDirectUrl));

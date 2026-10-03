@@ -15,7 +15,7 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
     public Action? ShowRequested { get; set; }
     public Action? CloseRequested { get; set; }
     private int _pendingRequests;
-    private readonly Dictionary<Guid, CancellationTokenSource> _uploads = [];
+    private readonly Dictionary<Guid, CancellationTokenSource> _localTransfers = [];
     public event Action<FileOperationDto>? Completed;
     private readonly Dictionary<Guid, Action<FileOperationDto>> _callbacks = [];
     private readonly HashSet<Guid> _dismissed = [];
@@ -41,7 +41,13 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
     public void SessionChanged() => BindSession();
 
     public void QueueUpload(IReadOnlyList<FileOperationItem> items, long totalBytes,
-        Func<Action<string, long, int>, CancellationToken, Task> upload)
+        Func<Action<string, long, int>, CancellationToken, Task> upload) => QueueTransfer(items, totalBytes, upload, false);
+
+    public void QueueDownload(IReadOnlyList<FileOperationItem> items, long totalBytes,
+        Func<Action<string, long, int>, CancellationToken, Task> download) => QueueTransfer(items, totalBytes, download, true);
+
+    private void QueueTransfer(IReadOnlyList<FileOperationItem> items, long totalBytes,
+        Func<Action<string, long, int>, CancellationToken, Task> upload, bool downloading)
     {
         BindSession();
         var session = _session;
@@ -49,8 +55,8 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
         var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_sessionCancellation.Token);
         var dto = new FileOperationDto(Guid.NewGuid(), FileOperationKind.Copy, FileOperationState.Running,
             items, null, 0, totalBytes, 0, 0, [], null, [], false, DateTimeOffset.UtcNow);
-        _uploads.Add(dto.Id, cancellation);
-        Jobs.Add(new(this, dto) { IsUpload = true });
+        _localTransfers.Add(dto.Id, cancellation);
+        Jobs.Add(new(this, dto) { IsUpload = !downloading, IsDownload = downloading });
         ShowRequested?.Invoke();
         _ = RunUploadAsync();
 
@@ -75,11 +81,11 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
             catch (Exception ex)
             {
                 dto = dto with { State = FileOperationState.Failed };
-                if (IsCurrent(session)) Error = LocalizedText.Format("explorer.status.upload_failed", ex.Message);
+                if (IsCurrent(session)) Error = LocalizedText.Format(downloading ? "explorer.status.download_failed" : "explorer.status.upload_failed", ex.Message);
             }
             finally
             {
-                _uploads.Remove(dto.Id);
+                _localTransfers.Remove(dto.Id);
                 cancellation.Dispose();
                 if (IsCurrent(session)) Update(dto with { Revision = dto.Revision + 1 });
             }
@@ -180,7 +186,7 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
         {
             while (IsCurrent(session))
             {
-                var active = Jobs.Where(j => !j.Snapshot.IsTerminal && !j.Missing && !j.IsUpload).ToArray();
+                var active = Jobs.Where(j => !j.Snapshot.IsTerminal && !j.Missing && !j.IsLocalTransfer).ToArray();
                 if (active.Length == 0) break;
                 foreach (var job in active)
                 {
@@ -208,7 +214,7 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
         finally
         {
             _polling = false;
-            if (_session != session && Jobs.Any(j => !j.Snapshot.IsTerminal && !j.Missing && !j.IsUpload)) EnsurePolling();
+            if (_session != session && Jobs.Any(j => !j.Snapshot.IsTerminal && !j.Missing && !j.IsLocalTransfer)) EnsurePolling();
         }
     }
     internal async Task ActAsync(ExplorerOperationCard card, FileOperationDecision? action)
@@ -216,12 +222,12 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
         var session = _session;
         if (!IsCurrent(session)) { BindSession(); return; }
         var snapshot = card.Snapshot;
-        if (_uploads.TryGetValue(snapshot.Id, out var uploadCancellation))
+        if (_localTransfers.TryGetValue(snapshot.Id, out var transferCancellation))
         {
             if (action is null)
             {
                 card.Snapshot = snapshot with { State = FileOperationState.Cancelling };
-                uploadCancellation.Cancel();
+                transferCancellation.Cancel();
             }
             return;
         }
@@ -253,7 +259,9 @@ public sealed partial class ExplorerOperationCard(ExplorerOperationCenter center
     [ObservableProperty] private bool _missing;
     partial void OnMissingChanged(bool value) { OnPropertyChanged(nameof(StateText)); OnPropertyChanged(nameof(CanCancel)); OnPropertyChanged(nameof(Indeterminate)); }
     public bool IsUpload { get; init; }
-    public string Title => IsUpload ? LocalizedText.Get("explorer.operations.upload") : LocalizedText.Get($"explorer.operations.kind.{Snapshot.Kind}");
+    public bool IsDownload { get; init; }
+    public bool IsLocalTransfer => IsUpload || IsDownload;
+    public string Title => IsUpload ? LocalizedText.Get("explorer.operations.upload") : IsDownload ? LocalizedText.Get("explorer.operations.download") : LocalizedText.Get($"explorer.operations.kind.{Snapshot.Kind}");
     public string StateText => Missing ? LocalizedText.Get("explorer.operations.missing") : LocalizedText.Get($"explorer.operations.state.{Snapshot.State}");
     public string Locations => string.Join(Environment.NewLine, Snapshot.Items.Take(3).Select(i =>
         i.DestinationPath is null ? i.SourcePath : $"{i.SourcePath} → {i.DestinationPath}"))

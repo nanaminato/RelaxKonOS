@@ -1,6 +1,7 @@
 {
     "Culture": "zh-CN",
     "Strings": {
+        "explorer.operations.download": "下载到宿主机",
         "explorer.login_required": "文件资源管理器需要登录。\n请先连接到 RelaxKonOS Server，然后再启动此应用。",
         "explorer.error.not_signed_in": "未登录；文件服务不可用。",
         "explorer.computer": "计算机",

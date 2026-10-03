@@ -44,6 +44,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
@@ -190,12 +191,21 @@ internal fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier =
     // Resize the scroll viewport above the keyboard so TextField focus relocation
     // can keep the edited field visible, including the final certificate names field.
     Column(modifier.fillMaxSize().imePadding()) {
+        if (installState.busy) Column(
+            Modifier.fillMaxWidth().padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+        ) {
+            Text(stringResource(installState.message ?: R.string.ssh_workspace_deploy_running),
+                style = MaterialTheme.typography.titleSmall)
+            val transfer = installState.transfer
+            if (transfer != null) app.relaxkonos.mobile.ui.common.TransferProgressContent(transfer)
+            else androidx.compose.material3.LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        }
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = Spacing.lg),
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
             Text(stringResource(R.string.ssh_workspace_deploy_step, step + 1), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (step == 0 && host != null) ServerInstallRecoveryPanel(host.hostId)
             when (step) {
                 0 -> SectionCard(
                     title = stringResource(R.string.ssh_workspace_deploy_step_source),
@@ -217,7 +227,14 @@ internal fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier =
                     OutlinedTextField(value = advanced.packageUri, onValueChange = { advanced = advanced.copy(packageUri = it) }, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.server_install_package_uri)) })
                     OutlinedTextField(value = advanced.packageDigest, onValueChange = { advanced = advanced.copy(packageDigest = it) }, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.server_install_package_digest)) })
                     }
-                    OutlinedTextField(value = advanced.releaseCatalogBaseUri, onValueChange = { advanced = advanced.copy(releaseCatalogBaseUri = it) }, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.server_install_release_catalog)) })
+                    if (source == "official") OutlinedTextField(
+                        value = advanced.releaseCatalogBaseUri,
+                        onValueChange = { advanced = advanced.copy(releaseCatalogBaseUri = it) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(stringResource(R.string.server_install_release_catalog)) },
+                        placeholder = { Text("https://downloads.relaxkon.com/relaxkonos/stable/latest") },
+                        singleLine = true,
+                    )
                     if (source == "local") {
                         OutlinedButton({ pickBundle.launch(arrayOf("application/zip", "application/octet-stream")) }) {
                             Text(stringResource(R.string.ssh_workspace_deploy_choose_bundle))
@@ -344,9 +361,15 @@ internal fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier =
                     if (advanced.rootFileAccess == "whitelist") {
                     OutlinedTextField(value = advanced.rootFileRoots, onValueChange = { advanced = advanced.copy(rootFileRoots = it) }, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.server_install_file_roots)) })
                     }
-                    Row { Checkbox(checked = advanced.dockerAccess, onCheckedChange = { advanced = advanced.copy(dockerAccess = it) }); Text(stringResource(R.string.server_install_docker_access)) }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = advanced.dockerAccess, onCheckedChange = { advanced = advanced.copy(dockerAccess = it) })
+                        Text(stringResource(R.string.server_install_docker_access), modifier = Modifier.weight(1f))
                     }
-                    if (mode != "windowsSystem") Row { Checkbox(checked = advanced.allowUnsupportedSystem, onCheckedChange = { advanced = advanced.copy(allowUnsupportedSystem = it) }); Text(stringResource(R.string.server_install_allow_unsupported)) }
+                    }
+                    if (mode != "windowsSystem") Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = advanced.allowUnsupportedSystem, onCheckedChange = { advanced = advanced.copy(allowUnsupportedSystem = it) })
+                        Text(stringResource(R.string.server_install_allow_unsupported), modifier = Modifier.weight(1f))
+                    }
                     if (!mayContinue) Text(stringResource(R.string.server_install_options_invalid), color = MaterialTheme.colorScheme.error)
                 }
 
@@ -386,12 +409,12 @@ internal fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier =
                     ReviewLine(stringResource(R.string.server_install_file_roots), advanced.administratorFileRoots)
                     ReviewLine(stringResource(R.string.server_install_root_access), advanced.rootFileAccess)
                     ReviewLine(stringResource(R.string.server_install_file_roots), advanced.rootFileRoots)
-                    ReviewLine(stringResource(R.string.server_install_release_catalog), advanced.releaseCatalogBaseUri)
+                    if (source == "official") ReviewLine(stringResource(R.string.server_install_release_catalog), advanced.releaseCatalogBaseUri)
                     ReviewLine(stringResource(R.string.server_install_package_digest), advanced.packageDigest)
                     if (mode == "linuxSystem") ReviewLine(stringResource(R.string.server_install_docker_access), advanced.dockerAccess.toString())
                     if (mode != "windowsSystem") ReviewLine(stringResource(R.string.server_install_allow_unsupported), advanced.allowUnsupportedSystem.toString())
                     Text(stringResource(R.string.ssh_workspace_deploy_source_checks), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    installState.message?.let {
+                    installState.message?.takeUnless { installState.busy }?.let {
                         if (it == R.string.ssh_workspace_deploy_success) Text(stringResource(it), color = MaterialTheme.colorScheme.primary)
                         else OperationMessageDialog(stringResource(it), tone = if (it == R.string.ssh_workspace_deploy_verify) StatusTone.Warning else StatusTone.Danger)
                     }
@@ -412,7 +435,7 @@ internal fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier =
                     bundleUri?.let(Uri::parse), remoteBundlePath, mode, network, fileAccess,
                     certificateMode, certificateFormat, certificateUri?.let(Uri::parse),
                     privateKeyUri?.let(Uri::parse), certificatePassword, certificateNames, sudoPassword,
-                    advanced)) }
+                    advanced.copy(releaseCatalogBaseUri = if (source == "official") advanced.releaseCatalogBaseUri else ""))) }
                 sudoPassword = ""
             }, enabled = host != null && !installState.busy && !installState.installed, modifier = Modifier.weight(1f)) {
                 Text(stringResource(when {

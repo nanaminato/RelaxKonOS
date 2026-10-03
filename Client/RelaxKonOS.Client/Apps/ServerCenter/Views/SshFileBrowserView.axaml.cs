@@ -755,6 +755,7 @@ internal partial class SshFileBrowserView : UserControl
         if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage) return;
         var picked = await storage.OpenFilePickerAsync(new FilePickerOpenOptions { AllowMultiple = true });
         if (picked.Count == 0 || _busy) return;
+        using var progress = new SshTransferProgressWindow(this, uploading: true);
         _busy = true; UpdateControls();
         var uploaded = 0;
         try
@@ -763,11 +764,13 @@ internal partial class SshFileBrowserView : UserControl
             {
                 StatusText.Text = string.Format(T("ssh_files.uploading", "Uploading {0} of {1}: {2}"), uploaded + 1, picked.Count, file.Name);
                 await using var input = await file.OpenReadAsync();
+                progress.Report(file.Name, 0, input.CanSeek ? input.Length : null);
                 await ExecuteAsync(client =>
                 {
                     var target = Child(_path, file.Name);
                     if (client.Exists(target)) throw new IOException($"{T("ssh_files.exists", "Destination already exists")}: {file.Name}");
-                    client.UploadFile(input, target, canOverride: false);
+                    client.UploadFile(input, target, canOverride: false,
+                        uploaded => progress.Report(file.Name, (long)uploaded, input.CanSeek ? input.Length : null));
                     return true;
                 });
                 uploaded++;
@@ -788,6 +791,7 @@ internal partial class SshFileBrowserView : UserControl
         var localPath = folders.FirstOrDefault()?.TryGetLocalPath();
         if (localPath is null) return;
         var folder = new DirectoryInfo(localPath);
+        using var progress = new SshTransferProgressWindow(this, uploading: true);
         _busy = true; UpdateControls();
         try
         {
@@ -796,7 +800,7 @@ internal partial class SshFileBrowserView : UserControl
             {
                 var target = Child(_path, folder.Name);
                 if (client.Exists(target)) throw new IOException($"{T("ssh_files.exists", "Destination already exists")}: {folder.Name}");
-                UploadTree(client, folder, target);
+                UploadTree(client, folder, target, progress);
                 return true;
             });
             StatusText.Text = string.Format(T("ssh_files.uploaded_folder", "Uploaded folder {0}"), folder.Name);
@@ -808,20 +812,23 @@ internal partial class SshFileBrowserView : UserControl
         if (!string.IsNullOrEmpty(message)) StatusText.Text = message;
     }
 
-    private static void UploadTree(SftpClient client, DirectoryInfo directory, string target)
+    private static void UploadTree(SftpClient client, DirectoryInfo directory, string target, SshTransferProgressWindow progress)
     {
         if (directory.Attributes.HasFlag(FileAttributes.ReparsePoint))
             throw new IOException($"{directory.FullName}: {T("ssh_files.link_unsupported", "Symbolic link transfer is unsupported")}");
+        progress.Cancellation.ThrowIfCancellationRequested();
         client.CreateDirectory(target);
         foreach (var file in directory.EnumerateFiles())
         {
             if (file.Attributes.HasFlag(FileAttributes.ReparsePoint))
                 throw new IOException($"{file.FullName}: {T("ssh_files.link_unsupported", "Symbolic link transfer is unsupported")}");
             using var input = file.OpenRead();
-            client.UploadFile(input, Child(target, file.Name), canOverride: false);
+            progress.Report(file.FullName, 0, input.Length);
+            client.UploadFile(input, Child(target, file.Name), canOverride: false,
+                uploaded => progress.Report(file.FullName, (long)uploaded, input.Length));
         }
         foreach (var child in directory.EnumerateDirectories())
-            UploadTree(client, child, Child(target, child.Name));
+            UploadTree(client, child, Child(target, child.Name), progress);
     }
 
     private async Task DownloadAsync()
@@ -843,6 +850,7 @@ internal partial class SshFileBrowserView : UserControl
         var folders = await storage.OpenFolderPickerAsync(new FolderPickerOpenOptions { AllowMultiple = false });
         var folder = folders.FirstOrDefault()?.TryGetLocalPath();
         if (folder is null) return;
+        using var progress = new SshTransferProgressWindow(this, uploading: false);
         _busy = true; UpdateControls();
         try
         {
@@ -850,7 +858,7 @@ internal partial class SshFileBrowserView : UserControl
             await ExecuteAsync(client =>
             {
                 foreach (var entry in selected)
-                    DownloadTree(client, entry.Path, SafeLocalChild(folder, entry.Name), entry.IsDirectory && !entry.IsLink);
+                    DownloadTree(client, entry.Path, SafeLocalChild(folder, entry.Name), entry.IsDirectory && !entry.IsLink, progress);
                 return true;
             });
             StatusText.Text = string.Format(T("ssh_files.downloaded", "Downloaded {0} items"), selected.Length);
@@ -861,23 +869,28 @@ internal partial class SshFileBrowserView : UserControl
 
     private async Task RunDownloadAsync(SshFileEntry entry, IStorageFile file)
     {
+        using var progress = new SshTransferProgressWindow(this, uploading: false);
+        progress.Report(entry.Name, 0, entry.Size);
         _busy = true; UpdateControls();
         try
         {
             await using var output = await file.OpenWriteAsync();
-            await ExecuteAsync(client => { client.DownloadFile(entry.Path, output); return true; });
+            await ExecuteAsync(client => { client.DownloadFile(entry.Path, output,
+                downloaded => progress.Report(entry.Name, (long)downloaded, entry.Size)); return true; });
             StatusText.Text = string.Format(T("ssh_files.downloaded", "Downloaded {0} items"), 1);
         }
         catch (Exception ex) { StatusText.Text = $"{T("ssh_files.download_failed", "Download failed")}: {ex.Message}"; }
         finally { _busy = false; UpdateControls(); }
     }
 
-    private static void DownloadTree(SftpClient client, string source, string destination, bool directory)
+    private static void DownloadTree(SftpClient client, string source, string destination, bool directory, SshTransferProgressWindow progress)
     {
         if (!directory)
         {
+            var size = client.GetAttributes(source).Size;
+            progress.Report(source, 0, size);
             using var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write);
-            client.DownloadFile(source, output);
+            client.DownloadFile(source, output, downloaded => progress.Report(source, (long)downloaded, size));
             return;
         }
         if (Directory.Exists(destination) || File.Exists(destination))
@@ -886,7 +899,7 @@ internal partial class SshFileBrowserView : UserControl
         foreach (var child in client.ListDirectory(source).Where(file => file.Name is not ("." or "..")))
         {
             if (child.IsSymbolicLink) throw new IOException($"{child.FullName}: {T("ssh_files.link_unsupported", "Symbolic link transfer is unsupported")}");
-            DownloadTree(client, child.FullName, SafeLocalChild(destination, child.Name), child.IsDirectory);
+            DownloadTree(client, child.FullName, SafeLocalChild(destination, child.Name), child.IsDirectory, progress);
         }
     }
 

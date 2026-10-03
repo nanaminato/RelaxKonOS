@@ -88,7 +88,7 @@ private class ForwardTransport(private val key: ServerCenterHostKeyObservation, 
     }
     override suspend fun testLoopbackPort(remotePort: Int): Boolean { testedPort = remotePort; return connected }
     override suspend fun fileInfo(remotePath: String): SshFileEntry? = error("not used")
-    override suspend fun uploadNew(content: InputStream, contentLength: Long?, remotePath: String) = error("not used")
+    override suspend fun uploadNew(content: InputStream, contentLength: Long?, remotePath: String, progress: ((Long) -> Unit)?) = error("not used")
     override suspend fun copyFile(sourcePath: String, destinationPath: String, maximumBytes: Long) = error("not used")
     override fun openLoopbackTunnel(remotePort: Int, basePath: String?): ServerCenterSshTunnel = error("Managed tunnel must not be used")
     override fun close() { connected = false }

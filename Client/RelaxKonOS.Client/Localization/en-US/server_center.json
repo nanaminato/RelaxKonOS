@@ -1,6 +1,15 @@
 {
   "Culture": "en-US",
   "Strings": {
+    "server_center.progress.downloading": "Downloading the installation package…",
+    "server_center.progress.checking": "Checking the installation environment…",
+    "server_center.progress.connecting": "Connecting to the server…",
+    "server_center.progress.installing": "Installing, please wait…",
+    "server_center.progress.preparing": "Preparing and uploading installation files…",
+    "server_center.progress.repairing": "Repairing, please wait…",
+    "server_center.progress.uninstalling": "Uninstalling, please wait…",
+    "server_center.progress.upgrading": "Updating, please wait…",
+    "server_center.progress.verifying": "Verifying the operation result…",
     "server_center.wizard.certificate_file": "Certificate file",
     "server_center.wizard.certificate_private_key_file": "Private key file",
     "server_center.maintenance_receipt_failed": "The operation did not succeed: {0}",

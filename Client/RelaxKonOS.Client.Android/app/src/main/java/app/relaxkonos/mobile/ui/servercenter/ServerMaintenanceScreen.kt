@@ -24,7 +24,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.util.UUID
 
 internal data class MaintenanceState(val busy: Boolean = false, val snapshot: ServerHostSnapshot? = null,
-    val probe: ServerHostProbe? = null, val error: String? = null, val complete: Boolean = false)
+    val probe: ServerHostProbe? = null, val error: String? = null, val complete: Boolean = false,
+    val progress: Int = R.string.server_progress_connecting)
 
 internal fun maintenanceResultValid(kind: ServerDeploymentKind, snapshot: ServerHostSnapshot): Boolean = when (kind) {
     ServerDeploymentKind.Uninstall -> !snapshot.installed
@@ -39,7 +40,8 @@ internal class ServerMaintenanceViewModel(application: Application) : AndroidVie
     fun run(hostId: String, kind: ServerDeploymentKind = ServerDeploymentKind.Status, purge: Boolean = false, sudo: String = "",
         repairCertificate: Boolean = false, certificateIdentities: String = "") {
         if (mutable.value.busy) return
-        mutable.value = mutable.value.copy(busy = true, error = null, complete = false)
+        mutable.value = mutable.value.copy(busy = true, error = null, complete = false,
+            progress = R.string.server_progress_connecting)
         viewModelScope.launch {
             val secret = container.serverCenter.verifiedPasswordCopy(hostId)
             if (secret == null) { mutable.value = MaintenanceState(error = getApplication<Application>().getString(R.string.ssh_workspace_deploy_verify)); return@launch }
@@ -60,6 +62,7 @@ internal class ServerMaintenanceViewModel(application: Application) : AndroidVie
                             check(receipt.state == ServerDeploymentState.Succeeded) { receipt.problemCode ?: "server-deployment.failed" }
                             return receipt
                         }
+                        mutable.value = mutable.value.copy(progress = R.string.server_progress_checking)
                         val probe = requireNotNull(action(ServerDeploymentKind.Probe,
                             ServerDeploymentOptions(ServerPackageSourceKind.OfficialStable, ServerNetworkProfile.Loopback, serverPort = 5000)).probe)
                         val mode = probe.existingMode ?: if (platform == ServerHostPlatform.Windows) ServerInstallMode.WindowsSystem else if (probe.elevated || probe.sudoAvailable) ServerInstallMode.LinuxSystem else ServerInstallMode.LinuxUser
@@ -68,10 +71,16 @@ internal class ServerMaintenanceViewModel(application: Application) : AndroidVie
                         val before = requireNotNull(action(ServerDeploymentKind.Status, options, password).snapshot)
                         if (kind != ServerDeploymentKind.Status) {
                             check(before.installed && ServerInstallationId.isValid(before.installationId))
+                            mutable.value = mutable.value.copy(progress = when (kind) {
+                                ServerDeploymentKind.Uninstall -> R.string.server_progress_uninstalling
+                                ServerDeploymentKind.Upgrade -> R.string.server_progress_upgrading
+                                else -> R.string.server_progress_repairing
+                            })
                             action(kind, maintenanceOptions(kind, mode, requireNotNull(before.installationId), purge,
                                 repairCertificate, certificateIdentities).copy(
                                     allowUnsupportedSystem = mode == ServerInstallMode.LinuxSystem && !probe.osSupported), password)
                         }
+                        mutable.value = mutable.value.copy(progress = R.string.server_progress_verifying)
                         val after = if (kind == ServerDeploymentKind.Status) before else requireNotNull(action(ServerDeploymentKind.Status, options, password).snapshot)
                         container.serverCenter.recordVerifiedSnapshot(hostId, after)
                         check(maintenanceResultValid(kind, after)) { "server-deployment.postcondition_failed" }
@@ -113,82 +122,90 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
         if (wizard) {
             TextButton(onClick = { wizard = false }, enabled = !installing) { Text(stringResource(R.string.common_back)) }
             DeploymentSetupScreen(host, Modifier.weight(1f), onBusyChanged = { installing = it })
-        } else Column(Modifier.fillMaxSize().verticalScroll(pageScroll).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-            Text(stringResource(R.string.server_maintenance_title), style = MaterialTheme.typography.titleLarge)
-            val address = host?.let { "${it.sshHost}:${it.sshPort}" }.orEmpty()
-            val name = host?.displayName.orEmpty()
-            Text(if (name.isBlank() || name == address || name == host?.sshHost) address else "$name · $address",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            PrimaryScrollableTabRow(selectedTabIndex = page, edgePadding = Spacing.xs,
-                containerColor = androidx.compose.ui.graphics.Color.Transparent,
-                contentColor = MaterialTheme.colorScheme.primary) {
-                listOf(R.string.server_maintenance_overview, R.string.server_maintenance_environment,
-                    R.string.server_maintenance_actions, R.string.server_maintenance_history).forEachIndexed { index, title ->
-                    Tab(selected = page == index, onClick = { page = index }, text = { Text(stringResource(title)) })
-                }
+        } else {
+            if (state.busy) Column(
+                Modifier.fillMaxWidth().padding(Spacing.lg),
+                verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+            ) {
+                Text(stringResource(state.progress), style = MaterialTheme.typography.titleSmall)
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
-            TextButton(onClick = { host?.let { model.run(it.hostId, sudo = sudo) } }, enabled = !state.busy) { Text(stringResource(R.string.server_maintenance_check)) }
-            if (state.busy) CircularProgressIndicator()
-            OperationMessageDialog(state.error.takeUnless { state.busy })
-            if (page != 3) state.snapshot?.let { snapshot ->
-                if (page == 0) {
-                    Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                Text(stringResource(if (snapshot.installed) R.string.ssh_workspace_deploy_installed else R.string.server_maintenance_absent))
-                    if (snapshot.installed) {
-                        Text(stringResource(if (snapshot.healthy) R.string.server_maintenance_healthy else R.string.server_maintenance_unhealthy))
-                        MaintenanceDetail(R.string.server_maintenance_version, snapshot.version)
-                        MaintenanceDetail(R.string.server_maintenance_mode, snapshot.mode?.name)
-                        MaintenanceDetail(R.string.server_maintenance_endpoint, snapshot.listenUrl)
+            Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(pageScroll).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                Text(stringResource(R.string.server_maintenance_title), style = MaterialTheme.typography.titleLarge)
+                val address = host?.let { "${it.sshHost}:${it.sshPort}" }.orEmpty()
+                val name = host?.displayName.orEmpty()
+                Text(if (name.isBlank() || name == address || name == host?.sshHost) address else "$name · $address",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                PrimaryScrollableTabRow(selectedTabIndex = page, edgePadding = Spacing.xs,
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
+                    contentColor = MaterialTheme.colorScheme.primary) {
+                    listOf(R.string.server_maintenance_overview, R.string.server_maintenance_environment,
+                        R.string.server_maintenance_actions, R.string.server_maintenance_history).forEachIndexed { index, title ->
+                        Tab(selected = page == index, onClick = { page = index }, text = { Text(stringResource(title)) })
                     }
-                    MaintenanceDetail(R.string.server_maintenance_checked_at, snapshot.verifiedAtUtc)
-                    } }
-                    if (snapshot.installed) {
-                        Button(onClick = { page = 2 }, enabled = !state.busy) { Text(stringResource(R.string.server_maintenance_actions)) }
-                        OutlinedButton(onClick = { page = 1 }) { Text(stringResource(R.string.server_maintenance_environment)) }
-                    } else Button(onClick = { wizard = true }, enabled = !state.busy && state.probe?.runtimeIdentifier != null) { Text(stringResource(R.string.ssh_workspace_deploy_install)) }
                 }
-                if (page == 1) state.probe?.let {
-                    Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    Text("${it.hostPlatform} · ${it.architecture} · ${it.osId.orEmpty()} ${it.osVersion.orEmpty()}\n${it.runtimeIdentifier}\n${it.verifiedAtUtc}")
-                    Text(stringResource(R.string.server_maintenance_probe, it.osSupported.toString(), it.sudoAvailable.toString(),
-                        it.systemdAvailable.toString(), it.diskAvailableBytes?.toString().orEmpty(), it.requestedPortAvailable?.toString().orEmpty(), it.missingDependencies.joinToString()))
-                    HorizontalDivider()
-                    MaintenanceDetail(R.string.server_maintenance_install_root, snapshot.installRoot)
-                    MaintenanceDetail(R.string.server_maintenance_data_root, snapshot.dataRoot)
-                    MaintenanceDetail(R.string.server_maintenance_services, snapshot.serviceNames.joinToString())
-                    MaintenanceDetail(R.string.server_maintenance_identity, snapshot.installationId)
-                    } }
+                TextButton(onClick = { host?.let { model.run(it.hostId, sudo = sudo) } }, enabled = !state.busy) { Text(stringResource(R.string.server_maintenance_check)) }
+                OperationMessageDialog(state.error.takeUnless { state.busy })
+                if (page != 3) state.snapshot?.let { snapshot ->
+                    if (page == 0) {
+                        Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    Text(stringResource(if (snapshot.installed) R.string.ssh_workspace_deploy_installed else R.string.server_maintenance_absent))
+                        if (snapshot.installed) {
+                            Text(stringResource(if (snapshot.healthy) R.string.server_maintenance_healthy else R.string.server_maintenance_unhealthy))
+                            MaintenanceDetail(R.string.server_maintenance_version, snapshot.version)
+                            MaintenanceDetail(R.string.server_maintenance_mode, snapshot.mode?.name)
+                            MaintenanceDetail(R.string.server_maintenance_endpoint, snapshot.listenUrl)
+                        }
+                        MaintenanceDetail(R.string.server_maintenance_checked_at, snapshot.verifiedAtUtc)
+                        } }
+                        if (snapshot.installed) {
+                            Button(onClick = { page = 2 }, enabled = !state.busy) { Text(stringResource(R.string.server_maintenance_actions)) }
+                            OutlinedButton(onClick = { page = 1 }) { Text(stringResource(R.string.server_maintenance_environment)) }
+                        } else Button(onClick = { wizard = true }, enabled = !state.busy && state.probe?.runtimeIdentifier != null) { Text(stringResource(R.string.ssh_workspace_deploy_install)) }
+                    }
+                    if (page == 1) state.probe?.let {
+                        Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                        Text("${it.hostPlatform} · ${it.architecture} · ${it.osId.orEmpty()} ${it.osVersion.orEmpty()}\n${it.runtimeIdentifier}\n${it.verifiedAtUtc}")
+                        Text(stringResource(R.string.server_maintenance_probe, it.osSupported.toString(), it.sudoAvailable.toString(),
+                            it.systemdAvailable.toString(), it.diskAvailableBytes?.toString().orEmpty(), it.requestedPortAvailable?.toString().orEmpty(), it.missingDependencies.joinToString()))
+                        HorizontalDivider()
+                        MaintenanceDetail(R.string.server_maintenance_install_root, snapshot.installRoot)
+                        MaintenanceDetail(R.string.server_maintenance_data_root, snapshot.dataRoot)
+                        MaintenanceDetail(R.string.server_maintenance_services, snapshot.serviceNames.joinToString())
+                        MaintenanceDetail(R.string.server_maintenance_identity, snapshot.installationId)
+                        } }
+                    }
+                    if (page == 2 && snapshot.installed) {
+                        Text(stringResource(R.string.server_maintenance_actions_note), style = MaterialTheme.typography.bodySmall)
+                        PasswordTextField(sudo, { sudo = it }, stringResource(R.string.ssh_workspace_deploy_sudo_password))
+                        Button(onClick = { wizard = true }, enabled = !state.busy) { Text(stringResource(R.string.installation_kind_upgrade)) }
+                        val certificateRepairSupported = snapshot.mode == ServerInstallMode.LinuxSystem || snapshot.mode == ServerInstallMode.WindowsSystem
+                        if (certificateRepairSupported) {
+                            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                Checkbox(repairCertificate, { repairCertificate = it }, enabled = !state.busy)
+                                Text(stringResource(R.string.server_maintenance_repair_certificate), modifier = Modifier.weight(1f))
+                            }
+                            if (repairCertificate) {
+                                Text(stringResource(R.string.server_maintenance_repair_certificate_note), style = MaterialTheme.typography.bodySmall)
+                                OutlinedTextField(certificateIdentities, { certificateIdentities = it },
+                                    label = { Text(stringResource(R.string.ssh_workspace_deploy_certificate_names)) },
+                                    modifier = Modifier.fillMaxWidth(), enabled = !state.busy, isError = !identitiesValid)
+                                if (!identitiesValid) Text(stringResource(R.string.server_maintenance_repair_certificate_invalid), color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                        OutlinedButton(onClick = {
+                            if (repairCertificate && certificateRepairSupported) confirmCertificateRepair = true
+                            else { host?.let { model.run(it.hostId, ServerDeploymentKind.Repair, sudo = sudo) }; sudo = "" }
+                        }, enabled = !state.busy && (!repairCertificate || !certificateRepairSupported || identitiesValid)) {
+                            Text(stringResource(R.string.server_maintenance_repair))
+                        }
+                        OutlinedButton(onClick = { purge = false; uninstall = true }, enabled = !state.busy) { Text(stringResource(R.string.server_maintenance_uninstall)) }
+                    } else if (page == 2) Button(onClick = { wizard = true }, enabled = !state.busy && state.probe?.runtimeIdentifier != null) { Text(stringResource(R.string.ssh_workspace_deploy_install)) }
                 }
-                if (page == 2 && snapshot.installed) {
-                    Text(stringResource(R.string.server_maintenance_actions_note), style = MaterialTheme.typography.bodySmall)
-                    PasswordTextField(sudo, { sudo = it }, stringResource(R.string.ssh_workspace_deploy_sudo_password))
-                    Button(onClick = { wizard = true }, enabled = !state.busy) { Text(stringResource(R.string.installation_kind_upgrade)) }
-                    val certificateRepairSupported = snapshot.mode == ServerInstallMode.LinuxSystem || snapshot.mode == ServerInstallMode.WindowsSystem
-                    if (certificateRepairSupported) {
-                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                            Checkbox(repairCertificate, { repairCertificate = it }, enabled = !state.busy)
-                            Text(stringResource(R.string.server_maintenance_repair_certificate), modifier = Modifier.weight(1f))
-                        }
-                        if (repairCertificate) {
-                            Text(stringResource(R.string.server_maintenance_repair_certificate_note), style = MaterialTheme.typography.bodySmall)
-                            OutlinedTextField(certificateIdentities, { certificateIdentities = it },
-                                label = { Text(stringResource(R.string.ssh_workspace_deploy_certificate_names)) },
-                                modifier = Modifier.fillMaxWidth(), enabled = !state.busy, isError = !identitiesValid)
-                            if (!identitiesValid) Text(stringResource(R.string.server_maintenance_repair_certificate_invalid), color = MaterialTheme.colorScheme.error)
-                        }
-                    }
-                    OutlinedButton(onClick = {
-                        if (repairCertificate && certificateRepairSupported) confirmCertificateRepair = true
-                        else { host?.let { model.run(it.hostId, ServerDeploymentKind.Repair, sudo = sudo) }; sudo = "" }
-                    }, enabled = !state.busy && (!repairCertificate || !certificateRepairSupported || identitiesValid)) {
-                        Text(stringResource(R.string.server_maintenance_repair))
-                    }
-                    OutlinedButton(onClick = { purge = false; uninstall = true }, enabled = !state.busy) { Text(stringResource(R.string.server_maintenance_uninstall)) }
-                } else if (page == 2) Button(onClick = { wizard = true }, enabled = !state.busy && state.probe?.runtimeIdentifier != null) { Text(stringResource(R.string.ssh_workspace_deploy_install)) }
+                if (state.complete) Text(stringResource(R.string.server_maintenance_complete))
+                if (page == 3 && host != null) ServerInstallRecoveryPanel(host.hostId,
+                    state.probe?.let { if (it.hostPlatform.equals("linux", true)) ServerHostPlatform.Linux else ServerHostPlatform.Windows })
             }
-            if (state.complete) Text(stringResource(R.string.server_maintenance_complete))
-            if (page == 3 && host != null) ServerInstallRecoveryPanel(host.hostId,
-                state.probe?.let { if (it.hostPlatform.equals("linux", true)) ServerHostPlatform.Linux else ServerHostPlatform.Windows })
         }
     }
     if (uninstall) AlertDialog(onDismissRequest = { uninstall = false }, title = { Text(stringResource(R.string.server_maintenance_uninstall)) },

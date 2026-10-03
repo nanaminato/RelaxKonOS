@@ -78,6 +78,11 @@ public partial class ServerCenterViewModel : ObservableObject
     [ObservableProperty] private string _statusMessage = string.Empty;
     [ObservableProperty] private string _errorMessage = string.Empty;
     [ObservableProperty] private bool _isBusy;
+    [ObservableProperty] private double _deploymentTransferProgress;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsDeploymentProgressIndeterminate))]
+    private bool _isDeploymentTransferActive;
+    public bool IsDeploymentProgressIndeterminate => !IsDeploymentTransferActive;
     [ObservableProperty] private bool _installationWizardOpen;
     [ObservableProperty] private bool _hasPreviousVersion;
     [ObservableProperty] private bool _hasIncompleteInstallation;
@@ -433,7 +438,7 @@ public partial class ServerCenterViewModel : ObservableObject
 
         IsBusy = true;
         ErrorMessage = string.Empty;
-        StatusMessage = string.Empty;
+        StatusMessage = T("server_center.progress.connecting", "Connecting to the server…");
         try
         {
             var tools = await _releaseSource.ResolveToolsAsync(platform.Platform, cancellationToken).ConfigureAwait(true);
@@ -450,6 +455,7 @@ public partial class ServerCenterViewModel : ObservableObject
                 credential,
                 DateTimeOffset.UtcNow,
                 cancellationToken).ConfigureAwait(true);
+            StatusMessage = T("server_center.progress.checking", "Checking the installation environment…");
             var probeReceipt = await ExecuteReadOnlyAsync(session, tools, ServerDeploymentKind.Probe, null, cancellationToken).ConfigureAwait(true);
             var probe = probeReceipt.Probe;
             var sudoPassword = platform.Platform == HostPlatformKind.Linux && probe?.Elevated == false && probe.SudoAvailable && probe.ExistingMode != ServerInstallMode.LinuxUser
@@ -499,6 +505,7 @@ public partial class ServerCenterViewModel : ObservableObject
 
             // Read the separate status receipt even after uninstall. The install identity is retained
             // locally only as a stable association for preserved data; it is never treated as live API health.
+            StatusMessage = T("server_center.progress.verifying", "Verifying the operation result…");
             var status = await ExecuteReadOnlyAsync(
                 session, tools, ServerDeploymentKind.Status, StatusOptions(operationMode), cancellationToken, sudoPassword).ConfigureAwait(true);
             if (status.Snapshot is null)
@@ -549,6 +556,7 @@ public partial class ServerCenterViewModel : ObservableObject
         {
             SshPassword = string.Empty;
             DeleteServerData = false;
+            if (HasError) StatusMessage = string.Empty;
             IsBusy = false;
         }
     }
@@ -574,9 +582,10 @@ public partial class ServerCenterViewModel : ObservableObject
 
         IsBusy = true;
         ErrorMessage = string.Empty;
-        StatusMessage = string.Empty;
+        StatusMessage = T("server_center.progress.connecting", "Connecting to the server…");
         string? convertedCertificate = null;
         var deploymentStage = "SSH";
+        IsDeploymentTransferActive = false;
         try
         {
             var tools = await _releaseSource.ResolveToolsAsync(platform.Platform, cancellationToken).ConfigureAwait(true);
@@ -593,6 +602,7 @@ public partial class ServerCenterViewModel : ObservableObject
                 credential,
                 DateTimeOffset.UtcNow,
                 cancellationToken).ConfigureAwait(true);
+            StatusMessage = T("server_center.progress.checking", "Checking the installation environment…");
             var probeReceipt = await ExecuteReadOnlyAsync(session, tools, ServerDeploymentKind.Probe, null, cancellationToken).ConfigureAwait(true);
             var probe = probeReceipt.Probe;
             await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(target.HostId, probeReceipt), cancellationToken)
@@ -662,6 +672,7 @@ public partial class ServerCenterViewModel : ObservableObject
                 return false;
             }
 
+            StatusMessage = T("server_center.progress.preparing", "Preparing and uploading installation files…");
             ServerCenterReleaseAssets? release = null;
             if (installation.Source == ServerPackageSourceKind.LocalBundle)
             {
@@ -731,9 +742,30 @@ public partial class ServerCenterViewModel : ObservableObject
             deploymentStage = "SFTP";
             var staged = await client.StageAsync(
                 request, platform.Platform, launcher, archive, runtime,
-                certificate, installation.CertificatePassword, cancellationToken).ConfigureAwait(true);
+                certificate, installation.CertificatePassword, cancellationToken,
+                new Progress<double>(fraction => {
+                    if (deploymentStage != "SFTP") return;
+                    IsDeploymentTransferActive = true;
+                    DeploymentTransferProgress = fraction * 100;
+                    StatusMessage =
+                    T("server_center.progress.preparing", "Preparing and uploading installation files…") +
+                    $" {fraction:P0} · {(long)(fraction * (archive?.Length ?? 0)):N0} / {archive?.Length ?? 0:N0} B"; })).ConfigureAwait(true);
             deploymentStage = "install";
-            var receipt = await client.ExecuteAsync(staged, cancellationToken, sudoPassword).ConfigureAwait(true);
+            IsDeploymentTransferActive = false;
+            StatusMessage = kind == ServerDeploymentKind.Upgrade
+                ? T("server_center.progress.upgrading", "Updating, please wait…")
+                : T("server_center.progress.installing", "Installing, please wait…");
+            var receipt = await client.ExecuteAsync(staged, cancellationToken, sudoPassword,
+                new Progress<ServerDeploymentTransfer?>(transfer => {
+                    if (deploymentStage != "install") return;
+                    IsDeploymentTransferActive = transfer?.Total is > 0;
+                    DeploymentTransferProgress = transfer?.Total is > 0 ? Math.Clamp(transfer.Bytes * 100d / transfer.Total.Value, 0, 100) : 0;
+                    StatusMessage = transfer is null
+                        ? kind == ServerDeploymentKind.Upgrade ? T("server_center.progress.upgrading", "Updating, please wait…")
+                            : T("server_center.progress.installing", "Installing, please wait…")
+                        : T("server_center.progress.downloading", "Downloading the installation package…") +
+                            (transfer.Total is > 0 ? $" {(double)transfer.Bytes / transfer.Total.Value:P0} · {transfer.Bytes:N0} / {transfer.Total:N0} B" : $" {transfer.Bytes:N0} B");
+                })).ConfigureAwait(true);
             await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(target.HostId, receipt), cancellationToken)
                 .ConfigureAwait(true);
 
@@ -746,6 +778,8 @@ public partial class ServerCenterViewModel : ObservableObject
             // A successful launcher process is only a transport result.  Read a separate SSH-side
             // status receipt before declaring success or refreshing the local cached state.
             deploymentStage = "status";
+            IsDeploymentTransferActive = false;
+            StatusMessage = T("server_center.progress.verifying", "Verifying the operation result…");
             var status = await ExecuteReadOnlyAsync(
                 session, tools, ServerDeploymentKind.Status, StatusOptions(mode.Value), cancellationToken, sudoPassword).ConfigureAwait(true);
             if (status.Snapshot is null)
@@ -785,6 +819,9 @@ public partial class ServerCenterViewModel : ObservableObject
                 catch (IOException) { }
             }
             SshPassword = string.Empty;
+            deploymentStage = "done";
+            IsDeploymentTransferActive = false;
+            if (HasError) StatusMessage = string.Empty;
             IsBusy = false;
         }
     }
@@ -1203,11 +1240,16 @@ public partial class ServerCenterViewModel : ObservableObject
         CancellationToken cancellationToken,
         string? sudoPassword = null)
     {
+        StatusMessage = T("server_center.progress.preparing", "Preparing and uploading installation files…");
         await using var launcher = tools.OpenLauncher();
 
         var client = new ServerCenterDeploymentClient(session.Transport);
         var staged = await client.StageAsync(
             request, tools.Platform, launcher, null, null, null, null, cancellationToken).ConfigureAwait(true);
+        StatusMessage = request.Kind == ServerDeploymentKind.Uninstall
+            ? T("server_center.progress.uninstalling", "Uninstalling, please wait…")
+            : request.Kind == ServerDeploymentKind.Rollback ? RollbackText + "…"
+            : T("server_center.progress.repairing", "Repairing, please wait…");
         var receipt = await client.ExecuteAsync(staged, cancellationToken, sudoPassword).ConfigureAwait(true);
         await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(session.Target.HostId, receipt), cancellationToken)
             .ConfigureAwait(true);

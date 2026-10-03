@@ -7,6 +7,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.servercenter.*
+import app.relaxkonos.mobile.ui.common.TransferProgress
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.OutputStream
@@ -38,7 +39,7 @@ class SshFilesViewModel(application: Application) : AndroidViewModel(application
         if (state.value.hostId != hostId || workspaceRevision != revision) { stop(); mutable.value = SshFilesUiState(hostId = hostId, unknown = hostId in uncertain, writesSettling = writeRequests.any { it.hostId == hostId && it.sent }); workspaceRevision = revision }
         active = true; reload()
     }
-    fun stop() { activeRequest?.takeIf { it.sent && it.targets != null }?.let(::markUnknown); active = false; generation++; job?.cancel(); connection?.close(); connection = null; mutable.update { it.copy(busy = false, connected = false) } }
+    fun stop() { activeRequest?.takeIf { it.sent && it.targets != null }?.let(::markUnknown); active = false; generation++; job?.cancel(); connection?.close(); connection = null; mutable.update { it.copy(busy = false, connected = false, transfer = null) } }
     fun cancelTransfer() { stop(); active = true }
     override fun onCleared() { stop(); super.onCleared() }
     fun reload() {
@@ -145,8 +146,10 @@ class SshFilesViewModel(application: Application) : AndroidViewModel(application
     fun upload(uris: List<Uri>, tree: Uri? = null) {
         val directory = state.value.path
         val targets = mutableListOf<String>()
-        execute(targets) { transport, dispatch ->
+        execute(targets, transfer = TransferProgress(""), uploading = true) { transport, dispatch ->
             val items = if (tree == null) documents.files(uris) else documents.tree(tree)
+            val epoch = generation
+            val totalBytes = if (items.any { !it.isDirectory && it.size == null }) null else items.filterNot { it.isDirectory }.sumOf { it.size ?: 0L }
             val roots = items.filter { '/' !in it.relativePath }
             roots.forEach { targets += directory.trimEnd('/') + "/" + it.relativePath }
             roots.forEach { check(transport.fileInfo(directory.trimEnd('/') + "/" + it.relativePath) == null) { "destination-exists" } }
@@ -155,9 +158,12 @@ class SshFilesViewModel(application: Application) : AndroidViewModel(application
                 val destination = directory.trimEnd('/') + "/" + item.relativePath
                 if (item.isDirectory) { dispatch(); transport.createDirectory(destination) }
                 else withContext(Dispatchers.IO) {
+                    transferProgress(epoch, item.relativePath, total, totalBytes)
                     val input = app.contentResolver.openInputStream(item.uri) ?: error("source-changed")
                     SshBoundedInputStream(input, SshFileTransferRules.MAX_BYTES - total).use { bounded ->
-                        dispatch(); transport.uploadNew(bounded, item.size, destination); total += bounded.count
+                        dispatch(); transport.uploadNew(bounded, item.size, destination) { sent ->
+                            transferProgress(epoch, item.relativePath, total + sent, totalBytes)
+                        }; total += bounded.count
                     }
                 }
             }
@@ -175,13 +181,19 @@ class SshFilesViewModel(application: Application) : AndroidViewModel(application
         val snapshot = state.value; val entries = snapshot.downloadEntries
         mutable.update { it.copy(downloadTarget = null, downloadEntries = emptyList(), downloadLaunchPending = false) }
         if (destination == null || entries.isEmpty()) return
-        execute { transport, _ ->
+        execute(transfer = TransferProgress(entries.first().name)) { transport, _ ->
             val plan = SshFileTransfers(transport).plan(entries)
+            val epoch = generation
+            transferProgress(epoch, entries.first().name, 0, plan.totalBytes)
             withContext(Dispatchers.IO) {
                 val output = app.contentResolver.openOutputStream(destination) ?: error("source-changed")
-                output.use { if (snapshot.downloadZip) SshFileTransfers(transport).exportZip(entries, it)
+                output.use { if (snapshot.downloadZip) SshFileTransfers(transport).exportZip(entries, it) { name, bytes, total ->
+                        transferProgress(epoch, name, bytes, total)
+                    }
                     else {
-                        val bounded = SshBoundedOutputStream(it, plan.totalBytes)
+                        val bounded = SshBoundedOutputStream(it, plan.totalBytes) { bytes ->
+                            transferProgress(epoch, entries.single().name, bytes, plan.totalBytes)
+                        }
                         transport.download(entries.single().path, bounded)
                         check(bounded.count == plan.totalBytes) { "source-changed" }
                     } }
@@ -232,13 +244,18 @@ class SshFilesViewModel(application: Application) : AndroidViewModel(application
         val entries = transport.listDirectory(path)
         return { old -> old.copy(entries = entries, detailEntry = null, selected = null, preview = SshPreview.None, selectedPaths = emptySet()) }
     }
-    private fun execute(writeTargets: List<String>? = null, action: suspend (ServerCenterSshTransport, () -> Unit) -> (SshFilesUiState) -> SshFilesUiState) {
+    private fun transferProgress(epoch: Int, name: String, bytes: Long, total: Long?) {
+        mutable.update { if (epoch == generation && active && it.busy) it.copy(transfer = TransferProgress(name, bytes, total)) else it }
+    }
+
+    private fun execute(writeTargets: List<String>? = null, transfer: TransferProgress? = null, uploading: Boolean = false,
+        action: suspend (ServerCenterSshTransport, () -> Unit) -> (SshFilesUiState) -> SshFilesUiState) {
         val snapshot = state.value
         if (!active || snapshot.busy || writeTargets != null && snapshot.unknown || container.serverCenter.sshFilesHostId != snapshot.hostId) return
         val secret = container.serverCenter.verifiedPasswordCopy(snapshot.hostId) ?: run { problem("connection-failed"); return }
         val epoch = ++generation; val workspaceEpoch = workspaceRevision; val request = Request(snapshot.hostId, writeTargets); activeRequest = request; if (writeTargets != null) writeRequests += request; var completed = false
         fun verify() { if (!active || epoch != generation || container.serverCenter.workspaceRevision != workspaceEpoch || state.value.hostId != snapshot.hostId || container.serverCenter.sshFilesHostId != snapshot.hostId) throw CancellationException("SFTP workspace changed") }
-        mutable.update { it.copy(busy = true, problem = null, checked = emptyList()) }
+        mutable.update { it.copy(busy = true, problem = null, checked = emptyList(), transfer = transfer, uploading = uploading) }
         job = viewModelScope.launch {
             var session: ServerCenterHostSession? = null
             try {
@@ -255,7 +272,7 @@ class SshFilesViewModel(application: Application) : AndroidViewModel(application
                 writeRequests.remove(request)
                 if (state.value.hostId == snapshot.hostId) mutable.update { it.copy(writesSettling = writeRequests.any { pending -> pending.hostId == snapshot.hostId && pending.sent }) }
                 secret.fill('\u0000')
-                if (epoch == generation) mutable.update { it.copy(busy = false) }
+                if (epoch == generation) mutable.update { it.copy(busy = false, transfer = null) }
             }
         }.also { it.invokeOnCompletion { secret.fill('\u0000') } }
     }

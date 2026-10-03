@@ -2728,4 +2728,12 @@
     <string name="server_install_options_invalid">Check the port, HTTPS URL, SHA-256 and whitelist directories.</string>
     <string name="server_install_source_url">Custom HTTPS download</string>
     <string name="server_install_file_access_whitelist">Selected directories</string>
+    <string name="server_progress_checking">Checking the installation environment…</string>
+    <string name="server_progress_connecting">Connecting to the server…</string>
+    <string name="server_progress_installing">Installing, please wait…</string>
+    <string name="server_progress_preparing">Preparing and uploading installation files…</string>
+    <string name="server_progress_repairing">Repairing, please wait…</string>
+    <string name="server_progress_uninstalling">Uninstalling, please wait…</string>
+    <string name="server_progress_upgrading">Updating, please wait…</string>
+    <string name="server_progress_verifying">Verifying the operation result…</string>
 </resources>

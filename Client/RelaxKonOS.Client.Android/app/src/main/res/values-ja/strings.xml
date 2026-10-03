@@ -2690,4 +2690,12 @@
     <string name="server_install_options_invalid">ポート、HTTPS URL、SHA-256、許可ディレクトリを確認してください。</string>
     <string name="server_install_source_url">カスタム HTTPS ダウンロード</string>
     <string name="server_install_file_access_whitelist">許可ディレクトリ</string>
+    <string name="server_progress_checking">インストール環境を確認しています…</string>
+    <string name="server_progress_connecting">サーバーに接続しています…</string>
+    <string name="server_progress_installing">インストール中です。しばらくお待ちください…</string>
+    <string name="server_progress_preparing">インストールファイルを準備・アップロードしています…</string>
+    <string name="server_progress_repairing">修復中です。しばらくお待ちください…</string>
+    <string name="server_progress_uninstalling">アンインストール中です。しばらくお待ちください…</string>
+    <string name="server_progress_upgrading">更新中です。しばらくお待ちください…</string>
+    <string name="server_progress_verifying">操作結果を確認しています…</string>
 </resources>

@@ -24,7 +24,9 @@
                         <TextBlock Text="{Binding PackageUriLabel}" /><TextBox Text="{Binding PackageUri, Mode=TwoWay}" />
                         <TextBlock Text="{Binding PackageDigestLabel}" /><TextBox Text="{Binding PackageDigest, Mode=TwoWay}" />
                     </StackPanel>
-                    <TextBlock Text="{Binding ReleaseCatalogLabel}" /><TextBox Text="{Binding ReleaseCatalogBaseUri, Mode=TwoWay}" />
+                    <StackPanel Spacing="8" IsVisible="{Binding IsOfficialSource}">
+                        <TextBlock Text="{Binding ReleaseCatalogLabel}" /><TextBox Text="{Binding ReleaseCatalogBaseUri, Mode=TwoWay}" PlaceholderText="https://downloads.relaxkon.com/relaxkonos/stable/latest" />
+                    </StackPanel>
                     <StackPanel Spacing="8" IsVisible="{Binding IsLocalBundle}">
                         <TextBlock Text="{Binding LocalBundleText}" />
                         <WrapPanel ItemSpacing="10">
@@ -142,16 +144,20 @@
                 </StackPanel>
 
                 <TextBlock Text="{Binding ErrorMessage}" IsVisible="{Binding HasError}" Classes="error" TextWrapping="Wrap" />
-                <TextBlock Text="{Binding InstallingText}" IsVisible="{Binding IsBusy}" />
-                <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" />
             </StackPanel>
         </ScrollViewer>
 
-        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        <StackPanel Grid.Row="2" Spacing="12">
+            <StackPanel IsVisible="{Binding IsBusy}" Spacing="8">
+                <TextBlock Text="{Binding Progress.StatusMessage}" TextWrapping="Wrap" />
+                <ProgressBar IsIndeterminate="{Binding Progress.IsDeploymentProgressIndeterminate}" Value="{Binding Progress.DeploymentTransferProgress}" />
+            </StackPanel>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
             <Button Content="{Binding BackText}" Command="{Binding MoveBackCommand}" IsVisible="{Binding !IsSourceStep}" />
             <Button Content="{Binding NextText}" Command="{Binding MoveNextCommand}" IsVisible="{Binding !IsReviewStep}" />
             <Button Classes="primary" Content="{Binding InstallText}" Command="{Binding InstallCommand}" IsVisible="{Binding IsReviewStep}" />
             <Button Content="{Binding CancelText}" Command="{Binding CancelCommand}" IsEnabled="{Binding !IsBusy}" />
+        </StackPanel>
         </StackPanel>
     </Grid>
 </UserControl>

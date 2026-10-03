@@ -1,4 +1,4 @@
-﻿// 数据流移植自 Jaya ExplorerViewModel / NavigationViewModel / AddressbarViewModel / ToolbarViewModel /
+// 数据流移植自 Jaya ExplorerViewModel / NavigationViewModel / AddressbarViewModel / ToolbarViewModel /
 // StatusbarViewModel（BSD-3），合并为单一 VM 适配 RelaxKonOS DI 约定（去 ServiceLocator/EventAggregator）。
 // Copyright (c) 2020, Rubal Walia. 原始许可见 LICENSE-jaya.txt 与 THIRD_PARTY_NOTICES.md。
 using System.Collections.ObjectModel;
@@ -253,6 +253,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     public Func<IReadOnlyList<string>, FileElevationCapability, Task<bool>>? RequestFileOperationElevationAsync { get; set; }
     public Func<StartFileOperationRequest, Action<FileOperationDto>, Task>? QueueOperationAsync { get; set; }
     public Action<IReadOnlyList<FileOperationItem>, long, Func<Action<string, long, int>, CancellationToken, Task>>? QueueUpload { get; set; }
+    public Action<IReadOnlyList<FileOperationItem>, long, Func<Action<string, long, int>, CancellationToken, Task>>? QueueDownload { get; set; }
     /// <summary>Resumable uploader for files past the single-shot threshold. When it is absent every file
     /// stays on the single-shot route, which is correct but cannot carry a large one.</summary>
     public ILargeFileUploader? LargeFileUploader { get; set; }
@@ -1327,21 +1328,49 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         }
         var localPath = await (RequestLocalSaveFileAsync?.Invoke(entry.Name) ?? Task.FromResult<string?>(null));
         if (string.IsNullOrWhiteSpace(localPath)) return;
+        if (RequestFileElevationAsync is not null && !await RequestFileElevationAsync(entry.Path, FileElevationCapability.Read)) return;
+        if (QueueDownload is not null)
+        {
+            QueueDownload([new FileOperationItem(entry.Path, localPath)], entry.Size ?? 0,
+                async (report, ct) => await DownloadFileAsync(entry.Path, localPath, report, ct));
+            return;
+        }
         try
         {
-            if (RequestFileElevationAsync is not null && !await RequestFileElevationAsync(entry.Path, FileElevationCapability.Read)) return;
-            var r = await _client.DownloadAsync(entry.Path);
-            if (r is not (var stream, _))
-            {
-                StatusText = LocalizedText.Ref("explorer.status.download_file_missing");
-                return;
-            }
-            using (stream)
-            using (var fs = File.Create(localPath))
-                await stream.CopyToAsync(fs);
+            BeginTransfer(entry.Name, 1, entry.Size ?? 0);
+            await DownloadFileAsync(entry.Path, localPath, (_, bytes, count) => { TransferBytesCompleted = bytes; TransferItemCompleted = count; }, CancellationToken.None);
             StatusText = LocalizedText.Ref("explorer.status.downloaded", localPath);
         }
         catch (Exception ex) { StatusText = LocalizedText.Ref("explorer.status.download_failed", ex.Message); }
+        finally { IsTransferActive = false; }
+    }
+
+    private async Task DownloadFileAsync(string remotePath, string localPath, Action<string, long, int> report, CancellationToken ct)
+    {
+        report(remotePath, 0, 0);
+        var result = await _client.DownloadAsync(remotePath, ct);
+        if (result is not (var stream, _)) throw new IOException(LocalizedText.Get("explorer.status.download_file_missing"));
+        var partialPath = localPath + "." + Guid.NewGuid().ToString("N") + ".partial";
+        try
+        {
+            long received = 0;
+            using (stream)
+            await using (var output = File.Create(partialPath))
+            {
+                var buffer = new byte[128 * 1024];
+                int count;
+                while ((count = await stream.ReadAsync(buffer, ct)) != 0)
+                {
+                    await output.WriteAsync(buffer.AsMemory(0, count), ct);
+                    received += count;
+                    report(remotePath, received, 0);
+                }
+            }
+            ct.ThrowIfCancellationRequested();
+            File.Move(partialPath, localPath, overwrite: true);
+            report(remotePath, received, 1);
+        }
+        finally { if (File.Exists(partialPath)) File.Delete(partialPath); }
     }
 
     [RelayCommand]

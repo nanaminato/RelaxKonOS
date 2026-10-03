@@ -2689,4 +2689,12 @@
     <string name="server_install_options_invalid">请检查端口、HTTPS 地址、SHA-256 和白名单目录。</string>
     <string name="server_install_source_url">自定义 HTTPS 下载</string>
     <string name="server_install_file_access_whitelist">指定目录白名单</string>
+    <string name="server_progress_checking">正在检查安装环境…</string>
+    <string name="server_progress_connecting">正在连接服务器…</string>
+    <string name="server_progress_installing">正在安装，请稍候…</string>
+    <string name="server_progress_preparing">正在准备并上传安装文件…</string>
+    <string name="server_progress_repairing">正在修复，请稍候…</string>
+    <string name="server_progress_uninstalling">正在卸载，请稍候…</string>
+    <string name="server_progress_upgrading">正在更新，请稍候…</string>
+    <string name="server_progress_verifying">正在核验操作结果…</string>
 </resources>

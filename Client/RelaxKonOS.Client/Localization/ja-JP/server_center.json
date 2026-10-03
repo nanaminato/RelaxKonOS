@@ -1,6 +1,15 @@
 {
   "Culture": "ja-JP",
   "Strings": {
+    "server_center.progress.downloading": "インストールパッケージをダウンロードしています…",
+    "server_center.progress.checking": "インストール環境を確認しています…",
+    "server_center.progress.connecting": "サーバーに接続しています…",
+    "server_center.progress.installing": "インストール中です。しばらくお待ちください…",
+    "server_center.progress.preparing": "インストールファイルを準備・アップロードしています…",
+    "server_center.progress.repairing": "修復中です。しばらくお待ちください…",
+    "server_center.progress.uninstalling": "アンインストール中です。しばらくお待ちください…",
+    "server_center.progress.upgrading": "更新中です。しばらくお待ちください…",
+    "server_center.progress.verifying": "操作結果を確認しています…",
     "server_center.wizard.certificate_file": "証明書ファイル",
     "server_center.wizard.certificate_private_key_file": "秘密鍵ファイル",
     "server_center.maintenance_receipt_failed": "操作に失敗しました：{0}",

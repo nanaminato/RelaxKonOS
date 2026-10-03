@@ -793,6 +793,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
      */
     private fun startResumable(document: PickedDocument, directory: String) {
         transfer = null
+        uploadCollapsed = false
         container.uploads.start(directory, document)
         // Started before the prompt, not after: a foreground service has to be up within seconds, and the
         // permission request must never be a precondition for the transfer the user asked for.
@@ -860,6 +861,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     /** Continues an unfinished upload the coordinator remembers. */
     fun resumeUpload(entry: UploadResumeEntry) {
         if (isUploadBusy()) return
+        uploadCollapsed = false
         container.uploads.resume(entry)
         UploadForegroundService.start(getApplication())
         if (needsNotificationPermission()) uploadNotificationPrompt = true
@@ -1415,6 +1417,14 @@ fun FileTransferCard(viewModel: FilesViewModel, modifier: Modifier = Modifier) {
         return
     }
     val transfer = viewModel.transfer ?: return
+    if (transfer.kind == TransferKind.Upload || transfer.kind == TransferKind.Download) {
+        app.relaxkonos.mobile.ui.common.TransferProgressDialog(
+            stringResource(if (transfer.kind == TransferKind.Upload) R.string.files_uploading else R.string.files_downloading),
+            app.relaxkonos.mobile.ui.common.TransferProgress(transfer.label, transfer.transferredBytes, transfer.totalBytes),
+            viewModel::cancelActiveTransfer,
+        )
+        return
+    }
     ProgressSheet(
         title = stringResource(
             when (transfer.kind) {
@@ -1489,31 +1499,35 @@ fun FileUploadCard(viewModel: FilesViewModel, modifier: Modifier = Modifier) {
                 }
             }
         }
-    ProgressSheet(
-        title = stringResource(uploadTitle(state)),
-        detail = state.fileName,
-        progress = when {
-            stopped -> state.progress ?: 0f
-            state.stage == UploadStage.Preparing -> null
-            else -> state.progress ?: 0f
-        },
-        collapsed = viewModel.uploadCollapsed,
-        onCollapsedChange = viewModel::setUploadCollapsedState,
-        onCancel = if (stopped) null else viewModel::cancelUpload,
-        modifier = modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
-        footnote = when {
-            stopped -> stringResource(uploadFailureText(state.failure!!))
-            state.resynchronising -> stringResource(R.string.files_upload_reconciling)
-            state.totalBytes != null -> stringResource(
-                R.string.files_upload_progress,
-                formatSize(state.displayedBytes) ?: "",
-                formatSize(state.totalBytes) ?: "",
-            )
+    val content: @Composable () -> Unit = {
+        ProgressSheet(
+            title = stringResource(uploadTitle(state)),
+            detail = state.fileName,
+            progress = when {
+                stopped -> state.progress ?: 0f
+                state.stage == UploadStage.Preparing -> null
+                else -> state.progress ?: 0f
+            },
+            collapsed = viewModel.uploadCollapsed,
+            onCollapsedChange = viewModel::setUploadCollapsedState,
+            onCancel = if (stopped) null else viewModel::cancelUpload,
+            modifier = modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+            footnote = when {
+                stopped -> stringResource(uploadFailureText(state.failure!!))
+                state.resynchronising -> stringResource(R.string.files_upload_reconciling)
+                state.totalBytes != null -> stringResource(
+                    R.string.files_upload_progress,
+                    formatSize(state.displayedBytes) ?: "",
+                    formatSize(state.totalBytes) ?: "",
+                ) + (state.progress?.let { " · ${(it * 100).toInt()}%" } ?: "")
 
-            else -> null
-        },
-        actions = actions,
-    )
+                else -> null
+            },
+            actions = actions,
+        )
+    }
+    if (viewModel.uploadCollapsed) content()
+    else androidx.compose.ui.window.Dialog(onDismissRequest = { viewModel.setUploadCollapsedState(true) }) { content() }
 }
 
 /**

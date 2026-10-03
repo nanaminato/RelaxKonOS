@@ -1,6 +1,15 @@
 {
   "Culture": "zh-CN",
   "Strings": {
+    "server_center.progress.downloading": "正在下载安装包…",
+    "server_center.progress.checking": "正在检查安装环境…",
+    "server_center.progress.connecting": "正在连接服务器…",
+    "server_center.progress.installing": "正在安装，请稍候…",
+    "server_center.progress.preparing": "正在准备并上传安装文件…",
+    "server_center.progress.repairing": "正在修复，请稍候…",
+    "server_center.progress.uninstalling": "正在卸载，请稍候…",
+    "server_center.progress.upgrading": "正在更新，请稍候…",
+    "server_center.progress.verifying": "正在核验操作结果…",
     "server_center.wizard.certificate_file": "证书文件",
     "server_center.wizard.certificate_private_key_file": "私钥文件",
     "server_center.maintenance_receipt_failed": "操作未成功：{0}",

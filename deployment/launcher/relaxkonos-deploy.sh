@@ -151,7 +151,7 @@ deployment_python() {
   python3 - "$@" <<'PY'
 import errno, hashlib, json, os, re, shutil, stat, sys, urllib.request, zipfile
 from pathlib import Path
-import datetime, ssl, subprocess, uuid, tempfile
+import datetime, ssl, subprocess, uuid, tempfile, time
 
 def recovery_trusted(path):
     # Every ancestor must prevent non-root replacement, including symlink targets.
@@ -281,21 +281,39 @@ class HttpsRedirect(urllib.request.HTTPRedirectHandler):
         if not url.startswith('https://'): raise ValueError('HTTPS required')
         return super().redirect_request(req, fp, code, msg, headers, url)
 
-def download(url, path, limit):
+def download(url, path, limit, request_path=None):
     if not isinstance(url,str) or not url.startswith('https://'): raise ValueError('HTTPS required')
     opener = urllib.request.build_opener(HttpsRedirect)
     with opener.open(url, timeout=60) as source, open(path,'xb') as target:
         total = 0
+        length = source.headers.get('Content-Length')
+        length = int(length) if length and length.isdigit() and 0 <= int(length) <= limit else None
+        last_report = 0
+        def report(force=False, active=True):
+            nonlocal last_report
+            now = time.monotonic()
+            if request_path and (force or now - last_report >= 0.25):
+                progress_path = Path(request_path).parent / 'transfer.json'
+                temporary = progress_path.with_suffix('.tmp')
+                try:
+                    temporary.write_text(json.dumps({'operationId': request(request_path)['operationId'], 'bytes': total, 'total': length, 'active': active}), encoding='utf-8')
+                    os.replace(temporary, progress_path)
+                except OSError:
+                    pass  # Advisory progress must never abort the package download.
+                last_report = now
+        report(True)
         while chunk := source.read(1024*1024):
             total += len(chunk)
             if total > limit: raise ValueError('download too large')
             target.write(chunk)
+            report()
+        report(True, False)
 
 def extract(source, runtime, kind, destination, archive, request_path=None):
     options = (request(request_path).get('options') or {}) if request_path else {}
     if source == 'directUrl':
         archive = str(destination) + '.zip'
-        download(options['packageUri'], archive, 8*1024**3)
+        download(options['packageUri'], archive, 8*1024**3, request_path)
         with open(archive,'rb') as stream: digest = stream_digest(stream)
         if digest != options['packageDigest'].lower(): raise ValueError('release checksum mismatch')
     if source == 'officialStable':
@@ -305,7 +323,7 @@ def extract(source, runtime, kind, destination, archive, request_path=None):
         descriptor = load(Path(descriptor_path).read_text())
         if descriptor.get('schemaVersion') != 1 or descriptor.get('runtime') != runtime or descriptor.get('packageKind') != kind or not re.fullmatch('[0-9a-fA-F]{64}',descriptor.get('sha256','')): raise ValueError('descriptor')
         archive = str(destination) + '.zip'
-        download(descriptor['url'],archive,8*1024**3)
+        download(descriptor['url'],archive,8*1024**3,request_path)
         with open(archive,'rb') as stream: digest = stream_digest(stream)
         if digest != descriptor['sha256'].lower(): raise ValueError('official checksum mismatch')
     path = Path(archive)

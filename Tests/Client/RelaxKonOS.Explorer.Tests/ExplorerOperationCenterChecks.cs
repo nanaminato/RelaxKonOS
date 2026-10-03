@@ -19,6 +19,22 @@ public static class ExplorerOperationCenterChecks
         center.CloseRequested = () => closed++;
         center.Completed += vm.RefreshAfterOperation;
         center.ShowRequested = () => shown++;
+        var downloadEnd = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Action<string, long, int>? downloadProgress = null;
+        center.QueueDownload([new("/source/download.bin", "host/download.bin")], 100, (report, ct) =>
+        {
+            downloadProgress = report;
+            return downloadEnd.Task.WaitAsync(ct);
+        });
+        var download = center.Jobs.Single();
+        downloadProgress!("/source/download.bin", 50, 0);
+        check(download.IsDownload && download.IsLocalTransfer && download.Progress == 50 && download.CanCancel,
+            "Download opens the operation window with measured bytes and cancellation");
+        await download.CancelCommand.ExecuteAsync(null);
+        await Eventually(() => center.Jobs.Count == 0);
+        check(fake.Requests.Count == 0, "Cancelling a local download does not submit a server operation");
+        shown = 0;
+        closed = 0;
         await vm.NavigateToAsync("/source");
         vm.SelectedEntry = file;
         vm.UpdatePickerSelection([file]);

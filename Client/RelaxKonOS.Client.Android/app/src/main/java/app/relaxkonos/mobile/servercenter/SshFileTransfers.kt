@@ -70,24 +70,28 @@ class SshFileTransfers(private val transport: ServerCenterSshTransport) {
         }
     }
     /** Exports folders/multiple selections as a streaming ZIP through SAF; no recursive local paths. */
-    suspend fun exportZip(roots: List<SshFileEntry>, destination: OutputStream) {
+    suspend fun exportZip(roots: List<SshFileEntry>, destination: OutputStream, progress: ((String, Long, Long) -> Unit)? = null) {
         val plan = plan(roots)
+        var completed = 0L
         ZipOutputStream(destination).use { zip ->
             plan.items.forEach { item ->
+                progress?.invoke(item.relativePath, completed, plan.totalBytes)
                 currentCoroutineContext().ensureActive()
                 require(transport.fileInfo(item.entry.path) == item.entry) { "source-changed" }
                 zip.putNextEntry(ZipEntry(item.relativePath + if (item.entry.isDirectory) "/" else ""))
                 if (!item.entry.isDirectory) {
                     val out = object : OutputStream() {
                         var count = 0L
-                        override fun write(value: Int) { check(++count <= item.entry.size!!) { "source-changed" }; zip.write(value) }
+                        override fun write(value: Int) { check(++count <= item.entry.size!!) { "source-changed" }; zip.write(value); progress?.invoke(item.relativePath, completed + count, plan.totalBytes) }
                         override fun write(buffer: ByteArray, offset: Int, length: Int) {
                             check(length.toLong() <= item.entry.size!! - count) { "source-changed" }; count += length; zip.write(buffer, offset, length)
+                            progress?.invoke(item.relativePath, completed + count, plan.totalBytes)
                         }
                         override fun close() { /* Closing an SFTP stream must not close the ZIP. */ }
                     }
                     transport.download(item.entry.path, out)
                     check(out.count == item.entry.size) { "source-changed" }
+                    completed += out.count
                 }
                 zip.closeEntry()
             }
@@ -105,11 +109,13 @@ class SshBoundedInputStream(private val source: InputStream, private val limit: 
     override fun close() = source.close()
 }
 
-class SshBoundedOutputStream(private val destination: OutputStream, private val limit: Long) : OutputStream() {
+class SshBoundedOutputStream(private val destination: OutputStream, private val limit: Long,
+    private val progress: ((Long) -> Unit)? = null) : OutputStream() {
     var count = 0L; private set
-    override fun write(value: Int) { check(++count <= limit) { "transfer-limit" }; destination.write(value) }
+    override fun write(value: Int) { check(++count <= limit) { "transfer-limit" }; destination.write(value); progress?.invoke(count) }
     override fun write(buffer: ByteArray, offset: Int, length: Int) {
         check(length.toLong() <= limit - count) { "transfer-limit" }; count += length; destination.write(buffer, offset, length)
+        progress?.invoke(count)
     }
     override fun close() { /* The caller owns the SAF/ZIP destination. */ }
 }

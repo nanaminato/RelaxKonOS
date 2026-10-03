@@ -28,7 +28,7 @@ import org.bouncycastle.asn1.pkcs.RSAPrivateKey
 import org.bouncycastle.asn1.x509.AlgorithmIdentifier
 
 internal data class ServerInstallState(val busy: Boolean = false, val message: Int? = null,
-    val installed: Boolean = false)
+    val installed: Boolean = false, val transfer: app.relaxkonos.mobile.ui.common.TransferProgress? = null)
 
 internal data class ServerInstallSelection(
     val hostId: String, val source: String, val bundle: Uri?, val remotePath: String,
@@ -65,7 +65,7 @@ internal class ServerInstallViewModel(application: Application) : AndroidViewMod
 
     fun install(selection: ServerInstallSelection) {
         if (mutableState.value.busy || mutableState.value.installed) return
-        mutableState.value = ServerInstallState(true, R.string.ssh_workspace_deploy_running)
+        mutableState.value = ServerInstallState(true, R.string.server_progress_connecting)
         viewModelScope.launch {
             val secret = container.serverCenter.verifiedPasswordCopy(selection.hostId)
             if (secret == null) {
@@ -86,6 +86,10 @@ internal class ServerInstallViewModel(application: Application) : AndroidViewMod
         }
     }
 
+    private fun progress(message: Int) {
+        mutableState.value = mutableState.value.copy(message = message, transfer = null)
+    }
+
     private suspend fun execute(selection: ServerInstallSelection, secret: CharArray) {
         val credential = SshCredential(SshCredentialKind.Password, secret, null)
         var localZip: File? = null
@@ -102,6 +106,7 @@ internal class ServerInstallViewModel(application: Application) : AndroidViewMod
                         UUID.randomUUID().toString(), kind, options), platform, launcher)
                     return client.execute(staged, sudoPassword)
                 }
+                progress(R.string.server_progress_checking)
                 var probe = requireNotNull(read(ServerDeploymentKind.Probe).probe)
                 check(probe.osSupported || platform == ServerHostPlatform.Linux && selection.advanced.allowUnsupportedSystem)
                 val runtime = requireNotNull(probe.runtimeIdentifier)
@@ -128,6 +133,7 @@ internal class ServerInstallViewModel(application: Application) : AndroidViewMod
                     "url" -> ServerPackageSourceKind.DirectUrl
                     else -> ServerPackageSourceKind.OfficialStable
                 }
+                progress(R.string.server_progress_preparing)
                 if (source == ServerPackageSourceKind.LocalBundle) {
                     localZip = File.createTempFile("server-install-", ".zip", getApplication<Application>().cacheDir)
                     getApplication<Application>().contentResolver.openInputStream(requireNotNull(selection.bundle)).use { input ->
@@ -163,13 +169,26 @@ internal class ServerInstallViewModel(application: Application) : AndroidViewMod
                     fileAccess = if (mode == ServerInstallMode.LinuxUser) "restricted" else selection.fileAccess, certificateMode = selection.certificateMode,
                     selfSignedIdentities = selection.identities.takeIf { selection.certificateMode == "selfSigned" }, confirmed = true)
                 val staged = client.stage(ServerDeploymentRequest(ServerDeploymentProtocol.VERSION, operationId, kind, options),
-                    platform, launcher, localZip, runtime, certificate, selection.password)
+                    platform, launcher, localZip, runtime, certificate, selection.password,
+                    uploadProgress = { fraction ->
+                        val length = localZip?.length() ?: 0L
+                        mutableState.value = mutableState.value.copy(transfer = app.relaxkonos.mobile.ui.common.TransferProgress(
+                            "server.zip", (fraction * length).toLong(), length))
+                    })
                 val index = container.serverInstallOperations
                 val reference = index.record(session.target, key, operationId, platform)
-                val receipt = client.execute(staged, sudoPassword)
+                progress(if (kind == ServerDeploymentKind.Upgrade) R.string.server_progress_upgrading else R.string.server_progress_installing)
+                val receipt = client.execute(staged, sudoPassword) { transfer ->
+                    mutableState.value = mutableState.value.copy(
+                        message = if (transfer != null) R.string.files_downloading else if (kind == ServerDeploymentKind.Upgrade)
+                            R.string.server_progress_upgrading else R.string.server_progress_installing,
+                        transfer = transfer?.let { app.relaxkonos.mobile.ui.common.TransferProgress("server.zip", it.bytes, it.total) },
+                    )
+                }
                 index.markVerified(session.target, reference, key, System.currentTimeMillis())
                 if (receipt.problemCode == "server-deployment.elevation_required") throw ServerInstallSudoException()
                 check(receipt.state == ServerDeploymentState.Succeeded)
+                progress(R.string.server_progress_verifying)
                 val status = requireNotNull(read(ServerDeploymentKind.Status,
                     ServerDeploymentOptions(ServerPackageSourceKind.OfficialStable, ServerNetworkProfile.Loopback, mode = mode), sudoPassword).snapshot)
                 container.serverCenter.recordVerifiedSnapshot(selection.hostId, status)

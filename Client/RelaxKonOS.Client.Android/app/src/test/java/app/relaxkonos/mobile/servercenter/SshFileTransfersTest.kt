@@ -9,6 +9,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SshFileTransfersTest {
+    @Test fun `ZIP export reports aggregate source bytes across multiple files`() = runTest {
+        val sftp = MemorySftp()
+        val first = sftp.file("/source/a.txt", "abc")
+        val second = sftp.file("/source/b.txt", "12345")
+        val progress = mutableListOf<Pair<Long, Long>>()
+        SshFileTransfers(sftp.transport).exportZip(listOf(first, second), ByteArrayOutputStream()) { _, bytes, total ->
+            progress += bytes to total
+        }
+        assertEquals(8L to 8L, progress.last())
+        assertTrue(progress.zipWithNext().all { (a, b) -> b.first >= a.first })
+        assertTrue(progress.all { it.second == 8L })
+    }
     @Test fun `copy plans a bounded tree and creates directories before streamed files`() = runTest {
         val sftp = MemorySftp(); val root = sftp.directory("/source/folder"); sftp.file("/source/folder/a.txt", "abc")
         var dispatched = 0

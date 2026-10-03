@@ -159,7 +159,7 @@ interface ServerCenterSshTransport : AutoCloseable {
 
     /** lstat, null only for an authoritative no-such-file response. */
     suspend fun fileInfo(remotePath: String): SshFileEntry?
-    suspend fun uploadNew(content: InputStream, contentLength: Long?, remotePath: String)
+    suspend fun uploadNew(content: InputStream, contentLength: Long?, remotePath: String, progress: ((Long) -> Unit)? = null)
     suspend fun copyFile(sourcePath: String, destinationPath: String, maximumBytes: Long)
 
     suspend fun createDirectory(remotePath: String)

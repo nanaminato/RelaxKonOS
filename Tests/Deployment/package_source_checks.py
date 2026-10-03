@@ -1,5 +1,5 @@
 """Test the Linux launcher's actual helper without running any service installer."""
-import errno, hashlib, json, tempfile, unittest, zipfile
+import errno, hashlib, json, tempfile, unittest, zipfile, io, os
 from unittest.mock import patch
 from pathlib import Path
 
@@ -9,6 +9,28 @@ helper = {}
 exec(compile(code,'linux-launcher-helper','exec'),helper)
 
 class PackageSourceChecks(unittest.TestCase):
+    def test_remote_download_reports_actual_bytes_and_stops_after_download(self):
+        class Source(io.BytesIO):
+            def __init__(self, total):
+                super().__init__(b'a' * (1024 * 1024 + 17))
+                self.headers = {} if total is None else {'Content-Length': str(total)}
+        operation = '12345678-1234-1234-1234-123456789abc'
+        for total in (1024 * 1024 + 17, None):
+            records = []
+            replace = os.replace
+            def capture(source, destination):
+                records.append(json.loads(Path(source).read_text()))
+                replace(source, destination)
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                with patch.dict(helper, request=lambda _: {'operationId': operation}), \
+                     patch('urllib.request.build_opener') as opener, patch('os.replace', side_effect=capture):
+                    opener.return_value.open.return_value = Source(total)
+                    helper['download']('https://example.invalid/package.zip', root/'package.zip', 8*1024**3, root/'request.json')
+                self.assertEqual(records[0]['bytes'], 0)
+                self.assertTrue(records[0]['active'])
+                self.assertEqual(records[-1], {'operationId': operation, 'bytes': 1024*1024+17, 'total': total, 'active': False})
+                self.assertEqual((root/'package.zip').stat().st_size, records[-1]['bytes'])
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.root = Path(self.temp.name)
         self.archive = self.root/'server.zip'
@@ -66,7 +88,7 @@ class PackageSourceChecks(unittest.TestCase):
         descriptor={'schemaVersion':1,'packageKind':'user-server','runtime':'linux-x64','version':'0.1.0',
                     'url':'https://example.invalid/server.zip','sha256':hashlib.sha256(self.archive.read_bytes()).hexdigest()}
         original=helper['download']
-        def download(url,path,limit):
+        def download(url,path,limit,request_path=None):
             seen.append(url);Path(path).write_bytes(json.dumps(descriptor).encode() if url.endswith('.json') else self.archive.read_bytes())
         helper['download']=download
         try:
@@ -85,7 +107,7 @@ class PackageSourceChecks(unittest.TestCase):
         def write(): path.write_text(json.dumps({'schemaVersion':1,'operationId':'12345678-1234-1234-1234-123456789abc','kind':'install','options':options}),encoding='utf-8')
         write()
         original=helper['download']
-        helper['download']=lambda url,target,limit: Path(target).write_bytes(self.archive.read_bytes())
+        helper['download']=lambda url,target,limit,request_path=None: Path(target).write_bytes(self.archive.read_bytes())
         try:
             helper['extract']('directUrl','linux-x64','user-server',str(self.root/'custom'),'',str(path))
             self.assertTrue((self.root/'custom/manifest.json').is_file())

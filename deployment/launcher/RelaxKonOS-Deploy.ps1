@@ -778,6 +778,15 @@ function Save-RequestDigest {
 # --- engine --------------------------------------------------------------------------------------
 # The launcher maps a fixed action onto the existing deployment engine. It never passes a caller
 # supplied path, service name or command; only the package directory it staged itself.
+function Write-TransferProgress([string] $Path, [long] $Bytes, $Total, [bool] $Active) {
+    try {
+        @{ operationId = $script:record.operationId; bytes = $Bytes; total = $Total; active = $Active } |
+            ConvertTo-Json -Compress | Set-Content -LiteralPath ($Path + '.tmp') -Encoding UTF8
+        Move-Item -LiteralPath ($Path + '.tmp') -Destination $Path -Force
+    } catch { # A reader or antivirus may briefly hold the file; progress is advisory.
+    }
+}
+
 function Get-OfficialFile([string] $Uri, [string] $Destination) {
     if ($Uri -notmatch '^https://') { throw 'Official downloads require HTTPS.' }
     $request = [Net.HttpWebRequest]::Create($Uri)
@@ -794,7 +803,28 @@ function Get-OfficialFile([string] $Uri, [string] $Destination) {
             }
             $stream = $response.GetResponseStream()
             $file = [IO.File]::Open($Destination, [IO.FileMode]::CreateNew)
-            try { $stream.CopyTo($file) } finally { $file.Dispose(); $stream.Dispose() }
+            try {
+                $buffer = New-Object byte[] (1024 * 1024)
+                [long] $received = 0
+                $clock = [Diagnostics.Stopwatch]::StartNew()
+                $progressPath = Join-Path $stagingRoot 'transfer.json'
+                $isPackage = $Destination.EndsWith('.zip', [StringComparison]::OrdinalIgnoreCase)
+                $total = if ($response.ContentLength -ge 0) { [long] $response.ContentLength } else { $null }
+                if ($isPackage) {
+                    Write-TransferProgress $progressPath $received $total $true
+                }
+                while (($read = $stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+                    $file.Write($buffer, 0, $read)
+                    $received += $read
+                    if ($isPackage -and $clock.ElapsedMilliseconds -ge 250) {
+                        Write-TransferProgress $progressPath $received $total $true
+                        $clock.Restart()
+                    }
+                }
+                if ($isPackage) {
+                    Write-TransferProgress $progressPath $received $total $false
+                }
+            } finally { $file.Dispose(); $stream.Dispose() }
             return
         } finally { $response.Dispose() }
     }

@@ -84,6 +84,8 @@ data class SshFilesUiState(
     val entries: List<SshFileEntry> = emptyList(),
     val connected: Boolean = false,
     val busy: Boolean = false,
+    val transfer: app.relaxkonos.mobile.ui.common.TransferProgress? = null,
+    val uploading: Boolean = false,
     val problem: String? = null,
     val selected: SshFileEntry? = null,
     val detailEntry: SshFileEntry? = null,
@@ -182,6 +184,12 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
             model.downloadLaunchHandled()
             saveDownload.launch(if (state.downloadZip) target.name + ".zip" else target.name)
         }
+    }
+    state.transfer?.let { transfer ->
+        app.relaxkonos.mobile.ui.common.TransferProgressDialog(
+            stringResource(if (state.uploading) R.string.files_uploading else R.string.files_downloading),
+            transfer, model::cancelTransfer,
+        )
     }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         if (state.busy) Text(stringResource(R.string.ssh_files_transfer_note), style = MaterialTheme.typography.bodySmall)
