@@ -8,7 +8,6 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import app.relaxkonos.mobile.MainActivity
@@ -37,11 +36,9 @@ class SshTransferForegroundService : Service() {
         // A delayed start still must enter foreground before inspecting whether the batch finished.
         lease = files.transferLease
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) getSystemService(NotificationManager::class.java)?.createNotificationChannel(
+            getSystemService(NotificationManager::class.java)?.createNotificationChannel(
                 NotificationChannel(CHANNEL, getString(R.string.ssh_files_transfer_help), NotificationManager.IMPORTANCE_LOW))
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
-                startForeground(ID, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-            else startForeground(ID, notification())
+            startForeground(ID, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } catch (_: Exception) {
             files.keeperStopped(lease)
             stopSelf(startId)
@@ -109,8 +106,7 @@ class SshTransferForegroundService : Service() {
         private const val CANCEL = "app.relaxkonos.mobile.ssh-transfers.CANCEL"
         fun start(context: Context, lease: Int) {
             val intent = Intent(context, SshTransferForegroundService::class.java).putExtra(LEASE, lease)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
-            else context.startService(intent)
+            context.startForegroundService(intent)
         }
     }
 }

@@ -128,24 +128,20 @@ class VaultKeyManager : VaultCrypto {
         if (mode == VaultUnlockMode.PerUseStrongBiometric) {
             runCatching { builder.setInvalidatedByBiometricEnrollment(true) }
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            runCatching { builder.setUnlockedDeviceRequired(true) }
-        }
+        runCatching { builder.setUnlockedDeviceRequired(true) }
 
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            try {
-                generator.init(strongBoxSpec(builder).build())
-                generator.generateKey()
-                VaultDiagnostics.trace("key.provider", "${kind.name} strongbox")
-                return
-            } catch (_: StrongBoxUnavailableException) {
-                // Fall back to the TEE: hardware-backed-less devices must not lose the feature.
-                VaultDiagnostics.trace("key.provider", "${kind.name} strongbox unavailable, retrying on TEE")
-            } catch (_: IllegalArgumentException) {
-                // Some vendors advertise StrongBox but reject the combination; retry without it.
-                VaultDiagnostics.trace("key.provider", "${kind.name} strongbox spec rejected, retrying on TEE")
-            }
+        try {
+            generator.init(strongBoxSpec(builder).build())
+            generator.generateKey()
+            VaultDiagnostics.trace("key.provider", "${kind.name} strongbox")
+            return
+        } catch (_: StrongBoxUnavailableException) {
+            // Fall back to the TEE: hardware-backed-less devices must not lose the feature.
+            VaultDiagnostics.trace("key.provider", "${kind.name} strongbox unavailable, retrying on TEE")
+        } catch (_: IllegalArgumentException) {
+            // Some vendors advertise StrongBox but reject the combination; retry without it.
+            VaultDiagnostics.trace("key.provider", "${kind.name} strongbox spec rejected, retrying on TEE")
         }
         generator.init(builder.build())
         // The alias only exists once the generator has been asked to produce the key: configuring a

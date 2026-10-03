@@ -8,7 +8,6 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.os.Build
 import android.os.IBinder
 import android.text.format.Formatter
 import androidx.core.app.NotificationCompat
@@ -58,7 +57,7 @@ class UploadForegroundService : Service() {
         // `startForeground` has to happen inside the first five seconds of a foreground start, so it
         // precedes everything else — including reading the current state, which only affects the wording.
         lease = uploads.lease
-        try { startForegroundCompat(uploads.state.value) }
+        try { startUploadForeground(uploads.state.value) }
         catch (_: Exception) { uploads.interrupt(); stopSelf(startId); return START_NOT_STICKY }
         observe(startId)
         return START_NOT_STICKY
@@ -97,14 +96,10 @@ class UploadForegroundService : Service() {
         }
     }
 
-    private fun startForegroundCompat(state: UploadState?) {
+    private fun startUploadForeground(state: UploadState?) {
         createChannel()
         val notification = buildNotification(state)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
-        }
+        startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
     }
 
     private fun notify(notification: Notification) {
@@ -113,7 +108,6 @@ class UploadForegroundService : Service() {
     }
 
     private fun createChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = getSystemService(NotificationManager::class.java) ?: return
         if (manager.getNotificationChannel(CHANNEL_ID) != null) return
         manager.createNotificationChannel(
@@ -203,11 +197,7 @@ class UploadForegroundService : Service() {
          */
         fun start(context: Context) {
             val intent = Intent(context, UploadForegroundService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
+            context.startForegroundService(intent)
         }
     }
 }

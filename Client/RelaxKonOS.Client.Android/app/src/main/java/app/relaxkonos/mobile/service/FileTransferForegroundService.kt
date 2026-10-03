@@ -8,7 +8,6 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import app.relaxkonos.mobile.MainActivity
@@ -38,11 +37,9 @@ class FileTransferForegroundService : Service() {
         // A delayed start still must enter foreground before inspecting whether the batch finished.
         lease = files.lease
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) getSystemService(NotificationManager::class.java)?.createNotificationChannel(
+            getSystemService(NotificationManager::class.java)?.createNotificationChannel(
                 NotificationChannel(CHANNEL, getString(R.string.files_transfer_channel), NotificationManager.IMPORTANCE_LOW))
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
-                startForeground(ID, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-            else startForeground(ID, notification())
+            startForeground(ID, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } catch (_: Exception) {
             files.cancel(lease)
             stopSelf(startId)
@@ -114,8 +111,7 @@ class FileTransferForegroundService : Service() {
         private const val CANCEL = "app.relaxkonos.mobile.server-transfers.CANCEL"
         fun start(context: Context, lease: Long) {
             val intent = Intent(context, FileTransferForegroundService::class.java).putExtra(LEASE, lease)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
-            else context.startService(intent)
+            context.startForegroundService(intent)
         }
     }
 }

@@ -65,11 +65,11 @@ Mihomo 设置页定向 Compose 检查 4 项通过：360dp 窄布局下的三个�
 | BP12 | [文件与图片](../features/Files.md) | BP12-T1–T5（见第 4 节） |
 | BP13 | [终端、脚本与守护](../features/TerminalAutomation.md) | BP13-T1–T5 |
 | BP14 | [进程守护](../features/Guardian.md) | BP14-T1–T5 |
-| BP15 | [任务管理与监控](../features/TaskManager.md) | BP15-T1–T5；API 23–25 设备/模拟器未验证 |
+| BP15 | [任务管理与监控](../features/TaskManager.md) | BP15-T1–T5；API 29 最低版本设备/模拟器未验证 |
 | BP16 | [应用部署与模板](../features/ApplicationDeployments.md) | BP16-T1–T6 |
 | BP17 | [任务、告警与恢复](../features/OperationsRecovery.md) | BP17-T1–T3；可靠后台通知归 AD08 |
 | BP19-M1 | [服务器中心](../features/ServerCenter.md) | BP19-T1–T3 |
-| BP19-M2 | [服务器中心](../features/ServerCenter.md) | BP19-T4–T6；`SshFilesScreen.kt:119` API 23 排序缺陷待修 |
+| BP19-M2 | [服务器中心](../features/ServerCenter.md) | BP19-T4–T6；API 29 最低版本文件排序待真机验证 |
 | BP20 | [服务访问](../features/ServiceAccess.md) | 真实可达性；`ServiceAccess.kt:33` Compose 资源读取缺陷待修 |
 | BP21 | [移动端包方案](../design/ApplicationPackages.Design.md) 方案已完成 | 手机第三方包运行时与包检查 UI 明确不实施 |
 | BP22 | [设置与应用管理](../features/Settings.md) | BP22-T1–T3 |
@@ -254,7 +254,7 @@ Mihomo 设置页定向 Compose 检查 4 项通过：360dp 窄布局下的三个�
 | BP17-T3 | 真实前台通知/权限拒绝/类别切换/后台/来源恢复 | 首批告警与静默基线、冷却、注销清理、固定目标能力门控；当前不提供可靠后台通知 |
 | BP19-T1 | Android 编译/JVM/手机/平板/IME/大字体/三语 | 五个 SSH 子页、长路径/端口/确认、修改失败/恢复、16 条上限 |
 | BP19-T2 | 真 SSH/未知或变化密钥/端口冲突/目标不可达/网络中断 | 固定两端 loopback、实际分配端口、后台服务/单条停止、受管登录监听完全独立；TCP 测试不当健康证明 |
-| BP19-T3 | API 23/26/29/34/36、前台服务/通知拒绝/后台/旋转/移除任务/系统杀进程 | 明确停止入口、前台服务类型/权限、服务生命周期竞争/后台连接、监听释放、不自动恢复、密码复制清除 |
+| BP19-T3 | API 29/30/34/36、前台服务/通知拒绝/后台/旋转/移除任务/系统杀进程 | 明确停止入口、前台服务类型/权限、服务生命周期竞争/后台连接、监听释放、不自动恢复、密码复制清除 |
 | BP19-T4 | Android 编译/JVM、手机/平板/IME/大字体、批量与目录/搜索排序 | 全页滚动、长名称/历史/多选/对话框、筛选不保留隐藏选择、文本返回保护、1000 条目录限制 |
 | BP19-T5 | 真实 Linux/Windows SFTP、SAF 多文件/树/输出提供方、ZIP、网络中断 | 元数据/权限/不存在区分、流式通道、链接不跟随、实际预算、来源变化/外部竞争、部分残留、无自动重放；SFTP 无原子版本/不覆盖条件 |
 | BP19-T6 | 前后台/选择器取消/迟到/换宿主/新工作区/旋转/断网/取消 | 原宿主/工作区/路径与密码归属；上传/下载/复制切子页、旋转、后台及锁屏后持续，返回显示原批次；独立 dataSync 通知进度/取消、通知拒绝、服务启动失败/超时、旧通知取消不影响新批次；关闭工作区/切主机/移除任务后关闭连接；未知未结束时禁止事实采用、重新读取/明确采纳，进程退出无持久恢复。编译与 JVM 传输测试通过，设备生命周期验证待测 |
@@ -266,16 +266,18 @@ Mihomo 设置页定向 Compose 检查 4 项通过：360dp 窄布局下的三个�
 
 ### 5.1 Lint（未通过，未创建 baseline 或关闭规则）
 
-`:app:lintDebug` 未通过：**16 errors / 159 warnings / 12 hints**，报告位于 `app/build/reports/lint-results-debug.html` / `lint-results-debug.xml`。以下错误保留为待修缺陷。
+2026-10-03，最低支持提高至 Android 10（API 29）后：`:app:assembleDebug` 成功；`:app:testDebugUnitTest` **1061 项通过，0 失败/错误/跳过**；合并安装清单确认 `minSdkVersion=29`、`targetSdkVersion=36`。
+
+`:app:lintDebug` 未通过：**12 errors / 213 warnings / 11 hints**，报告位于 `app/build/reports/lint-results-debug.html` / `lint-results-debug.xml`。**NewApi 为 0**，原 API 24/26/28/29 兼容性问题已随最低支持调整消除；其余错误均位于本次未修改的 UI 文件，未创建 baseline 或关闭规则。
 
 | 关联范围 | 错误位置 | 规则与待修问题 |
 | --- | --- | --- |
-| BP19 | `ui/servercenter/SshFilesScreen.kt:119` | `NewApi`：`Comparator.reversed()` 需要 API 24，项目 minSdk 为 23；真实 API 23 文件排序尚未验证 |
 | BP20 | `ui/common/ServiceAccess.kt:33` | `LocalContextGetResourceValueCall`：Compose 中通过 LocalContext 直接读取资源，应采用能响应配置变化的资源读取方式 |
-| BP12 / 文件 | `data/DownloadStore.kt:79`、`data/ImagePreviewCache.kt:22` | 5 项 `NewApi`：MediaStore Downloads API 29、Files.move/File.toPath/REPLACE_EXISTING API 26 |
-| 通用网络 / 安全 | `core/net/RelaxKonApi.kt:1492`、`security/VaultKeyManager.kt:129,159` | 3 项 `NewApi`：contentLengthLong API 24、指纹录入失效 API 24、StrongBox API 28；需核实或补足版本门控 |
-| 登录 / Shell | `ui/connect/LoginScreen.kt:84`、`MainActivity.kt:110`、`ui/connect/OwnerDevicePairingScreen.kt:54` | 3 项 `ContextCastToActivity`，需使用合适的 Activity 获取方式 |
-| BP12 / BP09 | `ui/files/FilesScreen.kt:1827`、`ui/manage/docker/DockerScreen.kt:472` | 1 项 `StateFlowValueCalledInComposition`、2 项 `UnrememberedMutableState`；需修复 Compose 状态观察/状态创建 |
+| 登录 / Shell | `ui/connect/LoginScreen.kt:84`、`MainActivity.kt:110`、`ui/connect/OwnerDevicePairingScreen.kt:55`、`ui/servercenter/ServerCenterScreen.kt:68`、`ui/servercenter/SshHostSwitcher.kt:51` | 5 项 `ContextCastToActivity`，需使用合适的 Activity 获取方式 |
+| BP12 / BP09 | `ui/files/FilesScreen.kt:1817`、`ui/manage/docker/DockerScreen.kt:476` | 1 项 `StateFlowValueCalledInComposition`、2 项 `UnrememberedMutableState`；需修复 Compose 状态观察/状态创建 |
+
+| BP19 / 终端 | `ui/terminal/ServerTerminalScreen.kt:437` | `SuspiciousIndentation`：条件分支附近缩进需核实 |
+| 防火墙 / Git | `ui/manage/firewall/FirewallScreen.kt:109`、`ui/manage/git/GitWorkspaceSection.kt:159` | 2 项 `UnusedBoxWithConstraintsScope` |
 
 ### 5.2 宿主与运行环境
 
@@ -291,7 +293,7 @@ Mihomo 设置页定向 Compose 检查 4 项通过：360dp 窄布局下的三个�
 
 - 本机可连接 SM-X510 无线 ADB；SM-S9380 当前未连接。WHPX 启动模拟器失败（`Failed to setup partition, hr=c0350005`），软件模式实例持续 offline。
 - 离线 `connectedDebugAndroidTest` 已可调度 SM-X510，但连续执行可能卡在测试 Activity 空闲等待；单项 `adb shell am instrument` 可完成定向检查。
-- API 23–25 最低版本设备/模拟器未验证；`java.time` 已从生产源码移除，但未在最低版本实际运行。
+- Android 10 / API 29 最低版本设备/模拟器未验证；需验证共享下载目录、图片缓存提交、文件排序、生物识别及前台传输。
 
 ### 5.4 交互与可用性（待设备复验）
 

@@ -22,7 +22,7 @@ student（已有 Linux / SSH 账号）
   └─ RelaxKonOS.Server（同一 UID）
        ├─ 文件、终端、Git、训练任务和日志
        ├─ 当前账号可访问的 GPU / CPU / 内存信息
-       └─ 仅绑定 loopback，Client 经 SSH 隧道连接
+       └─ 默认绑定 loopback，支持显式配置 LAN；Client 可经 SSH 隧道连接
 ```
 
 必须同时满足：
@@ -138,7 +138,7 @@ User Mode installer 写入的最小身份配置如下；`LinuxPamService` 默认
 }
 ```
 
-首版仍保持 loopback-only。Client 经 SSH tunnel 访问后，输入与 SSH 相同的当前 Linux 账号和密码；SSH 隧道只提供网络通道，不代替 Server 登录。若将来允许 LAN 绑定，必须先另立 Goal，提供 TLS、配对确认、重放防护和明确的威胁模型。
+默认使用 loopback，也允许显式配置 `0.0.0.0`。Client 经 SSH tunnel 访问后，输入与 SSH 相同的当前 Linux 账号和密码；SSH 隧道只提供网络通道，不代替 Server 登录。LAN 绑定通过用户配置目录的 `listen-host` 文件启用；客户端向导仍默认使用 SSH tunnel。
 
 ### 5.3 Debug 与 Helper 的边界
 
@@ -162,7 +162,7 @@ ServerCapabilitiesDto =
   limitations: [稳定、可本地化的 reason code]
 ```
 
-所有内置应用在打开前读取并缓存该契约；能力缺失时不注册启动项或展示不可用说明。Server 端仍必须在每个 endpoint 和后台操作处强制能力检查，Client 隐藏从来不是授权机制。协议中新增 `user-mode-not-supported`、`user-mode-loopback-required`、`privileged-feature-unavailable` 等稳定 problem code；不得以异常文本或 Linux errno 作为 UI 合同。
+所有内置应用在打开前读取并缓存该契约；能力缺失时不注册启动项或展示不可用说明。Server 端仍必须在每个 endpoint 和后台操作处强制能力检查，Client 隐藏从来不是授权机制。协议中新增 `user-mode-not-supported`、`privileged-feature-unavailable` 等稳定 problem code；不得以异常文本或 Linux errno 作为 UI 合同。
 
 | 功能域 | User Mode V1 | 规则 |
 | --- | --- | --- |
@@ -220,7 +220,7 @@ User Agent 保留 Guardian 已有的结构化启动、stdout/stderr 捕获、退
 - [ ] Server、PTY、Git 和训练子进程均以安装者 UID 运行；访问其他用户私有目录、终止其他用户进程和管理系统服务均失败且没有提升尝试。
 - [ ] User Mode Guardian 与 Server 同 UID，能够恢复、健康检查、重启并记录当前 UID 的已登记训练工作负载；提交其他 `RunAs`、原生服务操作或受保护服务监控均被 Server 和 Agent 双重拒绝。
 - [ ] 有效的特权 backend 才能走跨用户 Guardian 路径；缺失时返回 `guardian.cross_user_unavailable`，没有 `sudo`、`runuser`、目标账号密码或其他回退执行。
-- [ ] 默认仅 `127.0.0.1` 监听；经 `ssh -L` 可用运行 Server 的同一 Linux 账号完成 PAM 登录并建立正常 Client 会话；同机另一 UID、错误用户名/密码和无隧道的非 loopback 来源均不能登录。
+- [ ] 默认仅 `127.0.0.1` 监听；经 `ssh -L` 可用运行 Server 的同一 Linux 账号完成 PAM 登录并建立正常 Client 会话；同机另一 UID、错误用户名/密码均不能登录；显式启用 LAN 后允许非 loopback 来源按相同认证规则登录。
 - [ ] `/api/v1.0/server/capabilities` 与 Client 启动项一致；直接调用禁用端点仍得到稳定的能力错误，不会访问 Helper 或执行宿主级命令。
 - [ ] 缺少 user systemd 时 `relaxkon start/stop/status` 可用；用户明确选择 user systemd 时才安装 user unit，且文档说明重启持久性取决于管理员提供的 linger/环境策略。
 - [ ] User Mode 在 Production 和 Development 都可直接使用 `Identity:LinuxPamTransport=in-process` 登录；环境名不会改变 PAM transport 或特权能力。User Mode 安装不改 PAM，System Mode 仍只经 Helper transport 登录。

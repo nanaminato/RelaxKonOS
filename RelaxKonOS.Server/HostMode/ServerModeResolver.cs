@@ -55,8 +55,6 @@ public sealed class ServerModeResolver : IServerModeResolver
             throw new InvalidOperationException("User Mode requires an existing host PAM service.");
         if (!string.Equals(configuration["Privileges:Backend"]?.Trim(), "disabled", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("User Mode requires Privileges:Backend=disabled.");
-        if (_listenerScope != "loopback")
-            throw new InvalidOperationException("User Mode requires a loopback-only listener.");
     }
 
     public ServerMode Mode { get; }
@@ -81,7 +79,7 @@ public sealed class ServerModeResolver : IServerModeResolver
             Tunnels: !user, Proxy: !user, PrivilegedOperations: !user, ApplicationDeployments: !user);
         var limitations = new List<string>();
         if (user)
-            limitations.AddRange(["user-mode-loopback-required", "privileged-feature-unavailable", "root-equivalent-docker-access", "guardian.cross_user_unavailable"]);
+            limitations.AddRange(["privileged-feature-unavailable", "root-equivalent-docker-access", "guardian.cross_user_unavailable"]);
         if (!user && _userExecutionBackend == UserExecutionBackend.LocalIdentity)
             limitations.Add("user-execution-local-identity");
         return new ServerCapabilitiesDto(Mode, _identity, new ServerListenerDto(_listenerScope),

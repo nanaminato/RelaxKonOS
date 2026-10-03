@@ -20,7 +20,7 @@
 | `-InstallRoot` / `--install-root` | 系统模式的程序绝对目录 |
 | `-DataRoot` / `--data-root` | 系统持久数据目录或用户模式程序／数据根 |
 | `--config-root` / `--state-root` / `--cache-root` | 用户模式的配置、状态、缓存绝对目录；留空使用 XDG 默认值 |
-| `-NetworkProfile` / `--network` | 系统模式仅本机／LAN；用户模式固定 loopback |
+| `-NetworkProfile` / `--network` | 系统模式仅本机／LAN；用户模式默认 loopback，可通过用户配置目录的 `listen-host` 文件选择 `0.0.0.0` |
 | `-ServerPort` / `--server-port` / `--port` | 1–65535；初装默认 5000，升级向导从已有监听地址取得端口 |
 | `-CertificateMode` / `--certificate-mode` | 系统模式无证书、自有 PFX 或自签名；客户端另外支持把 PEM 证书链与私钥转换为 PFX |
 | `-CertificatePath` / `--certificate-path` | 客户端选择证书文件后安全上传的私有暂存路径 |

@@ -274,7 +274,7 @@ Keystore                     →  Keystore 之外
 | 算法 | `AES/GCM/NoPadding`，256 位 | GCM 自带完整性校验，IV 每条记录随机且随密文存储 |
 | `setUserAuthenticationRequired` | `true` | 无用户认证不可使用密钥 |
 | `setUserAuthenticationParameters(0, AUTH_BIOMETRIC_STRONG)` | API 30+ | `0` = **每次使用都要求认证**（auth-per-use） |
-| `setUserAuthenticationValidityDurationSeconds(-1)` | API 23–29 | 等价的按次授权语义 |
+| `setUserAuthenticationValidityDurationSeconds(-1)` | API 29 | 等价的按次授权语义 |
 | `setInvalidatedByBiometricEnrollment` | `true` | 用户新录入指纹即作废密钥（安全默认） |
 | `setIsStrongBoxBacked` | API 28+，运行时探测 | StrongBox 不可用时回退 TEE，不因硬件差异禁用功能 |
 | `setUnlockedDeviceRequired` | API 28+，可选 | 设备锁定时密钥不可用，进一步收窄攻击面 |
@@ -391,9 +391,9 @@ connect/login（统一表单；密码框 value 始终只表示本次手动输入
 
 上方"启用/不启用"为已确认的产品决策（§5.8 D2、D3），不是实现期的可选项。
 
-**API 版本策略。** 当前 `minSdk = 23`。`androidx.biometric` 兼容库可在 API 23+ 提供 `BiometricPrompt`，但「强生物识别 + `CryptoObject` 按次授权」在 API < 28 的可用性依机型而异。因此：
+**API 版本策略。** 最低支持 Android 10（`minSdk = 29`），使用 `androidx.biometric` 提供 `BiometricPrompt`；生物识别与 StrongBox 仍按设备实际能力探测。因此：
 
-- 安装门槛保持 `minSdk 23`，但**指纹功能按探测结果开启**，不做"设备旧就一定没有"的硬编码假设。
+- 安装门槛为 `minSdk 29`，但**指纹功能按探测结果开启**，不做"设备旧就一定没有"的硬编码假设。
 - `DEVICE_CREDENTIAL_ONLY` 一旦启用连接保险箱，密钥必须退化为**时间窗授权**（`setUserAuthenticationValidityDurationSeconds(300)`），因为设备凭据无法与 `CryptoObject` 按次绑定。这个降级**只允许用在连接保险箱**，且必须在 UI 上说明（"设备解锁后 5 分钟内可自动填充登录密码"）。
 
 ### 5.7 与现有契约的关系

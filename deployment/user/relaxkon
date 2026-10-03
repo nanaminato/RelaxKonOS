@@ -12,6 +12,8 @@ config_root=${RELAXKONOS_USER_CONFIG_ROOT:-${XDG_CONFIG_HOME:-"$HOME/.config"}/r
 state_root=${RELAXKONOS_USER_STATE_ROOT:-${XDG_STATE_HOME:-"$HOME/.local/state"}/relaxkonos}
 cache_root=${RELAXKONOS_USER_CACHE_ROOT:-${XDG_CACHE_HOME:-"$HOME/.cache"}/relaxkonos}
 port=${RELAXKONOS_PORT:-5000}
+# Persistent opt-in for LAN listening; lifecycle restarts use the same address.
+listen_host=127.0.0.1
 lifecycle_lock_held=false
 skip_file_checks=false
 
@@ -107,14 +109,21 @@ read_state_flag() {
 }
 json_string_or_null() { [[ -n ${1:-} ]] && printf '"%s"' "$1" || printf 'null'; }
 
+load_listen_host() {
+  listen_host=127.0.0.1
+  if [[ -f $config_root/listen-host ]]; then listen_host=$(<"$config_root/listen-host"); fi
+  case "$listen_host" in 127.0.0.1|0.0.0.0) ;; *) fail "listen-host must be 127.0.0.1 or 0.0.0.0";; esac
+}
+
 write_install_state() {
+  load_listen_host
   local version=$1 previous_version=$2 installed=$3 id temporary
   id=$(installation_id)
   ensure_private_dir "$state_root"
   temporary="$state_root/install-state.json.new"
   umask 077
-  printf '{"schemaVersion":1,"installed":%s,"mode":"user","installationId":"%s","version":"%s","previousVersion":%s,"installRoot":"%s","dataRoot":"%s","configRoot":"%s","stateRoot":"%s","cacheRoot":"%s","listenUrl":"http://127.0.0.1:%s","installedAtUtc":"%s"}\n' \
-    "$installed" "$id" "$version" "$(json_string_or_null "$previous_version")" "$data_root" "$data_root" "$config_root" "$state_root" "$cache_root" "$port" "$(date -u +%FT%TZ)" > "$temporary"
+  printf '{"schemaVersion":1,"installed":%s,"mode":"user","installationId":"%s","version":"%s","previousVersion":%s,"installRoot":"%s","dataRoot":"%s","configRoot":"%s","stateRoot":"%s","cacheRoot":"%s","listenUrl":"http://%s:%s","installedAtUtc":"%s"}\n' \
+    "$installed" "$id" "$version" "$(json_string_or_null "$previous_version")" "$data_root" "$data_root" "$config_root" "$state_root" "$cache_root" "$listen_host" "$port" "$(date -u +%FT%TZ)" > "$temporary"
   chmod 600 "$temporary"; mv -f -- "$temporary" "$state_root/install-state.json"
 }
 # The install manifest is the only authority for what an uninstall may remove. The engine
@@ -203,7 +212,8 @@ start() {
   acquire_lifecycle_lock
   if pid=$(read_pid); then echo "RelaxKonOS is already running (pid $pid)."; return; fi
   binary=$(server_binary); guardian=$(guardian_binary); ensure_private_dir "$state_root/run"; ensure_private_dir "$state_root/logs"; ensure_private_dir "$state_root/logs/runtime"; ensure_private_dir "$state_root/guardian"; write_config
-  export ASPNETCORE_URLS="http://127.0.0.1:$port"
+  load_listen_host
+  export ASPNETCORE_URLS="http://$listen_host:$port"
   rm -f -- "$state_root/run/server.sock"
   export Server__Mode=user Identity__LinuxPamTransport=in-process Identity__LinuxPamService=login Privileges__Backend=disabled UserMode__ControlSocketPath="$state_root/run/server.sock"
   export Storage__DatabasePath="$state_root/server/relaxkonos.db"
@@ -255,10 +265,11 @@ stop() {
   [[ -n $pid ]] && echo "Stopped RelaxKonOS." || echo "RelaxKonOS is not running."
 }
 status() {
+  load_listen_host
   local pid
   pid=$(read_pid) || { echo "RelaxKonOS User Mode is stopped."; return 1; }
   if [[ -S $state_root/run/server.sock ]] && command -v curl >/dev/null && curl --unix-socket "$state_root/run/server.sock" --fail --silent --show-error --max-time 2 http://localhost/ready >/dev/null 2>&1; then
-    echo "RelaxKonOS User Mode is running (pid $pid, loopback 127.0.0.1:$port)."
+    echo "RelaxKonOS User Mode is running (pid $pid, listening on $listen_host:$port)."
   else
     echo "RelaxKonOS User Mode process is running but its private control socket is not ready."
     return 1
@@ -292,7 +303,7 @@ install_or_upgrade() {
   write_install_state "$version" "$previous_version" true
   write_install_manifest "$version"
   if start_and_verify; then
-    if [[ $mode == upgrade ]]; then echo "Upgrade completed and the new Server is ready."; else echo "Installed RelaxKonOS User Mode $version. It listens only on 127.0.0.1; connect through SSH local forwarding."; fi
+    if [[ $mode == upgrade ]]; then echo "Upgrade completed and the new Server is ready."; else echo "Installed RelaxKonOS User Mode $version. It listens on $listen_host:$port."; fi
     return
   fi
   # The activated version never became ready. Restore the previous version when there is one;

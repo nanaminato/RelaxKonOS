@@ -24,7 +24,7 @@ android {
 
     defaultConfig {
         applicationId = "app.relaxkonos.mobile"
-        minSdk = 23
+        minSdk = 29
         targetSdk = 36
         versionCode = 1
         versionName = "0.2.0-v1a"

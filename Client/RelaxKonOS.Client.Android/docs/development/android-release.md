@@ -4,6 +4,8 @@
 
 Android 客户端是独立的 Kotlin + Jetpack Compose Gradle 工程，位于 `Client/RelaxKonOS.Client.Android`，不使用 .NET Android workload 或 Avalonia。
 
+最低支持 Android 10（API 29）；`minSdk = 29`，`compileSdk = targetSdk = 36`。发布前需在 API 29 验证共享下载目录、图片缓存、文件排序、生物识别与前台传输，并验证较新系统的权限和生命周期行为。
+
 工程的 [`gradle/wrapper/gradle-wrapper.properties`](../../gradle/wrapper/gradle-wrapper.properties) 将发行包固定为本机 `D:\environments\gradle-9.7.1-all.zip`（`file:///D:/environments/gradle-9.7.1-all.zip`）。首次执行环境初始化时，`Initialize-AndroidEnvironment.ps1` 从该本地包解压 Gradle；构建过程不应改回在线 Gradle 分发地址。
 
 ```powershell

@@ -4,7 +4,6 @@ import android.app.*
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import app.relaxkonos.mobile.MainActivity
@@ -30,11 +29,10 @@ class SshForwardForegroundService : Service() {
         }
         lease = incomingLease
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) getSystemService(NotificationManager::class.java)?.createNotificationChannel(
+            getSystemService(NotificationManager::class.java)?.createNotificationChannel(
                 NotificationChannel(CHANNEL, getString(R.string.ssh_forward_title), NotificationManager.IMPORTANCE_LOW))
             val notification = notification()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) startForeground(ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
-            else startForeground(ID, notification)
+            startForeground(ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
         } catch (_: Exception) { forwards.keeperFailed(lease); stopSelf(); return START_NOT_STICKY }
         if (observer == null) observer = scope.launch {
             forwards.state.collect { state ->
@@ -67,7 +65,7 @@ class SshForwardForegroundService : Service() {
         private const val STOP = "app.relaxkonos.mobile.ssh-forwards.STOP"
         fun start(context: Context, lease: Int) {
             val intent = Intent(context, SshForwardForegroundService::class.java).putExtra(LEASE, lease)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent) else context.startService(intent)
+            context.startForegroundService(intent)
         }
     }
 }

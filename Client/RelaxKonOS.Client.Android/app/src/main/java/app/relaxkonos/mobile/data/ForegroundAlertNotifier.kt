@@ -111,7 +111,7 @@ class ForegroundAlertNotifier(
 
     private fun post(owner: SessionState.Active, alert: OperationalAlert) {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
-        if (Build.VERSION.SDK_INT >= 26 && manager.getNotificationChannel(CHANNEL_ID) == null) {
+        if (manager.getNotificationChannel(CHANNEL_ID) == null) {
             manager.createNotificationChannel(NotificationChannel(CHANNEL_ID,
                 context.getString(R.string.alert_notifications_channel), NotificationManager.IMPORTANCE_DEFAULT))
         }
