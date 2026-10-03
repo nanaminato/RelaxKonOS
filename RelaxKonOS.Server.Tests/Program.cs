@@ -1,3 +1,14 @@
+if (args.Contains("--host-data-protection-only"))
+{
+    var protectionRoot = Path.Combine(Path.GetTempPath(), "relaxkon-protection-" + Guid.NewGuid().ToString("N"));
+    try
+    {
+        await HostDataProtectionChecks.RunAsync(protectionRoot);
+        Console.WriteLine("Host Data Protection upgrade checks passed.");
+    }
+    finally { if (Directory.Exists(protectionRoot)) Directory.Delete(protectionRoot, recursive: true); }
+    return;
+}
 if (args.Contains("--system-proxy-only"))
 {
     try { await SystemProxyChecks.RunAsync(); }
@@ -383,6 +394,7 @@ try
     await ApplicationDeploymentProgressVerification.RunAsync(root);
     NetworkProxyTunnelChecks.VerifyTunnelProtocolContract();
     NetworkProxyTunnelChecks.VerifyProxyProtocolContract();
+    await HostDataProtectionChecks.RunAsync(Path.Combine(root, "host-data-protection"));
     await SystemProxyChecks.RunAsync();
     await NetworkProxyTunnelChecks.VerifyMihomoControllerSafetyAsync();
     await NetworkProxyTunnelChecks.VerifyMihomoLiveStreamsAsync();

@@ -510,7 +510,11 @@ public sealed class MihomoRuntimeManager(
             MakePrivateFile(temporary); File.Move(temporary, Path.Combine(directory, "active.yaml"), overwrite: true); MakePrivateFile(Path.Combine(directory, "active.yaml"));
             return new(true);
         }
-        catch (ProxyControllerSecretException) { return new(false, ProxyProblemCodes.ConfigApplyFailed); }
+        catch (ProxyControllerSecretException)
+        {
+            await WriteDiagnosticAsync("error", "Managed Mihomo bootstrap could not read its protected controller secret. Check the host Data Protection application identity, key ring and secret file permissions.", cancellationToken);
+            return new(false, ProxyProblemCodes.ConfigApplyFailed);
+        }
         catch (ArgumentException) { return new(false, ProxyProblemCodes.ConfigInvalid); }
         catch (IOException) { return new(false, ProxyProblemCodes.PrivilegedOperationUnavailable); }
         catch (UnauthorizedAccessException) { return new(false, ProxyProblemCodes.PrivilegedOperationUnavailable); }

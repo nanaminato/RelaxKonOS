@@ -3,6 +3,12 @@ package app.relaxkonos.mobile.ui.manage.processes
 import app.relaxkonos.mobile.ui.common.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -93,6 +99,7 @@ fun ProcessesScreen(
     }
     DisposableEffect(viewModel) { onDispose { viewModel.stopProcessObserving() } }
     var sorting by remember { mutableStateOf(false) }
+    val keyboard = LocalSoftwareKeyboardController.current
 
     Column(
         modifier = modifier.fillMaxSize().padding(Spacing.lg),
@@ -130,11 +137,21 @@ fun ProcessesScreen(
                 onValueChange = { viewModel.updateProcessFilter(it) },
                 modifier = Modifier.weight(1f),
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = {
+                    if (!viewModel.processesLoading) { keyboard?.hide(); viewModel.searchProcesses() }
+                }),
+                trailingIcon = {
+                    if (viewModel.processFilter.isNotEmpty()) TextButton(onClick = {
+                        viewModel.updateProcessFilter("")
+                        viewModel.searchProcesses()
+                    }, enabled = !viewModel.processesLoading) { Text(stringResource(R.string.taskmanager_clear_filter)) }
+                },
                 label = { Text(stringResource(R.string.manage_processes_filter)) },
                 leadingIcon = { DesktopIcon(icon = DesktopIcons.search, size = 20.dp) },
                 shape = MaterialTheme.shapes.medium,
             )
-            Button(onClick = { viewModel.searchProcesses() }, enabled = !viewModel.processesLoading) {
+            Button(onClick = { keyboard?.hide(); viewModel.searchProcesses() }, enabled = !viewModel.processesLoading) {
                 Text(stringResource(R.string.common_search))
             }
         }
@@ -152,10 +169,16 @@ fun ProcessesScreen(
             TextButton(onClick = { viewModel.toggleProcessDirection() }, enabled = !viewModel.processesLoading) {
                 Text(stringResource(if (viewModel.processDescending) R.string.manage_processes_descending else R.string.manage_processes_ascending))
             }
-            viewModel.processSampledAt?.let { time -> Text(stringResource(R.string.manage_processes_sampled_at,
-                formatTimestamp(IsoInstant.toEpochMillis(time)).orEmpty()), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f)) }
+            androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+            FilledTonalIconButton(onClick = { viewModel.loadProcesses() }, enabled = !viewModel.processesLoading) {
+                DesktopIcon(DesktopIcons.refresh, size = 22.dp, contentDescription = stringResource(R.string.common_refresh))
+            }
         }
 
+        viewModel.processSampledAt?.let { time -> Text(stringResource(R.string.manage_processes_sampled_at,
+            formatTimestamp(IsoInstant.toEpochMillis(time)).orEmpty()), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        if (viewModel.processesLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (viewModel.processItems.isEmpty()) {
             EmptyState(
                 text = stringResource(
@@ -254,6 +277,10 @@ private fun ProcessDetails(process: RemoteProcess, model: ManageViewModel, modif
         R.string.manage_processes_started_at to (process.startTime ?: stringResource(R.string.monitor_unknown)),
     )
     LazyColumn(modifier, verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+        item {
+            TextButton(onClick = { model.selectProcess(null) }) { Text(stringResource(R.string.taskmanager_back_to_list)) }
+            Text(process.name, style = MaterialTheme.typography.titleLarge)
+        }
         items(rows) { (label, value) ->
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                 Text(stringResource(label), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)

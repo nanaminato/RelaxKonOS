@@ -2715,4 +2715,6 @@
     <string name="host_settings_path_up">上へ</string>
     <string name="host_settings_path_down">下へ</string>
     <string name="host_settings_path_empty">（空の項目）</string>
+    <string name="taskmanager_clear_filter">クリア</string>
+    <string name="taskmanager_back_to_list">プロセス一覧に戻る</string>
 </resources>

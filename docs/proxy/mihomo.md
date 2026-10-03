@@ -6,6 +6,8 @@ Windows System Mode 中，Mihomo 由 LocalSystem 权限助手启动和停止；S
 
 控制器仅绑定本机回环地址，其密钥保留在代理作用域的受保护存储中。
 
+Server 的 Data Protection 应用标识固定为 `RelaxKonOS.Server`，不随发布目录变化。升级与恢复备份时必须同时保留受保护数据和服务账户的 Data Protection 密钥环。无法读取控制器密钥时，首次安装会回滚，并在代理诊断日志中明确记录密钥读取失败；这不代表归档损坏或用户 YAML 校验失败。服务不会自动丢弃或重建无法解密的已有密钥。
+
 系统代理按 `platformCapabilities.systemProxy` 的实际能力开放，包含 `supported`、`supportsPac`、`loginEnvironment`、`desktopSession`，不再按 Windows 名称推断。Windows 仍使用交互用户的 HKCU；服务账户不能代写登录用户的设置。Linux System Mode 通过协议 1.4 的固定 Helper 操作同时管理 `/etc/environment` 中大小写 HTTP_PROXY、HTTPS_PROXY、ALL_PROXY、NO_PROXY，以及当前已登录的本地 GNOME/KDE 用户代理。HTTP/HTTPS 使用 Mihomo HTTP CONNECT，ALL_PROXY 使用 SOCKS5；PAC 仅 Windows 提供。
 
 Linux 环境变量在读取该文件的新的 PAM 登录会话生效，已运行的终端和独立 systemd 服务须使用各自的生效机制；Docker、受管下载继续使用独立宿主出站代理设置。GNOME 写入用户 dconf，KDE 写入用户 `kioslaverc` 并通知 KIO，均以桌面用户身份执行。仅发现 `loginctl` 中非远程、非 root、x11/wayland、GNOME/Ubuntu 或 KDE/Plasma 的普通用户会话；采用默认 `$HOME/.config`，不读取任意会话进程环境。新桌面用户在再次保存或开启代理守护后纳入。依赖与部署说明见 [Helper 运维指南](../platform/RelaxKonOS.PrivilegedOperations.Operations.md#linux-系统代理)。

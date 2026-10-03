@@ -20,6 +20,7 @@ using RelaxKonOS.Server.Storage;
 using RelaxKonOS.Server.Storage.Sqlite;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Observability;
+using RelaxKonOS.Server.Secrets;
 
 if (args.FirstOrDefault() == "auth") { Environment.ExitCode = await AuthMaintenanceCommand.RunAsync(args); return; }
 
@@ -129,8 +130,8 @@ builder.WebHost.ConfigureKestrel(options =>
     if (userModeControlSocket is not null) options.ListenUnixSocket(userModeControlSocket);
 });
 
-// Git HTTPS tokens are protected before they are persisted in application storage.
-builder.Services.AddDataProtection();
+// Persisted host secrets must survive upgrades that change the executable/content-root directory.
+builder.Services.AddHostDataProtection();
 // The signed host installer writes this ACL-protected file. It keeps machine-only
 // Guardian IPC settings out of source-controlled appsettings.json and out of HTTP DTOs.
 

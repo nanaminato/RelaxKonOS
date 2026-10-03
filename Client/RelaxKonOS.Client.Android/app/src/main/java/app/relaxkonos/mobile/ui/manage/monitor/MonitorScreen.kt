@@ -2,6 +2,7 @@ package app.relaxkonos.mobile.ui.manage.monitor
 
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.compose.BackHandler
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -46,17 +47,22 @@ fun MonitorScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, active: 
     DisposableEffect(model) { onDispose { model.stopObserving() } }
     val resources = remember(state.info, state.snapshot) { performanceResources(state.info, state.snapshot) }
     Column(modifier.fillMaxSize().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-        ScreenHeader(title = stringResource(R.string.manage_monitor_title), onBack = if (model.selected != null) ({ model.select(null) }) else onBack,
-            trailing = { FilledTonalIconButton(onClick = model::retry, enabled = state.phase != PerformancePhase.Connecting) {
+        ScreenHeader(title = stringResource(R.string.manage_monitor_title),
+            onBack = if (model.selected != null) ({ model.select(null) }) else onBack)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                StatusChip(stringResource(when (state.phase) {
+                    PerformancePhase.Live -> R.string.monitor_live
+                    PerformancePhase.Connecting -> R.string.monitor_connecting
+                    PerformancePhase.Snapshot -> R.string.monitor_snapshot_mode
+                    PerformancePhase.Failed -> R.string.monitor_unavailable
+                    PerformancePhase.Idle -> R.string.common_loading
+                }), tone = if (state.phase == PerformancePhase.Live && state.snapshot?.health?.isStale != true) StatusTone.Success else StatusTone.Warning)
+            }
+            FilledTonalIconButton(onClick = model::retry, enabled = state.phase != PerformancePhase.Connecting) {
                 DesktopIcon(DesktopIcons.refresh, size = 22.dp, contentDescription = stringResource(R.string.common_refresh))
-            } })
-        StatusChip(stringResource(when (state.phase) {
-            PerformancePhase.Live -> R.string.monitor_live
-            PerformancePhase.Connecting -> R.string.monitor_connecting
-            PerformancePhase.Snapshot -> R.string.monitor_snapshot_mode
-            PerformancePhase.Failed -> R.string.monitor_unavailable
-            PerformancePhase.Idle -> R.string.common_loading
-        }), tone = if (state.phase == PerformancePhase.Live && state.snapshot?.health?.isStale != true) StatusTone.Success else StatusTone.Warning)
+            }
+        }
         state.snapshot?.let { sample ->
             Text(stringResource(R.string.monitor_sample_time, formatTimestamp(IsoInstant.toEpochMillis(sample.timestamp)).orEmpty()), style = MaterialTheme.typography.bodySmall)
             if (sample.health.isStale || sample.health.error != null) Text(stringResource(R.string.monitor_sample_unhealthy), color = MaterialTheme.colorScheme.error)
@@ -93,10 +99,27 @@ private fun ResourceList(resources: List<PerformanceResource>, selected: Perform
     select: (PerformanceResource) -> Unit, modifier: Modifier) {
     LazyColumn(modifier, verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         items(resources, key = { it.key }) { resource ->
-            OutlinedButton(onClick = { select(resource) }, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
-                colors = ButtonDefaults.outlinedButtonColors(containerColor = if (selected?.key == resource.key) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface)) {
-                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                    Text(resourceTitle(resource), style = MaterialTheme.typography.titleSmall)
+            Card(onClick = { select(resource) }, modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium,
+                colors = CardDefaults.cardColors(containerColor = if (selected?.key == resource.key) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface)) {
+                Column(Modifier.fillMaxWidth().padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                        IconBadge(icon = when (resource.kind) {
+                            PerformanceKind.Disk, PerformanceKind.Filesystem -> DesktopIcons.storage
+                            PerformanceKind.Network -> DesktopIcons.connections
+                            else -> DesktopIcons.monitor
+                        })
+                        Column(Modifier.weight(1f)) {
+                            Text(resourceTitle(resource), style = MaterialTheme.typography.titleMedium)
+                            if (resource.name != null) Text(stringResource(when (resource.kind) {
+                                PerformanceKind.Cpu -> R.string.home_label_cpu
+                                PerformanceKind.Memory -> R.string.home_label_memory
+                                PerformanceKind.Filesystem -> R.string.monitor_filesystem
+                                PerformanceKind.Disk -> R.string.monitor_disk
+                                PerformanceKind.Network -> R.string.monitor_network
+                            }), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        DesktopIcon(DesktopIcons.disclosure, size = 18.dp)
+                    }
                     val value = when (resource.kind) {
                         PerformanceKind.Cpu -> percent(state.snapshot?.cpu?.totalPercent)
                         PerformanceKind.Memory -> bytes(state.snapshot?.memory?.usedBytes)
@@ -104,7 +127,22 @@ private fun ResourceList(resources: List<PerformanceResource>, selected: Perform
                         PerformanceKind.Disk -> rate(state.snapshot?.disks?.firstOrNull { it.id == resource.id }?.takeIf { state.info?.capabilities?.diskIo != false }?.readBytesPerSecond)
                         PerformanceKind.Network -> rate(state.snapshot?.networks?.firstOrNull { it.id == resource.id }?.receiveBytesPerSecond)
                     }
-                    Text(value, style = MaterialTheme.typography.bodyMedium)
+                    Text(value, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+                    val utilization = when (resource.kind) {
+                        PerformanceKind.Cpu -> state.snapshot?.cpu?.totalPercent
+                        PerformanceKind.Memory -> state.snapshot?.memory?.let(::memoryPercent)
+                        PerformanceKind.Filesystem -> state.snapshot?.filesystems?.firstOrNull { it.id == resource.id }?.percent
+                        else -> null
+                    }
+                    if (utilization != null) LinearProgressIndicator(progress = { (utilization / 100).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+                    val supporting = when (resource.kind) {
+                        PerformanceKind.Cpu -> stringResource(R.string.monitor_utilization)
+                        PerformanceKind.Memory -> stringResource(R.string.monitor_total) + " " + bytes(state.snapshot?.memory?.totalBytes)
+                        PerformanceKind.Filesystem -> stringResource(R.string.monitor_available) + " " + bytes(state.snapshot?.filesystems?.firstOrNull { it.id == resource.id }?.availableBytes)
+                        PerformanceKind.Disk -> stringResource(R.string.monitor_read) + " · " + stringResource(R.string.monitor_write) + " " + rate(state.snapshot?.disks?.firstOrNull { it.id == resource.id }?.takeIf { state.info?.capabilities?.diskIo != false }?.writeBytesPerSecond)
+                        PerformanceKind.Network -> stringResource(R.string.monitor_receive) + " · " + stringResource(R.string.monitor_send) + " " + rate(state.snapshot?.networks?.firstOrNull { it.id == resource.id }?.sendBytesPerSecond)
+                    }
+                    Text(supporting, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

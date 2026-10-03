@@ -2753,4 +2753,6 @@
     <string name="host_settings_path_up">Move up</string>
     <string name="host_settings_path_down">Move down</string>
     <string name="host_settings_path_empty">(empty)</string>
+    <string name="taskmanager_clear_filter">Clear</string>
+    <string name="taskmanager_back_to_list">Back to list</string>
 </resources>

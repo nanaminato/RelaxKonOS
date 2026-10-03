@@ -2714,4 +2714,6 @@
     <string name="host_settings_path_up">上移</string>
     <string name="host_settings_path_down">下移</string>
     <string name="host_settings_path_empty">（空项）</string>
+    <string name="taskmanager_clear_filter">清空</string>
+    <string name="taskmanager_back_to_list">返回进程列表</string>
 </resources>
