@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services.Diagnostics;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using RelaxKonOS.Client.Localization;
@@ -45,6 +46,8 @@ public sealed class WorkspaceSettingsService : IWorkspaceSettingsService
     private async Task<T> SendAsync<T>(HttpMethod method, string serverUrl, string accessToken, Guid workspaceId, object? body, CancellationToken ct)
     {
         var route = WorkspaceApiRoutes.Preferences.Replace("{id}", workspaceId.ToString("D"));
+        var requestId = Guid.NewGuid();
+        LanguageSwitchDiagnostics.Record("http.begin", new { requestId, method = method.Method, workspaceId, language = (body as WorkspacePreferencesDto)?.Language, revision = (body as WorkspacePreferencesDto)?.Revision });
         using var req = new HttpRequestMessage(method, new Uri(new Uri(serverUrl), route.TrimStart('/')))
         {
             Headers = { Authorization = new AuthenticationHeaderValue("Bearer", accessToken) },
@@ -57,6 +60,7 @@ public sealed class WorkspaceSettingsService : IWorkspaceSettingsService
             using var resp = await _http.SendAsync(req, ct);
             if (resp.Headers.TryGetValues("X-RelaxKonOS-Correlation-Id", out var values)
                 && Guid.TryParse(values.FirstOrDefault(), out var id)) correlationId = id;
+            LanguageSwitchDiagnostics.Record("http.completed", new { requestId, status = (int)resp.StatusCode, correlationId });
             if (!resp.IsSuccessStatusCode) await EnsureSuccessAsync(resp, ct);
             return await resp.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, ct)
                 ?? throw new RelaxKonOSAuthException(NoBodyProblem());

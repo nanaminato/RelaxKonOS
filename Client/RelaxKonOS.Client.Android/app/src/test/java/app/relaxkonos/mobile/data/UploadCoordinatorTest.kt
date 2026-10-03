@@ -515,6 +515,36 @@ class UploadCoordinatorTest {
     }
 
     @Test
+    fun `service interruption retains the resumable session entry and cache copy`() = runTest {
+        signIn()
+        val target = document()
+        reopenable = target
+        val remembered = entry(confirmedOffset = 0L)
+        journal.record(remembered)
+        val cacheCopy = stager.cacheFileFor(target.sourceKey)
+        cacheCopy.parentFile?.mkdirs()
+        cacheCopy.writeBytes(ByteArray(16))
+        val parked = CompletableDeferred<Unit>()
+        gateway.onUploadSession = { _, _, _ -> ApiResult.Success(remoteSession(offset = 0L)) }
+        gateway.onSendUploadChunk = { _, _, _, _, length, source, _ ->
+            drain(source, length)
+            parked.await()
+            UploadChunkResult.Confirmed(0L)
+        }
+        val uploads = start(this, StandardTestDispatcher(testScheduler))
+        uploads.resume(remembered)
+        advanceUntilIdle()
+        assertTrue(uploads.isRunning)
+        uploads.interrupt()
+        advanceUntilIdle()
+        assertTrue(gateway.abortedUploadIds.isEmpty())
+        assertEquals(listOf(SESSION), journal.entries(SERVER_KEY).map { it.uploadId })
+        assertTrue(cacheCopy.exists())
+        assertEquals(listOf(SESSION), uploads.resumable.value.map { it.uploadId })
+        assertFalse(uploads.isRunning)
+    }
+
+    @Test
     fun `cancelling abandons the session and deletes the entry with its cache copy`() = runTest {
         signIn()
         val target = document()

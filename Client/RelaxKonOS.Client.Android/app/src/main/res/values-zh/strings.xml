@@ -2411,6 +2411,8 @@
     <string name="ssh_forward_remote_port">服务器回环端口</string>
     <string name="ssh_forward_local_port">手机端口（留空自动分配）</string>
     <string name="ssh_forward_path">服务路径与查询</string>
+    <string name="files_transfer_channel">服务器文件传输</string>
+    <string name="files_transfer_running">文件传输正在执行</string>
     <string name="ssh_files_transfer_running">SSH 文件传输正在执行</string>
     <string name="ssh_files_transfer_note">上传、下载和复制可在离开本页或切到后台后继续，可从通知或本页取消。关闭 SSH 工作区、切换主机、移除应用任务或系统停止会中断，可能留下部分文件，不支持进程重启后恢复。每批最多 1000 条、32 层目录和 2 GiB。目录和多文件下载保存为 ZIP，复制/导出不跟随符号链接。</string>
     <string name="ssh_files_unknown">写入可能部分完成。请读取受影响路径并检查文件，再明确采用当前事实后继续写入；不会自动重发。</string>

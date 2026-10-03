@@ -42,6 +42,7 @@ class UploadForegroundService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private var observer: Job? = null
+    private var lease = -1L
 
     private val uploads get() = (application as RelaxKonApplication).container.uploads
 
@@ -49,20 +50,36 @@ class UploadForegroundService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_CANCEL) {
-            uploads.cancel()
+            if (intent.getLongExtra(LEASE, -1L) == uploads.lease) uploads.cancel()
+            if (!uploads.isRunning) stopSelf(startId)
+            else observe(startId)
             return START_NOT_STICKY
         }
         // `startForeground` has to happen inside the first five seconds of a foreground start, so it
         // precedes everything else — including reading the current state, which only affects the wording.
-        startForegroundCompat(uploads.state.value)
-        observe()
+        lease = uploads.lease
+        try { startForegroundCompat(uploads.state.value) }
+        catch (_: Exception) { uploads.interrupt(); stopSelf(startId); return START_NOT_STICKY }
+        observe(startId)
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
         observer?.cancel()
         scope.cancel()
+        uploads.interrupt(lease)
         super.onDestroy()
+    }
+
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        uploads.interrupt(lease)
+        stopSelf()
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        uploads.interrupt(lease)
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
     }
 
     /**
@@ -70,13 +87,13 @@ class UploadForegroundService : Service() {
      * transfer stops being active. Nothing here keeps a notification alive on its own: a persistent
      * "upload finished" entry is exactly the kind of stale notification this avoids.
      */
-    private fun observe() {
-        if (observer != null) return
+    private fun observe(startId: Int) {
+        observer?.cancel()
         observer = scope.launch {
             uploads.state.takeWhile { it?.isRunning == true }.collect { state ->
                 notify(buildNotification(state))
             }
-            stopSelf()
+            stopSelf(startId)
         }
     }
 
@@ -163,13 +180,14 @@ class UploadForegroundService : Service() {
 
     private fun cancelIntent(): PendingIntent = PendingIntent.getService(
         this,
-        1,
-        Intent(this, UploadForegroundService::class.java).setAction(ACTION_CANCEL),
+        (lease % Int.MAX_VALUE).toInt(),
+        Intent(this, UploadForegroundService::class.java).setAction(ACTION_CANCEL).putExtra(LEASE, lease),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
 
     companion object {
         const val ACTION_CANCEL = "app.relaxkonos.mobile.uploads.CANCEL"
+        private const val LEASE = "lease"
 
         private const val CHANNEL_ID = "uploads"
         private const val NOTIFICATION_ID = 0x5701

@@ -186,6 +186,8 @@ class UploadCoordinator(
     val resumable: StateFlow<List<UploadResumeEntry>> = resumableFlow.asStateFlow()
 
     private var job: Job? = null
+    var lease: Long = 0
+        private set
 
     /** The session the running transfer is using, so [cancel] can abandon exactly that one. */
     private var activeUploadId: String? = null
@@ -234,6 +236,9 @@ class UploadCoordinator(
      * only a commit can create the file. A transfer that merely failed keeps all three instead, which is
      * what makes "continue" possible.
      */
+    /** Stops network work while retaining a resumable session after a service interruption. */
+    fun interrupt(expectedLease: Long = lease) { if (expectedLease == lease) job?.cancel() }
+
     fun cancel() {
         val running = job ?: return
         val uploadId = activeUploadId
@@ -311,6 +316,7 @@ class UploadCoordinator(
             totalBytes = resume?.totalLength,
             resumed = resume != null,
         )
+        lease++
         job = scope.launch(dispatcher) { execute(targetDirectoryPath, document, resume) }
     }
 

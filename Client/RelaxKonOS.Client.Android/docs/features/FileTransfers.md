@@ -1,7 +1,7 @@
-# Android 大文件上传（分块与续传）设计
+# Android 文件上传与下载（后台传输与续传）
 
 > 当前文件传输实现规范；自动化证据见 [当前状态](../status/Progress.md)，设备检查见 [验收清单](../status/Verification.md)。
-> 日期：2026-09-24
+> 日期：2026-10-03
 > 归属：本文拥有 Android 侧的客户端设计。线协议、服务端行为、桌面客户端与提权模型见仓库级 [`docs/architecture/RelaxKonOS.FileUpload.Design.md`](../../../../docs/architecture/RelaxKonOS.FileUpload.Design.md)；iOS/桌面不得与本文的偏移规则分歧。
 > 前置阅读：[`Product.Design.md`](../design/Product.Design.md)（安全边界与文件应用定位）、[`Shell.Design.md`](../design/Shell.Design.md)（能力门控与页面清单）
 
@@ -13,7 +13,11 @@
 
 下载保持 HTTP 流式落盘，服务器内部以有界分块跨越用户执行或提权边界，不再把整个文件装进单次 Helper 响应。单次内容限制不等于下载文件总大小限制；服务器返回 `413 / content-too-large` 时，客户端使用本地化的大小限制提示。
 
-Server 文件上传与下载自动打开传输进度窗口，显示文件名、实际传输字节、已知总量和百分比，并提供取消。长度未知时显示已传输字节与不确定进度动画；准备源文件不计入上传百分比。续传上传保留既有确认偏移、在途估计和核对提示，窗口可收起，停止后仍提供继续/放弃等操作。进度窗口由文件工作区外层持有，列表与详情切换不丢失传输状态。
+Server 文件上传与下载使用可收起的页面进度卡，显示文件名、实际传输字节、已知总量和百分比，并提供取消；进度卡不阻挡导航。长度未知时显示已传输字节与不确定进度动画；准备源文件不计入上传百分比。续传上传保留既有确认偏移、在途估计和核对提示，停止后仍提供继续/放弃等操作。
+
+小文件单次上传与所有下载由应用级 `FileTransferCoordinator` 持有，使用独立 `FileTransferForegroundService`（`dataSync`）提供后台进度与取消；大文件与未知长度上传仍交给 `UploadCoordinator/UploadForegroundService`。离开文件页、旋转、重建 Activity 或切到后台后继续当前进程内任务，返回显示同一状态；结果通过应用级提示报告。通知仅展示通用传输文案及百分比，不包含文件路径、宿主或凭据。通知权限拒绝不阻止执行，页面仍提供取消。需管理员授权时等待用户回前台处理。
+
+退出登录或切换会话会取消原单次传输，迟到进度/清理及旧通知取消不会影响新任务。单次上传中断后不自动重发，下载失败或取消清理未提交目标；这两类不提供跨进程续传。服务结束或移除应用任务会停止单次传输。分块上传遇到服务启动失败、系统服务超时或移除应用任务时中断网络，但保留已建立会话的续传日志与缓存；用户明确取消仍放弃会话并配对清理。服务处理 [Android dataSync 超时](https://developer.android.com/develop/background-work/services/fgs/timeout)，不保证系统回收后继续执行。
 
 ## 2. 源的可寻址性策略
 
@@ -160,6 +164,7 @@ commit:
 | `data/UploadSource.kt`、`AndroidUploadDocument.kt` | SAF 元信息、源可寻址判定、缓存暂存/清理 |
 | `data/UploadResumeJournal.kt` | 有界制表符转义日志、源绑定、过期与配对移除 |
 | `data/UploadCoordinator.kt` | 分片循环、重试预算、权威偏移核实、提交/取消及配对清理 |
+| `data/FileTransferCoordinator.kt`、`service/FileTransferForegroundService.kt` | 应用级单次上传/下载、会话与任务代次隔离、独立后台通知与取消 |
 | `service/UploadForegroundService.kt` | 状态镜像、前台进度通知与取消入口 |
 | `ui/files/FilesScreen.kt`、`ui/nav/MobileNavHost.kt` | 单发/分块分派、上传卡片与跨页面回执 |
 | `AppContainer.kt`、Manifest、三语资源 | 应用级依赖、dataSync 服务/权限、统一文案 |

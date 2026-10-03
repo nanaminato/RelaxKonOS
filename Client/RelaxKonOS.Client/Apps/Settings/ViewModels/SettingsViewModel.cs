@@ -127,8 +127,12 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         try
         {
             if (_editor.HasDraft) return;
+            var readId = Guid.NewGuid();
+            LanguageSwitchDiagnostics.Record("settings.initialize.read", new { readId, language = _settings.Language });
             var prefs = await _client.GetAsync(url, tokens.AccessToken, ws.Id);
+            LanguageSwitchDiagnostics.Record("settings.initialize.received", new { readId, incoming = prefs.Language, prefs.Revision, hasDraft = _editor.HasDraft });
             if (_editor.HasDraft || _session.ServiceId != serviceId || _session.CurrentWorkspace?.Id != ws.Id || _session.Tokens?.AccessToken != tokens.AccessToken) return;
+            LanguageSwitchDiagnostics.Record("settings.initialize.apply", new { readId, incoming = prefs.Language, actual = _settings.Language });
             if (_wallpapers is not null)
                 await _wallpapers.ApplyAsync(prefs);
             else

@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services.Diagnostics;
 using Avalonia.Threading;
 using RelaxKonOS.Client.Services.WorkspaceSettings;
 using RelaxKonOS.Client.Apps.Settings;
@@ -104,17 +105,26 @@ public sealed class PreferencesSync : IDisposable
             await _refreshGate.WaitAsync(cancellationToken);
             try
             {
+                var readId = Guid.NewGuid();
+                LanguageSwitchDiagnostics.Record("sync.read.begin", new { readId, workspaceId, language = _settings.Language, hasDraft = _editor.HasDraft });
                 var prefs = await _client.GetAsync(url, accessToken, workspaceId, cancellationToken);
+                LanguageSwitchDiagnostics.Record("sync.read.received", new { readId, workspaceId, incoming = prefs.Language, prefs.Revision });
                 await Dispatcher.UIThread.InvokeAsync(async () =>
                 {
                     if (cancellationToken.IsCancellationRequested || _session.State != AuthSessionState.Authenticated
                         || _session.EffectiveBaseUrl != url || _session.CurrentWorkspace?.Id != workspaceId
-                        || _session.Tokens?.AccessToken != accessToken) return;
+                        || _session.Tokens?.AccessToken != accessToken)
+                    {
+                        LanguageSwitchDiagnostics.Record("sync.read.skipped_session", new { readId });
+                        return;
+                    }
                     if (_editor.HasDraft)
                     {
+                        LanguageSwitchDiagnostics.Record("sync.read.skipped_draft", new { readId, incoming = prefs.Language, actual = _settings.Language });
                         _editor.ObserveExternalRevision(prefs.Revision);
                         return;
                     }
+                    LanguageSwitchDiagnostics.Record("sync.read.apply", new { readId, incoming = prefs.Language, actual = _settings.Language });
                     _registry.SetMappings(prefs.DefaultApps);
                     await _wallpapers.ApplyAsync(prefs, cancellationToken);
                 });

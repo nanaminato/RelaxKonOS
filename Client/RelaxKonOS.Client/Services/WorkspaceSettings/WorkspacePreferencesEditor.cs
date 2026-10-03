@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services.Diagnostics;
 using System.Text.Json;
 using RelaxKonOS.Client.Services.Auth;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -41,6 +42,7 @@ public sealed class WorkspacePreferencesEditor : ObservableObject, IDisposable
         // Shell owns mutable lists: freeze the edit and its target before the debounce delay.
         var frozen = JsonSerializer.Deserialize<WorkspacePreferencesDto>(
             JsonSerializer.Serialize(preferences, RelaxKonOSJsonOptions.Default), RelaxKonOSJsonOptions.Default)!;
+        LanguageSwitchDiagnostics.Record("save.schedule", new { language = frozen.Language, frozen.Revision, workspaceId = workspace.Id });
         _draft = new(serviceId, _session.CurrentSession?.Id, workspace.Id, frozen);
         OnPropertyChanged(nameof(HasDraft));
         _registry.SetMappings(frozen.DefaultApps);
@@ -98,8 +100,10 @@ public sealed class WorkspacePreferencesEditor : ObservableObject, IDisposable
         {
             if (debounce) await Task.Delay(300, pending.Token);
             if (!IsCurrent(draft)) return;
+            LanguageSwitchDiagnostics.Record("save.begin", new { language = draft.Value.Language, draft.Value.Revision, draft.WorkspaceId });
             var saved = await _service.SaveAsync(CurrentBaseUrl(), _session.Tokens!.AccessToken, draft.WorkspaceId, draft.Value, pending.Token);
             if (!ReferenceEquals(_draft, draft) || !ReferenceEquals(_pending, pending) || !IsCurrent(draft)) return;
+            LanguageSwitchDiagnostics.Record("save.acknowledged", new { requested = draft.Value.Language, returned = saved.Language, saved.Revision, saved.PersistedRevision });
             _draft = null;
             OnPropertyChanged(nameof(HasDraft));
             State = saved.PersistedRevision == saved.Revision ? PreferencesSaveState.Saved : PreferencesSaveState.Accepted;
@@ -129,6 +133,7 @@ public sealed class WorkspacePreferencesEditor : ObservableObject, IDisposable
 
     private void SetFailure(Exception exception)
     {
+        LanguageSwitchDiagnostics.Record("save.failed", new { failure = WorkspacePreferencesDiagnostics.Classify(exception).ToString(), exceptionType = exception.GetType().Name });
         Failure = WorkspacePreferencesDiagnostics.Classify(exception);
         State = exception is RelaxKonOSAuthException { Status: 409 }
             ? PreferencesSaveState.Conflict : PreferencesSaveState.Failed;

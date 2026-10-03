@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services.Diagnostics;
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -166,6 +167,7 @@ public sealed partial class ShellSettings : ObservableObject
     /// <summary>将服务端偏好应用到本地活状态（登录加载 / 设置编辑后回写）。</summary>
     public void Apply(WorkspacePreferencesDto prefs)
     {
+        LanguageSwitchDiagnostics.Record("preferences.apply", new { previous = Language, incoming = prefs.Language, previousRevision = PreferencesRevision, incomingRevision = prefs.Revision });
         PreferencesRevision = prefs.Revision;
         var experience = prefs.DesktopExperience ?? DesktopExperiencePreferencesDto.Default;
         Appearance = experience.Appearance ?? AppearancePreferencesDto.Default;

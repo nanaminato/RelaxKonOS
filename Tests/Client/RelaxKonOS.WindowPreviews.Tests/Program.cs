@@ -31,6 +31,7 @@ using WindowRect = RelaxKonOS.Core.Primitives.Rect;
 
 try
 {
+LanguageSwitchDiagnostics.Initialize(Path.Combine(AppContext.BaseDirectory, "preview-qa", "logs"));
 TaskbarPreviewDiagnostics.Initialize(Path.Combine(AppContext.BaseDirectory, "preview-qa", "logs"));
 AppBuilder.Configure<PreviewTestApp>().UseSkia()
     .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).SetupWithoutStarting();
@@ -263,6 +264,7 @@ Check(new[] { "view.created", "icon.enter", "host.pointerMove", "card.press", "c
 Check(!traceLines.Any(line => line.Contains("Preview document") || line.Contains("First real document")),
     "Trace excludes window titles and document content.");
 Console.WriteLine($"Interaction trace: {TaskbarPreviewDiagnostics.FilePath}");
+LanguageSwitchChecks.Run(settings, localization);
 MemoryLifecycleChecks.Run(settings, localization, services);
 Console.WriteLine($"PASS: window preview rendering, caching, native fallback, activation and close lifecycle. QA image: {output}");
 }

@@ -490,6 +490,16 @@ class AppContainer(context: Context) {
         scope = appScope,
     )
 
+    val fileTransfers = app.relaxkonos.mobile.data.FileTransferCoordinator(
+        scope = appScope,
+        activeOwner = { activeSession },
+        startKeeper = { lease -> app.relaxkonos.mobile.service.FileTransferForegroundService.start(appContext, lease) },
+        onFailure = { kind, _ -> showNotice(UiMessage(if (kind == app.relaxkonos.mobile.data.TransferKind.Upload)
+            R.string.files_mutation_unknown else R.string.files_download_failed)) },
+    )
+
+    init { appScope.launch { session.state.collect { fileTransfers.sessionChanged() } } }
+
     /**
      * The identity an unfinished upload belongs to: server, account, workspace and this device.
      *

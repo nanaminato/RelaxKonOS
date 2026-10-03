@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services.Diagnostics;
 using System.Text.Json;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -69,6 +70,7 @@ public sealed class LocalizationService : ObservableObject, ISystemLanguage
     private void SetLanguage(string requestedLanguage)
     {
         var next = ResolveLanguage(requestedLanguage);
+        LanguageSwitchDiagnostics.Record("localization.resolve", new { requestedLanguage, previous = _currentLanguage, next, sshOverride = _sshDesktop.IsConnected });
         if (string.Equals(next, _currentLanguage, StringComparison.OrdinalIgnoreCase)) return;
 
         var previous = _currentLanguage;
@@ -76,7 +78,9 @@ public sealed class LocalizationService : ObservableObject, ISystemLanguage
         OnPropertyChanged(nameof(CurrentLanguage));
         void ApplyOnUiThread()
         {
+            LanguageSwitchDiagnostics.Record("localization.notify.begin", new { previous, next });
             LanguageChanged?.Invoke(this, new SystemLanguageChangedEventArgs(previous, next));
+            LanguageSwitchDiagnostics.Record("localization.notify.end", new { actual = _settings.Language, effective = _currentLanguage });
         }
 
         if (Dispatcher.UIThread.CheckAccess())

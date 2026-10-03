@@ -58,6 +58,10 @@
           owned by the process-wide coordinator, so nothing here holds state that a restart would lose.
         -->
         <service
+            android:name=".service.FileTransferForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+        <service
             android:name=".service.UploadForegroundService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />

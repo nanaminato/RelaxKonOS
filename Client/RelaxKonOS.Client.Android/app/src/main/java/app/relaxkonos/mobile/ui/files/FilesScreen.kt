@@ -70,6 +70,8 @@ import app.relaxkonos.mobile.data.FileBatchAction
 import app.relaxkonos.mobile.data.FileBatchReport
 import app.relaxkonos.mobile.data.FileBatchRunner
 import app.relaxkonos.mobile.data.DownloadTarget
+import app.relaxkonos.mobile.data.Transfer
+import app.relaxkonos.mobile.data.TransferKind
 import app.relaxkonos.mobile.data.ElevationAnswerProvider
 import app.relaxkonos.mobile.data.PickedDocument
 import app.relaxkonos.mobile.data.RecentOperationKind
@@ -111,19 +113,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-/** A long-running transfer the shell is showing progress for. */
-data class Transfer(
-    val label: String,
-    val kind: TransferKind,
-    val transferredBytes: Long = 0,
-    val totalBytes: Long? = null,
-    val collapsed: Boolean = false,
-) {
-    val progress: Float? get() = totalBytes?.takeIf { it > 0 }?.let { (transferredBytes.toFloat() / it).coerceIn(0f, 1f) }
-}
-
-enum class TransferKind { Download, Upload, Move, Copy }
 
 /**
  * The edge, in pixels, of the first decode of an image, done here on the file that has just landed.
@@ -208,7 +197,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     private var propertiesJob: Job? = null
     private var propertyRequest = 0L
     val canMutate get() = !mutationBusy && !batchRunning && transfer == null && batchReport == null &&
-        container.activeSession?.executionEligibility?.available == true && !container.uploads.isRunning && transferJob == null
+        container.activeSession?.executionEligibility?.available == true && !container.uploads.isRunning && !container.fileTransfers.isRunning
     val checkedEntries get() = listing?.entries.orEmpty().filter { it.path in checkedPaths }
 
     fun toggleSelection() {
@@ -358,11 +347,11 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     var transferTarget by mutableStateOf<TransferTarget?>(null)
         private set
 
-    var transfer by mutableStateOf<Transfer?>(null)
-        private set
-
-    private var transferJob: Job? = null
-    private var transferGeneration = 0L
+    private var localTransfer by mutableStateOf<Transfer?>(null)
+    private var streamedTransfer by mutableStateOf<Transfer?>(null)
+    var transfer: Transfer?
+        get() = streamedTransfer ?: localTransfer
+        private set(value) { localTransfer = value }
     private var directoryJob: Job? = null
     private var directoryRequest = 0L
 
@@ -403,6 +392,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     private var reportedUpload: UploadState? = null
 
     init {
+        viewModelScope.launch { container.fileTransfers.state.collect { streamedTransfer = it } }
         viewModelScope.launch {
             container.uploads.state.collect { state ->
                 if (state == null || state === reportedUpload) return@collect
@@ -682,68 +672,67 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * Streams a remote file into this device's Downloads.
      *
-     * The transfer is owned by the ViewModel and by nothing else. It must not need a screen to be
+     * The transfer is owned by the application coordinator. It must not need a screen to be
      * mounted to finish or to be reported: in the Compact and Medium layouts the file detail is a
      * pushed page, so the list is out of the composition while the download runs, and anything the
      * download needs — the progress card, the result message, the confirmation — has to come from
      * somewhere that outlives both routes (`FileTransferCard`, `FileActionFeedback`).
      */
     fun download(entry: RemoteEntry) {
-        if (transfer != null || batchRunning || mutationBusy) {
+        if (transfer != null || container.fileTransfers.isRunning || batchRunning || mutationBusy) {
             return
         }
-        val owner = container.activeSession ?: return
-        val generation = ++transferGeneration
-        transfer = Transfer(label = entry.path, kind = TransferKind.Download)
-        transferJob = viewModelScope.launch {
+        container.activeSession ?: return
+        if (needsNotificationPermission()) uploadNotificationPrompt = true
+        container.fileTransfers.start(Transfer(label = entry.name, kind = TransferKind.Download)) { generation ->
             var target: DownloadTarget? = null
             try {
                 // Creating the destination is a write into someone else's storage (a `MediaStore`
                 // insert, or a directory that has to be made). It happens off the main thread, and
                 // after the card is already on screen, so the tap is acknowledged before the first
                 // byte and without a stalled frame.
-                val created = withContext(Dispatchers.IO) { runCatching { container.downloads.create(entry.name) } }
+                val created = withContext(Dispatchers.IO) {
+                    runCatching { container.downloads.create(entry.name) }.also { target = it.getOrNull() }
+                }
                 if (created.isFailure) {
-                    message = UiMessage(R.string.files_download_failed).withDebugDetail(created.exceptionOrNull()?.message)
-                    return@launch
+                    container.showNotice(UiMessage(R.string.files_download_failed).withDebugDetail(created.exceptionOrNull()?.message))
+                    return@start
                 }
                 val destination = created.getOrThrow()
                 target = destination
+                if (!container.fileTransfers.isCurrent(generation)) return@start
                 val result = container.files.download(entry.path, destination, container.elevationAnswers) { written, total ->
-                    viewModelScope.launch(Dispatchers.Main.immediate) {
-                        if (generation == transferGeneration && container.activeSession === owner)
-                        transfer = transfer?.takeIf { it.kind == TransferKind.Download }?.copy(
+                    container.fileTransfers.update(generation) { it.copy(
                             transferredBytes = written,
                             totalBytes = total,
-                        )
-                    }
+                    ) }
                 }
-                if (generation != transferGeneration || container.activeSession !== owner) return@launch
+                if (!container.fileTransfers.isCurrent(generation)) return@start
                 when (result) {
                     is ApiResult.Success -> {
                         // Pending until this call: the file becomes visible to the rest of the device
                         // only once it is complete. A commit the platform refuses means the bytes are
                         // not actually in Downloads, so it is reported as a failure rather than
                         // followed by a success message that would not be true.
-                        val committed = withContext(Dispatchers.IO) { runCatching { destination.commit() } }
+                        val committed = withContext(NonCancellable + Dispatchers.IO) {
+                            runCatching { destination.commit() }.also { if (it.isSuccess) target = null }
+                        }
                         if (committed.isSuccess) {
-                            target = null
-                            if (generation != transferGeneration || container.activeSession !== owner) return@launch
+                            if (!container.fileTransfers.isCurrent(generation)) return@start
                             container.recentOperations.record(RecentOperationKind.Download, entry.path)
-                            message = UiMessage(R.string.files_downloaded, listOf(destination.location), tone = StatusTone.Success)
+                            container.showNotice(UiMessage(R.string.files_downloaded, listOf(destination.location), tone = StatusTone.Success))
                         } else {
-                            message = UiMessage(R.string.files_download_failed).withDebugDetail(committed.exceptionOrNull()?.message)
+                            container.showNotice(UiMessage(R.string.files_download_failed).withDebugDetail(committed.exceptionOrNull()?.message))
                         }
                     }
-                    else -> message = result.failureMessage()
+                    else -> result.failureMessage()?.let(container::showNotice)
                 }
             } catch (_: CancellationException) {
                 // Expected when the user cancels the transfer.
             } finally {
                 // A refused, failed or cancelled transfer leaves no file: on the shared Downloads
                 // collection an abandoned row would be a corrupt entry for the whole device to see.
-                target?.let { runCatching { it.discard() } }
-                if (generation == transferGeneration && container.activeSession === owner) { transfer = null; transferJob = null }
+                withContext(NonCancellable + Dispatchers.IO) { target?.let { runCatching { it.discard() } } }
             }
         }
     }
@@ -761,28 +750,25 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun upload(uri: Uri) {
         if (isUploadBusy()) return
-        val owner = container.activeSession ?: return
+        container.activeSession ?: return
         val directory = path
         if (directory.isBlank()) { message = UiMessage(R.string.files_upload_needs_folder); return }
-        val generation = ++transferGeneration
-        transfer = Transfer(label = getApplication<Application>().getString(R.string.files_upload_preparing), kind = TransferKind.Upload)
-        transferJob = viewModelScope.launch {
+        if (needsNotificationPermission()) uploadNotificationPrompt = true
+        container.fileTransfers.start(Transfer(label = getApplication<Application>().getString(R.string.files_upload_preparing), kind = TransferKind.Upload)) { generation ->
             try {
                 val document = withContext(Dispatchers.IO) { runCatching { container.uploadDocuments.open(uri.toString()) }.getOrNull() }
-                if (generation != transferGeneration || container.activeSession !== owner) return@launch
-                if (document == null) { message = UiMessage(R.string.files_upload_unreadable); return@launch }
-                if (document.length != null && isSingleShotLength(document.length!!)) uploadSingleShot(document, directory, owner, generation)
+                if (!container.fileTransfers.isCurrent(generation)) return@start
+                if (document == null) { container.showNotice(UiMessage(R.string.files_upload_unreadable)); return@start }
+                if (document.length != null && isSingleShotLength(document.length!!)) uploadSingleShot(document, directory, generation)
                 else startResumable(document, directory)
             } catch (_: CancellationException) {
                 // The request is not replayed when the user cancels or switches owner.
-            } finally {
-                if (generation == transferGeneration && container.activeSession === owner) { transferJob = null; transfer = null }
             }
         }
     }
 
     /** True while either route is busy; only one transfer runs at a time. */
-    private fun isUploadBusy(): Boolean = transfer != null || transferJob != null || batchRunning || mutationBusy || container.uploads.isRunning
+    private fun isUploadBusy(): Boolean = transfer != null || container.fileTransfers.isRunning || batchRunning || mutationBusy || container.uploads.isRunning
 
     /**
      * Hands the document to the resumable coordinator.
@@ -797,7 +783,8 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         container.uploads.start(directory, document)
         // Started before the prompt, not after: a foreground service has to be up within seconds, and the
         // permission request must never be a precondition for the transfer the user asked for.
-        UploadForegroundService.start(getApplication())
+        try { UploadForegroundService.start(getApplication()) }
+        catch (error: Exception) { container.uploads.interrupt(); throw error }
         if (needsNotificationPermission()) uploadNotificationPrompt = true
     }
 
@@ -821,28 +808,24 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
      * refuses to report one — is answered by the server with `upload-too-large-for-single-shot`, and that
      * specific refusal falls through to the resumable route rather than failing the upload.
      */
-    private suspend fun uploadSingleShot(document: PickedDocument, directory: String, owner: SessionState.Active, generation: Long) {
+    private suspend fun uploadSingleShot(document: PickedDocument, directory: String, generation: Long) {
         val app = getApplication<RelaxKonApplication>()
         val name = document.displayName.ifBlank { app.getString(R.string.files_upload_default_name) }
-        transfer = Transfer(label = name, kind = TransferKind.Upload, totalBytes = document.length)
+        container.fileTransfers.update(generation) { it.copy(label = name, totalBytes = document.length) }
         val result = runCatching {
             withContext(Dispatchers.IO) { document.open() }.use { input ->
                 container.files.upload(directory, name, input, document.length, container.elevationAnswers) { written ->
-                    viewModelScope.launch(Dispatchers.Main.immediate) {
-                        if (generation == transferGeneration && container.activeSession === owner)
-                        transfer = transfer?.takeIf { it.kind == TransferKind.Upload }?.copy(transferredBytes = written)
-                    }
+                    container.fileTransfers.update(generation) { it.copy(transferredBytes = written) }
                 }
             }
         }.getOrElse {
             if (it is CancellationException) throw it
             ApiResult.Transport(it.message)
         }
-        if (generation != transferGeneration || container.activeSession !== owner) return
-        transfer = null
+        if (!container.fileTransfers.isCurrent(generation)) return
         when (result) {
             is ApiResult.Success -> {
-                message = UiMessage(R.string.files_uploaded, listOf(name), tone = StatusTone.Success)
+                container.showNotice(UiMessage(R.string.files_uploaded, listOf(name), tone = StatusTone.Success))
                 container.recentOperations.record(RecentOperationKind.Upload, name)
                 reload()
             }
@@ -850,7 +833,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
             is ApiResult.Problem if result.code == UploadProblemCodes.TOO_LARGE_FOR_SINGLE_SHOT ->
                 startResumable(document, directory)
 
-            else -> message = mutationFailure(result)
+            else -> mutationFailure(result)?.let(container::showNotice)
         }
     }
 
@@ -863,7 +846,11 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         if (isUploadBusy()) return
         uploadCollapsed = false
         container.uploads.resume(entry)
-        UploadForegroundService.start(getApplication())
+        try { UploadForegroundService.start(getApplication()) }
+        catch (_: Exception) {
+            container.uploads.interrupt()
+            container.showNotice(UiMessage(R.string.files_mutation_unknown))
+        }
         if (needsNotificationPermission()) uploadNotificationPrompt = true
     }
 
@@ -877,14 +864,13 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     fun dismissUpload() = container.uploads.dismiss()
 
     fun cancelActiveTransfer() {
-        transferGeneration++
-        transferJob?.cancel()
-        transferJob = null
+        container.fileTransfers.cancel()
         transfer = null
     }
 
     fun setTransferCollapsed(collapsed: Boolean) {
-        transfer = transfer?.copy(collapsed = collapsed)
+        if (container.fileTransfers.isRunning) container.fileTransfers.update(container.fileTransfers.lease) { it.copy(collapsed = collapsed) }
+        else transfer = transfer?.copy(collapsed = collapsed)
     }
 
     /** Opens the full-screen viewer for the image already on screen; there is nothing to load first. */
@@ -1204,9 +1190,6 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         directoryRequest++
         directoryJob?.cancel()
         directoryJob = null
-        transferGeneration++
-        transferJob?.cancel()
-        transferJob = null
         cancelPreview()
 
         started = false
@@ -1417,14 +1400,6 @@ fun FileTransferCard(viewModel: FilesViewModel, modifier: Modifier = Modifier) {
         return
     }
     val transfer = viewModel.transfer ?: return
-    if (transfer.kind == TransferKind.Upload || transfer.kind == TransferKind.Download) {
-        app.relaxkonos.mobile.ui.common.TransferProgressDialog(
-            stringResource(if (transfer.kind == TransferKind.Upload) R.string.files_uploading else R.string.files_downloading),
-            app.relaxkonos.mobile.ui.common.TransferProgress(transfer.label, transfer.transferredBytes, transfer.totalBytes),
-            viewModel::cancelActiveTransfer,
-        )
-        return
-    }
     ProgressSheet(
         title = stringResource(
             when (transfer.kind) {
@@ -1526,8 +1501,7 @@ fun FileUploadCard(viewModel: FilesViewModel, modifier: Modifier = Modifier) {
             actions = actions,
         )
     }
-    if (viewModel.uploadCollapsed) content()
-    else androidx.compose.ui.window.Dialog(onDismissRequest = { viewModel.setUploadCollapsedState(true) }) { content() }
+    content()
 }
 
 /**

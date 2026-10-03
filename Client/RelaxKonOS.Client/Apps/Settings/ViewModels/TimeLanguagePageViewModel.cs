@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services.Diagnostics;
 using System.Globalization;
 using RelaxKonOS.Client.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -9,6 +10,7 @@ namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 public sealed partial class TimeLanguagePageViewModel : SettingsPageViewModel
 {
     private readonly LocalizationService _localization;
+    private bool _refreshingLanguageOptions;
 
     public TimeLanguagePageViewModel(ShellSettings settings, LocalizationService localization, Action? save,
         HostTimeEditorViewModel hostTime) : base(settings, save)
@@ -28,8 +30,21 @@ public sealed partial class TimeLanguagePageViewModel : SettingsPageViewModel
 
     protected override void OnLanguageChanged(object? sender, RelaxKonOS.AppSDK.SystemLanguageChangedEventArgs e)
     {
-        LanguageOptions = BuildLanguageOptions();
-        base.OnLanguageChanged(sender, e);
+        // Let the active TwoWay selection write finish before replacing its ItemsSource.
+        // Otherwise the control can replay the previous item or lose the new selection.
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            if (IsDisposed) return;
+            LanguageSwitchDiagnostics.Record("selection.options.rebuild", new { requested = Language, effective = _localization.CurrentLanguage });
+            _refreshingLanguageOptions = true;
+            try
+            {
+                LanguageOptions = BuildLanguageOptions();
+                base.OnLanguageChanged(sender, e);
+                OnPropertyChanged(nameof(SelectedLanguage));
+            }
+            finally { _refreshingLanguageOptions = false; }
+        });
     }
 
     public override string Route => "time-language";
@@ -65,7 +80,13 @@ public sealed partial class TimeLanguagePageViewModel : SettingsPageViewModel
     public string Language
     {
         get => Settings.Language;
-        set { Settings.Language = value; Save(); }
+        set
+        {
+            LanguageSwitchDiagnostics.Record("selection.language", new { previous = Settings.Language, requested = value });
+            Settings.Language = value;
+            Save();
+            LanguageSwitchDiagnostics.Record("selection.completed", new { requested = value, actual = Settings.Language, effective = _localization.CurrentLanguage });
+        }
     }
 
     public SystemLanguageOption? SelectedLanguage
@@ -73,7 +94,13 @@ public sealed partial class TimeLanguagePageViewModel : SettingsPageViewModel
         get => LanguageOptions.FirstOrDefault(option => string.Equals(option.Culture, Language, StringComparison.OrdinalIgnoreCase));
         set
         {
-            if (value is not null)
+            LanguageSwitchDiagnostics.Record("selection.item", new { requested = value?.Culture, actual = Language });
+            if (_refreshingLanguageOptions)
+            {
+                LanguageSwitchDiagnostics.Record("selection.item.ignored_refresh", new { requested = value?.Culture, actual = Language });
+                return;
+            }
+            if (value is not null && !string.Equals(value.Culture, Language, StringComparison.OrdinalIgnoreCase))
                 Language = value.Culture;
         }
     }

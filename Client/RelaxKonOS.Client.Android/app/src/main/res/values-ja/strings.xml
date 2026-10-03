@@ -2410,6 +2410,8 @@
     <string name="ssh_forward_remote_port">サーバーのループバックポート</string>
     <string name="ssh_forward_local_port">スマートフォンのポート（空欄で自動）</string>
     <string name="ssh_forward_path">サービスのパスとクエリ</string>
+    <string name="files_transfer_channel">サーバーファイル転送</string>
+    <string name="files_transfer_running">ファイル転送中</string>
     <string name="ssh_files_transfer_running">SSH ファイル転送中</string>
     <string name="ssh_files_transfer_note">アップロード、ダウンロード、コピーはページを離れたりバックグラウンドに移行しても続行します。このページまたは通知からキャンセルできます。SSH ワークスペースの終了、ホストの切り替え、アプリタスクの削除、システムによる停止で中断し、一部のファイルが残る場合があります。プロセス再起動後の再開はできません。1 バッチは 1000 件、32 階層、2 GiB までです。フォルダーと複数ファイルは ZIP で保存し、シンボリックリンクをたどりません。</string>
     <string name="ssh_files_unknown">書き込みが一部完了した可能性があります。対象のパスとファイルを確認し、現在の状態を明示的に採用してから続けてください。自動再送は行いません。</string>

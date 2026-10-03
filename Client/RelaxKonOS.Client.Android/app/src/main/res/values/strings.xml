@@ -2450,6 +2450,8 @@
     <string name="ssh_forward_remote_port">Server loopback port</string>
     <string name="ssh_forward_local_port">Phone port (blank = automatic)</string>
     <string name="ssh_forward_path">Service path and query</string>
+    <string name="files_transfer_channel">Server file transfers</string>
+    <string name="files_transfer_running">File transfer in progress</string>
     <string name="ssh_files_transfer_running">SSH file transfer in progress</string>
     <string name="ssh_files_transfer_note">Uploads, downloads and copies continue when you leave this page or background the app. Cancel here or in the notification. Closing the SSH workspace, switching hosts, removing the app task or a system stop interrupts them; partial files may remain. Transfers cannot resume after a process restart. At most 1000 entries, 32 directory levels and 2 GiB per batch. Folders and multiple downloads use a ZIP. Copy/export does not follow symbolic links.</string>
     <string name="ssh_files_unknown">A write may have partially completed. Read the affected paths, inspect the files, then explicitly adopt current facts before another write. Nothing is resent automatically.</string>
