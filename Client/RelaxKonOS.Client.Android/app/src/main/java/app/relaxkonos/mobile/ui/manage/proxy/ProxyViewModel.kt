@@ -152,18 +152,23 @@ internal class ProxyViewModel(application: Application) : AndroidViewModel(appli
             }
         }
     }
-    fun testGroup(group: ProxyGroup) = work { active ->
+    fun testGroup(group: ProxyGroup) {
+        val active = container.activeSession ?: return
+        if (owner !== active) { owner = active; intent = null; state = ProxyState(); sessionEpoch++ }
+        if (state.busy || state.testingGroup != null) return
         val names = group.proxies.toSet()
         state = state.copy(testingGroup = group.name, testingProxies = names, delays = state.delays - names)
-        try {
-            testProxyGroupLatency(group,
-                test = { proxy -> container.proxy.delay(active, group.name, proxy, "https://www.gstatic.com/generate_204", 5000) },
-                onResult = { proxy, result ->
-                    verify(active)
-                    state = state.copy(delays = state.delays + (proxy to result), testingProxies = state.testingProxies - proxy)
-                })
-        } finally {
-            if (container.activeSession === active) state = state.copy(testingGroup = null, testingProxies = emptySet())
+        viewModelScope.launch {
+            try {
+                testProxyGroupLatency(group,
+                    test = { proxy -> container.proxy.delay(active, group.name, proxy, "https://www.gstatic.com/generate_204", 5000) },
+                    onResult = { proxy, result ->
+                        verify(active)
+                        state = state.copy(delays = state.delays + (proxy to result), testingProxies = state.testingProxies - proxy)
+                    })
+            } finally {
+                if (container.activeSession === active) state = state.copy(testingGroup = null, testingProxies = emptySet())
+            }
         }
     }
     private fun mutation(call: suspend (SessionState.Active) -> ApiResult<*>) = work { active ->

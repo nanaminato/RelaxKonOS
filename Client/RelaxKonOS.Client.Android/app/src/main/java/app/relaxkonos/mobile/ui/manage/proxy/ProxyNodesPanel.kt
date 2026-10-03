@@ -50,7 +50,7 @@ internal fun ProxyNodesPanel(state: ProxyState, canManage: Boolean, ready: Boole
             if (!group.selectable) Text(stringResource(R.string.mihomo_group_automatic), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if (canManage) IconButton(enabled = ready && group.proxies.isNotEmpty(), onClick = { onTestGroup(group) }) {
+        if (canManage) IconButton(enabled = ready && state.testingGroup == null && group.proxies.isNotEmpty(), onClick = { onTestGroup(group) }) {
             Icon(painterResource(R.drawable.ic_proxy_bolt), contentDescription = stringResource(R.string.mihomo_test_group_delay, group.name),
                 tint = MaterialTheme.colorScheme.primary)
         }

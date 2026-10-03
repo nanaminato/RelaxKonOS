@@ -76,4 +76,25 @@ class ProxyNodesPanelTest {
         rule.onNodeWithText(context.getString(R.string.mihomo_node_testing)).assertIsDisplayed()
         rule.runOnIdle { assertEquals(0, writes) }
     }
+
+    @Test fun testingGroupAllowsSelectingTestingNodeAndBlocksDuplicateTests() {
+        rule.mainClock.autoAdvance = false
+        val selections = mutableListOf<Pair<String, String>>()
+        var tests = 0
+        val state = ProxyState(groups = ApiResult.Success(listOf(manual, automatic)), testingGroup = "Manual",
+            testingProxies = setOf("Node C"))
+        rule.setContent { MaterialTheme {
+            Column(Modifier.width(360.dp).verticalScroll(rememberScrollState())) {
+                ProxyNodesPanel(state, true, true, {}, { group, node -> selections += group.name to node }, { tests++ })
+            }
+        } }
+        rule.mainClock.advanceTimeByFrame()
+        rule.onNodeWithText("Node C").assertIsEnabled().performClick()
+        rule.onNodeWithContentDescription(context.getString(R.string.mihomo_test_group_delay, "Manual")).assertIsNotEnabled()
+        rule.onNodeWithText("Automatic").performClick()
+        rule.mainClock.advanceTimeByFrame()
+        rule.onNodeWithContentDescription(context.getString(R.string.mihomo_test_group_delay, "Automatic")).assertIsNotEnabled()
+        rule.onNodeWithText("Auto B").assertIsNotEnabled()
+        rule.runOnIdle { assertEquals(listOf("Manual" to "Node C"), selections); assertEquals(0, tests) }
+    }
 }
