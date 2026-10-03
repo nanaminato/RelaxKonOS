@@ -195,7 +195,7 @@ internal sealed partial class NginxWebServerManager(
         if (!OperatingSystem.IsWindows() && !CanUseBuiltInInstaller()) return "webserver.install_unsupported_platform";
         await progress.ReportAsync(new(InstallationStage.Installing, Cancellable: false), ct);
         return (await InstallManagedCoreAsync(layout, new(request.Confirmed, request.Version, source),
-            new InstallationStageReporter(progress), CancellationToken.None)).ProblemCode;
+            new InstallationStageReporter(progress), OperatingSystem.IsWindows() ? ct : CancellationToken.None)).ProblemCode;
     }
 
     internal async Task<bool> CheckInstallationAsync(bool absent, CancellationToken ct)
@@ -216,7 +216,7 @@ internal sealed partial class NginxWebServerManager(
             "verifying_layout" => InstallationStage.Verifying,
             "validating_configuration" => InstallationStage.HealthChecking,
             _ => InstallationStage.Configuring
-        }), ct);
+        }, Cancellable: stage is "downloading" or "copying"), ct);
     }
 
     public async Task<WebServerOperationDto?> ApplyLifecycleAsync(string instanceId, WebServerLifecycleAction action, string idempotencyKey, string? actor, CancellationToken cancellationToken)
@@ -1070,7 +1070,19 @@ internal sealed partial class NginxWebServerManager(
                 packageId = await packages.SaveAsync(request.Source.FileName, request.Source.Stream, cancellationToken: cancellationToken);
                 if (packageId is null) return new("webserver.package_invalid");
             }
+            else
+            {
+                await progress.ReportAsync("downloading", cancellationToken);
+                using var client = await outboundProxyClients.CreateAsync(OutboundProxyTarget.RuntimeDownloads, TimeSpan.FromMinutes(5), cancellationToken);
+                using var response = await client.GetAsync($"https://nginx.org/download/nginx-{version}.zip", HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                if (!response.IsSuccessStatusCode) return new("webserver.install_failed");
+                await using var archive = await response.Content.ReadAsStreamAsync(cancellationToken);
+                packageId = await packages.SaveAsync($"nginx-{version}.zip", archive, cancellationToken: cancellationToken);
+                if (packageId is null) return new("webserver.package_invalid");
+            }
             await progress.ReportAsync("installing_package", cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            cancellationToken = CancellationToken.None;
             var installed = await privilegedNginx.ApplyWindowsRuntimeAsync(WindowsManagedRuntimeAction.Install,
                 version, packageId is null ? null : packages.GetPath(packageId), cancellationToken);
             if (!installed.Success) return new(ToWebServerProblem(installed.ProblemCode, "webserver.install_failed"));

@@ -92,13 +92,16 @@ public sealed class FrpRuntimeManager(IHostEnvironment environment, IOutboundPro
                     await stageArchiveAsync(release, archive, ct);
                     if (OperatingSystem.IsWindows())
                     {
+                        await progress.ReportAsync(new(InstallationStage.Installing, Cancellable: false), ct);
+                        ct.ThrowIfCancellationRequested();
+                        ct = CancellationToken.None;
                         var imported = await windowsRuntime.ExecuteAsync(new(WindowsManagedRuntime.Frpc, WindowsManagedRuntimeAction.Install,
                             release.Version, ArchivePath: archive), ct);
                         if (!imported.Success) return CompleteInstallationFailure(release.Version, WindowsManagedRuntimeOperations.Problem(imported));
                     }
-                    await progress.ReportAsync(new(InstallationStage.Extracting, Cancellable: true), ct);
+                    await progress.ReportAsync(new(InstallationStage.Extracting, Cancellable: !OperatingSystem.IsWindows()), ct);
                     await ExtractExpectedExecutablesAsync(release, archive, staging, ct);
-                    await progress.ReportAsync(new(InstallationStage.HealthChecking, Cancellable: true), ct);
+                    await progress.ReportAsync(new(InstallationStage.HealthChecking, Cancellable: !OperatingSystem.IsWindows()), ct);
                     if (await RunVersionAsync(Path.Combine(staging, FrpcName()), ct) is null || await RunVersionAsync(Path.Combine(staging, FrpsName()), ct) is null) return CompleteInstallationFailure(release.Version, "tunnel.runtime_health_check_failed");
                     Directory.CreateDirectory(Path.GetDirectoryName(finalDirectory)!);
                     Directory.Move(staging, finalDirectory);
@@ -109,15 +112,20 @@ public sealed class FrpRuntimeManager(IHostEnvironment environment, IOutboundPro
                 catch (Exception) { return CompleteInstallationFailure(release.Version, "tunnel.runtime_install_failed"); }
                 finally { if (File.Exists(archive)) File.Delete(archive); if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true); }
             }
-            await progress.ReportAsync(new(InstallationStage.HealthChecking, Cancellable: true), ct);
+            await progress.ReportAsync(new(InstallationStage.HealthChecking, Cancellable: !OperatingSystem.IsWindows()), ct);
             if (await RunVersionAsync(ExecutablePath(release.Version), ct) is null) return CompleteInstallationFailure(release.Version, "tunnel.runtime_health_check_failed");
             if (OperatingSystem.IsWindows())
             {
+                await progress.ReportAsync(new(InstallationStage.Installing, Cancellable: false), ct);
+                ct.ThrowIfCancellationRequested();
+                ct = CancellationToken.None;
                 var installed = await windowsRuntime.ExecuteAsync(new(WindowsManagedRuntime.Frpc, WindowsManagedRuntimeAction.Install, release.Version), ct);
                 if (!installed.Success) return CompleteInstallationFailure(release.Version, WindowsManagedRuntimeOperations.Problem(installed));
             }
             var before = await ReadStateAsync(ct);
             await progress.ReportAsync(new(InstallationStage.Activating, Cancellable: false), ct);
+            ct.ThrowIfCancellationRequested();
+            ct = CancellationToken.None;
             await WriteStateAsync(new RuntimeState(release.Version, before?.ActiveVersion, DateTimeOffset.UtcNow), ct);
 
             return new(true, TunnelConnectionState.SavedNotApplied);
@@ -178,11 +186,11 @@ public sealed class FrpRuntimeManager(IHostEnvironment environment, IOutboundPro
 
     private async Task DownloadVerifiedAsync(FrpRuntimeRelease release, string destination, IInstallationProgress progress, CancellationToken ct)
     {
+        await progress.ReportAsync(new(InstallationStage.Downloading, Cancellable: true), ct);
         using var client = await httpClients.CreateAsync(OutboundProxyTarget.RuntimeDownloads, TimeSpan.FromMinutes(2), ct);
         using var response = await client.GetAsync(release.Url, HttpCompletionOption.ResponseHeadersRead, ct);
         if (!response.IsSuccessStatusCode) throw new RuntimeInstallException("tunnel.runtime_download_failed");
         if (response.Content.Headers.ContentLength > _options.MaximumArchiveBytes) throw new RuntimeInstallException("tunnel.runtime_download_too_large");
-        await progress.ReportAsync(new(InstallationStage.Downloading, Cancellable: true), ct);
         await using var input = await response.Content.ReadAsStreamAsync(ct);
         await CopyAndVerifyArchiveAsync(release, input, destination, response.Content.Headers.ContentLength, InstallationStage.Downloading, progress, ct);
     }

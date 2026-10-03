@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Reflection;
+using Avalonia;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Client;
 using RelaxKonOS.Client.Services;
@@ -13,6 +14,8 @@ using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Installations;
 
 const string helperCode = "proxy.privileged_operation_unavailable";
+AppBuilder.Configure<Application>().UsePlatformDetect().SetupWithoutStarting();
+SynchronizationContext.SetSynchronizationContext(null);
 // These tests only read localization; no appearance changes or desktop are needed.
 // The SSH desktop session is only consulted for desktop-language overrides, so it stays unconnected here.
 using var services = new ServiceCollection()
@@ -59,6 +62,38 @@ using (var http = new HttpClient(new Handler(request => Json(HttpStatusCode.OK,
     await completed.Task.WaitAsync(TimeSpan.FromSeconds(5));
     Check(dialogs == 1 && vm.HasMessage && vm.Operation?.State == InstallationOperationState.Failed,
         "Asynchronous archive installation failure opens guidance once and retains feedback");
+}
+
+using (var handler = new BlockingTransferHandler())
+using (var http = new HttpClient(handler))
+using (var vm = new InstallationTaskViewModel(new InstallationClient(http, session), settings,
+    InstallationServiceId.Nginx, "test", () => Task.CompletedTask, () => Task.FromResult<string?>(null)))
+{
+    using var package = new MemoryStream([1, 2, 3]);
+    var transfer = vm.UploadPackageAsync("nginx.zip", package);
+    await handler.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    Check(vm.IsActive && vm.IsIndeterminate && vm.HasMessage && vm.CancelCommand.CanExecute(null),
+        "Package transfer exposes progress and cancellation before a server task exists");
+    Check(await vm.UploadPackageAsync("duplicate.zip", package) is null,
+        "Concurrent package transfer is rejected");
+    await vm.CancelCommand.ExecuteAsync(null);
+    Check(await transfer.WaitAsync(TimeSpan.FromSeconds(5)) is null && handler.Cancelled,
+        "Cancel interrupts the transfer HTTP request and returns no install reference");
+    Check(!vm.IsActive && !vm.CancelCommand.CanExecute(null) && vm.HasMessage,
+        "Cancelled transfer clears active state and retains feedback");
+}
+
+sealed class BlockingTransferHandler : HttpMessageHandler
+{
+    public TaskCompletionSource Started { get; } = new();
+    public bool Cancelled { get; private set; }
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        Started.SetResult();
+        try { await Task.Delay(Timeout.Infinite, cancellationToken); }
+        catch (OperationCanceledException) { Cancelled = true; throw; }
+        throw new InvalidOperationException();
+    }
 }
 
 sealed class Handler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
