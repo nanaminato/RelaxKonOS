@@ -1,5 +1,7 @@
 package app.relaxkonos.mobile.ui.manage.deployments
 
+import app.relaxkonos.mobile.ui.common.RefreshProgressIndicator
+
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -49,7 +51,7 @@ internal fun CatalogUpdateDialog(owner: SessionState.Active, initial: Deployment
         Surface(Modifier.fillMaxSize().safeDrawingPadding(), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.fillMaxSize().imePadding()) {
                 ScreenHeader(stringResource(R.string.catalog_update_title), subtitle = baseline.name, onBack = if (!busy) onDismiss else null, modifier = Modifier.padding(Spacing.lg))
-                if (busy || target != null && preview == null) LinearProgressIndicator(Modifier.fillMaxWidth())
+                RefreshProgressIndicator(visible = busy || target != null && preview == null)
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
                     Text(stringResource(R.string.catalog_update_note))
                     Text(stringResource(R.string.catalog_instance_version, baseline.catalogTemplateId.orEmpty(), baseline.catalogTemplateVersion.orEmpty()))

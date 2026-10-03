@@ -321,7 +321,7 @@ private fun DeploymentCreateDialog(
                                 OutlinedButton(onClick = { onLookupImageTags(form.image) }, enabled = form.image.isNotBlank() && !imageTagsLoading) {
                                     Text(stringResource(R.string.deployments_lookup_tags))
                                 }
-                                if (imageTagsLoading && imageTagsRepository == form.image) LinearProgressIndicator(Modifier.fillMaxWidth())
+                                RefreshProgressIndicator(visible = imageTagsLoading && imageTagsRepository == form.image)
                                 if (imageTagsRepository == form.image) when (val result = imageTags) {
                                     is ApiResult.Success -> if (result.value.available) {
                                         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
@@ -435,7 +435,7 @@ private fun DeploymentCreateDialog(
                             Text(stringResource(R.string.deployments_replacement_note), style = MaterialTheme.typography.bodySmall)
                         }
                         6 -> {
-                            if (submitting) LinearProgressIndicator(Modifier.fillMaxWidth())
+                            RefreshProgressIndicator(visible = submitting)
                             when (val result = submission) {
                                 null -> if (form.deployNow) ActivityIndicator(stringResource(R.string.common_loading))
                                 is ApiResult.Success -> {
@@ -559,7 +559,7 @@ private fun DeploymentList(state: DeploymentBrowserState, onSelect: (String) -> 
         state.owner?.executionEligibility?.takeIf { !it.available }?.let { eligibility ->
             item { ExecutionEligibilityNotice(eligibility.reason) }
         }
-        if (state.loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+        item { RefreshProgressIndicator(visible = state.loading) }
         state.checkedAtMillis?.let { item { CheckedAt(it) } }
         when (val result = state.applications) {
             is ApiResult.Success -> {
@@ -608,7 +608,7 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
                             }
                         } else LazyColumn(Modifier.fillMaxSize(), state = androidx.compose.foundation.lazy.rememberLazyListState(), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
                             if (state.selectedId == null) item { EmptyHint(stringResource(R.string.deployments_select)) }
-                            if (state.detailLoading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                            item { RefreshProgressIndicator(visible = state.detailLoading) }
                             state.detailCheckedAtMillis?.let { item { CheckedAt(it) } }
                             when (val result = state.detail) {
                                 is ApiResult.Success -> {
@@ -667,7 +667,7 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
                                     }
                                     if (pane == "logs") {
                                         item { Text(stringResource(R.string.deployments_logs), style = MaterialTheme.typography.titleMedium) }
-                                        if (state.logsLoading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                                        item { RefreshProgressIndicator(visible = state.logsLoading) }
                                         when (val logs = state.logs) {
                                             is ApiResult.Success -> item {
                                                 SectionCard(title = stringResource(if (logs.value.truncated) R.string.deployments_logs_truncated else R.string.deployments_logs_recent)) {
@@ -818,7 +818,7 @@ private fun BackupRecoveryCard(owner: SessionState.Active?, applicationId: Strin
         }
     }
     SectionCard(title = stringResource(R.string.backup_recovery_title), subtitle = stringResource(R.string.backup_recovery_note)) {
-        if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+        RefreshProgressIndicator(visible = state.loading)
         when (val manifests = state.manifests) {
             is ApiResult.Success -> {
                 if (manifests.value.isEmpty()) Text(stringResource(R.string.backup_recovery_empty))
@@ -849,7 +849,7 @@ private fun BackupRecoveryCard(owner: SessionState.Active?, applicationId: Strin
         }, enabled = !state.loading && !state.creating) {
             Text(stringResource(if (state.pendingRequest) R.string.backup_recovery_retry_create else R.string.backup_recovery_create))
         }
-        if (state.creating) LinearProgressIndicator(Modifier.fillMaxWidth())
+        RefreshProgressIndicator(visible = state.creating)
         if (state.pendingRequest) Text(stringResource(R.string.backup_recovery_request_unknown), color = MaterialTheme.colorScheme.onSurfaceVariant)
         when (state.creation) {
             is ApiResult.Success -> Text(stringResource(R.string.backup_recovery_created))

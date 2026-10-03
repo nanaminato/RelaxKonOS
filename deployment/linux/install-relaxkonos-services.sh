@@ -270,11 +270,12 @@ install_docker_access_policy() {
   chown root:root "$temporary_policy"
   chmod 0600 "$temporary_policy"
   mv -f -- "$temporary_policy" /etc/relaxkonos/docker-access-user
-  # The group is absent until Docker is installed. Keeping the root-owned policy lets the
-  # dedicated Docker Helper apply this same explicit decision after it installs the engine.
-  if getent group docker >/dev/null; then
-    usermod --append --groups docker "$SERVICE_USER"
+  # Prepare membership before Server starts, including for later Docker installs.
+  # Docker packages reuse this system group and the running Server keeps its GID.
+  if ! getent group docker >/dev/null; then
+    groupadd --system docker
   fi
+  usermod --append --groups docker "$SERVICE_USER"
 }
 install_docker_access_policy
 

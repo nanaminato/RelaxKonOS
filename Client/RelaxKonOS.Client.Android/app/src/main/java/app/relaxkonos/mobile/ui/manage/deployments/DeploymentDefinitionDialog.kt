@@ -1,5 +1,7 @@
 package app.relaxkonos.mobile.ui.manage.deployments
 
+import app.relaxkonos.mobile.ui.common.RefreshProgressIndicator
+
 import app.relaxkonos.mobile.ui.common.ActionLabel
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import androidx.compose.foundation.layout.*
@@ -82,7 +84,7 @@ internal fun DeploymentDefinitionDialog(owner: SessionState.Active, baseline: De
             Column(Modifier.fillMaxSize().imePadding()) {
                 ScreenHeader(stringResource(R.string.deployments_edit_definition), subtitle = draft.baseline.name, onBack = if (!busy) onDismiss else null,
                     modifier = Modifier.padding(Spacing.lg))
-                if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                RefreshProgressIndicator(visible = busy)
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
                     Text(stringResource(R.string.deployments_definition_effect))
                     Text(stringResource(R.string.deployments_source, stringResource(deploymentLabel(baseline.sourceKind))), style = MaterialTheme.typography.bodySmall)

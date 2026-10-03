@@ -1,5 +1,7 @@
 package app.relaxkonos.mobile.ui.servercenter
 
+import app.relaxkonos.mobile.ui.common.RefreshProgressIndicator
+
 import app.relaxkonos.mobile.ui.common.ActionLabel
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -51,7 +53,7 @@ internal fun SshBundlePicker(hostId: String, onDismiss: () -> Unit, onSelect: (S
                 if (state.path != "/") TextButton(onClick = model::up, enabled = !state.busy) {
                     Text(stringResource(R.string.common_back))
                 }
-                if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                RefreshProgressIndicator(visible = state.busy)
                 state.problem?.let {
                     Text(stringResource(R.string.remote_path_load_failed,
                         stringResource(R.string.ssh_files_connection_failed)),

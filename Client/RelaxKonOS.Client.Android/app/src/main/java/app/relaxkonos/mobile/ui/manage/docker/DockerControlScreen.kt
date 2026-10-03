@@ -49,7 +49,7 @@ private data class ControlConfirmation(val facts: DockerControlFacts, val change
         ScreenHeader(stringResource(if (recordsOnly) R.string.workspace_records else if (mirrorsOnly) R.string.workspace_mirrors else R.string.docker_title), onBack = { navigate(onBack) })
         if (owner?.capabilities?.contains(ServerCapabilities.DOCKER) != true) { Text(stringResource(R.string.error_capability_missing)); return@Column }
         TextButton(enabled = !state.busy, onClick = { navigate { draft = null; model.refresh() } }) { ActionLabel(R.string.common_refresh) }
-        if (visible && state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        RefreshProgressIndicator(visible = visible && state.busy)
         OperationMessageDialog(state.problem?.takeIf { visible && !state.busy }?.let { controlProblem(it) })
         if (visible && recordsOnly) state.pending.forEach { pending ->
             ManagementCard {
@@ -205,7 +205,8 @@ WorkspaceSection(mirrorsOnly) {
     "docker.resources.installation_active" -> R.string.docker_resources_installation_active
     "docker.control.facts_changed", "docker.resources.facts_changed" -> R.string.docker_control_conflict
     "docker.engine.problem.platform_unsupported", "docker.manual_host_action_required", "docker.install_not_supported" -> R.string.docker_control_windows
-    "docker.engine.problem.helper_unavailable", "docker.access_not_configured", "docker.access_restart_required" -> R.string.docker_control_authorization
+    "docker.engine.problem.helper_unavailable", "docker.access_not_configured" -> R.string.docker_control_authorization
+    "docker.access_restart_required" -> R.string.docker_access_restart_required
     "docker.daemon_unavailable", "docker.connection_failed" -> R.string.docker_control_unavailable
     "docker.engine.problem.action_failed", "docker.engine.problem.desktop_command_failed" -> R.string.docker_control_action_failed
     else -> R.string.docker_control_unverified

@@ -45,7 +45,7 @@ private data class ResourceConfirmation(val facts: DockerResourceFacts, val targ
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             TextButton(enabled = !state.busy, onClick = { navigate { draft = null; model.refresh() } }) { ActionLabel(R.string.common_refresh) }
         }
-        if (visible && state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        RefreshProgressIndicator(visible = visible && state.busy)
         OperationMessageDialog(state.problem?.takeIf { visible && !state.busy }?.let { controlProblem(it) })
         if (visible && state.blocked != null) Text(controlProblem(state.blocked), color = MaterialTheme.colorScheme.error)
         if (visible && (state.pending.isNotEmpty() || state.result != null)) TextButton(onClick = { navigate(onOpenControl) }) { Text(stringResource(R.string.workspace_records)) }

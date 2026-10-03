@@ -8,6 +8,10 @@
 
 ## 引擎与安装
 
+刷新与安装轮询使用固定高度的加载条占位，不插入或移除布局行，保留页面滚动位置。其他管理页面采用同一组件。
+
+Linux 部署显式启用 `--docker-access` 时，即使 Docker 尚未安装，也先创建 Docker 系统组并授予 Server 服务账户成员资格。后续安装由 Helper 再次确认授权，Server 验证实际引擎连接；已有访问权限时完成安装，无需额外重启。旧部署缺少运行中的组权限时，显示 `docker.access_restart_required` 的明确说明：在宿主重启 RelaxKonOS Server 后刷新核验。未启用 Docker 授权的部署仍需在宿主显式配置授权。
+
 管理 → Docker → 引擎与镜像源，入口按当前 `server.docker` capability 门控。页面读取当前 Engine 状态、版本、系统与架构，成功返回 unavailable 与请求未被核验分开显示；只有当前会话的 privilegedOperations 为真才显示写入动作。引擎不可达不自动等于未安装。
 
 Start/Stop/Restart 调用当前 `/docker/engine/{action}`，提交结构化 confirmed。确认指出整个宿主、所有容器、Compose 与应用部署受影响。Linux 使用宿主 Helper 的固定 Docker 服务；Windows 依赖 Docker Desktop 的受支持 CLI。

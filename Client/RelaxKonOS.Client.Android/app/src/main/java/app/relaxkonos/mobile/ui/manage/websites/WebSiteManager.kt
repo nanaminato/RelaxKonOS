@@ -128,7 +128,7 @@ internal fun WebSiteEditor(state: NginxState, model: NginxViewModel) {
             Text(stringResource(R.string.websites_site_tls_note), style = MaterialTheme.typography.bodySmall)
             if (draft.request() == null) Text(stringResource(R.string.websites_site_validation), color = MaterialTheme.colorScheme.error)
 
-            if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            RefreshProgressIndicator(visible = state.busy)
             if (draft.expectedUpdatedAt != null) {
                 TextButton(enabled = !state.busy, onClick = { model.inspectSites(draft.serverId) }) { Text(stringResource(R.string.websites_site_inspect)) }
                 if (!pending && (state.sites[draft.serverId] as? ApiResult.Success)?.value?.any { it.id == draft.id } == true)

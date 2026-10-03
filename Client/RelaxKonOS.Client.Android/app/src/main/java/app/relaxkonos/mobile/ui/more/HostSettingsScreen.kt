@@ -205,7 +205,7 @@ fun HostSettingsScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
         }
         OperationMessageDialog(editor.error?.takeUnless { editor.busy }?.let { stringResource(it) })
         if (editor.references.any { it.unresolved }) Text(stringResource(R.string.host_settings_pending),color=MaterialTheme.colorScheme.error)
-        if (editor.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        RefreshProgressIndicator(visible = editor.busy)
         when(editor.kind) {
             HostSettingKind.Time -> editor.time?.let { facts ->
                 KeyValueRow(stringResource(R.string.host_settings_current), facts.zoneId)

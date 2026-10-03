@@ -10,6 +10,11 @@ public sealed class DockerRuntimeInstaller(IDockerEngineService engine, IPrivile
     {
         if (!OperatingSystem.IsLinux()) return new(false, "docker.manual_host_action_required");
         var result = await transport.ExecuteAsync(new(PrivilegedOperationKind.DockerEngineInstall), CancellationToken.None);
+        // Pre-authorized deployments already have the Docker group in the running
+        // Server. Verify live access before requiring a restart for the new grant.
+        if (result.ProblemCode == PrivilegedProblemCode.RestartRequired
+            && (await engine.GetStatusAsync(CancellationToken.None)).IsAvailable)
+            return new(true, string.Empty);
         if (!result.Success) return new(false, result.ProblemCode switch
         {
             PrivilegedProblemCode.UnsupportedOperation => "docker.install_not_supported",

@@ -1,5 +1,7 @@
 package app.relaxkonos.mobile.ui.manage.proxy
 
+import app.relaxkonos.mobile.ui.common.RefreshProgressIndicator
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
@@ -61,7 +63,7 @@ internal fun ProxyNodesPanel(state: ProxyState, canManage: Boolean, ready: Boole
         Text(stringResource(R.string.mihomo_group_testing, state.testingGroup, total - state.testingProxies.size, total),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
         LinearProgressIndicator(Modifier.fillMaxWidth())
-    } else if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+    } else RefreshProgressIndicator(visible = state.busy)
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val columns = (maxWidth / 140.dp).toInt().coerceIn(1, 4)
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {

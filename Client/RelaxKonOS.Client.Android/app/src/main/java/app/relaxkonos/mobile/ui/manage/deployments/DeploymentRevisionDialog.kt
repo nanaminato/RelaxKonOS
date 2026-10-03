@@ -1,5 +1,7 @@
 package app.relaxkonos.mobile.ui.manage.deployments
 
+import app.relaxkonos.mobile.ui.common.RefreshProgressIndicator
+
 import app.relaxkonos.mobile.ui.common.ActionLabel
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import android.net.Uri
@@ -89,7 +91,7 @@ internal fun DeploymentRevisionDialog(
             Column(Modifier.fillMaxSize().imePadding()) {
                 ScreenHeader(stringResource(R.string.deployments_new_revision), subtitle = baseline.name, onBack = if (!busy) onDismiss else null,
                     modifier = Modifier.padding(Spacing.lg))
-                if (busy || archiveStaging) LinearProgressIndicator(Modifier.fillMaxWidth())
+                RefreshProgressIndicator(visible = busy || archiveStaging)
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
                     Text(stringResource(R.string.deployments_revision_effect))
                     Text(stringResource(R.string.deployments_source, stringResource(deploymentLabel(baseline.sourceKind))))

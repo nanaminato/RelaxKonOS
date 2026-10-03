@@ -2717,4 +2717,5 @@
     <string name="host_settings_path_empty">（空の項目）</string>
     <string name="taskmanager_clear_filter">クリア</string>
     <string name="taskmanager_back_to_list">プロセス一覧に戻る</string>
+    <string name="docker_access_restart_required">Docker をインストールし、アクセス権を付与しました。ホストの RelaxKonOS Server を再起動してから更新し、接続を確認してください。</string>
 </resources>

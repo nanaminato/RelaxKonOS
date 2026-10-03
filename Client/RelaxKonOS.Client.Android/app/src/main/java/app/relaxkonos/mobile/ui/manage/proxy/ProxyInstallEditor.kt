@@ -78,7 +78,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
             state.uploadBytes?.let { Text(stringResource(R.string.nginx_upload_bytes, it)) }
             if (state.pendingInstallation) Text(stringResource(R.string.tunnels_install_restore_note), color = MaterialTheme.colorScheme.error)
 
-            if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            RefreshProgressIndicator(visible = state.busy)
             ProxyCheck(confirmed, !state.busy, R.string.mihomo_install_confirm) { confirmed = it }
         } }, confirmButton = { Button(enabled = !state.busy && confirmed && state.installation?.state?.active != true &&
             (model.hasIntent || ((rollback || kind == InstallationKind.Uninstall || releases.any { it.version == version }) &&

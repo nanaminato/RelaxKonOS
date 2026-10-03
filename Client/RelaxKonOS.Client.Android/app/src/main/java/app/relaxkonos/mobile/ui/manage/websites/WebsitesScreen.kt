@@ -188,7 +188,7 @@ fun WebsitesScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initial
             return@WorkspaceColumn
         }
         Text(stringResource(R.string.websites_publish_note), style = MaterialTheme.typography.bodySmall)
-        if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+        RefreshProgressIndicator(visible = state.loading)
         WorkspaceSection(section != "publish") { NginxManager(onChanged = viewModel::refresh, section = section, onRecords = { section = "records" }) }
         WorkspaceSection(section == "publish") { androidx.compose.runtime.key(viewModel.sessionEpoch) { WebsitePublisher(state, viewModel) { section = "records" } } }
         WorkspaceSection(section == "records") { SectionCard(stringResource(R.string.websites_publish_title)) { PublicationResult(state, viewModel) } }

@@ -71,7 +71,7 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
                 OutlinedButton(onClick = { installDialog = true }, enabled = !model.mutationsBlocked) { Text(stringResource(R.string.nginx_install)) }
         }
         }
-        if (state.busy || state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+        RefreshProgressIndicator(visible = state.busy || state.loading)
 
         if (state.catalog?.problemCode?.isNotBlank() == true) Text(nginxProblemLabel(state.catalog.problemCode), color = MaterialTheme.colorScheme.error)
         if (state.servers.isEmpty() && !state.loading) Text(stringResource(R.string.websites_no_servers))
@@ -267,7 +267,7 @@ private fun NginxInstallDialog(model: NginxViewModel, onSubmitted: () -> Unit, d
                     remotePath, { remotePath = it; model.clearReference() }, { model.fileReference(remotePath) },
                     { picker.launch(arrayOf("application/zip", "application/octet-stream")) }, state.reference)
             }
-            if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            RefreshProgressIndicator(visible = state.busy)
             state.uploadBytes?.let { Text(stringResource(R.string.nginx_upload_bytes, it)) }
 
             Row(verticalAlignment = Alignment.CenterVertically) {

@@ -2716,4 +2716,5 @@
     <string name="host_settings_path_empty">（空项）</string>
     <string name="taskmanager_clear_filter">清空</string>
     <string name="taskmanager_back_to_list">返回进程列表</string>
+    <string name="docker_access_restart_required">Docker 已安装并已授予访问权限。请在主机上重启 RelaxKonOS Server，再刷新验证连接。</string>
 </resources>

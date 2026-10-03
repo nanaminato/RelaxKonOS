@@ -1,5 +1,7 @@
 package app.relaxkonos.mobile.ui.common
 
+import app.relaxkonos.mobile.ui.common.RefreshProgressIndicator
+
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.*
@@ -106,7 +108,7 @@ fun RemotePathPicker(
                         }
                     }
                 }
-                if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                RefreshProgressIndicator(visible = loading)
                 OperationMessageDialog(error?.takeUnless { loading }?.let { stringResource(R.string.remote_path_load_failed, it.text()) }, onDismiss = { error = null }, onRetry = { refresh++ })
                 listing?.let { result ->
                     val entries = result.entries.filter { it.isDirectory ||

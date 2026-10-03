@@ -52,7 +52,7 @@ fun CertificatesScreen(onBack: () -> Unit, initialOperationId: String? = null, m
             }
             if (section == "operations") TextButton(onClick = { recoverPending = null; recoverId = ""; recovery = true }, enabled = !state.busy) { Text(stringResource(R.string.certificates_recover)) }
         }
-        if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        RefreshProgressIndicator(visible = state.busy)
 
         if (section != "operations" && (state.pending.isNotEmpty() || state.operation != null)) {
             TextButton(onClick = { section = "operations" }) {
@@ -242,7 +242,7 @@ private fun CertificateEditor(state: CertificatesState, model: CertificatesViewM
             }
             if (draft.body() == null) Text(stringResource(R.string.certificates_validation), color = MaterialTheme.colorScheme.error)
 
-            if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            RefreshProgressIndicator(visible = state.busy)
         } }, confirmButton = { Button(enabled = !state.busy && draft.body() != null && (draft.selfSigned || (state.preflight as? ApiResult.Success)?.value?.canProceed == true), onClick = { submit = true }) {
             Text(stringResource(if (state.draftLocked) R.string.common_retry else R.string.certificates_submit))
         } }, dismissButton = { TextButton(onClick = ::close, enabled = !state.busy) { Text(stringResource(R.string.common_close)) } })

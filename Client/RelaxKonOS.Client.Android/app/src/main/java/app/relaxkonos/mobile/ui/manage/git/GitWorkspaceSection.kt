@@ -63,7 +63,7 @@ internal fun GitWorkspaceSection(owner: SessionState.Active, section: String, on
     val ordinary = ready && facts?.conflicts?.let { it.operation == null && it.paths.isEmpty() } == true
     // Keep shared state and installation observation alive, but builds own their entire UI.
     if (section == "build") return
-    if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+    RefreshProgressIndicator(visible = state.busy)
     if (!owner.executionEligibility.available) Text(stringResource(R.string.gw_identity_unavailable), color = MaterialTheme.colorScheme.error)
     GitWorkspaceProblem(state.problem.takeUnless { state.busy })
     if (state.saved) Text(stringResource(R.string.gw_receipt), color = MaterialTheme.colorScheme.primary)

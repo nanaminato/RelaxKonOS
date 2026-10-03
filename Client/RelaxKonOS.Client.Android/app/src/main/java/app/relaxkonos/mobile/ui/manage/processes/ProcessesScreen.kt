@@ -178,7 +178,7 @@ fun ProcessesScreen(
         viewModel.processSampledAt?.let { time -> Text(stringResource(R.string.manage_processes_sampled_at,
             formatTimestamp(IsoInstant.toEpochMillis(time)).orEmpty()), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        if (viewModel.processesLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
+        RefreshProgressIndicator(visible = viewModel.processesLoading)
         if (viewModel.processItems.isEmpty()) {
             EmptyState(
                 text = stringResource(

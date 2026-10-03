@@ -2755,4 +2755,5 @@
     <string name="host_settings_path_empty">(empty)</string>
     <string name="taskmanager_clear_filter">Clear</string>
     <string name="taskmanager_back_to_list">Back to list</string>
+    <string name="docker_access_restart_required">Docker is installed and access has been granted. Restart RelaxKonOS Server on the host, then refresh to verify the connection.</string>
 </resources>

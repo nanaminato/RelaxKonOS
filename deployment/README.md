@@ -165,7 +165,7 @@ System Mode 安装会自动创建 `/var/log/relaxkonos/runtime` 和审计数据�
 
 局域网模式仅将 Server 绑定到 `0.0.0.0`，不会自动打开防火墙。公网部署请选择反向代理模式（默认本机监听），并由反向代理终结 HTTPS。
 
-Docker 管理默认关闭，因为 Docker socket 等同高权限主机控制。只有需要 Docker Manager 时，才在 System Mode 命令末尾明确追加 `--docker-access`；安装器会授权 Server 服务账户并重启 Server。
+Docker 管理默认关闭，因为 Docker socket 等同高权限主机控制。只有需要 Docker Manager 时，才在 System Mode 命令末尾明确追加 `--docker-access`；安装器会授权 Server 服务账户并重启 Server。Docker 尚未安装时也会先创建系统组并添加成员，使后续安装 Docker 能被运行中的 Server 直接访问。旧部署在后续安装时才添加组权限的，需要重启 `relaxkonos-server.service` 后刷新验证连接。
 
 ### Linux User Mode（无 sudo）
 
