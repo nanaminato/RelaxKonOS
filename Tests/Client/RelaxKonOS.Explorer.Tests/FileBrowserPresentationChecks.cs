@@ -25,6 +25,11 @@ internal static class FileBrowserPresentationChecks
                 Children = { new TextBlock { Text = entry, Height = 28 } },
             }),
         });
+        grid.Columns.Add(new DataGridTemplateColumn
+        {
+            Width = new DataGridLength(164),
+            CellTemplate = new FuncDataTemplate<string>((_, _) => new TextBlock { Text = "2026/10/03" }),
+        });
         var host = new Grid { Background = Avalonia.Media.Brushes.Transparent };
         host.Children.Add(grid);
         var enabled = true;
@@ -32,6 +37,16 @@ internal static class FileBrowserPresentationChecks
         var window = new Window { Width = 600, Height = 400, Content = host };
         window.Show();
         Pump();
+        var focusCell = grid.GetVisualDescendants().OfType<DataGridCell>().Skip(1).First();
+        var cellPoint = focusCell.TranslatePoint(new Point(10, 10), host)!.Value;
+        window.MouseDown(cellPoint, MouseButton.Left);
+        window.MouseUp(cellPoint, MouseButton.Left);
+        Pump();
+        check(focusCell.Classes.Contains(":focus"), "Mouse click activates the metadata cell focus state used by the theme");
+        check(focusCell.GetVisualDescendants().OfType<Grid>().Single(c => c.Name == "FocusVisual").IsVisible == false,
+            "Details never displays a cell focus rectangle");
+        var focusRow = focusCell.FindAncestorOfType<DataGridRow>()!;
+        check(focusRow.BorderThickness == new Thickness(0), "Details selection does not add a row outline");
         foreach (var mode in Enum.GetValues<ExplorerViewMode>())
         {
             grid.SelectedItem = entries[0];
@@ -50,6 +65,9 @@ internal static class FileBrowserPresentationChecks
             window.MouseUp(end, MouseButton.Left);
             Pump();
             check(grid.SelectedItems.Contains(entries[0]), $"{mode}: background drag selects intersecting file");
+            if (mode == ExplorerViewMode.Details)
+                check(grid.GetVisualDescendants().OfType<Grid>().Where(c => c.Name == "FocusVisual" && c.TemplatedParent is DataGridCell).All(c => !c.IsVisible),
+                    "Rubber-band selection does not reveal the theme cell focus outline");
             window.MouseDown(new Point(550, 300), MouseButton.Left);
             window.MouseUp(new Point(550, 300), MouseButton.Left);
             check(grid.SelectedItems.Count == 0, $"{mode}: background click clears selection");

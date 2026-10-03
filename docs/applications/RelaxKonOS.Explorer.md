@@ -337,3 +337,5 @@ services.AddSingleton<IRemoteApplication, RelaxKonOS.Client.Apps.Explorer.Explor
 从条目区域的空白处按住左键拖动可框选，选择框与条目相交即选中；Ctrl / Shift 框选追加现有选择，普通空白点击清空选择。拖至上下边缘自动滚动；Escape 取消正在进行的框选并恢复原选择。列标题、滚动条、重命名编辑器和条目本身不启动框选。单选文件选择器限制选择数量为一。
 
 普通浏览器“设为默认视图”同时保存 `ViewMode`（Details=0、List=1、SmallIcons=2、LargeIcons=3）；设置契约 schemaVersion=2，直接采用当前格式，不解析旧版本设置。SSH 视图模式在当前窗口内保留。
+
+详细信息视图只显示整行选择背景，不额外绘制整行或单元格焦点轮廓；点击和框选激活的单元格焦点/当前状态均隐藏轮廓；列标题仍支持排序和拖动调整宽度。普通与 SSH 浏览器共用此样式，行内重命名保留文本输入焦点。

@@ -49,6 +49,24 @@ internal sealed class FileBrowserPresentation
         _host = host;
         _details = details;
         _enabled = enabled;
+        // Selection belongs to files. Hide the spreadsheet-style cell currency/focus visuals.
+        details.Styles.Add(new Style(s => s.OfType<DataGridCell>().Class(":focus").Template().OfType<Grid>().Name("FocusVisual"))
+        {
+            Setters = { new Setter(Visual.IsVisibleProperty, false) },
+        });
+        details.Styles.Add(new Style(s => s.OfType<DataGridCell>().Class(":current").Template().OfType<Avalonia.Controls.Shapes.Rectangle>().Name("CurrencyVisual"))
+        {
+            Setters = { new Setter(Visual.IsVisibleProperty, false) },
+        });
+        // File selection uses the row highlight alone; no additional focus outline.
+        details.Styles.Add(new Style(s => s.OfType<DataGridRow>())
+        {
+            Setters =
+            {
+                new Setter(TemplatedControl.BorderThicknessProperty, new Thickness(0)),
+                new Setter(TemplatedControl.BorderBrushProperty, Brushes.Transparent),
+            },
+        });
         Items.SetValue(ScrollViewer.HorizontalScrollBarVisibilityProperty, ScrollBarVisibility.Disabled);
         Items.Styles.Add(new Style(selector => selector.OfType<ListBoxItem>())
         {
