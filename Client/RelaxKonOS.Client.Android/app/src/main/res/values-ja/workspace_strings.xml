@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="git_environment">環境</string>
+    <string name="git_environment_required">リポジトリ操作には Git 環境の準備が必要です。環境ページで利用状況やインストールタスクを確認してください。</string>
+    <string name="git_open_environment">環境を確認</string>
+    <string name="git_open_workspace">ワークスペースでリポジトリを登録</string>
+    <string name="git_no_conflicts">このリポジトリには競合や続行待ちの操作はありません。</string>
     <string name="workspace_overview">概要</string>
     <string name="workspace_profiles">設定と購読</string>
     <string name="workspace_nodes">ノード</string>

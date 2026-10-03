@@ -26,7 +26,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 import kotlinx.coroutines.delay
 
 @Composable
-internal fun GitWorkspaceSection(owner: SessionState.Active, section: String) {
+internal fun GitWorkspaceSection(owner: SessionState.Active, section: String, onSelectSection: (String) -> Unit) {
     val model: GitWorkspaceViewModel = viewModel()
     val state = model.state
     var name by remember(owner) { mutableStateOf("") }
@@ -37,6 +37,7 @@ internal fun GitWorkspaceSection(owner: SessionState.Active, section: String) {
     var search by remember(owner) { mutableStateOf("") }
     var strategy by remember(owner) { mutableStateOf("ff-only") }
     var adoption by remember(owner) { mutableStateOf<PendingGitMutation?>(null) }
+    var diffSection by remember(owner) { mutableStateOf<String?>(null) }
     LaunchedEffect(state.owner) { if (state.owner === owner) model.refresh() }
     DisposableEffect(model) { onDispose { model.stop() } }
     LaunchedEffect(state.installation?.operationId, state.installation?.state, state.busy) {
@@ -46,16 +47,39 @@ internal fun GitWorkspaceSection(owner: SessionState.Active, section: String) {
     val pending = state.pending.filter { it.repositoryId == state.selectedId }
     val ready = owner.executionEligibility.available && !state.busy && facts != null && pending.isEmpty() && !state.pendingInstallation && state.installation?.state?.active != true
     val ordinary = ready && facts?.conflicts?.let { it.operation == null && it.paths.isEmpty() } == true
+    // Keep shared state and installation observation alive, but builds own their entire UI.
+    if (section == "build") return
     if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
     if (!owner.executionEligibility.available) Text(stringResource(R.string.gw_identity_unavailable), color = MaterialTheme.colorScheme.error)
     GitWorkspaceProblem(state.problem.takeUnless { state.busy })
     if (state.saved) Text(stringResource(R.string.gw_receipt), color = MaterialTheme.colorScheme.primary)
-    state.engine?.let { engine ->
-        Text(stringResource(if (engine.available) R.string.gw_engine_ready else R.string.gw_engine_missing), style = MaterialTheme.typography.titleMedium)
-        engine.version?.let { SelectionContainer { Text(it) } }
+    WorkspaceSection(section == "environment") {
+        Text(stringResource(R.string.git_environment), style = MaterialTheme.typography.titleLarge)
+        state.engine?.let { engine ->
+            Text(stringResource(if (engine.available) R.string.gw_engine_ready else R.string.gw_engine_missing), style = MaterialTheme.typography.titleMedium)
+            engine.version?.let { SelectionContainer { Text(it) } }
+        }
+        OutlinedButton(onClick = model::refresh, enabled = !state.busy) { Text(stringResource(R.string.common_refresh)) }
+        GitInstallation(state, model, owner)
     }
-    OutlinedButton(onClick = model::refresh, enabled = !state.busy) { Text(stringResource(R.string.common_refresh)) }
-    GitInstallation(state, model, owner)
+    if (section != "environment") {
+        OutlinedButton(onClick = model::refresh, enabled = !state.busy) { Text(stringResource(R.string.common_refresh)) }
+        if (state.engine?.available == false || state.pendingInstallation || state.installation?.state?.active == true) {
+            Text(stringResource(R.string.git_environment_required), style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = { onSelectSection("environment") }) { Text(stringResource(R.string.git_open_environment)) }
+        }
+    }
+    if (section != "workspace" && section != "environment") {
+        if (pending.isNotEmpty()) {
+            Text(stringResource(R.string.gw_unknown_note), style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = { onSelectSection("workspace") }) { Text(stringResource(R.string.workspace_workspace)) }
+        }
+        if (state.engine?.available == true && state.repositories.isEmpty()) {
+            Text(stringResource(R.string.git_no_repositories))
+            TextButton(onClick = { onSelectSection("workspace") }) { Text(stringResource(R.string.git_open_workspace)) }
+        }
+    }
+    WorkspaceSection(section == "workspace") {
     state.pending.forEach { entry ->
         Card { Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Text(state.repositories.firstOrNull { it.id == entry.repositoryId }?.name ?: entry.repositoryId)
@@ -65,12 +89,13 @@ internal fun GitWorkspaceSection(owner: SessionState.Active, section: String) {
             OutlinedButton(onClick = { adoption = entry }, enabled = !state.busy) { Text(stringResource(R.string.gw_adopt)) }
         } }
     }
-    if (state.engine?.available == true) {
+    }
+    if (state.engine?.available == true && section != "environment") {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             state.repositories.forEach { repository -> FilterChip(selected = repository.id == state.selectedId,
                 onClick = { model.select(repository.id) }, enabled = !state.busy, label = { Text(repository.name) }) }
         }
-        if (state.repositories.isEmpty()) Text(stringResource(R.string.git_no_repositories))
+        if (state.repositories.isEmpty() && section == "workspace") Text(stringResource(R.string.git_no_repositories))
 WorkspaceSection(section == "workspace") {
         Text(stringResource(R.string.git_register_title), style = MaterialTheme.typography.titleMedium)
         Text(stringResource(R.string.git_register_note), style = MaterialTheme.typography.bodySmall)
@@ -79,11 +104,11 @@ WorkspaceSection(section == "workspace") {
         OutlinedButton(onClick = { model.register(name, directory) }, enabled = owner.executionEligibility.available && !state.busy && name.isNotBlank() && directory.isNotBlank()) { Text(stringResource(R.string.git_register)) }
 }
             }
-    if (facts != null) {
+    if (facts != null && section != "environment") {
         Text(stringResource(R.string.git_branch_status, facts.status.branch, facts.status.ahead, facts.status.behind))
         Text(stringResource(R.string.gw_upstream, facts.status.upstream ?: stringResource(R.string.gw_no_upstream)))
         if (facts.status.detached) Text(stringResource(R.string.gw_detached), color = MaterialTheme.colorScheme.error)
-        Text(stringResource(R.string.gw_actions_note), style = MaterialTheme.typography.bodySmall)
+        if (section == "workspace" || section == "branches") Text(stringResource(R.string.gw_actions_note), style = MaterialTheme.typography.bodySmall)
         BoxWithConstraints {
             val branches: @Composable () -> Unit = {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
@@ -113,9 +138,9 @@ WorkspaceSection(section == "workspace") {
             }
             val changes: @Composable () -> Unit = {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    GitChanges(R.string.gw_staged, facts.status.staged, true, ordinary, !state.busy, model) { editor = it }
-                    GitChanges(R.string.gw_unstaged, facts.status.unstaged, false, ordinary, !state.busy, model) { editor = it }
-                    GitChanges(R.string.gw_untracked, facts.status.untracked, false, ordinary, !state.busy, model) { editor = it }
+                    GitChanges(R.string.gw_staged, facts.status.staged, true, ordinary, !state.busy, model, { diffSection = "workspace" }) { editor = it }
+                    GitChanges(R.string.gw_unstaged, facts.status.unstaged, false, ordinary, !state.busy, model, { diffSection = "workspace" }) { editor = it }
+                    GitChanges(R.string.gw_untracked, facts.status.untracked, false, ordinary, !state.busy, model, { diffSection = "workspace" }) { editor = it }
                     OutlinedTextField(model.commitMessage, { model.commitMessage = it }, enabled = ordinary, label = { Text(stringResource(R.string.git_commit_message)) }, modifier = Modifier.fillMaxWidth(),
                         isError = model.commitMessage.length > 16384, supportingText = { if (model.commitMessage.length > 16384) Text(stringResource(R.string.gw_message_limit)) })
                     Button(onClick = { model.prepare(GitMutation(GitAction.Commit, message = model.commitMessage)) }, enabled = ordinary && facts.status.staged.isNotEmpty() && model.commitMessage.isNotBlank() && model.commitMessage.length <= 16384) { Text(stringResource(R.string.git_commit)) }
@@ -135,6 +160,8 @@ WorkspaceSection(section == "conflicts") {
                     OutlinedButton(onClick = { model.prepare(GitMutation(GitAction.Abort, operation = operation)) }, enabled = ready) { Text(stringResource(R.string.gw_abort)) }
                 }
             }
+        } else {
+            Text(stringResource(R.string.git_no_conflicts))
         }
 }
         WorkspaceSection(section == "workspace") {
@@ -156,10 +183,10 @@ WorkspaceSection(section == "conflicts") {
         state.detail?.let { detail ->
             SelectionContainer { Text("${detail.sha}\n${detail.author} · ${detail.date}\n${detail.subject}\n${detail.body.orEmpty()}") }
             SelectionContainer { Text(stringResource(R.string.gw_parents, detail.parents.joinToString(" · "))) }
-            detail.changedFiles.forEach { file -> TextButton(onClick = { model.showDiff(file.path, false, detail.sha) }, enabled = !state.busy) { Text(file.path) } }
+            detail.changedFiles.forEach { file -> TextButton(onClick = { diffSection = "history"; model.showDiff(file.path, false, detail.sha) }, enabled = !state.busy) { Text(file.path) } }
         }
 }
-                state.diff?.let { GitPatch(it) }
+        if (section == diffSection) state.diff?.let { GitPatch(it) }
     }
     if (state.conflict == null) state.preview?.let { GitConfirmation(it, model) }
     state.conflict?.let { GitConflictDialog(it, model, ready) }
@@ -170,13 +197,13 @@ WorkspaceSection(section == "conflicts") {
 }
 
 @Composable
-private fun GitChanges(title: Int, files: List<GitChange>, staged: Boolean, writable: Boolean, readable: Boolean, model: GitWorkspaceViewModel, edit: (String) -> Unit) {
+private fun GitChanges(title: Int, files: List<GitChange>, staged: Boolean, writable: Boolean, readable: Boolean, model: GitWorkspaceViewModel, onDiff: () -> Unit, edit: (String) -> Unit) {
     Text(stringResource(title), style = MaterialTheme.typography.titleMedium)
     if (files.isEmpty()) Text(stringResource(R.string.gw_no_changes), style = MaterialTheme.typography.bodySmall)
     files.forEach { file ->
         Text(file.oldPath?.let { "$it → ${file.path} · ${file.status}" } ?: "${file.path} · ${file.status}")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            TextButton(onClick = { model.showDiff(file.path, staged) }, enabled = readable) { Text(stringResource(R.string.git_preview_diff)) }
+            TextButton(onClick = { onDiff(); model.showDiff(file.path, staged) }, enabled = readable) { Text(stringResource(R.string.git_preview_diff)) }
             TextButton(onClick = { model.prepare(GitMutation(if (staged) GitAction.Unstage else GitAction.Stage,
                 paths = listOfNotNull(file.oldPath, file.path).distinct())) }, enabled = writable) { Text(stringResource(if (staged) R.string.gw_unstage else R.string.gw_stage)) }
             TextButton(onClick = { edit(file.path) }, enabled = writable && file.status != "deleted") { Text(stringResource(R.string.git_open_file)) }
@@ -266,7 +293,7 @@ private fun GitConflictDialog(file: GitConflictFile, model: GitWorkspaceViewMode
 @Composable
 private fun GitInstallation(state: GitWorkspaceState, model: GitWorkspaceViewModel, owner: SessionState.Active) {
     var confirm by remember(owner) { mutableStateOf(false) }
-    var originalId by remember(owner) { mutableStateOf("") }
+    var originalId by rememberSaveable(owner) { mutableStateOf("") }
     var identify by remember(owner) { mutableStateOf(false) }
     val allowed = owner.privilegedOperations && owner.serverPlatform.equals("linux", true)
     if (allowed && state.engine?.let { !it.available && it.canInstall && it.problemCode == "not_installed" } == true && !state.pendingInstallation && state.installation?.state?.active != true) {

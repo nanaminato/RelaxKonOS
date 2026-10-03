@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="git_environment">环境</string>
+    <string name="git_environment_required">仓库操作需要就绪的 Git 环境，请前往环境页检查可用性或安装任务。</string>
+    <string name="git_open_environment">查看环境</string>
+    <string name="git_open_workspace">前往工作区注册仓库</string>
+    <string name="git_no_conflicts">当前仓库没有冲突或待继续的操作。</string>
     <string name="workspace_overview">概览</string>
     <string name="workspace_profiles">配置与订阅</string>
     <string name="workspace_nodes">节点</string>

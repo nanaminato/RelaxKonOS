@@ -29,8 +29,8 @@ fun GitScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modifier
     var section by rememberSaveable(owner) { mutableStateOf(if (initialBuildId == null) "workspace" else "build") }
     LaunchedEffect(initialBuildId) { if (initialBuildId != null) section = "build" }
     WorkspaceColumn(stringResource(R.string.git_title), onBack,
-        listOf(WorkspaceDestination("workspace", R.string.workspace_workspace), WorkspaceDestination("branches", R.string.workspace_branches), WorkspaceDestination("history", R.string.workspace_history), WorkspaceDestination("conflicts", R.string.workspace_conflicts), WorkspaceDestination("build", R.string.workspace_build)), section, { section = it }, modifier, stateKey = owner) {
-        GitWorkspaceSection(owner, section)
+        listOf(WorkspaceDestination("workspace", R.string.workspace_workspace), WorkspaceDestination("branches", R.string.workspace_branches), WorkspaceDestination("history", R.string.workspace_history), WorkspaceDestination("conflicts", R.string.workspace_conflicts), WorkspaceDestination("build", R.string.workspace_build), WorkspaceDestination("environment", R.string.git_environment)), section, { section = it }, modifier, stateKey = owner) {
+        GitWorkspaceSection(owner, section, onSelectSection = { section = it })
         WorkspaceSection(section == "build") { GitBuildSection(owner, initialBuildId) }
     }
 }

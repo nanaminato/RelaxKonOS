@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="git_environment">Environment</string>
+    <string name="git_environment_required">Repository operations require a ready Git environment. Check availability or installation tasks on the Environment page.</string>
+    <string name="git_open_environment">Open environment</string>
+    <string name="git_open_workspace">Register a repository in Workspace</string>
+    <string name="git_no_conflicts">This repository has no conflicts or operation to continue.</string>
     <string name="workspace_overview">Overview</string>
     <string name="workspace_profiles">Profiles &amp; subscriptions</string>
     <string name="workspace_nodes">Nodes</string>
