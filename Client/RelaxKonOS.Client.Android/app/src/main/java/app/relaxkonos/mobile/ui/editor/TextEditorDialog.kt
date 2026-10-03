@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.editor
 
+import app.relaxkonos.mobile.ui.common.ActionLabel
 import app.relaxkonos.mobile.ui.common.StatusTone
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import android.app.Application
@@ -199,7 +200,7 @@ fun TextEditorDialog(owner: SessionState.Active, path: String?, repositoryId: St
                         (editor.baseline != null && editor.dirty || path == null && editor.destination.isNotBlank())) { Text(stringResource(R.string.git_save)) }
                     if (repositoryId == null && editor.baseline != null) OutlinedButton(onClick = { saveAsDialog = true },
                         enabled = !editor.busy && editor.valid && !editor.unknown && editor.latest == null) { Text(stringResource(R.string.editor_save_as)) }
-                    OutlinedButton(onClick = editor::reload, enabled = !editor.busy && (path != null || editor.baseline != null || editor.destination.isNotBlank())) { Text(stringResource(R.string.common_refresh)) }
+                    OutlinedButton(onClick = editor::reload, enabled = !editor.busy && (path != null || editor.baseline != null || editor.destination.isNotBlank())) { ActionLabel(R.string.common_refresh) }
                 }
             }
         }

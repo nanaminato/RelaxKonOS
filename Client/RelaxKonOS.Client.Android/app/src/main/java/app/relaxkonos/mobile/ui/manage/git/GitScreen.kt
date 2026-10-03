@@ -224,7 +224,7 @@ private fun GitBuildSection(owner: SessionState.Active, initialBuildId: String?)
         }
     }
     GitPanel(stringResource(R.string.git_build_history)) {
-        TextButton(onClick = { refresh() }, enabled = !active) { Text(stringResource(R.string.common_refresh)) }
+        TextButton(onClick = { refresh() }, enabled = !active) { ActionLabel(R.string.common_refresh) }
         if (builds.isEmpty()) Text(stringResource(R.string.git_build_empty))
         builds.forEach { build ->
             OutlinedCard(onClick = { selectedBuildId = build.id; publishKey = null; problem = null }, enabled = !active, modifier = Modifier.fillMaxWidth()) {

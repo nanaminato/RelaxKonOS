@@ -85,7 +85,7 @@ internal fun ManualPackageDownload(
     }
     if (!requested) return
     when {
-        loading -> Text(stringResource(R.string.installation_download_loading))
+        loading -> ActivityIndicator(stringResource(R.string.installation_download_loading))
         url == null -> Text(stringResource(R.string.tunnels_release_missing), color = MaterialTheme.colorScheme.error)
         else -> {
             SelectionContainer { Text(url, style = MaterialTheme.typography.bodySmall) }

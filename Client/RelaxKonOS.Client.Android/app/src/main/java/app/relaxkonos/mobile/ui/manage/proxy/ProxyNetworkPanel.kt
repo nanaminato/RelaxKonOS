@@ -42,7 +42,7 @@ import java.util.Date
                         CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                         Spacer(Modifier.width(Spacing.sm))
                     }
-                    Text(stringResource(R.string.common_refresh))
+                    ActionLabel(R.string.common_refresh)
                 }
             }
             if (state.diagnosticsSection == section) state.diagnosticsAtMillis?.let {
@@ -109,5 +109,5 @@ import java.util.Date
             ProxyCheck(confirmed, !model.state.busy, R.string.mihomo_apply_confirm) { confirmed = it }
 
         }
-    }, confirmButton = { Button(enabled = !model.state.busy && confirmed && path.isNotBlank() && model.state.pending.isEmpty(), onClick = { model.configureGeoData(path) }) { Text(stringResource(R.string.common_save)) } }, dismissButton = { TextButton(enabled = !model.state.busy, onClick = dismiss) { Text(stringResource(R.string.common_cancel)) } })
+    }, confirmButton = { Button(enabled = !model.state.busy && confirmed && path.isNotBlank() && model.state.pending.isEmpty(), onClick = { model.configureGeoData(path) }) { ActionLabel(R.string.common_save) } }, dismissButton = { TextButton(enabled = !model.state.busy, onClick = dismiss) { Text(stringResource(R.string.common_cancel)) } })
 }

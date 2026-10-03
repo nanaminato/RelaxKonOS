@@ -7,6 +7,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -15,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.semantics
 import app.relaxkonos.mobile.ui.theme.Radius
 import app.relaxkonos.mobile.ui.theme.Spacing
 import app.relaxkonos.mobile.ui.theme.relaxKon
@@ -39,22 +46,33 @@ fun StatusChip(
     text: String,
     tone: StatusTone,
     modifier: Modifier = Modifier,
-    icon: ImageVector? = null,
+    icon: ImageVector? = statusIcon(tone),
+    busy: Boolean = false,
 ) {
     val container = toneContainer(tone)
     val content = toneContent(tone)
     Row(
         modifier = modifier
+            .semantics(mergeDescendants = true) {}
             .background(container, RoundedCornerShape(Radius.pill))
             .padding(horizontal = Spacing.md, vertical = Spacing.xs + 1.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.xs + 2.dp),
     ) {
-        if (icon != null) {
+        if (busy) {
+            CircularProgressIndicator(Modifier.size(14.dp), color = content, strokeWidth = 2.dp)
+        } else if (icon != null) {
             Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(14.dp))
         }
         Text(text, style = MaterialTheme.typography.labelMedium, color = content)
     }
+}
+
+private fun statusIcon(tone: StatusTone): ImageVector = when (tone) {
+    StatusTone.Success -> Icons.Default.Check
+    StatusTone.Warning -> Icons.Default.Warning
+    StatusTone.Danger -> Icons.Default.Close
+    StatusTone.Neutral, StatusTone.Primary, StatusTone.Info -> Icons.Default.Info
 }
 
 /** Background of a tone's capsule. Also used by the progress tracks so a bar matches its chip. */

@@ -48,7 +48,7 @@ private data class ControlConfirmation(val facts: DockerControlFacts, val change
     Column(modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         ScreenHeader(stringResource(if (recordsOnly) R.string.workspace_records else if (mirrorsOnly) R.string.workspace_mirrors else R.string.docker_title), onBack = { navigate(onBack) })
         if (owner?.capabilities?.contains(ServerCapabilities.DOCKER) != true) { Text(stringResource(R.string.error_capability_missing)); return@Column }
-        TextButton(enabled = !state.busy, onClick = { navigate { draft = null; model.refresh() } }) { Text(stringResource(R.string.common_refresh)) }
+        TextButton(enabled = !state.busy, onClick = { navigate { draft = null; model.refresh() } }) { ActionLabel(R.string.common_refresh) }
         if (visible && state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         OperationMessageDialog(state.problem?.takeIf { visible && !state.busy }?.let { controlProblem(it) })
         if (visible && recordsOnly) state.pending.forEach { pending ->
@@ -64,7 +64,7 @@ WorkspaceSection(!mirrorsOnly && !recordsOnly) {
         Text(stringResource(R.string.docker_runtime), style = MaterialTheme.typography.titleLarge)
         if (facts == null) Text(stringResource(R.string.docker_control_unverified)) else {
             val notInstalled = facts.status.problemCode == "docker.not_installed"
-            Text(stringResource(if (notInstalled) R.string.docker_control_not_installed else if (facts.status.available) R.string.docker_control_running else R.string.docker_control_unavailable))
+            ExecutionStatusChip(stringResource(if (notInstalled) R.string.docker_control_not_installed else if (facts.status.available) R.string.docker_control_running else R.string.docker_control_unavailable), if (facts.status.available) "running" else null, task = false)
             if (facts.status.serverVersion.isNotEmpty()) Text(facts.status.serverVersion)
             Text(listOf(facts.status.operatingSystem, facts.status.architecture).filter(String::isNotBlank).joinToString(" / "))
             if (!notInstalled && facts.status.problemCode.isNotBlank()) Text(controlProblem(facts.status.problemCode))
@@ -93,7 +93,7 @@ WorkspaceSection(!mirrorsOnly && !recordsOnly) {
         LaunchedEffect(owner, recordState.owner, recordsOnly) { if (recordsOnly && recordState.owner === owner) recordModel.refresh() }
         if (recordState.owner === owner) recordState.pending.forEach { marker -> ManagementCard {
             Text(resourceActionLabel(marker.action)); marker.target?.let { Text(it) }
-            TextButton(enabled = !recordState.busy, onClick = recordModel::refresh) { Text(stringResource(R.string.common_refresh)) }
+            TextButton(enabled = !recordState.busy, onClick = recordModel::refresh) { ActionLabel(R.string.common_refresh) }
             OutlinedButton(enabled = !recordState.busy && recordState.facts?.status?.available == true, onClick = { recordModel.accept(marker) }) { Text(stringResource(R.string.docker_control_accept)) }
         } }
         DockerResourceKind.entries.forEach { kind ->
@@ -111,14 +111,14 @@ WorkspaceSection(!mirrorsOnly && !recordsOnly) {
                 } }
             }
         }
-        if (visible && state.pendingInstallation && manage) OutlinedButton(enabled = !state.busy && state.pending.isEmpty() && state.installation?.state?.active != true && (state.installation == null || state.installationVerified || state.pendingInstallation), onClick = { install = true }) { Text(stringResource(R.string.common_retry)) }
+        if (visible && state.pendingInstallation && manage) OutlinedButton(enabled = !state.busy && state.pending.isEmpty() && state.installation?.state?.active != true && (state.installation == null || state.installationVerified || state.pendingInstallation), onClick = { install = true }) { ActionLabel(R.string.common_retry) }
                 if (visible && state.pendingInstallation) Text(stringResource(R.string.installation_pending, installationServiceLabel(InstallationService.Docker), installationKindLabel(InstallationKind.Install)), color = MaterialTheme.colorScheme.error)
         if (manage) TextButton(enabled = !state.busy, onClick = { identified = false; recover = true }) { Text(stringResource(R.string.installation_recover)) }
         if (visible) state.installation?.let { operation ->
             ManagementCard {
             Text(operation.operationId, style = MaterialTheme.typography.bodySmall)
             if (state.installationVerified) {
-                Text(installationStateLabel(operation.state)); Text(installationStageLabel(operation.stage))
+                ExecutionStatusChip(installationStateLabel(operation.state), operation.state.wire); Text(installationStageLabel(operation.stage))
                 operation.progress?.let { Text(stringResource(R.string.installation_stage_progress, it)) }
                 operation.problemCode?.let { Text(installationProblemLabel(it)) }
                 if (operation.state.active && operation.cancellable && manage) OutlinedButton(enabled = !state.busy, onClick = { cancel = true }) { Text(stringResource(R.string.operations_request_cancel)) }
@@ -144,7 +144,7 @@ WorkspaceSection(mirrorsOnly) {
                                 TextButton(enabled = ready && !mirror.selected && draft == null, onClick = { confirmation = ControlConfirmation(facts, DockerControlChange(DockerControlKind.MirrorSelect, mirror.id)) }) { Text(stringResource(R.string.docker_control_select)) }
                                 if (!mirror.default) {
                                     TextButton(enabled = ready && draft == null, onClick = { draft = MirrorDraft(mirror.id, mirror.name, mirror.endpoint) }) { Text(stringResource(R.string.docker_control_edit_mirror)) }
-                                    TextButton(enabled = ready && draft == null, onClick = { confirmation = ControlConfirmation(facts, DockerControlChange(DockerControlKind.MirrorDelete, mirror.id)) }) { Text(stringResource(R.string.common_delete)) }
+                                    TextButton(enabled = ready && draft == null, onClick = { confirmation = ControlConfirmation(facts, DockerControlChange(DockerControlKind.MirrorDelete, mirror.id)) }) { ActionLabel(R.string.common_delete) }
                                 }
                             }
                             }
@@ -157,7 +157,7 @@ WorkspaceSection(mirrorsOnly) {
                         Text(stringResource(R.string.docker_control_mirror_format))
                         Button(enabled = ready && DockerMirrorValidation.valid(editing.request()), onClick = {
                             confirmation = ControlConfirmation(facts, DockerControlChange(if (editing.id == null) DockerControlKind.MirrorCreate else DockerControlKind.MirrorUpdate, editing.id, editing.request()))
-                        }) { Text(stringResource(R.string.common_save)) }
+                        }) { ActionLabel(R.string.common_save) }
                         TextButton(onClick = { navigate { draft = null } }) { Text(stringResource(R.string.common_cancel)) }
                     } }
                 }
@@ -187,7 +187,7 @@ WorkspaceSection(mirrorsOnly) {
         Text(stringResource(R.string.installation_recover_help)); OutlinedTextField(id, { id = it }, singleLine = true, label = { Text(stringResource(R.string.installation_operation_id)) })
         if (state.pendingInstallation) Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(identified, { identified = it }); Text(stringResource(R.string.docker_control_identify)) }
     } }, confirmButton = { Button(enabled = !state.busy && (!state.pendingInstallation || identified) && runCatching { InstallationRoutes.operation(id.trim()) }.isSuccess,
-        onClick = { recover = false; model.recoverInstall(id, identified) }) { Text(stringResource(R.string.common_refresh)) } }, dismissButton = { TextButton(onClick = { recover = false }) { Text(stringResource(R.string.common_cancel)) } })
+        onClick = { recover = false; model.recoverInstall(id, identified) }) { ActionLabel(R.string.common_refresh) } }, dismissButton = { TextButton(onClick = { recover = false }) { Text(stringResource(R.string.common_cancel)) } })
 }
 
 @Composable internal fun controlActionLabel(kind: DockerControlKind): String = stringResource(when (kind) {

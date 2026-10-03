@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.servercenter
 
+import app.relaxkonos.mobile.ui.common.ActionLabel
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import android.app.Application
 import android.graphics.Bitmap
@@ -202,7 +203,7 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
         OperationMessageDialog(state.problem?.takeUnless { state.busy }?.let { problemText(it) })
         if (!state.connected) {
             if (state.busy) CircularProgressIndicator()
-            else OutlinedButton(model::reload, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.common_retry)) }
+            else OutlinedButton(model::reload, modifier = Modifier.fillMaxWidth()) { ActionLabel(R.string.common_retry) }
         } else {
             val detail = state.detailEntry
             if (detail != null) {
@@ -412,7 +413,7 @@ private fun SshFileDetail(
 
 @Composable private fun NameDialog(title: String, value: String, onValue: (String) -> Unit, onConfirm: () -> Unit, onDismiss: () -> Unit) = AlertDialog(
     onDismissRequest = onDismiss, title = { Text(title) }, text = { OutlinedTextField(value, onValue, label = { Text(title) }, singleLine = true) },
-    confirmButton = { TextButton(onConfirm) { Text(stringResource(R.string.common_save)) } }, dismissButton = { TextButton(onDismiss) { Text(stringResource(R.string.common_cancel)) } },
+    confirmButton = { TextButton(onConfirm) { ActionLabel(R.string.common_save) } }, dismissButton = { TextButton(onDismiss) { Text(stringResource(R.string.common_cancel)) } },
 )
 
 @Composable private fun problemText(problem: String): String = stringResource(when (problem) {

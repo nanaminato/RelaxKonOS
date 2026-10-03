@@ -354,7 +354,7 @@ fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialSt
             title = stringResource(R.string.docker_title), onBack = onBack,
             trailing = { Row { if (!notInstalled && section == "compose") { TextButton(onClick = { picker.launch(arrayOf("text/yaml", "application/x-yaml", "text/plain")) }, enabled = available) { Text(stringResource(R.string.docker_import)) }
                 TextButton(onClick = { composer = true }, enabled = available) { Text(stringResource(R.string.docker_new_stack)) } }
-                TextButton(onClick = viewModel::refresh, enabled = available && !state.loading) { Text(stringResource(R.string.common_refresh)) } } },
+                TextButton(onClick = viewModel::refresh, enabled = available && !state.loading) { ActionLabel(R.string.common_refresh) } } },
         )
         if (!available) { EmptyHint(stringResource(R.string.error_capability_missing)); return@Column }
         state.message?.let { message -> ActionFeedback(message, viewModel::refresh, viewModel::dismissMessage) }
@@ -382,25 +382,25 @@ fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialSt
         onDismiss = { composer = false },
         onDeploy = { name, yaml -> viewModel.deploy(name, yaml); composer = false })
     destructive?.let { (removal, confirm) -> AlertDialog(onDismissRequest = { destructive = null }, title = { Text(stringResource(R.string.docker_confirm_title)) }, text = { Text(removalMessage(removal)) },
-        confirmButton = { Button(onClick = { destructive = null; confirm() }) { Text(stringResource(R.string.common_delete)) } }, dismissButton = { TextButton(onClick = { destructive = null }) { Text(stringResource(R.string.common_cancel)) } }) }
+        confirmButton = { Button(onClick = { destructive = null; confirm() }) { ActionLabel(R.string.common_delete) } }, dismissButton = { TextButton(onClick = { destructive = null }) { Text(stringResource(R.string.common_cancel)) } }) }
 }
 
 private const val DEFAULT_COMPOSE = "services:\n  app:\n    image: nginx:alpine\n"
 
 @Composable private fun DockerStatusCard(status: ApiResult<DockerStatus>?) = SectionCard(stringResource(R.string.docker_runtime)) {
-    when (status) { is ApiResult.Success -> Text(if (status.value.available) stringResource(R.string.docker_ready, status.value.serverVersion) else stringResource(R.string.docker_unavailable))
-        null -> Text(stringResource(R.string.common_loading)); else -> Text(stringResource(R.string.docker_unavailable), color = MaterialTheme.colorScheme.error) }
+    when (status) { is ApiResult.Success -> ExecutionStatusChip(if (status.value.available) stringResource(R.string.docker_ready, status.value.serverVersion) else stringResource(R.string.docker_unavailable), if (status.value.available) "running" else null, task = false)
+        null -> ActivityIndicator(stringResource(R.string.common_loading)); else -> Text(stringResource(R.string.docker_unavailable), color = MaterialTheme.colorScheme.error) }
 }
 
 @Composable private fun DockerStacks(state: DockerScreenState, viewModel: DockerViewModel, onDelete: (DockerStack) -> Unit, onCancel: (String) -> Unit) = SectionCard(stringResource(R.string.docker_stacks)) {
     when (val stacks = state.stacks) { is ApiResult.Success -> if (stacks.value.isEmpty()) Text(stringResource(R.string.docker_empty_stacks)) else stacks.value.forEach { stack ->
         ListRow(stack.name, subtitle = stack.status, leading = { DesktopIcon(R.drawable.ic_app_docker, size = 22.dp) }, onClick = { viewModel.selectStack(stack) },
-            trailing = { Row { TextButton(onClick = { viewModel.stackAction(stack, "restart", confirmed = false) }) { Text(stringResource(R.string.docker_restart)) }; TextButton(onClick = { onDelete(stack) }) { Text(stringResource(R.string.common_delete)) } } })
+            trailing = { Row { TextButton(onClick = { viewModel.stackAction(stack, "restart", confirmed = false) }) { Text(stringResource(R.string.docker_restart)) }; TextButton(onClick = { onDelete(stack) }) { ActionLabel(R.string.common_delete) } } })
         if (state.selectedStack?.name == stack.name) {
             StackServices(state.services, state.logs, viewModel::loadLogs)
             StackOperations(state.operations, state.diagnostics, viewModel, stack, onCancel)
         }
-    }; null -> Text(stringResource(R.string.common_loading)); else -> Text(stringResource(R.string.docker_list_failed)) }
+    }; null -> ActivityIndicator(stringResource(R.string.common_loading)); else -> Text(stringResource(R.string.docker_list_failed)) }
 }
 
 @Composable private fun StackServices(services: ApiResult<List<DockerStackService>>?, logs: Pair<String, DockerLogs>?, onLogs: (String) -> Unit) {
@@ -414,7 +414,7 @@ private const val DEFAULT_COMPOSE = "services:\n  app:\n    image: nginx:alpine\
                 if (value.truncated) Text(stringResource(R.string.docker_logs_truncated), style = MaterialTheme.typography.bodySmall)
             }
         }
-        null -> Text(stringResource(R.string.common_loading))
+        null -> ActivityIndicator(stringResource(R.string.common_loading))
         else -> Text(stringResource(R.string.docker_list_failed))
     }
 }
@@ -454,7 +454,7 @@ private const val DEFAULT_COMPOSE = "services:\n  app:\n    image: nginx:alpine\
                     modifier = Modifier.fillMaxWidth().padding(start = Spacing.md))
             }
         }
-        null -> Text(stringResource(R.string.common_loading))
+        null -> ActivityIndicator(stringResource(R.string.common_loading))
         else -> Text(stringResource(R.string.docker_list_failed))
     }
     if (diagnostics != null && diagnostics.lines.isNotEmpty()) {
@@ -466,7 +466,7 @@ private const val DEFAULT_COMPOSE = "services:\n  app:\n    image: nginx:alpine\
     }
 }
 
-@Composable private fun <T> SimpleList(title: String, result: ApiResult<List<T>>?, text: (T) -> String) = SectionCard(title) { when (result) { is ApiResult.Success -> if (result.value.isEmpty()) Text(stringResource(R.string.docker_empty_resources)) else result.value.forEach { Text(text(it)) }; null -> Text(stringResource(R.string.common_loading)); else -> Text(stringResource(R.string.docker_list_failed)) } }
+@Composable private fun <T> SimpleList(title: String, result: ApiResult<List<T>>?, text: (T) -> String) = SectionCard(title) { when (result) { is ApiResult.Success -> if (result.value.isEmpty()) Text(stringResource(R.string.docker_empty_resources)) else result.value.forEach { Text(text(it)) }; null -> ActivityIndicator(stringResource(R.string.common_loading)); else -> Text(stringResource(R.string.docker_list_failed)) } }
 
 @Composable private fun DockerComposer(
     initialYaml: String, preview: DockerStackPreview?, busy: Boolean,

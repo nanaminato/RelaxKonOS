@@ -52,7 +52,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
                 SmbAccess.entries.forEach { access -> FilterChip(permission.access == access, {
                     change(draft.copy(permissions = draft.permissions.mapIndexed { i, old -> if (i == index) old.copy(access = access) else old }))
                 }, enabled = enabled, label = { Text(smbAccessLabel(access)) }) }
-                TextButton(enabled = enabled, onClick = { change(draft.copy(permissions = draft.permissions.filterIndexed { i, _ -> i != index })) }) { Text(stringResource(R.string.common_delete)) }
+                TextButton(enabled = enabled, onClick = { change(draft.copy(permissions = draft.permissions.filterIndexed { i, _ -> i != index })) }) { ActionLabel(R.string.common_delete) }
             }
         }
         OutlinedButton(enabled = enabled && draft.permissions.size < 128, onClick = { change(draft.copy(permissions = draft.permissions + SmbPermission("", SmbAccess.Read))) }) { Text(stringResource(R.string.smb_add_permission)) }
@@ -69,7 +69,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
         val valid = SmbValidation.share(draft.request(), facts.capabilities.windowsShareSecuritySupported)
         if (!valid) Text(stringResource(R.string.smb_invalid), color = MaterialTheme.colorScheme.error)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            Button(enabled = enabled && valid, onClick = save) { Text(stringResource(R.string.common_save)) }
+            Button(enabled = enabled && valid, onClick = save) { ActionLabel(R.string.common_save) }
             TextButton(onClick = dismiss) { Text(stringResource(R.string.common_cancel)) }
         }
     }

@@ -152,7 +152,7 @@ fun OutboundProxyScreen(onBack: (() -> Unit)?, onOpenManagedProxy: (() -> Unit)?
         verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         ScreenHeader(stringResource(R.string.proxy_title), onBack = onBack?.let { { editor?.leave(it) } },
             trailing = { TextButton(onClick = { editor?.refresh() }, enabled = available && editor != null && !editor.busy && editor.review == null) {
-                Text(stringResource(R.string.common_refresh))
+                ActionLabel(R.string.common_refresh)
             } })
         if (owner == null || ServerCapabilities.DOCKER !in owner.capabilities || editor == null) {
             EmptyHint(stringResource(R.string.error_capability_missing)); return@Column
@@ -195,7 +195,7 @@ fun OutboundProxyScreen(onBack: (() -> Unit)?, onOpenManagedProxy: (() -> Unit)?
                 ProxyToggle(R.string.proxy_build, draft.applyToBuild, editable) { value -> editor.change { it.copy(applyToBuild = value) } }
                 ProxyToggle(R.string.proxy_image_tags, draft.applyToImageTags, editable) { value -> editor.change { it.copy(applyToImageTags = value) } }
                 ProxyToggle(R.string.proxy_runtime_downloads, draft.applyToRuntimeDownloads, editable) { value -> editor.change { it.copy(applyToRuntimeDownloads = value) } }
-                Button(onClick = editor::save, enabled = editor.canSubmit, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.common_save)) }
+                Button(onClick = editor::save, enabled = editor.canSubmit, modifier = Modifier.fillMaxWidth()) { ActionLabel(R.string.common_save) }
                 OutlinedButton(onClick = editor::clear, enabled = editor.canSubmit, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.proxy_clear)) }
             }
         }

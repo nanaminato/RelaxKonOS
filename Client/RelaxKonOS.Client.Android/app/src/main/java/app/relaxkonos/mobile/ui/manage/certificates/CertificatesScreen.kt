@@ -45,7 +45,7 @@ fun CertificatesScreen(onBack: () -> Unit, initialOperationId: String? = null, m
         if (!available) { Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn }
         Text(stringResource(R.string.certificates_intro), style = MaterialTheme.typography.bodySmall)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            TextButton(onClick = model::refresh, enabled = !state.busy) { Text(stringResource(R.string.common_refresh)) }
+            TextButton(onClick = model::refresh, enabled = !state.busy) { ActionLabel(R.string.common_refresh) }
             if (canManage) {
                 OutlinedButton(onClick = { model.create(false) }, enabled = !state.busy) { Text(stringResource(R.string.certificates_issue)) }
                 OutlinedButton(onClick = { model.create(true) }, enabled = !state.busy) { Text(stringResource(R.string.certificates_self_signed)) }
@@ -85,10 +85,10 @@ fun CertificatesScreen(onBack: () -> Unit, initialOperationId: String? = null, m
             Text(certificateActionLabel(operation.kind), style = MaterialTheme.typography.titleSmall)
             Text(operation.operationId, style = MaterialTheme.typography.bodySmall)
             operation.certificateId?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-            if (state.operationVerified) { Text(certificateOperationStateLabel(operation.state)); Text(certificateStageLabel(operation.stage)) }
+            if (state.operationVerified) { ExecutionStatusChip(certificateOperationStateLabel(operation.state), operation.state.wire); Text(certificateStageLabel(operation.stage)) }
             else Text(stringResource(R.string.certificates_unknown), color = MaterialTheme.colorScheme.error)
             operation.problemCode.takeIf(String::isNotBlank)?.let { Text(certificateProblemLabel(it), color = MaterialTheme.colorScheme.error) }
-            TextButton(onClick = model::poll, enabled = !state.busy) { Text(stringResource(R.string.common_refresh)) }
+            TextButton(onClick = model::poll, enabled = !state.busy) { ActionLabel(R.string.common_refresh) }
             if (state.operationVerified && operation.state.active) TextButton(enabled = !state.busy, onClick = { confirm = R.string.certificates_cancel_confirm to model::cancel }) { Text(stringResource(R.string.common_cancel)) }
             Text(stringResource(R.string.certificates_cancel_note), style = MaterialTheme.typography.bodySmall)
             if (operation.kind == CertificateAction.DeployKestrel) operation.certificateId?.let { id ->
@@ -102,7 +102,7 @@ fun CertificatesScreen(onBack: () -> Unit, initialOperationId: String? = null, m
             Text(stringResource(R.string.certificates_pending, certificateActionLabel(pending.action), pending.target ?: stringResource(R.string.certificates_new_target)), style = MaterialTheme.typography.bodySmall)
             if (pending.target != null && canManage) TextButton(enabled = !state.busy, onClick = {
                 confirm = R.string.certificates_retry_confirm to { model.retry(pending) }
-            }) { Text(stringResource(R.string.common_retry)) }
+            }) { ActionLabel(R.string.common_retry) }
             TextButton(enabled = !state.busy, onClick = { recoverPending = pending; recoverId = pending.operationId.orEmpty(); recovery = true }) { Text(stringResource(R.string.certificates_recover)) }
             }
         }
@@ -179,7 +179,7 @@ private fun CertificateDetail(state: CertificatesState, model: CertificatesViewM
             OutlinedButton(enabled = enabled, onClick = { confirm(R.string.certificates_renew_confirm) { model.action(certificate, CertificateAction.Renew) } }) { Text(stringResource(R.string.certificates_renew)) }
             OutlinedButton(enabled = enabled, onClick = { confirm(R.string.certificates_revoke_confirm) { model.action(certificate, CertificateAction.Revoke) } }) { Text(stringResource(R.string.certificates_revoke)) }
         }
-        TextButton(enabled = enabled, onClick = { confirm(R.string.certificates_delete_confirm) { model.action(certificate, CertificateAction.Delete) } }) { Text(stringResource(R.string.common_delete)) }
+        TextButton(enabled = enabled, onClick = { confirm(R.string.certificates_delete_confirm) { model.action(certificate, CertificateAction.Delete) } }) { ActionLabel(R.string.common_delete) }
     }
 }
 @Composable

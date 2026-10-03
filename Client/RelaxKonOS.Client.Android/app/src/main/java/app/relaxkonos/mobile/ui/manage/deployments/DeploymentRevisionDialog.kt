@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.deployments
 
+import app.relaxkonos.mobile.ui.common.ActionLabel
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -128,7 +129,7 @@ internal fun DeploymentRevisionDialog(
                         Text(stringResource(R.string.deployments_revision_arguments), style = MaterialTheme.typography.labelLarge)
                         arguments.toList().forEachIndexed { index, argument ->
                             OutlinedTextField(argument, { arguments[index] = it }, enabled = editable, label = { Text(stringResource(R.string.deployments_revision_argument, index + 1)) }, modifier = Modifier.fillMaxWidth())
-                            TextButton(onClick = { arguments.removeAt(index) }, enabled = editable) { Text(stringResource(R.string.common_delete)) }
+                            TextButton(onClick = { arguments.removeAt(index) }, enabled = editable) { ActionLabel(R.string.common_delete) }
                         }
                         TextButton(onClick = { arguments.add("") }, enabled = editable && arguments.size < 64) { Text(stringResource(R.string.deployments_revision_add_argument)) }
                     } else {

@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.servercenter
 
+import app.relaxkonos.mobile.ui.common.ActionLabel
 import android.app.Application
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -218,7 +219,7 @@ internal fun ServerInstallRecoveryPanel(hostId: String, knownPlatform: ServerHos
     if (platform != null) Text(platform.name, style = MaterialTheme.typography.bodySmall)
     Row {
         TextButton(onClick = { viewModel.refresh(hostId, platform) }, enabled = !state.loading) {
-            Text(stringResource(R.string.common_refresh))
+            ActionLabel(R.string.common_refresh)
         }
         TextButton(onClick = { confirmClear = true }, enabled = !state.loading && state.hostId == hostId &&
             state.items.any { it.canClearHistory() }) {

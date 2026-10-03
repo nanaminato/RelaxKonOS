@@ -1,5 +1,8 @@
 package app.relaxkonos.mobile.ui.servercenter
 
+import app.relaxkonos.mobile.ui.common.ActionLabel
+import app.relaxkonos.mobile.ui.common.ActivityIndicator
+import app.relaxkonos.mobile.ui.common.ExecutionStatusChip
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import android.Manifest
 import android.os.Build
@@ -36,7 +39,7 @@ internal fun SshForwardsScreen(hostId: String, modifier: Modifier = Modifier) {
         if (denied) Text(stringResource(R.string.ssh_forward_permission_note))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) TextButton(onClick = { permission.launch(Manifest.permission.POST_NOTIFICATIONS) }) { Text(stringResource(R.string.ssh_forward_notification_enable)) }
         Button(enabled = !state.busy, onClick = { editor = null to SshLocalForwardRequest(8080) }) { Text(stringResource(R.string.ssh_forward_add)) }
-        if (state.busy) Text(stringResource(R.string.ssh_forward_busy))
+        if (state.busy) ActivityIndicator(stringResource(R.string.ssh_forward_busy))
         OperationMessageDialog(state.problem?.takeUnless { state.busy }?.let { problem -> stringResource(when (problem) {
             "invalid" -> R.string.ssh_forward_invalid
             "credential" -> R.string.ssh_forward_credential
@@ -51,11 +54,11 @@ internal fun SshForwardsScreen(hostId: String, modifier: Modifier = Modifier) {
         items.forEach { row ->
             HorizontalDivider()
             Text(stringResource(R.string.ssh_forward_mapping, row.localPort, row.request.remotePort), style = MaterialTheme.typography.titleMedium)
-            Text(stringResource(when (row.status) {
+            ExecutionStatusChip(stringResource(when (row.status) {
                 SshForwardStatus.Running -> R.string.ssh_forward_running
                 SshForwardStatus.Stopped -> R.string.ssh_forward_stopped
                 SshForwardStatus.Disconnected -> R.string.ssh_forward_disconnected
-            }))
+            }), row.status.name, task = false)
             Text(row.request.localUrl(row.localPort), style = MaterialTheme.typography.bodySmall)
             ExternalServiceAddresses.forward(row)?.let { address -> ServiceAccess(listOf(address), ready = !state.busy) {
                 container.serverCenter.sshFilesHostId == hostId && manager.state.value.items.firstOrNull { it.id == row.id } == row
@@ -69,7 +72,7 @@ internal fun SshForwardsScreen(hostId: String, modifier: Modifier = Modifier) {
                     OutlinedButton(enabled = !state.busy, onClick = { manager.test(row.id) }) { Text(stringResource(R.string.ssh_forward_test)) }
                     OutlinedButton(enabled = !state.busy, onClick = { manager.stop(row.id) }) { Text(stringResource(R.string.ssh_forward_stop)) }
                 } else OutlinedButton(enabled = !state.busy, onClick = { manager.start(hostId, row.request, row.id) }) { Text(stringResource(R.string.ssh_forward_start)) }
-                TextButton(enabled = !state.busy, onClick = { manager.remove(row.id) }) { Text(stringResource(R.string.common_delete)) }
+                TextButton(enabled = !state.busy, onClick = { manager.remove(row.id) }) { ActionLabel(R.string.common_delete) }
             }
         }
         if (items.any { it.status == SshForwardStatus.Running } || state.busy) TextButton(onClick = manager::stopAll) { Text(stringResource(R.string.ssh_forward_stop_all)) }

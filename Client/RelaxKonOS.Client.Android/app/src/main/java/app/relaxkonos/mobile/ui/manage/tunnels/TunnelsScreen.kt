@@ -61,7 +61,7 @@ import java.util.Date
         if (section == "overview") Text(stringResource(R.string.tunnels_overview_help))
         if (!canManage) Text(stringResource(R.string.tunnels_observer), style = MaterialTheme.typography.bodySmall)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            TextButton(enabled = !state.busy, onClick = model::refresh) { Text(stringResource(R.string.common_refresh)) }
+            TextButton(enabled = !state.busy, onClick = model::refresh) { ActionLabel(R.string.common_refresh) }
             if (canManage) {
                 if (section in setOf("overview", "profiles")) Button(enabled = !state.busy && state.pending.isEmpty(), onClick = { model.editProfile() }) { Text(stringResource(R.string.tunnels_profile_create)) }
             }
@@ -74,7 +74,7 @@ WorkspaceSection(section in setOf("overview", "runtime")) {
         Text(stringResource(R.string.tunnels_runtime_title), style = MaterialTheme.typography.titleMedium)
         if (runtime == null) Text(stringResource(R.string.tunnels_unknown)) else {
             if (notInstalled) Text(stringResource(R.string.runtime_install_hint, "FRP")) else {
-            TunnelBadge(tunnelRuntimeLabel(runtime.state), runtime.state in setOf(TunnelRuntimeState.Running, TunnelRuntimeState.Available))
+            ExecutionStatusChip(tunnelRuntimeLabel(runtime.state), runtime.state.wire, task = false)
             runtime.version?.let { Text(stringResource(R.string.tunnels_version_value, it)) }
             TextButton(onClick = { advanced = !advanced }) { Text(stringResource(if (advanced) R.string.tunnels_advanced_hide else R.string.tunnels_advanced)) }
             if (advanced) {
@@ -104,18 +104,18 @@ WorkspaceSection(section in setOf("overview", "runtime")) {
             Text(operation.operationId, style = MaterialTheme.typography.bodySmall)
             if (state.installationVerified) {
                 Text(installationKindLabel(operation.kind), style = MaterialTheme.typography.titleMedium)
-                TunnelBadge(installationStateLabel(operation.state), operation.state == InstallationState.Succeeded)
+                ExecutionStatusChip(installationStateLabel(operation.state), operation.state.wire)
                 Text(installationStageLabel(operation.stage)); operation.progress?.let { Text(stringResource(R.string.installation_stage_progress, it)) }
                 operation.problemCode?.takeIf(String::isNotBlank)?.let { Text(tunnelProblemLabel(it)) }
             } else Text(stringResource(R.string.tunnels_unknown))
-            TextButton(enabled = !state.busy, onClick = model::pollInstall) { Text(stringResource(R.string.common_refresh)) }
+            TextButton(enabled = !state.busy, onClick = model::pollInstall) { ActionLabel(R.string.common_refresh) }
             if (canManage && state.installationVerified && operation.state.active && operation.cancellable) TextButton(enabled = !state.busy,
                 onClick = { confirm = TunnelConfirmation(R.string.tunnels_cancel_install_confirm, operation.operationId, model::cancelInstall) }) { Text(stringResource(R.string.common_cancel)) }
             }
         }
         if (state.pendingInstallation) TunnelCard {
             Text(stringResource(R.string.tunnels_install_pending), color = MaterialTheme.colorScheme.error)
-            if (model.hasIntent && canManage) TextButton(enabled = !state.busy, onClick = { confirm = TunnelConfirmation(R.string.tunnels_install_retry_confirm, "FRP", model::retryInstall) }) { Text(stringResource(R.string.common_retry)) }
+            if (model.hasIntent && canManage) TextButton(enabled = !state.busy, onClick = { confirm = TunnelConfirmation(R.string.tunnels_install_retry_confirm, "FRP", model::retryInstall) }) { ActionLabel(R.string.common_retry) }
         }
         TextButton(enabled = !state.busy, onClick = { operationId = ""; originalIdentified = false; recover = true }) { Text(stringResource(if (notInstalled) R.string.runtime_recovery_tools else R.string.tunnels_install_recover)) }
         state.pending.forEach { pending ->
@@ -168,13 +168,13 @@ WorkspaceSection(section in setOf("profiles", "logs")) {
                 keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password), label = { Text(stringResource(R.string.tunnels_token)) })
         } }, confirmButton = { Button(enabled = !state.busy && secret.isNotBlank() && secret.length <= 4096 && state.pending.isEmpty(), onClick = {
             val submitted = secret; secret = ""; tokenProfile = null; model.setToken(profile, submitted)
-        }) { Text(stringResource(R.string.common_save)) } }, dismissButton = { TextButton(onClick = { secret = ""; tokenProfile = null }) { Text(stringResource(R.string.common_cancel)) } }) }
+        }) { ActionLabel(R.string.common_save) } }, dismissButton = { TextButton(onClick = { secret = ""; tokenProfile = null }) { Text(stringResource(R.string.common_cancel)) } }) }
     if (recover) AlertDialog(onDismissRequest = { recover = false }, title = { Text(stringResource(R.string.tunnels_install_recover)) }, text = { Column {
         Text(stringResource(R.string.tunnels_install_recover_note))
         if (state.pendingInstallation) TunnelCheck(originalIdentified, !state.busy, R.string.tunnels_install_identify) { originalIdentified = it }
         OutlinedTextField(operationId, { operationId = it }, singleLine = true, label = { Text(stringResource(R.string.certificates_operation_id)) })
     } }, confirmButton = { Button(enabled = !state.busy && (!state.pendingInstallation || originalIdentified) && runCatching { InstallationRoutes.canonicalId(operationId.trim()) }.isSuccess,
-        onClick = { model.recoverInstall(operationId, originalIdentified); recover = false }) { Text(stringResource(R.string.common_refresh)) } }, dismissButton = { TextButton(onClick = { recover = false }) { Text(stringResource(R.string.common_cancel)) } })
+        onClick = { model.recoverInstall(operationId, originalIdentified); recover = false }) { ActionLabel(R.string.common_refresh) } }, dismissButton = { TextButton(onClick = { recover = false }) { Text(stringResource(R.string.common_cancel)) } })
     confirm?.let { request -> AlertDialog(onDismissRequest = { confirm = null }, title = { Text(stringResource(R.string.tunnels_confirm)) },
         text = { Column { Text(request.target); Text(stringResource(request.message)) } }, confirmButton = { Button(onClick = { confirm = null; request.action() }) { Text(stringResource(R.string.tunnels_confirm)) } },
         dismissButton = { TextButton(onClick = { confirm = null }) { Text(stringResource(R.string.common_cancel)) } }) }
@@ -215,7 +215,7 @@ WorkspaceSection(section != "logs") {
         if (profile.auth == TunnelAuth.Token) OutlinedButton(enabled = enabled, onClick = { token(profile) }) { Text(stringResource(R.string.tunnels_token_set)) }
         OutlinedButton(enabled = enabled, onClick = { confirm(R.string.tunnels_apply_confirm, profile.name + " · " + profile.id) { model.lifecycle(profile, true) } }) { Text(stringResource(R.string.tunnels_apply)) }
         OutlinedButton(enabled = enabled, onClick = { confirm(R.string.tunnels_stop_confirm, profile.name + " · " + profile.id) { model.lifecycle(profile, false) } }) { Text(stringResource(R.string.tunnels_stop)) }
-        TextButton(enabled = enabled && facts.definitions.none { it.profileId == profile.id }, onClick = { confirm(R.string.tunnels_profile_delete_confirm, profile.name + " · " + profile.id) { model.deleteProfile(profile) } }) { Text(stringResource(R.string.common_delete)) }
+        TextButton(enabled = enabled && facts.definitions.none { it.profileId == profile.id }, onClick = { confirm(R.string.tunnels_profile_delete_confirm, profile.name + " · " + profile.id) { model.deleteProfile(profile) } }) { ActionLabel(R.string.common_delete) }
         OutlinedButton(enabled = enabled, onClick = { model.editDefinition(profile.id) }) { Text(stringResource(R.string.tunnels_definition_create)) }
     }
     }
@@ -234,7 +234,7 @@ WorkspaceSection(section != "logs") {
         definition.problemCode.takeIf(String::isNotBlank)?.let { Text(tunnelProblemLabel(it), color = MaterialTheme.colorScheme.error) }
         if (canManage) FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             TextButton(enabled = enabled, onClick = { model.editDefinition(profile.id, definition) }) { Text(stringResource(R.string.tunnels_edit)) }
-            TextButton(enabled = enabled, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error), onClick = { confirm(R.string.tunnels_definition_delete_confirm, definition.name + " · " + definition.id) { model.deleteDefinition(definition) } }) { Text(stringResource(R.string.common_delete)) }
+            TextButton(enabled = enabled, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error), onClick = { confirm(R.string.tunnels_definition_delete_confirm, definition.name + " · " + definition.id) { model.deleteDefinition(definition) } }) { ActionLabel(R.string.common_delete) }
         }
         }
     }

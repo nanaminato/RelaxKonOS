@@ -1,5 +1,8 @@
 package app.relaxkonos.mobile.ui.manage.scripts
 
+import app.relaxkonos.mobile.ui.common.ActionLabel
+import app.relaxkonos.mobile.ui.common.ExecutionStatusChip
+import app.relaxkonos.mobile.ui.common.ActivityIndicator
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import android.app.Application
 import androidx.compose.foundation.layout.Arrangement
@@ -164,26 +167,28 @@ fun ScriptsScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modi
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         ScreenHeader(title = stringResource(R.string.scripts_title), onBack = onBack)
         Text(stringResource(R.string.scripts_identity, owner.userName))
-        if (state.loading) Text(stringResource(R.string.scripts_loading))
+        if (state.loading) ActivityIndicator(stringResource(R.string.scripts_loading))
         OperationMessageDialog(if (state.error && !state.loading) stringResource(R.string.scripts_failed) else null)
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            OutlinedButton(onClick = { model.load(owner) }) { Text(stringResource(R.string.common_refresh)) }
-            Button(onClick = { editing = true }) { Text(stringResource(R.string.scripts_new)) }
+            OutlinedButton(onClick = { model.load(owner) }, enabled = !state.loading) { ActionLabel(R.string.common_refresh) }
+            Button(onClick = { editing = true }, enabled = !state.loading) { Text(stringResource(R.string.scripts_new)) }
         }
         state.tasks.forEach { task ->
             OutlinedCard(onClick = { model.select(task.id) }, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text(task.executablePath)
-                    Text("${task.createdAt} · ${stringResource(scriptStateLabel(task.state))}", style = MaterialTheme.typography.bodySmall)
+                    Text(task.createdAt, style = MaterialTheme.typography.bodySmall)
+                    ExecutionStatusChip(stringResource(scriptStateLabel(task.state)), task.state)
                 }
             }
         }
         state.selected?.let { task ->
             ManagementCard {
             Text(task.executablePath, style = MaterialTheme.typography.titleMedium)
-            Text("${task.runAs} · ${stringResource(scriptStateLabel(task.state))} · ${task.exitCode?.toString() ?: "—"}")
+            ExecutionStatusChip(stringResource(scriptStateLabel(task.state)), task.state)
+            Text("${task.runAs} · ${task.exitCode?.toString() ?: "—"}")
             task.problemCode?.let { Text(stringResource(scriptProblemLabel(it))) }
-            if (task.state in setOf("queued", "running")) OutlinedButton(onClick = { model.cancel(task.id) }) {
+            if (task.state in setOf("queued", "running")) OutlinedButton(onClick = { model.cancel(task.id) }, enabled = !state.loading) {
                 Text(stringResource(R.string.scripts_cancel))
             }
             if (task.outputTruncated) Text(stringResource(R.string.scripts_truncated))

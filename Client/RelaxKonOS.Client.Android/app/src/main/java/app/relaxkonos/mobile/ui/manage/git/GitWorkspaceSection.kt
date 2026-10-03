@@ -73,7 +73,7 @@ internal fun GitWorkspaceSection(owner: SessionState.Active, section: String, on
                 Text(stringResource(if (engine.available) R.string.gw_engine_ready else R.string.gw_engine_missing), style = MaterialTheme.typography.titleMedium)
                 engine.version?.let { SelectionContainer { Text(it) } }
             }
-            OutlinedButton(onClick = model::refresh, enabled = !state.busy) { Text(stringResource(R.string.common_refresh)) }
+            OutlinedButton(onClick = model::refresh, enabled = !state.busy) { ActionLabel(R.string.common_refresh) }
             GitInstallation(state, model, owner)
         }
     }
@@ -91,7 +91,7 @@ internal fun GitWorkspaceSection(owner: SessionState.Active, section: String, on
                     DropdownMenuItem(text = { Text(stringResource(R.string.git_repositories)) }, onClick = { repositoryMenu = false; onSelectSection("repositories") })
                 }
             }
-            TextButton(onClick = model::refresh, enabled = !state.busy) { Text(stringResource(R.string.common_refresh)) }
+            TextButton(onClick = model::refresh, enabled = !state.busy) { ActionLabel(R.string.common_refresh) }
             if (section == "workspace" && facts != null) TextButton(onClick = { openFile = true }, enabled = ordinary) { Text(stringResource(R.string.git_open_file)) }
         }
         if (state.engine?.available == false || state.pendingInstallation || state.installation?.state?.active == true) {
@@ -418,7 +418,7 @@ private fun GitInstallation(state: GitWorkspaceState, model: GitWorkspaceViewMod
         operation.problemCode?.let { Text(app.relaxkonos.mobile.ui.manage.operations.installationProblemLabel(it), color = MaterialTheme.colorScheme.error) }
         if (!state.installationVerified) Text(stringResource(R.string.gw_install_unverified))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            TextButton(onClick = model::pollInstall, enabled = !state.busy) { Text(stringResource(R.string.common_refresh)) }
+            TextButton(onClick = model::pollInstall, enabled = !state.busy) { ActionLabel(R.string.common_refresh) }
             OutlinedButton(onClick = model::cancelInstall, enabled = !state.busy && state.installationVerified && operation.state.active && operation.cancellable) { Text(stringResource(R.string.gw_cancel_install)) }
         }
     }

@@ -114,7 +114,7 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
         state.pending.forEach { pending ->
             Text(stringResource(R.string.nginx_pending, pending.target), style = MaterialTheme.typography.bodySmall)
             if (canManage) TextButton(enabled = !state.busy && !state.loading && state.installation?.state?.active != true && state.operation?.state?.active != true, onClick = { confirmation = R.string.nginx_retry_confirm to { model.resume(pending) } }) {
-                Text(stringResource(R.string.common_retry))
+                ActionLabel(R.string.common_retry)
             }
             if (canManage && pending.action == "integrate" && pending.operationId == null &&
                 state.servers.any { it.id == pending.target } && state.tests[pending.target]?.valid == true) {
@@ -124,7 +124,7 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
             }
         }
         if (model.hasIntent && canManage) TextButton(enabled = !state.busy, onClick = model::retryInstallation) {
-            Text(stringResource(R.string.common_retry))
+            ActionLabel(R.string.common_retry)
         }
         if (state.pendingInstallation) Text(stringResource(R.string.nginx_pending_installation), style = MaterialTheme.typography.bodySmall)
         state.operation?.let { operation ->
@@ -132,7 +132,7 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
             Text(stringResource(R.string.nginx_operation, operation.operationId, nginxOperationStateLabel(operation.state)))
             if (operation.problemCode.isNotBlank()) Text(nginxProblemLabel(operation.problemCode), color = MaterialTheme.colorScheme.error)
             operation.snapshotId?.let { Text(stringResource(R.string.nginx_snapshot, it), style = MaterialTheme.typography.bodySmall) }
-            TextButton(enabled = !state.busy, onClick = model::pollWeb) { Text(stringResource(R.string.common_refresh)) }
+            TextButton(enabled = !state.busy, onClick = model::pollWeb) { ActionLabel(R.string.common_refresh) }
             if (operation.state.active && canManage) TextButton(enabled = !state.busy, onClick = {
                 confirmation = R.string.operations_cancel_explanation to model::cancelWeb
             }) { Text(stringResource(R.string.operations_request_cancel)) }
@@ -144,7 +144,7 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
             Text(installationStageLabel(operation.stage))
             operation.progress?.let { Text(stringResource(R.string.installation_stage_progress, it)) }
             operation.problemCode?.let { Text(nginxProblemLabel(it), color = MaterialTheme.colorScheme.error) }
-            TextButton(enabled = !state.busy, onClick = model::pollInstallation) { Text(stringResource(R.string.common_refresh)) }
+            TextButton(enabled = !state.busy, onClick = model::pollInstallation) { ActionLabel(R.string.common_refresh) }
             if (operation.state.active && operation.cancellable && canManage) TextButton(enabled = !state.busy, onClick = {
                 confirmation = R.string.operations_cancel_explanation to model::cancelInstallation
             }) { Text(stringResource(R.string.operations_request_cancel)) }
@@ -191,11 +191,11 @@ private fun InstanceDetails(server: WebServer, state: NginxState, canManage: Boo
     Text(server.executablePath, style = MaterialTheme.typography.bodySmall)
     Text(server.configurationPath ?: stringResource(R.string.nginx_configuration_missing), style = MaterialTheme.typography.bodySmall)
     val status = state.statuses[server.id]
-    Text(stringResource(when (status?.runtimeState) {
+    ExecutionStatusChip(stringResource(when (status?.runtimeState) {
         "running" -> R.string.websites_runtime_running
         "stopped" -> R.string.nginx_stopped
         else -> R.string.websites_runtime_unknown
-    }))
+    }), status?.runtimeState, task = false)
     status?.problemCode?.takeIf(String::isNotBlank)?.let { Text(nginxProblemLabel(it)) }
     val test = state.tests[server.id]
     Text(stringResource(when { !server.canTestConfiguration -> R.string.websites_config_unsupported

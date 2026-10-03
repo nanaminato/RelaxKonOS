@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.deployments
 
+import app.relaxkonos.mobile.ui.common.ActionLabel
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -116,7 +117,7 @@ internal fun DeploymentDefinitionDialog(owner: SessionState.Active, baseline: De
                             Text("${volume.name} · ${volume.containerPath}${if (volume.readOnly) " · ro" else ""}")
                             FlowRow {
                                 TextButton(onClick = { volumeName = volume.name; volumePath = volume.containerPath; volumeReadOnly = volume.readOnly }, enabled = editable) { Text(stringResource(R.string.common_edit)) }
-                                TextButton(onClick = { draft.volumes.remove(volume) }, enabled = editable) { Text(stringResource(R.string.common_delete)) }
+                                TextButton(onClick = { draft.volumes.remove(volume) }, enabled = editable) { ActionLabel(R.string.common_delete) }
                             }
                         }
                         DefinitionText(volumeName, { volumeName = it }, R.string.deployments_volume_name, editable)
@@ -140,7 +141,7 @@ internal fun DeploymentDefinitionDialog(owner: SessionState.Active, baseline: De
                             else Text(config.value.orEmpty(), style = MaterialTheme.typography.bodySmall)
                             FlowRow {
                                 TextButton(onClick = { configName = config.name; configValue = if (config.isSecret) "" else config.value.orEmpty(); configSecret = config.isSecret }, enabled = editable) { Text(stringResource(R.string.common_edit)) }
-                                TextButton(onClick = { draft.configuration.remove(config) }, enabled = editable) { Text(stringResource(R.string.common_delete)) }
+                                TextButton(onClick = { draft.configuration.remove(config) }, enabled = editable) { ActionLabel(R.string.common_delete) }
                             }
                         }
                         DefinitionText(configName, { configName = it }, R.string.deployments_configuration_name, editable)

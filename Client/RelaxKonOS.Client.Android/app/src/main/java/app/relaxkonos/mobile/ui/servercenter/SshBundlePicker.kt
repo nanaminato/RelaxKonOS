@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.servercenter
 
+import app.relaxkonos.mobile.ui.common.ActionLabel
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -55,7 +56,7 @@ internal fun SshBundlePicker(hostId: String, onDismiss: () -> Unit, onSelect: (S
                     Text(stringResource(R.string.remote_path_load_failed,
                         stringResource(R.string.ssh_files_connection_failed)),
                         color = MaterialTheme.colorScheme.error)
-                    TextButton(onClick = model::reload) { Text(stringResource(R.string.common_retry)) }
+                    TextButton(onClick = model::reload) { ActionLabel(R.string.common_retry) }
                 }
                 if (state.connected && !state.busy && state.problem == null) {
                     val entries = state.entries.filter { !it.isSymbolicLink &&

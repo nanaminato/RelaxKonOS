@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.connect
 
+import app.relaxkonos.mobile.ui.common.ActionLabel
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -123,7 +124,7 @@ fun ConnectionListScreen(
                         onClick = { actionTarget = null; deleteTarget = login },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                    ) { Text(stringResource(R.string.common_delete)) }
+                    ) { ActionLabel(R.string.common_delete) }
                 }
             },
             confirmButton = { TextButton(onClick = { actionTarget = null }) { Text(stringResource(R.string.common_close)) } },

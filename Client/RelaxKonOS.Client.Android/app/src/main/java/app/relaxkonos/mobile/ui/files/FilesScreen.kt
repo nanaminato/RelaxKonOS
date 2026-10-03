@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.files
 
+import app.relaxkonos.mobile.ui.common.ActionLabel
 import android.Manifest
 import android.app.Application
 import android.content.pm.PackageManager
@@ -1662,7 +1663,7 @@ private fun FileEntryRow(
                         },
                     )
                     DropdownMenuItem(
-                        text = { Text(stringResource(R.string.common_delete)) },
+                        text = { ActionLabel(R.string.common_delete) },
                         enabled = viewModel.canMutate && FileBrowserPolicy.mutable(entry),
                         leadingIcon = { DesktopIcon(icon = DesktopIcons.delete, size = 20.dp) },
                         onClick = {
@@ -1804,7 +1805,7 @@ fun FileDetailScreen(
                 TextButton(
                     onClick = { viewModel.requestDelete(entry) },
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                ) { Text(stringResource(R.string.common_delete)) }
+                ) { ActionLabel(R.string.common_delete) }
             }
         }
     }
@@ -1897,7 +1898,7 @@ private fun RenameDialog(entry: RemoteEntry, onDismiss: () -> Unit, onConfirm: (
         },
         confirmButton = {
             Button(onClick = { onConfirm(name) }, enabled = FileBrowserPolicy.validName(name) && name != entry.name) {
-                Text(stringResource(R.string.common_save))
+                ActionLabel(R.string.common_save)
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },

@@ -43,7 +43,7 @@ private data class ResourceConfirmation(val facts: DockerResourceFacts, val targ
         ScreenHeader(stringResource(R.string.docker_resources_title), onBack = { navigate(onBack) })
         if (owner?.capabilities?.contains(ServerCapabilities.DOCKER) != true) { Text(stringResource(R.string.error_capability_missing)); return@Column }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            TextButton(enabled = !state.busy, onClick = { navigate { draft = null; model.refresh() } }) { Text(stringResource(R.string.common_refresh)) }
+            TextButton(enabled = !state.busy, onClick = { navigate { draft = null; model.refresh() } }) { ActionLabel(R.string.common_refresh) }
         }
         if (visible && state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         OperationMessageDialog(state.problem?.takeIf { visible && !state.busy }?.let { controlProblem(it) })

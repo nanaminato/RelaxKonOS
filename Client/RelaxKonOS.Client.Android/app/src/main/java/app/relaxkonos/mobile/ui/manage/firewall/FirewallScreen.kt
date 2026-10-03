@@ -47,7 +47,7 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
         { destination -> navigate { draft = null; defaults = null; section = destination } }, modifier, stateKey = owner) {
         Text(stringResource(R.string.firewall_intro))
         if (owner?.capabilities?.contains(ServerCapabilities.FIREWALL) != true) { Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn }
-        TextButton(enabled = !state.busy, onClick = { navigate { draft = null; defaults = null; model.refresh() } }) { Text(stringResource(R.string.common_refresh)) }
+        TextButton(enabled = !state.busy, onClick = { navigate { draft = null; defaults = null; model.refresh() } }) { ActionLabel(R.string.common_refresh) }
         if (visible && state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         OperationMessageDialog(state.problem?.takeIf { visible && !state.busy }?.let { firewallProblem(it) })
         if (visible && section != "records" && state.pending.isNotEmpty()) TextButton(onClick = { navigate { draft = null; defaults = null; section = "records" } }) { Text(stringResource(R.string.workspace_records_attention)) }
@@ -104,7 +104,7 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
                 FirewallChoices(stringResource(R.string.firewall_incoming), FirewallValues.policies, defaults!!.first) { defaults = it to defaults!!.second }
                 FirewallChoices(stringResource(R.string.firewall_outgoing), FirewallValues.policies, defaults!!.second) { defaults = defaults!!.first to it }
                 } },
-                confirmButton = { Button(enabled = ready, onClick = { confirmation = FirewallConfirmation(facts, FirewallChange(FirewallChangeKind.Defaults, incoming = defaults!!.first, outgoing = defaults!!.second)) }) { Text(stringResource(R.string.common_save)) } },
+                confirmButton = { Button(enabled = ready, onClick = { confirmation = FirewallConfirmation(facts, FirewallChange(FirewallChangeKind.Defaults, incoming = defaults!!.first, outgoing = defaults!!.second)) }) { ActionLabel(R.string.common_save) } },
                 dismissButton = { TextButton(onClick = { navigate { defaults = null } }) { Text(stringResource(R.string.common_cancel)) } })
             BoxWithConstraints(Modifier.fillMaxWidth()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
@@ -132,14 +132,14 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
                         Text(stringResource(R.string.firewall_rule_help), style = MaterialTheme.typography.bodySmall)
                         } }, confirmButton = {
                         val change = FirewallChange(if (rule.number == 0) FirewallChangeKind.Create else FirewallChangeKind.Replace, rule.number.takeIf { it > 0 }, rule = rule)
-                        Button(enabled = ready && runCatching { change.validate() }.isSuccess, onClick = { confirmation = FirewallConfirmation(facts, change) }) { Text(stringResource(R.string.common_save)) }
+                        Button(enabled = ready && runCatching { change.validate() }.isSuccess, onClick = { confirmation = FirewallConfirmation(facts, change) }) { ActionLabel(R.string.common_save) }
                         }, dismissButton = { TextButton(onClick = { navigate { draft = null } }) { Text(stringResource(R.string.common_cancel)) } })
                 }
             }
             facts.rules.firstOrNull { it.number == selected }?.let { rule ->
                 if (!editing) FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     OutlinedButton(enabled = ready, onClick = { initialDraft = rule; draft = rule }) { Text(stringResource(R.string.firewall_edit)) }
-                    OutlinedButton(enabled = ready, onClick = { confirmation = FirewallConfirmation(facts, FirewallChange(FirewallChangeKind.Delete, rule.number)) }) { Text(stringResource(R.string.common_delete)) }
+                    OutlinedButton(enabled = ready, onClick = { confirmation = FirewallConfirmation(facts, FirewallChange(FirewallChangeKind.Delete, rule.number)) }) { ActionLabel(R.string.common_delete) }
                 }
             }
         }

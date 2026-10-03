@@ -45,7 +45,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
                 Text(stringResource(R.string.tunnels_external_note))
                 OutlinedButton(enabled = !locked && TunnelInputs.absolutePath(draft.path.trim()), onClick = { model.detect(draft.path.trim()) }) { Text(stringResource(R.string.tunnels_probe)) }
                 when (val detected = state.detected) {
-                    is ApiResult.Success -> { Text(tunnelRuntimeLabel(detected.value.state)); detected.value.version?.let { Text(stringResource(R.string.tunnels_version_value, it)) }; detected.value.problemCode.takeIf(String::isNotBlank)?.let { Text(tunnelProblemLabel(it)) } }
+                    is ApiResult.Success -> { ExecutionStatusChip(tunnelRuntimeLabel(detected.value.state), detected.value.state.wire, task = false); detected.value.version?.let { Text(stringResource(R.string.tunnels_version_value, it)) }; detected.value.problemCode.takeIf(String::isNotBlank)?.let { Text(tunnelProblemLabel(it)) } }
                     null -> Unit
                     else -> Text(stringResource(R.string.tunnels_unknown))
                 }
@@ -53,7 +53,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
             }
             EditorStatus(state, draft.request() == null)
             if (draft.id != null) TextButton(enabled = !locked, onClick = { reload = true }) { Text(stringResource(R.string.tunnels_reload)) }
-        } }, confirmButton = { Button(enabled = !locked && draft.request() != null, onClick = { save = true }) { Text(stringResource(R.string.common_save)) } },
+        } }, confirmButton = { Button(enabled = !locked && draft.request() != null, onClick = { save = true }) { ActionLabel(R.string.common_save) } },
         dismissButton = { TextButton(enabled = !state.busy, onClick = ::close) { Text(stringResource(R.string.common_close)) } })
     EditorConfirmation(discard || save || reload, draft.name + " · " + draft.id.orEmpty(), when { save -> R.string.tunnels_profile_save_confirm; reload -> R.string.tunnels_reload_confirm; else -> R.string.tunnels_discard_confirm },
         { discard = false; save = false; reload = false }, { when { save -> model.saveProfile(); reload -> model.reloadDraft(); else -> model.closeProfile() }; discard = false; save = false; reload = false })
@@ -89,7 +89,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
             }
             EditorStatus(state, draft.request() == null || profiles.none { it.id == draft.profileId })
             if (draft.id != null) TextButton(enabled = !locked, onClick = { reload = true }) { Text(stringResource(R.string.tunnels_reload)) }
-        } }, confirmButton = { Button(enabled = !locked && draft.request() != null && profiles.any { it.id == draft.profileId }, onClick = { save = true }) { Text(stringResource(R.string.common_save)) } },
+        } }, confirmButton = { Button(enabled = !locked && draft.request() != null && profiles.any { it.id == draft.profileId }, onClick = { save = true }) { ActionLabel(R.string.common_save) } },
         dismissButton = { TextButton(enabled = !state.busy, onClick = ::close) { Text(stringResource(R.string.common_close)) } })
     EditorConfirmation(discard || save || reload, draft.name + " · " + draft.id.orEmpty(), when { save -> R.string.tunnels_definition_save_confirm; reload -> R.string.tunnels_reload_confirm; else -> R.string.tunnels_discard_confirm },
         { discard = false; save = false; reload = false }, { when { save -> model.saveDefinition(); reload -> model.reloadDraft(); else -> model.closeDefinition() }; discard = false; save = false; reload = false })

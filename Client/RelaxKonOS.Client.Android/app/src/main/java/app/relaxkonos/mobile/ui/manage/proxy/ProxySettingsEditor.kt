@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.proxy
 
+import app.relaxkonos.mobile.ui.common.ActionLabel
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -146,7 +147,7 @@ import java.util.Date
                     ProxySettingsSection.SystemProxy -> draft.copy(systemProxy = draft.systemProxy?.copy(guardIntervalSeconds = interval.toInt(),
                         usePac = draft.systemProxy?.usePac == true && overview.systemProxy.supportsPac))
                 })
-            }) { Text(stringResource(R.string.common_save)) }
+            }) { ActionLabel(R.string.common_save) }
         }, dismissButton = { TextButton(enabled = enabled, onClick = close) { Text(stringResource(R.string.common_cancel)) } })
     if (discard) AlertDialog(onDismissRequest = { discard = false }, text = { Text(stringResource(R.string.mihomo_discard)) },
         confirmButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_close)) } },

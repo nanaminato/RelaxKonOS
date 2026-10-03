@@ -1,5 +1,8 @@
 package app.relaxkonos.mobile.ui.manage.guardian
 
+import app.relaxkonos.mobile.ui.common.ActionLabel
+import app.relaxkonos.mobile.ui.common.ExecutionStatusChip
+import app.relaxkonos.mobile.ui.common.ActivityIndicator
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import app.relaxkonos.mobile.ui.common.StatusTone
 import android.app.Application
@@ -242,12 +245,12 @@ fun GuardianScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Mod
     }
     Column(modifier.fillMaxSize().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         ScreenHeader(title = stringResource(R.string.guardian_title), onBack = { if (state.selectedId != null) model.select(null) else onBack() })
-        if (state.loading) Text(stringResource(R.string.guardian_loading))
-        state.status?.let { status -> Text(stringResource(if (status.running) R.string.guardian_running else R.string.guardian_unavailable)) }
+        if (state.loading) ActivityIndicator(stringResource(R.string.guardian_loading))
+        state.status?.let { status -> ExecutionStatusChip(stringResource(if (status.running) R.string.guardian_running else R.string.guardian_unavailable), if (status.running) "running" else null, task = false) }
         if (state.stale) Text(stringResource(R.string.guardian_stale), color = MaterialTheme.colorScheme.error)
         OperationMessageDialog(if (state.loading) null else if (state.error) stringResource(guardianProblemLabel(state.problemCode)) else if (state.unknown) stringResource(R.string.guardian_unknown) else null, tone = if (state.error) StatusTone.Danger else StatusTone.Warning)
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            OutlinedButton(onClick = { model.load(owner) }, enabled = !state.loading) { Text(stringResource(R.string.common_refresh)) }
+            OutlinedButton(onClick = { model.load(owner) }, enabled = !state.loading) { ActionLabel(R.string.common_refresh) }
             Button(onClick = { model.beginEdit(GuardianDefinition(UUID.randomUUID().toString(), "", "", emptyList(), "", false, 15, 3, null, owner.userName, null), true) },
                 enabled = state.status?.running == true && !state.loading && !state.unknown) { Text(stringResource(R.string.guardian_create)) }
         }
@@ -276,6 +279,7 @@ private fun GuardianWorkloadRow(workload: GuardianWorkload, onSelect: (String) -
     OutlinedButton(onClick = { onSelect(workload.id) }, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth()) {
             Text(workload.name)
+            ExecutionStatusChip(guardianStateLabel(workload.actualState), workload.actualState, task = false)
             Text(guardianStateSummary(workload), style = MaterialTheme.typography.bodySmall)
         }
     }
@@ -290,6 +294,7 @@ private fun GuardianDetails(owner: SessionState.Active, state: GuardianUiState, 
             Text(workload?.name.orEmpty(), style = MaterialTheme.typography.titleLarge)
             workload?.let {
                 Text(stringResource(R.string.guardian_detail, it.restartCount, it.healthFailureCount, it.processId?.toString() ?: "—"))
+                ExecutionStatusChip(guardianStateLabel(it.actualState), it.actualState, task = false)
                 Text(guardianStateSummary(it))
                 it.lastExitCode?.let { code -> Text(stringResource(R.string.terminal_exit_code, code)) }
                 if (it.lastProblemCode != null) Text(stringResource(guardianProblemLabel(it.lastProblemCode)))
@@ -303,7 +308,7 @@ private fun GuardianDetails(owner: SessionState.Active, state: GuardianUiState, 
             }
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 OutlinedButton(onClick = { state.definition?.let { model.beginEdit(it, false) } }, enabled = state.definition != null && !state.loading && !state.unknown && !state.stale) { Text(stringResource(R.string.guardian_edit)) }
-                OutlinedButton(onClick = { workload?.let { onAction(it to "delete") } }, enabled = !state.loading && !state.unknown && !state.stale) { Text(stringResource(R.string.common_delete)) }
+                OutlinedButton(onClick = { workload?.let { onAction(it to "delete") } }, enabled = !state.loading && !state.unknown && !state.stale) { ActionLabel(R.string.common_delete) }
                 OutlinedButton(onClick = { model.select(id); model.logObserver.stop(); model.logObserver.observe(owner, id) }) { Text(stringResource(R.string.guardian_logs)) }
             }
             Text(stringResource(when (liveLogs.phase) { GuardianLogPhase.Live -> R.string.guardian_logs_live; GuardianLogPhase.Connecting -> R.string.guardian_logs_connecting; GuardianLogPhase.Failed -> R.string.guardian_logs_failed; GuardianLogPhase.Idle -> R.string.guardian_logs_paused }))
@@ -358,7 +363,7 @@ private fun GuardianEditor(owner: SessionState.Active, draft: GuardianDraft, sta
             OutlinedTextField(password, { password = it }, singleLine = true, visualTransformation = PasswordVisualTransformation(), label = { Text(stringResource(R.string.guardian_admin_password)) })
         } }, confirmButton = { TextButton(enabled = adminName.isNotBlank() && password.isNotEmpty() && !state.loading && !state.unknown, onClick = {
             val approval = GuardianApproval(adminName.trim(), password.toCharArray()); password = ""; approvalTarget = null; onSave(definition, approval)
-        }) { Text(stringResource(R.string.common_save)) } }, dismissButton = { TextButton(onClick = { approvalTarget = null; password = "" }) { Text(stringResource(R.string.common_cancel)) } }) }
+        }) { ActionLabel(R.string.common_save) } }, dismissButton = { TextButton(onClick = { approvalTarget = null; password = "" }) { Text(stringResource(R.string.common_cancel)) } }) }
     Column(modifier.fillMaxSize().windowInsetsPadding(WindowInsets.ime).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         ScreenHeader(title = stringResource(R.string.guardian_editor), onBack = { close() })
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
@@ -400,6 +405,6 @@ private fun GuardianEditor(owner: SessionState.Active, draft: GuardianDraft, sta
         Button(onClick = {
             val definition = draft.definition(owner.serverPlatform)
             if (guardianApprovalRequired(owner, draft.runAs)) approvalTarget = definition else onSave(definition, null)
-        }, enabled = !state.loading && !state.unknown && !state.stale && draft.valid(owner.serverPlatform), modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.common_save)) }
+        }, enabled = !state.loading && !state.unknown && !state.stale && draft.valid(owner.serverPlatform), modifier = Modifier.fillMaxWidth()) { ActionLabel(R.string.common_save) }
     }
 }

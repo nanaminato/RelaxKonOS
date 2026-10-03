@@ -1,5 +1,7 @@
 package app.relaxkonos.mobile.ui.manage.operations
 
+import app.relaxkonos.mobile.ui.common.ActionLabel
+import app.relaxkonos.mobile.ui.common.ExecutionStatusChip
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import android.app.Application
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -293,7 +295,7 @@ fun OperationsScreen(
         verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         ScreenHeader(stringResource(R.string.operations_title), onBack = onBack,
             trailing = { if (tab == 0) TextButton(onClick = { viewModel.refresh(owner) }, enabled = visible && !state.loading) {
-                Text(stringResource(R.string.common_refresh))
+                ActionLabel(R.string.common_refresh)
             } })
         if (hasAlerts) TabRow(selectedTabIndex = tab) {
             Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text(stringResource(R.string.operations_tasks)) })
@@ -377,7 +379,7 @@ fun OperationsScreen(
                     OperationDomain.Certificate -> R.string.certificates_title
                     OperationDomain.Proxy -> R.string.mihomo_title
                 }),
-                supporting = operationStatus(item),
+                trailing = { ExecutionStatusChip(operationStatus(item), if (item.check == OperationCheck.Verified) item.state else null) },
                 selected = (item.reference.domain to item.reference.operationId) == state.selectedKey,
                 onClick = { viewModel.select(owner, item) },
             )
@@ -386,7 +388,7 @@ fun OperationsScreen(
             HorizontalDivider()
             Text(stringResource(R.string.operations_detail), style = MaterialTheme.typography.titleMedium)
             Text(selected.reference.operationId, style = MaterialTheme.typography.bodySmall)
-            Text(operationStatus(selected))
+            ExecutionStatusChip(operationStatus(selected), if (selected.check == OperationCheck.Verified) selected.state else null)
             val installation = selected.installation
             if (installation != null) {
                 Text(stringResource(R.string.installation_action, installationKindLabel(installation.kind)))
@@ -459,7 +461,7 @@ fun OperationsScreen(
         } },
         confirmButton = { TextButton(onClick = { recoverDialog = false; viewModel.recoverInstallation(owner, recoverId) },
             enabled = runCatching { app.relaxkonos.mobile.core.net.InstallationRoutes.operation(recoverId.trim()) }.isSuccess) {
-            Text(stringResource(R.string.common_refresh))
+            ActionLabel(R.string.common_refresh)
         } },
         dismissButton = { TextButton(onClick = { recoverDialog = false }) { Text(stringResource(R.string.common_cancel)) } },
     )

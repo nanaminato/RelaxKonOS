@@ -77,7 +77,7 @@ WorkspaceSection(section == "overview") {
         ManagementCard {
         Text(stringResource(R.string.mihomo_intro))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            TextButton(enabled = !state.busy, onClick = model::refresh) { Text(stringResource(R.string.common_refresh)) }
+            TextButton(enabled = !state.busy, onClick = model::refresh) { ActionLabel(R.string.common_refresh) }
             if (canManage) OutlinedButton(enabled = !state.busy && state.installation?.state?.active != true, onClick = { install = true }) { Text(if (notInstalled) stringResource(R.string.runtime_install_action, "Mihomo") else stringResource(R.string.mihomo_runtime_manage)) }
         }
         if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -85,7 +85,7 @@ WorkspaceSection(section == "overview") {
         state.observedAtMillis?.let { Text(stringResource(R.string.mihomo_observed, DateFormat.getDateTimeInstance().format(Date(it))), style = MaterialTheme.typography.bodySmall) }
         if (overview == null) Text(stringResource(R.string.mihomo_unavailable)) else {
             if (notInstalled) Text(stringResource(R.string.runtime_install_hint, "Mihomo")) else {
-            Text(proxyRuntimeLabel(overview.runtime.state), style = MaterialTheme.typography.titleMedium)
+            ExecutionStatusChip(proxyRuntimeLabel(overview.runtime.state), overview.runtime.state.wire, task = false)
             overview.runtime.version?.let { Text(stringResource(R.string.tunnels_version_value, it)) }
             overview.runtime.previousVersion?.let { Text(stringResource(R.string.tunnels_previous_version, it)) }
             Text(stringResource(if (overview.runtime.integrityVerified) R.string.tunnels_integrity_verified else R.string.tunnels_integrity_unverified))
@@ -107,9 +107,9 @@ WorkspaceSection(section == "overview") {
                 state.operation?.let { operation ->
             ManagementCard {
             Text(operation.operationId, style = MaterialTheme.typography.bodySmall)
-            Text(if (state.operationVerified) proxyOperationLabel(operation.state) else stringResource(R.string.mihomo_unverified))
+            ExecutionStatusChip(if (state.operationVerified) proxyOperationLabel(operation.state) else stringResource(R.string.mihomo_unverified), if (state.operationVerified) operation.state.wire else null)
             if (state.operationVerified) { Text(proxyStageLabel(operation.stage)); operation.problemCode.takeIf(String::isNotBlank)?.let { Text(proxyProblemLabel(it)) } }
-            TextButton(enabled = !state.busy, onClick = model::pollOperation) { Text(stringResource(R.string.common_refresh)) }
+            TextButton(enabled = !state.busy, onClick = model::pollOperation) { ActionLabel(R.string.common_refresh) }
             }
         }
         if (notInstalled) TextButton(onClick = { showRecovery = !showRecovery }) { Text(stringResource(R.string.runtime_recovery_tools)) }
@@ -122,14 +122,14 @@ WorkspaceSection(section == "overview") {
                 operation.progress?.let { Text(stringResource(R.string.installation_stage_progress, it)) }
                 operation.problemCode?.takeIf(String::isNotBlank)?.let { Text(proxyProblemLabel(it)) }
             } else Text(stringResource(R.string.mihomo_unverified))
-            TextButton(enabled = !state.busy, onClick = model::pollInstall) { Text(stringResource(R.string.common_refresh)) }
+            TextButton(enabled = !state.busy, onClick = model::pollInstall) { ActionLabel(R.string.common_refresh) }
             if (canManage && state.installationVerified && operation.state.active && operation.cancellable) TextButton(enabled = !state.busy,
                 onClick = { confirm = ProxyConfirmation(model::cancelInstall) }) { Text(stringResource(R.string.common_cancel)) }
             }
         }
         if (state.pendingInstallation) {
             Text(stringResource(R.string.mihomo_install_pending), color = MaterialTheme.colorScheme.error)
-            if (canManage && model.hasIntent) TextButton(enabled = !state.busy, onClick = { confirm = ProxyConfirmation(model::retryInstall) }) { Text(stringResource(R.string.common_retry)) }
+            if (canManage && model.hasIntent) TextButton(enabled = !state.busy, onClick = { confirm = ProxyConfirmation(model::retryInstall) }) { ActionLabel(R.string.common_retry) }
         }
         if (canManage && (!notInstalled || showRecovery)) TextButton(enabled = !state.busy, onClick = { recoveredId = ""; identified = false; recoverInstallation = true; recovering = true }) { Text(stringResource(R.string.mihomo_recover_installation)) }
         state.pending.forEach { pending ->
@@ -161,7 +161,7 @@ WorkspaceSection(section == "profiles") {
             Text(subscription.name + if (subscription.active) " · " + stringResource(R.string.mihomo_active) else "")
             subscription.lastUpdatedAtMillis?.let { Text(DateFormat.getDateTimeInstance().format(Date(it)), style = MaterialTheme.typography.bodySmall) }
             if (canManage) FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                TextButton(enabled = ready, onClick = { confirm = ProxyConfirmation { model.queue(ProxyAction.RefreshSubscription, subscription.id) } }) { Text(stringResource(R.string.common_refresh)) }
+                TextButton(enabled = ready, onClick = { confirm = ProxyConfirmation { model.queue(ProxyAction.RefreshSubscription, subscription.id) } }) { ActionLabel(R.string.common_refresh) }
                 TextButton(enabled = ready, onClick = { confirm = ProxyConfirmation { model.queue(ProxyAction.ActivateSubscription, subscription.id) } }) { Text(stringResource(R.string.mihomo_activate)) }
             }
             }
@@ -178,7 +178,7 @@ WorkspaceSection(section == "profiles") {
                     TextButton(enabled = ready, onClick = { editor = "profile" }) { Text(stringResource(R.string.tunnels_edit)) }
                     TextButton(enabled = ready && !profile.active, onClick = { confirm = ProxyConfirmation { model.activate(profile) } }) { Text(stringResource(R.string.mihomo_activate)) }
                     TextButton(enabled = ready && overview?.supportsValidation == true, onClick = { editor = "yaml" }) { Text(stringResource(R.string.mihomo_apply_yaml)) }
-                    TextButton(enabled = ready && !profile.active, onClick = { confirm = ProxyConfirmation { model.delete(profile) } }) { Text(stringResource(R.string.common_delete)) }
+                    TextButton(enabled = ready && !profile.active, onClick = { confirm = ProxyConfirmation { model.delete(profile) } }) { ActionLabel(R.string.common_delete) }
                 }
                 }
             }
@@ -207,7 +207,7 @@ WorkspaceSection(section == "profiles") {
             if (recoverInstallation && state.pendingInstallation) ProxyCheck(identified, !state.busy, R.string.mihomo_identify) { identified = it }
         } }, confirmButton = { Button(enabled = !state.busy && runCatching { InstallationRoutes.canonicalId(recoveredId.trim()) }.isSuccess && (!recoverInstallation || !state.pendingInstallation || identified), onClick = {
             if (recoverInstallation) model.recoverInstall(recoveredId, identified) else model.recoverOperation(recoveredId); recovering = false
-        }) { Text(stringResource(R.string.common_refresh)) } }, dismissButton = { TextButton(onClick = { recovering = false }) { Text(stringResource(R.string.common_cancel)) } })
+        }) { ActionLabel(R.string.common_refresh) } }, dismissButton = { TextButton(onClick = { recovering = false }) { Text(stringResource(R.string.common_cancel)) } })
 }
 
 @Composable private fun BoxWithProfileList(profiles: List<ProxyProfile>, selected: String?, select: (String?) -> Unit, detail: @Composable () -> Unit) {
@@ -242,7 +242,7 @@ WorkspaceSection(section == "profiles") {
 
         } }, confirmButton = { Button(enabled = !state.busy && state.pending.isEmpty() && name.length <= 128 && when (kind) {
             "profile" -> name.isNotBlank(); "yaml" -> confirmed && content.isNotBlank(); else -> confirmed && content.length <= 16384 && runCatching { java.net.URI(content.trim()).let { it.scheme in setOf("https", "http") && it.host != null && it.userInfo == null } }.getOrDefault(false)
-        }, onClick = { when (kind) { "profile" -> model.saveProfile(profile, name); "yaml" -> model.apply(requireNotNull(profile), content); else -> model.import(content, name, route) } }) { Text(stringResource(R.string.common_save)) } },
+        }, onClick = { when (kind) { "profile" -> model.saveProfile(profile, name); "yaml" -> model.apply(requireNotNull(profile), content); else -> model.import(content, name, route) } }) { ActionLabel(R.string.common_save) } },
         dismissButton = { TextButton(enabled = !state.busy, onClick = close) { Text(stringResource(R.string.common_cancel)) } })
     if (discard) AlertDialog(onDismissRequest = { discard = false }, text = { Text(stringResource(R.string.mihomo_discard)) }, confirmButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_close)) } }, dismissButton = { TextButton(onClick = { discard = false }) { Text(stringResource(R.string.common_cancel)) } })
 }

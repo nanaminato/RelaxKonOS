@@ -1,5 +1,7 @@
 package app.relaxkonos.mobile.ui.manage.operations
 
+import app.relaxkonos.mobile.ui.common.ActionLabel
+import app.relaxkonos.mobile.ui.common.ActivityIndicator
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import app.relaxkonos.mobile.ui.common.StatusTone
 import android.Manifest
@@ -106,8 +108,8 @@ internal fun AlertPanel(owner: SessionState.Active, onOpenTarget: (OperationTarg
             Text(stringResource(R.string.event_center_apply))
         }
     }
-    TextButton(onClick = browser::refresh, enabled = !state.loading && !state.actionBusy) { Text(stringResource(R.string.common_refresh)) }
-    if (state.loading) Text(stringResource(R.string.event_center_loading))
+    TextButton(onClick = browser::refresh, enabled = !state.loading && !state.actionBusy) { ActionLabel(R.string.common_refresh) }
+    if (state.loading) ActivityIndicator(stringResource(R.string.event_center_loading))
     state.checkedAtMillis?.let { Text(stringResource(R.string.event_center_checked, eventTime(it)), style = MaterialTheme.typography.bodySmall) }
     if (state.readResult != null && state.readResult !is ApiResult.Success) AlertFailure(state.readResult)
     if (state.readResult is ApiResult.Success && (if (state.eventsMode) state.events.isEmpty() else state.alerts.isEmpty())) Text(stringResource(R.string.operations_alerts_empty))
@@ -120,7 +122,7 @@ internal fun AlertPanel(owner: SessionState.Active, onOpenTarget: (OperationTarg
     if (!state.eventsMode && state.selectedId != null) {
         HorizontalDivider()
         Text(stringResource(R.string.operations_alert_detail), style = MaterialTheme.typography.titleSmall)
-        if (state.detailLoading) Text(stringResource(R.string.event_center_loading))
+        if (state.detailLoading) ActivityIndicator(stringResource(R.string.event_center_loading))
         if (state.detail != null && state.detail !is ApiResult.Success) AlertFailure(state.detail)
         val detail = (state.detail as? ApiResult.Success)?.value
         detail?.let { value ->

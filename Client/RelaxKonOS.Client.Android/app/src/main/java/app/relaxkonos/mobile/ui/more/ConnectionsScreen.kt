@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.more
 
+import app.relaxkonos.mobile.ui.common.ActionLabel
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -118,7 +119,7 @@ fun ConnectionsScreen(
                                 Text(stringResource(R.string.connections_forget_password))
                             }
                             TextButton(onClick = { deleteTarget = login }) {
-                                Text(stringResource(R.string.common_delete))
+                                ActionLabel(R.string.common_delete)
                             }
                         }
                     }

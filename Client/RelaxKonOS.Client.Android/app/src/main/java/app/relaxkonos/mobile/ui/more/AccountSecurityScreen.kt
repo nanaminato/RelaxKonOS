@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.more
 
+import app.relaxkonos.mobile.ui.common.ActionLabel
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -168,7 +169,7 @@ fun AccountSecurityScreen(
                             InvalidatedNote(record)
                         }
                         TextButton(onClick = { deleteTarget = DeletionTarget.Vault(record) }) {
-                            Text(stringResource(R.string.common_delete))
+                            ActionLabel(R.string.common_delete)
                         }
                     }
                 }
@@ -193,7 +194,7 @@ fun AccountSecurityScreen(
                             )
                         }
                         TextButton(onClick = { deleteTarget = DeletionTarget.DebugStore }) {
-                            Text(stringResource(R.string.common_delete))
+                            ActionLabel(R.string.common_delete)
                         }
                     }
                 }
@@ -221,7 +222,7 @@ fun AccountSecurityScreen(
                             InvalidatedNote(record)
                         }
                         TextButton(onClick = { deleteTarget = DeletionTarget.Vault(record) }) {
-                            Text(stringResource(R.string.common_delete))
+                            ActionLabel(R.string.common_delete)
                         }
                     }
                 }

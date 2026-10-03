@@ -1,5 +1,7 @@
 package app.relaxkonos.mobile.ui.manage.tunnels
 
+import app.relaxkonos.mobile.ui.common.ExecutionStatusChip
+import app.relaxkonos.mobile.ui.common.ActionLabel
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -27,11 +29,11 @@ import kotlinx.coroutines.delay
     }
     if (!records) {
     Text(stringResource(R.string.frps_intro))
-    TextButton(enabled = !state.busy, onClick = model::observeFrps) { Text(stringResource(R.string.common_refresh)) }
+    TextButton(enabled = !state.busy, onClick = model::observeFrps) { ActionLabel(R.string.common_refresh) }
     if (current == null) Text(stringResource(R.string.tunnels_unknown)) else {
         TunnelCard {
         Text(stringResource(R.string.frps_server_tab), style = MaterialTheme.typography.titleMedium)
-        TunnelBadge(frpsStateLabel(current.state), current.state.active)
+        ExecutionStatusChip(frpsStateLabel(current.state), current.state.wire, task = false)
         Text(current.bindAddress + ":" + current.bindPort)
         Text(stringResource(when {
             current.state == ManagedFrpsState.Unknown -> R.string.frps_process_unverified
@@ -160,7 +162,7 @@ import kotlinx.coroutines.delay
 
             if (state.pending.isNotEmpty()) Text(stringResource(R.string.tunnels_uncertain), color = MaterialTheme.colorScheme.error)
             TextButton(enabled = !locked, onClick = { confirm = R.string.tunnels_reload_confirm }) { Text(stringResource(R.string.tunnels_reload)) }
-        } }, confirmButton = { Button(enabled = !locked && draft.request(token, password) != null, onClick = { confirm = R.string.frps_save_confirm }) { Text(stringResource(R.string.common_save)) } },
+        } }, confirmButton = { Button(enabled = !locked && draft.request(token, password) != null, onClick = { confirm = R.string.frps_save_confirm }) { ActionLabel(R.string.common_save) } },
         dismissButton = { TextButton(enabled = !state.busy, onClick = ::close) { Text(stringResource(R.string.common_close)) } })
     confirm?.let { message -> AlertDialog(onDismissRequest = { confirm = null }, title = { Text(stringResource(R.string.tunnels_confirm)) },
         text = { Column { Text("frps · " + draft.bindAddress + ":" + draft.bindPort); Text(stringResource(message)) } }, confirmButton = {

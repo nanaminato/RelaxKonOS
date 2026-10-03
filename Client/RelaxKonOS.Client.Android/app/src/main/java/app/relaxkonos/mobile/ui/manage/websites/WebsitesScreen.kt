@@ -279,7 +279,7 @@ private fun WebsiteServers(
     certificates: ApiResult<List<ManagedCertificate>>?,
     applications: ApiResult<List<DeploymentApplication>>?,
 ) = when (val servers = state.servers) {
-    null -> SectionCard(stringResource(R.string.websites_servers)) { Text(stringResource(R.string.common_loading)) }
+    null -> SectionCard(stringResource(R.string.websites_servers)) { ActivityIndicator(stringResource(R.string.common_loading)) }
     is ApiResult.Success -> if (servers.value.isEmpty()) {
         SectionCard(stringResource(R.string.websites_servers)) { Text(stringResource(R.string.websites_no_servers)) }
     } else {
@@ -297,9 +297,9 @@ private fun WebsiteServerCard(
     val version = state.server.version ?: stringResource(R.string.websites_version_unknown)
     Text(stringResource(R.string.websites_server_details, state.server.managementMode, version), style = MaterialTheme.typography.bodySmall)
     when (val status = state.status) {
-        is ApiResult.Success -> Text(stringResource(
+        is ApiResult.Success -> ExecutionStatusChip(stringResource(
             if (status.value.runtimeState.equals("running", true)) R.string.websites_runtime_running else R.string.websites_runtime_not_running,
-        ))
+        ), status.value.runtimeState, task = false)
         else -> Text(stringResource(R.string.websites_runtime_unknown), color = MaterialTheme.colorScheme.error)
     }
     when (val configuration = state.configuration) {

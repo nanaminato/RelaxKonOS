@@ -266,7 +266,7 @@ fun HostSettingsScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
             }
         }
         FlowRow(horizontalArrangement=Arrangement.spacedBy(Spacing.sm)) {
-            TextButton(onClick={editor.load()},enabled=!editor.busy&&!editor.dirty) { Text(stringResource(R.string.common_refresh)) }
+            TextButton(onClick={editor.load()},enabled=!editor.busy&&!editor.dirty) { ActionLabel(R.string.common_refresh) }
             TextButton(onClick={editor.discard()},enabled=!editor.busy&&editor.dirty) { Text(stringResource(R.string.host_settings_discard)) }
             if (!(owner.serverPlatform.equals("windows",true) && editor.kind == HostSettingKind.Environment))
                 Button(onClick={editor.preview()},enabled=editor.canPreview) { Text(stringResource(R.string.host_settings_preview)) }
@@ -375,7 +375,7 @@ private fun EnvironmentPathList(value: String, enabled: Boolean, onValueChange: 
         val actions: @Composable () -> Unit = {
             TextButton(onClick={ update(entries + "", entries.size) },enabled=enabled) { Text(stringResource(R.string.host_settings_path_new)) }
             TextButton(onClick={entryFocus.requestFocus()},enabled=enabled && hasSelection) { Text(stringResource(R.string.common_edit)) }
-            TextButton(onClick={ update(entries.filterIndexed { index, _ -> index != selected }, selected) },enabled=enabled && hasSelection) { Text(stringResource(R.string.common_delete)) }
+            TextButton(onClick={ update(entries.filterIndexed { index, _ -> index != selected }, selected) },enabled=enabled && hasSelection) { ActionLabel(R.string.common_delete) }
             TextButton(onClick={
                 val next=entries.toMutableList(); val index=selected
                 java.util.Collections.swap(next,index,index-1); update(next,index-1)
@@ -432,7 +432,7 @@ private fun WindowsEnvironmentGroup(editor: HostSettingsEditor, targetScope: Hos
             FlowRow(horizontalArrangement=Arrangement.spacedBy(Spacing.sm)) {
                 TextButton(onClick={editor.beginEnvironmentEdit(targetScope,null)},enabled=enabled) { Text(stringResource(R.string.host_settings_path_new)) }
                 TextButton(onClick={editor.beginEnvironmentEdit(targetScope,selected)},enabled=enabled && selected!=null && selected.rawValue!=null) { Text(stringResource(R.string.common_edit)) }
-                TextButton(onClick={editor.beginEnvironmentEdit(targetScope,selected,true)},enabled=enabled && selected!=null) { Text(stringResource(R.string.common_delete)) }
+                TextButton(onClick={editor.beginEnvironmentEdit(targetScope,selected,true)},enabled=enabled && selected!=null) { ActionLabel(R.string.common_delete) }
             }
         } else if(targetScope in editor.environmentAuthorizationScopes) {
             Text(stringResource(R.string.host_settings_environment_authorization_required),color=MaterialTheme.colorScheme.error)

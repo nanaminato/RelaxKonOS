@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.terminal
 
+import app.relaxkonos.mobile.ui.common.ActionLabel
 import android.graphics.Typeface
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -100,7 +101,7 @@ internal fun TerminalAppearanceDialog(p: TerminalPresentation, onRead: () -> Uni
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Text(stringResource(R.string.terminal_settings_scope))
                 p.settingsMessage?.let { Text(it.text()) }
-                if (!p.settingsVerified) OutlinedButton(onClick = onRead, enabled = !p.settingsBusy) { Text(stringResource(R.string.common_refresh)) }
+                if (!p.settingsVerified) OutlinedButton(onClick = onRead, enabled = !p.settingsBusy) { ActionLabel(R.string.common_refresh) }
                 OutlinedTextField(value.fontFamily, { value = value.copy(fontFamily = it) }, singleLine = true, enabled = !p.settingsBusy,
                     label = { Text(stringResource(R.string.terminal_font_family)) })
                 Text(stringResource(R.string.terminal_font_android))
@@ -120,6 +121,6 @@ internal fun TerminalAppearanceDialog(p: TerminalPresentation, onRead: () -> Uni
             }
         }, confirmButton = { Button(onClick = { onSave(value.copy(fontSize = size.toDouble(), fontFamily = value.fontFamily.trim(),
             backgroundColor = value.backgroundColor.uppercase(), foregroundColor = value.foregroundColor.uppercase(), cursorColor = value.cursorColor.uppercase())) },
-            enabled = valid && p.settingsVerified && !p.settingsBusy) { Text(stringResource(R.string.common_save)) } },
+            enabled = valid && p.settingsVerified && !p.settingsBusy) { ActionLabel(R.string.common_save) } },
         dismissButton = { TextButton(onClick = { p.settingsOpen = false }, enabled = !p.settingsBusy) { Text(stringResource(R.string.common_close)) } })
 }

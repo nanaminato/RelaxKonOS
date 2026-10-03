@@ -63,7 +63,7 @@ private data class SmbConfirmation(val expected: SmbFacts, val change: SmbChange
         Text(stringResource(R.string.smb_intro))
         if (!canManage) Text(stringResource(R.string.smb_observer_help), style = MaterialTheme.typography.bodySmall)
         if (owner?.capabilities?.contains(ServerCapabilities.FILE_SERVICES) != true) { Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn }
-        TextButton(enabled = !state.busy, onClick = { navigate { draft = null; model.refresh() } }) { Text(stringResource(R.string.common_refresh)) }
+        TextButton(enabled = !state.busy, onClick = { navigate { draft = null; model.refresh() } }) { ActionLabel(R.string.common_refresh) }
         if (visible && state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         OperationMessageDialog(state.problem?.takeIf { visible && !state.busy }?.let { smbProblem(it) })
         if (visible && section != "records" && (state.pending.isNotEmpty() || state.pendingInstallation || state.installation != null && !state.installationVerified)) {
@@ -82,7 +82,7 @@ private data class SmbConfirmation(val expected: SmbFacts, val change: SmbChange
 WorkspaceSection(section == "overview") {
             SmbPanel {
             Text(stringResource(R.string.smb_title), style = MaterialTheme.typography.titleMedium)
-            SmbStatusBadge(smbStateLabel(facts.status.state), facts.status.state == SmbRuntimeState.Running)
+            ExecutionStatusChip(smbStateLabel(facts.status.state), facts.status.state.wire, task = false)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 SmbStatusBadge(stringResource(if (facts.status.serviceActive) R.string.smb_service_active else R.string.smb_service_inactive), facts.status.serviceActive)
                 SmbStatusBadge(stringResource(if (facts.status.port445Listening) R.string.smb_port_listening else R.string.smb_port_not_listening), facts.status.port445Listening)
@@ -122,7 +122,7 @@ WorkspaceSection(section == "overview") {
         Text(stringResource(R.string.smb_records_help), style = MaterialTheme.typography.bodySmall)
         if (state.pendingInstallation) SmbPanel {
             Text(stringResource(R.string.installation_pending, installationServiceLabel(InstallationService.Smb), installationKindLabel(InstallationKind.Install)), color = MaterialTheme.colorScheme.error)
-            if (canManage) OutlinedButton(enabled = !state.busy && state.pending.isEmpty() && facts?.capabilities?.installSupported == true && state.installation?.state?.active != true, onClick = { install = true }) { Text(stringResource(R.string.common_retry)) }
+            if (canManage) OutlinedButton(enabled = !state.busy && state.pending.isEmpty() && facts?.capabilities?.installSupported == true && state.installation?.state?.active != true, onClick = { install = true }) { ActionLabel(R.string.common_retry) }
         }
         if (canManage) TextButton(enabled = !state.busy, onClick = { identified = false; recover = true }) { Text(stringResource(R.string.installation_recover)) }
         state.installation?.let { operation ->
@@ -130,7 +130,7 @@ WorkspaceSection(section == "overview") {
             Text(stringResource(R.string.smb_install), style = MaterialTheme.typography.titleMedium)
             Text(operation.operationId, style = MaterialTheme.typography.bodySmall)
             if (state.installationVerified) {
-                Text(installationStateLabel(operation.state)); Text(installationStageLabel(operation.stage)); operation.progress?.let { Text(stringResource(R.string.installation_stage_progress, it)) }
+                ExecutionStatusChip(installationStateLabel(operation.state), operation.state.wire); Text(installationStageLabel(operation.stage)); operation.progress?.let { Text(stringResource(R.string.installation_stage_progress, it)) }
                 operation.problemCode?.let { Text(installationProblemLabel(it)) }
                 if (operation.state.active && operation.cancellable && canManage) OutlinedButton(enabled = !state.busy, onClick = { cancel = true }) { Text(stringResource(R.string.operations_request_cancel)) }
             } else Text(stringResource(R.string.smb_unverified))
@@ -183,7 +183,7 @@ WorkspaceSection(section == "overview") {
                                 if (!chosen.managed || chosen.drifted) Text(stringResource(if (chosen.drifted) R.string.smb_drifted else R.string.smb_external), color = MaterialTheme.colorScheme.error)
                                 FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                                     Button(enabled = ready && chosen.managed && !chosen.drifted, onClick = { draft = SmbDraft.from(chosen, facts.capabilities.windowsShareSecuritySupported) }) { Text(stringResource(R.string.smb_edit)) }
-                                    OutlinedButton(enabled = ready && chosen.managed && !chosen.drifted, onClick = { confirmation = SmbConfirmation(facts, SmbChange(SmbChangeKind.DeleteShare, chosen.id)) }, colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(stringResource(R.string.common_delete)) }
+                                    OutlinedButton(enabled = ready && chosen.managed && !chosen.drifted, onClick = { confirmation = SmbConfirmation(facts, SmbChange(SmbChangeKind.DeleteShare, chosen.id)) }, colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) { ActionLabel(R.string.common_delete) }
                                 }
                                 TextButton(onClick = { selected = null }) { Text(stringResource(R.string.common_close)) }
                             }
@@ -239,7 +239,7 @@ WorkspaceSection(section == "overview") {
         Text(stringResource(R.string.installation_recover_help)); OutlinedTextField(operationId, { operationId = it }, singleLine = true, label = { Text(stringResource(R.string.installation_operation_id)) })
         if (state.pendingInstallation) SmbCheck(identified, true, R.string.smb_identify_original) { identified = it }
     } }, confirmButton = { Button(enabled = !state.busy && (!state.pendingInstallation || identified) && runCatching { InstallationRoutes.operation(operationId.trim()) }.isSuccess,
-        onClick = { recover = false; model.recoverInstall(operationId, identified) }) { Text(stringResource(R.string.common_refresh)) } }, dismissButton = { TextButton(onClick = { recover = false }) { Text(stringResource(R.string.common_cancel)) } })
+        onClick = { recover = false; model.recoverInstall(operationId, identified) }) { ActionLabel(R.string.common_refresh) } }, dismissButton = { TextButton(onClick = { recover = false }) { Text(stringResource(R.string.common_cancel)) } })
 }
 
 @Composable internal fun SmbPanel(content: @Composable ColumnScope.() -> Unit) {

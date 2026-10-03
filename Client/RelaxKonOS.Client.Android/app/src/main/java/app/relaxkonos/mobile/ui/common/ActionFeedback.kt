@@ -90,7 +90,7 @@ fun ActionFeedback(
                         TextButton(
                             onClick = onRetry,
                             colors = ButtonDefaults.textButtonColors(contentColor = toneContent(tone)),
-                        ) { Text(stringResource(R.string.common_retry)) }
+                        ) { ActionLabel(R.string.common_retry) }
                     }
                     TextButton(
                         onClick = onDismiss,
@@ -165,7 +165,7 @@ fun OperationMessageDialog(
             }
         },
         confirmButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_dismiss)) } },
-        dismissButton = { if (onRetry != null) TextButton(onClick = { dismiss(); onRetry() }) { Text(stringResource(R.string.common_retry)) } },
+        dismissButton = { if (onRetry != null) TextButton(onClick = { dismiss(); onRetry() }) { ActionLabel(R.string.common_retry) } },
     )
 }
 

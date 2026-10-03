@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.files
 
+import app.relaxkonos.mobile.ui.common.ActionLabel
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -51,7 +52,7 @@ fun FileBrowserControls(vm: FilesViewModel) {
             TextButton(onClick = vm::toggleSelection, enabled = !vm.batchRunning) { Text(stringResource(R.string.common_cancel)) }
             TextButton(onClick = { vm.copySelection(false) }, enabled = vm.canMutate && vm.checkedPaths.isNotEmpty()) { Text(stringResource(R.string.files_action_copy)) }
             TextButton(onClick = { vm.copySelection(true) }, enabled = vm.canMutate && vm.checkedPaths.isNotEmpty()) { Text(stringResource(R.string.files_cut)) }
-            TextButton(onClick = vm::requestBatchDelete, enabled = vm.canMutate && vm.checkedPaths.isNotEmpty()) { Text(stringResource(R.string.common_delete)) }
+            TextButton(onClick = vm::requestBatchDelete, enabled = vm.canMutate && vm.checkedPaths.isNotEmpty()) { ActionLabel(R.string.common_delete) }
         }
     }
     vm.clipboard?.let { clipboard ->
@@ -107,7 +108,7 @@ fun FileBatchOverlays(vm: FilesViewModel) {
                 if (report.failures.any { it.unknown }) Text(stringResource(R.string.files_mutation_unknown))
             }
         }, confirmButton = { TextButton(onClick = vm::dismissBatchReport) { Text(stringResource(R.string.common_close)) } },
-            dismissButton = { TextButton(onClick = vm::refresh) { Text(stringResource(R.string.common_refresh)) } })
+            dismissButton = { TextButton(onClick = vm::refresh) { ActionLabel(R.string.common_refresh) } })
     }
 }
 
@@ -142,7 +143,7 @@ fun FilePermissionDialog(vm: FilesViewModel) {
                 Text(stringResource(R.string.files_permissions_special))
             }
         }, confirmButton = { Button(onClick = vm::savePermissions, enabled = mode != null && vm.canMutate) {
-            Text(stringResource(R.string.common_save))
+            ActionLabel(R.string.common_save)
         } }, dismissButton = { TextButton(onClick = vm::closePermissions, enabled = !vm.mutationBusy) { Text(stringResource(R.string.common_cancel)) } })
 }
 

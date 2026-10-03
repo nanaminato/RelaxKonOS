@@ -73,7 +73,7 @@ fun DeploymentsScreen(
                         Text(stringResource(R.string.deployments_create_application))
                     }
                     TextButton(onClick = browser::refresh, enabled = available && !state.loading && !state.detailLoading && !state.submitting) {
-                        Text(stringResource(R.string.common_refresh))
+                        ActionLabel(R.string.common_refresh)
                     }
                 }
             },
@@ -389,7 +389,7 @@ private fun DeploymentCreateDialog(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(if (entry.isSecret) stringResource(R.string.deployments_secret_configured, entry.name)
                                         else "${entry.name}=${entry.value}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                                    TextButton(onClick = { form.configuration.remove(entry) }) { Text(stringResource(R.string.common_delete)) }
+                                    TextButton(onClick = { form.configuration.remove(entry) }) { ActionLabel(R.string.common_delete) }
                                 }
                             }
                             OutlinedTextField(form.configurationName, { form.configurationName = it }, label = { Text(stringResource(R.string.deployments_configuration_name)) },
@@ -437,11 +437,12 @@ private fun DeploymentCreateDialog(
                         6 -> {
                             if (submitting) LinearProgressIndicator(Modifier.fillMaxWidth())
                             when (val result = submission) {
-                                null -> if (form.deployNow) Text(stringResource(R.string.common_loading))
+                                null -> if (form.deployNow) ActivityIndicator(stringResource(R.string.common_loading))
                                 is ApiResult.Success -> {
                                     val operation = snapshot?.operations?.firstOrNull { it.operationId == result.value.operationId }
                                         ?: snapshot?.activeOperation?.takeIf { it.operationId == result.value.operationId } ?: result.value
-                                    Text("${label(operation.state)} · ${label(operation.stage)}")
+                                    ExecutionStatusChip(label(operation.state), operation.state)
+                                    Text(label(operation.stage))
                                     operation.progress?.let { LinearProgressIndicator(progress = { it / 100f }, modifier = Modifier.fillMaxWidth()) }
                                     operation.problemCode?.let { Text(deploymentProblem(it).text(), color = MaterialTheme.colorScheme.error) }
                                     Text(stringResource(R.string.deployments_operation_id, operation.operationId), style = MaterialTheme.typography.bodySmall)
@@ -877,7 +878,7 @@ private fun BackupRecoveryCard(owner: SessionState.Active?, applicationId: Strin
 @Composable
 private fun OperationCard(operation: DeploymentOperation, title: String, onCancel: (() -> Unit)? = null) {
     SectionCard(title = title) {
-        Text(stringResource(R.string.deployments_operation_state, label(operation.state)))
+        ExecutionStatusChip(stringResource(R.string.deployments_operation_state, label(operation.state)), operation.state)
         Text(stringResource(R.string.deployments_stage, label(operation.stage)))
         Text(stringResource(R.string.deployments_operation_id, operation.operationId), style = MaterialTheme.typography.bodySmall)
         operation.problemCode?.let { Text(deploymentProblem(it).text(), color = MaterialTheme.colorScheme.error) }

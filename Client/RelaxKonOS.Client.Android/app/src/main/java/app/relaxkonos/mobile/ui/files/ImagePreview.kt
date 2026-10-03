@@ -1,5 +1,7 @@
 package app.relaxkonos.mobile.ui.files
 
+import app.relaxkonos.mobile.ui.common.ActionLabel
+import app.relaxkonos.mobile.ui.common.ActivityIndicator
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
@@ -199,7 +201,7 @@ private fun PreviewActions(viewModel: FilesViewModel, preview: ImagePreview) {
                 }
             } else {
                 TextButton(onClick = { viewModel.reloadPreview(authorize = false) }) {
-                    Text(stringResource(R.string.common_retry))
+                    ActionLabel(R.string.common_retry)
                 }
             }
         }
@@ -339,7 +341,7 @@ fun ImagePreviewViewer(viewModel: FilesViewModel) {
                             Text(preview.message.text(), modifier = Modifier.padding(Spacing.md))
                             PreviewActions(viewModel, preview)
                         }
-                        ImagePreview.Hidden -> Text(stringResource(R.string.common_loading))
+                        ImagePreview.Hidden -> ActivityIndicator(stringResource(R.string.common_loading))
                     }
                 }
             }

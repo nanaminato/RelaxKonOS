@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.proxy
 
+import app.relaxkonos.mobile.ui.common.ActionLabel
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
@@ -138,7 +139,7 @@ internal enum class ProxySettingsSection(val title: Int) {
                         CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                         Spacer(Modifier.width(Spacing.sm))
                     }
-                    Text(stringResource(R.string.common_refresh))
+                    ActionLabel(R.string.common_refresh)
                 }
             }
             val dns = (state.dns as? ApiResult.Success)?.value
