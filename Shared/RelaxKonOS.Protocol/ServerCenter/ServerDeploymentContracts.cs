@@ -141,7 +141,7 @@ public static class ServerDeploymentModeMatrix
 
     public static ServerDeploymentModeCapabilities WindowsUser { get; } = new(
         ServerInstallMode.WindowsUser, HostPlatformKind.Windows,
-        RequiresElevation: false, SupportsSudoElevation: false, RequiresElevatedSshToken: false,
+        RequiresElevation: true, SupportsSudoElevation: false, RequiresElevatedSshToken: false,
         SupportsSystemService: false, SupportsRollback: true, SupportsDataRetention: true,
         DefaultLoopbackOnly: true, DefaultInstallRootToken: @"%LocalAppData%\RelaxKonOS-Personal\program",
         DefaultDataRootToken: @"%LocalAppData%\RelaxKonOS-Personal\data", HealthPath: "/healthz", ServiceNames: []);

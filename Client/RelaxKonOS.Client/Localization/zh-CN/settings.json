@@ -76,6 +76,8 @@
         "settings.server": "服务器",
         "settings.server_mode": "服务器模式",
         "settings.server_mode.user": "当前 Linux 用户模式",
+        "settings.server_mode.windows_personal": "Windows 个人模式",
+        "settings.server_mode.windows_personal_hint": "此安装归属于当前 Windows 账户。以设备密钥登录后可生成授权码，通过可达的局域网地址配对其他设备。",
         "settings.server_mode.system": "系统模式",
         "settings.server_mode.user_hint": "此服务器仅限当前 Linux 账号和回环监听。请通过 SSH 本地端口转发进行远程连接。",
         "settings.execution_identity": "执行身份",

@@ -19,7 +19,7 @@ public sealed class WindowsPrivilegedHelperService : ServiceBase
 
     private WindowsPrivilegedHelperService(WindowsHelperServiceConfiguration configuration)
     {
-        ServiceName = "RelaxKonOSPrivilegedHelper";
+        ServiceName = configuration.ServiceName;
         CanStop = true;
         AutoLog = true;
         _configuration = configuration;
@@ -52,6 +52,8 @@ public sealed class WindowsPrivilegedHelperService : ServiceBase
             ?? throw new InvalidOperationException("Windows Helper configuration is invalid.");
         configuration.Validate();
         configuration.VerifyCurrentExecutable();
+        if (configuration.PersonalOwnerSid is not null)
+            WindowsMihomoPrivilegedProcessHost.ConfigurePersonalRoot(configuration.PersonalProxyRoot!);
         ServiceBase.Run(new WindowsPrivilegedHelperService(configuration));
     }
 
@@ -89,7 +91,8 @@ public sealed record WindowsHelperServiceConfiguration(string PipeName, string S
     IReadOnlyList<string> FileAllowedRoots, IReadOnlyList<string> AllowedServiceIds, string HelperExecutableSha256,
     bool EnableWindowsUserExecution = false, int UserExecutionTimeoutSeconds = 25,
     string? NginxRoot = null, string? RuntimePrivateRoot = null,
-    IReadOnlyList<string>? RuntimeArchiveRoots = null, IReadOnlyList<WindowsFrpRelease>? FrpReleases = null)
+    IReadOnlyList<string>? RuntimeArchiveRoots = null, IReadOnlyList<WindowsFrpRelease>? FrpReleases = null,
+    string ServiceName = "RelaxKonOSPrivilegedHelper", string? PersonalOwnerSid = null, string? PersonalProxyRoot = null)
 {
     public void Validate()
     {
@@ -101,13 +104,24 @@ public sealed record WindowsHelperServiceConfiguration(string PipeName, string S
             throw new InvalidOperationException("Windows Helper configuration is incomplete.");
         if (Convert.FromBase64String(SharedSecret).Length < 32) throw new InvalidOperationException("Windows Helper secret is too short.");
         _ = new SecurityIdentifier(ServerServiceSid);
+        if (PersonalOwnerSid is not null)
+        {
+            if (!WindowsPlatformInfo.IsWindowsWorkstation() || PersonalOwnerSid != ServerServiceSid
+                || !PersonalOwnerSid.StartsWith("S-1-5-21-", StringComparison.Ordinal)
+                || ServiceName != "RelaxKonOSPersonalHelper-" + PersonalOwnerSid
+                || string.IsNullOrWhiteSpace(PersonalProxyRoot) || !Path.IsPathFullyQualified(PersonalProxyRoot))
+                throw new InvalidOperationException("Personal Helper must be bound to a workstation owner and its own service.");
+        }
+        else if (ServiceName != "RelaxKonOSPrivilegedHelper" || PersonalProxyRoot is not null)
+            throw new InvalidOperationException("System Helper service identity cannot be changed.");
         WindowsManagedRuntimePolicy.Create(NginxRoot, RuntimePrivateRoot, RuntimeArchiveRoots, [], FrpReleases).Validate();
     }
 
     internal WindowsHelperPipeConfiguration ToPipeConfiguration()
         => new(PipeName, SharedSecret, FileAllowedRoots, AllowedServiceIds, ServerServiceSid,
             UserExecutionTimeoutSeconds: UserExecutionTimeoutSeconds,
-            WindowsRuntimes: WindowsManagedRuntimePolicy.Create(NginxRoot, RuntimePrivateRoot, RuntimeArchiveRoots, [ServerServiceSid], FrpReleases));
+            WindowsRuntimes: WindowsManagedRuntimePolicy.Create(NginxRoot, RuntimePrivateRoot, RuntimeArchiveRoots, [ServerServiceSid], FrpReleases),
+            PersonalOwnerSid: PersonalOwnerSid);
 
     public void VerifyCurrentExecutable()
     {

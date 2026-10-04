@@ -46,7 +46,7 @@ public partial class TerminalViewModel : LocalizedObservableObject
     public bool IsAdministrator { get; }
     public bool CanOpenAdministratorTerminal => _sshDesktop?.IsConnected != true
         && _session?.CurrentServer is { Platform: RelaxKonOS.Protocol.Common.HostPlatformKind.Windows,
-            Host.Mode: RelaxKonOS.Protocol.Common.ServerMode.System };
+            Host.Capabilities.PrivilegedOperations: true };
 
     public TerminalViewModel(
         IAuthSession? session,

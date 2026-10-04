@@ -45,7 +45,6 @@ public sealed class LocalWindowsServerInstaller(
         if (kind is not (ServerDeploymentKind.Repair or ServerDeploymentKind.Rollback or ServerDeploymentKind.Uninstall) ||
             !confirmed || !reviewed.Installed || reviewed.Mode != Mode ||
             !ServerInstallationId.IsValid(reviewed.InstallationId) || !Enum.IsDefined(retention) ||
-            Mode == ServerInstallMode.WindowsUser && repairFirewall ||
             retention == ServerDataRetention.Delete && kind != ServerDeploymentKind.Uninstall ||
             kind != ServerDeploymentKind.Repair && (regenerateSelfSignedCertificate || repairFirewall) ||
             regenerateSelfSignedCertificate && string.IsNullOrWhiteSpace(selfSignedIdentities))
@@ -105,9 +104,9 @@ public sealed class LocalWindowsServerInstaller(
             throw new ArgumentException("Local installation requires a Windows mode and a local or HTTPS source.");
 
         Mode = installation.Mode!.Value;
-        if (Mode == ServerInstallMode.WindowsUser && (installation.AddFirewallRule ||
+        if (Mode == ServerInstallMode.WindowsUser && (
             !string.IsNullOrWhiteSpace(installation.InstallRoot) || !string.IsNullOrWhiteSpace(installation.DataRoot)))
-            throw new ArgumentException("Personal installation uses fixed per-user directories and cannot change the firewall.");
+            throw new ArgumentException("Personal installation uses fixed per-user directories.");
         // Read the user's files before elevation, including when UAC uses a different administrator account.
         await using var archive = installation.Source == ServerPackageSourceKind.LocalBundle
             ? File.OpenRead(installation.LocalBundlePath ?? throw new ArgumentException("A ZIP is required.")) : null;

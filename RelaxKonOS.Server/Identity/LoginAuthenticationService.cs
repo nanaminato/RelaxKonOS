@@ -68,7 +68,7 @@ public sealed class LoginAuthenticationService(IIdentityProvider identities, IUs
         var current = users.FindById(login.User.Id);
         var policy = credentials.Find(login.User.Id);
         if (current is null || current.IdentityReviewRequired || current.SecurityVersion != login.SecurityVersion
-            || (policy?.Revision ?? 0) != login.Revision
+            || login.Method != "owner-device-key" && (policy?.Revision ?? 0) != login.Revision
             || (serverMode.Mode != ServerMode.User
                 && login.Method == "system"
                 && policy?.SystemLoginEnabled == false))
@@ -84,13 +84,14 @@ public sealed class LoginAuthenticationService(IIdentityProvider identities, IUs
     {
         if (!OperatingSystem.IsWindows() || !WindowsWorkstationPlatform.IsWindows10Or11Workstation())
             throw new AliasAuthenticationException(404, "owner-device-unsupported-platform");
-        if (principal.Identity is not WindowsIdentity windowsIdentity
-            || !WindowsAdministratorMembership.IsAdministratorOrCanElevate(windowsIdentity))
-            throw new AliasAuthenticationException(403, "owner-device-local-administrator-required");
+        if (principal.Identity is not WindowsIdentity windowsIdentity)
+            throw Invalid();
         var sid = windowsIdentity.User?.Value;
         if (string.IsNullOrWhiteSpace(sid)) throw Invalid();
         var serverSid = RelaxKonOS.Server.UserExecution.ServerProcessIdentity.CurrentStableIdentity();
-        if (!WindowsOwnerBootstrapPolicy.AllowsAccount(sid, serverSid, serverMode.Mode))
+        var administrator = serverMode.Mode == ServerMode.User || WindowsAdministratorMembership.IsAdministratorOrCanElevate(windowsIdentity);
+        if (!administrator) throw new AliasAuthenticationException(403, "owner-device-local-administrator-required");
+        if (!WindowsOwnerBootstrapPolicy.AllowsBootstrap(sid, serverSid, serverMode.Mode, administrator))
             throw new AliasAuthenticationException(403, "owner-device-windows-session-account-required");
         var lookup = identities.LookupIdentity(sid);
         if (lookup.Status == IdentityLookupStatus.Unavailable) throw Unavailable("owner-device-identity-lookup");
@@ -101,7 +102,7 @@ public sealed class LoginAuthenticationService(IIdentityProvider identities, IUs
     }
 
     /// <summary>User Mode has exactly one login identity: the effective Unix account running
-    /// this Server.  Do not inspect aliases or the per-user system-login toggle here: either
+    /// this Server (the current Windows account in personal mode). Do not inspect aliases or the per-user system-login toggle here: either
     /// could make a second local credential authority part of this deployment.</summary>
     private async Task<AuthenticatedLogin> AuthenticateUserModeAsync(string identifier, string password, IPAddress? ip, CancellationToken ct)
     {

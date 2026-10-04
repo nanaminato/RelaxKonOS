@@ -26,6 +26,7 @@ param(
     [ValidateSet('restricted', 'full', 'whitelist')]
     [string] $FileAccess = 'restricted',
     [string] $FileRootsFile,
+    [switch] $AddFirewallRule,
     # The caller's view of the managed installation. When present it must match the host, so a
     # stale client cannot upgrade, repair or roll back a different installation instance.
     [string] $ExpectedInstallationId,
@@ -249,7 +250,7 @@ function Get-InstalledEnginePath([string] $RelativePath) {
 
 function Invoke-ServicesInstaller([string] $Version, [string] $ListenUrl) {
     if ($Mode -eq 'windowsUser') {
-        & (Get-InstalledEnginePath 'deployment\windows\Install-RelaxKonOSPersonal.ps1') -InstallRoot $InstallRoot -DataRoot $DataRoot -Version $Version -ListenUrl $ListenUrl -CertificateMode $CertificateMode -CertificatePath $CertificatePath -CertificatePassword $CertificatePassword -SelfSignedIdentities $SelfSignedIdentities
+        & (Get-InstalledEnginePath 'deployment\windows\Install-RelaxKonOSPersonal.ps1') -InstallRoot $InstallRoot -DataRoot $DataRoot -Version $Version -ListenUrl $ListenUrl -CertificateMode $CertificateMode -CertificatePath $CertificatePath -CertificatePassword $CertificatePassword -SelfSignedIdentities $SelfSignedIdentities -FileAccess $FileAccess -FileRootsFile $FileRootsFile -AddFirewallRule:$AddFirewallRule
         return
     }
     $engine = Get-InstalledEnginePath 'deployment\windows\Install-RelaxKonOSServices.ps1'

@@ -51,8 +51,10 @@ public sealed class ServerModeResolver : IServerModeResolver
             if (System.Security.Principal.WindowsIdentity.GetCurrent().Owner?.IsWellKnown(
                 System.Security.Principal.WellKnownSidType.BuiltinAdministratorsSid) == true)
                 throw new InvalidOperationException("Windows personal mode must run without elevation.");
-            if (!string.Equals(configuration["Privileges:Backend"]?.Trim(), "disabled", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("Personal Mode requires Privileges:Backend=disabled.");
+            if (!string.Equals(configuration["Privileges:Backend"]?.Trim(), "helper", StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(configuration["Personal:OwnerSid"], ServerProcessIdentity.CurrentStableIdentity(), StringComparison.OrdinalIgnoreCase)
+                || string.IsNullOrWhiteSpace(configuration["PrivilegedHelper:SharedSecret"]))
+                throw new InvalidOperationException("Personal Mode requires an owner-bound privileged helper installation.");
             return;
         }
         if (!OperatingSystem.IsLinux())
@@ -72,7 +74,7 @@ public sealed class ServerModeResolver : IServerModeResolver
 
     public bool Supports(ServerHostFeature feature) => Mode != ServerMode.User || feature switch
     {
-        ServerHostFeature.Docker when OperatingSystem.IsWindows() => true,
+        _ when OperatingSystem.IsWindows() => true,
         // Containerised deployment composes the Docker engine, so it inherits the Docker boundary:
         // a no-sudo User Mode host cannot reach the engine and must not be offered the feature.
         ServerHostFeature.Docker or ServerHostFeature.ApplicationDeployments or ServerHostFeature.Firewall or
@@ -85,14 +87,15 @@ public sealed class ServerModeResolver : IServerModeResolver
     public ServerCapabilitiesDto Describe()
     {
         var user = Mode == ServerMode.User;
+        var privileged = Supports(ServerHostFeature.PrivilegedOperations);
         var capabilities = new ServerHostCapabilitiesDto(
             Files: true, Terminal: true, Git: true, Metrics: true, Processes: true, Guardian: !user || !OperatingSystem.IsWindows(),
-            Docker: !user || OperatingSystem.IsWindows(), Firewall: !user, FileServices: !user, WebServer: !user, Certificates: !user,
-            Tunnels: !user, Proxy: !user, PrivilegedOperations: !user, ApplicationDeployments: !user);
+            Docker: Supports(ServerHostFeature.Docker), Firewall: privileged, FileServices: privileged, WebServer: privileged, Certificates: privileged,
+            Tunnels: privileged, Proxy: privileged, PrivilegedOperations: privileged, ApplicationDeployments: Supports(ServerHostFeature.ApplicationDeployments));
         var limitations = new List<string>();
         if (user)
             limitations.AddRange(OperatingSystem.IsWindows()
-                ? ["privileged-feature-unavailable", "guardian.cross_user_unavailable"]
+                ? ["guardian.cross_user_unavailable"]
                 : ["privileged-feature-unavailable", "root-equivalent-docker-access", "guardian.cross_user_unavailable"]);
         if (!user && _userExecutionBackend == UserExecutionBackend.LocalIdentity)
             limitations.Add("user-execution-local-identity");

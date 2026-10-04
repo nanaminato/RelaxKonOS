@@ -88,6 +88,8 @@ if ($Mode -eq 'windowsUser') {
     foreach ($root in @($InstallRoot, $DataRoot)) { if (-not [IO.Path]::GetFullPath($root).StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe personal root.' } }
     if (-not $state -or $state.mode -ne 'windowsUser') { throw 'No recognized personal installation.' }
     . (Join-Path $InstallRoot 'deployment\windows\RelaxKonOSPersonalRuntime.ps1')
+    . (Join-Path $InstallRoot 'deployment\windows\RelaxKonOSPersonalPrivileges.ps1')
+    Set-PersonalPrivileges $InstallRoot $DataRoot ([string]$state.version) -Action 'uninstall'
     Stop-PersonalServer $InstallRoot $DataRoot
     Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'RelaxKonOSPersonal' -ErrorAction SilentlyContinue
 }

@@ -1,5 +1,6 @@
 if (args.Contains("--windows-personal-mode-only"))
 {
+    WindowsPersonalAuthorizationChecks.Run();
     WindowsPersonalModeChecks.Run();
     return;
 }
@@ -310,6 +311,7 @@ var root = Path.Combine(Path.GetTempPath(), $"relaxkonos-server-tests-{Guid.NewG
 Directory.CreateDirectory(root);
 try
 {
+    if (args.Contains("--alias-only")) { await AliasLoginVerification.RunAsync(root); return; }
     if (args.Contains("--windows-privileges-only")) { await WindowsPrivilegeChecks.RunAsync(root); return; }
     // The focused settings suite must run before unrelated certificate/host checks.
     if (args.Contains("--settings-only", StringComparer.Ordinal))
@@ -378,7 +380,6 @@ try
     // suite so a routing regression can run in constrained environments where opening a loopback
     // listener is deliberately disallowed.
     if (args.Contains("--host-file-routing-only")) { HostFileRoutingChecks.Run(); return; }
-    if (args.Contains("--alias-only")) { await AliasLoginVerification.RunAsync(root); return; }
     var fileOperationsOnly = args.Contains("--file-operations-only", StringComparer.Ordinal);
     if (fileOperationsOnly)
     {

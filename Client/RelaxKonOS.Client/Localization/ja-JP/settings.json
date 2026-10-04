@@ -76,6 +76,8 @@
         "settings.server": "サーバー",
         "settings.server_mode": "サーバー モード",
         "settings.server_mode.user": "現在の Linux ユーザー モード",
+        "settings.server_mode.windows_personal": "Windows 個人モード",
+        "settings.server_mode.windows_personal_hint": "このインストールは現在の Windows アカウントに属します。デバイスキーでサインインし、到達可能な LAN アドレスで他の端末をペアリングしてください。",
         "settings.server_mode.system": "システム モード",
         "settings.server_mode.user_hint": "このサーバーは現在の Linux アカウントとループバックに限定されます。リモート接続には SSH ローカル ポートフォワーディングを使用してください。",
         "settings.execution_identity": "実行 ID",

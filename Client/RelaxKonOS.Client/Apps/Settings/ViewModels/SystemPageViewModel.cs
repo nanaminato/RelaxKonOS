@@ -44,6 +44,8 @@ public sealed partial class SystemPageViewModel : SettingsPageViewModel
     };
     public string ServerMode => _session.CurrentServer?.Host?.Mode switch
     {
+        RelaxKonOS.Protocol.Common.ServerMode.User when _session.CurrentServer?.Platform == HostPlatformKind.Windows
+            => T("settings.server_mode.windows_personal", "Windows personal mode"),
         RelaxKonOS.Protocol.Common.ServerMode.User => T("settings.server_mode.user", "Current Linux user mode"),
         RelaxKonOS.Protocol.Common.ServerMode.System => T("settings.server_mode.system", "System mode"),
         _ => "—",
@@ -53,7 +55,9 @@ public sealed partial class SystemPageViewModel : SettingsPageViewModel
         : "—";
     public string ListenerScope => _session.CurrentServer?.Host?.Listener.Scope ?? "—";
     public string ConnectionGuidance => _session.CurrentServer?.Host?.Mode == RelaxKonOS.Protocol.Common.ServerMode.User
-        ? T("settings.server_mode.user_hint", "This server is limited to the current Linux account and loopback. Connect remotely through SSH local forwarding.")
+        ? _session.CurrentServer.Platform == HostPlatformKind.Windows
+            ? T("settings.server_mode.windows_personal_hint", "This installation belongs to the current Windows account. Pair other devices from an owner-device session using a reachable LAN address.")
+            : T("settings.server_mode.user_hint", "This server is limited to the current Linux account and loopback. Connect remotely through SSH local forwarding.")
         : "";
     public string WorkspaceName => _session.CurrentWorkspace?.Name ?? "—";
     public string DeviceName => _session.CurrentDevice?.Name ?? "—";

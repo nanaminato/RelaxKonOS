@@ -24,7 +24,7 @@ public sealed class HostElevationSessionStore(IHostAccountPrivilegeService privi
 
     public bool IsGranted(ClaimsPrincipal principal, HostElevationCapability capability, string target)
     {
-        if (mode.Mode != RelaxKonOS.Protocol.Common.ServerMode.System || !Enum.IsDefined(capability)) return false;
+        if (!mode.Supports(RelaxKonOS.Server.HostMode.ServerHostFeature.PrivilegedOperations) || !Enum.IsDefined(capability)) return false;
         PruneExpired();
         if (!TryIdentity(principal, out var tokenId, out var subject)) return false;
         var canonical = CanonicalTarget(capability, target);
@@ -43,7 +43,7 @@ public sealed class HostElevationSessionStore(IHostAccountPrivilegeService privi
     public DateTimeOffset Grant(ClaimsPrincipal principal, HostElevationCapability capability, string target,
         bool includeDescendants, string authenticationMethod, string? correlationId = null)
     {
-        if (mode.Mode != RelaxKonOS.Protocol.Common.ServerMode.System)
+        if (!mode.Supports(RelaxKonOS.Server.HostMode.ServerHostFeature.PrivilegedOperations))
             throw new InvalidOperationException("User Mode does not provide host elevation grants.");
         if (!TryIdentity(principal, out var tokenId, out var subject))
             throw new InvalidOperationException("The access token has no id or subject.");

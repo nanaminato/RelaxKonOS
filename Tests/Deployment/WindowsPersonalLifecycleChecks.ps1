@@ -1,24 +1,28 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][string] $PackageDirectory)
+param([Parameter(Mandatory)][string] $PackageDirectory, [switch] $ConfirmMachineChanges)
 $ErrorActionPreference = 'Stop'
+if (-not $ConfirmMachineChanges) { throw 'This Windows 10/11 acceptance test installs a real personal Helper through UAC. Run on a disposable account with -ConfirmMachineChanges.' }
+if ((Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\ProductOptions').ProductType -ne 'WinNT') { throw 'This acceptance test requires Windows 10/11.' }
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $testRoot = Join-Path $repository ('.artifacts\personal-check-' + [guid]::NewGuid().ToString('N'))
-$originalLocalAppData = $env:LOCALAPPDATA
-$env:LOCALAPPDATA = $testRoot
 New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
-$InstallRoot = Join-Path $testRoot 'RelaxKonOS-Personal\program'
-$DataRoot = Join-Path $testRoot 'RelaxKonOS-Personal\data'
+$InstallRoot = Join-Path $env:LOCALAPPDATA 'RelaxKonOS-Personal\program'
+$DataRoot = Join-Path $env:LOCALAPPDATA 'RelaxKonOS-Personal\data'
+$sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$helperService = 'RelaxKonOSPersonalHelper-' + $sid
+if ((Test-Path -LiteralPath $InstallRoot) -or (Test-Path -LiteralPath $DataRoot) -or
+    (Get-Service -Name $helperService -ErrorAction SilentlyContinue) -or
+    (Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'RelaxKonOSPersonal' -ErrorAction SilentlyContinue)) { throw 'Use a fresh account: this test refuses to replace an existing personal installation or startup entry.' }
 $bootstrap = Join-Path $repository 'deployment\bootstrap\Install-RelaxKonOS.ps1'
-# Exercise real process lifecycle but never alter the user's startup entries.
-$startupEvents = @{}
-function New-ItemProperty { $startupEvents.registered = $true }
-function Remove-ItemProperty { $startupEvents.removed = $true }
+# Exercise the actual per-user startup and protected Helper lifecycle; no UAC boundary is mocked.
 $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
 $listener.Start(); $port = $listener.LocalEndpoint.Port; $listener.Stop()
 try {
     & $bootstrap -NonInteractive -Mode windowsUser -BundlePath $PackageDirectory -ServerPort $port
     $state = Get-Content -LiteralPath (Join-Path $DataRoot 'install-state.json') -Raw | ConvertFrom-Json
-    if ($state.mode -ne 'windowsUser' -or $state.installationId -notmatch '^rki-[0-9a-f]{32}$' -or -not $startupEvents.registered) { throw 'Personal installation identity/startup missing.' }
+    if ($state.mode -ne 'windowsUser' -or $state.installationId -notmatch '^rki-[0-9a-f]{32}$' -or
+        -not (Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'RelaxKonOSPersonal' -ErrorAction SilentlyContinue) -or
+        (Get-Service -Name $helperService).Status -ne 'Running') { throw 'Personal installation identity/startup/Helper missing.' }
     if ((Invoke-RestMethod "http://127.0.0.1:$port/healthz").status -ne 'healthy') { throw 'Personal runtime unhealthy.' }
     & $bootstrap -NonInteractive -Mode windowsUser -Action repair -ExpectedInstallationId $state.installationId
     $after = Get-Content -LiteralPath (Join-Path $DataRoot 'install-state.json') -Raw | ConvertFrom-Json
@@ -43,13 +47,13 @@ try {
     Start-PersonalServer $InstallRoot $DataRoot
     & (Join-Path $repository 'deployment\bootstrap\Uninstall-RelaxKonOS.ps1') -NonInteractive -Mode windowsUser -InstallRoot $InstallRoot -DataRoot $DataRoot -ExpectedInstallationId $state.installationId
     $retained = Get-Content -LiteralPath (Join-Path $DataRoot 'install-state.json') -Raw | ConvertFrom-Json
-    if ($retained.installed -or (Test-Path -LiteralPath $InstallRoot) -or -not $startupEvents.removed) { throw 'Personal uninstall incomplete.' }
+    if ($retained.installed -or (Test-Path -LiteralPath $InstallRoot) -or (Get-Service -Name $helperService -ErrorAction SilentlyContinue) -or
+        (Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'RelaxKonOSPersonal' -ErrorAction SilentlyContinue)) { throw 'Personal uninstall incomplete.' }
     Write-Output 'PASS: Real personal install, health, repair, first TLS upgrade, rollback, restart, uninstall, stable identity/JWT and retained-data access.'
 } finally {
     if (Test-Path -LiteralPath (Join-Path $DataRoot 'runtime.json')) {
         . (Join-Path $repository 'deployment\windows\RelaxKonOSPersonalRuntime.ps1')
         Stop-PersonalServer $InstallRoot $DataRoot
     }
-    $env:LOCALAPPDATA = $originalLocalAppData
     # Keep the isolated test tree for diagnosis; no recursive cleanup of user data.
 }

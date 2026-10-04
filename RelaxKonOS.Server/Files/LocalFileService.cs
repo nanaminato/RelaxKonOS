@@ -42,7 +42,7 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
 
     public IReadOnlyList<DriveDto> GetDrives()
     {
-        if (mode.Mode == ServerMode.User)
+        if (mode.Mode == ServerMode.User && !OperatingSystem.IsWindows())
         {
             var home = UserRoot;
             var root = new DriveInfo(Path.GetPathRoot(home)!);
@@ -578,7 +578,7 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
 
     private void EnsureUserModePath(string path)
     {
-        if (mode.Mode != ServerMode.User) return;
+        if (mode.Mode != ServerMode.User || OperatingSystem.IsWindows()) return;
         if (string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path))
             throw new UnauthorizedAccessException("User Mode requires an absolute path below the current home directory.");
         var root = UserRoot;

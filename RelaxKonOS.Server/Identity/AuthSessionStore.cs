@@ -32,6 +32,14 @@ public sealed class AuthSessionStore
     }
 
     public event Action<Guid>? UserRevoked;
+    public event Action<Guid, Guid>? DeviceRevoked;
+    public void RevokeDevice(Guid userId, Guid deviceId)
+    {
+        foreach (var entry in _refresh)
+            if (entry.Value.UserId == userId && entry.Value.DeviceId == deviceId && entry.Value.AuthenticationMethod == "owner-device-key")
+                _refresh.TryRemove(entry.Key, out _);
+        DeviceRevoked?.Invoke(userId, deviceId);
+    }
     public void RevokeUser(Guid userId)
     {
         foreach (var entry in _refresh)

@@ -114,10 +114,10 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     [ObservableProperty] private bool _allowUnsupportedSystem;
     public bool IsOfficialSource => SelectedSource?.Source == ServerPackageSourceKind.OfficialStable;
     public bool IsDirectUrl => SelectedSource?.Source == ServerPackageSourceKind.DirectUrl;
-    public bool IsSystemMode => SelectedMode?.Mode is not (ServerInstallMode.LinuxUser or ServerInstallMode.WindowsUser);
+    public bool IsSystemMode => SelectedMode?.Mode != ServerInstallMode.LinuxUser;
     public bool IsWindowsUserMode => SelectedMode?.Mode == ServerInstallMode.WindowsUser;
     public bool CanEditDataRoot => !IsWindowsUserMode;
-    public string PersonalModeHint => Text("server_center.wizard.windows_personal_hint", "Runs as your current Windows account, starts at sign-in and stops at sign-out. Docker uses your account permissions. Separate program and data in LocalAppData; privileged host operations are unavailable.");
+    public string PersonalModeHint => Text("server_center.wizard.windows_personal_hint", "Your account owns this installation and is its RelaxKonOS administrator. Installation and maintenance request UAC; daily operations use an owner-bound privileged helper. Administrator terminals run as LocalSystem. Paired devices share this identity.");
     public bool IsUserMode => SelectedMode?.Mode == ServerInstallMode.LinuxUser;
     public bool IsLinuxSystemMode => SelectedMode?.Mode == ServerInstallMode.LinuxSystem;
     public bool IsLinuxHost => _serverCenter.SelectedPlatform?.Platform == HostPlatformKind.Linux;

@@ -34,7 +34,7 @@
 
 | 你是 | 建议的入手方式 |
 | --- | --- |
-| Windows 10/11 个人用户 | 在自己的电脑上用**系统模式**安装 Server，再在同一台电脑运行 Client；见[个人电脑使用指南](./deployment/WindowsPersonalComputer.md) |
+| Windows 10/11 个人用户 | 在自己的电脑上用**个人模式**安装 Server，当前账户成为 RelaxKonOS 管理员；本机授权后可配对其他设备，见[个人电脑使用指南](./deployment/WindowsPersonalComputer.md) |
 | Linux 个人用户 / 自建服务器爱好者 | 用**用户模式**在已有的普通 Linux 账号下装一份服务端（**不需要 sudo**），再在自己的电脑上运行客户端 |
 | 运维 / 系统管理员 | 用**系统模式**把 Server、Guardian Agent 与权限助手注册为系统服务，面向多用户生产环境 |
 | 应用开发者 | 用**开发者模式**与 `DevCli` 把自定义应用打包成 `.roapp` 装进同一个桌面 |

@@ -114,6 +114,13 @@ internal sealed class WindowsUserExecutionPipeServer(WindowsHelperPipeConfigurat
                 "invalid user-execution request"), cancellationToken);
             return;
         }
+        if (configuration.PersonalOwnerSid is { } ownerSid
+            && (!terminal || !request.TerminalAdministrator || request.Identity.StableIdentity != ownerSid))
+        {
+            await WriteResultAsync(pipe, secret, Fail(UserExecutionProblemCode.IdentityNotExecutable,
+                "Personal Helper only accepts administrator terminals for its owner."), cancellationToken);
+            return;
+        }
         // Correlation metadata is required, exactly as on the elevated pipe: a request that cannot
         // be correlated must not start work whose audit trail cannot be joined up.
         if (request.Correlation is not { } correlation || !correlation.IsValid())
@@ -141,7 +148,7 @@ internal sealed class WindowsUserExecutionPipeServer(WindowsHelperPipeConfigurat
         if (terminal)
         {
             await WindowsUserTerminal.RunAsync(request, pipe,
-                result => WriteResultAsync(pipe, secret, result, cancellationToken), cancellationToken);
+                result => WriteResultAsync(pipe, secret, result, cancellationToken), cancellationToken, configuration.PersonalOwnerSid);
             return;
         }
 

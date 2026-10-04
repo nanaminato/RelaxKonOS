@@ -143,7 +143,15 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
         {
             var validation = new DirectUserExecutionService(mode).Validate(context, request);
             Throw(validation);
-            return await DirectAsync<T>(request, cancellation.Token);
+            try { return await DirectAsync<T>(request, cancellation.Token); }
+            catch (UnauthorizedAccessException) when (OperatingSystem.IsWindows()
+                && operation is not (UserExecutionOperationKind.FileWriteIfMatch or UserExecutionOperationKind.FileReadText))
+            {
+                var source = authorizations.Authorize(principal, Capability(operation), TargetPaths(operation, path, destinationPath, newName));
+                if (source is not { } granted) throw;
+                return await RunPrivilegedAsync<T>(granted, operation, path, destinationPath,
+                    newName, fileName, overwrite, content, unixMode, offset, expectedBytes, recursive);
+            }
         }
         var result = await transport.ExecuteAsync(request, cancellation.Token);
         if (operation is not (UserExecutionOperationKind.FileWriteIfMatch or UserExecutionOperationKind.FileReadText)

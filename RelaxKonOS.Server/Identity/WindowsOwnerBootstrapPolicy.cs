@@ -2,9 +2,11 @@ using RelaxKonOS.Protocol.Common;
 
 namespace RelaxKonOS.Server.Identity;
 
-/// <summary>Account scope after loopback Negotiate and administrator verification have succeeded.</summary>
+/// <summary>Account scope after loopback Negotiate; System Mode additionally requires a Windows administrator.</summary>
 internal static class WindowsOwnerBootstrapPolicy
 {
+    public static bool AllowsBootstrap(string? callerSid, string? serverSid, ServerMode mode, bool administrator)
+        => (mode == ServerMode.User || administrator) && AllowsAccount(callerSid, serverSid, mode);
     public static bool AllowsAccount(string? callerSid, string? serverSid, ServerMode mode)
     {
         if (string.IsNullOrWhiteSpace(callerSid) || string.IsNullOrWhiteSpace(serverSid) || IsServiceIdentity(callerSid))

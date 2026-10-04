@@ -179,4 +179,4 @@ internal sealed class WindowsPrivilegedPipeServer(WindowsHelperPipeConfiguration
 internal sealed record WindowsHelperPipeConfiguration(string PipeName, string SharedSecret,
     IReadOnlyList<string> FileAllowedRoots, IReadOnlyList<string> AllowedServiceIds,
     string? ServerServiceSid = null, IReadOnlyList<string>? DeveloperUserSids = null,
-    int UserExecutionTimeoutSeconds = 25, WindowsManagedRuntimePolicy? WindowsRuntimes = null);
+    int UserExecutionTimeoutSeconds = 25, WindowsManagedRuntimePolicy? WindowsRuntimes = null, string? PersonalOwnerSid = null);

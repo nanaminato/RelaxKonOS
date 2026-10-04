@@ -30,7 +30,7 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
         // background work must never fall back to the Server service account later.
         UserExecutionContext? executionContext = null;
         var rootExecution = false;
-        if (mode.Mode == ServerMode.System)
+        if (mode.Mode == ServerMode.System || OperatingSystem.IsWindows())
         {
             // A file job outlives the request. Resolve the identity in a short-lived scope and
             // retain only the immutable execution context, never the scoped resolver itself.
@@ -393,6 +393,19 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
                     ? PrivilegedFileAuthorizationSource.HostRoot : throw new UnauthorizedAccessException("Root session is no longer authorized."),
                 operation, path, destinationPath, overwrite, cancellationToken);
         var context = job.ExecutionContext ?? throw new InvalidOperationException("A user-execution context is required.");
+        if (mode.Mode == ServerMode.User && OperatingSystem.IsWindows())
+        {
+            var request = new UserExecutionRequest(context.Identity, operation, Path: path,
+                DestinationPath: destinationPath, Overwrite: overwrite, OperationId: Guid.NewGuid());
+            if (!new DirectUserExecutionService(mode).Validate(context, request).Success)
+                throw new UnauthorizedAccessException("Personal execution identity changed.");
+            try { return (T)(await DirectUserExecutionOperations.ExecuteAsync(new LocalFileService(mode), request, cancellationToken))!; }
+            catch (UnauthorizedAccessException)
+            {
+                if (TryAuthorize(job, path!, destinationPath, Capability(operation)) is not { } personalAuthorization) throw;
+                return await ExecutePrivilegedOperationAsync<T>(personalAuthorization, operation, path, destinationPath, overwrite, cancellationToken);
+            }
+        }
         var response = await executionTransport.ExecuteAsync(new UserExecutionRequest(context.Identity, operation,
             Path: path, DestinationPath: destinationPath, Overwrite: overwrite, OperationId: Guid.NewGuid()), cancellationToken);
         if (!response.Success && response.ProblemCode == UserExecutionProblemCode.AccessDenied

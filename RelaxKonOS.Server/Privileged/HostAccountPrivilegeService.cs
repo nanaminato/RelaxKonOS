@@ -23,6 +23,9 @@ public sealed class HostAccountPrivilegeService(IPrivilegedOperationTransport he
     public HostAccountPrivilege Classify(ClaimsPrincipal principal)
     {
         var identity = ResolveCurrentIdentity(principal);
+        if (mode.Mode == ServerMode.User && OperatingSystem.IsWindows()
+            && principal.FindFirst("amr")?.Value is "system" or "owner-device-key")
+            return Classify(identity);
         // An alias password is not PAM authentication of the host administrator. It can still
         // obtain an exact, short-lived grant by presenting administrator credentials explicitly.
         if (principal.FindFirst("amr")?.Value != "system") return HostAccountPrivilege.StandardUser;
@@ -48,6 +51,10 @@ public sealed class HostAccountPrivilegeService(IPrivilegedOperationTransport he
 
     public HostAccountPrivilege Classify(PlatformUserInfo identity)
     {
+        if (mode.Mode == ServerMode.User && OperatingSystem.IsWindows()
+            && identity.Platform == HostPlatformKind.Windows
+            && identity.Uid == RelaxKonOS.Server.UserExecution.ServerProcessIdentity.CurrentStableIdentity())
+            return HostAccountPrivilege.HostAdministrator;
         if (mode.Mode != ServerMode.System)
             return HostAccountPrivilege.StandardUser;
         if (identity.Platform == HostPlatformKind.Windows && OperatingSystem.IsWindows())

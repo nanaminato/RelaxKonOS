@@ -16,6 +16,12 @@ internal static class WindowsMihomoPrivilegedProcessHost
     private static readonly SemaphoreSlim Gate = new(1, 1);
     private static Process? _process;
     private static bool _shouldRun;
+    private static string? _personalRoot;
+    internal static void ConfigurePersonalRoot(string root)
+    {
+        if (_personalRoot is not null) throw new InvalidOperationException("Personal proxy root is already configured.");
+        _personalRoot = Path.GetFullPath(root);
+    }
 
     public static Task<PrivilegedOperationResult> InstallAsync() => Task.FromResult(Success());
 
@@ -170,7 +176,7 @@ internal static class WindowsMihomoPrivilegedProcessHost
         catch (UnauthorizedAccessException) { return null; }
     }
 
-    private static string ProxyRoot() => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "RelaxKonOS", "Proxy");
+    private static string ProxyRoot() => _personalRoot ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "RelaxKonOS", "Proxy");
     private static PrivilegedOperationResult Success() => new(true);
     private static PrivilegedOperationResult Invalid() => new(false, 64, Error: "invalid proxy service action", ProblemCode: PrivilegedProblemCode.InvalidRequest);
     private static PrivilegedOperationResult NotFound(string error) => new(false, 2, Error: error, ProblemCode: PrivilegedProblemCode.NotFound);

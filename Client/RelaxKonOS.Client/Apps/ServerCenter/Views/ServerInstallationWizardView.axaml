@@ -66,7 +66,7 @@
                     <TextBlock Text="{Binding ServerPortLabel}" /><TextBox Text="{Binding ServerPortText, Mode=TwoWay}" />
                     <TextBlock Text="{Binding DataRootLabel}" /><TextBox Text="{Binding DataRoot, Mode=TwoWay}" IsEnabled="{Binding CanEditDataRoot}" />
                     <StackPanel IsVisible="{Binding IsSystemMode}" Spacing="8">
-                        <TextBlock Text="{Binding InstallRootLabel}" /><TextBox Text="{Binding InstallRoot, Mode=TwoWay}" />
+                        <TextBlock Text="{Binding InstallRootLabel}" /><TextBox Text="{Binding InstallRoot, Mode=TwoWay}" IsEnabled="{Binding CanEditDataRoot}" />
                         <TextBox IsVisible="{Binding IsFileWhitelist}" PlaceholderText="{Binding FileRootsLabel}" Text="{Binding FileRoots, Mode=TwoWay}" AcceptsReturn="True" MinHeight="80" />
                     </StackPanel>
                     <StackPanel IsVisible="{Binding IsUserMode}" Spacing="8">

@@ -18,7 +18,7 @@ public static class PrivilegedEndpoints
             RelaxKonOS.Server.Settings.IHostEnvironmentService environment, OwnerDeviceKeyService ownerDevices,
             RelaxKonOS.Server.HostMode.IServerModeResolver mode) =>
         {
-            if (mode.Mode != RelaxKonOS.Protocol.Common.ServerMode.System)
+            if (!mode.Supports(RelaxKonOS.Server.HostMode.ServerHostFeature.PrivilegedOperations))
                 return Problem(403, "privileged-feature-unavailable", "当前部署不提供特权操作。");
             if (!Enum.IsDefined(request.Capability)) return Problem(400, "elevation-capability-invalid", "授权能力无效。");
             if (request.Capability is >= HostElevationCapability.FileRead and <= HostElevationCapability.FileUpload)

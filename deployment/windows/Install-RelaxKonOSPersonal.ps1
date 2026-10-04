@@ -5,10 +5,13 @@ param(
     [Parameter(Mandatory)][string] $Version,
     [Parameter(Mandatory)][string] $ListenUrl,
     [ValidateSet('none', 'custom', 'self-signed')][string] $CertificateMode = 'none',
-    [string] $CertificatePath, [string] $CertificatePassword, [string] $SelfSignedIdentities
+    [string] $CertificatePath, [string] $CertificatePassword, [string] $SelfSignedIdentities,
+    [ValidateSet('restricted', 'full', 'whitelist')][string] $FileAccess = 'restricted',
+    [string] $FileRootsFile, [switch] $AddFirewallRule
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'RelaxKonOSPersonalRuntime.ps1')
+. (Join-Path $PSScriptRoot 'RelaxKonOSPersonalPrivileges.ps1')
 $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
 if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Personal installation must run without elevation.' }
 $build = [int](Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').CurrentBuildNumber
@@ -32,15 +35,18 @@ if (Test-Path -LiteralPath $dataLink) {
         [IO.Path]::GetFullPath([string]$link.Target) -ne [IO.Path]::GetFullPath($serverData)) { throw 'Unexpected personal data directory.' }
 } else { New-Item -ItemType Junction -Path $dataLink -Target $serverData | Out-Null }
 $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-& icacls $DataRoot /inheritance:r /grant:r ("*$sid" + ':(OI)(CI)F') '*S-1-5-18:(OI)(CI)F' | Out-Null
+& icacls $DataRoot /inheritance:r /grant:r ("*$sid" + ':(OI)(CI)F') '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Unable to protect personal data.' }
+$helper = Set-PersonalPrivileges $InstallRoot $DataRoot $Version -FileAccess $FileAccess -FileRootsFile $FileRootsFile -ListenUrl $ListenUrl -AddFirewallRule ([bool]$AddFirewallRule)
 $config = [ordered]@{
     Server = @{ Mode = 'user' }
-    Privileges = @{ Backend = 'disabled' }
-    PrivilegedHelper = @{ UserExecutionBackend = 'disabled' }
+    Personal = @{ OwnerSid = $sid }
+    Privileges = @{ Backend = 'helper' }
+    PrivilegedHelper = @{ UserExecutionBackend = 'disabled'; PipeName = $helper.pipeName; SharedSecret = $helper.sharedSecret }
     Jwt = @{ Secret = $jwt }
     Storage = @{ DatabasePath = (Join-Path $serverData 'relaxkonos.db') }
     DockerCompose = @{ DataDirectory = (Join-Path $DataRoot 'compose') }
+    NginxManaged = @{ InstallationRoot = $helper.nginxRoot }
     Observability = @{ LogDirectory = (Join-Path $DataRoot 'logs'); AuditDatabasePath = (Join-Path $serverData 'security-audit.db') }
 }
 if ($settings -and $settings.PSObject.Properties['Observability']) {

@@ -1,6 +1,6 @@
 # RelaxKonOS 部署引擎与维护者指南
 
-Windows 10/11 个人电脑可同时运行 Server 与 Client，具体步骤见[个人电脑使用指南](./WindowsPersonalComputer.md)。Windows 桌面登录页提供「安装到这台电脑」入口，通过 UAC 复用系统模式部署引擎，本机首次安装无需 SSH。
+Windows 10/11 个人电脑可同时运行 Server 与 Client，具体步骤见[个人电脑使用指南](./WindowsPersonalComputer.md)。Windows 桌面登录页的本机管理入口默认个人模式，也可选择系统模式。个人模式在原用户会话中运行部署引擎，安装和维护通过 UAC 配置独立的特权助手；日常使用无需 UAC，本机首次授权和网络设备配对无需 SSH。
 
 普通用户从客户端的服务器中心安装和维护服务端。本文保留部署引擎、打包与手动诊断，供维护者使用；官网安装入口统一见[安装指南](https://relaxkon.com/docs/zh-CN/latest/getting-started/installation)。
 

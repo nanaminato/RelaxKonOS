@@ -164,7 +164,7 @@
     "server_center.wizard.mode_linux_user": "Linux 用户模式",
     "server_center.wizard.mode_linux_system": "Linux 系统服务",
     "server_center.wizard.mode_windows_user": "个人模式（当前 Windows 账户）",
-    "server_center.wizard.windows_personal_hint": "使用当前账户运行，登录后启动、注销后停止，Docker 使用当前账户权限。程序和数据独立保存在 LocalAppData。管理员操作暂不可用；与系统服务併用时选择不同端口。",
+    "server_center.wizard.windows_personal_hint": "当前账户是此安装的 RelaxKonOS 管理员，登录后启动、注销后停止。安装和维护需要 UAC 授权，日常特权操作通过独立助手执行；管理员终端以 LocalSystem 运行。配对设备使用同一身份。与系统模式併用时选择不同端口。",
     "server_center.wizard.mode_windows_system": "Windows 系统服务",
     "server_center.wizard.review_title": "检查并安装",
     "server_center.wizard.server_and_user": "服务器和用户",

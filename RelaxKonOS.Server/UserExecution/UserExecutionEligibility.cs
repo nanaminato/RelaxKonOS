@@ -101,6 +101,9 @@ public static class UserExecutionEligibilityRules
             if (mode == ServerMode.User && (!OperatingSystem.IsWindows() ||
                 !string.Equals(identity.Uid, ServerProcessIdentity.CurrentStableIdentity(), StringComparison.OrdinalIgnoreCase)))
                 return new UserExecutionEligibility(UserExecutionIneligibleReason.ServerAccountRequired);
+            if (mode == ServerMode.User && OperatingSystem.IsWindows()
+                && UserExecutionProtocol.IsEligibleHomeDirectory(HostPlatformKind.Windows, identity.HomeDirectory))
+                return UserExecutionEligibility.Eligible;
             if (account.Length != 2
                 || !account[0].Equals(Environment.MachineName, StringComparison.OrdinalIgnoreCase)
                 || string.IsNullOrWhiteSpace(identity.Uid) || !identity.Uid.StartsWith("S-1-5-", StringComparison.Ordinal)

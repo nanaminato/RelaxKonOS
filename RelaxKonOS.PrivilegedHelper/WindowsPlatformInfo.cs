@@ -8,6 +8,14 @@ internal static class WindowsPlatformInfo
     private const byte DomainController = 2;
     private const byte Server = 3;
 
+    public static bool IsWindowsWorkstation()
+    {
+        if (!OperatingSystem.IsWindows()) return false;
+        var version = new RtlOsVersionInfoEx { Size = Marshal.SizeOf<RtlOsVersionInfoEx>() };
+        return RtlGetVersion(ref version) == 0 && version.ProductType == 1
+            && version.MajorVersion >= 10 && version.BuildNumber >= 10240;
+    }
+
     public static bool IsWindowsServer()
     {
         if (!OperatingSystem.IsWindows()) return false;

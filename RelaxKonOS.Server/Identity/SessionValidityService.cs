@@ -27,7 +27,16 @@ public sealed class SessionValidityService(IServiceScopeFactory scopes)
             && (!Guid.TryParse(principal.FindFirst("sid")?.Value, out _)
                 || principal.FindFirst("amr")?.Value is not ("system" or "alias" or "owner-device-key")
                 || !long.TryParse(principal.FindFirst("auth_time")?.Value, out _))) return false;
+        if (principal.FindFirst("amr")?.Value == "owner-device-key"
+            && (!Guid.TryParse(principal.FindFirst("device_id")?.Value, out var deviceId) || !IsOwnerDeviceValid(userId, deviceId)))
+            return false;
         return IsValid(userId, version);
+    }
+
+    public bool IsOwnerDeviceValid(Guid userId, Guid deviceId)
+    {
+        using var scope = scopes.CreateScope();
+        return scope.ServiceProvider.GetRequiredService<IOwnerDeviceKeyRepository>().FindActive(deviceId)?.UserId == userId;
     }
 }
 
@@ -37,7 +46,7 @@ public sealed class SessionValidityHubFilter(SessionValidityService validity, Au
     // revocation is pushed by AuthSessionStore and token expiry is enforced by
     // CloseOnAuthenticationExpiration. Polling the database here used one users query per hub
     // connection every two seconds without improving either guarantee.
-    private readonly ConcurrentDictionary<string, Action<Guid>> _revocationHandlers = new();
+    private readonly ConcurrentDictionary<string, (Action<Guid> User, Action<Guid, Guid> Device)> _revocationHandlers = new();
 
     public async ValueTask<object?> InvokeMethodAsync(HubInvocationContext context, Func<HubInvocationContext, ValueTask<object?>> next)
     {
@@ -49,10 +58,17 @@ public sealed class SessionValidityHubFilter(SessionValidityService validity, Au
         if (!validity.IsValid(context.Context.User)) { context.Context.Abort(); return; }
         var userId = Guid.Parse(context.Context.User!.FindFirst("sub")?.Value ?? context.Context.User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
         void Revoke(Guid id) { if (id == userId) context.Context.Abort(); }
+        void RevokeDevice(Guid id, Guid device)
+        {
+            if (id == userId && context.Context.User?.FindFirst("amr")?.Value == "owner-device-key"
+                && context.Context.User.FindFirst("device_id")?.Value == device.ToString()) context.Context.Abort();
+        }
         sessions.UserRevoked += Revoke;
-        if (!_revocationHandlers.TryAdd(context.Context.ConnectionId, Revoke))
+        sessions.DeviceRevoked += RevokeDevice;
+        if (!_revocationHandlers.TryAdd(context.Context.ConnectionId, (Revoke, RevokeDevice)))
         {
             sessions.UserRevoked -= Revoke;
+            sessions.DeviceRevoked -= RevokeDevice;
             context.Context.Abort();
             return;
         }
@@ -74,6 +90,9 @@ public sealed class SessionValidityHubFilter(SessionValidityService validity, Au
     private void RemoveRevocationHandler(string connectionId)
     {
         if (_revocationHandlers.TryRemove(connectionId, out var handler))
-            sessions.UserRevoked -= handler;
+        {
+            sessions.UserRevoked -= handler.User;
+            sessions.DeviceRevoked -= handler.Device;
+        }
     }
 }

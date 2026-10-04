@@ -3,10 +3,12 @@ using Microsoft.Extensions.Hosting;
 namespace RelaxKonOS.Server.Proxy.Platform;
 
 /// <summary>Fixed host-global locations. Callers can select an engine, never a filesystem path.</summary>
-public sealed class ProxyPlatformPaths : IProxyPlatformPaths
+public sealed class ProxyPlatformPaths(IConfiguration? configuration = null) : IProxyPlatformPaths
 {
     private readonly string _root = OperatingSystem.IsWindows()
-        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "RelaxKonOS", "Proxy")
+        ? configuration?["Server:Mode"] == "user"
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS-Personal", "data", "Proxy")
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "RelaxKonOS", "Proxy")
         : "/var/lib/relaxkonos/proxy";
 
     public string GetEngineVersionsDirectory(string engineId) => Path.Combine(_root, "engines", ValidateEngine(engineId), "versions");

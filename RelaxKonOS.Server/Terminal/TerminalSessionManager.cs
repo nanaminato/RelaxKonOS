@@ -44,7 +44,7 @@ public sealed class TerminalSessionManager
 
         // 2) 新建：spawn PTY
         var id = Guid.NewGuid().ToString("N");
-        var pty = _ptyFactory.Create();
+        var pty = administrator && _ptyFactory is PlatformPtyFactory platform ? platform.CreateAdministrator() : _ptyFactory.Create();
         if (administrator)
         {
             if (pty is not WindowsUserTerminalPty administratorPty)

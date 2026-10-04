@@ -3,12 +3,22 @@ using RoyalTerminal.Terminal;
 namespace RelaxKonOS.Server.Terminal;
 
 /// <summary>
-/// Selects in-process PTYs for User Mode and identity-verified Helper PTYs for System Mode.
+/// Selects in-process owner PTYs and identity-verified Helper PTYs, including personal administrator terminals.
 /// </summary>
 public sealed class PlatformPtyFactory(IServiceScopeFactory scopes, IHttpContextAccessor http, RelaxKonOS.Server.HostMode.IServerModeResolver mode,
     RelaxKonOS.Server.UserExecution.UserExecutionBackendSelection userExecution, RelaxKonOS.Server.Privileged.PrivilegedHelperOptions helper) : IPtyFactory
 {
     private readonly IPtyFactory _fallback = new DefaultPtyFactory();
+
+    public IPty CreateAdministrator()
+    {
+        if (mode.Mode != RelaxKonOS.Protocol.Common.ServerMode.User || !OperatingSystem.IsWindows()) return Create();
+        using var scope = scopes.CreateScope();
+        var principal = http.HttpContext?.User ?? throw new InvalidOperationException("Terminal requires an authenticated user.");
+        var context = scope.ServiceProvider.GetRequiredService<RelaxKonOS.Server.UserExecution.IUserExecutionContextResolver>().Resolve(principal);
+        return new WindowsUserTerminalPty(context,
+            scope.ServiceProvider.GetRequiredService<RelaxKonOS.Server.UserExecution.WindowsNamedPipeUserExecutionTransport>());
+    }
 
     public IPty Create()
     {

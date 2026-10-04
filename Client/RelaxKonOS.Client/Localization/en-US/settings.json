@@ -76,6 +76,8 @@
         "settings.server": "Server",
         "settings.server_mode": "Server mode",
         "settings.server_mode.user": "Current Linux user mode",
+        "settings.server_mode.windows_personal": "Windows personal mode",
+        "settings.server_mode.windows_personal_hint": "This installation belongs to the current Windows account. Sign in with the device key to generate a pairing code using a reachable LAN address.",
         "settings.server_mode.system": "System mode",
         "settings.server_mode.user_hint": "This server is limited to the current Linux account and loopback. Connect remotely through SSH local forwarding.",
         "settings.execution_identity": "Execution identity",

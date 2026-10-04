@@ -83,7 +83,10 @@ internal static class AliasLoginVerification
         services.AddSingleton<AuthSessionStore>();
         services.AddSingleton<AliasPasswordService>();
         services.AddSingleton<SessionValidityService>();
-        services.AddSingleton<OwnerDeviceKeyService>();
+        services.AddSingleton(sp => new OwnerDeviceKeyService(sp.GetRequiredService<IServiceScopeFactory>(), workstation: true));
+        services.AddSingleton(new RelaxKonOS.Server.EventAlerts.EventAlertsOptions());
+        services.AddSingleton<RelaxKonOS.Server.BackupRecovery.IBackupRecoveryKeyProvider>(
+            new RelaxKonOS.Server.BackupRecovery.ConfigurationBackupRecoveryKeyProvider(new RelaxKonOS.Server.BackupRecovery.BackupRecoveryOptions()));
         services.AddSingleton<JwtTokenService>();
         services.AddScoped<LoginProtectionService>();
         services.AddScoped<CanonicalUserResolver>();
@@ -184,7 +187,17 @@ internal static class AliasLoginVerification
             // provider family Android Keystore and Conscrypt use. Android emits ASN.1 DER signatures,
             // so a server that verifies .NET's default IEEE P1363 concatenation rejects every phone.
             using var invitedAndroidKey = ECDsa.Create();
-            invitedAndroidKey.ImportPkcs8PrivateKey(Convert.FromBase64String(AndroidPrivateKeyPkcs8), out _);
+            // Windows CNG cannot import SunEC's PKCS#8 encoding when the EC private structure
+            // omits its public point. Supply the corresponding JVM public point explicitly.
+            invitedAndroidKey.ImportSubjectPublicKeyInfo(Convert.FromBase64String(AndroidPublicKeySpki), out _);
+            var androidParameters = invitedAndroidKey.ExportParameters(false);
+            var privateReader = new System.Formats.Asn1.AsnReader(Convert.FromBase64String(AndroidPrivateKeyPkcs8), System.Formats.Asn1.AsnEncodingRules.DER).ReadSequence();
+            _ = privateReader.ReadInteger();
+            _ = privateReader.ReadSequence();
+            var ecPrivate = new System.Formats.Asn1.AsnReader(privateReader.ReadOctetString(), System.Formats.Asn1.AsnEncodingRules.DER).ReadSequence();
+            _ = ecPrivate.ReadInteger();
+            androidParameters.D = ecPrivate.ReadOctetString();
+            invitedAndroidKey.ImportParameters(androidParameters);
             var androidDeviceId = Guid.Empty;
             using (var response = await Send(HttpMethod.Post, OwnerDeviceKeyApiRoutes.AcceptInvitation,
                        new OwnerDeviceAcceptInvitationRequest(invitation.Token, "test-device", "android", AndroidPublicKeySpki, "3")))
@@ -205,9 +218,20 @@ internal static class AliasLoginVerification
                             DSASignatureFormat.Rfc3279DerSequence))));
                 Check(signIn.StatusCode == HttpStatusCode.OK,
                     "an Android DER signature signs in over HTTP: " + (int)signIn.StatusCode + " " + await signIn.Content.ReadAsStringAsync());
-                var androidToken = (await signIn.Content.ReadFromJsonAsync<LoginResponse>(Json))!.Tokens.AccessToken;
+                var androidLogin = (await signIn.Content.ReadFromJsonAsync<LoginResponse>(Json))!;
+                var androidToken = androidLogin.Tokens.AccessToken;
                 Check(new JwtSecurityTokenHandler().ReadJwtToken(androidToken).Claims.Single(x => x.Type == "amr").Value == "owner-device-key",
                     "an Android owner-device session is issued with amr=owner-device-key");
+                Check(androidLogin.User.Id == system.User.Id && androidLogin.Workspace.Id == system.Workspace.Id,
+                    "paired devices share the owner's canonical user and workspace");
+                using var replay = await Send(HttpMethod.Post, OwnerDeviceKeyApiRoutes.AcceptInvitation,
+                    new OwnerDeviceAcceptInvitationRequest(invitation.Token, "replay", "android", AndroidPublicKeySpki, "3"));
+                Check(replay.StatusCode == HttpStatusCode.Unauthorized, "an invitation cannot enroll a second device");
+                ownerDevices.Revoke(ownerPrincipal, androidDeviceId);
+                using var revokedAccess = await Send(HttpMethod.Get, AuthApiRoutes.Me, token: androidToken);
+                Check(revokedAccess.StatusCode == HttpStatusCode.Unauthorized, "revoked owner device loses its existing access token");
+                using var revokedRefresh = await Send(HttpMethod.Post, AuthApiRoutes.Refresh, new RefreshTokenRequest(androidLogin.Tokens.RefreshToken));
+                Check(revokedRefresh.StatusCode == HttpStatusCode.Unauthorized, "revoked owner device cannot refresh its session");
             }
             // Known-answer test on the raw JVM bytes: this exact signature must verify in the DER format
             // the service uses, and must not be mistaken for the IEEE P1363 default.

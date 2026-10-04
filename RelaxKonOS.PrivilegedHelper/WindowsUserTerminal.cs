@@ -14,7 +14,7 @@ namespace RelaxKonOS.PrivilegedHelper;
 internal static class WindowsUserTerminal
 {
     internal static async Task RunAsync(UserExecutionRequest request, Stream pipe,
-        Func<UserExecutionResult, Task> acknowledge, CancellationToken cancellationToken)
+        Func<UserExecutionResult, Task> acknowledge, CancellationToken cancellationToken, string? personalOwnerSid = null)
     {
         using var pty = new ConPty();
         // Bounded output prevents a stalled Server from consuming unbounded Helper memory.
@@ -30,6 +30,21 @@ internal static class WindowsUserTerminal
             using var current = WindowsIdentity.GetCurrent();
             if (current.User?.IsWellKnown(WellKnownSidType.LocalSystemSid) != true)
                 throw new UnauthorizedAccessException("LocalSystem Helper is required.");
+            if (personalOwnerSid is not null)
+            {
+                if (!request.TerminalAdministrator || request.Identity.StableIdentity != personalOwnerSid)
+                    throw new UnauthorizedAccessException("Personal administrator terminal requires the installation owner.");
+                UserTerminalStreamProtocol.ValidateDimensions(request.TerminalColumns!.Value,
+                    request.TerminalRows!.Value, request.TerminalWidthPixels!.Value, request.TerminalHeightPixels!.Value);
+                var cwd = Path.GetFullPath(request.Path!);
+                if (!Directory.Exists(cwd)) throw new DirectoryNotFoundException("Terminal working directory is unavailable.");
+                var shell = string.IsNullOrWhiteSpace(request.TerminalShell) || request.TerminalShell == "powershell"
+                    ? Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe") : request.TerminalShell;
+                // Installation grants this explicit terminal the Helper's LocalSystem identity.
+                pty.Start(shell, request.TerminalColumns.Value, request.TerminalRows.Value, cwd, null, null);
+            }
+            else
+            {
             if (!WindowsUserExecutionExecutor.TryResolveLocalIdentity(request.Identity, out var account))
                 throw new UnauthorizedAccessException("OS identity changed or is not executable.");
             UserTerminalStreamProtocol.ValidateDimensions(request.TerminalColumns!.Value,
@@ -58,6 +73,7 @@ internal static class WindowsUserTerminal
                     : request.TerminalShell;
                 pty.StartAsUser(primary, shell, request.TerminalColumns.Value, request.TerminalRows.Value,
                     cwd, environment);
+            }
             }
         }
         catch (Exception exception)

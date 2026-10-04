@@ -19,13 +19,18 @@ namespace RelaxKonOS.Server.Identity;
 /// P1363 <c>r‖s</c> concatenation, which is not this contract; the format must therefore always be
 /// passed explicitly. Omitting it silently rejects every Android and OpenSSL signature.
 /// </remarks>
-public sealed class OwnerDeviceKeyService(IServiceScopeFactory scopes)
+public sealed class OwnerDeviceKeyService
 {
+    private readonly IServiceScopeFactory scopes;
+    private readonly bool _workstation;
+    public OwnerDeviceKeyService(IServiceScopeFactory scopes) : this(scopes, WindowsWorkstationPlatform.IsWindows10Or11Workstation()) { }
+    internal OwnerDeviceKeyService(IServiceScopeFactory scopes, bool workstation)
+    { this.scopes = scopes; _workstation = workstation; }
     private static readonly TimeSpan ChallengeLifetime = TimeSpan.FromMinutes(2);
     private readonly ConcurrentDictionary<Guid, PendingChallenge> _challenges = new();
     private readonly ConcurrentDictionary<string, PendingInvitation> _invitations = new(StringComparer.Ordinal);
 
-    public bool IsAvailable => WindowsWorkstationPlatform.IsWindows10Or11Workstation();
+    public bool IsAvailable => _workstation;
 
     public OwnerDeviceChallenge CreateChallenge(Guid deviceId)
     {
@@ -88,7 +93,7 @@ public sealed class OwnerDeviceKeyService(IServiceScopeFactory scopes)
 
     /// <summary>
     /// Registers the local Windows device, or replaces its lost local key. The caller is already
-    /// constrained by the loopback Negotiate route and authenticated Windows administrator policy.
+    /// constrained by loopback Negotiate and the installation owner / System Mode administrator policy.
     /// Desktop processes restrict enrollment to their own account; built-in System Mode service
     /// identities permit administrators to enroll their own canonical user account.
     /// It is intentionally not available to ordinary owner-device or remote sessions.
@@ -195,6 +200,9 @@ public sealed class OwnerDeviceKeyService(IServiceScopeFactory scopes)
             keys.Update(key);
             return 0;
         });
+        // Existing hub connections must lose control immediately, as well as refresh tokens.
+        using var scope = scopes.CreateScope();
+        scope.ServiceProvider.GetRequiredService<AuthSessionStore>().RevokeDevice(actor.UserId, deviceId);
     }
 
     private void RequireAvailable()

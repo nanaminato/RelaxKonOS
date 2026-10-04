@@ -60,7 +60,8 @@ public static class AuthEndpoints
                 var user = users.FindById(rec.UserId);
                 var ws = wss.FindById(rec.WorkspaceId);
                 var device = devs.FindById(rec.DeviceId);
-                if (user is null || ws is null || device is null || !validity.IsValid(rec.UserId, rec.SecurityVersion))
+                if (user is null || ws is null || device is null || !validity.IsValid(rec.UserId, rec.SecurityVersion)
+                    || rec.AuthenticationMethod == "owner-device-key" && !validity.IsOwnerDeviceValid(rec.UserId, rec.DeviceId))
                     return Problem(http, 401, "invalid-credential", "Invalid credentials", "The session context is no longer valid.");
 
                 var role = ws.ControllerDeviceId == device.Id ? DeviceRole.Controller : DeviceRole.Observer;
@@ -146,15 +147,14 @@ public static class AuthEndpoints
         group.MapPost(OwnerDeviceKeyApiRoutes.SignIn, async (OwnerDeviceSignInRequest request, HttpContext http,
                 OwnerDeviceKeyService ownerDevices, IUserRepository users, IWorkspaceRepository workspaces,
                 IRegistryRepository registry, ISessionRepository sessions, IDeviceRepository devices, JwtTokenService jwt,
-                LoginProtectionService protection, LoginAuthenticationService authentication, IServerModeResolver serverMode,
+                LoginProtectionService protection, LoginAuthenticationService authentication, IServerModeResolver serverMode, CanonicalUserResolver canonicalUsers,
                 CancellationToken ct) =>
             {
                 var key = ownerDevices.VerifyChallenge(request.ChallengeId, request.DeviceId, request.Signature);
                 var user = users.FindById(key.UserId) ?? throw new OwnerDeviceKeyException(401, "owner-device-user-unavailable");
                 var device = devices.FindById(key.DeviceId) ?? throw new OwnerDeviceKeyException(401, "owner-device-unavailable");
                 var login = new AuthenticatedLogin(user, "owner-device-key", 0, user.SecurityVersion, user.Id.ToString("D"),
-                    RelaxKonOS.Server.UserExecution.UserExecutionEligibilityRules.Evaluate(
-                        new PlatformUserInfo(user.PlatformIdentity ?? string.Empty, user.Username, user.Platform, user.Username, null), serverMode.Mode));
+                    RelaxKonOS.Server.UserExecution.UserExecutionEligibilityRules.Evaluate(canonicalUsers.RequireBinding(user, false), serverMode.Mode));
                 return await CompleteLoginAsync(login, OwnerClientPlatform(device.Platform), device.Name, device.ClientVersion, http,
                     authentication, users, workspaces, registry, sessions, devices, jwt, protection, serverMode, ct, device);
             })

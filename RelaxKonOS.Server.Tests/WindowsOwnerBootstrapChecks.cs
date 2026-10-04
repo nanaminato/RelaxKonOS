@@ -7,6 +7,10 @@ internal static class WindowsOwnerBootstrapChecks
     {
         const string ownerSid = "S-1-5-21-123-456-789-1001";
         const string anotherSid = "S-1-5-21-123-456-789-1002";
+        if (!WindowsOwnerBootstrapPolicy.AllowsBootstrap(ownerSid, ownerSid, ServerMode.User, false)
+            || WindowsOwnerBootstrapPolicy.AllowsBootstrap(anotherSid, ownerSid, ServerMode.User, true)
+            || WindowsOwnerBootstrapPolicy.AllowsBootstrap(ownerSid, "S-1-5-19", ServerMode.System, false))
+            throw new Exception("Personal bootstrap accepts its ordinary owner only; System bootstrap still requires a Windows administrator.");
         foreach (var serviceSid in new[] { "S-1-5-18", "S-1-5-19", "S-1-5-20" })
         {
             if (!WindowsOwnerBootstrapPolicy.AllowsAccount(ownerSid, serviceSid, ServerMode.System))

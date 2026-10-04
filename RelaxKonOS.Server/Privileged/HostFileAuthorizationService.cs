@@ -24,7 +24,7 @@ public sealed class HostFileAuthorizationService(IHostAccountPrivilegeService pr
     {
         if (paths.Length == 0 || paths.Any(path => string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path)))
             return null;
-        if (mode.Mode != ServerMode.System) return null;
+        if (!mode.Supports(ServerHostFeature.PrivilegedOperations)) return null;
         var privilege = privileges.Classify(principal);
         if (privilege == HostAccountPrivilege.HostRoot) return PrivilegedFileAuthorizationSource.HostRoot;
         if (privilege == HostAccountPrivilege.HostAdministrator) return PrivilegedFileAuthorizationSource.HostAdministrator;

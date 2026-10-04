@@ -529,7 +529,7 @@ builder.Services.AddSingleton(privilegedHelperOptions);
 builder.Services.AddSingleton(new RelaxKonOS.Server.UserExecution.UserExecutionBackendSelection(userExecutionBackend));
 builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.LocalPrivilegedOperationRunner>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport>(sp =>
-    serverModeResolver.Mode == RelaxKonOS.Protocol.Common.ServerMode.User
+    !serverModeResolver.Supports(ServerHostFeature.PrivilegedOperations)
         ? new RelaxKonOS.Server.Privileged.DisabledPrivilegedOperationTransport()
         : OperatingSystem.IsWindows()
         ? ActivatorUtilities.CreateInstance<RelaxKonOS.Server.Privileged.WindowsNamedPipePrivilegedOperationTransport>(sp)

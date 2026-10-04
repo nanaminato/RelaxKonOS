@@ -164,7 +164,7 @@
     "server_center.wizard.mode_linux_user": "Linux user mode",
     "server_center.wizard.mode_linux_system": "Linux system service",
     "server_center.wizard.mode_windows_user": "Personal mode (current Windows account)",
-    "server_center.wizard.windows_personal_hint": "Runs as your current account, starts at sign-in and stops at sign-out. Docker uses your account permissions. Separate program and data in LocalAppData. Privileged operations are unavailable; use separate ports when both modes are installed.",
+    "server_center.wizard.windows_personal_hint": "Your account is this installation's RelaxKonOS administrator. Server runs after sign-in and stops at sign-out. Installation and maintenance require UAC; daily privileged operations use an owner-bound Helper. Administrator terminals run as LocalSystem. Paired devices share this identity. Use separate ports for both modes.",
     "server_center.wizard.mode_windows_system": "Windows system service",
     "server_center.wizard.review_title": "Review and install",
     "server_center.wizard.server_and_user": "Server and user",

@@ -53,7 +53,7 @@ static class LocalWindowsInstallationChecks
             var personalInstaller = new LocalWindowsServerInstaller(personal, new FileServerCenterReleaseSource(), journal);
             await personalInstaller.InstallAsync(Options with { Mode = ServerInstallMode.WindowsUser }, "en-US", null, null);
             Check(personal.Session.Requests.All(request => request.Options?.Mode == ServerInstallMode.WindowsUser),
-                "Personal installation scopes probe, install and verification to the current account without elevation.");
+                "Personal deployment remains in the owner session; only its fixed Helper installer requests UAC.");
             personal.Session.Requests.Clear();
             await personalInstaller.MaintainAsync(ServerDeploymentKind.Repair, personal.Session.HostSnapshot, "en-US", true);
             Check(personal.Session.Requests.All(request => request.Options?.Mode == ServerInstallMode.WindowsUser),

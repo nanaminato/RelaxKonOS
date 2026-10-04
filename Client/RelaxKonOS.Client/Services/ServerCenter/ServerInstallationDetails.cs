@@ -38,7 +38,7 @@ public static class ServerInstallationDetails
             ServerInstallMode.LinuxSystem => T("linux_system_description", "Managed by systemd; maintenance requires root or sudo."),
             ServerInstallMode.LinuxUser => T("linux_user_description", "Runs under the installing user without a system service; no root required."),
             ServerInstallMode.WindowsSystem => T("windows_system_description", "Managed by Windows services; maintenance requires an elevated administrator SSH session."),
-            ServerInstallMode.WindowsUser => T("windows_user_description", "Runs as the installing Windows account after sign-in; separate per-user data and no administrator permission for maintenance."),
+            ServerInstallMode.WindowsUser => T("windows_user_description", "Runs as the installation owner after sign-in. UAC authorizes installation and maintenance; an owner-bound Helper executes daily privileged operations."),
             _ => null
         });
         Add("version", "Current version", snapshot?.Version ?? cached?.Version);

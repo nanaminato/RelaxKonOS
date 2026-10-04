@@ -1055,7 +1055,10 @@ function Invoke-StatusAction {
 }
 
 function Apply-FirewallChoice($State) {
-    if ($script:optionsMode -eq 'windowsUser') { $script:firewallStatus = 'notApplicable'; return }
+    if ($script:optionsMode -eq 'windowsUser') {
+        $script:firewallStatus = if (([Uri](Get-StateField $State 'listenUrl')).IsLoopback) { 'notApplicable' } elseif ($script:optionsAddFirewallRule) { 'ruleAdded' } else { 'notRequested' }
+        return
+    }
     $script:firewallStatus = 'notRequested'
     $endpoint = [Uri](Get-StateField $State 'listenUrl')
     if ($endpoint.IsLoopback) { $script:firewallStatus = 'notApplicable'; return }
@@ -1112,6 +1115,7 @@ function Invoke-InstallLikeAction {
     if ($null -ne $script:optionsServerPort) { $arguments += @('-ServerPort', [string]$script:optionsServerPort) }
     if ($script:optionsNetwork -and $script:record.kind -in @('install', 'upgrade')) { $arguments += @('-NetworkProfile', (Get-EngineNetworkProfile $script:optionsNetwork)) }
     if ($script:optionsFileAccess) { $arguments += @('-FileAccess', $script:optionsFileAccess) }
+    if ($Personal -and $script:optionsAddFirewallRule) { $arguments += @('-AddFirewallRule') }
     $roots = Get-LiteralOption 'fileRoots'
     if ($null -ne $roots -and $roots.Count -gt 0) {
         if ($script:optionsFileAccess -ne 'whitelist') { Stop-Launcher 'server-deployment.invalid_request' 'roots require whitelist access' }
@@ -1267,7 +1271,7 @@ catch { Stop-Launcher 'server-deployment.invalid_request' 'the request is not a 
 Parse-Request
 if (($script:optionsMode -eq 'windowsUser') -ne [bool]$Personal) { Stop-Launcher 'server-deployment.invalid_request' 'Personal launcher scope and requested mode must match' }
 if ($Personal -and ($script:optionsAddFirewallRule -or $script:optionsInstallRoot -or $script:optionsDataRoot)) {
-    if ($script:optionsAddFirewallRule -or ($script:optionsInstallRoot -and $script:optionsInstallRoot -ne (Get-ModeInstallRoot 'windowsUser')) -or ($script:optionsDataRoot -and $script:optionsDataRoot -ne (Get-ModeDataRoot 'windowsUser'))) { Stop-Launcher 'server-deployment.invalid_request' 'Personal roots are fixed and firewall changes require separate authorization' }
+    if (($script:optionsInstallRoot -and $script:optionsInstallRoot -ne (Get-ModeInstallRoot 'windowsUser')) -or ($script:optionsDataRoot -and $script:optionsDataRoot -ne (Get-ModeDataRoot 'windowsUser'))) { Stop-Launcher 'server-deployment.invalid_request' 'Personal roots are fixed' }
 }
 Test-Idempotency
 $script:record.startedAtUtc = Get-NowUtc

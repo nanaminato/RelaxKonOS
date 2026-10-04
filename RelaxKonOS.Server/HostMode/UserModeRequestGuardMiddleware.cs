@@ -18,8 +18,10 @@ public sealed class UserModeRequestGuardMiddleware(RequestDelegate next)
 
     public async Task InvokeAsync(HttpContext context, IServerModeResolver mode)
     {
-        var personalDocker = OperatingSystem.IsWindows() && context.Request.Path.StartsWithSegments("/api/v1.0/docker");
-        if (mode.Mode == ServerMode.User && !personalDocker && DisabledPrefixes.Any(prefix => context.Request.Path.StartsWithSegments(prefix)))
+        var personalHostOperation = OperatingSystem.IsWindows()
+            && !context.Request.Path.StartsWithSegments(AuthApiRoutes.LoginAlias)
+            && !context.Request.Path.StartsWithSegments(AuthApiRoutes.SystemLogin);
+        if (mode.Mode == ServerMode.User && !personalHostOperation && DisabledPrefixes.Any(prefix => context.Request.Path.StartsWithSegments(prefix)))
         {
             await Results.Problem(statusCode: StatusCodes.Status403Forbidden,
                 type: "https://relaxkonos.app/problems/privileged-feature-unavailable",
