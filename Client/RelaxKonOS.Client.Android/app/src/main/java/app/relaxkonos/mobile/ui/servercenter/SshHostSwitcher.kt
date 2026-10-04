@@ -13,7 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -47,7 +47,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 @Composable
 fun SshHostSwitcherDialog(currentHostId: String, onDismiss: () -> Unit) {
     val viewModel: ServerCenterViewModel = viewModel()
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val activity = LocalContext.current as? FragmentActivity
 
     // 任何一次成功打开工作区都意味着切换完成：关掉选择器，让新的主机界面接上来。

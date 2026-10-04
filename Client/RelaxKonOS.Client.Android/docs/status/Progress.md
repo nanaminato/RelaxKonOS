@@ -1,5 +1,7 @@
 # Android 当前实现状态
 
+公共界面已统一标题层级、卡片表面与边界、长名称及选择状态无障碍；管理目录提供三语本地搜索与自适应卡片网格。顶级导航在超宽窗口使用文字侧栏，管理工作区按实际内容宽度切换分类侧栏／标签，并考虑大字体。UI StateFlow 已统一生命周期观察。实现规则见 [Shell](../design/Shell.Design.md#公共视觉与自适应导航) 与 [应用内导航](../features/ApplicationNavigation.md)，验证范围见 Verification。
+
 使用记忆已接入统一宿主/文件提权、Android SAF 选择器、远程路径选择器和 SSH 安装包选择。“更多 → 账户与安全”可清理当前账户的非秘密默认值；具体行为见 [设置](../features/Settings.md#使用记忆)，验证证据与提供程序边界见 [Verification](Verification.md)。
 
 登录页已支持普通 SSH 隧道：密码/私钥认证、首次与变化的主机指纹确认、独立 SSH 保险箱、测试连接、自动本地端口、保存配置与连接管理一键登录；可显式共用 Server 用户名与密码，连接保险箱只保存一份共用密码，解锁一次供 SSH 和 Server 使用；共用模式随隧道记录恢复。隧道复选框支持整行点击及换行文字垂直居中。登录内容使用适配输入法高度的纵向滚动视口，展开 SSH 配置后可滑动访问连接按钮。隧道由应用会话持有并随退出释放；HTTPS 证书信任绑定稳定连接配置身份。详见 [登录页 SSH 隧道](../features/LoginSshTunnel.md)，设备验证范围见 [Verification](Verification.md)。

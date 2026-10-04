@@ -12,16 +12,24 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.movableContentOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
@@ -51,8 +59,8 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
 /**
  * The authenticated shell.
  *
- * Three shapes, one source of truth for what exists: Compact uses a bottom bar, Medium a compact rail
- * and Expanded a full rail (`Shell.Design.md` §3.2). The destination list is derived
+ * Compact uses a bottom bar; larger windows use a rail and wide windows a labelled drawer
+ * without reducing the content below its own layout breakpoint (`Shell.Design.md` §3.2). The destination list is derived
  * from the server's advertised capabilities, so an entry that the server cannot serve is absent rather
  * than disabled.
  *
@@ -69,8 +77,20 @@ fun ShellScaffold(
     onSignOut: () -> Unit,
     onSwitchLogin: (SavedLogin?) -> Unit,
 ) {
+    val currentSession by rememberUpdatedState(session)
+    val currentSignOut by rememberUpdatedState(onSignOut)
+    val currentSwitchLogin by rememberUpdatedState(onSwitchLogin)
+    // Moving the same composition between navigation layouts preserves local form state and effects.
+    val host = remember(container, navigator) {
+        movableContentOf<LayoutState, Modifier> { layout, modifier ->
+            MobileNavHost(container = container, navigator = navigator, session = currentSession,
+                layoutState = layout, onSignOut = currentSignOut, onSwitchLogin = currentSwitchLogin,
+                modifier = modifier)
+        }
+    }
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val layoutState = layoutStateFor(maxWidth)
+        val drawerContentLayout = layoutStateFor(maxWidth - 200.dp)
         val terminalKeyboardOpen = navigator.currentDestination == Routes.TERMINAL && WindowInsets.ime.getBottom(LocalDensity.current) > 0
         val destinations = remember(session.capabilities) { TopDestination.visible(session.capabilities) }
 
@@ -86,8 +106,8 @@ fun ShellScaffold(
             }
         }
 
-        when (layoutState) {
-            LayoutState.Compact -> Scaffold(
+        when {
+            layoutState == LayoutState.Compact -> Scaffold(
                 containerColor = Color.Transparent,
                 bottomBar = {
                     if (!terminalKeyboardOpen) Column {
@@ -115,18 +135,10 @@ fun ShellScaffold(
                     }
                 },
             ) { padding ->
-                MobileNavHost(
-                    container = container,
-                    navigator = navigator,
-                    session = session,
-                    layoutState = layoutState,
-                    onSignOut = onSignOut,
-                    onSwitchLogin = onSwitchLogin,
-                    modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding),
-                )
+                host(layoutState, Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding))
             }
 
-            LayoutState.Medium, LayoutState.Expanded -> Row(Modifier.fillMaxSize().safeDrawingPadding()) {
+            maxWidth < 1200.dp * LocalDensity.current.fontScale.coerceAtLeast(1f) -> Row(Modifier.fillMaxSize().safeDrawingPadding()) {
                 NavigationRail(
                     modifier = Modifier.fillMaxHeight(),
                     containerColor = MaterialTheme.colorScheme.surface,
@@ -146,16 +158,31 @@ fun ShellScaffold(
                         )
                     }
                 }
-                MobileNavHost(
-                    container = container,
-                    navigator = navigator,
-                    session = session,
-                    layoutState = layoutState,
-                    onSignOut = onSignOut,
-                    onSwitchLogin = onSwitchLogin,
-                    // The rail is opaque, so the content needs no border of its own — only a gap.
-                    modifier = Modifier.fillMaxSize().padding(horizontal = Spacing.xs),
-                )
+                host(layoutState, Modifier.weight(1f).fillMaxHeight().padding(horizontal = Spacing.xs))
+            }
+
+            else -> Row(Modifier.fillMaxSize().safeDrawingPadding()) {
+                Surface(
+                    modifier = Modifier.width(200.dp).fillMaxHeight(),
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                ) {
+                    Column(
+                        Modifier.verticalScroll(rememberScrollState()).padding(Spacing.md),
+                    ) {
+                        RailHeader()
+                        destinations.forEach { destination ->
+                            NavigationDrawerItem(
+                                selected = navigator.currentDestination == destination.route,
+                                onClick = { select(destination) },
+                                icon = { DesktopIcon(icon = destination.iconRes, size = 26.dp) },
+                                label = { Text(stringResource(destination.labelRes)) },
+                                shape = MaterialTheme.shapes.medium,
+                                modifier = Modifier.padding(vertical = Spacing.xs),
+                            )
+                        }
+                    }
+                }
+                host(drawerContentLayout, Modifier.weight(1f).fillMaxHeight().padding(horizontal = Spacing.sm))
             }
         }
     }

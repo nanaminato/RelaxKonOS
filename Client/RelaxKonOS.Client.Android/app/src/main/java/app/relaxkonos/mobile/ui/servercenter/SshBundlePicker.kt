@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.servercenter
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.relaxkonos.mobile.ui.common.RefreshProgressIndicator
 
 import app.relaxkonos.mobile.ui.common.ActionLabel
@@ -33,7 +34,7 @@ internal fun SshBundlePicker(hostId: String, onDismiss: () -> Unit, onSelect: (S
     var restoring by remember(hostId) { mutableStateOf(false) }
     val model = remember(app, hostId) { SshFilesController(app) }
     DisposableEffect(model) { onDispose { model.close() } }
-    val state by model.state.collectAsState()
+    val state by model.state.collectAsStateWithLifecycle()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val revision = (LocalContext.current.applicationContext as RelaxKonApplication).container.serverCenter.workspaceRevision
     var resumed by remember(lifecycle) { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }

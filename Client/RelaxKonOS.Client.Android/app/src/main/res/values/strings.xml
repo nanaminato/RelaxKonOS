@@ -2802,4 +2802,6 @@
     <string name="usage_memory_cleared">Usage memory cleared.</string>
     <string name="firewall_windows_ready">Windows Firewall ready</string>
     <string name="firewall_windows_scope">Changes apply to Domain, Private and Public profiles. Only rules managed by this app are listed.</string>
+    <string name="manage_search_applications">Search applications</string>
+    <string name="manage_search_empty">No applications match your search.</string>
 </resources>

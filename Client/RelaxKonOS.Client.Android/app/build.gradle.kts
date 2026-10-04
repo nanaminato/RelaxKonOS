@@ -88,6 +88,7 @@ dependencies {
     // 2.11.0 and later declare minCompileSdk 37; this module compiles against 36, so the newest
     // release that still declares minCompileSdk 35 is pinned. Revisit when compileSdk moves to 37.
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("com.microsoft.signalr:signalr:10.0.6")
     // SignalR declares Gson as runtime-only; raw metric events need its JsonElement type at compile time.

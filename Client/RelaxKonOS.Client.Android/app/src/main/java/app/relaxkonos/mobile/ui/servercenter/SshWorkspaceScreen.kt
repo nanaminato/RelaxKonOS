@@ -7,7 +7,7 @@ import app.relaxkonos.mobile.ui.common.StatusTone
 import android.net.Uri
 import app.relaxkonos.mobile.data.resolvedDisplayName
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -168,7 +168,7 @@ internal fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier =
     val hostId = host?.hostId
     val installKey = remember(hostId) { "install-${host?.hostId}-${host?.lastVerified?.verifiedAtEpochMillis}" }
     val installer: ServerInstallViewModel = viewModel(key = installKey)
-    val installState by installer.state.collectAsState()
+    val installState by installer.state.collectAsStateWithLifecycle()
     androidx.compose.runtime.LaunchedEffect(installState.busy) { onBusyChanged(installState.busy) }
     var bundleUri by rememberSaveable(hostId) { mutableStateOf<String?>(null) }
     var certificateUri by rememberSaveable(hostId) { mutableStateOf<String?>(null) }

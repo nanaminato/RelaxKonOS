@@ -36,7 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,7 +73,7 @@ fun SshTerminalScreen(hostId: String, onClose: () -> Unit, modifier: Modifier = 
     val container = (LocalContext.current.applicationContext as RelaxKonApplication).container
     val target = container.serverCenter.hosts().firstOrNull { it.hostId == hostId }
     val model = container.sshTerminals
-    val all by model.state.collectAsState()
+    val all by model.state.collectAsStateWithLifecycle()
     LaunchedEffect(hostId) { model.enter(hostId) }
     val state = all.selectedForHost(hostId) ?: SshTerminalUiState(hostId = hostId)
     val sessions = all.sessions.filter { it.hostId == hostId }

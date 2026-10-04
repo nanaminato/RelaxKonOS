@@ -2764,4 +2764,6 @@
     <string name="usage_memory_cleared">使用履歴の記憶を消去しました。</string>
     <string name="firewall_windows_ready">Windows ファイアウォール</string>
     <string name="firewall_windows_scope">有効状態と既定ポリシーは全プロファイルに適用され、一覧は本アプリの管理ルールです。</string>
+    <string name="manage_search_applications">アプリを検索</string>
+    <string name="manage_search_empty">検索条件に一致するアプリはありません。</string>
 </resources>

@@ -17,7 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -95,7 +95,7 @@ data class SshSystemUiState(
 @Composable
 fun SshSystemScreen(hostId: String, onExit: () -> Unit, modifier: Modifier = Modifier) {
     val model: SshSystemViewModel = viewModel(key = "ssh-system-$hostId")
-    val state by model.state.collectAsState()
+    val state by model.state.collectAsStateWithLifecycle()
     val host = (LocalContext.current.applicationContext as RelaxKonApplication)
         .container.serverCenter.hosts().firstOrNull { it.hostId == hostId }
     // 工作区里唯一一处主机切换入口。放在系统页：文件、终端与部署页各自在讲自己的事，

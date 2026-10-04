@@ -41,7 +41,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -158,7 +158,7 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
         onDispose { lifecycle.removeObserver(observer); model.detach() }
     }
     LaunchedEffect(hostId, workspaceRevision, resumed) { if (resumed) model.resume(hostId) else model.detach() }
-    val state by model.state.collectAsState()
+    val state by model.state.collectAsStateWithLifecycle()
     BackHandler(enabled = state.detailEntry != null) { model.closeDetail() }
     var pendingUpload by remember(hostId, workspaceRevision) { mutableStateOf<List<Uri>>(emptyList()) }
     var pendingTree by remember(hostId, workspaceRevision) { mutableStateOf<Uri?>(null) }

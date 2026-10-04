@@ -9,15 +9,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.relaxkonos.mobile.AppContainer
@@ -30,13 +27,9 @@ import app.relaxkonos.mobile.core.net.ServerCapabilities
 import app.relaxkonos.mobile.ui.manage.processes.refreshedProcessSelection
 import app.relaxkonos.mobile.data.RecentOperationKind
 import app.relaxkonos.mobile.ui.common.EmptyState
-import app.relaxkonos.mobile.ui.common.IconBadge
-import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.common.ScreenHeader
-import app.relaxkonos.mobile.ui.common.SectionGroup
 import app.relaxkonos.mobile.ui.common.UiMessage
 import app.relaxkonos.mobile.ui.common.failureMessage
-import app.relaxkonos.mobile.ui.icons.DesktopIcon
 import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Spacing
 import kotlinx.coroutines.launch
@@ -237,8 +230,7 @@ private data class ManageDomain(
  * Only domains with a working mobile workflow are listed. The design forbids adding an entry just
  * because the desktop has one (`Shell.Design.md` §8). Each entry opens its implemented domain workflow, including Nginx sites and certificate management.
  *
- * The domains sit in one group rather than in one card each: they are alternatives at the same level,
- * and stacking them made a two-item list look like a dashboard.
+ * A local search and adaptive card grid keep the available applications reachable at every width.
  */
 @Composable
 fun ManageScreen(
@@ -305,7 +297,7 @@ fun ManageScreen(
     }
 
     Column(
-        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg),
+        modifier = modifier.fillMaxSize().padding(Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.lg),
     ) {
         ScreenHeader(title = stringResource(R.string.manage_title))
@@ -316,17 +308,17 @@ fun ManageScreen(
                 icon = DesktopIcons.notice,
             )
         } else {
-            SectionGroup {
-                domains.forEach { domain ->
-                    ListRow(
+            ApplicationCatalog(
+                applications = domains.map { domain ->
+                    CatalogApplication(
+                        id = domain.titleRes.toString(),
                         title = stringResource(domain.titleRes),
-                        subtitle = stringResource(domain.subtitleRes),
-                        leading = { IconBadge(icon = domain.iconRes) },
-                        trailing = { DesktopIcon(icon = DesktopIcons.disclosure, size = 20.dp) },
-                        onClick = domain.open,
+                        description = stringResource(domain.subtitleRes),
+                        icon = domain.iconRes, open = domain.open,
                     )
-                }
-            }
+                },
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }

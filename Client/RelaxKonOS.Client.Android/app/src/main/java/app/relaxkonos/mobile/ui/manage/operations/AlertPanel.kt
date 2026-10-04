@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.operations
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.relaxkonos.mobile.ui.common.PageActionRow
 import app.relaxkonos.mobile.ui.common.ActionLabel
 import app.relaxkonos.mobile.ui.common.ActivityIndicator
@@ -48,7 +49,7 @@ internal class AlertViewModel(application: Application) : AndroidViewModel(appli
 internal fun AlertPanel(owner: SessionState.Active, onOpenTarget: (OperationTarget) -> Unit) {
     val model: AlertViewModel = viewModel()
     val browser = model.browser
-    val state by browser.state.collectAsState()
+    val state by browser.state.collectAsStateWithLifecycle()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var resumed by remember(lifecycle) { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
     DisposableEffect(lifecycle, browser) {

@@ -49,7 +49,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -221,9 +221,9 @@ class GuardianViewModel(application: Application) : AndroidViewModel(application
 @Composable
 fun GuardianScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modifier = Modifier) {
     val model: GuardianViewModel = viewModel()
-    val state by model.state.collectAsState()
+    val state by model.state.collectAsStateWithLifecycle()
     val editing = model.editing
-    val liveLogs by model.logObserver.state.collectAsState()
+    val liveLogs by model.logObserver.state.collectAsStateWithLifecycle()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var resumed by remember(lifecycle) { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
     DisposableEffect(lifecycle, model) {

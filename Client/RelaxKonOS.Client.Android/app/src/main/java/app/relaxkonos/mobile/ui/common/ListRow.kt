@@ -2,7 +2,8 @@ package app.relaxkonos.mobile.ui.common
 
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +20,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.dp
 import app.relaxkonos.mobile.ui.icons.DesktopIcon
 import app.relaxkonos.mobile.ui.theme.Layout
@@ -81,7 +85,11 @@ fun ListRow(
                 color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f) else Color.Transparent,
                 shape = shape,
             )
-            .let { if (onClick != null) it.clip(shape).clickable(onClick = onClick) else it }
+            .let {
+                if (onClick != null) it.clip(shape).selectable(selected = selected, role = Role.Button, onClick = onClick)
+                else it.semantics { this.selected = selected }
+            }
+            .heightIn(min = 56.dp)
             .padding(horizontal = Spacing.sm, vertical = Spacing.sm + 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.md),
@@ -91,7 +99,7 @@ fun ListRow(
             Text(
                 title,
                 style = MaterialTheme.typography.bodyLarge,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
             if (subtitle != null) {

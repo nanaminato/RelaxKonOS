@@ -106,6 +106,8 @@ System Mode 安装时请选择 `*-server.zip` 或对应的 Server 发布目录�
 
 Linux Server 和 User Server 发布包必须包含 `deployment/verify-release-inventory.py`。若操作诊断中出现 `can't open file .../verify-release-inventory.py` 和退出码 `65`，说明发布包不完整，应使用上述打包脚本重新生成 ZIP，并同步更新 `manifest.json` 文件清单、ZIP 校验值和下载描述文件；不要通过跳过校验来修复。服务器中心在解包前检查这个必要文件。
 
+Linux System Mode 使用 SSH 用户及 sudo 安装时，安装后的防火墙探测和规则添加也必须通过同一 sudo 身份执行。防火墙诊断失败会写入该操作的受限诊断附件；主机防火墙未启用时，成功回执的 `firewallStatus` 为 `disabled`，不会启用防火墙或添加无效规则。
+
 Linux System Mode 发布安装目录时，显式把安装、卸载和服务部署脚本设为 `0755`，避免 Windows 制作的 ZIP 经普通解压后没有执行位。服务器中心通过 Bash 执行安装与卸载引擎，按实际执行身份检查文件存在且可读；安装包缺少卸载引擎时，在安装前拒绝该包。现有安装若遇到 `no System Mode uninstall engine is available on this host`，应先检查 `/opt/relaxkonos/current/deployment/bootstrap/uninstall-relaxkonos.sh` 是否存在，以及经 sudo 执行时能否读取；脚本存在但没有执行位时，可将其权限修复为 `0755` 后重新发起卸载。
 
 ## 官方在线来源

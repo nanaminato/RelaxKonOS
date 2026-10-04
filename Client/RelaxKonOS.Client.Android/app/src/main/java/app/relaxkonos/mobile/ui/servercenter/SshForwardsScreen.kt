@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.servercenter
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.relaxkonos.mobile.ui.common.ActionLabel
 import app.relaxkonos.mobile.ui.common.ActivityIndicator
 import app.relaxkonos.mobile.ui.common.ExecutionStatusChip
@@ -29,7 +30,7 @@ import app.relaxkonos.mobile.ui.common.ServiceAccess
 internal fun SshForwardsScreen(hostId: String, modifier: Modifier = Modifier) {
     val container = (LocalContext.current.applicationContext as RelaxKonApplication).container
     val manager = container.sshForwards
-    val state by manager.state.collectAsState()
+    val state by manager.state.collectAsStateWithLifecycle()
     var editor by remember(hostId) { mutableStateOf<Pair<String?, SshLocalForwardRequest>?>(null) }
     var denied by remember { mutableStateOf(false) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { denied = !it }

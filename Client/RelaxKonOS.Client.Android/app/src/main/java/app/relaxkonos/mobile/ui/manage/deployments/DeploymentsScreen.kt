@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.manage.deployments
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.relaxkonos.mobile.ui.common.rememberUsageOpenDocument
 
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -48,7 +49,7 @@ fun DeploymentsScreen(
 ) {
     val viewModel: DeploymentsViewModel = viewModel()
     val browser = viewModel.browser
-    val state by browser.state.collectAsState()
+    val state by browser.state.collectAsStateWithLifecycle()
     val expanded = layoutState == LayoutState.Expanded
     val available = state.owner?.capabilities?.contains(ServerCapabilities.APPLICATION_DEPLOYMENTS) == true
     LaunchedEffect(state.owner, initialApplicationId) {

@@ -16,6 +16,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.layout.LayoutState
 import app.relaxkonos.mobile.core.layout.layoutStateFor
@@ -51,8 +53,9 @@ fun ScreenHeader(
     }
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         val titleContent: @Composable (Modifier) -> Unit = { titleModifier ->
-            Column(titleModifier) {
-                Text(title, style = MaterialTheme.typography.headlineSmall)
+            Column(titleModifier, verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                Text(title, style = MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.semantics { heading() })
                 if (subtitle != null) {
                     Text(
                         subtitle,

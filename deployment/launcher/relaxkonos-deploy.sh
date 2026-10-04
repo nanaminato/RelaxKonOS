@@ -922,7 +922,10 @@ apply_firewall_choice() { # authoritative installation state
   url=$(state_field "$1" listenUrl)
   case "$url" in *://127.0.0.1:*|*://localhost:*) firewall_status='"notApplicable"'; return;; esac
   port=$(python3 -c 'import sys,urllib.parse; print(urllib.parse.urlparse(sys.argv[1]).port)' "$url")
-  if ! result=$(python3 - "$port" "$options_add_firewall" <<'FIREWALL_PY'
+  local -a firewall_command=(python3)
+  [[ $sudo_requested != true ]] || firewall_command=(run_privileged python3)
+  # sudo consumes stdin for authentication; pass the Python source as an argument.
+  if ! result=$("${firewall_command[@]}" -c "$(cat <<'FIREWALL_PY'
 import json, os, pathlib, re, shutil, subprocess, sys
 port=int(sys.argv[1]); requested=sys.argv[2]=='true'
 if not 1 <= port <= 65535: raise ValueError('Invalid server port')
@@ -991,7 +994,7 @@ elif backend=='iptables':
     run('netfilter-persistent','save')
 print('ruleAdded')
 FIREWALL_PY
-  ); then
+  )" "$port" "$options_add_firewall" 2>>"$(diagnostics_path)"); then
     launcher_fail firewall_rule_failed 'The server is installed, but the requested firewall rule could not be added; inspect the host firewall configuration.'
   fi
   case "$result" in disabled|ruleAdded|notRequested) firewall_status=$(json_string_or_null "$result");; *) launcher_fail firewall_rule_failed 'Invalid firewall result';; esac

@@ -18,7 +18,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -205,7 +205,7 @@ class ServerInstallRecoveryViewModel(application: Application) : AndroidViewMode
 @Composable
 internal fun ServerInstallRecoveryPanel(hostId: String, knownPlatform: ServerHostPlatform? = null) {
     val viewModel: ServerInstallRecoveryViewModel = viewModel()
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val platform = knownPlatform ?: state.platform
     var selectedOperationId by rememberSaveable(hostId) { mutableStateOf<String?>(null) }
     var confirmClear by rememberSaveable(hostId) { mutableStateOf(false) }

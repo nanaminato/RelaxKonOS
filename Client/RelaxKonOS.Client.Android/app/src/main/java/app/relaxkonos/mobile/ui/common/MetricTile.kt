@@ -18,6 +18,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
 import app.relaxkonos.mobile.ui.theme.Radius
 import app.relaxkonos.mobile.ui.theme.Spacing
 
@@ -83,11 +86,12 @@ fun MetricTrack(
     tone: StatusTone,
     modifier: Modifier = Modifier,
 ) {
-    val fraction = progress.coerceIn(0f, 1f)
+    val fraction = if (progress.isFinite()) progress.coerceIn(0f, 1f) else 0f
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(6.dp)
+            .semantics { progressBarRangeInfo = ProgressBarRangeInfo(fraction, 0f..1f) }
             .clip(RoundedCornerShape(Radius.pill))
             .background(MaterialTheme.colorScheme.surfaceContainerHighest),
     ) {

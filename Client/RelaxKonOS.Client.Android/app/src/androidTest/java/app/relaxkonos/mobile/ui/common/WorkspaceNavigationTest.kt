@@ -27,6 +27,25 @@ class WorkspaceNavigationTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     private fun tab(id: Int) = rule.onNodeWithText(context.getString(id))
 
+    @Test fun wideWorkspaceUsesSideNavigationAndKeepsDraftWhenResized() {
+        val width = mutableStateOf(1100.dp)
+        rule.setContent {
+            MaterialTheme {
+                Box(Modifier.requiredSize(width.value, 640.dp)) { Workspace() }
+            }
+        }
+        val category = tab(R.string.workspace_overview).fetchSemanticsNode().boundsInRoot
+        val draft = rule.onNodeWithTag("draft").fetchSemanticsNode().boundsInRoot
+        assertTrue(category.right <= draft.left)
+        rule.onNodeWithTag("draft").performTextInput("resize draft")
+        tab(R.string.workspace_logs).performClick()
+        tab(R.string.workspace_overview).performClick()
+        rule.runOnIdle { width.value = 360.dp }
+        rule.onNodeWithTag("draft").assertTextContains("resize draft")
+        assertTrue(tab(R.string.workspace_overview).fetchSemanticsNode().boundsInRoot.bottom <=
+            rule.onNodeWithTag("draft").fetchSemanticsNode().boundsInRoot.top)
+    }
+
     @Test fun framePlacesBackAboveTabsAndKeepsTheActivePagesLeavePolicy() {
         val events = mutableListOf<String>()
         rule.setContent {

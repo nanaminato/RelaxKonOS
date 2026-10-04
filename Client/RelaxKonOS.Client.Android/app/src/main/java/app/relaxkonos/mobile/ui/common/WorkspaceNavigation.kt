@@ -2,6 +2,7 @@ package app.relaxkonos.mobile.ui.common
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -9,6 +10,9 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -36,8 +40,9 @@ fun WorkspaceFrame(
     Column(modifier.fillMaxSize().imePadding()) {
         ScreenHeader(title, subtitle = subtitle, onBack = if (header.hasBack) ({ header.back?.invoke() }) else null,
             modifier = Modifier.padding(Spacing.lg))
-        WorkspaceNavigation(pages, selected, onSelect)
-        CompositionLocalProvider(LocalWorkspaceHeader provides header) { content() }
+        WorkspaceBody(pages, selected, onSelect, Modifier.weight(1f)) {
+            CompositionLocalProvider(LocalWorkspaceHeader provides header) { content() }
+        }
     }
 }
 
@@ -45,11 +50,53 @@ fun WorkspaceFrame(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WorkspaceNavigation(pages: List<WorkspaceDestination>, selected: String, onSelect: (String) -> Unit) {
+    if (pages.isEmpty()) return
+    val focus = LocalFocusManager.current
     val index = pages.indexOfFirst { it.id == selected }.coerceAtLeast(0)
-    PrimaryScrollableTabRow(selectedTabIndex = index, edgePadding = Spacing.sm) {
+    PrimaryScrollableTabRow(selectedTabIndex = index, edgePadding = Spacing.lg,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        divider = {}) {
         pages.forEach { page ->
-            Tab(selected = page.id == selected, onClick = { onSelect(page.id) },
+            Tab(selected = page.id == selected, onClick = { focus.clearFocus(); onSelect(page.id) },
                 text = { Text(stringResource(page.title)) })
+        }
+    }
+}
+
+/** Use available pane width, not device identity: split windows retain reachable tabs. */
+@Composable
+private fun WorkspaceBody(
+    pages: List<WorkspaceDestination>, selected: String, onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit,
+) {
+    val focus = LocalFocusManager.current
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val wide = maxWidth >= 1000.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+        Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(if (wide) Spacing.md else 0.dp)) {
+            if (wide && pages.isNotEmpty()) {
+                Surface(
+                    modifier = Modifier.width(220.dp).fillMaxHeight(),
+                    shape = MaterialTheme.shapes.large,
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                ) {
+                    Column(Modifier.verticalScroll(rememberScrollState()).padding(Spacing.sm),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                        pages.forEach { page ->
+                            NavigationDrawerItem(
+                                label = { Text(stringResource(page.title)) },
+                                selected = page.id == selected,
+                                onClick = { focus.clearFocus(); onSelect(page.id) },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = MaterialTheme.shapes.medium,
+                            )
+                        }
+                    }
+                }
+            }
+            Column(Modifier.weight(1f).fillMaxHeight()) {
+                if (!wide) WorkspaceNavigation(pages, selected, onSelect)
+                content()
+            }
         }
     }
 }
@@ -72,9 +119,10 @@ fun WorkspaceColumn(
     val scrolls = rememberSaveable(saver = ScrollsSaver) { mutableMapOf<String, ScrollState>() }
     Column(modifier.fillMaxSize().imePadding()) {
         ScreenHeader(title, onBack = onBack, modifier = Modifier.padding(Spacing.lg))
-        WorkspaceNavigation(pages, selected, onSelect)
-        Column(Modifier.weight(1f).verticalScroll(scrolls.getOrPut(selected) { ScrollState(0) }).padding(contentPadding),
-            verticalArrangement = Arrangement.spacedBy(contentSpacing), content = content)
+        WorkspaceBody(pages, selected, onSelect, Modifier.weight(1f)) {
+            Column(Modifier.weight(1f).verticalScroll(scrolls.getOrPut(selected) { ScrollState(0) }).padding(contentPadding),
+                verticalArrangement = Arrangement.spacedBy(contentSpacing), content = content)
+        }
     }
     }
 }

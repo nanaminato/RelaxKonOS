@@ -19,7 +19,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,7 +63,7 @@ import java.util.Date
 @Composable
 fun ServerCenterScreen(onClose: () -> Unit) {
     val viewModel: ServerCenterViewModel = viewModel()
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     // 保存与解封都需要一个 Activity 来承载指纹对话框；没有它就不能假装任务可以完成。
     val activity = LocalContext.current as? FragmentActivity ?: return
 

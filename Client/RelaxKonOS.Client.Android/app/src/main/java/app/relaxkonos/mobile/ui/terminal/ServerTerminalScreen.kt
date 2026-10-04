@@ -58,7 +58,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -177,7 +177,7 @@ class ServerTerminalViewModel(application: Application) : AndroidViewModel(appli
 @Composable
 fun ServerTerminalScreen(owner: SessionState.Active, modifier: Modifier = Modifier) {
     val model: ServerTerminalViewModel = viewModel()
-    val state by model.state.collectAsState()
+    val state by model.state.collectAsStateWithLifecycle()
     LifecycleStartEffect(owner) {
         model.connect(owner)
         onStopOrDispose { model.detach() }

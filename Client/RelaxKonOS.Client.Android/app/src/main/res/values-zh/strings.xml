@@ -2763,4 +2763,6 @@
     <string name="usage_memory_cleared">已清除使用记忆。</string>
     <string name="firewall_windows_ready">Windows 防火墙已就绪</string>
     <string name="firewall_windows_scope">启停与默认策略应用于域、专用、公用配置；列表仅显示本应用管理的规则。</string>
+    <string name="manage_search_applications">搜索应用</string>
+    <string name="manage_search_empty">没有匹配的应用。</string>
 </resources>

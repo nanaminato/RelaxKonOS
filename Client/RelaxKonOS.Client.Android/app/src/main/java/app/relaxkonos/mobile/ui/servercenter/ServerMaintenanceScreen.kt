@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.servercenter
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
@@ -99,7 +100,7 @@ internal class ServerMaintenanceViewModel(application: Application) : AndroidVie
 @Composable
 internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier = Modifier) {
     val model: ServerMaintenanceViewModel = viewModel(key = "maintenance-${host?.hostId}")
-    val state by model.state.collectAsState()
+    val state by model.state.collectAsStateWithLifecycle()
     var wizard by rememberSaveable(host?.hostId) { mutableStateOf(false) }
     var installing by remember { mutableStateOf(false) }
     var page by rememberSaveable(host?.hostId) { mutableIntStateOf(0) }

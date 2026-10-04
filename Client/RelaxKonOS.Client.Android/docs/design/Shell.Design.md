@@ -79,7 +79,7 @@ Android 客户端采用 **原生 Mobile Shell**：能在手机和平板上登录
 | `home` | 首页 | 单栏状态卡 | 单栏 + 侧栏 | 状态卡 + 趋势 + 近期操作三区 |
 | `files` | 文件 | 单栏目录列表 | 列表优先 | 位置栏 + 列表 + 详情/预览三栏 |
 | `terminal` | 终端 | 单会话全屏 + 扩展键栏 | 会话抽屉 + 终端 | 会话列表 + 终端双栏 |
-| `manage` | 管理 | 能力域列表 | rail + 列表 | 能力域列表 + 内容区 |
+| `manage` | 管理 | 搜索 + 应用卡片单列 | 导航轨 + 自适应应用网格 | 应用目录 + 内容区 |
 | `more` | 更多 | 设置项列表 | 列表 | 列表 + 详情两栏 |
 
 ### 3.3 嵌套页面
@@ -492,3 +492,11 @@ connect/login（统一表单；密码框 value 始终只表示本次手动输入
 - 在提权流程中并发触发 token 刷新。
 - 用 `DEVICE_CREDENTIAL` 的长期密钥保护提权保险箱。
 - 因桌面端已有某个应用就为移动端补一个不可用入口。
+
+## 公共视觉与自适应导航
+
+顶级目的地仍遵守 Compact `<600dp`、Medium `600–839dp`、Expanded `≥840dp` 的内容规则。Compact 使用底部栏；其余宽度使用导航轨，窗口达到 `1200dp × max(1, fontScale)` 时改用 200dp 带文字侧栏。侧栏可滚动以支持短窗口与大字体。宽侧栏模式按减去 200dp 后的内容宽度决定页面形态，避免为侧栏挤压双栏内容。
+
+公共页面标题采用 headlineMedium，分组使用 titleMedium；卡片使用 surfaceContainerLowest 与完整 outlineVariant 边界，在明暗和高对比主题保持分组清晰。现有固定蓝色品牌色、三语、危险操作确认和编辑离页规则继续由各自规范维护。管理目录与应用内分类的行为见 [应用内功能导航](../features/ApplicationNavigation.md)。
+
+公开实现参考：[Now in Android](https://github.com/android/nowinandroid) 的 Compose/Material 3、能力明确的状态驱动界面与可测试组件；生命周期遵循 [Android architecture recommendations](https://developer.android.com/topic/architecture/recommendations)，自适应按 [Build adaptive apps](https://developer.android.com/develop/ui/compose/build-adaptive-apps) 的可用窗口空间原则。现有业务导航栈仍由 MobileNavigator 持有。
