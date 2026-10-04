@@ -3,7 +3,7 @@
              xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              x:Class="RelaxKonOS.Client.Apps.Git.Views.GitConflictResolutionView"
-             x:DataType="git:GitClientViewModel">
+             x:DataType="git:GitClientViewModel" Classes="builtin-app">
     <Grid RowDefinitions="Auto,Auto,*" Margin="8" RowSpacing="8">
         <StackPanel Spacing="4">
             <TextBlock Text="{loc:Loc git.conflicts.title}" FontSize="16" FontWeight="SemiBold" />

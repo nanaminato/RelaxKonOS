@@ -3,10 +3,10 @@
              xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              x:Class="RelaxKonOS.Client.Apps.Git.Views.GitOverviewView"
-             x:DataType="git:GitClientViewModel">
+             x:DataType="git:GitClientViewModel" Classes="builtin-app">
     <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
         <StackPanel Spacing="12">
-            <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="20">
+            <Border Padding="20" Classes="app-panel">
                 <StackPanel Spacing="6">
                     <TextBlock Text="{loc:Loc git.overview.repository}" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
                     <TextBlock Text="{Binding SelectedRepository.Name}" FontSize="16" Foreground="{DynamicResource TextSecondaryBrush}" />
@@ -30,7 +30,7 @@
                 </StackPanel>
             </Border>
 
-            <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="20">
+            <Border Padding="20" Classes="app-panel">
                 <StackPanel Spacing="6">
                     <TextBlock Text="{loc:Loc git.overview.working_tree}" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
                     <StackPanel Orientation="Horizontal" Spacing="24" Margin="0,8,0,0">

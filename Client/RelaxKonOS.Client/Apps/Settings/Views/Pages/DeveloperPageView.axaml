@@ -3,7 +3,7 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.DeveloperPageView"
-             x:DataType="vm:DeveloperPageViewModel">
+             x:DataType="vm:DeveloperPageViewModel" Classes="builtin-app">
     <StackPanel Spacing="16" MaxWidth="640">
         <TextBlock Text="{Binding LocalizedDisplayName}" FontSize="24" FontWeight="SemiBold" />
         <Border Classes="card">

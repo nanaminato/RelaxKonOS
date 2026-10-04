@@ -325,6 +325,5 @@
     "docker.engine.problem.platform_unsupported": "This platform gives RelaxKonOS no way to control the Docker engine.",
     "docker.engine.problem.helper_unavailable": "The privileged helper that owns the Docker service is unavailable.",
     "docker.engine.problem.desktop_command_failed": "Docker Desktop did not complete the command (the docker desktop plugin may be missing, or the command timed out).",
-    "docker.engine.problem.action_failed": "The host failed to run the operation."
-  }
+    "docker.engine.problem.action_failed": "The host failed to run the operation.","docker.actions_more":"More actions"}
 }

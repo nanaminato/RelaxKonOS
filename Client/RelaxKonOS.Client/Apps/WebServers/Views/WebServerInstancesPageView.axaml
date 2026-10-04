@@ -5,7 +5,7 @@
              x:Class="RelaxKonOS.Client.Apps.WebServers.Views.WebServerInstancesPageView"
              x:DataType="webservers:WebServerManagerViewModel"
              MinWidth="0"
-             MinHeight="0">
+             MinHeight="0" Classes="builtin-app">
     <UserControl.Styles>
         <Style Selector="Border.nginx-running-pulse">
             <Style.Animations>
@@ -20,7 +20,7 @@
     <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
         <Grid MaxWidth="1440" HorizontalAlignment="Stretch" Margin="32,28,32,32"
               ColumnDefinitions="*,1.35*" ColumnSpacing="18" MinWidth="0" MinHeight="0" ClipToBounds="True">
-            <Border Grid.Column="0" Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="24" MinWidth="0">
+            <Border Grid.Column="0" Padding="24" MinWidth="0" Classes="app-panel">
                 <!-- The discovery/install column carries every input field. Keep the field stack in a
                      Grid-free flow but wrap the action rows, so a narrow column reflows instead of
                      painting its buttons past the card edge. -->
@@ -84,7 +84,7 @@
                     </StackPanel>
                 </StackPanel>
             </Border>
-            <Border Grid.Column="1" Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="24" MinWidth="0">
+            <Border Grid.Column="1" Padding="24" MinWidth="0" Classes="app-panel">
                 <StackPanel Spacing="16" MinWidth="0">
                     <StackPanel Spacing="3">
                         <TextBlock Text="{loc:Loc webservers.actions.title}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />

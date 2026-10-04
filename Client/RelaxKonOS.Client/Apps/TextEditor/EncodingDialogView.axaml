@@ -4,7 +4,7 @@
              xmlns:app="clr-namespace:RelaxKonOS.Client.Apps.TextEditor"
              x:Class="RelaxKonOS.Client.Apps.TextEditor.EncodingDialogView"
              x:DataType="app:EncodingDialogViewModel"
-             Background="{DynamicResource SurfaceBrush}">
+             Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
     <Grid Margin="20" RowDefinitions="Auto,*,Auto" RowSpacing="14">
         <TextBlock Grid.Row="0" Text="{loc:Loc common.encoding_selection_hint}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
         <ListBox Grid.Row="1" ItemsSource="{Binding AvailableEncodings}"

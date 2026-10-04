@@ -6,7 +6,7 @@
              x:Class="RelaxKonOS.Client.Apps.CodeEditor.CodeEditorView"
              x:Name="Root"
              x:DataType="codeEditor:CodeEditorViewModel"
-             Background="{DynamicResource SurfaceBrush}">
+             Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
     <UserControl.Styles>
         <!-- The activity bar is 48px wide, leaving a 40px button after its 4px inset.
              Do not inherit the global button's 14px horizontal padding, which clips emoji glyphs. -->
@@ -26,7 +26,7 @@
         </Style>
     </UserControl.Styles>
     <Grid RowDefinitions="Auto,*,Auto">
-        <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1">
+        <Border Grid.Row="0" Classes="app-toolbar">
             <Grid ColumnDefinitions="Auto,*">
                 <Menu Grid.Column="0" Background="Transparent" BorderThickness="0">
                     <MenuItem Header="{loc:Loc common.file}">
@@ -41,7 +41,7 @@
                         <MenuItem Header="{loc:Loc common.preferences_ellipsis}" Command="{Binding OpenSettingsCommand}" />
                     </MenuItem>
                 </Menu>
-                <TextBlock Grid.Column="1" Text="{Binding DocumentName}" VerticalAlignment="Center" Margin="10,0" Opacity="0.7" />
+                <TextBlock Grid.Column="1" Text="{Binding DocumentName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="10,0" Foreground="{DynamicResource TextSecondaryBrush}" />
             </Grid>
         </Border>
 
@@ -53,7 +53,7 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <!-- Activity bar only exposes areas that are implemented. -->
-            <Border Grid.Column="0" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,1,0" Padding="4">
+            <Border Grid.Column="0" Padding="4" Classes="app-sidebar">
                 <StackPanel Spacing="6">
                     <Button Classes="activity-item" Content="📁" FontSize="17" ToolTip.Tip="{loc:Loc code_editor.sidebar.explorer}"
                             Command="{Binding SwitchSidebarCommand}" CommandParameter="explorer" />
@@ -62,8 +62,8 @@
                 </StackPanel>
             </Border>
 
-            <Border Grid.Column="1" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,1,0"
-                    IsVisible="{Binding IsSidebarVisible}">
+            <Border Grid.Column="1"
+                    IsVisible="{Binding IsSidebarVisible}" Classes="app-sidebar">
                 <Grid>
                     <Grid IsVisible="{Binding IsExplorerSidebar}" RowDefinitions="Auto,*">
                         <DockPanel Grid.Row="0" Margin="10,8,8,6">
@@ -114,7 +114,7 @@
                           IsVisible="{Binding IsSidebarVisible}" />
 
             <Grid Grid.Column="3" RowDefinitions="Auto,*">
-                <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1">
+                <Border Grid.Row="0" Classes="app-toolbar">
                     <ListBox Classes="editor-tabs" ItemsSource="{Binding OpenDocuments}" SelectedItem="{Binding ActiveDocument, Mode=TwoWay}" SelectionMode="Single"
                              Background="Transparent" BorderThickness="0" Padding="0">
                         <ListBox.ItemsPanel>
@@ -139,14 +139,14 @@
             </Grid>
         </Grid>
 
-        <Border Grid.Row="2" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Padding="12,5">
+        <Border Grid.Row="2" Classes="app-statusbar">
             <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="14">
-                <TextBlock Text="{Binding StatusText}" FontSize="12" Opacity="0.7" TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
                 <Button Grid.Column="1" Content="{Binding EncodingName}" FontSize="12" Padding="4,0"
                         IsVisible="{Binding HasOpenFile}" ToolTip.Tip="{loc:Loc common.file_encoding}"
                         Command="{Binding ChooseEncodingCommand}" />
-                <TextBlock Grid.Column="2" Text="{Binding LineCountText}" FontSize="12" Opacity="0.7" />
-                <TextBlock Grid.Column="3" Text="{Binding CharacterCountText}" FontSize="12" Opacity="0.7" />
+                <TextBlock Grid.Column="2" Text="{Binding LineCountText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                <TextBlock Grid.Column="3" Text="{Binding CharacterCountText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
             </Grid>
         </Border>
     </Grid>

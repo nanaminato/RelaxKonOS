@@ -1,7 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             x:Class="RelaxKonOS.Client.Apps.Settings.Views.AliasOperationDialogView" x:DataType="vm:AliasOperationDialogViewModel">
+             x:Class="RelaxKonOS.Client.Apps.Settings.Views.AliasOperationDialogView" x:DataType="vm:AliasOperationDialogViewModel" Classes="builtin-app">
   <!-- Fixed description -> scrolling form -> pinned error + action row. The whole dialog used to be one
        ScrollViewer, so the heading and the cancel/confirm buttons scrolled away with the fields. -->
   <Grid Margin="20" RowDefinitions="Auto,*,Auto,Auto" RowSpacing="12">

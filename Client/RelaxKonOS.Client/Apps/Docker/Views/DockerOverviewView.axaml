@@ -3,17 +3,17 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:docker="clr-namespace:RelaxKonOS.Client.Apps.Docker"
              x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerOverviewView"
-             x:DataType="docker:DockerManagerViewModel">
+             x:DataType="docker:DockerManagerViewModel" Classes="builtin-app">
     <StackPanel Spacing="18">
         <Grid ColumnDefinitions="*,*" ColumnSpacing="18">
-            <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20">
+            <Border Padding="20" Classes="app-panel">
                 <StackPanel Spacing="6">
                     <TextBlock Text="{loc:Loc docker.engine}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
                     <TextBlock Text="{Binding EngineVersion}" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
                     <TextBlock Text="{Binding EnginePlatform}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
-            <Border Grid.Column="1" Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20">
+            <Border Grid.Column="1" Padding="20" Classes="app-panel">
                 <StackPanel Spacing="6">
                     <TextBlock Text="{loc:Loc docker.running_containers}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
                     <TextBlock Text="{Binding RunningContainerCount}" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
@@ -21,7 +21,7 @@
                 </StackPanel>
             </Border>
         </Grid>
-        <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20">
+        <Border Padding="20" Classes="app-panel">
             <StackPanel Spacing="12">
                 <StackPanel Spacing="4">
                     <TextBlock Text="{loc:Loc docker.engine.control}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
@@ -36,7 +36,7 @@
                 <TextBlock Text="{Binding EngineActionText}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
             </StackPanel>
         </Border>
-        <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20">
+        <Border Padding="20" Classes="app-panel">
             <StackPanel Spacing="12">
                 <TextBlock Text="{loc:Loc docker.overview}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
                 <TextBlock Text="{loc:Loc docker.overview_hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />

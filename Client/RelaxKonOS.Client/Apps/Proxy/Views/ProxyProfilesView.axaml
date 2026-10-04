@@ -4,7 +4,7 @@
              xmlns:proxy="clr-namespace:RelaxKonOS.Client.Apps.Proxy"
              xmlns:dto="clr-namespace:RelaxKonOS.Protocol.Proxy;assembly=RelaxKonOS.Protocol"
              x:Class="RelaxKonOS.Client.Apps.Proxy.Views.ProxyProfilesView"
-             x:DataType="proxy:ProxyManagerViewModel">
+             x:DataType="proxy:ProxyManagerViewModel" Classes="builtin-app">
   <UserControl.Styles>
     <Style Selector="Button.subscription-card">
       <Setter Property="Padding" Value="0" />
@@ -68,15 +68,13 @@
                   CommandParameter="{Binding}"
                   ToolTip.Tip="{loc:Loc proxy.subscription_reactivate}">
             <Grid>
-              <Border Background="{DynamicResource SurfaceBrush}"
+              <Border
                       BorderBrush="{DynamicResource BorderDefaultBrush}"
-                      BorderThickness="1"
-                      CornerRadius="10" />
-              <Border Background="{DynamicResource SurfaceBrush}"
+                      BorderThickness="1" Classes="app-panel" />
+              <Border
                       BorderBrush="{DynamicResource AccentBrush}"
                       BorderThickness="2"
-                      CornerRadius="10"
-                      IsVisible="{Binding IsActive}" />
+                      IsVisible="{Binding IsActive}" Classes="app-panel" />
               <Border Width="4" Background="{DynamicResource AccentBrush}" CornerRadius="10,0,0,10" HorizontalAlignment="Left" IsVisible="{Binding IsActive}" />
               <Grid Margin="14,11,12,10" RowDefinitions="Auto,*,Auto" RowSpacing="4">
                 <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">

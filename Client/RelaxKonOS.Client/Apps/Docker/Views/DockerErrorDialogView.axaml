@@ -4,7 +4,7 @@
              xmlns:docker="clr-namespace:RelaxKonOS.Client.Apps.Docker.Views"
              x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerErrorDialogView"
              x:DataType="docker:DockerErrorDialogView"
-             Background="{DynamicResource SurfaceBrush}">
+             Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
     <Grid Margin="22" RowDefinitions="Auto,Auto" RowSpacing="18">
         <StackPanel Orientation="Horizontal" Spacing="12">
             <TextBlock Text="⚠" FontSize="28" Foreground="{DynamicResource WarningBrush}" VerticalAlignment="Top" />

@@ -4,7 +4,7 @@
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.AppsPageView"
              x:DataType="vm:AppsPageViewModel"
-             x:Name="Root">
+             x:Name="Root" Classes="builtin-app">
     <StackPanel Spacing="16" MaxWidth="720">
         <StackPanel IsVisible="{Binding IsInstalledApps}" Spacing="16">
             <TextBlock Text="{Binding LocalizedDisplayName}" FontSize="24" FontWeight="SemiBold" />
@@ -68,7 +68,7 @@
                         <Button Content="{loc:Loc settings.uninstall}" Command="{Binding UninstallSelectedAppCommand}" IsVisible="{Binding CanUninstallSelectedApp}" Padding="16,7" />
                     </StackPanel>
                     <TextBlock Text="{Binding UninstallAvailabilityText}" FontSize="12" Opacity="0.62" TextWrapping="Wrap" />
-                    <Border IsVisible="{Binding IsBrowserSettingsVisible}" Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="12">
+                    <Border IsVisible="{Binding IsBrowserSettingsVisible}" Padding="12" Classes="app-panel">
                         <StackPanel Spacing="8">
                             <TextBlock Text="{loc:Loc settings.apps.browser.settings}" FontWeight="SemiBold" />
                             <TextBlock Text="{loc:Loc settings.apps.browser.link_open_target}" FontSize="12" Opacity="0.65" />
@@ -82,7 +82,7 @@
                             </StackPanel>
                         </StackPanel>
                     </Border>
-                    <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="12">
+                    <Border Padding="12" Classes="app-panel">
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
                             <StackPanel Spacing="3">
                                 <TextBlock Text="{loc:Loc settings.app_permissions}" FontWeight="SemiBold" />

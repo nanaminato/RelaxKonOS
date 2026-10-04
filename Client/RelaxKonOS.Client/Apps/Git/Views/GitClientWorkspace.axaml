@@ -5,7 +5,7 @@
              xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.Git.Views"
              x:Class="RelaxKonOS.Client.Apps.Git.Views.GitClientWorkspace"
              x:DataType="git:GitClientViewModel"
-             Background="{DynamicResource AppBackgroundBrush}">
+             Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
     <!-- 顶部标题栏次级按钮：保留显式深色 Background，
          hover/pressed 时仅微调亮度，避免被默认 Button:pointerover 样式覆盖成浅色背景导致浅色文字不可辨识 -->
     <UserControl.Styles>
@@ -37,7 +37,7 @@
     </UserControl.Styles>
     <Grid RowDefinitions="Auto,*,Auto">
         <!-- Top title bar -->
-        <Border Grid.Row="0" Background="{DynamicResource SurfaceSunkenBrush}" Padding="24,14">
+        <Border Grid.Row="0" Classes="app-header">
             <Grid ColumnDefinitions="Auto,*,Auto">
                 <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                     <TextBlock Text="🌿" FontSize="22" VerticalAlignment="Center" />

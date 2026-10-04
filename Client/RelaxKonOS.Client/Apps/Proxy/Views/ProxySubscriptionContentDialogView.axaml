@@ -3,7 +3,7 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:proxy="clr-namespace:RelaxKonOS.Client.Apps.Proxy"
              x:Class="RelaxKonOS.Client.Apps.Proxy.Views.ProxySubscriptionContentDialogView"
-             x:DataType="proxy:ProxyManagerViewModel">
+             x:DataType="proxy:ProxyManagerViewModel" Classes="builtin-app">
   <Grid Margin="20" RowDefinitions="*,Auto" RowSpacing="14">
     <TextBox Text="{Binding RuntimeSubscriptionText}"
              IsReadOnly="True"

@@ -1,7 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             x:Class="RelaxKonOS.Client.Apps.FileServices.Views.FileServicesPathWarningDialogView">
+             x:Class="RelaxKonOS.Client.Apps.FileServices.Views.FileServicesPathWarningDialogView" Classes="builtin-app">
     <StackPanel Margin="20" Spacing="16" MaxWidth="520">
         <TextBlock x:Name="Message" TextWrapping="Wrap" />
         <StackPanel Orientation="Horizontal" Spacing="8">

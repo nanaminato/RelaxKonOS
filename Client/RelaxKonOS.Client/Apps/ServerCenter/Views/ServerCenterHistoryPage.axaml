@@ -4,7 +4,7 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:services="clr-namespace:RelaxKonOS.Client.Services.ServerCenter"
              x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterHistoryPage"
-             x:DataType="vm:ServerCenterViewModel">
+             x:DataType="vm:ServerCenterViewModel" Classes="builtin-app">
     <Grid RowDefinitions="Auto,Auto,*" RowSpacing="18" Margin="0,0,12,0">
         <TextBlock Text="{Binding HistoryPageTitle}" FontSize="21" FontWeight="SemiBold" />
         <TextBlock Grid.Row="1" Text="{Binding SelectHostHint}" IsVisible="{Binding !SelectedHost}" TextWrapping="Wrap" />
@@ -28,8 +28,7 @@
                 <DataGrid Grid.Row="1" ItemsSource="{Binding Operations}" SelectedItem="{Binding SelectedOperation, Mode=TwoWay}"
                           AutoGenerateColumns="False" IsReadOnly="True"
                           SelectionMode="Single" CanUserSortColumns="True" CanUserResizeColumns="True"
-                          HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
-                          GridLinesVisibility="Horizontal" RowHeight="36">
+                          HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" RowHeight="36" Classes="resource-table">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="{loc:Loc server_center.history.time}" Binding="{ReflectionBinding StartedAtLocalText}"
                                             SortMemberPath="StartedAtUtc" Width="230" MinWidth="160" />

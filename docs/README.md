@@ -446,8 +446,11 @@ RelaxKonOS.Server     = Cloud Backend
 
 ### 桌面体验
 
+按修改任务选择文档与验证入口，见 [桌面端文档导航](./desktop/README.md)。
+
 | 文档 | 用途 |
 |------|------|
+| [`BuiltInApps UI`](./desktop/RelaxKonOS.BuiltInApps.UI.md) | 内置应用逐项界面分析、共享视觉角色与布局验收 |
 | [`Desktop`](./desktop/RelaxKonOS.Desktop.md) | 桌面外壳、宿主窗口控制、模态对话框与键盘路由 |
 | [`Theming`](./desktop/RelaxKonOS.Theming.md) | 颜色契约：模式、调色板与强调色（不含形状） |
 | [`SystemStyle`](./desktop/RelaxKonOS.SystemStyle.md) | 系统风格：形状令牌、recipe 闭集、三套内置 profile 与运行时链路 |

@@ -3,7 +3,7 @@
              xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              x:Class="RelaxKonOS.Client.Apps.Git.Views.GitRemoteBranchPickerDialog"
-             x:DataType="git:GitClientViewModel">
+             x:DataType="git:GitClientViewModel" Classes="builtin-app">
     <StackPanel Margin="16" Spacing="12">
         <TextBlock Text="{loc:Loc git.dialog.push.select_remote}" FontSize="13"/>
         <ComboBox x:Name="RemoteBox"

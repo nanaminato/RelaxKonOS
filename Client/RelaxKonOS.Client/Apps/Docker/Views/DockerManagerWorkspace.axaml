@@ -4,7 +4,7 @@
              xmlns:docker="clr-namespace:RelaxKonOS.Client.Apps.Docker"
              x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerManagerWorkspace"
              x:DataType="docker:DockerManagerViewModel"
-             Background="{DynamicResource AppBackgroundBrush}">
+             Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
     <Grid RowDefinitions="Auto,Auto,*">
         <Grid.Styles>
             <!-- 基础状态 -->
@@ -19,7 +19,7 @@
             <Style Selector="Button.docker-status:pointerover /template/ ContentPresenter#PART_ContentPresenter">
                 <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
                 <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                <Setter Property="Foreground" Value="White" />
+                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
             </Style>
 
             <!-- 禁用状态 -->
@@ -33,18 +33,16 @@
                 <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
             </Style>
         </Grid.Styles>
-        <Border Grid.Row="0" Background="{DynamicResource SurfaceSunkenBrush}" Padding="28,18">
+        <Border Grid.Row="0" Classes="app-header">
             <Grid ColumnDefinitions="Auto,*,Auto">
-                <Border Width="46" Height="46" Background="{DynamicResource AccentBrush}" CornerRadius="14">
-                    <TextBlock Text="🐳" FontSize="25" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                </Border>
+                <Image Width="46" Height="46" Source="avares://RelaxKonOS.Client/Assets/AppIcons/docker.png" Stretch="Uniform" />
                 <StackPanel Grid.Column="1" Spacing="2" Margin="14,0,0,0" VerticalAlignment="Center">
-                    <TextBlock Text="{loc:Loc application.relaxkonos.docker.display_name}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
-                    <TextBlock Text="{loc:Loc docker.subtitle}" FontSize="13" Foreground="{DynamicResource TextTertiaryBrush}" />
+                    <TextBlock Text="{loc:Loc application.relaxkonos.docker.display_name}" Classes="app-title" />
+                    <TextBlock Text="{loc:Loc docker.subtitle}" FontSize="13" Classes="app-description" />
                 </StackPanel>
                 <Button Grid.Column="2"
-                        Classes="docker-status"
-                        Content="{Binding StatusText}"
+                       Classes="docker-status"
+                        MaxWidth="260"
                         Command="{Binding OpenInstallGuideCommand}"
                         IsEnabled="{Binding IsDockerInstallRequired}"
                         ToolTip.Tip="{loc:Loc docker.status.open_install_guide}"
@@ -54,6 +52,8 @@
                         Padding="12,6"
                         CornerRadius="16"
                         FontSize="12">
+                    <TextBlock Text="{Binding StatusText}" MaxWidth="220" TextTrimming="CharacterEllipsis"
+                               ToolTip.Tip="{Binding StatusText}" />
                 </Button>
             </Grid>
         </Border>
@@ -63,7 +63,7 @@
         </Border>
 
         <Grid Grid.Row="2" ColumnDefinitions="190,*">
-            <Border Grid.Column="0" Background="{DynamicResource SurfaceSunkenBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,0,1,0">
+            <Border Grid.Column="0" Classes="app-sidebar">
                 <StackPanel Spacing="4" Margin="14,22">
                     <TextBlock Text="{loc:Loc docker.workspace}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="11" FontWeight="SemiBold" Margin="10,0,0,6" />
                     <Button x:Name="OverviewButton" Classes="workspace-nav" Tag="overview" Click="NavigationButton_Click" Content="{loc:Loc docker.overview}" HorizontalContentAlignment="Left" Padding="10,8" />
@@ -78,9 +78,8 @@
             </Border>
             <!-- Pages with DataGrid columns must be measured against the workspace width.  An
                  unconstrained horizontal ScrollViewer lets their desired width grow indefinitely. -->
-            <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-                <ContentControl x:Name="ContentHost" Margin="30,24" HorizontalAlignment="Stretch" />
-            </ScrollViewer>
+            <ContentControl x:Name="ContentHost" Grid.Column="1" Margin="24,20"
+                            HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
         </Grid>
     </Grid>
 </UserControl>

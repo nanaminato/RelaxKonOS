@@ -5,7 +5,7 @@
              xmlns:dto="clr-namespace:RelaxKonOS.Protocol.Proxy;assembly=RelaxKonOS.Protocol"
              x:Class="RelaxKonOS.Client.Apps.Proxy.Views.ProxyGroupsView"
              x:Name="Root"
-             x:DataType="proxy:ProxyManagerViewModel">
+             x:DataType="proxy:ProxyManagerViewModel" Classes="builtin-app">
   <UserControl.Styles>
     <Style Selector="Button.proxy-toolbar-button">
       <Setter Property="Padding" Value="8,5" />
@@ -66,7 +66,7 @@
           <DataTemplate x:DataType="proxy:ProxyGroupItem">
             <StackPanel Spacing="8" HorizontalAlignment="Stretch">
               <Button Classes="proxy-group-header" Command="{Binding DataContext.ToggleProxyGroupCommand, ElementName=Root}" CommandParameter="{Binding}">
-                <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="10" Padding="14,11" HorizontalAlignment="Stretch">
+                <Border Padding="14,11" HorizontalAlignment="Stretch" Classes="app-panel">
                   <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
                     <TextBlock Text="⌄" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" IsVisible="{Binding IsExpanded}" />
                     <TextBlock Text="›" FontSize="24" FontWeight="SemiBold" VerticalAlignment="Center" IsVisible="{Binding !IsExpanded}" />
@@ -82,7 +82,7 @@
                 </Border>
               </Button>
 
-              <Border IsVisible="{Binding IsExpanded}" Background="{DynamicResource SurfaceBrush}" CornerRadius="10" Padding="10" HorizontalAlignment="Stretch">
+              <Border IsVisible="{Binding IsExpanded}" Padding="10" HorizontalAlignment="Stretch" Classes="app-panel">
                 <StackPanel Spacing="8">
                   <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" CornerRadius="7" Padding="6,4">
                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="4">
@@ -110,8 +110,8 @@
                                 Command="{Binding DataContext.SelectProxyNodeCommand, ElementName=Root}"
                                 CommandParameter="{Binding}">
                           <Grid>
-                            <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" CornerRadius="8" />
-                            <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="2" CornerRadius="8" IsVisible="{Binding IsSelected}" />
+                            <Border BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" Classes="app-panel" />
+                            <Border BorderBrush="{DynamicResource AccentBrush}" BorderThickness="2" IsVisible="{Binding IsSelected}" Classes="app-panel" />
                             <Border Width="4" Background="{DynamicResource AccentBrush}" CornerRadius="8,0,0,8" HorizontalAlignment="Left" IsVisible="{Binding IsSelected}" />
                             <Grid Margin="11,8" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="5">
                               <TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />

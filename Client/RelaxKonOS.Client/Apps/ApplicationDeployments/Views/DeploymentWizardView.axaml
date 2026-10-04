@@ -4,7 +4,7 @@
              xmlns:viewModels="clr-namespace:RelaxKonOS.Client.Apps.ApplicationDeployments.ViewModels"
              x:Class="RelaxKonOS.Client.Apps.ApplicationDeployments.Views.DeploymentWizardView"
              x:DataType="viewModels:DeploymentWizardViewModel"
-             Background="{DynamicResource AppBackgroundBrush}">
+             Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
     <Grid RowDefinitions="Auto,*,Auto,Auto">
         <!-- Header: which step of how many, so a long form is never open-ended. -->
         <Border Grid.Row="0" Background="{DynamicResource SurfaceSunkenBrush}" Padding="22,14">

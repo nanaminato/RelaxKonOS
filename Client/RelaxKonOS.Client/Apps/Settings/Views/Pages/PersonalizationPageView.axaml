@@ -4,7 +4,7 @@
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
              xmlns:ss="clr-namespace:RelaxKonOS.Client.Services"
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.PersonalizationPageView"
-             x:DataType="vm:PersonalizationPageViewModel">
+             x:DataType="vm:PersonalizationPageViewModel" Classes="builtin-app">
     <StackPanel Spacing="16" MaxWidth="640">
         <TextBlock Text="{Binding LocalizedDisplayName}" FontSize="24" FontWeight="SemiBold" />
 

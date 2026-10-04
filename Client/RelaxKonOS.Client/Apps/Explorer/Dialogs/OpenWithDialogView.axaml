@@ -5,7 +5,7 @@
              xmlns:core="clr-namespace:RelaxKonOS.Core.Applications;assembly=RelaxKonOS.Core"
              x:Class="RelaxKonOS.Client.Apps.Explorer.Dialogs.OpenWithDialogView"
              x:DataType="vm:OpenWithDialogViewModel"
-             Background="{DynamicResource SurfaceBrush}" Width="440">
+             Background="{DynamicResource SurfaceBrush}" Width="440" Classes="builtin-app">
     <Grid RowDefinitions="Auto,*,Auto,Auto" Margin="20" RowSpacing="10">
         <TextBlock Text="{loc:Loc explorer.open_with_prompt}" />
         <ListBox Grid.Row="1" ItemsSource="{Binding Applications}" SelectedItem="{Binding SelectedApplication, Mode=TwoWay}" MinHeight="140">

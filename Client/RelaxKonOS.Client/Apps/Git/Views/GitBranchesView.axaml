@@ -3,7 +3,7 @@
              xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              x:Class="RelaxKonOS.Client.Apps.Git.Views.GitBranchesView"
-             x:DataType="git:GitClientViewModel">
+             x:DataType="git:GitClientViewModel" Classes="builtin-app">
     <Grid RowDefinitions="Auto,*" MinHeight="300">
         <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
             <Button Command="{Binding CreateBranchCommand}">
@@ -25,12 +25,12 @@
                 </StackPanel>
             </Button>
         </StackPanel>
-        <Border Grid.Row="1" Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="4">
+        <Border Grid.Row="1" Padding="4" Classes="app-panel">
             <DataGrid x:Name="BranchGrid" ItemsSource="{Binding Branches}"
                       AutoGenerateColumns="False" IsReadOnly="True"
-                      HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                      HeadersVisibility="Column"
                       SelectedItem="{Binding SelectedBranch, Mode=TwoWay}"
-                      CanUserResizeColumns="True" CanUserSortColumns="True">
+                      CanUserResizeColumns="True" CanUserSortColumns="True" Classes="resource-table">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="{loc:Loc git.branches.col_name}" Binding="{Binding Name}" Width="160" CanUserResize="True" />
                     <DataGridCheckBoxColumn Header="{loc:Loc git.branches.col_current}" Binding="{Binding IsCurrent}" IsReadOnly="True" Width="70" CanUserResize="True" />

@@ -51,7 +51,7 @@ internal partial class DockerManagerWorkspace : UserControl
         button.Classes.Add("nav-selected");
         if (section == "proxy") _ = _proxyViewModel.LoadAsync();
         if (section == "mirrors") _ = _imageMirrorsViewModel.LoadAsync();
-        ContentHost.Content = section switch
+        Control page = section switch
         {
             "containers" => new DockerContainersView(_showCreateContainer),
             "stacks" => new DockerStacksView(_showDeployStack),
@@ -62,5 +62,15 @@ internal partial class DockerManagerWorkspace : UserControl
             "volumes" => new DockerVolumesView(_showCreateVolume),
             _ => new DockerOverviewView()
         };
+        // Resource lists fill the available workspace; overview, settings and the multi-table
+        // orchestration page keep their own scrollable document presentation.
+        ContentHost.Content = section is "containers" or "images" or "networks" or "volumes"
+            ? page
+            : new ScrollViewer
+            {
+                Content = page,
+                HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
+            };
     }
 }

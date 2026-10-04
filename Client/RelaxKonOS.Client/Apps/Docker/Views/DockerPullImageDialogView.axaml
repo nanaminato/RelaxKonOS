@@ -3,7 +3,7 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:docker="clr-namespace:RelaxKonOS.Client.Apps.Docker"
              x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerPullImageDialogView"
-             x:DataType="docker:DockerManagerViewModel">
+             x:DataType="docker:DockerManagerViewModel" Classes="builtin-app">
     <Grid Margin="20" RowDefinitions="*,Auto" RowSpacing="16">
         <Grid RowDefinitions="Auto,Auto" RowSpacing="4" VerticalAlignment="Top">
             <TextBlock Text="{loc:Loc docker.image.reference}" Foreground="{DynamicResource TextSecondaryBrush}" />

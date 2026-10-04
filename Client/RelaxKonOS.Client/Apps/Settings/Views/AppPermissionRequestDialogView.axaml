@@ -3,7 +3,7 @@
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.AppPermissionRequestDialogView"
              x:DataType="vm:AppPermissionRequestDialogViewModel"
-             Background="{DynamicResource SurfaceBrush}" Width="460">
+             Background="{DynamicResource SurfaceBrush}" Width="460" Classes="builtin-app">
     <Grid Margin="20" RowDefinitions="Auto,*,Auto" RowSpacing="16">
         <StackPanel Spacing="5">
             <TextBlock Text="{Binding AppName}" FontSize="20" FontWeight="SemiBold" />

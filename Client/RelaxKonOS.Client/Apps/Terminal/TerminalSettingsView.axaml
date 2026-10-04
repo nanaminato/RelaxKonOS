@@ -5,7 +5,7 @@
              xmlns:terminal="clr-namespace:RelaxKonOS.Client.Apps.Terminal"
              x:Class="RelaxKonOS.Client.Apps.Terminal.TerminalSettingsView"
              x:DataType="terminal:TerminalViewModel"
-             Width="460">
+             Width="460" Classes="builtin-app">
     <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" Margin="20" RowSpacing="14">
         <TextBlock Text="{loc:Loc terminal.settings}" FontSize="18" FontWeight="SemiBold" />
         <Grid Grid.Row="1" ColumnDefinitions="150,*" ColumnSpacing="12">

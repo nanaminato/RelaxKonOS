@@ -4,7 +4,7 @@
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.PerformanceOptionsDialogView"
              x:DataType="vm:PerformanceOptionsDialogViewModel"
-             Background="{DynamicResource SurfaceBrush}" Width="520">
+             Background="{DynamicResource SurfaceBrush}" Width="520" Classes="builtin-app">
     <!-- Fixed heading -> scrolling options -> pinned action row. -->
     <Grid Margin="20" RowDefinitions="Auto,*,Auto" RowSpacing="16">
         <StackPanel Grid.Row="0" Spacing="5">

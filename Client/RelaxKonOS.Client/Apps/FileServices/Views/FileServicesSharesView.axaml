@@ -3,7 +3,7 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:fs="clr-namespace:RelaxKonOS.Client.Apps.FileServices"
              xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.FileServices.Views"
-             x:Class="RelaxKonOS.Client.Apps.FileServices.Views.FileServicesSharesView" x:DataType="fs:FileServicesViewModel">
+             x:Class="RelaxKonOS.Client.Apps.FileServices.Views.FileServicesSharesView" x:DataType="fs:FileServicesViewModel" Classes="builtin-app">
     <UserControl.Resources><views:FileSharePermissionsConverter x:Key="PermissionsConverter" /></UserControl.Resources>
     <Grid RowDefinitions="Auto,*" RowSpacing="12">
         <StackPanel Spacing="12">
@@ -14,7 +14,7 @@
                 <Button Content="{loc:Loc file_services.delete}" Command="{Binding DeleteShareCommand}" />
             </WrapPanel>
         </StackPanel>
-        <DataGrid Grid.Row="1" ItemsSource="{Binding Shares}" SelectedItem="{Binding SelectedShare, Mode=TwoWay}" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" GridLinesVisibility="Horizontal" CanUserResizeColumns="True" CanUserReorderColumns="False" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" MinHeight="160">
+        <DataGrid Grid.Row="1" ItemsSource="{Binding Shares}" SelectedItem="{Binding SelectedShare, Mode=TwoWay}" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" CanUserResizeColumns="True" CanUserReorderColumns="False" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" MinHeight="160" Classes="resource-table">
             <DataGrid.Columns>
                 <DataGridTextColumn Header="{loc:Loc file_services.column.Name}" Binding="{ReflectionBinding Name}" Width="160" MinWidth="140" />
                 <DataGridTextColumn Header="{loc:Loc file_services.column.Path}" Binding="{ReflectionBinding Path}" Width="260" MinWidth="220" />

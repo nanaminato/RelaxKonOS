@@ -325,6 +325,5 @@
     "docker.engine.problem.platform_unsupported": "当前平台不支持由 RelaxKonOS 控制 Docker 引擎。",
     "docker.engine.problem.helper_unavailable": "掌管 Docker 服务的特权 Helper 不可用，无法控制该服务。",
     "docker.engine.problem.desktop_command_failed": "Docker Desktop 未能完成该命令（可能缺少 docker desktop 插件，或已超时）。",
-    "docker.engine.problem.action_failed": "服务器执行该操作失败。"
-  }
+    "docker.engine.problem.action_failed": "服务器执行该操作失败。","docker.actions_more":"更多操作"}
 }

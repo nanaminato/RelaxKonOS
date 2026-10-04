@@ -4,7 +4,7 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:proto="clr-namespace:RelaxKonOS.Protocol.Git;assembly=RelaxKonOS.Protocol"
              x:Class="RelaxKonOS.Client.Apps.Git.Views.GitProjectPickerView"
-             x:DataType="git:GitClientViewModel">
+             x:DataType="git:GitClientViewModel" Classes="builtin-app">
     <Grid RowDefinitions="Auto,*,Auto">
         <!-- 顶部标题 -->
         <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}" Padding="24,18,24,12">
@@ -18,7 +18,7 @@
         <ScrollViewer Grid.Row="1" Padding="24,12" Background="{DynamicResource AppBackgroundBrush}">
             <StackPanel Spacing="14">
                 <!-- 已注册项目列表 -->
-                <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="12">
+                <Border Padding="12" Classes="app-panel">
                     <StackPanel Spacing="8">
                         <Grid ColumnDefinitions="*,Auto">
                             <TextBlock Grid.Column="0" Text="{loc:Loc git.picker.registered_section}" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
@@ -74,8 +74,8 @@
                 </Border>
 
                 <!-- 探测提示 -->
-                <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="12"
-                        IsVisible="{Binding IsProbing}">
+                <Border Padding="12"
+                        IsVisible="{Binding IsProbing}" Classes="app-panel">
                     <StackPanel Spacing="6">
                         <TextBlock Text="{Binding ProbeHint}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
                         <ProgressBar IsIndeterminate="True" Height="4" />

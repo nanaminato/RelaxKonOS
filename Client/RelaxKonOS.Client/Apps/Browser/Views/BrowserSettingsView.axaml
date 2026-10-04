@@ -4,7 +4,7 @@
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Browser.ViewModels"
              x:Class="RelaxKonOS.Client.Apps.Browser.Views.BrowserSettingsView"
              x:DataType="vm:BrowserViewModel"
-             Width="520">
+             Width="520" Classes="builtin-app">
     <Grid RowDefinitions="Auto,Auto,Auto" Margin="20" RowSpacing="14">
         <TextBlock Text="{loc:Loc browser.settings.title}" FontSize="18" FontWeight="SemiBold" />
         <StackPanel Grid.Row="1" Spacing="6">

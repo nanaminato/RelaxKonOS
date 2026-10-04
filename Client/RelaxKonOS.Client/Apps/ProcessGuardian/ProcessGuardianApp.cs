@@ -64,7 +64,7 @@ public sealed class ProcessGuardianApp : RemoteApplicationBase
 
     private static Control CreateView(ProcessGuardianViewModel vm)
     {
-        var root = new DockPanel { Margin = new Avalonia.Thickness(18), LastChildFill = true, DataContext = vm };
+        var root = new DockPanel { Classes = { "builtin-app" }, Margin = new Avalonia.Thickness(18), LastChildFill = true, DataContext = vm };
         var toolbar = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Margin = new Avalonia.Thickness(0, 0, 0, 10) };
         toolbar.Children.Add(new Button { Content = LocalizedText.Get("guardian.create.open"), Command = vm.OpenCreateWorkloadCommand, Classes = { "primary" } });
         var refresh = new Button { Content = LocalizedText.Get("common.refresh"), Command = vm.RefreshCommand, MinWidth = 38 };
@@ -73,9 +73,8 @@ public sealed class ProcessGuardianApp : RemoteApplicationBase
 
         var notice = new Border
         {
-            Background = ThemeBrushes.Get("AppBackgroundBrush"),
+            Classes = { "app-panel" },
             Padding = new Avalonia.Thickness(14, 10),
-            CornerRadius = new CornerRadius(3),
             Margin = new Avalonia.Thickness(0, 0, 0, 12),
             Child = new TextBlock { Text = LocalizedText.Get("guardian.info"), TextWrapping = TextWrapping.Wrap }
         };
@@ -92,10 +91,11 @@ public sealed class ProcessGuardianApp : RemoteApplicationBase
     {
         var table = new DataGrid
         {
+            Classes = { "resource-table" },
+            CanUserResizeColumns = true,
             AutoGenerateColumns = false,
             IsReadOnly = true,
             CanUserReorderColumns = false,
-            GridLinesVisibility = DataGridGridLinesVisibility.Horizontal,
             SelectionMode = DataGridSelectionMode.Single,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
             DataContext = vm
@@ -187,7 +187,7 @@ public sealed class ProcessGuardianApp : RemoteApplicationBase
 
     private static Control CreateLogsView(GuardianLogWindowViewModel vm)
     {
-        var root = new DockPanel { Margin = new Avalonia.Thickness(16), DataContext = vm };
+        var root = new DockPanel { Classes = { "builtin-app" }, Margin = new Avalonia.Thickness(16), DataContext = vm };
         var status = new TextBlock { Margin = new Avalonia.Thickness(0, 0, 0, 8), Foreground = ThemeBrushes.Get("TextSecondaryBrush") };
         status.Bind(TextBlock.TextProperty, new Avalonia.Data.Binding(nameof(vm.StatusText)));
         DockPanel.SetDock(status, Dock.Top); root.Children.Add(status);

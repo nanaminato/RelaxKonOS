@@ -3,6 +3,6 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:fs="clr-namespace:RelaxKonOS.Client.Apps.FileServices"
              xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.FileServices.Views"
-             x:Class="RelaxKonOS.Client.Apps.FileServices.Views.FileServicesLoginRequiredView">
+             x:Class="RelaxKonOS.Client.Apps.FileServices.Views.FileServicesLoginRequiredView" Classes="builtin-app">
     <TextBlock Margin="20" Text="{loc:Loc file_services.login_required}" TextWrapping="Wrap" />
 </UserControl>

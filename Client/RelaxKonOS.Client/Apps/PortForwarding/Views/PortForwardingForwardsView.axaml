@@ -4,7 +4,7 @@
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.PortForwarding.ViewModels"
              xmlns:forward="clr-namespace:RelaxKonOS.Client.Apps.PortForwarding"
              x:Class="RelaxKonOS.Client.Apps.PortForwarding.Views.PortForwardingForwardsView"
-             x:DataType="vm:PortForwardingViewModel">
+             x:DataType="vm:PortForwardingViewModel" Classes="builtin-app">
     <Grid RowDefinitions="Auto,*,Auto" RowSpacing="14">
         <Grid ColumnDefinitions="*,Auto">
             <StackPanel Spacing="3">

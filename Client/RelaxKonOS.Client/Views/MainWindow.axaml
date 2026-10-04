@@ -20,9 +20,10 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
     <Window.Styles>
         <Style Selector="Border.connection-bar">
-            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource BorderDefaultBrush}" />
             <Setter Property="BorderThickness" Value="{DynamicResource ControlBorderThickness}" />
+            <Setter Property="BoxShadow" Value="{DynamicResource ElevationShadow}" />
             <!-- The connection bar hangs below the host title bar, so only its lower corners round. -->
             <Setter Property="CornerRadius" Value="{DynamicResource OverlayBottomCornerRadius}" />
         </Style>
@@ -44,7 +45,9 @@
             <Setter Property="Foreground" Value="{DynamicResource TextOnDangerBrush}" />
         </Style>
         <Style Selector="Border.window-titlebar">
-            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
         </Style>
         <Style Selector="Button.window-control">
             <Setter Property="Width" Value="{DynamicResource WindowControlWidth}" />
@@ -79,18 +82,29 @@
             <!-- The opaque launch screen hides the empty host and partially restored desktop
                  until the selected shell has registered its surfaces and restored its state. -->
             <Border x:Name="DesktopLoadingOverlay" Background="{DynamicResource AppBackgroundBrush}" ZIndex="50">
-                <StackPanel Width="320" Spacing="16" Margin="24"
-                            HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <Image Source="/Assets/RelaxKonOS-client-icon.png" Width="112" Height="112"
-                           Stretch="Uniform" HorizontalAlignment="Center" />
-                    <TextBlock Text="RelaxKonOS" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="28"
-                               FontWeight="Light" TextAlignment="Center" />
-                    <TextBlock Text="{loc:Loc shell.desktop_loading.title}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="16"
-                               TextAlignment="Center" />
-                    <ProgressBar IsIndeterminate="True" Width="180" Height="4" HorizontalAlignment="Center" />
-                    <TextBlock Text="{loc:Loc shell.desktop_loading.description}" Classes="subtle" FontSize="12"
-                               TextAlignment="Center" TextWrapping="Wrap" />
-                </StackPanel>
+                <Border MaxWidth="420" Margin="32" Padding="32"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Background="{DynamicResource SurfaceRaisedBrush}"
+                        BorderBrush="{DynamicResource BorderSubtleBrush}"
+                        BorderThickness="{DynamicResource ControlBorderThickness}"
+                        CornerRadius="{DynamicResource OverlayCornerRadius}"
+                        BoxShadow="{DynamicResource ElevationShadow}">
+                    <StackPanel Spacing="20">
+                        <Image Source="/Assets/RelaxKonOS-client-icon.png" Width="72" Height="72"
+                               Stretch="Uniform" HorizontalAlignment="Center" />
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="RelaxKonOS" Foreground="{DynamicResource TextPrimaryBrush}"
+                                       FontSize="28" FontWeight="SemiBold" TextAlignment="Center" />
+                            <TextBlock Text="{loc:Loc shell.desktop_loading.title}"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" FontSize="16"
+                                       TextAlignment="Center" TextWrapping="Wrap" />
+                            <TextBlock Text="{loc:Loc shell.desktop_loading.description}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" FontSize="13"
+                                       TextAlignment="Center" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ProgressBar IsIndeterminate="True" Height="4" />
+                    </StackPanel>
+                </Border>
             </Border>
         </Grid>
 
@@ -124,7 +138,7 @@
                 <Button Grid.Column="0" Classes="connection-action" Click="ConnectionInfo_OnClick"
                         ToolTip.Tip="{loc:Loc shell.connection.info_tooltip}">
                     <StackPanel Orientation="Horizontal" Spacing="7">
-                        <TextBlock Text="●" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                        <TextBlock Text="●" FontSize="12" Foreground="{DynamicResource SuccessBrush}" VerticalAlignment="Center" />
                         <TextBlock Text="{Binding ConnectionServer}" FontSize="12" MaxWidth="106"
                                    TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                     </StackPanel>
@@ -156,19 +170,19 @@
         </Border>
 
         <Border x:Name="ConnectionInfo" IsVisible="False"
-                HorizontalAlignment="Center" VerticalAlignment="Top" Width="360" Margin="0,42,0,0"
+                HorizontalAlignment="Center" VerticalAlignment="Top" Width="400" Margin="{DynamicResource HostTitleBarMargin}"
                 ZIndex="30"
                 Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="{DynamicResource ControlBorderThickness}" CornerRadius="{DynamicResource OverlayCornerRadius}"
-                Padding="16">
-            <StackPanel Spacing="8">
-                <TextBlock Text="{loc:Loc shell.connection.info}" FontWeight="SemiBold" FontSize="14" />
+                BoxShadow="{DynamicResource ElevationShadow}" Padding="20">
+            <StackPanel Spacing="16">
+                <TextBlock Text="{loc:Loc shell.connection.info}" FontWeight="SemiBold" FontSize="16" />
                 <Grid ColumnDefinitions="90,*" RowDefinitions="Auto,Auto,Auto">
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{loc:Loc shell.connection.server}" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{loc:Loc shell.connection.server}" Foreground="{DynamicResource TextSecondaryBrush}" />
                     <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding ConnectionServer}" TextWrapping="Wrap" />
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="{loc:Loc shell.connection.user}" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,7,0,0" />
-                    <TextBlock Grid.Row="1" Grid.Column="1"  Text="{Binding ConnectionUser}" Margin="0,7,0,0" />
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="{loc:Loc shell.connection.workspace}" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,7,0,0" />
-                    <TextBlock Grid.Row="2" Grid.Column="1"  Text="{Binding ConnectionWorkspace}" Margin="0,7,0,0" />
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="{loc:Loc shell.connection.user}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,7,0,0" />
+                    <TextBlock Grid.Row="1" Grid.Column="1"  Text="{Binding ConnectionUser}" TextWrapping="Wrap" Margin="0,7,0,0" />
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="{loc:Loc shell.connection.workspace}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,7,0,0" />
+                    <TextBlock Grid.Row="2" Grid.Column="1"  Text="{Binding ConnectionWorkspace}" TextWrapping="Wrap" Margin="0,7,0,0" />
                 </Grid>
             </StackPanel>
         </Border>

@@ -6,7 +6,7 @@
              xmlns:pages="clr-namespace:RelaxKonOS.Client.Apps.Settings.Views.Pages"
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.SettingsView"
              x:DataType="vm:SettingsViewModel"
-             Background="{DynamicResource SurfaceBrush}">
+             Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
 
     <UserControl.DataTemplates>
         <DataTemplate DataType="vm:AccountSecurityPageViewModel">
@@ -91,7 +91,7 @@
             </ComboBox>
         </StackPanel>
         <Grid x:Name="NavigationLayout" Grid.Row="2" ColumnDefinitions="210,*">
-            <Border x:Name="Sidebar" Grid.Column="0" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,1,0" Margin="0,0,10,0">
+            <Border x:Name="Sidebar" Grid.Column="0" Margin="0,0,10,0" Classes="app-sidebar">
                 <ListBox ItemsSource="{Binding Pages}" SelectedItem="{Binding SelectedPage, Mode=TwoWay}"
                          Background="Transparent" BorderThickness="0" Padding="0,0,6,8"
                          AutomationProperties.Name="{loc:Loc settings.search.category}"

@@ -4,7 +4,7 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:proto="clr-namespace:RelaxKonOS.Protocol.Git;assembly=RelaxKonOS.Protocol"
              x:Class="RelaxKonOS.Client.Apps.Git.Views.GitPushDialog"
-             x:DataType="git:GitClientViewModel">
+             x:DataType="git:GitClientViewModel" Classes="builtin-app">
     <Grid Margin="12" RowDefinitions="Auto,*,Auto" RowSpacing="8">
         <!-- Row 0: Branch line + commit count -->
         <StackPanel Grid.Row="0" Orientation="Horizontal">
@@ -92,7 +92,7 @@
                           Background="Transparent"/>
 
             <!-- Right: file-change tree, with commit metadata only for a concrete commit selection. -->
-            <Border Grid.Column="2" Background="{DynamicResource SurfaceBrush}" CornerRadius="6" Padding="8" MinWidth="180">
+            <Border Grid.Column="2" Padding="8" MinWidth="180" Classes="app-panel">
                 <Grid x:Name="PushPreviewGrid" RowDefinitions="Auto,*,0,0" RowSpacing="0">
                     <TextBlock FontSize="11"
                                Foreground="{DynamicResource TextPrimaryBrush}"

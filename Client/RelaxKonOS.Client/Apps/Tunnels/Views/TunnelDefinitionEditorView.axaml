@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Tunnels" xmlns:tunnels="clr-namespace:RelaxKonOS.Protocol.Tunnels;assembly=RelaxKonOS.Protocol" x:Class="RelaxKonOS.Client.Apps.Tunnels.Views.TunnelDefinitionEditorView" x:DataType="vm:TunnelDefinitionEditorViewModel">
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Tunnels" xmlns:tunnels="clr-namespace:RelaxKonOS.Protocol.Tunnels;assembly=RelaxKonOS.Protocol" x:Class="RelaxKonOS.Client.Apps.Tunnels.Views.TunnelDefinitionEditorView" x:DataType="vm:TunnelDefinitionEditorViewModel" Classes="builtin-app">
   <!-- Fixed heading -> scrolling form -> fixed action row. The buttons used to sit inside the scroll
        viewer, so they scrolled away with the fields. -->
   <Grid Margin="22" RowDefinitions="Auto,*,Auto" RowSpacing="12">

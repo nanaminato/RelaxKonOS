@@ -3,7 +3,7 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:docker="clr-namespace:RelaxKonOS.Client.Apps.Docker"
              x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerProxyView"
-             x:DataType="docker:DockerProxyViewModel">
+             x:DataType="docker:DockerProxyViewModel" Classes="builtin-app">
     <StackPanel Spacing="18">
         <Border Background="{DynamicResource AccentMutedBrush}" BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="1" CornerRadius="14" Padding="18" IsVisible="{Binding IsReadOnly}">
             <StackPanel Spacing="6">
@@ -12,7 +12,7 @@
             </StackPanel>
         </Border>
 
-        <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20" IsVisible="{Binding !IsReadOnly}">
+        <Border Padding="20" IsVisible="{Binding !IsReadOnly}" Classes="app-panel">
             <StackPanel Spacing="14">
                 <StackPanel Spacing="4">
                     <TextBlock Text="{loc:Loc docker.proxy.title}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
@@ -75,7 +75,7 @@
             </StackPanel>
         </Border>
 
-        <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20">
+        <Border Padding="20" Classes="app-panel">
             <StackPanel Spacing="12">
                 <TextBlock Text="{loc:Loc docker.proxy.layers}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
                 <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="14" RowSpacing="8">
@@ -89,7 +89,7 @@
             </StackPanel>
         </Border>
 
-        <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20" IsVisible="{Binding HasDesktopProxy}">
+        <Border Padding="20" IsVisible="{Binding HasDesktopProxy}" Classes="app-panel">
             <StackPanel Spacing="12">
                 <StackPanel Spacing="4">
                     <TextBlock Text="{loc:Loc docker.proxy.desktop.title}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />

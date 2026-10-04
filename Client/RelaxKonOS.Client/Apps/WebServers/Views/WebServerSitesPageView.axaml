@@ -6,10 +6,10 @@
              x:Class="RelaxKonOS.Client.Apps.WebServers.Views.WebServerSitesPageView"
              x:DataType="webservers:WebServerManagerViewModel"
              MinWidth="0"
-             MinHeight="0">
+             MinHeight="0" Classes="builtin-app">
     <Grid MaxWidth="1440" HorizontalAlignment="Stretch" Margin="32,28,32,32"
           RowDefinitions="Auto,*" RowSpacing="16" MinWidth="0" MinHeight="0" ClipToBounds="True">
-        <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20">
+        <Border Grid.Row="0" Padding="20" Classes="app-panel">
             <StackPanel Spacing="14">
                 <StackPanel Spacing="3">
                     <TextBlock Text="{loc:Loc webservers.sites}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
@@ -25,13 +25,12 @@
                 <TextBlock Text="{Binding SiteStatusText}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
             </StackPanel>
         </Border>
-        <Border Grid.Row="1" Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20" MinWidth="0" MinHeight="0">
+        <Border Grid.Row="1" Padding="20" MinWidth="0" MinHeight="0" Classes="app-panel">
             <Grid RowDefinitions="Auto,*" RowSpacing="12" MinWidth="0" MinHeight="0">
                 <TextBlock Text="{loc:Loc webservers.sites.deployed}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
                 <DataGrid Grid.Row="1" ItemsSource="{Binding Sites}" SelectedItem="{Binding SelectedSite, Mode=TwoWay}"
-                          AutoGenerateColumns="False" IsReadOnly="True" CanUserResizeColumns="True" CanUserReorderColumns="False"
-                          GridLinesVisibility="Horizontal" SelectionMode="Single" HorizontalScrollBarVisibility="Auto"
-                          VerticalScrollBarVisibility="Auto" MinWidth="0" MinHeight="0" VerticalAlignment="Stretch">
+                          AutoGenerateColumns="False" IsReadOnly="True" CanUserResizeColumns="True" CanUserReorderColumns="False" SelectionMode="Single" HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Auto" MinWidth="0" MinHeight="0" VerticalAlignment="Stretch" Classes="resource-table">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="{loc:Loc webservers.site.column.name}" Binding="{ReflectionBinding Name}" Width="150" />
                         <DataGridTextColumn Header="{loc:Loc webservers.site.column.routing}" Binding="{ReflectionBinding RoutingDisplay}" Width="140" />

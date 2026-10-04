@@ -3,7 +3,7 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.AboutPageView"
-             x:DataType="vm:AboutPageViewModel">
+             x:DataType="vm:AboutPageViewModel" Classes="builtin-app">
     <StackPanel Spacing="16" MaxWidth="760">
         <StackPanel Spacing="2">
             <TextBlock Text="{loc:Loc settings.about_page.title}" FontSize="24" FontWeight="SemiBold" />

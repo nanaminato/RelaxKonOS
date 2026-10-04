@@ -1,0 +1,81 @@
+<Styles xmlns="https://github.com/avaloniaui">
+  <!-- Opt-in application vocabulary. Shell chrome and external applications keep their own
+       presentation; local values still control editor density and specialized visualizations. -->
+  <Style Selector="UserControl.builtin-app">
+    <Setter Property="Background" Value="{DynamicResource AppBackgroundBrush}" />
+  </Style>
+  <Style Selector=":is(Panel).builtin-app">
+    <Setter Property="Background" Value="{DynamicResource AppBackgroundBrush}" />
+  </Style>
+  <Style Selector=".builtin-app Button.workspace-nav">
+    <Setter Property="MinHeight" Value="{DynamicResource MinimumHitTarget}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+  </Style>
+  <Style Selector="Border.app-header">
+    <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="Padding" Value="24,16" />
+  </Style>
+  <Style Selector="Border.app-sidebar">
+    <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,1,0" />
+  </Style>
+  <Style Selector="Border.app-panel">
+    <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+    <Setter Property="BorderThickness" Value="{DynamicResource ControlBorderThickness}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource OverlayCornerRadius}" />
+  </Style>
+  <Style Selector="Border.app-toolbar">
+    <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="Padding" Value="12,8" />
+  </Style>
+  <Style Selector="Border.app-statusbar">
+    <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+    <Setter Property="BorderThickness" Value="0,1,0,0" />
+    <Setter Property="Padding" Value="12,8" />
+  </Style>
+  <Style Selector="TextBlock.app-title">
+    <Setter Property="FontSize" Value="22" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <Style Selector="TextBlock.app-description">
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <Style Selector="DataGrid.resource-table">
+    <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="RowHeight" Value="38" />
+    <Setter Property="ColumnHeaderHeight" Value="40" />
+    <Setter Property="HorizontalScrollBarVisibility" Value="Auto" />
+    <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+    <Setter Property="CanUserResizeColumns" Value="True" />
+    <Setter Property="GridLinesVisibility" Value="None" />
+  </Style>
+  <Style Selector="DataGrid.resource-table DataGridColumnHeader">
+    <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="DataGrid.resource-table DataGridCell">
+    <Setter Property="Padding" Value="10,6" />
+  </Style>
+  <Style Selector="ListBox.app-list">
+    <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+  <Style Selector="ListBox.app-list > ListBoxItem">
+    <Setter Property="MinHeight" Value="{DynamicResource MinimumHitTarget}" />
+    <Setter Property="Margin" Value="4,2" />
+  </Style>
+</Styles>

@@ -48,8 +48,14 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
     [ObservableProperty] private string _containerNetworksText = string.Empty;
     [ObservableProperty] private string _containerEnvironmentText = string.Empty;
     [ObservableProperty] private string _containerLabelsText = string.Empty;
-    [ObservableProperty] private string _containerLogs = string.Empty;
-    [ObservableProperty] private string _containerStats = string.Empty;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasContainerLogs))]
+    private string _containerLogs = string.Empty;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasContainerStats))]
+    private string _containerStats = string.Empty;
+    public bool HasContainerLogs => !string.IsNullOrWhiteSpace(ContainerLogs);
+    public bool HasContainerStats => !string.IsNullOrWhiteSpace(ContainerStats);
     [ObservableProperty] private DockerStackDto? _selectedStack;
     [ObservableProperty] private string _stackName = string.Empty;
     [ObservableProperty] private string _composeYaml = string.Empty;

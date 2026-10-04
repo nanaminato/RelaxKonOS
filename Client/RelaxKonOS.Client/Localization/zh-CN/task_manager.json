@@ -84,6 +84,5 @@
         "task_manager.termination.instance_changed": "原进程实例已变化，请刷新并重新选择目标。",
         "task_manager.termination.permission_denied": "服务器 OS 拒绝结束进程，请在服务器调整权限。",
         "task_manager.termination.unverified": "结束结果尚未确认，请刷新核实；不要自动重发。",
-        "task_manager.termination.failed": "未能结束进程，请刷新并检查服务器。"
-    }
+        "task_manager.termination.failed": "未能结束进程，请刷新并检查服务器。","task_manager.user":"用户","task_manager.process_count_suffix":" 个进程"}
 }

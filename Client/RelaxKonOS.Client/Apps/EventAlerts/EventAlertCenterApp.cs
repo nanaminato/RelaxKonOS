@@ -1,5 +1,9 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Data;
+using Avalonia.Data.Converters;
+using RelaxKonOS.Client.Services;
+using RelaxKonOS.Client.Services.Theming;
 using Avalonia.Layout;
 using Avalonia.Media;
 using RelaxKonOS.AppSDK;
@@ -31,10 +35,10 @@ public sealed class EventAlertCenterApp : RemoteApplicationBase
                 new Rect(200, 160, 480, 180), Manifest.IconGlyph, false, false, false);
             return;
         }
-        var root = new DockPanel { Margin = new Thickness(18) };
-        var summary = new TextBlock { TextWrapping = TextWrapping.Wrap, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 0, 0, 12) };
-        var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = Brushes.Gray, Margin = new Thickness(0, 8, 0, 0) };
-        var list = new ListBox();
+        var root = new DockPanel { Classes = { "builtin-app" }, Margin = new Thickness(18) };
+        var summary = new TextBlock { TextWrapping = TextWrapping.Wrap, FontWeight = FontWeight.SemiBold, FontSize = 18, Margin = new Thickness(0, 0, 0, 12) };
+        var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = ThemeBrushes.Get("TextSecondaryBrush"), Margin = new Thickness(0, 8, 0, 0) };
+        var list = new ListBox { Classes = { "app-list" } };
         var refresh = new Button { Content = LocalizedText.Get("common.refresh", "Refresh"), HorizontalAlignment = HorizontalAlignment.Right };
         var header = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Stretch };
         header.Children.Add(refresh);
@@ -49,7 +53,12 @@ public sealed class EventAlertCenterApp : RemoteApplicationBase
             {
                 var snapshot = await client.SummaryAsync();
                 var alerts = await client.ListAlertsAsync();
-                summary.Text = $"Open: {snapshot.OpenCount}   Acknowledged: {snapshot.AcknowledgedCount}   Critical: {snapshot.UnacknowledgedCriticalCount}";
+                summary.Bind(TextBlock.TextProperty, new Binding(nameof(LocalizationService.CurrentLanguage))
+                {
+                    Source = context.Services.GetService(typeof(LocalizationService)),
+                    Converter = new FuncValueConverter<string, string>(_ => LocalizedText.Format(
+                        "event_alerts.summary", snapshot.OpenCount, snapshot.AcknowledgedCount, snapshot.UnacknowledgedCriticalCount))
+                });
                 list.ItemsSource = alerts.Items.Select(Format).ToArray();
                 status.Text = alerts.Items.Count == 0 ? LocalizedText.Get("event_alerts.empty", "No alerts match the current view.") : string.Empty;
             }
