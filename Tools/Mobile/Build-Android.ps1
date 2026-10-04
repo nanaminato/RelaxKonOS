@@ -52,24 +52,24 @@ if ($ReleaseArtifacts) {
     if (-not (Test-Path -LiteralPath $aab)) { throw "AAB was not produced: $aab" }
 
     $buildTools = Join-Path $AndroidSdkRoot 'build-tools'
-    $toolDirectory = Get-ChildItem -LiteralPath $buildTools -Directory | Sort-Object Name -Descending | Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'aapt2.exe') -PathType Leaf -and Test-Path -LiteralPath (Join-Path $_.FullName 'apksigner.bat') -PathType Leaf } | Select-Object -First 1
+    $toolDirectory = Get-ChildItem -LiteralPath $buildTools -Directory | Sort-Object Name -Descending | Where-Object { (Test-Path -LiteralPath (Join-Path $_.FullName 'aapt2.exe') -PathType Leaf) -and (Test-Path -LiteralPath (Join-Path $_.FullName 'apksigner.bat') -PathType Leaf) } | Select-Object -First 1
     if ($null -eq $toolDirectory) { throw 'Android SDK build-tools with aapt2.exe and apksigner.bat were not found.' }
     $aapt2 = Join-Path $toolDirectory.FullName 'aapt2.exe'
     $apksigner = Join-Path $toolDirectory.FullName 'apksigner.bat'
     $keytool = Join-Path $JavaSdkRoot 'bin\keytool.exe'
     $jarsigner = Join-Path $JavaSdkRoot 'bin\jarsigner.exe'
 
-    $badging = & $aapt2 dump badging $apk 2>&1
+    $badging = (& $aapt2 dump badging $apk 2>&1) -join "`n"
     if ($LASTEXITCODE -ne 0 -or $badging -notmatch "package:\s+name='(?<package>[^']+)'\s+versionCode='(?<code>[^']+)'\s+versionName='(?<version>[^']+)'") { throw 'Could not read signed APK package metadata with aapt2.' }
     $packageName = $Matches.package
     $versionCode = [int64]$Matches.code
     $versionName = $Matches.version
-    $apkSignature = & $apksigner verify --verbose --print-certs $apk 2>&1
+    $apkSignature = (& $apksigner verify --verbose --print-certs $apk 2>&1) -join "`n"
     if ($LASTEXITCODE -ne 0 -or $apkSignature -notmatch 'SHA-?256\s+digest:\s*(?<fingerprint>[0-9A-Fa-f:]{64,95})') { throw 'APK signature verification did not return a SHA-256 certificate fingerprint.' }
     $certificateSha256 = $Matches.fingerprint.Replace(':', '').ToLowerInvariant()
     & $jarsigner -verify $aab 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'AAB signature verification failed.' }
-    $aabCertificate = & $keytool -printcert -jarfile $aab 2>&1
+    $aabCertificate = (& $keytool '-J-Duser.language=en' -printcert -jarfile $aab 2>&1) -join "`n"
     if ($LASTEXITCODE -ne 0 -or $aabCertificate -notmatch 'SHA-?256:\s*(?<fingerprint>[0-9A-Fa-f:]{64,95})') { throw 'AAB certificate verification did not return a SHA-256 fingerprint.' }
     if ($Matches.fingerprint.Replace(':', '').ToLowerInvariant() -ne $certificateSha256) { throw 'APK and AAB were signed by different certificates.' }
 
