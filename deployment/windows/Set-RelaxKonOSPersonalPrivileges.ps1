@@ -68,6 +68,20 @@ $oldConfigJson = if ($existing) { [IO.File]::ReadAllText($configPath) } else { $
 if ($installed) { Stop-Service -Name $service -Force; $installed.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30)) }
 if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath ([IO.Path]::GetFullPath($backup)) -Recurse -Force }
 if (Test-Path -LiteralPath $payload) { Move-Item -LiteralPath $payload -Destination $backup }
+# Pass the quoted executable path as a structured value. PowerShell 5.1 re-quotes the whole
+# value when handing it to sc.exe's native command line, which splits `binPath=` into
+# fragments whenever the path contains a space, so sc.exe rejects the command.
+function Set-HelperService([string] $BinaryPath) {
+    $target = Get-CimInstance -ClassName Win32_Service -Filter ("Name='" + $service + "'") -ErrorAction SilentlyContinue
+    if ($target) {
+        $change = Invoke-CimMethod -InputObject $target -MethodName Change -Arguments @{ PathName = $BinaryPath; StartMode = 'Automatic' }
+        if ($change.ReturnValue -ne 0) { throw "Helper service configuration failed (Win32_Service.Change code $($change.ReturnValue))." }
+    } else {
+        New-Service -Name $service -DisplayName $service -BinaryPathName $BinaryPath -StartupType Automatic | Out-Null
+    }
+    & sc.exe failure $service reset= 86400 actions= restart/60000/restart/60000/restart/60000 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Could not configure recovery for service '$service' (sc.exe exit code $LASTEXITCODE)." }
+}
 try {
 New-Item -ItemType Directory -Path $payload | Out-Null
 Get-ChildItem -LiteralPath $source -Force | Copy-Item -Destination $payload -Recurse -Force
@@ -96,9 +110,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Cannot protect Helper configuration.' }
 & icacls $configPath /setowner '*S-1-5-32-544' | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Cannot protect Helper configuration ownership.' }
 $binary = '"' + $executable + '" --windows-service --config "' + $configPath + '"'
-if ($installed) { & sc.exe config $service binPath= $binary start= auto obj= LocalSystem | Out-Null }
-else { & sc.exe create $service binPath= $binary start= auto obj= LocalSystem | Out-Null }
-if ($LASTEXITCODE -ne 0) { throw 'Helper service configuration failed.' }
+Set-HelperService -BinaryPath $binary
 Start-Service -Name $service
 (Get-Service -Name $service).WaitForStatus('Running', [TimeSpan]::FromSeconds(30))
 if ($request.addFirewallRule) {
@@ -122,8 +134,7 @@ if ($request.addFirewallRule) {
     if ($oldConfigJson) {
         [IO.File]::WriteAllText($configPath, $oldConfigJson, [Text.UTF8Encoding]::new($false))
         $restoredBinary = '"' + (Join-Path $payload 'RelaxKonOS.PrivilegedHelper.exe') + '" --windows-service --config "' + $configPath + '"'
-        & sc.exe config $service binPath= $restoredBinary start= auto obj= LocalSystem | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw 'Helper rollback could not restore the service.' }
+        Set-HelperService -BinaryPath $restoredBinary
         Start-Service -Name $service
     } else {
         if ($failedService) { & sc.exe delete $service | Out-Null }
