@@ -4,7 +4,7 @@
 
 **Cloud-Native Desktop Operating System Environment**
 
-[![Avalonia](https://img.shields.io/badge/Avalonia-12.1.0-blue)](https://avaloniaui.net/)
+[![Avalonia](https://img.shields.io/badge/Avalonia-12.1.3-blue)](https://avaloniaui.net/)
 [![dotnet](https://img.shields.io/badge/.NET-10.0-purple)](https://dotnet.microsoft.com/)
 [![ASP.NET Core](https://img.shields.io/badge/ASP.NET%20Core-10.0-green)](https://dotnet.microsoft.com/)
 [![License: RNCL](https://img.shields.io/badge/License-RNCL-blue)](./LICENSE)
@@ -144,7 +144,7 @@ Website <https://relaxkon.com> · Docs <https://relaxkon.com/docs> · Downloads 
 
 | Component | Technology | Version |
 |-----------|------------|---------|
-| UI Framework | [Avalonia UI](https://avaloniaui.net/) | 12.1.0 |
+| UI Framework | [Avalonia UI](https://avaloniaui.net/) | 12.1.3 |
 | MVVM | CommunityToolkit.Mvvm | 8.4.2 |
 | Framework | .NET | 10.0 |
 | Server | ASP.NET Core | 10.0 |

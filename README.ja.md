@@ -4,7 +4,7 @@
 
 **クラウドネイティブデスクトップオペレーティングシステム環境**
 
-[![Avalonia](https://img.shields.io/badge/Avalonia-12.1.0-blue)](https://avaloniaui.net/)
+[![Avalonia](https://img.shields.io/badge/Avalonia-12.1.3-blue)](https://avaloniaui.net/)
 [![dotnet](https://img.shields.io/badge/.NET-10.0-purple)](https://dotnet.microsoft.com/)
 [![ASP.NET Core](https://img.shields.io/badge/ASP.NET%20Core-10.0-green)](https://dotnet.microsoft.com/)
 [![License: RNCL](https://img.shields.io/badge/License-RNCL-blue)](./LICENSE)
@@ -143,7 +143,7 @@
 
 | コンポーネント | 技術 | バージョン |
 |---------------|------|-----------|
-| UIフレームワーク | [Avalonia UI](https://avaloniaui.net/) | 12.1.0 |
+| UIフレームワーク | [Avalonia UI](https://avaloniaui.net/) | 12.1.3 |
 | MVVM | CommunityToolkit.Mvvm | 8.4.2 |
 | フレームワーク | .NET | 10.0 |
 | サーバー | ASP.NET Core | 10.0 |

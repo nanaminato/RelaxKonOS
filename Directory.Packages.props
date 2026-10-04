@@ -6,11 +6,12 @@
     <ItemGroup>
         <!-- Avalonia packages. Important: keep version in sync! -->
         <!-- RoyalTerminal 0.5.2 requires Avalonia >= 12.1.1. -->
-        <PackageVersion Include="Avalonia" Version="12.1.2" />
-        <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.2" />
-        <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.2" />
-        <PackageVersion Include="Avalonia.Desktop" Version="12.1.2" />
-        <PackageVersion Include="Avalonia.Headless" Version="12.1.2" />
+        <PackageVersion Include="Avalonia" Version="12.1.3" />
+        <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.3" />
+        <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.3" />
+        <PackageVersion Include="Avalonia.Desktop" Version="12.1.3" />
+        <PackageVersion Include="Avalonia.Headless" Version="12.1.3" />
+        <!-- DataGrid is released separately; 12.1.2 is its current stable version. -->
         <PackageVersion Include="Avalonia.Controls.DataGrid" Version="12.1.2" />
         <PackageVersion Include="Avalonia.AvaloniaEdit" Version="12.0.0" />
         <PackageVersion Include="Svg.Controls.Avalonia" Version="12.0.0.17" />
@@ -22,7 +23,7 @@
         <!-- Server -->
         <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
         <!-- ASP.NET Core OpenAPI 10.0.x requires Microsoft.OpenApi < 3.0. -->
-        <PackageVersion Include="Microsoft.OpenApi" Version="2.12.0" />
+        <PackageVersion Include="Microsoft.OpenApi" Version="2.12.2" />
         <PackageVersion Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
         <!-- Server 端缩略图渲染。Six Labors Split License v1.0 第 2 条把「用于 Source Available 许可的软件」
              明确划入 Apache-2.0 分支，本项目即 Source-Available（见 THIRD_PARTY_NOTICES.md）。
@@ -70,6 +71,6 @@
 
         <!-- Video Player example: managed Avalonia control + Windows native VLC runtime. -->
         <PackageVersion Include="LibVLCSharp.Avalonia" Version="3.10.1" />
-        <PackageVersion Include="VideoLAN.LibVLC.Windows" Version="3.0.23.1" />
+        <PackageVersion Include="VideoLAN.LibVLC.Windows" Version="3.0.24" />
     </ItemGroup>
 </Project>

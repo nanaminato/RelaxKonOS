@@ -40,6 +40,22 @@ internal static class WindowsTerminalChecks
         }
         catch (System.ComponentModel.Win32Exception) { }
         TestAssert.Assert(!failed.IsRunning, "Failed Windows terminal left a running session.");
+        using var powershell = new ConPty();
+        var initialized = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var powershellOutput = new StringBuilder();
+        var powershellMarker = "powershell_" + Guid.NewGuid().ToString("N");
+        powershell.DataReceived += (bytes, count) =>
+        {
+            powershellOutput.Append(Encoding.UTF8.GetString(bytes, 0, count));
+            if (powershellOutput.ToString().Contains(powershellMarker)) initialized.TrySetResult();
+        };
+        // Personal administrator terminals pass no environment. Exercise managed PowerShell
+        // initialization and inherited SystemRoot without letting echoed input satisfy the check.
+        powershell.Start(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"),
+            80, 24, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), null,
+            ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
+                $"if ($env:SystemRoot -eq '{Environment.GetEnvironmentVariable("SystemRoot")?.Replace("'", "''")}') {{ [Console]::WriteLine('{powershellMarker}') }} else {{ exit 2 }}"]);
+        await initialized.Task.WaitAsync(TimeSpan.FromSeconds(15));
         Console.WriteLine("Windows terminal input/output, resize, exit and startup cleanup checks passed.");
     }
 }

@@ -192,7 +192,9 @@ public sealed class ConPty : IPty, IDisposable
         Dictionary<string, string>? environment, IReadOnlyList<string>? arguments, SafeAccessTokenHandle? token)
     {
         var commandLine = BuildCommandLine(string.IsNullOrWhiteSpace(shell) ? "powershell" : shell!, arguments);
-        var envBlock = BuildEnvironmentBlock(environment ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+        // A null native environment inherits the launching process's environment. An empty
+        // block strips SystemRoot and other variables required by Windows PowerShell.
+        var envBlock = environment is null ? IntPtr.Zero : BuildEnvironmentBlock(environment);
         var attrList = IntPtr.Zero;
         try
         {
