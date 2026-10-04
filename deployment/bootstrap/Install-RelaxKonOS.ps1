@@ -179,6 +179,18 @@ function Copy-ReleasePayload([string] $BundleRoot, $Manifest, [string] $Version)
                 throw "Version $Version is already the published version on this host; use -Action repair to re-apply it."
             }
         }
+        $versionsRoot = [IO.Path]::GetFullPath((Get-VersionsRoot)).TrimEnd('\') + '\'
+        if (-not ([IO.Path]::GetFullPath($versionRoot)).StartsWith($versionsRoot, [StringComparison]::OrdinalIgnoreCase) -or
+            ((Get-Item -LiteralPath $versionRoot -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw 'Refusing to remove a version directory outside the managed versions root.'
+        }
+        # Detach persistent data before removing an abandoned payload, never recurse into its junction.
+        $dataLink = Join-Path $versionRoot 'server\data'
+        if (Test-Path -LiteralPath $dataLink) {
+            if ((Get-Item -LiteralPath $dataLink -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                [IO.Directory]::Delete($dataLink, $false)
+            }
+        }
         Remove-Item -LiteralPath $versionRoot -Recurse -Force
     }
     New-Item -ItemType Directory -Path $versionRoot -Force | Out-Null
@@ -249,13 +261,35 @@ function Stop-RelaxKonOSServices {
 }
 
 function Test-LoopbackHealth([string] $ListenUrl) {
-    $scheme = ([Uri]$ListenUrl).Scheme
-    if ($scheme -eq 'https') { [Net.ServicePointManager]::ServerCertificateValidationCallback = { $true } }
-    Start-Sleep -Seconds 2
-    try {
-        $health = Invoke-WebRequest -Uri ($ListenUrl.TrimEnd('/') + '/healthz') -TimeoutSec 15
-        return ($health.StatusCode -eq 200)
-    } catch { return $false }
+    if (-not ('RelaxKonOSDeploymentHealthProbe' -as [type])) {
+        Add-Type -TypeDefinition @"
+using System;
+using System.Net;
+public static class RelaxKonOSDeploymentHealthProbe {
+    public static bool Check(string url) {
+        try {
+            var uri = new Uri(url);
+            if (!uri.IsLoopback) return false;
+            ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+            var request = (HttpWebRequest)WebRequest.Create(uri);
+            request.Proxy = null;
+            request.Timeout = 5000;
+            request.ServerCertificateValidationCallback = (sender, certificate, chain, errors) => true;
+            using (var response = (HttpWebResponse)request.GetResponse()) return response.StatusCode == HttpStatusCode.OK;
+        } catch { return false; }
+    }
+}
+"@
+    }
+    $endpoint = [UriBuilder]::new($ListenUrl)
+    $endpoint.Host = '127.0.0.1'
+    $endpoint.Path = '/healthz'
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    do {
+        if ([RelaxKonOSDeploymentHealthProbe]::Check($endpoint.Uri.AbsoluteUri)) { return $true }
+        Start-Sleep -Milliseconds 500
+    } while ($clock.Elapsed.TotalSeconds -lt 60)
+    return $false
 }
 
 function Get-ListenUrl([string] $Network, [string] $Certificate, [int] $Port) {
@@ -291,9 +325,9 @@ if (-not (Test-Administrator)) {
     if ($SelfSignedIdentities) { $elevationArguments += @('-SelfSignedIdentities', (Quote-Argument $SelfSignedIdentities)) }
     if ($ExpectedInstallationId) { $elevationArguments += @('-ExpectedInstallationId', $ExpectedInstallationId) }
     if ($NonInteractive) { $elevationArguments += '-NonInteractive' }
-    $host = Join-Path $PSHOME 'powershell.exe'
-    if (-not (Test-Path -LiteralPath $host)) { $host = (Get-Command pwsh -ErrorAction Stop).Source }
-    $process = Start-Process -FilePath $host -ArgumentList ($elevationArguments -join ' ') -Verb RunAs -Wait -PassThru
+    $powerShellExecutable = Join-Path $PSHOME 'powershell.exe'
+    if (-not (Test-Path -LiteralPath $powerShellExecutable)) { $powerShellExecutable = (Get-Command pwsh -ErrorAction Stop).Source }
+    $process = Start-Process -FilePath $powerShellExecutable -ArgumentList ($elevationArguments -join ' ') -Verb RunAs -Wait -PassThru
     exit $process.ExitCode
 }
 

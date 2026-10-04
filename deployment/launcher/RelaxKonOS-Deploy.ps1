@@ -26,6 +26,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
+# SSH.NET decodes stdout/stderr as UTF-8; Windows PowerShell defaults to the OEM code page.
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+$OutputEncoding = [Console]::OutputEncoding
+$ProgressPreference = 'SilentlyContinue'
 
 $protocolVersion = 1
 
@@ -652,15 +656,30 @@ function Get-ExistingInstallationState {
 function Test-LoopbackHealth([string] $Mode, $State) {
     $listenUrl = Get-StateField $State 'listenUrl'
     if (-not $listenUrl) { $listenUrl = Get-DefaultListenUrl $Mode }
-    $url = $listenUrl.TrimEnd('/') + '/healthz'
-    if ($url.StartsWith('https://', [StringComparison]::OrdinalIgnoreCase)) {
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        [Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+    if (-not ('RelaxKonOSDeploymentHealthProbe' -as [type])) {
+        Add-Type -TypeDefinition @"
+using System;
+using System.Net;
+public static class RelaxKonOSDeploymentHealthProbe {
+    public static bool Check(string url) {
+        try {
+            var uri = new Uri(url);
+            if (!uri.IsLoopback) return false;
+            ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+            var request = (HttpWebRequest)WebRequest.Create(uri);
+            request.Proxy = null;
+            request.Timeout = 5000;
+            request.ServerCertificateValidationCallback = (sender, certificate, chain, errors) => true;
+            using (var response = (HttpWebResponse)request.GetResponse()) return response.StatusCode == HttpStatusCode.OK;
+        } catch { return false; }
     }
-    try {
-        $response = Invoke-WebRequest -Uri $url -TimeoutSec 5 -UseBasicParsing
-        return ($response.StatusCode -eq 200)
-    } catch { return $false }
+}
+"@
+    }
+    $endpoint = [UriBuilder]::new($listenUrl)
+    $endpoint.Host = '127.0.0.1'
+    $endpoint.Path = '/healthz'
+    return [RelaxKonOSDeploymentHealthProbe]::Check($endpoint.Uri.AbsoluteUri)
 }
 
 function Test-LoopbackPortOpen([int] $Port) {
@@ -944,8 +963,8 @@ function Get-EngineNetworkProfile([string] $Network) {
 }
 
 function Get-PowerShellHost {
-    $host = Join-Path $PSHOME 'powershell.exe'
-    if (Test-Path -LiteralPath $host -PathType Leaf) { return $host }
+    $powerShellExecutable = Join-Path $PSHOME 'powershell.exe'
+    if (Test-Path -LiteralPath $powerShellExecutable -PathType Leaf) { return $powerShellExecutable }
     return (Get-Command pwsh -ErrorAction Stop).Source
 }
 
@@ -1207,10 +1226,22 @@ Test-Idempotency
 $script:record.startedAtUtc = Get-NowUtc
 Save-RequestDigest
 
-switch ($script:record.kind) {
-    'probe' { Invoke-ProbeAction }
-    'status' { Invoke-StatusAction }
-    { $_ -in @('install', 'upgrade', 'repair', 'rollback') } { Invoke-InstallLikeAction }
-    'uninstall' { Invoke-UninstallAction }
+try {
+    switch ($script:record.kind) {
+        'probe' { Invoke-ProbeAction }
+        'status' { Invoke-StatusAction }
+        { $_ -in @('install', 'upgrade', 'repair', 'rollback') } { Invoke-InstallLikeAction }
+        'uninstall' { Invoke-UninstallAction }
+    }
+} catch {
+    # Do not leave an abandoned running receipt when an unexpected PowerShell error terminates the action.
+    $failure = $_
+    $script:record.completedAtUtc = Get-NowUtc
+    $diagnostic = $failure.Exception.GetType().FullName + ': ' + $failure.FullyQualifiedErrorId
+    [IO.File]::AppendAllText((Get-OperationDiagnosticsPath), $diagnostic + "`n", [Text.UTF8Encoding]::new($false))
+    Write-Event 'failed' 'failed' $null 'server-deployment.failed' 'Deployment action failed; see the operation diagnostics.'
+    exit 1
+} finally {
+    if ($null -ne $script:lockStream) { $script:lockStream.Dispose(); $script:lockStream = $null }
 }
 exit 0

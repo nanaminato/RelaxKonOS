@@ -26,13 +26,13 @@
                 <TextBlock Text="{Binding EmptyHostsText}" IsVisible="{Binding !HasHosts}" TextWrapping="Wrap" />
             </StackPanel>
         </Border>
-        <TextBlock Text="{Binding SelectHostHint}" IsVisible="{Binding !SelectedHost}" TextWrapping="Wrap" />
-        <Border Classes="card" Padding="20" IsVisible="{Binding SelectedHost}">
+        <TextBlock Text="{Binding SelectHostHint}" IsVisible="{Binding !HasSelectedHost}" TextWrapping="Wrap" />
+        <Border Classes="card" Padding="20" IsVisible="{Binding HasSelectedHost}">
             <StackPanel Spacing="12">
                 <TextBlock Text="{Binding SelectedHost.DisplayName}" FontSize="17" FontWeight="SemiBold" />
                 <TextBlock Text="{Binding ProbeHelpText}" FontSize="12" TextWrapping="Wrap" />
                 <TextBox Text="{Binding SshPassword}" PasswordChar="●" PlaceholderText="{Binding DeploymentPasswordHint}" />
-                <TextBox Text="{Binding MaintenanceSudoPassword}" PasswordChar="●" PlaceholderText="{Binding MaintenanceSudoPasswordText}" />
+                <TextBox Text="{Binding MaintenanceSudoPassword}" IsVisible="{Binding ShowMaintenanceSudoPassword}" PasswordChar="●" PlaceholderText="{Binding MaintenanceSudoPasswordText}" />
                 <StackPanel Spacing="2">
                     <TextBlock Text="{Binding PlatformLabel}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
                     <TextBlock Text="{Binding SelectedPlatformText}" />

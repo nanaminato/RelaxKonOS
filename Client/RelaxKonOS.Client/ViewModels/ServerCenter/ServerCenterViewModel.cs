@@ -65,6 +65,8 @@ public partial class ServerCenterViewModel : ObservableObject
         new(HostPlatformKind.Linux, "Linux")
     ];
     public bool HasHosts => Hosts.Count > 0;
+    public bool HasSelectedHost => SelectedHost is not null;
+    public bool ShowMaintenanceSudoPassword => SelectedPlatform?.Platform == HostPlatformKind.Linux;
     public bool HasOperations => Operations.Count > 0;
     public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
 
@@ -615,7 +617,7 @@ public partial class ServerCenterViewModel : ObservableObject
             LastProbeText = FormatProbe(probe);
             if (!PlatformMatches(platform.Platform, probe.HostPlatform))
             {
-                ErrorMessage = string.Format(T("server_center.platform_mismatch", "Selected platform: {0}; SSH host platform: {1}. Choose the host platform."), platform.Platform, probe.HostPlatform);
+                ErrorMessage = string.Format(T("server_center.platform_mismatch", "Previously detected platform: {0}; SSH host now reports {1}. Run host detection again."), platform.Platform, probe.HostPlatform);
                 return false;
             }
             if (probe.RuntimeIdentifier is null)
@@ -896,7 +898,7 @@ public partial class ServerCenterViewModel : ObservableObject
         }
         catch (Exception)
         {
-            ErrorMessage = T("server_center.probe_failed", "Host preflight could not be completed. Check SSH access and the selected host platform.");
+            ErrorMessage = T("server_center.probe_failed", "Host preflight could not be completed. Check SSH access and retry host detection.");
         }
         finally
         {
@@ -1113,6 +1115,7 @@ public partial class ServerCenterViewModel : ObservableObject
     {
         // A selector may briefly clear its selection while its current item is replaced.
         // Refreshing the same SSH target must not reset its detected platform or trust state.
+        OnPropertyChanged(nameof(HasSelectedHost));
         if (_refreshingHostSelection) return;
         var changedTarget = !string.Equals(_selectedPlatformHostId, value?.HostId, StringComparison.Ordinal);
         _selectedPlatformHostId = value?.HostId;
@@ -1185,6 +1188,7 @@ public partial class ServerCenterViewModel : ObservableObject
     partial void OnSelectedPlatformChanged(HostPlatformOption? value)
     {
         OnPropertyChanged(nameof(SelectedPlatformText));
+        OnPropertyChanged(nameof(ShowMaintenanceSudoPassword));
         ProbeHostCommand.NotifyCanExecuteChanged();
         OpenInstallationWizardCommand.NotifyCanExecuteChanged();
         RecoverCommand.NotifyCanExecuteChanged();

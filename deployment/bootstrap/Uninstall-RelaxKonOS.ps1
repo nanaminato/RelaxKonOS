@@ -46,9 +46,9 @@ if (-not (Test-Administrator)) {
     if ($ExpectedInstallationId) { $elevationArguments += @('-ExpectedInstallationId', $ExpectedInstallationId) }
     if ($NonInteractive) { $elevationArguments += '-NonInteractive' }
     if ($WhatIfPreference) { $elevationArguments += '-WhatIf' }
-    $host = Join-Path $PSHOME 'powershell.exe'
-    if (-not (Test-Path -LiteralPath $host)) { $host = (Get-Command pwsh -ErrorAction Stop).Source }
-    $process = Start-Process -FilePath $host -ArgumentList ($elevationArguments -join ' ') -Verb RunAs -Wait -PassThru
+    $powerShellExecutable = Join-Path $PSHOME 'powershell.exe'
+    if (-not (Test-Path -LiteralPath $powerShellExecutable)) { $powerShellExecutable = (Get-Command pwsh -ErrorAction Stop).Source }
+    $process = Start-Process -FilePath $powerShellExecutable -ArgumentList ($elevationArguments -join ' ') -Verb RunAs -Wait -PassThru
     exit $process.ExitCode
 }
 

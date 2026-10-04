@@ -97,13 +97,13 @@ function Get-FullLocalFileRoots {
 }
 
 if ($FileAccess -eq 'whitelist') {
-    $fileAllowedRoots = Get-WhitelistedFileRoots $FileRootsFile
+    $fileAllowedRoots = @(Get-WhitelistedFileRoots $FileRootsFile)
 } elseif (-not [string]::IsNullOrWhiteSpace($FileRootsFile)) {
     throw '-FileRootsFile is valid only with -FileAccess whitelist.'
 } elseif ($FileAccess -eq 'full') {
     # Explicit opt-in: permits all paths on the local volumes present during installation.
     # UNC paths are deliberately excluded because they have separate credentials and trust boundaries.
-    $fileAllowedRoots = Get-FullLocalFileRoots
+    $fileAllowedRoots = @(Get-FullLocalFileRoots)
     Write-Warning "Full file access is enabled for local volume roots: $($fileAllowedRoots -join ', ')"
 } else {
     $fileAllowedRoots = @($DataRoot)
@@ -125,6 +125,26 @@ New-Item -ItemType Directory -Force -Path $serverData | Out-Null
 New-Item -ItemType Directory -Force -Path $proxyData | Out-Null
 New-Item -ItemType Directory -Force -Path $observabilityLogData | Out-Null
 New-Item -ItemType Directory -Force -Path $privilegedData | Out-Null
+
+function Set-ServerDataLink([string] $Link, [string] $Target) {
+    if (Test-Path -LiteralPath $Link) {
+        $item = Get-Item -LiteralPath $Link -Force
+        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            if ([IO.Path]::GetFullPath($item.Target).TrimEnd('\') -ne [IO.Path]::GetFullPath($Target).TrimEnd('\')) {
+                throw 'The Server data junction points to a different data directory.'
+            }
+            return
+        }
+        if (-not $item.PSIsContainer -or @(Get-ChildItem -LiteralPath $Link -Force).Count -ne 0) {
+            throw 'Refusing to replace an existing Server data directory containing files.'
+        }
+        [IO.Directory]::Delete($Link, $false)
+    }
+    New-Item -ItemType Junction -Path $Link -Target $Target | Out-Null
+}
+
+# Relative data stores share the persistent, writable server directory across versions.
+Set-ServerDataLink (Join-Path (Split-Path -Parent $ServerExecutable) 'data') $serverData
 
 function Install-BootstrapCertificate {
     if ($CertificateMode -eq 'none') { return $null }
@@ -268,8 +288,11 @@ if ($bootstrapCertificate) {
 
 function Install-OrUpdateService([string] $Name, [string] $BinaryPath) {
     if (Get-Service -Name $Name -ErrorAction SilentlyContinue) {
-        & sc.exe config $Name binPath= $BinaryPath start= auto | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "Could not configure service '$Name' (sc.exe exit code $LASTEXITCODE)." }
+        # Pass the quoted executable path as a structured value; PowerShell 5.1 strips
+        # embedded quotes when passing this value to sc.exe's native command line.
+        $service = Get-CimInstance -ClassName Win32_Service | Where-Object { $_.Name -eq $Name }
+        $change = Invoke-CimMethod -InputObject $service -MethodName Change -Arguments @{ PathName = $BinaryPath; StartMode = 'Automatic' }
+        if ($change.ReturnValue -ne 0) { throw "Could not configure service '$Name' (Win32_Service.Change code $($change.ReturnValue))." }
     } else {
         New-Service -Name $Name -DisplayName $Name -BinaryPathName $BinaryPath -StartupType Automatic | Out-Null
     }
@@ -294,7 +317,7 @@ $helperSettings = [ordered]@{
     pipeName = 'relaxkonos-privileged-helper'
     sharedSecret = $helperSecret
     serverServiceSid = $serverServiceSid
-    fileAllowedRoots = $fileAllowedRoots
+    fileAllowedRoots = @($fileAllowedRoots)
     allowedServiceIds = @($ServerServiceName, $GuardianServiceName)
     helperExecutableSha256 = (Get-FileHash -LiteralPath $PrivilegedHelperExecutable -Algorithm SHA256).Hash
     enableWindowsUserExecution = $EnableWindowsUserExecution.IsPresent

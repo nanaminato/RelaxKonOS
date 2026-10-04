@@ -35,7 +35,8 @@ static X509Certificate2? LoadInstallerCertificate(IConfiguration configuration)
     try
     {
         var certificate = X509CertificateLoader.LoadPkcs12FromFile(path, configuration["Kestrel:Certificates:Default:Password"],
-            X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.EphemeralKeySet);
+            // Schannel requires an on-disk key container during the Windows TLS session.
+            OperatingSystem.IsWindows() ? X509KeyStorageFlags.MachineKeySet : X509KeyStorageFlags.EphemeralKeySet);
         if (!certificate.HasPrivateKey || certificate.NotAfter.ToUniversalTime() <= DateTime.UtcNow)
             throw new InvalidOperationException("The installer TLS certificate has no private key or is expired.");
         return certificate;
