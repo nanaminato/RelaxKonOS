@@ -41,6 +41,7 @@ var localization = new LocalizationService(settings, new SshDesktopSession(null!
 using var services = new ServiceCollection().AddSingleton(localization).BuildServiceProvider();
 // The XAML localization extension resolves the host application's singleton provider.
 typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
+DesktopDisconnectChecks.Run(settings);
 
 var canvas = new Canvas { Width = 1200, Height = 800 };
 var root = new Grid();

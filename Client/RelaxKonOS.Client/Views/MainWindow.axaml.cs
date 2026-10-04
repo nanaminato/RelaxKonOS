@@ -189,16 +189,33 @@ public partial class MainWindow : Window
         _isDisconnecting = true;
         ConnectionInfo.IsVisible = false;
         ShowDisconnectingOverlay();
+        var sshDesktop = App.Services.GetRequiredService<SshDesktopSession>();
+        if (sshDesktop.IsConnected)
+        {
+            // SSH has no server workspace to persist. Do not let an old workspace's
+            // layout request (or a disconnect notification failure) prevent closing.
+            try { sshDesktop.Disconnect(); }
+            catch
+            {
+                // Disconnect clears the SSH identity before notifying subscribers.
+            }
+            finally { Close(); }
+            return;
+        }
+
         try
         {
-            await App.Services.GetRequiredService<WindowLayoutStore>().FlushAsync();
-            if (App.Services.GetRequiredService<SshDesktopSession>().IsConnected)
-            {
-                App.Services.GetRequiredService<SshDesktopSession>().Disconnect();
-                Close();
-                return;
-            }
+            using var saveTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await App.Services.GetRequiredService<WindowLayoutStore>().FlushAsync(saveTimeout.Token);
+        }
+        catch
+        {
+            // Layout persistence is best effort. A failed or timed-out save must
+            // still allow the user to end the session.
+        }
 
+        try
+        {
             // The application-level session handler replaces this window with the login window
             // after LogoutAsync raises UserSignedOut. Closing here would instead trigger the
             // main-window shutdown handler before that replacement can run.
