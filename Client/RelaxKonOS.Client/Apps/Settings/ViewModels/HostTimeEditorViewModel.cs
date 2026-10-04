@@ -40,6 +40,37 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
     [ObservableProperty] private string? _selectedZone;
     [ObservableProperty] private string _previewText = "";
     [ObservableProperty] private string _problemCode = "";
+    // Labels are presentation only; writes always use an ID from the remote catalog.
+    public IReadOnlyList<string> ZoneLabels => AvailableZones.Select(ZoneLabel).ToArray();
+    public string CurrentZoneLabel => string.IsNullOrEmpty(CurrentZone) ? "" : ZoneLabel(CurrentZone);
+    public string? SelectedZoneLabel
+    {
+        get => SelectedZone is null ? null : ZoneLabel(SelectedZone);
+        set => SelectedZone = AvailableZones.FirstOrDefault(id => ZoneLabel(id) == value);
+    }
+    public bool HasPreview => _plan is not null;
+    public bool ShowPreviewAction => !_submitted && _plan is null;
+    public bool ShowApplyAction => !_submitted && _plan is not null;
+    public bool ShowQueryAction => _submitted;
+    public bool ShowRollbackAction => _operation?.State == SettingsOperationState.Applied;
+    public bool HasProblem => !string.IsNullOrEmpty(ProblemCode);
+    public bool HasOperation => _submitted && _plan is not null;
+
+    private static string ZoneLabel(string id)
+    {
+        try
+        {
+            var zone = TimeZoneInfo.FindSystemTimeZoneById(id);
+            return zone.DisplayName.Contains(id, StringComparison.OrdinalIgnoreCase)
+                ? zone.DisplayName : $"{zone.DisplayName} · {id}";
+        }
+        catch (TimeZoneNotFoundException) { return id; }
+        catch (InvalidTimeZoneException) { return id; }
+    }
+
+    partial void OnAvailableZonesChanged(IReadOnlyList<string> value) => OnPropertyChanged(nameof(ZoneLabels));
+    partial void OnCurrentZoneChanged(string value) => OnPropertyChanged(nameof(CurrentZoneLabel));
+    partial void OnProblemCodeChanged(string value) => OnPropertyChanged(nameof(HasProblem));
     public string StatusText => _localization.Get(_statusKey, _statusKey);
     public string OperationId => _plan?.PlanId.ToString("D") ?? "";
     public bool CanReload => !IsBusy;
@@ -48,12 +79,13 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
     public bool CanApply => !IsBusy && !_submitted && _plan is not null && _plan.ExpiresAt > DateTimeOffset.UtcNow;
     public bool CanQuery => !IsBusy && _plan is not null;
     public bool CanRollback => !IsBusy && _operation?.State == SettingsOperationState.Applied;
-    public bool CanEdit => !IsBusy && !_submitted;
+    public bool CanEdit => !IsBusy && !_submitted && _snapshot is not null;
 
     partial void OnIsBusyChanged(bool value) => UpdateCommands();
     partial void OnSelectedZoneChanged(string? value)
     {
         if (!_submitted) { _plan = null; PreviewText = ""; }
+        OnPropertyChanged(nameof(SelectedZoneLabel));
         UpdateCommands();
     }
 
@@ -159,6 +191,12 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
     {
         OnPropertyChanged(nameof(CanEdit));
         OnPropertyChanged(nameof(OperationId));
+        OnPropertyChanged(nameof(HasPreview));
+        OnPropertyChanged(nameof(ShowPreviewAction));
+        OnPropertyChanged(nameof(ShowApplyAction));
+        OnPropertyChanged(nameof(ShowQueryAction));
+        OnPropertyChanged(nameof(ShowRollbackAction));
+        OnPropertyChanged(nameof(HasOperation));
         ReloadCommand.NotifyCanExecuteChanged(); PreviewCommand.NotifyCanExecuteChanged();
         ApplyCommand.NotifyCanExecuteChanged(); QueryCommand.NotifyCanExecuteChanged(); RollbackCommand.NotifyCanExecuteChanged();
     }

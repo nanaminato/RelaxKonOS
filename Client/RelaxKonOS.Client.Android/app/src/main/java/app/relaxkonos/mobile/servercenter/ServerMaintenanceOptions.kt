@@ -8,6 +8,7 @@ internal fun maintenanceOptions(
     purge: Boolean = false,
     repairCertificate: Boolean = false,
     certificateIdentities: String = "",
+    addFirewallRule: Boolean = false,
 ): ServerDeploymentOptions {
     require(ServerInstallationId.isValid(installationId))
     val rotate = kind == ServerDeploymentKind.Repair && repairCertificate
@@ -21,6 +22,7 @@ internal fun maintenanceOptions(
         retention = if (kind == ServerDeploymentKind.Uninstall && purge) ServerDataRetention.Delete else ServerDataRetention.Retain,
         certificateMode = if (rotate) "selfSigned" else null,
         selfSignedIdentities = identities,
+        addFirewallRule = kind == ServerDeploymentKind.Repair && mode != ServerInstallMode.LinuxUser && addFirewallRule,
     )
 }
 

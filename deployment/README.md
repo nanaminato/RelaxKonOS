@@ -163,7 +163,7 @@ System Mode 安装会自动创建 `/var/log/relaxkonos/runtime` 和审计数据�
 
 离线介质可直接是发布目录或 ZIP，例如：`sudo ./install-relaxkonos.sh --bundle /media/usb/RelaxKonOS-0.1.0-linux-x64.zip`。安装器会验证包的架构、systemd、`sudo`/`visudo`/`openssl`，并仅默认接受 Debian 12、Ubuntu 22.04/24.04/26.04；其他系统必须明确传入 `--allow-unsupported-system`。
 
-局域网模式仅将 Server 绑定到 `0.0.0.0`，不会自动打开防火墙。公网部署请选择反向代理模式（默认本机监听），并由反向代理终结 HTTPS。
+局域网模式将 Server 绑定到 `0.0.0.0`。安装/升级向导与修复页面提供默认不勾选的“添加服务器 TCP 端口防火墙规则”。只有用户选择后才为当前监听端口添加入站规则；Windows 使用当前网络的已启用防火墙配置，Linux System 使用已开启的 UFW、firewalld、nftables 或 iptables。规则持久化；nftables 需要活动的 nftables 服务和 `/etc/nftables.conf`，iptables 需要 `netfilter-persistent`，不满足时操作明确失败，不自动安装防火墙工具。防火墙未开启时提示用户且不添加规则、不启用防火墙。普通服务器检查不修改防火墙。公网部署请选择反向代理模式（默认本机监听），并由反向代理终结 HTTPS。
 
 Docker 管理默认关闭，因为 Docker socket 等同高权限主机控制。只有需要 Docker Manager 时，才在 System Mode 命令末尾明确追加 `--docker-access`；安装器会授权 Server 服务账户并重启 Server。Docker 尚未安装时也会先创建系统组并添加成员，使后续安装 Docker 能被运行中的 Server 直接访问。旧部署在后续安装时才添加组权限的，需要重启 `relaxkonos-server.service` 后刷新验证连接。
 

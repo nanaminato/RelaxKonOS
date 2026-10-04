@@ -55,6 +55,7 @@ internal data class ServerInstallAdvancedOptions(
     val rootFileAccess: String = "restricted",
     val rootFileRoots: String = "",
     val dockerAccess: Boolean = false,
+    val addFirewallRule: Boolean = false,
     val allowUnsupportedSystem: Boolean = false,
 ) : java.io.Serializable
 
@@ -73,8 +74,12 @@ internal class ServerInstallViewModel(application: Application) : AndroidViewMod
                 return@launch
             }
             try {
-                withContext(Dispatchers.IO) { execute(selection, secret) }
-                mutableState.value = ServerInstallState(message = R.string.ssh_workspace_deploy_success, installed = true)
+                val firewallStatus = withContext(Dispatchers.IO) { execute(selection, secret) }
+                mutableState.value = ServerInstallState(message = when (firewallStatus) {
+                    "disabled" -> R.string.server_install_firewall_disabled
+                    "ruleAdded" -> R.string.server_install_firewall_added
+                    else -> R.string.ssh_workspace_deploy_success
+                }, installed = true)
             } catch (cancelled: CancellationException) {
                 mutableState.value = ServerInstallState(message = R.string.ssh_workspace_deploy_failed)
                 throw cancelled
@@ -90,7 +95,8 @@ internal class ServerInstallViewModel(application: Application) : AndroidViewMod
         mutableState.value = mutableState.value.copy(message = message, transfer = null)
     }
 
-    private suspend fun execute(selection: ServerInstallSelection, secret: CharArray) {
+    private suspend fun execute(selection: ServerInstallSelection, secret: CharArray): String? {
+        var firewallStatus: String? = null
         val credential = SshCredential(SshCredentialKind.Password, secret, null)
         var localZip: File? = null
         try {
@@ -164,6 +170,7 @@ internal class ServerInstallViewModel(application: Application) : AndroidViewMod
                     administratorFileRoots = selection.advanced.administratorFileRoots.lines().map(String::trim).filter(String::isNotEmpty).takeIf { selection.advanced.administratorFileAccess == "whitelist" && mode == ServerInstallMode.LinuxSystem },
                     rootFileAccess = selection.advanced.rootFileAccess.takeIf { mode == ServerInstallMode.LinuxSystem },
                     rootFileRoots = selection.advanced.rootFileRoots.lines().map(String::trim).filter(String::isNotEmpty).takeIf { selection.advanced.rootFileAccess == "whitelist" && mode == ServerInstallMode.LinuxSystem },
+                    addFirewallRule = selection.advanced.addFirewallRule && mode != ServerInstallMode.LinuxUser && selection.network == "lan",
                     dockerAccess = selection.advanced.dockerAccess && mode == ServerInstallMode.LinuxSystem,
                     allowUnsupportedSystem = selection.advanced.allowUnsupportedSystem && platform == ServerHostPlatform.Linux,
                     fileAccess = if (mode == ServerInstallMode.LinuxUser) "restricted" else selection.fileAccess, certificateMode = selection.certificateMode,
@@ -193,8 +200,10 @@ internal class ServerInstallViewModel(application: Application) : AndroidViewMod
                     ServerDeploymentOptions(ServerPackageSourceKind.OfficialStable, ServerNetworkProfile.Loopback, mode = mode), sudoPassword).snapshot)
                 container.serverCenter.recordVerifiedSnapshot(selection.hostId, status)
                 check(status.installed && status.healthy)
+                firewallStatus = receipt.result?.firewallStatus
             }
         } finally { localZip?.delete(); credential.clear() }
+        return firewallStatus
     }
 
     private fun certificateAsset(selection: ServerInstallSelection): ServerCenterUploadAsset {

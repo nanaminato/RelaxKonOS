@@ -148,3 +148,5 @@ SFTP 请求捕获宿主、工作区代次、路径和源快照；文件选择器
 安装向导支持官方 HTTPS 发布目录、本地 ZIP、服务器 ZIP 与自定义 HTTPS ZIP（必填 SHA-256）。端口、系统模式程序／数据根、用户模式数据／配置／状态／缓存根、TLS、文件白名单、Linux 管理员与 root 的独立文件范围、Docker 授权及非标准 Linux 选择使用共享部署请求；系统选项受模式门控，用户模式固定 loopback 且不安装特权助手。语言自动跟随客户端，证书与密码通过私有暂存文件传递。审阅页列出配置与授权，不显示密码。
 
 宿主侧目录定位与安装记录使自定义根在重连后的预检、更新、修复、回滚和卸载中继续生效。脚本参数逐项对应及维护者入口见 [`deployment/README.md`](../../../../deployment/README.md)。真实设备与主机安装验证仍以 `docs/status/Verification.md` 为准。
+
+安装/升级向导及系统安装的修复页提供默认关闭的“添加服务器 TCP 端口防火墙规则”。用户选择后仅修改已开启的 Windows/Linux 防火墙，为当前监听端口添加持久化规则；防火墙未开启时提示且不添加规则，也不启用防火墙。Linux User 仅本机监听，不提供该选项。部署请求使用 `addFirewallRule`，终态结果以 `firewallStatus` 区分 `ruleAdded`、`disabled`、`notRequested`、`notApplicable`；只读检查不修改防火墙。

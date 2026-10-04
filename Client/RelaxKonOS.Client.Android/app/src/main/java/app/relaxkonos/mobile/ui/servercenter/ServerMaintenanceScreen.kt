@@ -25,7 +25,7 @@ import java.util.UUID
 
 internal data class MaintenanceState(val busy: Boolean = false, val snapshot: ServerHostSnapshot? = null,
     val probe: ServerHostProbe? = null, val error: String? = null, val complete: Boolean = false,
-    val progress: Int = R.string.server_progress_connecting)
+    val progress: Int = R.string.server_progress_connecting, val firewallStatus: String? = null)
 
 internal fun maintenanceResultValid(kind: ServerDeploymentKind, snapshot: ServerHostSnapshot): Boolean = when (kind) {
     ServerDeploymentKind.Uninstall -> !snapshot.installed
@@ -38,9 +38,9 @@ internal class ServerMaintenanceViewModel(application: Application) : AndroidVie
     private val mutable = MutableStateFlow(MaintenanceState())
     val state = mutable.asStateFlow()
     fun run(hostId: String, kind: ServerDeploymentKind = ServerDeploymentKind.Status, purge: Boolean = false, sudo: String = "",
-        repairCertificate: Boolean = false, certificateIdentities: String = "") {
+        repairCertificate: Boolean = false, certificateIdentities: String = "", addFirewallRule: Boolean = false) {
         if (mutable.value.busy) return
-        mutable.value = mutable.value.copy(busy = true, error = null, complete = false,
+        mutable.value = mutable.value.copy(busy = true, error = null, complete = false, firewallStatus = null,
             progress = R.string.server_progress_connecting)
         viewModelScope.launch {
             val secret = container.serverCenter.verifiedPasswordCopy(hostId)
@@ -69,6 +69,7 @@ internal class ServerMaintenanceViewModel(application: Application) : AndroidVie
                         val password = if (mode == ServerInstallMode.LinuxSystem && !probe.elevated) sudo.ifEmpty { String(secret) } else null
                         val options = ServerDeploymentOptions(ServerPackageSourceKind.OfficialStable, ServerNetworkProfile.Loopback, mode = mode)
                         val before = requireNotNull(action(ServerDeploymentKind.Status, options, password).snapshot)
+                        var firewallStatus: String? = null
                         if (kind != ServerDeploymentKind.Status) {
                             check(before.installed && ServerInstallationId.isValid(before.installationId))
                             mutable.value = mutable.value.copy(progress = when (kind) {
@@ -76,15 +77,15 @@ internal class ServerMaintenanceViewModel(application: Application) : AndroidVie
                                 ServerDeploymentKind.Upgrade -> R.string.server_progress_upgrading
                                 else -> R.string.server_progress_repairing
                             })
-                            action(kind, maintenanceOptions(kind, mode, requireNotNull(before.installationId), purge,
-                                repairCertificate, certificateIdentities).copy(
-                                    allowUnsupportedSystem = mode == ServerInstallMode.LinuxSystem && !probe.osSupported), password)
+                            firewallStatus = action(kind, maintenanceOptions(kind, mode, requireNotNull(before.installationId), purge,
+                                repairCertificate, certificateIdentities, addFirewallRule).copy(
+                                    allowUnsupportedSystem = mode == ServerInstallMode.LinuxSystem && !probe.osSupported), password).result?.firewallStatus
                         }
                         mutable.value = mutable.value.copy(progress = R.string.server_progress_verifying)
                         val after = if (kind == ServerDeploymentKind.Status) before else requireNotNull(action(ServerDeploymentKind.Status, options, password).snapshot)
                         container.serverCenter.recordVerifiedSnapshot(hostId, after)
                         check(maintenanceResultValid(kind, after)) { "server-deployment.postcondition_failed" }
-                        MaintenanceState(snapshot = after, probe = probe, complete = kind != ServerDeploymentKind.Status)
+                        MaintenanceState(snapshot = after, probe = probe, complete = kind != ServerDeploymentKind.Status, firewallStatus = firewallStatus)
                     }
                 }
                 mutable.value = result
@@ -106,6 +107,7 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
     var uninstall by remember { mutableStateOf(false) }
     var purge by remember { mutableStateOf(false) }
     var sudo by remember { mutableStateOf("") }
+    var addFirewallRule by rememberSaveable { mutableStateOf(false) }
     var repairCertificate by rememberSaveable(host?.hostId) { mutableStateOf(false) }
     var certificateIdentities by rememberSaveable(host?.hostId) {
         mutableStateOf(listOf("localhost", "127.0.0.1", host?.sshHost.orEmpty()).filter(String::isNotBlank).distinct().joinToString(","))
@@ -182,6 +184,11 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
                         val certificateRepairSupported = snapshot.mode == ServerInstallMode.LinuxSystem || snapshot.mode == ServerInstallMode.WindowsSystem
                         if (certificateRepairSupported) {
                             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                Checkbox(addFirewallRule, { addFirewallRule = it }, enabled = !state.busy)
+                                Text(stringResource(R.string.server_install_firewall_choice), modifier = Modifier.weight(1f))
+                            }
+                            Text(stringResource(R.string.server_install_firewall_help), style = MaterialTheme.typography.bodySmall)
+                            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                                 Checkbox(repairCertificate, { repairCertificate = it }, enabled = !state.busy)
                                 Text(stringResource(R.string.server_maintenance_repair_certificate), modifier = Modifier.weight(1f))
                             }
@@ -195,14 +202,18 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
                         }
                         OutlinedButton(onClick = {
                             if (repairCertificate && certificateRepairSupported) confirmCertificateRepair = true
-                            else { host?.let { model.run(it.hostId, ServerDeploymentKind.Repair, sudo = sudo) }; sudo = "" }
+                            else { host?.let { model.run(it.hostId, ServerDeploymentKind.Repair, sudo = sudo, addFirewallRule = addFirewallRule) }; sudo = "" }
                         }, enabled = !state.busy && (!repairCertificate || !certificateRepairSupported || identitiesValid)) {
                             Text(stringResource(R.string.server_maintenance_repair))
                         }
                         OutlinedButton(onClick = { purge = false; uninstall = true }, enabled = !state.busy) { Text(stringResource(R.string.server_maintenance_uninstall)) }
                     } else if (page == 2) Button(onClick = { wizard = true }, enabled = !state.busy && state.probe?.runtimeIdentifier != null) { Text(stringResource(R.string.ssh_workspace_deploy_install)) }
                 }
-                if (state.complete) Text(stringResource(R.string.server_maintenance_complete))
+                if (state.complete) {
+                    Text(stringResource(R.string.server_maintenance_complete))
+                    if (state.firewallStatus == "disabled") Text(stringResource(R.string.server_install_firewall_disabled))
+                    if (state.firewallStatus == "ruleAdded") Text(stringResource(R.string.server_install_firewall_added))
+                }
                 if (page == 3 && host != null) ServerInstallRecoveryPanel(host.hostId,
                     state.probe?.let { if (it.hostPlatform.equals("linux", true)) ServerHostPlatform.Linux else ServerHostPlatform.Windows })
             }
@@ -221,7 +232,7 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
         confirmButton = { TextButton(onClick = {
             confirmCertificateRepair = false
             host?.let { model.run(it.hostId, ServerDeploymentKind.Repair, sudo = sudo,
-                repairCertificate = true, certificateIdentities = certificateIdentities) }
+                repairCertificate = true, certificateIdentities = certificateIdentities, addFirewallRule = addFirewallRule) }
             sudo = ""
         }, enabled = !state.busy && identitiesValid) { Text(stringResource(R.string.server_maintenance_repair)) } },
         dismissButton = { TextButton(onClick = { confirmCertificateRepair = false }) { Text(stringResource(R.string.common_cancel)) } })

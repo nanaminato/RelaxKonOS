@@ -51,6 +51,7 @@ $lockPath = Join-Path $journalRoot 'deploy.lock'
 
 $script:lockStream = $null
 $script:journalReady = $false
+$script:firewallStatus = $null
 
 # --- journal -------------------------------------------------------------------------------------
 # stdout carries only JSON Lines; every human-readable message goes to stderr so a client can
@@ -358,7 +359,7 @@ function Assert-RequestShape {
         Stop-Launcher 'server-deployment.invalid_request' 'options must be a JSON object'
     }
     $allowedOptions = @('source', 'network', 'retention', 'mode', 'version', 'packageUri', 'stagedPackageName',
-        'packageDigest', 'remotePackagePath', 'expectedInstallationId', 'serverPort', 'fileAccess', 'certificateMode', 'selfSignedIdentities', 'confirmed', 'language', 'releaseCatalogBaseUri', 'installRoot', 'dataRoot', 'configRoot', 'stateRoot', 'cacheRoot', 'fileRoots', 'administratorFileAccess', 'administratorFileRoots', 'rootFileAccess', 'rootFileRoots', 'dockerAccess', 'allowUnsupportedSystem')
+        'packageDigest', 'remotePackagePath', 'expectedInstallationId', 'serverPort', 'fileAccess', 'certificateMode', 'selfSignedIdentities', 'confirmed', 'language', 'releaseCatalogBaseUri', 'installRoot', 'dataRoot', 'configRoot', 'stateRoot', 'cacheRoot', 'fileRoots', 'administratorFileAccess', 'administratorFileRoots', 'rootFileAccess', 'rootFileRoots', 'dockerAccess', 'allowUnsupportedSystem', 'addFirewallRule')
     foreach ($key in $request['options'].Keys) {
         if ($allowedOptions -notcontains [string]$key) {
             Stop-Launcher 'server-deployment.invalid_request' "unsupported request field: $key"
@@ -421,6 +422,9 @@ function Parse-Request {
     $script:optionsRemotePath = Get-StringOption 'remotePackagePath'
     $script:optionsExpectedInstallationId = Get-StringOption 'expectedInstallationId'
     $script:optionsFileAccess = Get-StringOption 'fileAccess'
+    $script:optionsAddFirewallRule = Get-LiteralOption 'addFirewallRule'
+    if ($script:optionsAddFirewallRule -eq $true -and $kind -notin @('install', 'upgrade', 'repair')) { Stop-Launcher 'server-deployment.invalid_request' 'Firewall changes require install, upgrade or repair.' }
+    if ($null -ne $script:optionsAddFirewallRule -and $script:optionsAddFirewallRule -isnot [bool]) { Stop-Launcher 'server-deployment.invalid_request' 'addFirewallRule must be boolean' }
     $script:optionsCertificateMode = Get-StringOption 'certificateMode'
     $script:optionsSelfSignedIdentities = Get-StringOption 'selfSignedIdentities'
     $script:optionsLanguage = Get-StringOption 'language'
@@ -638,6 +642,7 @@ function Get-ResultJson([string] $Mode, $State, [bool] $Healthy, $DataRetained) 
         dataCompatible  = $null
         serviceNames    = $serviceNames
         completedAtUtc  = Get-NowUtc
+        firewallStatus  = $script:firewallStatus
     }
 }
 
@@ -1042,6 +1047,35 @@ function Invoke-StatusAction {
     Write-Event 'completed' 'succeeded' 100 '' '状态查询完成'
 }
 
+function Apply-FirewallChoice($State) {
+    $script:firewallStatus = 'notRequested'
+    $endpoint = [Uri](Get-StateField $State 'listenUrl')
+    if ($endpoint.IsLoopback) { $script:firewallStatus = 'notApplicable'; return }
+    $activeProfiles = @(Get-NetConnectionProfile -ErrorAction Stop | ForEach-Object {
+        if ($_.NetworkCategory -eq 'DomainAuthenticated') { 'Domain' } else { [string]$_.NetworkCategory }
+    } | Select-Object -Unique)
+    if ($activeProfiles.Count -eq 0) { throw 'Unable to determine active network firewall profiles.' }
+    $enabledProfiles = @(Get-NetFirewallProfile -PolicyStore ActiveStore -ErrorAction Stop |
+        Where-Object { $_.Enabled -eq $true -and $activeProfiles -contains [string]$_.Name } |
+        ForEach-Object { [string]$_.Name })
+    if ($enabledProfiles.Count -eq 0) {
+        $script:firewallStatus = 'disabled'
+        Write-Note 'The host firewall is disabled on the active networks; no firewall rule was added.'
+        return
+    }
+    if (-not $script:optionsAddFirewallRule) { return }
+    $name = 'RelaxKonOS-Server-TCP-' + $endpoint.Port
+    $existing = Get-NetFirewallRule -Name $name -ErrorAction SilentlyContinue
+    if ($existing) {
+        if ($existing.Group -ne 'RelaxKonOS') { throw 'A firewall rule with the managed name belongs to another application.' }
+        Set-NetFirewallRule -Name $name -Enabled True -Profile $enabledProfiles -Direction Inbound -Action Allow -ErrorAction Stop | Out-Null
+        $existing | Get-NetFirewallPortFilter | Set-NetFirewallPortFilter -Protocol TCP -LocalPort $endpoint.Port -ErrorAction Stop | Out-Null
+    } else {
+        New-NetFirewallRule -Name $name -DisplayName ('RelaxKonOS Server TCP ' + $endpoint.Port) -Group 'RelaxKonOS' -Enabled True -Profile $enabledProfiles -Direction Inbound -Action Allow -Protocol TCP -LocalPort $endpoint.Port -ErrorAction Stop | Out-Null
+    }
+    $script:firewallStatus = 'ruleAdded'
+}
+
 function Invoke-InstallLikeAction {
     Write-Event 'validatingRequest' 'running' 5 '' '正在校验请求'
     Write-Event 'acquiringLock' 'running' $null '' '正在获取独占操作锁'
@@ -1113,6 +1147,7 @@ function Invoke-InstallLikeAction {
         Write-Event 'failed' 'failed' $null 'server-deployment.health_check_failed' '服务未通过健康核验'
         exit 1
     }
+    Apply-FirewallChoice $state
     $script:record.snapshot = Get-SnapshotJson $script:optionsMode $state $healthy $installed $null
     $script:record.result = Get-ResultJson $script:optionsMode $state $healthy $null
     Write-Event 'finalizing' 'running' $null '' '正在整理部署结果'

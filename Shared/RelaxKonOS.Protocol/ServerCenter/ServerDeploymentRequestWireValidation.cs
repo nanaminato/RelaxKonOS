@@ -14,7 +14,7 @@ public static class ServerDeploymentRequestWireValidation
         "certificateMode", "selfSignedIdentities", "confirmed", "language", "releaseCatalogBaseUri",
         "installRoot", "dataRoot", "configRoot", "stateRoot", "cacheRoot", "fileRoots",
         "administratorFileAccess", "administratorFileRoots", "rootFileAccess", "rootFileRoots",
-        "dockerAccess", "allowUnsupportedSystem"
+        "dockerAccess", "allowUnsupportedSystem", "addFirewallRule"
     ];
 
     public static bool IsStrictRequest(ReadOnlySpan<byte> json)
@@ -77,7 +77,7 @@ public static class ServerDeploymentRequestWireValidation
                     type is JsonValueKind.String or JsonValueKind.Null,
                 "serverPort" => type == JsonValueKind.Null ||
                                 type == JsonValueKind.Number && property.Value.TryGetInt32(out _),
-                "confirmed" or "dockerAccess" or "allowUnsupportedSystem" => type is JsonValueKind.True or JsonValueKind.False,
+                "confirmed" or "dockerAccess" or "allowUnsupportedSystem" or "addFirewallRule" => type is JsonValueKind.True or JsonValueKind.False,
                 "fileRoots" or "administratorFileRoots" or "rootFileRoots" => type == JsonValueKind.Null ||
                     type == JsonValueKind.Array && property.Value.EnumerateArray().All(item => item.ValueKind == JsonValueKind.String),
                 _ => false

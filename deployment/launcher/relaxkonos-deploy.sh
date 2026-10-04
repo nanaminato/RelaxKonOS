@@ -257,7 +257,7 @@ def request(path):
     root = {'schemaVersion', 'operationId', 'kind', 'options'}
     keys = {'source','network','retention','mode','version','packageUri','stagedPackageName',
             'packageDigest','remotePackagePath','expectedInstallationId','serverPort','fileAccess',
-            'certificateMode','selfSignedIdentities','confirmed','language','releaseCatalogBaseUri','installRoot','dataRoot','configRoot','stateRoot','cacheRoot','fileRoots','administratorFileAccess','administratorFileRoots','rootFileAccess','rootFileRoots','dockerAccess','allowUnsupportedSystem'}
+            'certificateMode','selfSignedIdentities','confirmed','language','releaseCatalogBaseUri','installRoot','dataRoot','configRoot','stateRoot','cacheRoot','fileRoots','administratorFileAccess','administratorFileRoots','rootFileAccess','rootFileRoots','dockerAccess','allowUnsupportedSystem','addFirewallRule'}
     if type(value) is not dict or set(value) - root: raise ValueError('request fields')
     if type(value.get('schemaVersion')) is not int or value['schemaVersion'] != 1: raise ValueError('schema')
     if not isinstance(value.get('operationId'), str) or not re.fullmatch(r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}',value['operationId']): raise ValueError('id')
@@ -268,7 +268,7 @@ def request(path):
         for key in ('source','network'):
             if type(options.get(key)) is not str: raise ValueError('required string')
         for key, item in options.items():
-            if key in ('confirmed','dockerAccess','allowUnsupportedSystem'): valid = type(item) is bool
+            if key in ('confirmed','dockerAccess','allowUnsupportedSystem','addFirewallRule'): valid = type(item) is bool
             elif key in ('fileRoots','administratorFileRoots','rootFileRoots'): valid = item is None or type(item) is list and len(item) <= 128 and all(type(p) is str and p.startswith('/') and not any(ord(c)<32 for c in p) for p in item)
             elif key == 'serverPort': valid = item is None or type(item) is int
             elif key in ('source','network','retention'): valid = type(item) is str
@@ -418,7 +418,7 @@ assert_request_keys() {
   while IFS= read -r key; do
     [[ -n $key ]] || continue
     case "$key" in
-      schemaVersion|operationId|kind|options|source|network|retention|mode|version|packageUri|stagedPackageName|packageDigest|remotePackagePath|expectedInstallationId|serverPort|fileAccess|certificateMode|selfSignedIdentities|confirmed|language|releaseCatalogBaseUri|installRoot|dataRoot|configRoot|stateRoot|cacheRoot|fileRoots|administratorFileAccess|administratorFileRoots|rootFileAccess|rootFileRoots|dockerAccess|allowUnsupportedSystem) ;;
+      schemaVersion|operationId|kind|options|source|network|retention|mode|version|packageUri|stagedPackageName|packageDigest|remotePackagePath|expectedInstallationId|serverPort|fileAccess|certificateMode|selfSignedIdentities|confirmed|language|releaseCatalogBaseUri|installRoot|dataRoot|configRoot|stateRoot|cacheRoot|fileRoots|administratorFileAccess|administratorFileRoots|rootFileAccess|rootFileRoots|dockerAccess|allowUnsupportedSystem|addFirewallRule) ;;
       *) launcher_fail invalid_request "unsupported request field: $key" ;;
     esac
   done <<< "$keys"
@@ -427,6 +427,8 @@ assert_request_keys() {
 request_digest() { printf '%s' "$request_text" | sha256sum | cut -d' ' -f1; }
 
 options_source=officialStable
+options_add_firewall=false
+firewall_status=null
 options_network=loopback
 options_retention=retain
 options_mode=
@@ -493,6 +495,8 @@ parse_request() {
   options_cache_root=$(json_text cacheRoot)
   options_administrator_access=$(json_text administratorFileAccess)
   options_root_access=$(json_text rootFileAccess)
+  [[ $(json_literal addFirewallRule) != true ]] || options_add_firewall=true
+  if [[ $options_add_firewall == true && $kind != install && $kind != upgrade && $kind != repair ]]; then launcher_fail invalid_request "Firewall changes require install, upgrade or repair"; fi
   [[ $(json_literal dockerAccess) != true ]] || options_docker=true
   [[ $(json_literal allowUnsupportedSystem) != true ]] || options_allow_unsupported=true
   case "$options_language" in auto|zh-CN|en-US|ja-JP) ;; *) launcher_fail invalid_request "unsupported language" ;; esac
@@ -641,11 +645,11 @@ snapshot_json() { # mode stateFile healthy installed dataRetained
     "$(json_string_or_null "$(mode_listen_url "$1")")" "$3" "$5" "$(mode_service_names "$1")" "$(now_utc)"
 }
 result_json() { # mode stateFile healthy dataRetained
-  printf '{"installationId":%s,"mode":"%s","version":%s,"previousVersion":%s,"installRoot":%s,"dataRoot":%s,"listenUrl":%s,"healthy":%s,"dataRetained":%s,"dataCompatible":null,"serviceNames":%s,"completedAtUtc":"%s"}' \
+  printf '{"installationId":%s,"mode":"%s","version":%s,"previousVersion":%s,"installRoot":%s,"dataRoot":%s,"listenUrl":%s,"healthy":%s,"dataRetained":%s,"dataCompatible":null,"serviceNames":%s,"completedAtUtc":"%s","firewallStatus":%s}' \
     "$(json_string_or_null "$(state_field "$2" installationId)")" "$1" \
     "$(json_string_or_null "$(state_field "$2" version)")" "$(json_string_or_null "$(state_field "$2" previousVersion)")" \
     "$(json_string_or_null "$(mode_install_root "$1")")" "$(json_string_or_null "$(mode_data_root "$1")")" \
-    "$(json_string_or_null "$(mode_listen_url "$1")")" "$3" "$4" "$(mode_service_names "$1")" "$(now_utc)"
+    "$(json_string_or_null "$(mode_listen_url "$1")")" "$3" "$4" "$(mode_service_names "$1")" "$(now_utc)" "$firewall_status"
 }
 health_probe() { # mode -> true|false
   local mode=$1
@@ -911,6 +915,88 @@ action_status() {
   emit_event completed succeeded 100 "" "状态查询完成"
 }
 
+apply_firewall_choice() { # authoritative installation state
+  firewall_status='"notRequested"'
+  [[ $options_mode != linuxUser ]] || { firewall_status='"notApplicable"'; return; }
+  local url port result
+  url=$(state_field "$1" listenUrl)
+  case "$url" in *://127.0.0.1:*|*://localhost:*) firewall_status='"notApplicable"'; return;; esac
+  port=$(python3 -c 'import sys,urllib.parse; print(urllib.parse.urlparse(sys.argv[1]).port)' "$url")
+  if ! result=$(python3 - "$port" "$options_add_firewall" <<'FIREWALL_PY'
+import json, os, pathlib, re, shutil, subprocess, sys
+port=int(sys.argv[1]); requested=sys.argv[2]=='true'
+if not 1 <= port <= 65535: raise ValueError('Invalid server port')
+def run(*args, check=True, input=None):
+    return subprocess.run(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=check, input=input, env={**os.environ, "LC_ALL": "C"})
+def active(unit):
+    return run('systemctl','is-active','--quiet',unit,check=False).returncode==0
+backend=None
+if shutil.which('ufw') and re.search(r'^Status: active$',run('ufw','status').stdout,re.M): backend='ufw'
+elif shutil.which('firewall-cmd') and run('firewall-cmd','--state',check=False).returncode==0: backend='firewalld'
+elif shutil.which('nft'):
+    rules=json.loads(run('nft','-j','list','ruleset').stdout)['nftables']
+    chains=[o['chain'] for o in rules if 'chain' in o and o['chain'].get('hook')=='input' and o['chain'].get('family') in ('inet','ip','ip6')]
+    if chains and (active('nftables') or any(c.get('policy') == 'drop' for c in chains) or any('rule' in o for o in rules)): backend='nftables'
+if backend is None and shutil.which('iptables'):
+    policy=run('iptables','-S','INPUT').stdout
+    if '-P INPUT DROP' in policy or '-P INPUT REJECT' in policy or '-A INPUT ' in policy: backend='iptables'
+if backend is None:
+    print('disabled'); print('The host firewall is disabled; no firewall rule was added.',file=sys.stderr);sys.exit(0)
+if not requested: print('notRequested');sys.exit(0)
+if backend=='ufw': run('ufw','allow',f'{port}/tcp','comment','RelaxKonOS')
+elif backend=='firewalld':
+    zones=[line.strip() for line in run('firewall-cmd','--get-active-zones').stdout.splitlines() if line and not line[0].isspace()]
+    if not zones: zones=[run('firewall-cmd','--get-default-zone').stdout.strip()]
+    for zone in zones:
+        run('firewall-cmd',f'--zone={zone}',f'--add-port={port}/tcp','--permanent')
+        run('firewall-cmd',f'--zone={zone}',f'--add-port={port}/tcp')
+elif backend=='nftables':
+    if not active('nftables') or not pathlib.Path('/etc/nftables.conf').is_file():
+        raise RuntimeError('Active nftables rules have no managed persistent nftables service')
+    tag=f'RelaxKonOS TCP {port}'
+    commands=[]
+    for c in chains:
+        family,table,chain=c['family'],c['table'],c['name']
+        if not all(re.fullmatch(r'[A-Za-z0-9_.-]+',x) for x in (family,table,chain)): raise ValueError('Unsupported nftables chain name')
+        command=f'insert rule {family} {table} {chain} tcp dport {port} accept comment "{tag}"'
+        commands.append(command)
+    directory=pathlib.Path('/etc/relaxkonos');directory.mkdir(mode=0o755,exist_ok=True)
+    managed=directory/'firewall.nft'
+    prior=managed.read_text() if managed.exists() else ''
+    for command in commands:
+        if command not in prior.splitlines(): prior+=command+'\n'
+    config=pathlib.Path('/etc/nftables.conf')
+    include='include "/etc/relaxkonos/firewall.nft"'
+    configText=config.read_text()
+    if include not in configText.splitlines(): configText+='\n'+include+'\n'
+    # Check the complete boot configuration before applying any new rule.
+    import tempfile
+    oldManaged=managed.read_bytes() if managed.exists() else None
+    managed.write_text(prior)
+    try:
+        with tempfile.NamedTemporaryFile(mode='w',suffix='.nft') as temp:
+            temp.write(configText);temp.flush();run('nft','--check','--file',temp.name)
+    except Exception:
+        if oldManaged is None: managed.unlink()
+        else: managed.write_bytes(oldManaged)
+        raise
+    for c,command in zip(chains,commands):
+        existing=run('nft','-j','list','chain',c['family'],c['table'],c['name']).stdout
+        if not any(o.get('rule',{}).get('comment')==tag for o in json.loads(existing)['nftables']): run('nft','-f','-',input=command+'\n')
+    config.write_text(configText)
+elif backend=='iptables':
+    if not shutil.which('netfilter-persistent'): raise RuntimeError('Active iptables rules have no netfilter-persistent save command')
+    args=['INPUT','-p','tcp','--dport',str(port),'-m','comment','--comment',f'RelaxKonOS TCP {port}','-j','ACCEPT']
+    if run('iptables','-C',*args,check=False).returncode: run('iptables','-I',*args)
+    run('netfilter-persistent','save')
+print('ruleAdded')
+FIREWALL_PY
+  ); then
+    launcher_fail firewall_rule_failed 'The server is installed, but the requested firewall rule could not be added; inspect the host firewall configuration.'
+  fi
+  case "$result" in disabled|ruleAdded|notRequested) firewall_status=$(json_string_or_null "$result");; *) launcher_fail firewall_rule_failed 'Invalid firewall result';; esac
+}
+
 action_install_like() {
   emit_event validatingRequest running 5 "" "正在校验请求"
   emit_event acquiringLock running "" "" "正在获取独占操作锁"
@@ -1013,6 +1099,7 @@ action_install_like() {
     emit_event failed failed "" health_check_failed "服务未通过健康核验"
     exit 1
   fi
+  apply_firewall_choice "$file"
   record_snapshot=$(snapshot_json "$options_mode" "$file" "$healthy" "$installed" null)
   record_result=$(result_json "$options_mode" "$file" "$healthy" null)
   emit_event finalizing running "" "" "正在整理部署结果"

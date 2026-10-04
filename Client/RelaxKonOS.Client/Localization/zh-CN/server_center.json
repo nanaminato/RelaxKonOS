@@ -240,6 +240,10 @@
     "server_center.wizard.allow_unsupported": "允许使用支持列表之外的 Linux 系统",
     "server_center.wizard.options_invalid": "请检查端口、HTTPS 地址、SHA-256 和白名单目录。",
     "server_center.wizard.source_url": "自定义 HTTPS 下载",
-    "server_center.wizard.file_access_whitelist": "指定目录白名单"
+    "server_center.wizard.file_access_whitelist": "指定目录白名单",
+    "server_center.firewall_choice": "添加服务器 TCP 端口的防火墙入站规则",
+    "server_center.firewall_help": "仅用于网络访问。若宿主防火墙未开启，将提醒您且不添加规则。",
+    "server_center.firewall_disabled": "宿主防火墙未开启，未添加防火墙规则。",
+    "server_center.firewall_added": "已在防火墙中放行服务器 TCP 端口。"
   }
 }

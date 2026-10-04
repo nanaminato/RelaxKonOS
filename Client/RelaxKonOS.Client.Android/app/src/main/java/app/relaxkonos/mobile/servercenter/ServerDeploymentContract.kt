@@ -133,6 +133,7 @@ data class ServerDeploymentResult(
     val dataCompatible: Boolean? = null,
     val serviceNames: List<String> = emptyList(),
     val completedAtUtc: String? = null,
+    val firewallStatus: String? = null,
 )
 
 /**
@@ -224,6 +225,7 @@ data class ServerDeploymentOptions(
     val rootFileRoots: List<String>? = null,
     val dockerAccess: Boolean = false,
     val allowUnsupportedSystem: Boolean = false,
+    val addFirewallRule: Boolean = false,
 )
 
 /** 远端部署启动器的唯一入口请求。[operationId] 同时作为幂等键。 */

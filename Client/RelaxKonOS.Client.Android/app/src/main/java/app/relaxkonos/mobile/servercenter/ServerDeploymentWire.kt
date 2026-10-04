@@ -108,6 +108,7 @@ internal object ServerDeploymentWire {
         append(",\"rootFileRoots\":").append(options.rootFileRoots.jsonStrings())
         append(",\"dockerAccess\":").append(options.dockerAccess)
         append(",\"allowUnsupportedSystem\":").append(options.allowUnsupportedSystem)
+        append(",\"addFirewallRule\":").append(options.addFirewallRule)
         append(",\"confirmed\":").append(options.confirmed).append('}')
     }
 
@@ -125,6 +126,7 @@ internal object ServerDeploymentWire {
             dataCompatible = fields.nullableBoolean("dataCompatible"),
             serviceNames = fields.stringList("serviceNames"),
             completedAtUtc = fields.nullableString("completedAtUtc"),
+            firewallStatus = fields.nullableString("firewallStatus"),
         )
 
     private fun readSnapshot(fields: Map<String, ServerCenterJsonValue>): ServerHostSnapshot =

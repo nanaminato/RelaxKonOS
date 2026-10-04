@@ -240,6 +240,10 @@
     "server_center.wizard.allow_unsupported": "Allow a Linux system outside the supported matrix",
     "server_center.wizard.options_invalid": "Check the port, HTTPS URL, SHA-256 and whitelist directories.",
     "server_center.wizard.source_url": "Custom HTTPS download",
-    "server_center.wizard.file_access_whitelist": "Selected directories"
+    "server_center.wizard.file_access_whitelist": "Selected directories",
+    "server_center.firewall_choice": "Add an inbound firewall rule for the server TCP port",
+    "server_center.firewall_help": "Applies to network access. If the host firewall is disabled, you will be notified and no rule will be added.",
+    "server_center.firewall_disabled": "The host firewall is disabled; no firewall rule was added.",
+    "server_center.firewall_added": "The server TCP port was allowed through the firewall."
   }
 }

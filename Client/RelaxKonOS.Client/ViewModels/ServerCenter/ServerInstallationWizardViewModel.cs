@@ -100,6 +100,9 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     [ObservableProperty] private string? _rootFileRoots;
     [ObservableProperty] private FileAccessOption? _selectedAdministratorFileAccess;
     [ObservableProperty] private FileAccessOption? _selectedRootFileAccess;
+    [ObservableProperty] private bool _addFirewallRule;
+    public string FirewallChoiceText => Text("server_center.firewall_choice", "Add an inbound firewall rule for the server TCP port");
+    public string FirewallHelpText => Text("server_center.firewall_help", "Applies to network access. If the host firewall is disabled, you will be notified and no rule will be added.");
     [ObservableProperty] private bool _dockerAccess;
     [ObservableProperty] private bool _allowUnsupportedSystem;
     public bool IsOfficialSource => SelectedSource?.Source == ServerPackageSourceKind.OfficialStable;
@@ -151,7 +154,10 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     public string OptionsInvalidLabel => Text("server_center.wizard.options_invalid", "Check the port, HTTPS URL, SHA-256 and whitelist directories.");
     public string SourceUrlLabel => Text("server_center.wizard.source_url", "Custom HTTPS download");
     public string WhitelistLabel => Text("server_center.wizard.file_access_whitelist", "Selected directories");
+    public bool CanAddFirewallRule => IsSystemMode && SelectedNetwork?.Profile == ServerNetworkProfile.Lan;
+    partial void OnSelectedNetworkChanged(NetworkOption? value) { OnPropertyChanged(nameof(CanAddFirewallRule)); if (!CanAddFirewallRule) AddFirewallRule = false; }
     public string AdvancedReviewText => string.Join("\n", new[] {
+        IsSystemMode ? $"{FirewallChoiceText}: {CanAddFirewallRule && AddFirewallRule}" : string.Empty,
         $"{ServerPortLabel}: {ServerPortText}", $"{DataRootLabel}: {DataRoot}",
         IsSystemMode ? $"{InstallRootLabel}: {InstallRoot}" : $"{ConfigRootLabel}: {ConfigRoot}\n{StateRootLabel}: {StateRoot}\n{CacheRootLabel}: {CacheRoot}",
         IsFileWhitelist ? $"{FileRootsLabel}: {FileRoots}" : string.Empty,
@@ -293,7 +299,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
                 Optional(InstallRoot), Optional(DataRoot), Optional(ConfigRoot), Optional(StateRoot), Optional(CacheRoot),
                 IsFileWhitelist ? Roots(FileRoots) : null, SelectedAdministratorFileAccess?.Scope,
                 IsAdministratorWhitelist ? Roots(AdministratorFileRoots) : null, SelectedRootFileAccess?.Scope,
-                IsRootWhitelist ? Roots(RootFileRoots) : null, DockerAccess, AllowUnsupportedSystem));
+                IsRootWhitelist ? Roots(RootFileRoots) : null, DockerAccess, AllowUnsupportedSystem, IsSystemMode && SelectedNetwork?.Profile == ServerNetworkProfile.Lan && AddFirewallRule));
             if (succeeded)
                 _close();
             else
@@ -338,6 +344,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
 
     partial void OnSelectedModeChanged(InstallationModeOption? value)
     {
+        OnPropertyChanged(nameof(CanAddFirewallRule));
         OnPropertyChanged(nameof(SelectedModeText));
         OnPropertyChanged(nameof(ShowsSudoPassword));
         OnPropertyChanged(nameof(IsSystemMode)); OnPropertyChanged(nameof(IsUserMode)); OnPropertyChanged(nameof(IsLinuxSystemMode));

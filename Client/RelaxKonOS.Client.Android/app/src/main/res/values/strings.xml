@@ -238,7 +238,7 @@
     <string name="ssh_workspace_deploy_network">Network profile</string>
     <string name="ssh_workspace_deploy_loopback">Loopback only</string>
     <string name="ssh_workspace_deploy_lan">0.0.0.0 (all network interfaces)</string>
-    <string name="ssh_workspace_deploy_lan_note">Binds every IPv4 interface, so same-subnet hosts can reach it. The installer never opens the firewall; cross-device direct access needs trusted TLS or the client SSH tunnel.</string>
+    <string name="ssh_workspace_deploy_lan_note">Binds every IPv4 interface, so same-subnet hosts can reach it. Select the firewall option to allow the server port; cross-device direct access needs trusted TLS or the client SSH tunnel.</string>
     <string name="ssh_workspace_deploy_proxy">Reverse proxy</string>
     <string name="ssh_workspace_deploy_port">Server port</string>
     <string name="ssh_workspace_deploy_version">Version (optional)</string>
@@ -2788,4 +2788,8 @@
     <string name="login_tunnel_invalid">Enter a valid SSH host, port, username and remote HTTP(S) loopback URL.</string>
     <string name="login_tunnel_auth_failed">SSH authentication failed. Check the SSH username, password or private key.</string>
     <string name="login_tunnel_configure">Configure SSH tunnel</string>
+    <string name="server_install_firewall_choice">Add a firewall rule for the server TCP port</string>
+    <string name="server_install_firewall_help">Only an enabled firewall is changed. If disabled, a notice is shown and no rule is added.</string>
+    <string name="server_install_firewall_disabled">Installation succeeded. The host firewall is disabled; no rule was added.</string>
+    <string name="server_install_firewall_added">Installation succeeded. The server TCP port firewall rule was added.</string>
 </resources>

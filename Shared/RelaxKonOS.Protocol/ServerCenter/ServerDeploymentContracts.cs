@@ -69,7 +69,8 @@ public sealed record ServerDeploymentResultDto(
     [property: JsonPropertyName("dataRetained")] bool? DataRetained = null,
     [property: JsonPropertyName("dataCompatible")] bool? DataCompatible = null,
     [property: JsonPropertyName("serviceNames")] IReadOnlyList<string>? ServiceNames = null,
-    [property: JsonPropertyName("completedAtUtc")] DateTimeOffset? CompletedAtUtc = null);
+    [property: JsonPropertyName("completedAtUtc")] DateTimeOffset? CompletedAtUtc = null,
+    [property: JsonPropertyName("firewallStatus")] string? FirewallStatus = null);
 
 /// <summary>
 /// 只读宿主快照。它是「API 可达 / SSH 可达 / 服务已安装」三个独立事实中的「服务已安装」部分，

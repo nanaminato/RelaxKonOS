@@ -226,7 +226,7 @@
     <string name="ssh_workspace_deploy_network">ネットワークプロファイル</string>
     <string name="ssh_workspace_deploy_loopback">ループバックのみ</string>
     <string name="ssh_workspace_deploy_lan">0.0.0.0（すべてのネットワーク インターフェイス）</string>
-    <string name="ssh_workspace_deploy_lan_note">すべての IPv4 インターフェイスにバインドするため、同一サブネットから到達できます。インストーラーはファイアウォールを開放しません。別端末からの直接接続には信頼された TLS またはクライアントの SSH トンネルが必要です。</string>
+    <string name="ssh_workspace_deploy_lan_note">すべての IPv4 インターフェイスにバインドするため、同一サブネットから到達できます。選択するとサーバーポートのファイアウォールルールを追加します。別端末からの直接接続には信頼された TLS またはクライアントの SSH トンネルが必要です。</string>
     <string name="ssh_workspace_deploy_proxy">リバースプロキシ</string>
     <string name="ssh_workspace_deploy_port">サーバーポート</string>
     <string name="ssh_workspace_deploy_version">バージョン（任意）</string>
@@ -2750,4 +2750,8 @@
     <string name="login_tunnel_invalid">有効な SSH ホスト、ポート、ユーザー名、リモート HTTP(S) ループバック URL を入力してください。</string>
     <string name="login_tunnel_auth_failed">SSH 認証に失敗しました。ユーザー名、パスワード、秘密鍵を確認してください。</string>
     <string name="login_tunnel_configure">SSH トンネルを設定</string>
+    <string name="server_install_firewall_choice">サーバー TCP ポートのファイアウォールルールを追加</string>
+    <string name="server_install_firewall_help">有効なファイアウォールのみ変更します。無効の場合は通知し、ルールを追加せず有効化もしません。</string>
+    <string name="server_install_firewall_disabled">インストール完了。ファイアウォールが無効のためルールは追加されませんでした。</string>
+    <string name="server_install_firewall_added">インストール完了。サーバー TCP ポートのルールを追加しました。</string>
 </resources>

@@ -319,6 +319,13 @@ internal fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier =
                         onValueChange = { network = it },
                         supportingText = stringResource(R.string.ssh_workspace_deploy_lan_note).takeIf { network == "lan" },
                     )
+                    if (mode != "linuxUser" && network == "lan") {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(advanced.addFirewallRule, { advanced = advanced.copy(addFirewallRule = it) })
+                            Text(stringResource(R.string.server_install_firewall_choice))
+                        }
+                        Text(stringResource(R.string.server_install_firewall_help), style = MaterialTheme.typography.bodySmall)
+                    }
                     SelectField(
                         label = stringResource(R.string.ssh_workspace_deploy_certificate),
                         options = listOf(
@@ -437,10 +444,11 @@ internal fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier =
                     ReviewLine(stringResource(R.string.server_install_package_digest), advanced.packageDigest)
                     if (mode == "linuxSystem") ReviewLine(stringResource(R.string.server_install_docker_access), advanced.dockerAccess.toString())
                     if (mode != "windowsSystem") ReviewLine(stringResource(R.string.server_install_allow_unsupported), advanced.allowUnsupportedSystem.toString())
+                    if (mode != "linuxUser" && network == "lan") ReviewLine(stringResource(R.string.server_install_firewall_choice), advanced.addFirewallRule.toString())
                     Text(stringResource(R.string.ssh_workspace_deploy_source_checks), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     installState.message?.takeUnless { installState.busy }?.let {
-                        if (it == R.string.ssh_workspace_deploy_success) Text(stringResource(it), color = MaterialTheme.colorScheme.primary)
-                        else OperationMessageDialog(stringResource(it), tone = if (it == R.string.ssh_workspace_deploy_verify) StatusTone.Warning else StatusTone.Danger)
+                        if (installState.installed && it != R.string.server_install_firewall_disabled) Text(stringResource(it), color = MaterialTheme.colorScheme.primary)
+                        else OperationMessageDialog(stringResource(it), tone = if (it == R.string.ssh_workspace_deploy_verify || it == R.string.server_install_firewall_disabled) StatusTone.Warning else StatusTone.Danger)
                     }
                 }
             }

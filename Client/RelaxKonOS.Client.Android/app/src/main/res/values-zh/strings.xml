@@ -227,7 +227,7 @@
     <string name="ssh_workspace_deploy_network">网络配置</string>
     <string name="ssh_workspace_deploy_loopback">仅限服务器本机</string>
     <string name="ssh_workspace_deploy_lan">0.0.0.0（所有网络接口）</string>
-    <string name="ssh_workspace_deploy_lan_note">绑定所有 IPv4 网卡，同网段可直接访问；安装器不会自动开放防火墙。跨设备直连需可信 TLS 或客户端 SSH 隧道。</string>
+    <string name="ssh_workspace_deploy_lan_note">绑定所有 IPv4 网卡，同网段可直接访问；可选择添加服务器端口的防火墙规则。跨设备直连需可信 TLS 或客户端 SSH 隧道。</string>
     <string name="ssh_workspace_deploy_proxy">反向代理</string>
     <string name="ssh_workspace_deploy_port">服务器端口</string>
     <string name="ssh_workspace_deploy_version">版本（可选）</string>
@@ -2749,4 +2749,8 @@
     <string name="login_tunnel_invalid">请填写有效的 SSH 主机、端口、用户名及远端 HTTP(S) 回环服务地址。</string>
     <string name="login_tunnel_auth_failed">SSH 身份验证失败，请检查 SSH 用户名、密码或私钥。</string>
     <string name="login_tunnel_configure">配置 SSH 隧道</string>
+    <string name="server_install_firewall_choice">添加服务器 TCP 端口防火墙规则</string>
+    <string name="server_install_firewall_help">仅修改已开启的防火墙；未开启时提醒，不添加规则，也不启用防火墙。</string>
+    <string name="server_install_firewall_disabled">安装成功。主机防火墙未开启，未添加规则。</string>
+    <string name="server_install_firewall_added">安装成功，已添加服务器 TCP 端口防火墙规则。</string>
 </resources>

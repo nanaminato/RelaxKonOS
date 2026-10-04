@@ -15,7 +15,7 @@ class ServerInstallationOptionsWireTest {
             releaseCatalogBaseUri = "https://example.invalid/releases", installRoot = "/srv/program",
             dataRoot = "/srv/data", fileAccess = "whitelist", fileRoots = listOf("/srv/shared space"),
             administratorFileAccess = "whitelist", administratorFileRoots = listOf("/srv/admin\"files"),
-            rootFileAccess = "full", dockerAccess = true, allowUnsupportedSystem = true)
+            rootFileAccess = "full", dockerAccess = true, allowUnsupportedSystem = true, addFirewallRule = true)
         val fields = wireOptions(options)
         assertEquals("directUrl", fields.getValue("source").asString())
         assertEquals(5100L, fields.getValue("serverPort").asLong())
@@ -26,6 +26,7 @@ class ServerInstallationOptionsWireTest {
         }
         assertEquals(listOf("/srv/shared space"), fields.getValue("fileRoots").asArray().map { it.asString() })
         assertEquals(listOf("/srv/admin\"files"), fields.getValue("administratorFileRoots").asArray().map { it.asString() })
+        assertTrue(fields.getValue("addFirewallRule").asBoolean())
         assertTrue(fields.getValue("dockerAccess").asBoolean())
         assertTrue(fields.getValue("allowUnsupportedSystem").asBoolean())
     }
@@ -39,6 +40,7 @@ class ServerInstallationOptionsWireTest {
             "stateRoot" to "/home/me/state", "cacheRoot" to "/home/me/cache")) {
             assertEquals(expected, fields.getValue(key).asString())
         }
+        assertFalse(fields.getValue("addFirewallRule").asBoolean())
         assertFalse(fields.getValue("dockerAccess").asBoolean())
     }
 

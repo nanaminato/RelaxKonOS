@@ -29,6 +29,15 @@ class ServerMaintenanceOptionsTest {
         }
     }
 
+    @Test fun `firewall choice is explicit and only affects system repair`() {
+        assertFalse(maintenanceOptions(ServerDeploymentKind.Repair, ServerInstallMode.LinuxSystem, id).addFirewallRule)
+        for (mode in listOf(ServerInstallMode.LinuxSystem, ServerInstallMode.WindowsSystem)) {
+            assertTrue(maintenanceOptions(ServerDeploymentKind.Repair, mode, id, addFirewallRule = true).addFirewallRule)
+        }
+        assertFalse(maintenanceOptions(ServerDeploymentKind.Repair, ServerInstallMode.LinuxUser, id, addFirewallRule = true).addFirewallRule)
+        assertFalse(maintenanceOptions(ServerDeploymentKind.Uninstall, ServerInstallMode.LinuxSystem, id, addFirewallRule = true).addFirewallRule)
+    }
+
     @Test fun `user mode and malformed identities cannot rotate certificate`() {
         assertThrows(IllegalArgumentException::class.java) {
             maintenanceOptions(ServerDeploymentKind.Repair, ServerInstallMode.LinuxUser, id,

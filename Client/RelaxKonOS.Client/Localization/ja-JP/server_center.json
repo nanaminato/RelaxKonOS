@@ -240,6 +240,10 @@
     "server_center.wizard.allow_unsupported": "対応一覧外の Linux システムを許可",
     "server_center.wizard.options_invalid": "ポート、HTTPS URL、SHA-256、許可ディレクトリを確認してください。",
     "server_center.wizard.source_url": "カスタム HTTPS ダウンロード",
-    "server_center.wizard.file_access_whitelist": "許可ディレクトリ"
+    "server_center.wizard.file_access_whitelist": "許可ディレクトリ",
+    "server_center.firewall_choice": "サーバーの TCP ポート用のファイアウォール受信規則を追加",
+    "server_center.firewall_help": "ネットワークアクセス用です。ファイアウォールが無効な場合は通知し、規則は追加しません。",
+    "server_center.firewall_disabled": "ホストのファイアウォールが無効なため、規則は追加していません。",
+    "server_center.firewall_added": "ファイアウォールでサーバーの TCP ポートを許可しました。"
   }
 }

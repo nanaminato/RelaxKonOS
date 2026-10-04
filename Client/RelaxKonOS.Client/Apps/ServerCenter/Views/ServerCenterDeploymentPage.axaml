@@ -66,6 +66,8 @@
             <StackPanel Spacing="12">
                 <TextBlock Text="{Binding DeploymentPageTitle}" FontSize="17" FontWeight="SemiBold" />
                 <Button Command="{Binding UpdateCommand}" Content="{Binding UpdateText}" HorizontalAlignment="Left" />
+                <CheckBox IsVisible="{Binding CanManageFirewall}" IsChecked="{Binding MaintenanceAddFirewallRule}" Content="{Binding FirewallChoiceText}" />
+                <TextBlock IsVisible="{Binding CanManageFirewall}" Text="{Binding FirewallHelpText}" TextWrapping="Wrap" />
                 <CheckBox IsChecked="{Binding RepairLanCertificate}" Content="{Binding RepairCertificateText}" />
                 <TextBlock Text="{Binding RepairCertificateNote}" TextWrapping="Wrap" IsVisible="{Binding RepairLanCertificate}" />
                 <TextBox Text="{Binding RepairCertificateIdentities}" IsVisible="{Binding RepairLanCertificate}" />

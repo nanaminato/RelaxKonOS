@@ -89,10 +89,14 @@ public partial class ServerCenterViewModel : ObservableObject
     [ObservableProperty] private bool _hasPreviousVersion;
     [ObservableProperty] private bool _hasIncompleteInstallation;
     [ObservableProperty] private string _maintenanceSudoPassword = string.Empty;
+    [ObservableProperty] private bool _maintenanceAddFirewallRule;
+    public string FirewallChoiceText => T("server_center.firewall_choice", "Add a firewall rule for the server TCP port");
+    public string FirewallHelpText => T("server_center.firewall_help", "Only an enabled firewall is changed. If disabled, a notice is shown and no rule is added.");
     [ObservableProperty] private bool _repairLanCertificate;
     [ObservableProperty] private string _repairCertificateIdentities = "localhost,127.0.0.1";
     public string RepairCertificateText => T("server_center.repair_certificate", "Regenerate the LAN self-signed certificate during repair");
     public string RepairCertificateNote => T("server_center.repair_certificate_note", "Enter the current LAN IP or DNS names, separated by commas. Repair restarts the service; clients must trust the new certificate again.");
+    public bool CanManageFirewall => HasManagedInstallation && SelectedHost?.LastVerified?.Mode is ServerInstallMode.WindowsSystem or ServerInstallMode.LinuxSystem;
     public bool HasManagedInstallation => SelectedHost?.LastVerified?.Installed == true;
     public string UpdateText => T("server_center.update", "Update RelaxKonOS");
     public string RecoverText => T("server_center.recover", "Recover installation");
@@ -502,7 +506,8 @@ public partial class ServerCenterViewModel : ObservableObject
                     SelfSignedIdentities: rotateCertificate ? RepairCertificateIdentities.Trim() : null,
                     Confirmed: true,
                     Language: _localization.CurrentLanguage,
-                    AllowUnsupportedSystem: operationMode == ServerInstallMode.LinuxSystem && !probe.OsSupported));
+                    AllowUnsupportedSystem: operationMode == ServerInstallMode.LinuxSystem && !probe.OsSupported,
+                    AddFirewallRule: kind == ServerDeploymentKind.Repair && !recovering && operationMode != ServerInstallMode.LinuxUser && MaintenanceAddFirewallRule));
             var receipt = await ExecuteFixedOperationAsync(session, tools, request, cancellationToken, sudoPassword).ConfigureAwait(true);
 
             // Read the separate status receipt even after uninstall. The install identity is retained
@@ -541,6 +546,8 @@ public partial class ServerCenterViewModel : ObservableObject
                 ServerDeploymentKind.Uninstall => T("server_center.uninstall_deleted_succeeded", "The server and managed data were uninstalled."),
                 _ => receipt.SafeMessage ?? T("server_center.operation_succeeded", "The server operation completed.")
             };
+            if (receipt.Result?.FirewallStatus == "disabled") StatusMessage += " " + T("server_center.firewall_disabled", "The host firewall is disabled; no rule was added.");
+            if (receipt.Result?.FirewallStatus == "ruleAdded") StatusMessage += " " + T("server_center.firewall_added", "The server TCP port firewall rule was added.");
         }
         catch (ServerCenterHostKeyRejectedException rejected)
         {
@@ -557,7 +564,8 @@ public partial class ServerCenterViewModel : ObservableObject
         finally
         {
             SshPassword = string.Empty;
-            DeleteServerData = false;
+            MaintenanceAddFirewallRule = false;
+        DeleteServerData = false;
             if (HasError) StatusMessage = string.Empty;
             IsBusy = false;
         }
@@ -734,7 +742,8 @@ public partial class ServerCenterViewModel : ObservableObject
                     RootFileAccess: mode == ServerInstallMode.LinuxSystem ? installation.RootFileAccess : null,
                     RootFileRoots: mode == ServerInstallMode.LinuxSystem ? installation.RootFileRoots : null,
                     DockerAccess: mode == ServerInstallMode.LinuxSystem && installation.DockerAccess,
-                    AllowUnsupportedSystem: platform.Platform == HostPlatformKind.Linux && installation.AllowUnsupportedSystem));
+                    AllowUnsupportedSystem: platform.Platform == HostPlatformKind.Linux && installation.AllowUnsupportedSystem,
+                    AddFirewallRule: mode != ServerInstallMode.LinuxUser && installation.AddFirewallRule));
             await using var launcher = tools.OpenLauncher();
 
             await using var archive = release?.OpenArchive();
@@ -794,6 +803,10 @@ public partial class ServerCenterViewModel : ObservableObject
             StatusMessage = kind == ServerDeploymentKind.Install
                 ? T("server_center.install_succeeded", "RelaxKonOS was installed and verified through SSH. Return to the login window to sign in.")
                 : T("server_center.update_succeeded", "RelaxKonOS was updated and verified through SSH. Sign in again if the existing session was interrupted.");
+            if (receipt.Result?.FirewallStatus == "disabled")
+                StatusMessage += " " + T("server_center.firewall_disabled", "The host firewall is disabled; no firewall rule was added.");
+            else if (receipt.Result?.FirewallStatus == "ruleAdded")
+                StatusMessage += " " + T("server_center.firewall_added", "The server TCP port was allowed through the firewall.");
             return true;
         }
         catch (ServerCenterHostKeyRejectedException rejected)
@@ -1130,12 +1143,14 @@ public partial class ServerCenterViewModel : ObservableObject
         }
         VerifiedStateText = value?.LastVerified is { } verified ? FormatSnapshot(verified) : string.Empty;
         LastProbeText = string.Empty;
+        MaintenanceAddFirewallRule = false;
         DeleteServerData = false;
         Operations.Clear();
         SelectedOperation = null;
         OnPropertyChanged(nameof(HasOperations));
         OnPropertyChanged(nameof(DeployText));
         OnPropertyChanged(nameof(HasManagedInstallation));
+        OnPropertyChanged(nameof(CanManageFirewall));
         OnPropertyChanged(nameof(InstallationDetails));
         UpdateCommand.NotifyCanExecuteChanged();
         RemoveHostCommand.NotifyCanExecuteChanged();
@@ -1421,4 +1436,4 @@ public sealed record ServerInstallationOptions(
     string? StateRoot = null, string? CacheRoot = null,
     IReadOnlyList<string>? FileRoots = null, ServerFileAccessScope? AdministratorFileAccess = null,
     IReadOnlyList<string>? AdministratorFileRoots = null, ServerFileAccessScope? RootFileAccess = null,
-    IReadOnlyList<string>? RootFileRoots = null, bool DockerAccess = false, bool AllowUnsupportedSystem = false);
+    IReadOnlyList<string>? RootFileRoots = null, bool DockerAccess = false, bool AllowUnsupportedSystem = false, bool AddFirewallRule = false);

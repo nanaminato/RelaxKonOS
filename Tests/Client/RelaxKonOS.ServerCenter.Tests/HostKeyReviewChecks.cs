@@ -84,6 +84,13 @@ static class HostKeyReviewChecks
             viewModel.SelectedPlatform = viewModel.Platforms.Single(p => p.Platform == HostPlatformKind.Linux);
             var wizard = new ServerInstallationWizardViewModel(viewModel, () => { },
                 () => Task.FromResult<string?>("/home/alice/server.zip"), () => Task.CompletedTask);
+            Check(!wizard.AddFirewallRule && !wizard.CanAddFirewallRule, "防火墙选项默认不勾选，本机监听不可添加");
+            wizard.SelectedMode = wizard.Modes.Single(m => m.Mode == ServerInstallMode.LinuxSystem);
+            wizard.SelectedNetwork = wizard.Networks.Single(n => n.Profile == ServerNetworkProfile.Lan);
+            wizard.AddFirewallRule = true;
+            Check(wizard.CanAddFirewallRule && wizard.AdvancedReviewText.Contains("True"), "系统局域网安装允许选择，确认页包含防火墙选择");
+            wizard.SelectedNetwork = wizard.Networks.Single(n => n.Profile == ServerNetworkProfile.Loopback);
+            Check(!wizard.CanAddFirewallRule && !wizard.AddFirewallRule, "切回本机监听清除防火墙选择");
             var summaryChanges = new List<string?>();
             wizard.PropertyChanged += (_, args) => summaryChanges.Add(args.PropertyName);
             wizard.SelectedSource = wizard.Sources.Single(s => s.Source == ServerPackageSourceKind.LocalBundle);
