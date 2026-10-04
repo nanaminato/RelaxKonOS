@@ -2,7 +2,7 @@
 param(
     [ValidateSet('auto', 'zh-CN', 'en-US', 'ja-JP')]
     [string] $Language = 'auto',
-    [ValidateSet('windowsSystem')]
+    [ValidateSet('windowsSystem', 'windowsUser')]
     [string] $Mode = 'windowsSystem',
     [string] $InstallRoot = (Join-Path $env:ProgramFiles 'RelaxKonOS'),
     [string] $DataRoot = (Join-Path $env:ProgramData 'RelaxKonOS'),
@@ -37,7 +37,7 @@ $Text = @{
     'ja-JP' = @{ title = 'RelaxKonOS アンインストーラー'; elevation = '管理者権限が必要です。UAC 昇格を要求します。'; confirm = 'RelaxKonOS のサービスとプログラムファイルを削除しますか？ [y/N]'; keepData = 'データディレクトリを保持します:'; removed = 'アンインストールが完了しました。'; dataRemoved = 'データディレクトリを削除しました。'; dataKept = '-RemoveData を指定しないため、データディレクトリを保持しました。'; dataConfirm = 'データを削除するには -RemoveData と -ConfirmRemoveData の両方が必要です。'; foreign = '別のインストールに記録されたデータディレクトリは削除しません。'; idMismatch = 'ホストのインストール ID がリクエストと一致しません。'; unrecognized = '認識できないインストール ディレクトリは削除しません: ' }
 }[$Language]
 
-if (-not (Test-Administrator)) {
+if ($Mode -eq 'windowsSystem' -and -not (Test-Administrator)) {
     Write-Host $Text.elevation
     $elevationArguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Quote-Argument $PSCommandPath), '-Language', $Language,
         '-Mode', $Mode, '-InstallRoot', (Quote-Argument $InstallRoot), '-DataRoot', (Quote-Argument $DataRoot))
@@ -82,7 +82,16 @@ if (-not $NonInteractive) {
     if ((Read-Host $Text.confirm) -notmatch '^(y|yes)$') { return }
 }
 
-$serviceNames = @('RelaxKonOSServer', 'RelaxKonOSGuardian', 'RelaxKonOSPrivilegedHelper')
+if ($Mode -eq 'windowsUser') {
+    if (Test-Administrator) { throw 'Personal uninstall must run without elevation.' }
+    $prefix = [IO.Path]::GetFullPath($env:LOCALAPPDATA).TrimEnd('\') + '\RelaxKonOS-Personal\'
+    foreach ($root in @($InstallRoot, $DataRoot)) { if (-not [IO.Path]::GetFullPath($root).StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe personal root.' } }
+    if (-not $state -or $state.mode -ne 'windowsUser') { throw 'No recognized personal installation.' }
+    . (Join-Path $InstallRoot 'deployment\windows\RelaxKonOSPersonalRuntime.ps1')
+    Stop-PersonalServer $InstallRoot $DataRoot
+    Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'RelaxKonOSPersonal' -ErrorAction SilentlyContinue
+}
+$serviceNames = if ($Mode -eq 'windowsUser') { @() } else { @('RelaxKonOSServer', 'RelaxKonOSGuardian', 'RelaxKonOSPrivilegedHelper') }
 foreach ($serviceName in $serviceNames) {
     $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
     if (-not $service) { continue }
@@ -138,7 +147,10 @@ elseif (-not $RemoveData) {
         $temporary = "$statePath.new"
         [IO.File]::WriteAllText($temporary, ($retained | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
         Move-Item -LiteralPath $temporary -Destination $statePath -Force
-        & icacls $statePath /inheritance:r /grant:r 'SYSTEM:F' 'Administrators:F' | Out-Null
+        if ($Mode -eq 'windowsUser') {
+            $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+            & icacls $statePath /inheritance:r /grant:r ("*$sid" + ':F') '*S-1-5-18:F' | Out-Null
+        } else { & icacls $statePath /inheritance:r /grant:r 'SYSTEM:F' 'Administrators:F' | Out-Null }
     }
     Write-Host $Text.dataKept -ForegroundColor Yellow
 }

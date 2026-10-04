@@ -21,7 +21,8 @@ param(
     [string] $DiagnosticsOperationId,
     [string] $ClearOperationId,
     # List the most recent operation records on this host.
-    [switch] $ListOperations
+    [switch] $ListOperations,
+    [switch] $Personal
 )
 
 $ErrorActionPreference = 'Stop'
@@ -38,7 +39,9 @@ if ([string]::IsNullOrWhiteSpace($stagingRoot)) { throw 'The launcher must run f
 $stagingRoot = [IO.Path]::GetFullPath($stagingRoot)
 $requestPath = Join-Path $stagingRoot 'request.json'
 $packageRoot = Join-Path $stagingRoot 'package'
-$journalRoot = if ((New-Object Security.Principal.WindowsPrincipal ([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole(
+$journalRoot = if ($Personal) {
+    Join-Path $env:LOCALAPPDATA 'RelaxKonOS-Personal\deployment'
+} elseif ((New-Object Security.Principal.WindowsPrincipal ([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole(
     [Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Join-Path $env:ProgramData 'RelaxKonOS-Deployment'
 } else {
@@ -481,7 +484,7 @@ function Parse-Request {
     if ($script:optionsCertificateMode -and $script:optionsCertificateMode -notin @('none', 'custom', 'selfSigned')) {
         Stop-Launcher 'server-deployment.invalid_request' 'unsupported certificate mode'
     }
-    if ($script:optionsMode -and $script:optionsMode -notin @('linuxSystem', 'linuxUser', 'windowsSystem')) {
+    if ($script:optionsMode -and $script:optionsMode -notin @('linuxSystem', 'linuxUser', 'windowsSystem', 'windowsUser')) {
         Stop-Launcher 'server-deployment.invalid_request' 'unsupported installation mode'
     }
     if ($script:optionsVersion -and -not (Test-VersionString $script:optionsVersion)) {
@@ -557,6 +560,7 @@ function Get-ManagedRoot([string] $Key, [string] $Override, [string] $Default) {
     return $Default
 }
 function Save-ManagedRoots {
+    if ($script:optionsMode -eq 'windowsUser') { return }
     $locator = Join-Path $env:ProgramData 'RelaxKonOS-Deployment\roots.json'
     $roots = @{ installRoot = Get-ModeInstallRoot 'windowsSystem'; dataRoot = Get-ModeDataRoot 'windowsSystem' }
     [IO.File]::WriteAllText($locator, ($roots | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
@@ -564,16 +568,18 @@ function Save-ManagedRoots {
     if ($LASTEXITCODE -ne 0) { throw 'Could not protect managed root locator.' }
 }
 function Get-ModeInstallState([string] $Mode) {
-    if ($Mode -eq 'windowsSystem') { return (Join-Path (Get-ModeDataRoot $Mode) 'install-state.json') }
+    if ($Mode -in @('windowsSystem', 'windowsUser')) { return (Join-Path (Get-ModeDataRoot $Mode) 'install-state.json') }
     return ''
 }
 
 function Get-ModeInstallRoot([string] $Mode) {
+    if ($Mode -eq 'windowsUser') { return (Join-Path $env:LOCALAPPDATA 'RelaxKonOS-Personal\program') }
     if ($Mode -eq 'windowsSystem') { return (Get-ManagedRoot 'installRoot' $script:optionsInstallRoot (Join-Path $env:ProgramFiles 'RelaxKonOS')) }
     return ''
 }
 
 function Get-ModeDataRoot([string] $Mode) {
+    if ($Mode -eq 'windowsUser') { return (Join-Path $env:LOCALAPPDATA 'RelaxKonOS-Personal\data') }
     if ($Mode -eq 'windowsSystem') { return (Get-ManagedRoot 'dataRoot' $script:optionsDataRoot (Join-Path $env:ProgramData 'RelaxKonOS')) }
     return ''
 }
@@ -652,7 +658,7 @@ function Get-DefaultListenUrl([string] $Mode) {
 }
 
 function Get-ExistingInstallationState {
-    $statePath = Get-ModeInstallState 'windowsSystem'
+    $statePath = Get-ModeInstallState $script:optionsMode
     $state = Read-InstallState $statePath
     if ($null -eq $state) { return $null }
     return $state
@@ -721,7 +727,7 @@ function Get-ProbeJson {
     $osSupported = ($runtime -ne '')
     $elevated = Test-Administrator
 
-    $installRoot = Get-ModeInstallRoot 'windowsSystem'
+    $installRoot = Get-ModeInstallRoot $script:optionsMode
     $disk = $null
     try {
         $driveRoot = [IO.Path]::GetPathRoot($installRoot)
@@ -951,7 +957,7 @@ function Test-PackageAvailable {
 function Get-EnginePath([string] $FileName, [string] $FallbackRelative) {
     $staged = Join-Path $packageRoot $FallbackRelative
     if (Test-Path -LiteralPath $staged -PathType Leaf) { return $staged }
-    $installed = Join-Path (Get-ModeInstallRoot 'windowsSystem') $FallbackRelative
+    $installed = Join-Path (Get-ModeInstallRoot $script:optionsMode) $FallbackRelative
     if (Test-Path -LiteralPath $installed -PathType Leaf) { return $installed }
     return ''
 }
@@ -998,7 +1004,7 @@ function Assert-ExpectedInstallationId {
 }
 
 function Invoke-Preflight {
-    if ($script:optionsMode -ne 'windowsSystem') {
+    if ($script:optionsMode -notin @('windowsSystem', 'windowsUser')) {
         Stop-Launcher 'server-deployment.not_supported' 'only the Windows System Mode engine is available on a Windows host'
     }
     $state = Read-InstallState (Get-ModeInstallState $script:optionsMode)
@@ -1008,7 +1014,8 @@ function Invoke-Preflight {
     } elseif ($script:record.kind -in @('upgrade', 'repair', 'rollback', 'uninstall')) {
         if (-not $installed) { Stop-Launcher 'server-deployment.not_installed' 'RelaxKonOS is not installed on this host' }
     }
-    if (-not (Test-Administrator)) {
+    if ($script:optionsMode -eq 'windowsUser' -and (Test-Administrator)) { Stop-Launcher 'server-deployment.invalid_request' 'Personal Mode must run without elevation' }
+    if ($script:optionsMode -eq 'windowsSystem' -and -not (Test-Administrator)) {
         Stop-Launcher 'server-deployment.elevation_required' 'Windows System Mode requires an elevated administrator SSH session'
     }
     if ($null -eq $script:optionsServerPort) { return }
@@ -1048,6 +1055,7 @@ function Invoke-StatusAction {
 }
 
 function Apply-FirewallChoice($State) {
+    if ($script:optionsMode -eq 'windowsUser') { $script:firewallStatus = 'notApplicable'; return }
     $script:firewallStatus = 'notRequested'
     $endpoint = [Uri](Get-StateField $State 'listenUrl')
     if ($endpoint.IsLoopback) { $script:firewallStatus = 'notApplicable'; return }
@@ -1257,6 +1265,10 @@ $script:requestText = Read-Request
 try { $request = ConvertFrom-StrictJsonObject $script:requestText }
 catch { Stop-Launcher 'server-deployment.invalid_request' 'the request is not a valid JSON object' }
 Parse-Request
+if (($script:optionsMode -eq 'windowsUser') -ne [bool]$Personal) { Stop-Launcher 'server-deployment.invalid_request' 'Personal launcher scope and requested mode must match' }
+if ($Personal -and ($script:optionsAddFirewallRule -or $script:optionsInstallRoot -or $script:optionsDataRoot)) {
+    if ($script:optionsAddFirewallRule -or ($script:optionsInstallRoot -and $script:optionsInstallRoot -ne (Get-ModeInstallRoot 'windowsUser')) -or ($script:optionsDataRoot -and $script:optionsDataRoot -ne (Get-ModeDataRoot 'windowsUser'))) { Stop-Launcher 'server-deployment.invalid_request' 'Personal roots are fixed and firewall changes require separate authorization' }
+}
 Test-Idempotency
 $script:record.startedAtUtc = Get-NowUtc
 Save-RequestDigest

@@ -83,6 +83,8 @@ BenchmarkDotNet.Artifacts/
 project.lock.json
 project.fragment.lock.json
 artifacts/
+# Local builds and release packages produced with --artifacts-path.
+.artifacts/
 
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt

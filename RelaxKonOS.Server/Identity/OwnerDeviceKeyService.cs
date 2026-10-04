@@ -88,7 +88,9 @@ public sealed class OwnerDeviceKeyService(IServiceScopeFactory scopes)
 
     /// <summary>
     /// Registers the local Windows device, or replaces its lost local key. The caller is already
-    /// constrained by the loopback Negotiate route and the same Windows account that runs Server.
+    /// constrained by the loopback Negotiate route and authenticated Windows administrator policy.
+    /// Desktop processes restrict enrollment to their own account; built-in System Mode service
+    /// identities permit administrators to enroll their own canonical user account.
     /// It is intentionally not available to ordinary owner-device or remote sessions.
     /// </summary>
     public OwnerDeviceKey RegisterOrReplaceLocalWindowsDevice(Guid userId, Guid deviceId, OwnerDeviceBootstrapRequest request)

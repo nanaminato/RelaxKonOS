@@ -92,7 +92,7 @@ public sealed record ServerHostSnapshotDto(
     [property: JsonPropertyName("verifiedAtUtc")] DateTimeOffset VerifiedAtUtc);
 
 /// <summary>
-/// 三种安装模式的能力矩阵。客户端用它决定可选操作与前置条件，而不是靠猜测宿主行为。
+/// 四种安装模式的能力矩阵。客户端用它决定可选操作与前置条件，而不是靠猜测宿主行为。
 /// 绝对路径由探测结果给出；这里的默认根只是用于确认页展示的规范化符号根。
 /// </summary>
 /// <param name="RequiresElevation">是否需要提升权限（Linux root/sudo，或 Windows 已提升管理员令牌）。</param>
@@ -115,7 +115,7 @@ public sealed record ServerDeploymentModeCapabilities(
     [property: JsonPropertyName("healthPath")] string HealthPath,
     [property: JsonPropertyName("serviceNames")] IReadOnlyList<string> ServiceNames);
 
-/// <summary>三种模式的能力矩阵权威定义。UI 与启动器共用它，避免各端各写一套判断。</summary>
+/// <summary>四种模式的能力矩阵权威定义。UI 与启动器共用它，避免各端各写一套判断。</summary>
 public static class ServerDeploymentModeMatrix
 {
     public static ServerDeploymentModeCapabilities LinuxSystem { get; } = new(
@@ -139,13 +139,21 @@ public static class ServerDeploymentModeMatrix
         DefaultLoopbackOnly: true, DefaultInstallRootToken: @"%ProgramFiles%\RelaxKonOS", DefaultDataRootToken: @"%ProgramData%\RelaxKonOS",
         HealthPath: "/healthz", ServiceNames: ["RelaxKonOSServer", "RelaxKonOSGuardian", "RelaxKonOSPrivilegedHelper"]);
 
-    public static IReadOnlyList<ServerDeploymentModeCapabilities> All { get; } = [LinuxSystem, LinuxUser, WindowsSystem];
+    public static ServerDeploymentModeCapabilities WindowsUser { get; } = new(
+        ServerInstallMode.WindowsUser, HostPlatformKind.Windows,
+        RequiresElevation: false, SupportsSudoElevation: false, RequiresElevatedSshToken: false,
+        SupportsSystemService: false, SupportsRollback: true, SupportsDataRetention: true,
+        DefaultLoopbackOnly: true, DefaultInstallRootToken: @"%LocalAppData%\RelaxKonOS-Personal\program",
+        DefaultDataRootToken: @"%LocalAppData%\RelaxKonOS-Personal\data", HealthPath: "/healthz", ServiceNames: []);
+
+    public static IReadOnlyList<ServerDeploymentModeCapabilities> All { get; } = [LinuxSystem, LinuxUser, WindowsSystem, WindowsUser];
 
     public static ServerDeploymentModeCapabilities For(ServerInstallMode mode) => mode switch
     {
         ServerInstallMode.LinuxSystem => LinuxSystem,
         ServerInstallMode.LinuxUser => LinuxUser,
         ServerInstallMode.WindowsSystem => WindowsSystem,
+        ServerInstallMode.WindowsUser => WindowsUser,
         _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, null)
     };
 }

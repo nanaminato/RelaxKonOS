@@ -163,6 +163,8 @@
     "server_center.wizard.mode_automatic": "自動（事前チェック後に推奨）",
     "server_center.wizard.mode_linux_user": "Linux ユーザーモード",
     "server_center.wizard.mode_linux_system": "Linux システムサービス",
+    "server_center.wizard.mode_windows_user": "個人モード（現在の Windows アカウント）",
+    "server_center.wizard.windows_personal_hint": "現在のアカウントで実行し、サインイン後に起動、サインアウト時に停止します。Docker は現在の権限を使用します。データは LocalAppData に分離します。管理者操作は未対応です。併用時は別ポートを選択してください。",
     "server_center.wizard.mode_windows_system": "Windows システムサービス",
     "server_center.wizard.review_title": "確認してインストール",
     "server_center.wizard.server_and_user": "サーバーとユーザー",

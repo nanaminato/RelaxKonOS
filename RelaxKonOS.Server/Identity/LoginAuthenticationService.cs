@@ -90,7 +90,7 @@ public sealed class LoginAuthenticationService(IIdentityProvider identities, IUs
         var sid = windowsIdentity.User?.Value;
         if (string.IsNullOrWhiteSpace(sid)) throw Invalid();
         var serverSid = RelaxKonOS.Server.UserExecution.ServerProcessIdentity.CurrentStableIdentity();
-        if (string.IsNullOrWhiteSpace(serverSid) || !string.Equals(sid, serverSid, StringComparison.OrdinalIgnoreCase))
+        if (!WindowsOwnerBootstrapPolicy.AllowsAccount(sid, serverSid, serverMode.Mode))
             throw new AliasAuthenticationException(403, "owner-device-windows-session-account-required");
         var lookup = identities.LookupIdentity(sid);
         if (lookup.Status == IdentityLookupStatus.Unavailable) throw Unavailable("owner-device-identity-lookup");
@@ -114,6 +114,9 @@ public sealed class LoginAuthenticationService(IIdentityProvider identities, IUs
             passwords.Dummy(password);
             throw Invalid();
         }
+
+        if (!UserExecutionEligibilityRules.Evaluate(system.Identity, ServerMode.User).Available)
+            throw Invalid();
 
         var existing = users.FindByIdentity(system.Identity.Uid, system.Identity.Platform);
         var key = existing?.Id.ToString("D") ?? identifier;

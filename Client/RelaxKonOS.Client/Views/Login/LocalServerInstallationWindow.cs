@@ -30,6 +30,7 @@ public sealed class LocalServerInstallationWindow : Window
         var localization = App.Services.GetRequiredService<LoginLocalizationService>();
         var installer = App.Services.GetRequiredService<LocalWindowsServerInstaller>();
         _installer = installer;
+        _installer.Mode = ServerInstallMode.WindowsUser;
         _localization = localization;
         _wizard = new ServerInstallationWizardViewModel(progress, ShowManagement,
             () => Task.FromResult<string?>(null), () => Task.CompletedTask, async options =>
@@ -71,9 +72,9 @@ public sealed class LocalServerInstallationWindow : Window
                 return false;
             });
         Title = T("title", "Manage this computer");
-        Width = 720;
+        Width = 820;
         Height = 720;
-        MinWidth = 620;
+        MinWidth = 380;
         MinHeight = 480;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ShowManagement();
@@ -82,26 +83,57 @@ public sealed class LocalServerInstallationWindow : Window
 
     private void ShowManagement()
     {
-        var panel = new StackPanel { Spacing = 14, Margin = new Thickness(24) };
-        panel.Children.Add(new TextBlock { Text = T("description", "This computer has its own Server installation. Installation and maintenance use Windows administrator permission and work without signing in or SSH."), TextWrapping = TextWrapping.Wrap });
-        panel.Children.Add(new TextBlock { Text = _snapshot is null ? T("unknown", "Refresh to inspect the local installation.") :
-            $"{T("installed", "Installed")}: {_snapshot.Installed}\n{T("healthy", "Healthy")}: {_snapshot.Healthy}\n" +
-            $"{T("version", "Version")}: {_snapshot.Version}\n{T("previous", "Previous version")}: {_snapshot.PreviousVersion}\n" +
-            $"ID: {_snapshot.InstallationId}\n{_snapshot.InstallRoot}\n{_snapshot.DataRoot}\n{_snapshot.ListenUrl}", TextWrapping = TextWrapping.Wrap });
-        panel.Children.Add(new TextBlock { Text = _message, TextWrapping = TextWrapping.Wrap });
-        void Add(string text, Action action, bool enabled = true)
+        var panel = new StackPanel { Spacing = 16 };
+        var summary = new StackPanel { Spacing = 10 };
+        var mode = new ComboBox
         {
-            var button = new Button { Content = text, IsEnabled = enabled && !_busy, HorizontalAlignment = HorizontalAlignment.Stretch };
-            button.Click += (_, _) => action();
-            panel.Children.Add(button);
+            ItemsSource = new[] { T("personal_mode", "Personal mode · current account"), T("service_mode", "System service · always available") },
+            SelectedIndex = _installer.Mode == ServerInstallMode.WindowsUser ? 0 : 1,
+            HorizontalAlignment = HorizontalAlignment.Stretch, IsEnabled = !_busy
+        };
+        mode.SelectionChanged += (_, _) =>
+        {
+            var selected = mode.SelectedIndex == 0 ? ServerInstallMode.WindowsUser : ServerInstallMode.WindowsSystem;
+            if (selected == _installer.Mode) return;
+            _installer.Mode = selected; _snapshot = null; _message = string.Empty;
+            _wizard.SelectedMode = _wizard.Modes.First(option => option.Mode == selected);
+            ShowManagement();
+        };
+        summary.Children.Add(mode);
+        summary.Children.Add(LocalManagementLayout.Text(_installer.Mode == ServerInstallMode.WindowsUser
+            ? T("personal_hint", "Runs as your Windows account. Starts at sign-in; ends at sign-out. Separate program and data; ordinary maintenance needs no UAC.")
+            : T("service_hint", "Runs as a Windows service even when nobody is signed in. Installation and maintenance require UAC."), 13, true));
+        var state = _snapshot is null ? T("unknown", "Refresh to inspect the local installation.") :
+            !_snapshot.Installed ? T("not_installed", "Server is not installed yet") :
+            _snapshot.Healthy ? T("ready", "Local Server is ready") : T("needs_attention", "Local Server needs attention");
+        summary.Children.Add(LocalManagementLayout.Header(state,
+            _snapshot?.Installed == true ? T("version", "Version") + ": " + _snapshot.Version : T("start_hint", "Install Server to start using this computer."), "host"));
+        if (_snapshot is { Installed: true })
+        {
+            summary.Children.Add(LocalManagementLayout.Text(_snapshot.ListenUrl ?? string.Empty));
+            var details = new StackPanel { Spacing = 8 };
+            details.Children.Add(LocalManagementLayout.Text(T("previous", "Previous version") + ": " + (_snapshot.PreviousVersion ?? T("none", "None"))));
+            details.Children.Add(LocalManagementLayout.Text("ID: " + _snapshot.InstallationId, 12, true));
+            details.Children.Add(LocalManagementLayout.Text(T("program_directory", "Program directory") + "\n" + _snapshot.InstallRoot, 12, true));
+            details.Children.Add(LocalManagementLayout.Text(T("data_directory", "Data directory") + "\n" + _snapshot.DataRoot, 12, true));
+            summary.Children.Add(new Expander { Header = T("details", "Installation details"), Content = details, HorizontalAlignment = HorizontalAlignment.Stretch });
         }
-        Add(T("refresh", "Refresh status"), () => _ = RunAsync(async () => _snapshot = await _installer.StatusAsync()));
-        Add(T("install", "Install / update"), () => Content = new ServerInstallationWizardView(_wizard));
-        var installed = _snapshot is { Installed: true, Mode: ServerInstallMode.WindowsSystem } && ServerInstallationId.IsValid(_snapshot.InstallationId);
-        Add(T("repair", "Repair"), () => Review(ServerDeploymentKind.Repair), installed);
-        Add(T("rollback", "Restore previous version"), () => Review(ServerDeploymentKind.Rollback), installed && !string.IsNullOrWhiteSpace(_snapshot?.PreviousVersion));
-        Add(T("uninstall", "Uninstall"), () => Review(ServerDeploymentKind.Uninstall), installed);
-        Add(T("connect", "Connect to local Server"), () =>
+        panel.Children.Add(LocalManagementLayout.Card(summary));
+        var actions = new WrapPanel { Orientation = Orientation.Horizontal };
+        actions.SizeChanged += (_, _) => actions.ItemWidth = Math.Max(1, actions.Bounds.Width / (actions.Bounds.Width >= 620 ? 2 : 1));
+        void Add(string text, string description, string icon, Action action, bool enabled = true) =>
+            actions.Children.Add(LocalManagementLayout.Action(text, description, icon, action, enabled && !_busy));
+        Add(T("refresh", "Refresh status"), T("refresh_hint", "Check the current installation and service health"), "monitor", () => _ = RunAsync(async () => _snapshot = await _installer.StatusAsync()));
+        Add(T("install", "Install / update"), T("install_hint", "Choose a release package and review installation options"), "deployments", () =>
+        {
+            _wizard.SelectedMode = _wizard.Modes.First(option => option.Mode == _installer.Mode);
+            Content = new ServerInstallationWizardView(_wizard);
+        });
+        var installed = _snapshot is { Installed: true, Mode: ServerInstallMode.WindowsSystem or ServerInstallMode.WindowsUser } && ServerInstallationId.IsValid(_snapshot.InstallationId);
+        Add(T("repair", "Repair"), T("repair_hint", "Restore services, certificates and firewall rules"), "diagnostics", () => _ = ReviewAsync(ServerDeploymentKind.Repair), installed);
+        Add(T("rollback", "Restore previous version"), T("rollback_hint", "Switch back to the last verified version"), "operations", () => _ = ReviewAsync(ServerDeploymentKind.Rollback), installed && !string.IsNullOrWhiteSpace(_snapshot?.PreviousVersion));
+        Add(T("uninstall", "Uninstall"), T("uninstall_hint", "Remove Server; keep data by default"), "host_settings", () => _ = ReviewAsync(ServerDeploymentKind.Uninstall), installed);
+        Add(T("connect", "Connect to local Server"), T("connect_hint", "Continue to sign in with your Windows account"), "connections", () =>
         {
             try
             {
@@ -115,52 +147,40 @@ public sealed class LocalServerInstallationWindow : Window
                 ShowManagement();
             }
         }, installed && _snapshot!.Healthy);
-        Content = new ScrollViewer { Content = panel };
+        panel.Children.Add(actions);
+        var footer = new StackPanel { Spacing = 8 };
+        footer.Children.Add(new ProgressBar { IsIndeterminate = true, Height = 3, IsVisible = _busy });
+        footer.Children.Add(LocalManagementLayout.Text(string.IsNullOrEmpty(_message) ? T("local_hint", "Runs independently on this computer. Closing the client does not stop Server.") : _message, 13, true));
+        Content = LocalManagementLayout.Shell(LocalManagementLayout.Header(T("title", "Manage this computer"), T("subtitle", "Your local Server, all in one place"), "host"), panel, footer);
     }
 
-    private void Review(ServerDeploymentKind kind)
+    private async Task ReviewAsync(ServerDeploymentKind kind)
     {
-        var reviewed = _snapshot!;
-        var panel = new StackPanel { Spacing = 16, Margin = new Thickness(24) };
-        panel.Children.Add(new TextBlock { Text = T("review", "Review this local installation. The action may interrupt its services.") +
-            "\n" + (kind == ServerDeploymentKind.Repair ? T("repair", "Repair") :
-                kind == ServerDeploymentKind.Rollback ? T("rollback", "Restore previous version") : T("uninstall", "Uninstall")) +
-            $"\nID: {reviewed.InstallationId}\n{reviewed.InstallRoot}\n{reviewed.DataRoot}", TextWrapping = TextWrapping.Wrap });
-        var removeData = new CheckBox { Content = T("delete", "Also permanently delete managed data"), IsVisible = kind == ServerDeploymentKind.Uninstall };
-        var confirmDelete = new CheckBox { Content = T("confirm_delete", "I confirm permanent deletion of the managed data shown above"), IsVisible = false };
-        removeData.IsCheckedChanged += (_, _) => { confirmDelete.IsVisible = removeData.IsChecked == true; confirmDelete.IsChecked = false; };
-        panel.Children.Add(removeData);
-        panel.Children.Add(confirmDelete);
-        var confirm = new Button { Content = T("confirm", "Confirm and request administrator permission") };
-        var error = new TextBlock { TextWrapping = TextWrapping.Wrap };
-        confirm.Click += (_, _) =>
+        if (_busy || _snapshot is null) return;
+        var window = new LocalServerMaintenanceWindow(kind, _snapshot, _installer, _localization);
+        _busy = true;
+        try
         {
-            if (removeData.IsChecked == true && confirmDelete.IsChecked != true)
-            {
-                error.Text = T("confirm_delete", "I confirm permanent deletion of the managed data shown above");
-                return;
-            }
-            _ = RunAsync(async () => _snapshot = await _installer.MaintainAsync(kind, reviewed,
-                _localization.CurrentLanguage, true, removeData.IsChecked == true ? ServerDataRetention.Delete : ServerDataRetention.Retain));
-        };
-        panel.Children.Add(confirm);
-        panel.Children.Add(error);
-        var cancel = new Button { Content = T("cancel", "Cancel") };
-        cancel.Click += (_, _) => ShowManagement();
-        panel.Children.Add(cancel);
-        Content = new ScrollViewer { Content = panel };
+            await window.ShowDialog(this);
+            _snapshot = window.Snapshot;
+            if (!string.IsNullOrEmpty(window.Message)) _message = window.Message;
+        }
+        finally { _busy = false; ShowManagement(); }
     }
 
     private async Task RunAsync(Func<Task> action)
     {
         if (_busy) return;
         _busy = true;
-        _message = T("working", "Waiting for administrator permission or processing the local operation…");
+        _message = _installer.Mode == ServerInstallMode.WindowsUser
+            ? T("personal_working", "Processing the personal Server operation…")
+            : T("working", "Waiting for administrator permission or processing the local operation…");
         ShowManagement();
         try
         {
             await action();
             _message = T("completed", "Local operation completed and status verified.");
+
         }
         catch (Win32Exception error) when (error.NativeErrorCode == 1223)
         {

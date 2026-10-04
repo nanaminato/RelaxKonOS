@@ -14,7 +14,7 @@ public interface ILocalWindowsDeploymentSession : IAsyncDisposable
 
 public interface ILocalWindowsDeploymentSessionFactory
 {
-    Task<ILocalWindowsDeploymentSession> OpenAsync(CancellationToken cancellationToken);
+    Task<ILocalWindowsDeploymentSession> OpenAsync(ServerInstallMode mode, CancellationToken cancellationToken);
 }
 
 /// <summary>Local orchestration; package policy, deployment locks and receipts remain owned by the launcher.</summary>
@@ -24,37 +24,47 @@ public sealed class LocalWindowsServerInstaller(
     IServerCenterOperationJournal journal)
 {
     public const string JournalHostId = "local-windows";
+    public ServerInstallMode Mode { get; set; } = ServerInstallMode.WindowsSystem;
     public Guid? LastOperationId { get; private set; }
     public ServerHostSnapshotDto? LastVerifiedSnapshot { get; private set; }
+    public string? LastFirewallStatus { get; private set; }
 
     public async Task<ServerHostSnapshotDto> StatusAsync(CancellationToken cancellationToken = default)
     {
         LastOperationId = null;
-        await using var session = await sessions.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var session = await sessions.OpenAsync(Mode, cancellationToken).ConfigureAwait(false);
         return await ReadStatusAsync(session, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<ServerHostSnapshotDto> MaintainAsync(ServerDeploymentKind kind, ServerHostSnapshotDto reviewed,
         string language, bool confirmed, ServerDataRetention retention = ServerDataRetention.Retain,
+        bool regenerateSelfSignedCertificate = false, string? selfSignedIdentities = null, bool repairFirewall = false,
         CancellationToken cancellationToken = default)
     {
         LastOperationId = null;
         if (kind is not (ServerDeploymentKind.Repair or ServerDeploymentKind.Rollback or ServerDeploymentKind.Uninstall) ||
-            !confirmed || !reviewed.Installed || reviewed.Mode != ServerInstallMode.WindowsSystem ||
+            !confirmed || !reviewed.Installed || reviewed.Mode != Mode ||
             !ServerInstallationId.IsValid(reviewed.InstallationId) || !Enum.IsDefined(retention) ||
-            retention == ServerDataRetention.Delete && kind != ServerDeploymentKind.Uninstall)
+            Mode == ServerInstallMode.WindowsUser && repairFirewall ||
+            retention == ServerDataRetention.Delete && kind != ServerDeploymentKind.Uninstall ||
+            kind != ServerDeploymentKind.Repair && (regenerateSelfSignedCertificate || repairFirewall) ||
+            regenerateSelfSignedCertificate && string.IsNullOrWhiteSpace(selfSignedIdentities))
             throw new ArgumentException("Review and confirm a valid local lifecycle action first.");
-        await using var session = await sessions.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var session = await sessions.OpenAsync(Mode, cancellationToken).ConfigureAwait(false);
         var current = await ReadStatusAsync(session, cancellationToken).ConfigureAwait(false);
         if (!current.Installed || current.Mode != reviewed.Mode || current.InstallationId != reviewed.InstallationId ||
             current.InstallRoot != reviewed.InstallRoot || current.DataRoot != reviewed.DataRoot ||
-            current.Version != reviewed.Version || current.PreviousVersion != reviewed.PreviousVersion)
+            current.Version != reviewed.Version || current.PreviousVersion != reviewed.PreviousVersion || current.ListenUrl != reviewed.ListenUrl)
             throw new InvalidDataException("The local installation changed; refresh and review it again.");
         var options = new ServerDeploymentOptions(ServerPackageSourceKind.OfficialStable, ServerNetworkProfile.Loopback,
-            retention, ServerInstallMode.WindowsSystem, ExpectedInstallationId: current.InstallationId,
-            Confirmed: true, Language: language, InstallRoot: current.InstallRoot, DataRoot: current.DataRoot);
-        await ExecuteRecordedAsync(session, new(ServerDeploymentProtocol.Version, Guid.NewGuid(), kind, options), cancellationToken)
+            retention, Mode, ExpectedInstallationId: current.InstallationId,
+            Confirmed: true, Language: language, InstallRoot: current.InstallRoot, DataRoot: current.DataRoot,
+            CertificateMode: regenerateSelfSignedCertificate ? ServerCertificateMode.SelfSigned : null,
+            SelfSignedIdentities: regenerateSelfSignedCertificate ? selfSignedIdentities!.Trim() : null,
+            AddFirewallRule: repairFirewall);
+        var completed = await ExecuteRecordedAsync(session, new(ServerDeploymentProtocol.Version, Guid.NewGuid(), kind, options), cancellationToken)
             .ConfigureAwait(false);
+        LastFirewallStatus = completed.Result?.FirewallStatus;
         var after = await ReadStatusAsync(session, cancellationToken).ConfigureAwait(false);
         if (kind == ServerDeploymentKind.Uninstall ? after.Installed :
             !after.Installed || !after.Healthy || after.InstallationId != current.InstallationId)
@@ -66,9 +76,9 @@ public sealed class LocalWindowsServerInstaller(
     {
         var receipt = await ExecuteRecordedAsync(session, new(ServerDeploymentProtocol.Version, Guid.NewGuid(),
             ServerDeploymentKind.Status, new(ServerPackageSourceKind.OfficialStable, ServerNetworkProfile.Loopback,
-                Mode: ServerInstallMode.WindowsSystem)), ct).ConfigureAwait(false);
+                Mode: Mode)), ct).ConfigureAwait(false);
         var snapshot = receipt.Snapshot ?? throw new InvalidDataException("Missing local installation status.");
-        if (snapshot.Installed && (snapshot.Mode != ServerInstallMode.WindowsSystem ||
+        if (snapshot.Installed && (snapshot.Mode != Mode ||
             !ServerInstallationId.IsValid(snapshot.InstallationId)))
             throw new InvalidDataException("Invalid local installation identity or mode.");
         return snapshot;
@@ -91,15 +101,19 @@ public sealed class LocalWindowsServerInstaller(
         IProgress<string>? stage, IProgress<ServerDeploymentTransfer?>? transfer, CancellationToken cancellationToken = default)
     {
         LastOperationId = null;
-        if (installation.Mode != ServerInstallMode.WindowsSystem || installation.Source == ServerPackageSourceKind.RemoteBundle)
-            throw new ArgumentException("Local installation requires Windows System Mode and a local or HTTPS source.");
+        if (installation.Mode is not (ServerInstallMode.WindowsSystem or ServerInstallMode.WindowsUser) || installation.Source == ServerPackageSourceKind.RemoteBundle)
+            throw new ArgumentException("Local installation requires a Windows mode and a local or HTTPS source.");
 
+        Mode = installation.Mode!.Value;
+        if (Mode == ServerInstallMode.WindowsUser && (installation.AddFirewallRule ||
+            !string.IsNullOrWhiteSpace(installation.InstallRoot) || !string.IsNullOrWhiteSpace(installation.DataRoot)))
+            throw new ArgumentException("Personal installation uses fixed per-user directories and cannot change the firewall.");
         // Read the user's files before elevation, including when UAC uses a different administrator account.
         await using var archive = installation.Source == ServerPackageSourceKind.LocalBundle
             ? File.OpenRead(installation.LocalBundlePath ?? throw new ArgumentException("A ZIP is required.")) : null;
         using var preparedCertificate = PrepareCertificate(installation);
-        stage?.Report("elevating");
-        await using var session = await sessions.OpenAsync(cancellationToken).ConfigureAwait(false);
+        stage?.Report(Mode == ServerInstallMode.WindowsSystem ? "elevating" : "checking");
+        await using var session = await sessions.OpenAsync(Mode, cancellationToken).ConfigureAwait(false);
 
         async Task<ServerDeploymentOperationDto> Execute(ServerDeploymentRequest request, Stream? bundle = null,
             Stream? certificate = null, string? password = null)
@@ -116,22 +130,24 @@ public sealed class LocalWindowsServerInstaller(
         }
 
         stage?.Report("checking");
-        var probeReceipt = await Execute(new(ServerDeploymentProtocol.Version, Guid.NewGuid(), ServerDeploymentKind.Probe));
+        var probeReceipt = await Execute(new(ServerDeploymentProtocol.Version, Guid.NewGuid(), ServerDeploymentKind.Probe,
+            new(ServerPackageSourceKind.OfficialStable, ServerNetworkProfile.Loopback, Mode: Mode)));
         var probe = probeReceipt.Probe ?? throw new InvalidDataException("Missing local preflight.");
-        if (probe.HostPlatform != HostPlatformKind.Windows || !probe.Elevated || !probe.OsSupported ||
+        if (probe.HostPlatform != HostPlatformKind.Windows || Mode == ServerInstallMode.WindowsSystem && !probe.Elevated ||
+            Mode == ServerInstallMode.WindowsUser && probe.Elevated || !probe.OsSupported ||
             probe.RuntimeIdentifier is not (ServerRuntimeIdentifier.WinX64 or ServerRuntimeIdentifier.WinArm64))
             throw new InvalidDataException("Unsupported or unelevated local Windows host.");
-        if (probe.ExistingInstalled && (probe.ExistingMode != ServerInstallMode.WindowsSystem ||
+        if (probe.ExistingInstalled && (probe.ExistingMode != Mode ||
             !ServerInstallationId.IsValid(probe.ExistingInstallationId)))
             throw new InvalidDataException("The existing installation identity is invalid.");
 
         var kind = probe.ExistingInstalled ? ServerDeploymentKind.Upgrade : ServerDeploymentKind.Install;
         if (archive is not null && await releases.ResolveLocalBundleAsync(HostPlatformKind.Windows,
-            probe.RuntimeIdentifier.Value, ServerInstallMode.WindowsSystem, installation.LocalBundlePath!, cancellationToken)
+            probe.RuntimeIdentifier.Value, Mode, installation.LocalBundlePath!, cancellationToken)
             .ConfigureAwait(false) is null) throw new InvalidDataException("Unavailable local release bundle.");
 
         var options = new ServerDeploymentOptions(installation.Source, installation.Network,
-            Mode: ServerInstallMode.WindowsSystem,
+            Mode: Mode,
             PackageUri: installation.PackageUri, PackageDigest: installation.PackageDigest,
             StagedPackageName: archive is null ? null : "server.zip",
             ExpectedInstallationId: probe.ExistingInstalled ? probe.ExistingInstallationId : null,
@@ -143,13 +159,13 @@ public sealed class LocalWindowsServerInstaller(
         stage?.Report(kind == ServerDeploymentKind.Upgrade ? "upgrading" : "installing");
         var installed = await Execute(new(ServerDeploymentProtocol.Version, Guid.NewGuid(), kind, options), archive,
             preparedCertificate, installation.CertificatePassword);
-        if (installed.Result is not { Healthy: true, Mode: ServerInstallMode.WindowsSystem } result ||
+        if (installed.Result is not { Healthy: true } result || result.Mode != Mode ||
             !ServerInstallationId.IsValid(result.InstallationId))
             throw new InvalidDataException("The installation receipt has no healthy managed result.");
 
         stage?.Report("verifying");
         var status = await Execute(new(ServerDeploymentProtocol.Version, Guid.NewGuid(), ServerDeploymentKind.Status,
-            new(ServerPackageSourceKind.OfficialStable, ServerNetworkProfile.Loopback, Mode: ServerInstallMode.WindowsSystem)));
+            new(ServerPackageSourceKind.OfficialStable, ServerNetworkProfile.Loopback, Mode: Mode)));
         var endpoint = VerifiedLocalEndpoint(result.InstallationId!, status.Snapshot);
         LastVerifiedSnapshot = status.Snapshot;
         return endpoint;
@@ -157,7 +173,7 @@ public sealed class LocalWindowsServerInstaller(
 
     public static string VerifiedLocalEndpoint(string installationId, ServerHostSnapshotDto? snapshot)
     {
-        if (snapshot is not { Installed: true, Healthy: true, Mode: ServerInstallMode.WindowsSystem } ||
+        if (snapshot is not { Installed: true, Healthy: true, Mode: ServerInstallMode.WindowsSystem or ServerInstallMode.WindowsUser } ||
             snapshot.InstallationId != installationId || !ServerInstallationId.IsValid(installationId) ||
             !Uri.TryCreate(snapshot.ListenUrl, UriKind.Absolute, out var uri) ||
             uri.Scheme is not ("http" or "https") || !string.IsNullOrEmpty(uri.UserInfo) ||

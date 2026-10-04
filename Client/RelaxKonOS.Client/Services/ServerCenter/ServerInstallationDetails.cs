@@ -30,6 +30,7 @@ public static class ServerInstallationDetails
             ServerInstallMode.LinuxSystem => T("linux_system", "Linux system service (LinuxSystem)"),
             ServerInstallMode.LinuxUser => T("linux_user", "Linux user mode (LinuxUser)"),
             ServerInstallMode.WindowsSystem => T("windows_system", "Windows system service (WindowsSystem)"),
+            ServerInstallMode.WindowsUser => T("windows_user", "Windows personal mode (WindowsUser)"),
             _ => null
         });
         Add("mode_description", "How this mode runs", mode switch
@@ -37,6 +38,7 @@ public static class ServerInstallationDetails
             ServerInstallMode.LinuxSystem => T("linux_system_description", "Managed by systemd; maintenance requires root or sudo."),
             ServerInstallMode.LinuxUser => T("linux_user_description", "Runs under the installing user without a system service; no root required."),
             ServerInstallMode.WindowsSystem => T("windows_system_description", "Managed by Windows services; maintenance requires an elevated administrator SSH session."),
+            ServerInstallMode.WindowsUser => T("windows_user_description", "Runs as the installing Windows account after sign-in; separate per-user data and no administrator permission for maintenance."),
             _ => null
         });
         Add("version", "Current version", snapshot?.Version ?? cached?.Version);

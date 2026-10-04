@@ -115,7 +115,7 @@ builder.Host.UseWindowsService();
 var installerCertificate = LoadInstallerCertificate(builder.Configuration);
 var kestrelCertificates = new RelaxKonOS.Server.Certificate.KestrelCertificateRegistry();
 var userModeControlSocket = builder.Configuration["UserMode:ControlSocketPath"]?.Trim();
-if (serverModeResolver.Mode == RelaxKonOS.Protocol.Common.ServerMode.User)
+if (serverModeResolver.Mode == RelaxKonOS.Protocol.Common.ServerMode.User && OperatingSystem.IsLinux())
 {
     if (string.IsNullOrWhiteSpace(userModeControlSocket) || !Path.IsPathFullyQualified(userModeControlSocket))
         throw new InvalidOperationException("User Mode requires an absolute UserMode:ControlSocketPath.");

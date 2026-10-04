@@ -5,7 +5,7 @@ param(
     # The launcher drives a fixed action set; the default keeps the historical interactive install.
     [ValidateSet('install', 'upgrade', 'repair', 'rollback')]
     [string] $Action = 'install',
-    [ValidateSet('linuxSystem', 'linuxUser', 'windowsSystem')]
+    [ValidateSet('linuxSystem', 'linuxUser', 'windowsSystem', 'windowsUser')]
     [string] $Mode = 'windowsSystem',
     [string] $BundlePath,
     [string] $ReleaseUri,
@@ -144,7 +144,17 @@ function Write-InstallState($State) {
     New-Item -ItemType Directory -Path $DataRoot -Force | Out-Null
     $path = Get-InstallStatePath
     [IO.File]::WriteAllText($path, ($State | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
-    & icacls $path /inheritance:r /grant:r 'SYSTEM:F' 'Administrators:F' | Out-Null
+    if ($Mode -eq 'windowsUser') {
+        $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+        & icacls $path /inheritance:r /grant:r ("*$sid" + ':F') '*S-1-5-18:F' | Out-Null
+    } else { & icacls $path /inheritance:r /grant:r 'SYSTEM:F' 'Administrators:F' | Out-Null }
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to protect installation state.' }
+    if ($Mode -eq 'windowsUser') {
+        # Register sign-in startup only after the runtime has passed health and state was committed.
+        $startup = Join-Path $InstallRoot 'Start-PersonalServer.ps1'
+        $powerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        New-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'RelaxKonOSPersonal' -Value ('"' + $powerShell + '" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $startup + '"') -PropertyType String -Force | Out-Null
+    }
 }
 
 # --- versioned payload ---------------------------------------------------------------------------
@@ -238,6 +248,10 @@ function Get-InstalledEnginePath([string] $RelativePath) {
 }
 
 function Invoke-ServicesInstaller([string] $Version, [string] $ListenUrl) {
+    if ($Mode -eq 'windowsUser') {
+        & (Get-InstalledEnginePath 'deployment\windows\Install-RelaxKonOSPersonal.ps1') -InstallRoot $InstallRoot -DataRoot $DataRoot -Version $Version -ListenUrl $ListenUrl -CertificateMode $CertificateMode -CertificatePath $CertificatePath -CertificatePassword $CertificatePassword -SelfSignedIdentities $SelfSignedIdentities
+        return
+    }
     $engine = Get-InstalledEnginePath 'deployment\windows\Install-RelaxKonOSServices.ps1'
     if (-not $engine) { throw 'The installed RelaxKonOS deployment scripts are missing; reinstall or repair is required.' }
     $versionRoot = Get-VersionRoot $Version
@@ -255,6 +269,11 @@ function Invoke-ServicesInstaller([string] $Version, [string] $ListenUrl) {
 }
 
 function Stop-RelaxKonOSServices {
+    if ($Mode -eq 'windowsUser') {
+        . (Get-InstalledEnginePath 'deployment\windows\RelaxKonOSPersonalRuntime.ps1')
+        Stop-PersonalServer $InstallRoot $DataRoot
+        return
+    }
     foreach ($serviceName in @('RelaxKonOSServer', 'RelaxKonOSGuardian', 'RelaxKonOSPrivilegedHelper')) {
         $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
         if ($service -and $service.Status -ne 'Stopped') { Stop-Service -Name $serviceName -Force }
@@ -299,14 +318,20 @@ function Get-ListenUrl([string] $Network, [string] $Certificate, [int] $Port) {
     return "${listenScheme}://${listenHost}:$Port"
 }
 
-if ($Mode -ne 'windowsSystem') {
-    throw 'Only Windows System Mode is available on a Windows host.'
+if ($Mode -notin @('windowsSystem', 'windowsUser')) { throw 'Unsupported Windows installation mode.' }
+if ($Mode -eq 'windowsUser') {
+    if (Test-Administrator) { throw 'Personal mode must be installed without elevation.' }
+    if (-not $InstallerBoundParameters.ContainsKey('InstallRoot')) { $InstallRoot = Join-Path $env:LOCALAPPDATA 'RelaxKonOS-Personal\program' }
+    if (-not $InstallerBoundParameters.ContainsKey('DataRoot')) { $DataRoot = Join-Path $env:LOCALAPPDATA 'RelaxKonOS-Personal\data' }
+    foreach ($root in @($InstallRoot, $DataRoot)) {
+        if (-not [IO.Path]::GetFullPath($root).StartsWith(([IO.Path]::GetFullPath($env:LOCALAPPDATA).TrimEnd('\') + '\'), [StringComparison]::OrdinalIgnoreCase)) { throw 'Personal roots must be inside LocalAppData.' }
+    }
 }
 if ($Action -ne 'install' -and $Action -ne 'upgrade' -and -not $NonInteractive) {
     throw "Action $Action requires -NonInteractive; the deployment launcher drives upgrade, repair and rollback."
 }
 
-if (-not (Test-Administrator)) {
+if ($Mode -eq 'windowsSystem' -and -not (Test-Administrator)) {
     if ($NonInteractive) {
         # A remote SSH session cannot answer a UAC prompt, so this is a hard preflight failure.
         throw 'Windows System Mode requires an elevated administrator session; run the launcher from an elevated SSH account.'
@@ -378,10 +403,14 @@ if (-not $PSBoundParameters.ContainsKey('ServerPort')) {
 $installationId = if ($existingState) { Get-StateValue $existingState 'installationId' } else { $null }
 if (-not $installationId) { $installationId = New-InstallationId }
 
-# Upgrade, repair and rollback re-apply the TLS material that is already installed rather than
-# rotating it. The existing PFX is re-imported through the custom-certificate path so the
-# certificate identity a client already saw stays stable.
+# Preserve existing TLS material during ordinary maintenance. An upgrade that first enables
+# TLS must generate its requested certificate because an HTTP installation has no PFX to reuse.
+$recordedCertificateMode = Get-StateValue $existingState 'certificateMode'
+$enablingSelfSignedTls = $Action -eq 'upgrade' -and
+    $PSBoundParameters.ContainsKey('CertificateMode') -and $CertificateMode -eq 'self-signed' -and
+    ([string]::IsNullOrWhiteSpace([string]$recordedCertificateMode) -or $recordedCertificateMode -eq 'none')
 if ($Action -ne 'install' -and $CertificateMode -ne 'none' -and -not $PSBoundParameters.ContainsKey('CertificatePath') -and
+    -not $enablingSelfSignedTls -and
     -not ($Action -eq 'repair' -and $PSBoundParameters.ContainsKey('CertificateMode') -and $CertificateMode -eq 'self-signed')) {
     $installedCertificate = Join-Path $DataRoot 'server\certificates\bootstrap.pfx'
     if (-not (Test-Path -LiteralPath $installedCertificate -PathType Leaf)) {
@@ -526,7 +555,7 @@ try {
                 throw "Version $targetVersion did not pass its health check and version $previousVersion was restored."
             }
             Write-InstallState ([ordered]@{
-                schemaVersion = 1; installed = $true; mode = 'windowsSystem'; installationId = $installationId
+                schemaVersion = 1; installed = $true; mode = $Mode; installationId = $installationId
                 version = $targetVersion; previousVersion = $previousVersion; installedAtUtc = [DateTime]::UtcNow.ToString('O')
                 installRoot = $InstallRoot; dataRoot = $DataRoot; networkProfile = $NetworkProfile; listenUrl = $effectiveListenUrl
                 certificateMode = $CertificateMode; fileAccess = $FileAccess
@@ -557,7 +586,7 @@ try {
             throw "Version $targetVersion did not pass its health check; version $fromVersion was restored."
         }
         Write-InstallState ([ordered]@{
-            schemaVersion = 1; installed = $true; mode = 'windowsSystem'; installationId = $installationId
+            schemaVersion = 1; installed = $true; mode = $Mode; installationId = $installationId
             version = $targetVersion; previousVersion = $fromVersion; installedAtUtc = [DateTime]::UtcNow.ToString('O')
             installRoot = $InstallRoot; dataRoot = $DataRoot; networkProfile = $NetworkProfile; listenUrl = $effectiveListenUrl
             certificateMode = $CertificateMode; fileAccess = $FileAccess
@@ -568,7 +597,7 @@ try {
 
     if (-not (Test-LoopbackHealth $effectiveListenUrl)) { throw 'The server did not pass its health check.' }
     Write-InstallState ([ordered]@{
-        schemaVersion = 1; installed = $true; mode = 'windowsSystem'; installationId = $installationId
+        schemaVersion = 1; installed = $true; mode = $Mode; installationId = $installationId
         version = $targetVersion; previousVersion = (Get-StateValue $existingState 'previousVersion'); installedAtUtc = [DateTime]::UtcNow.ToString('O')
         installRoot = $InstallRoot; dataRoot = $DataRoot; networkProfile = $NetworkProfile; listenUrl = $effectiveListenUrl
         certificateMode = $CertificateMode; fileAccess = $FileAccess

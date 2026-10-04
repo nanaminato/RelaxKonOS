@@ -98,7 +98,10 @@ public static class UserExecutionEligibilityRules
         if (identity.Platform == HostPlatformKind.Windows)
         {
             var account = identity.Username.Split('\\', 2);
-            if (mode != ServerMode.System || account.Length != 2
+            if (mode == ServerMode.User && (!OperatingSystem.IsWindows() ||
+                !string.Equals(identity.Uid, ServerProcessIdentity.CurrentStableIdentity(), StringComparison.OrdinalIgnoreCase)))
+                return new UserExecutionEligibility(UserExecutionIneligibleReason.ServerAccountRequired);
+            if (account.Length != 2
                 || !account[0].Equals(Environment.MachineName, StringComparison.OrdinalIgnoreCase)
                 || string.IsNullOrWhiteSpace(identity.Uid) || !identity.Uid.StartsWith("S-1-5-", StringComparison.Ordinal)
                 || !UserExecutionProtocol.IsEligibleHomeDirectory(HostPlatformKind.Windows, identity.HomeDirectory))

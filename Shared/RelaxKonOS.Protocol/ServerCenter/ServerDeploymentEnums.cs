@@ -63,9 +63,9 @@ public enum ServerDeploymentPhase
     Interrupted
 }
 
-/// <summary>RelaxKonOS Server 的受管安装模式。三种模式的能力差异见 <see cref="ServerDeploymentModeMatrix"/>。</summary>
+/// <summary>RelaxKonOS Server 的受管安装模式。四种模式的能力差异见 <see cref="ServerDeploymentModeMatrix"/>。</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<ServerInstallMode>))]
-public enum ServerInstallMode { LinuxSystem, LinuxUser, WindowsSystem }
+public enum ServerInstallMode { LinuxSystem, LinuxUser, WindowsSystem, WindowsUser }
 
 /// <summary>服务端网络监听选项。默认仅 loopback；跨设备直连必须显式选择可信 TLS 入口。</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<ServerNetworkProfile>))]

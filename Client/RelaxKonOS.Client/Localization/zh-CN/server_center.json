@@ -163,6 +163,8 @@
     "server_center.wizard.mode_automatic": "自动（预检后推荐）",
     "server_center.wizard.mode_linux_user": "Linux 用户模式",
     "server_center.wizard.mode_linux_system": "Linux 系统服务",
+    "server_center.wizard.mode_windows_user": "个人模式（当前 Windows 账户）",
+    "server_center.wizard.windows_personal_hint": "使用当前账户运行，登录后启动、注销后停止，Docker 使用当前账户权限。程序和数据独立保存在 LocalAppData。管理员操作暂不可用；与系统服务併用时选择不同端口。",
     "server_center.wizard.mode_windows_system": "Windows 系统服务",
     "server_center.wizard.review_title": "检查并安装",
     "server_center.wizard.server_and_user": "服务器和用户",

@@ -54,6 +54,7 @@
                             <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
                         </ComboBox.ItemTemplate>
                     </ComboBox>
+                    <TextBlock IsVisible="{Binding IsWindowsUserMode}" Text="{Binding PersonalModeHint}" TextWrapping="Wrap" />
                     <TextBox IsVisible="{Binding ShowsSudoPassword}" Text="{Binding SudoPassword, Mode=TwoWay}" PasswordChar="●" PlaceholderText="{Binding SudoPasswordText}" />
                     <TextBlock Text="{Binding FileAccessText}" />
                     <ComboBox IsVisible="{Binding IsSystemMode}" ItemsSource="{Binding FileAccesses}" SelectedItem="{Binding SelectedFileAccess}" HorizontalAlignment="Left" MinWidth="320">
@@ -63,7 +64,7 @@
                     </ComboBox>
                     <TextBlock Text="{Binding AdvancedLabel}" FontWeight="SemiBold" />
                     <TextBlock Text="{Binding ServerPortLabel}" /><TextBox Text="{Binding ServerPortText, Mode=TwoWay}" />
-                    <TextBlock Text="{Binding DataRootLabel}" /><TextBox Text="{Binding DataRoot, Mode=TwoWay}" />
+                    <TextBlock Text="{Binding DataRootLabel}" /><TextBox Text="{Binding DataRoot, Mode=TwoWay}" IsEnabled="{Binding CanEditDataRoot}" />
                     <StackPanel IsVisible="{Binding IsSystemMode}" Spacing="8">
                         <TextBlock Text="{Binding InstallRootLabel}" /><TextBox Text="{Binding InstallRoot, Mode=TwoWay}" />
                         <TextBox IsVisible="{Binding IsFileWhitelist}" PlaceholderText="{Binding FileRootsLabel}" Text="{Binding FileRoots, Mode=TwoWay}" AcceptsReturn="True" MinHeight="80" />

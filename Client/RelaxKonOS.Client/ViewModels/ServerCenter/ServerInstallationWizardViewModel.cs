@@ -114,7 +114,10 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     [ObservableProperty] private bool _allowUnsupportedSystem;
     public bool IsOfficialSource => SelectedSource?.Source == ServerPackageSourceKind.OfficialStable;
     public bool IsDirectUrl => SelectedSource?.Source == ServerPackageSourceKind.DirectUrl;
-    public bool IsSystemMode => SelectedMode?.Mode != ServerInstallMode.LinuxUser;
+    public bool IsSystemMode => SelectedMode?.Mode is not (ServerInstallMode.LinuxUser or ServerInstallMode.WindowsUser);
+    public bool IsWindowsUserMode => SelectedMode?.Mode == ServerInstallMode.WindowsUser;
+    public bool CanEditDataRoot => !IsWindowsUserMode;
+    public string PersonalModeHint => Text("server_center.wizard.windows_personal_hint", "Runs as your current Windows account, starts at sign-in and stops at sign-out. Docker uses your account permissions. Separate program and data in LocalAppData; privileged host operations are unavailable.");
     public bool IsUserMode => SelectedMode?.Mode == ServerInstallMode.LinuxUser;
     public bool IsLinuxSystemMode => SelectedMode?.Mode == ServerInstallMode.LinuxSystem;
     public bool IsLinuxHost => _serverCenter.SelectedPlatform?.Platform == HostPlatformKind.Linux;
@@ -176,7 +179,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     public ServerCenterViewModel Progress => _serverCenter;
     public string SourceStepTitle => Text("server_center.wizard.source_title", "Choose the release source");
     public string ModeStepTitle => Text("server_center.wizard.mode_title", "Choose the installation mode");
-    public string SourceChecksText => IsLocalInstallation
+    public string SourceChecksText => IsWindowsUserMode ? PersonalModeHint : IsLocalInstallation
         ? Text("login.local_install_review", "Windows will request administrator permission when you install. Server runs as a system service on this computer. Official packages are verified; selected ZIPs receive layout and architecture checks.")
         : Text("server_center.wizard.source_checks", "Official packages are downloaded and verified on the server. Selected ZIPs receive layout and architecture checks.");
     public string ReviewStepTitle => Text("server_center.wizard.review_title", "Review and install");
@@ -357,6 +360,8 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
 
     partial void OnSelectedModeChanged(InstallationModeOption? value)
     {
+        OnPropertyChanged(nameof(IsWindowsUserMode)); OnPropertyChanged(nameof(CanEditDataRoot)); OnPropertyChanged(nameof(SourceChecksText));
+        if (value?.Mode == ServerInstallMode.WindowsUser) { InstallRoot = string.Empty; DataRoot = string.Empty; AddFirewallRule = false; SelectedFileAccess = FileAccesses[0]; }
         OnPropertyChanged(nameof(CanAddFirewallRule));
         OnPropertyChanged(nameof(SelectedModeText));
         OnPropertyChanged(nameof(ShowsSudoPassword));
@@ -417,7 +422,10 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     private IReadOnlyList<InstallationModeOption> BuildModes(HostPlatformKind? platform) => platform switch
     {
         HostPlatformKind.Windows =>
-        [new(ServerInstallMode.WindowsSystem, Text("server_center.wizard.mode_windows_system", "Windows system service"))],
+        IsLocalInstallation
+            ? [new(ServerInstallMode.WindowsUser, Text("server_center.wizard.mode_windows_user", "Personal mode (current Windows account)")),
+               new(ServerInstallMode.WindowsSystem, Text("server_center.wizard.mode_windows_system", "Windows system service"))]
+            : [new(ServerInstallMode.WindowsSystem, Text("server_center.wizard.mode_windows_system", "Windows system service"))],
         HostPlatformKind.Linux =>
         [
             new(null, Text("server_center.wizard.mode_automatic", "Automatic (recommended after preflight)")),

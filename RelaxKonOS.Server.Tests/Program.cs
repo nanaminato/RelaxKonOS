@@ -1,3 +1,13 @@
+if (args.Contains("--windows-personal-mode-only"))
+{
+    WindowsPersonalModeChecks.Run();
+    return;
+}
+if (args.Contains("--windows-owner-bootstrap-only"))
+{
+    WindowsOwnerBootstrapChecks.Run();
+    return;
+}
 if (args.Length == 3 && args[0] == "--installed-windows-terminal")
 {
     await WindowsInstalledTerminalChecks.RunAsync(args[1], args[2], WindowsInstalledTerminalChecks.ReadPassword());

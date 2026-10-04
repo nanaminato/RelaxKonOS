@@ -18,12 +18,13 @@ public sealed class UserModeRequestGuardMiddleware(RequestDelegate next)
 
     public async Task InvokeAsync(HttpContext context, IServerModeResolver mode)
     {
-        if (mode.Mode == ServerMode.User && DisabledPrefixes.Any(prefix => context.Request.Path.StartsWithSegments(prefix)))
+        var personalDocker = OperatingSystem.IsWindows() && context.Request.Path.StartsWithSegments("/api/v1.0/docker");
+        if (mode.Mode == ServerMode.User && !personalDocker && DisabledPrefixes.Any(prefix => context.Request.Path.StartsWithSegments(prefix)))
         {
             await Results.Problem(statusCode: StatusCodes.Status403Forbidden,
                 type: "https://relaxkonos.app/problems/privileged-feature-unavailable",
                 title: "Feature unavailable in User Mode",
-                detail: "This host operation is unavailable for the current Linux user deployment.").ExecuteAsync(context);
+                detail: "This host operation is unavailable for the current user deployment.").ExecuteAsync(context);
             return;
         }
         await next(context);

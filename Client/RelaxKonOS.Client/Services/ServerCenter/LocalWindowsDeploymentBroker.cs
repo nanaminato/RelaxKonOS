@@ -16,8 +16,10 @@ namespace RelaxKonOS.Client.Services.ServerCenter;
 [SupportedOSPlatform("windows")]
 public sealed class LocalWindowsDeploymentSessionFactory : ILocalWindowsDeploymentSessionFactory
 {
-    public async Task<ILocalWindowsDeploymentSession> OpenAsync(CancellationToken cancellationToken)
+    public async Task<ILocalWindowsDeploymentSession> OpenAsync(ServerInstallMode mode, CancellationToken cancellationToken)
     {
+        if (mode is not (ServerInstallMode.WindowsSystem or ServerInstallMode.WindowsUser)) throw new ArgumentException("Unsupported local mode.");
+        var personal = mode == ServerInstallMode.WindowsUser;
         var executable = Environment.ProcessPath;
         if (executable is null || !Path.GetFileName(executable).Equals("RelaxKonOS.exe", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Local deployment requires the RelaxKonOS desktop executable.");
@@ -35,8 +37,8 @@ public sealed class LocalWindowsDeploymentSessionFactory : ILocalWindowsDeployme
             // ShellExecute is the UAC boundary. Only an executable, a random pipe name and our PID enter the command line.
             child = await Task.Run(() => Process.Start(new ProcessStartInfo(executable)
             {
-                UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden,
-                Arguments = $"{LocalWindowsDeploymentBroker.Switch} {pipeName} {Environment.ProcessId}"
+                UseShellExecute = !personal, Verb = personal ? "" : "runas", WindowStyle = ProcessWindowStyle.Hidden,
+                Arguments = $"{(personal ? LocalWindowsDeploymentBroker.PersonalSwitch : LocalWindowsDeploymentBroker.Switch)} {pipeName} {Environment.ProcessId}"
             }) ?? throw new IOException("Unable to start the deployment broker."), cancellationToken).ConfigureAwait(false);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromSeconds(60));
@@ -95,17 +97,20 @@ internal sealed class LocalWindowsDeploymentSession(NamedPipeServerStream pipe, 
 public static class LocalWindowsDeploymentBroker
 {
     public const string Switch = "--local-windows-deployment";
+    public const string PersonalSwitch = "--local-windows-personal-deployment";
     internal const string PipePrefix = "relaxkonos-local-deploy-";
 
-    public static bool IsBrokerInvocation(string[] args) => args.Length > 0 && args[0] == Switch;
+    public static bool IsBrokerInvocation(string[] args) => args.Length > 0 && args[0] is Switch or PersonalSwitch;
 
     [SupportedOSPlatform("windows")]
     public static async Task<int> RunAsync(string[] args)
     {
+        var personal = args.Length > 0 && args[0] == PersonalSwitch;
+        var elevated = new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
         if (args.Length != 3 || !args[1].StartsWith(PipePrefix, StringComparison.Ordinal) ||
             !Guid.TryParseExact(args[1][PipePrefix.Length..], "N", out _) ||
             !int.TryParse(args[2], out var parentPid) || parentPid <= 0 ||
-            !new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator)) return 2;
+            (personal ? elevated : !elevated)) return 2;
         using var pipe = new NamedPipeClientStream(".", args[1], PipeDirection.InOut, PipeOptions.Asynchronous);
         try
         {
@@ -119,6 +124,7 @@ public static class LocalWindowsDeploymentBroker
                 try { request = await LocalDeploymentWire.ReadJsonAsync<ServerDeploymentRequest>(pipe, idle.Token).ConfigureAwait(false); }
                 catch (EndOfStreamException) { break; }
                 ValidateRequest(request);
+                if ((request.Options?.Mode == ServerInstallMode.WindowsUser) != personal) throw new InvalidDataException("Broker mode mismatch.");
                 await ExecuteAsync(pipe, request).ConfigureAwait(false);
             }
             return 0;
@@ -137,15 +143,15 @@ public static class LocalWindowsDeploymentBroker
         if (request.SchemaVersion != ServerDeploymentProtocol.Version || request.OperationId == Guid.Empty ||
             !ServerDeploymentRequestWireValidation.IsStrictRequest(bytes) ||
             !Enum.IsDefined(request.Kind) ||
-            request.Options is { } options && (options.Mode != ServerInstallMode.WindowsSystem ||
+            request.Options is { } options && (options.Mode is not (ServerInstallMode.WindowsSystem or ServerInstallMode.WindowsUser) ||
                 options.Source == ServerPackageSourceKind.RemoteBundle || options.RemotePackagePath is not null ||
                 options.Retention == ServerDataRetention.Delete && request.Kind != ServerDeploymentKind.Uninstall))
             throw new InvalidDataException("Invalid local deployment request.");
         if (request.Kind is ServerDeploymentKind.Install or ServerDeploymentKind.Upgrade &&
-            request.Options is not { Confirmed: true, Mode: ServerInstallMode.WindowsSystem })
+            request.Options is not { Confirmed: true, Mode: ServerInstallMode.WindowsSystem or ServerInstallMode.WindowsUser })
             throw new InvalidDataException("An explicitly reviewed Windows installation is required.");
         if (request.Kind is ServerDeploymentKind.Upgrade or ServerDeploymentKind.Repair or ServerDeploymentKind.Rollback or ServerDeploymentKind.Uninstall &&
-            (request.Options is not { Confirmed: true, Mode: ServerInstallMode.WindowsSystem } ||
+            (request.Options is not { Confirmed: true, Mode: ServerInstallMode.WindowsSystem or ServerInstallMode.WindowsUser } ||
              !ServerInstallationId.IsValid(request.Options.ExpectedInstallationId)))
             throw new InvalidDataException("A reviewed lifecycle action bound to the installed identity is required.");
     }
@@ -155,12 +161,15 @@ public static class LocalWindowsDeploymentBroker
     {
         // A user TEMP parent allows its owner to rename children. Put staging below an administrator-owned
         // random container in ProgramData, while retaining the invoking-account owner required by the launcher.
-        var container = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+        var personal = request.Options?.Mode == ServerInstallMode.WindowsUser;
+        var container = Path.Combine(Environment.GetFolderPath(personal ? Environment.SpecialFolder.LocalApplicationData : Environment.SpecialFolder.CommonApplicationData),
             "relaxkonos-local-deploy-" + Guid.NewGuid().ToString("N"));
         var directory = Path.Combine(container, "relaxkonos-deploy-" + Guid.NewGuid().ToString("N"));
         var acl = new DirectorySecurity();
         acl.SetAccessRuleProtection(true, false);
-        acl.SetOwner(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null));
+        acl.SetOwner(personal ? WindowsIdentity.GetCurrent().User! : new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null));
+        if (personal) acl.AddAccessRule(new FileSystemAccessRule(WindowsIdentity.GetCurrent().User!, FileSystemRights.FullControl,
+            InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
         foreach (var sid in new[] { WellKnownSidType.BuiltinAdministratorsSid, WellKnownSidType.LocalSystemSid })
             acl.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(sid, null), FileSystemRights.FullControl,
                 InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
@@ -190,8 +199,8 @@ public static class LocalWindowsDeploymentBroker
                 await launcher.CopyToAsync(destination).ConfigureAwait(false);
 
             // The launcher handles validation, official downloads, locking, rollback and persistent receipts.
-            await RunLauncherAsync(directory, null, pipe, request.OperationId).ConfigureAwait(false);
-            var receiptJson = await RunLauncherAsync(directory, request.OperationId, null, request.OperationId).ConfigureAwait(false);
+            await RunLauncherAsync(directory, null, pipe, request.OperationId, personal).ConfigureAwait(false);
+            var receiptJson = await RunLauncherAsync(directory, request.OperationId, null, request.OperationId, personal).ConfigureAwait(false);
             _ = ServerDeploymentRecordReader.ReadRecord(receiptJson.Trim(), request.OperationId);
             await LocalDeploymentWire.WriteJsonAsync(pipe, new LocalDeploymentMessage("receipt", Receipt: receiptJson.Trim()), CancellationToken.None).ConfigureAwait(false);
         }
@@ -205,7 +214,7 @@ public static class LocalWindowsDeploymentBroker
     }
 
     [SupportedOSPlatform("windows")]
-    private static async Task<string> RunLauncherAsync(string directory, Guid? query, Stream? pipe, Guid operationId)
+    private static async Task<string> RunLauncherAsync(string directory, Guid? query, Stream? pipe, Guid operationId, bool personal)
     {
         var start = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),
             "WindowsPowerShell", "v1.0", "powershell.exe"))
@@ -215,6 +224,7 @@ public static class LocalWindowsDeploymentBroker
         };
         foreach (var arg in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", Path.Combine(directory, "RelaxKonOS-Deploy.ps1") })
             start.ArgumentList.Add(arg);
+        if (personal) start.ArgumentList.Add("-Personal");
         if (query.HasValue) { start.ArgumentList.Add("-QueryOperationId"); start.ArgumentList.Add(query.Value.ToString()); }
         using var process = Process.Start(start) ?? throw new IOException("Unable to start the embedded deployment launcher.");
         var output = process.StandardOutput.ReadToEndAsync();

@@ -48,6 +48,17 @@ static class LocalWindowsInstallationChecks
             Check((await journal.LoadAsync(LocalWindowsServerInstaller.JournalHostId)).Count == 3,
                 "Local operation ids and authoritative receipts are indexed without SSH host records.");
 
+            var personal = new LocalTestFactory { Session = new LocalTestSession {
+                HostProbe = Probe with { Elevated = false }, HostSnapshot = Snapshot with { Mode = ServerInstallMode.WindowsUser } } };
+            var personalInstaller = new LocalWindowsServerInstaller(personal, new FileServerCenterReleaseSource(), journal);
+            await personalInstaller.InstallAsync(Options with { Mode = ServerInstallMode.WindowsUser }, "en-US", null, null);
+            Check(personal.Session.Requests.All(request => request.Options?.Mode == ServerInstallMode.WindowsUser),
+                "Personal installation scopes probe, install and verification to the current account without elevation.");
+            personal.Session.Requests.Clear();
+            await personalInstaller.MaintainAsync(ServerDeploymentKind.Repair, personal.Session.HostSnapshot, "en-US", true);
+            Check(personal.Session.Requests.All(request => request.Options?.Mode == ServerInstallMode.WindowsUser),
+                "Personal maintenance never targets the system service installation.");
+
             var upgraded = new LocalTestFactory { Session = new LocalTestSession { HostProbe = Probe with {
                 ExistingInstalled = true, ExistingInstallationId = InstallationId, ExistingMode = ServerInstallMode.WindowsSystem } } };
             await new LocalWindowsServerInstaller(upgraded, new FileServerCenterReleaseSource(), journal).InstallAsync(Options, "en-US", null, null);
@@ -116,6 +127,20 @@ static class LocalWindowsInstallationChecks
                 Check(kind == ServerDeploymentKind.Uninstall ? !after.Installed : after.Healthy, "Local final status matches the requested lifecycle action.");
             }
             var deleting = new LocalTestFactory();
+            var reconfigure = new LocalTestFactory();
+            await new LocalWindowsServerInstaller(reconfigure, new FileServerCenterReleaseSource(), journal)
+                .MaintainAsync(ServerDeploymentKind.Repair, Snapshot, "zh-CN", true,
+                    regenerateSelfSignedCertificate: true, selfSignedIdentities: "localhost,127.0.0.1", repairFirewall: true);
+            Check(reconfigure.Session.Requests[1].Options is { CertificateMode: ServerCertificateMode.SelfSigned,
+                SelfSignedIdentities: "localhost,127.0.0.1", AddFirewallRule: true },
+                "Reviewed local repair forwards certificate regeneration and firewall repair to the fixed launcher.");
+            var invalidRepair = new LocalTestFactory();
+            var invalidInstaller = new LocalWindowsServerInstaller(invalidRepair, new FileServerCenterReleaseSource(), journal);
+            await RejectAsync<ArgumentException>(() => invalidInstaller.MaintainAsync(ServerDeploymentKind.Repair,
+                Snapshot, "en-US", true, regenerateSelfSignedCertificate: true, selfSignedIdentities: " "));
+            await RejectAsync<ArgumentException>(() => invalidInstaller.MaintainAsync(ServerDeploymentKind.Uninstall,
+                Snapshot, "en-US", true, repairFirewall: true));
+            Check(invalidRepair.Opens == 0, "Missing certificate names and repair options on uninstall are rejected before UAC.");
             await new LocalWindowsServerInstaller(deleting, new FileServerCenterReleaseSource(), journal)
                 .MaintainAsync(ServerDeploymentKind.Uninstall, Snapshot, "en-US", true, ServerDataRetention.Delete);
             Check(deleting.Session.Requests[1].Options!.Retention == ServerDataRetention.Delete, "Explicit data deletion reaches the fixed uninstall engine.");
@@ -141,7 +166,7 @@ static class LocalWindowsInstallationChecks
             var wizard = new ServerInstallationWizardViewModel(center, () => closed = true, () => Task.FromResult<string?>(null),
                 () => Task.CompletedTask, options => { selectedOptions = options; return Task.FromResult(true); });
             Check(wizard.Sources.All(s => s.Source != ServerPackageSourceKind.RemoteBundle) && !wizard.CanShowHostAddresses &&
-                wizard.SelectedMode?.Mode == ServerInstallMode.WindowsSystem, "The local wizard removes SSH-only choices and fixes Windows System Mode.");
+                wizard.SelectedMode?.Mode == ServerInstallMode.WindowsUser && wizard.Modes.Count == 2, "The local wizard offers both Windows modes and defaults to Personal Mode.");
             wizard.MoveNextCommand.Execute(null);
             wizard.MoveNextCommand.Execute(null);
             await wizard.InstallCommand.ExecuteAsync(null);
@@ -227,7 +252,7 @@ static class LocalWindowsInstallationChecks
         public LocalTestSession Session = new();
         public int Opens;
         public bool CancelUac;
-        public Task<ILocalWindowsDeploymentSession> OpenAsync(CancellationToken cancellationToken)
+        public Task<ILocalWindowsDeploymentSession> OpenAsync(ServerInstallMode mode, CancellationToken cancellationToken)
         {
             Opens++;
             if (CancelUac) throw new Win32Exception(1223);
@@ -254,7 +279,7 @@ static class LocalWindowsInstallationChecks
             return new(1, request.OperationId, InstallationId, request.Kind, failed ? ServerDeploymentPhase.Failed : ServerDeploymentPhase.Completed,
                 failed ? ServerDeploymentState.Failed : ServerDeploymentState.Succeeded, 1, now, null, null, null, false, now, now,
                 Result: request.Kind is ServerDeploymentKind.Install or ServerDeploymentKind.Upgrade
-                    ? new(InstallationId, ServerInstallMode.WindowsSystem, "1.0.0", null, null, null, Snapshot.ListenUrl, true) : null,
+                    ? new(InstallationId, request.Options!.Mode, "1.0.0", null, null, null, HostSnapshot.ListenUrl, true) : null,
                 Snapshot: request.Kind == ServerDeploymentKind.Status ? HostSnapshot : null,
                 Probe: request.Kind == ServerDeploymentKind.Probe ? HostProbe : null);
         }
