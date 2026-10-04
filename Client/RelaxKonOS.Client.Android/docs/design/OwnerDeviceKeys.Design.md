@@ -30,5 +30,7 @@ Owner devices can list and revoke other owner devices. The final active device c
 
 1. Generate a P-256 Android Keystore key with user authentication enabled when available.
 2. Scan a pairing QR code, select a local QR image, or paste the code created by an enrolled controller.
-3. Show the scanned Server origin and expiry, then submit the invitation token and SPKI public key; request and sign a nonce to obtain the normal login session.
+3. Show the scanned Server origin and expiry, then confirm that origin's TLS certificate and only afterwards submit the invitation token and SPKI public key; request and sign a nonce to obtain the normal login session.
 4. On each remote sign-in, repeat only nonce signing; never transmit an administrator or Microsoft-account password.
+
+Both the pairing request and the sign-in challenge confirm the origin's certificate first. On a self-signed host the first handshake is rejected until the user consents, so a flow that goes straight to the gateway can never be completed — and because the rejection arrives as a transport failure, it reads as an unreachable server rather than as a trust decision nobody was offered.

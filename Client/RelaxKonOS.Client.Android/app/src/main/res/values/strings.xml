@@ -67,6 +67,8 @@
     <string name="owner_device_pairing_code">Pairing code</string>
     <string name="owner_device_pair">Pair this Android device</string>
     <string name="owner_device_sign_in">Sign in with this device</string>
+    <string name="owner_device_key_confirm_subtitle">Confirm to use the Android owner-device key</string>
+    <string name="owner_device_key_unlock_subtitle">Unlock the Android owner-device key</string>
     <string name="owner_device_pairing_code_required">Paste a pairing code from an enrolled Windows device.</string>
     <string name="owner_device_pairing_invalid">This pairing code is invalid, expired, or does not name an HTTP(S) server.</string>
     <string name="owner_device_not_paired">This Android device is not paired with the selected server.</string>
@@ -2607,6 +2609,7 @@
     <string name="login_certificate_trust">Trust</string>
     <string name="login_certificate_scope">Trust applies only to this server address, port and certificate. Check its SHA-256 fingerprint before continuing.</string>
     <string name="login_certificate_previous">Previously trusted SHA-256: %1$s</string>
+    <string name="login_certificate_declined">The server certificate was not trusted, so no request was sent.</string>
     <string name="server_maintenance_title">Installation and maintenance</string>
     <string name="server_maintenance_check">Check server</string>
     <string name="server_maintenance_absent">Not installed</string>

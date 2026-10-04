@@ -48,20 +48,24 @@ public interface IAuthSession
         bool rememberPassword,
         CancellationToken ct = default);
 
-    /// <summary>Creates or recovers this Windows device's owner key through local Windows session authentication.</summary>
+    /// <summary>
+    /// Creates or recovers this Windows device's owner key through local Windows session authentication.
+    /// <paramref name="rememberServer"/> records the connection like a password login does, so the Server
+    /// can be picked from the saved list next time; the device key itself is never copied into that record.
+    /// </summary>
     Task<LoginResponse> BootstrapWindowsOwnerDeviceAsync(ServerConnectionIdentity identity, string deviceName,
-        string clientVersion, CancellationToken ct = default);
+        string clientVersion, bool rememberServer, CancellationToken ct = default);
 
     /// <summary>Signs a server challenge with this client's enrolled owner-device key.</summary>
     Task<LoginResponse> LoginWithOwnerDeviceAsync(ServerConnectionIdentity identity, string? keyPassphrase,
-        CancellationToken ct = default);
+        bool rememberServer, CancellationToken ct = default);
 
     /// <summary>Creates a short-lived pairing payload for a second Windows/Linux client to scan or paste.</summary>
     Task<string> CreateOwnerDevicePairingPayloadAsync(string publicPairingUrl, CancellationToken ct = default);
 
     /// <summary>Enrolls this device from a scanned/pasted pairing payload, then signs in with its new key.</summary>
     Task<LoginResponse> AcceptOwnerDevicePairingAsync(string payload, string deviceName, string platform,
-        string clientVersion, string? keyPassphrase, CancellationToken ct = default);
+        string clientVersion, string? keyPassphrase, bool rememberServer, CancellationToken ct = default);
 
     /// <summary>
     /// 隧道重建或换端口后只更新传输地址。身份必须保持不变，否则会制造新的登录记录并丢掉保险箱关联。

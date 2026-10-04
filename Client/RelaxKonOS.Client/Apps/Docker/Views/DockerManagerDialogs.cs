@@ -22,11 +22,12 @@ internal static class DockerManagerDialogs
     public static Task ShowErrorDialogAsync(AppContext context, ManagedWindow owner, string message) =>
         context.ShowDialogAsync<bool>(owner, RelaxKonOS.Client.Localization.LocalizedText.Get("docker.read_error.title"), dialog => new DockerErrorDialogView(message, dialog), new RelaxKonOS.Core.Primitives.Size(460, 220));
 
+    // The Compose editor fills the dialog, so the dialog itself decides how much YAML is visible at once.
     public static Task ShowDeployStackAsync(AppContext context, ManagedWindow owner, DockerManagerViewModel vm) =>
-        context.ShowDialogAsync<bool>(owner, RelaxKonOS.Client.Localization.LocalizedText.Get("docker.stack.deploy"), dialog => new DockerStackDialogView(vm, dialog), new RelaxKonOS.Core.Primitives.Size(760, 550));
+        context.ShowDialogAsync<bool>(owner, RelaxKonOS.Client.Localization.LocalizedText.Get("docker.stack.deploy"), dialog => new DockerStackDialogView(vm, dialog), new RelaxKonOS.Core.Primitives.Size(760, 620));
 
     public static Task ShowEditStackAsync(AppContext context, ManagedWindow owner, DockerManagerViewModel vm) =>
-        context.ShowDialogAsync<bool>(owner, RelaxKonOS.Client.Localization.LocalizedText.Get("docker.stack.edit"), dialog => new DockerStackDialogView(vm, dialog), new RelaxKonOS.Core.Primitives.Size(760, 550));
+        context.ShowDialogAsync<bool>(owner, RelaxKonOS.Client.Localization.LocalizedText.Get("docker.stack.edit"), dialog => new DockerStackDialogView(vm, dialog), new RelaxKonOS.Core.Primitives.Size(760, 620));
 
     public static Task ShowPullImageAsync(AppContext context, ManagedWindow owner, DockerManagerViewModel vm) =>
         context.ShowDialogAsync<bool>(owner, RelaxKonOS.Client.Localization.LocalizedText.Get("docker.image.pull"), dialog => new DockerPullImageDialogView(vm, dialog), new RelaxKonOS.Core.Primitives.Size(470, 230));

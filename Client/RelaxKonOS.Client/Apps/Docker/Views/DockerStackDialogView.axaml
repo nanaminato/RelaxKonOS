@@ -4,28 +4,36 @@
              xmlns:docker="clr-namespace:RelaxKonOS.Client.Apps.Docker"
              x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerStackDialogView"
              x:DataType="docker:DockerManagerViewModel">
-    <Grid Margin="20" RowDefinitions="*,Auto" RowSpacing="12">
-        <Grid Grid.Row="0">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />  
-                <RowDefinition Height="Auto" />  
-                <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
-            <TextBlock Text="{loc:Loc docker.stacks_hint}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
-            <StackPanel Grid.Row="1" Spacing="4" Margin="0,12,0,12">
-                <TextBlock Text="{loc:Loc docker.stack.name}" Foreground="{DynamicResource TextSecondaryBrush}" />
-                <TextBox Text="{Binding StackName, Mode=TwoWay}" PlaceholderText="{loc:Loc docker.stack.name_placeholder}" />
+    <!-- Fixed description -> scrolling form -> fixed action row. The managed dialog is clamped to the owner
+         window (WindowManager.ShowDialogAsync), so the form scrolls when the dialog comes out shorter than
+         the form needs instead of squeezing the YAML editor. -->
+    <Grid Margin="20" RowDefinitions="Auto,*,Auto" RowSpacing="12">
+        <TextBlock Grid.Row="0" Text="{loc:Loc docker.stacks_hint}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" MinWidth="0" MinHeight="0">
+            <!-- Fluent scrollbars overlay their content. Reserve a gutter so they never cover the fields. -->
+            <StackPanel Margin="0,0,20,0" MinWidth="0" Spacing="16">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="{loc:Loc docker.stack.name}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBox Text="{Binding StackName, Mode=TwoWay}" PlaceholderText="{loc:Loc docker.stack.name_placeholder}" />
+                </StackPanel>
+                <!-- The Compose editor is what this dialog is for, so it keeps a fixed, generous height and
+                     scrolls internally; the form as a whole scrolls when the window is shorter than the form.
+                     A star row cannot be used here: a ScrollViewer measures its content with an unbounded
+                     height, so a star row would collapse back to the editor's MinHeight. -->
+                <StackPanel Spacing="4">
+                    <TextBlock Text="{loc:Loc docker.stack.compose}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBox Text="{Binding ComposeYaml, Mode=TwoWay}" PlaceholderText="{loc:Loc docker.stack.compose_placeholder}"
+                             AcceptsReturn="True" TextWrapping="Wrap" Height="300"
+                             FontFamily="Cascadia Mono,Consolas,monospace"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                </StackPanel>
+                <!-- What the server's Compose parser resolved for the current draft. Empty until Validate runs. -->
+                <TextBlock Text="{Binding StackPreviewText}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
             </StackPanel>
-            <StackPanel Grid.Row="2" Spacing="4">
-                <TextBlock Text="{loc:Loc docker.stack.compose}" Foreground="{DynamicResource TextSecondaryBrush}" />
-                <TextBox Text="{Binding ComposeYaml, Mode=TwoWay}" PlaceholderText="{loc:Loc docker.stack.compose_placeholder}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="270" />
-            </StackPanel>
-            <!-- What the server's Compose parser resolved for the current draft. Empty until Validate runs. -->
-            <TextBlock Grid.Row="3" Margin="0,12,0,0" Text="{Binding StackPreviewText}" TextWrapping="Wrap"
-                       Foreground="{DynamicResource TextSecondaryBrush}" />
-        </Grid>
-        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
             <Button Content="{loc:Loc docker.stack.validate}" Command="{Binding ValidateStackCommand}" HorizontalContentAlignment="Center" />
             <Button Classes="primary" Content="{loc:Loc docker.stack.deploy}" Click="Deploy_Click" HorizontalContentAlignment="Center" />
             <Button Content="{loc:Loc common.cancel}" Click="Cancel_Click" HorizontalContentAlignment="Center" />

@@ -88,7 +88,7 @@ public sealed class AuthSession : IAuthSession
     }
 
     public async Task<LoginResponse> BootstrapWindowsOwnerDeviceAsync(ServerConnectionIdentity identity, string deviceName,
-        string clientVersion, CancellationToken ct = default)
+        string clientVersion, bool rememberServer, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(identity);
         BeginLogin();
@@ -96,15 +96,16 @@ public sealed class AuthSession : IAuthSession
         {
             var response = await _ownerDevices.BootstrapWindowsAsync(identity, deviceName, clientVersion, ct);
             Apply(response, identity);
+            var saveResult = await RememberOwnerDeviceLoginAsync(identity, response, rememberServer, ct);
             State = AuthSessionState.Authenticated;
-            RaiseStateChanged();
+            RaiseStateChanged(saveResult);
             return response;
         }
         catch { ResetAfterLoginFailure(); throw; }
     }
 
     public async Task<LoginResponse> LoginWithOwnerDeviceAsync(ServerConnectionIdentity identity, string? keyPassphrase,
-        CancellationToken ct = default)
+        bool rememberServer, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(identity);
         BeginLogin();
@@ -112,8 +113,9 @@ public sealed class AuthSession : IAuthSession
         {
             var response = await _ownerDevices.SignInAsync(identity, keyPassphrase, ct);
             Apply(response, identity);
+            var saveResult = await RememberOwnerDeviceLoginAsync(identity, response, rememberServer, ct);
             State = AuthSessionState.Authenticated;
-            RaiseStateChanged();
+            RaiseStateChanged(saveResult);
             return response;
         }
         catch { ResetAfterLoginFailure(); throw; }
@@ -128,7 +130,7 @@ public sealed class AuthSession : IAuthSession
     }
 
     public async Task<LoginResponse> AcceptOwnerDevicePairingAsync(string payload, string deviceName, string platform,
-        string clientVersion, string? keyPassphrase, CancellationToken ct = default)
+        string clientVersion, string? keyPassphrase, bool rememberServer, CancellationToken ct = default)
     {
         BeginLogin();
         try
@@ -136,12 +138,40 @@ public sealed class AuthSession : IAuthSession
             var response = await _ownerDevices.AcceptPairingPayloadAsync(payload, deviceName, platform, clientVersion,
                 keyPassphrase, ct);
             var pairing = OwnerDeviceAuthenticationService.ParsePairingPayload(payload);
-            Apply(response, ServerConnectionIdentityRules.Direct(pairing.ServerUrl));
+            var identity = ServerConnectionIdentityRules.Direct(pairing.ServerUrl);
+            Apply(response, identity);
+            var saveResult = await RememberOwnerDeviceLoginAsync(identity, response, rememberServer, ct);
             State = AuthSessionState.Authenticated;
-            RaiseStateChanged();
+            RaiseStateChanged(saveResult);
             return response;
         }
         catch { ResetAfterLoginFailure(); throw; }
+    }
+
+    /// <summary>
+    /// Records the connection an owner-device login just proved, so the next sign-in can pick this Server
+    /// from the saved list instead of retyping its address. A device key is not a password and is never
+    /// copied into the record: the credential stays in its own key store, keyed by the same service id.
+    /// The account the Server authenticated names the record, so a saved record and a saved password for
+    /// the same login stay one row. Saving is best-effort — the remote login already succeeded, and a
+    /// failing local write must not turn it into an error, only explain why the row is missing.
+    /// </summary>
+    private async Task<RememberedProfileSaveResult?> RememberOwnerDeviceLoginAsync(
+        ServerConnectionIdentity identity, LoginResponse response, bool rememberServer, CancellationToken ct)
+    {
+        if (!rememberServer) return null;
+        try
+        {
+            return await _rememberedSessionStore.UpsertPasswordlessAsync(
+                new SavedLoginProfile(identity.ServiceId, response.User.Username, Password: null, DateTimeOffset.UtcNow)
+                {
+                    DisplayName = identity.DisplayName,
+                }, ct);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return RememberedProfileSaveResult.LocalStorageWriteFailed;
+        }
     }
 
     public void UpdateConnection(ServerConnectionIdentity identity)

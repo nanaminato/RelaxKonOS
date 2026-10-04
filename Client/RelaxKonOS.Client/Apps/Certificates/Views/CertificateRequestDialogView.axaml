@@ -5,11 +5,13 @@
              x:Class="RelaxKonOS.Client.Apps.Certificates.Views.CertificateRequestDialogView"
              x:DataType="certificates:CertificateManagerViewModel">
     <!-- The form scrolls independently, so the decision controls remain visible at the lower right. -->
-    <Grid Margin="20" RowDefinitions="*,Auto" RowSpacing="16">
-        <ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-            <StackPanel Spacing="12" Margin="0,0,12,0">
-                <TextBlock Text="{loc:Loc certificates.request.help}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+    <Grid Margin="20" RowDefinitions="Auto,*,Auto" RowSpacing="16">
+        <!-- Fixed description -> scrolling form -> fixed action row. The help text stays pinned while
+             the form below scrolls. -->
+        <TextBlock Grid.Row="0" Text="{loc:Loc certificates.request.help}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
 
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" MinWidth="0" MinHeight="0">
+            <StackPanel Spacing="12" Margin="0,0,12,0">
                 <StackPanel Spacing="4">
                     <TextBlock Text="{loc:Loc certificates.request.domains}" Foreground="{DynamicResource TextSecondaryBrush}" />
                     <TextBox Text="{Binding Domains, Mode=TwoWay}" PlaceholderText="{loc:Loc certificates.request.domains_hint}" />
@@ -49,7 +51,7 @@
             </StackPanel>
         </ScrollViewer>
 
-        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
             <Button Content="{loc:Loc certificates.request.preflight}" Command="{Binding PreflightCommand}" HorizontalContentAlignment="Center" />
             <Button Classes="primary" Content="{loc:Loc certificates.request.submit}" Click="Request_Click" HorizontalContentAlignment="Center" />
             <Button Content="{loc:Loc common.cancel}" Click="Cancel_Click" HorizontalContentAlignment="Center" />

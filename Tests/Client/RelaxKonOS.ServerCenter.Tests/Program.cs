@@ -241,6 +241,7 @@ Check(recovered.OperationId == recoveryId && recovery.Commands.Any(command =>
     "断线恢复按原操作 ID 读取权威回执");
 
 await LoginPickerChecks.RunAsync();
+await OwnerDeviceRememberedChecks.RunAsync();
 await HostKeyReviewChecks.RunAsync();
 await MaintenanceOutcomeChecks.RunAsync();
 SecretStoreChecks.Run();

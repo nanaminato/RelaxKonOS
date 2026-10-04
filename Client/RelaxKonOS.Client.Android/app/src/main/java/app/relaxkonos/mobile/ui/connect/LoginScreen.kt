@@ -98,25 +98,9 @@ fun LoginScreen(
             dismissButton = { TextButton(onClick = { viewModel.tunnel.answerHostKey(false) }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
-    viewModel.certificateReview?.let { review ->
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { viewModel.answerCertificate(false) },
-            title = { Text(stringResource(R.string.login_certificate_title)) },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    Text(stringResource(R.string.login_certificate_scope))
-                    Text(review.origin)
-                    Text(review.subject)
-                    Text(review.issuer)
-                    Text("${review.validFrom}\n${review.validUntil}")
-                    Text("SHA-256\n${review.fingerprint}")
-                    review.previous?.let { Text(stringResource(R.string.login_certificate_previous, it)) }
-                }
-            },
-            confirmButton = { TextButton(onClick = { viewModel.answerCertificate(true) }) { Text(stringResource(R.string.login_certificate_trust)) } },
-            dismissButton = { TextButton(onClick = { viewModel.answerCertificate(false) }) { Text(stringResource(R.string.common_cancel)) } },
-        )
-    }
+    // The certificate consent prompt is rendered once at the application's overlay level
+    // (ServerCertificatePrompt): the flow that needs it may be the owner-device pairing screen, which
+    // is an alternative to this one rather than part of the same composition.
 
     val serverFocus = remember { FocusRequester() }
     val identifierFocus = remember { FocusRequester() }

@@ -6,8 +6,10 @@
              x:DataType="vm:ConfirmDialogViewModel"
              Background="{DynamicResource SurfaceBrush}"
              Width="440">
-    <Grid RowDefinitions="Auto,Auto" Margin="20" RowSpacing="16">
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12">
+    <!-- The hosted dialog is 460x320 by default and can be resized by the user, so the message
+         takes the '*' row and the action row stays pinned to the bottom-right corner. -->
+    <Grid RowDefinitions="*,Auto" Margin="20" RowSpacing="16">
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Top">
             <TextBlock Text="⚠" FontSize="28" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Top" />
             <TextBlock Text="{Binding Message}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" MaxWidth="360" />
         </StackPanel>

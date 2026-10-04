@@ -33,6 +33,7 @@ import app.relaxkonos.mobile.ui.common.text
 import app.relaxkonos.mobile.ui.connect.LoginScreen
 import app.relaxkonos.mobile.ui.connect.LoginViewModel
 import app.relaxkonos.mobile.ui.connect.OwnerDevicePairingScreen
+import app.relaxkonos.mobile.ui.connect.ServerCertificatePrompt
 import app.relaxkonos.mobile.ui.servercenter.ServerCenterScreen
 import app.relaxkonos.mobile.ui.servercenter.SshWorkspaceScreen
 import app.relaxkonos.mobile.ui.nav.Routes
@@ -180,6 +181,11 @@ private fun RelaxKonApp(container: AppContainer) {
                     )
                 }
             }
+
+            // A certificate consent outlives the screen that asked for it: signing in and pairing are
+            // alternatives, so a prompt drawn inside just one of them would be lost exactly when the
+            // flow waiting for the answer is the other (Shell.Design.md §3.4).
+            ServerCertificatePrompt(login)
 
             container.pendingNotice?.let { notice ->
                 ActionFeedback(

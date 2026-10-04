@@ -56,6 +56,8 @@
     <string name="owner_device_pairing_code">配对码</string>
     <string name="owner_device_pair">配对此 Android 设备</string>
     <string name="owner_device_sign_in">使用此设备登录</string>
+    <string name="owner_device_key_confirm_subtitle">确认以使用此 Android 所有者设备密钥。</string>
+    <string name="owner_device_key_unlock_subtitle">解锁此 Android 所有者设备密钥。</string>
     <string name="owner_device_pairing_code_required">请粘贴已注册 Windows 设备提供的配对码。</string>
     <string name="owner_device_pairing_invalid">配对码无效、已过期，或者未指向 HTTP(S) 服务器。</string>
     <string name="owner_device_not_paired">此 Android 设备尚未与所选服务器配对。</string>
@@ -2568,6 +2570,7 @@
     <string name="login_certificate_trust">信任</string>
     <string name="login_certificate_scope">信任仅限此服务器地址、端口和证书。请核对 SHA-256 指纹后继续。</string>
     <string name="login_certificate_previous">原来信任的 SHA-256：%1$s</string>
+    <string name="login_certificate_declined">未信任该服务器证书，因此没有发送任何请求。</string>
     <string name="server_maintenance_title">安装与维护</string>
     <string name="server_maintenance_check">检查服务器</string>
     <string name="server_maintenance_absent">未安装</string>

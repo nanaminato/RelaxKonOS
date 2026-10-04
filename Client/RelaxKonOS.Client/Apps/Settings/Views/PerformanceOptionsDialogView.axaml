@@ -5,24 +5,28 @@
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.PerformanceOptionsDialogView"
              x:DataType="vm:PerformanceOptionsDialogViewModel"
              Background="{DynamicResource SurfaceBrush}" Width="520">
+    <!-- Fixed heading -> scrolling options -> pinned action row. -->
     <Grid Margin="20" RowDefinitions="Auto,*,Auto" RowSpacing="16">
-        <StackPanel Spacing="5">
+        <StackPanel Grid.Row="0" Spacing="5">
             <TextBlock Text="{loc:Loc settings.performance.title}" FontSize="20" FontWeight="SemiBold" />
             <TextBlock Text="{loc:Loc settings.performance.description}" TextWrapping="Wrap" Opacity="0.72" />
         </StackPanel>
-        <StackPanel Grid.Row="1" Spacing="10">
-            <RadioButton Content="{loc:Loc settings.performance.appearance}" IsChecked="{Binding BestAppearance}" />
-            <RadioButton Content="{loc:Loc settings.performance.performance}" IsChecked="{Binding BestPerformance}" />
-            <RadioButton Content="{loc:Loc settings.performance.custom}" IsChecked="{Binding Custom}" />
-            <Border BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" Padding="12" Margin="0,2,0,0">
-                <StackPanel Spacing="7" IsEnabled="{Binding IsCustom}">
-                    <CheckBox Content="{loc:Loc settings.performance.window_contents}" IsChecked="{Binding ShowWindowContents}" />
-                    <CheckBox Content="{loc:Loc settings.performance.thumbnails}" IsChecked="{Binding ShowThumbnails}" />
-                    <CheckBox Content="{loc:Loc settings.performance.shadows}" IsChecked="{Binding ShowShadows}" />
-                </StackPanel>
-            </Border>
-            <TextBlock Text="{loc:Loc settings.performance.host_note}" TextWrapping="Wrap" FontSize="12" Opacity="0.65" />
-        </StackPanel>
+        <!-- Fluent scrollbars overlay their content. Reserve a gutter so they never cover the fields. -->
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" MinWidth="0" MinHeight="0">
+            <StackPanel Margin="0,0,20,0" MinWidth="0" Spacing="10">
+                <RadioButton Content="{loc:Loc settings.performance.appearance}" IsChecked="{Binding BestAppearance}" />
+                <RadioButton Content="{loc:Loc settings.performance.performance}" IsChecked="{Binding BestPerformance}" />
+                <RadioButton Content="{loc:Loc settings.performance.custom}" IsChecked="{Binding Custom}" />
+                <Border BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" Padding="12" Margin="0,2,0,0">
+                    <StackPanel Spacing="7" IsEnabled="{Binding IsCustom}">
+                        <CheckBox Content="{loc:Loc settings.performance.window_contents}" IsChecked="{Binding ShowWindowContents}" />
+                        <CheckBox Content="{loc:Loc settings.performance.thumbnails}" IsChecked="{Binding ShowThumbnails}" />
+                        <CheckBox Content="{loc:Loc settings.performance.shadows}" IsChecked="{Binding ShowShadows}" />
+                    </StackPanel>
+                </Border>
+                <TextBlock Text="{loc:Loc settings.performance.host_note}" TextWrapping="Wrap" FontSize="12" Opacity="0.65" />
+            </StackPanel>
+        </ScrollViewer>
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
             <Button Content="{loc:Loc common.cancel}" Command="{Binding CancelCommand}" Padding="16,6" />
             <Button Content="{loc:Loc settings.performance.apply}" Command="{Binding ApplyCommand}" Padding="16,6" />

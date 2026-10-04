@@ -13,6 +13,7 @@ import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.core.auth.CredentialGap
 import app.relaxkonos.mobile.core.auth.CredentialStatus
 import app.relaxkonos.mobile.core.auth.LoginDecision
+import app.relaxkonos.mobile.core.auth.OwnerDevicePairingInvitation
 import app.relaxkonos.mobile.core.auth.SavedCredentialState
 import app.relaxkonos.mobile.core.auth.SelectedLogin
 import app.relaxkonos.mobile.core.auth.credentialState
@@ -32,6 +33,7 @@ import app.relaxkonos.mobile.security.VaultOperation
 import app.relaxkonos.mobile.security.VaultRecord
 import app.relaxkonos.mobile.security.VaultUnlockMode
 import app.relaxkonos.mobile.security.model.SavedLogin
+import app.relaxkonos.mobile.ui.common.StatusTone
 import app.relaxkonos.mobile.ui.common.UiMessage
 import app.relaxkonos.mobile.ui.common.problemMessage
 import app.relaxkonos.mobile.ui.common.unlockFailureLabel
@@ -286,31 +288,43 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         if (login.serviceIdKind == app.relaxkonos.mobile.servercenter.ServerServiceIdKind.SshTunnelProfile) {
             val profile = tunnel.profiles.firstOrNull { it.serviceId == login.serviceId }
             if (profile == null) { message = UiMessage(R.string.login_tunnel_missing); return }
-            tunnel.select(profile)
-            managedHostName = null
-            serverUrl = profile.remoteUrl
-            identifier = login.identifier
-            passwordText = ""
-            connectionsOpen = false
-            focusRequest = null
+            applySelection(LoginSelection.Tunnel(profile, login.identifier))
             windowUnlocked = windowUnlocked - loginIdOf(login.serviceId, login.identifier)
-            message = null
             return
         }
-        tunnel.enabled = false
         val directUrl = login.directServerUrl
         if (directUrl == null) {
             selectManaged(login)
             return
         }
-        managedHostName = null
-        serverUrl = directUrl
-        identifier = login.identifier
-        passwordText = ""
-        message = null
-        connectionsOpen = false
-        focusRequest = null
+        applySelection(LoginSelection.Direct(directUrl, login.identifier))
         windowUnlocked = windowUnlocked - loginIdOf(login.serviceId, login.identifier)
+    }
+
+    /**
+     * Puts a picked identity into the form, transport included.
+     *
+     * Every field that describes *this* identity is written here, so no selection path can inherit the
+     * previous one. That inheritance is how the paired-device key came to demand a login identity it
+     * never uses: its row filled the address but left the SSH tunnel switched on, and the tunnel had
+     * silently made the form describe a tunnel profile instead of the paired server, so the key sign-in
+     * refused with "enter the server address and login identity" (`LoginCredentials.Design.md` §6.3).
+     */
+    private fun applySelection(selection: LoginSelection) {
+        when (selection) {
+            is LoginSelection.Tunnel -> tunnel.select(selection.profile)
+            is LoginSelection.Direct, is LoginSelection.Managed -> tunnel.enabled = false
+        }
+        managedHostName = (selection as? LoginSelection.Managed)?.hostDisplayName
+        serverUrl = selection.serverUrl
+        identifier = selection.identifier
+        passwordText = ""
+        // The address field now describes another identity, so a verdict reached for the previous one
+        // must not outlive it: it would explain a later failure with an address nobody is using.
+        endpointDiscoveryState = EndpointDiscoveryState.Idle
+        message = null
+        focusRequest = null
+        connectionsOpen = false
     }
 
     /**
@@ -336,13 +350,10 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             message = UiMessage(R.string.owner_device_not_paired)
             return
         }
-        managedHostName = null
-        serverUrl = connection.effectiveBaseUrl
-        identifier = ""
-        passwordText = ""
-        connectionsOpen = false
-        message = null
-        focusRequest = null
+        // The row decides the transport, exactly as a saved password does: a device key is spent over a
+        // direct connection to its paired server, and an SSH tunnel is a separate service id that could
+        // never hold this key. Only the address is filled in — the key replaces the password identity.
+        applySelection(LoginSelection.Direct(connection.effectiveBaseUrl, ""))
         signInWithOwnerDevice(activity)
     }
 
@@ -359,12 +370,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
      */
     private fun selectManaged(login: SavedLogin) {
         val host = container.managedLogins.hostFor(login.serviceId)
-        managedHostName = host?.displayName
-        serverUrl = ""
-        identifier = login.identifier
-        passwordText = ""
-        connectionsOpen = false
-        focusRequest = null
+        applySelection(LoginSelection.Managed(host?.displayName, login.identifier))
         windowUnlocked = windowUnlocked - loginIdOf(login.serviceId, login.identifier)
         message = if (host == null) {
             UiMessage(R.string.login_managed_host_missing)
@@ -456,7 +462,14 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Enrols this Android Keystore key with the one-time invitation created on the Windows host. */
+    /**
+     * Enrols this Android Keystore key with the one-time invitation created on the Windows host.
+     *
+     * The invitation names its server, so that origin's certificate is confirmed first: the gateway
+     * cannot answer a request its own handshake already rejected, and this screen has no other way to
+     * offer the trust decision. Nothing is sent — neither the invitation token nor the new public key
+     * — until the user has answered.
+     */
     fun pairOwnerDevice(activity: FragmentActivity) {
         if (isLoggingIn) return
         val payload = ownerDevicePairingCode
@@ -464,14 +477,25 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             message = UiMessage(R.string.owner_device_pairing_code_required)
             return
         }
+        // Parsed here only to learn which origin must be trusted before anything is sent; enrolment
+        // parses the very same payload again through the same parser, so no second code format exists.
+        val invitation = runCatching { OwnerDevicePairingInvitation.parse(payload) }.getOrElse {
+            message = UiMessage(R.string.owner_device_pairing_invalid)
+            return
+        }
         isLoggingIn = true
         message = null
         viewModelScope.launch {
             try {
+                if (!ensureCertificateTrusted(invitation.serverUrl)) {
+                    message = UiMessage(R.string.login_certificate_declined, tone = StatusTone.Info)
+                    return@launch
+                }
                 when (val paired = container.ownerDevices.pair(payload)) {
                     is ApiResult.Success -> {
-                        managedHostName = null
-                        serverUrl = paired.value.effectiveBaseUrl
+                        applySelection(LoginSelection.Direct(paired.value.effectiveBaseUrl, ""))
+                        // The enrolment request itself answered over this exact address, so the endpoint
+                        // is known to be reachable — stronger evidence than a probe would be.
                         endpointDiscoveryState = EndpointDiscoveryState.Found
                         ownerDevicePairingCode = ""
                         signInWithOwnerDevice(activity, paired.value)
@@ -518,7 +542,18 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Confirms the origin's certificate, then spends the nonce.
+     *
+     * The challenge is the first HTTPS request this flow makes, so this is the only place the trust
+     * decision can be offered before it; without it a self-signed server answered with a generic
+     * network failure and the user had no way to accept the certificate.
+     */
     private suspend fun signInWithOwnerDevice(activity: FragmentActivity, connection: app.relaxkonos.mobile.servercenter.ServerConnectionIdentity) {
+        if (!ensureCertificateTrusted(connection.effectiveBaseUrl)) {
+            message = UiMessage(R.string.login_certificate_declined, tone = StatusTone.Info)
+            return
+        }
         when (val result = container.session.loginWithOwnerDevice(connection, activity)) {
             is ApiResult.Success -> {
                 // Keep the normalized server address in the ordinary connection list. It records no
@@ -554,20 +589,13 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
      */
     private suspend fun resolve(entered: String) {
         var result = ServerEndpointDiscovery.discover(entered)
-        val review = ServerEndpointDiscovery.candidates(entered).firstNotNullOfOrNull {
-            app.relaxkonos.mobile.core.net.ServerCertificateTrust.review(it)
-        }
+        val review = app.relaxkonos.mobile.core.net.ServerCertificateConfirmation.pending(ServerEndpointDiscovery.candidates(entered))
         if (review != null && serverUrl == entered) {
-            val answer = kotlinx.coroutines.CompletableDeferred<Boolean>()
-            certificateAnswer = answer
-            certificateReview = review
-            try {
-                if (answer.await() && serverUrl == entered) {
-                    if (runCatching { app.relaxkonos.mobile.core.net.ServerCertificateTrust.trust(review) }.isSuccess)
-                        result = ServerEndpointDiscovery.discover(entered)
-                    else message = UiMessage(R.string.login_server_unavailable)
-                }
-            } finally { certificateReview = null; certificateAnswer = null }
+            if (askCertificateConsent(review) && serverUrl == entered) {
+                if (app.relaxkonos.mobile.core.net.ServerCertificateConfirmation.consent(review))
+                    result = ServerEndpointDiscovery.discover(entered)
+                else message = UiMessage(R.string.login_server_unavailable)
+            }
         }
         if (serverUrl == entered) {
             when (result) {
@@ -945,17 +973,43 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         if (container.session.state.value is app.relaxkonos.mobile.core.auth.SessionState.Active) tunnel.adopt()
         else tunnel.close()
     }
-    private suspend fun confirmTunnelCertificate(review: app.relaxkonos.mobile.core.net.CertificateReview): Boolean {
+    /**
+     * Shows a certificate review and waits for the answer.
+     *
+     * One prompt serves every TLS flow: the address probe, the SSH tunnel, owner-device pairing and
+     * owner-device sign-in all wait on this same pair of fields, so a second copy could only drift.
+     */
+    private suspend fun askCertificateConsent(review: app.relaxkonos.mobile.core.net.CertificateReview): Boolean {
         val pending = kotlinx.coroutines.CompletableDeferred<Boolean>()
         certificateAnswer = pending
         certificateReview = review
         return try { pending.await() } finally { certificateAnswer = null; certificateReview = null }
     }
+
+    /**
+     * The whole "probe, ask, pin" step, for a flow that has not probed its address yet.
+     *
+     * The probe is what makes a handshake happen outside the request itself, and the review it leaves
+     * behind is what the user answers. Its verdict is ignored on purpose: a probe is an optimization
+     * everywhere in this screen and must not become a gate here, so an address that cannot answer a
+     * probe still gets to send its request.
+     *
+     * Named apart from [LoginTunnelController.open]'s own `confirmCertificate` callback, which waits
+     * on the same prompt for the SSH host of a managed login.
+     */
+    private suspend fun ensureCertificateTrusted(endpoint: String): Boolean {
+        val review = app.relaxkonos.mobile.core.net.ServerCertificateConfirmation.reviewFor(
+            ServerEndpointDiscovery.candidates(endpoint),
+        ) { ServerEndpointDiscovery.discover(endpoint) } ?: return true
+        return askCertificateConsent(review) &&
+            app.relaxkonos.mobile.core.net.ServerCertificateConfirmation.consent(review)
+    }
+
     private suspend fun openLoginTunnel(activity: FragmentActivity, testOnly: Boolean = false) {
         val password = if (tunnel.useServerCredentials) sharedTunnelPassword(activity) ?: throw TunnelCancelledException()
             else passwordText.toCharArray()
         try {
-            tunnel.open(activity, serverUrl, identifier, password, testOnly, ::confirmTunnelCertificate)
+            tunnel.open(activity, serverUrl, identifier, password, testOnly, ::askCertificateConsent)
         } finally { password.fill('\u0000') }
     }
 
@@ -995,7 +1049,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val password = sharedTunnelPassword(activity) ?: return@launch
                 credential = password
-                tunnel.open(activity, serverUrl, identifier, password, confirmCertificate = ::confirmTunnelCertificate)
+                tunnel.open(activity, serverUrl, identifier, password, confirmCertificate = ::askCertificateConsent)
                 if (typed) {
                     handedToLogin = true
                     signInWithTypedPassword(activity, password)

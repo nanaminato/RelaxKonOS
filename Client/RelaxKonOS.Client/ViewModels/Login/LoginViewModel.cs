@@ -439,7 +439,7 @@ public partial class LoginViewModel : ObservableObject
         {
             var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0";
             await _session.BootstrapWindowsOwnerDeviceAsync(ServerConnectionIdentityRules.Direct(resolution.Endpoint!),
-                Environment.MachineName, version, ct);
+                Environment.MachineName, version, RememberServer, ct);
             StatusMessage = T("login.status.opening_desktop", "Connected. Opening desktop...");
         }
         catch (RelaxKonOSAuthException ex) { ErrorMessage = MapProblemToMessage(ex); HasError = true; StatusMessage = string.Empty; }
@@ -462,7 +462,8 @@ public partial class LoginViewModel : ObservableObject
         StatusMessage = T("login.owner_device.signing_in", "Signing the device challenge...");
         try
         {
-            await _session.LoginWithOwnerDeviceAsync(ServerConnectionIdentityRules.Direct(resolution.Endpoint!), OwnerDeviceKeyPassphrase, ct);
+            await _session.LoginWithOwnerDeviceAsync(ServerConnectionIdentityRules.Direct(resolution.Endpoint!), OwnerDeviceKeyPassphrase,
+                RememberServer, ct);
             OwnerDeviceKeyPassphrase = string.Empty;
             StatusMessage = T("login.status.opening_desktop", "Connected. Opening desktop...");
         }
@@ -495,7 +496,7 @@ public partial class LoginViewModel : ObservableObject
             var platform = DetectClientPlatform().ToString().ToLowerInvariant();
             var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0";
             await _session.AcceptOwnerDevicePairingAsync(OwnerDevicePairingCode, Environment.MachineName, platform, version,
-                OwnerDeviceKeyPassphrase, ct);
+                OwnerDeviceKeyPassphrase, RememberServer, ct);
             OwnerDevicePairingCode = string.Empty;
             OwnerDeviceKeyPassphrase = string.Empty;
             StatusMessage = T("login.status.opening_desktop", "Connected. Opening desktop...");

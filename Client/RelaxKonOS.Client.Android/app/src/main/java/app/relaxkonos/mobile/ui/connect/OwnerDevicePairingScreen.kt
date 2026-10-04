@@ -2,6 +2,7 @@ package app.relaxkonos.mobile.ui.connect
 
 import app.relaxkonos.mobile.ui.common.rememberUsageOpenDocument
 
+import app.relaxkonos.mobile.ui.common.ActionFeedback
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -116,6 +117,13 @@ fun OwnerDevicePairingScreen(modifier: Modifier = Modifier, onClose: () -> Unit)
             subtitle = stringResource(R.string.owner_device_add_subtitle),
             onBack = onClose,
         )
+
+        // This flow's own failures belong on the screen that produced them. It shares its view model
+        // with the login screen, so without this every pairing failure was reported as a dialog on the
+        // login screen — shown only after the user had navigated away from where it happened.
+        viewModel.message?.let { banner ->
+            ActionFeedback(message = banner, onRetry = null, onDismiss = { viewModel.dismissMessage() })
+        }
 
         OutlinedTextField(
             value = viewModel.ownerDevicePairingCode,

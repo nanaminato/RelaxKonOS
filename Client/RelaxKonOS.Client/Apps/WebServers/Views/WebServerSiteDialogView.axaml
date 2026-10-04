@@ -4,13 +4,15 @@
              xmlns:webservers="clr-namespace:RelaxKonOS.Client.Apps.WebServers"
              x:Class="RelaxKonOS.Client.Apps.WebServers.Views.WebServerSiteDialogView"
              x:DataType="webservers:WebServerManagerViewModel">
-    <Grid Margin="20" MinWidth="0" MinHeight="0" RowDefinitions="*,Auto" RowSpacing="12">
-        <ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+    <Grid Margin="20" MinWidth="0" MinHeight="0" RowDefinitions="Auto,*,Auto" RowSpacing="12">
+        <!-- Fixed description -> scrolling form -> fixed action row. The dialog-level help stays pinned
+             while the form below scrolls. -->
+        <TextBlock Grid.Row="0" Text="{loc:Loc webservers.site.dialog.help}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" MinWidth="0" MinHeight="0">
             <!-- Fluent scrollbars overlay their content. Reserve a gutter so they never cover
                  NumericUpDown arrows or the right edge of text fields. -->
             <StackPanel Margin="0,0,20,0" MinWidth="0" Spacing="10">
-                <TextBlock Text="{loc:Loc webservers.site.dialog.help}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
-
                 <StackPanel Spacing="4">
                     <TextBlock Text="{loc:Loc webservers.site.dialog.name}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
                     <TextBox Text="{Binding SiteName, Mode=TwoWay}" PlaceholderText="{loc:Loc webservers.site.dialog.name_hint}" />
@@ -99,7 +101,7 @@
             </StackPanel>
         </ScrollViewer>
 
-        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
             <Button Content="{loc:Loc common.cancel}" Click="Cancel_Click" />
             <Button Classes="primary" Content="{loc:Loc webservers.site.dialog.save_apply}" Command="{Binding SaveSiteCommand}" />
         </StackPanel>

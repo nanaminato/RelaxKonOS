@@ -8,6 +8,7 @@ import android.util.Base64
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import app.relaxkonos.mobile.R
 import java.io.File
 import java.security.KeyPairGenerator
 import java.security.KeyStore
@@ -32,7 +33,7 @@ class OwnerDeviceSigningException(message: String, cause: Throwable? = null) : I
  * non-exportable and remains under an alias derived from the normalized server identity.
  */
 class OwnerDeviceKeyStore(
-    context: Context,
+    private val context: Context,
     private val biometricCapability: BiometricCapabilityDetector,
 ) {
     private val storage = File(context.noBackupFilesDir, "owner-device-registrations.json")
@@ -152,9 +153,9 @@ class OwnerDeviceKeyStore(
             continuation.invokeOnCancellation { prompt.cancelAuthentication() }
             prompt.authenticate(
                 BiometricPrompt.PromptInfo.Builder()
-                    .setTitle("Sign in with this device")
-                    .setSubtitle("Confirm to use the Android owner-device key")
-                    .setNegativeButtonText("Cancel")
+                    .setTitle(context.getString(R.string.owner_device_sign_in))
+                    .setSubtitle(context.getString(R.string.owner_device_key_confirm_subtitle))
+                    .setNegativeButtonText(context.getString(R.string.common_cancel))
                     .setAllowedAuthenticators(androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG)
                     .build(),
                 BiometricPrompt.CryptoObject(signature),
@@ -169,8 +170,8 @@ class OwnerDeviceKeyStore(
         })
         continuation.invokeOnCancellation { prompt.cancelAuthentication() }
         val builder = BiometricPrompt.PromptInfo.Builder()
-            .setTitle("Sign in with this device")
-            .setSubtitle("Unlock the Android owner-device key")
+            .setTitle(context.getString(R.string.owner_device_sign_in))
+            .setSubtitle(context.getString(R.string.owner_device_key_unlock_subtitle))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             builder.setAllowedAuthenticators(
                 androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG or

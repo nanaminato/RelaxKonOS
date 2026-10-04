@@ -57,6 +57,8 @@
     <string name="owner_device_pairing_code">ペアリングコード</string>
     <string name="owner_device_pair">この Android デバイスをペアリング</string>
     <string name="owner_device_sign_in">このデバイスでサインイン</string>
+    <string name="owner_device_key_confirm_subtitle">Android の所有者デバイスキーの使用を確認します。</string>
+    <string name="owner_device_key_unlock_subtitle">Android の所有者デバイスキーのロックを解除します。</string>
     <string name="owner_device_pairing_code_required">登録済み Windows デバイスのペアリングコードを貼り付けてください。</string>
     <string name="owner_device_pairing_invalid">ペアリングコードが無効か期限切れ、または HTTP(S) サーバーを示していません。</string>
     <string name="owner_device_not_paired">この Android デバイスは選択したサーバーとペアリングされていません。</string>
@@ -2567,6 +2569,7 @@
     <string name="login_certificate_trust">信頼</string>
     <string name="login_certificate_scope">このアドレス、ポート、証明書だけを信頼します。SHA-256 指紋を確認してください。</string>
     <string name="login_certificate_previous">以前の SHA-256：%1$s</string>
+    <string name="login_certificate_declined">サーバー証明書を信頼しなかったため、リクエストは送信されませんでした。</string>
     <string name="server_maintenance_title">インストールと保守</string>
     <string name="server_maintenance_check">サーバーを確認</string>
     <string name="server_maintenance_absent">未インストール</string>

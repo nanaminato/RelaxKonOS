@@ -15,6 +15,14 @@ public interface IRememberedSessionStore
     Task<IReadOnlyList<SavedLoginProfile>> LoadAsync(CancellationToken ct = default);
     Task<RememberedProfileSaveResult> RemoveAsync(string serviceId, string identifier, CancellationToken ct = default);
     Task<RememberedProfileSaveResult> UpsertAsync(SavedLoginProfile profile, CancellationToken ct = default);
+
+    /// <summary>
+    /// Adds or refreshes a connection proven without a password (an owner-device key). The write itself
+    /// carries no credential, and a password already saved for the same account survives it: signing in
+    /// with a device key must never silently drop the password the user chose to save.
+    /// </summary>
+    Task<RememberedProfileSaveResult> UpsertPasswordlessAsync(SavedLoginProfile profile, CancellationToken ct = default);
+
     Task ClearAsync(CancellationToken ct = default);
 }
 
@@ -88,14 +96,17 @@ public sealed class RememberedSessionStore : IRememberedSessionStore
             "com.relaxkonos.client.remembered-session", "application", "RelaxKonOS.Client",
             "RelaxKonOS saved connection"));
 
-    private readonly string _windowsFilePath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "RelaxKonOS",
-        "remembered-session.bin");
-    private readonly string _linuxProfilesPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "RelaxKonOS",
-        "remembered-connections.json");
+    private readonly string _windowsFilePath;
+    private readonly string _linuxProfilesPath;
+
+    public RememberedSessionStore(string? directory = null)
+    {
+        var root = directory ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "RelaxKonOS");
+        _windowsFilePath = Path.Combine(root, "remembered-session.bin");
+        _linuxProfilesPath = Path.Combine(root, "remembered-connections.json");
+    }
 
     public async Task<IReadOnlyList<SavedLoginProfile>> LoadAsync(CancellationToken ct = default)
     {
@@ -134,6 +145,27 @@ public sealed class RememberedSessionStore : IRememberedSessionStore
         var profiles = (await LoadAsync(ct)).ToList();
         profiles.RemoveAll(item => SavedLoginProfile.SameProfile(item.ServiceId, item.Identifier, profile.ServiceId, profile.Identifier));
         profiles.Add(profile with { ServiceId = profile.ServiceId.Trim(), Identifier = profile.Identifier.Trim() });
+        return await SaveProfilesAsync(profiles, ct);
+    }
+
+    public async Task<RememberedProfileSaveResult> UpsertPasswordlessAsync(SavedLoginProfile profile, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        var profiles = (await LoadAsync(ct)).ToList();
+        // The record being written proves a key, not a password, so it can only ever refresh the parts of
+        // an existing record it actually owns (recency and label). Reading the credential before the
+        // replace keeps a saved password from being dropped as a side effect of a device-key sign-in.
+        var existing = profiles.FirstOrDefault(item =>
+            SavedLoginProfile.SameProfile(item.ServiceId, item.Identifier, profile.ServiceId, profile.Identifier));
+        profiles.RemoveAll(item =>
+            SavedLoginProfile.SameProfile(item.ServiceId, item.Identifier, profile.ServiceId, profile.Identifier));
+        profiles.Add(profile with
+        {
+            ServiceId = profile.ServiceId.Trim(),
+            Identifier = profile.Identifier.Trim(),
+            Password = existing?.Password,
+            DisplayName = profile.DisplayName ?? existing?.DisplayName,
+        });
         return await SaveProfilesAsync(profiles, ct);
     }
 
