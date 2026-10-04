@@ -25,6 +25,67 @@ public sealed class LocalWindowsServerInstaller(
 {
     public const string JournalHostId = "local-windows";
     public Guid? LastOperationId { get; private set; }
+    public ServerHostSnapshotDto? LastVerifiedSnapshot { get; private set; }
+
+    public async Task<ServerHostSnapshotDto> StatusAsync(CancellationToken cancellationToken = default)
+    {
+        LastOperationId = null;
+        await using var session = await sessions.OpenAsync(cancellationToken).ConfigureAwait(false);
+        return await ReadStatusAsync(session, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<ServerHostSnapshotDto> MaintainAsync(ServerDeploymentKind kind, ServerHostSnapshotDto reviewed,
+        string language, bool confirmed, ServerDataRetention retention = ServerDataRetention.Retain,
+        CancellationToken cancellationToken = default)
+    {
+        LastOperationId = null;
+        if (kind is not (ServerDeploymentKind.Repair or ServerDeploymentKind.Rollback or ServerDeploymentKind.Uninstall) ||
+            !confirmed || !reviewed.Installed || reviewed.Mode != ServerInstallMode.WindowsSystem ||
+            !ServerInstallationId.IsValid(reviewed.InstallationId) || !Enum.IsDefined(retention) ||
+            retention == ServerDataRetention.Delete && kind != ServerDeploymentKind.Uninstall)
+            throw new ArgumentException("Review and confirm a valid local lifecycle action first.");
+        await using var session = await sessions.OpenAsync(cancellationToken).ConfigureAwait(false);
+        var current = await ReadStatusAsync(session, cancellationToken).ConfigureAwait(false);
+        if (!current.Installed || current.Mode != reviewed.Mode || current.InstallationId != reviewed.InstallationId ||
+            current.InstallRoot != reviewed.InstallRoot || current.DataRoot != reviewed.DataRoot ||
+            current.Version != reviewed.Version || current.PreviousVersion != reviewed.PreviousVersion)
+            throw new InvalidDataException("The local installation changed; refresh and review it again.");
+        var options = new ServerDeploymentOptions(ServerPackageSourceKind.OfficialStable, ServerNetworkProfile.Loopback,
+            retention, ServerInstallMode.WindowsSystem, ExpectedInstallationId: current.InstallationId,
+            Confirmed: true, Language: language, InstallRoot: current.InstallRoot, DataRoot: current.DataRoot);
+        await ExecuteRecordedAsync(session, new(ServerDeploymentProtocol.Version, Guid.NewGuid(), kind, options), cancellationToken)
+            .ConfigureAwait(false);
+        var after = await ReadStatusAsync(session, cancellationToken).ConfigureAwait(false);
+        if (kind == ServerDeploymentKind.Uninstall ? after.Installed :
+            !after.Installed || !after.Healthy || after.InstallationId != current.InstallationId)
+            throw new InvalidDataException("Local lifecycle status verification failed.");
+        return after;
+    }
+
+    private async Task<ServerHostSnapshotDto> ReadStatusAsync(ILocalWindowsDeploymentSession session, CancellationToken ct)
+    {
+        var receipt = await ExecuteRecordedAsync(session, new(ServerDeploymentProtocol.Version, Guid.NewGuid(),
+            ServerDeploymentKind.Status, new(ServerPackageSourceKind.OfficialStable, ServerNetworkProfile.Loopback,
+                Mode: ServerInstallMode.WindowsSystem)), ct).ConfigureAwait(false);
+        var snapshot = receipt.Snapshot ?? throw new InvalidDataException("Missing local installation status.");
+        if (snapshot.Installed && (snapshot.Mode != ServerInstallMode.WindowsSystem ||
+            !ServerInstallationId.IsValid(snapshot.InstallationId)))
+            throw new InvalidDataException("Invalid local installation identity or mode.");
+        return snapshot;
+    }
+
+    private async Task<ServerDeploymentOperationDto> ExecuteRecordedAsync(ILocalWindowsDeploymentSession session,
+        ServerDeploymentRequest request, CancellationToken ct)
+    {
+        LastOperationId = request.OperationId;
+        var now = DateTimeOffset.UtcNow;
+        await journal.RecordAsync(new(request.OperationId, JournalHostId, request.Kind, ServerDeploymentState.Queued,
+            ServerDeploymentPhase.Queued, 0, null, null, null, now, null, now), ct).ConfigureAwait(false);
+        var receipt = await session.ExecuteAsync(request, null, null, null, null, ct).ConfigureAwait(false);
+        await journal.RecordAsync(ServerCenterOperationRecord.From(JournalHostId, receipt), ct).ConfigureAwait(false);
+        if (receipt.State != ServerDeploymentState.Succeeded) throw new LocalWindowsDeploymentFailedException(receipt);
+        return receipt;
+    }
 
     public async Task<string> InstallAsync(ServerInstallationOptions installation, string language,
         IProgress<string>? stage, IProgress<ServerDeploymentTransfer?>? transfer, CancellationToken cancellationToken = default)
@@ -89,7 +150,9 @@ public sealed class LocalWindowsServerInstaller(
         stage?.Report("verifying");
         var status = await Execute(new(ServerDeploymentProtocol.Version, Guid.NewGuid(), ServerDeploymentKind.Status,
             new(ServerPackageSourceKind.OfficialStable, ServerNetworkProfile.Loopback, Mode: ServerInstallMode.WindowsSystem)));
-        return VerifiedLocalEndpoint(result.InstallationId!, status.Snapshot);
+        var endpoint = VerifiedLocalEndpoint(result.InstallationId!, status.Snapshot);
+        LastVerifiedSnapshot = status.Snapshot;
+        return endpoint;
     }
 
     public static string VerifiedLocalEndpoint(string installationId, ServerHostSnapshotDto? snapshot)

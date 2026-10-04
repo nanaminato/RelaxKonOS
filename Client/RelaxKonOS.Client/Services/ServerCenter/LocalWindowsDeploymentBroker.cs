@@ -12,7 +12,7 @@ using RelaxKonOS.Protocol.ServerCenter;
 
 namespace RelaxKonOS.Client.Services.ServerCenter;
 
-/// <summary>One UAC child per reviewed installation; credentials and payloads travel over a private, PID-checked pipe.</summary>
+/// <summary>One UAC child per local deployment session; credentials and payloads travel over a private, PID-checked pipe.</summary>
 [SupportedOSPlatform("windows")]
 public sealed class LocalWindowsDeploymentSessionFactory : ILocalWindowsDeploymentSessionFactory
 {
@@ -136,14 +136,18 @@ public static class LocalWindowsDeploymentBroker
         var bytes = JsonSerializer.SerializeToUtf8Bytes(request, RelaxKonOSJsonOptions.Default);
         if (request.SchemaVersion != ServerDeploymentProtocol.Version || request.OperationId == Guid.Empty ||
             !ServerDeploymentRequestWireValidation.IsStrictRequest(bytes) ||
-            request.Kind is not (ServerDeploymentKind.Probe or ServerDeploymentKind.Status or ServerDeploymentKind.Install or ServerDeploymentKind.Upgrade) ||
+            !Enum.IsDefined(request.Kind) ||
             request.Options is { } options && (options.Mode != ServerInstallMode.WindowsSystem ||
                 options.Source == ServerPackageSourceKind.RemoteBundle || options.RemotePackagePath is not null ||
-                options.Retention != ServerDataRetention.Retain))
+                options.Retention == ServerDataRetention.Delete && request.Kind != ServerDeploymentKind.Uninstall))
             throw new InvalidDataException("Invalid local deployment request.");
         if (request.Kind is ServerDeploymentKind.Install or ServerDeploymentKind.Upgrade &&
             request.Options is not { Confirmed: true, Mode: ServerInstallMode.WindowsSystem })
             throw new InvalidDataException("An explicitly reviewed Windows installation is required.");
+        if (request.Kind is ServerDeploymentKind.Upgrade or ServerDeploymentKind.Repair or ServerDeploymentKind.Rollback or ServerDeploymentKind.Uninstall &&
+            (request.Options is not { Confirmed: true, Mode: ServerInstallMode.WindowsSystem } ||
+             !ServerInstallationId.IsValid(request.Options.ExpectedInstallationId)))
+            throw new InvalidDataException("A reviewed lifecycle action bound to the installed identity is required.");
     }
 
     [SupportedOSPlatform("windows")]

@@ -102,6 +102,32 @@ static class LocalWindowsInstallationChecks
                 Reject<InvalidDataException>(() => LocalWindowsDeploymentBroker.ValidateRequest(request));
             Check(true, "Broker rejects unreviewed, remote-file, non-Windows and arbitrary lifecycle requests.");
 
+            foreach (var kind in new[] { ServerDeploymentKind.Repair, ServerDeploymentKind.Rollback, ServerDeploymentKind.Uninstall })
+            {
+                var lifecycle = new LocalTestFactory();
+                var local = new LocalWindowsServerInstaller(lifecycle, new FileServerCenterReleaseSource(), journal);
+                var after = await local.MaintainAsync(kind, Snapshot, "zh-CN", true);
+                Check(lifecycle.Opens == 1 && lifecycle.Session.Disposed && lifecycle.Session.Requests.Select(r => r.Kind)
+                    .SequenceEqual([ServerDeploymentKind.Status, kind, ServerDeploymentKind.Status]),
+                    "Local lifecycle actions refresh identity and verify status in one elevation session.");
+                Check(lifecycle.Session.Requests[1].Options is { Confirmed: true,
+                    Retention: ServerDataRetention.Retain } options && options.ExpectedInstallationId == InstallationId,
+                    "Maintenance defaults to retaining data and binds the reviewed identity.");
+                Check(kind == ServerDeploymentKind.Uninstall ? !after.Installed : after.Healthy, "Local final status matches the requested lifecycle action.");
+            }
+            var deleting = new LocalTestFactory();
+            await new LocalWindowsServerInstaller(deleting, new FileServerCenterReleaseSource(), journal)
+                .MaintainAsync(ServerDeploymentKind.Uninstall, Snapshot, "en-US", true, ServerDataRetention.Delete);
+            Check(deleting.Session.Requests[1].Options!.Retention == ServerDataRetention.Delete, "Explicit data deletion reaches the fixed uninstall engine.");
+            var changed = new LocalTestFactory { Session = new LocalTestSession { HostSnapshot = Snapshot with { InstallationId = ServerInstallationId.NewId() } } };
+            await RejectAsync<InvalidDataException>(() => new LocalWindowsServerInstaller(changed, new FileServerCenterReleaseSource(), journal)
+                .MaintainAsync(ServerDeploymentKind.Uninstall, Snapshot, "en-US", true));
+            Check(changed.Session.Requests.Count == 1, "An installation changed since review cannot be uninstalled.");
+            var unconfirmed = new LocalTestFactory();
+            await RejectAsync<ArgumentException>(() => new LocalWindowsServerInstaller(unconfirmed, new FileServerCenterReleaseSource(), journal)
+                .MaintainAsync(ServerDeploymentKind.Uninstall, Snapshot, "en-US", false));
+            Check(unconfirmed.Opens == 0, "Unconfirmed maintenance never requests elevation.");
+
             var targets = new HostTargetStore(directory);
             var keys = new SshHostKeyTrustStore(directory);
             var sshFactory = new TunnelTestFactory();
@@ -220,6 +246,7 @@ static class LocalWindowsInstallationChecks
         {
             LocalWindowsDeploymentBroker.ValidateRequest(request);
             Requests.Add(request);
+            if (request.Kind == ServerDeploymentKind.Uninstall) HostSnapshot = HostSnapshot with { Installed = false, Healthy = false };
             if (archive is not null) { using var copy = new MemoryStream(); await archive.CopyToAsync(copy, ct); Archive = copy.ToArray(); }
             if (certificate is not null) { using var copy = new MemoryStream(); await certificate.CopyToAsync(copy, ct); Certificate = copy.ToArray(); }
             var now = DateTimeOffset.UtcNow;

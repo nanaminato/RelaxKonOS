@@ -6,7 +6,7 @@ namespace RelaxKonOS.Client.ViewModels.Login;
 public partial class LoginViewModel
 {
     public bool LocalInstallationAvailable => OperatingSystem.IsWindows();
-    public string LocalInstallText => T("login.local_install", "Install on this computer");
+    public string LocalInstallText => T("login.local_install", "Manage this computer");
     public Func<Task<string?>>? ShowLocalInstallationAsync { get; set; }
 
     [RelayCommand(CanExecute = nameof(CanInstallOnThisComputer))]
