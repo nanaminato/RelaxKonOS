@@ -13,6 +13,10 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -167,6 +171,9 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
     var adoptConfirm by remember(hostId, workspaceRevision) { mutableStateOf<List<SshFileCheck>?>(null) }
     var showTransferHelp by remember(hostId) { mutableStateOf(false) }
     var editAddress by remember(hostId) { mutableStateOf(false) }
+    val fileListState = rememberLazyListState()
+    LaunchedEffect(hostId, state.path) { fileListState.scrollToItem(0) }
+    var showSearch by remember(hostId) { mutableStateOf(false) }
     var showSort by remember(hostId) { mutableStateOf(false) }
     var fileActions by remember(hostId) { mutableStateOf(false) }
     val pickUpload = rememberLauncherForActivityResult(rememberUsageOpenMultipleDocuments("SshFilesScreen.upload-files.$hostId")) { uris -> pendingUpload = uris }
@@ -186,7 +193,9 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
             saveDownload.launch(if (state.downloadZip) target.name + ".zip" else target.name)
         }
     }
-    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+    Column(modifier.fillMaxSize()
+        .then(if (state.detailEntry != null || !state.connected) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+        .padding(horizontal = Spacing.md, vertical = Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         state.transfer?.let { transfer ->
             Text(transfer.fileName)
             app.relaxkonos.mobile.ui.common.TransferProgressContent(transfer)
@@ -253,10 +262,10 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
                     TextButton({ editAddress = false }) { Text(stringResource(R.string.common_cancel)) }
                 }
                 }
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(value = state.search, onValueChange = model::search, enabled = !state.busy, singleLine = true,
-                    modifier = Modifier.weight(1f), label = { Text(stringResource(R.string.ssh_files_search)) })
-                    TextButton(onClick = { showSort = !showSort }) { Text(stringResource(R.string.ssh_files_sort)) }
+                if (showSearch || state.search.isNotEmpty()) {
+                    OutlinedTextField(value = state.search, onValueChange = model::search, enabled = !state.busy, singleLine = true,
+                        modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ssh_files_search)) },
+                        trailingIcon = { TextButton(onClick = { model.search(""); showSearch = false }) { Text(stringResource(R.string.common_close)) } })
                 }
                 if (showSort) {
                 FlowRow {
@@ -267,18 +276,30 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
                 }
                 }
                 Text(stringResource(R.string.ssh_files_counts, state.visibleEntries.size, state.entries.size, state.selectedPaths.size), style = MaterialTheme.typography.bodySmall)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), modifier = Modifier.fillMaxWidth()) {
-                    Button({ pickUpload.launch(arrayOf("*/*")) }, enabled = !state.busy && !state.unknown) { Text(stringResource(R.string.ssh_files_upload)) }
-                    TextButton(model::selectMode, enabled = !state.busy) { Text(stringResource(if (state.selecting) R.string.ssh_files_selection_done else R.string.ssh_files_select_multiple)) }
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { showSearch = !showSearch }, enabled = !state.busy) {
+                        Text(stringResource(R.string.files_search) + if (state.search.isNotEmpty()) " •" else "")
+                    }
+                    Spacer(Modifier.weight(1f))
                     androidx.compose.foundation.layout.Box {
-                        TextButton(onClick = { fileActions = true }, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_more)) }
+                        TextButton(onClick = { fileActions = true }, enabled = !state.busy) { Text(stringResource(R.string.files_actions)) }
                         DropdownMenu(expanded = fileActions, onDismissRequest = { fileActions = false }) {
+                            DropdownMenuItem(text = { Text(stringResource(R.string.ssh_files_upload)) }, enabled = !state.unknown,
+                                onClick = { fileActions = false; pickUpload.launch(arrayOf("*/*")) })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.ssh_files_sort)) },
+                                onClick = { fileActions = false; showSort = !showSort })
+                            DropdownMenuItem(text = { Text(stringResource(if (state.selecting) R.string.ssh_files_selection_done else R.string.ssh_files_select_multiple)) },
+                                onClick = { fileActions = false; model.selectMode() })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.ssh_files_forward)) }, enabled = state.historyIndex < state.history.lastIndex,
+                                onClick = { fileActions = false; model.forwardDirectory() })
                             DropdownMenuItem(text = { Text(stringResource(R.string.ssh_files_new_folder)) }, enabled = !state.unknown,
                                 onClick = { fileActions = false; model.beginCreateDirectory() })
                             DropdownMenuItem(text = { Text(stringResource(R.string.ssh_files_upload_folder)) }, enabled = !state.unknown,
                                 onClick = { fileActions = false; pickTree.launch(null) })
                         }
                     }
+                }
+                if (state.selecting || state.selectedPaths.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     if (state.selecting) TextButton(model::selectAllVisible, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_select_all)) }
                     if (state.selectedPaths.isNotEmpty()) {
                         TextButton({ model.clipboard(cut = false) }, enabled = !state.busy && !state.unknown) { Text(stringResource(R.string.ssh_files_copy)) }
@@ -294,8 +315,8 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
                         TextButton(model::clearClipboard, enabled = !state.busy) { Text(stringResource(R.string.common_cancel)) }
                     }
                 }
-                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                    state.visibleEntries.forEach { entry ->
+                LazyColumn(Modifier.fillMaxWidth().weight(1f), state = fileListState, verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                    items(state.visibleEntries, key = { it.path }) { entry ->
                         ListRow(
                             title = entry.name,
                             subtitle = if (entry.isDirectory) stringResource(R.string.ssh_files_folder) else formatSize(entry.size),
@@ -309,13 +330,15 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
                         )
                     }
                     state.selected?.takeIf { !it.isDirectory }?.let { selected ->
-                        SectionCard(title = selected.name, subtitle = formatSize(selected.size), leading = DesktopIcons.fileFor(selected.name, false)) {
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                                OutlinedButton({ model.requestDownload(selected) }, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_download)) }
-                                TextButton({ model.beginRename(selected) }, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_rename)) }
-                                TextButton({ model.askDelete(selected) }, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_delete)) }
+                        item(key = "selected-preview") {
+                            SectionCard(title = selected.name, subtitle = formatSize(selected.size), leading = DesktopIcons.fileFor(selected.name, false)) {
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                                    OutlinedButton({ model.requestDownload(selected) }, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_download)) }
+                                    TextButton({ model.beginRename(selected) }, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_rename)) }
+                                    TextButton({ model.askDelete(selected) }, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_delete)) }
+                                }
+                                Preview(state.preview, model::updateText, model::saveText, state.busy)
                             }
-                            Preview(state.preview, model::updateText, model::saveText, state.busy)
                         }
                     }
                 }

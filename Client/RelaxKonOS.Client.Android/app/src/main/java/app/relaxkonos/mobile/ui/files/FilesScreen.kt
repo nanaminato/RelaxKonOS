@@ -1268,11 +1268,10 @@ fun FilesScreen(
     if (locationOpen) FileLocationDialog(viewModel) { locationOpen = false }
 
     Column(
-        modifier = modifier.fillMaxSize().padding(Spacing.lg),
-        verticalArrangement = Arrangement.spacedBy(Spacing.md),
+        modifier = modifier.fillMaxSize().padding(horizontal = Spacing.md, vertical = Spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(Spacing.xs),
     ) {
         ScreenHeader(title = stringResource(R.string.nav_files))
-        TextButton(onClick = { viewModel.editText() }, enabled = viewModel.canMutate) { Text(stringResource(R.string.editor_new)) }
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -1285,10 +1284,10 @@ fun FilesScreen(
                     contentDescription = stringResource(R.string.files_action_up),
                 )
             }
-            LocationBar(
-                path = viewModel.path.ifBlank { stringResource(R.string.files_root) },
-                modifier = Modifier.weight(1f),
-            )
+            TextButton(onClick = { locationOpen = true }, modifier = Modifier.weight(1f),
+                enabled = !viewModel.batchRunning && !viewModel.mutationBusy) {
+                LocationBar(path = viewModel.path.ifBlank { stringResource(R.string.files_root) }, modifier = Modifier.fillMaxWidth())
+            }
             IconButton(onClick = { viewModel.refresh() }) {
                 DesktopIcon(
                     icon = DesktopIcons.refresh,
@@ -1298,28 +1297,8 @@ fun FilesScreen(
             }
         }
 
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-            TextButton(onClick = viewModel::goBack, enabled = viewModel.canGoBack && !viewModel.batchRunning && !viewModel.mutationBusy) { Text(stringResource(R.string.files_back)) }
-            TextButton(onClick = viewModel::goForward, enabled = viewModel.canGoForward && !viewModel.batchRunning && !viewModel.mutationBusy) { Text(stringResource(R.string.files_forward)) }
-            TextButton(onClick = { locationOpen = true }, enabled = !viewModel.batchRunning && !viewModel.mutationBusy) { Text(stringResource(R.string.files_go_directory)) }
-        }
-        FileBrowserControls(viewModel)
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            OutlinedButton(onClick = { viewModel.openNewDirectory() }, enabled = viewModel.canMutate && viewModel.path.isNotBlank(), modifier = Modifier.weight(1f)) {
-                DesktopIcon(icon = DesktopIcons.newFolder, size = 18.dp)
-                Spacer(Modifier.width(Spacing.sm))
-                Text(stringResource(R.string.files_action_new_directory))
-            }
-            Button(
-                onClick = { pickUpload.launch(arrayOf("*/*")) },
-                enabled = viewModel.canMutate && viewModel.path.isNotBlank() && !uploadRunning,
-                modifier = Modifier.weight(1f),
-            ) {
-                DesktopIcon(icon = DesktopIcons.upload, size = 18.dp)
-                Spacer(Modifier.width(Spacing.sm))
-                Text(stringResource(R.string.files_action_upload))
-            }
-        }
+        FileBrowserControls(viewModel, onLocation = { locationOpen = true },
+            onUpload = { pickUpload.launch(arrayOf("*/*")) }, uploadRunning = uploadRunning)
 
         // Above the list, not below it: an unfinished upload is a thing the user came here to act on,
         // and a card that only appears once every entry has been scrolled past is a card nobody sees.

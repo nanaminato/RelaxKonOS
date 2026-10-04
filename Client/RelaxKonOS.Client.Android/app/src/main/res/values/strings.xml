@@ -2804,4 +2804,5 @@
     <string name="firewall_windows_scope">Changes apply to Domain, Private and Public profiles. Only rules managed by this app are listed.</string>
     <string name="manage_search_applications">Search applications</string>
     <string name="manage_search_empty">No applications match your search.</string>
+    <string name="files_actions">Actions</string>
 </resources>

@@ -20,14 +20,36 @@ import app.relaxkonos.mobile.ui.common.RemotePathPicker
 import app.relaxkonos.mobile.ui.theme.Spacing
 
 @Composable
-fun FileBrowserControls(vm: FilesViewModel) {
+fun FileBrowserControls(
+    vm: FilesViewModel,
+    onLocation: () -> Unit,
+    onUpload: () -> Unit,
+    uploadRunning: Boolean,
+) {
     var options by remember { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-        OutlinedTextField(vm.query, { vm.query = it }, label = { Text(stringResource(R.string.files_search)) },
-            singleLine = true, modifier = Modifier.weight(1f))
+    var searching by remember { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        TextButton(onClick = { searching = !searching }) {
+            Text(stringResource(R.string.files_search) + if (vm.query.isNotEmpty()) " •" else "")
+        }
+        Spacer(Modifier.weight(1f))
         Box {
-            TextButton(onClick = { options = true }) { Text(stringResource(R.string.files_view_options)) }
+            TextButton(onClick = { options = true }) { Text(stringResource(R.string.files_actions)) }
             DropdownMenu(options, onDismissRequest = { options = false }) {
+                DropdownMenuItem(text = { Text(stringResource(R.string.editor_new)) }, enabled = vm.canMutate,
+                    onClick = { options = false; vm.editText() })
+                DropdownMenuItem(text = { Text(stringResource(R.string.files_action_new_directory)) }, enabled = vm.canMutate && vm.path.isNotBlank(),
+                    onClick = { options = false; vm.openNewDirectory() })
+                DropdownMenuItem(text = { Text(stringResource(R.string.files_action_upload)) }, enabled = vm.canMutate && vm.path.isNotBlank() && !uploadRunning,
+                    onClick = { options = false; onUpload() })
+                HorizontalDivider()
+                DropdownMenuItem(text = { Text(stringResource(R.string.files_back)) }, enabled = vm.canGoBack && !vm.batchRunning && !vm.mutationBusy,
+                    onClick = { options = false; vm.goBack() })
+                DropdownMenuItem(text = { Text(stringResource(R.string.files_forward)) }, enabled = vm.canGoForward && !vm.batchRunning && !vm.mutationBusy,
+                    onClick = { options = false; vm.goForward() })
+                DropdownMenuItem(text = { Text(stringResource(R.string.files_go_directory)) }, enabled = !vm.batchRunning && !vm.mutationBusy,
+                    onClick = { options = false; onLocation() })
+                HorizontalDivider()
                 DropdownMenuItem(text = { Text(stringResource(if (vm.showHidden) R.string.files_hide_hidden else R.string.files_show_hidden)) },
                     onClick = { vm.showHidden = !vm.showHidden; options = false })
                 FileSort.entries.forEach { sort ->
@@ -44,6 +66,12 @@ fun FileBrowserControls(vm: FilesViewModel) {
                     onClick = { vm.toggleSelection(); options = false }, enabled = !vm.batchRunning)
             }
         }
+    }
+    if (searching || vm.query.isNotEmpty()) {
+        OutlinedTextField(vm.query, { vm.query = it }, label = { Text(stringResource(R.string.files_search)) },
+            singleLine = true, modifier = Modifier.fillMaxWidth(), trailingIcon = {
+                TextButton(onClick = { vm.query = ""; searching = false }) { Text(stringResource(R.string.common_close)) }
+            })
     }
     if (vm.selectionMode) {
         Text(stringResource(R.string.files_selection_count, vm.checkedPaths.size, FileBrowserPolicy.MAX_BATCH))
