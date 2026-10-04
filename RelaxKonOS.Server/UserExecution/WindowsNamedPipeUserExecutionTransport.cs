@@ -18,6 +18,45 @@ public sealed class WindowsNamedPipeUserExecutionTransport(PrivilegedHelperOptio
     ILogger<WindowsNamedPipeUserExecutionTransport> logger, ICorrelationContextAccessor? correlation = null,
     ISecurityAuditWriter? securityAudit = null, ObservabilityOptions? observability = null) : IUserExecutionTransport
 {
+    internal async Task<NamedPipeClientStream> OpenTerminalAsync(UserExecutionRequest request)
+    {
+        if (!OperatingSystem.IsWindows() || string.IsNullOrWhiteSpace(options.PipeName) || !TryGetSecret(out var secret))
+            throw new InvalidOperationException("Windows user terminal Helper is unavailable.");
+        if (!WriteSecurityAudit(request, null, ObservabilityOutcome.Started))
+            throw new InvalidOperationException("Terminal security audit is unavailable.");
+        var pipe = new NamedPipeClientStream(".", UserExecutionProtocol.WindowsPipeName(options.PipeName),
+            PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.WriteThrough);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Clamp(options.TimeoutSeconds, 1, 120)));
+        try
+        {
+            await pipe.ConnectAsync(deadline.Token).ConfigureAwait(false);
+            var json = JsonSerializer.SerializeToUtf8Bytes(request, RelaxKonOSJsonOptions.Default);
+            if (json.Length > UserExecutionProtocol.MaximumRequestBytes)
+                throw new InvalidDataException("Terminal request is too large.");
+            await WriteFrameAsync(pipe, JsonSerializer.SerializeToUtf8Bytes(new PipeEnvelope(
+                Convert.ToBase64String(json), Sign(secret, json))), deadline.Token).ConfigureAwait(false);
+            var response = JsonSerializer.Deserialize<PipeEnvelope>(await ReadFrameAsync(pipe, deadline.Token).ConfigureAwait(false));
+            if (response is null || !TryDecodeAndVerify(secret, response, out var payload))
+                throw new InvalidDataException("Invalid terminal Helper response.");
+            var result = JsonSerializer.Deserialize<UserExecutionResult>(payload, RelaxKonOSJsonOptions.Default);
+            if (result is null || result.Version != UserExecutionProtocol.Version || !Enum.IsDefined(result.ProblemCode))
+                throw new InvalidDataException("Invalid terminal Helper response.");
+            Complete(request, result);
+            if (!result.Success)
+                throw new UserExecutionException(result.ProblemCode, result.Error ?? "Windows user terminal startup failed.");
+            return pipe;
+        }
+        catch (Exception exception)
+        {
+            pipe.Dispose();
+            if (exception is not UserExecutionException)
+                Complete(request, new(false, Error: "Terminal Helper connection failed.",
+                    ProblemCode: exception is OperationCanceledException ? UserExecutionProblemCode.TimedOut
+                        : UserExecutionProblemCode.HelperUnavailable));
+            throw;
+        }
+    }
+
     public async Task<UserExecutionResult> ExecuteAsync(UserExecutionRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -164,8 +203,8 @@ public sealed class WindowsNamedPipeUserExecutionTransport(PrivilegedHelperOptio
     private void Audit(UserExecutionRequest request, UserExecutionResult result)
     {
         logger.LogInformation(
-            "User execution completed. OperationId={OperationId} Operation={Operation} IdentityHash={IdentityHash} ResourceHash={ResourceHash} Success={Success} Problem={Problem}",
-            request.OperationId, request.Operation, Hash(request.Identity.StableIdentity), Hash(request.Path ?? request.DestinationPath),
+            "User execution completed. OperationId={OperationId} Operation={Operation} AdministratorTerminal={AdministratorTerminal} IdentityHash={IdentityHash} ResourceHash={ResourceHash} Success={Success} Problem={Problem}",
+            request.OperationId, request.Operation, request.TerminalAdministrator, Hash(request.Identity.StableIdentity), Hash(request.Path ?? request.DestinationPath),
             result.Success, result.ProblemCode);
     }
 
@@ -178,7 +217,7 @@ public sealed class WindowsNamedPipeUserExecutionTransport(PrivilegedHelperOptio
             outcome == ObservabilityOutcome.Started ? ObservabilityEventCatalog.UserExecutionRequestAccepted.Name : ObservabilityEventCatalog.UserExecutionRequestCompleted.Name,
             outcome, "server", context.CorrelationId, DateTimeOffset.UtcNow, observability?.InstanceId ?? "unconfigured",
             "user.execution", request.OperationId, ActorReference: request.Identity.CanonicalAccount,
-            ResourceType: "user-execution-operation", ResourceReference: request.Path ?? request.DestinationPath,
+            ResourceType: request.TerminalAdministrator ? "administrator-terminal" : "user-execution-operation", ResourceReference: request.Path ?? request.DestinationPath,
             ProblemCode: result?.ProblemCode.ToString())).GetAwaiter().GetResult();
     }
 

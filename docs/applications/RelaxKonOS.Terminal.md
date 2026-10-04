@@ -8,6 +8,12 @@ Android 客户端使用同一 Server Hub；`AttachExisting(sessionId)` 只附加
 
 Linux System Mode 的远程终端由 `--user-terminal` Helper 在验证登录账号的 canonical username、UID 和 home 后启动。Helper 初始化该账号的 supplementary groups，并同时替换 real/effective/saved UID/GID、验证无法直接恢复 UID 0，再创建 PTY。交互终端不设置 `PR_SET_NO_NEW_PRIVS`，因此 `sudo` / `su` 按宿主的 sudoers、PAM 与账号权限工作；不要求 RelaxKonOS 管理员角色，也不会自动授予 root 权限。独立的 `--user-execution` 文件/Git worker 继续设置该标志。
 
+Windows System Mode 的远程终端通过 `<pipeName>-user` 的认证请求连接到 LocalSystem Helper。Helper 验证本地账号的 SID、canonical account 和 profile 路径，生成受限 S4U token，再转换为 primary token，通过 `CreateProcessAsUserW` 在 ConPTY 中启动 Windows PowerShell。用户环境由 `CreateEnvironmentBlock` 创建，不继承 LocalSystem 的用户目录；域账号和不可执行身份继续拒绝执行。该模式需要 Windows Server 2019 或更新版本，并启用 Helper 的 `enableWindowsUserExecution` 及 Server 的 `helper` 后端。Server 与 Helper 必须同时升级。
+
+桌面客户端的「终端 → 打开管理员终端」在 Windows System Mode 中新建单独的管理员窗口，普通窗口不改变权限。`StartAdministrator(request, sessionId)` 要求当前登录使用系统密码（`amr=system`），并通过现有 `IHostAccountPrivilegeService` 重新检查 canonical Windows 账号的管理员组成员资格；别名密码及普通账号不能使用此入口。Helper 只为同一个已验证本地管理员账号保留完整 S4U token，并再次检查 token 的管理员组有效性，不以 LocalSystem 身份运行 shell。窗口标题和状态标识管理员权限，会话摘要携带 `isAdministrator` 供恢复时保留标识。重新附加及每次输入/resize 都重新检查宿主管理员资格，撤销权限后拒绝继续操作。非 Windows System Mode 不提供该入口。已安装服务器测试同时验证普通权限和管理员权限，并在管理员终端中创建、查询和删除一个随机命名的临时本地账号。
+
+Helper 在签名的启动结果之后转发原始终端输出，输入、resize 和 close 使用 `UserTerminalStreamProtocol` 控制帧。每个会话拥有独立管道，支持并发终端及文件请求；Hub 网络断开保留会话，关闭会话或 Server 管道断开则释放 Helper PTY。启动失败通过 `terminal.start_failed` 返回具体运行原因，无需启用全局 SignalR 详细异常。可运行 `dotnet run --project RelaxKonOS.Server.Tests -- --terminal-windows-only` 验证真实 Windows PTY，或使用 `--installed-windows-terminal <https-url> <username>` 验证已安装服务器（密码从标准输入读取）。
+
 若终端报 `sudo: The "no new privileges" flag is set`，可用 `grep '^NoNewPrivs:' /proc/$$/status` 检查 shell：正常交互终端应为 `0`。旧版 Helper 创建的会话需要关闭后新建，重新附加旧会话不会移除标志。更新并重新部署 Helper 后若新会话仍为 `1`，应检查 Server 的 systemd sandbox、容器或上游 launcher 是否设置了 `NoNewPrivileges` / `no-new-privileges`；Linux 会继承该标志且不能在运行中的进程内清除，必须从未设置标志的启动环境重新启动。
 
 开发配置 `http-linux-privileged` 使用安装到 `/usr/local/lib/relaxkonos/privileged-helper-development/` 的 root-owned Helper 副本，重建 Server 或更新 Android APK 不会替换它。应在 Linux 仓库根目录重建并重新安装，再关闭旧会话、新建终端：

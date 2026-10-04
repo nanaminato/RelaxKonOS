@@ -31,7 +31,7 @@ public sealed class TerminalSessionManager
     /// 附加到既有会话（sessionId 命中、归属当前用户、未退出），否则新建。返回会话与是否新建。
     /// </summary>
     public (TerminalSession Session, bool Created) GetOrCreate(
-        string userId, string? sessionId, StartTerminalRequest req)
+        string userId, string? sessionId, StartTerminalRequest req, bool administrator = false)
     {
         // 1) 尝试附加既有会话
         if (!string.IsNullOrWhiteSpace(sessionId)
@@ -45,7 +45,16 @@ public sealed class TerminalSessionManager
         // 2) 新建：spawn PTY
         var id = Guid.NewGuid().ToString("N");
         var pty = _ptyFactory.Create();
-        var session = new TerminalSession(id, userId, pty, _hub, onExited: Remove);
+        if (administrator)
+        {
+            if (pty is not WindowsUserTerminalPty administratorPty)
+            {
+                (pty as IDisposable)?.Dispose();
+                throw new PlatformNotSupportedException("Administrator terminals require Windows System Mode with the Helper backend.");
+            }
+            administratorPty.IsAdministrator = true;
+        }
+        var session = new TerminalSession(id, userId, pty, _hub, onExited: Remove) { IsAdministrator = administrator };
         _sessions[id] = session;
 
         var shell = string.IsNullOrWhiteSpace(req.Shell) ? DefaultShell() : req.Shell!;
@@ -55,6 +64,7 @@ public sealed class TerminalSessionManager
         var workingDirectory = string.IsNullOrWhiteSpace(req.WorkingDirectory)
             ? pty is LinuxUserTerminalPty userPty
                 ? userPty.DefaultWorkingDirectory
+                : pty is WindowsUserTerminalPty windowsPty ? windowsPty.DefaultWorkingDirectory
                 : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
             : req.WorkingDirectory!;
 

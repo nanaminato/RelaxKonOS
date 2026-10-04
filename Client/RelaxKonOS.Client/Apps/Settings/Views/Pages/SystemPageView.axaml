@@ -55,6 +55,8 @@
                 <TextBox Text="{Binding HostIdentity.DraftName, Mode=TwoWay}" IsEnabled="{Binding HostIdentity.CanEdit}"
                          PlaceholderText="{loc:Loc settings.hostname.placeholder}"
                          AutomationProperties.Name="{loc:Loc settings.hostname}" />
+                <TextBlock IsVisible="{Binding HostIdentity.HasNameLengthHint}" Text="{Binding HostIdentity.NameLengthHint}"
+                           Opacity="0.65" FontSize="12" TextWrapping="Wrap" />
                 <TextBlock IsVisible="{Binding HostIdentity.HasNameProblem}" Text="{Binding HostIdentity.NameProblem}" TextWrapping="Wrap"
                            Foreground="{DynamicResource DangerBrush}" />
                 <TextBlock Text="{loc:Loc settings.hostname.restart_pending}" TextWrapping="Wrap" IsVisible="{Binding HostIdentity.RestartPending}" />

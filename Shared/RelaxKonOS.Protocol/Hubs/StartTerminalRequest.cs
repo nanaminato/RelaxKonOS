@@ -4,7 +4,7 @@ namespace RelaxKonOS.Protocol.Hubs;
 
 /// <summary>
 /// 启动远端终端会话的请求。<see cref="Shell"/> 为 null 时由服务端按宿主 OS 选取默认 shell
-/// （Windows: powershell→cmd 兜底；Linux: bash→sh 兜底）。
+/// （Windows: Windows PowerShell；Linux: bash）。
 /// </summary>
 public sealed record StartTerminalRequest(
     [property: JsonPropertyName("columns")] int Columns,

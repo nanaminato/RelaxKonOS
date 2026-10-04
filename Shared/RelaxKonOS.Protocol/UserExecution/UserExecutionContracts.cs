@@ -116,7 +116,8 @@ public sealed record UserExecutionRequest(
     [property: JsonPropertyName("operationId")] Guid? OperationId = null,
     [property: JsonPropertyName("correlation")] CorrelationContext? Correlation = null,
     [property: JsonPropertyName("version")] string Version = UserExecutionProtocol.Version,
-    [property: JsonPropertyName("expectedSha256")] string? ExpectedSha256 = null);
+    [property: JsonPropertyName("expectedSha256")] string? ExpectedSha256 = null,
+    [property: JsonPropertyName("terminalAdministrator")] bool TerminalAdministrator = false);
 
 [JsonConverter(typeof(JsonStringEnumConverter<UserExecutionProblemCode>))]
 public enum UserExecutionProblemCode

@@ -116,7 +116,7 @@ internal static class WindowsUserExecutionExecutor
             : new UserExecutionResult(true, Convert.ToBase64String(json));
     }
 
-    private static bool TryResolveLocalIdentity(UserExecutionIdentity expected, out LocalAccount account)
+    internal static bool TryResolveLocalIdentity(UserExecutionIdentity expected, out LocalAccount account)
     {
         account = default;
         if (expected.Platform != HostPlatformKind.Windows || string.IsNullOrWhiteSpace(expected.StableIdentity)
@@ -491,7 +491,7 @@ internal static class WindowsUserExecutionExecutor
 
     private static UserExecutionResult Fail(UserExecutionProblemCode code, string message)
         => new(false, Error: message, ProblemCode: code);
-    private readonly record struct LocalAccount(string Username, string Domain, string HomeDirectory);
+    internal readonly record struct LocalAccount(string Username, string Domain, string HomeDirectory);
     private sealed record FileRead(string ContentBase64, string FileName, string ContentType);
     private sealed class ContentTooLargeException : Exception { }
     private sealed class UserExecutionUnsupportedException : Exception { }

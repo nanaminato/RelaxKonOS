@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using RelaxKonOS.Protocol.Hubs;
 using RelaxKonOS.Server.Terminal;
+using RelaxKonOS.Server.UserExecution;
+using RelaxKonOS.Server.Privileged;
 
 namespace RelaxKonOS.Server.Hubs;
 
@@ -23,7 +25,15 @@ public sealed class TerminalHub : Hub<ITerminalHubClient>
 
     private readonly TerminalSessionManager _manager;
 
-    public TerminalHub(TerminalSessionManager manager) => _manager = manager;
+    private readonly IHostAccountPrivilegeService _privileges;
+    public TerminalHub(TerminalSessionManager manager, IHostAccountPrivilegeService privileges)
+    { _manager = manager; _privileges = privileges; }
+
+    public Task<AttachTerminalResponse> StartAdministrator(StartTerminalRequest req, string? sessionId)
+    {
+        RequireAdministrator();
+        return StartCore(req, sessionId, true);
+    }
 
     /// <summary>附加到远端 PTY 会话。方法名 <c>Start</c> 与 <see cref="TerminalHubMethods.Start"/> 对齐。</summary>
     /// <remarks>
@@ -32,11 +42,36 @@ public sealed class TerminalHub : Hub<ITerminalHubClient>
     /// 在签名上直接可见。附带既有会话用 <see cref="AttachExisting"/>，语义相同但找不到时会失败而不是新建。
     /// </remarks>
     public async Task<AttachTerminalResponse> Start(StartTerminalRequest req, string? sessionId)
+        => await StartCore(req, sessionId, false);
+
+    private async Task<AttachTerminalResponse> StartCore(StartTerminalRequest req, string? sessionId, bool administrator)
     {
         var userId = Context.UserIdentifier
             ?? throw new HubException("未认证的连接：缺少用户标识。");
 
-        var (session, created) = _manager.GetOrCreate(userId, sessionId, req);
+        TerminalSession session;
+        bool created;
+        if (sessionId is not null && _manager.TryGet(sessionId, out var existing)
+            && existing?.UserId == userId)
+        {
+            if (existing.IsAdministrator) RequireAdministrator();
+            if (existing.IsAdministrator != administrator)
+                throw new HubException("terminal.session_mode_mismatch");
+        }
+        try { (session, created) = _manager.GetOrCreate(userId, sessionId, req, administrator); }
+        catch (UserExecutionException exception)
+        {
+            throw new HubException($"terminal.start_failed: {exception.ProblemCode}: {exception.Message}");
+        }
+        catch (Exception exception) when (exception is PlatformNotSupportedException
+            or InvalidOperationException or System.ComponentModel.Win32Exception or IOException
+            or OperationCanceledException)
+        {
+            // Report the operational reason without enabling SignalR detailed errors globally.
+            throw new HubException(exception is OperationCanceledException
+                ? "terminal.start_failed: Windows user terminal Helper timed out."
+                : $"terminal.start_failed: {exception.Message}");
+        }
 
         // 附加当前连接并回放缓冲快照（恢复历史输出）。失败则不留下半附加状态。
         GetCurrentSession()?.Detach(Context.ConnectionId);
@@ -52,6 +87,7 @@ public sealed class TerminalHub : Hub<ITerminalHubClient>
         if (!_manager.TryGet(sessionId, out var session) || session is null ||
             session.UserId != userId || session.HasExited)
             throw new HubException("terminal.session_not_found");
+        if (session.IsAdministrator) RequireAdministrator();
         GetCurrentSession()?.Detach(Context.ConnectionId);
         await session.AttachAsync(Context.ConnectionId).ConfigureAwait(false);
         Context.Items[SidKey] = session.SessionId;
@@ -61,6 +97,7 @@ public sealed class TerminalHub : Hub<ITerminalHubClient>
     /// <summary>向当前会话的 PTY 写入用户输入字节。</summary>
     public Task Input(byte[] data)
     {
+        if (GetCurrentSession()?.IsAdministrator == true) RequireAdministrator();
         if (GetCurrentSession() is { } session && data.Length > 0)
             session.Pty.Write(data, 0, data.Length);
         return Task.CompletedTask;
@@ -69,6 +106,7 @@ public sealed class TerminalHub : Hub<ITerminalHubClient>
     /// <summary>调整当前会话 PTY 的尺寸。</summary>
     public Task Resize(int columns, int rows, int widthPixels, int heightPixels)
     {
+        if (GetCurrentSession()?.IsAdministrator == true) RequireAdministrator();
         if (GetCurrentSession() is { } session)
             session.Pty.Resize(columns, rows, widthPixels, heightPixels);
         return Task.CompletedTask;
@@ -119,5 +157,12 @@ public sealed class TerminalHub : Hub<ITerminalHubClient>
             && _manager.TryGet(id, out var s))
             return s;
         return null;
+    }
+
+    private void RequireAdministrator()
+    {
+        if (!OperatingSystem.IsWindows() || Context.User is null
+            || _privileges.Classify(Context.User) != HostAccountPrivilege.HostAdministrator)
+            throw new HubException("terminal.administrator_required: Sign in with the Windows administrator account and its system password.");
     }
 }

@@ -19,6 +19,12 @@ internal static class HostIdentityCompletionChecks
             vm.RequestAuthorizationAsync = _ => Task.FromResult(true);
             Check(!vm.CanEdit && !vm.ShowApplyAction && !vm.ShowQueryAction, "Unloaded state");
             vm.ReloadCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+            vm.DraftName = "WIN-3QLG75ESVRUX";
+            Check(stub.MaximumLength == 15 ? vm.HasNameProblem && !vm.CanPreview
+                && vm.NameProblem.Contains("16") && vm.NameProblem.Contains("15")
+                : !vm.HasNameProblem && vm.CanPreview, "Remote platform length and specific feedback");
+            vm.DraftName = "WIN-3QLG75ESVRU";
+            Check(!vm.HasNameProblem && vm.CanPreview, "Windows 15-character boundary");
             vm.DraftName = "new-host";
             vm.PreviewCommand.ExecuteAsync(null).GetAwaiter().GetResult();
             var completedId = vm.OperationId;
@@ -65,6 +71,7 @@ public class IdentityCompletionServiceStub : DispatchProxy
     private readonly SettingsTarget _target = new("test", SettingsScope.HostMachine);
     private SettingsPlan? _plan;
     public SettingsEffectiveState Effective;
+    public int MaximumLength => Effective == SettingsEffectiveState.HostRestart ? 15 : 63;
     public TaskCompletionSource<SettingsOperation> Pending = new();
     public HostnamePreviewRequest? Request;
     public Guid RollbackId;
@@ -80,7 +87,7 @@ public class IdentityCompletionServiceStub : DispatchProxy
             case "CaptureConnection": return _connection;
             case "IsCurrent": return true;
             case "ReadAsync": return Task.FromResult(new HostIdentitySnapshot(
-                new("old-host", "old-host", 63, "r1", DateTimeOffset.UtcNow, "test"),
+                new("old-host", "old-host", MaximumLength, "r1", DateTimeOffset.UtcNow, "test"),
                 _target, new(SettingsCapabilityState.Available), Effective));
             case "PreviewAsync":
                 Request = (HostnamePreviewRequest)args![1]!;

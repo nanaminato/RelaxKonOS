@@ -13,6 +13,7 @@ public static class TerminalHubMethods
     /// 而调用方只会看到笼统的 invoke 错误（Android 的“终端无法连接”就是这样产生的）。
     /// </remarks>
     public const string Start = nameof(Start);
+    public const string StartAdministrator = nameof(StartAdministrator);
 
     /// <summary>只附加现有且归属当前用户的会话；不存在时失败，绝不创建新 PTY。</summary>
     public const string AttachExisting = nameof(AttachExisting);

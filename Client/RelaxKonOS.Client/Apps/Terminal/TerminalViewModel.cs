@@ -42,6 +42,11 @@ public partial class TerminalViewModel : LocalizedObservableObject
     public IReadOnlyList<string> ColorSchemes => TerminalAppearance.ColorSchemes;
     public Func<Task>? RequestSettingsAsync { get; set; }
     public Action? CloseSettingsAction { get; set; }
+    public Action? RequestAdministratorTerminal { get; set; }
+    public bool IsAdministrator { get; }
+    public bool CanOpenAdministratorTerminal => _sshDesktop?.IsConnected != true
+        && _session?.CurrentServer is { Platform: RelaxKonOS.Protocol.Common.HostPlatformKind.Windows,
+            Host.Mode: RelaxKonOS.Protocol.Common.ServerMode.System };
 
     public TerminalViewModel(
         IAuthSession? session,
@@ -49,7 +54,8 @@ public partial class TerminalViewModel : LocalizedObservableObject
         NetworkDiagnosticsService? diagnostics,
         SshDesktopSession? sshDesktop = null,
         string? initialSessionId = null,
-        string? initialWorkingDirectory = null)
+        string? initialWorkingDirectory = null,
+        bool isAdministrator = false)
     {
         _session = session;
         _settingsClient = settingsClient;
@@ -57,6 +63,7 @@ public partial class TerminalViewModel : LocalizedObservableObject
         _sshDesktop = sshDesktop;
         _initialSessionId = initialSessionId;
         _initialWorkingDirectory = initialWorkingDirectory;
+        IsAdministrator = isAdministrator;
     }
 
     public static bool IsSessionOpen(string sessionId) => OpenSessions.ContainsKey(sessionId);
@@ -104,6 +111,9 @@ public partial class TerminalViewModel : LocalizedObservableObject
     [CommunityToolkit.Mvvm.Input.RelayCommand]
     private void CloseSettings() => CloseSettingsAction?.Invoke();
 
+    [CommunityToolkit.Mvvm.Input.RelayCommand]
+    private void OpenAdministratorTerminal() => RequestAdministratorTerminal?.Invoke();
+
     private async Task StartSessionAsync(string? sessionId)
     {
         if (_terminal is null)
@@ -139,7 +149,8 @@ public partial class TerminalViewModel : LocalizedObservableObject
                 accessToken: _session.Tokens.AccessToken,
                 sessionId: sessionId,
                 workingDirectory: _initialWorkingDirectory,
-                diagnostics: _diagnostics);
+                diagnostics: _diagnostics,
+                isAdministrator: IsAdministrator);
         }
         else
         {
@@ -156,7 +167,7 @@ public partial class TerminalViewModel : LocalizedObservableObject
             await _terminal.StartSessionAsync(options, CancellationToken.None);
             if (_transportFactory?.CurrentSessionId is { } id)
                 OpenSessions.TryAdd(id, 0);
-            Status = LocalizedText.Ref("terminal.status.connected");
+            Status = LocalizedText.Ref(IsAdministrator ? "terminal.status.administrator_connected" : "terminal.status.connected");
         }
         catch (Exception ex)
         {
@@ -235,6 +246,6 @@ public partial class TerminalViewModel : LocalizedObservableObject
     private void OnTitleChanged(object? sender, string title)
     {
         if (!string.IsNullOrWhiteSpace(title))
-            Status = title;
+            Status = IsAdministrator ? LocalizedText.Ref("terminal.administrator_shell", title) : title;
     }
 }

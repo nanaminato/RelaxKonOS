@@ -61,7 +61,7 @@ class ServerTerminalConnection(
 
     override suspend fun sessions(): List<TerminalSessionSummary> = withContext(Dispatchers.IO) {
         val type = object : TypeReference<List<TerminalSessionSummary>>() {}.type
-        hub.invoke<List<TerminalSessionSummary>>(type, "ListSessions").await()
+        hub.invoke<List<TerminalSessionSummary>>(type, "ListSessions").await().filterNot { it.isAdministrator }
     }
 
     override suspend fun attach(sessionId: String?, columns: Int, rows: Int): TerminalAttachment = withContext(Dispatchers.IO) {
@@ -110,6 +110,7 @@ class TerminalSessionSummary {
     var sessionId: String = ""
     var createdAt: String = ""
     var hasExited: Boolean = false
+    var isAdministrator: Boolean = false
 }
 
 class TerminalAttachment {

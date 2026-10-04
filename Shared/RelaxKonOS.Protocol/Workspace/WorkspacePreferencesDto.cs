@@ -115,7 +115,7 @@ public sealed record WorkspacePreferencesDto
         WallpaperKey: DefaultWallpaperKey,
         TimeFormat: TimeFormat24H,
         DateFormat: "yyyy/M/d",
-        Language: "en-US",
+        Language: LanguageFollowSystem,
         Region: "en-US",
         DefaultApps: [],
         NotepadDefaultEncoding: TextEncodingPreferences.Default,

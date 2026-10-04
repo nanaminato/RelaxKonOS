@@ -65,7 +65,7 @@ public sealed class TerminalApp : RemoteApplicationBase, IOpenTerminalApplicatio
                 if (!restoreOnly) OpenWindow(context, session, diagnostics, null);
                 return;
             }
-            var sessionIds = Array.Empty<string>();
+            var sessionIds = Array.Empty<RelaxKonOS.Protocol.Hubs.TerminalSessionInfo>();
 
             if (session is { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } url, Tokens: { } tokens })
             {
@@ -80,7 +80,6 @@ public sealed class TerminalApp : RemoteApplicationBase, IOpenTerminalApplicatio
                     sessionIds = (await TerminalHubConnection.ListSessionsAsync(options, cancellationToken))
                         .Where(x => !x.HasExited && !TerminalViewModel.IsSessionOpen(x.SessionId))
                         .OrderBy(x => x.CreatedAt)
-                        .Select(x => x.SessionId)
                         .ToArray();
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -116,8 +115,8 @@ public sealed class TerminalApp : RemoteApplicationBase, IOpenTerminalApplicatio
                     if (restoreOnly && cancellationToken.IsCancellationRequested)
                         return;
 
-                    if (TerminalViewModel.TryReserveSession(sessionId))
-                        OpenWindow(context, session, diagnostics, sessionId);
+                    if (TerminalViewModel.TryReserveSession(sessionId.SessionId))
+                        OpenWindow(context, session, diagnostics, sessionId.SessionId, isAdministrator: sessionId.IsAdministrator);
                 }
         }
         finally
@@ -131,16 +130,19 @@ public sealed class TerminalApp : RemoteApplicationBase, IOpenTerminalApplicatio
         IAuthSession? session,
         NetworkDiagnosticsService? diagnostics,
         string? sessionId,
-        string? workingDirectory = null)
+        string? workingDirectory = null,
+        bool isAdministrator = false)
     {
         var settingsClient = context.Services.GetRequiredService<ITerminalSettingsClient>();
         var viewModel = new TerminalViewModel(session, settingsClient, diagnostics,
-            context.Services.GetService<SshDesktopSession>(), sessionId, workingDirectory);
+            context.Services.GetService<SshDesktopSession>(), sessionId, workingDirectory, isAdministrator);
+        viewModel.RequestAdministratorTerminal = () => OpenWindow(context, session, diagnostics, null,
+            workingDirectory, isAdministrator: true);
         var view = new TerminalView
         {
             DataContext = viewModel,
         };
-        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.terminal.display_name"), view,
+        var window = context.ShowWindow(LocalizedText.Get(isAdministrator ? "terminal.administrator_title" : "application.relaxkonos.terminal.display_name"), view,
             bounds: new Rect(120, 80, 820, 540),
             iconGlyph: Manifest.IconGlyph);
         viewModel.RequestSettingsAsync = async () =>

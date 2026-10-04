@@ -18,6 +18,9 @@ public static class UserExecutionRequestPolicy
 
         if (request.Recursive && request.Operation != UserExecutionOperationKind.FileSetUnixPermissions)
             return false;
+        if (request.TerminalAdministrator && (!terminal || request.Operation != UserExecutionOperationKind.TerminalStart
+            || request.Identity.Platform != Common.HostPlatformKind.Windows))
+            return false;
 
         var noDestination = request.DestinationPath is null;
         var noName = request.NewName is null && request.FileName is null;

@@ -1,6 +1,10 @@
 {
     "Culture": "en-US",
     "Strings": {
+        "terminal.open_administrator": "Open administrator terminal",
+        "terminal.administrator_title": "Administrator terminal",
+        "terminal.status.administrator_connected": "Connected · Administrator",
+        "terminal.administrator_shell": "Administrator · {0}",
         "terminal.menu": "Terminal",
         "terminal.settings": "Terminal settings",
         "terminal.font_family": "Font family",

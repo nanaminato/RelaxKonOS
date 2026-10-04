@@ -79,9 +79,20 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
         UpdateCommands();
     }
     /// <summary>Inline syntax hint; the Server re-validates and the Helper validates again.</summary>
-    public string NameProblem => string.IsNullOrEmpty(DraftName) ? ""
-        : HostIdentityValidation.Validate(new(DraftName), MaximumLength) is null
-            ? "" : _localization.Get("settings.hostname.invalid_name", "settings.hostname.invalid_name");
+    public bool HasNameLengthHint => _snapshot is not null;
+    public string NameLengthHint => string.Format(_localization.Get("settings.hostname.length_hint",
+        "{0} / {1} characters · limit reported by the remote host"), DraftName.Length, MaximumLength);
+    public string NameProblem => string.IsNullOrEmpty(DraftName) || _snapshot is null ? ""
+        : DraftName.Length > MaximumLength
+            ? string.Format(_localization.Get("settings.hostname.too_long",
+                "Host name is too long: {0} characters, maximum {1}."), DraftName.Length, MaximumLength)
+            : HostIdentityValidation.Validate(new(DraftName), MaximumLength) is null
+                ? "" : _localization.Get("settings.hostname.invalid_name", "settings.hostname.invalid_name");
+    partial void OnMaximumLengthChanged(int value)
+    {
+        OnPropertyChanged(nameof(NameProblem));
+        UpdateCommands();
+    }
 
     [RelayCommand(CanExecute = nameof(CanReload))]
     private Task ReloadAsync() => RunAsync(async ct =>
@@ -225,6 +236,8 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
         OnPropertyChanged(nameof(IsCompleted));
         OnPropertyChanged(nameof(HasOperation));
         OnPropertyChanged(nameof(HasNameProblem));
+        OnPropertyChanged(nameof(NameLengthHint));
+        OnPropertyChanged(nameof(HasNameLengthHint));
         ReloadCommand.NotifyCanExecuteChanged(); PreviewCommand.NotifyCanExecuteChanged();
         ApplyCommand.NotifyCanExecuteChanged(); QueryCommand.NotifyCanExecuteChanged(); RollbackCommand.NotifyCanExecuteChanged();
     }
@@ -233,6 +246,8 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(NameProblem));
         OnPropertyChanged(nameof(HasNameProblem));
+        OnPropertyChanged(nameof(NameLengthHint));
+        OnPropertyChanged(nameof(HasNameLengthHint));
     }
     private void OnSessionChanged(object? sender, AuthSessionStateChangedEventArgs args) => Dispatcher.UIThread.Post(() =>
     {

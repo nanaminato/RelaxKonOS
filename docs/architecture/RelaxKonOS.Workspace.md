@@ -169,7 +169,7 @@ Locale（时间/日期/语言/区域）与文本编码默认值同样挂在 `Wor
 |------|------|------|--------|
 | `timeFormat` | `string` | `24h` 或 `12h`。 | `24h` |
 | `dateFormat` | `string` | `DateTime` 短日期格式串。 | `yyyy/M/d` |
-| `language` | `string` | 语言标记（`en-US` / `zh-CN` / `ja-JP` 等）。 | `en-US` |
+| `language` | `string` | 显示语言（`follow-system` 跟随客户端系统，或显式选择 `en-US` / `zh-CN` / `ja-JP`）。 | `follow-system` |
 | `region` | `string` | 区域标记（影响默认星期起、数字/货币格式）。 | `en-US` |
 | `notepadDefaultEncoding` | `string?` | Notepad 打开文件时的默认字符集。`TextEncodingPreferences.Default = UTF-8`。 | `UTF-8` |
 | `codeEditorDefaultEncoding` | `string?` | Code Editor 打开文件时的默认字符集。 | `UTF-8` |

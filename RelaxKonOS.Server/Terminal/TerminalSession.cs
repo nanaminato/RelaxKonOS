@@ -33,6 +33,7 @@ public sealed class TerminalSession
     public string SessionId { get; }
     public string UserId { get; }
     public IPty Pty { get; }
+    public bool IsAdministrator { get; init; }
     public DateTimeOffset CreatedAt { get; } = DateTimeOffset.UtcNow;
     public bool HasExited { get; private set; }
 
@@ -98,7 +99,7 @@ public sealed class TerminalSession
         try { (Pty as IDisposable)?.Dispose(); } catch { /* best effort */ }
     }
 
-    public TerminalSessionInfo ToInfo() => new(SessionId, CreatedAt, HasExited);
+    public TerminalSessionInfo ToInfo() => new(SessionId, CreatedAt, HasExited, IsAdministrator);
 
     private void OnPtyDataReceived(byte[] buffer, int count)
     {

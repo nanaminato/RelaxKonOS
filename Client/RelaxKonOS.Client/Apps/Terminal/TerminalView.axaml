@@ -11,6 +11,8 @@
             <Grid ColumnDefinitions="Auto,*">
                 <Menu Grid.Column="0" Background="Transparent" BorderThickness="0">
                     <MenuItem Header="{loc:Loc terminal.menu}">
+                        <MenuItem Header="{loc:Loc terminal.open_administrator}" Command="{Binding OpenAdministratorTerminalCommand}"
+                                  IsVisible="{Binding CanOpenAdministratorTerminal}" />
                         <MenuItem Header="{loc:Loc terminal.settings}" Command="{Binding OpenSettingsCommand}" />
                     </MenuItem>
                 </Menu>

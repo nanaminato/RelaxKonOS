@@ -9,4 +9,5 @@ namespace RelaxKonOS.Protocol.Hubs;
 public sealed record TerminalSessionInfo(
     [property: JsonPropertyName("sessionId")] string SessionId,
     [property: JsonPropertyName("createdAt")] DateTimeOffset CreatedAt,
-    [property: JsonPropertyName("hasExited")] bool HasExited);
+    [property: JsonPropertyName("hasExited")] bool HasExited,
+    [property: JsonPropertyName("isAdministrator")] bool IsAdministrator);

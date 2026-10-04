@@ -53,7 +53,8 @@ public sealed class SignalRTerminalTransport : ITerminalTransport
 
         // Start = attach/create。服务端在返回前会先把缓冲快照经 OnOutput 回放（恢复历史输出）。
             var resp = await _conn.InvokeAsync<AttachTerminalResponse>(
-            TerminalHubMethods.Start, _lastRequest, opts.SessionId, cancellationToken)
+            opts.IsAdministrator ? TerminalHubMethods.StartAdministrator : TerminalHubMethods.Start,
+            _lastRequest, opts.SessionId, cancellationToken)
             .ConfigureAwait(false);
             SessionId = resp?.SessionId;
 

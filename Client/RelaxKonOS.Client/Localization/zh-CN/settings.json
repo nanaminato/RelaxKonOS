@@ -314,6 +314,8 @@
         "settings.hostname.outcome_unknown": "结果尚不确定。再次写入前请按操作 ID 查询。",
         "settings.hostname.failed": "请求失败，草稿已保留；详见下方错误。",
         "settings.hostname.authorize": "授权远程主机名修改",
+        "settings.hostname.length_hint": "{0} / {1} 个字符 · 上限由远程主机提供",
+        "settings.hostname.too_long": "主机名过长：当前 {0} 个字符，此主机最多允许 {1} 个字符。请缩短名称。",
         "settings.hostname.invalid_name": "名称格式无效：仅字母、数字和连字符，首尾必须是字母或数字，且不能全是数字。",
         "settings.hostname.restart_pending": "待生效名称与当前名称不同：重启远程主机后才会成为系统实际名称。若操作结果为未知或需要恢复，请在主机上手动设置名称。",
         "settings.identity.restart_required": "主机名已暂存，重启远程主机后生效。",

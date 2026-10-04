@@ -1,3 +1,20 @@
+if (args.Length == 3 && args[0] == "--installed-windows-terminal")
+{
+    await WindowsInstalledTerminalChecks.RunAsync(args[1], args[2], WindowsInstalledTerminalChecks.ReadPassword());
+    return;
+}
+if (args.Contains("--terminal-contract-only"))
+{
+    TerminalHubContractChecks.Run();
+    return;
+}
+if (args.Contains("--terminal-windows-only"))
+{
+    TerminalHubContractChecks.Run();
+    await TerminalAdministratorAuthorizationChecks.RunAsync();
+    await WindowsTerminalChecks.RunAsync();
+    return;
+}
 if (args.Contains("--host-data-protection-only"))
 {
     var protectionRoot = Path.Combine(Path.GetTempPath(), "relaxkon-protection-" + Guid.NewGuid().ToString("N"));
@@ -345,7 +362,6 @@ try
     // suite so a routing regression can run in constrained environments where opening a loopback
     // listener is deliberately disallowed.
     if (args.Contains("--host-file-routing-only")) { HostFileRoutingChecks.Run(); return; }
-    if (args.Contains("--terminal-contract-only")) { TerminalHubContractChecks.Run(); return; }
     if (args.Contains("--alias-only")) { await AliasLoginVerification.RunAsync(root); return; }
     var fileOperationsOnly = args.Contains("--file-operations-only", StringComparer.Ordinal);
     if (fileOperationsOnly)

@@ -8,11 +8,8 @@ using RoyalTerminal.Terminal;
 namespace RelaxKonOS.Server.Terminal;
 
 /// <summary>
-/// Windows ConPTY-based <see cref="IPty"/> implementation with the correct Win32 signatures.
-/// The bundled RoyalApps.RoyalTerminal.Terminal.Pty.Windows 0.4.0 declares CreatePseudoConsole
-/// with the wrong parameter order (COORD size first), so on x64 the pseudo console is never
-/// actually created: the shell falls back to inherited standard handles, output never reaches
-/// the ConPTY pipes (DataReceived stays silent) and written input goes nowhere.
+/// Windows ConPTY-based <see cref="IPty"/> implementation. Shared with the Windows Helper,
+/// which launches the shell with a verified user's primary token rather than the service identity.
 /// </summary>
 public sealed class ConPty : IPty, IDisposable
 {
@@ -31,6 +28,7 @@ public sealed class ConPty : IPty, IDisposable
     private Stream? _inputStream;
     private Thread? _readThread;
     private Thread? _writeThread;
+    private Thread? _exitThread;
     private int _childPid;
     private bool _disposed;
     private int _disposeSignaled;
@@ -48,6 +46,15 @@ public sealed class ConPty : IPty, IDisposable
 
     public void Start(string? shell, int columns, int rows, string? workingDirectory,
         Dictionary<string, string>? environment, IReadOnlyList<string>? arguments)
+        => StartCore(shell, columns, rows, workingDirectory, environment, arguments, null);
+
+    // Only the LocalSystem Helper supplies a verified, restricted primary token.
+    public void StartAsUser(SafeAccessTokenHandle token, string? shell, int columns, int rows,
+        string workingDirectory, Dictionary<string, string> environment)
+        => StartCore(shell, columns, rows, workingDirectory, environment, null, token);
+
+    private void StartCore(string? shell, int columns, int rows, string? workingDirectory,
+        Dictionary<string, string>? environment, IReadOnlyList<string>? arguments, SafeAccessTokenHandle? token)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_cts is not null)
@@ -80,7 +87,7 @@ public sealed class ConPty : IPty, IDisposable
             hOutRead = IntPtr.Zero;
 
             _inputStream = new FileStream(_inputHandle, FileAccess.Write, 0, isAsync: false);
-            LaunchProcess(shell, workingDirectory, environment, arguments);
+            LaunchProcess(shell, workingDirectory, environment, arguments, token);
 
             IsRunning = true;
             _cts = new CancellationTokenSource();
@@ -88,6 +95,18 @@ public sealed class ConPty : IPty, IDisposable
             _readThread = new Thread(ReadLoop) { IsBackground = true, Name = "ConPty-Read" };
             _writeThread.Start();
             _readThread.Start();
+            var processHandle = _processHandle;
+            _exitThread = new Thread(() =>
+            {
+                if (Native.WaitForSingleObject(processHandle, uint.MaxValue) == 0)
+                {
+                    // A retained HPCON keeps its output pipe open even after the shell exits.
+                    // Closing it here lets the independent reader drain output and observe EOF.
+                    var console = Interlocked.Exchange(ref _ptyHandle, IntPtr.Zero);
+                    if (console != IntPtr.Zero) Native.ClosePseudoConsole(console);
+                }
+            }) { IsBackground = true, Name = "ConPty-Exit" };
+            _exitThread.Start();
         }
         catch
         {
@@ -141,10 +160,10 @@ public sealed class ConPty : IPty, IDisposable
         {
             try { Native.TerminateProcess(_processHandle, 1); } catch { /* best effort */ }
         }
-        if (_ptyHandle != IntPtr.Zero)
+        var console = Interlocked.Exchange(ref _ptyHandle, IntPtr.Zero);
+        if (console != IntPtr.Zero)
         {
-            try { Native.ClosePseudoConsole(_ptyHandle); } catch { /* best effort */ }
-            _ptyHandle = IntPtr.Zero;
+            try { Native.ClosePseudoConsole(console); } catch { /* best effort */ }
         }
         try { _inputStream?.Dispose(); } catch { /* best effort */ }
         _inputStream = null;
@@ -153,8 +172,9 @@ public sealed class ConPty : IPty, IDisposable
         try { _outputHandle?.Dispose(); } catch { /* best effort */ }
         _outputHandle = null;
 
-        _writeThread?.Join(2000);
-        _readThread?.Join(2000);
+        if (_writeThread != Thread.CurrentThread) _writeThread?.Join(2000);
+        if (_readThread != Thread.CurrentThread) _readThread?.Join(2000);
+        if (_exitThread != Thread.CurrentThread) _exitThread?.Join(2000);
 
         if (_processHandle != IntPtr.Zero)
         {
@@ -169,14 +189,16 @@ public sealed class ConPty : IPty, IDisposable
     public void Dispose() => Stop();
 
     private void LaunchProcess(string? shell, string? workingDirectory,
-        Dictionary<string, string>? environment, IReadOnlyList<string>? arguments)
+        Dictionary<string, string>? environment, IReadOnlyList<string>? arguments, SafeAccessTokenHandle? token)
     {
         var commandLine = BuildCommandLine(string.IsNullOrWhiteSpace(shell) ? "powershell" : shell!, arguments);
         var envBlock = BuildEnvironmentBlock(environment ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
         var attrList = IntPtr.Zero;
         try
         {
-            var si = new StartupInfoEx { StartupInfo = { Cb = Marshal.SizeOf<StartupInfoEx>() } };
+            // Null standard handles with STARTF_USESTDHANDLES let ConPTY populate them. Otherwise
+            // redirected service/launcher handles may be copied to the shell, bypassing the PTY.
+            var si = new StartupInfoEx { StartupInfo = { Cb = Marshal.SizeOf<StartupInfoEx>(), Flags = 0x100 } };
             var attrSize = IntPtr.Zero;
             Native.InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref attrSize);
             attrList = Marshal.AllocHGlobal(attrSize);
@@ -187,12 +209,17 @@ public sealed class ConPty : IPty, IDisposable
                 throw new Win32Exception(Marshal.GetLastWin32Error());
             si.AttributeList = attrList;
 
-            var cwd = string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory)
+            var cwd = token is not null ? workingDirectory : string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory)
                 ? null
                 : workingDirectory;
 
-            if (!Native.CreateProcessW(null, new StringBuilder(commandLine), IntPtr.Zero, IntPtr.Zero,
-                    false, ExtendedStartupInfoPresent | CreateUnicodeEnvironment, envBlock, cwd, ref si, out var pi))
+            ProcessInformation pi;
+            var started = token is null
+                ? Native.CreateProcessW(null, new StringBuilder(commandLine), IntPtr.Zero, IntPtr.Zero,
+                    false, ExtendedStartupInfoPresent | CreateUnicodeEnvironment, envBlock, cwd, ref si, out pi)
+                : Native.CreateProcessAsUserW(token, null, new StringBuilder(commandLine), IntPtr.Zero, IntPtr.Zero,
+                    false, ExtendedStartupInfoPresent | CreateUnicodeEnvironment, envBlock, cwd, ref si, out pi);
+            if (!started)
                 throw new Win32Exception(Marshal.GetLastWin32Error());
 
             Native.CloseHandle(pi.Thread);
@@ -276,11 +303,18 @@ public sealed class ConPty : IPty, IDisposable
         catch { }
 
         IsRunning = false;
+        Stop();
         try { ProcessExited?.Invoke(exitCode); } catch { /* handlers must not crash the loop */ }
     }
 
     private void Cleanup()
     {
+        if (_processHandle != IntPtr.Zero)
+        {
+            Native.TerminateProcess(_processHandle, 1);
+            Native.CloseHandle(_processHandle);
+            _processHandle = IntPtr.Zero;
+        }
         if (_ptyHandle != IntPtr.Zero)
         {
             try { Native.ClosePseudoConsole(_ptyHandle); } catch { }
@@ -349,12 +383,13 @@ public sealed class ConPty : IPty, IDisposable
     private static IntPtr BuildEnvironmentBlock(Dictionary<string, string> environment)
     {
         var sb = new StringBuilder();
-        foreach (var kv in environment)
+        foreach (var kv in environment.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
         {
             if (string.IsNullOrEmpty(kv.Key)) continue;
             sb.Append(kv.Key).Append('=').Append(kv.Value ?? string.Empty).Append('\0');
         }
         sb.Append('\0');
+        if (environment.Count == 0) sb.Append('\0');
         return Marshal.StringToHGlobalUni(sb.ToString());
     }
 
@@ -447,6 +482,12 @@ public sealed class ConPty : IPty, IDisposable
             IntPtr lpProcessAttributes, IntPtr lpThreadAttributes, bool bInheritHandles, uint dwCreationFlags,
             IntPtr lpEnvironment, string? lpCurrentDirectory, ref StartupInfoEx lpStartupInfo,
             out ProcessInformation lpProcessInformation);
+
+        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        public static extern bool CreateProcessAsUserW(SafeAccessTokenHandle token, string? applicationName,
+            StringBuilder commandLine, IntPtr processAttributes, IntPtr threadAttributes, bool inheritHandles,
+            uint creationFlags, IntPtr environment, string? currentDirectory, ref StartupInfoEx startupInfo,
+            out ProcessInformation processInformation);
 
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern bool InitializeProcThreadAttributeList(IntPtr lpAttributeList,

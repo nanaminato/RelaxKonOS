@@ -1,6 +1,10 @@
 {
     "Culture": "zh-CN",
     "Strings": {
+        "terminal.open_administrator": "打开管理员终端",
+        "terminal.administrator_title": "管理员终端",
+        "terminal.status.administrator_connected": "已连接 · 管理员权限",
+        "terminal.administrator_shell": "管理员权限 · {0}",
         "terminal.menu": "终端",
         "terminal.settings": "终端设置",
         "terminal.font_family": "字体",

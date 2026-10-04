@@ -71,6 +71,9 @@ internal static class TerminalHubContractChecks
             "TerminalHub.Start must stay (StartTerminalRequest, string): SignalR matches by argument count and never applies a default value.");
 
         var attach = Require(TerminalHubMethods.AttachExisting).GetParameters();
+        var administrator = Require(TerminalHubMethods.StartAdministrator).GetParameters();
+        TestAssert.Assert(administrator.Length == 2 && administrator[0].ParameterType == typeof(StartTerminalRequest)
+            && administrator[1].ParameterType == typeof(string), "Administrator terminal start must use the explicit request/session contract.");
         TestAssert.Assert(attach.Length == 1 && attach[0].ParameterType == typeof(string),
             "TerminalHub.AttachExisting must stay (string sessionId): it attaches an existing session or fails, never creates one.");
 

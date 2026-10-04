@@ -9,9 +9,10 @@ using RelaxKonOS.Protocol.UserExecution;
 namespace RelaxKonOS.PrivilegedHelper;
 
 /// <summary>
-/// Dedicated authenticated pipe for ordinary Windows user file operations. It shares only the
+/// Dedicated authenticated pipe for Windows user file and terminal operations. It shares only the
 /// Helper's caller ACL and machine secret with the privileged pipe; requests are parsed solely as
-/// <see cref="UserExecutionRequest"/> and can never select a privileged operation.
+/// <see cref="UserExecutionRequest"/>. Administrator terminals additionally validate an actual
+/// administrator token; file requests always remain ordinary user operations.
 /// </summary>
 [SupportedOSPlatform("windows")]
 internal sealed class WindowsUserExecutionPipeServer(WindowsHelperPipeConfiguration configuration,
@@ -21,6 +22,8 @@ internal sealed class WindowsUserExecutionPipeServer(WindowsHelperPipeConfigurat
     private readonly CancellationTokenSource _stopping = new();
     private readonly ConcurrentDictionary<Guid, DateTimeOffset> _recentOperationIds = new();
     private Task? _listener;
+    private readonly ConcurrentDictionary<Guid, Task> _connections = new();
+    private readonly SemaphoreSlim _connectionSlots = new(32);
 
     public void Start()
     {
@@ -35,6 +38,7 @@ internal sealed class WindowsUserExecutionPipeServer(WindowsHelperPipeConfigurat
         if (_listener is null) return;
         try { await _listener.WaitAsync(TimeSpan.FromSeconds(10)); }
         catch (OperationCanceledException) { }
+        await Task.WhenAll(_connections.Values).WaitAsync(TimeSpan.FromSeconds(10));
     }
 
     public async ValueTask DisposeAsync()
@@ -50,10 +54,26 @@ internal sealed class WindowsUserExecutionPipeServer(WindowsHelperPipeConfigurat
         {
             try
             {
-                await using var pipe = firstPipe ?? CreatePipe();
+                await _connectionSlots.WaitAsync(_stopping.Token);
+                NamedPipeServerStream pipe;
+                try { pipe = firstPipe ?? CreatePipe(); }
+                catch { _connectionSlots.Release(); throw; }
                 firstPipe = null;
-                await pipe.WaitForConnectionAsync(_stopping.Token);
-                await HandleAsync(pipe, secret, _stopping.Token);
+                try { await pipe.WaitForConnectionAsync(_stopping.Token); }
+                catch { pipe.Dispose(); _connectionSlots.Release(); throw; }
+                var id = Guid.NewGuid();
+                var task = Task.Run(async () =>
+                {
+                    await using (pipe)
+                    {
+                        try { await HandleAsync(pipe, secret, _stopping.Token); }
+                        catch (OperationCanceledException) when (_stopping.IsCancellationRequested) { }
+                        catch (Exception exception) { reportFailure(exception); }
+                        finally { _connectionSlots.Release(); }
+                    }
+                });
+                _connections[id] = task;
+                _ = task.ContinueWith(_ => { _connections.TryRemove(id, out var ignored); }, TaskScheduler.Default);
             }
             catch (OperationCanceledException) when (_stopping.IsCancellationRequested) { }
             catch (Exception exception) { reportFailure(exception); }
@@ -62,12 +82,14 @@ internal sealed class WindowsUserExecutionPipeServer(WindowsHelperPipeConfigurat
 
     private NamedPipeServerStream CreatePipe()
         => NamedPipeServerStreamAcl.Create(UserExecutionProtocol.WindowsPipeName(configuration.PipeName),
-            PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.WriteThrough,
+            PipeDirection.InOut, NamedPipeServerStream.MaxAllowedServerInstances, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.WriteThrough,
             0, 0, WindowsPrivilegedPipeSecurity.Build(configuration.ServerServiceSid, configuration.DeveloperUserSids));
 
     private async Task HandleAsync(Stream pipe, byte[] secret, CancellationToken cancellationToken)
     {
-        var frame = await ReadFrameAsync(pipe, cancellationToken);
+        using var setupDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        setupDeadline.CancelAfter(TimeSpan.FromSeconds(configuration.UserExecutionTimeoutSeconds));
+        var frame = await ReadFrameAsync(pipe, setupDeadline.Token);
         var envelope = JsonSerializer.Deserialize<PipeEnvelope>(frame);
         if (envelope is null || !TryDecodeAndVerify(secret, envelope, out var requestJson)) return;
 
@@ -85,7 +107,8 @@ internal sealed class WindowsUserExecutionPipeServer(WindowsHelperPipeConfigurat
                 "unsupported user-execution protocol version"), cancellationToken);
             return;
         }
-        if (!UserExecutionRequestPolicy.IsValid(request, terminal: false))
+        var terminal = request.Operation == UserExecutionOperationKind.TerminalStart;
+        if (!UserExecutionRequestPolicy.IsValid(request, terminal))
         {
             await WriteResultAsync(pipe, secret, Fail(UserExecutionProblemCode.InvalidRequest,
                 "invalid user-execution request"), cancellationToken);
@@ -112,6 +135,13 @@ internal sealed class WindowsUserExecutionPipeServer(WindowsHelperPipeConfigurat
         {
             await WriteResultAsync(pipe, secret, Fail(UserExecutionProblemCode.Conflict,
                 "operation id was already processed"), cancellationToken);
+            return;
+        }
+
+        if (terminal)
+        {
+            await WindowsUserTerminal.RunAsync(request, pipe,
+                result => WriteResultAsync(pipe, secret, result, cancellationToken), cancellationToken);
             return;
         }
 

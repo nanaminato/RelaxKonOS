@@ -20,7 +20,7 @@ internal static class WindowsS4ULogon
     private const int NetworkLogon = 3;
     private const string AuthenticationPackage = "MICROSOFT_AUTHENTICATION_PACKAGE_V1_0";
 
-    public static SafeAccessTokenHandle Logon(string username, string domain)
+    public static SafeAccessTokenHandle Logon(string username, string domain, bool administrator = false)
     {
         using var processName = new AnsiString("RelaxKonOS");
         var status = LsaRegisterLogonProcess(ref processName.Value, out var lsa, out _);
@@ -49,6 +49,12 @@ internal static class WindowsS4ULogon
                 if (status != 0) ThrowIfFailed(subStatus != 0 ? subStatus : status, "create local S4U token");
                 if (token.IsInvalid) throw new InvalidOperationException("LSA returned an invalid S4U token.");
                 using var identity = new WindowsIdentity(token.DangerousGetHandle());
+                if (administrator)
+                {
+                    if (new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator)) return token;
+                    token.Dispose();
+                    throw new UnauthorizedAccessException("The account cannot create an administrator terminal.");
+                }
                 if (!new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator)) return token;
                 // Built-in Administrator can receive an unfiltered S4U token. Ordinary file
                 // execution must use a limited token, never silently inherit administrator rights.

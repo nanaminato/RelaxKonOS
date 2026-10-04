@@ -233,7 +233,7 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 ### 尚未实施（明确不跳过）
 
 - Windows LocalSystem named-pipe/SID impersonation 的代码路径已完成首个文件垂直切片，但尚未在真实 Windows Server 验证 S4U logon type、NTFS deny/allow、UAC/管理员本地账户语义、token 释放、并发、取消、服务重启、profile/known-folder 与网络/映射盘行为；验收前保持默认关闭，不能标记 Goal 3/4 完成。（2026-09-25 补充：Windows 开发宿主上的构建、身份契约与用户执行通道关闭态已实测通过，见文末 Windows 宿主验证；上述多用户项仍未验证。）
-- Git 的临时 AskPass 远程凭据路径；Windows terminal impersonation。
+- Git 的临时 AskPass 远程凭据路径。Windows 本地账号终端已通过受限 S4U primary token 和 Helper ConPTY 实现，见 [Terminal 文档](../applications/RelaxKonOS.Terminal.md)；域账号终端继续拒绝执行。
 - 应用部署的完整用户工作负载 owner model：当前只保证从文件选择器导入源 archive 时按登录用户读取、随后由 deployment-owned staging 使用；Docker Engine 容器本身仍是宿主级资源。
 - Linux user-execution 的文件代码路径已完成本轮 descriptor-relative 收尾；仍需安装为 root-owned Helper 后的真实多用户残留演练。代码已用真实子进程 SIGKILL 验证 staging 恢复与清单初始化窗口回收，并用源/目标/恢复父路径替换验证 descriptor anchoring；隔离环境仍须验证 root Helper、`relaxkon-server`/`nanami`/`alice` 三账户、共享目录、supplementary groups 与 owner/group 结果。
 - 安装器、Helper 配置和真实 Linux/Windows integration 环境。
@@ -251,7 +251,7 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 | `dotnet build RelaxKonOS.sln -c Debug --no-restore -m:1 -p:MSBuildEnableWorkloadResolver=false` | 通过 | Server、Helper、Guardian Agent、Client/Desktop 及 Framework 全部编译成功；最新整体构建为 0 warning / 0 error。 |
 | Linux installer / sudoers | 通过 | 四个受影响的安装/卸载脚本均通过 `bash -n`；三个精确命令形状组成的 sudoers 条目通过 `visudo -cf -`。发布 inventory 的缺失、篡改与多余文件拒绝以及 runtime 快照清理使用临时目录 smoke test 验证。 |
 | Linux System Mode 集成 | 暂缓 | 需要安装 root-owned Helper 与 sudoers 规则，以及 `relaxkon-server`、`nanami`、`alice` 三账户隔离环境；当前工作区不应修改宿主账户或 sudoers。 |
-| Windows impersonation 代码 | 首个文件切片完成、默认关闭 | 独立认证管道、本地 SID/account/profile 二次验证、一次性 MSV1_0 S4U token、同步 impersonation 文件操作和 replay/大小限制已接入；域账户、Git、Terminal 与 POSIX mode fail closed。 |
+| Windows impersonation 代码 | 首个文件切片完成、默认关闭 | 独立认证管道、本地 SID/account/profile 二次验证、一次性 MSV1_0 S4U token、同步 impersonation 文件操作和 replay/大小限制已接入；Windows 本地账号终端经受限 primary token 和 ConPTY 执行，域账户、Git 进程执行与 POSIX mode fail closed。 |
 | Windows impersonation 集成 | 暂缓 | 安装器省略 `-EnableWindowsUserExecution` 时写入 `UserExecutionBackend=disabled`（Helper 侧能力门同时为 `false`）；需真实 Windows Server + LocalSystem Helper + 两个普通本地账户完成 NTFS ACL、owner、token、并发、取消与重启验收后才可启用。 |
 
 ### 2026-09-25 Windows 宿主验证

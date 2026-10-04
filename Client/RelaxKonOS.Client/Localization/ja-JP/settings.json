@@ -314,6 +314,8 @@
         "settings.hostname.outcome_unknown": "結果が不明です。再度書き込む前に操作 ID で照会してください。",
         "settings.hostname.failed": "リクエストに失敗しました。編集内容は保持されています。下のエラーを確認してください。",
         "settings.hostname.authorize": "リモートのホスト名変更を認証",
+        "settings.hostname.length_hint": "{0} / {1} 文字 · 上限はリモートホストから取得",
+        "settings.hostname.too_long": "ホスト名が長すぎます。現在 {0} 文字、このホストの上限は {1} 文字です。短くしてください。",
         "settings.hostname.invalid_name": "名前の形式が無効です。英数字とハイフンのみ、先頭と末尾は英数字、数字のみは不可です。",
         "settings.hostname.restart_pending": "保留中の名前が現在の名前と異なります。リモートホストの再起動後に実際のシステム名になります。操作が不明または要復旧の場合は、ホスト側で手動で名前を設定してください。",
         "settings.identity.restart_required": "ホスト名は保留中です。リモートホストの再起動後に有効になります。",

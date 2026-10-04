@@ -100,7 +100,7 @@ about who executes. Before release, test once through the LocalSystem service to
 profile, DPAPI, network-credential and mapped-drive differences.
 
 Ordinary Windows user file execution uses the derived `<pipeName>-user` endpoint and a fresh
-local-account S4U token. Domain accounts, Git, Terminal, and POSIX mode remain fail-closed. This path
+local-account S4U token. Ordinary Windows terminals use a restricted primary token and Helper-owned ConPTY on the same authenticated pipe. Explicit administrator terminals require system-password login and canonical administrator verification on the Server, followed by administrator-token verification in the Helper. Domain accounts, Git process execution, and POSIX mode remain fail-closed. This path
 requires a LocalSystem Helper listening on that pipe (Helper configuration
 `enableWindowsUserExecution: true`) **and** the Server selecting the `helper` backend; the installer
 enables both sides only when `-EnableWindowsUserExecution` is passed explicitly, and otherwise writes

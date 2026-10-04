@@ -314,6 +314,8 @@
         "settings.hostname.outcome_unknown": "Outcome is uncertain. Query the operation ID before another write.",
         "settings.hostname.failed": "Request failed. The draft is retained; see the error below.",
         "settings.hostname.authorize": "Authorize remote host name change",
+        "settings.hostname.length_hint": "{0} / {1} characters · limit reported by the remote host",
+        "settings.hostname.too_long": "Host name is too long: {0} characters, maximum {1} for this host. Shorten the name.",
         "settings.hostname.invalid_name": "Invalid name: use only letters, digits and hyphens, start and end with a letter or digit, and do not use digits only.",
         "settings.hostname.restart_pending": "The pending name differs from the effective name: it becomes the system name only after the remote host restarts. If an operation ends Unknown or RecoveryRequired, set the name on the host manually.",
         "settings.identity.restart_required": "The host name is staged and takes effect after the remote host restarts.",

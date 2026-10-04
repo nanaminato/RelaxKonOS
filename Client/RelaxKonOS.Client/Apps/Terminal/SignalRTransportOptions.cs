@@ -20,6 +20,7 @@ public sealed class SignalRTransportOptions : ITerminalTransportOptions
     public string? WorkingDirectory { get; }
     public string? SessionId { get; }
     public NetworkDiagnosticsService? Diagnostics { get; }
+    public bool IsAdministrator { get; }
 
     public SignalRTransportOptions(
         string hubUrl,
@@ -29,7 +30,8 @@ public sealed class SignalRTransportOptions : ITerminalTransportOptions
         string? shell = null,
         string? workingDirectory = null,
         string? sessionId = null,
-        NetworkDiagnosticsService? diagnostics = null)
+        NetworkDiagnosticsService? diagnostics = null,
+        bool isAdministrator = false)
     {
         HubUrl = hubUrl;
         Dimensions = dimensions;
@@ -39,5 +41,6 @@ public sealed class SignalRTransportOptions : ITerminalTransportOptions
         WorkingDirectory = workingDirectory;
         SessionId = sessionId;
         Diagnostics = diagnostics;
+        IsAdministrator = isAdministrator;
     }
 }

@@ -1,6 +1,10 @@
 {
     "Culture": "ja-JP",
     "Strings": {
+        "terminal.open_administrator": "管理者ターミナルを開く",
+        "terminal.administrator_title": "管理者ターミナル",
+        "terminal.status.administrator_connected": "接続済み · 管理者権限",
+        "terminal.administrator_shell": "管理者権限 · {0}",
         "terminal.menu": "ターミナル",
         "terminal.settings": "ターミナル設定",
         "terminal.font_family": "フォント",
