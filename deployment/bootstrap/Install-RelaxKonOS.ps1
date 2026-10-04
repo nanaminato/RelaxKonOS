@@ -249,7 +249,8 @@ function Invoke-ServicesInstaller([string] $Version, [string] $ListenUrl) {
     }
     & $engine -InstallRoot $InstallRoot -ServerExecutable $server -GuardianExecutable $guardian -PrivilegedHelperExecutable $helper `
         -ServerPort $ServerPort -ServerListenUrl $ListenUrl -DataRoot $DataRoot -CertificateMode $CertificateMode -CertificatePath $CertificatePath `
-        -CertificatePassword $CertificatePassword -SelfSignedIdentities $SelfSignedIdentities -FileAccess $FileAccess -FileRootsFile $FileRootsFile
+        -CertificatePassword $CertificatePassword -SelfSignedIdentities $SelfSignedIdentities -FileAccess $FileAccess -FileRootsFile $FileRootsFile `
+        -EnableWindowsUserExecution
     if ($LASTEXITCODE -ne 0) { throw "Service installer failed with exit code $LASTEXITCODE." }
 }
 
