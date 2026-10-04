@@ -265,6 +265,8 @@ Check(!traceLines.Any(line => line.Contains("Preview document") || line.Contains
     "Trace excludes window titles and document content.");
 Console.WriteLine($"Interaction trace: {TaskbarPreviewDiagnostics.FilePath}");
 LanguageSwitchChecks.Run(settings, localization);
+HostTimeCompletionChecks.Run(localization);
+HostIdentityCompletionChecks.Run(localization);
 MemoryLifecycleChecks.Run(settings, localization, services);
 Console.WriteLine($"PASS: window preview rendering, caching, native fallback, activation and close lifecycle. QA image: {output}");
 }

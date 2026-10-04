@@ -32,6 +32,14 @@
                 <TextBlock Text="{loc:Loc settings.host_time.title}" Classes="title" />
                 <TextBlock Text="{loc:Loc settings.host_time.scope}" TextWrapping="Wrap" />
                 <TextBlock Text="{Binding HostTime.TargetText}" TextWrapping="Wrap" />
+                <Border IsVisible="{Binding HostTime.IsCompleted}" Padding="12" BorderThickness="1" CornerRadius="6"
+                        BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="{Binding HostTime.StatusText}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding HostTime.CurrentZoneLabel}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+                <ProgressBar IsVisible="{Binding HostTime.IsBusy}" IsIndeterminate="True" Height="3" />
                 <TextBlock Text="{loc:Loc settings.host_time.current}" Opacity="0.7" />
                 <TextBlock Text="{Binding HostTime.CurrentZoneLabel}" FontWeight="SemiBold" TextWrapping="Wrap" />
                 <TextBlock Text="{loc:Loc settings.host_time.select}" Opacity="0.7" />
@@ -53,9 +61,11 @@
                     <Button IsVisible="{Binding HostTime.ShowQueryAction}" Content="{loc:Loc settings.host_time.query}" Command="{Binding HostTime.QueryCommand}" Margin="0,0,8,8" />
                     <Button IsVisible="{Binding HostTime.ShowRollbackAction}" Content="{loc:Loc settings.host_time.rollback}" Command="{Binding HostTime.RollbackCommand}" Margin="0,0,8,8" />
                 </WrapPanel>
-                <TextBlock Text="{Binding HostTime.StatusText}" TextWrapping="Wrap" />
+                <TextBlock IsVisible="{Binding !HostTime.IsCompleted}" Text="{Binding HostTime.StatusText}" TextWrapping="Wrap" />
                 <TextBlock IsVisible="{Binding HostTime.HasProblem}" Text="{Binding HostTime.ProblemCode}" TextWrapping="Wrap" />
-                <SelectableTextBlock IsVisible="{Binding HostTime.HasOperation}" Text="{Binding HostTime.OperationId}" TextWrapping="Wrap" />
+                <Expander IsVisible="{Binding HostTime.HasOperation}" Header="{loc:Loc settings.host_time.operation_details}">
+                    <SelectableTextBlock Text="{Binding HostTime.OperationId}" TextWrapping="Wrap" />
+                </Expander>
             </StackPanel>
         </Border>
 

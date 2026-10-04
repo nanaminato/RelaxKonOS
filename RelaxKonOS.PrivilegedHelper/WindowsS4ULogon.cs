@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Microsoft.Win32.SafeHandles;
+using System.Security.Principal;
 
 namespace RelaxKonOS.PrivilegedHelper;
 
@@ -15,6 +16,7 @@ internal static class WindowsS4ULogon
 {
     private const uint MsV1_0S4ULogon = 12;
     private const uint CheckLogonHours = 0x2;
+    private const uint LuaToken = 0x4;
     private const int NetworkLogon = 3;
     private const string AuthenticationPackage = "MICROSOFT_AUTHENTICATION_PACKAGE_V1_0";
 
@@ -46,7 +48,18 @@ internal static class WindowsS4ULogon
             {
                 if (status != 0) ThrowIfFailed(subStatus != 0 ? subStatus : status, "create local S4U token");
                 if (token.IsInvalid) throw new InvalidOperationException("LSA returned an invalid S4U token.");
-                return token;
+                using var identity = new WindowsIdentity(token.DangerousGetHandle());
+                if (!new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator)) return token;
+                // Built-in Administrator can receive an unfiltered S4U token. Ordinary file
+                // execution must use a limited token, never silently inherit administrator rights.
+                try
+                {
+                    if (!CreateRestrictedToken(token, LuaToken, 0, IntPtr.Zero, 0, IntPtr.Zero,
+                            0, IntPtr.Zero, out var limited))
+                        throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not limit user execution token.");
+                    return limited;
+                }
+                finally { token.Dispose(); }
             }
             finally
             {
@@ -161,4 +174,9 @@ internal static class WindowsS4ULogon
     private static extern bool AllocateLocallyUniqueId(out Luid luid);
     [DllImport("advapi32.dll")]
     private static extern uint LsaNtStatusToWinError(int status);
+    [DllImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CreateRestrictedToken(SafeAccessTokenHandle existingToken, uint flags,
+        uint disableSidCount, IntPtr sidsToDisable, uint deletePrivilegeCount, IntPtr privilegesToDelete,
+        uint restrictedSidCount, IntPtr sidsToRestrict, out SafeAccessTokenHandle newToken);
 }

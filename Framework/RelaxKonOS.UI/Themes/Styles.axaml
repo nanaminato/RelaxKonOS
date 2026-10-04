@@ -1,4 +1,9 @@
 <Styles xmlns="https://github.com/avaloniaui">
+  <!-- Keep scrollbars in their own layout cells. Fluent's auto-hide mode spans
+       content beneath both tracks, obscuring stretched fields and edge actions. -->
+  <Style Selector="ScrollViewer">
+    <Setter Property="AllowAutoHide" Value="False" />
+  </Style>
   <!-- Shared state vocabulary: application pages reuse these states instead of inventing local colours. -->
   <!-- Wallpaper labels need their own contrast pair, independent of window surface text. -->
   <Style Selector="TextBlock.desktop-label">

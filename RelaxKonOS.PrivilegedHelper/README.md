@@ -63,7 +63,11 @@ PrivilegedHelper__SharedSecret=<相同的 Base64 密钥>
 
 控制台宿主把管道访问权限授予"启动它的账户"，加上 `developerUserSids` 列出的身份（以及 SYSTEM 和 Administrators），使由该账户启动的 Server 可走生产 IPC 路径。Helper 需要提权，因此它常常以另一个账户运行（例如 Helper 以 Administrator 启动、Server 以普通开发账户运行）；此时必须在 `developerUserSids` 里点名 Server 的账户，否则该连接会在任何认证发生之前被内核拒绝（EPERM），而客户端只会看到"特权助手不可用"，看起来像密钥错误。启动日志会打印实际生效的客户端 SID 列表——连不上时先把 `whoami /user` 与那一行对比。仅在测试确实需要管理员权限的操作时，以提升权限运行 IDE。配置要求 `allowConsoleDebug: true`；生产 `helper.json` 不使用此架构，因而不会意外启用控制台模式（反过来，服务模式也会拒绝含 `developerUserSids` 的部署配置，避免它被静默忽略）。Server 侧的键（含 `userExecutionBackend`）出现在 Helper 配置里同样会让 Helper 启动失败：它只可能来自配置被复制错，静默忽略会让两侧对"谁在执行"产生分歧。发布前应通过 LocalSystem 服务测试一次，以覆盖 Session 0、用户配置文件、DPAPI、网络凭据和映射驱动器差异。
 
-Windows 普通用户文件执行使用派生管道 `<pipeName>-user` 和一次性本地账户 S4U token；域账户、Git、Terminal 与 POSIX mode 均 fail closed。该路径需要 LocalSystem Helper 监听该管道（Helper 配置 `enableWindowsUserExecution: true`）**并且** Server 侧选 `helper` 后端；安装器只在显式传入 `-EnableWindowsUserExecution` 时同时打开两侧，否则写入 `disabled`，永不写入 `local-identity`。管理员控制台宿主不是 LocalSystem，即使为协议排障临时打开开关，也不会获得 S4U 执行能力。完成隔离 Windows Server 上的双用户 SID/ACL、token 释放、并发和服务重启验收前，不得在生产配置启用。
+Windows 普通用户文件执行使用派生管道 `<pipeName>-user` 和一次性本地账户 S4U token；域账户、Git、Terminal 与 POSIX mode 均 fail closed。该路径需要 LocalSystem Helper 监听该管道（Helper 配置 `enableWindowsUserExecution: true`）**并且** Server 侧选 `helper` 后端。Windows System Mode 的 bootstrap 安装器显式传入 `-EnableWindowsUserExecution`，同时打开两侧，避免新安装后普通文件浏览不可用；直接调用服务安装脚本时仍需显式传入该开关，否则写入 `disabled`，永不写入 `local-identity`。管理员控制台宿主不是 LocalSystem，即使打开开关，也不会获得 S4U 执行能力。双用户 SID/ACL、token 释放和并发仍需完成发布验收。
+
+内置 Administrator 的 S4U token 可能保留管理员组。普通文件执行先通过 `CreateRestrictedToken(LUA_TOKEN)` 将该 token 限制为普通用户权限，再进行 SID、模拟级别与管理员权限检查；不能通过删除检查让普通操作获得管理员权限。
+
+2026-10-04 在指定 Windows Server 上修复并验证：开启 Helper 的用户执行监听和 Server 的 `helper` 后端后，Administrator 的 C/D 盘目录读取返回 200。Guardian 原先由 LocalSystem 创建默认权限管道，导致 LocalService Server 返回 `guardian.agent_permission_denied`；服务管道现显式授权 `protectedServerMonitor.serviceName` 对应的 Server 服务 SID 读写，仅 SYSTEM 与 Administrators 拥有完全控制。修复后 Guardian 状态及 workload 列表返回 200。此验证覆盖该主机上的管理员目录读取和服务重启，不代表完成双用户隔离、并发、写入与完整发布验收。
 
 ## Linux 发布安装
 

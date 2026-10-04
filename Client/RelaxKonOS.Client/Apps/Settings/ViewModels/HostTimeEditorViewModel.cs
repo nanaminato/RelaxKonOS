@@ -17,7 +17,8 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
     private HostSettingsConnection? _connection;
     private HostTimeSnapshot? _snapshot;
     private SettingsPlan? _plan;
-    private SettingsOperation? _operation;
+    private SettingsPlan? _completedPlan;
+    private SettingsOperation? _completedOperation;
     private bool _submitted;
     private bool _disposed;
     private CancellationTokenSource _lifetime = new();
@@ -48,13 +49,14 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
         get => SelectedZone is null ? null : ZoneLabel(SelectedZone);
         set => SelectedZone = AvailableZones.FirstOrDefault(id => ZoneLabel(id) == value);
     }
-    public bool HasPreview => _plan is not null;
-    public bool ShowPreviewAction => !_submitted && _plan is null;
+    public bool HasPreview => !_submitted && _plan is not null;
+    public bool ShowPreviewAction => !_submitted && _plan is null && SelectedZone is not null && SelectedZone != CurrentZone;
     public bool ShowApplyAction => !_submitted && _plan is not null;
     public bool ShowQueryAction => _submitted;
-    public bool ShowRollbackAction => _operation?.State == SettingsOperationState.Applied;
+    public bool ShowRollbackAction => !_submitted && _completedOperation?.State == SettingsOperationState.Applied;
+    public bool IsCompleted => !_submitted && _plan is null && _completedOperation is not null;
     public bool HasProblem => !string.IsNullOrEmpty(ProblemCode);
-    public bool HasOperation => _submitted && _plan is not null;
+    public bool HasOperation => _plan is not null || _completedPlan is not null;
 
     private static string ZoneLabel(string id)
     {
@@ -72,13 +74,13 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
     partial void OnCurrentZoneChanged(string value) => OnPropertyChanged(nameof(CurrentZoneLabel));
     partial void OnProblemCodeChanged(string value) => OnPropertyChanged(nameof(HasProblem));
     public string StatusText => _localization.Get(_statusKey, _statusKey);
-    public string OperationId => _plan?.PlanId.ToString("D") ?? "";
+    public string OperationId => (_plan ?? _completedPlan)?.PlanId.ToString("D") ?? "";
     public bool CanReload => !IsBusy;
     public bool CanPreview => !IsBusy && !_submitted && _snapshot is not null
         && !string.IsNullOrEmpty(SelectedZone) && SelectedZone != CurrentZone;
     public bool CanApply => !IsBusy && !_submitted && _plan is not null && _plan.ExpiresAt > DateTimeOffset.UtcNow;
     public bool CanQuery => !IsBusy && _plan is not null;
-    public bool CanRollback => !IsBusy && _operation?.State == SettingsOperationState.Applied;
+    public bool CanRollback => !IsBusy && ShowRollbackAction && !string.IsNullOrEmpty(_completedOperation?.ObservedRevision);
     public bool CanEdit => !IsBusy && !_submitted && _snapshot is not null;
 
     partial void OnIsBusyChanged(bool value) => UpdateCommands();
@@ -100,7 +102,8 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
         _connection = connection;
         _snapshot = snapshot;
         _plan = null;
-        _operation = null;
+        _completedPlan = null;
+        _completedOperation = null;
         _submitted = false;
         CurrentZone = snapshot.Value.TimeZoneId;
         AvailableZones = snapshot.Value.AvailableTimeZoneIds;
@@ -135,7 +138,8 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
         ct.ThrowIfCancellationRequested();
         if (!_service.IsCurrent(connection) || _plan != plan) throw new InvalidOperationException("settings.connection_changed");
         _submitted = true;
-        SetStatus("settings.host_time.outcome_unknown");
+        SetStatus("settings.host_time.applying");
+        UpdateCommands();
         var operation = await _service.ApplyAsync(connection, plan.PlanId, ct);
         ShowOperation(operation);
     });
@@ -147,23 +151,46 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
     private Task RollbackAsync() => RunAsync(async ct =>
     {
         var connection = Connection();
+        var plan = _completedPlan!;
+        var operation = _completedOperation!;
         if (RequestAuthorizationAsync is null || !await RequestAuthorizationAsync(connection))
         { SetStatus("settings.host_time.authorization_cancelled"); return; }
         ct.ThrowIfCancellationRequested();
-        SetStatus("settings.host_time.outcome_unknown");
-        ShowOperation(await _service.RollbackAsync(connection, _plan!.PlanId, _operation!.ObservedRevision!, ct));
+        if (!_service.IsCurrent(connection) || _completedPlan != plan) throw new InvalidOperationException("settings.connection_changed");
+        _plan = plan;
+        _submitted = true;
+        SetStatus("settings.host_time.restoring");
+        UpdateCommands();
+        ShowOperation(await _service.RollbackAsync(connection, plan.PlanId, operation.ObservedRevision!, ct));
     });
 
     private void ShowOperation(SettingsOperation operation)
     {
         if (_disposed) return;
-        _operation = operation;
         // A rejected precondition can be reauthorized using the same immutable plan.
         _submitted = operation.State != SettingsOperationState.Prepared;
-        if (operation.State == SettingsOperationState.Applied) CurrentZone = _plan!.Differences.Single().After ?? "";
-        if (operation.State == SettingsOperationState.RolledBack) CurrentZone = _plan!.Differences.Single().Before ?? "";
         ProblemCode = operation.ProblemCode ?? "";
-        SetStatus("settings.operation." + operation.State.ToString().ToLowerInvariant());
+        if (operation.State is SettingsOperationState.Applied or SettingsOperationState.RolledBack)
+        {
+            var difference = _plan!.Differences.Single();
+            CurrentZone = (operation.State == SettingsOperationState.Applied ? difference.After : difference.Before) ?? "";
+            _completedPlan = _plan;
+            _completedOperation = operation;
+            PreviewText = "";
+            // Continue editing only with the revision confirmed by the remote operation.
+            if (!string.IsNullOrEmpty(operation.ObservedRevision) && _snapshot is not null)
+            {
+                _snapshot = _snapshot with { Value = _snapshot.Value with
+                    { TimeZoneId = CurrentZone, Revision = operation.ObservedRevision, ObservedAt = operation.UpdatedAt } };
+                _plan = null;
+                SelectedZone = CurrentZone;
+                _submitted = false;
+            }
+            SetStatus(operation.State == SettingsOperationState.Applied
+                ? "settings.host_time.applied" : "settings.host_time.restored");
+        }
+        else SetStatus("settings.operation." + operation.State.ToString().ToLowerInvariant());
+        UpdateCommands();
     }
 
     private HostSettingsConnection Connection() => _connection is { } connection && _service.IsCurrent(connection)
@@ -197,6 +224,7 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
         OnPropertyChanged(nameof(ShowQueryAction));
         OnPropertyChanged(nameof(ShowRollbackAction));
         OnPropertyChanged(nameof(HasOperation));
+        OnPropertyChanged(nameof(IsCompleted));
         ReloadCommand.NotifyCanExecuteChanged(); PreviewCommand.NotifyCanExecuteChanged();
         ApplyCommand.NotifyCanExecuteChanged(); QueryCommand.NotifyCanExecuteChanged(); RollbackCommand.NotifyCanExecuteChanged();
     }
@@ -205,7 +233,7 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
     {
         if (_disposed || _connection is null || _service.IsCurrent(_connection)) return;
         _lifetime.Cancel(); _lifetime.Dispose(); _lifetime = new();
-        _connection = null; _snapshot = null; _plan = null; _operation = null; _submitted = false;
+        _connection = null; _snapshot = null; _plan = null; _completedPlan = null; _completedOperation = null; _submitted = false;
         CurrentZone = ""; AvailableZones = Array.Empty<string>(); SelectedZone = null; TargetText = ""; PreviewText = ""; ProblemCode = "";
         SetStatus("settings.host_time.load_prompt"); UpdateCommands();
     });
