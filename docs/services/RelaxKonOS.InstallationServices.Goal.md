@@ -30,7 +30,7 @@
 
 当前环境中 `RelaxKonOS.Server` 可无还原构建；Client 与测试项目因本机缺少 .NET workload SDK 目录而在项目引用解析阶段失败（无编译诊断），故未将该环境问题误记为功能测试通过。
 
-领域设计仍是功能语义的权威来源：[SMB Goal](./file-services/RelaxKonOS.FileServices.Smb.Goal.md)、[File Services 规格](./file-services/RelaxKonOS.FileServices.Specification.md)、[Nginx 设计](../applications/RelaxKonOS.WebServerManager.Design.md)、[FRP Goal](../applications/RelaxKonOS.FRP_Integration.Goal.md)、[代理管理器 Goal](../applications/RelaxKonOS.ProxyManager.Goal.md)和 [Docker 管理器设计](../applications/RelaxKonOS.DockerManager.md)。本文与它们冲突时，安装任务的公共契约、恢复和安全规则以本文为准。
+领域设计仍是功能语义的权威来源：[SMB Goal](./file-services/RelaxKonOS.FileServices.Smb.md)、[File Services 规格](./file-services/RelaxKonOS.FileServices.Specification.md)、[Nginx 设计](../applications/RelaxKonOS.WebServerManager.Design.md)、[FRP Goal](../applications/RelaxKonOS.FRP_Integration.Design.md)、[代理管理器 Goal](../applications/RelaxKonOS.ProxyManager.Design.md)和 [Docker 管理器设计](../applications/RelaxKonOS.DockerManager.md)。本文与它们冲突时，安装任务的公共契约、恢复和安全规则以本文为准。
 
 ## 1. 成功标准
 

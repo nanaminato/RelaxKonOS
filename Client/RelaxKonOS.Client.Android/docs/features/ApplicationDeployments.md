@@ -6,7 +6,7 @@
 
 “管理 → 应用部署”提供列表、详情、新建、完整定义编辑、日志、启动/停止/重启、修订和回滚。Git 成功构建可从 Git 页面发布到既有 Image 实例；详情的“发布新修订”支持既有 Image/Java/.NET/Python 实例的新镜像或手机/服务器归档。依赖 `server.application-deployments`、真实可用的 Docker Engine 及当前账号权限；API 在线不等于容器运行时可用。
 
-共享执行语义由 [部署设计](../../../../docs/applications/RelaxKonOS.ApplicationDeployment.Design.md) 和 [实施进度](../../../../docs/applications/RelaxKonOS.ApplicationDeployment.Progress.md) 维护。Android 不执行宿主构建命令，不维护另一套运行时版本表。
+共享执行语义由 [部署设计](../../../../docs/applications/RelaxKonOS.ApplicationDeployment.Design.md) 维护。Android 不执行宿主构建命令，不维护另一套运行时版本表。
 
 Docker 未安装、权限不足或不可达时，服务端仍返回已保存的应用定义，实际运行状态为未知；空定义列表显示尚未创建应用。运行环境卡片独立说明 Engine 状态，不能将依赖读取异常变为空 HTTP 500 或推断容器已停止。
 

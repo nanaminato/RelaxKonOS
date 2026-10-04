@@ -1,55 +1,44 @@
-# RelaxKonOS 事件与告警中心 Goal
+# RelaxKonOS 事件与告警中心
 
-> 建立日期：2026-09-21  
-> 状态：设计完成，待实施；本文不是已交付功能的声明。  
-> 适用范围：`RelaxKonOS.Server`、`RelaxKonOS.Guardian.Agent`、`Shared/RelaxKonOS.Protocol` 与 `Client/RelaxKonOS.Client`。
+> 本文统一维护产品设计、当前实现与验证边界。服务端事件账本和告警投影、授权查询/处理 API、部署及 Compose 的最小事件发布已实现；桌面目前提供摘要和告警列表。详情、处理交互、完整领域采集与可靠重放尚未全部实现。
 
-## 1. 背景
+## 1. 定位
 
-部署失败、证书自动续期失败、Guardian 不可用或其工作负载反复崩溃、Docker Engine 不可用、FRP 隧道断开，分别已经有操作状态、日志或领域审计。但管理员必须逐个打开应用、理解不同的状态模型，才能发现和处理同一个宿主的风险。
+汇总宿主的运行风险，将同一故障聚合为可查询告警，并通过受控入口连接原应用的处理流程。中心不替代领域操作账本、安全审计或运行日志，也不自动执行重启、回滚或部署。Server 是事件与告警的真源。
 
-本 Goal 建立一个内置的“事件与告警中心”（下称“中心”）：以一个可审计、可去重、可恢复的操作视图汇总这些信号，给出安全的证据摘要，并将用户带回负责修复的原应用或受控操作入口。它为之后 Android 运维伴侣的推送读取模型预留稳定服务端契约，但不在本 Goal 中实现移动端或外部推送。
+## 2. 当前实现
 
-中心是**汇聚层，不是新的运维执行引擎**。Docker、证书、应用部署、Guardian、隧道仍是各自资源的事实来源和唯一修改者；中心不通过日志文本猜测状态，也不复制它们的状态机。
+### 已实现
 
-## 2. 当前基线
+- 第一版契约冻结：首批事件类型、来源、默认严重性、资源类型、固定跳转种类和人工关闭允许范围由 `EventAlertCatalog` 集中定义。
+- 核心持久化：独立 SQLite 事件账本、告警投影、处理动作和抑制表；事件以 source event key 幂等追加，告警以目录控制的 dedupe key 聚合。
+- 查询面：`/api/v1.0/event-alerts` 的 events、alerts、detail、summary 游标分页/筛选 API，以及 page-size 和 cursor 验证。
+-  基础受控动作：确认、允许类型的人工关闭、期限抑制和解除抑制；说明限制为 1–512 字符并在持久化前净化。
+- 审计失败关闭：详情读取及所有处理动作均先写 Security Audit；审计不可写时不执行处理动作。
+- 实时失效通知：独立、授权的 SignalR hub 只传递 alert ID、版本、状态、严重性和次数；客户端必须重新读取 REST 数据。
+- 最小读取体验：注册只声明读取权限的 `relaxkonos.event-alerts` 内置应用，读/管权限定义、三语文案和摘要/告警列表刷新界面；摘要现已跟随语言切换，列表复用共享视觉角色。
+- 新应用权限及 Server `EventsRead`、`EventsManage`、`EventsCriticalSuppress` policy 已接入。
+- 部署失败最小接入：`ApplicationDeploymentCoordinator` 在其 terminal ledger 已持久化后发布失败或成功恢复信号；中心失败不会回滚部署。
+- Compose 操作最小接入：`DockerStackOperationCoordinator` 在持久终态写入后按项目稳定身份发布失败、部分失败及经观察的成功恢复；取消和中断不发布恢复，幂等重放不产生第二事件。
 
-### 2.1 已有可复用基础
+### 尚未实现或未验收
 
-- `Shared/RelaxKonOS.Protocol/Observability/` 已定义 `ObservabilityEventCatalog`、安全 `CorrelationContext`、`SecurityAuditEvent`、稳定 outcome/severity。
-- `RelaxKonOS.Server/Observability/` 已有请求关联、净化器、结构化运行日志与带 HMAC 链的 append-only `SecurityAuditWriter`；其审计库尚没有供产品读取的 API。
-- 应用部署的 `ApplicationDeploymentOperationStore` 保存持久操作、阶段、稳定问题码和限长诊断；`ApplicationDeploymentCoordinator` 已承担恢复与执行。
-- 证书的 `CertificateOperationStore`、`CertificateRenewalWorker` 与 `CertificateRenewalAttemptRepository` 已记录续期操作、重试和连续失败。
-- Guardian 通过 `NamedPipeProcessGuardianService` 访问独立的 `RelaxKonOS.Guardian.Agent`；Agent 现有工作负载状态、日志和 `audit.jsonl`，而 Server 能返回 `guardian.agent_unavailable`、`guardian.agent_timeout` 等稳定问题码。
-- Docker API 具有 `GetStatusAsync` 和明确的 Engine 操作结果；FRP 隧道协议已经公开连接状态（包括 `Disconnected`、`RuntimeUnavailable`）和各领域审计。
-- 桌面已通过 `BuiltInApplicationRegistry` 注册 Docker、Process Guardian、Certificates、Application Deployments、Tunnel Manager；SDK 提供受 Shell 验证的 `IAppActivationService` / `IAppActivationHandler`。
+- 部署与 Compose 终态事件的持久重放，以及证书、Docker Engine 可用性、隧道的结构化发布器、状态监视器、宽限/退避与持久 journal 重放。
+- Guardian Agent 的 sequence 事件账本、checkpoint、可靠拉取、可用性监视器和重启补偿。
+- 按目标领域的二次资源授权、Critical 独立权限角色以及跳转请求审计。
+- 详情抽屉、处理操作界面、SignalR 客户端订阅、壳状态徽章/toast、固定激活处理器和各领域深链。
+- Linux Docker/FRP 与 Windows Guardian 的真实环境演练、容量/性能、完整 README/帮助文档和 Android 读取契约评审。
+- 受抑制告警到期时当前存储会恢复为 Open；仍需补充对应 hub 变更广播及自动化测试。
 
-### 2.2 当前缺口
+## 3. 当前交互与设计边界
 
-- 这些记录没有统一的、面向用户的事件/告警数据模型、查询 API、未处理计数或桌面应用。
-- `SecurityAuditWriter` 用于安全取证，不能被当成通用告警队列；它也不应直接向无关权限的用户开放。
-- `ObservabilityEventCatalog` 的 Guardian、证书、Docker、隧道事件尚不足以表达中心需要的全部状态转换。
-- Guardian 的日志是内存窗口，`audit.jsonl` 没有序列化拉取/确认协议；Guardian 自身崩溃不可能自行上报，必须由 Server 侧心跳/可用性检测发现。
-- 目前客户端的内置应用深链接仅在少数应用中实现；不能将 Server 提供的任意 URI 当作跳转目标。
-
-## 3. 目标与完成条件
-
-第一阶段完成后，具备 `EventsRead` 权限的用户可以在单独应用中：
-
-- 浏览、筛选、分页查询部署失败、证书续期失败/即将到期、Guardian/工作负载异常、Docker 异常、隧道断开及中心自身采集异常；
-- 将重复的同一故障聚合为一个当前告警，了解首次/最后发生时间、次数、严重性、稳定问题码、已净化证据与关联操作；
-- 确认（acknowledge）、附加限长处理说明，并在**事实恢复**后看到已解决状态；这些用户动作和任何从中心发起的修复均保留安全审计；
-- 点击固定、受验证的跳转目标，进入资源详情、操作记录、日志或原应用的既有受控操作入口；跳转失败时仍显示可复制的安全引用和问题码；
-- 在桌面壳中看到当前未确认高严重性告警数及非打扰式本地提示；刷新、断线重连或 Server 重启均不会丢失历史或把旧事件再次通知为新事件；
-- 对关闭的领域，清楚呈现“功能不可用/未安装”，而不是把不存在的服务误报为运行故障。
-
-只有当本文件 §17 的验收条件全部满足，才可关闭 Goal。
+桌面应用 `relaxkonos.event-alerts` 显示本地化摘要、告警列表和刷新入口。后文详情、处理、深链、通知和可靠采集描述的是设计契约，不能由现有读取界面推定为已交付。Android 的客户端行为维护在 Android-owned 文档中。
 
 ## 4. 非目标
 
 - 不替代 Security Audit、领域 operation journal、原始运行日志、指标、分布式追踪或各应用历史页面。
 - 不在第一阶段引入短信、邮件、Webhook、移动端推送、SIEM 导出、值班排班、任意规则脚本或跨主机集中控制。
-- 不自动执行重启、回滚、重签证书、重新部署或修改隧道；“处理”只能跳转到现有授权/确认流程。自动修复需要独立 Goal 与明确的风险策略。
+- 不自动执行重启、回滚、重签证书、重新部署或修改隧道；“处理”只能跳转到现有授权/确认流程。自动修复需要独立设计与明确的风险策略。
 - 不展示原始 Docker/FRP/Guardian 输出、完整路径、域名、账号、IP、token、私钥、请求体或异常堆栈。
 - 不将所有 `Warning` 日志都制成告警；高频健康采样、正常重试和预期停机必须去噪。
 
@@ -124,7 +113,7 @@ Suppressed ── rule expires or is removed + signal remains ──> Open
 
 运行时不存在的 Docker、FRP 或 Guardian，由 capability/安装状态决定是否启用相应采集器；未安装不创建 `*_unavailable` 告警。计划维护造成的短暂状态只能在显式维护窗口内被抑制，不能通过检查“当前用户是否发起操作”来猜测。
 
-## 7. 建议架构
+## 7. 架构与职责
 
 ```text
 领域操作、轮询检查、Guardian 可靠事件流
@@ -261,20 +250,6 @@ Guardian 自身崩溃/管道断开由 Server 的 `GuardianAvailabilityMonitor` �
 | Server/Guardian 重启造成漏报或重复 | 源 checkpoint、幂等来源键、持久事件先写后投影、启动重放与心跳状态机。 |
 | 中心数据库不可用掩盖领域事故 | 领域 journal/audit 独立保存；自检开 `source_degraded`，补偿重放，不把副作用当作已回滚。 |
 
-## 13. 实施阶段
-
-每阶段都同步更新全部仓库调用方、测试、三语本地化与文档；首次正式发布前不保留兼容别名、旧路由或双写格式。每阶段结束至少执行受影响项目的 build 与相关自动化测试，最终执行 `dotnet build RelaxKonOS.sln -c Debug`。
-
-| 阶段 | 工作 | 可独立验收 |
-| --- | --- | --- |
-| M0：盘点与契约冻结 | 枚举所有现有领域状态、问题码、审计和客户端入口；冻结事件类型、dedupe、severity、保留、权限、目标枚举及隐私字段表。 | 每个首批类型有唯一来源、恢复条件、资源权限和跳转目标；无“解析日志文本”设计。 |
-| M1：Protocol 与持久化 | 建立 EventAlerts Protocol、SQLite schema/migration、store、事件验证、投影、游标查询、保留作业和 Server policies。 | 重启后 event/alert/action 不丢失；幂等重放不重复；非法字段/状态转换/游标被拒绝。 |
-| M2：首批领域接入 | 为部署、证书、Docker、隧道添加结构化发布；实现 Docker/隧道状态转换、宽限与恢复；保留领域 journal 为权威。 | 每个来源有 failure、duplicate、recovery、未安装与恢复测试。 |
-| M3：Guardian 可靠接入 | 实现 Agent 事件账本、sequence/checkpoint、Server availability monitor、工作负载/受保护 Server 信号和启动补偿。 | Agent/Server 任意一侧重启、管道中断、重复拉取、重启预算耗尽均无漏报/重复告警。 |
-| M4：受控操作与审计 | 实现确认、人工关闭、临时抑制、二次资源授权及 Security Audit 失败关闭。 | 处理动作可追溯；无权限/过期/冲突/审计不可写不会改变告警状态。 |
-| M5：桌面应用与跳转 | 注册应用、列表/详情/状态徽章、本地化、SignalR 提示、固定深链和各领域 activation handler。 | 链接到正确资源且不绕过领域确认；离线、权限不足、应用缺失与实时重连体验明确。 |
-| M6：恢复与发布验证 | 真实 Linux（含 Docker/FRP）和 Windows Server（Guardian）演练、性能/容量、文档和 Android 消费契约评审。 | §17 所列情景有可复核证据；保留与安全检查通过。 |
-
 ## 14. 测试策略
 
 ### 单元与契约测试
@@ -300,31 +275,10 @@ Guardian 自身崩溃/管道断开由 Server 的 `GuardianAvailabilityMonitor` �
 - 键盘可达、屏幕阅读器标签、列表虚拟化及高对比度主题；1000+ 历史事件分页不卡顿。
 - 从每个首批告警跳转到正确应用/资源，确认原应用仍要求其既有权限与危险操作确认。
 
-## 15. 迁移与部署
+## 15. 验证记录与限制
 
-这是新功能，不迁移既有领域审计为中心事件，也不反向把中心告警写回旧 ledger。M0 盘点后可为仍在保留窗口内、且拥有稳定 ID/问题码的 terminal operation 做一次受限回填；回填事件必须标记 `historical-import`，不触发 toast/通知，也不把未知旧失败伪装成打开告警。
+- 2026-09-29：重新编译服务端检查，使用 `UsePrebuiltServerAssembly=true` 的 `--stack-operations-only` 路径通过 EventAlertChecks 与 Compose 定向检查，覆盖 append/净化/聚合/确认/恢复、Compose 失败与恢复、幂等重放及取消不发布恢复事件。这不证明完整来源采集和故障重放已完成。
+- 2026-10-04：桌面构建通过；共享应用 UI 的布局检查通过。此前“客户端无法编译”的环境记录不再作为当前缺口，但布局检查不验证告警后端完整链路。
+- 待验证：领域终态的持久重放、Guardian 重启/断链补偿、抑制到期通知、容量与性能、真实 Linux Docker/FRP 和 Windows Guardian 环境，以及桌面详情/处理/跳转流程。
 
-配置示例应在实现时加入安装器和用户模式文档，至少包括启用开关、事件/告警保留、Docker/Guardian/隧道轮询间隔、连续失败阈值、恢复稳定窗口、通知冷却及证书临期阈值。生产启动应拒绝非法保留、负数阈值、超大 payload、缺失中心存储路径或将中心的敏感动作审计关闭的组合。
-
-User Mode 下只启用该模式实际具备的 capability 和同一 UID 的 Guardian；不尝试启动系统服务或提升权限。Windows Server 的 Guardian 服务检查走 SCM，Linux 走 systemd/私有 IPC；这两种检测的差异留在 source adapter，不能泄漏进通用 Protocol 或 UI。
-
-## 16. 依赖、取舍与开放问题
-
-- 本 Goal 依赖后端可观测性目标中 `IObservabilitySanitizer`、关联上下文和安全审计的实际可用性。若其尚未完成，M1 必须先补齐中心需要的最小共享能力，不能复制一份弱化的 sanitizer/audit writer。
-- 若 `SecurityAuditWriter` 的“读取审计”本身还没有权限与 API 设计，中心只显示自己的操作时间线；不得借此开放原始安全审计库。
-- 需要 M0 产品确认：`certificate.expiring_soon` 的 Warning/Critical 天数、各级通知冷却、人工关闭是否允许于所有类型、抑制最长时长，以及是否把“Docker 未安装但已启用部署能力”视为配置错误事件。
-- 需要 M0/Android 评审：未来移动推送是按告警状态变化、按事件还是按摘要订阅；第一阶段仅冻结不含个人数据的服务器读取/通知投影，不提前引入设备 token。
-- 如真实运行环境证明 Domain journal 无法可靠重放，必须先为该领域补足持久 outbox/来源序列；不能用内存 Channel 或 SignalR 成功来声称“可靠告警”。
-
-## 17. Goal 关闭规则
-
-本 Goal 仅在以下全部成立时关闭：
-
-- M0–M6 完成，首批五个领域均能产生、聚合、查询、确认、恢复与跳转的可复核证据。
-- 事件、告警、处理记录和 source checkpoint 在 Server 重启与重复投递后保持一致；Guardian 的重启/断链演练证明不漏报、不重复通知。
-- 对所有首批来源验证未安装、短暂抖动、持续异常、恢复、权限不足和中心存储降级路径。
-- 所有敏感处理动作写入可验证 Security Audit，且审计不可写时失败关闭；测试证明秘密和原始外部文本不泄露。
-- Linux + Docker/FRP 与 Windows Server + Guardian 的真实环境验证完成，未验证平台明确记录为未验证。
-- `dotnet build RelaxKonOS.sln -c Debug`、相关自动化测试、三语本地化、帮助文档和 README 入口均通过；测试环境、版本、命令和结果被记录。
-
-仅有 UI 原型、日志聚合、模拟状态或一个“重启”按钮均不能关闭本 Goal。
+发布验证应记录系统版本、实际命令、结果和脱敏证据。重复投递、服务重启、权限不足、未安装来源与存储降级均需检查；审计不可写时敏感动作必须失败关闭。

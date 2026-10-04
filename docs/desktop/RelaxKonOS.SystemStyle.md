@@ -4,7 +4,6 @@
 > 五个阶段的功能性交付物均已落地并通过构建与契约校验；
 > **视觉回归尚未执行**（见 §11.2），因此「已实施」指代码与契约层面，不等于已通过观感验收。
 >
-> 规划来源：[`RelaxKonOS.SystemStyle.Plan.md`](./RelaxKonOS.SystemStyle.Plan.md)。
 > 配色与调色板见 [`RelaxKonOS.Theming.md`](./RelaxKonOS.Theming.md)；
 > 设置中心见 [`RelaxKonOS.Settings.md`](./RelaxKonOS.Settings.md)；
 > 偏好协议见 [`RelaxKonOS.Protocol.md`](../architecture/RelaxKonOS.Protocol.md)、[`RelaxKonOS.Workspace.md`](../architecture/RelaxKonOS.Workspace.md)。
@@ -51,7 +50,7 @@ grep -rEo '#[0-9a-fA-F]{3,8}\b' --include='*.axaml' --include='*.cs' Client Fram
 | 其余（Git/TaskManager/Explorer/Environment 等 AXAML，以及 `SettingsApp.cs` 等） | 22 | 逐项迁移 |
 | `Framework/RelaxKonOS.UI/Themes/**` | 2 | 令牌字典内的合法默认值 |
 
-> Phase 0 阶段**不清空**这 154 处。Plan 明确要求先建立完整令牌与运行时切换链路，再按范围迁移；
+> Phase 0 阶段**不清空**这 154 处。迁移原则要求先建立完整令牌与运行时切换链路，再按范围迁移；
 > 一次性替换颜色会留下无法回归的半成品（见 Theming 计划 §6 的同一条准则）。
 > 命中数不含 `obj/`、`bin/`，也不含终端/图表等应用私有配色语义。
 
@@ -560,7 +559,7 @@ dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --s
 
 ## 12. 后续工作要求
 
-Plan §8 的五个阶段均已落地。仍未完成的是**验收性**工作，不是功能性工作：
+令牌、校验、运行时切换、Shell 接入与控件迁移均已落地。仍未完成的是**验收性**工作，不是功能性工作：
 
 1. **执行 §11.3 的视觉回归矩阵**，并把结果（含截图）补进本文 §11.1；
    在此之前不要把「已实施」对外表述为「已验证」。

@@ -13,7 +13,7 @@
 | 6 | [demo-image-nginx](#6-demo-image-nginx容器镜像) | 容器镜像 | Web 服务 | 18084 | 无（现成镜像） |
 
 > 本文描述的是**操作步骤**，不是验收结论。按本文跑通只能证明「这条链路在这台机器上走通了」，
-> 不能替代 [进度文档](../../docs/applications/RelaxKonOS.ApplicationDeployment.Progress.md)
+> 不能替代 [设计文档的验证记录](../../docs/applications/RelaxKonOS.ApplicationDeployment.Design.md)
 > 里 T01–T15 的验收记录。
 
 ---

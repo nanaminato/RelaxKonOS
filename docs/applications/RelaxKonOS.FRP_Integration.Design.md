@@ -1,5 +1,7 @@
 # RelaxKonOS FRP 内网穿透集成设计
 
+> 当前实现、协议、运维与平台限制见 [FRP 实现](RelaxKonOS.FRP_Integration.Implementation.md)。本文定义产品和安全设计，未实施的扩展不作为可用能力。
+
 ## 1. 目标
 
 RelaxKonOS 需要集成基于 FRP 的内网穿透能力，同时满足以下目标：
@@ -1418,3 +1420,38 @@ RelaxKonOS != FRP
 - 第三方服务兼容性
 - 更好的 Windows Defender 安全边界
 - 更好的未来扩展性
+
+
+## 验证与发布边界
+
+### 自动化测试
+
+- **纯函数 / 单元测试**：地址、端口、域名、协议组合、TOML escaping、秘密掩码、SHA-256、归档条目过滤、版本选择、状态迁移、PID 启动时间匹配和日志截断。
+- **仓储 / Endpoint 测试**：鉴权、逐操作授权、用户隔离、revision 冲突、Profile 删除约束、秘密引用、problem code 和 DTO 无秘密序列化。
+- **进程适配器测试**：替换进程工厂与时间源，覆盖成功、非零退出、超时、取消、崩溃、PID 复用、配置验证失败和原子替换回滚；测试不得调用 shell 或依赖本机已安装 FRP。
+- **Runtime 安装测试**：本地归档 fixture 覆盖错误 SHA-256、条目穿越、压缩炸弹限制、缺少预期二进制、错误架构和升级失败回滚。
+- **集成测试**：使用受控 `frps` 验证四种 V1 协议；多 Profile 隔离；Client API 断线重试不会触发重复启动或重复配置应用。
+
+### 手工验证矩阵
+
+| 场景 | 需要确认的结果 |
+|---|---|
+| Linux Managed Runtime | 下载、校验、运行、停止、日志、升级和回滚均不需 Client 提供 shell 命令。 |
+| Windows / Windows Server 标准模式 | Defender 未修改；被拦截时显示明确可恢复状态，RelaxKonOS 继续可用。 |
+| Windows compatibility（若实施） | 用户明确确认后仅添加最小范围排除；策略拒绝时不绕过，撤销后恢复原状态。 |
+| External Runtime | 只读检测不接管既有进程；受管启动只影响 RelaxKonOS 启动的实例。 |
+| 第三方 `frps` | Token/TLS 配置可连接；失败不泄露认证材料。 |
+| 故障与恢复 | 杀死 `frpc`、断开网络、无效配置、升级失败后，状态真实且 RelaxKonOS API / 登录不受影响。 |
+
+### 发布级完成定义
+
+FRP 集成只有同时满足以下条件才可标为完成：
+
+1. 范围内的功能、安全与平台验收均通过，`frps` 与 Defender compatibility 未实施时明确显示为可选后续能力。
+2. RelaxKonOS 不实现 FRP 协议、不转发流量，`frpc` / `frps` 不以库或主进程内组件运行。
+3. Managed Runtime 的每一次激活都经过强制 SHA-256 校验；升级不会覆盖工作版本，失败可回滚。
+4. 数据库是唯一 Desired State；配置写入经过校验和原子替换，错误不会破坏最后一个可工作的配置。
+5. 所有秘密均不出现在 API、Client 状态、日志、错误、审计、配置下载或常规备份明文中。
+6. Client 权限、Server 授权和高风险审计均已落实；未授权用户不能读取或改变隧道、Runtime 或秘密状态。
+7. Windows 默认不改变 Defender；不存在宽泛排除、静默排除、关闭防护或规避检测的实现。
+8. Linux、Windows 和 Windows Server 的成功与失败路径均已验证，且 `frpc` 故障不影响 RelaxKonOS 自身启动、登录或局域网管理。

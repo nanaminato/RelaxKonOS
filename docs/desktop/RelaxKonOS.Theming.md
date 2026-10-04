@@ -269,7 +269,7 @@ WorkspacePreferencesDto
 
 1. 迁移 `RelaxKonOS.UI/Themes/Styles.axaml` 的 Button、TextBox、ListBox、card、surface、文本辅助样式。
 2. 迁移 `RelaxKonOS.WindowManager/Themes/RemoteWindowTheme.axaml`，包括活动/非活动边框、标题栏、关闭按钮与阴影。
-3. 迁移 `App.axaml`、`MainWindow.axaml`、登录窗口、各 `IDesktopShell` launcher、连接栏、任务栏/Dock、启动器、菜单和桌面图标状态。Shell 运行时边界见 [`RelaxKonOS.ShellLauncher.Goal.md`](./RelaxKonOS.ShellLauncher.Goal.md)。
+3. 迁移 `App.axaml`、`MainWindow.axaml`、登录窗口、各 `IDesktopShell` launcher、连接栏、任务栏/Dock、启动器、菜单和桌面图标状态。Shell 运行时边界见 [`RelaxKonOS.ShellLauncher.md`](./RelaxKonOS.ShellLauncher.md)。
 4. 删除 `ShellSettings.TaskbarBackground` / `TaskbarForeground` 中固定的浅深颜色逻辑；Shell 改为资源绑定或由令牌驱动的可通知画刷。
 
 ### Phase 3 — 所有内置应用与代码生成 UI

@@ -720,7 +720,7 @@ RemoteTerminal 的 PTY 流传输**已在 Protocol 契约内**，走 SignalR Hub 
 | [`RelaxKonOS.DockerManager.md`](../applications/RelaxKonOS.DockerManager.md)                                                                                                                                                                       | Docker 引擎/容器/镜像/网络/卷/Stack 端点、镜像源解析                  |
 | [`RelaxKonOS.Firewall.md`](../applications/RelaxKonOS.Firewall.md)                                                                                                                                                                                 | Linux UFW 防火墙状态、规则、默认策略、PAM 提权变更                     |
 | [`RelaxKonOS.GitClient.md`](../applications/RelaxKonOS.GitClient.md)                                                                                                                                                                               | Git 引擎、仓库、分支、提交、合并/变基、远程管理端点                         |
-| [`RelaxKonOS.FRP_Integration.Goal.md`](../applications/RelaxKonOS.FRP_Integration.Goal.md) / [`Design.md`](../applications/RelaxKonOS.FRP_Integration.Design.md) / [`Implementation.md`](../applications/RelaxKonOS.FRP_Integration.Implementation.md) | 隧道管理（Profiles/Runtime/ManagedFrps）设计与实现边界            |
+| [`RelaxKonOS.FRP_Integration.Design.md`](../applications/RelaxKonOS.FRP_Integration.Design.md) / [`Implementation.md`](../applications/RelaxKonOS.FRP_Integration.Implementation.md) | 隧道管理（Profiles/Runtime/ManagedFrps）设计与实现边界            |
 | [`RelaxKonOS.CertificateManager.md`](../applications/RelaxKonOS.CertificateManager.md)                                                                                                                                                             | 证书 HostGlobal 管理、ACME 签发、续期、Kestrel 部署契约             |
 | [`RelaxKonOS.WebServerManager.Design.md`](../applications/RelaxKonOS.WebServerManager.Design.md)                                                                                                                                                   | Nginx 发现、重载、集成、站点管理契约                                |
 | [`RelaxKonOS.ProcessGuardian.md`](../applications/RelaxKonOS.ProcessGuardian.md)                                                                                                                                                                   | 工作负载声明、健康检查、原生服务管理、GuardianLogs Hub                  |
@@ -730,9 +730,9 @@ RemoteTerminal 的 PTY 流传输**已在 Protocol 契约内**，走 SignalR Hub 
 | [`RelaxKonOS.md`](../README.md)                                                                                                                                                                                                                  | 项目结构、当前进度、代码地图                                       |
 
 
-### SettingsSystem 升级（2026-09-07，G1 实施中）
+### Workspace 设置契约
 
-Workspace preferences GET 返回 `revision`，PUT 必须携带读取时的 `revision`；缺失为 428、冲突为 409，不接受无版本覆盖。服务端 `Settings/WorkspaceSettingsService` 使用注册表 CompareExchange，客户端统一使用 `Services/WorkspaceSettings/IWorkspaceSettingsService`。偏好仍存 `Workspace\Desktop`，缓存接收不等同 SQLite 落盘。AppSettings 只负责应用私有数据；宿主真实配置与其操作恢复材料不放入 AppSettings 或 Workspace 偏好。完整执行与待验证项见 [SettingsSystem.Goal](../desktop/RelaxKonOS.SettingsSystem.Goal.md)。
+Workspace preferences GET 返回 `revision`，PUT 必须携带读取时的 `revision`；缺失为 428、冲突为 409，不接受无版本覆盖。服务端 `Settings/WorkspaceSettingsService` 使用注册表 CompareExchange，客户端统一使用 `Services/WorkspaceSettings/IWorkspaceSettingsService`。偏好仍存 `Workspace\Desktop`，缓存接收不等同 SQLite 落盘。AppSettings 只负责应用私有数据；宿主真实配置与其操作恢复材料不放入 AppSettings 或 Workspace 偏好。设计与验收边界见 [Settings.Design](../desktop/RelaxKonOS.Settings.Design.md)。
 
 注册表 `PutRegistryEntryRequest.expectedRevision` 必传；创建使用 0，更新使用已读 `RegistryEntryDto.revision`。缺失 428、冲突 409。`Workspace\Desktop` 默认值仍可经注册表编辑，但必须通过偏好校验；不能删除受管偏好或其祖先键来重置版本。需恢复默认值时通过携带当前 revision 的偏好更新实现。
 

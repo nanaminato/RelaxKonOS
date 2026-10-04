@@ -1,19 +1,19 @@
 # RelaxKonOS 内置代理管理器实现规范
 
-> 文档类型：Implementation Specification / Codex Execution Document  
+> 文档类型：应用设计与实现规范
 > 模块名称：RelaxKonOS Proxy Manager
 > 首选代理核心：Mihomo  
 > 主客户端：Avalonia  
 > 服务端：.NET 10  
 > 目标平台：Windows / Windows Server / Ubuntu / Ubuntu Server  
 > 首要运行模式：TUN  
-> 状态：Initial Implementation Specification
+> 状态：代码级能力已实现，发布级平台验证仍有缺口。当前能力与限制见 [实现说明](RelaxKonOS.ProxyManager.Discovery.md)，平台检查见 [跳过测试登记](../testing/RelaxKonOS.ProxyManager.SkippedTests.md)。
 
 ---
 
 # 1. 文档目的
 
-本文档用于指导 Codex 在现有 RelaxKonOS 项目中实现一个正式的内置应用：
+本文定义代理管理器的职责、接口与安全边界：
 
 ```text
 Proxy Manager
@@ -4139,3 +4139,42 @@ network rollback are mandatory requirements, not optional enhancements.
 
 Do not introduce a generic privileged command executor.
 ```
+
+
+## 验证与发布边界
+
+### 自动化测试
+
+- **协议/纯函数**：DTO 无秘密序列化、problem code、状态迁移、路径与 Profile 校验、YAML/日志脱敏、版本选择、SHA-256、归档条目与大小限制、平台能力和 management-route plan。
+- **Runtime/服务**：替换 HTTP、进程、文件系统、时间和平台适配器，覆盖 External 只读检测、下载失败、归档穿越、错误 RID、服务失败、超时、cancel、active/previous 回滚和 interrupted operation。
+- **配置/恢复**：有效/无效配置、临时写入失败、reload/Controller/health timeout、回滚成功/失败、recovery marker、Server crash/reboot 与 Emergency Disable。
+- **Endpoint/安全**：认证、read/manage/dangerous policy、Idempotency-Key、operation 状态、审计、secret refusal、敏感日志与 error detail。测试不得连接真实 Controller 或下载生产 Runtime。
+- **Client**：repository 路由/认证、本地化动态更新、命令重入/取消、权限禁用和异常状态呈现；不模拟 Controller 协议。
+
+### 手工验证矩阵
+
+当前环境未执行的、需要特权和隔离网络的 平台测试，逐项记录在
+[`docs/testing/RelaxKonOS.ProxyManager.SkippedTests.md`](../testing/RelaxKonOS.ProxyManager.SkippedTests.md)。
+在该清单全部完成前，Proxy Manager 不得标为 V1 完成。
+
+| 场景 | 需要确认的结果 |
+|---|---|
+| Windows / Windows Server Managed | 受验证 Runtime、SCM 服务、启动/停止、升级/回滚与无 TUN 首次健康检查均成功；Defender 不被修改。 |
+| Ubuntu / Ubuntu Server Managed | systemd、受保护目录、`/dev/net/tun`、服务生命周期、升级/回滚和无 GUI 运行均成功。 |
+| External Runtime | 仅检测用户已有 Runtime；显式受管时仅控制 RelaxKonOS 创建的服务/实例。 |
+| TUN 成功路径 | 当前 Client、RelaxKonOS 监听端点、网关、LAN、SSH/RDP 仍可达；DNS 和出口状态真实。 |
+| TUN 失败与恢复 | 无效接口、Controller 不可用、运行时崩溃、Server crash 和 reboot 后，marker 能驱动安全恢复或显式 recovery-required。 |
+| 安全/权限 | 未授权用户无法获取 Controller/订阅凭据、raw YAML 或执行危险操作；日志、审计和诊断无秘密。 |
+
+### 发布级完成定义
+
+Proxy Manager 仅在以下条件全部满足后才可标为 V1 完成：
+
+1. 范围内的功能、安全与平台验收均通过，且 V1 非目标没有被隐式实现或承诺。
+2. Mihomo Controller 仅本机访问；Avalonia 从不直连 Controller，Controller secret 和其他凭据不进入 Client/API/日志/审计/异常。
+3. Runtime 经过固定清单和 SHA-256 验证；更新不覆盖可用版本，失败可回滚；External Runtime 不被擅自接管。
+4. 所有配置写入均验证、备份、原子提交、reload/restart 与健康检查；失败不破坏最后一个可用配置。
+5. TUN 有管理流量保护、网络快照、recovery marker、全局锁、自动/紧急恢复，并已在 Windows 与 Ubuntu 上证明不切断 RelaxKonOS 管理连接。
+6. Server 逐操作授权、幂等长操作和无秘密审计均落实；AppPermissions 不作为最终授权。
+7. 没有通用 command executor、shell 拼接、公开 Controller、Defender/Firewall 绕过或业务层散布 OS 命令。
+8. Avalonia 应用采用既有 workspace、MVVM、typed repository、主题、本地化和 modal 模式，且 UI 真实呈现失败、恢复与权限状态。

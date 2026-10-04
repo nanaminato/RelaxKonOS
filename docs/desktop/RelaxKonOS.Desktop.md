@@ -10,7 +10,7 @@
 
 ## 1. 模块定位
 
-登录成功后，`App.axaml.cs` 把桌面 `MainWindow`（顶层 Avalonia `Window`，`WindowDecorations=None`）显示给用户。`MainWindow` 内部承载由 `ShellRuntime` 激活的 `IDesktopShell`（每个 Shell 提供自己的桌面、启动器、任务栏/Dock 与 `WindowManager` surface）。完整的 launcher 契约、可回滚切换和扩展包边界见 [`RelaxKonOS.ShellLauncher.Goal.md`](./RelaxKonOS.ShellLauncher.Goal.md)；本文档覆盖宿主窗口控制与模态机制。
+登录成功后，`App.axaml.cs` 把桌面 `MainWindow`（顶层 Avalonia `Window`，`WindowDecorations=None`）显示给用户。`MainWindow` 内部承载由 `ShellRuntime` 激活的 `IDesktopShell`（每个 Shell 提供自己的桌面、启动器、任务栏/Dock 与 `WindowManager` surface）。完整的 launcher 契约、可回滚切换和扩展包边界见 [`RelaxKonOS.ShellLauncher.md`](./RelaxKonOS.ShellLauncher.md)；本文档覆盖宿主窗口控制与模态机制。
 
 | 能力 | 层 | 说明 |
 |---|---|---|
