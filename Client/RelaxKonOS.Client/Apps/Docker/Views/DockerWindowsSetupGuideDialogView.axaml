@@ -3,7 +3,7 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:docker="clr-namespace:RelaxKonOS.Client.Apps.Docker"
              x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerWindowsSetupGuideDialogView"
-             x:DataType="docker:DockerManagerViewModel">
+             x:DataType="docker:DockerManagerViewModel" Classes="builtin-app">
     <Grid Margin="22" RowDefinitions="*,Auto" RowSpacing="18">
         <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
             <StackPanel Spacing="14">

@@ -3,7 +3,7 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:docker="clr-namespace:RelaxKonOS.Client.Apps.Docker"
              x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerContainerEditDialogView"
-             x:DataType="docker:DockerManagerViewModel">
+             x:DataType="docker:DockerManagerViewModel" Classes="builtin-app">
     <Grid Margin="20" RowDefinitions="*,Auto" RowSpacing="14">
         <StackPanel Spacing="8">
             <TextBlock Text="{loc:Loc docker.container.edit_hint}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />

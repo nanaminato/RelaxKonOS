@@ -71,3 +71,7 @@
 5. 数据表默认允许用户拖动调整列宽（`CanUserResizeColumns="True"`）；列的初始宽度可体现优先级，但不应锁死用户的阅读布局。仅在有明确交互或安全原因时禁用列调整，并在应用设计文档中说明。
    文件列表等“详细信息”表格沿用 Windows 资源管理器语义：列使用固定初始像素宽度（`Width` + `MinWidth`），视口剩余宽度保持空白，不要用 `*` 列把某一列拉到填满；滚动由表格自身承担，纵向滚动条贴在整个区域最右侧、横向滚动条贴在最底部，滚动时才出现（`HorizontalScrollBarVisibility`/`VerticalScrollBarVisibility` 为 `Auto`）。参考实现是文件资源管理器的 `ExplorerMainView.axaml`。
 6. 长任务的取消必须请求服务端取消相应 `OperationId`，客户端停止等待只是辅助行为；关闭对话框不得让服务端任务丢失状态。预检、进度、错误和成功结果使用稳定问题码并由客户端本地化。
+
+## 9. 桌面视觉角色
+
+内置应用复用 `RelaxKonOS.UI/Themes/ApplicationStyles.axaml` 的显式视觉角色，避免独立维护标题、侧栏、内容面板、工具栏、状态栏与资源表格的配色和圆角。角色、各应用分析与验证入口见 [内置应用界面基线](../desktop/RelaxKonOS.BuiltInApps.UI.md)。编辑器、终端、网页和图像保留专用内容呈现方式；新增角色不能替代本文件第 8 节的弹性布局和固定决策页脚要求。

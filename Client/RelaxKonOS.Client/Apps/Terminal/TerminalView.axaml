@@ -5,7 +5,7 @@
              xmlns:terminal="clr-namespace:RelaxKonOS.Client.Apps.Terminal"
              x:Class="RelaxKonOS.Client.Apps.Terminal.TerminalView"
              x:DataType="terminal:TerminalViewModel"
-             Background="{DynamicResource SurfaceBrush}">
+             Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
     <Grid RowDefinitions="Auto,*">
         <Border Grid.Row="0" Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1">
             <Grid ColumnDefinitions="Auto,*">
@@ -16,8 +16,8 @@
                         <MenuItem Header="{loc:Loc terminal.settings}" Command="{Binding OpenSettingsCommand}" />
                     </MenuItem>
                 </Menu>
-                <TextBlock Grid.Column="1" Text="{Binding Status}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"
-                           Margin="6,0" Opacity="0.7" />
+                <TextBlock Grid.Column="1" Text="{Binding Status}" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"
+                           Margin="6,0" />
             </Grid>
         </Border>
         <Grid Grid.Row="1" x:Name="TerminalHost" />

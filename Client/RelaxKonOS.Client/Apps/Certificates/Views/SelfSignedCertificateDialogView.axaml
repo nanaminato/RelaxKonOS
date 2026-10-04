@@ -3,7 +3,7 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:certificates="clr-namespace:RelaxKonOS.Client.Apps.Certificates"
              x:Class="RelaxKonOS.Client.Apps.Certificates.Views.SelfSignedCertificateDialogView"
-             x:DataType="certificates:CertificateManagerViewModel">
+             x:DataType="certificates:CertificateManagerViewModel" Classes="builtin-app">
     <Grid Margin="20" RowDefinitions="*,Auto" RowSpacing="16">
         <StackPanel Spacing="12">
             <TextBlock Text="{loc:Loc certificates.self_signed.help}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />

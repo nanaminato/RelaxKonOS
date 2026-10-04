@@ -3,7 +3,7 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.LegalTextDialogView"
-             x:DataType="vm:LegalTextDialogViewModel">
+             x:DataType="vm:LegalTextDialogViewModel" Classes="builtin-app">
     <Grid Margin="20" RowDefinitions="Auto,*,Auto" RowSpacing="14">
         <TextBlock Text="{Binding Title}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" />
         <TextBox Grid.Row="1" Text="{Binding Text}" IsReadOnly="True" AcceptsReturn="True"

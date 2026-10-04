@@ -1,6 +1,6 @@
 # RelaxKonOS 设置系统与设置应用
 
-当前执行基线与完整验收矩阵见 [SettingsSystem.Goal](./RelaxKonOS.SettingsSystem.Goal.md)。G1 正在实施，以下只描述已有代码，不把规划中的宿主写入标为可用。
+本文描述设置应用的当前行为。范围、安全契约与完整验收矩阵见 [设置设计](./RelaxKonOS.Settings.Design.md)。宿主写入的实现与实机验收状态分别列出。
 
 ## 服务与真源
 
@@ -24,11 +24,11 @@ Server `Settings/IWorkspaceSettingsService` 管理偏好验证和版本比较。
 
 内置桌面布局的 Workspace 与设备本地选择均只保存 `shellId`；描述器的内置实现版本不属于外部包信息。Settings 与桌面快捷切换共用 `ShellSettings.SelectShell`，外部桌面继续携带包 ID 和版本。服务端拒绝无效偏好时返回 `invalidField`，并记录同一 correlation ID 的 `input.rejected` 事件，只包含固定字段路径，不包含字段值。回归覆盖真实个性化页切换三种内置布局，再修改颜色/壁纸，以及外部包元数据保留。
 
-当前保留系统、个性化、时间和语言、网络、应用、默认应用、开发者、关于九页及已有壁纸、调色板、系统风格和 Shell 布局能力。Docker Hub 镜像源属于 Docker 管理器的“镜像源”页，不在设置应用中展示。个性化页已拆为“颜色与模式”“系统风格”“桌面布局”三张卡片（见下节）。保存状态支持中文、英文、日文；失败保留草稿并可重试，冲突保留草稿，提供明确的“放弃草稿并重载”操作；重载失败仍保留草稿。逐字段冲突合并体验、首页、账户和辅助功能仍按 Goal 推进，尚未验收。
+当前保留系统、账户与安全、个性化、时间和语言、网络、应用、默认应用、开发者、关于九个主分类，以及环境变量详情页及已有壁纸、调色板、系统风格和 Shell 布局能力。Docker Hub 镜像源属于 Docker 管理器的“镜像源”页，不在设置应用中展示。个性化页已拆为“颜色与模式”“系统风格”“桌面布局”三张卡片（见下节）。保存状态支持中文、英文、日文；失败保留草稿并可重试，冲突保留草稿，提供明确的“放弃草稿并重载”操作；重载失败仍保留草稿。逐字段冲突合并体验、首页和辅助功能仍待实现或验收。
 
-现有八页使用注册的 Route 导航，共用单色矢量图标；顶部持续显示当前远程连接、用户、Workspace 与分类路径，支持返回历史。小于 760 个逻辑像素时折叠侧栏，使用分类选择框。搜索先查询本地不可变索引，再异步合并远程目录；包括标题、关键词和同义词，显示分类、范围及服务端能力原因，连接切换清除旧目录。Ctrl+F 聚焦搜索、方向键浏览、Enter 或双击打开、Escape 退出搜索。当前结果定位到页面，settingId 控件聚焦与全部详情页仍待完成。页面内容本身的窄布局、200% 缩放及屏幕阅读器体验尚未实测。
+现有九页使用注册的 Route 导航，共用单色矢量图标；顶部持续显示当前远程连接、用户、Workspace 与分类路径，支持返回历史。小于 760 个逻辑像素时折叠侧栏，使用分类选择框。搜索先查询本地不可变索引，再异步合并远程目录；包括标题、关键词和同义词，显示分类、范围及服务端能力原因，连接切换清除旧目录。Ctrl+F 聚焦搜索、方向键浏览、Enter 或双击打开、Escape 退出搜索。当前结果定位到页面，settingId 控件聚焦与全部详情页仍待完成。页面内容本身的窄布局、200% 缩放及屏幕阅读器体验尚未实测。
 
-## 个性化页：颜色、系统风格与桌面布局（2026-09-19，实现未视觉验收）
+## 个性化页：颜色、系统风格与桌面布局
 
 个性化页把原先混为一谈的“主题”拆成三张独立卡片，对应 `DesktopExperiencePreferencesDto` 的三个字段：
 
@@ -44,7 +44,7 @@ Server `Settings/IWorkspaceSettingsService` 管理偏好验证和版本比较。
 - 本地搜索条目由 `workspace.theme` / `workspace.shell` 改为 `workspace.colors` / `workspace.systemStyle` / `workspace.desktopLayout`（含中英日同义词）。
 - 三语言 `settings.json` 已补齐 `settings.colors_and_mode`、`settings.palette_scope_hint`、`settings.system_style.*`、`settings.desktop_layout` 与全部 `systemstyle.*` 问题码文案；移除了系统风格和桌面布局卡片不再显示的说明与尺寸参数标签。
 
-系统风格层本身的令牌、recipe、清单校验与运行时链路见 [`RelaxKonOS.SystemStyle.md`](./RelaxKonOS.SystemStyle.md)。页面当前只通过编译与契约测试，**尚未做视觉与交互验收**。
+系统风格层本身的令牌、recipe、清单校验与运行时链路见 [`RelaxKonOS.SystemStyle.md`](./RelaxKonOS.SystemStyle.md)。自动化检查覆盖编译、契约与部分桌面布局；完整视觉、键盘与辅助功能验收仍待完成，见 [内置应用 UI](./RelaxKonOS.BuiltInApps.UI.md)。
 
 
 ## 范围与宿主权限
@@ -75,25 +75,25 @@ Windows provider 只读固定 `ComputerName` 注册表位置并用 `SetComputerN
 授权通过既有 `/privileged/elevation` 和本地渲染的宿主密码对话框；有效的精确资源授权可复用且不延长到期时间。连接切换清除草稿、计划和旧请求结果；窗口关闭不影响 Server 已持久化的操作。三语言按钮与操作状态已接入，但完整错误映射、页面离开确认、恢复记录列表、布局/键盘截图及远程实机验收仍待完成，不能将构建通过视为完整时区交付。
 
 
-## 宿主环境客户端服务（2026-09-11，实现未验收）
+## 宿主环境客户端服务
 
 `IHostEnvironmentService` 已注册为独立 typed HttpClient，提供目标解析、默认掩码读取、显式揭示、预览、按 planId 应用、操作查询和带 revision 回滚。读取、揭示、修改分别请求 `HostEnvironmentRead`、`HostEnvironmentReveal`、`HostEnvironmentChange` 精确资源授权；调用者按需要依次请求，服务不隐式扩张权限或缓存密码、原始环境值。
 
 新增 `GET /api/v1.0/host-settings/environment/target?scope=hostUser|hostMachine`，只返回当前认证用户经 Server 验证映射的 `SettingsTarget`，不读取环境、不调用 Helper、不授予权限，响应禁止缓存。客户端通过此入口取得授权目标，不从本地设备猜测远程 SID/UID。Windows 当前认证用户自己的环境 store 经 canonical SID 归属检查后无需管理员认证；系统 store 的读/揭示/修改需当前管理员资格或精确临时 grant。手动授权的三项 capability 仅覆盖所选 store，不扩展到另一 store；系统认证管理员每次重新检查资格。
 
-时区和环境服务共用 `HostSettingsService` 的连接冻结与 HTTP 流程：取得 token 前后及响应解析后校验 Server/用户/会话，禁用重定向和写请求重试，不经过可重放的认证 handler。环境服务尚未接入设置编辑 UI、SDK 或终端，不能据此宣称环境变量纵向切片完成。
+时区和环境服务共用 `HostSettingsService` 的连接冻结与 HTTP 流程：取得 token 前后及响应解析后校验 Server/用户/会话，禁用重定向和写请求重试，不经过可重放的认证 handler。环境服务已接入设置编辑 UI；SDK 与终端入口仍待实现。
 
 
 DevCli 现已接入 `environment-target`、`environment`、`preview-environment`、`apply-environment`，并复用 `operation`、`rollback`。变更读取 UTF-8 JSON 文件或标准输入，不接受变量值命令行参数；默认掩码，显式揭示仍需额外授权。它依赖已有宿主 JWT 的短期授权，缺少时返回结构化错误，不打开密码窗口。完整命令和格式见 `Tools/RelaxKonOS.DevCli/README.md`。环境编辑 UI 已接入（含 PATH 分项编辑），Linux `/etc/environment` provider 已由 Helper 分派并做字节 revision 条件化的原子替换；尚未完成的是 Workspace 环境分区、非特权工作负载的环境构造、宿主设置实时通知，以及 SDK/终端入口。
 
 
-## 环境变量页面（2026-09-11，第一批）
+## 环境变量页面
 
 环境页已注册到导航、本地搜索及 `relaxkonos://settings/environment`，使用单色图标。当前提供远程当前用户/机器范围切换、授权后掩码读取、额外授权显示原值、按名称筛选、类型/来源/展开预览/警告、Set/Delete 批次草稿、高影响确认、脱敏计划、授权应用、查询和按版本恢复。原始值只在显式揭示后进入列表；掩码不会被当作原值填入编辑器，空字符串和删除保持不同操作。当前范围通过机器复选框选择，未勾选时为认证远程用户。
 
 读取、揭示和修改分开申请环境 capability，复用现有宿主认证对话框。草稿存在时锁定范围与重新读取；明确放弃后才能重新加载。网络未知结果保留计划 ID、锁定编辑和清除，必须查询后处理；切换会话清空旧主机草稿/原值，关闭页面不撤销已提交服务端操作。
 
-本批只通过编译，尚未完成真实授权/读写与视觉验收。Workspace 分区、PATH 分项增删排序、草稿单项撤销、原值差异的更完整交互、离开/关闭页面草稿确认、恢复历史、SDK/终端关联入口仍待实现；Linux provider 也仍待实现，页面可用不代表平台写入已验收。
+真实宿主授权/读写与完整视觉验收仍待完成。Workspace 分区、原值差异的完整交互、离开/关闭页面草稿确认、恢复历史和 SDK/终端关联入口仍待实现。PATH 编辑、单项草稿移除和 Linux provider 已实现，具体行为如下；平台写入的实机证据需单独验证。
 
 
 环境页现已支持 PATH 分项追加、替换、删除和上下移动，按远程快照选择 `;`/`:`，保留重复、空项和顺序；删除最后一个分项表示空 PATH，删除整个变量仍使用独立 Delete。编辑先改变原始值，再明确暂存进批次。页面显示当前目录搜索和重复项提示，明确声明尚未检查远程路径存在性。草稿支持选中变量重编辑、从批次单独移除；移除使旧计划失效，需重新预览。重新加载掩码快照会清空原先揭示的选择与输入框。

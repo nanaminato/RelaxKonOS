@@ -3,21 +3,21 @@
              xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter"
              x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterWorkspace"
              x:DataType="vm:ServerCenterViewModel"
-             Background="{DynamicResource AppBackgroundBrush}">
+             Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
     <Grid RowDefinitions="Auto,*,Auto">
-        <Border Grid.Row="0" Background="{DynamicResource SurfaceSunkenBrush}" Padding="28,18">
+        <Border Grid.Row="0" Classes="app-header">
             <Grid ColumnDefinitions="Auto,*">
                 <Image Width="46" Height="46" Stretch="Uniform"
                        Source="avares://RelaxKonOS.Client/Assets/AppIcons/server-center.png" />
                 <StackPanel Grid.Column="1" Margin="14,0,0,0" Spacing="2" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding Title}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
-                    <TextBlock Text="{Binding Subtitle}" FontSize="13" Foreground="{DynamicResource TextTertiaryBrush}" />
+                    <TextBlock Text="{Binding Title}" Classes="app-title" />
+                    <TextBlock Text="{Binding Subtitle}" FontSize="13" Classes="app-description" />
                 </StackPanel>
             </Grid>
         </Border>
 
         <Grid Grid.Row="1" ColumnDefinitions="190,*">
-            <Border Background="{DynamicResource SurfaceSunkenBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,0,1,0">
+            <Border Classes="app-sidebar">
                 <StackPanel Margin="14,22" Spacing="4">
                     <Button x:Name="HostsButton" Classes="workspace-nav" Tag="hosts" Click="NavigationButton_Click"
                             Content="{Binding HostsPageTitle}" HorizontalContentAlignment="Left" Padding="10,8" />
@@ -31,8 +31,7 @@
                             HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
         </Grid>
 
-        <Border Grid.Row="2" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}"
-                BorderThickness="0,1,0,0" Padding="18,9">
+        <Border Grid.Row="2" Classes="app-statusbar">
             <StackPanel Spacing="5">
                 <ProgressBar IsIndeterminate="{Binding IsDeploymentProgressIndeterminate}" Value="{Binding DeploymentTransferProgress}" Height="3" IsVisible="{Binding ShowWorkspaceProgress}" />
                 <TextBlock Text="{Binding StatusMessage}" IsVisible="{Binding !HasError}" TextWrapping="Wrap" />

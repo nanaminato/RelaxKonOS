@@ -5,7 +5,7 @@
              xmlns:explorerModels="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Models"
              x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.SshFileBrowserView"
              x:Name="Root"
-             Background="{DynamicResource SurfaceBrush}">
+             Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
     <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
         <!-- Keep SSH browsing visually aligned with the Server desktop Explorer: navigation,
              breadcrumbs, and filtering share the same compact top bar. -->
@@ -174,11 +174,10 @@
                       CanUserSortColumns="False"
                       HorizontalScrollBarVisibility="Auto"
                       VerticalScrollBarVisibility="Auto"
-                      GridLinesVisibility="None"
                       RowHeight="28"
                       ColumnHeaderHeight="30"
                       Background="{DynamicResource SurfaceBrush}"
-                      BorderThickness="0">
+                      BorderThickness="0" Classes="resource-table">
                 <DataGrid.Styles>
                     <Style Selector="DataGridColumnHeader">
                         <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
@@ -296,8 +295,7 @@
 
         <!-- Picker mode follows the signed-in server Explorer: folders stay navigable, only a
              matching file may be confirmed, and mutating file commands are disabled. -->
-        <Border x:Name="PickerPanel" Grid.Row="3" IsVisible="False" Background="{DynamicResource SurfaceBrush}"
-                BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Padding="12,8">
+        <Border x:Name="PickerPanel" Grid.Row="3" IsVisible="False" Classes="app-statusbar">
             <Grid RowDefinitions="Auto,Auto" RowSpacing="8">
                 <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
                     <TextBlock Text="{loc:Loc server_center.wizard.bundle_file_label}" VerticalAlignment="Center" />
@@ -313,8 +311,7 @@
             </Grid>
         </Border>
 
-        <Border Grid.Row="4" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}"
-                BorderThickness="0,1,0,0" Padding="12,5">
+        <Border Grid.Row="4" Classes="app-statusbar">
             <Grid ColumnDefinitions="*,Auto">
                 <TextBlock x:Name="SummaryText" FontSize="12" VerticalAlignment="Center" />
                 <TextBlock x:Name="StatusText" Grid.Column="1" FontSize="11" Opacity="0.7"

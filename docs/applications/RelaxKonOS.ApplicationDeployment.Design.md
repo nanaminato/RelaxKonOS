@@ -1,6 +1,6 @@
 # RelaxKonOS 容器化应用部署设计
 
-> 对应 [Goal](./RelaxKonOS.ApplicationDeployment.Goal.md) 与 [实施进度](./RelaxKonOS.ApplicationDeployment.Progress.md)。
+> 本文统一维护应用部署的设计、当前实现、测试矩阵与验证记录。
 >
 > 冻结日期：2026-09-19。
 >
@@ -518,48 +518,72 @@ relaxkonos.role={workload|candidate}
 
 分层方向是单向的：`Endpoints → Coordinator → Service → {Runtime, Stores, Templates}`；`Manager` 只读与定义写入，从不启动工作负载。
 
-## 15. 测试策略（本轮全部跳过）
+## 15. 验证策略与边界
 
-### 15.1 跳过决定与理由
+编译与受控单元/契约测试验证对应的实现行为；真实 Docker、平台授权、恢复和端到端交互须单独验收，不能由接口存在或构建通过推定。当前已有 HTTP/传输层专项以及隔离 .NET 镜像构建和启动证据，详见 §19；完整场景和环境记录见 §17–18。
 
-**本轮 T01–T15 全部跳过，理由是当前工作区没有可用 Docker 环境**（Goal §9 要求的真实 Engine 验收宿主亦未准备）。按进度文档记录规则：跳过必须注明原因，**不计通过**，因此当前「已验收 0/12、执行通过 0/15」的结论不变。
+仍需验证：
 
-不采用「模拟测试充当验收」的做法：Goal §9 明确「仅有接口、模拟测试或成功的 `compose up` 不能关闭 Goal」。因此本轮不编写以 Mock Engine 为主体的验收测试来制造通过率。
-
-### 15.2 已有实现与测试编号的对应关系（未执行）
-
-| 测试 ID | 场景 | 对应实现 | 状态 |
-| --- | --- | --- | --- |
-| T01 | DTO 往返、未知字段与非法值拒绝 | `[JsonUnmappedMemberHandling(Disallow)]`、`ApplicationDeploymentValidation` | 跳过 |
-| T02 | 版本不可变、原子写入、损坏账本明确失败、机密不落账本 | `CatalogStore`/`OperationStore`/`SecretStore` 的 fail-closed 与不变式 | 跳过 |
-| T03 | 幂等重试、同键异请求冲突、同应用互斥、跨应用并行 | `OperationStore.Create` + `Service.Resources` + `Fingerprint` | 跳过 |
-| T04 | 镜像部署与失败矩阵、镜像身份固定 | `ApplicationDeploymentRuntime` + `ProduceImageAsync` | 跳过（**需 Docker**） |
-| T05 | 越界路径/链接/解压炸弹/超限/过期或跨身份引用 | `ApplicationArchiveSafety`、`StagingStore` | 跳过 |
-| T06 | Java/.NET Web/Worker 运行与诊断，不调用宿主工具链 | `ApplicationTemplates` | 跳过（**需 Docker**） |
-| T07 | Python Web/Worker 构建运行、锁定依赖、重启不重装 | `PythonProjectTemplate` | 跳过（**需 Docker**） |
-| T08 | 就绪成功/超时/崩溃、失败不激活、回滚、数据卷保留 | `ActivateRevisionAsync`、`WaitForReadyAsync`、`RollbackAsync` | 跳过（**需 Docker**） |
-| T09 | 各阶段取消、断客户端、重启 Server | `Coordinator` + `RecoverAsync` | 跳过（**需 Docker**） |
-| T10 | 越权查询/日志/取消拒绝、脱敏、无特权与 socket、上下文不泄露宿主 | 授权策略、`LogSanitizer`、模板与运行时边界 | 跳过 |
-| T11 | 资源限制、日志轮转、宿主重启恢复、漂移识别、清理边界 | `DockerContainerResourceOptions`、`DescribeDrift`、`FindApplicationContainersAsync` | 跳过（**需 Docker**） |
-| T12 | 无代理可部署、回环端口、证书绑定、代理失败恢复旧配置 | `ApplicationDeploymentProxyIntegration` | 跳过（**需 Docker + Nginx**） |
-| T13 | 四来源向导、错误展示、任务重连、日志与回滚、三语完整 | 客户端内置应用 + 本地化 | 跳过 |
-| T14 | 无应用工具链的 Linux 宿主全流程 | 整体 | 跳过（**需隔离 Linux 宿主 E02**） |
-| T15 | 磁盘不足、端口冲突、Daemon 不可用、旧镜像/密钥缺失、卸载保留数据 | 预检与恢复路径 | 跳过（**需 Docker**） |
-
-**本轮实际执行的验证**仅是编译级：`RelaxKonOS.Server` 与 `RelaxKonOS.Protocol` 构建通过（0 警告 0 错误）。编译通过**不构成**任何 T 项的通过。
-
-### 15.3 未验证清单（不得当作已验证）
-
-- 任何真实 Docker Engine 行为：拉取、构建、创建、启动、改名、健康检查、日志。
-- 无宿主 Java/.NET/Python 工具链的宿主上的三语言模板（T14 的核心断言）。
-- DataProtection 跨进程重启后的解封（密钥环持久化）。
-- 反向代理站点写入与校验失败回退。
-- 客户端向导与三语 UI 的真实呈现。
-- 平台矩阵：仅声明支持 `linux/amd64`、`linux/arm64`、`linux/arm`；未验证平台保持未验证。
+- 真实 Engine 的完整拉取、构建、激活、取消、回滚、日志及故障矩阵。
+- 无宿主 Java/.NET/Python 工具链的隔离 Linux 宿主全流程。
+- DataProtection 跨进程重启解封与密钥环持久化。
+- 反向代理站点写入、校验失败回退及客户端向导完整交互。
+- 声明的 `linux/amd64`、`linux/arm64`、`linux/arm` 平台矩阵。
 
 ## 16. 后续项
 
 - Compose 输入部署（§1.3 缺口）。
 - 磁盘容量预检（`disk_full` 已定义但当前仅由 Engine 错误映射，未主动探测）。
 - `drift_image_missing` / `drift_volume_missing` 的主动核对（问题码已定义，当前由列表/详情观测路径覆盖容器漂移）。
-- M5 平台验收与帮助文档、用户文档入口。
+- 完整平台验收与帮助文档、用户文档入口。
+
+
+## 17. 验证矩阵
+
+以下保留 T01–T15 稳定编号。2026-09-19 的完整场景矩阵未执行；2026-09-20 已有部分 HTTP/传输层专项与隔离 .NET 镜像证据（见 §19），不能继续笼统声称全部没有测试，也不等于整组通过。每行是一组验收场景，不代表一个测试方法；拆分后须保留原 ID 与子用例关联。
+
+| ID | 层级 | 场景与预期 | 编写状态 | 执行状态 | 证据 |
+| --- | --- | --- | --- | --- | --- |
+| T01 | 单元/契约 | DTO 往返、未知字段、非法入口/端口/资源/引用拒绝，全部调用方使用新契约 | 完整覆盖待补 | 完整场景未验收 | — |
+| T02 | 单元/存储 | 版本不可变、状态原子写入、损坏账本明确失败、密钥正文不落账本 | 完整覆盖待补 | 完整场景未验收 | — |
+| T03 | 集成 | 幂等重试只创建一次，同键异请求冲突，同应用变更互斥、跨应用安全并行 | 完整覆盖待补 | 完整场景未验收 | — |
+| T04 | Engine 集成 | 镜像部署成功；认证失败、断网、镜像不存在、OS/架构不匹配明确失败；固定镜像身份 | 完整覆盖待补 | 完整场景未验收 | — |
+| T05 | 单元/集成 | 越界路径、链接、解压炸弹、超限、过期/跨身份文件引用拒绝；暂存清理不伤其他资源 | 完整覆盖待补 | 完整场景未验收 | — |
+| T06 | Engine 集成 | Java JAR、.NET Web/Worker 发布包运行；错误入口与不匹配运行时诊断；不调用宿主工具链 | 完整覆盖待补 | 完整场景未验收 | — |
+| T07 | Engine 集成 | Python Web/Worker 构建运行；锁定依赖、安装失败与入口失败；重启不再安装依赖 | 完整覆盖待补 | 完整场景未验收 | — |
+| T08 | Engine 集成 | 就绪成功/超时/崩溃；失败发布不激活；回滚恢复旧版本及配置，数据卷保留 | 完整覆盖待补 | 完整场景未验收 | — |
+| T09 | 故障注入 | 拉取/构建/创建/激活阶段取消、断客户端和重启 Server；不重复副作用、不残留永远 Running | 完整覆盖待补 | 完整场景未验收 | — |
+| T10 | 安全集成 | 越权查询/日志/取消拒绝；密钥和凭据脱敏；无特权或 socket 注入；构建上下文不泄露宿主文件 | 完整覆盖待补 | 完整场景未验收 | — |
+| T11 | Engine 集成 | 资源限制、日志轮转、宿主重启恢复；识别外部修改/删除，清理仅处理本应用受管资源 | 完整覆盖待补 | 完整场景未验收 | — |
+| T12 | 站点集成 | 无代理可部署；回环端口/容器网络正确；证书绑定；代理校验或重载失败恢复旧配置 | 完整覆盖待补 | 完整场景未验收 | — |
+| T13 | 客户端 E2E | 四种来源向导、错误展示、任务重连、日志和回滚；三语完整；真实进度与未知进度区分 | 完整覆盖待补 | 完整场景未验收 | — |
+| T14 | 平台验收 | 无应用工具链的 Linux 宿主完成镜像、Java、.NET、Python 全流程；记录实际平台版本 | 完整覆盖待补 | 完整场景未验收 | — |
+| T15 | 故障/运维验收 | 磁盘不足、端口冲突、Daemon 不可用、旧镜像/密钥缺失和恢复失败可诊断；卸载保留数据 | 完整覆盖待补 | 完整场景未验收 | — |
+
+## 18. 环境与验证记录
+
+环境 ID 应记录 OS/架构、Docker Engine/Compose、Server/Client 提交与测试 SDK 版本、宿主应用工具链存在情况。记录环境信息时不得附带凭据。
+
+| 环境 ID | 平台与版本 | 用途 | 可用性 | 备注 |
+| --- | --- | --- | --- | --- |
+| E01 | 历史开发工作区（Windows，win32 宿主），.NET SDK 10.0.400 | 构建与静态校验 | 可用 | 仅用于编译与本地化校验；**不推定 Docker 可用** |
+| E02 | 隔离 Linux 宿主，发行版/架构待登记 | 真实 Engine 与无宿主工具链验收 | 待准备 | T04–T12、T14、T15 必需；完整平台矩阵尚未登记验收环境 |
+
+| 日期 | 运行 ID | 提交/变更 | 环境 | 测试 ID/命令 | 结果 | 证据位置/后续动作 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2026-09-19 | — | 设计与验证记录初始化 | — | 无产品测试 | 未执行 | 历史设计记录；文档检查不计功能验收 |
+| 2026-09-19 | B01 | 协议冻结 + Server 领域层与端点实现 | E01 | `dotnet build RelaxKonOS.Server/RelaxKonOS.Server.csproj -c Debug -p:UseSharedCompilation=false` | 通过（0 警告 0 错误） | 编译通过不等于验收；仅证明可构建 |
+| 2026-09-19 | B02 | 客户端内置应用实现 | E01 | `dotnet build Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj -c Debug -p:UseSharedCompilation=false` | 通过（0 警告 0 错误） | 同上；运行期行为未验证 |
+| 2026-09-19 | B03 | 三语本地化新增 | E01 | `python Tools/verify-localization.py` | 通过（3238 键全语言一致） | 仅证明键一致性，不证明界面文本正确性 |
+| 2026-09-19 | B04 | 全解决方案构建 | E01 | `dotnet build RelaxKonOS.sln -c Debug -p:UseSharedCompilation=false` | 通过（0 警告 0 错误） | 同上 |
+| 2026-09-19 | — | T01–T15 | E02 缺失 | 见测试矩阵 | 全部跳过 | 跳过原因：当前环境无 Docker；不计通过 |
+| 2026-09-20 | B05 | 修正集合路由：服务端改用相对常量 `ApplicationsPattern`（`ApplicationDeploymentEndpoints.cs`）、协议新增该常量并登记命名约定（`RelaxKonOS.Protocol.md` §5） | E01 | `dotnet build RelaxKonOS.Server/RelaxKonOS.Server.csproj -c Debug -p:UseSharedCompilation=false`；再以临时程序调用 `MapApplicationDeploymentEndpoints()` 枚举真实路由表 | 通过（0 错误 / 2 条既有 CA1416 警告；枚举出的 19 条路由与 Design §3.1 及客户端常量逐条一致，`GET/POST /api/v1.0/application-deployments/applications` 不再带重复前缀） | 路由表输出见本行说明；不证明运行期行为（无 Docker），仅证明路径注册正确 |
+
+每次测试运行补充：实际命令或手工步骤、预期与实际、通过/失败/跳过数、退出码（适用时）、脱敏日志或报告路径。只写“测试通过”不构成证据。
+
+## 19. 专项验证与实现修正
+
+- 2026-09-20：修复 .NET Web/Worker 发布包的单一包装目录未成为 Docker 构建根目录的问题。保留的真实上下文显示 DLL 位于 `relaxkonos-ad-dotnet-web/DotNetWebDemo.dll`，旧服务生成的入口却是 `/app/DotNetWebDemo.dll`；实际故障镜像内确认存在 .NET/ASP.NET Core 10.0.12，故“No SDKs were found”只是 dotnet 找不到目标后附带的 SDK 分支提示，并非运行时缺失。部署在生成 Dockerfile 前解包唯一包装目录（Linux/Windows 分别使用正确的文件/目录移动 API）；模板同时覆盖不受信任的 `.dockerignore`，并在构建时断言入口文件已复制。候选容器若已退出则立即读取并持久化/实时推送最近 200 行日志，返回 `health_check_failed`，不再误报 `health_check_timeout`。专项回归已复现包装目录和排除型 `.dockerignore` 并通过；再以故障部署保留的真实 `DotNetWebDemo` 发布文件构建和启动隔离镜像，容器保持 Running 且监听 `0.0.0.0:8080`。验证容器、镜像和临时上下文均已清理。
+- 2026-09-20：新增 SignalR 实时部署日志及本地归档上传字节/百分比/速率/取消 UI；客户端和服务端直接流式传输，禁用上传正文诊断缓冲，服务端显式按配置限制大小。专项命令 `dotnet run --project RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj -p:OutputPath=D:/RelaxKon/RelaxKonOS/artifacts/deployment-progress-tests/ -- --deployment-progress-only` 已通过：32 MiB+123 字节真实 HTTP 上传及内容完整性、单调字节进度、传输中取消、配置超限与错误 multipart 拒绝、增量 Docker 输出读取、SignalR 权限拒绝/实时推送/脱敏/断线补回 300 行。首次测试因测试宿主遗漏 DI 注册失败，补齐后通过；补充超限测试发现提前拒绝可能重置上传连接，生产客户端和测试均启用 `Expect: 100-continue` 后重跑通过。Client 构建通过（0 警告/0 错误），Server 构建通过（既有平台兼容性警告）。这些是 T05/T09/T10/T13 的部分 HTTP/传输层证据，不等同于完整测试矩阵通过；真实 Docker 镜像拉取/构建及桌面视觉端到端仍未执行。
+- 2026-09-19：修正静态审查发现的发布语义：.NET `runtimeOptions` 解析、修订快照回滚、候选接管时的旧实例恢复保留、容器/卷精确所有权标签校验、阶段取消与饱和时的幂等重试；Python 要求锁定依赖。真实 Docker 验收仍未执行。
+- 2026-09-20：修正集合路由重复前缀：`ApplicationDeploymentEndpoints` 的集合读/写端点改用相对常量 `ApplicationsPattern`（新增于 `ApplicationDeploymentApiRoutes`），消除 `MapGroup` 前缀重复导致的恒 404；在 `RelaxKonOS.Protocol.md` §5 与设计文档 §3.1 补充"绝对常量仅客户端、`MapGroup` 内只用 `*Pattern`"的约定与本次实例；记录验证 B05。运行期行为与 Docker 验收仍未验证。

@@ -9,4 +9,5 @@
     </ResourceDictionary>
   </Styles.Resources>
   <StyleInclude Source="avares://RelaxKonOS.UI/Themes/Styles.axaml" />
+  <StyleInclude Source="avares://RelaxKonOS.UI/Themes/ApplicationStyles.axaml" />
 </Styles>

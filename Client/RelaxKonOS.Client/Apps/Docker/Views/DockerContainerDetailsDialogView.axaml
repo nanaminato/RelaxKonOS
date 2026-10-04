@@ -3,7 +3,7 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:docker="clr-namespace:RelaxKonOS.Client.Apps.Docker"
              x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerContainerDetailsDialogView"
-             x:DataType="docker:DockerManagerViewModel">
+             x:DataType="docker:DockerManagerViewModel" Classes="builtin-app">
     <Grid Margin="20" RowDefinitions="Auto,*,Auto" RowSpacing="12">
         <TextBlock Text="{loc:Loc docker.container.details_copy_hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">

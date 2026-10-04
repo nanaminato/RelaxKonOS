@@ -4,20 +4,20 @@
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Dialogs"
              x:Class="RelaxKonOS.Client.Apps.Explorer.Dialogs.FilePropertiesDialogView"
              x:DataType="vm:FilePropertiesDialogViewModel"
-             Background="{DynamicResource SurfaceBrush}" MinWidth="0" MinHeight="0">
+             Background="{DynamicResource SurfaceBrush}" MinWidth="0" MinHeight="0" Classes="builtin-app">
     <!-- The managed dialog may be resized.  Keep every section in star-sized Grid cells so
          content consumes the available client area instead of retaining the old 560px island. -->
     <Grid MinWidth="0" MinHeight="0">
         <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
             <Grid Margin="24" MinWidth="0" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="18">
                 <Grid Grid.Row="0" RowDefinitions="Auto,Auto" RowSpacing="5" MinWidth="0">
-                    <TextBlock Grid.Row="0" Text="{Binding Properties.Name}" FontSize="22" FontWeight="SemiBold"
-                               TextWrapping="WrapWithOverflow" />
+                    <TextBlock Grid.Row="0" Text="{Binding Properties.Name}"
+                               TextWrapping="WrapWithOverflow" Classes="app-title" />
                     <TextBlock Grid.Row="1" Text="{Binding Properties.Path}" FontSize="12" Opacity="0.62"
                                TextWrapping="WrapWithOverflow" />
                 </Grid>
 
-            <Border Grid.Row="1" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16">
+            <Border Grid.Row="1" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" Padding="16" Classes="app-panel">
                 <StackPanel Spacing="12">
                     <TextBlock Text="{loc:Loc explorer.properties.general}" FontSize="15" FontWeight="SemiBold" />
                     <Grid RowDefinitions="Auto,Auto,Auto,Auto" ColumnDefinitions="*,*" RowSpacing="12" ColumnSpacing="24">
@@ -53,8 +53,8 @@
                 </StackPanel>
             </Border>
 
-            <Border Grid.Row="2" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16"
-                    IsVisible="{Binding CanEditPermissions}">
+            <Border Grid.Row="2" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" Padding="16"
+                    IsVisible="{Binding CanEditPermissions}" Classes="app-panel">
                 <StackPanel Spacing="14">
                     <Grid ColumnDefinitions="*,Auto">
                         <StackPanel Spacing="3">
@@ -72,7 +72,7 @@
                     </Grid>
 
                     <Grid ColumnDefinitions="*,*,*" ColumnSpacing="12">
-                        <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="6" Padding="12">
+                        <Border Padding="12" Classes="app-panel">
                             <StackPanel Spacing="7">
                                 <TextBlock Text="{loc:Loc explorer.properties.owner}" FontWeight="SemiBold" />
                                 <CheckBox Content="{loc:Loc explorer.permission.read}" IsChecked="{Binding OwnerRead}" />
@@ -80,7 +80,7 @@
                                 <CheckBox Content="{loc:Loc explorer.permission.execute}" IsChecked="{Binding OwnerExecute}" />
                             </StackPanel>
                         </Border>
-                        <Border Grid.Column="1" Background="{DynamicResource SurfaceBrush}" CornerRadius="6" Padding="12">
+                        <Border Grid.Column="1" Padding="12" Classes="app-panel">
                             <StackPanel Spacing="7">
                                 <TextBlock Text="{loc:Loc explorer.properties.group}" FontWeight="SemiBold" />
                                 <CheckBox Content="{loc:Loc explorer.permission.read}" IsChecked="{Binding GroupRead}" />
@@ -88,7 +88,7 @@
                                 <CheckBox Content="{loc:Loc explorer.permission.execute}" IsChecked="{Binding GroupExecute}" />
                             </StackPanel>
                         </Border>
-                        <Border Grid.Column="2" Background="{DynamicResource SurfaceBrush}" CornerRadius="6" Padding="12">
+                        <Border Grid.Column="2" Padding="12" Classes="app-panel">
                             <StackPanel Spacing="7">
                                 <TextBlock Text="{loc:Loc explorer.properties.others}" FontWeight="SemiBold" />
                                 <CheckBox Content="{loc:Loc explorer.permission.read}" IsChecked="{Binding OthersRead}" />
@@ -102,13 +102,13 @@
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
                         <TextBlock Text="{Binding PermissionStatus}" FontSize="12" Opacity="0.72" TextWrapping="Wrap" VerticalAlignment="Center" />
                         <Button Grid.Column="1" Content="{loc:Loc explorer.save_permissions}" Command="{Binding SavePermissionsCommand}"
-                                Classes="primary" Padding="16,7" />
+                               Classes="primary" Padding="16,7" />
                     </Grid>
                 </StackPanel>
             </Border>
 
             <Grid Grid.Row="3" ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                <Border Grid.Column="0" Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="12" IsVisible="{Binding !CanEditPermissions}">
+                <Border Grid.Column="0" Padding="12" IsVisible="{Binding !CanEditPermissions}" Classes="app-panel">
                 <TextBlock Text="{loc:Loc explorer.properties.permissions_unsupported}"
                            FontSize="12" Opacity="0.7" TextWrapping="Wrap" />
                 </Border>

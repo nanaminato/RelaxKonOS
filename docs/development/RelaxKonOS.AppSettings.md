@@ -68,6 +68,6 @@ SQLite 的 `app_settings` 表使用上述五个隔离字段作为复合主键，
 外置应用的 SDK capability 是宿主 API 的隔离边界。当前 `.roapp` 仍在客户端进程内加载；若要抵抗恶意原生/托管代码，必须另外引入进程隔离，不能把它视为代码沙箱。
 
 
-### SettingsSystem 升级（2026-09-07，G1 实施中）
+### Workspace 设置契约
 
-Workspace preferences GET 返回 `revision`，PUT 必须携带读取时的 `revision`；缺失为 428、冲突为 409，不接受无版本覆盖。服务端 `Settings/WorkspaceSettingsService` 使用注册表 CompareExchange，客户端统一使用 `Services/WorkspaceSettings/IWorkspaceSettingsService`。偏好仍存 `Workspace\Desktop`，缓存接收不等同 SQLite 落盘。AppSettings 只负责应用私有数据；宿主真实配置与其操作恢复材料不放入 AppSettings 或 Workspace 偏好。完整执行与待验证项见 [SettingsSystem.Goal](../desktop/RelaxKonOS.SettingsSystem.Goal.md)。
+Workspace preferences GET 返回 `revision`，PUT 必须携带读取时的 `revision`；缺失为 428、冲突为 409，不接受无版本覆盖。服务端 `Settings/WorkspaceSettingsService` 使用注册表 CompareExchange，客户端统一使用 `Services/WorkspaceSettings/IWorkspaceSettingsService`。偏好仍存 `Workspace\Desktop`，缓存接收不等同 SQLite 落盘。AppSettings 只负责应用私有数据；宿主真实配置与其操作恢复材料不放入 AppSettings 或 Workspace 偏好。设计与验收边界见 [Settings.Design](../desktop/RelaxKonOS.Settings.Design.md)。

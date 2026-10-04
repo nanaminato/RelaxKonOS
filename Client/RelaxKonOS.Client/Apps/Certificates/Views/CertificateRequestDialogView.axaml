@@ -3,7 +3,7 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:certificates="clr-namespace:RelaxKonOS.Client.Apps.Certificates"
              x:Class="RelaxKonOS.Client.Apps.Certificates.Views.CertificateRequestDialogView"
-             x:DataType="certificates:CertificateManagerViewModel">
+             x:DataType="certificates:CertificateManagerViewModel" Classes="builtin-app">
     <!-- The form scrolls independently, so the decision controls remain visible at the lower right. -->
     <Grid Margin="20" RowDefinitions="Auto,*,Auto" RowSpacing="16">
         <!-- Fixed description -> scrolling form -> fixed action row. The help text stays pinned while

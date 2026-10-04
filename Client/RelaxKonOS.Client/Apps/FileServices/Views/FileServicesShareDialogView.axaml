@@ -3,7 +3,7 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:fs="clr-namespace:RelaxKonOS.Client.Apps.FileServices"
              xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.FileServices.Views"
-             x:Class="RelaxKonOS.Client.Apps.FileServices.Views.FileServicesShareDialogView" x:DataType="fs:FileServicesViewModel">
+             x:Class="RelaxKonOS.Client.Apps.FileServices.Views.FileServicesShareDialogView" x:DataType="fs:FileServicesViewModel" Classes="builtin-app">
     <Grid RowDefinitions="Auto,*,Auto" Margin="20" RowSpacing="12">
         <StackPanel Grid.Row="0" Spacing="10" MaxWidth="760" HorizontalAlignment="Stretch">
             <TextBlock Text="{Binding PlatformHelp}" TextWrapping="Wrap" />

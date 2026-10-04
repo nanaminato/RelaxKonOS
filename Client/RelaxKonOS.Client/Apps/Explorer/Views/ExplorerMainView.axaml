@@ -11,7 +11,7 @@
              x:Class="RelaxKonOS.Client.Apps.Explorer.Views.ExplorerMainView"
              x:Name="Root"
              x:DataType="vm:ExplorerViewModel"
-             Background="{DynamicResource SurfaceBrush}">
+             Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
 
     <UserControl.Resources>
         <c:EntrySizeToStringConverter x:Key="SizeConverter" />
@@ -22,7 +22,7 @@
 
     <DockPanel LastChildFill="True">
         <!-- Navigation stays above the command bar, matching the Explorer workflow. -->
-        <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1" Padding="8">
+        <Border DockPanel.Dock="Top" Classes="app-toolbar">
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
                 <StackPanel Orientation="Horizontal" Spacing="4">
                     <Button Classes="icon" Command="{Binding GoBackCommand}" ToolTip.Tip="{loc:Loc common.back}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-back.png" Width="18" Height="18" /></Button>
@@ -58,7 +58,7 @@
                          PlaceholderText="{loc:Loc explorer.filter_folder}" KeyDown="SearchBox_KeyDown" />
             </Grid>
         </Border>
-        <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1" Padding="8,6">
+        <Border DockPanel.Dock="Top" Classes="app-toolbar">
             <WrapPanel Orientation="Horizontal" IsEnabled="{Binding !IsBusy}">
                 <StackPanel IsVisible="{Binding !IsPickerMode}" Orientation="Horizontal" Spacing="4" Margin="0,0,12,0">
                     <Button Command="{Binding NewFolderCommand}"><StackPanel Orientation="Horizontal" Spacing="5"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-new-folder.png" Width="18" Height="18" /><TextBlock Text="{loc:Loc explorer.new_folder}" /></StackPanel></Button>
@@ -107,7 +107,7 @@
         </Border>
 
         <!-- 状态栏 -->
-        <Border DockPanel.Dock="Bottom" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Padding="12,5">
+        <Border DockPanel.Dock="Bottom" Classes="app-statusbar">
             <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
                 <StackPanel Spacing="3">
                     <TextBlock Text="{Binding SelectionSummary}" FontSize="12" />
@@ -132,8 +132,7 @@
         </Border>
 
         <!-- Picker mode reuses the full Explorer navigation surface and adds native-like confirmation fields. -->
-        <Border DockPanel.Dock="Bottom" IsVisible="{Binding IsPickerMode}"
-                Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Padding="12,8">
+        <Border DockPanel.Dock="Bottom" IsVisible="{Binding IsPickerMode}" Classes="app-statusbar">
             <Grid RowDefinitions="Auto,Auto" RowSpacing="8">
                 <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
                     <TextBlock Text="{Binding PickerEntryLabel}" VerticalAlignment="Center" />
@@ -226,7 +225,6 @@
                       CanUserSortColumns="False"
                       HorizontalScrollBarVisibility="Auto"
                       VerticalScrollBarVisibility="Auto"
-                      GridLinesVisibility="None"
                       RowHeight="{Binding EntryRowHeight}"
                       ColumnHeaderHeight="30"
                       Background="{DynamicResource SurfaceBrush}"
@@ -237,7 +235,7 @@
                       PointerReleased="EntriesGrid_PointerReleased"
                       DragDrop.AllowDrop="True"
                       DragDrop.DragOver="Explorer_DragOver"
-                      DragDrop.Drop="Explorer_Drop">
+                      DragDrop.Drop="Explorer_Drop" Classes="resource-table">
                 <DataGrid.ContextMenu>
                     <ContextMenu DataContext="{Binding #EntriesGrid.DataContext}" IsEnabled="{Binding !IsBusy}">
                         <MenuItem Header="{loc:Loc common.open}" Command="{Binding OpenCommand}" />

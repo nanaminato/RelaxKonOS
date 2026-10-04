@@ -5,7 +5,7 @@
              xmlns:codeEditor="clr-namespace:RelaxKonOS.Client.Apps.CodeEditor"
              x:Class="RelaxKonOS.Client.Apps.CodeEditor.CodeEditorSettingsView"
              x:DataType="codeEditor:CodeEditorViewModel"
-             Width="440">
+             Width="440" Classes="builtin-app">
     <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" Margin="20" RowSpacing="14">
         <TextBlock Text="{loc:Loc code_editor.settings.title}" FontSize="18" FontWeight="SemiBold" />
         <Grid Grid.Row="1" ColumnDefinitions="160,*" ColumnSpacing="12">

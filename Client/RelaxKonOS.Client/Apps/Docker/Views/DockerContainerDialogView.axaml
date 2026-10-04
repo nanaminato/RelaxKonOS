@@ -3,7 +3,7 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:docker="clr-namespace:RelaxKonOS.Client.Apps.Docker"
              x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerContainerDialogView"
-             x:DataType="docker:DockerManagerViewModel">
+             x:DataType="docker:DockerManagerViewModel" Classes="builtin-app">
     <!-- Fixed description -> scrolling form -> fixed action row. This form has three field groups, so it
          scrolls as a whole instead of squeezing the environment/command boxes when the window is short. -->
     <Grid Margin="20" RowDefinitions="Auto,*,Auto" RowSpacing="12">

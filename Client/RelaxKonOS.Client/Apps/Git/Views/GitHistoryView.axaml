@@ -3,14 +3,14 @@
              xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              x:Class="RelaxKonOS.Client.Apps.Git.Views.GitHistoryView"
-             x:DataType="git:GitClientViewModel">
+             x:DataType="git:GitClientViewModel" Classes="builtin-app">
     <Grid ColumnDefinitions="*,300" MinHeight="300">
-        <Border Grid.Column="0" Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="4" Margin="0,0,4,0">
+        <Border Grid.Column="0" Padding="4" Margin="0,0,4,0" Classes="app-panel">
             <DataGrid x:Name="CommitGrid" ItemsSource="{Binding Commits}"
                       AutoGenerateColumns="False" IsReadOnly="True"
                       HeadersVisibility="Column"
                       SelectedItem="{Binding SelectedCommit, Mode=TwoWay}"
-                      CanUserResizeColumns="True" CanUserSortColumns="True">
+                      CanUserResizeColumns="True" CanUserSortColumns="True" Classes="resource-table">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="{loc:Loc git.history.col_hash}" Binding="{Binding ShortSha}" Width="80" CanUserResize="True" />
                     <DataGridTextColumn Header="{loc:Loc git.history.col_author}" Binding="{Binding Author}" Width="120" CanUserResize="True" />
@@ -19,7 +19,7 @@
                 </DataGrid.Columns>
             </DataGrid>
         </Border>
-        <Border Grid.Column="1" Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="12" Margin="4,0,0,0">
+        <Border Grid.Column="1" Padding="12" Margin="4,0,0,0" Classes="app-panel">
             <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
                 <StackPanel Spacing="8" IsVisible="{Binding SelectedCommit, Converter={x:Static ObjectConverters.IsNotNull}}">
                     <TextBlock Text="{loc:Loc git.history.commit_details}" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />

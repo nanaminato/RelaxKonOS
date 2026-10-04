@@ -4,7 +4,7 @@
              xmlns:app="clr-namespace:RelaxKonOS.Client.Apps.TextEditor"
              x:Class="RelaxKonOS.Client.Apps.TextEditor.EncodingActionDialogView"
              x:DataType="app:EncodingActionDialogViewModel"
-             Background="{DynamicResource SurfaceBrush}">
+             Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
     <Grid Margin="12"
           RowDefinitions="Auto,Auto,Auto"
           RowSpacing="10">

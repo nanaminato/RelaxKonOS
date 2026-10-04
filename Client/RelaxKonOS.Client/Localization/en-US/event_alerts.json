@@ -1,0 +1,6 @@
+{
+  "Culture": "en-US",
+  "Strings": {
+    "event_alerts.summary": "Open: {0}    Acknowledged: {1}    Critical: {2}"
+  }
+}

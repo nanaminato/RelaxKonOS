@@ -5,7 +5,7 @@
              x:Class="RelaxKonOS.Client.Apps.WebServers.Views.NginxIntegrationConfirmationDialogView"
              x:DataType="views:NginxIntegrationConfirmationDialogViewModel"
              Background="{DynamicResource SurfaceBrush}"
-             Width="470">
+             Width="470" Classes="builtin-app">
     <Grid Margin="20" RowDefinitions="Auto,Auto" RowSpacing="18">
         <StackPanel Orientation="Horizontal" Spacing="12">
             <TextBlock Text="⚠" FontSize="28" Foreground="{DynamicResource WarningBrush}" VerticalAlignment="Top" />

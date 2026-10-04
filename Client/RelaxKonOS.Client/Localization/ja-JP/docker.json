@@ -325,6 +325,5 @@
     "docker.engine.problem.platform_unsupported": "このプラットフォームでは RelaxKonOS から Docker エンジンを制御できません。",
     "docker.engine.problem.helper_unavailable": "Docker サービスを所有する特権ヘルパーが利用できません。",
     "docker.engine.problem.desktop_command_failed": "Docker Desktop がコマンドを完了できませんでした（docker desktop プラグインが無いか、タイムアウトしました）。",
-    "docker.engine.problem.action_failed": "ホスト側で操作を実行できませんでした。"
-  }
+    "docker.engine.problem.action_failed": "ホスト側で操作を実行できませんでした。","docker.actions_more":"その他の操作"}
 }

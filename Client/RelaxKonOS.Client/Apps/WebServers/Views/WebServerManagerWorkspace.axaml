@@ -6,16 +6,14 @@
              x:DataType="webservers:WebServerManagerViewModel"
              Background="{DynamicResource AppBackgroundBrush}"
              MinWidth="0"
-             MinHeight="0">
+             MinHeight="0" Classes="builtin-app">
     <Grid RowDefinitions="Auto,Auto,*" MinWidth="0" MinHeight="0">
-        <Border Grid.Row="0" Background="{DynamicResource SurfaceSunkenBrush}" Padding="32,22">
+        <Border Grid.Row="0" Classes="app-header">
             <Grid ColumnDefinitions="Auto,*">
-                <Border Width="48" Height="48" Background="{DynamicResource AccentBrush}" CornerRadius="14">
-                    <TextBlock Text="🌐" FontSize="25" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                </Border>
+                <Image Width="46" Height="46" Source="avares://RelaxKonOS.Client/Assets/AppIcons/webservers.png" Stretch="Uniform" />
                 <StackPanel Grid.Column="1" Spacing="3" Margin="16,0,0,0" VerticalAlignment="Center">
-                    <TextBlock Text="{loc:Loc application.relaxkonos.webservers.display_name}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
-                    <TextBlock Text="{loc:Loc webservers.subtitle}" FontSize="13" Foreground="{DynamicResource TextTertiaryBrush}" />
+                    <TextBlock Text="{loc:Loc application.relaxkonos.webservers.display_name}" Classes="app-title" />
+                    <TextBlock Text="{loc:Loc webservers.subtitle}" FontSize="13" Classes="app-description" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -28,7 +26,7 @@
         </Border>
 
         <Grid Grid.Row="2" ColumnDefinitions="190,*" MinWidth="0" MinHeight="0">
-            <Border Grid.Column="0" Background="{DynamicResource SurfaceSunkenBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,0,1,0">
+            <Border Grid.Column="0" Classes="app-sidebar">
                 <StackPanel Spacing="4" Margin="14,22">
                     <TextBlock Text="{loc:Loc webservers.workspace}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="11" FontWeight="SemiBold" Margin="10,0,0,6" />
                     <Button x:Name="InstancesPageButton" Classes="workspace-nav" Tag="instances" Click="NavigationButton_Click" Content="{loc:Loc webservers.instances}" HorizontalContentAlignment="Left" Padding="10,8" />

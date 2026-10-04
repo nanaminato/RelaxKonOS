@@ -4,7 +4,8 @@
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.AppInstaller.ViewModels"
              x:Class="RelaxKonOS.Client.Apps.AppInstaller.Views.AppInstallerView"
              x:DataType="vm:AppInstallerViewModel"
-             Background="{DynamicResource SurfaceBrush}">
+             Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
+    <Grid RowDefinitions="*,Auto">
     <ScrollViewer HorizontalScrollBarVisibility="Disabled">
         <StackPanel Margin="24" Spacing="16" MaxWidth="620">
             <StackPanel Spacing="4">
@@ -13,10 +14,10 @@
                 <TextBlock Text="{loc:Loc app_installer.security_warning}" Opacity="0.82" TextWrapping="Wrap" />
             </StackPanel>
 
-            <StackPanel Orientation="Horizontal" Spacing="10">
-                <Button Content="{loc:Loc app_installer.choose_local}" Command="{Binding ChooseLocalCommand}" Padding="16,8" />
-                <Button Content="{loc:Loc app_installer.choose_server}" Command="{Binding ChooseServerCommand}" Padding="16,8" />
-            </StackPanel>
+            <WrapPanel>
+                <Button Content="{loc:Loc app_installer.choose_local}" Command="{Binding ChooseLocalCommand}" Padding="16,8" Margin="0,0,8,8" />
+                <Button Content="{loc:Loc app_installer.choose_server}" Command="{Binding ChooseServerCommand}" Padding="16,8" Margin="0,0,8,8" />
+            </WrapPanel>
 
             <Border Classes="card" IsVisible="{Binding HasPackage}">
                 <StackPanel Spacing="12">
@@ -35,7 +36,7 @@
                         <Run Text="{Binding CurrentPackage.SourceName}" />
                     </TextBlock>
 
-                    <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="12">
+                    <Border Padding="12" Classes="app-panel">
                         <StackPanel Spacing="8">
                             <TextBlock Text="{loc:Loc app_installer.requested_permissions}" FontWeight="SemiBold" />
                             <ItemsControl ItemsSource="{Binding RequestedPermissions}">
@@ -51,14 +52,18 @@
                             <TextBlock Text="{loc:Loc app_installer.no_requested_permissions}" IsVisible="{Binding !HasRequestedPermissions}" Opacity="0.62" FontSize="12" />
                         </StackPanel>
                     </Border>
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-                        <Button Content="{loc:Loc common.skip}" Command="{Binding SkipCommand}" Padding="16,7" />
-                        <Button Classes="primary" Content="{Binding ActionLabel}" Command="{Binding InstallCommand}" Padding="18,7" />
-                    </StackPanel>
+
                 </StackPanel>
             </Border>
 
             <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Opacity="0.72" />
         </StackPanel>
     </ScrollViewer>
+        <Border Grid.Row="1" Classes="app-statusbar" IsVisible="{Binding HasPackage}">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                        <Button Content="{loc:Loc common.skip}" Command="{Binding SkipCommand}" Padding="16,7" />
+                        <Button Classes="primary" Content="{Binding ActionLabel}" Command="{Binding InstallCommand}" Padding="18,7" />
+                    </StackPanel>
+        </Border>
+    </Grid>
 </UserControl>

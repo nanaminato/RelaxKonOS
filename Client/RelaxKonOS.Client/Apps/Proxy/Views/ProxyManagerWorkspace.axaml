@@ -4,14 +4,14 @@
              xmlns:proxy="clr-namespace:RelaxKonOS.Client.Apps.Proxy"
              x:Class="RelaxKonOS.Client.Apps.Proxy.Views.ProxyManagerWorkspace"
              x:DataType="proxy:ProxyManagerViewModel"
-             Background="{DynamicResource AppBackgroundBrush}">
+             Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
   <Grid RowDefinitions="Auto,Auto,*">
-    <Border Grid.Row="0" Background="{DynamicResource SurfaceSunkenBrush}" Padding="28,18">
+    <Border Grid.Row="0" Classes="app-header">
       <Grid ColumnDefinitions="Auto,*,Auto">
         <Image Width="46" Height="46" Source="avares://RelaxKonOS.Client/Assets/AppIcons/proxy.png" Stretch="Uniform" />
         <StackPanel Grid.Column="1" Spacing="2" Margin="14,0,0,0" VerticalAlignment="Center">
-          <TextBlock Text="{loc:Loc proxy.title}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
-          <TextBlock Text="{loc:Loc proxy.subtitle}" FontSize="13" Foreground="{DynamicResource TextTertiaryBrush}" />
+          <TextBlock Text="{loc:Loc proxy.title}" Classes="app-title" />
+          <TextBlock Text="{loc:Loc proxy.subtitle}" FontSize="13" Classes="app-description" />
         </StackPanel>
         <Button Grid.Column="2" Content="{loc:Loc common.refresh}" Command="{Binding RefreshCommand}" VerticalAlignment="Center" />
       </Grid>
@@ -31,7 +31,7 @@
       </Border>
     </StackPanel>
     <Grid Grid.Row="2" ColumnDefinitions="190,*">
-      <Border Background="{DynamicResource SurfaceSunkenBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,0,1,0">
+      <Border Classes="app-sidebar">
         <StackPanel Spacing="4" Margin="14,22">
           <TextBlock Text="{loc:Loc proxy.workspace}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="11" FontWeight="SemiBold" Margin="10,0,0,6" />
           <Button x:Name="OverviewButton" Classes="workspace-nav" Tag="overview" Click="NavigationButton_Click" Content="{loc:Loc proxy.overview}" HorizontalContentAlignment="Left" Padding="10,8" />

@@ -1,6 +1,6 @@
 # RelaxKonOS 主题与配色系统设计
 
-> **状态：实施前设计 / 配色与调色板的执行规范。** 本文把现有零散的浅色样式与仅影响 Shell 局部的 `Light / Dark / System` 偏好，升级为可运行时切换、可同步、可扩展的全局主题系统。
+> **状态：配色契约与迁移设计；运行时资源链路已存在。** 当前入口为 `AppearanceService` 与 `DesktopExperience.Appearance`。本文保留分阶段设计，历史基线和阶段清单不代表当前实现缺失；全量视觉验收状态见系统风格文档。
 >
 > - **形状、尺寸与动效不属于本文**，已拆分为独立的系统风格层，见 [`RelaxKonOS.SystemStyle.md`](./RelaxKonOS.SystemStyle.md)（Phase 1 已实施）。本文只负责**颜色**：模式、调色板与强调色。
 > - 运行时服务名为 `AppearanceService`（`ThemeService` 已删除）；偏好字段为 `DesktopExperience.Appearance`（`ThemePreferencesDto` 已删除）。
@@ -41,9 +41,11 @@ RelaxKonOS 需要让用户在不重启应用的情况下改变整个桌面、窗
 
 ---
 
-## 2. 当前基线与迁移结论
+## 2. 历史基线与迁移原则
 
-当前项目已具备以下基础：
+以下是迁移前的历史基线，不能作为当前代码状态。当前 `App.axaml` 使用 `RequestedThemeVariant="Default"`，宿主界面通过 `DynamicResource` 消费语义颜色与系统风格令牌；运行时由 `Services/Theming/AppearanceService.cs` 应用偏好。
+
+迁移前的问题如下：
 
 - `ThemeKind` 已定义 `Light`、`Dark`、`System`，现存储于 `WorkspacePreferencesDto.DesktopExperience.Appearance.Mode`（顶层 `Theme` 字段已随系统风格拆分删除）。
 - `ShellSettings` 会同步该字段，但现在仅用它计算任务栏和开始菜单的局部颜色；`App.axaml` 仍固定 `RequestedThemeVariant="Light"`。
@@ -248,9 +250,7 @@ WorkspacePreferencesDto
 > **实施进度（2026-09-19）**：系统风格 Phase 1 已同时落地了本计划的部分前置条件——
 > 资源汇总入口 `RelaxKonOSTheme.axaml`、`AppearanceService`（取代 `ThemeService`）、
 > 可替换的调色板与现代风格 `ResourceDictionary`、`Bootstrapper` 注册、设置页三卡片拆分。
-> **颜色本身的迁移尚未开始**：本文 Phase 2–5 的全部颜色工作仍待执行。
-> 但请注意 Phase 2 中 `RemoteWindowTheme.axaml` 的**形状**维度（标题栏高度、外框厚度、非活动透明度、阴影）
-> 已改由系统风格令牌驱动，颜色维度仍待迁移。
+> **上述记录是历史进度，不是当前待办。** 宿主、共享样式与受管窗口已消费语义资源。Phase 2–5 应按现有代码逐项核对，不能据此断言颜色迁移尚未开始；跨平台、深浅色与高 DPI 的视觉结果仍需实际验收。
 
 ### Phase 0 — 基线与防护
 
@@ -269,7 +269,7 @@ WorkspacePreferencesDto
 
 1. 迁移 `RelaxKonOS.UI/Themes/Styles.axaml` 的 Button、TextBox、ListBox、card、surface、文本辅助样式。
 2. 迁移 `RelaxKonOS.WindowManager/Themes/RemoteWindowTheme.axaml`，包括活动/非活动边框、标题栏、关闭按钮与阴影。
-3. 迁移 `App.axaml`、`MainWindow.axaml`、登录窗口、各 `IDesktopShell` launcher、连接栏、任务栏/Dock、启动器、菜单和桌面图标状态。Shell 运行时边界见 [`RelaxKonOS.ShellLauncher.Goal.md`](./RelaxKonOS.ShellLauncher.Goal.md)。
+3. 迁移 `App.axaml`、`MainWindow.axaml`、登录窗口、各 `IDesktopShell` launcher、连接栏、任务栏/Dock、启动器、菜单和桌面图标状态。Shell 运行时边界见 [`RelaxKonOS.ShellLauncher.md`](./RelaxKonOS.ShellLauncher.md)。
 4. 删除 `ShellSettings.TaskbarBackground` / `TaskbarForeground` 中固定的浅深颜色逻辑；Shell 改为资源绑定或由令牌驱动的可通知画刷。
 
 ### Phase 3 — 所有内置应用与代码生成 UI

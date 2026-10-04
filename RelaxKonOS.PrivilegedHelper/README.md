@@ -87,7 +87,7 @@ Server 使用现有 `HostTimeChange` 短期授权，精确目标 `host/time`。�
 
 Linux Helper 启动及 Helper 管理子进程现在显式清空继承环境，设置安装控制的固定 PATH；特权程序使用绝对路径。Linux 文件/服务白名单只读 `/etc/relaxkonos/privileged-helper-roots` 与 `/etc/relaxkonos/privileged-services`，不再接受环境变量覆盖。安装必须提供可信运行时，不依赖调用用户的 DOTNET_ROOT/PATH。Windows 服务启动前的运行时环境隔离仍需安装链路审计与实机验证；不能把子进程清理等同于全部启动隔离已验收。
 
-真实 Windows/Ubuntu 写入、策略锁定、外部时区编辑与回滚尚未在指定测试主机验证。详见 SettingsSystem.Goal 执行记录。
+真实 Windows/Ubuntu 写入、策略锁定、外部时区编辑与回滚尚未在指定测试主机验证。详见 [设置设计的验收矩阵](../docs/desktop/RelaxKonOS.Settings.Design.md)。
 
 ### 设置系统主机名操作（已接入，尚未实机验收）
 

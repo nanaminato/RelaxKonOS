@@ -3,7 +3,7 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:fs="clr-namespace:RelaxKonOS.Client.Apps.FileServices"
              xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.FileServices.Views"
-             x:Class="RelaxKonOS.Client.Apps.FileServices.Views.FileServicesDeleteDialogView">
+             x:Class="RelaxKonOS.Client.Apps.FileServices.Views.FileServicesDeleteDialogView" Classes="builtin-app">
     <StackPanel Margin="20" Spacing="16">
         <TextBlock x:Name="Message" TextWrapping="Wrap" />
         <StackPanel Orientation="Horizontal" Spacing="8">

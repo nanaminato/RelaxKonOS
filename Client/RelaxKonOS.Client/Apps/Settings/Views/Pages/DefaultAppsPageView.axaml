@@ -4,7 +4,7 @@
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.DefaultAppsPageView"
              x:DataType="vm:DefaultAppsPageViewModel"
-             x:Name="Root">
+             x:Name="Root" Classes="builtin-app">
     <StackPanel Spacing="16" MaxWidth="720">
         <TextBlock Text="{Binding LocalizedDisplayName}" FontSize="24" FontWeight="SemiBold" />
         <Border Classes="card">

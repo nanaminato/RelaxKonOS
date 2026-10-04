@@ -5,7 +5,7 @@
              x:Class="RelaxKonOS.Client.Apps.Explorer.Dialogs.TextInputDialogView"
              x:DataType="vm:TextInputDialogViewModel"
              Background="{DynamicResource SurfaceBrush}"
-             Width="440">
+             Width="440" Classes="builtin-app">
     <Grid RowDefinitions="Auto,Auto,Auto,Auto" Margin="20" RowSpacing="10">
         <TextBlock Grid.Row="0" Text="{Binding Prompt}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
         <TextBox Grid.Row="1" x:Name="InputBox" Text="{Binding Input, Mode=TwoWay}" />

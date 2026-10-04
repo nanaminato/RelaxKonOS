@@ -5,9 +5,9 @@
              x:Class="RelaxKonOS.Client.Apps.Notepad.NotepadView"
              x:Name="Root"
              x:DataType="notepad:NotepadViewModel"
-             Background="{DynamicResource SurfaceBrush}">
+             Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
     <Grid RowDefinitions="Auto,*,Auto">
-        <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1">
+        <Border Grid.Row="0" Classes="app-toolbar">
             <Grid ColumnDefinitions="Auto,*">
                 <Menu Grid.Column="0" Background="Transparent" BorderThickness="0">
                     <MenuItem Header="{loc:Loc common.file}">
@@ -21,8 +21,8 @@
                         <MenuItem Header="{loc:Loc common.preferences_ellipsis}" Command="{Binding OpenSettingsCommand}" />
                     </MenuItem>
                 </Menu>
-                <TextBlock Grid.Column="1" Text="{Binding DocumentName}" VerticalAlignment="Center"
-                           Margin="10,0" Opacity="0.7" />
+                <TextBlock Grid.Column="1" Text="{Binding DocumentName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                           Margin="10,0" Foreground="{DynamicResource TextSecondaryBrush}" />
             </Grid>
         </Border>
 
@@ -37,14 +37,14 @@
                  FontSize="{Binding FontSize}"
                  CaretBrush="{DynamicResource AccentBrush}" />
 
-        <Border Grid.Row="2" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Padding="12,5">
+        <Border Grid.Row="2" Classes="app-statusbar">
             <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="14">
-                <TextBlock Text="{Binding StatusText}" FontSize="12" Opacity="0.7" TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
                 <Button Grid.Column="1" Content="{Binding EncodingName}" FontSize="12" Padding="4,0"
                         IsVisible="{Binding HasOpenFile}" ToolTip.Tip="{loc:Loc common.file_encoding}"
                         Command="{Binding ChooseEncodingCommand}" />
-                <TextBlock Grid.Column="2" Text="{Binding LineCountText}" FontSize="12" Opacity="0.7" />
-                <TextBlock Grid.Column="3" Text="{Binding CharacterCountText}" FontSize="12" Opacity="0.7" />
+                <TextBlock Grid.Column="2" Text="{Binding LineCountText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                <TextBlock Grid.Column="3" Text="{Binding CharacterCountText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
             </Grid>
         </Border>
     </Grid>

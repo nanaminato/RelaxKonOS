@@ -1,7 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.AccountSecurityPageView" x:DataType="vm:AccountSecurityPageViewModel">
+             x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.AccountSecurityPageView" x:DataType="vm:AccountSecurityPageViewModel" Classes="builtin-app">
   <StackPanel Spacing="16" Margin="8">
     <TextBlock Text="{loc:Loc settings.account.title}" FontSize="24" FontWeight="SemiBold" />
     <TextBlock Text="{loc:Loc settings.account.description}" TextWrapping="Wrap" />

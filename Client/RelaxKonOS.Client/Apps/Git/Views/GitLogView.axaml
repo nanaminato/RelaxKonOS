@@ -7,7 +7,7 @@
              x:Name="LogViewRoot"
              x:DataType="git:GitClientViewModel"
              x:CompileBindings="False"
-             Background="{DynamicResource AppBackgroundBrush}">
+             Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
     <UserControl.Styles>
         <Style Selector="ComboBox.historyFilter">
             <Setter Property="Height" Value="36" />
@@ -57,8 +57,8 @@
         <!-- ============================================================
              LEFT PANE : Branch / Tag Tree (Fork-style)
              ============================================================ -->
-        <Border Grid.Column="0" Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="8"
-                BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1">
+        <Border Grid.Column="0" Padding="8"
+                BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" Classes="app-panel">
             <Grid RowDefinitions="Auto,Auto,*">
                 <!-- 搜索框 -->
                 <Border Grid.Row="0" Background="{DynamicResource SurfaceSunkenBrush}" CornerRadius="6" Padding="8,4" Margin="0,0,0,6">
@@ -182,8 +182,8 @@
         <!-- ============================================================
              MIDDLE PANE : Commit list (history) with toolbar
              ============================================================ -->
-        <Border Grid.Column="2" Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="0"
-                BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1">
+        <Border Grid.Column="2" Padding="0"
+                BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" Classes="app-panel">
             <Grid RowDefinitions="Auto,*">
                 <!-- 顶部筛选工具栏 -->
                 <Border Grid.Row="0" Background="{DynamicResource SurfaceSunkenBrush}" Padding="12,8,4,4" CornerRadius="8,8,0,0">
@@ -344,8 +344,8 @@
         <!-- ============================================================
              RIGHT PANE : Changed files + Commit details
              ============================================================ -->
-        <Border Grid.Column="4" Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="0"
-                BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1">
+        <Border Grid.Column="4" Padding="0"
+                BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" Classes="app-panel">
             <Grid RowDefinitions="Auto,*,5,*">
                 <!-- 文件树标题栏 -->
                 <Border Grid.Row="0" Background="{DynamicResource SurfaceSunkenBrush}" Padding="10,6" CornerRadius="8,8,0,0">

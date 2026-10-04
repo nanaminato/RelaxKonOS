@@ -3,7 +3,7 @@
              xmlns:services="clr-namespace:RelaxKonOS.Client.Services.ServerCenter"
              xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter"
              x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterDeploymentPage"
-             x:DataType="vm:ServerCenterViewModel">
+             x:DataType="vm:ServerCenterViewModel" Classes="builtin-app">
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
     <StackPanel Spacing="18" Margin="0,0,12,0">
         <TextBlock Text="{Binding DeploymentPageTitle}" FontSize="21" FontWeight="SemiBold" />

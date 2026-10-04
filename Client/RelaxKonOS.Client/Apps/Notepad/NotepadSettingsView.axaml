@@ -5,7 +5,7 @@
              xmlns:notepad="clr-namespace:RelaxKonOS.Client.Apps.Notepad"
              x:Class="RelaxKonOS.Client.Apps.Notepad.NotepadSettingsView"
              x:DataType="notepad:NotepadViewModel"
-             Width="420">
+             Width="420" Classes="builtin-app">
     <Grid RowDefinitions="Auto,Auto,Auto" Margin="20" RowSpacing="14">
         <TextBlock Text="{loc:Loc notepad.settings.title}" FontSize="18" FontWeight="SemiBold" />
         <Grid Grid.Row="1" ColumnDefinitions="150,*" ColumnSpacing="12">

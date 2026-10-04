@@ -40,4 +40,4 @@
 
 先在带第二条管理连接的临时 VM 上，依照 [`RelaxKonOS.ProxyManager.SkippedTests.md`](../testing/RelaxKonOS.ProxyManager.SkippedTests.md) 执行 PM-G5-WIN-01 至 03 和 PM-G5-UBU-01 至 03；记录 RelaxKonOS 修订、Mihomo 资产哈希、环境、结果与问题码。随后补齐并运行 PM-G6-G8-API-01 的 API 宿主夹具。所有用例通过前，不得将 Proxy Manager 标记为 V1 已完成，尤其不得在生产主机首次启用 TUN。
 
-设计范围与长期安全约束仍见 [`RelaxKonOS.ProxyManager.Design.md`](./RelaxKonOS.ProxyManager.Design.md)，执行基线见 [`RelaxKonOS.ProxyManager.Goal.md`](./RelaxKonOS.ProxyManager.Goal.md)，操作员文档见 [`docs/proxy/`](../proxy/)。若这些早期规划文档与本页的“当前实现”叙述冲突，以本页、代码和跳过测试登记表为准，并应在后续文档维护中同步修正。
+设计范围与长期安全约束仍见 [`RelaxKonOS.ProxyManager.Design.md`](./RelaxKonOS.ProxyManager.Design.md)，执行基线见 [`RelaxKonOS.ProxyManager.Design.md`](./RelaxKonOS.ProxyManager.Design.md)，操作员文档见 [`docs/proxy/`](../proxy/)。若这些早期规划文档与本页的“当前实现”叙述冲突，以本页、代码和跳过测试登记表为准，并应在后续文档维护中同步修正。

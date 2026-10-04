@@ -1,6 +1,8 @@
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
+using Avalonia.Media;
+using RelaxKonOS.Client.Services.Theming;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Privileged;
@@ -41,30 +43,32 @@ public sealed class FirewallApp : RemoteApplicationBase
 
     private static Control CreateView(FirewallViewModel vm)
     {
-        var root = new DockPanel { Margin = new Avalonia.Thickness(18), LastChildFill = true, DataContext = vm };
+        var root = new DockPanel { Classes = { "builtin-app" }, Margin = new Avalonia.Thickness(18), LastChildFill = true, DataContext = vm };
         var refresh = new Button { Content = LocalizedText.Get("common.refresh"), Command = vm.RefreshCommand, HorizontalAlignment = HorizontalAlignment.Right };
         DockPanel.SetDock(refresh, Dock.Top); root.Children.Add(refresh);
-        var status = new TextBlock { Margin = new Avalonia.Thickness(0, 0, 0, 12), TextWrapping = Avalonia.Media.TextWrapping.Wrap };
+        var status = new TextBlock { Margin = new Avalonia.Thickness(0, 0, 0, 12), TextWrapping = Avalonia.Media.TextWrapping.Wrap, Foreground = ThemeBrushes.Get("TextSecondaryBrush") };
         status.Bind(TextBlock.TextProperty, new Avalonia.Data.Binding(nameof(vm.StatusText))); DockPanel.SetDock(status, Dock.Top); root.Children.Add(status);
 
         var settings = new StackPanel { Spacing = 8, Margin = new Avalonia.Thickness(0, 0, 0, 14) };
         settings.Children.Add(new TextBlock { Text = LocalizedText.Get("firewall.warning"), TextWrapping = Avalonia.Media.TextWrapping.Wrap });
-        var settingsRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, VerticalAlignment = VerticalAlignment.Bottom };
+        var settingsRow = new WrapPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Bottom };
         settingsRow.Children.Add(new Button { Content = LocalizedText.Get("firewall.enable"), Command = vm.EnableCommand });
         settingsRow.Children.Add(new Button { Content = LocalizedText.Get("firewall.disable"), Command = vm.DisableCommand });
         settingsRow.Children.Add(ChoiceField(vm, nameof(vm.SelectedIncomingPolicy), vm.Policies, "firewall.default_incoming", 150));
         settingsRow.Children.Add(ChoiceField(vm, nameof(vm.SelectedOutgoingPolicy), vm.Policies, "firewall.default_outgoing", 150));
         settingsRow.Children.Add(new Button { Content = LocalizedText.Get("firewall.save_defaults"), Command = vm.SaveDefaultsCommand });
+        foreach (Control field in settingsRow.Children)
+            field.Margin = new Avalonia.Thickness(0, 0, 10, 8);
         settings.Children.Add(settingsRow);
         DockPanel.SetDock(settings, Dock.Top); root.Children.Add(settings);
 
         var rules = new DockPanel { DataContext = vm };
         var ruleActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Avalonia.Thickness(0, 0, 0, 10) };
-        ruleActions.Children.Add(new Button { Content = LocalizedText.Get("firewall.rule.add"), Command = vm.ShowAddRuleEditorCommand });
+        ruleActions.Children.Add(new Button { Content = LocalizedText.Get("firewall.rule.add"), Command = vm.ShowAddRuleEditorCommand, Classes = { "primary" } });
         ruleActions.Children.Add(new Button { Content = LocalizedText.Get("firewall.rule.update"), Command = vm.ShowEditRuleEditorCommand });
         DockPanel.SetDock(ruleActions, Dock.Top); rules.Children.Add(ruleActions);
 
-        var delete = new Button { Content = LocalizedText.Get("firewall.rule.delete"), Command = vm.DeleteRuleCommand, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Avalonia.Thickness(0, 8, 0, 0) };
+        var delete = new Button { Foreground = ThemeBrushes.Get("DangerBrush"), Content = LocalizedText.Get("firewall.rule.delete"), Command = vm.DeleteRuleCommand, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Avalonia.Thickness(0, 8, 0, 0) };
         DockPanel.SetDock(delete, Dock.Bottom); rules.Children.Add(delete);
         rules.Children.Add(CreateRuleTable(vm));
         root.Children.Add(rules);
@@ -75,10 +79,11 @@ public sealed class FirewallApp : RemoteApplicationBase
     {
         var table = new DataGrid
         {
+            Classes = { "resource-table" },
+            CanUserResizeColumns = true,
             AutoGenerateColumns = false,
             IsReadOnly = true,
             CanUserReorderColumns = false,
-            GridLinesVisibility = DataGridGridLinesVisibility.Horizontal,
             SelectionMode = DataGridSelectionMode.Single,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
             ItemsSource = vm.Rules

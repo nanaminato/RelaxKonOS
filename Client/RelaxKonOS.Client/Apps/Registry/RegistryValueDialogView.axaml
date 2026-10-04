@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:registry="clr-namespace:RelaxKonOS.Client.Apps.Registry" xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" x:Class="RelaxKonOS.Client.Apps.Registry.RegistryValueDialogView" x:DataType="registry:RegistryValueDialogViewModel">
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:registry="clr-namespace:RelaxKonOS.Client.Apps.Registry" xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" x:Class="RelaxKonOS.Client.Apps.Registry.RegistryValueDialogView" x:DataType="registry:RegistryValueDialogViewModel" Classes="builtin-app">
   <Grid Margin="20" RowDefinitions="Auto,Auto,*,Auto,Auto">
     <TextBlock Text="{Binding Path}" FontWeight="SemiBold" TextWrapping="Wrap" HorizontalAlignment="Left" Margin="0,0,0,12"/>
 

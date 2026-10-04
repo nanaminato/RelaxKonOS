@@ -3,10 +3,10 @@
              xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              x:Class="RelaxKonOS.Client.Apps.Git.Views.GitWorkspaceView"
-             x:DataType="git:GitClientViewModel">
+             x:DataType="git:GitClientViewModel" Classes="builtin-app">
     <Grid RowDefinitions="Auto,*,Auto" MinHeight="400">
         <!-- Toolbar -->
-        <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="12" Margin="0,0,0,8">
+        <Border Grid.Row="0" Padding="12" Margin="0,0,0,8" Classes="app-panel">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -28,7 +28,7 @@
         </Border>
 
         <!-- Changes List with grouping -->
-        <Border Grid.Row="1" Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="8" Margin="0,0,0,8">
+        <Border Grid.Row="1" Padding="8" Margin="0,0,0,8" Classes="app-panel">
             <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
                 <StackPanel Spacing="8">
                     <!-- Tracked files section -->
@@ -117,7 +117,7 @@
         </Border>
 
         <!-- Commit area -->
-        <Border Grid.Row="2" Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="12">
+        <Border Grid.Row="2" Padding="12" Classes="app-panel">
             <StackPanel Spacing="8">
                 <TextBox x:Name="CommitMessageInput" PlaceholderText="{loc:Loc git.workspace.commit_placeholder}" Text="{Binding CommitMessage}" MinHeight="32" AcceptsReturn="True"/>
                 <StackPanel Orientation="Horizontal" Spacing="8">

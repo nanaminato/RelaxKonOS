@@ -3,7 +3,7 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.PortForwarding.ViewModels"
              x:Class="RelaxKonOS.Client.Apps.PortForwarding.Views.PortForwardingEditorDialogView"
-             x:DataType="vm:PortForwardingViewModel">
+             x:DataType="vm:PortForwardingViewModel" Classes="builtin-app">
     <Grid Margin="20" RowDefinitions="*,Auto">
         <ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
             <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">

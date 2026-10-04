@@ -4,7 +4,7 @@
              xmlns:proxy="clr-namespace:RelaxKonOS.Client.Apps.Proxy"
              xmlns:dto="clr-namespace:RelaxKonOS.Protocol.Proxy;assembly=RelaxKonOS.Protocol"
              x:Class="RelaxKonOS.Client.Apps.Proxy.Views.ProxyOverviewView"
-             x:DataType="proxy:ProxyManagerViewModel">
+             x:DataType="proxy:ProxyManagerViewModel" Classes="builtin-app">
   <UserControl.Styles>
     <Style Selector="Border.proxy-running-pulse">
       <Style.Animations>
@@ -33,7 +33,7 @@
     <Border x:Name="OverviewContent" Padding="0,0,14,14">
     <Grid RowDefinitions="Auto,16,Auto,16,Auto,16,Auto">
       <!-- The existing lifecycle control intentionally remains the only legacy overview card. -->
-      <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20">
+      <Border Grid.Row="0" Padding="20" Classes="app-panel">
         <StackPanel Spacing="12">
           <TextBlock Text="{loc:Loc proxy.runtime_control}" FontSize="19" FontWeight="SemiBold" />
           <TextBlock Text="{loc:Loc proxy.runtime_control_hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
@@ -66,7 +66,7 @@
       </Border>
       <Grid Grid.Row="2" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="16" RowSpacing="16" HorizontalAlignment="Stretch">
         <!-- 订阅 -->
-        <Border Grid.Row="0" Grid.Column="0" Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="18">
+        <Border Grid.Row="0" Grid.Column="0" Padding="18" Classes="app-panel">
             <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
               <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
                 <Border Width="36" Height="36" Background="{DynamicResource AccentMutedBrush}" CornerRadius="9"><TextBlock Text="☁" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
@@ -78,7 +78,7 @@
             </Grid>
         </Border>
         <!-- 当前节点 -->
-        <Border Grid.Row="0" Grid.Column="1" Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="18">
+        <Border Grid.Row="0" Grid.Column="1" Padding="18" Classes="app-panel">
             <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
               <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
                 <Border Width="36" Height="36" Background="{DynamicResource SuccessMutedBrush}" CornerRadius="9"><TextBlock Text="◈" FontSize="20" Foreground="{DynamicResource SuccessBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
@@ -90,7 +90,7 @@
             </Grid>
         </Border>
         <!-- 网络设置 -->
-        <Border Grid.Row="1" Grid.Column="0" Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="18">
+        <Border Grid.Row="1" Grid.Column="0" Padding="18" Classes="app-panel">
             <Grid RowDefinitions="Auto,Auto,*" RowSpacing="11">
               <Grid Grid.Row="0" ColumnDefinitions="Auto,*" ColumnSpacing="10">
                 <Border Grid.Column="0" Width="36" Height="36" Background="{DynamicResource AccentMutedBrush}" CornerRadius="9"><TextBlock Text="▣" FontSize="18" Foreground="{DynamicResource AccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
@@ -123,7 +123,7 @@
             </Grid>
         </Border>
         <!-- 代理模式 -->
-        <Border Grid.Row="1" Grid.Column="1" Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="18">
+        <Border Grid.Row="1" Grid.Column="1" Padding="18" Classes="app-panel">
           <Grid RowDefinitions="Auto,*,Auto" RowSpacing="11">
             <Grid Grid.Row="0"  ColumnDefinitions="Auto,*" ColumnSpacing="10">
               <Border Grid.Column="0" Width="36" Height="36" Background="{DynamicResource AccentMutedBrush}" CornerRadius="9"><TextBlock Text="⇆" FontSize="19" Foreground="{DynamicResource AccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
@@ -139,7 +139,7 @@
         </Border>
       </Grid>
       <!-- 流量统计 -->
-      <Border Grid.Row="4" Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="18">
+      <Border Grid.Row="4" Padding="18" Classes="app-panel">
         <StackPanel Spacing="14">
           <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
             <Border Width="36" Height="36" Background="{DynamicResource WarningMutedBrush}" CornerRadius="9"><TextBlock Text="⌁" FontSize="20" Foreground="{DynamicResource WarningBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
@@ -157,7 +157,7 @@
       </Border>
       <!-- 运行时与系统信息。开机自启只显示固定状态，不关联任何配置或操作。 -->
       <Grid Grid.Row="6" ColumnDefinitions="*,*" ColumnSpacing="16" HorizontalAlignment="Stretch">
-        <Border Grid.Column="0" Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="16">
+        <Border Grid.Column="0" Padding="16" Classes="app-panel">
           <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10" Margin="0,0,0,6">
               <Border Width="36" Height="36" Background="{DynamicResource WarningMutedBrush}" CornerRadius="9"><TextBlock Text="▦" FontSize="19" Foreground="{DynamicResource WarningBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
@@ -170,7 +170,7 @@
             <Border Grid.Row="5" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Padding="0,8,0,0"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Loc proxy.rule_count}" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBlock Grid.Column="1" Text="{Binding RuleCount}" FontWeight="SemiBold"/></Grid></Border>
           </Grid>
         </Border>
-        <Border Grid.Column="1" Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="16">
+        <Border Grid.Column="1" Padding="16" Classes="app-panel">
           <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10" Margin="0,0,0,6">
               <Border Width="36" Height="36" Background="{DynamicResource WarningMutedBrush}" CornerRadius="9"><TextBlock Text="!" FontSize="20" Foreground="{DynamicResource DangerBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>

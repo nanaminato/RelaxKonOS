@@ -5,7 +5,7 @@
              x:Class="RelaxKonOS.Client.Apps.Explorer.Dialogs.ConfirmDialogView"
              x:DataType="vm:ConfirmDialogViewModel"
              Background="{DynamicResource SurfaceBrush}"
-             Width="440">
+             Width="440" Classes="builtin-app">
     <!-- The hosted dialog is 460x320 by default and can be resized by the user, so the message
          takes the '*' row and the action row stays pinned to the bottom-right corner. -->
     <Grid RowDefinitions="*,Auto" Margin="20" RowSpacing="16">

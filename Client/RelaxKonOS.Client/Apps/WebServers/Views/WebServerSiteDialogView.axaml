@@ -3,7 +3,7 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:webservers="clr-namespace:RelaxKonOS.Client.Apps.WebServers"
              x:Class="RelaxKonOS.Client.Apps.WebServers.Views.WebServerSiteDialogView"
-             x:DataType="webservers:WebServerManagerViewModel">
+             x:DataType="webservers:WebServerManagerViewModel" Classes="builtin-app">
     <Grid Margin="20" MinWidth="0" MinHeight="0" RowDefinitions="Auto,*,Auto" RowSpacing="12">
         <!-- Fixed description -> scrolling form -> fixed action row. The dialog-level help stays pinned
              while the form below scrolls. -->

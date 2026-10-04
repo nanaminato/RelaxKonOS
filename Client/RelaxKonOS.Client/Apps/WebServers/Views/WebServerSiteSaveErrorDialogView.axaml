@@ -4,7 +4,7 @@
              xmlns:webservers="clr-namespace:RelaxKonOS.Client.Apps.WebServers.Views"
              x:Class="RelaxKonOS.Client.Apps.WebServers.Views.WebServerSiteSaveErrorDialogView"
              x:DataType="webservers:WebServerSiteSaveErrorDialogView"
-             Background="{DynamicResource SurfaceBrush}">
+             Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
     <Grid Margin="22" RowDefinitions="Auto,Auto" RowSpacing="18">
         <StackPanel Orientation="Horizontal" Spacing="12">
             <TextBlock Text="⚠" FontSize="28" Foreground="{DynamicResource WarningBrush}" VerticalAlignment="Top" />

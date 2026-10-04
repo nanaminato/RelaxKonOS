@@ -6,7 +6,7 @@
              xmlns:dto="clr-namespace:RelaxKonOS.Protocol.Browser;assembly=RelaxKonOS.Protocol"
              x:Class="RelaxKonOS.Client.Apps.Browser.Views.BrowserMainView"
              x:DataType="vm:BrowserViewModel"
-             Background="{DynamicResource SurfaceBrush}">
+             Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
 
     <UserControl.Resources>
         <!-- 侧边栏标签页按钮主题：拉伸宽度，左对齐 -->
@@ -50,7 +50,7 @@
         </Menu>
 
         <!-- 顶部工具栏 -->
-        <Border DockPanel.Dock="Top" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1" Padding="6,4">
+        <Border DockPanel.Dock="Top" Classes="app-toolbar">
             <StackPanel Orientation="Horizontal" Spacing="4">
                 <Button Classes="icon" Content="←" Command="{Binding GoBackCommand}" ToolTip.Tip="{loc:Loc common.back}" />
                 <Button Classes="icon" Content="→" Command="{Binding GoForwardCommand}" ToolTip.Tip="{loc:Loc common.forward}" />
@@ -71,7 +71,7 @@
         </Border>
 
         <!-- 地址栏 -->
-        <Border DockPanel.Dock="Top" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1" Padding="8,4">
+        <Border DockPanel.Dock="Top" Classes="app-toolbar">
             <StackPanel Orientation="Horizontal" Spacing="6">
                 <TextBlock Text="🔒" VerticalAlignment="Center" Margin="0,0,4,0" FontSize="13" ToolTip.Tip="{loc:Loc browser.security_indicator}" />
                 <TextBox x:Name="AddressBox"
@@ -85,7 +85,7 @@
         </Border>
 
         <!-- 状态栏 -->
-        <Border DockPanel.Dock="Bottom" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Padding="12,5">
+        <Border DockPanel.Dock="Bottom" Classes="app-statusbar">
             <Grid ColumnDefinitions="*,Auto">
                 <TextBlock Grid.Column="0" Text="{Binding StatusText}" FontSize="12" Opacity="0.7" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
@@ -104,8 +104,8 @@
             </Grid.ColumnDefinitions>
 
             <!-- 侧边栏 -->
-            <Border Grid.Column="0" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,1,0"
-                    IsVisible="{Binding IsSidebarVisible}">
+            <Border Grid.Column="0"
+                    IsVisible="{Binding IsSidebarVisible}" Classes="app-sidebar">
                 <Grid RowDefinitions="Auto,*,Auto">
                     <!-- 标签页切换 -->
                     <Grid Grid.Row="0" ColumnDefinitions="*,*" Background="{DynamicResource SurfaceBrush}">
@@ -186,7 +186,7 @@
                     </ListBox>
 
                     <!-- 底部清空按钮（按当前标签页激活对应按钮） -->
-                    <Border Grid.Row="2" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Padding="8,6">
+                    <Border Grid.Row="2" Classes="app-statusbar">
                         <StackPanel Orientation="Vertical" Spacing="4">
                             <Button Content="{loc:Loc browser.clear_bookmarks}"
                                     Command="{Binding ClearBookmarksCommand}"

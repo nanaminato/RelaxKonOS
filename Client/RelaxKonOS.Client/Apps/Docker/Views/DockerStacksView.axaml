@@ -3,8 +3,8 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:docker="clr-namespace:RelaxKonOS.Client.Apps.Docker"
              x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerStacksView"
-             x:DataType="docker:DockerManagerViewModel">
-    <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20">
+             x:DataType="docker:DockerManagerViewModel" Classes="builtin-app">
+    <Border Padding="20" Classes="app-panel">
         <Grid RowDefinitions="Auto,Auto,Auto,210,Auto,Auto,180,Auto,150" RowSpacing="12">
             <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
                 <TextBlock Text="{loc:Loc docker.orchestration}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
@@ -15,8 +15,7 @@
             <TextBlock Grid.Row="2" Text="{loc:Loc docker.stack.projects}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
             <ScrollViewer Grid.Row="3" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
                 <DataGrid HorizontalAlignment="Left" ItemsSource="{Binding Stacks}" SelectedItem="{Binding SelectedStack, Mode=TwoWay}"
-                          AutoGenerateColumns="False" IsReadOnly="True" CanUserResizeColumns="True" CanUserReorderColumns="False"
-                          GridLinesVisibility="Horizontal" SelectionMode="Single" HorizontalScrollBarVisibility="Disabled" MinWidth="980">
+                          AutoGenerateColumns="False" IsReadOnly="True" CanUserResizeColumns="True" CanUserReorderColumns="False" SelectionMode="Single" HorizontalScrollBarVisibility="Disabled" MinWidth="980" Classes="resource-table">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="{loc:Loc docker.table.name}" Binding="{ReflectionBinding Name}" Width="200" />
                         <DataGridTextColumn Header="{loc:Loc docker.table.status}" Binding="{ReflectionBinding Status}" Width="250" />
@@ -36,7 +35,7 @@
             <TextBlock Grid.Row="5" Text="{loc:Loc docker.stack.services}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
             <ScrollViewer Grid.Row="6" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
                 <DataGrid HorizontalAlignment="Left" ItemsSource="{Binding StackServices}" AutoGenerateColumns="False" IsReadOnly="True"
-                          CanUserResizeColumns="True" CanUserReorderColumns="False" GridLinesVisibility="Horizontal" HorizontalScrollBarVisibility="Disabled" MinWidth="1100">
+                          CanUserResizeColumns="True" CanUserReorderColumns="False" HorizontalScrollBarVisibility="Disabled" MinWidth="1100" Classes="resource-table">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="{loc:Loc docker.table.service}" Binding="{ReflectionBinding Service}" Width="170" />
                         <DataGridTextColumn Header="{loc:Loc docker.table.container}" Binding="{ReflectionBinding Container}" Width="230" />
@@ -50,7 +49,7 @@
             <TextBlock Grid.Row="7" Text="{loc:Loc docker.stack.operations}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
             <ScrollViewer Grid.Row="8" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
                 <DataGrid HorizontalAlignment="Left" ItemsSource="{Binding StackOperations}" AutoGenerateColumns="False" IsReadOnly="True"
-                          CanUserResizeColumns="True" CanUserReorderColumns="False" GridLinesVisibility="Horizontal" HorizontalScrollBarVisibility="Disabled" MinWidth="900">
+                          CanUserResizeColumns="True" CanUserReorderColumns="False" HorizontalScrollBarVisibility="Disabled" MinWidth="900" Classes="resource-table">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="{loc:Loc docker.table.operation}" Binding="{ReflectionBinding Operation}" Width="180" />
                         <DataGridTextColumn Header="{loc:Loc docker.table.state}" Binding="{ReflectionBinding Result}" Width="200" />

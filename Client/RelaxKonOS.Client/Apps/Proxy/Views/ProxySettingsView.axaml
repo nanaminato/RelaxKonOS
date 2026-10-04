@@ -1,11 +1,11 @@
-<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" xmlns:proxy="clr-namespace:RelaxKonOS.Client.Apps.Proxy" x:Class="RelaxKonOS.Client.Apps.Proxy.Views.ProxySettingsView" x:DataType="proxy:ProxyManagerViewModel">
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" xmlns:proxy="clr-namespace:RelaxKonOS.Client.Apps.Proxy" x:Class="RelaxKonOS.Client.Apps.Proxy.Views.ProxySettingsView" x:DataType="proxy:ProxyManagerViewModel" Classes="builtin-app">
   <UserControl.Styles>
     <Style Selector="ToggleButton.network-mode-tab"><Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}"/><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="8"/><Setter Property="Padding" Value="12,8"/><Setter Property="HorizontalContentAlignment" Value="Center"/></Style>
     <Style Selector="ToggleButton.network-mode-tab:checked"><Setter Property="Background" Value="{DynamicResource AccentBrush}"/><Setter Property="Foreground" Value="{DynamicResource TextOnAccentBrush}"/></Style>
   </UserControl.Styles>
   <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
   <StackPanel Spacing="18">
-    <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20">
+    <Border Padding="20" Classes="app-panel">
       <StackPanel Spacing="12">
         <TextBlock Text="{loc:Loc proxy.runtime}" FontSize="19" FontWeight="SemiBold" />
         <StackPanel IsVisible="{Binding RuntimeIsInstalled}" Spacing="14">
@@ -20,8 +20,8 @@
         </StackPanel>
       </StackPanel>
     </Border>
-    <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20"><StackPanel Spacing="12"><TextBlock Text="{loc:Loc proxy.geodata}" FontSize="19" FontWeight="SemiBold" /><TextBlock Text="{loc:Loc proxy.geodata.hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" /><Grid ColumnDefinitions="*,Auto" ColumnSpacing="18"><TextBlock Text="{loc:Loc proxy.geodata.state}" VerticalAlignment="Center" /><TextBlock Grid.Column="1" Text="{Binding GeoDataState}" VerticalAlignment="Center" /></Grid><Button Content="{loc:Loc proxy.geodata.select_server_file}" Command="{Binding ConfigureGeoDataFromServerFileCommand}" HorizontalAlignment="Left" /></StackPanel></Border>
-    <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20">
+    <Border Padding="20" Classes="app-panel"><StackPanel Spacing="12"><TextBlock Text="{loc:Loc proxy.geodata}" FontSize="19" FontWeight="SemiBold" /><TextBlock Text="{loc:Loc proxy.geodata.hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" /><Grid ColumnDefinitions="*,Auto" ColumnSpacing="18"><TextBlock Text="{loc:Loc proxy.geodata.state}" VerticalAlignment="Center" /><TextBlock Grid.Column="1" Text="{Binding GeoDataState}" VerticalAlignment="Center" /></Grid><Button Content="{loc:Loc proxy.geodata.select_server_file}" Command="{Binding ConfigureGeoDataFromServerFileCommand}" HorizontalAlignment="Left" /></StackPanel></Border>
+    <Border Padding="20" Classes="app-panel">
       <StackPanel Spacing="12">
         <TextBlock Text="{loc:Loc proxy.system_settings}" FontSize="19" FontWeight="SemiBold" />
         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
@@ -34,7 +34,7 @@
         </Grid>
       </StackPanel>
     </Border>
-    <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20">
+    <Border Padding="20" Classes="app-panel">
       <StackPanel Spacing="10">
         <TextBlock Text="{loc:Loc proxy.clash_settings}" FontSize="19" FontWeight="SemiBold"/>
         <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="10">

@@ -4,7 +4,7 @@
              xmlns:docker="clr-namespace:RelaxKonOS.Client.Apps.Docker"
              x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerImageMirrorsView"
              x:DataType="docker:DockerImageMirrorsViewModel"
-             x:Name="Root">
+             x:Name="Root" Classes="builtin-app">
     <StackPanel Spacing="16" MaxWidth="680">
         <TextBlock Text="{loc:Loc docker.mirrors.title}" FontSize="24" FontWeight="SemiBold" />
         <TextBlock Text="{loc:Loc docker.mirrors.description}" Opacity="0.7" TextWrapping="Wrap" />

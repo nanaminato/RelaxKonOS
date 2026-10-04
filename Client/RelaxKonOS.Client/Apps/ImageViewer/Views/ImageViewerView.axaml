@@ -4,7 +4,7 @@
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.ImageViewer.ViewModels"
              x:Class="RelaxKonOS.Client.Apps.ImageViewer.Views.ImageViewerView"
              x:DataType="vm:ImageViewerViewModel"
-             Background="{DynamicResource SurfaceBrush}">
+             Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
     <UserControl.Styles>
         <Style Selector="Button.viewer-tool">
             <Setter Property="Background" Value="Transparent" />
@@ -33,7 +33,7 @@
     </UserControl.Styles>
 
     <Grid RowDefinitions="Auto,*,Auto">
-        <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1" Padding="18,12">
+        <Border Grid.Row="0" Classes="app-toolbar">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="18">
                 <StackPanel Orientation="Horizontal" Spacing="12">
                     <Border Width="38" Height="38" Background="{DynamicResource AccentMutedBrush}" CornerRadius="11">
@@ -77,14 +77,14 @@
                         </Grid>
                         <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="340" />
                     </StackPanel>
-                    <Border Classes="viewer-card" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" CornerRadius="12" ClipToBounds="True" HorizontalAlignment="Left" VerticalAlignment="Top" IsVisible="{Binding HasImage}">
+                    <Border Classes="viewer-card app-panel" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" ClipToBounds="True" HorizontalAlignment="Left" VerticalAlignment="Top" IsVisible="{Binding HasImage}">
                         <Image Source="{Binding ImageSource}" Width="{Binding DisplayWidth}" Height="{Binding DisplayHeight}" Stretch="Fill" />
                     </Border>
                 </Grid>
             </ScrollViewer>
         </Grid>
 
-        <Border Grid.Row="2" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Padding="18,8">
+        <Border Grid.Row="2" Classes="app-statusbar">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
                 <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
                 <TextBlock Grid.Column="1" Text="{loc:Loc image_viewer.shortcuts}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" />

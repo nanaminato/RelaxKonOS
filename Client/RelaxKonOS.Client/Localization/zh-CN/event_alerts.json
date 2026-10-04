@@ -1,0 +1,6 @@
+{
+  "Culture": "zh-CN",
+  "Strings": {
+    "event_alerts.summary": "待处理：{0}    已确认：{1}    严重：{2}"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "Culture": "ja-JP",
+  "Strings": {
+    "event_alerts.summary": "未処理：{0}    確認済み：{1}    重大：{2}"
+  }
+}

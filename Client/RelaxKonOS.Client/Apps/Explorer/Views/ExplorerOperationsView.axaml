@@ -1,7 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" xmlns:m="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Models"
              x:Class="RelaxKonOS.Client.Apps.Explorer.Views.ExplorerOperationsView" x:DataType="m:ExplorerOperationCenter"
-             Background="{DynamicResource SurfaceBrush}">
+             Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
     <Grid RowDefinitions="Auto,Auto,*" Margin="16" RowSpacing="10">
         <TextBlock Text="{loc:Loc explorer.operations.close_hint}" TextWrapping="Wrap" FontSize="12"
                    Foreground="{DynamicResource TextPrimaryBrush}" Opacity="0.65" />

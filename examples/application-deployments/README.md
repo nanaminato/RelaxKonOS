@@ -2,15 +2,9 @@
 
 这里的东西只有一个用途：**让「应用部署」功能可以被真跑一遍**。
 
-对应文档：[Goal](./../../docs/applications/RelaxKonOS.ApplicationDeployment.Goal.md)、
-[设计](./../../docs/applications/RelaxKonOS.ApplicationDeployment.Design.md)、
-[实施进度](./../../docs/applications/RelaxKonOS.ApplicationDeployment.Progress.md)。
+对应文档：[应用部署设计与验证](./../../docs/applications/RelaxKonOS.ApplicationDeployment.Design.md)。
 
-进度文档当前的结论是「T01–T15 全部跳过，原因：当前环境无 Docker」，因此该领域所有运行期行为
-都还没有证据。本目录补上缺的那一半：四种部署来源各自的**真实可部署输入**，加上按模板判定逐条
-镜像的离线复检，以及一个把 HTTP 协议按顺序打一遍的驱动脚本。
-
-> 本目录**不改变**进度文档的结论。它提供的是执行测试所需的输入与步骤，不等于任何一项已验收。
+本目录提供四种部署来源的可部署输入、离线复检和 HTTP 驱动脚本。已有专项测试与隔离 .NET 镜像证据详见设计文档；完整 T01–T15 场景仍需按矩阵验收。夹具和执行步骤本身不构成功能验收。
 
 ## 目录结构
 
@@ -202,7 +196,7 @@ Server、也没有执行任何部署：
 - 客户端向导与三语界面呈现。
 
 要在真实 Engine 上留下证据，请按
-[进度文档](./../../docs/applications/RelaxKonOS.ApplicationDeployment.Progress.md)的「环境与验证
+[设计文档](./../../docs/applications/RelaxKonOS.ApplicationDeployment.Design.md)的「环境与验证
 记录」格式补登：环境 ID、发行版/架构、Engine 版本、宿主是否装过 Java/.NET/Python 工具链、命令与
 结果。**编译通过与预检通过都不构成任何 T 项的通过。**
 

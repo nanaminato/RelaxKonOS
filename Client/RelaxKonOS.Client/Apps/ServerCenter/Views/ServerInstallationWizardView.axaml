@@ -3,7 +3,7 @@
              xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter"
              x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerInstallationWizardView"
              x:DataType="vm:ServerInstallationWizardViewModel"
-             Background="{DynamicResource AppBackgroundBrush}">
+             Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
     <Grid RowDefinitions="Auto,*,Auto" RowSpacing="16" Margin="22">
         <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
             <TextBlock Text="{Binding Title}" FontSize="20" FontWeight="SemiBold" />

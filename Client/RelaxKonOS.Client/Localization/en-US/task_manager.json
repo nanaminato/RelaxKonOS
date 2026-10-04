@@ -84,6 +84,5 @@
         "task_manager.termination.instance_changed": "The original process instance is no longer current. Refresh and select a target again.",
         "task_manager.termination.permission_denied": "The host OS denied termination. Adjust permissions on the host.",
         "task_manager.termination.unverified": "Termination is not verified. Refresh to check; do not replay automatically.",
-        "task_manager.termination.failed": "The process could not be terminated. Refresh and check the host."
-    }
+        "task_manager.termination.failed": "The process could not be terminated. Refresh and check the host.","task_manager.user":"User","task_manager.process_count_suffix":" processes"}
 }
