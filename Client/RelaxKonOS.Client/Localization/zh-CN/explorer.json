@@ -212,7 +212,7 @@
         "explorer.operations.elevation_account": "服务器管理员账户（Linux 可使用 root 或其他已授权账户）",
         "explorer.operations.elevation_password": "管理员密码",
         "explorer.operations.elevation_prompt": "此操作需要管理员权限。授权在当前会话中保留 5 分钟。",
-        "explorer.operations.elevation_access_prompt": "此位置需要管理员权限才能访问。",
+        "explorer.operations.elevation_access_prompt": "此位置需要管理员权限才能读取。授权有效期为 5 分钟；文件夹授权也允许读取其中的子目录和文件。",
         "explorer.operations.elevation_failed": "管理员账户或密码不正确。",
         "explorer.operations.elevation_not_administrator": "该账户在服务器上存在，但不是管理员。请改用管理员账户后重试。"
     }

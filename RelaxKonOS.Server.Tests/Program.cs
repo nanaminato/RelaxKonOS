@@ -191,6 +191,12 @@ if (args.Contains("--frpc-state-only"))
     Console.WriteLine("FRP applied-state, protocol, and TOML safety checks passed.");
     return;
 }
+if (args.Contains("--file-read-elevation-only"))
+{
+    FileReadElevationChecks.Run(Path.Combine(Path.GetTempPath(), "relaxkon-read-" + Guid.NewGuid().ToString("N")));
+    Console.WriteLine("Folder read elevation checks passed.");
+    return;
+}
 if (args.Contains("--file-download-only"))
 {
     var downloadRoot = Path.Combine(Path.GetTempPath(), $"relaxkonos-file-download-{Guid.NewGuid():N}");
@@ -429,6 +435,7 @@ await NetworkProxyTunnelChecks.VerifyFrpRuntimeInstallAndRollbackAsync(root);
     await ServerCoreChecks.VerifyRegistryRuntimeCacheAsync(root);
     await ServerCoreChecks.VerifyPerformanceSamplerAsync();
     ServerCoreChecks.VerifyFileElevationSessionScope(root);
+    FileReadElevationChecks.Run(root);
     ServerCoreChecks.VerifyUserExecutionContextContract();
     ServerCoreChecks.VerifyUserExecutionEligibility();
     ServerCoreChecks.VerifyXdgUserDirectoryResolution(root);

@@ -16,7 +16,8 @@ public enum FileElevationCapability
     Upload,
 }
 
-/// <summary>One-shot request to prepare privileged file access for the current RelaxKonOS session.</summary>
+/// <summary>Prepares capability-scoped access for the current token for five minutes.
+/// Read grants for directories also cover descendants; read grants for files cover only that file.</summary>
 public sealed record FileElevationRequest(
     [property: JsonPropertyName("path")] string Path,
     [property: JsonPropertyName("password")] string? Password = null,

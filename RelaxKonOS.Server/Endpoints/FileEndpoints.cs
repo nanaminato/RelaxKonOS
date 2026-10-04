@@ -176,7 +176,8 @@ public static class FileEndpoints
 
         // First call without a password merely probes direct access. When it is denied, the
         // desktop prompts and repeats with the login user's host password. A successful grant
-        // is constrained to this JWT and exact path for five minutes.
+        // is constrained to this JWT and capability for five minutes. Read authorization for a
+        // directory covers its subtree so browsing and opening a file share the same grant.
         files.MapPost(FileApiRoutes.Elevation, (FileElevationRequest request, HttpContext http, IFileService fs,
             IHostAdministratorAuthenticator administrators, IFileElevationSessionStore elevations) =>
         {
@@ -189,7 +190,7 @@ public static class FileEndpoints
                 // grant their requested directory scope after host authentication instead of
                 // probing it with OpenRead.
                 if (request.IncludeDescendants)
-                    return GrantElevation(request, http, administrators, elevations);
+                    return GrantElevation(request, http, administrators, elevations, fs);
                 var info = fs.GetInfo(request.Path);
                 if (info is null) return Problem(404, "not-found", "Not found", $"Cannot find {request.Path}");
                 if (info.Type == FileSystemEntryType.Directory)
@@ -206,7 +207,7 @@ public static class FileEndpoints
             catch (DirectoryNotFoundException ex) { return Problem(404, "not-found", "Not found", ex.Message); }
             catch (UnauthorizedAccessException)
             {
-                return GrantElevation(request, http, administrators, elevations);
+                return GrantElevation(request, http, administrators, elevations, fs);
             }
             catch (ArgumentException ex) { return Problem(400, "invalid-path", "Invalid path", ex.Message); }
         })
@@ -500,7 +501,7 @@ public static class FileEndpoints
             : Results.File(rendered.Bytes, rendered.ContentType);
     }
 
-    private static IResult GrantElevation(FileElevationRequest request, HttpContext http, IHostAdministratorAuthenticator administrators, IFileElevationSessionStore elevations)
+    private static IResult GrantElevation(FileElevationRequest request, HttpContext http, IHostAdministratorAuthenticator administrators, IFileElevationSessionStore elevations, IFileService fs)
     {
         var username = http.User.FindFirstValue(JwtRegisteredClaimNames.Name);
         if (string.IsNullOrWhiteSpace(username)) return Results.Unauthorized();
@@ -512,6 +513,12 @@ public static class FileEndpoints
         var paths = new[] { request.Path }.Concat(request.RelatedPaths ?? []).Where(path => !string.IsNullOrWhiteSpace(path)).Distinct(StringComparer.Ordinal).ToArray();
         var expires = paths.Select(path => elevations.Grant(http.User, capability, path, request.IncludeDescendants,
             authentication.AuthenticationMethod, http.TraceIdentifier)).Max();
+        // Resolve the entry type only after the exact-path grant exists: ordinary users may
+        // not even be able to stat a protected directory. Files retain exact-path grants.
+        if (capability == FileElevationCapability.Read && !request.IncludeDescendants
+            && fs.GetInfo(request.Path)?.Type == FileSystemEntryType.Directory)
+            expires = elevations.Grant(http.User, capability, request.Path, includeDescendants: true,
+                authentication.AuthenticationMethod, http.TraceIdentifier);
         return Results.Ok(new FileElevationResult(true, true, expires));
     }
 
