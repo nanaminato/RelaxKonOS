@@ -26,7 +26,7 @@ class FirewallRepository(private val gateway: RelaxKonGateway, private val sessi
             if (current !is ApiResult.Success) return@withLock failure(current)
             if (current.value != expected) return@withLock ApiResult.Problem(409, "firewall.facts_changed", null)
             val pending = journal.begin(owner, change.kind, change.number)
-            val result = elevations.withElevation("firewallChange", "ufw", provider) { url, token ->
+            val result = elevations.withElevation("firewallChange", "host/firewall", provider) { url, token ->
                 verify(owner)
                 val latest = facts(owner)
                 if (latest !is ApiResult.Success) return@withElevation failure(latest)

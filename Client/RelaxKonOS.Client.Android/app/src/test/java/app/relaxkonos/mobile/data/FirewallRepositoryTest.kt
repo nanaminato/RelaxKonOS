@@ -57,7 +57,7 @@ class FirewallRepositoryTest {
             ApiResult.Success(if (count == 1) FirewallResult(false, "firewall.elevation_required") else FirewallResult(true, ""))
         }
         gateway.onElevation = { _, _, capability, target, password, account ->
-            assertEquals("firewallChange", capability); assertEquals("ufw", target)
+            assertEquals("firewallChange", capability); assertEquals("host/firewall", target)
             assertEquals("alice", account); assertEquals("admin-secret", String(password!!))
             ApiResult.Success(ElevationGrant(true, null))
         }

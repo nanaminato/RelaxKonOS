@@ -3,8 +3,8 @@ using RelaxKonOS.Protocol.Firewall;
 namespace RelaxKonOS.Server.Firewall;
 
 /// <summary>
-/// Narrow host firewall boundary. Implementations accept only validated, structured UFW options;
-/// callers can never provide a shell command or arbitrary UFW arguments.
+/// Narrow host firewall boundary. Implementations accept only validated, structured firewall options;
+/// callers can never provide a shell command or arbitrary command arguments.
 /// </summary>
 public interface IHostFirewallService
 {

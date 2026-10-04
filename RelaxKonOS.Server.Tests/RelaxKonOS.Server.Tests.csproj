@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../RelaxKonOS.Guardian.Agent/RelaxKonOS.Guardian.Agent.csproj" />
+    <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsFirewallOperations.cs" Link="WindowsFirewallOperations.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsManagedRuntimePolicy.cs" Link="WindowsManagedRuntimePolicy.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsNginxStaticSiteAccess.cs" Link="WindowsNginxStaticSiteAccess.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsManagedRuntimeHost.cs" Link="WindowsManagedRuntimeHost.cs" />

@@ -18,9 +18,9 @@ namespace RelaxKonOS.Client.Apps.Firewall;
 public sealed class FirewallApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(
-        new AppId("relaxkonos.firewall"), "Firewall", "0.2.0", "🧱", "Manage Linux Server UFW firewall rules",
+        new AppId("relaxkonos.firewall"), "Firewall", "0.2.0", "🧱", "Manage host firewall policies and rules",
         [AppPermissions.ServerFirewallRead, AppPermissions.ServerFirewallManage],
-        ServerRequirements: new ApplicationServerRequirements(Platforms: [ApplicationPlatformNames.Linux], Capabilities: [ServerCapabilities.Firewall]),
+        ServerRequirements: new ApplicationServerRequirements(Platforms: [ApplicationPlatformNames.Linux, ApplicationPlatformNames.Windows], Capabilities: [ServerCapabilities.Firewall]),
         InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
     public override void Activate(AppContext context)
@@ -144,7 +144,7 @@ public sealed class FirewallApp : RemoteApplicationBase
         Header = LocalizedText.Get(headerKey), Binding = new Avalonia.Data.Binding(property), Width = new DataGridLength(width, DataGridLengthUnitType.Pixel)
     };
 
-    private static Control ChoiceField(FirewallViewModel vm, string property, IReadOnlyList<FirewallOption> choices, string labelKey, double width)
+    private static Control ChoiceField(FirewallViewModel vm, string property, IEnumerable<FirewallOption> choices, string labelKey, double width)
     {
         var field = new StackPanel { Spacing = 4, Width = width, DataContext = vm, HorizontalAlignment = HorizontalAlignment.Left };
         field.Children.Add(new TextBlock { Text = LocalizedText.Get(labelKey) });

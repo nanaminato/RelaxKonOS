@@ -1,6 +1,7 @@
 {
   "Culture": "en-US",
   "Strings": {
+    "firewall.status.windows_ready": "Windows Firewall ready: state and defaults apply to Domain, Private and Public profiles; only rules managed by this app are listed.",
     "firewall.login_required": "Sign in to a RelaxKonOS Server to manage its firewall.",
     "firewall.status.loading": "Loading firewall status…",
     "firewall.status.ready": "Ready — {0} {1}",

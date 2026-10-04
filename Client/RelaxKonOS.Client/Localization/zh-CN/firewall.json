@@ -1,6 +1,7 @@
 {
   "Culture": "zh-CN",
   "Strings": {
+    "firewall.status.windows_ready": "Windows 防火墙已就绪：启停和默认策略应用于域、专用、公用配置；列表仅显示本应用管理的规则。",
     "firewall.login_required": "登录 RelaxKonOS Server 后才能管理防火墙。",
     "firewall.status.loading": "正在加载防火墙状态…",
     "firewall.status.ready": "已就绪 — {0} {1}",

@@ -210,3 +210,7 @@ HTTP 请求中。
 
 审计日志只包含 operation ID、operation、资源哈希、结果和问题码；若发现密码、JWT、
 共享密钥、文件内容或完整命令行，应视为安全缺陷并立即轮换相关密钥。
+
+## Windows firewall operations
+
+`FirewallWindowsStatus` and `FirewallWindowsRules` return structured JSON facts. `FirewallWindowsSetEnabled`, `FirewallWindowsSetDefaults`, `FirewallWindowsCreateRule`, `FirewallWindowsReplaceRule` and `FirewallWindowsDeleteRule` accept only the dedicated firewall fields. Helper rejects unrelated request fields. Native COM operations manage all three profiles and the marker-owned `RelaxKonOS Firewall` rule group; there is no shell execution. Server changes require `FirewallChange` for the exact `host/firewall` resource.

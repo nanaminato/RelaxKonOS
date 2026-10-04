@@ -77,6 +77,10 @@ public static partial class PrivilegedOperationExecutor
             : request.ReadCount is not null)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "invalid file read range");
 
+        if (request.Operation is >= PrivilegedOperationKind.FirewallWindowsStatus and <= PrivilegedOperationKind.FirewallWindowsDeleteRule)
+            return OperatingSystem.IsWindows() ? WindowsFirewallOperations.Execute(request)
+                : Fail(64, PrivilegedProblemCode.UnsupportedOperation, "Windows firewall is unavailable");
+
         var isFileOperation = request.Operation is >= PrivilegedOperationKind.FileRead and <= PrivilegedOperationKind.FileCreateDirectory
             or >= PrivilegedOperationKind.FileGetSpecialLocations and <= PrivilegedOperationKind.FileCreateStaging;
         if (isFileOperation != (request.FileAuthorizationSource is not null)

@@ -68,7 +68,7 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
                 facts.status.isEnabled -> MaterialTheme.colorScheme.primaryContainer
                 else -> MaterialTheme.colorScheme.surfaceVariant
             }) {
-                Text(stringResource(if (!facts.status.isAvailable) R.string.firewall_unavailable else if (facts.status.isEnabled) R.string.firewall_enabled else R.string.firewall_disabled),
+                Text(stringResource(if (!facts.status.isAvailable) R.string.firewall_unavailable else if (facts.status.backend == "windows-defender") R.string.firewall_windows_ready else if (facts.status.isEnabled) R.string.firewall_enabled else R.string.firewall_disabled),
                     Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm), style = MaterialTheme.typography.titleMedium)
             }
             Text(listOfNotNull(facts.status.backend.uppercase(), facts.status.version).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -83,11 +83,15 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
                     Text(firewallValue(facts.status.defaultOutgoingPolicy))
                 }
             }
+            if (facts.status.backend == "windows-defender") Text(stringResource(R.string.firewall_windows_scope))
             state.checkedAtMillis?.let { Text(stringResource(R.string.operations_checked, DateFormat.getDateTimeInstance().format(Date(it)))) }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                OutlinedButton(enabled = ready && !editing, onClick = { confirmation = FirewallConfirmation(facts, FirewallChange(FirewallChangeKind.Enabled, enabled = !facts.status.isEnabled)) }) {
-                    Text(stringResource(if (facts.status.isEnabled) R.string.firewall_disable else R.string.firewall_enable))
+                OutlinedButton(enabled = ready && !editing, onClick = { confirmation = FirewallConfirmation(facts, FirewallChange(FirewallChangeKind.Enabled, enabled = if (facts.status.backend == "windows-defender") true else !facts.status.isEnabled)) }) {
+                    Text(stringResource(if (facts.status.backend != "windows-defender" && facts.status.isEnabled) R.string.firewall_disable else R.string.firewall_enable))
                 }
+                if (facts.status.backend == "windows-defender") OutlinedButton(enabled = ready && !editing, onClick = {
+                    confirmation = FirewallConfirmation(facts, FirewallChange(FirewallChangeKind.Enabled, enabled = false))
+                }) { Text(stringResource(R.string.firewall_disable)) }
                 OutlinedButton(enabled = ready && !editing, onClick = {
                     initialDefaults = (facts.status.defaultIncomingPolicy ?: "deny") to (facts.status.defaultOutgoingPolicy ?: "allow")
                     defaults = initialDefaults
@@ -103,8 +107,8 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
                 onDismissRequest = { navigate { defaults = null } }, modifier = Modifier.imePadding(),
                 title = { Text(stringResource(R.string.firewall_defaults)) },
                 text = { Column(Modifier.heightIn(max = 430.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                FirewallChoices(stringResource(R.string.firewall_incoming), FirewallValues.policies, defaults!!.first) { defaults = it to defaults!!.second }
-                FirewallChoices(stringResource(R.string.firewall_outgoing), FirewallValues.policies, defaults!!.second) { defaults = defaults!!.first to it }
+                FirewallChoices(stringResource(R.string.firewall_incoming), if (facts.status.backend == "windows-defender") listOf("allow", "deny") else FirewallValues.policies, defaults!!.first) { defaults = it to defaults!!.second }
+                FirewallChoices(stringResource(R.string.firewall_outgoing), if (facts.status.backend == "windows-defender") listOf("allow", "deny") else FirewallValues.policies, defaults!!.second) { defaults = defaults!!.first to it }
                 } },
                 confirmButton = { Button(enabled = ready, onClick = { confirmation = FirewallConfirmation(facts, FirewallChange(FirewallChangeKind.Defaults, incoming = defaults!!.first, outgoing = defaults!!.second)) }) { ActionLabel(R.string.common_save) } },
                 dismissButton = { TextButton(onClick = { navigate { defaults = null } }) { Text(stringResource(R.string.common_cancel)) } })
@@ -125,7 +129,7 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
                         onDismissRequest = { navigate { draft = null } }, modifier = Modifier.imePadding(),
                         title = { Text(stringResource(if (rule.number == 0) R.string.firewall_create else R.string.firewall_edit)) },
                         text = { Column(Modifier.heightIn(max = 430.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                        FirewallChoices(stringResource(R.string.firewall_action), FirewallValues.actions, rule.action) { draft = rule.copy(action = it) }
+                        FirewallChoices(stringResource(R.string.firewall_action), if (facts.status.backend == "windows-defender") listOf("allow", "deny") else FirewallValues.actions, rule.action) { draft = rule.copy(action = it) }
                         FirewallChoices(stringResource(R.string.firewall_direction), FirewallValues.directions, rule.direction) { draft = rule.copy(direction = it) }
                         FirewallChoices(stringResource(R.string.firewall_protocol), FirewallValues.protocols, rule.protocol) { draft = rule.copy(protocol = it) }
                         OutlinedTextField(rule.source, { draft = rule.copy(source = it) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.firewall_source)) }, singleLine = true)

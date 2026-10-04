@@ -659,11 +659,11 @@ builder.Services.AddSingleton(builder.Configuration.GetSection("GitBuilds").Get<
     ?? new RelaxKonOS.Server.Git.GitBuildOptions());
 builder.Services.AddSingleton<RelaxKonOS.Server.Git.GitBuildService>();
 
-// Firewall keeps a deliberately narrow UFW-only surface. On Linux the RelaxKonOS Server service
-// is the privileged host facade; on Windows the unavailable provider is retained only so all
-// endpoint wiring has one stable abstraction (the app itself is hidden by its Linux manifest).
+// Firewall uses structured UFW or Windows Defender operations through the privileged Helper.
 if (OperatingSystem.IsLinux())
     builder.Services.AddSingleton<RelaxKonOS.Server.Firewall.IHostFirewallService, RelaxKonOS.Server.Firewall.LinuxUfwFirewallService>();
+else if (OperatingSystem.IsWindows())
+    builder.Services.AddSingleton<RelaxKonOS.Server.Firewall.IHostFirewallService, RelaxKonOS.Server.Firewall.WindowsFirewallService>();
 else
     builder.Services.AddSingleton<RelaxKonOS.Server.Firewall.IHostFirewallService, RelaxKonOS.Server.Firewall.UnavailableHostFirewallService>();
 
@@ -1096,7 +1096,7 @@ app.MapBackupRecoveryEndpoints();
 app.MapTunnelEndpoints();
 if (eventAlertsOptions.Enabled) app.MapEventAlertEndpoints();
 app.MapProxyEndpoints();
-if (OperatingSystem.IsLinux())
+if (OperatingSystem.IsLinux() || OperatingSystem.IsWindows())
     app.MapFirewallEndpoints();
 app.MapHub<TerminalHub>("/hubs/terminals", options => options.CloseOnAuthenticationExpiration = true);
 app.MapHub<GuardianLogsHub>(RelaxKonOSEndpoints.GuardianLogsHubPath, options => options.CloseOnAuthenticationExpiration = true);

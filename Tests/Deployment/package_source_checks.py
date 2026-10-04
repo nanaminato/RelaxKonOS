@@ -36,7 +36,8 @@ class PackageSourceChecks(unittest.TestCase):
         self.archive = self.root/'server.zip'
         self.files = {'payload/linux/server/RelaxKonOS.Server':b'server',
                       'payload/linux/guardian/RelaxKonOS.Guardian.Agent':b'guardian',
-                      'deployment/user/relaxkon':b'#!/bin/bash\n'}
+                      'deployment/user/relaxkon':b'#!/bin/bash\n',
+                      'deployment/verify-release-inventory.py':b'# verifier\n'}
         self.manifest = {'schemaVersion':1,'packageKind':'user-server','runtime':'linux-x64','version':'0.1.0',
                          'files':[{'path':p,'length':len(v),'sha256':hashlib.sha256(v).hexdigest()} for p,v in self.files.items()]}
     def tearDown(self): self.temp.cleanup()
@@ -71,6 +72,22 @@ class PackageSourceChecks(unittest.TestCase):
         self.package()
         with self.assertRaises(ValueError): self.extract(runtime='linux-arm64')
         self.assertFalse((self.root/'out').exists())
+    def test_missing_inventory_verifier_is_rejected_before_extraction(self):
+        del self.files['deployment/verify-release-inventory.py']
+        for kind in ('user-server', 'server'):
+            with self.subTest(kind=kind):
+                self.manifest['packageKind'] = kind
+                if kind == 'server':
+                    self.files.update({
+                        'payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper': b'helper',
+                        'deployment/bootstrap/install-relaxkonos.sh': b'#!/bin/bash\n',
+                        'deployment/bootstrap/uninstall-relaxkonos.sh': b'#!/bin/bash\n',
+                        'deployment/linux/install-relaxkonos-services.sh': b'#!/bin/bash\n',
+                    })
+                self.package()
+                with self.assertRaisesRegex(ValueError, 'incomplete package'):
+                    helper['extract']('localBundle', 'linux-x64', kind, self.root/kind, str(self.archive))
+                self.assertFalse((self.root/kind).exists())
     def test_traversal(self):
         self.package({'../escaped':b'bad'})
         with self.assertRaises(ValueError): self.extract()

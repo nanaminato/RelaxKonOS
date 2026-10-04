@@ -38,7 +38,7 @@ public static class FirewallEndpoints
     private static async Task<FirewallOperationResult> AuthorizeThenRun(ClaimsPrincipal user, IHostElevationSessionStore elevations, ILogger logger, string action, Func<Task<FirewallOperationResult>> operation)
     {
         var requester = user.FindFirst(JwtRegisteredClaimNames.Name)?.Value ?? user.FindFirst(ClaimTypes.Name)?.Value ?? string.Empty;
-        if (!elevations.IsGranted(user, HostElevationCapability.FirewallChange, "ufw"))
+        if (!elevations.IsGranted(user, HostElevationCapability.FirewallChange, "host/firewall"))
             return new FirewallOperationResult(false, "firewall.elevation_required");
         var result = await operation();
         logger.LogInformation("Firewall change completed. Action={Action}, Requester={Requester}, Success={Success}, Problem={ProblemCode}", action, requester, result.Success, result.ProblemCode);

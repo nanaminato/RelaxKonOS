@@ -20,7 +20,7 @@ public sealed class RemoteFirewallClient(HttpClient http, IAuthSession session, 
 
     private async Task<T> SendAsync<T>(HttpMethod method, string route, object? body, CancellationToken cancellationToken)
         => method == HttpMethod.Get ? await SendOnceAsync<T>(method, route, body, cancellationToken)
-            : await elevation.ExecuteAsync(HostElevationCapability.FirewallChange, "ufw",
+            : await elevation.ExecuteAsync(HostElevationCapability.FirewallChange, "host/firewall",
                 () => SendOnceAsync<T>(method, route, body, cancellationToken), cancellationToken);
 
     private async Task<T> SendOnceAsync<T>(HttpMethod method, string route, object? body, CancellationToken cancellationToken)

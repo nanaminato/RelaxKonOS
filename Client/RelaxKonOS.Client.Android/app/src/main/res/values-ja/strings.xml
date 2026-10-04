@@ -1794,7 +1794,7 @@
     <string name="proxy_managed_note">ホストは Mihomo 設定からリスナーを解決します。ポート変更は Docker daemon 設定を自動更新しません。実際の状態を確認し、必要なら出力設定を再保存してください。</string>
     <string name="proxy_managed_endpoint">ホストの管理リスナー</string>
     <string name="firewall_title">ファイアウォール</string>
-    <string name="firewall_intro">ホストの UFW を管理します。変更は現在の管理接続を含むサーバー接続に影響します。</string>
+    <string name="firewall_intro">ホストの Linux / Windows ファイアウォールを管理します。変更は現在の管理接続を含むサーバー接続に影響します。</string>
     <string name="firewall_pending">変更結果が未確認です。次の書き込み前に現在のホスト状態を取得して採用してください。</string>
     <string name="firewall_accept_facts">現在の状態を取得して採用</string>
     <string name="firewall_unverified">ファイアウォールの状態または変更結果が未確認です。更新してください。</string>
@@ -2762,4 +2762,6 @@
     <string name="usage_memory_description">この端末に最後に認証した管理者ユーザー名とファイル選択場所を記憶します。消去は現在のサーバーの現在のアカウントに適用され、保存済みパスワードは保持されます。</string>
     <string name="usage_memory_clear">使用履歴の記憶を消去</string>
     <string name="usage_memory_cleared">使用履歴の記憶を消去しました。</string>
+    <string name="firewall_windows_ready">Windows ファイアウォール</string>
+    <string name="firewall_windows_scope">有効状態と既定ポリシーは全プロファイルに適用され、一覧は本アプリの管理ルールです。</string>
 </resources>

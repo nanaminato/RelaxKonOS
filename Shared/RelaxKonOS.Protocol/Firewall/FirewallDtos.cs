@@ -1,6 +1,6 @@
 namespace RelaxKonOS.Protocol.Firewall;
 
-/// <summary>Read-only UFW status. The API intentionally exposes rules structurally, never command text.</summary>
+/// <summary>Read-only host firewall status. The API intentionally exposes rules structurally, never command text.</summary>
 public sealed record FirewallStatusDto(
     bool IsAvailable,
     bool IsEnabled,
@@ -35,7 +35,7 @@ public sealed record CreateFirewallRuleRequest(
     string Port);
 
 /// <summary>
-/// Replaces the numbered UFW rule in place. The rule itself remains structured so
+/// Replaces a managed firewall rule identified by its number. The rule itself remains structured so
 /// the API never becomes a pass-through for UFW command text.
 /// </summary>
 public sealed record UpdateFirewallRuleRequest(

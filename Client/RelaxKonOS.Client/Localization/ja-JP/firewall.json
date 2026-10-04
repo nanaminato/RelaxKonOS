@@ -1,6 +1,7 @@
 {
   "Culture": "ja-JP",
   "Strings": {
+    "firewall.status.windows_ready": "Windows ファイアウォール：有効状態と既定ポリシーはドメイン・プライベート・パブリックに適用され、一覧は本アプリの管理ルールです。",
     "firewall.login_required": "ファイアウォールを管理するには RelaxKonOS Server にサインインしてください。",
     "firewall.status.loading": "ファイアウォールの状態を読み込んでいます…",
     "firewall.status.ready": "準備完了 — {0} {1}",

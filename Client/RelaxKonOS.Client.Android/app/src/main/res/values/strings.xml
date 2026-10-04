@@ -1833,7 +1833,7 @@
     <string name="proxy_managed_note">The host resolves the listener from Mihomo settings. Changing its port does not install new Docker daemon settings; read actual scope status and confirm a new outbound save when needed.</string>
     <string name="proxy_managed_endpoint">Host managed listener</string>
     <string name="firewall_title">Firewall</string>
-    <string name="firewall_intro">Manage the host UFW firewall. Changes affect server connectivity, including this management connection.</string>
+    <string name="firewall_intro">Manage the host Linux / Windows firewall. Changes affect server connectivity, including this management connection.</string>
     <string name="firewall_pending">A firewall change has an unverified result. Read and explicitly accept current host facts before another write.</string>
     <string name="firewall_accept_facts">Read and accept current facts</string>
     <string name="firewall_unverified">Firewall facts or change result are unverified. Refresh before continuing.</string>
@@ -2800,4 +2800,6 @@
     <string name="usage_memory_description">Remember the last successful administrator username and file picker locations on this device. Clearing affects the current account on this server and keeps saved passwords.</string>
     <string name="usage_memory_clear">Clear usage memory</string>
     <string name="usage_memory_cleared">Usage memory cleared.</string>
+    <string name="firewall_windows_ready">Windows Firewall ready</string>
+    <string name="firewall_windows_scope">Changes apply to Domain, Private and Public profiles. Only rules managed by this app are listed.</string>
 </resources>

@@ -260,11 +260,8 @@ public static class AuthEndpoints
             ServerCapabilities.Terminal,
             ServerCapabilities.Git,
         };
-        if (!isWindows && serverMode.Supports(ServerHostFeature.Firewall))
-        {
-            capabilities.Add(ServerCapabilities.PosixPermissions);
-            capabilities.Add(ServerCapabilities.Firewall);
-        }
+        if (!isWindows && serverMode.Supports(ServerHostFeature.Firewall)) capabilities.Add(ServerCapabilities.PosixPermissions);
+        if (serverMode.Supports(ServerHostFeature.Firewall)) capabilities.Add(ServerCapabilities.Firewall);
 
         var host = serverMode.Describe();
         if (host.Capabilities.Guardian) capabilities.Add(ServerCapabilities.Guardian);

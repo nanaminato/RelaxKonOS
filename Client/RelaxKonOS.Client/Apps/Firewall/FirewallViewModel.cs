@@ -10,9 +10,10 @@ using RelaxKonOS.Protocol.Firewall;
 
 namespace RelaxKonOS.Client.Apps.Firewall;
 
-/// <summary>Window-local Linux UFW editor state; host authorization belongs to the shared broker.</summary>
+/// <summary>Window-local host firewall editor state; host authorization belongs to the shared broker.</summary>
 public sealed partial class FirewallViewModel : ObservableObject
 {
+    private bool _windowsBackend;
     private readonly IRemoteFirewallClient _client;
     private readonly IAppPermissionScope _permissions;
 
@@ -32,8 +33,8 @@ public sealed partial class FirewallViewModel : ObservableObject
     }
 
     public ObservableCollection<FirewallRuleDto> Rules { get; } = [];
-    public IReadOnlyList<FirewallOption> Policies { get; }
-    public IReadOnlyList<FirewallOption> Actions { get; }
+    public ObservableCollection<FirewallOption> Policies { get; }
+    public ObservableCollection<FirewallOption> Actions { get; }
     public IReadOnlyList<FirewallOption> Directions { get; }
     public IReadOnlyList<FirewallOption> Protocols { get; }
 
@@ -46,8 +47,8 @@ public sealed partial class FirewallViewModel : ObservableObject
     private bool _isEnabled;
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(EnableCommand), nameof(DisableCommand), nameof(SaveDefaultsCommand), nameof(ShowAddRuleEditorCommand), nameof(ShowEditRuleEditorCommand), nameof(DeleteRuleCommand), nameof(ClearEditorCommand))]
     private bool _isLoading;
-    [ObservableProperty] private FirewallOption? _selectedIncomingPolicy;
-    [ObservableProperty] private FirewallOption? _selectedOutgoingPolicy;
+    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(SaveDefaultsCommand))] private FirewallOption? _selectedIncomingPolicy;
+    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(SaveDefaultsCommand))] private FirewallOption? _selectedOutgoingPolicy;
     [ObservableProperty] private FirewallOption? _selectedAction;
     [ObservableProperty] private FirewallOption? _selectedDirection;
     [ObservableProperty] private FirewallOption? _selectedProtocol;
@@ -81,6 +82,7 @@ public sealed partial class FirewallViewModel : ObservableObject
             var status = await _client.GetStatusAsync();
             Rules.Clear();
             SelectedRule = null;
+            _windowsBackend = status.Backend == "windows-defender";
             IsAvailable = status.IsAvailable;
             IsEnabled = status.IsEnabled;
             if (!status.IsAvailable)
@@ -90,10 +92,21 @@ public sealed partial class FirewallViewModel : ObservableObject
                 return;
             }
 
-            SelectedIncomingPolicy = Find(Policies, status.DefaultIncomingPolicy, "deny");
-            SelectedOutgoingPolicy = Find(Policies, status.DefaultOutgoingPolicy, "allow");
+            Policies.Clear();
+            Policies.Add(Option("allow", "firewall.choice.allow"));
+            Policies.Add(Option("deny", "firewall.choice.deny"));
+            Actions.Clear();
+            foreach (var policy in Policies) Actions.Add(policy);
+            if (status.Backend != "windows-defender")
+            {
+                Policies.Add(Option("reject", "firewall.choice.reject"));
+                Actions.Add(Option("reject", "firewall.choice.reject"));
+                Actions.Add(Option("limit", "firewall.choice.limit"));
+            }
+            SelectedIncomingPolicy = _windowsBackend && status.DefaultIncomingPolicy is null ? null : Find(Policies, status.DefaultIncomingPolicy, "deny");
+            SelectedOutgoingPolicy = _windowsBackend && status.DefaultOutgoingPolicy is null ? null : Find(Policies, status.DefaultOutgoingPolicy, "allow");
             foreach (var rule in await _client.ListRulesAsync()) Rules.Add(rule);
-            StatusText = LocalizedText.Ref(status.IsEnabled ? "firewall.status.ready_enabled" : "firewall.status.ready_disabled", status.Backend, status.Version ?? "");
+            StatusText = _windowsBackend ? LocalizedText.Ref("firewall.status.windows_ready") : LocalizedText.Ref(status.IsEnabled ? "firewall.status.ready_enabled" : "firewall.status.ready_disabled", status.Backend, status.Version ?? "");
         }
         catch (Exception exception)
         {
@@ -112,7 +125,7 @@ public sealed partial class FirewallViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanDisable))]
     private Task DisableAsync() => ApplyAsync(() => _client.SetEnabledAsync(new UpdateFirewallEnabledRequest(false)));
 
-    [RelayCommand(CanExecute = nameof(CanManage))]
+    [RelayCommand(CanExecute = nameof(CanSaveDefaults))]
     private Task SaveDefaultsAsync() => ApplyAsync(() => _client.SetDefaultsAsync(new UpdateFirewallDefaultsRequest(
         SelectedIncomingPolicy?.Value ?? "deny", SelectedOutgoingPolicy?.Value ?? "allow")));
 
@@ -246,8 +259,9 @@ public sealed partial class FirewallViewModel : ObservableObject
     private bool HasManagePermission => HasReadPermission && _permissions.IsGranted(AppPermissions.ServerFirewallManage);
     private bool CanRefresh => HasReadPermission && !IsLoading;
     private bool CanManage => HasManagePermission && IsAvailable && !IsLoading;
-    private bool CanEnable => CanManage && !IsEnabled;
-    private bool CanDisable => CanManage && IsEnabled;
+    private bool CanSaveDefaults => CanManage && SelectedIncomingPolicy is not null && SelectedOutgoingPolicy is not null;
+    private bool CanEnable => CanManage && (_windowsBackend || !IsEnabled);
+    private bool CanDisable => CanManage && (_windowsBackend || IsEnabled);
     private bool CanUpdateRule => CanManage && SelectedRule is not null;
     private bool CanDeleteRule => CanManage && SelectedRule is not null;
 

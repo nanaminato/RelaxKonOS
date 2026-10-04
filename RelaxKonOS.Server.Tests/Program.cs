@@ -1,3 +1,8 @@
+if (args.Contains("--windows-firewall-only"))
+{
+    if (OperatingSystem.IsWindows()) await WindowsFirewallChecks.RunAsync();
+    return;
+}
 if (args.Contains("--windows-personal-mode-only"))
 {
     WindowsPersonalAuthorizationChecks.Run();
