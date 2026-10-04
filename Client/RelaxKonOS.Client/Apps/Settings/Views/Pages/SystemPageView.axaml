@@ -127,5 +127,13 @@
                 </Grid>
             </StackPanel>
         </Border>
+        <Border Classes="card">
+            <StackPanel Spacing="10">
+                <TextBlock Text="{loc:Loc settings.usage_memory.title}" Classes="title" />
+                <TextBlock Text="{loc:Loc settings.usage_memory.description}" TextWrapping="Wrap" />
+                <Button Content="{loc:Loc settings.usage_memory.clear}" Command="{Binding ClearUsageMemoryCommand}" />
+                <TextBlock Text="{Binding UsageMemoryStatus}" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
     </StackPanel>
 </UserControl>

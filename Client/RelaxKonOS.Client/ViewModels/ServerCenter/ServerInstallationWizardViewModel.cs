@@ -12,14 +12,20 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     private readonly Action _close;
     private readonly Func<Task<string?>> _chooseServerBundle;
     private readonly Func<Task> _showHostAddresses;
+    private readonly Func<ServerInstallationOptions, Task<bool>> _deploy;
+    public bool IsLocalInstallation { get; }
+    public bool CanShowHostAddresses => !IsLocalInstallation;
 
     public ServerInstallationWizardViewModel(ServerCenterViewModel serverCenter, Action close,
-        Func<Task<string?>> chooseServerBundle, Func<Task> showHostAddresses)
+        Func<Task<string?>> chooseServerBundle, Func<Task> showHostAddresses,
+        Func<ServerInstallationOptions, Task<bool>>? localDeploy = null)
     {
         _serverCenter = serverCenter;
         _close = close;
         _chooseServerBundle = chooseServerBundle;
         _showHostAddresses = showHostAddresses;
+        IsLocalInstallation = localDeploy is not null;
+        _deploy = localDeploy ?? (options => serverCenter.DeployAsync(options));
         Sources =
         [
             new(ServerPackageSourceKind.OfficialStable, Text("server_center.wizard.source_official", "Official release")),
@@ -27,9 +33,10 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
             new(ServerPackageSourceKind.RemoteBundle, Text("server_center.wizard.source_server", "Bundle on this SSH server")),
             new(ServerPackageSourceKind.DirectUrl, Text("server_center.wizard.source_url", "Custom HTTPS download"))
         ];
+        if (IsLocalInstallation) Sources = Sources.Where(source => source.Source != ServerPackageSourceKind.RemoteBundle).ToArray();
         SelectedSource = Sources[0];
 
-        Modes = BuildModes(serverCenter.SelectedPlatform?.Platform);
+        Modes = BuildModes(IsLocalInstallation ? HostPlatformKind.Windows : serverCenter.SelectedPlatform?.Platform);
         FileAccesses =
         [
             new(ServerFileAccessScope.Restricted, Text("server_center.wizard.file_access_restricted", "RelaxKonOS data only (recommended)")),
@@ -132,7 +139,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     public string SelectedModeText => SelectedMode?.Label ?? string.Empty;
     public bool ShowsSudoPassword => SelectedMode?.Mode == ServerInstallMode.LinuxSystem;
     public string SudoPasswordText => Text("server_center.wizard.sudo_password", "sudo password (leave blank to use the SSH password)");
-    public string TargetText => _serverCenter.SelectedHost is { } target
+    public string TargetText => IsLocalInstallation ? Environment.MachineName : _serverCenter.SelectedHost is { } target
         ? $"{target.DisplayName} · {target.SshUserName}"
         : string.Empty;
 
@@ -165,11 +172,13 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         IsLinuxHost ? $"{AllowUnsupportedLabel}: {AllowUnsupportedSystem}" : string.Empty,
         IsOfficialSource ? $"{ReleaseCatalogLabel}: {ReleaseCatalogBaseUri}" : string.Empty, IsDirectUrl ? $"SHA-256: {PackageDigest}" : string.Empty
     }.Where(value => !string.IsNullOrWhiteSpace(value)));
-    public string Title => Text("server_center.wizard.title", "Install RelaxKonOS");
+    public string Title => IsLocalInstallation ? Text("login.local_install", "Install on this computer") : Text("server_center.wizard.title", "Install RelaxKonOS");
     public ServerCenterViewModel Progress => _serverCenter;
     public string SourceStepTitle => Text("server_center.wizard.source_title", "Choose the release source");
     public string ModeStepTitle => Text("server_center.wizard.mode_title", "Choose the installation mode");
-    public string SourceChecksText => Text("server_center.wizard.source_checks", "Official packages are downloaded and verified on the server. Selected ZIPs receive layout and architecture checks.");
+    public string SourceChecksText => IsLocalInstallation
+        ? Text("login.local_install_review", "Windows will request administrator permission when you install. Server runs as a system service on this computer. Official packages are verified; selected ZIPs receive layout and architecture checks.")
+        : Text("server_center.wizard.source_checks", "Official packages are downloaded and verified on the server. Selected ZIPs receive layout and architecture checks.");
     public string ReviewStepTitle => Text("server_center.wizard.review_title", "Review and install");
     public string ServerAndUserText => Text("server_center.wizard.server_and_user", "Server and user");
     public string ReleaseText => Text("server_center.wizard.release", "Release");
@@ -251,7 +260,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         StepIndex++;
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanMoveBack))]
     private void MoveBack()
     {
         if (StepIndex > 0) StepIndex--;
@@ -261,6 +270,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     private void Cancel()
     {
         SudoPassword = string.Empty;
+        CertificatePassword = string.Empty;
         _close();
     }
 
@@ -280,9 +290,10 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
 
         IsBusy = true;
         ErrorMessage = string.Empty;
+        var succeeded = false;
         try
         {
-            var succeeded = await _serverCenter.DeployAsync(new ServerInstallationOptions(
+            succeeded = await _deploy(new ServerInstallationOptions(
                 SelectedSource?.Source ?? ServerPackageSourceKind.OfficialStable,
                 SelectedMode?.Mode,
                 LocalBundlePath,
@@ -300,9 +311,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
                 IsFileWhitelist ? Roots(FileRoots) : null, SelectedAdministratorFileAccess?.Scope,
                 IsAdministratorWhitelist ? Roots(AdministratorFileRoots) : null, SelectedRootFileAccess?.Scope,
                 IsRootWhitelist ? Roots(RootFileRoots) : null, DockerAccess, AllowUnsupportedSystem, IsSystemMode && SelectedNetwork?.Profile == ServerNetworkProfile.Lan && AddFirewallRule));
-            if (succeeded)
-                _close();
-            else
+            if (!succeeded)
                 ErrorMessage = string.IsNullOrWhiteSpace(_serverCenter.ErrorMessage)
                     ? Text("server_center.wizard.install_blocked", "Installation is blocked until the SSH host key is confirmed on the Hosts page.")
                     : _serverCenter.ErrorMessage;
@@ -310,11 +319,14 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         finally
         {
             SudoPassword = string.Empty;
+            if (succeeded) CertificatePassword = string.Empty;
             IsBusy = false;
         }
+        if (succeeded) _close();
     }
 
     private bool CanMoveNext() => !IsBusy && StepIndex < 2;
+    private bool CanMoveBack() => !IsBusy && StepIndex > 0;
     private bool CanInstall() => !IsBusy && IsReviewStep;
 
     partial void OnStepIndexChanged(int value)
@@ -326,6 +338,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         OnPropertyChanged(nameof(AdvancedReviewText));
         OnPropertyChanged(nameof(SelectedSourceText));
         MoveNextCommand.NotifyCanExecuteChanged();
+        MoveBackCommand.NotifyCanExecuteChanged();
         InstallCommand.NotifyCanExecuteChanged();
     }
 
@@ -398,6 +411,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     {
         MoveNextCommand.NotifyCanExecuteChanged();
         InstallCommand.NotifyCanExecuteChanged();
+        MoveBackCommand.NotifyCanExecuteChanged();
     }
 
     private IReadOnlyList<InstallationModeOption> BuildModes(HostPlatformKind? platform) => platform switch

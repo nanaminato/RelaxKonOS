@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.Identity;
@@ -12,6 +13,14 @@ namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 public sealed partial class SystemPageViewModel : SettingsPageViewModel
 {
     private readonly IAuthSession _session;
+    public Action? ClearUsageMemoryAction { get; set; }
+    [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty] private LocalizedStatus? _usageMemoryStatus;
+    [RelayCommand]
+    private void ClearUsageMemory()
+    {
+        ClearUsageMemoryAction?.Invoke();
+        UsageMemoryStatus = LocalizedText.Ref("settings.usage_memory.cleared");
+    }
 
     public SystemPageViewModel(ShellSettings settings, IAuthSession session, Action? save, HostIdentityEditorViewModel hostIdentity)
         : base(settings, save)

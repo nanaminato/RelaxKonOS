@@ -44,7 +44,7 @@ Website <https://relaxkon.com> · Docs <https://relaxkon.com/docs> · Downloads 
 ### Key Features
 
 - 🖥️ **Cross-Platform Desktop Shell** — Based on Avalonia with a Windows 11-inspired interface
-- 🌐 **Cloud-Native Architecture** — Client/Server separation; server runs on both Linux and Windows Server
+- 🌐 **Cloud-Native Architecture** — Client/Server separation; server runs on Linux, Windows 10/11 and Windows Server. Server and Client can run on the same personal computer. The Windows desktop login page provides “Install on this computer” with UAC and System Mode; local installation requires no SSH. See the [personal computer guide (Chinese)](./deployment/WindowsPersonalComputer.md).
 - 🔐 **Host OS Identity Integration** — Reuses host system users and permissions (Windows LogonUser / Linux PAM)
 - 🪟 **Window Management System** — Complete window lifecycle: create, move, resize, minimize/maximize, Z-order, modal dialogs
 - 🧩 **Application SDK** — Applications plug in via the `IRemoteApplication` interface with unified window management and lifecycle

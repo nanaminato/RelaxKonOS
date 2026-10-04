@@ -28,7 +28,7 @@ class CertificateRepositoryTest {
     private val journal = CertificateRequestJournal(storage)
     private val indexStorage = IndexStorage()
     private val index = OperationIndex(indexStorage)
-    private val repository = CertificateRepository(gateway, session, index, journal, ElevationRepository(gateway, session, app.relaxkonos.mobile.security.CredentialVault(app.relaxkonos.mobile.security.InMemoryVaultStorage(), app.relaxkonos.mobile.security.FakeVaultCrypto())))
+    private val repository = CertificateRepository(gateway, session, index, journal, ElevationRepository(gateway, session, app.relaxkonos.mobile.security.CredentialVault(app.relaxkonos.mobile.security.InMemoryVaultStorage(), app.relaxkonos.mobile.security.FakeVaultCrypto()), app.relaxkonos.mobile.data.UsageMemoryStore(app.relaxkonos.mobile.data.InMemoryUsageMemoryStorage())))
     private val operation = CertificateWire.operation(CERTIFICATE_OPERATION_JSON)
     private val request = SelfSignedCertificateRequest(listOf("private.example.test"), CertificateKey.EcdsaP256, 365).body()
     private suspend fun signIn(): SessionState.Active {

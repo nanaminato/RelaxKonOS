@@ -44,7 +44,7 @@
 ### 主な特徴
 
 - 🖥️ **クロスプラットフォームデスクトップシェル** — Avaloniaベース、Windows 11スタイルのインターフェース
-- 🌐 **クラウドネイティブアーキテクチャ** — Client/Server分離、サーバーはLinuxとWindows Serverの両方で稼働
+- 🌐 **クラウドネイティブアーキテクチャ** — Client/Server分離、サーバーはLinux、Windows 10/11、Windows Serverで稼働。同じ個人PCでServerとClientを利用できます。Windows版のログイン画面には「この PC にインストール」があり、UACとシステムモードを使い、ローカル導入にSSHは不要です。[個人PC向けガイド（中国語）](./deployment/WindowsPersonalComputer.md)を参照してください。
 - 🔐 **ホストOSアイデンティティ統合** — ホストシステムのユーザーと権限体系を活用（Windows LogonUser / Linux PAM）
 - 🪟 **ウィンドウ管理システム** — ウィンドウの完全ライフサイクル：作成、移動、リサイズ、最小化/最大化、Z-Order、モーダルダイアログ
 - 🧩 **アプリケーションSDK** — `IRemoteApplication`インターフェース経由で統一されたウィンドウ管理とライフサイクルを提供

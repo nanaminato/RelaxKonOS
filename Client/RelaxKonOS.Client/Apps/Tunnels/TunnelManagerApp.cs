@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Installation;
 using RelaxKonOS.Protocol.Installations;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -51,7 +52,7 @@ public sealed class TunnelManagerApp : RemoteApplicationBase
             {
                 var picker = new ExplorerViewModel(files, new ExplorerPickerOptions(ExplorerPickerMode.OpenFile,
                     Filters: [new ExplorerFileFilter(LocalizedText.Get("tunnels.runtime.select_server_package"), ["*.zip", "*.tar.gz", "*.tgz"])]),
-                    paths => dialog.Close(paths.FirstOrDefault())) { CancelAction = dialog.Cancel };
+                    paths => dialog.Close(paths.FirstOrDefault()), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "TunnelManager.binary") { CancelAction = dialog.Cancel };
                 _ = picker.LoadRootAsync();
                 return new ExplorerMainView { DataContext = picker };
             }, new Size(720, 520));

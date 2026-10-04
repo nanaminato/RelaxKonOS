@@ -299,7 +299,8 @@ class AppContainer(context: Context) {
         }
     }
 
-    val elevations = ElevationRepository(gateway, session, vault)
+    val usageMemory = app.relaxkonos.mobile.data.UsageMemoryStore(app.relaxkonos.mobile.data.SharedPreferencesUsageMemoryStorage(appContext))
+    val elevations = ElevationRepository(gateway, session, vault, usageMemory)
 
     val guardian = app.relaxkonos.mobile.data.GuardianRepository(gateway, session)
 
@@ -471,12 +472,12 @@ class AppContainer(context: Context) {
     /**
      * The administrator account suggested by the elevation prompt.
      *
-     * Only a saved account is suggested; platform names do not prove administrator status.
+     * Only the last successfully authorized account is suggested; platform names do not prove administrator status.
      * The field stays editable; the password itself stays sealed inside the elevation vault and is released
      * exclusively through an authorized [VaultAccess.load].
      */
     fun suggestedAdministratorAccount(): String =
-        vault.records(VaultKind.Elevation).firstOrNull { it.serviceId == session.serviceId }?.account ?: ""
+        usageMemory.capture(activeSession) { activeSession }.administrator.orEmpty()
 
     /**
      * The debug-only plaintext credential for one identity, or `null` when there is none.

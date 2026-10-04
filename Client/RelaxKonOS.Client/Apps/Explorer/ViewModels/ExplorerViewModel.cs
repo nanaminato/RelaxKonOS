@@ -1,6 +1,7 @@
 // 数据流移植自 Jaya ExplorerViewModel / NavigationViewModel / AddressbarViewModel / ToolbarViewModel /
 // StatusbarViewModel（BSD-3），合并为单一 VM 适配 RelaxKonOS DI 约定（去 ServiceLocator/EventAggregator）。
 // Copyright (c) 2020, Rubal Walia. 原始许可见 LICENSE-jaya.txt 与 THIRD_PARTY_NOTICES.md。
+using RelaxKonOS.Client.Services;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.IO.Enumeration;
@@ -34,6 +35,9 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     private readonly Action<IReadOnlyList<string>>? _selectPaths;
     private bool _isUpdatingPickerText;
     private bool _pickerInitialized;
+    private readonly IUsageMemoryScope? _usageMemory;
+    private readonly string _memoryPurpose;
+    private readonly string? _initialDirectory;
     private readonly List<string?> _history = new();
     private int _historyIndex = -1;
     private bool _isNavigating;
@@ -51,13 +55,24 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         IExplorerClient client,
         ExplorerPickerOptions? pickerOptions = null,
         Action<IReadOnlyList<string>>? selectPaths = null,
-        IRemoteFileClipboard? fileClipboard = null)
+        IRemoteFileClipboard? fileClipboard = null,
+        IUsageMemoryScope? usageMemory = null, string memoryPurpose = "", string? initialDirectory = null)
     {
         _client = client;
         _fileClipboard = fileClipboard ?? new RemoteFileClipboard();
         _fileClipboard.Changed += FileClipboard_Changed;
         _pickerOptions = pickerOptions;
-        _selectPaths = selectPaths;
+        _selectPaths = selectPaths is null ? null : paths =>
+        {
+            if (usageMemory is not null && !usageMemory.IsCurrent) return;
+            if (paths.Count > 0 && pickerOptions is not null)
+                usageMemory?.RememberDirectory(memoryPurpose + ":" + pickerOptions.Mode, true,
+                    pickerOptions.Mode == ExplorerPickerMode.SelectFolder ? paths[0] : ExplorerPath.Parent(paths[0]));
+            selectPaths(paths);
+        };
+        _usageMemory = usageMemory;
+        _memoryPurpose = memoryPurpose;
+        _initialDirectory = initialDirectory;
         Nodes = new ObservableCollection<TreeNodeModel>();
         Entries = new ObservableCollection<FileSystemEntryDto>();
         SelectedEntries = new ObservableCollection<FileSystemEntryDto>();
@@ -451,6 +466,22 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex) { StatusText = LocalizedText.Ref("explorer.status.load_failed", ex.Message); }
         finally { IsBusy = false; }
+        if (IsPickerMode && (_usageMemory is null || _usageMemory.IsCurrent))
+        {
+            var directory = _initialDirectory ?? _usageMemory?.Directory(_memoryPurpose + ":" + _pickerOptions!.Mode, true);
+            // Restore directly, bypassing the interactive elevation retry.
+            try
+            {
+                if (directory is not null && await NavigateToAsyncCore(directory)) return;
+            }
+            catch (Exception e) when (e is RelaxKonOSAuthException or HttpRequestException or IOException) { }
+            try
+            {
+                if (await NavigateToAsyncCore(Nodes.FirstOrDefault(n => n.IconKind == TreeNodeIconKind.Home)?.Path)) return;
+            }
+            catch (RelaxKonOSAuthException) { }
+            await NavigateToAsyncCore(null);
+        }
     }
 
     private async Task OnNodeExpandRequested(TreeNodeModel node)
@@ -600,6 +631,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
                 confirmedPath = dir.Path;
                 status = LocalizedText.Format("explorer.status.directory_ready", dir.Directories.Count, dir.Files.Count);
             }
+            if (_usageMemory is not null && !_usageMemory.IsCurrent) return false;
             var locationChanged = !PathEquals(AddressbarPath, confirmedPath);
             CancelRename();
             _directoryEntries.Clear();

@@ -259,6 +259,8 @@
                 <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding ClientNameText}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12"
                            VerticalAlignment="Center" />
                 <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="10">
+                    <Button Classes="connect-button" Content="{Binding LocalInstallText}" Command="{Binding InstallOnThisComputerCommand}"
+                            IsVisible="{Binding LocalInstallationAvailable}" />
                     <Button Classes="primary connect-button" Content="{Binding ConnectText}" Command="{Binding ConnectCommand}"
                             IsVisible="{Binding StandardAuthenticationVisible}" />
                 </StackPanel>

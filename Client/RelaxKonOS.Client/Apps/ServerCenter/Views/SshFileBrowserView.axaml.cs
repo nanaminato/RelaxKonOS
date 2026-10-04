@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services;
 using System.Collections.ObjectModel;
 using RelaxKonOS.Client.Apps.Explorer.Controls;
 using Avalonia;
@@ -766,7 +767,7 @@ internal partial class SshFileBrowserView : UserControl
     private async Task UploadAsync()
     {
         if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage) return;
-        var picked = await storage.OpenFilePickerAsync(new FilePickerOpenOptions { AllowMultiple = true });
+        var picked = await UsageFilePicker.OpenFilePickerAsync(storage, new FilePickerOpenOptions { AllowMultiple = true }, UsageMemoryStore.CaptureServices(App.Services), "SshFileBrowserView.axaml.0");
         if (picked.Count == 0 || _busy) return;
         using var progress = new SshTransferProgressWindow(this, uploading: true);
         _busy = true; UpdateControls();
@@ -800,7 +801,7 @@ internal partial class SshFileBrowserView : UserControl
     private async Task UploadFolderAsync()
     {
         if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage || _busy) return;
-        var folders = await storage.OpenFolderPickerAsync(new FolderPickerOpenOptions { AllowMultiple = false });
+        var folders = await UsageFilePicker.OpenFolderPickerAsync(storage, new FolderPickerOpenOptions { AllowMultiple = false }, UsageMemoryStore.CaptureServices(App.Services), "SshFileBrowserView.axaml.1");
         var localPath = folders.FirstOrDefault()?.TryGetLocalPath();
         if (localPath is null) return;
         var folder = new DirectoryInfo(localPath);
@@ -855,12 +856,12 @@ internal partial class SshFileBrowserView : UserControl
         }
         if (selected.Length == 1 && !selected[0].IsDirectory)
         {
-            var file = await storage.SaveFilePickerAsync(new FilePickerSaveOptions { SuggestedFileName = selected[0].Name });
+            var file = await UsageFilePicker.SaveFilePickerAsync(storage, new FilePickerSaveOptions { SuggestedFileName = selected[0].Name }, UsageMemoryStore.CaptureServices(App.Services), "SshFileBrowserView.axaml.2");
             if (file is null) return;
             await RunDownloadAsync(selected[0], file);
             return;
         }
-        var folders = await storage.OpenFolderPickerAsync(new FolderPickerOpenOptions { AllowMultiple = false });
+        var folders = await UsageFilePicker.OpenFolderPickerAsync(storage, new FolderPickerOpenOptions { AllowMultiple = false }, UsageMemoryStore.CaptureServices(App.Services), "SshFileBrowserView.axaml.3");
         var folder = folders.FirstOrDefault()?.TryGetLocalPath();
         if (folder is null) return;
         using var progress = new SshTransferProgressWindow(this, uploading: false);

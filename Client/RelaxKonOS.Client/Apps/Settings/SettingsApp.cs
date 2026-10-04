@@ -116,7 +116,8 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
             try { return (await authorize(null, null)).Elevated; }
             catch (RelaxKonOSAuthException error) when (error.Type.EndsWith("/elevation-password-required", StringComparison.Ordinal))
             {
-                var defaultAdministrator = string.Empty;
+                var usageMemory = UsageMemoryStore.Capture(context);
+                var defaultAdministrator = usageMemory.Administrator ?? string.Empty;
                 var authorized = await context.WindowManager.ShowSystemDialogAsync<bool>(
                     LocalizedText.Get(titleKey), dialog =>
                     {
@@ -126,6 +127,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                             PlaceholderText = LocalizedText.Get("settings.host_time.account"),
                         };
                         var password = new Avalonia.Controls.TextBox { PasswordChar = '•', PlaceholderText = LocalizedText.Get("settings.host_time.password") };
+                        password.AttachedToVisualTree += (_, _) => { if (!string.IsNullOrEmpty(defaultAdministrator)) password.Focus(); };
                         var errorText = new Avalonia.Controls.TextBlock
                         {
                             TextWrapping = Avalonia.Media.TextWrapping.Wrap,
@@ -150,6 +152,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                         };
                         confirm.Click += async (_, _) =>
                         {
+                            if (!usageMemory.IsCurrent || !isCurrent(connection)) { password.Text = ""; dialog.Cancel(); return; }
                             var secret = password.Text ?? "";
                             password.Text = "";
                             if (string.IsNullOrWhiteSpace(secret))
@@ -167,7 +170,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                                 var result = await authorize(secret,
                                     string.IsNullOrWhiteSpace(selectedAdministrator) ? defaultAdministrator : selectedAdministrator);
                                 if (!isCurrent(connection)) { dialog.Cancel(); return; }
-                                if (result.Elevated) { dialog.Close(true); return; }
+                                if (result.Elevated) { usageMemory.RememberAdministrator(selectedAdministrator); dialog.Close(true); return; }
                                 errorText.Text = LocalizedText.Get("settings.host_time.password_invalid");
                             }
                             catch (RelaxKonOSAuthException retry) when (retry.Type.EndsWith("/elevation-account-not-administrator", StringComparison.Ordinal))
@@ -214,6 +217,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         var hostIdentityService = context.Services.GetRequiredService<Services.HostSettings.IHostIdentityService>();
         var hostEnvironment = context.Services.GetRequiredService<Services.HostSettings.IHostEnvironmentService>();
         var systemPage = viewModel.Pages.OfType<SystemPageViewModel>().Single();
+        systemPage.ClearUsageMemoryAction = () => context.Services.GetRequiredService<UsageMemoryStore>().Clear(session);
         systemPage.HostIdentity.RequestAuthorizationAsync = connection =>
             AuthorizeHostSettingsAsync(hostIdentityService.IsCurrent, connection, "settings.hostname.authorize", (password, administrator) => hostIdentityService.AuthorizeAsync(connection, password, administrator));
         var aboutPage = viewModel.Pages.OfType<AboutPageViewModel>().Single();
@@ -352,7 +356,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                                     var selected = await dialog.ShowDialogAsync<string?>(LocalizedText.Get("settings.environment.browse"), pickerDialog =>
                                     {
                                         var picker = new ExplorerViewModel(explorer, new ExplorerPickerOptions(ExplorerPickerMode.SelectFolder),
-                                            paths => pickerDialog.Close(paths[0]))
+                                            paths => pickerDialog.Close(paths[0]), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "Settings.environment-folder")
                                         {
                                             CancelAction = pickerDialog.Cancel,
                                         };
@@ -463,7 +467,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
             var topLevel = AvaloniaApplication.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
                 ? desktop.MainWindow : null;
             if (topLevel is null) return;
-            var selected = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            var selected = await UsageFilePicker.OpenFilePickerAsync(topLevel.StorageProvider, new FilePickerOpenOptions
             {
                 Title = LocalizedText.Get("settings.wallpaper.choose_image"),
                 AllowMultiple = false,
@@ -474,7 +478,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                         Patterns = ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif"],
                     },
                 ],
-            });
+            }, UsageMemoryStore.Capture(context), "Settings.wallpaper");
             var file = selected.FirstOrDefault();
             if (file is null) return;
             try
@@ -510,7 +514,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
             var topLevel = AvaloniaApplication.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
                 ? desktop.MainWindow : null;
             if (topLevel is null) return;
-            var selected = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            var selected = await UsageFilePicker.OpenFilePickerAsync(topLevel.StorageProvider, new FilePickerOpenOptions
             {
                 Title = LocalizedText.Get("settings.theme_import"),
                 AllowMultiple = false,
@@ -521,7 +525,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                         Patterns = ["*.relaxkonos-theme.json", "*.json"],
                     },
                 ],
-            });
+            }, UsageMemoryStore.Capture(context), "Settings.theme-import");
             var file = selected.FirstOrDefault();
             if (file is null) return;
             try
@@ -547,7 +551,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
             var topLevel = AvaloniaApplication.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
                 ? desktop.MainWindow : null;
             if (topLevel is null) return;
-            var file = await topLevel.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+            var file = await UsageFilePicker.SaveFilePickerAsync(topLevel.StorageProvider, new FilePickerSaveOptions
             {
                 Title = LocalizedText.Get("settings.theme_export"),
                 SuggestedFileName = palette.Id + ".relaxkonos-theme.json",
@@ -558,7 +562,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                         Patterns = ["*.relaxkonos-theme.json"],
                     },
                 ],
-            });
+            }, UsageMemoryStore.Capture(context), "Settings.theme-export");
             if (file is null) return;
             try
             {

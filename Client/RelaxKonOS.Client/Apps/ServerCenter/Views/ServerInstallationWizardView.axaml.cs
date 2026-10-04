@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
@@ -21,12 +22,12 @@ public partial class ServerInstallationWizardView : UserControl
         var topLevel = TopLevel.GetTopLevel(this);
         if (topLevel?.StorageProvider is null) return;
 
-        var selected = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        var selected = await UsageFilePicker.OpenFilePickerAsync(topLevel.StorageProvider, new FilePickerOpenOptions
         {
             Title = _viewModel.ChooseBundleText,
             AllowMultiple = false,
             FileTypeFilter = [new FilePickerFileType(_viewModel.BundleFileTypeText) { Patterns = ["*.zip"] }]
-        });
+        }, UsageMemoryStore.CaptureServices(App.Services), "ServerInstallationWizardView.axaml.0");
         _viewModel.SetLocalBundle(selected.FirstOrDefault()?.TryGetLocalPath());
     }
 
@@ -34,14 +35,14 @@ public partial class ServerInstallationWizardView : UserControl
     {
         var topLevel = TopLevel.GetTopLevel(this);
         if (topLevel?.StorageProvider is null) return;
-        var selected = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        var selected = await UsageFilePicker.OpenFilePickerAsync(topLevel.StorageProvider, new FilePickerOpenOptions
         {
             Title = _viewModel.ChooseCertificateText,
             AllowMultiple = false,
             FileTypeFilter = _viewModel.IsPemCertificate
                 ? [new FilePickerFileType("PEM certificate") { Patterns = ["*.pem", "*.crt", "*.cer"] }]
                 : [new FilePickerFileType("PFX certificate") { Patterns = ["*.pfx", "*.p12"] }]
-        });
+        }, UsageMemoryStore.CaptureServices(App.Services), "ServerInstallationWizardView.axaml.1");
         _viewModel.SetCertificate(selected.FirstOrDefault()?.TryGetLocalPath());
     }
 
@@ -49,12 +50,12 @@ public partial class ServerInstallationWizardView : UserControl
     {
         var topLevel = TopLevel.GetTopLevel(this);
         if (topLevel?.StorageProvider is null) return;
-        var selected = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        var selected = await UsageFilePicker.OpenFilePickerAsync(topLevel.StorageProvider, new FilePickerOpenOptions
         {
             Title = _viewModel.ChoosePrivateKeyText,
             AllowMultiple = false,
             FileTypeFilter = [new FilePickerFileType("PEM private key") { Patterns = ["*.key", "*.pem"] }]
-        });
+        }, UsageMemoryStore.CaptureServices(App.Services), "ServerInstallationWizardView.axaml.2");
         _viewModel.SetCertificatePrivateKey(selected.FirstOrDefault()?.TryGetLocalPath());
     }
 }

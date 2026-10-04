@@ -13,6 +13,7 @@ void Check(bool condition, string label)
     if (!condition) throw new Exception(label);
     Console.WriteLine($"PASS {++passed}: {label}");
 }
+await PickerMemoryChecks.RunAsync(Check);
 FileBrowserPresentationChecks.Run(Check);
 ImageViewerChecks.Run(Check);
 await HostFileClipboardChecks.RunAsync(Check);

@@ -25,6 +25,12 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 @Composable
 internal fun SshBundlePicker(hostId: String, onDismiss: () -> Unit, onSelect: (String) -> Unit) {
     val app = LocalContext.current.applicationContext as RelaxKonApplication
+    val container = app.container
+    val purpose = "ssh.bundle.$hostId"
+    val memory = remember(container, hostId) { container.usageMemory.capture(container.activeSession) { container.activeSession } }
+    val remembered = remember(memory) { memory.directory(purpose, true) }
+    var restoreStarted by remember(hostId) { mutableStateOf(false) }
+    var restoring by remember(hostId) { mutableStateOf(false) }
     val model = remember(app, hostId) { SshFilesController(app) }
     DisposableEffect(model) { onDispose { model.close() } }
     val state by model.state.collectAsState()
@@ -37,6 +43,19 @@ internal fun SshBundlePicker(hostId: String, onDismiss: () -> Unit, onSelect: (S
         onDispose { lifecycle.removeObserver(observer); model.stop() }
     }
     LaunchedEffect(hostId, revision, resumed) { if (resumed) model.resume(hostId) else model.stop() }
+    LaunchedEffect(state.connected, state.busy, state.problem, remembered) {
+        if (!memory.isCurrent) { onDismiss(); return@LaunchedEffect }
+        if (!restoreStarted && state.connected && !state.busy) {
+            restoreStarted = true
+            if (!remembered.isNullOrBlank() && remembered != state.path) {
+                restoring = true
+                model.navigate(remembered)
+            }
+        } else if (restoring && !state.busy) {
+            restoring = false
+            if (state.problem != null) model.navigate("/")
+        }
+    }
 
     Dialog(onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
@@ -67,7 +86,10 @@ internal fun SshBundlePicker(hostId: String, onDismiss: () -> Unit, onSelect: (S
                     else LazyColumn(Modifier.weight(1f)) {
                         items(entries, key = { it.path }) { entry ->
                             TextButton(onClick = {
-                                if (entry.isDirectory) model.open(entry) else onSelect(entry.path)
+                                if (entry.isDirectory) model.open(entry) else if (memory.isCurrent) {
+                                    memory.rememberDirectory(purpose, true, entry.path.substringBeforeLast('/').ifBlank { "/" })
+                                    onSelect(entry.path)
+                                } else onDismiss()
                             }, modifier = Modifier.fillMaxWidth()) {
                                 Text(if (entry.isDirectory) "${entry.name}/" else entry.name,
                                     modifier = Modifier.weight(1f))

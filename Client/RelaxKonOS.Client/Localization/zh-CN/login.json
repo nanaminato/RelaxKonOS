@@ -1,6 +1,14 @@
 {
     "Culture": "zh-CN",
     "Strings": {
+        "login.local_install": "安装到这台电脑",
+        "login.local_install_review": "安装时 Windows 会请求管理员权限。Server 将作为系统服务运行在这台电脑上；已有安装会更新并可能中断服务。官方包会核验摘要，所选 ZIP 会检查布局和架构。",
+        "login.local_install_elevating": "请批准 Windows 管理员权限请求以继续安装。",
+        "login.local_install_uac_cancelled": "已取消管理员授权。可以检查安装选项后重试。",
+        "login.local_install_failed": "本机安装失败，请查看部署操作回执与日志。",
+        "login.local_install_operation": "操作编号",
+        "login.local_install_open_failed": "无法打开本机安装，请确认正在使用 Windows 桌面客户端。",
+        "login.local_install_ready": "已连接本机服务端。请使用 Windows 账号密码登录（不是 Hello PIN）。",
         "login.saved_connections": "已保存的连接",
         "login.tunnel.configure": "配置 SSH 隧道",
         "login.tunnel.not_saved": "已连接，但 SSH 凭据未能安全保存。",

@@ -1,9 +1,10 @@
 package app.relaxkonos.mobile.ui.connect
 
+import app.relaxkonos.mobile.ui.common.rememberUsageOpenDocument
+
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -96,7 +97,7 @@ fun OwnerDevicePairingScreen(modifier: Modifier = Modifier, onClose: () -> Unit)
             }
     }
 
-    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val imagePicker = rememberLauncherForActivityResult(rememberUsageOpenDocument("OwnerDevicePairingScreen.pairing-image")) { uri ->
         if (uri != null) scanImage(uri)
     }
     val codeScanner = remember(activity) {

@@ -34,7 +34,8 @@
 
 | 你是 | 建议的入手方式 |
 | --- | --- |
-| 个人用户 / 自建服务器爱好者 | 用**用户模式**在已有的普通 Linux 账号下装一份服务端（**不需要 sudo**），再在自己的电脑上运行客户端 |
+| Windows 10/11 个人用户 | 在自己的电脑上用**系统模式**安装 Server，再在同一台电脑运行 Client；见[个人电脑使用指南](./deployment/WindowsPersonalComputer.md) |
+| Linux 个人用户 / 自建服务器爱好者 | 用**用户模式**在已有的普通 Linux 账号下装一份服务端（**不需要 sudo**），再在自己的电脑上运行客户端 |
 | 运维 / 系统管理员 | 用**系统模式**把 Server、Guardian Agent 与权限助手注册为系统服务，面向多用户生产环境 |
 | 应用开发者 | 用**开发者模式**与 `DevCli` 把自定义应用打包成 `.roapp` 装进同一个桌面 |
 | 只想先看看 | 从[官网下载页](https://relaxkon.com/downloads)取已发布的客户端与服务端 ZIP，或[从源码运行](#从源码运行开发者) |
@@ -44,7 +45,7 @@
 ### 核心特性
 
 - 🖥️ **跨平台桌面 Shell** — 基于 Avalonia，模拟 Windows 11 风格界面
-- 🌐 **云原生架构** — Client/Server 分离，服务端运行于 Linux 和 Windows Server
+- 🌐 **云原生架构** — Client/Server 分离，服务端运行于 Linux、Windows 10/11 和 Windows Server；客户端与服务端可以在同一台个人电脑上运行
 - 🔐 **宿主 OS 身份集成** — 复用宿主系统用户与权限体系（Windows LogonUser / Linux PAM）
 - 🪟 **窗口管理系统** — 完整的窗口生命周期：创建、移动、缩放、最小化/最大化、Z-Order、模态对话框
 - 🧩 **应用 SDK** — 应用通过 `IRemoteApplication` 接口接入，享受统一的窗口管理与生命周期

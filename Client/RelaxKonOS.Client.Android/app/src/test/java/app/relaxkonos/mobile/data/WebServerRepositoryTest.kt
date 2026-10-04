@@ -27,7 +27,7 @@ class WebServerRepositoryTest {
         override fun write(bytes: ByteArray) { this.bytes = bytes.copyOf() }
     })
     private val repository = WebServerRepository(gateway, session,
-        ElevationRepository(gateway, session, CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto())), index, journal)
+        ElevationRepository(gateway, session, CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto()), app.relaxkonos.mobile.data.UsageMemoryStore(app.relaxkonos.mobile.data.InMemoryUsageMemoryStorage())), index, journal)
     private val server = WebPublishingWire.servers(WEB_SERVER).single()
     private val operation = WebPublishingWire.operation(WEB_OPERATION)
     private suspend fun signIn(): SessionState.Active {

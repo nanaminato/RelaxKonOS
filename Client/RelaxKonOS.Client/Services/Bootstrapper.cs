@@ -57,6 +57,7 @@ public static class Bootstrapper
         services.AddSingleton<LocalLanguageStore>();
         services.AddSingleton<LoginNotificationPreferenceStore>();
         services.AddSingleton<DesktopWelcomePreferenceStore>();
+        services.AddSingleton<UsageMemoryStore>();
         services.AddSingleton<SystemStyleRegistry>();
         services.AddSingleton<ISystemStyleRegistry>(sp => sp.GetRequiredService<SystemStyleRegistry>());
         services.AddSingleton<AppearanceService>();
@@ -121,6 +122,11 @@ public static class Bootstrapper
         services.AddSingleton<IServerCenterOperationJournal, ServerCenterOperationJournal>();
         services.AddSingleton<IServerCenterReleaseSource, FileServerCenterReleaseSource>();
         services.AddTransient<ServerCenterViewModel>();
+        if (OperatingSystem.IsWindows())
+        {
+            services.AddSingleton<ILocalWindowsDeploymentSessionFactory, LocalWindowsDeploymentSessionFactory>();
+            services.AddTransient<LocalWindowsServerInstaller>();
+        }
 
         // Explorer（文件管理器）：typed HttpClient（JWT from IAuthSession）+ 应用注册。
         services.AddHttpClient<RelaxKonOS.Client.Apps.Explorer.IExplorerClient, RelaxKonOS.Client.Apps.Explorer.ExplorerClient>()

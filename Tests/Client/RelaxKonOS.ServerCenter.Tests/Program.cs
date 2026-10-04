@@ -19,6 +19,9 @@ static void Check(bool condition, string message)
     Console.WriteLine("PASS: " + message);
 }
 
+await LocalWindowsInstallationChecks.RunAsync();
+if (args.Contains("--local-installation-only")) return;
+
 InstallationDetailsChecks.Run();
 LoginTunnelChecks.Run();
 await LoginTunnelFlowChecks.RunAsync();

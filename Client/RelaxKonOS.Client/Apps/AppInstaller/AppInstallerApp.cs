@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -46,12 +47,12 @@ public sealed class AppInstallerApp : RemoteApplicationBase, IFileOpenApplicatio
         {
             var topLevel = GetTopLevel();
             if (topLevel is null) return [];
-            var selected = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            var selected = await UsageFilePicker.OpenFilePickerAsync(topLevel.StorageProvider, new FilePickerOpenOptions
             {
                 Title = LocalizedText.Get("app_installer.select_local_package"),
                 AllowMultiple = true,
                 FileTypeFilter = [new FilePickerFileType(LocalizedText.Get("app_installer.package_file_type")) { Patterns = ["*.roapp"] }],
-            });
+            }, UsageMemoryStore.Capture(context), "AppInstaller.package-import");
             return selected.Select(file => file.TryGetLocalPath()).OfType<string>().ToArray();
         };
 
@@ -63,7 +64,7 @@ public sealed class AppInstallerApp : RemoteApplicationBase, IFileOpenApplicatio
                 var picker = new ExplorerViewModel(files,
                     new ExplorerPickerOptions(ExplorerPickerMode.OpenFile, AllowMultiple: true,
                         Filters: [new ExplorerFileFilter(LocalizedText.Get("app_installer.package_file_filter"), ["*.roapp"])]),
-                    paths => dialog.Close(paths))
+                    paths => dialog.Close(paths), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "AppInstaller.package-import")
                 {
                     CancelAction = dialog.Cancel,
                 };

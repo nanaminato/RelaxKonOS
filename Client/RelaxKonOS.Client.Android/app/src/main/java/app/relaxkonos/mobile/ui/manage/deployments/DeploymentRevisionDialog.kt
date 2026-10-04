@@ -1,12 +1,13 @@
 package app.relaxkonos.mobile.ui.manage.deployments
 
+import app.relaxkonos.mobile.ui.common.rememberUsageOpenDocument
+
 import app.relaxkonos.mobile.ui.common.RefreshProgressIndicator
 
 import app.relaxkonos.mobile.ui.common.ActionLabel
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -62,7 +63,7 @@ internal fun DeploymentRevisionDialog(
     val expired = archive?.expiresAtMillis?.let { it <= System.currentTimeMillis() } == true
     val supported = template != null && (template.requiresImageReference || template.requiresArchive)
     val editable = !busy && !unknown && result !is ApiResult.Success && snapshot.activeOperation == null
-    val pickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val pickerLauncher = rememberLauncherForActivityResult(rememberUsageOpenDocument("DeploymentRevisionDialog.revision-archive")) { uri ->
         if (uri != null) { onClearArchive(); onArchiveStage(uri) }
     }
 

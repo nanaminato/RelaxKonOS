@@ -240,7 +240,8 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
     private static Task<AdministratorCredentials?> RequestAdministratorCredentialsAsync(AppContext context, string title, string prompt)
     {
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
-        var defaultAccount = string.Empty;
+        var usageMemory = UsageMemoryStore.Capture(context);
+        var defaultAccount = usageMemory.Administrator ?? string.Empty;
         return context.WindowManager.ShowSystemDialogAsync<AdministratorCredentials?>(title, dialog =>
         {
             var account = new TextBox
@@ -254,12 +255,14 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
             var confirm = new Button { Content = LocalizedText.Get("common.ok"), Classes = { "primary" } };
             confirm.Click += (_, _) =>
             {
+                if (!usageMemory.IsCurrent) { password.Text = string.Empty; dialog.Cancel(); return; }
                 // Administrator credentials belong to the selected host account, not a platform default.
                 var typed = account.Text?.Trim();
                 dialog.Close(new AdministratorCredentials(
                     string.IsNullOrEmpty(typed) ? defaultAccount ?? string.Empty : typed,
                     password.Text ?? string.Empty));
             };
+            password.AttachedToVisualTree += (_, _) => { if (!string.IsNullOrEmpty(defaultAccount)) password.Focus(); };
             var content = new StackPanel
             {
                 Margin = new Thickness(20), Spacing = 12,
@@ -405,11 +408,11 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         {
             var topLevel = GetTopLevel(context, vm);
             if (topLevel is null) return [];
-            var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            var files = await UsageFilePicker.OpenFilePickerAsync(topLevel.StorageProvider, new FilePickerOpenOptions
             {
                 Title = LocalizedText.Get("explorer.select_upload_file"),
                 AllowMultiple = true,
-            });
+            }, UsageMemoryStore.Capture(context), "Explorer.upload-files");
             return files.Select(file => file.TryGetLocalPath())
                 .OfType<string>().Select(path => new Models.LocalUploadSource(path)).ToArray();
         };
@@ -418,11 +421,11 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         {
             var topLevel = GetTopLevel(context, vm);
             if (topLevel is null) return [];
-            var folders = await topLevel.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+            var folders = await UsageFilePicker.OpenFolderPickerAsync(topLevel.StorageProvider, new FolderPickerOpenOptions
             {
                 Title = LocalizedText.Get("explorer.select_upload_folder"),
                 AllowMultiple = true,
-            });
+            }, UsageMemoryStore.Capture(context), "Explorer.upload-folder");
             return folders.Select(folder => folder.TryGetLocalPath())
                 .OfType<string>().Select(path => new Models.LocalUploadSource(path)).ToArray();
         };
@@ -434,11 +437,11 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         {
             var topLevel = GetTopLevel(context, vm);
             if (topLevel is null) return null;
-            var file = await topLevel.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+            var file = await UsageFilePicker.SaveFilePickerAsync(topLevel.StorageProvider, new FilePickerSaveOptions
             {
                 Title = LocalizedText.Get("explorer.save_download_file"),
                 SuggestedFileName = defaultName,
-            });
+            }, UsageMemoryStore.Capture(context), "Explorer.download-file");
             return file?.TryGetLocalPath();
         };
 

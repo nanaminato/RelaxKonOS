@@ -23,7 +23,7 @@ class WebSiteRepositoryTest {
     private val storage = Storage()
     private val journal = WebSiteMutationJournal(storage)
     private val repository = WebSiteRepository(gateway, session,
-        ElevationRepository(gateway, session, CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto())), journal)
+        ElevationRepository(gateway, session, CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto()), app.relaxkonos.mobile.data.UsageMemoryStore(app.relaxkonos.mobile.data.InMemoryUsageMemoryStorage())), journal)
     private val site = WebPublishingWire.site(WEB_SITE)
     private val request = WebSiteDraft.from(site).request()!!
     private suspend fun signIn(): SessionState.Active {

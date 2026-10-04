@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -230,11 +231,11 @@ public sealed class ProcessGuardianApp : RemoteApplicationBase
     {
         var topLevel = Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop ? desktop.MainWindow : null;
         if (topLevel is null) return;
-        var selected = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        var selected = await UsageFilePicker.OpenFilePickerAsync(topLevel.StorageProvider, new FilePickerOpenOptions
         {
             Title = LocalizedText.Get("guardian.create.executable.select"),
             AllowMultiple = false,
-        });
+        }, UsageMemoryStore.CaptureServices(App.Services), "ProcessGuardian.executable");
         var path = selected.FirstOrDefault()?.TryGetLocalPath();
         if (path is not null) vm.ExecutablePath = path;
     }
@@ -243,11 +244,11 @@ public sealed class ProcessGuardianApp : RemoteApplicationBase
     {
         var topLevel = Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop ? desktop.MainWindow : null;
         if (topLevel is null) return;
-        var selected = await topLevel.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        var selected = await UsageFilePicker.OpenFolderPickerAsync(topLevel.StorageProvider, new FolderPickerOpenOptions
         {
             Title = LocalizedText.Get("guardian.create.working_directory.select"),
             AllowMultiple = false,
-        });
+        }, UsageMemoryStore.CaptureServices(App.Services), "ProcessGuardian.working-directory");
         var path = selected.FirstOrDefault()?.TryGetLocalPath();
         if (path is not null) vm.WorkingDirectory = path;
     }

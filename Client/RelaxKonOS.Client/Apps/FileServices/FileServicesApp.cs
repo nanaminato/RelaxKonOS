@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Installation;
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Client.Apps.FileServices.Views;
@@ -32,10 +33,15 @@ public sealed class FileServicesApp : RemoteApplicationBase
         vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Smb, "relaxkonos.file-services", () => vm.RefreshCommand.ExecuteAsync(null));
         var window = context.ShowWindow(LocalizedText.Get("file_services.title"), InstallationPanel.Wrap(new FileServicesWorkspace(vm), vm.Installation), new Rect(90, 80, 960, 720), Manifest.IconGlyph);
         var files = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
-        var defaultAdministrator = string.Empty;
-        vm.RequestHostAdministratorCredentialsAsync = error => context.WindowManager.ShowSystemDialogAsync<HostAdministratorCredentials?>(
-            LocalizedText.Get("file_services.host_password"),
-            dialog => new HostAdministratorCredentialsDialogView(dialog, LocalizedText.Get("file_services.host_password_message"), error, defaultAdministrator), new Size(460, 250));
+        vm.RequestHostAdministratorCredentialsAsync = async error =>
+        {
+            var memory = UsageMemoryStore.Capture(context);
+            var credentials = await context.WindowManager.ShowSystemDialogAsync<HostAdministratorCredentials?>(
+                LocalizedText.Get("file_services.host_password"),
+                dialog => new HostAdministratorCredentialsDialogView(dialog, LocalizedText.Get("file_services.host_password_message"), error,
+                    memory.Administrator ?? string.Empty), new Size(460, 250));
+            return memory.IsCurrent ? credentials : null;
+        };
         vm.RequestSambaPasswordAsync = () => FileServicesDialogs.RequestPasswordAsync(context, window, LocalizedText.Get("file_services.samba_password"));
         vm.ShowShareEditorAsync = editing => FileServicesDialogs.ShowShareEditorAsync(context, window, vm, editing);
         vm.ShowSharePathPickerAsync = () => files is null
@@ -43,7 +49,7 @@ public sealed class FileServicesApp : RemoteApplicationBase
             : context.ShowDialogAsync<string?>(window, LocalizedText.Get("file_services.select_folder"), dialog =>
             {
                 var picker = new ExplorerViewModel(files, new ExplorerPickerOptions(ExplorerPickerMode.SelectFolder),
-                    paths => dialog.Close(paths[0]))
+                    paths => dialog.Close(paths[0]), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "FileServices.share-folder")
                 {
                     CancelAction = dialog.Cancel
                 };

@@ -88,7 +88,7 @@ public sealed class CodeEditorApp : RemoteApplicationBase, IFileOpenApplication
                         new ExplorerFileFilter(LocalizedText.Get("code_editor.source_file_filter"), SupportedExtensions.Select(extension => $"*{extension}")
                             .Concat(SupportedFileNames).ToArray()),
                     ]),
-                    paths => dialog.Close(paths[0]))
+                    paths => dialog.Close(paths[0]), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "CodeEditor.open-file")
                 {
                     CancelAction = dialog.Cancel,
                 };
@@ -102,7 +102,7 @@ public sealed class CodeEditorApp : RemoteApplicationBase, IFileOpenApplication
             {
                 var picker = new ExplorerViewModel(files,
                     new ExplorerPickerOptions(ExplorerPickerMode.SelectFolder),
-                    paths => dialog.Close(paths[0]))
+                    paths => dialog.Close(paths[0]), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "CodeEditor.open-folder")
                 {
                     CancelAction = dialog.Cancel,
                 };
@@ -119,7 +119,7 @@ public sealed class CodeEditorApp : RemoteApplicationBase, IFileOpenApplication
                     new ExplorerFileFilter(LocalizedText.Get("code_editor.source_file_filter"), SupportedExtensions.Select(extension => $"*{extension}")
                         .Concat(SupportedFileNames).ToArray()),
                 ], DefaultFileName: defaultName),
-                paths => dialog.Close(paths[0]))
+                paths => dialog.Close(paths[0]), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "CodeEditor.save-file")
             {
                 CancelAction = dialog.Cancel,
             };

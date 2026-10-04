@@ -1,6 +1,11 @@
 {
     "Culture": "ja-JP",
     "Strings": {
+        "settings.usage_memory.title": "使用履歴の記憶",
+        "settings.usage_memory.description": "この端末に管理者ユーザー名と用途ごとのファイル選択フォルダーを記憶します。消去は現在のサーバーの現在のアカウントに適用されます。",
+        "settings.usage_memory.clear": "使用履歴の記憶を消去",
+        "settings.usage_memory.cleared": "使用履歴の記憶を消去しました。",
+
         "settings.page.applications": "アプリ",
         "settings.page.default_apps": "既定のアプリ",
         "settings.page.developer": "開発者",

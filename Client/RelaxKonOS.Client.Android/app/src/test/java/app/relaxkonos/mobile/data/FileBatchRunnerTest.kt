@@ -14,7 +14,7 @@ import org.junit.Test
 class FileBatchRunnerTest {
     private val gateway = FakeGateway()
     private val session = AuthSession(gateway)
-    private val elevations = ElevationRepository(gateway, session, CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto()))
+    private val elevations = ElevationRepository(gateway, session, CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto()), app.relaxkonos.mobile.data.UsageMemoryStore(app.relaxkonos.mobile.data.InMemoryUsageMemoryStorage()))
     private val files = FilesRepository(gateway, session, elevations)
     private val runner = FileBatchRunner(files, session)
     private val entries = listOf("a", "b", "c").map { RemoteEntry("/src/$it", it, false, 10, 0, null) }

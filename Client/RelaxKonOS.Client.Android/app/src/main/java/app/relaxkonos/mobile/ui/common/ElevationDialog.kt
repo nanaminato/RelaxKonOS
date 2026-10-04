@@ -11,6 +11,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,10 +66,12 @@ fun ElevationDialog(container: AppContainer) {
         }
     }
 
-    var account by remember {
+    val passwordFocus = remember(prompt) { FocusRequester() }
+    LaunchedEffect(prompt) { if (!savedAccount.isNullOrBlank()) passwordFocus.requestFocus() }
+    var account by remember(prompt) {
         mutableStateOf(savedAccount ?: "")
     }
-    var password by remember { mutableStateOf("") }
+    var password by remember(prompt) { mutableStateOf("") }
     var storeRequested by remember { mutableStateOf(false) }
     // A message rather than a string: the outcome of the save step decides both how it reads and
     // whether it is one of the verdicts this device will keep repeating.
@@ -100,6 +105,7 @@ fun ElevationDialog(container: AppContainer) {
                     value = password,
                     onValueChange = { password = it },
                     label = stringResource(R.string.elevation_password_label),
+                    modifier = Modifier.focusRequester(passwordFocus),
                     enabled = !busy,
                 )
                 if (elevationMode == null) {

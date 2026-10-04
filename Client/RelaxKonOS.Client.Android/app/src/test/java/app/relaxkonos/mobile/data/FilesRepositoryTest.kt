@@ -22,7 +22,7 @@ import org.junit.Test
 class FilesRepositoryTest {
     private val gateway = FakeGateway()
     private val session = AuthSession(gateway)
-    private val elevations = ElevationRepository(gateway, session, CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto()))
+    private val elevations = ElevationRepository(gateway, session, CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto()), app.relaxkonos.mobile.data.UsageMemoryStore(app.relaxkonos.mobile.data.InMemoryUsageMemoryStorage()))
     private val repository = FilesRepository(gateway, session, elevations)
 
     private suspend fun signIn() {

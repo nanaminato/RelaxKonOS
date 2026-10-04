@@ -1,6 +1,7 @@
 package app.relaxkonos.mobile.data
 
 import app.relaxkonos.mobile.FakeGateway
+import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.auth.AuthSession
 import app.relaxkonos.mobile.servercenter.ServerConnectionIdentityRules
 import app.relaxkonos.mobile.core.net.ApiResult
@@ -30,7 +31,26 @@ class ElevationRepositoryTest {
     private val gateway = FakeGateway()
     private val vault = CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto())
     private val session = AuthSession(gateway)
-    private val repository = ElevationRepository(gateway, session, vault)
+    private val memory = UsageMemoryStore(InMemoryUsageMemoryStorage())
+    private val repository = ElevationRepository(gateway, session, vault, memory)
+
+    @Test
+    fun `username is remembered only after host or path grant succeeds`() = runTest {
+        signIn()
+        val owner = session.state.value as SessionState.Active
+        val defaults = memory.capture(owner) { session.state.value as? SessionState.Active }
+        gateway.onElevation = { _, _, _, _, _, _ -> ApiResult.Success(ElevationGrant(elevated = true, expiresAtMillis = null)) }
+        repository.elevateHost("write", "host", providerReturning("admin", "secret"))
+        assertEquals("admin", defaults.administrator)
+        gateway.onElevation = { _, _, _, _, _, _ -> ApiResult.Problem(403, "elevation-password-invalid", null) }
+        repository.elevateHost("write", "other", providerReturning("rejected", "wrong"))
+        assertEquals("admin", defaults.administrator)
+        repository.elevateHost("write", "cancelled", ElevationAnswerProvider.Declines)
+        assertEquals("admin", defaults.administrator)
+        gateway.onFileElevation = { _, _, _, _, _, _, _, _ -> ApiResult.Success(app.relaxkonos.mobile.core.net.FileElevationGrant(requiresElevation = true, elevated = true, expiresAtMillis = null)) }
+        repository.elevatePath("/protected", "read", emptyList(), false, providerReturning("file-admin", "secret"))
+        assertEquals("file-admin", defaults.administrator)
+    }
 
     private suspend fun signIn() {
         gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession()) }

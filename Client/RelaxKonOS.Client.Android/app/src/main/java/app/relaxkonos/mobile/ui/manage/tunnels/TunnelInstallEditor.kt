@@ -1,7 +1,8 @@
 package app.relaxkonos.mobile.ui.manage.tunnels
 
+import app.relaxkonos.mobile.ui.common.rememberUsageOpenDocument
+
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -25,7 +26,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
     var rollback by remember { mutableStateOf(request?.rollback == true) }
     var remotePath by remember { mutableStateOf("") }; var confirmed by remember { mutableStateOf(false) }
     val locked = state.busy || model.hasIntent
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { if (it != null && container.activeSession === owner && !model.hasIntent) model.upload(it) }
+    val picker = rememberLauncherForActivityResult(rememberUsageOpenDocument("TunnelInstallEditor.package")) { if (it != null && container.activeSession === owner && !model.hasIntent) model.upload(it) }
     val initialId = remember { state.installation?.operationId }
     LaunchedEffect(state.installation?.operationId) { if (state.installation != null && state.installation.operationId != initialId) dismiss() }
     AlertDialog(onDismissRequest = dismiss, modifier = Modifier.imePadding(), title = { Text(stringResource(R.string.tunnels_runtime_manage)) },

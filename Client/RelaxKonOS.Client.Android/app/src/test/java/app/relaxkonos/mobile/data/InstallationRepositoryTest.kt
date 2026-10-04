@@ -29,7 +29,7 @@ class InstallationRepositoryTest {
     private val session = AuthSession(gateway)
     private val journal = InstallationRequestJournal(JournalStorage())
     private val index = OperationIndex(IndexStorage())
-    private val elevation = ElevationRepository(gateway, session, CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto()))
+    private val elevation = ElevationRepository(gateway, session, CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto()), app.relaxkonos.mobile.data.UsageMemoryStore(app.relaxkonos.mobile.data.InMemoryUsageMemoryStorage()))
     private val repository = InstallationRepository(gateway, session, elevation, index, journal)
     private val id = "00112233-4455-6677-8899-aabbccddeeff"
     private val operation = InstallationOperation(id, InstallationService.Nginx, InstallationKind.Install,

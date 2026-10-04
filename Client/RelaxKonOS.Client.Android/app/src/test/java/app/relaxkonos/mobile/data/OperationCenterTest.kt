@@ -19,7 +19,7 @@ class OperationCenterTest {
     private val gateway = FakeGateway()
     private val session = AuthSession(gateway)
     private val index = OperationIndex(Storage())
-    private val elevation = ElevationRepository(gateway, session, CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto()))
+    private val elevation = ElevationRepository(gateway, session, CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto()), app.relaxkonos.mobile.data.UsageMemoryStore(app.relaxkonos.mobile.data.InMemoryUsageMemoryStorage()))
     private val webJournal = WebServerRequestJournal(Storage())
     private val proxyJournal = ProxyRequestJournal(Storage())
     private val smbJournal = SmbMutationJournal(Storage())
@@ -33,7 +33,7 @@ class OperationCenterTest {
         InstallationRepository(gateway, session, elevation, index, InstallationRequestJournal(Storage())),
         WebServerRepository(gateway, session, elevation, index, webJournal),
         WebSiteRepository(gateway, session, elevation, WebSiteMutationJournal(Storage())),
-        CertificateRepository(gateway, session, index, CertificateRequestJournal(Storage()), ElevationRepository(gateway, session, app.relaxkonos.mobile.security.CredentialVault(app.relaxkonos.mobile.security.InMemoryVaultStorage(), app.relaxkonos.mobile.security.FakeVaultCrypto()))),
+        CertificateRepository(gateway, session, index, CertificateRequestJournal(Storage()), ElevationRepository(gateway, session, app.relaxkonos.mobile.security.CredentialVault(app.relaxkonos.mobile.security.InMemoryVaultStorage(), app.relaxkonos.mobile.security.FakeVaultCrypto()), app.relaxkonos.mobile.data.UsageMemoryStore(app.relaxkonos.mobile.data.InMemoryUsageMemoryStorage()))),
         TunnelRepository(gateway, session, elevation, TunnelMutationJournal(Storage())),
         ProxyRepository(gateway, session, index, proxyJournal),
         FirewallRepository(gateway, session, elevation, FirewallMutationJournal(Storage())),

@@ -65,7 +65,7 @@ class UploadCoordinatorTest {
         gateway,
         session,
         CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto()),
-    )
+        app.relaxkonos.mobile.data.UsageMemoryStore(app.relaxkonos.mobile.data.InMemoryUsageMemoryStorage()))
     // Lazily, not eagerly: the rule's folder does not exist yet while the test instance is constructed,
     // and these two have to keep their state across the whole test rather than being rebuilt per access.
     private val journal by lazy { UploadResumeJournal(File(folder.root, "upload-resume.txt")) }

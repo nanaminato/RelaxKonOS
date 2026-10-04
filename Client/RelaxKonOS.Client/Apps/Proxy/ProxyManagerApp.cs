@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Installation;
 using RelaxKonOS.Protocol.Installations;
 using Avalonia;
@@ -54,7 +55,7 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
             {
                 var picker = new ExplorerViewModel(files, new ExplorerPickerOptions(ExplorerPickerMode.OpenFile,
                     Filters: [new ExplorerFileFilter(LocalizedText.Get("proxy.runtime.package_filter"), ["*.zip", "*.gz"])]),
-                    paths => dialog.Close(paths.FirstOrDefault())) { CancelAction = dialog.Cancel };
+                    paths => dialog.Close(paths.FirstOrDefault()), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "ProxyManager.binary") { CancelAction = dialog.Cancel };
                 _ = picker.LoadRootAsync();
                 return new ExplorerMainView { DataContext = picker };
             }, new RelaxKonOS.Core.Primitives.Size(720, 520));
@@ -74,7 +75,7 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
             {
                 var picker = new ExplorerViewModel(files,
                     new ExplorerPickerOptions(ExplorerPickerMode.OpenFile, Filters: [new ExplorerFileFilter(LocalizedText.Get("proxy.geodata.file_filter"), ["*.metadb"])]),
-                    paths => dialog.Close(paths.FirstOrDefault()))
+                    paths => dialog.Close(paths.FirstOrDefault()), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "ProxyManager.configuration")
                 {
                     CancelAction = dialog.Cancel,
                 };

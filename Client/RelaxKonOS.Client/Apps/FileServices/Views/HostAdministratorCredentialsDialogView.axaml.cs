@@ -21,6 +21,7 @@ internal partial class HostAdministratorCredentialsDialogView : UserControl
         ErrorText.Text = errorMessage;
         ErrorText.IsVisible = !string.IsNullOrEmpty(errorMessage);
         AccountBox.Text = defaultAdministrator;
+        AttachedToVisualTree += (_, _) => { if (!string.IsNullOrEmpty(defaultAdministrator)) PasswordBox.Focus(); };
         AccountBox.PlaceholderText = LocalizedText.Get("file_services.host_account");
         PasswordBox.PlaceholderText = LocalizedText.Get("settings.host_time.password");
     }

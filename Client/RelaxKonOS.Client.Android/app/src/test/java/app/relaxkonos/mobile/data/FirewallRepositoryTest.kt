@@ -23,7 +23,7 @@ class FirewallRepositoryTest {
     }
     private val gateway = FakeGateway(); private val session = AuthSession(gateway); private val storage = Storage()
     private val journal = FirewallMutationJournal(storage)
-    private val elevations = ElevationRepository(gateway, session, CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto()))
+    private val elevations = ElevationRepository(gateway, session, CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto()), app.relaxkonos.mobile.data.UsageMemoryStore(app.relaxkonos.mobile.data.InMemoryUsageMemoryStorage()))
     private val repository = FirewallRepository(gateway, session, elevations, journal)
     private val status = FirewallStatus(true, false, "ufw", null, "deny", "allow", "")
     private val facts = FirewallFacts(status, emptyList())

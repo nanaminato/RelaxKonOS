@@ -1,5 +1,7 @@
 # RelaxKonOS 部署引擎与维护者指南
 
+Windows 10/11 个人电脑可同时运行 Server 与 Client，具体步骤见[个人电脑使用指南](./WindowsPersonalComputer.md)。Windows 桌面登录页提供「安装到这台电脑」入口，通过 UAC 复用系统模式部署引擎，本机首次安装无需 SSH。
+
 普通用户从客户端的服务器中心安装和维护服务端。本文保留部署引擎、打包与手动诊断，供维护者使用；官网安装入口统一见[安装指南](https://relaxkon.com/docs/zh-CN/latest/getting-started/installation)。
 
 官网与自定义 HTTPS 安装包下载在私有暂存目录内输出临时 `transfer.json`：当前 `operationId`、实际写入的 `bytes`、可空的 `total`（HTTP Content-Length）和 `active`。Linux/Windows 启动器约每 250 ms 原子替换该文件，下载结束写入 `active: false`；客户端约每 750 ms 读取并验证操作编号、字段与大小范围。该文件不包含 URL 或凭据，仅用于传输进度，读取或写入失败不改变权威操作回执；下载完成后客户端继续展示执行与核验阶段。移动端体验规范见 [Android 服务器中心](../Client/RelaxKonOS.Client.Android/docs/features/ServerCenter.md)。

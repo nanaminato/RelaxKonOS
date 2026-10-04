@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Net;
@@ -16,11 +17,13 @@ public sealed class ExplorerClient : IExplorerClient
 {
     private readonly HttpClient _http;
     private readonly IAuthSession _session;
+    private readonly UsageMemoryStore _memory;
 
-    public ExplorerClient(HttpClient http, IAuthSession session)
+    public ExplorerClient(HttpClient http, IAuthSession session, UsageMemoryStore memory)
     {
         _http = http;
         _session = session;
+        _memory = memory;
     }
 
     public Task<FileOperationDto> StartOperationAsync(StartFileOperationRequest request, CancellationToken ct = default)
@@ -76,18 +79,26 @@ public sealed class ExplorerClient : IExplorerClient
         return await resp.Content.ReadAsByteArrayAsync(ct);
     }
 
-    public Task<FileElevationResult> ElevateFileAccessAsync(string path, FileElevationCapability capability, string? password = null,
+    public async Task<FileElevationResult> ElevateFileAccessAsync(string path, FileElevationCapability capability, string? password = null,
         string? administratorUsername = null, CancellationToken ct = default)
-        => SendAsync<FileElevationResult>(HttpMethod.Post, FileApiRoutes.Elevation,
+    {
+        var usageMemory = _memory.Capture(_session);
+        var result = await SendAsync<FileElevationResult>(HttpMethod.Post, FileApiRoutes.Elevation,
             body: new FileElevationRequest(path, password, Capability: capability, AdministratorUsername: administratorUsername), ct: ct);
+        if (result.Elevated) usageMemory.RememberAdministrator(administratorUsername);
+        return result;
+    }
 
-    public Task<FileElevationResult> ElevateFileOperationAsync(IReadOnlyList<string> directoryPaths, FileElevationCapability capability, string? password = null,
+    public async Task<FileElevationResult> ElevateFileOperationAsync(IReadOnlyList<string> directoryPaths, FileElevationCapability capability, string? password = null,
         string? administratorUsername = null, CancellationToken ct = default)
     {
         if (directoryPaths.Count == 0) throw new ArgumentException("At least one directory path is required.", nameof(directoryPaths));
-        return SendAsync<FileElevationResult>(HttpMethod.Post, FileApiRoutes.Elevation,
+        var usageMemory = _memory.Capture(_session);
+        var result = await SendAsync<FileElevationResult>(HttpMethod.Post, FileApiRoutes.Elevation,
             body: new FileElevationRequest(directoryPaths[0], password, directoryPaths.Skip(1).ToArray(), IncludeDescendants: true,
                 Capability: capability, AdministratorUsername: administratorUsername), ct: ct);
+        if (result.Elevated) usageMemory.RememberAdministrator(administratorUsername);
+        return result;
     }
 
     public async Task<FileEntryDto> WriteFileAsync(string path, byte[] content, CancellationToken ct = default)

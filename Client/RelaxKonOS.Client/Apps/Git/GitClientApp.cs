@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Installation;
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Client.Apps.Explorer;
@@ -72,7 +73,7 @@ public sealed class GitClientApp : RemoteApplicationBase
             {
                 var picker = new ExplorerViewModel(files,
                     new ExplorerPickerOptions(ExplorerPickerMode.SelectFolder),
-                    paths => dialog.Close(paths[0]))
+                    paths => dialog.Close(paths[0]), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "GitClient.repository-folder")
                 {
                     CancelAction = dialog.Cancel,
                 };

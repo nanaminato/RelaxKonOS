@@ -58,6 +58,7 @@ fun AccountSecurityScreen(
     val appearance = container.appearance
 
     var revision by remember { mutableStateOf(0) }
+    var memoryCleared by remember(container.activeSession) { mutableStateOf(false) }
     var confirmDisable by remember { mutableStateOf(false) }
     var confirmClearAll by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<DeletionTarget?>(null) }
@@ -232,6 +233,15 @@ fun AccountSecurityScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+
+        SectionCard(title = stringResource(R.string.usage_memory_title)) {
+            Text(stringResource(R.string.usage_memory_description))
+            TextButton(onClick = {
+                container.usageMemory.clear(container.activeSession)
+                memoryCleared = true
+            }) { Text(stringResource(R.string.usage_memory_clear)) }
+            if (memoryCleared) Text(stringResource(R.string.usage_memory_cleared))
         }
 
         TextButton(

@@ -36,3 +36,16 @@ Settings 错误响应现在包含稳定 problemCode 扩展；Android 不解析 t
 内置功能随签名客户端更新，没有独立包版本/权限决策/卸载。原生目录仅链接已交付功能，按当前 Server capability 决定可用项，并在点击时复核原登录；capability 不等于授权。远端容器/修订/运行时仍在各领域页面管理。外部 .roapp 的安装、权限、私有数据、更新与移除由目标桌面处理，当前 Android 没有第三方运行时或其 app-settings 数据目录；详见 [移动包方案](../design/ApplicationPackages.Design.md)。
 
 变更记录仅展示当前设置类别的最近 20 项；没有记录时隐藏标题。跨类别未确定操作仍统一阻止新提交，保留查询与回滚能力。
+
+
+## 使用记忆
+
+“更多 → 账户与安全 → 使用记忆”可清除当前服务器下当前登录账户的使用默认值；未登录时清除本机未登录上下文的选择位置。已保存的登录、SSH 和提权密码不受影响。
+
+`UsageMemoryStore` 在设备私有 SharedPreferences 保存最后一次成功提权的管理员用户名，以及各用途最后确认的文件选择位置。管理员用户名按稳定 serviceId 和用户名称隔离，宿主与文件提权共享；只在服务器确认 elevated 后更新，取消、拒绝或传输失败不覆盖。提权对话框可编辑用户名，已填用户名时优先聚焦密码；用户名记忆不依赖开启指纹保险箱，密码保存仍遵守原有显式授权和生物识别规则。
+
+选择位置按账户、用途和本地/远程分开；远程位置另外按 workspaceId 隔离，SSH 包选择按 hostId 区分。明确填写的初始路径优先于记忆；确认文件时记住父目录，确认目录时记住所选目录，浏览和取消不更新。远程恢复使用拒绝自动提权的 provider；记忆目录失效或无权限时回到根位置。账户/会话切换后的延迟结果不回填，清除后的旧交互不重新写入记忆。
+
+本地选择器沿用 Android Storage Access Framework。文档提供程序的 document ID 是不透明标识，不能像磁盘路径一样推导父目录；因此保存最后确认的文档或目录 URI，通过 `DocumentsContract.EXTRA_INITIAL_URI` 提示系统恢复选择位置，不申请额外目录权限。实际目录展示与失效提示由系统/文档提供程序处理。覆盖上传、包/证书/密钥/Compose 导入、配对图片和诊断导出。规则依据 [Android 文档](https://developer.android.com/training/data-storage/shared/documents-files)。
+
+重启后恢复使用记忆，不随 Workspace 同步；应用已禁用 Android 自动备份，因此不会通过系统备份迁移到其他设备。读取损坏或保存失败不阻断当前操作。测试与未关闭设备检查见 [Verification](../status/Verification.md)。

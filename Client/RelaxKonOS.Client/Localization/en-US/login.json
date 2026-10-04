@@ -1,6 +1,14 @@
 {
     "Culture": "en-US",
     "Strings": {
+        "login.local_install": "Install on this computer",
+        "login.local_install_review": "Windows will request administrator permission. Server runs as a system service on this computer; an existing installation will be updated and service may be interrupted. Official packages are verified; selected ZIPs receive layout and architecture checks.",
+        "login.local_install_elevating": "Approve the Windows administrator permission request to continue.",
+        "login.local_install_uac_cancelled": "Administrator permission was cancelled. Review the installation options and try again.",
+        "login.local_install_failed": "Local installation failed. Check the deployment receipt and log.",
+        "login.local_install_operation": "Operation ID",
+        "login.local_install_open_failed": "Unable to open local installation. Check that this is the Windows desktop client.",
+        "login.local_install_ready": "Connected to the local server. Sign in with your Windows account password (not a Hello PIN).",
         "login.saved_connections": "Saved connections",
         "login.tunnel.configure": "Configure SSH tunnel",
         "login.tunnel.not_saved": "Connected, but SSH credentials could not be saved securely.",

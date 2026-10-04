@@ -15,6 +15,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.platform.LocalContext
+import app.relaxkonos.mobile.data.ElevationAnswerProvider
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.ui.theme.Spacing
@@ -60,14 +62,25 @@ fun RemotePathPicker(
     fileFilter: (String) -> Boolean = { true },
     @StringRes emptyMessage: Int = R.string.remote_path_empty,
 ) {
-    val files = appContainer().files
-    val elevations = appContainer().elevationAnswers
-    var path by remember(initialPath, kind) {
+    val container = appContainer()
+    val files = container.files
+    val elevations = container.elevationAnswers
+    val purpose = LocalContext.current.resources.getResourceEntryName(title) + ":" + kind.name
+    val memory = remember(container, purpose) { container.usageMemory.capture(container.activeSession) { container.activeSession } }
+    val remembered = remember(memory) { memory.directory(purpose, true) }
+    var restoring by remember(memory, initialPath) { mutableStateOf(initialPath.isBlank() && !remembered.isNullOrBlank()) }
+    var path by remember(initialPath, kind, memory) {
         mutableStateOf(when {
-            initialPath.isBlank() -> ""
+            initialPath.isBlank() -> remembered.orEmpty()
             kind == RemotePathKind.Directory -> initialPath
             else -> files.navigationParentOf(initialPath)
         })
+    }
+    val select: (String) -> Unit = { selected ->
+        if (memory.isCurrent) {
+            memory.rememberDirectory(purpose, true, if (kind == RemotePathKind.Directory) selected else files.navigationParentOf(selected))
+            onSelect(selected)
+        } else onDismiss()
     }
     var listing by remember(path) { mutableStateOf<app.relaxkonos.mobile.core.net.DirectoryListing?>(null) }
     var error by remember { mutableStateOf<UiMessage?>(null) }
@@ -81,9 +94,16 @@ fun RemotePathPicker(
         loading = true
         error = null
         listing = null
-        when (val result = files.list(path, elevations)) {
+        if (!memory.isCurrent) { onDismiss(); return@LaunchedEffect }
+        val restoringDirectory = restoring
+        restoring = false
+        val result = files.list(path, if (restoringDirectory) ElevationAnswerProvider.Declines else elevations)
+        if (!memory.isCurrent) { onDismiss(); return@LaunchedEffect }
+        when (result) {
             is ApiResult.Success -> listing = result.value
-            else -> error = result.failureMessage()
+            else -> if (restoringDirectory && path.isNotBlank()) {
+                path = ""
+            } else error = result.failureMessage()
         }
         loading = false
     }
@@ -129,7 +149,7 @@ fun RemotePathPicker(
                     else key(path, refresh, query) { LazyColumn(Modifier.fillMaxSize()) {
                         items(entries, key = { it.path }) { entry ->
                             ListItem(modifier = Modifier.clickable {
-                                if (entry.isDirectory) path = entry.path else onSelect(entry.path)
+                                if (entry.isDirectory) path = entry.path else select(entry.path)
                             }, headlineContent = {
                                 Text(entry.name, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             }, leadingContent = {
@@ -143,7 +163,7 @@ fun RemotePathPicker(
                 if (kind == RemotePathKind.Directory) {
                     HorizontalDivider()
                     val currentDirectory = listing?.path?.takeIf(String::isNotBlank)
-                    Button(onClick = { currentDirectory?.let(onSelect) },
+                    Button(onClick = { currentDirectory?.let(select) },
                         enabled = !loading && currentDirectory != null,
                         modifier = Modifier.fillMaxWidth().padding(bottom = Spacing.sm)) {
                         Text(stringResource(R.string.remote_path_select_directory))

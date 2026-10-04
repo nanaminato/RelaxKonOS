@@ -1,11 +1,12 @@
 package app.relaxkonos.mobile.ui.manage.docker
 
+import app.relaxkonos.mobile.ui.common.rememberUsageOpenDocument
+
 import app.relaxkonos.mobile.ui.common.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import android.app.Application
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -348,7 +349,7 @@ fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialSt
         val stack = (state.stacks as? ApiResult.Success)?.value?.firstOrNull { it.name == initialStackName }
         if (stack != null && state.selectedStack?.name != stack.name) viewModel.selectStack(stack)
     }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) viewModel.importCompose(uri) { yaml -> composeDraft = yaml; composer = true } }
+    val picker = rememberLauncherForActivityResult(rememberUsageOpenDocument("DockerScreen.compose-import")) { uri -> if (uri != null) viewModel.importCompose(uri) { yaml -> composeDraft = yaml; composer = true } }
     Column(modifier.fillMaxSize().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         ScreenHeader(
             title = stringResource(R.string.docker_title), onBack = onBack,

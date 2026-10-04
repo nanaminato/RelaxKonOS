@@ -1,8 +1,9 @@
 package app.relaxkonos.mobile.ui.manage.websites
 
+import app.relaxkonos.mobile.ui.common.rememberUsageOpenDocument
+
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -241,7 +242,7 @@ private fun NginxInstallDialog(model: NginxViewModel, onSubmitted: () -> Unit, d
     var source by remember { mutableStateOf(if (model.intentUsesPackage) InstallationPackageSource.ServerFile else InstallationPackageSource.HostDownload) }
     var remotePath by remember { mutableStateOf("") }
     var confirmed by remember { mutableStateOf(false) }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val picker = rememberLauncherForActivityResult(rememberUsageOpenDocument("NginxManager.archive")) { uri ->
         if (uri != null && container.activeSession === owner && !model.hasIntent) model.upload(uri)
     }
     val windows = state.system in NginxViewModel.windowsSystems

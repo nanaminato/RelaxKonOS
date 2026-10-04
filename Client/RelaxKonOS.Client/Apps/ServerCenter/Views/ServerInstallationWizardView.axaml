@@ -11,7 +11,7 @@
                        Foreground="{DynamicResource TextSecondaryBrush}" />
         </Grid>
 
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" IsEnabled="{Binding !IsBusy}">
             <StackPanel Spacing="16" Margin="0,0,12,0">
                 <StackPanel Spacing="12" IsVisible="{Binding IsSourceStep}">
                     <TextBlock Text="{Binding SourceStepTitle}" FontSize="17" FontWeight="SemiBold" />
@@ -91,7 +91,7 @@
                             <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
                         </ComboBox.ItemTemplate>
                     </ComboBox>
-                    <Button Content="{Binding ShowHostAddressesText}" Command="{Binding ShowHostAddressesCommand}" HorizontalAlignment="Left" />
+                    <Button Content="{Binding ShowHostAddressesText}" Command="{Binding ShowHostAddressesCommand}" HorizontalAlignment="Left" IsVisible="{Binding CanShowHostAddresses}" />
                     <TextBlock Text="{Binding CertificateText}" />
                     <ComboBox IsVisible="{Binding IsSystemMode}" ItemsSource="{Binding CertificateModes}" SelectedItem="{Binding SelectedCertificateMode}" HorizontalAlignment="Left" MinWidth="320">
                         <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate>

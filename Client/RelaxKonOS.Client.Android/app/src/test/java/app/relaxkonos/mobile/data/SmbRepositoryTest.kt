@@ -19,7 +19,7 @@ class SmbRepositoryTest {
     }
     private val gateway = FakeGateway(); private val session = AuthSession(gateway); private val storage = Storage()
     private val journal = SmbMutationJournal(storage)
-    private val elevation = ElevationRepository(gateway, session, CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto()))
+    private val elevation = ElevationRepository(gateway, session, CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto()), app.relaxkonos.mobile.data.UsageMemoryStore(app.relaxkonos.mobile.data.InMemoryUsageMemoryStorage()))
     private val repository = SmbRepository(gateway, session, elevation, journal)
     private val facts = SmbFacts(SmbCapabilities(true, true, true, true, false, null),
         SmbStatus(SmbRuntimeState.Running, "4.20", true, true, null),

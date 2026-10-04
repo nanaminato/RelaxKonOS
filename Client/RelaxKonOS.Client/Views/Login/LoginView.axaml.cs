@@ -25,12 +25,14 @@ public partial class LoginView : UserControl
             _viewModel.PropertyChanged -= LoginViewModel_PropertyChanged;
             _viewModel.ConfirmServerCertificateAsync = null;
             _viewModel.ConfirmTunnelHostKeyAsync = null;
+            _viewModel.ShowLocalInstallationAsync = null;
         }
         _viewModel = DataContext as LoginViewModel;
         if (_viewModel is not null)
         {
             _viewModel.PropertyChanged += LoginViewModel_PropertyChanged;
             var viewModel = _viewModel;
+            viewModel.ShowLocalInstallationAsync = ShowLocalInstallationAsync;
             viewModel.ConfirmServerCertificateAsync = review => ShowCertificateDialogAsync(viewModel, review);
             viewModel.ConfirmTunnelHostKeyAsync = async (rejected, previous) =>
             {
@@ -42,6 +44,12 @@ public partial class LoginView : UserControl
                     "", viewModel.ConfirmHostKeyText, viewModel.CancelText).ShowDialog<bool>(owner);
             };
         }
+    }
+
+    private async Task<string?> ShowLocalInstallationAsync()
+    {
+        if (!OperatingSystem.IsWindows() || TopLevel.GetTopLevel(this) is not Window owner) return null;
+        return await new LocalServerInstallationWindow().ShowDialog<string?>(owner);
     }
 
     private async Task<bool> ShowCertificateDialogAsync(LoginViewModel viewModel, ServerCertificateReview review)

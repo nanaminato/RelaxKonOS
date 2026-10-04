@@ -1,5 +1,7 @@
 package app.relaxkonos.mobile.ui.servercenter
 
+import app.relaxkonos.mobile.ui.common.rememberUsageOpenDocument
+
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import app.relaxkonos.mobile.ui.common.StatusTone
 import android.net.Uri
@@ -7,7 +9,6 @@ import app.relaxkonos.mobile.data.resolvedDisplayName
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.collectAsState
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -189,15 +190,15 @@ internal fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier =
     var certificatePassword by remember(hostId) { mutableStateOf("") }
     var sudoPassword by remember(hostId) { mutableStateOf("") }
     var certificateNames by rememberSaveable(hostId) { mutableStateOf("localhost,127.0.0.1") }
-    val pickBundle = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val pickBundle = rememberLauncherForActivityResult(rememberUsageOpenDocument("SshWorkspaceScreen.bundle.$hostId")) { uri ->
         bundleUri = uri?.toString()
         bundleName = uri?.let { resolver.resolvedDisplayName(it) }.orEmpty()
     }
-    val pickCertificate = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val pickCertificate = rememberLauncherForActivityResult(rememberUsageOpenDocument("SshWorkspaceScreen.certificate.$hostId")) { uri ->
         certificateUri = uri?.toString()
         certificateName = uri?.let { resolver.resolvedDisplayName(it) }.orEmpty()
     }
-    val pickPrivateKey = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val pickPrivateKey = rememberLauncherForActivityResult(rememberUsageOpenDocument("SshWorkspaceScreen.private-key.$hostId")) { uri ->
         privateKeyUri = uri?.toString()
         privateKeyName = uri?.let { resolver.resolvedDisplayName(it) }.orEmpty()
     }

@@ -19,7 +19,7 @@ class ManagedFrpsRepositoryTest {
     }
     private val gateway = FakeGateway(); private val session = AuthSession(gateway); private val storage = Storage()
     private val journal = TunnelMutationJournal(storage)
-    private val elevations = ElevationRepository(gateway, session, CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto()))
+    private val elevations = ElevationRepository(gateway, session, CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto()), app.relaxkonos.mobile.data.UsageMemoryStore(app.relaxkonos.mobile.data.InMemoryUsageMemoryStorage()))
     private val repository = TunnelRepository(gateway, session, elevations, journal)
     private val current = ManagedFrpsWire.configuration(FRPS_JSON)
     private val request = ManagedFrpsRequest(true, "127.0.0.1", 7000, listOf(TunnelPortRange(6000, 6010)), null, 443, true, "replacement-private-token".toCharArray(), true,

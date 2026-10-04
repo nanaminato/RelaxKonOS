@@ -1,5 +1,7 @@
 package app.relaxkonos.mobile.ui.files
 
+import app.relaxkonos.mobile.ui.common.rememberUsageOpenDocument
+
 import app.relaxkonos.mobile.ui.common.ActionLabel
 import android.Manifest
 import android.app.Application
@@ -1237,7 +1239,7 @@ fun FilesScreen(
     onOpenDetail: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val pickUpload = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val pickUpload = rememberLauncherForActivityResult(rememberUsageOpenDocument("FilesScreen.upload")) { uri ->
         uri?.let(viewModel::upload)
     }
 

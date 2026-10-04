@@ -1,5 +1,7 @@
 package app.relaxkonos.mobile.ui.manage.operations
 
+import app.relaxkonos.mobile.ui.common.rememberUsageCreateDocument
+
 import app.relaxkonos.mobile.ui.common.RefreshProgressIndicator
 
 import app.relaxkonos.mobile.ui.common.ActionLabel
@@ -7,7 +9,6 @@ import app.relaxkonos.mobile.ui.common.ExecutionStatusChip
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import android.app.Application
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -275,7 +276,7 @@ fun OperationsScreen(
     var pendingOperationId by remember(owner) { mutableStateOf("") }
     var exportFailed by remember(owner) { mutableStateOf(false) }
     var exportSaved by remember(owner) { mutableStateOf(false) }
-    val saveReport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+    val saveReport = rememberLauncherForActivityResult(rememberUsageCreateDocument("application/json", "OperationsScreen.export-report")) { uri ->
         val report = pendingReport
         pendingReport = null
         if (uri != null && report != null) scope.launch {

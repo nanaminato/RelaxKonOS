@@ -72,7 +72,7 @@ public sealed class NotepadApp : RemoteApplicationBase, IFileOpenApplication
                         new ExplorerFileFilter(LocalizedText.Get("notepad.text_file_filter"), SupportedExtensions.Select(extension => $"*{extension}").ToArray(),
                             IncludeExtensionlessFiles: true),
                     ]),
-                    paths => dialog.Close(paths[0]))
+                    paths => dialog.Close(paths[0]), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "Notepad.open-file")
                 {
                     CancelAction = dialog.Cancel,
                 };
@@ -88,7 +88,7 @@ public sealed class NotepadApp : RemoteApplicationBase, IFileOpenApplication
                     new ExplorerFileFilter(LocalizedText.Get("notepad.text_file_filter"), SupportedExtensions.Select(extension => $"*{extension}").ToArray(),
                         IncludeExtensionlessFiles: true),
                 ], DefaultFileName: defaultName),
-                paths => dialog.Close(paths[0]))
+                paths => dialog.Close(paths[0]), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "Notepad.save-file")
             {
                 CancelAction = dialog.Cancel,
             };

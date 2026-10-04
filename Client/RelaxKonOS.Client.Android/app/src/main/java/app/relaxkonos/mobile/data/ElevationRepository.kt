@@ -114,6 +114,7 @@ class ElevationRepository(
     private val gateway: RelaxKonGateway,
     private val session: AuthSession,
     private val vault: CredentialVault,
+    private val usageMemory: UsageMemoryStore,
 ) {
     /**
      * Cached grant expiry per `capability|target`. Advisory only — the server stays the authority —
@@ -145,6 +146,7 @@ class ElevationRepository(
     ): ElevationOutcome {
         val owner = session.state.value as? SessionState.Active
             ?: return ElevationOutcome.Rejected(ProblemCodes.UNAUTHORIZED, credentialDiscarded = false)
+        val memory = usageMemory.capture(owner) { session.state.value as? SessionState.Active }
         val answer = provider.answer(capability, target) ?: return ElevationOutcome.Cancelled
         val result = try {
             verifyOwner(owner)
@@ -158,6 +160,7 @@ class ElevationRepository(
         verifyOwner(owner)
         return when (result) {
             is ApiResult.Success -> if (result.value.elevated) {
+                memory.rememberAdministrator(answer.account)
                 val expiresAt = result.value.expiresAtMillis ?: (System.currentTimeMillis() + DEFAULT_GRANT_MILLIS)
                 rememberGrant(capability, target, expiresAt)
                 ElevationOutcome.Granted(result.value.expiresAtMillis)
@@ -220,6 +223,7 @@ class ElevationRepository(
     ): ElevationOutcome {
         val owner = session.state.value as? SessionState.Active
             ?: return ElevationOutcome.Rejected(ProblemCodes.UNAUTHORIZED, credentialDiscarded = false)
+        val memory = usageMemory.capture(owner) { session.state.value as? SessionState.Active }
         val answer = provider.answer(capability, path) ?: return ElevationOutcome.Cancelled
         val result = try {
             verifyOwner(owner)
@@ -242,6 +246,7 @@ class ElevationRepository(
         verifyOwner(owner)
         return when (result) {
             is ApiResult.Success -> if (result.value.elevated) {
+                memory.rememberAdministrator(answer.account)
                 rememberGrant(capability, path, result.value.expiresAtMillis ?: (System.currentTimeMillis() + DEFAULT_GRANT_MILLIS))
                 ElevationOutcome.Granted(result.value.expiresAtMillis)
             } else {

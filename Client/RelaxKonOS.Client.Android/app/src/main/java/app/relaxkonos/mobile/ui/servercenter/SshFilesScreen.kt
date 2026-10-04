@@ -1,5 +1,9 @@
 package app.relaxkonos.mobile.ui.servercenter
 
+import app.relaxkonos.mobile.ui.common.rememberUsageCreateDocument
+import app.relaxkonos.mobile.ui.common.rememberUsageOpenDocumentTree
+import app.relaxkonos.mobile.ui.common.rememberUsageOpenMultipleDocuments
+
 import app.relaxkonos.mobile.ui.common.ActionLabel
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import android.app.Application
@@ -9,7 +13,6 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -166,9 +169,9 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
     var editAddress by remember(hostId) { mutableStateOf(false) }
     var showSort by remember(hostId) { mutableStateOf(false) }
     var fileActions by remember(hostId) { mutableStateOf(false) }
-    val pickUpload = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> pendingUpload = uris }
-    val pickTree = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> pendingTree = uri }
-    val saveDownload = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri -> pendingDownload = true to uri }
+    val pickUpload = rememberLauncherForActivityResult(rememberUsageOpenMultipleDocuments("SshFilesScreen.upload-files.$hostId")) { uris -> pendingUpload = uris }
+    val pickTree = rememberLauncherForActivityResult(rememberUsageOpenDocumentTree("SshFilesScreen.upload-folder.$hostId")) { uri -> pendingTree = uri }
+    val saveDownload = rememberLauncherForActivityResult(rememberUsageCreateDocument("application/octet-stream", "SshFilesScreen.download.$hostId")) { uri -> pendingDownload = true to uri }
     LaunchedEffect(resumed, pendingUpload, pendingTree, pendingDownload, state.busy, state.hostId) {
         if (resumed && !model.state.value.busy && state.hostId == hostId && container.serverCenter.sshFilesHostId == hostId) {
             if (pendingUpload.isNotEmpty()) { model.upload(pendingUpload); pendingUpload = emptyList() }

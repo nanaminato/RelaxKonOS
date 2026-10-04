@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -9,7 +10,7 @@ using RelaxKonOS.Protocol.Privileged;
 namespace RelaxKonOS.Client.Apps.FileServices;
 
 /// <summary>Typed protocol-only SMB client. It has no native service, Helper, or credential knowledge.</summary>
-public sealed class RemoteFileServicesClient(HttpClient http, IAuthSession session) : IRemoteFileServicesClient
+public sealed class RemoteFileServicesClient(HttpClient http, IAuthSession session, UsageMemoryStore memory) : IRemoteFileServicesClient
 {
     public Task<FileServiceStatusDto> GetStatusAsync(CancellationToken ct = default) => Send<FileServiceStatusDto>(HttpMethod.Get, FileServiceApiRoutes.Status, ct);
     public Task<FileServiceCapabilitiesDto> GetCapabilitiesAsync(CancellationToken ct = default) => Send<FileServiceCapabilitiesDto>(HttpMethod.Get, FileServiceApiRoutes.Capabilities, ct);
@@ -24,12 +25,15 @@ public sealed class RemoteFileServicesClient(HttpClient http, IAuthSession sessi
     public Task<FileServiceOperationResultDto> SetSambaPasswordAsync(string username, SetSambaPasswordRequest request, CancellationToken ct = default) => Send<FileServiceOperationResultDto>(HttpMethod.Put, FileServiceApiRoutes.UserPassword.Replace("{username}", Uri.EscapeDataString(username), StringComparison.Ordinal), ct, request);
     public async Task<bool> ElevateAsync(HostAdministratorCredentials credentials, CancellationToken ct = default)
     {
+        var usageMemory = memory.Capture(session);
         if (session.State != AuthSessionState.Authenticated || session.EffectiveBaseUrl is null) throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
         using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(session.EffectiveBaseUrl), PrivilegedApiRoutes.Elevation.TrimStart('/')))
         { Content = JsonContent.Create(new HostElevationRequest(HostElevationCapability.SmbManage, "smb:managed", credentials.Password, credentials.Username), options: RelaxKonOSJsonOptions.Default) };
         using var response = await http.SendAsync(request, ct);
         if (!response.IsSuccessStatusCode) throw await CreateApiExceptionAsync(response, ct);
-        return (await response.Content.ReadFromJsonAsync<HostElevationResult>(RelaxKonOSJsonOptions.Default, ct))?.Elevated == true;
+        var elevated = (await response.Content.ReadFromJsonAsync<HostElevationResult>(RelaxKonOSJsonOptions.Default, ct))?.Elevated == true;
+        if (elevated) usageMemory.RememberAdministrator(credentials.Username);
+        return elevated;
     }
     private async Task<T> Send<T>(HttpMethod method, string route, CancellationToken ct, object? body = null)
     {

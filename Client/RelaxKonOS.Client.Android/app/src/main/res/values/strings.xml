@@ -2792,4 +2792,9 @@
     <string name="server_install_firewall_help">Only an enabled firewall is changed. If disabled, a notice is shown and no rule is added.</string>
     <string name="server_install_firewall_disabled">Installation succeeded. The host firewall is disabled; no rule was added.</string>
     <string name="server_install_firewall_added">Installation succeeded. The server TCP port firewall rule was added.</string>
+
+    <string name="usage_memory_title">Usage memory</string>
+    <string name="usage_memory_description">Remember the last successful administrator username and file picker locations on this device. Clearing affects the current account on this server and keeps saved passwords.</string>
+    <string name="usage_memory_clear">Clear usage memory</string>
+    <string name="usage_memory_cleared">Usage memory cleared.</string>
 </resources>

@@ -24,7 +24,7 @@ public interface IHostElevationBroker
         CancellationToken cancellationToken = default);
 }
 
-public sealed class HostElevationBroker(HttpClient http, IAuthSession session, IWindowManager windows) : IHostElevationBroker
+public sealed class HostElevationBroker(HttpClient http, IAuthSession session, IWindowManager windows, UsageMemoryStore memory) : IHostElevationBroker
 {
     public async Task<T> ExecuteAsync<T>(HostElevationCapability capability, string target, Func<Task<T>> operation,
         CancellationToken cancellationToken = default)
@@ -74,14 +74,16 @@ public sealed class HostElevationBroker(HttpClient http, IAuthSession session, I
 
     private async Task<bool> RequestPasswordAsync(Func<string, string, Task<HostElevationResult>> authorize)
     {
+        var usageMemory = memory.Capture(session);
         return await windows.ShowSystemDialogAsync<bool>(LocalizedText.Get("installation.elevation_title"), dialog =>
         {
             var account = new TextBox
             {
-                Text = string.Empty,
+                Text = usageMemory.Administrator ?? string.Empty,
                 PlaceholderText = LocalizedText.Get("explorer.operations.elevation_account"),
             };
             var password = new TextBox { PasswordChar = '•', PlaceholderText = LocalizedText.Get("settings.host_time.password") };
+            password.AttachedToVisualTree += (_, _) => { if (!string.IsNullOrEmpty(usageMemory.Administrator)) password.Focus(); };
             var error = new TextBlock { TextWrapping = TextWrapping.Wrap };
             RelaxKonOS.UI.Themes.ThemeResources.Bind(error, TextBlock.ForegroundProperty, "DangerBrush");
             var cancel = new Button { Content = LocalizedText.Get("common.cancel") };
@@ -89,13 +91,15 @@ public sealed class HostElevationBroker(HttpClient http, IAuthSession session, I
             cancel.Click += (_, _) => { password.Text = string.Empty; dialog.Cancel(); };
             confirm.Click += async (_, _) =>
             {
+                if (!usageMemory.IsCurrent) { password.Text = string.Empty; dialog.Cancel(); return; }
                 var secret = password.Text ?? string.Empty;
                 password.Text = string.Empty;
                 if (string.IsNullOrWhiteSpace(secret)) { error.Text = LocalizedText.Get("settings.host_time.password_required"); password.Focus(); return; }
                 confirm.IsEnabled = cancel.IsEnabled = false;
                 try
                 {
-                    if ((await authorize(account.Text?.Trim() ?? string.Empty, secret)).Elevated) { dialog.Close(true); return; }
+                    var username = account.Text?.Trim() ?? string.Empty;
+                    if ((await authorize(username, secret)).Elevated && usageMemory.IsCurrent) { usageMemory.RememberAdministrator(username); dialog.Close(true); return; }
                     error.Text = LocalizedText.Get("settings.host_time.password_invalid");
                 }
                 catch (RelaxKonOSAuthException exception) when (HasProblem(exception, "elevation-password-invalid"))

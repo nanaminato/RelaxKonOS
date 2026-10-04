@@ -19,7 +19,7 @@ class TunnelRepositoryTest {
     }
     private val gateway = FakeGateway(); private val session = AuthSession(gateway); private val storage = Storage()
     private val journal = TunnelMutationJournal(storage)
-    private val elevations = ElevationRepository(gateway, session, CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto()))
+    private val elevations = ElevationRepository(gateway, session, CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto()), app.relaxkonos.mobile.data.UsageMemoryStore(app.relaxkonos.mobile.data.InMemoryUsageMemoryStorage()))
     private val repository = TunnelRepository(gateway, session, elevations, journal)
     private val profile = TunnelWire.profile(TUNNEL_PROFILE_JSON)
     private val request = TunnelProfileRequest("edge", "frps.test", 7000, TunnelAuth.Token, TunnelTls.Default, TunnelRuntimeMode.Managed, null, null)

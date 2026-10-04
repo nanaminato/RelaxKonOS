@@ -147,12 +147,14 @@ public partial class LoginViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(ConnectCommand))]
     [NotifyCanExecuteChangedFor(nameof(BootstrapWindowsOwnerDeviceCommand))]
     [NotifyCanExecuteChangedFor(nameof(ConnectOwnerDeviceCommand))]
+    [NotifyCanExecuteChangedFor(nameof(InstallOnThisComputerCommand))]
     private bool _isConnecting;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ConnectCommand))]
     [NotifyCanExecuteChangedFor(nameof(BootstrapWindowsOwnerDeviceCommand))]
     [NotifyCanExecuteChangedFor(nameof(ConnectOwnerDeviceCommand))]
+    [NotifyCanExecuteChangedFor(nameof(InstallOnThisComputerCommand))]
     private bool _isDiscoveringServer;
 
     [ObservableProperty]

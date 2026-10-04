@@ -13,7 +13,7 @@ import org.junit.Test
 class HostSettingsRepositoryTest {
     private class Storage : InstallationRequestStorage { var bytes:ByteArray?=null; override fun read()=bytes; override fun write(bytes:ByteArray){this.bytes=bytes.copyOf()} }
     private val gateway=FakeGateway(); private val session=AuthSession(gateway); private val storage=Storage();private val journal=HostSettingsJournal(storage)
-    private val elevations=ElevationRepository(gateway,session,CredentialVault(InMemoryVaultStorage(),FakeVaultCrypto()))
+    private val elevations=ElevationRepository(gateway,session,CredentialVault(InMemoryVaultStorage(),FakeVaultCrypto()), app.relaxkonos.mobile.data.UsageMemoryStore(app.relaxkonos.mobile.data.InMemoryUsageMemoryStorage()))
     private val repository=HostSettingsRepository(gateway,session,elevations,journal)
     private val target=HostSettingsTarget("host/time","hostMachine",null)
     private val revision="A".repeat(64)

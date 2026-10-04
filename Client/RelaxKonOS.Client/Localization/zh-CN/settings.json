@@ -1,6 +1,11 @@
 {
     "Culture": "zh-CN",
     "Strings": {
+        "settings.usage_memory.title": "使用记忆",
+        "settings.usage_memory.description": "在此设备上记住管理员用户名及各用途的文件选择目录。清除仅影响当前服务器下的当前账户。",
+        "settings.usage_memory.clear": "清除使用记忆",
+        "settings.usage_memory.cleared": "已清除使用记忆。",
+
         "settings.page.applications": "应用",
         "settings.page.default_apps": "默认应用",
         "settings.page.developer": "开发者",

@@ -1,6 +1,11 @@
 {
     "Culture": "en-US",
     "Strings": {
+        "settings.usage_memory.title": "Usage memory",
+        "settings.usage_memory.description": "Remember administrator usernames and file picker directories on this device. Clearing affects the current account on this server.",
+        "settings.usage_memory.clear": "Clear usage memory",
+        "settings.usage_memory.cleared": "Usage memory cleared.",
+
         "settings.page.applications": "Applications",
         "settings.page.default_apps": "Default apps",
         "settings.page.developer": "Developer",

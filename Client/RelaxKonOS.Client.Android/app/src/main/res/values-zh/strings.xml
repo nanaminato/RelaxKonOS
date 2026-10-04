@@ -2753,4 +2753,9 @@
     <string name="server_install_firewall_help">仅修改已开启的防火墙；未开启时提醒，不添加规则，也不启用防火墙。</string>
     <string name="server_install_firewall_disabled">安装成功。主机防火墙未开启，未添加规则。</string>
     <string name="server_install_firewall_added">安装成功，已添加服务器 TCP 端口防火墙规则。</string>
+
+    <string name="usage_memory_title">使用记忆</string>
+    <string name="usage_memory_description">在此设备上记住最后成功使用的管理员用户名及文件选择位置。清除仅影响当前服务器下的当前账户，保留已保存的密码。</string>
+    <string name="usage_memory_clear">清除使用记忆</string>
+    <string name="usage_memory_cleared">已清除使用记忆。</string>
 </resources>

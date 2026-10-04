@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services;
 using System.Diagnostics;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -92,12 +93,12 @@ public sealed class ApplicationDeploymentsApp : RemoteApplicationBase
         {
             var topLevel = TopLevel();
             if (topLevel is null) return null;
-            var selected = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            var selected = await UsageFilePicker.OpenFilePickerAsync(topLevel.StorageProvider, new FilePickerOpenOptions
             {
                 Title = LocalizedText.Get("application_deployments.wizard.choose_local_archive"),
                 AllowMultiple = false,
                 FileTypeFilter = [new FilePickerFileType(LocalizedText.Get("application_deployments.wizard.archive_file_type")) { Patterns = ["*.zip", "*.jar", "*.tar", "*.gz", "*.tgz"] }],
-            });
+            }, UsageMemoryStore.Capture(context), "ApplicationDeployments.deployment-archive");
             var file = selected.FirstOrDefault();
             return file is null ? null : new LocalDeploymentArchive(file.Name, file.OpenReadAsync);
         };
@@ -108,7 +109,7 @@ public sealed class ApplicationDeploymentsApp : RemoteApplicationBase
                 LocalizedText.Get("application_deployments.wizard.choose_server_archive"), dialog =>
                 {
                     var picker = new ExplorerViewModel(explorer,
-                        new ExplorerPickerOptions(ExplorerPickerMode.OpenFile), paths => dialog.Close(paths[0]))
+                        new ExplorerPickerOptions(ExplorerPickerMode.OpenFile), paths => dialog.Close(paths[0]), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "ApplicationDeployments.deployment-archive")
                     {
                         CancelAction = dialog.Cancel,
                     };

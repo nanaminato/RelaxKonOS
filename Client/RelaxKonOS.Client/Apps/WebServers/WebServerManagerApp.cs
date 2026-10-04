@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Installation;
 using RelaxKonOS.Protocol.Installations;
 using Avalonia.Controls;
@@ -60,11 +61,11 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
         {
             var topLevel = Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop ? desktop.MainWindow : null;
             if (topLevel is null) return null;
-            var selected = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            var selected = await UsageFilePicker.OpenFilePickerAsync(topLevel.StorageProvider, new FilePickerOpenOptions
             {
                 Title = LocalizedText.Get("webservers.managed.select_package"), AllowMultiple = false,
                 FileTypeFilter = [new FilePickerFileType(LocalizedText.Get("webservers.managed.package_file_type")) { Patterns = ["*.zip"] }],
-            });
+            }, UsageMemoryStore.Capture(context), "WebServerManager.archive");
             return selected.FirstOrDefault()?.TryGetLocalPath();
         };
         viewModel.ShowManagedDownloadUrlAsync = url => context.ShowDialogAsync<bool?>(window, LocalizedText.Get("webservers.managed.download_title"), dialog => new DownloadUrlDialogView
@@ -113,7 +114,7 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
                         ? new ExplorerFileFilter(LocalizedText.Get("webservers.site.dialog.private_key_filter"), ["*.pem", "*.key"])
                         : new ExplorerFileFilter(LocalizedText.Get("webservers.site.dialog.certificate_filter"), ["*.pem", "*.crt", "*.cer"]);
                     var picker = new ExplorerViewModel(explorer,
-                        new ExplorerPickerOptions(ExplorerPickerMode.OpenFile, Filters: [filter]), paths => dialog.Close(paths[0]))
+                        new ExplorerPickerOptions(ExplorerPickerMode.OpenFile, Filters: [filter]), paths => dialog.Close(paths[0]), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "WebServerManager.archive")
                     {
                         CancelAction = dialog.Cancel,
                     };
@@ -125,7 +126,7 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
             : context.ShowDialogAsync<string?>(window, LocalizedText.Get("webservers.site.dialog.choose_static_root"), dialog =>
             {
                 var picker = new ExplorerViewModel(explorer,
-                    new ExplorerPickerOptions(ExplorerPickerMode.SelectFolder), paths => dialog.Close(paths[0]))
+                    new ExplorerPickerOptions(ExplorerPickerMode.SelectFolder), paths => dialog.Close(paths[0]), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "WebServerManager.certificate")
                 {
                     CancelAction = dialog.Cancel,
                 };
