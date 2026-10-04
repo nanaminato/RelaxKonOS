@@ -182,6 +182,18 @@ Check(windowsStage.Platform == HostPlatformKind.Windows &&
       windows.Uploaded.Keys.Any(path => path.EndsWith("/RelaxKonOS-Deploy.ps1", StringComparison.Ordinal)),
     "Windows 暂存使用内置 PowerShell 启动器");
 
+Check(windows.Uploaded.Keys.All(path => path.StartsWith("/C:/", StringComparison.Ordinal)),
+    "Windows SFTP uploads use an absolute drive path");
+var directoryScript = System.Text.Encoding.Unicode.GetString(Convert.FromBase64String(windows.Commands[0].Split(' ')[^1]));
+Check(directoryScript.Contains("/setowner $u", StringComparison.Ordinal),
+    "Windows staging assigns ownership to the SSH account");
+var embeddedSource = new FileServerCenterReleaseSource();
+var windowsTools = await embeddedSource.ResolveToolsAsync(HostPlatformKind.Windows);
+using var windowsLauncher = windowsTools!.OpenLauncher();
+var prefix = new byte[3];
+Check(windowsLauncher.Read(prefix) == 3 && prefix.SequenceEqual(new byte[] { 0xef, 0xbb, 0xbf }),
+    "Windows launcher preserves UTF-8 for PowerShell 5.1");
+
 var recovery = new FakeTransport();
 foreach (var source in new[] { ServerPackageSourceKind.OfficialStable, ServerPackageSourceKind.RemoteBundle, ServerPackageSourceKind.DirectUrl })
 {

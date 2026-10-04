@@ -238,6 +238,8 @@ public sealed class ServerCenterDeploymentClient(IServerCenterSshTransport trans
                 "[IO.Directory]::CreateDirectory($p)|Out-Null;" +
                 "$u=[Security.Principal.WindowsIdentity]::GetCurrent().Name;" +
                 "& icacls $p /inheritance:r /grant:r ($u+':(OI)(CI)F') 'SYSTEM:(OI)(CI)F' 'Administrators:(OI)(CI)F' *> $null;" +
+                "if($LASTEXITCODE -ne 0){exit 1};" +
+                "& icacls $p /setowner $u *> $null;" +
                 "if($LASTEXITCODE -ne 0){exit 1};[Console]::WriteLine($p)";
             command = "powershell.exe -NoProfile -NonInteractive -EncodedCommand " +
                 Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
@@ -257,7 +259,7 @@ public sealed class ServerCenterDeploymentClient(IServerCenterSshTransport trans
         string fileName, CancellationToken cancellationToken, IProgress<double>? progress = null)
     {
         source.Position = 0;
-        await transport.UploadAsync(source, RemotePath(staged, fileName), progress, cancellationToken)
+        await transport.UploadAsync(source, SftpPath(staged, fileName), progress, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -265,9 +267,12 @@ public sealed class ServerCenterDeploymentClient(IServerCenterSshTransport trans
         string fileName, CancellationToken cancellationToken)
     {
         using var source = new MemoryStream(bytes, writable: false);
-        await transport.UploadAsync(source, RemotePath(staged, fileName), null, cancellationToken)
+        await transport.UploadAsync(source, SftpPath(staged, fileName), null, cancellationToken)
             .ConfigureAwait(false);
     }
+
+    private static string SftpPath(ServerCenterStagedOperation staged, string fileName) =>
+        (staged.Platform == HostPlatformKind.Windows ? "/" : "") + RemotePath(staged, fileName);
 
     private static string RemotePath(ServerCenterStagedOperation staged, string fileName) =>
         staged.RemoteDirectory.TrimEnd('/', '\\').Replace('\\', '/') + '/' + fileName;

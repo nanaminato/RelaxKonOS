@@ -1,4 +1,4 @@
-[CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
+﻿[CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
 param(
     [ValidateSet('auto', 'zh-CN', 'en-US', 'ja-JP')]
     [string] $Language = 'auto',

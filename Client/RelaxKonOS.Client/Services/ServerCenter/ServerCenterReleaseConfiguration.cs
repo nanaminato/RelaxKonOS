@@ -34,7 +34,10 @@ public sealed class FileServerCenterReleaseSource : IServerCenterReleaseSource
             using var source = typeof(FileServerCenterReleaseSource).Assembly.GetManifestResourceStream(
                 "RelaxKonOS.Deployment." + name) ?? throw new InvalidOperationException("The embedded installation script is missing.");
             using var reader = new StreamReader(source, Encoding.UTF8);
-            return new MemoryStream(Encoding.UTF8.GetBytes(reader.ReadToEnd().Replace("\r\n", "\n")), writable: false);
+            var text = reader.ReadToEnd().Replace("\r\n", "\n");
+            // Windows PowerShell 5.1 needs a BOM to recognize UTF-8 scripts.
+            var bytes = Encoding.UTF8.GetBytes(platform == HostPlatformKind.Windows ? "\uFEFF" + text : text);
+            return new MemoryStream(bytes, writable: false);
         }));
     }
 

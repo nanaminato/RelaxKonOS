@@ -1,4 +1,4 @@
-# RelaxKonOS remote deployment launcher (Windows).
+﻿# RelaxKonOS remote deployment launcher (Windows).
 #
 # This is the only thing a client executes over SSH. It accepts a fixed action set and a
 # structured request; it never accepts an arbitrary command, script path, service name or

@@ -1,4 +1,4 @@
-[CmdletBinding(SupportsShouldProcess)]
+﻿[CmdletBinding(SupportsShouldProcess)]
 param(
     [string] $InstallRoot = (Join-Path $env:ProgramFiles 'RelaxKonOS'),
     [string] $ServerExecutable,

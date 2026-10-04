@@ -30,7 +30,8 @@ class ServerCenterUploadAsset(
         fun launcher(assets: AssetManager, platform: ServerHostPlatform): ServerCenterUploadAsset {
             val name = if (platform == ServerHostPlatform.Windows) "RelaxKonOS-Deploy.ps1" else "relaxkonos-deploy.sh"
             return ServerCenterUploadAsset(null) {
-                ByteArrayInputStream(assets.open(name).bufferedReader().use { it.readText() }.replace("\r\n", "\n").toByteArray())
+                val text = assets.open(name).bufferedReader().use { it.readText() }.removePrefix("\uFEFF").replace("\r\n", "\n")
+                ByteArrayInputStream((if (platform == ServerHostPlatform.Windows) "\uFEFF" + text else text).toByteArray(Charsets.UTF_8))
             }
         }
     }
@@ -209,6 +210,7 @@ class ServerCenterDeploymentClient(private val transport: ServerCenterSshTranspo
                     "\$u=[Security.Principal.WindowsIdentity]::GetCurrent().Name;" +
                     "& icacls \$p /inheritance:r /grant:r (\$u+':(OI)(CI)F') 'SYSTEM:(OI)(CI)F' " +
                     "'Administrators:(OI)(CI)F' *> \$null;if(\$LASTEXITCODE -ne 0){exit 1};" +
+                    "& icacls \$p /setowner \$u *> \$null;if(\$LASTEXITCODE -ne 0){exit 1};" +
                     "[Console]::WriteLine(\$p)"
                 "powershell.exe -NoProfile -NonInteractive -EncodedCommand " +
                     Base64Codec.encode(script.toByteArray(Charsets.UTF_16LE))
@@ -232,7 +234,7 @@ class ServerCenterDeploymentClient(private val transport: ServerCenterSshTranspo
         progress: ((Double) -> Unit)? = null,
     ) {
         source.open().use { content ->
-            transport.upload(content, source.contentLength, remotePath(staged, fileName), progress)
+            transport.upload(content, source.contentLength, sftpPath(staged, fileName), progress)
         }
     }
 
@@ -262,6 +264,9 @@ class ServerCenterDeploymentClient(private val transport: ServerCenterSshTranspo
         return "powershell.exe -NoProfile -NonInteractive -EncodedCommand " +
             Base64Codec.encode(command.toByteArray(Charsets.UTF_16LE))
     }
+
+    private fun sftpPath(staged: ServerCenterStagedOperation, fileName: String): String =
+        (if (staged.platform == ServerHostPlatform.Windows) "/" else "") + remotePath(staged, fileName)
 
     private fun remotePath(staged: ServerCenterStagedOperation, fileName: String): String =
         staged.remoteDirectory.trimEnd('/', '\\').replace('\\', '/') + "/" + fileName
