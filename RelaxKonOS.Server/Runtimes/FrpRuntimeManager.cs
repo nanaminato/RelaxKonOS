@@ -18,7 +18,7 @@ public sealed class FrpRuntimeManager(IHostEnvironment environment, IOutboundPro
 {
     private const string RuntimeId = "frp";
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private readonly string _root = Path.Combine(environment.ContentRootPath, "data", "runtimes", RuntimeId);
+    private readonly string _root = Path.Combine(Storage.ServerDataDirectory.Resolve(environment), "runtimes", RuntimeId);
     private readonly FrpRuntimeOptions _options = options.Value;
 
     public async Task<TunnelRuntimeDto> DetectExternalFrpcAsync(string executablePath, CancellationToken ct)

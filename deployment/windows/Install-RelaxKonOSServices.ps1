@@ -331,7 +331,7 @@ $helperSettings = [ordered]@{
     userExecutionTimeoutSeconds = 25
     nginxRoot = (Join-Path $env:ProgramData 'RelaxKonOS\webserver\nginx')
     runtimePrivateRoot = (Join-Path $env:ProgramData 'RelaxKonOS\privileged-runtimes')
-    runtimeArchiveRoots = @((Join-Path (Split-Path -Parent $ServerExecutable) 'data\runtimes\frp'), (Join-Path (Split-Path -Parent $ServerExecutable) 'data\webserver-packages'))
+    runtimeArchiveRoots = @((Join-Path $serverData 'runtimes\frp'), (Join-Path $serverData 'webserver-packages'))
 }
 [IO.File]::WriteAllText($serverHostConfig, ($serverSettings | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
 [IO.File]::WriteAllText($privilegedConfig, ($helperSettings | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))

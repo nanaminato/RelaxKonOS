@@ -22,6 +22,16 @@ static class IndependentComponentServiceChecks
             "Service observation lost applied proof or disclosed runtime credentials.");
         if (OperatingSystem.IsWindows())
         {
+            var physical = root + "-persistent";
+            Directory.CreateDirectory(root); Directory.CreateDirectory(physical);
+            var link = Path.Combine(root, "data");
+            Directory.CreateSymbolicLink(link, physical);
+            try
+            {
+                TestAssert.Assert(RelaxKonOS.Server.Storage.ServerDataDirectory.Resolve(new TestHostEnvironment(root)) == physical,
+                    "Archive staging retained the installer data link instead of its physical target.");
+            }
+            finally { Directory.Delete(link); Directory.Delete(root); Directory.Delete(physical); }
             var job = WindowsComponentJob.Create();
             var info = new System.Diagnostics.ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "ping.exe"))
                 { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };

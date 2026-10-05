@@ -397,3 +397,6 @@ FodyWeavers.xsd
 
 # Trae IDE internal plan/spec scratch
 .trae/
+
+# Local isolated-host orchestration and DPAPI-protected temporary credentials
+.codex-scratch/remote-acceptance/

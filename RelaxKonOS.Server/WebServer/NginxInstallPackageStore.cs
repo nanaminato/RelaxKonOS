@@ -7,7 +7,7 @@ namespace RelaxKonOS.Server.WebServer;
 internal sealed class NginxInstallPackageStore(IHostEnvironment environment, ILogger<NginxInstallPackageStore> logger)
 {
     private const long MaximumPackageBytes = 128L * 1024 * 1024;
-    private readonly string _root = Path.Combine(environment.ContentRootPath, "data", "webserver-packages");
+    private readonly string _root = Path.Combine(Storage.ServerDataDirectory.Resolve(environment), "webserver-packages");
 
     public async Task<string?> SaveAsync(string fileName, Stream content, Func<long, Task>? copied = null, CancellationToken cancellationToken = default)
     {

@@ -126,9 +126,18 @@ internal sealed class WindowsComponentService : ServiceBase
         if (service.Status == ServiceControllerStatus.Running) return;
         service.Start();
         await Task.Run(() => service.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(30)));
-        for (var attempt = 0; attempt < 50; attempt++)
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (DateTime.UtcNow < deadline)
         {
-            if (Snapshot(kind, root, instance).Running) return;
+            var observed = Snapshot(kind, root, instance);
+            if (observed.Running)
+            {
+                // SCM Running only proves the wrapper started. A child can exit as
+                // soon as it binds a conflicting port; do not commit transient readiness.
+                await Task.Delay(1000);
+                var stable = Snapshot(kind, root, instance);
+                if (stable.Running && stable.StartedAt == observed.StartedAt) return;
+            }
             await Task.Delay(100);
         }
         throw new IOException("Independent component process did not become ready.");
@@ -276,7 +285,8 @@ internal sealed class WindowsComponentService : ServiceBase
         var directorySecurity = new DirectoryInfo(Path.GetDirectoryName(path)!).GetAccessControl();
         foreach (FileSystemAccessRule rule in directorySecurity.GetAccessRules(true, true, typeof(SecurityIdentifier)))
             if (rule.AccessControlType == AccessControlType.Allow && (rule.FileSystemRights & (FileSystemRights.Write | FileSystemRights.DeleteSubdirectoriesAndFiles | FileSystemRights.ChangePermissions | FileSystemRights.TakeOwnership)) != 0
-                && rule.IdentityReference.Value is not ("S-1-5-18" or "S-1-5-32-544")) throw new UnauthorizedAccessException("Component host directory is writable by an untrusted identity.");
+                && rule.IdentityReference.Value is not ("S-1-5-18" or "S-1-5-32-544" or "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"))
+                throw new UnauthorizedAccessException("Component host directory is writable by an untrusted identity.");
     }
     protected override void OnStart(string[] args)
     {
