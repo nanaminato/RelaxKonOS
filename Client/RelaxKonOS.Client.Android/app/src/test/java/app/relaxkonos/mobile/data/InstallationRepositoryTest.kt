@@ -49,11 +49,44 @@ class InstallationRepositoryTest {
         signIn("bob"); val other = session.state.value as SessionState.Active
         assertTrue(runCatching { repository.identifyOriginal(other, pending, id) }.isFailure)
     }
+    @Test fun `polling a verified Mihomo ID resolves its persisted installation marker`() = runTest {
+        val owner = signIn(capability = ServerCapabilities.PROXY)
+        val pending = journal.begin(owner, InstallationService.Mihomo, InstallationKind.Install, "digest")
+        journal.update(pending.copy(attempted = true, operationId = id))
+        gateway.onInstallation = { ApiResult.Success(operation.copy(service = InstallationService.Mihomo, state = InstallationState.Succeeded)) }
+        assertTrue(repository.operation(owner, id) is ApiResult.Success)
+        assertTrue(repository.pending(owner).isEmpty())
+    }
+
+    @Test fun `successful Mihomo facts do not resolve an installation with unknown ownership`() = runTest {
+        val owner = signIn(capability = ServerCapabilities.PROXY)
+        val pending = journal.begin(owner, InstallationService.Mihomo, InstallationKind.Install, "digest")
+        journal.update(pending.copy(attempted = true))
+        gateway.onInstallation = { ApiResult.Success(operation.copy(service = InstallationService.Mihomo, state = InstallationState.Succeeded)) }
+        assertTrue(repository.operation(owner, id) is ApiResult.Success)
+        assertEquals(1, repository.pending(owner).size)
+        assertTrue(repository.identifyOriginal(owner, repository.pending(owner).single(), id) is ApiResult.Success)
+        assertTrue(repository.pending(owner).isEmpty())
+    }
     private suspend fun signIn(account: String = "alice", privileged: Boolean = true, capability: String = ServerCapabilities.WEB_SERVER): SessionState.Active {
         val login = loginSession().let { it.copy(server = it.server.copy(capabilities = setOf(capability), privilegedOperations = privileged)) }
         gateway.onLogin = { _, _, _ -> ApiResult.Success(login.copy(userName = account)) }
         session.login(ServerConnectionIdentityRules.direct("https://example.test"), account, "pw".toCharArray()) {}
         return session.state.value as SessionState.Active
+    }
+
+    @Test fun `explicit current facts clear unknown installation only when no host task is active`() = runTest {
+        val owner = signIn(capability = ServerCapabilities.PROXY)
+        val pending = journal.begin(owner, InstallationService.Mihomo, InstallationKind.Install, "digest")
+        gateway.onActiveInstallation = { ApiResult.Transport(null) }
+        assertTrue(repository.acceptCurrentFacts(owner, pending) is ApiResult.Transport)
+        assertEquals(1, repository.pending(owner).size)
+        gateway.onActiveInstallation = { ApiResult.Success(operation.copy(service = InstallationService.Mihomo)) }
+        assertTrue(repository.acceptCurrentFacts(owner, pending) is ApiResult.Problem)
+        assertEquals(1, repository.pending(owner).size)
+        gateway.onActiveInstallation = { ApiResult.Success(null) }
+        assertTrue(repository.acceptCurrentFacts(owner, pending) is ApiResult.Success)
+        assertTrue(repository.pending(owner).isEmpty())
     }
 
     @Test fun `Docker install grants exact capability and preserves original key with typed confirmed request`() = runTest {

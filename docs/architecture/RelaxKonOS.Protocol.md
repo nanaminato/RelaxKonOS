@@ -353,7 +353,7 @@ Compose 编排的**每个变更都是持久操作，不是同步结果**（`stac
 | POST / PUT | `/api/v1.0/tunnels` / `/api/v1.0/tunnels/{tunnelId}` | `UpsertTunnelDefinitionRequest` → definition；创建 201，更新 200，revision 冲突 409 | TunnelsManage |
 | DELETE | `/api/v1.0/tunnels/{tunnelId}` | 204，不隐式应用运行配置，不提供 revision CAS | TunnelsManage |
 
-Profile Token 不通过任何 GET 返回，没有 Token DELETE、multipart 秘密或配置下载接口。应用、停止与配置变更是同步 API，没有领域 operation ID、PID 响应、`Idempotency-Key` 或取消接口。Windows 受管 profile 生命周期另需 `FrpLifecycle + profileId` 授权。客户端未知结果需读取当前事实，不能把请求重发或当前资源存在当作原动作已成功。
+Profile Token 通过配置 GET 返回，编辑器直接回填显示，没有 Token DELETE、multipart 秘密或配置下载接口。应用、停止与配置变更是同步 API，没有领域 operation ID、PID 响应、`Idempotency-Key` 或取消接口。Windows 受管 profile 生命周期另需 `FrpLifecycle + profileId` 授权。客户端未知结果需读取当前事实，不能把请求重发或当前资源存在当作原动作已成功。
 
 Provider 以应用时 profile revision、隧道 ID/revision 集合和受保护 Token 的内存指纹区分运行配置与当前期望状态：运行中发生修改投影 `savedNotApplied`；缺少应用身份为 `unknown`；禁用项不显示连接。指纹不进入 DTO，重启后没有凭据证明便不推断当前配置已应用。`connected` 只证明 frpc 的服务器登录，不证明每个 proxy 注册或公网访问。
 
@@ -371,16 +371,16 @@ Provider 以应用时 profile revision、隧道 ID/revision 集合和受保护 T
 
 | 方法 | 路径 | 请求 / 响应 | 策略 |
 | --- | --- | --- | --- |
-| GET | `/api/v1.0/tunnels/frps` | 安全 `ManagedFrpsConfigurationDto`，不返回 Token | TunnelsRead |
-| GET | `/api/v1.0/tunnels/frps/editor` | 编辑 DTO，含当前 Token；成功读取秘密有审计，不返回 dashboard 密码 | TunnelsManage |
-| PUT | `/api/v1.0/tunnels/frps` | `UpdateManagedFrpsConfigurationRequest` → 安全 DTO；要求 confirmed 与必需 expectedRevision（首次 0，冲突 409） | TunnelsManage |
+| GET | `/api/v1.0/tunnels/frps` | `ManagedFrpsConfigurationDto`，含保存的 Token 和 Dashboard 密码 | TunnelsRead |
+| GET | `/api/v1.0/tunnels/frps/editor` | 编辑 DTO，含当前 Token 和 Dashboard 密码；成功读取有审计 | TunnelsManage |
+| PUT | `/api/v1.0/tunnels/frps` | `UpdateManagedFrpsConfigurationRequest` → 含保存凭据的 DTO；要求 confirmed 与必需 expectedRevision（首次 0，冲突 409） | TunnelsManage |
 | POST | `/api/v1.0/tunnels/frps/start`、`/stop` | 同步 `TunnelOperationResultDto`，无 PID/operation ID | TunnelsManage |
 | GET | `/api/v1.0/tunnels/frps/logs` | 有界脱敏 `TunnelLogEntryDto[]` | TunnelsRead |
 | GET | `/api/v1.0/tunnels/frps/audit` | 有界配置/生命周期/秘密读取 `TunnelAuditEntryDto[]`，不接收 limit/skip | TunnelsRead |
 
-frps DTO 必需 `revision/appliedRevision`：首次未配置 revision=0；保存版本为正数，应用版本仅在活跃进程已核实时返回。保存推进 revision，不重启或重新应用运行配置；活跃进程应用版本不同的 Start 返回 `tunnel.frps_restart_required`。成功 Stop 返回 disconnected，不能返回 connected。Linux 重新打开配置但缺少原进程归属时返回 Unknown，并拒绝宣称停止未知进程；不按名称杀进程。配置记录直接采用必需 revision 的当前格式，不解析旧格式。PUT 不回传 Token，空白替换保留已存 Token/dashboard 密码。
+frps DTO 必需 `revision/appliedRevision`：首次未配置 revision=0；保存版本为正数，应用版本仅在活跃进程已核实时返回。保存推进 revision，不重启或重新应用运行配置；活跃进程应用版本不同的 Start 返回 `tunnel.frps_restart_required`。成功 Stop 返回 disconnected，不能返回 connected。Linux 重新打开配置但缺少原进程归属时返回 Unknown，并拒绝宣称停止未知进程；不按名称杀进程。配置记录直接采用必需 revision 的当前格式，不解析旧格式。PUT 返回保存的 Token/dashboard 密码，空白替换保留已存值。
 
-Windows frps 生命周期另需 `FrpLifecycle + frps` 授权。frps Token 编辑读取与 profile Token 写入式接口具有不同边界；不得将两者写成共享秘密读取 API。日志与审计不返回 TOML、受保护密钥载荷或 dashboard 密码。
+Windows frps 生命周期另需 `FrpLifecycle + frps` 授权。Profile 与 frps 配置读取均返回保存凭据，客户端直接显示；frps 编辑读取保留独立的审计。日志与审计不返回 TOML、受保护密钥载荷或 dashboard 密码。
 
 ### Certificates / WebServers（V1 后端）
 

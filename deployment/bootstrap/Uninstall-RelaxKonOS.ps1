@@ -37,6 +37,10 @@ $Text = @{
     'ja-JP' = @{ title = 'RelaxKonOS アンインストーラー'; elevation = '管理者権限が必要です。UAC 昇格を要求します。'; confirm = 'RelaxKonOS のサービスとプログラムファイルを削除しますか？ [y/N]'; keepData = 'データディレクトリを保持します:'; removed = 'アンインストールが完了しました。'; dataRemoved = 'データディレクトリを削除しました。'; dataKept = '-RemoveData を指定しないため、データディレクトリを保持しました。'; dataConfirm = 'データを削除するには -RemoveData と -ConfirmRemoveData の両方が必要です。'; foreign = '別のインストールに記録されたデータディレクトリは削除しません。'; idMismatch = 'ホストのインストール ID がリクエストと一致しません。'; unrecognized = '認識できないインストール ディレクトリは削除しません: ' }
 }[$Language]
 
+if ($WhatIfPreference) {
+    [void]$PSCmdlet.ShouldProcess($InstallRoot, 'Uninstall RelaxKonOS (clean managed components first when removing data)')
+    return
+}
 if ($Mode -eq 'windowsSystem' -and -not (Test-Administrator)) {
     Write-Host $Text.elevation
     $elevationArguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Quote-Argument $PSCommandPath), '-Language', $Language,
@@ -54,6 +58,11 @@ if ($Mode -eq 'windowsSystem' -and -not (Test-Administrator)) {
 
 $InstallRoot = [IO.Path]::GetFullPath($InstallRoot)
 $DataRoot = [IO.Path]::GetFullPath($DataRoot)
+if ($InstallRoot.TrimEnd('\') -eq $DataRoot.TrimEnd('\') -or
+    $InstallRoot.StartsWith($DataRoot.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase) -or
+    $DataRoot.StartsWith($InstallRoot.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Install and data paths must not overlap.'
+}
 $statePath = Join-Path $DataRoot 'install-state.json'
 
 # The install-state file is the only authority for what this engine may remove. It must record this
@@ -82,6 +91,52 @@ if (-not $NonInteractive) {
     if ((Read-Host $Text.confirm) -notmatch '^(y|yes)$') { return }
 }
 
+function Invoke-ManagedComponentCleanup {
+    $serverCandidates = @(
+        (Join-Path $InstallRoot 'current\server\RelaxKonOS.Server.exe'),
+        (Join-Path $InstallRoot 'runtime\server\RelaxKonOS.Server.exe'),
+        (Join-Path $InstallRoot 'server\RelaxKonOS.Server.exe')
+    )
+    $cleanupServer = $serverCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+    if (-not $cleanupServer) { throw 'Managed component cleanup requires the installed Server executable; data was preserved.' }
+    $originalDotnetEnvironment = $env:DOTNET_ENVIRONMENT
+    $originalAspnetEnvironment = $env:ASPNETCORE_ENVIRONMENT
+    try {
+        $env:DOTNET_ENVIRONMENT = 'Production'
+        $env:ASPNETCORE_ENVIRONMENT = 'Production'
+        & $cleanupServer '--contentRoot' (Split-Path -Parent $cleanupServer) '--maintenance=remove-managed-components' '--maintenanceDataRoot' $DataRoot
+        if ($LASTEXITCODE -ne 0) { throw 'Managed component cleanup failed; program files and data were preserved for repair.' }
+    } finally {
+        $env:DOTNET_ENVIRONMENT = $originalDotnetEnvironment
+        $env:ASPNETCORE_ENVIRONMENT = $originalAspnetEnvironment
+    }
+    $receipt = Join-Path $DataRoot 'server\deployment\component-cleanup.json'
+    if (-not (Test-Path -LiteralPath $receipt -PathType Leaf)) { throw 'Managed component cleanup produced no receipt; data was preserved.' }
+    $cleanupReceipt = Get-Content -LiteralPath $receipt -Raw | ConvertFrom-Json
+    $componentNames = @($cleanupReceipt.Components | ForEach-Object { $_.Component }) -join ','
+    if ($cleanupReceipt.Succeeded -isnot [bool] -or -not $cleanupReceipt.Succeeded -or
+        $componentNames -ne 'smb,nginx,frp,mihomo' -or
+        @($cleanupReceipt.Components | Where-Object { $_.Succeeded -isnot [bool] -or -not $_.Succeeded }).Count -ne 0) {
+        throw 'Managed component cleanup receipt is incomplete; data was preserved.'
+    }
+    $cleanupReceipt = Get-Content -LiteralPath $receipt -Raw | ConvertFrom-Json
+    $componentNames = @($cleanupReceipt.Components | ForEach-Object { $_.Component }) -join ','
+    if ($cleanupReceipt.Succeeded -isnot [bool] -or -not $cleanupReceipt.Succeeded -or
+        $componentNames -ne 'smb,nginx,frp,mihomo' -or
+        @($cleanupReceipt.Components | Where-Object { $_.Succeeded -isnot [bool] -or -not $_.Succeeded }).Count -ne 0) {
+        throw 'Managed component cleanup receipt is incomplete; data was preserved.'
+    }
+    $receiptRoot = if ($Mode -eq 'windowsUser') { Join-Path $env:LOCALAPPDATA 'RelaxKonOS-Deployment' } else { Join-Path $env:ProgramData 'RelaxKonOS-Deployment' }
+    New-Item -ItemType Directory -Path $receiptRoot -Force | Out-Null
+    Copy-Item -LiteralPath $receipt -Destination (Join-Path $receiptRoot 'component-cleanup.json') -Force
+}
+if ($RemoveData -and $Mode -eq 'windowsSystem') {
+    if (-not ($NonInteractive -or $PSCmdlet.ShouldProcess($DataRoot, 'Clean up managed components before removing data'))) { return }
+    foreach ($name in @('RelaxKonOSServer', 'RelaxKonOSGuardian')) {
+        if (Get-Service -Name $name -ErrorAction SilentlyContinue) { Stop-Service -Name $name -Force -ErrorAction Stop }
+    }
+    Invoke-ManagedComponentCleanup
+}
 if ($Mode -eq 'windowsUser') {
     if (Test-Administrator) { throw 'Personal uninstall must run without elevation.' }
     $prefix = [IO.Path]::GetFullPath($env:LOCALAPPDATA).TrimEnd('\') + '\RelaxKonOS-Personal\'
@@ -89,8 +144,9 @@ if ($Mode -eq 'windowsUser') {
     if (-not $state -or $state.mode -ne 'windowsUser') { throw 'No recognized personal installation.' }
     . (Join-Path $InstallRoot 'deployment\windows\RelaxKonOSPersonalRuntime.ps1')
     . (Join-Path $InstallRoot 'deployment\windows\RelaxKonOSPersonalPrivileges.ps1')
-    Set-PersonalPrivileges $InstallRoot $DataRoot ([string]$state.version) -Action 'uninstall'
     Stop-PersonalServer $InstallRoot $DataRoot
+    if ($RemoveData) { Invoke-ManagedComponentCleanup }
+    Set-PersonalPrivileges $InstallRoot $DataRoot ([string]$state.version) -Action 'uninstall'
     Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'RelaxKonOSPersonal' -ErrorAction SilentlyContinue
 }
 $serviceNames = if ($Mode -eq 'windowsUser') { @() } else { @('RelaxKonOSServer', 'RelaxKonOSGuardian', 'RelaxKonOSPrivilegedHelper') }
@@ -115,6 +171,37 @@ $ownedFiles = @(
 $hasOwnedPayload = (Test-Path -LiteralPath $versionsRoot -PathType Container) -or (Test-Path -LiteralPath $currentLink) -or
     [bool]($ownedFiles | Where-Object { Test-Path -LiteralPath (Join-Path $InstallRoot $_) -PathType Leaf })
 if ($hasOwnedPayload -and ($NonInteractive -or $PSCmdlet.ShouldProcess($InstallRoot, 'Remove RelaxKonOS program files'))) {
+    if (-not $RemoveData -and $Mode -eq 'windowsSystem') {
+        $hostConfigurations = @(
+            (Join-Path $InstallRoot 'current\server\appsettings.host.json'),
+            (Join-Path $InstallRoot 'runtime\server\appsettings.host.json'),
+            (Join-Path $InstallRoot 'server\appsettings.host.json')
+        )
+        $hostConfiguration = $hostConfigurations | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+        if ($hostConfiguration) {
+            $retainedDeployment = Join-Path $DataRoot 'deployment'
+            New-Item -ItemType Directory -Path $retainedDeployment -Force | Out-Null
+            & icacls $retainedDeployment /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'Administrators:(OI)(CI)F' | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Could not protect retained deployment settings.' }
+            Copy-Item -LiteralPath $hostConfiguration -Destination (Join-Path $retainedDeployment 'appsettings.host.json') -Force
+        }
+    }
+    # Detach persistent data junctions before deleting payloads on any PowerShell version.
+    $payloadRoots = @($InstallRoot, (Join-Path $InstallRoot 'runtime'), (Join-Path $InstallRoot 'current'))
+    if (Test-Path -LiteralPath $versionsRoot -PathType Container) {
+        $payloadRoots += @(Get-ChildItem -LiteralPath $versionsRoot -Directory -Force | ForEach-Object { $_.FullName })
+    }
+    foreach ($payloadRoot in $payloadRoots) {
+        $dataLink = Join-Path $payloadRoot 'server\data'
+        if (-not (Test-Path -LiteralPath $dataLink)) { continue }
+        $link = Get-Item -LiteralPath $dataLink -Force
+        if (($link.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0) { continue }
+        $expectedTarget = [IO.Path]::GetFullPath((Join-Path $DataRoot 'server')).TrimEnd('\')
+        if ([IO.Path]::GetFullPath([string]$link.Target).TrimEnd('\') -ne $expectedTarget) {
+            throw 'Refusing to remove a payload with a foreign Server data junction.'
+        }
+        [IO.Directory]::Delete($dataLink, $false)
+    }
     Remove-Item -LiteralPath $InstallRoot -Recurse -Force
 }
 elseif (Test-Path -LiteralPath $InstallRoot) {

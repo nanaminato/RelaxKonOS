@@ -38,7 +38,7 @@ class FakeGateway : RelaxKonGateway {
     var onHostTime: (suspend () -> ApiResult<HostTimeSettings>)? = null
     var onHostIdentity: (suspend () -> ApiResult<HostIdentitySettings>)? = null
     var onHostEnvironmentTarget: (suspend (HostEnvironmentScope) -> ApiResult<HostSettingsTarget>)? = null
-    var onHostEnvironment: (suspend (HostEnvironmentScope, Boolean) -> ApiResult<HostEnvironmentSettings>)? = null
+    var onHostEnvironment: (suspend (HostEnvironmentScope) -> ApiResult<HostEnvironmentSettings>)? = null
     var onHostPreview: (suspend (HostSettingKind, String, String, String?, HostEnvironmentScope?, HostEnvironmentMutation?, Boolean) -> ApiResult<HostSettingsPlan>)? = null
     var onHostApply: (suspend (HostSettingKind, String) -> ApiResult<HostSettingsOperation>)? = null
     var onHostOperation: (suspend (String) -> ApiResult<HostSettingsOperation>)? = null
@@ -46,7 +46,7 @@ class FakeGateway : RelaxKonGateway {
     override suspend fun hostTime(serverUrl: String, accessToken: String) = requireHandler(onHostTime, "hostTime")()
     override suspend fun hostIdentity(serverUrl: String, accessToken: String) = requireHandler(onHostIdentity, "hostIdentity")()
     override suspend fun hostEnvironmentTarget(serverUrl: String, accessToken: String, scope: HostEnvironmentScope) = requireHandler(onHostEnvironmentTarget, "hostEnvironmentTarget")(scope)
-    override suspend fun hostEnvironment(serverUrl: String, accessToken: String, scope: HostEnvironmentScope, reveal: Boolean) = requireHandler(onHostEnvironment, "hostEnvironment")(scope, reveal)
+    override suspend fun hostEnvironment(serverUrl: String, accessToken: String, scope: HostEnvironmentScope) = requireHandler(onHostEnvironment, "hostEnvironment")(scope)
     override suspend fun previewHostSettings(serverUrl: String, accessToken: String, kind: HostSettingKind, expectedRevision: String, key: String, value: String?, scope: HostEnvironmentScope?, mutation: HostEnvironmentMutation?, confirmHighImpact: Boolean) = requireHandler(onHostPreview, "hostPreview")(kind, expectedRevision, key, value, scope, mutation, confirmHighImpact)
     override suspend fun applyHostSettings(serverUrl: String, accessToken: String, kind: HostSettingKind, planId: String) = requireHandler(onHostApply, "hostApply")(kind, planId)
     override suspend fun hostSettingsOperation(serverUrl: String, accessToken: String, id: String) = requireHandler(onHostOperation, "hostOperation")(id)

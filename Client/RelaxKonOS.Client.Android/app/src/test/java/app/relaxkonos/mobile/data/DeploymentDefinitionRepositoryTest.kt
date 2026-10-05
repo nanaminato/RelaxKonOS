@@ -87,9 +87,9 @@ class DeploymentDefinitionRepositoryTest {
         assertEquals("application-deployment.definition_conflict", (result.result as ApiResult.Problem).code)
         assertEquals(1, sends); assertFalse(result.mayHaveSaved)
     }
-    @Test fun `secret rotation readback verifies a new version and preserves null response bodies`() {
+    @Test fun `secret rotation readback verifies the saved value and version`() {
         val request = request().copy(configuration = baseline.configuration.map { if (it.isSecret) it.copy(value = "new-secret") else it })
-        val receipt = baseline.copy(name = request.name, updatedAt = "2026-10-01T00:00:01Z", configuration = baseline.configuration.map { if (it.isSecret) it.copy(secretVersion = 8) else it })
+        val receipt = baseline.copy(name = request.name, updatedAt = "2026-10-01T00:00:01Z", configuration = baseline.configuration.map { if (it.isSecret) it.copy(value = "new-secret", secretVersion = 8) else it })
         assertTrue(request.matchesReceipt(receipt, baseline))
         assertFalse(request.matchesReceipt(receipt.copy(configuration = baseline.configuration), baseline))
     }

@@ -44,12 +44,12 @@ relaxkonos-dev settings --server https://remote.example:5001 apply-hostname --id
 
 ## Environment variables
 
-Select the remote scope `hostUser` or `hostMachine`. Discover the server-bound authorization target with `environment-target`. The same JWT needs an existing `HostEnvironmentRead` grant for that target, including preview and rollback readback. Apply/rollback also require `HostEnvironmentChange`; `--reveal` additionally requires `HostEnvironmentReveal`. The CLI never requests or expands grants automatically. Reads return masked values by default; explicit reveal writes raw values to standard output.
+Environment reads require HostEnvironmentRead and return complete values. Changes require HostEnvironmentChange; the CLI does not request grants automatically.
 
 ```sh
 relaxkonos-dev settings --server https://remote.example:5001 environment-target --scope hostUser
 relaxkonos-dev settings --server https://remote.example:5001 environment --scope hostUser
-relaxkonos-dev settings --server https://remote.example:5001 environment --scope hostUser --reveal
+relaxkonos-dev settings --server https://remote.example:5001 environment --scope hostUser
 relaxkonos-dev settings --server https://remote.example:5001 preview-environment --scope hostUser --revision <snapshot-revision> --idempotency-key <unique-key> --changes changes.json
 relaxkonos-dev settings --server https://remote.example:5001 apply-environment --id <reviewed-plan-id>
 relaxkonos-dev settings --server https://remote.example:5001 operation --id <plan-id>

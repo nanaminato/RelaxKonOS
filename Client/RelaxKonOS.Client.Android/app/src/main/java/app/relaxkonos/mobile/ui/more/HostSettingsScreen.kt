@@ -3,6 +3,7 @@ package app.relaxkonos.mobile.ui.more
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextOverflow
@@ -10,6 +11,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -80,14 +83,21 @@ internal class HostSettingsEditor(val owner: SessionState.Active, private val re
     }
     fun load() {
         if (!resumed || busy || dirty) return
-        execute {
-            references = repository.references(owner)
-            when(kind) {
-                HostSettingKind.Time -> consume(repository.time(owner)) { time = it; value = it.zoneId }
-                HostSettingKind.Identity -> consume(repository.identity(owner)) { identity = it; value = it.pendingName }
-                HostSettingKind.Environment -> loadEnvironment()
-
-            }
+        execute { references = repository.references(owner); reloadFacts() }
+    }
+    /**
+     * Read the facts of the selected kind back from the host.
+     *
+     * [load] cannot be reused right after a write: it refuses while the editor is busy or dirty, and both
+     * are still true at that moment — the write is the request in flight and the field still holds the
+     * submitted value. Dropping the facts instead, which is what this used to do, left the page with
+     * nothing to show until the user pressed refresh, so an applied change looked like no change at all.
+     */
+    private suspend fun reloadFacts() {
+        when(kind) {
+            HostSettingKind.Time -> consume(repository.time(owner)) { time = it; value = it.zoneId }
+            HostSettingKind.Identity -> consume(repository.identity(owner)) { identity = it; value = it.pendingName }
+            HostSettingKind.Environment -> loadEnvironment()
         }
     }
     private suspend fun loadEnvironment() {
@@ -97,7 +107,7 @@ internal class HostSettingsEditor(val owner: SessionState.Active, private val re
         environmentAuthorizationScopes = emptySet()
         val scopes = if (windows) listOf(HostEnvironmentScope.HostUser, HostEnvironmentScope.HostMachine) else listOf(environmentScope)
         for (targetScope in scopes) {
-            val result = repository.environment(owner,targetScope,true,provider)
+            val result = repository.environment(owner,targetScope,provider)
             if (result is ApiResult.Problem && (result.status in setOf(401,403) ||
                     result.code in setOf(ProblemCodes.ELEVATION_REQUIRED,"settings.elevation_required","settings.environment.authorization_required"))) {
                 if (current() && resumed) {
@@ -136,8 +146,13 @@ internal class HostSettingsEditor(val owner: SessionState.Active, private val re
         if (!resumed || busy) return
         plan = null
         execute(true) {
-            try { consume(repository.apply(owner,kind,reviewed,provider)) { operations = operations + (it.id to it) } }
-            finally { if (current() && currentCoroutineContext().isActive) { references = repository.references(owner); discard(); environment = null; time = null; identity = null; value = ""; if (kind == HostSettingKind.Environment) loadEnvironment() } }
+            try { consume(repository.apply(owner,kind,reviewed,provider)) { operations = operations + (it.id to it); writeInFlight = false } }
+            // The host is read back before the busy flag drops, so an applied change is visible on this
+            // page immediately instead of after a manual refresh. The write itself is over, so a failure
+            // here is a read problem and must not be reported as an unknown write outcome.
+            finally { if (current() && currentCoroutineContext().isActive) {
+                references = repository.references(owner); environment = null; time = null; identity = null; discard(); reloadFacts()
+            } }
         }
     }
     fun query(ref: HostSettingsReference) { if (resumed && !busy) execute { consume(repository.operation(owner,ref)) { operations = operations + (it.id to it) }; references = repository.references(owner) } }
@@ -146,8 +161,10 @@ internal class HostSettingsEditor(val owner: SessionState.Active, private val re
     fun rollback() {
         val review = rollbackReview ?: return; rollbackReview = null
         if (!resumed || busy) return
-        execute(true) { try { consume(repository.rollback(owner,review.first,review.second,provider)) { operations = operations + (it.id to it) } }
-            finally { if(current() && currentCoroutineContext().isActive) { references = repository.references(owner); discard(); time = null; identity = null; environment = null; value = ""; if (kind == HostSettingKind.Environment) loadEnvironment() } } }
+        execute(true) { try { consume(repository.rollback(owner,review.first,review.second,provider)) { operations = operations + (it.id to it); writeInFlight = false } }
+            finally { if(current() && currentCoroutineContext().isActive) {
+                references = repository.references(owner); time = null; identity = null; environment = null; discard(); reloadFacts()
+            } } }
     }
     fun leave(onBack: () -> Unit) { if (!busy) { if(dirty) leaveReview = true else onBack() } }
     fun dismissLeave() { leaveReview = false }
@@ -210,21 +227,55 @@ fun HostSettingsScreen(onBack: (() -> Unit)?, onOpenServerHttps: () -> Unit = {}
         RefreshProgressIndicator(visible = editor.busy)
         when(editor.kind) {
             HostSettingKind.Time -> editor.time?.let { facts ->
-                KeyValueRow(stringResource(R.string.host_settings_current), facts.zoneId)
-                KeyValueRow(stringResource(R.string.host_settings_observed), facts.observedAt)
-                Text(stringResource(effectLabel(facts.effectiveState)))
-                Text(stringResource(R.string.host_settings_zones, facts.zones.size))
-                OutlinedTextField(editor.value,{ if(it.length<=256) editor.value=it },label={Text(stringResource(R.string.host_settings_zone))},enabled=!editor.busy,singleLine=true,modifier=Modifier.fillMaxWidth())
-                // Filter suggestions rather than placing the remote zone database in a menu.
-                facts.zones.filter { it.contains(editor.value,ignoreCase=true) }.take(12).forEach { zone ->
-                    TextButton(onClick={editor.value=zone},enabled=!editor.busy) { Text(zone) }
+                val deviceZone = remember { java.util.TimeZone.getDefault().id }
+                val observedMillis = IsoInstant.toEpochMillis(facts.observedAt)
+                // Offsets are read at the moment the host reported, so a label can never disagree with
+                // the "current value" it sits next to.
+                val offsetAt = observedMillis ?: System.currentTimeMillis()
+                SectionCard(stringResource(R.string.host_settings_current)) {
+                    KeyValueRow(stringResource(R.string.host_settings_zone), facts.zoneId)
+                    KeyValueRow(stringResource(R.string.host_settings_zone_offset), HostTimeZoneChoices.offsetLabel(facts.zoneId,offsetAt) ?: "—")
+                    KeyValueRow(stringResource(R.string.host_settings_effect), stringResource(effectLabel(facts.effectiveState)))
+                    KeyValueRow(stringResource(R.string.host_settings_observed), formatTimestamp(observedMillis).orEmpty())
+                }
+                SectionCard(stringResource(R.string.host_settings_zone), subtitle=stringResource(R.string.host_settings_zones,facts.zones.size)) {
+                    var browsing by remember { mutableStateOf(false) }
+                    // An ID the host does not list cannot be previewed, so the field has to say why instead
+                    // of leaving the user with a disabled button.
+                    val supported = editor.value.isBlank() || editor.value in facts.zones
+                    val unsupported: (@Composable () -> Unit)? = if(supported) null else { { Text(stringResource(R.string.host_settings_zone_unsupported)) } }
+                    OutlinedTextField(editor.value,{ if(it.length<=256) editor.value=it },label={Text(stringResource(R.string.host_settings_zone))},
+                        enabled=!editor.busy,singleLine=true,isError=!supported,supportingText=unsupported,
+                        trailingIcon=if(editor.value.isEmpty()) null else { { IconButton(onClick={editor.value=""},enabled=!editor.busy) { Icon(Icons.Filled.Close,contentDescription=stringResource(R.string.host_settings_zone_clear)) } } },
+                        modifier=Modifier.fillMaxWidth())
+                    // Typing is the shortcut, not the only way in: knowing that Shanghai lives under
+                    // Asia, or that the list runs to hundreds of IDs, is not something to ask of the user.
+                    TextButton(onClick={browsing=true},enabled=!editor.busy) { Text(stringResource(R.string.host_settings_zone_browse)) }
+                    // A bounded list rather than one row per match: the host ships hundreds of IDs, and
+                    // laying the first twelve of them out inline pushed the plan actions off the page.
+                    val featured = editor.value.isBlank()
+                    val matches = HostTimeZoneChoices.matchCount(facts.zones,editor.value)
+                    val choices = HostTimeZoneChoices.suggestions(facts.zones,editor.value,facts.zoneId,deviceZone)
+                    if (choices.isEmpty()) EmptyHint(stringResource(R.string.host_settings_zone_no_match))
+                    else {
+                        Text(stringResource(if(featured) R.string.host_settings_zone_featured else R.string.host_settings_zone_matches,matches),style=MaterialTheme.typography.titleSmall)
+                        LazyColumn(Modifier.fillMaxWidth().heightIn(max=264.dp)) {
+                            itemsIndexed(choices,key={_,zone -> zone}) { index,zone ->
+                                if(index>0) HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant.copy(alpha=0.5f))
+                                TimeZoneRow(zone,facts.zoneId,deviceZone,editor.value,offsetAt,!editor.busy) { editor.value=zone }
+                            }
+                        }
+                        if(matches>choices.size) Text(stringResource(R.string.host_settings_zone_matches_limited,choices.size),style=MaterialTheme.typography.bodySmall)
+                    }
+                    if(browsing) HostTimeZonePicker(facts.zones,facts.zoneId,deviceZone,editor.value,offsetAt,!editor.busy,
+                        { editor.value=it; browsing=false },{ browsing=false })
                 }
             }
             HostSettingKind.Identity -> editor.identity?.let { facts ->
                 KeyValueRow(stringResource(R.string.host_settings_current),facts.name)
                 KeyValueRow(stringResource(R.string.host_settings_pending_name),facts.pendingName)
-                KeyValueRow(stringResource(R.string.host_settings_observed),facts.observedAt)
-                Text(stringResource(effectLabel(facts.effectiveState)))
+                KeyValueRow(stringResource(R.string.host_settings_observed),formatTimestamp(IsoInstant.toEpochMillis(facts.observedAt)).orEmpty())
+                Text(stringResource(R.string.host_settings_effect,stringResource(effectLabel(facts.effectiveState))))
                 OutlinedTextField(editor.value,{ if(it.length<=facts.maximumLength) editor.value=it },label={Text(stringResource(R.string.host_settings_hostname))},enabled=!editor.busy,singleLine=true,modifier=Modifier.fillMaxWidth())
                 Text(stringResource(R.string.host_settings_hostname_rule,facts.maximumLength),style=MaterialTheme.typography.bodySmall)
             }
@@ -241,8 +292,8 @@ fun HostSettingsScreen(onBack: (() -> Unit)?, onOpenServerHttps: () -> Unit = {}
                 } else {
                 editor.environment?.let { facts ->
                     Text(facts.target.resourceId,style=MaterialTheme.typography.bodySmall)
-                    Text(stringResource(effectLabel(facts.effectiveState)))
-                    KeyValueRow(stringResource(R.string.host_settings_observed),facts.observedAt)
+                    Text(stringResource(R.string.host_settings_effect,stringResource(effectLabel(facts.effectiveState))))
+                    KeyValueRow(stringResource(R.string.host_settings_observed),formatTimestamp(IsoInstant.toEpochMillis(facts.observedAt)).orEmpty())
                     Text(stringResource(R.string.host_settings_variable_count,facts.variables.size))
                     facts.variables.forEach { variable ->
                         TextButton(onClick={editor.beginEnvironmentEdit(editor.environmentScope,variable)},enabled=!editor.busy && !editor.dirty && !editor.environmentEditing && variable.rawValue != null) { Text(variable.name) }
@@ -270,7 +321,7 @@ fun HostSettingsScreen(onBack: (() -> Unit)?, onOpenServerHttps: () -> Unit = {}
                 Text(ref.id,style=MaterialTheme.typography.bodySmall)
                 Text(ref.target.resourceId,style=MaterialTheme.typography.bodySmall)
                 val op = editor.operations[ref.id]
-                op?.let { Text(stringResource(stateLabel(it.state))); Text(stringResource(effectLabel(it.effectiveState))) }
+                op?.let { Text(stringResource(stateLabel(it.state))); Text(stringResource(R.string.host_settings_effect,stringResource(effectLabel(it.effectiveState)))) }
                 FlowRow(horizontalArrangement=Arrangement.spacedBy(Spacing.sm)) {
                     TextButton(onClick={editor.query(ref)},enabled=!editor.busy) { Text(stringResource(R.string.host_settings_query)) }
                     if(op?.state=="applied"&&op.observedRevision!=null) TextButton(onClick={editor.reviewRollback(ref)},enabled=!editor.busy&&owner.privilegedOperations&&editor.references.none { it.unresolved }) { Text(stringResource(R.string.host_settings_rollback)) }
@@ -320,7 +371,7 @@ fun HostSettingsScreen(onBack: (() -> Unit)?, onOpenServerHttps: () -> Unit = {}
     }
     editor.plan?.let { plan ->
         SettingsReview(title=stringResource(R.string.host_settings_preview),confirm=stringResource(R.string.host_settings_apply),onDismiss=editor::dismissPlan,onConfirm=editor::apply) {
-            Text(plan.target.resourceId); Text(stringResource(effectLabel(plan.effectiveState)))
+            Text(plan.target.resourceId); Text(stringResource(R.string.host_settings_effect,stringResource(effectLabel(plan.effectiveState))))
             Text(stringResource(R.string.host_settings_review_note))
             plan.differences.forEach { diff ->
                 Text(if(editor.kind==HostSettingKind.Environment) diff.settingId else stringResource(editor.kind.label()))
@@ -352,6 +403,87 @@ private fun SettingsReview(title:String,confirm:String,onDismiss:()->Unit,onConf
             }
         }
     }
+}
+/**
+ * The whole supported-ID list as a picker, opened from the field rather than typed into it.
+ *
+ * The field's own filter answers "I already know the ID"; it is no answer to "which ID do I want",
+ * which is the question actually being asked when a host clock is wrong. So the picker lists
+ * everything the host offers, grouped by area and searchable in place, with the same offset labels
+ * and the same two markers as the inline list — a row reads the same in both.
+ */
+@Composable
+private fun HostTimeZonePicker(zones: List<String>, hostZone: String, deviceZone: String, current: String,
+    offsetAt: Long, enabled: Boolean, onSelect: (String) -> Unit, onDismiss: () -> Unit) {
+    var query by remember { mutableStateOf("") }
+    Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
+        BoxWithConstraints(Modifier.imePadding().padding(Spacing.md)) {
+            Surface(Modifier.widthIn(max=560.dp).fillMaxWidth().heightIn(max=maxHeight*0.85f),shape=MaterialTheme.shapes.large) {
+                Column(Modifier.padding(Spacing.lg),verticalArrangement=Arrangement.spacedBy(Spacing.md)) {
+                    Text(stringResource(R.string.host_settings_zone_picker_title),style=MaterialTheme.typography.titleLarge)
+                    // Search belongs inside the picker: narrowing the list and scrolling it are one
+                    // decision, and only this dialog knows how far the user has scrolled.
+                    OutlinedTextField(query,{ if(it.length<=256) query=it },label={Text(stringResource(R.string.host_settings_zone_picker_search))},
+                        singleLine=true,enabled=enabled,modifier=Modifier.fillMaxWidth())
+                    val regions = if(query.isBlank()) HostTimeZoneChoices.regions(zones) else emptyList()
+                    val matches = HostTimeZoneChoices.matches(zones,query)
+                    if(query.isBlank()) Text(stringResource(R.string.host_settings_zone_picker_all,zones.size),style=MaterialTheme.typography.bodySmall)
+                    else if(matches.isEmpty()) EmptyHint(stringResource(R.string.host_settings_zone_no_match))
+                    LazyColumn(Modifier.fillMaxWidth().weight(1f,fill=false)) {
+                        if(query.isBlank()) regions.forEach { region ->
+                            item(key="area-"+region.area) {
+                                // The heading is the ID's own first segment, so it can be trusted to
+                                // describe the rows under it.
+                                Text(stringResource(regionLabel(region.area)),style=MaterialTheme.typography.titleSmall,
+                                    modifier=Modifier.padding(top=Spacing.sm,bottom=Spacing.xs))
+                            }
+                            items(region.zones,key={it}) { zone ->
+                                TimeZoneRow(zone,hostZone,deviceZone,current,offsetAt,enabled) { onSelect(zone) }
+                            }
+                        } else items(matches,key={it}) { zone ->
+                            TimeZoneRow(zone,hostZone,deviceZone,current,offsetAt,enabled) { onSelect(zone) }
+                        }
+                    }
+                    FlowRow(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(Spacing.sm,androidx.compose.ui.Alignment.End)) {
+                        TextButton(onClick=onDismiss) { Text(stringResource(R.string.common_cancel)) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * One time-zone row, shared by the field's filter and the picker.
+ *
+ * The offset and the two markers are what turn a bare ID into a decision, and a second copy of this
+ * row would be the thing that drifts the next time either list changes.
+ */
+@Composable
+private fun TimeZoneRow(zone: String, hostZone: String, deviceZone: String, current: String, offsetAt: Long,
+    enabled: Boolean, onSelect: () -> Unit) {
+    ListRow(title=zone,selected=zone==current,
+        supporting=listOfNotNull(HostTimeZoneChoices.offsetLabel(zone,offsetAt),
+            stringResource(R.string.host_settings_zone_current).takeIf { zone==hostZone },
+            stringResource(R.string.host_settings_zone_device).takeIf { zone==deviceZone }).joinToString(" · "),
+        trailing={ RadioButton(selected=zone==current,onClick=null,enabled=enabled) },
+        onClick={ if(enabled) onSelect() })
+}
+
+/** The heading of a picker group; anything this build does not know is grouped rather than dropped. */
+private fun regionLabel(area: String) = when(area) {
+    "Africa" -> R.string.host_settings_zone_region_africa
+    "America" -> R.string.host_settings_zone_region_america
+    "Antarctica" -> R.string.host_settings_zone_region_antarctica
+    "Arctic" -> R.string.host_settings_zone_region_arctic
+    "Asia" -> R.string.host_settings_zone_region_asia
+    "Atlantic" -> R.string.host_settings_zone_region_atlantic
+    "Australia" -> R.string.host_settings_zone_region_australia
+    "Europe" -> R.string.host_settings_zone_region_europe
+    "Indian" -> R.string.host_settings_zone_region_indian
+    "Pacific" -> R.string.host_settings_zone_region_pacific
+    "Etc" -> R.string.host_settings_zone_region_etc
+    else -> R.string.host_settings_zone_region_other
 }
 private fun HostSettingKind.label() = when(this) { HostSettingKind.Time -> R.string.host_settings_time; HostSettingKind.Identity -> R.string.host_settings_identity; HostSettingKind.Environment -> R.string.host_settings_environment }
 private fun effectLabel(value:String) = when(value) { "immediate" -> R.string.host_settings_immediate; "newProcess" -> R.string.host_settings_new_process; "newLogin" -> R.string.host_settings_new_login; "serviceRestart" -> R.string.host_settings_service_restart; "hostRestart" -> R.string.host_settings_host_restart; else -> R.string.host_settings_unknown }

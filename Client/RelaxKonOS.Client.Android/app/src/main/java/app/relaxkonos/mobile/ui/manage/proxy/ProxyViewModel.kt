@@ -204,6 +204,13 @@ internal class ProxyViewModel(application: Application) : AndroidViewModel(appli
         else if (result is ApiResult.Problem && !state.pendingInstallation) intent = null
     }
     fun retryInstall() { val old = intent ?: return; val r = old.request as MihomoInstallationRequest; install(old.kind, r.version, r.rollback, r.fileReferenceId != null) }
+    fun acceptInstallationFacts() = work { active ->
+        val pending = container.installations.pending(active).firstOrNull { it.service == InstallationService.Mihomo } ?: return@work
+        val overview = container.proxy.overview(active); verify(active); failure(overview)
+        if (overview !is ApiResult.Success) return@work
+        val result = container.installations.acceptCurrentFacts(active, pending); verify(active); failure(result)
+        if (result is ApiResult.Success) { intent = null; load(active) }
+    }
     val hasIntent get() = intent != null
     val currentIntent get() = intent
     fun recoverInstall(id: String, identified: Boolean) = work { active ->

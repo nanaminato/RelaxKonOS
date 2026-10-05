@@ -1,3 +1,19 @@
+if (args.Contains("--managed-component-cleanup-only"))
+{
+    var cleanupRoot = Path.Combine(Path.GetTempPath(), "relaxkonos-cleanup-" + Guid.NewGuid().ToString("N"));
+    try { await ManagedComponentCleanupChecks.RunAsync(cleanupRoot); }
+    finally { if (Directory.Exists(cleanupRoot)) Directory.Delete(cleanupRoot, recursive: true); }
+    Console.WriteLine("Managed component cleanup failure/receipt checks passed.");
+    return;
+}
+if (args.Contains("--managed-component-cleanup-only"))
+{
+    var cleanupRoot = Path.Combine(Path.GetTempPath(), "relaxkonos-cleanup-" + Guid.NewGuid().ToString("N"));
+    try { await ManagedComponentCleanupChecks.RunAsync(cleanupRoot); }
+    finally { if (Directory.Exists(cleanupRoot)) Directory.Delete(cleanupRoot, recursive: true); }
+    Console.WriteLine("Managed component cleanup failure/receipt checks passed.");
+    return;
+}
 if (args.Contains("--certificate-renewal-records-only"))
 {
     var renewalRoot = Path.Combine(Path.GetTempPath(), "relaxkonos-renewal-tests-" + Guid.NewGuid().ToString("N"));
@@ -277,6 +293,20 @@ if (args.Contains("--proxy-configuration-only"))
     try { await ProxyConfigurationChecks.VerifyProxyConfigurationTransactionAsync(proxyRoot); }
     finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(proxyRoot, recursive: true); }
     Console.WriteLine("Proxy configuration activation and rollback checks passed.");
+    return;
+}
+if (args.Contains("--configuration-values-only"))
+{
+    var valuesRoot = Path.Combine(Path.GetTempPath(), $"relaxkonos-values-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(valuesRoot);
+    try
+    {
+        NetworkProxyTunnelChecks.VerifyTunnelProtocolContract();
+        await NetworkProxyTunnelChecks.VerifyTunnelSecretLifecycleAsync(valuesRoot);
+        await ManagedFrpsChecks.VerifyConfigurationValuesAsync(valuesRoot);
+    }
+    finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(valuesRoot, recursive: true); }
+    Console.WriteLine("FRP saved credential reads, refresh, reopening, retention and encrypted persistence checks passed.");
     return;
 }
 if (args.Contains("--frps-only"))

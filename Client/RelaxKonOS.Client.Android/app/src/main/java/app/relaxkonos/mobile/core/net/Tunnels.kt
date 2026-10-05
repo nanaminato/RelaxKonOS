@@ -11,7 +11,7 @@ enum class TunnelConnectionState(val wire: String) { SavedNotApplied("savedNotAp
 enum class TunnelRuntimeState(val wire: String) { NotInstalled("notInstalled"), Available("available"), Running("running"), Stopped("stopped"), ExternalInvalid("externalInvalid"), Unknown("unknown") }
 data class TunnelProfile(val id: String, val name: String, val host: String, val port: Int, val auth: TunnelAuth,
     val tokenConfigured: Boolean, val tls: TunnelTls, val runtimeMode: TunnelRuntimeMode, val externalPath: String?,
-    val revision: Long, val createdAtMillis: Long, val updatedAtMillis: Long)
+    val revision: Long, val createdAtMillis: Long, val updatedAtMillis: Long, val token: String? = null)
 data class TunnelDefinition(val id: String, val profileId: String, val name: String, val providerId: String, val protocol: TunnelProtocol,
     val localHost: String, val localPort: Int, val remotePort: Int?, val domain: String?, val enabled: Boolean,
     val encryption: Boolean, val compression: Boolean, val revision: Long, val createdAtMillis: Long, val updatedAtMillis: Long,
@@ -59,7 +59,7 @@ object TunnelWire {
     fun profile(payload: String) = profile(JSONObject(payload))
     private fun profile(j: JSONObject) = with(j) { TunnelProfile(id("id"), getString("name"), getString("host"), port("port"),
         enum(getString("authKind"), TunnelAuth::wire), getBoolean("tokenConfigured"), enum(getString("tlsMode"), TunnelTls::wire),
-        enum(getString("runtimeMode"), TunnelRuntimeMode::wire), text("externalExecutablePath"), getLong("revision").also { require(it > 0) }, time("createdAt"), time("updatedAt")) }
+        enum(getString("runtimeMode"), TunnelRuntimeMode::wire), text("externalExecutablePath"), getLong("revision").also { require(it > 0) }, time("createdAt"), time("updatedAt"), text("token")) }
     fun definitions(payload: String) = records(payload, ::definition).also { require(it.map { item -> item.id }.distinct().size == it.size) }
     fun definition(payload: String) = definition(JSONObject(payload))
     private fun definition(j: JSONObject) = with(j) { TunnelDefinition(id("id"), id("serverProfileId"), getString("name"), getString("providerId"),

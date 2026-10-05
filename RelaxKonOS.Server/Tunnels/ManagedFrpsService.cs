@@ -14,7 +14,7 @@ namespace RelaxKonOS.Server.Tunnels;
 
 /// <summary>Host-local frps supervisor. Configuration is private, generated TOML is never returned over HTTP.</summary>
 public sealed class ManagedFrpsService(IHostEnvironment environment, IDataProtectionProvider dataProtection, IRuntimeManager runtimes, IServiceScopeFactory scopes, WindowsManagedRuntimeOperations windowsRuntime)
-    : IManagedFrpsService, IDisposable
+    : IManagedFrpsService, IDisposable, IHostedService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly IDataProtector _protector = dataProtection.CreateProtector("RelaxKonOS.Tunnels.ManagedFrps.v1");
@@ -26,6 +26,31 @@ public sealed class ManagedFrpsService(IHostEnvironment environment, IDataProtec
     private string _problemCode = "";
     private long? _appliedRevision;
     private bool _processOwnershipKnown;
+
+    public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            // Helper owns Windows processes. Linux cleanup uses our live handle only,
+            // leaving the saved configuration and credentials available after reinstall.
+            if (_process is not { } process) return;
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync(cancellationToken);
+            }
+            _process = null;
+            process.Dispose();
+            _processOwnershipKnown = true;
+            _state = ManagedFrpsState.Stopped;
+            _startedAt = null;
+            _appliedRevision = null;
+        }
+        finally { _gate.Release(); }
+    }
 
     public async Task<ManagedFrpsConfigurationDto> GetAsync(CancellationToken ct)
     {
@@ -56,7 +81,7 @@ public sealed class ManagedFrpsService(IHostEnvironment environment, IDataProtec
         try
         {
             var saved = await ReadAsync(ct);
-            var value = ToDto(saved, includeToken: true);
+            var value = ToDto(saved);
             if (value.Token is not null) await AuditAsync(actorUserId, "frps.token.read", "succeeded", "", ct);
             return value;
         }
@@ -227,14 +252,14 @@ public sealed class ManagedFrpsService(IHostEnvironment environment, IDataProtec
         return string.Join(Environment.NewLine, lines) + Environment.NewLine;
     }
     private static async Task<bool> VerifyAsync(string executable, string config, CancellationToken ct) { using var process = new Process { StartInfo = new ProcessStartInfo(executable) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true } }; process.StartInfo.ArgumentList.Add("verify"); process.StartInfo.ArgumentList.Add("-c"); process.StartInfo.ArgumentList.Add(config); try { if (!process.Start()) return false; using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct); timeout.CancelAfter(TimeSpan.FromSeconds(10)); await Task.WhenAll(process.StandardOutput.ReadToEndAsync(timeout.Token), process.StandardError.ReadToEndAsync(timeout.Token), process.WaitForExitAsync(timeout.Token)); return process.ExitCode == 0; } catch { return false; } }
-    private ManagedFrpsConfigurationDto ToDto(StoredConfiguration? c, bool includeToken = false)
+    private ManagedFrpsConfigurationDto ToDto(StoredConfiguration? c)
     {
         // A saved configuration proves no process state after restart. Linux must not claim stopped
         // or kill a process it no longer owns; Windows status is read from Helper.
         var state = c is not null && (!OperatingSystem.IsWindows() && !_processOwnershipKnown || _state == ManagedFrpsState.NotConfigured) ? ManagedFrpsState.Unknown : _state;
         return c is null
             ? new("0.0.0.0", 7000, [], null, null, false, false, false, "127.0.0.1", null, null, false, state, 0, null, _problemCode, _startedAt)
-            : new(c.BindAddress, c.BindPort, c.AllowPorts, c.VhostHttpPort, c.VhostHttpsPort, c.ForceTls, !string.IsNullOrEmpty(c.ProtectedToken), c.DashboardEnabled, c.DashboardAddress, c.DashboardPort, c.DashboardUser, !string.IsNullOrEmpty(c.ProtectedDashboardPassword), state, c.Revision, state is ManagedFrpsState.Running or ManagedFrpsState.Starting ? _appliedRevision : null, _problemCode, _startedAt, includeToken && !string.IsNullOrEmpty(c.ProtectedToken) ? _protector.Unprotect(c.ProtectedToken) : null);
+            : new(c.BindAddress, c.BindPort, c.AllowPorts, c.VhostHttpPort, c.VhostHttpsPort, c.ForceTls, !string.IsNullOrEmpty(c.ProtectedToken), c.DashboardEnabled, c.DashboardAddress, c.DashboardPort, c.DashboardUser, !string.IsNullOrEmpty(c.ProtectedDashboardPassword), state, c.Revision, state is ManagedFrpsState.Running or ManagedFrpsState.Starting ? _appliedRevision : null, _problemCode, _startedAt, !string.IsNullOrEmpty(c.ProtectedToken) ? _protector.Unprotect(c.ProtectedToken) : null, !string.IsNullOrEmpty(c.ProtectedDashboardPassword) ? _protector.Unprotect(c.ProtectedDashboardPassword) : null);
     }
     private void AppendLog(string level, string? message) { if (string.IsNullOrWhiteSpace(message)) return; message = Regex.Replace(message, "(?i)(token|secret|password)\\s*[:=]\\s*[^\\s,]+", "$1=<redacted>"); _logs.Enqueue(new(DateTimeOffset.UtcNow, level, message.Length > 1024 ? message[..1024] : message)); while (_logs.Count > 200) _logs.TryDequeue(out _); }
     private static string Escape(string value) => value.Replace("\\", "\\\\").Replace("\"", "\\\"");

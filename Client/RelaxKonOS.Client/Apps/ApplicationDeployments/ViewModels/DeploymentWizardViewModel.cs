@@ -102,9 +102,8 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
                 SiteId = existing.SiteId ?? string.Empty;
                 VolumesText = string.Join('\n', existing.Volumes.Select(volume =>
                     $"{volume.Name}:{volume.ContainerPath}{(volume.ReadOnly ? ":ro" : string.Empty)}"));
-                // A secret is never echoed back; only its name and version travel to the client, so the
-                // secret editor lists the names and a new value is required only when rotating.
-                SecretConfigText = string.Join('\n', existing.Configuration.Where(entry => entry.IsSecret).Select(entry => entry.Name));
+                // Populate the editor with the current protected configuration values.
+                SecretConfigText = string.Join('\n', existing.Configuration.Where(entry => entry.IsSecret).Select(entry => $"{entry.Name}={entry.Value}"));
                 ConfigText = string.Join('\n', existing.Configuration
                     .Where(entry => !entry.IsSecret && entry.Value is not null)
                     .Select(entry => $"{entry.Name}={entry.Value}"));

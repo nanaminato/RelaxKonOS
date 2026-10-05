@@ -3,7 +3,7 @@ package app.relaxkonos.mobile.core.net
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** A response contains a secret's version only; a newly entered value lives in an ephemeral request. */
+/** Responses contain saved configuration values and their protected-store versions. */
 data class DeploymentDefinitionConfig(val name: String, val value: String?, val isSecret: Boolean, val secretVersion: Int?) {
     override fun toString(): String = "DeploymentDefinitionConfig(name=$name, value=${if (isSecret) "[redacted]" else value}, isSecret=$isSecret, secretVersion=$secretVersion)"
 }
@@ -41,7 +41,7 @@ internal object DeploymentDefinitionWire {
         val value = nullable(json, "value") { it as? String ?: error("value") }
         val version = nullable(json, "secretVersion") { integer(it).also { n -> require(n in 1..Int.MAX_VALUE) }.toInt() }
         require(Regex("[A-Za-z_][A-Za-z0-9_]{0,63}").matches(name))
-        require(if (secret) value == null && version != null else value != null && value.length <= 4096 && version == null)
+        require(if (secret) value != null && value.length <= 4096 && version != null else value != null && value.length <= 4096 && version == null)
         DeploymentDefinitionConfig(name, value, secret, version)
     }.also { entries -> require(entries.map { it.name }.distinct().size == entries.size) }
 

@@ -29,7 +29,7 @@ class RelaxKonApi(
     override suspend fun hostTime(serverUrl: String, accessToken: String) = webPublishingRead(serverUrl, accessToken, HostSettingsRoutes.ROOT + "/time", HostSettingsWire::time)
     override suspend fun hostIdentity(serverUrl: String, accessToken: String) = webPublishingRead(serverUrl, accessToken, HostSettingsRoutes.ROOT + "/identity", HostSettingsWire::identity)
     override suspend fun hostEnvironmentTarget(serverUrl: String, accessToken: String, scope: HostEnvironmentScope) = webPublishingRead(serverUrl, accessToken, HostSettingsRoutes.target(scope), HostSettingsWire::target)
-    override suspend fun hostEnvironment(serverUrl: String, accessToken: String, scope: HostEnvironmentScope, reveal: Boolean) = webPublishingRead(serverUrl, accessToken, HostSettingsRoutes.environment(scope, reveal), HostSettingsWire::environment)
+    override suspend fun hostEnvironment(serverUrl: String, accessToken: String, scope: HostEnvironmentScope) = webPublishingRead(serverUrl, accessToken, HostSettingsRoutes.environment(scope), HostSettingsWire::environment)
     override suspend fun previewHostSettings(serverUrl: String, accessToken: String, kind: HostSettingKind, expectedRevision: String, key: String,
         value: String?, scope: HostEnvironmentScope?, mutation: HostEnvironmentMutation?, confirmHighImpact: Boolean): ApiResult<HostSettingsPlan> {
         require(HostSettingsRules.revision(expectedRevision) && key.length in 1..128 && key.none { it.isISOControl() })

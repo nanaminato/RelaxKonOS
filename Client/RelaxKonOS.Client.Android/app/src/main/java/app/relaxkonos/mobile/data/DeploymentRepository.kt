@@ -264,7 +264,7 @@ class DeploymentRepository(
 
 data class DeploymentDefinitionSave(val result: ApiResult<DeploymentApplication>, val mayHaveSaved: Boolean)
 
-/** Compare every writable field and the server-owned identity; secret bodies never enter readback. */
+/** Compare every writable field and the server-owned identity, including saved values and versions. */
 internal fun DeploymentDefinitionUpdate.matchesReceipt(actual: DeploymentApplication, baseline: DeploymentApplication): Boolean =
     actual.id == baseline.id && actual.sourceKind == baseline.sourceKind && actual.catalogTemplateId == baseline.catalogTemplateId &&
         actual.catalogTemplateVersion == baseline.catalogTemplateVersion && actual.updatedAt != expectedUpdatedAt &&
@@ -274,8 +274,10 @@ internal fun DeploymentDefinitionUpdate.matchesReceipt(actual: DeploymentApplica
         configuration.size == actual.configuration.size && configuration.all { expected ->
             actual.configuration.singleOrNull { it.name == expected.name }?.let { observed ->
                 observed.isSecret == expected.isSecret && if (!expected.isSecret) observed.value == expected.value && observed.secretVersion == null
-                else observed.value == null && if (expected.value == null) observed.secretVersion == expected.secretVersion
-                else observed.secretVersion != null && observed.secretVersion > (expected.secretVersion ?: 0)
+                else if (expected.value == null) observed.value == baseline.configuration.singleOrNull { it.name == expected.name }?.value && observed.secretVersion == expected.secretVersion
+                else observed.value == expected.value && observed.secretVersion != null &&
+                    (observed.secretVersion > (expected.secretVersion ?: 0) ||
+                        observed.secretVersion == expected.secretVersion && baseline.configuration.singleOrNull { it.name == expected.name }?.value == expected.value)
             } == true
         }
 

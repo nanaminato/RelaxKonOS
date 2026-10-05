@@ -12,7 +12,7 @@ using RelaxKonOS.Protocol.Privileged;
 namespace RelaxKonOS.Server.Tunnels;
 
 /// <summary>Applies validated desired state to isolated frpc child processes. It never downloads FRP or forwards traffic.</summary>
-public sealed class FrpTunnelProvider(IServiceScopeFactory scopes, IHostEnvironment environment, IRuntimeManager runtimes, WindowsManagedRuntimeOperations windowsRuntime) : ITunnelProvider
+public sealed class FrpTunnelProvider(IServiceScopeFactory scopes, IHostEnvironment environment, IRuntimeManager runtimes, WindowsManagedRuntimeOperations windowsRuntime) : ITunnelProvider, IHostedService
 {
     private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _profileLocks = new();
     private readonly ConcurrentDictionary<Guid, ManagedProcess> _processes = new();
@@ -21,6 +21,21 @@ public sealed class FrpTunnelProvider(IServiceScopeFactory scopes, IHostEnvironm
     private readonly ConcurrentDictionary<Guid, ConcurrentQueue<TunnelLogEntryDto>> _logs = new();
     private readonly string _configurationRoot = Path.Combine(environment.ContentRootPath, "data", "tunnels", "frp");
     public string ProviderId => "frp";
+
+    public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        // Stop only child handles owned by this Server. Windows managed processes belong
+        // to Helper, whose shutdown handles them independently. Never replay old PIDs.
+        foreach (var profileId in _processes.Keys.ToArray())
+        {
+            var gate = _profileLocks.GetOrAdd(profileId, _ => new SemaphoreSlim(1, 1));
+            await gate.WaitAsync(cancellationToken);
+            try { await StopCoreAsync(profileId); }
+            finally { gate.Release(); }
+        }
+    }
 
     public Task<TunnelRuntimeDto> GetStatusAsync(CancellationToken ct) => runtimes.GetManagedFrpcStatusAsync(ct);
     public async Task<IReadOnlyList<TunnelDefinitionDto>> ListAsync(string userId, CancellationToken ct)

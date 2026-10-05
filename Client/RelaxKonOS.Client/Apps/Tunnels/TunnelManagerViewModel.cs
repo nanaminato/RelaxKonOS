@@ -198,7 +198,7 @@ public sealed partial class TunnelManagerViewModel(IRemoteTunnelClient client, b
             var saved = await client.UpdateManagedFrpsAsync(new(true, FrpsBindAddress, FrpsBindPort, ParsePortRanges(FrpsAllowPorts), FrpsHttpPort, FrpsHttpsPort, FrpsForceTls,
                 string.IsNullOrWhiteSpace(FrpsToken) ? null : FrpsToken, FrpsDashboardEnabled, FrpsDashboardAddress, FrpsDashboardPort,
                 string.IsNullOrWhiteSpace(FrpsDashboardUser) ? null : FrpsDashboardUser, string.IsNullOrWhiteSpace(FrpsDashboardPassword) ? null : FrpsDashboardPassword, _frpsEditingRevision ?? _frpsRevision), _lifetime.Token);
-            ApplyFrps(saved); _frpsEditingRevision = saved.Revision; FrpsToken = string.Empty; FrpsDashboardPassword = string.Empty; StatusText = LocalizedText.Ref("tunnels.status.frps_saved");
+            ApplyFrps(saved); _frpsEditingRevision = saved.Revision; StatusText = LocalizedText.Ref("tunnels.status.frps_saved");
         }
         catch (Exception ex) { StatusText = ProblemText(ex); }
         finally { IsBusy = false; }
@@ -245,7 +245,7 @@ public sealed partial class TunnelManagerViewModel(IRemoteTunnelClient client, b
     public async Task LoadManagedFrpsForEditingAsync()
     {
         var current = await client.GetManagedFrpsForEditingAsync(_lifetime.Token);
-        ApplyFrps(current, includeToken: true); _frpsEditingRevision = current.Revision;
+        ApplyFrps(current); _frpsEditingRevision = current.Revision;
     }
 
     [RelayCommand(CanExecute = nameof(CanManage))]
@@ -253,7 +253,7 @@ public sealed partial class TunnelManagerViewModel(IRemoteTunnelClient client, b
     {
         if (IsBusy || !await ConfirmAsync("common.refresh", "tunnels.frps.reload_confirmation")) return;
         IsBusy = true;
-        try { var current = await client.GetManagedFrpsAsync(_lifetime.Token); ApplyFrps(current); _frpsEditingRevision = current.Revision; FrpsToken = string.Empty; FrpsDashboardPassword = string.Empty; }
+        try { var current = await client.GetManagedFrpsAsync(_lifetime.Token); ApplyFrps(current); _frpsEditingRevision = current.Revision; }
         catch (Exception ex) { StatusText = ProblemText(ex); }
         finally { IsBusy = false; }
     }
@@ -392,8 +392,8 @@ public sealed partial class TunnelManagerViewModel(IRemoteTunnelClient client, b
         return string.Join(" · ", new[] { entry.Timestamp.ToLocalTime().ToString("g"), action, result, problem }.Where(x => !string.IsNullOrWhiteSpace(x)));
     }
     private async Task RunFrpsOperationAsync(Func<Task<TunnelOperationResultDto>> operation) { if (IsBusy) return; IsBusy = true; try { var result = await operation(); StatusText = result.Succeeded ? LocalizedText.Ref("tunnels.status.frps_updated") : ProblemText(result.ProblemCode); } catch (Exception ex) { StatusText = ProblemText(ex); } finally { IsBusy = false; } await RefreshManagedFrpsAsync(); }
-    private void ApplyFrps(ManagedFrpsConfigurationDto value, bool includeToken = false) {
-        FrpsRevision = value.Revision; FrpsAppliedRevision = value.AppliedRevision; FrpsBindAddress = value.BindAddress; FrpsBindPort = value.BindPort; FrpsAllowPorts = string.Join(", ", value.AllowPorts.Select(x => x.Start == x.End ? x.Start.ToString() : $"{x.Start}-{x.End}")); FrpsHttpPort = value.VhostHttpPort; FrpsHttpsPort = value.VhostHttpsPort; FrpsForceTls = value.ForceTls; FrpsTokenConfigured = value.TokenConfigured; if (includeToken) FrpsToken = value.Token ?? string.Empty; FrpsDashboardEnabled = value.DashboardEnabled; FrpsDashboardAddress = value.DashboardAddress; FrpsDashboardPort = value.DashboardPort; FrpsDashboardUser = value.DashboardUser ?? string.Empty; FrpsDashboardPasswordConfigured = value.DashboardPasswordConfigured; FrpsState = value.State; FrpsStartedAt = value.StartedAt; FrpsStateText = string.IsNullOrEmpty(value.ProblemCode) ? string.Empty : ProblemText(value.ProblemCode); IsFrpsLoaded = true; FrpsLoadFailed = false; }
+    private void ApplyFrps(ManagedFrpsConfigurationDto value) {
+        FrpsRevision = value.Revision; FrpsAppliedRevision = value.AppliedRevision; FrpsBindAddress = value.BindAddress; FrpsBindPort = value.BindPort; FrpsAllowPorts = string.Join(", ", value.AllowPorts.Select(x => x.Start == x.End ? x.Start.ToString() : $"{x.Start}-{x.End}")); FrpsHttpPort = value.VhostHttpPort; FrpsHttpsPort = value.VhostHttpsPort; FrpsForceTls = value.ForceTls; FrpsTokenConfigured = value.TokenConfigured; FrpsToken = value.Token ?? string.Empty; FrpsDashboardPassword = value.DashboardPassword ?? string.Empty; FrpsDashboardEnabled = value.DashboardEnabled; FrpsDashboardAddress = value.DashboardAddress; FrpsDashboardPort = value.DashboardPort; FrpsDashboardUser = value.DashboardUser ?? string.Empty; FrpsDashboardPasswordConfigured = value.DashboardPasswordConfigured; FrpsState = value.State; FrpsStartedAt = value.StartedAt; FrpsStateText = string.IsNullOrEmpty(value.ProblemCode) ? string.Empty : ProblemText(value.ProblemCode); IsFrpsLoaded = true; FrpsLoadFailed = false; }
     private static IReadOnlyList<TunnelPortRangeDto> ParsePortRanges(string value) => string.IsNullOrWhiteSpace(value) ? [] : value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Select(x => { var parts = x.Split('-', StringSplitOptions.TrimEntries); return parts.Length switch { 1 when int.TryParse(parts[0], out var single) => new TunnelPortRangeDto(single, single), 2 when int.TryParse(parts[0], out var start) && int.TryParse(parts[1], out var end) => new TunnelPortRangeDto(start, end), _ => throw new TunnelRequestException("tunnel.frps_invalid_allow_ports") }; }).ToArray();
     public void Dispose() => _lifetime.Cancel();
 }

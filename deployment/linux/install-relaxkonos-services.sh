@@ -336,10 +336,13 @@ SECRET="$(openssl rand -base64 48)"
 JWT_SECRET=
 OBSERVABILITY_INSTANCE_ID=
 OBSERVABILITY_AUDIT_HMAC_KEY=
-if [[ -f /etc/relaxkonos/server.env ]]; then
-  JWT_SECRET="$(grep -m1 '^Jwt__Secret=' /etc/relaxkonos/server.env | cut -d= -f2- || true)"
-  OBSERVABILITY_INSTANCE_ID="$(grep -m1 '^Observability__InstanceId=' /etc/relaxkonos/server.env | cut -d= -f2- || true)"
-  OBSERVABILITY_AUDIT_HMAC_KEY="$(grep -m1 '^Observability__AuditHmacKey=' /etc/relaxkonos/server.env | cut -d= -f2- || true)"
+RETAINED_SERVER_ENV="$DATA_ROOT/deployment/server.env"
+IDENTITY_SERVER_ENV=/etc/relaxkonos/server.env
+if [[ ! -f "$IDENTITY_SERVER_ENV" ]]; then IDENTITY_SERVER_ENV="$RETAINED_SERVER_ENV"; fi
+if [[ -f "$IDENTITY_SERVER_ENV" ]]; then
+  JWT_SECRET="$(grep -m1 '^Jwt__Secret=' "$IDENTITY_SERVER_ENV" | cut -d= -f2- || true)"
+  OBSERVABILITY_INSTANCE_ID="$(grep -m1 '^Observability__InstanceId=' "$IDENTITY_SERVER_ENV" | cut -d= -f2- || true)"
+  OBSERVABILITY_AUDIT_HMAC_KEY="$(grep -m1 '^Observability__AuditHmacKey=' "$IDENTITY_SERVER_ENV" | cut -d= -f2- || true)"
 fi
 if [[ ${#JWT_SECRET} -lt 32 ]]; then JWT_SECRET="$(openssl rand -base64 48)"; fi
 if ! [[ "$OBSERVABILITY_INSTANCE_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
@@ -489,6 +492,16 @@ EOF
 
 systemctl daemon-reload
 systemctl enable --now relaxkonos-guardian.service relaxkonos-server.service
+# A retained Mihomo unit keeps its original boot policy. Reinstall may resume an
+# enabled instance only when its retained runtime and configuration are present.
+if systemctl is-enabled --quiet relaxkonos-mihomo.service \
+  && [[ -f /var/lib/relaxkonos/proxy/state/mihomo-runtime.json \
+    && -x /var/lib/relaxkonos/proxy/engines/mihomo/versions/current/mihomo \
+    && -f /etc/relaxkonos/proxy/active.yaml ]]; then
+  if ! systemctl start relaxkonos-mihomo.service; then
+    echo 'Retained Mihomo could not start; its management data was kept for repair.' >&2
+  fi
+fi
 if [[ "$DOCKER_ACCESS" == true ]]; then
   # Supplementary groups are captured when systemd spawns the process. A restart is required
   # even when the account was already present in the docker group before this deployment.

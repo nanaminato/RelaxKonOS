@@ -20,20 +20,19 @@ internal data class TunnelsState(val busy: Boolean = false, val facts: ApiResult
     val pending: List<PendingTunnelMutation> = emptyList(), val installation: InstallationOperation? = null, val installationVerified: Boolean = false,
     val pendingInstallation: Boolean = false, val reference: InstallationFileReference? = null, val uploadBytes: Long? = null,
     val frps: ApiResult<ManagedFrps>? = null, val frpsAtMillis: Long? = null, val frpsDraft: ManagedFrpsDraft? = null,
-    val initialFrps: ManagedFrpsDraft? = null, val editingToken: CharArray? = null, val frpsAction: ApiResult<TunnelResult>? = null,
+    val initialFrps: ManagedFrpsDraft? = null, val frpsAction: ApiResult<TunnelResult>? = null,
     val frpsLogs: ApiResult<List<TunnelLog>>? = null, val frpsAudit: ApiResult<List<TunnelAudit>>? = null, val frpsDiagnosticsAtMillis: Long? = null,
     val problemCode: String? = null, val uncertain: Boolean = false)
 internal class TunnelsViewModel(application: Application) : AndroidViewModel(application) {
     private val container get() = getApplication<RelaxKonApplication>().container
     private var owner: SessionState.Active? = null
     private var intent: InstallationSubmission? = null
-    private var frpsSecretEpoch = 0
     var state by mutableStateOf(TunnelsState())
         private set
     var sessionEpoch by mutableIntStateOf(0)
         private set
     init { viewModelScope.launch { container.session.state.collect { next ->
-        if (next !== owner) { state.editingToken?.fill('\u0000'); owner = next as? SessionState.Active; intent = null; state = TunnelsState(); sessionEpoch++ }
+        if (next !== owner) { owner = next as? SessionState.Active; intent = null; state = TunnelsState(); sessionEpoch++ }
     } } }
     fun refresh() = work { active -> load(active)
         if (active.privilegedOperations) {
@@ -101,7 +100,7 @@ internal class TunnelsViewModel(application: Application) : AndroidViewModel(app
         if (pending.action.frps) {
             val result = container.tunnels.acceptFrpsFacts(active, pending); verify(active); failure(result)
             state = state.copy(frps = result, frpsAtMillis = System.currentTimeMillis(), pending = container.tunnels.pending(active))
-            if (result is ApiResult.Success) { state.editingToken?.fill('\u0000'); state = state.copy(frpsDraft = null, initialFrps = null, editingToken = null) }
+            if (result is ApiResult.Success) { state = state.copy(frpsDraft = null, initialFrps = null) }
         } else {
             val result = container.tunnels.acceptFacts(active, pending); verify(active); failure(result)
             state = state.copy(facts = result, pending = container.tunnels.pending(active))
@@ -115,30 +114,15 @@ internal class TunnelsViewModel(application: Application) : AndroidViewModel(app
     fun editFrps() {
         if (state.busy || state.pending.isNotEmpty()) return
         val current = (state.frps as? ApiResult.Success)?.value ?: return
-        state.editingToken?.fill('\u0000'); val draft = ManagedFrpsDraft.from(current); state = state.copy(frpsDraft = draft, initialFrps = draft, editingToken = null)
+        val draft = ManagedFrpsDraft.from(current); state = state.copy(frpsDraft = draft, initialFrps = draft)
     }
     fun updateFrps(draft: ManagedFrpsDraft) { if (!state.busy && state.pending.isEmpty()) state = state.copy(frpsDraft = draft) }
-    fun closeFrps() { if (!state.busy) { state.editingToken?.fill('\u0000'); state = state.copy(frpsDraft = null, initialFrps = null, editingToken = null) } }
+    fun closeFrps() { if (!state.busy) { state = state.copy(frpsDraft = null, initialFrps = null) } }
     fun reloadFrpsDraft() = work { active ->
         val result = container.tunnels.frps(active); verify(active); failure(result)
         state = state.copy(frps = result, frpsAtMillis = System.currentTimeMillis())
         if (result is ApiResult.Success && state.pending.isEmpty()) {
-            state.editingToken?.fill('\u0000'); val draft = ManagedFrpsDraft.from(result.value); state = state.copy(frpsDraft = draft, initialFrps = draft, editingToken = null)
-        }
-    }
-    fun clearFrpsSecret() {
-        frpsSecretEpoch++; state.editingToken?.fill('\u0000'); state = state.copy(editingToken = null)
-    }
-    fun readFrpsToken() {
-        val draft = state.frpsDraft ?: return; val epoch = frpsSecretEpoch
-        work { active ->
-            val result = container.tunnels.frpsEditing(active, draft.revision)
-            try { verify(active) } catch (error: Throwable) { (result as? ApiResult.Success)?.value?.token?.fill('\u0000'); throw error }
-            if (epoch != frpsSecretEpoch || state.frpsDraft != draft) {
-                (result as? ApiResult.Success)?.value?.token?.fill('\u0000'); return@work
-            }
-            failure(result); state.editingToken?.fill('\u0000')
-            state = state.copy(editingToken = (result as? ApiResult.Success)?.value?.token)
+            val draft = ManagedFrpsDraft.from(result.value); state = state.copy(frpsDraft = draft, initialFrps = draft)
         }
     }
     fun saveFrps(token: CharArray, password: CharArray) {
@@ -149,8 +133,7 @@ internal class TunnelsViewModel(application: Application) : AndroidViewModel(app
                 if (active !== submittedOwner || state.frpsDraft != draft) return@work
                 val request = draft.request(token, password) ?: return@work
                 val result = container.tunnels.saveFrps(active, request); verify(active); failure(result)
-                state.editingToken?.fill('\u0000')
-                state = state.copy(pending = container.tunnels.pending(active), editingToken = null)
+                state = state.copy(pending = container.tunnels.pending(active))
                 if (result is ApiResult.Success) state = state.copy(frps = result, frpsAtMillis = System.currentTimeMillis(), frpsDraft = null, initialFrps = null)
             } finally { token.fill('\u0000'); password.fill('\u0000') }
         }
@@ -209,7 +192,7 @@ internal class TunnelsViewModel(application: Application) : AndroidViewModel(app
     private fun failure(result: ApiResult<*>) { state = state.copy(problemCode = (result as? ApiResult.Problem)?.code, uncertain = result is ApiResult.Transport) }
     private fun work(block: suspend (SessionState.Active) -> Unit) {
         val active = container.activeSession ?: return
-        if (owner !== active) { state.editingToken?.fill('\u0000'); owner = active; intent = null; state = TunnelsState(); sessionEpoch++ }
+        if (owner !== active) { owner = active; intent = null; state = TunnelsState(); sessionEpoch++ }
         if (state.busy) return
         state = state.copy(busy = true, problemCode = null, uncertain = false)
         viewModelScope.launch {
@@ -220,6 +203,5 @@ internal class TunnelsViewModel(application: Application) : AndroidViewModel(app
             finally { if (container.activeSession === active) state = state.copy(busy = false) }
         }
     }
-    override fun onCleared() { frpsSecretEpoch++; state.editingToken?.fill('\u0000'); super.onCleared() }
     private fun verify(active: SessionState.Active) { if (container.activeSession !== active) throw CancellationException("Tunnel session changed") }
 }

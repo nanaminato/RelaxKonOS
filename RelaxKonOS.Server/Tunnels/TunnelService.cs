@@ -9,16 +9,20 @@ namespace RelaxKonOS.Server.Tunnels;
 /// <summary>Transactional desired-state service. It never starts a process while saving user input.</summary>
 public sealed class TunnelService(RelaxKonOSDbContext db, ISecretStore secrets, ITunnelAudit audit) : ITunnelService
 {
-    public async Task<IReadOnlyList<TunnelServerProfileDto>> ListProfilesAsync(string userId, CancellationToken ct) =>
-        (await db.TunnelServerProfiles.AsNoTracking().Where(x => x.UserId == userId).OrderBy(x => x.Name).ToListAsync(ct))
-            .Select(x => ToDto(x, db.TunnelSecrets.AsNoTracking().Any(s => s.ServerProfileId == x.Id && s.Purpose == "token"))).ToArray();
+    public async Task<IReadOnlyList<TunnelServerProfileDto>> ListProfilesAsync(string userId, CancellationToken ct)
+    {
+        var profiles = await db.TunnelServerProfiles.AsNoTracking().Where(x => x.UserId == userId).OrderBy(x => x.Name).ToListAsync(ct);
+        var result = new List<TunnelServerProfileDto>();
+        foreach (var profile in profiles) result.Add(await DescribeAsync(profile, ct));
+        return result;
+    }
 
     public async Task<TunnelServerProfileDto?> GetProfileAsync(Guid id, string userId, CancellationToken ct)
     {
         var profile = await db.TunnelServerProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id && x.UserId == userId, ct);
         if (profile is null) return null;
 
-        return ToDto(profile, profile.AuthKind == TunnelAuthKind.Token && await secrets.HasProfileTokenAsync(profile.Id, ct));
+        return await DescribeAsync(profile, ct);
     }
 
     public async Task<TunnelServerProfileDto> UpsertProfileAsync(Guid? id, UpsertTunnelServerProfileRequest request, string userId, CancellationToken ct)
@@ -48,7 +52,7 @@ public sealed class TunnelService(RelaxKonOSDbContext db, ISecretStore secrets, 
         if (entity.AuthKind != TunnelAuthKind.Token)
             await secrets.DeleteProfileSecretsAsync(entity.Id, ct);
         await audit.RecordAsync(userId, id is null ? "profile.create" : "profile.update", entity.Id, "succeeded", null, ct);
-        return ToDto(entity, await secrets.HasProfileTokenAsync(entity.Id, ct));
+        return await DescribeAsync(entity, ct);
     }
 
     public async Task<bool> DeleteProfileAsync(Guid id, string userId, CancellationToken ct)
@@ -119,7 +123,11 @@ public sealed class TunnelService(RelaxKonOSDbContext db, ISecretStore secrets, 
     {
         if (expected is null || expected != actual) throw new TunnelRevisionConflictException();
     }
-    private static TunnelServerProfileDto ToDto(TunnelServerProfile x, bool tokenConfigured) => new(x.Id, x.Name, x.Host, x.Port, x.AuthKind, tokenConfigured, x.TlsMode, x.RuntimeMode, x.ExternalExecutablePath, x.Revision, x.CreatedAt, x.UpdatedAt);
+    private async Task<TunnelServerProfileDto> DescribeAsync(TunnelServerProfile x, CancellationToken ct)
+    {
+        var token = x.AuthKind == TunnelAuthKind.Token ? await secrets.GetProfileTokenAsync(x.Id, ct) : null;
+        return new(x.Id, x.Name, x.Host, x.Port, x.AuthKind, !string.IsNullOrEmpty(token), x.TlsMode, x.RuntimeMode, x.ExternalExecutablePath, x.Revision, x.CreatedAt, x.UpdatedAt, token);
+    }
     private static TunnelDefinitionDto ToDto(TunnelDefinition x) => new(x.Id, x.ServerProfileId, x.Name, x.ProviderId, x.Protocol, x.LocalHost, x.LocalPort, x.RemotePort, x.Domain, x.Enabled, x.Encryption, x.Compression, x.Revision, x.CreatedAt, x.UpdatedAt);
 }
 

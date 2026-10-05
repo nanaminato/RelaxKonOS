@@ -12,7 +12,7 @@ public interface IHostEnvironmentService
 {
     SettingsTarget ResolveTarget(ClaimsPrincipal principal, SettingsScope scope);
     void RequireGrant(ClaimsPrincipal principal, SettingsTarget target, HostElevationCapability capability);
-    Task<HostEnvironmentSnapshot> ReadAsync(ClaimsPrincipal principal, SettingsScope scope, bool reveal, CancellationToken ct);
+    Task<HostEnvironmentSnapshot> ReadAsync(ClaimsPrincipal principal, SettingsScope scope, CancellationToken ct);
     Task<PrivilegedEnvironmentState> ReadRawAsync(ClaimsPrincipal principal, SettingsTarget target, CancellationToken ct);
     Task<PrivilegedOperationResult> ApplyAsync(ClaimsPrincipal principal, SettingsTarget target, EnvironmentChangeSet change,
         string revision, Guid operationId, CancellationToken ct);
@@ -77,10 +77,9 @@ public sealed class HostEnvironmentService(IUserRepository users, IHostElevation
         return state;
     }
 
-    public async Task<HostEnvironmentSnapshot> ReadAsync(ClaimsPrincipal principal, SettingsScope scope, bool reveal, CancellationToken ct)
+    public async Task<HostEnvironmentSnapshot> ReadAsync(ClaimsPrincipal principal, SettingsScope scope, CancellationToken ct)
     {
         var target = ResolveTarget(principal, scope);
-        if (reveal) RequireGrant(principal, target, HostElevationCapability.HostEnvironmentReveal);
         var state = await ReadRawAsync(principal, target, ct);
         var windows = OperatingSystem.IsWindows();
         var values = state.Values.ToDictionary(value => value.Name, value => value.Value,
@@ -90,12 +89,10 @@ public sealed class HostEnvironmentService(IUserRepository users, IHostElevation
             var expanded = EnvironmentExpansion.Expand(value.Value, values, windows);
             var sensitive = EnvironmentValidation.IsPotentiallySensitive(value.Name)
                 || expanded.ReferencedNames.Any(EnvironmentValidation.IsPotentiallySensitive);
-            // Default reads mask every value; name heuristics alone cannot identify all secrets.
-            var masked = !reveal;
             var warnings = expanded.Warnings.Concat(value.Name.Equals("PATH", windows ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)
                 ? EnvironmentExpansion.PathWarnings(value.Value, windows) : Array.Empty<string>()).Distinct().ToArray();
-            return new EnvironmentVariable(value.Name, masked ? null : value.Value, masked ? null : expanded.Value,
-                value.Kind, scope, sensitive, masked, warnings);
+            return new EnvironmentVariable(value.Name, value.Value, expanded.Value,
+                value.Kind, scope, sensitive, false, warnings);
         }).ToArray();
         return new(target, state.Revision, DateTimeOffset.UtcNow, new(SettingsCapabilityState.Available),
             EffectiveState(state), state.Provider, !windows, windows ? ";" : ":", projected);

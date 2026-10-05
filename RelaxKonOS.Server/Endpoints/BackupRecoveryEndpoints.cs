@@ -52,7 +52,7 @@ public static class BackupRecoveryEndpoints
             await HandleAsync(async () => Results.Ok(await backups.PreflightAsync(backupId, ct))))
             .RequireAuthorization(ApplicationDeploymentEndpoints.ReadPolicy);
         group.MapPost(BackupRecoveryApiRoutes.RestoreDefinitionPattern, async (Guid backupId, RestoreApplicationDefinitionRequest request,
-            HttpContext http, ApplicationDefinitionBackupService backups, ApplicationDeploymentDefinitionMutationStore mutations, CancellationToken ct) =>
+            HttpContext http, ApplicationDefinitionBackupService backups, ApplicationDeploymentDefinitionMutationStore mutations, ApplicationDeploymentManager manager, CancellationToken ct) =>
             await HandleAsync(async () =>
             {
                 if (string.IsNullOrWhiteSpace(http.Request.Headers["Idempotency-Key"]))
@@ -62,7 +62,7 @@ public static class BackupRecoveryEndpoints
                     ?? throw new UnauthorizedAccessException();
                 var restored = await mutations.ExecuteAsync(actor, http.Request.Headers["Idempotency-Key"].ToString(), "restore",
                     ApplicationDeploymentValidation.Reference(JsonSerializer.Serialize((backupId, request))),
-                    () => backups.RestoreDefinitionAsync(backupId, request, actor, ct));
+                    () => backups.RestoreDefinitionAsync(backupId, request, actor, ct), manager.ReadReceipt);
                 return Results.Created(ApplicationDeploymentApiRoutes.Application(restored.Id), restored);
             }))
             .RequireAuthorization(ApplicationDeploymentEndpoints.ManagePolicy);

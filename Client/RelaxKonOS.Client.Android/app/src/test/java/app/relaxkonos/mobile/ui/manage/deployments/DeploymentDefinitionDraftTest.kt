@@ -21,20 +21,18 @@ class DeploymentDefinitionDraftTest {
         assertEquals(baseline.hostPort, request.hostPort)
         assertEquals("renamed", request.name)
     }
-    @Test fun `ordinary empty values and equality characters stay exact and secret rotation is ephemeral`() {
+    @Test fun `ordinary values stay exact and saved secret values remain editable`() {
         val draft = DeploymentDefinitionDraft(baseline)
         assertTrue(draft.putConfiguration("EMPTY", "", false))
         assertTrue(draft.putConfiguration("TOKEN", "", true))
-        assertEquals(baseline.configuration.last(), draft.configuration.first { it.name == "TOKEN" })
+        assertEquals(7, draft.configuration.first { it.name == "TOKEN" }.secretVersion)
+        assertNull(draft.configuration.first { it.name == "TOKEN" }.value)
         assertTrue(draft.putConfiguration("TOKEN", "new-secret", true))
         assertFalse(draft.requestOrNull()!!.toString().contains("new-secret"))
         assertEquals("new-secret", draft.requestOrNull()!!.configuration.first { it.name == "TOKEN" }.value)
-        draft.clearNewSecrets()
-        assertNull(draft.configuration.first { it.name == "TOKEN" }.value)
         assertFalse(draft.putConfiguration("NEW", "", true))
         assertTrue(draft.putConfiguration("NEW", "new-secret", true))
-        draft.clearNewSecrets()
-        assertNull(draft.requestOrNull())
+        assertEquals("new-secret", draft.requestOrNull()!!.configuration.first { it.name == "NEW" }.value)
     }
     @Test fun `removing volumes and config never changes source or implicitly deploys`() {
         val draft = DeploymentDefinitionDraft(baseline)

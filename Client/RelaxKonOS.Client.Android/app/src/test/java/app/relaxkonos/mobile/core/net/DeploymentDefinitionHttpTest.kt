@@ -17,7 +17,7 @@ class DeploymentDefinitionHttpTest {
             "readinessLevel":"process","containerPort":8080,"hostPort":9080,"bindAddress":"127.0.0.1","currentRevisionNumber":1,
             "containerName":"container","siteId":null,"domain":"website.test","driftProblemCode":null,"catalogTemplateId":"personal-site","catalogTemplateVersion":"1.0.0",
             "healthCheckPath":null,"limits":{"cpuCores":1.5,"memoryBytes":16777217,"pidsLimit":512},"volumes":[{"name":"data","containerPath":"/app/data:live","readOnly":true}],
-            "configuration":[{"name":"TEXT","value":" value=kept ","isSecret":false,"secretVersion":null},{"name":"TOKEN","value":null,"isSecret":true,"secretVersion":7}],
+            "configuration":[{"name":"TEXT","value":" value=kept ","isSecret":false,"secretVersion":null},{"name":"TOKEN","value":"saved-secret","isSecret":true,"secretVersion":7}],
             "updatedAt":"2026-10-01T00:00:01.1234567+00:00"}"""
         var method = ""; var path = ""; var key: String? = null; var bearer: String? = null; var payload = ""
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
@@ -40,10 +40,10 @@ class DeploymentDefinitionHttpTest {
             assertTrue(body.getJSONArray("volumes").getJSONObject(0).getBoolean("readOnly"))
             assertEquals("/app/data:live", body.getJSONArray("volumes").getJSONObject(0).getString("containerPath"))
             val secret = body.getJSONArray("configuration").getJSONObject(1)
-            assertTrue(secret.isNull("value")); assertEquals(7, secret.getInt("secretVersion"))
+            assertEquals("saved-secret", secret.getString("value")); assertEquals(7, secret.getInt("secretVersion"))
             assertEquals(" value=kept ", body.getJSONArray("configuration").getJSONObject(0).getString("value"))
             assertFalse(body.has("sourceKind")); assertFalse(body.has("catalogTemplateVersion")); assertFalse(body.has("confirmed"))
-            assertEquals("1.0.0", app.catalogTemplateVersion); assertNull(app.configuration.last().value)
+            assertEquals("1.0.0", app.catalogTemplateVersion); assertEquals("saved-secret", app.configuration.last().value)
             assertEquals("2026-10-01T00:00:01.1234567+00:00", app.updatedAt)
         } finally { server.stop(0) }
     }

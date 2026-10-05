@@ -63,11 +63,6 @@ internal class DeploymentDefinitionDraft(val baseline: DeploymentApplication) {
             DeploymentLimits(cpu, memory, pids), volumes.toList(), configuration.toList(), site)
     }
 
-    /** A submitted secret is removed even after a rejected or uncertain save. Re-entry is explicit. */
-    fun clearNewSecrets() {
-        configuration.indices.forEach { index -> if (configuration[index].isSecret) configuration[index] = configuration[index].copy(value = null) }
-    }
-
     private fun validPath(path: String): Boolean = path.length in 2..256 && path.startsWith('/') && !path.any(Char::isISOControl) && path.split('/').none { it == "." || it == ".." }
     private companion object {
         val environmentName = Regex("[A-Za-z_][A-Za-z0-9_]{0,63}")

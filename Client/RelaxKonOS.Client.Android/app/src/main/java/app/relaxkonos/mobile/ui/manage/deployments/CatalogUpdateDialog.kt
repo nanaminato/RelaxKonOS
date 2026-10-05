@@ -83,7 +83,7 @@ internal fun CatalogUpdateDialog(owner: SessionState.Active, initial: Deployment
                             Text(stringResource(R.string.deployments_readiness, stringResource(deploymentLabel(baseline.readinessLevel))))
                             baseline.healthCheckPath?.let { Text(it) }
                             baseline.volumes.forEach { Text("${it.name} · ${it.containerPath}${if (it.readOnly) " · ro" else ""}") }
-                            baseline.configuration.forEach { config -> Text(if (config.isSecret) config.name + " · " + stringResource(R.string.deployments_secret_version, config.secretVersion ?: 0) else "${config.name}=${config.value.orEmpty()}") }
+                            baseline.configuration.forEach { config -> Text("${config.name}=${config.value.orEmpty()}") }
                             baseline.siteId?.let { Text("${stringResource(R.string.deployments_site)}: $it") }
                             Text(stringResource(R.string.deployments_replacement_note), color = MaterialTheme.colorScheme.error)
                         }

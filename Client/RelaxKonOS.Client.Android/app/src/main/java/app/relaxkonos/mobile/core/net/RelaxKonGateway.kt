@@ -25,7 +25,7 @@ interface RelaxKonGateway {
     suspend fun hostTime(serverUrl: String, accessToken: String): ApiResult<HostTimeSettings>
     suspend fun hostIdentity(serverUrl: String, accessToken: String): ApiResult<HostIdentitySettings>
     suspend fun hostEnvironmentTarget(serverUrl: String, accessToken: String, scope: HostEnvironmentScope): ApiResult<HostSettingsTarget>
-    suspend fun hostEnvironment(serverUrl: String, accessToken: String, scope: HostEnvironmentScope, reveal: Boolean): ApiResult<HostEnvironmentSettings>
+    suspend fun hostEnvironment(serverUrl: String, accessToken: String, scope: HostEnvironmentScope): ApiResult<HostEnvironmentSettings>
     suspend fun previewHostSettings(serverUrl: String, accessToken: String, kind: HostSettingKind, expectedRevision: String, key: String,
         value: String?, scope: HostEnvironmentScope?, mutation: HostEnvironmentMutation?, confirmHighImpact: Boolean): ApiResult<HostSettingsPlan>
     suspend fun applyHostSettings(serverUrl: String, accessToken: String, kind: HostSettingKind, planId: String): ApiResult<HostSettingsOperation>

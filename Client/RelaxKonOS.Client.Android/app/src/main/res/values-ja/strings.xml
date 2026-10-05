@@ -1513,7 +1513,7 @@
     <string name="tunnels_accept">現在の状態を採用</string>
     <string name="tunnels_accept_confirm">最新のサーバー設定とトンネル一覧を読み取り、この端末の未確認マーカーを解除しますか？現在の状態を採用し、開いている下書きを破棄します。元の要求の成功は主張せず、サーバーを変更しません。Token 設定済みの表示は、書き込まれた値を証明しません。</string>
     <string name="tunnels_unavailable">サーバー設定とトンネル一覧を確認できません。</string>
-    <string name="tunnels_token_note">この設定の Token を置換しますか？書き込み専用 API で送信し、このフォームだけに保持します。送信または閉じた後に消去します。frpc の適用は別の操作です。元の値は返されません。結果が不明な場合、次の書き込み前に状態を確認してください。</string>
+    <string name="tunnels_token_note">保存済み Token を表示し、そのまま編集できます。frpc の適用は別の操作です。</string>
     <string name="tunnels_token">Token</string>
     <string name="tunnels_install_recover_note">元の FRP インストール操作 ID を入力してください。実行中のタスクの検出は、応答を失った要求との関連を証明せず、失われた最終応答も復元しません。</string>
     <string name="tunnels_confirm">確認</string>
@@ -1625,7 +1625,7 @@
     <string name="frps_http_port">HTTP vhost ポート（任意）</string>
     <string name="frps_https_port">HTTPS vhost ポート（任意）</string>
     <string name="frps_force_tls">クライアント TLS を必須にする</string>
-    <string name="frps_secret_note">置換欄を空にすると保存済みシークレットを保持します。新しい値はこのダイアログと現在の要求内のみで扱います。ダッシュボードのパスワードは読み戻せません。</string>
+    <string name="frps_secret_note">保存済み Token と Dashboard パスワードを表示します。更新すると保存済みの値を読み直します。</string>
     <string name="frps_token_replace">置換用 Token</string>
     <string name="frps_token_read">現在の Token を読み取る</string>
     <string name="frps_token_current">現在の Token（一時表示）</string>
@@ -1633,7 +1633,7 @@
     <string name="frps_dashboard_address">ダッシュボードのバインド IP</string>
     <string name="frps_dashboard_port">ダッシュボードのポート</string>
     <string name="frps_dashboard_user">ダッシュボードのアカウント</string>
-    <string name="frps_dashboard_password">ダッシュボードの置換用パスワード</string>
+    <string name="frps_dashboard_password">Dashboard パスワード</string>
     <string name="frps_dashboard_note">信頼できるバインド先を使ってください。このページではポート開放、ファイアウォール変更、ブラウザーの信頼設定は行いません。</string>
     <string name="frps_save_confirm">ホストの frps 設定と置換用シークレットを保存しますか？再起動するまで既存クライアントは以前の実行設定を使います。</string>
     <string name="frps_start_confirm">保存した設定でホストの frps リスナーを起動しますか？バインド先、許可ポート、TLS、ダッシュボードの公開範囲を確認してください。</string>
@@ -2310,7 +2310,7 @@
     <string name="deployments_volume_name">ボリューム名</string>
     <string name="deployments_volume_path">コンテナ内のパス</string>
     <string name="deployments_volume_read_only">読み取り専用</string>
-    <string name="deployments_secret_retention">変更しない秘密はサーバー上のバージョンを保持します。空欄のまま編集すると保持され、新しい値を入力すると更新されます。プレビューには秘密の内容を表示しません。</string>
+    <string name="deployments_secret_retention">保存済みの秘密値を表示します。未変更の値は元のバージョンを保持し、変更を保存すると更新します。</string>
     <string name="deployments_secret_version">サーバーの秘密バージョン：%1$d</string>
     <string name="deployments_secret_new">新しい秘密値を入力済み</string>
     <string name="deployments_definition_invalid">定義の項目、リソース上限、名前付きボリュームを確認してください。</string>
@@ -2479,8 +2479,34 @@
     <string name="host_settings_environment">環境変数</string>
     <string name="host_settings_current">現在の値</string>
     <string name="host_settings_observed">ホストでの確認時刻</string>
-    <string name="host_settings_zones">対応するタイムゾーンは %1$d 件です。正確な ID を入力するか候補を選んでください。</string>
+    <string name="host_settings_effect">反映方法：%1$s</string>
+    <string name="host_settings_zones">対応するタイムゾーンは %1$d 件です。正確な ID を入力するか一覧から選択してください。</string>
     <string name="host_settings_zone">タイムゾーン ID</string>
+    <string name="host_settings_zone_offset">UTC オフセット</string>
+    <string name="host_settings_zone_featured">よく使うタイムゾーン</string>
+    <string name="host_settings_zone_matches">一致する候補は %1$d 件です</string>
+    <string name="host_settings_zone_matches_limited">先頭の %1$d 件のみ表示しています。入力すると候補を絞り込めます。</string>
+    <string name="host_settings_zone_no_match">一致するタイムゾーン ID がありません。正確な ID を入力してください。</string>
+    <string name="host_settings_zone_unsupported">ホストはこの ID に対応していません。プレビューできません。</string>
+    <string name="host_settings_zone_current">ホストの現在値</string>
+    <string name="host_settings_zone_device">この端末</string>
+    <string name="host_settings_zone_clear">タイムゾーン ID をクリア</string>
+    <string name="host_settings_zone_browse">一覧から選択</string>
+    <string name="host_settings_zone_picker_title">タイムゾーンを選択</string>
+    <string name="host_settings_zone_picker_search">タイムゾーン ID を検索</string>
+    <string name="host_settings_zone_picker_all">対応する ID %1$d 件を地域別に表示します。</string>
+    <string name="host_settings_zone_region_africa">アフリカ</string>
+    <string name="host_settings_zone_region_america">アメリカ</string>
+    <string name="host_settings_zone_region_antarctica">南極</string>
+    <string name="host_settings_zone_region_arctic">北極</string>
+    <string name="host_settings_zone_region_asia">アジア</string>
+    <string name="host_settings_zone_region_atlantic">大西洋</string>
+    <string name="host_settings_zone_region_australia">オーストラリア</string>
+    <string name="host_settings_zone_region_europe">ヨーロッパ</string>
+    <string name="host_settings_zone_region_indian">インド洋</string>
+    <string name="host_settings_zone_region_pacific">太平洋</string>
+    <string name="host_settings_zone_region_etc">Etc</string>
+    <string name="host_settings_zone_region_other">その他</string>
     <string name="host_settings_pending_name">再起動後のホスト名</string>
     <string name="host_settings_hostname">新しいホスト名</string>
     <string name="host_settings_hostname_rule">最大 %1$d 文字。英数字と途中のハイフンを使用でき、数字のみは不可です。</string>
@@ -2767,4 +2793,5 @@
     <string name="manage_search_applications">アプリを検索</string>
     <string name="manage_search_empty">検索条件に一致するアプリはありません。</string>
     <string name="files_actions">操作</string>
+    <string name="mihomo_install_accept_note">ホストでインストールが実行中でない場合、現在の状態を承認してローカルの制限を解除できます。再送信せず、元の要求の成功を示しません。</string>
 </resources>

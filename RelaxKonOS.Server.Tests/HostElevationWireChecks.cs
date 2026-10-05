@@ -108,7 +108,7 @@ public static class HostElevationWireChecks
         public SettingsTarget ResolveTarget(ClaimsPrincipal principal, SettingsScope scope) => scope == SettingsScope.HostMachine
             ? new("host/environment/machine", scope) : new("host/environment/user/owned-sid", scope, "owned-sid");
         public void RequireGrant(ClaimsPrincipal principal, SettingsTarget target, HostElevationCapability capability) => throw new NotSupportedException();
-        public Task<HostEnvironmentSnapshot> ReadAsync(ClaimsPrincipal principal, SettingsScope scope, bool reveal, CancellationToken ct) => throw new NotSupportedException();
+        public Task<HostEnvironmentSnapshot> ReadAsync(ClaimsPrincipal principal, SettingsScope scope, CancellationToken ct) => throw new NotSupportedException();
         public Task<PrivilegedEnvironmentState> ReadRawAsync(ClaimsPrincipal principal, SettingsTarget target, CancellationToken ct) => throw new NotSupportedException();
         public Task<PrivilegedOperationResult> ApplyAsync(ClaimsPrincipal principal, SettingsTarget target, EnvironmentChangeSet change, string revision, Guid id, CancellationToken ct) => throw new NotSupportedException();
     }

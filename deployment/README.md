@@ -70,6 +70,16 @@ dotnet run --project ./deployment/packaging/RelaxKonOS.ReleaseVerifier -- verify
 
 Linux 系统模式在未上传新发布包的维护操作中，从 `/opt/relaxkonos/current/deployment/bootstrap/` 读取当前版本的安装和卸载引擎。桌面端必须同时核对操作终态回执及随后读取的宿主状态：失败回执显示实际失败原因；卸载只有在操作成功且状态确认 `installed=false` 时显示成功，保留数据不等于仍然安装。
 
+默认系统卸载保留组件的二进制、配置、托管标记、数据库、共享所有权记录和 Guardian 定义。Linux Mihomo 在卸载时停止，保留 systemd 启用策略以及 `/etc/relaxkonos/proxy/`；原路径重装只在原服务已启用且配置、运行时及管理记录齐全时启动它。Windows Mihomo 和托管 FRP 随 Helper 停止，Linux FRP 随 Server 正常退出清理其拥有的子进程；FRP 保存的配置可在重装后重新应用，不自动猜测或复用旧 PID。Nginx 和 SMB 的系统服务、配置与共享保持原状。
+
+保留数据卸载把系统部署配置存入数据根的受保护 `deployment/` 目录，原路径重装复用其中的 JWT 密钥、审计实例标识和审计签名密钥。Windows 删除程序目录前显式断开指向持久化 Server 数据的 junction。数据保护密钥仍由原服务账户的宿主 Data Protection 提供者保管；不要删除或更换服务账户及其密钥目录。组件现有状态查询核对实际运行时、Nginx 托管标记和 SMB 所有权，保留记录不代表进程仍在运行。Mihomo 和 Nginx 的固定宿主路径是特权操作契约的一部分，不随自定义通用数据根移动。
+
+`--remove-data` / `-RemoveData` 现在先停止 Server 和 Guardian，再通过已安装 Server 的本地维护入口顺序清理 SMB、Nginx、FRP、Mihomo；Helper 保持可用直到清理成功。Windows 仍需同时指定 `-ConfirmRemoveData`。受管理 Nginx 使用已有卸载器；接管的系统 Nginx 仅撤销受管理站点和集成锚点，保留系统安装及其他站点。SMB 仅删除核验所有权和快照一致的共享，不删除共享目录中的文件，也不卸载宿主 SMB/Samba。共享路径若与待删除数据根重叠，则中止卸载，需先迁出共享数据。个人 Windows 安装仅清理本安装的组件，跳过系统 SMB 与其他 Nginx 实例。
+
+任何组件清理失败、标记损坏、共享外部修改、Server 无法停止或维护入口缺失，都中止卸载并保留程序、Helper 和数据。失败前已完成的清理不会回滚，停止的 Server 也不会自动重启；修复冲突后可重试卸载，或手动启动 Server 继续维护。清理回执保存在 `server/deployment/component-cleanup.json`；全部清理成功后，卸载器将回执复制到 Linux `/var/lib/relaxkonos-deployment/component-cleanup.json` 或 Windows `%ProgramData%\RelaxKonOS-Deployment\component-cleanup.json`（个人安装使用 `%LOCALAPPDATA%`），然后删除程序和数据。默认不删除数据的卸载行为不变。
+
+部署行为验证可运行 `python Tests/Deployment/retained_component_checks.py` 和 Windows 下的 `Tests/Deployment/RetainedWindowsComponentChecks.ps1`、`Tests/Deployment/ManagedWindowsCleanupChecks.ps1`；清理中止及回执验证使用 Server 测试工程的 `--managed-component-cleanup-only`。本地维护入口 `--maintenance=remove-managed-components --maintenanceDataRoot <已核验数据根>` 不启动 HTTP 服务，仅允许 root/管理员或已配置的 Windows 个人安装所有者执行，必须在原 Server 已停止且原部署配置与 Helper 仍可用时运行。
+
 普通 SSH 账户通过 sudo 维护系统安装时，已安装引擎的文件和可执行权限检查也必须使用同一次经验证的 sudo 身份。部署目录仅 root 可遍历时，不能用普通 SSH 用户的 `test -x` 判断引擎缺失；无 sudo 授权或脚本实际缺失时仍须拒绝操作。
 
 SSH 私有解压目录使用 `0700/0600` 权限；发布到系统模式安装目录后，必须让服务账户可遍历程序目录并读取运行库和程序集，同时保持程序文件仅 root 可写。程序的 `server/data` 必须链接到持久化的受管服务器数据目录。修复部署脚本后必须重新制作 Server ZIP，因为安装实际执行的是 ZIP 内的版本化引擎，仅更新桌面客户端不会更新旧 ZIP 中的安装器。安装器等待 HTTP/HTTPS 健康端点最多 60 秒，不能用 systemd 的 active 状态替代健康检查成功。

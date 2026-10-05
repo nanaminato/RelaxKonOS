@@ -4,16 +4,16 @@ using RelaxKonOS.Protocol.Settings;
 
 namespace RelaxKonOS.Client.Services.HostSettings;
 
-/// <summary>Independent environment API. Revealed values are returned only to the explicit caller and never cached.</summary>
+/// <summary>Independent environment API returning saved values to the authenticated caller.</summary>
 public sealed class HostEnvironmentService(HttpClient http, IAuthSession session)
     : HostSettingsService(http, session), IHostEnvironmentService
 {
     public Task<SettingsTarget> ResolveTargetAsync(HostSettingsConnection connection, SettingsScope scope, CancellationToken ct = default)
         => SendAsync<SettingsTarget>(connection, HttpMethod.Get, SettingsApiRoutes.EnvironmentTarget + "?scope=" + ScopeName(scope), null, ct);
 
-    public Task<HostEnvironmentSnapshot> ReadAsync(HostSettingsConnection connection, SettingsScope scope, bool reveal = false, CancellationToken ct = default)
+    public Task<HostEnvironmentSnapshot> ReadAsync(HostSettingsConnection connection, SettingsScope scope, CancellationToken ct = default)
         => SendAsync<HostEnvironmentSnapshot>(connection, HttpMethod.Get,
-            SettingsApiRoutes.Environment + "?scope=" + ScopeName(scope) + "&reveal=" + (reveal ? "true" : "false"), null, ct);
+            SettingsApiRoutes.Environment + "?scope=" + ScopeName(scope), null, ct);
 
     public Task<SettingsPlan> PreviewAsync(HostSettingsConnection connection, EnvironmentPreviewRequest request, CancellationToken ct = default)
     {
@@ -33,7 +33,7 @@ public sealed class HostEnvironmentService(HttpClient http, IAuthSession session
     public async Task<HostElevationResult> AuthorizeAsync(HostSettingsConnection connection, SettingsScope scope,
         HostElevationCapability capability, string? password = null, string? administratorUsername = null, CancellationToken ct = default)
     {
-        if (capability is not (HostElevationCapability.HostEnvironmentRead or HostElevationCapability.HostEnvironmentReveal or HostElevationCapability.HostEnvironmentChange))
+        if (capability is not (HostElevationCapability.HostEnvironmentRead or HostElevationCapability.HostEnvironmentChange))
             throw new ArgumentOutOfRangeException(nameof(capability));
         // Resolve the authenticated account on the server; never derive a remote UID/SID from the client OS.
         var target = await ResolveTargetAsync(connection, scope, ct);

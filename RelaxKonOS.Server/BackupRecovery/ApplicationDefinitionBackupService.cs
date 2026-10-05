@@ -47,8 +47,8 @@ internal sealed class ApplicationDefinitionBackupService(
             var (application, revisions) = catalog.ReadBackupSnapshot(applicationId);
             var current = application.CurrentRevisionId is { } currentId ? revisions.FirstOrDefault(x => x.Id == currentId) : null;
             var payload = new ApplicationDefinitionBackupPayload(1,
-                ApplicationDeploymentMapper.Describe(application, current, null, engineAvailable: false, ownedByUs: true),
-                [.. revisions.Select(revision => ApplicationDeploymentMapper.Revision(revision, application.CurrentRevisionId))]);
+                ApplicationDeploymentMapper.Describe(application, current, null, engineAvailable: false, ownedByUs: true, secrets: null),
+                [.. revisions.Select(revision => ApplicationDeploymentMapper.Revision(revision, application.CurrentRevisionId, secrets: null))]);
             var bytes = JsonSerializer.SerializeToUtf8Bytes(payload, Json);
             await using var input = new MemoryStream(bytes, writable: false);
             var encrypted = await objects.WriteAsync(running.Manifest.BackupId, "definition", input, cancellationToken);

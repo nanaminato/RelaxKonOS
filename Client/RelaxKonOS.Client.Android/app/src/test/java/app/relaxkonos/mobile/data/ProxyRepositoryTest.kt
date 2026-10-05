@@ -45,6 +45,17 @@ class ProxyRepositoryTest {
         repository.profiles(owner); assertEquals(1, journal.pending(owner).size)
         assertTrue(repository.acceptFacts(owner, journal.pending(owner).single()) is ApiResult.Success); assertTrue(journal.pending(owner).isEmpty())
     }
+    @Test fun `disconnected import preflight never sends a write or creates a blocking marker`() = runTest {
+        val owner = signIn()
+        gateway.onProxyOverview = { ApiResult.Transport(null) }
+        gateway.onImportProxySubscription = { error("Import must not be sent after a failed connectivity check") }
+        assertTrue(repository.import(owner, ProxyImportRequest("https://example.test/sub", null, ProxyDownloadRoute.Direct)) is ApiResult.Transport)
+        assertTrue(repository.pending(owner).isEmpty())
+        facts()
+        gateway.onImportProxySubscription = { ApiResult.Transport(null) }
+        repository.import(owner, ProxyImportRequest("https://example.test/sub", null, ProxyDownloadRoute.Direct))
+        assertEquals(1, repository.pending(owner).size)
+    }
     @Test fun `stale response and observer mutation cannot cross session boundary`() = runTest {
         val owner = signIn(); gateway.onProxyOverview = { signIn("bob"); ApiResult.Transport(null) }
         assertTrue(runCatching { repository.overview(owner) }.exceptionOrNull() is CancellationException)
@@ -59,7 +70,7 @@ class ProxyRepositoryTest {
         assertTrue(repository.operation(owner, id) is ApiResult.Transport); assertTrue(index.forOwner(owner).isEmpty())
     }
     @Test fun `emergency recovery preserves unresolved writes and replays even when overview is unavailable`() = runTest {
-        val owner = signIn(); gateway.onImportProxySubscription = { ApiResult.Transport(null) }
+        val owner = signIn(); facts(); gateway.onImportProxySubscription = { ApiResult.Transport(null) }
         repository.import(owner, ProxyImportRequest("https://example.test/secret", null, ProxyDownloadRoute.Direct))
         val original = journal.pending(owner).single(); val keys = mutableListOf<String>()
         gateway.onProxyQueue = { action, _, key -> assertEquals(ProxyAction.EmergencyDisableTun, action); keys += key; ApiResult.Transport(null) }

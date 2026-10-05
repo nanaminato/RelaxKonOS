@@ -110,7 +110,7 @@ public sealed partial class EnvironmentPageViewModel : SettingsPageViewModel
 
     private async Task LoadHostScopesAsync(HostSettingsConnection connection, CancellationToken ct)
     {
-        var machine = await _service.ReadAsync(connection, SettingsScope.HostMachine, reveal: true, ct);
+        var machine = await _service.ReadAsync(connection, SettingsScope.HostMachine, ct);
         ct.ThrowIfCancellationRequested();
         if (machine.CaseSensitiveNames)
         {
@@ -125,7 +125,7 @@ public sealed partial class EnvironmentPageViewModel : SettingsPageViewModel
             OnPropertyChanged(nameof(ScopeHeading));
             return;
         }
-        var user = await _service.ReadAsync(connection, SettingsScope.HostUser, reveal: true, ct);
+        var user = await _service.ReadAsync(connection, SettingsScope.HostUser, ct);
         ct.ThrowIfCancellationRequested();
         _userSnapshot = user;
         _machineSnapshot = machine;
@@ -152,15 +152,12 @@ public sealed partial class EnvironmentPageViewModel : SettingsPageViewModel
         Update();
     }
     [RelayCommand(CanExecute = nameof(CanLoad))]
-    private Task LoadAsync() => LoadCoreAsync(false);
-    [RelayCommand(CanExecute = nameof(CanLoad))]
-    private Task RevealAsync() => LoadCoreAsync(true);
-    private Task LoadCoreAsync(bool reveal) => RunAsync(async ct =>
+    private Task LoadAsync() => LoadCoreAsync();
+    private Task LoadCoreAsync() => RunAsync(async ct =>
     {
         var connection = _service.CaptureConnection(); _connection = connection;
         if (!await Authorize(connection, HostElevationCapability.HostEnvironmentRead, ct)) return;
-        if (reveal && !await Authorize(connection, HostElevationCapability.HostEnvironmentReveal, ct)) return;
-        var snapshot = await _service.ReadAsync(connection, Scope, reveal, ct);
+        var snapshot = await _service.ReadAsync(connection, Scope, ct);
         ct.ThrowIfCancellationRequested();
         _snapshot = snapshot; SelectedVariable = null; VariableName = ""; VariableValue = ""; RefreshVariables();
         StatusText = T("settings.host_time.loaded", "Loaded");
@@ -327,7 +324,7 @@ public sealed partial class EnvironmentPageViewModel : SettingsPageViewModel
         OnPropertyChanged(nameof(IsLinuxPamEnvironment)); OnPropertyChanged(nameof(EnvironmentEffectText)); OnPropertyChanged(nameof(ScopeHeading));
         OnPropertyChanged(nameof(HasLoadedEnvironment));
         UpdatePathCommands();
-        LoadCommand.NotifyCanExecuteChanged(); RevealCommand.NotifyCanExecuteChanged(); StageSetCommand.NotifyCanExecuteChanged(); StageDeleteCommand.NotifyCanExecuteChanged();
+        LoadCommand.NotifyCanExecuteChanged(); StageSetCommand.NotifyCanExecuteChanged(); StageDeleteCommand.NotifyCanExecuteChanged();
         NewVariableCommand.NotifyCanExecuteChanged(); EditVariableCommand.NotifyCanExecuteChanged(); DeleteVariableCommand.NotifyCanExecuteChanged();
         ApplyCommand.NotifyCanExecuteChanged();
         EditUserVariableCommand.NotifyCanExecuteChanged(); DeleteUserVariableCommand.NotifyCanExecuteChanged(); EditSystemVariableCommand.NotifyCanExecuteChanged(); DeleteSystemVariableCommand.NotifyCanExecuteChanged();

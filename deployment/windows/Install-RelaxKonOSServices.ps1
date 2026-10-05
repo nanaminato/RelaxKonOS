@@ -201,9 +201,13 @@ $jwtSecret = $null
 $observabilityInstanceId = $null
 $observabilityAuditHmacKey = $null
 $parsedObservabilityInstanceId = [guid]::Empty
-if (Test-Path -LiteralPath $serverHostConfig -PathType Leaf) {
+$identityHostConfig = $serverHostConfig
+if (-not (Test-Path -LiteralPath $identityHostConfig -PathType Leaf)) {
+    $identityHostConfig = Join-Path $DataRoot 'deployment\appsettings.host.json'
+}
+if (Test-Path -LiteralPath $identityHostConfig -PathType Leaf) {
     try {
-        $existingServerSettings = Get-Content -LiteralPath $serverHostConfig -Raw | ConvertFrom-Json
+        $existingServerSettings = Get-Content -LiteralPath $identityHostConfig -Raw | ConvertFrom-Json
         if ($existingServerSettings.Jwt.Secret -is [string] -and $existingServerSettings.Jwt.Secret.Length -ge 32) {
             $jwtSecret = $existingServerSettings.Jwt.Secret
         }

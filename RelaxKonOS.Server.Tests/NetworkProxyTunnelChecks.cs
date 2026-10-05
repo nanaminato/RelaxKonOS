@@ -5,10 +5,10 @@ internal static void VerifyTunnelProtocolContract()
     TestAssert.Assert(TunnelApiRoutes.Tunnels == "/api/v1.0/tunnels", "Tunnel API base route changed unexpectedly.");
     var profile = new TunnelServerProfileDto(Guid.NewGuid(), "edge", "frps.example.test", 7000,
         TunnelAuthKind.Token, true, TunnelTlsMode.Default, TunnelRuntimeMode.External, "/opt/frp/frpc", 3,
-        DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "fixture-profile-token");
     var json = JsonSerializer.Serialize(profile, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default);
-    TestAssert.Assert(!json.Contains("\"token\":", StringComparison.OrdinalIgnoreCase) && !json.Contains("secret", StringComparison.OrdinalIgnoreCase),
-        "Safe tunnel profile DTO must not serialize credential material.");
+    TestAssert.Assert(json.Contains("fixture-profile-token", StringComparison.Ordinal),
+        "Tunnel profile DTO must return the saved Token.");
     TestAssert.Assert(json.Contains("tokenConfigured", StringComparison.Ordinal), "Safe tunnel profile DTO lost configured-state indicator.");
     var definition = new TunnelDefinitionDto(Guid.NewGuid(), profile.Id, "ssh", "frp", TunnelProtocol.Tcp, "127.0.0.1", 22, 6000, null, true, false, false, 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
     var roundTrip = JsonSerializer.Deserialize<TunnelDefinitionDto>(JsonSerializer.Serialize(definition, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default), RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default);
@@ -476,9 +476,10 @@ internal static async Task VerifyTunnelSecretLifecycleAsync(string root)
         throw new InvalidOperationException("Invalid HTTP tunnel was accepted.");
     }
     catch (TunnelValidationException exception) { TestAssert.Assert(exception.ProblemCode == "tunnel.domain_required", "Invalid tunnel did not return stable problem code."); }
-    await service.SetProfileTokenAsync(created.Id, "credential-that-must-not-return", user, CancellationToken.None);
+    await service.SetProfileTokenAsync(created.Id, "saved-profile-token", user, CancellationToken.None);
     var safe = await service.GetProfileAsync(created.Id, user, CancellationToken.None) ?? throw new InvalidOperationException("Tunnel profile disappeared.");
-    TestAssert.Assert(safe.TokenConfigured && safe.GetType().GetProperties().All(property => !property.Name.Equals("Token", StringComparison.OrdinalIgnoreCase)), "Safe profile projection exposed token material.");
+    TestAssert.Assert(safe.TokenConfigured && safe.Token == "saved-profile-token", "Profile reads omitted the saved Token.");
+    TestAssert.Assert((await service.ListProfilesAsync(user, CancellationToken.None)).Single().Token == safe.Token, "Profile list omitted the saved Token.");
     var oldestAudit = DateTimeOffset.UtcNow.AddMinutes(-2);
     db.TunnelAuditEntries.AddRange(
         new TunnelAuditEntry { Id = Guid.NewGuid(), ActorUserId = user, Action = "frps.start", Result = "succeeded", CreatedAt = oldestAudit },

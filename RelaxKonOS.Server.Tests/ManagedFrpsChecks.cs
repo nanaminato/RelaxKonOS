@@ -1,11 +1,38 @@
 internal static class ManagedFrpsChecks
 {
+    internal static async Task VerifyConfigurationValuesAsync(string root)
+    {
+        var services = new ServiceCollection();
+        services.AddDbContext<RelaxKonOSDbContext>(options => options.UseSqlite($"Data Source={Path.Combine(root, "values-audit.db")}"));
+        services.AddScoped<ITunnelAudit, TunnelAudit>();
+        await using var container = services.BuildServiceProvider();
+        await using (var scope = container.CreateAsyncScope())
+            await scope.ServiceProvider.GetRequiredService<RelaxKonOSDbContext>().Database.EnsureCreatedAsync();
+        var protection = DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(root, "values-keys")));
+        var environment = new TestHostEnvironment(root);
+        var runtime = new FixtureRuntime(Path.Combine(root, "unused-frps"));
+        var windows = new WindowsManagedRuntimeOperations(new CapturingPrivilegedTransport());
+        using var server = new ManagedFrpsService(environment, protection, runtime, container.GetRequiredService<IServiceScopeFactory>(), windows);
+        var request = new UpdateManagedFrpsConfigurationRequest(true, "127.0.0.1", 7000, [new(6000, 6010)], null, null, true,
+            "saved-token", true, "127.0.0.1", 7500, "admin", "saved-dashboard-password", 0);
+        var saved = await server.UpdateAsync(request, "actor", default);
+        TestAssert.Assert(saved.Token == request.Token && saved.DashboardPassword == request.DashboardPassword, "Save omitted configured credentials.");
+        var refreshed = await server.GetAsync(default);
+        var editing = await server.GetForEditingAsync("actor", default);
+        TestAssert.Assert(refreshed.Token == saved.Token && refreshed.DashboardPassword == saved.DashboardPassword
+            && editing.Token == saved.Token && editing.DashboardPassword == saved.DashboardPassword, "Refresh or reopening hid configured credentials.");
+        var retained = await server.UpdateAsync(request with { ExpectedRevision = 1, Token = null, DashboardPassword = null }, "actor", default);
+        TestAssert.Assert(retained.Token == saved.Token && retained.DashboardPassword == saved.DashboardPassword, "Blank updates did not retain and return credentials.");
+        var persisted = await File.ReadAllTextAsync(Path.Combine(root, "data", "runtimes", "frp", "frps", "config.json"));
+        TestAssert.Assert(!persisted.Contains("saved-token") && !persisted.Contains("saved-dashboard-password"), "Configuration persisted plaintext credentials.");
+    }
+
     internal static async Task RunAsync(string root)
     {
         if (!OperatingSystem.IsLinux()) throw new PlatformNotSupportedException("frps shell fixture requires Linux.");
         Directory.CreateDirectory(root);
         var executable = Path.Combine(root, "frps-fixture");
-        await File.WriteAllTextAsync(executable, "#!/bin/sh\nif [ \"$1\" = \"verify\" ]; then exit 0; fi\necho 'token=private-fixture-token password=private-dashboard-password'\nsleep 30\n");
+        await File.WriteAllTextAsync(executable, "#!/bin/sh\nif [ \"$1\" = \"verify\" ]; then exit 0; fi\necho $$ > \"$(dirname \"$0\")/frps.pid\"\necho 'token=private-fixture-token password=private-dashboard-password'\nsleep 30\n");
         File.SetUnixFileMode(executable, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         var services = new ServiceCollection();
         services.AddDbContext<RelaxKonOSDbContext>(options => options.UseSqlite($"Data Source={Path.Combine(root, "audit.db")}"));
@@ -21,9 +48,9 @@ internal static class ManagedFrpsChecks
         var request = new UpdateManagedFrpsConfigurationRequest(true, "127.0.0.1", FreePort(), [new(6000, 6010)], null, null, true,
             "private-fixture-token", false, "127.0.0.1", null, null, null, 0);
         var saved = await server.UpdateAsync(request, "actor", default);
-        TestAssert.Assert(saved.Revision == 1 && saved.State == ManagedFrpsState.Stopped && saved.Token is null && saved.AppliedRevision is null, "frps save leaked Token or claimed a running configuration.");
+        TestAssert.Assert(saved.Revision == 1 && saved.State == ManagedFrpsState.Stopped && saved.Token == request.Token && saved.AppliedRevision is null, "frps save omitted Token or claimed a running configuration.");
         var serialized = JsonSerializer.Serialize(saved, RelaxKonOSJsonOptions.Default);
-        TestAssert.Assert(!serialized.Contains("private-fixture-token"), "Safe frps DTO leaked Token.");
+        TestAssert.Assert(serialized.Contains("private-fixture-token"), "frps DTO omitted the saved Token.");
         try { await server.UpdateAsync(request, "actor", default); throw new Exception("Stale frps save was accepted."); } catch (ManagedFrpsRevisionConflictException) { }
         var json = JsonSerializer.Serialize(request, RelaxKonOSJsonOptions.Default);
         var missing = System.Text.Json.Nodes.JsonNode.Parse(json)!; missing.AsObject().Remove("expectedRevision");
@@ -39,7 +66,7 @@ internal static class ManagedFrpsChecks
             var running = await server.GetAsync(default);
             TestAssert.Assert(started.Succeeded && running.State == ManagedFrpsState.Running && running.AppliedRevision == 1, "frps startup did not establish the applied revision.");
             var changed = await server.UpdateAsync(request with { ExpectedRevision = 1, Token = null, ForceTls = false }, "actor", default);
-            TestAssert.Assert(changed.State == ManagedFrpsState.Running && changed.Revision == 2 && changed.AppliedRevision == 1 && changed.Token is null, "Saving frps changes falsely applied them.");
+            TestAssert.Assert(changed.State == ManagedFrpsState.Running && changed.Revision == 2 && changed.AppliedRevision == 1 && changed.Token == request.Token, "Saving frps changes falsely applied them.");
             var unchanged = await server.StartAsync("actor", default);
             TestAssert.Assert(!unchanged.Succeeded && unchanged.State == TunnelConnectionState.SavedNotApplied && unchanged.ProblemCode == "tunnel.frps_restart_required", "Start silently applied a new frps configuration to an existing process.");
             using var reopened = new ManagedFrpsService(environment, protector, runtime, container.GetRequiredService<IServiceScopeFactory>(), windows);
@@ -54,9 +81,9 @@ internal static class ManagedFrpsChecks
             var dashboardPort = FreePort(); while (dashboardPort == request.BindPort) dashboardPort = FreePort();
             var secured = await server.UpdateAsync(request with { ExpectedRevision = 2, Token = null, DashboardEnabled = true, DashboardPort = dashboardPort,
                 DashboardUser = "admin", DashboardPassword = "private-dashboard-password" }, "actor", default);
-            TestAssert.Assert(secured.Revision == 3 && secured.DashboardPasswordConfigured && secured.Token is null, "Dashboard credentials did not persist as safe metadata.");
+            TestAssert.Assert(secured.Revision == 3 && secured.DashboardPasswordConfigured && secured.Token == request.Token && secured.DashboardPassword == "private-dashboard-password", "Dashboard credentials were not returned for editing.");
             var retained = await server.UpdateAsync(request with { ExpectedRevision = 3, Token = null, DashboardEnabled = true, DashboardPort = dashboardPort, DashboardUser = "admin", DashboardPassword = null }, "actor", default);
-            TestAssert.Assert(retained.DashboardPasswordConfigured && retained.TokenConfigured, "Blank replacement lost stored frps secrets.");
+            TestAssert.Assert(retained.DashboardPassword == "private-dashboard-password" && retained.Token == request.Token, "Blank replacement lost stored frps secrets.");
             using var occupied = new TcpListener(IPAddress.Loopback, dashboardPort); occupied.Start();
             var refused = await server.StartAsync("actor", default);
             TestAssert.Assert(!refused.Succeeded && refused.ProblemCode == "tunnel.frps_port_in_use", "Occupied dashboard listener lost its stable failure result.");
@@ -69,6 +96,13 @@ internal static class ManagedFrpsChecks
             var audit = await scope.ServiceProvider.GetRequiredService<ITunnelAudit>().ListFrpsAsync(default);
             TestAssert.Assert(audit.Any(x => x.Action == "frps.token.read") && audit.Any(x => x.Action == "frps.configure" && x.ProblemCode == "tunnel.revision_conflict"), "frps secret reads or conflict writes lost audit evidence.");
             TestAssert.Assert(!JsonSerializer.Serialize(audit).Contains("private-fixture-token"), "frps audit leaked a secret.");
+            TestAssert.Assert((await server.StartAsync("actor", default)).Succeeded, "Saved frps configuration could not restart before host shutdown.");
+            using var child = System.Diagnostics.Process.GetProcessById(int.Parse(await File.ReadAllTextAsync(Path.Combine(root, "frps.pid"))));
+            await ((Microsoft.Extensions.Hosting.IHostedService)server).StopAsync(default);
+            TestAssert.Assert(child.HasExited && (await server.GetAsync(default)).State == ManagedFrpsState.Stopped,
+                "Host shutdown left its owned frps process running.");
+            TestAssert.Assert((await reopened.GetForEditingAsync("actor", default)).Token == request.Token,
+                "Host shutdown erased the saved frps credentials.");
         }
         finally { await server.StopAsync("actor", default); }
     }

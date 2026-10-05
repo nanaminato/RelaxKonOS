@@ -117,16 +117,11 @@ import kotlinx.coroutines.delay
         confirmButton = { Button(enabled = !state.busy, onClick = { confirm = null; request.third() }) { Text(stringResource(R.string.tunnels_confirm)) } },
         dismissButton = { TextButton(onClick = { confirm = null }) { Text(stringResource(R.string.common_cancel)) } }) }
 }
-
 @Composable internal fun ManagedFrpsEditor(model: TunnelsViewModel, state: TunnelsState) {
     val draft = state.frpsDraft ?: return
-    var token by remember { mutableStateOf(charArrayOf()) }; var password by remember { mutableStateOf(charArrayOf()) }
-    var currentVisible by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf<Int?>(null) }
     val locked = state.busy || state.pending.isNotEmpty()
-    fun clear() { token.fill('\u0000'); password.fill('\u0000'); token = charArrayOf(); password = charArrayOf(); currentVisible = false }
-    DisposableEffect(model) { onDispose { token.fill('\u0000'); password.fill('\u0000'); model.clearFrpsSecret() } }
-    fun close() { if (!state.busy) { if (draft != state.initialFrps || token.isNotEmpty() || password.isNotEmpty()) confirm = R.string.tunnels_discard_confirm else { clear(); model.closeFrps() } } }
+    fun close() { if (!state.busy) { if (draft != state.initialFrps) confirm = R.string.tunnels_discard_confirm else model.closeFrps() } }
     AlertDialog(onDismissRequest = ::close, modifier = Modifier.imePadding(), title = { Text(stringResource(R.string.frps_editor)) },
         text = { Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Text(stringResource(R.string.frps_editor_note)); Text(stringResource(R.string.frps_revision, draft.revision))
@@ -142,41 +137,31 @@ import kotlinx.coroutines.delay
             Text(stringResource(R.string.tunnels_security), style = MaterialTheme.typography.titleSmall)
             TunnelCheck(draft.forceTls, !locked, R.string.frps_force_tls) { model.updateFrps(draft.copy(forceTls = it)) }
             Text(stringResource(R.string.frps_secret_note), style = MaterialTheme.typography.bodySmall)
-            FrpsSecretField(token, !locked, R.string.frps_token_replace) { token.fill('\u0000'); token = it.toCharArray() }
-            if (draft.tokenConfigured) TextButton(enabled = !locked, onClick = { confirm = R.string.frps_token_read_confirm }) { Text(stringResource(R.string.frps_token_read)) }
-            state.editingToken?.let {
-                FrpsSecretField(it, false, R.string.frps_token_current, currentVisible) {}
-                TunnelCheck(currentVisible, !state.busy, R.string.frps_show_token) { currentVisible = it }
-            }
+            TunnelText(draft.token, !locked, R.string.tunnels_token) { model.updateFrps(draft.copy(token = it)) }
             }
             TunnelCard {
             TunnelCheck(draft.dashboardEnabled, !locked, R.string.frps_dashboard_enabled) { model.updateFrps(draft.copy(dashboardEnabled = it)) }
             TunnelText(draft.dashboardAddress, !locked, R.string.frps_dashboard_address) { model.updateFrps(draft.copy(dashboardAddress = it)) }
             TunnelText(draft.dashboardPort, !locked, R.string.frps_dashboard_port) { model.updateFrps(draft.copy(dashboardPort = it)) }
             TunnelText(draft.dashboardUser, !locked, R.string.frps_dashboard_user) { model.updateFrps(draft.copy(dashboardUser = it)) }
-            FrpsSecretField(password, !locked, R.string.frps_dashboard_password) { password.fill('\u0000'); password = it.toCharArray() }
+            TunnelText(draft.password, !locked, R.string.frps_dashboard_password) { model.updateFrps(draft.copy(password = it)) }
             Text(stringResource(R.string.frps_dashboard_note), style = MaterialTheme.typography.bodySmall)
             }
-            if (draft.request(token, password) == null) Text(stringResource(R.string.frps_invalid), color = MaterialTheme.colorScheme.error)
+            if (draft.request(draft.token.toCharArray(), draft.password.toCharArray()) == null) Text(stringResource(R.string.frps_invalid), color = MaterialTheme.colorScheme.error)
 
             if (state.pending.isNotEmpty()) Text(stringResource(R.string.tunnels_uncertain), color = MaterialTheme.colorScheme.error)
             TextButton(enabled = !locked, onClick = { confirm = R.string.tunnels_reload_confirm }) { Text(stringResource(R.string.tunnels_reload)) }
-        } }, confirmButton = { Button(enabled = !locked && draft.request(token, password) != null, onClick = { confirm = R.string.frps_save_confirm }) { ActionLabel(R.string.common_save) } },
+        } }, confirmButton = { Button(enabled = !locked && draft.request(draft.token.toCharArray(), draft.password.toCharArray()) != null, onClick = { confirm = R.string.frps_save_confirm }) { ActionLabel(R.string.common_save) } },
         dismissButton = { TextButton(enabled = !state.busy, onClick = ::close) { Text(stringResource(R.string.common_close)) } })
     confirm?.let { message -> AlertDialog(onDismissRequest = { confirm = null }, title = { Text(stringResource(R.string.tunnels_confirm)) },
         text = { Column { Text("frps · " + draft.bindAddress + ":" + draft.bindPort); Text(stringResource(message)) } }, confirmButton = {
             Button(enabled = !state.busy, onClick = {
                 confirm = null
                 when (message) {
-                    R.string.frps_save_confirm -> { val submittedToken = token.copyOf(); val submittedPassword = password.copyOf(); clear(); model.saveFrps(submittedToken, submittedPassword) }
-                    R.string.tunnels_reload_confirm -> { clear(); model.reloadFrpsDraft() }
-                    R.string.frps_token_read_confirm -> model.readFrpsToken()
-                    else -> { clear(); model.closeFrps() }
+                    R.string.frps_save_confirm -> { model.saveFrps(draft.token.toCharArray(), draft.password.toCharArray()) }
+                    R.string.tunnels_reload_confirm -> model.reloadFrpsDraft()
+                    else -> model.closeFrps()
                 }
             }) { Text(stringResource(R.string.tunnels_confirm)) }
         }, dismissButton = { TextButton(onClick = { confirm = null }) { Text(stringResource(R.string.common_cancel)) } }) }
-}
-@Composable private fun FrpsSecretField(value: CharArray, enabled: Boolean, label: Int, visible: Boolean = false, change: (String) -> Unit) {
-    OutlinedTextField(value.concatToString(), change, enabled = enabled, label = { Text(stringResource(label)) }, modifier = Modifier.fillMaxWidth(), singleLine = true,
-        visualTransformation = if (visible) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password))
 }

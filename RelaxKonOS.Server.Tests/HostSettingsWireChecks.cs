@@ -64,7 +64,7 @@ internal static class HostSettingsWireChecks
         Check(operation.RootElement.TryGetProperty("problemCode",out var code)&&code.ValueKind==JsonValueKind.Null,"Nullable field must be present.");
         using var replay = await http.PostAsync(SettingsApiRoutes.TimeApply,Body(new SettingsApplyRequest(id)));
         replay.EnsureSuccessStatusCode(); Check(provider.Writes==1,"Original plan cannot replay a provider write.");
-        using var envDenied = await http.GetAsync(SettingsApiRoutes.Environment+"?scope=hostMachine&reveal=false");
+        using var envDenied = await http.GetAsync(SettingsApiRoutes.Environment+"?scope=hostMachine");
         Check((int)envDenied.StatusCode==428,"Environment authorization remains explicit.");
         using var envError = JsonDocument.Parse(await envDenied.Content.ReadAsStringAsync());
         Check(envError.RootElement.GetProperty("problemCode").GetString()=="settings.environment.authorization_required","Environment error must use current problemCode extension.");
@@ -103,7 +103,7 @@ internal static class HostSettingsWireChecks
     {
         public SettingsTarget ResolveTarget(ClaimsPrincipal p,SettingsScope s) => new("host/environment/machine",SettingsScope.HostMachine);
         public void RequireGrant(ClaimsPrincipal p,SettingsTarget t,HostElevationCapability c) => throw new SettingsException(428,"settings.environment.authorization_required");
-        public Task<HostEnvironmentSnapshot> ReadAsync(ClaimsPrincipal p,SettingsScope s,bool reveal,CancellationToken ct) => throw new SettingsException(428,"settings.environment.authorization_required");
+        public Task<HostEnvironmentSnapshot> ReadAsync(ClaimsPrincipal p,SettingsScope s,CancellationToken ct) => throw new SettingsException(428,"settings.environment.authorization_required");
         public Task<PrivilegedEnvironmentState> ReadRawAsync(ClaimsPrincipal p,SettingsTarget t,CancellationToken ct) => throw new InvalidOperationException("No real host access");
         public Task<PrivilegedOperationResult> ApplyAsync(ClaimsPrincipal p,SettingsTarget t,EnvironmentChangeSet c,string revision,Guid id,CancellationToken ct) => throw new InvalidOperationException("No real host access");
     }

@@ -39,7 +39,7 @@ public sealed partial class TunnelProfileEditorViewModel : LocalizedObservableOb
         _name = original?.Name ?? string.Empty; _host = original?.Host ?? string.Empty; _port = original?.Port ?? 7000;
         _authKind = original?.AuthKind ?? TunnelAuthKind.Token; _tlsMode = original?.TlsMode ?? TunnelTlsMode.Default;
         _runtimeMode = original?.RuntimeMode ?? TunnelRuntimeMode.Managed; _externalPath = original?.ExternalExecutablePath ?? string.Empty;
-        _token = token ?? string.Empty;
+        _token = token ?? original?.Token ?? string.Empty;
     }
 
     [RelayCommand]
@@ -53,7 +53,7 @@ public sealed partial class TunnelProfileEditorViewModel : LocalizedObservableOb
                 RuntimeMode == TunnelRuntimeMode.External ? ExternalPath : null, _original?.Revision);
             var saved = _original is null ? await _client.CreateProfileAsync(request) : await _client.UpdateProfileAsync(_original.Id, request);
             if (AuthKind == TunnelAuthKind.Token && !string.IsNullOrWhiteSpace(Token)) await _client.SetProfileTokenAsync(saved.Id, Token);
-            Token = string.Empty; StatusText = LocalizedText.Ref("tunnels.status.profile_saved");
+            StatusText = LocalizedText.Ref("tunnels.status.profile_saved");
             if (SavedAsync is not null) await SavedAsync();
             if (CloseAsync is not null) await CloseAsync();
         }

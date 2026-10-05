@@ -17,7 +17,6 @@ internal static class SettingsCommands
         var idText = Option(arguments, "--id");
         var scope = Option(arguments, "--scope");
         var changes = Option(arguments, "--changes");
-        var reveal = Flag(arguments, "--reveal");
         if (arguments.Count != 1)
             throw new ArgumentException("settings requires one command: catalog, time, preview-time, apply-time, hostname, preview-hostname, apply-hostname, environment-target, environment, preview-environment, apply-environment, operation, rollback.");
         if (!Uri.TryCreate(server, UriKind.Absolute, out var origin)
@@ -37,8 +36,7 @@ internal static class SettingsCommands
             || command != "preview-hostname" && hostName is not null
             || command is not ("preview-time" or "preview-environment" or "preview-hostname" or "rollback") && revision is not null
             || !environmentScope && scope is not null
-            || command != "preview-environment" && changes is not null
-            || command != "environment" && reveal)
+            || command != "preview-environment" && changes is not null)
             throw new ArgumentException("Options do not belong to the selected settings command.");
         var parsedScope = environmentScope ? ParseScope(scope) : SettingsScope.HostMachine;
         using var request = command switch
@@ -53,7 +51,7 @@ internal static class SettingsCommands
                 Required(revision, "--revision"), Required(key, "--idempotency-key"), new(Required(hostName, "--hostname")))),
             "apply-hostname" => Post(SettingsApiRoutes.IdentityApply, new SettingsApplyRequest(id)),
             "environment-target" => new HttpRequestMessage(HttpMethod.Get, SettingsApiRoutes.EnvironmentTarget + "?scope=" + scope),
-            "environment" => new HttpRequestMessage(HttpMethod.Get, SettingsApiRoutes.Environment + "?scope=" + scope + "&reveal=" + (reveal ? "true" : "false")),
+            "environment" => new HttpRequestMessage(HttpMethod.Get, SettingsApiRoutes.Environment + "?scope=" + scope),
             "preview-environment" => Post(SettingsApiRoutes.EnvironmentPreview, new EnvironmentPreviewRequest(parsedScope,
                 Required(revision, "--revision"), Required(key, "--idempotency-key"), await ReadChangesAsync(Required(changes, "--changes")))),
             "apply-environment" => Post(SettingsApiRoutes.EnvironmentApply, new SettingsApplyRequest(id)),

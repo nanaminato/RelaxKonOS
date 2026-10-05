@@ -1552,7 +1552,7 @@
     <string name="tunnels_accept">Accept current facts</string>
     <string name="tunnels_accept_confirm">Read the latest profile and tunnel lists, then clear this local unresolved marker? This accepts current facts and discards any open draft; it does not claim the original request succeeded or change the server. A configured Token flag cannot prove which value was written.</string>
     <string name="tunnels_unavailable">Profile and tunnel lists could not be verified.</string>
-    <string name="tunnels_token_note">Replace this profile Token? It is sent through the write-only endpoint, kept only in this form, and cleared after submission or dismissal. Applying frpc is a separate action. The old value is never returned; an unknown result must be observed before another write.</string>
+    <string name="tunnels_token_note">The saved Token is displayed and can be edited directly. Applying frpc is a separate action.</string>
     <string name="tunnels_token">Token</string>
     <string name="tunnels_install_recover_note">Enter the original FRP installation operation ID. Active discovery cannot prove ownership of a completely lost request; it also cannot recover a lost terminal response.</string>
     <string name="tunnels_confirm">Confirm</string>
@@ -1664,7 +1664,7 @@
     <string name="frps_http_port">HTTP vhost port (optional)</string>
     <string name="frps_https_port">HTTPS vhost port (optional)</string>
     <string name="frps_force_tls">Require client TLS</string>
-    <string name="frps_secret_note">Blank replacement fields preserve stored secrets. New secrets stay in this dialog and request only. Dashboard passwords cannot be read back.</string>
+    <string name="frps_secret_note">Saved Token and Dashboard password values are displayed. Refresh reloads saved values.</string>
     <string name="frps_token_replace">Replacement Token</string>
     <string name="frps_token_read">Read current Token</string>
     <string name="frps_token_current">Current Token (temporary)</string>
@@ -1672,7 +1672,7 @@
     <string name="frps_dashboard_address">Dashboard bind IP</string>
     <string name="frps_dashboard_port">Dashboard port</string>
     <string name="frps_dashboard_user">Dashboard account</string>
-    <string name="frps_dashboard_password">Replacement dashboard password</string>
+    <string name="frps_dashboard_password">Dashboard password</string>
     <string name="frps_dashboard_note">Use a trusted bind address. This page does not open ports, change firewall rules, or grant browser trust.</string>
     <string name="frps_save_confirm">Save these host frps settings and any replacement secrets? Existing clients continue using the previous running configuration until restart.</string>
     <string name="frps_start_confirm">Start the host frps listener with the saved configuration? Confirm bind addresses, allowed ports, TLS, and dashboard exposure.</string>
@@ -2350,7 +2350,7 @@
     <string name="deployments_volume_name">Volume name</string>
     <string name="deployments_volume_path">Container path</string>
     <string name="deployments_volume_read_only">Read only</string>
-    <string name="deployments_secret_retention">Unchanged secrets retain their server version. Edit a secret with an empty value to keep it; enter a new value to rotate it. Secret bodies are never shown in the preview.</string>
+    <string name="deployments_secret_retention">Saved secret values are displayed. Unchanged values retain their version; saving a changed value rotates it.</string>
     <string name="deployments_secret_version">Server secret version: %1$d</string>
     <string name="deployments_secret_new">New secret value entered</string>
     <string name="deployments_definition_invalid">Check the definition fields, resource ceilings and named volumes.</string>
@@ -2519,8 +2519,34 @@
     <string name="host_settings_environment">Environment variables</string>
     <string name="host_settings_current">Current value</string>
     <string name="host_settings_observed">Observed at (host)</string>
-    <string name="host_settings_zones">%1$d supported time zones; enter an exact ID or choose a suggestion.</string>
+    <string name="host_settings_effect">Takes effect: %1$s</string>
+    <string name="host_settings_zones">%1$d supported time zones; enter an exact ID or pick one from the list.</string>
     <string name="host_settings_zone">Time zone ID</string>
+    <string name="host_settings_zone_offset">UTC offset</string>
+    <string name="host_settings_zone_featured">Common choices</string>
+    <string name="host_settings_zone_matches">%1$d matches</string>
+    <string name="host_settings_zone_matches_limited">Only the first %1$d are shown; keep typing to narrow the list.</string>
+    <string name="host_settings_zone_no_match">No supported time zone ID matches. Enter the exact ID.</string>
+    <string name="host_settings_zone_unsupported">The host does not list this ID. Preview stays disabled.</string>
+    <string name="host_settings_zone_current">host current</string>
+    <string name="host_settings_zone_device">this phone</string>
+    <string name="host_settings_zone_clear">Clear the time zone ID</string>
+    <string name="host_settings_zone_browse">Pick from the full list</string>
+    <string name="host_settings_zone_picker_title">Pick a time zone</string>
+    <string name="host_settings_zone_picker_search">Search IDs</string>
+    <string name="host_settings_zone_picker_all">All %1$d supported IDs, grouped by area.</string>
+    <string name="host_settings_zone_region_africa">Africa</string>
+    <string name="host_settings_zone_region_america">America</string>
+    <string name="host_settings_zone_region_antarctica">Antarctica</string>
+    <string name="host_settings_zone_region_arctic">Arctic</string>
+    <string name="host_settings_zone_region_asia">Asia</string>
+    <string name="host_settings_zone_region_atlantic">Atlantic</string>
+    <string name="host_settings_zone_region_australia">Australia</string>
+    <string name="host_settings_zone_region_europe">Europe</string>
+    <string name="host_settings_zone_region_indian">Indian Ocean</string>
+    <string name="host_settings_zone_region_pacific">Pacific</string>
+    <string name="host_settings_zone_region_etc">Etc</string>
+    <string name="host_settings_zone_region_other">Other</string>
     <string name="host_settings_pending_name">Name after restart</string>
     <string name="host_settings_hostname">New host name</string>
     <string name="host_settings_hostname_rule">Up to %1$d letters, digits and inner hyphens; not all digits.</string>
@@ -2805,4 +2831,5 @@
     <string name="manage_search_applications">Search applications</string>
     <string name="manage_search_empty">No applications match your search.</string>
     <string name="files_actions">Actions</string>
+    <string name="mihomo_install_accept_note">Accept the current state to clear local blocking when no installation is running on the host. This does not resend the installation or claim the original request succeeded.</string>
 </resources>

@@ -92,6 +92,11 @@ class InstallationRepository(
             if (result is ApiResult.Success) {
                 if (result.value.operationId != InstallationRoutes.canonicalId(id)) return ApiResult.Transport("Installation ID mismatch.")
                 record(owner, result.value)
+                // A verified ID resolves only requests already associated with this operation.
+                // Discovery alone cannot establish ownership of an unknown request key.
+                journal.pending(owner).filter {
+                    it.operationId == result.value.operationId && it.service == result.value.service && it.kind == result.value.kind
+                }.forEach(journal::complete)
             }
         }
     }
@@ -127,6 +132,17 @@ class InstallationRepository(
                 record(owner, result.value)
             }
             result
+        }
+    }
+
+    /** Explicitly stop tracking an unresolved request without replaying it or asserting its outcome. */
+    suspend fun acceptCurrentFacts(owner: SessionState.Active, pending: PendingInstallationRequest): ApiResult<Unit> = mutations.withLock {
+        verify(owner); require(pending in journal.pending(owner))
+        when (val current = active(owner, pending.service)) {
+            is ApiResult.Problem -> current
+            is ApiResult.Transport -> current
+            is ApiResult.Success -> if (current.value != null) ApiResult.Problem(409, InstallationProblemCodes.RESOURCE_CONFLICT, null)
+                else { journal.complete(pending); ApiResult.Success(Unit) }
         }
     }
 

@@ -4,9 +4,9 @@
 
 ## 已实现的控制平面
 
-- `Shared/RelaxKonOS.Protocol/Tunnels` 负责 JSON 协议和路由常量。所有 profile 读取及普通 FRPS 状态响应仅公开 `tokenConfigured`；只有经 Controller 授权的 FRPS 编辑端点会额外返回 Token，供编辑器显示当前值。生成的 TOML 和受保护密钥载荷绝不公开。
+- `Shared/RelaxKonOS.Protocol/Tunnels` 负责 JSON 协议和路由常量。Profile 读取返回已保存 Token；FRPS 读取与保存响应返回 Token 和 Dashboard 密码，编辑器直接显示并回填。生成 TOML 和受保护密钥载荷不公开。
 - Server 将 FRP 服务端配置文件和隧道期望状态按 JWT 主体范围持久化至 SQLite，并使用乐观修订检查和唯一远端端口约束。运行时/进程状态保持主机本地，不属于 Workspace 偏好。
-- Token 通过 `PUT /api/v1.0/tunnels/profiles/{id}/secret` 或经 Controller 授权的 FRPS 配置更新进入，以 ASP.NET Core Data Protection 保护；profile Token 是写入式秘密，从不通过 GET 返回；只有 FRPS Token 会通过 `GET /api/v1.0/tunnels/frps/editor` 返回给经 Controller 授权的编辑器。列表、普通 FRPS 状态读取、导出、配置下载、生成 TOML 和受保护密钥载荷永不公开密钥；每次成功读取 FRPS Token 都会审计。
+- Token 通过专用写入接口或 FRPS 配置更新保存，以 ASP.NET Core Data Protection 加密；授权读取直接返回配置值。FRPS 编辑读取继续保留审计，日志和审计不记录凭据正文。
 - `TunnelsRead` 允许 Controller 和 Observer 会话读取安全状态；`TunnelsManage` 需要 Controller 会话。策略同时识别原始 JWT `role` 与框架映射的角色声明，且从不信任客户端 app id。配置文件、隧道和 Token 变更写入不含请求正文或 TOML 的脱敏审计记录。
 - 外部运行时检测只接受规范绝对文件路径，检查存在性和可执行状态，并且只通过 `ProcessStartInfo.ArgumentList` 调用 `<固定路径> --version`。检测期间不会修改、启动、升级或终止外部可执行文件。
 - 应用配置文件会按配置文件串行化工作，写入私有临时 TOML，调用 `<固定路径> verify -c <固定临时路径>`，然后替换托管配置并以参数列表启动 RelaxKonOS 拥有的 `frpc` 子进程。验证或启动失败会返回稳定问题代码并保留/恢复上一配置。停止操作使用已保存的进程对象及 PID/启动时间检查，绝不按名称查找或终止进程。
@@ -43,7 +43,7 @@ Profile/隧道 CRUD、Token、应用、停止为同步 API，没有 operation ID
 
 ## 托管 frps 配置、版本与进程事实
 
-frps 为宿主级资源，配置包含 bind 地址/端口、允许端口/范围、可选 HTTP/HTTPS vhost、强制 TLS、Token 和可选 Dashboard 地址/端口/账号/密码。配置保存要求 confirmed 和原 expectedRevision（首次 0），锁内 CAS 成功后推进保存 revision；冲突 409 并记录失败审计。配置文件直接要求当前 revision 字段，不解析旧格式。Token/dashboard 密码限制为有界单行值，由 Data Protection 保护；空白替换保留旧秘密。PUT 和普通 GET 返回安全 DTO，只有专门 Controller 编辑 GET 返回 Token 并审计，dashboard 密码不回传。
+frps 为宿主级资源，配置包含 bind 地址/端口、允许端口/范围、可选 HTTP/HTTPS vhost、强制 TLS、Token 和可选 Dashboard 地址/端口/账号/密码。配置保存要求 confirmed 和原 expectedRevision（首次 0），锁内 CAS 成功后推进保存 revision；冲突 409 并记录失败审计。配置文件直接要求当前 revision 字段，不解析旧格式。Token/dashboard 密码限制为有界单行值，由 Data Protection 保护；空白替换保留旧秘密。PUT 和普通 GET 返回保存的 Token 和 Dashboard 密码，编辑器直接显示；Controller 编辑 GET 继续记录读取审计。
 
 DTO 同时返回保存 revision 和活跃进程的 appliedRevision；保存不重启，旧进程保持旧 appliedRevision。已运行的 Start 若版本不匹配不会隐式应用，要求显式 Stop/Start；成功 Stop 返回 Disconnected。各监听使用其实际绑定 IP 探测占用，包括独立 Dashboard 地址；失败返回稳定问题码。Start/Stop 保留当前原进程实例，迟到退出事件不能覆盖新进程，停止失败/取消不丢弃仍需核实的进程句柄。
 

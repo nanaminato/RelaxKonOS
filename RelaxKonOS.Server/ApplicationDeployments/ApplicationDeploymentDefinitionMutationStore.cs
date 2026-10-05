@@ -7,7 +7,7 @@ namespace RelaxKonOS.Server.ApplicationDeployments;
 /// <summary>
 /// Durable idempotency ledger for immediate definition mutations. Deployment operations have their
 /// own operation ledger; create/update need the same retry guarantee without pretending to be a
-/// background operation.
+/// background operation. Stored receipts contain secret-version references; responses resolve saved values.
 /// </summary>
 internal sealed class ApplicationDeploymentDefinitionMutationStore
 {
@@ -33,7 +33,7 @@ internal sealed class ApplicationDeploymentDefinitionMutationStore
         catch { unavailable = true; }
     }
 
-    public async Task<T> ExecuteAsync<T>(string actor, string key, string kind, string requestReference, Func<Task<T>> action)
+    public async Task<T> ExecuteAsync<T>(string actor, string key, string kind, string requestReference, Func<Task<T>> action, Func<T, T> readReceipt)
     {
         ValidateKey(key);
         await gate.WaitAsync();
@@ -47,17 +47,29 @@ internal sealed class ApplicationDeploymentDefinitionMutationStore
             {
                 if (existing.ActorReference != actorReference || existing.Kind != kind || existing.RequestReference != requestReference)
                     throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.IdempotencyConflict);
-                return JsonSerializer.Deserialize<T>(existing.Response, Json)
-                    ?? throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.StoreUnavailable, 503);
+                return readReceipt(JsonSerializer.Deserialize<T>(existing.Response, Json)
+                    ?? throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.StoreUnavailable, 503));
             }
 
             var response = await action();
-            var entry = new Entry(actorReference, keyReference, kind, requestReference, JsonSerializer.Serialize(response, Json), DateTimeOffset.UtcNow);
+            var entry = new Entry(actorReference, keyReference, kind, requestReference, JsonSerializer.Serialize(ForStorage(response), Json), DateTimeOffset.UtcNow);
             Commit(new([.. ledger.Entries.Append(entry).OrderByDescending(item => item.CompletedAt).Take(500)]));
             return response;
         }
         finally { gate.Release(); }
     }
+
+    private static ApplicationDto WithoutSecretValues(ApplicationDto application) => application with
+    {
+        Configuration = [.. application.Configuration.Select(entry => entry.IsSecret ? entry with { Value = null } : entry)]
+    };
+
+    private static object ForStorage<T>(T response) => response switch
+    {
+        ApplicationDto application => WithoutSecretValues(application),
+        CatalogApplicationInstallDto installed => installed with { Application = WithoutSecretValues(installed.Application) },
+        _ => throw new InvalidOperationException("Unsupported definition receipt.")
+    };
 
     private void Commit(Ledger next)
     {

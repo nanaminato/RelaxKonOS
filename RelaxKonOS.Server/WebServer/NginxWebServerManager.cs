@@ -49,6 +49,46 @@ internal sealed partial class NginxWebServerManager(
     // directory checks, replacement, and extraction.
     private static readonly SemaphoreSlim ManagedInstallGate = new(1, 1);
 
+    internal async Task<string?> RemoveOwnedInstallationAsync(bool personal, CancellationToken ct)
+    {
+        var layout = GetManagedLayout();
+        if (File.Exists(layout.MarkerPath))
+        {
+            if (!IsManagedInstallation(layout)) return "webserver.managed_required";
+            return (await UninstallManagedCoreAsync(layout, ct)).ProblemCode;
+        }
+        if (OperatingSystem.IsWindows() && File.Exists(layout.ExecutablePath)) return "webserver.managed_required";
+        if (personal) return null;
+        if (OperatingSystem.IsLinux() && File.Exists("/etc/nginx/conf.d/relaxkonos.conf")
+            && !IsOwnedFile("/etc/nginx/conf.d/relaxkonos.conf")) return "webserver.configuration_changed";
+        // Integrated host installations retain their package and unrelated sites.
+        // Delete only sites with persisted metadata and the generated ownership marker.
+        foreach (var instance in await DiscoverAsync(ct))
+        {
+            foreach (var site in await ReadSitesAsync(instance, ct))
+                if (await DeleteSiteAsync(instance.Id, site.Id, new(site.UpdatedAt), ct) != true)
+                    return "webserver.configuration_changed";
+            var directory = GetSitesDirectory(instance);
+            if (directory is null || IsSymbolicLink(directory)) return "webserver.configuration_changed";
+            if (Directory.Exists(directory) && Directory.EnumerateFiles(directory, "*.conf").Any())
+                return "webserver.configuration_changed";
+            var anchor = Path.Combine(Path.GetDirectoryName(directory)!, OwnedFileName);
+            if (!IsOwnedFile(anchor)) return "webserver.configuration_changed";
+            var backup = anchor + ".rollback";
+            if (!await MoveNginxFileAsync(anchor, backup, false, ct)) return "webserver.configuration_changed";
+            if (await ReloadAfterTestAsync(instance, ct) is not null)
+            {
+                await MoveNginxFileAsync(backup, anchor, false, CancellationToken.None);
+                await ReloadAfterTestAsync(instance, CancellationToken.None);
+                return "webserver.configuration_changed";
+            }
+            if (!await DeleteNginxFileAsync(backup, ct)) return "webserver.uninstall_failed";
+            var metadataPath = Path.Combine(directory, "sites.json");
+            if (File.Exists(metadataPath) && !await DeleteNginxFileAsync(metadataPath, ct)) return "webserver.uninstall_failed";
+        }
+        return null;
+    }
+
     public string ProviderId => ProviderKey;
 
     public async Task<WebServerInstallCatalogDto> GetManagedInstallCatalogAsync(CancellationToken cancellationToken)
@@ -1160,7 +1200,8 @@ internal sealed partial class NginxWebServerManager(
         if (UsesSystemPackageManagedService())
         {
             if (isManaged) await StopLegacyCustomManagedInstanceAsync(layout, cancellationToken);
-            _ = await RunSystemdNginxAsync("disable", cancellationToken, "--now");
+            if (!await RunSystemdNginxAsync("disable", cancellationToken, "--now"))
+                return new WebServerOperationResult("webserver.uninstall_failed");
         }
         else
             _ = await RunNginxAsync(layout.ExecutablePath, ManagedArguments(layout, ["-s", "quit"]), cancellationToken);

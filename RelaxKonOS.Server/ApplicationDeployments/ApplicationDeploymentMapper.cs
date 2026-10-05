@@ -5,7 +5,7 @@ namespace RelaxKonOS.Server.ApplicationDeployments;
 
 /// <summary>
 /// Projects ledger records onto protocol DTOs. It is the single place that decides what a client may
-/// see, so a secret entry can never leak a value: only its protected-store version is reported.
+/// see. Operator views resolve saved values; backup projections omit secret bodies.
 /// </summary>
 internal static class ApplicationDeploymentMapper
 {
@@ -14,7 +14,7 @@ internal static class ApplicationDeploymentMapper
         RevisionRecord? currentRevision,
         DockerContainerDto? container,
         bool engineAvailable,
-        bool ownedByUs)
+        bool ownedByUs, ApplicationDeploymentSecretStore? secrets)
         => new(
             application.Id,
             application.Name,
@@ -34,7 +34,7 @@ internal static class ApplicationDeploymentMapper
                 : null,
             application.Limits,
             [.. application.Volumes.Select(Volume)],
-            [.. application.Configuration.Select(Config)],
+            [.. application.Configuration.Select(entry => Config(entry, application.Id, secrets))],
             application.CurrentRevisionId,
             currentRevision?.Number,
             application.ContainerName,
@@ -47,7 +47,7 @@ internal static class ApplicationDeploymentMapper
             ApplicationDeploymentRuntime.DescribeDrift(application, container, engineAvailable, ownedByUs),
             application.CatalogTemplateId, application.CatalogTemplateVersion);
 
-    public static ApplicationRevisionDto Revision(RevisionRecord revision, Guid? currentRevisionId) => new(
+    public static ApplicationRevisionDto Revision(RevisionRecord revision, Guid? currentRevisionId, ApplicationDeploymentSecretStore? secrets) => new(
         revision.Id,
         revision.ApplicationId,
         revision.Number,
@@ -68,7 +68,7 @@ internal static class ApplicationDeploymentMapper
         revision.BindAddress,
         revision.Limits,
         [.. revision.Volumes.Select(Volume)],
-        [.. revision.Configuration.Select(Config)],
+        [.. revision.Configuration.Select(entry => Config(entry, revision.ApplicationId, secrets))],
         revision.SiteId,
         revision.Id == currentRevisionId,
         revision.CreatedByReference,
@@ -79,9 +79,9 @@ internal static class ApplicationDeploymentMapper
     public static ApplicationVolumeDto Volume(ApplicationVolumeRecord volume) =>
         new(volume.Name, volume.ContainerPath, volume.ReadOnly);
 
-    /// <summary>A secret entry reports the version a revision binds, and never the value.</summary>
-    public static ApplicationConfigEntryDto Config(ApplicationConfigRecord entry) =>
-        new(entry.Name, entry.IsSecret ? null : entry.Value, entry.IsSecret, entry.IsSecret ? entry.SecretVersion : null);
+    /// <summary>Resolve operator-visible values from the protected store; backup callers explicitly omit the store.</summary>
+    public static ApplicationConfigEntryDto Config(ApplicationConfigRecord entry, Guid applicationId, ApplicationDeploymentSecretStore? secrets) =>
+        new(entry.Name, entry.IsSecret ? secrets?.Reveal(applicationId, entry.Name, entry.SecretVersion) : entry.Value, entry.IsSecret, entry.IsSecret ? entry.SecretVersion : null);
 
     /// <summary>
     /// The observed state is derived from real containers, never from the ledger alone, so a failed or

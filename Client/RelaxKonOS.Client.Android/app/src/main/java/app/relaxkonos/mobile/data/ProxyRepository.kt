@@ -91,7 +91,17 @@ class ProxyRepository(private val gateway: RelaxKonGateway, private val session:
         } else ApiResult.Transport(null)
     }
     private suspend fun <T> mutate(owner: SessionState.Active, write: ProxyWrite, target: String?, call: suspend (String, String) -> ApiResult<T>): ApiResult<T> = mutations.withLock {
-        manage(owner); val pending = journal.begin(owner, null, target?.let(InstallationRoutes::canonicalId), write)
+        manage(owner)
+        if (write == ProxyWrite.Import) {
+            // The import dialog may outlive a working SSH tunnel. Do not leave a
+            // write marker when a read already proves the connection unavailable.
+            when (val connection = overview(owner)) {
+                is ApiResult.Problem -> return@withLock connection
+                is ApiResult.Transport -> return@withLock connection
+                is ApiResult.Success -> Unit
+            }
+        }
+        val pending = journal.begin(owner, null, target?.let(InstallationRoutes::canonicalId), write)
         read(owner, call).also { result ->
             if (result is ApiResult.Success || result is ApiResult.Problem && result.status in setOf(400, 401, 403, 404, 409)) journal.complete(pending)
         }

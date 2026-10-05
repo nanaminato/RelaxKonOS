@@ -15,7 +15,7 @@ class ApplicationDeploymentWireTest {
         "siteId":null, "healthCheckPath":"/health", "limits":{"cpuCores":1.5,"memoryBytes":16777217,"pidsLimit":512},
         "volumes":[{"name":"data","containerPath":"/app/data:live","readOnly":true}],
         "updatedAt":"2026-10-01T00:00:00.1234567+00:00",
-        "configuration":[{"name":"TOKEN","value":null,"isSecret":true,"secretVersion":7}]
+        "configuration":[{"name":"TOKEN","value":"saved-secret","isSecret":true,"secretVersion":7}]
     }"""
 
     @Test fun `routes match the authoritative protocol version and encode only UUIDs`() {
@@ -29,7 +29,7 @@ class ApplicationDeploymentWireTest {
         assertThrows(IllegalArgumentException::class.java) { ApplicationDeploymentRoutes.application("../operations") }
     }
 
-    @Test fun `nullable runtime facts stay null and secrets are not retained`() {
+    @Test fun `nullable runtime facts stay null and saved secret values are returned`() {
         val app = ApplicationDeploymentWire.applications("[$application]").single()
         assertNull(app.hostPort)
         assertNull(app.currentRevisionNumber)
@@ -38,7 +38,7 @@ class ApplicationDeploymentWireTest {
         assertEquals("personal-site", app.catalogTemplateId)
         assertEquals("1.0.0", app.catalogTemplateVersion)
         assertEquals("unknown", app.actualState)
-        assertNull(app.configuration.single().value)
+        assertEquals("saved-secret", app.configuration.single().value)
         assertEquals(7, app.configuration.single().secretVersion)
         assertEquals("/health", app.healthCheckPath)
         assertEquals(16777217L, app.limits.memoryBytes)
@@ -47,7 +47,7 @@ class ApplicationDeploymentWireTest {
         assertEquals("2026-10-01T00:00:00.1234567+00:00", app.updatedAt)
     }
 
-    @Test fun `missing definition fields malformed secret metadata and secret bodies reject the response`() {
+    @Test fun `missing definition fields and malformed secret metadata reject the response`() {
         for (field in listOf("limits", "volumes", "configuration", "updatedAt", "healthCheckPath", "catalogTemplateId", "catalogTemplateVersion")) {
             val json = JSONObject(application).apply { remove(field) }
             assertThrows(Exception::class.java) { ApplicationDeploymentWire.applications("[$json]") }
@@ -58,7 +58,7 @@ class ApplicationDeploymentWireTest {
             assertThrows(Exception::class.java) { ApplicationDeploymentWire.applications("[$json]") }
         }
         val exposed = JSONObject(application)
-        exposed.getJSONArray("configuration").getJSONObject(0).put("value", "must-not-be-retained")
+        exposed.getJSONArray("configuration").getJSONObject(0).put("value", JSONObject.NULL)
         assertThrows(Exception::class.java) { ApplicationDeploymentWire.applications("[$exposed]") }
         assertThrows(Exception::class.java) { ApplicationDeploymentWire.applications("[${JSONObject(application).put("catalogTemplateId", JSONObject.NULL)}]") }
         assertThrows(Exception::class.java) { ApplicationDeploymentWire.applications("[${JSONObject(application).put("updatedAt", "2026-02-30T00:00:00Z")}]") }

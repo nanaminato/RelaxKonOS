@@ -134,9 +134,13 @@ WorkspaceSection(section == "overview") {
         }
         if (state.pendingInstallation) {
             Text(stringResource(R.string.mihomo_install_pending), color = MaterialTheme.colorScheme.error)
+            Text(stringResource(R.string.mihomo_install_accept_note), style = MaterialTheme.typography.bodySmall)
+            if (canManage) TextButton(enabled = !state.busy, onClick = { confirm = ProxyConfirmation(model::acceptInstallationFacts) }) {
+                Text(stringResource(R.string.mihomo_accept_facts))
+            }
             if (canManage && model.hasIntent) TextButton(enabled = !state.busy, onClick = { confirm = ProxyConfirmation(model::retryInstall) }) { ActionLabel(R.string.common_retry) }
         }
-        if (canManage && (!notInstalled || showRecovery)) TextButton(enabled = !state.busy, onClick = { recoveredId = ""; identified = false; recoverInstallation = true; recovering = true }) { Text(stringResource(R.string.mihomo_recover_installation)) }
+        if (canManage && (!notInstalled || showRecovery)) TextButton(enabled = !state.busy, onClick = { recoveredId = if (state.installationVerified) state.installation?.operationId.orEmpty() else ""; identified = false; recoverInstallation = true; recovering = true }) { Text(stringResource(R.string.mihomo_recover_installation)) }
         state.pending.forEach { pending ->
             ManagementCard {
             Text(stringResource(R.string.mihomo_pending), color = MaterialTheme.colorScheme.error)

@@ -148,8 +148,7 @@ internal fun DeploymentRevisionDialog(
                         Text("${stringResource(R.string.deployments_pids)}: ${baseline.limits.pidsLimit ?: "—"}")
                         baseline.volumes.forEach { Text("${it.name} · ${it.containerPath}${if (it.readOnly) " · ro" else ""}") }
                         baseline.configuration.forEach { config ->
-                            Text(if (config.isSecret) stringResource(R.string.deployments_secret_version, config.secretVersion ?: 0) + " · " + config.name
-                                else "${config.name}=${config.value.orEmpty()}")
+                            Text("${config.name}=${config.value.orEmpty()}")
                         }
                         baseline.siteId?.let { Text("${stringResource(R.string.deployments_site)}: $it") }
                         baseline.catalogTemplateId?.let { Text(stringResource(R.string.catalog_instance_version, it, baseline.catalogTemplateVersion.orEmpty())) }

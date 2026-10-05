@@ -16,12 +16,12 @@ public static class HostSettingsEndpoints
                 http.Response.Headers.CacheControl = "no-store";
                 return Task.FromResult<IResult>(Results.Ok(environment.ResolveTarget(http.User, ParseEnvironmentScope(scope))));
             })).RequireAuthorization();
-        app.MapGet(SettingsApiRoutes.Environment, async (string scope, bool? reveal, HttpContext http, IHostEnvironmentService environment) =>
+        app.MapGet(SettingsApiRoutes.Environment, async (string scope, HttpContext http, IHostEnvironmentService environment) =>
             await ExecuteAsync(async () =>
             {
                 http.Response.Headers.CacheControl = "no-store";
                 var targetScope = ParseEnvironmentScope(scope);
-                return Results.Ok(await environment.ReadAsync(http.User, targetScope, reveal == true, http.RequestAborted));
+                return Results.Ok(await environment.ReadAsync(http.User, targetScope, http.RequestAborted));
             })).RequireAuthorization();
         app.MapPost(SettingsApiRoutes.EnvironmentPreview, async (EnvironmentPreviewRequest request, HttpContext http, EnvironmentOperationCoordinator coordinator) =>
             await ExecuteAsync(async () => Results.Ok(await coordinator.PreviewAsync(http.User, request, http.RequestAborted)))).RequireAuthorization();

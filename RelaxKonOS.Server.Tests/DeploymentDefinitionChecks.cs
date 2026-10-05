@@ -101,8 +101,8 @@ internal static class DeploymentDefinitionChecks
         Check(saved.Limits == baseline.Limits && saved.Volumes.SequenceEqual(baseline.Volumes) && saved.SiteId == baseline.SiteId
             && saved.HealthCheckPath == baseline.HealthCheckPath && saved.HostPort == baseline.HostPort && saved.ContainerPort == baseline.ContainerPort && saved.BindAddress == baseline.BindAddress,
             "Unedited resource ceilings, paths, ports, readiness and site association must remain exact.");
-        Check(saved.Configuration.Single(x => !x.IsSecret).Value == " value=kept " && saved.Configuration.Single(x => x.IsSecret) is { Value: null, SecretVersion: 2 },
-            "A rotated secret must return only its new version; ordinary values must remain exact.");
+        Check(saved.Configuration.Single(x => !x.IsSecret).Value == " value=kept " && saved.Configuration.Single(x => x.IsSecret) is { Value: "rotated_secret", SecretVersion: 2 },
+            "A rotated secret must return its saved value and version; ordinary values must remain exact.");
         Check(catalog.FindRevision(revision.Id) == revision && saved.CurrentRevisionId == revision.Id && operations.Read().Length == 0,
             "Saving intent must not publish a revision, queue Docker work, or rewrite the current immutable revision.");
         Check(secrets.Reveal(created.Id, "TOKEN", 1) == "original_secret" && secrets.Reveal(created.Id, "TOKEN", 2) == "rotated_secret",
@@ -124,6 +124,10 @@ internal static class DeploymentDefinitionChecks
             "Definition version and immutable catalog identity must survive reopening the real store.");
         var ledger = File.ReadAllText(Path.Combine(root, options.RootDirectory, "definition-mutations.json"));
         Check(!ledger.Contains("rotated_secret") && !ledger.Contains("original_secret"), "The real idempotency ledger must never contain secret bodies.");
+        var unchanged = await manager.UpdateAsync(created.Id, request with { ExpectedUpdatedAt = saved.UpdatedAt, Configuration = saved.Configuration }, CancellationToken.None);
+        Check(unchanged.Configuration.Single(x => x.IsSecret) is { Value: "rotated_secret", SecretVersion: 2 },
+            "Saving a displayed secret without changes must preserve its value and version.");
+        saved = unchanged;
         operations.Create(created.Id, saved.Name, DeploymentOperationKind.Deploy, "fixture", "active-fixture", ApplicationDeploymentValidation.Reference("active"), [], out _);
         http.DefaultRequestHeaders.Remove("Idempotency-Key"); http.DefaultRequestHeaders.Add("Idempotency-Key", "blocked-save");
         using (var blocked = await http.PutAsJsonAsync(route, request with { ExpectedUpdatedAt = saved.UpdatedAt }, RelaxKonOSJsonOptions.Default))

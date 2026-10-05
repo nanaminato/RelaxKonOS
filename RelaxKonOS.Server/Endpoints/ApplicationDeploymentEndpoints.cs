@@ -55,7 +55,7 @@ public static class ApplicationDeploymentEndpoints
                         var application = await manager.CreateAsync(bound.Definition, actor, ct, template);
                         var operation = coordinator.Start(new DeploymentRequest(application.Id, DeploymentOperationKind.Deploy, bound.Source, ExpectedUpdatedAt: application.UpdatedAt), actor, Key(http));
                         return new CatalogApplicationInstallDto(application, operation, template.Id, template.Version);
-                    });
+                    }, receipt => receipt with { Application = manager.ReadReceipt(receipt.Application) });
                     return Results.Accepted(ApplicationDeploymentApiRoutes.Operation(installed.Operation.OperationId), installed);
                 }))
             .RequireAuthorization(ManagePolicy);
@@ -74,7 +74,7 @@ public static class ApplicationDeploymentEndpoints
             (CreateApplicationRequest request, HttpContext http, ApplicationDeploymentManager manager,
                 ApplicationDeploymentDefinitionMutationStore mutations, CancellationToken ct) =>
                 HandleAsync(async () => Results.Ok(await mutations.ExecuteAsync(Actor(http.User), Key(http), "create",
-                    RequestReference(request), () => manager.CreateAsync(request, Actor(http.User), ct)))))
+                    RequestReference(request), () => manager.CreateAsync(request, Actor(http.User), ct), manager.ReadReceipt))))
             .RequireAuthorization(ManagePolicy);
 
         group.MapGet(ApplicationDeploymentApiRoutes.ApplicationPattern,
@@ -86,7 +86,7 @@ public static class ApplicationDeploymentEndpoints
             (Guid applicationId, UpdateApplicationRequest request, HttpContext http, ApplicationDeploymentManager manager,
                 ApplicationDeploymentDefinitionMutationStore mutations, CancellationToken ct) =>
                 HandleAsync(async () => Results.Ok(await mutations.ExecuteAsync(Actor(http.User), Key(http), "update",
-                    RequestReference((applicationId, request)), () => manager.UpdateAsync(applicationId, request, ct)))))
+                    RequestReference((applicationId, request)), () => manager.UpdateAsync(applicationId, request, ct), manager.ReadReceipt))))
             .RequireAuthorization(ManagePolicy);
 
         group.MapGet(ApplicationDeploymentApiRoutes.RevisionsPattern,

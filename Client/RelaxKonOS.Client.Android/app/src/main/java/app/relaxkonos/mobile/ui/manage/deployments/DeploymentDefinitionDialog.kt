@@ -57,7 +57,6 @@ internal fun DeploymentDefinitionDialog(owner: SessionState.Active, baseline: De
     fun loadCurrent() {
         if (busy) return
         busy = true
-        draft.clearNewSecrets()
         configValue = ""
         scope.launch {
             try {
@@ -135,20 +134,15 @@ internal fun DeploymentDefinitionDialog(owner: SessionState.Active, baseline: De
                         Text(stringResource(R.string.deployments_secret_retention), style = MaterialTheme.typography.bodySmall)
                         draft.configuration.toList().forEach { config ->
                             Text(config.name)
-                            if (config.isSecret) Text(when {
-                                config.value != null -> stringResource(R.string.deployments_secret_new)
-                                config.secretVersion != null -> stringResource(R.string.deployments_secret_version, config.secretVersion)
-                                else -> stringResource(R.string.deployments_secret_value_required)
-                            }, style = MaterialTheme.typography.bodySmall)
-                            else Text(config.value.orEmpty(), style = MaterialTheme.typography.bodySmall)
+                            Text(config.value.orEmpty(), style = MaterialTheme.typography.bodySmall)
                             FlowRow {
-                                TextButton(onClick = { configName = config.name; configValue = if (config.isSecret) "" else config.value.orEmpty(); configSecret = config.isSecret }, enabled = editable) { Text(stringResource(R.string.common_edit)) }
+                                TextButton(onClick = { configName = config.name; configValue = config.value.orEmpty(); configSecret = config.isSecret }, enabled = editable) { Text(stringResource(R.string.common_edit)) }
                                 TextButton(onClick = { draft.configuration.remove(config) }, enabled = editable) { ActionLabel(R.string.common_delete) }
                             }
                         }
                         DefinitionText(configName, { configName = it }, R.string.deployments_configuration_name, editable)
                         OutlinedTextField(configValue, { configValue = it.take(4096) }, enabled = editable, label = { Text(stringResource(R.string.deployments_configuration_value)) },
-                            visualTransformation = if (configSecret) PasswordVisualTransformation() else VisualTransformation.None, modifier = Modifier.fillMaxWidth())
+                            visualTransformation = VisualTransformation.None, modifier = Modifier.fillMaxWidth())
                         FlowRow {
                             FilterChip(configSecret, { configSecret = !configSecret; configValue = "" }, enabled = editable, label = { Text(stringResource(R.string.deployments_configuration_secret)) })
                             TextButton(onClick = {
@@ -190,7 +184,7 @@ internal fun DeploymentDefinitionDialog(owner: SessionState.Active, baseline: De
                                 if (container.session.state.value !== owner) return@launch
                                 result = outcome.result; unknown = outcome.mayHaveSaved
                                 if (outcome.result is ApiResult.Success) { draft = DeploymentDefinitionDraft(outcome.result.value); onSaved() }
-                            } finally { draft.clearNewSecrets(); busy = false }
+                            } finally { busy = false }
                         }
                     }, enabled = editable && request != null && !unstaged) { Text(stringResource(R.string.deployments_save_definition)) }
                 }

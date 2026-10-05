@@ -7,7 +7,7 @@ namespace RelaxKonOS.Server.ApplicationDeployments;
 /// Owns the operator-facing definition of a deployment target: the templates that can be chosen, the
 /// application record itself, its published revisions, its recent operations, and its logs. It never
 /// starts a workload — that belongs to <see cref="ApplicationDeploymentService"/> behind the
-/// operation coordinator — and it never returns a secret value.
+/// operation coordinator — returns saved configuration values to the operator.
 /// </summary>
 internal sealed class ApplicationDeploymentManager(
     ApplicationDeploymentCatalogStore catalog,
@@ -17,6 +17,12 @@ internal sealed class ApplicationDeploymentManager(
     ApplicationDeploymentOptions options,
     ApplicationDeploymentImageTagCatalog imageTags)
 {
+    public ApplicationDto ReadReceipt(ApplicationDto application) => application with
+    {
+        Configuration = [.. application.Configuration.Select(entry => entry.IsSecret
+            ? entry with { Value = secrets.Reveal(application.Id, entry.Name, entry.SecretVersion!.Value) } : entry)]
+    };
+
     public ApplicationDeploymentTemplateDto[] Templates() => ApplicationTemplateCatalog.DescribeAll(options);
 
     /// <summary>Returns recent public tags without ever sending credentials to a registry.</summary>
@@ -42,7 +48,7 @@ internal sealed class ApplicationDeploymentManager(
             containers is not null,
             // The list matches by the deterministic name only. The detail view inspects the container
             // and verifies the ownership labels, which is where a name collision surfaces.
-            ownedByUs: true))];
+            ownedByUs: true, secrets: secrets))];
     }
 
     public async Task<ApplicationDeploymentSnapshotDto> SnapshotAsync(Guid applicationId, CancellationToken cancellationToken)
@@ -53,8 +59,8 @@ internal sealed class ApplicationDeploymentManager(
         var current = revisions.FirstOrDefault(revision => revision.Id == application.CurrentRevisionId);
         var active = operations.GetActive(applicationId);
         return new ApplicationDeploymentSnapshotDto(
-            ApplicationDeploymentMapper.Describe(application, current, view.Container, view.EngineAvailable, view.Owned),
-            [.. revisions.Select(revision => ApplicationDeploymentMapper.Revision(revision, application.CurrentRevisionId))],
+            ApplicationDeploymentMapper.Describe(application, current, view.Container, view.EngineAvailable, view.Owned, secrets),
+            [.. revisions.Select(revision => ApplicationDeploymentMapper.Revision(revision, application.CurrentRevisionId, secrets))],
             Operations(applicationId, 50),
             active?.Operation);
     }
@@ -63,7 +69,7 @@ internal sealed class ApplicationDeploymentManager(
     {
         var application = Require(applicationId);
         return [.. catalog.ReadRevisions(applicationId)
-            .Select(revision => ApplicationDeploymentMapper.Revision(revision, application.CurrentRevisionId))];
+            .Select(revision => ApplicationDeploymentMapper.Revision(revision, application.CurrentRevisionId, secrets))];
     }
 
     public DeploymentOperationDto[] Operations(Guid applicationId, int maximum)
@@ -206,7 +212,7 @@ internal sealed class ApplicationDeploymentManager(
     {
         var view = await ObserveAsync(application, cancellationToken);
         var current = application.CurrentRevisionId is { } id ? catalog.FindRevision(id) : null;
-        return ApplicationDeploymentMapper.Describe(application, current, view.Container, view.EngineAvailable, view.Owned);
+        return ApplicationDeploymentMapper.Describe(application, current, view.Container, view.EngineAvailable, view.Owned, secrets);
     }
 
     /// <summary>The observed canonical container plus whether the observation itself succeeded.</summary>
@@ -270,7 +276,11 @@ internal sealed class ApplicationDeploymentManager(
             {
                 if (entry.Value.Length > 4096)
                     throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.InvalidRequest, 400);
-                records[index] = new(name, true, secrets.Set(applicationId, name, entry.Value), null);
+                var savedVersion = allowExistingVersions && entry.SecretVersion is { } existingVersion
+                    && secrets.Has(applicationId, name, existingVersion)
+                    && secrets.Reveal(applicationId, name, existingVersion) == entry.Value
+                        ? existingVersion : secrets.Set(applicationId, name, entry.Value);
+                records[index] = new(name, true, savedVersion, null);
                 continue;
             }
 

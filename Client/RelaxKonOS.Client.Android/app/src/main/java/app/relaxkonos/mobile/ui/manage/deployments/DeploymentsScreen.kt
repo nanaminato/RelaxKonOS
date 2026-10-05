@@ -206,7 +206,7 @@ private fun CatalogInstallDialog(
                             label = { Text(field.label()) }, supportingText = field.help?.let { { Text(it) } }, singleLine = true,
                             isError = field.type == "number" && values[field.id].isNullOrBlank().not() && values[field.id]?.toDoubleOrNull() == null,
                             keyboardOptions = if (field.type == "number") KeyboardOptions(keyboardType = KeyboardType.Decimal) else KeyboardOptions.Default,
-                            visualTransformation = if (field.type == "secret") PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+                            visualTransformation = androidx.compose.ui.text.input.VisualTransformation.None,
                             modifier = Modifier.fillMaxWidth())
                     }
                 }
@@ -389,16 +389,14 @@ private fun DeploymentCreateDialog(
                             Text(stringResource(R.string.deployments_configuration), style = MaterialTheme.typography.titleSmall)
                             form.configuration.forEach { entry ->
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(if (entry.isSecret) stringResource(R.string.deployments_secret_configured, entry.name)
-                                        else "${entry.name}=${entry.value}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                                    Text("${entry.name}=${entry.value}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                                     TextButton(onClick = { form.configuration.remove(entry) }) { ActionLabel(R.string.common_delete) }
                                 }
                             }
                             OutlinedTextField(form.configurationName, { form.configurationName = it }, label = { Text(stringResource(R.string.deployments_configuration_name)) },
                                 singleLine = true, modifier = Modifier.fillMaxWidth())
                             OutlinedTextField(form.configurationValue, { form.configurationValue = it }, label = { Text(stringResource(R.string.deployments_configuration_value)) },
-                                singleLine = true, visualTransformation = if (form.configurationSecret) PasswordVisualTransformation()
-                                    else androidx.compose.ui.text.input.VisualTransformation.None, modifier = Modifier.fillMaxWidth())
+                                singleLine = true, visualTransformation = androidx.compose.ui.text.input.VisualTransformation.None, modifier = Modifier.fillMaxWidth())
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Checkbox(checked = form.configurationSecret, onCheckedChange = { form.configurationSecret = it })
                                 Text(stringResource(R.string.deployments_configuration_secret))

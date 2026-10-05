@@ -1514,7 +1514,7 @@
     <string name="tunnels_accept">采用当前事实</string>
     <string name="tunnels_accept_confirm">读取最新服务器配置和隧道列表，再清除此本机待核实标记？此操作采用当前事实并放弃打开的草稿，不宣称原请求成功，不修改服务器。“Token 已配置”不能证明写入了哪个值。</string>
     <string name="tunnels_unavailable">服务器配置和隧道列表未取得。</string>
-    <string name="tunnels_token_note">替换此配置的 Token？仅经专用写入接口发送，只留在此表单，提交或关闭后清除。应用 frpc 是独立操作。不会重新读取旧值；结果未知时须先核实再写入。</string>
+    <string name="tunnels_token_note">显示已保存的 Token，可直接修改并保存。应用 frpc 是独立操作。</string>
     <string name="tunnels_token">Token</string>
     <string name="tunnels_install_recover_note">输入原 FRP 安装操作 ID。活动任务发现不能证明完全丢失请求的归属，也不能恢复丢失的终态响应。</string>
     <string name="tunnels_confirm">确认</string>
@@ -1626,7 +1626,7 @@
     <string name="frps_http_port">HTTP 虚拟主机端口（可选）</string>
     <string name="frps_https_port">HTTPS 虚拟主机端口（可选）</string>
     <string name="frps_force_tls">要求客户端 TLS</string>
-    <string name="frps_secret_note">替换字段留空保留已存秘密。新秘密仅留在此对话框和当前请求中。Dashboard 密码无法重新读取。</string>
+    <string name="frps_secret_note">显示已保存的 Token 和 Dashboard 密码。刷新会重新加载保存值。</string>
     <string name="frps_token_replace">替换 Token</string>
     <string name="frps_token_read">读取当前 Token</string>
     <string name="frps_token_current">当前 Token（临时）</string>
@@ -1634,7 +1634,7 @@
     <string name="frps_dashboard_address">Dashboard 绑定 IP</string>
     <string name="frps_dashboard_port">Dashboard 端口</string>
     <string name="frps_dashboard_user">Dashboard 账号</string>
-    <string name="frps_dashboard_password">替换 Dashboard 密码</string>
+    <string name="frps_dashboard_password">Dashboard 密码</string>
     <string name="frps_dashboard_note">使用可信绑定地址。本页不会开放端口、修改防火墙或授予浏览器信任。</string>
     <string name="frps_save_confirm">保存这些服务器 frps 设置和替换秘密？已有客户端继续使用旧运行配置，直到重启。</string>
     <string name="frps_start_confirm">以保存的配置启动服务器 frps 监听服务？请核对绑定地址、允许端口、TLS 和 Dashboard 暴露范围。</string>
@@ -2311,7 +2311,7 @@
     <string name="deployments_volume_name">卷名称</string>
     <string name="deployments_volume_path">容器路径</string>
     <string name="deployments_volume_read_only">只读</string>
-    <string name="deployments_secret_retention">未修改的秘密保留服务端版本。编辑秘密时留空会保留原值，输入新值会轮换秘密。预览不显示秘密内容。</string>
+    <string name="deployments_secret_retention">显示已保存的秘密值。未修改的值保留原版本，修改后保存会轮换。</string>
     <string name="deployments_secret_version">服务端秘密版本：%1$d</string>
     <string name="deployments_secret_new">已输入新的秘密值</string>
     <string name="deployments_definition_invalid">请检查定义字段、资源上限和命名卷。</string>
@@ -2480,8 +2480,34 @@
     <string name="host_settings_environment">环境变量</string>
     <string name="host_settings_current">当前值</string>
     <string name="host_settings_observed">服务器读取时间</string>
-    <string name="host_settings_zones">%1$d 个支持的时区；输入精确 ID 或选择建议。</string>
+    <string name="host_settings_effect">生效方式：%1$s</string>
+    <string name="host_settings_zones">%1$d 个支持的时区；输入精确 ID 或从列表中选择。</string>
     <string name="host_settings_zone">时区 ID</string>
+    <string name="host_settings_zone_offset">UTC 偏移</string>
+    <string name="host_settings_zone_featured">常用时区</string>
+    <string name="host_settings_zone_matches">匹配 %1$d 个</string>
+    <string name="host_settings_zone_matches_limited">仅显示前 %1$d 个，继续输入可缩小范围。</string>
+    <string name="host_settings_zone_no_match">没有匹配的时区 ID，请输入精确 ID。</string>
+    <string name="host_settings_zone_unsupported">服务器不支持此 ID，无法预览。</string>
+    <string name="host_settings_zone_current">服务器当前</string>
+    <string name="host_settings_zone_device">本机</string>
+    <string name="host_settings_zone_clear">清除时区 ID</string>
+    <string name="host_settings_zone_browse">从完整列表中选择</string>
+    <string name="host_settings_zone_picker_title">选择时区</string>
+    <string name="host_settings_zone_picker_search">搜索时区 ID</string>
+    <string name="host_settings_zone_picker_all">全部 %1$d 个支持的 ID，按地区分组。</string>
+    <string name="host_settings_zone_region_africa">非洲</string>
+    <string name="host_settings_zone_region_america">美洲</string>
+    <string name="host_settings_zone_region_antarctica">南极洲</string>
+    <string name="host_settings_zone_region_arctic">北极</string>
+    <string name="host_settings_zone_region_asia">亚洲</string>
+    <string name="host_settings_zone_region_atlantic">大西洋</string>
+    <string name="host_settings_zone_region_australia">澳大利亚</string>
+    <string name="host_settings_zone_region_europe">欧洲</string>
+    <string name="host_settings_zone_region_indian">印度洋</string>
+    <string name="host_settings_zone_region_pacific">太平洋</string>
+    <string name="host_settings_zone_region_etc">ETC 通用</string>
+    <string name="host_settings_zone_region_other">其他</string>
     <string name="host_settings_pending_name">重启后的主机名</string>
     <string name="host_settings_hostname">新主机名</string>
     <string name="host_settings_hostname_rule">最多 %1$d 个字母、数字及中间连字符；不能全为数字。</string>
@@ -2766,4 +2792,5 @@
     <string name="manage_search_applications">搜索应用</string>
     <string name="manage_search_empty">没有匹配的应用。</string>
     <string name="files_actions">操作</string>
+    <string name="mihomo_install_accept_note">服务器没有正在进行的安装时，可接受当前状态并解除本机阻塞。此操作不重发安装，也不认定原请求成功。</string>
 </resources>

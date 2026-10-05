@@ -1115,7 +1115,7 @@ network.frp.secret.update
 }
 ```
 
-Profile Token 为写入式秘密，不通过任何读取接口回显。Controller 打开托管 FRPS Token 编辑器时，可调用受单独授权和审计保护的编辑读取 API 回显托管 FRPS 的完整 Token；该值仅用于当前编辑会话，不得出现在列表、导出、日志、生成配置下载或其他普通读取 API 中。
+Profile 配置读取返回完整 Token；托管 FRPS 普通读取、保存响应和编辑读取返回完整 Token 与 Dashboard 密码，配置编辑器直接回填和显示，刷新后仍显示保存值。密文存储、日志脱敏和审计不记录凭据正文的规则继续保留。
 
 ---
 

@@ -20,7 +20,7 @@
 
 ## 1. 连接配置与隧道
 
-[Tunnels.kt](../../app/src/main/java/app/relaxkonos/mobile/core/net/Tunnels.kt)、Gateway/API 和 [TunnelRepository](../../app/src/main/java/app/relaxkonos/mobile/data/TunnelRepository.kt) 直接采用共享 [TunnelContracts](../../../../Shared/RelaxKonOS.Protocol/Tunnels/TunnelContracts.cs) 和当前路由，不提供旧接口。安全列表展示服务器名、主机/端口、认证/TLS、受管/外部路径、Token 是否已设置、revision 与隧道状态；Token 不随任何 profile 读取返回。只读身份可读取列表、运行时和日志；写入按钮与 Repository 要求宿主特权能力，Server 仍独立检查 Controller、资源归属及实际宿主条件。
+[Tunnels.kt](../../app/src/main/java/app/relaxkonos/mobile/core/net/Tunnels.kt)、Gateway/API 和 [TunnelRepository](../../app/src/main/java/app/relaxkonos/mobile/data/TunnelRepository.kt) 直接采用共享 [TunnelContracts](../../../../Shared/RelaxKonOS.Protocol/Tunnels/TunnelContracts.cs) 和当前路由，不提供旧接口。安全列表展示服务器名、主机/端口、认证/TLS、受管/外部路径、Token 是否已设置、revision 与隧道状态；Profile 读取返回已有 Token，编辑表单直接显示。只读身份可读取列表、运行时和日志；写入按钮与 Repository 要求宿主特权能力，Server 仍独立检查 Controller、资源归属及实际宿主条件。
 
 配置编辑支持主机名/IDN/IP、服务器端口、None/Token、默认/禁用/强制 TLS、受管运行时或外部绝对路径。外部检测为显式请求，只验证指定宿主文件，不扫描手机 PATH；结果不自动改变配置。Token 在独立掩码表单替换，提交后清空界面值，只在当前请求内存中持有，不进入草稿、持久摘要、日志、诊断、OperationIndex 或保险箱。普通配置保存不设置 Token、不启动进程。
 
@@ -58,11 +58,11 @@ Install 支持宿主下载、服务器包引用和系统文档选择器的手机
 
 ## 6. 宿主 frps
 
-“受管 frps”分页读取安全配置，包括绑定 IP/端口、最多 64 个允许端口/范围、可选 HTTP/HTTPS vhost 端口、强制 TLS、TokenConfigured、Dashboard 开关/绑定/账号/PasswordConfigured、状态、启动和观察时间。宿主 frps 为 HostGlobal 资源，不按某个 frpc profile 归属；它的运行状态和日志不能当作某个客户端隧道已连接的证据。
+“受管 frps”分页读取安全配置，包括绑定 IP/端口、最多 64 个允许端口/范围、可选 HTTP/HTTPS vhost 端口、强制 TLS、Token 与 TokenConfigured、Dashboard 开关/绑定/账号/密码与 PasswordConfigured、状态、启动和观察时间。宿主 frps 为 HostGlobal 资源，不按某个 frpc profile 归属；它的运行状态和日志不能当作某个客户端隧道已连接的证据。
 
 [ManagedFrps.kt](../../app/src/main/java/app/relaxkonos/mobile/core/net/ManagedFrps.kt) 与 [ManagedFrpsDraft/Manager](../../app/src/main/java/app/relaxkonos/mobile/ui/manage/tunnels/ManagedFrpsManager.kt) 直接采用当前契约。保存带原 `expectedRevision`（首次配置为 0），服务器按锁内当前版本校验并推进 revision；冲突保留非秘密草稿，须确认丢弃后回读替换。响应的 `revision/appliedRevision` 分别表示保存版本和当前进程的配置身份，不能把“保存成功”解释为运行配置已切换。活跃进程已应用版本不同或缺失时分别显示未应用或未核实。
 
-Token 和 Dashboard 密码在当前编辑对话框中作为替换值输入，空白保留服务器已存秘密；首次配置必须设置 Token，启用 Dashboard 必须有账号/密码。输入限制为长度受限的单行值，凭据用可清零字符数组承载，不保存到草稿、日志、诊断或 Journal；请求完成、拒绝、离页或切会话清零。提交后清空输入，即使冲突也需要重新输入替换秘密。普通读取和 PUT 响应不回传 Token；只有明确确认后的 Controller 编辑 GET 可读取已有 Token，并由服务端审计。编辑读取校验原草稿 revision，拒绝/身份变化清零旧响应，离开编辑器后迟到结果不再回填；值默认掩码，可显式显示，关闭/切会话清空。Dashboard 密码始终不能回读。
+Token 和 Dashboard 密码随普通读取和保存响应返回，配置编辑器直接显示已保存的值，刷新后回填。FRP 服务器 Token 同样回填并显示。关闭或切换会话清理编辑状态；日志、诊断和 Journal 不记录凭据正文。输入仍限制为长度受限的单行值，修订冲突需重新加载当前配置。
 
 启动、停止和“重启并应用”须确认具体监听目标与影响。启动使用当前保存配置，不能绕过宿主端口/TLS/秘密/运行时校验；已经运行且配置版本不同的启动不会静默替换，要求停止后重启。重启先取得明确 `succeeded + disconnected` 停止结果再启动，丢失/异常/失败的停止结果不进入启动阶段。各阶段独立做认证/提权重试，启动挑战不能重复已完成的停止阶段。Windows 复用 `frpLifecycle + frps` 精确授权，profile 的授权不能替代它。停止可能断开全部 FRP 客户端和转发的管理路径；本页不会修改防火墙、客户端信任或手机网络设置。
 

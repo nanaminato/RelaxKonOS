@@ -57,7 +57,7 @@ object HostSettingsRules {
 }
 object HostSettingsRoutes {
     const val ROOT = "/api/v1.0/host-settings"
-    fun environment(scope: HostEnvironmentScope, reveal: Boolean) = "$ROOT/environment?scope=${scope.query}&reveal=$reveal"
+    fun environment(scope: HostEnvironmentScope) = "$ROOT/environment?scope=${scope.query}"
     fun target(scope: HostEnvironmentScope) = "$ROOT/environment/target?scope=${scope.query}"
     fun operation(id: String) = "/api/v1.0/settings/operations/${HostSettingsRules.id(id)}"
 }

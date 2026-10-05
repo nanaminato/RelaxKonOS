@@ -41,9 +41,7 @@ public sealed class RevisionRowViewModel(ApplicationRevisionDto revision, Guid? 
 
     public string ConfigurationText => Model.Configuration.Count == 0
         ? "—"
-        : string.Join(", ", Model.Configuration.Select(entry => entry.IsSecret
-            ? $"{entry.Name} (v{entry.SecretVersion?.ToString(CultureInfo.CurrentCulture) ?? "?"})"
-            : entry.Name));
+        : string.Join(", ", Model.Configuration.Select(entry => $"{entry.Name}={entry.Value}"));
 
     public string VolumesText => Model.Volumes.Count == 0
         ? "—"

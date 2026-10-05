@@ -13,10 +13,10 @@ class HostSettingsRepository(private val gateway: RelaxKonGateway, private val s
     fun references(owner: SessionState.Active) = journal.references(owner.also(::verify))
     suspend fun time(owner: SessionState.Active) = read(owner, gateway::hostTime)
     suspend fun identity(owner: SessionState.Active) = read(owner, gateway::hostIdentity)
-    suspend fun environment(owner: SessionState.Active, scope: HostEnvironmentScope, reveal: Boolean, provider: ElevationAnswerProvider): ApiResult<HostEnvironmentSettings> {
+    suspend fun environment(owner: SessionState.Active, scope: HostEnvironmentScope, provider: ElevationAnswerProvider): ApiResult<HostEnvironmentSettings> {
         val target = read(owner) { u,t -> gateway.hostEnvironmentTarget(u,t,scope) }
         if (target !is ApiResult.Success) return fail(target)
-        val result = elevated(owner, if (reveal) "hostEnvironmentReveal" else "hostEnvironmentRead", target.value.resourceId, provider) { u,t -> gateway.hostEnvironment(u,t,scope,reveal) }
+        val result = elevated(owner, "hostEnvironmentRead", target.value.resourceId, provider) { u,t -> gateway.hostEnvironment(u,t,scope) }
         return if (result is ApiResult.Success && result.value.target != target.value) ApiResult.Transport(null) else result
     }
     suspend fun preview(owner: SessionState.Active, kind: HostSettingKind, revision: String, target: HostSettingsTarget,

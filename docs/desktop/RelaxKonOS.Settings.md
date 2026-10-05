@@ -77,14 +77,14 @@ Windows provider 只读固定 `ComputerName` 注册表位置并用 `SetComputerN
 
 ## 宿主环境客户端服务
 
-`IHostEnvironmentService` 已注册为独立 typed HttpClient，提供目标解析、默认掩码读取、显式揭示、预览、按 planId 应用、操作查询和带 revision 回滚。读取、揭示、修改分别请求 `HostEnvironmentRead`、`HostEnvironmentReveal`、`HostEnvironmentChange` 精确资源授权；调用者按需要依次请求，服务不隐式扩张权限或缓存密码、原始环境值。
+`IHostEnvironmentService` 已注册为独立 typed HttpClient，提供目标解析、直接读取完整变量值、预览、按 planId 应用、操作查询和带 revision 回滚。读取、修改分别请求 `HostEnvironmentRead`、`HostEnvironmentChange` 精确资源授权；调用者按需要依次请求，服务不隐式扩张权限或缓存密码、原始环境值。
 
 新增 `GET /api/v1.0/host-settings/environment/target?scope=hostUser|hostMachine`，只返回当前认证用户经 Server 验证映射的 `SettingsTarget`，不读取环境、不调用 Helper、不授予权限，响应禁止缓存。客户端通过此入口取得授权目标，不从本地设备猜测远程 SID/UID。Windows 当前认证用户自己的环境 store 经 canonical SID 归属检查后无需管理员认证；系统 store 的读/揭示/修改需当前管理员资格或精确临时 grant。手动授权的三项 capability 仅覆盖所选 store，不扩展到另一 store；系统认证管理员每次重新检查资格。
 
 时区和环境服务共用 `HostSettingsService` 的连接冻结与 HTTP 流程：取得 token 前后及响应解析后校验 Server/用户/会话，禁用重定向和写请求重试，不经过可重放的认证 handler。环境服务已接入设置编辑 UI；SDK 与终端入口仍待实现。
 
 
-DevCli 现已接入 `environment-target`、`environment`、`preview-environment`、`apply-environment`，并复用 `operation`、`rollback`。变更读取 UTF-8 JSON 文件或标准输入，不接受变量值命令行参数；默认掩码，显式揭示仍需额外授权。它依赖已有宿主 JWT 的短期授权，缺少时返回结构化错误，不打开密码窗口。完整命令和格式见 `Tools/RelaxKonOS.DevCli/README.md`。环境编辑 UI 已接入（含 PATH 分项编辑），Linux `/etc/environment` provider 已由 Helper 分派并做字节 revision 条件化的原子替换；尚未完成的是 Workspace 环境分区、非特权工作负载的环境构造、宿主设置实时通知，以及 SDK/终端入口。
+DevCli 现已接入 `environment-target`、`environment`、`preview-environment`、`apply-environment`，并复用 `operation`、`rollback`。变更读取 UTF-8 JSON 文件或标准输入，不接受变量值命令行参数；读取直接返回完整变量值。它依赖已有宿主 JWT 的短期授权，缺少时返回结构化错误，不打开密码窗口。完整命令和格式见 `Tools/RelaxKonOS.DevCli/README.md`。环境编辑 UI 已接入（含 PATH 分项编辑），Linux `/etc/environment` provider 已由 Helper 分派并做字节 revision 条件化的原子替换；尚未完成的是 Workspace 环境分区、非特权工作负载的环境构造、宿主设置实时通知，以及 SDK/终端入口。
 
 
 ## 环境变量页面

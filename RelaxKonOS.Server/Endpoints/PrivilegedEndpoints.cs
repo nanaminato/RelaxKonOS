@@ -25,7 +25,7 @@ public static class PrivilegedEndpoints
                 return Problem(400, "file-elevation-capability-invalid", "文件操作必须使用文件授权入口。");
             if (string.IsNullOrWhiteSpace(request.Target) || request.Target.Length > 256 || request.IncludeDescendants)
                 return Problem(400, "elevation-target-invalid", "目标资源无效。");
-            var isEnvironmentCapability = request.Capability is HostElevationCapability.HostEnvironmentRead or HostElevationCapability.HostEnvironmentChange or HostElevationCapability.HostEnvironmentReveal;
+            var isEnvironmentCapability = request.Capability is HostElevationCapability.HostEnvironmentRead or HostElevationCapability.HostEnvironmentChange;
             if (isEnvironmentCapability)
             {
                 try
@@ -47,7 +47,7 @@ public static class PrivilegedEndpoints
             if (!authentication.Succeeded) return Problem(403, authentication.ProblemCode, "宿主管理员认证未通过，未执行操作。");
             try
             {
-                // A manual authorization covers only the requested store. Read, reveal and change
+                // A manual authorization covers only the requested store. Read and change
                 // expire together; authorizing the user's store must not authorize the machine.
                 if (isEnvironmentCapability)
                 {
@@ -58,7 +58,6 @@ public static class PrivilegedEndpoints
                     foreach (var capability in new[]
                     {
                         HostElevationCapability.HostEnvironmentRead,
-                        HostElevationCapability.HostEnvironmentReveal,
                         HostElevationCapability.HostEnvironmentChange,
                     })
                         environmentExpires = elevations.Grant(http.User, capability, target.ResourceId, includeDescendants: false,

@@ -44,12 +44,12 @@ relaxkonos-dev settings --server https://remote.example:5001 apply-hostname --id
 
 ## 环境变量
 
-环境变更使用远程宿主作用域 `hostUser` 或 `hostMachine`。先用 `environment-target` 发现服务端绑定的授权目标；同一 JWT 需已有该目标的 `HostEnvironmentRead` 授权，预览和回滚读回也需要它。应用/回滚另需 `HostEnvironmentChange`；`--reveal` 另需 `HostEnvironmentReveal`，不会自动申请或扩大授权。默认读取只输出名称、类型、掩码和元数据；显式揭示会把原值写到标准输出，请只在需要显示这些值时使用。
+环境读取使用 `HostEnvironmentRead` 授权，直接返回完整变量值。修改使用 `HostEnvironmentChange`；CLI 不自动申请授权。
 
 ```sh
 relaxkonos-dev settings --server https://remote.example:5001 environment-target --scope hostUser
 relaxkonos-dev settings --server https://remote.example:5001 environment --scope hostUser
-relaxkonos-dev settings --server https://remote.example:5001 environment --scope hostUser --reveal
+relaxkonos-dev settings --server https://remote.example:5001 environment --scope hostUser
 relaxkonos-dev settings --server https://remote.example:5001 preview-environment --scope hostUser --revision <snapshot-revision> --idempotency-key <unique-key> --changes changes.json
 relaxkonos-dev settings --server https://remote.example:5001 apply-environment --id <reviewed-plan-id>
 relaxkonos-dev settings --server https://remote.example:5001 operation --id <plan-id>

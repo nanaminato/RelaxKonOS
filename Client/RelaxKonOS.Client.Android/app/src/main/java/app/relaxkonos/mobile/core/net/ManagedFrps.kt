@@ -8,7 +8,7 @@ data class TunnelPortRange(val start: Int, val end: Int)
 data class ManagedFrps(val bindAddress: String, val bindPort: Int, val allowPorts: List<TunnelPortRange>, val httpPort: Int?, val httpsPort: Int?,
     val forceTls: Boolean, val tokenConfigured: Boolean, val dashboardEnabled: Boolean, val dashboardAddress: String, val dashboardPort: Int?,
     val dashboardUser: String?, val dashboardPasswordConfigured: Boolean, val state: ManagedFrpsState, val revision: Long,
-    val appliedRevision: Long?, val problemCode: String, val startedAtMillis: Long?)
+    val appliedRevision: Long?, val problemCode: String, val startedAtMillis: Long?, val token: String? = null, val dashboardPassword: String? = null)
 data class ManagedFrpsEditing(val configuration: ManagedFrps, val token: CharArray?) {
     override fun toString() = "ManagedFrpsEditing(revision=${configuration.revision}, token=<redacted>)"
 }
@@ -33,7 +33,7 @@ object ManagedFrpsRoutes {
     const val AUDIT = "$ROOT/audit"
 }
 object ManagedFrpsWire {
-    fun configuration(payload: String) = JSONObject(payload).let { require(it.isNull("token")); configuration(it) }
+    fun configuration(payload: String) = configuration(JSONObject(payload))
     fun editing(payload: String) = JSONObject(payload).let { ManagedFrpsEditing(configuration(it), if (it.isNull("token")) null else it.getString("token").toCharArray()) }
     private fun configuration(j: JSONObject): ManagedFrps = with(j) {
         fun port(key: String): Int? = if (isNull(key)) null else getInt(key).also { require(it in 1..65535) }
@@ -48,7 +48,7 @@ object ManagedFrpsWire {
         ManagedFrps(getString("bindAddress"), requireNotNull(port("bindPort")), ranges, port("vhostHttpPort"), port("vhostHttpsPort"), getBoolean("forceTls"),
             getBoolean("tokenConfigured"), getBoolean("dashboardEnabled"), getString("dashboardAddress"), port("dashboardPort"), text("dashboardUser"),
             getBoolean("dashboardPasswordConfigured"), state, revision, applied, getString("problemCode"),
-            if (isNull("startedAt")) null else IsoInstant.requireEpochMillis(getString("startedAt")))
+            if (isNull("startedAt")) null else IsoInstant.requireEpochMillis(getString("startedAt")), text("token"), text("dashboardPassword"))
     }
     fun audit(payload: String) = JSONArray(payload).let { array -> List(array.length()) { i -> array.getJSONObject(i).let { j ->
         TunnelAudit(IsoInstant.requireEpochMillis(j.getString("timestamp")), j.getString("action"), j.getString("result"), j.getString("problemCode"))

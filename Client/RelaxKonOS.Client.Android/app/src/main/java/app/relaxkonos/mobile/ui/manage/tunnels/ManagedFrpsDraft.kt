@@ -2,11 +2,11 @@ package app.relaxkonos.mobile.ui.manage.tunnels
 
 import app.relaxkonos.mobile.core.net.*
 
-/** Only safe fields survive editor state. Replacement credentials belong to the open dialog. */
+/** Saved configuration and credentials are displayed in the open editor. */
 internal data class ManagedFrpsDraft(val revision: Long = 0, val bindAddress: String = "0.0.0.0", val bindPort: String = "7000",
     val allowPorts: String = "", val httpPort: String = "", val httpsPort: String = "", val forceTls: Boolean = true,
     val tokenConfigured: Boolean = false, val dashboardEnabled: Boolean = false, val dashboardAddress: String = "127.0.0.1",
-    val dashboardPort: String = "7500", val dashboardUser: String = "", val dashboardPasswordConfigured: Boolean = false) {
+    val dashboardPort: String = "7500", val dashboardUser: String = "", val dashboardPasswordConfigured: Boolean = false, val token: String = "", val password: String = "") {
     fun request(token: CharArray, password: CharArray): ManagedFrpsRequest? {
         val bind = literalAddress(bindAddress) ?: return null
         val bindPort = TunnelInputs.port(bindPort) ?: return null
@@ -27,7 +27,7 @@ internal data class ManagedFrpsDraft(val revision: Long = 0, val bindAddress: St
         fun from(v: ManagedFrps) = ManagedFrpsDraft(v.revision, v.bindAddress, v.bindPort.toString(),
             v.allowPorts.joinToString(", ") { if (it.start == it.end) it.start.toString() else "${it.start}-${it.end}" },
             v.httpPort?.toString().orEmpty(), v.httpsPort?.toString().orEmpty(), v.forceTls, v.tokenConfigured,
-            v.dashboardEnabled, v.dashboardAddress, v.dashboardPort?.toString().orEmpty(), v.dashboardUser.orEmpty(), v.dashboardPasswordConfigured)
+            v.dashboardEnabled, v.dashboardAddress, v.dashboardPort?.toString().orEmpty(), v.dashboardUser.orEmpty(), v.dashboardPasswordConfigured, v.token.orEmpty(), v.dashboardPassword.orEmpty())
         fun literalAddress(value: String): String? {
             val text = value.trim()
             if (!text.contains(':') && !text.matches(Regex("\\d+\\.\\d+\\.\\d+\\.\\d+"))) return null

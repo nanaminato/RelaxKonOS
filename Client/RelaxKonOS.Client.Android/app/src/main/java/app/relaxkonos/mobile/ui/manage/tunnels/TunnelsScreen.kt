@@ -152,11 +152,11 @@ WorkspaceSection(section in setOf("profiles", "logs")) {
             if (maxWidth >= 600.dp) Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
                 Column(Modifier.weight(1f)) { ProfileList(facts, state, model) }
                 Column(Modifier.weight(2f)) { ProfileDetail(selected, facts, state, model, canManage, section,
-                    { message, target, action -> confirm = TunnelConfirmation(message, target, action) }, { tokenProfile = it; secret = "" }) }
+                    { message, target, action -> confirm = TunnelConfirmation(message, target, action) }, { tokenProfile = it; secret = it.token.orEmpty() }) }
             } else Column {
                 if (state.selectedId == null) ProfileList(facts, state, model) else {
                     TextButton(enabled = !state.busy, onClick = { model.select(null) }) { Text(stringResource(R.string.common_back)) }
-                    ProfileDetail(selected, facts, state, model, canManage, section, { message, target, action -> confirm = TunnelConfirmation(message, target, action) }, { tokenProfile = it; secret = "" })
+                    ProfileDetail(selected, facts, state, model, canManage, section, { message, target, action -> confirm = TunnelConfirmation(message, target, action) }, { tokenProfile = it; secret = it.token.orEmpty() })
                 }
             }
         }
@@ -171,7 +171,7 @@ WorkspaceSection(section in setOf("profiles", "logs")) {
         title = { Text(stringResource(R.string.tunnels_token_set)) }, text = { Column {
             Text(profile.name + " · " + profile.id)
             Text(stringResource(R.string.tunnels_token_note))
-            OutlinedTextField(secret, { secret = it }, visualTransformation = PasswordVisualTransformation(), singleLine = true,
+            OutlinedTextField(secret, { secret = it }, visualTransformation = androidx.compose.ui.text.input.VisualTransformation.None, singleLine = true,
                 keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password), label = { Text(stringResource(R.string.tunnels_token)) })
         } }, confirmButton = { Button(enabled = !state.busy && secret.isNotBlank() && secret.length <= 4096 && state.pending.isEmpty(), onClick = {
             val submitted = secret; secret = ""; tokenProfile = null; model.setToken(profile, submitted)

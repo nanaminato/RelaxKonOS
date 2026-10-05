@@ -21,9 +21,8 @@ public sealed record ApplicationVolumeDto(
     [property: JsonPropertyName("readOnly")] bool ReadOnly = false);
 
 /// <summary>
-/// One container environment entry. On every response <see cref="Value"/> is null for a secret
-/// entry; only <see cref="SecretVersion"/> is reported, and secret bodies never enter a revision
-/// snapshot, the operation ledger, or an audit record.
+/// One container environment entry. Operator responses include saved values and protected-store versions.
+/// Persistent revisions and backups omit secret bodies; saved receipts contain only secret-version references and logs omit plaintext secrets.
 /// </summary>
 public sealed record ApplicationConfigEntryDto(
     [property: JsonPropertyName("name")] string Name,

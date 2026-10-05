@@ -37,7 +37,7 @@ class HostSettingsHttpTest {
         server.createContext("/"){ex->val bytes="""{"type":"about:blank","title":"settings.environment.authorization_required","status":428,"problemCode":"settings.environment.authorization_required"}""".toByteArray();ex.sendResponseHeaders(428,bytes.size.toLong());ex.responseBody.use{it.write(bytes)};ex.close()}
         server.start()
         try{
-            val result=RelaxKonApi("test","test").hostEnvironment("http://127.0.0.1:${server.address.port}","token",HostEnvironmentScope.HostMachine,false)
+            val result=RelaxKonApi("test","test").hostEnvironment("http://127.0.0.1:${server.address.port}","token",HostEnvironmentScope.HostMachine)
             assertEquals("settings.environment.authorization_required",(result as ApiResult.Problem).code)
         }finally{server.stop(0)}
     }

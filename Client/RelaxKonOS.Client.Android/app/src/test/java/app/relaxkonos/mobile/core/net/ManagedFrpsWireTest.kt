@@ -6,11 +6,13 @@ import org.json.JSONObject
 
 const val FRPS_JSON = """{"bindAddress":"127.0.0.1","bindPort":7000,"allowPorts":[{"start":6000,"end":6010}],"vhostHttpPort":null,"vhostHttpsPort":443,"forceTls":true,"tokenConfigured":true,"dashboardEnabled":true,"dashboardAddress":"127.0.0.1","dashboardPort":7500,"dashboardUser":"admin","dashboardPasswordConfigured":true,"state":"running","revision":3,"appliedRevision":2,"problemCode":"","startedAt":"2026-09-30T10:00:00Z","token":null}"""
 class ManagedFrpsWireTest {
-    @Test fun `safe read separates saved applied revisions and only editor accepts Token`() {
+    @Test fun `configuration reads preserve credentials and saved applied revisions`() {
         val value = ManagedFrpsWire.configuration(FRPS_JSON)
         assertEquals(3L, value.revision); assertEquals(2L, value.appliedRevision)
         val secret = FRPS_JSON.replace("\"token\":null", "\"token\":\"private-token\"")
-        assertTrue(runCatching { ManagedFrpsWire.configuration(secret) }.isFailure)
+        assertEquals("private-token", ManagedFrpsWire.configuration(secret).token)
+        val dashboard = JSONObject(secret).put("dashboardPassword", "private-dashboard").toString()
+        assertEquals("private-dashboard", ManagedFrpsWire.configuration(dashboard).dashboardPassword)
         assertEquals("private-token", ManagedFrpsWire.editing(secret).token!!.concatToString()); assertFalse(ManagedFrpsWire.editing(secret).toString().contains("private-token"))
     }
     @Test fun `missing revision invalid ranges and impossible applied proof fail closed`() {

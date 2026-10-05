@@ -694,6 +694,8 @@ builder.Services.AddHttpClient("WebsitePublicationVerification", client =>
 builder.Services.AddSingleton<RelaxKonOS.Server.Runtimes.IRuntimeManager, RelaxKonOS.Server.Runtimes.FrpRuntimeManager>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Tunnels.ITunnelProvider, RelaxKonOS.Server.Tunnels.FrpTunnelProvider>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Tunnels.IManagedFrpsService, RelaxKonOS.Server.Tunnels.ManagedFrpsService>();
+builder.Services.AddHostedService(sp => (RelaxKonOS.Server.Tunnels.FrpTunnelProvider)sp.GetRequiredService<RelaxKonOS.Server.Tunnels.ITunnelProvider>());
+builder.Services.AddHostedService(sp => (RelaxKonOS.Server.Tunnels.ManagedFrpsService)sp.GetRequiredService<RelaxKonOS.Server.Tunnels.IManagedFrpsService>());
 builder.Services.Configure<RelaxKonOS.Server.Runtimes.FrpRuntimeOptions>(builder.Configuration.GetSection("FrpRuntime"));
 
 // Certificate management is host-global. PEM/account keys remain behind the server-side
@@ -843,6 +845,24 @@ builder.Services.AddCors(opts => opts.AddDefaultPolicy(p =>
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
+if (builder.Configuration["maintenance"] == "remove-managed-components")
+{
+    var personalCleanup = serverModeResolver.Mode == RelaxKonOS.Protocol.Common.ServerMode.User;
+    var personalOwner = personalCleanup && OperatingSystem.IsWindows()
+        && builder.Configuration["Personal:OwnerSid"] == System.Security.Principal.WindowsIdentity.GetCurrent().User?.Value;
+    if (!RelaxKonOS.Server.Installations.ManagedComponentCleanup.IsAuthorized() && !personalOwner)
+        throw new UnauthorizedAccessException("Managed component cleanup requires local administrator/root authority.");
+    if (personalCleanup && !OperatingSystem.IsWindows())
+        throw new InvalidOperationException("Linux User Mode does not own system components.");
+    var cleanupDataRoot = builder.Configuration["maintenanceDataRoot"];
+    if (string.IsNullOrWhiteSpace(cleanupDataRoot) || !Path.IsPathFullyQualified(cleanupDataRoot))
+        throw new InvalidOperationException("Managed component cleanup requires the recorded absolute data root.");
+    var receiptPath = Path.Combine(cleanupDataRoot, "server", "deployment", "component-cleanup.json");
+    var receipt = await RelaxKonOS.Server.Installations.ManagedComponentCleanup.RemoveAsync(app.Services, receiptPath, cleanupDataRoot, personalCleanup, CancellationToken.None);
+    Environment.ExitCode = receipt.Succeeded ? 0 : 70;
+    await app.DisposeAsync();
+    return;
+}
 app.Logger.LogInformation("Authentication configuration loaded. ServerMode={ServerMode} LinuxPamTransport={LinuxPamTransport} PrivilegedHelperPathConfigured={PrivilegedHelperPathConfigured} UserExecutionBackend={UserExecutionBackend}",
     serverModeResolver.Mode, linuxPamTransport, !string.IsNullOrWhiteSpace(builder.Configuration["PrivilegedHelper:HelperPath"]), userExecutionBackend);
 ReportUserExecutionBackend(app.Logger, userExecutionBackend, serverModeResolver.Mode, privilegedHelperOptions);

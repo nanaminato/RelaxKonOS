@@ -93,6 +93,61 @@ if [[ "$NON_INTERACTIVE" == false ]]; then
   [[ "$confirmation" =~ ^([yY]|[yY][eE][sS])$ ]] || exit 0
 fi
 
+# Mihomo is an independent system service. Stop it while retaining its enablement,
+# runtime, configuration and ownership records for the next installation.
+if [[ "$REMOVE_DATA" == true ]]; then
+  # Keep Helper and ownership records available until every cleanup step succeeds.
+  for unit in relaxkonos-server.service relaxkonos-guardian.service; do
+    if systemctl is-active --quiet "$unit" && ! systemctl stop "$unit"; then
+      echo "Could not stop $unit; preserving installation and data." >&2; exit 70
+    fi
+  done
+  cleanup_server=
+  for candidate in "$INSTALL_ROOT/current/server/RelaxKonOS.Server" "$INSTALL_ROOT/runtime/server/RelaxKonOS.Server" "$INSTALL_ROOT/server/RelaxKonOS.Server"; do
+    if [[ -x "$candidate" ]]; then cleanup_server="$candidate"; break; fi
+  done
+  [[ -n "$cleanup_server" ]] || { echo 'Managed component cleanup requires the installed Server executable; data was preserved.' >&2; exit 70; }
+  (
+    configuration=/etc/relaxkonos/server.env
+    [[ -f "$configuration" ]] || configuration="$DATA_ROOT/deployment/server.env"
+    if [[ -f "$configuration" ]]; then
+      while IFS= read -r line; do
+        if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then export "${BASH_REMATCH[1]}=${BASH_REMATCH[2]}"; fi
+      done < "$configuration"
+    fi
+    export DOTNET_ENVIRONMENT=Production ASPNETCORE_ENVIRONMENT=Production
+    "$cleanup_server" --contentRoot "$(dirname "$cleanup_server")" --maintenance=remove-managed-components --maintenanceDataRoot "$DATA_ROOT"
+  ) || { echo 'Managed component cleanup failed; program files and data were preserved for repair.' >&2; exit 70; }
+  receipt="$DATA_ROOT/server/deployment/component-cleanup.json"
+  [[ -f "$receipt" ]] || { echo 'Managed component cleanup produced no receipt; data was preserved.' >&2; exit 70; }
+  python3 - "$receipt" <<'PY' || { echo 'Managed component cleanup receipt is incomplete; data was preserved.' >&2; exit 70; }
+import json, sys
+try:
+    with open(sys.argv[1], encoding='utf-8') as source:
+        receipt = json.load(source)
+    components = receipt['Components']
+    assert receipt['Succeeded'] is True
+    assert [item['Component'] for item in components] == ['smb', 'nginx', 'frp', 'mihomo']
+    assert all(item['Succeeded'] is True for item in components)
+except (OSError, ValueError, KeyError, TypeError, AssertionError):
+    sys.exit(70)
+PY
+  python3 - "$receipt" <<'PY' || { echo 'Managed component cleanup receipt is incomplete; data was preserved.' >&2; exit 70; }
+import json, sys
+try:
+    with open(sys.argv[1], encoding='utf-8') as source:
+        receipt = json.load(source)
+    components = receipt['Components']
+    assert receipt['Succeeded'] is True
+    assert [item['Component'] for item in components] == ['smb', 'nginx', 'frp', 'mihomo']
+    assert all(item['Succeeded'] is True for item in components)
+except (OSError, ValueError, KeyError, TypeError, AssertionError):
+    sys.exit(70)
+PY
+  install -d -o root -g root -m 0700 /var/lib/relaxkonos-deployment
+  install -o root -g root -m 0600 "$receipt" /var/lib/relaxkonos-deployment/component-cleanup.json
+fi
+systemctl stop relaxkonos-mihomo.service 2>/dev/null || true
 systemctl disable --now relaxkonos-server.service relaxkonos-guardian.service 2>/dev/null || true
 rm -f -- /etc/systemd/system/relaxkonos-server.service /etc/systemd/system/relaxkonos-guardian.service
 systemctl daemon-reload
@@ -108,7 +163,15 @@ if [[ -f /etc/pam.d/relaxkonos ]]; then
     echo 'Preserving unmanaged /etc/pam.d/relaxkonos.' >&2
   fi
 fi
-rm -rf -- /etc/relaxkonos
+if [[ "$REMOVE_DATA" == false && -f /etc/relaxkonos/server.env ]]; then
+  # Keep installation-owned JWT/audit identity secrets with the retained database.
+  install -d -o root -g root -m 0700 "$DATA_ROOT/deployment"
+  install -o root -g root -m 0600 /etc/relaxkonos/server.env "$DATA_ROOT/deployment/server.env"
+fi
+rm -f -- /etc/relaxkonos/server.env /etc/relaxkonos/guardian.env
+# /etc/relaxkonos/proxy is component data, not a Server deployment file.
+# Do not erase it when removing the Server.
+rmdir -- /etc/relaxkonos 2>/dev/null || true
 
 if [[ "$REMOVE_DATA" == true ]]; then
   # Delete only the data root recorded by the installation; a caller-supplied path is never trusted.

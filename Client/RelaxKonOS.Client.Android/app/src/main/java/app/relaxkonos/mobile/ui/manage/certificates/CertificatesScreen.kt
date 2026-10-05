@@ -47,7 +47,7 @@ fun CertificatesScreen(onBack: () -> Unit, initialOperationId: String? = null, s
         PageActionRow(refresh = {
             TextButton(onClick = model::refresh, enabled = !state.busy) { ActionLabel(R.string.common_refresh) }
         }, actions = {
-            if (canManage && !serverHttpsOnly) {
+            if (canManage && !serverHttpsOnly && section != "operations") {
                 OutlinedButton(onClick = { model.create(false) }, enabled = !state.busy) { Text(stringResource(R.string.certificates_issue)) }
                 OutlinedButton(onClick = { model.create(true) }, enabled = !state.busy) { Text(stringResource(R.string.certificates_self_signed)) }
             }

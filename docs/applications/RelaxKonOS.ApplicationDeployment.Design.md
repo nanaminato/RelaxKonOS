@@ -348,7 +348,7 @@ interface IApplicationTemplate
 
 - 名称须匹配环境变量命名规则。
 - 非机密值 ≤ 4096 且**不含控制字符**（控制字符可让值突破环境变量列表边界）。
-- 更新时允许只提交既有 `secretVersion`（表单不重复回显机密），也允许提交新值以轮换；创建时**必须**提供值。
+- 更新时允许只提交既有 `secretVersion`（表单直接显示已保存的值），也允许提交新值以轮换；创建时**必须**提供值。
 
 ## 9. 受管资源、所有权与漂移
 
@@ -587,3 +587,5 @@ relaxkonos.role={workload|candidate}
 - 2026-09-20：新增 SignalR 实时部署日志及本地归档上传字节/百分比/速率/取消 UI；客户端和服务端直接流式传输，禁用上传正文诊断缓冲，服务端显式按配置限制大小。专项命令 `dotnet run --project RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj -p:OutputPath=D:/RelaxKon/RelaxKonOS/artifacts/deployment-progress-tests/ -- --deployment-progress-only` 已通过：32 MiB+123 字节真实 HTTP 上传及内容完整性、单调字节进度、传输中取消、配置超限与错误 multipart 拒绝、增量 Docker 输出读取、SignalR 权限拒绝/实时推送/脱敏/断线补回 300 行。首次测试因测试宿主遗漏 DI 注册失败，补齐后通过；补充超限测试发现提前拒绝可能重置上传连接，生产客户端和测试均启用 `Expect: 100-continue` 后重跑通过。Client 构建通过（0 警告/0 错误），Server 构建通过（既有平台兼容性警告）。这些是 T05/T09/T10/T13 的部分 HTTP/传输层证据，不等同于完整测试矩阵通过；真实 Docker 镜像拉取/构建及桌面视觉端到端仍未执行。
 - 2026-09-19：修正静态审查发现的发布语义：.NET `runtimeOptions` 解析、修订快照回滚、候选接管时的旧实例恢复保留、容器/卷精确所有权标签校验、阶段取消与饱和时的幂等重试；Python 要求锁定依赖。真实 Docker 验收仍未执行。
 - 2026-09-20：修正集合路由重复前缀：`ApplicationDeploymentEndpoints` 的集合读/写端点改用相对常量 `ApplicationsPattern`（新增于 `ApplicationDeploymentApiRoutes`），消除 `MapGroup` 前缀重复导致的恒 404；在 `RelaxKonOS.Protocol.md` §5 与设计文档 §3.1 补充"绝对常量仅客户端、`MapGroup` 内只用 `*Pattern`"的约定与本次实例；记录验证 B05。运行期行为与 Docker 验收仍未验证。
+
+配置读取与修订详情直接返回已保存的普通和秘密值，编辑器回填并显示。秘密值仍加密保存，持久保存回执只含秘密版本引用，回放时从加密秘密存储回填原值，日志、审计和定义备份不记录秘密正文；提交相同值和相同秘密版本保留该版本，修改值才轮换。
