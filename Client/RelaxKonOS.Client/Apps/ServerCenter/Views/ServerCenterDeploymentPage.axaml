@@ -1,88 +1,136 @@
-<UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:services="clr-namespace:RelaxKonOS.Client.Services.ServerCenter"
-             xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter"
-             x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterDeploymentPage"
-             x:DataType="vm:ServerCenterViewModel" Classes="builtin-app">
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.ServerCenter.Views" xmlns:services="clr-namespace:RelaxKonOS.Client.Services.ServerCenter" xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter" x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterDeploymentPage" x:DataType="vm:ServerCenterViewModel" Classes="builtin-app">
+    <UserControl.Styles>
+        <Style Selector="Border.management-card">
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Padding" Value="18"/>
+        </Style>
+        <Style Selector="Button.management-action">
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="16"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="MinHeight" Value="94"/>
+        </Style>
+        <Style Selector="TextBlock.action-description">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+    </UserControl.Styles>
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-    <StackPanel Spacing="18" Margin="0,0,12,0">
-        <TextBlock Text="{Binding DeploymentPageTitle}" FontSize="21" FontWeight="SemiBold" />
-        <Border Classes="card" Padding="20">
-            <StackPanel Spacing="10">
-                <TextBlock Text="{Binding SelectedTargetLabel}" FontWeight="SemiBold" />
-                <ComboBox ItemsSource="{Binding Hosts}" SelectedItem="{Binding SelectedHost}" SelectionChanged="SelectedHost_SelectionChanged" HorizontalAlignment="Left" MinWidth="310">
-                    <ComboBox.ItemTemplate>
-                        <DataTemplate>
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                                <StackPanel Spacing="2">
-                                    <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
-                                    <TextBlock Text="{Binding SshHost}" FontSize="12" />
-                                </StackPanel>
-                                <TextBlock Grid.Column="1" Text="{Binding SshUserName}" VerticalAlignment="Center" />
-                            </Grid>
-                        </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                </ComboBox>
-                <TextBlock Text="{Binding EmptyHostsText}" IsVisible="{Binding !HasHosts}" TextWrapping="Wrap" />
-            </StackPanel>
-        </Border>
-        <TextBlock Text="{Binding SelectHostHint}" IsVisible="{Binding !HasSelectedHost}" TextWrapping="Wrap" />
-        <Border Classes="card" Padding="20" IsVisible="{Binding HasSelectedHost}">
-            <StackPanel Spacing="12">
-                <TextBlock Text="{Binding SelectedHost.DisplayName}" FontSize="17" FontWeight="SemiBold" />
-                <TextBlock Text="{Binding ProbeHelpText}" FontSize="12" TextWrapping="Wrap" />
-                <TextBox Text="{Binding SshPassword}" PasswordChar="●" PlaceholderText="{Binding DeploymentPasswordHint}" />
-                <TextBox Text="{Binding MaintenanceSudoPassword}" IsVisible="{Binding ShowMaintenanceSudoPassword}" PasswordChar="●" PlaceholderText="{Binding MaintenanceSudoPasswordText}" />
-                <StackPanel Spacing="2">
-                    <TextBlock Text="{Binding PlatformLabel}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
-                    <TextBlock Text="{Binding SelectedPlatformText}" />
+        <StackPanel Spacing="16" Margin="0,0,8,0">
+            <TextBlock Text="{Binding DeploymentPageTitle}" FontSize="21" FontWeight="SemiBold"/>
+            <Border Classes="management-card">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="{Binding SelectedTargetLabel}" FontWeight="SemiBold"/>
+                    <ComboBox IsEnabled="{Binding !IsBusy}" ItemsSource="{Binding Hosts}" SelectedItem="{Binding SelectedHost}" SelectionChanged="SelectedHost_SelectionChanged" HorizontalAlignment="Stretch">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding SshHost}" FontSize="12"/>
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1" Text="{Binding SshUserName}" VerticalAlignment="Center"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <TextBlock Text="{Binding EmptyHostsText}" IsVisible="{Binding !HasHosts}" TextWrapping="Wrap"/>
+                    <StackPanel Spacing="12" IsVisible="{Binding HasSelectedHost}">
+                        <Separator/>
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+                            <Image Width="36" Height="36" Source="avares://RelaxKonOS.Client/Assets/Icons/Fluent/host.png"/>
+                            <StackPanel Grid.Column="1" Spacing="4">
+                                <TextBlock Text="{Binding SelectedHost.DisplayName}" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding VerifiedStateText}" IsVisible="{Binding HasVerifiedState}" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding CachedStateText}" Classes="action-description" IsVisible="{Binding HasVerifiedState}"/>
+                            </StackPanel>
+                        </Grid>
+                        <TextBox Text="{Binding SshPassword}" PasswordChar="●" PlaceholderText="{Binding DeploymentPasswordHint}"/>
+                        <TextBox Text="{Binding MaintenanceSudoPassword}" IsVisible="{Binding ShowMaintenanceSudoPassword}" PasswordChar="●" PlaceholderText="{Binding MaintenanceSudoPasswordText}"/>
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="{Binding PlatformLabel}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                            <TextBlock Text="{Binding SelectedPlatformText}"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding LastProbeText}" IsVisible="{Binding HasLastProbe}" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding IncompleteInstallationText}" IsVisible="{Binding HasIncompleteInstallation}" TextWrapping="Wrap"/>
+                        <Button Command="{Binding RecoverCommand}" Content="{Binding RecoverText}" IsVisible="{Binding HasIncompleteInstallation}" HorizontalAlignment="Left"/>
+                    </StackPanel>
                 </StackPanel>
-                <Button Command="{Binding ProbeHostCommand}" Content="{Binding ProbeText}" HorizontalAlignment="Left" />
-                <TextBlock Text="{Binding LastProbeText}" IsVisible="{Binding HasLastProbe}" TextWrapping="Wrap" />
-                <TextBlock Text="{Binding IncompleteInstallationText}" IsVisible="{Binding HasIncompleteInstallation}" TextWrapping="Wrap" />
-                <Button Command="{Binding RecoverCommand}" Content="{Binding RecoverText}" IsVisible="{Binding HasIncompleteInstallation}" HorizontalAlignment="Left" />
-                <Button Command="{Binding OpenInstallationWizardCommand}" Content="{Binding DeployText}" IsVisible="{Binding !HasManagedInstallation}" HorizontalAlignment="Left" />
-            </StackPanel>
-        </Border>
-        <Border Classes="card" Padding="20" IsVisible="{Binding HasManagedInstallation}">
-            <StackPanel Spacing="12">
-                <TextBlock Text="{Binding InstallationInfoTitle}" FontSize="17" FontWeight="SemiBold" />
-                <TextBlock Text="{Binding VerifiedStateText}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                <TextBlock Text="{Binding InstallationInfoNote}" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
-                <Separator />
-                <ItemsControl ItemsSource="{Binding InstallationDetails}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="services:ServerInstallationDetail">
-                            <Grid ColumnDefinitions="160,*" ColumnSpacing="18" Margin="0,5">
-                                <TextBlock Text="{Binding Label}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                <SelectableTextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
-                            </Grid>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </StackPanel>
-        </Border>
-        <Border Classes="card" Padding="20" IsVisible="{Binding HasManagedInstallation}">
-            <StackPanel Spacing="12">
-                <TextBlock Text="{Binding DeploymentPageTitle}" FontSize="17" FontWeight="SemiBold" />
-                <Button Command="{Binding UpdateCommand}" Content="{Binding UpdateText}" HorizontalAlignment="Left" />
-                <CheckBox IsVisible="{Binding CanManageFirewall}" IsChecked="{Binding MaintenanceAddFirewallRule}" Content="{Binding FirewallChoiceText}" />
-                <TextBlock IsVisible="{Binding CanManageFirewall}" Text="{Binding FirewallHelpText}" TextWrapping="Wrap" />
-                <CheckBox IsChecked="{Binding RepairLanCertificate}" Content="{Binding RepairCertificateText}" />
-                <TextBlock Text="{Binding RepairCertificateNote}" TextWrapping="Wrap" IsVisible="{Binding RepairLanCertificate}" />
-                <TextBox Text="{Binding RepairCertificateIdentities}" IsVisible="{Binding RepairLanCertificate}" />
-                <Button Command="{Binding RepairCommand}" Content="{Binding RepairText}" HorizontalAlignment="Left" />
-                <Button Command="{Binding RollbackCommand}" Content="{Binding RollbackText}" IsVisible="{Binding HasPreviousVersion}" HorizontalAlignment="Left" />
-                <Separator />
-                <TextBlock Text="{Binding ComponentSelectionText}" TextWrapping="Wrap" />
-                <CheckBox IsChecked="{Binding RemoveSmb}" Content="{Binding RemoveSmbText}" />
-                <CheckBox IsChecked="{Binding RemoveNginx}" Content="{Binding RemoveNginxText}" />
-                <CheckBox IsChecked="{Binding RemoveFrp}" Content="{Binding RemoveFrpText}" />
-                <CheckBox IsChecked="{Binding RemoveMihomo}" Content="{Binding RemoveMihomoText}" />
-                <CheckBox IsChecked="{Binding DeleteServerData}" Content="{Binding DeleteServerDataText}" />
-                <Button Command="{Binding UninstallCommand}" Content="{Binding UninstallText}" HorizontalAlignment="Left" Classes="danger" />
-            </StackPanel>
-        </Border>
-    </StackPanel>
+            </Border>
+            <views:ServerCenterActionPanel IsVisible="{Binding HasSelectedHost}">
+                <Button Classes="management-action" Command="{Binding ProbeHostCommand}" AutomationProperties.Name="{Binding ProbeText}">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.Client/Assets/Icons/Fluent/monitor.png"/>
+                        <StackPanel Grid.Column="1" Spacing="5">
+                            <TextBlock Text="{Binding ProbeText}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding RefreshActionDescription}" Classes="action-description"/>
+                        </StackPanel>
+                    </Grid>
+                </Button>
+                <Button Classes="management-action" Command="{Binding OpenInstallationWizardCommand}" AutomationProperties.Name="{Binding DeployText}" IsVisible="{Binding !HasManagedInstallation}">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.Client/Assets/Icons/Fluent/deployments.png"/>
+                        <StackPanel Grid.Column="1" Spacing="5">
+                            <TextBlock Text="{Binding DeployText}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding InstallActionDescription}" Classes="action-description"/>
+                        </StackPanel>
+                    </Grid>
+                </Button>
+                <Button Classes="management-action" Command="{Binding UpdateCommand}" AutomationProperties.Name="{Binding UpdateText}" IsVisible="{Binding HasManagedInstallation}">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.Client/Assets/Icons/Fluent/deployments.png"/>
+                        <StackPanel Grid.Column="1" Spacing="5">
+                            <TextBlock Text="{Binding UpdateText}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding InstallActionDescription}" Classes="action-description"/>
+                        </StackPanel>
+                    </Grid>
+                </Button>
+                <Button Classes="management-action" Click="Management_Click" Tag="details" IsVisible="{Binding HasManagedInstallation}" IsEnabled="{Binding !IsBusy}" AutomationProperties.Name="{Binding InstallationInfoTitle}">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.Client/Assets/Icons/Fluent/host.png"/>
+                        <StackPanel Grid.Column="1" Spacing="5">
+                            <TextBlock Text="{Binding InstallationInfoTitle}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding CachedStateText}" Classes="action-description"/>
+                        </StackPanel>
+                    </Grid>
+                </Button>
+                <Button Classes="management-action" Click="Management_Click" Tag="repair" IsVisible="{Binding HasManagedInstallation}" IsEnabled="{Binding !IsBusy}" AutomationProperties.Name="{Binding RepairText}">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.Client/Assets/Icons/Fluent/diagnostics.png"/>
+                        <StackPanel Grid.Column="1" Spacing="5">
+                            <TextBlock Text="{Binding RepairText}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding RepairActionDescription}" Classes="action-description"/>
+                        </StackPanel>
+                    </Grid>
+                </Button>
+                <Button Classes="management-action" Command="{Binding RollbackCommand}" AutomationProperties.Name="{Binding RollbackText}" IsVisible="{Binding HasPreviousVersion}">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.Client/Assets/Icons/Fluent/operations.png"/>
+                        <StackPanel Grid.Column="1" Spacing="5">
+                            <TextBlock Text="{Binding RollbackText}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding RollbackActionDescription}" Classes="action-description"/>
+                        </StackPanel>
+                    </Grid>
+                </Button>
+                <Button Classes="management-action" Click="Management_Click" Tag="uninstall" IsVisible="{Binding HasManagedInstallation}" IsEnabled="{Binding !IsBusy}" AutomationProperties.Name="{Binding UninstallText}">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.Client/Assets/Icons/Fluent/host_settings.png"/>
+                        <StackPanel Grid.Column="1" Spacing="5">
+                            <TextBlock Text="{Binding UninstallText}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding UninstallActionDescription}" Classes="action-description"/>
+                        </StackPanel>
+                    </Grid>
+                </Button>
+            </views:ServerCenterActionPanel>
+        </StackPanel>
     </ScrollViewer>
 </UserControl>

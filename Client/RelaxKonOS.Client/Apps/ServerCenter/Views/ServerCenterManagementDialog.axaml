@@ -1,0 +1,58 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:services="clr-namespace:RelaxKonOS.Client.Services.ServerCenter" xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter" x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterManagementDialog" x:DataType="vm:ServerCenterViewModel" Classes="builtin-app">
+    <Grid RowDefinitions="Auto,*,Auto" Margin="22" RowSpacing="16">
+        <StackPanel Spacing="4">
+            <TextBlock Text="{Binding SelectedHost.DisplayName}" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap"/>
+            <TextBlock Text="{Binding VerifiedStateText}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
+        </StackPanel>
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="16">
+                <StackPanel Spacing="12" x:Name="DetailsPanel">
+                    <TextBlock Text="{Binding InstallationInfoNote}" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                    <ItemsControl ItemsSource="{Binding InstallationDetails}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="services:ServerInstallationDetail">
+                                <Grid ColumnDefinitions="125,*" ColumnSpacing="18" Margin="0,5">
+                                    <TextBlock Text="{Binding Label}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                    <SelectableTextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+                <StackPanel Spacing="12" Margin="0,12,0,0" x:Name="RepairPanel" IsEnabled="{Binding !IsBusy}">
+                    <TextBlock Text="{Binding RepairActionDescription}" Classes="action-description"/>
+                    <CheckBox IsVisible="{Binding CanManageFirewall}" IsChecked="{Binding MaintenanceAddFirewallRule}">
+                        <TextBlock Text="{Binding FirewallChoiceText}" TextWrapping="Wrap"/>
+                    </CheckBox>
+                    <TextBlock IsVisible="{Binding CanManageFirewall}" Text="{Binding FirewallHelpText}" TextWrapping="Wrap"/>
+                    <CheckBox IsChecked="{Binding RepairLanCertificate}">
+                        <TextBlock Text="{Binding RepairCertificateText}" TextWrapping="Wrap"/>
+                    </CheckBox>
+                    <TextBlock Text="{Binding RepairCertificateNote}" TextWrapping="Wrap" IsVisible="{Binding RepairLanCertificate}"/>
+                    <TextBox Text="{Binding RepairCertificateIdentities}" IsVisible="{Binding RepairLanCertificate}"/>
+                </StackPanel>
+                <StackPanel Spacing="12" Margin="0,12,0,0" x:Name="UninstallPanel" IsEnabled="{Binding !IsBusy}">
+                    <TextBlock Text="{Binding UninstallActionDescription}" Classes="action-description"/>
+                    <TextBlock Text="{Binding ComponentSelectionText}" TextWrapping="Wrap"/>
+                    <CheckBox IsChecked="{Binding RemoveSmb}" Content="{Binding RemoveSmbText}"/>
+                    <CheckBox IsChecked="{Binding RemoveNginx}" Content="{Binding RemoveNginxText}"/>
+                    <CheckBox IsChecked="{Binding RemoveFrp}" Content="{Binding RemoveFrpText}"/>
+                    <CheckBox IsChecked="{Binding RemoveMihomo}" Content="{Binding RemoveMihomoText}"/>
+                    <CheckBox IsChecked="{Binding DeleteServerData}">
+                        <TextBlock Text="{Binding DeleteServerDataText}" TextWrapping="Wrap"/>
+                    </CheckBox>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+        <StackPanel Grid.Row="2" Spacing="10">
+            <ProgressBar IsVisible="{Binding IsBusy}" IsIndeterminate="True" Height="3"/>
+            <TextBlock Text="{Binding StatusMessage}" IsVisible="{Binding !HasError}" TextWrapping="Wrap"/>
+            <TextBlock Text="{Binding ErrorMessage}" IsVisible="{Binding HasError}" TextWrapping="Wrap" Classes="error"/>
+            <WrapPanel>
+                <Button x:Name="RepairButton" Command="{Binding RepairCommand}" Content="{Binding RepairText}" Classes="accent" Margin="0,0,12,8"/>
+                <Button x:Name="UninstallButton" Command="{Binding UninstallCommand}" Content="{Binding UninstallText}" Classes="danger" Margin="0,0,12,8"/>
+                <Button Content="{Binding CloseText}" Click="Close_Click" IsEnabled="{Binding !IsBusy}" Margin="0,0,0,8"/>
+            </WrapPanel>
+        </StackPanel>
+    </Grid>
+</UserControl>

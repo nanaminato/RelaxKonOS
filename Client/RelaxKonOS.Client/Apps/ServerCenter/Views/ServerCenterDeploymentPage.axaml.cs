@@ -18,4 +18,11 @@ public partial class ServerCenterDeploymentPage : UserControl
         if (DataContext is ServerCenterViewModel viewModel)
             await viewModel.EnsureSelectedHostPlatformAsync();
     }
+
+    private async void Management_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string section } && DataContext is ServerCenterViewModel { IsBusy: false } viewModel
+            && viewModel.ShowManagementDialogAsync is { } show)
+            await show(section);
+    }
 }

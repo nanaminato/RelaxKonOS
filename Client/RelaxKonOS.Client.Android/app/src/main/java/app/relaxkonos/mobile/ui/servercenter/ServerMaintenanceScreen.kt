@@ -34,7 +34,7 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
     var certificateIdentities by rememberSaveable(host?.hostId) {
         mutableStateOf(listOf("localhost", "127.0.0.1", host?.sshHost.orEmpty()).filter(String::isNotBlank).distinct().joinToString(","))
     }
-    var confirmCertificateRepair by remember(host?.hostId) { mutableStateOf(false) }
+    var repair by remember(host?.hostId) { mutableStateOf(false) }
     val identitiesValid = runCatching { normalizeRepairCertificateIdentities(certificateIdentities) }.isSuccess
     androidx.activity.compose.BackHandler(enabled = wizard || page != 0) {
         if (!installing && !state.busy) {
@@ -103,31 +103,11 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
                         Text(stringResource(R.string.server_maintenance_actions_note), style = MaterialTheme.typography.bodySmall)
                         PasswordTextField(sudo, { sudo = it }, stringResource(R.string.ssh_workspace_deploy_sudo_password))
                         Button(onClick = { wizard = true }, enabled = !state.busy) { Text(stringResource(R.string.installation_kind_upgrade)) }
-                        val certificateRepairSupported = snapshot.mode == ServerInstallMode.LinuxSystem || snapshot.mode == ServerInstallMode.WindowsSystem
-                        if (certificateRepairSupported) {
-                            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                                Checkbox(addFirewallRule, { addFirewallRule = it }, enabled = !state.busy)
-                                Text(stringResource(R.string.server_install_firewall_choice), modifier = Modifier.weight(1f))
-                            }
-                            Text(stringResource(R.string.server_install_firewall_help), style = MaterialTheme.typography.bodySmall)
-                            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                                Checkbox(repairCertificate, { repairCertificate = it }, enabled = !state.busy)
-                                Text(stringResource(R.string.server_maintenance_repair_certificate), modifier = Modifier.weight(1f))
-                            }
-                            if (repairCertificate) {
-                                Text(stringResource(R.string.server_maintenance_repair_certificate_note), style = MaterialTheme.typography.bodySmall)
-                                OutlinedTextField(certificateIdentities, { certificateIdentities = it },
-                                    label = { Text(stringResource(R.string.ssh_workspace_deploy_certificate_names)) },
-                                    modifier = Modifier.fillMaxWidth(), enabled = !state.busy, isError = !identitiesValid)
-                                if (!identitiesValid) Text(stringResource(R.string.server_maintenance_repair_certificate_invalid), color = MaterialTheme.colorScheme.error)
-                            }
-                        }
                         OutlinedButton(onClick = {
-                            if (repairCertificate && certificateRepairSupported) confirmCertificateRepair = true
-                            else { host?.let { model.run(it.hostId, ServerDeploymentKind.Repair, sudo = sudo, addFirewallRule = addFirewallRule) }; sudo = "" }
-                        }, enabled = !state.busy && (!repairCertificate || !certificateRepairSupported || identitiesValid)) {
-                            Text(stringResource(R.string.server_maintenance_repair))
-                        }
+                            addFirewallRule = false
+                            repairCertificate = false
+                            repair = true
+                        }, enabled = !state.busy) { Text(stringResource(R.string.server_maintenance_repair)) }
                         OutlinedButton(onClick = { purge = false; removeComponents = emptySet(); uninstall = true }, enabled = !state.busy) { Text(stringResource(R.string.server_maintenance_uninstall)) }
                     } else if (page == 2) Button(onClick = { wizard = true }, enabled = !state.busy && state.probe?.runtimeIdentifier != null) { Text(stringResource(R.string.ssh_workspace_deploy_install)) }
                 }
@@ -162,19 +142,48 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
         } },
         confirmButton = { TextButton(onClick = { uninstall = false; host?.let { model.run(it.hostId, ServerDeploymentKind.Uninstall, purge, sudo, removeComponents = listOf("smb", "nginx", "frp", "mihomo").filter { it in removeComponents }.joinToString(",")) }; sudo = "" }) { Text(stringResource(R.string.server_maintenance_uninstall)) } },
         dismissButton = { TextButton(onClick = { uninstall = false }) { Text(stringResource(R.string.common_cancel)) } })
-    if (confirmCertificateRepair) AlertDialog(onDismissRequest = { confirmCertificateRepair = false },
-        title = { Text(stringResource(R.string.server_maintenance_repair_certificate)) },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            Text(stringResource(R.string.server_maintenance_repair_certificate_note))
-            Text(certificateIdentities)
+    if (repair) AlertDialog(
+        onDismissRequest = { if (!state.busy) repair = false },
+        title = { Text(stringResource(R.string.server_maintenance_repair)) },
+        text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+            Text(host?.let { "${it.sshHost}:${it.sshPort}" }.orEmpty(), style = MaterialTheme.typography.bodySmall)
+            PasswordTextField(sudo, { sudo = it }, stringResource(R.string.ssh_workspace_deploy_sudo_password))
+            val certificateRepairSupported = state.snapshot?.mode == ServerInstallMode.LinuxSystem ||
+                state.snapshot?.mode == ServerInstallMode.WindowsSystem
+            if (certificateRepairSupported) {
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Checkbox(addFirewallRule, { addFirewallRule = it }, enabled = !state.busy)
+                    Text(stringResource(R.string.server_install_firewall_choice), modifier = Modifier.weight(1f))
+                }
+                Text(stringResource(R.string.server_install_firewall_help), style = MaterialTheme.typography.bodySmall)
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Checkbox(repairCertificate, { repairCertificate = it }, enabled = !state.busy)
+                    Text(stringResource(R.string.server_maintenance_repair_certificate), modifier = Modifier.weight(1f))
+                }
+                if (repairCertificate) {
+                    Text(stringResource(R.string.server_maintenance_repair_certificate_note), style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(certificateIdentities, { certificateIdentities = it },
+                        label = { Text(stringResource(R.string.ssh_workspace_deploy_certificate_names)) },
+                        modifier = Modifier.fillMaxWidth(), enabled = !state.busy, isError = !identitiesValid)
+                    if (!identitiesValid) Text(stringResource(R.string.server_maintenance_repair_certificate_invalid), color = MaterialTheme.colorScheme.error)
+                }
+            }
         } },
         confirmButton = { TextButton(onClick = {
-            confirmCertificateRepair = false
+            val certificateRepairSupported = state.snapshot?.mode == ServerInstallMode.LinuxSystem ||
+                state.snapshot?.mode == ServerInstallMode.WindowsSystem
+            repair = false
             host?.let { model.run(it.hostId, ServerDeploymentKind.Repair, sudo = sudo,
-                repairCertificate = true, certificateIdentities = certificateIdentities, addFirewallRule = addFirewallRule) }
+                repairCertificate = repairCertificate && certificateRepairSupported,
+                certificateIdentities = certificateIdentities,
+                addFirewallRule = addFirewallRule && certificateRepairSupported) }
             sudo = ""
-        }, enabled = !state.busy && identitiesValid) { Text(stringResource(R.string.server_maintenance_repair)) } },
-        dismissButton = { TextButton(onClick = { confirmCertificateRepair = false }) { Text(stringResource(R.string.common_cancel)) } })
+        }, enabled = !state.busy && host != null && (!repairCertificate || identitiesValid)) {
+            Text(stringResource(R.string.server_maintenance_repair))
+        } },
+        dismissButton = { TextButton(onClick = { repair = false }, enabled = !state.busy) {
+            Text(stringResource(R.string.common_cancel))
+        } })
 }
 
 @Composable

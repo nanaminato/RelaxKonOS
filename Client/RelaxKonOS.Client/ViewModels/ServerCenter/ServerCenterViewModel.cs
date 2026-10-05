@@ -30,6 +30,11 @@ public partial class ServerCenterViewModel : ObservableObject
     private readonly Dictionary<string, ServerHostSnapshotDto> _installationSnapshots = new();
     private readonly Dictionary<string, ServerHostProbeDto> _hostProbes = new();
     public string InstallationInfoTitle => T("server_center.installation.title", "Installed server details");
+    public string RefreshActionDescription => T("login.local_manage_refresh_hint", "Check the current installation and service health");
+    public string InstallActionDescription => T("login.local_manage_install_hint", "Choose a release package and review installation options");
+    public string RepairActionDescription => T("login.local_manage_repair_hint", "Restore services, certificates and firewall rules");
+    public string RollbackActionDescription => T("login.local_manage_rollback_hint", "Switch back to the last verified version");
+    public string UninstallActionDescription => T("login.local_manage_uninstall_hint", "Remove Server; keep data by default");
     public string InstallationInfoNote => T("server_center.installation.note", "These facts reflect the SSH verification time. Use host preflight to refresh. Fields not returned by the host are shown as not provided.");
     public IReadOnlyList<ServerInstallationDetail> InstallationDetails => SelectedHost is { } host
         ? ServerInstallationDetails.Build(host, _installationSnapshots.GetValueOrDefault(host.HostId),
@@ -135,6 +140,7 @@ public partial class ServerCenterViewModel : ObservableObject
 
     /// <summary>Workspace-owned modal presentation; the view model owns the deployment action only.</summary>
     public Func<Task>? ShowInstallationWizardAsync { get; set; }
+    public Func<string, Task>? ShowManagementDialogAsync { get; set; }
 
     public string Title => T("server_center.title", "Server centre");
     public string Subtitle => T("server_center.subtitle", "Manage SSH hosts and RelaxKonOS server installations.");

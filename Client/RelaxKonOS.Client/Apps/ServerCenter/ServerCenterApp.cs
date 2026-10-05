@@ -31,6 +31,9 @@ public sealed class ServerCenterApp : RemoteApplicationBase
         var viewModel = context.Services.GetRequiredService<ServerCenterViewModel>();
         var window = context.ShowWindow(viewModel.Title, new ServerCenterWorkspace { DataContext = viewModel },
             new Rect(70, 50, 1120, 760), Manifest.IconGlyph);
+        viewModel.ShowManagementDialogAsync = section => context.ShowDialogAsync<bool>(window,
+            section switch { "repair" => viewModel.RepairText, "uninstall" => viewModel.UninstallText, _ => viewModel.InstallationInfoTitle },
+            dialog => new ServerCenterManagementDialog(viewModel, section, dialog.Cancel), new Size(640, 600));
         viewModel.ShowInstallationWizardAsync = () => context.ShowDialogAsync<bool>(window, viewModel.DeployText,
             dialog => new ServerInstallationWizardView(
                 new ServerInstallationWizardViewModel(viewModel, () => dialog.Close(true),
