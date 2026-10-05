@@ -14,7 +14,7 @@ public static class ServerDeploymentRequestWireValidation
         "certificateMode", "selfSignedIdentities", "confirmed", "language", "releaseCatalogBaseUri",
         "installRoot", "dataRoot", "configRoot", "stateRoot", "cacheRoot", "fileRoots",
         "administratorFileAccess", "administratorFileRoots", "rootFileAccess", "rootFileRoots",
-        "dockerAccess", "allowUnsupportedSystem", "addFirewallRule"
+        "dockerAccess", "allowUnsupportedSystem", "addFirewallRule", "removeComponents"
     ];
 
     public static bool IsStrictRequest(ReadOnlySpan<byte> json)
@@ -68,7 +68,7 @@ public static class ServerDeploymentRequestWireValidation
             var type = property.Value.ValueKind;
             var valid = property.Name switch
             {
-                "source" or "network" or "retention" => type == JsonValueKind.String,
+                "source" or "network" or "retention" or "removeComponents" => type == JsonValueKind.String,
                 "mode" or "version" or "packageUri" or "stagedPackageName" or
                     "packageDigest" or "remotePackagePath" or "expectedInstallationId" or "fileAccess" or
                     "certificateMode" or "selfSignedIdentities" or "language" or "releaseCatalogBaseUri" or

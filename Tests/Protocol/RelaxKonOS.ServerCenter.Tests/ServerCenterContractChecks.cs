@@ -289,7 +289,7 @@ internal static class ServerCenterContractChecks
               == ServerDeploymentProblemCodes.PackageLayoutUnsafe, "未列入清单的文件被拒绝");
     }
 
-    private static void VerifyJsonContract()
+    public static void VerifyJsonContract()
     {
         var request = new ServerDeploymentRequest(
             ServerDeploymentProtocol.Version, Guid.NewGuid(), ServerDeploymentKind.Probe,
@@ -298,6 +298,21 @@ internal static class ServerCenterContractChecks
         var json = JsonSerializer.Serialize(request, RelaxKonOSJsonOptions.Default);
         Check(ServerDeploymentRequestWireValidation.IsStrictRequest(Encoding.UTF8.GetBytes(json)),
             "Linux 启动器接受规范请求字节");
+        foreach (var kind in Enum.GetValues<ServerDeploymentKind>())
+        {
+            var operationRequest = request with { Kind = kind, Options = request.Options! with { Mode = ServerInstallMode.LinuxSystem } };
+            var operationJson = JsonSerializer.Serialize(operationRequest, RelaxKonOSJsonOptions.Default);
+            Check(ServerDeploymentRequestWireValidation.IsStrictRequest(Encoding.UTF8.GetBytes(operationJson)),
+                $"{kind} 接受包含默认 removeComponents 的序列化请求");
+        }
+        var selective = request with { Kind = ServerDeploymentKind.Uninstall, Options = request.Options! with { RemoveComponents = "frp,mihomo" } };
+        var selectiveJson = JsonSerializer.Serialize(selective, RelaxKonOSJsonOptions.Default);
+        Check(ServerDeploymentRequestWireValidation.IsStrictRequest(Encoding.UTF8.GetBytes(selectiveJson)),
+            "选择性卸载组件以字符串传递");
+        foreach (var invalid in new[] { "null", "true", "1", "[]", "{}" })
+            Check(!ServerDeploymentRequestWireValidation.IsStrictRequest(Encoding.UTF8.GetBytes(
+                selectiveJson.Replace("\"removeComponents\":\"frp,mihomo\"", "\"removeComponents\":" + invalid, StringComparison.Ordinal))),
+                $"removeComponents 拒绝非字符串类型 {invalid}");
         Check(!ServerDeploymentRequestWireValidation.IsStrictRequest(Encoding.UTF8.GetBytes(
             "{\"schemaVersion\":1,\"schemaVersion\":1,\"operationId\":\"" + request.OperationId + "\",\"kind\":\"probe\"}")),
             "Linux 启动器拒绝重复字段");
