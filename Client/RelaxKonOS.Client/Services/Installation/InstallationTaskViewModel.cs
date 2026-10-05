@@ -24,6 +24,20 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
     public Func<string?, Task>? ShowPrivilegedHelperUnavailableAsync { get; set; }
     [ObservableProperty] private InstallationOperationDto? operation;
     [ObservableProperty] private string connectionText = "";
+    [ObservableProperty] private bool isOperationLogExpanded;
+    [ObservableProperty] private string operationLog = "";
+    public string SummaryText => string.IsNullOrWhiteSpace(ConnectionText) ? StageText : ConnectionText;
+    private string lastMessage = "";
+    private void RecordProgress()
+    {
+        OnPropertyChanged(nameof(SummaryText));
+        var message = SummaryText;
+        if (string.IsNullOrWhiteSpace(message) || message == lastMessage) return;
+        lastMessage = message;
+        OperationLog = string.Join(Environment.NewLine,
+            OperationLog.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)
+                .Append($"[{DateTime.Now:HH:mm:ss}] {message}").TakeLast(200));
+    }
     public bool IsActive => IsTransferring || Operation?.State is InstallationOperationState.Queued or InstallationOperationState.Running;
     public bool IsIndeterminate => IsTransferring || IsActive && Operation?.Progress is null;
     public int Progress => IsTransferring ? 0 : Operation?.Progress ?? 0;
@@ -36,8 +50,13 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
     {
         OnPropertyChanged(nameof(IsActive)); OnPropertyChanged(nameof(IsIndeterminate)); OnPropertyChanged(nameof(Progress)); OnPropertyChanged(nameof(StageText)); OnPropertyChanged(nameof(HasMessage));
         CancelCommand.NotifyCanExecuteChanged();
+        RecordProgress();
     }
-    partial void OnConnectionTextChanged(string value) => OnPropertyChanged(nameof(HasMessage));
+    partial void OnConnectionTextChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasMessage));
+        RecordProgress();
+    }
 
     /// <summary>
     /// Removes feedback from a completed installation before the host app starts an unrelated

@@ -30,10 +30,19 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
     ILogger<CertificateManager> logger) : ICertificateManager
 {
     public async Task<IReadOnlyList<CertificateDto>> ListAsync(CancellationToken cancellationToken)
-        => (await certificates.ListAsync(cancellationToken)).Select(ToDto).ToArray();
+    {
+        var result = new List<CertificateDto>();
+        foreach (var certificate in await certificates.ListAsync(cancellationToken)) result.Add(await ToDtoAsync(certificate, cancellationToken));
+        return result;
+    }
 
     public async Task<CertificateDto?> GetAsync(Guid certificateId, CancellationToken cancellationToken)
-        => (await certificates.GetAsync(certificateId, cancellationToken)) is { } item ? ToDto(item) : null;
+        => (await certificates.GetAsync(certificateId, cancellationToken)) is { } item ? await ToDtoAsync(item, cancellationToken) : null;
+
+    private async Task<CertificateDto> ToDtoAsync(StoredCertificate item, CancellationToken cancellationToken) => ToDto(item) with
+    {
+        Renewal = await operations.GetRenewalInfoAsync(item.Id, item.Kind == CertificateKind.Acme && item.Status != CertificateStatus.Revoked && !string.IsNullOrWhiteSpace(item.ContactEmail), cancellationToken)
+    };
 
     public async Task<CertificatePreflightResultDto> PreflightAsync(CertificatePreflightRequest request, CancellationToken cancellationToken)
     {
@@ -74,8 +83,6 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
             actor, request?.ChallengeType, request?.KeyAlgorithm, request?.Domains?.Count ?? 0);
         if (request is null)
             return Failure("issue", "certificate.request_invalid");
-        if (!privileges.IsAdministrator)
-            return Failure("issue", "certificate.admin_required");
         if (await operations.FindRequestAsync(idempotencyKey, Guid.Empty, "issue", actor, cancellationToken) is { } replay) return replay;
         if (!request.AcceptedTerms)
             return Failure("issue", "certificate.terms_not_accepted");
@@ -166,7 +173,6 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
 
     public async Task<CertificateOperationDto> RenewAsync(Guid certificateId, string idempotencyKey, string? actor, CancellationToken cancellationToken)
     {
-        if (!privileges.IsAdministrator) return Failure("renew", "certificate.admin_required");
         if (await operations.FindRequestAsync(idempotencyKey, certificateId, "renew", actor, cancellationToken) is { } replay) return replay;
         var existing = await certificates.GetAsync(certificateId, cancellationToken);
         if (existing is null) return Failure("renew", "certificate.not_found");
@@ -199,7 +205,6 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
 
     public async Task<CertificateOperationDto> DeleteAsync(Guid certificateId, string idempotencyKey, DeleteCertificateRequest request, string? actor, CancellationToken cancellationToken)
     {
-        if (!privileges.IsAdministrator) return Failure("delete", "certificate.admin_required");
         if (await operations.FindRequestAsync(idempotencyKey, certificateId, "delete", actor, cancellationToken) is { } replay) return replay;
         if (!request.Confirmed) return Failure("delete", "certificate.confirmation_required");
         if (await certificates.GetAsync(certificateId, cancellationToken) is null) return Failure("delete", "certificate.not_found");
@@ -215,7 +220,6 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
 
     public async Task<CertificateOperationDto> RevokeAsync(Guid certificateId, string idempotencyKey, RevokeCertificateRequest request, string? actor, CancellationToken cancellationToken)
     {
-        if (!privileges.IsAdministrator) return Failure("revoke", "certificate.admin_required");
         if (await operations.FindRequestAsync(idempotencyKey, certificateId, "revoke", actor, cancellationToken) is { } replay) return replay;
         if (!request.Confirmed) return Failure("revoke", "certificate.confirmation_required");
         var existing = await certificates.GetAsync(certificateId, cancellationToken);

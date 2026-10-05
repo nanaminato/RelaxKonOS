@@ -1,0 +1,5 @@
+<resources>
+    <string name="server_https_title">服务器 HTTPS</string>
+    <string name="server_https_description">选择已创建或申请的证书，更换服务器 HTTPS 证书。</string>
+    <string name="certificates_https_location">更换服务器证书请前往设置 → 系统 → 服务器 HTTPS。</string>
+</resources>

@@ -1358,9 +1358,11 @@ RelaxKonOS 当前只管理本机，因此证书管理功能应保持为一个**�
 
 ### 35.1 操作者与高权限
 
+证书列表选中证书后，可展开“续期记录（最近 5 次）”。该区域默认折叠，显示服务器持久任务账本中的自动/手动续期、开始时间、完成时间、排队/执行中/成功/失败/取消及失败原因；刷新后重新读取，并保留所选证书。`CertificateDto.renewal` 提供自动续期是否启用、连续失败次数、允许重试时间、重试耗尽状态及最近五个续期任务。续期窗口来自已有元数据；失败时间来自任务完成时间，不能使用 `lastRenewalAt` 替代。允许重试后仍等待服务器每日扫描；耗尽后提示处理原因并手动续期。自签证书不参与自动续期。私钥与 ACME 凭据不进入记录 DTO。
+
 RelaxKonOS 面向单台服务器的网站管理员。证书、ACME account 和部署目标均为**当前宿主机全局资源**，客户端入口受声明的证书读取和管理应用权限约束，服务端还验证宿主能力和操作授权。
 
-自签名创建与服务器 HTTPS 换证通过 HTTP 入口的精确资源会话授权执行，材料写入服务账号拥有的存储，不依赖管理员 Server 进程。申请、续期、撤销和删除仍使用各自的 `IHostPrivilegeService` 检查，Direct HTTP-01 预检仍要求绑定 TCP 80 的权限；这些动作尚未全部迁移到会话授权模型。
+申请、自签名创建、续期、吊销、删除与服务器 HTTPS 换证均通过 HTTP 入口的精确资源会话授权执行，材料写入服务账号拥有的存储，不依赖管理员 Server 进程。申请使用 `CertificateIssue` / `certificates/issue`；续期、吊销、删除分别使用 `CertificateRenew`、`CertificateRevoke`、`CertificateDelete` / `certificates/{id:D}/renew|revoke|delete`。不同动作和目标的授权不能互用。Direct HTTP-01 预检仍要求实际绑定 TCP 80 的权限。
 
 读取元数据和 Kestrel 部署事实仍按当前宿主 feature/JWT 提供；客户端不得伪造提权 capability、收集 sudo/UAC/服务账号密码或把 HTTP API 变成任意命令执行入口。私钥永不出现在 DTO、日志、审计或错误详情中。
 
@@ -1433,7 +1435,7 @@ certificate_renewal_attempts     certificate_audit_entries
 
 V1 的支持目标为 **Ubuntu 24.04 LTS** 与 **Windows Server 2016 及以上**。实现前分别验证：管理员检测、文件 ACL、短暂 TCP 80 监听、Kestrel 换证、证书目录恢复、IPv4/IPv6 WebRoot、取消/断线恢复和权限不足降级。Anvil 引入前还需在中央包管理中锁定版本，并记录许可证、.NET 10 与两个目标平台的兼容性、离线部署和升级策略。
 
-自签名证书创建在 HTTP 入口验证 `CertificateCreateSelfSigned` 能力、`certificates/self-signed` 精确目标的会话授权。服务器 HTTPS 换证验证 `CertificateReplaceServerHttps` 能力与 `certificates/{id:D}/server-https` 精确证书目标。缺少授权返回 HTTP 403 / `elevation-required`，桌面与 Android 客户端通过统一提权流程认证后以原幂等键重试一次。创建与换证不要求 Server 进程以 root/Administrator 运行；其他证书动作的宿主进程权限约束保持现有契约。
+自签名证书创建在 HTTP 入口验证 `CertificateCreateSelfSigned` 能力、`certificates/self-signed` 精确目标的会话授权。服务器 HTTPS 换证验证 `CertificateReplaceServerHttps` 能力与 `certificates/{id:D}/server-https` 精确证书目标。所有证书写入动作缺少授权均返回 HTTP 403 / `elevation-required`，桌面与 Android 客户端通过统一提权流程认证后以原幂等键重试一次；不要求 Server 进程以 root/Administrator 运行。
 
 Linux 服务部署在 `server.env` 中设置 `Certificate__StorageRoot=$DATA_ROOT/server/managed-certificates`，目录由服务账号拥有，权限为 `0700`，用于证书管理器创建的 PEM、私钥及版本记录。该目录在 HTTP 和 HTTPS 部署中均创建。启动用的 `$DATA_ROOT/server/certificates/bootstrap.pfx` 保持 root 所有、服务账号只读，不作为证书管理器的写入目录。已有安装如未配置存储路径，应备份 `server.env` 后补充该配置、创建对应目录并重启 Server；不得通过放宽整个数据根目录权限解决。
 

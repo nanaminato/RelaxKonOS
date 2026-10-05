@@ -77,6 +77,19 @@ internal sealed class CertificateOperationStore
         finally { _gate.Release(); }
     }
 
+    public async Task<CertificateRenewalInfoDto> GetRenewalInfoAsync(Guid certificateId, bool automaticEnabled, CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var retry = await _renewalAttempts.GetScheduleAsync(certificateId, cancellationToken);
+            var attempts = _operations.Values.Where(operation => operation.CertificateId == certificateId && operation.Kind == "renew")
+                .Reverse().Take(5).Select(operation => new CertificateRenewalAttemptDto(operation.Actor == "renewal-worker", operation.ToDto())).ToArray();
+            return new(automaticEnabled, retry.ConsecutiveFailures, retry.RetryAfter, retry.Exhausted, attempts);
+        }
+        finally { _gate.Release(); }
+    }
+
     public async Task<CertificateOperationDto?> CancelAsync(Guid id, CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken);

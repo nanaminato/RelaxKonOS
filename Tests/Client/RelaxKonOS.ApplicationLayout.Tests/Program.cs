@@ -207,6 +207,12 @@ foreach (var mode in new[] { ThemeKind.Light, ThemeKind.Dark })
         FingerprintSha256: string.Join(':', Enumerable.Repeat("AB", 32)));
     certificateVm.Certificates.Add(certificate);
     certificateVm.SelectedCertificate = certificate;
+    Check(certificateVm.RenewCommand.CanExecute(null) && certificateVm.RevokeCommand.CanExecute(null), "ACME lifecycle actions are available.");
+    certificateVm.SelectedCertificate = certificate with { Kind = RelaxKonOS.Protocol.Certificates.CertificateKind.SelfSigned };
+    Check(!certificateVm.RenewCommand.CanExecute(null) && !certificateVm.RevokeCommand.CanExecute(null) && certificateVm.DeleteCommand.CanExecute(null), "Self-signed certificates can be deleted but cannot use ACME renewal or revocation.");
+    certificateVm.SelectedCertificate = certificate with { Status = RelaxKonOS.Protocol.Certificates.CertificateStatus.Revoked };
+    Check(!certificateVm.RenewCommand.CanExecute(null) && !certificateVm.RevokeCommand.CanExecute(null), "Revoked certificates cannot repeat ACME lifecycle actions.");
+    certificateVm.SelectedCertificate = certificate;
     var httpsView = new RelaxKonOS.Client.Apps.Settings.Views.ServerHttpsDialogView { DataContext = certificateVm };
     host.Width = 660; host.Height = 480; host.Content = httpsView;
     Dispatcher.UIThread.RunJobs();
@@ -216,12 +222,81 @@ foreach (var mode in new[] { ThemeKind.Light, ThemeKind.Dark })
     Check(certificateVm.SelectedCertificateDomains.Contains("192.168.1.2") && certificateVm.SelectedCertificateDomains.Contains("server.example.test"), "HTTPS replacement presents all certificate names.");
     Check(!httpsView.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text?.Contains("[missing:") == true), "HTTPS labels resolve in every language.");
     Check(!certificateVm.HasOperationActivity, "Opening HTTPS settings does not change the server certificate.");
+    var failure = new RelaxKonOS.Protocol.Certificates.CertificateOperationDto(Guid.NewGuid(), certificate.Id, "renew",
+        RelaxKonOS.Protocol.Certificates.CertificateOperationState.Failed, "failed", "certificate.validation_failed", now.AddMinutes(-2), now);
+    var renewed = certificate with { Renewal = new(true, 1, now.AddDays(1), false, [new(true, failure)]) };
+    certificateVm.Certificates[0] = renewed;
+    certificateVm.SelectedCertificate = renewed;
+    Check(certificateVm.SelectedRenewalText.Contains(LocalizedText.Get("certificates.renewal.automatic"))
+        && certificateVm.SelectedRenewalText.Contains(LocalizedText.Get("certificates.renewal.state.failed"))
+        && !certificateVm.SelectedRenewalText.Contains("{0}") && !certificateVm.SelectedRenewalText.Contains("[missing:"),
+        "Renewal failure has localized source, status and formatted times.");
+    var renewalView = (Control)Activator.CreateInstance(typeof(RelaxKonOS.Client.Apps.Certificates.CertificateManagerViewModel).Assembly
+        .GetType("RelaxKonOS.Client.Apps.Certificates.Views.CertificateListView")!, new object[] { (Func<Task>)(() => Task.CompletedTask), (Func<Task>)(() => Task.CompletedTask) })!;
+    renewalView.DataContext = certificateVm;
+    host.Content = renewalView; host.Width = 800; host.Height = 650;
+    Dispatcher.UIThread.RunJobs();
+    var renewalExpander = renewalView.GetVisualDescendants().OfType<Expander>().Single();
+    Check(!renewalExpander.IsExpanded, "Renewal history starts collapsed to preserve table space.");
+    renewalExpander.IsExpanded = true;
+    Dispatcher.UIThread.RunJobs();
+    Check(renewalExpander.TranslatePoint(default, renewalView) is { } renewalPoint && renewalPoint.Y + renewalExpander.Bounds.Height <= renewalView.Bounds.Height,
+        "Expanded renewal history fits the certificate workspace.");
+    if (culture == "zh-CN") {
+        using var renewalBitmap = new RenderTargetBitmap(new PixelSize(800, 650));
+        renewalBitmap.Render(renewalView);
+        renewalBitmap.Save(Path.Combine(output, $"CertificateRenewal-{mode}.png"), PngBitmapEncoderOptions.Default);
+    }
+    host.Content = httpsView;
     if (culture == "zh-CN")
     {
         using var bitmap = new RenderTargetBitmap(new PixelSize(660, 480));
         bitmap.Render(httpsView);
         bitmap.Save(Path.Combine(output, $"ServerHttps-{mode}.png"), PngBitmapEncoderOptions.Default);
     }
+    cases++;
+}
+
+// Remaining built-in operations share a one-row footer and opt-in output.
+foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
+{
+    settings.Language = culture;
+    using var tunnels = new RelaxKonOS.Client.Apps.Tunnels.TunnelManagerViewModel(null!, true);
+    tunnels.IsBusy = true;
+    tunnels.StatusText = "Applying tunnel";
+    var tunnelView = new RelaxKonOS.Client.Apps.Tunnels.Views.TunnelManagerView { DataContext = tunnels };
+    host.Width = 800; host.Height = 520; host.Content = tunnelView;
+    Dispatcher.UIThread.RunJobs();
+    var log = tunnelView.GetVisualDescendants().OfType<TextBox>().Single();
+    var toggle = tunnelView.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().Single();
+    Check(!log.IsEffectivelyVisible, "Tunnel output is hidden by default.");
+    var footer = log.GetVisualAncestors().OfType<Border>().First();
+    Check(footer.Bounds.Height <= 40, "Tunnel status uses one row.");
+    toggle.IsChecked = true; Dispatcher.UIThread.RunJobs();
+    Check(log.IsEffectivelyVisible && log.Text!.Contains("Applying tunnel"), "Tunnel output opens and includes current work.");
+    toggle.IsChecked = false; Dispatcher.UIThread.RunJobs();
+    Check(tunnels.IsBusy && footer.Bounds.Height <= 40, "Closing tunnel output returns space without stopping work.");
+    if (culture == "zh-CN")
+    {
+        using var bitmap = new RenderTargetBitmap(new PixelSize(800, 520));
+        bitmap.Render(tunnelView);
+        bitmap.Save(Path.Combine(output, "Tunnels-compact.png"), PngBitmapEncoderOptions.Default);
+    }
+    cases++;
+    var installation = new RelaxKonOS.Client.Services.Installation.InstallationTaskViewModel(null!, null!, RelaxKonOS.Protocol.Installations.InstallationServiceId.Frp, "layout.test", () => Task.CompletedTask, () => Task.FromResult<string?>(null));
+    var wrapper = RelaxKonOS.Client.Services.Installation.InstallationPanel.Wrap(new Border(), installation);
+    host.Content = wrapper; Dispatcher.UIThread.RunJobs();
+    installation.ConnectionText = "";
+    installation.Operation = new RelaxKonOS.Protocol.Installations.InstallationOperationDto(Guid.NewGuid(), RelaxKonOS.Protocol.Installations.InstallationServiceId.Frp, RelaxKonOS.Protocol.Installations.InstallationOperationKind.Install, RelaxKonOS.Protocol.Installations.InstallationOperationState.Running, RelaxKonOS.Protocol.Installations.InstallationStage.Installing, 35, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, true);
+    Dispatcher.UIThread.RunJobs();
+    var installationLog = wrapper.GetVisualDescendants().OfType<TextBox>().Single();
+    var installationPanel = (Control)((DockPanel)wrapper).Children[0];
+    Check(installationPanel.Bounds.Height <= 38 && !installationLog.IsEffectivelyVisible, "Shared installation feedback is compact by default.");
+    var installationToggle = wrapper.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().Single();
+    installationToggle.IsChecked = true; Dispatcher.UIThread.RunJobs();
+    Check(installationLog.IsEffectivelyVisible && installationLog.Text!.Contains("35%"), "Installation output includes observed stage progress.");
+    installationToggle.IsChecked = false; Dispatcher.UIThread.RunJobs();
+    Check(installation.IsActive && installationPanel.Bounds.Height <= 38, "Hiding installation output does not cancel installation.");
     cases++;
 }
 host.Close();

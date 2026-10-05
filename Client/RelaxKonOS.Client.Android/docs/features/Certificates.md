@@ -18,11 +18,13 @@ ACME 表单填写域名/SAN、联系人、ECDSA P-256 或 RSA 2048、挑战方�
 
 ## 生命周期与权限
 
-Android 写入另要求当前会话 `privilegedOperations`，提交遵循现有证书 API。当前 Server 证书写入仍调用 `IHostPrivilegeService`，生产实现 `HostPrivilegeService.IsAdministrator` 固定为 false，故申请/自签名/续期/撤销/删除/部署会被明确拒绝；提高 Server 进程权限不能绕过此检查。接入受授权 Helper 的证书写入尚属服务端缺口；Android 不创造不存在的证书提权 capability，不收集 sudo/UAC 或私钥。
+Android 写入要求当前会话 `privilegedOperations`；Server HTTP 入口验证当前用户对具体操作和目标的管理员会话授权，服务账号写入自身证书存储，不要求 Server 进程以管理员身份运行。申请使用 `certificateIssue` / `certificates/issue`，续期、吊销、删除分别使用 `certificateRenew`、`certificateRevoke`、`certificateDelete` / `certificates/{规范化 UUID}/renew|revoke|delete`。权限不足进入统一管理员认证流程，成功后复用原请求键重试；不同动作或不同证书的授权不能互用。Direct HTTP-01 的 TCP 80 实际监听权限仍需宿主配置满足。
 
 ACME 证书可续期和撤销，已撤销证书不提供续期；自签名不提供 ACME 续期/撤销。所有类型可确认删除，具体材料和状态由 Server 校验。续期确认说明关联部署可能变化；撤销联系签发方并解除 Kestrel 选择；删除移除元数据/受保护材料与 Kestrel 选择，不等于撤销证书或删除网站。共享权限与执行细节见 [证书管理](../../../../docs/applications/RelaxKonOS.CertificateManager.md)。
 
 ## 任务、未知结果与恢复
+
+证书详情提供默认折叠的“续期记录（最近 5 次）”，显示服务器持久任务账本中的自动/手动来源、排队/执行中/成功/失败/取消状态、开始和完成时间、失败原因及原操作 ID。刷新证书读取最新结果。失败时间不冒充 `lastRenewalAt`（上次成功生成续期材料时间）。同时显示自动续期是否启用、连续失败次数、允许重试时间及重试耗尽提示；允许重试不等于定时执行，仍需等待下一次每日扫描。自签证书显示不参与自动续期的说明。
 
 创建、续期、撤销、删除和 Kestrel 部署使用持久原请求键。`certificate-requests.bin` 仅保存宿主/账号、目标、动作、规范化请求 SHA-256、原键、尝试标记和已知操作 ID；不保存域名、联系人、完整表单、PEM、私钥或 DNS 凭据。持久写入失败停止提交。收到操作 ID 后先写恢复记录，再写运维索引。
 
@@ -36,7 +38,7 @@ ACME 证书可续期和撤销，已撤销证书不提供续期；自签名不提
 
 网站编辑器和 HTTPS 发布表单显式选择受管证书，不自动挑选第一张，也不在选择缺失时改成申请新证书。显示 ID、状态、SAN、指纹、有效期和自签名信任提示；缺失与元数据未取得分别显示。仅 Issued/Active、有效期内且 SAN 覆盖全部绑定的证书可保存。IDN 与 IP 规范化后比较；DNS 通配符覆盖单层，不覆盖 apex、多层名称或 IP。提交前重新读单条证书，Server 再权威检查。宿主 PEM 路径保持高级模式，手机不宣称核实其有效期/SAN。
 
-详情提供 Kestrel 部署和只读核实。`GET /certificates/{id}/deployments/kestrel` 返回元数据是否存在、当前 HTTPS 配置、运行时注册、默认选择、实际 SNI 名称、实际材料 SHA-256/有效期和观察时间。即使元数据已缺失，也可核实选择器；数据读取失败显示未核实。运行时指纹与元数据不同、证书已注册但 SNI 名称被其他证书覆盖均如实展示。
+证书管理详情不再提供服务器换证按钮。入口位于“更多 → 设置 → 服务器设置 → 服务器 HTTPS → 更换服务器 HTTPS 证书”，手机和平板均通过系统设置打开独立换证页面。该页选择受管证书并提供只读核实和原任务恢复。`GET /certificates/{id}/deployments/kestrel` 返回元数据是否存在、当前 HTTPS 配置、运行时注册、默认选择、实际 SNI 名称、实际材料 SHA-256/有效期和观察时间。即使元数据已缺失，也可核实选择器；数据读取失败显示未核实。运行时指纹与元数据不同、证书已注册但 SNI 名称被其他证书覆盖均如实展示。
 
 部署只作用于当前 Kestrel HTTPS 监听，不改变端口、地址、客户端 URL 或信任策略。成功换证更新默认证书并保留精确 SNI 优先于单层通配符的选择规则；新连接使用新证书，旧连接保留已选择的材料。确认展示 SAN、管理地址覆盖与自签名信任要求，提示管理连接可能中断。提交前刷新有效材料及监听事实，缺少精确目标管理员授权时按 `elevation-required` 流程认证后重试。
 
@@ -44,4 +46,4 @@ ACME 证书可续期和撤销，已撤销证书不提供续期；自签名不提
 
 源码入口：`Certificates.kt`、Gateway/API、`CertificateRepository.kt`、`CertificateRequestJournal.kt`、`CertificateDraft.kt`、`CertificatesViewModel.kt`、`CertificatesScreen.kt`、`CertificateLabels.kt`、`CertificateUsage.kt`、`CertificateBinding.kt`、OperationIndex/OperationCenter、导航与管理入口。
 
-自签名创建通过 `certificateCreateSelfSigned` / `certificates/self-signed` 会话授权，服务器 HTTPS 换证通过 `certificateReplaceServerHttps` / `certificates/{规范化证书 UUID}/server-https` 精确目标授权。服务端返回标准 `elevation-required` 时打开统一管理员认证弹窗；成功后用相同请求键重试一次，取消或拒绝保留表单，不把 Server 普通服务账户当作权限失败。其他证书动作仍遵循各自现有权限契约。
+自签名创建通过 `certificateCreateSelfSigned` / `certificates/self-signed` 会话授权，服务器 HTTPS 换证通过 `certificateReplaceServerHttps` / `certificates/{规范化证书 UUID}/server-https` 精确目标授权。服务端返回标准 `elevation-required` 时打开统一管理员认证弹窗；成功后用相同请求键重试一次，取消或拒绝保留表单，不把 Server 普通服务账户当作权限失败。

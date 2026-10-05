@@ -19,7 +19,11 @@ data class ManagedCertificate(val id: String, val primaryDomain: String, val sub
     val issuer: String?, val serialNumber: String?, val thumbprint: String?, val notBeforeMillis: Long?,
     val keyAlgorithm: CertificateKey, val renewalWindowStartMillis: Long?, val renewalWindowEndMillis: Long?,
     val lastRenewalAtMillis: Long?, val lastRenewalProblemCode: String?, val createdAtMillis: Long, val updatedAtMillis: Long,
-    val kind: CertificateKind, val fingerprintSha256: String?)
+    val kind: CertificateKind, val fingerprintSha256: String?, val renewal: CertificateRenewalInfo? = null)
+
+data class CertificateRenewalAttempt(val automatic: Boolean, val operation: CertificateOperation)
+data class CertificateRenewalInfo(val automaticEnabled: Boolean, val consecutiveFailures: Int, val retryAfterMillis: Long?,
+    val retryExhausted: Boolean, val attempts: List<CertificateRenewalAttempt>)
 data class CertificateOperation(val operationId: String, val certificateId: String?, val kind: CertificateAction,
     val state: CertificateOperationState, val stage: String, val problemCode: String, val startedAtMillis: Long?, val completedAtMillis: Long?)
 data class CertificateDomainPreflight(val domain: String, val ipv4: List<String>, val ipv6: List<String>, val problemCode: String)
@@ -61,7 +65,15 @@ object CertificateWire {
             enum(getString("status"), CertificateStatus::wire), enum(getString("challengeType"), CertificateChallenge::wire), time("notAfter"),
             text("issuer"), text("serialNumber"), text("thumbprint"), time("notBefore"), enum(getString("keyAlgorithm"), CertificateKey::wire),
             time("renewalWindowStart"), time("renewalWindowEnd"), time("lastRenewalAt"), text("lastRenewalProblemCode"),
-            requireNotNull(time("createdAt")), requireNotNull(time("updatedAt")), enum(getString("kind"), CertificateKind::wire), text("fingerprintSha256"))
+            requireNotNull(time("createdAt")), requireNotNull(time("updatedAt")), enum(getString("kind"), CertificateKind::wire), text("fingerprintSha256"),
+            if (get("renewal") == JSONObject.NULL) null else renewal(getJSONObject("renewal")))
+    }
+    private fun renewal(j: JSONObject) = with(j) {
+        val records = getJSONArray("attempts")
+        CertificateRenewalInfo(getBoolean("automaticEnabled"), getInt("consecutiveFailures"), time("retryAfter"), getBoolean("retryExhausted"),
+            List(records.length()) { index -> with(records.getJSONObject(index)) {
+                CertificateRenewalAttempt(getBoolean("automatic"), operation(getJSONObject("operation").toString()).also { require(it.kind == CertificateAction.Renew) })
+            } })
     }
     fun operation(payload: String) = with(JSONObject(payload)) {
         CertificateOperation(id("operationId"), if (isNull("certificateId")) null else id("certificateId"),

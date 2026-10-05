@@ -136,6 +136,7 @@ fun MobileNavHost(
             Routes.MORE_DIAGNOSTICS,
             Routes.MORE_APPLICATIONS,
             Routes.MORE_HELP,
+            Routes.MORE_SERVER_HTTPS,
             Routes.MORE_HOST_SETTINGS,
             Routes.MORE_ABOUT,
             -> MoreDestination(navigator, layoutState, onSignOut, onSwitchLogin, clearTaskTarget = { taskTarget = null }, onOpenManagedProxy = { taskTarget = null; navigator.push(Routes.MANAGE_PROXY) })
@@ -313,7 +314,8 @@ private fun MorePane(route: String, onOpenRoute: (String) -> Unit, onBack: (() -
             onOpenRoute = onOpenRoute, modifier = Modifier.fillMaxSize())
         Routes.MORE_HELP -> app.relaxkonos.mobile.ui.more.HelpScreen(onBack = onBack, onOpenRoute = onOpenRoute,
             onOpenServerCenter = { moreContainer.serverCenter.open() }, modifier = Modifier.fillMaxSize())
-        Routes.MORE_HOST_SETTINGS -> app.relaxkonos.mobile.ui.more.HostSettingsScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
+        Routes.MORE_SERVER_HTTPS -> CertificatesScreen(onBack = { onBack?.invoke() }, serverHttpsOnly = true, modifier = Modifier.fillMaxSize())
+        Routes.MORE_HOST_SETTINGS -> app.relaxkonos.mobile.ui.more.HostSettingsScreen(onBack = onBack, onOpenServerHttps = { onOpenRoute(Routes.MORE_SERVER_HTTPS) }, modifier = Modifier.fillMaxSize())
         Routes.MORE_ABOUT -> AboutScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
         else -> EmptyHint(stringResource(R.string.more_select_section))
     }
@@ -328,6 +330,7 @@ private fun SettingsWorkspace(route: String, onOpenRoute: (String) -> Unit, onBa
         WorkspaceDestination(Routes.MORE_CONNECTIONS, R.string.more_connections),
         WorkspaceDestination(Routes.MORE_ACCOUNT_SECURITY, R.string.more_account_security),
         WorkspaceDestination(Routes.MORE_HOST_SETTINGS, R.string.host_settings_title),
+        *if (route == Routes.MORE_SERVER_HTTPS) arrayOf(WorkspaceDestination(Routes.MORE_SERVER_HTTPS, R.string.server_https_title)) else emptyArray(),
         WorkspaceDestination(Routes.MORE_SERVER_INFORMATION, R.string.more_server_information),
         WorkspaceDestination(Routes.MORE_NETWORK, R.string.workspace_proxy),
         WorkspaceDestination(Routes.MORE_DIAGNOSTICS, R.string.more_diagnostics),
@@ -344,7 +347,7 @@ private fun SettingsWorkspace(route: String, onOpenRoute: (String) -> Unit, onBa
         else -> pages.first { it.id == route }.title
     })
     WorkspaceFrame(screenTitle, subtitle = stringResource(when (route) {
-            Routes.MORE_HOST_SETTINGS, Routes.MORE_SERVER_INFORMATION, Routes.MORE_NETWORK -> R.string.workspace_scope_host
+            Routes.MORE_HOST_SETTINGS, Routes.MORE_SERVER_HTTPS, Routes.MORE_SERVER_INFORMATION, Routes.MORE_NETWORK -> R.string.workspace_scope_host
             Routes.MORE_CONNECTIONS, Routes.MORE_DIAGNOSTICS -> R.string.workspace_scope_connection
             else -> R.string.workspace_scope_android
         }), pages = pages, selected = route, onSelect = onOpenRoute, onBack = onBack) {

@@ -44,11 +44,20 @@ class CertificateRepository(private val gateway: RelaxKonGateway, private val se
         val mutation: suspend (String, String) -> ApiResult<CertificateOperation> = { url, token ->
             verify(owner); gateway.certificateMutation(url, token, action, id, body, pending.key)
         }
-        val result = if (action == CertificateAction.SelfSigned)
-            elevations.withElevation("certificateCreateSelfSigned", "certificates/self-signed", provider, mutation).also { verify(owner) }
-        else if (action == CertificateAction.DeployKestrel)
-            elevations.withElevation("certificateReplaceServerHttps", "certificates/${InstallationRoutes.canonicalId(requireNotNull(id))}/server-https", provider, mutation).also { verify(owner) }
-        else read(owner, mutation)
+        val capability = when (action) {
+            CertificateAction.Issue -> "certificateIssue"
+            CertificateAction.SelfSigned -> "certificateCreateSelfSigned"
+            CertificateAction.DeployKestrel -> "certificateReplaceServerHttps"
+            CertificateAction.Renew -> "certificateRenew"
+            CertificateAction.Revoke -> "certificateRevoke"
+            CertificateAction.Delete -> "certificateDelete"
+        }
+        val target = when (action) {
+            CertificateAction.Issue -> "certificates/issue"
+            CertificateAction.SelfSigned -> "certificates/self-signed"
+            else -> "certificates/${InstallationRoutes.canonicalId(requireNotNull(id))}/${if (action == CertificateAction.DeployKestrel) "server-https" else action.kind}"
+        }
+        val result = elevations.withElevation(capability, target, provider, mutation).also { verify(owner) }
         if (result is ApiResult.Success) {
             if (result.value.kind != action || result.value.certificateId == null || (id != null && result.value.certificateId != id)) return@withLock ApiResult.Transport(null)
             journal.update(pending.copy(operationId = result.value.operationId, attempted = true))

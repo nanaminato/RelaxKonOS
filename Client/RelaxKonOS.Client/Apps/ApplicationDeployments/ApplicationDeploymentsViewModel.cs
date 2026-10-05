@@ -45,6 +45,18 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     [ObservableProperty] private LocalizedStatus _statusText;
     [ObservableProperty] private LocalizedStatus _errorText;
     [ObservableProperty] private LocalizedStatus _operationText;
+    [ObservableProperty] private bool _isOperationLogExpanded;
+    [ObservableProperty] private string _operationLog = string.Empty;
+    partial void OnOperationTextChanged(LocalizedStatus value)
+    {
+        var text = value.Resolve();
+        if (string.IsNullOrWhiteSpace(text) || text == _lastOperationMessage) return;
+        _lastOperationMessage = text;
+        OperationLog = string.Join(Environment.NewLine,
+            OperationLog.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)
+                .Append($"[{DateTime.Now:HH:mm:ss}] {text}").TakeLast(200));
+    }
+    private string _lastOperationMessage = string.Empty;
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private bool _isLoading;
     [ObservableProperty] private bool _isLogTruncated;

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="certificates_renewal_title">续期记录（最近 5 次）</string>
+    <string name="certificates_renewal_select">选择证书以查看续期记录。</string>
+    <string name="certificates_renewal_self_signed">自签证书不参与自动续期；到期前请创建新证书并更换。</string>
+    <string name="certificates_renewal_unavailable">未取得续期记录，请刷新。</string>
+    <string name="certificates_renewal_enabled">自动续期已启用；服务器每天检查一次，进入续期窗口后执行。</string>
+    <string name="certificates_renewal_disabled">自动续期未启用（已吊销或缺少 ACME 联系邮箱）。</string>
+    <string name="certificates_renewal_window">续期窗口：%1$s – %2$s</string>
+    <string name="certificates_renewal_last_success">上次成功续期：%1$s</string>
+    <string name="certificates_renewal_exhausted">连续失败 %1$s 次，自动重试已暂停，请处理失败原因后手动续期。</string>
+    <string name="certificates_renewal_retry">允许重试时间：%1$s；实际执行需等待服务器下一次扫描。</string>
+    <string name="certificates_renewal_empty">尚无续期执行记录。</string>
+    <string name="certificates_renewal_automatic">自动续期</string>
+    <string name="certificates_renewal_manual">手动续期</string>
+    <string name="certificates_renewal_record">%1$s · %2$s\n开始：%3$s　完成：%4$s</string>
+    <string name="certificates_renewal_state_queued">排队中</string>
+    <string name="certificates_renewal_state_running">执行中</string>
+    <string name="certificates_renewal_state_succeeded">成功</string>
+    <string name="certificates_renewal_state_failed">失败</string>
+    <string name="certificates_renewal_state_cancelled">已取消</string>
+</resources>

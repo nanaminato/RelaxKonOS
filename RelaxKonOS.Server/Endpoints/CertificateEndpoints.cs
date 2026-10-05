@@ -14,8 +14,8 @@ public static class CertificateEndpoints
         group.MapGet(CertificateApiRoutes.ByIdPattern, async (Guid id, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) =>
             await manager.GetAsync(id, ct) is { } certificate ? Results.Ok(certificate) : Results.NotFound());
         group.MapPost(CertificateApiRoutes.PreflightPattern, (CertificatePreflightRequest request, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) => manager.PreflightAsync(request, ct));
-        group.MapPost(CertificateApiRoutes.CollectionPattern, async (RequestCertificateRequest request, HttpContext context, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) =>
-            await StartAsync(context, key => manager.RequestAsync(key, request, Actor(context), ct)));
+        group.MapPost(CertificateApiRoutes.CollectionPattern, async (RequestCertificateRequest request, HttpContext context, IHostElevationSessionStore elevations, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) =>
+            await StartAuthorizedAsync(context, elevations, HostElevationCapability.CertificateIssue, "certificates/issue", key => manager.RequestAsync(key, request, Actor(context), ct)));
         group.MapPost(CertificateApiRoutes.SelfSignedPattern, async (CreateSelfSignedCertificateRequest request, HttpContext context,
             IHostElevationSessionStore elevations, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) =>
         {
@@ -36,18 +36,24 @@ public static class CertificateEndpoints
                     extensions: new Dictionary<string, object?> { ["problemCode"] = "elevation-required" });
             return await StartAsync(context, key => manager.DeployKestrelAsync(id, key, Actor(context), ct));
         });
-        group.MapPost(CertificateApiRoutes.RenewPattern, async (Guid id, HttpContext context, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) =>
-            await StartAsync(context, key => manager.RenewAsync(id, key, Actor(context), ct)));
-        group.MapDelete(CertificateApiRoutes.DeletePattern, async (Guid id, [Microsoft.AspNetCore.Mvc.FromBody] DeleteCertificateRequest request, HttpContext context, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) =>
-            await StartAsync(context, key => manager.DeleteAsync(id, key, request, Actor(context), ct)));
-        group.MapPost(CertificateApiRoutes.RevokePattern, async (Guid id, RevokeCertificateRequest request, HttpContext context, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) =>
-            await StartAsync(context, key => manager.RevokeAsync(id, key, request, Actor(context), ct)));
+        group.MapPost(CertificateApiRoutes.RenewPattern, async (Guid id, HttpContext context, IHostElevationSessionStore elevations, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) =>
+            await StartAuthorizedAsync(context, elevations, HostElevationCapability.CertificateRenew, $"certificates/{id:D}/renew", key => manager.RenewAsync(id, key, Actor(context), ct)));
+        group.MapDelete(CertificateApiRoutes.DeletePattern, async (Guid id, [Microsoft.AspNetCore.Mvc.FromBody] DeleteCertificateRequest request, HttpContext context, IHostElevationSessionStore elevations, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) =>
+            await StartAuthorizedAsync(context, elevations, HostElevationCapability.CertificateDelete, $"certificates/{id:D}/delete", key => manager.DeleteAsync(id, key, request, Actor(context), ct)));
+        group.MapPost(CertificateApiRoutes.RevokePattern, async (Guid id, RevokeCertificateRequest request, HttpContext context, IHostElevationSessionStore elevations, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) =>
+            await StartAuthorizedAsync(context, elevations, HostElevationCapability.CertificateRevoke, $"certificates/{id:D}/revoke", key => manager.RevokeAsync(id, key, request, Actor(context), ct)));
         group.MapGet(CertificateApiRoutes.OperationsPattern, async (Guid operationId, RelaxKonOS.Server.Certificate.CertificateOperationStore operations, CancellationToken ct) =>
             await operations.GetAsync(operationId, ct) is { } operation ? Results.Ok(operation) : Results.NotFound());
         group.MapPost(CertificateApiRoutes.CancelOperationPattern, async (Guid operationId, RelaxKonOS.Server.Certificate.CertificateOperationStore operations, CancellationToken ct) =>
             await operations.CancelAsync(operationId, ct) is { } operation ? Results.Ok(operation) : Results.NotFound());
         return app;
     }
+
+    private static Task<IResult> StartAuthorizedAsync(HttpContext context, IHostElevationSessionStore elevations,
+        HostElevationCapability capability, string target, Func<string, Task<CertificateOperationDto>> start) =>
+        elevations.IsGranted(context.User, capability, target) ? StartAsync(context, start) : Task.FromResult<IResult>(
+            Results.Problem(statusCode: StatusCodes.Status403Forbidden, type: "https://relaxkonos.app/problems/elevation-required",
+                extensions: new Dictionary<string, object?> { ["problemCode"] = "elevation-required" }));
 
     private static async Task<IResult> StartAsync(HttpContext context, Func<string, Task<CertificateOperationDto>> start)
     {

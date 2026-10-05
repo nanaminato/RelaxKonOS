@@ -1381,7 +1381,7 @@
     <string name="certificates_self_signed">Create self-signed certificate</string>
     <string name="certificates_renew">Renew</string>
     <string name="certificates_revoke">Revoke</string>
-    <string name="certificates_deploy">Deploy to Kestrel</string>
+    <string name="certificates_deploy">Replace server HTTPS certificate</string>
     <string name="certificates_recover">Query original operation</string>
     <string name="certificates_operation_id">Operation ID</string>
     <string name="certificates_confirm">Confirm</string>
@@ -1495,7 +1495,7 @@
     <string name="certificates_deployment_mismatch">Runtime material differs from current metadata.</string>
     <string name="certificates_deployment_not_ready">Refresh metadata and Kestrel facts; valid material and an HTTPS listener are required.</string>
     <string name="certificates_deployment_evidence">Server observation only. It does not prove a public frontend or client trust, or the outcome of a lost request. Recover the original operation ID or retry with the original key.</string>
-    <string name="certificates_deploy_confirm">Deploy to the existing Kestrel HTTPS listener? Ports and addresses stay as configured. SNI names follow the certificate SANs; the first certificate becomes the default fallback. New connections use the new material; existing connections may retain old material. Confirm SAN coverage and client trust for your management address. Self-signed material needs client trust setup. The management connection may break; recover the original operation and check live facts.</string>
+    <string name="certificates_deploy_confirm">Replace the server HTTPS certificate? The selected certificate becomes the default, and SNI names follow its SANs. Confirm coverage of your management address and verify the new fingerprint. Self-signed certificates require renewed client trust confirmation. New connections use the new material; existing connections may retain old material. If the management connection breaks, recover the original operation and check its status.</string>
     <string name="tunnels_title">FRP tunnels</string>
     <string name="tunnels_subtitle">Host runtime, server profiles and frpc definitions</string>
     <string name="tunnels_intro">FRP runs on the server. Saving, applying and connecting are separate states.</string>

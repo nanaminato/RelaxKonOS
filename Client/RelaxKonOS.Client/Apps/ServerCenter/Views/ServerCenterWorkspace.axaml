@@ -31,12 +31,12 @@
                             HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
         </Grid>
 
-        <Border Grid.Row="2" Classes="app-statusbar">
-            <StackPanel Spacing="5">
-                <ProgressBar IsIndeterminate="{Binding IsDeploymentProgressIndeterminate}" Value="{Binding DeploymentTransferProgress}" Height="3" IsVisible="{Binding ShowWorkspaceProgress}" />
-                <TextBlock Text="{Binding StatusMessage}" IsVisible="{Binding !HasError}" TextWrapping="Wrap" />
-                <TextBlock Text="{Binding ErrorMessage}" IsVisible="{Binding HasError}" Classes="error" TextWrapping="Wrap" />
-            </StackPanel>
+        <Border Grid.Row="2" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Height="38" Padding="12,0">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                <ProgressBar IsIndeterminate="{Binding IsDeploymentProgressIndeterminate}" Value="{Binding DeploymentTransferProgress}" Width="36" MinWidth="0" Height="3" VerticalAlignment="Center" IsVisible="{Binding ShowWorkspaceProgress}" />
+                <TextBlock Grid.Column="1" Text="{Binding StatusMessage}" ToolTip.Tip="{Binding StatusMessage}" IsVisible="{Binding !HasError}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" FontSize="12" />
+                <TextBlock Grid.Column="1" Text="{Binding ErrorMessage}" ToolTip.Tip="{Binding ErrorMessage}" IsVisible="{Binding HasError}" Classes="error" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" FontSize="12" />
+            </Grid>
         </Border>
     </Grid>
 </UserControl>

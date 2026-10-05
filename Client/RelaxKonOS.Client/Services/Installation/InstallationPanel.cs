@@ -19,23 +19,32 @@ public static class InstallationPanel
 
     public static Control Wrap(Control content, InstallationTaskViewModel model)
     {
-        // The wrapper is installed around several apps. Hiding only its children still
-        // leaves this StackPanel's text rows and margin in the DockPanel layout, creating
-        // an empty band above the app whenever no installation is in progress.
-        var panel = new StackPanel { Spacing = 6, Margin = new Thickness(12, 8), DataContext = model };
+        // A shared bottom status row keeps installation feedback out of each app's workspace.
+        var panel = new Grid { RowDefinitions = new RowDefinitions("Auto,38"), DataContext = model };
         panel.Bind(Visual.IsVisibleProperty, new Binding(nameof(model.HasMessage)));
-        var stage = new TextBlock { TextWrapping = Avalonia.Media.TextWrapping.Wrap };
-        stage.Bind(TextBlock.TextProperty, new Binding(nameof(model.StageText))); panel.Children.Add(stage);
-        var progress = new ProgressBar { Minimum = 0, Maximum = 100, Height = 4 };
+        var log = new TextBox { IsReadOnly = true, AcceptsReturn = true, TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+            Height = 180, Margin = new Thickness(12, 8, 12, 4), FontSize = 12 };
+        log.Bind(TextBox.TextProperty, new Binding(nameof(model.OperationLog)) { Mode = BindingMode.OneWay });
+        log.Bind(Visual.IsVisibleProperty, new Binding(nameof(model.IsOperationLogExpanded)));
+        panel.Children.Add(log);
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto"), ColumnSpacing = 10, Margin = new Thickness(12, 0) };
+        Grid.SetRow(row, 1); panel.Children.Add(row);
+        var progress = new ProgressBar { Minimum = 0, Maximum = 100, Width = 36, MinWidth = 0, Height = 3, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
         progress.Bind(ProgressBar.ValueProperty, new Binding(nameof(model.Progress)));
         progress.Bind(ProgressBar.IsIndeterminateProperty, new Binding(nameof(model.IsIndeterminate)));
-        progress.Bind(Visual.IsVisibleProperty, new Binding(nameof(model.IsActive))); panel.Children.Add(progress);
-        var connection = new TextBlock { TextWrapping = Avalonia.Media.TextWrapping.Wrap };
-        connection.Bind(TextBlock.TextProperty, new Binding(nameof(model.ConnectionText))); panel.Children.Add(connection);
-        var cancel = new Button { Content = LocalizedText.Get("installation.cancel") };
+        progress.Bind(Visual.IsVisibleProperty, new Binding(nameof(model.IsActive))); row.Children.Add(progress);
+        var stage = new TextBlock { TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis, FontSize = 12, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
+        stage.Bind(TextBlock.TextProperty, new Binding(nameof(model.SummaryText)));
+        stage.Bind(ToolTip.TipProperty, new Binding(nameof(model.SummaryText)));
+        Grid.SetColumn(stage, 1); row.Children.Add(stage);
+        var toggle = new Avalonia.Controls.Primitives.ToggleButton { Content = LocalizedText.Get("common.operation_log"), Height = 28, Padding = new Thickness(8, 2) };
+        toggle.Bind(Avalonia.Controls.Primitives.ToggleButton.IsCheckedProperty, new Binding(nameof(model.IsOperationLogExpanded)) { Mode = BindingMode.TwoWay });
+        Grid.SetColumn(toggle, 2); row.Children.Add(toggle);
+        var cancel = new Button { Content = LocalizedText.Get("installation.cancel"), Height = 28, Padding = new Thickness(8, 2) };
         cancel.Bind(Button.CommandProperty, new Binding(nameof(model.CancelCommand)));
-        cancel.Bind(Visual.IsVisibleProperty, new Binding(nameof(model.IsActive))); panel.Children.Add(cancel);
-        var root = new DockPanel(); DockPanel.SetDock(panel, Dock.Top); root.Children.Add(panel); root.Children.Add(content);
+        cancel.Bind(Visual.IsVisibleProperty, new Binding(nameof(model.IsActive)));
+        Grid.SetColumn(cancel, 3); row.Children.Add(cancel);
+        var root = new DockPanel(); DockPanel.SetDock(panel, Dock.Bottom); root.Children.Add(panel); root.Children.Add(content);
         root.AttachedToVisualTree += async (_, _) => await model.RestoreAsync();
         root.DetachedFromVisualTree += (_, _) => model.Dispose();
         return root;

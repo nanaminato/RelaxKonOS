@@ -1343,7 +1343,7 @@
     <string name="certificates_self_signed">创建自签名证书</string>
     <string name="certificates_renew">续期</string>
     <string name="certificates_revoke">撤销</string>
-    <string name="certificates_deploy">部署到 Kestrel</string>
+    <string name="certificates_deploy">更换服务器 HTTPS 证书</string>
     <string name="certificates_recover">查询原任务</string>
     <string name="certificates_operation_id">操作 ID</string>
     <string name="certificates_confirm">确认</string>
@@ -1457,7 +1457,7 @@
     <string name="certificates_deployment_mismatch">运行时材料与当前元数据不同。</string>
     <string name="certificates_deployment_not_ready">请刷新元数据和 Kestrel 状态；部署需要有效材料及 HTTPS 监听。</string>
     <string name="certificates_deployment_evidence">仅为服务器观察，不证明公网前端、客户端信任或丢失请求的结果。请恢复原操作 ID 或使用原键重试。</string>
-    <string name="certificates_deploy_confirm">部署到现有 Kestrel HTTPS 监听？端口和地址保持现有配置。SNI 名称来自证书 SAN；首个证书成为默认回退。新连接使用新材料，已有连接可能仍使用旧材料。请确认管理地址的 SAN 覆盖与客户端信任；自签名证书需要客户端信任配置。管理连接可能中断，请恢复原操作并核实运行时状态。</string>
+    <string name="certificates_deploy_confirm">更换服务器 HTTPS 证书？所选证书将成为默认证书，SNI 名称来自证书 SAN。请确认 SAN 覆盖管理地址，并核对新证书的指纹。自签名证书需要客户端重新确认信任。新连接使用新材料，已有连接可能仍使用旧材料；管理连接中断时，请恢复原操作并核实状态。</string>
     <string name="tunnels_title">FRP 隧道</string>
     <string name="tunnels_subtitle">服务器运行时、服务器配置与 frpc 定义</string>
     <string name="tunnels_intro">FRP 在服务器运行。保存、应用与连接是不同状态。</string>

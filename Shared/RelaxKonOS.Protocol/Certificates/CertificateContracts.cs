@@ -27,7 +27,19 @@ public sealed record CertificateDto(
     [property: JsonPropertyName("createdAt")] DateTimeOffset CreatedAt,
     [property: JsonPropertyName("updatedAt")] DateTimeOffset UpdatedAt,
     [property: JsonPropertyName("kind")] CertificateKind Kind = CertificateKind.Acme,
-    [property: JsonPropertyName("fingerprintSha256")] string? FingerprintSha256 = null);
+    [property: JsonPropertyName("fingerprintSha256")] string? FingerprintSha256 = null,
+    [property: JsonPropertyName("renewal")] CertificateRenewalInfoDto? Renewal = null);
+
+public sealed record CertificateRenewalAttemptDto(
+    [property: JsonPropertyName("automatic")] bool Automatic,
+    [property: JsonPropertyName("operation")] CertificateOperationDto Operation);
+
+public sealed record CertificateRenewalInfoDto(
+    [property: JsonPropertyName("automaticEnabled")] bool AutomaticEnabled,
+    [property: JsonPropertyName("consecutiveFailures")] int ConsecutiveFailures,
+    [property: JsonPropertyName("retryAfter")] DateTimeOffset? RetryAfter,
+    [property: JsonPropertyName("retryExhausted")] bool RetryExhausted,
+    [property: JsonPropertyName("attempts")] IReadOnlyList<CertificateRenewalAttemptDto> Attempts);
 
 public sealed record RequestCertificateRequest(
     [property: JsonPropertyName("domains")] IReadOnlyList<string> Domains,

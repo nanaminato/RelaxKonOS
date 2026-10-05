@@ -45,7 +45,7 @@
         </Style>
     </UserControl.Styles>
 
-    <Grid RowDefinitions="Auto,Auto,*">
+    <Grid RowDefinitions="Auto,*,Auto">
         <!-- Header. The subtitle states the replacement policy so a stop-and-replace is never a surprise. -->
         <Border Grid.Row="0" Classes="app-header">
             <Grid ColumnDefinitions="Auto,*,Auto">
@@ -66,28 +66,20 @@
             </Grid>
         </Border>
 
-        <!-- Operation banner: the durable record, not an in-flight request, is what is shown here. -->
-        <Border Grid.Row="1" IsVisible="{Binding HasActiveOperation}"
-                Background="{DynamicResource AccentMutedBrush}"
-                BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="0,0,0,1"
-                Padding="18,10">
-            <Grid ColumnDefinitions="*,Auto">
-                <StackPanel Spacing="4">
-                    <TextBlock Text="{Binding OperationText}"
-                               FontWeight="SemiBold" TextWrapping="Wrap"
-                               Foreground="{DynamicResource TextPrimaryBrush}" />
-                    <TextBlock Text="{Binding ActiveOperation.ProgressText}"
-                               FontSize="12"
-                               Foreground="{DynamicResource TextSecondaryBrush}" />
-                </StackPanel>
-                <Button Grid.Column="1" Content="{loc:Loc application_deployments.cancel_operation}"
-                        Command="{Binding CancelOperationCommand}"
-                        IsVisible="{Binding ActiveOperation.CanCancel}"
-                        VerticalAlignment="Center" Padding="12,6" />
-            </Grid>
-        </Border>
+<Border Grid.Row="2" IsVisible="{Binding HasActiveOperation}" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0">
+ <Grid RowDefinitions="Auto,38">
+  <TextBox Text="{Binding OperationLog, Mode=OneWay}" IsVisible="{Binding IsOperationLogExpanded}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" Height="180" Margin="12,8,12,4" FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12" ScrollViewer.VerticalScrollBarVisibility="Auto" />
+  <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="10" Margin="12,0">
+   <ProgressBar IsIndeterminate="True" IsVisible="{Binding ActiveOperation.IsActive}" Width="36" MinWidth="0" Height="3" VerticalAlignment="Center" />
+   <TextBlock Grid.Column="1" Text="{Binding OperationText}" ToolTip.Tip="{Binding OperationText}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" FontSize="12" />
+   <TextBlock Grid.Column="2" Text="{Binding ActiveOperation.ProgressText}" FontSize="12" VerticalAlignment="Center" />
+   <ToggleButton Grid.Column="3" Content="{loc:Loc common.operation_log}" IsChecked="{Binding IsOperationLogExpanded, Mode=TwoWay}" Padding="8,2" Height="28" />
+   <Button Grid.Column="4" Content="{loc:Loc application_deployments.cancel_operation}" Command="{Binding CancelOperationCommand}" IsVisible="{Binding ActiveOperation.CanCancel}" Height="28" Padding="8,2" />
+  </Grid>
+ </Grid>
+</Border>
 
-        <Grid Grid.Row="2" ColumnDefinitions="320,*">
+        <Grid Grid.Row="1" ClipToBounds="True" ColumnDefinitions="320,*">
             <!-- Left: the application list and the actions that do not need a selection. -->
             <Border Grid.Column="0" Classes="app-sidebar">
                 <Grid RowDefinitions="Auto,Auto,*">

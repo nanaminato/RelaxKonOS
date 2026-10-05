@@ -142,6 +142,25 @@
     "certificates.status_value.renewing": "Renewing",
     "certificates.status_value.failed": "Failed",
     "certificates.status_value.expired": "Expired",
-    "certificates.status_value.revoked": "Revoked"
+    "certificates.status_value.revoked": "Revoked",
+    "certificates.renewal.title": "Renewal records (latest 5)",
+    "certificates.renewal.select": "Select a certificate to view renewal records.",
+    "certificates.renewal.self_signed": "Self-signed certificates do not renew automatically. Create and replace the certificate before expiry.",
+    "certificates.renewal.unavailable": "Renewal records unavailable. Refresh to try again.",
+    "certificates.renewal.enabled": "Automatic renewal is enabled. The server checks daily and renews within the renewal window.",
+    "certificates.renewal.disabled": "Automatic renewal is disabled (revoked or missing ACME contact email).",
+    "certificates.renewal.window": "Renewal window: {0} – {1}",
+    "certificates.renewal.last_success": "Last successful renewal: {0}",
+    "certificates.renewal.exhausted": "{0} consecutive failures. Automatic retries are paused; resolve the cause and renew manually.",
+    "certificates.renewal.retry": "Retry allowed after: {0}; execution waits for the next server scan.",
+    "certificates.renewal.empty": "No renewal executions recorded.",
+    "certificates.renewal.automatic": "Automatic renewal",
+    "certificates.renewal.manual": "Manual renewal",
+    "certificates.renewal.record": "{0} · {1}\nStarted: {2}   Completed: {3}",
+    "certificates.renewal.state.queued": "Queued",
+    "certificates.renewal.state.running": "Running",
+    "certificates.renewal.state.succeeded": "Succeeded",
+    "certificates.renewal.state.failed": "Failed",
+    "certificates.renewal.state.cancelled": "Cancelled"
   }
 }

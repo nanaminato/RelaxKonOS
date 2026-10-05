@@ -62,7 +62,41 @@ internal static class CertificateBindingChecks
         TestAssert.Assert(registry.Snapshot(id).IsDefault && registry.Select(null) == registry.Select("one.example.test"), "Replacement did not update the default used by non-SNI connections.");
         facts = await manager.GetKestrelDeploymentAsync(id, CancellationToken.None);
         TestAssert.Assert(facts.HttpsConfigured && facts.FingerprintSha256!.Equals(metadata.FingerprintSha256!.Replace(":", ""), StringComparison.OrdinalIgnoreCase), "GET used metadata rather than deployed certificate fingerprint.");
-        await VerifyReplacementEndpointAsync(unprivilegedManager, ledger, id);
+        TestAssert.Assert(!(await manager.GetAsync(created.CertificateId!.Value, CancellationToken.None))!.Renewal!.AutomaticEnabled,
+            "Self-signed certificate was shown as automatically renewable.");
+        await VerifyReplacementEndpointAsync(unprivilegedManager, ledger, id, created.CertificateId!.Value);
+        var automaticRenewal = await ledger.StartAsync("renewal-history-failure", id, "renew", "renewal-worker",
+            _ => Task.FromResult("certificate.validation_failed"), CancellationToken.None);
+        await TestOperations.WaitForCertificateOperationAsync(ledger, automaticRenewal.OperationId);
+        var renewal = (await manager.GetAsync(id, CancellationToken.None))!.Renewal!;
+        TestAssert.Assert(renewal.AutomaticEnabled && renewal.Attempts.Single().Automatic && renewal.Attempts.Single().Operation.State == CertificateOperationState.Failed
+            && renewal.Attempts.Single().Operation.CompletedAt is not null && renewal.ConsecutiveFailures == 1 && renewal.RetryAfter is not null,
+            "Renewal details omitted automatic failure time or retry schedule.");
+        var releaseRenewal = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var manualRenewal = await ledger.StartAsync("renewal-history-success", id, "renew", "alice", _ => releaseRenewal.Task, CancellationToken.None);
+        renewal = (await manager.GetAsync(id, CancellationToken.None))!.Renewal!;
+        TestAssert.Assert(!renewal.Attempts[0].Automatic && renewal.Attempts[0].Operation.OperationId == manualRenewal.OperationId
+            && renewal.Attempts[0].Operation.State is CertificateOperationState.Queued or CertificateOperationState.Running,
+            "Running manual renewal was absent or misidentified as automatic.");
+        releaseRenewal.SetResult("");
+        await TestOperations.WaitForCertificateOperationAsync(ledger, manualRenewal.OperationId);
+        renewal = (await manager.GetAsync(id, CancellationToken.None))!.Renewal!;
+        TestAssert.Assert(renewal.Attempts.Count == 2 && renewal.Attempts[0].Operation.State == CertificateOperationState.Succeeded
+            && renewal.ConsecutiveFailures == 0 && renewal.RetryAfter is null, "Success did not retain failure history and reset retry state.");
+        var reopenedLedger = new CertificateOperationStore(environment, new HostOperationJournal(environment, configuration), certificates,
+            new CertificateRenewalAttemptRepository(environment, configuration, options), NullLogger<CertificateOperationStore>.Instance);
+        TestAssert.Assert((await reopenedLedger.GetRenewalInfoAsync(id, true, CancellationToken.None)).Attempts.Count == 2,
+            "Renewal execution history was lost after reopening the ledger.");
+        for (var index = 0; index < 5; index++) {
+            var entry = await ledger.StartAsync($"renewal-history-{index}", id, "renew", "alice", _ => Task.FromResult(""), CancellationToken.None);
+            await TestOperations.WaitForCertificateOperationAsync(ledger, entry.OperationId);
+        }
+        var foreignRenewal = await ledger.StartAsync("foreign-renewal-history", Guid.NewGuid(), "renew", "alice", _ => Task.FromResult(""), CancellationToken.None);
+        await TestOperations.WaitForCertificateOperationAsync(ledger, foreignRenewal.OperationId);
+        renewal = (await manager.GetAsync(id, CancellationToken.None))!.Renewal!;
+        TestAssert.Assert(renewal.Attempts.Count == 5 && renewal.Attempts.All(attempt => attempt.Operation.CertificateId == id)
+            && renewal.Attempts.All(attempt => attempt.Operation.OperationId != automaticRenewal.OperationId),
+            "Renewal history exceeded its bound or included another certificate's executions.");
         var deleted = await manager.DeleteAsync(id, "delete", new DeleteCertificateRequest(true), "alice", CancellationToken.None);
         await TestOperations.WaitForCertificateOperationAsync(ledger, deleted.OperationId);
         facts = await manager.GetKestrelDeploymentAsync(id, CancellationToken.None);
@@ -71,7 +105,7 @@ internal static class CertificateBindingChecks
         TestAssert.Assert(replay.OperationId == deployed.OperationId, "Lost deployment response could not recover original operation after facts changed.");
         TestAssert.Assert(registry.Select("one.example.test") == wildcard, "Deleted exact binding did not fall back to the surviving default.");
     }
-    private static async Task VerifyReplacementEndpointAsync(ICertificateManager manager, CertificateOperationStore ledger, Guid id)
+    private static async Task VerifyReplacementEndpointAsync(ICertificateManager manager, CertificateOperationStore ledger, Guid id, Guid selfSignedId)
     {
         var mode = new UploadSessionChecks.SystemMode();
         var elevations = new HostElevationSessionStore(new TestHostAccountPrivilegeService(), mode, new HostElevationSessionState());
@@ -81,6 +115,8 @@ internal static class CertificateBindingChecks
         builder.Logging.ClearProviders();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddAuthorization();
+        builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(
+            new System.Text.Json.Serialization.JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
         builder.Services.AddSingleton<ICertificateManager>(manager);
         builder.Services.AddSingleton(ledger);
         builder.Services.AddSingleton<IHostElevationSessionStore>(elevations);
@@ -108,6 +144,32 @@ internal static class CertificateBindingChecks
         var operation = JsonSerializer.Deserialize<CertificateOperationDto>(await accepted.Content.ReadAsStringAsync(), RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default)!;
         TestAssert.Assert((await TestOperations.WaitForCertificateOperationAsync(ledger, operation.OperationId)).State == CertificateOperationState.Succeeded,
             "Authorized HTTPS replacement did not complete.");
+        foreach (var (capability, action, method, body, problem) in new[] {
+            (HostElevationCapability.CertificateIssue, "issue", HttpMethod.Post, "{\"domains\":[\"example.test\"],\"challengeType\":\"directHttp01\",\"contactEmail\":\"a@example.test\",\"acceptedTerms\":false}", "certificate.terms_not_accepted"),
+            (HostElevationCapability.CertificateRenew, "renew", HttpMethod.Post, "{}", "certificate.self_signed_not_renewable"),
+            (HostElevationCapability.CertificateRevoke, "revoke", HttpMethod.Post, "{\"confirmed\":true}", "certificate.self_signed_not_revocable"),
+            (HostElevationCapability.CertificateDelete, "delete", HttpMethod.Delete, "{\"confirmed\":true}", "") })
+        {
+            var target = action == "issue" ? "certificates/issue" : $"certificates/{selfSignedId:D}/{action}";
+            var route = action == "issue" ? CertificateApiRoutes.Certificates : action == "delete" ? $"{CertificateApiRoutes.Certificates}/{selfSignedId:D}" : $"{CertificateApiRoutes.Certificates}/{selfSignedId:D}/{action}";
+            async Task<HttpResponseMessage> Mutate()
+            {
+                using var request = new HttpRequestMessage(method, route) { Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json") };
+                request.Headers.Add("Idempotency-Key", "lifecycle-" + action);
+                return await http.SendAsync(request);
+            }
+            using (var denied = await Mutate()) TestAssert.Assert(denied.StatusCode == HttpStatusCode.Forbidden, $"{action} bypassed authorization.");
+            elevations.Grant(principal, capability, target + "-wrong", false, "test");
+            using (var denied = await Mutate()) TestAssert.Assert(denied.StatusCode == HttpStatusCode.Forbidden, $"{action} accepted another resource's grant.");
+            elevations.Grant(principal, capability, target, false, "test");
+            using var result = await Mutate();
+            var response = await result.Content.ReadAsStringAsync();
+            if (action == "delete") {
+                TestAssert.Assert(result.StatusCode == HttpStatusCode.Accepted, "Authorized deletion required an administrator Server process.");
+                var deletion = JsonSerializer.Deserialize<CertificateOperationDto>(response, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default)!;
+                TestAssert.Assert((await TestOperations.WaitForCertificateOperationAsync(ledger, deletion.OperationId)).State == CertificateOperationState.Succeeded, "Authorized deletion did not finish.");
+            } else TestAssert.Assert(result.StatusCode == HttpStatusCode.Conflict && response.Contains(problem), $"Authorized {action} did not reach domain validation: {response}");
+        }
     }
     private sealed class UnprivilegedBindingPrivileges : IHostPrivilegeService { public bool IsAdministrator => false; }
     private sealed class BindingPrivileges : IHostPrivilegeService { public bool IsAdministrator => true; }

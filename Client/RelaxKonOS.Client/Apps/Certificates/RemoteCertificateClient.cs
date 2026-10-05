@@ -27,7 +27,7 @@ public sealed class RemoteCertificateClient(HttpClient http, IAuthSession sessio
         => SendAsync<CertificatePreflightResultDto>(HttpMethod.Post, CertificateApiRoutes.Preflight, request, null, cancellationToken);
 
     public Task<CertificateOperationDto> RequestAsync(RequestCertificateRequest request, CancellationToken cancellationToken = default)
-        => SendAsync<CertificateOperationDto>(HttpMethod.Post, CertificateApiRoutes.Request, request, NewKey(), cancellationToken);
+        => AuthorizedMutationAsync(HostElevationCapability.CertificateIssue, "certificates/issue", HttpMethod.Post, CertificateApiRoutes.Request, request, cancellationToken);
 
     public Task<CertificateOperationDto> CreateSelfSignedAsync(CreateSelfSignedCertificateRequest request, CancellationToken cancellationToken = default)
     {
@@ -47,19 +47,27 @@ public sealed class RemoteCertificateClient(HttpClient http, IAuthSession sessio
     }
 
     public Task<CertificateOperationDto> RenewAsync(Guid id, CancellationToken cancellationToken = default)
-        => SendAsync<CertificateOperationDto>(HttpMethod.Post, CertificateApiRoutes.Renew.Replace("{id}", id.ToString("N")), null, NewKey(), cancellationToken);
+        => AuthorizedMutationAsync(HostElevationCapability.CertificateRenew, $"certificates/{id:D}/renew", HttpMethod.Post, CertificateApiRoutes.Renew.Replace("{id}", id.ToString("N")), null, cancellationToken);
 
     public Task<CertificateOperationDto> RevokeAsync(Guid id, RevokeCertificateRequest request, CancellationToken cancellationToken = default)
-        => SendAsync<CertificateOperationDto>(HttpMethod.Post, CertificateApiRoutes.Revoke.Replace("{id}", id.ToString("N")), request, NewKey(), cancellationToken);
+        => AuthorizedMutationAsync(HostElevationCapability.CertificateRevoke, $"certificates/{id:D}/revoke", HttpMethod.Post, CertificateApiRoutes.Revoke.Replace("{id}", id.ToString("N")), request, cancellationToken);
 
     public Task<CertificateOperationDto> DeleteAsync(Guid id, DeleteCertificateRequest request, CancellationToken cancellationToken = default)
-        => SendAsync<CertificateOperationDto>(HttpMethod.Delete, CertificateApiRoutes.ById.Replace("{id}", id.ToString("N")), request, NewKey(), cancellationToken);
+        => AuthorizedMutationAsync(HostElevationCapability.CertificateDelete, $"certificates/{id:D}/delete", HttpMethod.Delete, CertificateApiRoutes.ById.Replace("{id}", id.ToString("N")), request, cancellationToken);
 
     public Task<CertificateOperationDto?> GetOperationAsync(Guid operationId, CancellationToken cancellationToken = default)
         => SendAsync<CertificateOperationDto?>(HttpMethod.Get, CertificateApiRoutes.Operations.Replace("{operationId}", operationId.ToString("N")), null, null, cancellationToken, returnNullOnNotFound: true);
 
     public Task<CertificateOperationDto?> CancelOperationAsync(Guid operationId, CancellationToken cancellationToken = default)
         => SendAsync<CertificateOperationDto?>(HttpMethod.Post, CertificateApiRoutes.CancelOperation.Replace("{operationId}", operationId.ToString("N")), null, null, cancellationToken, returnNullOnNotFound: true);
+
+    private Task<CertificateOperationDto> AuthorizedMutationAsync(HostElevationCapability capability, string target,
+        HttpMethod method, string route, object? body, CancellationToken cancellationToken)
+    {
+        var key = NewKey();
+        return elevations.ExecuteAsync(capability, target,
+            () => SendAsync<CertificateOperationDto>(method, route, body, key, cancellationToken), cancellationToken);
+    }
 
     private static string NewKey() => Guid.NewGuid().ToString("N");
 

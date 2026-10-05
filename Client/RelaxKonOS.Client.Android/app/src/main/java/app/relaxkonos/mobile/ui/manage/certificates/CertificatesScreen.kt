@@ -22,12 +22,12 @@ import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun CertificatesScreen(onBack: () -> Unit, initialOperationId: String? = null, modifier: Modifier = Modifier) {
+fun CertificatesScreen(onBack: () -> Unit, initialOperationId: String? = null, serverHttpsOnly: Boolean = false, modifier: Modifier = Modifier) {
     val model: CertificatesViewModel = viewModel()
     val state = model.state
     val epoch = model.sessionEpoch
     val owner = appContainer().activeSession
-    var section by rememberSaveable(owner, epoch) { mutableStateOf(if (initialOperationId == null) "overview" else "operations") }
+    var section by rememberSaveable(owner, epoch) { mutableStateOf(if (initialOperationId != null) "operations" else if (serverHttpsOnly) "certificates" else "overview") }
     OperationMessageDialog(if (state.busy) null else state.problemCode?.let { certificateProblemLabel(it) } ?: if (state.uncertain) stringResource(R.string.certificates_uncertain) else null, tone = if (state.problemCode == null) StatusTone.Warning else StatusTone.Danger)
     LaunchedEffect(initialOperationId) { if (initialOperationId != null) section = "operations" }
     val available = owner?.capabilities?.contains(ServerCapabilities.CERTIFICATES) == true
@@ -41,13 +41,13 @@ fun CertificatesScreen(onBack: () -> Unit, initialOperationId: String? = null, m
         if (state.operation?.state?.active == true && !state.busy) { delay(1500); model.poll() }
     }
     BackHandler(section == "certificates" && state.selectedId != null && state.draft == null && !state.busy) { model.select(null) }
-    WorkspaceColumn(stringResource(R.string.certificates_title), onBack, listOf(WorkspaceDestination("overview", R.string.workspace_overview), WorkspaceDestination("certificates", R.string.workspace_certificates), WorkspaceDestination("operations", R.string.workspace_operations)), section, { section = it }, modifier, stateKey = owner to epoch) {
+    WorkspaceColumn(stringResource(if (serverHttpsOnly) R.string.server_https_title else R.string.certificates_title), onBack, listOf(*(if (serverHttpsOnly) emptyArray() else arrayOf(WorkspaceDestination("overview", R.string.workspace_overview))), WorkspaceDestination("certificates", R.string.workspace_certificates), WorkspaceDestination("operations", R.string.workspace_operations)), section, { section = it }, modifier, stateKey = owner to epoch) {
         if (!available) { Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn }
-        Text(stringResource(R.string.certificates_intro), style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(if (serverHttpsOnly) R.string.server_https_description else R.string.certificates_https_location), style = MaterialTheme.typography.bodySmall)
         PageActionRow(refresh = {
             TextButton(onClick = model::refresh, enabled = !state.busy) { ActionLabel(R.string.common_refresh) }
         }, actions = {
-            if (canManage) {
+            if (canManage && !serverHttpsOnly) {
                 OutlinedButton(onClick = { model.create(false) }, enabled = !state.busy) { Text(stringResource(R.string.certificates_issue)) }
                 OutlinedButton(onClick = { model.create(true) }, enabled = !state.busy) { Text(stringResource(R.string.certificates_self_signed)) }
             }
@@ -70,11 +70,11 @@ fun CertificatesScreen(onBack: () -> Unit, initialOperationId: String? = null, m
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             if (maxWidth >= 600.dp) Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
                 Column(Modifier.weight(1f)) { CertificateList(state, model) }
-                Column(Modifier.weight(2f)) { CertificateDetail(state, model, canManage) { message, action -> confirm = message to action } }
+                Column(Modifier.weight(2f)) { CertificateDetail(state, model, canManage, serverHttpsOnly) { message, action -> confirm = message to action } }
             } else Column {
                 if (state.selectedId == null) CertificateList(state, model) else {
                     TextButton(onClick = { model.select(null) }, enabled = !state.busy) { Text(stringResource(R.string.common_back)) }
-                    CertificateDetail(state, model, canManage) { message, action -> confirm = message to action }
+                    CertificateDetail(state, model, canManage, serverHttpsOnly) { message, action -> confirm = message to action }
                 }
             }
         }
@@ -139,7 +139,7 @@ private fun CertificateList(state: CertificatesState, model: CertificatesViewMod
     }
 }
 @Composable
-private fun CertificateDetail(state: CertificatesState, model: CertificatesViewModel, canManage: Boolean, confirm: (Int, () -> Unit) -> Unit) {
+private fun CertificateDetail(state: CertificatesState, model: CertificatesViewModel, canManage: Boolean, serverHttpsOnly: Boolean, confirm: (Int, () -> Unit) -> Unit) {
     if (state.selectedId == null) { Text(stringResource(R.string.certificates_select)); return }
     val certificate = (state.detail as? ApiResult.Success)?.value
     if (certificate == null) {
@@ -169,20 +169,45 @@ private fun CertificateDetail(state: CertificatesState, model: CertificatesViewM
     certificate.renewalWindowEndMillis?.let { Text(stringResource(R.string.certificates_renewal_end, date(it))) }
     certificate.lastRenewalAtMillis?.let { Text(stringResource(R.string.certificates_last_renewal, date(it))) }
     certificate.lastRenewalProblemCode?.takeIf(String::isNotBlank)?.let { Text(certificateProblemLabel(it), color = MaterialTheme.colorScheme.error) }
+    RenewalHistory(certificate)
     Text(stringResource(R.string.certificates_created, date(certificate.createdAtMillis)), style = MaterialTheme.typography.bodySmall)
     Text(stringResource(R.string.certificates_updated, date(certificate.updatedAtMillis)), style = MaterialTheme.typography.bodySmall)
-    KestrelFacts(state.deployments[certificate.id], certificate)
-    TextButton(enabled = !state.busy, onClick = { model.inspectDeployment(certificate.id) }) { Text(stringResource(R.string.certificates_deployment_refresh)) }
+    if (serverHttpsOnly) {
+        KestrelFacts(state.deployments[certificate.id], certificate)
+        TextButton(enabled = !state.busy, onClick = { model.inspectDeployment(certificate.id) }) { Text(stringResource(R.string.certificates_deployment_refresh)) }
+    }
     certificate.usageProblem()?.let { Text(certificateUsageLabel(it), color = MaterialTheme.colorScheme.error) }
     if (canManage) {
         val enabled = !state.busy && state.pending.none { it.target == certificate.id } && !(state.operation?.certificateId == certificate.id && state.operation.state.active)
-        OutlinedButton(enabled = enabled && certificate.usageProblem() == null && (state.deployments[certificate.id] as? ApiResult.Success)?.value?.httpsConfigured == true,
+        if (serverHttpsOnly) OutlinedButton(enabled = enabled && certificate.usageProblem() == null && (state.deployments[certificate.id] as? ApiResult.Success)?.value?.httpsConfigured == true,
             onClick = { confirm(R.string.certificates_deploy_confirm) { model.action(certificate, CertificateAction.DeployKestrel) } }) { Text(stringResource(R.string.certificates_deploy)) }
-        if (certificate.kind == CertificateKind.Acme && certificate.status != CertificateStatus.Revoked) {
+        if (!serverHttpsOnly && certificate.kind == CertificateKind.Acme && certificate.status != CertificateStatus.Revoked) {
             OutlinedButton(enabled = enabled, onClick = { confirm(R.string.certificates_renew_confirm) { model.action(certificate, CertificateAction.Renew) } }) { Text(stringResource(R.string.certificates_renew)) }
             OutlinedButton(enabled = enabled, onClick = { confirm(R.string.certificates_revoke_confirm) { model.action(certificate, CertificateAction.Revoke) } }) { Text(stringResource(R.string.certificates_revoke)) }
         }
-        TextButton(enabled = enabled, onClick = { confirm(R.string.certificates_delete_confirm) { model.action(certificate, CertificateAction.Delete) } }) { ActionLabel(R.string.common_delete) }
+        if (!serverHttpsOnly) TextButton(enabled = enabled, onClick = { confirm(R.string.certificates_delete_confirm) { model.action(certificate, CertificateAction.Delete) } }) { ActionLabel(R.string.common_delete) }
+    }
+}
+@Composable
+private fun RenewalHistory(certificate: ManagedCertificate) {
+    var expanded by rememberSaveable(certificate.id) { mutableStateOf(false) }
+    TextButton(onClick = { expanded = !expanded }) { Text(stringResource(R.string.certificates_renewal_title)) }
+    if (!expanded) return
+    if (certificate.kind == CertificateKind.SelfSigned) { Text(stringResource(R.string.certificates_renewal_self_signed)); return }
+    val renewal = certificate.renewal
+    if (renewal == null) { Text(stringResource(R.string.certificates_renewal_unavailable)); return }
+    Text(stringResource(if (renewal.automaticEnabled) R.string.certificates_renewal_enabled else R.string.certificates_renewal_disabled))
+    if (renewal.retryExhausted) Text(stringResource(R.string.certificates_renewal_exhausted, renewal.consecutiveFailures.toString()), color = MaterialTheme.colorScheme.error)
+    else renewal.retryAfterMillis?.let { Text(stringResource(R.string.certificates_renewal_retry, date(it))) }
+    if (renewal.attempts.isEmpty()) Text(stringResource(R.string.certificates_renewal_empty))
+    renewal.attempts.forEach { attempt ->
+        val operation = attempt.operation
+        HorizontalDivider()
+        Text(stringResource(R.string.certificates_renewal_record,
+            stringResource(if (attempt.automatic) R.string.certificates_renewal_automatic else R.string.certificates_renewal_manual),
+            certificateOperationStateLabel(operation.state), operation.startedAtMillis?.let(::date) ?: "—", operation.completedAtMillis?.let(::date) ?: "—"))
+        if (operation.problemCode.isNotBlank()) Text(certificateProblemLabel(operation.problemCode), color = MaterialTheme.colorScheme.error)
+        Text(operation.operationId, style = MaterialTheme.typography.bodySmall)
     }
 }
 @Composable

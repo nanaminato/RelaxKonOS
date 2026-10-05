@@ -142,6 +142,25 @@
     "certificates.status_value.renewing": "更新中",
     "certificates.status_value.failed": "失敗",
     "certificates.status_value.expired": "期限切れ",
-    "certificates.status_value.revoked": "失効済み"
+    "certificates.status_value.revoked": "失効済み",
+    "certificates.renewal.title": "更新履歴（直近 5 件）",
+    "certificates.renewal.select": "証明書を選択して更新履歴を確認します。",
+    "certificates.renewal.self_signed": "自己署名証明書は自動更新しません。有効期限前に新しい証明書を作成して変更してください。",
+    "certificates.renewal.unavailable": "更新履歴を取得できません。再読み込みしてください。",
+    "certificates.renewal.enabled": "自動更新は有効です。サーバーは毎日確認し、更新期間に実行します。",
+    "certificates.renewal.disabled": "自動更新は無効です（失効済み、または ACME 連絡先がありません）。",
+    "certificates.renewal.window": "更新期間：{0} – {1}",
+    "certificates.renewal.last_success": "前回の更新成功：{0}",
+    "certificates.renewal.exhausted": "連続 {0} 回失敗。自動再試行を停止しました。原因を解決して手動更新してください。",
+    "certificates.renewal.retry": "再試行可能時刻：{0}。次のサーバー確認時に実行します。",
+    "certificates.renewal.empty": "更新実行の記録はありません。",
+    "certificates.renewal.automatic": "自動更新",
+    "certificates.renewal.manual": "手動更新",
+    "certificates.renewal.record": "{0} · {1}\n開始：{2}　完了：{3}",
+    "certificates.renewal.state.queued": "待機中",
+    "certificates.renewal.state.running": "実行中",
+    "certificates.renewal.state.succeeded": "成功",
+    "certificates.renewal.state.failed": "失敗",
+    "certificates.renewal.state.cancelled": "キャンセル済み"
   }
 }

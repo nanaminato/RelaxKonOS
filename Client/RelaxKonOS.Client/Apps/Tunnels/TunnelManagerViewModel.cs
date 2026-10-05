@@ -23,6 +23,18 @@ public sealed partial class TunnelManagerViewModel(IRemoteTunnelClient client, b
     [ObservableProperty] private string _runtimeText = "—";
     [ObservableProperty] private LocalizedStatus _statusText = LocalizedText.Ref("tunnels.status.loading");
     [ObservableProperty] private bool _isBusy;
+    [ObservableProperty] private bool _isOperationLogExpanded;
+    [ObservableProperty] private string _operationLog = string.Empty;
+    partial void OnStatusTextChanged(LocalizedStatus value)
+    {
+        var text = value.Resolve();
+        if (!IsBusy || string.IsNullOrWhiteSpace(text) || text == _lastOperationMessage) return;
+        _lastOperationMessage = text;
+        OperationLog = string.Join(Environment.NewLine,
+            OperationLog.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)
+                .Append($"[{DateTime.Now:HH:mm:ss}] {text}").TakeLast(200));
+    }
+    private string _lastOperationMessage = string.Empty;
     [ObservableProperty] private string _runtimeVersion = "v0.71.0";
     [ObservableProperty] private string _frpsBindAddress = "0.0.0.0";
     [ObservableProperty] private int _frpsBindPort = 7000;
@@ -262,6 +274,7 @@ public sealed partial class TunnelManagerViewModel(IRemoteTunnelClient client, b
 
     partial void OnIsBusyChanged(bool value)
     {
+        if (value) StatusText = LocalizedText.Ref("common.operation_running");
         NotifyProfileCommands(); EditTunnelCommand.NotifyCanExecuteChanged();
         InstallRuntimeCommand.NotifyCanExecuteChanged(); InstallRuntimeFromServerFileCommand.NotifyCanExecuteChanged(); ShowRuntimeDownloadCommand.NotifyCanExecuteChanged(); UninstallRuntimeCommand.NotifyCanExecuteChanged(); RollbackRuntimeCommand.NotifyCanExecuteChanged();
         ToggleManagedFrpsCommand.NotifyCanExecuteChanged();

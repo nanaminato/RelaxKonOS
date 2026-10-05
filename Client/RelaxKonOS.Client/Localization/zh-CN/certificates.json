@@ -142,6 +142,25 @@
     "certificates.status_value.renewing": "续期中",
     "certificates.status_value.failed": "失败",
     "certificates.status_value.expired": "已过期",
-    "certificates.status_value.revoked": "已吊销"
+    "certificates.status_value.revoked": "已吊销",
+    "certificates.renewal.title": "续期记录（最近 5 次）",
+    "certificates.renewal.select": "选择证书以查看续期记录。",
+    "certificates.renewal.self_signed": "自签证书不参与自动续期；到期前请创建新证书并更换。",
+    "certificates.renewal.unavailable": "未取得续期记录，请刷新。",
+    "certificates.renewal.enabled": "自动续期已启用；服务器每天检查一次，进入续期窗口后执行。",
+    "certificates.renewal.disabled": "自动续期未启用（已吊销或缺少 ACME 联系邮箱）。",
+    "certificates.renewal.window": "续期窗口：{0} – {1}",
+    "certificates.renewal.last_success": "上次成功续期：{0}",
+    "certificates.renewal.exhausted": "连续失败 {0} 次，自动重试已暂停，请处理失败原因后手动续期。",
+    "certificates.renewal.retry": "允许重试时间：{0}；实际执行需等待服务器下一次扫描。",
+    "certificates.renewal.empty": "尚无续期执行记录。",
+    "certificates.renewal.automatic": "自动续期",
+    "certificates.renewal.manual": "手动续期",
+    "certificates.renewal.record": "{0} · {1}\n开始：{2}　完成：{3}",
+    "certificates.renewal.state.queued": "排队中",
+    "certificates.renewal.state.running": "执行中",
+    "certificates.renewal.state.succeeded": "成功",
+    "certificates.renewal.state.failed": "失败",
+    "certificates.renewal.state.cancelled": "已取消"
   }
 }

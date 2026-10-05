@@ -3,6 +3,7 @@
     "DisplayName": "日本語",
     "SortOrder": 0,
     "Strings": {
+        "common.operation_running": "実行中",
         "common.operation_log": "操作ログ",
         "common.connect": "接続",
         "common.maximize": "最大化",

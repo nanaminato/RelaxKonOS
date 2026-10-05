@@ -82,6 +82,26 @@ class CertificateRepositoryTest {
         assertEquals(2, keys.size); assertEquals(keys[0], keys[1])
         assertEquals(1, gateway.elevationCount)
     }
+    @Test fun `lifecycle authorization uses distinct capabilities and preserves retry keys`() = runTest {
+        val owner = signIn()
+        for ((action, capability) in listOf(CertificateAction.Issue to "certificateIssue", CertificateAction.Renew to "certificateRenew", CertificateAction.Revoke to "certificateRevoke", CertificateAction.Delete to "certificateDelete")) {
+            val keys = mutableListOf<String>()
+            val id = if (action == CertificateAction.Issue) null else CERTIFICATE_ID
+            gateway.onCertificateMutation = { _, _, _, key ->
+                keys += key
+                if (keys.size == 1) ApiResult.Problem(403, ProblemCodes.ELEVATION_REQUIRED, null)
+                else ApiResult.Success(operation.copy(kind = action))
+            }
+            gateway.onElevation = { _, _, actual, target, _, _ ->
+                assertEquals(capability, actual)
+                assertEquals(if (id == null) "certificates/issue" else "certificates/$id/${action.kind}", target)
+                ApiResult.Success(ElevationGrant(true, null))
+            }
+            assertTrue(repository.submit(owner, ElevationAnswerProvider { _, _ -> ElevationAnswer("root", "secret".toCharArray()) }, action, id, JsonBody()) is ApiResult.Success)
+            assertEquals(2, keys.size)
+            assertEquals(keys[0], keys[1])
+        }
+    }
     @Test fun `cancelled self signed elevation preserves a retryable draft intent`() = runTest {
         val owner = signIn(); var calls = 0
         gateway.onCertificateMutation = { _, _, _, _ -> calls++; ApiResult.Problem(403, ProblemCodes.ELEVATION_REQUIRED, null) }

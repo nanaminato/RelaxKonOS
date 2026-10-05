@@ -106,28 +106,19 @@
             </WrapPanel>
         </Border>
 
-        <!-- 状态栏 -->
-        <Border DockPanel.Dock="Bottom" Classes="app-statusbar">
-            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
-                <StackPanel Spacing="3">
-                    <TextBlock Text="{Binding SelectionSummary}" FontSize="12" />
-                    <TextBlock Text="{Binding StatusText}" FontSize="11" Opacity="0.7" TextTrimming="CharacterEllipsis" />
-                </StackPanel>
-                <TextBlock Grid.Column="1" Text="{Binding IsBusy, Converter={x:Static c:ExplorerLoadingStatusConverter.Instance}}"
-                           FontSize="12" Opacity="0.6" />
-                <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4" IsVisible="{Binding HasTransferProgress}">
-                    <Button Content="{loc:Loc explorer.batch.stop}" Command="{Binding StopBatchCommand}"
-                            IsVisible="{Binding IsBatchActive}" HorizontalAlignment="Left" Padding="8,3" />
-                    <TextBlock Text="{Binding TransferText}" FontSize="12" Opacity="0.75"
-                               Margin="0,5,10,0" TextTrimming="CharacterEllipsis" />
-                </StackPanel>
-                <ProgressBar Grid.Row="1" Grid.Column="1" Width="180" Height="6" Minimum="0" Maximum="100"
-                             Value="{Binding TransferProgress}" Margin="0,7,0,0"
-                             IsVisible="{Binding HasTransferProgress}" />
-                <Expander Grid.Row="2" Grid.ColumnSpan="2" Header="{loc:Loc explorer.batch.details}"
-                          IsVisible="{Binding HasOperationDetails}" HorizontalAlignment="Stretch">
-                    <ScrollViewer MaxHeight="140"><TextBlock Text="{Binding LastOperationDetails}" TextWrapping="Wrap" /></ScrollViewer>
-                </Expander>
+        <!-- Compact operation status; details open upwards only on request. -->
+        <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0">
+            <Grid RowDefinitions="Auto,38">
+                <TextBox Text="{Binding LastOperationDetails, Mode=OneWay}" IsVisible="{Binding #OperationDetailsToggle.IsChecked}"
+                         IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" Height="140" Margin="12,8,12,4" ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="10" Margin="12,0">
+                    <TextBlock Text="{Binding StatusText}" ToolTip.Tip="{Binding StatusText}" TextTrimming="CharacterEllipsis" FontSize="12" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" Text="{Binding SelectionSummary}" IsVisible="{Binding !HasTransferProgress}" MaxWidth="220" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" FontSize="12" />
+                    <TextBlock Grid.Column="1" Text="{Binding TransferText}" ToolTip.Tip="{Binding TransferText}" IsVisible="{Binding HasTransferProgress}" MaxWidth="220" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" FontSize="12" />
+                    <ProgressBar Grid.Column="2" Width="36" MinWidth="0" Height="3" Minimum="0" Maximum="100" Value="{Binding TransferProgress}" IsVisible="{Binding HasTransferProgress}" VerticalAlignment="Center" />
+                    <ToggleButton Grid.Column="3" x:Name="OperationDetailsToggle" Content="{loc:Loc explorer.batch.details}" IsVisible="{Binding HasOperationDetails}" Padding="8,2" Height="28" />
+                    <Button Grid.Column="4" Content="{loc:Loc explorer.batch.stop}" Command="{Binding StopBatchCommand}" IsVisible="{Binding IsBatchActive}" Padding="8,2" Height="28" />
+                </Grid>
             </Grid>
         </Border>
 

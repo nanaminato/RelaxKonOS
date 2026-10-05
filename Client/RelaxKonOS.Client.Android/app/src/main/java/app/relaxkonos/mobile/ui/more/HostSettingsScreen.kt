@@ -183,7 +183,7 @@ private class HostSettingsOwnerKey(private val owner: SessionState.Active) {
     override fun hashCode() = System.identityHashCode(owner)
 }
 @Composable
-fun HostSettingsScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
+fun HostSettingsScreen(onBack: (() -> Unit)?, onOpenServerHttps: () -> Unit = {}, modifier: Modifier = Modifier) {
     val container = appContainer(); val owner = container.activeSession ?: return
     val scope = rememberCoroutineScope()
     val editor = remember(HostSettingsOwnerKey(owner),scope) { HostSettingsEditor(owner,container.hostSettings,{container.activeSession === owner},scope,container.elevationAnswers) }
@@ -198,6 +198,9 @@ fun HostSettingsScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
         ScreenHeader(stringResource(R.string.host_settings_title), onBack = onBack?.let { { editor.leave(it) } })
         Text(stringResource(R.string.host_settings_scope),style=MaterialTheme.typography.bodySmall)
         Text(owner.serviceId,style=MaterialTheme.typography.bodySmall)
+        if (ServerCapabilities.CERTIFICATES in owner.capabilities) {
+            OutlinedButton(onClick = { editor.leave(onOpenServerHttps) }, enabled = !editor.busy) { Text(stringResource(R.string.server_https_title)) }
+        }
         FlowRow(horizontalArrangement=Arrangement.spacedBy(Spacing.sm)) {
             HostSettingKind.entries.forEach { kind -> FilterChip(selected=kind == editor.kind,onClick={editor.select(kind)},enabled=!editor.busy&&!editor.dirty,
                 label={Text(stringResource(kind.label()))}) }

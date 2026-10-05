@@ -59,8 +59,33 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
 
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(DeployCommand), nameof(RenewCommand), nameof(RevokeCommand), nameof(DeleteCommand))]
     [NotifyPropertyChangedFor(nameof(SelectedCertificateDomains))]
+    [NotifyPropertyChangedFor(nameof(SelectedRenewalText))]
     private CertificateDto? _selectedCertificate;
     public string SelectedCertificateDomains => SelectedCertificate is { } certificate ? string.Join(", ", certificate.SubjectAlternativeNames) : string.Empty;
+    public string SelectedRenewalText
+    {
+        get
+        {
+            if (SelectedCertificate is not { } certificate) return LocalizedText.Get("certificates.renewal.select");
+            if (certificate.Kind == CertificateKind.SelfSigned) return LocalizedText.Get("certificates.renewal.self_signed");
+            if (certificate.Renewal is not { } renewal) return LocalizedText.Get("certificates.renewal.unavailable");
+            var lines = new List<string> { LocalizedText.Get(renewal.AutomaticEnabled ? "certificates.renewal.enabled" : "certificates.renewal.disabled") };
+            if (certificate.RenewalWindowStart is { } start && certificate.RenewalWindowEnd is { } end)
+                lines.Add(LocalizedText.Format("certificates.renewal.window", start.ToLocalTime().ToString("g"), end.ToLocalTime().ToString("g")));
+            if (certificate.LastRenewalAt is { } success) lines.Add(LocalizedText.Format("certificates.renewal.last_success", success.ToLocalTime().ToString("g")));
+            if (renewal.RetryExhausted) lines.Add(LocalizedText.Format("certificates.renewal.exhausted", renewal.ConsecutiveFailures));
+            else if (renewal.RetryAfter is { } retry) lines.Add(LocalizedText.Format("certificates.renewal.retry", retry.ToLocalTime().ToString("g")));
+            if (renewal.Attempts.Count == 0) lines.Add(LocalizedText.Get("certificates.renewal.empty"));
+            foreach (var attempt in renewal.Attempts)
+            {
+                var operation = attempt.Operation;
+                lines.Add(LocalizedText.Format("certificates.renewal.record", LocalizedText.Get(attempt.Automatic ? "certificates.renewal.automatic" : "certificates.renewal.manual"),
+                    LocalizedText.Get("certificates.renewal.state." + operation.State.ToString().ToLowerInvariant()), operation.StartedAt?.ToLocalTime().ToString("g") ?? "—", operation.CompletedAt?.ToLocalTime().ToString("g") ?? "—"));
+                if (!string.IsNullOrWhiteSpace(operation.ProblemCode)) lines.Add(ProblemText(operation.ProblemCode));
+            }
+            return string.Join(Environment.NewLine, lines);
+        }
+    }
     [ObservableProperty] private LocalizedStatus _statusText = LocalizedText.Ref("certificates.status.loading");
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasOperationActivity))]
     private LocalizedStatus _operationText;
@@ -99,9 +124,11 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
         try
         {
             var certificates = await _client.ListAsync() ?? [];
+            var selectedId = SelectedCertificate?.Id;
             Certificates.Clear();
             SelectedCertificate = null;
             foreach (var certificate in certificates) Certificates.Add(certificate);
+            SelectedCertificate = Certificates.FirstOrDefault(certificate => certificate.Id == selectedId);
             StatusText = LocalizedText.Ref("certificates.status.ready", certificates.Count);
         }
         catch (Exception)
@@ -212,11 +239,11 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
     private Task DeployAsync() => RunOperationForSelectedAsync("deploy",
         (id, ct) => _client.DeployKestrelAsync(id, ct));
 
-    [RelayCommand(CanExecute = nameof(CanActOnSelected))]
+    [RelayCommand(CanExecute = nameof(CanRenewOrRevokeSelected))]
     private Task RenewAsync() => RunOperationForSelectedAsync("renew",
         (id, ct) => _client.RenewAsync(id, ct));
 
-    [RelayCommand(CanExecute = nameof(CanActOnSelected))]
+    [RelayCommand(CanExecute = nameof(CanRenewOrRevokeSelected))]
     private Task RevokeAsync() => RunOperationForSelectedAsync("revoke",
         (id, ct) => _client.RevokeAsync(id, new RevokeCertificateRequest(true), ct));
 
@@ -390,6 +417,7 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
     private bool CanManage => HasManagePermission && !IsLoading && !IsOperationRunning;
     private bool CanRequest => CanManage;
     private bool CanActOnSelected => CanManage && SelectedCertificate is not null;
+    private bool CanRenewOrRevokeSelected => CanActOnSelected && SelectedCertificate is { Kind: CertificateKind.Acme } certificate && certificate.Status != CertificateStatus.Revoked;
     private bool CanCancelOperation => IsOperationRunning;
 
     private static string OperationName(string? kind) => kind switch

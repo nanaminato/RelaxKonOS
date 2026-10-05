@@ -1342,7 +1342,7 @@
     <string name="certificates_self_signed">自己署名証明書を作成</string>
     <string name="certificates_renew">更新</string>
     <string name="certificates_revoke">失効</string>
-    <string name="certificates_deploy">Kestrel に配備</string>
+    <string name="certificates_deploy">サーバー HTTPS 証明書を変更</string>
     <string name="certificates_recover">元の操作を照会</string>
     <string name="certificates_operation_id">操作 ID</string>
     <string name="certificates_confirm">確認</string>
@@ -1456,7 +1456,7 @@
     <string name="certificates_deployment_mismatch">実行時の証明書は現在の情報と異なります。</string>
     <string name="certificates_deployment_not_ready">情報と Kestrel の状態を更新してください。有効な証明書と HTTPS リスナーが必要です。</string>
     <string name="certificates_deployment_evidence">サーバーでの観測です。公開フロントエンド、クライアントの信頼、応答を失った要求の結果は証明しません。元の操作 ID を復元するか元のキーで再試行してください。</string>
-    <string name="certificates_deploy_confirm">既存の Kestrel HTTPS リスナーに配置しますか？ポートとアドレスは現在の設定を使用します。SNI 名は証明書の SAN に従い、最初の証明書が既定のフォールバックになります。新しい接続は新しい証明書を使用し、既存の接続は古い証明書を保持する場合があります。管理アドレスの SAN とクライアントの信頼を確認してください。自己署名証明書には信頼の設定が必要です。管理接続が切れる場合は元の操作を復元し、現在の状態を確認してください。</string>
+    <string name="certificates_deploy_confirm">サーバー HTTPS 証明書を変更しますか？選択した証明書が既定となり、SNI 名は SAN に従います。管理アドレスの対応範囲と新しいフィンガープリントを確認してください。自己署名証明書ではクライアントの信頼を再確認する必要があります。新しい接続は新しい証明書を使い、既存の接続は古い証明書を保持する場合があります。管理接続が切れた場合は元の操作を復元し、状態を確認してください。</string>
     <string name="tunnels_title">FRP トンネル</string>
     <string name="tunnels_subtitle">ホストのランタイム、サーバー設定、frpc 定義</string>
     <string name="tunnels_intro">FRP はサーバーで動作します。保存、適用、接続は別の状態です。</string>

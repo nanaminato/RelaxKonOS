@@ -46,6 +46,7 @@ object Routes {
     const val MORE_DIAGNOSTICS = "more/diagnostics"
     const val MORE_APPLICATIONS = "more/applications"
     const val MORE_HELP = "more/help"
+    const val MORE_SERVER_HTTPS = "more/server-https"
     const val MORE_HOST_SETTINGS = "more/host-settings"
     const val MORE_ABOUT = "more/about"
 }
