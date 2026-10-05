@@ -14,6 +14,7 @@
                         <MenuItem Header="{loc:Loc terminal.open_administrator}" Command="{Binding OpenAdministratorTerminalCommand}"
                                   IsVisible="{Binding CanOpenAdministratorTerminal}" />
                         <MenuItem Header="{loc:Loc terminal.settings}" Command="{Binding OpenSettingsCommand}" />
+                        <MenuItem Header="{loc:Loc settings.environment.title}" Command="{Binding OpenEnvironmentCommand}" />
                     </MenuItem>
                 </Menu>
                 <TextBlock Grid.Column="1" Text="{Binding Status}" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"

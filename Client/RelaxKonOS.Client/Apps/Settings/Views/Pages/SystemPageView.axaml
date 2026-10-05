@@ -16,6 +16,7 @@
         <Border Classes="card">
             <StackPanel Spacing="12">
                 <TextBlock Text="{loc:Loc settings.system_properties.advanced}" Classes="title" />
+                <Button nav:SettingsSearchTarget.Id="workspace.environment" Content="{loc:Loc settings.workspace_environment.title}" Command="{Binding OpenWorkspaceEnvironmentCommand}" HorizontalAlignment="Stretch" />
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="20">
                     <StackPanel Spacing="3">
                         <TextBlock Text="{loc:Loc settings.performance.title}" FontWeight="SemiBold" />
@@ -65,13 +66,8 @@
                 <TextBlock Text="{loc:Loc settings.hostname.restart_pending}" TextWrapping="Wrap" IsVisible="{Binding HostIdentity.RestartPending}" />
                 <TextBlock IsVisible="{Binding HostIdentity.HasDraft}" Text="{loc:Loc settings.host.draft_hint}"
                            Opacity="0.7" TextWrapping="Wrap" />
-                <Border IsVisible="{Binding HostIdentity.HasPreview}" Padding="12" BorderThickness="1" CornerRadius="6"
-                        BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
-                    <TextBlock Text="{Binding HostIdentity.PreviewText}" TextWrapping="Wrap" />
-                </Border>
                 <WrapPanel Orientation="Horizontal">
                     <Button Content="{loc:Loc settings.hostname.reload}" Command="{Binding HostIdentity.ReloadCommand}" Margin="0,0,8,8" />
-                    <Button IsVisible="{Binding HostIdentity.ShowPreviewAction}" Content="{loc:Loc settings.hostname.preview}" Command="{Binding HostIdentity.PreviewCommand}" Margin="0,0,8,8" />
                     <Button IsVisible="{Binding HostIdentity.ShowApplyAction}" Content="{loc:Loc settings.hostname.apply}" Command="{Binding HostIdentity.ApplyCommand}" Margin="0,0,8,8" />
                     <Button IsVisible="{Binding HostIdentity.ShowQueryAction}" Content="{loc:Loc settings.hostname.query}" Command="{Binding HostIdentity.QueryCommand}" Margin="0,0,8,8" />
                     <Button IsVisible="{Binding HostIdentity.HasDraft}" Content="{loc:Loc settings.host.reset_draft}" Command="{Binding HostIdentity.ResetDraftCommand}" Margin="0,0,8,8" />

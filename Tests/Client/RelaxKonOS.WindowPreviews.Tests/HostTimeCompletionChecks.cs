@@ -15,37 +15,40 @@ internal static class HostTimeCompletionChecks
             DispatchProxy.Create<IAuthSession, LanguageSessionStub>(), localization);
         vm.RequestAuthorizationAsync = _ => Task.FromResult(true);
         vm.ReloadCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        vm.SelectedZone = "not-in-remote-catalog";
+        Check(!vm.CanApply, "Only remote catalog values can be applied");
         vm.SelectedZone = "UTC";
-        vm.PreviewCommand.ExecuteAsync(null).GetAwaiter().GetResult();
-        Check(vm.HasDraft && vm.ResetDraftCommand.CanExecute(null), "Preview remains a resettable draft");
+        Check(vm.CanApply && vm.HasDraft && vm.ResetDraftCommand.CanExecute(null), "Changed value can be applied directly or reset");
         vm.ResetDraftCommand.Execute(null);
-        Check(!vm.HasDraft && !vm.HasPreview && vm.SelectedZone == vm.CurrentZone, "Reset draft to current value");
+        Check(!vm.HasDraft && !vm.CanApply && vm.SelectedZone == vm.CurrentZone, "Reset draft to current value");
         vm.SelectedZone = "UTC";
-        vm.PreviewCommand.ExecuteAsync(null).GetAwaiter().GetResult();
-        var completedPlanId = vm.OperationId;
+        vm.RequestAuthorizationAsync = _ => Task.FromResult(false);
+        vm.ApplyCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(stub.ApplyCalls == 0 && vm.HasDraft && vm.CanEdit && vm.CanApply, "Cancelled authorization preserves draft without writing");
+        var preparedId = vm.OperationId;
+        vm.RequestAuthorizationAsync = _ => Task.FromResult(true);
         var applying = vm.ApplyCommand.ExecuteAsync(null);
-        Check(vm.IsBusy && !vm.CanEdit && !vm.HasPreview && !vm.IsCompleted, "Apply progress");
+        var completedPlanId = vm.OperationId;
+        Check(preparedId == completedPlanId && stub.ApplyCalls == 1, "Retry uses the prepared plan");
+        Check(vm.IsBusy && !vm.CanEdit && !vm.CanReload && !vm.IsCompleted, "Apply progress cannot be discarded by reloading");
         stub.Pending.SetResult(stub.Result(SettingsOperationState.Applied, "r2"));
         applying.GetAwaiter().GetResult();
-        Check(vm.IsCompleted && vm.CanEdit && !vm.HasPreview && !vm.ShowQueryAction
+        Check(vm.IsCompleted && vm.CanEdit && !vm.ShowQueryAction
             && vm.ShowRollbackAction && vm.SelectedZone == "UTC", "Confirmed completion");
         vm.SelectedZone = "Asia/Shanghai";
         vm.ResetDraftCommand.Execute(null);
         Check(!vm.HasDraft && vm.CanRollback, "Reset preserves completed operation rollback");
         vm.SelectedZone = "Asia/Shanghai";
-        vm.PreviewCommand.ExecuteAsync(null).GetAwaiter().GetResult();
-        Check(stub.Request!.ExpectedRevision == "r2", "Next preview uses confirmed revision");
         vm.RollbackCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Check(stub.RollbackId.ToString("D") == completedPlanId && stub.RollbackRevision == "r2" && vm.IsCompleted && vm.CanEdit
             && !vm.ShowRollbackAction && vm.CurrentZone == "Asia/Shanghai", "Restore completed plan");
         vm.SelectedZone = "UTC";
-        vm.PreviewCommand.ExecuteAsync(null).GetAwaiter().GetResult();
-        Check(stub.Request!.ExpectedRevision == "r3", "Rollback updates revision");
         stub.Pending = new();
         applying = vm.ApplyCommand.ExecuteAsync(null);
+        Check(stub.Request!.ExpectedRevision == "r3", "Direct apply after rollback uses confirmed revision");
         stub.Pending.SetResult(stub.Result(SettingsOperationState.Unknown, null));
         applying.GetAwaiter().GetResult();
-        Check(!vm.CanEdit && !vm.IsCompleted && vm.ShowQueryAction && vm.HasOperation, "Unknown outcome locks edits");
+        Check(!vm.CanEdit && !vm.CanReload && !vm.IsCompleted && vm.ShowQueryAction && vm.HasOperation, "Unknown outcome locks edits and reload");
         Check(!vm.HasDraft && !vm.ResetDraftCommand.CanExecute(null), "Unknown submitted operation cannot be discarded as a draft");
         vm.QueryCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Check(vm.CanEdit && vm.IsCompleted && !vm.ShowQueryAction, "Query-confirmed completion");
@@ -65,6 +68,7 @@ public class TimeCompletionServiceStub : DispatchProxy
     private SettingsPlan? _plan;
     public TaskCompletionSource<SettingsOperation> Pending = new();
     public TimeZonePreviewRequest? Request;
+    public int ApplyCalls;
     public string? RollbackRevision;
     public Guid RollbackId;
     public SettingsOperation Result(SettingsOperationState state, string? revision) =>
@@ -85,7 +89,7 @@ public class TimeCompletionServiceStub : DispatchProxy
                     [new("host/time", "Asia/Shanghai", Request.Change.TimeZoneId)],
                     default, "test", SettingsEffectiveState.Immediate, "test-impact");
                 return Task.FromResult(_plan);
-            case "ApplyAsync": return Pending.Task;
+            case "ApplyAsync": ApplyCalls++; return Pending.Task;
             case "GetOperationAsync": return Task.FromResult(Result(SettingsOperationState.Applied, "r4"));
             case "RollbackAsync":
                 RollbackId = (Guid)args![1]!;

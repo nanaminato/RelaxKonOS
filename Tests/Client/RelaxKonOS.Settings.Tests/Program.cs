@@ -41,6 +41,7 @@ Console.WriteLine($"200 entries, 1000 cached queries: p95={timings[949]:F3} ms, 
 
 HostIdentityChecks.Run();
 EnvironmentChecks.Run();
+WorkloadEnvironmentChecks.Run();
 LinuxEnvironmentOperationChecks.Run();
 SystemStyleChecks.Run();
 await SettingsCliChecks.RunAsync();

@@ -16,6 +16,23 @@ public static class WorkspaceEndpoints
 {
     public static IEndpointRouteBuilder MapWorkspaceEndpoints(this IEndpointRouteBuilder app)
     {
+        app.MapGet(WorkspaceApiRoutes.Environment, (Guid id, HttpContext http, IWorkspaceRepository workspaces, WorkspaceEnvironmentService environment) =>
+        {
+            http.Response.Headers.CacheControl = "no-store";
+            var workspace = FindAuthorizedWorkspace(id, http.User, workspaces);
+            if (workspace is null) return Results.NotFound();
+            try { return Results.Ok(environment.Read(workspace)); }
+            catch (SettingsException error) { return EnvironmentProblem(error); }
+        }).RequireAuthorization().WithTags("Workspace");
+        app.MapPut(WorkspaceApiRoutes.Environment, (Guid id, RelaxKonOS.Protocol.Settings.WorkspaceEnvironmentUpdate request,
+            HttpContext http, IWorkspaceRepository workspaces, WorkspaceEnvironmentService environment) =>
+        {
+            http.Response.Headers.CacheControl = "no-store";
+            var workspace = FindAuthorizedWorkspace(id, http.User, workspaces);
+            if (workspace is null) return Results.NotFound();
+            try { return Results.Ok(environment.Save(workspace, request)); }
+            catch (SettingsException error) { return EnvironmentProblem(error); }
+        }).RequireAuthorization().WithTags("Workspace");
         app.MapGet(WorkspaceApiRoutes.TerminalSettings, (Guid id, ClaimsPrincipal principal, IWorkspaceRepository workspaces, IRegistryRepository registry) =>
         {
             var workspace = FindAuthorizedWorkspace(id, principal, workspaces);
@@ -160,6 +177,9 @@ public static class WorkspaceEndpoints
 
         return app;
     }
+
+    private static IResult EnvironmentProblem(SettingsException error) => Results.Problem(statusCode: error.StatusCode,
+        title: error.Code, extensions: new Dictionary<string, object?> { ["problemCode"] = error.Code });
 
     private static RelaxKonOS.Server.Domain.Workspace? FindAuthorizedWorkspace(
         Guid workspaceId, ClaimsPrincipal principal, IWorkspaceRepository workspaces)

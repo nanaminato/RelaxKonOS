@@ -80,7 +80,8 @@ public static class UserExecutionExecutor
 
         // The package creates the PTY only after the irreversible UID/GID transition. The control
         // stream carries framed input and resize messages; it never accepts an executable or
-        // environment supplied by the caller.
+        // arbitrary process environment supplied by the HTTP caller. Workspace overrides
+        // are validated data applied only after the UID/GID transition.
         var pty = new DefaultPtyFactory().Create();
         var exited = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
         var output = Console.OpenStandardOutput();
@@ -103,15 +104,10 @@ public static class UserExecutionExecutor
         _ = exited.Task.ContinueWith(_ => inputCancellation.Cancel(), TaskScheduler.Default);
         try
         {
-            pty.Start(shell, columns, rows, directory, new Dictionary<string, string>(StringComparer.Ordinal)
-            {
-                ["HOME"] = account.Home,
-                ["USER"] = account.Name,
-                ["LOGNAME"] = account.Name,
-                ["SHELL"] = shell,
-                ["TERM"] = "xterm-256color",
-                ["PATH"] = "/usr/local/bin:/usr/bin:/bin",
-            }, null);
+            var baseline = RelaxKonOS.Server.Terminal.TerminalUserEnvironment.Linux(account.Home, account.Name, shell);
+            var environment = (request.TerminalEnvironment ?? new RelaxKonOS.Protocol.Settings.TerminalEnvironmentOverrides([], RelaxKonOS.Protocol.Settings.EnvironmentPathMode.Append))
+                .Apply(baseline, windows: false);
+            pty.Start(shell, columns, rows, directory, environment, null);
             if (widthPixels > 0 || heightPixels > 0)
                 pty.Resize(columns, rows, widthPixels, heightPixels);
             while (pty.IsRunning)

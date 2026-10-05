@@ -41,7 +41,7 @@ internal static class WindowsUserTerminal
                 var shell = string.IsNullOrWhiteSpace(request.TerminalShell) || request.TerminalShell == "powershell"
                     ? Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe") : request.TerminalShell;
                 // Installation grants this explicit terminal the Helper's LocalSystem identity.
-                pty.Start(shell, request.TerminalColumns.Value, request.TerminalRows.Value, cwd, null, null);
+                pty.Start(shell, request.TerminalColumns.Value, request.TerminalRows.Value, cwd, TerminalUserEnvironment.Administrator(request.Identity.HomeDirectory), null);
             }
             else
             {
@@ -60,7 +60,10 @@ internal static class WindowsUserTerminal
             using (primary)
             {
                 ConfigureTokenAccess(primary, request.Identity.StableIdentity);
-                var environment = UserEnvironment(primary, account.HomeDirectory);
+                var environment = request.TerminalAdministrator
+                    ? TerminalUserEnvironment.Administrator(account.HomeDirectory)
+                    : (request.TerminalEnvironment ?? new RelaxKonOS.Protocol.Settings.TerminalEnvironmentOverrides([], RelaxKonOS.Protocol.Settings.EnvironmentPathMode.Append))
+                        .Apply(TerminalUserEnvironment.Windows(primary, account.HomeDirectory), windows: true);
                 var cwd = WindowsIdentity.RunImpersonated(impersonation, () =>
                 {
                     var path = request.Path!;
@@ -116,29 +119,6 @@ internal static class WindowsUserTerminal
         }
     }
 
-    private static Dictionary<string, string> UserEnvironment(SafeAccessTokenHandle token, string home)
-    {
-        if (!CreateEnvironmentBlock(out var block, token, false))
-            throw new Win32Exception(Marshal.GetLastWin32Error());
-        try
-        {
-            var environment = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            var cursor = block;
-            while (Marshal.PtrToStringUni(cursor) is { Length: > 0 } entry)
-            {
-                var separator = entry.IndexOf('=', 1);
-                if (separator > 0) environment[entry[..separator]] = entry[(separator + 1)..];
-                cursor += (entry.Length + 1) * sizeof(char);
-            }
-            environment["USERPROFILE"] = home;
-            environment["HOMEDRIVE"] = Path.GetPathRoot(home)!.TrimEnd('\\');
-            environment["HOMEPATH"] = home[environment["HOMEDRIVE"].Length..];
-            environment["TERM"] = "xterm-256color";
-            return environment;
-        }
-        finally { DestroyEnvironmentBlock(block); }
-    }
-
     private static void ConfigureTokenAccess(SafeAccessTokenHandle token, string userSid)
     {
         // DuplicateTokenEx is called as SYSTEM. Its default token-object ACL otherwise prevents
@@ -173,8 +153,4 @@ internal static class WindowsUserTerminal
     [DllImport("advapi32.dll", SetLastError = true)]
     private static extern bool SetTokenInformation(SafeAccessTokenHandle token, int informationClass,
         IntPtr information, int informationLength);
-    [DllImport("userenv.dll", SetLastError = true)]
-    private static extern bool CreateEnvironmentBlock(out IntPtr environment, SafeAccessTokenHandle token, bool inherit);
-    [DllImport("userenv.dll")]
-    private static extern bool DestroyEnvironmentBlock(IntPtr environment);
 }

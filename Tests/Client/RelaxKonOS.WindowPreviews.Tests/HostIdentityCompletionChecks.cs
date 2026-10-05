@@ -20,24 +20,28 @@ internal static class HostIdentityCompletionChecks
             Check(!vm.CanEdit && !vm.ShowApplyAction && !vm.ShowQueryAction, "Unloaded state");
             vm.ReloadCommand.ExecuteAsync(null).GetAwaiter().GetResult();
             vm.DraftName = "WIN-3QLG75ESVRUX";
-            Check(stub.MaximumLength == 15 ? vm.HasNameProblem && !vm.CanPreview
+            Check(stub.MaximumLength == 15 ? vm.HasNameProblem && !vm.CanApply
                 && vm.NameProblem.Contains("16") && vm.NameProblem.Contains("15")
-                : !vm.HasNameProblem && vm.CanPreview, "Remote platform length and specific feedback");
+                : !vm.HasNameProblem && vm.CanApply, "Remote platform length and specific feedback");
             vm.DraftName = "WIN-3QLG75ESVRU";
-            Check(!vm.HasNameProblem && vm.CanPreview, "Windows 15-character boundary");
+            Check(!vm.HasNameProblem && vm.CanApply, "Windows 15-character boundary");
             vm.DraftName = "new-host";
-            vm.PreviewCommand.ExecuteAsync(null).GetAwaiter().GetResult();
-            Check(vm.HasDraft && vm.ResetDraftCommand.CanExecute(null), "Preview remains a resettable draft");
+            Check(vm.CanApply && vm.HasDraft && vm.ResetDraftCommand.CanExecute(null), "Changed name can be applied directly or reset");
             vm.ResetDraftCommand.Execute(null);
-            Check(!vm.HasDraft && !vm.HasPreview && vm.DraftName == vm.PendingHostName, "Reset draft to current value");
+            Check(!vm.HasDraft && !vm.CanApply && vm.DraftName == vm.PendingHostName, "Reset draft to current value");
             vm.DraftName = "new-host";
-            vm.PreviewCommand.ExecuteAsync(null).GetAwaiter().GetResult();
-            var completedId = vm.OperationId;
+            vm.RequestAuthorizationAsync = _ => Task.FromResult(false);
+            vm.ApplyCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+            Check(stub.ApplyCalls == 0 && vm.HasDraft && vm.CanEdit && vm.CanApply, "Cancelled authorization preserves draft without writing");
+            var preparedId = vm.OperationId;
+            vm.RequestAuthorizationAsync = _ => Task.FromResult(true);
             var applying = vm.ApplyCommand.ExecuteAsync(null);
-            Check(vm.IsBusy && !vm.CanEdit && !vm.HasPreview && !vm.IsCompleted, "Applying state");
+            var completedId = vm.OperationId;
+            Check(preparedId == completedId && stub.ApplyCalls == 1, "Retry uses the prepared plan");
+            Check(vm.IsBusy && !vm.CanEdit && !vm.CanReload && !vm.IsCompleted, "Applying state");
             stub.Pending.SetResult(stub.Result(SettingsOperationState.Applied, "r2"));
             applying.GetAwaiter().GetResult();
-            Check(vm.IsCompleted && vm.CanEdit && !vm.HasPreview && !vm.ShowQueryAction
+            Check(vm.IsCompleted && vm.CanEdit && !vm.ShowQueryAction
                 && vm.CanRollback && vm.PendingHostName == "new-host" && vm.DraftName == "new-host", "Confirmed completion");
             Check(effective == SettingsEffectiveState.HostRestart
                 ? vm.CurrentHostName == "old-host" && vm.RestartPending
@@ -46,21 +50,18 @@ internal static class HostIdentityCompletionChecks
             vm.ResetDraftCommand.Execute(null);
             Check(!vm.HasDraft && vm.CanRollback, "Reset preserves completed operation rollback");
             vm.DraftName = "next-host";
-            vm.PreviewCommand.ExecuteAsync(null).GetAwaiter().GetResult();
-            Check(stub.Request!.ExpectedRevision == "r2", "Confirmed revision reused");
             vm.RollbackCommand.ExecuteAsync(null).GetAwaiter().GetResult();
             Check(stub.RollbackId.ToString("D") == completedId && stub.RollbackRevision == "r2"
-                && vm.IsCompleted && vm.CanEdit && !vm.CanRollback && !vm.HasPreview
+                && vm.IsCompleted && vm.CanEdit && !vm.CanRollback
                 && vm.CurrentHostName == "old-host" && vm.PendingHostName == "old-host" && !vm.RestartPending,
                 "Restore original plan and names");
             vm.DraftName = "new-host";
-            vm.PreviewCommand.ExecuteAsync(null).GetAwaiter().GetResult();
-            Check(stub.Request!.ExpectedRevision == "r3", "Rollback revision reused");
             stub.Pending = new();
             applying = vm.ApplyCommand.ExecuteAsync(null);
+            Check(stub.Request!.ExpectedRevision == "r3", "Direct apply after rollback uses confirmed revision");
             stub.Pending.SetResult(stub.Result(SettingsOperationState.Unknown, null));
             applying.GetAwaiter().GetResult();
-            Check(!vm.CanEdit && !vm.IsCompleted && vm.ShowQueryAction && vm.HasOperation, "Unknown outcome retains query");
+            Check(!vm.CanEdit && !vm.CanReload && !vm.IsCompleted && vm.ShowQueryAction && vm.HasOperation, "Unknown outcome retains query and disables reload");
             Check(!vm.HasDraft && !vm.ResetDraftCommand.CanExecute(null), "Unknown submitted operation cannot be discarded as a draft");
             vm.QueryCommand.ExecuteAsync(null).GetAwaiter().GetResult();
             Check(vm.IsCompleted && vm.CanEdit && !vm.ShowQueryAction, "Query-confirmed completion");
@@ -83,6 +84,7 @@ public class IdentityCompletionServiceStub : DispatchProxy
     public int MaximumLength => Effective == SettingsEffectiveState.HostRestart ? 15 : 63;
     public TaskCompletionSource<SettingsOperation> Pending = new();
     public HostnamePreviewRequest? Request;
+    public int ApplyCalls;
     public Guid RollbackId;
     public string? RollbackRevision;
     public SettingsOperation Result(SettingsOperationState state, string? revision) =>
@@ -103,7 +105,7 @@ public class IdentityCompletionServiceStub : DispatchProxy
                 _plan = new(Guid.NewGuid(), _target, Request.ExpectedRevision, DateTimeOffset.UtcNow.AddMinutes(5),
                     [new("host.identity.hostname", "old-host", Request.Change.HostName)], default, "test", Effective, "test-impact");
                 return Task.FromResult(_plan);
-            case "ApplyAsync": return Pending.Task;
+            case "ApplyAsync": ApplyCalls++; return Pending.Task;
             case "GetOperationAsync": return Task.FromResult(Result(SettingsOperationState.Applied, "r4"));
             case "RollbackAsync":
                 RollbackId = (Guid)args![1]!;

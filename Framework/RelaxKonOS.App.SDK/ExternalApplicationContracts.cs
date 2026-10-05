@@ -103,6 +103,9 @@ public interface ISettingsNavigation
 {
     /// <summary>Opens Settings and selects its Applications page.</summary>
     Task OpenApplicationsAsync();
+
+    /// <summary>Opens the remote host environment editor. Navigation does not grant read or write access.</summary>
+    Task OpenEnvironmentAsync();
 }
 
 /// <summary>Window creation surface for package applications. Every window is owned by the package app id.</summary>

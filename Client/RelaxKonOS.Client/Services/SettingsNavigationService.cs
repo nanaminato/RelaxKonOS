@@ -12,4 +12,7 @@ public sealed class SettingsNavigationService : ISettingsNavigation
 
     public Task OpenApplicationsAsync() => Dispatcher.UIThread.InvokeAsync(() =>
         _activations.Activate(new AppActivationRequest(RelaxKonOSActivationUris.SettingsApplications))).GetTask();
+
+    public Task OpenEnvironmentAsync() => Dispatcher.UIThread.InvokeAsync(() =>
+        _activations.Activate(new AppActivationRequest(RelaxKonOSActivationUris.SettingsEnvironment))).GetTask();
 }

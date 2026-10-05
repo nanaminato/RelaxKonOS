@@ -81,6 +81,9 @@ public sealed partial class SystemPageViewModel : SettingsPageViewModel
 
     /// <summary>Provided by SettingsApp so system-property actions always open in a child window.</summary>
     public Func<Task>? RequestEnvironmentVariablesAsync { get; set; }
+    public Func<Task>? RequestWorkspaceEnvironmentAsync { get; set; }
+    [RelayCommand]
+    private Task OpenWorkspaceEnvironmentAsync() => RequestWorkspaceEnvironmentAsync?.Invoke() ?? Task.CompletedTask;
     public Func<Task>? RequestPerformanceOptionsAsync { get; set; }
 
     /// <summary>The remote machine's host name; it is never the client device's own name.</summary>

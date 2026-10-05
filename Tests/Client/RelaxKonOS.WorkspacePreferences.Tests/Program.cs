@@ -17,9 +17,11 @@ using RelaxKonOS.Shell;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Server.Settings;
 
+await WorkspaceEnvironmentTransportChecks.RunAsync();
+
 // Settings activation must reach the new detail routes without accepting arbitrary pages.
 var settingsApp = new RelaxKonOS.Client.Apps.Settings.SettingsApp();
-foreach (var route in new[] { "home", "accessibility", "system/preferences", "personalization/colors", "personalization/style", "personalization/layout", "personalization/background", "default-apps" })
+foreach (var route in new[] { "home", "accessibility", "system/preferences", "system/environment", "personalization/colors", "personalization/style", "personalization/layout", "personalization/background", "default-apps" })
     Check(settingsApp.CanHandleActivation(new Uri("relaxkonos://settings/" + route)), $"Settings rejected route '{route}'.");
 foreach (var uri in new[] { "relaxkonos://settings/personalization/unknown", "relaxkonos://settings/image-mirrors", "https://settings/home", "relaxkonos://other/home" })
     Check(!settingsApp.CanHandleActivation(new Uri(uri)), $"Settings accepted unsupported activation '{uri}'.");
@@ -194,6 +196,8 @@ static async Task Until(Func<bool> condition)
 
 public class SessionProxy : DispatchProxy
 {
+    public Action? OnAcquire;
+    public RelaxKonOS.Protocol.Identity.UserDto User = new(Guid.NewGuid(), "test", RelaxKonOS.Protocol.Common.HostPlatformKind.Windows, "test", DateTimeOffset.UtcNow, null);
     public string BaseUrl = "http://localhost:12345/";
     public AuthTokens Tokens = new("before-refresh", "refresh", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddDays(1));
     public WorkspaceDto Workspace = new(Guid.NewGuid(), Guid.NewGuid(), "test", WorkspaceState.Running, DateTimeOffset.UtcNow, null);
@@ -204,6 +208,7 @@ public class SessionProxy : DispatchProxy
     {
         if (method!.Name == "GetAccessTokenAsync")
         {
+            OnAcquire?.Invoke();
             if (RefreshOnAcquire) { Tokens = Tokens with { AccessToken = Guid.NewGuid().ToString() }; RefreshOnAcquire = false; }
             return Task.FromResult<string?>(Tokens.AccessToken);
         }
@@ -213,6 +218,7 @@ public class SessionProxy : DispatchProxy
             "get_ServiceId" => "stable-service",
             "get_EffectiveBaseUrl" => BaseUrl,
             "get_Tokens" => Tokens,
+            "get_CurrentUser" => User,
             "get_CurrentWorkspace" => Workspace,
             "get_CurrentSession" => Session,
             "add_StateChanged" or "remove_StateChanged" => null,

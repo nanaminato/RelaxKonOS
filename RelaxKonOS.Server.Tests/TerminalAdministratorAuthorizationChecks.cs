@@ -18,7 +18,7 @@ internal static class TerminalAdministratorAuthorizationChecks
         using var provider = services.BuildServiceProvider();
         var factory = new PassiveFactory();
         var context = provider.GetRequiredService<IHubContext<TerminalHub, ITerminalHubClient>>();
-        var manager = new TerminalSessionManager(factory, context);
+        var manager = new TerminalSessionManager(factory, context, null!, null!);
         var privileges = new TestHostAccountPrivilegeService { Level = HostAccountPrivilege.StandardUser };
         var caller = new Caller();
         var hub = new TerminalHub(manager, privileges) { Context = caller };

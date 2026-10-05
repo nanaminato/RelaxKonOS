@@ -248,6 +248,9 @@ public static class Bootstrapper
         services.AddHttpClient<HostSettings.IHostEnvironmentService, HostSettings.HostEnvironmentService>()
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
             .AddHttpMessageHandler<AcceptLanguageHandler>();
+        services.AddHttpClient<IWorkspaceEnvironmentClient, WorkspaceEnvironmentClient>()
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+            .AddHttpMessageHandler<AcceptLanguageHandler>();
         services.AddHttpClient<HostSettings.IHostIdentityService, HostSettings.HostIdentityService>()
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
             .AddHttpMessageHandler<AcceptLanguageHandler>();

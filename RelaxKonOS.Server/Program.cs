@@ -829,6 +829,7 @@ builder.Services.AddSingleton<WorkspaceWallpaperStore>();
 // The service only depends on the singleton runtime registry, so the singleton lifetime lets
 // background notification delivery read the cache without creating a database scope.
 builder.Services.AddSingleton<RelaxKonOS.Server.Settings.IWorkspaceSettingsService, RelaxKonOS.Server.Settings.WorkspaceSettingsService>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Settings.WorkspaceEnvironmentService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Settings.SettingsOperationJournal>();
 builder.Services.AddScoped<RelaxKonOS.Server.Settings.SettingsCatalog>();
 builder.Services.AddScoped<RelaxKonOS.Server.Settings.EnvironmentOperationCoordinator>();

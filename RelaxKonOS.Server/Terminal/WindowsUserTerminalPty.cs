@@ -9,8 +9,9 @@ namespace RelaxKonOS.Server.Terminal;
 
 /// <summary>Persistent connection to a Helper-owned ConPTY running as the authenticated OS user.</summary>
 public sealed class WindowsUserTerminalPty(UserExecutionContext context,
-    WindowsNamedPipeUserExecutionTransport transport) : IPty, IDisposable
+    WindowsNamedPipeUserExecutionTransport transport) : IPty, IWorkspaceTerminalPty, IDisposable
 {
+    public RelaxKonOS.Protocol.Settings.TerminalEnvironmentOverrides? WorkspaceEnvironment { get; set; }
     private readonly object _writeLock = new();
     private NamedPipeClientStream? _pipe;
     private int _exitSignaled;
@@ -25,14 +26,17 @@ public sealed class WindowsUserTerminalPty(UserExecutionContext context,
         Dictionary<string, string>? environment, IReadOnlyList<string>? arguments)
     {
         UserTerminalStreamProtocol.ValidateDimensions(columns, rows, 0, 0);
+        if (environment is not null) throw new InvalidOperationException("terminal.environment_must_be_resolved");
         var operationId = Guid.NewGuid();
         var request = new UserExecutionRequest(context.Identity, UserExecutionOperationKind.TerminalStart,
             TerminalAdministrator: IsAdministrator,
+            TerminalEnvironment: IsAdministrator ? null : WorkspaceEnvironment,
             Path: string.IsNullOrWhiteSpace(workingDirectory) ? DefaultWorkingDirectory : workingDirectory,
             TerminalShell: shell, TerminalColumns: columns, TerminalRows: rows,
             TerminalWidthPixels: 0, TerminalHeightPixels: 0, OperationId: operationId,
             Correlation: CorrelationContext.Create(operationId, "user.execution"));
         var pipe = transport.OpenTerminalAsync(request).GetAwaiter().GetResult();
+        WorkspaceEnvironment = null;
         _pipe = pipe;
         IsRunning = true;
         _ = Task.Run(async () =>
@@ -85,6 +89,7 @@ public sealed class WindowsUserTerminalPty(UserExecutionContext context,
     }
     public void Stop()
     {
+        WorkspaceEnvironment = null;
         IsRunning = false;
         Interlocked.Exchange(ref _pipe, null)?.Dispose();
     }

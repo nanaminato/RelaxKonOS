@@ -1,0 +1,31 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels" xmlns:protocol="clr-namespace:RelaxKonOS.Protocol.Settings;assembly=RelaxKonOS.Protocol"
+ xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.WorkspaceEnvironmentEditorView"
+ x:DataType="vm:WorkspaceEnvironmentEditorViewModel" Classes="builtin-app">
+  <Grid RowDefinitions="*,Auto">
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Margin="20" Spacing="12">
+        <TextBlock Text="{loc:Loc settings.workspace_environment.description}" TextWrapping="Wrap" />
+        <ListBox ItemsSource="{Binding Variables}" SelectedItem="{Binding SelectedVariable}" Height="160" IsEnabled="{Binding CanEdit}">
+          <ListBox.ItemTemplate><DataTemplate x:DataType="protocol:EnvironmentVariable"><Grid ColumnDefinitions="2*,5*" ColumnSpacing="12">
+            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" /><TextBlock Grid.Column="1" Text="{Binding RawValue}" TextTrimming="CharacterEllipsis" />
+          </Grid></DataTemplate></ListBox.ItemTemplate>
+        </ListBox>
+        <TextBlock Text="{loc:Loc settings.workspace_environment.name}" />
+        <TextBox Text="{Binding VariableName, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" MaxLength="255" AutomationProperties.Name="{loc:Loc settings.workspace_environment.name}" />
+        <TextBlock Text="{loc:Loc settings.workspace_environment.value}" />
+        <TextBox Text="{Binding VariableValue, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" MaxLength="32767" AutomationProperties.Name="{loc:Loc settings.workspace_environment.value}" />
+        <WrapPanel><Button Content="{loc:Loc settings.workspace_environment.stage}" Command="{Binding StageSetCommand}" Margin="0,0,8,8" /><Button Content="{loc:Loc settings.workspace_environment.remove}" Command="{Binding StageDeleteCommand}" Margin="0,0,8,8" /></WrapPanel>
+        <CheckBox Content="{loc:Loc settings.workspace_environment.append_path}" IsChecked="{Binding AppendPath, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" />
+        <TextBlock Text="{loc:Loc settings.workspace_environment.path_hint}" TextWrapping="Wrap" Opacity="0.7" />
+        <TextBlock Text="{Binding DraftSummary}" TextWrapping="Wrap" />
+        <CheckBox IsVisible="{Binding NeedsHighImpactConfirmation}" IsChecked="{Binding ConfirmHighImpact, Mode=TwoWay}" IsEnabled="{Binding CanEdit}"><TextBlock Text="{loc:Loc settings.workspace_environment.high_impact}" TextWrapping="Wrap" /></CheckBox>
+        <ProgressBar IsVisible="{Binding IsBusy}" IsIndeterminate="True" Height="3" />
+        <TextBlock Text="{Binding Status}" TextWrapping="Wrap" />
+      </StackPanel>
+    </ScrollViewer>
+    <Border Grid.Row="1" Padding="20,12" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0">
+      <WrapPanel HorizontalAlignment="Right"><Button Content="{loc:Loc settings.workspace_environment.reload}" Command="{Binding ReloadCommand}" Margin="0,0,8,8" /><Button Content="{loc:Loc settings.environment.apply}" Command="{Binding ApplyCommand}" Margin="0,0,8,8" /><Button Content="{loc:Loc common.close}" Command="{Binding CloseCommand}" Margin="0,0,0,8" /></WrapPanel>
+    </Border>
+  </Grid>
+</UserControl>

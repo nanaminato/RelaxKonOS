@@ -30,6 +30,8 @@ internal static class SettingsSystemVerification
         await SettingsOperationVerification.RunAsync(root);
         await SettingsIdentityVerification.RunAsync(root);
         await HostSettingsWireChecks.RunAsync(root);
+        WorkspaceEnvironmentChecks.Run(root);
+        await WorkspaceTerminalChecks.RunAsync(root);
         await VerifyHttpAsync(root);
         Verify(new InMemoryRegistryRepository());
         var options = new DbContextOptionsBuilder<RelaxKonOSDbContext>()
@@ -59,6 +61,33 @@ internal static class SettingsSystemVerification
         Console.WriteLine("Settings verification passed: stale writes, parallel writers, tenant isolation, corrupt data, SQLite restart.");
     }
 
+    private static async Task VerifyWorkspaceEnvironmentHttpAsync(HttpClient http, Workspace workspace)
+    {
+        var route = WorkspaceApiRoutes.Environment.Replace("{id}", workspace.Id.ToString("D"));
+        using var initial = await http.GetAsync(route);
+        Check(initial.IsSuccessStatusCode && initial.Headers.CacheControl?.NoStore == true, "Environment HTTP reads prohibit cache storage.");
+        var snapshot = (await initial.Content.ReadFromJsonAsync<RelaxKonOS.Protocol.Settings.WorkspaceEnvironmentSnapshot>(RelaxKonOSJsonOptions.Default))!;
+        var update = new RelaxKonOS.Protocol.Settings.WorkspaceEnvironmentUpdate(snapshot.Revision,
+            new([new("HTTP_ENV", RelaxKonOS.Protocol.Settings.EnvironmentMutationKind.Set, "value")]), RelaxKonOS.Protocol.Settings.EnvironmentPathMode.Append);
+        using var saved = await http.PutAsJsonAsync(route, update, RelaxKonOSJsonOptions.Default);
+        Check(saved.IsSuccessStatusCode && saved.Headers.CacheControl?.NoStore == true, "Environment HTTP writes use the typed service and prohibit caches.");
+        using var stale = await http.PutAsJsonAsync(route, update, RelaxKonOSJsonOptions.Default);
+        Check(stale.StatusCode == HttpStatusCode.Conflict, "Stale environment HTTP writes return conflict.");
+        var problem = JsonSerializer.Deserialize<JsonElement>(await stale.Content.ReadAsStringAsync());
+        Check(problem.GetProperty("problemCode").GetString() == "settings.revision_conflict", "Environment errors expose stable problem codes.");
+        using var missing = await http.PutAsJsonAsync(route, update with { ExpectedRevision = "" }, RelaxKonOSJsonOptions.Default);
+        Check((int)missing.StatusCode == 428, "Missing environment revisions are rejected.");
+        foreach (var method in new[] { HttpMethod.Get, HttpMethod.Put })
+        {
+            using var request = new HttpRequestMessage(method, route);
+            if (method == HttpMethod.Put) request.Content = JsonContent.Create(update, options: RelaxKonOSJsonOptions.Default);
+            request.Headers.Add("X-Test-Subject", Guid.NewGuid().ToString("D"));
+            using var denied = await http.SendAsync(request);
+            Check(denied.StatusCode == HttpStatusCode.NotFound && denied.Headers.CacheControl?.NoStore == true, "Foreign Workspace environment cannot be read or written.");
+        }
+        Console.WriteLine("PASS: Workspace environment HTTP ownership, no-store, typed snapshots, required revisions and conflict problems.");
+    }
+
     private static async Task VerifyHttpAsync(string root)
     {
         var owner = Guid.NewGuid();
@@ -80,6 +109,7 @@ internal static class SettingsSystemVerification
         builder.Services.AddSingleton<IWorkspaceRepository>(workspaces);
         builder.Services.AddSingleton<IRegistryRepository, InMemoryRegistryRepository>();
         builder.Services.AddSingleton<IWorkspaceSettingsService, WorkspaceSettingsService>();
+        builder.Services.AddSingleton(new WorkspaceEnvironmentService(root, Microsoft.AspNetCore.DataProtection.DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(root, "workspace-environment-keys")))));
         builder.Services.AddSingleton<WorkspaceWallpaperStore>();
         builder.Services.Configure<StorageOptions>(_ => { });
         var logDirectory = Path.Combine(root, "request-logs");
@@ -111,6 +141,7 @@ internal static class SettingsSystemVerification
         {
             var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
             using var http = new HttpClient { BaseAddress = new Uri(address) };
+            await VerifyWorkspaceEnvironmentHttpAsync(http, workspace);
             var route = WorkspaceApiRoutes.Preferences.Replace("{id}", workspace.Id.ToString());
             var initial = await http.GetFromJsonAsync<WorkspacePreferencesDto>(route, RelaxKonOSJsonOptions.Default);
             Check(initial?.Revision > 0, "HTTP GET must return a preference revision.");

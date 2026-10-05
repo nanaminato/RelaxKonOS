@@ -64,7 +64,7 @@ public sealed class TerminalHub : Hub<ITerminalHubClient>
             throw new HubException($"terminal.start_failed: {exception.ProblemCode}: {exception.Message}");
         }
         catch (Exception exception) when (exception is PlatformNotSupportedException
-            or InvalidOperationException or System.ComponentModel.Win32Exception or IOException
+            or InvalidOperationException or ArgumentException or System.ComponentModel.Win32Exception or IOException
             or OperationCanceledException)
         {
             // Report the operational reason without enabling SignalR detailed errors globally.

@@ -41,6 +41,7 @@ public partial class TerminalViewModel : LocalizedObservableObject
     public IReadOnlyList<double> FontSizes => TerminalAppearance.FontSizes;
     public IReadOnlyList<string> ColorSchemes => TerminalAppearance.ColorSchemes;
     public Func<Task>? RequestSettingsAsync { get; set; }
+    public Func<Task>? RequestEnvironmentAsync { get; set; }
     public Action? CloseSettingsAction { get; set; }
     public Action? RequestAdministratorTerminal { get; set; }
     public bool IsAdministrator { get; }
@@ -107,6 +108,9 @@ public partial class TerminalViewModel : LocalizedObservableObject
     [CommunityToolkit.Mvvm.Input.RelayCommand]
     private async Task OpenSettingsAsync()
         => await (RequestSettingsAsync?.Invoke() ?? Task.CompletedTask);
+
+    [CommunityToolkit.Mvvm.Input.RelayCommand]
+    private Task OpenEnvironmentAsync() => RequestEnvironmentAsync?.Invoke() ?? Task.CompletedTask;
 
     [CommunityToolkit.Mvvm.Input.RelayCommand]
     private void CloseSettings() => CloseSettingsAction?.Invoke();

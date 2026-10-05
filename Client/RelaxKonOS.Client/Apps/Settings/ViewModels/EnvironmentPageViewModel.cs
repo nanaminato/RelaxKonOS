@@ -60,7 +60,7 @@ public sealed partial class EnvironmentPageViewModel : SettingsPageViewModel
     public bool IsNotWindowsEnvironment => !IsWindowsEnvironment;
     public bool IsLinuxPamEnvironment => _snapshot?.Provider == "linux-pam-environment";
     public string EnvironmentEffectText => _snapshot?.EffectiveState == SettingsEffectiveState.NewLogin
-        ? T("settings.environment.pam_login_effect", "Changes apply to new PAM login sessions only. They do not update running processes or system services.")
+        ? T("settings.environment.pam_login_effect", "Changes apply to new login sessions and new ordinary RelaxKonOS terminals. Existing processes and system services are unchanged.")
         : T("settings.environment.effect", "Saved changes affect new processes. Running processes retain their environment.");
     /// <summary>True only after the administrator grant has succeeded and the unmasked snapshot is loaded.</summary>
     public bool HasLoadedEnvironment => _snapshot is not null;

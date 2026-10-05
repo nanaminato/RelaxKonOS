@@ -255,6 +255,16 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                 DataContext = new LegalTextDialogViewModel(document.LocalizedTitle, text, () => dialog.Close(true)),
             }, new Size(760, 620));
         };
+        systemPage.RequestWorkspaceEnvironmentAsync = async () =>
+        {
+            using var editor = new WorkspaceEnvironmentEditorViewModel(context.Services.GetRequiredService<IWorkspaceEnvironmentClient>(), session);
+            await context.ShowDialogAsync<bool>(window, LocalizedText.Get("settings.workspace_environment.title"), dialog =>
+            {
+                editor.RequestClose = () => dialog.Close(false);
+                _ = editor.ReloadCommand.ExecuteAsync(null);
+                return new WorkspaceEnvironmentEditorView { DataContext = editor };
+            }, new Size(680, 640));
+        };
         systemPage.RequestEnvironmentVariablesAsync = async () =>
         {
             EnvironmentPageViewModel? editor = null;
@@ -660,7 +670,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         var segments = GetPathSegments(uri);
         return (segments.Length == 1 && new[] { "home", "system", "account-security", "personalization", "time-language", "network", "apps", "default-apps", "developer", "accessibility", "about" }.Contains(segments[0], StringComparer.OrdinalIgnoreCase))
                || (segments.Length == 2 && segments[0].Equals("system", StringComparison.OrdinalIgnoreCase)
-                   && segments[1].Equals("preferences", StringComparison.OrdinalIgnoreCase))
+                   && new[] { "preferences", "environment" }.Contains(segments[1], StringComparer.OrdinalIgnoreCase))
                || (segments.Length == 2 && segments[0].Equals("personalization", StringComparison.OrdinalIgnoreCase)
                    && new[] { "colors", "style", "layout", "background" }.Contains(segments[1], StringComparer.OrdinalIgnoreCase))
                || (segments.Length == 3 && segments[0].Equals("apps", StringComparison.OrdinalIgnoreCase)
@@ -673,6 +683,13 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         var viewModel = _viewModel;
         if (viewModel is null) return;
         var segments = GetPathSegments(request.Uri);
+        if (segments.Length == 2 && segments[0].Equals("system", StringComparison.OrdinalIgnoreCase)
+            && segments[1].Equals("environment", StringComparison.OrdinalIgnoreCase))
+        {
+            viewModel.SelectPage("system");
+            _ = viewModel.Pages.OfType<SystemPageViewModel>().Single().OpenEnvironmentVariablesCommand.ExecuteAsync(null);
+            return;
+        }
         if (segments.Length is 1 or 2)
             viewModel.SelectPage(string.Join("/", segments));
         else if (segments.Length == 3 && segments[0].Equals("apps", StringComparison.OrdinalIgnoreCase)

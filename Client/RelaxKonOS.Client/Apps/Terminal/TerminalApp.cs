@@ -136,6 +136,7 @@ public sealed class TerminalApp : RemoteApplicationBase, IOpenTerminalApplicatio
         var settingsClient = context.Services.GetRequiredService<ITerminalSettingsClient>();
         var viewModel = new TerminalViewModel(session, settingsClient, diagnostics,
             context.Services.GetService<SshDesktopSession>(), sessionId, workingDirectory, isAdministrator);
+        viewModel.RequestEnvironmentAsync = context.Services.GetRequiredService<ISettingsNavigation>().OpenEnvironmentAsync;
         viewModel.RequestAdministratorTerminal = () => OpenWindow(context, session, diagnostics, null,
             workingDirectory, isAdministrator: true);
         var view = new TerminalView

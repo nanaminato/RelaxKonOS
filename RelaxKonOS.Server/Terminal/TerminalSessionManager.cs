@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using Microsoft.AspNetCore.SignalR;
@@ -18,13 +17,17 @@ public sealed class TerminalSessionManager
     private readonly ConcurrentDictionary<string, TerminalSession> _sessions = new();
     private readonly IPtyFactory _ptyFactory;
     private readonly IHubContext<TerminalHub, ITerminalHubClient> _hub;
+    private readonly Settings.WorkspaceEnvironmentService _environment;
+    private readonly Storage.IWorkspaceRepository _workspaces;
 
     public TerminalSessionManager(
         IPtyFactory ptyFactory,
-        IHubContext<TerminalHub, ITerminalHubClient> hub)
+        IHubContext<TerminalHub, ITerminalHubClient> hub,
+        Settings.WorkspaceEnvironmentService environment, Storage.IWorkspaceRepository workspaces)
     {
         _ptyFactory = ptyFactory;
         _hub = hub;
+        _environment = environment; _workspaces = workspaces;
     }
 
     /// <summary>
@@ -62,15 +65,23 @@ public sealed class TerminalSessionManager
         // service account. Keep an explicit Explorer directory intact, but otherwise start in the
         // effective user's home rather than inheriting the Server process's current environment.
         var workingDirectory = string.IsNullOrWhiteSpace(req.WorkingDirectory)
-            ? pty is LinuxUserTerminalPty userPty
+            ? pty is IWorkspaceTerminalPty userPty
                 ? userPty.DefaultWorkingDirectory
-                : pty is WindowsUserTerminalPty windowsPty ? windowsPty.DefaultWorkingDirectory
                 : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
             : req.WorkingDirectory!;
 
         try
         {
-            pty.Start(shell, req.Columns, req.Rows, workingDirectory, BuildEnvironment(), null);
+            if (!administrator)
+            {
+                if (!Guid.TryParse(userId, out var owner) || _workspaces.FindByUserId(owner) is not { } workspace || workspace.UserId != owner)
+                    throw new InvalidOperationException("terminal.workspace_not_found");
+                var snapshot = _environment.Read(workspace);
+                if (pty is not IWorkspaceTerminalPty configurable) throw new InvalidOperationException("terminal.environment_backend_unavailable");
+                configurable.WorkspaceEnvironment = new(snapshot.Variables.Select(value => new RelaxKonOS.Protocol.Settings.EnvironmentMutation(value.Name,
+                    RelaxKonOS.Protocol.Settings.EnvironmentMutationKind.Set, value.RawValue, value.ValueKind)).ToArray(), snapshot.PathMode);
+            }
+            pty.Start(shell, req.Columns, req.Rows, workingDirectory, null, null);
         }
         catch
         {
@@ -106,14 +117,4 @@ public sealed class TerminalSessionManager
     private static string DefaultShell() =>
         RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "powershell" : "bash";
 
-    /// <summary>继承宿主进程环境并补一个终端类型，保证 shell 有 PATH 等基础变量。</summary>
-    private static Dictionary<string, string> BuildEnvironment()
-    {
-        var env = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (DictionaryEntry kv in Environment.GetEnvironmentVariables())
-            if (kv.Key is string k && kv.Value is string v)
-                env[k] = v;
-        env["TERM"] = "xterm-256color";
-        return env;
-    }
 }

@@ -29,7 +29,10 @@ public static class UserExecutionRequestPolicy
         var noGit = request.GitArguments is null;
         var noTerminal = request.TerminalShell is null && request.TerminalColumns is null
             && request.TerminalRows is null && request.TerminalWidthPixels is null
-            && request.TerminalHeightPixels is null;
+            && request.TerminalHeightPixels is null && request.TerminalEnvironment is null;
+        if (request.TerminalEnvironment is { } environment && (!terminal || request.TerminalAdministrator
+            || request.Operation != UserExecutionOperationKind.TerminalStart || !environment.IsValid(request.Identity.Platform == Common.HostPlatformKind.Windows)))
+            return false;
         var noStaging = request.Offset is null && request.ExpectedBytes is null;
 
         return request.Operation switch

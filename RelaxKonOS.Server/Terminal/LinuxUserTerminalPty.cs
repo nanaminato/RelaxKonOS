@@ -10,8 +10,9 @@ using RoyalTerminal.Terminal;
 namespace RelaxKonOS.Server.Terminal;
 
 /// <summary>Bridges the dedicated Helper-owned user shell PTY to the existing Terminal session.</summary>
-public sealed class LinuxUserTerminalPty(UserExecutionContext context, PrivilegedHelperOptions options) : IPty, IDisposable
+public sealed class LinuxUserTerminalPty(UserExecutionContext context, PrivilegedHelperOptions options) : IPty, IWorkspaceTerminalPty, IDisposable
 {
+    public RelaxKonOS.Protocol.Settings.TerminalEnvironmentOverrides? WorkspaceEnvironment { get; set; }
     private readonly object _inputLock = new();
     private Process? _process;
     private int _exitSignaled;
@@ -23,6 +24,7 @@ public sealed class LinuxUserTerminalPty(UserExecutionContext context, Privilege
     public event Action<int>? ProcessExited;
     public void Start(string? shell, int columns, int rows, string? workingDirectory, Dictionary<string, string>? environment, IReadOnlyList<string>? arguments)
     {
+        if (environment is not null) throw new InvalidOperationException("terminal.environment_must_be_resolved");
         if (!OperatingSystem.IsLinux() || string.IsNullOrWhiteSpace(options.HelperPath) || !File.Exists(options.HelperPath)) throw new InvalidOperationException("User terminal Helper is unavailable.");
         UserTerminalStreamProtocol.ValidateDimensions(columns, rows, 0, 0);
         var p = new Process { StartInfo = new ProcessStartInfo(options.SudoPath) { UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true } };
@@ -31,12 +33,14 @@ public sealed class LinuxUserTerminalPty(UserExecutionContext context, Privilege
         p.Start(); _process = p; IsRunning = true; ChildPid = p.Id;
         var operationId = Guid.NewGuid();
         var request = new UserExecutionRequest(context.Identity, UserExecutionOperationKind.TerminalStart,
+            TerminalEnvironment: WorkspaceEnvironment,
             Path: string.IsNullOrWhiteSpace(workingDirectory) ? context.Identity.HomeDirectory : workingDirectory,
             TerminalShell: shell, TerminalColumns: columns, TerminalRows: rows,
             TerminalWidthPixels: 0, TerminalHeightPixels: 0, OperationId: operationId,
             Correlation: CorrelationContext.Create(operationId, "user.execution"));
         var line = System.Text.Json.JsonSerializer.Serialize(request, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default) + "\n";
         p.StandardInput.Write(line); p.StandardInput.Flush();
+        WorkspaceEnvironment = null;
         _ = Task.Run(async () => { var buffer = new byte[65536]; try { while (true) { var read = await p.StandardOutput.BaseStream.ReadAsync(buffer); if (read == 0) break; DataReceived?.Invoke(buffer[..read], read); } } catch { } });
         _ = Task.Run(async () => { try { await p.StandardError.ReadToEndAsync(); } catch { } });
         _ = Task.Run(async () =>
@@ -84,6 +88,7 @@ public sealed class LinuxUserTerminalPty(UserExecutionContext context, Privilege
     }
     public void Stop()
     {
+        WorkspaceEnvironment = null;
         if (_process is { } p)
         {
             lock (_inputLock)

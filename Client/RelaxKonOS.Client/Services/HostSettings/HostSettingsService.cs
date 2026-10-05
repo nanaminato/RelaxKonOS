@@ -8,6 +8,7 @@ namespace RelaxKonOS.Client.Services.HostSettings;
 /// <summary>Shared connection-bound HTTP transport for host settings; never replays writes.</summary>
 public abstract class HostSettingsService(HttpClient http, IAuthSession session)
 {
+    protected IAuthSession Session => session;
     public HostSettingsConnection CaptureConnection()
     {
         if (session.State != AuthSessionState.Authenticated || session.ServiceId is not { } serviceId
@@ -20,10 +21,13 @@ public abstract class HostSettingsService(HttpClient http, IAuthSession session)
         && session.ServiceId == connection.ServiceId && session.CurrentSession?.Id == connection.SessionId
         && session.CurrentUser?.Id == connection.UserId;
 
-    protected async Task<T> SendAsync<T>(HostSettingsConnection connection, HttpMethod method, string route, object? body, CancellationToken ct)
+    protected async Task<T> SendAsync<T>(HostSettingsConnection connection, HttpMethod method, string route, object? body, CancellationToken ct,
+        Func<bool>? isTargetCurrent = null)
     {
+        CheckTarget();
         var baseUrl = CurrentBaseUrl(connection);
         var token = await session.GetAccessTokenAsync(TimeSpan.FromSeconds(30), ct: ct);
+        CheckTarget();
         baseUrl = CurrentBaseUrl(connection);
         if (string.IsNullOrEmpty(token)) throw Problem(401, "settings.unauthenticated");
         using var request = new HttpRequestMessage(method, new Uri(new Uri(baseUrl), route))
@@ -32,6 +36,7 @@ public abstract class HostSettingsService(HttpClient http, IAuthSession session)
         };
         if (body is not null) request.Content = JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default);
         using var response = await http.SendAsync(request, ct);
+        CheckTarget();
         CheckConnection(connection);
         if (!response.IsSuccessStatusCode)
         {
@@ -43,7 +48,13 @@ public abstract class HostSettingsService(HttpClient http, IAuthSession session)
         var result = await response.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, ct)
             ?? throw Problem(502, "settings.empty_response");
         CheckConnection(connection);
+        CheckTarget();
         return result;
+
+        void CheckTarget()
+        {
+            if (isTargetCurrent?.Invoke() == false) throw Problem(409, "settings.connection_changed");
+        }
     }
 
     private void CheckConnection(HostSettingsConnection connection)

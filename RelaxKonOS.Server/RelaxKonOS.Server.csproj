@@ -8,6 +8,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <Compile Include="../RelaxKonOS.PrivilegedHelper/LinuxEnvironmentDocument.cs" Link="Settings/LinuxEnvironmentDocument.cs" />
         <PackageReference Include="Microsoft.AspNetCore.OpenApi"/>
         <PackageReference Include="Microsoft.OpenApi" />
         <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer"/>

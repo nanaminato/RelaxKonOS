@@ -172,6 +172,7 @@ public sealed partial class SettingsViewModel
             ("client.permissions", "apps", "settings.app_permissions", SettingsScope.ClientDevice, "permissions 授权 权限 権限"),
             ("account.alias", "account-security", "settings.account.title", SettingsScope.HostUser, "account security alias login 账号 安全 登录别名 アカウント セキュリティ ログイン エイリアス"),
             ("host.environment", "system", "settings.environment.title", SettingsScope.HostUser, "PATH environment 环境变量 路径 環境変数 パス"),
+            ("workspace.environment", "system", "settings.workspace_environment.title", SettingsScope.Workspace, "workspace PATH environment 工作区 环境变量 ワークスペース 環境変数"),
             ("host.time.zone", "time-language", "settings.time_zone", SettingsScope.HostMachine, "timezone time zone 时区 タイムゾーン"),
             ("host.identity.hostname", "system", "settings.hostname", SettingsScope.HostMachine, "hostname computer name 主机名 计算机名 ホスト名 コンピューター名"),
             ("relaxkonos.about", "about", "settings.about_page.title", SettingsScope.ClientDevice, "about website source repository license legal 开源 官网 许可证 法律情報")

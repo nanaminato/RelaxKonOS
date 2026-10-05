@@ -44,7 +44,6 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
     [ObservableProperty] private string _pendingHostName = "";
     [ObservableProperty] private string _draftName = "";
     [ObservableProperty] private int _maximumLength;
-    [ObservableProperty] private string _previewText = "";
     [ObservableProperty] private string _problemCode = "";
     public string StatusText => _localization.Get(_statusKey, _statusKey);
     public string OperationId => (_plan ?? _completedPlan)?.PlanId.ToString("D") ?? "";
@@ -61,13 +60,10 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
         UpdateCommands();
     }
 
-    public bool HasPreview => !_submitted && _plan is not null;
-    public bool ShowPreviewAction => !_submitted && _plan is null && !string.IsNullOrEmpty(DraftName)
-        && DraftName != PendingHostName;
-    public bool ShowApplyAction => !_submitted && _plan is not null;
+    public bool ShowApplyAction => HasDraft;
     public bool ShowQueryAction => _submitted;
     public bool ShowRollbackAction => !_submitted && _completedOperation?.State == SettingsOperationState.Applied;
-    public bool IsCompleted => !_submitted && _plan is null && _completedOperation is not null;
+    public bool IsCompleted => !_submitted && !HasDraft && _plan is null && _completedOperation is not null;
     public bool HasOperation => _plan is not null || _completedPlan is not null;
     public bool HasProblem => !string.IsNullOrEmpty(ProblemCode);
     public bool HasNameProblem => !string.IsNullOrEmpty(NameProblem);
@@ -75,11 +71,10 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
     /// <summary>The platform stages the rename until restart, so the live name is still the old one.</summary>
     public bool RestartPending => _snapshot is not null
         && !string.Equals(CurrentHostName, PendingHostName, StringComparison.Ordinal);
-    public bool CanReload => !IsBusy;
-    public bool CanPreview => !IsBusy && !_submitted && _snapshot is not null && !string.IsNullOrEmpty(DraftName)
+    public bool CanReload => !IsBusy && !_submitted;
+    public bool CanApply => !IsBusy && !_submitted && _snapshot is not null && !string.IsNullOrEmpty(DraftName)
         && HostIdentityValidation.Validate(new(DraftName), MaximumLength) is null
         && !string.Equals(DraftName, PendingHostName, StringComparison.Ordinal);
-    public bool CanApply => !IsBusy && !_submitted && _plan is not null && _plan.ExpiresAt > DateTimeOffset.UtcNow;
     public bool CanQuery => !IsBusy && _plan is not null;
     public bool CanRollback => !IsBusy && ShowRollbackAction && !string.IsNullOrEmpty(_completedOperation?.ObservedRevision);
     public bool CanEdit => !IsBusy && !_submitted && _snapshot is not null;
@@ -87,7 +82,7 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
     partial void OnIsBusyChanged(bool value) => UpdateCommands();
     partial void OnDraftNameChanged(string value)
     {
-        if (!_submitted) { _plan = null; PreviewText = ""; }
+        if (!_submitted) { _plan = null; }
         OnPropertyChanged(nameof(NameProblem));
         UpdateCommands();
     }
@@ -124,33 +119,26 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
         PendingHostName = snapshot.Value.PendingHostName;
         MaximumLength = snapshot.Value.MaximumHostNameLength;
         DraftName = snapshot.Value.PendingHostName;
-        PreviewText = "";
+
         OnPropertyChanged(nameof(RestartPending));
         SetStatus("settings.hostname.loaded");
         ProblemCode = snapshot.Capability.ReasonCode ?? "";
-    });
-
-    [RelayCommand(CanExecute = nameof(CanPreview))]
-    private Task PreviewAsync() => RunAsync(async ct =>
-    {
-        var connection = Connection();
-        var plan = await _service.PreviewAsync(connection,
-            new(_snapshot!.Value.Revision, Guid.NewGuid().ToString("N"), new(DraftName)), ct);
-        if (_disposed) return;
-        _plan = plan;
-        PreviewText = string.Join(Environment.NewLine, plan.Differences.Select(d => $"{d.Before} → {d.After}"))
-            + Environment.NewLine + _localization.Get(plan.ImpactCode, plan.ImpactCode)
-            + Environment.NewLine + _localization.Get("settings.effective." + plan.EffectiveState.ToString().ToLowerInvariant(),
-                plan.EffectiveState.ToString())
-            + Environment.NewLine + plan.ExpiresAt.ToLocalTime().ToString("g");
-        SetStatus("settings.hostname.review");
     });
 
     [RelayCommand(CanExecute = nameof(CanApply))]
     private Task ApplyAsync() => RunAsync(async ct =>
     {
         var connection = Connection();
-        var plan = _plan!;
+        // Preparation remains a server contract, not a separate user action.
+        var plan = _plan;
+        if (plan is null || plan.ExpiresAt <= DateTimeOffset.UtcNow)
+        {
+            plan = await _service.PreviewAsync(connection,
+                new(_snapshot!.Value.Revision, Guid.NewGuid().ToString("N"), new(DraftName)), ct);
+            ct.ThrowIfCancellationRequested();
+            if (!_service.IsCurrent(connection)) throw new InvalidOperationException("settings.connection_changed");
+            _plan = plan;
+        }
         // Authentication UI is invoked only by the user's explicit Apply action.
         if (RequestAuthorizationAsync is null || !await RequestAuthorizationAsync(connection))
         { SetStatus("settings.hostname.authorization_cancelled"); return; }
@@ -195,7 +183,7 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
             if (operation.EffectiveState == SettingsEffectiveState.Immediate) CurrentHostName = PendingHostName;
             _completedPlan = _plan;
             _completedOperation = operation;
-            PreviewText = "";
+
             // Preserve the live name for staged renames, and use the confirmed revision for the next edit.
             if (!string.IsNullOrEmpty(operation.ObservedRevision) && _snapshot is not null)
             {
@@ -243,8 +231,6 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
         ResetDraftCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanEdit));
         OnPropertyChanged(nameof(OperationId));
-        OnPropertyChanged(nameof(HasPreview));
-        OnPropertyChanged(nameof(ShowPreviewAction));
         OnPropertyChanged(nameof(ShowApplyAction));
         OnPropertyChanged(nameof(ShowQueryAction));
         OnPropertyChanged(nameof(ShowRollbackAction));
@@ -253,7 +239,7 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
         OnPropertyChanged(nameof(HasNameProblem));
         OnPropertyChanged(nameof(NameLengthHint));
         OnPropertyChanged(nameof(HasNameLengthHint));
-        ReloadCommand.NotifyCanExecuteChanged(); PreviewCommand.NotifyCanExecuteChanged();
+        ReloadCommand.NotifyCanExecuteChanged();
         ApplyCommand.NotifyCanExecuteChanged(); QueryCommand.NotifyCanExecuteChanged(); RollbackCommand.NotifyCanExecuteChanged();
     }
     private void OnLanguageChanged(object? sender, EventArgs args)
@@ -270,7 +256,7 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
         _lifetime.Cancel(); _lifetime.Dispose(); _lifetime = new();
         _connection = null; _snapshot = null; _plan = null; _completedPlan = null; _completedOperation = null; _submitted = false;
         CurrentHostName = ""; PendingHostName = ""; DraftName = ""; MaximumLength = 0;
-        TargetText = ""; PreviewText = ""; ProblemCode = "";
+        TargetText = ""; ProblemCode = "";
         OnPropertyChanged(nameof(RestartPending));
         SetStatus("settings.hostname.load_prompt"); UpdateCommands();
     });
