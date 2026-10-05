@@ -1,6 +1,11 @@
 {
     "Culture": "ja-JP",
     "Strings": {
+    "settings.server_https.title": "サーバー HTTPS",
+    "settings.server_https.description": "インストール時に起動用証明書を設定します。変更する場合は管理対象の証明書を選択してください。",
+    "settings.server_https.replace": "サーバー HTTPS 証明書を変更",
+    "settings.server_https.warning": "変更後、クライアントの再接続や新しい証明書の信頼が必要になる場合があります。ドメイン、有効期限、SHA-256 指紋を確認してください。",
+
         "settings.usage_memory.title": "使用履歴の記憶",
         "settings.usage_memory.description": "この端末に管理者ユーザー名と用途ごとのファイル選択フォルダーを記憶します。消去は現在のサーバーの現在のアカウントに適用されます。",
         "settings.usage_memory.clear": "使用履歴の記憶を消去",

@@ -58,7 +58,9 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
     public IReadOnlyList<CertificateOption<CertificateKeyAlgorithm>> KeyAlgorithms { get; }
 
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(DeployCommand), nameof(RenewCommand), nameof(RevokeCommand), nameof(DeleteCommand))]
+    [NotifyPropertyChangedFor(nameof(SelectedCertificateDomains))]
     private CertificateDto? _selectedCertificate;
+    public string SelectedCertificateDomains => SelectedCertificate is { } certificate ? string.Join(", ", certificate.SubjectAlternativeNames) : string.Empty;
     [ObservableProperty] private LocalizedStatus _statusText = LocalizedText.Ref("certificates.status.loading");
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasOperationActivity))]
     private LocalizedStatus _operationText;

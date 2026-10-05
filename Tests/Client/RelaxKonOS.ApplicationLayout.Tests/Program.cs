@@ -131,6 +131,99 @@ foreach (var style in SystemStyleIds.All)
     installer.CurrentPackage = null; // The sample has no installer service or package file to discard.
     cases++;
 }
+// Operation activity keeps a compact status row; output is opened only on request.
+foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
+{
+    settings.Language = culture;
+    vm.OperationTitle = "Restart test3";
+    vm.OperationStatus = LocalizedText.Ref("docker.operation.running_label");
+    vm.OperationLog = string.Join(Environment.NewLine, Enumerable.Range(1, 80).Select(i => $"[{i}] service output"));
+    vm.IsOperationRunning = true;
+    vm.IsOperationLogExpanded = false;
+    var type = typeof(DockerManagerViewModel).Assembly.GetType("RelaxKonOS.Client.Apps.Docker.DockerOperationActivityView")!;
+    var activity = (Control)Activator.CreateInstance(type)!;
+    activity.DataContext = vm;
+    host.Width = 800;
+    host.Height = 520;
+    host.Content = activity;
+    Dispatcher.UIThread.RunJobs();
+        Check(activity.Bounds.Height <= 40, "Collapsed activity uses only one status row.");
+    var toggle = activity.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().Single(b => b.Name == "OperationLogToggle");
+    Check(toggle.IsChecked != true, "Logs stay hidden until requested.");
+    toggle.IsChecked = true;
+    Dispatcher.UIThread.RunJobs();
+    Check(vm.IsOperationLogExpanded, "The log entry opens the output panel.");
+    Check(activity.Bounds.Height <= 232, "Expanded output remains bounded.");
+    Check(activity.GetVisualDescendants().OfType<ProgressBar>().Single().IsVisible, "Running activity has a progress indicator.");
+    var log = activity.GetVisualDescendants().OfType<TextBox>().Single();
+    Check(log.Text == vm.OperationLog && log.Bounds.Height == 180 && log.IsEffectivelyVisible, "Logs remain readable in a bounded viewport.");
+    toggle.IsChecked = false;
+    Dispatcher.UIThread.RunJobs();
+    Check(activity.Bounds.Height <= 40 && vm.IsOperationRunning, "Hiding output restores space without stopping the operation.");
+    vm.CloseOperationActivityCommand.Execute(null);
+    Check(vm.HasOperationActivity, "Running activity cannot be dismissed accidentally.");
+    vm.IsOperationRunning = false;
+    Dispatcher.UIThread.RunJobs();
+    Check(!activity.GetVisualDescendants().OfType<ProgressBar>().Single().IsVisible, "Completed activity stops animating.");
+    vm.CloseOperationActivityCommand.Execute(null);
+    Check(!vm.HasOperationActivity, "Completed activity can be dismissed.");
+    if (culture == "zh-CN")
+    {
+        appearance.Apply(ThemeKind.Light, AppearancePreferencesDto.Default, SystemStyleIds.WindowsLike);
+        var workspaceType = typeof(DockerManagerViewModel).Assembly.GetType("RelaxKonOS.Client.Apps.Docker.Views.DockerManagerWorkspace")!;
+        Func<Task> noOp = () => Task.CompletedTask;
+        var workspace = (Control)workspaceType.GetMethod("Create")!.Invoke(null, new object?[] { vm, null, null, noOp, noOp, noOp, noOp, noOp })!;
+        vm.OperationTitle = "Restart test3";
+        vm.IsOperationRunning = true;
+        vm.OperationStatus = LocalizedText.Ref("docker.operation.running_label");
+        vm.OperationLog = string.Join(Environment.NewLine, Enumerable.Range(1, 80).Select(i => $"[{i}] service output"));
+        host.Content = workspace;
+        foreach (var expanded in new[] { false, true })
+        {
+            vm.IsOperationLogExpanded = expanded;
+            Dispatcher.UIThread.RunJobs();
+            var bar = workspace.GetVisualDescendants().Single(c => c.GetType() == type);
+            var point = bar.TranslatePoint(default, workspace)!.Value;
+            Check(Math.Abs(point.Y + bar.Bounds.Height - workspace.Bounds.Height) <= 1, "Activity is docked at the bottom of the workspace.");
+            using var bitmap = new RenderTargetBitmap(new PixelSize(800, 520));
+            bitmap.Render(workspace);
+            bitmap.Save(Path.Combine(output, expanded ? "Activity-expanded.png" : "Activity-compact.png"), PngBitmapEncoderOptions.Default);
+        }
+        vm.IsOperationRunning = false;
+        vm.CloseOperationActivityCommand.Execute(null);
+    }
+    cases++;
+}
+foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
+foreach (var mode in new[] { ThemeKind.Light, ThemeKind.Dark })
+{
+    settings.Language = culture;
+    appearance.Apply(mode, AppearancePreferencesDto.Default, SystemStyleIds.WindowsLike);
+    var certificateVm = new RelaxKonOS.Client.Apps.Certificates.CertificateManagerViewModel(null!, null!, new LayoutCertificatePermissions());
+    var now = DateTimeOffset.UtcNow;
+    var certificate = new RelaxKonOS.Protocol.Certificates.CertificateDto(Guid.NewGuid(), "192.168.1.2", ["192.168.1.2", "server.example.test"], "CN=192.168.1.2", "123", "123", now, now.AddDays(365),
+        RelaxKonOS.Protocol.Certificates.CertificateStatus.Active, RelaxKonOS.Protocol.Certificates.CertificateChallengeType.Dns01,
+        RelaxKonOS.Protocol.Certificates.CertificateKeyAlgorithm.EcdsaP256, null, null, null, null, now, now,
+        FingerprintSha256: string.Join(':', Enumerable.Repeat("AB", 32)));
+    certificateVm.Certificates.Add(certificate);
+    certificateVm.SelectedCertificate = certificate;
+    var httpsView = new RelaxKonOS.Client.Apps.Settings.Views.ServerHttpsDialogView { DataContext = certificateVm };
+    host.Width = 660; host.Height = 480; host.Content = httpsView;
+    Dispatcher.UIThread.RunJobs();
+    Check(ReferenceEquals(httpsView.GetVisualDescendants().OfType<ComboBox>().Single().SelectedItem, certificate), "HTTPS selection uses the managed certificate.");
+    var replace = httpsView.GetVisualDescendants().OfType<Button>().Single(button => button.Classes.Contains("primary"));
+    Check(replace.TranslatePoint(default, httpsView) is { } point && point.Y >= 0 && point.Y + replace.Bounds.Height <= httpsView.Bounds.Height, "HTTPS replacement action fits the dialog.");
+    Check(certificateVm.SelectedCertificateDomains.Contains("192.168.1.2") && certificateVm.SelectedCertificateDomains.Contains("server.example.test"), "HTTPS replacement presents all certificate names.");
+    Check(!httpsView.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text?.Contains("[missing:") == true), "HTTPS labels resolve in every language.");
+    Check(!certificateVm.HasOperationActivity, "Opening HTTPS settings does not change the server certificate.");
+    if (culture == "zh-CN")
+    {
+        using var bitmap = new RenderTargetBitmap(new PixelSize(660, 480));
+        bitmap.Render(httpsView);
+        bitmap.Save(Path.Combine(output, $"ServerHttps-{mode}.png"), PngBitmapEncoderOptions.Default);
+    }
+    cases++;
+}
 host.Close();
 Console.WriteLine($"PASS: {cases} real-page layouts across 3 languages, 2 modes and 3 system styles. Screenshots: {output}");
 static void Check(bool condition, string message)
@@ -147,4 +240,11 @@ public sealed class LayoutApp : Application
         Styles.Add(new StyleInclude(new Uri("avares://RelaxKonOS.UI/"))
             { Source = new Uri("avares://RelaxKonOS.UI/Themes/RelaxKonOSTheme.axaml") });
     }
+}
+public sealed class LayoutCertificatePermissions : RelaxKonOS.AppSDK.IAppPermissionScope
+{
+    public RelaxKonOS.AppSDK.AppPermissionStatus GetStatus(string permissionId) => RelaxKonOS.AppSDK.AppPermissionStatus.Granted;
+    public bool IsGranted(string permissionId) => true;
+    public Task<RelaxKonOS.AppSDK.AppPermissionStatus> RequestAsync(string permissionId, CancellationToken cancellationToken = default) => Task.FromResult(GetStatus(permissionId));
+    public Task OpenSettingsAsync() => Task.CompletedTask;
 }

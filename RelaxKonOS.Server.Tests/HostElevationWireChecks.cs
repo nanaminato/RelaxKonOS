@@ -82,6 +82,13 @@ public static class HostElevationWireChecks
         Assert(store.IsGranted(principal, HostElevationCapability.CertificateCreateSelfSigned, "certificates/self-signed"), "Certificate creation grant was not recognized");
         Assert(!store.IsGranted(principal, HostElevationCapability.CertificateCreateSelfSigned, "certificates/other"), "Certificate grant crossed targets");
         Assert(!store.IsGranted(principal, HostElevationCapability.NginxConfigurationWrite, "certificates/self-signed"), "Certificate grant crossed capabilities");
+        var certificateTarget = $"certificates/{Guid.NewGuid():D}/server-https";
+        var replacement = new HostElevationRequest(HostElevationCapability.CertificateReplaceServerHttps, certificateTarget);
+        await Grant(replacement, HttpStatusCode.Forbidden);
+        await Grant(replacement with { AdministratorUsername = "alice", Password = "test-password" }, HttpStatusCode.OK);
+        Assert(store.IsGranted(principal, HostElevationCapability.CertificateReplaceServerHttps, certificateTarget), "Server HTTPS grant was not recognized");
+        Assert(!store.IsGranted(principal, HostElevationCapability.CertificateReplaceServerHttps, $"certificates/{Guid.NewGuid():D}/server-https"), "Server HTTPS grant crossed certificate targets");
+        Assert(!store.IsGranted(principal, HostElevationCapability.CertificateCreateSelfSigned, certificateTarget), "Server HTTPS grant crossed capabilities");
         Console.WriteLine("Host elevation HTTP checks passed: administrator revalidation, alias challenge, exact grants and target ownership.");
     }
 

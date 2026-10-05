@@ -138,7 +138,6 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
 
     public async Task<CertificateOperationDto> DeployKestrelAsync(Guid certificateId, string idempotencyKey, string? actor, CancellationToken cancellationToken)
     {
-        if (!privileges.IsAdministrator) return Failure("deploy-kestrel", "certificate.deployment_elevation_required");
         if (await operations.FindRequestAsync(idempotencyKey, certificateId, "deploy-kestrel", actor, cancellationToken) is { } replay) return replay;
         var record = await certificates.GetAsync(certificateId, cancellationToken);
         if (CertificateUsagePolicy.Problem(record, DateTimeOffset.UtcNow) is { } problem) return Failure("deploy-kestrel", problem);
@@ -154,13 +153,13 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
                 await deployments.RecordKestrelAsync(current!, false, "certificate.material_unavailable", ct);
                 return "certificate.material_unavailable";
             }
-            if (!kestrel.Activate(certificateId, certificate, current!.Domains))
+            if (!kestrel.Activate(certificateId, certificate, current!.Domains, makeDefault: true))
             {
                 certificate.Dispose();
                 await deployments.RecordKestrelAsync(current!, false, "certificate.kestrel_activation_failed", ct);
                 return "certificate.kestrel_activation_failed";
             }
-            await deployments.RecordKestrelAsync(current!, true, null, ct);
+            await deployments.RecordKestrelAsync(current!, true, null, ct, makeDefault: true);
             return "";
         }, lifetime.ApplicationStopping);
     }

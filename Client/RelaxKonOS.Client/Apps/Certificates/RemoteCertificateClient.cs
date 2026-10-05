@@ -40,7 +40,11 @@ public sealed class RemoteCertificateClient(HttpClient http, IAuthSession sessio
         => SendAsync<KestrelCertificateDeploymentDto>(HttpMethod.Get, CertificateApiRoutes.Deploy.Replace("{id}", id.ToString("N")), null, null, cancellationToken);
 
     public Task<CertificateOperationDto> DeployKestrelAsync(Guid id, CancellationToken cancellationToken = default)
-        => SendAsync<CertificateOperationDto>(HttpMethod.Post, CertificateApiRoutes.Deploy.Replace("{id}", id.ToString("N")), null, NewKey(), cancellationToken);
+    {
+        var key = NewKey();
+        return elevations.ExecuteAsync(HostElevationCapability.CertificateReplaceServerHttps, $"certificates/{id:D}/server-https",
+            () => SendAsync<CertificateOperationDto>(HttpMethod.Post, CertificateApiRoutes.Deploy.Replace("{id}", id.ToString("N")), null, key, cancellationToken), cancellationToken);
+    }
 
     public Task<CertificateOperationDto> RenewAsync(Guid id, CancellationToken cancellationToken = default)
         => SendAsync<CertificateOperationDto>(HttpMethod.Post, CertificateApiRoutes.Renew.Replace("{id}", id.ToString("N")), null, NewKey(), cancellationToken);

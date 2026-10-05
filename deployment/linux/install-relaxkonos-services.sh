@@ -236,6 +236,7 @@ COMPOSE_DATA="$DATA_ROOT/docker-compose"
 SERVER_DATA="$DATA_ROOT/server"
 WEBSERVER_DATA="$DATA_ROOT/webserver/nginx"
 CERTIFICATE_DATA="$SERVER_DATA/certificates"
+MANAGED_CERTIFICATE_DATA="$SERVER_DATA/managed-certificates"
 install -d -o root -g "$SERVICE_GROUP" -m 0710 /etc/relaxkonos
 # Nginx workers must traverse this parent to reach RelaxKonOS-owned public static sites, but
 # must never be able to enumerate the platform data root.
@@ -243,6 +244,8 @@ install -d -o root -g "$SERVICE_GROUP" -m 0711 "$DATA_ROOT" /var/lib/relaxkonos
 install -d -m 0700 "$GUARDIAN_DATA"
 install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 "$COMPOSE_DATA"
 install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 "$SERVER_DATA"
+# Certificate Manager owns its PEM store; bootstrap.pfx stays root-owned and read-only.
+install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0700 "$MANAGED_CERTIFICATE_DATA"
 install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0700 "$DATA_ROOT/server-home"
 # Stores with ContentRoot-relative defaults share the persistent service data root.
 SERVER_DATA_LINK="$(dirname "$SERVER_EXECUTABLE")/data"
@@ -365,6 +368,7 @@ GuardianAgent__SharedSecret=$SECRET
 GuardianAgent__PipeName=relaxkonos-guardian
 Storage__DatabasePath=$SERVER_DATA/relaxkonos.db
 Storage__WallpaperPath=$SERVER_DATA/wallpapers
+Certificate__StorageRoot=$MANAGED_CERTIFICATE_DATA
 EventAlerts__DatabasePath=$(realpath -m --relative-to="$(dirname "$SERVER_EXECUTABLE")" "$SERVER_DATA/event-alerts.db")
 BackupRecovery__RootDirectory=$SERVER_DATA/backup-recovery
 DockerCompose__DataDirectory=$COMPOSE_DATA

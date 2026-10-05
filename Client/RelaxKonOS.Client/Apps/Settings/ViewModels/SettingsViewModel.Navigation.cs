@@ -93,6 +93,7 @@ public sealed partial class SettingsViewModel
     {
         (string Id, string Page, string Title, SettingsScope Scope, string Keywords)[] items =
         [
+            ("host.serverHttps", "system", "settings.server_https.title", SettingsScope.HostMachine, "HTTPS TLS certificate 证书 服务器 换证 証明書 サーバー"),
             ("workspace.colors", "personalization", "settings.colors_and_mode", SettingsScope.Workspace, "colors mode theme light dark palette 颜色 模式 主题 外观 配色 色 テーマ ライト ダーク"),
             ("workspace.systemStyle", "personalization", "settings.system_style", SettingsScope.Workspace, "system style window menu overview chrome corners 系统风格 窗口 菜单 任务概览 圆角 システム スタイル ウィンドウ メニュー 角"),
             ("workspace.desktopLayout", "personalization", "settings.desktop_layout", SettingsScope.Workspace, "desktop layout shell taskbar dock launcher 桌面布局 桌面样式 任务栏 启动器 デスクトップ レイアウト タスクバー"),

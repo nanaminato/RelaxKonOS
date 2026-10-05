@@ -9,10 +9,27 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 BOOTSTRAP = (ROOT / 'deployment/bootstrap/install-relaxkonos.sh').read_text(encoding='utf-8')
 LAUNCHER = (ROOT / 'deployment/launcher/relaxkonos-deploy.sh').read_text(encoding='utf-8')
+SERVICES = (ROOT / 'deployment/linux/install-relaxkonos-services.sh').read_text(encoding='utf-8')
 BASH = shutil.which('bash') if os.name != 'nt' else 'C:/Program Files/Git/bin/bash.exe'
 
 
 class CertificateRepairChecks(unittest.TestCase):
+    def test_managed_store_is_writable_and_separate_from_bootstrap(self):
+        # Execute the installer's directory and environment preparation, intercepting
+        # privileged filesystem operations so the test cannot change host policy.
+        directories = SERVICES.split('GUARDIAN_DATA="$DATA_ROOT/guardian"', 1)[1].split('SERVER_DATA_LINK=', 1)[0]
+        environment = SERVICES.split('cat >/etc/relaxkonos/server.env <<EOF\n', 1)[1].split('\nEOF', 1)[0]
+        for data_root in ['/var/lib/relaxkonos', '/srv/custom-relaxkonos']:
+            with self.subTest(data_root=data_root):
+                script = 'install() { printf "directory:%s\\n" "$*"; };\n' + directories + '\ncat <<EOF\n' + environment + '\nEOF\n'
+                result = subprocess.run([BASH, '-s'], input=script, text=True, capture_output=True, check=True,
+                    env={**os.environ, 'DATA_ROOT': data_root, 'SERVICE_USER': 'server-test', 'SERVICE_GROUP': 'server-test',
+                         'SERVER_EXECUTABLE': '/opt/relaxkonos/server/RelaxKonOS.Server', 'CERTIFICATE_MODE': 'none'})
+                managed_root = data_root + '/server/managed-certificates'
+                self.assertIn('directory:-d -o server-test -g server-test -m 0700 ' + managed_root, result.stdout)
+                self.assertIn('Certificate__StorageRoot=' + managed_root, result.stdout)
+                self.assertNotIn('Certificate__StorageRoot=' + data_root + '/server/certificates\n', result.stdout)
+
     def test_preservation_policy(self):
         condition = BOOTSTRAP.split('SERVICES_CERTIFICATE_MODE="$CERTIFICATE_MODE"\n', 1)[1].split('then', 1)[0]
         for action, mode, explicit, preserve in [

@@ -13,6 +13,10 @@ namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 public sealed partial class SystemPageViewModel : SettingsPageViewModel
 {
     private readonly IAuthSession _session;
+    public Func<Task>? RequestServerHttpsAsync { get; set; }
+    [RelayCommand]
+    private Task OpenServerHttpsAsync() => RequestServerHttpsAsync?.Invoke() ?? Task.CompletedTask;
+
     public Action? ClearUsageMemoryAction { get; set; }
     [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty] private LocalizedStatus? _usageMemoryStatus;
     [RelayCommand]

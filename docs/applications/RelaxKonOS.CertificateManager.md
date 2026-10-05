@@ -1358,9 +1358,9 @@ RelaxKonOS 当前只管理本机，因此证书管理功能应保持为一个**�
 
 ### 35.1 操作者与高权限
 
-RelaxKonOS 面向单台服务器的网站管理员。证书管理器是内置可信管理应用，不采用 User / Workspace / `AppPermissions` 的细粒度权限模型；证书、ACME account 和部署目标均为**当前宿主机全局资源**。
+RelaxKonOS 面向单台服务器的网站管理员。证书、ACME account 和部署目标均为**当前宿主机全局资源**，客户端入口受声明的证书读取和管理应用权限约束，服务端还验证宿主能力和操作授权。
 
-当前证书写入仍依赖 `IHostPrivilegeService` 的旧入口；生产 `HostPrivilegeService.IsAdministrator` 固定为 false，故申请、自签名、续期、撤销、删除和部署返回 `certificate.admin_required` / `certificate.deployment_elevation_required`，Direct HTTP-01 预检返回 `certificate.port80_elevation_required`。以 root/Admin 进程运行不能绕过此 gate。受授权 Helper 的证书写入迁移尚未完成，测试注入管理员权限服务不代表生产路径可用。
+自签名创建与服务器 HTTPS 换证通过 HTTP 入口的精确资源会话授权执行，材料写入服务账号拥有的存储，不依赖管理员 Server 进程。申请、续期、撤销和删除仍使用各自的 `IHostPrivilegeService` 检查，Direct HTTP-01 预检仍要求绑定 TCP 80 的权限；这些动作尚未全部迁移到会话授权模型。
 
 读取元数据和 Kestrel 部署事实仍按当前宿主 feature/JWT 提供；客户端不得伪造提权 capability、收集 sudo/UAC/服务账号密码或把 HTTP API 变成任意命令执行入口。私钥永不出现在 DTO、日志、审计或错误详情中。
 
@@ -1388,7 +1388,7 @@ Kestrel 部署必须先实现，不能只在签发成功后尝试替换文件。
 
 当前部署查询 `GET /api/v1.0/certificates/{id}/deployments/kestrel` 返回 `KestrelCertificateDeploymentDto`：元数据存在、HTTPS 配置、选择器注册/默认、实际 SNI 名称、运行时材料 SHA-256 与有效期、观察时间；无私钥、PEM 或服务器文件路径。已删除/未知 ID 也返回事实，区分元数据与运行时注册，不将签发状态当作部署状态。
 
-部署要求 Issued/Active 且当前有效，选择器校验实际材料私钥与有效期。精确名称优先，再匹配单层 DNS 通配符，最后使用首个注册的默认证书；后续注册不主动切换默认，删除默认后选择剩余证书。新连接使用新选择，已建立连接可保留旧材料。启动恢复跳过已撤销记录，失败不替换现有有效选择。实际选择器事实不证明公网前端或客户端信任；部署不改变监听地址/端口，也不改客户端 URL 或证书信任。
+部署要求 Issued/Active 且当前有效，选择器校验实际材料私钥与有效期。精确名称优先，再匹配单层 DNS 通配符，最后使用默认证书。服务器 HTTPS 换证显式切换并持久化默认选择；其他证书续期保持原默认，删除默认后选择剩余证书。新连接使用新选择，已建立连接可保留旧材料。启动恢复跳过已撤销记录，失败不替换现有有效选择。实际选择器事实不证明公网前端或客户端信任；部署不改变监听地址/端口，也不改客户端 URL 或证书信任。
 
 Nginx 的受管证书站点绑定在配置副作用前校验状态/有效期与每个绑定的 SAN 覆盖，IDN/IP 规范化，通配符仅覆盖一层 DNS 名称；宿主 PEM 路径仍由配置语法/文件校验，不能把该模式当作受管元数据已核实。
 
@@ -1433,4 +1433,10 @@ certificate_renewal_attempts     certificate_audit_entries
 
 V1 的支持目标为 **Ubuntu 24.04 LTS** 与 **Windows Server 2016 及以上**。实现前分别验证：管理员检测、文件 ACL、短暂 TCP 80 监听、Kestrel 换证、证书目录恢复、IPv4/IPv6 WebRoot、取消/断线恢复和权限不足降级。Anvil 引入前还需在中央包管理中锁定版本，并记录许可证、.NET 10 与两个目标平台的兼容性、离线部署和升级策略。
 
-自签名证书创建在 HTTP 入口验证 `CertificateCreateSelfSigned` 能力、`certificates/self-signed` 精确目标的会话授权。缺少授权返回 HTTP 403 / `elevation-required`，客户端通过统一提权流程认证后以原幂等键重试一次。创建仅写入 Server 自有证书存储，不要求 Server 进程以 root/Administrator 运行；其他证书动作的宿主进程权限约束保持现有契约。
+自签名证书创建在 HTTP 入口验证 `CertificateCreateSelfSigned` 能力、`certificates/self-signed` 精确目标的会话授权。服务器 HTTPS 换证验证 `CertificateReplaceServerHttps` 能力与 `certificates/{id:D}/server-https` 精确证书目标。缺少授权返回 HTTP 403 / `elevation-required`，桌面与 Android 客户端通过统一提权流程认证后以原幂等键重试一次。创建与换证不要求 Server 进程以 root/Administrator 运行；其他证书动作的宿主进程权限约束保持现有契约。
+
+Linux 服务部署在 `server.env` 中设置 `Certificate__StorageRoot=$DATA_ROOT/server/managed-certificates`，目录由服务账号拥有，权限为 `0700`，用于证书管理器创建的 PEM、私钥及版本记录。该目录在 HTTP 和 HTTPS 部署中均创建。启动用的 `$DATA_ROOT/server/certificates/bootstrap.pfx` 保持 root 所有、服务账号只读，不作为证书管理器的写入目录。已有安装如未配置存储路径，应备份 `server.env` 后补充该配置、创建对应目录并重启 Server；不得通过放宽整个数据根目录权限解决。
+
+Windows 服务与个人模式均在 `appsettings.host.json` 设置 `Certificate.StorageRoot=$DataRoot\server\managed-certificates`。服务模式 ACL 仅授予 SYSTEM、Administrators 和 Server 服务 SID（修改权限）；个人模式授予安装用户、SYSTEM 与 Administrators。管理证书与部署时生成的 `certificates\bootstrap.pfx` 分开存储。
+
+桌面端服务器换证入口位于“设置 → 系统 → 服务器 HTTPS”，证书管理器列表仅提供证书申请、创建、续期、吊销和删除。换证界面展示域名、到期时间和 SHA-256 指纹，提示重连或重新信任证书；只有用户点击“更换服务器 HTTPS 证书”才提交。成功换证同时更新 SNI 绑定与无 SNI 连接使用的默认证书，默认选择独立持久化并在重启时恢复；普通续期保持原默认选择。该操作不会修改部署用启动 PFX，也不会把 HTTP 监听自动改为 HTTPS。

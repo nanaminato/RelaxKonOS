@@ -71,6 +71,18 @@ internal static async Task VerifyDeploymentAndNginxSnapshotsAsync(string root)
     TestAssert.Assert((await deployments.ListKestrelAsync(CancellationToken.None)).Count == 0, "A failed Kestrel deployment became restartable.");
     await deployments.RecordKestrelAsync(certificate, true, null, CancellationToken.None);
     TestAssert.Assert((await deployments.ListKestrelAsync(CancellationToken.None)).Single().CurrentVersion == certificate.Version, "A successful Kestrel deployment was not persisted.");
+    await deployments.RecordKestrelAsync(certificate, true, null, CancellationToken.None, makeDefault: true);
+    var otherCertificate = certificate with { Id = Guid.NewGuid(), PrimaryDomain = "two.example.test", Domains = ["two.example.test"] };
+    await deployments.RecordKestrelAsync(otherCertificate, true, null, CancellationToken.None, makeDefault: true);
+    await deployments.RecordKestrelAsync(certificate with { Version = new string('b', 32) }, true, null, CancellationToken.None);
+    var restoredBindings = await deployments.ListKestrelAsync(CancellationToken.None);
+    TestAssert.Assert(restoredBindings.Single(binding => binding.IsDefault).CertificateId == otherCertificate.Id,
+        "Renewing another SNI certificate changed the persisted server default.");
+    await deployments.RecordKestrelAsync(certificate, false, "certificate.kestrel_activation_failed", CancellationToken.None, makeDefault: true);
+    TestAssert.Assert((await deployments.ListKestrelAsync(CancellationToken.None)).Single(binding => binding.IsDefault).CertificateId == otherCertificate.Id,
+        "A failed replacement changed the persisted server default.");
+    await deployments.RemoveKestrelAsync(otherCertificate.Id, CancellationToken.None);
+    TestAssert.Assert(!(await deployments.ListKestrelAsync(CancellationToken.None)).Any(binding => binding.IsDefault), "Removing the selected certificate retained its default marker.");
 
     var configPath = Path.Combine(root, "nginx.conf");
     Directory.CreateDirectory(Path.Combine(root, "conf.d"));

@@ -1,6 +1,11 @@
 {
     "Culture": "zh-CN",
     "Strings": {
+    "settings.server_https.title": "服务器 HTTPS",
+    "settings.server_https.description": "安装时已配置启动证书。需要更换服务器证书时，在此选择已创建或申请的证书。",
+    "settings.server_https.replace": "更换服务器 HTTPS 证书",
+    "settings.server_https.warning": "更换后客户端可能需要重新连接或信任新证书。请核对域名、有效期和 SHA-256 指纹。",
+
         "settings.usage_memory.title": "使用记忆",
         "settings.usage_memory.description": "在此设备上记住管理员用户名及各用途的文件选择目录。清除仅影响当前服务器下的当前账户。",
         "settings.usage_memory.clear": "清除使用记忆",

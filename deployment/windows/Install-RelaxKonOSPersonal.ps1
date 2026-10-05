@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [Parameter(Mandatory)][string] $InstallRoot,
     [Parameter(Mandatory)][string] $DataRoot,
@@ -27,6 +27,8 @@ function New-Secret {
 }
 $jwt = if ($settings -and $settings.PSObject.Properties['Jwt']) { $settings.Jwt.Secret } else { New-Secret }
 $serverData = Join-Path $DataRoot 'server'
+$managedCertificateData = Join-Path $serverData 'managed-certificates'
+New-Item -ItemType Directory -Path $managedCertificateData -Force | Out-Null
 New-Item -ItemType Directory -Path $serverData -Force | Out-Null
 $dataLink = Join-Path $serverRoot 'data'
 if (Test-Path -LiteralPath $dataLink) {
@@ -37,6 +39,8 @@ if (Test-Path -LiteralPath $dataLink) {
 $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 & icacls $DataRoot /inheritance:r /grant:r ("*$sid" + ':(OI)(CI)F') '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Unable to protect personal data.' }
+& icacls $managedCertificateData /inheritance:r /grant:r ("*$sid" + ':(OI)(CI)F') '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'Unable to protect managed certificate storage.' }
 $helper = Set-PersonalPrivileges $InstallRoot $DataRoot $Version -FileAccess $FileAccess -FileRootsFile $FileRootsFile -ListenUrl $ListenUrl -AddFirewallRule ([bool]$AddFirewallRule)
 $config = [ordered]@{
     Server = @{ Mode = 'user' }
@@ -45,6 +49,7 @@ $config = [ordered]@{
     PrivilegedHelper = @{ UserExecutionBackend = 'disabled'; PipeName = $helper.pipeName; SharedSecret = $helper.sharedSecret }
     Jwt = @{ Secret = $jwt }
     Storage = @{ DatabasePath = (Join-Path $serverData 'relaxkonos.db') }
+    Certificate = @{ StorageRoot = $managedCertificateData }
     DockerCompose = @{ DataDirectory = (Join-Path $DataRoot 'compose') }
     NginxManaged = @{ InstallationRoot = $helper.nginxRoot }
     Observability = @{ LogDirectory = (Join-Path $DataRoot 'logs'); AuditDatabasePath = (Join-Path $serverData 'security-audit.db') }

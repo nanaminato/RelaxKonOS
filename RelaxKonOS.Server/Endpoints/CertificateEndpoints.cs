@@ -27,8 +27,15 @@ public static class CertificateEndpoints
         });
         group.MapGet(CertificateApiRoutes.DeployPattern, (Guid id, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) =>
             manager.GetKestrelDeploymentAsync(id, ct));
-        group.MapPost(CertificateApiRoutes.DeployPattern, async (Guid id, HttpContext context, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) =>
-            await StartAsync(context, key => manager.DeployKestrelAsync(id, key, Actor(context), ct)));
+        group.MapPost(CertificateApiRoutes.DeployPattern, async (Guid id, HttpContext context, IHostElevationSessionStore elevations,
+            RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) =>
+        {
+            if (!elevations.IsGranted(context.User, HostElevationCapability.CertificateReplaceServerHttps, $"certificates/{id:D}/server-https"))
+                return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
+                    type: "https://relaxkonos.app/problems/elevation-required",
+                    extensions: new Dictionary<string, object?> { ["problemCode"] = "elevation-required" });
+            return await StartAsync(context, key => manager.DeployKestrelAsync(id, key, Actor(context), ct));
+        });
         group.MapPost(CertificateApiRoutes.RenewPattern, async (Guid id, HttpContext context, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) =>
             await StartAsync(context, key => manager.RenewAsync(id, key, Actor(context), ct)));
         group.MapDelete(CertificateApiRoutes.DeletePattern, async (Guid id, [Microsoft.AspNetCore.Mvc.FromBody] DeleteCertificateRequest request, HttpContext context, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) =>

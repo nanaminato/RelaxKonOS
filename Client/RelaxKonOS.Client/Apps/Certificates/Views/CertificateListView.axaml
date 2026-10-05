@@ -38,7 +38,6 @@
                 </DataGrid>
             </ScrollViewer>
             <WrapPanel Grid.Row="3" ItemHeight="34" HorizontalAlignment="Left">
-                <Button Content="{loc:Loc certificates.action.deploy}" Command="{Binding DeployCommand}" Margin="0,0,8,8" />
                 <Button Content="{loc:Loc certificates.action.renew}" Command="{Binding RenewCommand}" Margin="0,0,8,8" />
                 <Button Content="{loc:Loc certificates.action.revoke}" Command="{Binding RevokeCommand}" Margin="0,0,8,8" />
                 <Button Content="{loc:Loc common.delete}" Command="{Binding DeleteCommand}" Foreground="{DynamicResource DangerBrush}" Margin="0,0,8,8" />

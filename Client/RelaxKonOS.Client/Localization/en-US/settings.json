@@ -1,6 +1,11 @@
 {
     "Culture": "en-US",
     "Strings": {
+    "settings.server_https.title": "Server HTTPS",
+    "settings.server_https.description": "Installation configures a startup certificate. Select a managed certificate here when you need to replace it.",
+    "settings.server_https.replace": "Replace server HTTPS certificate",
+    "settings.server_https.warning": "Clients may need to reconnect or trust the new certificate. Check its domains, validity and SHA-256 fingerprint.",
+
         "settings.usage_memory.title": "Usage memory",
         "settings.usage_memory.description": "Remember administrator usernames and file picker directories on this device. Clearing affects the current account on this server.",
         "settings.usage_memory.clear": "Clear usage memory",

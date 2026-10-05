@@ -1,0 +1,29 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:cert="clr-namespace:RelaxKonOS.Client.Apps.Certificates"
+             x:Class="RelaxKonOS.Client.Apps.Settings.Views.ServerHttpsDialogView"
+             x:DataType="cert:CertificateManagerViewModel" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimaryBrush}">
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" RowSpacing="12" Margin="20">
+        <TextBlock Text="{loc:Loc settings.server_https.description}" TextWrapping="Wrap" />
+        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="10">
+            <ComboBox ItemsSource="{Binding Certificates}" SelectedItem="{Binding SelectedCertificate, Mode=TwoWay}"
+                      DisplayMemberBinding="{ReflectionBinding PrimaryDomain}" HorizontalAlignment="Stretch" IsEnabled="{Binding !IsOperationRunning}" />
+            <Button Grid.Column="1" Content="{loc:Loc common.refresh}" Command="{Binding RefreshCommand}" />
+        </Grid>
+        <StackPanel Grid.Row="2" Spacing="6">
+            <TextBlock Text="{Binding SelectedCertificateDomains}" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding SelectedCertificate.NotAfter}" />
+            <TextBlock Text="{loc:Loc certificates.fingerprint.sha256}" />
+            <TextBox Text="{Binding SelectedCertificate.FingerprintSha256, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" />
+            <TextBlock Text="{loc:Loc settings.server_https.warning}" TextWrapping="Wrap" />
+        </StackPanel>
+        <ProgressBar Grid.Row="3" IsIndeterminate="True" Height="3" IsVisible="{Binding IsOperationRunning}" />
+        <TextBox Grid.Row="4" Text="{Binding OperationLog, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True"
+                 TextWrapping="Wrap" ScrollViewer.VerticalScrollBarVisibility="Auto" />
+        <StackPanel Grid.Row="5" Spacing="6">
+            <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" />
+            <Button Content="{loc:Loc settings.server_https.replace}" Command="{Binding DeployCommand}" Classes="primary" />
+        </StackPanel>
+    </Grid>
+</UserControl>

@@ -1,6 +1,12 @@
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using System.Security.Claims;
+using RelaxKonOS.Server.Endpoints;
+using RelaxKonOS.Server.HostMode;
+using RelaxKonOS.Server.Privileged;
 
 internal static class CertificateBindingChecks
 {
@@ -50,11 +56,13 @@ internal static class CertificateBindingChecks
         var rejected = await manager.DeployKestrelAsync(id, "request", "alice", CancellationToken.None);
         TestAssert.Assert(rejected.ProblemCode == "certificate.kestrel_https_not_configured", "Deployment without HTTPS was accepted.");
         server.Addresses.Add("https://127.0.0.1:8443");
-        var deployed = await manager.DeployKestrelAsync(id, "request", "alice", CancellationToken.None);
+        var deployed = await unprivilegedManager.DeployKestrelAsync(id, "request", "alice", CancellationToken.None);
         var finished = await TestOperations.WaitForCertificateOperationAsync(ledger, deployed.OperationId);
         TestAssert.Assert(finished.State == CertificateOperationState.Succeeded, "Deployment failed with a configured listener.");
+        TestAssert.Assert(registry.Snapshot(id).IsDefault && registry.Select(null) == registry.Select("one.example.test"), "Replacement did not update the default used by non-SNI connections.");
         facts = await manager.GetKestrelDeploymentAsync(id, CancellationToken.None);
         TestAssert.Assert(facts.HttpsConfigured && facts.FingerprintSha256!.Equals(metadata.FingerprintSha256!.Replace(":", ""), StringComparison.OrdinalIgnoreCase), "GET used metadata rather than deployed certificate fingerprint.");
+        await VerifyReplacementEndpointAsync(unprivilegedManager, ledger, id);
         var deleted = await manager.DeleteAsync(id, "delete", new DeleteCertificateRequest(true), "alice", CancellationToken.None);
         await TestOperations.WaitForCertificateOperationAsync(ledger, deleted.OperationId);
         facts = await manager.GetKestrelDeploymentAsync(id, CancellationToken.None);
@@ -62,6 +70,44 @@ internal static class CertificateBindingChecks
         var replay = await manager.DeployKestrelAsync(id, "request", "alice", CancellationToken.None);
         TestAssert.Assert(replay.OperationId == deployed.OperationId, "Lost deployment response could not recover original operation after facts changed.");
         TestAssert.Assert(registry.Select("one.example.test") == wildcard, "Deleted exact binding did not fall back to the surviving default.");
+    }
+    private static async Task VerifyReplacementEndpointAsync(ICertificateManager manager, CertificateOperationStore ledger, Guid id)
+    {
+        var mode = new UploadSessionChecks.SystemMode();
+        var elevations = new HostElevationSessionStore(new TestHostAccountPrivilegeService(), mode, new HostElevationSessionState());
+        var principal = new ClaimsPrincipal(new ClaimsIdentity([
+            new Claim("sub", "https-user"), new Claim("jti", "https-session"), new Claim("name", "alice"), new Claim("amr", "alias")], "test"));
+        var builder = WebApplication.CreateBuilder();
+        builder.Logging.ClearProviders();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Services.AddAuthorization();
+        builder.Services.AddSingleton<ICertificateManager>(manager);
+        builder.Services.AddSingleton(ledger);
+        builder.Services.AddSingleton<IHostElevationSessionStore>(elevations);
+        builder.Services.AddSingleton<IServerModeResolver>(mode);
+        await using var app = builder.Build();
+        app.Use((context, next) => { context.User = principal; return next(context); });
+        app.UseAuthorization();
+        app.MapCertificateEndpoints();
+        await app.StartAsync();
+        using var http = new HttpClient { BaseAddress = new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single()) };
+        async Task<HttpResponseMessage> Submit()
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, CertificateApiRoutes.Deploy.Replace("{id}", id.ToString("D")));
+            request.Headers.Add("Idempotency-Key", "https-endpoint-test");
+            return await http.SendAsync(request);
+        }
+        using (var denied = await Submit())
+            TestAssert.Assert(denied.StatusCode == HttpStatusCode.Forbidden && (await denied.Content.ReadAsStringAsync()).Contains("elevation-required"), "HTTPS replacement bypassed administrator authorization.");
+        elevations.Grant(principal, HostElevationCapability.CertificateReplaceServerHttps, $"certificates/{Guid.NewGuid():D}/server-https", false, "test");
+        using (var wrongTarget = await Submit())
+            TestAssert.Assert(wrongTarget.StatusCode == HttpStatusCode.Forbidden, "HTTPS replacement accepted another certificate's grant.");
+        elevations.Grant(principal, HostElevationCapability.CertificateReplaceServerHttps, $"certificates/{id:D}/server-https", false, "test");
+        using var accepted = await Submit();
+        TestAssert.Assert(accepted.StatusCode == HttpStatusCode.Accepted, "Authorized HTTPS replacement required an administrator Server process.");
+        var operation = JsonSerializer.Deserialize<CertificateOperationDto>(await accepted.Content.ReadAsStringAsync(), RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default)!;
+        TestAssert.Assert((await TestOperations.WaitForCertificateOperationAsync(ledger, operation.OperationId)).State == CertificateOperationState.Succeeded,
+            "Authorized HTTPS replacement did not complete.");
     }
     private sealed class UnprivilegedBindingPrivileges : IHostPrivilegeService { public bool IsAdministrator => false; }
     private sealed class BindingPrivileges : IHostPrivilegeService { public bool IsAdministrator => true; }

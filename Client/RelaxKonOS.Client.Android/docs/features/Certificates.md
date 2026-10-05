@@ -38,10 +38,10 @@ ACME 证书可续期和撤销，已撤销证书不提供续期；自签名不提
 
 详情提供 Kestrel 部署和只读核实。`GET /certificates/{id}/deployments/kestrel` 返回元数据是否存在、当前 HTTPS 配置、运行时注册、默认选择、实际 SNI 名称、实际材料 SHA-256/有效期和观察时间。即使元数据已缺失，也可核实选择器；数据读取失败显示未核实。运行时指纹与元数据不同、证书已注册但 SNI 名称被其他证书覆盖均如实展示。
 
-部署只作用于当前 Kestrel HTTPS 监听，不改变端口、地址、客户端 URL 或信任策略。确认说明 SAN、首个默认回退、精确 SNI 优先于单层通配符、新连接切换及旧连接保留、管理地址覆盖与自签名信任要求，提示管理连接可能中断。提交前刷新有效材料及监听事实；部署仍遵循当前宿主权限契约，不绕过 `certificate.deployment_elevation_required`。
+部署只作用于当前 Kestrel HTTPS 监听，不改变端口、地址、客户端 URL 或信任策略。成功换证更新默认证书并保留精确 SNI 优先于单层通配符的选择规则；新连接使用新证书，旧连接保留已选择的材料。确认展示 SAN、管理地址覆盖与自签名信任要求，提示管理连接可能中断。提交前刷新有效材料及监听事实，缺少精确目标管理员授权时按 `elevation-required` 流程认证后重试。
 
 已知原任务按 ID 查询；丢失响应时保留原键，显式重试先读证书和运行时事实，不能仅由“指纹一致”判为原请求成功。取消或网络失败后也可单独读取部署事实。服务器重启恢复受管的既有健康版本，跳过已撤销元数据；新版本激活失败保留旧选择。事实查询属于服务器观察，不证明公网反代、手机握手或客户端信任。
 
 源码入口：`Certificates.kt`、Gateway/API、`CertificateRepository.kt`、`CertificateRequestJournal.kt`、`CertificateDraft.kt`、`CertificatesViewModel.kt`、`CertificatesScreen.kt`、`CertificateLabels.kt`、`CertificateUsage.kt`、`CertificateBinding.kt`、OperationIndex/OperationCenter、导航与管理入口。
 
-自签名创建通过 `certificateCreateSelfSigned` / `certificates/self-signed` 会话授权。服务端返回标准 `elevation-required` 时打开统一管理员认证弹窗；成功后用相同请求键重试一次，取消或拒绝保留表单，不把 Server 普通服务账户当作权限失败。其他证书动作仍遵循各自现有权限契约。
+自签名创建通过 `certificateCreateSelfSigned` / `certificates/self-signed` 会话授权，服务器 HTTPS 换证通过 `certificateReplaceServerHttps` / `certificates/{规范化证书 UUID}/server-https` 精确目标授权。服务端返回标准 `elevation-required` 时打开统一管理员认证弹窗；成功后用相同请求键重试一次，取消或拒绝保留表单，不把 Server 普通服务账户当作权限失败。其他证书动作仍遵循各自现有权限契约。

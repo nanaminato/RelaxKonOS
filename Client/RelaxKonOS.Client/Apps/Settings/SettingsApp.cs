@@ -51,7 +51,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         Version: "1.0.0",
         IconGlyph: "⚙️",
         Description: "个性化与系统设置",
-        RequestedPermissions: [AppPermissions.DesktopWallpaperWrite],
+        RequestedPermissions: [AppPermissions.DesktopWallpaperWrite, AppPermissions.ServerCertificatesRead, AppPermissions.ServerCertificatesManage],
         InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
     public override void Activate(AppContext context)
@@ -217,6 +217,14 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         var hostIdentityService = context.Services.GetRequiredService<Services.HostSettings.IHostIdentityService>();
         var hostEnvironment = context.Services.GetRequiredService<Services.HostSettings.IHostEnvironmentService>();
         var systemPage = viewModel.Pages.OfType<SystemPageViewModel>().Single();
+        systemPage.RequestServerHttpsAsync = async () =>
+        {
+            var certificates = new RelaxKonOS.Client.Apps.Certificates.CertificateManagerViewModel(
+                context.Services.GetRequiredService<RelaxKonOS.Client.Apps.Certificates.IRemoteCertificateClient>(), session, context.Permissions);
+            await certificates.StartAsync();
+            await context.ShowDialogAsync<bool>(window, LocalizedText.Get("settings.server_https.title"),
+                dialog => new ServerHttpsDialogView { DataContext = certificates }, new Size(660, 480));
+        };
         systemPage.ClearUsageMemoryAction = () => context.Services.GetRequiredService<UsageMemoryStore>().Clear(session);
         systemPage.HostIdentity.RequestAuthorizationAsync = connection =>
             AuthorizeHostSettingsAsync(hostIdentityService.IsCurrent, connection, "settings.hostname.authorize", (password, administrator) => hostIdentityService.AuthorizeAsync(connection, password, administrator));

@@ -48,7 +48,7 @@ internal sealed class KestrelCertificateRegistry
         lock (_gate) return _certificates.ContainsKey(certificateId);
     }
 
-    public bool Activate(Guid certificateId, X509Certificate2 certificate, IReadOnlyList<string> hostNames)
+    public bool Activate(Guid certificateId, X509Certificate2 certificate, IReadOnlyList<string> hostNames, bool makeDefault = false)
     {
         var names = hostNames.Select(CertificateUsagePolicy.NormalizeName).ToArray();
         if (!certificate.HasPrivateKey || certificate.NotBefore.ToUniversalTime() > DateTime.UtcNow
@@ -59,7 +59,7 @@ internal sealed class KestrelCertificateRegistry
             foreach (var host in _hostBindings.Where(item => item.Value == certificateId).Select(item => item.Key).ToArray()) _hostBindings.Remove(host);
             foreach (var host in names) _hostBindings[host!] = certificateId;
             _certificates[certificateId] = certificate;
-            _defaultCertificateId ??= certificateId;
+            if (makeDefault || _defaultCertificateId is null) _defaultCertificateId = certificateId;
             return true;
         }
     }

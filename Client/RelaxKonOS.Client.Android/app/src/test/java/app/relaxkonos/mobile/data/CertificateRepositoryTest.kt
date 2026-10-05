@@ -65,6 +65,23 @@ class CertificateRepositoryTest {
         assertTrue(result is ApiResult.Problem)
         assertEquals(1, calls); assertEquals(1, gateway.elevationCount)
     }
+    @Test fun `server https replacement authorizes the exact certificate and reuses its key`() = runTest {
+        val owner = signIn(); val keys = mutableListOf<String>()
+        gateway.onCertificateMutation = { _, _, _, key ->
+            keys += key
+            if (keys.size == 1) ApiResult.Problem(403, ProblemCodes.ELEVATION_REQUIRED, null)
+            else ApiResult.Success(operation.copy(kind = CertificateAction.DeployKestrel))
+        }
+        gateway.onElevation = { _, _, capability, target, _, _ ->
+            assertEquals("certificateReplaceServerHttps", capability)
+            assertEquals("certificates/$CERTIFICATE_ID/server-https", target)
+            ApiResult.Success(ElevationGrant(true, null))
+        }
+        val result = repository.submit(owner, ElevationAnswerProvider { _, _ -> ElevationAnswer("root", "secret".toCharArray()) }, CertificateAction.DeployKestrel, CERTIFICATE_ID, JsonBody())
+        assertTrue(result is ApiResult.Success)
+        assertEquals(2, keys.size); assertEquals(keys[0], keys[1])
+        assertEquals(1, gateway.elevationCount)
+    }
     @Test fun `cancelled self signed elevation preserves a retryable draft intent`() = runTest {
         val owner = signIn(); var calls = 0
         gateway.onCertificateMutation = { _, _, _, _ -> calls++; ApiResult.Problem(403, ProblemCodes.ELEVATION_REQUIRED, null) }

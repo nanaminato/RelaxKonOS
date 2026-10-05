@@ -112,6 +112,13 @@
 
         <Border Classes="card">
             <StackPanel Spacing="10">
+                <TextBlock Text="{loc:Loc settings.server_https.title}" Classes="title" />
+                <TextBlock Text="{loc:Loc settings.server_https.description}" TextWrapping="Wrap" />
+                <Button Content="{loc:Loc settings.server_https.replace}" Command="{Binding OpenServerHttpsCommand}" />
+            </StackPanel>
+        </Border>
+        <Border Classes="card">
+            <StackPanel Spacing="10">
                 <TextBlock Text="{loc:Loc settings.account_workspace}" Classes="title" />
                 <Grid ColumnDefinitions="140,*">
                     <TextBlock Grid.Column="0" Text="{loc:Loc settings.username}" Opacity="0.7" />
