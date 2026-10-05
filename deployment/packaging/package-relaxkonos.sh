@@ -59,7 +59,7 @@ complete_package() {
     separator=,
   done < <(cd "$BUNDLE" && find . -type f ! -name manifest.json -print0 | LC_ALL=C sort -z)
   files+=']'
-  printf '{"schemaVersion":1,"packageKind":"%s","version":"%s","runtime":"%s","supportedSystems":["debian-12","ubuntu-22.04","ubuntu-24.04","ubuntu-26.04"],"payload":{"linux":{%s}},"files":%s}\n' \
+  printf '{"schemaVersion":1,"packageKind":"%s","version":"%s","runtime":"%s","supportedSystems":["debian-12","debian-13","linuxmint-21","linuxmint-21.1","linuxmint-21.2","linuxmint-21.3","linuxmint-22","linuxmint-22.1","linuxmint-22.2","linuxmint-22.3","ubuntu-22.04","ubuntu-24.04","ubuntu-26.04"],"payload":{"linux":{%s}},"files":%s}\n' \
     "$kind" "$VERSION" "$RUNTIME" "$payload" "$files" > "$BUNDLE/manifest.json"
   (cd "$BUNDLE" && zip -qr "$ARCHIVE" .)
   hash="$(sha256sum "$ARCHIVE" | awk '{print $1}')"

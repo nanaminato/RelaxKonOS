@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+is_supported_linux_system() {
+  case "$1-$2" in
+    debian-12|debian-13|linuxmint-21|linuxmint-21.1|linuxmint-21.2|linuxmint-21.3|linuxmint-22|linuxmint-22.1|linuxmint-22.2|linuxmint-22.3|ubuntu-22.04|ubuntu-24.04|ubuntu-26.04) return 0;;
+    *) return 1;;
+  esac
+}
+
 LANGUAGE=auto
 ACTION=install
 BUNDLE_PATH=
@@ -384,7 +391,7 @@ if [[ "$CERTIFICATE_MODE" == custom && -z "$TEMPORARY_DIRECTORY" ]] && ! validat
   exit 65
 fi
 source /etc/os-release 2>/dev/null || { echo 'Cannot identify the Linux distribution.' >&2; exit 69; }
-if ! { [[ "$ID" == debian && "$VERSION_ID" == 12 ]] || [[ "$ID" == ubuntu && ( "$VERSION_ID" == 22.04 || "$VERSION_ID" == 24.04 || "$VERSION_ID" == 26.04 ) ]]; }; then
+if ! is_supported_linux_system "${ID:-}" "${VERSION_ID:-}"; then
   [[ "$ALLOW_UNSUPPORTED_SYSTEM" == true ]] || { echo "Unsupported Linux system: ${ID:-unknown} ${VERSION_ID:-unknown}. Use --allow-unsupported-system only after validating host compatibility." >&2; exit 65; }
   echo "WARNING: continuing on unsupported Linux system: ${ID:-unknown} ${VERSION_ID:-unknown}." >&2
 fi

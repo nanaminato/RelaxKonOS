@@ -1,3 +1,4 @@
+using RelaxKonOS.PrivilegedHelper;
 using System.Runtime.InteropServices;
 using RelaxKonOS.Protocol.Privileged;
 
@@ -5,7 +6,7 @@ public static partial class PrivilegedOperationExecutor
 {
     private const string DockerAccessUserPolicyPath = "/etc/relaxkonos/docker-access-user";
 
-    // Fixed Ubuntu provider. No request value can choose a package, source, path or command.
+    // Fixed Debian/Ubuntu repository mappings. No request value can choose a package, source, path or command.
     static async Task<PrivilegedOperationResult> InstallDockerEngineAsync()
     {
         if (!OperatingSystem.IsLinux()) return DockerFailure(PrivilegedProblemCode.UnsupportedOperation);
@@ -13,15 +14,15 @@ public static partial class PrivilegedOperationExecutor
         if (accessUser is null) return DockerFailure(PrivilegedProblemCode.AccessDenied);
         var release = File.ReadAllLines("/etc/os-release").Where(line => line.Contains('='))
             .Select(line => line.Split('=', 2)).ToDictionary(parts => parts[0], parts => parts[1].Trim('"'));
-        if (!release.TryGetValue("ID", out var distro) || distro != "ubuntu"
-            || !release.TryGetValue("VERSION_ID", out var version) || version is not ("22.04" or "24.04" or "26.04"))
+        if (!release.TryGetValue("ID", out var distro) || !release.TryGetValue("VERSION_ID", out var version)
+            || LinuxDistributionSupport.ResolveDockerRepository(distro, version) is not { } repository)
             return DockerFailure(PrivilegedProblemCode.UnsupportedOperation);
         var architecture = RuntimeInformation.ProcessArchitecture switch { Architecture.X64 => "amd64", Architecture.Arm64 => "arm64", _ => null };
         if (architecture is null) return DockerFailure(PrivilegedProblemCode.UnsupportedOperation);
         const string sourcePath = "/etc/apt/sources.list.d/relaxkonos-docker.sources";
         const string keyPath = "/etc/apt/keyrings/relaxkonos-docker.asc";
-        var suite = version switch { "22.04" => "jammy", "24.04" => "noble", _ => "resolute" };
-        var source = $"# RelaxKonOS managed Docker Engine\nTypes: deb\nURIs: https://download.docker.com/linux/ubuntu\nSuites: {suite}\nComponents: stable\nArchitectures: {architecture}\nSigned-By: {keyPath}\n";
+        var (repositoryDistro, suite) = repository;
+        var source = $"# RelaxKonOS managed Docker Engine\nTypes: deb\nURIs: https://download.docker.com/linux/{repositoryDistro}\nSuites: {suite}\nComponents: stable\nArchitectures: {architecture}\nSigned-By: {keyPath}\n";
         foreach (var path in new[] { "/etc/apt", "/etc/apt/sources.list.d", "/etc/apt/keyrings", sourcePath, keyPath })
             if ((File.Exists(path) || Directory.Exists(path)) && (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
                 return DockerFailure(PrivilegedProblemCode.ResourceNotAllowed);
@@ -38,7 +39,7 @@ public static partial class PrivilegedOperationExecutor
         if (!File.Exists(sourcePath) && (File.Exists("/usr/bin/docker") || Directory.Exists("/var/lib/docker") && Directory.EnumerateFileSystemEntries("/var/lib/docker").Any()))
             return DockerFailure(PrivilegedProblemCode.Conflict);
         using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(30) };
-        using var response = await http.GetAsync("https://download.docker.com/linux/ubuntu/gpg", HttpCompletionOption.ResponseHeadersRead);
+        using var response = await http.GetAsync($"https://download.docker.com/linux/{repositoryDistro}/gpg", HttpCompletionOption.ResponseHeadersRead);
         if (!response.IsSuccessStatusCode || response.Content.Headers.ContentLength is > 65536)
             return DockerFailure(PrivilegedProblemCode.InternalError);
         await using var input = await response.Content.ReadAsStreamAsync();

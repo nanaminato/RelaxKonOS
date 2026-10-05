@@ -13,6 +13,7 @@ internal static class ServerCenterContractChecks
 {
     public static void Run()
     {
+        VerifyLinuxSystems();
         VerifyReleaseManifest();
         VerifyInputRules();
         VerifyInstallationIdentity();
@@ -29,6 +30,22 @@ internal static class ServerCenterContractChecks
         VerifyTunnelResolution();
         VerifyHostTarget();
         Console.WriteLine("ServerCenter 部署契约检查通过。");
+    }
+
+    public static void VerifyLinuxSystems()
+    {
+        foreach (var system in ServerHostPlatformSupport.SupportedLinuxSystems)
+        {
+            var parts = system.Split('-', 2);
+            Check(ServerHostPlatformSupport.IsSupportedLinuxSystem(parts[0], parts[1]), $"Supported host: {system}");
+        }
+        Check(ServerHostPlatformSupport.IsSupportedLinuxSystem("debian", "13"), "Debian 13 accepted");
+        foreach (var version in new[] { "21", "21.1", "21.2", "21.3", "22", "22.1", "22.2", "22.3" })
+            Check(ServerHostPlatformSupport.IsSupportedLinuxSystem("linuxmint", version), $"Mint {version} accepted");
+        foreach (var (id, version) in new[] { ("debian", "11"), ("debian", "14"), ("linuxmint", "20.3"), ("linuxmint", "23"), ("linuxmint", "7"), ("rocky", "9"), ("ubuntu", "20.04") })
+            Check(!ServerHostPlatformSupport.IsSupportedLinuxSystem(id, version), $"Unsupported host rejected: {id}-{version}");
+        Check(!ServerHostPlatformSupport.IsSupportedLinuxSystem(null, "13"), "Missing ID rejected");
+        Check(!ServerHostPlatformSupport.IsSupportedLinuxSystem("debian", null), "Missing version rejected");
     }
 
     private static void VerifyReleaseManifest()

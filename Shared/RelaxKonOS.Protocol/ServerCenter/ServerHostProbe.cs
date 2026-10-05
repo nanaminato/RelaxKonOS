@@ -40,7 +40,7 @@ public static class ServerHostPlatformSupport
 {
     /// <summary>Linux System Mode 仅接受这些发行版，其他系统必须由用户显式确认后继续。</summary>
     public static IReadOnlyList<string> SupportedLinuxSystems { get; } =
-        ["debian-12", "ubuntu-22.04", "ubuntu-24.04", "ubuntu-26.04"];
+        ["debian-12", "debian-13", "linuxmint-21", "linuxmint-21.1", "linuxmint-21.2", "linuxmint-21.3", "linuxmint-22", "linuxmint-22.1", "linuxmint-22.2", "linuxmint-22.3", "ubuntu-22.04", "ubuntu-24.04", "ubuntu-26.04"];
 
     public static bool IsSupportedLinuxSystem(string? osId, string? osVersion) =>
         osId is not null && osVersion is not null

@@ -177,7 +177,7 @@ sudo ./deployment/bootstrap/install-relaxkonos.sh --mode system --bundle /mnt/Re
 
 System Mode 安装会自动创建 `/var/log/relaxkonos/runtime` 和审计数据库，并在 root-only systemd 配置中生成、保存审计完整性密钥。管理员不需要手工设置 `InstanceId`、路径或 HMAC 密钥；重装和升级会保留已有值。
 
-离线介质可直接是发布目录或 ZIP，例如：`sudo ./install-relaxkonos.sh --bundle /media/usb/RelaxKonOS-0.1.0-linux-x64.zip`。安装器会验证包的架构、systemd、`sudo`/`visudo`/`openssl`，并仅默认接受 Debian 12、Ubuntu 22.04/24.04/26.04；其他系统必须明确传入 `--allow-unsupported-system`。
+离线介质可直接是发布目录或 ZIP，例如：`sudo ./install-relaxkonos.sh --bundle /media/usb/RelaxKonOS-0.1.0-linux-x64.zip`。安装器会验证包的架构、systemd、`sudo`/`visudo`/`openssl`，并仅默认接受 Debian 12/13、Ubuntu 22.04/24.04/26.04、Linux Mint 21/21.1/21.2/21.3/22/22.1/22.2/22.3（Ubuntu 版）；其他系统必须明确传入 `--allow-unsupported-system`。
 
 局域网模式将 Server 绑定到 `0.0.0.0`。安装/升级向导与修复页面提供默认不勾选的“添加服务器 TCP 端口防火墙规则”。只有用户选择后才为当前监听端口添加入站规则；Windows 使用当前网络的已启用防火墙配置，Linux System 使用已开启的 UFW、firewalld、nftables 或 iptables。规则持久化；nftables 需要活动的 nftables 服务和 `/etc/nftables.conf`，iptables 需要 `netfilter-persistent`，不满足时操作明确失败，不自动安装防火墙工具。防火墙未开启时提示用户且不添加规则、不启用防火墙。普通服务器检查不修改防火墙。公网部署请选择反向代理模式（默认本机监听），并由反向代理终结 HTTPS。
 
@@ -230,3 +230,9 @@ or inconsistent installation must be repaired before its managed state can be re
 
 
 独立服务的路径、服务标识、协议版本和实机验收清单见 [独立组件服务进度](../docs/services/RelaxKonOS.IndependentComponentServices.Progress.md)。Windows 专用宿主入口随 Helper 发布，组件安装时复制完整发布目录到独立宿主目录；Server 与 Helper 必须使用本轮协议 1.0。旧版本的 Helper 子进程不采用兼容接管：升级停止旧 Helper 后，按当前接口重新启动组件以注册独立服务。Linux FRP 安装来源由 root 写入 `/etc/relaxkonos/frp-archive-root`，Helper 对上传包执行发布 SHA-256 校验，只从固定 FRP 发布资产导入两个运行时二进制。
+
+### Linux 发行版适配验证
+
+Debian 13 与 Linux Mint 的安装预检、发布清单和 Samba 权限助手使用相同的支持范围。Mint Debian Edition（LMDE）不在本次支持范围内；不会仅凭 `ID_LIKE=ubuntu/debian` 放行其他发行版。Linux 仍需 systemd、glibc、PAM，以及所选功能需要的 APT/UFW 等依赖。发行版识别的自动检查不替代目标系统上安装、升级、登录、终端及系统管理功能的实机验收。
+
+Docker Engine 内置安装使用固定的官方 APT 软件源：Debian 13 → Debian Trixie，Mint 21.x → Ubuntu Jammy，Mint 22.x → Ubuntu Noble。仍需在安装时显式授权 Docker 访问；已存在的外部运行时和冲突软件包不会自动接管或卸载。参考 [Docker Debian 安装说明](https://docs.docker.com/engine/install/debian/)和 [Mint 版本基础](https://linuxmint.com/download_all.php)。

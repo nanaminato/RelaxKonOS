@@ -703,6 +703,13 @@ existing_installation_state() {
   return 0
 }
 
+is_supported_linux_system() {
+  case "$1-$2" in
+    debian-12|debian-13|linuxmint-21|linuxmint-21.1|linuxmint-21.2|linuxmint-21.3|linuxmint-22|linuxmint-22.1|linuxmint-22.2|linuxmint-22.3|ubuntu-22.04|ubuntu-24.04|ubuntu-26.04) return 0;;
+    *) return 1;;
+  esac
+}
+
 probe_json() {
   local machine runtime os_id= os_version= os_supported=false
   machine=$(uname -m)
@@ -711,9 +718,7 @@ probe_json() {
     os_id=$(sed -nE 's/^ID="?([^"]*)"?$/\1/p' /etc/os-release | head -n1)
     os_version=$(sed -nE 's/^VERSION_ID="?([^"]*)"?$/\1/p' /etc/os-release | head -n1)
   fi
-  case "$os_id-$os_version" in
-    debian-12|ubuntu-22.04|ubuntu-24.04|ubuntu-26.04) os_supported=true;;
-  esac
+  if is_supported_linux_system "$os_id" "$os_version"; then os_supported=true; fi
   local elevated=false; [[ $EUID -eq 0 ]] && elevated=true
   local sudo_available=false
   command -v sudo >/dev/null && sudo_available=true
@@ -890,7 +895,10 @@ preflight_install() {
   case "$options_mode" in
     linuxSystem)
       [[ $EUID -eq 0 || $sudo_requested == true ]] || launcher_fail elevation_required "System Mode requires root or authenticated sudo access"
-      [[ $options_allow_unsupported == true || $(sed -nE 's/^ID="?([^"]*)"?$/\1/p' /etc/os-release 2>/dev/null | head -n1) =~ ^(debian|ubuntu)$ ]] || launcher_fail os_unsupported "this Linux distribution is not supported for System Mode"
+      local host_id host_version
+      host_id=$(sed -nE 's/^ID="?([^"]*)"?$/\1/p' /etc/os-release 2>/dev/null | head -n1)
+      host_version=$(sed -nE 's/^VERSION_ID="?([^"]*)"?$/\1/p' /etc/os-release 2>/dev/null | head -n1)
+      [[ $options_allow_unsupported == true ]] || is_supported_linux_system "$host_id" "$host_version" || launcher_fail os_unsupported "this Linux distribution/version is not supported for System Mode"
       ;;
     linuxUser) [[ $EUID -ne 0 ]] || launcher_fail elevation_required "User Mode must not run as root";;
     *) launcher_fail not_supported "the Windows System Mode engine is not available on a Linux host";;

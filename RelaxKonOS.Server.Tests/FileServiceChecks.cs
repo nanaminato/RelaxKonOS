@@ -59,6 +59,25 @@ public static class FileServiceChecks
             "Ubuntu 26.04 is accepted for Samba management");
         Check(!RelaxKonOS.PrivilegedHelper.LinuxDistributionSupport.IsSambaSupported("ID=ubuntu\nVERSION_ID=20.04\n"),
             "Unsupported Ubuntu releases remain rejected for Samba management");
+        foreach (var system in RelaxKonOS.Protocol.ServerCenter.ServerHostPlatformSupport.SupportedLinuxSystems)
+        {
+            var parts = system.Split('-', 2);
+            Check(RelaxKonOS.PrivilegedHelper.LinuxDistributionSupport.IsSambaSupported($"ID=\"{parts[0]}\"\nVERSION_ID=\"{parts[1]}\"\n"),
+                $"{system} accepted for Samba management with quoted os-release values");
+        }
+        Check(!RelaxKonOS.PrivilegedHelper.LinuxDistributionSupport.IsSambaSupported("ID=linuxmint\nVERSION_ID=23\nID_LIKE=ubuntu\n"),
+            "Unknown Mint versions remain rejected despite ID_LIKE");
+        Check(RelaxKonOS.PrivilegedHelper.LinuxDistributionSupport.ResolveDockerRepository("debian", "13") == ("debian", "trixie"),
+            "Debian 13 Docker uses Debian Trixie repository");
+        foreach (var version in new[] { "21", "21.1", "21.2", "21.3" })
+            Check(RelaxKonOS.PrivilegedHelper.LinuxDistributionSupport.ResolveDockerRepository("linuxmint", version) == ("ubuntu", "jammy"),
+                $"Mint {version} Docker uses Ubuntu Jammy repository");
+        foreach (var version in new[] { "22", "22.1", "22.2", "22.3" })
+            Check(RelaxKonOS.PrivilegedHelper.LinuxDistributionSupport.ResolveDockerRepository("linuxmint", version) == ("ubuntu", "noble"),
+                $"Mint {version} Docker uses Ubuntu Noble repository");
+        Check(RelaxKonOS.PrivilegedHelper.LinuxDistributionSupport.ResolveDockerRepository("linuxmint", "23") is null
+            && RelaxKonOS.PrivilegedHelper.LinuxDistributionSupport.ResolveDockerRepository("linuxmint", "7") is null,
+            "Unknown Mint and LMDE cannot select a Docker repository");
         if (OperatingSystem.IsWindows()) CheckWindowsGuestAcl();
         Check(RelaxKonOS.PrivilegedHelper.WindowsFeatureInstallationState.Evaluate(0, false) is null,
             "Windows installation in progress must keep polling");
