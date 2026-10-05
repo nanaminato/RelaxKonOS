@@ -1,31 +1,33 @@
 <UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:nav="clr-namespace:RelaxKonOS.Client.Apps.Settings.Views"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.TimeLanguagePageView"
              x:DataType="vm:TimeLanguagePageViewModel" Classes="builtin-app">
     <StackPanel Spacing="16" MaxWidth="640">
-        <TextBlock Text="{Binding LocalizedDisplayName}" FontSize="24" FontWeight="SemiBold" />
 
         <Border Classes="card">
             <StackPanel Spacing="10">
                 <TextBlock Text="{loc:Loc settings.time.section}" Classes="title" />
-                <Grid ColumnDefinitions="180,*,Auto">
-                    <TextBlock Grid.Column="0" Text="{loc:Loc settings.time.format}" Opacity="0.7" VerticalAlignment="Center" />
-                    <ComboBox Grid.Column="1" ItemsSource="{x:Static vm:TimeLanguagePageViewModel.TimeFormats}"
+                <TextBlock Text="{loc:Loc settings.scope.workspace}" Classes="subtle" TextWrapping="Wrap" />
+                <StackPanel Spacing="6">
+                    <TextBlock Text="{loc:Loc settings.time.format}" Opacity="0.7" VerticalAlignment="Center" />
+                    <ComboBox nav:SettingsSearchTarget.Id="workspace.timeFormat" AutomationProperties.Name="{loc:Loc settings.time.format}" ItemsSource="{x:Static vm:TimeLanguagePageViewModel.TimeFormats}"
                               SelectedItem="{Binding TimeFormat, Mode=TwoWay}" MinWidth="160" />
-                    <TextBlock Grid.Column="2" Text="{Binding TimeSample}" VerticalAlignment="Center"
-                               Margin="12,0,0,0" Opacity="0.8" />
-                </Grid>
-                <Grid ColumnDefinitions="180,*,Auto">
-                    <TextBlock Grid.Column="0" Text="{loc:Loc settings.date.format}" Opacity="0.7" VerticalAlignment="Center" />
-                    <ComboBox Grid.Column="1" ItemsSource="{x:Static vm:TimeLanguagePageViewModel.DateFormats}"
+                    <TextBlock Text="{Binding TimeSample}" VerticalAlignment="Center"
+                               Margin="0" Opacity="0.8" />
+                </StackPanel>
+                <StackPanel Spacing="6">
+                    <TextBlock Text="{loc:Loc settings.date.format}" Opacity="0.7" VerticalAlignment="Center" />
+                    <ComboBox nav:SettingsSearchTarget.Id="workspace.dateFormat" AutomationProperties.Name="{loc:Loc settings.date.format}" ItemsSource="{x:Static vm:TimeLanguagePageViewModel.DateFormats}"
                               SelectedItem="{Binding DateFormat, Mode=TwoWay}" MinWidth="160" />
-                    <TextBlock Grid.Column="2" Text="{Binding DateSample}" VerticalAlignment="Center"
-                               Margin="12,0,0,0" Opacity="0.8" />
-                </Grid>
+                    <TextBlock Text="{Binding DateSample}" VerticalAlignment="Center"
+                               Margin="0" Opacity="0.8" />
+                </StackPanel>
             </StackPanel>
         </Border>
+        <Button Content="{loc:Loc settings.reset.time}" Command="{Binding ResetTimeFormatsCommand}" />
 
         <Border Classes="card">
             <StackPanel Spacing="10">
@@ -43,13 +45,15 @@
                 <TextBlock Text="{loc:Loc settings.host_time.current}" Opacity="0.7" />
                 <TextBlock Text="{Binding HostTime.CurrentZoneLabel}" FontWeight="SemiBold" TextWrapping="Wrap" />
                 <TextBlock Text="{loc:Loc settings.host_time.select}" Opacity="0.7" />
-                <AutoCompleteBox ItemsSource="{Binding HostTime.ZoneLabels}"
+                <AutoCompleteBox nav:SettingsSearchTarget.Id="host.time.zone" ItemsSource="{Binding HostTime.ZoneLabels}"
                                  SelectedItem="{Binding HostTime.SelectedZoneLabel, Mode=TwoWay}"
                                  FilterMode="Contains" MinimumPrefixLength="0" IsTextCompletionEnabled="False"
                                  PlaceholderText="{loc:Loc settings.host_time.search}"
                                  IsEnabled="{Binding HostTime.CanEdit}" HorizontalAlignment="Stretch"
                                  AutomationProperties.Name="{loc:Loc settings.time_zone}" />
                 <TextBlock Text="{loc:Loc settings.host_time.search_hint}" Opacity="0.65" FontSize="12" TextWrapping="Wrap" />
+                <TextBlock IsVisible="{Binding HostTime.HasDraft}" Text="{loc:Loc settings.host.draft_hint}"
+                           Opacity="0.7" TextWrapping="Wrap" />
                 <Border IsVisible="{Binding HostTime.HasPreview}" Padding="12" BorderThickness="1" CornerRadius="6"
                         BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
                     <TextBlock Text="{Binding HostTime.PreviewText}" TextWrapping="Wrap" />
@@ -59,12 +63,15 @@
                     <Button IsVisible="{Binding HostTime.ShowPreviewAction}" Content="{loc:Loc settings.host_time.preview}" Command="{Binding HostTime.PreviewCommand}" Margin="0,0,8,8" />
                     <Button IsVisible="{Binding HostTime.ShowApplyAction}" Content="{loc:Loc settings.host_time.apply}" Command="{Binding HostTime.ApplyCommand}" Margin="0,0,8,8" />
                     <Button IsVisible="{Binding HostTime.ShowQueryAction}" Content="{loc:Loc settings.host_time.query}" Command="{Binding HostTime.QueryCommand}" Margin="0,0,8,8" />
-                    <Button IsVisible="{Binding HostTime.ShowRollbackAction}" Content="{loc:Loc settings.host_time.rollback}" Command="{Binding HostTime.RollbackCommand}" Margin="0,0,8,8" />
+                    <Button IsVisible="{Binding HostTime.HasDraft}" Content="{loc:Loc settings.host.reset_draft}" Command="{Binding HostTime.ResetDraftCommand}" Margin="0,0,8,8" />
                 </WrapPanel>
                 <TextBlock IsVisible="{Binding !HostTime.IsCompleted}" Text="{Binding HostTime.StatusText}" TextWrapping="Wrap" />
                 <TextBlock IsVisible="{Binding HostTime.HasProblem}" Text="{Binding HostTime.ProblemCode}" TextWrapping="Wrap" />
                 <Expander IsVisible="{Binding HostTime.HasOperation}" Header="{loc:Loc settings.host_time.operation_details}">
-                    <SelectableTextBlock Text="{Binding HostTime.OperationId}" TextWrapping="Wrap" />
+                    <StackPanel Spacing="10">
+                        <SelectableTextBlock Text="{Binding HostTime.OperationId}" TextWrapping="Wrap" />
+                        <Button IsVisible="{Binding HostTime.ShowRollbackAction}" Content="{loc:Loc settings.host_time.rollback}" Command="{Binding HostTime.RollbackCommand}" />
+                    </StackPanel>
                 </Expander>
             </StackPanel>
         </Border>
@@ -72,21 +79,22 @@
         <Border Classes="card">
             <StackPanel Spacing="10">
                 <TextBlock Text="{loc:Loc settings.language_region.section}" Classes="title" />
-                <Grid ColumnDefinitions="180,*">
-                    <TextBlock Grid.Column="0" Text="{loc:Loc settings.display_language}" Opacity="0.7" VerticalAlignment="Center" />
-                    <ComboBox Grid.Column="1" ItemsSource="{Binding LanguageOptions}"
+                <TextBlock Text="{loc:Loc settings.scope.workspace}" Classes="subtle" TextWrapping="Wrap" />
+                <StackPanel Spacing="6">
+                    <TextBlock Text="{loc:Loc settings.display_language}" Opacity="0.7" VerticalAlignment="Center" />
+                    <ComboBox nav:SettingsSearchTarget.Id="workspace.language" AutomationProperties.Name="{loc:Loc settings.display_language}" ItemsSource="{Binding LanguageOptions}"
                               SelectedItem="{Binding SelectedLanguage, Mode=TwoWay}"
                               MinWidth="160">
                         <ComboBox.ItemTemplate>
                             <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
                         </ComboBox.ItemTemplate>
                     </ComboBox>
-                </Grid>
-                <Grid ColumnDefinitions="180,*">
-                    <TextBlock Grid.Column="0" Text="{loc:Loc settings.region_format}" Opacity="0.7" VerticalAlignment="Center" />
-                    <ComboBox Grid.Column="1" ItemsSource="{x:Static vm:TimeLanguagePageViewModel.Regions}"
+                </StackPanel>
+                <StackPanel Spacing="6">
+                    <TextBlock Text="{loc:Loc settings.region_format}" Opacity="0.7" VerticalAlignment="Center" />
+                    <ComboBox nav:SettingsSearchTarget.Id="workspace.region" AutomationProperties.Name="{loc:Loc settings.region_format}" ItemsSource="{x:Static vm:TimeLanguagePageViewModel.Regions}"
                               SelectedItem="{Binding Region, Mode=TwoWay}" MinWidth="160" />
-                </Grid>
+                </StackPanel>
                 <TextBlock Opacity="0.55" FontSize="12" TextWrapping="Wrap"
                            Text="{loc:Loc settings.language_region.description}" />
             </StackPanel>

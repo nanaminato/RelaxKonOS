@@ -15,7 +15,7 @@ using RelaxKonOS.Runtime;
 
 namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 
-/// <summary>设置应用根 VM。左侧导航（八个分类页）+ 右侧内容（当前选中页）。
+/// <summary>设置应用根 VM。分类导航与详情页+ 右侧内容（当前选中页）。
 /// 透传编辑 <see cref="ShellSettings"/>（即时反映到桌面外壳），并由 <see cref="Save"/> 触发防抖保存到服务端
 /// （<c>/workspaces/{id}/preferences</c>，与 TerminalSettings/BrowserSettings 同模式）。
 /// <see cref="InitializeAsync"/> 在窗口打开后调用一次：从服务端拉取偏好应用到 ShellSettings + 填充默认程序映射。</summary>
@@ -66,6 +66,9 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         localization ??= App.Services.GetRequiredService<LocalizationService>();
 
         var save = (Action)Save;
+        _devicePreferences = App.Services.GetRequiredService<DesktopDevicePreferences>();
+        _devicePreferences.Changed += OnDevicePreferencesChanged;
+        _devicePreferences.PropertyChanged += OnDeviceSaveChanged;
         Pages = new SettingsPageViewModel[]
         {
             new SystemPageViewModel(settings, session, save,
@@ -81,15 +84,58 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             new DefaultAppsPageViewModel(settings, apps!, save),
             new DeveloperPageViewModel(settings, developerMode!, networkInspector!, localization, save),
             new AboutPageViewModel(settings),
+            new AccessibilityPageViewModel(settings, _devicePreferences),
+            new DailySettingsPageViewModel(settings, _devicePreferences),
         };
+        var personalization = Pages.OfType<PersonalizationPageViewModel>().Single();
+        Pages = Pages.Concat(new SettingsPageViewModel[]
+        {
+            new PersonalizationColorsPageViewModel(settings, personalization),
+            new PersonalizationStylePageViewModel(settings, personalization),
+            new PersonalizationLayoutPageViewModel(settings, personalization),
+            new PersonalizationBackgroundPageViewModel(settings, personalization)
+        }).ToArray();
+        Pages = new SettingsPageViewModel[] { new SettingsHomePageViewModel(settings, Pages, _devicePreferences) }.Concat(Pages).ToArray();
+        NavigationPages = new[] { "home", "system", "network", "personalization", "apps", "account-security", "time-language", "accessibility", "developer" }
+            .Select(route => Pages.Single(page => page.Route == route)).ToArray();
         _selectedPage = Pages[0];
         InitializeNavigation(localization, App.Services.GetRequiredService<Services.HostSettings.IHostTimeService>());
         Pages.OfType<DefaultAppsPageViewModel>().Single().SetMappings(registry?.Snapshot);
         if (_registry is not null) _registry.Changed += OnMappingsChanged;
     }
 
+    private readonly DesktopDevicePreferences _devicePreferences;
+    public bool CanPinCurrentPage => SelectedPage is { } page && DesktopDevicePreferences.PinnableRoutes.Contains(page.Route);
+    public bool IsCurrentPagePinned
+    {
+        get => SelectedPage is { } page && _devicePreferences.Value.PinnedSettings.Contains(page.Route);
+        set
+        {
+            if (!CanPinCurrentPage || SelectedPage is not { } page) return;
+            _devicePreferences.Update(p => p with { PinnedSettings = value
+                ? p.PinnedSettings.Append(page.Route).Distinct().ToArray()
+                : p.PinnedSettings.Where(route => route != page.Route).ToArray() });
+        }
+    }
+    public bool HasDeviceSaveFailure => _devicePreferences.SaveFailed && SelectedPage is not DeviceSettingsPageViewModel;
+    [RelayCommand] private void RetryDeviceSave() => _devicePreferences.Save();
+    private void OnDeviceSaveChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => OnPropertyChanged(nameof(HasDeviceSaveFailure));
+    private void OnDevicePreferencesChanged(object? sender, EventArgs e) => OnPropertyChanged(nameof(IsCurrentPagePinned));
+
     public ShellSettings Settings => _settings;
     public IReadOnlyList<SettingsPageViewModel> Pages { get; }
+
+    public IReadOnlyList<SettingsPageViewModel> NavigationPages { get; }
+    public SettingsPageViewModel? SelectedCategory
+    {
+        get => Pages.FirstOrDefault(page => page.Route == (SelectedPage is PersonalizationDetailPageViewModel ? "personalization" : SelectedPage?.Route == "default-apps" ? "apps" : SelectedPage?.Route == "system/preferences" ? "system" : SelectedPage?.Route));
+        set { if (value is not null && value != SelectedCategory) SelectPage(value.Route); }
+    }
+    public bool IsAppsCategory => SelectedPage?.Route == "apps";
+    public string? ParentRoute => SelectedPage is PersonalizationDetailPageViewModel ? "personalization" : SelectedPage?.Route == "default-apps" ? "apps" : SelectedPage?.Route == "system/preferences" ? "system" : null;
+    public bool HasParentPage => ParentRoute is not null;
+    public string ParentTitle => Pages.FirstOrDefault(page => page.Route == ParentRoute)?.LocalizedDisplayName ?? "";
+    [RelayCommand] private void OpenPage(string route) { SelectPage(route); SearchQuery = ""; }
 
     [ObservableProperty] private SettingsPageViewModel? _selectedPage;
 
@@ -160,11 +206,34 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     public bool CanDiscard => _editor.HasDraft && _editor.State != PreferencesSaveState.Saving;
     public bool CanRetry => _editor.State == PreferencesSaveState.Failed;
 
+    public string? SaveSourceRoute => _editor.Source is { ApplicationId: "relaxkonos.settings" } source
+        && Pages.Any(page => page.Route == source.PageRoute) ? source.PageRoute : null;
+    public bool HasLocalSaveFeedback => SaveStatus.Length > 0 && SaveSourceRoute is { } route && route == SelectedPage?.Route;
+    public bool HasOtherSaveFeedback => SaveStatus.Length > 0 && !HasLocalSaveFeedback && _editor.State != PreferencesSaveState.Saved;
+    public bool CanOpenSaveSource => HasOtherSaveFeedback && SaveSourceRoute is not null;
+    public string SaveSummary => SaveSourceRoute is { } route
+        ? Pages.First(page => page.Route == route).LocalizedDisplayName + " · " + SaveStatus : SaveStatus;
+
     private void OnEditorChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
+    {
+        if (!Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => { if (!_disposed) NotifySaveFeedback(); });
+            return;
+        }
+        NotifySaveFeedback();
+    }
+
+    private void NotifySaveFeedback()
     {
         OnPropertyChanged(nameof(SaveStatus));
         OnPropertyChanged(nameof(CanRetry));
         OnPropertyChanged(nameof(CanDiscard));
+        OnPropertyChanged(nameof(SaveSourceRoute));
+        OnPropertyChanged(nameof(HasLocalSaveFeedback));
+        OnPropertyChanged(nameof(HasOtherSaveFeedback));
+        OnPropertyChanged(nameof(CanOpenSaveSource));
+        OnPropertyChanged(nameof(SaveSummary));
     }
 
     private void OnMappingsChanged(object? sender, EventArgs args)
@@ -195,7 +264,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     {
         if (!_initialized) return;
         var mappings = Pages.OfType<DefaultAppsPageViewModel>().FirstOrDefault()?.ToMappings() ?? Array.Empty<DefaultAppMappingDto>();
-        _editor.Schedule(_settings.ToPreferences(mappings));
+        _editor.Schedule(_settings.ToPreferences(mappings), SelectedPage is { } page ? new PreferencesEditSource("relaxkonos.settings", page.Route) : null);
     }
 
     public void Dispose()
@@ -203,6 +272,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         if (_disposed) return;
         _disposed = true;
         DisposeNavigation();
+        _devicePreferences.Changed -= OnDevicePreferencesChanged;
+        _devicePreferences.PropertyChanged -= OnDeviceSaveChanged;
         _editor.PropertyChanged -= OnEditorChanged;
         if (_registry is not null) _registry.Changed -= OnMappingsChanged;
         foreach (var page in Pages)

@@ -46,6 +46,9 @@ public sealed partial class DefaultAppsPageViewModel : SettingsPageViewModel
     }
 
     [RelayCommand]
+    private void ResetMappings() { Mappings.Clear(); Save(); }
+
+    [RelayCommand]
     private void AddMapping()
     {
         var preset = AvailableSchemes.FirstOrDefault(scheme => Mappings.All(mapping => !string.Equals(mapping.Scheme, scheme, StringComparison.OrdinalIgnoreCase)))

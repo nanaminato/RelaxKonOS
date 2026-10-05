@@ -17,6 +17,13 @@ using RelaxKonOS.Shell;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Server.Settings;
 
+// Settings activation must reach the new detail routes without accepting arbitrary pages.
+var settingsApp = new RelaxKonOS.Client.Apps.Settings.SettingsApp();
+foreach (var route in new[] { "home", "accessibility", "system/preferences", "personalization/colors", "personalization/style", "personalization/layout", "personalization/background", "default-apps" })
+    Check(settingsApp.CanHandleActivation(new Uri("relaxkonos://settings/" + route)), $"Settings rejected route '{route}'.");
+foreach (var uri in new[] { "relaxkonos://settings/personalization/unknown", "relaxkonos://settings/image-mirrors", "https://settings/home", "relaxkonos://other/home" })
+    Check(!settingsApp.CanHandleActivation(new Uri(uri)), $"Settings accepted unsupported activation '{uri}'.");
+
 AppBuilder.Configure<Application>().UsePlatformDetect().SetupWithoutStarting();
 // This console harness has no dispatcher loop; async HTTP checks must use the thread pool.
 SynchronizationContext.SetSynchronizationContext(null);
@@ -52,6 +59,14 @@ using (var provider = new ServiceCollection()
     var submissions = new List<WorkspacePreferencesDto>();
     var catalog = new TestShellCatalog();
     var page = new PersonalizationPageViewModel(settings, () => submissions.Add(settings.ToPreferences()), catalog, new SystemStyleRegistry());
+    using var colorsDetail = new PersonalizationColorsPageViewModel(settings, page);
+    using var backgroundDetail = new PersonalizationBackgroundPageViewModel(settings, page);
+    Check(ReferenceEquals(colorsDetail.Editor, backgroundDetail.Editor), "Personalization details created separate preference editors.");
+    var detailWrites = submissions.Count;
+    colorsDetail.Editor.Theme = colorsDetail.Editor.Theme == RelaxKonOS.Protocol.Desktop.ThemeKind.Dark
+        ? RelaxKonOS.Protocol.Desktop.ThemeKind.Light : RelaxKonOS.Protocol.Desktop.ThemeKind.Dark;
+    Check(submissions.Count == detailWrites + 1 && backgroundDetail.Editor.Theme == page.Theme,
+        "A detail edit did not use the shared save callback and editor state.");
     settings.SelectShell(TestShellCatalog.External);
     foreach (var descriptor in BuiltInShells.All)
     {
@@ -146,7 +161,7 @@ foreach (var (exception, failure, state) in new (Exception, PreferencesSaveFailu
 })
 {
     using var editor = new WorkspacePreferencesEditor(new EditorService((_, _) => Task.FromException<WorkspacePreferencesDto>(exception)), session, new DefaultAppRegistry());
-    editor.Schedule(settings.ToPreferences());
+    editor.Schedule(settings.ToPreferences(), null);
     await Until(() => editor.State != PreferencesSaveState.Saving);
     Check(editor.HasDraft && editor.State == state && editor.Failure == failure, "Failure classification or retained draft is incorrect.");
 }
@@ -156,7 +171,7 @@ var second = new TaskCompletionSource<WorkspacePreferencesDto>(TaskCreationOptio
 var attempts = 0;
 using (var editor = new WorkspacePreferencesEditor(new EditorService((_, _) => ++attempts == 1 ? first.Task : second.Task), session, new DefaultAppRegistry()))
 {
-    editor.Schedule(settings.ToPreferences());
+    editor.Schedule(settings.ToPreferences(), null);
     await Until(() => attempts == 1);
     editor.Retry();
     await Until(() => attempts == 2);

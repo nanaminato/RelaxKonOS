@@ -409,6 +409,16 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
     };
 
     [RelayCommand]
+    private void ResetColors()
+    {
+        Settings.Appearance = Settings.Appearance with { Mode = ThemeKind.Light, PaletteId = AppearancePreferencesDto.DefaultPaletteId, AccentOverride = null };
+        Save();
+    }
+    [RelayCommand] private void ResetStyle() => SelectedSystemStyleId = SystemStyleIds.WindowsLike;
+    [RelayCommand] private void ResetLayout() => SelectedShellId = ShellApi.DefaultShellId;
+    [RelayCommand] private void ResetBackground() { Settings.WallpaperIndex = 0; Save(); }
+
+    [RelayCommand]
     private void ResetAccent() => AccentInput = string.Empty;
 
     [RelayCommand]

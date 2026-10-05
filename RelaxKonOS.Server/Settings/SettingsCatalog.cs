@@ -12,9 +12,13 @@ public sealed class SettingsCatalog(PrivilegedHelperOptions helper, IHostElevati
     {
         var items = new List<SettingDescriptor>
         {
-            Workspace("workspace.theme", "personalization", "settings.theme", "settings.theme.description", "enum", ["theme", "主题", "テーマ"]),
-            Workspace("workspace.wallpaper", "personalization", "settings.wallpaper", "settings.wallpaper.description", "image", ["wallpaper", "壁纸", "壁紙"]),
-            Workspace("workspace.shell", "personalization", "settings.shell", "settings.shell.description", "shell", ["desktop", "桌面", "デスクトップ"]),
+            Workspace("workspace.colors", "personalization/colors", "settings.colors_and_mode", "settings.colors_and_mode.description", "enum", ["theme", "主题", "テーマ"]),
+            Workspace("workspace.wallpaper", "personalization/background", "settings.wallpaper", "settings.wallpaper.description", "image", ["wallpaper", "壁纸", "壁紙"]),
+            Workspace("workspace.desktopLayout", "personalization/layout", "settings.desktop_layout", "settings.desktop_layout", "shell", ["desktop", "桌面", "デスクトップ"]),
+            Workspace("workspace.systemStyle", "personalization/style", "settings.system_style", "settings.system_style", "enum", ["style", "风格", "スタイル"]),
+            Workspace("workspace.palette", "personalization/colors", "settings.palette", "settings.palette.description", "enum", ["palette", "调色板", "配色"]),
+            Workspace("workspace.accent", "personalization/colors", "settings.accent", "settings.accent.hint", "color", ["accent", "强调色", "アクセント"]),
+            Workspace("workspace.customTheme", "personalization/colors", "settings.custom_theme", "settings.custom_theme.description", "palette", ["import", "export", "导入", "导出", "インポート"]),
             Workspace("workspace.timeFormat", "time-language", "settings.time.format", "settings.language_region.description", "enum", ["clock", "时钟", "時計"]),
             Workspace("workspace.defaultApps", "default-apps", "settings.default_apps", "settings.default_apps.description", "mapping", ["association", "关联", "関連付け"]),
         };

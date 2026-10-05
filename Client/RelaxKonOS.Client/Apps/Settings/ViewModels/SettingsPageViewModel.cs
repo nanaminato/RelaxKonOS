@@ -51,6 +51,9 @@ public abstract class SettingsPageViewModel : ObservableObject, IDisposable
     // Shared monochrome geometry uses the navigation foreground in every theme.
     public Avalonia.Media.Geometry Icon => Avalonia.Media.Geometry.Parse(Route switch
     {
+        "account-security" => "M12,2 A4,4 0 1 1 11.99,2 M4,22 L4,18 C4,10 20,10 20,18 L20,22 Z",
+        "accessibility" => "M12,2 A2,2 0 1 1 11.99,2 M3,8 L21,8 M12,6 L12,14 M12,14 L6,22 M12,14 L18,22",
+        "home" => "M2,11 L12,2 22,11 M5,9 L5,22 10,22 10,15 14,15 14,22 19,22 19,9",
         "environment" => "M3,4 L21,4 M3,12 L21,12 M3,20 L21,20 M8,1 L8,7 M16,9 L16,15 M10,17 L10,23",
         "system" => "M2,3 L22,3 22,17 2,17 Z M8,21 L16,21 M12,17 L12,21",
         "personalization" => "M4,3 L20,3 20,15 4,15 Z M8,15 L8,21 16,21 16,15 M4,8 L20,8",

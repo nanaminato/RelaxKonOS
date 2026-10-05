@@ -1,0 +1,75 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:nav="clr-namespace:RelaxKonOS.Client.Apps.Settings.Views"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
+             xmlns:ss="clr-namespace:RelaxKonOS.Client.Services"
+             x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.PersonalizationColorsView"
+             x:DataType="vm:PersonalizationPageViewModel" Classes="builtin-app">
+    <StackPanel Spacing="16" MaxWidth="960">
+<Border Classes="card" nav:SettingsSearchTarget.Id="workspace.colors">
+            <StackPanel Spacing="10">
+                <TextBlock Text="{loc:Loc settings.colors_and_mode}" Classes="title" />
+                <TextBlock Text="{loc:Loc settings.colors_and_mode.description}" Opacity="0.7" TextWrapping="Wrap" />
+
+                <TextBlock Text="{loc:Loc settings.theme}" FontWeight="SemiBold" />
+                <StackPanel Spacing="6">
+                    <RadioButton Content="{loc:Loc settings.theme.light}" IsChecked="{Binding IsLightTheme, Mode=TwoWay}" />
+                    <RadioButton Content="{loc:Loc settings.theme.dark}" IsChecked="{Binding IsDarkTheme, Mode=TwoWay}" />
+                    <RadioButton Content="{loc:Loc settings.theme.system}" IsChecked="{Binding IsSystemTheme, Mode=TwoWay}" />
+                </StackPanel>
+                <TextBlock Text="{loc:Loc settings.theme.description}" Classes="subtle" TextWrapping="Wrap" />
+
+                <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" Margin="0,4" />
+
+                <TextBlock Text="{loc:Loc settings.palette}" FontWeight="SemiBold" />
+                <TextBlock Text="{loc:Loc settings.palette.description}" Classes="subtle" TextWrapping="Wrap" />
+                <ComboBox nav:SettingsSearchTarget.Id="workspace.palette" AutomationProperties.Name="{loc:Loc settings.palette}" ItemsSource="{Binding PaletteChoices}"
+                          SelectedValue="{Binding PaletteId, Mode=TwoWay}"
+                          SelectedValueBinding="{Binding Id}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ThemePaletteChoice"><TextBlock Text="{Binding Name}" /></DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <TextBlock Text="{loc:Loc settings.palette_scope_hint}" Classes="subtle" TextWrapping="Wrap" />
+                <Border Background="{Binding PalettePreview.Background}"
+                        BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1"
+                        CornerRadius="{DynamicResource OverlayCornerRadius}" Padding="12">
+                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" RowSpacing="8" ColumnSpacing="12">
+                        <TextBlock Text="{loc:Loc settings.palette.preview}" FontWeight="SemiBold" />
+                        <TextBlock Grid.Column="1" Text="{Binding PalettePreview.AccentValue}" Classes="subtle" />
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="6">
+                            <Border Width="36" Height="24" CornerRadius="5" Background="{Binding PalettePreview.Surface}" />
+                            <Border Width="36" Height="24" CornerRadius="5" Background="{Binding PalettePreview.Accent}" />
+                            <Border Width="36" Height="24" CornerRadius="5" Background="{Binding PalettePreview.Success}" />
+                            <Border Width="36" Height="24" CornerRadius="5" Background="{Binding PalettePreview.Danger}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+                <TextBlock Text="{loc:Loc settings.accent}" FontWeight="SemiBold" />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <TextBox nav:SettingsSearchTarget.Id="workspace.accent" AutomationProperties.Name="{loc:Loc settings.accent}" Text="{Binding AccentInput, Mode=TwoWay}"
+                             PlaceholderText="{loc:Loc settings.accent.placeholder}" />
+                    <Button Grid.Column="1" Content="{loc:Loc settings.accent.reset}"
+                            Command="{Binding ResetAccentCommand}"
+                            IsEnabled="{Binding HasAccentOverride}" />
+                </Grid>
+                <TextBlock Text="{Binding AccentError}" Foreground="{DynamicResource DangerBrush}"
+                           IsVisible="{Binding HasAccentError}" TextWrapping="Wrap" />
+                <TextBlock Text="{loc:Loc settings.accent.hint}" Classes="subtle" TextWrapping="Wrap" />
+
+                <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" Margin="0,4" />
+                <TextBlock Text="{loc:Loc settings.custom_theme}" FontWeight="SemiBold" />
+                <TextBlock Text="{loc:Loc settings.custom_theme.description}" Classes="subtle" TextWrapping="Wrap" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button nav:SettingsSearchTarget.Id="workspace.customTheme" Content="{loc:Loc settings.theme_import}" Command="{Binding ImportThemeCommand}" />
+                    <Button Content="{loc:Loc settings.theme_export}" Command="{Binding ExportThemeCommand}"
+                            IsEnabled="{Binding HasSelectedCustomPalette}" />
+                    <Button Content="{loc:Loc settings.theme_delete}" Command="{Binding DeleteThemeCommand}"
+                            IsEnabled="{Binding HasSelectedCustomPalette}" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+        <Button Content="{loc:Loc settings.reset.colors}" Command="{Binding ResetColorsCommand}" />
+    </StackPanel>
+</UserControl>

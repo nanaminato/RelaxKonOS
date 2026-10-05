@@ -7,6 +7,8 @@ using RelaxKonOS.Protocol.Workspace;
 
 namespace RelaxKonOS.Client.Services.WorkspaceSettings;
 
+public sealed record PreferencesEditSource(string ApplicationId, string PageRoute);
+
 public enum PreferencesSaveState { Idle, Saving, Accepted, Saved, Failed, Conflict, Offline }
 
 /// <summary>Owns preference drafts and debounced writes beyond any Settings window lifetime.</summary>
@@ -22,6 +24,10 @@ public sealed class WorkspacePreferencesEditor : ObservableObject, IDisposable
     public PreferencesSaveState State { get => _state; private set => SetProperty(ref _state, value); }
     public PreferencesSaveFailure Failure { get => _failure; private set => SetProperty(ref _failure, value); }
     public bool HasDraft => _draft is not null;
+    private PreferencesEditSource? _source;
+    private (string? ServiceId, Guid? SessionId, Guid? WorkspaceId)? _sourceTarget;
+    private (string? ServiceId, Guid? SessionId, Guid? WorkspaceId) CurrentSourceTarget => (_session.ServiceId, _session.CurrentSession?.Id, _session.CurrentWorkspace?.Id);
+    public PreferencesEditSource? Source { get => _source; private set => SetProperty(ref _source, value); }
 
     public WorkspacePreferencesEditor(IWorkspaceSettingsService service, IAuthSession session, DefaultAppRegistry registry)
     {
@@ -31,9 +37,11 @@ public sealed class WorkspacePreferencesEditor : ObservableObject, IDisposable
         session.StateChanged += OnSessionChanged;
     }
 
-    public void Schedule(WorkspacePreferencesDto preferences)
+    public void Schedule(WorkspacePreferencesDto preferences, PreferencesEditSource? source)
     {
         _pending?.Cancel();
+        Source = source;
+        _sourceTarget = _session.State == AuthSessionState.Authenticated ? CurrentSourceTarget : null;
         if (_session is not { State: AuthSessionState.Authenticated, ServiceId: { } serviceId, EffectiveBaseUrl: not null, CurrentWorkspace: { } workspace })
         {
             State = PreferencesSaveState.Offline;
@@ -154,9 +162,11 @@ public sealed class WorkspacePreferencesEditor : ObservableObject, IDisposable
     {
         if (_draft is null)
         {
-            if (_session.State != AuthSessionState.Authenticated)
+            if (_session.State != AuthSessionState.Authenticated || _sourceTarget != CurrentSourceTarget)
             {
                 _pending?.Cancel();
+                _sourceTarget = null;
+                Source = null;
                 State = PreferencesSaveState.Idle;
             }
             return;
@@ -164,6 +174,8 @@ public sealed class WorkspacePreferencesEditor : ObservableObject, IDisposable
         if (IsCurrent(_draft)) return;
         _pending?.Cancel();
         _draft = null;
+        _sourceTarget = null;
+        Source = null;
         OnPropertyChanged(nameof(HasDraft));
         State = PreferencesSaveState.Idle;
     }

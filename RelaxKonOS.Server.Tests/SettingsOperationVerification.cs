@@ -17,6 +17,19 @@ internal static class SettingsOperationVerification
         var grants = new HostElevationSessionStore(new TestHostAccountPrivilegeService(), new UploadSessionChecks.SystemMode(), new HostElevationSessionState());
         var coordinator = new SettingsOperationCoordinator(journal, provider, grants);
         var actor = Principal();
+        var catalog = new SettingsCatalog(new PrivilegedHelperOptions(), grants).Read(actor).Items;
+        foreach (var (id, route) in new[]
+        {
+            ("workspace.colors", "personalization/colors"), ("workspace.wallpaper", "personalization/background"),
+            ("workspace.desktopLayout", "personalization/layout"), ("workspace.systemStyle", "personalization/style"),
+            ("workspace.palette", "personalization/colors"), ("workspace.accent", "personalization/colors"),
+            ("workspace.customTheme", "personalization/colors")
+        })
+            Check(catalog.Single(item => item.SettingId == id).Route == "relaxkonos://settings/" + route,
+                "Server discovery did not use the current personalization setting IDs and detail routes.");
+        Check(!catalog.Any(item => item.SettingId is "workspace.theme" or "workspace.shell"),
+            "Discovery retained obsolete setting IDs.");
+
         var request = new TimeZonePreviewRequest(provider.Revision, "time-test", new("Test/Two"));
         var plan = await coordinator.PreviewTimeAsync(actor, request, default);
         Check(plan.PlanId == (await coordinator.PreviewTimeAsync(actor, request, default)).PlanId,

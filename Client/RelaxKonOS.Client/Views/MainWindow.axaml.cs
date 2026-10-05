@@ -23,6 +23,8 @@ public partial class MainWindow : Window
     public event EventHandler? DesktopReady;
     private readonly DispatcherTimer _hideBarTimer;
     private bool _isPinned;
+    private readonly DesktopDevicePreferences _devicePreferences;
+    private readonly DesktopNotificationService _notifications;
     private bool _isFullScreen;
     private bool _isDraggingConnectionBar;
     private Point _connectionDragStart;
@@ -41,6 +43,11 @@ public partial class MainWindow : Window
         InitializeComponent();
         _localization = App.Services.GetRequiredService<LocalizationService>();
         _localization.LanguageChanged += OnLanguageChanged;
+        _devicePreferences = App.Services.GetRequiredService<DesktopDevicePreferences>();
+        _devicePreferences.Changed += OnDevicePreferencesChanged;
+        _isPinned = _devicePreferences.Value.KeepConnectionBarVisible;
+        _notifications = App.Services.GetRequiredService<DesktopNotificationService>();
+        NotificationBanner.DataContext = _notifications;
         RefreshLocalizedText();
         DisconnectingOverlay.Transitions = new Transitions { _disconnectOverlayFade };
         _hideBarTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
@@ -73,6 +80,8 @@ public partial class MainWindow : Window
 
     private void OnClosed(object? sender, EventArgs e)
     {
+        _devicePreferences.Changed -= OnDevicePreferencesChanged;
+        _notifications.DismissCommand.Execute(null);
         ++_desktopLoadGeneration;
         _desktopLifetime.Cancel();
         _desktopLifetime.Dispose();
@@ -130,9 +139,19 @@ public partial class MainWindow : Window
     private void ConnectionInfo_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
         => ConnectionInfo.IsVisible = !ConnectionInfo.IsVisible;
 
+    private void OnDevicePreferencesChanged(object? sender, EventArgs e)
+    {
+        if (_isPinned == _devicePreferences.Value.KeepConnectionBarVisible) return;
+        _isPinned = _devicePreferences.Value.KeepConnectionBarVisible;
+        RefreshLocalizedText();
+        if (_isPinned) { _hideBarTimer.Stop(); ConnectionBar.IsVisible = true; }
+        else if (_isFullScreen) _hideBarTimer.Start();
+    }
+
     private void Pin_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         _isPinned = !_isPinned;
+        _devicePreferences.Update(p => p with { KeepConnectionBarVisible = _isPinned });
         PinButton.Content = _isPinned ? "●" : "○";
         ToolTip.SetTip(PinButton, T(_isPinned ? "shell.connection_bar.unpin_tooltip" : "shell.connection_bar.pin_tooltip", _isPinned ? "Unpin connection bar" : "Pin connection bar"));
         if (_isPinned)

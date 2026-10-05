@@ -1,4 +1,5 @@
 <UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:nav="clr-namespace:RelaxKonOS.Client.Apps.Settings.Views"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
@@ -7,9 +8,8 @@
              x:Name="Root" Classes="builtin-app">
     <StackPanel Spacing="16" MaxWidth="720">
         <StackPanel IsVisible="{Binding IsInstalledApps}" Spacing="16">
-            <TextBlock Text="{Binding LocalizedDisplayName}" FontSize="24" FontWeight="SemiBold" />
             <TextBlock Text="{loc:Loc settings.apps.description}" Opacity="0.68" TextWrapping="Wrap" />
-            <Border Classes="card">
+            <Border nav:SettingsSearchTarget.Id="client.apps" Classes="card">
                 <ItemsControl ItemsSource="{Binding RegisteredApps}">
                     <ItemsControl.Styles>
                         <!-- Item presenters otherwise size to the button's content instead of the list width. -->
@@ -88,7 +88,7 @@
                                 <TextBlock Text="{loc:Loc settings.app_permissions}" FontWeight="SemiBold" />
                                 <TextBlock Text="{Binding SelectedAppPermissionSummary}" FontSize="12" Opacity="0.65" TextWrapping="Wrap" />
                             </StackPanel>
-                            <Button Grid.Column="1" Content="{loc:Loc settings.manage_permissions}" Command="{Binding EditSelectedPermissionsCommand}" IsVisible="{Binding HasSelectedAppPermissions}" VerticalAlignment="Center" Padding="14,6" />
+                            <Button nav:SettingsSearchTarget.Id="client.permissions" Grid.Column="1" Content="{loc:Loc settings.manage_permissions}" Command="{Binding EditSelectedPermissionsCommand}" IsVisible="{Binding HasSelectedAppPermissions}" VerticalAlignment="Center" Padding="14,6" />
                         </Grid>
                     </Border>
                     <TextBlock Text="{Binding ActionStatus}" IsVisible="{Binding HasActionStatus}" Opacity="0.68" TextWrapping="Wrap" />

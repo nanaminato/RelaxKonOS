@@ -7,7 +7,6 @@
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.NetworkPageView"
              x:DataType="vm:NetworkPageViewModel" Classes="builtin-app">
     <StackPanel Spacing="16" MaxWidth="640">
-            <TextBlock Text="{Binding LocalizedDisplayName}" FontSize="24" FontWeight="SemiBold" />
 
         <Border Classes="card" DataContext="{Binding OutboundProxy}">
             <StackPanel Spacing="12" x:DataType="docker:DockerProxyViewModel">

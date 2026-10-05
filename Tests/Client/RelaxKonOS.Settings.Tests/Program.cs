@@ -9,6 +9,16 @@ if (SystemLanguageResolver.Resolve(CultureInfo.GetCultureInfo("zh-TW")) != "zh-C
     || SystemLanguageResolver.Resolve(CultureInfo.GetCultureInfo("fr-FR")) != "en-US"
     || !SystemLanguageResolver.IsFollowSystem(WorkspacePreferencesDto.LanguageFollowSystem))
     throw new Exception("Follow-system language mapping failed.");
+var navigation = new SettingsNavigationHistory();
+navigation.Remember("personalization/colors", "强调色");
+navigation.Remember("personalization/colors", "palette");
+if (navigation.Back() != new SettingsNavigationLocation("personalization/colors", "palette")
+    || navigation.Back() != new SettingsNavigationLocation("personalization/colors", "强调色") || navigation.CanGoBack)
+    throw new Exception("Back navigation lost same-page search context or ordering.");
+navigation.Remember("system", "hostname");
+navigation.Clear();
+if (navigation.CanGoBack) throw new Exception("Connection changes retained old navigation context.");
+Console.WriteLine("Settings navigation: same-page searches, back order and connection reset passed.");
 var entries = Enumerable.Range(0, 200).Select(i => new SettingsSearchEntry($"setting.{i}", "system",
     $"Environment {i}", "System", "HostMachine", i % 2 == 0 ? "HelperUnavailable" : "",
     $"environment {i} PATH 路径 环境变量 パス 環境変数")).ToArray();

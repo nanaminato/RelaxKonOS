@@ -658,7 +658,11 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
             return false;
 
         var segments = GetPathSegments(uri);
-        return (segments.Length == 1 && new[] { "system", "account-security", "personalization", "time-language", "network", "apps", "image-mirrors", "default-apps", "developer", "about" }.Contains(segments[0], StringComparer.OrdinalIgnoreCase))
+        return (segments.Length == 1 && new[] { "home", "system", "account-security", "personalization", "time-language", "network", "apps", "default-apps", "developer", "accessibility", "about" }.Contains(segments[0], StringComparer.OrdinalIgnoreCase))
+               || (segments.Length == 2 && segments[0].Equals("system", StringComparison.OrdinalIgnoreCase)
+                   && segments[1].Equals("preferences", StringComparison.OrdinalIgnoreCase))
+               || (segments.Length == 2 && segments[0].Equals("personalization", StringComparison.OrdinalIgnoreCase)
+                   && new[] { "colors", "style", "layout", "background" }.Contains(segments[1], StringComparer.OrdinalIgnoreCase))
                || (segments.Length == 3 && segments[0].Equals("apps", StringComparison.OrdinalIgnoreCase)
                    && segments[2].Equals("permissions", StringComparison.OrdinalIgnoreCase)
                    && !string.IsNullOrWhiteSpace(segments[1]));
@@ -669,8 +673,8 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         var viewModel = _viewModel;
         if (viewModel is null) return;
         var segments = GetPathSegments(request.Uri);
-        if (segments.Length == 1)
-            viewModel.SelectPage(segments[0]);
+        if (segments.Length is 1 or 2)
+            viewModel.SelectPage(string.Join("/", segments));
         else if (segments.Length == 3 && segments[0].Equals("apps", StringComparison.OrdinalIgnoreCase)
                  && segments[2].Equals("permissions", StringComparison.OrdinalIgnoreCase))
             _ = viewModel.SelectApplicationPermissionsAsync(segments[1]);

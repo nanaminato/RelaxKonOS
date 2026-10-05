@@ -17,6 +17,11 @@ internal static class HostTimeCompletionChecks
         vm.ReloadCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         vm.SelectedZone = "UTC";
         vm.PreviewCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(vm.HasDraft && vm.ResetDraftCommand.CanExecute(null), "Preview remains a resettable draft");
+        vm.ResetDraftCommand.Execute(null);
+        Check(!vm.HasDraft && !vm.HasPreview && vm.SelectedZone == vm.CurrentZone, "Reset draft to current value");
+        vm.SelectedZone = "UTC";
+        vm.PreviewCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         var completedPlanId = vm.OperationId;
         var applying = vm.ApplyCommand.ExecuteAsync(null);
         Check(vm.IsBusy && !vm.CanEdit && !vm.HasPreview && !vm.IsCompleted, "Apply progress");
@@ -24,6 +29,9 @@ internal static class HostTimeCompletionChecks
         applying.GetAwaiter().GetResult();
         Check(vm.IsCompleted && vm.CanEdit && !vm.HasPreview && !vm.ShowQueryAction
             && vm.ShowRollbackAction && vm.SelectedZone == "UTC", "Confirmed completion");
+        vm.SelectedZone = "Asia/Shanghai";
+        vm.ResetDraftCommand.Execute(null);
+        Check(!vm.HasDraft && vm.CanRollback, "Reset preserves completed operation rollback");
         vm.SelectedZone = "Asia/Shanghai";
         vm.PreviewCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Check(stub.Request!.ExpectedRevision == "r2", "Next preview uses confirmed revision");
@@ -38,6 +46,7 @@ internal static class HostTimeCompletionChecks
         stub.Pending.SetResult(stub.Result(SettingsOperationState.Unknown, null));
         applying.GetAwaiter().GetResult();
         Check(!vm.CanEdit && !vm.IsCompleted && vm.ShowQueryAction && vm.HasOperation, "Unknown outcome locks edits");
+        Check(!vm.HasDraft && !vm.ResetDraftCommand.CanExecute(null), "Unknown submitted operation cannot be discarded as a draft");
         vm.QueryCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Check(vm.CanEdit && vm.IsCompleted && !vm.ShowQueryAction, "Query-confirmed completion");
         Console.WriteLine("PASS: Time zone completion, revision reuse, rollback and unknown-outcome recovery.");

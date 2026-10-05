@@ -8,133 +8,240 @@
              x:DataType="vm:SettingsViewModel"
              Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
 
+    <UserControl.Styles>
+        <Style Selector="Border.settings-search-target">
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="BorderThickness" Value="2" />
+        </Style>
+        <Style Selector="Button.settings-link">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="MinHeight" Value="64" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="16,12" />
+            <Setter Property="CornerRadius" Value="8" />
+        </Style>
+        <Style Selector="Button.settings-link:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
+        </Style>
+    </UserControl.Styles>
     <UserControl.DataTemplates>
+        <DataTemplate DataType="vm:PersonalizationColorsPageViewModel">
+                <pages:PersonalizationColorsView DataContext="{Binding Editor}" VerticalAlignment="Top" />
+        </DataTemplate>
+        <DataTemplate DataType="vm:PersonalizationStylePageViewModel">
+                <pages:PersonalizationStyleView DataContext="{Binding Editor}" VerticalAlignment="Top" />
+        </DataTemplate>
+        <DataTemplate DataType="vm:PersonalizationLayoutPageViewModel">
+                <pages:PersonalizationLayoutView DataContext="{Binding Editor}" VerticalAlignment="Top" />
+        </DataTemplate>
+        <DataTemplate DataType="vm:PersonalizationBackgroundPageViewModel">
+                <pages:PersonalizationBackgroundView DataContext="{Binding Editor}" VerticalAlignment="Top" />
+        </DataTemplate>
+
+        <DataTemplate DataType="vm:SettingsHomePageViewModel">
+                <StackPanel Spacing="16" MaxWidth="960" HorizontalAlignment="Stretch">
+                    <TextBlock Text="{loc:Loc settings.home.description}" TextWrapping="Wrap" Classes="subtle" />
+                    <TextBlock Text="{loc:Loc settings.home.quick_links}" IsVisible="{Binding HasEntries}" FontSize="18" FontWeight="SemiBold" />
+                    <TextBlock Text="{loc:Loc settings.home.pinned}" IsVisible="{Binding HasPinnedEntries}" FontSize="18" FontWeight="SemiBold" />
+                    <ItemsControl ItemsSource="{Binding PinnedEntries}" IsVisible="{Binding HasPinnedEntries}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:SettingsPageViewModel">
+                                <Button Classes="settings-link" Margin="0,0,0,8" Tag="{Binding Route}" Click="OnQuickLinkClick">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
+                                        <Path Data="{Binding Icon}" Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.5" Width="22" Height="22" Stretch="Uniform" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="{Binding LocalizedDisplayName}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="2" Text="›" FontSize="22" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <ItemsControl ItemsSource="{Binding Entries}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:SettingsPageViewModel">
+                                <Button Classes="settings-link" Margin="0,0,0,8" Tag="{Binding Route}" Click="OnQuickLinkClick">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
+                                        <Path Data="{Binding Icon}" Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.5" Width="22" Height="22" Stretch="Uniform" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="{Binding LocalizedDisplayName}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="2" Text="›" FontSize="22" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+        </DataTemplate>
         <DataTemplate DataType="vm:AccountSecurityPageViewModel">
-            <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" Padding="0,0,0,32">
                 <pages:AccountSecurityPageView VerticalAlignment="Top" />
-            </ScrollViewer>
         </DataTemplate>
         <DataTemplate DataType="vm:SystemPageViewModel">
-            <ScrollViewer HorizontalScrollBarVisibility="Disabled"
-                          VerticalScrollBarVisibility="Auto"
-                          Padding="0,0,0,32">
                 <pages:SystemPageView VerticalAlignment="Top" />
-            </ScrollViewer>
         </DataTemplate>
         <DataTemplate DataType="vm:PersonalizationPageViewModel">
-            <ScrollViewer HorizontalScrollBarVisibility="Disabled"
-                          VerticalScrollBarVisibility="Auto"
-                          Padding="0,0,0,32">
                 <pages:PersonalizationPageView VerticalAlignment="Top" />
-            </ScrollViewer>
         </DataTemplate>
         <DataTemplate DataType="vm:TimeLanguagePageViewModel">
-            <ScrollViewer HorizontalScrollBarVisibility="Disabled"
-                          VerticalScrollBarVisibility="Auto"
-                          Padding="0,0,0,32">
                 <pages:TimeLanguagePageView VerticalAlignment="Top" />
-            </ScrollViewer>
         </DataTemplate>
         <DataTemplate DataType="vm:NetworkPageViewModel">
-            <ScrollViewer HorizontalScrollBarVisibility="Disabled"
-                          VerticalScrollBarVisibility="Auto"
-                          Padding="0,0,0,32">
                 <pages:NetworkPageView VerticalAlignment="Top" />
-            </ScrollViewer>
         </DataTemplate>
         <DataTemplate DataType="vm:AppsPageViewModel">
-            <ScrollViewer  HorizontalScrollBarVisibility="Disabled"
-                          VerticalScrollBarVisibility="Auto"
-                          Padding="0,0,0,32">
                 <pages:AppsPageView VerticalAlignment="Top" />
-            </ScrollViewer>
         </DataTemplate>
         <DataTemplate DataType="vm:DefaultAppsPageViewModel">
-            <ScrollViewer HorizontalScrollBarVisibility="Disabled"
-                          VerticalScrollBarVisibility="Auto"
-                          Padding="0,0,0,32">
                 <pages:DefaultAppsPageView VerticalAlignment="Top" />
-            </ScrollViewer>
         </DataTemplate>
         <DataTemplate DataType="vm:DeveloperPageViewModel">
-            <ScrollViewer HorizontalScrollBarVisibility="Disabled"
-                          VerticalScrollBarVisibility="Auto"
-                          Padding="0,0,0,32">
                 <pages:DeveloperPageView VerticalAlignment="Top" />
-            </ScrollViewer>
         </DataTemplate>
+        <DataTemplate DataType="vm:AccessibilityPageViewModel"><pages:AccessibilityPageView VerticalAlignment="Top" /></DataTemplate>
+        <DataTemplate DataType="vm:DailySettingsPageViewModel"><pages:DailySettingsPageView VerticalAlignment="Top" /></DataTemplate>
         <DataTemplate DataType="vm:AboutPageViewModel">
-            <ScrollViewer HorizontalScrollBarVisibility="Disabled"
-                          VerticalScrollBarVisibility="Auto"
-                          Padding="0,0,0,32">
                 <pages:AboutPageView VerticalAlignment="Top" />
-            </ScrollViewer>
         </DataTemplate>
     </UserControl.DataTemplates>
 
-    <Grid RowDefinitions="Auto,Auto,*" Margin="12">
-        <Grid ColumnDefinitions="Auto,*" Margin="0,0,0,8">
-            <Button Content="{loc:Loc settings.navigation.back}" Command="{Binding BackCommand}" Margin="0,0,8,0" />
-            <TextBox x:Name="SearchBox" Grid.Column="1" Text="{Binding SearchQuery, Mode=TwoWay}"
-                     PlaceholderText="{loc:Loc settings.search.placeholder}" MaxLength="256"
-                     AutomationProperties.Name="{loc:Loc settings.search.placeholder}" />
-        </Grid>
-        <StackPanel Grid.Row="1" Spacing="4" Margin="0,0,0,8">
-            <TextBlock Text="{Binding ConnectionSummary}" TextWrapping="Wrap" FontSize="12" />
-            <TextBlock Text="{Binding Breadcrumb}" TextWrapping="Wrap" FontWeight="SemiBold" />
-            <ComboBox x:Name="CompactNavigation" IsVisible="False" ItemsSource="{Binding Pages}"
-                      SelectedItem="{Binding SelectedPage, Mode=TwoWay}" HorizontalAlignment="Stretch"
-                      AutomationProperties.Name="{loc:Loc settings.search.category}">
-                <ComboBox.ItemTemplate>
-                    <DataTemplate x:DataType="vm:SettingsPageViewModel"><TextBlock Text="{Binding LocalizedDisplayName}" /></DataTemplate>
-                </ComboBox.ItemTemplate>
-            </ComboBox>
-        </StackPanel>
-        <Grid x:Name="NavigationLayout" Grid.Row="2" ColumnDefinitions="210,*">
-            <Border x:Name="Sidebar" Grid.Column="0" Margin="0,0,10,0" Classes="app-sidebar">
-                <ListBox ItemsSource="{Binding Pages}" SelectedItem="{Binding SelectedPage, Mode=TwoWay}"
-                         Background="Transparent" BorderThickness="0" Padding="0,0,6,8"
+    <Grid>
+    <Grid x:Name="NavigationLayout" ColumnDefinitions="250,*">
+        <Border x:Name="Sidebar" Grid.Column="0" Classes="app-sidebar" Padding="16" Margin="0,0,16,0">
+            <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="16">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="{loc:Loc settings.title}" FontSize="22" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding ConnectionSummary}" TextWrapping="Wrap" FontSize="12" Classes="subtle" />
+                    <Expander Header="{loc:Loc settings.connection.address}">
+                        <SelectableTextBlock Text="{Binding ConnectionAddress}" TextWrapping="Wrap" FontSize="12" />
+                    </Expander>
+                </StackPanel>
+                <TextBox x:Name="SearchBox" Grid.Row="1" Text="{Binding SearchQuery, Mode=TwoWay}"
+                         PlaceholderText="{loc:Loc settings.search.placeholder}" MaxLength="256"
+                         AutomationProperties.Name="{loc:Loc settings.search.placeholder}" />
+                <ListBox Grid.Row="2" ItemsSource="{Binding NavigationPages}" SelectedItem="{Binding SelectedCategory, Mode=TwoWay}"
+                         Background="Transparent" BorderThickness="0" Padding="0"
                          AutomationProperties.Name="{loc:Loc settings.search.category}"
                          ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                     <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="vm:SettingsPageViewModel">
-                            <StackPanel Orientation="Horizontal" Spacing="10" Margin="4,2">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" Margin="4,6">
                                 <Path Data="{Binding Icon}" Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.5"
                                       Width="18" Height="18" Stretch="Uniform" VerticalAlignment="Center" />
-                                <TextBlock Text="{Binding LocalizedDisplayName}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="{Binding LocalizedDisplayName}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <Button Grid.Row="3" Content="{loc:Loc settings.about_page.title}" Command="{Binding OpenPageCommand}" CommandParameter="about" HorizontalAlignment="Stretch" />
+            </Grid>
+        </Border>
+        <Grid Grid.Column="1" RowDefinitions="Auto,*" Margin="16,16,16,0" RowSpacing="12">
+            <Grid x:Name="CompactNavigation" Grid.Row="0" IsVisible="False" ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                <Button x:Name="NavigationMenuButton" Content="☰" Click="OnOpenNavigationClick"
+                        AutomationProperties.Name="{loc:Loc settings.navigation.open_menu}" ToolTip.Tip="{loc:Loc settings.navigation.open_menu}" />
+                <TextBox x:Name="CompactSearchBox" Grid.Column="1" Text="{Binding SearchQuery, Mode=TwoWay}" MaxLength="256"
+                         PlaceholderText="{loc:Loc settings.search.placeholder}" AutomationProperties.Name="{loc:Loc settings.search.placeholder}" />
+            </Grid>
+            <ScrollViewer x:Name="SettingsPageScroll" Grid.Row="1" IsVisible="{Binding !HasSearch}" HorizontalScrollBarVisibility="Disabled" Padding="0,0,0,24">
+                <StackPanel Spacing="12">
+            <StackPanel Spacing="8">
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                    <Button Content="{loc:Loc settings.navigation.back}" Command="{Binding BackCommand}" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" Text="{Binding Breadcrumb}" TextWrapping="Wrap" VerticalAlignment="Center" Classes="subtle" />
+                </Grid>
+                <Button Content="{Binding ParentTitle}" IsVisible="{Binding HasParentPage}" Command="{Binding OpenPageCommand}" CommandParameter="{Binding ParentRoute}" HorizontalAlignment="Left" />
+                <StackPanel IsVisible="{Binding HasDeviceSaveFailure}" Spacing="8">
+                    <TextBlock Text="{loc:Loc settings.device.save_failed}" TextWrapping="Wrap" />
+                    <Button Content="{loc:Loc settings.save.retry}" Command="{Binding RetryDeviceSaveCommand}" />
+                </StackPanel>
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <TextBlock x:Name="PageHeading" Focusable="True" AutomationProperties.Name="{Binding SelectedPage.LocalizedDisplayName}" Text="{Binding SelectedPage.LocalizedDisplayName}" FontSize="28" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <ToggleButton Grid.Column="1" IsVisible="{Binding CanPinCurrentPage}" IsChecked="{Binding IsCurrentPagePinned, Mode=TwoWay}" Content="{loc:Loc settings.home.pin}" ToolTip.Tip="{loc:Loc settings.home.pin_hint}" VerticalAlignment="Center" />
+                </Grid>
+                <TextBlock Text="{Binding PageScopeDescription}" IsVisible="{Binding HasPageScopeDescription}" TextWrapping="Wrap" Classes="subtle" />
+                <Button Content="{loc:Loc settings.page.default_apps}" IsVisible="{Binding IsAppsCategory}" Command="{Binding OpenPageCommand}" CommandParameter="default-apps" HorizontalAlignment="Left" />
+            </StackPanel>
+            <StackPanel Spacing="4">
+                <TextBlock Text="{Binding SearchLocationStatus}" TextWrapping="Wrap" Foreground="{DynamicResource AccentBrush}" />
+                <Border IsVisible="{Binding HasOtherSaveFeedback}" Classes="card" Padding="12">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="{Binding SaveSummary}" TextWrapping="Wrap" />
+                        <WrapPanel>
+                            <Button Content="{loc:Loc settings.save.open_source}" IsVisible="{Binding CanOpenSaveSource}"
+                                    Command="{Binding OpenPageCommand}" CommandParameter="{Binding SaveSourceRoute}" Margin="0,0,6,4" />
+                            <Button Content="{loc:Loc settings.save.retry}" IsVisible="{Binding CanRetry}" Command="{Binding RetrySaveCommand}" Margin="0,0,6,4" />
+                            <Button Content="{loc:Loc settings.save.discard}" IsVisible="{Binding CanDiscard}" Command="{Binding DiscardDraftCommand}" Margin="0,0,6,4" />
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+                <Border x:Name="LocalSaveFeedback" IsVisible="{Binding HasLocalSaveFeedback}" Classes="card" Padding="12">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="{Binding SaveStatus}" TextWrapping="Wrap" />
+                        <WrapPanel>
+                            <Button Content="{loc:Loc settings.save.retry}" IsVisible="{Binding CanRetry}" Command="{Binding RetrySaveCommand}" Margin="0,0,6,4" />
+                            <Button Content="{loc:Loc settings.save.discard}" IsVisible="{Binding CanDiscard}" Command="{Binding DiscardDraftCommand}" Margin="0,0,6,4" />
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+                    <ContentControl x:Name="PageContent" Content="{Binding SelectedPage}" />
+                </StackPanel>
+            </ScrollViewer>
+            <Grid Grid.Row="1" RowDefinitions="Auto,Auto,*" IsVisible="{Binding HasSearch}">
+                <TextBlock Text="{Binding CatalogProblem}" TextWrapping="Wrap" />
+                <TextBlock Grid.Row="1" Text="{loc:Loc settings.search.no_results}" IsVisible="{Binding HasNoResults}" TextWrapping="Wrap" />
+                <ListBox Grid.Row="2" ItemsSource="{Binding SearchResults}" DoubleTapped="OnSearchResultDoubleTapped" KeyDown="OnSearchResultKeyDown"
+                         AutomationProperties.Name="{loc:Loc settings.search.results}" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="services:SettingsSearchEntry">
+                            <StackPanel Spacing="3" Margin="8,10">
+                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding Category}" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding Scope}" Opacity="0.7" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding Reason}" TextWrapping="Wrap" />
                             </StackPanel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
-            </Border>
-            <Grid Grid.Column="1" RowDefinitions="Auto,*">
-                <StackPanel Spacing="4" Margin="0,0,0,8">
-                    <WrapPanel>
-                        <Button Content="{loc:Loc settings.save.retry}" IsVisible="{Binding CanRetry}" Command="{Binding RetrySaveCommand}" Margin="0,0,6,4" />
-                        <Button Content="{loc:Loc settings.save.discard}" IsVisible="{Binding CanDiscard}" Command="{Binding DiscardDraftCommand}" Margin="0,0,6,4" />
-                    </WrapPanel>
-                    <TextBlock Text="{Binding SaveStatus}" TextWrapping="Wrap" />
-                </StackPanel>
-                <ContentControl Grid.Row="1" Content="{Binding SelectedPage}" IsVisible="{Binding !HasSearch}" />
-                <Grid Grid.Row="1" RowDefinitions="Auto,Auto,*" IsVisible="{Binding HasSearch}">
-                    <TextBlock Text="{Binding CatalogProblem}" TextWrapping="Wrap" />
-                    <TextBlock Grid.Row="1" Text="{loc:Loc settings.search.no_results}" IsVisible="{Binding HasNoResults}" TextWrapping="Wrap" />
-                    <ListBox Grid.Row="2" ItemsSource="{Binding SearchResults}" DoubleTapped="OnSearchResultDoubleTapped" KeyDown="OnSearchResultKeyDown"
-                             AutomationProperties.Name="{loc:Loc settings.search.results}"
+            </Grid>
+        </Grid>
+    </Grid>
+        <Grid x:Name="NavigationDrawer" IsVisible="False">
+            <Button HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="{DynamicResource TextPrimaryBrush}" Opacity="0.18"
+                    Click="OnCloseNavigationClick" AutomationProperties.Name="{loc:Loc settings.navigation.close_menu}" />
+            <Border Width="280" HorizontalAlignment="Left" Background="{DynamicResource SurfaceBrush}" Padding="16"
+                    KeyboardNavigation.TabNavigation="Cycle">
+                <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="12">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="{loc:Loc settings.title}" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <Button x:Name="CloseNavigationButton" Grid.Column="1" Content="×" Click="OnCloseNavigationClick"
+                                AutomationProperties.Name="{loc:Loc settings.navigation.close_menu}" />
+                    </Grid>
+                    <StackPanel Grid.Row="1" Spacing="6">
+                        <TextBlock Text="{Binding ConnectionSummary}" TextWrapping="Wrap" Classes="subtle" />
+                        <Expander Header="{loc:Loc settings.connection.address}">
+                            <SelectableTextBlock Text="{Binding ConnectionAddress}" TextWrapping="Wrap" />
+                        </Expander>
+                    </StackPanel>
+                    <ListBox x:Name="DrawerNavigationList" Grid.Row="2" ItemsSource="{Binding NavigationPages}" SelectedItem="{Binding SelectedCategory, Mode=TwoWay}"
+                             Background="Transparent" BorderThickness="0" AutomationProperties.Name="{loc:Loc settings.search.category}"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                         <ListBox.ItemTemplate>
-                            <DataTemplate x:DataType="services:SettingsSearchEntry">
-                                <StackPanel Spacing="3" Margin="4,6">
-                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                                    <TextBlock Text="{Binding Category}" TextWrapping="Wrap" />
-                                    <TextBlock Text="{Binding Scope}" Opacity="0.7" TextWrapping="Wrap" />
-                                    <TextBlock Text="{Binding Reason}" TextWrapping="Wrap" />
-                                </StackPanel>
+                            <DataTemplate x:DataType="vm:SettingsPageViewModel">
+                                <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" MinHeight="40" Tag="{Binding Route}" Click="OnQuickLinkClick">
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                                        <Path Data="{Binding Icon}" Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.5"
+                                              Width="18" Height="18" Stretch="Uniform" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="{Binding LocalizedDisplayName}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
+                    <Button Grid.Row="3" Content="{loc:Loc settings.about_page.title}" Tag="about" Click="OnQuickLinkClick" HorizontalAlignment="Stretch" />
                 </Grid>
-            </Grid>
+            </Border>
         </Grid>
     </Grid>
 </UserControl>

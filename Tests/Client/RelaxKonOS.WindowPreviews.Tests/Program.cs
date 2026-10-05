@@ -41,6 +41,12 @@ var localization = new LocalizationService(settings, new SshDesktopSession(null!
 using var services = new ServiceCollection().AddSingleton(localization).BuildServiceProvider();
 // The XAML localization extension resolves the host application's singleton provider.
 typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
+SettingsInteractionChecks.Run(settings, localization);
+SettingsWindowChecks.Run(settings, localization);
+DesktopDeviceSettingsChecks.Run(settings, appearance);
+HostTimeCompletionChecks.Run(localization);
+HostIdentityCompletionChecks.Run(localization);
+if (args.Contains("--settings-interaction-only")) return;
 DesktopDisconnectChecks.Run(settings);
 
 var canvas = new Canvas { Width = 1200, Height = 800 };
@@ -266,8 +272,6 @@ Check(!traceLines.Any(line => line.Contains("Preview document") || line.Contains
     "Trace excludes window titles and document content.");
 Console.WriteLine($"Interaction trace: {TaskbarPreviewDiagnostics.FilePath}");
 LanguageSwitchChecks.Run(settings, localization);
-HostTimeCompletionChecks.Run(localization);
-HostIdentityCompletionChecks.Run(localization);
 MemoryLifecycleChecks.Run(settings, localization, services);
 Console.WriteLine($"PASS: window preview rendering, caching, native fallback, activation and close lifecycle. QA image: {output}");
 }

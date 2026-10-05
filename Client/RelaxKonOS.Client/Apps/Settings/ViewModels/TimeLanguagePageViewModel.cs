@@ -1,3 +1,4 @@
+using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Services.Diagnostics;
 using System.Globalization;
 using RelaxKonOS.Client.Services;
@@ -135,6 +136,14 @@ public sealed partial class TimeLanguagePageViewModel : SettingsPageViewModel
             _localization.Get("settings.language.follow_system", "Follow system")),
         .. _localization.AvailableLanguages,
     ];
+
+    [RelayCommand]
+    private void ResetTimeFormats()
+    {
+        Settings.TimeFormat = WorkspacePreferencesDto.Default.TimeFormat;
+        Settings.DateFormat = WorkspacePreferencesDto.Default.DateFormat;
+        Save();
+    }
 
     private static CultureInfo SafeCulture(string name)
     {

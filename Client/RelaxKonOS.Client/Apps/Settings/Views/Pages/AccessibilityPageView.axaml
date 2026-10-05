@@ -1,0 +1,31 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:nav="clr-namespace:RelaxKonOS.Client.Apps.Settings.Views"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
+             x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.AccessibilityPageView"
+             x:DataType="vm:AccessibilityPageViewModel" Classes="builtin-app">
+    <StackPanel Spacing="16" MaxWidth="720">
+        <Border Classes="card"><StackPanel Spacing="10">
+            <TextBlock Text="{loc:Loc settings.device.scale}" Classes="title" />
+            <TextBlock Text="{loc:Loc settings.device.scale_hint}" TextWrapping="Wrap" Classes="subtle" />
+            <ComboBox nav:SettingsSearchTarget.Id="client.interfaceScale" AutomationProperties.Name="{loc:Loc settings.device.scale}" ItemsSource="{Binding ScaleChoices}" SelectedItem="{Binding InterfaceScale, Mode=TwoWay}">
+                <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding StringFormat={}{0}%}" /></DataTemplate></ComboBox.ItemTemplate>
+            </ComboBox>
+        </StackPanel></Border>
+        <Border Classes="card"><StackPanel Spacing="12">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                <TextBlock Text="{loc:Loc settings.device.motion}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <ToggleSwitch Grid.Column="1" AutomationProperties.Name="{loc:Loc settings.device.motion}" nav:SettingsSearchTarget.Id="client.reducedMotion" IsChecked="{Binding ReducedMotion, Mode=TwoWay}" />
+            </Grid>
+            <TextBlock Text="{loc:Loc settings.device.motion_hint}" TextWrapping="Wrap" Classes="subtle" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                <TextBlock Text="{loc:Loc settings.device.contrast}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <ToggleSwitch Grid.Column="1" AutomationProperties.Name="{loc:Loc settings.device.contrast}" nav:SettingsSearchTarget.Id="client.highContrast" IsChecked="{Binding HighContrast, Mode=TwoWay}" />
+            </Grid>
+            <TextBlock Text="{loc:Loc settings.device.contrast_hint}" TextWrapping="Wrap" Classes="subtle" />
+        </StackPanel></Border>
+        <Button Content="{loc:Loc settings.device.reset_accessibility}" Command="{Binding ResetAccessibilityCommand}" />
+        <TextBlock Text="{Binding SaveStatus}" TextWrapping="Wrap" />
+        <Button IsVisible="{Binding SaveFailed}" Content="{loc:Loc settings.save.retry}" Command="{Binding RetrySaveCommand}" />
+    </StackPanel>
+</UserControl>

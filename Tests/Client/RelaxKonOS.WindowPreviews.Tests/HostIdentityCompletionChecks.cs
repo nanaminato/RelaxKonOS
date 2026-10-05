@@ -27,6 +27,11 @@ internal static class HostIdentityCompletionChecks
             Check(!vm.HasNameProblem && vm.CanPreview, "Windows 15-character boundary");
             vm.DraftName = "new-host";
             vm.PreviewCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+            Check(vm.HasDraft && vm.ResetDraftCommand.CanExecute(null), "Preview remains a resettable draft");
+            vm.ResetDraftCommand.Execute(null);
+            Check(!vm.HasDraft && !vm.HasPreview && vm.DraftName == vm.PendingHostName, "Reset draft to current value");
+            vm.DraftName = "new-host";
+            vm.PreviewCommand.ExecuteAsync(null).GetAwaiter().GetResult();
             var completedId = vm.OperationId;
             var applying = vm.ApplyCommand.ExecuteAsync(null);
             Check(vm.IsBusy && !vm.CanEdit && !vm.HasPreview && !vm.IsCompleted, "Applying state");
@@ -37,6 +42,9 @@ internal static class HostIdentityCompletionChecks
             Check(effective == SettingsEffectiveState.HostRestart
                 ? vm.CurrentHostName == "old-host" && vm.RestartPending
                 : vm.CurrentHostName == "new-host" && !vm.RestartPending, "Live and staged names");
+            vm.DraftName = "next-host";
+            vm.ResetDraftCommand.Execute(null);
+            Check(!vm.HasDraft && vm.CanRollback, "Reset preserves completed operation rollback");
             vm.DraftName = "next-host";
             vm.PreviewCommand.ExecuteAsync(null).GetAwaiter().GetResult();
             Check(stub.Request!.ExpectedRevision == "r2", "Confirmed revision reused");
@@ -53,6 +61,7 @@ internal static class HostIdentityCompletionChecks
             stub.Pending.SetResult(stub.Result(SettingsOperationState.Unknown, null));
             applying.GetAwaiter().GetResult();
             Check(!vm.CanEdit && !vm.IsCompleted && vm.ShowQueryAction && vm.HasOperation, "Unknown outcome retains query");
+            Check(!vm.HasDraft && !vm.ResetDraftCommand.CanExecute(null), "Unknown submitted operation cannot be discarded as a draft");
             vm.QueryCommand.ExecuteAsync(null).GetAwaiter().GetResult();
             Check(vm.IsCompleted && vm.CanEdit && !vm.ShowQueryAction, "Query-confirmed completion");
             Console.WriteLine($"PASS: Host name completion, revision reuse, rollback and recovery ({effective}).");

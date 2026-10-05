@@ -1,0 +1,38 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:nav="clr-namespace:RelaxKonOS.Client.Apps.Settings.Views"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
+             x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.DailySettingsPageView"
+             x:DataType="vm:DailySettingsPageViewModel" Classes="builtin-app">
+    <StackPanel Spacing="16" MaxWidth="720">
+        <Border Classes="card"><StackPanel Spacing="12">
+            <TextBlock Text="{loc:Loc settings.device.notifications}" Classes="title" />
+            <TextBlock Text="{loc:Loc settings.device.notifications_hint}" TextWrapping="Wrap" Classes="subtle" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                <TextBlock Text="{loc:Loc settings.device.notifications}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <ToggleSwitch Grid.Column="1" AutomationProperties.Name="{loc:Loc settings.device.notifications}" nav:SettingsSearchTarget.Id="client.notifications" IsChecked="{Binding NotificationsEnabled, Mode=TwoWay}" />
+            </Grid>
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                <TextBlock Text="{loc:Loc settings.device.dnd}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <ToggleSwitch Grid.Column="1" AutomationProperties.Name="{loc:Loc settings.device.dnd}" nav:SettingsSearchTarget.Id="client.doNotDisturb" IsChecked="{Binding DoNotDisturb, Mode=TwoWay}" IsEnabled="{Binding NotificationsEnabled}" />
+            </Grid>
+            <TextBlock Text="{loc:Loc settings.device.dnd_hint}" TextWrapping="Wrap" Classes="subtle" />
+        </StackPanel></Border>
+        <Border Classes="card"><StackPanel Spacing="12">
+            <TextBlock Text="{loc:Loc settings.device.startup}" Classes="title" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                <TextBlock Text="{loc:Loc settings.device.restore}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <ToggleSwitch Grid.Column="1" AutomationProperties.Name="{loc:Loc settings.device.restore}" nav:SettingsSearchTarget.Id="client.restoreTerminals" IsChecked="{Binding RestoreTerminals, Mode=TwoWay}" />
+            </Grid>
+            <TextBlock Text="{loc:Loc settings.device.restore_hint}" TextWrapping="Wrap" Classes="subtle" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                <TextBlock Text="{loc:Loc settings.device.connection_bar}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <ToggleSwitch Grid.Column="1" AutomationProperties.Name="{loc:Loc settings.device.connection_bar}" nav:SettingsSearchTarget.Id="client.connectionBar" IsChecked="{Binding KeepConnectionBarVisible, Mode=TwoWay}" />
+            </Grid>
+            <TextBlock Text="{loc:Loc settings.device.connection_bar_hint}" TextWrapping="Wrap" Classes="subtle" />
+        </StackPanel></Border>
+        <Button Content="{loc:Loc settings.device.reset_daily}" Command="{Binding ResetDailySettingsCommand}" />
+        <TextBlock Text="{Binding SaveStatus}" TextWrapping="Wrap" />
+        <Button IsVisible="{Binding SaveFailed}" Content="{loc:Loc settings.save.retry}" Command="{Binding RetrySaveCommand}" />
+    </StackPanel>
+</UserControl>

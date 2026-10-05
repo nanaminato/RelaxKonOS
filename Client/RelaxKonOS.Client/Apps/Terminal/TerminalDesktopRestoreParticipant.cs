@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.DesktopRestore;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.AppSDK;
@@ -27,7 +29,8 @@ public sealed class TerminalDesktopRestoreParticipant : IDesktopRestoreParticipa
 
     public Task RestoreAsync(DesktopRestoreContext context, CancellationToken cancellationToken)
     {
-        if (context.Session.State != AuthSessionState.Authenticated)
+        if (context.Session.State != AuthSessionState.Authenticated
+            || !_services.GetRequiredService<DesktopDevicePreferences>().Value.RestoreTerminals)
             return Task.CompletedTask;
 
         var appContext = new AppContext(_terminal.Manifest.Id, _windowManager, _services);

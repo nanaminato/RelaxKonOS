@@ -1,4 +1,5 @@
 <UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:nav="clr-namespace:RelaxKonOS.Client.Apps.Settings.Views"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
@@ -9,6 +10,8 @@
             <TextBlock Text="{loc:Loc settings.system_properties.title}" FontSize="24" FontWeight="SemiBold" />
             <TextBlock Text="{loc:Loc settings.system_properties.description}" Opacity="0.65" TextWrapping="Wrap" />
         </StackPanel>
+
+        <Button Content="{loc:Loc settings.page.daily}" Click="OnDailySettingsClick" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" />
 
         <Border Classes="card">
             <StackPanel Spacing="12">
@@ -25,7 +28,7 @@
                         <TextBlock Text="{loc:Loc settings.environment.title}" FontWeight="SemiBold" />
                         <TextBlock Text="{loc:Loc settings.system_properties.environment_hint}" Opacity="0.7" TextWrapping="Wrap" />
                     </StackPanel>
-                    <Button Grid.Column="1" Content="{loc:Loc settings.system_properties.open}" Command="{Binding OpenEnvironmentVariablesCommand}" VerticalAlignment="Center" />
+                    <Button nav:SettingsSearchTarget.Id="host.environment" Grid.Column="1" Content="{loc:Loc settings.system_properties.open}" Command="{Binding OpenEnvironmentVariablesCommand}" VerticalAlignment="Center" />
                 </Grid>
             </StackPanel>
         </Border>
@@ -52,7 +55,7 @@
                     <SelectableTextBlock Grid.Column="1" Text="{Binding HostIdentity.PendingHostName}" TextWrapping="Wrap" />
                 </Grid>
                 <TextBlock Text="{loc:Loc settings.hostname.edit}" Opacity="0.7" />
-                <TextBox Text="{Binding HostIdentity.DraftName, Mode=TwoWay}" IsEnabled="{Binding HostIdentity.CanEdit}"
+                <TextBox nav:SettingsSearchTarget.Id="host.identity.hostname" Text="{Binding HostIdentity.DraftName, Mode=TwoWay}" IsEnabled="{Binding HostIdentity.CanEdit}"
                          PlaceholderText="{loc:Loc settings.hostname.placeholder}"
                          AutomationProperties.Name="{loc:Loc settings.hostname}" />
                 <TextBlock IsVisible="{Binding HostIdentity.HasNameLengthHint}" Text="{Binding HostIdentity.NameLengthHint}"
@@ -60,6 +63,8 @@
                 <TextBlock IsVisible="{Binding HostIdentity.HasNameProblem}" Text="{Binding HostIdentity.NameProblem}" TextWrapping="Wrap"
                            Foreground="{DynamicResource DangerBrush}" />
                 <TextBlock Text="{loc:Loc settings.hostname.restart_pending}" TextWrapping="Wrap" IsVisible="{Binding HostIdentity.RestartPending}" />
+                <TextBlock IsVisible="{Binding HostIdentity.HasDraft}" Text="{loc:Loc settings.host.draft_hint}"
+                           Opacity="0.7" TextWrapping="Wrap" />
                 <Border IsVisible="{Binding HostIdentity.HasPreview}" Padding="12" BorderThickness="1" CornerRadius="6"
                         BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
                     <TextBlock Text="{Binding HostIdentity.PreviewText}" TextWrapping="Wrap" />
@@ -69,12 +74,15 @@
                     <Button IsVisible="{Binding HostIdentity.ShowPreviewAction}" Content="{loc:Loc settings.hostname.preview}" Command="{Binding HostIdentity.PreviewCommand}" Margin="0,0,8,8" />
                     <Button IsVisible="{Binding HostIdentity.ShowApplyAction}" Content="{loc:Loc settings.hostname.apply}" Command="{Binding HostIdentity.ApplyCommand}" Margin="0,0,8,8" />
                     <Button IsVisible="{Binding HostIdentity.ShowQueryAction}" Content="{loc:Loc settings.hostname.query}" Command="{Binding HostIdentity.QueryCommand}" Margin="0,0,8,8" />
-                    <Button IsVisible="{Binding HostIdentity.ShowRollbackAction}" Content="{loc:Loc settings.hostname.rollback}" Command="{Binding HostIdentity.RollbackCommand}" Margin="0,0,8,8" />
+                    <Button IsVisible="{Binding HostIdentity.HasDraft}" Content="{loc:Loc settings.host.reset_draft}" Command="{Binding HostIdentity.ResetDraftCommand}" Margin="0,0,8,8" />
                 </WrapPanel>
                 <TextBlock IsVisible="{Binding !HostIdentity.IsCompleted}" Text="{Binding HostIdentity.StatusText}" TextWrapping="Wrap" />
                 <TextBlock IsVisible="{Binding HostIdentity.HasProblem}" Text="{Binding HostIdentity.ProblemCode}" TextWrapping="Wrap" />
                 <Expander IsVisible="{Binding HostIdentity.HasOperation}" Header="{loc:Loc settings.hostname.operation_details}">
-                    <SelectableTextBlock Text="{Binding HostIdentity.OperationId}" TextWrapping="Wrap" />
+                    <StackPanel Spacing="10">
+                        <SelectableTextBlock Text="{Binding HostIdentity.OperationId}" TextWrapping="Wrap" />
+                        <Button IsVisible="{Binding HostIdentity.ShowRollbackAction}" Content="{loc:Loc settings.hostname.rollback}" Command="{Binding HostIdentity.RollbackCommand}" />
+                    </StackPanel>
                 </Expander>
             </StackPanel>
         </Border>
@@ -113,8 +121,9 @@
         <Border Classes="card">
             <StackPanel Spacing="10">
                 <TextBlock Text="{loc:Loc settings.server_https.title}" Classes="title" />
+                <TextBlock Text="{loc:Loc settings.scope.hostmachine}" Classes="subtle" TextWrapping="Wrap" />
                 <TextBlock Text="{loc:Loc settings.server_https.description}" TextWrapping="Wrap" />
-                <Button Content="{loc:Loc settings.server_https.replace}" Command="{Binding OpenServerHttpsCommand}" />
+                <Button nav:SettingsSearchTarget.Id="host.serverHttps" Content="{loc:Loc settings.server_https.replace}" Command="{Binding OpenServerHttpsCommand}" />
             </StackPanel>
         </Border>
         <Border Classes="card">
@@ -137,6 +146,7 @@
         <Border Classes="card">
             <StackPanel Spacing="10">
                 <TextBlock Text="{loc:Loc settings.usage_memory.title}" Classes="title" />
+                <TextBlock Text="{loc:Loc settings.scope.clientdevice}" Classes="subtle" TextWrapping="Wrap" />
                 <TextBlock Text="{loc:Loc settings.usage_memory.description}" TextWrapping="Wrap" />
                 <Button Content="{loc:Loc settings.usage_memory.clear}" Command="{Binding ClearUsageMemoryCommand}" />
                 <TextBlock Text="{Binding UsageMemoryStatus}" TextWrapping="Wrap" />

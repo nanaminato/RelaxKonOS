@@ -48,6 +48,19 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
     [ObservableProperty] private string _problemCode = "";
     public string StatusText => _localization.Get(_statusKey, _statusKey);
     public string OperationId => (_plan ?? _completedPlan)?.PlanId.ToString("D") ?? "";
+    public bool HasDraft => _snapshot is not null && !_submitted && DraftName != PendingHostName;
+    private bool CanResetDraft() => !IsBusy && HasDraft;
+
+    [RelayCommand(CanExecute = nameof(CanResetDraft))]
+    private void ResetDraft()
+    {
+        if (!CanResetDraft()) return;
+        DraftName = PendingHostName;
+        ProblemCode = "";
+        SetStatus("settings.hostname.draft_reset");
+        UpdateCommands();
+    }
+
     public bool HasPreview => !_submitted && _plan is not null;
     public bool ShowPreviewAction => !_submitted && _plan is null && !string.IsNullOrEmpty(DraftName)
         && DraftName != PendingHostName;
@@ -226,6 +239,8 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
     private void SetStatus(string key) { _statusKey = key; OnPropertyChanged(nameof(StatusText)); }
     private void UpdateCommands()
     {
+        OnPropertyChanged(nameof(HasDraft));
+        ResetDraftCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanEdit));
         OnPropertyChanged(nameof(OperationId));
         OnPropertyChanged(nameof(HasPreview));

@@ -45,6 +45,9 @@ static class DesktopDisconnectChecks
         using var coordinator = new SystemUiCoordinator(manager, overview);
         using var provider = new ServiceCollection()
             .AddSingleton(new LocalizationService(settings, sshSession))
+            .AddSingleton(new DesktopDevicePreferences(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "desktop-device.json")))
+            .AddSingleton<RelaxKonOS.AppSDK.IAppActivationDiagnostics, UriSchemeRoutingDiagnostics>()
+            .AddSingleton<DesktopNotificationService>()
             .AddSingleton(sshSession)
             .AddSingleton(auth)
             .AddSingleton(coordinator)

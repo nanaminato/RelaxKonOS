@@ -49,6 +49,19 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
         get => SelectedZone is null ? null : ZoneLabel(SelectedZone);
         set => SelectedZone = AvailableZones.FirstOrDefault(id => ZoneLabel(id) == value);
     }
+    public bool HasDraft => _snapshot is not null && !_submitted && SelectedZone != CurrentZone;
+    private bool CanResetDraft() => !IsBusy && HasDraft;
+
+    [RelayCommand(CanExecute = nameof(CanResetDraft))]
+    private void ResetDraft()
+    {
+        if (!CanResetDraft()) return;
+        SelectedZone = CurrentZone;
+        ProblemCode = "";
+        SetStatus("settings.host_time.draft_reset");
+        UpdateCommands();
+    }
+
     public bool HasPreview => !_submitted && _plan is not null;
     public bool ShowPreviewAction => !_submitted && _plan is null && SelectedZone is not null && SelectedZone != CurrentZone;
     public bool ShowApplyAction => !_submitted && _plan is not null;
@@ -216,6 +229,8 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
     private void SetStatus(string key) { _statusKey = key; OnPropertyChanged(nameof(StatusText)); }
     private void UpdateCommands()
     {
+        OnPropertyChanged(nameof(HasDraft));
+        ResetDraftCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanEdit));
         OnPropertyChanged(nameof(OperationId));
         OnPropertyChanged(nameof(HasPreview));

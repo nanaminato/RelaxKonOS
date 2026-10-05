@@ -1,0 +1,36 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:nav="clr-namespace:RelaxKonOS.Client.Apps.Settings.Views"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
+             xmlns:ss="clr-namespace:RelaxKonOS.Client.Services"
+             x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.PersonalizationStyleView"
+             x:DataType="vm:PersonalizationPageViewModel" Classes="builtin-app">
+    <StackPanel Spacing="16" MaxWidth="960">
+<Border Classes="card">
+            <StackPanel Spacing="10">
+                <TextBlock Text="{loc:Loc settings.system_style}" Classes="title" />
+                <ComboBox nav:SettingsSearchTarget.Id="workspace.systemStyle" AutomationProperties.Name="{loc:Loc settings.system_style}" ItemsSource="{Binding SystemStyleChoices}"
+                          SelectedValue="{Binding SelectedSystemStyleId, Mode=TwoWay}"
+                          SelectedValueBinding="{Binding Id}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:SystemStyleChoice">
+                            <StackPanel Spacing="1">
+                                <TextBlock Text="{Binding SelectionDisplayName}" />
+                                <TextBlock Text="{Binding UnavailableReason}" IsVisible="{Binding HasUnavailableReason}"
+                                           Opacity="0.65" FontSize="11" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <TextBlock Text="{Binding SystemStyleProblem}" Foreground="{DynamicResource DangerBrush}"
+                           IsVisible="{Binding HasSystemStyleProblem}" TextWrapping="Wrap" />
+                <Button Content="{loc:Loc settings.system_style.apply_recommended}"
+                        Command="{Binding ApplyRecommendedStyleCommand}"
+                        IsVisible="{Binding !IsUsingRecommendedStyle}"
+                        HorizontalAlignment="Left" />
+            </StackPanel>
+        </Border>
+        <Button Content="{loc:Loc settings.reset.style}" Command="{Binding ResetStyleCommand}" />
+    </StackPanel>
+</UserControl>

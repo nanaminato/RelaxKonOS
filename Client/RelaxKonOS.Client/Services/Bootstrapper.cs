@@ -56,6 +56,9 @@ public static class Bootstrapper
         services.AddSingleton<SystemUiCoordinator>();
         services.AddSingleton<LocalLanguageStore>();
         services.AddSingleton<LoginNotificationPreferenceStore>();
+        services.AddSingleton<DesktopDevicePreferences>();
+        services.AddSingleton<DesktopAccessibilityService>();
+        services.AddSingleton<DesktopNotificationService>();
         services.AddSingleton<DesktopWelcomePreferenceStore>();
         services.AddSingleton<UsageMemoryStore>();
         services.AddSingleton<SystemStyleRegistry>();
@@ -80,7 +83,7 @@ public static class Bootstrapper
         services.AddSingleton<ApplicationCatalogScanner>();
         services.AddSingleton<ShortcutStore>();
         services.AddSingleton<IAutomationRunner, AutomationRunner>();
-        services.AddSingleton<IAutomationNotificationSink, DiagnosticAutomationNotificationSink>();
+        services.AddSingleton<IAutomationNotificationSink>(sp => sp.GetRequiredService<DesktopNotificationService>());
         services.AddSingleton<ShortcutActivationRouter>();
 
         // Auth（登录模块）：typed HttpClient + 仅内存认证会话 + 登录视图模型。
@@ -370,6 +373,7 @@ public static class Bootstrapper
         services.AddSingleton<DesktopRestoreOrchestrator>();
 
         var provider = services.BuildServiceProvider();
+        provider.GetRequiredService<DesktopAccessibilityService>();
 
         // Create both language services before their respective windows and package contexts.
         // The login service is intentionally independent from the workspace language service.

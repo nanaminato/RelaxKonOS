@@ -132,7 +132,11 @@ internal static class MemoryLifecycleChecks
         var windows = new WindowManagerService();
         using var overview = new WindowOverviewController(windows);
         using var coordinator = new SystemUiCoordinator(windows, overview);
-        using var services = new ServiceCollection().AddSingleton(localization).AddSingleton(coordinator).BuildServiceProvider();
+        using var services = new ServiceCollection().AddSingleton(localization).AddSingleton(coordinator)
+            .AddSingleton(new DesktopDevicePreferences(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "desktop-device.json")))
+            .AddSingleton(System.Reflection.DispatchProxy.Create<RelaxKonOS.Client.Services.Auth.IAuthSession, DisconnectSessionProxy>())
+            .AddSingleton<RelaxKonOS.AppSDK.IAppActivationDiagnostics, UriSchemeRoutingDiagnostics>()
+            .AddSingleton<DesktopNotificationService>().BuildServiceProvider();
         var servicesProperty = typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!;
         servicesProperty.SetValue(null, services);
         try

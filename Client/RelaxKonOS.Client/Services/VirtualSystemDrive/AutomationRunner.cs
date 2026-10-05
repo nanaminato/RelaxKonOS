@@ -138,10 +138,5 @@ public sealed class AutomationRunner : IAutomationRunner
     }
 }
 
-public sealed class DiagnosticAutomationNotificationSink(IAppActivationDiagnostics diagnostics) : IAutomationNotificationSink
-{
-    public void Notify(string title, string message) => diagnostics.Record($"Automation notification: title={title.Length}chars, message={message.Length}chars.");
-}
-
 public sealed record AutomationRunResult(string ScriptId, AutomationInvocationSource Source, bool Succeeded,
     string ProblemCode, int CompletedSteps, DateTimeOffset CompletedAtUtc);

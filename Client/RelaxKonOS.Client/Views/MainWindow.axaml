@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+        xmlns:services="clr-namespace:RelaxKonOS.Client.Services"
         xmlns:shell="clr-namespace:RelaxKonOS.Client.Views.Shell"
         xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.Shell"
         x:Class="RelaxKonOS.Client.Views.MainWindow"
@@ -78,7 +79,9 @@
              removed when entering full screen so the desktop fills the top edge behind
              the connection bar. -->
         <Grid x:Name="Root" Margin="{DynamicResource HostTitleBarMargin}" PointerMoved="Root_OnPointerMoved">
-            <ContentControl x:Name="ShellHost" />
+            <LayoutTransformControl LayoutTransform="{DynamicResource DesktopInterfaceTransform}">
+                <ContentControl x:Name="ShellHost" />
+            </LayoutTransformControl>
             <!-- The opaque launch screen hides the empty host and partially restored desktop
                  until the selected shell has registered its surfaces and restored its state. -->
             <Border x:Name="DesktopLoadingOverlay" Background="{DynamicResource AppBackgroundBrush}" ZIndex="50">
@@ -124,6 +127,16 @@
                             Click="CloseWindow_OnClick" ToolTip.Tip="{loc:Loc shell.connection.close}" />
                 </StackPanel>
             </Grid>
+        </Border>
+
+        <Border x:Name="NotificationBanner" x:DataType="services:DesktopNotificationService" IsVisible="{Binding HasNotification}"
+                HorizontalAlignment="Right" VerticalAlignment="Bottom" MaxWidth="400" Margin="16,16,16,60" Padding="16" ZIndex="45"
+                Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" CornerRadius="8">
+            <StackPanel Spacing="8">
+                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding Message}" TextWrapping="Wrap" />
+                <Button Content="{loc:Loc settings.device.dismiss}" Command="{Binding DismissCommand}" HorizontalAlignment="Right" />
+            </StackPanel>
         </Border>
 
         <!-- mstsc-style connection bar. Its centre exposes connection context and a drag handle. -->
@@ -190,7 +203,9 @@
         <!-- Host-owned system layer. It sits above every shell surface - including the full-screen
              window host and the connection bar - and is its own input backdrop: while it is
              visible nothing below can be clicked, so the overview needs no second shield. -->
-        <shell:WindowOverviewView x:Name="WindowOverview" ZIndex="100" IsVisible="False" />
+        <LayoutTransformControl LayoutTransform="{DynamicResource DesktopInterfaceTransform}" ZIndex="100" IsVisible="{Binding #WindowOverview.IsVisible}">
+            <shell:WindowOverviewView x:Name="WindowOverview" IsVisible="False" />
+        </LayoutTransformControl>
 
         <!-- Closing a connection can briefly wait for the final workspace-layout save and server
              sign-out.  Give that wait an immediate, animated acknowledgement instead of leaving
