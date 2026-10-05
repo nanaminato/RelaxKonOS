@@ -90,6 +90,26 @@ internal sealed class CertificateOperationStore
         finally { _gate.Release(); }
     }
 
+    public async Task<IReadOnlyList<CertificateRenewalAttemptDto>> GetRenewalHistoryAsync(Guid certificateId, CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct);
+        try { return _operations.Values.Where(o => o.CertificateId == certificateId && o.Kind == "renew")
+            .Reverse().Select(o => new CertificateRenewalAttemptDto(o.Actor == "renewal-worker", o.ToDto())).ToArray(); }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<IReadOnlyList<CertificateRenewalRunDto>> GetManualRenewalRunsAsync(CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct);
+        try { return _operations.Values.Where(o => o.Kind == "renew" && o.Actor != "renewal-worker")
+            .Select(o => new CertificateRenewalRunDto(o.OperationId, o.StartedAt ?? o.CompletedAt ?? DateTimeOffset.UtcNow,
+                o.CompletedAt, false, o.State == CertificateOperationState.Succeeded ? 1 : 0,
+                o.State == CertificateOperationState.Failed ? 1 : 0,
+                o.State is CertificateOperationState.Queued or CertificateOperationState.Running ? 1 : 0,
+                o.State == CertificateOperationState.Cancelled ? 1 : 0)).ToArray(); }
+        finally { _gate.Release(); }
+    }
+
     public async Task<CertificateOperationDto?> CancelAsync(Guid id, CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken);

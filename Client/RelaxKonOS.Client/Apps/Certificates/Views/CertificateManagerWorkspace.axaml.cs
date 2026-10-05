@@ -8,19 +8,21 @@ internal partial class CertificateManagerWorkspace : UserControl
 {
     private readonly Func<Task> _showRequestCertificate;
     private readonly Func<Task> _showCreateSelfSignedCertificate;
+    private readonly Action _showRenewalHistory;
     private Button? _selectedButton;
 
-    private CertificateManagerWorkspace(Func<Task> showRequestCertificate, Func<Task> showCreateSelfSignedCertificate)
+    private CertificateManagerWorkspace(Func<Task> showRequestCertificate, Func<Task> showCreateSelfSignedCertificate, Action showRenewalHistory)
     {
         _showRequestCertificate = showRequestCertificate;
         _showCreateSelfSignedCertificate = showCreateSelfSignedCertificate;
+        _showRenewalHistory = showRenewalHistory;
         InitializeComponent();
         ShowPage("overview", OverviewButton);
     }
 
-    public static Control Create(CertificateManagerViewModel viewModel, Func<Task> showRequestCertificate, Func<Task> showCreateSelfSignedCertificate)
+    public static Control Create(CertificateManagerViewModel viewModel, Func<Task> showRequestCertificate, Func<Task> showCreateSelfSignedCertificate, Action showRenewalHistory)
     {
-        var view = new CertificateManagerWorkspace(showRequestCertificate, showCreateSelfSignedCertificate)
+        var view = new CertificateManagerWorkspace(showRequestCertificate, showCreateSelfSignedCertificate, showRenewalHistory)
         {
             DataContext = viewModel,
         };
@@ -42,8 +44,10 @@ internal partial class CertificateManagerWorkspace : UserControl
 
         _selectedButton = button;
         button.Classes.Add("nav-selected");
-        ContentHost.Content = section == "certificates"
-            ? new CertificateListView(_showRequestCertificate, _showCreateSelfSignedCertificate)
+        ContentHost.Content = section == "renewal-runs" ? new CertificateRenewalRunsView() : section == "certificates"
+            ? new CertificateListView(_showRequestCertificate, _showCreateSelfSignedCertificate, _showRenewalHistory)
             : new CertificateOverviewView(_showRequestCertificate, _showCreateSelfSignedCertificate);
+        if (section == "renewal-runs" && DataContext is CertificateManagerViewModel vm)
+            _ = vm.RefreshRenewalRunsCommand.ExecuteAsync(null);
     }
 }

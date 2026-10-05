@@ -710,6 +710,7 @@ builder.Services.AddSingleton<RelaxKonOS.Server.Certificate.IAcmeService, RelaxK
 builder.Services.AddSingleton<RelaxKonOS.Server.Certificate.IAcmeRenewalInfoProvider>(services => (RelaxKonOS.Server.Certificate.AnvilAcmeService)services.GetRequiredService<RelaxKonOS.Server.Certificate.IAcmeService>());
 builder.Services.AddSingleton<RelaxKonOS.Server.Certificate.CertificateRenewalAttemptRepository>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Certificate.CertificateOperationStore>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Certificate.CertificateRenewalRunRepository>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Certificate.ICertificateManager, RelaxKonOS.Server.Certificate.CertificateManager>();
 builder.Services.AddHostedService<RelaxKonOS.Server.Certificate.KestrelCertificateStartupService>();
 builder.Services.AddHostedService<RelaxKonOS.Server.Certificate.CertificateRenewalWorker>();

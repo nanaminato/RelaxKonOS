@@ -100,3 +100,13 @@ public sealed record KestrelCertificateDeploymentDto(
     [property: JsonPropertyName("notBefore")] DateTimeOffset? NotBefore,
     [property: JsonPropertyName("notAfter")] DateTimeOffset? NotAfter,
     [property: JsonPropertyName("observedAt")] DateTimeOffset ObservedAt);
+
+public sealed record CertificateRenewalRunDto(
+    [property: JsonPropertyName("runId")] Guid RunId,
+    [property: JsonPropertyName("startedAt")] DateTimeOffset StartedAt,
+    [property: JsonPropertyName("completedAt")] DateTimeOffset? CompletedAt,
+    [property: JsonPropertyName("automatic")] bool Automatic,
+    [property: JsonPropertyName("succeeded")] int Succeeded,
+    [property: JsonPropertyName("failed")] int Failed,
+    [property: JsonPropertyName("pending")] int Pending,
+    [property: JsonPropertyName("cancelled")] int Cancelled);

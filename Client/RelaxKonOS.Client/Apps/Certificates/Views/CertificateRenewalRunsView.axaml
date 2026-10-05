@@ -1,0 +1,25 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" xmlns:certificates="clr-namespace:RelaxKonOS.Client.Apps.Certificates"
+ x:Class="RelaxKonOS.Client.Apps.Certificates.Views.CertificateRenewalRunsView" x:DataType="certificates:CertificateManagerViewModel" Classes="builtin-app">
+ <Border Padding="20" Classes="app-panel">
+  <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="12">
+   <Grid ColumnDefinitions="*,Auto">
+    <TextBlock Text="{loc:Loc certificates.renewal.title}" FontSize="19" FontWeight="SemiBold" />
+    <Button Grid.Column="1" Content="{loc:Loc common.refresh}" Command="{Binding RefreshRenewalRunsCommand}" IsEnabled="{Binding !IsRenewalRunsLoading}" />
+   </Grid>
+   <TextBlock Grid.Row="1" Text="{loc:Loc certificates.renewal.runs_hint}" TextWrapping="Wrap" />
+   <DataGrid Grid.Row="2" ItemsSource="{Binding RenewalRuns}" AutoGenerateColumns="False" IsReadOnly="True" Classes="resource-table">
+    <DataGrid.Columns>
+     <DataGridTextColumn Header="{loc:Loc certificates.renewal.source}" Binding="{ReflectionBinding Source}" Width="100" />
+     <DataGridTextColumn Header="{loc:Loc certificates.renewal.started}" Binding="{ReflectionBinding StartedAt, StringFormat={}{0:yyyy-MM-dd HH:mm:ss}}" Width="200" />
+     <DataGridTextColumn Header="{loc:Loc certificates.renewal.completed}" Binding="{ReflectionBinding CompletedAt, StringFormat={}{0:yyyy-MM-dd HH:mm:ss}}" Width="200" />
+     <DataGridTextColumn Header="{loc:Loc certificates.renewal.succeeded}" Binding="{ReflectionBinding Succeeded}" Width="80" />
+     <DataGridTextColumn Header="{loc:Loc certificates.renewal.failed}" Binding="{ReflectionBinding Failed}" Width="80" />
+     <DataGridTextColumn Header="{loc:Loc certificates.renewal.pending}" Binding="{ReflectionBinding Pending}" Width="80" />
+     <DataGridTextColumn Header="{loc:Loc certificates.renewal.cancelled}" Binding="{ReflectionBinding Cancelled}" Width="80" />
+    </DataGrid.Columns>
+   </DataGrid>
+   <TextBlock Grid.Row="3" Text="{Binding RenewalRunsStatus}" TextWrapping="Wrap" />
+  </Grid>
+ </Border>
+</UserControl>

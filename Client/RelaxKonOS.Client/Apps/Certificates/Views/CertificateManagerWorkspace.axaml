@@ -43,6 +43,7 @@
                     <TextBlock Text="{loc:Loc certificates.workspace}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="11" FontWeight="SemiBold" Margin="10,0,0,6" />
                     <Button x:Name="OverviewButton" Classes="workspace-nav" Tag="overview" Click="NavigationButton_Click" Content="{loc:Loc certificates.overview}" HorizontalContentAlignment="Left" Padding="10,8" />
                     <Button Classes="workspace-nav" Tag="certificates" Click="NavigationButton_Click" Content="{loc:Loc certificates.list}" HorizontalContentAlignment="Left" Padding="10,8" />
+                    <Button Classes="workspace-nav" Tag="renewal-runs" Click="NavigationButton_Click" Content="{loc:Loc certificates.renewal.title}" HorizontalContentAlignment="Left" Padding="10,8" />
                 </StackPanel>
                 </ScrollViewer>
             </Border>

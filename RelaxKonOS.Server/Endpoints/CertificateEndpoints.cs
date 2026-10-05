@@ -10,6 +10,8 @@ public static class CertificateEndpoints
     public static IEndpointRouteBuilder MapCertificateEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup(CertificateApiRoutes.Certificates).RequireAuthorization().WithTags("Certificates").RequireHostFeature(ServerHostFeature.Certificates);
+        group.MapGet(CertificateApiRoutes.RenewalRunsPattern, (RelaxKonOS.Server.Certificate.CertificateRenewalRunRepository runs, CancellationToken ct) => runs.ListAsync(ct));
+        group.MapGet(CertificateApiRoutes.RenewalHistoryPattern, (Guid id, RelaxKonOS.Server.Certificate.CertificateOperationStore operations, CancellationToken ct) => operations.GetRenewalHistoryAsync(id, ct));
         group.MapGet(CertificateApiRoutes.CollectionPattern, (RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) => manager.ListAsync(ct));
         group.MapGet(CertificateApiRoutes.ByIdPattern, async (Guid id, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) =>
             await manager.GetAsync(id, ct) is { } certificate ? Results.Ok(certificate) : Results.NotFound());

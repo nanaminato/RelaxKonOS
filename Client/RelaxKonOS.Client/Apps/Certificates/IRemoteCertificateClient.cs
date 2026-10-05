@@ -9,6 +9,8 @@ namespace RelaxKonOS.Client.Apps.Certificates;
 /// </summary>
 public interface IRemoteCertificateClient
 {
+    Task<IReadOnlyList<CertificateRenewalRunDto>> ListRenewalRunsAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<CertificateRenewalAttemptDto>> GetRenewalHistoryAsync(Guid id, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CertificateDto>> ListAsync(CancellationToken cancellationToken = default);
     Task<CertificateDto?> GetAsync(Guid id, CancellationToken cancellationToken = default);
     Task<CertificatePreflightResultDto> PreflightAsync(CertificatePreflightRequest request, CancellationToken cancellationToken = default);

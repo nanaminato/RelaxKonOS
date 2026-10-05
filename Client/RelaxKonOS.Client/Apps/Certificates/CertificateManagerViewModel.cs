@@ -53,11 +53,46 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
         SelectedKeyAlgorithm = KeyAlgorithms[0];
     }
 
+    public ObservableCollection<CertificateRenewalRunRow> RenewalRuns { get; } = [];
+    [ObservableProperty] private LocalizedStatus _renewalRunsStatus;
+    [ObservableProperty] private bool _isRenewalRunsLoading;
+    [RelayCommand]
+    private async Task RefreshRenewalRunsAsync()
+    {
+        if (!HasReadPermission || IsRenewalRunsLoading) return;
+        IsRenewalRunsLoading = true;
+        RenewalRunsStatus = LocalizedText.Ref("certificates.status.loading");
+        try
+        {
+            var runs = await _client.ListRenewalRunsAsync();
+            RenewalRuns.Clear();
+            foreach (var run in runs) RenewalRuns.Add(new(run));
+            RenewalRunsStatus = runs.Count == 0 ? LocalizedText.Ref("certificates.renewal.empty") : default;
+        }
+        catch (Exception) { RenewalRunsStatus = LocalizedText.Ref("certificates.error.request_failed"); }
+        finally { IsRenewalRunsLoading = false; }
+    }
+    public async Task<string> LoadRenewalHistoryAsync(Guid id)
+    {
+        var attempts = await _client.GetRenewalHistoryAsync(id);
+        if (attempts.Count == 0) return LocalizedText.Get("certificates.renewal.empty");
+        return string.Join(Environment.NewLine + Environment.NewLine, attempts.Select(attempt =>
+        {
+            var op = attempt.Operation;
+            var text = LocalizedText.Format("certificates.renewal.record",
+                LocalizedText.Get(attempt.Automatic ? "certificates.renewal.automatic" : "certificates.renewal.manual"),
+                LocalizedText.Get("certificates.renewal.state." + op.State.ToString().ToLowerInvariant()),
+                op.StartedAt?.ToLocalTime().ToString("g") ?? "—", op.CompletedAt?.ToLocalTime().ToString("g") ?? "—");
+            return string.IsNullOrWhiteSpace(op.ProblemCode) ? text : text + Environment.NewLine + ProblemText(op.ProblemCode);
+        }));
+    }
+    public bool HasSelectedCertificate => SelectedCertificate is not null;
     public ObservableCollection<CertificateDto> Certificates { get; } = [];
     public IReadOnlyList<CertificateOption<CertificateChallengeType>> ChallengeTypes { get; }
     public IReadOnlyList<CertificateOption<CertificateKeyAlgorithm>> KeyAlgorithms { get; }
 
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(DeployCommand), nameof(RenewCommand), nameof(RevokeCommand), nameof(DeleteCommand))]
+    [NotifyPropertyChangedFor(nameof(HasSelectedCertificate))]
     [NotifyPropertyChangedFor(nameof(SelectedCertificateDomains))]
     [NotifyPropertyChangedFor(nameof(SelectedRenewalText))]
     private CertificateDto? _selectedCertificate;
@@ -462,3 +497,14 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
 
 /// <summary>Strongly-typed choice for a combo box. Keeps the enum value while showing a localized label.</summary>
 public sealed record CertificateOption<TValue>(TValue Value, string Label) where TValue : struct;
+
+public sealed record CertificateRenewalRunRow(CertificateRenewalRunDto Run)
+{
+    public DateTimeOffset StartedAt => Run.StartedAt.ToLocalTime();
+    public DateTimeOffset? CompletedAt => Run.CompletedAt?.ToLocalTime();
+    public string Source => LocalizedText.Get(Run.Automatic ? "certificates.renewal.automatic" : "certificates.renewal.manual");
+    public int Succeeded => Run.Succeeded;
+    public int Failed => Run.Failed;
+    public int Pending => Run.Pending;
+    public int Cancelled => Run.Cancelled;
+}

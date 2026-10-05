@@ -143,7 +143,7 @@
     "certificates.status_value.failed": "Failed",
     "certificates.status_value.expired": "Expired",
     "certificates.status_value.revoked": "Revoked",
-    "certificates.renewal.title": "Renewal records (latest 5)",
+    "certificates.renewal.title": "Renewal records",
     "certificates.renewal.select": "Select a certificate to view renewal records.",
     "certificates.renewal.self_signed": "Self-signed certificates do not renew automatically. Create and replace the certificate before expiry.",
     "certificates.renewal.unavailable": "Renewal records unavailable. Refresh to try again.",
@@ -161,6 +161,14 @@
     "certificates.renewal.state.running": "Running",
     "certificates.renewal.state.succeeded": "Succeeded",
     "certificates.renewal.state.failed": "Failed",
-    "certificates.renewal.state.cancelled": "Cancelled"
+    "certificates.renewal.state.cancelled": "Cancelled",
+    "certificates.renewal.runs_hint": "Automatic renewal scans and manual renewal results. Refresh to update counts.",
+    "certificates.renewal.started": "Started",
+    "certificates.renewal.completed": "Completed",
+    "certificates.renewal.succeeded": "Succeeded",
+    "certificates.renewal.failed": "Failed",
+    "certificates.renewal.pending": "Pending",
+    "certificates.renewal.cancelled": "Cancelled",
+    "certificates.renewal.source": "Source"
   }
 }

@@ -143,7 +143,7 @@
     "certificates.status_value.failed": "失败",
     "certificates.status_value.expired": "已过期",
     "certificates.status_value.revoked": "已吊销",
-    "certificates.renewal.title": "续期记录（最近 5 次）",
+    "certificates.renewal.title": "续期记录",
     "certificates.renewal.select": "选择证书以查看续期记录。",
     "certificates.renewal.self_signed": "自签证书不参与自动续期；到期前请创建新证书并更换。",
     "certificates.renewal.unavailable": "未取得续期记录，请刷新。",
@@ -161,6 +161,14 @@
     "certificates.renewal.state.running": "执行中",
     "certificates.renewal.state.succeeded": "成功",
     "certificates.renewal.state.failed": "失败",
-    "certificates.renewal.state.cancelled": "已取消"
+    "certificates.renewal.state.cancelled": "已取消",
+    "certificates.renewal.runs_hint": "记录自动续期每次扫描与手动续期的执行结果；点击刷新更新统计。",
+    "certificates.renewal.started": "执行时间",
+    "certificates.renewal.completed": "完成时间",
+    "certificates.renewal.succeeded": "成功",
+    "certificates.renewal.failed": "失败",
+    "certificates.renewal.pending": "进行中",
+    "certificates.renewal.cancelled": "已取消",
+    "certificates.renewal.source": "方式"
   }
 }

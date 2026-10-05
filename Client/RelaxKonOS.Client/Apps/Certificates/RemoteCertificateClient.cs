@@ -17,6 +17,11 @@ namespace RelaxKonOS.Client.Apps.Certificates;
 /// </summary>
 public sealed class RemoteCertificateClient(HttpClient http, IAuthSession session, IHostElevationBroker elevations) : IRemoteCertificateClient
 {
+    public Task<IReadOnlyList<CertificateRenewalRunDto>> ListRenewalRunsAsync(CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<CertificateRenewalRunDto>>(HttpMethod.Get, CertificateApiRoutes.RenewalRuns, null, null, cancellationToken);
+    public Task<IReadOnlyList<CertificateRenewalAttemptDto>> GetRenewalHistoryAsync(Guid id, CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<CertificateRenewalAttemptDto>>(HttpMethod.Get, CertificateApiRoutes.RenewalHistory.Replace("{id}", id.ToString("D")), null, null, cancellationToken);
+
     public Task<IReadOnlyList<CertificateDto>> ListAsync(CancellationToken cancellationToken = default)
         => SendAsync<IReadOnlyList<CertificateDto>>(HttpMethod.Get, CertificateApiRoutes.Certificates, null, null, cancellationToken);
 

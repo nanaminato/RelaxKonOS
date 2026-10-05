@@ -5,7 +5,7 @@
              x:Class="RelaxKonOS.Client.Apps.Certificates.Views.CertificateListView"
              x:DataType="certificates:CertificateManagerViewModel" Classes="builtin-app">
     <Border Padding="20" Classes="app-panel">
-        <Grid RowDefinitions="Auto,Auto,*,Auto,Auto,Auto,Auto" RowSpacing="12">
+        <Grid RowDefinitions="Auto,Auto,*,Auto,Auto,Auto" RowSpacing="12">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
                 <TextBlock Text="{loc:Loc certificates.list}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
@@ -40,6 +40,7 @@
             <WrapPanel Grid.Row="3" ItemHeight="34" HorizontalAlignment="Left">
                 <Button Content="{loc:Loc certificates.action.renew}" Command="{Binding RenewCommand}" Margin="0,0,8,8" />
                 <Button Content="{loc:Loc certificates.action.revoke}" Command="{Binding RevokeCommand}" Margin="0,0,8,8" />
+                <Button Content="{loc:Loc certificates.renewal.title}" IsEnabled="{Binding HasSelectedCertificate}" Click="RenewalHistory_Click" Margin="0,0,8,8" />
                 <Button Content="{loc:Loc common.delete}" Command="{Binding DeleteCommand}" Foreground="{DynamicResource DangerBrush}" Margin="0,0,8,8" />
             </WrapPanel>
             <Border Grid.Row="4" Background="{DynamicResource SurfaceSunkenBrush}" CornerRadius="8" Padding="12">
@@ -49,12 +50,7 @@
                     <TextBlock Text="{loc:Loc certificates.fingerprint.help}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
                 </StackPanel>
             </Border>
-            <Expander Grid.Row="5" Header="{loc:Loc certificates.renewal.title}" HorizontalAlignment="Stretch">
-                <ScrollViewer MaxHeight="180">
-                    <TextBlock Text="{Binding SelectedRenewalText}" TextWrapping="Wrap" Margin="12,8" />
-                </ScrollViewer>
-            </Expander>
-            <TextBlock Grid.Row="6" Text="{Binding StatusText}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
+            <TextBlock Grid.Row="5" Text="{Binding StatusText}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
         </Grid>
     </Border>
 </UserControl>

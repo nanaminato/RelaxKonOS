@@ -143,7 +143,7 @@
     "certificates.status_value.failed": "失敗",
     "certificates.status_value.expired": "期限切れ",
     "certificates.status_value.revoked": "失効済み",
-    "certificates.renewal.title": "更新履歴（直近 5 件）",
+    "certificates.renewal.title": "更新履歴",
     "certificates.renewal.select": "証明書を選択して更新履歴を確認します。",
     "certificates.renewal.self_signed": "自己署名証明書は自動更新しません。有効期限前に新しい証明書を作成して変更してください。",
     "certificates.renewal.unavailable": "更新履歴を取得できません。再読み込みしてください。",
@@ -161,6 +161,14 @@
     "certificates.renewal.state.running": "実行中",
     "certificates.renewal.state.succeeded": "成功",
     "certificates.renewal.state.failed": "失敗",
-    "certificates.renewal.state.cancelled": "キャンセル済み"
+    "certificates.renewal.state.cancelled": "キャンセル済み",
+    "certificates.renewal.runs_hint": "自動更新スキャンと手動更新の実行結果。更新ボタンで集計を再取得します。",
+    "certificates.renewal.started": "開始日時",
+    "certificates.renewal.completed": "完了日時",
+    "certificates.renewal.succeeded": "成功",
+    "certificates.renewal.failed": "失敗",
+    "certificates.renewal.pending": "処理中",
+    "certificates.renewal.cancelled": "キャンセル",
+    "certificates.renewal.source": "種別"
   }
 }

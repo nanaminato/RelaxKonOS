@@ -1,3 +1,11 @@
+if (args.Contains("--certificate-renewal-records-only"))
+{
+    var renewalRoot = Path.Combine(Path.GetTempPath(), "relaxkonos-renewal-tests-" + Guid.NewGuid().ToString("N"));
+    await CertificateOperationReplayChecks.RunAsync(renewalRoot);
+    Console.WriteLine("Certificate renewal record checks passed.");
+    return;
+}
+
 if (args.Contains("--windows-firewall-only"))
 {
     if (OperatingSystem.IsWindows()) await WindowsFirewallChecks.RunAsync();

@@ -34,7 +34,13 @@ public sealed class CertificateManagerApp : RemoteApplicationBase
         var view = CertificateManagerWorkspace.Create(
             viewModel,
             () => CertificateManagerDialogs.ShowRequestCertificateAsync(context, window!, viewModel),
-            () => CertificateManagerDialogs.ShowCreateSelfSignedCertificateAsync(context, window!, viewModel));
+            () => CertificateManagerDialogs.ShowCreateSelfSignedCertificateAsync(context, window!, viewModel),
+            () =>
+            {
+                if (viewModel.SelectedCertificate is not { } certificate) return;
+                context.ShowWindow(LocalizedText.Get("certificates.renewal.title") + " · " + certificate.PrimaryDomain,
+                    new CertificateRenewalHistoryView(viewModel, certificate.Id), new Rect(180, 140, 760, 540), Manifest.IconGlyph);
+            });
         window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.certificates.display_name"),
             view, new Rect(60, 50, 1180, 780), Manifest.IconGlyph);
         _ = viewModel.StartAsync();
