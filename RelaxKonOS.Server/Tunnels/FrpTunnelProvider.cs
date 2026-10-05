@@ -12,7 +12,7 @@ using RelaxKonOS.Protocol.Privileged;
 namespace RelaxKonOS.Server.Tunnels;
 
 /// <summary>Applies validated desired state to isolated frpc child processes. It never downloads FRP or forwards traffic.</summary>
-public sealed class FrpTunnelProvider(IServiceScopeFactory scopes, IHostEnvironment environment, IRuntimeManager runtimes, WindowsManagedRuntimeOperations windowsRuntime) : ITunnelProvider, IHostedService
+public sealed class FrpTunnelProvider(IServiceScopeFactory scopes, IHostEnvironment environment, IRuntimeManager runtimes, ManagedRuntimeOperations windowsRuntime) : ITunnelProvider, IHostedService
 {
     private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _profileLocks = new();
     private readonly ConcurrentDictionary<Guid, ManagedProcess> _processes = new();
@@ -42,13 +42,14 @@ public sealed class FrpTunnelProvider(IServiceScopeFactory scopes, IHostEnvironm
     {
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<RelaxKonOSDbContext>();
-        if (OperatingSystem.IsWindows())
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
         {
             foreach (var id in await db.TunnelServerProfiles.AsNoTracking().Where(x => x.UserId == userId && x.RuntimeMode == TunnelRuntimeMode.Managed).Select(x => x.Id).ToListAsync(ct))
             {
-                var result = await windowsRuntime.ExecuteAsync(new(WindowsManagedRuntime.Frpc, WindowsManagedRuntimeAction.Status, ProfileId: id), ct);
-                var snapshot = result.WindowsProcess;
-                _states[id] = !result.Success ? new(TunnelConnectionState.RuntimeUnavailable, WindowsManagedRuntimeOperations.Problem(result))
+                var result = await windowsRuntime.ExecuteAsync(new(ManagedRuntime.Frpc, ManagedRuntimeAction.Status, ProfileId: id), ct);
+                var snapshot = result.ComponentProcess;
+                if (snapshot?.AppliedIdentity is { } proof) _applied[id] = proof; else _applied.TryRemove(id, out _);
+                _states[id] = !result.Success ? new(TunnelConnectionState.RuntimeUnavailable, ManagedRuntimeOperations.Problem(result))
                     : snapshot?.AuthenticationFailed == true ? new(TunnelConnectionState.Disconnected, "tunnel.authentication_failed")
                     : snapshot?.Connected == true ? new(TunnelConnectionState.Connected, "")
                     : snapshot?.Running == true ? new(TunnelConnectionState.Starting, "") : new(TunnelConnectionState.SavedNotApplied, "");
@@ -85,19 +86,19 @@ public sealed class FrpTunnelProvider(IServiceScopeFactory scopes, IHostEnvironm
             var protectedToken = await db.TunnelSecrets.AsNoTracking().Where(x => x.ServerProfileId == profileId && x.Purpose == "token").Select(x => x.ProtectedValue).SingleOrDefaultAsync(ct);
             var appliedIdentity = FrpcAppliedState.Fingerprint(profile, definitions, protectedToken);
             var token = profile.AuthKind == TunnelAuthKind.Token ? await secrets.GetProfileTokenAsync(profile.Id, ct) : null;
-            if (OperatingSystem.IsWindows() && profile.RuntimeMode == TunnelRuntimeMode.Managed)
+            if ((OperatingSystem.IsWindows() || OperatingSystem.IsLinux()) && profile.RuntimeMode == TunnelRuntimeMode.Managed)
             {
                 var runtime = await runtimes.GetManagedFrpcStatusAsync(ct);
                 if (runtime.State != TunnelRuntimeState.Available) return await CompleteAsync(db, profileId, userId, new(false, TunnelConnectionState.RuntimeUnavailable, "tunnel.managed_runtime_not_installed"), ct);
-                var helperConfiguration = new WindowsFrpcConfiguration(profile.Host, profile.Port, profile.TlsMode, token,
-                    definitions.Where(x => x.Enabled).Select(x => new WindowsFrpProxy(x.Name, x.Protocol, x.LocalHost, x.LocalPort,
+                var helperConfiguration = new FrpcServiceConfiguration(profile.Host, profile.Port, profile.TlsMode, token,
+                    definitions.Where(x => x.Enabled).Select(x => new FrpServiceProxy(x.Name, x.Protocol, x.LocalHost, x.LocalPort,
                         x.RemotePort, x.Domain, x.Encryption, x.Compression)).ToArray());
-                var result = await windowsRuntime.ExecuteAsync(new(WindowsManagedRuntime.Frpc, WindowsManagedRuntimeAction.Start,
-                    runtime.Version, profileId, Client: helperConfiguration), ct);
-                var state = result.WindowsProcess?.Connected == true ? TunnelConnectionState.Connected : TunnelConnectionState.Starting;
+                var result = await windowsRuntime.ExecuteAsync(new(ManagedRuntime.Frpc, ManagedRuntimeAction.Start,
+                    runtime.Version, profileId, Client: helperConfiguration, AppliedIdentity: appliedIdentity), ct);
+                var state = result.ComponentProcess?.Connected == true ? TunnelConnectionState.Connected : TunnelConnectionState.Starting;
                 if (result.Success) _applied[profileId] = appliedIdentity;
                 return await CompleteAsync(db, profileId, userId, result.Success ? new(true, state)
-                    : new(false, TunnelConnectionState.RuntimeUnavailable, WindowsManagedRuntimeOperations.Problem(result)), ct);
+                    : new(false, TunnelConnectionState.RuntimeUnavailable, ManagedRuntimeOperations.Problem(result)), ct);
             }
             var executable = await ResolveExecutableAsync(profile, ct);
             if (executable is null) return await CompleteAsync(db, profileId, userId, new(false, TunnelConnectionState.RuntimeUnavailable, profile.RuntimeMode == TunnelRuntimeMode.Managed ? "tunnel.managed_runtime_not_installed" : "tunnel.external_invalid"), ct);
@@ -154,12 +155,12 @@ public sealed class FrpTunnelProvider(IServiceScopeFactory scopes, IHostEnvironm
             var db = scope.ServiceProvider.GetRequiredService<RelaxKonOSDbContext>();
             var profile = await db.TunnelServerProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.Id == profileId && x.UserId == userId, ct);
             if (profile is null) return new(false, TunnelConnectionState.Unknown, "tunnel.profile_not_found");
-            if (OperatingSystem.IsWindows() && profile.RuntimeMode == TunnelRuntimeMode.Managed)
+            if ((OperatingSystem.IsWindows() || OperatingSystem.IsLinux()) && profile.RuntimeMode == TunnelRuntimeMode.Managed)
             {
-                var result = await windowsRuntime.ExecuteAsync(new(WindowsManagedRuntime.Frpc, WindowsManagedRuntimeAction.Stop, ProfileId: profileId), ct);
+                var result = await windowsRuntime.ExecuteAsync(new(ManagedRuntime.Frpc, ManagedRuntimeAction.Stop, ProfileId: profileId), ct);
                 if (result.Success) _states[profileId] = new(TunnelConnectionState.Disconnected, "");
                 return new(result.Success, result.Success ? TunnelConnectionState.Disconnected : TunnelConnectionState.RuntimeUnavailable,
-                    result.Success ? "" : WindowsManagedRuntimeOperations.Problem(result));
+                    result.Success ? "" : ManagedRuntimeOperations.Problem(result));
             }
             await StopCoreAsync(profileId); return await CompleteAsync(db, profileId, userId, new(true, TunnelConnectionState.Disconnected), ct);
         }
@@ -169,14 +170,14 @@ public sealed class FrpTunnelProvider(IServiceScopeFactory scopes, IHostEnvironm
     /// <summary>Stops all host-local child processes before their managed runtime is removed.</summary>
     public async Task StopManagedProcessesAsync(CancellationToken ct)
     {
-        if (OperatingSystem.IsWindows())
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
         {
             await using var scope = scopes.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<RelaxKonOSDbContext>();
             foreach (var id in await db.TunnelServerProfiles.AsNoTracking().Where(x => x.RuntimeMode == TunnelRuntimeMode.Managed).Select(x => x.Id).ToListAsync(ct))
             {
-                var result = await windowsRuntime.ExecuteAsync(new(WindowsManagedRuntime.Frpc, WindowsManagedRuntimeAction.Stop, ProfileId: id), ct);
-                if (!result.Success) throw new RuntimeInstallException(WindowsManagedRuntimeOperations.Problem(result));
+                var result = await windowsRuntime.ExecuteAsync(new(ManagedRuntime.Frpc, ManagedRuntimeAction.Stop, ProfileId: id), ct);
+                if (!result.Success) throw new RuntimeInstallException(ManagedRuntimeOperations.Problem(result));
                 _states[id] = new(TunnelConnectionState.Disconnected, "");
             }
         }
@@ -198,10 +199,10 @@ public sealed class FrpTunnelProvider(IServiceScopeFactory scopes, IHostEnvironm
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<RelaxKonOSDbContext>();
         if (!await db.TunnelServerProfiles.AsNoTracking().AnyAsync(x => x.Id == profileId && x.UserId == userId, ct)) return null;
-        if (OperatingSystem.IsWindows() && await db.TunnelServerProfiles.AsNoTracking().AnyAsync(x => x.Id == profileId && x.RuntimeMode == TunnelRuntimeMode.Managed, ct))
+        if ((OperatingSystem.IsWindows() || OperatingSystem.IsLinux()) && await db.TunnelServerProfiles.AsNoTracking().AnyAsync(x => x.Id == profileId && x.RuntimeMode == TunnelRuntimeMode.Managed, ct))
         {
-            var result = await windowsRuntime.ExecuteAsync(new(WindowsManagedRuntime.Frpc, WindowsManagedRuntimeAction.Status, ProfileId: profileId), ct);
-            return result.Success ? result.WindowsProcess?.Logs ?? [] : [new(DateTimeOffset.UtcNow, "error", WindowsManagedRuntimeOperations.Problem(result))];
+            var result = await windowsRuntime.ExecuteAsync(new(ManagedRuntime.Frpc, ManagedRuntimeAction.Status, ProfileId: profileId), ct);
+            return result.Success ? result.ComponentProcess?.Logs ?? [] : [new(DateTimeOffset.UtcNow, "error", ManagedRuntimeOperations.Problem(result))];
         }
         return _logs.TryGetValue(profileId, out var records) ? records.ToArray() : [];
     }

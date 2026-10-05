@@ -2,11 +2,11 @@ using RelaxKonOS.Protocol.Privileged;
 
 namespace RelaxKonOS.Server.Privileged;
 
-/// <summary>Uses the existing authenticated pipe; missing Helper never starts a UAC process.</summary>
-public sealed class WindowsManagedRuntimeOperations(IPrivilegedOperationTransport transport)
+/// <summary>Structured SCM/systemd operations through the authenticated Helper; no local process fallback.</summary>
+public sealed class ManagedRuntimeOperations(IPrivilegedOperationTransport transport)
 {
-    public Task<PrivilegedOperationResult> ExecuteAsync(WindowsManagedRuntimeRequest request, CancellationToken ct = default)
-        => transport.ExecuteAsync(new(PrivilegedOperationKind.WindowsManagedRuntime, WindowsRuntime: request), ct);
+    public Task<PrivilegedOperationResult> ExecuteAsync(ManagedRuntimeRequest request, CancellationToken ct = default)
+        => transport.ExecuteAsync(new(PrivilegedOperationKind.ManagedRuntime, ManagedRuntime: request), ct);
 
     public static string Problem(PrivilegedOperationResult result) => result.ProblemCode switch
     {

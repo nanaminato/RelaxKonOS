@@ -22,14 +22,14 @@ internal static class WindowsPrivilegeChecks
             object?[] args = [name, null, null]; parse.Invoke(null, args);
             TestAssert.Assert(Equals(args[1], expectedAccount) && Equals(args[2], expectedDomain), "Windows administrator account parsing changed the canonical logon name.");
         }
-        TestAssert.Assert(WindowsRuntimeConfigurationWriter.IsValidRequest(new(WindowsManagedRuntime.Frpc, WindowsManagedRuntimeAction.Stop, ProfileId: Guid.NewGuid())), "A closed stop request was rejected.");
-        foreach (var malformed in new WindowsManagedRuntimeRequest[]
+        TestAssert.Assert(WindowsRuntimeConfigurationWriter.IsValidRequest(new(ManagedRuntime.Frpc, ManagedRuntimeAction.Stop, ProfileId: Guid.NewGuid())), "A closed stop request was rejected.");
+        foreach (var malformed in new ManagedRuntimeRequest[]
         {
-            new(WindowsManagedRuntime.Nginx, WindowsManagedRuntimeAction.Stop, Version: "1.31.3"),
-            new(WindowsManagedRuntime.Frpc, WindowsManagedRuntimeAction.Status, ProfileId: Guid.Empty),
-            new(WindowsManagedRuntime.Frpc, WindowsManagedRuntimeAction.Stop, ProfileId: Guid.NewGuid(), ArchivePath: "anything"),
-            new(WindowsManagedRuntime.Frps, WindowsManagedRuntimeAction.Status, Version: "v0.71.0"),
-            new(WindowsManagedRuntime.Frps, WindowsManagedRuntimeAction.Install, Version: "v0.71.0"),
+            new(ManagedRuntime.Nginx, ManagedRuntimeAction.Stop, Version: "1.31.3"),
+            new(ManagedRuntime.Frpc, ManagedRuntimeAction.Status, ProfileId: Guid.Empty),
+            new(ManagedRuntime.Frpc, ManagedRuntimeAction.Stop, ProfileId: Guid.NewGuid(), ArchivePath: "anything"),
+            new(ManagedRuntime.Frps, ManagedRuntimeAction.Status, Version: "v0.71.0"),
+            new(ManagedRuntime.Frps, ManagedRuntimeAction.Install, Version: "v0.71.0"),
         }) TestAssert.Assert(!WindowsRuntimeConfigurationWriter.IsValidRequest(malformed), "An unrelated runtime field/action was accepted.");
         TestAssert.Assert(!WindowsManagedRuntimePolicy.Contains(nginx, nginx + "-other" + Path.DirectorySeparatorChar + "nginx.exe"), "A sibling directory crossed the runtime boundary.");
         TestAssert.Assert(!WindowsManagedRuntimePolicy.Contains(nginx, Path.Combine(nginx, "..", "escaped.exe")), "Parent traversal crossed the runtime boundary.");
@@ -49,7 +49,7 @@ internal static class WindowsPrivilegeChecks
             "http { ssl_conf_command Engine evil; }",
         }) ExpectDenied(() => WindowsRuntimeConfigurationWriter.ValidateNginx(malicious, nginx), "Unsafe Nginx configuration was accepted: " + malicious);
 
-        var client = new WindowsFrpcConfiguration("example.test", 7000, TunnelTlsMode.Force, "quote-\"-token",
+        var client = new FrpcServiceConfiguration("example.test", 7000, TunnelTlsMode.Force, "quote-\"-token",
             [new("api", TunnelProtocol.Tcp, "127.0.0.1", 8080, 18080, null, true, true)]);
         var generated = WindowsRuntimeConfigurationWriter.Client(client, null);
         TestAssert.Assert(generated.Contains("token = \"quote-\\\"-token\"", StringComparison.Ordinal), "A credential was not escaped in closed FRP TOML.");
@@ -58,11 +58,11 @@ internal static class WindowsPrivilegeChecks
         ExpectDenied(() => WindowsRuntimeConfigurationWriter.Client(client with { Proxies = [client.Proxies[0] with { LocalPort = 0 }] }, null), "An invalid FRP port was accepted.");
 
         var transport = new CapturingPrivilegedTransport();
-        await new PrivilegedNginxOperations(transport).ApplyWindowsRuntimeAsync(WindowsManagedRuntimeAction.Install, "1.31.3");
-        TestAssert.Assert(transport.LastRequest is { Operation: PrivilegedOperationKind.WindowsManagedRuntime, Path: null, ServiceId: null,
-            WindowsRuntime.Runtime: WindowsManagedRuntime.Nginx, WindowsRuntime.Action: WindowsManagedRuntimeAction.Install }, "Nginx bypassed the closed Helper runtime request.");
-        var unavailable = new WindowsManagedRuntimeOperations(new SystemAuthenticationTransport(new(false, ProblemCode: PrivilegedProblemCode.HelperUnavailable)));
-        TestAssert.Assert(!(await unavailable.ExecuteAsync(new(WindowsManagedRuntime.Frps, WindowsManagedRuntimeAction.Start))).Success, "Missing Helper silently succeeded.");
+        await new PrivilegedNginxOperations(transport).ApplyWindowsRuntimeAsync(ManagedRuntimeAction.Install, "1.31.3");
+        TestAssert.Assert(transport.LastRequest is { Operation: PrivilegedOperationKind.ManagedRuntime, Path: null, ServiceId: null,
+            ManagedRuntime.Runtime: ManagedRuntime.Nginx, ManagedRuntime.Action: ManagedRuntimeAction.Install }, "Nginx bypassed the closed Helper runtime request.");
+        var unavailable = new ManagedRuntimeOperations(new SystemAuthenticationTransport(new(false, ProblemCode: PrivilegedProblemCode.HelperUnavailable)));
+        TestAssert.Assert(!(await unavailable.ExecuteAsync(new(ManagedRuntime.Frps, ManagedRuntimeAction.Start))).Success, "Missing Helper silently succeeded.");
         if (OperatingSystem.IsWindows())
         {
             VerifyStaticSiteAccess(root, policy);
@@ -153,7 +153,7 @@ internal static class WindowsPrivilegeChecks
         acl.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(identity.User!,
             System.Security.AccessControl.FileSystemRights.Write, System.Security.AccessControl.AccessControlType.Allow));
         System.IO.FileSystemAclExtensions.SetAccessControl(directory, acl);
-        var result = await WindowsManagedRuntimeHost.ExecuteAsync(new(WindowsManagedRuntime.Nginx, WindowsManagedRuntimeAction.Start), policy);
+        var result = await WindowsManagedRuntimeHost.ExecuteAsync(new(ManagedRuntime.Nginx, ManagedRuntimeAction.Start), policy);
         TestAssert.Assert(!result.Success && result.ProblemCode == PrivilegedProblemCode.ResourceNotAllowed, "Caller-created runtime hashes bypassed ownership/ACL validation.");
     }
 

@@ -21,17 +21,26 @@ public static partial class PrivilegedOperationExecutor
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "operation id is required");
         if (request.Correlation is not { } correlation || !correlation.IsValid())
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "valid correlation metadata is required");
-        if (request.Operation != PrivilegedOperationKind.WindowsManagedRuntime && request.WindowsRuntime is not null)
+        if (request.Operation != PrivilegedOperationKind.ManagedRuntime && request.ManagedRuntime is not null)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "runtime fields require a dedicated operation");
-        if (request.Operation == PrivilegedOperationKind.WindowsManagedRuntime)
+        if (request.Operation == PrivilegedOperationKind.ManagedRuntime)
         {
             // No general-purpose fields may ride along with a runtime request.
             var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
-                Correlation: request.Correlation, Version: request.Version, WindowsRuntime: request.WindowsRuntime);
+                Correlation: request.Correlation, Version: request.Version, ManagedRuntime: request.ManagedRuntime);
             if (request != clean) return Fail(64, PrivilegedProblemCode.InvalidRequest, "unexpected runtime request fields");
-            return OperatingSystem.IsWindows()
-                ? await WindowsManagedRuntimeHost.ExecuteAsync(request.WindowsRuntime, policy.WindowsRuntimes)
-                : Fail(64, PrivilegedProblemCode.UnsupportedOperation, "Windows runtime operation is unavailable");
+            try
+            {
+                return OperatingSystem.IsWindows()
+                    ? await WindowsManagedRuntimeHost.ExecuteAsync(request.ManagedRuntime, policy.WindowsRuntimes)
+                    : OperatingSystem.IsLinux() ? await LinuxFrpServiceManager.ExecuteAsync(request.ManagedRuntime)
+                    : Fail(64, PrivilegedProblemCode.UnsupportedOperation, "Managed service operation is unavailable");
+            }
+            catch (UnauthorizedAccessException) { return Fail(77, PrivilegedProblemCode.ResourceNotAllowed, "Managed service ownership validation failed"); }
+            catch (Exception exception) when (exception is TimeoutException or System.ServiceProcess.TimeoutException or OperationCanceledException)
+            { return Fail(70, PrivilegedProblemCode.TimedOut, "Managed service operation timed out"); }
+            catch (Exception exception) when (exception is IOException or System.Net.Http.HttpRequestException or InvalidOperationException or System.ComponentModel.Win32Exception)
+            { return Fail(70, PrivilegedProblemCode.InternalError, "Managed service operation failed"); }
         }
         if (OperatingSystem.IsWindows() && request.Operation is PrivilegedOperationKind.NginxWriteManagedFile
             or PrivilegedOperationKind.NginxMoveManagedFile or PrivilegedOperationKind.NginxDeleteManagedFile)

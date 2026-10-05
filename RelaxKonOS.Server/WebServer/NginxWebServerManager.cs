@@ -1126,11 +1126,11 @@ internal sealed partial class NginxWebServerManager(
             await progress.ReportAsync("installing_package", cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             cancellationToken = CancellationToken.None;
-            var installed = await privilegedNginx.ApplyWindowsRuntimeAsync(WindowsManagedRuntimeAction.Install,
+            var installed = await privilegedNginx.ApplyWindowsRuntimeAsync(ManagedRuntimeAction.Install,
                 version, packageId is null ? null : packages.GetPath(packageId), cancellationToken);
             if (!installed.Success) return new(ToWebServerProblem(installed.ProblemCode, "webserver.install_failed"));
             await progress.ReportAsync("validating_configuration", cancellationToken);
-            var verified = await privilegedNginx.ApplyWindowsRuntimeAsync(WindowsManagedRuntimeAction.Test, cancellationToken: cancellationToken);
+            var verified = await privilegedNginx.ApplyWindowsRuntimeAsync(ManagedRuntimeAction.Test, cancellationToken: cancellationToken);
             return new(verified.Success ? "" : ToWebServerProblem(verified.ProblemCode, "webserver.config_test_failed"));
         }
         finally { packages.Delete(packageId); }
@@ -1187,7 +1187,7 @@ internal sealed partial class NginxWebServerManager(
     {
         if (OperatingSystem.IsWindows())
         {
-            var result = await privilegedNginx.ApplyWindowsRuntimeAsync(WindowsManagedRuntimeAction.Uninstall, cancellationToken: cancellationToken);
+            var result = await privilegedNginx.ApplyWindowsRuntimeAsync(ManagedRuntimeAction.Uninstall, cancellationToken: cancellationToken);
             return new(result.Success ? "" : ToWebServerProblem(result.ProblemCode, "webserver.uninstall_failed"));
         }
         var isManaged = IsManagedInstallation(layout);
@@ -1682,10 +1682,10 @@ internal sealed partial class NginxWebServerManager(
             var tail = arguments.Count >= 4 && arguments[0] == "-p" && arguments[2] == "-c"
                 && Path.GetFullPath(arguments[1]) == layout.Root && Path.GetFullPath(arguments[3]) == layout.ConfigurationPath
                 ? arguments.Skip(4).ToArray() : arguments.ToArray();
-            WindowsManagedRuntimeAction? action = tail.Length == 0 ? WindowsManagedRuntimeAction.Start
-                : tail.SequenceEqual(new[] { "-t" }) ? WindowsManagedRuntimeAction.Test
-                : tail.SequenceEqual(new[] { "-s", "quit" }) ? WindowsManagedRuntimeAction.Stop
-                : tail.SequenceEqual(new[] { "-s", "reload" }) ? WindowsManagedRuntimeAction.Reload : null;
+            ManagedRuntimeAction? action = tail.Length == 0 ? ManagedRuntimeAction.Start
+                : tail.SequenceEqual(new[] { "-t" }) ? ManagedRuntimeAction.Test
+                : tail.SequenceEqual(new[] { "-s", "quit" }) ? ManagedRuntimeAction.Stop
+                : tail.SequenceEqual(new[] { "-s", "reload" }) ? ManagedRuntimeAction.Reload : null;
             if (action is null) return new(false, "Unsupported Windows Nginx operation.");
             var result = await privilegedNginx.ApplyWindowsRuntimeAsync(action.Value, cancellationToken: cancellationToken);
             return new(result.Success, result.Success ? "" : ToWebServerProblem(result.ProblemCode, "webserver.lifecycle_failed"));

@@ -53,7 +53,7 @@ public sealed class WindowsPrivilegedHelperService : ServiceBase
         configuration.Validate();
         configuration.VerifyCurrentExecutable();
         if (configuration.PersonalOwnerSid is not null)
-            WindowsMihomoPrivilegedProcessHost.ConfigurePersonalRoot(configuration.PersonalProxyRoot!);
+            WindowsMihomoServiceManager.ConfigurePersonalRoot(configuration.PersonalProxyRoot!);
         ServiceBase.Run(new WindowsPrivilegedHelperService(configuration));
     }
 
@@ -73,8 +73,6 @@ public sealed class WindowsPrivilegedHelperService : ServiceBase
     protected override void OnStop()
     {
         if (_pipeServer is not null) _pipeServer.StopAsync().GetAwaiter().GetResult();
-        WindowsManagedRuntimeHost.StopForHelperShutdownAsync().GetAwaiter().GetResult();
-        WindowsMihomoPrivilegedProcessHost.StopForHelperShutdownAsync().GetAwaiter().GetResult();
         if (_userExecutionPipeServer is not null) _userExecutionPipeServer.StopAsync().GetAwaiter().GetResult();
     }
 

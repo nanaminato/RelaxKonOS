@@ -5,7 +5,7 @@ namespace RelaxKonOS.Server.WebServer;
 /// <summary>Closed Nginx package and system-service operations; no executable or argument API.</summary>
 public interface IPrivilegedNginxOperations
 {
-    Task<PrivilegedOperationResult> ApplyWindowsRuntimeAsync(WindowsManagedRuntimeAction action, string? version = null, string? archivePath = null, CancellationToken cancellationToken = default);
+    Task<PrivilegedOperationResult> ApplyWindowsRuntimeAsync(ManagedRuntimeAction action, string? version = null, string? archivePath = null, CancellationToken cancellationToken = default);
     Task<PrivilegedOperationResult> ApplySystemServiceActionAsync(NginxSystemServiceAction action, CancellationToken cancellationToken = default);
     Task<PrivilegedOperationResult> InstallPackageAsync(string? version, CancellationToken cancellationToken = default);
     Task<PrivilegedOperationResult> UninstallPackageAsync(CancellationToken cancellationToken = default);
@@ -19,9 +19,9 @@ public interface IPrivilegedNginxOperations
 
 public sealed class PrivilegedNginxOperations(RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport transport) : IPrivilegedNginxOperations
 {
-    public Task<PrivilegedOperationResult> ApplyWindowsRuntimeAsync(WindowsManagedRuntimeAction action, string? version = null, string? archivePath = null, CancellationToken cancellationToken = default) =>
-        ExecuteAsync(new(PrivilegedOperationKind.WindowsManagedRuntime,
-            WindowsRuntime: new(WindowsManagedRuntime.Nginx, action, version, ArchivePath: archivePath)), cancellationToken);
+    public Task<PrivilegedOperationResult> ApplyWindowsRuntimeAsync(ManagedRuntimeAction action, string? version = null, string? archivePath = null, CancellationToken cancellationToken = default) =>
+        ExecuteAsync(new(PrivilegedOperationKind.ManagedRuntime,
+            ManagedRuntime: new(ManagedRuntime.Nginx, action, version, ArchivePath: archivePath)), cancellationToken);
     public Task<PrivilegedOperationResult> ApplySystemServiceActionAsync(NginxSystemServiceAction action, CancellationToken cancellationToken = default) =>
         ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NginxSystemServiceAction, NginxServiceAction: action), cancellationToken);
     public Task<PrivilegedOperationResult> InstallPackageAsync(string? version, CancellationToken cancellationToken = default) =>

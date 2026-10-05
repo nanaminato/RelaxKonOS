@@ -14,7 +14,7 @@ using RelaxKonOS.Protocol.Privileged;
 namespace RelaxKonOS.Server.Runtimes;
 
 /// <summary>Owns RelaxKonOS-managed FRP releases. Activation changes a private state pointer, never overwrites a release.</summary>
-public sealed class FrpRuntimeManager(IHostEnvironment environment, IOutboundProxyHttpClientFactory httpClients, IOptions<FrpRuntimeOptions> options, WindowsManagedRuntimeOperations windowsRuntime) : IRuntimeManager
+public sealed class FrpRuntimeManager(IHostEnvironment environment, IOutboundProxyHttpClientFactory httpClients, IOptions<FrpRuntimeOptions> options, ManagedRuntimeOperations windowsRuntime) : IRuntimeManager
 {
     private const string RuntimeId = "frp";
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -90,14 +90,14 @@ public sealed class FrpRuntimeManager(IHostEnvironment environment, IOutboundPro
                 try
                 {
                     await stageArchiveAsync(release, archive, ct);
-                    if (OperatingSystem.IsWindows())
+                    if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
                     {
                         await progress.ReportAsync(new(InstallationStage.Installing, Cancellable: false), ct);
                         ct.ThrowIfCancellationRequested();
                         ct = CancellationToken.None;
-                        var imported = await windowsRuntime.ExecuteAsync(new(WindowsManagedRuntime.Frpc, WindowsManagedRuntimeAction.Install,
+                        var imported = await windowsRuntime.ExecuteAsync(new(ManagedRuntime.Frpc, ManagedRuntimeAction.Install,
                             release.Version, ArchivePath: archive), ct);
-                        if (!imported.Success) return CompleteInstallationFailure(release.Version, WindowsManagedRuntimeOperations.Problem(imported));
+                        if (!imported.Success) return CompleteInstallationFailure(release.Version, ManagedRuntimeOperations.Problem(imported));
                     }
                     await progress.ReportAsync(new(InstallationStage.Extracting, Cancellable: !OperatingSystem.IsWindows()), ct);
                     await ExtractExpectedExecutablesAsync(release, archive, staging, ct);
@@ -114,13 +114,13 @@ public sealed class FrpRuntimeManager(IHostEnvironment environment, IOutboundPro
             }
             await progress.ReportAsync(new(InstallationStage.HealthChecking, Cancellable: !OperatingSystem.IsWindows()), ct);
             if (await RunVersionAsync(ExecutablePath(release.Version), ct) is null) return CompleteInstallationFailure(release.Version, "tunnel.runtime_health_check_failed");
-            if (OperatingSystem.IsWindows())
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
             {
                 await progress.ReportAsync(new(InstallationStage.Installing, Cancellable: false), ct);
                 ct.ThrowIfCancellationRequested();
                 ct = CancellationToken.None;
-                var installed = await windowsRuntime.ExecuteAsync(new(WindowsManagedRuntime.Frpc, WindowsManagedRuntimeAction.Install, release.Version), ct);
-                if (!installed.Success) return CompleteInstallationFailure(release.Version, WindowsManagedRuntimeOperations.Problem(installed));
+                var installed = await windowsRuntime.ExecuteAsync(new(ManagedRuntime.Frpc, ManagedRuntimeAction.Install, release.Version), ct);
+                if (!installed.Success) return CompleteInstallationFailure(release.Version, ManagedRuntimeOperations.Problem(installed));
             }
             var before = await ReadStateAsync(ct);
             await progress.ReportAsync(new(InstallationStage.Activating, Cancellable: false), ct);
@@ -146,10 +146,10 @@ public sealed class FrpRuntimeManager(IHostEnvironment environment, IOutboundPro
             var before = await ReadStateAsync(ct);
             if (before?.PreviousVersion is not { Length: > 0 } previous) return new(false, TunnelConnectionState.RuntimeUnavailable, "tunnel.runtime_no_previous_version");
             if (await RunVersionAsync(ExecutablePath(previous), ct) is null) return new(false, TunnelConnectionState.RuntimeUnavailable, "tunnel.runtime_previous_unhealthy");
-            if (OperatingSystem.IsWindows())
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
             {
-                var restored = await windowsRuntime.ExecuteAsync(new(WindowsManagedRuntime.Frpc, WindowsManagedRuntimeAction.Install, previous), ct);
-                if (!restored.Success) return new(false, TunnelConnectionState.RuntimeUnavailable, WindowsManagedRuntimeOperations.Problem(restored));
+                var restored = await windowsRuntime.ExecuteAsync(new(ManagedRuntime.Frpc, ManagedRuntimeAction.Install, previous), ct);
+                if (!restored.Success) return new(false, TunnelConnectionState.RuntimeUnavailable, ManagedRuntimeOperations.Problem(restored));
             }
             await WriteStateAsync(new RuntimeState(previous, before.ActiveVersion, DateTimeOffset.UtcNow), ct);
             return new(true, TunnelConnectionState.SavedNotApplied);
@@ -169,10 +169,10 @@ public sealed class FrpRuntimeManager(IHostEnvironment environment, IOutboundPro
             {
                 // Versions are private, immutable installation artifacts. Removing the runtime
                 // intentionally removes the active pointer and every cached managed release.
-                if (OperatingSystem.IsWindows())
+                if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
                 {
-                    var removed = await windowsRuntime.ExecuteAsync(new(WindowsManagedRuntime.Frpc, WindowsManagedRuntimeAction.Uninstall), ct);
-                    if (!removed.Success) return new(false, TunnelConnectionState.RuntimeUnavailable, WindowsManagedRuntimeOperations.Problem(removed));
+                    var removed = await windowsRuntime.ExecuteAsync(new(ManagedRuntime.Frpc, ManagedRuntimeAction.Uninstall), ct);
+                    if (!removed.Success) return new(false, TunnelConnectionState.RuntimeUnavailable, ManagedRuntimeOperations.Problem(removed));
                 }
                 if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
 

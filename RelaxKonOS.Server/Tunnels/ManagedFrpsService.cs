@@ -13,44 +13,16 @@ using RelaxKonOS.Protocol.Privileged;
 namespace RelaxKonOS.Server.Tunnels;
 
 /// <summary>Host-local frps supervisor. Configuration is private, generated TOML is never returned over HTTP.</summary>
-public sealed class ManagedFrpsService(IHostEnvironment environment, IDataProtectionProvider dataProtection, IRuntimeManager runtimes, IServiceScopeFactory scopes, WindowsManagedRuntimeOperations windowsRuntime)
-    : IManagedFrpsService, IDisposable, IHostedService
+public sealed class ManagedFrpsService(IHostEnvironment environment, IDataProtectionProvider dataProtection, IRuntimeManager runtimes, IServiceScopeFactory scopes, ManagedRuntimeOperations windowsRuntime)
+    : IManagedFrpsService, IDisposable
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly IDataProtector _protector = dataProtection.CreateProtector("RelaxKonOS.Tunnels.ManagedFrps.v1");
     private readonly string _root = Path.Combine(environment.ContentRootPath, "data", "runtimes", "frp", "frps");
-    private readonly ConcurrentQueue<TunnelLogEntryDto> _logs = new();
-    private Process? _process;
     private DateTimeOffset? _startedAt;
     private ManagedFrpsState _state = ManagedFrpsState.NotConfigured;
     private string _problemCode = "";
     private long? _appliedRevision;
-    private bool _processOwnershipKnown;
-
-    public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-
-    public async Task StopAsync(CancellationToken cancellationToken)
-    {
-        await _gate.WaitAsync(cancellationToken);
-        try
-        {
-            // Helper owns Windows processes. Linux cleanup uses our live handle only,
-            // leaving the saved configuration and credentials available after reinstall.
-            if (_process is not { } process) return;
-            if (!process.HasExited)
-            {
-                process.Kill(entireProcessTree: true);
-                await process.WaitForExitAsync(cancellationToken);
-            }
-            _process = null;
-            process.Dispose();
-            _processOwnershipKnown = true;
-            _state = ManagedFrpsState.Stopped;
-            _startedAt = null;
-            _appliedRevision = null;
-        }
-        finally { _gate.Release(); }
-    }
 
     public async Task<ManagedFrpsConfigurationDto> GetAsync(CancellationToken ct)
     {
@@ -58,17 +30,13 @@ public sealed class ManagedFrpsService(IHostEnvironment environment, IDataProtec
         try
         {
             var saved = await ReadAsync(ct);
-            if (OperatingSystem.IsWindows() && saved is not null)
+            if (saved is not null)
             {
-                var result = await windowsRuntime.ExecuteAsync(new(WindowsManagedRuntime.Frps, WindowsManagedRuntimeAction.Status), ct);
-                _state = result.Success ? result.WindowsProcess?.Running == true ? ManagedFrpsState.Running : ManagedFrpsState.Stopped : ManagedFrpsState.Failed;
-                _problemCode = result.Success ? "" : WindowsManagedRuntimeOperations.Problem(result);
-                _startedAt = result.WindowsProcess?.StartedAt;
-            }
-            if (!OperatingSystem.IsWindows() && _process is { } process)
-            {
-                if (process.HasExited) { _state = ManagedFrpsState.Failed; _appliedRevision = null; _problemCode = "tunnel.frps_exited"; }
-                else if (_state == ManagedFrpsState.Starting && _startedAt is { } started && DateTimeOffset.UtcNow - started >= TimeSpan.FromMilliseconds(250)) _state = ManagedFrpsState.Running;
+                var result = await windowsRuntime.ExecuteAsync(new(ManagedRuntime.Frps, ManagedRuntimeAction.Status), ct);
+                _state = result.Success ? result.ComponentProcess?.Running == true ? ManagedFrpsState.Running : ManagedFrpsState.Stopped : ManagedFrpsState.Failed;
+                _problemCode = result.Success ? "" : ManagedRuntimeOperations.Problem(result);
+                _startedAt = result.ComponentProcess?.StartedAt;
+                _appliedRevision = long.TryParse(result.ComponentProcess?.AppliedIdentity, out var applied) ? applied : null;
             }
             return ToDto(saved);
         }
@@ -104,7 +72,7 @@ public sealed class ManagedFrpsService(IHostEnvironment environment, IDataProtec
                 request.DashboardEnabled, request.DashboardAddress.Trim(), request.DashboardPort, request.DashboardUser?.Trim(),
                 string.IsNullOrWhiteSpace(request.DashboardPassword) ? previous?.ProtectedDashboardPassword : _protector.Protect(request.DashboardPassword.Trim()), checked((previous?.Revision ?? 0) + 1));
             await WriteAsync(value, ct);
-            if (previous is null) { _processOwnershipKnown = true; _state = ManagedFrpsState.Stopped; }
+            if (previous is null) { _state = ManagedFrpsState.Stopped; }
             await AuditAsync(actorUserId, "frps.configure", "succeeded", "", ct);
             return ToDto(value);
         }
@@ -120,14 +88,13 @@ public sealed class ManagedFrpsService(IHostEnvironment environment, IDataProtec
         {
             var config = await ReadAsync(ct);
             if (config is null) return await CompleteAsync(actorUserId, "frps.start", false, "tunnel.frps_not_configured", ct);
-            if (_process is { HasExited: false }) return _appliedRevision == config.Revision
-                ? new(true, TunnelConnectionState.Connected) : await CompleteAsync(actorUserId, "frps.start", false, "tunnel.frps_restart_required", ct);
-            if (OperatingSystem.IsWindows())
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
             {
-                var observed = await windowsRuntime.ExecuteAsync(new(WindowsManagedRuntime.Frps, WindowsManagedRuntimeAction.Status), ct);
-                if (observed.Success && observed.WindowsProcess?.Running == true)
+                var observed = await windowsRuntime.ExecuteAsync(new(ManagedRuntime.Frps, ManagedRuntimeAction.Status), ct);
+                if (observed.Success && observed.ComponentProcess?.Running == true)
                 {
-                    _state = ManagedFrpsState.Running; _startedAt = observed.WindowsProcess.StartedAt;
+                    _state = ManagedFrpsState.Running; _startedAt = observed.ComponentProcess.StartedAt;
+                    _appliedRevision = long.TryParse(observed.ComponentProcess.AppliedIdentity, out var proof) ? proof : null;
                     return _appliedRevision == config.Revision ? new(true, TunnelConnectionState.Connected)
                         : await CompleteAsync(actorUserId, "frps.start", false, "tunnel.frps_restart_required", ct);
                 }
@@ -137,38 +104,20 @@ public sealed class ManagedFrpsService(IHostEnvironment environment, IDataProtec
             if (string.IsNullOrEmpty(config.ProtectedToken)) return await CompleteAsync(actorUserId, "frps.start", false, "tunnel.frps_token_required", ct);
             if (config.DashboardEnabled && (string.IsNullOrEmpty(config.DashboardUser) || string.IsNullOrEmpty(config.ProtectedDashboardPassword))) return await CompleteAsync(actorUserId, "frps.start", false, "tunnel.frps_dashboard_credentials_required", ct);
             foreach (var endpoint in Endpoints(config)) EnsurePortAvailable(endpoint.Address, endpoint.Port);
-            if (OperatingSystem.IsWindows())
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
             {
-                var request = new WindowsFrpsConfiguration(config.BindAddress, config.BindPort, config.AllowPorts,
+                var request = new FrpsServiceConfiguration(config.BindAddress, config.BindPort, config.AllowPorts,
                     config.VhostHttpPort, config.VhostHttpsPort, config.ForceTls, _protector.Unprotect(config.ProtectedToken!),
                     config.DashboardEnabled, config.DashboardAddress, config.DashboardPort, config.DashboardUser,
                     config.ProtectedDashboardPassword is null ? null : _protector.Unprotect(config.ProtectedDashboardPassword));
-                var result = await windowsRuntime.ExecuteAsync(new(WindowsManagedRuntime.Frps, WindowsManagedRuntimeAction.Start, runtime.Version, Server: request), ct);
+                var result = await windowsRuntime.ExecuteAsync(new(ManagedRuntime.Frps, ManagedRuntimeAction.Start, runtime.Version, Server: request, AppliedIdentity: config.Revision.ToString(System.Globalization.CultureInfo.InvariantCulture)), ct);
                 _state = result.Success ? ManagedFrpsState.Running : ManagedFrpsState.Failed;
                 if (result.Success) _appliedRevision = config.Revision;
-                _startedAt = result.WindowsProcess?.StartedAt;
-                _problemCode = result.Success ? "" : WindowsManagedRuntimeOperations.Problem(result);
+                _startedAt = result.ComponentProcess?.StartedAt;
+                _problemCode = result.Success ? "" : ManagedRuntimeOperations.Problem(result);
                 return await CompleteAsync(actorUserId, "frps.start", result.Success, _problemCode, ct);
             }
-            Directory.CreateDirectory(_root); SetPrivateDirectory(_root);
-            var toml = Path.Combine(_root, "frps.toml");
-            var temporary = Path.Combine(_root, $".frps.{Guid.NewGuid():N}.tmp");
-            await File.WriteAllTextAsync(temporary, GenerateToml(config), ct); SetPrivateFile(temporary);
-            if (!await VerifyAsync(runtime.ExecutablePath, temporary, ct)) { File.Delete(temporary); return await CompleteAsync(actorUserId, "frps.start", false, "tunnel.frps_config_verify_failed", ct); }
-            File.Move(temporary, toml, overwrite: true); SetPrivateFile(toml);
-            _state = ManagedFrpsState.Starting; _problemCode = "";
-            var process = new Process { StartInfo = new ProcessStartInfo(runtime.ExecutablePath) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true }, EnableRaisingEvents = true };
-            process.StartInfo.ArgumentList.Add("-c"); process.StartInfo.ArgumentList.Add(toml);
-            process.OutputDataReceived += (_, e) => { if (ReferenceEquals(_process, process)) AppendLog("information", e.Data); };
-            process.ErrorDataReceived += (_, e) => { if (ReferenceEquals(_process, process)) AppendLog("error", e.Data); };
-            process.Exited += (_, _) => { if (!ReferenceEquals(_process, process)) return; _state = ManagedFrpsState.Failed; _appliedRevision = null; _problemCode = "tunnel.frps_exited"; AppendLog("error", "frps exited."); };
-            if (!process.Start()) return await CompleteAsync(actorUserId, "frps.start", false, "tunnel.frps_start_failed", ct);
-            _process = process; _processOwnershipKnown = true; _appliedRevision = config.Revision; _startedAt = DateTimeOffset.UtcNow;
-            process.BeginOutputReadLine(); process.BeginErrorReadLine();
-            await Task.Delay(250, ct);
-            if (process.HasExited) return await CompleteAsync(actorUserId, "frps.start", false, "tunnel.frps_start_failed", ct);
-            _state = ManagedFrpsState.Running; _appliedRevision = config.Revision; AppendLog("information", "frps started.");
-            return await CompleteAsync(actorUserId, "frps.start", true, "", ct);
+            return await CompleteAsync(actorUserId, "frps.start", false, "tunnel.runtime_helper_policy_denied", ct);
         }
         catch (ManagedFrpsValidationException ex) { return await CompleteAsync(actorUserId, "frps.start", false, ex.ProblemCode, ct); }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException or InvalidOperationException) { return await CompleteAsync(actorUserId, "frps.start", false, "tunnel.frps_start_failed", ct); }
@@ -180,23 +129,13 @@ public sealed class ManagedFrpsService(IHostEnvironment environment, IDataProtec
         await _gate.WaitAsync(ct);
         try
         {
-            if (!OperatingSystem.IsWindows() && !_processOwnershipKnown && await ReadAsync(ct) is not null)
-                return await CompleteAsync(actorUserId, "frps.stop", false, "tunnel.frps_process_unverified", ct);
-            if (OperatingSystem.IsWindows())
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
             {
-                var stopped = await windowsRuntime.ExecuteAsync(new(WindowsManagedRuntime.Frps, WindowsManagedRuntimeAction.Stop), ct);
-                if (!stopped.Success) return await CompleteAsync(actorUserId, "frps.stop", false, WindowsManagedRuntimeOperations.Problem(stopped), ct);
-            }
-            if (_process is { } process)
-            {
-                try { if (!process.HasExited) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(ct); } }
-                catch (System.ComponentModel.Win32Exception) { return await CompleteAsync(actorUserId, "frps.stop", false, "tunnel.frps_stop_failed", ct); }
-                catch (InvalidOperationException) { return await CompleteAsync(actorUserId, "frps.stop", false, "tunnel.frps_process_unverified", ct); }
-                // Retain ownership on failed/cancelled termination. Only a confirmed exit releases the handle.
-                _process = null; process.Dispose();
+                var stopped = await windowsRuntime.ExecuteAsync(new(ManagedRuntime.Frps, ManagedRuntimeAction.Stop), ct);
+                if (!stopped.Success) return await CompleteAsync(actorUserId, "frps.stop", false, ManagedRuntimeOperations.Problem(stopped), ct);
             }
             _state = (await ReadAsync(ct)) is null ? ManagedFrpsState.NotConfigured : ManagedFrpsState.Stopped;
-            _startedAt = null; _appliedRevision = null; _problemCode = ""; AppendLog("information", "frps stopped.");
+            _startedAt = null; _appliedRevision = null; _problemCode = "";
             return await CompleteAsync(actorUserId, "frps.stop", true, "", ct);
         }
         finally { _gate.Release(); }
@@ -204,16 +143,15 @@ public sealed class ManagedFrpsService(IHostEnvironment environment, IDataProtec
 
     public async Task<IReadOnlyList<TunnelLogEntryDto>> GetLogsAsync(CancellationToken ct)
     {
-        if (!OperatingSystem.IsWindows()) return _logs.ToArray();
-        var result = await windowsRuntime.ExecuteAsync(new(WindowsManagedRuntime.Frps, WindowsManagedRuntimeAction.Status), ct);
-        return result.Success ? result.WindowsProcess?.Logs ?? [] : [new(DateTimeOffset.UtcNow, "error", WindowsManagedRuntimeOperations.Problem(result))];
+        var result = await windowsRuntime.ExecuteAsync(new(ManagedRuntime.Frps, ManagedRuntimeAction.Status), ct);
+        return result.Success ? result.ComponentProcess?.Logs ?? [] : [new(DateTimeOffset.UtcNow, "error", ManagedRuntimeOperations.Problem(result))];
     }
     private async Task<TunnelOperationResultDto> CompleteAsync(string actor, string action, bool succeeded, string code, CancellationToken ct)
     {
         _problemCode = code;
         if (!succeeded && code != "tunnel.frps_restart_required")
         {
-            _state = code == "tunnel.frps_process_unverified" ? ManagedFrpsState.Unknown : code == "tunnel.frps_not_configured" ? ManagedFrpsState.NotConfigured
+            _state = code == "tunnel.frps_not_configured" ? ManagedFrpsState.NotConfigured
                 : code == "tunnel.managed_runtime_not_installed" ? ManagedFrpsState.RuntimeUnavailable : ManagedFrpsState.Failed;
         }
         await AuditAsync(actor, action, succeeded ? "succeeded" : "failed", code, ct);
@@ -242,30 +180,17 @@ public sealed class ManagedFrpsService(IHostEnvironment environment, IDataProtec
     private static bool IsPort(int value) => value is > 0 and <= 65535;
     private async Task<StoredConfiguration?> ReadAsync(CancellationToken ct) { var path = Path.Combine(_root, "config.json"); if (!File.Exists(path)) return null; await using var input = File.OpenRead(path); var value = await JsonSerializer.DeserializeAsync<StoredConfiguration>(input, cancellationToken: ct); if (value is null || value.Revision <= 0) throw new InvalidDataException("Invalid frps configuration record."); return value; }
     private async Task WriteAsync(StoredConfiguration value, CancellationToken ct) { Directory.CreateDirectory(_root); SetPrivateDirectory(_root); var temporary = Path.Combine(_root, $".config.{Guid.NewGuid():N}.tmp"); await using (var output = File.Create(temporary)) await JsonSerializer.SerializeAsync(output, value, cancellationToken: ct); SetPrivateFile(temporary); File.Move(temporary, Path.Combine(_root, "config.json"), overwrite: true); SetPrivateFile(Path.Combine(_root, "config.json")); }
-    private string GenerateToml(StoredConfiguration c)
-    {
-        var token = _protector.Unprotect(c.ProtectedToken!); var dashboardPassword = string.IsNullOrEmpty(c.ProtectedDashboardPassword) ? null : _protector.Unprotect(c.ProtectedDashboardPassword);
-        var lines = new List<string> { $"bindAddr = \"{c.BindAddress}\"", $"bindPort = {c.BindPort}", $"auth.token = \"{Escape(token)}\"" };
-        if (c.AllowPorts.Length > 0) lines.Add("allowPorts = [" + string.Join(", ", c.AllowPorts.Select(x => x.Start == x.End ? $"{{ single = {x.Start} }}" : $"{{ start = {x.Start}, end = {x.End} }}")) + "]");
-        if (c.VhostHttpPort is { } http) lines.Add($"vhostHTTPPort = {http}"); if (c.VhostHttpsPort is { } https) lines.Add($"vhostHTTPSPort = {https}"); if (c.ForceTls) lines.Add("transport.tls.force = true");
-        if (c.DashboardEnabled) { lines.Add($"webServer.addr = \"{c.DashboardAddress}\""); lines.Add($"webServer.port = {c.DashboardPort}"); lines.Add($"webServer.user = \"{Escape(c.DashboardUser!)}\""); lines.Add($"webServer.password = \"{Escape(dashboardPassword!)}\""); }
-        return string.Join(Environment.NewLine, lines) + Environment.NewLine;
-    }
-    private static async Task<bool> VerifyAsync(string executable, string config, CancellationToken ct) { using var process = new Process { StartInfo = new ProcessStartInfo(executable) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true } }; process.StartInfo.ArgumentList.Add("verify"); process.StartInfo.ArgumentList.Add("-c"); process.StartInfo.ArgumentList.Add(config); try { if (!process.Start()) return false; using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct); timeout.CancelAfter(TimeSpan.FromSeconds(10)); await Task.WhenAll(process.StandardOutput.ReadToEndAsync(timeout.Token), process.StandardError.ReadToEndAsync(timeout.Token), process.WaitForExitAsync(timeout.Token)); return process.ExitCode == 0; } catch { return false; } }
     private ManagedFrpsConfigurationDto ToDto(StoredConfiguration? c)
     {
-        // A saved configuration proves no process state after restart. Linux must not claim stopped
-        // or kill a process it no longer owns; Windows status is read from Helper.
-        var state = c is not null && (!OperatingSystem.IsWindows() && !_processOwnershipKnown || _state == ManagedFrpsState.NotConfigured) ? ManagedFrpsState.Unknown : _state;
+        // Runtime state and applied proof come from the independent OS service, never a cached PID.
+        var state = c is not null && _state == ManagedFrpsState.NotConfigured ? ManagedFrpsState.Unknown : _state;
         return c is null
             ? new("0.0.0.0", 7000, [], null, null, false, false, false, "127.0.0.1", null, null, false, state, 0, null, _problemCode, _startedAt)
             : new(c.BindAddress, c.BindPort, c.AllowPorts, c.VhostHttpPort, c.VhostHttpsPort, c.ForceTls, !string.IsNullOrEmpty(c.ProtectedToken), c.DashboardEnabled, c.DashboardAddress, c.DashboardPort, c.DashboardUser, !string.IsNullOrEmpty(c.ProtectedDashboardPassword), state, c.Revision, state is ManagedFrpsState.Running or ManagedFrpsState.Starting ? _appliedRevision : null, _problemCode, _startedAt, !string.IsNullOrEmpty(c.ProtectedToken) ? _protector.Unprotect(c.ProtectedToken) : null, !string.IsNullOrEmpty(c.ProtectedDashboardPassword) ? _protector.Unprotect(c.ProtectedDashboardPassword) : null);
     }
-    private void AppendLog(string level, string? message) { if (string.IsNullOrWhiteSpace(message)) return; message = Regex.Replace(message, "(?i)(token|secret|password)\\s*[:=]\\s*[^\\s,]+", "$1=<redacted>"); _logs.Enqueue(new(DateTimeOffset.UtcNow, level, message.Length > 1024 ? message[..1024] : message)); while (_logs.Count > 200) _logs.TryDequeue(out _); }
-    private static string Escape(string value) => value.Replace("\\", "\\\\").Replace("\"", "\\\"");
     private static void SetPrivateDirectory(string path) { if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute); }
     private static void SetPrivateFile(string path) { if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite); }
-    public void Dispose() { _gate.Dispose(); _process?.Dispose(); }
+    public void Dispose() { _gate.Dispose(); }
     private sealed record StoredConfiguration(string BindAddress, int BindPort, TunnelPortRangeDto[] AllowPorts, int? VhostHttpPort, int? VhostHttpsPort, bool ForceTls, string? ProtectedToken, bool DashboardEnabled, string DashboardAddress, int? DashboardPort, string? DashboardUser, string? ProtectedDashboardPassword, [property: System.Text.Json.Serialization.JsonRequired] long Revision);
 }
 

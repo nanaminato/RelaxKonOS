@@ -93,8 +93,7 @@ if [[ "$NON_INTERACTIVE" == false ]]; then
   [[ "$confirmation" =~ ^([yY]|[yY][eE][sS])$ ]] || exit 0
 fi
 
-# Mihomo is an independent system service. Stop it while retaining its enablement,
-# runtime, configuration and ownership records for the next installation.
+# Independent component services keep running when only RelaxKonOS is removed.
 if [[ "$REMOVE_DATA" == true ]]; then
   # Keep Helper and ownership records available until every cleanup step succeeds.
   for unit in relaxkonos-server.service relaxkonos-guardian.service; do
@@ -147,7 +146,6 @@ PY
   install -d -o root -g root -m 0700 /var/lib/relaxkonos-deployment
   install -o root -g root -m 0600 "$receipt" /var/lib/relaxkonos-deployment/component-cleanup.json
 fi
-systemctl stop relaxkonos-mihomo.service 2>/dev/null || true
 systemctl disable --now relaxkonos-server.service relaxkonos-guardian.service 2>/dev/null || true
 rm -f -- /etc/systemd/system/relaxkonos-server.service /etc/systemd/system/relaxkonos-guardian.service
 systemctl daemon-reload

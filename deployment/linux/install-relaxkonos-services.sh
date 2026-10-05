@@ -234,6 +234,10 @@ SERVICE_GROUP="$(id -gn "$SERVICE_USER")"
 GUARDIAN_DATA="$DATA_ROOT/guardian"
 COMPOSE_DATA="$DATA_ROOT/docker-compose"
 SERVER_DATA="$DATA_ROOT/server"
+install -d -o root -g root -m 0755 /etc/relaxkonos
+printf '%s\n' "$SERVER_DATA/runtimes/frp" > /etc/relaxkonos/frp-archive-root
+chown root:root /etc/relaxkonos/frp-archive-root
+chmod 0600 /etc/relaxkonos/frp-archive-root
 WEBSERVER_DATA="$DATA_ROOT/webserver/nginx"
 CERTIFICATE_DATA="$SERVER_DATA/certificates"
 MANAGED_CERTIFICATE_DATA="$SERVER_DATA/managed-certificates"
@@ -492,16 +496,6 @@ EOF
 
 systemctl daemon-reload
 systemctl enable --now relaxkonos-guardian.service relaxkonos-server.service
-# A retained Mihomo unit keeps its original boot policy. Reinstall may resume an
-# enabled instance only when its retained runtime and configuration are present.
-if systemctl is-enabled --quiet relaxkonos-mihomo.service \
-  && [[ -f /var/lib/relaxkonos/proxy/state/mihomo-runtime.json \
-    && -x /var/lib/relaxkonos/proxy/engines/mihomo/versions/current/mihomo \
-    && -f /etc/relaxkonos/proxy/active.yaml ]]; then
-  if ! systemctl start relaxkonos-mihomo.service; then
-    echo 'Retained Mihomo could not start; its management data was kept for repair.' >&2
-  fi
-fi
 if [[ "$DOCKER_ACCESS" == true ]]; then
   # Supplementary groups are captured when systemd spawns the process. A restart is required
   # even when the account was already present in the docker group before this deployment.

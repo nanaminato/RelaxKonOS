@@ -3,29 +3,29 @@ using RelaxKonOS.Protocol.Tunnels;
 
 namespace RelaxKonOS.Protocol.Privileged;
 
-[JsonConverter(typeof(JsonStringEnumConverter<WindowsManagedRuntime>))]
-public enum WindowsManagedRuntime { Nginx, Frpc, Frps }
+[JsonConverter(typeof(JsonStringEnumConverter<ManagedRuntime>))]
+public enum ManagedRuntime { Nginx, Frpc, Frps }
 
-[JsonConverter(typeof(JsonStringEnumConverter<WindowsManagedRuntimeAction>))]
-public enum WindowsManagedRuntimeAction { Install, Uninstall, Start, Stop, Restart, Reload, Test, Status }
+[JsonConverter(typeof(JsonStringEnumConverter<ManagedRuntimeAction>))]
+public enum ManagedRuntimeAction { Install, Uninstall, Start, Stop, Restart, Reload, Test, Status }
 
 /// <summary>Closed Windows runtime verbs. Executables, command lines and environments are Helper-owned.</summary>
-public sealed record WindowsManagedRuntimeRequest(
-    WindowsManagedRuntime Runtime, WindowsManagedRuntimeAction Action,
+public sealed record ManagedRuntimeRequest(
+    ManagedRuntime Runtime, ManagedRuntimeAction Action,
     string? Version = null, Guid? ProfileId = null, string? ArchivePath = null,
-    WindowsFrpcConfiguration? Client = null, WindowsFrpsConfiguration? Server = null);
+    FrpcServiceConfiguration? Client = null, FrpsServiceConfiguration? Server = null, string? AppliedIdentity = null);
 
-public sealed record WindowsFrpcConfiguration(string Host, int Port, TunnelTlsMode TlsMode,
-    string? Token, IReadOnlyList<WindowsFrpProxy> Proxies);
-public sealed record WindowsFrpProxy(string Name, TunnelProtocol Protocol, string LocalHost, int LocalPort,
+public sealed record FrpcServiceConfiguration(string Host, int Port, TunnelTlsMode TlsMode,
+    string? Token, IReadOnlyList<FrpServiceProxy> Proxies);
+public sealed record FrpServiceProxy(string Name, TunnelProtocol Protocol, string LocalHost, int LocalPort,
     int? RemotePort, string? Domain, bool Encryption, bool Compression);
-public sealed record WindowsFrpsConfiguration(string BindAddress, int BindPort,
+public sealed record FrpsServiceConfiguration(string BindAddress, int BindPort,
     IReadOnlyList<TunnelPortRangeDto> AllowPorts, int? HttpPort, int? HttpsPort, bool ForceTls,
     string Token, bool DashboardEnabled, string DashboardAddress, int? DashboardPort,
     string? DashboardUser, string? DashboardPassword);
 
-public sealed record WindowsManagedProcessSnapshot(bool Running, bool Connected, bool AuthenticationFailed,
-    DateTimeOffset? StartedAt, IReadOnlyList<TunnelLogEntryDto> Logs);
+public sealed record ManagedProcessSnapshot(bool Running, bool Connected, bool AuthenticationFailed,
+    DateTimeOffset? StartedAt, IReadOnlyList<TunnelLogEntryDto> Logs, string? AppliedIdentity = null);
 
 /// <summary>Administrator-owned archive pins, shared by the installer and Helper configuration.</summary>
 public sealed record WindowsFrpRelease(string Version, string Rid, string Url, string Sha256, string ArchiveFormat);

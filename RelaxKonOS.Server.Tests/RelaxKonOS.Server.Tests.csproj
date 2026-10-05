@@ -12,6 +12,8 @@
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsManagedRuntimePolicy.cs" Link="WindowsManagedRuntimePolicy.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsNginxStaticSiteAccess.cs" Link="WindowsNginxStaticSiteAccess.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsManagedRuntimeHost.cs" Link="WindowsManagedRuntimeHost.cs" />
+    <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsComponentService.cs" Link="WindowsComponentService.cs" />
+    <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsComponentJob.cs" Link="WindowsComponentJob.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsRuntimeConfigurationWriter.cs" Link="WindowsRuntimeConfigurationWriter.cs" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
     <Compile Include="../Client/RelaxKonOS.Client/Apps/ApplicationDeployments/DeploymentUploadContent.cs" Link="DeploymentUploadContent.cs" />

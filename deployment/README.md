@@ -70,7 +70,7 @@ dotnet run --project ./deployment/packaging/RelaxKonOS.ReleaseVerifier -- verify
 
 Linux 系统模式在未上传新发布包的维护操作中，从 `/opt/relaxkonos/current/deployment/bootstrap/` 读取当前版本的安装和卸载引擎。桌面端必须同时核对操作终态回执及随后读取的宿主状态：失败回执显示实际失败原因；卸载只有在操作成功且状态确认 `installed=false` 时显示成功，保留数据不等于仍然安装。
 
-默认系统卸载保留组件的二进制、配置、托管标记、数据库、共享所有权记录和 Guardian 定义。Linux Mihomo 在卸载时停止，保留 systemd 启用策略以及 `/etc/relaxkonos/proxy/`；原路径重装只在原服务已启用且配置、运行时及管理记录齐全时启动它。Windows Mihomo 和托管 FRP 随 Helper 停止，Linux FRP 随 Server 正常退出清理其拥有的子进程；FRP 保存的配置可在重装后重新应用，不自动猜测或复用旧 PID。Nginx 和 SMB 的系统服务、配置与共享保持原状。
+默认系统卸载保留组件的二进制、配置、托管标记、数据库、共享所有权记录和 Guardian 定义。Windows Nginx、Mihomo、FRP 使用独立 SCM 服务；Linux FRP 使用独立 systemd unit。卸载 Server/Guardian/Helper 不停止这些独立组件，原路径重装按持久化托管记录和实际服务状态恢复管理。Linux Mihomo 保留 systemd 策略和 `/etc/relaxkonos/proxy/`，重装不擅自启动或重启组件。Nginx 和 SMB 的系统服务、配置与共享保持原状。当前仍须保留原数据根；删除数据走完整组件清理流程，选择性卸载界面另行实施。
 
 保留数据卸载把系统部署配置存入数据根的受保护 `deployment/` 目录，原路径重装复用其中的 JWT 密钥、审计实例标识和审计签名密钥。Windows 删除程序目录前显式断开指向持久化 Server 数据的 junction。数据保护密钥仍由原服务账户的宿主 Data Protection 提供者保管；不要删除或更换服务账户及其密钥目录。组件现有状态查询核对实际运行时、Nginx 托管标记和 SMB 所有权，保留记录不代表进程仍在运行。Mihomo 和 Nginx 的固定宿主路径是特权操作契约的一部分，不随自定义通用数据根移动。
 
@@ -227,3 +227,6 @@ or inconsistent installation must be repaired before its managed state can be re
 会替换安装证书并重启服务；客户端需要核对并重新信任新证书。未勾选时保持原证书。
 修复保留已记录的监听地址、端口及数据，不自动将局域网监听切换为回环监听。
 此功能需要包含上述更新的客户端与服务器部署脚本；旧安装应先升级服务器部署脚本所在的版本。
+
+
+独立服务的路径、服务标识、协议升级和实机验收清单见 [独立组件服务进度](../docs/services/RelaxKonOS.IndependentComponentServices.Progress.md)。Windows 专用宿主入口随 Helper 发布，组件安装时复制完整发布目录到独立宿主目录；Server 与 Helper 必须同步升级到本轮协议 1.5。旧版本的 Helper 子进程不采用兼容接管：升级停止旧 Helper 后，按当前接口重新启动组件以注册独立服务。Linux FRP 安装来源由 root 写入 `/etc/relaxkonos/frp-archive-root`，Helper 对上传包执行发布 SHA-256 校验，只从固定 FRP 发布资产导入两个运行时二进制。

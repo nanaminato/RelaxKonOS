@@ -22,22 +22,17 @@ internal static class WindowsManagedRuntimeHost
     private const string IntegrityFile = ".helper-integrity.json";
     private const string ManagedMarker = "RelaxKonOS owns this Nginx installation. Do not move this marker.\n";
     private static readonly SemaphoreSlim Gate = new(1, 1);
-    private static readonly ConcurrentDictionary<string, OwnedProcess> Processes = new(StringComparer.Ordinal);
-    private static WindowsManagedRuntimePolicy? _lastPolicy;
-    private static volatile bool _stopping;
 
-    public static async Task<PrivilegedOperationResult> ExecuteAsync(WindowsManagedRuntimeRequest? request, WindowsManagedRuntimePolicy? policy)
+    public static async Task<PrivilegedOperationResult> ExecuteAsync(ManagedRuntimeRequest? request, WindowsManagedRuntimePolicy? policy)
     {
         if (request is null || policy is null || !WindowsRuntimeConfigurationWriter.IsValidRequest(request)) return Failure(PrivilegedProblemCode.InvalidRequest);
         await Gate.WaitAsync();
         try
         {
-            if (_stopping) return Failure(PrivilegedProblemCode.HelperUnavailable);
             policy.Validate();
             WindowsManagedRuntimePolicy.RequireNoLinks(policy.NginxRoot);
             WindowsManagedRuntimePolicy.RequireNoLinks(policy.PrivateRoot);
-            _lastPolicy = policy;
-            if (request.Runtime == WindowsManagedRuntime.Nginx) return await NginxAsync(request, policy);
+            if (request.Runtime == ManagedRuntime.Nginx) return await NginxAsync(request, policy);
             return await FrpAsync(request, policy);
         }
         catch (UnauthorizedAccessException) { return Failure(PrivilegedProblemCode.ResourceNotAllowed); }
@@ -102,11 +97,11 @@ internal static class WindowsManagedRuntimeHost
         return canonical;
     }
 
-    private static async Task<PrivilegedOperationResult> NginxAsync(WindowsManagedRuntimeRequest request, WindowsManagedRuntimePolicy policy)
+    private static async Task<PrivilegedOperationResult> NginxAsync(ManagedRuntimeRequest request, WindowsManagedRuntimePolicy policy)
     {
         if (request.ProfileId is not null || request.Client is not null || request.Server is not null) return Failure(PrivilegedProblemCode.InvalidRequest);
         var root = policy.NginxRoot;
-        if (request.Action == WindowsManagedRuntimeAction.Install)
+        if (request.Action == ManagedRuntimeAction.Install)
         {
             if (request.Version is not { Length: <= 32 } || !Regex.IsMatch(request.Version, "^[0-9]+\\.[0-9]+\\.[0-9]+$")) return Failure(PrivilegedProblemCode.InvalidRequest);
             if (Directory.Exists(root) || File.Exists(root)) return Failure(PrivilegedProblemCode.Conflict);
@@ -137,12 +132,12 @@ internal static class WindowsManagedRuntimeHost
             finally { if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true); }
         }
         if (request.Version is not null || request.ArchivePath is not null) return Failure(PrivilegedProblemCode.InvalidRequest);
-        if (request.Action == WindowsManagedRuntimeAction.Status)
+        if (request.Action == ManagedRuntimeAction.Status)
             return new(true, NginxRunning: NginxRunning(root));
         if (!await VerifyIntegrityAsync(root, "nginx.exe")) return Failure(PrivilegedProblemCode.ResourceNotAllowed);
-        if (request.Action == WindowsManagedRuntimeAction.Uninstall)
+        if (request.Action == ManagedRuntimeAction.Uninstall)
         {
-            if (NginxRunning(root) && !(await NginxCommandAsync(root, ["-s", "quit"])).Success) return Failure(PrivilegedProblemCode.Conflict);
+            await WindowsComponentService.RemoveAsync(ComponentKind.Nginx, root);
             for (var i = 0; i < 40 && NginxRunning(root); i++) await Task.Delay(100);
             if (NginxRunning(root)) return Failure(PrivilegedProblemCode.Conflict);
             RequireTreeWithoutLinks(root);
@@ -156,25 +151,25 @@ internal static class WindowsManagedRuntimeHost
         }
         return request.Action switch
         {
-            WindowsManagedRuntimeAction.Test => await NginxCommandAsync(root, ["-t"]),
-            WindowsManagedRuntimeAction.Stop => !NginxRunning(root) ? new(true) : await NginxCommandAsync(root, ["-s", "quit"]),
-            WindowsManagedRuntimeAction.Reload => await NginxCommandAsync(root, ["-s", "reload"]),
-            WindowsManagedRuntimeAction.Start => await StartNginxAsync(root),
-            WindowsManagedRuntimeAction.Restart => await RestartNginxAsync(root),
+            ManagedRuntimeAction.Test => await NginxCommandAsync(root, ["-t"]),
+            ManagedRuntimeAction.Stop => await StopNginxAsync(root),
+            ManagedRuntimeAction.Reload => await NginxCommandAsync(root, ["-s", "reload"]),
+            ManagedRuntimeAction.Start => await StartNginxAsync(root),
+            ManagedRuntimeAction.Restart => await RestartNginxAsync(root),
             _ => Failure(PrivilegedProblemCode.InvalidRequest),
         };
     }
 
-    private static async Task<PrivilegedOperationResult> FrpAsync(WindowsManagedRuntimeRequest request, WindowsManagedRuntimePolicy policy)
+    private static async Task<PrivilegedOperationResult> FrpAsync(ManagedRuntimeRequest request, WindowsManagedRuntimePolicy policy)
     {
-        if (request.Runtime == WindowsManagedRuntime.Frpc && request.Action is not (WindowsManagedRuntimeAction.Install or WindowsManagedRuntimeAction.Uninstall)
+        if (request.Runtime == ManagedRuntime.Frpc && request.Action is not (ManagedRuntimeAction.Install or ManagedRuntimeAction.Uninstall)
             && (request.ProfileId is null || request.ProfileId == Guid.Empty)) return Failure(PrivilegedProblemCode.InvalidRequest);
-        if (request.Runtime == WindowsManagedRuntime.Frps && request.ProfileId is not null) return Failure(PrivilegedProblemCode.InvalidRequest);
-        var key = request.Runtime == WindowsManagedRuntime.Frps ? "frps" : request.ProfileId?.ToString("N") ?? "frpc";
+        if (request.Runtime == ManagedRuntime.Frps && request.ProfileId is not null) return Failure(PrivilegedProblemCode.InvalidRequest);
+        var key = request.Runtime == ManagedRuntime.Frps ? "frps" : request.ProfileId?.ToString("N") ?? "frpc";
         var releases = Path.Combine(policy.PrivateRoot, "frp", "versions");
-        if (request.Action == WindowsManagedRuntimeAction.Install)
+        if (request.Action == ManagedRuntimeAction.Install)
         {
-            if (request.Runtime != WindowsManagedRuntime.Frpc || request.Client is not null || request.Server is not null || request.ProfileId is not null) return Failure(PrivilegedProblemCode.InvalidRequest);
+            if (request.Runtime != ManagedRuntime.Frpc || request.Client is not null || request.Server is not null || request.ProfileId is not null) return Failure(PrivilegedProblemCode.InvalidRequest);
             var pin = policy.FrpReleases.SingleOrDefault(x => x.Version == request.Version && x.Rid == WindowsManagedRuntimePolicy.Rid);
             if (pin is null) return Failure(PrivilegedProblemCode.ResourceNotAllowed);
             ProtectDirectory(policy.PrivateRoot, policy);
@@ -206,26 +201,26 @@ internal static class WindowsManagedRuntimeHost
             finally { if (Directory.Exists(stage)) Directory.Delete(stage, recursive: true); }
         }
         if (request.ArchivePath is not null) return Failure(PrivilegedProblemCode.InvalidRequest);
-        if (request.Action == WindowsManagedRuntimeAction.Uninstall)
+        if (request.Action == ManagedRuntimeAction.Uninstall)
         {
-            if (request.Runtime != WindowsManagedRuntime.Frpc || request.ProfileId is not null || request.Client is not null || request.Server is not null) return Failure(PrivilegedProblemCode.InvalidRequest);
-            foreach (var id in Processes.Keys.ToArray()) await StopProcessAsync(id);
+            if (request.Runtime != ManagedRuntime.Frpc || request.ProfileId is not null || request.Client is not null || request.Server is not null) return Failure(PrivilegedProblemCode.InvalidRequest);
+            await WindowsComponentService.RemoveFrpAsync(policy.PrivateRoot);
             if (Directory.Exists(releases)) { RequireTreeWithoutLinks(releases); Directory.Delete(releases, recursive: true); }
             return new(true);
         }
-        if (request.Action == WindowsManagedRuntimeAction.Status)
-            return new(true, WindowsProcess: Snapshot(key));
-        if (request.Action == WindowsManagedRuntimeAction.Stop)
+        if (request.Action == ManagedRuntimeAction.Status)
+            return new(true, ComponentProcess: WindowsComponentService.Snapshot(request.Runtime == ManagedRuntime.Frpc ? ComponentKind.Frpc : ComponentKind.Frps, policy.PrivateRoot, request.ProfileId?.ToString("N")));
+        if (request.Action == ManagedRuntimeAction.Stop)
         {
-            await StopProcessAsync(key);
-            return new(true, WindowsProcess: Snapshot(key));
+            await WindowsComponentService.StopAsync(request.Runtime == ManagedRuntime.Frpc ? ComponentKind.Frpc : ComponentKind.Frps, policy.PrivateRoot, request.ProfileId?.ToString("N"));
+            return new(true, ComponentProcess: WindowsComponentService.Snapshot(request.Runtime == ManagedRuntime.Frpc ? ComponentKind.Frpc : ComponentKind.Frps, policy.PrivateRoot, request.ProfileId?.ToString("N")));
         }
-        if (request.Action is not (WindowsManagedRuntimeAction.Start or WindowsManagedRuntimeAction.Test)) return Failure(PrivilegedProblemCode.InvalidRequest);
+        if (request.Action is not (ManagedRuntimeAction.Start or ManagedRuntimeAction.Test)) return Failure(PrivilegedProblemCode.InvalidRequest);
         if (!policy.FrpReleases.Any(x => x.Version == request.Version && x.Rid == WindowsManagedRuntimePolicy.Rid)) return Failure(PrivilegedProblemCode.ResourceNotAllowed);
         var release = Path.Combine(releases, request.Version!);
-        var binary = request.Runtime == WindowsManagedRuntime.Frpc ? "frpc.exe" : "frps.exe";
+        var binary = request.Runtime == ManagedRuntime.Frpc ? "frpc.exe" : "frps.exe";
         if (!await VerifyIntegrityAsync(release, binary)) return Failure(PrivilegedProblemCode.ResourceNotAllowed);
-        var config = request.Runtime == WindowsManagedRuntime.Frpc
+        var config = request.Runtime == ManagedRuntime.Frpc
             ? WindowsRuntimeConfigurationWriter.Client(request.Client, request.Server)
             : WindowsRuntimeConfigurationWriter.Server(request.Server, request.Client);
         var configRoot = Path.Combine(policy.PrivateRoot, "frp", "config", key);
@@ -235,20 +230,13 @@ internal static class WindowsManagedRuntimeHost
         await AtomicWriteAsync(candidate, Encoding.UTF8.GetBytes(config));
         var executable = Path.Combine(release, binary);
         var verified = await RunAsync(executable, release, ["verify", "-c", candidate]);
-        if (!verified.Success || request.Action == WindowsManagedRuntimeAction.Test) { File.Delete(candidate); return verified; }
+        if (!verified.Success || request.Action == ManagedRuntimeAction.Test) { File.Delete(candidate); return verified; }
         // Verify before stopping the last valid instance; retain its configuration for rollback.
         var active = Path.Combine(configRoot, "active.toml");
-        var previous = File.Exists(active) ? await File.ReadAllBytesAsync(active) : null;
-        var old = Processes.TryGetValue(key, out var existing) ? existing.Executable : null;
-        await StopProcessAsync(key);
-        File.Move(candidate, active, overwrite: true);
-        if (await StartProcessAsync(key, executable, active)) return new(true, WindowsProcess: Snapshot(key));
-        if (previous is not null && old is not null)
-        {
-            await AtomicWriteAsync(active, previous);
-            await StartProcessAsync(key, old, active);
-        }
-        return Failure(PrivilegedProblemCode.InternalError);
+        var kind = request.Runtime == ManagedRuntime.Frpc ? ComponentKind.Frpc : ComponentKind.Frps;
+        await WindowsComponentService.ApplyFrpAsync(kind, policy.PrivateRoot, executable, candidate, active,
+            request.ProfileId?.ToString("N"), request.AppliedIdentity!);
+        return new(true, ComponentProcess: WindowsComponentService.Snapshot(kind, policy.PrivateRoot, request.ProfileId?.ToString("N")));
     }
 
     private static string AllowedArchive(string path, WindowsManagedRuntimePolicy policy)
@@ -433,38 +421,16 @@ internal static class WindowsManagedRuntimeHost
         if (NginxRunning(root)) return new(true);
         var test = await NginxCommandAsync(root, ["-t"]);
         if (!test.Success) return test;
-        var process = new Process { StartInfo = StartInfo(Path.Combine(root, "nginx.exe"), root, ["-p", root.Replace('\\', '/') + "/", "-c", "conf/nginx.conf"], redirect: false) };
-        try
-        {
-            if (!process.Start()) return Failure(PrivilegedProblemCode.InternalError);
-            for (var i = 0; i < 50; i++) { if (NginxRunning(root)) return new(true); await Task.Delay(100); }
-            if (!process.HasExited) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(); }
-            return Failure(PrivilegedProblemCode.InternalError);
-        }
-        finally { process.Dispose(); }
+        await WindowsComponentService.InstallAsync(ComponentKind.Nginx, root, Path.Combine(root, "nginx.exe"), Path.Combine(root, "conf", "nginx.conf"));
+        await WindowsComponentService.StartAsync(ComponentKind.Nginx, root);
+        return new(true);
     }
     private static async Task<PrivilegedOperationResult> RestartNginxAsync(string root)
     {
-        if (NginxRunning(root))
-        {
-            var stopped = await NginxCommandAsync(root, ["-s", "quit"]);
-            if (!stopped.Success) return stopped;
-            for (var i = 0; i < 50 && NginxRunning(root); i++) await Task.Delay(100);
-            if (NginxRunning(root)) return Failure(PrivilegedProblemCode.Conflict);
-        }
+        await WindowsComponentService.StopAsync(ComponentKind.Nginx, root);
         return await StartNginxAsync(root);
     }
-    private static bool NginxRunning(string root)
-    {
-        try
-        {
-            var pidFile = Path.Combine(root, "logs", "nginx.pid"); WindowsManagedRuntimePolicy.RequireNoLinks(pidFile);
-            if (!File.Exists(pidFile) || !int.TryParse(File.ReadAllText(pidFile), out var pid)) return false;
-            using var process = Process.GetProcessById(pid);
-            return !process.HasExited && string.Equals(process.MainModule?.FileName, Path.Combine(root, "nginx.exe"), StringComparison.OrdinalIgnoreCase);
-        }
-        catch (Exception error) when (error is IOException or ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception) { return false; }
-    }
+    private static bool NginxRunning(string root) => WindowsComponentService.Snapshot(ComponentKind.Nginx, root).Running;
     private static ProcessStartInfo StartInfo(string executable, string directory, string[] arguments, bool redirect = true)
     {
         var info = new ProcessStartInfo(executable) { WorkingDirectory = directory, UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = redirect, RedirectStandardError = redirect };
@@ -482,67 +448,12 @@ internal static class WindowsManagedRuntimeHost
         try { await process.WaitForExitAsync(deadline.Token); await Task.WhenAll(output, error); return process.ExitCode == 0 ? new(true) : Failure(PrivilegedProblemCode.InvalidRequest); }
         catch (OperationCanceledException) { if (!process.HasExited) process.Kill(entireProcessTree: true); await process.WaitForExitAsync(); return Failure(PrivilegedProblemCode.TimedOut); }
     }
-    private static async Task<bool> StartProcessAsync(string key, string executable, string configuration)
+    private static async Task<PrivilegedOperationResult> StopNginxAsync(string root)
     {
-        var process = new Process { StartInfo = StartInfo(executable, Path.GetDirectoryName(executable)!, ["-c", configuration]) };
-        var owned = new OwnedProcess(process, executable);
-        process.OutputDataReceived += (_, args) => owned.Log(args.Data);
-        process.ErrorDataReceived += (_, args) => owned.Log(args.Data);
-        if (!process.Start()) { process.Dispose(); return false; }
-        owned.StartedAt = DateTimeOffset.UtcNow;
-        Processes[key] = owned;
-        process.BeginOutputReadLine(); process.BeginErrorReadLine();
-        await Task.Delay(250);
-        if (!process.HasExited) return true;
-        await StopProcessAsync(key);
-        return false;
-    }
-    private static async Task StopProcessAsync(string key)
-    {
-        if (!Processes.TryRemove(key, out var owned)) return;
-        try { if (!owned.Process.HasExited) { owned.Process.Kill(entireProcessTree: true); await owned.Process.WaitForExitAsync(); } }
-        finally { owned.Process.Dispose(); }
-    }
-    private static WindowsManagedProcessSnapshot Snapshot(string key)
-    {
-        return Processes.TryGetValue(key, out var process)
-            ? new(!process.Process.HasExited, process.Connected && !process.Process.HasExited, process.AuthenticationFailed, process.StartedAt, process.Logs.ToArray())
-            : new(false, false, false, null, []);
-    }
-    public static async Task StopForHelperShutdownAsync()
-    {
-        _stopping = true;
-        await Gate.WaitAsync();
-        try
-        {
-            foreach (var key in Processes.Keys.ToArray()) await StopProcessAsync(key);
-            if (_lastPolicy is { } policy && NginxRunning(policy.NginxRoot)
-                && await VerifyIntegrityAsync(policy.NginxRoot, "nginx.exe")) await NginxCommandAsync(policy.NginxRoot, ["-s", "quit"]);
-        }
-        finally { Gate.Release(); }
+        await WindowsComponentService.StopAsync(ComponentKind.Nginx, root);
+        return new(true);
     }
     internal static void ValidateNginxText(string text, WindowsManagedRuntimePolicy policy)
-    {
-        WindowsRuntimeConfigurationWriter.ValidateNginx(text, policy.NginxRoot);
-    }
+        => WindowsRuntimeConfigurationWriter.ValidateNginx(text, policy.NginxRoot);
     private static PrivilegedOperationResult Failure(PrivilegedProblemCode code) => new(false, 1, ProblemCode: code);
-    private sealed class OwnedProcess(Process process, string executable)
-    {
-        public Process Process { get; } = process;
-        public string Executable { get; } = executable;
-        public DateTimeOffset? StartedAt { get; set; }
-        public volatile bool Connected;
-        public volatile bool AuthenticationFailed;
-        public ConcurrentQueue<TunnelLogEntryDto> Logs { get; } = new();
-        public void Log(string? raw)
-        {
-            if (string.IsNullOrWhiteSpace(raw)) return;
-            if (raw.Contains("login to server success", StringComparison.OrdinalIgnoreCase)) Connected = true;
-            if (raw.Contains("login to server failed", StringComparison.OrdinalIgnoreCase) || raw.Contains("authentication failed", StringComparison.OrdinalIgnoreCase)) { AuthenticationFailed = true; Connected = false; }
-            // Only fixed summaries cross the privileged boundary; no raw token-bearing FRP output.
-            var message = AuthenticationFailed ? "FRP authentication failed." : Connected ? "FRP connected." : "FRP runtime activity.";
-            Logs.Enqueue(new(DateTimeOffset.UtcNow, "information", message));
-            while (Logs.Count > 200) Logs.TryDequeue(out _);
-        }
-    }
 }

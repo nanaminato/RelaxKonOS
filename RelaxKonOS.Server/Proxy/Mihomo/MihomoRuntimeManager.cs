@@ -339,6 +339,13 @@ public sealed class MihomoRuntimeManager(
             Directory.CreateDirectory(versionsDirectory); MakePrivateDirectory(versionsDirectory);
             Directory.CreateDirectory(stagingRoot);
             await stageArchiveAsync(release, archive, cancellationToken);
+            if (OperatingSystem.IsWindows())
+            {
+                // Helper independently verifies the trusted archive before importing an
+                // administrator-owned executable for the independent LocalSystem service.
+                var protectedSource = Path.Combine(versionsDirectory, release.ReleaseDirectoryId + ".zip");
+                File.Copy(archive, protectedSource, overwrite: true);
+            }
             await ReportStageAsync(stageReporter, "verifying");
             await ReportStageAsync(stageReporter, "extracting");
             await ExtractExpectedBinaryAsync(release, archive, staging, cancellationToken);

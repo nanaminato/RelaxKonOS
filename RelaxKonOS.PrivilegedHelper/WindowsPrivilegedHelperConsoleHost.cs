@@ -67,8 +67,6 @@ public static class WindowsPrivilegedHelperConsoleHost
         try { await Task.Delay(Timeout.InfiniteTimeSpan, stopping.Token); }
         catch (OperationCanceledException) when (stopping.IsCancellationRequested) { }
         await pipeServer.StopAsync();
-        await WindowsManagedRuntimeHost.StopForHelperShutdownAsync();
-        await WindowsMihomoPrivilegedProcessHost.StopForHelperShutdownAsync();
     }
 
     private static string FindConfigPath(string[] args)

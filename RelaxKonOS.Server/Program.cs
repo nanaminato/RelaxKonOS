@@ -1,3 +1,4 @@
+using RelaxKonOS.Protocol.Proxy;
 using System.Runtime.InteropServices;
 using System.Net;
 using System.Security.Cryptography;
@@ -155,7 +156,7 @@ builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyPlatformPaths, Relax
 builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyPlatformService, RelaxKonOS.Server.Proxy.Platform.ProxyPlatformService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Platform.IHostSystemProxyService, RelaxKonOS.Server.Proxy.Platform.HostSystemProxyService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyDiagnosticLogStore, RelaxKonOS.Server.Proxy.ProxyDiagnosticLogStore>();
-builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeManifest>();
+builder.Services.AddSingleton<RelaxKonOS.Protocol.Proxy.MihomoRuntimeManifest>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.IMihomoRuntimeProbe, RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeProbe>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeManager>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyRuntimeManager>(sp => sp.GetRequiredService<RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeManager>());
@@ -564,7 +565,7 @@ builder.Services.AddScoped<RelaxKonOS.Server.Privileged.IHostAccountPrivilegeSer
 builder.Services.AddScoped<RelaxKonOS.Server.Privileged.IHostFileAuthorizationService, RelaxKonOS.Server.Privileged.HostFileAuthorizationService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.ProcessGuardian.IPrivilegedNativeServiceOperations, RelaxKonOS.Server.ProcessGuardian.PrivilegedNativeServiceOperations>();
 builder.Services.AddSingleton<RelaxKonOS.Server.WebServer.IPrivilegedNginxOperations, RelaxKonOS.Server.WebServer.PrivilegedNginxOperations>();
-builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.WindowsManagedRuntimeOperations>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.ManagedRuntimeOperations>();
 builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.IPrivilegedSmbOperations, RelaxKonOS.Server.FileServices.PrivilegedSmbOperations>();
 builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.ISambaPlatformAdapter, RelaxKonOS.Server.FileServices.LinuxSambaPlatformAdapter>();
 builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.IWindowsSmbPlatformAdapter, RelaxKonOS.Server.FileServices.WindowsSmbPlatformAdapter>();
@@ -695,7 +696,6 @@ builder.Services.AddSingleton<RelaxKonOS.Server.Runtimes.IRuntimeManager, RelaxK
 builder.Services.AddSingleton<RelaxKonOS.Server.Tunnels.ITunnelProvider, RelaxKonOS.Server.Tunnels.FrpTunnelProvider>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Tunnels.IManagedFrpsService, RelaxKonOS.Server.Tunnels.ManagedFrpsService>();
 builder.Services.AddHostedService(sp => (RelaxKonOS.Server.Tunnels.FrpTunnelProvider)sp.GetRequiredService<RelaxKonOS.Server.Tunnels.ITunnelProvider>());
-builder.Services.AddHostedService(sp => (RelaxKonOS.Server.Tunnels.ManagedFrpsService)sp.GetRequiredService<RelaxKonOS.Server.Tunnels.IManagedFrpsService>());
 builder.Services.Configure<RelaxKonOS.Server.Runtimes.FrpRuntimeOptions>(builder.Configuration.GetSection("FrpRuntime"));
 
 // Certificate management is host-global. PEM/account keys remain behind the server-side

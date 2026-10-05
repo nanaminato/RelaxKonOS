@@ -325,22 +325,17 @@ if (OperatingSystem.IsLinux())
 
 # 7. Mihomo 运行时生命周期
 
-Windows 由长期运行的 LocalSystem 权限助手托管 Mihomo；不再额外注册
-`relaxkonos-mihomo` SCM 服务。`RelaxKonOS.Server` 保持 LocalService 身份，只能通过受
-认证的本机命名管道请求固定生命周期动作：
+Windows 使用独立 SCM 服务持有 Mihomo。Server 保持 LocalService 身份，通过认证的本机命名管道请求固定生命周期动作；Helper 只管理服务，不持有 Mihomo 子进程。
 
 ```text
-Windows SCM（如 RelaxKonOS.Server 作为 Windows Service）
+Windows SCM
     ↓
-RelaxKonOSPrivilegedHelper (LocalSystem) / WindowsMihomoPrivilegedProcessHost
+RelaxKonOSComponent-Mihomo-<scope>（LocalSystem 独立宿主）
     ↓
 mihomo.exe
 ```
 
-进程宿主只从受保护的活动版本和配置启动 Mihomo，持有唯一 `Process`，并在权限助手
-停止、卸载或更新时以完整进程树终止。LocalSystem 是创建 Wintun 适配器所需的唯一额外
-权限；Server 不会获得通用提权或进程执行能力。系统重启后由权限助手与 Server 的既有
-启动策略恢复。
+宿主发布目录复制到 `%ProgramData%\RelaxKonOS-Components\host\<hash>`，不依赖 Server/Helper 的安装目录。Helper 与 Server 共享 Mihomo 发布信任清单，Helper 独立校验官方 ZIP 并导入受保护的服务二进制。独立宿主验证二进制摘要，以 Job Object 约束子进程树；Helper 停止、更新或卸载不终止独立服务。SCM 管理开机启动和失败恢复，Server 不获得通用提权执行能力。实现与隔离主机验收状态见 [独立服务进度](../services/RelaxKonOS.IndependentComponentServices.Progress.md)。
 
 Linux 保持独立 systemd 服务：
 

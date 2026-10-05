@@ -14,36 +14,38 @@ internal static class WindowsRuntimeConfigurationWriter
     private static bool Host(string? value) => Text(value, 253) && (IPAddress.TryParse(value, out _) || Uri.CheckHostName(value) == UriHostNameType.Dns);
     private static string Quote(string value) => "\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
 
-    public static bool IsValidRequest(WindowsManagedRuntimeRequest request)
+    public static bool IsValidRequest(ManagedRuntimeRequest request)
     {
         if (!Enum.IsDefined(request.Runtime) || !Enum.IsDefined(request.Action)) return false;
-        WindowsManagedRuntimeRequest? expected = request.Runtime switch
+        ManagedRuntimeRequest? expected = request.Runtime switch
         {
-            WindowsManagedRuntime.Nginx => request.Action == WindowsManagedRuntimeAction.Install
+            ManagedRuntime.Nginx => request.Action == ManagedRuntimeAction.Install
                 ? new(request.Runtime, request.Action, Version: request.Version, ArchivePath: request.ArchivePath)
                 : new(request.Runtime, request.Action),
-            WindowsManagedRuntime.Frpc or WindowsManagedRuntime.Frps => request.Action switch
+            ManagedRuntime.Frpc or ManagedRuntime.Frps => request.Action switch
             {
-                WindowsManagedRuntimeAction.Install when request.Runtime == WindowsManagedRuntime.Frpc
+                ManagedRuntimeAction.Install when request.Runtime == ManagedRuntime.Frpc
                     => new(request.Runtime, request.Action, Version: request.Version, ArchivePath: request.ArchivePath),
-                WindowsManagedRuntimeAction.Uninstall when request.Runtime == WindowsManagedRuntime.Frpc => new(request.Runtime, request.Action),
-                WindowsManagedRuntimeAction.Status or WindowsManagedRuntimeAction.Stop
-                    => new(request.Runtime, request.Action, ProfileId: request.Runtime == WindowsManagedRuntime.Frpc ? request.ProfileId : null),
-                WindowsManagedRuntimeAction.Start or WindowsManagedRuntimeAction.Test
+                ManagedRuntimeAction.Uninstall when request.Runtime == ManagedRuntime.Frpc => new(request.Runtime, request.Action),
+                ManagedRuntimeAction.Status or ManagedRuntimeAction.Stop
+                    => new(request.Runtime, request.Action, ProfileId: request.Runtime == ManagedRuntime.Frpc ? request.ProfileId : null),
+                ManagedRuntimeAction.Start or ManagedRuntimeAction.Test
                     => new(request.Runtime, request.Action, Version: request.Version,
-                        ProfileId: request.Runtime == WindowsManagedRuntime.Frpc ? request.ProfileId : null,
-                        Client: request.Runtime == WindowsManagedRuntime.Frpc ? request.Client : null,
-                        Server: request.Runtime == WindowsManagedRuntime.Frps ? request.Server : null),
+                        ProfileId: request.Runtime == ManagedRuntime.Frpc ? request.ProfileId : null,
+                        Client: request.Runtime == ManagedRuntime.Frpc ? request.Client : null,
+                        Server: request.Runtime == ManagedRuntime.Frps ? request.Server : null,
+                        AppliedIdentity: request.Action == ManagedRuntimeAction.Start ? request.AppliedIdentity : null),
                 _ => null,
             },
             _ => null,
         };
-        return request == expected && (request.Runtime != WindowsManagedRuntime.Frpc
-            || request.Action is WindowsManagedRuntimeAction.Install or WindowsManagedRuntimeAction.Uninstall
+        return request == expected && (request.Action != ManagedRuntimeAction.Start || request.Runtime == ManagedRuntime.Nginx
+            || request.AppliedIdentity is { Length: > 0 and <= 128 } && Regex.IsMatch(request.AppliedIdentity, "\\A[a-fA-F0-9]+\\z")) && (request.Runtime != ManagedRuntime.Frpc
+            || request.Action is ManagedRuntimeAction.Install or ManagedRuntimeAction.Uninstall
             || request.ProfileId is { } id && id != Guid.Empty);
     }
 
-    public static string Client(WindowsFrpcConfiguration? config, WindowsFrpsConfiguration? unrelated)
+    public static string Client(FrpcServiceConfiguration? config, FrpsServiceConfiguration? unrelated)
     {
         if (config is null || unrelated is not null || !Host(config.Host) || !Port(config.Port) || !Enum.IsDefined(config.TlsMode)
             || config.Token is not null && !Text(config.Token) || config.Proxies is null || config.Proxies.Count > 256) throw new ArgumentException("Invalid managed FRP client configuration.");
@@ -69,7 +71,7 @@ internal static class WindowsRuntimeConfigurationWriter
         return text.ToString();
     }
 
-    public static string Server(WindowsFrpsConfiguration? config, WindowsFrpcConfiguration? unrelated)
+    public static string Server(FrpsServiceConfiguration? config, FrpcServiceConfiguration? unrelated)
     {
         if (config is null || unrelated is not null || !IPAddress.TryParse(config.BindAddress, out _) || !Port(config.BindPort)
             || !Text(config.Token) || config.AllowPorts is not { Count: > 0 and <= 64 }

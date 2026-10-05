@@ -129,7 +129,7 @@ if [[ ${args[0]} == -d ]]; then mkdir -p "${args[1]}"; else cp "${args[0]}" "${a
             self.assertFalse(result['installed'])
             self.assertEqual(result['installationId'], 'rki-fixture')
             calls = (root / 'calls').read_text()
-            self.assertIn('stop relaxkonos-mihomo.service', calls)
+            self.assertNotIn('stop relaxkonos-mihomo.service', calls)
             self.assertNotIn('disable relaxkonos-mihomo', calls)
             self.assertNotIn('nginx', calls)
             self.assertNotIn('smb', calls)
@@ -143,23 +143,6 @@ if [[ ${args[0]} == -d ]]; then mkdir -p "${args[1]}"; else cp "${args[0]}" "${a
                                 'printf "%s\\n%s\\n%s\\n" "$JWT_SECRET" "$OBSERVABILITY_INSTANCE_ID" "$OBSERVABILITY_AUDIT_HMAC_KEY"\n', newline='\n')
             output = subprocess.check_output([BASH, shell_path(recovery)], text=True, encoding='utf-8')
             self.assertEqual(output.splitlines(), ['fixture-jwt-secret', 'fixture-identity', 'fixture-audit-secret'])
-            # Disabled instances stay stopped. Enabled instances resume; a component
-            # failure keeps the Server installation usable for subsequent repair.
-            binary = data / 'proxy/engines/mihomo/versions/current/mihomo'
-            binary.parent.mkdir(parents=True)
-            binary.write_text('#!/bin/sh\nexit 0\n', newline='\n')
-            binary.chmod(0o755)
-            block = installer.split('# A retained Mihomo unit', 1)[1].split('if [[ "$DOCKER_ACCESS"', 1)[0]
-            block = '# A retained Mihomo unit' + block
-            block = block.replace('/var/lib/relaxkonos', shell_path(data)).replace('/etc/relaxkonos', shell_path(config))
-            resume = root / 'resume.sh'
-            resume.write_text('set -euo pipefail\nexport PATH="' + shell_path(root / 'bin') + ':/usr/bin:$PATH"\n' + block, newline='\n')
-            for enabled, failure in [('false', 'false'), ('true', 'false'), ('true', 'true')]:
-                (root / 'calls').write_text('')
-                execution = subprocess.run([BASH, shell_path(resume)], env=env | {'TEST_ENABLED': enabled, 'TEST_START_FAIL': failure},
-                                           capture_output=True, text=True, encoding='utf-8')
-                self.assertEqual(execution.returncode, 0, execution.stderr)
-                self.assertEqual('start relaxkonos-mihomo.service' in (root / 'calls').read_text(), enabled == 'true')
 
 
 if __name__ == '__main__':

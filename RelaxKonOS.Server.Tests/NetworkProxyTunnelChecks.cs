@@ -1,3 +1,4 @@
+using RelaxKonOS.Protocol.Proxy;
 internal static class NetworkProxyTunnelChecks
 {
 internal static void VerifyTunnelProtocolContract()
@@ -342,7 +343,7 @@ internal static async Task VerifyFrpRuntimeInstallAndRollbackAsync(string root)
     };
     var runtimeRoot = Path.Combine(root, "frp-runtime"); Directory.CreateDirectory(runtimeRoot);
     var env = new TestHostEnvironment(runtimeRoot);
-    var manager = new FrpRuntimeManager(env, new FixtureHttpClientFactory(archive), Options.Create(new FrpRuntimeOptions { Releases = releases }), new RelaxKonOS.Server.Privileged.WindowsManagedRuntimeOperations(new CapturingPrivilegedTransport()));
+    var manager = new FrpRuntimeManager(env, new FixtureHttpClientFactory(archive), Options.Create(new FrpRuntimeOptions { Releases = releases }), new RelaxKonOS.Server.Privileged.ManagedRuntimeOperations(new CapturingPrivilegedTransport()));
     var first = await manager.InstallManagedFrpcAsync("v0.71.0", new SilentInstallationProgress(), CancellationToken.None);
     TestAssert.Assert(first.Succeeded, "Verified FRP fixture did not install.");
     await VerifyFrpApplyLifecycleAsync(root, env, manager);
@@ -364,7 +365,7 @@ internal static async Task VerifyFrpRuntimeInstallAndRollbackAsync(string root)
     var badChecksumManager = new FrpRuntimeManager(new TestHostEnvironment(badChecksumRoot), new FixtureHttpClientFactory(archive), Options.Create(new FrpRuntimeOptions
     {
         Releases = [new FrpRuntimeRelease { Version = "v0.71.0", Rid = "linux-x64", Url = "https://github.com/fatedier/frp/releases/download/v0.71.0/frp_0.71.0_linux_amd64.tar.gz", Sha256 = new string('0', 64), ArchiveFormat = "tar.gz" }],
-    }), new RelaxKonOS.Server.Privileged.WindowsManagedRuntimeOperations(new CapturingPrivilegedTransport()));
+    }), new RelaxKonOS.Server.Privileged.ManagedRuntimeOperations(new CapturingPrivilegedTransport()));
     var badChecksum = await badChecksumManager.InstallManagedFrpcAsync("v0.71.0", new SilentInstallationProgress(), CancellationToken.None);
     TestAssert.Assert(!badChecksum.Succeeded && badChecksum.ProblemCode == "tunnel.runtime_checksum_failed", "Wrong checksum was accepted.");
     TestAssert.Assert((await badChecksumManager.GetManagedFrpcStatusAsync(CancellationToken.None)).State == TunnelRuntimeState.NotInstalled, "Checksum failure changed the active runtime.");
@@ -375,7 +376,7 @@ internal static async Task VerifyFrpRuntimeInstallAndRollbackAsync(string root)
     var maliciousManager = new FrpRuntimeManager(new TestHostEnvironment(maliciousRoot), new FixtureHttpClientFactory(maliciousArchive), Options.Create(new FrpRuntimeOptions
     {
         Releases = [new FrpRuntimeRelease { Version = "v0.71.0", Rid = "linux-x64", Url = "https://github.com/fatedier/frp/releases/download/v0.71.0/frp_0.71.0_linux_amd64.tar.gz", Sha256 = maliciousDigest, ArchiveFormat = "tar.gz" }],
-    }), new RelaxKonOS.Server.Privileged.WindowsManagedRuntimeOperations(new CapturingPrivilegedTransport()));
+    }), new RelaxKonOS.Server.Privileged.ManagedRuntimeOperations(new CapturingPrivilegedTransport()));
     var malicious = await maliciousManager.InstallManagedFrpcAsync("v0.71.0", new SilentInstallationProgress(), CancellationToken.None);
     TestAssert.Assert(!malicious.Succeeded && malicious.ProblemCode == "tunnel.runtime_archive_unexpected_entry", "Unexpected archive content was accepted.");
     TestAssert.Assert((await maliciousManager.GetManagedFrpcStatusAsync(CancellationToken.None)).State == TunnelRuntimeState.NotInstalled, "Rejected archive changed the active runtime.");
@@ -409,6 +410,7 @@ internal static byte[] CreateMaliciousFrpFixtureArchive()
 
 internal static async Task VerifyFrpApplyLifecycleAsync(string root, IHostEnvironment environment, IRuntimeManager runtime)
 {
+    var independentTransport = new IndependentManagedRuntimeTransport();
     var path = Path.Combine(root, "frp-apply-lifecycle.db");
     var services = new ServiceCollection();
     services.AddDbContext<RelaxKonOSDbContext>(options => options.UseSqlite($"Data Source={path}"));
@@ -417,7 +419,7 @@ internal static async Task VerifyFrpApplyLifecycleAsync(string root, IHostEnviro
     services.AddScoped<ITunnelAudit, TunnelAudit>();
     services.AddScoped<ITunnelService, TunnelService>();
     services.AddSingleton<IRuntimeManager>(runtime);
-    services.AddSingleton<ITunnelProvider>(provider => new FrpTunnelProvider(provider.GetRequiredService<IServiceScopeFactory>(), environment, provider.GetRequiredService<IRuntimeManager>(), new RelaxKonOS.Server.Privileged.WindowsManagedRuntimeOperations(new CapturingPrivilegedTransport())));
+    services.AddSingleton<ITunnelProvider>(provider => new FrpTunnelProvider(provider.GetRequiredService<IServiceScopeFactory>(), environment, provider.GetRequiredService<IRuntimeManager>(), new RelaxKonOS.Server.Privileged.ManagedRuntimeOperations(independentTransport)));
     await using var container = services.BuildServiceProvider();
     await using (var scope = container.CreateAsyncScope())
     {
@@ -438,6 +440,10 @@ internal static async Task VerifyFrpApplyLifecycleAsync(string root, IHostEnviro
                 await Task.Delay(100);
             }
             TestAssert.Assert(current.Single().State == TunnelConnectionState.Connected, "Successful FRP login was overwritten by the startup state.");
+            var reopened = new FrpTunnelProvider(container.GetRequiredService<IServiceScopeFactory>(), environment, runtime,
+                new RelaxKonOS.Server.Privileged.ManagedRuntimeOperations(independentTransport));
+            TestAssert.Assert((await reopened.ListAsync("apply-user", CancellationToken.None)).Single().State == TunnelConnectionState.Connected,
+                "Reopening the FRPC provider lost its independent service applied identity.");
             var original = current.Single();
             await service.UpsertTunnelAsync(original.Id, new UpsertTunnelDefinitionRequest(profile.Id, original.Name, original.Protocol,
                 original.LocalHost, 23, original.RemotePort, null, true, false, false, original.Revision), "apply-user", CancellationToken.None);

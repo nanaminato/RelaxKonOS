@@ -1,3 +1,11 @@
+using RelaxKonOS.Protocol.Proxy;
+if (args.Contains("--independent-component-services-only"))
+{
+    var serviceRoot = Path.Combine(Path.GetTempPath(), "relaxkonos-service-scope-" + Guid.NewGuid().ToString("N"));
+    IndependentComponentServiceChecks.Run(serviceRoot);
+    Console.WriteLine("Independent component scope, protocol, and applied proof checks passed.");
+    return;
+}
 if (args.Contains("--managed-component-cleanup-only"))
 {
     var cleanupRoot = Path.Combine(Path.GetTempPath(), "relaxkonos-cleanup-" + Guid.NewGuid().ToString("N"));
@@ -314,7 +322,8 @@ if (args.Contains("--frps-only"))
     var frpsRoot = Path.Combine(Path.GetTempPath(), $"relaxkonos-frps-{Guid.NewGuid():N}");
     Directory.CreateDirectory(frpsRoot);
     try { await ManagedFrpsChecks.RunAsync(frpsRoot); }
-    finally { Directory.Delete(frpsRoot, recursive: true); }
+    catch (Exception exception) { Console.Error.WriteLine(exception); Environment.ExitCode = 1; }
+    finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(frpsRoot, recursive: true); }
     Console.WriteLine("Managed frps revision, secret, process, and audit checks passed.");
     return;
 }

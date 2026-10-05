@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace RelaxKonOS.Server.Proxy.Mihomo;
+namespace RelaxKonOS.Protocol.Proxy;
 
 /// <summary>Source-controlled Mihomo trust manifest. HTTP callers may choose only Version.</summary>
 public sealed class MihomoRuntimeManifest
@@ -34,6 +34,7 @@ public sealed class MihomoRuntimeManifest
 
 public sealed record MihomoRuntimeRelease(string Version, string Rid, string AssetName, string ArchiveFormat, string Sha256)
 {
+    public string ReleaseDirectoryId => Version + "-" + Rid;
     public Uri DownloadUri => new($"https://github.com/MetaCubeX/mihomo/releases/download/{Version}/{AssetName}");
     public bool IsTrusted() => Version == MihomoRuntimeManifest.SupportedVersion
         && (Rid is "win-x64" or "win-arm64" or "linux-x64" or "linux-arm64")
