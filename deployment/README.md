@@ -229,4 +229,4 @@ or inconsistent installation must be repaired before its managed state can be re
 此功能需要包含上述更新的客户端与服务器部署脚本；旧安装应先升级服务器部署脚本所在的版本。
 
 
-独立服务的路径、服务标识、协议升级和实机验收清单见 [独立组件服务进度](../docs/services/RelaxKonOS.IndependentComponentServices.Progress.md)。Windows 专用宿主入口随 Helper 发布，组件安装时复制完整发布目录到独立宿主目录；Server 与 Helper 必须同步升级到本轮协议 1.5。旧版本的 Helper 子进程不采用兼容接管：升级停止旧 Helper 后，按当前接口重新启动组件以注册独立服务。Linux FRP 安装来源由 root 写入 `/etc/relaxkonos/frp-archive-root`，Helper 对上传包执行发布 SHA-256 校验，只从固定 FRP 发布资产导入两个运行时二进制。
+独立服务的路径、服务标识、协议版本和实机验收清单见 [独立组件服务进度](../docs/services/RelaxKonOS.IndependentComponentServices.Progress.md)。Windows 专用宿主入口随 Helper 发布，组件安装时复制完整发布目录到独立宿主目录；Server 与 Helper 必须使用本轮协议 1.0。旧版本的 Helper 子进程不采用兼容接管：升级停止旧 Helper 后，按当前接口重新启动组件以注册独立服务。Linux FRP 安装来源由 root 写入 `/etc/relaxkonos/frp-archive-root`，Helper 对上传包执行发布 SHA-256 校验，只从固定 FRP 发布资产导入两个运行时二进制。

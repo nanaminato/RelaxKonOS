@@ -33,7 +33,7 @@ Windows Mihomo 信任清单已移动到 `Shared/RelaxKonOS.Protocol/Proxy/Mihomo
 
 Linux FRP 使用 `/var/lib/relaxkonos-components/frp/versions` 与 `instances/`，FRPS unit 为 `relaxkonos-frps.service`，FRPC 为 `relaxkonos-frpc-<guid>.service`。Helper 校验固定发布包 SHA-256、仅导入两个可执行文件、生成受限 TOML 与 unit；服务以非 root 的 `relaxkonos-frp` 系统账户运行，能力仅保留绑定低端口。`/etc/relaxkonos/frp-archive-root` 由 root 部署，限定 Server 上传包来源。外部修改的 unit 拒绝覆盖，服务应用失败尝试恢复前一配置。
 
-Helper 协议已直接升级 1.5，统一为 `ManagedRuntime` 操作、`managedRuntime` 请求字段和 `componentProcess` 观测字段。结构化请求禁止执行路径/命令/环境注入，FRP Start 必须携带应用证明。FRPC 配置指纹、FRPS appliedRevision 均由独立服务持久化，Server 重启后重新读取；状态还核验服务、PID、启动时间与进程映像。原 Windows/Server 子进程宿主路径已移除。
+Helper 协议统一为 1.0，统一为 `ManagedRuntime` 操作、`managedRuntime` 请求字段和 `componentProcess` 观测字段。结构化请求禁止执行路径/命令/环境注入，FRP Start 必须携带应用证明。FRPC 配置指纹、FRPS appliedRevision 均由独立服务持久化，Server 重启后重新读取；状态还核验服务、PID、启动时间与进程映像。原 Windows/Server 子进程宿主路径已移除。
 
 主要实现文件：Helper 的 `WindowsComponentService.cs`、`WindowsComponentJob.cs`、`WindowsMihomoServiceManager.cs`、`LinuxFrpServiceManager.cs`；Server 的 `ManagedRuntimeOperations.cs`、`FrpTunnelProvider.cs`、`ManagedFrpsService.cs`；Shared 的 `ManagedRuntimeContracts.cs`。默认 Linux 卸载不再停止 Mihomo，重新安装也不主动改变保留组件的运行状态。
 
