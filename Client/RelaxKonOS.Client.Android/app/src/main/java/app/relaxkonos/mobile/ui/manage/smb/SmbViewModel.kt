@@ -14,6 +14,13 @@ internal data class SmbState(val owner: SessionState.Active? = null, val busy: B
     val pending: List<PendingSmbMutation> = emptyList(), val installation: InstallationOperation? = null, val installationVerified: Boolean = false,
     val pendingInstallation: Boolean = false, val receipt: SmbReceipt? = null, val problem: String? = null, val checkedAtMillis: Long? = null, val saved: Int = 0)
 internal class SmbViewModel(application: Application) : AndroidViewModel(application) {
+    suspend fun observeInstallation() {
+        if (state.installationVerified && state.installation?.state?.active == true && !state.busy) {
+            kotlinx.coroutines.delay(1500)
+            pollInstall()
+        }
+    }
+
     private val container get() = getApplication<RelaxKonApplication>().container
     private var job: Job? = null
     private var generation = 0

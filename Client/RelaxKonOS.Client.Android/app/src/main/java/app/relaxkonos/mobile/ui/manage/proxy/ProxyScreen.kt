@@ -17,8 +17,6 @@ import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.ui.common.*
 import app.relaxkonos.mobile.ui.manage.operations.*
 import app.relaxkonos.mobile.ui.theme.Spacing
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import java.text.DateFormat
 import java.util.Date
 
@@ -47,10 +45,10 @@ private data class ProxyConfirmation(val action: () -> Unit)
         if (available && initialOperationId != null && !state.busy && !attemptedInitial) { attemptedInitial = true; section = "records"; model.recoverOperation(initialOperationId) }
     }
     LaunchedEffect(owner, epoch, state.operation?.operationId, state.operation?.state, state.busy, state.operationVerified) {
-        if (state.operationVerified && state.operation?.state?.active == true && !state.busy) { delay(1500); model.pollOperation() }
+        model.observeOperation()
     }
     LaunchedEffect(owner, epoch, state.installation?.operationId, state.installation?.state, state.busy, state.installationVerified) {
-        if (state.installationVerified && state.installation?.state?.active == true && !state.busy) { delay(1500); model.pollInstall() }
+        model.observeInstallation()
     }
     val overview = (state.overview as? ApiResult.Success)?.value
     val notInstalled = overview?.runtime?.state == ProxyRuntimeState.NotInstalled
@@ -62,12 +60,7 @@ private data class ProxyConfirmation(val action: () -> Unit)
         (state.installation == null || state.installationVerified && !state.installation.state.active) && !state.pendingInstallation
     val connected = overview?.controllerReachable == true
     LaunchedEffect(owner, epoch, section, connected, state.uncertain) {
-        if (networkSection && connected && !state.uncertain) {
-            while (isActive) {
-                model.diagnostics(section)
-                delay(3000)
-            }
-        }
+        model.observeDiagnostics(section)
     }
     BackHandler(section == "profiles" && selected != null && editor == null && !state.busy) { selected = null }
     // Retained sections own their item spacing; hidden sections must not add root gaps.

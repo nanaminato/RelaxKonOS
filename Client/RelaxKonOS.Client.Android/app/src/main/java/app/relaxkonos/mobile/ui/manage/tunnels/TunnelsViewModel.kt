@@ -24,6 +24,23 @@ internal data class TunnelsState(val busy: Boolean = false, val facts: ApiResult
     val frpsLogs: ApiResult<List<TunnelLog>>? = null, val frpsAudit: ApiResult<List<TunnelAudit>>? = null, val frpsDiagnosticsAtMillis: Long? = null,
     val problemCode: String? = null, val uncertain: Boolean = false)
 internal class TunnelsViewModel(application: Application) : AndroidViewModel(application) {
+    suspend fun observeConnection() {
+        val facts = (state.facts as? ApiResult.Success)?.value
+        if (state.selectedId != null && !state.busy && facts?.definitions?.any {
+                it.profileId == state.selectedId && it.state in setOf(TunnelConnectionState.Starting, TunnelConnectionState.Connected)
+            } == true) {
+            kotlinx.coroutines.delay(3000)
+            observe()
+        }
+    }
+
+    suspend fun observeInstallation() {
+        if (state.installationVerified && state.installation?.state?.active == true && !state.busy) {
+            kotlinx.coroutines.delay(1500)
+            pollInstall()
+        }
+    }
+
     private val container get() = getApplication<RelaxKonApplication>().container
     private var owner: SessionState.Active? = null
     private var intent: InstallationSubmission? = null

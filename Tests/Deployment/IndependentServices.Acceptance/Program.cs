@@ -11,7 +11,29 @@ using RelaxKonOS.Protocol.Tunnels;
 if (args.Length != 2 || args[1] != "--confirm-isolated-host") return 64;
 var ids = new[] { Guid.Parse("b2222222-2222-4222-8222-222222222222"), Guid.Parse("b3333333-3333-4333-8333-333333333333") };
 try {
-    if (args[0] == "setup") {
+    if (args[0] == "setup-mihomo") {
+        await SetupMihomo(); Console.WriteLine("PASS: independent Mihomo setup.");
+    } else if (args[0] == "cleanup-mihomo") {
+        await Require(new(PrivilegedOperationKind.ProxyMihomoServiceAction, ProxyMihomoServiceAction: ProxyMihomoServiceAction.Stop));
+        await Require(new(PrivilegedOperationKind.ProxyMihomoRemoveSystemService));
+        var release = new MihomoRuntimeManifest().Find(null)!;
+        var root = OperatingSystem.IsWindows() ? @"C:\ProgramData\RelaxKonOS\Proxy" : "/var/lib/relaxkonos/proxy";
+        var versions = Path.Combine(root, "engines", "mihomo", "versions");
+        // Remove only the runner's known, fixed-version staging material. The runner does
+        // not create Server management records, so these are not a managed installation.
+        var current = Path.Combine(versions, "current");
+        if (!OperatingSystem.IsWindows() && new DirectoryInfo(current).LinkTarget is { } target) {
+            if (target != release.ReleaseDirectoryId) throw new Exception("Unexpected fixture runtime link.");
+            Directory.Delete(current);
+        }
+        foreach (var file in new[] { Path.Combine(versions, "current.txt"), Path.Combine(versions, release.ReleaseDirectoryId + ".zip"),
+                     Path.Combine(versions, release.ReleaseDirectoryId, "mihomo") })
+            if (File.Exists(file)) { if ((File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0) throw new Exception("Unsafe fixture file."); File.Delete(file); }
+        var directory = Path.Combine(versions, release.ReleaseDirectoryId);
+        if (Directory.Exists(directory)) Directory.Delete(directory, recursive: false);
+        if (Directory.Exists(versions)) Directory.Delete(versions, recursive: false);
+        Console.WriteLine("PASS: test Mihomo service and fixed fixture staging removed.");
+    } else if (args[0] == "setup") {
         var supplied = Path.Combine(AppContext.BaseDirectory,OperatingSystem.IsWindows()?"frp-windows.zip":"frp-linux.tar.gz");
         string? staged = null;
         if(File.Exists(supplied)) {
@@ -59,6 +81,7 @@ try {
     } else if(args[0]=="cleanup") {
         await Runtime(new(ManagedRuntime.Frpc,ManagedRuntimeAction.Uninstall));
         if(OperatingSystem.IsWindows())await Runtime(new(ManagedRuntime.Nginx,ManagedRuntimeAction.Uninstall));
+        await Require(new(PrivilegedOperationKind.ProxyMihomoServiceAction, ProxyMihomoServiceAction: ProxyMihomoServiceAction.Stop));
         await Require(new(PrivilegedOperationKind.ProxyMihomoRemoveSystemService)); Console.WriteLine("PASS: independent service removal.");
     } else return 64;
     return 0;

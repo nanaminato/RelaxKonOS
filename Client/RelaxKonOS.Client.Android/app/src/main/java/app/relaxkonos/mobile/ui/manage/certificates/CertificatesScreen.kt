@@ -18,7 +18,6 @@ import app.relaxkonos.mobile.ui.common.*
 import app.relaxkonos.mobile.ui.theme.Spacing
 import java.text.DateFormat
 import java.util.Date
-import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -38,7 +37,7 @@ fun CertificatesScreen(onBack: () -> Unit, initialOperationId: String? = null, s
     var recoverId by remember(owner, epoch) { mutableStateOf("") }
     LaunchedEffect(owner, epoch, initialOperationId) { if (available) { if (initialOperationId != null) model.recover(initialOperationId) else model.refresh() } }
     LaunchedEffect(owner, epoch, state.operation?.operationId, state.operation?.state, state.busy) {
-        if (state.operation?.state?.active == true && !state.busy) { delay(1500); model.poll() }
+        model.observeOperation()
     }
     BackHandler(section == "certificates" && state.selectedId != null && state.draft == null && !state.busy) { model.select(null) }
     WorkspaceColumn(stringResource(if (serverHttpsOnly) R.string.server_https_title else R.string.certificates_title), onBack, listOf(*(if (serverHttpsOnly) emptyArray() else arrayOf(WorkspaceDestination("overview", R.string.workspace_overview))), WorkspaceDestination("certificates", R.string.workspace_certificates), WorkspaceDestination("operations", R.string.workspace_operations)), section, { section = it }, modifier, stateKey = owner to epoch) {

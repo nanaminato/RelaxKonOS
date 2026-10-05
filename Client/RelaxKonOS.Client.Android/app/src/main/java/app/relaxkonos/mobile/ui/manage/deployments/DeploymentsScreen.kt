@@ -15,16 +15,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.relaxkonos.mobile.R
-import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.layout.LayoutState
 import app.relaxkonos.mobile.core.net.*
@@ -34,9 +31,7 @@ import app.relaxkonos.mobile.ui.common.*
 import app.relaxkonos.mobile.ui.theme.Spacing
 import java.text.DateFormat
 import java.util.Date
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 @Composable
 fun DeploymentsScreen(
@@ -784,16 +779,6 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
     }
 }
 
-private data class BackupRecoveryViewState(
-    val loading: Boolean = false,
-    val manifests: ApiResult<List<BackupManifest>>? = null,
-    val preflight: ApiResult<BackupPreflight>? = null,
-    val selectedBackupId: String? = null,
-    val creating: Boolean = false,
-    val creation: ApiResult<BackupManifest>? = null,
-    val pendingRequest: Boolean = false,
-)
-
 /**
  * A recovery capability deliberately starts as a read and preflight surface.  It never keeps an
  * encryption key or a plaintext object on the device, and it does not turn a failed preflight into
@@ -802,21 +787,13 @@ private data class BackupRecoveryViewState(
 @Composable
 private fun BackupRecoveryCard(owner: SessionState.Active?, applicationId: String) {
     if (owner == null || ServerCapabilities.BACKUP_RECOVERY !in owner.capabilities) return
-    val container = (LocalContext.current.applicationContext as RelaxKonApplication).container
+    val container = appContainer()
     val scope = rememberCoroutineScope()
-    var state by remember(owner, applicationId) { mutableStateOf(BackupRecoveryViewState(loading = true)) }
-    LaunchedEffect(owner, applicationId) {
-        state = BackupRecoveryViewState(loading = true)
-        val result = withContext(Dispatchers.IO) { container.backupRecovery.manifests(owner, applicationId) }
-        val reconciled = withContext(Dispatchers.IO) { container.backupRecovery.reconcileDefinitionBackup(owner, applicationId) }
-        if (container.session.state.value === owner) {
-            val reconciledManifest = (reconciled as? ApiResult.Success)?.value
-            val merged = if (result is ApiResult.Success && reconciledManifest != null)
-                ApiResult.Success((listOf(reconciledManifest) + result.value).distinctBy { it.backupId }) else result
-            state = state.copy(loading = false, manifests = merged,
-                pendingRequest = container.backupRecovery.hasPendingDefinitionBackup(owner, applicationId))
-        }
-    }
+    val ownerKey = DeploymentOwnerKey(owner)
+    val editor = remember(ownerKey, applicationId, scope) { BackupRecoveryEditor(container, owner, applicationId, scope) }
+    DisposableEffect(editor) { onDispose { editor.close() } }
+    LaunchedEffect(editor) { editor.load() }
+    val state = editor.state
     SectionCard(title = stringResource(R.string.backup_recovery_title), subtitle = stringResource(R.string.backup_recovery_note)) {
         RefreshProgressIndicator(visible = state.loading)
         when (val manifests = state.manifests) {
@@ -828,25 +805,14 @@ private fun BackupRecoveryCard(owner: SessionState.Active?, applicationId: Strin
                     if (manifest.objects.isNotEmpty()) Text(stringResource(R.string.backup_recovery_objects, manifest.objects.size))
                     manifest.problemCode?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     TextButton(onClick = {
-                        state = state.copy(selectedBackupId = manifest.backupId, preflight = null)
+                        editor.select(manifest.backupId)
                     }) { Text(stringResource(R.string.backup_recovery_preflight)) }
                 }
             }
             null -> Unit
             else -> Text(stringResource(R.string.backup_recovery_unavailable), color = MaterialTheme.colorScheme.error)
         }
-        OutlinedButton(onClick = {
-            scope.launch {
-                state = state.copy(creating = true, creation = null)
-                val result = withContext(Dispatchers.IO) { container.backupRecovery.createDefinitionBackup(owner, applicationId) }
-                if (container.session.state.value === owner) {
-                    val merged = if (result is ApiResult.Success && state.manifests is ApiResult.Success)
-                        ApiResult.Success((listOf(result.value) + (state.manifests as ApiResult.Success).value).distinctBy { it.backupId }) else state.manifests
-                    state = state.copy(creating = false, creation = result, manifests = merged,
-                        pendingRequest = container.backupRecovery.hasPendingDefinitionBackup(owner, applicationId))
-                }
-            }
-        }, enabled = !state.loading && !state.creating) {
+        OutlinedButton(onClick = { editor.create() }, enabled = !state.loading && !state.creating) {
             Text(stringResource(if (state.pendingRequest) R.string.backup_recovery_retry_create else R.string.backup_recovery_create))
         }
         RefreshProgressIndicator(visible = state.creating)
@@ -858,10 +824,6 @@ private fun BackupRecoveryCard(owner: SessionState.Active?, applicationId: Strin
         }
         val selected = state.selectedBackupId
         if (selected != null && state.preflight == null) {
-            LaunchedEffect(owner, selected) {
-                val result = withContext(Dispatchers.IO) { container.backupRecovery.preflight(owner, selected) }
-                if (container.session.state.value === owner && state.selectedBackupId == selected) state = state.copy(preflight = result)
-            }
             LinearProgressIndicator(Modifier.fillMaxWidth())
         }
         when (val preflight = state.preflight) {
@@ -913,7 +875,7 @@ private const val LOG_TAIL_GROWTH = 5
 private fun nextLogTail(current: Int): Int = (current * LOG_TAIL_GROWTH).coerceAtMost(MAXIMUM_LOG_TAIL)
 
 /** Drafts and confirmations belong to one login instance, even when its visible account fields match. */
-private class DeploymentOwnerKey(private val owner: SessionState.Active?) {
+internal class DeploymentOwnerKey(private val owner: SessionState.Active?) {
     override fun equals(other: Any?): Boolean = other is DeploymentOwnerKey && owner === other.owner
     override fun hashCode(): Int = System.identityHashCode(owner)
 }

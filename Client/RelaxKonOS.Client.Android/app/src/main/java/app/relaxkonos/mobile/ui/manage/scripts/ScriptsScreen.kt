@@ -1,14 +1,14 @@
 package app.relaxkonos.mobile.ui.manage.scripts
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import app.relaxkonos.mobile.ui.common.PageActionRow
 import app.relaxkonos.mobile.ui.common.ActionLabel
 import app.relaxkonos.mobile.ui.common.ExecutionStatusChip
 import app.relaxkonos.mobile.ui.common.ActivityIndicator
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
-import android.app.Application
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -25,36 +25,20 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.R
-import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.core.auth.SessionState
-import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.GuardianApproval
 import app.relaxkonos.mobile.core.net.ScriptRequest
-import app.relaxkonos.mobile.core.net.ScriptTask
 import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.RemotePathField
 import app.relaxkonos.mobile.ui.common.RemotePathKind
 import app.relaxkonos.mobile.ui.theme.Spacing
-import java.util.UUID
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
-
-data class ScriptsUiState(val loading: Boolean = false, val tasks: List<ScriptTask> = emptyList(),
-    val selected: ScriptTask? = null, val error: Boolean = false, val problemCode: String? = null)
 
 private fun scriptStateLabel(state: String): Int = when (state) {
     "queued" -> R.string.scripts_queued
@@ -76,72 +60,6 @@ private fun scriptProblemLabel(code: String?): Int = when (code) {
     "guardian.script_launch_failed", "guardian.run_as_launch_failed", "guardian.run_as_platform_not_supported" -> R.string.scripts_launch_reason
     else -> R.string.scripts_failed
 }
-
-class ScriptsViewModel(application: Application) : AndroidViewModel(application) {
-    private val container = getApplication<RelaxKonApplication>().container
-    private val mutable = MutableStateFlow(ScriptsUiState())
-    val state = mutable.asStateFlow()
-    private var owner: SessionState.Active? = null
-
-    fun load(active: SessionState.Active) {
-        if (owner !== active) { owner = active; mutable.value = ScriptsUiState() }
-        if (mutable.value.loading) return
-        mutable.update { it.copy(loading = true, error = false, problemCode = null) }
-        viewModelScope.launch {
-            val result = container.scriptTasks.tasks(active)
-            if (owner !== active) return@launch
-            mutable.update { old -> when (result) {
-                is ApiResult.Success -> old.copy(loading = false, tasks = result.value.tasks,
-                    error = !result.value.success, problemCode = result.value.problemCode.takeIf(String::isNotBlank))
-                is ApiResult.Problem -> old.copy(loading = false, error = true, problemCode = result.code)
-                is ApiResult.Transport -> old.copy(loading = false, error = true, problemCode = null)
-            } }
-        }
-    }
-
-    fun select(id: String) {
-        val active = owner ?: return
-        viewModelScope.launch {
-            val result = container.scriptTasks.task(active, id)
-            if (owner !== active) return@launch
-            when (result) {
-                is ApiResult.Success -> mutable.update { it.copy(selected = result.value.task,
-                    error = !result.value.success, problemCode = result.value.problemCode.takeIf(String::isNotBlank)) }
-                else -> mutable.update { it.copy(error = true) }
-            }
-        }
-    }
-
-    fun submit(request: ScriptRequest) {
-        val active = owner ?: run { request.approval?.password?.fill('\u0000'); return }
-        mutable.update { it.copy(loading = true, error = false) }
-        val key = UUID.randomUUID().toString()
-        viewModelScope.launch {
-            val result = try { container.scriptTasks.submit(active, request, key) }
-                finally { request.approval?.password?.fill('\u0000') }
-            if (owner !== active) return@launch
-            when (result) {
-                is ApiResult.Success -> {
-                    mutable.update { it.copy(loading = false, selected = result.value.task,
-                        error = !result.value.success, problemCode = result.value.problemCode.takeIf(String::isNotBlank)) }
-                    load(active)
-                }
-                else -> mutable.update { it.copy(loading = false, error = true) }
-            }
-        }
-    }
-
-    fun cancel(id: String) {
-        val active = owner ?: return
-        viewModelScope.launch {
-            val result = container.scriptTasks.cancel(active, id)
-            if (owner !== active) return@launch
-            if (result is ApiResult.Success && result.value.success) select(id)
-            else mutable.update { it.copy(error = true) }
-        }
-    }
-}
-
 @Composable
 fun ScriptsScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modifier = Modifier,
     initialTaskId: String? = null) {
@@ -152,14 +70,8 @@ fun ScriptsScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modi
         model.load(owner)
         if (initialTaskId != null) model.select(initialTaskId)
     }
-    LaunchedEffect(state.selected?.id) {
-        val id = state.selected?.id ?: return@LaunchedEffect
-        while (true) {
-            delay(2000)
-            val selected = model.state.value.selected ?: break
-            if (selected.id != id || selected.state !in setOf("queued", "running", "cancelling")) break
-            model.select(id)
-        }
+    LaunchedEffect(owner, state.selected?.id) {
+        model.observeSelected()
     }
     if (editing) {
         ScriptEditor(owner, onBack = { editing = false }, onSubmit = { model.submit(it); editing = false }, modifier = modifier)

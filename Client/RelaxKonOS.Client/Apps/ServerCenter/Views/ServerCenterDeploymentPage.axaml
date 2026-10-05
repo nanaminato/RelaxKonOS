@@ -74,6 +74,11 @@
                 <Button Command="{Binding RepairCommand}" Content="{Binding RepairText}" HorizontalAlignment="Left" />
                 <Button Command="{Binding RollbackCommand}" Content="{Binding RollbackText}" IsVisible="{Binding HasPreviousVersion}" HorizontalAlignment="Left" />
                 <Separator />
+                <TextBlock Text="{Binding ComponentSelectionText}" TextWrapping="Wrap" />
+                <CheckBox IsChecked="{Binding RemoveSmb}" Content="{Binding RemoveSmbText}" />
+                <CheckBox IsChecked="{Binding RemoveNginx}" Content="{Binding RemoveNginxText}" />
+                <CheckBox IsChecked="{Binding RemoveFrp}" Content="{Binding RemoveFrpText}" />
+                <CheckBox IsChecked="{Binding RemoveMihomo}" Content="{Binding RemoveMihomoText}" />
                 <CheckBox IsChecked="{Binding DeleteServerData}" Content="{Binding DeleteServerDataText}" />
                 <Button Command="{Binding UninstallCommand}" Content="{Binding UninstallText}" HorizontalAlignment="Left" Classes="danger" />
             </StackPanel>

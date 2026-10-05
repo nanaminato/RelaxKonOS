@@ -15,6 +15,13 @@ internal data class DockerResourceState(val owner: SessionState.Active? = null, 
     val logs: DockerLogs? = null, val result: DockerOperation? = null, val pending: List<PendingDockerResource> = emptyList(),
     val blocked: String? = null, val problem: String? = null, val saved: Int = 0)
 internal class DockerResourceViewModel(application: Application) : AndroidViewModel(application) {
+    suspend fun observeStats() {
+        if (state.target?.container?.state == "running" && !state.busy) {
+            kotlinx.coroutines.delay(3000)
+            pollStats()
+        }
+    }
+
     private val container get() = getApplication<RelaxKonApplication>().container
     private var job: Job? = null
     private var generation = 0

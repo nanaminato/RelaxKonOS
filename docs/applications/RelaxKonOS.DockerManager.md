@@ -2,7 +2,7 @@
 
 > 内置 Docker 管理器。它管理 **RelaxKonOS.Server 所在宿主机** 的本地 Docker Engine；客户端只负责本地 UI 渲染，不直连 Docker socket、不保存 Docker 凭据，也不将守护进程 API 暴露到网络。
 >
-> 当前状态：**已实现**本机 Engine 状态、容器/镜像/网络/卷列表、容器生命周期与安全的原地重命名，以及网络、卷和容器的只读详情查看。Compose 编排支持项目列表、定义预览、`up` 部署、服务查看、项目级启动/停止/重启/删除，以及**持久 Stack 操作记录**（断开请求、App 被回收或服务端重启后仍可查询结果、按项目互斥、幂等重放与部分失败分类）。编排会展示 Compose 文件来源；点击来源可路由至内置文件浏览器。RelaxKonOS 部署的 Compose 文件与操作账本保存在服务器受管目录，停止后的项目仍会显示。安装、终端、流式统计和审计仍为**设计中**。
+> 当前状态：**已实现**本机 Engine 状态、容器/镜像/网络/卷列表、容器生命周期与安全的原地重命名，以及网络、卷和容器的只读详情查看。Compose 编排支持项目列表、定义预览、`up` 部署、服务查看、项目级启动/停止/重启/删除，以及**持久 Stack 操作记录**（断开请求、App 被回收或服务端重启后仍可查询结果、按项目互斥、幂等重放与部分失败分类）。编排会展示 Compose 文件来源；点击来源可路由至内置文件浏览器。RelaxKonOS 部署的 Compose 文件与操作账本保存在服务器受管目录，停止后的项目仍会显示。桌面端已接入 Ubuntu Docker Engine 安装与可恢复任务进度；终端、流式统计和审计仍为**设计中**。
 >
 > - 架构与内置应用边界：[`RelaxKonOS.Architecture.md`](../architecture/RelaxKonOS.Architecture.md)
 > - 协议契约规则：[`RelaxKonOS.Protocol.md`](../architecture/RelaxKonOS.Protocol.md)
@@ -87,6 +87,8 @@
 | Windows Server | 管理已安装且经能力探测合格的本机 Engine-compatible runtime | **不自动安装**；运行时供应商、容器模式与许可由管理员明确选择后再增加专用安装提供方 | 防止将桌面安装器误作为生产服务器自动部署方案。 |
 
 Ubuntu 方案以 Docker 官方安装文档为唯一命令来源；该文档要求先移除冲突包，推荐官方 APT 仓库，并以 `hello-world` 验证。[Docker Engine on Ubuntu](https://docs.docker.com/engine/install/ubuntu/) Windows 端 Docker Desktop 的安装需要选择 WSL 2 或 Hyper-V 后端。[Docker Desktop on Windows](https://docs.docker.com/desktop/setup/install/windows-install/)
+
+桌面端连接 Linux 服务器且状态为 `docker.not_installed` 时，点击顶部状态按钮会确认安装影响，再向通用安装 API 提交 `DockerInstallationRequest(Confirmed: true)`。底部显示安装进度、操作日志与可恢复任务，完成后刷新 Docker 状态。自动安装仅支持 Ubuntu 22.04/24.04/26.04 的 x64/ARM64 主机，需已部署特权 Helper 并通过 `--docker-access` 授权 Server 服务账户；其他 Linux 发行版由服务端拒绝。首次授予 Docker 组权限后可能需要重启 RelaxKonOS Server，界面保留对应提示。
 
 Windows 10/11 的 Docker 不可用时，Docker Manager 的状态按钮会直接打开内置引导：检查 WSL 2/虚拟化，安装并启动 Docker Desktop，选择 WSL 2 backend，确认 Linux containers 模式，然后刷新 Engine 状态。该引导不自动安装 Docker Desktop、启用 WSL、接受第三方许可或配置 Windows Server。Docker Desktop 的 WSL 2 容器与镜像不跨 Windows 用户共享；它不是供服务账户或另一名 RelaxKonOS 登录用户代管的系统 Engine。开发时必须用 Docker Desktop 所有者启动 Server，并用该同一宿主账户登录；不同账户只能做不含 Docker 的 Helper/文件边界测试。Windows Docker Desktop 路径用于开发、个人自托管和验证；无人值守或生产部署优先使用独立 Linux 主机或 VM。
 

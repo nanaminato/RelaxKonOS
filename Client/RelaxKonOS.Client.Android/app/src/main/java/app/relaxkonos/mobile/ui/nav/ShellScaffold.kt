@@ -1,6 +1,5 @@
 package app.relaxkonos.mobile.ui.nav
 
-import android.app.Application
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -35,7 +34,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.AndroidViewModel
 import app.relaxkonos.mobile.AppContainer
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.security.model.SavedLogin
@@ -44,17 +42,6 @@ import app.relaxkonos.mobile.core.layout.layoutStateFor
 import app.relaxkonos.mobile.ui.icons.DesktopIcon
 import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Spacing
-
-/**
- * Owns shell navigation.
- *
- * Navigation lives in a ViewModel rather than in composition state so that a configuration change —
- * including the activity recreation a language switch causes — restores the user to the destination
- * they were on. The stacks are plain observable state, so the JVM tests can drive them without Compose.
- */
-class ShellViewModel(application: Application) : AndroidViewModel(application) {
-    val navigator = MobileNavigator(Routes.HOME)
-}
 
 /**
  * The authenticated shell.

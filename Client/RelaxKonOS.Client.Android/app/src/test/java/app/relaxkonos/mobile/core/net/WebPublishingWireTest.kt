@@ -30,7 +30,7 @@ class WebPublishingWireTest {
         assertEquals("127.0.0.1:8080", site.routes.single().upstream)
         assertEquals("0fded9ef-ed50-4d5e-8e87-74caf3311be7", site.certificateId)
 
-        val certificate = CertificateWire.list("""[{"id":"0fded9ef-ed50-4d5e-8e87-74caf3311be7","primaryDomain":"app.example.test","subjectAlternativeNames":[],"issuer":null,"serialNumber":null,"thumbprint":null,"notBefore":null,"notAfter":null,"status":"issued","challengeType":"directHttp01","keyAlgorithm":"ecdsaP256","renewalWindowStart":null,"renewalWindowEnd":null,"lastRenewalAt":null,"lastRenewalProblemCode":null,"createdAt":"2026-09-27T00:00:00Z","updatedAt":"2026-09-27T00:00:00Z","kind":"acme","fingerprintSha256":null}]""").single()
+        val certificate = CertificateWire.list("""[{"id":"0fded9ef-ed50-4d5e-8e87-74caf3311be7","primaryDomain":"app.example.test","subjectAlternativeNames":[],"issuer":null,"serialNumber":null,"thumbprint":null,"notBefore":null,"notAfter":null,"status":"issued","challengeType":"directHttp01","keyAlgorithm":"ecdsaP256","renewalWindowStart":null,"renewalWindowEnd":null,"lastRenewalAt":null,"lastRenewalProblemCode":null,"createdAt":"2026-09-27T00:00:00Z","updatedAt":"2026-09-27T00:00:00Z","kind":"acme","fingerprintSha256":null,"renewal":null}]""").single()
         assertEquals("app.example.test", certificate.primaryDomain)
         assertEquals(CertificateStatus.Issued, certificate.status)
         assertNull(certificate.notAfterMillis)

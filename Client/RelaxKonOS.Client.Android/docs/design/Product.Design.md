@@ -79,6 +79,14 @@ Protocol wire contract ──→ Kotlin Android data layer ──→ Compose UI
 - Android 平台层负责 Activity、运行时权限、Keystore、文件选择/分享、Insets 和生命周期桥接；不得把服务端业务规则复制到页面中。
 - Android 不复用 `Framework/RelaxKonOS.UI` 的 Avalonia 控件或资源。`RemoteWindow`、桌面模态机制、Taskbar 样式不进入 Android 客户端。
 
+### 3.3 页面与状态逻辑分离
+
+`*Screen.kt` 保留 Compose 渲染、表单展示、确认弹窗，以及权限、文件选择和前台生命周期接入。ViewModel、页面编辑状态与跨存储控制器放在各自的 `*ViewModel.kt`、`*Editor.kt`、`*Controller.kt` 中，不与界面定义在同一文件。
+
+请求、提交、备份预检、幂等键管理、业务轮询间隔和凭据跨存储清理由状态层负责。页面通过状态和动作调用接入；`LaunchedEffect` 可以启动可取消的观察方法，业务循环与等待规则留在模型中。布局测量、滚动、焦点、剪贴板和权限启动器属于 UI 平台边界。
+
+Git 构建编辑器和备份恢复编辑器绑定精确的会话实例，离页取消所属任务，延迟响应不能写回新会话。Git 普通表单及操作幂等键可保存以恢复页面，凭据 Token 只保留在内存中，关闭页面时清除。
+
 ---
 
 ## 4. 协议边界

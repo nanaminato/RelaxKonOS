@@ -2793,4 +2793,10 @@
     <string name="manage_search_empty">没有匹配的应用。</string>
     <string name="files_actions">操作</string>
     <string name="mihomo_install_accept_note">服务器没有正在进行的安装时，可接受当前状态并解除本机阻塞。此操作不重发安装，也不认定原请求成功。</string>
+
+    <string name="server_components_note">选择要移除的组件；未选择的服务及管理数据会保留。Docker 容器和卷不纳入组件清理；删除数据仍会移除部署记录和数据根中的配置。</string>
+    <string name="server_remove_smb">移除受管 SMB 共享</string>
+    <string name="server_remove_nginx">移除受管 Nginx</string>
+    <string name="server_remove_frp">移除受管 FRP</string>
+    <string name="server_remove_mihomo">移除受管 Mihomo</string>
 </resources>

@@ -4,6 +4,7 @@ set -euo pipefail
 INSTALL_ROOT=/opt/relaxkonos
 DATA_ROOT=/var/lib/relaxkonos
 REMOVE_DATA=false
+REMOVE_COMPONENTS=
 NON_INTERACTIVE=false
 EXPECTED_INSTALLATION_ID=
 ORIGINAL_ARGUMENTS=("$@")
@@ -17,6 +18,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --install-root) INSTALL_ROOT="${2:-}"; shift 2 ;;
     --data-root) DATA_ROOT="${2:-}"; shift 2 ;;
+    --remove-components) REMOVE_COMPONENTS="${2:-}"; shift 2 ;;
     --remove-data) REMOVE_DATA=true; shift ;;
     --expected-installation-id) EXPECTED_INSTALLATION_ID="${2:-}"; shift 2 ;;
     --non-interactive) NON_INTERACTIVE=true; shift ;;
@@ -25,6 +27,20 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ "$REMOVE_DATA" == true && -z "$REMOVE_COMPONENTS" ]]; then REMOVE_COMPONENTS=smb,nginx,frp,mihomo; fi
+IFS=, read -ra requested_components <<< "$REMOVE_COMPONENTS"
+declare -A selected_components=()
+for component in "${requested_components[@]}"; do
+  case "$component" in smb|nginx|frp|mihomo) ;; *) echo 'Invalid component selection.' >&2; exit 64 ;; esac
+  [[ ! ${selected_components[$component]+present} ]] || { echo 'Duplicate component.' >&2; exit 64; }
+  selected_components[$component]=1
+done
+[[ "$REMOVE_COMPONENTS" != *, ]] || { echo 'Invalid component selection.' >&2; exit 64; }
+[[ "$REMOVE_DATA" != true || ${#requested_components[@]} == 4 ]] || { echo 'Retained components require retained data.' >&2; exit 64; }
+REMOVE_COMPONENTS=
+for component in smb nginx frp mihomo; do
+  if [[ ${selected_components[$component]+present} ]]; then REMOVE_COMPONENTS="${REMOVE_COMPONENTS:+$REMOVE_COMPONENTS,}$component"; fi
+done
 [[ "$INSTALL_ROOT" == /* && "$INSTALL_ROOT" != / && "$DATA_ROOT" == /* && "$DATA_ROOT" != / ]] || {
   echo 'Install and data paths must be absolute, non-root paths.' >&2
   exit 64
@@ -94,7 +110,7 @@ if [[ "$NON_INTERACTIVE" == false ]]; then
 fi
 
 # Independent component services keep running when only RelaxKonOS is removed.
-if [[ "$REMOVE_DATA" == true ]]; then
+if [[ -n "$REMOVE_COMPONENTS" ]]; then
   # Keep Helper and ownership records available until every cleanup step succeeds.
   for unit in relaxkonos-server.service relaxkonos-guardian.service; do
     if systemctl is-active --quiet "$unit" && ! systemctl stop "$unit"; then
@@ -115,30 +131,30 @@ if [[ "$REMOVE_DATA" == true ]]; then
       done < "$configuration"
     fi
     export DOTNET_ENVIRONMENT=Production ASPNETCORE_ENVIRONMENT=Production
-    "$cleanup_server" --contentRoot "$(dirname "$cleanup_server")" --maintenance=remove-managed-components --maintenanceDataRoot "$DATA_ROOT"
+    "$cleanup_server" --contentRoot "$(dirname "$cleanup_server")" --maintenance=remove-managed-components --maintenanceDataRoot "$DATA_ROOT" --maintenanceComponents "$REMOVE_COMPONENTS"
   ) || { echo 'Managed component cleanup failed; program files and data were preserved for repair.' >&2; exit 70; }
   receipt="$DATA_ROOT/server/deployment/component-cleanup.json"
   [[ -f "$receipt" ]] || { echo 'Managed component cleanup produced no receipt; data was preserved.' >&2; exit 70; }
-  python3 - "$receipt" <<'PY' || { echo 'Managed component cleanup receipt is incomplete; data was preserved.' >&2; exit 70; }
+  python3 - "$receipt" "$REMOVE_COMPONENTS" <<'PY' || { echo 'Managed component cleanup receipt is incomplete; data was preserved.' >&2; exit 70; }
 import json, sys
 try:
     with open(sys.argv[1], encoding='utf-8') as source:
         receipt = json.load(source)
     components = receipt['Components']
     assert receipt['Succeeded'] is True
-    assert [item['Component'] for item in components] == ['smb', 'nginx', 'frp', 'mihomo']
+    assert [item['Component'] for item in components] == sys.argv[2].split(',')
     assert all(item['Succeeded'] is True for item in components)
 except (OSError, ValueError, KeyError, TypeError, AssertionError):
     sys.exit(70)
 PY
-  python3 - "$receipt" <<'PY' || { echo 'Managed component cleanup receipt is incomplete; data was preserved.' >&2; exit 70; }
+  python3 - "$receipt" "$REMOVE_COMPONENTS" <<'PY' || { echo 'Managed component cleanup receipt is incomplete; data was preserved.' >&2; exit 70; }
 import json, sys
 try:
     with open(sys.argv[1], encoding='utf-8') as source:
         receipt = json.load(source)
     components = receipt['Components']
     assert receipt['Succeeded'] is True
-    assert [item['Component'] for item in components] == ['smb', 'nginx', 'frp', 'mihomo']
+    assert [item['Component'] for item in components] == sys.argv[2].split(',')
     assert all(item['Succeeded'] is True for item in components)
 except (OSError, ValueError, KeyError, TypeError, AssertionError):
     sys.exit(70)

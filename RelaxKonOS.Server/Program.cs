@@ -858,7 +858,8 @@ if (builder.Configuration["maintenance"] == "remove-managed-components")
     if (string.IsNullOrWhiteSpace(cleanupDataRoot) || !Path.IsPathFullyQualified(cleanupDataRoot))
         throw new InvalidOperationException("Managed component cleanup requires the recorded absolute data root.");
     var receiptPath = Path.Combine(cleanupDataRoot, "server", "deployment", "component-cleanup.json");
-    var receipt = await RelaxKonOS.Server.Installations.ManagedComponentCleanup.RemoveAsync(app.Services, receiptPath, cleanupDataRoot, personalCleanup, CancellationToken.None);
+    var receipt = await RelaxKonOS.Server.Installations.ManagedComponentCleanup.RemoveAsync(app.Services, receiptPath, cleanupDataRoot, personalCleanup, CancellationToken.None,
+        builder.Configuration["maintenanceComponents"] ?? "smb,nginx,frp,mihomo");
     Environment.ExitCode = receipt.Succeeded ? 0 : 70;
     await app.DisposeAsync();
     return;

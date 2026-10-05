@@ -226,6 +226,7 @@ data class ServerDeploymentOptions(
     val dockerAccess: Boolean = false,
     val allowUnsupportedSystem: Boolean = false,
     val addFirewallRule: Boolean = false,
+    val removeComponents: String = "",
 )
 
 /** 远端部署启动器的唯一入口请求。[operationId] 同时作为幂等键。 */

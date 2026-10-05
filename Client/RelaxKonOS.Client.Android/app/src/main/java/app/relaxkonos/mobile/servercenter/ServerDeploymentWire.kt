@@ -82,6 +82,7 @@ internal object ServerDeploymentWire {
     private fun writeOptions(options: ServerDeploymentOptions): String = buildString {
         append("{\"source\":").append(ServerCenterJson.quote(options.source.wireName()))
         append(",\"network\":").append(ServerCenterJson.quote(options.network.wireName()))
+        append(",\"removeComponents\":").append(ServerCenterJson.quote(options.removeComponents))
         append(",\"retention\":").append(ServerCenterJson.quote(options.retention.wireName()))
         append(",\"mode\":").append(options.mode.jsonEnum())
         append(",\"version\":").append(options.version.jsonString())

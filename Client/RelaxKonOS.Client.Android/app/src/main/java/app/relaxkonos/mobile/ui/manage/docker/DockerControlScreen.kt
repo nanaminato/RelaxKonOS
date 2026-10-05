@@ -16,7 +16,6 @@ import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.ui.common.*
 import app.relaxkonos.mobile.ui.manage.operations.*
 import app.relaxkonos.mobile.ui.theme.Spacing
-import kotlinx.coroutines.delay
 import java.text.DateFormat
 import java.util.Date
 
@@ -41,7 +40,7 @@ private data class ControlConfirmation(val facts: DockerControlFacts, val change
     LaunchedEffect(owner, state.owner) { if (visible && owner != null) model.refresh() }
     LaunchedEffect(owner, state.saved) { if (visible && state.saved > 0) draft = null }
     LaunchedEffect(owner, state.installation?.operationId, state.installation?.state, state.installationVerified, state.busy) {
-        if (visible && state.installationVerified && state.installation?.state?.active == true && !state.busy) { delay(1500); model.pollInstall() }
+        if (visible) model.observeInstallation()
     }
     DisposableEffect(owner) { onDispose { model.stop() } }
     BackHandler(active && draft != null) { navigate { draft = null } }

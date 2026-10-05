@@ -23,9 +23,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.stringResource
 import app.relaxkonos.mobile.R
-import app.relaxkonos.mobile.core.auth.credentialState
-import app.relaxkonos.mobile.core.auth.credentialStatus
-import app.relaxkonos.mobile.security.VaultKind
 import app.relaxkonos.mobile.security.model.SavedLogin
 import app.relaxkonos.mobile.ui.common.ConfirmDangerousDialog
 import app.relaxkonos.mobile.ui.common.EmptyHint
@@ -55,15 +52,14 @@ fun ConnectionsScreen(
     modifier: Modifier = Modifier,
 ) {
     val container = appContainer()
+    val controller = remember(container) { ConnectionsController(container) }
     var revision by remember { mutableStateOf(0) }
     var forgetTarget by remember { mutableStateOf<SavedLogin?>(null) }
     var deleteTarget by remember { mutableStateOf<SavedLogin?>(null) }
 
-    val logins = remember(revision) { container.profiles.all() }
+    val logins = remember(revision) { controller.logins }
     val active = container.activeSession
-    LaunchedEffect(Unit) {
-        container.hostOperatingSystems.resolve(logins.map { it.serviceId }, active)
-    }
+    LaunchedEffect(controller) { controller.resolvePlatforms() }
 
     Column(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg),
@@ -80,8 +76,6 @@ fun ConnectionsScreen(
                 EmptyHint(stringResource(R.string.connections_empty))
             } else {
                 logins.forEach { login ->
-                    val mode = container.unlockMode(VaultKind.Connection)
-                    val record = container.vault.record(VaultKind.Connection, login.serviceId, login.identifier)
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
@@ -99,7 +93,7 @@ fun ConnectionsScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Text(
-                                credentialStatusLabel(credentialStatus(credentialState(record, mode), mode)),
+                                credentialStatusLabel(controller.status(login)),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -155,9 +149,7 @@ fun ConnectionsScreen(
             confirmLabel = stringResource(R.string.connections_forget_password),
             onConfirm = {
                 forgetTarget = null
-                container.vault.delete(VaultKind.Connection, login.serviceId, login.identifier)
-                container.forgetDebugCredential(login.serviceId, login.identifier)
-                container.profiles.setHasSavedCredential(login.serviceId, login.identifier, false)
+                controller.forgetPassword(login)
                 revision++
             },
             onDismiss = { forgetTarget = null },
@@ -171,10 +163,7 @@ fun ConnectionsScreen(
             confirmLabel = stringResource(R.string.common_delete),
             onConfirm = {
                 deleteTarget = null
-                container.vault.delete(VaultKind.Connection, login.serviceId, login.identifier)
-                container.forgetDebugCredential(login.serviceId, login.identifier)
-                // One login, not the whole server: another account on it keeps its own record (§6.3).
-                container.profiles.remove(login.serviceId, login.identifier)
+                controller.delete(login)
                 revision++
             },
             onDismiss = { deleteTarget = null },

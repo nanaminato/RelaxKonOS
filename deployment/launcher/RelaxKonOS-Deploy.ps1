@@ -313,6 +313,7 @@ $optionsCatalog = ''
 $optionsSource = 'officialStable'
 $optionsNetwork = 'loopback'
 $optionsRetention = 'retain'
+$optionsRemoveComponents = ''
 $optionsMode = ''
 $optionsVersion = ''
 $optionsPackageUri = ''
@@ -362,7 +363,7 @@ function Assert-RequestShape {
         Stop-Launcher 'server-deployment.invalid_request' 'options must be a JSON object'
     }
     $allowedOptions = @('source', 'network', 'retention', 'mode', 'version', 'packageUri', 'stagedPackageName',
-        'packageDigest', 'remotePackagePath', 'expectedInstallationId', 'serverPort', 'fileAccess', 'certificateMode', 'selfSignedIdentities', 'confirmed', 'language', 'releaseCatalogBaseUri', 'installRoot', 'dataRoot', 'configRoot', 'stateRoot', 'cacheRoot', 'fileRoots', 'administratorFileAccess', 'administratorFileRoots', 'rootFileAccess', 'rootFileRoots', 'dockerAccess', 'allowUnsupportedSystem', 'addFirewallRule')
+        'packageDigest', 'remotePackagePath', 'expectedInstallationId', 'serverPort', 'fileAccess', 'certificateMode', 'selfSignedIdentities', 'confirmed', 'language', 'releaseCatalogBaseUri', 'installRoot', 'dataRoot', 'configRoot', 'stateRoot', 'cacheRoot', 'fileRoots', 'administratorFileAccess', 'administratorFileRoots', 'rootFileAccess', 'rootFileRoots', 'dockerAccess', 'allowUnsupportedSystem', 'addFirewallRule', 'removeComponents')
     foreach ($key in $request['options'].Keys) {
         if ($allowedOptions -notcontains [string]$key) {
             Stop-Launcher 'server-deployment.invalid_request' "unsupported request field: $key"
@@ -417,6 +418,17 @@ function Parse-Request {
     $value = Get-StringOption 'source'; if ($value) { $script:optionsSource = $value }
     $value = Get-StringOption 'network'; if ($value) { $script:optionsNetwork = $value }
     $value = Get-StringOption 'retention'; if ($value) { $script:optionsRetention = $value }
+    $script:optionsRemoveComponents = Get-StringOption 'removeComponents'
+    $selection = @($script:optionsRemoveComponents -split ',' | Where-Object { $_ })
+    if ($selection.Count -ne @($selection | Select-Object -Unique).Count -or
+        @($selection | Where-Object { $_ -notin @('smb','nginx','frp','mihomo') }).Count -or
+        ($script:optionsRemoveComponents -and ($selection -join ',') -ne $script:optionsRemoveComponents)) {
+        Stop-Launcher 'server-deployment.invalid_request' 'invalid component selection'
+    }
+    if ($script:optionsRetention -eq 'delete' -and $selection.Count -gt 0 -and $selection.Count -ne 4) {
+        Stop-Launcher 'server-deployment.invalid_request' 'retained components require retained data'
+    }
+    if ($selection.Count -gt 0 -and $kind -ne 'uninstall') { Stop-Launcher 'server-deployment.invalid_request' 'component selection is only available for uninstall' }
     $script:optionsMode = Get-StringOption 'mode'
     $script:optionsVersion = Get-StringOption 'version'
     $script:optionsPackageUri = Get-StringOption 'packageUri'
@@ -468,6 +480,9 @@ function Parse-Request {
     }
     $confirmed = Get-LiteralOption 'confirmed'
     if ($confirmed -is [bool] -and $confirmed) { $script:optionsConfirmed = $true }
+    if ($script:optionsRemoveComponents -and -not $script:optionsConfirmed) {
+        Stop-Launcher 'server-deployment.invalid_request' 'component removal requires confirmation'
+    }
 
     if ($script:optionsSource -notin @('officialStable', 'localBundle', 'remoteBundle', 'directUrl')) {
         Stop-Launcher 'server-deployment.invalid_request' 'unsupported package source'
@@ -1282,6 +1297,7 @@ function Invoke-UninstallAction {
     if (-not $engine) { Stop-Launcher 'server-deployment.not_supported' 'no System Mode uninstall engine is available on this host' }
 
     $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $engine, '-NonInteractive', '-Mode', $script:optionsMode, '-Language', $script:optionsLanguage, '-InstallRoot', (Get-ModeInstallRoot $script:optionsMode), '-DataRoot', (Get-ModeDataRoot $script:optionsMode))
+    if ($script:optionsRemoveComponents) { $arguments += @('-RemoveComponents', $script:optionsRemoveComponents) }
     if ($script:optionsRetention -eq 'delete') {
         $arguments += @('-RemoveData', '-ConfirmRemoveData')
     }

@@ -23,6 +23,7 @@ public sealed record ServerDeploymentRequest(
 /// <param name="PackageDigest">可选摘要元数据。用户文件不要求官方摘要；官网包从官方描述符取得并核对摘要。</param>
 /// <param name="ExpectedInstallationId">升级/修复/卸载/回滚必须与宿主实际安装标识一致，否则拒绝执行。</param>
 /// <param name="Confirmed">破坏性动作（卸载删除数据、升级中断服务）的显式确认。</param>
+/// <param name="RemoveComponents">卸载时移除的固定组件标识，按逗号分隔：smb、nginx、frp、mihomo。空值保留组件；删除全部数据时空值表示移除全部组件。保留任一组件时不得删除数据根。</param>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record ServerDeploymentOptions(
     [property: JsonPropertyName("source")] ServerPackageSourceKind Source,
@@ -54,7 +55,8 @@ public sealed record ServerDeploymentOptions(
     [property: JsonPropertyName("rootFileRoots")] IReadOnlyList<string>? RootFileRoots = null,
     [property: JsonPropertyName("dockerAccess")] bool DockerAccess = false,
     [property: JsonPropertyName("allowUnsupportedSystem")] bool AllowUnsupportedSystem = false,
-    [property: JsonPropertyName("addFirewallRule")] bool AddFirewallRule = false);
+    [property: JsonPropertyName("addFirewallRule")] bool AddFirewallRule = false,
+    [property: JsonPropertyName("removeComponents")] string RemoveComponents = "");
 
 /// <summary>
 /// 安装标识：由部署引擎在首次安装时签发并写入安装清单，此后作为受管隧道的稳定身份。

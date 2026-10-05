@@ -2794,4 +2794,10 @@
     <string name="manage_search_empty">検索条件に一致するアプリはありません。</string>
     <string name="files_actions">操作</string>
     <string name="mihomo_install_accept_note">ホストでインストールが実行中でない場合、現在の状態を承認してローカルの制限を解除できます。再送信せず、元の要求の成功を示しません。</string>
+
+    <string name="server_components_note">削除するコンポーネントを選択してください。未選択のサービスと管理データは保持します。Docker コンテナーとボリュームはコンポーネント削除の対象外ですが、データ削除では配置記録とデータルート内の設定も削除します。</string>
+    <string name="server_remove_smb">管理対象 SMB 共有を削除</string>
+    <string name="server_remove_nginx">管理対象 Nginx を削除</string>
+    <string name="server_remove_frp">管理対象 FRP を削除</string>
+    <string name="server_remove_mihomo">管理対象 Mihomo を削除</string>
 </resources>

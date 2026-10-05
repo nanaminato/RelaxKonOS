@@ -24,7 +24,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.security.BiometricCapability
-import app.relaxkonos.mobile.security.VaultKind
 import app.relaxkonos.mobile.security.VaultRecord
 import app.relaxkonos.mobile.security.VaultRecordState
 import app.relaxkonos.mobile.security.VaultUnlockMode
@@ -55,6 +54,7 @@ fun AccountSecurityScreen(
     modifier: Modifier = Modifier,
 ) {
     val container = appContainer()
+    val controller = remember(container) { AccountSecurityController(container) }
     val appearance = container.appearance
 
     var revision by remember { mutableStateOf(0) }
@@ -63,23 +63,17 @@ fun AccountSecurityScreen(
     var confirmClearAll by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<DeletionTarget?>(null) }
 
-    val capability = container.biometricCapability()
-    val connectionRecords = remember(revision, appearance.fingerprintEnabled) { container.vault.records(VaultKind.Connection) }
-    val elevationRecords = remember(revision, appearance.fingerprintEnabled) { container.vault.records(VaultKind.Elevation) }
+    val capability = controller.capability
+    val connectionRecords = remember(revision, appearance.fingerprintEnabled) { controller.connectionRecords }
+    val elevationRecords = remember(revision, appearance.fingerprintEnabled) { controller.elevationRecords }
     // A debug build may hold one plaintext record in the case where the vault cannot exist at all. It
     // is listed here and nowhere else, because this page is the one place that answers "what is stored
     // on this device" — a plaintext password it does not mention would be the one dishonest thing on
     // the screen. `null` in every release build.
-    val debugRecord = remember(revision) { container.debugCredentials?.record() }
-    val connectionMode = container.unlockMode(VaultKind.Connection)
-    val elevationMode = container.unlockMode(VaultKind.Elevation)
-    LaunchedEffect(Unit) {
-        container.hostOperatingSystems.resolve(
-            connectionRecords.map { it.serviceId } + elevationRecords.map { it.serviceId } +
-                listOfNotNull(debugRecord?.serviceId),
-            container.activeSession,
-        )
-    }
+    val debugRecord = remember(revision) { controller.debugRecord }
+    val connectionMode = controller.connectionMode
+    val elevationMode = controller.elevationMode
+    LaunchedEffect(controller) { controller.resolvePlatforms() }
 
     Column(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg),
@@ -101,7 +95,7 @@ fun AccountSecurityScreen(
                         checked = appearance.fingerprintEnabled,
                         onCheckedChange = { enabled ->
                             if (enabled) {
-                                appearance.setFingerprintEnabled(true)
+                                controller.enableFingerprint()
                             } else {
                                 confirmDisable = true
                             }
@@ -112,7 +106,7 @@ fun AccountSecurityScreen(
                     if (appearance.fingerprintEnabled) {
                         confirmDisable = true
                     } else {
-                        appearance.setFingerprintEnabled(true)
+                        controller.enableFingerprint()
                     }
                 },
             )
@@ -238,7 +232,7 @@ fun AccountSecurityScreen(
         SectionCard(title = stringResource(R.string.usage_memory_title)) {
             Text(stringResource(R.string.usage_memory_description))
             TextButton(onClick = {
-                container.usageMemory.clear(container.activeSession)
+                controller.clearUsageMemory()
                 memoryCleared = true
             }) { Text(stringResource(R.string.usage_memory_clear)) }
             if (memoryCleared) Text(stringResource(R.string.usage_memory_cleared))
@@ -251,12 +245,12 @@ fun AccountSecurityScreen(
 
         // 「不再提醒」是用户在某次提示里做的选择，所以这里必须能看见它、也能撤掉它。只在真的静音过
         // 东西时出现：一个空的分组只会让人以为自己关掉过什么（`Shell.Design.md` §3.4）。
-        val silenced = remember(revision) { container.notices.silenced() }
+        val silenced = remember(revision) { controller.silenced }
         if (silenced.isNotEmpty()) {
             SectionCard(stringResource(R.string.account_security_reminders)) {
                 silenced.forEach { kind ->
                     val restore: () -> Unit = {
-                        container.notices.setSilenced(kind, false)
+                        controller.restoreReminder(kind)
                         revision++
                     }
                     ListRow(
@@ -281,14 +275,7 @@ fun AccountSecurityScreen(
             confirmLabel = stringResource(R.string.account_security_disable_confirm),
             onConfirm = {
                 confirmDisable = false
-                appearance.setFingerprintEnabled(false)
-                container.vault.clear(VaultKind.Connection)
-                container.vault.clear(VaultKind.Elevation)
-                // The switch means "no password is stored at all", and a plaintext file is the least
-                // defensible thing to leave behind when the user has just asked for nothing to be kept.
-                container.debugCredentials?.clear()
-                container.keyManager.deleteKey(VaultKind.Connection)
-                container.keyManager.deleteKey(VaultKind.Elevation)
+                controller.disableFingerprint()
                 revision++
             },
             onDismiss = { confirmDisable = false },
@@ -302,9 +289,7 @@ fun AccountSecurityScreen(
             confirmLabel = stringResource(R.string.account_security_clear_all),
             onConfirm = {
                 confirmClearAll = false
-                container.vault.clear(VaultKind.Connection)
-                container.vault.clear(VaultKind.Elevation)
-                container.debugCredentials?.clear()
+                controller.clearCredentials()
                 revision++
             },
             onDismiss = { confirmClearAll = false },
@@ -318,13 +303,13 @@ fun AccountSecurityScreen(
             is DeletionTarget.Vault -> Triple(
                 target.record.account,
                 target.record.serviceId,
-                { container.vault.delete(target.record) },
+                { controller.delete(target.record) },
             )
 
             DeletionTarget.DebugStore -> Triple(
                 debugRecord?.identifier.orEmpty(),
                 debugRecord?.serviceId.orEmpty(),
-                { container.debugCredentials?.clear() },
+                { controller.clearDebugCredential() },
             )
         }
         ConfirmDangerousDialog(

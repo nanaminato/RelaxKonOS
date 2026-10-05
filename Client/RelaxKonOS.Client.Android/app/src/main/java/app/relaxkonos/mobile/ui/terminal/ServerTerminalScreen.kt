@@ -1,6 +1,7 @@
 package app.relaxkonos.mobile.ui.terminal
 
-import android.app.Application
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Box
@@ -33,7 +34,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ClipEntry
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
@@ -59,10 +59,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,17 +83,13 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.AndroidViewModel
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.R
-import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.ui.theme.Radius
 import app.relaxkonos.mobile.ui.theme.Spacing
@@ -104,75 +98,6 @@ import app.relaxkonos.mobile.ui.common.appContainer
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.compose.LifecycleStartEffect
-
-/** Retains a selected session across rotation. Leaving the page only detaches its transport. */
-class ServerTerminalViewModel(application: Application) : AndroidViewModel(application) {
-    private val controller = ServerTerminalController(
-        getApplication<RelaxKonApplication>().container.session, viewModelScope,
-        nativeResponses = { getApplication<RelaxKonApplication>().container.appearance.terminalType == TerminalType.Native },
-    )
-    val state = controller.state
-    val presentation = TerminalPresentation()
-    private val container get() = getApplication<RelaxKonApplication>().container
-    private var settingsJob: kotlinx.coroutines.Job? = null
-    private var activeOwner: SessionState.Active? = null
-    init {
-        viewModelScope.launch { container.session.state.collect { state ->
-            val owner = state as? SessionState.Active
-            if (activeOwner !== owner) {
-                settingsJob?.cancel(); activeOwner = owner; presentation.bindOwner(owner)
-                controller.resetOwner()
-            }
-        } }
-    }
-    fun connect(owner: SessionState.Active) {
-        if (activeOwner !== owner) { settingsJob?.cancel(); activeOwner = owner; presentation.bindOwner(owner) }
-        controller.connect(owner)
-        if (!presentation.settingsVerified && settingsJob?.isActive != true) readSettings(owner)
-    }
-    fun readSettings(owner: SessionState.Active) {
-        if (settingsJob?.isActive == true) return
-        presentation.settingsBusy = true
-        settingsJob = viewModelScope.launch {
-            try {
-                val result = container.terminalSettings.read(owner)
-                if (activeOwner !== owner) return@launch
-                presentation.settingsVerified = result is app.relaxkonos.mobile.core.net.ApiResult.Success
-                if (result is app.relaxkonos.mobile.core.net.ApiResult.Success) { presentation.settings = result.value; presentation.settingsMessage = null }
-                else presentation.settingsMessage = app.relaxkonos.mobile.ui.common.UiMessage(R.string.terminal_settings_unavailable)
-            } finally { if (activeOwner === owner) presentation.settingsBusy = false }
-        }
-    }
-    fun saveSettings(owner: SessionState.Active, value: app.relaxkonos.mobile.core.net.TerminalSettings) {
-        if (settingsJob?.isActive == true || !presentation.settingsVerified) return
-        val expected = presentation.settings
-        presentation.settingsBusy = true
-        settingsJob = viewModelScope.launch {
-            try {
-                val result = container.terminalSettings.save(owner, expected, value)
-                if (activeOwner !== owner) return@launch
-                when (result) {
-                    is app.relaxkonos.mobile.core.net.ApiResult.Success -> {
-                        presentation.settings = result.value; presentation.localFontSize = null; presentation.settingsMessage = app.relaxkonos.mobile.ui.common.UiMessage(R.string.terminal_settings_saved, tone = app.relaxkonos.mobile.ui.common.StatusTone.Success)
-                    }
-                    else -> {
-                        presentation.settingsVerified = false
-                        presentation.settingsMessage = app.relaxkonos.mobile.ui.common.UiMessage(
-                            if (result is app.relaxkonos.mobile.core.net.ApiResult.Problem && result.status < 500) R.string.terminal_settings_changed else R.string.terminal_settings_unknown)
-                    }
-                }
-            } finally { if (activeOwner === owner) presentation.settingsBusy = false }
-        }
-    }
-    fun attach(id: String?) = controller.attach(id)
-    fun send(text: String) = controller.send(text)
-    fun resize(columns: Int, rows: Int) = controller.resize(columns, rows)
-    fun close(sessionId: String) = controller.close(sessionId)
-    fun closeSessions(ids: List<String>) = controller.closeSessions(ids)
-    fun clearOutput() = controller.clearOutput()
-    fun detach() = controller.detach()
-    override fun onCleared() { detach(); super.onCleared() }
-}
 
 @Composable
 fun ServerTerminalScreen(owner: SessionState.Active, modifier: Modifier = Modifier) {

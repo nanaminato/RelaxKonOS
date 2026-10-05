@@ -246,6 +246,11 @@
     "server_center.firewall_choice": "Add an inbound firewall rule for the server TCP port",
     "server_center.firewall_help": "Applies to network access. If the host firewall is disabled, you will be notified and no rule will be added.",
     "server_center.firewall_disabled": "The host firewall is disabled; no firewall rule was added.",
-    "server_center.firewall_added": "The server TCP port was allowed through the firewall."
+    "server_center.firewall_added": "The server TCP port was allowed through the firewall.",
+    "server_center.components_note": "Select components to remove. Unselected services and management data are retained. Docker containers and volumes are outside component cleanup; deleting data removes deployment records and configuration in the data root.",
+    "server_center.remove_smb": "Remove managed SMB shares",
+    "server_center.remove_nginx": "Remove managed Nginx",
+    "server_center.remove_frp": "Remove managed FRP",
+    "server_center.remove_mihomo": "Remove managed Mihomo"
   }
 }

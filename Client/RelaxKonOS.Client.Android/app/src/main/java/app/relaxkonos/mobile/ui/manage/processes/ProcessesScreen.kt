@@ -65,9 +65,7 @@ import app.relaxkonos.mobile.ui.icons.DesktopIcon
 import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.manage.ManageViewModel
 import app.relaxkonos.mobile.ui.theme.Spacing
-import kotlinx.coroutines.delay
 
-private const val PROCESS_REFRESH_INTERVAL_MILLIS = 6_000L
 
 /**
  * Process list.
@@ -91,10 +89,7 @@ fun ProcessesScreen(
     LaunchedEffect(active, lifecycle, auth, viewModel.processesAvailable) {
         if (!active || !viewModel.processesAvailable) return@LaunchedEffect
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-            try {
-                viewModel.startProcessObserving()
-                while (true) { delay(PROCESS_REFRESH_INTERVAL_MILLIS); viewModel.loadProcesses() }
-            } finally { viewModel.stopProcessObserving() }
+            viewModel.observeProcesses()
         }
     }
     DisposableEffect(viewModel) { onDispose { viewModel.stopProcessObserving() } }

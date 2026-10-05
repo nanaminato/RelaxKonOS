@@ -20,7 +20,7 @@ def shell_path(path):
 class RetainedComponentChecks(unittest.TestCase):
     def test_remove_data_requires_successful_component_cleanup(self):
         (REPO / '.tmp').mkdir(exist_ok=True)
-        for failure in ('false', 'true'):
+        for failure, selection in (('false', ''), ('true', ''), ('false', 'nginx,mihomo'), ('true', 'nginx,mihomo')):
             with self.subTest(failure=failure), tempfile.TemporaryDirectory(prefix='cleanup-components-', dir=REPO / '.tmp') as temporary:
                 root = Path(temporary)
                 program, data = root / 'program', root / 'data'
@@ -32,7 +32,11 @@ class RetainedComponentChecks(unittest.TestCase):
                 executable.write_text('''#!/bin/bash
 [[ "$*" == *--maintenance=remove-managed-components* ]] || exit 98
 mkdir -p "$TEST_DATA/server/deployment"
-printf '{"Succeeded":%s,"Components":[{"Component":"smb","Succeeded":true},{"Component":"nginx","Succeeded":true},{"Component":"frp","Succeeded":true},{"Component":"mihomo","Succeeded":true}]}' "$([[ $TEST_FAILURE == true ]] && echo false || echo true)" > "$TEST_DATA/server/deployment/component-cleanup.json"
+while (( $# )); do if [[ $1 == --maintenanceComponents ]]; then selection=$2; break; fi; shift; done
+python3 - "$TEST_DATA/server/deployment/component-cleanup.json" "$selection" "$TEST_FAILURE" <<'PY'
+import json,sys
+with open(sys.argv[1],'w') as f: json.dump(dict(Succeeded=sys.argv[3]!='true',Components=[dict(Component=c,Succeeded=True) for c in sys.argv[2].split(',')]),f)
+PY
 [[ "$TEST_FAILURE" != true ]] || exit 70
 ''', newline='\n')
                 (root / 'bin/systemctl').write_text('#!/bin/bash\nexit 0\n', newline='\n')
@@ -50,7 +54,8 @@ if [[ ${args[0]} == -d ]]; then mkdir -p "${args[1]}"; else cp "${args[0]}" "${a
                     source = source.replace(prefix, shell_path(root) + prefix)
                 script = root / 'uninstall.sh'
                 script.write_text('export PATH="' + shell_path(root / 'bin') + ':/usr/bin:$PATH"\n' + source, newline='\n')
-                result = subprocess.run([BASH, shell_path(script), '--install-root', shell_path(program), '--data-root', shell_path(data), '--remove-data', '--non-interactive'],
+                options = ['--remove-components', selection] if selection else ['--remove-data']
+                result = subprocess.run([BASH, shell_path(script), '--install-root', shell_path(program), '--data-root', shell_path(data), *options, '--non-interactive'],
                                         env=os.environ | {'TEST_FAILURE': failure, 'TEST_DATA': shell_path(data)}, capture_output=True, text=True, encoding='utf-8')
                 if failure == 'true':
                     self.assertEqual(result.returncode, 70, result.stderr)
@@ -61,8 +66,12 @@ if [[ ${args[0]} == -d ]]; then mkdir -p "${args[1]}"; else cp "${args[0]}" "${a
                 else:
                     self.assertEqual(result.returncode, 0, result.stderr)
                     self.assertFalse(program.exists())
-                    self.assertFalse(data.exists())
-                    self.assertTrue(json.loads((root / 'var/lib/relaxkonos-deployment/component-cleanup.json').read_text())['Succeeded'])
+                    self.assertEqual(data.exists(), bool(selection))
+                    receipt = json.loads((root / 'var/lib/relaxkonos-deployment/component-cleanup.json').read_text())
+                    self.assertTrue(receipt['Succeeded'])
+                    self.assertEqual([x['Component'] for x in receipt['Components']], selection.split(',') if selection else ['smb','nginx','frp','mihomo'])
+                    if selection:
+                        self.assertEqual((data / 'server/relaxkonos.db').read_text(), 'ownership-fixture')
 
     def test_default_uninstall_preserves_component_state_and_reinstall_identity(self):
         (REPO / '.tmp').mkdir(exist_ok=True)

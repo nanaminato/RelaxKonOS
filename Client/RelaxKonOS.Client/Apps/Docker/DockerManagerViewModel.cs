@@ -86,8 +86,8 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
 
     /// <summary>Assigned by the app shell so operations can surface an unavailable Engine immediately.</summary>
     public Func<Task>? ShowDockerUnavailableAsync { get; set; }
-    /// <summary>Assigned by the app shell to open the localized Docker installation guide.</summary>
-    public Func<Task>? OpenDockerInstallGuideAsync { get; set; }
+    /// <summary>Assigned by the app shell to open the server Docker installation flow.</summary>
+    public Func<Task>? OpenDockerInstallationAsync { get; set; }
     /// <summary>Assigned by the app shell to display edit dialogs without coupling the VM to views.</summary>
     public Func<Task>? ShowEditContainerAsync { get; set; }
     public Func<Task>? ShowEditStackAsync { get; set; }
@@ -266,15 +266,15 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         DeleteImageCommand.NotifyCanExecuteChanged(); DeleteNetworkCommand.NotifyCanExecuteChanged(); DeleteVolumeCommand.NotifyCanExecuteChanged();
         LoadNetworkDetailsCommand.NotifyCanExecuteChanged(); LoadVolumeDetailsCommand.NotifyCanExecuteChanged();
     }
-    partial void OnIsDockerInstallRequiredChanged(bool value) => OpenInstallGuideCommand.NotifyCanExecuteChanged();
+    partial void OnIsDockerInstallRequiredChanged(bool value) => OpenInstallationCommand.NotifyCanExecuteChanged();
 
-    private bool CanOpenInstallGuide => IsDockerInstallRequired && OpenDockerInstallGuideAsync is not null;
+    private bool CanOpenInstallation => IsDockerInstallRequired && OpenDockerInstallationAsync is not null;
 
-    [RelayCommand(CanExecute = nameof(CanOpenInstallGuide))]
-    private async Task OpenInstallGuideAsync()
+    [RelayCommand(CanExecute = nameof(CanOpenInstallation))]
+    private async Task OpenInstallationAsync()
     {
-        if (OpenDockerInstallGuideAsync is not null)
-            await OpenDockerInstallGuideAsync();
+        if (OpenDockerInstallationAsync is not null)
+            await OpenDockerInstallationAsync();
     }
     private void NotifyContainerCommands()
     {

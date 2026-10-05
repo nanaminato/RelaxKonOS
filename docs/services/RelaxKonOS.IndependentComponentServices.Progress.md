@@ -21,7 +21,7 @@ Windows Nginx、Mihomo、FRPC/FRPS 使用独立 SCM 服务；Linux FRPC/FRPS 使
 - [x] 构建、受限路径验证、模拟生命周期与卸载隔离测试。
 - [x] 隔离 Windows/Linux 主机上的真实 SCM/systemd、重启、保留数据卸载/重装与组件清理验收。
 - [ ] GUI/API 控制面完整回归、版本间升级及选择性删除数据的验收。
-- [ ] 下一阶段：选择性卸载契约、引擎及桌面/Android 界面。
+- [x] 选择性卸载契约、引擎及桌面/Android 界面（验证结果见后续记录）。
 
 ## 当前状态与下一步
 
@@ -37,11 +37,32 @@ Helper 协议统一为 1.0，统一为 `ManagedRuntime` 操作、`managedRuntime
 
 主要实现文件：Helper 的 `WindowsComponentService.cs`、`WindowsComponentJob.cs`、`WindowsMihomoServiceManager.cs`、`LinuxFrpServiceManager.cs`；Server 的 `ManagedRuntimeOperations.cs`、`FrpTunnelProvider.cs`、`ManagedFrpsService.cs`；Shared 的 `ManagedRuntimeContracts.cs`。默认 Linux 卸载不再停止 Mihomo，重新安装也不主动改变保留组件的运行状态。
 
-本轮已完成隔离主机的服务生命周期、异常恢复、OS 重启、保留数据卸载/重装和组件清理验收。下一步补充 GUI/API 控制面与跨版本升级回归，再实施选择性卸载：新增逐组件保留/移除选项，贯通 ServerCenter 契约、部署引擎和客户端；保留组件时必须保留其配置和所有权记录。
+本轮已完成隔离主机的服务生命周期、异常恢复、OS 重启、保留数据卸载/重装和组件清理验收。选择性卸载已贯通 ServerCenter 契约、部署引擎和桌面/Android 界面，并完成两平台的真实启动器选择性卸载与原路径重装。GUI/API 全流程、跨版本升级及其他组件组合仍需单独回归。
 
-当前边界：选择性卸载界面和选项尚未实现；仍只有保留数据与完整删除数据两种流程。Windows 部分组件目录及 FRP 的控制面数据库仍在原数据根下，当前不得一边删除数据根一边保留这些组件。下一阶段需决定将组件数据/所有权移到独立持久化根，或在保留组件时阻止删除相关数据，不能仅跳过服务卸载。
+当前边界：已增加 SMB、Nginx、FRP、Mihomo 逐组件移除选择，未选组件保留运行。保留任一组件时保留整个数据根及管理记录；完整删除数据必须移除全部四项。Docker Engine、容器和卷不在这四项清理范围内。Linux 用户模式不拥有系统组件。清理按固定顺序执行并验证所选项目回执，失败保留程序、Helper 与数据。
 
 ## 验证记录
+
+### 选择性卸载与重复重启验收（2026-10-05）
+
+已在用户明确授权的隔离主机 `192.168.1.2`（Ubuntu 26.04 x64）和 `192.168.1.9`（Windows Server 2022 x64）部署 `0.3.0-selective-20261005`，共享 Helper 协议保持 `1.0`。凭据只在测试进程中使用，不保存到代码或文档。
+
+| 检查 | Ubuntu | Windows Server |
+| --- | --- | --- |
+| FRPS、两个 FRPC、Mihomo，Windows 另含 Nginx | 通过 | 通过 |
+| 单个 FRPC 停止/启动不影响另一个 | 通过 | 通过 |
+| 停止 Server/Guardian 后组件继续运行 | 通过 | 通过，另停止 Helper |
+| 真实 OS 重启后自动恢复、重新读取 FRP 应用证明 | 通过 | 通过，五个 SCM 服务恢复 |
+| 真实部署启动器选择移除 Nginx/FRP、保留 Mihomo 与数据库 | 通过 | 通过 |
+| 按原路径重新安装，Mihomo 保持运行、Server 健康检查 | 通过 | 通过 |
+| 缺少 Mihomo 管理记录时阻止完整删除数据 | 本轮以隔离脚本测试覆盖失败保护 | 实机确认失败回执，程序、Helper、数据库保留 |
+| 生产 Helper 清理验收程序创建的组件后，完整删除数据 | 通过 | 通过 |
+
+选择性卸载的操作 ID：Linux `fc21f614-df54-43c8-adda-ac33dfcbfbc7`，Windows `c7cda2df-1acf-45d4-bfc1-a3daf0612443`；主机外置部署日志与回执保留。验收程序直接安装的 Mihomo 没有 Server 的管理记录，因此未伪造数据库或运行时状态来绕过保护：先验证拒绝清理，再用生产 Helper 移除测试服务及其固定版本暂存文件，最后运行完整卸载。Linux 的停止服务与移除 unit 是两个动作，验收清理程序现按此顺序执行，最终确认无运行中的测试服务。
+
+本地通过：Server 构建/两 RID 发布、桌面构建、Android `compileDebugKotlin`；Windows 精确选择回执与失败保护、Linux 默认保留和部分选择清理、非法选择/重复选择/保留组件加全量删除拒绝测试；PowerShell/Bash 语法检查。Windows PowerShell 5 的 UTF-8 脚本需 BOM，已保留此编码要求。构建存在原有平台/空值/XAML 警告。
+
+边界：本轮移除组合为 Nginx/FRP，保留组件实际检查为 Mihomo；未声称真实 SMB 共享清理、Mihomo 的完整 GUI 安装/重连、桌面交互或 Android 设备交互已验收。保留整个数据根是当前契约，未实现按组件切分数据库或选择性删除数据目录。Docker Engine、容器及卷不属于四项选择。测试服务与 Server 主数据已清理，外置部署回执保留。
 
 ### 隔离主机实测（2026-10-05，已完成本轮）
 

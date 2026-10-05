@@ -246,6 +246,11 @@
     "server_center.firewall_choice": "サーバーの TCP ポート用のファイアウォール受信規則を追加",
     "server_center.firewall_help": "ネットワークアクセス用です。ファイアウォールが無効な場合は通知し、規則は追加しません。",
     "server_center.firewall_disabled": "ホストのファイアウォールが無効なため、規則は追加していません。",
-    "server_center.firewall_added": "ファイアウォールでサーバーの TCP ポートを許可しました。"
+    "server_center.firewall_added": "ファイアウォールでサーバーの TCP ポートを許可しました。",
+    "server_center.components_note": "削除するコンポーネントを選択してください。未選択のサービスと管理データは保持します。Docker コンテナーとボリュームはコンポーネント削除の対象外ですが、データ削除では配置記録とデータルート内の設定も削除します。",
+    "server_center.remove_smb": "管理対象 SMB 共有を削除",
+    "server_center.remove_nginx": "管理対象 Nginx を削除",
+    "server_center.remove_frp": "管理対象 FRP を削除",
+    "server_center.remove_mihomo": "管理対象 Mihomo を削除"
   }
 }

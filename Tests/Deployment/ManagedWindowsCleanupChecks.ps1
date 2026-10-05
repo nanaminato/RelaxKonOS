@@ -4,17 +4,19 @@ $fixtureRoot = Join-Path $repository ('.tmp/managed-cleanup-' + [guid]::NewGuid(
 $InstallRoot = Join-Path $fixtureRoot 'program'
 $DataRoot = Join-Path $fixtureRoot 'data'
 $Mode = 'windowsSystem'
+$RemoveComponents = 'smb,nginx,frp,mihomo'
 $oldProgramData = $env:ProgramData
 $oldDotnet = $env:DOTNET_ENVIRONMENT
 $oldAspnet = $env:ASPNETCORE_ENVIRONMENT
-function Invoke-TestCleanup($executable, $contentRootFlag, $contentRoot, $maintenance, $dataRootFlag, $recordedData) {
+function Invoke-TestCleanup($executable, $contentRootFlag, $contentRoot, $maintenance, $dataRootFlag, $recordedData, $selectionFlag, $selection) {
+    if ($selectionFlag -ne '--maintenanceComponents' -or $selection -ne $RemoveComponents) { throw 'Cleanup selection was not forwarded.' }
     if ($maintenance -ne '--maintenance=remove-managed-components' -or $dataRootFlag -ne '--maintenanceDataRoot' -or $recordedData -ne $DataRoot) {
         throw 'Cleanup was not bound to the recorded data root.'
     }
     if ($env:DOTNET_ENVIRONMENT -ne 'Production' -or $env:ASPNETCORE_ENVIRONMENT -ne 'Production') { throw 'Cleanup used a development environment.' }
     $receiptFolder = Join-Path $DataRoot 'server/deployment'
     New-Item -ItemType Directory -Path $receiptFolder -Force | Out-Null
-    $components = @('smb', 'nginx', 'frp', 'mihomo') | ForEach-Object { @{ Component = $_; Succeeded = $true } }
+    $components = @($selection -split ',') | ForEach-Object { @{ Component = $_; Succeeded = $true } }
     [IO.File]::WriteAllText((Join-Path $receiptFolder 'component-cleanup.json'), (@{ Succeeded = -not $script:failCleanup; Components = $components } | ConvertTo-Json -Depth 5))
     $global:LASTEXITCODE = if ($script:failCleanup) { 70 } else { 0 }
 }
@@ -44,6 +46,10 @@ try {
     $savedReceipt = Get-Content -LiteralPath (Join-Path $env:ProgramData 'RelaxKonOS-Deployment/component-cleanup.json') -Raw | ConvertFrom-Json
     if (-not $savedReceipt.Succeeded) { throw 'Successful receipt was not preserved outside the data root.' }
     if ($env:DOTNET_ENVIRONMENT -ne 'FixtureEnvironment' -or $env:ASPNETCORE_ENVIRONMENT -ne 'FixtureEnvironment') { throw 'Cleanup leaked environment changes.' }
+    $RemoveComponents = 'nginx,mihomo'
+    Invoke-ManagedComponentCleanup
+    $selectedReceipt = Get-Content -LiteralPath (Join-Path $env:ProgramData 'RelaxKonOS-Deployment/component-cleanup.json') -Raw | ConvertFrom-Json
+    if ((@($selectedReceipt.Components | ForEach-Object { $_.Component }) -join ',') -ne 'nginx,mihomo') { throw 'Unselected components were cleaned up.' }
     Write-Output 'PASS: Windows cleanup refuses failed maintenance and preserves successful receipts.'
 } finally {
     $env:ProgramData = $oldProgramData

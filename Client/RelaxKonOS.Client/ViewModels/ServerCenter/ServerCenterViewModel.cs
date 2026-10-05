@@ -121,6 +121,16 @@ public partial class ServerCenterViewModel : ObservableObject
     [ObservableProperty] private string _verifiedStateText = string.Empty;
     [ObservableProperty] private string _lastProbeText = string.Empty;
     [ObservableProperty] private bool _deleteServerData;
+    [ObservableProperty] private bool _removeSmb;
+    [ObservableProperty] private bool _removeNginx;
+    [ObservableProperty] private bool _removeFrp;
+    [ObservableProperty] private bool _removeMihomo;
+    public string ComponentSelectionText => T("server_center.components_note", "Select components to remove. Unselected components and management data are retained. Docker containers and volumes are outside component cleanup; deleting data removes deployment records and configuration in the data root.");
+    public string RemoveSmbText => T("server_center.remove_smb", "Remove managed SMB shares");
+    public string RemoveNginxText => T("server_center.remove_nginx", "Remove managed Nginx");
+    public string RemoveFrpText => T("server_center.remove_frp", "Remove managed FRP");
+    public string RemoveMihomoText => T("server_center.remove_mihomo", "Remove managed Mihomo");
+    private string SelectedComponents => string.Join(",", new[] { RemoveSmb ? "smb" : null, RemoveNginx ? "nginx" : null, RemoveFrp ? "frp" : null, RemoveMihomo ? "mihomo" : null }.Where(x => x is not null));
     [ObservableProperty] private ServerCenterOperationRecord? _selectedOperation;
 
     /// <summary>Workspace-owned modal presentation; the view model owns the deployment action only.</summary>
@@ -507,7 +517,8 @@ public partial class ServerCenterViewModel : ObservableObject
                     Confirmed: true,
                     Language: _localization.CurrentLanguage,
                     AllowUnsupportedSystem: operationMode == ServerInstallMode.LinuxSystem && !probe.OsSupported,
-                    AddFirewallRule: kind == ServerDeploymentKind.Repair && !recovering && operationMode != ServerInstallMode.LinuxUser && MaintenanceAddFirewallRule));
+                    AddFirewallRule: kind == ServerDeploymentKind.Repair && !recovering && operationMode != ServerInstallMode.LinuxUser && MaintenanceAddFirewallRule,
+                    RemoveComponents: kind == ServerDeploymentKind.Uninstall && operationMode != ServerInstallMode.LinuxUser ? SelectedComponents : ""));
             var receipt = await ExecuteFixedOperationAsync(session, tools, request, cancellationToken, sudoPassword).ConfigureAwait(true);
 
             // Read the separate status receipt even after uninstall. The install identity is retained
@@ -566,6 +577,7 @@ public partial class ServerCenterViewModel : ObservableObject
             SshPassword = string.Empty;
             MaintenanceAddFirewallRule = false;
         DeleteServerData = false;
+        RemoveSmb = RemoveNginx = RemoveFrp = RemoveMihomo = false;
             if (HasError) StatusMessage = string.Empty;
             IsBusy = false;
         }
@@ -1145,6 +1157,7 @@ public partial class ServerCenterViewModel : ObservableObject
         LastProbeText = string.Empty;
         MaintenanceAddFirewallRule = false;
         DeleteServerData = false;
+        RemoveSmb = RemoveNginx = RemoveFrp = RemoveMihomo = false;
         Operations.Clear();
         SelectedOperation = null;
         OnPropertyChanged(nameof(HasOperations));
@@ -1219,7 +1232,14 @@ public partial class ServerCenterViewModel : ObservableObject
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
     }
-    partial void OnDeleteServerDataChanged(bool value) => UninstallCommand.NotifyCanExecuteChanged();
+    partial void OnDeleteServerDataChanged(bool value) {
+        if (value) { RemoveSmb = RemoveNginx = RemoveFrp = RemoveMihomo = true; }
+        UninstallCommand.NotifyCanExecuteChanged();
+    }
+    partial void OnRemoveSmbChanged(bool value) { if (!value) DeleteServerData = false; }
+    partial void OnRemoveNginxChanged(bool value) { if (!value) DeleteServerData = false; }
+    partial void OnRemoveFrpChanged(bool value) { if (!value) DeleteServerData = false; }
+    partial void OnRemoveMihomoChanged(bool value) { if (!value) DeleteServerData = false; }
     partial void OnSelectedOperationChanged(ServerCenterOperationRecord? value)
     {
         OperationDiagnostics = string.Empty;

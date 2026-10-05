@@ -29,6 +29,29 @@ internal data class ProxyState(val busy: Boolean = false, val overview: ApiResul
     val logs: ApiResult<List<ProxyLog>>? = null, val dns: ApiResult<ProxyDns>? = null, val geoData: ApiResult<ProxyGeoData>? = null,
     val diagnosticsBusy: Boolean = false, val diagnosticsSection: String? = null, val diagnosticsAtMillis: Long? = null, val problemCode: String? = null, val uncertain: Boolean = false, val savedEpoch: Int = 0, val observedAtMillis: Long? = null)
 internal class ProxyViewModel(application: Application) : AndroidViewModel(application) {
+    suspend fun observeOperation() {
+        if (state.operationVerified && state.operation?.state?.active == true && !state.busy) {
+            kotlinx.coroutines.delay(1500)
+            pollOperation()
+        }
+    }
+
+    suspend fun observeDiagnostics(section: String) {
+        val overview = (state.overview as? ApiResult.Success)?.value
+        if (section !in setOf("connections", "logs", "settings") || overview?.controllerReachable != true || state.uncertain) return
+        while (true) {
+            diagnostics(section)
+            kotlinx.coroutines.delay(3000)
+        }
+    }
+
+    suspend fun observeInstallation() {
+        if (state.installationVerified && state.installation?.state?.active == true && !state.busy) {
+            kotlinx.coroutines.delay(1500)
+            pollInstall()
+        }
+    }
+
     private val container get() = getApplication<RelaxKonApplication>().container
     private var owner: SessionState.Active? = null
     private var intent: InstallationSubmission? = null

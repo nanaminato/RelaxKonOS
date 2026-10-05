@@ -7,6 +7,7 @@ using RelaxKonOS.Server.FileServices;
 using RelaxKonOS.Server.Proxy;
 using RelaxKonOS.Server.Proxy.Platform;
 using RelaxKonOS.Server.Runtimes;
+using RelaxKonOS.Server.Privileged;
 using RelaxKonOS.Server.WebServer;
 
 namespace RelaxKonOS.Server.Installations;
@@ -45,12 +46,22 @@ public static class ManagedComponentCleanup
         return new(true, results);
     }
 
-    public static Task<ComponentCleanupReceipt> RemoveAsync(IServiceProvider services, string receiptPath, string dataRoot, bool personal, CancellationToken ct) =>
-        RunAsync([
+    public static Task<ComponentCleanupReceipt> RemoveAsync(IServiceProvider services, string receiptPath, string dataRoot, bool personal, CancellationToken ct, string components = "smb,nginx,frp,mihomo")
+    {
+        var selected = components.Split(',', StringSplitOptions.RemoveEmptyEntries);
+        if (selected.Length != selected.Distinct(StringComparer.Ordinal).Count() ||
+            selected.Any(x => x is not ("smb" or "nginx" or "frp" or "mihomo")))
+            throw new ArgumentException("Invalid component selection.");
+        IEnumerable<(string Name, Func<CancellationToken, Task<string?>> Execute)> steps = [
             ("smb", token => personal ? Task.FromResult<string?>(null) : RemoveSharesAsync(services, dataRoot, token)),
             ("nginx", token => services.GetRequiredService<NginxWebServerManager>().RemoveOwnedInstallationAsync(personal, token)),
             ("frp", async token => {
                 var runtime = services.GetRequiredService<IRuntimeManager>();
+                // The independent service can outlive Server's runtime pointer. Always ask
+                // the constrained Helper to remove owned instances before clearing metadata.
+                var removed = await services.GetRequiredService<ManagedRuntimeOperations>().ExecuteAsync(
+                    new(Protocol.Privileged.ManagedRuntime.Frpc, Protocol.Privileged.ManagedRuntimeAction.Uninstall), token);
+                if (!removed.Success) return ManagedRuntimeOperations.Problem(removed);
                 if ((await runtime.GetManagedFrpcStatusAsync(token)).State == TunnelRuntimeState.NotInstalled) return null;
                 var result = await runtime.UninstallManagedFrpcAsync(token);
                 return result.Succeeded ? null : result.ProblemCode;
@@ -80,7 +91,9 @@ public static class ManagedComponentCleanup
                     if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
                 return null;
             })
-        ], receiptPath, ct);
+        ];
+        return RunAsync(steps.Where(x => selected.Contains(x.Name, StringComparer.Ordinal)), receiptPath, ct);
+    }
 
     private static void RequirePlainTree(string root)
     {

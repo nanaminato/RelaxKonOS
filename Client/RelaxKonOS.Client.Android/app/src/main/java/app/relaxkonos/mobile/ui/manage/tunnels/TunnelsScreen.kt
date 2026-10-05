@@ -22,7 +22,6 @@ import app.relaxkonos.mobile.data.*
 import app.relaxkonos.mobile.ui.common.*
 import app.relaxkonos.mobile.ui.manage.operations.*
 import app.relaxkonos.mobile.ui.theme.Spacing
-import kotlinx.coroutines.delay
 import java.text.DateFormat
 import java.util.Date
 
@@ -45,15 +44,13 @@ import java.util.Date
     OperationMessageDialog(if (state.busy) null else state.problemCode?.let { tunnelProblemLabel(it) } ?: if (state.uncertain) stringResource(R.string.tunnels_uncertain) else null, tone = if (state.problemCode == null) StatusTone.Warning else StatusTone.Danger)
     LaunchedEffect(owner, epoch) { if (available) model.refresh() }
     LaunchedEffect(owner, epoch, state.installation?.operationId, state.installation?.state, state.busy, state.installationVerified) {
-        if (state.installationVerified && state.installation?.state?.active == true && !state.busy) { delay(1500); model.pollInstall() }
+        model.observeInstallation()
     }
     val facts = (state.facts as? ApiResult.Success)?.value
     val runtime = (state.runtime as? ApiResult.Success)?.value
     val notInstalled = runtime?.state == TunnelRuntimeState.NotInstalled
     LaunchedEffect(owner, epoch, frpsSection, state.selectedId, state.busy, facts?.observedAtMillis) {
-        if (!frpsSection && state.selectedId != null && !state.busy && facts?.definitions?.any { it.profileId == state.selectedId && it.state in setOf(TunnelConnectionState.Starting, TunnelConnectionState.Connected) } == true) {
-            delay(3000); model.observe()
-        }
+        if (!frpsSection) model.observeConnection()
     }
     BackHandler(section in setOf("profiles", "logs") && state.selectedId != null && state.profileDraft == null && state.definitionDraft == null && !state.busy) { model.select(null) }
     WorkspaceColumn(stringResource(R.string.tunnels_title), onBack, listOf(WorkspaceDestination("overview", R.string.workspace_overview), WorkspaceDestination("profiles", R.string.workspace_tunnels), WorkspaceDestination("runtime", R.string.workspace_runtime), WorkspaceDestination("logs", R.string.workspace_logs), WorkspaceDestination("frps", R.string.frps_server_tab), WorkspaceDestination("records", R.string.tunnels_records)), section, { section = it }, modifier, stateKey = owner to epoch,

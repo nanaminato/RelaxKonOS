@@ -2832,4 +2832,10 @@
     <string name="manage_search_empty">No applications match your search.</string>
     <string name="files_actions">Actions</string>
     <string name="mihomo_install_accept_note">Accept the current state to clear local blocking when no installation is running on the host. This does not resend the installation or claim the original request succeeded.</string>
+
+    <string name="server_components_note">Select components to remove. Unselected services and management data are retained. Docker containers and volumes are outside component cleanup; deleting data removes deployment records and configuration in the data root.</string>
+    <string name="server_remove_smb">Remove managed SMB shares</string>
+    <string name="server_remove_nginx">Remove managed Nginx</string>
+    <string name="server_remove_frp">Remove managed FRP</string>
+    <string name="server_remove_mihomo">Remove managed Mihomo</string>
 </resources>

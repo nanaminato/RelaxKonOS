@@ -257,7 +257,7 @@ def request(path):
     root = {'schemaVersion', 'operationId', 'kind', 'options'}
     keys = {'source','network','retention','mode','version','packageUri','stagedPackageName',
             'packageDigest','remotePackagePath','expectedInstallationId','serverPort','fileAccess',
-            'certificateMode','selfSignedIdentities','confirmed','language','releaseCatalogBaseUri','installRoot','dataRoot','configRoot','stateRoot','cacheRoot','fileRoots','administratorFileAccess','administratorFileRoots','rootFileAccess','rootFileRoots','dockerAccess','allowUnsupportedSystem','addFirewallRule'}
+            'certificateMode','selfSignedIdentities','confirmed','language','releaseCatalogBaseUri','installRoot','dataRoot','configRoot','stateRoot','cacheRoot','fileRoots','administratorFileAccess','administratorFileRoots','rootFileAccess','rootFileRoots','dockerAccess','allowUnsupportedSystem','addFirewallRule','removeComponents'}
     if type(value) is not dict or set(value) - root: raise ValueError('request fields')
     if type(value.get('schemaVersion')) is not int or value['schemaVersion'] != 1: raise ValueError('schema')
     if not isinstance(value.get('operationId'), str) or not re.fullmatch(r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}',value['operationId']): raise ValueError('id')
@@ -418,7 +418,7 @@ assert_request_keys() {
   while IFS= read -r key; do
     [[ -n $key ]] || continue
     case "$key" in
-      schemaVersion|operationId|kind|options|source|network|retention|mode|version|packageUri|stagedPackageName|packageDigest|remotePackagePath|expectedInstallationId|serverPort|fileAccess|certificateMode|selfSignedIdentities|confirmed|language|releaseCatalogBaseUri|installRoot|dataRoot|configRoot|stateRoot|cacheRoot|fileRoots|administratorFileAccess|administratorFileRoots|rootFileAccess|rootFileRoots|dockerAccess|allowUnsupportedSystem|addFirewallRule) ;;
+      schemaVersion|operationId|kind|options|source|network|retention|mode|version|packageUri|stagedPackageName|packageDigest|remotePackagePath|expectedInstallationId|serverPort|fileAccess|certificateMode|selfSignedIdentities|confirmed|language|releaseCatalogBaseUri|installRoot|dataRoot|configRoot|stateRoot|cacheRoot|fileRoots|administratorFileAccess|administratorFileRoots|rootFileAccess|rootFileRoots|dockerAccess|allowUnsupportedSystem|addFirewallRule|removeComponents) ;;
       *) launcher_fail invalid_request "unsupported request field: $key" ;;
     esac
   done <<< "$keys"
@@ -431,6 +431,7 @@ options_add_firewall=false
 firewall_status=null
 options_network=loopback
 options_retention=retain
+options_remove_components=
 options_mode=
 options_version=
 options_package_uri=
@@ -474,6 +475,7 @@ parse_request() {
   local value
   value=$(json_text source); [[ -n $value ]] && options_source=$value
   value=$(json_text network); [[ -n $value ]] && options_network=$value
+  options_remove_components=$(json_text removeComponents)
   value=$(json_text retention); [[ -n $value ]] && options_retention=$value
   options_mode=$(json_text mode)
   options_version=$(json_text version)
@@ -512,6 +514,19 @@ parse_request() {
 
   case "$options_source" in officialStable|localBundle|remoteBundle|directUrl) ;; *) launcher_fail invalid_request "unsupported package source" ;; esac
   case "$options_network" in loopback|lan) ;; *) launcher_fail invalid_request "unsupported network profile" ;; esac
+  if [[ -n $options_remove_components ]]; then
+    [[ $options_confirmed == true ]] || launcher_fail invalid_request "component removal requires confirmation"
+    IFS=, read -ra selection <<< "$options_remove_components"
+    declare -A seen_components=()
+    for component in "${selection[@]}"; do
+      case "$component" in smb|nginx|frp|mihomo) ;; *) launcher_fail invalid_request "invalid component selection" ;; esac
+      [[ ! ${seen_components[$component]+present} ]] || launcher_fail invalid_request "duplicate component"
+      seen_components[$component]=1
+    done
+    [[ $options_remove_components != *, && $operation_kind == uninstall ]] || launcher_fail invalid_request "invalid component selection"
+    [[ $options_retention != delete || ${#selection[@]} == 4 ]] || launcher_fail invalid_request "retained components require retained data"
+    [[ $options_mode != linuxUser ]] || launcher_fail invalid_request "user mode does not own system components"
+  fi
   case "$options_retention" in retain|delete) ;; *) launcher_fail invalid_request "unsupported data retention policy" ;; esac
   case "${options_file_access:-unset}" in unset|restricted|full|whitelist) ;; *) launcher_fail invalid_request "unsupported file access scope" ;; esac
   case "${options_certificate_mode:-unset}" in unset|none|custom|selfSigned) ;; *) launcher_fail invalid_request "unsupported certificate mode" ;; esac
@@ -1134,11 +1149,13 @@ action_uninstall() {
       ;;
     linuxSystem)
       engine=$(system_uninstall_engine_path)
+      local component_args=()
+      [[ -z $options_remove_components ]] || component_args=(--remove-components "$options_remove_components")
       if [[ $options_retention == delete ]]; then
-        run_engine bash "$engine" --install-root "$(system_install_root)" --data-root "$(system_data_root)" --non-interactive --remove-data || status=$?
+        run_engine bash "$engine" --install-root "$(system_install_root)" --data-root "$(system_data_root)" --non-interactive "${component_args[@]}" --remove-data || status=$?
         retained=false
       else
-        run_engine bash "$engine" --install-root "$(system_install_root)" --data-root "$(system_data_root)" --non-interactive || status=$?
+        run_engine bash "$engine" --install-root "$(system_install_root)" --data-root "$(system_data_root)" --non-interactive "${component_args[@]}" || status=$?
       fi
       ;;
   esac

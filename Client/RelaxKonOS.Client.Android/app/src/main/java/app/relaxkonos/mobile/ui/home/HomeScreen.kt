@@ -1,6 +1,7 @@
 package app.relaxkonos.mobile.ui.home
 
-import android.app.Application
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,9 +20,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,17 +27,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
-import app.relaxkonos.mobile.AppContainer
 import app.relaxkonos.mobile.R
-import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.layout.LayoutState
-import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.PerformanceSnapshot
-import app.relaxkonos.mobile.core.net.ServerCapabilities
 import app.relaxkonos.mobile.data.RecentOperation
 import app.relaxkonos.mobile.data.RecentOperationKind
 import app.relaxkonos.mobile.ui.common.DiskRow
@@ -54,9 +46,7 @@ import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionCard
 import app.relaxkonos.mobile.ui.common.StatusChip
 import app.relaxkonos.mobile.ui.common.StatusTone
-import app.relaxkonos.mobile.ui.common.UiMessage
 import app.relaxkonos.mobile.ui.common.collectAsStateValue
-import app.relaxkonos.mobile.ui.common.failureMessage
 import app.relaxkonos.mobile.ui.common.formatSize
 import app.relaxkonos.mobile.ui.common.formatUptime
 import app.relaxkonos.mobile.ui.common.formatTimestamp
@@ -67,58 +57,6 @@ import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Radius
 import app.relaxkonos.mobile.ui.theme.Spacing
 import app.relaxkonos.mobile.ui.theme.relaxKon
-import kotlinx.coroutines.launch
-
-/**
- * Home destination state.
- *
- * The snapshot is fetched through `SystemRepository`, which already owns the single-refresh retry, so
- * this holder only tracks what the screen must render. It keeps no host data beyond the last answer: a
- * stale snapshot rendered as fresh is worse than no snapshot.
- */
-class HomeViewModel(application: Application) : AndroidViewModel(application) {
-    private val container: AppContainer get() = getApplication<RelaxKonApplication>().container
-
-    var snapshot by mutableStateOf<PerformanceSnapshot?>(null)
-        private set
-
-    var message by mutableStateOf<UiMessage?>(null)
-        private set
-
-    var loading by mutableStateOf(false)
-        private set
-
-    val metricsAvailable: Boolean get() = container.capabilities.contains(ServerCapabilities.METRICS)
-
-    val recentOperations get() = container.recentOperations.entries
-
-    fun connectionDescription(serviceId: String): String? {
-        container.loginTunnels.all().firstOrNull { it.serviceId == serviceId }?.let {
-            return "${it.host}:${it.port} → ${it.remoteUrl}"
-        }
-        container.managedLogins.hostFor(serviceId)?.let { return it.displayName }
-        return serviceId.takeIf { it.startsWith("http://") || it.startsWith("https://") }
-    }
-
-    fun refresh() {
-        if (!metricsAvailable || loading) {
-            return
-        }
-        loading = true
-        message = null
-        viewModelScope.launch {
-            when (val result = container.system.performance()) {
-                is ApiResult.Success -> snapshot = result.value
-                else -> message = result.failureMessage()
-            }
-            loading = false
-        }
-    }
-
-    fun dismissMessage() {
-        message = null
-    }
-}
 
 /**
  * Home.

@@ -9,6 +9,7 @@ internal fun maintenanceOptions(
     repairCertificate: Boolean = false,
     certificateIdentities: String = "",
     addFirewallRule: Boolean = false,
+    removeComponents: String = "",
 ): ServerDeploymentOptions {
     require(ServerInstallationId.isValid(installationId))
     val rotate = kind == ServerDeploymentKind.Repair && repairCertificate
@@ -19,6 +20,7 @@ internal fun maintenanceOptions(
     return ServerDeploymentOptions(
         ServerPackageSourceKind.OfficialStable, ServerNetworkProfile.Loopback, mode = mode,
         expectedInstallationId = installationId, confirmed = true,
+        removeComponents = if (kind == ServerDeploymentKind.Uninstall && mode != ServerInstallMode.LinuxUser) removeComponents else "",
         retention = if (kind == ServerDeploymentKind.Uninstall && purge) ServerDataRetention.Delete else ServerDataRetention.Retain,
         certificateMode = if (rotate) "selfSigned" else null,
         selfSignedIdentities = identities,

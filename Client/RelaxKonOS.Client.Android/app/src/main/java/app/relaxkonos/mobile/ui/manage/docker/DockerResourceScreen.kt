@@ -15,7 +15,6 @@ import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.ui.common.*
 import app.relaxkonos.mobile.ui.theme.Spacing
-import kotlinx.coroutines.delay
 import java.util.UUID
 
 private data class ResourceConfirmation(val facts: DockerResourceFacts, val target: DockerResourceTarget?, val change: DockerResourceChange)
@@ -35,7 +34,7 @@ private data class ResourceConfirmation(val facts: DockerResourceFacts, val targ
     LaunchedEffect(owner, state.owner) { if (visible && owner != null) model.refresh() }
     LaunchedEffect(owner, state.saved) { if (visible && state.saved > 0) draft = null }
     LaunchedEffect(active, owner, target?.id, target?.container?.state, state.busy, draft, confirmation) {
-        if (active && visible && target?.container?.state == "running" && !state.busy && draft == null && confirmation == null) { delay(3000); model.pollStats() }
+        if (active && visible && draft == null && confirmation == null) model.observeStats()
     }
     DisposableEffect(owner) { onDispose { model.stop() } }
     BackHandler(active && draft != null) { navigate { draft = null } }

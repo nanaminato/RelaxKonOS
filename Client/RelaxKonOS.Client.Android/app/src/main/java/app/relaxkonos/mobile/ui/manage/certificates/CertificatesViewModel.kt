@@ -18,6 +18,13 @@ internal data class CertificatesState(val busy: Boolean = false, val list: ApiRe
     val preflightAtMillis: Long? = null, val operation: CertificateOperation? = null, val operationVerified: Boolean = false,
     val pending: List<PendingCertificateRequest> = emptyList(), val problemCode: String? = null, val uncertain: Boolean = false)
 internal class CertificatesViewModel(application: Application) : AndroidViewModel(application) {
+    suspend fun observeOperation() {
+        if (state.operation?.state?.active == true && !state.busy) {
+            kotlinx.coroutines.delay(1500)
+            poll()
+        }
+    }
+
     private val container get() = getApplication<RelaxKonApplication>().container
     private var owner: SessionState.Active? = null
     var sessionEpoch by mutableIntStateOf(0)

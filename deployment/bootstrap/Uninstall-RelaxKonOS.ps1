@@ -7,6 +7,7 @@ param(
     [string] $InstallRoot = (Join-Path $env:ProgramFiles 'RelaxKonOS'),
     [string] $DataRoot = (Join-Path $env:ProgramData 'RelaxKonOS'),
     [switch] $RemoveData,
+    [string] $RemoveComponents = '',
     # Deleting data is irreversible, so it requires an explicit second confirmation from the caller
     # in addition to -RemoveData.
     [switch] $ConfirmRemoveData,
@@ -45,6 +46,7 @@ if ($Mode -eq 'windowsSystem' -and -not (Test-Administrator)) {
     Write-Host $Text.elevation
     $elevationArguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Quote-Argument $PSCommandPath), '-Language', $Language,
         '-Mode', $Mode, '-InstallRoot', (Quote-Argument $InstallRoot), '-DataRoot', (Quote-Argument $DataRoot))
+    if ($RemoveComponents) { $elevationArguments += @('-RemoveComponents', (Quote-Argument $RemoveComponents)) }
     if ($RemoveData) { $elevationArguments += '-RemoveData' }
     if ($ConfirmRemoveData) { $elevationArguments += '-ConfirmRemoveData' }
     if ($ExpectedInstallationId) { $elevationArguments += @('-ExpectedInstallationId', $ExpectedInstallationId) }
@@ -80,6 +82,13 @@ if (Test-Path -LiteralPath $statePath -PathType Leaf) {
         }
     }
 }
+if ($RemoveData -and -not $RemoveComponents) { $RemoveComponents = 'smb,nginx,frp,mihomo' }
+$selectedComponents = @($RemoveComponents -split ',' | Where-Object { $_ })
+if (($selectedComponents -join ',') -ne $RemoveComponents -or
+    $selectedComponents.Count -ne @($selectedComponents | Select-Object -Unique).Count -or
+    @($selectedComponents | Where-Object { $_ -notin @('smb','nginx','frp','mihomo') }).Count -or
+    ($RemoveData -and $selectedComponents.Count -ne 4)) { throw 'Invalid component selection; retained components require retained data.' }
+$RemoveComponents = (@('smb','nginx','frp','mihomo') | Where-Object { $_ -in $selectedComponents }) -join ','
 if ($RemoveData -and -not $ConfirmRemoveData) { throw $Text.dataConfirm }
 if ($RemoveData -and (Test-Path -LiteralPath $DataRoot) -and -not $state) {
     throw "Refusing to remove data without an install-state.json file: $DataRoot"
@@ -104,7 +113,7 @@ function Invoke-ManagedComponentCleanup {
     try {
         $env:DOTNET_ENVIRONMENT = 'Production'
         $env:ASPNETCORE_ENVIRONMENT = 'Production'
-        & $cleanupServer '--contentRoot' (Split-Path -Parent $cleanupServer) '--maintenance=remove-managed-components' '--maintenanceDataRoot' $DataRoot
+        & $cleanupServer '--contentRoot' (Split-Path -Parent $cleanupServer) '--maintenance=remove-managed-components' '--maintenanceDataRoot' $DataRoot '--maintenanceComponents' $RemoveComponents
         if ($LASTEXITCODE -ne 0) { throw 'Managed component cleanup failed; program files and data were preserved for repair.' }
     } finally {
         $env:DOTNET_ENVIRONMENT = $originalDotnetEnvironment
@@ -115,14 +124,14 @@ function Invoke-ManagedComponentCleanup {
     $cleanupReceipt = Get-Content -LiteralPath $receipt -Raw | ConvertFrom-Json
     $componentNames = @($cleanupReceipt.Components | ForEach-Object { $_.Component }) -join ','
     if ($cleanupReceipt.Succeeded -isnot [bool] -or -not $cleanupReceipt.Succeeded -or
-        $componentNames -ne 'smb,nginx,frp,mihomo' -or
+        $componentNames -ne $RemoveComponents -or
         @($cleanupReceipt.Components | Where-Object { $_.Succeeded -isnot [bool] -or -not $_.Succeeded }).Count -ne 0) {
         throw 'Managed component cleanup receipt is incomplete; data was preserved.'
     }
     $cleanupReceipt = Get-Content -LiteralPath $receipt -Raw | ConvertFrom-Json
     $componentNames = @($cleanupReceipt.Components | ForEach-Object { $_.Component }) -join ','
     if ($cleanupReceipt.Succeeded -isnot [bool] -or -not $cleanupReceipt.Succeeded -or
-        $componentNames -ne 'smb,nginx,frp,mihomo' -or
+        $componentNames -ne $RemoveComponents -or
         @($cleanupReceipt.Components | Where-Object { $_.Succeeded -isnot [bool] -or -not $_.Succeeded }).Count -ne 0) {
         throw 'Managed component cleanup receipt is incomplete; data was preserved.'
     }
@@ -130,7 +139,7 @@ function Invoke-ManagedComponentCleanup {
     New-Item -ItemType Directory -Path $receiptRoot -Force | Out-Null
     Copy-Item -LiteralPath $receipt -Destination (Join-Path $receiptRoot 'component-cleanup.json') -Force
 }
-if ($RemoveData -and $Mode -eq 'windowsSystem') {
+if ($RemoveComponents -and $Mode -eq 'windowsSystem') {
     if (-not ($NonInteractive -or $PSCmdlet.ShouldProcess($DataRoot, 'Clean up managed components before removing data'))) { return }
     foreach ($name in @('RelaxKonOSServer', 'RelaxKonOSGuardian')) {
         if (Get-Service -Name $name -ErrorAction SilentlyContinue) { Stop-Service -Name $name -Force -ErrorAction Stop }
@@ -145,7 +154,7 @@ if ($Mode -eq 'windowsUser') {
     . (Join-Path $InstallRoot 'deployment\windows\RelaxKonOSPersonalRuntime.ps1')
     . (Join-Path $InstallRoot 'deployment\windows\RelaxKonOSPersonalPrivileges.ps1')
     Stop-PersonalServer $InstallRoot $DataRoot
-    if ($RemoveData) { Invoke-ManagedComponentCleanup }
+    if ($RemoveComponents) { Invoke-ManagedComponentCleanup }
     Set-PersonalPrivileges $InstallRoot $DataRoot ([string]$state.version) -Action 'uninstall'
     Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'RelaxKonOSPersonal' -ErrorAction SilentlyContinue
 }

@@ -25,6 +25,13 @@ internal fun DockerControlState.installationLookupFailure(id: String?, result: A
 )
 
 internal class DockerControlViewModel(application: Application) : AndroidViewModel(application) {
+    suspend fun observeInstallation() {
+        if (state.installationVerified && state.installation?.state?.active == true && !state.busy) {
+            kotlinx.coroutines.delay(1500)
+            pollInstall()
+        }
+    }
+
     private val container get() = getApplication<RelaxKonApplication>().container
     private var job: Job? = null
     private var generation = 0

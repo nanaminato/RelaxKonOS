@@ -7,7 +7,6 @@ import app.relaxkonos.mobile.ui.common.ActivityIndicator
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import app.relaxkonos.mobile.ui.common.StatusTone
 import android.Manifest
-import android.app.Application
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -23,11 +22,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationManagerCompat
-import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.RelaxKonApplication
@@ -38,11 +35,6 @@ import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.theme.Spacing
 import java.text.DateFormat
 import java.util.Date
-
-internal class AlertViewModel(application: Application) : AndroidViewModel(application) {
-    val browser = EventAlertBrowser(getApplication<RelaxKonApplication>().container.eventAlerts, viewModelScope)
-    override fun onCleared() { browser.stop(); super.onCleared() }
-}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -245,10 +237,9 @@ private fun eventSource(source: String): String {
 @Composable
 private fun AlertNotificationSettings(owner: SessionState.Active) {
     val context = LocalContext.current
-    val container = (context.applicationContext as RelaxKonApplication).container
-    val store = container.alertNotificationStore
+    val model: AlertViewModel = viewModel()
     var enabled by remember(owner.serviceId) {
-        mutableStateOf(AlertNotificationCategory.entries.filter { store.enabled(owner.serviceId, it) }.toSet())
+        mutableStateOf(model.enabledNotifications(owner))
     }
     var policyError by remember(owner.serviceId) { mutableStateOf(false) }
     var permissionDenied by remember(owner.serviceId) { mutableStateOf(false) }
@@ -261,11 +252,9 @@ private fun AlertNotificationSettings(owner: SessionState.Active) {
             Text(stringResource(alertCategoryLabel(category)), Modifier.weight(1f))
             Switch(checked = category in enabled, onCheckedChange = { checked ->
                 try {
-                    store.setEnabled(owner.serviceId, category, checked)
+                    model.changeNotification(owner, category, checked)
                     enabled = if (checked) enabled + category else enabled - category
                     policyError = false
-                    if (!checked) container.foregroundAlertNotifier.clearForCategory(owner, category)
-                    container.foregroundAlertNotifier.restart()
                     if (checked && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                         context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                         requestPermission.launch(Manifest.permission.POST_NOTIFICATIONS)

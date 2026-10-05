@@ -1,7 +1,6 @@
 package app.relaxkonos.mobile.ui.servercenter
 
 import app.relaxkonos.mobile.ui.common.ActionLabel
-import android.app.Application
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,7 +9,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -25,15 +23,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.servercenter.ServerCenterDeploymentClient
 import app.relaxkonos.mobile.servercenter.ServerCenterUploadAsset
-import app.relaxkonos.mobile.servercenter.ServerDeploymentOperation
-import app.relaxkonos.mobile.servercenter.ServerDeploymentReceiptMissingException
 import app.relaxkonos.mobile.servercenter.ServerDeploymentState
 import app.relaxkonos.mobile.servercenter.ServerHostPlatform
 import app.relaxkonos.mobile.servercenter.ServerInstallOperationReference
@@ -42,165 +36,7 @@ import app.relaxkonos.mobile.servercenter.SshCredentialKind
 import app.relaxkonos.mobile.ui.theme.Spacing
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-internal enum class InstallReceiptCheck { Verified, Missing, Unavailable }
-
-internal data class InstallReceiptItem(
-    val reference: ServerInstallOperationReference,
-    val check: InstallReceiptCheck,
-    val receipt: ServerDeploymentOperation? = null,
-)
-
-internal data class InstallRecoveryState(
-    val hostId: String? = null,
-    val platform: ServerHostPlatform? = null,
-    val loading: Boolean = false,
-    val needsVerification: Boolean = false,
-    val incomplete: Boolean = false,
-    val clearFailed: Boolean = false,
-    val items: List<InstallReceiptItem> = emptyList(),
-)
-
-class ServerInstallRecoveryViewModel(application: Application) : AndroidViewModel(application) {
-    private val container = getApplication<RelaxKonApplication>().container
-    private val mutableState = MutableStateFlow(InstallRecoveryState())
-    internal val state = mutableState.asStateFlow()
-    private var refreshJob: Job? = null
-    private var generation = 0
-
-    fun clearCompleted(hostId: String) {
-        val current = mutableState.value
-        if (current.hostId != hostId || current.loading) return
-        val references = current.items.filter { it.canClearHistory() }.map { it.reference }
-        if (references.isEmpty()) return
-        mutableState.value = current.copy(loading = true, clearFailed = false)
-        val request = ++generation
-        refreshJob = viewModelScope.launch {
-            val cleared = mutableSetOf<ServerInstallOperationReference>()
-            val secret = container.serverCenter.verifiedPasswordCopy(hostId)
-            if (secret == null) {
-                mutableState.value = current.copy(needsVerification = true, clearFailed = true)
-                return@launch
-            }
-            val credential = SshCredential(SshCredentialKind.Password, secret, null)
-            try {
-                withContext(Dispatchers.IO) {
-                    container.serverCenterConnections.connect(hostId, credential, System.currentTimeMillis()).use { session ->
-                        val key = requireNotNull(session.observedHostKey)
-                        check(references.all { it.hostKeyAlgorithm == key.algorithm && it.hostKeyFingerprint == key.fingerprint })
-                        val client = ServerCenterDeploymentClient(session.sshTransport)
-                        val platform = references.first().platform
-                        val lookup = client.stageLookup(platform, ServerCenterUploadAsset.launcher(getApplication<Application>().assets, platform))
-                        references.forEach { reference ->
-                            client.clearOperation(lookup, reference.operationId)
-                            container.serverInstallOperations.forget(reference)
-                            cleared.add(reference)
-                        }
-                    }
-                }
-                if (request == generation) mutableState.value = current.copy(
-                    items = current.items.filterNot { it.reference in cleared }, clearFailed = false)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                if (request == generation) mutableState.value = current.copy(
-                    items = current.items.filterNot { it.reference in cleared }, clearFailed = true)
-            } finally {
-                credential.clear()
-                secret.fill('\u0000')
-            }
-        }
-    }
-
-    fun refresh(hostId: String, platform: ServerHostPlatform? = null) {
-        refreshJob?.cancel()
-        val request = ++generation
-        mutableState.value = InstallRecoveryState(hostId = hostId, platform = platform, loading = true)
-        refreshJob = viewModelScope.launch {
-            val secret = container.serverCenter.verifiedPasswordCopy(hostId)
-            if (secret == null) {
-                if (request == generation) mutableState.value = InstallRecoveryState(hostId, platform, needsVerification = true)
-                return@launch
-            }
-            try {
-                val result = withContext(Dispatchers.IO) { readReceipts(hostId, platform, secret) }
-                if (request == generation) mutableState.value = result
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                if (request == generation) mutableState.value = InstallRecoveryState(hostId, platform, incomplete = true)
-            } finally {
-                secret.fill('\u0000')
-            }
-        }
-    }
-
-    fun stop() {
-        generation++
-        refreshJob?.cancel()
-        refreshJob = null
-    }
-
-    private suspend fun readReceipts(hostId: String, knownPlatform: ServerHostPlatform?, secret: CharArray): InstallRecoveryState {
-        val credential = SshCredential(SshCredentialKind.Password, secret, null)
-        try {
-            return container.serverCenterConnections.connect(hostId, credential, System.currentTimeMillis()).use { session ->
-                val platform = knownPlatform ?: if (session.sshTransport.run("uname -s").let { it.succeeded && it.standardOutput.trim() == "Linux" }) ServerHostPlatform.Linux else ServerHostPlatform.Windows
-                val key = requireNotNull(session.observedHostKey) { "A verified SSH host key is required." }
-                val index = container.serverInstallOperations
-                val local = index.forTrustedHost(session.target, key).filter { it.platform == platform }
-                val client = ServerCenterDeploymentClient(session.sshTransport)
-                val launcher = ServerCenterUploadAsset.launcher(getApplication<Application>().assets, platform)
-                val lookup = client.stageLookup(platform, launcher)
-                var incomplete = false
-                val remoteIds = try {
-                    client.list(lookup)
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (_: Exception) {
-                    incomplete = true
-                    emptyList()
-                }
-                val localById = local.associateBy { it.operationId }
-                val allIds = (remoteIds + local.map { it.operationId }).distinct()
-                if (allIds.size > 100) incomplete = true
-                val ids = allIds.take(100)
-                val items = ids.map { id ->
-                    val reference = localById[id] ?: try {
-                        index.record(session.target, key, id, platform)
-                    } catch (_: IllegalStateException) {
-                        incomplete = true
-                        ServerInstallOperationReference(session.target.hostId, key.algorithm, key.fingerprint,
-                            id, platform, System.currentTimeMillis())
-                    }
-                    try {
-                        val receipt = client.query(lookup, id)
-                        try {
-                            index.markVerified(session.target, reference, key, System.currentTimeMillis())
-                        } catch (_: IllegalStateException) {
-                            incomplete = true
-                        }
-                        InstallReceiptItem(reference, InstallReceiptCheck.Verified, receipt)
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (_: ServerDeploymentReceiptMissingException) {
-                        InstallReceiptItem(reference, InstallReceiptCheck.Missing)
-                    } catch (_: Exception) {
-                        InstallReceiptItem(reference, InstallReceiptCheck.Unavailable)
-                    }
-                }
-                InstallRecoveryState(hostId, platform, incomplete = incomplete, items = items)
-            }
-        } finally {
-            credential.clear()
-        }
-    }
-}
 
 @Composable
 internal fun ServerInstallRecoveryPanel(hostId: String, knownPlatform: ServerHostPlatform? = null) {
@@ -310,31 +146,16 @@ private fun installReceiptStatus(item: InstallReceiptItem): String = when (item.
     }
 }
 
-internal fun InstallReceiptItem.canClearHistory(): Boolean = check == InstallReceiptCheck.Verified &&
-    receipt?.state in setOf(ServerDeploymentState.Succeeded, ServerDeploymentState.Failed,
-        ServerDeploymentState.Cancelled, ServerDeploymentState.Interrupted)
-
 @Composable
 private fun OperationLog(hostId: String, reference: ServerInstallOperationReference) {
-    val container = (androidx.compose.ui.platform.LocalContext.current.applicationContext as RelaxKonApplication).container
-    val assets = androidx.compose.ui.platform.LocalContext.current.assets
+    val model: ServerInstallRecoveryViewModel = viewModel()
     var log by androidx.compose.runtime.remember(reference.operationId) { mutableStateOf<String?>(null) }
     var failed by androidx.compose.runtime.remember(reference.operationId) { mutableStateOf(false) }
     LaunchedEffect(hostId, reference.operationId) {
-        val secret = container.serverCenter.verifiedPasswordCopy(hostId)
-        if (secret == null) { failed = true; return@LaunchedEffect }
-        val credential = SshCredential(SshCredentialKind.Password, secret, null)
-        try {
-            log = withContext(Dispatchers.IO) {
-                container.serverCenterConnections.connect(hostId, credential, System.currentTimeMillis()).use { session ->
-                    val client = ServerCenterDeploymentClient(session.sshTransport)
-                    val lookup = client.stageLookup(reference.platform, ServerCenterUploadAsset.launcher(assets, reference.platform))
-                    client.diagnostics(lookup, reference.operationId)
-                }
-            }
-        } catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { failed = true }
-        finally { credential.clear(); secret.fill('\u0000') }
+        model.readLog(hostId, reference).fold(
+            onSuccess = { log = it },
+            onFailure = { failed = true },
+        )
     }
     when {
         failed -> Text(stringResource(R.string.operations_unverified), color = MaterialTheme.colorScheme.error)

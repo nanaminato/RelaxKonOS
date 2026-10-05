@@ -1,5 +1,6 @@
 using RelaxKonOS.Client.Apps.Docker.Views;
 using RelaxKonOS.Client.Services.Installation;
+using RelaxKonOS.Client.Services.Privileged;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
@@ -77,7 +78,18 @@ public sealed class DockerManagerApp : RemoteApplicationBase
                 vm.StatusText = LocalizedText.Get("docker.stack.explorer_unavailable");
             return Task.CompletedTask;
         };
-        vm.OpenDockerInstallGuideAsync = () => DockerManagerDialogs.ShowWindowsSetupGuideAsync(context, window!, vm);
+        vm.Installation.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window!, problemCode);
+        vm.OpenDockerInstallationAsync = async () =>
+        {
+            if (session.CurrentServer?.Platform == HostPlatformKind.Linux)
+            {
+                if (vm.Installation.IsActive) return;
+                if (await vm.RequestEngineConfirmationAsync(LocalizedText.Get("docker.install.confirm")))
+                    await vm.Installation.SubmitAsync(InstallationOperationKind.Install, new DockerInstallationRequest(true));
+                return;
+            }
+            await DockerManagerDialogs.ShowWindowsSetupGuideAsync(context, window!, vm);
+        };
         _ = vm.StartAsync();
     }
 }

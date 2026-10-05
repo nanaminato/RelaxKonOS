@@ -1,6 +1,7 @@
 package app.relaxkonos.mobile.ui.servercenter
 
-import android.app.Application
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,24 +19,15 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.RelaxKonApplication
-import app.relaxkonos.mobile.servercenter.SshCredential
-import app.relaxkonos.mobile.servercenter.SshSystemProbe
 import app.relaxkonos.mobile.servercenter.SshSystemSnapshot
-import app.relaxkonos.mobile.servercenter.SshDiagnostics
-import app.relaxkonos.mobile.servercenter.SshCredentialKind
 import app.relaxkonos.mobile.ui.common.KeyValueRow
 import app.relaxkonos.mobile.ui.common.MetricTile
 import app.relaxkonos.mobile.ui.common.SectionCard
@@ -46,51 +38,6 @@ import app.relaxkonos.mobile.ui.common.formatUptime
 import app.relaxkonos.mobile.ui.icons.DesktopIcon
 import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Spacing
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
-
-/** Fixed, read-only Windows and Linux host inspection.  The UI never accepts a command string from the user. */
-class SshSystemViewModel(application: Application) : AndroidViewModel(application) {
-    private val container = getApplication<RelaxKonApplication>().container
-    private val mutableState = MutableStateFlow(SshSystemUiState())
-    val state = mutableState.asStateFlow()
-
-    fun refresh(hostId: String) {
-        if (mutableState.value.loading) return
-        val secret = container.serverCenter.workspacePasswordCopy()
-        if (secret == null) {
-            mutableState.update { it.copy(problem = true, loading = false) }
-            return
-        }
-        mutableState.update { it.copy(loading = true, problem = false) }
-        viewModelScope.launch {
-            try {
-                val snapshot = container.serverCenterConnections.connect(
-                    hostId,
-                    SshCredential(SshCredentialKind.Password, secret, null),
-                    System.currentTimeMillis(),
-                ).use { session ->
-                    SshSystemProbe.read(session.sshTransport)
-                }
-                mutableState.update { it.copy(snapshot = snapshot ?: it.snapshot, loading = false, problem = snapshot == null) }
-            } catch (error: Exception) {
-                SshDiagnostics.failure("system.failed", error)
-                mutableState.update { it.copy(loading = false, problem = true) }
-            } finally {
-                secret.fill('\u0000')
-            }
-        }
-    }
-
-}
-
-data class SshSystemUiState(
-    val loading: Boolean = false,
-    val snapshot: SshSystemSnapshot? = null,
-    val problem: Boolean = false,
-)
 
 @Composable
 fun SshSystemScreen(hostId: String, onExit: () -> Unit, modifier: Modifier = Modifier) {

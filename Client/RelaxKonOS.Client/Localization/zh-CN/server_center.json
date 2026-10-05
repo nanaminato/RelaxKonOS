@@ -246,6 +246,11 @@
     "server_center.firewall_choice": "添加服务器 TCP 端口的防火墙入站规则",
     "server_center.firewall_help": "仅用于网络访问。若宿主防火墙未开启，将提醒您且不添加规则。",
     "server_center.firewall_disabled": "宿主防火墙未开启，未添加防火墙规则。",
-    "server_center.firewall_added": "已在防火墙中放行服务器 TCP 端口。"
+    "server_center.firewall_added": "已在防火墙中放行服务器 TCP 端口。",
+    "server_center.components_note": "选择要移除的组件；未选择的服务及管理数据会保留。Docker 容器和卷不纳入组件清理；删除数据仍会移除部署记录和数据根中的配置。",
+    "server_center.remove_smb": "移除受管 SMB 共享",
+    "server_center.remove_nginx": "移除受管 Nginx",
+    "server_center.remove_frp": "移除受管 FRP",
+    "server_center.remove_mihomo": "移除受管 Mihomo"
   }
 }
