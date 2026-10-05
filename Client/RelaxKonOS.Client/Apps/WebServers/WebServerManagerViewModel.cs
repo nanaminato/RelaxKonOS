@@ -30,6 +30,18 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     private readonly IAuthSession _session;
     private readonly IAppPermissionScope _permissions;
     private readonly IHostElevationBroker _elevations;
+    [ObservableProperty] private bool _isOperationLogExpanded;
+    [ObservableProperty] private string _operationLog = string.Empty;
+    partial void OnOperationTextChanged(LocalizedStatus value)
+    {
+        var text = value.Resolve();
+        if (string.IsNullOrWhiteSpace(text) || text == _lastOperationLogText) return;
+        _lastOperationLogText = text;
+        OperationLog = string.Join(Environment.NewLine,
+            OperationLog.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)
+                .Append($"[{DateTime.Now:HH:mm:ss}] {text}").TakeLast(200));
+    }
+    private string _lastOperationLogText = string.Empty;
     private CancellationTokenSource? _operationCts;
 
     public WebServerManagerViewModel(IRemoteWebServerClient client, IRemoteCertificateClient certificates, IAuthSession session,
@@ -724,6 +736,8 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         _operationCts?.Dispose();
         _operationCts = new CancellationTokenSource();
         var token = _operationCts.Token;
+        OperationLog = string.Empty;
+        _lastOperationLogText = string.Empty;
         IsOperationRunning = true;
         OperationText = LocalizedStatus.Format("webservers.operation.starting", OperationName(kindKey));
         try

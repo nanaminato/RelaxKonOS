@@ -301,3 +301,13 @@ Stack 操作的**无 Docker 依赖**部分已由 `RelaxKonOS.Server.Tests` 的 `
 **真实 Engine** 部分由同一套件的 `PASS DOCKER STACK LIVE` 覆盖（`--stack-live-only`，需要本机 `docker` 与 `alpine:3.20`，无 Engine 时明确 SKIP 而不是假通过）。它在真实 Compose 宿主上端到端跑：解析 → 部署一个「一服务常驻、一服务立刻退出」的项目 → 分类为 `partialFailed` 并记录真实观察结果 → 用修复后的定义更新为 `succeeded` → 同键同文档回放不新建操作 → 停止项目后卷仍被引用且拒绝删除 → 删除项目后命名卷保留、无引用时才可释放。**这项校验发现了两个只有在真实宿主上才会暴露的缺陷**：`ListServicesAsync` 与 `ListAsync` 的 `--format` 模板把标签名写成 `\"name\"`（面向 shell 的转义），而该参数是直接进 `ProcessStartInfo.ArgumentList` 的，Docker 因此以 `failed to parse template: unexpected "\\" in operand` 退出 1、观察结果恒为空——真实宿主上每一次成功部署都会被误判为部分失败，停止项目也不会出现在列表里；改为正确的模板引号后修复。另一个：普通未设置变量（`${NAME}` / `$NAME`）会被 `docker compose config` 静默替换为空串且 exit 0，定义会被「批准一份、执行另一份」，现在在准入阶段以 `docker.compose_variable_unresolved` 拒绝（见 §4「输入卫生」）。
 
 **仍未验收**：以上都是服务端 + 真实 Engine 的证据。带认证的 HTTP 往返（`202` + 轮询）与 Android/iOS 真机矩阵仍未执行——登录需要真实宿主凭据，不能在验收里绕过。任何平台仍只在「安装 + hello-world + 管理 CRUD + 重启后恢复 + 卸载/故障路径」全通过后才标记为支持。
+
+## 桌面执行状态与日志
+
+参考 VS Code 的状态栏与输出面板，以及 JetBrains Services 工具窗口，将任务状态和日志分层组织。Docker、证书与 Web 服务管理器使用窗口底部的统一交互：默认只占一行（38 个逻辑像素），显示简短任务、执行进度和日志入口。长消息省略显示，悬停可查看完整内容。日志默认隐藏，点击入口向上展开 180 个逻辑像素的输出区域，再次点击收起；打开或收起日志都不会停止任务。结束后保留结果和日志，Docker 可关闭已结束的状态记录。
+
+Compose 操作轮询持久操作记录与诊断快照，阶段变化记入日志，快照更新替换旧输出以避免重复。命令输出的可见时间取决于服务端诊断记录的更新时机；这不是逐行输出流。客户端持续观察到终态，不会因本地十分钟观察期限而把仍在运行的任务显示为结束。证书与 Web 服务管理器的日志记录带时间的阶段与结果消息。
+
+参考资料：
+- https://code.visualstudio.com/docs/editing/getting-started/userinterface
+- https://www.jetbrains.com/help/idea/using-services-tool-window.html

@@ -23,7 +23,6 @@
     "docker.error.empty_response": "RelaxKonOS returned an empty response.",
     "docker.operation.running": "Running: {0}",
     "docker.operation.running_label": "In progress",
-    "docker.operation.logs": "Operation log",
     "docker.operation.started": "Started: {0}",
     "docker.operation.finished": "Finished: {0}",
     "docker.operation.reading": "Reading Docker information",

@@ -23,7 +23,6 @@
     "docker.error.empty_response": "RelaxKonOS から空の応答が返されました。",
     "docker.operation.running": "実行中: {0}",
     "docker.operation.running_label": "実行中",
-    "docker.operation.logs": "操作ログ",
     "docker.operation.started": "開始: {0}",
     "docker.operation.finished": "完了: {0}",
     "docker.operation.reading": "Docker 情報を読み込んでいます",

@@ -3,6 +3,7 @@
     "DisplayName": "简体中文",
     "SortOrder": 0,
     "Strings": {
+        "common.operation_log": "操作日志",
         "common.connect": "连接",
         "common.maximize": "最大化",
         "common.restore": "还原",

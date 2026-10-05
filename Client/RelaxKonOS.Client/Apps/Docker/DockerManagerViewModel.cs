@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Installation;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -31,8 +31,12 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
     [ObservableProperty] private LocalizedStatus _statusText;
     [ObservableProperty] private bool _isLoading;
     [ObservableProperty] private bool _isOperationRunning;
-    [ObservableProperty] private string _operationTitle = string.Empty;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOperationActivity))]
+    private string _operationTitle = string.Empty;
     [ObservableProperty] private string _operationLog = string.Empty;
+    [ObservableProperty] private LocalizedStatus _operationStatus;
+    [ObservableProperty] private bool _isOperationLogExpanded;
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StopEngineCommand))]
     [NotifyCanExecuteChangedFor(nameof(RestartEngineCommand))]
@@ -669,7 +673,7 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
     }
     /// <summary>
     /// Watches a durable operation until it reaches a terminal state. The ledger, not this loop, is the
-    /// authority: the poll stops on a timeout and the stack list is refreshed anyway, so an operation
+    /// authority: keep showing progress until a terminal state is observed; an operation
     /// that outlives the window is still readable from its own record.
     /// </summary>
     private async Task TrackStackOperationAsync(DockerStackOperationDto operation)
@@ -677,18 +681,34 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         var current = operation;
         var action = OperationText(DockerStackActionRoutes.Segment(current.Kind));
         AppendOperationLog([LocalizedText.Format("docker.stack.operation_queued", current.OperationId.ToString("D"))]);
-        var deadline = DateTimeOffset.UtcNow.AddMinutes(10);
-        while (current.State is DockerStackOperationState.Queued or DockerStackOperationState.Running && DateTimeOffset.UtcNow < deadline)
+        var lastStage = string.Empty;
+        var operationPrefix = OperationLog;
+        var diagnosticSnapshot = string.Empty;
+        while (current.State is DockerStackOperationState.Queued or DockerStackOperationState.Running)
         {
             await Task.Delay(TimeSpan.FromSeconds(1));
             current = await client.GetStackOperationAsync(current.OperationId) ?? current;
             StatusText = LocalizedText.Ref("docker.stack.operation_running", action, current.ProjectName, current.Stage.ToString());
+            OperationStatus = StatusText;
+            if (lastStage != current.Stage.ToString())
+            {
+                lastStage = current.Stage.ToString();
+                operationPrefix += Environment.NewLine + $"[{DateTime.Now:HH:mm:ss}] {StatusText}";
+            }
+            try
+            {
+                var live = await client.GetStackOperationDiagnosticsAsync(current.OperationId);
+                if (live is not null) diagnosticSnapshot = string.Join(Environment.NewLine, live.Lines);
+            }
+            catch (Exception) { /* A diagnostic read must not interrupt tracking the operation. */ }
+            OperationLog = string.Join(Environment.NewLine, new[] { operationPrefix, diagnosticSnapshot }.Where(value => !string.IsNullOrEmpty(value)));
         }
 
         try
         {
             var diagnostics = await client.GetStackOperationDiagnosticsAsync(current.OperationId);
-            if (diagnostics is not null) AppendOperationLog(diagnostics.Lines);
+            if (diagnostics is not null)
+                OperationLog = string.Join(Environment.NewLine, new[] { operationPrefix }.Concat(diagnostics.Lines));
         }
         catch (Exception exception) { AppendOperationLog([exception.Message]); }
 
@@ -853,30 +873,31 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
     });
     private void BeginOperation(string? operationName)
     {
-        OperationTitle = string.IsNullOrWhiteSpace(operationName) ? LocalizedText.Get("docker.operation.running") : operationName;
+        OperationTitle = string.IsNullOrWhiteSpace(operationName) ? LocalizedText.Get("docker.operation.reading") : operationName;
         OperationLog = LocalizedText.Format("docker.operation.started", OperationTitle);
+        OperationStatus = LocalizedText.Ref("docker.operation.running_label");
         IsOperationRunning = true;
-        OnPropertyChanged(nameof(HasOperationActivity));
         StatusText = LocalizedText.Ref("docker.operation.running", OperationTitle);
     }
     [RelayCommand]
     private void CloseOperationActivity()
     {
-        // Closing the panel only dismisses its local diagnostic output. The Docker request,
-        // including an operation still in progress, continues independently.
+        if (IsOperationRunning) return;
         OperationTitle = string.Empty;
         OperationLog = string.Empty;
-        OnPropertyChanged(nameof(HasOperationActivity));
     }
     private void AppendOperationLog(IEnumerable<string>? lines)
     {
         if (lines is null) return;
         var values = lines.Where(line => !string.IsNullOrWhiteSpace(line)).ToArray();
         if (values.Length == 0) return;
-        OperationLog = string.Join(Environment.NewLine, new[] { OperationLog }.Concat(values));
+        OperationLog = string.Join(Environment.NewLine, new[] { OperationLog }.Concat(values).SelectMany(value => value.Split(Environment.NewLine)).TakeLast(500));
     }
-    private void CompleteOperation(string outcome) =>
-        OperationLog = string.Join(Environment.NewLine, new[] { OperationLog, LocalizedText.Format("docker.operation.finished", outcome) });
+    private void CompleteOperation(string outcome)
+    {
+        OperationStatus = outcome;
+        AppendOperationLog([LocalizedText.Format("docker.operation.finished", outcome)]);
+    }
     /// <summary>
     /// The sentence for a Docker problem code. A refusal from the Compose domain is something an
     /// operator has to be able to act on, so every code this client can provoke is named here rather

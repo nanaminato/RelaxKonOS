@@ -4,23 +4,25 @@
              xmlns:docker="clr-namespace:RelaxKonOS.Client.Apps.Docker"
              x:Class="RelaxKonOS.Client.Apps.Docker.DockerOperationActivityView"
              x:DataType="docker:DockerManagerViewModel"
-             HorizontalAlignment="Stretch" Classes="builtin-app">
-    <Border IsVisible="{Binding HasOperationActivity}"
-            Background="{DynamicResource AccentMutedBrush}" BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="1" CornerRadius="8" Padding="12"
-            HorizontalAlignment="Stretch">
-        <StackPanel Spacing="8" HorizontalAlignment="Stretch">
-            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12" HorizontalAlignment="Stretch">
-                <TextBlock Text="{Binding OperationTitle}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
-                <TextBlock Grid.Column="1" Text="{loc:Loc docker.operation.running_label}" IsVisible="{Binding IsOperationRunning}" Foreground="{DynamicResource InfoBrush}" />
-                <Button Grid.Column="2" Content="×" Command="{Binding CloseOperationActivityCommand}"
-                        ToolTip.Tip="{loc:Loc common.close}" Padding="6,0" MinWidth="28" />
+             HorizontalAlignment="Stretch" VerticalAlignment="Bottom" Classes="builtin-app">
+    <Border IsVisible="{Binding HasOperationActivity}" Background="{DynamicResource SurfaceBrush}"
+                BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0">
+            <Grid RowDefinitions="Auto,38">
+                <TextBox Grid.Row="0" Text="{Binding OperationLog, Mode=OneWay}" IsVisible="{Binding IsOperationLogExpanded}"
+                         IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" Height="180"
+                         Margin="12,8,12,4" FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="10" Margin="12,0">
+                    <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsOperationRunning}" Width="36" MinWidth="0" Height="3" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" Text="{Binding OperationTitle}" TextTrimming="CharacterEllipsis"
+                               ToolTip.Tip="{Binding OperationTitle}" VerticalAlignment="Center" FontSize="12" />
+                <TextBlock Grid.Column="2" Text="{Binding OperationStatus}" MaxWidth="240" TextTrimming="CharacterEllipsis"
+                           ToolTip.Tip="{Binding OperationStatus}" VerticalAlignment="Center" FontSize="12" />
+                    <ToggleButton Grid.Column="3" x:Name="OperationLogToggle" Content="{loc:Loc common.operation_log}"
+                                  IsChecked="{Binding IsOperationLogExpanded, Mode=TwoWay}" Padding="8,2" Height="28" />
+                <Button Grid.Column="4" Content="×" Command="{Binding CloseOperationActivityCommand}"
+                        IsEnabled="{Binding !IsOperationRunning}" ToolTip.Tip="{loc:Loc common.close}" Padding="6,0" MinWidth="28" Height="28" />
+                </Grid>
             </Grid>
-            <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsOperationRunning}" Height="4" />
-            <Expander Header="{loc:Loc docker.operation.logs}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
-                <TextBox Text="{Binding OperationLog}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
-                         MinHeight="88" MaxHeight="180" HorizontalAlignment="Stretch"
-                         ScrollViewer.VerticalScrollBarVisibility="Auto" FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12" />
-            </Expander>
-        </StackPanel>
     </Border>
 </UserControl>

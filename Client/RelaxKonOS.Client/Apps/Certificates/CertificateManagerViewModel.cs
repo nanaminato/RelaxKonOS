@@ -18,6 +18,18 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
     private readonly IRemoteCertificateClient _client;
     private readonly IAuthSession _session;
     private readonly IAppPermissionScope _permissions;
+    [ObservableProperty] private bool _isOperationLogExpanded;
+    [ObservableProperty] private string _operationLog = string.Empty;
+    partial void OnOperationTextChanged(LocalizedStatus value)
+    {
+        var text = value.Resolve();
+        if (string.IsNullOrWhiteSpace(text) || text == _lastOperationLogText) return;
+        _lastOperationLogText = text;
+        OperationLog = string.Join(Environment.NewLine,
+            OperationLog.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)
+                .Append($"[{DateTime.Now:HH:mm:ss}] {text}").TakeLast(200));
+    }
+    private string _lastOperationLogText = string.Empty;
     private CancellationTokenSource? _operationCts;
     private Guid? _activeOperationId;
 
@@ -250,6 +262,8 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
         _operationCts?.Dispose();
         _operationCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var token = _operationCts.Token;
+        OperationLog = string.Empty;
+        _lastOperationLogText = string.Empty;
         IsOperationRunning = true;
         OperationText = LocalizedText.Ref("certificates.operation.starting", label);
         try

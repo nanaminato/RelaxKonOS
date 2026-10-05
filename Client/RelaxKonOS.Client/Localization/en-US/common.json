@@ -3,6 +3,7 @@
     "DisplayName": "English",
     "SortOrder": 0,
     "Strings": {
+        "common.operation_log": "Operation log",
         "common.connect": "Connect",
         "common.maximize": "Maximize",
         "common.restore": "Restore",

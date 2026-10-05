@@ -5,7 +5,7 @@
              x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerManagerWorkspace"
              x:DataType="docker:DockerManagerViewModel"
              Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
-    <Grid RowDefinitions="Auto,Auto,*">
+    <Grid RowDefinitions="Auto,*,Auto">
         <Grid.Styles>
             <!-- 基础状态 -->
             <Style Selector="Button.docker-status">
@@ -58,12 +58,11 @@
             </Grid>
         </Border>
 
-        <Border Grid.Row="1" IsVisible="{Binding HasOperationActivity}" Background="{DynamicResource AccentMutedBrush}" BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="0,0,0,1" Padding="18,10">
-            <docker:DockerOperationActivityView />
-        </Border>
+        <docker:DockerOperationActivityView Grid.Row="2" />
 
-        <Grid Grid.Row="2" ColumnDefinitions="190,*">
+        <Grid Grid.Row="1" ClipToBounds="True" ColumnDefinitions="190,*">
             <Border Grid.Column="0" Classes="app-sidebar">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Spacing="4" Margin="14,22">
                     <TextBlock Text="{loc:Loc docker.workspace}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="11" FontWeight="SemiBold" Margin="10,0,0,6" />
                     <Button x:Name="OverviewButton" Classes="workspace-nav" Tag="overview" Click="NavigationButton_Click" Content="{loc:Loc docker.overview}" HorizontalContentAlignment="Left" Padding="10,8" />
@@ -75,6 +74,7 @@
                     <Button Classes="workspace-nav" Tag="networks" Click="NavigationButton_Click" Content="{loc:Loc docker.networks}" HorizontalContentAlignment="Left" Padding="10,8" />
                     <Button Classes="workspace-nav" Tag="volumes" Click="NavigationButton_Click" Content="{loc:Loc docker.volumes}" HorizontalContentAlignment="Left" Padding="10,8" />
                 </StackPanel>
+                </ScrollViewer>
             </Border>
             <!-- Pages with DataGrid columns must be measured against the workspace width.  An
                  unconstrained horizontal ScrollViewer lets their desired width grow indefinitely. -->
