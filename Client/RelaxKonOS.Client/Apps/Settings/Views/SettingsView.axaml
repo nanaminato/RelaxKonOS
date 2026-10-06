@@ -93,6 +93,14 @@
         <DataTemplate DataType="vm:NetworkPageViewModel">
                 <pages:NetworkPageView VerticalAlignment="Top" />
         </DataTemplate>
+        <DataTemplate DataType="vm:ApplicationDetailPageViewModel">
+            <pages:AppsPageView DataContext="{Binding Editor}" VerticalAlignment="Top" />
+        </DataTemplate>
+        <DataTemplate DataType="vm:ApplicationPermissionsPageViewModel">
+            <ContentControl Content="{Binding Editor}"><ContentControl.DataTemplates>
+                <DataTemplate DataType="vm:AppPermissionDialogViewModel"><views:AppPermissionDialogView /></DataTemplate>
+            </ContentControl.DataTemplates></ContentControl>
+        </DataTemplate>
         <DataTemplate DataType="vm:AppsPageViewModel">
                 <pages:AppsPageView VerticalAlignment="Top" />
         </DataTemplate>
@@ -149,6 +157,10 @@
                 </StackPanel>
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
                                     <WrapPanel VerticalAlignment="Center">
+                        <Button x:Name="GrandparentBreadcrumb" Content="{Binding GrandparentTitle}" IsVisible="{Binding HasGrandparentPage}"
+                                Command="{Binding OpenPageCommand}" CommandParameter="apps" FontSize="28" FontWeight="SemiBold"
+                                Foreground="{DynamicResource TextSecondaryBrush}" Background="Transparent" BorderThickness="0" Padding="0" VerticalAlignment="Center" />
+                        <TextBlock Text="›" IsVisible="{Binding HasGrandparentPage}" FontSize="28" Margin="14,0" VerticalAlignment="Center" Classes="subtle" />
                         <Button x:Name="ParentBreadcrumb" Content="{Binding ParentTitle}" IsVisible="{Binding HasParentPage}"
                                 Command="{Binding OpenPageCommand}" CommandParameter="{Binding ParentRoute}"
                                 FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}"

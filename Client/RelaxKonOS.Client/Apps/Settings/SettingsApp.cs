@@ -612,19 +612,8 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
             });
             return confirmed;
         };
-        appsPage.RequestPermissionEditorAsync = async app =>
-        {
-            AppPermissionDialogViewModel? dialogViewModel = null;
-            await context.ShowDialogAsync<bool>(
-                window,
-                LocalizedText.Format("settings.apps.permissions_title", app.DisplayName),
-                dialog => new AppPermissionDialogView
-                {
-                    DataContext = dialogViewModel = new AppPermissionDialogViewModel(app, permissions, localization, dialog.Close),
-                },
-                new Size(640, 560));
-            dialogViewModel?.Dispose();
-        };
+        viewModel.Pages.OfType<ApplicationPermissionsPageViewModel>().Single().CreateEditor =
+            (app, complete) => new AppPermissionDialogViewModel(app, permissions, localization, complete);
         appsPage.RequestUninstallConfirmationAsync = async app =>
         {
             var confirmed = false;

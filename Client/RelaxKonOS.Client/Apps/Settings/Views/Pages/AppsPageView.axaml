@@ -44,10 +44,6 @@
         </StackPanel>
 
         <StackPanel IsVisible="{Binding IsAppDetails}" Spacing="16">
-            <StackPanel Orientation="Horizontal" Spacing="10">
-                <Button Content="{loc:Loc settings.back_to_apps}" Command="{Binding ShowInstalledAppsCommand}" />
-                <TextBlock Text="{loc:Loc settings.app_information}" FontSize="24" FontWeight="SemiBold" VerticalAlignment="Center" />
-            </StackPanel>
             <Border Classes="card">
                 <StackPanel Spacing="12">
                     <Grid ColumnDefinitions="38,*" ColumnSpacing="10">
@@ -76,11 +72,7 @@
                                 <RadioButton Content="{loc:Loc browser.settings.open_built_in}" IsChecked="{Binding OpenBrowserLinksInBuiltInBrowser, Mode=TwoWay}" />
                                 <RadioButton Content="{loc:Loc browser.settings.open_host}" IsChecked="{Binding OpenBrowserLinksOnHost, Mode=TwoWay}" />
                             </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="10">
-                                <Button Content="{loc:Loc common.save}" Command="{Binding SaveBrowserLinkOpenTargetCommand}" IsEnabled="{Binding !IsSavingBrowserSettings}" />
-                                <TextBlock Text="{Binding BrowserSettingsStatus}" IsVisible="{Binding HasBrowserSettingsStatus}" FontSize="12" Opacity="0.68" VerticalAlignment="Center" TextWrapping="Wrap" />
-                            </StackPanel>
-                        </StackPanel>
+                                        </StackPanel>
                     </Border>
                     <Border Padding="12" Classes="app-panel">
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">

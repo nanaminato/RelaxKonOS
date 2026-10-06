@@ -15,6 +15,7 @@ public sealed partial class AppPermissionDialogViewModel : ObservableObject, IDi
     private readonly IAppPermissionManager _permissionManager;
     private readonly Action<bool> _complete;
     private readonly LocalizationService _localization;
+    private readonly ApplicationInfo _application;
 
     public AppPermissionDialogViewModel(
         ApplicationInfo app,
@@ -26,7 +27,7 @@ public sealed partial class AppPermissionDialogViewModel : ObservableObject, IDi
         _permissionManager = permissionManager;
         _complete = complete;
         _localization = localization;
-        AppName = app.DisplayName;
+        _application = app;
         AppId = app.Id.Value;
 
         PermissionGroups = app.Permissions
@@ -46,7 +47,8 @@ public sealed partial class AppPermissionDialogViewModel : ObservableObject, IDi
         _localization.LanguageChanged += OnLanguageChanged;
     }
 
-    public string AppName { get; }
+    public string AppName => _localization.Get($"application.{_application.Id.Value}.display_name",
+        _application.GetLocalizedMetadata(_localization.CurrentLanguage).DisplayName);
     public string AppId { get; }
     public IReadOnlyList<AppPermissionCategoryViewModel> PermissionGroups { get; }
 
@@ -67,6 +69,7 @@ public sealed partial class AppPermissionDialogViewModel : ObservableObject, IDi
 
     private void OnLanguageChanged(object? sender, EventArgs args)
     {
+        OnPropertyChanged(nameof(AppName));
         foreach (var group in PermissionGroups)
             group.RefreshLocalizedText();
     }

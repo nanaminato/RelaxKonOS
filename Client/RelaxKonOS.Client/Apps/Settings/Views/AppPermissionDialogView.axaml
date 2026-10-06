@@ -5,7 +5,6 @@
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.AppPermissionDialogView"
              x:DataType="vm:AppPermissionDialogViewModel"
              Background="{DynamicResource SurfaceBrush}"
-             MinWidth="320"
              MinHeight="240" Classes="builtin-app">
     <Grid RowDefinitions="Auto,*,Auto" Margin="20" RowSpacing="14">
         <StackPanel Spacing="4">

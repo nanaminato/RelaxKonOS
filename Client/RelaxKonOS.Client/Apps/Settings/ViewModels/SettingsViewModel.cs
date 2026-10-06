@@ -81,7 +81,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             new PersonalizationPageViewModel(settings, save),
             new TimeLanguagePageViewModel(settings, localization, save,
                 new HostTimeEditorViewModel(App.Services.GetRequiredService<Services.HostSettings.IHostTimeService>(), session, localization)),
-            new NetworkPageViewModel(settings, session, remote!, system!, App.Services.GetRequiredService<IRemoteDockerClient>(), save,
+            new NetworkPageViewModel(settings, session, remote!, App.Services.GetRequiredService<IRemoteDockerClient>(), save,
                 hostNetwork),
             new NetworkAdapterPageViewModel(settings, hostNetwork),
             new AppsPageViewModel(settings, apps!, packages!, localization, browserClient!),
@@ -91,6 +91,15 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             new AccessibilityPageViewModel(settings, _devicePreferences),
             new DailySettingsPageViewModel(settings, _devicePreferences),
         };
+        var appsEditor = Pages.OfType<AppsPageViewModel>().Single();
+        appsEditor.PropertyChanged += OnSelectedApplicationChanged;
+        var appDetails = new ApplicationDetailPageViewModel(settings, appsEditor);
+        var appPermissions = new ApplicationPermissionsPageViewModel(settings, appsEditor);
+        Pages = Pages.Concat(new SettingsPageViewModel[] { appDetails, appPermissions }).ToArray();
+        appsEditor.RequestDetailsNavigation = id => OpenPageCommand.Execute("apps/detail/" + Uri.EscapeDataString(id));
+        appsEditor.RequestApplicationsNavigation = () => { if (SelectedPage?.Route != "apps") OpenPageCommand.Execute("apps"); };
+        appsEditor.RequestPermissionEditorAsync = app => { OpenPageCommand.Execute("apps/permissions/" + Uri.EscapeDataString(app.Id.Value)); return Task.CompletedTask; };
+        appPermissions.ReturnToApplication = () => OpenPageCommand.Execute("apps/detail/" + Uri.EscapeDataString(appsEditor.SelectedApp!.Id.Value));
         var personalization = Pages.OfType<PersonalizationPageViewModel>().Single();
         Pages = Pages.Concat(new SettingsPageViewModel[]
         {
@@ -124,6 +133,20 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     public bool HasDeviceSaveFailure => _devicePreferences.SaveFailed && SelectedPage is not DeviceSettingsPageViewModel;
     [RelayCommand] private void RetryDeviceSave() => _devicePreferences.Save();
     private void OnDeviceSaveChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => OnPropertyChanged(nameof(HasDeviceSaveFailure));
+    private void OnSelectedApplicationChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
+    {
+        if (_disposed || args.PropertyName != nameof(AppsPageViewModel.SelectedApp)) return;
+        if (sender is AppsPageViewModel { SelectedApp: null } && SelectedPage?.Route is "apps/detail" or "apps/permissions")
+        {
+            Pages.OfType<ApplicationPermissionsPageViewModel>().Single().ClearEditor();
+            var previous = _goingBack;
+            _goingBack = true;
+            try { SelectPage("apps"); } finally { _goingBack = previous; }
+            return;
+        }
+        OnPropertyChanged(nameof(ParentTitle));
+        OnPropertyChanged(nameof(CurrentNavigationRoute));
+    }
     private void OnDevicePreferencesChanged(object? sender, EventArgs e) => OnPropertyChanged(nameof(IsCurrentPagePinned));
 
     public ShellSettings Settings => _settings;
@@ -132,13 +155,15 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     public IReadOnlyList<SettingsPageViewModel> NavigationPages { get; }
     public SettingsPageViewModel? SelectedCategory
     {
-        get => Pages.FirstOrDefault(page => page.Route == (SelectedPage is PersonalizationDetailPageViewModel ? "personalization" : SelectedPage?.Route == "default-apps" ? "apps" : SelectedPage?.Route == "system/preferences" ? "system" : SelectedPage?.Route == "network/adapter" ? "network" : SelectedPage?.Route));
+        get => Pages.FirstOrDefault(page => page.Route == (SelectedPage is PersonalizationDetailPageViewModel ? "personalization" : SelectedPage?.Route == "default-apps" ? "apps" : SelectedPage?.Route == "system/preferences" ? "system" : SelectedPage?.Route == "network/adapter" ? "network" : SelectedPage?.Route is "apps/detail" or "apps/permissions" ? "apps" : SelectedPage?.Route));
         set { if (value is not null && value != SelectedCategory) SelectPage(value.Route); }
     }
     public bool IsAppsCategory => SelectedPage?.Route == "apps";
-    public string? ParentRoute => SelectedPage is PersonalizationDetailPageViewModel ? "personalization" : SelectedPage?.Route == "default-apps" ? "apps" : SelectedPage?.Route == "system/preferences" ? "system" : SelectedPage?.Route == "network/adapter" ? "network" : null;
+    public string? ParentRoute => SelectedPage is PersonalizationDetailPageViewModel ? "personalization" : SelectedPage?.Route == "default-apps" ? "apps" : SelectedPage?.Route == "system/preferences" ? "system" : SelectedPage?.Route == "network/adapter" ? "network" : SelectedPage?.Route == "apps/detail" ? "apps" : SelectedPage?.Route == "apps/permissions" ? "apps/detail/" + Uri.EscapeDataString(Pages.OfType<AppsPageViewModel>().Single().SelectedApp!.Id.Value) : null;
     public bool HasParentPage => ParentRoute is not null;
-    public string ParentTitle => Pages.FirstOrDefault(page => page.Route == ParentRoute)?.LocalizedDisplayName ?? "";
+    public string ParentTitle => SelectedPage?.Route == "apps/permissions" ? Pages.OfType<AppsPageViewModel>().Single().SelectedApp?.DisplayName ?? "" : Pages.FirstOrDefault(page => page.Route == ParentRoute)?.LocalizedDisplayName ?? "";
+    public bool HasGrandparentPage => SelectedPage?.Route == "apps/permissions";
+    public string GrandparentTitle => Pages.Single(page => page.Route == "apps").LocalizedDisplayName;
     [RelayCommand] private void OpenPage(string route) { SelectPage(route); SearchQuery = ""; }
 
     [ObservableProperty] private SettingsPageViewModel? _selectedPage;
@@ -162,6 +187,24 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             route = "network/adapter";
             if (samePage) { OnPropertyChanged(nameof(SelectedPage)); BackCommand.NotifyCanExecuteChanged(); }
         }
+        if (route.StartsWith("apps/detail/", StringComparison.OrdinalIgnoreCase) || route.StartsWith("apps/permissions/", StringComparison.OrdinalIgnoreCase))
+        {
+            var permissionsPage = route.StartsWith("apps/permissions/", StringComparison.OrdinalIgnoreCase);
+            var pageRoute = permissionsPage ? "apps/permissions" : "apps/detail";
+            var id = Uri.UnescapeDataString(route[(pageRoute.Length + 1)..]);
+            var apps = Pages.OfType<AppsPageViewModel>().Single();
+            if (!apps.RegisteredApps.Any(entry => entry.Id.Value.Equals(id, StringComparison.OrdinalIgnoreCase))) return;
+            if (SelectedPage?.Route == pageRoute && apps.SelectedApp?.Id.Value != id)
+            {
+                if (!_goingBack) _navigationHistory.Remember(CurrentNavigationRoute, SearchQuery);
+                OnPropertyChanging(nameof(SelectedPage));
+            }
+            if (!apps.SelectApplication(id)) return;
+            if (permissionsPage) Pages.OfType<ApplicationPermissionsPageViewModel>().Single().Open();
+            route = pageRoute;
+            if (SelectedPage?.Route == pageRoute) { OnPropertyChanged(nameof(SelectedPage)); BackCommand.NotifyCanExecuteChanged(); }
+        }
+        if (route == "apps") Pages.OfType<AppsPageViewModel>().Single().Subpage = AppsSubpage.InstalledApps;
         var page = Pages.FirstOrDefault(page => string.Equals(page.Route, route, StringComparison.OrdinalIgnoreCase));
         if (page is not null) SelectedPage = page;
     }
@@ -171,7 +214,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     {
         var page = Pages.OfType<AppsPageViewModel>().FirstOrDefault();
         if (page is null) return Task.CompletedTask;
-        SelectedPage = page;
+        SelectPage("apps");
         return page.OpenPermissionsAsync(appId);
     }
 
@@ -189,7 +232,6 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         if (Pages.OfType<NetworkPageViewModel>().FirstOrDefault() is { } networkPage)
         {
             await networkPage.HostNetwork.ReloadAsync();
-            await networkPage.LoadServerAddressesAsync();
             await networkPage.LoadOutboundProxyAsync();
         }
         try
@@ -320,6 +362,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _devicePreferences.Changed -= OnDevicePreferencesChanged;
         _devicePreferences.PropertyChanged -= OnDeviceSaveChanged;
         _editor.PropertyChanged -= OnEditorChanged;
+        Pages.OfType<AppsPageViewModel>().Single().PropertyChanged -= OnSelectedApplicationChanged;
         if (_registry is not null) _registry.Changed -= OnMappingsChanged;
         foreach (var page in Pages)
             page.Dispose();

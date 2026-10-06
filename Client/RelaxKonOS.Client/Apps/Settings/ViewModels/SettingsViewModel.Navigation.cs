@@ -33,7 +33,9 @@ public sealed partial class SettingsViewModel
     public string ConnectionAddress => _session.EffectiveBaseUrl ?? "";
     public string CurrentNavigationRoute => SelectedPage?.Route == "network/adapter"
         && Pages.OfType<NetworkPageViewModel>().Single().HostNetwork.SelectedAdapter is { } adapter
-            ? "network/adapter/" + Uri.EscapeDataString(adapter.Value.Id) : SelectedPage?.Route ?? "home";
+            ? "network/adapter/" + Uri.EscapeDataString(adapter.Value.Id) : SelectedPage?.Route is "apps/detail" or "apps/permissions"
+                && Pages.OfType<AppsPageViewModel>().Single().SelectedApp is { } app
+                    ? SelectedPage.Route + "/" + Uri.EscapeDataString(app.Id.Value) : SelectedPage?.Route ?? "home";
     public bool HasPageScopeDescription => PageScopeDescription.Length > 0;
     public string PageScopeDescription => SelectedPage?.Route == "home" ? "" : _navigationLocalization.Get(SelectedPage?.Route switch
     {
@@ -44,7 +46,7 @@ public sealed partial class SettingsViewModel
         "system" => "settings.scope_hint.system",
         "network" or "network/adapter" => "settings.scope_hint.network",
         "account-security" => "settings.scope_hint.account",
-        "apps" => "settings.scope_hint.apps",
+        "apps" or "apps/detail" or "apps/permissions" => "settings.scope_hint.apps",
         _ => "settings.scope_hint.home"
     }, "Check the scope of each section before changing settings.");
     public string ConnectionSummary => _session.State == AuthSessionState.Authenticated
@@ -80,6 +82,8 @@ public sealed partial class SettingsViewModel
         OnPropertyChanged(nameof(ParentRoute));
         OnPropertyChanged(nameof(ParentTitle));
         OnPropertyChanged(nameof(HasParentPage));
+        OnPropertyChanged(nameof(HasGrandparentPage));
+        OnPropertyChanged(nameof(GrandparentTitle));
         BackCommand.NotifyCanExecuteChanged();
     }
     partial void OnSearchQueryChanged(string value)
@@ -125,7 +129,7 @@ public sealed partial class SettingsViewModel
     private void RebuildSearchIndex()
     {
         string T(string key) => _navigationLocalization.Get(key, key);
-        var entries = Pages.Select(page => new SettingsSearchEntry("page." + page.Route, page.Route,
+        var entries = Pages.Where(page => page.Route is not ("apps/detail" or "apps/permissions")).Select(page => new SettingsSearchEntry("page." + page.Route, page.Route,
             page.LocalizedDisplayName, CategoryPath(page), T("settings.search.category"), "",
             page.LocalizedDisplayName + " " + page.DisplayName + " " + page.Route)).ToList();
         var local = LocalDescriptors().ToDictionary(descriptor => descriptor.SettingId);

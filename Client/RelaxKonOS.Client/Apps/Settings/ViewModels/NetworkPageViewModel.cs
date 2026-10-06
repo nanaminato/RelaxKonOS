@@ -1,27 +1,22 @@
-using System.Collections.ObjectModel;
 using System.Diagnostics;
-using RelaxKonOS.Client.Apps.TaskManager;
 using RelaxKonOS.Client.Apps.Docker;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using RelaxKonOS.Protocol.SystemMonitor;
 
 namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 
-/// <summary>Connection details, reachable server addresses, and a lightweight latency test.</summary>
+/// <summary>Remote adapter settings, connection details, outbound proxy, and a lightweight latency test.</summary>
 public sealed partial class NetworkPageViewModel : SettingsPageViewModel
 {
     private readonly IAuthSession _session;
     private readonly IRelaxKonOSClient _remote;
-    private readonly ITaskManagerClient _system;
 
     public NetworkPageViewModel(
         ShellSettings settings,
         IAuthSession session,
         IRelaxKonOSClient remote,
-        ITaskManagerClient system,
         IRemoteDockerClient docker,
         Action? save,
         HostNetworkEditorViewModel hostNetwork)
@@ -30,9 +25,7 @@ public sealed partial class NetworkPageViewModel : SettingsPageViewModel
         HostNetwork = hostNetwork;
         _session = session;
         _remote = remote;
-        _system = system;
         OutboundProxy = new DockerProxyViewModel(docker);
-        ServerAddresses = new ObservableCollection<NetworkAddressDto>();
     }
 
     public HostNetworkEditorViewModel HostNetwork { get; }
@@ -53,8 +46,6 @@ public sealed partial class NetworkPageViewModel : SettingsPageViewModel
     public string ServerUrl => _session.EffectiveBaseUrl ?? "—";
     public string UserName => _session.CurrentUser?.Username ?? "—";
     public string WorkspaceName => _session.CurrentWorkspace?.Name ?? "—";
-    public bool IsConnected => _session.State == AuthSessionState.Authenticated;
-    public ObservableCollection<NetworkAddressDto> ServerAddresses { get; }
     /// <summary>One host-wide outbound proxy preference shared by the built-in download features.</summary>
     public DockerProxyViewModel OutboundProxy { get; }
 
@@ -67,13 +58,6 @@ public sealed partial class NetworkPageViewModel : SettingsPageViewModel
     private long _latencyMilliseconds;
     private string? _latencyFailure;
 
-    /// <summary>Server address loading state. The displayed text is derived so it re-localizes on a language switch.</summary>
-    private enum AddressesState { NotLoaded, NotConnected, Loading, Empty, Loaded, Failed }
-
-    private AddressesState _addressesState = AddressesState.NotLoaded;
-    private int _addressCount;
-    private string? _addressesFailure;
-
     public string LatencyText => _latencyState switch
     {
         LatencyState.CannotTest => T("settings.network.cannot_test", "Not connected; unable to test."),
@@ -83,56 +67,7 @@ public sealed partial class NetworkPageViewModel : SettingsPageViewModel
         _ => T("settings.network.not_tested", "Not tested"),
     };
 
-    public string ServerAddressesStatus => _addressesState switch
-    {
-        AddressesState.NotConnected => T("settings.network.not_connected", "Not connected to the server."),
-        AddressesState.Loading => T("settings.network.loading_addresses", "Loading server addresses…"),
-        AddressesState.Empty => T("settings.network.no_addresses", "No non-loopback IPv4 or IPv6 addresses were found."),
-        AddressesState.Loaded => string.Format(T("settings.network.addresses_found", "{0} server addresses found."), _addressCount),
-        AddressesState.Failed => string.Format(T("settings.network.addresses_failed", "Unable to get server addresses: {0}"), _addressesFailure),
-        _ => T("settings.network.not_loaded", "Server addresses have not been loaded."),
-    };
-
     [ObservableProperty] private bool _isTesting;
-    [ObservableProperty] private bool _isLoadingServerAddresses;
-
-    public async Task LoadServerAddressesAsync()
-    {
-        if (!IsConnected)
-        {
-            ServerAddresses.Clear();
-            _addressesState = AddressesState.NotConnected;
-            OnPropertyChanged(nameof(ServerAddressesStatus));
-            return;
-        }
-
-        IsLoadingServerAddresses = true;
-        _addressesState = AddressesState.Loading;
-        OnPropertyChanged(nameof(ServerAddressesStatus));
-        try
-        {
-            var addresses = await _system.GetNetworkAddressesAsync();
-            ServerAddresses.Clear();
-            foreach (var address in addresses)
-                ServerAddresses.Add(address);
-            _addressCount = addresses.Count;
-            _addressesState = addresses.Count == 0 ? AddressesState.Empty : AddressesState.Loaded;
-        }
-        catch (Exception ex)
-        {
-            ServerAddresses.Clear();
-            _addressesFailure = ex.Message;
-            _addressesState = AddressesState.Failed;
-        }
-        finally
-        {
-            IsLoadingServerAddresses = false;
-            OnPropertyChanged(nameof(ServerAddressesStatus));
-        }
-    }
-
-    [RelayCommand]
-    private Task RefreshServerAddressesAsync() => LoadServerAddressesAsync();
 
     [RelayCommand(CanExecute = nameof(CanTest))]
     private async Task TestConnectionAsync()

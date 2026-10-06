@@ -14,6 +14,7 @@ using RelaxKonOS.Client.Apps.Settings.Views;
 using RelaxKonOS.Client.Apps.TaskManager;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.Developer;
 using RelaxKonOS.Client.Services.Diagnostics;
 using RelaxKonOS.Client.Services.HostSettings;
@@ -23,6 +24,9 @@ using RelaxKonOS.Protocol.Identity;
 using RelaxKonOS.Protocol.Settings;
 using RelaxKonOS.Protocol.Workspace;
 using RelaxKonOS.Runtime;
+using RelaxKonOS.AppSDK;
+using AppContext = System.AppContext;
+using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Client.Views.Shell;
 using RelaxKonOS.Shell;
 
@@ -229,6 +233,62 @@ internal static class SettingsWindowChecks
             model.BackCommand.Execute(null); Pump();
             Check(model.SelectedPage?.Route == "network/adapter" && networkEditor.SelectedAdapter == adapter,
                 "Back history restored a different adapter than the recorded detail page.");
+            apps.RegisterBuiltIn(new BreadcrumbApplication("relaxkonos.taskmanager", "Task Manager"));
+            apps.RegisterBuiltIn(new BreadcrumbApplication("relaxkonos.breadcrumb-test", "Second application")); Pump();
+            var appsEditor = model.Pages.OfType<AppsPageViewModel>().Single();
+            var permissionPage = model.Pages.OfType<ApplicationPermissionsPageViewModel>().Single();
+            var permissionStore = DispatchProxy.Create<IAppPermissionManager, BreadcrumbPermissions>();
+            permissionPage.CreateEditor = (app, complete) => new AppPermissionDialogViewModel(app, permissionStore, localization, complete);
+            var firstApp = appsEditor.RegisteredApps.Single(entry => entry.Id.Value == "relaxkonos.taskmanager").App;
+            var secondApp = appsEditor.RegisteredApps.Single(entry => entry.Id.Value == "relaxkonos.breadcrumb-test").App;
+            model.OpenPageCommand.Execute("apps");
+            appsEditor.ShowAppDetailsCommand.Execute(firstApp); Pump();
+            Check(model.SelectedPage?.Route == "apps/detail" && model.ParentRoute == "apps"
+                && model.SelectedCategory?.Route == "apps", "Application information is not a nested apps route.");
+            Check(view.FindControl<TextBlock>("PageHeading")!.Text == appsEditor.SelectedApp!.DisplayName, "Application breadcrumb lost its name.");
+            appsEditor.EditSelectedPermissionsCommand.ExecuteAsync(null).GetAwaiter().GetResult(); Pump();
+            Check(model.SelectedPage?.Route == "apps/permissions" && model.HasGrandparentPage
+                && model.ParentTitle == appsEditor.SelectedApp!.DisplayName, "Permissions have no three-level breadcrumb.");
+            var permission = permissionPage.Editor!.PermissionGroups.SelectMany(group => group.Permissions).First();
+            permission.IsGranted = true;
+            Check(permissionStore.GetStatus(firstApp.Id, permission.PermissionId) == RelaxKonOS.AppSDK.AppPermissionStatus.Undecided, "Navigating permission drafts granted access.");
+            Click(window, view.FindControl<Button>("ParentBreadcrumb")!);
+            Check(model.SelectedPage?.Route == "apps/detail", "Permission parent did not return to application information.");
+            appsEditor.EditSelectedPermissionsCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+            Check(permissionPage.Editor!.PermissionGroups.SelectMany(group => group.Permissions).First().IsGranted, "Same-app navigation discarded permission draft.");
+            permissionPage.Editor.SaveCommand.Execute(null); Pump();
+            Check(model.SelectedPage?.Route == "apps/detail" && permissionStore.GetStatus(firstApp.Id, permission.PermissionId) == RelaxKonOS.AppSDK.AppPermissionStatus.Granted,
+                "Permission save lost application context.");
+            appsEditor.EditSelectedPermissionsCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+            permissionPage.Editor!.PermissionGroups.SelectMany(group => group.Permissions).First().IsGranted = false;
+            permissionPage.Editor.CancelCommand.Execute(null); Pump();
+            Check(permissionStore.GetStatus(firstApp.Id, permission.PermissionId) == RelaxKonOS.AppSDK.AppPermissionStatus.Granted, "Permission cancel persisted a draft.");
+            Click(window, view.FindControl<Button>("ParentBreadcrumb")!);
+            appsEditor.ShowAppDetailsCommand.Execute(secondApp); Pump();
+            model.BackCommand.Execute(null); Pump(); model.BackCommand.Execute(null); Pump();
+            Check(model.SelectedPage?.Route == "apps/detail" && appsEditor.SelectedApp?.Id == firstApp.Id, "Back history restored a different application.");
+            settings.Appearance = settings.Appearance with { Mode = RelaxKonOS.Protocol.Desktop.ThemeKind.Light };
+            foreach (var culture in new[] { "zh-CN", "en-US", "ja-JP" })
+            {
+                settings.Language = culture; Pump();
+                Capture(window, new PixelSize(1100, 800), Path.Combine(output, $"window-app-details-{culture}.png"));
+                appsEditor.EditSelectedPermissionsCommand.ExecuteAsync(null).GetAwaiter().GetResult(); Pump();
+                Capture(window, new PixelSize(1100, 800), Path.Combine(output, $"window-app-permissions-{culture}.png"));
+                managed.View.Width = 320; managed.View.Height = 480; Pump();
+                Check(scroll.Extent.Width <= scroll.Viewport.Width + 1, "Application permissions require horizontal scrolling in narrow layout.");
+                Capture(window, new PixelSize(1100, 800), Path.Combine(output, $"window-app-permissions-narrow-{culture}.png"));
+                managed.View.Width = 1080; managed.View.Height = 780; Pump();
+                Click(window, view.FindControl<Button>("GrandparentBreadcrumb")!);
+                Check(model.SelectedPage?.Route == "apps", "Applications ancestor did not return to the list.");
+                appsEditor.ShowAppDetailsCommand.Execute(appsEditor.RegisteredApps.Single(entry => entry.Id == firstApp.Id).App); Pump();
+            }
+            settings.Language = "zh-CN"; Pump();
+            model.SelectApplicationPermissionsAsync(firstApp.Id.Value).GetAwaiter().GetResult(); Pump();
+            Check(model.SelectedPage?.Route == "apps/permissions" && appsEditor.SelectedApp?.Id == firstApp.Id,
+                "Host permission activation did not select the application permission route.");
+            model.SelectApplicationPermissionsAsync("missing.application").GetAwaiter().GetResult(); Pump();
+            Check(model.SelectedPage?.Route == "apps" && appsEditor.IsInstalledApps,
+                "Missing application activation left old application details inside the list page.");
             var dragPoint = managed.View.TranslatePoint(new Point(850, 28), window)!.Value;
             oldBounds = managed.Info.Bounds;
             window.MouseDown(dragPoint, MouseButton.Left);
@@ -318,4 +378,26 @@ internal sealed class NoSettingsNetwork : HttpMessageHandler
 {
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         => throw new InvalidOperationException("Full Settings UI checks must not make HTTP requests.");
+}
+
+internal sealed class BreadcrumbApplication : RemoteApplicationBase
+{
+    public BreadcrumbApplication(string id, string name) => Manifest = new(new(id), name, "1.0.0", "⚙",
+        RequestedPermissions: [RelaxKonOS.Core.Applications.AppPermissions.ServerMetricsRead]);
+    public override ApplicationManifest Manifest { get; }
+    public override void Activate(RelaxKonOS.AppSDK.AppContext context) { }
+}
+
+public class BreadcrumbPermissions : DispatchProxy
+{
+    private readonly Dictionary<(string App, string Permission), RelaxKonOS.AppSDK.AppPermissionStatus> _decisions = new();
+    protected override object? Invoke(MethodInfo? method, object?[]? args)
+    {
+        var appId = ((RelaxKonOS.Core.Applications.AppId)args![0]!).Value;
+        var permission = (string)args[1]!;
+        var key = (appId, permission);
+        if (method!.Name == "GetStatus") return _decisions.GetValueOrDefault(key, RelaxKonOS.AppSDK.AppPermissionStatus.Undecided);
+        if (method.Name == "SetStatus") { _decisions[key] = (RelaxKonOS.AppSDK.AppPermissionStatus)args[2]!; return null; }
+        throw new NotSupportedException(method.Name);
+    }
 }

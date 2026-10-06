@@ -49,6 +49,8 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel
 
     /// <summary>Provided by Settings to open the selected application's permission page.</summary>
     public Func<ApplicationInfo, Task>? RequestPermissionEditorAsync { get; set; }
+    public Action<string>? RequestDetailsNavigation { get; set; }
+    public Action? RequestApplicationsNavigation { get; set; }
     /// <summary>Provided by Settings so an uninstall always has an explicit confirmation step.</summary>
     public Func<ApplicationInfo, Task<bool>>? RequestUninstallConfirmationAsync { get; set; }
     /// <summary>Provided by Settings to choose and clear one application's data categories.</summary>
@@ -71,6 +73,7 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel
     public bool HasSelectedAppIconImage => SelectedAppIconImage is not null;
     public bool HasActionStatus => !string.IsNullOrWhiteSpace(ActionStatus);
     public bool CanUninstallSelectedApp => !IsUninstalling && SelectedApp is not null
+        && !SelectedApp.Id.Value.StartsWith("relaxkonos.", StringComparison.Ordinal)
         && _packages.FindInstalled(SelectedApp.Id.Value) is not null;
     public bool IsBrowserSettingsVisible => SelectedApp?.Id.Value == "relaxkonos.browser";
     public bool OpenBrowserLinksInBuiltInBrowser
@@ -120,16 +123,21 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel
     }
 
     [RelayCommand]
-    private void ShowInstalledApps() => Subpage = AppsSubpage.InstalledApps;
-
-    [RelayCommand]
     private void ShowAppDetails(ApplicationInfo app)
     {
+        RequestDetailsNavigation?.Invoke(app.Id.Value);
+    }
+    public bool SelectApplication(string appId)
+    {
+        var app = RegisteredApps.FirstOrDefault(entry => entry.Id.Value.Equals(appId, StringComparison.OrdinalIgnoreCase))?.App;
+        if (app is null) return false;
+        var changedApplication = SelectedApp?.Id != app.Id;
         SelectedApp = app;
         ActionStatus = string.Empty;
         Subpage = AppsSubpage.AppDetails;
-        if (IsBrowserSettingsVisible)
+        if (IsBrowserSettingsVisible && (changedApplication || _browserSettings is null))
             _ = LoadBrowserSettingsAsync();
+        return true;
     }
 
     [RelayCommand(CanExecute = nameof(CanOpenSelectedApp))]
@@ -155,7 +163,7 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel
         var app = RegisteredApps.FirstOrDefault(candidate =>
             candidate.Id.Value.Equals(appId, StringComparison.OrdinalIgnoreCase));
         if (app is null) return;
-        ShowAppDetails(app.App);
+        RequestDetailsNavigation?.Invoke(app.Id.Value);
         await EditSelectedPermissionsAsync();
     }
 
@@ -173,6 +181,7 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel
             {
                 SelectedApp = null;
                 Subpage = AppsSubpage.InstalledApps;
+                RequestApplicationsNavigation?.Invoke();
                 ActionStatus = Ref("settings.apps.uninstalled", "Uninstalled {0}.", displayName);
             }
             else
