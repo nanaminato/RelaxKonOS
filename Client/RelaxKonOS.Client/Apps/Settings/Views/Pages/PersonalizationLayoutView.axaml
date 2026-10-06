@@ -6,7 +6,7 @@
              xmlns:ss="clr-namespace:RelaxKonOS.Client.Services"
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.PersonalizationLayoutView"
              x:DataType="vm:PersonalizationPageViewModel" Classes="builtin-app">
-    <StackPanel Spacing="16" MaxWidth="960">
+    <StackPanel Spacing="16">
 <Border Classes="card">
             <StackPanel Spacing="10">
                 <TextBlock Text="{loc:Loc settings.desktop_layout}" Classes="title" />

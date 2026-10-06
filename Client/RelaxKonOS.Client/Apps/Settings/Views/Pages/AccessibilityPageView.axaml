@@ -4,7 +4,7 @@
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.AccessibilityPageView"
              x:DataType="vm:AccessibilityPageViewModel" Classes="builtin-app">
-    <StackPanel Spacing="16" MaxWidth="720">
+    <StackPanel Spacing="16">
         <Border Classes="card"><StackPanel Spacing="10">
             <TextBlock Text="{loc:Loc settings.device.scale}" Classes="title" />
             <TextBlock Text="{loc:Loc settings.device.scale_hint}" TextWrapping="Wrap" Classes="subtle" />

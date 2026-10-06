@@ -6,7 +6,7 @@
              xmlns:docker="clr-namespace:RelaxKonOS.Client.Apps.Docker"
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.NetworkPageView"
              x:DataType="vm:NetworkPageViewModel" Classes="builtin-app">
-    <StackPanel Spacing="16" MaxWidth="960">
+    <StackPanel Spacing="16">
     <pages:HostNetworkView DataContext="{Binding HostNetwork}" />
 
         <Border Classes="card" DataContext="{Binding OutboundProxy}">

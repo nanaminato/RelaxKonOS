@@ -148,6 +148,28 @@ internal static class SettingsWindowChecks
                     Capture(window, size, Path.Combine(output, $"window-home-{language}-{size.Width}x{size.Height}.png"));
                 }
             }
+            foreach (var width in new[] { 640, 1024, 1440, 1920 })
+            {
+                window.Width = width; window.Height = 900;
+                foreach (var route in new[] { "system", "time-language", "personalization", "apps", "about" })
+                {
+                    model.OpenPageCommand.Execute(route); Pump();
+                    var heading = view.FindControl<TextBlock>("PageHeading")!;
+                    var content = view.FindControl<ContentControl>("PageContent")!;
+                    var page = content.GetVisualDescendants().OfType<UserControl>().First();
+                    var body = page.GetVisualDescendants().OfType<StackPanel>().First();
+                    var headingLeft = heading.TranslatePoint(default, view)!.Value.X;
+                    var bodyLeft = body.TranslatePoint(default, view)!.Value.X;
+                    Check(Math.Abs(headingLeft - bodyLeft) < 1, $"{route} heading and content diverge at width {width}.");
+                    Check(scroll.Extent.Width <= scroll.Viewport.Width + 1, $"{route} requires horizontal scrolling at width {width}.");
+                    var pin = view.FindControl<Avalonia.Controls.Primitives.ToggleButton>("PinCurrentPageButton")!;
+                    if (pin.IsVisible)
+                    {
+                        var pinRight = pin.TranslatePoint(new Point(pin.Bounds.Width, 0), scroll)!.Value.X;
+                        Check(scroll.Bounds.Width - pinRight >= 24, "Pin action crowds the scrollbar.");
+                    }
+                }
+            }
             settings.Language = "zh-CN"; window.Width = 1024; window.Height = 768;
             foreach (var mode in new[] { RelaxKonOS.Protocol.Desktop.ThemeKind.Light, RelaxKonOS.Protocol.Desktop.ThemeKind.Dark })
             {

@@ -5,7 +5,7 @@
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.TimeLanguagePageView"
              x:DataType="vm:TimeLanguagePageViewModel" Classes="builtin-app">
-    <StackPanel Spacing="16" MaxWidth="640">
+    <StackPanel Spacing="16">
 
         <Border Classes="card">
             <StackPanel Spacing="10">

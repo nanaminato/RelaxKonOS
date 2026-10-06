@@ -16,7 +16,7 @@
         <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
     </Style>
 </UserControl.Styles>
-<StackPanel Spacing="12" MaxWidth="960">
+<StackPanel Spacing="12">
     <Border CornerRadius="16" Padding="24" Height="180" ClipToBounds="True">
         <Border.Background>
             <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">

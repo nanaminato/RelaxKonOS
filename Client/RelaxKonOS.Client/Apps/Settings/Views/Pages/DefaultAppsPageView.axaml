@@ -6,7 +6,7 @@
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.DefaultAppsPageView"
              x:DataType="vm:DefaultAppsPageViewModel"
              x:Name="Root" Classes="builtin-app">
-    <StackPanel Spacing="16" MaxWidth="720">
+    <StackPanel Spacing="16">
         <Border Classes="card" nav:SettingsSearchTarget.Id="workspace.defaultApps">
             <StackPanel Spacing="10">
                 <Grid ColumnDefinitions="*,Auto">

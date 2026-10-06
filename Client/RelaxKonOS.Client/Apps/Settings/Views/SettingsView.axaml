@@ -43,7 +43,7 @@
         </DataTemplate>
 
         <DataTemplate DataType="vm:SettingsHomePageViewModel">
-                <StackPanel Spacing="16" MaxWidth="960" HorizontalAlignment="Stretch">
+                <StackPanel Spacing="16" HorizontalAlignment="Stretch">
                     <TextBlock Text="{loc:Loc settings.home.description}" TextWrapping="Wrap" Classes="subtle" />
                     <TextBlock Text="{loc:Loc settings.home.quick_links}" IsVisible="{Binding HasEntries}" FontSize="18" FontWeight="SemiBold" />
                     <TextBlock Text="{loc:Loc settings.home.pinned}" IsVisible="{Binding HasPinnedEntries}" FontSize="18" FontWeight="SemiBold" />
@@ -148,8 +148,8 @@
                 <Button x:Name="NavigationMenuButton" Content="☰" Click="OnOpenNavigationClick"
                         AutomationProperties.Name="{loc:Loc settings.navigation.open_menu}" ToolTip.Tip="{loc:Loc settings.navigation.open_menu}" />
             </Grid>
-            <ScrollViewer x:Name="SettingsPageScroll" Grid.Row="1" IsVisible="{Binding !HasSearch}" HorizontalScrollBarVisibility="Disabled" Padding="0,0,0,24">
-                <StackPanel Spacing="12">
+            <ScrollViewer x:Name="SettingsPageScroll" Grid.Row="1" IsVisible="{Binding !HasSearch}" HorizontalScrollBarVisibility="Disabled" Padding="0,0,24,24">
+                <StackPanel x:Name="SettingsContentColumn" Spacing="12" MaxWidth="1040" HorizontalAlignment="Stretch">
             <StackPanel Spacing="8">
 <StackPanel IsVisible="{Binding HasDeviceSaveFailure}" Spacing="8">
                     <TextBlock Text="{loc:Loc settings.device.save_failed}" TextWrapping="Wrap" />
@@ -169,7 +169,7 @@
                         <TextBlock x:Name="PageHeading" Focusable="True" AutomationProperties.Name="{Binding SelectedPage.LocalizedDisplayName}"
                                    Text="{Binding SelectedPage.LocalizedDisplayName}" FontSize="28" FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center" />
                     </WrapPanel>
-                    <ToggleButton Grid.Column="1" IsVisible="{Binding CanPinCurrentPage}" IsChecked="{Binding IsCurrentPagePinned, Mode=TwoWay}" Content="{loc:Loc settings.home.pin}" ToolTip.Tip="{loc:Loc settings.home.pin_hint}" VerticalAlignment="Center" />
+                    <ToggleButton x:Name="PinCurrentPageButton" Grid.Column="1" IsVisible="{Binding CanPinCurrentPage}" IsChecked="{Binding IsCurrentPagePinned, Mode=TwoWay}" Content="{loc:Loc settings.home.pin}" ToolTip.Tip="{loc:Loc settings.home.pin_hint}" VerticalAlignment="Center" />
                 </Grid>
                 <TextBlock Text="{Binding PageScopeDescription}" IsVisible="{Binding HasPageScopeDescription}" TextWrapping="Wrap" Classes="subtle" />
                 <Button Content="{loc:Loc settings.page.default_apps}" IsVisible="{Binding IsAppsCategory}" Command="{Binding OpenPageCommand}" CommandParameter="default-apps" HorizontalAlignment="Left" />

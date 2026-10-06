@@ -6,7 +6,7 @@
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.AppsPageView"
              x:DataType="vm:AppsPageViewModel"
              x:Name="Root" Classes="builtin-app">
-    <StackPanel Spacing="16" MaxWidth="720">
+    <StackPanel Spacing="16">
         <StackPanel IsVisible="{Binding IsInstalledApps}" Spacing="16">
             <TextBlock Text="{loc:Loc settings.apps.description}" Opacity="0.68" TextWrapping="Wrap" />
             <Border nav:SettingsSearchTarget.Id="client.apps" Classes="card">

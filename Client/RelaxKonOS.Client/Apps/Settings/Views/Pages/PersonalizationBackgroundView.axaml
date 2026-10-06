@@ -6,7 +6,7 @@
              xmlns:ss="clr-namespace:RelaxKonOS.Client.Services"
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.PersonalizationBackgroundView"
              x:DataType="vm:PersonalizationPageViewModel" Classes="builtin-app">
-    <StackPanel Spacing="16" MaxWidth="960">
+    <StackPanel Spacing="16">
 <Border Classes="card" nav:SettingsSearchTarget.Id="workspace.wallpaper">
             <StackPanel Spacing="10">
                 <TextBlock Text="{loc:Loc settings.wallpaper}" Classes="title" />
