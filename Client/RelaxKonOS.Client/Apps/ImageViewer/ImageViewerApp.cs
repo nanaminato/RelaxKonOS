@@ -2,6 +2,7 @@ using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.ImageViewer.ViewModels;
 using RelaxKonOS.Client.Apps.ImageViewer.Views;
 using RelaxKonOS.Client.Services;
+using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
@@ -38,9 +39,10 @@ public sealed class ImageViewerApp : RemoteApplicationBase, IFileOpenApplication
             : context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
         var viewModel = new ImageViewerViewModel(files, sshDesktop?.IsConnected == true);
         var view = new ImageViewerView { DataContext = viewModel };
-        var window = context.ShowWindow("Image Viewer", view,
+        var window = context.ShowWindow(LocalizedText.Get("image_viewer.title"), view,
             bounds: new Rect(180, 100, 880, 640),
             iconGlyph: Manifest.IconGlyph);
+        LocalizedWindowTitle.Follow(window, context, "image_viewer.title");
         window.KeyDown += (_, e) =>
         {
             if (e.Modifiers == RemoteKeyModifiers.Control && e.Key.Value is "Add" or "OemPlus")

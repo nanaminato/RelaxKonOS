@@ -43,7 +43,7 @@ public sealed class RegistryApp : RemoteApplicationBase
         };
         viewModel.ShowNewKeyDialogAsync = async (scope, parentPath) =>
         {
-            await context.ShowDialogAsync<bool>(window, "New Registry Key", dialog => new RegistryKeyDialogView
+            await context.ShowDialogAsync<bool>(window, LocalizedText.Get("registry.menu.new_key"), dialog => new RegistryKeyDialogView
             {
                 DataContext = new RegistryKeyDialogViewModel(scope, parentPath, client, dialog.Close, viewModel.ApplyCreatedKey),
             });

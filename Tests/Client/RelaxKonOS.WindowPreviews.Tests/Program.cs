@@ -41,6 +41,36 @@ var localization = new LocalizationService(settings, new SshDesktopSession(null!
 using var services = new ServiceCollection().AddSingleton(localization).BuildServiceProvider();
 // The XAML localization extension resolves the host application's singleton provider.
 typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
+// Check the actual activation paths, including the browser's signed-out window.
+foreach (var app in new RelaxKonOS.AppSDK.RemoteApplicationBase[]
+{
+    new RelaxKonOS.Client.Apps.ImageViewer.ImageViewerApp(),
+    new RelaxKonOS.Client.Apps.Browser.BrowserApp(),
+    new RelaxKonOS.Client.Apps.Welcome.WelcomeApp()
+})
+{
+    var titleWindows = new WindowManagerService();
+    titleWindows.Attach(new Canvas { Width = 1200, Height = 800 });
+    settings.Language = "zh-CN";
+    var titleContext = new RelaxKonOS.AppSDK.AppContext(app.Manifest.Id, titleWindows, services, app.Manifest);
+    app.Activate(titleContext);
+    var titleWindow = titleWindows.Windows.Single();
+    foreach (var language in new[] { "zh-CN", "en-US", "ja-JP", "zh-CN" })
+    {
+        settings.Language = language;
+        Dispatcher.UIThread.RunJobs();
+        var expected = localization.Get($"application.{app.Manifest.Id.Value}.display_name", "missing");
+        if (expected == "missing" || titleWindow.Title != expected)
+            throw new InvalidOperationException($"{app.Manifest.Id} window title did not follow {language}: {titleWindow.Title}");
+    }
+    titleWindows.Close(titleWindow);
+    var closedTitle = titleWindow.Title;
+    settings.Language = "en-US";
+    Dispatcher.UIThread.RunJobs();
+    if (titleWindow.Title != closedTitle)
+        throw new InvalidOperationException("Closed window retained its language subscription.");
+}
+Console.WriteLine("PASS: Image viewer, browser and welcome window titles follow three languages and unsubscribe on close.");
 SettingsInteractionChecks.Run(settings, localization);
 SettingsWindowChecks.Run(settings, localization);
 DesktopDeviceSettingsChecks.Run(settings, appearance);

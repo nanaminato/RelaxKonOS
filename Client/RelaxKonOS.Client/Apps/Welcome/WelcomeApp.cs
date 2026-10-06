@@ -1,4 +1,5 @@
 using RelaxKonOS.AppSDK;
+using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
@@ -18,8 +19,9 @@ public sealed class WelcomeApp : RemoteApplicationBase
     public override void Activate(AppContext context)
     {
         var view = new WelcomeView { DataContext = new WelcomeViewModel() };
-        context.ShowWindow("Welcome to RelaxKonOS", view,
+        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.welcome.display_name"), view,
             bounds: new Rect(120, 80, 720, 480),
             iconGlyph: Manifest.IconGlyph);
+        LocalizedWindowTitle.Follow(window, context, "application.relaxkonos.welcome.display_name");
     }
 }

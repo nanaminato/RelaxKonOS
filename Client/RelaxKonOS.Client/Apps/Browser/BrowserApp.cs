@@ -45,19 +45,21 @@ public sealed class BrowserApp : RemoteApplicationBase
                 Margin = new Thickness(24),
                 TextWrapping = TextWrapping.Wrap,
             };
-            context.ShowWindow("RemoteBrowser", stub,
+            var loginWindow = context.ShowWindow(LocalizedText.Get("application.relaxkonos.browser.display_name"), stub,
                 bounds: new Rect(200, 160, 460, 180),
                 iconGlyph: Manifest.IconGlyph,
                 canResize: false, canMinimize: false, canMaximize: false);
+            LocalizedWindowTitle.Follow(loginWindow, context, "application.relaxkonos.browser.display_name");
             return;
         }
 
         var viewModel = new BrowserViewModel(client);
         var view = new BrowserMainView { DataContext = viewModel };
         BrowserDiagnostics.Record("Browser view and view-model created; opening managed window.");
-        var window = context.ShowWindow("RemoteBrowser", view,
+        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.browser.display_name"), view,
             bounds: new Rect(60, 50, 1100, 720),
             iconGlyph: Manifest.IconGlyph);
+        LocalizedWindowTitle.Follow(window, context, "application.relaxkonos.browser.display_name");
         window.KeyDown += (_, e) =>
         {
             if (e.Key == RemoteKey.Letter('L') && e.Modifiers == RemoteKeyModifiers.Control)
