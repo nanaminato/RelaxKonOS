@@ -38,6 +38,9 @@
                                                Text="{Binding Title}" />
                                     <!-- The chrome recipe redeploys this grid: applications never choose
                                          where their own window controls sit. -->
+                                    <ContentPresenter x:Name="PART_CustomTitleContent" Grid.Column="0" Grid.ColumnSpan="2"
+                                                      Content="{TemplateBinding TitleBarContent}" HorizontalAlignment="Stretch"
+                                                      VerticalAlignment="Stretch" />
                                     <Grid x:Name="PART_WindowControls" Grid.Column="2" ColumnDefinitions="Auto,Auto,Auto"
                                           VerticalAlignment="Stretch">
                                         <Button x:Name="PART_Minimize"
@@ -173,4 +176,18 @@
         <Setter Property="Margin" Value="12,0,0,0" />
     </Style>
 
+    <Style Selector="wm|RemoteWindow:custom-title-content /template/ Grid#PART_WindowIcon">
+        <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:custom-title-content /template/ TextBlock#PART_TitleText">
+        <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:custom-title-content /template/ Border#PART_TitleBar">
+        <Setter Property="Height" Value="56" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:custom-title-content:chrome-traffic-lights-left /template/ ContentPresenter#PART_CustomTitleContent">
+        <Setter Property="Grid.Column" Value="1" />
+        <Setter Property="Grid.ColumnSpan" Value="1" />
+    </Style>
 </Styles>

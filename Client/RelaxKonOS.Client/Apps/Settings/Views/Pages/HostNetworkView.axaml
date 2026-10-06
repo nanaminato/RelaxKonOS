@@ -3,9 +3,10 @@
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
              xmlns:nav="clr-namespace:RelaxKonOS.Client.Apps.Settings.Views"
-             x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.HostNetworkView"
+             x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.HostNetworkView" x:Name="NetworkView"
              x:DataType="vm:HostNetworkEditorViewModel" Classes="builtin-app">
     <StackPanel Spacing="16">
+        <StackPanel Spacing="16" IsVisible="{Binding !IsAdapterDetailPage, ElementName=NetworkView}">
         <Border CornerRadius="16" Padding="24">
             <Border.Background>
                 <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
@@ -27,13 +28,14 @@
             <Button Grid.Column="1" Content="{loc:Loc common.refresh}" Command="{Binding ReloadCommand}" IsEnabled="{Binding !IsBusy}" />
         </Grid>
         <TextBlock Text="{loc:Loc settings.network.remote_scope}" TextWrapping="Wrap" Classes="subtle" />
-        <ListBox ItemsSource="{Binding Adapters}" SelectedItem="{Binding SelectedAdapter}" IsEnabled="{Binding !HasPendingConfirmation}"
+        <ItemsControl ItemsSource="{Binding Adapters}" IsEnabled="{Binding !HasPendingConfirmation}"
                  nav:SettingsSearchTarget.Id="host.network.adapters" AutomationProperties.Name="{loc:Loc settings.network.adapters}"
-                 Background="Transparent" BorderThickness="0" Padding="0">
-<ListBox.Styles><Style Selector="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch" /></Style></ListBox.Styles>
-            <ListBox.ItemTemplate>
+                 >
+
+            <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:NetworkAdapterItem">
-                    <Border Classes="card" Margin="0,4" Padding="16">
+                    <Button Click="OnAdapterClick" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Margin="0,4" Padding="16"
+                            Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1" CornerRadius="8">
                         <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
                             <Border Width="44" Height="44" CornerRadius="12" Background="{DynamicResource SurfaceHoverBrush}" VerticalAlignment="Center">
                                 <Grid>
@@ -50,10 +52,12 @@
                             </StackPanel>
                             <TextBlock Grid.Column="2" Text="›" FontSize="22" VerticalAlignment="Center" />
                         </Grid>
-                    </Border>
+                    </Button>
                 </DataTemplate>
-            </ListBox.ItemTemplate>
-        </ListBox>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        </StackPanel>
+        <StackPanel IsVisible="{Binding IsAdapterDetailPage, ElementName=NetworkView}">
         <Border Classes="card" IsVisible="{Binding HasDetails}" Padding="20">
             <StackPanel Spacing="16">
                 <TextBlock Text="{Binding SelectedAdapter.Name}" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap" />
@@ -90,6 +94,7 @@
                 </StackPanel>
             </StackPanel>
         </Border>
+        </StackPanel>
         <Border Classes="card" IsVisible="{Binding HasPendingConfirmation}" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1" Padding="16">
             <StackPanel Spacing="12">
                 <TextBlock Text="{Binding ConfirmationText}" TextWrapping="Wrap" />

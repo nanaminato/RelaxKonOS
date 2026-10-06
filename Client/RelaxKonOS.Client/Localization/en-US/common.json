@@ -3,6 +3,7 @@
     "DisplayName": "English",
     "SortOrder": 0,
     "Strings": {
+        "common.apply": "Apply",
         "common.operation_running": "In progress",
         "common.operation_log": "Operation log",
         "common.connect": "Connect",

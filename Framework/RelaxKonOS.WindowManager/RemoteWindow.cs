@@ -4,6 +4,7 @@ using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
+using Avalonia.VisualTree;
 using RelaxKonOS.Core.Input;
 using RelaxKonOS.Core.Primitives;
 using RelaxKonOS.Core.Windows;
@@ -23,6 +24,14 @@ public class RemoteWindow : TemplatedControl
 {
     public static readonly StyledProperty<object?> ContentProperty =
         AvaloniaProperty.Register<RemoteWindow, object?>(nameof(Content));
+    /// <summary>Application content inside the host title bar; caption buttons remain host-owned.</summary>
+    public static readonly StyledProperty<Control?> TitleBarContentProperty =
+        AvaloniaProperty.Register<RemoteWindow, Control?>(nameof(TitleBarContent));
+    public Control? TitleBarContent
+    {
+        get => GetValue(TitleBarContentProperty);
+        set => SetValue(TitleBarContentProperty, value);
+    }
 
     public static readonly StyledProperty<bool> ShowShadowProperty =
         AvaloniaProperty.Register<RemoteWindow, bool>(nameof(ShowShadow), true);
@@ -34,7 +43,7 @@ public class RemoteWindow : TemplatedControl
     /// The active <c>WindowChromeRecipe</c>, mirrored from the host's style resource so the
     /// template can pick a chrome variant. This is the only place the window manager reads a
     /// style decision, and it reads a *recipe selector*, never a colour or a style id: an
-    /// application can never influence where its own controls sit.
+    /// application can never influence where the host caption buttons sit.
     /// </summary>
     private static readonly StyledProperty<object?> ChromeRecipeProperty =
         AvaloniaProperty.Register<RemoteWindow, object?>("ChromeRecipe");
@@ -101,6 +110,8 @@ public class RemoteWindow : TemplatedControl
 
     static RemoteWindow()
     {
+        TitleBarContentProperty.Changed.AddClassHandler<RemoteWindow>((window, _) =>
+            window.PseudoClasses.Set(":custom-title-content", window.TitleBarContent is not null));
         ShowShadowProperty.Changed.AddClassHandler<RemoteWindow>((window, _) => window.UpdateVisualEffects());
         ShowContentWhileDraggingProperty.Changed.AddClassHandler<RemoteWindow>((window, _) => window.UpdateVisualEffects());
         ChromeRecipeProperty.Changed.AddClassHandler<RemoteWindow>((window, _) => window.UpdateChromeRecipe());
@@ -123,7 +134,7 @@ public class RemoteWindow : TemplatedControl
         // lookup) means windows already on screen re-chrome when the user switches system style.
         Bind(ChromeRecipeProperty, this.GetResourceObservable(SystemStyleRecipeKeys.WindowChrome));
 
-        _titleDrag = e.NameScope.Find<Border>("PART_TitleDrag");
+        _titleDrag = e.NameScope.Find<Border>("PART_TitleBar");
         _resizeLayer = e.NameScope.Find<Grid>("PART_ResizeLayer");
         _contentHost = e.NameScope.Find<ContentPresenter>("PART_ContentHost");
 
@@ -201,6 +212,7 @@ public class RemoteWindow : TemplatedControl
 
     private void OnTitleDragPressed(object? sender, PointerPressedEventArgs e)
     {
+        if (IsTitleControl(e.Source)) return;
         if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
             return;
 
@@ -238,9 +250,13 @@ public class RemoteWindow : TemplatedControl
 
     private void OnTitleDragDoubleTapped(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
+        if (IsTitleControl(e.Source)) return;
         if (ViewModel?.CanMaximize == true)
             ViewModel.ToggleMaximizeCommand.Execute(null);
     }
+    private static bool IsTitleControl(object? source) => source is Visual visual
+        && visual.GetSelfAndVisualAncestors().TakeWhile(parent => parent is not RemoteWindow)
+            .OfType<Control>().Any(control => control.Focusable);
 
     private void OnResizePressed(ResizeEdge edge, PointerPressedEventArgs e)
     {

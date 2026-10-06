@@ -39,6 +39,10 @@ internal static class HostNetworkChecks
         Check(vm.HasPendingConfirmation && vm.HasProblem && !vm.ApplyCommand.CanExecute(null), "Lost response retains operation without replay");
         vm.ConfirmCommand.ExecuteAsync(null).GetAwaiter().GetResult();
 
+        var opened = false;
+        vm.RequestOpenAdapter = () => opened = true;
+        vm.OpenAdapter(vm.Adapters[0]);
+        Check(opened, "Adapter card did not request a detail route");
         var view = new HostNetworkView { DataContext = vm };
         var scroll = new ScrollViewer { Content = view, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
         var window = new Window { Content = scroll, Width = 900, Height = 850 };
@@ -50,6 +54,7 @@ internal static class HostNetworkChecks
             foreach (var culture in new[] { "zh-CN", "en-US", "ja-JP" })
             {
                 settings.Language = culture;
+                Check(localization.Get("common.apply", "missing") != "missing", "Missing translated Apply label");
                 foreach (var size in new[] { new PixelSize(900, 850), new PixelSize(320, 480) })
                 {
                     window.Width = size.Width; window.Height = size.Height; scroll.Offset = default;
@@ -57,6 +62,12 @@ internal static class HostNetworkChecks
                     Check(scroll.Extent.Width <= scroll.Viewport.Width + 1, "Remote network page requires horizontal scrolling");
                     using var frame = window.CaptureRenderedFrame() ?? throw new Exception("Network page did not render");
                     frame.Save(Path.Combine(output, $"remote-network-{culture}-{size.Width}.png"), PngBitmapEncoderOptions.Default);
+                    view.IsAdapterDetailPage = true;
+                    Dispatcher.UIThread.RunJobs();
+                    Check(scroll.Extent.Width <= scroll.Viewport.Width + 1, "Adapter detail requires horizontal scrolling");
+                    using var detailFrame = window.CaptureRenderedFrame() ?? throw new Exception("Network details did not render");
+                    detailFrame.Save(Path.Combine(output, $"remote-network-detail-{culture}-{size.Width}.png"), PngBitmapEncoderOptions.Default);
+                    view.IsAdapterDetailPage = false;
                 }
             }
         }

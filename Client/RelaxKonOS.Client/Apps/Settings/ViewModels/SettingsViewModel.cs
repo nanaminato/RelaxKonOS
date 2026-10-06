@@ -69,6 +69,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _devicePreferences = App.Services.GetRequiredService<DesktopDevicePreferences>();
         _devicePreferences.Changed += OnDevicePreferencesChanged;
         _devicePreferences.PropertyChanged += OnDeviceSaveChanged;
+        var hostNetwork = new HostNetworkEditorViewModel(App.Services.GetRequiredService<Services.HostSettings.IHostNetworkService>(), session, localization);
+        hostNetwork.RequestOpenAdapter = () => OpenPageCommand.Execute("network/adapter/" + Uri.EscapeDataString(hostNetwork.SelectedAdapter!.Value.Id));
         Pages = new SettingsPageViewModel[]
         {
             new SystemPageViewModel(settings, session, save,
@@ -80,7 +82,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             new TimeLanguagePageViewModel(settings, localization, save,
                 new HostTimeEditorViewModel(App.Services.GetRequiredService<Services.HostSettings.IHostTimeService>(), session, localization)),
             new NetworkPageViewModel(settings, session, remote!, system!, App.Services.GetRequiredService<IRemoteDockerClient>(), save,
-                new HostNetworkEditorViewModel(App.Services.GetRequiredService<Services.HostSettings.IHostNetworkService>(), session, localization)),
+                hostNetwork),
+            new NetworkAdapterPageViewModel(settings, hostNetwork),
             new AppsPageViewModel(settings, apps!, packages!, localization, browserClient!),
             new DefaultAppsPageViewModel(settings, apps!, save),
             new DeveloperPageViewModel(settings, developerMode!, networkInspector!, localization, save),
@@ -129,11 +132,11 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     public IReadOnlyList<SettingsPageViewModel> NavigationPages { get; }
     public SettingsPageViewModel? SelectedCategory
     {
-        get => Pages.FirstOrDefault(page => page.Route == (SelectedPage is PersonalizationDetailPageViewModel ? "personalization" : SelectedPage?.Route == "default-apps" ? "apps" : SelectedPage?.Route == "system/preferences" ? "system" : SelectedPage?.Route));
+        get => Pages.FirstOrDefault(page => page.Route == (SelectedPage is PersonalizationDetailPageViewModel ? "personalization" : SelectedPage?.Route == "default-apps" ? "apps" : SelectedPage?.Route == "system/preferences" ? "system" : SelectedPage?.Route == "network/adapter" ? "network" : SelectedPage?.Route));
         set { if (value is not null && value != SelectedCategory) SelectPage(value.Route); }
     }
     public bool IsAppsCategory => SelectedPage?.Route == "apps";
-    public string? ParentRoute => SelectedPage is PersonalizationDetailPageViewModel ? "personalization" : SelectedPage?.Route == "default-apps" ? "apps" : SelectedPage?.Route == "system/preferences" ? "system" : null;
+    public string? ParentRoute => SelectedPage is PersonalizationDetailPageViewModel ? "personalization" : SelectedPage?.Route == "default-apps" ? "apps" : SelectedPage?.Route == "system/preferences" ? "system" : SelectedPage?.Route == "network/adapter" ? "network" : null;
     public bool HasParentPage => ParentRoute is not null;
     public string ParentTitle => Pages.FirstOrDefault(page => page.Route == ParentRoute)?.LocalizedDisplayName ?? "";
     [RelayCommand] private void OpenPage(string route) { SelectPage(route); SearchQuery = ""; }
@@ -142,6 +145,23 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     public void SelectPage(string route)
     {
+        if (route.StartsWith("network/adapter/", StringComparison.OrdinalIgnoreCase))
+        {
+            var editor = Pages.OfType<NetworkPageViewModel>().Single().HostNetwork;
+            var id = Uri.UnescapeDataString(route["network/adapter/".Length..]);
+            var adapter = editor.Adapters.FirstOrDefault(item => item.Value.Id == id);
+            if (adapter is null) return;
+            if (editor.HasPendingConfirmation && adapter != editor.SelectedAdapter) return;
+            var samePage = SelectedPage?.Route == "network/adapter";
+            if (samePage && adapter != editor.SelectedAdapter)
+            {
+                if (!_goingBack) _navigationHistory.Remember(CurrentNavigationRoute, SearchQuery);
+                OnPropertyChanging(nameof(SelectedPage));
+            }
+            if (!editor.SelectAdapterForNavigation(adapter)) return;
+            route = "network/adapter";
+            if (samePage) { OnPropertyChanged(nameof(SelectedPage)); BackCommand.NotifyCanExecuteChanged(); }
+        }
         var page = Pages.FirstOrDefault(page => string.Equals(page.Route, route, StringComparison.OrdinalIgnoreCase));
         if (page is not null) SelectedPage = page;
     }

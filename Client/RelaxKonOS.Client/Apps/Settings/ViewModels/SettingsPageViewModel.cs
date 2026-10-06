@@ -73,7 +73,7 @@ public abstract class SettingsPageViewModel : ObservableObject, IDisposable
     public abstract string DisplayName { get; }
 
     /// <summary>Localized category name used by the Settings navigation and page headers.</summary>
-    public string LocalizedDisplayName => App.Services.GetRequiredService<LocalizationService>().Get(DisplayNameKey, DisplayName);
+    public virtual string LocalizedDisplayName => App.Services.GetRequiredService<LocalizationService>().Get(DisplayNameKey, DisplayName);
 
     protected string T(string key, string englishFallback) =>
         App.Services.GetRequiredService<LocalizationService>().Get(key, englishFallback);

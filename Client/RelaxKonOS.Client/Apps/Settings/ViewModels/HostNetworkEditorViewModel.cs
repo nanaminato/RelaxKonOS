@@ -31,6 +31,18 @@ public sealed partial class HostNetworkEditorViewModel : ObservableObject, IDisp
         _confirmationTimer.Tick += OnConfirmationTick;
     }
     public Func<HostSettingsConnection, Task<bool>>? RequestAuthorizationAsync { get; set; }
+    public Action? RequestOpenAdapter { get; set; }
+    public void OpenAdapter(NetworkAdapterItem adapter)
+    {
+        if (!SelectAdapterForNavigation(adapter)) return;
+        RequestOpenAdapter?.Invoke();
+    }
+    public bool SelectAdapterForNavigation(NetworkAdapterItem adapter)
+    {
+        if (!Adapters.Contains(adapter) || _pendingOperation is not null && adapter != SelectedAdapter) return false;
+        SelectedAdapter = adapter;
+        return true;
+    }
     public ObservableCollection<NetworkAdapterItem> Adapters { get; } = [];
     [ObservableProperty] private NetworkAdapterItem? _selectedAdapter;
     [ObservableProperty] private bool _isBusy;

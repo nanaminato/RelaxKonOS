@@ -31,6 +31,9 @@ public sealed partial class SettingsViewModel
     public event Action? NavigationContextReset;
     [ObservableProperty] private string _searchLocationStatus = "";
     public string ConnectionAddress => _session.EffectiveBaseUrl ?? "";
+    public string CurrentNavigationRoute => SelectedPage?.Route == "network/adapter"
+        && Pages.OfType<NetworkPageViewModel>().Single().HostNetwork.SelectedAdapter is { } adapter
+            ? "network/adapter/" + Uri.EscapeDataString(adapter.Value.Id) : SelectedPage?.Route ?? "home";
     public bool HasPageScopeDescription => PageScopeDescription.Length > 0;
     public string PageScopeDescription => SelectedPage?.Route == "home" ? "" : _navigationLocalization.Get(SelectedPage?.Route switch
     {
@@ -39,7 +42,7 @@ public sealed partial class SettingsViewModel
         "developer" or "about" or "accessibility" or "system/preferences" => "settings.scope_hint.device",
         "time-language" => "settings.scope_hint.time",
         "system" => "settings.scope_hint.system",
-        "network" => "settings.scope_hint.network",
+        "network" or "network/adapter" => "settings.scope_hint.network",
         "account-security" => "settings.scope_hint.account",
         "apps" => "settings.scope_hint.apps",
         _ => "settings.scope_hint.home"
@@ -59,7 +62,7 @@ public sealed partial class SettingsViewModel
 
     partial void OnSelectedPageChanging(SettingsPageViewModel? value)
     {
-        if (!_goingBack && SelectedPage is { } current && current != value) _navigationHistory.Remember(current.Route, SearchQuery);
+        if (!_goingBack && SelectedPage is { } current && current != value) _navigationHistory.Remember(CurrentNavigationRoute, SearchQuery);
     }
     partial void OnSelectedPageChanged(SettingsPageViewModel? value)
     {
@@ -68,6 +71,7 @@ public sealed partial class SettingsViewModel
         OnPropertyChanged(nameof(PageScopeDescription));
         OnPropertyChanged(nameof(HasPageScopeDescription));
         OnPropertyChanged(nameof(Breadcrumb));
+        OnPropertyChanged(nameof(CurrentNavigationRoute));
         OnPropertyChanged(nameof(HasDeviceSaveFailure));
         OnPropertyChanged(nameof(CanPinCurrentPage));
         OnPropertyChanged(nameof(IsCurrentPagePinned));
@@ -102,7 +106,7 @@ public sealed partial class SettingsViewModel
     private void OpenSearchResult(SettingsSearchEntry entry)
     {
         if (!Pages.Any(page => page.Route == entry.Route)) return;
-        if (SelectedPage is { } current) _navigationHistory.Remember(current.Route, SearchQuery);
+        if (SelectedPage is not null) _navigationHistory.Remember(CurrentNavigationRoute, SearchQuery);
         _goingBack = true;
         try { SelectPage(entry.Route); SearchQuery = ""; }
         finally { _goingBack = false; BackCommand.NotifyCanExecuteChanged(); }
@@ -114,6 +118,7 @@ public sealed partial class SettingsViewModel
         PersonalizationDetailPageViewModel => Pages.First(parent => parent.Route == "personalization").LocalizedDisplayName + " › " + page.LocalizedDisplayName,
         _ when page.Route == "default-apps" => Pages.First(parent => parent.Route == "apps").LocalizedDisplayName + " › " + page.LocalizedDisplayName,
         _ when page.Route == "system/preferences" => Pages.First(parent => parent.Route == "system").LocalizedDisplayName + " › " + page.LocalizedDisplayName,
+        _ when page.Route == "network/adapter" => Pages.First(parent => parent.Route == "network").LocalizedDisplayName + " › " + page.LocalizedDisplayName,
         _ => page.LocalizedDisplayName
     };
 

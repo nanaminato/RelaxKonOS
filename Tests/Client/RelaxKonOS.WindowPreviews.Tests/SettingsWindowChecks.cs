@@ -93,7 +93,7 @@ internal static class SettingsWindowChecks
             Check(model.SearchQuery.Length == 0 && Math.Abs(scroll.Offset.Y - rememberedOffset) < 1,
                 $"Escape did not restore pre-search page position: query={model.SearchQuery}, offset={scroll.Offset.Y}, expected={rememberedOffset}.");
             window.KeyPress(Key.F, RawInputModifiers.Control, PhysicalKey.F, null); Pump();
-            Check(ReferenceEquals(window.FocusManager?.GetFocusedElement(), view.FindControl<TextBox>("CompactSearchBox")), "Ctrl+F focused hidden wide search.");
+            Check(ReferenceEquals(window.FocusManager?.GetFocusedElement(), view.Header.FindControl<TextBox>("HeaderSearchBox")), "Ctrl+F did not focus top search.");
 
             auth.State = AuthSessionState.Authenticated;
             model.OpenPageCommand.Execute("personalization/colors"); Pump();
@@ -173,6 +173,71 @@ internal static class SettingsWindowChecks
             window.Width = 640; window.Height = 480; Pump();
             Click(window, menu); Check(drawer.IsVisible, "Drawer cannot reopen after repeated navigation.");
             window.Width = 1024; Pump(); Check(!drawer.IsVisible, "Wide layout retained the compact drawer.");
+            model.OpenPageCommand.Execute("personalization/colors"); Pump();
+            var parentBreadcrumb = view.FindControl<Button>("ParentBreadcrumb")!;
+            Check(parentBreadcrumb.IsVisible && Equals(parentBreadcrumb.Content, model.ParentTitle), "Large breadcrumb does not identify parent.");
+            Click(window, parentBreadcrumb);
+            Check(model.SelectedPage?.Route == "personalization", "Parent breadcrumb did not navigate.");
+            model.OpenPageCommand.Execute("personalization/colors"); Pump();
+            Click(window, view.Header.FindControl<Button>("HeaderBackButton")!);
+            Check(model.SelectedPage?.Route == "personalization", "Top title-bar back arrow did not navigate.");
+            window.Content = null;
+            var canvas = new Canvas();
+            window.Content = canvas; window.Width = 1100; window.Height = 800;
+            windows.Attach(canvas);
+            windows.SetHostBounds(new RelaxKonOS.Core.Primitives.Rect(0, 0, 1100, 800));
+            var managed = windows.Create(new RelaxKonOS.WindowManager.WindowCreateOptions(
+                new RelaxKonOS.Core.Applications.AppId("relaxkonos.settings"), "Settings", view,
+                new RelaxKonOS.Core.Primitives.Rect(0, 0, 1080, 780)));
+            view.AttachWindowHeader(managed);
+            model.OpenPageCommand.Execute("personalization/colors"); Pump();
+            Check(ReferenceEquals(managed.View.TitleBarContent, view.Header), "Settings header was not embedded in host title bar.");
+            Check(view.Header.Bounds.Height >= 48 && view.Header.IsEffectivelyVisible, "Embedded title bar has no usable layout.");
+            Click(window, view.Header.FindControl<TextBox>("HeaderSearchBox")!);
+            var oldBounds = managed.Info.Bounds;
+            view.Header.FindControl<TextBox>("HeaderSearchBox")!.Text = "wallpaper"; Pump();
+            Check(model.HasSearch && managed.Info.Bounds == oldBounds, "Title-bar search input moved the window or lost binding.");
+            window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null); Pump();
+            Check(!model.HasSearch, "Escape in embedded search did not restore content.");
+            Capture(window, new PixelSize(1100, 800), Path.Combine(output, "window-embedded-header-breadcrumb.png"));
+            var networkEditor = model.Pages.OfType<NetworkPageViewModel>().Single().HostNetwork;
+            var adapter = new NetworkAdapterItem(new HostNetworkAdapter(Guid.NewGuid().ToString(), 2,
+                "Ethernet 2", "Remote network adapter", "ethernet", true, 1_000_000_000, "00:11:22:33:44:55",
+                true, true, [new("192.168.1.5", 24)], ["192.168.1.1"], ["192.168.1.1"], "r1", true));
+            networkEditor.Adapters.Add(adapter);
+            model.OpenPageCommand.Execute("network");
+            networkEditor.OpenAdapter(adapter); Pump();
+            Check(model.SelectedPage?.Route == "network/adapter" && model.ParentRoute == "network"
+                && model.SelectedCategory?.Route == "network", "Adapter card did not open a nested network route.");
+            Check(view.FindControl<TextBlock>("PageHeading")!.Text == adapter.Name, "Adapter breadcrumb lost its name.");
+            Capture(window, new PixelSize(1100, 800), Path.Combine(output, "window-embedded-network-adapter.png"));
+            view.FindControl<TextBlock>("PageHeading")!.Focus();
+            foreach (var mode in new[] { RelaxKonOS.Protocol.Desktop.ThemeKind.Light, RelaxKonOS.Protocol.Desktop.ThemeKind.Dark })
+            {
+                settings.Appearance = settings.Appearance with { Mode = mode }; Pump();
+                Capture(window, new PixelSize(1100, 800), Path.Combine(output, $"window-embedded-network-adapter-{mode}.png"));
+            }
+            Click(window, view.FindControl<Button>("ParentBreadcrumb")!);
+            Check(model.SelectedPage?.Route == "network", "Network breadcrumb did not return to adapter list.");
+            model.BackCommand.Execute(null); Pump();
+            Check(model.SelectedPage?.Route == "network/adapter", "Back history lost the adapter detail route.");
+            Click(window, view.FindControl<Button>("ParentBreadcrumb")!);
+            var secondAdapter = new NetworkAdapterItem(adapter.Value with { Id = Guid.NewGuid().ToString(), Name = "Ethernet 3" });
+            networkEditor.Adapters.Add(secondAdapter);
+            networkEditor.OpenAdapter(secondAdapter); Pump();
+            model.BackCommand.Execute(null); Pump();
+            model.BackCommand.Execute(null); Pump();
+            Check(model.SelectedPage?.Route == "network/adapter" && networkEditor.SelectedAdapter == adapter,
+                "Back history restored a different adapter than the recorded detail page.");
+            var dragPoint = managed.View.TranslatePoint(new Point(850, 28), window)!.Value;
+            oldBounds = managed.Info.Bounds;
+            window.MouseDown(dragPoint, MouseButton.Left);
+            window.MouseMove(dragPoint + new Vector(12, 10));
+            window.MouseUp(dragPoint + new Vector(12, 10), MouseButton.Left); Pump();
+            Check(managed.Info.Bounds != oldBounds, "Empty custom title-bar space cannot drag the window.");
+            var closeCaption = managed.View.GetVisualDescendants().OfType<Button>().Single(button => button.Name == "PART_Close");
+            Click(window, closeCaption);
+            Check(!windows.Windows.Contains(managed), "Host-owned close caption stopped working.");
             Console.WriteLine("PASS: Full Settings window drawer, Escape/Ctrl+F, search/back/scroll, save failure/retry/durability/source reset, three languages and magnified access.");
         }
         finally

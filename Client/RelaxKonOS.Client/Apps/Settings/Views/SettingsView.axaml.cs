@@ -22,6 +22,7 @@ public partial class SettingsView : UserControl
     public SettingsView()
     {
         InitializeComponent();
+        SettingsHeader.BeforeFocusSearch = () => CloseNavigationDrawer(restoreFocus: false);
         _highlightTimer.Tick += (_, _) => ClearHighlight();
         DataContextChanged += (_, _) => ObserveModel(DataContext as SettingsViewModel);
         AttachedToVisualTree += (_, _) => ObserveModel(DataContext as SettingsViewModel);
@@ -40,10 +41,18 @@ public partial class SettingsView : UserControl
             if (args.Key == Key.Escape && NavigationDrawer.IsVisible)
             { CloseNavigationDrawer(); args.Handled = true; }
             else if (args.Key == Key.F && args.KeyModifiers.HasFlag(KeyModifiers.Control))
-            { CloseNavigationDrawer(restoreFocus: false); var search = CompactNavigation.IsVisible ? CompactSearchBox : SearchBox; search.Focus(); search.SelectAll(); args.Handled = true; }
+            { SettingsHeader.FocusSearch(); args.Handled = true; }
             else if (args.Key == Key.Escape && DataContext is SettingsViewModel { HasSearch: true } model)
             { model.SearchQuery = ""; args.Handled = true; }
         };
+    }
+
+    public SettingsHeaderView Header => SettingsHeader;
+    public void AttachWindowHeader(RelaxKonOS.WindowManager.ManagedWindow window)
+    {
+        HeaderHost.Content = null;
+        SettingsHeader.DataContext = DataContext;
+        window.View.TitleBarContent = SettingsHeader;
     }
 
     private void ObserveModel(SettingsViewModel? model)
@@ -73,7 +82,7 @@ public partial class SettingsView : UserControl
         if (_observedModel is not { HasSearch: false, SelectedPage: { } page } model) return;
         if (args.PropertyName == nameof(SettingsViewModel.SelectedPage)
             || args.PropertyName == nameof(SettingsViewModel.SearchQuery) && !model.IsRestoringNavigation)
-            _scrollOffsets[page.Route] = PageScroll.Offset;
+            _scrollOffsets[model.CurrentNavigationRoute] = PageScroll.Offset;
     }
 
     private void OnModelPropertyChanged(object? sender, PropertyChangedEventArgs args)
@@ -89,7 +98,7 @@ public partial class SettingsView : UserControl
                 Dispatcher.UIThread.Post(() =>
                 {
                     if (searchGeneration != _navigationGeneration || _observedModel?.HasSearch != true) return;
-                    (CompactNavigation.IsVisible ? CompactSearchBox : SearchBox).Focus();
+                    SettingsHeader.FocusSearch();
                 }, DispatcherPriority.Loaded);
                 return;
             }
@@ -98,10 +107,10 @@ public partial class SettingsView : UserControl
         else if (args.PropertyName != nameof(SettingsViewModel.SelectedPage)) return;
         ClearHighlight();
         var generation = ++_navigationGeneration;
-        var route = _observedModel?.SelectedPage?.Route;
+        var route = _observedModel?.CurrentNavigationRoute;
         Dispatcher.UIThread.Post(() =>
         {
-            if (generation != _navigationGeneration || route != _observedModel?.SelectedPage?.Route) return;
+            if (generation != _navigationGeneration || route != _observedModel?.CurrentNavigationRoute) return;
             if (PageScroll is { } scroll) scroll.Offset = route is not null && _scrollOffsets.TryGetValue(route, out var offset) ? offset : default;
         }, DispatcherPriority.Loaded);
     }

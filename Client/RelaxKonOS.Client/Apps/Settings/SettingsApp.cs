@@ -79,6 +79,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         var window = context.ShowWindow(LocalizedText.Get("settings.title"), view,
             bounds: new Rect(180, 90, 820, 560),
             iconGlyph: Manifest.IconGlyph);
+        view.AttachWindowHeader(window);
         _viewModel = viewModel;
         _window = window;
         var outboundProxy = viewModel.Pages.OfType<NetworkPageViewModel>().Single().OutboundProxy;
