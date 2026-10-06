@@ -2,11 +2,13 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
+             xmlns:pages="clr-namespace:RelaxKonOS.Client.Apps.Settings.Views.Pages"
              xmlns:docker="clr-namespace:RelaxKonOS.Client.Apps.Docker"
              xmlns:dto="clr-namespace:RelaxKonOS.Protocol.SystemMonitor;assembly=RelaxKonOS.Protocol"
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.NetworkPageView"
              x:DataType="vm:NetworkPageViewModel" Classes="builtin-app">
-    <StackPanel Spacing="16" MaxWidth="640">
+    <StackPanel Spacing="16" MaxWidth="960">
+    <pages:HostNetworkView DataContext="{Binding HostNetwork}" />
 
         <Border Classes="card" DataContext="{Binding OutboundProxy}">
             <StackPanel Spacing="12" x:DataType="docker:DockerProxyViewModel">

@@ -10,6 +10,12 @@ public static class HostSettingsEndpoints
     public static IEndpointRouteBuilder MapHostSettingsEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet(SettingsApiRoutes.Catalog, (HttpContext http, SettingsCatalog catalog) => Results.Ok(catalog.Read(http.User))).RequireAuthorization();
+        app.MapGet(SettingsApiRoutes.Network, async (HttpContext http, HostNetworkService network) =>
+            await ExecuteAsync(async () => { http.Response.Headers.CacheControl = "no-store"; return Results.Ok(await network.ReadAsync(http.RequestAborted)); })).RequireAuthorization();
+        app.MapPost(SettingsApiRoutes.NetworkApply, async (HostNetworkApplyRequest request, HttpContext http, HostNetworkService network) =>
+            await ExecuteAsync(async () => Results.Ok(await network.ApplyAsync(http.User, request, http.RequestAborted)))).RequireAuthorization();
+        app.MapPost(SettingsApiRoutes.NetworkConfirm, async (HostNetworkConfirmRequest request, HttpContext http, HostNetworkService network) =>
+            await ExecuteAsync(async () => Results.Ok(await network.ConfirmAsync(http.User, request.OperationId, http.RequestAborted)))).RequireAuthorization();
         app.MapGet(SettingsApiRoutes.EnvironmentTarget, async (string scope, HttpContext http, IHostEnvironmentService environment) =>
             await ExecuteAsync(() =>
             {

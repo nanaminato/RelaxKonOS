@@ -62,6 +62,9 @@ public enum PrivilegedOperationKind
     GitPackageInstall,
     DockerEngineInstall,
     HostTimeRead,
+    HostNetworkRead,
+    HostNetworkApply,
+    HostNetworkConfirm,
     HostTimeApply,
     HostIdentityRead,
     HostIdentityApply,
@@ -275,7 +278,9 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("operationId")] Guid? OperationId = null,
     [property: JsonPropertyName("correlation")] CorrelationContext? Correlation = null,
     [property: JsonPropertyName("version")] string Version = PrivilegedOperationProtocol.Version,
-    [property: JsonPropertyName("managedRuntime")] ManagedRuntimeRequest? ManagedRuntime = null);
+    [property: JsonPropertyName("managedRuntime")] ManagedRuntimeRequest? ManagedRuntime = null,
+    [property: JsonPropertyName("networkChange")] HostNetworkChange? NetworkChange = null,
+    [property: JsonPropertyName("networkCheckpoint")] string? NetworkCheckpoint = null);
 
 /// <summary>Versioned structured result returned by the local Helper.</summary>
 public sealed record PrivilegedOperationResult(
@@ -290,6 +295,8 @@ public sealed record PrivilegedOperationResult(
     [property: JsonPropertyName("hostEnvironment")] PrivilegedEnvironmentState? HostEnvironment = null,
     [property: JsonPropertyName("systemProxyCapabilities")] ProxySystemProxyCapabilities? SystemProxyCapabilities = null,
     [property: JsonPropertyName("hostTime")] HostTimeState? HostTime = null,
+    [property: JsonPropertyName("hostNetwork")] HostNetworkSnapshot? HostNetwork = null,
+    [property: JsonPropertyName("networkCheckpoint")] string? NetworkCheckpoint = null,
     [property: JsonPropertyName("hostIdentity")] HostIdentityState? HostIdentity = null,
     [property: JsonPropertyName("systemAuthenticationResult")] SystemAuthenticationResult? SystemAuthenticationResult = null,
     [property: JsonPropertyName("hostAdministratorEligible")] bool? HostAdministratorEligible = null,

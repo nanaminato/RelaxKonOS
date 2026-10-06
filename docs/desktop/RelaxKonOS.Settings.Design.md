@@ -18,7 +18,7 @@
 | 宿主环境 | 已实现 typed 服务、环境页面、PATH 分项、DevCli 与 Linux/Windows provider；真实平台验收待补 |
 | Workspace 环境覆盖 | 已实现授权 GET/PUT、加密持久化、版本冲突与空值/删除语义；客户端编辑分区已接入；终端消费尚未接入 |
 | 工作负载环境构造 | 纯构造规则已实现并验证；实际 PTY 尚未接入，当前终端不能宣称消费 Workspace 环境 |
-| DNS 安全修改与独立断连恢复 | 设计中；需要支持的网络 backend 与恢复证据 |
+| 远程 IPv4 / DNS 与独立断连恢复 | 已接入 Windows netsh + SYSTEM 计划任务及 Linux NetworkManager 检查点；自动化使用模拟 provider，真实断连恢复验收待补 |
 | SDK/终端定向入口 | 已实现环境编辑器导航；导航不授予权限，外置应用宿主写 API 尚未开放 |
 | 宿主实时通知与完整恢复历史 | 尚未全部实现 |
 
@@ -58,7 +58,7 @@ UI 要求：
 - 统一图标与现有主题资源，不以 emoji 作为核心导航图标；亮/暗主题、焦点、高对比度、屏幕阅读名称和键盘顺序完整。中文、英文、日文文案同步。
 - 每项提供标题、说明、当前值、范围、生效提示与状态。详情页有相关设置和返回入口；搜索支持标题、关键词、同义词（例如 PATH/路径/环境变量），结果显示分类路径、范围与不可用原因。
 - 目录加载不阻塞本地搜索；普通已缓存搜索目标为 150ms 内呈现，基于至少 200 个设置项测量。网络探测异步更新，不让首页串行等待所有 provider。
-- 偏好可即时预览并防抖保存，显示“保存中/已保存/失败可重试”；失败保留草稿但不伪装为已保存。宿主草稿切页保留，页内可重置，不增加离页确认弹窗。
+- 偏好可即时预览并防抖保存，成功静默，失败显示短暂 toast 并记录日志；失败保留草稿但不伪装为已保存。宿主草稿切页保留，页内可重置，不增加离页确认弹窗。
 - 时区与主机名采用“编辑 → 应用 → 结果”交互；一次点击应用在后台完成计划准备、必要授权与结果确认，不向用户展示计划期限或强制单独预览。底层仍保留不可变计划、revision、幂等与读回；不对每次键入发起特权操作。有效短期授权范围内复用认证，高影响修改仍展示准确变更内容。
 - 区分未登录、离线、加载失败、无权限、需要提权、Helper 不可用、平台不支持、外部策略锁定；不得统一变成灰按钮。离线宿主写入不排队自动重放。
 
@@ -87,7 +87,7 @@ Settings UI / Shell 快捷入口 / 内置应用 / 授权 SDK / DevCli
 
 ## 5. 协议、并发和操作状态
 
-在 `Shared/RelaxKonOS.Protocol` 定义 DTO、枚举和路由常量；沿用当前 API 前缀。环境、时区、主机名、目录、操作查询与回滚已实现；网络与连接确认仍为设计项：
+在 `Shared/RelaxKonOS.Protocol` 定义 DTO、枚举和路由常量；沿用当前 API 前缀。环境、时区、主机名、目录、操作查询与回滚已实现；网络快照、IPv4/DNS 写入与连接确认已接入；IPv6 写入、Wi-Fi 扫描/加入和其他 Linux owner 仍为设计项：
 
 | 路由（相对于 `/api/v1.0`） | 语义 |
 | --- | --- |
@@ -95,10 +95,10 @@ Settings UI / Shell 快捷入口 / 内置应用 / 授权 SDK / DevCli
 | `GET /host-settings/environment?scope=hostUser|hostMachine` | 当前绑定目标的环境快照 |
 | `POST /host-settings/environment/preview` | 强类型环境变更预览 |
 | `POST /host-settings/environment/apply` | 根据预览应用环境变更 |
-| `GET /host-settings/time`、`identity`、`network` | 各领域快照；network 支持按网卡 ID 查询 |
-| `POST /host-settings/{domain}/preview`、`apply` | domain 仅注册 time、identity、network，各自 DTO/验证器 |
+| `GET /host-settings/time`、`identity`、`network` | 各领域快照；network 返回网卡列表，由客户端选择网卡 |
+| `POST /host-settings/{domain}/preview`、`apply` | time、identity 使用计划；network/apply 使用网卡 ID、快照 revision 和客户端操作 ID |
 | `GET /settings/operations/{id}` | 有权限的调用者查询结果、恢复与待生效状态 |
-| `POST /settings/operations/{id}/confirm` | 在期限内确认网络连接仍可用 |
+| `POST /host-settings/network/confirm` | 在期限内按操作 ID 确认网络连接仍可用 |
 | `POST /settings/operations/{id}/rollback` | 授权后回退该操作可恢复的状态 |
 
 Workspace 环境覆盖与偏好属于 Workspace 授权路径，不接受借用 host scope 绕过归属检查。AppSettings 继续使用现有协议。不得复制同一宿主能力到每个应用的专有路由。

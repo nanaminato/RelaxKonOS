@@ -62,7 +62,6 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
 
     public bool ShowApplyAction => HasDraft;
     public bool ShowQueryAction => _submitted;
-    public bool ShowRollbackAction => !_submitted && _completedOperation?.State == SettingsOperationState.Applied;
     public bool IsCompleted => !_submitted && !HasDraft && _plan is null && _completedOperation is not null;
     public bool HasOperation => _plan is not null || _completedPlan is not null;
     public bool HasProblem => !string.IsNullOrEmpty(ProblemCode);
@@ -76,7 +75,6 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
         && HostIdentityValidation.Validate(new(DraftName), MaximumLength) is null
         && !string.Equals(DraftName, PendingHostName, StringComparison.Ordinal);
     public bool CanQuery => !IsBusy && _plan is not null;
-    public bool CanRollback => !IsBusy && ShowRollbackAction && !string.IsNullOrEmpty(_completedOperation?.ObservedRevision);
     public bool CanEdit => !IsBusy && !_submitted && _snapshot is not null;
 
     partial void OnIsBusyChanged(bool value) => UpdateCommands();
@@ -153,23 +151,6 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
     [RelayCommand(CanExecute = nameof(CanQuery))]
     private Task QueryAsync() => RunAsync(async ct => ShowOperation(await _service.GetOperationAsync(Connection(), _plan!.PlanId, ct)));
 
-    [RelayCommand(CanExecute = nameof(CanRollback))]
-    private Task RollbackAsync() => RunAsync(async ct =>
-    {
-        var connection = Connection();
-        var plan = _completedPlan!;
-        var operation = _completedOperation!;
-        if (RequestAuthorizationAsync is null || !await RequestAuthorizationAsync(connection))
-        { SetStatus("settings.hostname.authorization_cancelled"); return; }
-        ct.ThrowIfCancellationRequested();
-        if (!_service.IsCurrent(connection) || _completedPlan != plan) throw new InvalidOperationException("settings.connection_changed");
-        _plan = plan;
-        _submitted = true;
-        SetStatus("settings.hostname.restoring");
-        UpdateCommands();
-        ShowOperation(await _service.RollbackAsync(connection, plan.PlanId, operation.ObservedRevision!, ct));
-    });
-
     private void ShowOperation(SettingsOperation operation)
     {
         if (_disposed) return;
@@ -233,14 +214,13 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
         OnPropertyChanged(nameof(OperationId));
         OnPropertyChanged(nameof(ShowApplyAction));
         OnPropertyChanged(nameof(ShowQueryAction));
-        OnPropertyChanged(nameof(ShowRollbackAction));
         OnPropertyChanged(nameof(IsCompleted));
         OnPropertyChanged(nameof(HasOperation));
         OnPropertyChanged(nameof(HasNameProblem));
         OnPropertyChanged(nameof(NameLengthHint));
         OnPropertyChanged(nameof(HasNameLengthHint));
         ReloadCommand.NotifyCanExecuteChanged();
-        ApplyCommand.NotifyCanExecuteChanged(); QueryCommand.NotifyCanExecuteChanged(); RollbackCommand.NotifyCanExecuteChanged();
+        ApplyCommand.NotifyCanExecuteChanged(); QueryCommand.NotifyCanExecuteChanged();
     }
     private void OnLanguageChanged(object? sender, EventArgs args)
     {

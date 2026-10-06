@@ -42,30 +42,24 @@ internal static class HostIdentityCompletionChecks
             stub.Pending.SetResult(stub.Result(SettingsOperationState.Applied, "r2"));
             applying.GetAwaiter().GetResult();
             Check(vm.IsCompleted && vm.CanEdit && !vm.ShowQueryAction
-                && vm.CanRollback && vm.PendingHostName == "new-host" && vm.DraftName == "new-host", "Confirmed completion");
+                && vm.PendingHostName == "new-host" && vm.DraftName == "new-host", "Confirmed completion");
             Check(effective == SettingsEffectiveState.HostRestart
                 ? vm.CurrentHostName == "old-host" && vm.RestartPending
                 : vm.CurrentHostName == "new-host" && !vm.RestartPending, "Live and staged names");
             vm.DraftName = "next-host";
             vm.ResetDraftCommand.Execute(null);
-            Check(!vm.HasDraft && vm.CanRollback, "Reset preserves completed operation rollback");
+            Check(!vm.HasDraft && vm.CanEdit, "Reset preserves completed operation");
             vm.DraftName = "next-host";
-            vm.RollbackCommand.ExecuteAsync(null).GetAwaiter().GetResult();
-            Check(stub.RollbackId.ToString("D") == completedId && stub.RollbackRevision == "r2"
-                && vm.IsCompleted && vm.CanEdit && !vm.CanRollback
-                && vm.CurrentHostName == "old-host" && vm.PendingHostName == "old-host" && !vm.RestartPending,
-                "Restore original plan and names");
-            vm.DraftName = "new-host";
             stub.Pending = new();
             applying = vm.ApplyCommand.ExecuteAsync(null);
-            Check(stub.Request!.ExpectedRevision == "r3", "Direct apply after rollback uses confirmed revision");
+            Check(stub.Request!.ExpectedRevision == "r2", "Manual change uses confirmed revision");
             stub.Pending.SetResult(stub.Result(SettingsOperationState.Unknown, null));
             applying.GetAwaiter().GetResult();
             Check(!vm.CanEdit && !vm.CanReload && !vm.IsCompleted && vm.ShowQueryAction && vm.HasOperation, "Unknown outcome retains query and disables reload");
             Check(!vm.HasDraft && !vm.ResetDraftCommand.CanExecute(null), "Unknown submitted operation cannot be discarded as a draft");
             vm.QueryCommand.ExecuteAsync(null).GetAwaiter().GetResult();
             Check(vm.IsCompleted && vm.CanEdit && !vm.ShowQueryAction, "Query-confirmed completion");
-            Console.WriteLine($"PASS: Host name completion, revision reuse, rollback and recovery ({effective}).");
+            Console.WriteLine($"PASS: Host name completion, revision reuse, manual changes and recovery ({effective}).");
         }
     }
 

@@ -23,15 +23,21 @@ public sealed partial class NetworkPageViewModel : SettingsPageViewModel
         IRelaxKonOSClient remote,
         ITaskManagerClient system,
         IRemoteDockerClient docker,
-        Action? save)
+        Action? save,
+        HostNetworkEditorViewModel hostNetwork)
         : base(settings, save)
     {
+        HostNetwork = hostNetwork;
         _session = session;
         _remote = remote;
         _system = system;
         OutboundProxy = new DockerProxyViewModel(docker);
         ServerAddresses = new ObservableCollection<NetworkAddressDto>();
     }
+
+    public HostNetworkEditorViewModel HostNetwork { get; }
+
+    protected override void DisposeCore() => HostNetwork.Dispose();
 
     public override string Route => "network";
     public override string DisplayNameKey => "settings.page.network";

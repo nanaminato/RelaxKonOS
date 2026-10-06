@@ -39,6 +39,7 @@ internal static class SettingsWindowChecks
             .AddSingleton(localization)
             .AddSingleton<IHostTimeService>(DispatchProxy.Create<IHostTimeService, SettingsWindowHostService>())
             .AddSingleton<IHostIdentityService>(DispatchProxy.Create<IHostIdentityService, UnusedPreviewServices>())
+            .AddSingleton<IHostNetworkService>(DispatchProxy.Create<IHostNetworkService, UnusedPreviewServices>())
             .AddSingleton(new AccountSecurityClient(http, session))
             .AddSingleton<IRememberedSessionStore>(DispatchProxy.Create<IRememberedSessionStore, UnusedPreviewServices>())
             .AddSingleton<IOwnerDevicePairingEndpointStore>(DispatchProxy.Create<IOwnerDevicePairingEndpointStore, UnusedPreviewServices>())
@@ -100,9 +101,10 @@ internal static class SettingsWindowChecks
             var source = new PreferencesEditSource("relaxkonos.settings", "personalization/colors");
             colors.Theme = colors.Theme == RelaxKonOS.Protocol.Desktop.ThemeKind.Dark
                 ? RelaxKonOS.Protocol.Desktop.ThemeKind.Light : RelaxKonOS.Protocol.Desktop.ThemeKind.Dark;
-            Check(editor.Source == source && model.HasLocalSaveFeedback, "A preference edit did not show local saving feedback.");
+            Check(editor.Source == source && !model.HasLocalSaveFeedback && model.SaveStatus.Length == 0, "Saving should be silent.");
             preferenceService.Pending.TrySetException(new IOException("Controlled test failure"));
             PumpUntil(() => editor.State == PreferencesSaveState.Failed);
+            Check(model.HasFailureToast && model.FailureToast.Length > 0, "Failed saves should show a transient toast.");
             model.OpenPageCommand.Execute("about"); Pump();
             Check(model.HasOtherSaveFeedback && model.CanOpenSaveSource && model.CanRetry && model.SaveSourceRoute == source.PageRoute,
                 "Navigating away concealed a failed save or its source.");
@@ -112,10 +114,11 @@ internal static class SettingsWindowChecks
             model.RetrySaveCommand.Execute(null);
             preferenceService.Pending.TrySetResult(settings.ToPreferences() with { Revision = 25, PersistedRevision = null });
             PumpUntil(() => editor.State == PreferencesSaveState.Accepted);
-            Check(model.HasLocalSaveFeedback && editor.Source == source, "Accepted write lost its source or claimed persistence early.");
+            Check(!model.HasFailureToast, "Retry should clear the previous failure toast.");
+            Check(!model.HasLocalSaveFeedback && editor.Source == source, "Accepted writes should remain silent and retain their source.");
             preferenceService.Value = preferenceService.Value with { PersistedRevision = 25 };
             PumpUntil(() => editor.State == PreferencesSaveState.Saved);
-            Check(model.HasLocalSaveFeedback, "Durable save has no local completion feedback.");
+            Check(!model.HasLocalSaveFeedback, "Successful saves should remain silent.");
             model.OpenPageCommand.Execute("home"); Pump();
             Check(!model.HasOtherSaveFeedback, "A completed unrelated save clutters the home page.");
             auth.SwitchWorkspace(); Pump();
@@ -123,7 +126,7 @@ internal static class SettingsWindowChecks
                 "Switching authenticated workspaces retained completed save feedback.");
             preferenceService.Pending = new();
             editor.Schedule(settings.ToPreferences(), null);
-            Check(editor.Source is null && model.HasOtherSaveFeedback && !model.CanOpenSaveSource,
+            Check(editor.Source is null && !model.HasOtherSaveFeedback && !model.CanOpenSaveSource,
                 "An unlabelled edit inherited a stale Settings page source.");
             auth.Logout(); Pump();
             Check(editor.Source is null && editor.State == PreferencesSaveState.Idle && !model.BackCommand.CanExecute(null),
@@ -147,7 +150,18 @@ internal static class SettingsWindowChecks
                 settings.Appearance = settings.Appearance with { Mode = mode };
                 model.OpenPageCommand.Execute("personalization/colors"); Pump();
                 Capture(window, new PixelSize(1024, 768), Path.Combine(output, $"window-colors-{mode}.png"));
+                model.OpenPageCommand.Execute("personalization"); Pump();
+                Capture(window, new PixelSize(1024, 768), Path.Combine(output, $"window-personalization-{mode}.png"));
             }
+            foreach (var language in new[] { "zh-CN", "en-US", "ja-JP" })
+            {
+                settings.Language = language; window.Width = 640; window.Height = 480;
+                model.OpenPageCommand.Execute("personalization"); Pump();
+                Check(scroll.Extent.Width <= scroll.Viewport.Width + 1, "Personalization requires horizontal scrolling.");
+                Check(!localization.Get("settings.network.remote_title", "missing").Equals("missing"), "Missing remote network translation.");
+                Capture(window, new PixelSize(640, 480), Path.Combine(output, $"window-personalization-{language}-640x480.png"));
+            }
+            settings.Language = "zh-CN";
             window.Width = 320; window.Height = 240;
             model.OpenPageCommand.Execute("time-language"); Pump();
             var timeTarget = SettingsSearchTarget.Find(view, "workspace.timeFormat")!;

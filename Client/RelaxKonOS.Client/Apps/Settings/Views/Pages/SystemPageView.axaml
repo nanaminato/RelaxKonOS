@@ -77,7 +77,6 @@
                 <Expander IsVisible="{Binding HostIdentity.HasOperation}" Header="{loc:Loc settings.hostname.operation_details}">
                     <StackPanel Spacing="10">
                         <SelectableTextBlock Text="{Binding HostIdentity.OperationId}" TextWrapping="Wrap" />
-                        <Button IsVisible="{Binding HostIdentity.ShowRollbackAction}" Content="{loc:Loc settings.hostname.rollback}" Command="{Binding HostIdentity.RollbackCommand}" />
                     </StackPanel>
                 </Expander>
             </StackPanel>

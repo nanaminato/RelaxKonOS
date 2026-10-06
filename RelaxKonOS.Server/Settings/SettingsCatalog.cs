@@ -45,6 +45,11 @@ public sealed class SettingsCatalog(PrivilegedHelperOptions helper, IHostElevati
             "relaxkonos://settings/system", SettingsScope.HostMachine, "hostName", identityCapability,
             OperatingSystem.IsWindows() ? SettingsEffectiveState.HostRestart : SettingsEffectiveState.Immediate,
             ["hostname", "computer name", "主机名", "计算机名", "ホスト名", "コンピューター名"]));
+        items.Add(new("host.network.adapters", "network", "settings.network.adapters", "settings.network.remote_scope",
+            "relaxkonos://settings/network", SettingsScope.HostMachine, "networkAdapter",
+            new(grants.IsGranted(principal, HostElevationCapability.HostNetworkChange, HostNetworkService.Resource)
+                ? SettingsCapabilityState.Available : SettingsCapabilityState.ElevationRequired),
+            SettingsEffectiveState.Immediate, ["ethernet", "wifi", "dhcp", "dns", "ip", "以太网", "无线", "网卡"]));
         return new(items, DateTimeOffset.UtcNow);
     }
 

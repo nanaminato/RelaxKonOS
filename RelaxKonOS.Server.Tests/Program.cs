@@ -145,6 +145,7 @@ if (args.Contains("--host-settings-only"))
     Directory.CreateDirectory(settingsRoot);
     try
     {
+        await HostNetworkChecks.RunAsync();
         await SettingsOperationVerification.RunAsync(settingsRoot);
         await SettingsIdentityVerification.RunAsync(settingsRoot);
         await HostSettingsWireChecks.RunAsync(settingsRoot);

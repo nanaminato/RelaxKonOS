@@ -79,7 +79,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             new PersonalizationPageViewModel(settings, save),
             new TimeLanguagePageViewModel(settings, localization, save,
                 new HostTimeEditorViewModel(App.Services.GetRequiredService<Services.HostSettings.IHostTimeService>(), session, localization)),
-            new NetworkPageViewModel(settings, session, remote!, system!, App.Services.GetRequiredService<IRemoteDockerClient>(), save),
+            new NetworkPageViewModel(settings, session, remote!, system!, App.Services.GetRequiredService<IRemoteDockerClient>(), save,
+                new HostNetworkEditorViewModel(App.Services.GetRequiredService<Services.HostSettings.IHostNetworkService>(), session, localization)),
             new AppsPageViewModel(settings, apps!, packages!, localization, browserClient!),
             new DefaultAppsPageViewModel(settings, apps!, save),
             new DeveloperPageViewModel(settings, developerMode!, networkInspector!, localization, save),
@@ -167,6 +168,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
         if (Pages.OfType<NetworkPageViewModel>().FirstOrDefault() is { } networkPage)
         {
+            await networkPage.HostNetwork.ReloadAsync();
             await networkPage.LoadServerAddressesAsync();
             await networkPage.LoadOutboundProxyAsync();
         }
@@ -197,7 +199,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     /// than through the resource table: <c>LocalizedText.Get</c> uses the key as its own fallback,
     /// which would surface the literal text "settings.save.idle" for an empty translation.
     /// </summary>
-    public string SaveStatus => _editor.State == PreferencesSaveState.Idle
+    public string SaveStatus => _editor.State is PreferencesSaveState.Idle or PreferencesSaveState.Saving or PreferencesSaveState.Accepted or PreferencesSaveState.Saved
         ? string.Empty
         : LocalizedText.Get("settings.save." + (_editor.State == PreferencesSaveState.Failed
             && _editor.Failure != PreferencesSaveFailure.Unexpected
@@ -224,8 +226,27 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         NotifySaveFeedback();
     }
 
+    private PreferencesSaveState _lastFeedbackState;
+    private readonly Avalonia.Threading.DispatcherTimer _failureToastTimer = new() { Interval = TimeSpan.FromSeconds(5) };
+    [ObservableProperty] private string _failureToast = "";
+    public bool HasFailureToast => FailureToast.Length > 0;
+    partial void OnFailureToastChanged(string value) => OnPropertyChanged(nameof(HasFailureToast));
+
     private void NotifySaveFeedback()
     {
+        if (_lastFeedbackState != _editor.State)
+        {
+            _lastFeedbackState = _editor.State;
+            DismissFailureToast(null, EventArgs.Empty);
+            if (_editor.State is PreferencesSaveState.Failed or PreferencesSaveState.Conflict or PreferencesSaveState.Offline)
+            {
+                FailureToast = SaveStatus;
+                _failureToastTimer.Stop();
+                _failureToastTimer.Tick -= DismissFailureToast;
+                _failureToastTimer.Tick += DismissFailureToast;
+                _failureToastTimer.Start();
+            }
+        }
         OnPropertyChanged(nameof(SaveStatus));
         OnPropertyChanged(nameof(CanRetry));
         OnPropertyChanged(nameof(CanDiscard));
@@ -235,6 +256,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanOpenSaveSource));
         OnPropertyChanged(nameof(SaveSummary));
     }
+
+    private void DismissFailureToast(object? sender, EventArgs args) { _failureToastTimer.Stop(); FailureToast = ""; }
 
     private void OnMappingsChanged(object? sender, EventArgs args)
     {
@@ -271,6 +294,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        _failureToastTimer.Stop();
+        _failureToastTimer.Tick -= DismissFailureToast;
         DisposeNavigation();
         _devicePreferences.Changed -= OnDevicePreferencesChanged;
         _devicePreferences.PropertyChanged -= OnDeviceSaveChanged;

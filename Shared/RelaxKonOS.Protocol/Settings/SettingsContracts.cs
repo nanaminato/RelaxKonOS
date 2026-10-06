@@ -49,6 +49,9 @@ public static class SettingsApiRoutes
     public const string Identity = Root + "/host-settings/identity";
     public const string IdentityPreview = Identity + "/preview";
     public const string IdentityApply = Identity + "/apply";
+    public const string Network = Root + "/host-settings/network";
+    public const string NetworkApply = Network + "/apply";
+    public const string NetworkConfirm = Network + "/confirm";
     public const string Operation = Root + "/settings/operations/{id}";
     public const string Rollback = Operation + "/rollback";
 }

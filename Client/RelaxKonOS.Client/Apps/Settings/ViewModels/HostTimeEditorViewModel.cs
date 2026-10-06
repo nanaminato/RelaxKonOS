@@ -63,7 +63,6 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
 
     public bool ShowApplyAction => HasDraft;
     public bool ShowQueryAction => _submitted;
-    public bool ShowRollbackAction => !_submitted && _completedOperation?.State == SettingsOperationState.Applied;
     public bool IsCompleted => !_submitted && !HasDraft && _plan is null && _completedOperation is not null;
     public bool HasProblem => !string.IsNullOrEmpty(ProblemCode);
     public bool HasOperation => _plan is not null || _completedPlan is not null;
@@ -89,7 +88,6 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
     public bool CanApply => !IsBusy && !_submitted && _snapshot is not null
         && SelectedZone is not null && AvailableZones.Contains(SelectedZone, StringComparer.Ordinal) && SelectedZone != CurrentZone;
     public bool CanQuery => !IsBusy && _plan is not null;
-    public bool CanRollback => !IsBusy && ShowRollbackAction && !string.IsNullOrEmpty(_completedOperation?.ObservedRevision);
     public bool CanEdit => !IsBusy && !_submitted && _snapshot is not null;
 
     partial void OnIsBusyChanged(bool value) => UpdateCommands();
@@ -151,23 +149,6 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
     [RelayCommand(CanExecute = nameof(CanQuery))]
     private Task QueryAsync() => RunAsync(async ct => ShowOperation(await _service.GetOperationAsync(Connection(), _plan!.PlanId, ct)));
 
-    [RelayCommand(CanExecute = nameof(CanRollback))]
-    private Task RollbackAsync() => RunAsync(async ct =>
-    {
-        var connection = Connection();
-        var plan = _completedPlan!;
-        var operation = _completedOperation!;
-        if (RequestAuthorizationAsync is null || !await RequestAuthorizationAsync(connection))
-        { SetStatus("settings.host_time.authorization_cancelled"); return; }
-        ct.ThrowIfCancellationRequested();
-        if (!_service.IsCurrent(connection) || _completedPlan != plan) throw new InvalidOperationException("settings.connection_changed");
-        _plan = plan;
-        _submitted = true;
-        SetStatus("settings.host_time.restoring");
-        UpdateCommands();
-        ShowOperation(await _service.RollbackAsync(connection, plan.PlanId, operation.ObservedRevision!, ct));
-    });
-
     private void ShowOperation(SettingsOperation operation)
     {
         if (_disposed) return;
@@ -226,11 +207,10 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
         OnPropertyChanged(nameof(OperationId));
         OnPropertyChanged(nameof(ShowApplyAction));
         OnPropertyChanged(nameof(ShowQueryAction));
-        OnPropertyChanged(nameof(ShowRollbackAction));
         OnPropertyChanged(nameof(HasOperation));
         OnPropertyChanged(nameof(IsCompleted));
         ReloadCommand.NotifyCanExecuteChanged();
-        ApplyCommand.NotifyCanExecuteChanged(); QueryCommand.NotifyCanExecuteChanged(); RollbackCommand.NotifyCanExecuteChanged();
+        ApplyCommand.NotifyCanExecuteChanged(); QueryCommand.NotifyCanExecuteChanged();
     }
     private void OnLanguageChanged(object? sender, EventArgs args) => OnPropertyChanged(nameof(StatusText));
     private void OnSessionChanged(object? sender, AuthSessionStateChangedEventArgs args) => Dispatcher.UIThread.Post(() =>

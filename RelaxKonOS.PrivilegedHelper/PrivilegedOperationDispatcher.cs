@@ -23,6 +23,10 @@ public static partial class PrivilegedOperationExecutor
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "valid correlation metadata is required");
         if (request.Operation != PrivilegedOperationKind.ManagedRuntime && request.ManagedRuntime is not null)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "runtime fields require a dedicated operation");
+        if (request.Operation is PrivilegedOperationKind.HostNetworkRead or PrivilegedOperationKind.HostNetworkApply or PrivilegedOperationKind.HostNetworkConfirm)
+            return await RelaxKonOS.PrivilegedHelper.HostNetworkOperations.ExecuteAsync(request);
+        if (request.NetworkChange is not null || request.NetworkCheckpoint is not null)
+            return Fail(64, PrivilegedProblemCode.InvalidRequest, "network fields require a dedicated operation");
         if (request.Operation == PrivilegedOperationKind.ManagedRuntime)
         {
             // No general-purpose fields may ride along with a runtime request.

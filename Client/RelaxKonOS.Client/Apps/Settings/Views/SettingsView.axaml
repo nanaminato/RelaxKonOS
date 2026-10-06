@@ -112,9 +112,7 @@
                 <StackPanel Spacing="6">
                     <TextBlock Text="{loc:Loc settings.title}" FontSize="22" FontWeight="SemiBold" />
                     <TextBlock Text="{Binding ConnectionSummary}" TextWrapping="Wrap" FontSize="12" Classes="subtle" />
-                    <Expander Header="{loc:Loc settings.connection.address}">
-                        <SelectableTextBlock Text="{Binding ConnectionAddress}" TextWrapping="Wrap" FontSize="12" />
-                    </Expander>
+                    <SelectableTextBlock Text="{Binding ConnectionAddress}" TextWrapping="Wrap" FontSize="12" />
                 </StackPanel>
                 <TextBox x:Name="SearchBox" Grid.Row="1" Text="{Binding SearchQuery, Mode=TwoWay}"
                          PlaceholderText="{loc:Loc settings.search.placeholder}" MaxLength="256"
@@ -164,27 +162,9 @@
             </StackPanel>
             <StackPanel Spacing="4">
                 <TextBlock Text="{Binding SearchLocationStatus}" TextWrapping="Wrap" Foreground="{DynamicResource AccentBrush}" />
-                <Border IsVisible="{Binding HasOtherSaveFeedback}" Classes="card" Padding="12">
-                    <StackPanel Spacing="8">
-                        <TextBlock Text="{Binding SaveSummary}" TextWrapping="Wrap" />
-                        <WrapPanel>
-                            <Button Content="{loc:Loc settings.save.open_source}" IsVisible="{Binding CanOpenSaveSource}"
-                                    Command="{Binding OpenPageCommand}" CommandParameter="{Binding SaveSourceRoute}" Margin="0,0,6,4" />
-                            <Button Content="{loc:Loc settings.save.retry}" IsVisible="{Binding CanRetry}" Command="{Binding RetrySaveCommand}" Margin="0,0,6,4" />
-                            <Button Content="{loc:Loc settings.save.discard}" IsVisible="{Binding CanDiscard}" Command="{Binding DiscardDraftCommand}" Margin="0,0,6,4" />
-                        </WrapPanel>
-                    </StackPanel>
-                </Border>
+
             </StackPanel>
-                <Border x:Name="LocalSaveFeedback" IsVisible="{Binding HasLocalSaveFeedback}" Classes="card" Padding="12">
-                    <StackPanel Spacing="6">
-                        <TextBlock Text="{Binding SaveStatus}" TextWrapping="Wrap" />
-                        <WrapPanel>
-                            <Button Content="{loc:Loc settings.save.retry}" IsVisible="{Binding CanRetry}" Command="{Binding RetrySaveCommand}" Margin="0,0,6,4" />
-                            <Button Content="{loc:Loc settings.save.discard}" IsVisible="{Binding CanDiscard}" Command="{Binding DiscardDraftCommand}" Margin="0,0,6,4" />
-                        </WrapPanel>
-                    </StackPanel>
-                </Border>
+
                     <ContentControl x:Name="PageContent" Content="{Binding SelectedPage}" />
                 </StackPanel>
             </ScrollViewer>
@@ -207,6 +187,16 @@
             </Grid>
         </Grid>
     </Grid>
+        <Border IsVisible="{Binding HasFailureToast}" Classes="card" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                Margin="24" Padding="16,12" MaxWidth="380" BorderBrush="{DynamicResource DangerBrush}" BorderThickness="1">
+            <StackPanel Spacing="8">
+                <TextBlock Text="{Binding FailureToast}" TextWrapping="Wrap" />
+                <WrapPanel>
+                    <Button Content="{loc:Loc settings.save.retry}" Command="{Binding RetrySaveCommand}" IsVisible="{Binding CanRetry}" Margin="0,0,8,0" />
+                    <Button Content="{loc:Loc settings.save.discard}" Command="{Binding DiscardDraftCommand}" IsVisible="{Binding CanDiscard}" />
+                </WrapPanel>
+            </StackPanel>
+        </Border>
         <Grid x:Name="NavigationDrawer" IsVisible="False">
             <Button HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="{DynamicResource TextPrimaryBrush}" Opacity="0.18"
                     Click="OnCloseNavigationClick" AutomationProperties.Name="{loc:Loc settings.navigation.close_menu}" />
@@ -220,9 +210,7 @@
                     </Grid>
                     <StackPanel Grid.Row="1" Spacing="6">
                         <TextBlock Text="{Binding ConnectionSummary}" TextWrapping="Wrap" Classes="subtle" />
-                        <Expander Header="{loc:Loc settings.connection.address}">
-                            <SelectableTextBlock Text="{Binding ConnectionAddress}" TextWrapping="Wrap" />
-                        </Expander>
+                        <SelectableTextBlock Text="{Binding ConnectionAddress}" TextWrapping="Wrap" />
                     </StackPanel>
                     <ListBox x:Name="DrawerNavigationList" Grid.Row="2" ItemsSource="{Binding NavigationPages}" SelectedItem="{Binding SelectedCategory, Mode=TwoWay}"
                              Background="Transparent" BorderThickness="0" AutomationProperties.Name="{loc:Loc settings.search.category}"

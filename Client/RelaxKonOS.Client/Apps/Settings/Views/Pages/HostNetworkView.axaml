@@ -1,0 +1,101 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
+             xmlns:nav="clr-namespace:RelaxKonOS.Client.Apps.Settings.Views"
+             x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.HostNetworkView"
+             x:DataType="vm:HostNetworkEditorViewModel" Classes="builtin-app">
+    <StackPanel Spacing="16">
+        <Border CornerRadius="16" Padding="24">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                    <GradientStop Color="{DynamicResource AccentColor}" Offset="0" />
+                    <GradientStop Color="{DynamicResource AccentHoverColor}" Offset="1" />
+                </LinearGradientBrush>
+            </Border.Background>
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="20">
+                <Path Data="M12,2 A10,10 0 1 0 12,22 A10,10 0 1 0 12,2 M2,12 L22,12 M12,2 C5,7 5,17 12,22 M12,2 C19,7 19,17 12,22"
+                      Stroke="{DynamicResource TextOnAccentBrush}" StrokeThickness="1.6" Width="42" Height="42" Stretch="Uniform" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="1" Spacing="6">
+                    <TextBlock Text="{loc:Loc settings.network.remote_title}" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource TextOnAccentBrush}" TextWrapping="Wrap" />
+                    <SelectableTextBlock Text="{Binding Target}" Foreground="{DynamicResource TextOnAccentBrush}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Grid>
+        </Border>
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <TextBlock Text="{loc:Loc settings.network.adapters}" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <Button Grid.Column="1" Content="{loc:Loc common.refresh}" Command="{Binding ReloadCommand}" IsEnabled="{Binding !IsBusy}" />
+        </Grid>
+        <TextBlock Text="{loc:Loc settings.network.remote_scope}" TextWrapping="Wrap" Classes="subtle" />
+        <ListBox ItemsSource="{Binding Adapters}" SelectedItem="{Binding SelectedAdapter}" IsEnabled="{Binding !HasPendingConfirmation}"
+                 nav:SettingsSearchTarget.Id="host.network.adapters" AutomationProperties.Name="{loc:Loc settings.network.adapters}"
+                 Background="Transparent" BorderThickness="0" Padding="0">
+<ListBox.Styles><Style Selector="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch" /></Style></ListBox.Styles>
+            <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:NetworkAdapterItem">
+                    <Border Classes="card" Margin="0,4" Padding="16">
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
+                            <Border Width="44" Height="44" CornerRadius="12" Background="{DynamicResource SurfaceHoverBrush}" VerticalAlignment="Center">
+                                <Grid>
+                                    <Path IsVisible="{Binding !IsWifi}" Data="M4,3 L20,3 L20,15 L4,15 Z M9,15 L9,21 M15,15 L15,21 M9,21 L15,21 M8,7 L8,11 M12,7 L12,11 M16,7 L16,11"
+                                          Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.6" Width="24" Height="24" Stretch="Uniform" />
+                                    <Path IsVisible="{Binding IsWifi}" Data="M2,7 Q12,-1 22,7 M5,11 Q12,5 19,11 M8,15 Q12,11 16,15 M11,19 L13,19"
+                                          Stroke="{DynamicResource AccentBrush}" StrokeThickness="2" Width="24" Height="24" Stretch="Uniform" />
+                                </Grid>
+                            </Border>
+                            <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding Kind}" Classes="subtle" />
+                                <TextBlock Text="{Binding Status}" FontSize="12" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="2" Text="›" FontSize="22" VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+        <Border Classes="card" IsVisible="{Binding HasDetails}" Padding="20">
+            <StackPanel Spacing="16">
+                <TextBlock Text="{Binding SelectedAdapter.Name}" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding SelectedAdapter.Description}" TextWrapping="Wrap" Classes="subtle" />
+                <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="10" ColumnSpacing="16">
+                    <TextBlock Text="{loc:Loc settings.network.link_speed}" Classes="subtle" />
+                    <TextBlock Grid.Column="1" Text="{Binding SelectedAdapter.Speed}" />
+                    <TextBlock Grid.Row="1" Text="{loc:Loc settings.network.mac}" Classes="subtle" />
+                    <SelectableTextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedAdapter.Mac}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="2" Text="{loc:Loc settings.network.addresses}" Classes="subtle" />
+                    <SelectableTextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedAdapter.IpAddresses}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="3" Text="{loc:Loc settings.network.gateway}" Classes="subtle" />
+                    <SelectableTextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedAdapter.Gateways}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="4" Text="DNS" Classes="subtle" />
+                    <SelectableTextBlock Grid.Row="4" Grid.Column="1" Text="{Binding SelectedAdapter.Dns}" TextWrapping="Wrap" />
+                </Grid>
+                <TextBlock Text="{Binding UnavailableReason}" IsVisible="{Binding HasUnavailableReason}" TextWrapping="Wrap" Classes="subtle" />
+                <StackPanel Spacing="12" IsEnabled="{Binding CanEdit}" IsVisible="{Binding !HasUnavailableReason}">
+                    <TextBlock Text="{loc:Loc settings.network.ip_assignment}" FontWeight="SemiBold" />
+                    <CheckBox Content="{loc:Loc settings.network.dhcp}" IsChecked="{Binding Dhcp}" />
+                    <StackPanel Spacing="8" IsVisible="{Binding !Dhcp}">
+                        <TextBlock Text="{loc:Loc settings.network.ipv4}" />
+                        <TextBox Text="{Binding Address}" PlaceholderText="192.168.1.100" />
+                        <TextBlock Text="{loc:Loc settings.network.prefix}" />
+                        <TextBox Text="{Binding PrefixLength}" PlaceholderText="24" />
+                        <TextBlock Text="{loc:Loc settings.network.gateway}" />
+                        <TextBox Text="{Binding Gateway}" PlaceholderText="192.168.1.1" />
+                    </StackPanel>
+                    <TextBlock Text="{loc:Loc settings.network.dns_assignment}" FontWeight="SemiBold" />
+                    <CheckBox Content="{loc:Loc settings.network.automatic_dns}" IsChecked="{Binding AutomaticDns}" />
+                    <TextBox IsVisible="{Binding !AutomaticDns}" Text="{Binding DnsServers}" PlaceholderText="1.1.1.1, 8.8.8.8" />
+                    <TextBlock Text="{loc:Loc settings.network.connection_impact}" TextWrapping="Wrap" Classes="subtle" />
+                    <Button Content="{loc:Loc common.apply}" Command="{Binding ApplyCommand}" HorizontalAlignment="Left" Classes="primary" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+        <Border Classes="card" IsVisible="{Binding HasPendingConfirmation}" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1" Padding="16">
+            <StackPanel Spacing="12">
+                <TextBlock Text="{Binding ConfirmationText}" TextWrapping="Wrap" />
+                <Button Content="{loc:Loc settings.network.keep_changes}" Command="{Binding ConfirmCommand}" HorizontalAlignment="Left" Classes="primary" />
+            </StackPanel>
+        </Border>
+        <TextBlock Text="{Binding Problem}" IsVisible="{Binding HasProblem}" Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap" />
+    </StackPanel>
+</UserControl>

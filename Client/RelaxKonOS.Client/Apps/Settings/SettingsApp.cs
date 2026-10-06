@@ -214,6 +214,9 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         }
         viewModel.Pages.OfType<TimeLanguagePageViewModel>().Single().HostTime.RequestAuthorizationAsync = connection =>
             AuthorizeHostSettingsAsync(hostTimeService.IsCurrent, connection, "settings.host_time.authorize", (password, administrator) => hostTimeService.AuthorizeAsync(connection, password, administrator));
+        var hostNetworkService = context.Services.GetRequiredService<Services.HostSettings.IHostNetworkService>();
+        viewModel.Pages.OfType<NetworkPageViewModel>().Single().HostNetwork.RequestAuthorizationAsync = connection =>
+            AuthorizeHostSettingsAsync(hostNetworkService.IsCurrent, connection, "settings.network.authorize", (password, administrator) => hostNetworkService.AuthorizeAsync(connection, password, administrator));
         var hostIdentityService = context.Services.GetRequiredService<Services.HostSettings.IHostIdentityService>();
         var hostEnvironment = context.Services.GetRequiredService<Services.HostSettings.IHostEnvironmentService>();
         var systemPage = viewModel.Pages.OfType<SystemPageViewModel>().Single();

@@ -65,7 +65,6 @@
                 <Expander IsVisible="{Binding HostTime.HasOperation}" Header="{loc:Loc settings.host_time.operation_details}">
                     <StackPanel Spacing="10">
                         <SelectableTextBlock Text="{Binding HostTime.OperationId}" TextWrapping="Wrap" />
-                        <Button IsVisible="{Binding HostTime.ShowRollbackAction}" Content="{loc:Loc settings.host_time.rollback}" Command="{Binding HostTime.RollbackCommand}" />
                     </StackPanel>
                 </Expander>
             </StackPanel>

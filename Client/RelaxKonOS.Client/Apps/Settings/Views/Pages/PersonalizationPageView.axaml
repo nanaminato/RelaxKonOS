@@ -5,33 +5,74 @@
              xmlns:ss="clr-namespace:RelaxKonOS.Client.Services"
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.PersonalizationPageView"
              x:DataType="vm:PersonalizationPageViewModel" Classes="builtin-app">
-    <StackPanel Spacing="12" MaxWidth="960">
-        <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="16" MinHeight="64" CornerRadius="8"
+    <UserControl.Styles>
+    <Style Selector="Button.personalization-section">
+        <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="MinHeight" Value="84" />
+    </Style>
+    <Style Selector="Button.personalization-section:pointerover">
+        <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
+    </Style>
+</UserControl.Styles>
+<StackPanel Spacing="12" MaxWidth="960">
+    <Border CornerRadius="16" Padding="24" Height="180" ClipToBounds="True">
+        <Border.Background>
+            <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                <GradientStop Color="{DynamicResource AccentColor}" Offset="0" />
+                <GradientStop Color="{DynamicResource AccentHoverColor}" Offset="0.55" />
+                <GradientStop Color="{DynamicResource AccentPressedColor}" Offset="1" />
+            </LinearGradientBrush>
+        </Border.Background>
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="24">
+            <StackPanel VerticalAlignment="Center" Spacing="12">
+                <TextBlock Text="{loc:Loc settings.page.personalization}" Foreground="{DynamicResource TextOnAccentBrush}" FontSize="26" FontWeight="SemiBold" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Border Background="{Binding PalettePreview.Accent}" Width="28" Height="28" CornerRadius="14" BorderBrush="{DynamicResource TextOnAccentBrush}" BorderThickness="2" />
+                    <Border Background="{Binding PalettePreview.Surface}" Width="28" Height="28" CornerRadius="14" BorderBrush="{DynamicResource TextOnAccentBrush}" BorderThickness="2" />
+                    <Border Background="{Binding PalettePreview.Success}" Width="28" Height="28" CornerRadius="14" BorderBrush="{DynamicResource TextOnAccentBrush}" BorderThickness="2" />
+                </StackPanel>
+            </StackPanel>
+            <Border Grid.Column="1" Width="180" Height="112" CornerRadius="10" Background="{Binding PalettePreview.Background}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="2" Padding="12">
+                <Grid RowDefinitions="Auto,*,Auto">
+                    <Border Background="{Binding PalettePreview.Surface}" Width="84" Height="8" CornerRadius="4" HorizontalAlignment="Left" />
+                    <Border Grid.Row="1" Background="{Binding PalettePreview.Accent}" Width="90" Height="38" CornerRadius="6" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <Border Grid.Row="2" Background="{Binding PalettePreview.Surface}" Height="12" CornerRadius="4" />
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+        <Button Classes="personalization-section" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="16" MinHeight="84" CornerRadius="8"
                 Click="OnSectionClick" Tag="personalization/colors">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                <TextBlock Text="{loc:Loc settings.colors_and_mode}" TextWrapping="Wrap" VerticalAlignment="Center" />
-                <TextBlock Grid.Column="1" Text="›" FontSize="22" />
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
+<Border Width="44" Height="44" CornerRadius="12" Background="{Binding PalettePreview.Surface}" VerticalAlignment="Center"><Path Data="M12,2 A10,10 0 1 0 12,22 A3,3 0 0 0 15,19 L15,17 L18,17 A6,6 0 0 0 22,11 A10,10 0 0 0 12,2 M7,8 L7,9 M12,5 L12,6 M17,8 L17,9" Stroke="{Binding PalettePreview.Accent}" StrokeThickness="1.7" Width="24" Height="24" Stretch="Uniform" /></Border>
+                <TextBlock Grid.Column="1" Text="{loc:Loc settings.colors_and_mode}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2" Text="›" FontSize="22" />
             </Grid>
         </Button>
-        <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="16" MinHeight="64" CornerRadius="8"
+        <Button Classes="personalization-section" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="16" MinHeight="84" CornerRadius="8"
                 Click="OnSectionClick" Tag="personalization/style">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                <TextBlock Text="{loc:Loc settings.system_style}" TextWrapping="Wrap" VerticalAlignment="Center" />
-                <TextBlock Grid.Column="1" Text="›" FontSize="22" />
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
+<Border Width="44" Height="44" CornerRadius="12" Background="{Binding PalettePreview.Surface}" VerticalAlignment="Center"><Path Data="M3,4 L21,4 L21,20 L3,20 Z M3,9 L21,9 M7,6 L7,7 M11,6 L11,7" Stroke="{Binding PalettePreview.Accent}" StrokeThickness="1.7" Width="24" Height="24" Stretch="Uniform" /></Border>
+                <TextBlock Grid.Column="1" Text="{loc:Loc settings.system_style}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2" Text="›" FontSize="22" />
             </Grid>
         </Button>
-        <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="16" MinHeight="64" CornerRadius="8"
+        <Button Classes="personalization-section" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="16" MinHeight="84" CornerRadius="8"
                 Click="OnSectionClick" Tag="personalization/layout">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                <TextBlock Text="{loc:Loc settings.desktop_layout}" TextWrapping="Wrap" VerticalAlignment="Center" />
-                <TextBlock Grid.Column="1" Text="›" FontSize="22" />
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
+<Border Width="44" Height="44" CornerRadius="12" Background="{Binding PalettePreview.Surface}" VerticalAlignment="Center"><Path Data="M2,3 L22,3 L22,18 L2,18 Z M8,22 L16,22 M12,18 L12,22 M7,3 L7,18" Stroke="{Binding PalettePreview.Accent}" StrokeThickness="1.7" Width="24" Height="24" Stretch="Uniform" /></Border>
+                <TextBlock Grid.Column="1" Text="{loc:Loc settings.desktop_layout}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2" Text="›" FontSize="22" />
             </Grid>
         </Button>
-        <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="16" MinHeight="64" CornerRadius="8"
+        <Button Classes="personalization-section" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="16" MinHeight="84" CornerRadius="8"
                 Click="OnSectionClick" Tag="personalization/background">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                <TextBlock Text="{loc:Loc settings.wallpaper}" TextWrapping="Wrap" VerticalAlignment="Center" />
-                <TextBlock Grid.Column="1" Text="›" FontSize="22" />
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
+<Border Width="44" Height="44" CornerRadius="12" Background="{Binding PalettePreview.Surface}" VerticalAlignment="Center"><Path Data="M3,3 L21,3 L21,21 L3,21 Z M3,17 L9,10 L14,15 L17,11 L21,17 M16,7 L17,7" Stroke="{Binding PalettePreview.Accent}" StrokeThickness="1.7" Width="24" Height="24" Stretch="Uniform" /></Border>
+                <TextBlock Grid.Column="1" Text="{loc:Loc settings.wallpaper}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2" Text="›" FontSize="22" />
             </Grid>
         </Button>
     </StackPanel>

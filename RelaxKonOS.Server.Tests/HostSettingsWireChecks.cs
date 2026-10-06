@@ -34,6 +34,7 @@ internal static class HostSettingsWireChecks
         builder.Services.AddSingleton<IHostIdentityService, UnusedIdentity>();
         builder.Services.AddSingleton<EnvironmentOperationCoordinator>();
         builder.Services.AddSingleton<HostIdentityOperationCoordinator>();
+        builder.Services.AddSingleton<HostNetworkService>(_ => throw new InvalidOperationException("Network not requested"));
         builder.Services.AddSingleton<SettingsCatalog>(_ => throw new InvalidOperationException("Catalog not requested"));
         await using var app = builder.Build();
         app.Use(async (context,next) => { context.User = principal; await next(context); });

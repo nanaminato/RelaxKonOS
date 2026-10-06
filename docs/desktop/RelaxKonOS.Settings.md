@@ -4,12 +4,13 @@
 
 
 本文描述设置应用的当前行为。范围、安全契约与完整验收矩阵见 [设置设计](./RelaxKonOS.Settings.Design.md)。宿主写入的实现与实机验收状态分别列出。
+最新测试范围、发现的问题及实机部署限制见 [设置验收记录](./RelaxKonOS.Settings.Acceptance.md)。
 
 ## 服务与真源
 
 设置应用是入口，偏好读写服务可独立调用。Client 的 `Services/WorkspaceSettings/IWorkspaceSettingsService` 供 Settings、Shell、Explorer、SDK、编码设置及默认程序入口共同使用。`WorkspacePreferencesEditor` 管理冻结草稿、300ms 防抖、目标绑定及重试；窗口关闭不会取消保存，连接变化清理旧目标草稿。`PreferencesSync` 负责登录加载与设置变化订阅，更新 ShellSettings 和 DefaultAppRegistry。订阅绑定连接目标，重连先订阅再重取快照；有草稿时保留草稿，避免远端变化覆盖编辑。
 
-Server `Settings/IWorkspaceSettingsService` 管理偏好验证和版本比较。真源为配置注册表 `Workspace\Desktop` 的 `(Default)` JSON 值；当前 SQLite 缓存延迟落盘，因此 UI 先显示“服务端已接收，等待持久化”；读回的 `persistedRevision` 与保存版本一致时才显示“已保存”。损坏的偏好返回错误并保留原数据。
+Server `Settings/IWorkspaceSettingsService` 管理偏好验证和版本比较。真源为配置注册表 `Workspace\Desktop` 的 `(Default)` JSON 值；当前 SQLite 缓存延迟落盘，客户端在后台跟踪 `persistedRevision`，界面不展示保存中、已接收或持久化成功提示；失败显示五秒 toast 并保留日志与草稿。损坏的偏好返回错误并保留原数据。
 
 `GET /api/v1.0/workspaces/{id}/preferences` 返回 `WorkspacePreferencesDto.revision`；PUT 使用同一 DTO，必须携带编辑基线 revision。缺失返回 428，冲突返回 409。不能先读取新 revision 再给旧草稿换版本强行保存。Workspace 归属由认证身份校验；AppSettings 仍仅存应用私有偏好，不能存 OS 配置。
 
@@ -28,6 +29,13 @@ Server `Settings/IWorkspaceSettingsService` 管理偏好验证和版本比较。
 
 ## 当前页面与保存状态
 
+连接地址在宽侧栏和窄屏抽屉中直接显示，可选择复制。个性化概览使用渐变横幅、实时主题色预览及四个矢量图标卡片。普通偏好后台保存，成功与持久化过程不显示状态卡片；失败只显示五秒 toast，保留诊断日志及草稿。
+
+网络页仅管理当前连接的远程主机，没有本机系统设置入口。现代卡片按以太网、Wi-Fi 和其他适配器展示连接状态，并提供 IPv4/IPv6 地址、网关、DNS、MAC 和链路速度详情。支持在 Windows 及 Linux NetworkManager 管理的活动以太网／Wi-Fi 网卡上修改 IPv4 DHCP／手动地址、前缀长度、网关与自动／手动 DNS；其他 owner、复杂配置和不支持的网卡明确只读。当前未提供 Wi-Fi 扫描、加入新 SSID、IPv6 写入或 systemd-networkd 配置。
+
+网络写入走 `GET /host-settings/network`、`POST /host-settings/network/apply` 与 `/confirm`，由独立连接绑定客户端服务调用。修改需要精确 `host/network` 的 `HostNetworkChange` 授权，Helper 再验证结构化输入和快照 revision。客户端先生成操作 ID，丢失响应不重放写入。服务端完成 Helper 写入前不能确认，确认只允许原操作账户。Windows 先注册 SYSTEM 计划任务保存原 IP/DNS，Linux NetworkManager 先创建检查点；未确认时由远程系统在 120 秒后恢复，不依赖客户端或 Server 仍在线。客户端提供 90 秒保留确认窗口，确认后移除恢复任务／检查点。关闭设置或断开连接不会取消恢复保护。
+
+实现依据：[Windows netsh](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/netsh-interface)、[Windows 计划任务](https://learn.microsoft.com/en-us/powershell/module/scheduledtasks/register-scheduledtask)、[NetworkManager 检查点](https://networkmanager.pages.freedesktop.org/NetworkManager/NetworkManager/gdbus-org.freedesktop.NetworkManager.html)。自动化验收使用模拟服务与 Helper，覆盖授权、参数、版本冲突、操作归属、不重放和三语言窄窗口；真实网卡变更及恢复仍需隔离环境验收。
 设置请求失败自动写入客户端 `%LOCALAPPDATA%/RelaxKonOS/logs/workspace-preferences-YYYYMMDD.jsonl`（每文件上限 2 MiB，最多保留一个轮换文件，清理七天前日志）。记录操作、Workspace、预期 revision、异常类型、HTTP 状态与服务端返回的 correlation ID；不记录令牌、请求/响应正文或异常消息。界面按网络、登录/权限、无效设置、需要重载及服务端失败显示本地化提示，仍保留草稿；冲突必须显式重载，不自动覆盖远端版本。令牌刷新后按稳定服务、登录会话和 Workspace 确认保存 revision，避免下一次保存误用旧版本。
 
 开发服务端未配置 `Observability:LogDirectory` 时默认写入输出目录 `data/logs/runtime-YYYYMMDD.jsonl`；安装版使用配置的运行日志目录。所有 HTTP 4xx/5xx 请求均记录完成事件，不受成功请求采样率影响。客户端和服务端日志可按 correlation ID 对照。历史上未开启文件日志的开发请求无法追溯；这些默认值仅对重启后的开发服务端生效。
@@ -38,7 +46,7 @@ Server `Settings/IWorkspaceSettingsService` 管理偏好验证和版本比较。
 
 当前一级分类为首页、系统、网络、个性化、应用、账户与安全、时间和语言、辅助功能、开发者。默认应用归入应用详情；关于保留独立页面并置于导航底部。环境变量详情页及已有壁纸、调色板、系统风格和 Shell 布局能力继续保留。Docker Hub 镜像源属于 Docker 管理器的“镜像源”页，不在设置应用中展示。个性化已改为概览和“颜色与模式”“系统风格”“桌面布局”“背景”四个详情页（见下节）。保存状态支持中文、英文、日文；失败保留草稿并可重试，冲突保留草稿，提供明确的“放弃草稿并重载”操作；重载失败仍保留草稿。首页已实现常用入口与固定页；辅助功能已实现，原生验收待补。不扩展逐字段冲突合并界面或首页待办中心。
 
-分类与详情页使用注册的 Route 导航，共用单色矢量图标；持续显示账号、Workspace 与分类路径，连接地址可展开查看；每页提供作用范围说明，混合范围页面在关键分区注明设备、工作区或远程主机。返回历史保存详情路由与搜索词，页面缓存滚动偏移，连接变化清理旧导航上下文。小于 760 个逻辑像素时折叠侧栏，使用可展开的导航抽屉；选择分类后收起，Escape 关闭并恢复菜单焦点，Ctrl+F 关闭抽屉并聚焦可见搜索。搜索先查询本地不可变索引，再异步合并远程目录；包括标题、关键词和同义词，显示分类、范围及服务端能力原因，连接切换清除旧目录。Ctrl+F 聚焦搜索、方向键浏览、Enter 或双击打开、Escape 退出搜索。搜索结果进入所属页面后按视图登记的 settingId 定位、滚动、聚焦并临时高亮卡片；不可见项提供解释，禁用项不被启用。环境变量定位到系统页的现有子窗口入口。个性化目录使用当前详情路由；其他详情页拆分与完整窗口交互验收仍待完成。标题与内容共用滚动区域；时间语言页和根窗口已验证小视口可达性。全部页面的窄布局、原生 200% 缩放及屏幕阅读器体验尚未完整实测。
+分类与详情页使用注册的 Route 导航，共用单色矢量图标；持续显示账号、Workspace 与分类路径，连接地址直接显示并可选择复制；每页提供作用范围说明，混合范围页面在关键分区注明设备、工作区或远程主机。返回历史保存详情路由与搜索词，页面缓存滚动偏移，连接变化清理旧导航上下文。小于 760 个逻辑像素时折叠侧栏，使用可展开的导航抽屉；选择分类后收起，Escape 关闭并恢复菜单焦点，Ctrl+F 关闭抽屉并聚焦可见搜索。搜索先查询本地不可变索引，再异步合并远程目录；包括标题、关键词和同义词，显示分类、范围及服务端能力原因，连接切换清除旧目录。Ctrl+F 聚焦搜索、方向键浏览、Enter 或双击打开、Escape 退出搜索。搜索结果进入所属页面后按视图登记的 settingId 定位、滚动、聚焦并临时高亮卡片；不可见项提供解释，禁用项不被启用。环境变量定位到系统页的现有子窗口入口。个性化目录使用当前详情路由；其他详情页拆分与完整窗口交互验收仍待完成。标题与内容共用滚动区域；时间语言页和根窗口已验证小视口可达性。全部页面的窄布局、原生 200% 缩放及屏幕阅读器体验尚未完整实测。
 
 保存反馈带有内存中的修改来源（应用与页面）。来源页就地显示状态与重试/放弃操作；切到其他页后，未完成或失败的保存显示来源摘要并提供“查看修改”。已完成的其他页面保存不再常驻显示。来源不改变偏好协议或写入目标，Workspace/登录变化清理来源；服务端接收仍不等同已持久化。`Schedule(preferences, source)` 的非设置窗口调用者显式传 `null`。
 
@@ -84,7 +92,7 @@ Windows provider 只读固定 `ComputerName` 注册表位置并用 `SetComputerN
 
 ## 宿主时区服务（实现，尚未实机验收）
 
-新增目录和时区 GET/preview/apply，以及操作查询与回滚 API。Server 通过原有 Helper 执行 Windows tzutil / Linux timedatectl；预览计划持久加密，应用需要精确 `host/time` 授权，读回成功才报告 Applied。外部版本变化会阻止应用或回滚；丢失结果为 Unknown，不自动重放。客户端 `Services/HostSettings/IHostTimeService` 独立于窗口，冻结 Server URL、用户和会话身份，发送前后检查连接，不自动重定向或重试写请求。时间和语言页现已接入远程快照、目标/身份、远程时区枚举、单步应用与必要授权、按原 planId 查询及恢复原时区；不再用客户端 `TimeZoneInfo.Local` 冒充宿主值。宿主编辑不触发 Workspace 防抖保存。
+新增目录和时区 GET/preview/apply，以及操作查询与回滚 API。Server 通过原有 Helper 执行 Windows tzutil / Linux timedatectl；预览计划持久加密，应用需要精确 `host/time` 授权，读回成功才报告 Applied。外部版本变化会阻止应用或回滚；丢失结果为 Unknown，不自动重放。客户端 `Services/HostSettings/IHostTimeService` 独立于窗口，冻结 Server URL、用户和会话身份，发送前后检查连接，不自动重定向或重试写请求。时间和语言页现已接入远程快照、目标/身份、远程时区枚举、单步应用与必要授权、按原 planId 查询；不再用客户端 `TimeZoneInfo.Local` 冒充宿主值。宿主编辑不触发 Workspace 防抖保存。
 
 授权通过既有 `/privileged/elevation` 和本地渲染的宿主密码对话框；有效的精确资源授权可复用且不延长到期时间。连接切换清除草稿、计划和旧请求结果；窗口关闭不影响 Server 已持久化的操作。三语言按钮与操作状态已接入，但完整错误映射、原生布局/键盘和远程实机验收仍待完成；草稿切页保留且不增加离页确认，恢复沿用页内操作详情，不能将构建通过视为完整时区交付。
 
@@ -111,11 +119,11 @@ DevCli 现已接入 `environment-target`、`environment`、`preview-environment`
 
 宿主设置查询对过期且仍为 Prepared 的计划在协调锁内写入 Failed/`settings.plan_expired`；延迟 apply 返回该终态，不执行旧写入。此规则同样适用于桌面和 Android；Applying/Unknown 不因超时被当作未执行。HostSettings 拒绝响应具有稳定 `problemCode` 扩展。
 
-桌面远程时区编辑支持按城市、系统时区名称、ID 或 UTC 偏移搜索，并展示系统时区名称与远程 ID。名称解析仅用于显示；可提交值始终来自远程目录，无法在客户端解析的 ID 原样展示。页面分别标注当前时区和新时区，选择后直接应用，后台执行计划准备与必要授权；提交后显示查询操作，成功应用后显示恢复原时区。不显示预览或计划期限；错误仅在有内容时显示，操作 ID 收在详情中。
+桌面远程时区编辑支持按城市、系统时区名称、ID 或 UTC 偏移搜索，并展示系统时区名称与远程 ID。名称解析仅用于显示；可提交值始终来自远程目录，无法在客户端解析的 ID 原样展示。页面分别标注当前时区和新时区，选择后直接应用，后台执行计划准备与必要授权；提交后显示查询操作，成功后可继续选择时区，需要复原时手动选择原值。不显示预览或计划期限；错误仅在有内容时显示，操作 ID 收在详情中。
 
-时区授权后显示执行进度；远程确认 Applied / RolledBack 后显示完成提示，并以远程确认的 revision 更新编辑快照，允许继续选择。最近完成的计划独立保留用于恢复原时区；操作 ID 默认折叠在操作详情中。结果未知时保留待查询计划并锁定编辑，查询确认成功后进入同一完成状态。
+时区授权后显示执行进度；远程确认 Applied / RolledBack 后显示完成提示，并以远程确认的 revision 更新编辑快照，允许继续选择。页面不提供专用回滚按钮，恢复原时区作为普通修改提交；操作 ID 默认折叠在操作详情中。结果未知时保留待查询计划并锁定编辑，查询确认成功后进入同一完成状态。
 
-主机名编辑采用相同的单步应用、执行进度、完成提示和折叠操作详情。确认成功后使用远程确认的 revision 恢复编辑；最近完成的计划独立保留用于恢复原主机名。即时生效时更新当前名称；需主机重启时保留当前名称、更新待生效名称，并明确提示重启后生效。未知结果保持编辑锁定，查询确认后进入完成状态。
+主机名编辑采用相同的单步应用、执行进度、完成提示和折叠操作详情。确认成功后使用远程确认的 revision 恢复编辑；页面不提供专用回滚按钮，恢复原名称作为普通修改提交。即时生效时更新当前名称；需主机重启时保留当前名称、更新待生效名称，并明确提示重启后生效。未知结果保持编辑锁定，查询确认后进入完成状态。
 
 名称输入显示当前字符数及远程提供的长度上限（当前 Windows 为 15、Linux 为 63）；超长时明确提示实际长度与上限，其他语法错误使用格式提示。
 

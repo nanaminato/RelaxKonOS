@@ -46,6 +46,7 @@ SettingsWindowChecks.Run(settings, localization);
 DesktopDeviceSettingsChecks.Run(settings, appearance);
 HostTimeCompletionChecks.Run(localization);
 HostIdentityCompletionChecks.Run(localization);
+HostNetworkChecks.Run(settings, localization);
 WorkspaceEnvironmentEditorChecks.Run(settings);
 if (args.Contains("--settings-interaction-only")) return;
 DesktopDisconnectChecks.Run(settings);
