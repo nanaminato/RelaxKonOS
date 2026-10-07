@@ -294,3 +294,10 @@ RelaxKonOS.Guardian.Agent/Observability/
 - `UserExecutionContextResolver` 的身份解析拒绝写入 `security.authorization.denied`。成功解析不逐请求记录，遵守 §4.3 对正常只读操作不逐条写 `Information` 的约束。
 - **已知缺陷（先于本次改动存在，未修复）**：`RelaxKonOS.Server.Tests/ObservabilityChecks.cs` 由提交 `a8caa481` 引入，却调用了 `TestAssert` 中并不存在的 `Equal`/`True`，因此 `RelaxKonOS.Server.Tests` 一直无法编译、该文件的断言从未被执行。补上缺失的断言辅助方法后，`sanitizer must not retain supplied secrets` 断言失败，说明 `ObservabilitySanitizer` 的实现与其测试期望不一致（从实现看，`SensitiveAssignment` 要求敏感键名后紧跟 `:`/`=`，疑似未覆盖带引号的 JSON 赋值形式）。该缺陷阻塞 §1.2 中「自动化测试证明秘密不会进入任一日志或审计 sink」的发布完成条件，需要单独定稿修复后再更新本节。
 
+
+
+### 2026-10-07：测试状态更正与摘要净化补齐
+
+上面的 2026-09-25 缺陷记录描述历史状态，不代表当前代码：`TestAssert.Equal/True` 已存在，服务端测试项目现可构建。此次补充 JSON 引号键、单/双引号值、空格、转义与未闭合引号的净化，并在截断前执行净化；无引号值保守净化至逗号、分号或换行边界。新增 `--optimization-only` 专项入口，覆盖摘要及异常消息的注入回归。完整 sink 故障与发布级验证仍按 §8 执行，不能仅凭该专项检查宣称所有出口验收完成。
+
+当前证据与运行命令见 [优化进度台账](../development/RelaxKonOS.Optimization.Progress.md)。

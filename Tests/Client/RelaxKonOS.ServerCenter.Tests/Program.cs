@@ -12,6 +12,11 @@ using RoyalTerminal.Terminal.Transport.Ssh;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
+if (args.Contains("--ssh-cancellation-only"))
+{
+    await SshCancellationChecks.RunAsync();
+    return;
+}
 
 static void Check(bool condition, string message)
 {

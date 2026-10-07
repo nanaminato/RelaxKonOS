@@ -208,6 +208,9 @@ Guardian 自身崩溃/管道断开由 Server 的 `GuardianAvailabilityMonitor` �
 
 ## 10. 存储、保留与审计
 
+当前实现使用 WAL：写入/投影继续串行事务，列表与汇总使用独立读连接，详情在 deferred 事务中读取告警、事件和动作的同一快照，保留作业整体提交。schema 初始化有独立门控。游标 ID 绑定为 Guid 参数以匹配 SQLite 的实际存储表示，事件和告警分页均有全页无重复回归。运行中的数据库可能包含 `-wal`/`-shm` sidecar，备份应使用 SQLite 一致性备份或停服/检查点流程，不只复制主文件。负载与回归证据见 [优化台账](../development/RelaxKonOS.Optimization.Progress.md)。
+
+
 中心使用 Server 本地 SQLite 中独立的 `operational_events`、`operational_alerts`、`alert_actions`、`alert_suppressions` 和 `event_source_checkpoints` 表。迁移由既有 Server storage 机制管理，所有时间 UTC；事件/告警行不得保存 JSON 自由文本、原始异常或领域密钥。
 
 建议默认策略：事件 90 天、已解决告警及其处理动作 365 天、打开/确认/抑制状态永不因普通保留作业删除。到期清理由受控 hosted service 分批执行，并为每批次写 Security Audit；引用仍被安全审计引用时，不删除审计本身。实际保留值做成受验证的 `EventAlerts` 配置，生产环境不得低于上述下限，除非有合规方案和后续独立设计。

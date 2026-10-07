@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using RelaxKonOS.Protocol.Browser;
 using RelaxKonOS.Server.Domain;
 
 namespace RelaxKonOS.Server.Storage.Sqlite;
@@ -13,10 +14,13 @@ public sealed class SqliteBrowserRepository : IBrowserRepository
 
     // ── bookmarks ──
 
-    public IReadOnlyList<Bookmark> ListBookmarks(Guid userId)
+    public IReadOnlyList<Bookmark> ListBookmarks(Guid userId, int offset, int limit, string? url = null)
         => _db.Bookmarks.AsNoTracking()
-                .Where(b => b.UserId == userId)
+                .Where(b => b.UserId == userId && (url == null || b.Url == url.Trim()))
                 .OrderBy(b => b.Title)
+                .ThenBy(b => b.Id)
+                .Skip(BrowserQueryLimits.Offset(offset))
+                .Take(BrowserQueryLimits.PageSize(limit))
                 .ToList();
 
     public Bookmark UpsertBookmark(Guid userId, string title, string url)
@@ -59,25 +63,15 @@ public sealed class SqliteBrowserRepository : IBrowserRepository
 
     // ── history ──
 
-    public IReadOnlyList<HistoryEntry> ListHistory(Guid userId, int limit)
-    {
-        // SQLite's EF Core provider cannot translate an ORDER BY over DateTimeOffset. These
-        // values are written in UTC, so ordering their ISO-8601 text representation is chronological.
-        return (limit <= 0
-                ? _db.History.FromSqlInterpolated($"""
-                    SELECT * FROM "history_entries"
-                    WHERE "UserId" = {userId}
-                    ORDER BY "LastVisitedAt" DESC
-                    """)
-                : _db.History.FromSqlInterpolated($"""
-                    SELECT * FROM "history_entries"
-                    WHERE "UserId" = {userId}
-                    ORDER BY "LastVisitedAt" DESC
-                    LIMIT {limit}
-                    """))
+    public IReadOnlyList<HistoryEntry> ListHistory(Guid userId, int offset, int limit)
+        => _db.History.FromSqlInterpolated($"""
+            SELECT * FROM "history_entries"
+            WHERE "UserId" = {userId}
+            ORDER BY "LastVisitedAt" DESC, "Id" DESC
+            LIMIT {BrowserQueryLimits.PageSize(limit)} OFFSET {BrowserQueryLimits.Offset(offset)}
+            """)
             .AsNoTracking()
             .ToList();
-    }
 
     public HistoryEntry UpsertHistory(Guid userId, string title, string url)
     {

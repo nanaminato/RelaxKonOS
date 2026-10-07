@@ -59,6 +59,7 @@ public static class ServerProcessIdentity
     /// </summary>
     public static bool IsPrivileged() => OperatingSystem.IsLinux() && geteuid() == 0;
 
+    [SupportedOSPlatform("windows")]
     private static bool MatchesWindowsSid(string stableIdentity) =>
         WindowsSid() is { } sid && string.Equals(sid, stableIdentity, StringComparison.OrdinalIgnoreCase);
 

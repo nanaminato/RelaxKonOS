@@ -13,7 +13,7 @@ public static class BrowserApiRoutes
 
     // ── bookmarks ──
 
-    /// <summary>列举当前用户书签（GET，需 JWT）。</summary>
+    /// <summary>列举当前用户书签（GET，需 JWT）。query: offset（默认 0）、limit（默认 100，上限 500）、url（可选，精确匹配）。</summary>
     public const string Bookmarks = $"/{V1}/browser/bookmarks";
 
     /// <summary>新增书签（POST，需 JWT）。body: CreateBookmarkRequest。同 URL 重复则更新 Title。</summary>
@@ -27,7 +27,7 @@ public static class BrowserApiRoutes
 
     // ── history ──
 
-    /// <summary>列举当前用户历史记录（GET，需 JWT）。query: limit（可选，默认 100，上限 1000）。</summary>
+    /// <summary>列举当前用户历史记录（GET，需 JWT）。query: offset（默认 0）、limit（默认 100，上限 500，零/负数归一为 1）。</summary>
     public const string History = $"/{V1}/browser/history";
 
     /// <summary>记录一次访问（POST，需 JWT）。body: CreateHistoryEntryRequest。同 URL 累加 VisitCount。</summary>

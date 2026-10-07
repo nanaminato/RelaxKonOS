@@ -203,14 +203,16 @@ Server MVC（`AddControllers().AddJsonOptions`）与 SignalR（`AddSignalR().Add
 | ------ | -------------------------------- | ------------------------------ | ---------------------- | --- |
 | GET    | `/api/v1.0/browser/settings`       | —                              | `BrowserSettingsDto`   | JWT |
 | PUT    | `/api/v1.0/browser/settings`       | `BrowserSettingsDto`           | `BrowserSettingsDto`   | JWT |
-| GET    | `/api/v1.0/browser/bookmarks`      | —                              | `BookmarkDto[]`        | JWT |
+| GET    | `/api/v1.0/browser/bookmarks`      | query: `offset`、`limit`、`url`（可选，精确匹配） | `BookmarkDto[]`        | JWT |
 | POST   | `/api/v1.0/browser/bookmarks`      | `CreateBookmarkRequest`        | `BookmarkDto`（201）     | JWT |
 | DELETE | `/api/v1.0/browser/bookmarks/{id}` | —                              | 204                    | JWT |
 | DELETE | `/api/v1.0/browser/bookmarks`      | —                              | `{ removed }`          | JWT |
-| GET    | `/api/v1.0/browser/history?limit=` | query: `limit`（默认 100，上限 1000） | `HistoryEntryDto[]`    | JWT |
+| GET    | `/api/v1.0/browser/history` | query: `offset`（默认 0）、`limit`（默认 100，上限 500） | `HistoryEntryDto[]`    | JWT |
 | POST   | `/api/v1.0/browser/history`        | `CreateHistoryEntryRequest`    | `HistoryEntryDto`（201） | JWT |
 | DELETE | `/api/v1.0/browser/history/{id}`   | —                              | 204                    | JWT |
 | DELETE | `/api/v1.0/browser/history`        | —                              | `{ removed }`          | JWT |
+
+浏览器集合查询统一采用 `BrowserQueryLimits`：`offset < 0` 归一为 0，`limit < 1` 归一为 1，`limit > 500` 归一为 500。书签按标题、ID 排序，历史按访问时间、ID 倒序；响应仍为单页 DTO 数组，少于请求页长表示已到末尾。`limit=0` 不再表示无限返回；旧契约直接替换。并发修改集合可能改变 offset，客户端本地写入后重新加载首屏，追加页按 ID 去重。
 
 ### Workspace Preferences（设置中心偏好）
 

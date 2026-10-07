@@ -1,4 +1,20 @@
 using RelaxKonOS.Protocol.Proxy;
+if (args.Contains("--optimization-only") || args.Contains("--event-benchmark-only"))
+{
+    var optimizationRoot = Path.Combine(Path.GetTempPath(), "relaxkonos-optimization-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(optimizationRoot);
+    try
+    {
+        if (args.Contains("--event-benchmark-only")) await OptimizationChecks.BenchmarkEventsAsync(optimizationRoot);
+        else await OptimizationChecks.RunAsync(optimizationRoot);
+    }
+    finally
+    {
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        Directory.Delete(optimizationRoot, recursive: true);
+    }
+    return;
+}
 if (args.Contains("--independent-component-services-only"))
 {
     var serviceRoot = Path.Combine(Path.GetTempPath(), "relaxkonos-service-scope-" + Guid.NewGuid().ToString("N"));

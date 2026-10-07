@@ -512,11 +512,13 @@ var linuxPamService = builder.Configuration["Identity:LinuxPamService"]?.Trim() 
 if (OperatingSystem.IsLinux() && useInProcessLinuxPam && !LinuxPamProvider.IsValidPamServiceName(linuxPamService))
     throw new InvalidOperationException("Identity:LinuxPamService is invalid.");
 if (OperatingSystem.IsWindows())
-    builder.Services.AddSingleton<IIdentityProvider>(_ => new BoundedIdentityProvider(new WindowsLogonProvider()));
+    builder.Services.AddSingleton<IIdentityProvider>(_ => OperatingSystem.IsWindows()
+        ? new BoundedIdentityProvider(new WindowsLogonProvider())
+        : throw new PlatformNotSupportedException("Windows identity provider requires Windows."));
 else if (OperatingSystem.IsLinux())
-    builder.Services.AddSingleton<IIdentityProvider>(sp => new BoundedIdentityProvider(new LinuxPamProvider(
+    builder.Services.AddSingleton<IIdentityProvider>(sp => OperatingSystem.IsLinux() ? new BoundedIdentityProvider(new LinuxPamProvider(
         useInProcessLinuxPam ? null : sp.GetRequiredService<RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport>(),
-        useInProcessLinuxPam, linuxPamService)));
+        useInProcessLinuxPam, linuxPamService)) : throw new PlatformNotSupportedException("Linux identity provider requires Linux."));
 else
     throw new PlatformNotSupportedException("RelaxKonOS Server identity authentication supports Windows and Linux hosts only.");
 

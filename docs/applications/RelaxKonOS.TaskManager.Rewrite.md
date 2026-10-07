@@ -200,9 +200,9 @@ Linux 适配器必须过滤或标记 loop、ram、zram、重复的 device-mapper
 
 ### Goal 1：冻结边界与建立新协议
 
-**工作**：新增 `PerformanceInfo`、实时快照、历史、能力、文件系统/磁盘分离 DTO，新增性能 Hub 契约与路由；为 `/metrics` 制定废弃策略。
+**工作**：新增 `PerformanceInfo`、实时快照、历史、能力、文件系统/磁盘分离 DTO，新增性能 Hub 契约与路由；直接移除 `/metrics`，同步更新全部仓库内调用方、测试和文档。
 
-**验收**：Protocol 保持零 PackageReference；所有 DTO 有稳定 JSON 名称；Client 与 Server 只引用共享常量；兼容期限和移除版本写入变更说明。
+**验收**：Protocol 保持零 PackageReference；所有 DTO 有稳定 JSON 名称；Client 与 Server 只引用共享常量；旧契约、别名和调用方已在同一变更中删除或升级，不保留兼容路径。
 
 ### Goal 2：原始采集抽象与 Linux 实现
 
@@ -242,7 +242,7 @@ Linux 适配器必须过滤或标记 loop、ram、zram、重复的 device-mapper
 
 ### Goal 8：端到端验证、文档迁移与删除旧路径
 
-**工作**：Windows/Linux 冒烟、负载比对、断线重连、兼容性测试；更新主设计、协议文档、本地化和运维文档；兼容期后删除旧路径。
+**工作**：Windows/Linux 冒烟、负载比对、断线重连、当前契约一致性测试；更新主设计、协议文档、本地化和运维文档；同一变更直接删除旧路径，不设置兼容期。
 
 **验收**：`dotnet build RelaxKonOS.sln -c Debug` 为 0 错误；新增测试稳定；文档不再把客户端轮询描述为目标架构；旧代码无死引用。
 

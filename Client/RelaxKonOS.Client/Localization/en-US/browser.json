@@ -48,6 +48,14 @@
         "browser.toolbar.full_screen": "Full screen",
         "browser.linux.external_browser_notice": "Web pages open in your system browser on Linux.",
         "browser.enter_full_screen": "Enter full screen",
-        "browser.exit_full_screen": "Exit full screen"
+        "browser.exit_full_screen": "Exit full screen",
+        "browser.new_tab": "New tab",
+        "browser.close_tab": "Close tab",
+        "browser.menu": "Customize and control browser",
+        "browser.load_more": "Load more",
+        "browser.connection_https": "HTTPS connection. Certificate details are managed by the platform browser.",
+        "browser.connection_information": "Site information. This page may use an unencrypted connection.",
+        "browser.new_tab_hint": "Enter a website or search in the address bar above. Your bookmarks and history are available in the side panel.",
+        "browser.focus_address": "Search or enter an address"
     }
 }

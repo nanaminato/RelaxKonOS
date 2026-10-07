@@ -48,6 +48,14 @@
         "browser.toolbar.full_screen": "全屏",
         "browser.linux.external_browser_notice": "网页将在 Linux 系统浏览器中打开。",
         "browser.enter_full_screen": "进入全屏",
-        "browser.exit_full_screen": "退出全屏"
+        "browser.exit_full_screen": "退出全屏",
+        "browser.new_tab": "新标签页",
+        "browser.close_tab": "关闭标签页",
+        "browser.menu": "自定义及控制浏览器",
+        "browser.load_more": "加载更多",
+        "browser.connection_https": "HTTPS 连接。证书详情由平台浏览器管理。",
+        "browser.connection_information": "网站信息。此页面可能使用未加密的连接。",
+        "browser.new_tab_hint": "在上方地址栏输入网址或搜索内容。书签与历史记录可从侧边栏打开。",
+        "browser.focus_address": "搜索或输入网址"
     }
 }

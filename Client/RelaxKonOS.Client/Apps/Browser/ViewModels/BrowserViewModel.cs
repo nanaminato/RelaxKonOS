@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -11,17 +11,25 @@ namespace RelaxKonOS.Client.Apps.Browser.ViewModels;
 /// <summary>RemoteBrowser 主视图模型。
 ///
 /// 数据流：
-/// - 用户输入地址 → <see cref="NavigateCommand"/> → 设置 <see cref="WebViewSource"/>（Uri 绑定到 NativeWebView.Source）
+/// - 用户输入地址 → <see cref="NavigateCommand"/> → 更新当前标签，通过 <see cref="ViewNavigateRequested"/> 请求导航
 /// - NativeWebView.NavigationStarted/Completed 事件由 View code-behind 转发到
 ///   <see cref="OnNavigationStarted"/> / <see cref="OnNavigationCompleted"/>，更新地址栏 + 记录历史
 /// - 书签/历史通过 <see cref="IBrowserClient"/> 调用 Server REST API（JWT via IAuthSession）
 /// - Sidebar 双标签页（书签 / 历史），点击条目导航，X 删除单条，"清空"清全部
 ///
-/// 注意：WebView 的实际渲染在客户端完成（NativeWebView 用平台原生引擎：Win=WebView2/macOS=WKWebView/Linux=WebKitGTK），
+/// 注意：网页在客户端渲染（Windows/macOS 使用 NativeWebView，Linux 委托宿主浏览器），
 /// 网页内容走客户端网络而非 Server；Server 仅持久化书签与历史（按用户隔离）。</summary>
-public sealed partial class BrowserViewModel : ObservableObject
+public sealed partial class BrowserViewModel : LocalizedObservableObject
 {
     private readonly IBrowserClient _client;
+    private BookmarkDto? _currentBookmark;
+    private int _bookmarkOffset;
+    private int _historyOffset;
+    private int _bookmarkGeneration;
+    private int _historyGeneration;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(CanLoadMoreBookmarks))] private bool _hasMoreBookmarks;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(CanLoadMoreHistory))] private bool _hasMoreHistory;
+    [ObservableProperty] private bool _isSyncingCollections;
     private Uri? _currentUri;          // 当前 WebView 实际加载的 URI（区别于地址栏文本，可能正在输入未提交）
 
     public BrowserViewModel(IBrowserClient client)
@@ -29,6 +37,62 @@ public sealed partial class BrowserViewModel : ObservableObject
         _client = client;
         Bookmarks = new ObservableCollection<BookmarkDto>();
         History = new ObservableCollection<HistoryEntryDto>();
+        AddTab();
+    }
+
+    public ObservableCollection<BrowserTabViewModel> Tabs { get; } = new();
+    [ObservableProperty] private BrowserTabViewModel? _selectedTab;
+    public Action<Uri>? ViewNavigateRequested { get; set; }
+    public Action<BrowserTabViewModel>? ViewTabSelectedRequested { get; set; }
+    public Action<BrowserTabViewModel>? ViewTabClosedRequested { get; set; }
+    public bool HasCurrentPage => SelectedTab?.Source is not null;
+    public string ConnectionSymbol => _currentUri?.Scheme == Uri.UriSchemeHttps ? "◈" : "ⓘ";
+    public string ConnectionDescription => LocalizedText.Get(_currentUri?.Scheme == Uri.UriSchemeHttps
+        ? "browser.connection_https" : "browser.connection_information");
+
+    [RelayCommand]
+    private void AddTab()
+    {
+        var tab = new BrowserTabViewModel();
+        Tabs.Add(tab);
+        SelectedTab = tab;
+    }
+
+    [RelayCommand]
+    private void CloseTab(BrowserTabViewModel? tab)
+    {
+        if (tab is null || !Tabs.Contains(tab)) return;
+        var index = Tabs.IndexOf(tab);
+        if (SelectedTab == tab)
+            SelectedTab = Tabs.Count > 1 ? Tabs[index == 0 ? 1 : index - 1] : null;
+        Tabs.Remove(tab);
+        ViewTabClosedRequested?.Invoke(tab);
+        if (Tabs.Count == 0) AddTab();
+    }
+
+    public void CloseSelectedTab() => CloseTab(SelectedTab);
+
+    partial void OnSelectedTabChanged(BrowserTabViewModel? value)
+    {
+        if (value is not null) ViewTabSelectedRequested?.Invoke(value);
+        _currentUri = value?.Source;
+        AddressText = value?.Source?.ToString() ?? "";
+        IsLoading = value?.IsLoading ?? false;
+        StatusText = value?.Source is { } current
+            ? LocalizedText.Ref(value.IsLoading ? "browser.status.loading_url" : "browser.status.completed", current)
+            : LocalizedText.Ref("browser.status.ready");
+        UpdateNavigationState(value?.CanGoBack ?? false, value?.CanGoForward ?? false);
+        IsCurrentBookmarked = false;
+        _currentBookmark = null;
+        if (_currentUri is { } source) _ = RefreshBookmarkStarAsync(source);
+        NotifyPageState();
+    }
+
+    private void NotifyPageState()
+    {
+        OnPropertyChanged(nameof(HasCurrentPage));
+        OnPropertyChanged(nameof(ConnectionSymbol));
+        OnPropertyChanged(nameof(ConnectionDescription));
     }
 
     /// <summary>书签列表（侧边栏"书签"标签页绑定）。</summary>
@@ -37,15 +101,16 @@ public sealed partial class BrowserViewModel : ObservableObject
     /// <summary>历史记录列表（侧边栏"历史记录"标签页绑定，按 LastVisitedAt 倒序）。</summary>
     public ObservableCollection<HistoryEntryDto> History { get; }
 
-    [ObservableProperty] private Uri? _webViewSource;
     [ObservableProperty] private string _addressText = string.Empty;
     [ObservableProperty] private bool _isLoading;
     [ObservableProperty] private LocalizedStatus _statusText;
     [ObservableProperty] private bool _canGoBack;
     [ObservableProperty] private bool _canGoForward;
     [ObservableProperty] private bool _isCurrentBookmarked;
-    [ObservableProperty] private SidebarTab _activeSidebarTab = SidebarTab.Bookmarks;
-    [ObservableProperty] private bool _isSidebarVisible = true;
+    public bool CanLoadMoreBookmarks => HasMoreBookmarks && ActiveSidebarTab == SidebarTab.Bookmarks;
+    public bool CanLoadMoreHistory => HasMoreHistory && ActiveSidebarTab == SidebarTab.History;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(CanLoadMoreBookmarks)), NotifyPropertyChangedFor(nameof(CanLoadMoreHistory))] private SidebarTab _activeSidebarTab = SidebarTab.Bookmarks;
+    [ObservableProperty] private bool _isSidebarVisible;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(FullScreenMenuText))]
     private bool _isFullScreen;
@@ -67,15 +132,25 @@ public sealed partial class BrowserViewModel : ObservableObject
     {
         CanGoBack = canGoBack;
         CanGoForward = canGoForward;
+        if (SelectedTab is { } tab)
+        {
+            tab.CanGoBack = canGoBack;
+            tab.CanGoForward = canGoForward;
+        }
+        GoBackCommand.NotifyCanExecuteChanged();
+        GoForwardCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>由 View code-behind 在 NativeWebView.NavigationStarted 触发时调用。
     /// 更新地址栏为实际正在加载的 URI；记录"开始加载"状态。</summary>
     public void OnNavigationStarted(Uri url)
     {
+        if (_currentUri != url) { _currentBookmark = null; IsCurrentBookmarked = false; }
         _currentUri = url;
         AddressText = url.IsAbsoluteUri ? url.ToString() : url.OriginalString;
         IsLoading = true;
+        if (SelectedTab is { } tab) { tab.Source = url; tab.IsLoading = true; }
+        NotifyPageState();
         StatusText = LocalizedText.Ref("browser.status.loading_url", url);
     }
 
@@ -84,6 +159,8 @@ public sealed partial class BrowserViewModel : ObservableObject
     public async void OnNavigationCompleted(Uri? url, bool isSuccess)
     {
         IsLoading = false;
+        if (SelectedTab is { } tab) { tab.IsLoading = false; if (url is not null) tab.Source = url; }
+        NotifyPageState();
         if (url is not null && isSuccess)
         {
             _currentUri = url;
@@ -129,20 +206,20 @@ public sealed partial class BrowserViewModel : ObservableObject
             _currentUri = uri;
             AddressText = uri.ToString();
             StatusText = LocalizedText.Ref("browser.status.opened_on_host", uri);
+            if (SelectedTab is { } hostTab) hostTab.Source = uri;
+            NotifyPageState();
             _ = RecordVisitAsync(uri);
             return Task.CompletedTask;
         }
 
-        WebViewSource = uri;
-        BrowserDiagnostics.Record($"Browser navigation source set: {BrowserDiagnostics.SanitizeUri(uri)}.");
-        // OnNavigationStarted 由 View 转发；这里也同步一份防事件丢失
-        if (_currentUri != uri)
-        {
-            _currentUri = uri;
-            AddressText = uri.ToString();
-            IsLoading = true;
-            StatusText = LocalizedText.Ref("browser.status.loading_url", uri);
-        }
+        if (_currentUri != uri) { _currentBookmark = null; IsCurrentBookmarked = false; }
+        _currentUri = uri;
+        AddressText = uri.ToString();
+        if (SelectedTab is { } tab) { tab.Source = uri; tab.IsLoading = true; }
+        IsLoading = true;
+        StatusText = LocalizedText.Ref("browser.status.loading_url", uri);
+        NotifyPageState();
+        ViewNavigateRequested?.Invoke(uri);
         return Task.CompletedTask;
     }
 
@@ -192,7 +269,7 @@ public sealed partial class BrowserViewModel : ObservableObject
         if (IsCurrentBookmarked)
         {
             // 找到当前 URL 对应书签并删除
-            var bm = Bookmarks.FirstOrDefault(b => b.Url == url);
+            var bm = _currentBookmark;
             if (bm is not null)
             {
                 try
@@ -200,6 +277,7 @@ public sealed partial class BrowserViewModel : ObservableObject
                     await _client.DeleteBookmarkAsync(bm.Id);
                     Bookmarks.Remove(bm);
                     IsCurrentBookmarked = false;
+                    _currentBookmark = null;
                     StatusText = LocalizedText.Ref("browser.status.bookmark_deleted", url);
                 }
                 catch (Exception ex) { StatusText = LocalizedText.Ref("browser.status.bookmark_delete_failed", ex.Message); }
@@ -211,7 +289,8 @@ public sealed partial class BrowserViewModel : ObservableObject
             try
             {
                 var dto = await _client.AddBookmarkAsync(title, url);
-                Bookmarks.Add(dto);
+                await ReloadBookmarksAsync();
+                _currentBookmark = dto;
                 IsCurrentBookmarked = true;
                 StatusText = LocalizedText.Ref("browser.status.bookmark_added", title);
             }
@@ -233,9 +312,12 @@ public sealed partial class BrowserViewModel : ObservableObject
         try
         {
             await _client.DeleteBookmarkAsync(bookmark.Id);
-            Bookmarks.Remove(bookmark);
+            await ReloadBookmarksAsync();
             if (_currentUri is not null && bookmark.Url == (_currentUri.IsAbsoluteUri ? _currentUri.ToString() : _currentUri.OriginalString))
+            {
                 IsCurrentBookmarked = false;
+                _currentBookmark = null;
+            }
             StatusText = LocalizedText.Ref("browser.status.bookmark_deleted", bookmark.Title);
         }
         catch (Exception ex) { StatusText = LocalizedText.Ref("browser.status.bookmark_delete_failed", ex.Message); }
@@ -247,7 +329,11 @@ public sealed partial class BrowserViewModel : ObservableObject
         try
         {
             await _client.ClearBookmarksAsync();
+            ++_bookmarkGeneration;
             Bookmarks.Clear();
+            _bookmarkOffset = 0;
+            HasMoreBookmarks = false;
+            _currentBookmark = null;
             IsCurrentBookmarked = false;
             StatusText = LocalizedText.Ref("browser.status.bookmarks_cleared");
         }
@@ -270,7 +356,7 @@ public sealed partial class BrowserViewModel : ObservableObject
         try
         {
             await _client.DeleteHistoryAsync(entry.Id);
-            History.Remove(entry);
+            await ReloadHistoryAsync();
             StatusText = LocalizedText.Ref("browser.status.history_deleted", entry.Title);
         }
         catch (Exception ex) { StatusText = LocalizedText.Ref("browser.status.history_delete_failed", ex.Message); }
@@ -282,7 +368,10 @@ public sealed partial class BrowserViewModel : ObservableObject
         try
         {
             await _client.ClearHistoryAsync();
+            ++_historyGeneration;
             History.Clear();
+            _historyOffset = 0;
+            HasMoreHistory = false;
             StatusText = LocalizedText.Ref("browser.status.history_cleared");
         }
         catch (Exception ex) { StatusText = LocalizedText.Ref("browser.status.history_clear_failed", ex.Message); }
@@ -354,12 +443,8 @@ public sealed partial class BrowserViewModel : ObservableObject
         StatusText = LocalizedText.Ref("browser.status.syncing");
         try
         {
-            var bms = await _client.ListBookmarksAsync();
-            Bookmarks.Clear();
-            foreach (var b in bms) Bookmarks.Add(b);
-            var hist = await _client.ListHistoryAsync(limit: 100);
-            History.Clear();
-            foreach (var h in hist) History.Add(h);
+            await ReloadBookmarksAsync();
+            await ReloadHistoryAsync();
             var settings = await _client.GetSettingsAsync();
             HomePageText = settings.HomePage ?? BrowserSettingsDto.Default.HomePage!;
             HomePage = new Uri(HomePageText);
@@ -374,25 +459,16 @@ public sealed partial class BrowserViewModel : ObservableObject
     }
 
     /// <summary>记录一次访问到服务端历史（仅 fire-and-forget 调用，错误不抛出）。</summary>
+    internal void RecordBackgroundVisit(Uri url) => _ = RecordVisitAsync(url);
+
     private async Task RecordVisitAsync(Uri url)
     {
         try
         {
             var urlStr = url.IsAbsoluteUri ? url.ToString() : url.OriginalString;
-            var dto = await _client.RecordVisitAsync(urlStr, urlStr);
-            // 更新本地列表：若已存在则替换，否则插入到顶部
-            var existing = History.FirstOrDefault(h => h.Id == dto.Id);
-            if (existing is not null)
-            {
-                var idx = History.IndexOf(existing);
-                History[idx] = dto;
-            }
-            else
-            {
-                History.Insert(0, dto);
-                // 上限 100 条本地缓存（避免无限增长）
-                while (History.Count > 100) History.RemoveAt(History.Count - 1);
-            }
+            await _client.RecordVisitAsync(urlStr, urlStr);
+            // A visit changes ordering; restart the bounded first page rather than using a stale offset.
+            await ReloadHistoryAsync();
         }
         catch
         {
@@ -403,10 +479,74 @@ public sealed partial class BrowserViewModel : ObservableObject
     /// <summary>刷新当前 URL 是否已加书签（用于星标 UI）。</summary>
     private async Task RefreshBookmarkStarAsync(Uri url)
     {
-        var urlStr = url.IsAbsoluteUri ? url.ToString() : url.OriginalString;
-        var exists = Bookmarks.Any(b => b.Url == urlStr);
-        IsCurrentBookmarked = exists;
-        await Task.CompletedTask;
+        try
+        {
+            var result = await _client.ListBookmarksAsync(limit: 1, url: url.ToString());
+            if (_currentUri != url) return;
+            _currentBookmark = result.FirstOrDefault();
+            IsCurrentBookmarked = _currentBookmark is not null;
+        }
+        catch (Exception ex) { StatusText = LocalizedText.Ref("browser.status.sync_failed", ex.Message); }
+    }
+
+    private async Task ReloadBookmarksAsync()
+    {
+        var generation = ++_bookmarkGeneration;
+        var page = await _client.ListBookmarksAsync();
+        if (generation != _bookmarkGeneration) return;
+        Bookmarks.Clear();
+        foreach (var item in page) Bookmarks.Add(item);
+        _bookmarkOffset = page.Count;
+        HasMoreBookmarks = page.Count == BrowserQueryLimits.DefaultPageSize;
+    }
+
+    private async Task ReloadHistoryAsync()
+    {
+        var generation = ++_historyGeneration;
+        var page = await _client.ListHistoryAsync();
+        if (generation != _historyGeneration) return;
+        History.Clear();
+        foreach (var item in page) History.Add(item);
+        _historyOffset = page.Count;
+        HasMoreHistory = page.Count == BrowserQueryLimits.DefaultPageSize;
+    }
+
+    [RelayCommand]
+    private async Task LoadMoreBookmarksAsync()
+    {
+        if (!HasMoreBookmarks || IsSyncingCollections) return;
+        IsSyncingCollections = true;
+        try
+        {
+            var generation = _bookmarkGeneration;
+            var page = await _client.ListBookmarksAsync(offset: _bookmarkOffset);
+            if (generation != _bookmarkGeneration) return;
+            foreach (var item in page)
+                if (!Bookmarks.Any(existing => existing.Id == item.Id)) Bookmarks.Add(item);
+            _bookmarkOffset += page.Count;
+            HasMoreBookmarks = page.Count == BrowserQueryLimits.DefaultPageSize;
+        }
+        catch (Exception ex) { StatusText = LocalizedText.Ref("browser.status.sync_failed", ex.Message); }
+        finally { IsSyncingCollections = false; }
+    }
+
+    [RelayCommand]
+    private async Task LoadMoreHistoryAsync()
+    {
+        if (!HasMoreHistory || IsSyncingCollections) return;
+        IsSyncingCollections = true;
+        try
+        {
+            var generation = _historyGeneration;
+            var page = await _client.ListHistoryAsync(offset: _historyOffset);
+            if (generation != _historyGeneration) return;
+            foreach (var item in page)
+                if (!History.Any(existing => existing.Id == item.Id)) History.Add(item);
+            _historyOffset += page.Count;
+            HasMoreHistory = page.Count == BrowserQueryLimits.DefaultPageSize;
+        }
+        catch (Exception ex) { StatusText = LocalizedText.Ref("browser.status.sync_failed", ex.Message); }
+        finally { IsSyncingCollections = false; }
     }
 
     /// <summary>把用户输入归一为绝对 Uri。已是绝对 URL 直接用；否则尝试加 https:// 前缀；

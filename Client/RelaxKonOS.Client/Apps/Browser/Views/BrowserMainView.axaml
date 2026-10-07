@@ -20,69 +20,116 @@
         </ControlTheme>
     </UserControl.Resources>
 
+    <UserControl.Styles>
+        <Style Selector="TextBox#AddressBox:focus /template/ Border#PART_BorderElement">
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="TextBox#AddressBox:not(:focus) /template/ Border#PART_BorderElement">
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="Border#AddressBar:focus-within">
+            <Setter Property="BorderBrush" Value="{DynamicResource FocusBorderBrush}" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+        </Style>
+        <Style Selector="Button.browser-action">
+            <Setter Property="Width" Value="34" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="17" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FontSize" Value="18" />
+        </Style>
+        <Style Selector="Button.browser-action:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
+        </Style>
+        <Style Selector="ListBox.browser-tabs">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="ListBox.browser-tabs ListBoxItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="2,0" />
+        </Style>
+        <Style Selector="ListBox.browser-tabs ListBoxItem /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="CornerRadius" Value="12,12,0,0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="ListBox.browser-tabs ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        </Style>
+    </UserControl.Styles>
+
     <DockPanel LastChildFill="True">
-
-        <!-- Application menu: commands remain available even when their toolbar shortcuts are hidden. -->
-        <Menu DockPanel.Dock="Top" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1">
-            <MenuItem Header="{loc:Loc common.file}">
-                <MenuItem Header="{loc:Loc common.settings_ellipsis}" Command="{Binding OpenSettingsCommand}" />
-                <Separator />
-                <MenuItem Header="{loc:Loc common.close}" Command="{Binding CloseCommand}" />
-            </MenuItem>
-            <MenuItem Header="{loc:Loc browser.menu.navigate}">
-                <MenuItem Header="{loc:Loc common.back}" Command="{Binding GoBackCommand}" InputGesture="Alt+Left" />
-                <MenuItem Header="{loc:Loc common.forward}" Command="{Binding GoForwardCommand}" InputGesture="Alt+Right" />
-                <MenuItem Header="{loc:Loc common.home}" Command="{Binding GoHomeCommand}" />
-                <Separator />
-                <MenuItem Header="{loc:Loc common.refresh}" Command="{Binding RefreshCommand}" InputGesture="Ctrl+R" />
-                <MenuItem Header="{loc:Loc common.stop}" Command="{Binding StopCommand}" />
-            </MenuItem>
-            <MenuItem Header="{loc:Loc browser.bookmarks}">
-                <MenuItem Header="{loc:Loc browser.toggle_bookmark}" Command="{Binding ToggleBookmarkCommand}" InputGesture="Ctrl+D" />
-                <Separator />
-                <MenuItem Header="{loc:Loc browser.show_bookmarks}" Command="{Binding SwitchToBookmarksCommand}" />
-                <MenuItem Header="{loc:Loc browser.show_history}" Command="{Binding SwitchToHistoryCommand}" InputGesture="Ctrl+H" />
-            </MenuItem>
-            <MenuItem Header="{loc:Loc common.view}">
-                <MenuItem Header="{loc:Loc browser.toggle_sidebar}" Command="{Binding ToggleSidebarCommand}" />
-                <MenuItem Header="{Binding FullScreenMenuText}" Command="{Binding ToggleFullScreenCommand}" InputGesture="F11" />
-            </MenuItem>
-        </Menu>
-
-        <!-- 顶部工具栏 -->
-        <Border DockPanel.Dock="Top" Classes="app-toolbar">
-            <StackPanel Orientation="Horizontal" Spacing="4">
-                <Button Classes="icon" Content="←" Command="{Binding GoBackCommand}" ToolTip.Tip="{loc:Loc common.back}" />
-                <Button Classes="icon" Content="→" Command="{Binding GoForwardCommand}" ToolTip.Tip="{loc:Loc common.forward}" />
-                <Button Classes="icon" Content="⟳" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc common.refresh}" IsVisible="{Binding !IsLoading}" />
-                <Button Classes="icon" Content="✕" Command="{Binding StopCommand}" ToolTip.Tip="{loc:Loc common.stop}" IsVisible="{Binding IsLoading}" />
-                <Button Classes="icon" Content="🏠" Command="{Binding GoHomeCommand}" ToolTip.Tip="{loc:Loc common.home}" />
-                <Separator Margin="6,0" />
-                <!-- 书签星标：当前已加书签显示实心★，未加显示空心☆ -->
-                <Button Classes="icon"
-                        Content="{Binding IsCurrentBookmarked, Converter={x:Static conv:BookmarkStarConverter.Instance}}"
-                        Command="{Binding ToggleBookmarkCommand}"
-                        ToolTip.Tip="{loc:Loc browser.toggle_bookmark}" />
-                <Separator Margin="6,0" />
-                <Button Classes="icon" Content="📑" Command="{Binding ToggleSidebarCommand}" ToolTip.Tip="{loc:Loc browser.toggle_sidebar}" />
-                <Button Content="{loc:Loc browser.toolbar.full_screen}" Command="{Binding ToggleFullScreenCommand}" />
-                <Button Content="{loc:Loc common.settings}" Command="{Binding OpenSettingsCommand}" />
-            </StackPanel>
+        <Border DockPanel.Dock="Top" Background="{DynamicResource SurfaceSunkenBrush}" Padding="8,6,8,0">
+            <Grid ColumnDefinitions="Auto,*">
+                <ListBox x:Name="TabStrip" Classes="browser-tabs" ItemsSource="{Binding Tabs}"
+                         SelectedItem="{Binding SelectedTab, Mode=TwoWay}" SelectionMode="Single"
+                         ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                    <ListBox.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ListBox.ItemsPanel>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:BrowserTabViewModel">
+                            <Grid ColumnDefinitions="Auto,*,Auto" Width="210" Height="36" Margin="12,0,4,0">
+                                <TextBlock Text="◉" Opacity="0.6" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                <Button Grid.Column="2" Classes="browser-action" Content="×" Width="28" Height="28"
+                                        Click="CloseTab_Click" ToolTip.Tip="{loc:Loc browser.close_tab}" AutomationProperties.Name="{loc:Loc browser.close_tab}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <Button Grid.Column="1" Classes="browser-action" Content="+" Command="{Binding AddTabCommand}"
+                        HorizontalAlignment="Left"
+                        ToolTip.Tip="{loc:Loc browser.new_tab}" AutomationProperties.Name="{loc:Loc browser.new_tab}" />
+            </Grid>
         </Border>
 
-        <!-- 地址栏 -->
-        <Border DockPanel.Dock="Top" Classes="app-toolbar">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-                <TextBlock Text="🔒" VerticalAlignment="Center" Margin="0,0,4,0" FontSize="13" ToolTip.Tip="{loc:Loc browser.security_indicator}" />
-                <TextBox x:Name="AddressBox"
-                         Text="{Binding AddressText, Mode=TwoWay}"
-                         PlaceholderText="{loc:Loc browser.address_placeholder}"
-                         IsReadOnly="False"
-                         MinWidth="700"
-                         KeyDown="AddressBox_KeyDown" />
-                <Button Content="{loc:Loc common.go}" Click="GoButton_Click" Padding="16,6" />
-            </StackPanel>
+        <Border DockPanel.Dock="Top" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1" Padding="8,6">
+            <Grid x:Name="NavigationToolbar" ColumnDefinitions="Auto,*,Auto">
+                <StackPanel Orientation="Horizontal" Spacing="2" Margin="0,0,6,0">
+                    <Button Classes="browser-action" Content="←" Command="{Binding GoBackCommand}" ToolTip.Tip="{loc:Loc common.back}" AutomationProperties.Name="{loc:Loc common.back}" />
+                    <Button Classes="browser-action" Content="→" Command="{Binding GoForwardCommand}" ToolTip.Tip="{loc:Loc common.forward}" AutomationProperties.Name="{loc:Loc common.forward}" />
+                    <Button Classes="browser-action" Content="⟳" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc common.refresh}" AutomationProperties.Name="{loc:Loc common.refresh}" IsVisible="{Binding !IsLoading}" />
+                    <Button Classes="browser-action" Content="×" Command="{Binding StopCommand}" ToolTip.Tip="{loc:Loc common.stop}" AutomationProperties.Name="{loc:Loc common.stop}" IsVisible="{Binding IsLoading}" />
+                    <Button Classes="browser-action" Content="⌂" Command="{Binding GoHomeCommand}" ToolTip.Tip="{loc:Loc common.home}" AutomationProperties.Name="{loc:Loc common.home}" />
+                </StackPanel>
+                <Border x:Name="AddressBar" Grid.Column="1" Background="{DynamicResource SurfaceSunkenBrush}" BorderThickness="1" BorderBrush="Transparent" CornerRadius="20" Padding="4,0" Height="36">
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                        <Button Classes="browser-action" Content="{Binding ConnectionSymbol}" ToolTip.Tip="{Binding ConnectionDescription}" AutomationProperties.Name="{Binding ConnectionDescription}" IsEnabled="False" />
+                        <TextBox x:Name="AddressBox" Grid.Column="1" Text="{Binding AddressText, Mode=TwoWay}"
+                                 PlaceholderText="{loc:Loc browser.address_placeholder}" AutomationProperties.Name="{loc:Loc browser.address_placeholder}"
+                                 Background="Transparent" BorderThickness="0" MinWidth="0" MinHeight="0" Padding="4,7"
+                                 KeyDown="AddressBox_KeyDown" />
+                        <Button Grid.Column="2" Classes="browser-action"
+                                Content="{Binding IsCurrentBookmarked, Converter={x:Static conv:BookmarkStarConverter.Instance}}"
+                                Command="{Binding ToggleBookmarkCommand}" ToolTip.Tip="{loc:Loc browser.toggle_bookmark}" AutomationProperties.Name="{loc:Loc browser.toggle_bookmark}" />
+                    </Grid>
+                </Border>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" Margin="6,0,0,0">
+                    <Button Classes="browser-action" Content="▥" Command="{Binding ToggleSidebarCommand}" ToolTip.Tip="{loc:Loc browser.toggle_sidebar}" AutomationProperties.Name="{loc:Loc browser.toggle_sidebar}" />
+                    <Button x:Name="BrowserMenuButton" Classes="browser-action" Content="⋮" ToolTip.Tip="{loc:Loc browser.menu}" AutomationProperties.Name="{loc:Loc browser.menu}">
+                        <Button.Flyout>
+                            <MenuFlyout>
+                                <MenuItem Header="{loc:Loc browser.new_tab}" Command="{Binding AddTabCommand}" InputGesture="Ctrl+T" />
+                                <MenuItem Header="{loc:Loc browser.show_bookmarks}" Command="{Binding SwitchToBookmarksCommand}" />
+                                <MenuItem Header="{loc:Loc browser.show_history}" Command="{Binding SwitchToHistoryCommand}" InputGesture="Ctrl+H" />
+                                <Separator />
+                                <MenuItem Header="{Binding FullScreenMenuText}" Command="{Binding ToggleFullScreenCommand}" InputGesture="F11" />
+                                <MenuItem Header="{loc:Loc common.settings_ellipsis}" Command="{Binding OpenSettingsCommand}" />
+                                <Separator />
+                                <MenuItem Header="{loc:Loc common.close}" Command="{Binding CloseCommand}" />
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+                </StackPanel>
+            </Grid>
         </Border>
+        <ProgressBar DockPanel.Dock="Top" Height="2" IsIndeterminate="True" IsVisible="{Binding IsLoading}" />
 
         <!-- 状态栏 -->
         <Border DockPanel.Dock="Bottom" Classes="app-statusbar">
@@ -90,7 +137,7 @@
                 <TextBlock Grid.Column="0" Text="{Binding StatusText}" FontSize="12" Opacity="0.7" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
                     <ProgressBar IsIndeterminate="True" Width="120" Height="3" IsVisible="{Binding IsLoading}" />
-                    <TextBlock Text="{Binding IsLoading, Converter={x:Static conv:LoadingStatusConverter.Instance}}" FontSize="12" Opacity="0.6" />
+                    <TextBlock Text="{Binding IsLoading, Converter={x:Static conv:LoadingStatusConverter.Instance}}" FontSize="12" Opacity="0.6" IsVisible="{Binding IsLoading}" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -98,7 +145,7 @@
         <!-- 主体：左侧边栏（书签/历史） | GridSplitter | WebView -->
         <Grid x:Name="BrowserContentGrid">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="260" />
+                <ColumnDefinition Width="280" />
                 <ColumnDefinition Width="4" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
@@ -188,6 +235,10 @@
                     <!-- 底部清空按钮（按当前标签页激活对应按钮） -->
                     <Border Grid.Row="2" Classes="app-statusbar">
                         <StackPanel Orientation="Vertical" Spacing="4">
+                            <Button Content="{loc:Loc browser.load_more}" Command="{Binding LoadMoreBookmarksCommand}"
+                                    IsVisible="{Binding CanLoadMoreBookmarks}" IsEnabled="{Binding !IsSyncingCollections}" />
+                            <Button Content="{loc:Loc browser.load_more}" Command="{Binding LoadMoreHistoryCommand}"
+                                    IsVisible="{Binding CanLoadMoreHistory}" IsEnabled="{Binding !IsSyncingCollections}" />
                             <Button Content="{loc:Loc browser.clear_bookmarks}"
                                     Command="{Binding ClearBookmarksCommand}"
                                     IsVisible="{Binding ActiveSidebarTab, Converter={x:Static conv:SidebarTabVisibilityConverter.Instance}, ConverterParameter=Bookmarks, Mode=OneWay}"
@@ -211,7 +262,14 @@
             <!-- Linux delegates pages to the system browser process; other platforms use
                  an embedded NativeWebView. This avoids an unsupported WebKitGTK host. -->
             <Grid Grid.Column="2" Background="{DynamicResource SurfaceBrush}">
-                <ContentControl x:Name="WebViewHost">
+                <Border x:Name="NewTabPage" IsVisible="{Binding !HasCurrentPage}" Background="{DynamicResource SurfaceBrush}">
+                    <StackPanel MaxWidth="440" Margin="32" VerticalAlignment="Center" Spacing="16">
+                        <TextBlock Text="RelaxKonOS" FontSize="40" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                        <TextBlock Text="{loc:Loc browser.new_tab_hint}" TextWrapping="Wrap" TextAlignment="Center" Opacity="0.65" />
+                        <Button Content="{loc:Loc browser.focus_address}" Click="FocusAddress_Click" HorizontalAlignment="Center" CornerRadius="20" Padding="24,10" />
+                    </StackPanel>
+                </Border>
+                <ContentControl x:Name="WebViewHost" IsVisible="{Binding HasCurrentPage}">
                     <ContentControl.Content>
                         <Border Padding="24">
                             <TextBlock Text="{loc:Loc browser.linux.external_browser_notice}"

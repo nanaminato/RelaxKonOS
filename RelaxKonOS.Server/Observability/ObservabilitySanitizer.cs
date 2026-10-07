@@ -41,6 +41,7 @@ public sealed partial class ObservabilitySanitizer : IObservabilitySanitizer
 
     public string SanitizeSummary(string? value, int maximumLength = 1024)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(maximumLength);
         if (string.IsNullOrWhiteSpace(value)) return "";
         // Bearer tokens must be redacted before the assignment rule runs: the assignment rule
         // consumes the scheme word ("Authorization: Bearer"), which would otherwise leave the
@@ -60,7 +61,9 @@ public sealed partial class ObservabilitySanitizer : IObservabilitySanitizer
         return new SanitizedException(type, SanitizeSummary(exception.Message));
     }
 
-    [GeneratedRegex("(?i)\\b(password|passwd|token|secret|authorization|cookie|apikey|api_key|privatekey)\\s*[:=]\\s*[^\\s,;]+")]
+    // Unquoted values may contain spaces. Prefer redacting the complete segment to leaking
+    // its trailing words; commas, semicolons and line breaks delimit ordinary assignments.
+    [GeneratedRegex("""(?i)["']?\b(password|passwd|token|secret|authorization|cookie|apikey|api_key|privatekey)["']?\s*[:=]\s*(?:"(?:\\.|[^"\\])*(?:"|$)|'(?:\\.|[^'\\])*(?:'|$)|[^,;\r\n]+)""")]
     private static partial Regex SensitiveAssignment();
     [GeneratedRegex("(?i)bearer\\s+[a-z0-9._~+/-]+=*")]
     private static partial Regex BearerToken();

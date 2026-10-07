@@ -47,6 +47,12 @@ var output = Path.Combine(AppContext.BaseDirectory, "layout-qa");
 Directory.CreateDirectory(output);
 var host = new Window { Width = 1000, Height = 700 };
 host.Show();
+if (args.Contains("--browser-only"))
+{
+    BrowserChecks.Run(host, settings, appearance, output);
+    host.Close();
+    return;
+}
 var cases = 0;
 foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
 foreach (var mode in new[] { ThemeKind.Light, ThemeKind.Dark })
@@ -231,17 +237,18 @@ foreach (var mode in new[] { ThemeKind.Light, ThemeKind.Dark })
         && certificateVm.SelectedRenewalText.Contains(LocalizedText.Get("certificates.renewal.state.failed"))
         && !certificateVm.SelectedRenewalText.Contains("{0}") && !certificateVm.SelectedRenewalText.Contains("[missing:"),
         "Renewal failure has localized source, status and formatted times.");
+    var historyRequested = false;
     var renewalView = (Control)Activator.CreateInstance(typeof(RelaxKonOS.Client.Apps.Certificates.CertificateManagerViewModel).Assembly
-        .GetType("RelaxKonOS.Client.Apps.Certificates.Views.CertificateListView")!, new object[] { (Func<Task>)(() => Task.CompletedTask), (Func<Task>)(() => Task.CompletedTask) })!;
+        .GetType("RelaxKonOS.Client.Apps.Certificates.Views.CertificateListView")!, new object[] { (Func<Task>)(() => Task.CompletedTask), (Func<Task>)(() => Task.CompletedTask), (Action)(() => historyRequested = true) })!;
     renewalView.DataContext = certificateVm;
     host.Content = renewalView; host.Width = 800; host.Height = 650;
     Dispatcher.UIThread.RunJobs();
-    var renewalExpander = renewalView.GetVisualDescendants().OfType<Expander>().Single();
-    Check(!renewalExpander.IsExpanded, "Renewal history starts collapsed to preserve table space.");
-    renewalExpander.IsExpanded = true;
-    Dispatcher.UIThread.RunJobs();
-    Check(renewalExpander.TranslatePoint(default, renewalView) is { } renewalPoint && renewalPoint.Y + renewalExpander.Bounds.Height <= renewalView.Bounds.Height,
-        "Expanded renewal history fits the certificate workspace.");
+    Check(!renewalView.GetVisualDescendants().OfType<Expander>().Any(), "Renewal history is a separate view and preserves certificate table space.");
+    var historyButton = renewalView.GetVisualDescendants().OfType<Button>().Single(button => button.Content as string == LocalizedText.Get("certificates.renewal.title"));
+    historyButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+    Check(historyRequested, "Renewal history action invokes the current navigation callback.");
+    Check(historyButton.TranslatePoint(default, renewalView) is { } renewalPoint && renewalPoint.Y + historyButton.Bounds.Height <= renewalView.Bounds.Height,
+        "Renewal history action fits the certificate workspace.");
     if (culture == "zh-CN") {
         using var renewalBitmap = new RenderTargetBitmap(new PixelSize(800, 650));
         renewalBitmap.Render(renewalView);
@@ -299,6 +306,7 @@ foreach (var culture in new[] { "en-US", "zh-CN", "ja-JP" })
     Check(installation.IsActive && installationPanel.Bounds.Height <= 38, "Hiding installation output does not cancel installation.");
     cases++;
 }
+BrowserChecks.Run(host, settings, appearance, output);
 host.Close();
 Console.WriteLine($"PASS: {cases} real-page layouts across 3 languages, 2 modes and 3 system styles. Screenshots: {output}");
 static void Check(bool condition, string message)

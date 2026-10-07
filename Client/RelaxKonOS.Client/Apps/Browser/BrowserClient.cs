@@ -28,8 +28,8 @@ public sealed class BrowserClient : IBrowserClient
     public Task<BrowserSettingsDto> SaveSettingsAsync(BrowserSettingsDto settings, CancellationToken ct = default)
         => SendAsync<BrowserSettingsDto>(HttpMethod.Put, BrowserApiRoutes.Settings, body: settings, ct: ct);
 
-    public Task<IReadOnlyList<BookmarkDto>> ListBookmarksAsync(CancellationToken ct = default)
-        => SendAsync<IReadOnlyList<BookmarkDto>>(HttpMethod.Get, BrowserApiRoutes.Bookmarks, ct: ct);
+    public Task<IReadOnlyList<BookmarkDto>> ListBookmarksAsync(int offset = 0, int limit = BrowserQueryLimits.DefaultPageSize, string? url = null, CancellationToken ct = default)
+        => SendAsync<IReadOnlyList<BookmarkDto>>(HttpMethod.Get, BrowserApiRoutes.Bookmarks + $"?offset={BrowserQueryLimits.Offset(offset)}&limit={BrowserQueryLimits.PageSize(limit)}" + (url is null ? "" : "&url=" + Uri.EscapeDataString(url)), ct: ct);
 
     public Task<BookmarkDto> AddBookmarkAsync(string title, string url, CancellationToken ct = default)
         => SendAsync<BookmarkDto>(HttpMethod.Post, BrowserApiRoutes.BookmarksCreate,
@@ -48,9 +48,8 @@ public sealed class BrowserClient : IBrowserClient
         await EnsureSuccessAsync(resp, ct);
     }
 
-    public Task<IReadOnlyList<HistoryEntryDto>> ListHistoryAsync(int limit = 100, CancellationToken ct = default)
-        => SendAsync<IReadOnlyList<HistoryEntryDto>>(HttpMethod.Get, BrowserApiRoutes.History,
-            query: ("limit", limit.ToString(System.Globalization.CultureInfo.InvariantCulture)), ct: ct);
+    public Task<IReadOnlyList<HistoryEntryDto>> ListHistoryAsync(int offset = 0, int limit = BrowserQueryLimits.DefaultPageSize, CancellationToken ct = default)
+        => SendAsync<IReadOnlyList<HistoryEntryDto>>(HttpMethod.Get, BrowserApiRoutes.History + $"?offset={BrowserQueryLimits.Offset(offset)}&limit={BrowserQueryLimits.PageSize(limit)}", ct: ct);
 
     public Task<HistoryEntryDto> RecordVisitAsync(string title, string url, CancellationToken ct = default)
         => SendAsync<HistoryEntryDto>(HttpMethod.Post, BrowserApiRoutes.HistoryCreate,

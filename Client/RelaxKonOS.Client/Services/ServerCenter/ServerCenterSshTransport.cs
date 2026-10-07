@@ -86,15 +86,13 @@ public sealed class SshNetServerCenterTransport : IServerCenterSshTransport
         }
     }
 
-    public Task<ServerCenterSshCommandResult> RunAsync(string command, CancellationToken cancellationToken)
+    public async Task<ServerCenterSshCommandResult> RunAsync(string command, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(command);
-        return Task.Run(() =>
-        {
-            using var sshCommand = Client.CreateCommand(command);
-            sshCommand.Execute();
-            return new ServerCenterSshCommandResult(sshCommand.ExitStatus ?? -1, sshCommand.Result, sshCommand.Error);
-        }, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        using var sshCommand = Client.CreateCommand(command);
+        await sshCommand.ExecuteAsync(cancellationToken).ConfigureAwait(false);
+        return new ServerCenterSshCommandResult(sshCommand.ExitStatus ?? -1, sshCommand.Result, sshCommand.Error);
     }
 
     /// <summary>
@@ -135,17 +133,10 @@ public sealed class SshNetServerCenterTransport : IServerCenterSshTransport
         ArgumentNullException.ThrowIfNull(content);
         ArgumentException.ThrowIfNullOrWhiteSpace(remotePath);
         var sftp = await GetSftpAsync(cancellationToken).ConfigureAwait(false);
-        var total = content.CanSeek ? content.Length : 0;
-
-        await Task.Run(() =>
-        {
-            sftp.UploadFile(content, remotePath, uploaded =>
-            {
-                if (progress is null) return;
-                // Without a reliable denominator the UI must not invent a percentage.
-                if (total > 0) progress.Report(Math.Clamp((double)uploaded / total, 0d, 1d));
-            });
-        }, cancellationToken).ConfigureAwait(false);
+        var total = content.CanSeek ? content.Length - content.Position : 0;
+        IProgress<UploadFileProgressReport>? reporting = progress is null || total <= 0 ? null
+            : new UploadProgress(progress, total);
+        await sftp.UploadFileAsync(content, remotePath, reporting, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task DownloadAsync(string remotePath, Stream destination, CancellationToken cancellationToken)
@@ -153,7 +144,13 @@ public sealed class SshNetServerCenterTransport : IServerCenterSshTransport
         ArgumentException.ThrowIfNullOrWhiteSpace(remotePath);
         ArgumentNullException.ThrowIfNull(destination);
         var sftp = await GetSftpAsync(cancellationToken).ConfigureAwait(false);
-        await Task.Run(() => sftp.DownloadFile(remotePath, destination, null), cancellationToken).ConfigureAwait(false);
+        await sftp.DownloadFileAsync(remotePath, destination, cancellationToken).ConfigureAwait(false);
+    }
+
+    private sealed class UploadProgress(IProgress<double> progress, long total) : IProgress<UploadFileProgressReport>
+    {
+        public void Report(UploadFileProgressReport report) =>
+            progress.Report(Math.Clamp((double)report.TotalBytesUploaded / total, 0d, 1d));
     }
 
     public IServerCenterSshTunnel OpenLoopbackTunnel(int remotePort, string? basePath = null)

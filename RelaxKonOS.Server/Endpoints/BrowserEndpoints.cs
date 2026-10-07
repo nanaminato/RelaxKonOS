@@ -37,9 +37,9 @@ public static class BrowserEndpoints
 
         // ── bookmarks ──
 
-        // GET bookmarks — 列举当前用户全部书签
-        app.MapGet(BrowserApiRoutes.Bookmarks, (ClaimsPrincipal principal, IBrowserRepository repo) =>
-            Results.Ok(repo.ListBookmarks(GetUserId(principal)).Select(b => b.ToDto())))
+        // GET bookmarks — bounded, ordered pages; optional exact URL lookup
+        app.MapGet(BrowserApiRoutes.Bookmarks, (int? offset, int? limit, string? url, ClaimsPrincipal principal, IBrowserRepository repo) =>
+            Results.Ok(repo.ListBookmarks(GetUserId(principal), offset ?? 0, limit ?? BrowserQueryLimits.DefaultPageSize, url).Select(b => b.ToDto())))
            .RequireAuthorization()
            .WithTags("Browser");
 
@@ -75,13 +75,10 @@ public static class BrowserEndpoints
 
         // ── history ──
 
-        // GET history?limit= — 列举历史（按 LastVisitedAt 倒序，默认 100 上限 1000）
-        app.MapGet(BrowserApiRoutes.History, (int? limit, ClaimsPrincipal principal, IBrowserRepository repo) =>
+        // GET history — bounded pages ordered by LastVisitedAt and ID
+        app.MapGet(BrowserApiRoutes.History, (int? offset, int? limit, ClaimsPrincipal principal, IBrowserRepository repo) =>
         {
-            var l = limit ?? 100;
-            if (l < 0) l = 100;
-            if (l > 1000) l = 1000;
-            return Results.Ok(repo.ListHistory(GetUserId(principal), l).Select(h => h.ToDto()));
+            return Results.Ok(repo.ListHistory(GetUserId(principal), offset ?? 0, limit ?? BrowserQueryLimits.DefaultPageSize).Select(h => h.ToDto()));
         })
         .RequireAuthorization()
         .WithTags("Browser");

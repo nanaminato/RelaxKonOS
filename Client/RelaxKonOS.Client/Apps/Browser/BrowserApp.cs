@@ -62,6 +62,19 @@ public sealed class BrowserApp : RemoteApplicationBase
         LocalizedWindowTitle.Follow(window, context, "application.relaxkonos.browser.display_name");
         window.KeyDown += (_, e) =>
         {
+            if (e.Key == RemoteKey.Letter('T') && e.Modifiers == RemoteKeyModifiers.Control)
+            {
+                viewModel.AddTabCommand.Execute(null);
+                view.FocusAddressBox();
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == RemoteKey.Letter('W') && e.Modifiers == RemoteKeyModifiers.Control)
+            {
+                viewModel.CloseSelectedTab();
+                e.Handled = true;
+                return;
+            }
             if (e.Key == RemoteKey.Letter('L') && e.Modifiers == RemoteKeyModifiers.Control)
             {
                 view.FocusAddressBox();
@@ -98,11 +111,16 @@ public sealed class BrowserApp : RemoteApplicationBase
         };
         viewModel.RequestSettingsAsync = async () =>
         {
-            await context.ShowDialogAsync<bool>(window, LocalizedText.Get("browser.settings.title"), dialog =>
+            view.SetWebViewVisible(false);
+            try
             {
-                viewModel.CloseSettingsAction = () => dialog.Close(true);
-                return new BrowserSettingsView { DataContext = viewModel };
-            }, new RelaxKonOS.Core.Primitives.Size(520, 320));
+                await context.ShowDialogAsync<bool>(window, LocalizedText.Get("browser.settings.title"), dialog =>
+                {
+                    viewModel.CloseSettingsAction = () => dialog.Close(true);
+                    return new BrowserSettingsView { DataContext = viewModel };
+                }, new RelaxKonOS.Core.Primitives.Size(520, 320));
+            }
+            finally { view.SetWebViewVisible(window.IsActive && window.IsOnScreen); }
         };
 
         // NativeWebView is a platform child view and does not participate in Avalonia's
@@ -124,6 +142,15 @@ public sealed class BrowserApp : RemoteApplicationBase
             view.SetWebViewVisible(window.IsActive && window.IsOnScreen);
         view.SetWebViewVisible(window.IsActive && window.IsOnScreen);
         BrowserDiagnostics.Record("Browser managed window opened.");
+
+        EventHandler<ManagedWindow>? closed = null;
+        closed = (_, closedWindow) =>
+        {
+            if (!ReferenceEquals(closedWindow, window)) return;
+            view.ClosePlatformBrowser();
+            context.WindowManager.WindowClosed -= closed;
+        };
+        context.WindowManager.WindowClosed += closed;
 
         // 窗口打开后异步加载书签 + 历史
         _ = viewModel.LoadAsync();

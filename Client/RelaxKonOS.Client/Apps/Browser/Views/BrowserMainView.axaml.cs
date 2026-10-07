@@ -13,12 +13,17 @@ namespace RelaxKonOS.Client.Apps.Browser.Views;
 /// <summary>Bridges browser navigation to the view-model and selects the supported native host per platform.</summary>
 public partial class BrowserMainView : UserControl
 {
-    private const double DefaultSidebarWidth = 260;
+    private const double DefaultSidebarWidth = 280;
     private const double SidebarSplitterWidth = 4;
 
     private BrowserViewModel? _observedViewModel;
     private readonly bool _useExternalBrowser = OperatingSystem.IsLinux();
     private NativeWebView? _webView;
+    private readonly Grid _surfaces = new();
+    private readonly Dictionary<BrowserTabViewModel, NativeWebView> _tabViews = new();
+    private bool _nativeVisible = true;
+    private bool _closed;
+    private bool _menuOpen;
     private double _sidebarWidth = DefaultSidebarWidth;
 
     private ColumnDefinition SidebarColumn => BrowserContentGrid.ColumnDefinitions[0];
@@ -30,11 +35,20 @@ public partial class BrowserMainView : UserControl
         BrowserDiagnostics.Record(_useExternalBrowser
             ? "BrowserMainView initialized; Linux will use the system browser process."
             : "BrowserMainView initialized; creating embedded NativeWebView.");
-        // On Linux, retain the localized XAML fallback; other platforms host NativeWebView.
-        if (!_useExternalBrowser)
-            CreateEmbeddedWebView();
+        // Native surfaces are created lazily so an empty tab has no heavyweight adapter.
+        if (!_useExternalBrowser) WebViewHost.Content = _surfaces;
+        if (BrowserMenuButton.Flyout is { } menu)
+        {
+            menu.Opened += (_, _) => { _menuOpen = true; UpdateNativeVisibility(); };
+            menu.Closed += (_, _) => { _menuOpen = false; UpdateNativeVisibility(); };
+        }
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+        SizeChanged += (_, _) =>
+        {
+            TabStrip.MaxWidth = Math.Max(120, Bounds.Width - 56);
+            if (ViewModel is { } model) UpdateSidebarLayout(model.IsSidebarVisible);
+        };
     }
 
     /// <summary>Moves keyboard focus to the address field and selects the current address.</summary>
@@ -44,19 +58,57 @@ public partial class BrowserMainView : UserControl
         AddressBox.SelectAll();
     }
 
-    private void CreateEmbeddedWebView()
+    private void CreateEmbeddedWebView(BrowserTabViewModel tab)
     {
-        _webView = new NativeWebView();
-        _webView.EnvironmentRequested += ConfigureWebViewEnvironment;
-        _webView.AdapterCreated += (_, _) => BrowserDiagnostics.Record($"NativeWebView adapter created: {_webView.AdapterInfo?.ToString() ?? "<unknown>"}.");
-        _webView.AdapterDestroyed += (_, _) => BrowserDiagnostics.Record("NativeWebView adapter destroyed.");
-        _webView.NavigationStarted += (_, args) =>
+        var webView = new NativeWebView();
+        webView.EnvironmentRequested += ConfigureWebViewEnvironment;
+        webView.NavigationStarted += (_, args) =>
         {
-            if (TryOpenNativeLinkOnHost(args)) return;
-            OnNavigationStarted(_webView.Source, _webView.CanGoBack, _webView.CanGoForward, "NativeWebView");
+            if (_closed || !_tabViews.ContainsKey(tab)) return;
+            if (ViewModel?.SelectedTab == tab && TryOpenNativeLinkOnHost(args)) return;
+            tab.Source = webView.Source;
+            tab.IsLoading = true;
+            tab.CanGoBack = webView.CanGoBack;
+            tab.CanGoForward = webView.CanGoForward;
+            if (ViewModel?.SelectedTab == tab)
+                OnNavigationStarted(webView.Source, webView.CanGoBack, webView.CanGoForward, "NativeWebView");
         };
-        _webView.NavigationCompleted += (_, _) => OnNavigationCompleted(_webView.Source, _webView.CanGoBack, _webView.CanGoForward, "NativeWebView");
-        WebViewHost.Content = _webView;
+        webView.NavigationCompleted += (_, _) =>
+        {
+            if (_closed || !_tabViews.ContainsKey(tab)) return;
+            tab.Source = webView.Source;
+            tab.IsLoading = false;
+            tab.CanGoBack = webView.CanGoBack;
+            tab.CanGoForward = webView.CanGoForward;
+            if (ViewModel?.SelectedTab == tab)
+                OnNavigationCompleted(webView.Source, webView.CanGoBack, webView.CanGoForward, "NativeWebView");
+            else if (webView.Source is { } source)
+                ViewModel?.RecordBackgroundVisit(source);
+        };
+        _tabViews.Add(tab, webView);
+        _surfaces.Children.Add(webView);
+        _webView = webView;
+        UpdateNativeVisibility();
+    }
+
+    private void SelectTab(BrowserTabViewModel tab)
+    {
+        _webView = _tabViews.GetValueOrDefault(tab);
+        UpdateNativeVisibility();
+    }
+
+    private void CloseTabSurface(BrowserTabViewModel tab)
+    {
+        if (!_tabViews.Remove(tab, out var surface)) return;
+        surface.Stop();
+        surface.IsVisible = false;
+        _surfaces.Children.Remove(surface);
+    }
+
+    private void UpdateNativeVisibility()
+    {
+        foreach (var surface in _tabViews.Values)
+            surface.IsVisible = _nativeVisible && !_menuOpen && ReferenceEquals(surface, _webView);
     }
 
     private static void ConfigureWebViewEnvironment(object? sender, WebViewEnvironmentRequestedEventArgs e)
@@ -104,17 +156,30 @@ public partial class BrowserMainView : UserControl
     /// <summary>Keeps an embedded platform-native WebView from floating above inactive windows.</summary>
     public void SetWebViewVisible(bool isVisible)
     {
-        if (_webView is not null)
-        {
-            _webView.IsVisible = isVisible;
-            return;
-        }
-
-        // The Linux browser is an independent system process and must not be controlled by
-        // the RelaxKonOS window manager. This avoids the WebKitGTK UI-thread deadlock.
+        _nativeVisible = isVisible;
+        UpdateNativeVisibility();
     }
 
-    public void ClosePlatformBrowser() { }
+    public void ClosePlatformBrowser()
+    {
+        if (_closed) return;
+        _closed = true;
+        foreach (var tab in _tabViews.Keys.ToArray()) CloseTabSurface(tab);
+        if (_observedViewModel is { } model)
+        {
+            model.PropertyChanged -= ViewModel_PropertyChanged;
+            model.ViewNavigateRequested = null;
+            model.ViewTabSelectedRequested = null;
+            model.ViewTabClosedRequested = null;
+            model.ViewGoBackRequested = null;
+            model.ViewGoForwardRequested = null;
+            model.ViewRefreshRequested = null;
+            model.ViewStopRequested = null;
+            model.OpenWithHostRequested = null;
+        }
+        _observedViewModel = null;
+        _webView = null;
+    }
 
     private void ObserveViewModel()
     {
@@ -135,13 +200,6 @@ public partial class BrowserMainView : UserControl
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(BrowserViewModel.WebViewSource) && sender is BrowserViewModel navigationViewModel)
-        {
-            BrowserDiagnostics.Record($"Navigation assigned to platform WebView: {BrowserDiagnostics.SanitizeUri(navigationViewModel.WebViewSource)}.");
-            if (navigationViewModel.WebViewSource is { } source)
-                NavigatePlatformWebView(source);
-        }
-
         if (e.PropertyName == nameof(BrowserViewModel.IsSidebarVisible) && sender is BrowserViewModel viewModel)
             UpdateSidebarLayout(viewModel.IsSidebarVisible);
     }
@@ -150,7 +208,8 @@ public partial class BrowserMainView : UserControl
     {
         if (isVisible)
         {
-            SidebarColumn.Width = new GridLength(_sidebarWidth, GridUnitType.Pixel);
+            var available = BrowserContentGrid.Bounds.Width;
+            SidebarColumn.Width = new GridLength(available > 0 ? Math.Min(_sidebarWidth, available * 0.45) : _sidebarWidth, GridUnitType.Pixel);
             SidebarSplitterColumn.Width = new GridLength(SidebarSplitterWidth, GridUnitType.Pixel);
             return;
         }
@@ -165,19 +224,32 @@ public partial class BrowserMainView : UserControl
     private void WireWebViewCommands()
     {
         if (ViewModel is null) return;
+        ViewModel.ViewNavigateRequested = NavigatePlatformWebView;
+        ViewModel.ViewTabSelectedRequested = SelectTab;
+        ViewModel.ViewTabClosedRequested = CloseTabSurface;
+        if (ViewModel.SelectedTab is { } tab) SelectTab(tab);
         ViewModel.ViewGoBackRequested = () => _webView?.GoBack();
         ViewModel.ViewGoForwardRequested = () => _webView?.GoForward();
         ViewModel.ViewRefreshRequested = () =>
         {
             if (_webView is not null)
                 _webView.Refresh();
-            else if (ViewModel.WebViewSource is { } source)
+            else if (ViewModel.SelectedTab?.Source is { } source)
                 OpenWithSystemBrowser(source);
         };
         ViewModel.ViewStopRequested = () => _webView?.Stop();
         ViewModel.OpenWithHostRequested = source => OpenWithSystemBrowser(source, reportNavigation: false);
         ViewModel.UpdateNavigationState(_webView?.CanGoBack ?? false, _webView?.CanGoForward ?? false);
     }
+
+    private void CloseTab_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: BrowserTabViewModel tab })
+            ViewModel?.CloseTabCommand.Execute(tab);
+        e.Handled = true;
+    }
+
+    private void FocusAddress_Click(object? sender, RoutedEventArgs e) => FocusAddressBox();
 
     // ---- 地址栏 ----
 
@@ -224,8 +296,11 @@ public partial class BrowserMainView : UserControl
 
     private void NavigatePlatformWebView(Uri source)
     {
+        if (!_useExternalBrowser && _webView is null && ViewModel?.SelectedTab is { } tab)
+            CreateEmbeddedWebView(tab);
         if (_webView is not null)
         {
+            if (_webView.Source == source) { _webView.Refresh(); return; }
             _webView.Navigate(source);
             return;
         }
