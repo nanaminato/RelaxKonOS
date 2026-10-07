@@ -8,13 +8,15 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <EmbeddedResource Include="..\..\deployment\launcher\RelaxKonOS-Deploy.ps1" LogicalName="RelaxKonOS.Deployment.RelaxKonOS-Deploy.ps1" />
-        <EmbeddedResource Include="..\..\deployment\launcher\relaxkonos-deploy.sh" LogicalName="RelaxKonOS.Deployment.relaxkonos-deploy.sh" />
+        <EmbeddedResource Include="$(IntermediateOutputPath)deployment-launcher/RelaxKonOS-Deploy.ps1" LogicalName="RelaxKonOS.Deployment.RelaxKonOS-Deploy.ps1" />
+        <EmbeddedResource Include="$(IntermediateOutputPath)deployment-launcher/relaxkonos-deploy.sh" LogicalName="RelaxKonOS.Deployment.relaxkonos-deploy.sh" />
         <AvaloniaResource Include="Assets\**"/>
         <AvaloniaResource Include="..\..\LICENSE" Link="Assets\Legal\LICENSE.txt" />
         <AvaloniaResource Include="..\..\THIRD_PARTY_NOTICES.md" Link="Assets\Legal\THIRD_PARTY_NOTICES.md" />
         <Content Include="Localization\**\*.json" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
+
+    <Import Project="../../deployment/launcher/Launchers.targets" />
 
     <ItemGroup>
         <PackageReference Include="Avalonia"/>

@@ -66,7 +66,7 @@ System Mode 升级、普通修复和回滚默认沿用已安装的 TLS 证书及
 dotnet run --project ./deployment/packaging/RelaxKonOS.ReleaseVerifier -- verify ./artifacts/RelaxKonOS-0.1.0-win-x64-server.zip server win-x64
 ```
 
-服务器中心部署脚本随客户端内置：桌面使用嵌入资源，Android 使用 APK assets。无需放置外部 `launcher/`、设置发布目录环境变量或准备目标 RID 的 `release-verifier`。Windows 使用系统 PowerShell/.NET，Linux 使用 Bash 和 Python 3 完成严格 JSON 解析及安全 ZIP 解压。
+服务器中心部署脚本随客户端内置：桌面使用嵌入资源，Android 使用 APK assets。源码按职责维护在 `launcher/src/`，客户端构建和发布打包按清单合并成单个脚本，目标主机不需要源码模块；维护和验证方式见 [部署入口源码说明](launcher/README.md)。无需放置外部 `launcher/`、设置发布目录环境变量或准备目标 RID 的 `release-verifier`。Windows 使用系统 PowerShell/.NET，Linux 使用 Bash 和 Python 3 完成严格 JSON 解析及安全 ZIP 解压。
 
 Linux 系统模式在未上传新发布包的维护操作中，从 `/opt/relaxkonos/current/deployment/bootstrap/` 读取当前版本的安装和卸载引擎。桌面端必须同时核对操作终态回执及随后读取的宿主状态：失败回执显示实际失败原因；卸载只有在操作成功且状态确认 `installed=false` 时显示成功，保留数据不等于仍然安装。
 

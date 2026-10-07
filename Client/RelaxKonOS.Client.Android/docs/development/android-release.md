@@ -19,6 +19,8 @@ pwsh Tools/Mobile/Debug-Android.ps1
 
 APK 输出位置为：
 
+部署入口 assets 由 `preBuild` 依赖的 `generateDeploymentAssets` 从仓库 `deployment/launcher/src/` 按清单合并，输出到 `app/build/generated/deploymentAssets/`。APK 只包含两种平台的单文件入口，不打包源码模块；无需手动复制部署脚本。公共源码维护方式见 [部署入口源码说明](../../../../deployment/launcher/README.md)。
+
 ```text
 Client/RelaxKonOS.Client.Android/app/build/outputs/apk/debug/app-debug.apk
 ```

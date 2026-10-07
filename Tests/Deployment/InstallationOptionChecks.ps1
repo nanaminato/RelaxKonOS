@@ -29,6 +29,7 @@ function Get-SnapshotJson { @{} }
 function Get-ResultJson { @{} }
 function Get-NowUtc { '2026-10-03T00:00:00Z' }
 function Save-ManagedRoots { }
+function Apply-FirewallChoice { }
 function Invoke-Engine($HostPath, $Arguments) { $script:captured = $Arguments; 0 }
 
 $stagingRoot = Join-Path ([IO.Path]::GetTempPath()) ('relaxkonos-options-' + [guid]::NewGuid().ToString('N'))

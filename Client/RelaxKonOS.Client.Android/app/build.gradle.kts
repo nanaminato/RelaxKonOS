@@ -22,11 +22,33 @@ val generateLicenseAssets = tasks.register<Copy>("generateLicenseAssets") {
     into(layout.buildDirectory.dir("generated/licenseAssets"))
 }
 
+// Keep only the composed, standalone launchers in the APK, never the source fragments.
+val launcherSource = rootProject.layout.projectDirectory.dir("../../deployment/launcher/src")
+val launcherAssets = layout.buildDirectory.dir("generated/deploymentAssets")
+val generateDeploymentAssets = tasks.register("generateDeploymentAssets") {
+    inputs.dir(launcherSource)
+    outputs.dir(launcherAssets)
+    doLast {
+        val source = launcherSource.asFile
+        val output = launcherAssets.get().asFile.apply { mkdirs() }
+        mapOf("windows" to "RelaxKonOS-Deploy.ps1", "linux" to "relaxkonos-deploy.sh").forEach { (platform, name) ->
+            val text = source.resolve("$platform.txt").readLines(Charsets.UTF_8).joinToString("") { part ->
+                require(Regex("$platform/[a-z-]+\\.inc\\.(ps1|sh)").matches(part)) {
+                    "Invalid launcher fragment: $part"
+                }
+                source.resolve(part).readText(Charsets.UTF_8).replace("\r\n", "\n")
+            }
+            val bom = if (platform == "windows") byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()) else byteArrayOf()
+            output.resolve(name).writeBytes(bom + text.toByteArray(Charsets.UTF_8))
+        }
+    }
+}
+
 android {
     namespace = "app.relaxkonos.mobile"
     compileSdk = 36
 
-    sourceSets.getByName("main").assets.srcDir("../../../deployment/launcher")
+    sourceSets.getByName("main").assets.srcDir(launcherAssets.get().asFile)
     sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/licenseAssets").get().asFile)
 
     defaultConfig {
@@ -65,7 +87,7 @@ android {
     }
 }
 
-tasks.named("preBuild") { dependsOn(generateLicenseAssets) }
+tasks.named("preBuild") { dependsOn(generateLicenseAssets, generateDeploymentAssets) }
 
 tasks.matching { it.name == "preReleaseBuild" }.configureEach {
     doFirst {

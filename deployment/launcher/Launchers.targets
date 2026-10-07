@@ -1,0 +1,41 @@
+<Project>
+  <!-- Use the SDK's compiler; desktop builds need no PowerShell or Python installation. -->
+  <UsingTask TaskName="ComposeRelaxKonLaunchers" TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <SourceRoot ParameterType="System.String" Required="true" />
+      <OutputDirectory ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Text" />
+      <Using Namespace="System.Text.RegularExpressions" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        Directory.CreateDirectory(OutputDirectory);
+        foreach (var platform in new[] { "windows", "linux" }) {
+            var content = new StringBuilder();
+            foreach (var part in File.ReadAllLines(Path.Combine(SourceRoot, platform + ".txt"))) {
+                if (!Regex.IsMatch(part, "^" + platform + @"/[a-z-]+\.inc\.(ps1|sh)$"))
+                    throw new System.InvalidOperationException("Invalid launcher fragment: " + part);
+                content.Append(File.ReadAllText(Path.Combine(SourceRoot, part)).Replace("\r\n", "\n"));
+            }
+            var name = platform == "windows" ? "RelaxKonOS-Deploy.ps1" : "relaxkonos-deploy.sh";
+            var path = Path.Combine(OutputDirectory, name);
+            var text = content.ToString();
+            var encoding = new UTF8Encoding(platform == "windows");
+            var body = encoding.GetBytes(text);
+            var preamble = encoding.GetPreamble();
+            var bytes = new byte[preamble.Length + body.Length];
+            System.Buffer.BlockCopy(preamble, 0, bytes, 0, preamble.Length);
+            System.Buffer.BlockCopy(body, 0, bytes, preamble.Length, body.Length);
+            if (!File.Exists(path) || System.Convert.ToBase64String(File.ReadAllBytes(path)) != System.Convert.ToBase64String(bytes))
+                File.WriteAllBytes(path, bytes);
+        }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+  <Target Name="GenerateDeploymentLaunchers" BeforeTargets="PrepareForBuild">
+    <ComposeRelaxKonLaunchers SourceRoot="$(MSBuildThisFileDirectory)src"
+                             OutputDirectory="$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'deployment-launcher'))" />
+  </Target>
+</Project>

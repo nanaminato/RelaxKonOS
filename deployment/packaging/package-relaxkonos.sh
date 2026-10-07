@@ -36,10 +36,7 @@ publish_deployment_tools() {
   # Export scripts for manual SSH use; clients bundle their own copies.
   local tools="$OUTPUT_DIRECTORY/launcher"
   mkdir -p -- "$tools"
-  cp -- "$PROJECT_ROOT/deployment/launcher/relaxkonos-deploy.sh" "$tools/relaxkonos-deploy.sh"
-  cp -- "$PROJECT_ROOT/deployment/launcher/RelaxKonOS-Deploy.ps1" "$tools/RelaxKonOS-Deploy.ps1"
-  # Packaging may run from a Windows-mounted working tree; launchers uploaded to Linux must be LF.
-  sed -i 's/\r$//' "$tools/relaxkonos-deploy.sh"
+  python3 "$PROJECT_ROOT/deployment/launcher/build_launchers.py" --output "$tools"
 
 }
 

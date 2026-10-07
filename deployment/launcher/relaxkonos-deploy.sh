@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Generated standalone launcher. Edit deployment/launcher/src/linux/ fragments.
 # RelaxKonOS remote deployment launcher (Linux).
 #
 # This is the only thing a client executes over SSH. It accepts a fixed action set and a

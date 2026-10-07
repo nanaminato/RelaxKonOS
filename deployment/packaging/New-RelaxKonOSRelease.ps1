@@ -41,8 +41,7 @@ function Publish-DeploymentTools() {
     # Client launchers are scripts; target-specific verifier executables are unnecessary.
     $launcherDirectory = Join-Path $OutputDirectory 'launcher'
     New-Item -ItemType Directory -Path $launcherDirectory -Force | Out-Null
-    Copy-Item -LiteralPath (Join-Path $launcherSource 'RelaxKonOS-Deploy.ps1') -Destination (Join-Path $launcherDirectory 'RelaxKonOS-Deploy.ps1') -Force
-    Copy-Item -LiteralPath (Join-Path $launcherSource 'relaxkonos-deploy.sh') -Destination (Join-Path $launcherDirectory 'relaxkonos-deploy.sh') -Force
+    & (Join-Path $launcherSource 'Build-Launchers.ps1') -OutputDirectory $launcherDirectory
 
     if ($platform -eq 'linux') { Convert-LinuxShellScriptsToLf $launcherDirectory }
 }

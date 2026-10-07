@@ -52,6 +52,7 @@ preflight_install() {{ :; }}
 require_expected_installation_id() {{ :; }}
 require_package() {{ :; }}
 save_managed_roots() {{ :; }}
+apply_firewall_choice() {{ :; }}
 system_engine_path() {{ printf '/engine'; }}
 user_engine_path() {{ printf '/user-engine'; }}
 system_install_root() {{ printf '/srv/program'; }}
