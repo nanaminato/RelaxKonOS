@@ -1,6 +1,5 @@
 # Android 公共运行时安装链路
 
-> 当前功能说明，对应 BP01-M1-1～BP01-M1-5。公共数据层、安装任务观察、恢复与取消已接入；Nginx 表单与实例管理已随 BP03-M1 接入，见 [Nginx 管理](Nginx.md)；FRP 运行时表单已随 BP05-M1 接入，见 [FRP 客户端与运行时](Tunnels.md)；Mihomo 表单已随 BP06-M1 接入，见 [Mihomo 管理器](Proxy.md)；SMB 安装和文件服务已随 BP08-M1 接入，见 [SMB 文件服务](Smb.md)；Docker Linux 安装与原任务恢复已随 BP09-M1 接入，见 [引擎与镜像源](DockerEngine.md)；其他服务表单与完整管理流程仍随 BP10 交付。当前测试状态和未关闭检查看 [Verification](../status/Verification.md#1-bp-测试进度)，设备与真实安装尚未验收。
 
 ## 1. 契约与支持边界
 
@@ -48,4 +47,4 @@ Mihomo、FRP 和 Windows 宿主的 Nginx 安装表单统一提供“服务器下
 
 可输入原操作 ID 恢复查询，宿主成功核实后重新显示该账号此前在本机隐藏的记录；普通活动扫描仍尊重隐藏标记。Nginx、FRP、Mihomo、SMB、Docker 安装项可返回已实现的领域管理页，按当前服务能力门控；其他服务表单交付后再接入跳转。当前页面每五秒尝试刷新活动或不可用记录，前一次读取尚未完成时不重叠刷新；离页/切会话停止观察并隔离旧响应，停止观察不取消服务端任务。取消经确认后提交稳定键，再查询真实状态；Running + 不可取消仍是执行中，只有服务端 Cancelled 才显示已取消。查询失败保持待核实，本机隐藏只隐藏观察记录。
 
-未关闭设备/宿主检查统一见 [Verification](../status/Verification.md#1-bp-测试进度)，实现进度见 [Progress](../status/Progress.md#2-bp-实现进度)。
+未关闭设备/宿主检查统一见 [验证要求](../development/Verification.md)，功能说明见 [功能目录](../README.md)。

@@ -4,7 +4,6 @@
 
 受管运行时明确未安装时只显示安装引导和“安装 FRP”入口，不展示没有归档可验证时的完整性错误。服务器配置仍可查看与编辑，已有安装任务或未知操作集中到“操作记录”；历史安装查询以“恢复之前的操作”进入。已安装、外部路径无效或状态未知仍保留各自的诊断。
 
-> 当前功能对应 BP05-M1/M2。入口“管理 → 隧道管理器”，路由 `manage/tunnels`，消费服务器 `server.tunnels` 能力；所有运行时和转发进程位于当前 Server。frpc 与宿主 frps 分页，独立配置、生命周期、日志和审计均已接入。构建、测试和待设备验收证据见 [Verification](../status/Verification.md)。
 
 ## 界面与操作层级
 
@@ -54,7 +53,7 @@ Install 支持宿主下载、服务器包引用和系统文档选择器的手机
 
 手机为 profile 列表 → 详情，600dp 起为列表/详情双栏。表单滚动并处理 IME，动作使用换行布局；切换宿主/账号清空草稿、秘密、日志、确认框与内存提交，旧响应不能覆盖新会话。新增文案与稳定状态/问题提示同步中文、英文、日文。实际手机/平板、大字体、旋转和恢复表现仍待执行验证。
 
-共享执行语义见 [FRP 当前实现边界](../../../../docs/applications/RelaxKonOS.FRP_Integration.Implementation.md) 和 [Protocol](../../../../docs/architecture/RelaxKonOS.Protocol.md)。本功能不提供手机 SSH 本地转发、手机 FRP 进程、任意 TOML/插件/OIDC/visitor 配置；后续内置应用实现见 [BuiltInParity](../plans/BuiltInParity.md#41-下一轮起点)。
+共享执行语义见 [FRP 当前实现边界](../../../../docs/applications/RelaxKonOS.FRP_Integration.Implementation.md) 和 [Protocol](../../../../docs/architecture/RelaxKonOS.Protocol.md)。本功能不提供手机 SSH 本地转发、手机 FRP 进程、任意 TOML/插件/OIDC/visitor 配置；平台支持范围见 [支持范围](../design/SupportScope.md)。
 
 ## 6. 宿主 frps
 
@@ -70,4 +69,4 @@ Linux Server 重新打开已有配置但缺少原进程归属时返回 Unknown�
 
 frps 保存/启停/重启仍为同步 API，没有领域 operation ID 或幂等键。与 frpc 共用账号隔离的待核实写入标记，任何未决 FRP 写入阻止继续写入。frps 标记只在显式重新读取 frps 安全事实并确认采用后结束，frpc 列表不能解除它；秘密配置标记不证明某个秘密值已生效。运维中心继续按动作返回隧道页，不创建虚构长任务。
 
-日志和审计由用户显式读取，每来源最多 200 条，仅保留当前内存和观察时间；审计显示保存、启动、停止、Token 编辑读取、成功/失败及本地化问题提示。运行状态只证明进程启动，不证明真实 frpc 认证、proxy 注册、vhost/Dashboard 公网可达或信任链。Android/设备、真实 FRP 二进制与 Windows Helper 验收仍按 [Verification](../status/Verification.md) 单独追踪。
+日志和审计由用户显式读取，每来源最多 200 条，仅保留当前内存和观察时间；审计显示保存、启动、停止、Token 编辑读取、成功/失败及本地化问题提示。运行状态只证明进程启动，不证明真实 frpc 认证、proxy 注册、vhost/Dashboard 公网可达或信任链。Android/设备、真实 FRP 二进制与 Windows Helper 验收仍按 [验证要求](../development/Verification.md) 单独追踪。

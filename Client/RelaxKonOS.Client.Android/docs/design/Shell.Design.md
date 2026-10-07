@@ -1,6 +1,6 @@
 # Android Shell、认证与安全规范
 
-> 当前规范：页面、导航、认证与本机凭据安全。功能范围与验证证据统一见 [当前状态](../status/Progress.md)。
+> 当前规范：页面、导航、认证与本机凭据安全。功能范围见 [功能目录](../README.md)。
 >
 > 上位约束（冲突时以上位为准）：
 > - [`Product.Design.md`](Product.Design.md) — 移动端产品/技术决策、手机与平板自适应、国际化与主题
@@ -9,7 +9,7 @@
 > - [`RelaxKonOS.PrivilegedOperations.Goal.md`](../../../../docs/platform/RelaxKonOS.PrivilegedOperations.Goal.md) — 宿主提权（capability + target + 5 分钟授权）
 > - [`RelaxKonOS.Login.md`](../../../../docs/platform/RelaxKonOS.Login.md) — 登录、已保存连接、错误码矩阵
 >
-> 实现状态不写入本文，统一记入 [`Progress.md`](../status/Progress.md)。
+> 当前功能入口见 [功能目录](../README.md)。
 
 ---
 
@@ -36,13 +36,13 @@ Android 客户端采用 **原生 Mobile Shell**：能在手机和平板上登录
 入口照常出现；当普通执行和特权文件路由都不可用时，首页先显示服务端给的原因（`ExecutionEligibilityNotice`）。
 客户端只消费服务端给的稳定原因码（`ExecutionEligibilityReasons`），文案一律取自本工程自己的 `strings.xml`。
 
-实际可用功能见 [当前状态](../status/Progress.md)。新增功能见 [内置应用补齐计划](../plans/BuiltInParity.md)，不再沿用旧 V1 排除清单。
+实际可用功能见 [功能目录](../README.md)。应用与平台边界见 [支持范围](SupportScope.md)。
 
-### 2.2 布局目标与实现状态
+### 2.2 布局规则
 
 页面及状态卡片的刷新操作放在操作栏右侧，其余操作位于左侧并可换行。手机宽度下标题栏操作需要另起一行时仍靠右对齐；工作区接管标题后的操作区也遵循这一规则。刷新保留原有忙碌状态门禁和可访问名称。
 
-下文规定交互与安全约束；平板分栏等布局目标需要按页面核对实现，不能仅因定义了断点就视为完成。设备验收统一见 [验收清单](../status/Verification.md)。
+下文规定交互与安全约束；平板分栏等布局目标需要按页面核对实现，不能仅因定义了断点就视为完成。设备验收统一见 [验证要求](../development/Verification.md)。
 
 ### 2.3 一个必须先讲清的密码域问题
 
@@ -405,7 +405,7 @@ connect/login（统一表单；密码框 value 始终只表示本次手动输入
 
 | 关注点 | 现状 | 结论 |
 | --- | --- | --- |
-| 登录请求 | `LoginRequest { identifier, password, clientPlatform, deviceName, clientVersion }` | 已足够；`clientPlatform` 为 `ClientPlatformKind.Android`（M0 已完成语义拆分） |
+| 登录请求 | `LoginRequest { identifier, password, clientPlatform, deviceName, clientVersion }` | 已足够；`clientPlatform` 为 `ClientPlatformKind.Android` |
 | 提权请求 | `HostElevationRequest { capability, target, password?, administratorUsername?, includeDescendants }` | 已含 `password` 与 `administratorUsername`，无需扩展 |
 | 文件提权请求 | `FileElevationRequest { path, password?, relatedPaths?, includeDescendants, capability?, administratorUsername? }` | 同上 |
 | 服务端信任模型 | 密码只在验证瞬间持有，不落库/不日志 | 不因移动端保存密码而改变 |
@@ -461,7 +461,7 @@ connect/login（统一表单；密码框 value 始终只表示本次手动输入
 
 ## 7. 验证
 
-认证、凭据、授权和导航的自动化证据见 [当前状态](../status/Progress.md)。指纹、锁屏窗口、软键盘、旋转与后台恢复的设备矩阵见 [验收清单](../status/Verification.md)。
+认证、凭据、授权和导航的功能说明见 [功能目录](../README.md)。指纹、锁屏窗口、软键盘、旋转与后台恢复的设备矩阵见 [验证要求](../development/Verification.md)。
 
 ### 操作与运行状态反馈
 

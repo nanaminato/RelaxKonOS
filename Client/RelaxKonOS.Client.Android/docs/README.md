@@ -1,6 +1,6 @@
 # Android 文档
 
-本目录是 Android 手机与平板的唯一详细文档源。先查 [实现进度](status/Progress.md) 了解已实现范围与下一项；测试进度、未关闭检查与缺陷看 [测试与验收](status/Verification.md)，新增功能看后续计划。实现和测试独立追踪，即使未执行测试，也可按实现依赖继续下一步。仓库级 [移动端入口](../../../docs/mobile/README.md) 仅链接到这里。
+本目录是 Android 手机与平板的唯一详细文档源，描述产品规则、当前功能、支持范围、构建发布与验证要求。仓库级 [移动端入口](../../../docs/mobile/README.md) 仅链接到这里。
 
 ## 设计规范 `design/`
 
@@ -10,6 +10,7 @@
 | [Shell、认证与安全](design/Shell.Design.md) | 实际路由、导航栈、会话、提权与保险箱安全规则 |
 | [登录与本地凭据](design/LoginCredentials.Design.md) | 身份键、决策表、保存/失效/删除、密码明文生命周期 |
 | [移动端包方案](design/ApplicationPackages.Design.md) | 桌面 manifest/运行时调查、包类别与权限/版本/更新/移除、远端代理边界 |
+| [支持范围](design/SupportScope.md) | 应用组织、部署边界、平台能力与验证边界 |
 | [Windows 设备密钥](design/OwnerDeviceKeys.Design.md) | 工作站配对、Keystore 签名登录与授权边界 |
 
 ## 当前功能 `features/`
@@ -17,7 +18,7 @@
 | 文档 | 内容 |
 | --- | --- |
 | [应用内功能导航](features/ApplicationNavigation.md) | 十项管理应用的固定分类、状态保留、返回与范围标识 |
-| [服务器中心](features/ServerCenter.md) | SSH 信任、文件/终端、稳定身份与隧道、安装回执；首次安装仍缺执行链路 |
+| [服务器中心](features/ServerCenter.md) | SSH 信任、文件/终端、稳定身份与隧道、安装回执 |
 | [登录页 SSH 隧道](features/LoginSshTunnel.md) | SSH 密码/私钥、一键登录、连接配置、会话生命周期与证书信任 |
 | [文件与 Git 共用编辑器](features/TextEditor.md) | Unicode 编码/BOM/换行、查找替换/语法显示、条件保存、冲突和离页保护 |
 | [使用记忆](features/Settings.md#使用记忆) | 成功提权用户名、SAF/远程选择位置、本机隔离与清理 |
@@ -46,29 +47,14 @@
 | [公共运行时安装](features/Installations.md) | 当前安装契约、包引用/上传、幂等提权、任务观察/取消与恢复边界 |
 | [任务、告警与恢复](features/OperationsRecovery.md) | 领域操作索引、诊断、前台通知、定义备份与预检 |
 
-## 后续计划 `plans/`
-
-| 文档 | 内容 |
-| --- | --- |
-| [部署剩余工作](plans/Deployment.md) | 首次安装、模板更新、构建回收、数据恢复与后台通知的代码缺口 |
-| [内置应用补齐](plans/BuiltInParity.md) | 桌面 25 个应用差异与 BP00–BP24；已实现流程见功能说明；当前补齐范围与独立验证边界 |
-
 ## 开发与发布 `development/`
 
 | 文档 | 内容 |
 | --- | --- |
 | [构建、调试与发布](development/android-release.md) | 本地环境、签名机、APK/AAB、导入发布与渠道证书 |
 | [Ubuntu Git 构建环境](development/GitBuild.Ubuntu.md) | rootless BuildKit 的宿主准备、配置与受限执行 |
-
-## 状态与验收 `status/`
-
-| 文档 | 内容 |
-| --- | --- |
-| [当前实现与进度](status/Progress.md) | 当前功能、代码缺口、BP 实现状态与下一项 |
-| [测试进度与验收](status/Verification.md) | BP 级已实现索引、未关闭的设备/宿主/故障验收矩阵与待修缺陷；保留 AD 验收 ID。逐次执行记录由 Git 保存 |
-| [SM-X510 页面巡检与可用性](status/TabletUsability.md) | Server/SSH 实机首轮证据、操作便利性问题与逐项复验标准 |
-| [手机与桌面页面结构差异](status/PhoneNavigationParity.md) | PN-01–10 已实现结构、导航组件设备证据与尚待验收范围 |
+| [验证要求](development/Verification.md) | 设备、宿主、文件传输及故障场景的检查与预期行为 |
 
 ## 维护规则
 
-规范写行为，功能说明写当前接入，计划只写未实现交付，Progress 记录实现状态与代码证据，Verification 独立记录 BP 级测试状态、未关闭检查与缺陷。未测不阻止继续实现，不将已实现自动写成已验收。目标实现后移出计划；仅缺真机/宿主测试时将检查归入验收，不保留整份旧目标。历史流水账由 Git 保存，不建存档副本或旧路径跳转文件。共享 Protocol/Server 执行语义只链接仓库领域文档，不复制到 Android 文档。
+设计文档描述当前规则，功能文档描述实际入口、交互、授权和错误恢复，支持范围明确当前边界，开发文档描述构建、发布及验证方法。不维护目标表、阶段编号、推进顺序、完成率或测试执行流水账。功能变化时同步修改对应说明，历史由 Git 保存。共享 Protocol/Server 语义链接仓库领域文档，不复制 Android 详细文档到仓库级目录。

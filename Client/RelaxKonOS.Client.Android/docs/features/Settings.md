@@ -50,4 +50,4 @@ Settings 错误响应现在包含稳定 problemCode 扩展；Android 不解析 t
 
 本地选择器沿用 Android Storage Access Framework。文档提供程序的 document ID 是不透明标识，不能像磁盘路径一样推导父目录；因此保存最后确认的文档或目录 URI，通过 `DocumentsContract.EXTRA_INITIAL_URI` 提示系统恢复选择位置，不申请额外目录权限。实际目录展示与失效提示由系统/文档提供程序处理。覆盖上传、包/证书/密钥/Compose 导入、配对图片和诊断导出。规则依据 [Android 文档](https://developer.android.com/training/data-storage/shared/documents-files)。
 
-重启后恢复使用记忆，不随 Workspace 同步；应用已禁用 Android 自动备份，因此不会通过系统备份迁移到其他设备。读取损坏或保存失败不阻断当前操作。测试与未关闭设备检查见 [Verification](../status/Verification.md)。
+重启后恢复使用记忆，不随 Workspace 同步；应用已禁用 Android 自动备份，因此不会通过系统备份迁移到其他设备。读取损坏或保存失败不阻断当前操作。测试与未关闭设备检查见 [验证要求](../development/Verification.md)。

@@ -1,6 +1,5 @@
 # Android 进程守护
 
-> BP14 当前行为。入口为“管理 → 进程守护”。实现状态见 [Progress](../status/Progress.md)，设备与宿主验收见 [Verification](../status/Verification.md)。共享执行规则见 [进程守护设计](../../../../docs/applications/RelaxKonOS.ProcessGuardian.md)。一次性脚本继续使用 [已有持久任务](TerminalAutomation.md)，不重复实现执行器。
 
 ## 配置与身份
 

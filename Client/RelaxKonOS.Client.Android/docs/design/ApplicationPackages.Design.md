@@ -27,7 +27,7 @@ BP21 的交付是平台方案与协议边界，不承诺手机已经安装或运
 
 ## 远端桌面包管理协议决策
 
-当前 Server 没有桌面客户端 package manager 的读写代理。手机 API 登录不能取得桌面程序目录、开发桥接令牌或用户 UI 会话；loopback 开发桥接不能直接暴露至局域网。**本轮不增加远端 .roapp 安装端点**，手机明确拒绝该流程，并使用上表中的已实现替代入口。
+当前 Server 没有桌面客户端 package manager 的读写代理。手机 API 登录不能取得桌面程序目录、开发桥接令牌或用户 UI 会话；loopback 开发桥接不能直接暴露至局域网。**Android 没有远端 .roapp 安装端点**，手机明确拒绝该流程，并使用上表中的已实现替代入口。
 
 若未来确需远端桌面包管理，先实现独立、用户确认配对的桌面代理与 shared Protocol：设备/平台/运行时能力、真实包目录（appId/version/digest/revision）、有界候选来源检查、精确版本及权限差异预览（planId/target/expiry）、expectedRevision + idempotencyKey 的 apply、可重读的 operation，以及显式更新/移除/数据保留。Server 仅路由到已配对设备；目标代理重复验证包来源、兼容性、权限、版本和授权，断线不能自动换目标或重放。包管理权限不得隐含 OS 管理员或应用执行权限。没有上述执行者时 UI 不显示可安装按钮。
 
@@ -35,4 +35,4 @@ BP21 的交付是平台方案与协议边界，不承诺手机已经安装或运
 
 ## 验收与范围
 
-方案已完成源码调查和可执行平台决策；手机安装第三方 .roapp、通用 APK 旁加载与远端桌面代理没有实现，也未纳入 BP21 方案交付。实施检查器或代理属于明确的新功能，须另建计划和真实测试；不能将文档中的未来 wire 字段当生产端点。Android 运行验收按本机无环境跳过，现有支持的入口验收分别归 BP16/BP20/公共安装。
+Android 不提供第三方 .roapp 安装、通用 APK 旁加载或远端桌面代理。本文中的代理约束描述平台边界，不是生产端点；当前可用入口见 [应用部署](../features/ApplicationDeployments.md)、[服务访问](../features/ServiceAccess.md) 和 [公共运行时安装](../features/Installations.md)。

@@ -1,6 +1,5 @@
 # 任务管理与监控
 
-> BP15 当前已接入（2026-10-01）。真实宿主、网络和设备的未关闭检查见 [Verification](../status/Verification.md)。
 
 ## 查看与操作
 
@@ -44,4 +43,4 @@ CPU、内存、文件系统容量、磁盘 I/O、网络分别列为稳定目标�
 
 ## 验证
 
-构建、JVM/.NET 专项与真实宿主/设备验收分别记录于 [Verification](../status/Verification.md)。构建成功不意味着已经在手机/平板运行，也不意味着已经验证真实 Linux pidfd 或真实 Server HTTP/SignalR 网络。
+构建、JVM/.NET 专项与真实宿主/设备验收分别记录于 [验证要求](../development/Verification.md)。构建成功不意味着已经在手机/平板运行，也不意味着已经验证真实 Linux pidfd 或真实 Server HTTP/SignalR 网络。

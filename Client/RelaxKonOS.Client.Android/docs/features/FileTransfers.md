@@ -1,6 +1,5 @@
 # Android 文件上传与下载（后台传输与续传）
 
-> 当前文件传输实现规范；自动化证据见 [当前状态](../status/Progress.md)，设备检查见 [验收清单](../status/Verification.md)。
 > 日期：2026-10-03
 > 归属：本文拥有 Android 侧的客户端设计。线协议、服务端行为、桌面客户端与提权模型见仓库级 [`docs/architecture/RelaxKonOS.FileUpload.Design.md`](../../../../docs/architecture/RelaxKonOS.FileUpload.Design.md)；iOS/桌面不得与本文的偏移规则分歧。
 > 前置阅读：[`Product.Design.md`](../design/Product.Design.md)（安全边界与文件应用定位）、[`Shell.Design.md`](../design/Shell.Design.md)（能力门控与页面清单）
@@ -56,7 +55,7 @@ class SeekUnsupported : Exception("source is not seekable")
 
 只有活动上传时存在服务与通知，结束立即停止；服务使用 `START_NOT_STICKY`，不自动后台重启，也不申请 `WAKE_LOCK`。前台运行不保证厂商省电策略不会中断网络，失败按重试与权威偏移核实处理。当前每次只执行一个上传，不承诺多文件并发或无人值守自动恢复。
 
-应用被回收后，用户重新进入从续传日志读取可继续任务，并显式选择继续/放弃。设备系统机制与大文件检查集中在 [验收清单](../status/Verification.md)。
+应用被回收后，用户重新进入从续传日志读取可继续任务，并显式选择继续/放弃。设备系统机制与大文件检查集中在 [验证要求](../development/Verification.md)。
 
 ---
 
@@ -173,4 +172,4 @@ commit:
 
 ## 10. 验证归属
 
-JVM 检查覆盖续传日志、源暂存、权威偏移、重试预算、取消及缓存清理。执行证据见 [当前状态](../status/Progress.md)；大文件、SAF、进程回收、弱网、通知和桌面一致性检查统一见 [验收清单](../status/Verification.md)。
+JVM 检查覆盖续传日志、源暂存、权威偏移、重试预算、取消及缓存清理。执行证据见 [功能目录](../README.md)；大文件、SAF、进程回收、弱网、通知和桌面一致性检查统一见 [验证要求](../development/Verification.md)。

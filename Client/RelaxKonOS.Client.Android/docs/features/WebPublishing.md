@@ -1,6 +1,5 @@
 # Android 网站发布
 
-> 当前功能说明，对应 AD05-M1–M3。网站诊断、确认式 HTTPS 发布和操作恢复已接入；Nginx 安装与实例管理见 [Nginx 管理](Nginx.md)；通用站点编辑/删除见 [站点管理](WebSites.md)；独立证书生命周期见 [证书管理](Certificates.md)；站点证书选择和 Kestrel 部署见 [证书管理](Certificates.md)。
 
 ## 1. 入口与前置
 
@@ -20,4 +19,4 @@ Android 不生成宿主 Nginx 配置，不缓存私钥、挑战凭据或 DNS tok
 
 分别展示上游、DNS、TLS 握手和 HTTP 检查的观察位置、时间与结果。配置完成但访问无法证明时显示未核实，不能把宿主 loopback 可达当公网成功。手机断网后按原操作查询，不自动重新发布。
 
-停止应用、关闭访问、删除站点和吊销证书是独立动作。DNS 服务商自动化及内网发布仍属 [后续计划](../plans/Deployment.md)；不收集未接入服务商的凭据、不自动放开端口。真实 Nginx/ACME/DNS 与设备访问检查集中见 [验收清单](../status/Verification.md)。
+停止应用、关闭访问、删除站点和吊销证书是独立动作。DNS 服务商自动化及内网发布仍属 [支持范围](../design/SupportScope.md)；不收集未接入服务商的凭据、不自动放开端口。真实 Nginx/ACME/DNS 与设备访问检查集中见 [验证要求](../development/Verification.md)。

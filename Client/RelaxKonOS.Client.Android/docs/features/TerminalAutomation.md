@@ -4,9 +4,8 @@ Server 会话摘要中的 `isAdministrator` 标识 Windows 管理员终端。And
 
 脚本任务列表使用可点击卡片，集中显示可执行文件、创建时间和任务状态；选中任务的取消、退出结果与输出置于独立详情卡片。
 
-> 当前功能说明，对应 AD07；实现与验证见 [当前状态](../status/Progress.md)。BP13 当前终端行为见下文，BP14 当前守护行为见 [进程守护](Guardian.md)；验证范围和未关闭检查单独维护。
 
-## 1. 目标与能力分层
+## 1. 运行位置与能力分层
 
 手机可以排查模板和向导无法覆盖的问题，运行远端脚本，并将持续任务交由远端守护。终端、一次性脚本和持续守护使用独立任务与生命周期。
 
@@ -23,7 +22,7 @@ Server 会话摘要中的 `isAdministrator` 标识 Windows 管理员终端。And
 
 复用 [终端协议与行为](../../../../docs/applications/RelaxKonOS.Terminal.md)、[进程守护设计](../../../../docs/applications/RelaxKonOS.ProcessGuardian.md) 和服务端相关 Hub/Endpoints。
 
-Android 已接入 Java SignalR 客户端和有界 VT 字符单元屏幕，支持 UTF-8 跨帧输入、光标/颜色/备用屏幕、扩展键、工作区外观设置与尺寸同步；完整 VT 程序、中文 IME、软键盘和旋转设备检查统一见 [验收清单](../status/Verification.md)。服务端原先没有一次性脚本任务契约，现由 Guardian Agent 执行并持久保存结果；Agent 不可用时任务不会降级到手机或 Server 进程执行。
+Android 已接入 Java SignalR 客户端和有界 VT 字符单元屏幕，支持 UTF-8 跨帧输入、光标/颜色/备用屏幕、扩展键、工作区外观设置与尺寸同步；完整 VT 程序、中文 IME、软键盘和旋转设备检查统一见 [验证要求](../development/Verification.md)。服务端原先没有一次性脚本任务契约，现由 Guardian Agent 执行并持久保存结果；Agent 不可用时任务不会降级到手机或 Server 进程执行。
 
 进入 Server 终端时身份、会话、工具、扩展键和输入区立即显示，仅输出视口先绘制加载提示，再初始化渲染器与历史文本；平板会话侧栏不参与等待。输出视口及 WebView 容器裁剪子组件绘制，避免越过视口覆盖页面组件。离页会取消尚未执行的渲染初始化。SignalR 客户端与 TLS 构造在 IO 调度器执行，连接、重试和附加会话期间仅输出视口显示等待状态，失败后恢复重试入口。连接等待期间不重建旧历史，xterm.js 模式不生成未使用的原生字形布局；WebView 在打包页面加载完成且 Chromium 首帧可绘制后才撤下加载提示。加载状态不覆盖 Shell 导航、不发送命令，也不改变 PTY 生命周期；操作是否可用仍由连接及会话状态决定。
 
@@ -78,4 +77,4 @@ SSH 会话列表、选中状态、草稿、命令和输出只保留在进程内�
 
 ## 5. 验证归属
 
-设备 IME、真实 PTY/SSH、token 到期及 Linux/Windows Agent 权限检查集中在 [验收清单](../status/Verification.md)，不再保留已实现的终端/脚本阶段表。
+设备 IME、真实 PTY/SSH、token 到期及 Linux/Windows Agent 权限检查集中在 [验证要求](../development/Verification.md)，不再保留已实现的终端/脚本阶段表。

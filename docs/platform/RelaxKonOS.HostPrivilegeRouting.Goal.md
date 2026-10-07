@@ -144,7 +144,7 @@ Explorer 对 Standard 显示可修改管理员账户和密码；对 Administrato
 - root-owned 0700 目录内的 0600 测试文件：管理员/root 读取成功，普通账户未经认证返回 403；显式管理员认证后指定文件可读，另一个文件仍返回 403，新登录会话也不能继承授权；五分钟到期后原会话再次读取返回 403。
 - 管理员与普通账户各自在家目录创建目录成功，owner 分别保持本人 UID/GID。
 - 用户批准后，`nanami` 无需二次认证即可读取系统环境快照、预览并写入独立测试变量，操作返回 Applied；Helper 写入后的 `/etc/environment` 保持 root:root 0644。通过对应 operation rollback 返回 RolledBack，恢复后的文件与 root 私有备份逐字节一致，重新登录后的快照 revision 也恢复为原值。手工提交错误 revision 返回 409，没有覆盖当前文件。
-- 未执行 UFW 实际变更、root 锁定、UID 漂移、Helper 停止、并发重试及完整文件操作矩阵；不可将本次结果视为全部发布验收。平板证据见 Android 自有 [Verification](../../Client/RelaxKonOS.Client.Android/docs/status/Verification.md)。
+- 未执行 UFW 实际变更、root 锁定、UID 漂移、Helper 停止、并发重试及完整文件操作矩阵；不可将本次结果视为全部发布验收。平板证据见 Android 自有 [Verification](../../Client/RelaxKonOS.Client.Android/docs/development/Verification.md)。
 
 安装器两项缺陷已修复并实测：Linux 与 PowerShell 包统一采用 `manifest.json` 逐文件清单，System/User Mode 共享 JSON inventory 验证器；Linux upgrade 默认复用已安装 PFX 和密码，显式 repair 重新生成证书的入口仍保留。部署 Python 回归 29 项通过，Windows 包来源、版本引擎和启动健康检查通过；新 server ZIP 的 816 个文件通过发布校验器。主机直接升级至 `0.2.0-privilege-c631d379-fix1`，未使用 `--skip-file-checks`；证书 SHA-256 与升级前一致，Server/Guardian active、HTTPS `/ready` 200。
 

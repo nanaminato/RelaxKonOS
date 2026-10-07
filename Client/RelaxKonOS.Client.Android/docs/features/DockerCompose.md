@@ -1,6 +1,5 @@
 # Android Docker 与 Compose
 
-> 当前功能说明，对应 AD04。资源浏览、受限 Compose 导入、预览与持久操作已接入；真实宿主部分验证已通过，证据和剩余检查见 [当前状态](../status/Progress.md) 与 [验收清单](../status/Verification.md)。
 
 ## 1. 能力与资源归属
 

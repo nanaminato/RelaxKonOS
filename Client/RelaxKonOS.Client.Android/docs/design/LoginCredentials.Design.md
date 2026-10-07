@@ -8,7 +8,7 @@
 > - [`RelaxKonOS.Login.md`](../../../../docs/platform/RelaxKonOS.Login.md) — 登录、已保存连接、错误码矩阵
 > - [`RelaxKonOS.Security.md`](../../../../docs/platform/RelaxKonOS.Security.md) — 提权、危险操作确认
 >
-> 实现状态不写入本文，统一记入 [`Progress.md`](../status/Progress.md)。
+> 当前功能入口见 [功能目录](../README.md)。
 
 ---
 
@@ -94,7 +94,7 @@
 - 忘记密码保留连接；删除登录记录仅删除选中身份，不影响同服务其他账号或 SSH 宿主。
 - 提权用户名是独立的非秘密使用记忆：按当前服务和登录账户保存最后成功提权的用户名，不能从平台名称推断；失败或取消不覆盖。该用户名不代表已保存密码或有效授权，清理入口与 [使用记忆](../features/Settings.md#使用记忆) 一致。
 
-这些规则已纳入当前实现，旧 G1–G10 差异快照和修复任务表不再维护。执行证据见 [当前状态](../status/Progress.md)。
+这些规则已纳入当前实现，旧 G1–G10 差异快照和修复任务表不再维护。执行证据见 [功能目录](../README.md)。
 
 ---
 
@@ -421,7 +421,7 @@ fun decideLogin(
 - Keystore alias 永久失效时同样**标记作废、保留记录**，并在同域记录上一致生效（§7.4）。
 - 解锁方式由 `unlockModeFor` 给出与连接凭据相同的策略：强生物识别按次确认，弱生物识别退到锁屏五分钟窗口（D2、D3）。
 
-与登录凭据的唯一差别是：SSH 没有 debug 明文兜底（[ServerCenter.md §3](../features/ServerCenter.md)）。本机既无指纹也无锁屏时，勾选框直接禁用并说明原因，不做降级。「关闭指纹保存」总开关目前只清空连接与提权两域，SSH 记录会随该开关失去可解封性但不会被删除——这是**未关闭的缺口**，见 [Progress](../status/Progress.md) 的 AD01 行。
+与登录凭据的唯一差别是：SSH 没有 debug 明文兜底（[ServerCenter.md §3](../features/ServerCenter.md)）。本机既无指纹也无锁屏时，勾选框直接禁用并说明原因，不做降级。「关闭指纹保存」总开关目前只清空连接与提权两域，SSH 记录会随该开关失去可解封性但不会被删除；这是当前凭据清理的边界。
 
 ---
 
@@ -488,7 +488,7 @@ CredentialStore(密文)
 
 ## 10. 验证归属
 
-当前实现与自动化验证见 [当前状态](../status/Progress.md)。指纹变更、锁定、设备窗口、账号切换和真机视觉的未关闭检查集中在 [验收清单](../status/Verification.md)，不再保留已完成的新增/修改任务表。
+当前功能见 [功能目录](../README.md)。指纹变更、锁定、设备窗口、账号切换和真机视觉的验证要求见 [验证要求](../development/Verification.md)。
 
 ## 11. 决策记录
 

@@ -1,6 +1,6 @@
 # AD06 Ubuntu Git 构建执行边界
 
-> 当前 Ubuntu 构建环境要求。执行证据与未关闭检查统一见 [当前状态](../status/Progress.md) 和 [验收清单](../status/Verification.md)。
+> 当前 Ubuntu 构建环境要求。构建与宿主检查方法见 [验证要求](Verification.md)。
 
 ## 宿主准备
 

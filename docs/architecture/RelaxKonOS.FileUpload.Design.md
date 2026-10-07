@@ -599,7 +599,7 @@ proxy_send_timeout 120s;
 
 ### 9.3 Android
 
-完整验收清单由 [Android 验收清单](../../Client/RelaxKonOS.Client.Android/docs/status/Verification.md) 拥有（AGENTS.md 的文档归属规则）。这里固定两端**不允许分歧**、且已在 JVM 层被锁住的四点：
+完整验收清单由 [Android 验收清单](../../Client/RelaxKonOS.Client.Android/docs/development/Verification.md) 拥有（AGENTS.md 的文档归属规则）。这里固定两端**不允许分歧**、且已在 JVM 层被锁住的四点：
 
 1. **同一份偏移规则**：Android 断言的是"权威偏移小于本地记忆时采用权威值且不回退显示"，而不是自己算一遍偏移；`RelaxKonGateway`/`RelaxKonApi` 里没有偏移算术。
 2. **核对态是独立字段**：`UploadState.resynchronising`（桌面端对应 `LargeFileUploadProgress.Reconciling`），文案键 `files_upload_reconciling`；核对期间界面与前台通知都不显示字节数。
