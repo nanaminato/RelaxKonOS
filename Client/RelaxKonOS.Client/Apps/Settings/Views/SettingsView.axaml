@@ -52,7 +52,11 @@
                             <DataTemplate x:DataType="vm:SettingsPageViewModel">
                                 <Button Classes="settings-link" Margin="0,0,0,8" Tag="{Binding Route}" Click="OnQuickLinkClick">
                                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
-                                        <Path Data="{Binding Icon}" Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.5" Width="22" Height="22" Stretch="Uniform" VerticalAlignment="Center" />
+                                        <Viewbox Width="22" Height="22" Stretch="Uniform" VerticalAlignment="Center">
+                                            <Canvas Width="24" Height="24">
+                                                <Path Data="{Binding Icon}" Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.5" />
+                                            </Canvas>
+                                        </Viewbox>
                                         <TextBlock Grid.Column="1" Text="{Binding LocalizedDisplayName}" TextWrapping="Wrap" VerticalAlignment="Center" />
                                         <TextBlock Grid.Column="2" Text="›" FontSize="22" VerticalAlignment="Center" />
                                     </Grid>
@@ -65,7 +69,11 @@
                             <DataTemplate x:DataType="vm:SettingsPageViewModel">
                                 <Button Classes="settings-link" Margin="0,0,0,8" Tag="{Binding Route}" Click="OnQuickLinkClick">
                                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
-                                        <Path Data="{Binding Icon}" Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.5" Width="22" Height="22" Stretch="Uniform" VerticalAlignment="Center" />
+                                        <Viewbox Width="22" Height="22" Stretch="Uniform" VerticalAlignment="Center">
+                                            <Canvas Width="24" Height="24">
+                                                <Path Data="{Binding Icon}" Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.5" />
+                                            </Canvas>
+                                        </Viewbox>
                                         <TextBlock Grid.Column="1" Text="{Binding LocalizedDisplayName}" TextWrapping="Wrap" VerticalAlignment="Center" />
                                         <TextBlock Grid.Column="2" Text="›" FontSize="22" VerticalAlignment="Center" />
                                     </Grid>
@@ -133,8 +141,11 @@
                     <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="vm:SettingsPageViewModel">
                             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" Margin="4,6">
-                                <Path Data="{Binding Icon}" Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.5"
-                                      Width="18" Height="18" Stretch="Uniform" VerticalAlignment="Center" />
+                                <Viewbox Width="18" Height="18" Stretch="Uniform" VerticalAlignment="Center">
+                                    <Canvas Width="24" Height="24">
+                                        <Path Data="{Binding Icon}" Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.5" />
+                                    </Canvas>
+                                </Viewbox>
                                 <TextBlock Grid.Column="1" Text="{Binding LocalizedDisplayName}" TextWrapping="Wrap" VerticalAlignment="Center" />
                             </Grid>
                         </DataTemplate>
@@ -233,8 +244,11 @@
                             <DataTemplate x:DataType="vm:SettingsPageViewModel">
                                 <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" MinHeight="40" Tag="{Binding Route}" Click="OnQuickLinkClick">
                                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-                                        <Path Data="{Binding Icon}" Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.5"
-                                              Width="18" Height="18" Stretch="Uniform" VerticalAlignment="Center" />
+                                        <Viewbox Width="18" Height="18" Stretch="Uniform" VerticalAlignment="Center">
+                                            <Canvas Width="24" Height="24">
+                                                <Path Data="{Binding Icon}" Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.5" />
+                                            </Canvas>
+                                        </Viewbox>
                                         <TextBlock Grid.Column="1" Text="{Binding LocalizedDisplayName}" TextWrapping="Wrap" VerticalAlignment="Center" />
                                     </Grid>
                                 </Button>
