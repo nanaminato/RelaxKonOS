@@ -373,7 +373,8 @@ public static class Bootstrapper
                 sp.GetRequiredService<PreferencesSync>(),
                 sp.GetRequiredService<DesktopWelcomePreferenceStore>(),
                 sp.GetRequiredService<ShortcutStore>(),
-                sp.GetRequiredService<ShortcutActivationRouter>());
+                sp.GetRequiredService<ShortcutActivationRouter>(),
+                sp.GetRequiredService<HostSettings.IHostTimeService>());
         });
 
         services.AddSingleton<DesktopRestoreOrchestrator>();

@@ -1,3 +1,4 @@
+using Avalonia.Reactive;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
@@ -492,6 +493,7 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
         };
         ThemeResources.BindSurface(panel, "StartMenuBackgroundBrush", borderKey: "BorderDefaultBrush",
             borderThicknessKey: "ControlBorderThickness", cornerRadiusKey: "OverlayTopCornerRadius");
+        panel.Bind(Border.BackgroundProperty, panel.GetResourceObservable("StartMenuBackgroundBrush", TranslucentShellBrushConverter.ConvertBrush));
         ThemeResources.Bind(panel, Border.BoxShadowProperty, "ElevationShadow");
         // Keep clicks inside Start available to its controls; only the transparent surrounding
         // area should dismiss the list.
@@ -574,7 +576,7 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
             BorderThickness = new Thickness(0, 1, 0, 0),
         };
         ThemeResources.Bind(bar, Control.HeightProperty, "TaskbarHeight");
-        ThemeResources.Bind(bar, Border.BackgroundProperty, "TaskbarBackgroundBrush");
+        bar.Bind(Border.BackgroundProperty, bar.GetResourceObservable("TaskbarBackgroundBrush", TranslucentShellBrushConverter.ConvertBrush));
         ThemeResources.Bind(bar, Border.BorderBrushProperty, "BorderSubtleBrush");
         ThemeResources.Bind(bar, Border.BoxShadowProperty, "WindowShadow");
         var layout = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
@@ -598,8 +600,7 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
         layout.Children.Add(startArea);
         layout.PointerPressed += (_, _) => vm.CloseStartCommand.Execute(null);
 
-        // Only live window groups are shown here.  There is deliberately no search or
-        // synthetic notification area until those services expose shell-facing APIs.
+        // Live application groups occupy the space between Start and the system area.
         var groups = new ItemsControl
         {
             ItemsPanel = new FuncTemplate<Panel?>(() => new StackPanel { Orientation = Orientation.Horizontal }),
@@ -615,7 +616,19 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
         Grid.SetColumn(runningApps, 1);
         layout.Children.Add(runningApps);
 
-        var systemArea = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,8") };
+        var systemArea = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,8") };
+        var tray = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Spacing = 2 };
+        var network = WindowsGlyphButton("", "", vm.OpenNetworkSettingsCommand);
+        network.Content = ShellIconFactory.Line("M3,4 L21,4 21,16 3,16 Z M12,16 L12,20 M8,20 L16,20", 16);
+        network.Bind(ToolTip.TipProperty, new Binding(nameof(vm.ServerConnectionStatus)));
+        network.Bind(Visual.OpacityProperty, new Binding(nameof(vm.IsServerConnected)) { Converter = new FuncValueConverter<bool, double>(connected => connected ? 1 : 0.45) });
+        tray.Children.Add(network);
+        var sound = WindowsGlyphButton("", LocalizedText.Get("shell.tray.sound", "Client sound settings"), null);
+        sound.Content = ShellIconFactory.Line("M3,9 L7,9 12,5 12,19 7,15 3,15 Z M16,8 C19,10 19,14 16,16 M19,5 C24,9 24,15 19,19", 16);
+        sound.IsEnabled = OperatingSystem.IsWindows();
+        sound.Click += (_, _) => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ms-settings:sound") { UseShellExecute = true });
+        tray.Children.Add(sound);
+        systemArea.Children.Add(tray);
         var clock = new StackPanel
         {
             VerticalAlignment = VerticalAlignment.Center,
@@ -630,6 +643,7 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
         date.Bind(TextBlock.TextProperty, new Binding(nameof(vm.DateText)));
         clock.Children.Add(time);
         clock.Children.Add(date);
+        Grid.SetColumn(clock, 1);
         systemArea.Children.Add(clock);
         var showDesktop = new Button
         {
@@ -639,7 +653,7 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
             Padding = new Thickness(0),
         };
         ToolTip.SetTip(showDesktop, LocalizedText.Get("shell.launcher.show_desktop", "Show desktop"));
-        Grid.SetColumn(showDesktop, 1);
+        Grid.SetColumn(showDesktop, 2);
         systemArea.Children.Add(showDesktop);
         Grid.SetColumn(systemArea, 2);
         layout.Children.Add(systemArea);
@@ -710,7 +724,7 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
         // A stroked SVG-style power path avoids font fallback rendering the U+23FB glyph as a box.
         var button = new Button
         {
-            Content = ShellIconFactory.Power("TextPrimaryBrush", 20),
+            Content = ShellIconFactory.Power("TextPrimaryBrush", 16),
             Command = command,
             Width = 48,
             Height = 46,
@@ -1374,6 +1388,15 @@ public static class BuiltInShells
 /// <summary>Shared vector controls for the built-in shell chrome.</summary>
 internal static class ShellIconFactory
 {
+    public static Viewbox Line(string geometry, double size)
+    {
+        var path = new VectorPath { Data = StreamGeometry.Parse(geometry), StrokeThickness = 1.5, StrokeLineCap = PenLineCap.Round, StrokeJoin = PenLineJoin.Round };
+        ThemeResources.Bind(path, VectorPath.StrokeProperty, "TextPrimaryBrush");
+        var canvas = new Canvas { Width = 24, Height = 24 };
+        canvas.Children.Add(path);
+        return new Viewbox { Width = size, Height = size, Child = canvas };
+    }
+
     public static Viewbox Power(string resourceKey, double size)
     {
         var icon = new VectorPath
@@ -1383,6 +1406,18 @@ internal static class ShellIconFactory
             StrokeLineCap = PenLineCap.Round,
         };
         icon.Bind(VectorPath.StrokeProperty, icon.GetResourceObservable(resourceKey));
-        return new Viewbox { Width = size, Height = size, Child = icon };
+        var canvas = new Canvas { Width = 24, Height = 24 };
+        canvas.Children.Add(icon);
+        return new Viewbox { Width = size, Height = size, Child = canvas };
+    }
+}
+
+internal static class TranslucentShellBrushConverter
+{
+    public static IBrush? ConvertBrush(object? value)
+    {
+        if (value is not ISolidColorBrush brush) return value as IBrush;
+        var color = brush.Color;
+        return new SolidColorBrush(Color.FromArgb((App.Services.GetService<DesktopDevicePreferences>()?.Value.HighContrast == true) ? (byte)255 : (byte)230, color.R, color.G, color.B));
     }
 }

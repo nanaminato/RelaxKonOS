@@ -1,6 +1,7 @@
 {
     "Culture": "zh-CN",
     "Strings": {
+        "shell.tray.sound": "客户端声音设置",
         "shell.connection.not_connected": "未连接",
         "shell.connection.unknown_user": "未知用户",
         "shell.connection.default_workspace": "默认工作区",

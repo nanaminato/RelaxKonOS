@@ -1,6 +1,7 @@
 {
     "Culture": "ja-JP",
     "Strings": {
+        "shell.tray.sound": "クライアントのサウンド設定",
         "shell.connection.not_connected": "未接続",
         "shell.connection.unknown_user": "不明なユーザー",
         "shell.connection.default_workspace": "既定のワークスペース",

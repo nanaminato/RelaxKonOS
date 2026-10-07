@@ -90,7 +90,7 @@ internal static class MemoryLifecycleChecks
         var session = System.Reflection.DispatchProxy.Create<IAuthSession, UnusedPreviewServices>();
         var desktop = new DesktopShellViewModel(windows, apps, settings,
             services.GetRequiredService<LocalizationService>(), session, ssh, () => { },
-            null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!);
+            null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!);
         desktop.PopulateDesktop();
         var entry = desktop.StartApps.Single();
         entry.IsDesktopSelected = true;

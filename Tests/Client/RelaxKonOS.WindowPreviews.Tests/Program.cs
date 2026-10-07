@@ -73,6 +73,7 @@ foreach (var app in new RelaxKonOS.AppSDK.RemoteApplicationBase[]
 Console.WriteLine("PASS: Image viewer, browser and welcome window titles follow three languages and unsubscribe on close.");
 SettingsInteractionChecks.Run(settings, localization);
 SettingsWindowChecks.Run(settings, localization);
+RemoteClockChecks.Run(settings, localization, services);
 DesktopDeviceSettingsChecks.Run(settings, appearance);
 HostTimeCompletionChecks.Run(localization);
 HostIdentityCompletionChecks.Run(localization);
@@ -335,7 +336,7 @@ static void RunDesktopShellInteractionRegression(Window host, ShellSettings sett
     // workspace persistence, application launch or desktop restoration operation is invoked.
     var vm = new DesktopShellViewModel(windows, new ApplicationManager(windows, services), settings,
         localization, session, new SshDesktopSession(null!), () => { },
-        null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!);
+        null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!);
     var store = new ShellStateStore();
     store.Publish(vm);
     var surfaces = new PreviewSurfaceRegistry(windows);

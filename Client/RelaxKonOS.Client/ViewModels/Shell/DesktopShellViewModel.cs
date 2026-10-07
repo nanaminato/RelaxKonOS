@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using RelaxKonOS.Client.Services.HostSettings;
 using RelaxKonOS.Client.Services.WorkspaceSettings;
 using System.Collections.ObjectModel;
 using System.Globalization;
@@ -53,6 +55,15 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     private readonly ShortcutActivationRouter _shortcutRouter;
     private int _desktopFileLoadGeneration;
     private int _shortcutLoadGeneration;
+    private readonly IHostTimeService _hostTime;
+    private HostSettingsConnection? _clockConnection;
+    private DateTimeOffset _serverTime;
+    private TimeZoneInfo? _serverTimeZone;
+    private readonly Stopwatch _clockElapsed = new();
+    private bool _clockSyncRunning;
+    private long _lastClockAttempt = -60000;
+    public bool IsServerConnected => _session.State == AuthSessionState.Authenticated || _sshDesktop.IsConnected;
+    public string ServerConnectionStatus => IsServerConnected ? ConnectionServer : T("shell.connection.not_connected", "Not connected");
 
     /// <summary>打开桌面显示配置窗口的回调。由 View 层设置。</summary>
     public Func<Task>? RequestOpenDesktopDisplaySettingsAsync { get; set; }
@@ -81,7 +92,8 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
         PreferencesSync preferencesSync,
         DesktopWelcomePreferenceStore desktopWelcomePreferences,
         ShortcutStore shortcuts,
-        ShortcutActivationRouter shortcutRouter)
+        ShortcutActivationRouter shortcutRouter,
+        IHostTimeService hostTime)
     {
         _windowManager = windowManager;
         _applications = applications;
@@ -101,6 +113,7 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
         _desktopWelcomePreferences = desktopWelcomePreferences;
         _shortcuts = shortcuts;
         _shortcutRouter = shortcutRouter;
+        _hostTime = hostTime;
 
         _windowManager.WindowOpened += (_, _) => { TraceTaskbar("manager.windowOpened"); RefreshTaskbarGroups(); };
         _windowManager.WindowClosed += (_, _) => { TraceTaskbar("manager.windowClosed"); RefreshTaskbarGroups(); };
@@ -110,6 +123,10 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
         {
             if (state.State != AuthSessionState.Authenticated)
                 _fileClipboard.Clear();
+            _clockConnection = null;
+            _lastClockAttempt = -60000;
+            OnPropertyChanged(nameof(IsServerConnected));
+            OnPropertyChanged(nameof(ServerConnectionStatus));
             PopulateDesktop();
         });
         _localization.LanguageChanged += (_, _) => Dispatcher.UIThread.Post(() =>
@@ -720,6 +737,9 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     private void OpenTerminal() => LaunchApplication("relaxkonos.terminal");
 
     [RelayCommand]
+    private void OpenNetworkSettings() => _applications.Activate(new AppActivationRequest(new Uri("relaxkonos://settings/network")));
+
+    [RelayCommand]
     private void OpenSettings() => LaunchApplication("relaxkonos.settings");
 
     /// <summary>Opens Settings directly on its Personalization page.</summary>
@@ -1066,7 +1086,16 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     {
         void Tick()
         {
-            var now = DateTime.Now;
+            if (_clockConnection is not null && !_hostTime.IsCurrent(_clockConnection)) _clockConnection = null;
+            if (Environment.TickCount64 - _lastClockAttempt >= 60000 && !_clockSyncRunning)
+                _ = SynchronizeClockAsync();
+            if (_clockConnection is null || _serverTimeZone is null)
+            {
+                Clock = "—:—";
+                DateText = "—";
+                return;
+            }
+            var now = TimeZoneInfo.ConvertTime(_serverTime + _clockElapsed.Elapsed, _serverTimeZone);
             var culture = SafeCulture(_settings.Language);
             var timeFmt = _settings.TimeFormat == "12h" ? "h:mm tt" : "HH:mm";
             Clock = now.ToString(timeFmt, culture);
@@ -1083,6 +1112,30 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
             try { return CultureInfo.GetCultureInfo(name); }
             catch { return CultureInfo.InvariantCulture; }
         }
+    }
+
+    private async Task SynchronizeClockAsync()
+    {
+        _lastClockAttempt = Environment.TickCount64;
+        if (_session.State != AuthSessionState.Authenticated || _sshDesktop.IsConnected) return;
+        _clockSyncRunning = true;
+        try
+        {
+            var connection = _hostTime.CaptureConnection();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var snapshot = await _hostTime.ReadAsync(connection, timeout.Token);
+            if (!_hostTime.IsCurrent(connection)) return;
+            var zone = TimeZoneInfo.FindSystemTimeZoneById(snapshot.Value.TimeZoneId);
+            _serverTime = snapshot.Value.ObservedAt;
+            _serverTimeZone = zone;
+            _clockElapsed.Restart();
+            _clockConnection = connection;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _clockConnection = null;
+        }
+        finally { _clockSyncRunning = false; }
     }
 
     private string T(string key, string englishFallback) => _localization.Get(key, englishFallback);
