@@ -361,11 +361,13 @@ internal fun ServerTerminalContent(
     }, output = {
         TerminalEntry(owner, Modifier.fillMaxSize().clipToBounds().testTag("terminal-output-region"), onReady = { outputReady = true }) {
         Box(Modifier.fillMaxSize()) {
-            if (terminalType == TerminalType.Xterm) XtermTerminal(
+            if (terminalType == TerminalType.Xterm) {
+                XtermTerminal(
                 sessionId = state.sessionId.orEmpty(), output = state.rawOutput,
                 fontSize = fontSize.toFloat() * fontScale, connected = state.canInput,
                 onSend = { onSend(it) }, onResize = onResize, modifier = Modifier.fillMaxSize(),
-            ) else
+            )
+            } else {
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 val width = maxWidth.value
                 val height = maxHeight.value
@@ -397,6 +399,7 @@ internal fun ServerTerminalContent(
                         ) { Text(stringResource(R.string.terminal_latest)) }
                     }
                 }
+            }
             }
             if (state.connecting || state.busy && state.sessionId == null) TerminalLoading(connecting = state.connecting)
         }

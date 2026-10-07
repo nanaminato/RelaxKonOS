@@ -29,10 +29,13 @@ import app.relaxkonos.mobile.ui.theme.Spacing
     val picker = rememberLauncherForActivityResult(rememberUsageOpenDocument("TunnelInstallEditor.package")) { if (it != null && container.activeSession === owner && !model.hasIntent) model.upload(it) }
     val initialId = remember { state.installation?.operationId }
     LaunchedEffect(state.installation?.operationId) { if (state.installation != null && state.installation.operationId != initialId) dismiss() }
-    AlertDialog(onDismissRequest = dismiss, modifier = Modifier.imePadding(), title = { Text(stringResource(R.string.tunnels_runtime_manage)) },
+    val initialDraft = remember { listOf(kind, version, source, rollback, remotePath, confirmed, state.reference) }
+    val dirty = listOf(kind, version, source, rollback, remotePath, confirmed, state.reference) != initialDraft
+    DraftCloseGuard(!state.busy, dirty, dismiss) { requestClose ->
+    AlertDialog(onDismissRequest = requestClose, modifier = Modifier.imePadding(), title = { Text(stringResource(R.string.tunnels_runtime_manage)) },
         text = { Column(Modifier.heightIn(max = 430.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Text(stringResource(R.string.tunnels_install_note))
-            InstallationKind.entries.forEach { option -> Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { RadioButton(kind == option, { kind = option; rollback = false; source = InstallationPackageSource.HostDownload; model.clearReference() }, enabled = !locked); Text(installationKindLabel(option)) } }
+            InstallationKind.entries.forEach { option -> RadioOption(kind == option, installationKindLabel(option), !locked) { kind = option; rollback = false; source = InstallationPackageSource.HostDownload; model.clearReference() } }
             if (kind == InstallationKind.Repair) TunnelCheck(rollback, !locked, R.string.tunnels_rollback) { rollback = it; model.clearReference() }
             if (rollback) Text(stringResource(R.string.tunnels_rollback_note))
             if (!rollback && kind != InstallationKind.Uninstall) {
@@ -51,12 +54,13 @@ import app.relaxkonos.mobile.ui.theme.Spacing
             state.uploadBytes?.let { Text(stringResource(R.string.nginx_upload_bytes, it)) }
             if (state.pendingInstallation) Text(stringResource(R.string.tunnels_install_restore_note), color = MaterialTheme.colorScheme.error)
 
-            RefreshProgressIndicator(visible = state.busy)
+            TunnelEditorFeedback(state)
             TunnelCheck(confirmed, !state.busy, R.string.tunnels_install_confirm) { confirmed = it }
         } }, confirmButton = { Button(enabled = !state.busy && confirmed && state.installation?.state?.active != true &&
             (model.hasIntent || ((rollback || kind == InstallationKind.Uninstall || version.trim().matches(Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,31}"))) &&
                 (kind != InstallationKind.Install || source == InstallationPackageSource.HostDownload || state.reference?.expired() == false))),
             onClick = { onSubmitted(); model.install(kind, version.takeUnless { rollback || kind == InstallationKind.Uninstall }, rollback, kind == InstallationKind.Install && source != InstallationPackageSource.HostDownload) }) {
             Text(stringResource(if (model.hasIntent || state.pendingInstallation) R.string.common_retry else R.string.tunnels_confirm))
-        } }, dismissButton = { TextButton(enabled = !state.busy, onClick = dismiss) { Text(stringResource(R.string.common_close)) } })
+        } }, dismissButton = { TextButton(enabled = !state.busy, onClick = requestClose) { Text(stringResource(R.string.common_close)) } })
+    }
 }

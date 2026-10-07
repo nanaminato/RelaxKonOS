@@ -37,6 +37,13 @@ class DeploymentCreateForm(private val templates: List<DeploymentTemplate>) {
     var configurationValue by mutableStateOf("")
     var configurationSecret by mutableStateOf(false)
 
+    private fun values(): List<Any> = listOf(sourceKind, name, image, port, hostPort, bindAddress,
+        workload, readiness, healthPath, baseImage, runtimeVersion, programEntry, arguments,
+        selfContained, volumes, cpuCores, memoryMegabytes, pidsLimit, siteId, deployNow,
+        archiveName, configuration.toList(), configurationName, configurationValue, configurationSecret)
+    private val initialValues = values()
+    val dirty: Boolean get() = values() != initialValues
+
     val template: DeploymentTemplate? get() = templates.firstOrNull { it.sourceKind == sourceKind }
     val isArchive: Boolean get() = template?.requiresArchive == true
     val parsedPort: Int? get() = port.toIntOrNull()?.takeIf { it in 1..65535 }

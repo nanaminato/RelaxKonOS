@@ -24,8 +24,8 @@ import kotlinx.coroutines.delay
     var confirm by remember { mutableStateOf<Triple<Int, String, () -> Unit>?>(null) }
     var advanced by remember { mutableStateOf(false) }
     val current = (state.frps as? ApiResult.Success)?.value
-    LaunchedEffect(active, current?.state, state.frpsAtMillis, state.busy, state.frpsDraft == null) {
-        if (active && current?.state?.active == true && !state.busy && state.frpsDraft == null) { delay(3000); model.observeFrps() }
+    LaunchedEffect(active, current?.state, state.frpsAtMillis, state.busy, state.editorOpen) {
+        if (active && current?.state?.active == true && !state.busy && !state.editorOpen) { delay(3000); model.observeFrps() }
     }
     if (!records) {
     Text(stringResource(R.string.frps_intro))
@@ -149,7 +149,7 @@ import kotlinx.coroutines.delay
             }
             if (draft.request(draft.token.toCharArray(), draft.password.toCharArray()) == null) Text(stringResource(R.string.frps_invalid), color = MaterialTheme.colorScheme.error)
 
-            if (state.pending.isNotEmpty()) Text(stringResource(R.string.tunnels_uncertain), color = MaterialTheme.colorScheme.error)
+            TunnelEditorFeedback(state)
             TextButton(enabled = !locked, onClick = { confirm = R.string.tunnels_reload_confirm }) { Text(stringResource(R.string.tunnels_reload)) }
         } }, confirmButton = { Button(enabled = !locked && draft.request(draft.token.toCharArray(), draft.password.toCharArray()) != null, onClick = { confirm = R.string.frps_save_confirm }) { ActionLabel(R.string.common_save) } },
         dismissButton = { TextButton(enabled = !state.busy, onClick = ::close) { Text(stringResource(R.string.common_close)) } })

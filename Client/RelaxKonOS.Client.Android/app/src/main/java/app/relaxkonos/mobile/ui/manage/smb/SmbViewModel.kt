@@ -100,7 +100,7 @@ internal class SmbViewModel(application: Application) : AndroidViewModel(applica
         if (state.busy || ServerCapabilities.FILE_SERVICES !in owner.capabilities) return
         val request = generation; state = state.copy(busy = true, problem = null)
         job = viewModelScope.launch {
-            try { block(owner) }
+            try { verify(owner); block(owner) }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { if (current(owner, request)) state = state.copy(facts = null, installationVerified = false, problem = "file-services.smb.unverified") }
             finally { if (current(owner, request)) state = state.copy(busy = false,

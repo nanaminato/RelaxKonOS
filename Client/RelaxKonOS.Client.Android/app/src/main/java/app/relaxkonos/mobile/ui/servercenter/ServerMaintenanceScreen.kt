@@ -1,4 +1,6 @@
 package app.relaxkonos.mobile.ui.servercenter
+import app.relaxkonos.mobile.ui.common.CheckboxOption
+import app.relaxkonos.mobile.ui.common.text
 
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
@@ -22,14 +24,14 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
     val model: ServerMaintenanceViewModel = viewModel(key = "maintenance-${host?.hostId}")
     val state by model.state.collectAsStateWithLifecycle()
     var wizard by rememberSaveable(host?.hostId) { mutableStateOf(false) }
-    var installing by remember { mutableStateOf(false) }
+    var installing by remember(host?.hostId) { mutableStateOf(false) }
     var page by rememberSaveable(host?.hostId) { mutableIntStateOf(0) }
     val pageScroll = remember(page) { androidx.compose.foundation.ScrollState(0) }
-    var uninstall by remember { mutableStateOf(false) }
-    var purge by remember { mutableStateOf(false) }
+    var uninstall by remember(host?.hostId) { mutableStateOf(false) }
+    var purge by remember(host?.hostId) { mutableStateOf(false) }
     var removeComponents by remember(host?.hostId) { mutableStateOf(setOf<String>()) }
-    var sudo by remember { mutableStateOf("") }
-    var addFirewallRule by rememberSaveable { mutableStateOf(false) }
+    var sudo by remember(host?.hostId) { mutableStateOf("") }
+    var addFirewallRule by rememberSaveable(host?.hostId) { mutableStateOf(false) }
     var repairCertificate by rememberSaveable(host?.hostId) { mutableStateOf(false) }
     var certificateIdentities by rememberSaveable(host?.hostId) {
         mutableStateOf(listOf("localhost", "127.0.0.1", host?.sshHost.orEmpty()).filter(String::isNotBlank).distinct().joinToString(","))
@@ -69,7 +71,7 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
                     }
                 }
                 TextButton(onClick = { host?.let { model.run(it.hostId, sudo = sudo) } }, enabled = !state.busy) { Text(stringResource(R.string.server_maintenance_check)) }
-                OperationMessageDialog(state.error.takeUnless { state.busy })
+                OperationMessageDialog(state.error.takeUnless { state.busy }?.text())
                 if (page != 3) state.snapshot?.let { snapshot ->
                     if (page == 0) {
                         Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
@@ -101,7 +103,7 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
                     }
                     if (page == 2 && snapshot.installed) {
                         Text(stringResource(R.string.server_maintenance_actions_note), style = MaterialTheme.typography.bodySmall)
-                        PasswordTextField(sudo, { sudo = it }, stringResource(R.string.ssh_workspace_deploy_sudo_password))
+                        PasswordTextField(sudo, { sudo = it }, stringResource(R.string.ssh_workspace_deploy_sudo_password), enabled = !state.busy)
                         Button(onClick = { wizard = true }, enabled = !state.busy) { Text(stringResource(R.string.installation_kind_upgrade)) }
                         OutlinedButton(onClick = {
                             addFirewallRule = false
@@ -121,45 +123,35 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
             }
         }
     }
-    if (uninstall) AlertDialog(onDismissRequest = { uninstall = false }, title = { Text(stringResource(R.string.server_maintenance_uninstall)) },
+    val cancelUninstall = { uninstall = false; sudo = "" }
+    val cancelRepair = { if (!state.busy) { repair = false; sudo = "" } }
+    if (uninstall) AlertDialog(onDismissRequest = cancelUninstall, title = { Text(stringResource(R.string.server_maintenance_uninstall)) },
         text = { Column(Modifier.verticalScroll(rememberScrollState())) {
             Text(stringResource(R.string.server_maintenance_uninstall_note))
             Text(stringResource(R.string.server_components_note))
             listOf("smb" to R.string.server_remove_smb, "nginx" to R.string.server_remove_nginx,
                 "frp" to R.string.server_remove_frp, "mihomo" to R.string.server_remove_mihomo).forEach { (component, label) ->
-                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    Checkbox(component in removeComponents, { checked ->
+                CheckboxOption(component in removeComponents, stringResource(label), !state.busy) { checked ->
                         removeComponents = if (checked) removeComponents + component else removeComponents - component
                         if (!checked) purge = false
-                    })
-                    Text(stringResource(label))
                 }
             }
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Checkbox(purge, { purge = it; if (it) removeComponents = setOf("smb", "nginx", "frp", "mihomo") })
-                Text(stringResource(R.string.server_maintenance_purge))
-            }
+            CheckboxOption(purge, stringResource(R.string.server_maintenance_purge), !state.busy) { purge = it; if (it) removeComponents = setOf("smb", "nginx", "frp", "mihomo") }
         } },
-        confirmButton = { TextButton(onClick = { uninstall = false; host?.let { model.run(it.hostId, ServerDeploymentKind.Uninstall, purge, sudo, removeComponents = listOf("smb", "nginx", "frp", "mihomo").filter { it in removeComponents }.joinToString(",")) }; sudo = "" }) { Text(stringResource(R.string.server_maintenance_uninstall)) } },
-        dismissButton = { TextButton(onClick = { uninstall = false }) { Text(stringResource(R.string.common_cancel)) } })
+        confirmButton = { TextButton(enabled = host != null && !state.busy, onClick = { uninstall = false; host?.let { model.run(it.hostId, ServerDeploymentKind.Uninstall, purge, sudo, removeComponents = listOf("smb", "nginx", "frp", "mihomo").filter { it in removeComponents }.joinToString(",")) }; sudo = "" }) { Text(stringResource(R.string.server_maintenance_uninstall)) } },
+        dismissButton = { TextButton(onClick = cancelUninstall) { Text(stringResource(R.string.common_cancel)) } })
     if (repair) AlertDialog(
-        onDismissRequest = { if (!state.busy) repair = false },
+        onDismissRequest = cancelRepair,
         title = { Text(stringResource(R.string.server_maintenance_repair)) },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
             Text(host?.let { "${it.sshHost}:${it.sshPort}" }.orEmpty(), style = MaterialTheme.typography.bodySmall)
-            PasswordTextField(sudo, { sudo = it }, stringResource(R.string.ssh_workspace_deploy_sudo_password))
+            PasswordTextField(sudo, { sudo = it }, stringResource(R.string.ssh_workspace_deploy_sudo_password), enabled = !state.busy)
             val certificateRepairSupported = state.snapshot?.mode == ServerInstallMode.LinuxSystem ||
                 state.snapshot?.mode == ServerInstallMode.WindowsSystem
             if (certificateRepairSupported) {
-                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    Checkbox(addFirewallRule, { addFirewallRule = it }, enabled = !state.busy)
-                    Text(stringResource(R.string.server_install_firewall_choice), modifier = Modifier.weight(1f))
-                }
+                CheckboxOption(addFirewallRule, stringResource(R.string.server_install_firewall_choice), !state.busy) { addFirewallRule = it }
                 Text(stringResource(R.string.server_install_firewall_help), style = MaterialTheme.typography.bodySmall)
-                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    Checkbox(repairCertificate, { repairCertificate = it }, enabled = !state.busy)
-                    Text(stringResource(R.string.server_maintenance_repair_certificate), modifier = Modifier.weight(1f))
-                }
+                CheckboxOption(repairCertificate, stringResource(R.string.server_maintenance_repair_certificate), !state.busy) { repairCertificate = it }
                 if (repairCertificate) {
                     Text(stringResource(R.string.server_maintenance_repair_certificate_note), style = MaterialTheme.typography.bodySmall)
                     OutlinedTextField(certificateIdentities, { certificateIdentities = it },
@@ -181,7 +173,7 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
         }, enabled = !state.busy && host != null && (!repairCertificate || identitiesValid)) {
             Text(stringResource(R.string.server_maintenance_repair))
         } },
-        dismissButton = { TextButton(onClick = { repair = false }, enabled = !state.busy) {
+        dismissButton = { TextButton(onClick = cancelRepair, enabled = !state.busy) {
             Text(stringResource(R.string.common_cancel))
         } })
 }

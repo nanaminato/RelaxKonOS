@@ -51,7 +51,7 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
             TextButton(enabled = !state.busy, onClick = { navigate { draft = null; defaults = null; model.refresh() } }) { ActionLabel(R.string.common_refresh) }
         })
         RefreshProgressIndicator(visible = visible && state.busy)
-        OperationMessageDialog(state.problem?.takeIf { visible && !state.busy }?.let { firewallProblem(it) })
+        OperationMessageDialog(state.problem?.takeIf { visible && !state.busy && !editing }?.let { firewallProblem(it) })
         if (visible && section != "records" && state.pending.isNotEmpty()) TextButton(onClick = { navigate { draft = null; defaults = null; section = "records" } }) { Text(stringResource(R.string.workspace_records_attention)) }
         if (visible && section == "records") state.pending.forEach { pending ->
             ManagementCard {
@@ -104,15 +104,17 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
             }
             }
             if (defaults != null && confirmation == null && leave == null) AlertDialog(
-                onDismissRequest = { navigate { defaults = null } }, modifier = Modifier.imePadding(),
+                onDismissRequest = { if (!state.busy) navigate { defaults = null } }, modifier = Modifier.imePadding(),
                 title = { Text(stringResource(R.string.firewall_defaults)) },
                 text = { Column(Modifier.heightIn(max = 430.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                FirewallChoices(stringResource(R.string.firewall_incoming), if (facts.status.backend == "windows-defender") listOf("allow", "deny") else FirewallValues.policies, defaults!!.first) { defaults = it to defaults!!.second }
-                FirewallChoices(stringResource(R.string.firewall_outgoing), if (facts.status.backend == "windows-defender") listOf("allow", "deny") else FirewallValues.policies, defaults!!.second) { defaults = defaults!!.first to it }
+                FirewallChoices(stringResource(R.string.firewall_incoming), if (facts.status.backend == "windows-defender") listOf("allow", "deny") else FirewallValues.policies, defaults!!.first, ready) { defaults = it to defaults!!.second }
+                FirewallChoices(stringResource(R.string.firewall_outgoing), if (facts.status.backend == "windows-defender") listOf("allow", "deny") else FirewallValues.policies, defaults!!.second, ready) { defaults = defaults!!.first to it }
+                FirewallEditorFeedback(state.problem, state.busy)
+                if (!ready) TextButton(enabled = !state.busy, onClick = model::refresh) { Text(stringResource(R.string.firewall_refresh_keep_draft)) }
                 } },
                 confirmButton = { Button(enabled = ready, onClick = { confirmation = FirewallConfirmation(facts, FirewallChange(FirewallChangeKind.Defaults, incoming = defaults!!.first, outgoing = defaults!!.second)) }) { ActionLabel(R.string.common_save) } },
-                dismissButton = { TextButton(onClick = { navigate { defaults = null } }) { Text(stringResource(R.string.common_cancel)) } })
-            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                dismissButton = { TextButton(enabled = !state.busy, onClick = { navigate { defaults = null } }) { Text(stringResource(R.string.common_cancel)) } })
+            Box(Modifier.fillMaxWidth()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                         if (facts.rules.isEmpty()) Text(stringResource(R.string.firewall_empty))
@@ -126,20 +128,22 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
                     }
                     val rule = draft
                     if (rule != null && confirmation == null && leave == null) AlertDialog(
-                        onDismissRequest = { navigate { draft = null } }, modifier = Modifier.imePadding(),
+                        onDismissRequest = { if (!state.busy) navigate { draft = null } }, modifier = Modifier.imePadding(),
                         title = { Text(stringResource(if (rule.number == 0) R.string.firewall_create else R.string.firewall_edit)) },
                         text = { Column(Modifier.heightIn(max = 430.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                        FirewallChoices(stringResource(R.string.firewall_action), if (facts.status.backend == "windows-defender") listOf("allow", "deny") else FirewallValues.actions, rule.action) { draft = rule.copy(action = it) }
-                        FirewallChoices(stringResource(R.string.firewall_direction), FirewallValues.directions, rule.direction) { draft = rule.copy(direction = it) }
-                        FirewallChoices(stringResource(R.string.firewall_protocol), FirewallValues.protocols, rule.protocol) { draft = rule.copy(protocol = it) }
-                        OutlinedTextField(rule.source, { draft = rule.copy(source = it) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.firewall_source)) }, singleLine = true)
-                        OutlinedTextField(rule.destination, { draft = rule.copy(destination = it) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.firewall_destination)) }, singleLine = true)
-                        OutlinedTextField(rule.port, { draft = rule.copy(port = it) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.firewall_port)) }, singleLine = true)
+                        FirewallChoices(stringResource(R.string.firewall_action), if (facts.status.backend == "windows-defender") listOf("allow", "deny") else FirewallValues.actions, rule.action, ready) { draft = rule.copy(action = it) }
+                        FirewallChoices(stringResource(R.string.firewall_direction), FirewallValues.directions, rule.direction, ready) { draft = rule.copy(direction = it) }
+                        FirewallChoices(stringResource(R.string.firewall_protocol), FirewallValues.protocols, rule.protocol, ready) { draft = rule.copy(protocol = it) }
+                        OutlinedTextField(rule.source, { draft = rule.copy(source = it) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.firewall_source)) }, singleLine = true, enabled = ready)
+                        OutlinedTextField(rule.destination, { draft = rule.copy(destination = it) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.firewall_destination)) }, singleLine = true, enabled = ready)
+                        OutlinedTextField(rule.port, { draft = rule.copy(port = it) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.firewall_port)) }, singleLine = true, enabled = ready)
                         Text(stringResource(R.string.firewall_rule_help), style = MaterialTheme.typography.bodySmall)
+                        FirewallEditorFeedback(state.problem, state.busy)
+                        if (!ready) TextButton(enabled = !state.busy, onClick = model::refresh) { Text(stringResource(R.string.firewall_refresh_keep_draft)) }
                         } }, confirmButton = {
                         val change = FirewallChange(if (rule.number == 0) FirewallChangeKind.Create else FirewallChangeKind.Replace, rule.number.takeIf { it > 0 }, rule = rule)
                         Button(enabled = ready && runCatching { change.validate() }.isSuccess, onClick = { confirmation = FirewallConfirmation(facts, change) }) { ActionLabel(R.string.common_save) }
-                        }, dismissButton = { TextButton(onClick = { navigate { draft = null } }) { Text(stringResource(R.string.common_cancel)) } })
+                        }, dismissButton = { TextButton(enabled = !state.busy, onClick = { navigate { draft = null } }) { Text(stringResource(R.string.common_cancel)) } })
                 }
             }
             facts.rules.firstOrNull { it.number == selected }?.let { rule ->
@@ -152,6 +156,9 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
     }
     }
     val pending = confirmation
+    if (visible && facts == null && editing && pending == null && leave == null) FirewallRetainedDraftDialog(
+        draft, defaults, state.busy, state.problem, model::refresh,
+        { navigate { draft = null; defaults = null } })
     if (pending != null) AlertDialog(onDismissRequest = { confirmation = null }, title = { Text(stringResource(R.string.firewall_confirm)) },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Text(stringResource(R.string.firewall_management_warning))
@@ -169,9 +176,26 @@ private data class FirewallConfirmation(val expected: FirewallFacts, val change:
         dismissButton = { TextButton(onClick = { leave = null }) { Text(stringResource(R.string.firewall_continue_editing)) } })
 }
 @OptIn(ExperimentalLayoutApi::class)
-@Composable private fun FirewallChoices(label: String, values: List<String>, selected: String, onSelect: (String) -> Unit) {
+@Composable private fun FirewallChoices(label: String, values: List<String>, selected: String, enabled: Boolean, onSelect: (String) -> Unit) {
     Text(label)
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) { values.forEach { value -> FilterChip(selected = value == selected, onClick = { onSelect(value) }, label = { Text(firewallValue(value)) }) } }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) { values.forEach { value -> FilterChip(selected = value == selected, enabled = enabled, onClick = { onSelect(value) }, label = { Text(firewallValue(value)) }) } }
+}
+@Composable private fun FirewallEditorFeedback(problem: String?, busy: Boolean) {
+    if (!busy) problem?.let { Text(firewallProblem(it), color = MaterialTheme.colorScheme.error) }
+    RefreshProgressIndicator(visible = busy)
+}
+
+@Composable internal fun FirewallRetainedDraftDialog(rule: FirewallRule?, defaults: Pair<String, String>?,
+    busy: Boolean, problem: String?, refresh: () -> Unit, close: () -> Unit) {
+    AlertDialog(onDismissRequest = { if (!busy) close() }, modifier = Modifier.imePadding(),
+        title = { Text(stringResource(if (rule != null) R.string.firewall_edit else R.string.firewall_defaults)) },
+        text = { Column(Modifier.heightIn(max = 430.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            Text(stringResource(R.string.firewall_unverified))
+            rule?.let { Text("${firewallValue(it.action)} · ${firewallValue(it.direction)} · ${firewallValue(it.protocol)}"); Text("${it.source} → ${it.destination}:${it.port}") }
+            defaults?.let { Text(stringResource(R.string.firewall_defaults_value, firewallValue(it.first), firewallValue(it.second))) }
+            FirewallEditorFeedback(problem, busy)
+        } }, confirmButton = { TextButton(enabled = !busy, onClick = refresh) { Text(stringResource(R.string.firewall_refresh_keep_draft)) } },
+        dismissButton = { TextButton(enabled = !busy, onClick = close) { Text(stringResource(R.string.common_cancel)) } })
 }
 @Composable internal fun firewallChangeLabel(kind: FirewallChangeKind) = stringResource(when (kind) {
     FirewallChangeKind.Enabled -> R.string.firewall_enabled_change; FirewallChangeKind.Defaults -> R.string.firewall_defaults

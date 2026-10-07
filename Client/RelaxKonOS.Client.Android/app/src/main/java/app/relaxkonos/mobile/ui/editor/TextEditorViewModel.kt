@@ -9,6 +9,7 @@ import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.*
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 class TextEditorViewModel(application: Application) : AndroidViewModel(application) {
     private val client get() = getApplication<RelaxKonApplication>().container.textEditor
@@ -36,7 +37,7 @@ class TextEditorViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
     val dirty get() = baseline?.let { value.text != it.content || encoding != it.encoding || bom != it.bom }
-        ?: (value.text.isNotEmpty() || encoding != "utf-8" || bom)
+        ?: (value.text.isNotEmpty() || encoding != "utf-8" || bom || destination.isNotEmpty())
     val valid get() = TextEditorPolicy.valid(value.text, encoding, bom)
 
     fun start(session: SessionState.Active, path: String?, gitId: String?) {
@@ -66,7 +67,7 @@ class TextEditorViewModel(application: Application) : AndroidViewModel(applicati
     private fun accept(file: RemoteTextFile) {
         baseline = file; latest = null; value = TextFieldValue(file.content); encoding = file.encoding; bom = file.bom
         preferredNewline = file.newline
-        unknown = false; failed = false; pendingPath = null
+        unknown = false; failed = false; pendingPath = null; destination = ""
     }
     fun reload() {
         val session = owner ?: return
@@ -97,7 +98,7 @@ class TextEditorViewModel(application: Application) : AndroidViewModel(applicati
         val formatBom = bom
         if ((opened == null || asNew) && target.isBlank()) return
         pendingPath = if (opened == null || asNew) target else opened.path
-        launch {
+        launch(write = true) {
             val result = if (opened == null || asNew) client.create(session, target, content, formatEncoding, formatBom)
                 else client.save(session, requireNotNull(format), content, repositoryId)
             when (result) {
@@ -116,10 +117,16 @@ class TextEditorViewModel(application: Application) : AndroidViewModel(applicati
             }
         }
     }
-    private fun launch(action: suspend () -> Unit) {
+    private fun launch(write: Boolean = false, action: suspend () -> Unit) {
         if (busy) return
         val session = owner
-        job = viewModelScope.launch { busy = true; failed = false; saved = false; try { action() } finally { if (owner === session) busy = false } }
+        job = viewModelScope.launch {
+            busy = true; failed = false; saved = false
+            try { action() }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { if (owner === session) { failed = true; if (write) unknown = true } }
+            finally { if (owner === session) busy = false }
+        }
     }
     fun clear() {
         job?.cancel(); job = null; owner = null; initialPath = null; repositoryId = null

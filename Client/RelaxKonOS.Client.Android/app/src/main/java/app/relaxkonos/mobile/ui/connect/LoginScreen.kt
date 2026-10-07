@@ -81,7 +81,7 @@ fun LoginScreen(
                 onOpenServerCenter = { showHelp = false; onOpenServerCenter() })
         }
     }
-    val activity = LocalContext.current as? FragmentActivity ?: return
+    val activity = androidx.activity.compose.LocalActivity.current as? FragmentActivity ?: return
     viewModel.tunnel.review?.let { rejected ->
         val container = (activity.application as app.relaxkonos.mobile.RelaxKonApplication).container
         val previous = container.sshHostKeyTrust.find(rejected.observation.host, rejected.observation.port, rejected.observation.algorithm)
@@ -130,30 +130,11 @@ fun LoginScreen(
 
     LoginPageLayout(modifier) {
         Column(
-            modifier = Modifier.fillMaxWidth().widthIn(max = 520.dp),
+            modifier = Modifier.widthIn(max = 520.dp).fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             LoginBrand()
-
-            // The two setup actions belong to the same scroll surface as the form, and they are peers:
-            // both lead somewhere that produces something to sign in with, and neither is *the* action
-            // of this screen — signing in is. So they are drawn as peers, under the mark and on the
-            // same edge, instead of one being a link and the other a full-width outlined button.
-            Column(
-                modifier = Modifier.align(Alignment.End),
-                horizontalAlignment = Alignment.End,
-            ) {
-                TextButton(onClick = { showHelp = true }) { Text(stringResource(R.string.help_title)) }
-                TextButton(onClick = onOpenOwnerDevicePairing) {
-                    Text(stringResource(R.string.owner_device_add))
-                }
-                TextButton(onClick = onOpenServerCenter) {
-                    Text(stringResource(R.string.server_center_open))
-                }
-            }
-
             Spacer(Modifier.height(Spacing.md))
-
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(Radius.xl),
@@ -179,7 +160,7 @@ fun LoginScreen(
 
                     // Connection choices are setup actions, so they come before the address they
                     // may fill. A selected saved item starts connecting immediately when possible.
-                    OutlinedButton(onClick = { viewModel.openConnections() }, modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = { viewModel.openConnections() }, enabled = !viewModel.isLoggingIn && viewModel.endpointDiscoveryState != EndpointDiscoveryState.Checking, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.connections_title))
                     }
 
@@ -217,25 +198,18 @@ fun LoginScreen(
                         supportingText = credentialStatusLine(viewModel.credentialStatus),
                     )
 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = viewModel.rememberCredential,
-                            onCheckedChange = { viewModel.rememberCredential = it },
-                            // The debug plaintext store makes saving possible where the vault cannot be
-                            // created at all, so the switch has to follow the same condition the store
-                            // itself follows — never a looser one.
-                            enabled = !viewModel.isLoggingIn && (unlockMode != null || viewModel.debugFallbackAvailable),
-                        )
-                        Text(
-                            stringResource(
+                    LoginCheckboxRow(
+                        checked = viewModel.rememberCredential,
+                        enabled = !viewModel.isLoggingIn && (unlockMode != null || viewModel.debugFallbackAvailable),
+                        onCheckedChange = { viewModel.rememberCredential = it },
+                        label = stringResource(
                                 if (viewModel.debugFallbackAvailable) {
                                     R.string.login_remember_hint_debug
                                 } else {
                                     R.string.login_remember_hint
                                 },
-                            ),
                         )
-                    }
+                    )
                     when {
                         viewModel.debugFallbackAvailable -> Text(
                             stringResource(R.string.login_no_lock_screen_debug),
@@ -263,6 +237,22 @@ fun LoginScreen(
                     ) { Text(stringResource(actionLabel)) }
                 }
             }
+            // Setup and help remain reachable after the primary sign-in form.
+            Column(
+                modifier = Modifier.align(Alignment.End),
+                horizontalAlignment = Alignment.End,
+            ) {
+                TextButton(onClick = { showHelp = true }) { Text(stringResource(R.string.help_title)) }
+                TextButton(onClick = onOpenOwnerDevicePairing, enabled = !viewModel.isLoggingIn) {
+                    Text(stringResource(R.string.owner_device_add))
+                }
+                TextButton(onClick = onOpenServerCenter, enabled = !viewModel.isLoggingIn) {
+                    Text(stringResource(R.string.server_center_open))
+                }
+            }
+
+            Spacer(Modifier.height(Spacing.md))
+
         }
     }
 

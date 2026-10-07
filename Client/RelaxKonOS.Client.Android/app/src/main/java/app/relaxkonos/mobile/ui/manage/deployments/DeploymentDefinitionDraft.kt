@@ -19,6 +19,10 @@ internal class DeploymentDefinitionDraft(val baseline: DeploymentApplication) {
     var siteId by mutableStateOf(baseline.siteId.orEmpty())
     val volumes = mutableStateListOf<DeploymentVolume>().apply { addAll(baseline.volumes) }
     val configuration = mutableStateListOf<DeploymentDefinitionConfig>().apply { addAll(baseline.configuration) }
+    private val initialValues = values()
+    val changed get() = values() != initialValues
+    private fun values(): List<Any?> = listOf(name, workload, readiness, healthPath, containerPort, hostPort,
+        bindAddress, cpuCores, memoryBytes, pidsLimit, siteId, volumes.toList(), configuration.toList())
 
     fun putConfiguration(name: String, value: String, secret: Boolean): Boolean {
         val key = name.trim()

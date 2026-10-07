@@ -18,7 +18,7 @@ import java.util.Date
 
 @Composable internal fun ProxySettingsEditor(
     original: ProxySettings, overview: ProxyOverview, section: ProxySettingsSection,
-    model: ProxyViewModel, dismiss: () -> Unit
+    state: ProxyState, submit: (ProxySettings) -> Unit, dismiss: () -> Unit
 ) {
     var draft by remember { mutableStateOf(original) }
     var port by remember { mutableStateOf(original.mixedPort.toString()) }
@@ -26,8 +26,7 @@ import java.util.Date
     var interval by remember { mutableStateOf(original.systemProxy?.guardIntervalSeconds?.toString().orEmpty()) }
     var confirmed by remember { mutableStateOf(false) }
     var discard by remember { mutableStateOf(false) }
-    val initial = remember { model.state.savedEpoch }
-    val state = model.state
+    val initial = remember { state.savedEpoch }
     LaunchedEffect(state.savedEpoch) { if (initial != state.savedEpoch) dismiss() }
     val close = {
         if (draft != original || port != original.mixedPort.toString() ||
@@ -137,11 +136,12 @@ import java.util.Date
                 Text(stringResource(R.string.mihomo_settings_note), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 ProxyCheck(confirmed, enabled, R.string.mihomo_apply_confirm) { confirmed = it }
+                ProxyEditorFeedback(state)
             }
         }, confirmButton = {
             Button(enabled = enabled && confirmed && valid && state.pending.isEmpty(), onClick = {
                 // Submit the current contract while preserving every other group's fields.
-                model.saveSettings(when (section) {
+                submit(when (section) {
                     ProxySettingsSection.Mihomo -> draft.copy(mixedPort = port.toInt())
                     ProxySettingsSection.Tun -> draft.copy(tun = draft.tun?.copy(mtu = mtu.toInt()))
                     ProxySettingsSection.SystemProxy -> draft.copy(systemProxy = draft.systemProxy?.copy(guardIntervalSeconds = interval.toInt(),

@@ -3,6 +3,8 @@ package app.relaxkonos.mobile.ui.common
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -16,6 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -51,27 +54,35 @@ fun SectionCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
-        Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(contentSpacing)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Spacing.md),
-            ) {
-                if (leading != null) {
-                    IconBadge(leading)
-                }
-                Column(Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.semantics { heading() })
-                    if (subtitle != null) {
-                        Text(
-                            subtitle,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+        Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(contentSpacing)) {
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val narrow = trailing != null && maxWidth < 360.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+                    ) {
+                        if (leading != null) {
+                            IconBadge(leading)
+                        }
+                        Column(Modifier.weight(1f)) {
+                            Text(title, style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.semantics { heading() })
+                            if (subtitle != null) {
+                                Text(
+                                    subtitle,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        if (!narrow) trailing?.invoke()
+                    }
+                    if (narrow) {
+                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) { trailing?.invoke() }
                     }
                 }
-                trailing?.invoke()
             }
             content()
         }
@@ -123,9 +134,7 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier) {
 /**
  * A label/value line.
  *
- * The label is a fixed-ish leading column and the value takes the rest, truncated rather than wrapped
- * so a long server path cannot push the line off the screen; the full text is available on the detail
- * pages that exist for that purpose.
+ * Both columns wrap: paths, fingerprints and addresses must remain readable on detail pages.
  */
 @Composable
 fun KeyValueRow(label: String, value: String, modifier: Modifier = Modifier) {
@@ -134,14 +143,12 @@ fun KeyValueRow(label: String, value: String, modifier: Modifier = Modifier) {
             label,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(end = Spacing.md),
+            modifier = Modifier.weight(0.35f).padding(end = Spacing.md),
         )
         Text(
             value,
             style = MaterialTheme.typography.bodyMedium,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(0.65f),
         )
     }
 }

@@ -159,7 +159,7 @@ internal fun GitWorkspaceSection(owner: SessionState.Active, section: String, on
         if (section == "branches") Text(stringResource(R.string.gw_upstream, facts.status.upstream ?: stringResource(R.string.gw_no_upstream)))
         if (facts.status.detached) Text(stringResource(R.string.gw_detached), color = MaterialTheme.colorScheme.error)
         if (section == "branches") Text(stringResource(R.string.gw_actions_note), style = MaterialTheme.typography.bodySmall)
-        BoxWithConstraints {
+        Box {
             val branches: @Composable () -> Unit = {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     GitPanel(stringResource(R.string.git_sync)) {

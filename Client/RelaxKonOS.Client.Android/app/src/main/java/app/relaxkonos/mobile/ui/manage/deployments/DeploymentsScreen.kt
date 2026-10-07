@@ -269,8 +269,11 @@ private fun DeploymentCreateDialog(
         R.string.deployments_step_progress,
     )
     val problem = if (attemptedNext) form.problemAt(form.step) else null
+    val accepted = form.step == 6 &&
+        (if (form.deployNow) submission is ApiResult.Success else definitionSubmission is ApiResult.Success)
+    DraftCloseGuard(!submitting && !archiveStaging, !accepted && form.dirty, onDismiss) { requestClose ->
     Dialog(
-        onDismissRequest = { if (!submitting) onDismiss() },
+        onDismissRequest = requestClose,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
         Surface(modifier = Modifier.fillMaxSize().safeDrawingPadding(), color = MaterialTheme.colorScheme.surface) {
@@ -278,7 +281,7 @@ private fun DeploymentCreateDialog(
                 ScreenHeader(
                     title = stringResource(R.string.deployments_create_title),
                     subtitle = "${form.step + 1} / 7 · ${stringResource(stepTitles[form.step])}",
-                    onBack = if (!submitting) onDismiss else null,
+                    onBack = if (!submitting && !archiveStaging) requestClose else null,
                     modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.md),
                 )
                 Column(
@@ -354,10 +357,7 @@ private fun DeploymentCreateDialog(
                                 OutlinedTextField(form.arguments, { form.arguments = it }, label = { Text(stringResource(R.string.deployments_arguments)) },
                                     minLines = 2, modifier = Modifier.fillMaxWidth())
                                 if (form.template?.supportsSelfContained == true) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Checkbox(checked = form.selfContained, onCheckedChange = { form.selfContained = it })
-                                        Text(stringResource(R.string.deployments_self_contained))
-                                    }
+                                    CheckboxOption(form.selfContained, stringResource(R.string.deployments_self_contained), !submitting) { form.selfContained = it }
                                 }
                             }
                             if (form.isArchive) OutlinedTextField(form.runtimeVersion, { form.runtimeVersion = it },
@@ -392,9 +392,8 @@ private fun DeploymentCreateDialog(
                                 singleLine = true, modifier = Modifier.fillMaxWidth())
                             OutlinedTextField(form.configurationValue, { form.configurationValue = it }, label = { Text(stringResource(R.string.deployments_configuration_value)) },
                                 singleLine = true, visualTransformation = androidx.compose.ui.text.input.VisualTransformation.None, modifier = Modifier.fillMaxWidth())
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(checked = form.configurationSecret, onCheckedChange = { form.configurationSecret = it })
-                                Text(stringResource(R.string.deployments_configuration_secret))
+                            Column {
+                                CheckboxOption(form.configurationSecret, stringResource(R.string.deployments_configuration_secret), !submitting) { form.configurationSecret = it }
                                 TextButton(onClick = form::addConfiguration, enabled = form.configurationName.isNotBlank()) {
                                     Text(stringResource(R.string.deployments_configuration_add))
                                 }
@@ -423,10 +422,7 @@ private fun DeploymentCreateDialog(
                                     form.configuration.count { !it.isSecret }, form.configuration.count { it.isSecret }))
                                 Text(form.siteId.ifBlank { "—" })
                             }
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(checked = form.deployNow, onCheckedChange = { form.deployNow = it })
-                                Text(stringResource(R.string.deployments_deploy_now))
-                            }
+                            CheckboxOption(form.deployNow, stringResource(R.string.deployments_deploy_now), !submitting) { form.deployNow = it }
                             Text(stringResource(R.string.deployments_replacement_note), style = MaterialTheme.typography.bodySmall)
                         }
                         6 -> {
@@ -482,7 +478,7 @@ private fun DeploymentCreateDialog(
                             } else onImageSubmit(form.imageDefinition(), form.image)
                         }
                     }, enabled = !submitting) { Text(stringResource(if (form.deployNow) R.string.deployments_create_and_deploy else R.string.deployments_save_definition)) }
-                    if (form.step == 6) TextButton(onClick = onDismiss, enabled = !submitting) { Text(stringResource(R.string.common_close)) }
+                    if (form.step == 6) TextButton(onClick = requestClose, enabled = !submitting && !archiveStaging) { Text(stringResource(R.string.common_close)) }
                 }
             }
         }
@@ -496,6 +492,7 @@ private fun DeploymentCreateDialog(
             showServerArchivePicker = false
         },
     )
+    }
 }
 
 @Composable
@@ -795,6 +792,9 @@ private fun BackupRecoveryCard(owner: SessionState.Active?, applicationId: Strin
     LaunchedEffect(editor) { editor.load() }
     val state = editor.state
     SectionCard(title = stringResource(R.string.backup_recovery_title), subtitle = stringResource(R.string.backup_recovery_note)) {
+        TextButton(onClick = { editor.load() }, enabled = !state.loading && !state.creating) {
+            Text(stringResource(R.string.common_refresh))
+        }
         RefreshProgressIndicator(visible = state.loading)
         when (val manifests = state.manifests) {
             is ApiResult.Success -> {
@@ -806,7 +806,7 @@ private fun BackupRecoveryCard(owner: SessionState.Active?, applicationId: Strin
                     manifest.problemCode?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     TextButton(onClick = {
                         editor.select(manifest.backupId)
-                    }) { Text(stringResource(R.string.backup_recovery_preflight)) }
+                    }, enabled = !state.loading && !state.creating) { Text(stringResource(R.string.backup_recovery_preflight)) }
                 }
             }
             null -> Unit

@@ -1,17 +1,20 @@
 package app.relaxkonos.mobile.ui.manage.deployments
 
 import androidx.compose.runtime.*
-import app.relaxkonos.mobile.AppContainer
+import app.relaxkonos.mobile.core.auth.AuthSession
+import app.relaxkonos.mobile.data.DeploymentRepository
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.*
 import kotlinx.coroutines.*
 import java.util.UUID
 
 internal class DeploymentDefinitionEditor(
-    private val container: AppContainer,
+    private val session: AuthSession,
+    private val deployments: DeploymentRepository,
     private val owner: SessionState.Active,
     private val baseline: DeploymentApplication,
     parentScope: CoroutineScope,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val job = SupervisorJob(parentScope.coroutineContext[Job])
     private val scope = CoroutineScope(parentScope.coroutineContext + job)
@@ -33,16 +36,16 @@ internal class DeploymentDefinitionEditor(
     val saved get() = result is ApiResult.Success
     val editable get() = !busy && !saved && !unknown && !pending
     val unstaged get() = configName.isNotEmpty() || configValue.isNotEmpty() || volumeName.isNotEmpty() || volumePath.isNotEmpty()
+    val dirty get() = draft.changed || unstaged || configSecret || volumeReadOnly
     val request get() = draft.requestOrNull()
 
     fun loadCurrent() {
         if (busy) return
         busy = true
-        configValue = ""
         scope.launch {
             try {
-                val current = withContext(Dispatchers.IO) { container.deployments.snapshot(owner, baseline.id) }
-                if (container.session.state.value !== owner) return@launch
+                val current = withContext(ioDispatcher) { deployments.snapshot(owner, baseline.id) }
+                if (session.state.value !== owner) return@launch
                 when (current) {
                     is ApiResult.Success -> {
                         if (current.value.application.id != baseline.id) { result = ApiResult.Transport(null); return@launch }
@@ -55,6 +58,10 @@ internal class DeploymentDefinitionEditor(
                     is ApiResult.Problem -> result = current
                     is ApiResult.Transport -> result = current
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (session.state.value === owner) result = ApiResult.Transport(null)
             } finally { busy = false }
         }
     }
@@ -66,8 +73,8 @@ internal class DeploymentDefinitionEditor(
         busy = true; result = null; loadedCurrent = false; configValue = ""
         scope.launch {
             try {
-                val outcome = withContext(Dispatchers.IO) { container.deployments.saveDefinition(owner, draft.baseline, submitted, UUID.randomUUID().toString()) }
-                if (container.session.state.value !== owner) return@launch
+                val outcome = withContext(ioDispatcher) { deployments.saveDefinition(owner, draft.baseline, submitted, UUID.randomUUID().toString()) }
+                if (session.state.value !== owner) return@launch
                 result = outcome.result; unknown = outcome.mayHaveSaved
                 if (outcome.result is ApiResult.Success) { draft = DeploymentDefinitionDraft(outcome.result.value); onSaved() }
             } finally { busy = false }

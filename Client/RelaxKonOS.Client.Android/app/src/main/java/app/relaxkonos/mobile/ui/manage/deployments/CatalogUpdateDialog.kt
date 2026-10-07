@@ -26,7 +26,7 @@ internal fun CatalogUpdateDialog(owner: SessionState.Active, initial: Deployment
     runtime: DeploymentRuntime?, onDismiss: () -> Unit, onAccepted: (DeploymentOperation) -> Unit) {
     val container = appContainer()
     val scope = rememberCoroutineScope()
-    val editor = remember(DeploymentOwnerKey(owner), initial.id, templates, scope) { CatalogUpdateEditor(container, owner, initial, templates, scope) }
+    val editor = remember(DeploymentOwnerKey(owner), initial.id, templates, scope) { CatalogUpdateEditor(container.session, container.deployments, owner, initial, templates, scope) }
     DisposableEffect(editor) { onDispose { editor.close() } }
     with(editor) {
         LaunchedEffect(editor, selectedVersion, baseline, reload) { refreshPreview() }

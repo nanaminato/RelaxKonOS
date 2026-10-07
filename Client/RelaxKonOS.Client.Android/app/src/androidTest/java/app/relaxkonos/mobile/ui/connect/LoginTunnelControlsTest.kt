@@ -38,6 +38,7 @@ class LoginTunnelControlsTest {
     }
 
     @Test fun reuseUsesServerIdentityAndPasswordWithoutMutatingInput() {
+        rule.setContent { MaterialTheme { androidx.compose.material3.Text("SSH credentials") } }
         val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as RelaxKonApplication
         val tunnel = LoginTunnelController(app.container)
         rule.runOnIdle {

@@ -5,9 +5,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
-import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.*
 import org.junit.Rule
@@ -18,7 +16,6 @@ class ProxySettingsEditorTest {
     private fun label(id: Int) = InstrumentationRegistry.getInstrumentation().targetContext.getString(id)
 
     private fun show(capabilities: ProxySystemProxyCapabilities) {
-        val model = ProxyViewModel(ApplicationProvider.getApplicationContext<RelaxKonApplication>())
         val settings = ProxySettings(false, false, true, false, true, "info", 7890, false, "127.0.0.1",
             ProxyTunSettings("mixed", "Mihomo", true, false, true, "any:53", 1500),
             ProxySystemOptions(false, false, 30, true, "localhost"))
@@ -27,7 +24,7 @@ class ProxySettingsEditorTest {
             null, false, true, "healthy", "", true, true, false,
             "linux", false, capabilities)
         rule.setContent { MaterialTheme {
-            ProxySettingsEditor(settings, overview, ProxySettingsSection.SystemProxy, model, {})
+            ProxySettingsEditor(settings, overview, ProxySettingsSection.SystemProxy, ProxyState(), {}, {})
         } }
     }
 

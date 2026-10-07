@@ -1,4 +1,5 @@
 package app.relaxkonos.mobile.ui.servercenter
+import app.relaxkonos.mobile.ui.common.CheckboxOption
 
 import app.relaxkonos.mobile.ui.common.rememberUsageOpenDocument
 
@@ -321,10 +322,7 @@ internal fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier =
                         supportingText = stringResource(R.string.ssh_workspace_deploy_lan_note).takeIf { network == "lan" },
                     )
                     if (mode != "linuxUser" && network == "lan") {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(advanced.addFirewallRule, { advanced = advanced.copy(addFirewallRule = it) })
-                            Text(stringResource(R.string.server_install_firewall_choice))
-                        }
+                        CheckboxOption(advanced.addFirewallRule, stringResource(R.string.server_install_firewall_choice)) { advanced = advanced.copy(addFirewallRule = it) }
                         Text(stringResource(R.string.server_install_firewall_help), style = MaterialTheme.typography.bodySmall)
                     }
                     SelectField(
@@ -393,15 +391,9 @@ internal fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier =
                     if (advanced.rootFileAccess == "whitelist") {
                     OutlinedTextField(value = advanced.rootFileRoots, onValueChange = { advanced = advanced.copy(rootFileRoots = it) }, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.server_install_file_roots)) })
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = advanced.dockerAccess, onCheckedChange = { advanced = advanced.copy(dockerAccess = it) })
-                        Text(stringResource(R.string.server_install_docker_access), modifier = Modifier.weight(1f))
+                    CheckboxOption(advanced.dockerAccess, stringResource(R.string.server_install_docker_access)) { advanced = advanced.copy(dockerAccess = it) }
                     }
-                    }
-                    if (mode != "windowsSystem") Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = advanced.allowUnsupportedSystem, onCheckedChange = { advanced = advanced.copy(allowUnsupportedSystem = it) })
-                        Text(stringResource(R.string.server_install_allow_unsupported), modifier = Modifier.weight(1f))
-                    }
+                    if (mode != "windowsSystem") CheckboxOption(advanced.allowUnsupportedSystem, stringResource(R.string.server_install_allow_unsupported)) { advanced = advanced.copy(allowUnsupportedSystem = it) }
                     if (!mayContinue) Text(stringResource(R.string.server_install_options_invalid), color = MaterialTheme.colorScheme.error)
                 }
 

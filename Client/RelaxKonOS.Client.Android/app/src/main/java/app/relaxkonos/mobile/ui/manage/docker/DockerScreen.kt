@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
@@ -29,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -98,23 +100,23 @@ fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialSt
     val state = viewModel.state
     val available = state.owner?.capabilities?.contains(ServerCapabilities.DOCKER) == true
     val notInstalled = (state.status as? ApiResult.Success)?.value?.problemCode == "docker.not_installed"
-    var composer by remember { mutableStateOf(false) }
-    var composeDraft by remember { mutableStateOf(DEFAULT_COMPOSE) }
-    var destructive by remember { mutableStateOf<Pair<DockerRemoval, () -> Unit>?>(null) }
+    var composer by remember(state.owner) { mutableStateOf(false) }
+    var composeDraft by remember(state.owner) { mutableStateOf(DEFAULT_COMPOSE) }
+    var destructive by remember(state.owner) { mutableStateOf<Pair<DockerRemoval, () -> Unit>?>(null) }
     LaunchedEffect(initialStackName, state.stacks) {
         val stack = (state.stacks as? ApiResult.Success)?.value?.firstOrNull { it.name == initialStackName }
         if (stack != null && state.selectedStack?.name != stack.name) viewModel.selectStack(stack)
     }
-    val picker = rememberLauncherForActivityResult(rememberUsageOpenDocument("DockerScreen.compose-import")) { uri -> if (uri != null) viewModel.importCompose(uri) { yaml -> composeDraft = yaml; composer = true } }
+    val picker = rememberLauncherForActivityResult(rememberUsageOpenDocument("DockerScreen.compose-import")) { uri -> if (uri != null) viewModel.importCompose(uri) { yaml -> viewModel.clearPreview(); composeDraft = yaml; composer = true } }
     Column(modifier.fillMaxSize().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         ScreenHeader(
             title = stringResource(R.string.docker_title), onBack = onBack,
             trailing = { Row { if (!notInstalled && section == "compose") { TextButton(onClick = { picker.launch(arrayOf("text/yaml", "application/x-yaml", "text/plain")) }, enabled = available) { Text(stringResource(R.string.docker_import)) }
-                TextButton(onClick = { composer = true }, enabled = available) { Text(stringResource(R.string.docker_new_stack)) } }
+                TextButton(onClick = { viewModel.clearPreview(); composer = true }, enabled = available && !state.busy) { Text(stringResource(R.string.docker_new_stack)) } }
                 TextButton(onClick = viewModel::refresh, enabled = available && !state.loading) { ActionLabel(R.string.common_refresh) } } },
         )
         if (!available) { EmptyHint(stringResource(R.string.error_capability_missing)); return@Column }
-        state.message?.let { message -> ActionFeedback(message, viewModel::refresh, viewModel::dismissMessage) }
+        if (!composer) state.message?.let { message -> ActionFeedback(message, viewModel::refresh, viewModel::dismissMessage) }
         RefreshProgressIndicator(visible = state.loading || state.busy)
         if (notInstalled) {
             EmptyHint(stringResource(R.string.runtime_install_hint, "Docker"))
@@ -133,11 +135,12 @@ fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialSt
         }
         }
     }
-    if (composer) DockerComposer(
+    if (composer) key(state.owner) { DockerComposer(
         initialYaml = composeDraft, preview = state.preview, busy = state.busy,
+        message = state.message, onDismissMessage = viewModel::dismissMessage,
         onPreview = viewModel::preview, onClearPreview = viewModel::clearPreview,
         onDismiss = { composer = false },
-        onDeploy = { name, yaml -> viewModel.deploy(name, yaml); composer = false })
+        onDeploy = { name, yaml -> viewModel.deploy(name, yaml) { composer = false } }) }
     destructive?.let { (removal, confirm) -> AlertDialog(onDismissRequest = { destructive = null }, title = { Text(stringResource(R.string.docker_confirm_title)) }, text = { Text(removalMessage(removal)) },
         confirmButton = { Button(onClick = { destructive = null; confirm() }) { ActionLabel(R.string.common_delete) } }, dismissButton = { TextButton(onClick = { destructive = null }) { Text(stringResource(R.string.common_cancel)) } }) }
 }
@@ -225,21 +228,25 @@ private const val DEFAULT_COMPOSE = "services:\n  app:\n    image: nginx:alpine\
 
 @Composable private fun <T> SimpleList(title: String, result: ApiResult<List<T>>?, text: (T) -> String) = SectionCard(title) { when (result) { is ApiResult.Success -> if (result.value.isEmpty()) Text(stringResource(R.string.docker_empty_resources)) else result.value.forEach { Text(text(it)) }; null -> ActivityIndicator(stringResource(R.string.common_loading)); else -> Text(stringResource(R.string.docker_list_failed)) } }
 
-@Composable private fun DockerComposer(
+@Composable internal fun DockerComposer(
     initialYaml: String, preview: DockerStackPreview?, busy: Boolean,
     onPreview: (String, String) -> Unit, onClearPreview: () -> Unit,
     onDismiss: () -> Unit, onDeploy: (String, String) -> Unit,
+    message: UiMessage? = null, onDismissMessage: () -> Unit = {},
 ) {
-    var name by mutableStateOf(""); var yaml by mutableStateOf(initialYaml)
-    Dialog(onDismissRequest = { if (!busy) onDismiss() }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        Surface(Modifier.fillMaxSize().safeDrawingPadding(), color = MaterialTheme.colorScheme.surface) {
+    var name by remember { mutableStateOf("") }; var yaml by remember(initialYaml) { mutableStateOf(initialYaml) }
+    var confirmLeave by remember { mutableStateOf(false) }
+    val leave = { if (!busy) { if (name.isNotEmpty() || yaml != initialYaml) confirmLeave = true else onDismiss() } }
+    Dialog(onDismissRequest = leave, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        Surface(Modifier.fillMaxSize().safeDrawingPadding().imePadding(), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.fillMaxSize()) {
-                ScreenHeader(stringResource(R.string.docker_new_stack), onBack = if (!busy) onDismiss else null,
+                ScreenHeader(stringResource(R.string.docker_new_stack), onBack = if (!busy) leave else null,
                     modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.md))
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                    message?.let { ActionFeedback(it, onRetry = null, onDismiss = onDismissMessage) }
                     Text(stringResource(R.string.docker_compose_note), style = MaterialTheme.typography.bodySmall)
-                    OutlinedTextField(name, { name = it; onClearPreview() }, label = { Text(stringResource(R.string.docker_stack_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(yaml, { yaml = it; onClearPreview() }, label = { Text(stringResource(R.string.docker_compose_yaml)) }, minLines = 8, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(name, { name = it; onClearPreview() }, enabled = !busy, label = { Text(stringResource(R.string.docker_stack_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(yaml, { yaml = it; onClearPreview() }, enabled = !busy, label = { Text(stringResource(R.string.docker_compose_yaml)) }, minLines = 8, modifier = Modifier.fillMaxWidth())
                     // What the server parsed, shown before anything is applied. It is not a prediction: the preview
                     // is the Composer's own answer, and the deployment sends back the version it returned.
                     preview?.let { value ->
@@ -251,11 +258,18 @@ private const val DEFAULT_COMPOSE = "services:\n  app:\n    image: nginx:alpine\
                 }
                 HorizontalDivider()
                 FlowRow(Modifier.fillMaxWidth().padding(Spacing.lg), horizontalArrangement = Arrangement.End, verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                    TextButton(onClick = onDismiss, enabled = !busy) { Text(stringResource(R.string.common_cancel)) }
+                    TextButton(onClick = leave, enabled = !busy) { Text(stringResource(R.string.common_cancel)) }
                     TextButton(onClick = { onPreview(name, yaml) }, enabled = !busy && name.isNotBlank() && yaml.isNotBlank()) { Text(stringResource(R.string.docker_preview)) }
                     Button(onClick = { onDeploy(name, yaml) }, enabled = !busy && name.isNotBlank() && yaml.isNotBlank()) { Text(stringResource(R.string.docker_deploy)) }
                 }
             }
         }
     }
+    if (confirmLeave) AlertDialog(
+        onDismissRequest = { confirmLeave = false },
+        title = { Text(stringResource(R.string.ui_discard_draft_title)) },
+        text = { Text(stringResource(R.string.ui_discard_draft_message)) },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.editor_discard_changes)) } },
+        dismissButton = { TextButton(onClick = { confirmLeave = false }) { Text(stringResource(R.string.common_cancel)) } },
+    )
 }

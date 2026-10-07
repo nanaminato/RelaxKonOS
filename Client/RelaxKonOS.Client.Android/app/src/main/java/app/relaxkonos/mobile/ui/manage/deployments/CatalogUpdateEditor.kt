@@ -1,18 +1,21 @@
 package app.relaxkonos.mobile.ui.manage.deployments
 
 import androidx.compose.runtime.*
-import app.relaxkonos.mobile.AppContainer
+import app.relaxkonos.mobile.core.auth.AuthSession
+import app.relaxkonos.mobile.data.DeploymentRepository
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.*
 import kotlinx.coroutines.*
 import java.util.UUID
 
 internal class CatalogUpdateEditor(
-    private val container: AppContainer,
+    private val session: AuthSession,
+    private val deployments: DeploymentRepository,
     private val owner: SessionState.Active,
     initial: DeploymentApplication,
     private val templates: List<CatalogTemplate>,
     parentScope: CoroutineScope,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val job = SupervisorJob(parentScope.coroutineContext[Job])
     private val scope = CoroutineScope(parentScope.coroutineContext + job)
@@ -24,13 +27,16 @@ internal class CatalogUpdateEditor(
     var preview by mutableStateOf<ApiResult<CatalogApplicationUpdatePreview>?>(null)
     var result by mutableStateOf<ApiResult<DeploymentOperation>?>(null)
     var busy by mutableStateOf(false)
-    var unknown by mutableStateOf(container.deployments.hasUncertainRevision(owner, baseline.id))
+    var unknown by mutableStateOf(deployments.hasUncertainRevision(owner, baseline.id))
     var reload by mutableIntStateOf(0)
     suspend fun refreshPreview() {
         preview = null
         val selected = target ?: return
-        val result = withContext(Dispatchers.IO) { container.deployments.previewCatalogUpdate(owner, baseline.id, selected.version) }
-        if (container.session.state.value === owner) preview = result
+        val result = try {
+            withContext(ioDispatcher) { deployments.previewCatalogUpdate(owner, baseline.id, selected.version) }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { ApiResult.Transport(null) }
+        if (session.state.value === owner) preview = result
     }
     fun submit(confirmed: CatalogApplicationUpdatePreview, onAccepted: (DeploymentOperation) -> Unit) {
         if (busy) return
@@ -38,8 +44,8 @@ internal class CatalogUpdateEditor(
         busy = true; result = null
         scope.launch {
             try {
-                val submitted = withContext(Dispatchers.IO) { container.deployments.updateCatalog(owner, baseline, confirmed, UUID.randomUUID().toString()) }
-                if (container.session.state.value !== owner) return@launch
+                val submitted = withContext(ioDispatcher) { deployments.updateCatalog(owner, baseline, confirmed, UUID.randomUUID().toString()) }
+                if (session.state.value !== owner) return@launch
                 result = submitted.result; unknown = submitted.mayHaveQueued
                 if (submitted.result is ApiResult.Success) onAccepted(submitted.result.value)
             } finally { busy = false }
@@ -52,16 +58,19 @@ internal class CatalogUpdateEditor(
         busy = true
         scope.launch {
             try {
-                when (val current = withContext(Dispatchers.IO) { container.deployments.reconcileRevision(owner, baseline.id) }) {
+                val current = withContext(ioDispatcher) { deployments.reconcileRevision(owner, baseline.id) }
+                if (session.state.value !== owner) return@launch
+                when (current) {
                     is ApiResult.Success -> {
                         if (current.value.application.id != baseline.id) { result = ApiResult.Transport(null); return@launch }
-                        baseline = current.value.application; unknown = container.deployments.hasUncertainRevision(owner, baseline.id); result = null; reload++
+                        baseline = current.value.application; unknown = deployments.hasUncertainRevision(owner, baseline.id); result = null; reload++
                     }
                     is ApiResult.Problem -> result = current
                     is ApiResult.Transport -> result = current
                 }
-            } finally { busy = false }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { if (session.state.value === owner) result = ApiResult.Transport(null) }
+            finally { busy = false }
         }
-
     }
 }

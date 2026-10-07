@@ -8,6 +8,40 @@ class DeploymentCreateFormTest {
     private val image = DeploymentTemplate("image", "Image", null, false, true, false, 8080)
     private val python = DeploymentTemplate("pythonProject", "Python", "python:3.13-slim", true, false, false, 8000)
 
+    @Test fun `raw invalid input and unadded secrets require discard confirmation`() {
+        val form = DeploymentCreateForm(listOf(image, python))
+        assertFalse(form.dirty)
+        form.goTo(3)
+        assertFalse(form.dirty)
+        form.port = "invalid"
+        assertTrue(form.dirty)
+        form.port = "8080"
+        assertFalse(form.dirty)
+        form.configurationValue = "unadded-secret"
+        assertTrue(form.dirty)
+        form.configurationValue = ""
+        form.configurationSecret = true
+        assertTrue(form.dirty)
+        form.configurationSecret = false
+        assertFalse(form.dirty)
+    }
+
+    @Test fun `source archive and configuration changes are included in draft differences`() {
+        val form = DeploymentCreateForm(listOf(image, python))
+        form.selectSource("pythonProject")
+        assertTrue(form.dirty)
+        form.selectSource("image")
+        assertFalse(form.dirty)
+        form.archiveName = "app.zip"
+        assertTrue(form.dirty)
+        form.archiveName = ""
+        form.configurationName = "KEY"; form.configurationValue = "value"
+        form.addConfiguration()
+        assertTrue(form.dirty)
+        form.configuration.clear()
+        assertFalse(form.dirty)
+    }
+
     @Test fun `wizard validates each step before advancing and submits the same definition fields`() {
         val form = DeploymentCreateForm(listOf(image, python))
         assertFalse(form.next())

@@ -1,6 +1,7 @@
 package app.relaxkonos.mobile.servercenter
 
 import com.jcraft.jsch.JSchException
+import com.jcraft.jsch.ReviewDisconnectException
 import java.net.ConnectException
 import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
@@ -9,6 +10,31 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class SshFailureRulesTest {
+    @Test
+    fun `structured authentication disconnect rejects credentials`() {
+        for (reason in listOf(14, 15)) {
+            assertEquals(SshFailureReason.AuthenticationRejected,
+                SshFailureRules.classify(ReviewDisconnectException(reason, "private server detail")))
+        }
+    }
+
+    @Test
+    fun `OpenSSH authentication limit disconnect rejects credentials`() {
+        assertEquals(SshFailureReason.AuthenticationRejected,
+            SshFailureRules.classify(ReviewDisconnectException(2, "Too many authentication failures")))
+    }
+
+    @Test
+    fun `ordinary protocol disconnect is not blamed on credentials`() {
+        assertEquals(SshFailureReason.HandshakeFailed,
+            SshFailureRules.classify(ReviewDisconnectException(2, "Protocol error")))
+    }
+
+    @Test
+    fun `structured authentication cancellation remains distinct`() {
+        assertEquals(SshFailureReason.AuthenticationCancelled,
+            SshFailureRules.classify(ReviewDisconnectException(13, "cancelled")))
+    }
 
     @Test
     fun `wrapped name resolution failure is reported as an unresolved name`() {

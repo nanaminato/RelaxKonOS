@@ -193,7 +193,7 @@ WorkspaceSection(mirrorsOnly) {
         confirmButton = { Button(onClick = { cancel = false; model.cancelInstall() }) { Text(stringResource(R.string.common_cancel)) } }, dismissButton = { TextButton(onClick = { cancel = false }) { Text(stringResource(R.string.common_close)) } })
     if (recover) AlertDialog(onDismissRequest = { recover = false }, title = { Text(stringResource(R.string.installation_recover)) }, text = { Column {
         Text(stringResource(R.string.installation_recover_help)); OutlinedTextField(id, { id = it }, singleLine = true, label = { Text(stringResource(R.string.installation_operation_id)) })
-        if (state.pendingInstallation) Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(identified, { identified = it }); Text(stringResource(R.string.docker_control_identify)) }
+        if (state.pendingInstallation) CheckboxOption(identified, stringResource(R.string.docker_control_identify)) { identified = it }
     } }, confirmButton = { Button(enabled = !state.busy && (!state.pendingInstallation || identified) && runCatching { InstallationRoutes.operation(id.trim()) }.isSuccess,
         onClick = { recover = false; model.recoverInstall(id, identified) }) { ActionLabel(R.string.common_refresh) } }, dismissButton = { TextButton(onClick = { recover = false }) { Text(stringResource(R.string.common_cancel)) } })
 }

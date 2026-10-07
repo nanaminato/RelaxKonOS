@@ -104,13 +104,16 @@ internal class GitBuildEditor(
         poll?.cancel()
         val id = selectedBuildId ?: return
         poll = scope.launch {
-            while (current && selected?.id == id && selected?.state in setOf("queued", "running")) {
-                delay(2500)
-                when (val result = owned { git.build(owner, id) }) {
-                    is ApiResult.Success -> if (current) builds = builds.map { if (it.id == id) result.value else it }
-                    else -> break
+            try {
+                while (current && selected?.id == id && selected?.state in setOf("queued", "running")) {
+                    delay(2500)
+                    when (val result = owned { git.build(owner, id) }) {
+                        is ApiResult.Success -> if (current) builds = builds.map { if (it.id == id) result.value else it }
+                        else -> { report(result); break }
+                    }
                 }
-            }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { if (current) problem = "transport" }
         }
     }
 

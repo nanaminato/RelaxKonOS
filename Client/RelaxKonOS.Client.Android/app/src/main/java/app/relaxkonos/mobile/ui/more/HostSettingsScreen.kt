@@ -185,17 +185,11 @@ fun HostSettingsScreen(onBack: (() -> Unit)?, onOpenServerHttps: () -> Unit = {}
                         minLines=6,maxLines=12,modifier=Modifier.fillMaxWidth())
                 }
                 if(owner.serverPlatform.equals("windows",true)) {
-                Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                    Checkbox(editor.expand,{editor.expand=it},enabled=!editor.busy)
-                    Text(stringResource(R.string.host_settings_expand))
-                }
+                CheckboxOption(editor.expand, stringResource(R.string.host_settings_expand), !editor.busy) { editor.expand = it }
                 Text(stringResource(R.string.host_settings_expand_hint),style=MaterialTheme.typography.bodySmall)
                 }
                 if(!owner.serverPlatform.equals("windows",true) && editor.existingVariable) {
-                    Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                        Checkbox(editor.delete,{editor.delete=it},enabled=!editor.busy)
-                        Text(stringResource(R.string.host_settings_delete))
-                    }
+                    CheckboxOption(editor.delete, stringResource(R.string.host_settings_delete), !editor.busy) { editor.delete = it }
                 }
             }
             if(editor.delete && !owner.serverPlatform.equals("windows",true)) {

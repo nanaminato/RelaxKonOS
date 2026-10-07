@@ -1,6 +1,7 @@
 package app.relaxkonos.mobile.servercenter
 
 import com.jcraft.jsch.JSchException
+import com.jcraft.jsch.JSchSessionDisconnectException
 import java.net.ConnectException
 import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
@@ -11,7 +12,7 @@ import java.net.UnknownHostException
  *
  * 它不是「错误信息」的包装，而是**结论**：同一句「无法验证 SSH 连接」把「手机到主机根本没连上」
  * 和「密码不对」说成同一件事，用户除了逐个猜测无事可做。归类只依赖异常类型与 SSH 库的固定消息
- * 前缀，绝不携带端点、用户名、密码或原始消息（见 [diagnosticName]）。
+ * 前缀及结构化断开原因，绝不携带端点、用户名、密码或原始消息（见 [diagnosticName]）。
  *
  * [diagnosticName] 同时是 `adb logcat -s RelaxKonSsh:D` 里的稳定分类名，界面文案与诊断证据因此
  * 永远指向同一件事。
@@ -71,6 +72,13 @@ object SshFailureRules {
      * 而界面与日志都不该出现它们。
      */
     private fun classifyJsch(error: JSchException): SshFailureReason = when {
+        // RFC 4253 disconnect codes: 14 exhausts authentication methods, 15 rejects the user.
+        // OpenSSH uses protocol-error code 2 for MaxAuthTries; only its explicit fixed description
+        // establishes an authentication rejection. Other protocol errors keep their own category.
+        error is JSchSessionDisconnectException &&
+            (error.reasonCode == 14 || error.reasonCode == 15 ||
+                error.description == "Too many authentication failures") -> SshFailureReason.AuthenticationRejected
+        error is JSchSessionDisconnectException && error.reasonCode == 13 -> SshFailureReason.AuthenticationCancelled
         error.message?.startsWith("Auth fail") == true -> SshFailureReason.AuthenticationRejected
         error.message?.startsWith("Auth cancel") == true -> SshFailureReason.AuthenticationCancelled
         error.message?.startsWith("Algorithm negotiation fail") == true -> SshFailureReason.AlgorithmNegotiation

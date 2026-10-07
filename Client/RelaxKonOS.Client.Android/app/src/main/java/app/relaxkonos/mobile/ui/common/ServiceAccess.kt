@@ -19,6 +19,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 @Composable
 fun ServiceAccess(addresses: List<ExternalServiceAddress>, ready: Boolean = true, stillCurrent: () -> Boolean) {
     val context = LocalContext.current
+    val openLabel = stringResource(R.string.service_access_open)
     var failed by remember(addresses) { mutableStateOf(false) }
     if (addresses.isEmpty()) return
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
@@ -30,7 +31,7 @@ fun ServiceAccess(addresses: List<ExternalServiceAddress>, ready: Boolean = true
                 if (stillCurrent() && ExternalServiceAddresses.valid(address.url)) {
                     try {
                         val view = Intent(Intent.ACTION_VIEW, Uri.parse(address.url)).addCategory(Intent.CATEGORY_BROWSABLE)
-                        context.startActivity(Intent.createChooser(view, context.getString(R.string.service_access_open)))
+                        context.startActivity(Intent.createChooser(view, openLabel))
                         failed = false
                     } catch (_: Exception) { failed = true }
                 } else failed = true

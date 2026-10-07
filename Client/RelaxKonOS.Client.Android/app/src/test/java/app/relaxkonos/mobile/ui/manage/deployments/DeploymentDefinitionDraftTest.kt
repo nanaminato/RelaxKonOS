@@ -8,6 +8,24 @@ import org.junit.Test
 
 class DeploymentDefinitionDraftTest {
     private val baseline = deploymentFixture()
+    @Test fun `invalid field edit still requires discard and restoring it clears the difference`() {
+        val draft = DeploymentDefinitionDraft(baseline)
+        assertFalse(draft.changed)
+        draft.containerPort = "invalid"
+        assertNull(draft.requestOrNull())
+        assertTrue(draft.changed)
+        draft.containerPort = baseline.containerPort.toString()
+        assertFalse(draft.changed)
+    }
+    @Test fun `collection removals and secret edits remain part of the draft difference`() {
+        val draft = DeploymentDefinitionDraft(baseline)
+        draft.configuration.clear()
+        assertTrue(draft.changed)
+        draft.configuration.addAll(baseline.configuration)
+        assertFalse(draft.changed)
+        assertTrue(draft.putConfiguration("TOKEN", "replacement", true))
+        assertTrue(draft.changed)
+    }
     @Test fun `editing a name preserves every untouched field exactly including byte ceiling paths and secret reference`() {
         val draft = DeploymentDefinitionDraft(baseline)
         draft.name = "renamed"

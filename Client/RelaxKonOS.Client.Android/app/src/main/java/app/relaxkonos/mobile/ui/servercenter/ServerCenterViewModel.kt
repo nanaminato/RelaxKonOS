@@ -31,6 +31,7 @@ import app.relaxkonos.mobile.ui.common.UiMessage
 import app.relaxkonos.mobile.ui.common.unlockFailureMessage
 import app.relaxkonos.mobile.ui.common.withReminder
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -67,6 +68,12 @@ class ServerCenterViewModel(application: Application) : AndroidViewModel(applica
     fun setRememberPassword(value: Boolean) = update { copy(rememberPassword = value) }
 
     fun dismissMessage() = update { copy(message = null) }
+
+    /** Closing the centre cancels pending authentication and drops all form secrets. */
+    fun clearSession() {
+        viewModelScope.coroutineContext.cancelChildren()
+        mutableState.value = ServerCenterUiState(hosts = coordinator.hosts()).projected()
+    }
 
     // ---- Connecting ------------------------------------------------------------------------
 
@@ -118,6 +125,7 @@ class ServerCenterViewModel(application: Application) : AndroidViewModel(applica
      * 密码只有一个输入位置，不做第二套。
      */
     fun switchWorkspaceHost(hostId: String, activity: FragmentActivity): Boolean {
+        if (mutableState.value.isVerifying) return false
         if (mutableState.value.hosts.none { it.hostId == hostId }) return false
         val connectsWithoutTyping = coordinator.hasSessionPassword(hostId) ||
             planSshHostOpen(mutableState.value.credentialStates[hostId] ?: SavedCredentialState.Absent).action ==

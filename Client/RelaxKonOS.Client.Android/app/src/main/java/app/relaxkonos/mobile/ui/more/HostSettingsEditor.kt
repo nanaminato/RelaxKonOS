@@ -166,7 +166,7 @@ internal class HostSettingsEditor(val owner: SessionState.Active, private val re
         job = scope.launch {
             try { action() }
             catch(cancelled: CancellationException) { throw cancelled }
-            catch(_: Exception) { if (current() && version == generation) error = if(write) R.string.host_settings_unknown else R.string.error_generic }
+            catch(_: Exception) { if (current() && version == generation) error = if(writeInFlight) R.string.host_settings_unknown else R.string.error_generic }
             finally { if (current() && version == generation) busy = false }
         }
     }

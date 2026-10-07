@@ -15,14 +15,21 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 import java.text.DateFormat
 import java.util.Date
 
-@Composable internal fun ProxyNetworkPanel(model: ProxyViewModel, canManage: Boolean, ready: Boolean, section: String, confirm: (() -> Unit) -> Unit) {
+private data class ProxySettingsEditRequest(val section: ProxySettingsSection, val settings: ProxySettings, val overview: ProxyOverview)
+
+@Composable internal fun ProxyNetworkPanel(model: ProxyViewModel, canManage: Boolean, ready: Boolean, section: String,
+    onEditorChanged: (Boolean) -> Unit, confirm: (() -> Unit) -> Unit) {
     val state = model.state; val overview = (state.overview as? ApiResult.Success)?.value
     val settings = (state.settings as? ApiResult.Success)?.value
-    var editing by remember { mutableStateOf<ProxySettingsSection?>(null) }
+    var editing by remember { mutableStateOf<ProxySettingsEditRequest?>(null) }
     var configuringGeo by remember { mutableStateOf(false) }
+    SideEffect { onEditorChanged(editing != null || configuringGeo) }
+    DisposableEffect(Unit) { onDispose { onEditorChanged(false) } }
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         if (section == "settings") {
-            ProxySettingsPanel(state, canManage, ready, edit = { editing = it }, configureGeo = { configuringGeo = true },
+            ProxySettingsPanel(state, canManage, ready, edit = { target ->
+                if (settings != null && overview != null) editing = ProxySettingsEditRequest(target, settings, overview)
+            }, configureGeo = { configuringGeo = true },
                 toggleTun = { enabled -> confirm { model.queue(if (enabled) ProxyAction.EnableTun else ProxyAction.DisableTun, if (enabled) overview?.activeProfile?.id else null) } },
                 toggleSystemProxy = { enabled -> settings?.let { confirm { model.saveSettings(it.copy(systemProxyEnabled = enabled,
                     systemProxy = it.systemProxy?.copy(usePac = it.systemProxy.usePac && overview?.systemProxy?.supportsPac == true))) } } },
@@ -92,22 +99,27 @@ import java.util.Date
             }
         }
     }
-    editing?.let { target ->
-        if (settings != null && overview != null) key(target) {
-            ProxySettingsEditor(settings, overview, target, model) { editing = null }
+    editing?.let { request ->
+        key(request.section) {
+            ProxySettingsEditor(request.settings, request.overview, request.section, state, model::saveSettings) { editing = null }
         }
     }
-    if (configuringGeo) ProxyGeoDataEditor(model) { configuringGeo = false }
+    if (configuringGeo) ProxyGeoDataEditor(state, model::configureGeoData) { configuringGeo = false }
 }
 
-@Composable private fun ProxyGeoDataEditor(model: ProxyViewModel, dismiss: () -> Unit) {
-    var path by remember { mutableStateOf("") }; var confirmed by remember { mutableStateOf(false) }; val initial = remember { model.state.savedEpoch }
-    LaunchedEffect(model.state.savedEpoch) { if (initial != model.state.savedEpoch) dismiss() }
-    AlertDialog(onDismissRequest = { if (!model.state.busy) dismiss() }, modifier = Modifier.imePadding(), title = { Text(stringResource(R.string.mihomo_geodata_select)) }, text = {
+@Composable internal fun ProxyGeoDataEditor(state: ProxyState, submit: (String) -> Unit, dismiss: () -> Unit) {
+    var path by remember { mutableStateOf("") }; var confirmed by remember { mutableStateOf(false) }; val initial = remember { state.savedEpoch }
+    var discard by remember { mutableStateOf(false) }
+    fun close() { if (!state.busy) { if (path.isNotEmpty() || confirmed) discard = true else dismiss() } }
+    LaunchedEffect(state.savedEpoch) { if (initial != state.savedEpoch) dismiss() }
+    AlertDialog(onDismissRequest = ::close, modifier = Modifier.imePadding(), title = { Text(stringResource(R.string.mihomo_geodata_select)) }, text = {
         Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
-            Text(stringResource(R.string.mihomo_geodata_note)); RemotePathField(path, { path = it }, R.string.mihomo_geodata_path, RemotePathKind.File)
-            ProxyCheck(confirmed, !model.state.busy, R.string.mihomo_apply_confirm) { confirmed = it }
-
+            Text(stringResource(R.string.mihomo_geodata_note)); RemotePathField(path, { path = it }, R.string.mihomo_geodata_path, RemotePathKind.File, enabled = !state.busy)
+            ProxyCheck(confirmed, !state.busy, R.string.mihomo_apply_confirm) { confirmed = it }
+            ProxyEditorFeedback(state)
         }
-    }, confirmButton = { Button(enabled = !model.state.busy && confirmed && path.isNotBlank() && model.state.pending.isEmpty(), onClick = { model.configureGeoData(path) }) { ActionLabel(R.string.common_save) } }, dismissButton = { TextButton(enabled = !model.state.busy, onClick = dismiss) { Text(stringResource(R.string.common_cancel)) } })
+    }, confirmButton = { Button(enabled = !state.busy && confirmed && path.isNotBlank() && state.pending.isEmpty(), onClick = { submit(path) }) { ActionLabel(R.string.common_save) } }, dismissButton = { TextButton(enabled = !state.busy, onClick = ::close) { Text(stringResource(R.string.common_cancel)) } })
+    if (discard) AlertDialog(onDismissRequest = { discard = false }, text = { Text(stringResource(R.string.mihomo_discard)) },
+        confirmButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_close)) } },
+        dismissButton = { TextButton(onClick = { discard = false }) { Text(stringResource(R.string.common_cancel)) } })
 }

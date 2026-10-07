@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.ui.common.ListRow
+import app.relaxkonos.mobile.ui.common.RadioOption
 import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionGroup
 import app.relaxkonos.mobile.ui.common.SectionLabel
@@ -123,9 +124,5 @@ fun AppearanceScreen(
 
 @Composable
 private fun ChoiceRow(labelRes: Int, selected: Boolean, onSelect: () -> Unit) {
-    ListRow(
-        title = stringResource(labelRes),
-        trailing = { RadioButton(selected = selected, onClick = onSelect) },
-        onClick = onSelect,
-    )
+    RadioOption(selected, stringResource(labelRes), onSelect = onSelect)
 }

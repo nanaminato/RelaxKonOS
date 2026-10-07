@@ -11,6 +11,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.activity.compose.BackHandler
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -65,7 +69,7 @@ fun ScriptsScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modi
     initialTaskId: String? = null) {
     val model: ScriptsViewModel = viewModel()
     val state by model.state.collectAsStateWithLifecycle()
-    var editing by remember { mutableStateOf(false) }
+    var editing by remember(owner) { mutableStateOf(false) }
     LaunchedEffect(owner, initialTaskId) {
         model.load(owner)
         if (initialTaskId != null) model.select(initialTaskId)
@@ -74,7 +78,9 @@ fun ScriptsScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modi
         model.observeSelected()
     }
     if (editing) {
-        ScriptEditor(owner, onBack = { editing = false }, onSubmit = { model.submit(it); editing = false }, modifier = modifier)
+        androidx.compose.runtime.key(owner) {
+            ScriptEditor(owner, onBack = { editing = false }, onSubmit = { model.submit(it); editing = false }, modifier = modifier)
+        }
         return
     }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
@@ -115,7 +121,7 @@ fun ScriptsScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modi
 }
 
 @Composable
-private fun ScriptEditor(owner: SessionState.Active, onBack: () -> Unit, onSubmit: (ScriptRequest) -> Unit,
+internal fun ScriptEditor(owner: SessionState.Active, onBack: () -> Unit, onSubmit: (ScriptRequest) -> Unit,
     modifier: Modifier = Modifier) {
     var executable by remember { mutableStateOf("") }
     var arguments by remember { mutableStateOf("") }
@@ -127,13 +133,30 @@ private fun ScriptEditor(owner: SessionState.Active, onBack: () -> Unit, onSubmi
         mutableStateOf("")
     }
     var adminPassword by remember { mutableStateOf("") }
+    var confirmLeave by remember { mutableStateOf(false) }
+    val dirty = executable.isNotEmpty() || arguments.isNotEmpty() || directory.isNotEmpty() ||
+        environment.isNotEmpty() || timeout != "300" || runAs != owner.userName ||
+        adminName.isNotEmpty() || adminPassword.isNotEmpty()
+    val leave = { if (dirty) confirmLeave = true else onBack() }
+    BackHandler(onBack = leave)
+    if (confirmLeave) AlertDialog(
+        onDismissRequest = { confirmLeave = false },
+        title = { Text(stringResource(R.string.ui_discard_draft_title)) },
+        text = { Text(stringResource(R.string.ui_discard_draft_message)) },
+        confirmButton = { TextButton(onClick = { adminPassword = ""; onBack() }) {
+            Text(stringResource(R.string.editor_discard_changes))
+        } },
+        dismissButton = { TextButton(onClick = { confirmLeave = false }) {
+            Text(stringResource(R.string.common_cancel))
+        } },
+    )
     val environmentLines = environment.lines().filter(String::isNotBlank)
     val validEnvironment = environmentLines.all { line ->
         val key = line.substringBefore('=')
         '=' in line && key.matches(Regex("[A-Za-z_][A-Za-z0-9_]*"))
     }
-    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-        ScreenHeader(title = stringResource(R.string.scripts_new), onBack = onBack)
+    Column(modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        ScreenHeader(title = stringResource(R.string.scripts_new), onBack = leave)
         RemotePathField(executable, { executable = it }, R.string.guardian_executable,
             RemotePathKind.File, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(arguments, { arguments = it }, label = { Text(stringResource(R.string.guardian_arguments)) }, modifier = Modifier.fillMaxWidth(), minLines = 3)

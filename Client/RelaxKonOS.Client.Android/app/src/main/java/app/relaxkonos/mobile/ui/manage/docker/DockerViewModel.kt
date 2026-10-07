@@ -32,6 +32,9 @@ import app.relaxkonos.mobile.ui.common.StatusTone
 import app.relaxkonos.mobile.ui.common.UiMessage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 data class DockerScreenState(
     val owner: SessionState.Active? = null,
     val loading: Boolean = false,
@@ -59,7 +62,14 @@ class DockerViewModel(application: Application) : AndroidViewModel(application) 
     var state by mutableStateOf(DockerScreenState(owner = container.activeSession))
         private set
 
-    init { refresh() }
+    init {
+        viewModelScope.launch {
+            container.session.state.collect {
+                state = DockerScreenState(owner = container.activeSession)
+                refresh()
+            }
+        }
+    }
 
     fun refresh() {
         val owner = container.activeSession ?: return
@@ -122,12 +132,13 @@ class DockerViewModel(application: Application) : AndroidViewModel(application) 
      * so the version the server verifies is the version of the document that is being sent — not an
      * answer from an earlier click that the operator may have edited away.
      */
-    fun deploy(name: String, yaml: String) {
+    fun deploy(name: String, yaml: String, onSubmitted: () -> Unit) {
         val owner = state.owner ?: return
         if (state.busy || name.isBlank() || yaml.isBlank()) { state = state.copy(message = UiMessage(R.string.docker_stack_required)); return }
         state = state.copy(busy = true, message = null)
         viewModelScope.launch {
             val preview = container.docker.previewStack(owner, name.trim(), yaml)
+            if (container.activeSession !== owner) return@launch
             if (preview !is ApiResult.Success) {
                 // Nothing was submitted: the deployment never left the device.
                 if (container.activeSession === owner) state = state.copy(busy = false, message = preview.dockerFailure())
@@ -139,6 +150,7 @@ class DockerViewModel(application: Application) : AndroidViewModel(application) 
             when (submitted) {
                 is ApiResult.Success -> {
                     state = state.copy(message = UiMessage(R.string.docker_stack_submitted, tone = StatusTone.Success))
+                    onSubmitted()
                     track(owner, submitted.value)
                 }
                 else -> state = state.copy(message = submitted.dockerFailure())
@@ -197,12 +209,20 @@ class DockerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun importCompose(uri: Uri, onImported: (String) -> Unit) {
+        val owner = container.activeSession ?: return
         viewModelScope.launch {
-            val source = runCatching {
-                getApplication<RelaxKonApplication>().contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                    ?: error("unreadable document")
-            }.getOrNull()
-            if (source == null) state = state.copy(message = UiMessage(R.string.docker_import_failed)) else onImported(source)
+            try {
+                val source = withContext(Dispatchers.IO) {
+                    getApplication<RelaxKonApplication>().contentResolver.openInputStream(uri)?.use(::readComposeDocument)
+                        ?: error("unreadable document")
+                }
+                if (container.activeSession === owner) onImported(source)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                if (container.activeSession === owner) state = state.copy(message = UiMessage(
+                    if (error is ComposeDocumentTooLargeException) R.string.docker_import_too_large else R.string.docker_import_failed))
+            }
         }
     }
 

@@ -3,6 +3,7 @@ package app.relaxkonos.mobile.ui.manage.guardian
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import app.relaxkonos.mobile.ui.common.PageActionRow
+import app.relaxkonos.mobile.ui.common.CheckboxOption
 import app.relaxkonos.mobile.ui.common.ActionLabel
 import app.relaxkonos.mobile.ui.common.ExecutionStatusChip
 import app.relaxkonos.mobile.ui.common.ActivityIndicator
@@ -246,7 +247,7 @@ private fun GuardianEditor(owner: SessionState.Active, draft: GuardianDraft, sta
             RemotePathField(draft.directory, { draft.directory = it }, R.string.guardian_directory, RemotePathKind.Directory, modifier = Modifier.fillMaxWidth(), enabled = !state.loading)
             OutlinedTextField(draft.runAs, { draft.runAs = it }, label = { Text(stringResource(R.string.guardian_run_as)) }, modifier = Modifier.fillMaxWidth(), enabled = !state.loading)
             draft.initial.runAsIdentity?.let { Text(stringResource(R.string.guardian_stable_identity, it), style = MaterialTheme.typography.bodySmall) }
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(draft.enabled, { draft.enabled = it }, enabled = !state.loading); Text(stringResource(R.string.guardian_boot)) }
+            CheckboxOption(draft.enabled, stringResource(R.string.guardian_boot), !state.loading) { draft.enabled = it }
             OutlinedTextField(draft.stopTimeout, { draft.stopTimeout = it }, label = { Text(stringResource(R.string.guardian_stop_timeout)) }, enabled = !state.loading)
             OutlinedTextField(draft.attempts, { draft.attempts = it }, label = { Text(stringResource(R.string.guardian_restart_attempts)) }, enabled = !state.loading)
             Text(stringResource(R.string.guardian_health_type))

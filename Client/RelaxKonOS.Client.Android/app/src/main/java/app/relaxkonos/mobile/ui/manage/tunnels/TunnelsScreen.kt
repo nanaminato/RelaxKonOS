@@ -41,16 +41,16 @@ import java.util.Date
     var recover by remember(owner, epoch) { mutableStateOf(false) }
     var operationId by remember(owner, epoch) { mutableStateOf("") }
     var originalIdentified by remember(owner, epoch) { mutableStateOf(false) }
-    OperationMessageDialog(if (state.busy) null else state.problemCode?.let { tunnelProblemLabel(it) } ?: if (state.uncertain) stringResource(R.string.tunnels_uncertain) else null, tone = if (state.problemCode == null) StatusTone.Warning else StatusTone.Danger)
+    OperationMessageDialog(if (state.busy || state.editorOpen || install) null else state.problemCode?.let { tunnelProblemLabel(it) } ?: if (state.uncertain) stringResource(R.string.tunnels_uncertain) else null, tone = if (state.problemCode == null) StatusTone.Warning else StatusTone.Danger)
     LaunchedEffect(owner, epoch) { if (available) model.refresh() }
-    LaunchedEffect(owner, epoch, state.installation?.operationId, state.installation?.state, state.busy, state.installationVerified) {
-        model.observeInstallation()
+    LaunchedEffect(owner, epoch, state.installation?.operationId, state.installation?.state, state.busy, state.installationVerified, state.editorOpen, install) {
+        if (!install) model.observeInstallation()
     }
     val facts = (state.facts as? ApiResult.Success)?.value
     val runtime = (state.runtime as? ApiResult.Success)?.value
     val notInstalled = runtime?.state == TunnelRuntimeState.NotInstalled
-    LaunchedEffect(owner, epoch, frpsSection, state.selectedId, state.busy, facts?.observedAtMillis) {
-        if (!frpsSection) model.observeConnection()
+    LaunchedEffect(owner, epoch, frpsSection, state.selectedId, state.busy, facts?.observedAtMillis, state.editorOpen, install) {
+        if (!frpsSection && !install) model.observeConnection()
     }
     BackHandler(section in setOf("profiles", "logs") && state.selectedId != null && state.profileDraft == null && state.definitionDraft == null && !state.busy) { model.select(null) }
     WorkspaceColumn(stringResource(R.string.tunnels_title), onBack, listOf(WorkspaceDestination("overview", R.string.workspace_overview), WorkspaceDestination("profiles", R.string.workspace_tunnels), WorkspaceDestination("runtime", R.string.workspace_runtime), WorkspaceDestination("logs", R.string.workspace_logs), WorkspaceDestination("frps", R.string.frps_server_tab), WorkspaceDestination("records", R.string.tunnels_records)), section, { section = it }, modifier, stateKey = owner to epoch,
@@ -69,7 +69,7 @@ import java.util.Date
         if (section != "records" && (state.uncertain || state.pending.isNotEmpty() || state.pendingInstallation || state.installation != null && !state.installationVerified)) TextButton(onClick = { section = "records" }) { Text(stringResource(R.string.tunnels_records_attention)) }
         // A gap-free container prevents retained, hidden tabs from adding blank rows.
         Column(Modifier.fillMaxWidth()) {
-        WorkspaceSection(frpsSection) { key(owner, epoch) { ManagedFrpsManager(model, state, canManage, active = frpsSection) } }
+        WorkspaceSection(frpsSection) { key(owner, epoch) { ManagedFrpsManager(model, state, canManage, active = frpsSection && !install) } }
 WorkspaceSection(section in setOf("overview", "runtime")) {
         TunnelCard {
         Text(stringResource(R.string.tunnels_runtime_title), style = MaterialTheme.typography.titleMedium)
@@ -162,7 +162,8 @@ WorkspaceSection(section in setOf("profiles", "logs")) {
     }
     if (install) key(owner, epoch) { TunnelInstallEditor(model, onSubmitted = { section = "records" }) { install = false } }
     if (state.frpsDraft != null) key(owner, epoch) { ManagedFrpsEditor(model, state) }
-    if (state.profileDraft != null) key(owner, epoch) { TunnelProfileEditor(state, model) }
+    if (state.profileDraft != null) key(owner, epoch) { TunnelProfileEditor(state, model::updateProfile,
+        model::closeProfile, model::saveProfile, model::reloadDraft, model::detect) }
     if (state.definitionDraft != null) key(owner, epoch) { TunnelDefinitionEditor(state, model) }
     tokenProfile?.let { profile -> AlertDialog(onDismissRequest = { secret = ""; tokenProfile = null }, modifier = Modifier.imePadding(),
         title = { Text(stringResource(R.string.tunnels_token_set)) }, text = { Column {

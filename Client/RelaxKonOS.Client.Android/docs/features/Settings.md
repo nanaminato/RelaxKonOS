@@ -27,6 +27,8 @@ Settings 错误响应现在包含稳定 problemCode 扩展；Android 不解析 t
 
 ## 操作恢复与页面生命周期
 
+收到成功写入回执后，后续主机信息刷新异常显示读取错误；不会把已收到的写入回执重新分类为结果未知。仍未收到写入回执时，意外异常按结果未知处理并保留核实门禁。
+
 应用前在 noBackupFilesDir 持久保存 serviceId/account、kind、原 planId、target、期限与 unresolved 标记。不保存环境值、差异内容、密码或令牌；最多 100 个跨登录引用，页面展示最近 20 项。相同宿主/账号再次登录可查询原操作；别的账号不显示该引用。
 
 操作回执丢失、取消、离页、进程回收不清除原提交标记。存在未确定操作时，新的宿主设置变更被阻断。查询校验 ID、target 和 settingId；仅 Applied/Failed/RolledBack 的权威终态解除门禁，Unknown/RecoveryRequired/PartiallyApplied 保持阻断。

@@ -10,6 +10,7 @@ import app.relaxkonos.mobile.security.VaultKind
 import app.relaxkonos.mobile.security.VaultOperation
 import app.relaxkonos.mobile.security.VaultRecord
 import app.relaxkonos.mobile.security.VaultUnlockMode
+import kotlinx.coroutines.CancellationException
 
 /**
  * Process-owned navigation state for the server centre.
@@ -277,6 +278,8 @@ class ServerCenterCoordinator(
             ServerHostKeyTrust.Trusted ->
                 ServerCenterSshVerification.Failed(SshFailureRules.classify(rejected))
         }
+    } catch (cancellation: CancellationException) {
+        throw cancellation
     } catch (error: Exception) {
         // The raw SSH exception may disclose usernames, paths, or library details; only its
         // classified reason reaches the UI, and the full detail stays in the debug-only sink.

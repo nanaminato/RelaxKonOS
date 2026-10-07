@@ -275,10 +275,7 @@ private fun NginxInstallDialog(model: NginxViewModel, onSubmitted: () -> Unit, d
             RefreshProgressIndicator(visible = state.busy)
             state.uploadBytes?.let { Text(stringResource(R.string.nginx_upload_bytes, it)) }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(confirmed, { confirmed = it }, enabled = !state.busy)
-                Text(stringResource(R.string.nginx_install_confirm))
-            }
+            CheckboxOption(confirmed, stringResource(R.string.nginx_install_confirm), !state.busy) { confirmed = it }
         } },
         confirmButton = { Button(enabled = !state.busy && confirmed && (model.hasIntent || (!state.pendingInstallation &&
             (!windows || (version.trim().matches(Regex("[0-9]+\\.[0-9]+\\.[0-9]+")) && (source == InstallationPackageSource.HostDownload || state.reference?.expired() == false))))),

@@ -90,14 +90,7 @@ fun ElevationDialog(container: AppContainer) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     } else {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(
-                                checked = storeRequested,
-                                onCheckedChange = { storeRequested = it },
-                                enabled = !busy,
-                            )
-                            Text(stringResource(R.string.elevation_save_credential))
-                        }
+                        CheckboxOption(storeRequested, stringResource(R.string.elevation_save_credential), !busy) { storeRequested = it }
                     }
                     OperationMessageDialog(
                         message = message?.takeUnless { busy }?.let { it.text() },

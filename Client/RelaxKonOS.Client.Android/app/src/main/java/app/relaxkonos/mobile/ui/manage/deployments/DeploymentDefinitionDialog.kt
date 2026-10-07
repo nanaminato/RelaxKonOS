@@ -1,6 +1,7 @@
 package app.relaxkonos.mobile.ui.manage.deployments
 
 import app.relaxkonos.mobile.ui.common.RefreshProgressIndicator
+import app.relaxkonos.mobile.ui.common.DraftCloseGuard
 
 import app.relaxkonos.mobile.ui.common.ActionLabel
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
@@ -31,14 +32,15 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 internal fun DeploymentDefinitionDialog(owner: SessionState.Active, baseline: DeploymentApplication, onDismiss: () -> Unit, onSaved: () -> Unit) {
     val container = appContainer()
     val scope = rememberCoroutineScope()
-    val editor = remember(DeploymentOwnerKey(owner), baseline.id, scope) { DeploymentDefinitionEditor(container, owner, baseline, scope) }
+    val editor = remember(DeploymentOwnerKey(owner), baseline.id, scope) { DeploymentDefinitionEditor(container.session, container.deployments, owner, baseline, scope) }
     DisposableEffect(editor) { onDispose { editor.close() } }
     with(editor) {
         val request = editor.request
-        Dialog(onDismissRequest = { if (!busy) onDismiss() }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        DraftCloseGuard(!busy, !saved && dirty, onDismiss) { requestClose ->
+        Dialog(onDismissRequest = requestClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
             Surface(Modifier.fillMaxSize().safeDrawingPadding(), color = MaterialTheme.colorScheme.surface) {
                 Column(Modifier.fillMaxSize().imePadding()) {
-                    ScreenHeader(stringResource(R.string.deployments_edit_definition), subtitle = draft.baseline.name, onBack = if (!busy) onDismiss else null,
+                    ScreenHeader(stringResource(R.string.deployments_edit_definition), subtitle = draft.baseline.name, onBack = if (!busy) requestClose else null,
                         modifier = Modifier.padding(Spacing.lg))
                     RefreshProgressIndicator(visible = busy)
                     Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
@@ -53,7 +55,9 @@ internal fun DeploymentDefinitionDialog(owner: SessionState.Active, baseline: De
                             null -> Unit
                             else -> OperationMessageDialog(outcome.deploymentFailure().text() + if (unknown) "\n\n${stringResource(R.string.deployments_definition_unknown)}" else "", eventKey = outcome)
                         }
-                        if (result != null && !saved || pending) TextButton(onClick = ::loadCurrent, enabled = !busy) { Text(stringResource(R.string.deployments_definition_load_current)) }
+                        if (result != null && !saved || pending) DraftCloseGuard(!busy, dirty, ::loadCurrent) { requestReload ->
+                            TextButton(onClick = requestReload, enabled = !busy) { Text(stringResource(R.string.deployments_definition_load_current)) }
+                        }
                         if (!preview) {
                             DefinitionText(draft.name, { draft.name = it }, R.string.deployments_name, editable)
                             Text(stringResource(R.string.deployments_name_rule), style = MaterialTheme.typography.bodySmall)
@@ -129,13 +133,14 @@ internal fun DeploymentDefinitionDialog(owner: SessionState.Active, baseline: De
                     }
                     HorizontalDivider()
                     FlowRow(Modifier.fillMaxWidth().padding(Spacing.lg), horizontalArrangement = Arrangement.End, verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                        TextButton(onClick = onDismiss, enabled = !busy) { Text(stringResource(if (saved) R.string.common_close else R.string.common_cancel)) }
+                        TextButton(onClick = requestClose, enabled = !busy) { Text(stringResource(if (saved) R.string.common_close else R.string.common_cancel)) }
                         if (preview) TextButton(onClick = { preview = false }, enabled = editable) { Text(stringResource(R.string.common_edit)) }
                         if (!preview) Button(onClick = { preview = true }, enabled = editable && request != null && !unstaged) { Text(stringResource(R.string.deployments_step_preview)) }
                         else Button(onClick = { save(onSaved) }, enabled = editable && request != null && !unstaged) { Text(stringResource(R.string.deployments_save_definition)) }
                     }
                 }
             }
+        }
         }
     }
 }

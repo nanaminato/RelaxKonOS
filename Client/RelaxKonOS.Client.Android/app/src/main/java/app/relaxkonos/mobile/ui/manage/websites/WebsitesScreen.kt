@@ -40,7 +40,9 @@ fun WebsitesScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initial
     androidx.compose.runtime.LaunchedEffect(container.activeSession, viewModel.sessionEpoch, available) { if (available && state.servers == null) viewModel.refresh() }
     androidx.compose.runtime.LaunchedEffect(initialApplicationId, state.applications) {
         if (!initialApplicationId.isNullOrBlank() && state.applications is ApiResult.Success &&
-            state.selectedApplicationId != initialApplicationId) viewModel.selectApplication(initialApplicationId)
+            state.selectedApplicationId != initialApplicationId && state.applications.value.any {
+                it.id == initialApplicationId && it.actualState.equals("running", true)
+            }) viewModel.selectApplication(initialApplicationId)
     }
 
     WorkspaceColumn(stringResource(R.string.websites_title), onBack, listOf(WorkspaceDestination("instances", R.string.workspace_instances), WorkspaceDestination("sites", R.string.workspace_sites), WorkspaceDestination("publish", R.string.workspace_publish), WorkspaceDestination("records", R.string.workspace_records)), section, { section = it }, modifier, stateKey = container.activeSession to viewModel.sessionEpoch) {
@@ -60,52 +62,68 @@ fun WebsitesScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initial
 private fun WebsitePublisher(state: WebsitesState, viewModel: WebsitesViewModel, onSubmitted: () -> Unit) {
     val servers = (state.servers as? ApiResult.Success)?.value.orEmpty().filter { it.server.canRead && it.server.canTestConfiguration }
     val applications = (state.applications as? ApiResult.Success)?.value.orEmpty().filter { it.actualState.equals("running", true) }
-    if (servers.isEmpty() || applications.isEmpty()) return
+    // Keep the draft in this composition while refresh temporarily shows prerequisite status.
     var domain by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var useExistingCertificate by remember { mutableStateOf(false) }
     var acceptedTerms by remember { mutableStateOf(false) }
     var publicReachability by remember { mutableStateOf(false) }
-    val certificates = (state.certificates as? ApiResult.Success)?.value.orEmpty()
     var selectedCertificateId by remember { mutableStateOf<String?>(null) }
+    val prerequisite = websitePublicationPrerequisite(state)
+    if (prerequisite == R.string.common_loading) {
+        ActivityIndicator(stringResource(R.string.common_loading))
+        return
+    }
+    if (prerequisite != null) {
+        SectionCard(stringResource(R.string.websites_publish_title)) {
+            Text(stringResource(prerequisite))
+            TextButton(onClick = viewModel::refresh, enabled = !state.loading && !state.publishing) {
+                ActionLabel(R.string.common_refresh)
+            }
+        }
+        return
+    }
+    val certificates = (state.certificates as? ApiResult.Success)?.value.orEmpty()
     val selectedCertificate = certificates.firstOrNull { it.id == selectedCertificateId }
     val certificateReady = certificateSelectionProblem(state.certificates, selectedCertificateId, listOf(domain)) == null
     SectionCard(stringResource(R.string.websites_publish_title)) {
+        TextButton(onClick = viewModel::refresh, enabled = !state.loading && !state.publishing) {
+            ActionLabel(R.string.common_refresh)
+        }
         Text(stringResource(R.string.websites_publish_intro), style = MaterialTheme.typography.bodySmall)
         Text(stringResource(R.string.websites_publish_server), style = MaterialTheme.typography.labelLarge)
         servers.forEach { item ->
-            TextButton(onClick = { viewModel.selectServer(item.server.id) }) {
+            TextButton(onClick = { viewModel.selectServer(item.server.id) }, enabled = !state.publishing) {
                 Text(if (item.server.id == state.selectedServerId) "✓ ${item.server.type}" else item.server.type)
             }
         }
         Text(stringResource(R.string.websites_publish_application), style = MaterialTheme.typography.labelLarge)
         applications.forEach { app ->
-            TextButton(onClick = { viewModel.selectApplication(app.id) }) {
+            TextButton(onClick = { viewModel.selectApplication(app.id) }, enabled = !state.publishing) {
                 Text(if (app.id == state.selectedApplicationId) "✓ ${app.name}" else app.name)
             }
         }
-        OutlinedTextField(domain, { domain = it.trim() }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.websites_domain)) }, singleLine = true)
-        androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Checkbox(checked = useExistingCertificate, onCheckedChange = { useExistingCertificate = it }, enabled = !state.publishing)
-            Text(stringResource(R.string.websites_use_existing_certificate))
-        }
+        OutlinedTextField(domain, { domain = it.trim() }, Modifier.fillMaxWidth(), enabled = !state.publishing, label = { Text(stringResource(R.string.websites_domain)) }, singleLine = true)
+        CheckboxOption(useExistingCertificate, stringResource(R.string.websites_use_existing_certificate), !state.publishing) { useExistingCertificate = it }
         if (useExistingCertificate) ManagedCertificatePicker(state.certificates, listOf(domain), selectedCertificateId, !state.publishing) { selectedCertificateId = it }
         if (!useExistingCertificate) {
-            OutlinedTextField(email, { email = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.websites_contact_email)) }, singleLine = true)
-            androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Checkbox(checked = acceptedTerms, onCheckedChange = { acceptedTerms = it })
-                Text(stringResource(R.string.websites_accept_terms))
-            }
-            androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Checkbox(checked = publicReachability, onCheckedChange = { publicReachability = it })
-                Text(stringResource(R.string.websites_public_reachability))
-            }
+            OutlinedTextField(email, { email = it }, Modifier.fillMaxWidth(), enabled = !state.publishing, label = { Text(stringResource(R.string.websites_contact_email)) }, singleLine = true)
+            CheckboxOption(acceptedTerms, stringResource(R.string.websites_accept_terms), !state.publishing) { acceptedTerms = it }
+            CheckboxOption(publicReachability, stringResource(R.string.websites_public_reachability), !state.publishing) { publicReachability = it }
         }
         Button(
             enabled = !state.publishing && domain.isNotBlank() && ((useExistingCertificate && certificateReady) || (!useExistingCertificate && email.isNotBlank() && acceptedTerms && publicReachability)),
             onClick = { viewModel.publish(domain, email, if (useExistingCertificate) selectedCertificate?.id else null, acceptedTerms, publicReachability); onSubmitted() },
         ) { Text(stringResource(if (state.publishing) R.string.websites_publishing else R.string.websites_publish)) }
     }
+}
+
+internal fun websitePublicationPrerequisite(state: WebsitesState): Int? = when {
+    state.loading -> R.string.common_loading
+    state.servers !is ApiResult.Success || state.applications !is ApiResult.Success -> R.string.websites_load_failed
+    state.servers.value.none { it.server.canRead && it.server.canTestConfiguration } -> R.string.websites_publish_no_eligible_server
+    state.applications.value.none { it.actualState.equals("running", true) } -> R.string.websites_publish_no_running_application
+    else -> null
 }
 
 @Composable

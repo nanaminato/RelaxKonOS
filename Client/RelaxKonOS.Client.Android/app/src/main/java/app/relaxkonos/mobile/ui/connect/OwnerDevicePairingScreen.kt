@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
@@ -54,7 +55,7 @@ import java.util.Date
  */
 @Composable
 fun OwnerDevicePairingScreen(modifier: Modifier = Modifier, onClose: () -> Unit) {
-    val activity = LocalContext.current as? FragmentActivity ?: return
+    val activity = androidx.activity.compose.LocalActivity.current as? FragmentActivity ?: return
     val context = LocalContext.current
     val viewModel: LoginViewModel = viewModel()
     var scanMessage by remember { mutableStateOf<Int?>(null) }
@@ -109,7 +110,7 @@ fun OwnerDevicePairingScreen(modifier: Modifier = Modifier, onClose: () -> Unit)
     }
 
     Column(
-        modifier = modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(Spacing.lg),
+        modifier = modifier.fillMaxSize().safeDrawingPadding().imePadding().verticalScroll(rememberScrollState()).padding(Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.lg),
     ) {
         ScreenHeader(

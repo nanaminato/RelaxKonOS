@@ -34,11 +34,13 @@ internal class BackupRecoveryEditor(
     fun close() { job.cancel() }
 
     fun load() {
-        if (!current || state.loading) return
+        if (!current || state.loading || state.creating) return
+        preflightJob?.cancel()
         state = BackupRecoveryViewState(loading = true)
         scope.launch {
             try {
                 val result = withContext(Dispatchers.IO) { container.backupRecovery.manifests(owner, applicationId) }
+                if (!current) return@launch
                 val reconciled = withContext(Dispatchers.IO) { container.backupRecovery.reconcileDefinitionBackup(owner, applicationId) }
                 if (current) {
                     val manifest = (reconciled as? ApiResult.Success)?.value
@@ -72,7 +74,7 @@ internal class BackupRecoveryEditor(
     }
 
     fun select(backupId: String) {
-        if (!current) return
+        if (!current || state.loading || state.creating) return
         preflightJob?.cancel()
         state = state.copy(selectedBackupId = backupId, preflight = null)
         preflightJob = scope.launch {

@@ -38,6 +38,7 @@ private data class SmbConfirmation(val expected: SmbFacts, val change: SmbChange
     var diagnostics by rememberSaveable(owner) { mutableStateOf(false) }
     var selected by remember(owner) { mutableStateOf<String?>(null) }
     var draft by remember(owner) { mutableStateOf<SmbDraft?>(null) }
+    var draftFacts by remember(owner) { mutableStateOf<SmbFacts?>(null) }
     var confirmation by remember(owner) { mutableStateOf<SmbConfirmation?>(null) }
     var password by remember(owner) { mutableStateOf("") }; var passwordAgain by remember(owner) { mutableStateOf("") }
     var leave by remember(owner) { mutableStateOf<(() -> Unit)?>(null) }
@@ -53,7 +54,7 @@ private data class SmbConfirmation(val expected: SmbFacts, val change: SmbChange
     BackHandler(section == "shares" && (draft != null || selected != null)) { navigate { draft = null; selected = null } }
     val pages = buildList {
         add(WorkspaceDestination("overview", R.string.workspace_overview))
-        if (facts?.capabilities?.managedSharesSupported == true) add(WorkspaceDestination("shares", R.string.workspace_shares))
+        if (facts?.capabilities?.managedSharesSupported == true || draft != null && draftFacts?.capabilities?.managedSharesSupported == true) add(WorkspaceDestination("shares", R.string.workspace_shares))
         if (facts?.capabilities?.sambaCredentialsSupported == true) add(WorkspaceDestination("users", R.string.workspace_users))
         add(WorkspaceDestination("records", R.string.smb_records))
     }
@@ -147,7 +148,7 @@ WorkspaceSection(section == "overview") {
         }
         if (facts != null && facts.capabilities.supported && facts.status.state.manageable) {
             if (section == "shares" && facts.capabilities.managedSharesSupported) {
-                OutlinedButton(enabled = ready && draft == null, onClick = { selected = null; draft = SmbDraft() }) { Text(stringResource(R.string.smb_create)) }
+                OutlinedButton(enabled = ready && draft == null, onClick = { selected = null; draftFacts = facts; draft = SmbDraft() }) { Text(stringResource(R.string.smb_create)) }
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
                     val wide = maxWidth >= 600.dp
                     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
@@ -183,7 +184,7 @@ WorkspaceSection(section == "overview") {
                                 chosen.permissions.forEach { Text(it.principal + " · " + smbAccessLabel(it.access)) }
                                 if (!chosen.managed || chosen.drifted) Text(stringResource(if (chosen.drifted) R.string.smb_drifted else R.string.smb_external), color = MaterialTheme.colorScheme.error)
                                 FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                                    Button(enabled = ready && chosen.managed && !chosen.drifted, onClick = { draft = SmbDraft.from(chosen, facts.capabilities.windowsShareSecuritySupported) }) { Text(stringResource(R.string.smb_edit)) }
+                                    Button(enabled = ready && chosen.managed && !chosen.drifted, onClick = { draftFacts = facts; draft = SmbDraft.from(chosen, facts.capabilities.windowsShareSecuritySupported) }) { Text(stringResource(R.string.smb_edit)) }
                                     OutlinedButton(enabled = ready && chosen.managed && !chosen.drifted, onClick = { confirmation = SmbConfirmation(facts, SmbChange(SmbChangeKind.DeleteShare, chosen.id)) }, colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) { ActionLabel(R.string.common_delete) }
                                 }
                                 TextButton(onClick = { selected = null }) { Text(stringResource(R.string.common_close)) }
@@ -207,8 +208,14 @@ WorkspaceSection(section == "overview") {
                 }
             }
         }
+        if (visible && draft != null && (facts == null || !facts.capabilities.supported || !facts.capabilities.managedSharesSupported || !facts.status.state.manageable)) {
+            val retainedFacts = draftFacts
+            if (retainedFacts != null) {
+                SmbRetainedShareEditor(requireNotNull(draft), retainedFacts, state.busy, model::refresh, { navigate { draft = null } })
+            }
+        }
     }
-    confirmation?.let { pending -> AlertDialog(onDismissRequest = { confirmation = null; password = ""; passwordAgain = "" },
+    confirmation?.let { pending -> AlertDialog(onDismissRequest = { confirmation = null; password = ""; passwordAgain = "" }, modifier = Modifier.imePadding(),
         title = { Text(stringResource(R.string.smb_confirm)) }, text = { Column(Modifier.heightIn(max = 450.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Text(smbActionLabel(pending.change.kind)); pending.change.target?.let { Text(it) }
             Text(stringResource(R.string.smb_host_warning))
@@ -223,8 +230,8 @@ WorkspaceSection(section == "overview") {
             if (pending.change.kind == SmbChangeKind.DeleteShare) Text(stringResource(R.string.smb_delete_note))
             if (pending.change.kind == SmbChangeKind.Password) {
                 Text(stringResource(R.string.smb_password_note))
-                OutlinedTextField(password, { password = it }, singleLine = true, label = { Text(stringResource(R.string.smb_password)) }, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
-                OutlinedTextField(passwordAgain, { passwordAgain = it }, singleLine = true, label = { Text(stringResource(R.string.smb_password_again)) }, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
+                OutlinedTextField(password, { password = it }, enabled = !state.busy, singleLine = true, label = { Text(stringResource(R.string.smb_password)) }, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
+                OutlinedTextField(passwordAgain, { passwordAgain = it }, enabled = !state.busy, singleLine = true, label = { Text(stringResource(R.string.smb_password_again)) }, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
             }
         } }, confirmButton = { Button(enabled = ready && (pending.change.kind != SmbChangeKind.Password || password == passwordAgain && password.length in 12..1024 && password.none(Char::isISOControl)), onClick = {
             val secret = if (pending.change.kind == SmbChangeKind.Password) password.toCharArray() else null

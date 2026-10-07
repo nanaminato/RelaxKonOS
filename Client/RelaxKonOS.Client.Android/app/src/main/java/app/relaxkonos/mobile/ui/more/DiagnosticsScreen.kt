@@ -85,7 +85,12 @@ fun DiagnosticsScreen(
         AlertDialog(
             onDismissRequest = { viewModel.dismissExport() },
             title = { Text(stringResource(R.string.diagnostics_export_title)) },
-            text = { Text(report, style = MaterialTheme.typography.bodySmall) },
+            text = {
+                androidx.compose.foundation.text.selection.SelectionContainer {
+                    Text(report, modifier = Modifier.verticalScroll(rememberScrollState()),
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            },
             confirmButton = {
                 TextButton(onClick = { viewModel.dismissExport() }) { Text(stringResource(R.string.common_close)) }
             },

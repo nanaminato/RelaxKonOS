@@ -26,18 +26,18 @@ internal data class TunnelsState(val busy: Boolean = false, val facts: ApiResult
 internal class TunnelsViewModel(application: Application) : AndroidViewModel(application) {
     suspend fun observeConnection() {
         val facts = (state.facts as? ApiResult.Success)?.value
-        if (state.selectedId != null && !state.busy && facts?.definitions?.any {
+        if (state.selectedId != null && !state.busy && !state.editorOpen && facts?.definitions?.any {
                 it.profileId == state.selectedId && it.state in setOf(TunnelConnectionState.Starting, TunnelConnectionState.Connected)
             } == true) {
             kotlinx.coroutines.delay(3000)
-            observe()
+            if (!state.editorOpen) observe()
         }
     }
 
     suspend fun observeInstallation() {
-        if (state.installationVerified && state.installation?.state?.active == true && !state.busy) {
+        if (state.installationVerified && state.installation?.state?.active == true && !state.busy && !state.editorOpen) {
             kotlinx.coroutines.delay(1500)
-            pollInstall()
+            if (!state.editorOpen) pollInstall()
         }
     }
 
@@ -63,7 +63,9 @@ internal class TunnelsViewModel(application: Application) : AndroidViewModel(app
     }
     fun observe() = work { active -> load(active) }
     private suspend fun load(active: SessionState.Active) {
-        val facts = container.tunnels.facts(active); val runtime = container.tunnels.runtime(active); val frps = container.tunnels.frps(active); verify(active)
+        val facts = container.tunnels.facts(active); verify(active)
+        val runtime = container.tunnels.runtime(active); verify(active)
+        val frps = container.tunnels.frps(active); verify(active)
         state = state.copy(facts = facts, runtime = runtime, frps = frps, frpsAtMillis = System.currentTimeMillis(), pending = container.tunnels.pending(active),
             pendingInstallation = container.installations.pending(active).any { it.service == InstallationService.Frp },
             problemCode = listOf(facts, runtime).filterIsInstance<ApiResult.Problem>().firstOrNull()?.code,
@@ -162,7 +164,8 @@ internal class TunnelsViewModel(application: Application) : AndroidViewModel(app
         if (result is ApiResult.Success && !result.value.succeeded) state = state.copy(problemCode = result.value.problemCode)
     }
     fun diagnosticsFrps() = work { active ->
-        val logs = container.tunnels.frpsLogs(active); val audit = container.tunnels.frpsAudit(active); verify(active)
+        val logs = container.tunnels.frpsLogs(active); verify(active)
+        val audit = container.tunnels.frpsAudit(active); verify(active)
         state = state.copy(frpsLogs = logs, frpsAudit = audit, frpsDiagnosticsAtMillis = System.currentTimeMillis())
         failure(if (logs !is ApiResult.Success) logs else audit)
     }
@@ -213,7 +216,7 @@ internal class TunnelsViewModel(application: Application) : AndroidViewModel(app
         if (state.busy) return
         state = state.copy(busy = true, problemCode = null, uncertain = false)
         viewModelScope.launch {
-            try { block(active) }
+            try { verify(active); block(active) }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { if (container.activeSession === active) state = state.copy(uncertain = true, installationVerified = false, pending = runCatching { container.tunnels.pending(active) }.getOrDefault(state.pending),
                 pendingInstallation = runCatching { container.installations.pending(active).any { it.service == InstallationService.Frp } }.getOrDefault(state.pendingInstallation)) }

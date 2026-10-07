@@ -7,12 +7,13 @@ import androidx.compose.runtime.*
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.servercenter.*
+import app.relaxkonos.mobile.ui.common.UiMessage
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.UUID
 internal data class MaintenanceState(val busy: Boolean = false, val snapshot: ServerHostSnapshot? = null,
-    val probe: ServerHostProbe? = null, val error: String? = null, val complete: Boolean = false,
+    val probe: ServerHostProbe? = null, val error: UiMessage? = null, val complete: Boolean = false,
     val progress: Int = R.string.server_progress_connecting, val firewallStatus: String? = null)
 
 internal fun maintenanceResultValid(kind: ServerDeploymentKind, snapshot: ServerHostSnapshot): Boolean = when (kind) {
@@ -32,8 +33,9 @@ internal class ServerMaintenanceViewModel(application: Application) : AndroidVie
             progress = R.string.server_progress_connecting)
         viewModelScope.launch {
             val secret = container.serverCenter.verifiedPasswordCopy(hostId)
-            if (secret == null) { mutable.value = MaintenanceState(error = getApplication<Application>().getString(R.string.ssh_workspace_deploy_verify)); return@launch }
+            if (secret == null) { mutable.value = MaintenanceState(error = UiMessage(R.string.ssh_workspace_deploy_verify)); return@launch }
             val credential = SshCredential(SshCredentialKind.Password, secret, null)
+            var mutationStarted = false
             try {
                 val result = withContext(Dispatchers.IO) {
                     container.serverCenterConnections.connect(hostId, credential, System.currentTimeMillis()).use { session ->
@@ -45,6 +47,7 @@ internal class ServerMaintenanceViewModel(application: Application) : AndroidVie
                             val id = UUID.randomUUID().toString()
                             val staged = client.stage(ServerDeploymentRequest(ServerDeploymentProtocol.VERSION, id, action, options), platform, launcher)
                             val reference = container.serverInstallOperations.record(session.target, key, id, platform)
+                            if (action != ServerDeploymentKind.Probe && action != ServerDeploymentKind.Status) mutationStarted = true
                             val receipt = client.execute(staged, password)
                             container.serverInstallOperations.markVerified(session.target, reference, key, System.currentTimeMillis())
                             check(receipt.state == ServerDeploymentState.Succeeded) { receipt.problemCode ?: "server-deployment.failed" }
@@ -78,8 +81,21 @@ internal class ServerMaintenanceViewModel(application: Application) : AndroidVie
                 }
                 mutable.value = result
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) { mutable.value = mutable.value.copy(busy = false, snapshot = null, error = error.message) }
+            catch (error: Exception) {
+                if (SshFailureRules.classify(error) == SshFailureReason.AuthenticationRejected) container.serverCenter.forgetSessionPassword(hostId)
+                mutable.value = mutable.value.copy(busy = false, snapshot = null, error = maintenanceErrorMessage(error, mutationStarted))
+            }
             finally { credential.clear(); secret.fill('\u0000') }
         }
     }
+}
+
+/** Product errors expose only known protocol codes or a classified transport cause. */
+internal fun maintenanceErrorMessage(error: Throwable, mutationStarted: Boolean): UiMessage {
+    val code = error.message
+    if (code == "server-deployment.postcondition_failed") return UiMessage(R.string.server_maintenance_verification_failed)
+    if (code in ServerDeploymentProblemCodes.all) return UiMessage(R.string.server_maintenance_failed_code, listOf(requireNotNull(code)))
+    if (mutationStarted) return UiMessage(R.string.server_maintenance_result_unknown)
+    val reason = SshFailureRules.classify(error)
+    return UiMessage(if (reason == SshFailureReason.Unexpected) R.string.server_maintenance_read_failed else sshFailureMessage(reason))
 }

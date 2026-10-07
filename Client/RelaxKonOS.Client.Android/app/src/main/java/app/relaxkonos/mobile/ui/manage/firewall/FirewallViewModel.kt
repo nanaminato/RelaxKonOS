@@ -51,7 +51,7 @@ internal class FirewallViewModel(application: Application) : AndroidViewModel(ap
         val request = generation
         state = state.copy(busy = true, problem = null)
         job = viewModelScope.launch {
-            try { block(owner) }
+            try { verify(owner); block(owner) }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { if (current(owner, request)) state = state.copy(facts = null, problem = "firewall.unverified") }
             finally { if (current(owner, request)) state = state.copy(busy = false) }

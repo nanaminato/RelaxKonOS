@@ -151,5 +151,5 @@ internal fun WebSiteEditor(state: NginxState, model: NginxViewModel) {
 }
 @Composable
 private fun SiteCheck(checked: Boolean, label: Int, enabled: Boolean, update: (Boolean) -> Unit) {
-    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(checked, update, enabled = enabled); Text(stringResource(label)) }
+    CheckboxOption(checked, stringResource(label), enabled, update)
 }

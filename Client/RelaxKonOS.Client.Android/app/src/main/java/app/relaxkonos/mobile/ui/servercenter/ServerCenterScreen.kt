@@ -70,7 +70,12 @@ fun ServerCenterScreen(onClose: () -> Unit) {
     val viewModel: ServerCenterViewModel = viewModel()
     val state by viewModel.state.collectAsStateWithLifecycle()
     // 保存与解封都需要一个 Activity 来承载指纹对话框；没有它就不能假装任务可以完成。
-    val activity = LocalContext.current as? FragmentActivity ?: return
+    val activity = androidx.activity.compose.LocalActivity.current as? FragmentActivity ?: return
+    val close = {
+        viewModel.clearSession()
+        onClose()
+    }
+    androidx.activity.compose.BackHandler(onBack = close)
 
     ServerCenterContent(
         state = state,
@@ -88,7 +93,7 @@ fun ServerCenterScreen(onClose: () -> Unit) {
         onRequestDelete = viewModel::requestDelete,
         onRequestForgetPassword = viewModel::requestForgetPassword,
         onDismissMessage = viewModel::dismissMessage,
-        onClose = onClose,
+        onClose = close,
     )
 
     val selected = state.hosts.firstOrNull { it.hostId == state.selectedHostId }

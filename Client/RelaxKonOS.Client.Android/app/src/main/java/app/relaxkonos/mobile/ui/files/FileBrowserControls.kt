@@ -1,6 +1,10 @@
 package app.relaxkonos.mobile.ui.files
 
 import app.relaxkonos.mobile.ui.common.ActionLabel
+import app.relaxkonos.mobile.ui.common.CheckboxOption
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -144,27 +148,28 @@ fun FileBatchOverlays(vm: FilesViewModel) {
 fun FilePermissionDialog(vm: FilesViewModel) {
     if (!vm.permissionsOpen) return
     val mode = FileBrowserPolicy.parseMode(vm.permissionInput)
-    AlertDialog(onDismissRequest = vm::closePermissions, title = { Text(stringResource(R.string.files_permissions_edit)) },
+    AlertDialog(onDismissRequest = vm::closePermissions, modifier = Modifier.imePadding(), title = { Text(stringResource(R.string.files_permissions_edit)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Text(vm.selected?.path.orEmpty())
                 Text(stringResource(R.string.files_permissions_scope))
-                if (vm.selected?.isDirectory == true) Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    Checkbox(checked = vm.permissionRecursive, onCheckedChange = { vm.permissionRecursive = it }, enabled = !vm.mutationBusy)
-                    Text(stringResource(R.string.files_permissions_recursive))
-                }
+                if (vm.selected?.isDirectory == true) CheckboxOption(vm.permissionRecursive, stringResource(R.string.files_permissions_recursive), !vm.mutationBusy) { vm.permissionRecursive = it }
                 OutlinedTextField(vm.permissionInput, { vm.permissionInput = it }, singleLine = true, enabled = !vm.mutationBusy,
                     label = { Text(stringResource(R.string.files_permissions_octal)) }, isError = mode == null)
                 val labels = listOf(R.string.files_permissions_owner, R.string.files_permissions_group, R.string.files_permissions_others)
                 labels.forEachIndexed { index, label ->
                     Text(stringResource(label))
-                    Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                         listOf(R.string.files_permissions_read, R.string.files_permissions_write, R.string.files_permissions_execute).forEachIndexed { bit, name ->
                             val mask = 1 shl (8 - index * 3 - bit)
-                            Checkbox(checked = mode != null && mode and mask != 0, enabled = mode != null && !vm.mutationBusy,
-                                onCheckedChange = { checked -> if (mode != null) vm.permissionInput = FileBrowserPolicy.formatMode(
-                                    if (checked) mode or mask else mode and mask.inv()) })
-                            Text(stringResource(name))
+                            Row(Modifier.heightIn(min = 48.dp).toggleable(
+                                value = mode != null && mode and mask != 0, enabled = mode != null && !vm.mutationBusy,
+                                role = Role.Checkbox, onValueChange = { checked -> if (mode != null) vm.permissionInput = FileBrowserPolicy.formatMode(
+                                    if (checked) mode or mask else mode and mask.inv()) }),
+                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                Checkbox(checked = mode != null && mode and mask != 0, onCheckedChange = null, enabled = mode != null && !vm.mutationBusy)
+                                Text(stringResource(name))
+                            }
                         }
                     }
                 }

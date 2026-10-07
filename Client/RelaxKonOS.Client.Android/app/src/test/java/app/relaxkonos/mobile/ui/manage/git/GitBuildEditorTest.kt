@@ -24,6 +24,7 @@ class GitBuildEditorTest {
     private var records = listOf(build("first"), build("linked"))
     private var starts = 0
     private var polls = 0
+    private var onPoll: suspend (String) -> ApiResult<GitBuildOperation> = { ApiResult.Success(build(it, "succeeded")) }
     private var onRefs: suspend () -> ApiResult<List<GitBuildRef>> = { ApiResult.Success(emptyList()) }
     private val gateway = object : RelaxKonGateway by base {
         override suspend fun gitBuildCredentials(serverUrl: String, accessToken: String) = ApiResult.Success(emptyList<GitBuildCredential>())
@@ -35,7 +36,7 @@ class GitBuildEditorTest {
         }
         override suspend fun gitBuildGet(serverUrl: String, accessToken: String, id: String): ApiResult<GitBuildOperation> {
             polls++
-            return ApiResult.Success(build(id, "succeeded"))
+            return onPoll(id)
         }
     }
     private val session = AuthSession(gateway)
@@ -49,6 +50,20 @@ class GitBuildEditorTest {
         base.onLogin = { _, _, _ -> ApiResult.Success(loginSession()) }
         session.login(ServerConnectionIdentityRules.direct("https://example.test"), "alice", "pw".toCharArray()) {}
         return session.state.value as SessionState.Active
+    }
+
+    @Test fun `poll failures retain last build and expose safe feedback`() = runTest {
+        val owner = owner()
+        for (throws in listOf(false, true)) {
+            onPoll = { if (throws) throw IllegalStateException("private detail") else ApiResult.Transport("private detail") }
+            val editor = GitBuildEditor(git, deployments, owner, { true }, this)
+            try {
+                editor.builds = records; editor.selectedBuildId = "first"
+                editor.observeSelected(); advanceTimeBy(2501); runCurrent()
+                assertEquals("transport", editor.problem)
+                assertEquals("running", editor.selected?.state)
+            } finally { editor.close() }
+        }
     }
 
     @Test fun `deep link selects matching build after load and later refresh preserves user selection`() = runTest {

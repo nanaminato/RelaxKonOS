@@ -198,6 +198,7 @@ internal class ProxyViewModel(application: Application) : AndroidViewModel(appli
         val result = call(active); verify(active); failure(result)
         if (result is ApiResult.Success) state = state.copy(savedEpoch = state.savedEpoch + 1)
         load(active)
+        if (result !is ApiResult.Success) failure(result)
     }
     fun loadReleases() = work { active ->
         val result = container.proxy.releases(active); verify(active); failure(result); state = state.copy(releases = result)
@@ -262,7 +263,7 @@ internal class ProxyViewModel(application: Application) : AndroidViewModel(appli
         if (state.busy) return
         state = state.copy(busy = true, problemCode = null, uncertain = false)
         viewModelScope.launch {
-            try { block(active) }
+            try { verify(active); block(active) }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { if (container.activeSession === active) state = state.copy(uncertain = true, operationVerified = false, installationVerified = false) }
             finally { if (container.activeSession === active) state = state.copy(busy = false,

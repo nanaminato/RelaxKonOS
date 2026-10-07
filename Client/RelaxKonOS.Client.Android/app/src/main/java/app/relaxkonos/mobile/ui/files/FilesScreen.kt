@@ -649,7 +649,7 @@ fun FileDetailScreen(
 /** Shared overlay for both list and detail routes, so compact detail actions never become inert. */
 @Composable
 fun FileOperationOverlays(viewModel: FilesViewModel) {
-    val owner = appContainer().session.state.value as? SessionState.Active
+    val owner = appContainer().session.state.collectAsStateValue() as? SessionState.Active
     FileBatchOverlays(viewModel)
     FilePermissionDialog(viewModel)
     if (viewModel.editorOpen && owner != null) app.relaxkonos.mobile.ui.editor.TextEditorDialog(

@@ -230,6 +230,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun openConnections() {
+        if (isLoggingIn || endpointDiscoveryState == EndpointDiscoveryState.Checking) return
         connectionsOpen = true
         refreshHostOperatingSystems()
     }

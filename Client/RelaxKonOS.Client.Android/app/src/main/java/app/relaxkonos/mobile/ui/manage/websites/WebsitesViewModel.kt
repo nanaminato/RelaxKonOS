@@ -81,13 +81,15 @@ internal class WebsitesViewModel(application: Application) : AndroidViewModel(ap
             }
             val certificates = if (owner.capabilities.contains(ServerCapabilities.CERTIFICATES)) container.webPublishing.certificates(owner) else null
             val applications = if (owner.capabilities.contains(ServerCapabilities.APPLICATION_DEPLOYMENTS)) container.deployments.applications(owner) else null
-            val firstServer = (details as? ApiResult.Success)?.value?.firstOrNull { it.server.canRead && it.server.canTestConfiguration }?.server?.id
-            val firstApplication = (applications as? ApiResult.Success)?.value?.firstOrNull { it.actualState.equals("running", true) }?.id
+            val serverIds = (details as? ApiResult.Success)?.value.orEmpty()
+                .filter { it.server.canRead && it.server.canTestConfiguration }.map { it.server.id }
+            val applicationIds = (applications as? ApiResult.Success)?.value.orEmpty()
+                .filter { it.actualState.equals("running", true) }.map { it.id }
             if (container.activeSession !== owner) return@launch
             state = state.copy(loading = false,
                 servers = details, certificates = certificates, applications = applications,
-                selectedServerId = state.selectedServerId ?: firstServer,
-                selectedApplicationId = state.selectedApplicationId ?: firstApplication,
+                selectedServerId = websitePublicationSelection(state.selectedServerId, serverIds),
+                selectedApplicationId = websitePublicationSelection(state.selectedApplicationId, applicationIds),
             )
         }
     }
@@ -146,5 +148,8 @@ internal class WebsitesViewModel(application: Application) : AndroidViewModel(ap
     }
 
 }
+
+internal fun websitePublicationSelection(current: String?, available: List<String>): String? =
+    current?.takeIf { it in available } ?: available.firstOrNull()
 
 internal fun WebsitePublicationOperation.isTerminal(): Boolean = state in setOf("succeeded", "partialFailed", "failed", "cancelled", "interrupted")

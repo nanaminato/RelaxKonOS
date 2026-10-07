@@ -1,3 +1,15 @@
 <resources>
+    <string name="ui_discard_draft_title">下書きを破棄しますか？</string>
+    <string name="ui_discard_draft_message">この下書きはまだ送信されていません。離れると入力内容が消去されます。</string>
+    <string name="websites_publish_no_eligible_server">公開には設定検証に対応した管理対象 Web サーバーが必要です。「インスタンス」で設定してから更新してください。</string>
+    <string name="websites_publish_no_running_application">公開できる実行中のアプリがありません。「アプリのデプロイ」で起動してから更新してください。</string>
+    <string name="connections_actions_title">このログインを管理</string>
     <string name="server_center_session_password_hint">空欄なら、このセッションで確認済みのパスワードを使います。再利用によって端末に保存されることはありません。</string>
+    <string name="docker_import_too_large">Compose ファイルが上限の 1 MiB を超えています。より小さい UTF-8 YAML ファイルを選択してください。</string>
+    <string name="server_maintenance_read_failed">インストール状態を読み取れませんでした。接続を確認してから再確認してください。</string>
+    <string name="server_maintenance_failed_code">ホストがメンテナンスの失敗を報告しました（%1$s）。再試行する前に操作記録と現在のインストール状態を確認してください。</string>
+    <string name="server_maintenance_result_unknown">メンテナンスの結果は未確認です。新たな変更を開始する前に履歴で元の操作を確認してください。</string>
+    <string name="server_maintenance_verification_failed">現在のインストール状態が想定した結果と一致しません。再試行する前に現在の状態と操作履歴を確認してください。</string>
+    <string name="smb_refresh_keep_draft">下書きを保持して再読み込み</string>
+    <string name="firewall_refresh_keep_draft">下書きを保持して再読み込み</string>
 </resources>

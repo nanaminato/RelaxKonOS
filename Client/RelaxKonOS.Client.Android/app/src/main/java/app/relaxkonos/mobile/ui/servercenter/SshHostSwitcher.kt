@@ -48,7 +48,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 fun SshHostSwitcherDialog(currentHostId: String, onDismiss: () -> Unit) {
     val viewModel: ServerCenterViewModel = viewModel()
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val activity = LocalContext.current as? FragmentActivity
+    val activity = androidx.activity.compose.LocalActivity.current as? FragmentActivity
 
     // 任何一次成功打开工作区都意味着切换完成：关掉选择器，让新的主机界面接上来。
     val openRevision = state.workspaceOpenRevision

@@ -3,6 +3,7 @@ package app.relaxkonos.mobile.ui.manage.deployments
 import app.relaxkonos.mobile.ui.common.rememberUsageOpenDocument
 
 import app.relaxkonos.mobile.ui.common.RefreshProgressIndicator
+import app.relaxkonos.mobile.ui.common.DraftCloseGuard
 
 import app.relaxkonos.mobile.ui.common.ActionLabel
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
@@ -53,10 +54,13 @@ internal fun DeploymentRevisionDialog(
             if (uri != null) { onClearArchive(); onArchiveStage(uri) }
         }
 
-        Dialog(onDismissRequest = { if (!busy) onDismiss() }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        val dirty = image.isNotEmpty() || baseImage.isNotEmpty() || runtime.isNotEmpty() || entry.isNotEmpty() ||
+            selfContained || arguments.isNotEmpty() || stagedArchive != null
+        DraftCloseGuard(!busy && !archiveStaging, result !is ApiResult.Success && dirty, onDismiss) { requestClose ->
+        Dialog(onDismissRequest = requestClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
             Surface(Modifier.fillMaxSize().safeDrawingPadding(), color = MaterialTheme.colorScheme.surface) {
                 Column(Modifier.fillMaxSize().imePadding()) {
-                    ScreenHeader(stringResource(R.string.deployments_new_revision), subtitle = baseline.name, onBack = if (!busy) onDismiss else null,
+                    ScreenHeader(stringResource(R.string.deployments_new_revision), subtitle = baseline.name, onBack = if (!busy && !archiveStaging) requestClose else null,
                         modifier = Modifier.padding(Spacing.lg))
                     RefreshProgressIndicator(visible = busy || archiveStaging)
                     Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
@@ -125,7 +129,7 @@ internal fun DeploymentRevisionDialog(
                     }
                     HorizontalDivider()
                     FlowRow(Modifier.fillMaxWidth().padding(Spacing.lg), horizontalArrangement = Arrangement.End, verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                        TextButton(onClick = onDismiss, enabled = !busy) { Text(stringResource(R.string.common_close)) }
+                        TextButton(onClick = requestClose, enabled = !busy && !archiveStaging) { Text(stringResource(R.string.common_close)) }
                         if (preview) TextButton(onClick = { preview = false }, enabled = editable) { Text(stringResource(R.string.common_edit)) }
                         Button(onClick = {
                             if (!preview) { preview = true; return@Button }
@@ -138,6 +142,7 @@ internal fun DeploymentRevisionDialog(
                     }
                 }
             }
+        }
         }
         if (picker) ServerArchivePicker(onDismiss = { picker = false }, onSelect = { path -> onClearArchive(); onServerArchiveStage(path); picker = false })
     }

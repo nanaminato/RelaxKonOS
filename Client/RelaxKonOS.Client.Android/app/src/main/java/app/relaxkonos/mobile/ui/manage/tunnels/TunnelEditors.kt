@@ -8,42 +8,41 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.selection.toggleable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.semantics.Role
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.ui.common.*
 import app.relaxkonos.mobile.ui.theme.Spacing
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable internal fun TunnelProfileEditor(state: TunnelsState, model: TunnelsViewModel) {
+@Composable internal fun TunnelProfileEditor(state: TunnelsState,
+    update: (TunnelProfileDraft) -> Unit, closeEditor: () -> Unit, saveEditor: () -> Unit,
+    reloadEditor: () -> Unit, detect: (String) -> Unit) {
     val draft = state.profileDraft ?: return
     val locked = state.busy || state.pending.isNotEmpty()
     var discard by remember { mutableStateOf(false) }; var save by remember { mutableStateOf(false) }; var reload by remember { mutableStateOf(false) }
-    fun close() { if (!state.busy) { if (draft != state.initialProfile) discard = true else model.closeProfile() } }
+    fun close() { if (!state.busy) { if (draft != state.initialProfile) discard = true else closeEditor() } }
     AlertDialog(onDismissRequest = ::close, modifier = Modifier.imePadding(), title = { Text(stringResource(R.string.tunnels_profile_editor)) },
         text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Text(stringResource(R.string.tunnels_saved_note))
             TunnelCard {
-            TunnelText(draft.name, !locked, R.string.tunnels_name) { model.updateProfile(draft.copy(name = it)) }
-            TunnelText(draft.host, !locked, R.string.tunnels_host) { model.updateProfile(draft.copy(host = it)) }
-            TunnelText(draft.port, !locked, R.string.tunnels_server_port) { model.updateProfile(draft.copy(port = it)) }
+            TunnelText(draft.name, !locked, R.string.tunnels_name) { update(draft.copy(name = it)) }
+            TunnelText(draft.host, !locked, R.string.tunnels_host) { update(draft.copy(host = it)) }
+            TunnelText(draft.port, !locked, R.string.tunnels_server_port) { update(draft.copy(port = it)) }
             }
             TunnelCard {
             Text(stringResource(R.string.tunnels_security), style = MaterialTheme.typography.titleSmall)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) { TunnelAuth.entries.forEach { auth -> FilterChip(draft.auth == auth, { model.updateProfile(draft.copy(auth = auth)) }, enabled = !locked, label = { Text(tunnelAuthLabel(auth)) }) } }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) { TunnelAuth.entries.forEach { auth -> FilterChip(draft.auth == auth, { update(draft.copy(auth = auth)) }, enabled = !locked, label = { Text(tunnelAuthLabel(auth)) }) } }
             Text(stringResource(R.string.tunnels_token_editor_note))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) { TunnelTls.entries.forEach { tls -> FilterChip(draft.tls == tls, { model.updateProfile(draft.copy(tls = tls)) }, enabled = !locked, label = { Text(tunnelTlsLabel(tls)) }) } }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) { TunnelTls.entries.forEach { tls -> FilterChip(draft.tls == tls, { update(draft.copy(tls = tls)) }, enabled = !locked, label = { Text(tunnelTlsLabel(tls)) }) } }
             if (draft.tls == TunnelTls.Disable) Text(stringResource(R.string.tunnels_tls_warning), color = MaterialTheme.colorScheme.error)
             }
             TunnelCard {
             Text(stringResource(R.string.tunnels_runtime_title), style = MaterialTheme.typography.titleSmall)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) { TunnelRuntimeMode.entries.forEach { mode -> FilterChip(draft.mode == mode, { model.updateProfile(draft.copy(mode = mode)) }, enabled = !locked, label = { Text(tunnelModeLabel(mode)) }) } }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) { TunnelRuntimeMode.entries.forEach { mode -> FilterChip(draft.mode == mode, { update(draft.copy(mode = mode)) }, enabled = !locked, label = { Text(tunnelModeLabel(mode)) }) } }
             if (draft.mode == TunnelRuntimeMode.External) {
-                if (!locked) RemotePathField(draft.path, { model.updateProfile(draft.copy(path = it)) }, R.string.tunnels_external_path, RemotePathKind.File) else Text(draft.path)
+                if (!locked) RemotePathField(draft.path, { update(draft.copy(path = it)) }, R.string.tunnels_external_path, RemotePathKind.File) else Text(draft.path)
                 Text(stringResource(R.string.tunnels_external_note))
-                OutlinedButton(enabled = !locked && TunnelInputs.absolutePath(draft.path.trim()), onClick = { model.detect(draft.path.trim()) }) { Text(stringResource(R.string.tunnels_probe)) }
+                OutlinedButton(enabled = !locked && TunnelInputs.absolutePath(draft.path.trim()), onClick = { detect(draft.path.trim()) }) { Text(stringResource(R.string.tunnels_probe)) }
                 when (val detected = state.detected) {
                     is ApiResult.Success -> { ExecutionStatusChip(tunnelRuntimeLabel(detected.value.state), detected.value.state.wire, task = false); detected.value.version?.let { Text(stringResource(R.string.tunnels_version_value, it)) }; detected.value.problemCode.takeIf(String::isNotBlank)?.let { Text(tunnelProblemLabel(it)) } }
                     null -> Unit
@@ -56,7 +55,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
         } }, confirmButton = { Button(enabled = !locked && draft.request() != null, onClick = { save = true }) { ActionLabel(R.string.common_save) } },
         dismissButton = { TextButton(enabled = !state.busy, onClick = ::close) { Text(stringResource(R.string.common_close)) } })
     EditorConfirmation(discard || save || reload, draft.name + " · " + draft.id.orEmpty(), when { save -> R.string.tunnels_profile_save_confirm; reload -> R.string.tunnels_reload_confirm; else -> R.string.tunnels_discard_confirm },
-        { discard = false; save = false; reload = false }, { when { save -> model.saveProfile(); reload -> model.reloadDraft(); else -> model.closeProfile() }; discard = false; save = false; reload = false })
+        { discard = false; save = false; reload = false }, { when { save -> saveEditor(); reload -> reloadEditor(); else -> closeEditor() }; discard = false; save = false; reload = false })
 }
 @OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun TunnelDefinitionEditor(state: TunnelsState, model: TunnelsViewModel) {
@@ -94,11 +93,22 @@ import app.relaxkonos.mobile.ui.theme.Spacing
     EditorConfirmation(discard || save || reload, draft.name + " · " + draft.id.orEmpty(), when { save -> R.string.tunnels_definition_save_confirm; reload -> R.string.tunnels_reload_confirm; else -> R.string.tunnels_discard_confirm },
         { discard = false; save = false; reload = false }, { when { save -> model.saveDefinition(); reload -> model.reloadDraft(); else -> model.closeDefinition() }; discard = false; save = false; reload = false })
 }
+internal val TunnelsState.editorOpen: Boolean
+    get() = profileDraft != null || definitionDraft != null || frpsDraft != null
+
+@Composable internal fun TunnelEditorFeedback(state: TunnelsState) {
+    if (!state.busy) {
+        state.problemCode?.let { Text(tunnelProblemLabel(it), color = MaterialTheme.colorScheme.error) }
+        if (state.uncertain || state.pending.isNotEmpty())
+            Text(stringResource(R.string.tunnels_uncertain), color = MaterialTheme.colorScheme.error)
+    }
+    RefreshProgressIndicator(visible = state.busy)
+}
+
 @Composable private fun EditorStatus(state: TunnelsState, invalid: Boolean) {
     if (invalid) Text(stringResource(R.string.tunnels_validation), color = MaterialTheme.colorScheme.error)
 
-    if (state.pending.isNotEmpty()) Text(stringResource(R.string.tunnels_uncertain), color = MaterialTheme.colorScheme.error)
-    RefreshProgressIndicator(visible = state.busy)
+    TunnelEditorFeedback(state)
 }
 @Composable private fun EditorConfirmation(visible: Boolean, target: String, message: Int, dismiss: () -> Unit, submit: () -> Unit) {
     if (visible) AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(R.string.tunnels_confirm)) }, text = { Column { Text(target); Text(stringResource(message)) } },
@@ -108,8 +118,5 @@ import app.relaxkonos.mobile.ui.theme.Spacing
     OutlinedTextField(value, change, enabled = enabled, label = { Text(stringResource(label)) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
 }
 @Composable internal fun TunnelCheck(value: Boolean, enabled: Boolean, label: Int, change: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = value, enabled = enabled, role = Role.Checkbox, onValueChange = change), verticalAlignment = Alignment.CenterVertically) {
-        Checkbox(value, onCheckedChange = null, enabled = enabled)
-        Text(stringResource(label), Modifier.padding(start = Spacing.sm))
-    }
+    CheckboxOption(value, stringResource(label), enabled, change)
 }

@@ -240,17 +240,14 @@ private fun CertificateEditor(state: CertificatesState, model: CertificatesViewM
             Text(stringResource(if (draft.selfSigned) R.string.certificates_self_signed_note else R.string.certificates_challenge_note))
             if (state.pending.any { it.target == null }) Text(stringResource(R.string.certificates_restore_form_note))
             OutlinedTextField(draft.domainsText, { model.update(draft.copy(domainsText = it)) }, enabled = !locked, label = { Text(stringResource(R.string.certificates_domains)) }, modifier = Modifier.fillMaxWidth())
-            CertificateKey.entries.forEach { key -> Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { RadioButton(draft.key == key, { model.update(draft.copy(key = key)) }, enabled = !locked); Text(certificateKeyLabel(key)) } }
+            CertificateKey.entries.forEach { key -> RadioOption(draft.key == key, certificateKeyLabel(key), !locked) { model.update(draft.copy(key = key)) } }
             if (draft.selfSigned) OutlinedTextField(draft.validityDays, { model.update(draft.copy(validityDays = it)) }, enabled = !locked, singleLine = true, label = { Text(stringResource(R.string.certificates_validity_days)) })
             else {
-                CertificateChallenge.entries.forEach { challenge -> Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    RadioButton(draft.challenge == challenge, { model.update(draft.copy(challenge = challenge)) }, enabled = !locked)
-                    Text(certificateChallengeLabel(challenge))
-                } }
+                CertificateChallenge.entries.forEach { challenge -> RadioOption(draft.challenge == challenge, certificateChallengeLabel(challenge), !locked) { model.update(draft.copy(challenge = challenge)) } }
                 if (draft.challenge == CertificateChallenge.Dns01) Text(stringResource(R.string.certificates_dns_unavailable), color = MaterialTheme.colorScheme.error)
                 OutlinedTextField(draft.email, { model.update(draft.copy(email = it)) }, enabled = !locked, singleLine = true, label = { Text(stringResource(R.string.certificates_email)) }, modifier = Modifier.fillMaxWidth())
-                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(draft.acceptedTerms, { model.update(draft.copy(acceptedTerms = it)) }, enabled = !locked); Text(stringResource(R.string.certificates_terms)) }
-                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(draft.reachable, { model.update(draft.copy(reachable = it)) }, enabled = !locked); Text(stringResource(R.string.certificates_public_confirm)) }
+                CheckboxOption(draft.acceptedTerms, stringResource(R.string.certificates_terms), !locked) { model.update(draft.copy(acceptedTerms = it)) }
+                CheckboxOption(draft.reachable, stringResource(R.string.certificates_public_confirm), !locked) { model.update(draft.copy(reachable = it)) }
                 OutlinedButton(enabled = !state.busy && draft.domains() != null, onClick = model::preflight) { Text(stringResource(R.string.certificates_preflight)) }
                 val preflight = (state.preflight as? ApiResult.Success)?.value
                 preflight?.let { facts ->

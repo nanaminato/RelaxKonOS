@@ -3,16 +3,18 @@ package app.relaxkonos.mobile.ui.manage.smb
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.foundation.selection.toggleable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.ui.common.*
 import app.relaxkonos.mobile.ui.theme.Spacing
+
+@Composable internal fun SmbRetainedShareEditor(draft: SmbDraft, facts: SmbFacts, busy: Boolean, refresh: () -> Unit, dismiss: () -> Unit) {
+    Text(stringResource(R.string.smb_unverified), color = MaterialTheme.colorScheme.error)
+    TextButton(enabled = !busy, onClick = refresh) { Text(stringResource(R.string.smb_refresh_keep_draft)) }
+    SmbShareEditor(draft, facts, false, {}, {}, dismiss)
+}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun SmbShareEditor(draft: SmbDraft, facts: SmbFacts, enabled: Boolean, change: (SmbDraft) -> Unit, save: () -> Unit, dismiss: () -> Unit) {
@@ -75,8 +77,5 @@ import app.relaxkonos.mobile.ui.theme.Spacing
     }
 }
 @Composable internal fun SmbCheck(value: Boolean, enabled: Boolean, label: Int, change: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = value, enabled = enabled, role = Role.Checkbox, onValueChange = change), verticalAlignment = Alignment.CenterVertically) {
-        Checkbox(value, onCheckedChange = null, enabled = enabled)
-        Text(stringResource(label), modifier = Modifier.padding(start = Spacing.sm))
-    }
+    CheckboxOption(value, stringResource(label), enabled, change)
 }

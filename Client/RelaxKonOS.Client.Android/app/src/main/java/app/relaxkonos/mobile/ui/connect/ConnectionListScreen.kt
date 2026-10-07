@@ -17,6 +17,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
@@ -43,6 +44,8 @@ import app.relaxkonos.mobile.ui.common.IconBadge
 import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.common.formatTimestamp
 import app.relaxkonos.mobile.ui.icons.ServerPlatformBadge
+import app.relaxkonos.mobile.ui.icons.DesktopIcon
+import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.icons.hostPlatformMark
 import app.relaxkonos.mobile.ui.theme.Radius
 import app.relaxkonos.mobile.ui.theme.Spacing
@@ -112,10 +115,11 @@ fun ConnectionListScreen(
     actionTarget?.let { login ->
         AlertDialog(
             onDismissRequest = { actionTarget = null },
-            title = { Text(login.displayName ?: login.serviceId) },
+            title = { Text(stringResource(R.string.connections_actions_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    Text(stringResource(R.string.connections_swipe_actions))
+                    Text(login.displayName ?: login.serviceId)
+                    Text(login.identifier, style = MaterialTheme.typography.bodyMedium)
                     OutlinedButton(
                         onClick = { actionTarget = null; forgetTarget = login },
                         modifier = Modifier.fillMaxWidth(),
@@ -251,12 +255,12 @@ private fun SwipeableSavedLoginEntry(
                     ServerPlatformBadge(login.serviceId)
                 },
                 trailing = {
-                    Text(
-                        stringResource(R.string.connections_connect),
-                        color = MaterialTheme.colorScheme.primary,
-                        style = MaterialTheme.typography.labelLarge,
-                        textAlign = TextAlign.End,
-                    )
+                    IconButton(onClick = onManage) {
+                        DesktopIcon(
+                            icon = DesktopIcons.overflow,
+                            contentDescription = stringResource(R.string.connections_actions_title),
+                        )
+                    }
                 },
                 onClick = onSelect,
             )

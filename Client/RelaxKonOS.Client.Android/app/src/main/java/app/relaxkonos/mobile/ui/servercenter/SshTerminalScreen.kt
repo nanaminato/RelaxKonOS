@@ -1,4 +1,5 @@
 package app.relaxkonos.mobile.ui.servercenter
+import app.relaxkonos.mobile.ui.common.CheckboxOption
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Icon
@@ -248,10 +249,7 @@ internal fun SshTerminalContent(
         }
     }, input = { compact ->
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-            if (!compact) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Checkbox(checked = concealInput, onCheckedChange = onConcealChange)
-                Text(stringResource(R.string.ssh_terminal_hide_input))
-            }
+            if (!compact) CheckboxOption(concealInput, stringResource(R.string.ssh_terminal_hide_input), onCheckedChange = onConcealChange)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                 verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(

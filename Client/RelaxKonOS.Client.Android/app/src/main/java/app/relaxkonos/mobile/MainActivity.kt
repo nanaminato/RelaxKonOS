@@ -108,7 +108,7 @@ private fun RelaxKonApp(container: AppContainer) {
         val scope = rememberCoroutineScope()
         var ownerDevicePairingOpen by rememberSaveable { mutableStateOf(false) }
         var changingSession by remember { mutableStateOf(false) }
-        val activity = LocalContext.current as FragmentActivity
+        val activity = androidx.activity.compose.LocalActivity.current as FragmentActivity
 
         fun endSession(switching: Boolean, target: SavedLogin? = null) {
             if (changingSession) return
