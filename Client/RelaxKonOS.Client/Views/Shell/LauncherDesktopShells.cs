@@ -623,10 +623,13 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
         network.Bind(ToolTip.TipProperty, new Binding(nameof(vm.ServerConnectionStatus)));
         network.Bind(Visual.OpacityProperty, new Binding(nameof(vm.IsServerConnected)) { Converter = new FuncValueConverter<bool, double>(connected => connected ? 1 : 0.45) });
         tray.Children.Add(network);
-        var sound = WindowsGlyphButton("", LocalizedText.Get("shell.tray.sound", "Client sound settings"), null);
-        sound.Content = ShellIconFactory.Line("M3,9 L7,9 12,5 12,19 7,15 3,15 Z M16,8 C19,10 19,14 16,16 M19,5 C24,9 24,15 19,19", 16);
-        sound.IsEnabled = OperatingSystem.IsWindows();
-        sound.Click += (_, _) => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ms-settings:sound") { UseShellExecute = true });
+        // The server protocol currently exposes no remote audio capability.
+        var audioUnavailable = LocalizedText.Get("shell.tray.audio_unavailable", "Remote audio unavailable");
+        var sound = WindowsGlyphButton("", audioUnavailable, null);
+        sound.Content = ShellIconFactory.Line("M3,9 L7,9 12,5 12,19 7,15 3,15 Z M16,9 L22,15 M22,9 L16,15", 16);
+        sound.Opacity = 0.55;
+        AutomationProperties.SetName(sound, audioUnavailable);
+        sound.Flyout = new Flyout { Content = new TextBlock { Text = audioUnavailable, Margin = new Thickness(8), TextWrapping = TextWrapping.Wrap } };
         tray.Children.Add(sound);
         systemArea.Children.Add(tray);
         var clock = new StackPanel
