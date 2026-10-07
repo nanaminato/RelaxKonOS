@@ -37,6 +37,7 @@
 > - Git 客户端见 [`RelaxKonOS.GitClient.md`](./applications/RelaxKonOS.GitClient.md)
 > - 服务端持久化见 [`RelaxKonOS.Storage.md`](./platform/RelaxKonOS.Storage.md)
 > - 开发者指南见 [`RelaxKonOS.Develop.md`](./development/RelaxKonOS.Develop.md)
+> - 全仓优化检查、优先级与验收进度见 [`RelaxKonOS.Optimization.Progress.md`](./development/RelaxKonOS.Optimization.Progress.md)
 > - 开发模式与扩展见 [`RelaxKonOS.DeveloperMode.md`](./development/RelaxKonOS.DeveloperMode.md)
 > 当文档冲突时：本文档代表**当前代码实现**，Architecture 文档代表**设计原则**。
 
