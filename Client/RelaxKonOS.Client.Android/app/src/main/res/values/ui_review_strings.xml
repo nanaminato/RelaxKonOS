@@ -1,0 +1,3 @@
+<resources>
+    <string name="server_center_session_password_hint">Leave blank to reuse the password verified in this session. Reuse does not save it on this device.</string>
+</resources>

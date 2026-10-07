@@ -73,6 +73,11 @@ class ServerCenterCoordinator(
     /** Whether this host was already verified in this Server Centre session, so no prompt is needed. */
     fun hasSessionPassword(hostId: String): Boolean = verifiedSessionPasswords.containsKey(hostId)
 
+    /** A rejected session password must not keep winning over a corrected vault credential. */
+    fun forgetSessionPassword(hostId: String) {
+        verifiedSessionPasswords.remove(hostId)?.fill('\u0000')
+    }
+
     fun openSshFiles(hostId: String, password: CharArray) {
         require(targets.find(hostId) != null) { "Unknown host target '$hostId'." }
         if (sshFilesHostId != null) closeSshFiles()

@@ -1,0 +1,3 @@
+<resources>
+    <string name="server_center_session_password_hint">留空即可复用本次已验证的密码；复用不会将密码保存在本机。</string>
+</resources>

@@ -1,0 +1,3 @@
+<resources>
+    <string name="server_center_session_password_hint">空欄なら、このセッションで確認済みのパスワードを使います。再利用によって端末に保存されることはありません。</string>
+</resources>

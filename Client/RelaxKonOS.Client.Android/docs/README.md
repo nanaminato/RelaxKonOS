@@ -54,7 +54,10 @@
 | [构建、调试与发布](development/android-release.md) | 本地环境、签名机、APK/AAB、导入发布与渠道证书 |
 | [Ubuntu Git 构建环境](development/GitBuild.Ubuntu.md) | rootless BuildKit 的宿主准备、配置与受限执行 |
 | [验证要求](development/Verification.md) | 设备、宿主、文件传输及故障场景的检查与预期行为 |
+| [界面与流程专项审查](development/UiReview.md) | 本次用户要求的逐页审查流程与总进度 |
 
 ## 维护规则
+
+本次用户明确要求的界面审查与进度追踪是下述一般生命周期规则的专项例外，集中维护在 [UiReview.md](development/UiReview.md)。
 
 设计文档描述当前规则，功能文档描述实际入口、交互、授权和错误恢复，支持范围明确当前边界，开发文档描述构建、发布及验证方法。不维护目标表、阶段编号、推进顺序、完成率或测试执行流水账。功能变化时同步修改对应说明，历史由 Git 保存。共享 Protocol/Server 语义链接仓库领域文档，不复制 Android 详细文档到仓库级目录。

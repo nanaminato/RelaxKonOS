@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
@@ -27,6 +29,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.Role
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.R
@@ -46,6 +49,8 @@ import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.common.PasswordTextField
 import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionCard
+import app.relaxkonos.mobile.ui.common.SectionGroup
+import app.relaxkonos.mobile.ui.common.SectionLabel
 import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.ui.common.text
 import app.relaxkonos.mobile.ui.icons.DesktopIcon
@@ -157,7 +162,7 @@ private fun ServerCenterContent(
     onClose: () -> Unit,
 ) {
     Column(
-        Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(Spacing.lg),
+        Modifier.fillMaxSize().safeDrawingPadding().imePadding().verticalScroll(rememberScrollState()).padding(Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.lg),
     ) {
         ScreenHeader(
@@ -204,14 +209,11 @@ private fun ManagedHosts(
     onOpenHost: (String) -> Unit,
     onManageHost: (String) -> Unit,
 ) {
-    SectionCard(
-        title = stringResource(R.string.server_center_managed_hosts),
-        subtitle = stringResource(R.string.server_center_managed_hosts_hint),
-        leading = DesktopIcons.host,
-    ) {
+    SectionLabel(stringResource(R.string.server_center_managed_hosts))
+    SectionGroup {
         if (state.hosts.isEmpty()) {
             Text(stringResource(R.string.server_center_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            return@SectionCard
+            return@SectionGroup
         }
         state.hosts.forEach { host ->
             val credential = state.credentialStates[host.hostId] ?: SavedCredentialState.Absent
@@ -224,12 +226,12 @@ private fun ManagedHosts(
                 supporting = stringResource(credentialStatusLabel(credentialStatus(credential, state.unlockMode))),
                 leading = { IconBadge(DesktopIcons.host, contentDescription = null) },
                 trailing = {
-                    TextButton(onClick = { onManageHost(host.hostId) }) {
+                    TextButton(onClick = { onManageHost(host.hostId) }, enabled = !state.isVerifying) {
                         Text(stringResource(R.string.server_center_manage_host))
                     }
                 },
                 selected = host.hostId == state.selectedHostId,
-                onClick = { onOpenHost(host.hostId) },
+                onClick = if (state.isVerifying) null else ({ onOpenHost(host.hostId) }),
             )
         }
     }
@@ -252,12 +254,6 @@ private fun HostForm(
     val managing = state.formMode == ServerCenterFormMode.Manage
     val credential = state.selectedHostId?.let { state.credentialStates[it] } ?: SavedCredentialState.Absent
     val status = credentialStatus(credential, state.unlockMode)
-    val savedPasswordUsable = managing &&
-        (status == CredentialStatus.SavedByFingerprint || status == CredentialStatus.SavedByScreenLock)
-    // 密码框留空只在「保存的密码可用」时才合法：那正是状态行说的「留空即可解封」（§6.2）。
-    val maySubmit = !state.isVerifying &&
-        (state.password.isNotEmpty() || savedPasswordUsable) &&
-        (!managing || state.selectedHostId != null)
 
     SectionCard(
         title = if (managing) {
@@ -268,60 +264,78 @@ private fun HostForm(
         subtitle = if (managing) null else stringResource(R.string.server_center_add_host_hint),
         leading = DesktopIcons.credentials,
     ) {
-        OutlinedTextField(
-            value = state.host,
-            onValueChange = onHostChanged,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text(stringResource(R.string.server_center_ssh_host)) },
-            isError = state.inputError,
-            singleLine = true,
-            enabled = !managing && !state.isVerifying,
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
-            OutlinedTextField(
-                value = state.port,
-                onValueChange = onPortChanged,
-                modifier = Modifier.weight(1f),
-                label = { Text(stringResource(R.string.server_center_ssh_port)) },
-                isError = state.inputError,
-                singleLine = true,
-                enabled = !managing && !state.isVerifying,
+        if (managing) {
+            Text(
+                "${state.user}@${state.host}:${state.port}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        } else {
             OutlinedTextField(
-                value = state.user,
-                onValueChange = onUserChanged,
-                modifier = Modifier.weight(1f),
-                label = { Text(stringResource(R.string.server_center_ssh_user)) },
-                isError = state.inputError,
-                singleLine = true,
-                enabled = !managing && !state.isVerifying,
-            )
-        }
-        if (!managing) {
-            OutlinedTextField(
-                value = state.name,
-                onValueChange = onNameChanged,
+                value = state.host,
+                onValueChange = onHostChanged,
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text(stringResource(R.string.server_center_host_name_optional)) },
+                label = { Text(stringResource(R.string.server_center_ssh_host)) },
+                isError = state.inputError,
                 singleLine = true,
-                enabled = !state.isVerifying,
+                enabled = !managing && !state.isVerifying,
             )
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                OutlinedTextField(
+                    value = state.port,
+                    onValueChange = onPortChanged,
+                    modifier = Modifier.weight(1f),
+                    label = { Text(stringResource(R.string.server_center_ssh_port)) },
+                    isError = state.inputError,
+                    singleLine = true,
+                    enabled = !managing && !state.isVerifying,
+                )
+                OutlinedTextField(
+                    value = state.user,
+                    onValueChange = onUserChanged,
+                    modifier = Modifier.weight(1f),
+                    label = { Text(stringResource(R.string.server_center_ssh_user)) },
+                    isError = state.inputError,
+                    singleLine = true,
+                    enabled = !managing && !state.isVerifying,
+                )
+            }
+            if (!managing) {
+                OutlinedTextField(
+                    value = state.name,
+                    onValueChange = onNameChanged,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text(stringResource(R.string.server_center_host_name_optional)) },
+                    singleLine = true,
+                    enabled = !state.isVerifying,
+                )
+            }
         }
         PasswordTextField(
             state.password,
             onPasswordChanged,
             stringResource(R.string.server_center_ssh_password),
             enabled = !state.isVerifying,
-            supportingText = credentialStatusLine(status),
+            supportingText = if (state.hasSessionPassword && managing) {
+                { Text(stringResource(R.string.server_center_session_password_hint)) }
+            } else credentialStatusLine(status),
         )
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.fillMaxWidth().toggleable(
+                value = state.rememberPassword && state.unlockMode != null,
+                enabled = !state.isVerifying && state.unlockMode != null,
+                role = Role.Checkbox,
+                onValueChange = onRememberPasswordChanged,
+            ),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Checkbox(
-                checked = state.rememberPassword,
-                onCheckedChange = onRememberPasswordChanged,
+                checked = state.rememberPassword && state.unlockMode != null,
+                onCheckedChange = null,
                 // 勾选跟着「本机能不能保护它」走，绝不比它更宽松：SSH 凭据没有 debug 明文兜底。
                 enabled = !state.isVerifying && state.unlockMode != null,
             )
-            Text(stringResource(R.string.server_center_remember_password))
+            Text(stringResource(R.string.server_center_remember_password), modifier = Modifier.weight(1f))
         }
         if (state.unlockMode == null) {
             Text(
@@ -348,7 +362,7 @@ private fun HostForm(
             horizontalArrangement = Arrangement.spacedBy(Spacing.md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Button(onSubmit, enabled = maySubmit, modifier = Modifier.weight(1f)) {
+            Button(onSubmit, enabled = state.canSubmit, modifier = Modifier.weight(1f)) {
                 if (state.isVerifying) {
                     CircularProgressIndicator()
                 } else {

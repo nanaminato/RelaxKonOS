@@ -22,6 +22,7 @@ import app.relaxkonos.mobile.servercenter.SshCredential
 import app.relaxkonos.mobile.servercenter.SshCredentialKind
 import app.relaxkonos.mobile.servercenter.SshHostOpenAction
 import app.relaxkonos.mobile.servercenter.SshPasswordOrigin
+import app.relaxkonos.mobile.servercenter.SshFailureReason
 import app.relaxkonos.mobile.servercenter.planSshHostKeyReview
 import app.relaxkonos.mobile.servercenter.planSshHostOpen
 import app.relaxkonos.mobile.servercenter.shouldSaveSshPassword
@@ -73,6 +74,7 @@ class ServerCenterViewModel(application: Application) : AndroidViewModel(applica
      * 添加一台新主机：校验输入后立刻握手；失败的主机不会留下任何管理记录。
      */
     fun addAndVerify(activity: FragmentActivity) {
+        if (mutableState.value.isVerifying) return
         val state = mutableState.value
         val port = state.port.toIntOrNull()
         if (port == null || !ServerHostTargetRules.isValidEndpoint(state.host, port, state.user) || state.password.isEmpty()) {
@@ -95,6 +97,7 @@ class ServerCenterViewModel(application: Application) : AndroidViewModel(applica
      * 表单并要求输入密码。这是列表卡片与工作区「切换主机」共用的唯一入口。
      */
     fun openHost(hostId: String, activity: FragmentActivity) {
+        if (mutableState.value.isVerifying) return
         val target = mutableState.value.hosts.firstOrNull { it.hostId == hostId } ?: return
         selectForManage(target)
         openWithBestCredential(target, activity)
@@ -102,6 +105,7 @@ class ServerCenterViewModel(application: Application) : AndroidViewModel(applica
 
     /** 主机的次级动作：只打开管理表单，不发起连接。 */
     fun manage(hostId: String) {
+        if (mutableState.value.isVerifying) return
         val target = mutableState.value.hosts.firstOrNull { it.hostId == hostId } ?: return
         selectForManage(target)
         update { copy(password = "", quickManaging = false, message = null, inputError = false) }
@@ -125,6 +129,7 @@ class ServerCenterViewModel(application: Application) : AndroidViewModel(applica
 
     /** 管理表单的主按钮。密码留空即等于「用保存的密码」，与登录页的状态行是同一套约定。 */
     fun verifyAndOpen(activity: FragmentActivity) {
+        if (mutableState.value.isVerifying) return
         val target = selectedTarget() ?: return
         val typed = mutableState.value.password
         if (typed.isNotEmpty()) {
@@ -149,6 +154,7 @@ class ServerCenterViewModel(application: Application) : AndroidViewModel(applica
      * 新主机首次固定之后仍要问一次保存，从保险箱解封来的则不再问（见 [SshPasswordOrigin]）。
      */
     fun confirmHostKey(activity: FragmentActivity) {
+        if (mutableState.value.isVerifying) return
         val state = mutableState.value
         val target = state.pendingTarget ?: return
         val review = planSshHostKeyReview(state.verification) ?: return
@@ -225,6 +231,8 @@ class ServerCenterViewModel(application: Application) : AndroidViewModel(applica
         copy(
             formMode = ServerCenterFormMode.Manage,
             selectedHostId = target.hostId,
+            hasSessionPassword = coordinator.hasSessionPassword(target.hostId),
+            password = "",
             host = target.sshHost,
             port = target.sshPort.toString(),
             user = target.sshUserName,
@@ -348,10 +356,21 @@ class ServerCenterViewModel(application: Application) : AndroidViewModel(applica
             val secret = password.toCharArray()
             val result = try {
                 coordinator.verifySsh(target, SshCredential(SshCredentialKind.Password, secret, null))
+            } catch (cancellation: CancellationException) {
+                update {
+                    copy(isVerifying = false, quickManaging = false, pendingTarget = null,
+                        pendingPassword = "", pendingPasswordOrigin = null)
+                }
+                throw cancellation
             } finally {
                 secret.fill('\u0000')
             }
             val succeeded = result is ServerCenterSshVerification.Trusted
+            if (result is ServerCenterSshVerification.Failed &&
+                result.reason == SshFailureReason.AuthenticationRejected
+            ) {
+                coordinator.forgetSessionPassword(target.hostId)
+            }
             if (succeeded) {
                 val now = System.currentTimeMillis()
                 coordinator.saveHost(target.copy(sshVerifiedAtEpochMillis = now, lastUsedAtEpochMillis = now))
@@ -367,7 +386,7 @@ class ServerCenterViewModel(application: Application) : AndroidViewModel(applica
                     pendingPassword = if (awaitingHostKeyReview) password else "",
                     pendingPasswordOrigin = if (awaitingHostKeyReview) origin else null,
                     verification = result,
-                    isVerifying = false,
+                    isVerifying = succeeded,
                     quickManaging = false,
                     formMode = if (succeeded && clearFormOnSuccess) ServerCenterFormMode.Add else formMode,
                     host = if (succeeded && clearFormOnSuccess) "" else host,
@@ -377,19 +396,23 @@ class ServerCenterViewModel(application: Application) : AndroidViewModel(applica
                 )
             }
             if (!succeeded) return@launch
-            // 只有用户本次输入的那份密码才问一次保存：解封得来的本来就保存着，本会话内存里的副本
-            // 也是一次已经问过的验证留下的（见 SshPasswordOrigin）。
-            if (shouldSaveSshPassword(
-                    rememberRequested = mutableState.value.rememberPassword,
-                    canProtectOnThisDevice = coordinator.unlockMode() != null,
-                    origin = origin,
-                )
-            ) {
-                savePassword(target, password, activity)
-            }
-            if (openWorkspace) {
-                coordinator.openSshFiles(target.hostId, password.toCharArray())
-                update { copy(workspaceOpenRevision = workspaceOpenRevision + 1) }
+            try {
+                // 只有用户本次输入的那份密码才问一次保存：解封得来的本来就保存着，本会话内存里的副本
+                // 也是一次已经问过的验证留下的（见 SshPasswordOrigin）。
+                if (shouldSaveSshPassword(
+                        rememberRequested = mutableState.value.rememberPassword,
+                        canProtectOnThisDevice = coordinator.unlockMode() != null,
+                        origin = origin,
+                    )
+                ) {
+                    savePassword(target, password, activity)
+                }
+                if (openWorkspace) {
+                    coordinator.openSshFiles(target.hostId, password.toCharArray())
+                    update { copy(workspaceOpenRevision = workspaceOpenRevision + 1) }
+                }
+            } finally {
+                refresh { copy(isVerifying = false, quickManaging = false) }
             }
         }
     }
@@ -463,6 +486,7 @@ class ServerCenterViewModel(application: Application) : AndroidViewModel(applica
         val hosts = coordinator.hosts()
         return copy(
             hosts = hosts,
+            hasSessionPassword = selectedHostId?.let(coordinator::hasSessionPassword) == true,
             unlockMode = unlockMode,
             credentialStates = hosts.associate { it.hostId to credentialState(coordinator.savedCredential(it.hostId), unlockMode) },
         )
@@ -487,6 +511,7 @@ data class ServerCenterUiState(
     val password: String = "",
     val inputError: Boolean = false,
     val selectedHostId: String? = null,
+    val hasSessionPassword: Boolean = false,
     val pendingTarget: ServerHostTarget? = null,
     val pendingPassword: String = "",
     /**
@@ -505,4 +530,12 @@ data class ServerCenterUiState(
     val message: UiMessage? = null,
     /** 每成功打开一次工作区自增；工作区的「切换主机」据此知道已经切过去了。 */
     val workspaceOpenRevision: Int = 0,
-)
+) {
+    val canSubmit: Boolean
+        get() = !isVerifying &&
+            (formMode == ServerCenterFormMode.Add && password.isNotEmpty() ||
+                formMode == ServerCenterFormMode.Manage && selectedHostId != null &&
+                (password.isNotEmpty() || hasSessionPassword ||
+                    planSshHostOpen(credentialStates[selectedHostId] ?: SavedCredentialState.Absent).action ==
+                    SshHostOpenAction.ConnectWithSavedPassword))
+}
