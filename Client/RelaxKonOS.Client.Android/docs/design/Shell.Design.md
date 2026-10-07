@@ -121,7 +121,9 @@ Android 客户端采用 **原生 Mobile Shell**：能在手机和平板上登录
 
 **「不再提醒」的适用范围**（`data/NoticePreferenceStore.kt`）
 
-只有**结论由本机能力决定、且再试一次不会改变**的提醒才提供「不再提醒」：目前是本机结构上无法保存密码（`ReminderKind.LoginCredentialNotSavedDevice` / `ServerCenterCredentialNotSaved`）和本机无法用指纹或锁屏解封（`ReminderKind.SavedPasswordUnavailable`）。勾选框与「知道了」是同一次动作——勾上并关闭即生效，不要求第二次确认。提权对话框里同一句解锁结论提供**同一个**勾选（同一句结论 = 同一条键，所以「账户与安全」里只有一条可恢复项）；提权对话框自己的「管理员密码未保存」那句**不提供**，因为它只由用户自己取消指纹确认产生（§5.4 第 2 条）。
+只有**结论由本机能力决定、且再试一次不会改变**的提醒才提供「不再提醒」：目前是本机结构上无法保存密码（`ReminderKind.LoginCredentialNotSavedDevice` / `ServerCenterCredentialNotSaved`）和本机无法用指纹或锁屏解封（`ReminderKind.SavedPasswordUnavailable`）。
+
+勾选框与「知道了」是同一次动作——勾上并关闭即生效，不要求第二次确认。提权对话框里同一句解锁结论提供**同一个**勾选（同一句结论 = 同一条键，所以「账户与安全」里只有一条可恢复项）；提权对话框自己的「管理员密码未保存」那句**不提供**，因为它只由用户自己取消指纹确认产生（§5.4 第 2 条）。
 
 下列情形**一律不提供**，因为那正是用户需要看到、而且往往需要采取行动的内容：
 

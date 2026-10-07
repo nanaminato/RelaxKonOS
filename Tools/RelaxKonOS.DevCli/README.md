@@ -9,9 +9,13 @@ relaxkonos-dev pack ./MyApp --runtime win-x64 --configuration Release --install
 relaxkonos-dev watch ./MyApp --runtime win-x64 --configuration Debug
 ```
 
-`pack` 默认写入 `artifacts/<entry-assembly>.roapp`。它要求 `.csproj` 旁存在 `manifest.json`；可用 `--manifest` 和 `--output` 覆盖这些路径。默认会用 `dotnet publish` 重新编译指定的 `Debug` 或 `Release` 配置；传入 `--no-build` 时改为 `dotnet publish --no-build`，直接打包该配置已有的编译结果。它会打包 `manifest.json` 的 `entryAssembly` 所声明目标框架目录下的完整发布输出，包括私有依赖项和原生运行时资产；若清单声明 `iconPath`，也会安全地复制该相对路径的图标资源。
+`pack` 默认写入 `artifacts/<entry-assembly>.roapp`。它要求 `.csproj` 旁存在 `manifest.json`；可用 `--manifest` 和 `--output` 覆盖这些路径。默认会用 `dotnet publish` 重新编译指定的 `Debug` 或 `Release` 配置；传入 `--no-build` 时改为 `dotnet publish --no-build`，直接打包该配置已有的编译结果。
 
-对会连接正在运行的 RelaxKonOS Shell 的命令设置 `RELAXKONOS_DEV_TOKEN`（或传入 `--token`）：`--install`、`watch`、`apps`、`install`、`update`、`launch` 和 `uninstall`。POSIX shell 使用 `export RELAXKONOS_DEV_TOKEN="<pairing-token>"`，Windows PowerShell 使用 `$env:RELAXKONOS_DEV_TOKEN = "<pairing-token>"`。使用 `watch --no-install` 可在不连接 Shell 的情况下构建包。
+它会打包 `manifest.json` 的 `entryAssembly` 所声明目标框架目录下的完整发布输出，包括私有依赖项和原生运行时资产；若清单声明 `iconPath`，也会安全地复制该相对路径的图标资源。
+
+对会连接正在运行的 RelaxKonOS Shell 的命令设置 `RELAXKONOS_DEV_TOKEN`（或传入 `--token`）：`--install`、`watch`、`apps`、`install`、`update`、`launch` 和 `uninstall`。
+
+POSIX shell 使用 `export RELAXKONOS_DEV_TOKEN="<pairing-token>"`，Windows PowerShell 使用 `$env:RELAXKONOS_DEV_TOKEN = "<pairing-token>"`。使用 `watch --no-install` 可在不连接 Shell 的情况下构建包。
 
 不带参数运行 `relaxkonos-dev` 可查看完整命令参考。RelaxKonOS 仓库的“开发者模式”指南说明包格式和兼容性约定。
 
@@ -30,7 +34,6 @@ relaxkonos-dev settings --server https://remote.example:5001 rollback --id <plan
 
 先读取远程枚举的时区 ID，预览后检查差异、目标、影响和期限。应用仅提交原 planId；同一宿主 JWT 必须已有 `HostTimeChange` 对 `host/time` 的短期授权。缺少授权时返回 Server 的结构化 428 错误，不弹密码窗口。输出为 Server JSON，HTTP 失败退出 1。网络异常不自动重试写入；使用原 planId 查询操作，不生成新计划重做不确定的写入。回滚重新检查权限和观测 revision。当前 CLI 尚未接入 DNS。
 
-
 ## 主机名
 
 主机名属于远程机器，作用域固定为 `hostMachine`。预览需 `HostIdentityChange` 对 `host/identity` 的短期授权，应用与回滚同样需要。新名称必须是单一标签：只允许字母、数字和中间的连字符，长度为远程快照报告的 `maximumHostNameLength`（Windows 15，Linux 63）。Windows 的主机名会暂存到下次重启，`hostname` 输出里当前生效名称与待生效名称不同即表示尚未生效；CLI 不会把暂存报告为已生效。结果未知时按原 planId 查询，不重放写入。
@@ -40,7 +43,6 @@ relaxkonos-dev settings --server https://remote.example:5001 hostname
 relaxkonos-dev settings --server https://remote.example:5001 preview-hostname --revision <snapshot-revision> --idempotency-key <unique-key> --hostname <new-name>
 relaxkonos-dev settings --server https://remote.example:5001 apply-hostname --id <reviewed-plan-id>
 ```
-
 
 ## 环境变量
 

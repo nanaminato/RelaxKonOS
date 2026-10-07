@@ -117,7 +117,9 @@ dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj -c Debug -o 
 git diff --check
 ```
 
-客户端编译（含 AXAML）通过，零警告、零错误；**196 项** Explorer 自动化回归检查通过（第六轮记录为 120 项，本轮为分块上传新增 10 项），另有 36 项服务端真实文件专项检查与 `--uploads-only` 86 项会话检查通过，`git diff --check` 通过。Explorer 自动化使用假客户端与本地化键替身；服务端专项使用真实临时文件验证执行器，但未连接真实桌面与已部署服务器。新增接口构建和专项命令见设计文档。SDK 默认构建曾无诊断退出；使用上述单进程构建并关闭 workload resolver 后通过。上传相关测试的判定口径与真机验收清单见 [`RelaxKonOS.FileUpload.Design.md`](../architecture/RelaxKonOS.FileUpload.Design.md) §9.2/§9.4。
+客户端编译（含 AXAML）通过，零警告、零错误；**196 项** Explorer 自动化回归检查通过（第六轮记录为 120 项，本轮为分块上传新增 10 项），另有 36 项服务端真实文件专项检查与 `--uploads-only` 86 项会话检查通过，`git diff --check` 通过。
+
+Explorer 自动化使用假客户端与本地化键替身；服务端专项使用真实临时文件验证执行器，但未连接真实桌面与已部署服务器。新增接口构建和专项命令见设计文档。SDK 默认构建曾无诊断退出；使用上述单进程构建并关闭 workload resolver 后通过。上传相关测试的判定口径与真机验收清单见 [`RelaxKonOS.FileUpload.Design.md`](../architecture/RelaxKonOS.FileUpload.Design.md) §9.2/§9.4。
 
 尚未在真实桌面会话中做截图、鼠标、键盘、主题及真实服务端传输验收，因此下列项目不能视为已验证：
 

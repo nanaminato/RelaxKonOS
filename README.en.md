@@ -19,9 +19,7 @@ Website <https://relaxkon.com> · Docs <https://relaxkon.com/docs> · Downloads 
 
 ## ✨ Introduction
 
-**RelaxKonOS** is a cross-platform, cloud-native desktop operating system environment that uses a **State-Sync** model instead of pixel streaming. The client renders the UI locally while the server provides cloud capabilities (accounts, storage, synchronization, remote runtime), giving users a consistent desktop experience across any device.
-
-**RelaxKonOS is NOT** a remote desktop tool (RDP/VNC/Screen Streaming). It transmits system state, application state, and user interaction intent — not screen pixels.
+**RelaxKonOS** is a cross-platform, cloud-native desktop operating environment. The client renders the interface locally; the server provides accounts, storage, synchronization and remote runtime capabilities. They exchange system state, application state and user actions rather than screen pixels.
 
 ### What it is for
 

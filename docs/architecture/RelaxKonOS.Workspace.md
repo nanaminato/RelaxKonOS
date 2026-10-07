@@ -132,7 +132,7 @@ Workspace
 
 Desktop State 表示桌面环境状态，包含：Wallpaper、Theme、Desktop Layout、Icon Position、Taskbar State。
 
-当前 `WorkspacePreferencesDto`（作为 Workspace 导航属性 `OwnsOne + ToJson` 单列 JSON 持久化）已落地以下 Desktop State 字段（定义见 [`WorkspacePreferencesDto.cs`](../../Shared/RelaxKonOS.Protocol/Workspace/WorkspacePreferencesDto.cs) 与 [`DesktopDisplaySettingsDto.cs`](../../Shared/RelaxKonOS.Protocol/Desktop/DesktopDisplaySettingsDto.cs)）：
+当前 `WorkspacePreferencesDto`（作为 Workspace 导航属性 `OwnsOne + ToJson` 单列 JSON 持久化）已实现以下 Desktop State 字段（定义见 [`WorkspacePreferencesDto.cs`](../../Shared/RelaxKonOS.Protocol/Workspace/WorkspacePreferencesDto.cs) 与 [`DesktopDisplaySettingsDto.cs`](../../Shared/RelaxKonOS.Protocol/Desktop/DesktopDisplaySettingsDto.cs)）：
 
 | 字段 | 类型 | 含义 | 默认值 |
 |------|------|------|--------|

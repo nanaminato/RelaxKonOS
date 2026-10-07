@@ -4,7 +4,6 @@
 
 受管运行时明确未安装时只显示安装引导和“安装 FRP”入口，不展示没有归档可验证时的完整性错误。服务器配置仍可查看与编辑，已有安装任务或未知操作集中到“操作记录”；历史安装查询以“恢复之前的操作”进入。已安装、外部路径无效或状态未知仍保留各自的诊断。
 
-
 ## 界面与操作层级
 
 页面刷新固定在操作栏右侧，创建连接配置等操作位于左侧并支持换行。frps 页只保留一个页面刷新入口，直接重新读取 frps 状态；安装记录卡片的刷新也位于右侧。隧道页使用较紧凑的内容边距，保留的隐藏分页放在无间距容器内，切换标签页后不产生额外空白，也不清除编辑状态。
@@ -15,11 +14,13 @@
 
 配置编辑分为基本信息、安全连接与运行时卡片；隧道编辑分为名称/协议、转发目标和行为选项；frps 编辑分为监听/端口、安全与 Dashboard。认证、TLS、运行时模式和隧道协议采用可换行选项，复选项整行可点击且最小高度为 48 dp。frps 状态与生命周期操作集中在状态卡片内，安全和端口配置单独成卡；配置 revision、已应用 revision、启动时间可展开查看，已保存/已应用事实始终保留。
 
-“操作记录”独立展示安装、升级、修复、卸载任务及进度、取消、恢复和原请求重试；提交运行时操作时选中此页。frpc/frps 的最近动作结果、待核实标记与 frps 显式日志/审计读取也集中在此页。frpc 日志仍在独立日志页。其他页面仅在有待核实操作时显示跳转提示，详情不重复展示。记录页不依赖配置集合成功读取，未知 frps 写入可直接在此重新读取 frps 并确认采用；写入门禁、原幂等键与秘密清理流程保留。页面展示已有内存结果和恢复标记，不新增完整持久历史。
+“操作记录”独立展示安装、升级、修复、卸载任务及进度、取消、恢复和原请求重试；提交运行时操作时选中此页。frpc/frps 的最近动作结果、待核实标记与 frps 显式日志/审计读取也集中在此页。frpc 日志仍在独立日志页。其他页面仅在有待核实操作时显示跳转提示，详情不重复展示。记录页不依赖配置集合成功读取，未知 frps 写入可直接在此重新读取 frps 并确认采用；写入限制、原幂等键与秘密清理流程保留。页面展示已有内存结果和恢复标记，不新增完整持久历史。
 
 ## 1. 连接配置与隧道
 
-[Tunnels.kt](../../app/src/main/java/app/relaxkonos/mobile/core/net/Tunnels.kt)、Gateway/API 和 [TunnelRepository](../../app/src/main/java/app/relaxkonos/mobile/data/TunnelRepository.kt) 直接采用共享 [TunnelContracts](../../../../Shared/RelaxKonOS.Protocol/Tunnels/TunnelContracts.cs) 和当前路由，不提供旧接口。安全列表展示服务器名、主机/端口、认证/TLS、受管/外部路径、Token 是否已设置、revision 与隧道状态；Profile 读取返回已有 Token，编辑表单直接显示。只读身份可读取列表、运行时和日志；写入按钮与 Repository 要求宿主特权能力，Server 仍独立检查 Controller、资源归属及实际宿主条件。
+[Tunnels.kt](../../app/src/main/java/app/relaxkonos/mobile/core/net/Tunnels.kt)、Gateway/API 和 [TunnelRepository](../../app/src/main/java/app/relaxkonos/mobile/data/TunnelRepository.kt) 直接采用共享 [TunnelContracts](../../../../Shared/RelaxKonOS.Protocol/Tunnels/TunnelContracts.cs) 和当前路由，不提供旧接口。
+
+安全列表展示服务器名、主机/端口、认证/TLS、受管/外部路径、Token 是否已设置、revision 与隧道状态；Profile 读取返回已有 Token，编辑表单直接显示。只读身份可读取列表、运行时和日志；写入按钮与 Repository 要求宿主特权能力，Server 仍独立检查 Controller、资源归属及实际宿主条件。
 
 配置编辑支持主机名/IDN/IP、服务器端口、None/Token、默认/禁用/强制 TLS、受管运行时或外部绝对路径。外部检测为显式请求，只验证指定宿主文件，不扫描手机 PATH；结果不自动改变配置。Token 在独立掩码表单替换，提交后清空界面值，只在当前请求内存中持有，不进入草稿、持久摘要、日志、诊断、OperationIndex 或保险箱。普通配置保存不设置 Token、不启动进程。
 
@@ -53,17 +54,23 @@ Install 支持宿主下载、服务器包引用和系统文档选择器的手机
 
 手机为 profile 列表 → 详情，600dp 起为列表/详情双栏。表单滚动并处理 IME，动作使用换行布局；切换宿主/账号清空草稿、秘密、日志、确认框与内存提交，旧响应不能覆盖新会话。新增文案与稳定状态/问题提示同步中文、英文、日文。实际手机/平板、大字体、旋转和恢复表现仍待执行验证。
 
-共享执行语义见 [FRP 当前实现边界](../../../../docs/applications/RelaxKonOS.FRP_Integration.Implementation.md) 和 [Protocol](../../../../docs/architecture/RelaxKonOS.Protocol.md)。本功能不提供手机 SSH 本地转发、手机 FRP 进程、任意 TOML/插件/OIDC/visitor 配置；平台支持范围见 [支持范围](../design/SupportScope.md)。
+共享执行语义见 [FRP 当前实现边界](../../../../docs/applications/RelaxKonOS.FRP_Integration.Implementation.md) 和 [Protocol](../../../../docs/architecture/RelaxKonOS.Protocol.md)。
+
+本功能不提供手机 SSH 本地转发、手机 FRP 进程、任意 TOML/插件/OIDC/visitor 配置；平台支持范围见 [支持范围](../design/SupportScope.md)。
 
 ## 6. 宿主 frps
 
 “受管 frps”分页读取安全配置，包括绑定 IP/端口、最多 64 个允许端口/范围、可选 HTTP/HTTPS vhost 端口、强制 TLS、Token 与 TokenConfigured、Dashboard 开关/绑定/账号/密码与 PasswordConfigured、状态、启动和观察时间。宿主 frps 为 HostGlobal 资源，不按某个 frpc profile 归属；它的运行状态和日志不能当作某个客户端隧道已连接的证据。
 
-[ManagedFrps.kt](../../app/src/main/java/app/relaxkonos/mobile/core/net/ManagedFrps.kt) 与 [ManagedFrpsDraft/Manager](../../app/src/main/java/app/relaxkonos/mobile/ui/manage/tunnels/ManagedFrpsManager.kt) 直接采用当前契约。保存带原 `expectedRevision`（首次配置为 0），服务器按锁内当前版本校验并推进 revision；冲突保留非秘密草稿，须确认丢弃后回读替换。响应的 `revision/appliedRevision` 分别表示保存版本和当前进程的配置身份，不能把“保存成功”解释为运行配置已切换。活跃进程已应用版本不同或缺失时分别显示未应用或未核实。
+[ManagedFrps.kt](../../app/src/main/java/app/relaxkonos/mobile/core/net/ManagedFrps.kt) 与 [ManagedFrpsDraft/Manager](../../app/src/main/java/app/relaxkonos/mobile/ui/manage/tunnels/ManagedFrpsManager.kt) 直接采用当前契约。
+
+保存带原 `expectedRevision`（首次配置为 0），服务器按锁内当前版本校验并推进 revision；冲突保留非秘密草稿，须确认丢弃后回读替换。响应的 `revision/appliedRevision` 分别表示保存版本和当前进程的配置身份，不能把“保存成功”解释为运行配置已切换。活跃进程已应用版本不同或缺失时分别显示未应用或未核实。
 
 Token 和 Dashboard 密码随普通读取和保存响应返回，配置编辑器直接显示已保存的值，刷新后回填。FRP 服务器 Token 同样回填并显示。关闭或切换会话清理编辑状态；日志、诊断和 Journal 不记录凭据正文。输入仍限制为长度受限的单行值，修订冲突需重新加载当前配置。
 
-启动、停止和“重启并应用”须确认具体监听目标与影响。启动使用当前保存配置，不能绕过宿主端口/TLS/秘密/运行时校验；已经运行且配置版本不同的启动不会静默替换，要求停止后重启。重启先取得明确 `succeeded + disconnected` 停止结果再启动，丢失/异常/失败的停止结果不进入启动阶段。各阶段独立做认证/提权重试，启动挑战不能重复已完成的停止阶段。Windows 复用 `frpLifecycle + frps` 精确授权，profile 的授权不能替代它。停止可能断开全部 FRP 客户端和转发的管理路径；本页不会修改防火墙、客户端信任或手机网络设置。
+启动、停止和“重启并应用”须确认具体监听目标与影响。启动使用当前保存配置，不能绕过宿主端口/TLS/秘密/运行时校验；已经运行且配置版本不同的启动不会静默替换，要求停止后重启。重启先取得明确 `succeeded + disconnected` 停止结果再启动，丢失/异常/失败的停止结果不进入启动阶段。
+
+各阶段独立做认证/提权重试，启动挑战不能重复已完成的停止阶段。Windows 复用 `frpLifecycle + frps` 精确授权，profile 的授权不能替代它。停止可能断开全部 FRP 客户端和转发的管理路径；本页不会修改防火墙、客户端信任或手机网络设置。
 
 Linux Server 重新打开已有配置但缺少原进程归属时返回 Unknown；不能根据文件存在宣称已停止或按名称杀进程。未知归属的停止明确失败，需在宿主核实/恢复原进程；新启动仍检查监听端口，成功建立新受管进程后才重新取得归属证明。Windows 从 Helper 读取实际进程状态，但 Server 缺少已应用 revision 时仍显示配置身份未核实。运行中的观察每三秒只读取安全状态，编辑期间暂停；离页/切会话停止观察。
 

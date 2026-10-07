@@ -1203,7 +1203,9 @@ DELETE /api/v1.0/webservers/{id}/sites/{siteId}
 
 当前站点创建/更新共用 POST，直接返回 `WebServerSiteDto`；删除返回 204。站点写入没有长任务 ID 或服务端幂等重放能力。客户端连接中断后必须回读站点定义、运行状态与配置检查，不把站点缺失或字段一致当原请求成功，也不伪造操作 ID。
 
-创建请求的 `expectedUpdatedAt` 为 null；可省略 ID 由名称生成，也可提供稳定 ID。更新必须提供已读站点的完整 `updatedAt`（保留亚毫秒精度）。DELETE 正文为 `{ "expectedUpdatedAt": "<已读原时间戳>" }`。Provider 在站点变更锁内、任何配置/include/权限副作用之前比较版本：创建撞 ID 返回 `webserver.site_already_exists`，更新/删除版本失配或目标消失返回 409 `webserver.site_changed`，不覆盖更新后的定义，也不把更新当新建。成功更新的时间戳严格递增；站点元数据损坏或不可读时拒绝写入，不能当空目录覆盖。
+创建请求的 `expectedUpdatedAt` 为 null；可省略 ID 由名称生成，也可提供稳定 ID。更新必须提供已读站点的完整 `updatedAt`（保留亚毫秒精度）。DELETE 正文为 `{ "expectedUpdatedAt": "<已读原时间戳>" }`。
+
+Provider 在站点变更锁内、任何配置/include/权限副作用之前比较版本：创建撞 ID 返回 `webserver.site_already_exists`，更新/删除版本失配或目标消失返回 409 `webserver.site_changed`，不覆盖更新后的定义，也不把更新当新建。成功更新的时间戳严格递增；站点元数据损坏或不可读时拒绝写入，不能当空目录覆盖。
 
 桌面与 Android 均发送该当前契约；网站发布、应用部署代理联动也带原版本。失败补偿仅能恢复它自己刚写入的版本，不能覆盖其后其他客户端的更新。默认读写不添加旧时间戳格式、无版本更新入口或旧路由。
 
@@ -1588,7 +1590,9 @@ webserver.install_elevation_required
 
 ### 30.2 Provider、能力与输入校验
 
-`IWebServerProvider` 仅描述 Provider 能力；实际可用能力由 `WebServerInstance + ManagementMode + 当前权限` 共同决定。未受管 Nginx 仅作为集成候选项，不构成 `WebServerInstance`，不得宣称具备“管理站点/修改配置/重载”的能力；`Integrated` 的站点写入仅可修改 RelaxKonOS ownership 的目录。卸载以实例的 `CanUninstall` 为准：受管安装支持卸载；已接管、使用 `/usr/sbin/nginx` 与 `/etc/nginx/nginx.conf` 且宿主提供 APT 的系统安装也支持通过公共安装契约卸载，Server 执行前重新核实接管状态。外部自定义实例不支持卸载。
+`IWebServerProvider` 仅描述 Provider 能力；实际可用能力由 `WebServerInstance + ManagementMode + 当前权限` 共同决定。未受管 Nginx 仅作为集成候选项，不构成 `WebServerInstance`，不得宣称具备“管理站点/修改配置/重载”的能力；`Integrated` 的站点写入仅可修改 RelaxKonOS ownership 的目录。
+
+卸载以实例的 `CanUninstall` 为准：受管安装支持卸载；已接管、使用 `/usr/sbin/nginx` 与 `/etc/nginx/nginx.conf` 且宿主提供 APT 的系统安装也支持通过公共安装契约卸载，Server 执行前重新核实接管状态。外部自定义实例不支持卸载。
 
 `WebSiteProxyRoute.Upstream` 不是可直接写入 Nginx 的任意 URI。服务端必须拒绝 URI 凭据、控制字符、未知 scheme 和未声明端口，规范化主机名并在解析后再次校验地址，防止 DNS rebinding。当前版本仅支持显式确认的 `http`/`https` 上游；对 loopback、私网、链路本地和元数据地址的代理采用管理员可见的策略，不能让站点表单成为 SSRF 或内网扫描接口。路径前缀必须是以 `/` 开头的受限路径，静态根目录必须是服务器上存在、非符号链接的绝对目录。
 

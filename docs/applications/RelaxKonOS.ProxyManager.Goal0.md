@@ -15,7 +15,9 @@
 | `linux-x64` | Ubuntu 24.04+ / Ubuntu Server，x64 | `mihomo-linux-amd64-v1.19.30.gz` | `cf06ce2c7d1421bdbda14ee4a5b6046672dc35ebf8eecd8e77504ec3c0ed9a84` |
 | `linux-arm64` | Ubuntu 24.04+ / Ubuntu Server，ARM64 | `mihomo-linux-arm64-v1.19.30.gz` | `58896873736d28628f66de3677c8654fa0f180662523148e136cff4f6e890069` |
 
-V1 唯一的托管运行时版本是稳定版 `v1.19.30`。预发布/Alpha、“latest”URL、兼容性变体、发行版软件包、x86 及其他所有平台均拒绝，并返回 `proxy.runtime_unsupported_platform` 或 `proxy.runtime_version_unsupported`。Goal 3 必须在受源代码控制的 `MihomoRuntimeManifest` 中放入四个精确 HTTPS 发布 URL、版本、资产名、哈希、源发布 URL 和获取时间；网络响应不能新增或替换条目。权威来源为 2026-08-16 发布的官方 `MetaCubeX/mihomo` GitHub Release `v1.19.30`。
+V1 唯一的托管运行时版本是稳定版 `v1.19.30`。预发布/Alpha、“latest”URL、兼容性变体、发行版软件包、x86 及其他所有平台均拒绝，并返回 `proxy.runtime_unsupported_platform` 或 `proxy.runtime_version_unsupported`。
+
+Goal 3 必须在受源代码控制的 `MihomoRuntimeManifest` 中放入四个精确 HTTPS 发布 URL、版本、资产名、哈希、源发布 URL 和获取时间；网络响应不能新增或替换条目。权威来源为 2026-08-16 发布的官方 `MetaCubeX/mihomo` GitHub Release `v1.19.30`。
 
 ## 主机所有权、架构与受保护路径
 
@@ -45,9 +47,13 @@ V1 唯一的托管运行时版本是稳定版 `v1.19.30`。预发布/Alpha、“
 
 ## 问题代码与特权边界
 
-公共代码为 Protocol 中唯一声明的小写点分 ASCII，包括运行时未安装/平台或版本不支持/归档不可用/完整性或健康检查失败、外部运行时无效、服务或特权操作不可用、配置无效或应用失败、控制器不可用/响应无效/超时、管理路由不安全、平台能力不可用、TUN 权限或激活失败、需要或恢复失败、操作中断、缺少幂等键、权限拒绝和不支持（对应 `proxy.*` 代码）。未实现能力返回 `proxy.not_supported`；不支持主机返回 `proxy.platform_capability_unavailable`；控制器失败不得转发其正文。客户端本地化代码，且不显示原始控制器或 OS 输出。
+公共代码为 Protocol 中唯一声明的小写点分 ASCII，包括运行时未安装/平台或版本不支持/归档不可用/完整性或健康检查失败、外部运行时无效、服务或特权操作不可用、配置无效或应用失败、控制器不可用/响应无效/超时、管理路由不安全、平台能力不可用、TUN 权限或激活失败、需要或恢复失败、操作中断、缺少幂等键、权限拒绝和不支持（对应 `proxy.*` 代码）。
 
-Goal 3 引入 `IProxyPrivilegedOperations`，只包含 `InstallRuntime`、`RemoveRuntime`、`ReplaceRuntime`、`InstallService`、`RemoveService`、`SetServiceStartup`、`StartService`、`StopService`、`RestartService`、`WriteProtectedConfiguration`、`RestoreNetworkConfiguration` 和 `RepairService`。方法只接收经验证的类型化请求（ID、哈希、固定路径），绝不接收可执行文件、命令行、参数列表、Shell 文本、环境、密码或客户端路径。Windows 服务控制及 Linux systemd/路由/DNS 代码留在平台实现内；领域服务没有 `Process.Start` 回退。
+未实现能力返回 `proxy.not_supported`；不支持主机返回 `proxy.platform_capability_unavailable`；控制器失败不得转发其正文。客户端本地化代码，且不显示原始控制器或 OS 输出。
+
+Goal 3 引入 `IProxyPrivilegedOperations`，只包含 `InstallRuntime`、`RemoveRuntime`、`ReplaceRuntime`、`InstallService`、`RemoveService`、`SetServiceStartup`、`StartService`、`StopService`、`RestartService`、`WriteProtectedConfiguration`、`RestoreNetworkConfiguration` 和 `RepairService`。
+
+方法只接收经验证的类型化请求（ID、哈希、固定路径），绝不接收可执行文件、命令行、参数列表、Shell 文本、环境、密码或客户端路径。Windows 服务控制及 Linux systemd/路由/DNS 代码留在平台实现内；领域服务没有 `Process.Start` 回退。
 
 Proxy Manager 未获授权修改 Defender、SmartScreen、UFW、nftables、iptables 或 Windows 防火墙；只可诊断防火墙。外部运行时检测只读；即使管理员明确选择其供 RelaxKonOS 私有配置使用，也不会覆盖、升级、卸载或停止用户拥有的进程/二进制。
 

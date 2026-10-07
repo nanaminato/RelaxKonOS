@@ -9,11 +9,11 @@
 
 ## 0. 结论
 
-> §0–§2 保留**改造前**的证据与目标，作为改动理由与回归基线（其中的"当前""今天"都指改造前）；落地状态、验证结论与分阶段状态见 §10，逐点实现位置见各章开头的落点说明。
+> §0–§2 记录改造前的问题与目标，作为改动理由和回归基线。当前实现与验证状态见 §10，代码位置见各章说明。
 
-当前上传是**一次性 `multipart/form-data` 单请求**，两端都如此。它不是一个"上限设小了"的问题：即使把每一层的长度上限都调到无限，上传依然会失败或行为错误，因为存在**六个互相独立、任何一个单独出现都足以摧毁大文件上传**的阻塞点：客户端整包缓冲进内存、客户端整请求超时、服务端整包缓冲、特权通道单请求 12 MiB 上限、没有续传、没有暂存磁盘守卫。这些点的证据见 §1。
+改造前，桌面与 Android 均使用**一次性 `multipart/form-data` 请求**上传。仅提高请求长度上限无法解决问题：客户端整包内存缓冲、整请求超时、服务端整包缓冲、特权通道单请求 12 MiB 上限、缺少续传、缺少暂存磁盘保护，这六项独立限制都可能导致大文件上传失败或行为异常。证据见 §1。
 
-因此本设计**替换数据面协议**，而不是放开参数：
+本设计采用新的上传协议解决这些限制：
 
 - 新增基于会话的分块上传协议（`POST /files/uploads` → `PATCH .../{id}` → `POST .../{id}/commit`，可 `GET` 查询、可 `DELETE` 放弃）；
 - 分片是**原始字节**请求，不经 multipart、不经表单缓冲，服务端边收边按偏移写入最终目标目录内的暂存文件；
@@ -44,7 +44,7 @@ var bytes = await originalContent.ReadAsByteArrayAsync(ct).ConfigureAwait(false)
 后果有三层，全部与"上限"无关：
 
 1. **内存**：`ReadAsByteArrayAsync` 内部用 `MemoryStream` 增长式累积，峰值可达正文的 2–3 倍，落在 LOH 上。150 MB 文件即数百 MB 瞬时分配，数 GB 文件必然失败或触发 OOM。
-2. **进度是假的**：`ProgressStreamContent.CopyContentToAsync`（`ExplorerClient.cs:169-180`）在**写入内存流**时报告字节数。也就是说进度条走满 100% 时，数据还在 RAM 里，尚未上线（见 §5.4 的修正）。
+2. **进度与实际发送不一致**：`ProgressStreamContent.CopyContentToAsync`（`ExplorerClient.cs:169-180`）在**写入内存流**时报告字节数。也就是说进度条走满 100% 时，数据还在 RAM 里，尚未发送到服务端（修正方案见 §5.4）。
 3. **重放语义错误**：为了一次 401 重放而缓冲整个文件，代价是内存；而分块协议下偏移重同步本来就是安全的重试方式（§3.4），所以这条缓冲在分块路径上必须去掉，而不是保留。
 
 ### 1.2 桌面端：整请求超时
@@ -104,7 +104,9 @@ var result = await runner.ExecuteAsync(new PrivilegedOperationRequest(Privileged
     FileName: fileName, ContentBase64: Convert.ToBase64String(bytes.ToArray())), cancellationToken);
 ```
 
-上限在协议里写死：`PrivilegedOperationProtocol.MaximumRequestBytes = 16 MiB`、`MaximumFileContentBytes = 12 MiB`（`Shared/RelaxKonOS.Protocol/Privileged/PrivilegedOperationContracts.cs:10-11`），Helper 侧同样校验（`RelaxKonOS.PrivilegedHelper/Program.cs:264-266`、`WindowsPrivilegedPipeServer.cs:136`）。所以**向受保护目录上传超过 12 MiB 的文件，今天在任何客户端都不可能成功**，这与 HTTP 层完全无关。分块设计必须包含这条路径，否则只是把失败点从 30 MB 挪到 12 MiB。
+上限在协议里写死：`PrivilegedOperationProtocol.MaximumRequestBytes = 16 MiB`、`MaximumFileContentBytes = 12 MiB`（`Shared/RelaxKonOS.Protocol/Privileged/PrivilegedOperationContracts.cs:10-11`），Helper 侧同样校验（`RelaxKonOS.PrivilegedHelper/Program.cs:264-266`、`WindowsPrivilegedPipeServer.cs:136`）。
+
+所以**向受保护目录上传超过 12 MiB 的文件，今天在任何客户端都不可能成功**，这与 HTTP 层完全无关。分块设计必须包含这条路径，否则只是把失败点从 30 MB 挪到 12 MiB。
 
 ### 1.6 顺带发现的既有缺陷：`fileName` 未净化
 
@@ -298,7 +300,11 @@ DELETE /api/v1.0/files/uploads/9f2…   → 204（即使会话已不存在也返
 | `upload-hash-mismatch` | 409 | 声明哈希与实收不符 |
 | `elevation-required` / `access-denied` | 403 | 与现有文件操作同义，不自造新词 |
 
-客户端映射要求：`upload-offset-mismatch` / `upload-incomplete` **不是失败**，是"重同步后继续"的正常答复（与 `thumbnail-unsupported` 在图片预览里的地位相同）；`chunk-too-large` / `concurrent-chunk` / `length-required` 同样归入"调整后继续"而不是终态。真正需要用户决策的终态是 `insufficient-storage`、`too-many-uploads`、`upload-session-expired`、`upload-hash-mismatch`，以及 **`invalid-file-name`**——最后一个尤其不能并入通用的"服务器拒绝"：手机上的合法文件名（含冒号、结尾点、保留设备名）在宿主上可能非法，用户唯一能做的是重命名，所以它必须自成一类并给出"重命名后重试"的文案。两端都已如此：桌面端在发出请求前就按 §3.1 的镜像规则拒绝并给出原因，Android 端把 `invalid-file-name` 映射成独立的失败类别（`UploadFailure.NameUnusable`）并附上同名说明。
+客户端映射要求：`upload-offset-mismatch` / `upload-incomplete` **不是失败**，是"重同步后继续"的正常答复（与 `thumbnail-unsupported` 在图片预览里的地位相同）；`chunk-too-large` / `concurrent-chunk` / `length-required` 同样归入"调整后继续"而不是终态。
+
+真正需要用户决策的终态是 `insufficient-storage`、`too-many-uploads`、`upload-session-expired`、`upload-hash-mismatch`，以及 **`invalid-file-name`**——最后一个尤其不能并入通用的"服务器拒绝"：手机上的合法文件名（含冒号、结尾点、保留设备名）在宿主上可能非法，用户唯一能做的是重命名，所以它必须自成一类并给出"重命名后重试"的文案。
+
+两端都已如此：桌面端在发出请求前就按 §3.1 的镜像规则拒绝并给出原因，Android 端把 `invalid-file-name` 映射成独立的失败类别（`UploadFailure.NameUnusable`）并附上同名说明。
 
 ### 3.8 分片大小
 
@@ -606,7 +612,7 @@ proxy_send_timeout 120s;
 3. **无进展的答复与传输失败共用重试预算**（`MAXIMUM_CHUNK_FAILURES = 10`）：服务端反复回答同一偏移时必须有出口；耗尽后**会话与续传条目都保留**，只把条目状态标为失败。
 4. **分片长度 ≤ 服务端下发的 `chunkSize`**，自适应缩小的下限同样被该值夹住（`min(客户端偏好, ceiling)`）。
 
-JVM 覆盖（`app/src/test/java/app/relaxkonos/mobile/data/`，共 **41 项**，与全仓 273 项一起全绿）：`UploadCoordinatorTest`(14)、`UploadSourceStagerTest`(14)、`UploadResumeJournalTest`(13)。真机矩阵（前台服务、网络切换、强杀重启、受保护目录提权）**无法**用编译或 JVM 测试代替，见 Android 验收清单 §2。
+JVM 覆盖（`app/src/test/java/app/relaxkonos/mobile/data/`，共 **41 项**，与全仓 273 项一并通过）：`UploadCoordinatorTest`(14)、`UploadSourceStagerTest`(14)、`UploadResumeJournalTest`(13)。真机矩阵（前台服务、网络切换、强杀重启、受保护目录提权）**无法**用编译或 JVM 测试代替，见 Android 验收清单 §2。
 
 ### 9.4 真实宿主验收（必须在目标环境执行，不能以编译代替）
 

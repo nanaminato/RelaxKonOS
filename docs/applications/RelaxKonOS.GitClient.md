@@ -19,7 +19,7 @@
 
 GitClient 是 RelaxKonOS 的内置版本控制客户端，参考 TortoiseGit / Git Extensions。
 
-- **架构归属**：§6.2 Remote Service Application —— UI 完全在 Client 本地渲染；仓库状态、提交历史、分支列表与变更结果**真源在 Server 端通过 `git` 实时采集**（不持久化运行时状态，每次请求都是当下快照）。
+- **架构归属**：§6.2 Remote Service Application —— UI 完全在 Client 本地渲染；仓库状态、提交历史、分支列表与变更结果**数据来源在 Server 端通过 `git` 实时采集**（不持久化运行时状态，每次请求都是当下快照）。
 - **复用宿主 OS 权限**（硬约束）：Server 端 `IGitRepositoryService` 以宿主 OS 进程身份调用 `git` CLI，复用宿主用户/权限，不另建 ACL。push/pull 需要 SSH 凭据或 HTTPS 凭据时，**RelaxKonOS 不存储、不代理、不收集**——直接由宿主 OS 的 `git` 凭据助手（credential helper / SSH agent）处理；若凭据缺失则 `git` 返回失败，客户端展示本地化提示，引导用户在宿主 OS 配置。
 - **不存储任何凭据/私钥**：认证委托宿主 OS 的 git 凭据体系，GitClient 仅消费 `IAuthSession.Tokens.AccessToken`（RelaxKonOS 自身登录），不接触 Git 远程仓库的凭据。
 - **跨平台抽象**：与 `IIdentityProvider` / `ISystemMetricsProvider` 同模式——`IGitRepositoryService` 接口 + 平台无关的 `LocalGitRepositoryService`（`git` CLI 在 Windows/Linux 行为一致），仅在探测 `git` 可执行文件路径与 shell 启动环境时按宿主 OS 处理。平台差异封装在服务之后，Server 端单一代码库跨 Ubuntu + Windows Server。
@@ -484,7 +484,7 @@ GitOperationResult
 
 > 实现与维护本模块时必须遵守的规则。
 
-1. **真源在 Server 实时采集**：仓库状态/分支/历史/diff 均由 `IGitRepositoryService` 以宿主 OS 进程身份调用 `git` 实时读取，**不持久化运行时状态**（仅 `GitRepository` 注册记录落 SQLite）。每次请求返回当下快照。禁止为提交/分支/历史新建数据库表。
+1. **数据来源在 Server 实时采集**：仓库状态/分支/历史/diff 均由 `IGitRepositoryService` 以宿主 OS 进程身份调用 `git` 实时读取，**不持久化运行时状态**（仅 `GitRepository` 注册记录落 SQLite）。每次请求返回当下快照。禁止为提交/分支/历史新建数据库表。
 2. **跨平台抽象**：与 `IIdentityProvider` 同模式——`IGitRepositoryService` 接口 + `LocalGitRepositoryService` 实现，平台差异（`git` 可执行路径探测）封装在 `IHostGitCli`。Server 端单一 CLI 实现跨 Ubuntu + Windows Server（`git` 行为一致）。
 3. **Provider 必须 Singleton**：`IGitRepositoryService` 持有按 repoId 缓存的 `SemaphoreSlim` 字典（写操作串行化，避免 index.lock 冲突），必须 Singleton。禁止 Scoped/Transient。
 4. **复用 `IAuthSession` JWT**：`IRemoteGitClient` 不持有独立凭据；未登录时 `GitClientApp.Activate` 弹提示窗，不崩溃。`RemoteGitClient` 每请求检查 `State == Authenticated`。
@@ -523,16 +523,26 @@ GitOperationResult
 
 ## 共享文本编辑契约
 
-`GET /api/v1.0/files/text?path=` 与 Git `text-file` 读取统一返回 `TextFileDto`：`path/content/version/encoding/bom/newline`。`version` 是原始字节 SHA-256；`encoding` 为 `utf-8/utf-16le/utf-16be/utf-32le/utf-32be`，`newline` 为 `lf/crlf/cr/mixed/none`。UTF-16/32 必须有 BOM，无 BOM 只读取严格 UTF-8。内容保留换行，编码后最多 256 KiB，拒绝二进制控制字符和非法 Unicode。
+`GET /api/v1.0/files/text?path=` 与 Git `text-file` 读取统一返回 `TextFileDto`：`path/content/version/encoding/bom/newline`。`version` 是原始字节 SHA-256；`encoding` 为 `utf-8/utf-16le/utf-16be/utf-32le/utf-32be`，`newline` 为 `lf/crlf/cr/mixed/none`。
+
+UTF-16/32 必须有 BOM，无 BOM 只读取严格 UTF-8。内容保留换行，编码后最多 256 KiB，拒绝二进制控制字符和非法 Unicode。
 
 `PUT` 必须提交 `content/expectedVersion/encoding/bom`，以有效宿主身份校验并保存；版本不匹配返回 409。`POST /api/v1.0/files/text?path=` 使用 `content/encoding/bom` 新建目标；同目录暂存后以不覆盖 Move 发布，已存在目标拒绝。Git 的路径仍限制在既有仓库工作树并拒绝符号链接。
 
-Server、Helper 使用当前 user-execution 1.5 协议，`FileReadText` 在实际文件读取端实施固定 256 KiB 上限，`FileWriteIfMatch` 实施条件写入；不接受旧协议或降级成无条件覆盖。读取/条件保存不使用 root 或临时提权兜底。现有桌面 CodeEditor 的通用内容接口不因此自动获得条件保存能力；本条定义新 text 路由和 Git text-file 的当前契约。Android 交互行为由 [Android 文档](../../Client/RelaxKonOS.Client.Android/docs/features/TextEditor.md) 维护。
+Server、Helper 使用当前 user-execution 1.5 协议，`FileReadText` 在实际文件读取端实施固定 256 KiB 上限，`FileWriteIfMatch` 实施条件写入；不接受旧协议或降级成无条件覆盖。读取/条件保存不使用 root 或临时提权兜底。
+
+现有桌面 CodeEditor 的通用内容接口不因此自动获得条件保存能力；本条定义新 text 路由和 Git text-file 的当前契约。Android 交互行为由 [Android 文档](../../Client/RelaxKonOS.Client.Android/docs/features/TextEditor.md) 维护。
 
 ## 工作区复核版本与普通身份冲突 I/O
 
-当前 `GitBranchDto.sha` 是分支精确尖端；`GitStatusDto.configVersion` 是有效 Git 配置的 SHA-256 摘要，包括全部 fetch/push 地址、分支映射和 refspec，不返回配置正文；`GitDiffDto.version` 对未截断的原始二进制 patch 输出计算 SHA-256，在截断/二进制显示时仍保护隐藏内容。新字段为当前必需契约，Protocol、Server、桌面 DTO 调用方和 Android 同步采用，没有旧格式默认或双解析。diff/stat/numstat 都使用字面路径、禁用外部 diff/textconv；命令错误不返回伪空差异。历史使用 NUL 字段保留多行正文，空历史仅接受确实不存在的 unborn HEAD；Unicode/C-style 引号和重命名两端保留精确文件名。
+当前 `GitBranchDto.sha` 是分支精确尖端；`GitStatusDto.configVersion` 是有效 Git 配置的 SHA-256 摘要，包括全部 fetch/push 地址、分支映射和 refspec，不返回配置正文；`GitDiffDto.version` 对未截断的原始二进制 patch 输出计算 SHA-256，在截断/二进制显示时仍保护隐藏内容。
 
-冲突工作区快照/编辑写入使用当前 1.5 的封闭 `GitConflictSnapshot` / `GitConflictWrite` 请求，Path 是服务端仓库根、FileName 是不含 `.git`/父级/绝对路径的相对文件名；Linux 降权 worker、Windows impersonation 和本地同身份后端使用同一 `GitConflictFileAccess`。读取流式计算原始字节哈希，文本内容最多 200 KiB；编辑写入检查期望哈希，缺失目标仅 CreateNew，不覆盖并发创建的文件，符号链接/子模块不在编辑支持范围。删除/采用一方由普通用户 Git 执行。System Mode 不借用其他 Server 身份或缓存提权兜底；读取失败拒绝处理。仓库锁只协调 Server 内请求，客户端预读和文件条件写入不提供跨外部 Git/整个仓库的原子事务。
+新字段为当前必需契约，Protocol、Server、桌面 DTO 调用方和 Android 同步采用，没有旧格式默认或双解析。diff/stat/numstat 都使用字面路径、禁用外部 diff/textconv；命令错误不返回伪空差异。历史使用 NUL 字段保留多行正文，空历史仅接受确实不存在的 unborn HEAD；Unicode/C-style 引号和重命名两端保留精确文件名。
+
+冲突工作区快照/编辑写入使用当前 1.5 的封闭 `GitConflictSnapshot` / `GitConflictWrite` 请求，Path 是服务端仓库根、FileName 是不含 `.git`/父级/绝对路径的相对文件名；Linux 降权 worker、Windows impersonation 和本地同身份后端使用同一 `GitConflictFileAccess`。
+
+读取流式计算原始字节哈希，文本内容最多 200 KiB；编辑写入检查期望哈希，缺失目标仅 CreateNew，不覆盖并发创建的文件，符号链接/子模块不在编辑支持范围。删除/采用一方由普通用户 Git 执行。System Mode 不借用其他 Server 身份或缓存提权兜底；读取失败拒绝处理。
+
+仓库锁只协调 Server 内请求，客户端预读和文件条件写入不提供跨外部 Git/整个仓库的原子事务。
 
 `config --list --null` 仅用于有效配置摘要，封闭 Git policy 仍拒绝任意 config 写入。配置可含凭据，原始输出不返回 HTTP DTO、不进入诊断日志；Android 交互和未知标记由 [Android Git 文档](../../Client/RelaxKonOS.Client.Android/docs/features/Git.md) 维护。

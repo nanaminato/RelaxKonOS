@@ -1,10 +1,12 @@
-# 移动端应用包方案（BP21）
+# 移动端应用包方案
 
 BP21 的交付是平台方案与协议边界，不承诺手机已经安装或运行第三方扩展。Android 内置管理功能随签名 APK/AAB 发布；Compose 没有桌面 .NET/Avalonia 加载器。应用部署、运行时安装、Android 系统应用与桌面扩展包分别管理。
 
 ## 已核对的桌面契约
 
-当前 `DeveloperPackageManifest` 位于 `Client/RelaxKonOS.Client/Services/Developer/DeveloperPackageManager.cs`。`.roapp` 是 ZIP，根 `manifest.json` 声明 id/displayName/version、lib 下 DLL entryAssembly、entryType、permissionModelVersion（必须 2）、requestedPermissions、clientPlatforms、serverRequirements、文件/URI 关联与实例策略。application 与 desktopShell 使用不同激活机制。普通扩展经 AssemblyLoadContext、IExternalRemoteApplication 与 Avalonia UI 激活；桌面 Shell 还需要 shellApiVersion 等字段。
+当前 `DeveloperPackageManifest` 位于 `Client/RelaxKonOS.Client/Services/Developer/DeveloperPackageManager.cs`。`.roapp` 是 ZIP，根 `manifest.json` 声明 id/displayName/version、lib 下 DLL entryAssembly、entryType、permissionModelVersion（必须 2）、requestedPermissions、clientPlatforms、serverRequirements、文件/URI 关联与实例策略。
+
+application 与 desktopShell 使用不同激活机制。普通扩展经 AssemblyLoadContext、IExternalRemoteApplication 与 Avalonia UI 激活；桌面 Shell 还需要 shellApiVersion 等字段。
 
 `clientPlatforms` 是兼容性声明，空列表不限制桌面平台；它不是可执行运行时的证明。即便包声明 android，当前 DLL/Avalonia/窗口 SDK 仍不兼容手机。requestedPermissions 只是请求，不是授权；manifest 不能声明 BuiltIn、Host Elevation 或注入服务。桌面更新清除原权限决策、版本独立目录/指针激活，卸载经本地 package manager；这些不是 Server 安装端点。
 
@@ -29,7 +31,9 @@ BP21 的交付是平台方案与协议边界，不承诺手机已经安装或运
 
 当前 Server 没有桌面客户端 package manager 的读写代理。手机 API 登录不能取得桌面程序目录、开发桥接令牌或用户 UI 会话；loopback 开发桥接不能直接暴露至局域网。**Android 没有远端 .roapp 安装端点**，手机明确拒绝该流程，并使用上表中的已实现替代入口。
 
-若未来确需远端桌面包管理，先实现独立、用户确认配对的桌面代理与 shared Protocol：设备/平台/运行时能力、真实包目录（appId/version/digest/revision）、有界候选来源检查、精确版本及权限差异预览（planId/target/expiry）、expectedRevision + idempotencyKey 的 apply、可重读的 operation，以及显式更新/移除/数据保留。Server 仅路由到已配对设备；目标代理重复验证包来源、兼容性、权限、版本和授权，断线不能自动换目标或重放。包管理权限不得隐含 OS 管理员或应用执行权限。没有上述执行者时 UI 不显示可安装按钮。
+若未来确需远端桌面包管理，先实现独立、用户确认配对的桌面代理与 shared Protocol：设备/平台/运行时能力、真实包目录（appId/version/digest/revision）、有界候选来源检查、精确版本及权限差异预览（planId/target/expiry）、expectedRevision + idempotencyKey 的 apply、可重读的 operation，以及显式更新/移除/数据保留。
+
+Server 仅路由到已配对设备；目标代理重复验证包来源、兼容性、权限、版本和授权，断线不能自动换目标或重放。包管理权限不得隐含 OS 管理员或应用执行权限。没有上述执行者时 UI 不显示可安装按钮。
 
 未来改变 manifest 或协议时直接升级并同步 shared/server/desktop/Android/tests/docs，不加入旧包别名、双格式解析或迁移适配。现有桌面运行时继续由其当前契约管理，本方案未新增兼容路径。
 

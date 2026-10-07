@@ -1361,7 +1361,11 @@ RelaxKonOS 当前只管理本机，因此证书管理功能应保持为一个**�
 
 证书列表选中证书后，点击“续期记录”打开独立窗口，按证书 ID 读取完整续期任务历史，显示自动/手动、开始/完成时间、状态与失败原因。未选择证书时按钮禁用，窗口打开后固定查看原证书，刷新重新读取服务器记录。列表不再内嵌折叠历史。
 
-左侧“续期记录”页显示自动续期每次扫描和手动续期的执行时间、完成时间、成功、失败、进行中及取消数量。自动扫描记录独立持久化，按实际操作 ID 去重，并从持久任务账本计算结果；扫描已结束但任务仍执行时不显示完成时间。没有到期证书的扫描显示零计数。手动续期每次作为一条执行记录。点击刷新更新统计。新增 `GET /api/v1.0/certificates/renewal-runs` 和 `GET /api/v1.0/certificates/{id}/renewal-history`；现有 `CertificateDto.renewal` 仍作为证书摘要提供最近五个任务及重试策略。自签证书不参与自动续期，私钥与 ACME 凭据不进入记录 DTO。历史自动扫描无法从旧任务准确还原，因此新增扫描汇总从升级后的执行开始记录。
+左侧“续期记录”页显示自动续期每次扫描和手动续期的执行时间、完成时间、成功、失败、进行中及取消数量。自动扫描记录独立持久化，按实际操作 ID 去重，并从持久任务账本计算结果；扫描已结束但任务仍执行时不显示完成时间。没有到期证书的扫描显示零计数。手动续期每次作为一条执行记录。点击刷新更新统计。
+
+新增 `GET /api/v1.0/certificates/renewal-runs` 和 `GET /api/v1.0/certificates/{id}/renewal-history`；现有 `CertificateDto.renewal` 仍作为证书摘要提供最近五个任务及重试策略。
+
+自签证书不参与自动续期，私钥与 ACME 凭据不进入记录 DTO。历史自动扫描无法从旧任务准确还原，因此新增扫描汇总从升级后的执行开始记录。
 
 RelaxKonOS 面向单台服务器的网站管理员。证书、ACME account 和部署目标均为**当前宿主机全局资源**，客户端入口受声明的证书读取和管理应用权限约束，服务端还验证宿主能力和操作授权。
 
@@ -1438,9 +1442,13 @@ certificate_renewal_attempts     certificate_audit_entries
 
 V1 的支持目标为 **Ubuntu 24.04 LTS** 与 **Windows Server 2016 及以上**。实现前分别验证：管理员检测、文件 ACL、短暂 TCP 80 监听、Kestrel 换证、证书目录恢复、IPv4/IPv6 WebRoot、取消/断线恢复和权限不足降级。Anvil 引入前还需在中央包管理中锁定版本，并记录许可证、.NET 10 与两个目标平台的兼容性、离线部署和升级策略。
 
-自签名证书创建在 HTTP 入口验证 `CertificateCreateSelfSigned` 能力、`certificates/self-signed` 精确目标的会话授权。服务器 HTTPS 换证验证 `CertificateReplaceServerHttps` 能力与 `certificates/{id:D}/server-https` 精确证书目标。所有证书写入动作缺少授权均返回 HTTP 403 / `elevation-required`，桌面与 Android 客户端通过统一提权流程认证后以原幂等键重试一次；不要求 Server 进程以 root/Administrator 运行。
+自签名证书创建在 HTTP 入口验证 `CertificateCreateSelfSigned` 能力、`certificates/self-signed` 精确目标的会话授权。服务器 HTTPS 换证验证 `CertificateReplaceServerHttps` 能力与 `certificates/{id:D}/server-https` 精确证书目标。
 
-Linux 服务部署在 `server.env` 中设置 `Certificate__StorageRoot=$DATA_ROOT/server/managed-certificates`，目录由服务账号拥有，权限为 `0700`，用于证书管理器创建的 PEM、私钥及版本记录。该目录在 HTTP 和 HTTPS 部署中均创建。启动用的 `$DATA_ROOT/server/certificates/bootstrap.pfx` 保持 root 所有、服务账号只读，不作为证书管理器的写入目录。已有安装如未配置存储路径，应备份 `server.env` 后补充该配置、创建对应目录并重启 Server；不得通过放宽整个数据根目录权限解决。
+所有证书写入动作缺少授权均返回 HTTP 403 / `elevation-required`，桌面与 Android 客户端通过统一提权流程认证后以原幂等键重试一次；不要求 Server 进程以 root/Administrator 运行。
+
+Linux 服务部署在 `server.env` 中设置 `Certificate__StorageRoot=$DATA_ROOT/server/managed-certificates`，目录由服务账号拥有，权限为 `0700`，用于证书管理器创建的 PEM、私钥及版本记录。该目录在 HTTP 和 HTTPS 部署中均创建。
+
+启动用的 `$DATA_ROOT/server/certificates/bootstrap.pfx` 保持 root 所有、服务账号只读，不作为证书管理器的写入目录。已有安装如未配置存储路径，应备份 `server.env` 后补充该配置、创建对应目录并重启 Server；不得通过放宽整个数据根目录权限解决。
 
 Windows 服务与个人模式均在 `appsettings.host.json` 设置 `Certificate.StorageRoot=$DataRoot\server\managed-certificates`。服务模式 ACL 仅授予 SYSTEM、Administrators 和 Server 服务 SID（修改权限）；个人模式授予安装用户、SYSTEM 与 Administrators。管理证书与部署时生成的 `certificates\bootstrap.pfx` 分开存储。
 

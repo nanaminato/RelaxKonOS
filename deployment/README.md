@@ -4,7 +4,9 @@ Windows 10/11 个人电脑可同时运行 Server 与 Client，具体步骤见[�
 
 普通用户从客户端的服务器中心安装和维护服务端。本文保留部署引擎、打包与手动诊断，供维护者使用；官网安装入口统一见[安装指南](https://relaxkon.com/docs/zh-CN/latest/getting-started/installation)。
 
-官网与自定义 HTTPS 安装包下载在私有暂存目录内输出临时 `transfer.json`：当前 `operationId`、实际写入的 `bytes`、可空的 `total`（HTTP Content-Length）和 `active`。Linux/Windows 启动器约每 250 ms 原子替换该文件，下载结束写入 `active: false`；客户端约每 750 ms 读取并验证操作编号、字段与大小范围。该文件不包含 URL 或凭据，仅用于传输进度，读取或写入失败不改变权威操作回执；下载完成后客户端继续展示执行与核验阶段。移动端体验规范见 [Android 服务器中心](../Client/RelaxKonOS.Client.Android/docs/features/ServerCenter.md)。
+官网与自定义 HTTPS 安装包下载在私有暂存目录内输出临时 `transfer.json`：当前 `operationId`、实际写入的 `bytes`、可空的 `total`（HTTP Content-Length）和 `active`。Linux/Windows 启动器约每 250 ms 原子替换该文件，下载结束写入 `active: false`；客户端约每 750 ms 读取并验证操作编号、字段与大小范围。
+
+该文件不包含 URL 或凭据，仅用于传输进度，读取或写入失败不改变权威操作回执；下载完成后客户端继续展示执行与核验阶段。移动端体验规范见 [Android 服务器中心](../Client/RelaxKonOS.Client.Android/docs/features/ServerCenter.md)。
 
 ## 安装参数与客户端对应关系
 
@@ -56,7 +58,11 @@ deployment/windows/Install-RelaxKonOSServices.ps1
 deployment/linux/install-relaxkonos-services.sh
 ```
 
-`manifest.json` 和下载描述文件使用 `schemaVersion: 1`，并明确标记 `packageKind`（`client`、`server` 或 `user-server`）；示例见 [release-manifest.example.json](./release-manifest.example.json)。JSON 清单是唯一的逐文件清单，列出包内除 `manifest.json` 外每个文件的长度和 SHA-256；Linux System Mode 安装器与 User Mode launcher 用 Python 3 重算摘要并精确比对文件集合，拒绝缺失、额外、重复或不安全路径，不再依赖独立的 `manifest.sha256`。线上安装由发布页同时提供 ZIP 的 SHA-256，安装器在解压前检查它。服务器中心按来源处理：官网包在服务器下载并核对官方 ZIP 摘要及逐文件清单；用户选择的本地或服务器 ZIP 不要求官方摘要、不计算逐文件摘要，仍检查包类型、RID、必要文件、版本和安全解压布局。当前发布包不要求签名密钥，也不生成签名伴随文件。
+`manifest.json` 和下载描述文件使用 `schemaVersion: 1`，并明确标记 `packageKind`（`client`、`server` 或 `user-server`）；示例见 [release-manifest.example.json](./release-manifest.example.json)。
+
+JSON 清单是唯一的逐文件清单，列出包内除 `manifest.json` 外每个文件的长度和 SHA-256；Linux System Mode 安装器与 User Mode launcher 用 Python 3 重算摘要并精确比对文件集合，拒绝缺失、额外、重复或不安全路径，不再依赖独立的 `manifest.sha256`。
+
+线上安装由发布页同时提供 ZIP 的 SHA-256，安装器在解压前检查它。服务器中心按来源处理：官网包在服务器下载并核对官方 ZIP 摘要及逐文件清单；用户选择的本地或服务器 ZIP 不要求官方摘要、不计算逐文件摘要，仍检查包类型、RID、必要文件、版本和安全解压布局。当前发布包不要求签名密钥，也不生成签名伴随文件。
 
 System Mode 升级、普通修复和回滚默认沿用已安装的 TLS 证书及密码，保留客户端信任的证书身份。只有修复时显式要求重新生成自签证书，或提供新的自有 PFX，才替换证书；升级不隐式生成新证书。
 
@@ -70,21 +76,29 @@ dotnet run --project ./deployment/packaging/RelaxKonOS.ReleaseVerifier -- verify
 
 Linux 系统模式在未上传新发布包的维护操作中，从 `/opt/relaxkonos/current/deployment/bootstrap/` 读取当前版本的安装和卸载引擎。桌面端必须同时核对操作终态回执及随后读取的宿主状态：失败回执显示实际失败原因；卸载只有在操作成功且状态确认 `installed=false` 时显示成功，保留数据不等于仍然安装。
 
-默认系统卸载保留组件的二进制、配置、托管标记、数据库、共享所有权记录和 Guardian 定义。Windows Nginx、Mihomo、FRP 使用独立 SCM 服务；Linux FRP 使用独立 systemd unit。卸载 Server/Guardian/Helper 不停止这些独立组件，原路径重装按持久化托管记录和实际服务状态恢复管理。Linux Mihomo 保留 systemd 策略和 `/etc/relaxkonos/proxy/`，重装不擅自启动或重启组件。Nginx 和 SMB 的系统服务、配置与共享保持原状。当前仍须保留原数据根；删除数据走完整组件清理流程，选择性卸载界面另行实施。
+默认系统卸载保留组件的二进制、配置、托管标记、数据库、共享所有权记录和 Guardian 定义。Windows Nginx、Mihomo、FRP 使用独立 SCM 服务；Linux FRP 使用独立 systemd unit。卸载 Server/Guardian/Helper 不停止这些独立组件，原路径重装按持久化托管记录和实际服务状态恢复管理。
+
+Linux Mihomo 保留 systemd 策略和 `/etc/relaxkonos/proxy/`，重装不擅自启动或重启组件。Nginx 和 SMB 的系统服务、配置与共享保持原状。当前仍须保留原数据根；删除数据走完整组件清理流程，选择性卸载界面另行实施。
 
 保留数据卸载把系统部署配置存入数据根的受保护 `deployment/` 目录，原路径重装复用其中的 JWT 密钥、审计实例标识和审计签名密钥。Windows 删除程序目录前显式断开指向持久化 Server 数据的 junction。数据保护密钥仍由原服务账户的宿主 Data Protection 提供者保管；不要删除或更换服务账户及其密钥目录。组件现有状态查询核对实际运行时、Nginx 托管标记和 SMB 所有权，保留记录不代表进程仍在运行。Mihomo 和 Nginx 的固定宿主路径是特权操作契约的一部分，不随自定义通用数据根移动。
 
-`--remove-data` / `-RemoveData` 现在先停止 Server 和 Guardian，再通过已安装 Server 的本地维护入口顺序清理 SMB、Nginx、FRP、Mihomo；Helper 保持可用直到清理成功。Windows 仍需同时指定 `-ConfirmRemoveData`。受管理 Nginx 使用已有卸载器；接管的系统 Nginx 仅撤销受管理站点和集成锚点，保留系统安装及其他站点。SMB 仅删除核验所有权和快照一致的共享，不删除共享目录中的文件，也不卸载宿主 SMB/Samba。共享路径若与待删除数据根重叠，则中止卸载，需先迁出共享数据。个人 Windows 安装仅清理本安装的组件，跳过系统 SMB 与其他 Nginx 实例。
+`--remove-data` / `-RemoveData` 现在先停止 Server 和 Guardian，再通过已安装 Server 的本地维护入口顺序清理 SMB、Nginx、FRP、Mihomo；Helper 保持可用直到清理成功。Windows 仍需同时指定 `-ConfirmRemoveData`。
+
+受管理 Nginx 使用已有卸载器；接管的系统 Nginx 仅撤销受管理站点和集成锚点，保留系统安装及其他站点。SMB 仅删除核验所有权和快照一致的共享，不删除共享目录中的文件，也不卸载宿主 SMB/Samba。共享路径若与待删除数据根重叠，则中止卸载，需先迁出共享数据。个人 Windows 安装仅清理本安装的组件，跳过系统 SMB 与其他 Nginx 实例。
 
 任何组件清理失败、标记损坏、共享外部修改、Server 无法停止或维护入口缺失，都中止卸载并保留程序、Helper 和数据。失败前已完成的清理不会回滚，停止的 Server 也不会自动重启；修复冲突后可重试卸载，或手动启动 Server 继续维护。清理回执保存在 `server/deployment/component-cleanup.json`；全部清理成功后，卸载器将回执复制到 Linux `/var/lib/relaxkonos-deployment/component-cleanup.json` 或 Windows `%ProgramData%\RelaxKonOS-Deployment\component-cleanup.json`（个人安装使用 `%LOCALAPPDATA%`），然后删除程序和数据。默认不删除数据的卸载行为不变。
 
-部署行为验证可运行 `python Tests/Deployment/retained_component_checks.py` 和 Windows 下的 `Tests/Deployment/RetainedWindowsComponentChecks.ps1`、`Tests/Deployment/ManagedWindowsCleanupChecks.ps1`；清理中止及回执验证使用 Server 测试工程的 `--managed-component-cleanup-only`。本地维护入口 `--maintenance=remove-managed-components --maintenanceDataRoot <已核验数据根>` 不启动 HTTP 服务，仅允许 root/管理员或已配置的 Windows 个人安装所有者执行，必须在原 Server 已停止且原部署配置与 Helper 仍可用时运行。
+部署行为验证可运行 `python Tests/Deployment/retained_component_checks.py` 和 Windows 下的 `Tests/Deployment/RetainedWindowsComponentChecks.ps1`、`Tests/Deployment/ManagedWindowsCleanupChecks.ps1`；清理中止及回执验证使用 Server 测试工程的 `--managed-component-cleanup-only`。
+
+本地维护入口 `--maintenance=remove-managed-components --maintenanceDataRoot <已核验数据根>` 不启动 HTTP 服务，仅允许 root/管理员或已配置的 Windows 个人安装所有者执行，必须在原 Server 已停止且原部署配置与 Helper 仍可用时运行。
 
 普通 SSH 账户通过 sudo 维护系统安装时，已安装引擎的文件和可执行权限检查也必须使用同一次经验证的 sudo 身份。部署目录仅 root 可遍历时，不能用普通 SSH 用户的 `test -x` 判断引擎缺失；无 sudo 授权或脚本实际缺失时仍须拒绝操作。
 
 SSH 私有解压目录使用 `0700/0600` 权限；发布到系统模式安装目录后，必须让服务账户可遍历程序目录并读取运行库和程序集，同时保持程序文件仅 root 可写。程序的 `server/data` 必须链接到持久化的受管服务器数据目录。修复部署脚本后必须重新制作 Server ZIP，因为安装实际执行的是 ZIP 内的版本化引擎，仅更新桌面客户端不会更新旧 ZIP 中的安装器。安装器等待 HTTP/HTTPS 健康端点最多 60 秒，不能用 systemd 的 active 状态替代健康检查成功。
 
-安装来源使用当前请求契约：`officialStable` 不上传 ZIP，由服务器读取官网描述符、下载并自动校验；`localBundle` 上传用户选择的 ZIP，`stagedPackageName` 为必填；`remoteBundle` 通过 `remotePackagePath` 引用服务器绝对路径，直接读取，不下载回客户端或重新上传。用户文件无需 `packageDigest`。所有来源仍拒绝路径穿越、重复 ZIP 路径、符号链接、不匹配的架构或包类型，并只将包解压到本次操作的私有目录。Linux 引擎对用户包使用 `--skip-file-checks`，仅省略摘要比对；官网包保留摘要检查。
+安装来源使用当前请求契约：`officialStable` 不上传 ZIP，由服务器读取官网描述符、下载并自动校验；`localBundle` 上传用户选择的 ZIP，`stagedPackageName` 为必填；`remoteBundle` 通过 `remotePackagePath` 引用服务器绝对路径，直接读取，不下载回客户端或重新上传。
+
+用户文件无需 `packageDigest`。所有来源仍拒绝路径穿越、重复 ZIP 路径、符号链接、不匹配的架构或包类型，并只将包解压到本次操作的私有目录。Linux 引擎对用户包使用 `--skip-file-checks`，仅省略摘要比对；官网包保留摘要检查。
 
 打包脚本仍导出 `artifacts/launcher/` 中的两种脚本，供维护者手动使用，但客户端运行不依赖这个目录。仓库的 `RelaxKonOS.ReleaseVerifier` 仍可用于发布前检查，不再发布或上传它作为安装依赖。
 
@@ -118,11 +132,15 @@ Linux Server 和 User Server 发布包必须包含 `deployment/verify-release-in
 
 Linux System Mode 使用 SSH 用户及 sudo 安装时，安装后的防火墙探测和规则添加也必须通过同一 sudo 身份执行。防火墙诊断失败会写入该操作的受限诊断附件；主机防火墙未启用时，成功回执的 `firewallStatus` 为 `disabled`，不会启用防火墙或添加无效规则。
 
-Linux System Mode 发布安装目录时，显式把安装、卸载和服务部署脚本设为 `0755`，避免 Windows 制作的 ZIP 经普通解压后没有执行位。服务器中心通过 Bash 执行安装与卸载引擎，按实际执行身份检查文件存在且可读；安装包缺少卸载引擎时，在安装前拒绝该包。现有安装若遇到 `no System Mode uninstall engine is available on this host`，应先检查 `/opt/relaxkonos/current/deployment/bootstrap/uninstall-relaxkonos.sh` 是否存在，以及经 sudo 执行时能否读取；脚本存在但没有执行位时，可将其权限修复为 `0755` 后重新发起卸载。
+Linux System Mode 发布安装目录时，显式把安装、卸载和服务部署脚本设为 `0755`，避免 Windows 制作的 ZIP 经普通解压后没有执行位。服务器中心通过 Bash 执行安装与卸载引擎，按实际执行身份检查文件存在且可读；安装包缺少卸载引擎时，在安装前拒绝该包。
+
+现有安装若遇到 `no System Mode uninstall engine is available on this host`，应先检查 `/opt/relaxkonos/current/deployment/bootstrap/uninstall-relaxkonos.sh` 是否存在，以及经 sudo 执行时能否读取；脚本存在但没有执行位时，可将其权限修复为 `0755` 后重新发起卸载。
 
 ## 官方在线来源
 
-安装器默认从 `https://downloads.relaxkon.com/relaxkonos/stable/latest/{rid}.json` 读取当前稳定版，其中 `{rid}` 是 `win-x64`、`win-arm64`、`linux-x64` 或 `linux-arm64`。该描述文件包含 ZIP 的 HTTPS 地址和 SHA-256；将通过验证的版本描述文件同步为 `latest/{rid}.json`，即可完成稳定版切换，无需修改安装器。Linux User Mode 的服务器中心安装使用独立的 `latest/user-server/{rid}.json`，其 `packageKind` 必须为 `user-server`；发布时需同时部署这份描述符。
+安装器默认从 `https://downloads.relaxkon.com/relaxkonos/stable/latest/{rid}.json` 读取当前稳定版，其中 `{rid}` 是 `win-x64`、`win-arm64`、`linux-x64` 或 `linux-arm64`。
+
+该描述文件包含 ZIP 的 HTTPS 地址和 SHA-256；将通过验证的版本描述文件同步为 `latest/{rid}.json`，即可完成稳定版切换，无需修改安装器。Linux User Mode 的服务器中心安装使用独立的 `latest/user-server/{rid}.json`，其 `packageKind` 必须为 `user-server`；发布时需同时部署这份描述符。
 
 ## 反向代理与分块上传
 
@@ -179,7 +197,9 @@ System Mode 安装会自动创建 `/var/log/relaxkonos/runtime` 和审计数据�
 
 离线介质可直接是发布目录或 ZIP，例如：`sudo ./install-relaxkonos.sh --bundle /media/usb/RelaxKonOS-0.1.0-linux-x64.zip`。安装器会验证包的架构、systemd、`sudo`/`visudo`/`openssl`，并仅默认接受 Debian 12/13、Ubuntu 22.04/24.04/26.04、Linux Mint 21/21.1/21.2/21.3/22/22.1/22.2/22.3（Ubuntu 版）；其他系统必须明确传入 `--allow-unsupported-system`。
 
-局域网模式将 Server 绑定到 `0.0.0.0`。安装/升级向导与修复页面提供默认不勾选的“添加服务器 TCP 端口防火墙规则”。只有用户选择后才为当前监听端口添加入站规则；Windows 使用当前网络的已启用防火墙配置，Linux System 使用已开启的 UFW、firewalld、nftables 或 iptables。规则持久化；nftables 需要活动的 nftables 服务和 `/etc/nftables.conf`，iptables 需要 `netfilter-persistent`，不满足时操作明确失败，不自动安装防火墙工具。防火墙未开启时提示用户且不添加规则、不启用防火墙。普通服务器检查不修改防火墙。公网部署请选择反向代理模式（默认本机监听），并由反向代理终结 HTTPS。
+局域网模式将 Server 绑定到 `0.0.0.0`。安装/升级向导与修复页面提供默认不勾选的“添加服务器 TCP 端口防火墙规则”。只有用户选择后才为当前监听端口添加入站规则；Windows 使用当前网络的已启用防火墙配置，Linux System 使用已开启的 UFW、firewalld、nftables 或 iptables。
+
+规则持久化；nftables 需要活动的 nftables 服务和 `/etc/nftables.conf`，iptables 需要 `netfilter-persistent`，不满足时操作明确失败，不自动安装防火墙工具。防火墙未开启时提示用户且不添加规则、不启用防火墙。普通服务器检查不修改防火墙。公网部署请选择反向代理模式（默认本机监听），并由反向代理终结 HTTPS。
 
 Docker 管理默认关闭，因为 Docker socket 等同高权限主机控制。只有需要 Docker Manager 时，才在 System Mode 命令末尾明确追加 `--docker-access`；安装器会授权 Server 服务账户并重启 Server。Docker 尚未安装时也会先创建系统组并添加成员，使后续安装 Docker 能被运行中的 Server 直接访问。旧部署在后续安装时才添加组权限的，需要重启 `relaxkonos-server.service` 后刷新验证连接。
 
@@ -228,8 +248,9 @@ or inconsistent installation must be repaired before its managed state can be re
 修复保留已记录的监听地址、端口及数据，不自动将局域网监听切换为回环监听。
 此功能需要包含上述更新的客户端与服务器部署脚本；旧安装应先升级服务器部署脚本所在的版本。
 
+独立服务的路径、服务标识、协议版本和实机验收清单见 [独立组件服务进度](../docs/services/RelaxKonOS.IndependentComponentServices.Progress.md)。Windows 专用宿主入口随 Helper 发布，组件安装时复制完整发布目录到独立宿主目录；Server 与 Helper 必须使用本轮协议 1.0。
 
-独立服务的路径、服务标识、协议版本和实机验收清单见 [独立组件服务进度](../docs/services/RelaxKonOS.IndependentComponentServices.Progress.md)。Windows 专用宿主入口随 Helper 发布，组件安装时复制完整发布目录到独立宿主目录；Server 与 Helper 必须使用本轮协议 1.0。旧版本的 Helper 子进程不采用兼容接管：升级停止旧 Helper 后，按当前接口重新启动组件以注册独立服务。Linux FRP 安装来源由 root 写入 `/etc/relaxkonos/frp-archive-root`，Helper 对上传包执行发布 SHA-256 校验，只从固定 FRP 发布资产导入两个运行时二进制。
+旧版本的 Helper 子进程不采用兼容接管：升级停止旧 Helper 后，按当前接口重新启动组件以注册独立服务。Linux FRP 安装来源由 root 写入 `/etc/relaxkonos/frp-archive-root`，Helper 对上传包执行发布 SHA-256 校验，只从固定 FRP 发布资产导入两个运行时二进制。
 
 ### Linux 发行版适配验证
 

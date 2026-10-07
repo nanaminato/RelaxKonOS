@@ -66,7 +66,7 @@ CodeEditorViewModel（窗口内真源）
 └─ ActiveSidebar                 # Explorer / OpenEditors
 ```
 
-- 路径以 Server 返回的绝对路径为真源；同一路径只能有一个打开文档。
+- 路径以 Server 返回的绝对路径为数据来源；同一路径只能有一个打开文档。
 - 文件夹树为惰性缓存。刷新当前根或目录时仅重载该节点，不会覆盖脏文档。
 - v1 的根目录和打开标签只在当前 Code Editor 窗口存活，不持久化到 Workspace；这样不会把远程路径或未保存文本写入数据库。后续若需要恢复工作区，单独引入 Workspace 级 `CodeEditorSettings`，只保存已验证根路径和打开文件路径，不保存文件内容。
 - 读写大小、路径规范化、权限拒绝与文件不存在均沿用 Files API 的服务端约束；客户端只显示本地化错误状态。

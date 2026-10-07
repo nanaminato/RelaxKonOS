@@ -9,7 +9,7 @@
 - 代码依据成立不代表线上问题已复现；性能收益必须通过前后对照测量确认。
 - 每次实施保留条目 ID，填写变更、验证命令与结果、剩余限制。只有验收条件满足后才标记已完成。
 - 内置接口升级直接更新协议、实现、调用方、测试和文档，不引入兼容别名或双格式解析。
-- 已有专项文档继续作为专项实现的真源，本台账仅提供入口和检查发现。
+- 已有专项文档继续作为专项实现的数据来源，本台账仅提供入口和检查发现。
 
 ## 2. 总览
 
@@ -42,7 +42,9 @@
 
 ### OPT-002：日志摘要净化边界
 
-依据：[ObservabilitySanitizer.cs](../../RelaxKonOS.Server/Observability/ObservabilitySanitizer.cs) 的 `SensitiveAssignment` 要求键名后直接出现空白和 `:`/`=`；`{"password":"example-secret"}` 中键名后的引号不满足规则，普通赋值值匹配也止于空白。现有 [ObservabilityChecks.cs](../../RelaxKonOS.Server.Tests/ObservabilityChecks.cs) 覆盖普通赋值、Bearer 和 URL 凭证，尚未覆盖上述输入。
+依据：[ObservabilitySanitizer.cs](../../RelaxKonOS.Server/Observability/ObservabilitySanitizer.cs) 的 `SensitiveAssignment` 要求键名后直接出现空白和 `:`/`=`；`{"password":"example-secret"}` 中键名后的引号不满足规则，普通赋值值匹配也止于空白。
+
+现有 [ObservabilityChecks.cs](../../RelaxKonOS.Server.Tests/ObservabilityChecks.cs) 覆盖普通赋值、Bearer 和 URL 凭证，尚未覆盖上述输入。
 
 建议：补充可复现用例后修复净化边界，明确 JSON、带引号值、空格、转义和大小写语义；核对所有调用该摘要净化器的日志与审计出口。
 
@@ -52,7 +54,9 @@
 
 ### OPT-003：SSH 执行和文件传输取消
 
-依据：[ServerCenterSshTransport.cs](../../Client/RelaxKonOS.Client/Services/ServerCenter/ServerCenterSshTransport.cs) 的 `RunAsync`、`UploadAsync`、`DownloadAsync` 将同步 SSH.NET 调用包在 `Task.Run(..., cancellationToken)` 中，没有在已开始的同步操作内部接入取消。传给 Task.Run 的 token 可以阻止尚未开始的任务，但不能中断正在运行的同步调用。`RunWithInputAsync` 已使用 `ExecuteAsync(cancellationToken)`，可作为检查方向。
+依据：[ServerCenterSshTransport.cs](../../Client/RelaxKonOS.Client/Services/ServerCenter/ServerCenterSshTransport.cs) 的 `RunAsync`、`UploadAsync`、`DownloadAsync` 将同步 SSH.NET 调用包在 `Task.Run(..., cancellationToken)` 中，没有在已开始的同步操作内部接入取消。
+
+传给 Task.Run 的 token 可以阻止尚未开始的任务，但不能中断正在运行的同步调用。`RunWithInputAsync` 已使用 `ExecuteAsync(cancellationToken)`，可作为检查方向。
 
 建议：检查当前依赖支持的异步/取消接口；明确取消、超时、断连、资源释放和部分上传文件处理。取消命令等待不等于远端安装已停止，需要核对任务状态。
 
@@ -60,7 +64,9 @@
 
 ### OPT-004：浏览器列表容量边界
 
-依据：[BrowserEndpoints.cs](../../RelaxKonOS.Server/Endpoints/BrowserEndpoints.cs) 全量返回书签；历史 `limit=0` 原样传入仓储。[SqliteBrowserRepository.cs](../../RelaxKonOS.Server/Storage/Sqlite/SqliteBrowserRepository.cs) 与内存实现均把 `limit<=0` 解释为无界返回。正常正数历史查询已有 SQL LIMIT，历史也已有 `(UserId, LastVisitedAt)` 索引，不应重复建议增加相同索引。
+依据：[BrowserEndpoints.cs](../../RelaxKonOS.Server/Endpoints/BrowserEndpoints.cs) 全量返回书签；历史 `limit=0` 原样传入仓储。[SqliteBrowserRepository.cs](../../RelaxKonOS.Server/Storage/Sqlite/SqliteBrowserRepository.cs) 与内存实现均把 `limit<=0` 解释为无界返回。
+
+正常正数历史查询已有 SQL LIMIT，历史也已有 `(UserId, LastVisitedAt)` 索引，不应重复建议增加相同索引。
 
 建议：统一历史 limit 合法范围，评估书签分页与 UI 加载策略。接口改变时同步共享协议和全部客户端，直接采用新契约。
 
@@ -80,7 +86,7 @@
 
 建议：清理当前实施要求中的兼容期，追加带日期的状态更正，并链接仍未覆盖的净化问题 OPT-002。
 
-验收：当前目标不再要求兼容 shim；原历史事实与本次构建事实区分清楚；文档不在未运行测试时宣称回归全绿。
+验收：当前目标不再要求兼容 shim；原历史事实与本次构建事实区分清楚；文档不在未运行测试时宣称回归测试全部通过。
 
 ### OPT-007：平台支持分析警告
 
@@ -104,7 +110,6 @@
 首轮建议顺序为 OPT-001 → OPT-002 → OPT-003，随后文档/平台边界与容量测量；现均已进入实施与验收记录。
 
 后续记录格式：日期、条目 ID、状态变化、变更文件或提交、验证命令与结果、剩余限制。每次更新同时维护 §2 状态计数。
-
 
 ## 5. 2026-10-07 实施记录
 
@@ -166,7 +171,6 @@ SQLite 书签测试分别创建 1 千和 1 万条数据。旧行为用相同 EF 
 
 这两项在上述证据补齐后才更新为已完成；不需要再做未完成的实现计划。Android 仍由其自有状态文档记录专项验证。
 
-
 ## 8. 2026-10-07：Ubuntu 测试服务器部署
 
 用户确认 DHCP 变更后的实际地址为 `192.168.1.9`，SSH 指纹经服务器终端核对一致；以固定主机指纹连接。原服务实际运行于 `/opt/relaxkonos/settings-test-20261006/`，安装状态仍记为 `0.2.1`，此次升级使用仓库 System Mode 引擎，并以既有 installationId 校验目标。
@@ -182,7 +186,6 @@ SQLite 书签测试分别创建 1 千和 1 万条数据。旧行为用相同 EF 
 
 服务端部署完成不代表 §7 的客户端原生 WebView 或进行中取消验收已经完成。浏览器 UI 随桌面客户端发布，需要运行新版客户端才能显示。
 
-
 ## 9. 2026-10-07：浏览器地址栏崩溃修复（OPT-009）
 
 用户报告地址栏按回车时，`NormalizeAddress` 在 `new Uri("https://" + input)` 抛出 `UriFormatException`，异常经导航命令和 KeyDown 传播到 UI 线程。所有输入生成的 URI 现改用 `Uri.TryCreate`；非法显式 URL 不再重复添加 scheme，而是返回无效地址状态，保留当前标签地址与导航源。
@@ -190,7 +193,6 @@ SQLite 书签测试分别创建 1 千和 1 万条数据。旧行为用相同 EF 
 同时修正 `localhost:port` 和 `domain:port` 被识别为不透明 URI scheme 的歧义，处理 IPv6 loopback，并将包含制表符或换行的普通文字按搜索查询编码。既有绝对地址与域名 HTTPS、loopback HTTP 和搜索行为保留。
 
 验证：`RelaxKonOS.ApplicationLayout.Tests --browser-only` 通过，覆盖 5 类正常地址、4 类搜索文字与 10 类非法/空输入；包含不完整 IPv6、非法端口和非法显式 scheme。额外 18 个浏览器语言/主题/宽度组合继续通过。客户端构建仍有原先其他模块的 5 个警告，无新增编译错误。此修复位于客户端，不涉及已部署服务端。
-
 
 ## 10. 2026-10-07：收藏/历史面板与图标居中（OPT-010）
 

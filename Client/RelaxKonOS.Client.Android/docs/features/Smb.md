@@ -1,6 +1,5 @@
 # Android SMB 文件服务
 
-
 ## 入口与当前事实
 
 管理目录在当前宿主提供 `server.file-services` 时显示 SMB。页面读取 capability、状态、连接信息，以及支持的共享/用户集合；观察者可以查看，写入要求当前会话具备 privilegedOperations。服务状态与 TCP 445 监听分别展示，不以其中一个推断另一个。

@@ -1,7 +1,7 @@
 # RelaxKonOS 系统风格（System Style）
 
 > **状态：Phase 0–5 已实施（2026-09-19）。** 本文是系统风格层的实施规范与现状记录。
-> 五个阶段的功能性交付物均已落地并通过构建与契约校验；
+> 五个阶段的功能性交付物均已实现并通过构建与契约校验；
 > **视觉回归尚未执行**（见 §11.2），因此「已实施」指代码与契约层面，不等于已通过观感验收。
 >
 > 配色与调色板见 [`RelaxKonOS.Theming.md`](./RelaxKonOS.Theming.md)；
@@ -14,7 +14,7 @@
 
 系统风格的核心是**不再把“颜色”和“形状”混为一个下拉框**。三者各自独立选择、独立存储：
 
-| 层 | 决定什么 | 真源字段 | 取值 |
+| 层 | 决定什么 | 数据来源字段 | 取值 |
 |---|---|---|---|
 | 外观与调色板 | 浅/深/跟随系统、语义颜色、强调色 | `DesktopExperience.Appearance` | `ThemeKind` + `builtin:*` / `custom:*` |
 | **系统风格** | 系统部件的形状、尺寸、动效、菜单与窗口 chrome 的部件选择 | `DesktopExperience.SystemStyleId` | `relaxkonos.windows-like` / `.macos-like` / `.ubuntu-like` |
@@ -71,7 +71,7 @@ Phase 2/3 完成迁移后，按 §10.2 的**精确口径**（`#[0-9A-Fa-f]{6,8}\
 
 ## 3. 形状令牌契约（闭集）
 
-真源：`Shared/RelaxKonOS.Protocol/Workspace/SystemStyles/SystemStyleTokenContract.cs`。
+数据来源：`Shared/RelaxKonOS.Protocol/Workspace/SystemStyles/SystemStyleTokenContract.cs`。
 
 令牌键是跨项目 API。清单只能设置**这里声明过**的键，且值必须落在显式区间内——
 这是清单无法夹带破坏布局的数值的原因。
@@ -136,7 +136,7 @@ Phase 2/3 完成迁移后，按 §10.2 的**精确口径**（`#[0-9A-Fa-f]{6,8}\
 
 ## 4. Recipe 选择器（闭集）
 
-真源：`Shared/RelaxKonOS.Protocol/Workspace/SystemStyles/SystemStyleRecipes.cs`。
+数据来源：`Shared/RelaxKonOS.Protocol/Workspace/SystemStyles/SystemStyleRecipes.cs`。
 
 每个全局组件在 `RelaxKonOS.UI` 保留由宿主审查的基础模板，风格只能通过 recipe **选择**其中一种已审查的变体。
 recipe 的合法值全部是同一文件里的字符串常量——清单无法提供 AXAML 片段、CLR 类型名、程序集引用、资源 URI 或事件处理器。
@@ -187,7 +187,7 @@ recipe 只是「选择」，真正产生差异的是宿主审查过的模板。�
 
 ### 5.1 `SystemStyleManifestDto`
 
-真源：`Shared/RelaxKonOS.Protocol/Workspace/SystemStyles/SystemStyleManifestDto.cs`。
+数据来源：`Shared/RelaxKonOS.Protocol/Workspace/SystemStyles/SystemStyleManifestDto.cs`。
 
 | 字段 | 说明 |
 |---|---|
@@ -199,7 +199,7 @@ recipe 只是「选择」，真正产生差异的是宿主审查过的模板。�
 | `lightTokens` / `darkTokens` | 可选，按模式覆盖 `tokens` |
 | `accessibility` | `minimumHitTarget`（≥40）、`supportsReducedMotion`（必须为 `true`） |
 | `minimumHostApiVersion` | 不得高于宿主 `CurrentHostApiVersion`（`"1.0"`） |
-| `packageId` / `packageVersion` | 外置包来源；内置为 `null`。外置门禁要求两者都非空 |
+| `packageId` / `packageVersion` | 外置包来源；内置为 `null`。外置包校验要求两者都非空 |
 | `source` | 来源标注，只接受 `SystemStyleSources` 的两个常量：`builtin` / `signed-package`。**没有「unknown」兜底**——无法说明来源的清单会被拒绝 |
 
 `ResolveTokens(bool dark)`：先铺全部令牌默认值 → 覆盖 `tokens` → 再覆盖对应模式变体。
@@ -242,7 +242,7 @@ recipe 只是「选择」，真正产生差异的是宿主审查过的模板。�
 「只接受当前契约版本」由 `TryValidate` 保证：`schemaVersion` 必须严格等于 `1`，
 且 `minimumHostApiVersion` 不得高于宿主 API。**没有旧 schema 读取路径、没有迁移层。**
 
-调用点是 `SystemStyleRegistry.Register(manifest, isBuiltIn)`：`isBuiltIn: false` 走外置门禁。
+调用点是 `SystemStyleRegistry.Register(manifest, isBuiltIn)`：`isBuiltIn: false` 走外置包校验。
 **本构建尚无包加载器**（Plan Phase 5 第 3 条要求「仅在示例与三个内置风格全覆盖后再开放第三方 manifest」），
 因此外置路径是**已实现、已测试、但生产上未接通**的边界——这是刻意的，不是遗漏。
 
@@ -250,7 +250,7 @@ recipe 只是「选择」，真正产生差异的是宿主审查过的模板。�
 
 ## 6. 三套内置 profile
 
-真源：`Shared/RelaxKonOS.Protocol/Workspace/SystemStyles/BuiltInSystemStyles.cs`，纯数据，与外部清单走同一 schema/validator/令牌词表。
+数据来源：`Shared/RelaxKonOS.Protocol/Workspace/SystemStyles/BuiltInSystemStyles.cs`，纯数据，与外部清单走同一 schema/validator/令牌词表。
 
 | | Windows-like | macOS-like | Ubuntu-like |
 |---|---|---|---|
@@ -471,7 +471,7 @@ WorkspacePreferencesDto
 - 外观仅含颜色（无 `StyleId`，令牌键不得以 `Color`/`Brush` 结尾，清单不得出现颜色形字段）；
 - `RecommendedForShell` 映射；
 - 线格式往返：JSON 不含 `styleId` 与顶层 `"theme":`，保留 `systemStyleId`/`appearance`/`shell`；
-- **外置包门禁**（Phase 5）：来源必须属于已知集合、包归属必填、冒充 `builtin` 被拒、
+- **外置包校验**（Phase 5）：来源必须属于已知集合、包归属必填、冒充 `builtin` 被拒、
   更高 schema / 更高 `minimumHostApiVersion` 被拒；
 - **recipe 覆盖率**（Phase 5）：遍历四个槽位的全部允许值，
   在消费文件中查找对应伪类/class/常量，任一缺失即失败；
@@ -490,7 +490,7 @@ WorkspacePreferencesDto
 | `Client/RelaxKonOS.Client/Apps/TaskManager/ViewModels/TaskManagerViewModel.cs` | 4 | 性能图表的逐资源系列色（数据可视化系列） |
 | `Client/RelaxKonOS.Client/Apps/TaskManager/Controls/PerformanceLineChart.cs` | 1 | 图表线条默认色（同上） |
 
-`Shared/RelaxKonOS.Protocol/Workspace/ThemePaletteDefaults.cs` 与 `TerminalSettingsDto.cs` 是颜色的**真源**与终端协议，
+`Shared/RelaxKonOS.Protocol/Workspace/ThemePaletteDefaults.cs` 与 `TerminalSettingsDto.cs` 是颜色的**数据来源**与终端协议，
 不在扫描范围内（规则约束的是「可主题化的 UI」，不是「颜色的定义处」）。
 
 运行：
@@ -538,7 +538,7 @@ dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --s
 - **`ReducedMotion` 仍是显式开关**，未接入平台「减少动态效果」设置；
   不过 `SystemStyleResourceBuilder` 已把**所有** `Duration` 令牌折叠为 `ReducedMotionDuration`，
   因此一旦该开关打开，概览入场动效等会自然退化为瞬时。
-- **外置 style manifest 在生产上未接通**：门禁已实现且已测试，但没有包加载器，
+- **外置 style manifest 在生产上未接通**：校验已实现且已测试，但没有包加载器，
   按 Plan Phase 5 第 3 条，第三方 manifest 在有完整回归数据前保持关闭。
 - **未做**高 DPI、窄窗口、触摸、低性能、三平台（Windows/macOS/Linux）实机回归。
 - 跨平台宿主配置与远程实机验收未执行。
@@ -559,7 +559,7 @@ dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --s
 
 ## 12. 后续工作要求
 
-令牌、校验、运行时切换、Shell 接入与控件迁移均已落地。仍未完成的是**验收性**工作，不是功能性工作：
+令牌、校验、运行时切换、Shell 接入与控件迁移均已实现。仍未完成的是**验收性**工作，不是功能性工作：
 
 1. **执行 §11.3 的视觉回归矩阵**，并把结果（含截图）补进本文 §11.1；
    在此之前不要把「已实施」对外表述为「已验证」。
@@ -569,6 +569,5 @@ dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --s
    不得为取缩略图重建应用、泄漏隐藏窗口或绕过 WebView 安全限制。
 5. **第三方 style manifest 的开放门槛**：先完成 §11.3 回归，再接入包加载器
    （`SystemStyleRegistry.Register(manifest, isBuiltIn: false)` 已就绪）。
-
 
 每阶段结束应保持可编译、可运行、可切换；不得先大规模复制风格页面或只完成某一个 Shell。

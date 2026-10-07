@@ -1,12 +1,16 @@
 # Android 宿主防火墙
 
-页面分为概览与操作记录，概览使用状态标签显示启用/停用/不可用，后端与版本使用次要文字，入站和出站默认策略分列显示。缺失策略显示简短“未知”，不重复使用整段变更核实提示。每条规则单独成卡。默认策略编辑和规则创建/编辑使用弹窗，表单可滚动并避让键盘；保存后仍须确认管理连接风险，取消确认返回草稿。关闭或切换页面沿用草稿放弃确认。待核实写入与读取并接受当前事实只在操作记录页显示，概览提供简短跳转；没有标记时显示空状态。
+页面分为概览与操作记录，概览使用状态标签显示启用/停用/不可用，后端与版本使用次要文字，入站和出站默认策略分列显示。缺失策略显示简短“未知”，不重复使用整段变更核实提示。每条规则单独成卡。默认策略编辑和规则创建/编辑使用弹窗，表单可滚动并避让键盘；保存后仍须确认管理连接风险，取消确认返回草稿。关闭或切换页面沿用草稿放弃确认。待核实写入与读取并确认当前状态只在操作记录页显示，概览提供简短跳转；没有标记时显示空状态。
 
-BP07-M1 提供“管理 → 防火墙”原生页面，按 `server.firewall` 门控。当前共享契约由 Linux UFW 与 Windows Defender Firewall 实现；不支持的宿主按返回的 `isAvailable=false` 展示不可用，不将未启用解释为不支持，也不提供手机防火墙或任意命令执行。
+提供“管理 → 防火墙”原生页面，按 `server.firewall` 门控。当前共享契约由 Linux UFW 与 Windows Defender Firewall 实现；不支持的宿主按返回的 `isAvailable=false` 展示不可用，不将未启用解释为不支持，也不提供手机防火墙或任意命令执行。
 
-`Firewall.kt` 直接投影 [共享 DTO](../../../../Shared/RelaxKonOS.Protocol/Firewall/FirewallDtos.cs) 和 [当前路由](../../../../Shared/RelaxKonOS.Protocol/Firewall/FirewallApiRoutes.cs)。状态显示启用、后端、版本、入站/出站默认策略与核验时间；规则保持服务端编号和 IPv4、IPv6、IPv4 + IPv6 逻辑配对。规则读取失败不显示“没有规则”：Server 以 503 和稳定问题码返回读取失败，成功的空集合才表示当前没有规则。
+`Firewall.kt` 直接投影 [共享 DTO](../../../../Shared/RelaxKonOS.Protocol/Firewall/FirewallDtos.cs) 和 [当前路由](../../../../Shared/RelaxKonOS.Protocol/Firewall/FirewallApiRoutes.cs)。
 
-具备宿主管理权限且状态可用时可启用/停用、编辑默认策略、创建/替换/删除规则。规则字段包括 allow/deny/reject/limit、in/out、tcp/udp/any、来源与目标 IP/CIDR、端口或 start:end 范围；表单拒绝主机名、命令文本、无效地址/前缀和反向端口范围，最终由 Server/Helper 校验。每次写入展示管理连接中断风险及捕获的动作/规则/策略。经系统认证的宿主管理员/root 不重复输入密码，Server 每次重新检查资格；其他会话只经统一 `firewallChange` + `host/firewall` 入口显式认证管理员。已删除变更请求中的 `credentialConfirmation` 和独立当前用户密码输入，DELETE 不需要请求体。
+状态显示启用、后端、版本、入站/出站默认策略与核验时间；规则保持服务端编号和 IPv4、IPv6、IPv4 + IPv6 逻辑配对。规则读取失败不显示“没有规则”：Server 以 503 和稳定问题码返回读取失败，成功的空集合才表示当前没有规则。
+
+具备宿主管理权限且状态可用时可启用/停用、编辑默认策略、创建/替换/删除规则。规则字段包括 allow/deny/reject/limit、in/out、tcp/udp/any、来源与目标 IP/CIDR、端口或 start:end 范围；表单拒绝主机名、命令文本、无效地址/前缀和反向端口范围，最终由 Server/Helper 校验。
+
+每次写入展示管理连接中断风险及捕获的动作/规则/策略。经系统认证的宿主管理员/root 不重复输入密码，Server 每次重新检查资格；其他会话只经统一 `firewallChange` + `host/firewall` 入口显式认证管理员。已删除变更请求中的 `credentialConfirmation` 和独立当前用户密码输入，DELETE 不需要请求体。
 
 防火墙页面和变更 DTO 不收集密码；管理员认证凭据由统一提权窗口处理，不进入规则草稿、日志或未知标记。规则草稿、默认策略与离页/刷新/选择另一规则有放弃确认。手机和平板统一使用编辑弹窗，新增文案同步中/英/日。
 

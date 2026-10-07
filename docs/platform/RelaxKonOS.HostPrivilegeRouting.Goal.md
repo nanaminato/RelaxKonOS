@@ -43,7 +43,9 @@ Server 在生产部署中继续以低权限 `relaxkonos-server` 运行。登录�
 
 ### 3.2 Linux 管理员资格
 
-`root` 以 UID 0 判定。非 root 管理员不能仅凭 `sudo` 或 `wheel` 组名判定，因为发行版和 sudoers 配置各异。Goal 0 必须冻结并实现一个**由 root 管理、可验证、可审计**的 Linux administrator policy：它明确列出 RelaxKonOS 可接受的管理员账户/组与宿主 sudo 授权的关系，并在资格查询时验证 canonical UID、组和策略仍有效。安装器不得从客户端请求或用户可写文件读取此策略；不认识的发行版、策略错误或 NSS 不可用时不得授予自动提权。验收须覆盖 Ubuntu/Debian 的 sudo 配置、非 sudo 管理员、直接 sudoers 用户项、root 密码被锁定及账户撤权。
+`root` 以 UID 0 判定。非 root 管理员不能仅凭 `sudo` 或 `wheel` 组名判定，因为发行版和 sudoers 配置各异。Goal 0 必须冻结并实现一个**由 root 管理、可验证、可审计**的 Linux administrator policy：它明确列出 RelaxKonOS 可接受的管理员账户/组与宿主 sudo 授权的关系，并在资格查询时验证 canonical UID、组和策略仍有效。
+
+安装器不得从客户端请求或用户可写文件读取此策略；不认识的发行版、策略错误或 NSS 不可用时不得授予自动提权。验收须覆盖 Ubuntu/Debian 的 sudo 配置、非 sudo 管理员、直接 sudoers 用户项、root 密码被锁定及账户撤权。
 
 管理员账户输入不按平台猜测默认值；root 没有可用 PAM 密码时，可使用其他**已获认可**的管理员账户及其自身密码。PAM 成功仅证明密码正确，不能代替管理员资格检查。无效凭据与“账户并非管理员”返回不同稳定 problem code；不能回退验证当前普通用户的密码。
 
@@ -146,6 +148,8 @@ Explorer 对 Standard 显示可修改管理员账户和密码；对 Administrato
 - 用户批准后，`nanami` 无需二次认证即可读取系统环境快照、预览并写入独立测试变量，操作返回 Applied；Helper 写入后的 `/etc/environment` 保持 root:root 0644。通过对应 operation rollback 返回 RolledBack，恢复后的文件与 root 私有备份逐字节一致，重新登录后的快照 revision 也恢复为原值。手工提交错误 revision 返回 409，没有覆盖当前文件。
 - 未执行 UFW 实际变更、root 锁定、UID 漂移、Helper 停止、并发重试及完整文件操作矩阵；不可将本次结果视为全部发布验收。平板证据见 Android 自有 [Verification](../../Client/RelaxKonOS.Client.Android/docs/development/Verification.md)。
 
-安装器两项缺陷已修复并实测：Linux 与 PowerShell 包统一采用 `manifest.json` 逐文件清单，System/User Mode 共享 JSON inventory 验证器；Linux upgrade 默认复用已安装 PFX 和密码，显式 repair 重新生成证书的入口仍保留。部署 Python 回归 29 项通过，Windows 包来源、版本引擎和启动健康检查通过；新 server ZIP 的 816 个文件通过发布校验器。主机直接升级至 `0.2.0-privilege-c631d379-fix1`，未使用 `--skip-file-checks`；证书 SHA-256 与升级前一致，Server/Guardian active、HTTPS `/ready` 200。
+安装器两项缺陷已修复并实测：Linux 与 PowerShell 包统一采用 `manifest.json` 逐文件清单，System/User Mode 共享 JSON inventory 验证器；Linux upgrade 默认复用已安装 PFX 和密码，显式 repair 重新生成证书的入口仍保留。
+
+部署 Python 回归 29 项通过，Windows 包来源、版本引擎和启动健康检查通过；新 server ZIP 的 816 个文件通过发布校验器。主机直接升级至 `0.2.0-privilege-c631d379-fix1`，未使用 `--skip-file-checks`；证书 SHA-256 与升级前一致，Server/Guardian active、HTTPS `/ready` 200。
 
 测试账户清理同时移除本轮创建的数据库账户、workspace、默认 registry 和登录凭据，保留审计记录与现有用户；修改前建立 root 私有 SQLite 备份并核对其他账户不变、外键完整性正常。不能只删除 OS 测试用户而保留数据库绑定，否则下一次 Server 启动的身份预检会拒绝启动。系统测试账户、测试文件及临时 sudoers 已全部移除。

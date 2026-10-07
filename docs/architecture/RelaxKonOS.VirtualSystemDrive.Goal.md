@@ -46,7 +46,7 @@ V1 明确不包括：
 1. `ApplicationManager` 是唯一的 launch registry；VSD Catalog 是持久化的发现与安装状态，不是第二套运行时。
 2. 目录扫描、描述文件读取与 schema 校验不得执行外置程序集代码。
 3. 只有 Host 编译进的映射能证明一个应用是 `BuiltIn`；任何 VSD 中的字段均不能改变来源身份。
-4. `WindowManager` 仍是窗口位置、层级、焦点和生命周期的唯一真源；Shell 仅拥有桌面视觉与用户交互。
+4. `WindowManager` 仍是窗口位置、层级、焦点和生命周期的唯一数据来源；Shell 仅拥有桌面视觉与用户交互。
 5. VSD 的路径必须经固定根目录和完整路径规范化校验；不得接受 `..`、符号链接逃逸、绝对包内路径或来自 UI 的任意安装目标。
 6. 应用权限、Server 用户授权、Host Elevation 三层仍保持分离；脚本或快捷方式不绕过其中任意一层。
 
@@ -489,4 +489,4 @@ V1 只允许用户从快捷方式或脚本库显式启动。登录后自动运�
 
 后续 Goal 模式应使用以下提示，并以本文为约束：
 
-> 依据 `docs/architecture/RelaxKonOS.VirtualSystemDrive.Goal.md` 实现 RelaxKonOS 虚拟系统盘、目录发现的应用 Catalog、快捷方式、多 Shell 和受限自动化。严格按 Goal 0–8 顺序推进：先冻结目录/schema/迁移与路径安全，再实现内置应用 descriptor 和 Catalog，随后迁移 `.roapp`、快捷方式、Shell 即时切换和声明式脚本。`ApplicationManager` 与 `WindowManager` 分别保持唯一的应用和窗口真源；磁盘 descriptor 不能授予 BuiltIn 身份、权限或任意代码执行。不得实现真实 C 盘映射、任意宿主命令、任意 EXE/网络执行、静默自动化或将第三方包误称为隔离/可信。每个 Goal 只有在构建、测试和本文件验收通过后才能进入下一项。
+> 依据 `docs/architecture/RelaxKonOS.VirtualSystemDrive.Goal.md` 实现 RelaxKonOS 虚拟系统盘、目录发现的应用 Catalog、快捷方式、多 Shell 和受限自动化。严格按 Goal 0–8 顺序推进：先冻结目录/schema/迁移与路径安全，再实现内置应用 descriptor 和 Catalog，随后迁移 `.roapp`、快捷方式、Shell 即时切换和声明式脚本。`ApplicationManager` 与 `WindowManager` 分别保持唯一的应用和窗口数据来源；磁盘 descriptor 不能授予 BuiltIn 身份、权限或任意代码执行。不得实现真实 C 盘映射、任意宿主命令、任意 EXE/网络执行、静默自动化或将第三方包误称为隔离/可信。每个 Goal 只有在构建、测试和本文件验收通过后才能进入下一项。

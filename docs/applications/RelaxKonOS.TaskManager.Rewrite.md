@@ -275,7 +275,7 @@ public interface IHardwareSensorProvider { /* temperature, fan, power, voltage *
 
 ## 12. 不可违反的规则
 
-1. Server 是性能数据唯一真源；Client 不计算跨样本速率。
+1. Server 是性能数据唯一数据来源；Client 不计算跨样本速率。
 2. 差分状态只存在于 `PerformanceSampler`，不属于 HTTP 请求、Hub 连接或 ViewModel。
 3. 基础 CPU/内存/磁盘/网络不依赖单个第三方“万能跨平台”库。
 4. 平台差异局限于适配器；协议和 UI 只消费统一 DTO 与能力标记。

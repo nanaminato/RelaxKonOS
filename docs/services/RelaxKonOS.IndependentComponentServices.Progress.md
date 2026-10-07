@@ -27,11 +27,15 @@ Windows Nginx、Mihomo、FRPC/FRPS 使用独立 SCM 服务；Linux FRPC/FRPS 使
 
 已核对：Windows 三类组件原先由 Helper 启动并在 Helper 退出时停止；Linux FRP 原先由 Server 持有。Linux Nginx、Mihomo、SMB 已有独立服务。
 
-Windows 服务宿主复制完整发布目录到 `%ProgramData%\RelaxKonOS-Components\host\<package-hash>`，按组件根目录和 FRPC 配置生成独立服务名 `RelaxKonOSComponent-<kind>-<scope-hash>[-profile-guid]`；服务配置、进程状态及脱敏日志存入 `services/`。Helper 退出不停止组件。宿主与配置只允许 SYSTEM/Administrators 写入，SCM 变更前核验服务 ImagePath 和受保护配置；二进制启动前校验摘要。Job Object 负责宿主意外退出时清理子进程树，SCM 配置失败恢复。
+Windows 服务宿主复制完整发布目录到 `%ProgramData%\RelaxKonOS-Components\host\<package-hash>`，按组件根目录和 FRPC 配置生成独立服务名 `RelaxKonOSComponent-<kind>-<scope-hash>[-profile-guid]`；服务配置、进程状态及脱敏日志存入 `services/`。
+
+Helper 退出不停止组件。宿主与配置只允许 SYSTEM/Administrators 写入，SCM 变更前核验服务 ImagePath 和受保护配置；二进制启动前校验摘要。Job Object 负责宿主意外退出时清理子进程树，SCM 配置失败恢复。
 
 Windows Mihomo 信任清单已移动到 `Shared/RelaxKonOS.Protocol/Proxy/MihomoRuntimeManifest.cs`，Server 与 Helper 共用。Server 暂存 ZIP，Helper 独立核验官方包 SHA-256 并导入管理员保护的 `Proxy/service-runtime/<release>/mihomo.exe`，不把 Server 可写文件直接作为 LocalSystem 服务程序。
 
-Linux FRP 使用 `/var/lib/relaxkonos-components/frp/versions` 与 `instances/`，FRPS unit 为 `relaxkonos-frps.service`，FRPC 为 `relaxkonos-frpc-<guid>.service`。Helper 校验固定发布包 SHA-256、仅导入两个可执行文件、生成受限 TOML 与 unit；服务以非 root 的 `relaxkonos-frp` 系统账户运行，能力仅保留绑定低端口。`/etc/relaxkonos/frp-archive-root` 由 root 部署，限定 Server 上传包来源。外部修改的 unit 拒绝覆盖，服务应用失败尝试恢复前一配置。
+Linux FRP 使用 `/var/lib/relaxkonos-components/frp/versions` 与 `instances/`，FRPS unit 为 `relaxkonos-frps.service`，FRPC 为 `relaxkonos-frpc-<guid>.service`。
+
+Helper 校验固定发布包 SHA-256、仅导入两个可执行文件、生成受限 TOML 与 unit；服务以非 root 的 `relaxkonos-frp` 系统账户运行，能力仅保留绑定低端口。`/etc/relaxkonos/frp-archive-root` 由 root 部署，限定 Server 上传包来源。外部修改的 unit 拒绝覆盖，服务应用失败尝试恢复前一配置。
 
 Helper 协议统一为 1.0，统一为 `ManagedRuntime` 操作、`managedRuntime` 请求字段和 `componentProcess` 观测字段。结构化请求禁止执行路径/命令/环境注入，FRP Start 必须携带应用证明。FRPC 配置指纹、FRPS appliedRevision 均由独立服务持久化，Server 重启后重新读取；状态还核验服务、PID、启动时间与进程映像。原 Windows/Server 子进程宿主路径已移除。
 

@@ -6,7 +6,9 @@ Android 客户端是独立的 Kotlin + Jetpack Compose Gradle 工程，位于 `C
 
 最低支持 Android 10（API 29）；`minSdk = 29`，`compileSdk = targetSdk = 36`。发布前需在 API 29 验证共享下载目录、图片缓存、文件排序、生物识别与前台传输，并验证较新系统的权限和生命周期行为。
 
-工程的 [`gradle/wrapper/gradle-wrapper.properties`](../../gradle/wrapper/gradle-wrapper.properties) 将发行包固定为本机 `D:\environments\gradle-9.7.1-all.zip`（`file:///D:/environments/gradle-9.7.1-all.zip`）。首次执行环境初始化时，`Initialize-AndroidEnvironment.ps1` 从该本地包解压 Gradle；构建过程不应改回在线 Gradle 分发地址。
+工程的 [`gradle/wrapper/gradle-wrapper.properties`](../../gradle/wrapper/gradle-wrapper.properties) 将发行包固定为本机 `D:\environments\gradle-9.7.1-all.zip`（`file:///D:/environments/gradle-9.7.1-all.zip`）。
+
+首次执行环境初始化时，`Initialize-AndroidEnvironment.ps1` 从该本地包解压 Gradle；构建过程不应改回在线 Gradle 分发地址。
 
 ```powershell
 pwsh Tools/Mobile/Initialize-AndroidEnvironment.ps1
@@ -15,7 +17,9 @@ pwsh Tools/Mobile/Run-Android.ps1
 pwsh Tools/Mobile/Debug-Android.ps1
 ```
 
-`Build-Android.ps1` 会检查 Android SDK、Gradle 9.7.1 与 JDK 21，然后运行 `:app:assembleDebug`。Release 必须显式提供未提交的签名配置文件；脚本不会生成未签名的 Release 包。若只允许使用已缓存的依赖，传入 `-Offline`。Gradle 依赖版本在 `Client/RelaxKonOS.Client.Android/build.gradle.kts` 与 `app/build.gradle.kts` 管理，而非 `Directory.Packages.props`。
+`Build-Android.ps1` 会检查 Android SDK、Gradle 9.7.1 与 JDK 21，然后运行 `:app:assembleDebug`。Release 必须显式提供未提交的签名配置文件；脚本不会生成未签名的 Release 包。若只允许使用已缓存的依赖，传入 `-Offline`。
+
+Gradle 依赖版本在 `Client/RelaxKonOS.Client.Android/build.gradle.kts` 与 `app/build.gradle.kts` 管理，而非 `Directory.Packages.props`。
 
 APK 输出位置为：
 
@@ -74,7 +78,9 @@ RelaxKonOS-<version>-android-universal.release.json
 
 其中 JSON 包含应用 ID、`versionName`、`versionCode`、签名证书 SHA-256 与两份产物 SHA-256，供 PublisherServer 再次核验。它不包含私钥或口令。
 
-将这三个文件传输到 PublisherServer 所在机器的受控导入目录后，在其未提交的 `appsettings.Local.json` 配置 `AndroidImport`。配置只包含导入目录、包名、**公开的**证书 SHA-256 指纹以及 `apksigner`、`aapt2`、`keytool`、`jarsigner` 的本机路径；不得填写 keystore 或签名口令。Publisher 导入 APK 时会把它加入网站下载清单；AAB 仅归档，交给 Play Console 上传，不会作为网站安装包提供。
+将这三个文件传输到 PublisherServer 所在机器的受控导入目录后，在其未提交的 `appsettings.Local.json` 配置 `AndroidImport`。配置只包含导入目录、包名、**公开的**证书 SHA-256 指纹以及 `apksigner`、`aapt2`、`keytool`、`jarsigner` 的本机路径；不得填写 keystore 或签名口令。
+
+Publisher 导入 APK 时会把它加入网站下载清单；AAB 仅归档，交给 Play Console 上传，不会作为网站安装包提供。
 
 若要发布到 Google Play，建议使用 Play App Signing：发布机持有 upload key，Google 保管 app signing key。若同时提供官网 APK，必须在首次发布前确认各渠道更新所需的证书策略；证书不一致的 APK 不能互相覆盖安装。
 

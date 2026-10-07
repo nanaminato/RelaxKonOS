@@ -40,7 +40,9 @@ Protocol 程序集**零 PackageReference**，不引用 Core（避免线协议与
 | **SignalR Hub**（`/hubs/performance`）   | 实时单向：至少一个客户端显式订阅期间，服务端统一采样器每秒广播 `PerformanceRealtimeSnapshotDto`（CPU/内存/文件系统/磁盘/网络/GPU/网络地址）；客户端以 REST history 回补重连空洞                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | **SignalR Hub**（`/hubs/guardian-logs`） | 实时单向：Process Guardian 守护日志广播；客户端 `Subscribe/Unsubscribe` 按工作负载订阅，服务端推送结构化日志事件（包含 workload id、级别、消息、时间戳）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
-SignalR 内部走 WebSocket（不可用降级 SSE/长轮询），**不裸用 WebSocket**。Workspace 多设备通过 SignalR Group（一个 Workspace 一个 Group）广播。Terminal Hub 不启用 `WithAutomaticReconnect`（自动重连后服务端不会自动重新附加会话），恢复路径是"再次登录打开终端 → 重新 `Start(Attach)` → 回放 1MB 缓冲快照"。所有 Hub 路径常量集中在 `RelaxKonOSEndpoints`（`WorkspaceHubPath` / `PerformanceHubPath` / `GuardianLogsHubPath`）。
+SignalR 内部走 WebSocket（不可用降级 SSE/长轮询），**不裸用 WebSocket**。Workspace 多设备通过 SignalR Group（一个 Workspace 一个 Group）广播。Terminal Hub 不启用 `WithAutomaticReconnect`（自动重连后服务端不会自动重新附加会话），恢复路径是"再次登录打开终端 → 重新 `Start(Attach)` → 回放 1MB 缓冲快照"。
+
+所有 Hub 路径常量集中在 `RelaxKonOSEndpoints`（`WorkspaceHubPath` / `PerformanceHubPath` / `GuardianLogsHubPath`）。
 
 ***
 
@@ -367,7 +369,9 @@ Provider 以应用时 profile revision、隧道 ID/revision 集合和受保护 T
 | GET | `/api/v1.0/tunnels/runtime/download?version={version}` | 固定版本 → `TunnelRuntimeDownloadDto`；未受信版本 404 | TunnelsRead |
 | POST | `/api/v1.0/tunnels/runtime/external/detect` | `DetectExternalTunnelRuntimeRequest { executablePath }` → `TunnelRuntimeDto`；只探测指定绝对文件 | TunnelsManage |
 
-运行时安装统一走 `POST /api/v1.0/installations/Frp/{Install|Upgrade|Repair|Uninstall}`，请求 `FrpInstallationRequest`，沿用公共安装的确认、稳定键、提权、操作 ID、活动查询与取消语义；回滚为 Repair + rollback。Install 的包来源通过 `/installations/Frp/file-reference` 或 `/package` 产生限时 FileReferenceId，其余动作不借用包引用。安装/升级/非回滚修复要求受信固定版本；没有 latest、旧 runtime/managed 路由或客户端任意 URL 安装。
+运行时安装统一走 `POST /api/v1.0/installations/Frp/{Install|Upgrade|Repair|Uninstall}`，请求 `FrpInstallationRequest`，沿用公共安装的确认、稳定键、提权、操作 ID、活动查询与取消语义；回滚为 Repair + rollback。
+
+Install 的包来源通过 `/installations/Frp/file-reference` 或 `/package` 产生限时 FileReferenceId，其余动作不借用包引用。安装/升级/非回滚修复要求受信固定版本；没有 latest、旧 runtime/managed 路由或客户端任意 URL 安装。
 
 **Managed Frps（宿主级）**
 
@@ -380,13 +384,17 @@ Provider 以应用时 profile revision、隧道 ID/revision 集合和受保护 T
 | GET | `/api/v1.0/tunnels/frps/logs` | 有界脱敏 `TunnelLogEntryDto[]` | TunnelsRead |
 | GET | `/api/v1.0/tunnels/frps/audit` | 有界配置/生命周期/秘密读取 `TunnelAuditEntryDto[]`，不接收 limit/skip | TunnelsRead |
 
-frps DTO 必需 `revision/appliedRevision`：首次未配置 revision=0；保存版本为正数，应用版本仅在活跃进程已核实时返回。保存推进 revision，不重启或重新应用运行配置；活跃进程应用版本不同的 Start 返回 `tunnel.frps_restart_required`。成功 Stop 返回 disconnected，不能返回 connected。Linux 重新打开配置但缺少原进程归属时返回 Unknown，并拒绝宣称停止未知进程；不按名称杀进程。配置记录直接采用必需 revision 的当前格式，不解析旧格式。PUT 返回保存的 Token/dashboard 密码，空白替换保留已存值。
+frps DTO 必需 `revision/appliedRevision`：首次未配置 revision=0；保存版本为正数，应用版本仅在活跃进程已核实时返回。保存推进 revision，不重启或重新应用运行配置；活跃进程应用版本不同的 Start 返回 `tunnel.frps_restart_required`。
+
+成功 Stop 返回 disconnected，不能返回 connected。Linux 重新打开配置但缺少原进程归属时返回 Unknown，并拒绝宣称停止未知进程；不按名称杀进程。配置记录直接采用必需 revision 的当前格式，不解析旧格式。PUT 返回保存的 Token/dashboard 密码，空白替换保留已存值。
 
 Windows frps 生命周期另需 `FrpLifecycle + frps` 授权。Profile 与 frps 配置读取均返回保存凭据，客户端直接显示；frps 编辑读取保留独立的审计。日志与审计不返回 TOML、受保护密钥载荷或 dashboard 密码。
 
 ### Certificates / WebServers（V1 后端）
 
-证书与 Web Server 的 HostGlobal 后端已实现；具体资源模型见 [`RelaxKonOS.CertificateManager.md`](../applications/RelaxKonOS.CertificateManager.md) 与 [`RelaxKonOS.WebServerManager.Design.md`](../applications/RelaxKonOS.WebServerManager.Design.md)。证书 API 提供元数据读取、预检、签发、续期、Kestrel 部署、删除、撤销和 operation 查询/取消；Web Server API 提供 Nginx 发现、状态、配置测试、最小集成、重载和 operation 查询/取消。所有变更请求：
+证书与 Web Server 的 HostGlobal 后端已实现；具体资源模型见 [`RelaxKonOS.CertificateManager.md`](../applications/RelaxKonOS.CertificateManager.md) 与 [`RelaxKonOS.WebServerManager.Design.md`](../applications/RelaxKonOS.WebServerManager.Design.md)。
+
+证书 API 提供元数据读取、预检、签发、续期、Kestrel 部署、删除、撤销和 operation 查询/取消；Web Server API 提供 Nginx 发现、状态、配置测试、最小集成、重载和 operation 查询/取消。所有变更请求：
 
 * 所有变更请求携带 `Idempotency-Key`，返回 `OperationDto`（操作 ID、状态、阶段、稳定问题码、时间、可选快照 ID）。
 
@@ -572,7 +580,9 @@ Hub 路径 `/hubs/workspace`。Server 端实现 `WorkspaceHub : Hub<IWorkspaceHu
 
 ### Performance Hub（`/hubs/performance`）
 
-服务端统一采样器（`PerformanceSampler`，Singleton，`ISystemPerformanceSource` 跨平台采样：Windows/Linux）在**至少一个客户端订阅期间每秒**广播 `PerformanceRealtimeSnapshotDto`，并保留最近 60 秒内存历史，供客户端以 REST `performance/history` 回补重连空洞。无人订阅时不读取性能计数器，并清空内存历史。详见 [`RelaxKonOS.TaskManager.Rewrite.md`](../applications/RelaxKonOS.TaskManager.Rewrite.md)。
+服务端统一采样器（`PerformanceSampler`，Singleton，`ISystemPerformanceSource` 跨平台采样：Windows/Linux）在**至少一个客户端订阅期间每秒**广播 `PerformanceRealtimeSnapshotDto`，并保留最近 60 秒内存历史，供客户端以 REST `performance/history` 回补重连空洞。
+
+无人订阅时不读取性能计数器，并清空内存历史。详见 [`RelaxKonOS.TaskManager.Rewrite.md`](../applications/RelaxKonOS.TaskManager.Rewrite.md)。
 
 客户端通过 `Subscribe` / `Unsubscribe` 显式控制订阅；连接断开也会自动移除订阅。方法名集中在 `PerformanceHubMethods`。
 
@@ -731,10 +741,11 @@ RemoteTerminal 的 PTY 流传输**已在 Protocol 契约内**，走 SignalR Hub 
 | [`RelaxKonOS.Desktop.md`](../desktop/RelaxKonOS.Desktop.md)                                                                                                                                                                                        | 桌面外壳、模态对话框、窗口管理协作                                    |
 | [`RelaxKonOS.md`](../README.md)                                                                                                                                                                                                                  | 项目结构、当前进度、代码地图                                       |
 
-
 ### Workspace 设置契约
 
-Workspace preferences GET 返回 `revision`，PUT 必须携带读取时的 `revision`；缺失为 428、冲突为 409，不接受无版本覆盖。服务端 `Settings/WorkspaceSettingsService` 使用注册表 CompareExchange，客户端统一使用 `Services/WorkspaceSettings/IWorkspaceSettingsService`。偏好仍存 `Workspace\Desktop`，缓存接收不等同 SQLite 落盘。AppSettings 只负责应用私有数据；宿主真实配置与其操作恢复材料不放入 AppSettings 或 Workspace 偏好。设计与验收边界见 [Settings.Design](../desktop/RelaxKonOS.Settings.Design.md)。
+Workspace preferences GET 返回 `revision`，PUT 必须携带读取时的 `revision`；缺失为 428、冲突为 409，不接受无版本覆盖。服务端 `Settings/WorkspaceSettingsService` 使用注册表 CompareExchange，客户端统一使用 `Services/WorkspaceSettings/IWorkspaceSettingsService`。
+
+偏好仍存 `Workspace\Desktop`，缓存接收不等同 SQLite 落盘。AppSettings 只负责应用私有数据；宿主真实配置与其操作恢复材料不放入 AppSettings 或 Workspace 偏好。设计与验收边界见 [Settings.Design](../desktop/RelaxKonOS.Settings.Design.md)。
 
 注册表 `PutRegistryEntryRequest.expectedRevision` 必传；创建使用 0，更新使用已读 `RegistryEntryDto.revision`。缺失 428、冲突 409。`Workspace\Desktop` 默认值仍可经注册表编辑，但必须通过偏好校验；不能删除受管偏好或其祖先键来重置版本。需恢复默认值时通过携带当前 revision 的偏好更新实现。
 
@@ -744,13 +755,20 @@ Workspace preferences GET 返回 `revision`，PUT 必须携带读取时的 `revi
 
 预览接收 expectedRevision、idempotencyKey、强类型 TimeZoneChange；应用仅接收 planId，不能更换已预览载荷。需要 `HostTimeChange` 的 `host/time` 授权。428 表示 revision/授权/计划期限前置条件不满足；409 表示外部修改或幂等冲突。操作状态未知不代表失败可重试；可查询持久记录，不能自动重放。
 
-`Protocol/Settings/HostIdentityContracts.cs` 定义 `HostIdentityState`（生效名称、待生效名称、平台上报的最大长度、内容 revision、观测时间、provider）、`HostIdentitySnapshot`、`HostnameChange` 与 `HostnamePreviewRequest`。`HostIdentityValidation` 校验单一 RFC 952/1123 标签，并按调用方给出的最大长度判定，客户端因此使用远程快照上报的上限而不是本机平台的猜测。宿主主机名路由为 `/host-settings/identity` 的 GET/preview/apply，需要 `HostIdentityChange` 对 `host/identity` 的授权；目标固定为 `hostMachine`，不接受调用方指定目标。操作状态与恢复记录写入 Server 独立加密日志的 `identity_operations` 表。
+`Protocol/Settings/HostIdentityContracts.cs` 定义 `HostIdentityState`（生效名称、待生效名称、平台上报的最大长度、内容 revision、观测时间、provider）、`HostIdentitySnapshot`、`HostnameChange` 与 `HostnamePreviewRequest`。
+
+`HostIdentityValidation` 校验单一 RFC 952/1123 标签，并按调用方给出的最大长度判定，客户端因此使用远程快照上报的上限而不是本机平台的猜测。宿主主机名路由为 `/host-settings/identity` 的 GET/preview/apply，需要 `HostIdentityChange` 对 `host/identity` 的授权；目标固定为 `hostMachine`，不接受调用方指定目标。
+
+操作状态与恢复记录写入 Server 独立加密日志的 `identity_operations` 表。
 
 设置通知只包含 settingId、scope、Workspace 资源标识和版本，授权订阅后通过 GET 重读；不广播偏好/环境值。当前仅 Workspace 通知已接通，宿主设置通知仍在实施。DNS DTO/领域接入尚未完成，不能视为已有可用路由。
 
-
 ### 应用部署定义更新（2026-10-01）
 
-`PUT /api/v1.0/application-deployments/applications/{id}` 的 `UpdateApplicationRequest` 必须携带完整 `expectedUpdatedAt`，来自原 `ApplicationDto.updatedAt`。缺失/默认值 400，原子写入时过期 409（`application-deployment.definition_conflict`），活动操作阻断。原幂等键/载荷返回原回执，不重复轮换秘密；更新定义不创建修订或替换容器。Shared、Server、桌面和 Android 同步使用当前必需字段，不保留无版本覆盖。领域边界见 [应用部署设计](../applications/RelaxKonOS.ApplicationDeployment.Design.md)。
+`PUT /api/v1.0/application-deployments/applications/{id}` 的 `UpdateApplicationRequest` 必须携带完整 `expectedUpdatedAt`，来自原 `ApplicationDto.updatedAt`。
+
+缺失/默认值 400，原子写入时过期 409（`application-deployment.definition_conflict`），活动操作阻断。原幂等键/载荷返回原回执，不重复轮换秘密；更新定义不创建修订或替换容器。Shared、Server、桌面和 Android 同步使用当前必需字段，不保留无版本覆盖。
+
+领域边界见 [应用部署设计](../applications/RelaxKonOS.ApplicationDeployment.Design.md)。
 
 宿主 Settings Endpoint 的拒绝统一在 ProblemDetails 扩展 `problemCode` 写入稳定设置错误码，客户端不把 title 当机器契约。时区/环境/身份操作查询持有原协调锁；当状态为 Prepared 且服务端期限已过，持久转为 Failed/`settings.plan_expired`。Applying/Unknown/RecoveryRequired 不按期限当作未执行；已关闭计划的延迟 apply 返回原终态而不写宿主。期限与关单由 Server 时钟和持久操作记录决定，手机时间不能解除未知门禁。

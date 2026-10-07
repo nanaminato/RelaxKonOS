@@ -87,7 +87,9 @@ POST /api/v1.0/installations/{operationId}/cancel   -> 200 InstallationOperation
 GET  /api/v1.0/installations/active?service={id}    -> 200 InstallationOperationDto | 404
 ```
 
-每个安装 POST 均要求 `Idempotency-Key`，并只接受由该服务专属 DTO 表达的、已确认的选项；公共安装路由绝不接受 `command`、`arguments`、package/feature ID、仓库 URL、环境变量、路径或 base64 脚本。服务器文件选择使用独立的 `file-reference` 创建请求：它仅在内存中保存规范化路径、长度、所有者引用和到期时间，返回不透明 ID；安装请求只携带 ID。引用在开始读取时一次性消费，重新检查普通文件、非链接和长度，受限暂存的上传文件在消费或过期时删除。路由与调用方在一次 breaking change 中迁移；删除原有 Nginx、FRP、SMB 安装状态路由。
+每个安装 POST 均要求 `Idempotency-Key`，并只接受由该服务专属 DTO 表达的、已确认的选项；公共安装路由绝不接受 `command`、`arguments`、package/feature ID、仓库 URL、环境变量、路径或 base64 脚本。服务器文件选择使用独立的 `file-reference` 创建请求：它仅在内存中保存规范化路径、长度、所有者引用和到期时间，返回不透明 ID；安装请求只携带 ID。
+
+引用在开始读取时一次性消费，重新检查普通文件、非链接和长度，受限暂存的上传文件在消费或过期时删除。路由与调用方在一次 breaking change 中迁移；删除原有 Nginx、FRP、SMB 安装状态路由。
 
 ## 5. 调度、持久化与恢复
 

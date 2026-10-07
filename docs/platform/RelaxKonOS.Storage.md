@@ -454,7 +454,9 @@
 
 ### 6.3 生命周期
 
-业务仓储与 `RelaxKonOSDbContext` 均为 **Scoped**（每请求一个 DbContext）。Minimal API `[FromServices]` 每请求创建 scope，兼容。Singleton 服务（`AuthSessionStore` / `JwtTokenService` / `TerminalSessionManager` / `PerformanceSampler` / `TunnelService` / `FrpRuntimeManager`）只依赖抽象仓储接口，并不直接持有 DbContext。HostGlobal 库的 Repository 与 `HostGlobalDbContext` 也是 Scoped；后台长期运行的 Worker（`CertificateRenewalWorker` 等）通过 `IServiceScopeFactory` 为每个迭代周期创建独立 scope。
+业务仓储与 `RelaxKonOSDbContext` 均为 **Scoped**（每请求一个 DbContext）。Minimal API `[FromServices]` 每请求创建 scope，兼容。Singleton 服务（`AuthSessionStore` / `JwtTokenService` / `TerminalSessionManager` / `PerformanceSampler` / `TunnelService` / `FrpRuntimeManager`）只依赖抽象仓储接口，并不直接持有 DbContext。
+
+HostGlobal 库的 Repository 与 `HostGlobalDbContext` 也是 Scoped；后台长期运行的 Worker（`CertificateRenewalWorker` 等）通过 `IServiceScopeFactory` 为每个迭代周期创建独立 scope。
 
 ---
 
@@ -624,15 +626,18 @@ webserver_config_snapshots       webserver_operations
 
 PEM、私钥、ACME account key 和 challenge 文件仍位于受平台 ACL 保护的文件系统；数据库只保存规范化元数据、受保护文件引用、版本、状态、稳定问题码、审计引用和保留期信息，绝不保存私钥、account key、DNS token 或导入密码。
 
-这组表第一次落地时必须从 `EnsureCreated()` 迁移到带 `__EFMigrationsHistory` 的 EF Core Migrations，或提供经过验证的一次性基线迁移。不得在启动时以临时 `CREATE TABLE` / `ALTER TABLE` 拼接生产 schema。每个可变实体使用 revision 并发令牌；Operation、重试、审计和配置快照须保存到服务重启后仍可恢复的存储中。具体字段和保留策略分别以 [`RelaxKonOS.CertificateManager.md`](../applications/RelaxKonOS.CertificateManager.md) §35.5 与 [`RelaxKonOS.WebServerManager.Design.md`](../applications/RelaxKonOS.WebServerManager.Design.md) §30.5 为准。
+这组表第一次落地时必须从 `EnsureCreated()` 迁移到带 `__EFMigrationsHistory` 的 EF Core Migrations，或提供经过验证的一次性基线迁移。不得在启动时以临时 `CREATE TABLE` / `ALTER TABLE` 拼接生产 schema。
 
+每个可变实体使用 revision 并发令牌；Operation、重试、审计和配置快照须保存到服务重启后仍可恢复的存储中。具体字段和保留策略分别以 [`RelaxKonOS.CertificateManager.md`](../applications/RelaxKonOS.CertificateManager.md) §35.5 与 [`RelaxKonOS.WebServerManager.Design.md`](../applications/RelaxKonOS.WebServerManager.Design.md) §30.5 为准。
 
 ### Workspace 设置契约
 
-Workspace preferences GET 返回 `revision`，PUT 必须携带读取时的 `revision`；缺失为 428、冲突为 409，不接受无版本覆盖。服务端 `Settings/WorkspaceSettingsService` 使用注册表 CompareExchange，客户端统一使用 `Services/WorkspaceSettings/IWorkspaceSettingsService`。偏好仍存 `Workspace\Desktop`，缓存接收不等同 SQLite 落盘。AppSettings 只负责应用私有数据；宿主真实配置与其操作恢复材料不放入 AppSettings 或 Workspace 偏好。设计与验收边界见 [Settings.Design](../desktop/RelaxKonOS.Settings.Design.md)。
+Workspace preferences GET 返回 `revision`，PUT 必须携带读取时的 `revision`；缺失为 428、冲突为 409，不接受无版本覆盖。服务端 `Settings/WorkspaceSettingsService` 使用注册表 CompareExchange，客户端统一使用 `Services/WorkspaceSettings/IWorkspaceSettingsService`。
+
+偏好仍存 `Workspace\Desktop`，缓存接收不等同 SQLite 落盘。AppSettings 只负责应用私有数据；宿主真实配置与其操作恢复材料不放入 AppSettings 或 Workspace 偏好。设计与验收边界见 [Settings.Design](../desktop/RelaxKonOS.Settings.Design.md)。
 
 ## 设置操作日志（2026-09-08）
 
-设置宿主操作日志使用 ContentRoot 下 `data/settings-operations/operations.db`，独立于延迟落盘的配置注册表。`SettingsOperationJournal` 使用 SQLite `synchronous=FULL`，在 Helper 写入前提交 Applying；跨进程文件锁串行化协调操作，进程退出后留下持久状态用于查询而非重放。记录文档由现有 ASP.NET Data Protection 加密，必须持久保管相应密钥。数据库不作为 OS 配置真源。
+设置宿主操作日志使用 ContentRoot 下 `data/settings-operations/operations.db`，独立于延迟落盘的配置注册表。`SettingsOperationJournal` 使用 SQLite `synchronous=FULL`，在 Helper 写入前提交 Applying；跨进程文件锁串行化协调操作，进程退出后留下持久状态用于查询而非重放。记录文档由现有 ASP.NET Data Protection 加密，必须持久保管相应密钥。数据库不作为 OS 配置数据来源。
 
 Linux 新建目录为 0700、数据库为 0600。部署仍须保护既有目录及 Windows 继承 ACL。当前时区记录支持查询、幂等重试和检查读回版本后的回滚；记录保留期清理、宿主恢复任务与完整跨平台部署检查仍待实现/验收。

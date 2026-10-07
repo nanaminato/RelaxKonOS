@@ -4,7 +4,9 @@ BP02-M1/M2 接入宿主自定义及受管 Mihomo 出站代理。手机入口为�
 
 ## 数据与编辑
 
-`OutboundProxy.kt` 投影当前共享 [DockerProxyContracts](../../../../Shared/RelaxKonOS.Protocol/Docker/DockerProxyContracts.cs)，`RelaxKonGateway/RelaxKonApi` 调用 `GET/PUT/DELETE /api/v1.0/docker/proxy`。`DockerRepository` 复用 AuthSession 的认证刷新和精确会话检查；页面没有另一份本地宿主偏好或替代代理配置。该设置作用于当前服务器及其全部用户，不改变 Android 网络。
+`OutboundProxy.kt` 投影当前共享 [DockerProxyContracts](../../../../Shared/RelaxKonOS.Protocol/Docker/DockerProxyContracts.cs)，`RelaxKonGateway/RelaxKonApi` 调用 `GET/PUT/DELETE /api/v1.0/docker/proxy`。
+
+`DockerRepository` 复用 AuthSession 的认证刷新和精确会话检查；页面没有另一份本地宿主偏好或替代代理配置。该设置作用于当前服务器及其全部用户，不改变 Android 网络。
 
 表单可启用/停用代理，编辑 HTTP_PROXY、HTTPS_PROXY 和 NO_PROXY，并分别选择引擎拉取、Server 发起的 Docker 构建、镜像标签查询和运行时下载。HTTPS 留空按服务端规则复用 HTTP；NO_PROXY 支持由服务端校验的逗号分隔绕过列表。保存后使用返回的设置重新填充表单，清除使用当前 DELETE 契约，不构造本地“已清除”结果。
 

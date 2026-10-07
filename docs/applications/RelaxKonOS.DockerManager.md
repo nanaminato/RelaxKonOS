@@ -15,7 +15,9 @@
 
 `RemoteDockerManager`（应用 ID：`relaxkonos.docker`）面向单台 RelaxKonOS Server，覆盖 Docker Engine 的完整日常运维闭环：发现或安装运行时、验证、镜像和容器生命周期、Compose Stack、网络与卷、日志/终端、资源统计、备份与审计。
 
-设计参考了 Portainer 的环境、Stack、模板、镜像仓库与按角色授权的组织方式，以及 Docker Engine 的版本化 API；但 v1 **只管理本机单一 Engine**，不实现 Swarm/Kubernetes、多节点代理或远程 TCP Docker API。Docker Engine API 本身是面向 daemon 的版本化 REST API；Compose 用于描述多容器服务、网络和卷。[Docker Engine API](https://docs.docker.com/reference/api/engine/) [Compose 文件参考](https://docs.docker.com/compose/compose-file/) [Portainer 文档](https://docs.portainer.io/)
+设计参考了 Portainer 的环境、Stack、模板、镜像仓库与按角色授权的组织方式，以及 Docker Engine 的版本化 API；但 v1 **只管理本机单一 Engine**，不实现 Swarm/Kubernetes、多节点代理或远程 TCP Docker API。
+
+Docker Engine API 本身是面向 daemon 的版本化 REST API；Compose 用于描述多容器服务、网络和卷。[Docker Engine API](https://docs.docker.com/reference/api/engine/) [Compose 文件参考](https://docs.docker.com/compose/compose-file/) [Portainer 文档](https://docs.portainer.io/)
 
 ### 1.1 v1 必须交付
 
@@ -88,9 +90,15 @@
 
 Ubuntu 方案以 Docker 官方安装文档为唯一命令来源；该文档要求先移除冲突包，推荐官方 APT 仓库，并以 `hello-world` 验证。[Docker Engine on Ubuntu](https://docs.docker.com/engine/install/ubuntu/) Windows 端 Docker Desktop 的安装需要选择 WSL 2 或 Hyper-V 后端。[Docker Desktop on Windows](https://docs.docker.com/desktop/setup/install/windows-install/)
 
-桌面端连接 Linux 服务器且状态为 `docker.not_installed` 时，点击顶部状态按钮会确认安装影响，再向通用安装 API 提交 `DockerInstallationRequest(Confirmed: true)`。底部显示安装进度、操作日志与可恢复任务，完成后刷新 Docker 状态。自动安装仅支持 Ubuntu 22.04/24.04/26.04 的 x64/ARM64 主机，需已部署特权 Helper 并通过 `--docker-access` 授权 Server 服务账户；其他 Linux 发行版由服务端拒绝。首次授予 Docker 组权限后可能需要重启 RelaxKonOS Server，界面保留对应提示。
+桌面端连接 Linux 服务器且状态为 `docker.not_installed` 时，点击顶部状态按钮会确认安装影响，再向通用安装 API 提交 `DockerInstallationRequest(Confirmed: true)`。底部显示安装进度、操作日志与可恢复任务，完成后刷新 Docker 状态。
 
-Windows 10/11 的 Docker 不可用时，Docker Manager 的状态按钮会直接打开内置引导：检查 WSL 2/虚拟化，安装并启动 Docker Desktop，选择 WSL 2 backend，确认 Linux containers 模式，然后刷新 Engine 状态。该引导不自动安装 Docker Desktop、启用 WSL、接受第三方许可或配置 Windows Server。Docker Desktop 的 WSL 2 容器与镜像不跨 Windows 用户共享；它不是供服务账户或另一名 RelaxKonOS 登录用户代管的系统 Engine。开发时必须用 Docker Desktop 所有者启动 Server，并用该同一宿主账户登录；不同账户只能做不含 Docker 的 Helper/文件边界测试。Windows Docker Desktop 路径用于开发、个人自托管和验证；无人值守或生产部署优先使用独立 Linux 主机或 VM。
+自动安装仅支持 Ubuntu 22.04/24.04/26.04 的 x64/ARM64 主机，需已部署特权 Helper 并通过 `--docker-access` 授权 Server 服务账户；其他 Linux 发行版由服务端拒绝。首次授予 Docker 组权限后可能需要重启 RelaxKonOS Server，界面保留对应提示。
+
+Windows 10/11 的 Docker 不可用时，Docker Manager 的状态按钮会直接打开内置引导：检查 WSL 2/虚拟化，安装并启动 Docker Desktop，选择 WSL 2 backend，确认 Linux containers 模式，然后刷新 Engine 状态。
+
+该引导不自动安装 Docker Desktop、启用 WSL、接受第三方许可或配置 Windows Server。Docker Desktop 的 WSL 2 容器与镜像不跨 Windows 用户共享；它不是供服务账户或另一名 RelaxKonOS 登录用户代管的系统 Engine。
+
+开发时必须用 Docker Desktop 所有者启动 Server，并用该同一宿主账户登录；不同账户只能做不含 Docker 的 Helper/文件边界测试。Windows Docker Desktop 路径用于开发、个人自托管和验证；无人值守或生产部署优先使用独立 Linux 主机或 VM。
 
 ---
 
@@ -159,7 +167,7 @@ IDockerEngineService ── IDockerRuntimeInstaller ── IDockerComposeService
 
 ### 3.3 持久化边界
 
-Docker Engine 仍是容器、镜像、卷、网络和运行状态的真源；RelaxKonOS 不复制这些实体到 SQLite。SQLite 仅保存：
+Docker Engine 仍是容器、镜像、卷、网络和运行状态的数据来源；RelaxKonOS 不复制这些实体到 SQLite。SQLite 仅保存：
 
 - Stack 草稿、已部署 Compose 内容的加密版本快照、来源和部署结果；
 - Registry 配置元数据及对 OS 安全存储中机密项的引用；

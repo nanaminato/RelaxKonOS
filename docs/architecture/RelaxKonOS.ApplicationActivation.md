@@ -1,7 +1,7 @@
 # RelaxKonOS Application Activation
 
 > 本文定义同一 Client 设备内的应用启动、深链和窗口实例复用。它不是 Client↔Server
-> 协议；远端文件、容器等资源的真源仍在 Server，资源变更通知另行通过受授权的 Hub 设计。
+> 协议；远端文件、容器等资源的数据来源仍在 Server，资源变更通知另行通过受授权的 Hub 设计。
 
 ## 1. 三种本地协作方式
 
@@ -9,7 +9,7 @@
 | --- | --- | --- | --- |
 | activation | 打开或导航 UI | `AppActivationResult` | 当前 Client |
 | host action（后续） | 受控的本地副作用，如建立 loopback 转发 | 强类型结果 | 当前 Client |
-| resource event（后续） | 文件等远端资源发生变更的提示 | 无；客户端重新读取真源 | Workspace |
+| resource event（后续） | 文件等远端资源发生变更的提示 | 无；客户端重新读取数据来源 | Workspace |
 
 应用不得直接引用另一个应用的实现、ViewModel 或本地服务。activation 的入口为
 `IAppActivation`（应用上下文）和 Shell 所有的 `IAppActivationService`。

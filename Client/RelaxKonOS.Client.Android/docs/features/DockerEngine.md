@@ -4,7 +4,6 @@
 
 服务器明确返回 `docker.not_installed` 时，Docker 首页只显示安装入口和一条未安装引导，不展示依赖引擎的 Compose/容器/镜像/网络/卷读取错误或创建入口。引擎管理页显示未安装事实与安装操作，隐藏没有运行时可执行的启停按钮；读取失败、权限拒绝或运行时停止不能当作未安装。镜像源配置仍可独立管理，组件安装后的资源功能继续按已有流程展示。
 
-
 ## 引擎与安装
 
 刷新与安装轮询使用固定高度的加载条占位，不插入或移除布局行，保留页面滚动位置。其他管理页面采用同一组件。
@@ -15,7 +14,9 @@ Linux 部署显式启用 `--docker-access` 时，即使 Docker 尚未安装，�
 
 Start/Stop/Restart 调用当前 `/docker/engine/{action}`，提交结构化 confirmed。确认指出整个宿主、所有容器、Compose 与应用部署受影响。Linux 使用宿主 Helper 的固定 Docker 服务；Windows 依赖 Docker Desktop 的受支持 CLI。
 
-只有 Linux、`docker.not_installed` 和管理资格满足时提供自动安装；Windows 显示主机侧安装/配置说明。安装复用公共 `DockerInstallationRequest(confirmed)` / Install，没有包、版本、升级或隐藏重装参数。明确 `dockerInstall` / `docker` 提权后复用原幂等键。成功接受任务后按原 ID 查询，页面可见且记录已核验时每 1.5 秒观察；取消需要服务返回 active/cancellable 并再次确认，离页只停止观察。
+只有 Linux、`docker.not_installed` 和管理资格满足时提供自动安装；Windows 显示主机侧安装/配置说明。安装复用公共 `DockerInstallationRequest(confirmed)` / Install，没有包、版本、升级或隐藏重装参数。
+
+明确 `dockerInstall` / `docker` 提权后复用原幂等键。成功接受任务后按原 ID 查询，页面可见且记录已核验时每 1.5 秒观察；取消需要服务返回 active/cancellable 并再次确认，离页只停止观察。
 
 已知未知提交 ID 优先只读恢复，不依赖活动列表成功；原 ID 完全丢失时可由用户明确识别原请求。任务响应必须属于 Docker / Install。未知安装结果保留恢复标记，不能以空活动列表或 Engine 当前可达证明原安装成功。
 
@@ -31,14 +32,14 @@ Start/Stop/Restart 调用当前 `/docker/engine/{action}`，提交结构化 conf
 
 引擎控制和镜像源 CRUD/选择没有任务 ID、取消或网络幂等键，不能按安装或 Compose 任务处理。提交前持久保存动作、当前宿主/账户及可选镜像源 UUID；本地 markerId 不发送到 Server，名称、endpoint、请求正文和凭据均不保存。提交、认证重试前再次读取并比较批准事实；发生变化时拒绝继续。此比较不构成 Server 原子 CAS。
 
-写入失败、连接中断或成功后的事实读取失败保留未知记录，页面阻止继续提交引擎/镜像源变更；普通刷新不清除记录。显式读取并接受当前事实解除本地标记，不证明原请求成功，也不重放原写入。运维中心展示该待核实入口和安装原任务，按当前宿主/账户/capability 隔离；同步操作不伪造远端任务。
+写入失败、连接中断或成功后的事实读取失败保留未知记录，页面阻止继续提交引擎/镜像源变更；普通刷新不清除记录。显式读取并确认当前状态解除本地标记，不证明原请求成功，也不重放原写入。运维中心展示该待核实入口和安装原任务，按当前宿主/账户/capability 隔离；同步操作不伪造远端任务。
 
 Android 同步 Docker 结果直接使用共享契约的 `logLines/logTruncated`，不再解析旧 `messages`。详细 daemon 原始诊断不进入普通错误文案。
 
 ## 代码
 
 - [DockerControl.kt](../../app/src/main/java/app/relaxkonos/mobile/core/net/DockerControl.kt)：当前类型、路由、strict 读取与镜像源校验。
-- [DockerControlRepository.kt](../../app/src/main/java/app/relaxkonos/mobile/data/DockerControlRepository.kt)、[DockerControlJournal.kt](../../app/src/main/java/app/relaxkonos/mobile/data/DockerControlJournal.kt)：提交前事实复核、会话隔离和未知记录。
+- [DockerControlRepository.kt](../../app/src/main/java/app/relaxkonos/mobile/data/DockerControlRepository.kt)、[DockerControlJournal.kt](../../app/src/main/java/app/relaxkonos/mobile/data/DockerControlJournal.kt)：提交前实际状态复核、会话隔离和未知记录。
 - [DockerControlScreen.kt](../../app/src/main/java/app/relaxkonos/mobile/ui/manage/docker/DockerControlScreen.kt)、[DockerControlViewModel.kt](../../app/src/main/java/app/relaxkonos/mobile/ui/manage/docker/DockerControlViewModel.kt)：引擎、安装恢复和镜像源页面。
 
 资源管理及 Compose 新提交共用 DockerMutationGate；资源未知标记也会阻止引擎/镜像源及 Docker 安装新写入。资源恢复从 [Docker 资源](DockerResources.md) 进入。

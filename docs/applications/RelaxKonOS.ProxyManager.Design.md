@@ -335,7 +335,9 @@ RelaxKonOSComponent-Mihomo-<scope>（LocalSystem 独立宿主）
 mihomo.exe
 ```
 
-宿主发布目录复制到 `%ProgramData%\RelaxKonOS-Components\host\<hash>`，不依赖 Server/Helper 的安装目录。Helper 与 Server 共享 Mihomo 发布信任清单，Helper 独立校验官方 ZIP 并导入受保护的服务二进制。独立宿主验证二进制摘要，以 Job Object 约束子进程树；Helper 停止、更新或卸载不终止独立服务。SCM 管理开机启动和失败恢复，Server 不获得通用提权执行能力。实现与隔离主机验收状态见 [独立服务进度](../services/RelaxKonOS.IndependentComponentServices.Progress.md)。
+宿主发布目录复制到 `%ProgramData%\RelaxKonOS-Components\host\<hash>`，不依赖 Server/Helper 的安装目录。Helper 与 Server 共享 Mihomo 发布信任清单，Helper 独立校验官方 ZIP 并导入受保护的服务二进制。
+
+独立宿主验证二进制摘要，以 Job Object 约束子进程树；Helper 停止、更新或卸载不终止独立服务。SCM 管理开机启动和失败恢复，Server 不获得通用提权执行能力。实现与隔离主机验收状态见 [独立服务进度](../services/RelaxKonOS.IndependentComponentServices.Progress.md)。
 
 Linux 保持独立 systemd 服务：
 
@@ -4134,7 +4136,6 @@ network rollback are mandatory requirements, not optional enhancements.
 
 Do not introduce a generic privileged command executor.
 ```
-
 
 ## 验证与发布边界
 

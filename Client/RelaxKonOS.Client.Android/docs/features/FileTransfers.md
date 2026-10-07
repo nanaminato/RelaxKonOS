@@ -1,7 +1,7 @@
 # Android 文件上传与下载（后台传输与续传）
 
 > 日期：2026-10-03
-> 归属：本文拥有 Android 侧的客户端设计。线协议、服务端行为、桌面客户端与提权模型见仓库级 [`docs/architecture/RelaxKonOS.FileUpload.Design.md`](../../../../docs/architecture/RelaxKonOS.FileUpload.Design.md)；iOS/桌面不得与本文的偏移规则分歧。
+> 范围：Android 客户端的传输设计。线协议、服务端行为、桌面客户端与提权模型见仓库级 [`docs/architecture/RelaxKonOS.FileUpload.Design.md`](../../../../docs/architecture/RelaxKonOS.FileUpload.Design.md)；iOS/桌面不得与本文的偏移规则分歧。
 > 前置阅读：[`Product.Design.md`](../design/Product.Design.md)（安全边界与文件应用定位）、[`Shell.Design.md`](../design/Shell.Design.md)（能力门控与页面清单）
 
 ---
@@ -14,9 +14,13 @@
 
 Server 文件上传与下载使用可收起的页面进度卡，显示文件名、实际传输字节、已知总量和百分比，并提供取消；进度卡不阻挡导航。长度未知时显示已传输字节与不确定进度动画；准备源文件不计入上传百分比。续传上传保留既有确认偏移、在途估计和核对提示，停止后仍提供继续/放弃等操作。
 
-小文件单次上传与所有下载由应用级 `FileTransferCoordinator` 持有，使用独立 `FileTransferForegroundService`（`dataSync`）提供后台进度与取消；大文件与未知长度上传仍交给 `UploadCoordinator/UploadForegroundService`。离开文件页、旋转、重建 Activity 或切到后台后继续当前进程内任务，返回显示同一状态；结果通过应用级提示报告。通知仅展示通用传输文案及百分比，不包含文件路径、宿主或凭据。通知权限拒绝不阻止执行，页面仍提供取消。需管理员授权时等待用户回前台处理。
+小文件单次上传与所有下载由应用级 `FileTransferCoordinator` 持有，使用独立 `FileTransferForegroundService`（`dataSync`）提供后台进度与取消；大文件与未知长度上传仍交给 `UploadCoordinator/UploadForegroundService`。
 
-退出登录或切换会话会取消原单次传输，迟到进度/清理及旧通知取消不会影响新任务。单次上传中断后不自动重发，下载失败或取消清理未提交目标；这两类不提供跨进程续传。服务结束或移除应用任务会停止单次传输。分块上传遇到服务启动失败、系统服务超时或移除应用任务时中断网络，但保留已建立会话的续传日志与缓存；用户明确取消仍放弃会话并配对清理。服务处理 [Android dataSync 超时](https://developer.android.com/develop/background-work/services/fgs/timeout)，不保证系统回收后继续执行。
+离开文件页、旋转、重建 Activity 或切到后台后继续当前进程内任务，返回显示同一状态；结果通过应用级提示报告。通知仅展示通用传输文案及百分比，不包含文件路径、宿主或凭据。通知权限拒绝不阻止执行，页面仍提供取消。需管理员授权时等待用户回前台处理。
+
+退出登录或切换会话会取消原单次传输，迟到进度/清理及旧通知取消不会影响新任务。单次上传中断后不自动重发，下载失败或取消清理未提交目标；这两类不提供跨进程续传。服务结束或移除应用任务会停止单次传输。分块上传遇到服务启动失败、系统服务超时或移除应用任务时中断网络，但保留已建立会话的续传日志与缓存；用户明确取消仍放弃会话并配对清理。
+
+服务处理 [Android dataSync 超时](https://developer.android.com/develop/background-work/services/fgs/timeout)，不保证系统回收后继续执行。
 
 ## 2. 源的可寻址性策略
 

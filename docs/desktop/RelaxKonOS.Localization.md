@@ -14,7 +14,6 @@ RelaxKonOS 使用 BCP-47 语言名称（`en-US`、`zh-CN`、`ja-JP`），并以�
 
 第三方包会收到 `IExternalAppContext.SystemLanguage`，应本地化自己的资源，并在 `LanguageChanged` 时刷新。
 
-
 ## 桌面语言切换追踪
 
 客户端自动记录 `%LOCALAPPDATA%\RelaxKonOS\logs\language-switch-<启动时间>-<进程号>.log`，每行一个 JSON 事件。日志包含构建标识、进程、线程、递增序号、语言选择及下拉选项重建、本地化通知、偏好应用、同步读操作编号、HTTP 请求编号及服务端关联编号、保存语言和版本号。不记录令牌、服务器地址、完整偏好或异常消息。单文件上限约 2 MB，轮转段为 `.previous`；保留当前及最近五次运行。
@@ -24,7 +23,6 @@ RelaxKonOS 使用 BCP-47 语言名称（`en-US`、`zh-CN`、`ja-JP`），并以�
 Headless 验证使用真实 `TimeLanguagePageView` 与双向绑定下拉框，检查连续切换后选中值、本地生效语言及已打开页面的翻译文本；日志写入测试输出的 `preview-qa/logs/`。此验证不代替连接实际服务器时的同步竞争复现。
 
 2026-10-03 的 Headless 复现确认：更换语言选项集合时，ComboBox 双向绑定会写回旧选项，使刚选中的语言立即回退；无需服务器即可触发。设置页将选项重建排到当前选择写入完成后，在刷新选项期间忽略控件回写，并重新通知当前选中项，避免本地切换被刷新过程撤销。
-
 
 ## 中文界面术语
 

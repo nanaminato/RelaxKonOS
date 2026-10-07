@@ -67,19 +67,27 @@
 
 ### 6.1 登录与身份
 
-[AuthEndpoints.cs](../../RelaxKonOS.Server/Endpoints/AuthEndpoints.cs) 先调用 `LoginProtectionService.CheckAsync(req.Username, RemoteIpAddress)`，再调用 `IIdentityProvider.Verify`。失败路径已统一返回 `401 invalid-credential`，没有使用文件末尾仍保留的详细错误映射方法。成功后调用 `GetUserInfo`，按输入用户名和 **ClientPlatform** 查建用户，再查建 Workspace、初始化注册表默认项、复用 Device、创建 Session、更新 Controller 租约并签发 JWT。
+[AuthEndpoints.cs](../../RelaxKonOS.Server/Endpoints/AuthEndpoints.cs) 先调用 `LoginProtectionService.CheckAsync(req.Username, RemoteIpAddress)`，再调用 `IIdentityProvider.Verify`。
+
+失败路径已统一返回 `401 invalid-credential`，没有使用文件末尾仍保留的详细错误映射方法。成功后调用 `GetUserInfo`，按输入用户名和 **ClientPlatform** 查建用户，再查建 Workspace、初始化注册表默认项、复用 Device、创建 Session、更新 Controller 租约并签发 JWT。
 
 [IIdentityProvider.cs](../../RelaxKonOS.Server/Identity/IIdentityProvider.cs) 的 `PlatformUserInfo` 只有 `Uid / DisplayName / HomeDirectory`，没有规范账号名、宿主平台及无密码账号状态查询契约。不能把输入 Alias 传入 `GetUserInfo`，也不能假设 `Verify` 的成功结果携带完整身份。
 
 [LinuxPamProvider.cs](../../RelaxKonOS.Server/Identity/LinuxPamProvider.cs) 使用 PAM `login` 服务，先 `pam_authenticate` 后 `pam_acct_mgmt`；`getpwnam_r` 走 NSS，非只读 `/etc/passwd`。得到的规范名称目前仅用于 DisplayName 回退，没有独立返回。
 
-[WindowsLogonProvider.cs](../../RelaxKonOS.Server/Identity/WindowsLogonProvider.cs) 使用 `LOGON32_LOGON_NETWORK`，支持代码中的裸用户名、`DOMAIN\user` 和 `user@domain` 解析，token 在 finally 关闭。`GetUserInfo` 用 `LookupAccountName` 检查存在、通过 SID 查 ProfileList/Home，但返回的 `Uid` 仍是名称字符串；UPN 被拆分成 user/domain，并未证明适用于所有域配置。应按成功 token 的 SID 核对身份，不以 DisplayName 或解析后的字符串充当 SID。
+[WindowsLogonProvider.cs](../../RelaxKonOS.Server/Identity/WindowsLogonProvider.cs) 使用 `LOGON32_LOGON_NETWORK`，支持代码中的裸用户名、`DOMAIN\user` 和 `user@domain` 解析，token 在 finally 关闭。
 
-[User.cs](../../RelaxKonOS.Server/Domain/User.cs)、[SqliteUserRepository.cs](../../RelaxKonOS.Server/Storage/Sqlite/SqliteUserRepository.cs) 和 [RelaxKonOSDbContext.cs](../../RelaxKonOS.Server/Storage/Sqlite/RelaxKonOSDbContext.cs) 明确显示：现有唯一键不是 UID/SID。现状会阻碍“同一真实用户只有一个 Canonical User”的目标，不能仅给登录页增加 Alias 字段。
+`GetUserInfo` 用 `LookupAccountName` 检查存在、通过 SID 查 ProfileList/Home，但返回的 `Uid` 仍是名称字符串；UPN 被拆分成 user/domain，并未证明适用于所有域配置。应按成功 token 的 SID 核对身份，不以 DisplayName 或解析后的字符串充当 SID。
+
+[User.cs](../../RelaxKonOS.Server/Domain/User.cs)、[SqliteUserRepository.cs](../../RelaxKonOS.Server/Storage/Sqlite/SqliteUserRepository.cs) 和 [RelaxKonOSDbContext.cs](../../RelaxKonOS.Server/Storage/Sqlite/RelaxKonOSDbContext.cs) 明确显示：现有唯一键不是 UID/SID。
+
+现状会阻碍“同一真实用户只有一个 Canonical User”的目标，不能仅给登录页增加 Alias 字段。
 
 ### 6.2 Session / Token / Cookie
 
-[JwtTokenService.cs](../../RelaxKonOS.Server/Identity/JwtTokenService.cs) 签发 HS256 JWT，含 `sub=User.Id`、`name=User.Username`、workspace/device/role/jti；Refresh Token 为随机 32 字节，登记到 [AuthSessionStore.cs](../../RelaxKonOS.Server/Identity/AuthSessionStore.cs) 的内存字典。`TryConsume` 原子移除一次性 Refresh Token；刷新保持 `RefreshRecord.SessionId` 和绝对到期时间。默认 Access 15 分钟、Refresh 空闲 7 天、绝对 30 天，见 [JwtOptions.cs](../../RelaxKonOS.Server/Identity/JwtOptions.cs)。
+[JwtTokenService.cs](../../RelaxKonOS.Server/Identity/JwtTokenService.cs) 签发 HS256 JWT，含 `sub=User.Id`、`name=User.Username`、workspace/device/role/jti；Refresh Token 为随机 32 字节，登记到 [AuthSessionStore.cs](../../RelaxKonOS.Server/Identity/AuthSessionStore.cs) 的内存字典。
+
+`TryConsume` 原子移除一次性 Refresh Token；刷新保持 `RefreshRecord.SessionId` 和绝对到期时间。默认 Access 15 分钟、Refresh 空闲 7 天、绝对 30 天，见 [JwtOptions.cs](../../RelaxKonOS.Server/Identity/JwtOptions.cs)。
 
 当前缺口：登录创建的 `Domain.Session.Id` 没传给 `jwt.Issue`，该方法另生成 Session ID；JWT 没有 `sid`、认证方法或安全版本；logout 只撤销提交的 Refresh Token，Access Token 自然到期；刷新不重新校验 OS 主体；没有按用户撤销 API。
 
@@ -91,29 +99,43 @@
 
 [TerminalUserIdProvider.cs](../../RelaxKonOS.Server/Terminal/TerminalUserIdProvider.cs)、[TerminalHub.cs](../../RelaxKonOS.Server/Hubs/TerminalHub.cs) 和 [TerminalSessionManager.cs](../../RelaxKonOS.Server/Terminal/TerminalSessionManager.cs) 按用户 subject 隔离 PTY 归属；PTY 的创建并没有把 Alias 或登录密码变成 OS logon token，默认目录还会取服务进程的 UserProfile。此历史限制单独记录，不借 Alias 重构终端。
 
-[HostAdministratorAuthenticator.cs](../../RelaxKonOS.Server/Privileged/HostAdministratorAuthenticator.cs)、[FirewallChangeAuthorizationService.cs](../../RelaxKonOS.Server/Firewall/FirewallChangeAuthorizationService.cs)、[RunAsAuthorizationService.cs](../../RelaxKonOS.Server/ProcessGuardian/RunAsAuthorizationService.cs) 有 OS 密码复验和各自的管理员/RunAs 规则。[HostElevationSessionStore.cs](../../RelaxKonOS.Server/Privileged/HostElevationSessionStore.cs) 是绑定 jti、subject、capability、target 的五分钟授权，不能直接复用为 Alias 管理授权。
+基线中的 `FirewallChangeAuthorizationService.cs` 负责防火墙变更授权；当前入口见 [FirewallEndpoints.cs](../../RelaxKonOS.Server/Endpoints/FirewallEndpoints.cs)。OS 密码复验与管理员、RunAs 规则见 [HostAdministratorAuthenticator.cs](../../RelaxKonOS.Server/Privileged/HostAdministratorAuthenticator.cs) 和 [RunAsAuthorizationService.cs](../../RelaxKonOS.Server/ProcessGuardian/RunAsAuthorizationService.cs)。
 
-[HostEnvironmentService.ResolveTarget](../../RelaxKonOS.Server/Settings/HostEnvironmentService.cs) 当前在 Windows 将 `user.Username` 和 `user.PlatformIdentity` 都作为 NTAccount 名称翻译成 SID，再比较；Linux 检查 Platform、UID 与 NSS 结果。PlatformIdentity 改为真 SID 时必须同步修改这里，直接解析并核验存储 SID，不能把 SID 文本再当账号名，也不能留下“先按 SID、失败再按名称”的双格式分支。这是身份接口升级的必要调用者修改，环境配置权限和 Helper 目标规则保持不变。
+[HostElevationSessionStore.cs](../../RelaxKonOS.Server/Privileged/HostElevationSessionStore.cs) 是绑定 jti、subject、capability、target 的五分钟授权，不能直接复用为 Alias 管理授权。
 
-Helper 的 [Program.cs](../../RelaxKonOS.PrivilegedHelper/Program.cs)、[WindowsPrivilegedPipeServer.cs](../../RelaxKonOS.PrivilegedHelper/WindowsPrivilegedPipeServer.cs) 和 [说明](../../RelaxKonOS.PrivilegedHelper/README.md) 对应 Linux 本地进程、Windows 认证命名管道和封闭操作集。正常 Alias 操作只写 Server 自己的 SQLite，无需新增 Helper 命令、sudoers 或管道权限。
+[HostEnvironmentService.ResolveTarget](../../RelaxKonOS.Server/Settings/HostEnvironmentService.cs) 当前在 Windows 将 `user.Username` 和 `user.PlatformIdentity` 都作为 NTAccount 名称翻译成 SID，再比较；Linux 检查 Platform、UID 与 NSS 结果。
+
+PlatformIdentity 改为真 SID 时必须同步修改这里，直接解析并核验存储 SID，不能把 SID 文本再当账号名，也不能留下“先按 SID、失败再按名称”的双格式分支。这是身份接口升级的必要调用者修改，环境配置权限和 Helper 目标规则保持不变。
+
+Helper 的 [Program.cs](../../RelaxKonOS.PrivilegedHelper/Program.cs)、[WindowsPrivilegedPipeServer.cs](../../RelaxKonOS.PrivilegedHelper/WindowsPrivilegedPipeServer.cs) 和 [说明](../../RelaxKonOS.PrivilegedHelper/README.md) 对应 Linux 本地进程、Windows 认证命名管道和封闭操作集。
+
+正常 Alias 操作只写 Server 自己的 SQLite，无需新增 Helper 命令、sudoers 或管道权限。
 
 ### 6.4 Settings、客户端与存储
 
-[SettingsViewModel.cs](../../Client/RelaxKonOS.Client/Apps/Settings/ViewModels/SettingsViewModel.cs) 实际 Pages 为 System、Environment、Personalization、TimeLanguage、Network、Apps、ImageMirrors、DefaultApps、Developer；注释中的“八个分类”和旧文档中的“五个分类”不是当前状态。[SettingsViewModel.Navigation.cs](../../Client/RelaxKonOS.Client/Apps/Settings/ViewModels/SettingsViewModel.Navigation.cs) 提供导航历史、搜索索引和连接切换处理；[SettingsView.axaml](../../Client/RelaxKonOS.Client/Apps/Settings/Views/SettingsView.axaml) 用 DataTemplate 映射页面。
+[SettingsViewModel.cs](../../Client/RelaxKonOS.Client/Apps/Settings/ViewModels/SettingsViewModel.cs) 实际 Pages 为 System、Environment、Personalization、TimeLanguage、Network、Apps、ImageMirrors、DefaultApps、Developer；注释中的“八个分类”和旧文档中的“五个分类”不是当前状态。
+
+[SettingsViewModel.Navigation.cs](../../Client/RelaxKonOS.Client/Apps/Settings/ViewModels/SettingsViewModel.Navigation.cs) 提供导航历史、搜索索引和连接切换处理；[SettingsView.axaml](../../Client/RelaxKonOS.Client/Apps/Settings/Views/SettingsView.axaml) 用 DataTemplate 映射页面。
 
 [WorkspaceSettingsService.cs](../../RelaxKonOS.Server/Settings/WorkspaceSettingsService.cs) 当前把偏好保存到注册表 `WorkspaceConfigurationRegistry`，而不是沿用旧 Workspace JSON 列。Alias 是认证数据，不应放入 WorkspacePreferences、通用 Registry、AppSettings、ShellSettings 或用户 Home 文件。
 
-[LoginViewModel.cs](../../Client/RelaxKonOS.Client/ViewModels/Login/LoginViewModel.cs) / [LoginView.axaml](../../Client/RelaxKonOS.Client/Views/Login/LoginView.axaml) 收集用户名密码，经 `IAuthSession`、[AuthSession.cs](../../Client/RelaxKonOS.Client/Services/Auth/AuthSession.cs)、[RelaxKonOSClient.cs](../../Client/RelaxKonOS.Client/Services/Auth/RelaxKonOSClient.cs) 调 Protocol API。AuthSession 以 LoginResponse 设置 CurrentUser/Workspace；用串行刷新门防止重复消费，刷新 401 清空认证状态。
+[LoginViewModel.cs](../../Client/RelaxKonOS.Client/ViewModels/Login/LoginViewModel.cs) / [LoginView.axaml](../../Client/RelaxKonOS.Client/Views/Login/LoginView.axaml) 收集用户名密码，经 `IAuthSession`、[AuthSession.cs](../../Client/RelaxKonOS.Client/Services/Auth/AuthSession.cs)、[RelaxKonOSClient.cs](../../Client/RelaxKonOS.Client/Services/Auth/RelaxKonOSClient.cs) 调 Protocol API。
+
+AuthSession 以 LoginResponse 设置 CurrentUser/Workspace；用串行刷新门防止重复消费，刷新 401 清空认证状态。
 
 [RememberedSessionStore.cs](../../Client/RelaxKonOS.Client/Services/Auth/RememberedSessionStore.cs) 在用户选择记住密码后使用 Windows DPAPI、macOS Keychain、Linux Secret Service；Linux 连接元数据另存 JSON。不能把服务端“不存 OS 密码”的事实扩大为“客户端从不保存密码”。文件中的旧格式迁移代码是既有事实，本 Goal 不复制或新增此类兼容分支。
 
-[StorageOptions.cs](../../RelaxKonOS.Server/Storage/StorageOptions.cs) 默认 `data/relaxkonos.db`，相对 ContentRoot。业务 DbContext 用 EnsureCreated 加 Program 内补表 SQL；[HostGlobalMigrationRunner.cs](../../RelaxKonOS.Server/Storage/Sqlite/HostGlobalMigrationRunner.cs) 为宿主资源单独维护版本迁移。[DataProtectionSecretStore.cs](../../RelaxKonOS.Server/Secrets/DataProtectionSecretStore.cs) 是 Tunnel token 的可逆密文存储，不是通用密码验证器。
+[StorageOptions.cs](../../RelaxKonOS.Server/Storage/StorageOptions.cs) 默认 `data/relaxkonos.db`，相对 ContentRoot。业务 DbContext 用 EnsureCreated 加 Program 内补表 SQL；[HostGlobalMigrationRunner.cs](../../RelaxKonOS.Server/Storage/Sqlite/HostGlobalMigrationRunner.cs) 为宿主资源单独维护版本迁移。
+
+[DataProtectionSecretStore.cs](../../RelaxKonOS.Server/Secrets/DataProtectionSecretStore.cs) 是 Tunnel token 的可逆密文存储，不是通用密码验证器。
 
 ### 6.5 已有防护及泄密风险
 
 [LoginProtectionService.cs](../../RelaxKonOS.Server/Identity/LoginProtectionService.cs) 的账号键是 Trim/大写/截断 128 字符，不能作为身份唯一键；两种凭据目前也没有合并计数。IP 与账号+IP 状态是进程内静态字典，账号状态和安全事件走 [AuthenticationProtectionStore.cs](../../RelaxKonOS.Server/Storage/AuthenticationProtectionStore.cs)。需补并发更新、过期清理、容量限制；不能声称已具备持久化多节点防护。
 
-[NetworkDiagnosticsHandler.cs](../../Client/RelaxKonOS.Client/Services/Diagnostics/NetworkDiagnosticsHandler.cs) 在启用诊断时采集请求/响应头及正文；[NetworkDiagnosticsService.cs](../../Client/RelaxKonOS.Client/Services/Diagnostics/NetworkDiagnosticsService.cs) 要求 DeveloperMode 和已认证会话，没有通用敏感字段脱敏。这尤其会暴露登录后提交的 Alias/复验密码及刷新 token。必须在新接口上线前修复采集边界，不能只隐藏 UI 展示。
+[NetworkDiagnosticsHandler.cs](../../Client/RelaxKonOS.Client/Services/Diagnostics/NetworkDiagnosticsHandler.cs) 在启用诊断时采集请求/响应头及正文；[NetworkDiagnosticsService.cs](../../Client/RelaxKonOS.Client/Services/Diagnostics/NetworkDiagnosticsService.cs) 要求 DeveloperMode 和已认证会话，没有通用敏感字段脱敏。
+
+这尤其会暴露登录后提交的 Alias/复验密码及刷新 token。必须在新接口上线前修复采集边界，不能只隐藏 UI 展示。
 
 ## 7. Proposed Architecture / 推荐架构
 
@@ -216,7 +238,9 @@ Linux 使用 NSS 的精确名称查找，故系统 `Developer` 与 Alias `develo
 
 ### 10.1 Hash 方案
 
-未发现已接入业务的 PasswordHasher、Argon2、bcrypt 或 PBKDF2 实现。推荐仅使用框架 `PasswordHasher<AliasCredential>` 的 IdentityV3 模式：PBKDF2-HMAC-SHA512、每次随机 128-bit salt、256-bit subkey、自描述哈希。显式配置初始迭代数 **220,000**，在目标 Linux/Windows 服务机器上压测；允许提高，禁止为追求速度低于该基线。相关结构已核对 [.NET 10 PasswordHasher 源码](https://github.com/dotnet/aspnetcore/blob/v10.0.0/src/Identity/Extensions.Core/src/PasswordHasher.cs)，选项见 [Microsoft 文档](https://learn.microsoft.com/en-us/aspnet/core/security/authentication/identity-configuration?view=aspnetcore-10.0)。
+未发现已接入业务的 PasswordHasher、Argon2、bcrypt 或 PBKDF2 实现。推荐仅使用框架 `PasswordHasher<AliasCredential>` 的 IdentityV3 模式：PBKDF2-HMAC-SHA512、每次随机 128-bit salt、256-bit subkey、自描述哈希。
+
+显式配置初始迭代数 **220,000**，在目标 Linux/Windows 服务机器上压测；允许提高，禁止为追求速度低于该基线。相关结构已核对 [.NET 10 PasswordHasher 源码](https://github.com/dotnet/aspnetcore/blob/v10.0.0/src/Identity/Extensions.Core/src/PasswordHasher.cs)，选项见 [Microsoft 文档](https://learn.microsoft.com/en-us/aspnet/core/security/authentication/identity-configuration?view=aspnetcore-10.0)。
 
 选择 PBKDF2 是为利用已有 ASP.NET Core 框架、避免引入新的 native 哈希依赖。Argon2id 可作为后续独立升级选项；成本下限依据 [OWASP Password Storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)（核对日期 2026-09-12）。这不是项目已经使用 PBKDF2 的陈述。
 
@@ -349,7 +373,9 @@ JWT `sub` 永远为既有 User.Id，`name` 为系统账号名；增加 `amr`（�
 
 Hub 增加统一会话有效性检查：每次调用检查版本，服务端推送订阅在撤销时 detach/abort，定期复核及失效关闭作为漏事件补偿（最大 5 秒）；所有认证 Hub 启用到期关闭。撤销连接不自动杀死 Canonical User 的 PTY 或删除 Workspace，重新登录可按现有规则附加。
 
-现有 `IssueFileCapability` 和可续期媒体访问也必须继承并校验该用户安全版本，阻止旧 token 继续派生长寿命授权。[AppCapabilityEndpoints.cs](../../RelaxKonOS.Server/Endpoints/AppCapabilityEndpoints.cs) 的媒体 GET/HEAD 使用 [MediaLeaseStore](../../RelaxKonOS.Server/Files/MediaLeaseStore.cs) 中的 opaque bearer lease，不能只在有 User JWT 的续期接口检查：读取入口本身也必须验证 lease 的用户安全版本。现有 Host/File elevation grant 在使用时依赖有效用户认证并按用户清理。这是认证撤销的完整性，不改变文件 scope 或宿主提权规则。验收要覆盖请求、刷新、Hub 双向流、能力 token 和媒体续期，不声称能回滚已开始的文件下载或 OS 命令。
+现有 `IssueFileCapability` 和可续期媒体访问也必须继承并校验该用户安全版本，阻止旧 token 继续派生长寿命授权。[AppCapabilityEndpoints.cs](../../RelaxKonOS.Server/Endpoints/AppCapabilityEndpoints.cs) 的媒体 GET/HEAD 使用 [MediaLeaseStore](../../RelaxKonOS.Server/Files/MediaLeaseStore.cs) 中的 opaque bearer lease，不能只在有 User JWT 的续期接口检查：读取入口本身也必须验证 lease 的用户安全版本。
+
+现有 Host/File elevation grant 在使用时依赖有效用户认证并按用户清理。这是认证撤销的完整性，不改变文件 scope 或宿主提权规则。验收要覆盖请求、刷新、Hub 双向流、能力 token 和媒体续期，不声称能回滚已开始的文件下载或 OS 命令。
 
 ## 16. Security Requirements / 安全要求
 
@@ -438,7 +464,9 @@ V1 Alias 发布至少完成 Windows 本地账户的只读存在性/禁用/账号
 
 ## 22. Audit / 审计
 
-扩展现有 [AuthenticationSecurityEvent](../../RelaxKonOS.Server/Domain/AuthenticationProtection.cs) 及其 SQLite store，新增 CanonicalUserId、SessionId、AuthenticationMethod、ReasonCode、CorrelationId、配置 Revision、ActorKind（User/LocalRecovery）。保留 source IP 的现有语义，遵循 Program 的 TrustedProxies/TrustedNetworks，不相信任意 X-Forwarded-For。
+扩展现有 [AuthenticationSecurityEvent](../../RelaxKonOS.Server/Domain/AuthenticationProtection.cs) 及其 SQLite store，新增 CanonicalUserId、SessionId、AuthenticationMethod、ReasonCode、CorrelationId、配置 Revision、ActorKind（User/LocalRecovery）。
+
+保留 source IP 的现有语义，遵循 Program 的 TrustedProxies/TrustedNetworks，不相信任意 X-Forwarded-For。
 
 事件至少包括 `AliasCreated`、`AliasChanged`、`AliasPasswordChanged`、`AliasDeleted`、`SystemLoginDisabled`、`SystemLoginEnabled`、`AliasLoginSucceeded`、`AliasLoginFailed`、`AccountLoginRecovered`、`CanonicalIdentityMismatch`；复验失败及限流沿用认证失败分类并带操作类型。
 
@@ -463,7 +491,9 @@ V1 Alias 发布至少完成 Windows 本地账户的只读存在性/禁用/账号
 
 ## 24. Testing Strategy / 测试策略
 
-采用仓库现有可执行验证项目风格：[RelaxKonOS.Server.Tests.csproj](../../RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj)、[Tests/Client/RelaxKonOS.Settings.Tests](../../Tests/Client/RelaxKonOS.Settings.Tests/Program.cs)。后续可添加 `AliasLoginVerification`、身份迁移及 Session 验证组；不能仅靠 mock 声称验证了 PAM、域账号或 Windows Service。
+采用仓库现有可执行验证项目风格：[RelaxKonOS.Server.Tests.csproj](../../RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj)、[Tests/Client/RelaxKonOS.Settings.Tests](../../Tests/Client/RelaxKonOS.Settings.Tests/Program.cs)。
+
+后续可添加 `AliasLoginVerification`、身份迁移及 Session 验证组；不能仅靠 mock 声称验证了 PAM、域账号或 Windows Service。
 
 - **纯逻辑/SQLite**：Alias 边界、系统查找 NotFound/Unavailable 区分、FK/唯一索引/CHECK、乱序 Revision、hash 损坏、盐不复用、成本升级；并发创建/改名/删除/Disable、账号失败计数原子性、事务中断和重跑迁移。
 - **HTTP 集成**：注入可控 OS provider，测试同 UserId 各种 Identifier、统一错误形状、限流 Retry-After、反向代理 IP、User/FileCapability scheme、伪造他人字段、复验失败不重放、无记录与 DB 故障区别。

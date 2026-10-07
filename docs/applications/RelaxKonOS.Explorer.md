@@ -133,7 +133,9 @@ Jaya 原架构通过 `ServiceLocator` 反射扫描 `Jaya.Provider.*.dll` 加载�
 
 ### 4.2 FileEndpoints
 
-[`RelaxKonOS.Server/Endpoints/FileEndpoints.cs`](../../RelaxKonOS.Server/Endpoints/FileEndpoints.cs) — 静态 `MapFileEndpoints(this IEndpointRouteBuilder)`，minimal API，全部 `RequireAuthorization()`。错误用 `Results.Problem(detail, statusCode, title, type: "https://relaxkonos.app/problems/" + suffix)`（仿 `AuthEndpoints.cs`）。
+[`RelaxKonOS.Server/Endpoints/FileEndpoints.cs`](../../RelaxKonOS.Server/Endpoints/FileEndpoints.cs) — 静态 `MapFileEndpoints(this IEndpointRouteBuilder)`，minimal API，全部 `RequireAuthorization()`。
+
+错误用 `Results.Problem(detail, statusCode, title, type: "https://relaxkonos.app/problems/" + suffix)`（仿 `AuthEndpoints.cs`）。
 
 ### 4.3 REST 端点签名
 

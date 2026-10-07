@@ -24,9 +24,15 @@ Goal 7 的真实宿主 mutation / 第三方客户端测试**尚未在此开发�
 
 Samba 安装只使用发行版的受信任默认仓库和固定的 `samba` 包；不会接受仓库、包名或版本。Linux 健康检查为 `testparm`、`smbd` active 与 TCP 445 listening；Windows 为 API 回读、LanmanServer 状态和 TCP 445。
 
-Windows share 管理通过 LocalSystem Helper 内的 `NetShareEnum`、`NetShareGetInfo`、`NetShareAdd`、`NetShareSetInfo` 和 `NetShareDel` 编译绑定完成。它只接受受管 share 的固定字段与 SID principal，拒绝 `IPC$`、名称以 `$` 结束的默认/管理 share、reparse-point 路径；Helper 从 API 读取 security descriptor，生成回读 snapshot，并在 apply/delete 后健康失败时恢复 snapshot。没有 PowerShell、registry 或任意系统 API/命令输入。`NetShareSetInfo` 接受 `SHARE_INFO_502` 但**静默忽略其中的 path**（Windows 返回成功，共享却仍指向原目录），因此修改共享目录必须走 `NetShareDel` + `NetShareAdd` 并附带还原回滚；只有 remark/ACL 变化才使用原位更新。该宿主行为可用 `Tools/verify-windows-share-path.py` 在目标 Windows 主机上复验。
+Windows share 管理通过 LocalSystem Helper 内的 `NetShareEnum`、`NetShareGetInfo`、`NetShareAdd`、`NetShareSetInfo` 和 `NetShareDel` 编译绑定完成。它只接受受管 share 的固定字段与 SID principal，拒绝 `IPC$`、名称以 `$` 结束的默认/管理 share、reparse-point 路径；Helper 从 API 读取 security descriptor，生成回读 snapshot，并在 apply/delete 后健康失败时恢复 snapshot。
 
-Windows SMB Server 全局安全状态通过 Helper 内固定绑定的 `ROOT\\Microsoft\\Windows\\Smb:MSFT_SmbServerConfiguration` 读取和设置，不提供通用 WMI/CIM 入口。它仅可强制 V1 基线：禁用 SMB1、启用 SMB2、启用 authenticated-user sharing，并清空 null-session share/pipe 列表。原始配置不会离开 LocalSystem Helper；Server 只在 HostGlobal 中保存不可逆 snapshot hash，之后的外部变更会进入 `reconciliation-required`，不会静默覆盖。SMB3 encryption 仅报告为 Windows 后端能力，V1 不宣称已配置全局加密。
+没有 PowerShell、registry 或任意系统 API/命令输入。`NetShareSetInfo` 接受 `SHARE_INFO_502` 但**静默忽略其中的 path**（Windows 返回成功，共享却仍指向原目录），因此修改共享目录必须走 `NetShareDel` + `NetShareAdd` 并附带还原回滚；只有 remark/ACL 变化才使用原位更新。
+
+该宿主行为可用 `Tools/verify-windows-share-path.py` 在目标 Windows 主机上复验。
+
+Windows SMB Server 全局安全状态通过 Helper 内固定绑定的 `ROOT\\Microsoft\\Windows\\Smb:MSFT_SmbServerConfiguration` 读取和设置，不提供通用 WMI/CIM 入口。它仅可强制 V1 基线：禁用 SMB1、启用 SMB2、启用 authenticated-user sharing，并清空 null-session share/pipe 列表。
+
+原始配置不会离开 LocalSystem Helper；Server 只在 HostGlobal 中保存不可逆 snapshot hash，之后的外部变更会进入 `reconciliation-required`，不会静默覆盖。SMB3 encryption 仅报告为 Windows 后端能力，V1 不宣称已配置全局加密。
 
 Samba 用户列表、启用/禁用和密码更新路由只在 Linux 进程映射。Windows Server 不映射这些路由，也不显示相关 UI；Windows 只将既有 local/domain SID 用于 share ACL，绝不读取、设置或保存 Windows 帐户密码。
 
@@ -49,7 +55,9 @@ CI 的无 root/Linux Samba、无 LocalSystem/Windows Server 环境不执行真�
 `RelaxKonOS.Server.Tests/FileServiceChecks.cs` 不要求 Samba、root、LocalSystem 或 TCP 445，验证 SMB-only provider resolver、未注册 provider 的 fail-closed 状态、连接信息以及 Manager→Provider 生命周期派发。
 可单独执行它和 SMB 契约验证：`dotnet run --project RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj -c Debug --no-build --no-restore /p:UsePrebuiltServerAssembly=true -- --file-services-only`。
 
-当前开发容器还禁止 Kestrel 绑定测试回环 socket，因此现有 `RelaxKonOS.Server.Tests` 的 HTTP settings smoke test 会在 socket bind 阶段失败；这不是 SMB 服务或协议测试结果。上面的 File Services 专用测试可正常编译和执行。该容器的 .NET SDK 10.0.400 还缺少 `Microsoft.NET.SDK.WorkloadAutoImportPropsLocator` / `Microsoft.NET.SDK.WorkloadManifestTargetsLocator` 的 SDK 目录；这会使 Avalonia Client 的 MSBuild 以零诊断失败，需在完整桌面 SDK 环境重新构建 Client。
+当前开发容器还禁止 Kestrel 绑定测试回环 socket，因此现有 `RelaxKonOS.Server.Tests` 的 HTTP settings smoke test 会在 socket bind 阶段失败；这不是 SMB 服务或协议测试结果。上面的 File Services 专用测试可正常编译和执行。
+
+该容器的 .NET SDK 10.0.400 还缺少 `Microsoft.NET.SDK.WorkloadAutoImportPropsLocator` / `Microsoft.NET.SDK.WorkloadManifestTargetsLocator` 的 SDK 目录；这会使 Avalonia Client 的 MSBuild 以零诊断失败，需在完整桌面 SDK 环境重新构建 Client。
 
 ## 集合读取失败边界
 

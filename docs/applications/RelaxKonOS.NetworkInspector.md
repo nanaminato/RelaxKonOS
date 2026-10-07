@@ -89,7 +89,9 @@ public sealed class NetworkDiagnosticsService
 }
 ```
 
-每个 `NetworkDiagnosticEntry` 为已完成的不可变摘要，至少包含：`Id`、`StartedAt`、`Duration`、`Kind`（`Http` / `SignalR`）、`Source`、`Name`、`Method`、已净化的 `PathAndQuery`、`Outcome`、可空 `StatusCode`、`ContentType`、`DeclaredContentLength`、`IsMedia`、`ErrorKind` 和受限的 Header/预览字段。`Source` 由调用方显式给出（如 `auth`、`explorer`、`terminal`、`settings`），不能从未受信任的 URL 推断。
+每个 `NetworkDiagnosticEntry` 为已完成的不可变摘要，至少包含：`Id`、`StartedAt`、`Duration`、`Kind`（`Http` / `SignalR`）、`Source`、`Name`、`Method`、已净化的 `PathAndQuery`、`Outcome`、可空 `StatusCode`、`ContentType`、`DeclaredContentLength`、`IsMedia`、`ErrorKind` 和受限的 Header/预览字段。
+
+`Source` 由调用方显式给出（如 `auth`、`explorer`、`terminal`、`settings`），不能从未受信任的 URL 推断。
 
 ### 4.2 上限与采样
 

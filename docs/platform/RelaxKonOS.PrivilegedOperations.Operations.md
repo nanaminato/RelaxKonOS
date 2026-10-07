@@ -25,7 +25,9 @@ Windows 当前用户自己的环境变量按 SID 归属授权，系统 store 单
 
 Mihomo 系统代理需要同步部署 Server 与 Helper 协议 1.0。`LinuxSystemProxyRead` 返回能力；`LinuxSystemProxyApply` 仅接受启用标记、本机 IP、端口、绕过选项及守护标记，不接受路径、用户 ID、程序或命令。无 Helper 的环境显示不可用，不切换到高权限 Server。代理关闭时，Helper 不可用不会阻断无关 Mihomo 设置保存；启动恢复仍会重试。
 
-环境提供者要求可安全解析的 `/etc/environment` 和已配置默认文件读取的 PAM 栈。桌面发现使用 `/usr/bin/loginctl`；GNOME 要求 `dconf`、`dbus-run-session`，KDE 要求成对的 `kreadconfig6/kwriteconfig6` 或版本 5 及 `dbus-send`、`dbus-run-session`，并需 `getent`、`env`、`runuser`。缺少已检测桌面的必要工具会拒绝启用。桌面写入在对应 NSS 用户身份下执行，使用默认 HOME、`.config` 和 `/run/user/<uid>/bus`；注销后的恢复可创建临时用户 D-Bus 会话。其他桌面、远程图形会话与自定义 XDG_CONFIG_HOME 不作为桌面支持范围。
+环境提供者要求可安全解析的 `/etc/environment` 和已配置默认文件读取的 PAM 栈。桌面发现使用 `/usr/bin/loginctl`；GNOME 要求 `dconf`、`dbus-run-session`，KDE 要求成对的 `kreadconfig6/kwriteconfig6` 或版本 5 及 `dbus-send`、`dbus-run-session`，并需 `getent`、`env`、`runuser`。
+
+缺少已检测桌面的必要工具会拒绝启用。桌面写入在对应 NSS 用户身份下执行，使用默认 HOME、`.config` 和 `/run/user/<uid>/bus`；注销后的恢复可创建临时用户 D-Bus 会话。其他桌面、远程图形会话与自定义 XDG_CONFIG_HOME 不作为桌面支持范围。
 
 Helper 独占 `/var/lib/relaxkonos-system-proxy/recovery.json`，目录 0700、文件 0600，不能放进 Server 可写数据目录；其中可能含原代理地址，应按受保护宿主配置对待。与机器环境编辑共用互斥锁及条件写入，保留非代理键。启用/变更先写恢复意图；关闭按键恢复仍归本应用管理的值，不覆盖外部新值。失败保留恢复记录，下一次关闭或 Server 启动重试；恢复完成才删除记录。卸载/迁移前先关闭系统代理并确认恢复成功，不手动删除未完成的记录。
 
@@ -131,9 +133,17 @@ Helper 协议直接升级为 **1.5**；Server 与 Helper 必须同时更新。�
 
 Helper 独立校验软件来源：Nginx 仅从固定 nginx.org HTTPS 发布地址获取官方 ZIP；上传 ZIP 必须与 Helper 获取的同版本官方包完全一致，因此该校验需要联网。FRP ZIP 必须匹配 Helper 管理员配置中的版本/RID/SHA-256 信任清单，默认清单与当前发行配置一致。新的 FRP pin 必须同时更新 Server 与 Helper 配置；不能由 HTTP 请求提交 hash 或下载 URL。上传/暂存包只能从 `runtimeArchiveRoots` 读取，拒绝链接、路径越界、超限和 ZIP traversal。
 
-受管程序与完整性清单只允许 LocalSystem/Administrators 写入，Server SID 只读。FRP 的解密运行配置只保存在 Helper 私有目录，日志只返回不含凭据的固定摘要。Nginx 配置禁止加载模块、脚本/环境注入、越界 include 和越界日志写入；通用文件授权不能覆盖这些程序、配置或完整性清单，静态站点 `sites/` 内容仍受文件授权及文件根策略管理。Helper 和 Server 停止时保留独立组件服务；状态、PID/启动时间核验、脱敏日志和 appliedIdentity 通过服务持久化记录及系统服务管理器查询，不依赖 Helper 内存。Windows 宿主、配置及状态位于 `%ProgramData%\RelaxKonOS-Components`，以 Job Object 约束子进程；Linux FRP 位于 `/var/lib/relaxkonos-components/frp`，使用受限专用账户和固定 unit 名。详见 [独立组件服务进度](../services/RelaxKonOS.IndependentComponentServices.Progress.md)。
+受管程序与完整性清单只允许 LocalSystem/Administrators 写入，Server SID 只读。FRP 的解密运行配置只保存在 Helper 私有目录，日志只返回不含凭据的固定摘要。Nginx 配置禁止加载模块、脚本/环境注入、越界 include 和越界日志写入；通用文件授权不能覆盖这些程序、配置或完整性清单，静态站点 `sites/` 内容仍受文件授权及文件根策略管理。
 
-Helper 配置中的可选固定路径为 `nginxRoot`（默认 `%ProgramData%\RelaxKonOS\webserver\nginx`）与 `runtimePrivateRoot`（默认 `%ProgramData%\RelaxKonOS\privileged-runtimes`）。Server 的 `NginxManaged:InstallationRoot` 若非空，必须与前者一致。Nginx 安装还会保护其父目录以固定安装位置；自定义根及其父目录必须专用于 Helper，不能指向源码、用户工作目录或 Server 数据目录。`runtimeArchiveRoots` 为 Server 内容目录下的 `data/runtimes/frp` 和 `data/webserver-packages`，与普通文件提权白名单分开。部署安装器写入这些包入口；开发控制台示例见 [开发调试指南](../development/RelaxKonOS.Develop.md)。
+Helper 和 Server 停止时保留独立组件服务；状态、PID/启动时间核验、脱敏日志和 appliedIdentity 通过服务持久化记录及系统服务管理器查询，不依赖 Helper 内存。Windows 宿主、配置及状态位于 `%ProgramData%\RelaxKonOS-Components`，以 Job Object 约束子进程；Linux FRP 位于 `/var/lib/relaxkonos-components/frp`，使用受限专用账户和固定 unit 名。
+
+详见 [独立组件服务进度](../services/RelaxKonOS.IndependentComponentServices.Progress.md)。
+
+Helper 配置中的可选固定路径为 `nginxRoot`（默认 `%ProgramData%\RelaxKonOS\webserver\nginx`）与 `runtimePrivateRoot`（默认 `%ProgramData%\RelaxKonOS\privileged-runtimes`）。
+
+Server 的 `NginxManaged:InstallationRoot` 若非空，必须与前者一致。Nginx 安装还会保护其父目录以固定安装位置；自定义根及其父目录必须专用于 Helper，不能指向源码、用户工作目录或 Server 数据目录。`runtimeArchiveRoots` 为 Server 内容目录下的 `data/runtimes/frp` 和 `data/webserver-packages`，与普通文件提权白名单分开。
+
+部署安装器写入这些包入口；开发控制台示例见 [开发调试指南](../development/RelaxKonOS.Develop.md)。
 
 本次验证覆盖 Server/Helper/桌面客户端构建、Android 提示单元测试、受限配置、授权范围、调用方预置伪造完整性清单及缺失 Helper 的拒绝行为。真实 Windows 10/11 管理员控制台、LocalSystem 服务及受管进程重启矩阵仍须在对应宿主验收；此处不把编译成功等同于实机通过。
 

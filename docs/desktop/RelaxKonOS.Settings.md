@@ -2,15 +2,16 @@
 
 > 当前界面方向：参考 Windows 11 设置，以清晰分类、卡片分组、常用项直接可见和低频项折叠降低负担，不要求沿用原有交互。普通偏好自动保存；主机名和时区在页内明确应用，草稿切页保留，可直接重置，不增加离页确认弹窗或首页待办中心。底层协议约束继续有效，界面不展开其实现细节。
 
-
 本文描述设置应用的当前行为。范围、安全契约与完整验收矩阵见 [设置设计](./RelaxKonOS.Settings.Design.md)。宿主写入的实现与实机验收状态分别列出。
 最新测试范围、发现的问题及实机部署限制见 [设置验收记录](./RelaxKonOS.Settings.Acceptance.md)。
 
 ## 服务与真源
 
-设置应用是入口，偏好读写服务可独立调用。Client 的 `Services/WorkspaceSettings/IWorkspaceSettingsService` 供 Settings、Shell、Explorer、SDK、编码设置及默认程序入口共同使用。`WorkspacePreferencesEditor` 管理冻结草稿、300ms 防抖、目标绑定及重试；窗口关闭不会取消保存，连接变化清理旧目标草稿。`PreferencesSync` 负责登录加载与设置变化订阅，更新 ShellSettings 和 DefaultAppRegistry。订阅绑定连接目标，重连先订阅再重取快照；有草稿时保留草稿，避免远端变化覆盖编辑。
+设置应用是入口，偏好读写服务可独立调用。Client 的 `Services/WorkspaceSettings/IWorkspaceSettingsService` 供 Settings、Shell、Explorer、SDK、编码设置及默认程序入口共同使用。`WorkspacePreferencesEditor` 管理冻结草稿、300ms 防抖、目标绑定及重试；窗口关闭不会取消保存，连接变化清理旧目标草稿。
 
-Server `Settings/IWorkspaceSettingsService` 管理偏好验证和版本比较。真源为配置注册表 `Workspace\Desktop` 的 `(Default)` JSON 值；当前 SQLite 缓存延迟落盘，客户端在后台跟踪 `persistedRevision`，界面不展示保存中、已接收或持久化成功提示；失败显示五秒 toast 并保留日志与草稿。损坏的偏好返回错误并保留原数据。
+`PreferencesSync` 负责登录加载与设置变化订阅，更新 ShellSettings 和 DefaultAppRegistry。订阅绑定连接目标，重连先订阅再重取快照；有草稿时保留草稿，避免远端变化覆盖编辑。
+
+Server `Settings/IWorkspaceSettingsService` 管理偏好验证和版本比较。数据来源为配置注册表 `Workspace\Desktop` 的 `(Default)` JSON 值；当前 SQLite 缓存延迟落盘，客户端在后台跟踪 `persistedRevision`，界面不展示保存中、已接收或持久化成功提示；失败显示五秒 toast 并保留日志与草稿。损坏的偏好返回错误并保留原数据。
 
 `GET /api/v1.0/workspaces/{id}/preferences` 返回 `WorkspacePreferencesDto.revision`；PUT 使用同一 DTO，必须携带编辑基线 revision。缺失返回 428，冲突返回 409。不能先读取新 revision 再给旧草稿换版本强行保存。Workspace 归属由认证身份校验；AppSettings 仍仅存应用私有偏好，不能存 OS 配置。
 
@@ -26,8 +27,7 @@ Server `Settings/IWorkspaceSettingsService` 管理偏好验证和版本比较。
 
 内容区使用可点击的大面包屑代替小型“返回 / 路径”行及重复标题。个性化详情、默认应用、系统偏好和网络适配器详情均可通过父级面包屑返回。网络卡片进入 `network/adapter` 独立详情页，标题显示实际网卡名；父级“网络”回到列表，顶栏箭头沿历史返回。网卡编辑与未确认操作由原服务继续管理，切页不取消连接恢复保护。 网络页移除重复的“服务器 IP 地址”汇总卡片和额外地址查询，IP 信息统一在网卡详情中查看；连接状态、连接测试及侧栏连接地址继续保留。
 
-改造进度、阶段边界和验收清单见 [Windows 11 风格改造进度](RelaxKonOS.Settings.Windows11.Progress.md)。已落地首页、分类与详情导航分离、统一页面标题、个性化四个详情页、设置项搜索定位与范围说明。时间语言页与完整根窗口通过 headless 交互和小视口可达性检查；原生人工交互、系统缩放和屏幕阅读器验收尚未执行。
-
+改造进度、阶段边界和验收清单见 [Windows 11 风格改造进度](RelaxKonOS.Settings.Windows11.Progress.md)。已实现首页、分类与详情导航分离、统一页面标题、个性化四个详情页、设置项搜索定位与范围说明。时间语言页与完整根窗口通过 headless 交互和小视口可达性检查；原生人工交互、系统缩放和屏幕阅读器验收尚未执行。
 
 新增“辅助功能”页和“系统 → 通知与启动”页：文字/界面缩放、减少动画、高对比度、自动化通知横幅/免打扰、登录后恢复运行中的终端、全屏连接栏固定均为设备偏好，保存在本地 `RelaxKonOS/desktop-device.json`。普通开关即时生效；终端恢复开关在下次桌面入口执行，不结束已有终端。设置页标题可固定当前页到首页。个性化各详情、日期/时间格式、默认应用以及设备设置提供分组恢复默认值。
 
@@ -39,10 +39,18 @@ Server `Settings/IWorkspaceSettingsService` 管理偏好验证和版本比较。
 
 网络页仅管理当前连接的远程主机，没有本机系统设置入口。现代卡片按以太网、Wi-Fi 和其他适配器展示连接状态，并提供 IPv4/IPv6 地址、网关、DNS、MAC 和链路速度详情。支持在 Windows 及 Linux NetworkManager 管理的活动以太网／Wi-Fi 网卡上修改 IPv4 DHCP／手动地址、前缀长度、网关与自动／手动 DNS；其他 owner、复杂配置和不支持的网卡明确只读。当前未提供 Wi-Fi 扫描、加入新 SSID、IPv6 写入或 systemd-networkd 配置。
 
-网络写入走 `GET /host-settings/network`、`POST /host-settings/network/apply` 与 `/confirm`，由独立连接绑定客户端服务调用。修改需要精确 `host/network` 的 `HostNetworkChange` 授权，Helper 再验证结构化输入和快照 revision。客户端先生成操作 ID，丢失响应不重放写入。服务端完成 Helper 写入前不能确认，确认只允许原操作账户。Windows 先注册 SYSTEM 计划任务保存原 IP/DNS，Linux NetworkManager 先创建检查点；未确认时由远程系统在 120 秒后恢复，不依赖客户端或 Server 仍在线。客户端提供 90 秒保留确认窗口，确认后移除恢复任务／检查点。关闭设置或断开连接不会取消恢复保护。
+网络写入走 `GET /host-settings/network`、`POST /host-settings/network/apply` 与 `/confirm`，由独立连接绑定客户端服务调用。修改需要精确 `host/network` 的 `HostNetworkChange` 授权，Helper 再验证结构化输入和快照 revision。
 
-实现依据：[Windows netsh](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/netsh-interface)、[Windows 计划任务](https://learn.microsoft.com/en-us/powershell/module/scheduledtasks/register-scheduledtask)、[NetworkManager 检查点](https://networkmanager.pages.freedesktop.org/NetworkManager/NetworkManager/gdbus-org.freedesktop.NetworkManager.html)。自动化验收使用模拟服务与 Helper，覆盖授权、参数、版本冲突、操作归属、不重放和三语言窄窗口；真实网卡变更及恢复仍需隔离环境验收。
-设置请求失败自动写入客户端 `%LOCALAPPDATA%/RelaxKonOS/logs/workspace-preferences-YYYYMMDD.jsonl`（每文件上限 2 MiB，最多保留一个轮换文件，清理七天前日志）。记录操作、Workspace、预期 revision、异常类型、HTTP 状态与服务端返回的 correlation ID；不记录令牌、请求/响应正文或异常消息。界面按网络、登录/权限、无效设置、需要重载及服务端失败显示本地化提示，仍保留草稿；冲突必须显式重载，不自动覆盖远端版本。令牌刷新后按稳定服务、登录会话和 Workspace 确认保存 revision，避免下一次保存误用旧版本。
+客户端先生成操作 ID，丢失响应不重放写入。服务端完成 Helper 写入前不能确认，确认只允许原操作账户。Windows 先注册 SYSTEM 计划任务保存原 IP/DNS，Linux NetworkManager 先创建检查点；未确认时由远程系统在 120 秒后恢复，不依赖客户端或 Server 仍在线。
+
+客户端提供 90 秒保留确认窗口，确认后移除恢复任务／检查点。关闭设置或断开连接不会取消恢复保护。
+
+实现依据：[Windows netsh](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/netsh-interface)、[Windows 计划任务](https://learn.microsoft.com/en-us/powershell/module/scheduledtasks/register-scheduledtask)、[NetworkManager 检查点](https://networkmanager.pages.freedesktop.org/NetworkManager/NetworkManager/gdbus-org.freedesktop.NetworkManager.html)。
+
+自动化验收使用模拟服务与 Helper，覆盖授权、参数、版本冲突、操作归属、不重放和三语言窄窗口；真实网卡变更及恢复仍需隔离环境验收。
+设置请求失败自动写入客户端 `%LOCALAPPDATA%/RelaxKonOS/logs/workspace-preferences-YYYYMMDD.jsonl`（每文件上限 2 MiB，最多保留一个轮换文件，清理七天前日志）。记录操作、Workspace、预期 revision、异常类型、HTTP 状态与服务端返回的 correlation ID；不记录令牌、请求/响应正文或异常消息。
+
+界面按网络、登录/权限、无效设置、需要重载及服务端失败显示本地化提示，仍保留草稿；冲突必须显式重载，不自动覆盖远端版本。令牌刷新后按稳定服务、登录会话和 Workspace 确认保存 revision，避免下一次保存误用旧版本。
 
 开发服务端未配置 `Observability:LogDirectory` 时默认写入输出目录 `data/logs/runtime-YYYYMMDD.jsonl`；安装版使用配置的运行日志目录。所有 HTTP 4xx/5xx 请求均记录完成事件，不受成功请求采样率影响。客户端和服务端日志可按 correlation ID 对照。历史上未开启文件日志的开发请求无法追溯；这些默认值仅对重启后的开发服务端生效。
 
@@ -50,9 +58,15 @@ Server `Settings/IWorkspaceSettingsService` 管理偏好验证和版本比较。
 
 内置桌面布局的 Workspace 与设备本地选择均只保存 `shellId`；描述器的内置实现版本不属于外部包信息。Settings 与桌面快捷切换共用 `ShellSettings.SelectShell`，外部桌面继续携带包 ID 和版本。服务端拒绝无效偏好时返回 `invalidField`，并记录同一 correlation ID 的 `input.rejected` 事件，只包含固定字段路径，不包含字段值。回归覆盖真实个性化页切换三种内置布局，再修改颜色/壁纸，以及外部包元数据保留。
 
-当前一级分类为首页、系统、网络、个性化、应用、账户与安全、时间和语言、辅助功能、开发者。默认应用归入应用详情；关于保留独立页面并置于导航底部。环境变量详情页及已有壁纸、调色板、系统风格和 Shell 布局能力继续保留。Docker Hub 镜像源属于 Docker 管理器的“镜像源”页，不在设置应用中展示。个性化已改为概览和“颜色与模式”“系统风格”“桌面布局”“背景”四个详情页（见下节）。保存状态支持中文、英文、日文；失败保留草稿并可重试，冲突保留草稿，提供明确的“放弃草稿并重载”操作；重载失败仍保留草稿。首页已实现常用入口与固定页；辅助功能已实现，原生验收待补。不扩展逐字段冲突合并界面或首页待办中心。
+当前一级分类为首页、系统、网络、个性化、应用、账户与安全、时间和语言、辅助功能、开发者。默认应用归入应用详情；关于保留独立页面并置于导航底部。环境变量详情页及已有壁纸、调色板、系统风格和 Shell 布局能力继续保留。Docker Hub 镜像源属于 Docker 管理器的“镜像源”页，不在设置应用中展示。
 
-分类与详情页使用注册的 Route 导航，共用单色矢量图标；持续显示账号、Workspace 与分类路径，连接地址直接显示并可选择复制；每页提供作用范围说明，混合范围页面在关键分区注明设备、工作区或远程主机。返回历史保存详情路由与搜索词，页面缓存滚动偏移，连接变化清理旧导航上下文。小于 760 个逻辑像素时折叠侧栏，使用可展开的导航抽屉；选择分类后收起，Escape 关闭并恢复菜单焦点，Ctrl+F 关闭抽屉并聚焦可见搜索。搜索先查询本地不可变索引，再异步合并远程目录；包括标题、关键词和同义词，显示分类、范围及服务端能力原因，连接切换清除旧目录。Ctrl+F 聚焦搜索、方向键浏览、Enter 或双击打开、Escape 退出搜索。搜索结果进入所属页面后按视图登记的 settingId 定位、滚动、聚焦并临时高亮卡片；不可见项提供解释，禁用项不被启用。环境变量定位到系统页的现有子窗口入口。个性化目录使用当前详情路由；其他详情页拆分与完整窗口交互验收仍待完成。标题与内容共用滚动区域；时间语言页和根窗口已验证小视口可达性。全部页面的窄布局、原生 200% 缩放及屏幕阅读器体验尚未完整实测。
+个性化已改为概览和“颜色与模式”“系统风格”“桌面布局”“背景”四个详情页（见下节）。保存状态支持中文、英文、日文；失败保留草稿并可重试，冲突保留草稿，提供明确的“放弃草稿并重载”操作；重载失败仍保留草稿。首页已实现常用入口与固定页；辅助功能已实现，原生验收待补。不扩展逐字段冲突合并界面或首页待办中心。
+
+分类与详情页使用注册的 Route 导航，共用单色矢量图标；持续显示账号、Workspace 与分类路径，连接地址直接显示并可选择复制；每页提供作用范围说明，混合范围页面在关键分区注明设备、工作区或远程主机。返回历史保存详情路由与搜索词，页面缓存滚动偏移，连接变化清理旧导航上下文。
+
+小于 760 个逻辑像素时折叠侧栏，使用可展开的导航抽屉；选择分类后收起，Escape 关闭并恢复菜单焦点，Ctrl+F 关闭抽屉并聚焦可见搜索。搜索先查询本地不可变索引，再异步合并远程目录；包括标题、关键词和同义词，显示分类、范围及服务端能力原因，连接切换清除旧目录。Ctrl+F 聚焦搜索、方向键浏览、Enter 或双击打开、Escape 退出搜索。
+
+搜索结果进入所属页面后按视图登记的 settingId 定位、滚动、聚焦并临时高亮卡片；不可见项提供解释，禁用项不被启用。环境变量定位到系统页的现有子窗口入口。个性化目录使用当前详情路由；其他详情页拆分与完整窗口交互验收仍待完成。标题与内容共用滚动区域；时间语言页和根窗口已验证小视口可达性。全部页面的窄布局、原生 200% 缩放及屏幕阅读器体验尚未完整实测。
 
 保存反馈带有内存中的修改来源（应用与页面）。来源页就地显示状态与重试/放弃操作；切到其他页后，未完成或失败的保存显示来源摘要并提供“查看修改”。已完成的其他页面保存不再常驻显示。来源不改变偏好协议或写入目标，Workspace/登录变化清理来源；服务端接收仍不等同已持久化。`Schedule(preferences, source)` 的非设置窗口调用者显式传 `null`。
 
@@ -74,7 +88,6 @@ Server `Settings/IWorkspaceSettingsService` 管理偏好验证和版本比较。
 
 系统风格层本身的令牌、recipe、清单校验与运行时链路见 [`RelaxKonOS.SystemStyle.md`](./RelaxKonOS.SystemStyle.md)。自动化检查覆盖编译、契约与部分桌面布局；完整视觉、键盘与辅助功能验收仍待完成，见 [内置应用 UI](./RelaxKonOS.BuiltInApps.UI.md)。
 
-
 ## 范围与宿主权限
 
 - ClientDevice：此客户端设备的布局、开发模式和辅助功能。
@@ -95,25 +108,29 @@ Windows provider 只读固定 `ComputerName` 注册表位置并用 `SetComputerN
 
 三语言文案、目录条目、搜索关键词与 DevCli `hostname` / `preview-hostname` / `apply-hostname` 已接入。真实 Windows 重启后生效、域策略拒绝与 Linux `hostnamectl` 写后读回均未在指定远程测试目标验证；受控 provider 行为测试与编译不构成平台验收。
 
-
 ## 宿主时区服务（实现，尚未实机验收）
 
-新增目录和时区 GET/preview/apply，以及操作查询与回滚 API。Server 通过原有 Helper 执行 Windows tzutil / Linux timedatectl；预览计划持久加密，应用需要精确 `host/time` 授权，读回成功才报告 Applied。外部版本变化会阻止应用或回滚；丢失结果为 Unknown，不自动重放。客户端 `Services/HostSettings/IHostTimeService` 独立于窗口，冻结 Server URL、用户和会话身份，发送前后检查连接，不自动重定向或重试写请求。时间和语言页现已接入远程快照、目标/身份、远程时区枚举、单步应用与必要授权、按原 planId 查询；不再用客户端 `TimeZoneInfo.Local` 冒充宿主值。宿主编辑不触发 Workspace 防抖保存。
+新增目录和时区 GET/preview/apply，以及操作查询与回滚 API。Server 通过原有 Helper 执行 Windows tzutil / Linux timedatectl；预览计划持久加密，应用需要精确 `host/time` 授权，读回成功才报告 Applied。
+
+外部版本变化会阻止应用或回滚；丢失结果为 Unknown，不自动重放。客户端 `Services/HostSettings/IHostTimeService` 独立于窗口，冻结 Server URL、用户和会话身份，发送前后检查连接，不自动重定向或重试写请求。时间和语言页现已接入远程快照、目标/身份、远程时区枚举、单步应用与必要授权、按原 planId 查询；不再用客户端 `TimeZoneInfo.Local` 冒充宿主值。宿主编辑不触发 Workspace 防抖保存。
 
 授权通过既有 `/privileged/elevation` 和本地渲染的宿主密码对话框；有效的精确资源授权可复用且不延长到期时间。连接切换清除草稿、计划和旧请求结果；窗口关闭不影响 Server 已持久化的操作。三语言按钮与操作状态已接入，但完整错误映射、原生布局/键盘和远程实机验收仍待完成；草稿切页保留且不增加离页确认，恢复沿用页内操作详情，不能将构建通过视为完整时区交付。
-
 
 ## 宿主环境客户端服务
 
 `IHostEnvironmentService` 已注册为独立 typed HttpClient，提供目标解析、直接读取完整变量值、预览、按 planId 应用、操作查询和带 revision 回滚。读取、修改分别请求 `HostEnvironmentRead`、`HostEnvironmentChange` 精确资源授权；调用者按需要依次请求，服务不隐式扩张权限或缓存密码、原始环境值。
 
-新增 `GET /api/v1.0/host-settings/environment/target?scope=hostUser|hostMachine`，只返回当前认证用户经 Server 验证映射的 `SettingsTarget`，不读取环境、不调用 Helper、不授予权限，响应禁止缓存。客户端通过此入口取得授权目标，不从本地设备猜测远程 SID/UID。Windows 当前认证用户自己的环境 store 经 canonical SID 归属检查后无需管理员认证；系统 store 的读取/修改需管理员资格或环境授权；桌面双列表编辑器先请求机器环境修改授权，再加载两组变量。精确资源授权与 Windows 双 store 授权范围以服务端验证结果为准；读取原值不另设揭示 capability。
+新增 `GET /api/v1.0/host-settings/environment/target?scope=hostUser|hostMachine`，只返回当前认证用户经 Server 验证映射的 `SettingsTarget`，不读取环境、不调用 Helper、不授予权限，响应禁止缓存。
+
+客户端通过此入口取得授权目标，不从本地设备猜测远程 SID/UID。Windows 当前认证用户自己的环境 store 经 canonical SID 归属检查后无需管理员认证；系统 store 的读取/修改需管理员资格或环境授权；桌面双列表编辑器先请求机器环境修改授权，再加载两组变量。
+
+精确资源授权与 Windows 双 store 授权范围以服务端验证结果为准；读取原值不另设揭示 capability。
 
 时区和环境服务共用 `HostSettingsService` 的连接冻结与 HTTP 流程：取得 token 前后及响应解析后校验 Server/用户/会话，禁用重定向和写请求重试，不经过可重放的认证 handler。环境服务已接入设置编辑 UI；SDK `ISettingsNavigation.OpenEnvironmentAsync()` 与终端菜单复用 `relaxkonos://settings/system/environment` 打开同一宿主编辑器，不授予读写权限。外置应用宿主写 API 尚未开放。
 
+DevCli 现已接入 `environment-target`、`environment`、`preview-environment`、`apply-environment`，并复用 `operation`、`rollback`。变更读取 UTF-8 JSON 文件或标准输入，不接受变量值命令行参数；读取直接返回完整变量值。
 
-DevCli 现已接入 `environment-target`、`environment`、`preview-environment`、`apply-environment`，并复用 `operation`、`rollback`。变更读取 UTF-8 JSON 文件或标准输入，不接受变量值命令行参数；读取直接返回完整变量值。它依赖已有宿主 JWT 的短期授权，缺少时返回结构化错误，不打开密码窗口。完整命令和格式见 `Tools/RelaxKonOS.DevCli/README.md`。环境编辑 UI 已接入（含 PATH 分项编辑），Linux `/etc/environment` provider 已由 Helper 分派并做字节 revision 条件化的原子替换；Workspace 环境授权 GET/PUT 与加密持久化已实现；Workspace 环境客户端编辑已实现；尚未完成的是非特权工作负载启动边界接入、宿主设置实时通知，以及外置应用宿主写 API。
-
+它依赖已有宿主 JWT 的短期授权，缺少时返回结构化错误，不打开密码窗口。完整命令和格式见 `Tools/RelaxKonOS.DevCli/README.md`。环境编辑 UI 已接入（含 PATH 分项编辑），Linux `/etc/environment` provider 已由 Helper 分派并做字节 revision 条件化的原子替换；Workspace 环境授权 GET/PUT 与加密持久化已实现；Workspace 环境客户端编辑已实现；尚未完成的是非特权工作负载启动边界接入、宿主设置实时通知，以及外置应用宿主写 API。
 
 ## 环境变量页面
 
@@ -133,7 +150,6 @@ DevCli 现已接入 `environment-target`、`environment`、`preview-environment`
 
 名称输入显示当前字符数及远程提供的长度上限（当前 Windows 为 15、Linux 为 63）；超长时明确提示实际长度与上限，其他语法错误使用格式提示。
 
-
 ### 使用记忆（设备本地）
 
 “设置 → 系统 → 使用记忆”可清除当前服务器下当前账户的交互默认值。桌面客户端在当前操作系统用户的 LocalApplicationData/RelaxKonOS/usage-memory.json 保存最后一次成功提权的管理员用户名和各用途最后确认的选择目录，重启后恢复。密码和提权令牌不进入此存储，记忆不跨设备同步。
@@ -152,7 +168,7 @@ SDK 和终端环境入口只负责导航；授权仍由设置宿主与领域服�
 
 `WorkspaceEnvironmentService` 与 `/api/v1.0/workspaces/{id}/environment` 提供独立读取与条件批次更新；归属沿用 Workspace 授权，返回禁止缓存，版本缺失/冲突分别为 428/409。Set 空字符串与 Delete 撤销覆盖分开处理，PATH 模式显式保存；高影响确认、单批次与全快照限制均由服务端验证。
 
-真源为 `data/workspace-environment/environment.db`，每次成功写入在 SQLite 事务提交后返回；文档通过宿主 Data Protection 加密并绑定用户与 Workspace。损坏或无法解密时保留数据并返回错误。宿主配置与外观偏好不受影响。对应服务端检查已验证重启、并行写入冲突、数据隔离、密文与损坏保留，以及生产 HTTP 路由的归属、禁止缓存和错误契约。
+数据来源为 `data/workspace-environment/environment.db`，每次成功写入在 SQLite 事务提交后返回；文档通过宿主 Data Protection 加密并绑定用户与 Workspace。损坏或无法解密时保留数据并返回错误。宿主配置与外观偏好不受影响。对应服务端检查已验证重启、并行写入冲突、数据隔离、密文与损坏保留，以及生产 HTTP 路由的归属、禁止缓存和错误契约。
 
 当前已有系统页的 Workspace 环境编辑器和连接绑定客户端服务；实时同步和终端消费链尚未接入；读取结果中的展开值仅为 Workspace 覆盖预览，不能代表主机加工作负载的最终环境。下一步需在普通用户进程创建边界读取最新快照，并确保 Helper、管理进程和管理员终端完全不消费这些覆盖。
 

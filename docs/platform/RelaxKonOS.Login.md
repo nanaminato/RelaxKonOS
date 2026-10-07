@@ -189,7 +189,7 @@ IIdentityProvider
 - **平台选择**：`Program.cs` 按 `OperatingSystem.IsWindows/IsLinux` 注册对应 Provider，其他服务端宿主平台在启动时明确拒绝。
 - **服务器不存储密码**：认证仍完全委托宿主 OS（Authentication.md §17）；客户端仅在用户勾选自动登录后，才将密码交给操作系统安全存储。
 
-`WindowsLogonProvider` 从 `Windows Server Test/Categories/Authentication/WindowsCredentialVerifier.cs` 迁移而来（已验证 LogonUser 可行）；`Windows Server Test` 项目改为引用 Server 调 `IIdentityProvider`，单一真源。
+`WindowsLogonProvider` 从 `Windows Server Test/Categories/Authentication/WindowsCredentialVerifier.cs` 迁移而来（已验证 LogonUser 可行）；`Windows Server Test` 项目改为引用 Server 调 `IIdentityProvider`，单一数据来源。
 
 ### 4.3 JWT 签发
 
@@ -374,7 +374,11 @@ Linux 服务端部署要求系统提供 PAM 运行库（Ubuntu 的 `libpam0g`，
 
 密码不是普通配置：只有用户显式勾选后才会写入当前操作系统的安全存储（Windows DPAPI、macOS Keychain、Linux Secret Service），不会写入服务端、连接元数据文件、日志或数据库。未保存密码的记录也不保存 RefreshToken，不能绕过密码输入。
 
-Linux 客户端将连接元数据写入 `${XDG_DATA_HOME:-~/.local/share}/RelaxKonOS/remembered-connections.json`（实际根目录由 .NET `LocalApplicationData` 解析）。文件仅含服务器地址、用户名、最后使用时间及空密码字段，父目录强制为 `0700`，文件强制为 `0600`。密码单独保存在桌面 Secret Service（如 GNOME Keyring/KWallet 提供的 Freedesktop Secret Service）中。启动时两层数据按服务器地址和用户名合并；Secret Service 不存在、未启动或未解锁时，连接列表仍可读取，但不会回填密码。旧版本只存在 Secret Service 中的聚合记录仍可读取，并会在下次成功保存时生成连接元数据文件。
+Linux 客户端将连接元数据写入 `${XDG_DATA_HOME:-~/.local/share}/RelaxKonOS/remembered-connections.json`（实际根目录由 .NET `LocalApplicationData` 解析）。文件仅含服务器地址、用户名、最后使用时间及空密码字段，父目录强制为 `0700`，文件强制为 `0600`。
+
+密码单独保存在桌面 Secret Service（如 GNOME Keyring/KWallet 提供的 Freedesktop Secret Service）中。启动时两层数据按服务器地址和用户名合并；Secret Service 不存在、未启动或未解锁时，连接列表仍可读取，但不会回填密码。
+
+旧版本只存在 Secret Service 中的聚合记录仍可读取，并会在下次成功保存时生成连接元数据文件。
 
 旧版本的单条加密会话在首次读取时会迁移为一条新的连接记录。若保存的密码已失效，客户端会保留该服务器和用户名，但移除失效密码并提示用户重新输入；网络暂时不可达不会删除任何已保存连接。退出远程桌面只会注销当前会话，不会清除本地已保存连接，行为与 mstsc 的已保存凭据一致。
 

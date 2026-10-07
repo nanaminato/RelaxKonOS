@@ -45,7 +45,9 @@ relaxkonos-dev pack ./MyApp/MyApp.csproj --configuration Release
 
 当 RelaxKonOS 将工具发布到包源时，用该源替换 `--add-source`。`relaxkonos-dev` 命令接受与 `dotnet run --project … --` 相同的参数。
 
-CLI 默认运行 `dotnet publish`，重新编译指定的 `Debug` 或 `Release` 配置，并将 ZIP 格式的 `.roapp` 写入 `artifacts/<entry-assembly>.roapp`。如已用相同配置（及适用时相同 RID）编译项目，可传入 `--no-build`：CLI 会改用 `dotnet publish --no-build`，不重新编译而直接打包现有输出。它将完整的发布输出复制到 `entryAssembly` 声明的 `lib/<TFM>/` 目录下；私有托管依赖、`.deps.json` 和原生运行时资产因此被一致地打包，无需应用特定脚本。若 manifest 声明 `iconPath`，CLI 还会复制这个安全的相对图标路径，确保安装器能找到图标文件。
+CLI 默认运行 `dotnet publish`，重新编译指定的 `Debug` 或 `Release` 配置，并将 ZIP 格式的 `.roapp` 写入 `artifacts/<entry-assembly>.roapp`。如已用相同配置（及适用时相同 RID）编译项目，可传入 `--no-build`：CLI 会改用 `dotnet publish --no-build`，不重新编译而直接打包现有输出。
+
+它将完整的发布输出复制到 `entryAssembly` 声明的 `lib/<TFM>/` 目录下；私有托管依赖、`.deps.json` 和原生运行时资产因此被一致地打包，无需应用特定脚本。若 manifest 声明 `iconPath`，CLI 还会复制这个安全的相对图标路径，确保安装器能找到图标文件。
 
 对于需要原生平台资产的项目，请显式添加目标运行时：
 

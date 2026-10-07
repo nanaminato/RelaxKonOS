@@ -18,7 +18,9 @@
 | Debian 远程 IPv4 / DNS | 完整实机通过 | 保持原地址 192.168.1.5/24，切换手动 IP/DNS，NetworkManager 未确认自动恢复；确认后保留更改；普通修改恢复 DHCP/自动 DNS；最终原 IP 保持不变 |
 | Workspace 环境 | 两台通过 | 唯一临时变量实际写入、GET 读回和删除；未修改宿主变量或其他工作区变量 |
 
-两台基础设置验收各 19 项通过，时间格式、壁纸和主题恢复前检查 revision，避免覆盖其他客户端的并发更改。网络测试仅在新装 Debian 主机执行，保留原 IP、前缀和网关；未安装新的网络管理器或迁移 Ubuntu 的网络 owner。测试凭据与令牌不进入源文件、结果报告或日志。复用入口为 [SettingsApiAcceptance.ps1](../../Tests/Deployment/SettingsApiAcceptance.ps1)、[HostTimeApiAcceptance.ps1](../../Tests/Deployment/HostTimeApiAcceptance.ps1) 和 [HostNetworkApiAcceptance.ps1](../../Tests/Deployment/HostNetworkApiAcceptance.ps1)。
+两台基础设置验收各 19 项通过，时间格式、壁纸和主题恢复前检查 revision，避免覆盖其他客户端的并发更改。网络测试仅在新装 Debian 主机执行，保留原 IP、前缀和网关；未安装新的网络管理器或迁移 Ubuntu 的网络 owner。测试凭据与令牌不进入源文件、结果报告或日志。
+
+复用入口为 [SettingsApiAcceptance.ps1](../../Tests/Deployment/SettingsApiAcceptance.ps1)、[HostTimeApiAcceptance.ps1](../../Tests/Deployment/HostTimeApiAcceptance.ps1) 和 [HostNetworkApiAcceptance.ps1](../../Tests/Deployment/HostNetworkApiAcceptance.ps1)。
 
 ## 当前代码自动化
 

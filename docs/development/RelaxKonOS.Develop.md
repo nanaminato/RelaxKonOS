@@ -2,7 +2,9 @@
 
 ## 依赖版本与构建
 
-当前使用 .NET 10 SDK，Avalonia 核心包为 12.1.3，独立发行的 DataGrid 保持 12.1.2，Microsoft.OpenApi 为 2.12.2。NuGet 版本集中在根目录 `Directory.Packages.props`，子项目不重复定义版本。执行 `dotnet list RelaxKonOS.sln package --outdated` 检查更新，修改兼容版本后运行 `dotnet restore RelaxKonOS.sln` 和 `dotnet build RelaxKonOS.sln -c Release -m:1`。完整重建可追加 `-t:Rebuild`。
+当前使用 .NET 10 SDK，Avalonia 核心包为 12.1.3，独立发行的 DataGrid 保持 12.1.2，Microsoft.OpenApi 为 2.12.2。NuGet 版本集中在根目录 `Directory.Packages.props`，子项目不重复定义版本。
+
+执行 `dotnet list RelaxKonOS.sln package --outdated` 检查更新，修改兼容版本后运行 `dotnet restore RelaxKonOS.sln` 和 `dotnet build RelaxKonOS.sln -c Release -m:1`。完整重建可追加 `-t:Rebuild`。
 
 ASP.NET Core OpenAPI 10.0.x 要求 Microsoft.OpenApi 小于 3；ImageSharp 暂留 3.1.12，跨主版本更新必须核对 API 与第三方许可。官网前端采用 Angular 22.2.1 与 TypeScript 6.0.3，具体环境、锁文件维护和调试步骤见[官网开发教程](https://relaxkon.com/docs/zh-CN/latest/getting-started/development)。
 
@@ -99,7 +101,9 @@ Helper 必须提权运行，因而常常与 Server 不是同一账户——**只
 dotnet run --project RelaxKonOS.PrivilegedHelper -- --console --config C:\RelaxKonOS-dev\privileged-helper.debug.json
 ```
 
-将 `runtimeArchiveRoots` 改为实际 Server 内容目录下的两个包暂存目录；它们不能与 Helper 的受管程序目录重叠。未指定时 Nginx 使用 `%ProgramData%\RelaxKonOS\webserver\nginx`，FRP 的受保护副本使用 `%ProgramData%\RelaxKonOS\privileged-runtimes`。定制 Nginx 目录时，Server 的 `NginxManaged:InstallationRoot` 和 Helper 的 `nginxRoot` 必须相同且为明确绝对路径。Helper 会保护这些目录及 Nginx 的父目录，Server 只能通过专用运行时接口修改；这些路径应专用，不能选成源码、用户工作目录、Server 数据或包暂存目录。
+将 `runtimeArchiveRoots` 改为实际 Server 内容目录下的两个包暂存目录；它们不能与 Helper 的受管程序目录重叠。未指定时 Nginx 使用 `%ProgramData%\RelaxKonOS\webserver\nginx`，FRP 的受保护副本使用 `%ProgramData%\RelaxKonOS\privileged-runtimes`。
+
+定制 Nginx 目录时，Server 的 `NginxManaged:InstallationRoot` 和 Helper 的 `nginxRoot` 必须相同且为明确绝对路径。Helper 会保护这些目录及 Nginx 的父目录，Server 只能通过专用运行时接口修改；这些路径应专用，不能选成源码、用户工作目录、Server 数据或包暂存目录。
 
 配置必须显式包含 `allowConsoleDebug: true`，并配置与 Server 完全相同的
 `pipeName`、随机 Base64 `sharedSecret`、`fileAllowedRoots` 与 `allowedServiceIds`。Server 启动

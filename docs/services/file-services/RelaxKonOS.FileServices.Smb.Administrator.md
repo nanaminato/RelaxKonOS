@@ -54,7 +54,6 @@ Windows principal 必须是现有 SID，且只能用于 share ACL；V1 不管理
 
 卸载时先删除所有 RelaxKonOS 管理 share；Linux 再删除唯一 marker 与 `/etc/samba/relaxkonos.conf`，但绝不删除 Samba 包、宿主用户、共享目录或管理员 share。Windows 仅删除 ledger 仍拥有且 API snapshot 未 drift 的 share；drift 资源必须由管理员手工处置，且不会移除 File Server role。SFTP、FTP/FTPS、WebDAV 和 NFS 均不属于 V1。
 
-
 ## Desktop file service pages
 
 The desktop selects controls from the connected server's SMB capabilities, not the desktop operating system. Overview shows the provider, service version, runtime status and selectable connection prefixes. Append the share name to connect. Installation is available only for a server reporting installation support and a not-installed runtime. Start is enabled when stopped; stop/restart when running.

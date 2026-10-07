@@ -219,13 +219,15 @@ Client/RelaxKonOS.Client/
 }
 ```
 
-导入格式只允许 6 位或 8 位 sRGB 十六进制色（统一转为大写 `#RRGGBB` 或 `#AARRGGBB`）；`id` 为 `[a-z0-9-]`、长度 1–64，`name` 长度 1–80。一份自定义调色板必须同时提供 `lightColors` 与 `darkColors`，从而在模式切换时仍保持同一主题身份；每个变体可只覆盖需要变更的语义令牌。服务端会对令牌白名单、两种模式的完整解析结果及 WCAG 对比度进行校验；旧版 `formatVersion: 1` 的 `mode/colors` 载荷会在下次保存时规范化为 v2。服务端限制调色板数量（建议 20）、单个 JSON 体积（建议 16 KiB）和总偏好大小。
+导入格式只允许 6 位或 8 位 sRGB 十六进制色（统一转为大写 `#RRGGBB` 或 `#AARRGGBB`）；`id` 为 `[a-z0-9-]`、长度 1–64，`name` 长度 1–80。一份自定义调色板必须同时提供 `lightColors` 与 `darkColors`，从而在模式切换时仍保持同一主题身份；每个变体可只覆盖需要变更的语义令牌。
+
+服务端会校验令牌白名单、两种模式的完整解析结果及 WCAG 对比度；旧版 `formatVersion: 1` 的 `mode/colors` 载荷会在下次保存时规范化为 v2。服务端限制调色板数量（建议 20）、单个 JSON 体积（建议 16 KiB）和总偏好大小。
 
 “仅改强调色”不是一份特殊主题：它是对所选调色板的 `AccentOverride`。服务会生成 `AccentHover`、`AccentPressed`、`AccentMuted`、选中背景和焦点环，并为 Accent、Danger、选中态自动选择满足对比度的黑/白前景。清除覆盖应恢复调色板原始 Accent。
 
 ### 5.3 存储与协议演进
 
-**已落地（随系统风格 Phase 1 一并完成）**：顶层 `Theme` 与 `ThemePreferences` 已删除，颜色收敛为 `DesktopExperience.Appearance`，形状收敛为 `DesktopExperience.SystemStyleId`，`ThemePreferencesDto` 亦已删除。按 `AGENTS.md` 的首发前政策，没有保留别名、旧字段或双格式解析。
+**已实现（随系统风格 Phase 1 一并完成）**：顶层 `Theme` 与 `ThemePreferences` 已删除，颜色收敛为 `DesktopExperience.Appearance`，形状收敛为 `DesktopExperience.SystemStyleId`，`ThemePreferencesDto` 亦已删除。按 `AGENTS.md` 的首发前政策，没有保留别名、旧字段或双格式解析。
 
 ```text
 WorkspacePreferencesDto
@@ -261,7 +263,7 @@ WorkspacePreferencesDto
 ### Phase 1 — 契约、默认资源与服务
 
 1. 建立第 3.2 节的资源布局，提供完整浅/深 RelaxKonOS Blue 令牌；将 `App.axaml` 引用切换到新汇总入口。
-2. 实现 `AppearanceService`（已落地）：读取 `ShellSettings`，把 `ThemeKind.Light/Dark/System` 映射到 Avalonia `RequestedThemeVariant`，并将当前调色板的语义令牌写入专用、可替换的 `ResourceDictionary`；形状令牌写入另一个独立字典，两者原子交换。
+2. 实现 `AppearanceService`（已实现）：读取 `ShellSettings`，把 `ThemeKind.Light/Dark/System` 映射到 Avalonia `RequestedThemeVariant`，并将当前调色板的语义令牌写入专用、可替换的 `ResourceDictionary`；形状令牌写入另一个独立字典，两者原子交换。
 3. 在 `Bootstrapper` 注册 singleton，并保证 PreferencesSync 在初始偏好加载和后续保存后调用服务。订阅设置变化时防抖持久化，但 UI 立即更新。
 4. 令牌缺失、JSON 解析异常、资源注入异常均回退 `builtin:relaxkonos-blue`；记录可诊断日志，不把用户输入显示为异常堆栈。
 

@@ -35,11 +35,9 @@ FRP's official configuration reference documents `frpc verify -c <config>` as th
 
 Private generated files are under `data/tunnels/frp/<profile-id>` below the Server content root; Unix modes are tightened to `0700` for the directory and `0600` for TOML and backup files. Runtime versions and their state pointer are likewise private. Windows uses the service account's data directory and must be deployed with an ACL granting only that account access. Defender is never modified. A quarantined or missing Runtime is reported as unavailable; RelaxKonOS authentication and LAN APIs have no FRP dependency. Runtime stdout/stderr is drained, bounded to 200 sanitized lines per profile, and a dedicated read endpoint never returns generated configuration or credentials. The state transitions to `Connected` only after FRP reports a successful server login; recognized authentication failures are shown as disconnected rather than a synthetic healthy state.
 
-
 Application retains an in-memory SHA-256 identity of the profile revision, sorted tunnel IDs/revisions, and protected Token version. It contains no plaintext Token and is neither exposed nor persisted. Edits to any associated desired state project active tunnels as `SavedNotApplied`; missing applied identity yields `Unknown`, and disabled tunnels cannot be `Connected`. Helper process state after restart alone cannot prove the current desired state was applied. Process output and exit callbacks update state only when their process instance still owns the profile, so late events from a replaced process cannot overwrite the replacement. `Connected` does not prove registration or public reachability of every proxy.
 
 Profile/tunnel CRUD, Token writes, apply, and stop are synchronous APIs without operation IDs or idempotency keys. Lost responses require factual observation and cannot be described as safely replayable. Runtime installation has a separate durable task contract. The `--frpc-state-only` and `--frpc-lifecycle-only` checks use local fixtures; real frps, public networking, and Windows Helper require their target environments. Android behavior and scope are maintained in [the Android FRP document](../../Client/RelaxKonOS.Client.Android/docs/features/Tunnels.md).
-
 
 ## Managed frps configuration, revisions, and process facts
 

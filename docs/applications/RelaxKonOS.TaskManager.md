@@ -43,7 +43,7 @@ Server 通过 `ProcessInstanceTermination` 校验并终止单个实例。Windows
 
 回执的四个字段均为当前契约：`success`、`requiresElevation`、`problemCode`、`error`（可空）。只有观察到目标退出才返回 `success=true`，同时 requiresElevation=false、problemCode 为空。权限不足返回 `process.permission_denied` 与 requiresElevation=true；未确认退出返回 `process.termination_unverified`；缺失/变化/无法验证实例分别明确失败。HTTP 200 的失败回执不能当作操作成功。
 
-终止复用 Server 的实际 OS 权限，不消费 native-service 提权 grant，不自动提权。客户端在确认时固定原登录、PID、启动时间，失败或传输结果未知不记录成功、不自动重放；重新读取列表用于核实。成功/明确回执后使进程缓存失效并刷新。未知响应不意味着进程一定还在运行。
+终止复用 Server 的实际 OS 权限，不消费 native-service 提权 grant，不自动提权。客户端在确认时固定原登录会话、PID、启动时间，失败或传输结果未知不记录成功、不自动重放；重新读取列表用于核实。成功/明确回执后使进程缓存失效并刷新。未知响应不意味着进程一定还在运行。
 
 原生语义依据：[Windows GetProcessTimes](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getprocesstimes)、[Linux pidfd_open](https://www.man7.org/linux/man-pages/man2/pidfd_open.2.html)、[pidfd_send_signal](https://www.man7.org/linux/man-pages/man2/pidfd_send_signal.2.html)。
 

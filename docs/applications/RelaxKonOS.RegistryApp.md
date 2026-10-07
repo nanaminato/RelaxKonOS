@@ -12,7 +12,9 @@
 
 ## 边界、存储与升级
 
-Protocol 定义键、值 DTO 及 REST 路由；Client 按当前打开的键请求其直接子键和直接值，绝不在点击 `HKEY_USERS` 或“当前用户”时拉取全量内容。服务端内存注册表持有键和值，修改会以短暂的 `PendingSync` 状态批量（5 秒）写回 SQLite，并在正常关闭时再刷新一次。SQLite 使用 `registry_keys` 持久化空键，`registry_entries` 以 `(UserId, Scope, ScopeId, Path, Name)` 持久化值；键和值都按相同的所有者边界隔离。Workspace 的终端外观、桌面偏好、浏览器设置和窗口布局均以各自键的 `(Default)` 值直接写入注册表；旧 Workspace JSON 配置不参与读取、迁移或回写。
+Protocol 定义键、值 DTO 及 REST 路由；Client 按当前打开的键请求其直接子键和直接值，绝不在点击 `HKEY_USERS` 或“当前用户”时拉取全量内容。服务端内存注册表持有键和值，修改会以短暂的 `PendingSync` 状态批量（5 秒）写回 SQLite，并在正常关闭时再刷新一次。
+
+SQLite 使用 `registry_keys` 持久化空键，`registry_entries` 以 `(UserId, Scope, ScopeId, Path, Name)` 持久化值；键和值都按相同的所有者边界隔离。Workspace 的终端外观、桌面偏好、浏览器设置和窗口布局均以各自键的 `(Default)` 值直接写入注册表；旧 Workspace JSON 配置不参与读取、迁移或回写。
 
 ## 平台、安全与验收
 

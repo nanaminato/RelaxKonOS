@@ -6,46 +6,46 @@
 
 | 文档 | 内容 |
 | --- | --- |
-| [产品、架构与交互](design/Product.Design.md) | 原生平台边界、导航、手机/平板、自适应、三语、多主题与无障碍 |
-| [Shell、认证与安全](design/Shell.Design.md) | 实际路由、导航栈、会话、提权与保险箱安全规则 |
-| [登录与本地凭据](design/LoginCredentials.Design.md) | 身份键、决策表、保存/失效/删除、密码明文生命周期 |
-| [移动端包方案](design/ApplicationPackages.Design.md) | 桌面 manifest/运行时调查、包类别与权限/版本/更新/移除、远端代理边界 |
-| [支持范围](design/SupportScope.md) | 应用组织、部署边界、平台能力与验证边界 |
+| [产品、架构与交互](design/Product.Design.md) | 原生架构、导航、自适应布局、多语言、主题与无障碍 |
+| [Shell、认证与安全](design/Shell.Design.md) | 路由、返回栈、会话、提权与凭据安全 |
+| [登录与本地凭据](design/LoginCredentials.Design.md) | 身份识别、凭据保存与失效、密码生命周期 |
+| [移动端包方案](design/ApplicationPackages.Design.md) | 包类型、权限、版本、更新与移除，以及桌面包的支持范围 |
+| [支持范围](design/SupportScope.md) | 应用组织、部署范围、平台限制与验证要求 |
 | [Windows 设备密钥](design/OwnerDeviceKeys.Design.md) | 工作站配对、Keystore 签名登录与授权边界 |
 
 ## 当前功能 `features/`
 
 | 文档 | 内容 |
 | --- | --- |
-| [应用内功能导航](features/ApplicationNavigation.md) | 十项管理应用的固定分类、状态保留、返回与范围标识 |
-| [服务器中心](features/ServerCenter.md) | SSH 信任、文件/终端、稳定身份与隧道、安装回执 |
-| [登录页 SSH 隧道](features/LoginSshTunnel.md) | SSH 密码/私钥、一键登录、连接配置、会话生命周期与证书信任 |
-| [文件与 Git 共用编辑器](features/TextEditor.md) | Unicode 编码/BOM/换行、查找替换/语法显示、条件保存、冲突和离页保护 |
-| [使用记忆](features/Settings.md#使用记忆) | 成功提权用户名、SAF/远程选择位置、本机隔离与清理 |
-| [文件与图片](features/Files.md) | 筛选排序、多选与远端剪贴板、逐项结果、属性/权限及有界图片查看 |
-| [文件传输](features/FileTransfers.md) | 分块上传、源暂存、续传、前台通知与清理 |
-| [应用部署与模板](features/ApplicationDeployments.md) | 四来源七步向导、完整定义编辑/冲突读回、日志、版本/回滚、可信动态模板 |
-| [宿主出站代理](features/OutboundProxy.md) | 设置/Docker 共用宿主偏好、四消费范围、重启确认与状态核实 |
-| [Docker 引擎与镜像源](features/DockerEngine.md) | Linux 安装/原任务恢复、全宿主生命周期、账户镜像源 CRUD/选择与未知同步写入核实 |
-| [Docker 资源](features/DockerResources.md) | 容器详情/统计/完整创建/生命周期、镜像/网络/卷动作、归属保护及未知结果门禁 |
-| [Docker 与 Compose](features/DockerCompose.md) | 资源归属、导入/预览、持久操作、部分失败和卷保护 |
-| [Nginx 管理](features/Nginx.md) | Ubuntu APT/Windows 三种包来源、实例发现/接管、生命周期、卸载及 Web 操作恢复 |
-| [站点管理](features/WebSites.md) | 静态/SPA/反向代理、完整字段编辑、版本冲突与同步提交事实核实 |
-| [证书管理](features/Certificates.md) | 独立列表/详情、ACME/自签名、生命周期、站点证书选择、Kestrel 部署与原任务恢复 |
-| [Mihomo 代理管理器](features/Proxy.md) | 运行时安装/生命周期、配置/订阅、节点与任务/同步写入恢复 |
-| [SMB 文件服务](features/Smb.md) | Samba 安装/服务、受管共享与权限、Unix 凭据及未知同步写入核实 |
-| [宿主防火墙](features/Firewall.md) | UFW 状态/默认策略/规则、一次账号确认、提权后快照复核与未知结果核实 |
-| [FRP 隧道与运行时](features/Tunnels.md) | 受管/外部运行时、三来源安装与回滚、frpc 配置/Token/隧道、frps 配置/启停/审计及未知请求核实 |
-| [网站发布](features/WebPublishing.md) | 诊断、确认式 HTTPS、发布恢复和访问观测 |
-| [Git 工作区与构建](features/Git.md) | 分支/暂存/差异/历史/冲突、Git 安装与恢复、固定 SHA 隔离构建与产物发布 |
-| [终端、脚本与守护](features/TerminalAutomation.md) | Server/SSH 会话、双栏/草稿/搜索、工作区外观与 VT 单元、远端任务与工作负载 |
-| [进程守护](features/Guardian.md) | 完整定义/参数与健康策略、RunAs 审批、回执与读回、状态及有界实时日志 |
-| [任务管理与监控](features/TaskManager.md) | 完整指标/真实趋势/实时与快照降级、手机/平板详情、原实例终止、排序分页及前台隔离 |
-| [设置与应用管理](features/Settings.md) | 宿主环境/时区/名称预览、原操作恢复、Android 系统管理与本地/远端边界 |
-| [帮助与引导](features/Help.md) | 登录/首页入口、三语说明、能力门控任务与现有指南 |
-| [服务访问](features/ServiceAccess.md) | 站点/部署/SSH 实际地址、外部应用、凭据隔离及证书边界 |
-| [公共运行时安装](features/Installations.md) | 当前安装契约、包引用/上传、幂等提权、任务观察/取消与恢复边界 |
-| [任务、告警与恢复](features/OperationsRecovery.md) | 领域操作索引、诊断、前台通知、定义备份与预检 |
+| [应用内功能导航](features/ApplicationNavigation.md) | 管理应用的分类、返回行为、状态保留与操作范围 |
+| [服务器中心](features/ServerCenter.md) | SSH 信任、文件与终端、隧道、安装及结果核实 |
+| [登录页 SSH 隧道](features/LoginSshTunnel.md) | SSH 认证、登录、连接配置、会话与证书信任 |
+| [文件与 Git 共用编辑器](features/TextEditor.md) | 编码与换行、查找替换、条件保存、冲突与离页保护 |
+| [使用记忆](features/Settings.md#使用记忆) | 提权用户名、文件选择位置、本地隔离与清理 |
+| [文件与图片](features/Files.md) | 浏览、多选、复制移动、属性与权限、图片预览 |
+| [文件传输](features/FileTransfers.md) | 分块上传、源文件暂存、断点续传、后台传输与清理 |
+| [应用部署与模板](features/ApplicationDeployments.md) | 部署向导、定义编辑、日志、版本、回滚与模板 |
+| [宿主出站代理](features/OutboundProxy.md) | 宿主代理设置、作用范围、重启与状态核实 |
+| [Docker 引擎与镜像源](features/DockerEngine.md) | 引擎安装与维护、镜像源管理、任务恢复与结果核实 |
+| [Docker 资源](features/DockerResources.md) | 容器、镜像、网络和卷的管理、归属保护与操作限制 |
+| [Docker 与 Compose](features/DockerCompose.md) | 资源归属、配置导入、部署预览、操作恢复与卷保护 |
+| [Nginx 管理](features/Nginx.md) | 安装来源、实例发现与接管、维护、卸载与恢复 |
+| [站点管理](features/WebSites.md) | 静态站点、SPA、反向代理、版本冲突与提交结果核实 |
+| [证书管理](features/Certificates.md) | ACME 与自签名证书、续期、部署与任务恢复 |
+| [Mihomo 代理管理器](features/Proxy.md) | 运行时安装、配置、订阅、节点与操作恢复 |
+| [SMB 文件服务](features/Smb.md) | 安装、共享、权限、凭据与操作结果核实 |
+| [宿主防火墙](features/Firewall.md) | 状态、默认策略、规则、提权与变更结果核实 |
+| [FRP 隧道与运行时](features/Tunnels.md) | 运行时安装、隧道与服务端配置、维护、审计与恢复 |
+| [网站发布](features/WebPublishing.md) | 诊断、HTTPS 确认、发布恢复与访问检查 |
+| [Git 工作区与构建](features/Git.md) | 分支、提交、差异、冲突、Git 安装、隔离构建与发布 |
+| [终端、脚本与守护](features/TerminalAutomation.md) | Server 与 SSH 会话、终端布局、脚本与远端任务 |
+| [进程守护](features/Guardian.md) | 工作负载定义、运行身份、健康检查、状态与日志 |
+| [任务管理与监控](features/TaskManager.md) | 实时指标、趋势、进程管理、排序、分页与降级显示 |
+| [设置与应用管理](features/Settings.md) | 宿主设置、Android 应用管理与本地、远端操作范围 |
+| [帮助与引导](features/Help.md) | 帮助入口、多语言说明、可用功能与现有指南 |
+| [服务访问](features/ServiceAccess.md) | 站点、部署与 SSH 地址、外部应用、凭据与证书安全 |
+| [公共运行时安装](features/Installations.md) | 包来源、上传、提权、任务观察、取消与恢复 |
+| [任务、告警与恢复](features/OperationsRecovery.md) | 操作记录、诊断、通知、定义备份与恢复预检 |
 
 ## 开发与发布 `development/`
 

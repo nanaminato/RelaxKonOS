@@ -4,7 +4,7 @@
 
 ## 1. 定位
 
-汇总宿主的运行风险，将同一故障聚合为可查询告警，并通过受控入口连接原应用的处理流程。中心不替代领域操作账本、安全审计或运行日志，也不自动执行重启、回滚或部署。Server 是事件与告警的真源。
+汇总宿主的运行风险，将同一故障聚合为可查询告警，并通过受控入口连接原应用的处理流程。中心不替代领域操作账本、安全审计或运行日志，也不自动执行重启、回滚或部署。Server 是事件与告警的数据来源。
 
 ## 2. 当前实现
 
@@ -210,7 +210,6 @@ Guardian 自身崩溃/管道断开由 Server 的 `GuardianAvailabilityMonitor` �
 
 当前实现使用 WAL：写入/投影继续串行事务，列表与汇总使用独立读连接，详情在 deferred 事务中读取告警、事件和动作的同一快照，保留作业整体提交。schema 初始化有独立门控。游标 ID 绑定为 Guid 参数以匹配 SQLite 的实际存储表示，事件和告警分页均有全页无重复回归。运行中的数据库可能包含 `-wal`/`-shm` sidecar，备份应使用 SQLite 一致性备份或停服/检查点流程，不只复制主文件。负载与回归证据见 [优化台账](../development/RelaxKonOS.Optimization.Progress.md)。
 
-
 中心使用 Server 本地 SQLite 中独立的 `operational_events`、`operational_alerts`、`alert_actions`、`alert_suppressions` 和 `event_source_checkpoints` 表。迁移由既有 Server storage 机制管理，所有时间 UTC；事件/告警行不得保存 JSON 自由文本、原始异常或领域密钥。
 
 建议默认策略：事件 90 天、已解决告警及其处理动作 365 天、打开/确认/抑制状态永不因普通保留作业删除。到期清理由受控 hosted service 分批执行，并为每批次写 Security Audit；引用仍被安全审计引用时，不删除审计本身。实际保留值做成受验证的 `EventAlerts` 配置，生产环境不得低于上述下限，除非有合规方案和后续独立设计。
@@ -227,7 +226,9 @@ Guardian 自身崩溃/管道断开由 Server 的 `GuardianAvailabilityMonitor` �
 - 处理操作：确认、受权限保护的手动关闭和临时抑制；执行前显示影响、期限和审计提示，失败不乐观更新。
 - 壳级入口：状态栏/通知区域显示**未确认**的最高级别计数。首次打开或严重性升级可显示一个本地 toast；同一告警在冷却时间内不重复弹出，且 `Acknowledged` 不因普通重复事件再 toast。
 
-跳转使用 `RemediationTargetKind` 枚举和严格 DTO（如 `ApplicationDeployment`、`ApplicationDeploymentOperation`、`Certificate`、`GuardianWorkload`、`DockerOverview`、`TunnelDefinition`、`EventAlertDetail`），由客户端映射到本地 `relaxkonos://` URI 并调用 Shell 的 `IAppActivationService`。目标 ID 必须是 GUID 或经验证的本地 ID；客户端不解析来自 Server 的 URI、路径、命令或 display text。相关领域应用实现最小 `IAppActivationHandler`：导航到详情/日志/操作，而不绕过原有登录、能力检查、凭据确认或危险操作对话框。
+跳转使用 `RemediationTargetKind` 枚举和严格 DTO（如 `ApplicationDeployment`、`ApplicationDeploymentOperation`、`Certificate`、`GuardianWorkload`、`DockerOverview`、`TunnelDefinition`、`EventAlertDetail`），由客户端映射到本地 `relaxkonos://` URI 并调用 Shell 的 `IAppActivationService`。
+
+目标 ID 必须是 GUID 或经验证的本地 ID；客户端不解析来自 Server 的 URI、路径、命令或 display text。相关领域应用实现最小 `IAppActivationHandler`：导航到详情/日志/操作，而不绕过原有登录、能力检查、凭据确认或危险操作对话框。
 
 若目标应用不存在、Server capability 关闭或用户没有权限，中心显示原因和可复制 correlation/operation ID；不降级为启动终端或展示原始日志。
 

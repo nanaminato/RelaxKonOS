@@ -16,7 +16,9 @@ dotnet build RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj
 sudo deployment/linux/install-relaxkonos-privileged-helper-development.sh "$USER"
 ```
 
-该脚本会把完整的 Debug 输出复制到 `/usr/local/lib/relaxkonos/privileged-helper-development/RelaxKonOS.PrivilegedHelper`，再只允许开发账户以 root 身份运行该 apphost 的无参数协议、`--user-execution` 和 `--user-terminal` 三个精确入口。选择 Server 的 `http-linux-privileged` 配置，它将 `PrivilegedHelper__HelperPath` 设为该副本、`PrivilegedHelper__SudoPath` 设为 `/usr/bin/sudo`。每次重新构建 Helper 后都要重新运行脚本。
+该脚本会把完整的 Debug 输出复制到 `/usr/local/lib/relaxkonos/privileged-helper-development/RelaxKonOS.PrivilegedHelper`，再只允许开发账户以 root 身份运行该 apphost 的无参数协议、`--user-execution` 和 `--user-terminal` 三个精确入口。
+
+选择 Server 的 `http-linux-privileged` 配置，它将 `PrivilegedHelper__HelperPath` 设为该副本、`PrivilegedHelper__SudoPath` 设为 `/usr/bin/sudo`。每次重新构建 Helper 后都要重新运行脚本。
 
 Server 本身仍是非特权进程：sudo 会针对每个结构化请求启动一个 Helper 进程，且 Helper 只允许封闭操作集。绝不可让 sudoers 规则指向开发账户可写的 `bin/Debug` 可执行文件；这会赋予账户等同 root 的控制权。
 
@@ -61,13 +63,23 @@ PrivilegedHelper__PipeName=relaxkonos-privileged-helper-dev
 PrivilegedHelper__SharedSecret=<相同的 Base64 密钥>
 ```
 
-控制台宿主把管道访问权限授予"启动它的账户"，加上 `developerUserSids` 列出的身份（以及 SYSTEM 和 Administrators），使由该账户启动的 Server 可走生产 IPC 路径。Helper 需要提权，因此它常常以另一个账户运行（例如 Helper 以 Administrator 启动、Server 以普通开发账户运行）；此时必须在 `developerUserSids` 里点名 Server 的账户，否则该连接会在任何认证发生之前被内核拒绝（EPERM），而客户端只会看到"特权助手不可用"，看起来像密钥错误。启动日志会打印实际生效的客户端 SID 列表——连不上时先把 `whoami /user` 与那一行对比。仅在测试确实需要管理员权限的操作时，以提升权限运行 IDE。配置要求 `allowConsoleDebug: true`；生产 `helper.json` 不使用此架构，因而不会意外启用控制台模式（反过来，服务模式也会拒绝含 `developerUserSids` 的部署配置，避免它被静默忽略）。Server 侧的键（含 `userExecutionBackend`）出现在 Helper 配置里同样会让 Helper 启动失败：它只可能来自配置被复制错，静默忽略会让两侧对"谁在执行"产生分歧。发布前应通过 LocalSystem 服务测试一次，以覆盖 Session 0、用户配置文件、DPAPI、网络凭据和映射驱动器差异。
+控制台宿主把管道访问权限授予"启动它的账户"，加上 `developerUserSids` 列出的身份（以及 SYSTEM 和 Administrators），使由该账户启动的 Server 可走生产 IPC 路径。Helper 需要提权，因此它常常以另一个账户运行（例如 Helper 以 Administrator 启动、Server 以普通开发账户运行）；此时必须在 `developerUserSids` 里点名 Server 的账户，否则该连接会在任何认证发生之前被内核拒绝（EPERM），而客户端只会看到"特权助手不可用"，看起来像密钥错误。
 
-Windows 普通用户文件执行使用派生管道 `<pipeName>-user` 和一次性本地账户 S4U token；Windows 普通终端通过受限 primary token 和 Helper 持有的 ConPTY 执行；管理员终端须由 Server 验证系统密码登录及 canonical 管理员身份，并由 Helper 再次验证完整管理员 token；域账户、Git 进程执行与 POSIX mode 均 fail closed。该路径需要 LocalSystem Helper 监听该管道（Helper 配置 `enableWindowsUserExecution: true`）**并且** Server 侧选 `helper` 后端。Windows System Mode 的 bootstrap 安装器显式传入 `-EnableWindowsUserExecution`，同时打开两侧，避免新安装后普通文件浏览不可用；直接调用服务安装脚本时仍需显式传入该开关，否则写入 `disabled`，永不写入 `local-identity`。管理员控制台宿主不是 LocalSystem，即使打开开关，也不会获得 S4U 执行能力。双用户 SID/ACL、token 释放和并发仍需完成发布验收。
+启动日志会打印实际生效的客户端 SID 列表——连不上时先把 `whoami /user` 与那一行对比。仅在测试确实需要管理员权限的操作时，以提升权限运行 IDE。配置要求 `allowConsoleDebug: true`；生产 `helper.json` 不使用此架构，因而不会意外启用控制台模式（反过来，服务模式也会拒绝含 `developerUserSids` 的部署配置，避免它被静默忽略）。
+
+Server 侧的键（含 `userExecutionBackend`）出现在 Helper 配置里同样会让 Helper 启动失败：它只可能来自配置被复制错，静默忽略会让两侧对"谁在执行"产生分歧。发布前应通过 LocalSystem 服务测试一次，以覆盖 Session 0、用户配置文件、DPAPI、网络凭据和映射驱动器差异。
+
+Windows 普通用户文件执行使用派生管道 `<pipeName>-user` 和一次性本地账户 S4U token；Windows 普通终端通过受限 primary token 和 Helper 持有的 ConPTY 执行；管理员终端须由 Server 验证系统密码登录及 canonical 管理员身份，并由 Helper 再次验证完整管理员 token；域账户、Git 进程执行与 POSIX mode 均 fail closed。
+
+该路径需要 LocalSystem Helper 监听该管道（Helper 配置 `enableWindowsUserExecution: true`）**并且** Server 侧选 `helper` 后端。Windows System Mode 的 bootstrap 安装器显式传入 `-EnableWindowsUserExecution`，同时打开两侧，避免新安装后普通文件浏览不可用；直接调用服务安装脚本时仍需显式传入该开关，否则写入 `disabled`，永不写入 `local-identity`。
+
+管理员控制台宿主不是 LocalSystem，即使打开开关，也不会获得 S4U 执行能力。双用户 SID/ACL、token 释放和并发仍需完成发布验收。
 
 内置 Administrator 的 S4U token 可能保留管理员组。普通文件执行先通过 `CreateRestrictedToken(LUA_TOKEN)` 将该 token 限制为普通用户权限，再进行 SID、模拟级别与管理员权限检查；不能通过删除检查让普通操作获得管理员权限。
 
-2026-10-04 在指定 Windows Server 上修复并验证：开启 Helper 的用户执行监听和 Server 的 `helper` 后端后，Administrator 的 C/D 盘目录读取返回 200。Guardian 原先由 LocalSystem 创建默认权限管道，导致 LocalService Server 返回 `guardian.agent_permission_denied`；服务管道现显式授权 `protectedServerMonitor.serviceName` 对应的 Server 服务 SID 读写，仅 SYSTEM 与 Administrators 拥有完全控制。修复后 Guardian 状态及 workload 列表返回 200。此验证覆盖该主机上的管理员目录读取和服务重启，不代表完成双用户隔离、并发、写入与完整发布验收。
+2026-10-04 在指定 Windows Server 上修复并验证：开启 Helper 的用户执行监听和 Server 的 `helper` 后端后，Administrator 的 C/D 盘目录读取返回 200。Guardian 原先由 LocalSystem 创建默认权限管道，导致 LocalService Server 返回 `guardian.agent_permission_denied`；服务管道现显式授权 `protectedServerMonitor.serviceName` 对应的 Server 服务 SID 读写，仅 SYSTEM 与 Administrators 拥有完全控制。
+
+修复后 Guardian 状态及 workload 列表返回 200。此验证覆盖该主机上的管理员目录读取和服务重启，不代表完成双用户隔离、并发、写入与完整发布验收。
 
 ## Linux 发布安装
 
@@ -93,7 +105,9 @@ Linux Helper 启动及 Helper 管理子进程现在显式清空继承环境，�
 
 封闭操作 `HostIdentityRead` / `HostIdentityApply` 只接受 `hostName` 与 `ExpectedRevision`，不混合文件、服务、时区或环境字段；其他操作携带 `hostName` 一律拒绝。名称规则与 Server 共用并在 Helper 再校验一次：单一 RFC 952/1123 标签、无控制字符、首尾必须是字母或数字、不得全为数字，长度不超过平台上限（Windows 15，Linux 63）。
 
-Windows 只读取固定注册表位置 `...\Control\ComputerName\ActiveComputerName` 与 `...\ComputerName\ComputerName`（分别为生效与待生效名称），不提供任意注册表路径；写入使用固定 `SetComputerNameEx(ComputerNamePhysicalDnsHostname)` 系统 API，并在改动前后用命名互斥锁串行化。该 API 只暂存新名称，重启后才生效，因此读回确认的是“待生效名称”，Helper 与 Server 都不会把暂存报告为已生效。域加入或安全策略拒绝时返回确定性的 `ResourceNotAllowed`，而不是未知结果。
+Windows 只读取固定注册表位置 `...\Control\ComputerName\ActiveComputerName` 与 `...\ComputerName\ComputerName`（分别为生效与待生效名称），不提供任意注册表路径；写入使用固定 `SetComputerNameEx(ComputerNamePhysicalDnsHostname)` 系统 API，并在改动前后用命名互斥锁串行化。
+
+该 API 只暂存新名称，重启后才生效，因此读回确认的是“待生效名称”，Helper 与 Server 都不会把暂存报告为已生效。域加入或安全策略拒绝时返回确定性的 `ResourceNotAllowed`，而不是未知结果。
 
 Linux 读取固定 `/etc/hostname`，写入使用固定 `/usr/bin/hostnamectl set-hostname`，两者缺一即明确返回不支持，不写 `.bashrc`/`.profile`，也不直接覆盖被托管文件。Linux 没有暂存语义，待生效名称与生效名称相同。
 
@@ -107,7 +121,9 @@ Server 使用新增 `HostIdentityChange` 短期授权，精确目标 `host/ident
 
 读回保留 REG_SZ / REG_EXPAND_SZ 原始值；写入前比较完整快照摘要，批量变更逐项写注册表并 Flush、读回及发送 Environment 变化通知。批量注册表写入不承诺事务，Server 必须在写前持久化恢复材料，并将中断/部分失败作为未知结果协调。广播只能通知可到达的会话，不会重写运行进程环境，也不保证其他登录会话或 Windows 服务立即生效。
 
-Linux 仅支持固定 `host/environment/machine` 的 `/etc/environment` provider。Helper 先确认本机 PAM 配置存在未禁用、未重定向 `envfile` 的 `pam_env.so`，否则返回不支持；不会伪造 Linux `HostUser` 存储。读写使用受限无 shell 语法的保真解析、字节 revision、Helper 互斥、写前二次 revision 检查、同目录临时文件、落盘及原子替换、读回验证。保留原文件模式并拒绝链接/目录。其生效语义是“新的 PAM 登录会话”，绝不声称会更新运行中进程、Shell 配置或 systemd 服务。
+Linux 仅支持固定 `host/environment/machine` 的 `/etc/environment` provider。Helper 先确认本机 PAM 配置存在未禁用、未重定向 `envfile` 的 `pam_env.so`，否则返回不支持；不会伪造 Linux `HostUser` 存储。
+
+读写使用受限无 shell 语法的保真解析、字节 revision、Helper 互斥、写前二次 revision 检查、同目录临时文件、落盘及原子替换、读回验证。保留原文件模式并拒绝链接/目录。其生效语义是“新的 PAM 登录会话”，绝不声称会更新运行中进程、Shell 配置或 systemd 服务。
 
 原始变量仅存在于受认证本地 IPC 的 `hostEnvironment` 结果；禁止直接透传 HTTP、普通审计或诊断。审计只记录资源标识摘要。环境 HTTP/授权协调器已接入；Windows 实机读写/注册表 ACL/服务运行时隔离，以及 Linux 真实 PAM 登录、外部改写与回滚仍待指定远程测试目标验证。
 
@@ -117,4 +133,6 @@ Linux 仅支持固定 `host/environment/machine` 的 `/etc/environment` provider
 
 Linux 系统代理提供固定的 `LinuxSystemProxyRead` / `LinuxSystemProxyApply`，管理登录环境与已检测 GNOME/KDE 用户代理；恢复记录归 root 独占。依赖、生效范围与恢复流程见 [运维指南](../docs/platform/RelaxKonOS.PrivilegedOperations.Operations.md#linux-系统代理)。Server 与 Helper 必须同版本升级。
 
-开发时使用普通 `dotnet run --project RelaxKonOS.Server --launch-profile http`，再从管理员 PowerShell 启动 `dotnet run --project RelaxKonOS.PrivilegedHelper -- --console --config <debug-config>`；两侧管道和密钥一致，Server SID 获准且配置 `runtimeArchiveRoots` 为 Server 包暂存目录。文件范围与软件包入口独立。完整步骤及受管目录限制见 [开发调试指南](../docs/development/RelaxKonOS.Develop.md) 和 [特权操作运维说明](../docs/platform/RelaxKonOS.PrivilegedOperations.Operations.md)。
+开发时使用普通 `dotnet run --project RelaxKonOS.Server --launch-profile http`，再从管理员 PowerShell 启动 `dotnet run --project RelaxKonOS.PrivilegedHelper -- --console --config <debug-config>`；两侧管道和密钥一致，Server SID 获准且配置 `runtimeArchiveRoots` 为 Server 包暂存目录。
+
+文件范围与软件包入口独立。完整步骤及受管目录限制见 [开发调试指南](../docs/development/RelaxKonOS.Develop.md) 和 [特权操作运维说明](../docs/platform/RelaxKonOS.PrivilegedOperations.Operations.md)。

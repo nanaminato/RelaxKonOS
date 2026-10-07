@@ -1,6 +1,5 @@
 # Android Docker 与 Compose
 
-
 ## 1. 能力与资源归属
 
 “管理 → Docker”按 `server.docker` 门控，读取 Engine、容器、镜像、卷、网络和 Stack，提供容器/Stack 生命周期与日志、卷详情与受控删除。宿主自定义/受管出站代理入口共用 [设置页面](OutboundProxy.md)；引擎安装/生命周期与账户镜像源管理已由 BP09-M1 接入，见 [引擎与镜像源](DockerEngine.md)；容器详情/统计/完整创建/重命名/生命周期、镜像拉取/删除和网络/卷动作由 BP09-M2 接入，见 [Docker 资源](DockerResources.md)。

@@ -30,7 +30,9 @@ RelaxKonOS JWT subject → nanami 的稳定 OS 身份
 
 现有实现已正确解析“属于谁的桌面”：[`FileEndpoints.cs`](../../RelaxKonOS.Server/Endpoints/FileEndpoints.cs) 根据 JWT 的 `sub` 找到 RelaxKonOS 用户，再通过 `IIdentityProvider.GetUserInfo(user.Username).HomeDirectory` 调用 `IFileService.GetSpecialLocations(...)`。`LocalFileService` 也会解析 Linux XDG 用户目录。
 
-但普通文件操作仍由 [`LocalFileService.cs`](../../RelaxKonOS.Server/Files/LocalFileService.cs) 中的 `DirectoryInfo`、`File` 和 `FileStream` 直接完成，实际身份为 Server 进程账号。若 System Mode 服务以 `relaxkon-server` 运行，而用户家目录为 `0700 nanami:nanami`，`nanami` 登录后尝试读取 `/home/nanami/Desktop` 会被 `relaxkon-server` 拒绝；桌面客户端当前可将此类失败收敛为空列表。
+但普通文件操作仍由 [`LocalFileService.cs`](../../RelaxKonOS.Server/Files/LocalFileService.cs) 中的 `DirectoryInfo`、`File` 和 `FileStream` 直接完成，实际身份为 Server 进程账号。
+
+若 System Mode 服务以 `relaxkon-server` 运行，而用户家目录为 `0700 nanami:nanami`，`nanami` 登录后尝试读取 `/home/nanami/Desktop` 会被 `relaxkon-server` 拒绝；桌面客户端当前可将此类失败收敛为空列表。
 
 当前的 `IPrivilegedFileService` 仅在普通 I/O 触发 `UnauthorizedAccessException` 后、用户完成管理员认证并取得短期 elevation 后，交由 Helper 以高权限操作。它的语义是“管理员操作受保护对象”，不是“以当前登录用户执行”。把前者当作后者会导致用户文件以 root/LocalSystem 创建，也会把正常的 POSIX/NTFS 拒绝错误地变成管理员提示。
 
@@ -286,9 +288,13 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 
 ### 2026-09-26：本地调试执行方式（已实施）
 
-在 Windows 开发宿主上，`Server.Mode=system` + `EnableWindowsUserExecution=false`（默认且安装器固定写入）使日常功能不可用：文件操作返回 `HelperUnavailable`（客户端显示「加载失败: User-execution Helper is unavailable.」），Terminal 在 `PlatformPtyFactory` 上直接 `PlatformNotSupportedException`。根因是 Windows 侧的有效用户通道必须由常驻 LocalSystem Helper 提供——非 SYSTEM 进程无法为其他本地账户取得令牌（S4U 需要 `SeTcbPrivilege`），而 Linux 侧同一条通道只是按请求派生的一次性降权 worker，因此 Linux 本地调试不需要常驻服务。
+在 Windows 开发宿主上，`Server.Mode=system` + `EnableWindowsUserExecution=false`（默认且安装器固定写入）使日常功能不可用：文件操作返回 `HelperUnavailable`（客户端显示「加载失败: User-execution Helper is unavailable.」），Terminal 在 `PlatformPtyFactory` 上直接 `PlatformNotSupportedException`。
 
-实施（**未改变任何冻结原则**）：把本 Goal 原则 3 已承认的「User Mode 只能以自己的身份执行」规则（`IsServerEffectiveUnixUser`）补齐到 Windows，并提升为一个可选择的执行后端 `PrivilegedHelper:UserExecutionBackend = helper | local-identity | disabled`。`local-identity` 的承重守卫是**目标身份必须等于 Server 进程自身的 OS 身份**（Windows 比 SID，Linux 比 `geteuid()`），因此访问控制仍由目标账户裁决，不构成「回退到 Server 服务账号」。守卫在 transport 层实现，故 `UserExecutionFileService`、后台文件任务、媒体 lease、上传暂存清理、Git 与 Terminal 共用同一道判定。
+根因是 Windows 侧的有效用户通道必须由常驻 LocalSystem Helper 提供——非 SYSTEM 进程无法为其他本地账户取得令牌（S4U 需要 `SeTcbPrivilege`），而 Linux 侧同一条通道只是按请求派生的一次性降权 worker，因此 Linux 本地调试不需要常驻服务。
+
+实施（**未改变任何冻结原则**）：把本 Goal 原则 3 已承认的「User Mode 只能以自己的身份执行」规则（`IsServerEffectiveUnixUser`）补齐到 Windows，并提升为一个可选择的执行后端 `PrivilegedHelper:UserExecutionBackend = helper | local-identity | disabled`。
+
+`local-identity` 的承重守卫是**目标身份必须等于 Server 进程自身的 OS 身份**（Windows 比 SID，Linux 比 `geteuid()`），因此访问控制仍由目标账户裁决，不构成「回退到 Server 服务账号」。守卫在 transport 层实现，故 `UserExecutionFileService`、后台文件任务、媒体 lease、上传暂存清理、Git 与 Terminal 共用同一道判定。
 
 本次落地的边界：`helper` 仍为默认；安装器只在显式传入 `-EnableWindowsUserExecution` 时两侧同开，否则写入 `disabled`，**永不写入 `local-identity`**；`local-identity` 在 Production 环境或 Server 进程本身为特权（root/SYSTEM/管理员）时拒绝启动（`UserExecutionBackend.Resolve` 抛错），因此它只可能出现在开发机。Windows 首版 user execution 仍不启用，本文 Goal 3/4 的验收项不受影响。
 
@@ -324,10 +330,11 @@ Linux 上用 root（或任何 UID < 1000 的账户、nobody）登录时，认证
 仍未实施（明确记录）：登录期**不**记录该身份不可执行的审计事件——资格声明随响应返回，
 真正被拒的操作仍按既有 `authorization.check` 审计；若将来要求"登录即审计"需单独决定。
 
-
 ## 有界文件下载协议
 
-当前用户执行协议为 `1.7`，提权协议为 `1.5`；Server 与 Helper 必须一起更新。`FileRead` 不再返回整个文件：用户执行请求必须携带非负的 `offset` 和 `expectedBytes`，提权请求必须携带 `offset` 和 `readCount`，读取长度均为 0 至 1 MiB。长度 0 只打开文件并返回元数据；响应为 `UserExecutionFileRead`（本块 Base64、文件名、内容类型、文件总长度）。旧的整文件请求形状直接拒绝。独立 `FileReadText` 保留当前受限文本编辑语义，使用 TextFileCodec 验证格式与大小；它不接收分块下载字段，也不允许通过提权降级绕过普通宿主身份。
+当前用户执行协议为 `1.7`，提权协议为 `1.5`；Server 与 Helper 必须一起更新。`FileRead` 不再返回整个文件：用户执行请求必须携带非负的 `offset` 和 `expectedBytes`，提权请求必须携带 `offset` 和 `readCount`，读取长度均为 0 至 1 MiB。
+
+长度 0 只打开文件并返回元数据；响应为 `UserExecutionFileRead`（本块 Base64、文件名、内容类型、文件总长度）。旧的整文件请求形状直接拒绝。独立 `FileReadText` 保留当前受限文本编辑语义，使用 TextFileCodec 验证格式与大小；它不接收分块下载字段，也不允许通过提权降级绕过普通宿主身份。
 
 下载和媒体服务使用可 seek 的有界读取流，HTTP Range 继续可用。每块重新经过原有身份或提权授权边界；最多保留一块内容，不把文件总大小与 12 MiB 单次内容上限混淆。读取中发现长度变化或短读时中断响应；已开始发送的响应无法再改成 ProblemDetails。发送前的超限拒绝保留 `413 / content-too-large`。
 

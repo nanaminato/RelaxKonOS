@@ -1,12 +1,12 @@
-# RelaxKonoS File Services 设计与实现规格
+# RelaxKonOS File Services 设计与实现规格
 
 ## 1. 目标
 
-为 RelaxKonoS 增加统一的 **File Services（文件服务）** 管理能力。
+为 RelaxKonOS 增加统一的 **File Services（文件服务）** 管理能力。
 
-RelaxKonoS **不实现 SMB、SFTP、FTP/FTPS 协议栈，也不代理实际文件传输流量**。
+RelaxKonOS **不实现 SMB、SFTP、FTP/FTPS 协议栈，也不代理实际文件传输流量**。
 
-RelaxKonoS 只负责：
+RelaxKonOS 只负责：
 
 - 检测宿主机文件服务是否可用
 - 安装或配置文件服务组件
@@ -18,7 +18,7 @@ RelaxKonoS 只负责：
 - 管理认证方式
 - 查看服务运行状态
 - 管理必要的防火墙规则
-- 对配置进行验证
+- 验证配置
 - 提供统一 UI
 
 实际文件传输由成熟第三方服务完成：
@@ -41,7 +41,7 @@ RelaxKonoS 只负责：
 - SMB Mount
 - NAS / Backup Software
 
-RelaxKonoS.Server 不应参与文件数据流。
+RelaxKonOS.Server 不应参与文件数据流。
 
 ---
 
@@ -89,7 +89,7 @@ RelaxKonoS.Server 不应参与文件数据流。
 
 必须遵守：
 
-> RelaxKonoS.Server 是控制面，不是数据面。
+> RelaxKonOS.Server 是控制面，不是数据面。
 
 客户端访问：
 
@@ -114,7 +114,7 @@ SMB / SFTP / FTP
 原因：
 
 - 避免大文件占用 ASP.NET Core 资源
-- 避免 RelaxKonoS 成为传输瓶颈
+- 避免 RelaxKonOS 成为传输瓶颈
 - 不重复实现成熟协议
 - 减少安全风险
 - 保留 SMB/SFTP 原生性能
@@ -164,7 +164,7 @@ NFS
 
 ## 4.1 不实现文件协议
 
-RelaxKonoS 不自行实现：
+RelaxKonOS 不自行实现：
 
 - SMB protocol
 - SSH protocol
@@ -178,7 +178,7 @@ RelaxKonoS 不自行实现：
 
 ## 4.2 不实现客户端
 
-RelaxKonoS 当前不负责提供：
+RelaxKonOS 当前不负责提供：
 
 - SMB Client
 - FTP Client
@@ -520,7 +520,7 @@ SFTP 基于：
 OpenSSH
 ```
 
-RelaxKonoS 不安装独立 SFTP Protocol Server。
+RelaxKonOS 不安装独立 SFTP Protocol Server。
 
 ---
 
@@ -603,7 +603,7 @@ FTP
 
 必须明确：
 
-> RelaxKonoS Account 与 File Service Account 是不同概念。
+> RelaxKonOS Account 与 File Service Account 是不同概念。
 
 例如：
 
@@ -622,7 +622,7 @@ SMB User
 media
 ```
 
-当前阶段禁止自动把 RelaxKonoS 用户映射为系统账号。
+当前阶段禁止自动把 RelaxKonOS 用户映射为系统账号。
 
 ---
 
@@ -668,7 +668,7 @@ File Service 用户密码属于 Secret。
 - 永不返回原密码
 - 不写普通日志
 - 不记录 Audit 请求中的 plaintext password
-- 不存 RelaxKonoS 普通配置 JSON
+- 不存 RelaxKonOS 普通配置 JSON
 
 例如：
 
@@ -731,7 +731,7 @@ public sealed record FileSharePermission
 
 但是：
 
-> RelaxKonoS 权限不能替代底层操作系统权限。
+> RelaxKonOS 权限不能替代底层操作系统权限。
 
 必须同时验证：
 
@@ -807,7 +807,7 @@ Execute($"chmod {input}")
 
 # 18. PrivilegedHelper 边界
 
-RelaxKonoS.Server 不允许直接：
+RelaxKonOS.Server 不允许直接：
 
 ```text
 sudo
@@ -889,7 +889,7 @@ User Managed
 RelaxKonoS Managed
 ```
 
-RelaxKonoS 不应删除管理员自己写的配置。
+RelaxKonOS 不应删除管理员自己写的配置。
 
 ---
 
@@ -1216,13 +1216,13 @@ smb://192.168.1.10/backup
 
 只展示连接方式。
 
-RelaxKonoS 不负责启动第三方客户端。
+RelaxKonOS 不负责启动第三方客户端。
 
 ---
 
 # 30. 断点续传
 
-RelaxKonoS 不自行实现 Resume。
+RelaxKonOS 不自行实现 Resume。
 
 由：
 
@@ -1235,7 +1235,7 @@ Third-party Client
 
 共同提供。
 
-因此 RelaxKonoS 不设计：
+因此 RelaxKonOS 不设计：
 
 ```text
 UploadSession
@@ -1291,7 +1291,7 @@ Sensitive Configuration
 
 # 32. Server API / Protocol
 
-如果 RelaxKonoS.Protocol 是唯一通信入口，则 File Services 所有 DTO 必须定义于 Protocol。
+如果 RelaxKonOS.Protocol 是唯一通信入口，则 File Services 所有 DTO 必须定义于 Protocol。
 
 禁止 Client：
 
@@ -1673,7 +1673,7 @@ smb.conf
 sshd_config
 ```
 
-因此 RelaxKonoS 不应该假设自己的数据库永远是事实来源。
+因此 RelaxKonOS 不应该假设自己的数据库永远是事实来源。
 
 优先：
 
@@ -1700,7 +1700,7 @@ Configuration modified outside RelaxKonoS
 
 # 44. 推荐产品结构
 
-最终 RelaxKonoS 可以表现为：
+最终 RelaxKonOS 可以表现为：
 
 ```text
 RelaxKonoS
@@ -1877,7 +1877,7 @@ NFS
 
 ## SFTP
 
-用户可以在 RelaxKonoS：
+用户可以在 RelaxKonOS：
 
 1. 查看 OpenSSH 是否安装
 2. 查看 SFTP/SSH 服务状态
@@ -1898,7 +1898,7 @@ sftp://server
 
 成功连接。
 
-文件数据不经过 RelaxKonoS.Server。
+文件数据不经过 RelaxKonOS.Server。
 
 ---
 
@@ -1925,7 +1925,7 @@ Windows 可以：
 
 正常访问。
 
-文件数据不经过 RelaxKonoS.Server。
+文件数据不经过 RelaxKonOS.Server。
 
 ---
 
@@ -1988,9 +1988,9 @@ Check listening port
 
 Codex 在实现时必须遵守以下要求：
 
-1. 先阅读现有 RelaxKonoS architecture 与 PrivilegedHelper 设计。
+1. 先阅读现有 RelaxKonOS architecture 与 PrivilegedHelper 设计。
 2. 不破坏现有分层。
-3. RelaxKonoS.Protocol 仍然是 Client 与 Server 的唯一通信契约。
+3. RelaxKonOS.Protocol 仍然是 Client 与 Server 的唯一通信契约。
 4. 不允许 Client 直接调用 system API。
 5. 不允许 Server 直接执行 sudo/root 操作。
 6. 所有高权限操作必须通过 PrivilegedHelper。
@@ -2000,12 +2000,12 @@ Codex 在实现时必须遵守以下要求：
 10. Protocol DTO 中不得出现 Samba-specific 类型。
 11. 密码不得保存在普通配置中。
 12. 密码不得记录日志。
-13. RelaxKonoS.Server 不代理文件数据。
+13. RelaxKonOS.Server 不代理文件数据。
 14. 不自行实现 SMB/SFTP/FTP protocol。
 15. 不自行实现文件客户端。
 16. 配置必须先 validate 后 apply。
 17. Apply 失败必须尽可能 rollback。
-18. 不覆盖用户未由 RelaxKonoS 管理的系统配置。
+18. 不覆盖用户未由 RelaxKonOS 管理的系统配置。
 19. 所有输入必须进行安全验证。
 20. 优先完成 Linux SFTP + SMB MVP，不要一次扩展全部协议。
 
@@ -2032,13 +2032,13 @@ Codex 在实现时必须遵守以下要求：
 
 如果现有架构与本文档存在冲突：
 
-> 优先保持现有 RelaxKonoS 的架构原则，并说明冲突，不要为了照搬本文档而破坏已有模块边界。
+> 优先保持现有 RelaxKonOS 的架构原则，并说明冲突，不要为了照搬本文档而破坏已有模块边界。
 
 ---
 
 # 52. 最终目标
 
-RelaxKonoS File Services 应成为：
+RelaxKonOS File Services 应成为：
 
 > Standard file service control plane.
 
@@ -2071,7 +2071,7 @@ RelaxKonoS File Services 应成为：
                        Third-party clients
 ```
 
-RelaxKonoS 负责：
+RelaxKonOS 负责：
 
 ```text
 Install

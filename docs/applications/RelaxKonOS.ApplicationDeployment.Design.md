@@ -116,7 +116,11 @@ Goal §2 把「单服务 Compose 项目」列入第一阶段范围，实施清�
 
 `ApplicationCatalogTemplateDto` 是唯一的用途模板描述。它必须携带稳定 `id`、精确 `version`、发布者和 `source`，以及由服务端目录校验结果写入的 `trusted`。客户端只将 `trusted: true`、已知 `schemaVersion`、已知字段类型（`text`、`number`、`enum`、`secret`）、满足所需 capability 且与 Docker OS/架构相符的条目开放安装；这些检查只帮助用户，服务端在 `POST /catalog/install` 时仍按 ID/版本重新验证。目录字段不会携带脚本、Dockerfile、宿主路径或 UI 代码。
 
-安装成功后，`ApplicationDto` 和其不可变 `ApplicationRevisionDto` 都保留 `catalogTemplateId` 与 `catalogTemplateVersion`。后续目录刷新或模板撤回只影响新的安装选择，绝不修改、停止或替换已有实例；更新使用 `CatalogApplicationUpdatePreviewDto` 和 `UpdateCatalogApplicationRequest`：精确目标 ID/版本、完整定义版本、当前绑定版本及当前修订 ID（必传，允许显式 null）。预览包含镜像差异、更新说明和阻断原因，不携带秘密。更新只选择受信目录镜像，保留用户定义与秘密版本；若当前定义不满足目标模板的端口/工作负载/必需挂载、字段和最低资源，先显式编辑定义。目录版本不会静默作用于实例；实例模板绑定只在修订激活成功时提交，失败保留旧绑定，回滚恢复所选修订绑定。当前目录没有新版本时返回 `application-catalog.already_current`。模板首次安装必传 `hostPort`（1–65535），保持 loopback 绑定，以满足 HTTP 就绪检查。
+安装成功后，`ApplicationDto` 和其不可变 `ApplicationRevisionDto` 都保留 `catalogTemplateId` 与 `catalogTemplateVersion`。后续目录刷新或模板撤回只影响新的安装选择，绝不修改、停止或替换已有实例；更新使用 `CatalogApplicationUpdatePreviewDto` 和 `UpdateCatalogApplicationRequest`：精确目标 ID/版本、完整定义版本、当前绑定版本及当前修订 ID（必传，允许显式 null）。
+
+预览包含镜像差异、更新说明和阻断原因，不携带秘密。更新只选择受信目录镜像，保留用户定义与秘密版本；若当前定义不满足目标模板的端口/工作负载/必需挂载、字段和最低资源，先显式编辑定义。目录版本不会静默作用于实例；实例模板绑定只在修订激活成功时提交，失败保留旧绑定，回滚恢复所选修订绑定。
+
+当前目录没有新版本时返回 `application-catalog.already_current`。模板首次安装必传 `hostPort`（1–65535），保持 loopback 绑定，以满足 HTTP 就绪检查。
 
 ### 3.2 权限
 
@@ -178,7 +182,9 @@ programEntry, arguments[], selfContained
 
 `DeploymentOperationDto.Progress` 只报告**阶段内已验证的字节数或工作量**。**无可靠分母时为 `null`**，UI 显示实时部署日志而非伪造累计百分比。当前实现的所有阶段上报均为 `null`；账本加载时校验 `Progress` 与阶段的配对（仅 `Pulling`/`Building`/`Preparing`/`HealthChecking` 允许非空）。
 
-向导通过 SignalR `/hubs/application-deployment-logs` 订阅 operation ID，显示阶段、Docker 镜像层状态及 `build --progress=plain` 的实时输出。stdout/stderr 在命令结束前逐行读取，兼容回车进度行；每条消息经脱敏，最近 300 行有界保留，最多每秒推送两次有变化的快照。客户端按版本去重，连接失败自动重试，重新订阅补回服务端当前内存尾部；关闭向导只停止观察，不取消后台部署。内存日志不跨 Server 重启保留，操作终态的有界诊断尾部继续写入账本。镜像拉取显示 Docker 实际提供的各层状态，不声称具有全局下载百分比。
+向导通过 SignalR `/hubs/application-deployment-logs` 订阅 operation ID，显示阶段、Docker 镜像层状态及 `build --progress=plain` 的实时输出。stdout/stderr 在命令结束前逐行读取，兼容回车进度行；每条消息经脱敏，最近 300 行有界保留，最多每秒推送两次有变化的快照。
+
+客户端按版本去重，连接失败自动重试，重新订阅补回服务端当前内存尾部；关闭向导只停止观察，不取消后台部署。内存日志不跨 Server 重启保留，操作终态的有界诊断尾部继续写入账本。镜像拉取显示 Docker 实际提供的各层状态，不声称具有全局下载百分比。
 
 本地归档上传独立显示已发送字节/总字节、百分比、平均速率和取消按钮；不可读取长度的流仅显示已发送字节，不伪造分母。100% 表示请求正文已写出，仍需等待服务器暂存确认。网络诊断不预读取此二进制正文；上传超时为 1 小时，普通部署 API 为 30 秒。
 
@@ -253,7 +259,9 @@ interface IApplicationTemplate
 
 ### 6.3 构建上下文
 
-只有声明的文件进入构建上下文；构建上下文与宿主其他目录物理隔离在 `build/{inputReference[..16]}` 下，`PublishRoot` 只识别「单一顶层目录」的常见包装形式。**识别出的这层包装目录会被解包（`UnwrapPublishRoot`），使构建上下文根目录与发布根目录是同一个目录**：Docker 引擎拿到的是解压根目录，而各模板生成的 Dockerfile 也都写在这个根目录下、并以「相对上下文」的路径引用载荷（`COPY requirements.txt`、`COPY . /app`）。若保留包装层，载荷会整体落在 Dockerfile 相对路径的下一级，表现为构建期 `COPY` 失败（`build_failed`），或通配复制成功但载荷深了一层、声明的入口点起不来。凭据与无关宿主文件不进入镜像层。
+只有声明的文件进入构建上下文；构建上下文与宿主其他目录物理隔离在 `build/{inputReference[..16]}` 下，`PublishRoot` 只识别「单一顶层目录」的常见包装形式。**识别出的这层包装目录会被解包（`UnwrapPublishRoot`），使构建上下文根目录与发布根目录是同一个目录**：Docker 引擎拿到的是解压根目录，而各模板生成的 Dockerfile 也都写在这个根目录下、并以「相对上下文」的路径引用载荷（`COPY requirements.txt`、`COPY . /app`）。
+
+若保留包装层，载荷会整体落在 Dockerfile 相对路径的下一级，表现为构建期 `COPY` 失败（`build_failed`），或通配复制成功但载荷深了一层、声明的入口点起不来。凭据与无关宿主文件不进入镜像层。
 
 归档中的 `Dockerfile` 与 `.dockerignore` 均不属于受信任输入：模板覆盖 Dockerfile，并生成自己的无排除 `.dockerignore`，保证已校验的发布文件都会进入 `COPY`。以 .NET 为例，生成的构建步骤还会在切换非 root 用户前执行 `test -f /app/{assembly}.dll`（self-contained 时检查可执行文件），缺少入口文件会在构建阶段失败，而不会生成空镜像后等到就绪超时。
 
@@ -536,7 +544,6 @@ relaxkonos.role={workload|candidate}
 - 磁盘容量预检（`disk_full` 已定义但当前仅由 Engine 错误映射，未主动探测）。
 - `drift_image_missing` / `drift_volume_missing` 的主动核对（问题码已定义，当前由列表/详情观测路径覆盖容器漂移）。
 - 完整平台验收与帮助文档、用户文档入口。
-
 
 ## 17. 验证矩阵
 

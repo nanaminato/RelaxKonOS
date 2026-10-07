@@ -6,15 +6,27 @@
 
 Android 客户端使用同一 Server Hub；`AttachExisting(sessionId)` 只附加当前用户仍存活的会话，找不到时返回 `terminal.session_not_found`，供网络恢复路径避免误创建 PTY。移动端交互规范和验收状态由 [Android AD07 文档](../../Client/RelaxKonOS.Client.Android/docs/features/TerminalAutomation.md) 维护。
 
-Linux System Mode 的远程终端由 `--user-terminal` Helper 在验证登录账号的 canonical username、UID 和 home 后启动。Helper 初始化该账号的 supplementary groups，并同时替换 real/effective/saved UID/GID、验证无法直接恢复 UID 0，再创建 PTY。交互终端不设置 `PR_SET_NO_NEW_PRIVS`，因此 `sudo` / `su` 按宿主的 sudoers、PAM 与账号权限工作；不要求 RelaxKonOS 管理员角色，也不会自动授予 root 权限。独立的 `--user-execution` 文件/Git worker 继续设置该标志。
+Linux System Mode 的远程终端由 `--user-terminal` Helper 在验证登录账号的 canonical username、UID 和 home 后启动。Helper 初始化该账号的 supplementary groups，并同时替换 real/effective/saved UID/GID、验证无法直接恢复 UID 0，再创建 PTY。
 
-Windows System Mode 的远程终端通过 `<pipeName>-user` 的认证请求连接到 LocalSystem Helper。Helper 验证本地账号的 SID、canonical account 和 profile 路径，生成受限 S4U token，再转换为 primary token，通过 `CreateProcessAsUserW` 在 ConPTY 中启动 Windows PowerShell。用户环境由 `CreateEnvironmentBlock` 创建，不继承 LocalSystem 的用户目录；域账号和不可执行身份继续拒绝执行。该模式需要 Windows Server 2019 或更新版本，并启用 Helper 的 `enableWindowsUserExecution` 及 Server 的 `helper` 后端。Server 与 Helper 必须同时升级。
+交互终端不设置 `PR_SET_NO_NEW_PRIVS`，因此 `sudo` / `su` 按宿主的 sudoers、PAM 与账号权限工作；不要求 RelaxKonOS 管理员角色，也不会自动授予 root 权限。独立的 `--user-execution` 文件/Git worker 继续设置该标志。
 
-桌面客户端的「终端 → 打开管理员终端」在 Windows System Mode 中新建单独的管理员窗口，普通窗口不改变权限。`StartAdministrator(request, sessionId)` 要求当前登录使用系统密码（`amr=system`），并通过现有 `IHostAccountPrivilegeService` 重新检查 canonical Windows 账号的管理员组成员资格；别名密码及普通账号不能使用此入口。Helper 只为同一个已验证本地管理员账号保留完整 S4U token，并再次检查 token 的管理员组有效性，不以 LocalSystem 身份运行 shell。窗口标题和状态标识管理员权限，会话摘要携带 `isAdministrator` 供恢复时保留标识。重新附加及每次输入/resize 都重新检查宿主管理员资格，撤销权限后拒绝继续操作。非 Windows System Mode 不提供该入口。已安装服务器测试同时验证普通权限和管理员权限，并在管理员终端中创建、查询和删除一个随机命名的临时本地账号。
+Windows System Mode 的远程终端通过 `<pipeName>-user` 的认证请求连接到 LocalSystem Helper。Helper 验证本地账号的 SID、canonical account 和 profile 路径，生成受限 S4U token，再转换为 primary token，通过 `CreateProcessAsUserW` 在 ConPTY 中启动 Windows PowerShell。
 
-Helper 在签名的启动结果之后转发原始终端输出，输入、resize 和 close 使用 `UserTerminalStreamProtocol` 控制帧。每个会话拥有独立管道，支持并发终端及文件请求；Hub 网络断开保留会话，关闭会话或 Server 管道断开则释放 Helper PTY。启动失败通过 `terminal.start_failed` 返回具体运行原因，无需启用全局 SignalR 详细异常。可运行 `dotnet run --project RelaxKonOS.Server.Tests -- --terminal-windows-only` 验证真实 Windows PTY，或使用 `--installed-windows-terminal <https-url> <username>` 验证已安装服务器（密码从标准输入读取）。
+用户环境由 `CreateEnvironmentBlock` 创建，不继承 LocalSystem 的用户目录；域账号和不可执行身份继续拒绝执行。该模式需要 Windows Server 2019 或更新版本，并启用 Helper 的 `enableWindowsUserExecution` 及 Server 的 `helper` 后端。Server 与 Helper 必须同时升级。
 
-若终端报 `sudo: The "no new privileges" flag is set`，可用 `grep '^NoNewPrivs:' /proc/$$/status` 检查 shell：正常交互终端应为 `0`。旧版 Helper 创建的会话需要关闭后新建，重新附加旧会话不会移除标志。更新并重新部署 Helper 后若新会话仍为 `1`，应检查 Server 的 systemd sandbox、容器或上游 launcher 是否设置了 `NoNewPrivileges` / `no-new-privileges`；Linux 会继承该标志且不能在运行中的进程内清除，必须从未设置标志的启动环境重新启动。
+桌面客户端的「终端 → 打开管理员终端」在 Windows System Mode 中新建单独的管理员窗口，普通窗口不改变权限。`StartAdministrator(request, sessionId)` 要求当前登录使用系统密码（`amr=system`），并通过现有 `IHostAccountPrivilegeService` 重新检查 canonical Windows 账号的管理员组成员资格；别名密码及普通账号不能使用此入口。
+
+Helper 只为同一个已验证本地管理员账号保留完整 S4U token，并再次检查 token 的管理员组有效性，不以 LocalSystem 身份运行 shell。窗口标题和状态标识管理员权限，会话摘要携带 `isAdministrator` 供恢复时保留标识。重新附加及每次输入/resize 都重新检查宿主管理员资格，撤销权限后拒绝继续操作。
+
+非 Windows System Mode 不提供该入口。已安装服务器测试同时验证普通权限和管理员权限，并在管理员终端中创建、查询和删除一个随机命名的临时本地账号。
+
+Helper 在签名的启动结果之后转发原始终端输出，输入、resize 和 close 使用 `UserTerminalStreamProtocol` 控制帧。每个会话拥有独立管道，支持并发终端及文件请求；Hub 网络断开保留会话，关闭会话或 Server 管道断开则释放 Helper PTY。
+
+启动失败通过 `terminal.start_failed` 返回具体运行原因，无需启用全局 SignalR 详细异常。可运行 `dotnet run --project RelaxKonOS.Server.Tests -- --terminal-windows-only` 验证真实 Windows PTY，或使用 `--installed-windows-terminal <https-url> <username>` 验证已安装服务器（密码从标准输入读取）。
+
+若终端报 `sudo: The "no new privileges" flag is set`，可用 `grep '^NoNewPrivs:' /proc/$$/status` 检查 shell：正常交互终端应为 `0`。旧版 Helper 创建的会话需要关闭后新建，重新附加旧会话不会移除标志。
+
+更新并重新部署 Helper 后若新会话仍为 `1`，应检查 Server 的 systemd sandbox、容器或上游 launcher 是否设置了 `NoNewPrivileges` / `no-new-privileges`；Linux 会继承该标志且不能在运行中的进程内清除，必须从未设置标志的启动环境重新启动。
 
 开发配置 `http-linux-privileged` 使用安装到 `/usr/local/lib/relaxkonos/privileged-helper-development/` 的 root-owned Helper 副本，重建 Server 或更新 Android APK 不会替换它。应在 Linux 仓库根目录重建并重新安装，再关闭旧会话、新建终端：
 
@@ -58,7 +70,7 @@ RemoteTerminal 是 RelaxKonOS 的内置应用之一，遵循架构 §6 的两类
 | 包 | 版本 | 用途 |
 |----|------|------|
 | `RoyalApps.RoyalTerminal.Avalonia` | 0.4.0 | Avalonia 终端控件 `TerminalControl` + 默认会话组合（托管 VT 处理器 + 平台 PTY 工厂），目标 net10.0 |
-| `RoyalApps.RoyalTerminal.Terminal.Pty.Platform` | 0.4.0 | Server 端 PTY 工厂（Windows ConPTY / Unix forkpty），Terminal Hub 哑中继用 |
+| `RoyalApps.RoyalTerminal.Terminal.Pty.Platform` | 0.4.0 | Server 端 PTY 工厂（Windows ConPTY / Unix forkpty），Terminal Hub 仅转发数据用 |
 | `Microsoft.AspNetCore.SignalR.Client` | 10.0.0 | Client 端 SignalR 连接（`HubConnection`） |
 
 - 中心化包管理：版本声明在 [`Directory.Packages.props`](../../Directory.Packages.props)，csproj 仅 `PackageReference`（不带 Version）。
@@ -133,7 +145,7 @@ var control = new TerminalControl(
 └────────────────────────────────────────────────────┘    └──────────────────────────────────────────┘
 ```
 
-**核心设计：服务端是 PTY 哑中继 + 持久会话**。Server 端持有 PTY（与 Hub 连接解耦），只做：附加/创建会话、转发输入字节、回传输出字节（+1MB 环形缓冲供恢复）、手动终止、列表。VT 解析（标题/响铃/光标/颜色/滚动）全部在客户端的 `TerminalControl` 内完成。连接断开**不**杀 PTY，仅 detach；再次登录 `Start(Attach)` 回放缓冲快照重现历史。
+**核心设计：服务端是 PTY 仅转发数据 + 持久会话**。Server 端持有 PTY（与 Hub 连接解耦），只做：附加/创建会话、转发输入字节、回传输出字节（+1MB 环形缓冲供恢复）、手动终止、列表。VT 解析（标题/响铃/光标/颜色/滚动）全部在客户端的 `TerminalControl` 内完成。连接断开**不**杀 PTY，仅 detach；再次登录 `Start(Attach)` 回放缓冲快照重现历史。
 
 ### 3.2 Protocol 契约层
 
@@ -352,7 +364,7 @@ else
 - **Remote Mode 是默认模式**：认证后（`IAuthSession.State == Authenticated`）自动走 SignalR 远端 PTY。Local Mode 仅作未登录时的 dev 回退，不得作为正式运行模式。
 - **传输用 SignalR，禁止裸 WebSocket**：RoyalTerminal 传输抽象（`ITerminalTransport`）是传输方式无关的，本项目选择 SignalR（JWT + 强类型 Hub + 一次性连接拉取列表）。禁止为终端单独引入裸 WebSocket 端点。**不启用 `WithAutomaticReconnect`**（自动重连后服务端不会自动重新附加会话，进入半附加状态）；恢复路径是"再次登录打开终端"→重新 `Start(Attach)`→服务端回放缓冲快照。
 - **`TerminalControl` 在 code-behind 创建（9-param ctor）**：`TerminalTransportFactory` 是只读属性，只能通过构造函数注入 `SignalRTransportFactory`。禁止在 XAML 中声明 `TerminalControl` 后尝试运行时替换传输工厂。
-- **服务端是 PTY 哑中继 + 持久会话**：`TerminalHub` 只做附加/输入/输出/退出/尺寸/手动终止/列表，**不做 VT 解析**。PTY 由 `TerminalSessionManager` 持有，与 Hub 连接解耦。VT 渲染（标题/响铃/光标/颜色）全部在客户端 `TerminalControl` 完成。服务端不得引入 VT 处理器。
+- **服务端是 PTY 仅转发数据 + 持久会话**：`TerminalHub` 只做附加/输入/输出/退出/尺寸/手动终止/列表，**不做 VT 解析**。PTY 由 `TerminalSessionManager` 持有，与 Hub 连接解耦。VT 渲染（标题/响铃/光标/颜色）全部在客户端 `TerminalControl` 完成。服务端不得引入 VT 处理器。
 - **Hub 方法名必须与 `TerminalHubMethods` 常量一致**：Server Hub 方法 `Start`/`Input`/`Resize`/`CloseSession`/`ListSessions` 必须与 `TerminalHubMethods` 中的常量值（`nameof`）完全匹配，否则 SignalR 运行时找不到方法。
 - **关闭会话必须校验归属**：`CloseSession` 的 sessionId 由客户端给出，因此必须先确认 `session.UserId == Context.UserIdentifier` 再 `manager.Remove`；只按 ID 删除会让任何已认证用户靠猜 ID 杀掉别人的 PTY。
 - **连接断开仅 detach，保留 PTY**：`TerminalHub.OnDisconnectedAsync` 必须调用 `session.Detach(Context.ConnectionId)`，**禁止**在断开时杀 PTY。只有显式 `CloseSession`（客户端"断开"按钮 / 关闭终端窗口 / 移动端会话条的关闭）才 `manager.Remove` 杀 PTY。这是"再次登录恢复原桌面"的前提。

@@ -1,6 +1,5 @@
 # Android 网站发布
 
-
 ## 1. 入口与前置
 
 “管理 → 网站”按 `server.web-server` 门控。读取受管实例、配置语法检查、站点和 TLS 关联；证书读取另需 `server.certificates`。无权限或未核实不显示为无站点/无证书。

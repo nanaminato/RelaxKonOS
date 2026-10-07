@@ -1,45 +1,29 @@
 # RelaxKonOS 文档索引与项目说明
 
-> 本文档描述 RelaxKonOS 当前实现状态：Solution 结构、项目列表、代码地图、当前实现进度、开发状态。
->
-> - 架构设计原则见 [`RelaxKonOS.Architecture.md`](./architecture/RelaxKonOS.Architecture.md)
-> - Android 手机与平板 Mobile Shell 的详细设计、代码位置与实施阶段见 [`Client/RelaxKonOS.Client.Android/docs`](../Client/RelaxKonOS.Client.Android/docs/README.md)；本目录只保留 [移动端入口](./mobile/README.md)。
-> - 应用启动 URI 与窗口实例策略见 [`RelaxKonOS.ApplicationActivation.md`](./architecture/RelaxKonOS.ApplicationActivation.md)
-> - 虚拟系统盘、Catalog、Shell 与受限自动化执行基线见 [`RelaxKonOS.VirtualSystemDrive.Goal.md`](./architecture/RelaxKonOS.VirtualSystemDrive.Goal.md)，已冻结的 V1 目录/schema/迁移契约见 [`RelaxKonOS.VirtualSystemDrive.Contracts.md`](./architecture/RelaxKonOS.VirtualSystemDrive.Contracts.md)
-> - 用户 Workspace 模型见 [`RelaxKonOS.Workspace.md`](./architecture/RelaxKonOS.Workspace.md)
-> - 注册表与配置同步架构见 [`RelaxKonOS.Registry.md`](./architecture/RelaxKonOS.Registry.md)（设计中）
-> - 登录与身份模型见 [`RelaxKonOS.Authentication.md`](./platform/RelaxKonOS.Authentication.md)
-> - 桌面与 Android 客户端的一体化服务端安装、更新、卸载流程见 [`RelaxKonOS.ServerCenter.Goal.md`](./platform/RelaxKonOS.ServerCenter.Goal.md)（客户端流程已接入，真实宿主验收状态见实现记录）
-> - 独立登录别名与关闭系统账号直接登录的 Goal 设计见 [`RelaxKonOS.AliasLogin.Goal.md`](./platform/RelaxKonOS.AliasLogin.Goal.md)（待实施）
-> - 认证限流与登录防护建议见 [`RelaxKonOS.Authentication.Hardening.md`](./platform/RelaxKonOS.Authentication.Hardening.md)
-> - 安全设计见 [`RelaxKonOS.Security.md`](./platform/RelaxKonOS.Security.md)
-> - 权限模型与项目重构规范见 [`RelaxKonOS.PermissionModel.Refactor.md`](./platform/RelaxKonOS.PermissionModel.Refactor.md)
-> - 桌面外壳与模态对话框见 [`RelaxKonOS.Desktop.md`](./desktop/RelaxKonOS.Desktop.md)
-> - 文件管理器见 [`RelaxKonOS.Explorer.md`](./applications/RelaxKonOS.Explorer.md)；Windows 11 体验优化进度与后续 API 清单见 [`RelaxKonOS.Explorer.Progress.md`](./applications/RelaxKonOS.Explorer.Progress.md)
-> - 大文件上传（分块会话、断点续传、受保护目录）的设计与实现规格见 [`RelaxKonOS.FileUpload.Design.md`](./architecture/RelaxKonOS.FileUpload.Design.md)（已实现：服务端 86 项、桌面端 196 项、Android 41 项自动化检查全绿，真机验收清单见其 §9.4）；Android 客户端细节见 [Android 文档](../Client/RelaxKonOS.Client.Android/docs/features/FileTransfers.md)
-> - 受管安装服务（SMB、Nginx、FRP、Mihomo、Docker）的统一任务、进度与恢复基线见 [`RelaxKonOS.InstallationServices.Goal.md`](./services/RelaxKonOS.InstallationServices.Goal.md)。File Services 首轮 SMB（Linux Samba + Windows SMB Server）应用设计与平台验证见 [`RelaxKonOS.FileServices.Smb.md`](./services/file-services/RelaxKonOS.FileServices.Smb.md)；长期设计规格见 [`RelaxKonOS.FileServices.Specification.md`](./services/file-services/RelaxKonOS.FileServices.Specification.md)
-> - 无 sudo Linux 用户账号（大学 / HPC / 共享 GPU 服务器）部署的双模式设计、PAM 调试边界和实施验收见 [`RelaxKonOS.UserModeServer.Goal.md`](./services/RelaxKonOS.UserModeServer.Goal.md)（提案，尚未实现）
-> - 浏览器见 [`RelaxKonOS.Browser.md`](./applications/RelaxKonOS.Browser.md)
-> - 设置中心见 [`RelaxKonOS.Settings.md`](./desktop/RelaxKonOS.Settings.md)
-> - 全局主题与配色系统设计见 [`RelaxKonOS.Theming.md`](./desktop/RelaxKonOS.Theming.md)
-> - 系统风格（形状/尺寸/动效、recipe 与三套内置 profile）见 [`RelaxKonOS.SystemStyle.md`](./desktop/RelaxKonOS.SystemStyle.md)
-> - 应用私有配置存储见 [`RelaxKonOS.AppSettings.md`](./development/RelaxKonOS.AppSettings.md)
-> - 网络检查器设计见 [`RelaxKonOS.NetworkInspector.md`](./applications/RelaxKonOS.NetworkInspector.md)
-> - 任务管理器见 [`RelaxKonOS.TaskManager.md`](./applications/RelaxKonOS.TaskManager.md)
-> - 任务管理器性能采集重写方案（后续 Goal 执行基线）见 [`RelaxKonOS.TaskManager.Rewrite.md`](./applications/RelaxKonOS.TaskManager.Rewrite.md)
-> - FRP 内网穿透的架构、安全与验证设计见 [FRP 设计](./applications/RelaxKonOS.FRP_Integration.Design.md)，当前实现与运维边界见 [实现文档](./applications/RelaxKonOS.FRP_Integration.Implementation.md)。
-> - 代理管理器已完成代码级实现，发布级平台验证仍待完成：当前能力、缺口和下一阶段入口见 [`RelaxKonOS.ProxyManager.Discovery.md`](./applications/RelaxKonOS.ProxyManager.Discovery.md)（[English](./applications/RelaxKonOS.ProxyManager.Discovery.en.md)）；架构与安全设计见 [`RelaxKonOS.ProxyManager.Design.md`](./applications/RelaxKonOS.ProxyManager.Design.md)，操作员文档见 [`docs/proxy/`](./proxy/)
-> - Docker 管理器见 [`RelaxKonOS.DockerManager.md`](./applications/RelaxKonOS.DockerManager.md)
-> - Java/.NET/Python 容器化应用部署的能力、设计与验证矩阵见 [应用部署](./applications/RelaxKonOS.ApplicationDeployment.Design.md)；已有专项测试及隔离 .NET 镜像证据，完整平台验收仍待完成。
-> - 证书管理器见 [`RelaxKonOS.CertificateManager.md`](./applications/RelaxKonOS.CertificateManager.md)
-> - Web Server 管理器 / Nginx 集成设计中，见 [`RelaxKonOS.WebServerManager.Design.md`](./applications/RelaxKonOS.WebServerManager.Design.md)
-> - 进程守护见 [`RelaxKonOS.ProcessGuardian.md`](./applications/RelaxKonOS.ProcessGuardian.md)
-> - Git 客户端见 [`RelaxKonOS.GitClient.md`](./applications/RelaxKonOS.GitClient.md)
-> - 服务端持久化见 [`RelaxKonOS.Storage.md`](./platform/RelaxKonOS.Storage.md)
-> - 开发者指南见 [`RelaxKonOS.Develop.md`](./development/RelaxKonOS.Develop.md)
-> - 全仓优化检查、优先级与验收进度见 [`RelaxKonOS.Optimization.Progress.md`](./development/RelaxKonOS.Optimization.Progress.md)
-> - 开发模式与扩展见 [`RelaxKonOS.DeveloperMode.md`](./development/RelaxKonOS.DeveloperMode.md)
-> 当文档冲突时：本文档代表**当前代码实现**，Architecture 文档代表**设计原则**。
+本索引介绍项目结构、模块职责和文档位置。架构原则见 [Architecture](./architecture/RelaxKonOS.Architecture.md)，具体功能和验收状态以对应领域文档为准。
+
+Android 的设计、功能、支持范围和发布要求统一维护在 [Android 文件传输](../Client/RelaxKonOS.Client.Android/docs/README.md)。
+
+专题补充：
+
+- [移动端入口](./mobile/README.md)
+- [虚拟系统盘实施计划](./architecture/RelaxKonOS.VirtualSystemDrive.Goal.md)
+- [虚拟系统盘契约](./architecture/RelaxKonOS.VirtualSystemDrive.Contracts.md)
+- [注册表与配置同步](./architecture/RelaxKonOS.Registry.md)
+- [登录别名实施计划](./platform/RelaxKonOS.AliasLogin.Goal.md)
+- [权限模型与项目重构规范](./platform/RelaxKonOS.PermissionModel.Refactor.md)
+- [文件管理器优化与验证记录](./applications/RelaxKonOS.Explorer.Progress.md)
+- [Android 文件传输](../Client/RelaxKonOS.Client.Android/docs/features/FileTransfers.md)
+- [受管服务安装计划](./services/RelaxKonOS.InstallationServices.Goal.md)
+- [SMB 文件服务](./services/file-services/RelaxKonOS.FileServices.Smb.md)
+- [文件服务设计规格](./services/file-services/RelaxKonOS.FileServices.Specification.md)
+- [FRP 设计](./applications/RelaxKonOS.FRP_Integration.Design.md)
+- [FRP 实现与运维范围](./applications/RelaxKonOS.FRP_Integration.Implementation.md)
+- [代理管理器实现说明（中文）](./applications/RelaxKonOS.ProxyManager.Discovery.md)
+- [代理管理器实现说明（英文）](./applications/RelaxKonOS.ProxyManager.Discovery.en.md)
+- [代理管理器设计](./applications/RelaxKonOS.ProxyManager.Design.md)
+- [代理管理运维指南](./proxy/)
+- [优化与验收记录](./development/RelaxKonOS.Optimization.Progress.md)
 
 ---
 
@@ -53,7 +37,7 @@
 | [`applications/`](./applications/) | 各内置应用的设计与实现说明 |
 | [`services/`](./services/) | 受管宿主服务的安装计划与 File Services 文档 |
 | [`development/`](./development/) | 开发调试、开发者模式与应用扩展规范 |
-| [`mobile/`](./mobile/) | Android 手机/平板 Mobile Shell 的设计、进度与发布文档 |
+| [`mobile/`](./mobile/) | Android 文档入口；详细说明维护在 Android 工程中 |
 
 ---
 
@@ -73,27 +57,37 @@ RelaxKonOS 采用状态同步模式（非像素流）：Client 本地渲染 UI�
 
 本地 RelaxKonOS Shell 已完成（Desktop、Window Manager、Application Runtime、Application SDK、内置应用 Welcome/Notebook/Code Editor/Image Viewer/Settings 等）。
 
-应用启动与跨应用导航已具备首个可运行基础：Shell 解析受控 `relaxkonos://` URI，Settings 支持直达个性化和指定应用权限页；RemoteExplorer 通过此入口打开文件。`ApplicationManifest.InstancePolicy` 可声明多窗口或单窗口，Settings/任务管理器/端口转发/防火墙/进程守护/Docker 为单窗口，Notebook 与 Code Editor 明确支持多窗口。详见 [`RelaxKonOS.ApplicationActivation.md`](./architecture/RelaxKonOS.ApplicationActivation.md)。
+应用启动与跨应用导航已具备首个可运行基础：Shell 解析受控 `relaxkonos://` URI，Settings 支持直达个性化和指定应用权限页；RemoteExplorer 通过此入口打开文件。`ApplicationManifest.InstancePolicy` 可声明多窗口或单窗口，Settings/任务管理器/端口转发/防火墙/进程守护/Docker 为单窗口，Notebook 与 Code Editor 明确支持多窗口。
+
+详见 [`RelaxKonOS.ApplicationActivation.md`](./architecture/RelaxKonOS.ApplicationActivation.md)。
 
 桌面外壳已增强：宿主窗口控制（标题栏拖动 / 8 向 resize / 最小化·最大化·关闭 / 全屏）、mstsc 风格连接栏（全屏切换、固定与自动隐藏、连接信息、关闭连接 = 登出）、可复用模态对话框机制（`AppContext.ShowDialogAsync`，支持嵌套与任意结果类型）。详见 [`RelaxKonOS.Desktop.md`](./desktop/RelaxKonOS.Desktop.md)。
 
-内置终端应用已落地（Remote Mode）：通过 NuGet 包 `RoyalApps.RoyalTerminal.Avalonia` 引入 `TerminalControl`，嵌入 `RemoteWindow`；认证后经 SignalR Hub 连接 Server 端 PTY（哑中继），VT 渲染在客户端完成；未登录时回退本地 PTY。输入焦点问题已修复（`Focusable=true` + 延迟聚焦）。详见 [`RelaxKonOS.Terminal.md`](./applications/RelaxKonOS.Terminal.md)。
+内置终端应用已实现（Remote Mode）：通过 NuGet 包 `RoyalApps.RoyalTerminal.Avalonia` 引入 `TerminalControl`，嵌入 `RemoteWindow`；认证后经 SignalR Hub 连接 Server 端 PTY（仅转发数据），VT 渲染在客户端完成；未登录时回退本地 PTY。输入焦点问题已修复（`Focusable=true` + 延迟聚焦）。详见 [`RelaxKonOS.Terminal.md`](./applications/RelaxKonOS.Terminal.md)。
 
-内置文件管理器已落地（RemoteExplorer）：UI 移植自 Jaya File Manager（BSD-3），导航树 + Explorer 网格 + 地址栏 + 工具栏 + 状态栏；所有文件操作经 Server 端 REST API（`/api/v1.0/files/*`）执行，复用宿主 OS 用户/权限（不另建 ACL）；支持浏览、新建文件夹/删除/重命名/复制/移动/上传/下载、文件/目录属性查看（Linux POSIX 权限编辑），以及按扩展名声明进行默认打开或“打开方式”。详见 [`RelaxKonOS.Explorer.md`](./applications/RelaxKonOS.Explorer.md)。
+内置文件管理器已实现（RemoteExplorer）：UI 移植自 Jaya File Manager（BSD-3），导航树 + Explorer 网格 + 地址栏 + 工具栏 + 状态栏；所有文件操作经 Server 端 REST API（`/api/v1.0/files/*`）执行，复用宿主 OS 用户/权限（不另建 ACL）；支持浏览、新建文件夹/删除/重命名/复制/移动/上传/下载、文件/目录属性查看（Linux POSIX 权限编辑），以及按扩展名声明进行默认打开或“打开方式”。
 
-内置浏览器已落地（RemoteBrowser）：基于 NuGet 包 `Avalonia.Controls.WebView` 12.0.1 的 `NativeWebView`（平台原生引擎：Win=WebView2/macOS=WKWebView/Linux=WebKitGTK），网页内容走客户端网络渲染；书签与历史记录经 Server 端 REST API（`/api/v1.0/browser/*`）持久化（按用户隔离，EF Core+SQLite）；浏览器主页可在浏览器设置中同步，链接打开位置（内置浏览器或宿主机浏览器）在“设置 → 应用 → 远程浏览器”中同步。服务端 loopback URL 由新的本机 Port Forwarding 应用通过 `ssh -L` 映射为有效 localhost 链接；该应用只绑定 loopback，SSH 设置与活动隧道都不会同步。详见 [`RelaxKonOS.Browser.md`](./applications/RelaxKonOS.Browser.md) 与 [`RelaxKonOS.PortForwarding.md`](./applications/RelaxKonOS.PortForwarding.md)。
+详见 [`RelaxKonOS.Explorer.md`](./applications/RelaxKonOS.Explorer.md)。
 
-内置设置中心已落地（RemoteSettings）：Windows 11 / GNOME 风格，5 个分类页（系统 / 个性化 / 时间和语言 / 网络 / 应用）。用户偏好（壁纸 / 主题 / 时间格式 / 日期格式 / 语言 / 区域 / 默认程序）经 Server 端 REST API（`/api/v1.0/workspaces/{id}/preferences`）持久化到 Workspace（`OwnsOne + ToJson` 单列 JSON，多设备共享）；登录时 `PreferencesSync` 自动加载应用到桌面外壳（壁纸 / 任务栏底色 / 时钟格式即时生效），设置应用编辑后防抖 300ms 保存。宿主 OS 级设置（时区 / 网卡）只读展示（硬约束「权限提升委托宿主 OS」）。详见 [`RelaxKonOS.Settings.md`](./desktop/RelaxKonOS.Settings.md)。
+内置浏览器已实现（RemoteBrowser）：基于 NuGet 包 `Avalonia.Controls.WebView` 12.0.1 的 `NativeWebView`（平台原生引擎：Win=WebView2/macOS=WKWebView/Linux=WebKitGTK），网页内容走客户端网络渲染；书签与历史记录经 Server 端 REST API（`/api/v1.0/browser/*`）持久化（按用户隔离，EF Core+SQLite）；浏览器主页可在浏览器设置中同步，链接打开位置（内置浏览器或宿主机浏览器）在“设置 → 应用 → 远程浏览器”中同步。
 
-内置任务管理器正在重写（RemoteTaskManager）：性能页改由 Server 端在存在订阅时运行的统一 1 秒采样器、60 秒内存历史与 SignalR（`/hubs/performance`）推送驱动；CPU/内存/文件系统/网络/磁盘 I/O 跨 Windows/Linux 统一建模，宿主机或服务身份不支持的能力会明确降级而非显示伪造数值。进程页使用查询驱动的低频采样缓存与分页查询；结束进程仍不自动提权。旧 REST metrics 契约已移除。详见 [`RelaxKonOS.TaskManager.Rewrite.md`](./applications/RelaxKonOS.TaskManager.Rewrite.md)。
+服务端 loopback URL 由新的本机 Port Forwarding 应用通过 `ssh -L` 映射为有效 localhost 链接；该应用只绑定 loopback，SSH 设置与活动隧道都不会同步。详见 [`RelaxKonOS.Browser.md`](./applications/RelaxKonOS.Browser.md) 与 [`RelaxKonOS.PortForwarding.md`](./applications/RelaxKonOS.PortForwarding.md)。
 
-内置 Docker 管理器已落地（RemoteDocker）：本机 Docker Engine 检测与状态展示、容器启停重启、镜像拉取与镜像源、Compose 校验/部署/停止，以及网络与卷管理。Server 端通过 `IDockerEngineService` 调用 `docker` CLI，`IDockerComposeService` 处理 Compose 编排。详见 [`RelaxKonOS.DockerManager.md`](./applications/RelaxKonOS.DockerManager.md)。
+内置设置中心已实现（RemoteSettings）：Windows 11 / GNOME 风格，5 个分类页（系统 / 个性化 / 时间和语言 / 网络 / 应用）。用户偏好（壁纸 / 主题 / 时间格式 / 日期格式 / 语言 / 区域 / 默认程序）经 Server 端 REST API（`/api/v1.0/workspaces/{id}/preferences`）持久化到 Workspace（`OwnsOne + ToJson` 单列 JSON，多设备共享）；登录时 `PreferencesSync` 自动加载应用到桌面外壳（壁纸 / 任务栏底色 / 时钟格式即时生效），设置应用编辑后防抖 300ms 保存。
 
-内置进程守护已落地（ProcessGuardian）：独立 Guardian Agent 进程、本机认证 IPC（命名管道）、工作负载声明持久化、启停重启与 SignalR 日志广播。健康检查及 systemd/SCM 服务适配仍在设计中。详见 [`RelaxKonOS.ProcessGuardian.md`](./applications/RelaxKonOS.ProcessGuardian.md)。
+宿主 OS 级设置（时区 / 网卡）只读展示（硬约束「权限提升委托宿主 OS」）。详见 [`RelaxKonOS.Settings.md`](./desktop/RelaxKonOS.Settings.md)。
 
-内置防火墙应用已落地（Firewall）：仅 Linux Server + UFW，支持读取状态与编号规则、修改启用状态和默认策略、添加或删除经过结构化校验的规则。已通过系统认证的 root/管理员会话无需重复密码；其他会话通过统一管理员认证取得精确临时授权。Windows Server 不显示此应用。详见 [`RelaxKonOS.Firewall.md`](./applications/RelaxKonOS.Firewall.md)。
+内置任务管理器正在重写（RemoteTaskManager）：性能页改由 Server 端在存在订阅时运行的统一 1 秒采样器、60 秒内存历史与 SignalR（`/hubs/performance`）推送驱动；CPU/内存/文件系统/网络/磁盘 I/O 跨 Windows/Linux 统一建模，宿主机或服务身份不支持的能力会明确降级而非显示伪造数值。
 
-内置证书管理器已落地基础闭环：ACME 证书列表、申请前预检、异步申请/取消、续期、Kestrel 部署、吊销和删除；客户端使用概览/证书列表多页工作区，申请操作在可滚动的模态对话框中完成。DNS-01、Wildcard 与 IIS/Nginx/Apache 部署仍属后续阶段。Web Server 管理器已实现 Nginx MVP：实例与站点发现、配置快照、操作流水及管理员确认后的最小集成；更多 Provider 仍在设计中。
+进程页使用查询驱动的低频采样缓存与分页查询；结束进程仍不自动提权。旧 REST metrics 契约已移除。详见 [`RelaxKonOS.TaskManager.Rewrite.md`](./applications/RelaxKonOS.TaskManager.Rewrite.md)。
+
+内置 Docker 管理器已实现（RemoteDocker）：本机 Docker Engine 检测与状态展示、容器启停重启、镜像拉取与镜像源、Compose 校验/部署/停止，以及网络与卷管理。Server 端通过 `IDockerEngineService` 调用 `docker` CLI，`IDockerComposeService` 处理 Compose 编排。详见 [`RelaxKonOS.DockerManager.md`](./applications/RelaxKonOS.DockerManager.md)。
+
+内置进程守护已实现（ProcessGuardian）：独立 Guardian Agent 进程、本机认证 IPC（命名管道）、工作负载声明持久化、启停重启与 SignalR 日志广播。健康检查及 systemd/SCM 服务适配仍在设计中。详见 [`RelaxKonOS.ProcessGuardian.md`](./applications/RelaxKonOS.ProcessGuardian.md)。
+
+内置防火墙应用已实现（Firewall）：仅 Linux Server + UFW，支持读取状态与编号规则、修改启用状态和默认策略、添加或删除经过结构化校验的规则。已通过系统认证的 root/管理员会话无需重复密码；其他会话通过统一管理员认证取得精确临时授权。Windows Server 不显示此应用。详见 [`RelaxKonOS.Firewall.md`](./applications/RelaxKonOS.Firewall.md)。
+
+内置证书管理器已实现基础流程：ACME 证书列表、申请前预检、异步申请/取消、续期、Kestrel 部署、吊销和删除；客户端使用概览/证书列表多页工作区，申请操作在可滚动的模态对话框中完成。DNS-01、Wildcard 与 IIS/Nginx/Apache 部署仍属后续阶段。Web Server 管理器已实现 Nginx MVP：实例与站点发现、配置快照、操作流水及管理员确认后的最小集成；更多 Provider 仍在设计中。
 
 系统采用**渐进式开发**——在本地 Shell 基础上逐步完善服务端能力：登录与身份、Workspace、安全、云同步、Storage、Remote Runtime 等。各能力的当前状态见 §8。
 
@@ -325,7 +319,7 @@ Application Package
 
 支持两种模式：
 
-- **Remote Mode**：运行于 Server。**已实现**——PTY 运行于 `RelaxKonOS.Server`，经 SignalR Hub（`/hubs/terminals`）流式传输到 Client。Server 端是 PTY 哑中继（只转发字节），VT 渲染在客户端 `TerminalControl` 完成。JWT 通过 SignalR `AccessTokenProvider` 鉴权。详见 [`RelaxKonOS.Terminal.md`](./applications/RelaxKonOS.Terminal.md)。
+- **Remote Mode**：运行于 Server。**已实现**——PTY 运行于 `RelaxKonOS.Server`，经 SignalR Hub（`/hubs/terminals`）流式传输到 Client。Server 端是 PTY 仅转发数据（只转发字节），VT 渲染在客户端 `TerminalControl` 完成。JWT 通过 SignalR `AccessTokenProvider` 鉴权。详见 [`RelaxKonOS.Terminal.md`](./applications/RelaxKonOS.Terminal.md)。
 - **Local Mode**：运行于 Client，例如 PowerShell / CMD / Bash。**已实现**（回退）——未登录时自动回退到本地 PTY。
 
   ```text

@@ -1,11 +1,6 @@
 # RelaxKonOS 架构设计文档
 
-> 本文档定义 RelaxKonOS 的架构设计原则：模块定位、职责边界、依赖约束、应用运行模型、Client / Server 架构原则。
->
-> 本文档描述**设计原则**，不描述当前完整代码结构。
->
-> - 当前项目文件清单与代码地图见 [`RelaxKonOS.md`](../README.md)
-> - 当两者存在差异：**架构原则以本文档为准**，**当前实现以 `RelaxKonOS.md` 为准**。
+本文定义模块职责、依赖约束、应用运行模型及客户端与服务端的架构原则。当前项目结构和代码位置见[文档索引](../README.md)。架构约束以本文为准，具体实现与验收状态以对应领域文档为准。
 
 ---
 
@@ -288,7 +283,7 @@ RelaxKonOS 应用分为两类。
 - **特点**：Server 执行 Runtime、Client 提供交互 UI、状态持久保存。
 - **例如 RemoteTerminal**（**已实现 MVP**，含持久会话）：
   - Client：Terminal Window、Input、Output Rendering（VT 解析在客户端 `TerminalControl` 完成）
-  - Server：PTY（ConPTY/forkpty）、Shell、Process（`TerminalHub` 哑中继，只转发字节）；PTY 由 `TerminalSessionManager`（Singleton）持有，与 Hub 连接解耦
+  - Server：PTY（ConPTY/forkpty）、Shell、Process（`TerminalHub` 仅转发数据，只转发字节）；PTY 由 `TerminalSessionManager`（Singleton）持有，与 Hub 连接解耦
   - 传输：SignalR Hub（`/hubs/terminals`），JWT 鉴权，详见 [`RelaxKonOS.Terminal.md`](../applications/RelaxKonOS.Terminal.md)
 - **断开**：Client Offline 不会导致 Runtime Destroy。`TerminalHub.OnDisconnectedAsync` 仅 `session.Detach`，**保留 PTY**；只有显式 `Close`（关闭终端窗口 / "断开"按钮）才 `manager.Remove` 杀 PTY。PTY 输出始终追加进 1MB 环形缓冲（ConPTY 读线程持续排空管道，shell 不阻塞）。
 - **重新连接**：Restore Terminal Session —— 再次登录打开终端，`Start(Attach)` 命中存活会话则回放 1MB 缓冲快照重现历史输出，可继续输入。这是"再次登录恢复原桌面"的前提。

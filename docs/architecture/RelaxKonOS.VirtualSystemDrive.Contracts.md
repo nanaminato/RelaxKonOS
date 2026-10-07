@@ -56,4 +56,6 @@ SystemDrive/
 
 ## 安全与产品声明
 
-VSD 不是真实 `C:`、宿主文件系统映射或沙箱。第三方 `.roapp` 仍不是恶意代码隔离、签名验证或可信发布者模型；它们只在现有 Host 权限门控下运行。内置 `relaxkonos`、`windows-like`、`macos-like` 与 `ubuntu-like` 仅是 RelaxKonOS 自己的视觉样式，不冒充原始操作系统，也不允许外置包替换 Shell 或截获全局输入。自动化调用必须携带 `UserShortcut` 或 `UserScriptLibrary` 来源并写入脱敏审计；未知/后台来源被拒绝。V1 不执行任意宿主命令、EXE、网络请求、反射代码、程序集片段或静默自动化。
+VSD 不是真实 `C:`、宿主文件系统映射或沙箱。第三方 `.roapp` 仍不是恶意代码隔离、签名验证或可信发布者模型；它们只在现有 Host 权限门控下运行。内置 `relaxkonos`、`windows-like`、`macos-like` 与 `ubuntu-like` 仅是 RelaxKonOS 自己的视觉样式，不冒充原始操作系统，也不允许外置包替换 Shell 或截获全局输入。
+
+自动化调用必须携带 `UserShortcut` 或 `UserScriptLibrary` 来源并写入脱敏审计；未知/后台来源被拒绝。V1 不执行任意宿主命令、EXE、网络请求、反射代码、程序集片段或静默自动化。

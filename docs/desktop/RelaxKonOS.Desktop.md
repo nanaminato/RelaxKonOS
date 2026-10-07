@@ -10,7 +10,9 @@
 
 ## 1. 模块定位
 
-登录成功后，`App.axaml.cs` 把桌面 `MainWindow`（顶层 Avalonia `Window`，`WindowDecorations=None`）显示给用户。`MainWindow` 内部承载由 `ShellRuntime` 激活的 `IDesktopShell`（每个 Shell 提供自己的桌面、启动器、任务栏/Dock 与 `WindowManager` surface）。完整的 launcher 契约、可回滚切换和扩展包边界见 [`RelaxKonOS.ShellLauncher.md`](./RelaxKonOS.ShellLauncher.md)；本文档覆盖宿主窗口控制与模态机制。
+登录成功后，`App.axaml.cs` 把桌面 `MainWindow`（顶层 Avalonia `Window`，`WindowDecorations=None`）显示给用户。`MainWindow` 内部承载由 `ShellRuntime` 激活的 `IDesktopShell`（每个 Shell 提供自己的桌面、启动器、任务栏/Dock 与 `WindowManager` surface）。
+
+完整的 launcher 契约、可回滚切换和扩展包边界见 [`RelaxKonOS.ShellLauncher.md`](./RelaxKonOS.ShellLauncher.md)；本文档覆盖宿主窗口控制与模态机制。
 
 | 能力 | 层 | 说明 |
 |---|---|---|
@@ -36,8 +38,9 @@
 
 验收时检查：最小宿主尺寸 800×520、长服务器/用户/工作区名称、三种内置系统风格、浅色/深色、100%/150%/200% 缩放，以及加载、全屏、固定和断开连接状态。构建成功仅确认编译，不代表这些人工视觉检查已完成。
 
+桌面默认壁纸为客户端内置的山间湖泊照片（`builtin:alpine-lake`）；另提供海岸波浪（`builtin:ocean-waves`）和沙丘光影（`builtin:desert-dunes`）。三张 JPEG 随客户端作为 Avalonia 资源打包，离线解析且使用等比填充。
 
-桌面默认壁纸为客户端内置的山间湖泊照片（`builtin:alpine-lake`）；另提供海岸波浪（`builtin:ocean-waves`）和沙丘光影（`builtin:desert-dunes`）。三张 JPEG 随客户端作为 Avalonia 资源打包，离线解析且使用等比填充。服务端偏好只保存 `wallpaperKey`，选择内置照片或原有渐变背景都不上传或下载壁纸图片。空设置或无法识别的内置标识回到默认照片，已明确选择的渐变背景保持原样；自选图片仍使用 Workspace 图片上传与同步流程，下载期间使用默认照片作为回退背景。图片作者、来源与许可见 [`Assets/Wallpapers/README.md`](../../Client/RelaxKonOS.Client/Assets/Wallpapers/README.md)。
+服务端偏好只保存 `wallpaperKey`，选择内置照片或原有渐变背景都不上传或下载壁纸图片。空设置或无法识别的内置标识回到默认照片，已明确选择的渐变背景保持原样；自选图片仍使用 Workspace 图片上传与同步流程，下载期间使用默认照片作为回退背景。图片作者、来源与许可见 [`Assets/Wallpapers/README.md`](../../Client/RelaxKonOS.Client/Assets/Wallpapers/README.md)。
 
 设置的壁纸区域只显示标题、浏览图片按钮和可随可用宽度自动换行的缩略图网格，不显示逐项文字名称或内置资源、默认图片、上传同步方式的说明；选中项以强调色边框和高亮背景标示，名称保留在悬停提示与无障碍标签中。
 
@@ -314,7 +317,9 @@ Windows 实测追踪发现，点击后重新打开预览时，鼠标仍在缩略
 
 本版范围为 RelaxKonOS 内部窗口，不包含虚拟桌面管理、悬停缩略图时临时透视桌面的 Peek 效果或 Windows 宿主全局快捷键接管。Windows 系统可能优先处理 `Win+Tab`，客户端任务栏的任务视图按钮是可靠入口。
 
-验证命令：`dotnet run --project Tests/Client/RelaxKonOS.WindowPreviews.Tests/RelaxKonOS.WindowPreviews.Tests.csproj -p:UsedAvaloniaProducts=`。测试使用 Headless + Skia 验证真实像素、最小化缓存、恢复刷新、原生内容降级、关闭清理、悬停延迟、移入保持、换组、屏幕边缘定位与 `Esc`，并使用真实 `WindowsLikeDesktopShell` 和 `DesktopShellViewModel` 验证六轮连续点击后再悬停、跨应用切换、多窗口变为单窗口、预览控件身份保持和焦点移交顺序；截图输出到测试项目的 `bin/Debug/net10.0/preview-qa/`。`UsedAvaloniaProducts` 仅在验证命令中置空以跳过构建遥测。真实 Windows、高 DPI、深色模式及大量窗口的人工验收仍需执行。
+验证命令：`dotnet run --project Tests/Client/RelaxKonOS.WindowPreviews.Tests/RelaxKonOS.WindowPreviews.Tests.csproj -p:UsedAvaloniaProducts=`。测试使用 Headless + Skia 验证真实像素、最小化缓存、恢复刷新、原生内容降级、关闭清理、悬停延迟、移入保持、换组、屏幕边缘定位与 `Esc`，并使用真实 `WindowsLikeDesktopShell` 和 `DesktopShellViewModel` 验证六轮连续点击后再悬停、跨应用切换、多窗口变为单窗口、预览控件身份保持和焦点移交顺序；截图输出到测试项目的 `bin/Debug/net10.0/preview-qa/`。
+
+`UsedAvaloniaProducts` 仅在验证命令中置空以跳过构建遥测。真实 Windows、高 DPI、深色模式及大量窗口的人工验收仍需执行。
 
 ---
 
