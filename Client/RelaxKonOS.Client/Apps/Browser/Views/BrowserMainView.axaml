@@ -9,15 +9,12 @@
              Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
 
     <UserControl.Resources>
-        <!-- 侧边栏标签页按钮主题：拉伸宽度，左对齐 -->
-        <ControlTheme x:Key="SidebarTabButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Padding" Value="16,8" />
-            <Setter Property="MinWidth" Value="0" />
-            <Setter Property="MinHeight" Value="36" />
-            <Setter Property="HorizontalAlignment" Value="Stretch" />
-            <Setter Property="HorizontalContentAlignment" Value="Center" />
-            <Setter Property="BorderThickness" Value="0" />
-        </ControlTheme>
+        <StreamGeometry x:Key="BrowserMoreIcon">M12 3 A2 2 0 1 1 12 7 A2 2 0 1 1 12 3 Z M12 10 A2 2 0 1 1 12 14 A2 2 0 1 1 12 10 Z M12 17 A2 2 0 1 1 12 21 A2 2 0 1 1 12 17 Z</StreamGeometry>
+        <StreamGeometry x:Key="BrowserCloseIcon">M5 4 L12 11 L19 4 L20 5 L13 12 L20 19 L19 20 L12 13 L5 20 L4 19 L11 12 L4 5 Z</StreamGeometry>
+        <StreamGeometry x:Key="BrowserBookmarkIcon">F0 M6 3 L18 3 L18 22 L12 18 L6 22 Z M8 5 L8 18 L12 15.5 L16 18 L16 5 Z</StreamGeometry>
+        <StreamGeometry x:Key="BrowserHistoryIcon">F0 M12 2 A10 10 0 1 1 12 22 A10 10 0 1 1 12 2 Z M12 4 A8 8 0 1 0 12 20 A8 8 0 1 0 12 4 Z M11 6 L13 6 L13 11.5 L17 14 L16 15.5 L11 12.5 Z</StreamGeometry>
+        <StreamGeometry x:Key="BrowserChevronIcon">M5 8 L12 15 L19 8 L20.5 9.5 L12 18 L3.5 9.5 Z</StreamGeometry>
+        <StreamGeometry x:Key="BrowserSiteIcon">F0 M12 2 A10 10 0 1 1 12 22 A10 10 0 1 1 12 2 Z M12 4 A8 8 0 1 0 12 20 A8 8 0 1 0 12 4 Z M2 11 L22 11 L22 13 L2 13 Z M11 3 L13 3 L13 21 L11 21 Z</StreamGeometry>
     </UserControl.Resources>
 
     <UserControl.Styles>
@@ -43,9 +40,31 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="FontSize" Value="18" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
         <Style Selector="Button.browser-action:pointerover">
             <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
+        </Style>
+        <Style Selector="Button.browser-entry">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="MinHeight" Value="58" />
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="10" />
+        </Style>
+        <Style Selector="Button.browser-entry:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
+        </Style>
+        <Style Selector="ListBox.browser-collection ListBoxItem /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Padding" Value="2" />
+            <Setter Property="CornerRadius" Value="10" />
+        </Style>
+        <Style Selector="ListBox.browser-collection ListBoxItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         </Style>
         <Style Selector="ListBox.browser-tabs">
             <Setter Property="Background" Value="Transparent" />
@@ -111,10 +130,16 @@
                     </Grid>
                 </Border>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" Margin="6,0,0,0">
-                    <Button Classes="browser-action" Content="▥" Command="{Binding ToggleSidebarCommand}" ToolTip.Tip="{loc:Loc browser.toggle_sidebar}" AutomationProperties.Name="{loc:Loc browser.toggle_sidebar}" />
-                    <Button x:Name="BrowserMenuButton" Classes="browser-action" Content="⋮" ToolTip.Tip="{loc:Loc browser.menu}" AutomationProperties.Name="{loc:Loc browser.menu}">
+                    <Button x:Name="SidebarButton" Classes="browser-action" Command="{Binding ToggleSidebarCommand}" ToolTip.Tip="{loc:Loc browser.toggle_sidebar}" AutomationProperties.Name="{loc:Loc browser.toggle_sidebar}">
+                        <Grid>
+                            <PathIcon Width="18" Height="18" Data="{StaticResource BrowserBookmarkIcon}" IsVisible="{Binding !IsHistorySidebar}" />
+                            <PathIcon Width="18" Height="18" Data="{StaticResource BrowserHistoryIcon}" IsVisible="{Binding IsHistorySidebar}" />
+                        </Grid>
+                    </Button>
+                    <Button x:Name="BrowserMenuButton" Classes="browser-action" ToolTip.Tip="{loc:Loc browser.menu}" AutomationProperties.Name="{loc:Loc browser.menu}">
+                        <Button.Content><PathIcon Width="18" Height="18" Data="{StaticResource BrowserMoreIcon}" /></Button.Content>
                         <Button.Flyout>
-                            <MenuFlyout>
+                            <MenuFlyout Opened="MenuOpened" Closed="MenuClosed">
                                 <MenuItem Header="{loc:Loc browser.new_tab}" Command="{Binding AddTabCommand}" InputGesture="Ctrl+T" />
                                 <MenuItem Header="{loc:Loc browser.show_bookmarks}" Command="{Binding SwitchToBookmarksCommand}" />
                                 <MenuItem Header="{loc:Loc browser.show_history}" Command="{Binding SwitchToHistoryCommand}" InputGesture="Ctrl+H" />
@@ -142,126 +167,137 @@
             </Grid>
         </Border>
 
-        <!-- 主体：左侧边栏（书签/历史） | GridSplitter | WebView -->
+        <!-- The collection side panel uses the right edge and leaves the web surface independent. -->
         <Grid x:Name="BrowserContentGrid">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="280" />
-                <ColumnDefinition Width="4" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="4" />
+                <ColumnDefinition Width="320" />
             </Grid.ColumnDefinitions>
-
-            <!-- 侧边栏 -->
-            <Border Grid.Column="0"
-                    IsVisible="{Binding IsSidebarVisible}" Classes="app-sidebar">
-                <Grid RowDefinitions="Auto,*,Auto">
-                    <!-- 标签页切换 -->
-                    <Grid Grid.Row="0" ColumnDefinitions="*,*" Background="{DynamicResource SurfaceBrush}">
-                        <Button Grid.Column="0" Content="{loc:Loc browser.bookmarks_tab}" Theme="{StaticResource SidebarTabButton}"
-                                Command="{Binding SwitchToBookmarksCommand}"
-                                Background="{Binding ActiveSidebarTab, Converter={x:Static conv:SidebarTabBgConverter.Instance}, ConverterParameter=Bookmarks, Mode=OneWay}" />
-                        <Button Grid.Column="1" Content="{loc:Loc browser.history_tab}" Theme="{StaticResource SidebarTabButton}"
-                                Command="{Binding SwitchToHistoryCommand}"
-                                Background="{Binding ActiveSidebarTab, Converter={x:Static conv:SidebarTabBgConverter.Instance}, ConverterParameter=History, Mode=OneWay}" />
+            <Border x:Name="SidebarPanel" Grid.Column="2" IsVisible="{Binding IsSidebarVisible}"
+                    Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1,0,0,0">
+                <Grid RowDefinitions="Auto,Auto,*,Auto">
+                    <Grid ColumnDefinitions="*,Auto" Margin="12,10,8,4">
+                        <Button x:Name="SidebarSelector" Background="Transparent" BorderThickness="0" Padding="8,4" CornerRadius="8"
+                                HorizontalAlignment="Left" HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <Grid Width="18" Height="18" VerticalAlignment="Center">
+                                    <PathIcon Width="18" Height="18" Data="{StaticResource BrowserBookmarkIcon}" IsVisible="{Binding !IsHistorySidebar}" />
+                                    <PathIcon Width="18" Height="18" Data="{StaticResource BrowserHistoryIcon}" IsVisible="{Binding IsHistorySidebar}" />
+                                </Grid>
+                                <TextBlock Text="{Binding SidebarTitle}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <PathIcon Width="12" Height="12" Data="{StaticResource BrowserChevronIcon}" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <Button.Flyout>
+                                <MenuFlyout Opened="MenuOpened" Closed="MenuClosed">
+                                    <MenuItem Header="{loc:Loc browser.bookmarks}" Command="{Binding SwitchToBookmarksCommand}">
+                                        <MenuItem.Icon><PathIcon Width="16" Height="16" Data="{StaticResource BrowserBookmarkIcon}" /></MenuItem.Icon>
+                                    </MenuItem>
+                                    <MenuItem Header="{loc:Loc browser.history}" Command="{Binding SwitchToHistoryCommand}">
+                                        <MenuItem.Icon><PathIcon Width="16" Height="16" Data="{StaticResource BrowserHistoryIcon}" /></MenuItem.Icon>
+                                    </MenuItem>
+                                </MenuFlyout>
+                            </Button.Flyout>
+                        </Button>
+                        <Button Grid.Column="1" Classes="browser-action" Command="{Binding ToggleSidebarCommand}" ToolTip.Tip="{loc:Loc browser.close_panel}" AutomationProperties.Name="{loc:Loc browser.close_panel}">
+                            <PathIcon Width="14" Height="14" Data="{StaticResource BrowserCloseIcon}" />
+                        </Button>
                     </Grid>
-
-                    <!-- 书签列表 -->
-                    <ListBox Grid.Row="1"
-                             x:Name="BookmarksList"
-                             ItemsSource="{Binding Bookmarks}"
-                             Background="Transparent"
-                             BorderThickness="0"
-                             SelectionMode="Single"
-                             DoubleTapped="BookmarksList_DoubleTapped"
-                             IsVisible="{Binding ActiveSidebarTab, Converter={x:Static conv:SidebarTabVisibilityConverter.Instance}, ConverterParameter=Bookmarks, Mode=OneWay}">
+                    <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="20,0,8,8">
+                        <TextBlock Text="{Binding CollectionCountText}" Opacity="0.6" FontSize="12" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Classes="browser-action" ToolTip.Tip="{loc:Loc browser.collection_options}" AutomationProperties.Name="{loc:Loc browser.collection_options}">
+                            <PathIcon Width="16" Height="16" Data="{StaticResource BrowserMoreIcon}" />
+                            <Button.Flyout>
+                                <MenuFlyout Opened="MenuOpened" Closed="MenuClosed">
+                                    <MenuItem Header="{loc:Loc browser.clear_bookmarks}" Command="{Binding ClearBookmarksCommand}" IsVisible="{Binding !IsHistorySidebar}" IsEnabled="{Binding HasBookmarks}" />
+                                    <MenuItem Header="{loc:Loc browser.clear_history}" Command="{Binding ClearHistoryCommand}" IsVisible="{Binding IsHistorySidebar}" IsEnabled="{Binding HasHistory}" />
+                                </MenuFlyout>
+                            </Button.Flyout>
+                        </Button>
+                    </Grid>
+                    <ListBox Grid.Row="2" x:Name="BookmarksList" Classes="browser-collection" ItemsSource="{Binding Bookmarks}" Margin="8,0"
+                             Background="Transparent" BorderThickness="0" IsVisible="{Binding !IsHistorySidebar}">
                         <ListBox.ItemTemplate>
                             <DataTemplate x:DataType="dto:BookmarkDto">
-                                <Grid ColumnDefinitions="*,Auto" Margin="0,2">
-                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
-                                        <TextBlock Text="🔖" FontSize="13" VerticalAlignment="Center" />
-                                        <StackPanel Orientation="Vertical" Spacing="1">
-                                            <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" MaxWidth="200" />
-                                            <TextBlock Text="{Binding Url}" FontSize="10" Opacity="0.6" TextTrimming="CharacterEllipsis" MaxWidth="200" />
-                                        </StackPanel>
-                                    </StackPanel>
-                                    <Button Grid.Column="1" Content="✕" Padding="6,2"
-                                            Background="Transparent" BorderThickness="0"
-                                            Click="DeleteItemButton_Click"
-                                            Tag="bookmark"
-                                            ToolTip.Tip="{loc:Loc browser.delete_bookmark}" />
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <Button Classes="browser-entry" Click="OpenEntry_Click" ToolTip.Tip="{Binding Url}">
+                                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                            <Border Width="32" Height="32" CornerRadius="16" Background="{DynamicResource SurfaceSunkenBrush}" VerticalAlignment="Center">
+                                                <PathIcon Width="16" Height="16" Data="{StaticResource BrowserSiteIcon}" />
+                                            </Border>
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
+                                                <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Text="{Binding Url, Converter={x:Static conv:BrowserSiteConverter.Instance}}" TextTrimming="CharacterEllipsis" FontSize="11" Opacity="0.6" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Button>
+                                    <Button Grid.Column="1" Classes="browser-action" VerticalAlignment="Center" ToolTip.Tip="{loc:Loc browser.entry_options}" AutomationProperties.Name="{loc:Loc browser.entry_options}">
+                                        <PathIcon Width="16" Height="16" Data="{StaticResource BrowserMoreIcon}" />
+                                        <Button.Flyout>
+                                            <MenuFlyout Opened="MenuOpened" Closed="MenuClosed">
+                                                <MenuItem Header="{loc:Loc browser.open}" Tag="open" Click="EntryMenu_Click" />
+                                                <MenuItem Header="{loc:Loc browser.open_new_tab}" Tag="new-tab" Click="EntryMenu_Click" />
+                                                <MenuItem Header="{loc:Loc browser.copy_link}" Tag="copy" Click="EntryMenu_Click" />
+                                                <Separator />
+                                                <MenuItem Header="{loc:Loc browser.delete_bookmark}" Tag="delete" Click="EntryMenu_Click" />
+                                            </MenuFlyout>
+                                        </Button.Flyout>
+                                    </Button>
                                 </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
-                        <ListBox.Styles>
-                            <Style Selector="ListBoxItem /template/ ContentPresenter#PART_ContentPresenter">
-                                <Setter Property="Padding" Value="8,4" />
-                            </Style>
-                        </ListBox.Styles>
                     </ListBox>
-
-                    <!-- 历史列表 -->
-                    <ListBox Grid.Row="1"
-                             x:Name="HistoryList"
-                             ItemsSource="{Binding History}"
-                             Background="Transparent"
-                             BorderThickness="0"
-                             SelectionMode="Single"
-                             DoubleTapped="HistoryList_DoubleTapped"
-                             IsVisible="{Binding ActiveSidebarTab, Converter={x:Static conv:SidebarTabVisibilityConverter.Instance}, ConverterParameter=History, Mode=OneWay}">
+                    <ListBox Grid.Row="2" x:Name="HistoryList" Classes="browser-collection" ItemsSource="{Binding HistoryRows}" Margin="8,0"
+                             Background="Transparent" BorderThickness="0" IsVisible="{Binding IsHistorySidebar}">
                         <ListBox.ItemTemplate>
-                            <DataTemplate x:DataType="dto:HistoryEntryDto">
-                                <Grid ColumnDefinitions="*,Auto" Margin="0,2">
-                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
-                                        <TextBlock Text="🕘" FontSize="13" VerticalAlignment="Center" />
-                                        <StackPanel Orientation="Vertical" Spacing="1">
-                                            <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" MaxWidth="180" />
-                                            <TextBlock Text="{Binding LastVisitedAt, StringFormat='{}{0:MM/dd HH:mm}'}" FontSize="10" Opacity="0.6" />
-                                        </StackPanel>
-                                    </StackPanel>
-                                    <Button Grid.Column="1" Content="✕" Padding="6,2"
-                                            Background="Transparent" BorderThickness="0"
-                                            Click="DeleteItemButton_Click"
-                                            Tag="history"
-                                            ToolTip.Tip="{loc:Loc browser.delete_history}" />
-                                </Grid>
+                            <DataTemplate x:DataType="vm:BrowserHistoryRow">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding DateHeading}" IsVisible="{Binding ShowDateHeading}" FontWeight="SemiBold" FontSize="12" Margin="12,12,0,6" />
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <Button Classes="browser-entry" Click="OpenEntry_Click" ToolTip.Tip="{Binding Item.Url}">
+                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                                <TextBlock Text="{Binding Time}" FontSize="11" Opacity="0.6" VerticalAlignment="Center" Width="36" />
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
+                                                    <TextBlock Text="{Binding Item.Title}" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{Binding Item.Url, Converter={x:Static conv:BrowserSiteConverter.Instance}}" TextTrimming="CharacterEllipsis" FontSize="11" Opacity="0.6" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </Button>
+                                        <Button Grid.Column="1" Classes="browser-action" VerticalAlignment="Center" ToolTip.Tip="{loc:Loc browser.entry_options}" AutomationProperties.Name="{loc:Loc browser.entry_options}">
+                                            <PathIcon Width="16" Height="16" Data="{StaticResource BrowserMoreIcon}" />
+                                            <Button.Flyout>
+                                                <MenuFlyout Opened="MenuOpened" Closed="MenuClosed">
+                                                    <MenuItem Header="{loc:Loc browser.open}" Tag="open" Click="EntryMenu_Click" />
+                                                    <MenuItem Header="{loc:Loc browser.open_new_tab}" Tag="new-tab" Click="EntryMenu_Click" />
+                                                    <MenuItem Header="{loc:Loc browser.copy_link}" Tag="copy" Click="EntryMenu_Click" />
+                                                    <Separator />
+                                                    <MenuItem Header="{loc:Loc browser.delete_history}" Tag="delete" Click="EntryMenu_Click" />
+                                                </MenuFlyout>
+                                            </Button.Flyout>
+                                        </Button>
+                                    </Grid>
+                                </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
-                        <ListBox.Styles>
-                            <Style Selector="ListBoxItem /template/ ContentPresenter#PART_ContentPresenter">
-                                <Setter Property="Padding" Value="8,4" />
-                            </Style>
-                        </ListBox.Styles>
                     </ListBox>
-
-                    <!-- 底部清空按钮（按当前标签页激活对应按钮） -->
-                    <Border Grid.Row="2" Classes="app-statusbar">
-                        <StackPanel Orientation="Vertical" Spacing="4">
-                            <Button Content="{loc:Loc browser.load_more}" Command="{Binding LoadMoreBookmarksCommand}"
-                                    IsVisible="{Binding CanLoadMoreBookmarks}" IsEnabled="{Binding !IsSyncingCollections}" />
-                            <Button Content="{loc:Loc browser.load_more}" Command="{Binding LoadMoreHistoryCommand}"
-                                    IsVisible="{Binding CanLoadMoreHistory}" IsEnabled="{Binding !IsSyncingCollections}" />
-                            <Button Content="{loc:Loc browser.clear_bookmarks}"
-                                    Command="{Binding ClearBookmarksCommand}"
-                                    IsVisible="{Binding ActiveSidebarTab, Converter={x:Static conv:SidebarTabVisibilityConverter.Instance}, ConverterParameter=Bookmarks, Mode=OneWay}"
-                                    HorizontalAlignment="Stretch"
-                                    HorizontalContentAlignment="Center"
-                                    Padding="12,4" />
-                            <Button Content="{loc:Loc browser.clear_history}"
-                                    Command="{Binding ClearHistoryCommand}"
-                                    IsVisible="{Binding ActiveSidebarTab, Converter={x:Static conv:SidebarTabVisibilityConverter.Instance}, ConverterParameter=History, Mode=OneWay}"
-                                    HorizontalAlignment="Stretch"
-                                    HorizontalContentAlignment="Center"
-                                    Padding="12,4" />
-                        </StackPanel>
-                    </Border>
+                    <StackPanel Grid.Row="2" Margin="24" VerticalAlignment="Center" Spacing="12" IsVisible="{Binding IsBookmarksEmpty}">
+                        <TextBlock Text="{loc:Loc browser.empty_bookmarks}" TextWrapping="Wrap" TextAlignment="Center"
+                                   Opacity="0.6" />
+                    </StackPanel>
+                    <StackPanel Grid.Row="2" Margin="24" VerticalAlignment="Center" IsVisible="{Binding IsHistoryEmpty}">
+                        <TextBlock Text="{loc:Loc browser.empty_history}" TextWrapping="Wrap" TextAlignment="Center" Opacity="0.6" />
+                    </StackPanel>
+                    <StackPanel Grid.Row="3" Margin="16,8" HorizontalAlignment="Stretch">
+                        <Button Content="{loc:Loc browser.load_more}" Command="{Binding LoadMoreBookmarksCommand}" IsVisible="{Binding CanLoadMoreBookmarks}" IsEnabled="{Binding !IsSyncingCollections}" HorizontalContentAlignment="Center" />
+                        <Button Content="{loc:Loc browser.load_more}" Command="{Binding LoadMoreHistoryCommand}" IsVisible="{Binding CanLoadMoreHistory}" IsEnabled="{Binding !IsSyncingCollections}" HorizontalContentAlignment="Center" />
+                    </StackPanel>
                 </Grid>
             </Border>
-
-            <GridSplitter Grid.Column="1" Width="4" Background="{DynamicResource SurfaceBrush}" ResizeDirection="Columns"
-                          IsVisible="{Binding IsSidebarVisible}" />
+            <GridSplitter Grid.Column="1" Width="4" Background="{DynamicResource BorderDefaultBrush}" ResizeDirection="Columns" IsVisible="{Binding IsSidebarVisible}" />
 
             <!-- Linux delegates pages to the system browser process; other platforms use
                  an embedded NativeWebView. This avoids an unsupported WebKitGTK host. -->
-            <Grid Grid.Column="2" Background="{DynamicResource SurfaceBrush}">
+            <Grid Grid.Column="0" Background="{DynamicResource SurfaceBrush}">
                 <Border x:Name="NewTabPage" IsVisible="{Binding !HasCurrentPage}" Background="{DynamicResource SurfaceBrush}">
                     <StackPanel MaxWidth="440" Margin="32" VerticalAlignment="Center" Spacing="16">
                         <TextBlock Text="RelaxKonOS" FontSize="40" FontWeight="SemiBold" HorizontalAlignment="Center" />

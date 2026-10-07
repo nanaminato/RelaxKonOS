@@ -56,6 +56,21 @@
         "browser.connection_https": "HTTPS 接続。証明書の詳細はプラットフォームのブラウザーが管理します。",
         "browser.connection_information": "サイト情報。このページは暗号化されていない接続を使用する可能性があります。",
         "browser.new_tab_hint": "上のアドレスバーにウェブサイトまたは検索語を入力してください。ブックマークと履歴はサイドパネルから開けます。",
-        "browser.focus_address": "検索またはアドレスを入力"
+        "browser.focus_address": "検索またはアドレスを入力",
+        "browser.history": "履歴",
+        "browser.close_panel": "サイドパネルを閉じる",
+        "browser.collection_options": "リストの管理",
+        "browser.entry_options": "その他の操作",
+        "browser.open": "開く",
+        "browser.open_new_tab": "新しいタブで開く",
+        "browser.copy_link": "リンクをコピー",
+        "browser.empty_bookmarks": "ブックマークはまだありません。アドレスバーの星でサイトを保存できます。",
+        "browser.empty_history": "閲覧履歴はまだありません。訪問したサイトがここに表示されます。",
+        "browser.collection_count": "{0} 件を読み込み済み",
+        "browser.history.today": "今日",
+        "browser.history.yesterday": "昨日",
+        "browser.history.date": "{0:yyyy年M月d日}",
+        "browser.copied_link": "リンクをコピーしました",
+        "browser.entry_failed": "操作に失敗しました：{0}"
     }
 }

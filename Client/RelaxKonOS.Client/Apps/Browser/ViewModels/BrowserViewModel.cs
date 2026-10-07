@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -37,6 +38,13 @@ public sealed partial class BrowserViewModel : LocalizedObservableObject
         _client = client;
         Bookmarks = new ObservableCollection<BookmarkDto>();
         History = new ObservableCollection<HistoryEntryDto>();
+        Bookmarks.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasBookmarks));
+            OnPropertyChanged(nameof(IsBookmarksEmpty));
+            OnPropertyChanged(nameof(CollectionCountText));
+        };
+        History.CollectionChanged += OnHistoryCollectionChanged;
         AddTab();
     }
 
@@ -100,6 +108,58 @@ public sealed partial class BrowserViewModel : LocalizedObservableObject
 
     /// <summary>历史记录列表（侧边栏"历史记录"标签页绑定，按 LastVisitedAt 倒序）。</summary>
     public ObservableCollection<HistoryEntryDto> History { get; }
+    public ObservableCollection<BrowserHistoryRow> HistoryRows { get; } = new();
+    public bool HasBookmarks => Bookmarks.Count > 0;
+    public bool HasHistory => History.Count > 0;
+    public bool IsBookmarksEmpty => !IsHistorySidebar && !HasBookmarks;
+    public bool IsHistoryEmpty => IsHistorySidebar && !HasHistory;
+    public bool IsHistorySidebar => ActiveSidebarTab == SidebarTab.History;
+    public string SidebarTitle => LocalizedText.Get(IsHistorySidebar ? "browser.history" : "browser.bookmarks");
+    public string CollectionCountText => LocalizedText.Format("browser.collection_count", IsHistorySidebar ? History.Count : Bookmarks.Count);
+
+    private void OnHistoryCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        switch (e.Action)
+        {
+            case NotifyCollectionChangedAction.Reset:
+                HistoryRows.Clear();
+                break;
+            case NotifyCollectionChangedAction.Add:
+                for (var i = 0; i < e.NewItems!.Count; i++)
+                {
+                    HistoryRows.Insert(e.NewStartingIndex + i, new BrowserHistoryRow((HistoryEntryDto)e.NewItems[i]!));
+                    UpdateDateBoundary(e.NewStartingIndex + i);
+                }
+                UpdateDateBoundary(e.NewStartingIndex + e.NewItems.Count);
+                break;
+            case NotifyCollectionChangedAction.Remove:
+                for (var i = 0; i < e.OldItems!.Count; i++) HistoryRows.RemoveAt(e.OldStartingIndex);
+                UpdateDateBoundary(e.OldStartingIndex);
+                break;
+            case NotifyCollectionChangedAction.Replace:
+                for (var i = 0; i < e.NewItems!.Count; i++)
+                {
+                    HistoryRows[e.NewStartingIndex + i] = new BrowserHistoryRow((HistoryEntryDto)e.NewItems[i]!);
+                    UpdateDateBoundary(e.NewStartingIndex + i);
+                }
+                UpdateDateBoundary(e.NewStartingIndex + e.NewItems.Count);
+                break;
+            default:
+                HistoryRows.Clear();
+                foreach (var item in History) HistoryRows.Add(new BrowserHistoryRow(item));
+                for (var i = 0; i < HistoryRows.Count; i++) UpdateDateBoundary(i);
+                break;
+        }
+        OnPropertyChanged(nameof(HasHistory));
+        OnPropertyChanged(nameof(IsHistoryEmpty));
+        OnPropertyChanged(nameof(CollectionCountText));
+    }
+
+    private void UpdateDateBoundary(int index)
+    {
+        if (index >= 0 && index < HistoryRows.Count)
+            HistoryRows[index].ShowDateHeading = index == 0 || HistoryRows[index].Date != HistoryRows[index - 1].Date;
+    }
 
     [ObservableProperty] private string _addressText = string.Empty;
     [ObservableProperty] private bool _isLoading;
@@ -109,7 +169,7 @@ public sealed partial class BrowserViewModel : LocalizedObservableObject
     [ObservableProperty] private bool _isCurrentBookmarked;
     public bool CanLoadMoreBookmarks => HasMoreBookmarks && ActiveSidebarTab == SidebarTab.Bookmarks;
     public bool CanLoadMoreHistory => HasMoreHistory && ActiveSidebarTab == SidebarTab.History;
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(CanLoadMoreBookmarks)), NotifyPropertyChangedFor(nameof(CanLoadMoreHistory))] private SidebarTab _activeSidebarTab = SidebarTab.Bookmarks;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(CanLoadMoreBookmarks)), NotifyPropertyChangedFor(nameof(CanLoadMoreHistory)), NotifyPropertyChangedFor(nameof(IsHistorySidebar)), NotifyPropertyChangedFor(nameof(SidebarTitle)), NotifyPropertyChangedFor(nameof(CollectionCountText)), NotifyPropertyChangedFor(nameof(IsBookmarksEmpty)), NotifyPropertyChangedFor(nameof(IsHistoryEmpty))] private SidebarTab _activeSidebarTab = SidebarTab.Bookmarks;
     [ObservableProperty] private bool _isSidebarVisible;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(FullScreenMenuText))]
@@ -549,28 +609,41 @@ public sealed partial class BrowserViewModel : LocalizedObservableObject
         finally { IsSyncingCollections = false; }
     }
 
-    /// <summary>把用户输入归一为绝对 Uri。已是绝对 URL 直接用；否则尝试加 https:// 前缀；
-    /// 形如 "example.com foo"（含空格）当作搜索引擎查询（用 bing）。null/空返回 null。</summary>
+    /// <summary>Try parsing addresses without throwing on user input. Malformed explicit URLs
+    /// are rejected; domain names get HTTPS, loopback addresses get HTTP, and words become searches.</summary>
     private static Uri? NormalizeAddress(string? address)
     {
         if (string.IsNullOrWhiteSpace(address)) return null;
         var trimmed = address.Trim();
-        if (Uri.IsWellFormedUriString(trimmed, UriKind.Absolute))
-            return new Uri(trimmed);
-        // localhost:9999 is a normal browser address even without an explicit scheme.
-        if (Uri.TryCreate("http://" + trimmed, UriKind.Absolute, out var loopback)
-            && IsLoopbackAddress(loopback))
-            return loopback;
-        // 看起来像域名（无 scheme）—— 补 https://
-        if (trimmed.Contains('.') && !trimmed.Contains(' '))
-            return new Uri("https://" + trimmed);
-        // 否则当作搜索查询
-        return new Uri("https://www.bing.com/search?q=" + Uri.EscapeDataString(trimmed));
+        var hasExplicitScheme = trimmed.Contains("://", StringComparison.Ordinal);
+        var hasWhitespace = trimmed.Any(char.IsWhiteSpace);
+        // Test local host:port before absolute parsing, which otherwise treats localhost as a scheme.
+        if (!hasExplicitScheme && !hasWhitespace)
+        {
+            if (Uri.TryCreate("http://" + trimmed, UriKind.Absolute, out var loopback)
+                && IsLoopbackAddress(loopback))
+                return loopback;
+            if (trimmed.StartsWith("localhost:", StringComparison.OrdinalIgnoreCase)
+                || trimmed.StartsWith('['))
+                return null;
+        }
+        var firstDot = trimmed.IndexOf('.');
+        var firstColon = trimmed.IndexOf(':');
+        // A domain:port must not be mistaken for an opaque URI whose scheme is the domain name.
+        if (!hasExplicitScheme && !hasWhitespace && firstDot >= 0 && (firstColon < 0 || firstDot < firstColon))
+            return Uri.TryCreate("https://" + trimmed, UriKind.Absolute, out var domain) ? domain : null;
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var absolute)
+            && Uri.IsWellFormedUriString(trimmed, UriKind.Absolute))
+            return absolute;
+        // Never prepend a second scheme to a malformed explicit URL.
+        if (hasExplicitScheme) return null;
+        return Uri.TryCreate("https://www.bing.com/search?q=" + Uri.EscapeDataString(trimmed),
+            UriKind.Absolute, out var search) ? search : null;
     }
 
     private static bool IsLoopbackAddress(Uri uri)
         => uri.IsAbsoluteUri
-           && (uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || uri.Host == "127.0.0.1")
+           && uri.IsLoopback
            && (uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
                || uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase));
 }

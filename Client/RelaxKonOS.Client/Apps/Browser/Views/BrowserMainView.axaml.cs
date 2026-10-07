@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -13,7 +14,7 @@ namespace RelaxKonOS.Client.Apps.Browser.Views;
 /// <summary>Bridges browser navigation to the view-model and selects the supported native host per platform.</summary>
 public partial class BrowserMainView : UserControl
 {
-    private const double DefaultSidebarWidth = 280;
+    private const double DefaultSidebarWidth = 320;
     private const double SidebarSplitterWidth = 4;
 
     private BrowserViewModel? _observedViewModel;
@@ -23,10 +24,10 @@ public partial class BrowserMainView : UserControl
     private readonly Dictionary<BrowserTabViewModel, NativeWebView> _tabViews = new();
     private bool _nativeVisible = true;
     private bool _closed;
-    private bool _menuOpen;
+    private int _openMenus;
     private double _sidebarWidth = DefaultSidebarWidth;
 
-    private ColumnDefinition SidebarColumn => BrowserContentGrid.ColumnDefinitions[0];
+    private ColumnDefinition SidebarColumn => BrowserContentGrid.ColumnDefinitions[2];
     private ColumnDefinition SidebarSplitterColumn => BrowserContentGrid.ColumnDefinitions[1];
 
     public BrowserMainView()
@@ -37,11 +38,6 @@ public partial class BrowserMainView : UserControl
             : "BrowserMainView initialized; creating embedded NativeWebView.");
         // Native surfaces are created lazily so an empty tab has no heavyweight adapter.
         if (!_useExternalBrowser) WebViewHost.Content = _surfaces;
-        if (BrowserMenuButton.Flyout is { } menu)
-        {
-            menu.Opened += (_, _) => { _menuOpen = true; UpdateNativeVisibility(); };
-            menu.Closed += (_, _) => { _menuOpen = false; UpdateNativeVisibility(); };
-        }
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         SizeChanged += (_, _) =>
@@ -108,7 +104,7 @@ public partial class BrowserMainView : UserControl
     private void UpdateNativeVisibility()
     {
         foreach (var surface in _tabViews.Values)
-            surface.IsVisible = _nativeVisible && !_menuOpen && ReferenceEquals(surface, _webView);
+            surface.IsVisible = _nativeVisible && _openMenus == 0 && ReferenceEquals(surface, _webView);
     }
 
     private static void ConfigureWebViewEnvironment(object? sender, WebViewEnvironmentRequestedEventArgs e)
@@ -262,35 +258,57 @@ public partial class BrowserMainView : UserControl
         }
     }
 
-    private void GoButton_Click(object? sender, RoutedEventArgs e)
-        => ViewModel?.NavigateCommand.Execute(AddressBox.Text);
-
-    // ---- 侧边栏列表 ----
-
-    private void BookmarksList_DoubleTapped(object? sender, RoutedEventArgs e)
+    private void MenuOpened(object? sender, EventArgs e)
     {
-        if (BookmarksList.SelectedItem is BookmarkDto bm)
-            ViewModel?.NavigateCommand.Execute(bm.Url);
+        ++_openMenus;
+        UpdateNativeVisibility();
     }
 
-    private void HistoryList_DoubleTapped(object? sender, RoutedEventArgs e)
+    private void MenuClosed(object? sender, EventArgs e)
     {
-        if (HistoryList.SelectedItem is HistoryEntryDto h)
-            ViewModel?.NavigateCommand.Execute(h.Url);
+        _openMenus = Math.Max(0, _openMenus - 1);
+        UpdateNativeVisibility();
     }
 
-    /// <summary>侧边栏每行的"✕"删除按钮。Tag 区分 bookmark / history，DataContext 是该行 DTO。</summary>
-    private void DeleteItemButton_Click(object? sender, RoutedEventArgs e)
+    private void OpenEntry_Click(object? sender, RoutedEventArgs e)
     {
-        if (sender is not Button btn || ViewModel is null) return;
-        switch (btn.Tag as string)
+        var url = (sender as Control)?.DataContext switch
         {
-            case "bookmark" when btn.DataContext is BookmarkDto bm:
-                _ = ViewModel.DeleteBookmarkCommand.ExecuteAsync(bm);
-                break;
-            case "history" when btn.DataContext is HistoryEntryDto h:
-                _ = ViewModel.DeleteHistoryCommand.ExecuteAsync(h);
-                break;
+            BookmarkDto bookmark => bookmark.Url,
+            BrowserHistoryRow history => history.Item.Url,
+            _ => null
+        };
+        if (url is not null) ViewModel?.NavigateCommand.Execute(url);
+    }
+
+    private async void EntryMenu_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem menu || ViewModel is not { } model) return;
+        var bookmark = menu.DataContext as BookmarkDto;
+        var history = (menu.DataContext as BrowserHistoryRow)?.Item;
+        var url = bookmark?.Url ?? history?.Url;
+        if (url is null) return;
+        try
+        {
+            switch (menu.Tag as string)
+            {
+                case "open": await model.NavigateCommand.ExecuteAsync(url); break;
+                case "new-tab":
+                    model.AddTabCommand.Execute(null);
+                    await model.NavigateCommand.ExecuteAsync(url);
+                    break;
+                case "copy":
+                    var clipboard = TopLevel.GetTopLevel(this)?.Clipboard ?? throw new InvalidOperationException("Clipboard is unavailable.");
+                    await clipboard.SetTextAsync(url);
+                    model.StatusText = RelaxKonOS.Client.Localization.LocalizedText.Ref("browser.copied_link");
+                    break;
+                case "delete" when bookmark is not null: await model.DeleteBookmarkCommand.ExecuteAsync(bookmark); break;
+                case "delete" when history is not null: await model.DeleteHistoryCommand.ExecuteAsync(history); break;
+            }
+        }
+        catch (Exception error)
+        {
+            model.StatusText = RelaxKonOS.Client.Localization.LocalizedText.Ref("browser.entry_failed", error.Message);
         }
     }
 

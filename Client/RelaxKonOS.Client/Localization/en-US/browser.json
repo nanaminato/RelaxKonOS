@@ -56,6 +56,21 @@
         "browser.connection_https": "HTTPS connection. Certificate details are managed by the platform browser.",
         "browser.connection_information": "Site information. This page may use an unencrypted connection.",
         "browser.new_tab_hint": "Enter a website or search in the address bar above. Your bookmarks and history are available in the side panel.",
-        "browser.focus_address": "Search or enter an address"
+        "browser.focus_address": "Search or enter an address",
+        "browser.history": "History",
+        "browser.close_panel": "Close side panel",
+        "browser.collection_options": "Manage list",
+        "browser.entry_options": "More actions",
+        "browser.open": "Open",
+        "browser.open_new_tab": "Open in new tab",
+        "browser.copy_link": "Copy link",
+        "browser.empty_bookmarks": "No bookmarks yet. Use the star in the address bar to save a favorite site.",
+        "browser.empty_history": "No browsing history yet. Sites you visit will appear here.",
+        "browser.collection_count": "{0} items loaded",
+        "browser.history.today": "Today",
+        "browser.history.yesterday": "Yesterday",
+        "browser.history.date": "{0:MM/dd/yyyy}",
+        "browser.copied_link": "Link copied",
+        "browser.entry_failed": "Action failed: {0}"
     }
 }
