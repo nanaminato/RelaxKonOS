@@ -135,7 +135,7 @@ internal fun DeploymentDefinitionDialog(owner: SessionState.Active, baseline: De
                     FlowRow(Modifier.fillMaxWidth().padding(Spacing.lg), horizontalArrangement = Arrangement.End, verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                         TextButton(onClick = requestClose, enabled = !busy) { Text(stringResource(if (saved) R.string.common_close else R.string.common_cancel)) }
                         if (preview) TextButton(onClick = { preview = false }, enabled = editable) { Text(stringResource(R.string.common_edit)) }
-                        if (!preview) Button(onClick = { preview = true }, enabled = editable && request != null && !unstaged) { Text(stringResource(R.string.deployments_step_preview)) }
+                        if (!preview) Button(onClick = { preview = true }, enabled = editable && request != null && !unstaged) { Text(stringResource(R.string.deployments_definition_preview)) }
                         else Button(onClick = { save(onSaved) }, enabled = editable && request != null && !unstaged) { Text(stringResource(R.string.deployments_save_definition)) }
                     }
                 }

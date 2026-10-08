@@ -1,18 +1,17 @@
 package app.relaxkonos.mobile.ui.editor
 
-import android.app.Application
 import androidx.compose.runtime.*
 import androidx.compose.ui.text.input.*
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import app.relaxkonos.mobile.RelaxKonApplication
+import app.relaxkonos.mobile.core.auth.AuthSession
+import app.relaxkonos.mobile.data.TextEditorRepository
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.*
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
-class TextEditorViewModel(application: Application) : AndroidViewModel(application) {
-    private val client get() = getApplication<RelaxKonApplication>().container.textEditor
+class TextEditorViewModel(private val session: AuthSession, private val client: TextEditorRepository) : ViewModel() {
     private var owner: SessionState.Active? = null
     private var repositoryId: String? = null
     private var initialPath: String? = null
@@ -31,7 +30,7 @@ class TextEditorViewModel(application: Application) : AndroidViewModel(applicati
     var saved by mutableStateOf(false); private set
     init {
         viewModelScope.launch {
-            getApplication<RelaxKonApplication>().container.session.state.collect { current ->
+            session.state.collect { current ->
                 if (owner != null && current !== owner) clear()
             }
         }
@@ -39,6 +38,7 @@ class TextEditorViewModel(application: Application) : AndroidViewModel(applicati
     val dirty get() = baseline?.let { value.text != it.content || encoding != it.encoding || bom != it.bom }
         ?: (value.text.isNotEmpty() || encoding != "utf-8" || bom || destination.isNotEmpty())
     val valid get() = TextEditorPolicy.valid(value.text, encoding, bom)
+    val verificationPath get() = pendingPath.takeIf { unknown }
 
     fun start(session: SessionState.Active, path: String?, gitId: String?) {
         if (owner === session && initialPath == path && repositoryId == gitId) return
@@ -71,11 +71,11 @@ class TextEditorViewModel(application: Application) : AndroidViewModel(applicati
     }
     fun reload() {
         val session = owner ?: return
-        val path = pendingPath ?: baseline?.path ?: initialPath ?: destination.takeIf { it.isNotBlank() } ?: return
+        val path = verificationPath ?: baseline?.path ?: initialPath ?: destination.trim().takeIf { it.isNotBlank() } ?: return
         launch {
             when (val result = client.read(session, path, repositoryId)) {
                 is ApiResult.Success -> {
-                    if (baseline != null && dirty || unknown) {
+                    if (dirty || unknown) {
                         if (result.value.content == value.text && result.value.encoding == encoding && result.value.bom == bom) {
                             accept(result.value); saved = true
                         } else latest = result.value

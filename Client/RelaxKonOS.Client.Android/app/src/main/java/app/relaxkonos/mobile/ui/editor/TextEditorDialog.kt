@@ -21,6 +21,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.*
@@ -31,7 +34,10 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 @Composable
 fun TextEditorDialog(owner: SessionState.Active, path: String?, repositoryId: String? = null,
     onSaved: (RemoteTextFile) -> Unit = {}, onClose: () -> Unit) {
-    val editor: TextEditorViewModel = viewModel(key = "shared-text-editor")
+    val container = appContainer()
+    val editor: TextEditorViewModel = viewModel(key = "shared-text-editor", factory = viewModelFactory {
+        initializer { TextEditorViewModel(container.session, container.textEditor) }
+    })
     var confirmClose by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var replacement by remember { mutableStateOf("") }
@@ -47,19 +53,27 @@ fun TextEditorDialog(owner: SessionState.Active, path: String?, repositoryId: St
             Column(Modifier.fillMaxSize().imePadding().padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 ScreenHeader(stringResource(R.string.editor_title), onBack = { if (!editor.busy) close() })
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    Text(editor.baseline?.path ?: stringResource(R.string.editor_new), style = MaterialTheme.typography.titleSmall)
+                    Text(editor.verificationPath ?: editor.baseline?.path ?: stringResource(R.string.editor_new), style = MaterialTheme.typography.titleSmall)
                     OperationMessageDialog(if (editor.busy) null else if (editor.unknown) stringResource(R.string.editor_unknown) else if (editor.failed) stringResource(R.string.editor_failed) else null, tone = if (editor.unknown) StatusTone.Warning else StatusTone.Danger)
 
                     if (editor.saved) Text(stringResource(R.string.editor_saved), color = MaterialTheme.colorScheme.primary)
                     if (!editor.valid) Text(stringResource(R.string.editor_invalid), color = MaterialTheme.colorScheme.error)
                     editor.latest?.let { latest ->
+                        Column(Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                         Text(stringResource(R.string.editor_conflict), color = MaterialTheme.colorScheme.error)
-                        SelectionContainer(Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState())) {
+                        Text(latest.path, style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.editor_read_format, latest.encoding.uppercase(),
+                            stringResource(if (latest.bom) R.string.editor_with_bom else R.string.editor_without_bom)))
+                        Text(stringResource(R.string.editor_draft_format, editor.encoding.uppercase(),
+                            stringResource(if (editor.bom) R.string.editor_with_bom else R.string.editor_without_bom)))
+                        SelectionContainer {
                             Text(lineDiff(latest.content, editor.value.text), fontFamily = FontFamily.Monospace)
                         }
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                             OutlinedButton(onClick = editor::discardLatest, enabled = !editor.busy) { Text(stringResource(R.string.git_discard_draft)) }
                             OutlinedButton(onClick = editor::compareLatest, enabled = !editor.busy) { Text(stringResource(R.string.git_compare_latest)) }
+                        }
                         }
                     }
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {

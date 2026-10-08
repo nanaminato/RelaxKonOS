@@ -78,6 +78,25 @@ class GuardianRepositoryTest {
         gateway.onGuardianDefinition = { ApiResult.Success(GuardianDefinitionResult(true, "", original.copy(id = "other"))) }
         assertTrue(repository.definition(owner, "job") is ApiResult.Transport)
     }
+    @Test fun `unexpected read errors return safe failures and cancellation still propagates`() = runTest {
+        val owner = login()
+        gateway.onGuardianDefinition = { throw IllegalStateException("private server detail") }
+        assertEquals(ApiResult.Transport(null), repository.definition(owner, "job"))
+        gateway.onGuardianDefinition = { throw CancellationException("cancelled") }
+        assertTrue(runCatching { repository.definition(owner, "job") }.exceptionOrNull() is CancellationException)
+    }
+    @Test fun `unexpected save error sends once and clears approval without replay`() = runTest {
+        val owner = login(); val password = "secret".toCharArray()
+        gateway.onGuardianSave = { _, _ -> sends++; throw IllegalStateException("private server detail") }
+        assertEquals(ApiResult.Transport(null), repository.save(owner, original, original, GuardianApproval("root", password)))
+        assertEquals(1, sends); assertTrue(password.all { it == '\u0000' })
+    }
+    @Test fun `unexpected action error returns a failure without replay`() = runTest {
+        val owner = login()
+        gateway.onGuardianAction = { _, _ -> sends++; throw IllegalStateException("private server detail") }
+        assertEquals(ApiResult.Transport(null), repository.action(owner, "job", "start"))
+        assertEquals(1, sends)
+    }
     @Test fun `closed action set and unsuccessful receipts cannot look successful`() = runTest {
         val owner = login()
         gateway.onGuardianAction = { id, action -> assertEquals("job", id); assertEquals("start", action); sends++; ApiResult.Success(GuardianOperation(false, "guardian.run_as_identity_mismatch")) }

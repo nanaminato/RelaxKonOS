@@ -17,6 +17,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.*
@@ -29,7 +31,11 @@ import kotlinx.coroutines.delay
 
 @Composable
 internal fun GitWorkspaceSection(owner: SessionState.Active, section: String, onSelectSection: (String) -> Unit) {
-    val model: GitWorkspaceViewModel = viewModel()
+    val container = appContainer()
+    val model: GitWorkspaceViewModel = viewModel(factory = viewModelFactory {
+        initializer { GitWorkspaceViewModel(container.session, container.git, container.gitWorkspace,
+            container.installations, container.operationIndex, container.elevationAnswers) }
+    })
     val state = model.state
     var name by remember(owner) { mutableStateOf("") }
     var directory by remember(owner) { mutableStateOf("") }
@@ -65,7 +71,7 @@ internal fun GitWorkspaceSection(owner: SessionState.Active, section: String, on
     if (section == "build") return
     RefreshProgressIndicator(visible = state.busy)
     if (!owner.executionEligibility.available) Text(stringResource(R.string.gw_identity_unavailable), color = MaterialTheme.colorScheme.error)
-    GitWorkspaceProblem(state.problem.takeUnless { state.busy })
+    if (state.conflict == null) GitWorkspaceProblem(state.problem.takeUnless { state.busy })
     if (state.saved) Text(stringResource(R.string.gw_receipt), color = MaterialTheme.colorScheme.primary)
     WorkspaceSection(section == "environment") {
         GitPanel(stringResource(R.string.git_environment)) {
@@ -365,6 +371,7 @@ private fun GitConflictDialog(file: GitConflictFile, model: GitWorkspaceViewMode
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 ScreenHeader(stringResource(R.string.gw_conflict_editor), onBack = ::close, subtitle = file.path)
+                GitWorkspaceProblem(model.state.problem.takeUnless { model.state.busy })
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text(stringResource(R.string.gw_conflict_note), style = MaterialTheme.typography.bodySmall)
                     listOf(R.string.gw_base to file.base, R.string.gw_ours to file.ours, R.string.gw_theirs to file.theirs).forEach { (title, content) ->

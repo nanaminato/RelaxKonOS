@@ -341,6 +341,8 @@ class AppContainer(context: Context) {
     }
     val webPublishing = app.relaxkonos.mobile.data.WebPublishingRepository(gateway, session, elevations, operationIndex)
     val scriptTasks = ScriptTaskRepository(gateway, session, operationIndex)
+    val scriptRequests = app.relaxkonos.mobile.data.ScriptRequestJournal(
+        app.relaxkonos.mobile.data.FileScriptRequestStorage(appContext.noBackupFilesDir))
     val backupRecovery = BackupRecoveryRepository(gateway, session, operationIndex,
         BackupRecoveryRequestJournal(FileBackupRecoveryRequestStorage(appContext.noBackupFilesDir)))
     val installations = app.relaxkonos.mobile.data.InstallationRepository(gateway, session, elevations, operationIndex,

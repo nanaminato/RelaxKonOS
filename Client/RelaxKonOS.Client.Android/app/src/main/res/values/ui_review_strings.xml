@@ -12,4 +12,10 @@
     <string name="server_maintenance_verification_failed">The observed installation does not meet the expected result. Check the current status and operation history before retrying.</string>
     <string name="smb_refresh_keep_draft">Refresh and keep draft</string>
     <string name="firewall_refresh_keep_draft">Refresh and keep draft</string>
+    <string name="backup_recovery_not_supported">This server does not provide backup and recovery capability.</string>
+    <string name="editor_read_format">Read version: %1$s · %2$s</string>
+    <string name="editor_draft_format">Draft: %1$s · %2$s</string>
+    <string name="editor_with_bom">with BOM</string>
+    <string name="editor_without_bom">without BOM</string>
+    <string name="certificates_read_failed">Unable to read certificate information. Check the connection and refresh; your draft is retained.</string>
 </resources>

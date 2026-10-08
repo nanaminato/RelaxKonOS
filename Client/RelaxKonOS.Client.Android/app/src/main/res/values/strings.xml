@@ -793,6 +793,7 @@
     <string name="deployments_tags_unavailable">Image tags unavailable; enter a versioned reference manually.</string>
     <string name="deployments_name_rule">3–40 characters. Start with a letter or digit; use lowercase letters, digits, hyphens or underscores thereafter.</string>
     <string name="deployments_save_definition">Save definition</string>
+    <string name="deployments_definition_preview">Review changes</string>
     <string name="deployments_definition_saved">Application definition saved: %1$s</string>
     <string name="deployments_step_error">Check the %1$s field before continuing.</string>
     <string name="deployments_create_note">Choose a server-supported source. Deployment stays bound to loopback; the server validates the source, ports, access and available resources.</string>
@@ -1090,6 +1091,10 @@
     <string name="scripts_identity">Execution account: %1$s</string>
     <string name="scripts_loading">Loading script tasks…</string>
     <string name="scripts_failed">Script operation failed. Check the Guardian Agent and execution permissions.</string>
+    <string name="scripts_write_unknown">The request result is unknown. Refresh the task list and check execution status before running or cancelling again.</string>
+    <string name="scripts_verify">Verify request</string>
+    <string name="scripts_storage_failed">The recovery record could not be read or saved. New requests are paused. Retry verification.</string>
+    <string name="scripts_pending_task">Task to verify: %1$s</string>
     <string name="scripts_new">New script task</string>
     <string name="scripts_cancel">Cancel task</string>
     <string name="scripts_truncated">Older output was truncated.</string>

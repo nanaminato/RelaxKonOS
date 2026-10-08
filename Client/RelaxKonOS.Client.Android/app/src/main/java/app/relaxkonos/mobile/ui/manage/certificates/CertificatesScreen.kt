@@ -11,6 +11,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.data.PendingCertificateRequest
@@ -22,12 +24,15 @@ import java.util.Date
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CertificatesScreen(onBack: () -> Unit, initialOperationId: String? = null, serverHttpsOnly: Boolean = false, modifier: Modifier = Modifier) {
-    val model: CertificatesViewModel = viewModel()
+    val container = appContainer()
+    val model: CertificatesViewModel = viewModel(factory = viewModelFactory {
+        initializer { CertificatesViewModel(container.session, container.certificates, container.operationIndex, container.elevationAnswers) }
+    })
     val state = model.state
     val epoch = model.sessionEpoch
     val owner = appContainer().activeSession
     var section by rememberSaveable(owner, epoch) { mutableStateOf(if (initialOperationId != null) "operations" else if (serverHttpsOnly) "certificates" else "overview") }
-    OperationMessageDialog(if (state.busy) null else state.problemCode?.let { certificateProblemLabel(it) } ?: if (state.uncertain) stringResource(R.string.certificates_uncertain) else null, tone = if (state.problemCode == null) StatusTone.Warning else StatusTone.Danger)
+    if (state.draft == null) CertificateFeedback(state)
     LaunchedEffect(initialOperationId) { if (initialOperationId != null) section = "operations" }
     val available = owner?.capabilities?.contains(ServerCapabilities.CERTIFICATES) == true
     val canManage = available && owner?.privilegedOperations == true
@@ -237,6 +242,7 @@ private fun CertificateEditor(state: CertificatesState, model: CertificatesViewM
     fun close() { if (!state.busy) { if (draft != state.initialDraft) discard = true else model.closeDraft() } }
     AlertDialog(onDismissRequest = ::close, modifier = Modifier.imePadding(), title = { Text(stringResource(if (draft.selfSigned) R.string.certificates_self_signed else R.string.certificates_issue)) },
         text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            CertificateFeedback(state)
             Text(stringResource(if (draft.selfSigned) R.string.certificates_self_signed_note else R.string.certificates_challenge_note))
             if (state.pending.any { it.target == null }) Text(stringResource(R.string.certificates_restore_form_note))
             OutlinedTextField(draft.domainsText, { model.update(draft.copy(domainsText = it)) }, enabled = !locked, label = { Text(stringResource(R.string.certificates_domains)) }, modifier = Modifier.fillMaxWidth())
@@ -275,4 +281,11 @@ private fun CertificateEditor(state: CertificatesState, model: CertificatesViewM
         confirmButton = { Button(onClick = { if (submit) model.submitDraft() else model.closeDraft(); submit = false; discard = false }) { Text(stringResource(R.string.certificates_confirm)) } },
         dismissButton = { TextButton(onClick = { discard = false; submit = false }) { Text(stringResource(R.string.common_cancel)) } })
 }
+@Composable
+private fun CertificateFeedback(state: CertificatesState) {
+    OperationMessageDialog(if (state.busy) null else state.problemCode?.let { certificateProblemLabel(it) }
+        ?: if (state.uncertain) stringResource(R.string.certificates_uncertain) else null,
+        tone = if (state.problemCode == null) StatusTone.Warning else StatusTone.Danger)
+}
+
 private fun date(value: Long): String = DateFormat.getDateTimeInstance().format(Date(value))

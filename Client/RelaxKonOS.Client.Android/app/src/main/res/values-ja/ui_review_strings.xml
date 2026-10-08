@@ -12,4 +12,10 @@
     <string name="server_maintenance_verification_failed">現在のインストール状態が想定した結果と一致しません。再試行する前に現在の状態と操作履歴を確認してください。</string>
     <string name="smb_refresh_keep_draft">下書きを保持して再読み込み</string>
     <string name="firewall_refresh_keep_draft">下書きを保持して再読み込み</string>
+    <string name="backup_recovery_not_supported">このサーバーはバックアップと復元機能を提供していません。</string>
+    <string name="editor_read_format">読み込んだ版：%1$s · %2$s</string>
+    <string name="editor_draft_format">下書き：%1$s · %2$s</string>
+    <string name="editor_with_bom">BOM あり</string>
+    <string name="editor_without_bom">BOM なし</string>
+    <string name="certificates_read_failed">証明書情報を読み込めません。接続を確認して更新してください。下書きは保持されています。</string>
 </resources>

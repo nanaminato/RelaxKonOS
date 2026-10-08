@@ -109,6 +109,16 @@ class GitWorkspaceRepositoryTest {
         onSend = { ApiResult.Success(GitOperation(true, "push", false, emptyList())) }
         assertTrue(client.change(owner, preview(owner)) is ApiResult.Transport); assertEquals(1, journal.pending(owner).size)
     }
+    @Test fun `conflict reads reject another path and malformed revision without dispatching mutations`() = runTest {
+        val owner = signIn()
+        conflict = conflict.copy(path = "other.txt")
+        assertTrue(client.conflict(owner, id, "a.txt") is ApiResult.Transport)
+        conflict = conflict.copy(path = "a.txt", revision = "invalid")
+        assertTrue(client.conflict(owner, id, "a.txt") is ApiResult.Transport)
+        conflict = conflict.copy(revision = "B".repeat(64))
+        assertEquals(conflict, (client.conflict(owner, id, "a.txt") as ApiResult.Success).value)
+        assertEquals(0, sends)
+    }
     @Test fun `conflict revision change and normal writes during merge cannot dispatch`() = runTest {
         val owner = signIn(); conflicts = GitConflictState("merge", listOf("a.txt"))
         val preview = preview(owner, GitMutation(GitAction.Resolve, conflict = conflict, choice = "edited", content = "resolved"))

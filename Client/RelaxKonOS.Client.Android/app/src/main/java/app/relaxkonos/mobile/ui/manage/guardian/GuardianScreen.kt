@@ -108,7 +108,7 @@ fun GuardianScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Mod
         if (state.loading) ActivityIndicator(stringResource(R.string.guardian_loading))
         state.status?.let { status -> ExecutionStatusChip(stringResource(if (status.running) R.string.guardian_running else R.string.guardian_unavailable), if (status.running) "running" else null, task = false) }
         if (state.stale) Text(stringResource(R.string.guardian_stale), color = MaterialTheme.colorScheme.error)
-        OperationMessageDialog(if (state.loading) null else if (state.error) stringResource(guardianProblemLabel(state.problemCode)) else if (state.unknown) stringResource(R.string.guardian_unknown) else null, tone = if (state.error) StatusTone.Danger else StatusTone.Warning)
+        OperationMessageDialog(if (state.loading) null else if (state.unknown) stringResource(R.string.guardian_unknown) else if (state.error) stringResource(guardianProblemLabel(state.problemCode)) else null, tone = if (state.unknown) StatusTone.Warning else StatusTone.Danger)
         PageActionRow(refresh = {
             OutlinedButton(onClick = { model.load(owner) }, enabled = !state.loading) { ActionLabel(R.string.common_refresh) }
         }, actions = {
@@ -228,7 +228,7 @@ private fun GuardianEditor(owner: SessionState.Active, draft: GuardianDraft, sta
     Column(modifier.fillMaxSize().windowInsetsPadding(WindowInsets.ime).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         ScreenHeader(title = stringResource(R.string.guardian_editor), onBack = { close() })
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            OperationMessageDialog(if (state.loading) null else if (state.error) stringResource(guardianProblemLabel(state.problemCode)) else if (state.unknown) stringResource(R.string.guardian_unknown) else null, tone = if (state.error) StatusTone.Danger else StatusTone.Warning)
+            OperationMessageDialog(if (state.loading) null else if (state.unknown) stringResource(R.string.guardian_unknown) else if (state.error) stringResource(guardianProblemLabel(state.problemCode)) else null, tone = if (state.unknown) StatusTone.Warning else StatusTone.Danger)
             if (state.unknown || state.error) OutlinedButton(onClick = { if (draft.dirty(owner.serverPlatform)) readConfirm = true else onRead() }, enabled = !state.loading) { Text(stringResource(R.string.guardian_read_current)) }
             OutlinedTextField(draft.name, { draft.name = it }, label = { Text(stringResource(R.string.guardian_name)) }, modifier = Modifier.fillMaxWidth(), enabled = !state.loading)
             RemotePathField(draft.executable, { draft.executable = it }, R.string.guardian_executable, RemotePathKind.File, modifier = Modifier.fillMaxWidth(), enabled = !state.loading)

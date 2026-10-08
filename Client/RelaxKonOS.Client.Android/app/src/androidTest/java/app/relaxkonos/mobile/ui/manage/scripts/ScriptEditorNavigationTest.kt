@@ -1,6 +1,11 @@
 package app.relaxkonos.mobile.ui.manage.scripts
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.espresso.Espresso
@@ -17,11 +22,16 @@ class ScriptEditorNavigationTest {
     private val owner = SessionState.Active("https://example.com", "https://example.com", "user", "Workspace",
         emptySet(), "linux", ExecutionEligibility(true, null, false), workspaceId = "workspace")
     private fun text(id: Int) = InstrumentationRegistry.getInstrumentation().targetContext.getString(id)
+    @Composable private fun Editor(state: ScriptsUiState, onBack: () -> Unit,
+        onSubmit: (app.relaxkonos.mobile.core.net.ScriptRequest) -> Unit) {
+        var draft by remember { mutableStateOf(ScriptDraft(owner.userName)) }
+        ScriptEditor(owner, state, draft, { draft = it }, onBack, onSubmit, {})
+    }
 
     @Test fun systemBackAllowsCancelThenExplicitDiscardWithoutSubmitting() {
         var left = false
         var submitted = false
-        rule.setContent { MaterialTheme { ScriptEditor(owner, { left = true }, { submitted = true }) } }
+        rule.setContent { MaterialTheme { Editor(ScriptsUiState(), { left = true }, { submitted = true }) } }
         rule.onNodeWithText(text(R.string.guardian_executable)).performTextInput("/usr/bin/true")
         Espresso.closeSoftKeyboard()
         Espresso.pressBack()
@@ -37,10 +47,34 @@ class ScriptEditorNavigationTest {
 
     @Test fun emptyDraftReturnsWithoutConfirmation() {
         var left = false
-        rule.setContent { MaterialTheme { ScriptEditor(owner, { left = true }, {}) } }
+        rule.setContent { MaterialTheme { Editor(ScriptsUiState(), { left = true }, {}) } }
         Espresso.closeSoftKeyboard()
         Espresso.pressBack()
         rule.runOnIdle { assertTrue(left) }
         rule.onNodeWithText(text(R.string.ui_discard_draft_title)).assertDoesNotExist()
+    }
+
+    @Test fun busyAndUnknownResultsKeepDraftAndPreventAnotherRun() {
+        var left = false
+        val state = mutableStateOf(ScriptsUiState())
+        rule.setContent { MaterialTheme { Editor(state.value, { left = true }, {}) } }
+        rule.onNodeWithText(text(R.string.guardian_executable)).performTextInput("/usr/bin/true")
+        Espresso.closeSoftKeyboard()
+        rule.runOnIdle { state.value = ScriptsUiState(loading = true) }
+        rule.onNodeWithText(text(R.string.guardian_executable)).assertIsNotEnabled()
+        Espresso.pressBack()
+        rule.runOnIdle { assertFalse(left) }
+        rule.onNodeWithText(text(R.string.ui_discard_draft_title)).assertDoesNotExist()
+        rule.runOnIdle { state.value = ScriptsUiState(error = true, problemCode = "guardian.agent_unavailable") }
+        rule.onNodeWithText("/usr/bin/true").assertExists()
+        rule.onNodeWithText(text(R.string.guardian_executable)).assertIsEnabled()
+        rule.onNodeWithText(text(R.string.guardian_agent_failed)).assertExists()
+        rule.runOnIdle { state.value = ScriptsUiState(error = true, problemCode = "scripts.write_unknown") }
+        rule.onNodeWithText(text(R.string.scripts_write_unknown)).assertExists()
+        rule.onNodeWithText(text(R.string.guardian_executable)).assertIsNotEnabled()
+        Espresso.pressBack()
+        rule.onNodeWithText(text(R.string.common_cancel)).performClick()
+        rule.onNodeWithText("/usr/bin/true").assertExists()
+        rule.runOnIdle { assertFalse(left) }
     }
 }

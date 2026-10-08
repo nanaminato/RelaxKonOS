@@ -27,7 +27,13 @@ class ScriptTaskRepository(
         requests.withLock {
             fun verify() { if (session.state.value !== owner) throw CancellationException("Script session changed") }
             verify()
-            val result = session.authenticated { url, token -> verify(); request(url, token) }
+            val result = try {
+                session.authenticated { url, token -> verify(); request(url, token) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                ApiResult.Transport(null)
+            }
             verify()
             val task = ((result as? ApiResult.Success)?.value as? ScriptTaskResult)?.task
             if (task != null) runCatching { operationIndex.record(owner, OperationDomain.Script, task.id, task.id) }

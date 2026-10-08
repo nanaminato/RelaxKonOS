@@ -12,4 +12,10 @@
     <string name="server_maintenance_verification_failed">当前安装状态未达到预期结果。请先检查当前状态和操作历史，再明确重试。</string>
     <string name="smb_refresh_keep_draft">刷新并保留草稿</string>
     <string name="firewall_refresh_keep_draft">刷新并保留草稿</string>
+    <string name="backup_recovery_not_supported">当前服务器未提供备份与恢复能力。</string>
+    <string name="editor_read_format">读取版本：%1$s · %2$s</string>
+    <string name="editor_draft_format">草稿：%1$s · %2$s</string>
+    <string name="editor_with_bom">带 BOM</string>
+    <string name="editor_without_bom">无 BOM</string>
+    <string name="certificates_read_failed">无法读取证书信息。请检查连接后刷新；草稿仍保留。</string>
 </resources>

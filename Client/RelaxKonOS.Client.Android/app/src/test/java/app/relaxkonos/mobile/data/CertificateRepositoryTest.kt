@@ -135,6 +135,25 @@ class CertificateRepositoryTest {
         repository.submit(owner, ElevationAnswerProvider.Declines, CertificateAction.SelfSigned, null, request)
         assertEquals(1, reads); assertEquals(2, keys.size); assertEquals(keys[0], keys[1]); assertEquals(1, journal.pending(owner).size)
     }
+    @Test fun `failed retry facts preserve the original pending request without another mutation`() = runTest {
+        val owner = signIn(); var sends = 0
+        gateway.onCertificateMutation = { _, _, _, _ -> sends++; ApiResult.Transport(null) }
+        repository.submit(owner, ElevationAnswerProvider.Declines, CertificateAction.SelfSigned, null, request)
+        val original = journal.pending(owner).single()
+        gateway.onCertificates = { ApiResult.Transport(null) }
+        assertTrue(repository.submit(owner, ElevationAnswerProvider.Declines, CertificateAction.SelfSigned, null, request) is ApiResult.Transport)
+        assertEquals(1, sends); assertEquals(original, journal.pending(owner).single())
+    }
+    @Test fun `failed original operation lookup keeps recovery pending without resubmitting`() = runTest {
+        val owner = signIn(); var sends = 0
+        gateway.onCertificateMutation = { _, _, _, _ -> sends++; ApiResult.Transport(null) }
+        repository.submit(owner, ElevationAnswerProvider.Declines, CertificateAction.SelfSigned, null, request)
+        val original = journal.pending(owner).single()
+        gateway.onCertificateOperation = { ApiResult.Transport(null) }
+        assertTrue(repository.recover(owner, operation.operationId, original) is ApiResult.Transport)
+        assertEquals(1, sends); assertEquals(original, journal.pending(owner).single())
+        assertTrue(index.forOwner(owner).isEmpty())
+    }
     @Test fun `changed form cannot replace unknown request and plaintext is not persisted`() = runTest {
         val owner = signIn()
         repository.submit(owner, ElevationAnswerProvider.Declines, CertificateAction.SelfSigned, null, request)

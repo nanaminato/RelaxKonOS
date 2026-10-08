@@ -423,7 +423,7 @@ private fun DeploymentCreateDialog(
                                 Text(form.siteId.ifBlank { "—" })
                             }
                             CheckboxOption(form.deployNow, stringResource(R.string.deployments_deploy_now), !submitting) { form.deployNow = it }
-                            Text(stringResource(R.string.deployments_replacement_note), style = MaterialTheme.typography.bodySmall)
+                            if (form.deployNow) Text(stringResource(R.string.deployments_replacement_note), style = MaterialTheme.typography.bodySmall)
                         }
                         6 -> {
                             RefreshProgressIndicator(visible = submitting)
@@ -783,7 +783,11 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
  */
 @Composable
 private fun BackupRecoveryCard(owner: SessionState.Active?, applicationId: String) {
-    if (owner == null || ServerCapabilities.BACKUP_RECOVERY !in owner.capabilities) return
+    if (owner == null) return
+    if (ServerCapabilities.BACKUP_RECOVERY !in owner.capabilities) {
+        EmptyHint(stringResource(R.string.backup_recovery_not_supported))
+        return
+    }
     val container = appContainer()
     val scope = rememberCoroutineScope()
     val ownerKey = DeploymentOwnerKey(owner)

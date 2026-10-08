@@ -76,7 +76,15 @@ class GuardianRepository(private val gateway: RelaxKonGateway, private val sessi
     private suspend fun <T> owned(owner: SessionState.Active, call: suspend (String, String) -> ApiResult<T>): ApiResult<T> = pipe.withLock {
         fun guard() { if (session.state.value !== owner) throw CancellationException("Guardian owner changed.") }
         guard()
-        session.authenticated { url, token -> guard(); call(url, token).also { guard() } }.also { guard() }
+        val result = try {
+            session.authenticated { url, token -> guard(); call(url, token).also { guard() } }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            ApiResult.Transport(null)
+        }
+        guard()
+        result
     }
     companion object {
         internal fun matchesReceipt(requested: GuardianDefinition, receipt: GuardianDefinition): Boolean {

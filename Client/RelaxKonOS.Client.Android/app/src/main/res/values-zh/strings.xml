@@ -756,6 +756,7 @@
     <string name="deployments_tags_unavailable">无法获取镜像标签；请手动输入带版本的引用。</string>
     <string name="deployments_name_rule">长度 3–40 个字符。首字符为字母或数字，其后使用小写字母、数字、连字符或下划线。</string>
     <string name="deployments_save_definition">保存应用定义</string>
+    <string name="deployments_definition_preview">确认修改</string>
     <string name="deployments_definition_saved">已保存应用定义：%1$s</string>
     <string name="deployments_step_error">继续前请检查 %1$s 字段。</string>
     <string name="deployments_create_note">请选择服务器支持的来源。应用仅监听服务器本机地址（127.0.0.1）；服务器会验证来源、端口、权限和可用资源。</string>
@@ -1053,6 +1054,10 @@
     <string name="scripts_identity">执行账号：%1$s</string>
     <string name="scripts_loading">正在加载脚本任务…</string>
     <string name="scripts_failed">脚本操作失败，请检查 Guardian Agent 与执行权限。</string>
+    <string name="scripts_write_unknown">请求结果尚不明确。请刷新任务列表并核对执行状态，再决定是否重新运行或取消。</string>
+    <string name="scripts_verify">核实请求</string>
+    <string name="scripts_storage_failed">无法读取或保存恢复记录，已暂停新请求。请重试核实。</string>
+    <string name="scripts_pending_task">待核实任务：%1$s</string>
     <string name="scripts_new">新建脚本任务</string>
     <string name="scripts_cancel">取消任务</string>
     <string name="scripts_truncated">较早的输出已截断。</string>

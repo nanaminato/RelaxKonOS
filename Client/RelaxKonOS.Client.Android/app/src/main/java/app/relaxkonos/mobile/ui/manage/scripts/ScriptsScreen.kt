@@ -35,6 +35,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.GuardianApproval
@@ -57,6 +60,8 @@ private fun scriptStateLabel(state: String): Int = when (state) {
 }
 
 private fun scriptProblemLabel(code: String?): Int = when (code) {
+    "scripts.storage_failed" -> R.string.scripts_storage_failed
+    "scripts.write_unknown" -> R.string.scripts_write_unknown
     "guardian.agent_permission_denied" -> R.string.guardian_agent_permission
     "guardian.agent_unavailable", "guardian.agent_timeout", "guardian.agent_not_configured" -> R.string.guardian_agent_failed
     "guardian.script_timeout" -> R.string.scripts_timeout_reason
@@ -67,31 +72,37 @@ private fun scriptProblemLabel(code: String?): Int = when (code) {
 @Composable
 fun ScriptsScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modifier = Modifier,
     initialTaskId: String? = null) {
-    val model: ScriptsViewModel = viewModel()
+    val container = appContainer()
+    val model: ScriptsViewModel = viewModel(factory = viewModelFactory {
+        initializer { ScriptsViewModel(container.session, container.scriptTasks, container.scriptRequests) }
+    })
     val state by model.state.collectAsStateWithLifecycle()
-    var editing by remember(owner) { mutableStateOf(false) }
+    val editing = state.draft != null
     LaunchedEffect(owner, initialTaskId) {
         model.load(owner)
         if (initialTaskId != null) model.select(initialTaskId)
     }
-    LaunchedEffect(owner, state.selected?.id) {
-        model.observeSelected()
+    LaunchedEffect(owner, editing, state.selected?.id, state.selected?.state, state.error) {
+        if (!editing) model.observeSelected()
     }
     if (editing) {
         androidx.compose.runtime.key(owner) {
-            ScriptEditor(owner, onBack = { editing = false }, onSubmit = { model.submit(it); editing = false }, modifier = modifier)
+            ScriptEditor(owner, state, requireNotNull(state.draft), model::updateDraft,
+                onBack = model::closeEditor, onSubmit = model::submit, onVerify = model::verifyRequest, modifier = modifier)
         }
         return
     }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         ScreenHeader(title = stringResource(R.string.scripts_title), onBack = onBack)
         Text(stringResource(R.string.scripts_identity, owner.userName))
+        state.pending?.let { Text(stringResource(R.string.scripts_pending_task, it.taskId)) }
         if (state.loading) ActivityIndicator(stringResource(R.string.scripts_loading))
-        OperationMessageDialog(if (state.error && !state.loading) stringResource(R.string.scripts_failed) else null)
+        OperationMessageDialog(if (state.error && !state.loading) stringResource(scriptProblemLabel(state.problemCode)) else null)
         PageActionRow(refresh = {
             OutlinedButton(onClick = { model.load(owner) }, enabled = !state.loading) { ActionLabel(R.string.common_refresh) }
         }, actions = {
-            Button(onClick = { editing = true }, enabled = !state.loading) { Text(stringResource(R.string.scripts_new)) }
+            Button(onClick = model::openEditor,
+                enabled = !state.loading && state.pending == null && state.journalAvailable) { Text(stringResource(R.string.scripts_new)) }
         })
         state.tasks.forEach { task ->
             OutlinedCard(onClick = { model.select(task.id) }, modifier = Modifier.fillMaxWidth()) {
@@ -108,7 +119,7 @@ fun ScriptsScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modi
             ExecutionStatusChip(stringResource(scriptStateLabel(task.state)), task.state)
             Text("${task.runAs} · ${task.exitCode?.toString() ?: "—"}")
             task.problemCode?.let { Text(stringResource(scriptProblemLabel(it))) }
-            if (task.state in setOf("queued", "running")) OutlinedButton(onClick = { model.cancel(task.id) }, enabled = !state.loading) {
+            if (task.state in setOf("queued", "running")) OutlinedButton(onClick = { model.cancel(task.id) }, enabled = !state.loading && state.pending == null && state.journalAvailable) {
                 Text(stringResource(R.string.scripts_cancel))
             }
             if (task.outputTruncated) Text(stringResource(R.string.scripts_truncated))
@@ -121,23 +132,21 @@ fun ScriptsScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modi
 }
 
 @Composable
-internal fun ScriptEditor(owner: SessionState.Active, onBack: () -> Unit, onSubmit: (ScriptRequest) -> Unit,
+internal fun ScriptEditor(owner: SessionState.Active, state: ScriptsUiState, draft: ScriptDraft,
+    onDraftChange: (ScriptDraft) -> Unit, onBack: () -> Unit, onSubmit: (ScriptRequest) -> Unit, onVerify: () -> Unit,
     modifier: Modifier = Modifier) {
-    var executable by remember { mutableStateOf("") }
-    var arguments by remember { mutableStateOf("") }
-    var directory by remember { mutableStateOf("") }
-    var environment by remember { mutableStateOf("") }
-    var timeout by remember { mutableStateOf("300") }
-    var runAs by remember { mutableStateOf(owner.userName) }
-    var adminName by remember(owner) {
-        mutableStateOf("")
-    }
+    val executable = draft.executable
+    val arguments = draft.arguments
+    val directory = draft.directory
+    val environment = draft.environment
+    val timeout = draft.timeout
+    val runAs = draft.runAs
+    val adminName = draft.adminName
     var adminPassword by remember { mutableStateOf("") }
     var confirmLeave by remember { mutableStateOf(false) }
-    val dirty = executable.isNotEmpty() || arguments.isNotEmpty() || directory.isNotEmpty() ||
-        environment.isNotEmpty() || timeout != "300" || runAs != owner.userName ||
-        adminName.isNotEmpty() || adminPassword.isNotEmpty()
-    val leave = { if (dirty) confirmLeave = true else onBack() }
+    val dirty = draft.dirty(owner.userName) || adminPassword.isNotEmpty()
+    val leave = { if (!state.loading) { if (dirty) confirmLeave = true else onBack() } }
+    val editable = !state.loading && state.pending == null && state.journalAvailable && state.problemCode != "scripts.write_unknown"
     BackHandler(onBack = leave)
     if (confirmLeave) AlertDialog(
         onDismissRequest = { confirmLeave = false },
@@ -157,18 +166,26 @@ internal fun ScriptEditor(owner: SessionState.Active, onBack: () -> Unit, onSubm
     }
     Column(modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         ScreenHeader(title = stringResource(R.string.scripts_new), onBack = leave)
-        RemotePathField(executable, { executable = it }, R.string.guardian_executable,
-            RemotePathKind.File, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(arguments, { arguments = it }, label = { Text(stringResource(R.string.guardian_arguments)) }, modifier = Modifier.fillMaxWidth(), minLines = 3)
-        RemotePathField(directory, { directory = it }, R.string.guardian_directory,
-            RemotePathKind.Directory, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(environment, { environment = it }, label = { Text(stringResource(R.string.scripts_environment)) }, modifier = Modifier.fillMaxWidth(), minLines = 3)
-        OutlinedTextField(timeout, { timeout = it.filter(Char::isDigit) }, label = { Text(stringResource(R.string.scripts_timeout)) })
-        OutlinedTextField(runAs, { runAs = it }, label = { Text(stringResource(R.string.guardian_run_as)) })
+        if (state.loading) ActivityIndicator(stringResource(R.string.scripts_loading))
+        if (state.error && !state.loading) Text(stringResource(scriptProblemLabel(state.problemCode)),
+            color = MaterialTheme.colorScheme.error)
+        state.pending?.let { pending ->
+            Text(stringResource(R.string.scripts_pending_task, pending.taskId))
+        }
+        if (state.pending != null || !state.journalAvailable)
+            OutlinedButton(onClick = onVerify, enabled = !state.loading) { Text(stringResource(R.string.scripts_verify)) }
+        RemotePathField(executable, { onDraftChange(draft.copy(executable = it)) }, R.string.guardian_executable,
+            RemotePathKind.File, modifier = Modifier.fillMaxWidth(), enabled = editable)
+        OutlinedTextField(arguments, { onDraftChange(draft.copy(arguments = it)) }, enabled = editable, label = { Text(stringResource(R.string.guardian_arguments)) }, modifier = Modifier.fillMaxWidth(), minLines = 3)
+        RemotePathField(directory, { onDraftChange(draft.copy(directory = it)) }, R.string.guardian_directory,
+            RemotePathKind.Directory, modifier = Modifier.fillMaxWidth(), enabled = editable)
+        OutlinedTextField(environment, { onDraftChange(draft.copy(environment = it)) }, enabled = editable, label = { Text(stringResource(R.string.scripts_environment)) }, modifier = Modifier.fillMaxWidth(), minLines = 3)
+        OutlinedTextField(timeout, { onDraftChange(draft.copy(timeout = it.filter(Char::isDigit))) }, enabled = editable, label = { Text(stringResource(R.string.scripts_timeout)) })
+        OutlinedTextField(runAs, { onDraftChange(draft.copy(runAs = it)) }, enabled = editable, label = { Text(stringResource(R.string.guardian_run_as)) })
         if (runAs.trim() != owner.userName) {
             Text(stringResource(R.string.guardian_approval_notice))
-            OutlinedTextField(adminName, { adminName = it }, label = { Text(stringResource(R.string.guardian_admin_name)) })
-            OutlinedTextField(adminPassword, { adminPassword = it }, label = { Text(stringResource(R.string.guardian_admin_password)) },
+            OutlinedTextField(adminName, { onDraftChange(draft.copy(adminName = it)) }, enabled = editable, label = { Text(stringResource(R.string.guardian_admin_name)) })
+            OutlinedTextField(adminPassword, { adminPassword = it }, enabled = editable, label = { Text(stringResource(R.string.guardian_admin_password)) },
                 visualTransformation = PasswordVisualTransformation())
         }
         Text(stringResource(R.string.scripts_durability))
@@ -178,7 +195,7 @@ internal fun ScriptEditor(owner: SessionState.Active, onBack: () -> Unit, onSubm
                 environmentLines.associate { it.substringBefore('=') to it.substringAfter('=') },
                 timeout.toInt(), runAs.trim(), approval))
             adminPassword = ""
-        }, enabled = executable.isNotBlank() && directory.isNotBlank() && timeout.toIntOrNull()?.let { it in 1..3600 } == true &&
+        }, enabled = editable && executable.isNotBlank() && directory.isNotBlank() && timeout.toIntOrNull()?.let { it in 1..3600 } == true &&
             validEnvironment && (runAs.trim() == owner.userName || adminName.isNotBlank() && adminPassword.isNotBlank())) {
             Text(stringResource(R.string.scripts_run))
         }
