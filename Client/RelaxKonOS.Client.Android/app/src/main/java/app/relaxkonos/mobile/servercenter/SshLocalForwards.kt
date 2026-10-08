@@ -41,20 +41,22 @@ class SshLocalForwardManager(
     private var job: Job? = null
     private var observer: Job? = null
 
-    fun start(hostId: String, request: SshLocalForwardRequest, replacingId: String? = null) {
-        if (mutable.value.busy || workspaceHost() != hostId) return
-        if (!request.valid()) { mutable.update { it.copy(problem = "invalid") }; return }
+    fun start(hostId: String, request: SshLocalForwardRequest, replacingId: String? = null, onComplete: (Boolean) -> Unit = {}) {
+        if (mutable.value.busy || workspaceHost() != hostId) { onComplete(false); return }
+        if (!request.valid()) { mutable.update { it.copy(problem = "invalid") }; onComplete(false); return }
         if (mutable.value.hostId != null && mutable.value.hostId != hostId) stopAll()
         val old = replacingId?.let { id -> mutable.value.items.firstOrNull { it.id == id && it.hostId == hostId } }
-        if (replacingId != null && old == null) return
-        if (old == null && mutable.value.items.size >= 16) { mutable.update { it.copy(problem = "limit") }; return }
-        val target = targets.find(hostId) ?: return
-        val secret = passwordCopy(hostId) ?: run { mutable.update { it.copy(problem = "credential") }; return }
+        if (replacingId != null && old == null) { onComplete(false); return }
+        if (old == null && mutable.value.items.size >= 16) { mutable.update { it.copy(problem = "limit") }; onComplete(false); return }
+        val target = targets.find(hostId) ?: run { onComplete(false); return }
+        val secret = passwordCopy(hostId) ?: run { mutable.update { it.copy(problem = "credential") }; onComplete(false); return }
         // Explicit edits restart this row; if replacement fails, its old listener stays stopped.
         if (old != null) closeRow(old.id, SshForwardStatus.Stopped)
         val epoch = ++version
         mutable.update { it.copy(hostId = hostId, busy = true, problem = null) }
+        var completionReported = false
         job = scope.launch {
+            var started = false
             var connection: ServerCenterHostSession? = null; var tunnel: ServerCenterSshTunnel? = null
             try {
                 keeperLease++; startKeeper(keeperLease)
@@ -69,6 +71,7 @@ class SshLocalForwardManager(
                 val row = SshLocalForward(id, hostId, request, listener.localPort, SshForwardStatus.Running, System.currentTimeMillis())
                 connection = null; tunnel = null
                 mutable.update { it.copy(items = it.items.filterNot { item -> item.id == id } + row) }
+                started = true
                 observe()
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: ServerCenterHostKeyRejectedException) { if (current(hostId, epoch)) mutable.update { it.copy(problem = "trust") } }
@@ -79,8 +82,16 @@ class SshLocalForwardManager(
                     mutable.update { it.copy(busy = false) }
                     if (handles.isEmpty()) stopKeeper()
                 }
+                completionReported = true
+                onComplete(started && current(hostId, epoch))
             }
-        }.also { it.invokeOnCompletion { secret.fill('\u0000') } }
+        }.also { it.invokeOnCompletion {
+            secret.fill('\u0000')
+            if (!completionReported) {
+                if (version == epoch) mutable.update { state -> state.copy(busy = false) }
+                onComplete(false)
+            }
+        } }
     }
     fun stop(id: String) {
         if (mutable.value.busy) return

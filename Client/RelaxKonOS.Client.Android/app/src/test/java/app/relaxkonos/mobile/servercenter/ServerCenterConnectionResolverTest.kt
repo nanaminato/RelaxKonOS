@@ -17,6 +17,18 @@ import org.junit.Test
  * 真机上的 JSch 行为由 G2 的端到端验收覆盖。
  */
 class ServerCenterConnectionResolverTest {
+    @Test fun `tunnel close failure still closes transport and clears the owned tunnel`() {
+        val harness = Harness()
+        harness.trust.trust(endpoint, observation(), now)
+        val session = runBlocking { harness.resolver.connect(target(installed = true), credential(), harness.resolver.prepareHostKeyGuard(target(installed = true))) }
+        session.openOrRebindTunnel(5000, null, now)
+        val failure = IllegalStateException("test-close-failure")
+        harness.factory.created.single().tunnels.single().closeFailure = failure
+        assertTrue(runCatching { session.close() }.exceptionOrNull() === failure)
+        assertTrue(harness.factory.created.single().closed)
+        assertFalse(session.hasTunnel)
+        session.close()
+    }
 
     private val now = 1_790_000_000_000L
     private val installationId = "rki-" + "a".repeat(32)
@@ -242,12 +254,14 @@ private class FakeTransport(private val portSequence: List<Int>) : ServerCenterS
 }
 
 private class FakeTunnel(override val localPort: Int, basePath: String?) : ServerCenterSshTunnel {
+    var closeFailure: Exception? = null
     override val localBaseUrl: String = ServerTunnelRules.buildLoopbackBaseUrl(localPort, basePath)
     var closed = false
         private set
 
     override fun close() {
         closed = true
+        closeFailure?.let { throw it }
     }
 }
 

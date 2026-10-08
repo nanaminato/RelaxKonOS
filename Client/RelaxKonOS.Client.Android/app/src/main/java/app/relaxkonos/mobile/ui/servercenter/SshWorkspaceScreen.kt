@@ -169,6 +169,7 @@ internal fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier =
     val hostId = host?.hostId
     val installKey = remember(hostId) { "install-${host?.hostId}-${host?.lastVerified?.verifiedAtEpochMillis}" }
     val installer: ServerInstallViewModel = viewModel(key = installKey)
+    androidx.compose.runtime.LaunchedEffect(hostId, installer) { hostId?.let(installer::restore) }
     val installState by installer.state.collectAsStateWithLifecycle()
     androidx.compose.runtime.LaunchedEffect(installState.busy) { onBusyChanged(installState.busy) }
     var bundleUri by rememberSaveable(hostId) { mutableStateOf<String?>(null) }
@@ -232,6 +233,8 @@ internal fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier =
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
             Text(stringResource(R.string.ssh_workspace_deploy_step, step + 1), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            ServerInstallVerificationPanel(installState, sudoPassword, { sudoPassword = it },
+                onVerify = { installer.verifyOriginal(sudoPassword); sudoPassword = "" })
             when (step) {
                 0 -> SectionCard(
                     title = stringResource(R.string.ssh_workspace_deploy_step_source),
@@ -440,8 +443,10 @@ internal fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier =
                     if (mode != "linuxUser" && network == "lan") ReviewLine(stringResource(R.string.server_install_firewall_choice), advanced.addFirewallRule.toString())
                     Text(stringResource(R.string.ssh_workspace_deploy_source_checks), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     installState.message?.takeUnless { installState.busy }?.let {
-                        if (installState.installed && it != R.string.server_install_firewall_disabled) Text(stringResource(it), color = MaterialTheme.colorScheme.primary)
-                        else OperationMessageDialog(stringResource(it), tone = if (it == R.string.ssh_workspace_deploy_verify || it == R.string.server_install_firewall_disabled) StatusTone.Warning else StatusTone.Danger)
+                        if (!installState.needsVerification) {
+                            if (installState.installed && it != R.string.server_install_firewall_disabled) Text(stringResource(it), color = MaterialTheme.colorScheme.primary)
+                            else OperationMessageDialog(stringResource(it), tone = if (it == R.string.ssh_workspace_deploy_verify || it == R.string.server_install_firewall_disabled) StatusTone.Warning else StatusTone.Danger)
+                        }
                     }
                 }
             }
@@ -462,7 +467,7 @@ internal fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier =
                     privateKeyUri?.let(Uri::parse), certificatePassword, certificateNames, sudoPassword,
                     advanced.copy(releaseCatalogBaseUri = if (source == "official") advanced.releaseCatalogBaseUri else ""))) }
                 sudoPassword = ""
-            }, enabled = host != null && !installState.busy && !installState.installed, modifier = Modifier.weight(1f)) {
+            }, enabled = host != null && installState.canSubmit, modifier = Modifier.weight(1f)) {
                 Text(stringResource(when {
                     installState.installed -> R.string.ssh_workspace_deploy_installed
                     host?.lastVerified?.installed == true -> R.string.installation_kind_upgrade
@@ -476,6 +481,25 @@ internal fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier =
         onDismiss = { browseRemoteBundle = false },
         onSelect = { remoteBundlePath = it; browseRemoteBundle = false },
     )
+}
+
+@Composable
+internal fun ServerInstallVerificationPanel(
+    state: ServerInstallState,
+    sudoPassword: String,
+    onPasswordChange: (String) -> Unit,
+    onVerify: () -> Unit,
+) {
+    if (!state.needsVerification) return
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        state.message?.takeUnless { state.busy }?.let {
+            Text(stringResource(it), color = MaterialTheme.colorScheme.error)
+        }
+        PasswordTextField(sudoPassword, onPasswordChange, stringResource(R.string.ssh_workspace_deploy_sudo_password), enabled = !state.busy)
+        OutlinedButton(onClick = onVerify, enabled = !state.busy) {
+            Text(stringResource(R.string.server_install_verify_original))
+        }
+    }
 }
 
 @Composable

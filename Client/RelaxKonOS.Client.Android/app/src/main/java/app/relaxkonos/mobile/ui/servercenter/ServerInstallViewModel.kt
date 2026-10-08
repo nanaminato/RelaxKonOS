@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.ensureActive
 import org.bouncycastle.asn1.DERNull
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers
 import org.bouncycastle.asn1.pkcs.PrivateKeyInfo
@@ -28,7 +29,39 @@ import org.bouncycastle.asn1.pkcs.RSAPrivateKey
 import org.bouncycastle.asn1.x509.AlgorithmIdentifier
 
 internal data class ServerInstallState(val busy: Boolean = false, val message: Int? = null,
-    val installed: Boolean = false, val transfer: app.relaxkonos.mobile.ui.common.TransferProgress? = null)
+    val installed: Boolean = false, val transfer: app.relaxkonos.mobile.ui.common.TransferProgress? = null,
+    val uncertain: Boolean = false, val needsVerification: Boolean = false) {
+    val canSubmit: Boolean get() = !busy && !installed && !uncertain
+}
+
+/** Tracks the authoritative receipt separately from the subsequent health check. */
+internal class ServerInstallAttempt {
+    var started = false
+    var receiptState: ServerDeploymentState? = null
+    fun failure(sudoRejected: Boolean = false): ServerInstallState = when {
+        receiptState == ServerDeploymentState.Succeeded -> ServerInstallState(
+            message = R.string.server_install_status_unverified, installed = true, needsVerification = true)
+        started && (receiptState == null || receiptState == ServerDeploymentState.Queued || receiptState == ServerDeploymentState.Running) ->
+            ServerInstallState(message = R.string.server_install_result_unknown, uncertain = true, needsVerification = true)
+        else -> ServerInstallState(message = if (sudoRejected) R.string.ssh_workspace_deploy_sudo_failed else R.string.ssh_workspace_deploy_failed)
+    }
+}
+
+private fun installationReceiptMatchesMode(
+    receipt: ServerDeploymentOperation,
+    mode: ServerInstallMode,
+): Boolean {
+    val result = receipt.result ?: return false
+    return receipt.state == ServerDeploymentState.Succeeded &&
+        receipt.kind in setOf(ServerDeploymentKind.Install, ServerDeploymentKind.Upgrade) &&
+        result.healthy && ServerInstallationId.isValid(result.installationId) &&
+        (receipt.installationId == null || receipt.installationId == result.installationId) &&
+        result.mode == mode
+}
+
+internal fun installationSnapshotMatchesReceipt(receipt: ServerDeploymentOperation, snapshot: ServerHostSnapshot,
+    mode: ServerInstallMode): Boolean = installationReceiptMatchesMode(receipt, mode) &&
+    snapshot.mode == mode && snapshot.installationId == receipt.result?.installationId && snapshot.installed && snapshot.healthy
 
 internal data class ServerInstallSelection(
     val hostId: String, val source: String, val bundle: Uri?, val remotePath: String,
@@ -63,10 +96,53 @@ internal class ServerInstallViewModel(application: Application) : AndroidViewMod
     private val container = (application as RelaxKonApplication).container
     private val mutableState = MutableStateFlow(ServerInstallState())
     val state = mutableState.asStateFlow()
+    private val pendingStore = container.pendingServerInstalls
+    private var pending: PendingServerInstall? = null
+    private var restoredHostId: String? = null
+
+    fun restore(hostId: String) {
+        if (mutableState.value.busy) return
+        val preserveSuccess = restoredHostId == hostId && mutableState.value.installed
+        restoredHostId = hostId
+        try {
+            pending = pendingStore.read(hostId)
+            pending?.takeUnless { it.attempted }?.let {
+                container.serverInstallOperations.forget(it.reference)
+                clearPending()
+            }
+            if (pending != null) mutableState.value = ServerInstallState(
+                message = R.string.server_install_result_unknown, uncertain = true, needsVerification = true)
+            else if (!preserveSuccess) mutableState.value = ServerInstallState()
+        } catch (_: Exception) {
+            pending = null
+            mutableState.value = ServerInstallState(message = R.string.server_install_record_failed,
+                uncertain = true, needsVerification = true)
+        }
+    }
+
+    private fun failedAttempt(attempt: ServerInstallAttempt, sudoRejected: Boolean = false): ServerInstallState {
+        val failure = attempt.failure(sudoRejected)
+        pending?.takeUnless { it.attempted }?.let {
+            try {
+                container.serverInstallOperations.forget(it.reference)
+                clearPending()
+            } catch (_: Exception) { /* Keep the gate if durable cleanup cannot be proved. */ }
+        }
+        return if (pending != null && failure.canSubmit) failure.copy(
+            message = R.string.server_install_record_failed, uncertain = true, needsVerification = true) else failure
+    }
+
+    private fun clearPending() {
+        pending?.let(pendingStore::clear)
+        pending = null
+    }
 
     fun install(selection: ServerInstallSelection) {
-        if (mutableState.value.busy || mutableState.value.installed) return
+        restore(selection.hostId)
+        if (!mutableState.value.canSubmit) return
+        pending = null
         mutableState.value = ServerInstallState(true, R.string.server_progress_connecting)
+        val attempt = ServerInstallAttempt()
         viewModelScope.launch {
             val secret = container.serverCenter.verifiedPasswordCopy(selection.hostId)
             if (secret == null) {
@@ -74,20 +150,89 @@ internal class ServerInstallViewModel(application: Application) : AndroidViewMod
                 return@launch
             }
             try {
-                val firewallStatus = withContext(Dispatchers.IO) { execute(selection, secret) }
+                val firewallStatus = withContext(Dispatchers.IO) { execute(selection, secret, attempt) }
                 mutableState.value = ServerInstallState(message = when (firewallStatus) {
                     "disabled" -> R.string.server_install_firewall_disabled
                     "ruleAdded" -> R.string.server_install_firewall_added
                     else -> R.string.ssh_workspace_deploy_success
                 }, installed = true)
             } catch (cancelled: CancellationException) {
-                mutableState.value = ServerInstallState(message = R.string.ssh_workspace_deploy_failed)
+                mutableState.value = failedAttempt(attempt)
                 throw cancelled
             } catch (_: ServerInstallSudoException) {
-                mutableState.value = ServerInstallState(message = R.string.ssh_workspace_deploy_sudo_failed)
+                mutableState.value = failedAttempt(attempt, sudoRejected = true)
             } catch (_: Exception) {
-                mutableState.value = ServerInstallState(message = R.string.ssh_workspace_deploy_failed)
+                mutableState.value = failedAttempt(attempt)
             } finally { secret.fill('\u0000') }
+        }
+    }
+
+    /** Queries the frozen operation ID. It never invokes the installation launcher action. */
+    fun verifyOriginal(sudoPassword: String = "") {
+        if (pending?.attempted != true) restoredHostId?.let(::restore)
+        val original = pending ?: return
+        val before = mutableState.value
+        if (before.busy || !before.needsVerification) return
+        mutableState.value = before.copy(busy = true, message = R.string.server_progress_verifying)
+        val attempt = ServerInstallAttempt().apply {
+            started = true
+            if (before.installed) receiptState = ServerDeploymentState.Succeeded
+        }
+        viewModelScope.launch {
+            val secret = container.serverCenter.verifiedPasswordCopy(original.reference.hostId)
+            if (secret == null) {
+                mutableState.value = before.copy(message = R.string.ssh_workspace_deploy_verify)
+                return@launch
+            }
+            val credential = SshCredential(SshCredentialKind.Password, secret, null)
+            try {
+                val outcome = withContext(Dispatchers.IO) {
+                    container.serverCenterConnections.connect(original.reference.hostId, credential, System.currentTimeMillis()).use { session ->
+                        val key = requireNotNull(session.observedHostKey)
+                        check(key.algorithm == original.reference.hostKeyAlgorithm && key.fingerprint == original.reference.hostKeyFingerprint)
+                        val client = ServerCenterDeploymentClient(session.sshTransport)
+                        val launcher = ServerCenterUploadAsset.launcher(getApplication<Application>().assets, original.reference.platform)
+                        val lookup = client.stageLookup(original.reference.platform, launcher)
+                        val receipt = client.query(lookup, original.reference.operationId)
+                        check(receipt.kind == original.kind)
+                        if (receipt.state == ServerDeploymentState.Succeeded) check(installationReceiptMatchesMode(receipt, original.mode))
+                        if (before.installed) check(receipt.state == ServerDeploymentState.Succeeded)
+                        attempt.receiptState = receipt.state
+                        container.serverInstallOperations.markVerified(session.target, original.reference, key, System.currentTimeMillis())
+                        when (receipt.state) {
+                            ServerDeploymentState.Succeeded -> {
+                                val statusRequest = ServerDeploymentRequest(ServerDeploymentProtocol.VERSION,
+                                    UUID.randomUUID().toString(), ServerDeploymentKind.Status,
+                                    ServerDeploymentOptions(ServerPackageSourceKind.OfficialStable, ServerNetworkProfile.Loopback, mode = original.mode))
+                                val stagedStatus = client.stage(statusRequest, original.reference.platform, launcher)
+                                val statusReceipt = client.execute(stagedStatus,
+                                    if (original.needsSudo) sudoPassword.ifEmpty { String(secret) } else null)
+                                check(statusReceipt.kind == ServerDeploymentKind.Status && statusReceipt.state == ServerDeploymentState.Succeeded)
+                                val status = requireNotNull(statusReceipt.snapshot)
+                                container.serverCenter.recordVerifiedSnapshot(original.reference.hostId, status)
+                                check(installationSnapshotMatchesReceipt(receipt, status, original.mode))
+                                clearPending()
+                                ServerInstallState(installed = true, message = when (receipt.result?.firewallStatus) {
+                                    "disabled" -> R.string.server_install_firewall_disabled
+                                    "ruleAdded" -> R.string.server_install_firewall_added
+                                    else -> R.string.ssh_workspace_deploy_success
+                                })
+                            }
+                            ServerDeploymentState.Queued, ServerDeploymentState.Running -> attempt.failure()
+                            else -> {
+                                clearPending()
+                                attempt.failure(sudoRejected = receipt.problemCode == "server-deployment.elevation_required")
+                            }
+                        }
+                    }
+                }
+                mutableState.value = outcome
+            } catch (cancelled: CancellationException) {
+                mutableState.value = failedAttempt(attempt)
+                throw cancelled
+            } catch (_: Exception) {
+                mutableState.value = failedAttempt(attempt)
+            } finally { credential.clear(); secret.fill('\u0000') }
         }
     }
 
@@ -95,7 +240,7 @@ internal class ServerInstallViewModel(application: Application) : AndroidViewMod
         mutableState.value = mutableState.value.copy(message = message, transfer = null)
     }
 
-    private suspend fun execute(selection: ServerInstallSelection, secret: CharArray): String? {
+    private suspend fun execute(selection: ServerInstallSelection, secret: CharArray, attempt: ServerInstallAttempt): String? {
         var firewallStatus: String? = null
         val credential = SshCredential(SshCredentialKind.Password, secret, null)
         var localZip: File? = null
@@ -184,7 +329,13 @@ internal class ServerInstallViewModel(application: Application) : AndroidViewMod
                     })
                 val index = container.serverInstallOperations
                 val reference = index.record(session.target, key, operationId, platform)
+                val recovery = PendingServerInstall(reference, mode, kind, sudoPassword != null)
+                pendingStore.write(recovery)
+                pending = recovery
                 progress(if (kind == ServerDeploymentKind.Upgrade) R.string.server_progress_upgrading else R.string.server_progress_installing)
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                pending = pendingStore.markStarted(recovery)
+                attempt.started = true
                 val receipt = client.execute(staged, sudoPassword) { transfer ->
                     mutableState.value = mutableState.value.copy(
                         message = if (transfer != null) R.string.files_downloading else if (kind == ServerDeploymentKind.Upgrade)
@@ -192,14 +343,21 @@ internal class ServerInstallViewModel(application: Application) : AndroidViewMod
                         transfer = transfer?.let { app.relaxkonos.mobile.ui.common.TransferProgress("server.zip", it.bytes, it.total) },
                     )
                 }
+                check(receipt.kind == kind)
+                if (receipt.state == ServerDeploymentState.Succeeded) check(installationReceiptMatchesMode(receipt, mode))
+                attempt.receiptState = receipt.state
                 index.markVerified(session.target, reference, key, System.currentTimeMillis())
+                if (receipt.state in setOf(ServerDeploymentState.Failed, ServerDeploymentState.Cancelled, ServerDeploymentState.Interrupted)) clearPending()
                 if (receipt.problemCode == "server-deployment.elevation_required") throw ServerInstallSudoException()
                 check(receipt.state == ServerDeploymentState.Succeeded)
                 progress(R.string.server_progress_verifying)
-                val status = requireNotNull(read(ServerDeploymentKind.Status,
-                    ServerDeploymentOptions(ServerPackageSourceKind.OfficialStable, ServerNetworkProfile.Loopback, mode = mode), sudoPassword).snapshot)
+                val statusReceipt = read(ServerDeploymentKind.Status,
+                    ServerDeploymentOptions(ServerPackageSourceKind.OfficialStable, ServerNetworkProfile.Loopback, mode = mode), sudoPassword)
+                check(statusReceipt.kind == ServerDeploymentKind.Status && statusReceipt.state == ServerDeploymentState.Succeeded)
+                val status = requireNotNull(statusReceipt.snapshot)
                 container.serverCenter.recordVerifiedSnapshot(selection.hostId, status)
-                check(status.installed && status.healthy)
+                check(installationSnapshotMatchesReceipt(receipt, status, mode))
+                clearPending()
                 firewallStatus = receipt.result?.firewallStatus
             }
         } finally { localZip?.delete(); credential.clear() }

@@ -18,4 +18,8 @@
     <string name="editor_with_bom">带 BOM</string>
     <string name="editor_without_bom">无 BOM</string>
     <string name="certificates_read_failed">无法读取证书信息。请检查连接后刷新；草稿仍保留。</string>
+    <string name="server_install_result_unknown">安装结果未知。请先核实原操作，再提交新的安装。</string>
+    <string name="server_install_status_unverified">安装已成功，但当前健康状态尚未核实。请核实原操作与当前状态，不要重复提交安装。</string>
+    <string name="server_install_verify_original">核实原安装操作</string>
+    <string name="server_install_record_failed">无法读取或更新原安装记录。请先核实原操作，暂时不能开始新的安装。</string>
 </resources>

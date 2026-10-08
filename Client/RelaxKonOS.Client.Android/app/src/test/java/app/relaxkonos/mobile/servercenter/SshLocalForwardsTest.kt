@@ -10,6 +10,73 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SshLocalForwardsTest {
+    @Test fun `late cancelled handshake cannot replace a newer forward or stop its keeper`() = runTest {
+        val h = Harness(backgroundScope)
+        val release = CompletableDeferred<Unit>()
+        h.connectGate = { release.await() }
+        val results = mutableListOf<Pair<String, Boolean>>()
+        h.manager.start(h.target.hostId, SshLocalForwardRequest(8080, 12001), onComplete = { results += "old" to it })
+        runCurrent()
+        assertTrue(h.manager.state.value.busy)
+        h.manager.stopAll()
+        h.connectGate = null
+        h.manager.start(h.target.hostId, SshLocalForwardRequest(8081, 12002), onComplete = { results += "new" to it })
+        h.manager.state.first { !it.busy }
+        val stops = h.keeperStops
+        release.complete(Unit)
+        runCurrent()
+        assertEquals(listOf(8081), h.manager.state.value.items.map { it.request.remotePort })
+        assertEquals(SshForwardStatus.Running, h.manager.state.value.items.single().status)
+        assertFalse(h.transports.first().isConnected)
+        assertTrue(h.transports.last().isConnected)
+        assertEquals(stops, h.keeperStops)
+        assertEquals(listOf("new" to true, "old" to false), results)
+        h.manager.clearWorkspace()
+    }
+
+    @Test fun `old keeper failure cannot stop a newer listener`() = runTest {
+        val h = Harness(backgroundScope)
+        h.manager.start(h.target.hostId, SshLocalForwardRequest(8080))
+        h.manager.state.first { !it.busy }
+        val oldLease = h.manager.lease
+        h.manager.stopAll()
+        h.manager.start(h.target.hostId, SshLocalForwardRequest(8081))
+        h.manager.state.first { !it.busy }
+        h.manager.keeperFailed(oldLease)
+        assertEquals(SshForwardStatus.Running, h.manager.state.value.items.last().status)
+        assertNull(h.manager.state.value.problem)
+        assertTrue(h.transports.last().isConnected)
+        h.manager.clearWorkspace()
+    }
+    @Test fun `completion reports actual listener success and replacement failure after busy is cleared`() = runTest {
+        val h = Harness(backgroundScope)
+        val results = mutableListOf<Boolean>()
+        val request = SshLocalForwardRequest(8080, 12001)
+        h.manager.start(h.target.hostId, request, onComplete = { assertFalse(h.manager.state.value.busy); results += it })
+        h.manager.state.first { !it.busy }
+        assertEquals(listOf(true), results)
+        val id = h.manager.state.value.items.single().id
+        h.failPort = true
+        h.manager.start(h.target.hostId, request.copy(remotePort = 8081), id) { assertFalse(h.manager.state.value.busy); results += it }
+        h.manager.state.first { !it.busy }
+        assertEquals(listOf(true, false), results)
+        assertEquals(SshForwardStatus.Stopped, h.manager.state.value.items.single().status)
+        h.manager.clearWorkspace()
+    }
+
+    @Test fun `rejected input and cancellation before launch each complete once without opening a listener`() = runTest {
+        val h = Harness(backgroundScope)
+        val results = mutableListOf<Boolean>()
+        h.manager.start(h.target.hostId, SshLocalForwardRequest(0), onComplete = { results += it })
+        assertEquals(listOf(false), results)
+        assertTrue(h.transports.isEmpty())
+        h.manager.start(h.target.hostId, SshLocalForwardRequest(8080), onComplete = { results += it })
+        h.manager.stopAll()
+        runCurrent()
+        assertEquals(listOf(false, false), results)
+        assertTrue(h.transports.isEmpty())
+        assertFalse(h.manager.state.value.busy)
+    }
     @Test fun `requests keep both endpoints on loopback and reject authorities and schemes`() {
         val base = SshLocalForwardRequest(8080)
         assertEquals("http://127.0.0.1:12345/", base.localUrl(12345))
@@ -26,9 +93,10 @@ class SshLocalForwardsTest {
         val transports = mutableListOf<ForwardTransport>()
         var workspace: String? = target.hostId
         var failPort = false; var keeperStarts = 0; var keeperStops = 0
+        var connectGate: (suspend () -> Unit)? = null
         init { if (trusted) trust.trust(ServerCenterSshEndpoint.create("example.test", 22, "alice"), observation, 0) }
         val resolver = DefaultServerCenterConnectionResolver(trust, targets, object : ServerCenterSshTransportFactory {
-            override fun create() = ForwardTransport(observation, failPort).also { transports += it }
+            override fun create() = ForwardTransport(observation, failPort, connectGate).also { transports += it }
         })
         val manager = SshLocalForwardManager(resolver, targets, { "secret".toCharArray() }, { workspace }, scope,
             { keeperStarts++ }, { keeperStops++ })
@@ -69,13 +137,15 @@ class SshLocalForwardsTest {
     }
 }
 
-private class ForwardTransport(private val key: ServerCenterHostKeyObservation, private val failPort: Boolean) : ServerCenterSshTransport {
+private class ForwardTransport(private val key: ServerCenterHostKeyObservation, private val failPort: Boolean,
+    private val connectGate: (suspend () -> Unit)? = null) : ServerCenterSshTransport {
     var connected = false; var opened = 0; var testedPort: Int? = null
     override val isConnected get() = connected
     override val observedHostKey get() = key
     override suspend fun connect(endpoint: ServerCenterSshEndpoint, credential: SshCredential, hostKeyGuard: (ServerCenterHostKeyObservation) -> ServerHostKeyTrust) {
         val result = hostKeyGuard(key); if (result != ServerHostKeyTrust.Trusted) throw ServerCenterHostKeyRejectedException(key, result)
-        connected = true
+        if (connectGate != null) withContext(NonCancellable) { connectGate.invoke(); connected = true }
+        else connected = true
     }
     override fun openLocalForward(remotePort: Int, preferredLocalPort: Int?): ServerCenterSshTunnel {
         if (failPort) throw IllegalStateException("Port conflict")

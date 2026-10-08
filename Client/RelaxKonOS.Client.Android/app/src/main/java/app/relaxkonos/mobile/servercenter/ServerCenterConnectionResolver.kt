@@ -64,8 +64,15 @@ class ServerCenterHostSession internal constructor(
     override fun close() {
         if (closed) return
         closed = true
-        tunnel?.close()
+        val ownedTunnel = tunnel
         tunnel = null
+        try {
+            ownedTunnel?.close()
+        } catch (error: Throwable) {
+            try { transport.close() }
+            catch (cleanup: Throwable) { if (cleanup !== error) error.addSuppressed(cleanup) }
+            throw error
+        }
         transport.close()
     }
 }

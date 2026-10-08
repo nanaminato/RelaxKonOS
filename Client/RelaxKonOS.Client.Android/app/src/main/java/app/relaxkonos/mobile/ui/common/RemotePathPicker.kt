@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import app.relaxkonos.mobile.data.ElevationAnswerProvider
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.ApiResult
@@ -98,6 +99,7 @@ fun RemotePathPicker(
     var showingPath by remember(path) { mutableStateOf(false) }
     val parent = files.navigationParentOf(path)
     val canGoUp = path.isNotBlank() && parent != path
+    val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
 
     LaunchedEffect(path, refresh) {
         val request = ++generation
@@ -135,9 +137,9 @@ fun RemotePathPicker(
     Dialog(onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         BackHandler(enabled = canGoUp) { path = parent }
-        Surface(Modifier.fillMaxSize().safeDrawingPadding(), color = MaterialTheme.colorScheme.surface) {
+        Surface(Modifier.fillMaxSize().safeDrawingPadding().imePadding(), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.fillMaxSize().padding(horizontal = Spacing.lg),
-                verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                verticalArrangement = Arrangement.spacedBy(if (keyboardVisible) Spacing.xs else Spacing.sm)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(title), style = MaterialTheme.typography.titleLarge,
                         modifier = Modifier.weight(1f))
@@ -145,7 +147,7 @@ fun RemotePathPicker(
                 }
                 Surface(color = MaterialTheme.colorScheme.surfaceContainer,
                     shape = MaterialTheme.shapes.medium) {
-                    Row(Modifier.fillMaxWidth().padding(Spacing.xs), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().padding(if (keyboardVisible) 0.dp else Spacing.xs), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { path = parent }, enabled = canGoUp) {
                             DesktopIcon(DesktopIcons.back, contentDescription = stringResource(R.string.common_back))
                         }
@@ -191,7 +193,7 @@ fun RemotePathPicker(
                     val currentDirectory = listing?.path?.takeIf(String::isNotBlank)
                     Button(onClick = { currentDirectory?.let(select) },
                         enabled = !loading && currentDirectory != null,
-                        modifier = Modifier.fillMaxWidth().padding(bottom = Spacing.sm)) {
+                        modifier = Modifier.fillMaxWidth().padding(bottom = if (keyboardVisible) 0.dp else Spacing.sm)) {
                         Text(stringResource(R.string.remote_path_select_directory))
                     }
                 }

@@ -62,6 +62,7 @@ import app.relaxkonos.mobile.servercenter.DefaultServerCenterConnectionResolver
 import app.relaxkonos.mobile.servercenter.FileHostKeyStorage
 import app.relaxkonos.mobile.servercenter.FileHostTargetStorage
 import app.relaxkonos.mobile.servercenter.FileServerInstallOperationStorage
+import app.relaxkonos.mobile.servercenter.PendingServerInstallStore
 import app.relaxkonos.mobile.servercenter.JschServerCenterSshTransportFactory
 import app.relaxkonos.mobile.servercenter.ManagedLoginResolver
 import app.relaxkonos.mobile.servercenter.ServerCenterConnectionResolver
@@ -134,6 +135,7 @@ class AppContainer(context: Context) {
     val sshHostKeyTrust = ServerHostKeyTrustStore(FileHostKeyStorage(appContext.noBackupFilesDir))
 
     /** Pre-login deployment receipt IDs are local to this device and its pinned SSH host key. */
+    val pendingServerInstalls = PendingServerInstallStore(appContext.noBackupFilesDir)
     val serverInstallOperations = ServerInstallOperationIndex(
         FileServerInstallOperationStorage(appContext.noBackupFilesDir), sshHostKeyTrust,
     )

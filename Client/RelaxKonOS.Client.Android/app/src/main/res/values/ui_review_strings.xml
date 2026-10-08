@@ -18,4 +18,8 @@
     <string name="editor_with_bom">with BOM</string>
     <string name="editor_without_bom">without BOM</string>
     <string name="certificates_read_failed">Unable to read certificate information. Check the connection and refresh; your draft is retained.</string>
+    <string name="server_install_result_unknown">The installation result is unknown. Verify the original operation before submitting another installation.</string>
+    <string name="server_install_status_unverified">The installation succeeded, but its current health has not been verified. Check the original operation and current status; do not submit it again.</string>
+    <string name="server_install_verify_original">Verify original installation</string>
+    <string name="server_install_record_failed">The original installation record could not be read or updated. Verify it before starting another installation.</string>
 </resources>
