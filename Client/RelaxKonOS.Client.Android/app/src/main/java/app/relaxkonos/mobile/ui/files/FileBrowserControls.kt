@@ -135,7 +135,7 @@ fun FileBatchOverlays(vm: FilesViewModel) {
                     Text(stringResource(if (failure.unknown) R.string.files_batch_unknown else R.string.files_batch_failed, failure.path))
                     if (!failure.unknown) failure.result.failureMessage()?.let { Text(it.text()) }
                 }
-                Text(stringResource(R.string.files_batch_partial_hint))
+                if (report.failures.isNotEmpty()) Text(stringResource(R.string.files_batch_partial_hint))
                 report.skipped.forEach { Text(stringResource(R.string.files_batch_skipped, it)) }
                 if (report.failures.any { it.unknown }) Text(stringResource(R.string.files_mutation_unknown))
             }
@@ -147,14 +147,26 @@ fun FileBatchOverlays(vm: FilesViewModel) {
 @Composable
 fun FilePermissionDialog(vm: FilesViewModel) {
     if (!vm.permissionsOpen) return
-    val mode = FileBrowserPolicy.parseMode(vm.permissionInput)
-    AlertDialog(onDismissRequest = vm::closePermissions, modifier = Modifier.imePadding(), title = { Text(stringResource(R.string.files_permissions_edit)) },
+    FilePermissionEditor(vm.selected?.path.orEmpty(), vm.selected?.isDirectory == true,
+        vm.permissionInput, vm.permissionRecursive, vm.mutationBusy, vm.canMutate, vm.permissionMessage,
+        { vm.permissionInput = it }, { vm.permissionRecursive = it }, vm::savePermissions, vm::closePermissions)
+}
+
+@Composable
+internal fun FilePermissionEditor(
+    path: String, isDirectory: Boolean, input: String, recursive: Boolean, busy: Boolean,
+    canSave: Boolean, message: app.relaxkonos.mobile.ui.common.UiMessage?,
+    onInput: (String) -> Unit, onRecursive: (Boolean) -> Unit, onSave: () -> Unit, onClose: () -> Unit,
+) {
+    val mode = FileBrowserPolicy.parseMode(input)
+    AlertDialog(onDismissRequest = { if (!busy) onClose() }, modifier = Modifier.imePadding(), title = { Text(stringResource(R.string.files_permissions_edit)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                Text(vm.selected?.path.orEmpty())
+                Text(path)
+                message?.let { Text(it.text(), color = MaterialTheme.colorScheme.error) }
                 Text(stringResource(R.string.files_permissions_scope))
-                if (vm.selected?.isDirectory == true) CheckboxOption(vm.permissionRecursive, stringResource(R.string.files_permissions_recursive), !vm.mutationBusy) { vm.permissionRecursive = it }
-                OutlinedTextField(vm.permissionInput, { vm.permissionInput = it }, singleLine = true, enabled = !vm.mutationBusy,
+                if (isDirectory) CheckboxOption(recursive, stringResource(R.string.files_permissions_recursive), !busy, onRecursive)
+                OutlinedTextField(input, onInput, singleLine = true, enabled = !busy,
                     label = { Text(stringResource(R.string.files_permissions_octal)) }, isError = mode == null)
                 val labels = listOf(R.string.files_permissions_owner, R.string.files_permissions_group, R.string.files_permissions_others)
                 labels.forEachIndexed { index, label ->
@@ -163,11 +175,11 @@ fun FilePermissionDialog(vm: FilesViewModel) {
                         listOf(R.string.files_permissions_read, R.string.files_permissions_write, R.string.files_permissions_execute).forEachIndexed { bit, name ->
                             val mask = 1 shl (8 - index * 3 - bit)
                             Row(Modifier.heightIn(min = 48.dp).toggleable(
-                                value = mode != null && mode and mask != 0, enabled = mode != null && !vm.mutationBusy,
-                                role = Role.Checkbox, onValueChange = { checked -> if (mode != null) vm.permissionInput = FileBrowserPolicy.formatMode(
-                                    if (checked) mode or mask else mode and mask.inv()) }),
+                                value = mode != null && mode and mask != 0, enabled = mode != null && !busy,
+                                role = Role.Checkbox, onValueChange = { checked -> if (mode != null) onInput(FileBrowserPolicy.formatMode(
+                                    if (checked) mode or mask else mode and mask.inv())) }),
                                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                                Checkbox(checked = mode != null && mode and mask != 0, onCheckedChange = null, enabled = mode != null && !vm.mutationBusy)
+                                Checkbox(checked = mode != null && mode and mask != 0, onCheckedChange = null, enabled = mode != null && !busy)
                                 Text(stringResource(name))
                             }
                         }
@@ -175,17 +187,17 @@ fun FilePermissionDialog(vm: FilesViewModel) {
                 }
                 Text(stringResource(R.string.files_permissions_special))
             }
-        }, confirmButton = { Button(onClick = vm::savePermissions, enabled = mode != null && vm.canMutate) {
+        }, confirmButton = { Button(onClick = onSave, enabled = mode != null && canSave && !busy) {
             ActionLabel(R.string.common_save)
-        } }, dismissButton = { TextButton(onClick = vm::closePermissions, enabled = !vm.mutationBusy) { Text(stringResource(R.string.common_cancel)) } })
+        } }, dismissButton = { TextButton(onClick = onClose, enabled = !busy) { Text(stringResource(R.string.common_cancel)) } })
 }
 
 @Composable
 fun FileLocationDialog(vm: FilesViewModel, onClose: () -> Unit) {
     var path by remember { mutableStateOf(vm.path) }
     var browse by remember { mutableStateOf(false) }
-    AlertDialog(onDismissRequest = onClose, title = { Text(stringResource(R.string.files_go_directory)) },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+    AlertDialog(onDismissRequest = onClose, modifier = Modifier.imePadding(), title = { Text(stringResource(R.string.files_go_directory)) },
+        text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             OutlinedTextField(path, { path = it }, singleLine = true, label = { Text(stringResource(R.string.files_label_path)) })
             Text(stringResource(R.string.files_location_scope))
             OutlinedButton(onClick = { browse = true }) { Text(stringResource(R.string.remote_path_browse)) }

@@ -411,6 +411,12 @@
     <!-- Files -->
     <string name="files_root">Roots</string>
     <string name="files_empty">This folder is empty.</string>
+    <string name="files_search_empty">No files or folders match this search.</string>
+    <string name="files_read_failed">The folder has not been read successfully. Refresh to try again.</string>
+    <string name="files_invalid_path">The server rejected this path. Check it and enter another path.</string>
+    <string name="files_path_missing">This path does not exist. Return to its parent or refresh.</string>
+    <string name="files_device_unavailable">The storage device is unavailable. Check the server device, then refresh.</string>
+    <string name="files_listing_stale">Folder refresh failed. Previous contents may be outdated; write actions are paused. Refresh to try again.</string>
     <string name="files_kind_directory">Folder</string>
     <string name="files_kind_file">File</string>
     <string name="files_action_up">Go up</string>
@@ -1093,6 +1099,8 @@
     <string name="scripts_failed">Script operation failed. Check the Guardian Agent and execution permissions.</string>
     <string name="scripts_write_unknown">The request result is unknown. Refresh the task list and check execution status before running or cancelling again.</string>
     <string name="scripts_verify">Verify request</string>
+    <string name="scripts_arguments_invalid">Use up to 64 arguments, each with at most 4096 characters and no NUL. Empty values, spaces and line breaks are preserved.</string>
+    <string name="scripts_environment_invalid">Use up to 32 distinct KEY=value entries. Keys must start with a letter or underscore and contain only letters, digits or underscores (128 characters max). Values allow up to 4096 characters and no NUL.</string>
     <string name="scripts_storage_failed">The recovery record could not be read or saved. New requests are paused. Retry verification.</string>
     <string name="scripts_pending_task">Task to verify: %1$s</string>
     <string name="scripts_new">New script task</string>

@@ -77,4 +77,43 @@ class ScriptEditorNavigationTest {
         rule.onNodeWithText("/usr/bin/true").assertExists()
         rule.runOnIdle { assertFalse(left) }
     }
+
+    @Test fun duplicateEnvironmentBlocksRunAndCorrectionPreservesExactValue() {
+        var submitted: app.relaxkonos.mobile.core.net.ScriptRequest? = null
+        rule.setContent { MaterialTheme { Editor(ScriptsUiState(), {}, { submitted = it }) } }
+        rule.onNodeWithText(text(R.string.guardian_executable)).performTextInput("/bin/true")
+        Espresso.closeSoftKeyboard()
+        rule.onNodeWithText(text(R.string.guardian_directory)).performScrollTo().performTextInput("/tmp")
+        Espresso.closeSoftKeyboard()
+        rule.onNodeWithText(text(R.string.scripts_environment)).performScrollTo().performTextInput("KEY=first\nKEY=second")
+        Espresso.closeSoftKeyboard()
+        rule.onNodeWithText(text(R.string.scripts_environment_invalid)).assertExists()
+        rule.onNodeWithText(text(R.string.scripts_run)).performScrollTo().assertIsNotEnabled()
+        rule.runOnIdle { assertNull(submitted) }
+        rule.onNodeWithText(text(R.string.scripts_environment)).performScrollTo().performTextReplacement("KEY= spaced = value ")
+        Espresso.closeSoftKeyboard()
+        rule.onNodeWithText(text(R.string.scripts_environment_invalid)).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.scripts_run)).performScrollTo().assertIsEnabled().performClick()
+        rule.runOnIdle { assertEquals(mapOf("KEY" to " spaced = value "), submitted?.environment) }
+    }
+
+    @Test fun individualArgumentsPreserveEmptySpacesAndMultilineValuesAndRemovalOrder() {
+        var submitted: app.relaxkonos.mobile.core.net.ScriptRequest? = null
+        rule.setContent { MaterialTheme { Editor(ScriptsUiState(), {}, { submitted = it }) } }
+        rule.onNodeWithText(text(R.string.guardian_executable)).performTextInput("/bin/true")
+        Espresso.closeSoftKeyboard()
+        repeat(3) { rule.onNodeWithText(text(R.string.guardian_add_argument)).performScrollTo().performClick() }
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        rule.onNodeWithText(context.getString(R.string.guardian_argument_number, 2)).performScrollTo().performTextInput("first\nsecond")
+        Espresso.closeSoftKeyboard()
+        rule.onNodeWithText(context.getString(R.string.guardian_argument_number, 3)).performScrollTo().performTextInput(" spaced ")
+        Espresso.closeSoftKeyboard()
+        rule.onNodeWithText(text(R.string.guardian_directory)).performScrollTo().performTextInput("/tmp")
+        Espresso.closeSoftKeyboard()
+        rule.onNodeWithText(text(R.string.scripts_run)).performScrollTo().assertIsEnabled().performClick()
+        rule.runOnIdle { assertEquals(listOf("", "first\nsecond", " spaced "), submitted?.arguments) }
+        rule.onNodeWithContentDescription(context.getString(R.string.guardian_remove_argument, 2)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.scripts_run)).performScrollTo().performClick()
+        rule.runOnIdle { assertEquals(listOf("", " spaced "), submitted?.arguments) }
+    }
 }

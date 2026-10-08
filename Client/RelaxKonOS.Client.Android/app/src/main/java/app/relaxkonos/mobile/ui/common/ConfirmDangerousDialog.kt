@@ -29,6 +29,7 @@ fun ConfirmDangerousDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
     busy: Boolean = false,
+    confirmEnabled: Boolean = true,
     extraContent: (@Composable () -> Unit)? = null,
 ) {
     AlertDialog(
@@ -41,7 +42,7 @@ fun ConfirmDangerousDialog(
             }
         },
         confirmButton = {
-            Button(onClick = onConfirm, enabled = !busy) { Text(confirmLabel) }
+            Button(onClick = onConfirm, enabled = !busy && confirmEnabled) { Text(confirmLabel) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss, enabled = !busy) { Text(stringResource(R.string.common_cancel)) }

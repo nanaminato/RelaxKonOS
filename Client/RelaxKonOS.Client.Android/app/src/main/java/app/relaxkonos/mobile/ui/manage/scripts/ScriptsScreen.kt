@@ -9,6 +9,13 @@ import app.relaxkonos.mobile.ui.common.ActivityIndicator
 import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -159,11 +166,7 @@ internal fun ScriptEditor(owner: SessionState.Active, state: ScriptsUiState, dra
             Text(stringResource(R.string.common_cancel))
         } },
     )
-    val environmentLines = environment.lines().filter(String::isNotBlank)
-    val validEnvironment = environmentLines.all { line ->
-        val key = line.substringBefore('=')
-        '=' in line && key.matches(Regex("[A-Za-z_][A-Za-z0-9_]*"))
-    }
+    val environmentValues = scriptEnvironment(environment)
     Column(modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         ScreenHeader(title = stringResource(R.string.scripts_new), onBack = leave)
         if (state.loading) ActivityIndicator(stringResource(R.string.scripts_loading))
@@ -176,10 +179,28 @@ internal fun ScriptEditor(owner: SessionState.Active, state: ScriptsUiState, dra
             OutlinedButton(onClick = onVerify, enabled = !state.loading) { Text(stringResource(R.string.scripts_verify)) }
         RemotePathField(executable, { onDraftChange(draft.copy(executable = it)) }, R.string.guardian_executable,
             RemotePathKind.File, modifier = Modifier.fillMaxWidth(), enabled = editable)
-        OutlinedTextField(arguments, { onDraftChange(draft.copy(arguments = it)) }, enabled = editable, label = { Text(stringResource(R.string.guardian_arguments)) }, modifier = Modifier.fillMaxWidth(), minLines = 3)
+        Text(stringResource(R.string.guardian_arguments))
+        arguments.forEachIndexed { index, value ->
+            Row(Modifier.fillMaxWidth()) {
+                OutlinedTextField(value, { next -> onDraftChange(draft.copy(arguments = arguments.mapIndexed { i, old -> if (i == index) next else old })) },
+                    enabled = editable, isError = value.length > 4096 || '\u0000' in value,
+                    label = { Text(stringResource(R.string.guardian_argument_number, index + 1)) },
+                    modifier = Modifier.weight(1f), maxLines = 4)
+                IconButton(onClick = { onDraftChange(draft.copy(arguments = arguments.filterIndexed { i, _ -> i != index })) },
+                    enabled = editable, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.Default.Close, stringResource(R.string.guardian_remove_argument, index + 1))
+                }
+            }
+        }
+        if (!draft.validArguments) Text(stringResource(R.string.scripts_arguments_invalid), color = MaterialTheme.colorScheme.error)
+        OutlinedButton(onClick = { onDraftChange(draft.copy(arguments = arguments + "")) },
+            enabled = editable && arguments.size < 64) { Text(stringResource(R.string.guardian_add_argument)) }
         RemotePathField(directory, { onDraftChange(draft.copy(directory = it)) }, R.string.guardian_directory,
             RemotePathKind.Directory, modifier = Modifier.fillMaxWidth(), enabled = editable)
-        OutlinedTextField(environment, { onDraftChange(draft.copy(environment = it)) }, enabled = editable, label = { Text(stringResource(R.string.scripts_environment)) }, modifier = Modifier.fillMaxWidth(), minLines = 3)
+        OutlinedTextField(environment, { onDraftChange(draft.copy(environment = it)) }, enabled = editable,
+            isError = environmentValues == null,
+            supportingText = { if (environmentValues == null) Text(stringResource(R.string.scripts_environment_invalid)) },
+            label = { Text(stringResource(R.string.scripts_environment)) }, modifier = Modifier.fillMaxWidth(), minLines = 3)
         OutlinedTextField(timeout, { onDraftChange(draft.copy(timeout = it.filter(Char::isDigit))) }, enabled = editable, label = { Text(stringResource(R.string.scripts_timeout)) })
         OutlinedTextField(runAs, { onDraftChange(draft.copy(runAs = it)) }, enabled = editable, label = { Text(stringResource(R.string.guardian_run_as)) })
         if (runAs.trim() != owner.userName) {
@@ -191,12 +212,12 @@ internal fun ScriptEditor(owner: SessionState.Active, state: ScriptsUiState, dra
         Text(stringResource(R.string.scripts_durability))
         Button(onClick = {
             val approval = if (runAs.trim() == owner.userName) null else GuardianApproval(adminName, adminPassword.toCharArray())
-            onSubmit(ScriptRequest(executable.trim(), arguments.lines().filter(String::isNotBlank), directory.trim(),
-                environmentLines.associate { it.substringBefore('=') to it.substringAfter('=') },
+            onSubmit(ScriptRequest(executable.trim(), arguments, directory.trim(),
+                requireNotNull(environmentValues),
                 timeout.toInt(), runAs.trim(), approval))
             adminPassword = ""
-        }, enabled = editable && executable.isNotBlank() && directory.isNotBlank() && timeout.toIntOrNull()?.let { it in 1..3600 } == true &&
-            validEnvironment && (runAs.trim() == owner.userName || adminName.isNotBlank() && adminPassword.isNotBlank())) {
+        }, enabled = editable && draft.validArguments && executable.isNotBlank() && directory.isNotBlank() && timeout.toIntOrNull()?.let { it in 1..3600 } == true &&
+            environmentValues != null && (runAs.trim() == owner.userName || adminName.isNotBlank() && adminPassword.isNotBlank())) {
             Text(stringResource(R.string.scripts_run))
         }
     }

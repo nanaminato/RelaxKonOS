@@ -83,14 +83,7 @@ public static class FileEndpoints
            .WithTags("Files");
 
         // GET list?path=
-        files.MapGet(FileApiRoutes.List, (string? path, IFileService fs) =>
-        {
-            try { return Results.Ok(fs.GetDirectory(path)); }
-            catch (DirectoryNotFoundException ex) { return Problem(404, "not-found", "路径不存在", ex.Message); }
-            catch (UnauthorizedAccessException ex) { return Problem(403, "elevation-required", "需要管理员权限", ex.Message); }
-            catch (IOException ex) { return Problem(503, "device-unavailable", "设备不可用", ex.Message); }
-            catch (ArgumentException ex) { return Problem(400, "invalid-path", "路径无效", ex.Message); }
-        })
+        files.MapGet(FileApiRoutes.List, ListDirectoryResult)
         .RequireAuthorization(FileAuthorizationPolicies.List)
         .WithTags("Files");
 
@@ -441,6 +434,18 @@ public static class FileEndpoints
         .WithTags("Files");
 
         return app;
+    }
+
+    private static IResult ListDirectoryResult(string? path, IFileService fs)
+    {
+        try { return Results.Ok(fs.GetDirectory(path)); }
+        // Identity and privileged execution boundaries use FileNotFoundException for missing
+        // targets, including directories. Preserve that failure instead of reporting device IO.
+        catch (Exception ex) when (ex is DirectoryNotFoundException or FileNotFoundException)
+        { return Problem(404, "not-found", "路径不存在", ex.Message); }
+        catch (UnauthorizedAccessException ex) { return Problem(403, "elevation-required", "需要管理员权限", ex.Message); }
+        catch (IOException ex) { return Problem(503, "device-unavailable", "设备不可用", ex.Message); }
+        catch (ArgumentException ex) { return Problem(400, "invalid-path", "路径无效", ex.Message); }
     }
 
     private static async Task<IResult> TextResult(Func<Task<IResult>> action)

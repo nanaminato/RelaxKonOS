@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -71,6 +72,7 @@ import app.relaxkonos.mobile.ui.common.collectAsStateValue
 import app.relaxkonos.mobile.ui.common.formatSize
 import app.relaxkonos.mobile.ui.common.formatTimestamp
 import app.relaxkonos.mobile.ui.common.text
+import app.relaxkonos.mobile.ui.common.UiMessage
 import app.relaxkonos.mobile.ui.icons.DesktopIcon
 import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Spacing
@@ -160,9 +162,17 @@ fun FilesScreen(
 
         val listing = viewModel.listing
         val visible = viewModel.visibleEntries
+        if (viewModel.directoryReadFailed && visible.isNotEmpty()) {
+            Text(stringResource(R.string.files_listing_stale), color = MaterialTheme.colorScheme.error)
+        }
         if (listing == null || visible.isEmpty()) {
             EmptyState(
-                text = stringResource(if (viewModel.loading) R.string.common_loading else R.string.files_empty),
+                text = stringResource(when {
+                    viewModel.loading -> R.string.common_loading
+                    viewModel.directoryReadFailed || listing == null -> R.string.files_read_failed
+                                viewModel.query.isNotBlank() -> R.string.files_search_empty
+                    else -> R.string.files_empty
+                }),
                 icon = DesktopIcons.notice,
                 modifier = Modifier.weight(1f),
             )
@@ -597,6 +607,7 @@ fun FileDetailScreen(
                     }
                 }
                 if (properties == null) {
+                    viewModel.propertyMessage?.let { Text(it.text(), color = MaterialTheme.colorScheme.error) }
                     TextButton(onClick = { viewModel.reloadProperties(viewModel.propertiesNeedsElevation) }, enabled = !viewModel.propertiesLoading) {
                         Text(stringResource(if (viewModel.propertiesNeedsElevation) R.string.files_preview_authorize else R.string.common_retry))
                     }
@@ -622,7 +633,7 @@ fun FileDetailScreen(
                         Text(stringResource(R.string.files_action_download))
                     }
                 }
-                OutlinedButton(onClick = { viewModel.requestRename(entry) }, modifier = Modifier.weight(1f)) {
+                OutlinedButton(onClick = { viewModel.requestRename(entry) }, enabled = viewModel.canMutate, modifier = Modifier.weight(1f)) {
                     Text(stringResource(R.string.files_action_rename))
                 }
             }
@@ -631,14 +642,15 @@ fun FileDetailScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                TextButton(onClick = { viewModel.requestTransfer(entry, move = false) }) {
+                TextButton(onClick = { viewModel.requestTransfer(entry, move = false) }, enabled = viewModel.canMutate) {
                     Text(stringResource(R.string.files_action_copy))
                 }
-                TextButton(onClick = { viewModel.requestTransfer(entry, move = true) }) {
+                TextButton(onClick = { viewModel.requestTransfer(entry, move = true) }, enabled = viewModel.canMutate) {
                     Text(stringResource(R.string.files_action_move))
                 }
                 TextButton(
                     onClick = { viewModel.requestDelete(entry) },
+                    enabled = viewModel.canMutate,
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
                 ) { ActionLabel(R.string.common_delete) }
             }
@@ -657,16 +669,21 @@ fun FileOperationOverlays(viewModel: FilesViewModel) {
     if (viewModel.newDirectoryOpen) {
         NewDirectoryDialog(
             parentPath = viewModel.path,
+            canConfirm = viewModel.canMutate,
+            busy = viewModel.mutationBusy,
+            error = viewModel.nameOperationMessage,
             onDismiss = viewModel::cancelNewDirectory,
             onConfirm = viewModel::confirmNewDirectory,
         )
     }
     viewModel.renameTarget?.let { entry ->
-        RenameDialog(entry, onDismiss = viewModel::cancelRename, onConfirm = viewModel::confirmRename)
+        RenameDialog(entry, canConfirm = viewModel.canMutate, onDismiss = viewModel::cancelRename, onConfirm = viewModel::confirmRename,
+            busy = viewModel.mutationBusy, error = viewModel.nameOperationMessage)
     }
     viewModel.transferTarget?.let { request ->
         TransferDialog(
             request = request,
+            canConfirm = viewModel.canMutate,
             onDismiss = viewModel::cancelTransferTarget,
             onConfirm = viewModel::confirmTransfer,
         )
@@ -676,7 +693,7 @@ fun FileOperationOverlays(viewModel: FilesViewModel) {
             title = stringResource(R.string.files_delete_title),
             message = stringResource(R.string.files_delete_message, entry.path),
             confirmLabel = stringResource(R.string.common_delete),
-            busy = viewModel.loading,
+            confirmEnabled = viewModel.canMutate,
             onConfirm = viewModel::confirmDelete,
             onDismiss = viewModel::cancelDelete,
         )
@@ -687,16 +704,20 @@ fun FileOperationOverlays(viewModel: FilesViewModel) {
 }
 
 @Composable
-private fun NewDirectoryDialog(parentPath: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+internal fun NewDirectoryDialog(parentPath: String, canConfirm: Boolean, onDismiss: () -> Unit, onConfirm: (String) -> Unit,
+    busy: Boolean = false, error: UiMessage? = null) {
     var name by remember { mutableStateOf("") }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        modifier = Modifier.imePadding(),
+        onDismissRequest = { if (!busy) onDismiss() },
         title = { Text(stringResource(R.string.files_new_directory_title)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Text(stringResource(R.string.files_new_directory_body, parentPath.ifBlank { "/" }))
+                error?.let { Text(it.text(), color = MaterialTheme.colorScheme.error) }
                 OutlinedTextField(
                     value = name,
+                    enabled = !busy,
                     onValueChange = { name = it },
                     singleLine = true,
                     label = { Text(stringResource(R.string.files_label_name)) },
@@ -705,25 +726,29 @@ private fun NewDirectoryDialog(parentPath: String, onDismiss: () -> Unit, onConf
             }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(name) }, enabled = FileBrowserPolicy.validName(name)) {
+            Button(onClick = { onConfirm(name) }, enabled = !busy && canConfirm && FileBrowserPolicy.validName(name)) {
                 Text(stringResource(R.string.common_create))
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
 @Composable
-private fun RenameDialog(entry: RemoteEntry, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+internal fun RenameDialog(entry: RemoteEntry, canConfirm: Boolean, onDismiss: () -> Unit, onConfirm: (String) -> Unit,
+    busy: Boolean = false, error: UiMessage? = null) {
     var name by remember { mutableStateOf(entry.name) }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        modifier = Modifier.imePadding(),
+        onDismissRequest = { if (!busy) onDismiss() },
         title = { Text(stringResource(R.string.files_rename_title)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Text(entry.path)
+                error?.let { Text(it.text(), color = MaterialTheme.colorScheme.error) }
                 OutlinedTextField(
                     value = name,
+                    enabled = !busy,
                     onValueChange = { name = it },
                     singleLine = true,
                     label = { Text(stringResource(R.string.files_label_name)) },
@@ -732,25 +757,25 @@ private fun RenameDialog(entry: RemoteEntry, onDismiss: () -> Unit, onConfirm: (
             }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(name) }, enabled = FileBrowserPolicy.validName(name) && name != entry.name) {
+            Button(onClick = { onConfirm(name) }, enabled = !busy && canConfirm && FileBrowserPolicy.validName(name) && name != entry.name) {
                 ActionLabel(R.string.common_save)
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
 @Composable
-private fun TransferDialog(request: TransferTarget, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+internal fun TransferDialog(request: TransferTarget, canConfirm: Boolean, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
     var destination by remember { mutableStateOf(request.entry.path) }
     var browsing by remember { mutableStateOf(false) }
-    val files = appContainer().files
     val title = stringResource(if (request.move) R.string.files_move_title else R.string.files_copy_title)
     AlertDialog(
+        modifier = Modifier.imePadding(),
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Text(stringResource(R.string.files_transfer_body, request.entry.path))
                 OutlinedTextField(
                     value = destination,
@@ -765,20 +790,27 @@ private fun TransferDialog(request: TransferTarget, onDismiss: () -> Unit, onCon
             }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(destination) }, enabled = destination.isNotBlank() && destination != request.entry.path) {
+            Button(
+                onClick = { onConfirm(destination) },
+                enabled = canConfirm && FileBrowserPolicy.validRemotePath(destination) && destination != request.entry.path &&
+                    (!request.entry.isDirectory || FileBrowserPolicy.validDestination(listOf(request.entry), destination)),
+            ) {
                 Text(stringResource(if (request.move) R.string.files_action_move else R.string.files_action_copy))
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
-    if (browsing) RemotePathPicker(
-        kind = RemotePathKind.Directory,
-        initialPath = files.navigationParentOf(destination),
-        title = R.string.files_destination_path,
-        onDismiss = { browsing = false },
-        onSelect = { directory ->
-            destination = files.childOf(directory, request.entry.name)
-            browsing = false
-        },
-    )
+    if (browsing) {
+        val files = appContainer().files
+        RemotePathPicker(
+            kind = RemotePathKind.Directory,
+            initialPath = files.navigationParentOf(destination),
+            title = R.string.files_destination_path,
+            onDismiss = { browsing = false },
+            onSelect = { directory ->
+                destination = files.childOf(directory, request.entry.name)
+                browsing = false
+            },
+        )
+    }
 }

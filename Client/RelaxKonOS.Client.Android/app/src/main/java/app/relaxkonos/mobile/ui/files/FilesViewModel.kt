@@ -44,6 +44,7 @@ import app.relaxkonos.mobile.service.UploadForegroundService
 import app.relaxkonos.mobile.ui.common.StatusTone
 import app.relaxkonos.mobile.ui.common.UiMessage
 import app.relaxkonos.mobile.ui.common.failureMessage
+import app.relaxkonos.mobile.ui.common.fileReadFailureMessage
 import app.relaxkonos.mobile.ui.common.withDebugDetail
 import java.io.File
 import kotlinx.coroutines.NonCancellable
@@ -128,6 +129,10 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var permissionRecursive by mutableStateOf(false)
     var permissionInput by mutableStateOf("")
+    var permissionMessage by mutableStateOf<UiMessage?>(null)
+        private set
+    var propertyMessage by mutableStateOf<UiMessage?>(null)
+        private set
     var propertiesNeedsElevation by mutableStateOf(false)
         private set
     var viewerTransform by mutableStateOf(ViewerTransform())
@@ -135,7 +140,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     private var mutationJob: Job? = null
     private var propertiesJob: Job? = null
     private var propertyRequest = 0L
-    val canMutate get() = !mutationBusy && !batchRunning && transfer == null && batchReport == null &&
+    val canMutate get() = !loading && !directoryReadFailed && listing != null && !mutationBusy && !batchRunning && transfer == null && batchReport == null &&
         container.activeSession?.executionEligibility?.available == true && !container.uploads.isRunning && !container.fileTransfers.isRunning
     val checkedEntries get() = listing?.entries.orEmpty().filter { it.path in checkedPaths }
 
@@ -210,6 +215,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         if (!canMutate) return
         permissionRecursive = false
         permissionInput = FileBrowserPolicy.formatMode(mode)
+        permissionMessage = null
         permissionsOpen = true
     }
     fun closePermissions() { if (!mutationBusy) permissionsOpen = false }
@@ -219,6 +225,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         val owner = container.activeSession ?: return
         if (!canMutate) return
         mutationBusy = true
+        permissionMessage = null
         mutationJob = viewModelScope.launch {
             try {
                 val result = container.files.setPermissions(target.path, mode, permissionRecursive && target.isDirectory, container.elevationAnswers)
@@ -228,10 +235,22 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
                     permissionsOpen = false
                     message = UiMessage(R.string.files_permissions_saved, tone = StatusTone.Success)
                 } else {
-                    message = if (result is ApiResult.Transport || result is ApiResult.Success ||
-                        (result is ApiResult.Problem && result.status >= 500)) UiMessage(R.string.files_mutation_unknown)
-                        else result.failureMessage()
+                    val unknown = result is ApiResult.Transport || result is ApiResult.Success ||
+                        (result is ApiResult.Problem && result.status >= 500)
+                    if (unknown) {
+                        message = UiMessage(R.string.files_mutation_unknown)
+                        permissionsOpen = false
+                        if (selected?.path == target.path) loadProperties(target.path)
+                    } else {
+                        permissionMessage = result.failureMessage()
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (container.activeSession === owner) {
                     permissionsOpen = false
+                    message = UiMessage(R.string.files_mutation_unknown)
                     if (selected?.path == target.path) loadProperties(target.path)
                 }
             } finally { if (container.activeSession === owner) { mutationBusy = false; mutationJob = null } }
@@ -261,8 +280,12 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
 
     var loading by mutableStateOf(false)
         private set
+    var directoryReadFailed by mutableStateOf(false)
+        private set
 
     var message by mutableStateOf<UiMessage?>(null)
+        private set
+    var nameOperationMessage by mutableStateOf<UiMessage?>(null)
         private set
 
     var selected by mutableStateOf<RemoteEntry?>(null)
@@ -489,10 +512,12 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         propertiesLoading = false
         propertiesNeedsElevation = false
         permissionsOpen = false
+        permissionMessage = null
         viewerTransform = ViewerTransform()
         selected = entry
         properties = null
         preview = ImagePreview.Hidden
+        propertyMessage = null
         previewFile = null
         previewDecodedFor = IntSize.Zero
         thumbnail = null
@@ -513,40 +538,50 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     fun openNewDirectory() {
         if (!canMutate || path.isBlank()) return
         newDirectoryOpen = true
+        nameOperationMessage = null
     }
 
     fun cancelNewDirectory() {
+        if (mutationBusy) return
         newDirectoryOpen = false
     }
 
     fun confirmNewDirectory(name: String) {
         if (!FileBrowserPolicy.validName(name) || !canMutate || path.isBlank()) return
         val owner = container.activeSession ?: return
-        newDirectoryOpen = false
         val target = container.files.childOf(path, name)
         mutationBusy = true
+        nameOperationMessage = null
         mutationJob = viewModelScope.launch {
             try {
-            val result = container.files.createDirectory(target, container.elevationAnswers)
+            val result = fileMutationRequest { container.files.createDirectory(target, container.elevationAnswers) }
             if (container.activeSession !== owner) return@launch
             when (result) {
                 is ApiResult.Success -> {
+                    newDirectoryOpen = false
                     message = UiMessage(R.string.files_created, listOf(target), tone = StatusTone.Success)
                     container.recentOperations.record(RecentOperationKind.CreateDirectory, target)
                     reload()
                 }
 
-                else -> message = mutationFailure(result)
+                else -> if (result is ApiResult.Transport || (result is ApiResult.Problem && result.status >= 500)) {
+                    newDirectoryOpen = false
+                    message = mutationFailure(result)
+                } else nameOperationMessage = mutationFailure(result)
             }
             } finally { if (container.activeSession === owner) { mutationBusy = false; mutationJob = null } }
         }
     }
 
     fun requestRename(entry: RemoteEntry) {
-        if (canMutate && FileBrowserPolicy.mutable(entry)) renameTarget = entry
+        if (canMutate && FileBrowserPolicy.mutable(entry)) {
+            nameOperationMessage = null
+            renameTarget = entry
+        }
     }
 
     fun cancelRename() {
+        if (mutationBusy) return
         renameTarget = null
     }
 
@@ -554,14 +589,15 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         val target = renameTarget ?: return
         val owner = container.activeSession ?: return
         if (!FileBrowserPolicy.validName(newName) || !canMutate) return
-        renameTarget = null
         mutationBusy = true
+        nameOperationMessage = null
         mutationJob = viewModelScope.launch {
             try {
-            val result = container.files.rename(target.path, newName, container.elevationAnswers)
+            val result = fileMutationRequest { container.files.rename(target.path, newName, container.elevationAnswers) }
             if (container.activeSession !== owner) return@launch
             when (result) {
                 is ApiResult.Success -> {
+                    renameTarget = null
                     container.recentOperations.record(RecentOperationKind.Rename, target.path)
                     val newPath = container.files.childOf(container.files.parentOf(target.path), newName)
                     checkedPaths = checkedPaths.map { if (it == target.path) newPath else it }.toSet()
@@ -571,7 +607,10 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
                     if (selected?.path == target.path) select(target.copy(path = newPath, name = newName))
                     reload()
                 }
-                else -> message = mutationFailure(result)
+                else -> if (result is ApiResult.Transport || (result is ApiResult.Problem && result.status >= 500)) {
+                    renameTarget = null
+                    message = mutationFailure(result)
+                } else nameOperationMessage = mutationFailure(result)
             }
             } finally { if (container.activeSession === owner) { mutationBusy = false; mutationJob = null } }
         }
@@ -1066,6 +1105,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         propertiesJob?.cancel()
         propertiesLoading = true
         properties = null
+        propertyMessage = null
         propertiesNeedsElevation = false
         propertiesJob = viewModelScope.launch {
             try {
@@ -1073,10 +1113,17 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
                 if (request != propertyRequest || container.activeSession !== owner || selected?.path != targetPath) return@launch
                 when (result) {
                     is ApiResult.Success -> if (result.value.path == targetPath) properties = result.value
+                        else propertyMessage = UiMessage(R.string.files_detail_unavailable)
                     else -> {
                         propertiesNeedsElevation = result is ApiResult.Problem && result.code == ProblemCodes.ELEVATION_REQUIRED
-                        if (!propertiesNeedsElevation) message = result.failureMessage()
+                        if (!propertiesNeedsElevation) propertyMessage = result.fileReadFailureMessage()
                     }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (request == propertyRequest && container.activeSession === owner && selected?.path == targetPath) {
+                    propertyMessage = UiMessage(R.string.files_detail_unavailable)
                 }
             } finally { if (request == propertyRequest && container.activeSession === owner) propertiesLoading = false }
         }
@@ -1087,6 +1134,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         val requestedPath = path
         directoryJob?.cancel()
         loading = true
+        directoryReadFailed = false
         directoryJob = viewModelScope.launch {
             try {
                 when (val result = container.files.list(requestedPath, container.elevationAnswers)) {
@@ -1101,8 +1149,16 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
                     }
 
                     else -> if (request == directoryRequest) {
-                        message = result.failureMessage()
+                        directoryReadFailed = true
+                        message = result.fileReadFailureMessage()
                     }
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (request == directoryRequest) {
+                    directoryReadFailed = true
+                    message = UiMessage(R.string.files_read_failed)
                 }
             } finally {
                 if (request == directoryRequest) {
@@ -1123,6 +1179,8 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         backPaths.clear(); forwardPaths.clear(); updateHistory()
         query = ""; showHidden = false; sort = FileSort.Name; sortDescending = false
         permissionsOpen = false; permissionInput = ""; propertiesNeedsElevation = false
+        permissionMessage = null
+        propertyMessage = null
         viewerTransform = ViewerTransform()
         editorOpen = false
         editorPath = null
@@ -1135,12 +1193,14 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         path = ""
         listing = null
         loading = false
+        directoryReadFailed = false
         message = null
         selected = null
         properties = null
         propertiesLoading = false
         newDirectoryOpen = false
         renameTarget = null
+        nameOperationMessage = null
         deleteTarget = null
         transferTarget = null
         transfer = null

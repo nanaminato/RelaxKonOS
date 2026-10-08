@@ -2,6 +2,8 @@ package app.relaxkonos.mobile.ui.common
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -10,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -67,6 +70,10 @@ fun RemotePathPicker(
     val elevations = container.elevationAnswers
     val purpose = LocalContext.current.resources.getResourceEntryName(title) + ":" + kind.name
     val memory = remember(container, purpose) { container.usageMemory.capture(container.activeSession) { container.activeSession } }
+    val session = container.session.state.collectAsStateValue()
+    LaunchedEffect(session, memory) {
+        if (!memory.isCurrent) onDismiss()
+    }
     val remembered = remember(memory) { memory.directory(purpose, true) }
     var restoring by remember(memory, initialPath) { mutableStateOf(initialPath.isBlank() && !remembered.isNullOrBlank()) }
     var path by remember(initialPath, kind, memory) {
@@ -86,26 +93,43 @@ fun RemotePathPicker(
     var error by remember { mutableStateOf<UiMessage?>(null) }
     var loading by remember { mutableStateOf(true) }
     var refresh by remember { mutableIntStateOf(0) }
+    var generation by remember { mutableIntStateOf(0) }
     var query by remember(path) { mutableStateOf("") }
+    var showingPath by remember(path) { mutableStateOf(false) }
     val parent = files.navigationParentOf(path)
     val canGoUp = path.isNotBlank() && parent != path
 
     LaunchedEffect(path, refresh) {
+        val request = ++generation
         loading = true
         error = null
         listing = null
         if (!memory.isCurrent) { onDismiss(); return@LaunchedEffect }
         val restoringDirectory = restoring
         restoring = false
-        val result = files.list(path, if (restoringDirectory) ElevationAnswerProvider.Declines else elevations)
-        if (!memory.isCurrent) { onDismiss(); return@LaunchedEffect }
-        when (result) {
-            is ApiResult.Success -> listing = result.value
-            else -> if (restoringDirectory && path.isNotBlank()) {
-                path = ""
-            } else error = result.failureMessage()
+        val requestedPath = path
+        val requestedRefresh = refresh
+        try {
+            val result = files.list(requestedPath, if (restoringDirectory) ElevationAnswerProvider.Declines else elevations)
+            if (!memory.isCurrent) { onDismiss(); return@LaunchedEffect }
+            if (request != generation || path != requestedPath || refresh != requestedRefresh) return@LaunchedEffect
+            when (result) {
+                is ApiResult.Success -> listing = result.value
+                else -> if (restoringDirectory && requestedPath.isNotBlank()) {
+                    path = ""
+                } else error = result.fileReadFailureMessage()
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            if (!memory.isCurrent) { onDismiss(); return@LaunchedEffect }
+            if (request == generation && path == requestedPath && refresh == requestedRefresh) {
+                if (restoringDirectory && requestedPath.isNotBlank()) path = ""
+                else error = UiMessage(R.string.files_read_failed)
+            }
+        } finally {
+            if (request == generation && path == requestedPath && refresh == requestedRefresh) loading = false
         }
-        loading = false
     }
 
     Dialog(onDismissRequest = onDismiss,
@@ -127,7 +151,9 @@ fun RemotePathPicker(
                         }
                         Text((listing?.path ?: path).ifBlank { stringResource(R.string.remote_path_roots) },
                             style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            modifier = Modifier.weight(1f).clickable(role = Role.Button) { showingPath = true }
+                                .heightIn(min = 48.dp).wrapContentHeight(Alignment.CenterVertically),
+                            maxLines = 2, overflow = TextOverflow.Ellipsis)
                         IconButton(onClick = { refresh++ }, enabled = !loading) {
                             DesktopIcon(DesktopIcons.refresh, contentDescription = stringResource(R.string.common_refresh))
                         }
@@ -172,4 +198,12 @@ fun RemotePathPicker(
             }
         }
     }
+    if (showingPath) AlertDialog(
+        onDismissRequest = { showingPath = false },
+        title = { Text(stringResource(R.string.files_label_path)) },
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) {
+            Text((listing?.path ?: path).ifBlank { stringResource(R.string.remote_path_roots) })
+        } },
+        confirmButton = { TextButton(onClick = { showingPath = false }) { Text(stringResource(R.string.common_close)) } },
+    )
 }

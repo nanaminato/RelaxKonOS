@@ -384,6 +384,12 @@
 
     <string name="files_root">根目录</string>
     <string name="files_empty">该目录为空。</string>
+    <string name="files_search_empty">没有匹配搜索的文件或目录。</string>
+    <string name="files_read_failed">目录尚未成功读取，请刷新重试。</string>
+    <string name="files_invalid_path">服务器拒绝了此路径。请检查并输入其他路径。</string>
+    <string name="files_path_missing">此路径不存在。请返回上级或刷新。</string>
+    <string name="files_device_unavailable">存储设备不可用。请检查服务器设备后刷新。</string>
+    <string name="files_listing_stale">目录刷新失败，保留的内容可能已过期，写操作已暂停。请刷新重试。</string>
     <string name="files_kind_directory">目录</string>
     <string name="files_kind_file">文件</string>
     <string name="files_action_up">上一级</string>
@@ -1056,6 +1062,8 @@
     <string name="scripts_failed">脚本操作失败，请检查 Guardian Agent 与执行权限。</string>
     <string name="scripts_write_unknown">请求结果尚不明确。请刷新任务列表并核对执行状态，再决定是否重新运行或取消。</string>
     <string name="scripts_verify">核实请求</string>
+    <string name="scripts_arguments_invalid">最多 64 个参数，每项最长 4096 字符，不允许 NUL。空值、空格及参数内换行会保留。</string>
+    <string name="scripts_environment_invalid">最多 32 项 KEY=value，键不能重复。键以字母或下划线开头，仅含字母、数字及下划线，最长 128 字符；值最长 4096 字符，不允许 NUL。</string>
     <string name="scripts_storage_failed">无法读取或保存恢复记录，已暂停新请求。请重试核实。</string>
     <string name="scripts_pending_task">待核实任务：%1$s</string>
     <string name="scripts_new">新建脚本任务</string>

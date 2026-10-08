@@ -383,6 +383,12 @@
 
     <string name="files_root">ルート</string>
     <string name="files_empty">このフォルダーは空です。</string>
+    <string name="files_search_empty">検索に一致するファイルまたはフォルダーはありません。</string>
+    <string name="files_read_failed">フォルダーを正常に読み取れていません。更新して再試行してください。</string>
+    <string name="files_invalid_path">サーバーがこのパスを拒否しました。確認して別のパスを入力してください。</string>
+    <string name="files_path_missing">このパスは存在しません。親フォルダーに戻るか、更新してください。</string>
+    <string name="files_device_unavailable">ストレージデバイスを利用できません。サーバーのデバイスを確認してから更新してください。</string>
+    <string name="files_listing_stale">更新に失敗しました。以前の内容は古い可能性があるため、書き込みを停止しています。更新して再試行してください。</string>
     <string name="files_kind_directory">フォルダー</string>
     <string name="files_kind_file">ファイル</string>
     <string name="files_action_up">上へ</string>
@@ -1055,6 +1061,8 @@
     <string name="scripts_failed">操作に失敗しました。Guardian Agent と実行権限を確認してください。</string>
     <string name="scripts_write_unknown">リクエストの結果は不明です。再実行やキャンセルの前に、タスク一覧を更新して実行状態を確認してください。</string>
     <string name="scripts_verify">リクエストを確認</string>
+    <string name="scripts_arguments_invalid">引数は最大 64 件、各 4096 文字までで NUL を含められません。空の値、空白、引数内の改行は保持されます。</string>
+    <string name="scripts_environment_invalid">KEY=value は重複しないキーで最大 32 件です。キーは英字またはアンダースコアで始まり、英数字とアンダースコアのみ（最大 128 文字）。値は最大 4096 文字で NUL を含められません。</string>
     <string name="scripts_storage_failed">復旧記録の読み取りまたは保存に失敗しました。新規リクエストを停止しています。確認を再試行してください。</string>
     <string name="scripts_pending_task">確認待ちのタスク：%1$s</string>
     <string name="scripts_new">新しいタスク</string>

@@ -136,6 +136,7 @@ class ScriptsViewModel(private val session: AuthSession, private val repository:
         mutable.update { it.copy(loading = true, error = false, problemCode = null,
             pending = pending) }
         writeJob = viewModelScope.launch {
+            if (!markAttempted(active)) return@launch
             val result = try { repository.submit(active, request, key) }
                 finally { request.approval?.password?.fill('\u0000') }
             if (!owns(active)) return@launch
@@ -171,6 +172,7 @@ class ScriptsViewModel(private val session: AuthSession, private val repository:
         mutable.update { it.copy(loading = true, error = false, problemCode = null,
             pending = pending) }
         writeJob = viewModelScope.launch {
+            if (!markAttempted(active)) return@launch
             val result = repository.cancel(active, id)
             if (!owns(active)) return@launch
             if (result is ApiResult.Success && result.value.success && result.value.task?.id == id) {
@@ -228,7 +230,11 @@ class ScriptsViewModel(private val session: AuthSession, private val repository:
     }
 
     private fun restorePending(active: SessionState.Active): Boolean = try {
-        val pending = journal.pending(active)
+        val stored = journal.pending(active)
+        // This marker is persisted before entering the repository: false proves no write was started.
+        val pending = if (stored != null && !stored.attempted) {
+            journal.complete(active, stored); null
+        } else stored
         mutable.update { it.copy(pending = pending, journalAvailable = true,
             error = pending != null, problemCode = "scripts.write_unknown".takeIf { pending != null }) }
         true
@@ -237,6 +243,16 @@ class ScriptsViewModel(private val session: AuthSession, private val repository:
     private fun persistPending(active: SessionState.Active, pending: PendingScriptRequest): Boolean = try {
         journal.begin(active, pending); true
     } catch (_: Exception) { storageFailure(); false }
+
+    private fun markAttempted(active: SessionState.Active): Boolean {
+        if (!owns(active)) return false
+        val pending = state.value.pending ?: return false
+        return try {
+            val attempted = journal.attempted(active, pending)
+            mutable.update { it.copy(pending = attempted) }
+            true
+        } catch (_: Exception) { storageFailure(); false }
+    }
 
     private fun completePending(active: SessionState.Active): Boolean = try {
         state.value.pending?.let { journal.complete(active, it) }; true

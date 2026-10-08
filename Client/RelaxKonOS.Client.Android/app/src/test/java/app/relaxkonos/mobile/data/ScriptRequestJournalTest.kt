@@ -54,4 +54,25 @@ class ScriptRequestJournalTest {
             assertTrue(runCatching { journal.begin(owner, pending.copy(taskId = id)) }.isFailure)
         assertNull(storage.bytes)
     }
+
+    @Test fun `send marker survives recreation and stale unsent entry cannot clear it`() {
+        val journal = ScriptRequestJournal(storage); journal.begin(owner, pending)
+        assertFalse(requireNotNull(journal.pending(owner)).attempted)
+        val attempted = journal.attempted(owner, pending)
+        assertTrue(attempted.attempted)
+        assertEquals(attempted, ScriptRequestJournal(storage).pending(owner))
+        assertTrue(runCatching { journal.complete(owner, pending) }.isFailure)
+        assertTrue(runCatching { journal.attempted(owner, attempted) }.isFailure)
+        journal.complete(owner, attempted)
+        assertNull(journal.pending(owner))
+    }
+
+    @Test fun `obsolete format is rejected without a fallback parser`() {
+        ScriptRequestJournal(storage).begin(owner, pending)
+        val bytes = requireNotNull(storage.bytes).copyOf()
+        bytes[3] = 0x31
+        storage.bytes = bytes
+        assertTrue(runCatching { ScriptRequestJournal(storage).pending(owner) }.isFailure)
+        assertTrue(runCatching { ScriptRequestJournal(storage).begin(owner, pending) }.isFailure)
+    }
 }

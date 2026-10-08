@@ -6,6 +6,7 @@ internal static class FileReadElevationChecks
 {
     internal static void Run(string root)
     {
+        VerifyDirectoryFailureContract();
         var principal = new ClaimsPrincipal(new ClaimsIdentity([
             new Claim("sub", "reader"), new Claim("jti", "read-session"), new Claim("name", "testuser")], "test"));
         var host = new HostElevationSessionStore(new TestHostAccountPrivilegeService(),
@@ -41,6 +42,42 @@ internal static class FileReadElevationChecks
         TestAssert.Assert(denied is IStatusCodeHttpResult { StatusCode: 403 }
             && !grants.IsElevated(principal, FileElevationCapability.Read, directory, image),
             "Failed administrator authentication must not grant folder or file access.");
+    }
+
+    private static void VerifyDirectoryFailureContract()
+    {
+        var endpoint = typeof(FileEndpoints).GetMethod("ListDirectoryResult", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var files = DispatchProxy.Create<IFileService, FailedDirectoryRead>();
+        var read = (FailedDirectoryRead)(object)files;
+        foreach (var (error, status, code) in new (Exception, int, string)[]
+        {
+            (new DirectoryNotFoundException("missing local directory"), 404, "not-found"),
+            (new FileNotFoundException("missing identity-execution target"), 404, "not-found"),
+            (new IOException("device failure"), 503, "device-unavailable"),
+            (new UnauthorizedAccessException("protected directory"), 403, "elevation-required"),
+            (new ArgumentException("invalid path"), 400, "invalid-path"),
+        })
+        {
+            read.Failure = error;
+            var result = endpoint.Invoke(null, ["/missing", files]);
+            TestAssert.Assert(result is IStatusCodeHttpResult { StatusCode: var actualStatus } && actualStatus == status
+                && result is IValueHttpResult { Value: Microsoft.AspNetCore.Mvc.ProblemDetails problem }
+                && problem.Type == "https://relaxkonos.app/problems/" + code,
+                "Directory reads must distinguish missing identity targets from device, access and input failures.");
+        }
+        TestAssert.Assert(read.Reads == 5, "Classifying a failed directory read must not replay it.");
+    }
+
+    public class FailedDirectoryRead : DispatchProxy
+    {
+        public Exception Failure { get; set; } = new FileNotFoundException();
+        public int Reads { get; private set; }
+        protected override object? Invoke(MethodInfo? method, object?[]? args)
+        {
+            if (method?.Name != nameof(IFileService.GetDirectory)) throw new NotSupportedException();
+            Reads++;
+            throw Failure;
+        }
     }
 
     public class ProtectedMetadata : DispatchProxy

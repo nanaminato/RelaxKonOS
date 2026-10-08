@@ -42,8 +42,10 @@ class ScriptsViewModelTest {
         var bytes: ByteArray? = null
         var failRead = false
         var failWrite = false
+        var failWriteAt: Int? = null
+        private var writes = 0
         override fun read(): ByteArray? { check(!failRead); return bytes }
-        override fun write(bytes: ByteArray) { check(!failWrite); this.bytes = bytes.copyOf() }
+        override fun write(bytes: ByteArray) { writes++; check(!failWrite && writes != failWriteAt); this.bytes = bytes.copyOf() }
     }
     private val storage = Storage()
     private fun newModel() = ScriptsViewModel(session, ScriptTaskRepository(gateway, session, index), ScriptRequestJournal(storage))
@@ -197,7 +199,7 @@ class ScriptsViewModelTest {
 
     @Test fun `reentering the same session preserves full draft and unknown feedback`() = runTest {
         val owner = login(); model.load(owner); runCurrent(); model.openEditor()
-        val draft = ScriptDraft("other", "/bin/job", "first\nsecond", "/work", "KEY=value", "42", "admin")
+        val draft = ScriptDraft("other", "/bin/job", listOf("", "first\nsecond", " spaced "), "/work", "KEY=value", "42", "admin")
         model.updateDraft(draft)
         model.submit(request()); runCurrent()
         model.load(owner); model.openEditor(); model.updateDraft(draft.copy(executable = "/changed")); runCurrent()
@@ -291,7 +293,7 @@ class ScriptsViewModelTest {
     @Test fun `unknown cancellation remains pending while running and resolves on cancelled state`() = runTest {
         model.load(login()); runCurrent(); model.select("a"); runCurrent()
         model.cancel("a"); runCurrent()
-        assertEquals(PendingScriptRequest("a", true), model.state.value.pending)
+        assertEquals(PendingScriptRequest("a", true, attempted = true), model.state.value.pending)
         model.verifyRequest(); runCurrent()
         assertNotNull(model.state.value.pending)
         model.cancel("a"); runCurrent(); assertEquals(1, cancellations)
@@ -373,5 +375,40 @@ class ScriptsViewModelTest {
         assertNull(model.state.value.pending); assertNull(model.state.value.draft)
         assertNull(ScriptRequestJournal(storage).pending(owner))
         assertEquals(1, submissions)
+    }
+
+    @Test fun `recreated model clears a request cancelled before its send coroutine starts`() = runTest {
+        val owner = login(); model.load(owner); runCurrent(); model.openEditor()
+        val password = "secret".toCharArray()
+        model.submit(request(password))
+        assertEquals(false, ScriptRequestJournal(storage).pending(owner)?.attempted)
+        store.clear(); runCurrent()
+        model = newModel(); store.put("recreated", model); model.load(owner); runCurrent()
+        assertNull(model.state.value.pending)
+        assertNull(ScriptRequestJournal(storage).pending(owner))
+        assertTrue(model.state.value.journalAvailable)
+        assertFalse(model.state.value.error)
+        assertEquals(0, submissions); assertEquals(0, reads)
+        assertTrue(password.all { it == '\u0000' })
+        model.openEditor(); assertNotNull(model.state.value.draft)
+    }
+
+    @Test fun `failure to persist send marker cannot enter network and later clears unsent record`() = runTest {
+        val owner = login(); model.load(owner); runCurrent(); model.openEditor()
+        storage.failWriteAt = 2
+        val password = "secret".toCharArray()
+        model.submit(request(password)); runCurrent()
+        assertEquals(0, submissions)
+        assertEquals(false, ScriptRequestJournal(storage).pending(owner)?.attempted)
+        assertFalse(model.state.value.journalAvailable)
+        assertTrue(password.all { it == '\u0000' })
+        model.verifyRequest(); runCurrent()
+        assertNull(model.state.value.pending)
+        assertNull(ScriptRequestJournal(storage).pending(owner))
+        assertTrue(model.state.value.journalAvailable)
+        assertEquals(0, reads)
+        model.submit(request()); runCurrent()
+        assertEquals(1, submissions)
+        assertEquals(true, ScriptRequestJournal(storage).pending(owner)?.attempted)
     }
 }
