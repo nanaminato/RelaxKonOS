@@ -20,7 +20,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTextInput
@@ -30,6 +31,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.relaxkonos.mobile.core.auth.SessionState
+import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.ExecutionEligibility
 import app.relaxkonos.mobile.core.net.TerminalSessionSummary
 import org.junit.Assert.assertTrue
@@ -37,18 +39,21 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.espresso.Espresso.closeSoftKeyboard
 import android.graphics.Bitmap
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 
 /** Exercises the actual terminal UI under deterministic keyboard and shell inset budgets. */
 class TerminalKeyboardLayoutTest {
-    @get:Rule val rule = createComposeRule()
+    @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
     private val owner = SessionState.Active("server", "https://host:5090", "nana", "studio", emptySet(), "linux", ExecutionEligibility.Available, workspaceId = "11111111-1111-1111-1111-111111111111")
     private val state = ServerTerminalState(
         connected = true, sessionId = "first", output = "nana@server:~$ ps\nprompt-visible",
         sessions = listOf("first", "second").map { id -> TerminalSessionSummary().also { it.sessionId = id } },
     )
+    private fun secondSessionLabel() = InstrumentationRegistry.getInstrumentation().targetContext
+        .getString(R.string.terminal_session_name, 2)
 
     private fun show(width: Dp, height: Dp, keyboard: Dp, consumedBottom: Dp = 0.dp, scale: Float = 1f) {
         rule.setContent {
@@ -70,6 +75,7 @@ class TerminalKeyboardLayoutTest {
         val editor = rule.onNode(hasSetTextAction())
         editor.assertIsDisplayed().assertHeightIsAtLeast(56.dp)
         editor.performTextInput("echo 手机输入")
+        closeSoftKeyboard()
         rule.onNodeWithText("echo 手机输入").assertIsDisplayed()
         rule.onNodeWithText(state.output).assertIsDisplayed()
         val bounds = editor.fetchSemanticsNode().boundsInRoot
@@ -92,7 +98,7 @@ class TerminalKeyboardLayoutTest {
         show(360.dp, 900.dp, 330.dp)
         assertReadableEditorAndOutput()
         rule.onNodeWithText("A+").assertDoesNotExist()
-        rule.onNodeWithText("second").assertDoesNotExist()
+        rule.onNodeWithText(secondSessionLabel(), substring = true).assertDoesNotExist()
     }
 
     @Test fun parentThatAlreadyAvoidedKeyboardDoesNotApplyImeInsetTwice() {
@@ -110,7 +116,7 @@ class TerminalKeyboardLayoutTest {
         show(360.dp, 640.dp, 0.dp)
         assertReadableEditorAndOutput()
         rule.onNodeWithText("A+").assertIsDisplayed()
-        rule.onNodeWithText("second").assertIsDisplayed()
+        rule.onNodeWithText(secondSessionLabel(), substring = true).assertIsDisplayed()
     }
 
     @Test fun keyboardShowAndHidePreserveTheUnsentDraft() {
@@ -128,11 +134,13 @@ class TerminalKeyboardLayoutTest {
         rule.onNodeWithText("unsent draft").assertIsDisplayed()
         rule.onNode(hasSetTextAction()).assertHeightIsAtLeast(56.dp)
         rule.runOnIdle { keyboard.value = 0.dp }
+        closeSoftKeyboard()
         rule.onNodeWithText("unsent draft").assertIsDisplayed()
         rule.onNodeWithText("A+").assertIsDisplayed()
     }
 
     @Test fun actualSystemKeyboardKeepsDraftAndCursorAboveIme() {
+        rule.runOnUiThread { rule.activity.window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE) }
         val keyboardBottom = AtomicInteger()
         rule.setContent {
             val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
@@ -147,16 +155,16 @@ class TerminalKeyboardLayoutTest {
         editor.performClick()
         rule.waitUntil(10_000) { keyboardBottom.get() > 0 }
         editor.performTextInput("echo 手机输入")
-        editor.assertIsDisplayed().assertHeightIsAtLeast(56.dp)
-        rule.onNodeWithText("echo 手机输入").assertIsDisplayed()
-        val root = rule.onRoot().fetchSemanticsNode().boundsInRoot
-        assertTrue("editor must stay above the real IME", editor.fetchSemanticsNode().boundsInRoot.bottom <= root.bottom - keyboardBottom.get())
-        rule.onNodeWithText(state.output).assertIsDisplayed()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val evidence = File(instrumentation.targetContext.getExternalFilesDir(null), "terminal-real-keyboard.png")
         evidence.outputStream().use { stream ->
             instrumentation.uiAutomation.takeScreenshot().compress(Bitmap.CompressFormat.PNG, 100, stream)
         }
+        editor.assertIsDisplayed().assertHeightIsAtLeast(56.dp)
+        rule.onNodeWithText("echo 手机输入").assertIsDisplayed()
+        val root = rule.onRoot().fetchSemanticsNode().boundsInRoot
+        assertTrue("editor must stay above the real IME", editor.fetchSemanticsNode().boundsInRoot.bottom <= root.bottom - keyboardBottom.get())
+        rule.onNodeWithText(state.output).assertIsDisplayed()
     }
 
     @Test fun wideViewportUsesSessionSidebarAndLeavesEditorInTheTerminalColumn() {

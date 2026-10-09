@@ -26,7 +26,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performImeAction
@@ -39,10 +40,11 @@ import androidx.compose.ui.unit.dp
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
+import androidx.test.espresso.Espresso.closeSoftKeyboard
 import java.util.concurrent.atomic.AtomicInteger
 
 class SshTerminalKeyboardLayoutTest {
-    @get:Rule val rule = createComposeRule()
+    @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
     private val state = SshTerminalUiState(hostId = "host", connected = true, output = "user:~$ prompt-visible")
     private val sent = mutableListOf<String>()
 
@@ -75,6 +77,7 @@ class SshTerminalKeyboardLayoutTest {
         val editor = rule.onNode(hasSetTextAction())
         editor.assertIsDisplayed().assertHeightIsAtLeast(56.dp)
         editor.performTextInput("echo 手机输入")
+        closeSoftKeyboard()
         rule.onNodeWithText("echo 手机输入").assertIsDisplayed()
         rule.onNodeWithTag("ssh-terminal-output").assertIsDisplayed()
         val window = rule.onNodeWithTag("window").fetchSemanticsNode().boundsInRoot
@@ -117,12 +120,14 @@ class SshTerminalKeyboardLayoutTest {
         rule.onNodeWithText("unsent draft").assertIsDisplayed()
         rule.onNode(hasSetTextAction()).assertHeightIsAtLeast(56.dp)
         rule.runOnIdle { keyboard.value = 0.dp }
+        closeSoftKeyboard()
         rule.onNodeWithText("unsent draft").assertIsDisplayed()
         rule.onNodeWithText("A+").assertIsDisplayed()
         rule.runOnIdle { assertTrue(sent.isEmpty()); assertTrue(reconnects.isEmpty()) }
     }
 
     @Test fun systemKeyboardKeepsInputVisibleAndImeSendUsesTheSameTerminal() {
+        rule.runOnUiThread { rule.activity.window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE) }
         val keyboardBottom = AtomicInteger()
         rule.setContent {
             val bottom = WindowInsets.ime.getBottom(LocalDensity.current)
