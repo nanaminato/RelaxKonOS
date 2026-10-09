@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="runtime_install_action">%1$s をインストール</string>
+    <string name="runtime_install_hint">このサーバーには %1$s がインストールされていません。インストールしてこの機能を利用できます。</string>
+    <string name="runtime_recovery_tools">以前の操作を復元</string>
+    <string name="service_access_checked">サイトの待受設定の確認日時：%1$s</string>
+    <string name="service_access_failed">アドレスが変更されたか、開ける外部アプリがありません。更新して再試行してください。</string>
+    <string name="service_access_loopback_tls">ローカル転送の HTTPS には 127.0.0.1 に有効な証明書が必要です。ブラウザーが通常通り検証し、TLS 検証の無効化は行いません。</string>
+    <string name="service_access_note">システムのブラウザーか外部アプリで開きます。クライアントの認証情報は付加しません。到達性は保証しません。HTTPS エラーの場合はホスト名、証明書、信頼チェーンを修正するか、信頼できる公開先を使用してください。</string>
+    <string name="service_access_open">外部アプリでサービスを開く</string>
+    <string name="service_access_refresh">関連サイトのアドレスを取得</string>
+    <string name="service_access_server_center">サーバーセンターを開く</string>
+    <string name="service_access_site_unavailable">関連サイトの待受設定を取得できないか、権限が不足しています。サイト管理で確認してください。</string>
+    <string name="service_access_ssh_note">リモートのループバックや管理ログインの場合、サーバーセンターでサーバーポート %1$d の SSH ローカル転送を作成し、実際のスマートフォン側のアドレスを開いてください。</string>
+</resources>

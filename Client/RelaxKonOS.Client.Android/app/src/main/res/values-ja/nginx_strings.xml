@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="nginx_accept_facts">現在のインスタンス状態を受け入れる</string>
+    <string name="nginx_accept_facts_confirm">現在の管理対象インスタンスを更新・確認し、この連携リクエストのローカル追跡を終了しますか？元のリクエストの成功を証明するものではなく、サーバータスクもキャンセルしません。サーバー操作の終了を確認してから続行してください。</string>
+    <string name="nginx_acme">ACME HTTP-01 を有効化</string>
+    <string name="nginx_acme_confirm">ACME チャレンジの include を有効にして設定を再読み込みしますか？ファイアウォールのポート開放や外部接続の確認は行いません。</string>
+    <string name="nginx_acme_no_sites">管理対象サイトを作成してから ACME HTTP-01 の include を有効にしてください。</string>
+    <string name="nginx_candidates">管理に追加できる既存のインストール</string>
+    <string name="nginx_catalog_failed">バージョン一覧を取得できません。再試行するか、公開済みのバージョンを入力してください。</string>
+    <string name="nginx_config_failed">Nginx の設定検証に失敗したか、include の構成が未対応です。診断情報はサーバーに保持されます。</string>
+    <string name="nginx_configuration_missing">設定パスを取得できません</string>
+    <string name="nginx_confirm">変更を確認</string>
+    <string name="nginx_conflict">インストールや設定が変更されたか、既に管理されています。状態を更新して確認してください。</string>
+    <string name="nginx_controls_installation_running">インストールが実行中です。完了すると操作できるようになります。</string>
+    <string name="nginx_controls_operation_running">インスタンス操作が実行中です。操作履歴で状態を更新してください。</string>
+    <string name="nginx_controls_pending">未確認のリクエストがあります。操作履歴で確認してください。</string>
+    <string name="nginx_controls_refreshing">インスタンスとタスクの状態を更新しています…</string>
+    <string name="nginx_controls_unverified">サーバーの状態を一部確認できませんでした。インスタンスを更新してください。</string>
+    <string name="nginx_copy_diagnostics">ログをコピー</string>
+    <string name="nginx_diagnostics">Nginx 診断ログ</string>
+    <string name="nginx_discover">インスタンスを検出</string>
+    <string name="nginx_helper_failed">サーバーの権限ヘルパーを利用できません。ヘルパーを修復してから再試行してください。</string>
+    <string name="nginx_install">Nginx をインストール</string>
+    <string name="nginx_install_confirm">サーバーのパッケージと設定が変更されることを確認し、インストールに同意します。</string>
+    <string name="nginx_integrate">管理に追加</string>
+    <string name="nginx_integrate_confirm">この Nginx を管理に追加しますか？サーバーは設定をバックアップし、管理対象の include を追加して検証します。Nginx が再読み込みされる場合があります。</string>
+    <string name="nginx_integrated">管理に追加済みのインストール</string>
+    <string name="nginx_intro">接続先サーバーの Nginx を管理します。インストールや実行状態の変更は公開サイトに影響する場合があります。</string>
+    <string name="nginx_lifecycle_confirm">実行状態を変更しますか？サイトへの接続が中断する場合があります。</string>
+    <string name="nginx_managed">RelaxKonOS 管理のインストール</string>
+    <string name="nginx_operation">操作 %1$s · %2$s</string>
+    <string name="nginx_operation_id">Web 操作 ID</string>
+    <string name="nginx_package_invalid">バージョンまたは Nginx ZIP の構成が無効です。両者が一致しているか確認してください。</string>
+    <string name="nginx_package_path">サーバー上の ZIP パス</string>
+    <string name="nginx_package_ready">パッケージ準備完了：%1$s（%2$d バイト）。参照には有効期限があります。</string>
+    <string name="nginx_pending">%1$s の元のリクエストは未確認です</string>
+    <string name="nginx_pending_installation">未確認のインストールリクエストがあります。運用画面で処理を復元してください。元のフォームでは元のキーで再試行できます。</string>
+    <string name="nginx_pick_package">端末の ZIP を選択</string>
+    <string name="nginx_recover">Web 操作を照会</string>
+    <string name="nginx_reference">パッケージ参照を準備</string>
+    <string name="nginx_reload">再読み込み</string>
+    <string name="nginx_restart">再起動</string>
+    <string name="nginx_retry_confirm">サーバーの状態を照会し、同じリクエストキーで確認済みの操作を再試行しますか？追加済みの候補が消えた場合は、操作 ID で結果を確認してください。</string>
+    <string name="nginx_snapshot">設定スナップショット：%1$s</string>
+    <string name="nginx_source">インストール元</string>
+    <string name="nginx_source_official">サーバーで公式パッケージを取得</string>
+    <string name="nginx_source_phone">端末から ZIP をアップロード</string>
+    <string name="nginx_source_server">サーバー上の ZIP</string>
+    <string name="nginx_start">起動</string>
+    <string name="nginx_stop">停止</string>
+    <string name="nginx_stopped">停止中</string>
+    <!-- BP03 Nginx management -->
+    <string name="nginx_title">Nginx 管理</string>
+    <string name="nginx_ubuntu_install">Ubuntu では APT で Nginx をインストールします。パッケージのインストールと設定にはサーバーの管理者権限が必要です。</string>
+    <string name="nginx_uncertain">結果を確認できませんでした。再試行する前にサーバーの状態を更新してください。画面を閉じてもサーバーの処理は中止されません。</string>
+    <string name="nginx_uninstall">Nginx をアンインストール</string>
+    <string name="nginx_uninstall_confirm">選択した Nginx を停止してアンインストールしますか？公開サイトが利用できなくなります。Ubuntu ではシステムの Nginx パッケージとその設定、Windows では管理対象のインストールを削除します。</string>
+    <string name="nginx_unsupported">このサーバーまたは管理方式では、この操作を利用できません。</string>
+    <string name="nginx_upload_bytes">%1$d バイトをアップロード済み</string>
+    <string name="nginx_version">バージョン（例：1.31.3）</string>
+    <string name="nginx_windows_install">Windows では公式の Nginx ZIP を使用します。アーカイブと一致するバージョンを指定するか、サーバーでダウンロードしてください。</string>
+</resources>

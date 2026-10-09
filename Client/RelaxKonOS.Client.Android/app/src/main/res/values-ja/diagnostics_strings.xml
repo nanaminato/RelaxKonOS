@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="diagnostics_capabilities">サーバーが報告した機能数: %1$d</string>
+    <string name="diagnostics_export">レポートを表示</string>
+    <string name="diagnostics_export_note">レポートに含まれるのはサーバーアドレス、機能名、レコード件数、セルフチェックの結果だけです。パスワード、トークン、保存された暗号文は決して含まれません。</string>
+    <string name="diagnostics_export_title">秘匿化レポート</string>
+    <string name="diagnostics_files_ok">ファイルルート: 到達可能、%1$d 件</string>
+    <string name="diagnostics_files_problem">ファイルルート: サーバーに拒否されました</string>
+    <string name="diagnostics_files_transport">ファイルルート: 到達できません</string>
+    <string name="diagnostics_metrics_ok">ホスト指標: 到達可能</string>
+    <string name="diagnostics_metrics_problem">ホスト指標: サーバーに拒否されました</string>
+    <string name="diagnostics_metrics_transport">ホスト指標: 到達できません</string>
+    <string name="diagnostics_no_session">セッション: 未サインイン</string>
+    <string name="diagnostics_not_run">セルフチェックはまだ実行されていません。</string>
+    <string name="diagnostics_run">実行</string>
+    <string name="diagnostics_self_check">接続のセルフチェック</string>
+    <string name="diagnostics_session_ok">セッション: %1$s</string>
+    <string name="diagnostics_title">診断</string>
+    <string name="diagnostics_token_absent">アクセストークン: なし</string>
+    <string name="diagnostics_token_held">アクセストークン: メモリ上のみ</string>
+    <string name="diagnostics_vault_summary">保存されたレコード: サーバーパスワード %1$d 件、管理者パスワード %2$d 件。</string>
+</resources>

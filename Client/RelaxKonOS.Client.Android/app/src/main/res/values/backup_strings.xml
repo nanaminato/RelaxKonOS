@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="backup_recovery_blocked">Recovery is blocked. Resolve every requirement shown below first.</string>
+    <string name="backup_recovery_create">Create definition backup</string>
+    <string name="backup_recovery_create_failed">The backup request was not confirmed. Check the task list before retrying.</string>
+    <string name="backup_recovery_created">Backup request accepted. Its verified result appears in this list.</string>
+    <string name="backup_recovery_empty">No verified backups are available for this application.</string>
+    <string name="backup_recovery_item">Backup %1$s · %2$s</string>
+    <string name="backup_recovery_not_supported">This server does not provide backup and recovery capability.</string>
+    <string name="backup_recovery_note">Backups are encrypted on the server. Check recovery before making any change.</string>
+    <string name="backup_recovery_objects">%1$d encrypted objects</string>
+    <string name="backup_recovery_preflight">Check recovery</string>
+    <string name="backup_recovery_preflight_failed">The server could not verify this backup for recovery.</string>
+    <string name="backup_recovery_ready_new_instance">Recovery can create a new, stopped application instance. No existing application will be overwritten.</string>
+    <string name="backup_recovery_request_unknown">The previous request is still being checked. Retrying uses the same safe request key.</string>
+    <string name="backup_recovery_retry_create">Retry backup request</string>
+    <string name="backup_recovery_title">Backup &amp; recovery</string>
+    <string name="backup_recovery_unavailable">Backup records could not be read.</string>
+</resources>

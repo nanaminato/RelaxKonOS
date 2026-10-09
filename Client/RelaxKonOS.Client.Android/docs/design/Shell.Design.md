@@ -34,7 +34,9 @@ Android 客户端采用 **原生 Mobile Shell**：能在手机和平板上登录
 能力是**部署事实**，回答"这台服务器有没有这个域"。它与**登录身份**是否被允许执行普通操作是两件事：`LoginResponse.executionEligibility`
 （`ServerExecutionEligibilityDto`）回答后者，同一台服务器对 root 与对普通账户的答案不同。Linux System Mode 的 root 会话普通 worker 不可用，但 `privilegedFilesAvailable=true` 表示受管文件操作直接走 Helper；不能因此把文件入口判为不可用。Terminal 与 Git 仍须分别判断普通执行资格。`server.files` 存在并不代表当前身份能用它——
 入口照常出现；当普通执行和特权文件路由都不可用时，首页先显示服务端给的原因（`ExecutionEligibilityNotice`）。
-客户端只消费服务端给的稳定原因码（`ExecutionEligibilityReasons`），文案一律取自本工程自己的 `strings.xml`。
+客户端只消费服务端给的稳定原因码（`ExecutionEligibilityReasons`），文案一律取自本工程自己的 Android 字符串资源。
+
+字符串按功能拆分，三种语言目录 `app/src/main/res/values`、`values-zh`、`values-ja` 使用相同文件名和键集。`strings.xml` 只放应用名、顶级导航、公共动作和错误；认证、文件、终端、SSH、服务器中心、Docker 等文案分别放在 `authentication_strings.xml`、`files_strings.xml`、`terminal_strings.xml`、`ssh_strings.xml`、`server_center_strings.xml`、`docker_strings.xml` 等功能文件中。新增文案同时更新三种语言的对应功能文件，不按审查批次或修复事项新建补充文件。Android 会合并同目录资源，调用方继续通过 `R.string` 引用，键名不依赖文件名。
 
 实际可用功能见 [功能目录](../README.md)。应用与平台边界见 [支持范围](SupportScope.md)。
 

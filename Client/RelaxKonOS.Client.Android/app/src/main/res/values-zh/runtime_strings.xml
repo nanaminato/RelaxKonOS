@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="runtime_install_action">安装 %1$s</string>
+    <string name="runtime_install_hint">此服务器尚未安装 %1$s。安装后即可使用此功能。</string>
+    <string name="runtime_recovery_tools">恢复之前的操作</string>
+    <string name="service_access_checked">站点绑定核对时间：%1$s</string>
+    <string name="service_access_failed">地址已变化或没有外部应用可以打开，请刷新后重试。</string>
+    <string name="service_access_loopback_tls">本地转发的 HTTPS 需要对 127.0.0.1 有效的证书，浏览器正常校验证书，不提供跳过 TLS 验证。</string>
+    <string name="service_access_note">使用系统浏览器或外部应用打开，不附加客户端登录凭据。地址不代表已验证可达；若 HTTPS 出错，请修复主机名、证书及信任链，或选择可信的发布入口。</string>
+    <string name="service_access_open">在外部打开服务</string>
+    <string name="service_access_refresh">读取关联站点地址</string>
+    <string name="service_access_server_center">打开服务器中心</string>
+    <string name="service_access_site_unavailable">关联站点绑定不可用或当前权限不足，请到网站管理页检查。</string>
+    <string name="service_access_ssh_note">若服务使用远端回环地址或 SSH 登录，请在服务器中心为服务器端口 %1$d 创建用户 SSH 本地转发，再打开实际分配的手机地址。</string>
+</resources>

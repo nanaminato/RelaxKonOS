@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="firewall_accept_facts">Read and accept current facts</string>
+    <string name="firewall_action">Action</string>
+    <string name="firewall_allow">Allow</string>
+    <string name="firewall_any">Any</string>
+    <string name="firewall_confirm">Confirm host firewall change</string>
+    <string name="firewall_conflict">Host rules or policies changed. Refresh and confirm the current rule before submitting.</string>
+    <string name="firewall_continue_editing">Continue editing</string>
+    <string name="firewall_create">Create rule</string>
+    <string name="firewall_defaults">Edit default policies</string>
+    <string name="firewall_defaults_value">Defaults: incoming %1$s; outgoing %2$s</string>
+    <string name="firewall_deny">Deny</string>
+    <string name="firewall_destination">Destination IP / CIDR / any</string>
+    <string name="firewall_direction">Direction</string>
+    <string name="firewall_disable">Disable firewall</string>
+    <string name="firewall_disabled">Firewall disabled</string>
+    <string name="firewall_discard">Discard unsaved changes?</string>
+    <string name="firewall_discard_action">Discard changes</string>
+    <string name="firewall_discard_help">Your changes have not been saved and will be lost if discarded.</string>
+    <string name="firewall_edit">Edit rule</string>
+    <string name="firewall_empty">No rules in the current host snapshot</string>
+    <string name="firewall_enable">Enable firewall</string>
+    <string name="firewall_enabled">Firewall enabled</string>
+    <string name="firewall_enabled_change">Change firewall enabled state</string>
+    <string name="firewall_incoming">Incoming</string>
+    <string name="firewall_intro">Manage the host Linux / Windows firewall. Changes affect server connectivity, including this management connection.</string>
+    <string name="firewall_limit">Rate limit</string>
+    <string name="firewall_management_warning">This can block the current management connection and hosted services. Allow the management address and port first. If the connection is lost, reconnect and inspect current host facts; this API has no automatic rollback or replay key.</string>
+    <string name="firewall_number">Rule number: %1$d</string>
+    <string name="firewall_outgoing">Outgoing</string>
+    <string name="firewall_pending">A firewall change has an unverified result. Read and explicitly accept current host facts before another write.</string>
+    <string name="firewall_permission">Host authorization is required or unavailable</string>
+    <string name="firewall_policy_title">Default policies</string>
+    <string name="firewall_port">Port / range / any</string>
+    <string name="firewall_protocol">Protocol</string>
+    <string name="firewall_refresh_keep_draft">Refresh and keep draft</string>
+    <string name="firewall_reject">Reject with response</string>
+    <string name="firewall_rule_help">Use literal IPv4/IPv6 or CIDR addresses. Ports are 1–65535, ranges use start:end; any includes every port. The server validates the final rule and its address family.</string>
+    <string name="firewall_source">Source IP / CIDR / any</string>
+    <string name="firewall_submit">Confirm change</string>
+    <string name="firewall_title">Firewall</string>
+    <string name="firewall_unavailable">Host firewall unavailable or unsupported</string>
+    <string name="firewall_unknown_value">Unknown</string>
+    <string name="firewall_unverified">Firewall facts or change result are unverified. Refresh before continuing.</string>
+    <string name="firewall_windows_ready">Windows Firewall ready</string>
+    <string name="firewall_windows_scope">Changes apply to Domain, Private and Public profiles. Only rules managed by this app are listed.</string>
+</resources>

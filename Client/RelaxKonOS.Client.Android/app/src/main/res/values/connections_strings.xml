@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="connections_actions_title">Manage this login</string>
+    <string name="connections_active">Current connection</string>
+    <string name="connections_connect">Connect</string>
+    <string name="connections_delete_message">Delete the saved login for %1$s (%2$s) together with the password stored for it?</string>
+    <string name="connections_delete_title">Delete this login</string>
+    <string name="connections_direct_server">Direct server</string>
+    <string name="connections_empty">No server has been saved yet.</string>
+    <string name="connections_forget_message">Delete the password saved for %1$s (%2$s)? The connection stays, and the password will have to be typed again.</string>
+    <string name="connections_forget_password">Forget the password</string>
+    <string name="connections_forget_title">Forget this password</string>
+    <string name="connections_managed_server">Managed server</string>
+    <string name="connections_mutation_failed">The local change could not be completed. Some changes may already have taken effect. Cancel and reopen the list to check the current record, or retry if the action is still available.</string>
+    <string name="connections_no_password">No password saved</string>
+    <string name="connections_password_invalidated">The saved password is no longer valid</string>
+    <string name="connections_password_unavailable">A password is saved but cannot be unlocked on this device right now</string>
+    <string name="connections_platform_trademarks">Ubuntu is a Canonical trademark. Windows, Windows Server, Windows 10 and Windows 11 are Microsoft trademarks.</string>
+    <string name="connections_saved_password">Password saved, unlocked by fingerprint</string>
+    <string name="connections_saved_password_debug">Password saved unencrypted (debug build, no screen lock)</string>
+    <string name="connections_saved_password_screen_lock">Password saved, unlocked by the screen lock</string>
+    <string name="connections_sign_out_note">Signing out keeps the saved connections and their passwords.</string>
+    <string name="connections_swipe_actions">Swipe left to forget the password or delete this login.</string>
+    <!-- Connections -->
+    <string name="connections_title">Connections</string>
+    <string name="connections_use">Use</string>
+    <string name="connections_windows_device">Windows 10/11 device</string>
+    <string name="connections_windows_device_support">Windows 10/11 · paired device-key sign-in</string>
+</resources>

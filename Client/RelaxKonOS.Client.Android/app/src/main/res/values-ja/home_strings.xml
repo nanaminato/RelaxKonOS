@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="home_connection_remote">リモートサーバー</string>
+    <string name="home_filesystems_title">ディスク</string>
+    <string name="home_label_cpu">CPU</string>
+    <string name="home_label_memory">メモリ</string>
+    <string name="home_label_platform">プラットフォーム</string>
+    <string name="home_label_server">サーバー</string>
+    <string name="home_label_uptime">稼働時間</string>
+    <string name="home_label_user">アカウント</string>
+    <string name="home_label_workspace">ワークスペース</string>
+    <string name="home_metrics_absent">このサーバーはホスト指標を報告していません。</string>
+    <string name="home_metrics_empty">まだ計測値がありません。</string>
+    <string name="home_metrics_stale">最後の計測値は古くなっています（%1$s）。</string>
+    <string name="home_recent_copy">コピー</string>
+    <string name="home_recent_create_directory">フォルダーを作成</string>
+    <string name="home_recent_delete">削除</string>
+    <string name="home_recent_download">ダウンロード</string>
+    <string name="home_recent_empty">このアプリのセッションで成功した操作がここに表示されます。</string>
+    <string name="home_recent_end_process">プロセスを終了</string>
+    <string name="home_recent_item">%1$s · %2$s · %3$s</string>
+    <string name="home_recent_move">移動</string>
+    <string name="home_recent_rename">名前を変更</string>
+    <string name="home_recent_title">最近の操作</string>
+    <string name="home_recent_upload">アップロード</string>
+    <string name="home_session_title">セッション</string>
+    <string name="home_system_title">システム状態</string>
+    <string name="home_value_percent">%1$.1f%%</string>
+    <string name="home_value_uptime_days_hours">%1$d 日 %2$d 時間</string>
+    <string name="home_value_uptime_hours_minutes">%1$d 時間 %2$d 分</string>
+    <string name="home_value_uptime_minutes_seconds">%1$d 分 %2$d 秒</string>
+    <string name="home_value_uptime_seconds">%1$d 秒</string>
+    <string name="home_value_used_of_total">%2$s 中 %1$s</string>
+</resources>

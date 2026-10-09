@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="backup_recovery_blocked">恢复已阻止。请先解决下列所有要求。</string>
+    <string name="backup_recovery_create">创建定义备份</string>
+    <string name="backup_recovery_create_failed">未能确认备份请求。重试前请检查任务列表。</string>
+    <string name="backup_recovery_created">备份请求已接受；校验后的结果会显示在此列表中。</string>
+    <string name="backup_recovery_empty">此应用没有可用的已验证备份。</string>
+    <string name="backup_recovery_item">备份 %1$s · %2$s</string>
+    <string name="backup_recovery_not_supported">当前服务器未提供备份与恢复能力。</string>
+    <string name="backup_recovery_note">备份在服务器端加密。任何更改前，请先检查恢复条件。</string>
+    <string name="backup_recovery_objects">%1$d 个已加密对象</string>
+    <string name="backup_recovery_preflight">检查恢复条件</string>
+    <string name="backup_recovery_preflight_failed">服务器无法验证此备份是否可恢复。</string>
+    <string name="backup_recovery_ready_new_instance">恢复可创建一个新的、已停止的应用实例；不会覆盖现有应用。</string>
+    <string name="backup_recovery_request_unknown">上一请求仍在核实中。重试会使用同一个安全请求键。</string>
+    <string name="backup_recovery_retry_create">重试备份请求</string>
+    <string name="backup_recovery_title">备份与恢复</string>
+    <string name="backup_recovery_unavailable">无法读取备份记录。</string>
+</resources>

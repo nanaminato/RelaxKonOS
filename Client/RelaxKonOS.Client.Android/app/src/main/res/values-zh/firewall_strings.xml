@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="firewall_accept_facts">读取并采用当前事实</string>
+    <string name="firewall_action">动作</string>
+    <string name="firewall_allow">允许</string>
+    <string name="firewall_any">任意</string>
+    <string name="firewall_confirm">确认服务器防火墙变更</string>
+    <string name="firewall_conflict">服务器规则或策略已变化，请刷新并确认当前规则后再提交。</string>
+    <string name="firewall_continue_editing">继续编辑</string>
+    <string name="firewall_create">创建规则</string>
+    <string name="firewall_defaults">编辑默认策略</string>
+    <string name="firewall_defaults_value">默认策略：入站 %1$s；出站 %2$s</string>
+    <string name="firewall_deny">拒绝</string>
+    <string name="firewall_destination">目标 IP / CIDR / any</string>
+    <string name="firewall_direction">方向</string>
+    <string name="firewall_disable">停用防火墙</string>
+    <string name="firewall_disabled">防火墙已停用</string>
+    <string name="firewall_discard">放弃未保存的修改？</string>
+    <string name="firewall_discard_action">放弃修改</string>
+    <string name="firewall_discard_help">当前修改尚未保存，放弃后将丢失。</string>
+    <string name="firewall_edit">编辑规则</string>
+    <string name="firewall_empty">当前服务器快照没有规则</string>
+    <string name="firewall_enable">启用防火墙</string>
+    <string name="firewall_enabled">防火墙已启用</string>
+    <string name="firewall_enabled_change">变更防火墙启用状态</string>
+    <string name="firewall_incoming">入站</string>
+    <string name="firewall_intro">管理服务器 Linux / Windows 防火墙；修改会影响服务器连通性，包括当前管理连接。</string>
+    <string name="firewall_limit">限速</string>
+    <string name="firewall_management_warning">此操作可能阻断当前管理连接和服务器服务。请先放行管理地址与端口。若断线，请重连后核实服务器事实；当前 API 没有自动回滚或重放键。</string>
+    <string name="firewall_number">规则编号：%1$d</string>
+    <string name="firewall_outgoing">出站</string>
+    <string name="firewall_pending">防火墙变更结果待核实。再次写入前须读取并明确采用服务器当前事实。</string>
+    <string name="firewall_permission">需要服务器授权或授权不可用</string>
+    <string name="firewall_policy_title">默认策略</string>
+    <string name="firewall_port">端口 / 范围 / any</string>
+    <string name="firewall_protocol">协议</string>
+    <string name="firewall_refresh_keep_draft">刷新并保留草稿</string>
+    <string name="firewall_reject">拒绝并响应</string>
+    <string name="firewall_rule_help">使用 IPv4/IPv6 字面地址或 CIDR。端口为 1–65535，范围使用起始:结束；any 包含所有端口。最终规则和地址族由服务端校验。</string>
+    <string name="firewall_source">来源 IP / CIDR / any</string>
+    <string name="firewall_submit">确认变更</string>
+    <string name="firewall_title">防火墙</string>
+    <string name="firewall_unavailable">服务器防火墙不可用或不支持</string>
+    <string name="firewall_unknown_value">未知</string>
+    <string name="firewall_unverified">防火墙事实或变更结果尚未核实，请刷新后继续。</string>
+    <string name="firewall_windows_ready">Windows 防火墙已就绪</string>
+    <string name="firewall_windows_scope">启停与默认策略应用于域、专用、公用配置；列表仅显示本应用管理的规则。</string>
+</resources>

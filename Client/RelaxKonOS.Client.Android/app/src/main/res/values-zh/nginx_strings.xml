@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="nginx_accept_facts">接受当前实例状态</string>
+    <string name="nginx_accept_facts_confirm">刷新并核实当前 RelaxKonOS 管理的实例，然后结束这条 RelaxKonOS 管理的请求的本地待核实记录？这不代表原请求成功，也不会取消任何服务端任务。请确认服务端操作已结束后继续。</string>
+    <string name="nginx_acme">启用 ACME HTTP-01</string>
+    <string name="nginx_acme_confirm">启用 ACME challenge include 并重载配置？此操作不会开放防火墙端口，也不表示公网已可达。</string>
+    <string name="nginx_acme_no_sites">请先创建 RelaxKonOS 管理的站点，再启用 ACME HTTP-01 include。</string>
+    <string name="nginx_candidates">可接管的已有安装</string>
+    <string name="nginx_catalog_failed">版本目录不可用。请重试，或填写已知发布版本。</string>
+    <string name="nginx_config_failed">Nginx 配置校验失败，或 include 布局不受支持。服务器保留诊断信息。</string>
+    <string name="nginx_configuration_missing">配置路径不可用</string>
+    <string name="nginx_confirm">确认变更</string>
+    <string name="nginx_conflict">安装或配置已变化，或已有归属。请刷新核实后再变更。</string>
+    <string name="nginx_controls_installation_running">安装任务仍在运行，完成后将恢复控制。</string>
+    <string name="nginx_controls_operation_running">实例维护任务仍在运行，请到操作记录刷新状态。</string>
+    <string name="nginx_controls_pending">存在尚未核实的请求，请到操作记录处理。</string>
+    <string name="nginx_controls_refreshing">正在刷新实例与任务状态…</string>
+    <string name="nginx_controls_unverified">部分服务器状态未能核实，请刷新实例后再操作。</string>
+    <string name="nginx_copy_diagnostics">复制日志</string>
+    <string name="nginx_diagnostics">Nginx 诊断日志</string>
+    <string name="nginx_discover">发现实例</string>
+    <string name="nginx_helper_failed">服务器提权 Helper 不可用。请修复 Helper 后重试。</string>
+    <string name="nginx_install">安装 Nginx</string>
+    <string name="nginx_install_confirm">我确认安装及其对服务器系统包和配置的变更。</string>
+    <string name="nginx_integrate">接管安装</string>
+    <string name="nginx_integrate_confirm">将此已有 Nginx 接入 RelaxKonOS 管理？服务器将备份配置、添加 RelaxKonOS 的配置引用、校验配置，并可能重载 Nginx。</string>
+    <string name="nginx_integrated">已接管的服务器安装</string>
+    <string name="nginx_intro">管理当前服务器上的 Nginx。安装及生命周期变更可能影响已托管网站。</string>
+    <string name="nginx_lifecycle_confirm">执行此生命周期变更？现有网站连接可能中断。</string>
+    <string name="nginx_managed">由 RelaxKonOS 安装并管理</string>
+    <string name="nginx_operation">操作 %1$s · %2$s</string>
+    <string name="nginx_operation_id">Web 操作 ID</string>
+    <string name="nginx_package_invalid">版本或 Nginx ZIP 结构无效，请核对是否匹配。</string>
+    <string name="nginx_package_path">服务器 ZIP 路径</string>
+    <string name="nginx_package_ready">安装包已准备：%1$s（%2$d 字节）；引用会过期。</string>
+    <string name="nginx_pending">%1$s 的原请求待核实</string>
+    <string name="nginx_pending_installation">有安装请求待核实。请在运维中心恢复任务；原表单可使用原键重试。</string>
+    <string name="nginx_pick_package">选择手机 ZIP</string>
+    <string name="nginx_recover">查询 Web 操作</string>
+    <string name="nginx_reference">准备安装包引用</string>
+    <string name="nginx_reload">重载</string>
+    <string name="nginx_restart">重启</string>
+    <string name="nginx_retry_confirm">查询服务器事实后，用原请求键重试已确认的动作？若接管已使候选消失，结果仍需核实，请通过操作 ID 查询。</string>
+    <string name="nginx_snapshot">配置快照：%1$s</string>
+    <string name="nginx_source">安装来源</string>
+    <string name="nginx_source_official">服务器下载官方包</string>
+    <string name="nginx_source_phone">从手机上传 ZIP</string>
+    <string name="nginx_source_server">服务器已有 ZIP</string>
+    <string name="nginx_start">启动</string>
+    <string name="nginx_stop">停止</string>
+    <string name="nginx_stopped">已停止</string>
+    <!-- BP03 Nginx management -->
+    <string name="nginx_title">Nginx 管理</string>
+    <string name="nginx_ubuntu_install">Ubuntu 通过 APT 安装 Nginx。安装系统包及配置需要服务器管理员授权。</string>
+    <string name="nginx_uncertain">结果暂未核实。请先刷新服务器事实，再重试。离开页面不会取消服务器任务。</string>
+    <string name="nginx_uninstall">卸载 Nginx</string>
+    <string name="nginx_uninstall_confirm">停止并卸载选中的 Nginx？托管网站将不可用。Ubuntu 会移除系统 Nginx 包及其包配置；Windows 会移除由 RelaxKonOS 安装的 Nginx。</string>
+    <string name="nginx_unsupported">当前服务器或安装管理模式不支持此动作。</string>
+    <string name="nginx_upload_bytes">已上传 %1$d 字节</string>
+    <string name="nginx_version">版本（例如 1.31.3）</string>
+    <string name="nginx_windows_install">Windows 安装官方 Nginx ZIP。选择与包匹配的版本，或由服务器下载。</string>
+</resources>

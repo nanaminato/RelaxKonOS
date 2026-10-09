@@ -1,5 +1,0 @@
-<resources>
-    <string name="server_https_title">Server HTTPS</string>
-    <string name="server_https_description">Choose a managed certificate to replace the server HTTPS certificate.</string>
-    <string name="certificates_https_location">To replace the server HTTPS certificate, open Settings → System → Server HTTPS.</string>
-</resources>

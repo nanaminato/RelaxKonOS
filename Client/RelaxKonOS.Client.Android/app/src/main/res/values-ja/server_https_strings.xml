@@ -1,5 +1,0 @@
-<resources>
-    <string name="server_https_title">サーバー HTTPS</string>
-    <string name="server_https_description">管理対象の証明書を選択してサーバーの HTTPS 証明書を変更します。</string>
-    <string name="certificates_https_location">サーバーの証明書変更は設定 → システム → サーバー HTTPS を開いてください。</string>
-</resources>

@@ -58,7 +58,7 @@ SSH 系统页的退出工作区按钮固定在内容区底部，主机卡片和�
 - **Compact (<600dp)**：全屏详情和逐页任务；步骤标题、目标主机、阶段与主操作固定可见。手机返回键先关闭确认，再回上一层；执行临界阶段返回只离开视图，不取消远端操作。
 - **Medium (600–839dp)**：沿用 rail，宿主列表与详情仍按页切换。软键盘弹出时主机指纹确认和卸载最终确认不可被遮挡。
 - **Expanded (≥840dp)**：沿用左 rail，宿主列表与详情双栏，右侧可展示阶段记录。桌面式多窗口或第六导航项都不需要。
-- 使用现有 `ScreenHeader`、`SectionGroup`、`ListRow`、`StatusChip`、`ErrorBanner`、`AppBackdrop`、`Spacing/Radius` 令牌和桌面镜像图标语义。主机指纹是专门确认页；卸载的「保留数据/删除数据」和输入主机名确认是两个明确步骤。英文、中文、日文字符串通过三套 `strings.xml` 同步提供。
+- 使用现有 `ScreenHeader`、`SectionGroup`、`ListRow`、`StatusChip`、`ErrorBanner`、`AppBackdrop`、`Spacing/Radius` 令牌和桌面镜像图标语义。主机指纹是专门确认页；卸载的「保留数据/删除数据」和输入主机名确认是两个明确步骤。英文、中文、日文字符串通过三种语言目录中的 `server_center_strings.xml`、`ssh_strings.xml` 等对应功能文件同步提供。
 
 ## 3. 三种身份与本地资料
 

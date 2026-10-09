@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="nginx_accept_facts">Accept current instance state</string>
+    <string name="nginx_accept_facts_confirm">Refresh and verify the current managed instance, then end local tracking of this unresolved integration request? This does not prove the original request succeeded and does not cancel any server task. Continue only after confirming the server operation has ended.</string>
+    <string name="nginx_acme">Enable ACME HTTP-01</string>
+    <string name="nginx_acme_confirm">Enable the ACME challenge include and reload configuration? This does not open firewall ports or prove public reachability.</string>
+    <string name="nginx_acme_no_sites">Create a managed site before enabling its ACME HTTP-01 include.</string>
+    <string name="nginx_candidates">Existing installations available for integration</string>
+    <string name="nginx_catalog_failed">Version catalog unavailable. Retry or enter a known release version.</string>
+    <string name="nginx_config_failed">Nginx configuration validation failed or its include layout is unsupported. The host retains diagnostics.</string>
+    <string name="nginx_configuration_missing">Configuration path unavailable</string>
+    <string name="nginx_confirm">Confirm change</string>
+    <string name="nginx_conflict">The installation or configuration changed or is already owned. Refresh and inspect it before another change.</string>
+    <string name="nginx_controls_installation_running">Installation is still running. Controls will become available when it finishes.</string>
+    <string name="nginx_controls_operation_running">An instance operation is still running. Refresh its status in operation records.</string>
+    <string name="nginx_controls_pending">An unresolved request is blocking controls. Review it in operation records.</string>
+    <string name="nginx_controls_refreshing">Refreshing instance and task state…</string>
+    <string name="nginx_controls_unverified">Some server state could not be verified. Refresh the instance before continuing.</string>
+    <string name="nginx_copy_diagnostics">Copy diagnostics</string>
+    <string name="nginx_diagnostics">Nginx diagnostics</string>
+    <string name="nginx_discover">Discover instances</string>
+    <string name="nginx_helper_failed">The privileged host helper is unavailable. Repair the host helper before retrying.</string>
+    <string name="nginx_install">Install Nginx</string>
+    <string name="nginx_install_confirm">I confirm installation and its changes to host packages and configuration.</string>
+    <string name="nginx_integrate">Integrate installation</string>
+    <string name="nginx_integrate_confirm">Add this existing Nginx to management? The server backs up its configuration, adds a managed include, validates it and may reload Nginx.</string>
+    <string name="nginx_integrated">Integrated host installation</string>
+    <string name="nginx_intro">Manage Nginx on the connected server. Installation and lifecycle changes may affect hosted websites.</string>
+    <string name="nginx_lifecycle_confirm">Apply this lifecycle change? Existing website connections may be interrupted.</string>
+    <string name="nginx_managed">RelaxKonOS managed installation</string>
+    <string name="nginx_operation">Operation %1$s · %2$s</string>
+    <string name="nginx_operation_id">Web operation ID</string>
+    <string name="nginx_package_invalid">The version or Nginx ZIP layout is invalid. Check that they match.</string>
+    <string name="nginx_package_path">Server ZIP path</string>
+    <string name="nginx_package_ready">Package ready: %1$s (%2$d bytes); references expire.</string>
+    <string name="nginx_pending">Unverified original request for %1$s</string>
+    <string name="nginx_pending_installation">An installation request remains unresolved. Use Operations to recover the task; the original form can retry with its original key.</string>
+    <string name="nginx_pick_package">Choose phone ZIP</string>
+    <string name="nginx_recover">Look up Web operation</string>
+    <string name="nginx_reference">Prepare package reference</string>
+    <string name="nginx_reload">Reload</string>
+    <string name="nginx_restart">Restart</string>
+    <string name="nginx_retry_confirm">Query host facts and retry the original confirmed action with the same request key? If integration already removed the candidate, keep the outcome unverified and look up its operation ID.</string>
+    <string name="nginx_snapshot">Configuration snapshot: %1$s</string>
+    <string name="nginx_source">Package source</string>
+    <string name="nginx_source_official">Download official package on server</string>
+    <string name="nginx_source_phone">Upload ZIP from phone</string>
+    <string name="nginx_source_server">ZIP already on server</string>
+    <string name="nginx_start">Start</string>
+    <string name="nginx_stop">Stop</string>
+    <string name="nginx_stopped">Stopped</string>
+    <!-- BP03 Nginx management -->
+    <string name="nginx_title">Nginx management</string>
+    <string name="nginx_ubuntu_install">Ubuntu installs Nginx through APT. Package installation and configuration require host administrator authorization.</string>
+    <string name="nginx_uncertain">The result could not be verified. Refresh host facts before retrying. Leaving this page does not cancel a server task.</string>
+    <string name="nginx_uninstall">Uninstall Nginx</string>
+    <string name="nginx_uninstall_confirm">Stop and uninstall the selected Nginx? Hosted websites will become unavailable. Ubuntu removes the system Nginx package and its package configuration; Windows removes the managed installation.</string>
+    <string name="nginx_unsupported">This action is unavailable for this host or installation mode.</string>
+    <string name="nginx_upload_bytes">Uploaded %1$d bytes</string>
+    <string name="nginx_version">Version (for example 1.31.3)</string>
+    <string name="nginx_windows_install">Windows installs an official Nginx ZIP. Select a release version matching the archive, or download on the server.</string>
+</resources>

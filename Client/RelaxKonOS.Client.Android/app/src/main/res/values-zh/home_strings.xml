@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="home_connection_remote">远程服务器</string>
+    <string name="home_filesystems_title">磁盘</string>
+    <string name="home_label_cpu">CPU</string>
+    <string name="home_label_memory">内存</string>
+    <string name="home_label_platform">平台</string>
+    <string name="home_label_server">服务器</string>
+    <string name="home_label_uptime">运行时间</string>
+    <string name="home_label_user">账户</string>
+    <string name="home_label_workspace">工作区</string>
+    <string name="home_metrics_absent">该服务器不上报主机指标。</string>
+    <string name="home_metrics_empty">还没有取到数据。</string>
+    <string name="home_metrics_stale">最近一次数据已过期（%1$s）。</string>
+    <string name="home_recent_copy">已复制</string>
+    <string name="home_recent_create_directory">已新建目录</string>
+    <string name="home_recent_delete">已删除</string>
+    <string name="home_recent_download">已下载</string>
+    <string name="home_recent_empty">此应用会话中成功的操作将显示在这里。</string>
+    <string name="home_recent_end_process">已结束进程</string>
+    <string name="home_recent_item">%1$s · %2$s · %3$s</string>
+    <string name="home_recent_move">已移动</string>
+    <string name="home_recent_rename">已重命名</string>
+    <string name="home_recent_title">近期操作</string>
+    <string name="home_recent_upload">已上传</string>
+    <string name="home_session_title">会话</string>
+    <string name="home_system_title">系统状态</string>
+    <string name="home_value_percent">%1$.1f%%</string>
+    <string name="home_value_uptime_days_hours">%1$d 天 %2$d 小时</string>
+    <string name="home_value_uptime_hours_minutes">%1$d 小时 %2$d 分钟</string>
+    <string name="home_value_uptime_minutes_seconds">%1$d 分钟 %2$d 秒</string>
+    <string name="home_value_uptime_seconds">%1$d 秒</string>
+    <string name="home_value_used_of_total">%1$s / %2$s</string>
+</resources>

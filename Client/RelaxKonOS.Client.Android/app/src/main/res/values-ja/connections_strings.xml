@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="connections_actions_title">このログインを管理</string>
+    <string name="connections_active">現在の接続</string>
+    <string name="connections_connect">接続</string>
+    <string name="connections_delete_message">%1$s（%2$s）のログインと、それに保存したパスワードを削除しますか？</string>
+    <string name="connections_delete_title">このログインを削除</string>
+    <string name="connections_direct_server">直接サーバー</string>
+    <string name="connections_empty">保存されたサーバーはまだありません。</string>
+    <string name="connections_forget_message">%1$s（%2$s）に保存したパスワードを削除しますか？接続は残り、次回はパスワードを入力する必要があります。</string>
+    <string name="connections_forget_password">パスワードを忘れる</string>
+    <string name="connections_forget_title">このパスワードを忘れる</string>
+    <string name="connections_managed_server">管理対象サーバー</string>
+    <string name="connections_mutation_failed">ローカルの変更を完了できませんでした。一部の変更は適用済みの可能性があります。キャンセルして一覧を開き直し、現在の記録を確認してください。操作が有効なら再試行もできます。</string>
+    <string name="connections_no_password">パスワード未保存</string>
+    <string name="connections_password_invalidated">保存したパスワードは無効になりました</string>
+    <string name="connections_password_unavailable">パスワードは保存されていますが、この端末では現在解錠できません</string>
+    <string name="connections_platform_trademarks">Ubuntu は Canonical の商標です。Windows、Windows Server、Windows 10、Windows 11 は Microsoft の商標です。</string>
+    <string name="connections_saved_password">パスワード保存済み、指紋で解錠</string>
+    <string name="connections_saved_password_debug">パスワードは暗号化せず保存（デバッグビルド、画面ロックなし）</string>
+    <string name="connections_saved_password_screen_lock">パスワード保存済み、画面ロックで解錠</string>
+    <string name="connections_sign_out_note">サインアウトしても、保存された接続とパスワードは残ります。</string>
+    <string name="connections_swipe_actions">左にスワイプすると、パスワードを忘れるかこのログインを削除できます。</string>
+    <string name="connections_title">接続</string>
+    <string name="connections_use">使用</string>
+    <string name="connections_windows_device">Windows 10/11 デバイス</string>
+    <string name="connections_windows_device_support">Windows 10/11 · ペアリング済みデバイスキーでサインイン</string>
+</resources>

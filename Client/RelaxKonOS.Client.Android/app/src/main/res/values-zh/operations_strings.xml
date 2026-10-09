@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="operation_error_title">操作失败</string>
+    <string name="operation_info_title">提示</string>
+    <string name="operation_success_title">操作成功</string>
+    <string name="operation_warning_title">警告</string>
+    <string name="operations_acknowledge">确认已读</string>
+    <string name="operations_alert_action_failed">无法确认告警操作结果。</string>
+    <string name="operations_alert_count">出现次数：%1$d</string>
+    <string name="operations_alert_detail">告警详情</string>
+    <string name="operations_alert_event">%1$s · %2$s</string>
+    <string name="operations_alert_summary">%1$s · %2$s · 出现 %3$d 次</string>
+    <string name="operations_alerts">告警</string>
+    <string name="operations_alerts_empty">没有告警。</string>
+    <string name="operations_alerts_note">打开此页面时从服务器读取告警。确认已读不会解除故障。</string>
+    <string name="operations_alerts_unavailable">无法刷新告警。</string>
+    <string name="operations_backup">应用备份</string>
+    <string name="operations_cancel_explanation">取消只是请求。请刷新远端记录，核实最终结果。</string>
+    <string name="operations_cancelled">已取消</string>
+    <string name="operations_check_target">重新执行前请核对目标资源的实际状态。此任务不会自动重做。</string>
+    <string name="operations_checked">上次核验：%1$s</string>
+    <string name="operations_compose">Compose 项目</string>
+    <string name="operations_deployment">应用部署</string>
+    <string name="operations_detail">操作详情</string>
+    <string name="operations_diagnostics">诊断</string>
+    <string name="operations_empty">此账号没有找到部署或发布操作。</string>
+    <string name="operations_export_diagnostics">导出诊断</string>
+    <string name="operations_export_failed">无法保存诊断报告</string>
+    <string name="operations_export_save">选择保存位置</string>
+    <string name="operations_export_saved">诊断报告已保存</string>
+    <string name="operations_export_warning">保存前请检查报告。诊断输出可能包含秘密信息。时间范围是本机首次观察和最后核实操作的时间，不是服务器日志的时间范围。</string>
+    <string name="operations_failed">失败</string>
+    <string name="operations_git_build">Git 构建</string>
+    <string name="operations_hide">在本机隐藏</string>
+    <string name="operations_hide_explanation">仅从本机此账号的列表中隐藏任务。服务器操作及其资源不受影响。</string>
+    <!-- Unified runtime installation operations. -->
+    <string name="operations_installation">运行时安装</string>
+    <string name="operations_interrupted">已中断；请核对目标</string>
+    <string name="operations_missing">无法取得原操作记录</string>
+    <string name="operations_more_alerts">更多告警</string>
+    <string name="operations_open_target">打开目标</string>
+    <string name="operations_problem">问题：%1$s</string>
+    <string name="operations_progress">进度：%1$d%%</string>
+    <string name="operations_refresh_failed">无法刷新任务，最终结果尚未核实。</string>
+    <string name="operations_request_cancel">请求取消</string>
+    <string name="operations_running">运行中</string>
+    <string name="operations_script">脚本任务</string>
+    <string name="operations_stage">阶段：%1$s</string>
+    <string name="operations_subtitle">核实部署与网站发布结果</string>
+    <string name="operations_succeeded">已成功</string>
+    <string name="operations_tasks">任务</string>
+    <string name="operations_title">任务与恢复</string>
+    <string name="operations_unverified">结果待核实</string>
+    <string name="operations_website">网站发布</string>
+</resources>

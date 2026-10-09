@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="about_client_platform">プラットフォーム</string>
+    <string name="about_client_platform_value">Android</string>
+    <string name="about_client_title">クライアント</string>
+    <string name="about_client_version">バージョン</string>
+    <string name="about_licenses_body">サードパーティの著作権表示とライセンス全文をアプリ内でオフラインで閲覧できます。</string>
+    <string name="about_licenses_title">ライセンス</string>
+    <string name="about_licenses_view">ライセンスを表示</string>
+    <string name="about_title">このアプリについて</string>
+    <string name="appearance_color_dark">ダーク</string>
+    <string name="appearance_color_follow_system">システムに合わせる</string>
+    <string name="appearance_color_light">ライト</string>
+    <string name="appearance_color_mode">カラーモード</string>
+    <string name="appearance_high_contrast">ハイコントラスト</string>
+    <string name="appearance_language">言語</string>
+    <string name="appearance_language_chinese">简体中文</string>
+    <string name="appearance_language_english">English</string>
+    <string name="appearance_language_follow_system">システムに合わせる</string>
+    <string name="appearance_language_japanese">日本語</string>
+    <string name="appearance_language_note">言語を変更すると画面が再作成されます。サインイン状態は保たれ、保存されたパスワードにも影響しません。システムに合わせる場合、端末が中国語または日本語ならその言語を、それ以外は英語を使用します。</string>
+    <string name="appearance_title">外観と言語</string>
+</resources>

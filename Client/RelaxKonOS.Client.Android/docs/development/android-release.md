@@ -91,4 +91,4 @@ Publisher 导入 APK 时会把它加入网站下载清单；AAB 仅归档，交�
 
 ## 图标与资源检查
 
-桌面 `Client/RelaxKonOS.Client/Assets` 是图标来源。修改后从仓库根目录运行 `python3 Tools/Mobile/sync-desktop-icons.py`，同步 Android 图标与派生启动图标；检查模式使用 `--check`，不写文件且差异时返回非零。同步检查三套 `values`、`values-zh`、`values-ja` 的字符串键集、重复键和 XML 解析；实际视觉仍按集中设备矩阵核验。
+桌面 `Client/RelaxKonOS.Client/Assets` 是图标来源。修改后从仓库根目录运行 `python3 Tools/Mobile/sync-desktop-icons.py`，同步 Android 图标与派生启动图标；检查模式使用 `--check`，不写文件且差异时返回非零。字符串校验遍历 `values`、`values-zh`、`values-ja` 中的 `strings.xml` 和所有 `*_strings.xml`，检查对应功能文件的键集、目录内重复键和 XML 解析，不只检查公共字符串文件。资源合并与翻译问题通过 Android 构建和 Lint 检查；实际视觉仍按集中设备矩阵核验。

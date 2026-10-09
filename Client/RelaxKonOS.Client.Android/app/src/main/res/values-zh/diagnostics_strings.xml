@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="diagnostics_capabilities">服务器上报的能力数量：%1$d</string>
+    <string name="diagnostics_export">查看报告</string>
+    <string name="diagnostics_export_note">报告只包含服务器地址、能力名称、记录条数与自检结果，绝不包含密码、令牌或已保存的密文。</string>
+    <string name="diagnostics_export_title">脱敏报告</string>
+    <string name="diagnostics_files_ok">文件根目录：可访问，%1$d 项</string>
+    <string name="diagnostics_files_problem">文件根目录：被服务器拒绝</string>
+    <string name="diagnostics_files_transport">文件根目录：无法访问</string>
+    <string name="diagnostics_metrics_ok">主机指标：可访问</string>
+    <string name="diagnostics_metrics_problem">主机指标：被服务器拒绝</string>
+    <string name="diagnostics_metrics_transport">主机指标：无法访问</string>
+    <string name="diagnostics_no_session">会话：未登录</string>
+    <string name="diagnostics_not_run">尚未执行自检。</string>
+    <string name="diagnostics_run">开始自检</string>
+    <string name="diagnostics_self_check">连接自检</string>
+    <string name="diagnostics_session_ok">会话：%1$s</string>
+    <string name="diagnostics_title">诊断</string>
+    <string name="diagnostics_token_absent">访问令牌：无</string>
+    <string name="diagnostics_token_held">访问令牌：仅存于内存</string>
+    <string name="diagnostics_vault_summary">已保存记录：%1$d 条服务器密码，%2$d 条管理员密码。</string>
+</resources>

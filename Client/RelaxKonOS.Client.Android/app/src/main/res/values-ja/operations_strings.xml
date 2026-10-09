@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="operation_error_title">操作に失敗しました</string>
+    <string name="operation_info_title">お知らせ</string>
+    <string name="operation_success_title">操作が完了しました</string>
+    <string name="operation_warning_title">警告</string>
+    <string name="operations_acknowledge">確認済みにする</string>
+    <string name="operations_alert_action_failed">アラート操作の結果を確認できません。</string>
+    <string name="operations_alert_count">発生回数: %1$d</string>
+    <string name="operations_alert_detail">アラートの詳細</string>
+    <string name="operations_alert_event">%1$s · %2$s</string>
+    <string name="operations_alert_summary">%1$s · %2$s · %3$d 回</string>
+    <string name="operations_alerts">アラート</string>
+    <string name="operations_alerts_empty">アラートはありません。</string>
+    <string name="operations_alerts_note">この画面を開くとサーバーから取得します。確認しても障害は解消されません。</string>
+    <string name="operations_alerts_unavailable">アラートを更新できません。</string>
+    <string name="operations_backup">アプリケーションのバックアップ</string>
+    <string name="operations_cancel_explanation">キャンセルは要求です。遠隔の記録を更新して最終結果を確認してください。</string>
+    <string name="operations_cancelled">キャンセル済み</string>
+    <string name="operations_check_target">再実行する前に対象の状態を確認してください。自動再実行はしません。</string>
+    <string name="operations_checked">最終確認: %1$s</string>
+    <string name="operations_compose">Compose プロジェクト</string>
+    <string name="operations_deployment">アプリのデプロイ</string>
+    <string name="operations_detail">操作の詳細</string>
+    <string name="operations_diagnostics">診断</string>
+    <string name="operations_empty">このアカウントのデプロイまたは公開操作はありません。</string>
+    <string name="operations_export_diagnostics">診断をエクスポート</string>
+    <string name="operations_export_failed">診断レポートを保存できませんでした</string>
+    <string name="operations_export_save">保存先を選択</string>
+    <string name="operations_export_saved">診断レポートを保存しました</string>
+    <string name="operations_export_warning">保存前にレポートを確認してください。診断出力には秘密情報が含まれる場合があります。期間はこの端末で最初に確認してから最後に検証した時刻であり、サーバーログの期間ではありません。</string>
+    <string name="operations_failed">失敗</string>
+    <string name="operations_git_build">Git ビルド</string>
+    <string name="operations_hide">この端末で非表示</string>
+    <string name="operations_hide_explanation">この端末のこのアカウントの一覧からのみ非表示にします。サーバーの操作とリソースには影響しません。</string>
+    <!-- Unified runtime installation operations. -->
+    <string name="operations_installation">ランタイムのインストール</string>
+    <string name="operations_interrupted">中断。対象を確認してください</string>
+    <string name="operations_missing">元の操作記録を取得できません</string>
+    <string name="operations_more_alerts">さらに表示</string>
+    <string name="operations_open_target">対象を開く</string>
+    <string name="operations_problem">問題: %1$s</string>
+    <string name="operations_progress">進捗: %1$d%%</string>
+    <string name="operations_refresh_failed">タスクを更新できません。結果は未確認です。</string>
+    <string name="operations_request_cancel">キャンセルを要求</string>
+    <string name="operations_running">実行中</string>
+    <string name="operations_script">スクリプトタスク</string>
+    <string name="operations_stage">段階: %1$s</string>
+    <string name="operations_subtitle">デプロイと公開の結果を確認</string>
+    <string name="operations_succeeded">成功</string>
+    <string name="operations_tasks">タスク</string>
+    <string name="operations_title">タスクと復旧</string>
+    <string name="operations_unverified">結果を確認待ち</string>
+    <string name="operations_website">Web サイトの公開</string>
+</resources>

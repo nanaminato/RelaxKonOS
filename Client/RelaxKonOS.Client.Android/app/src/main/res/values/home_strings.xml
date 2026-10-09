@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="home_connection_remote">Remote server</string>
+    <string name="home_filesystems_title">Disks</string>
+    <string name="home_label_cpu">CPU</string>
+    <string name="home_label_memory">Memory</string>
+    <string name="home_label_platform">Platform</string>
+    <string name="home_label_server">Server</string>
+    <string name="home_label_uptime">Uptime</string>
+    <string name="home_label_user">Account</string>
+    <string name="home_label_workspace">Workspace</string>
+    <string name="home_metrics_absent">This server does not report host metrics.</string>
+    <string name="home_metrics_empty">No reading has been taken yet.</string>
+    <string name="home_metrics_stale">The last reading is out of date (%1$s).</string>
+    <string name="home_recent_copy">Copied</string>
+    <string name="home_recent_create_directory">Created folder</string>
+    <string name="home_recent_delete">Deleted</string>
+    <string name="home_recent_download">Downloaded</string>
+    <string name="home_recent_empty">Successful operations from this app session will appear here.</string>
+    <string name="home_recent_end_process">Ended process</string>
+    <string name="home_recent_item">%1$s · %2$s · %3$s</string>
+    <string name="home_recent_move">Moved</string>
+    <string name="home_recent_rename">Renamed</string>
+    <string name="home_recent_title">Recent activity</string>
+    <string name="home_recent_upload">Uploaded</string>
+    <!-- Home -->
+    <string name="home_session_title">Session</string>
+    <string name="home_system_title">System status</string>
+    <string name="home_value_percent">%1$.1f%%</string>
+    <string name="home_value_uptime_days_hours">%1$d d %2$d h</string>
+    <string name="home_value_uptime_hours_minutes">%1$d h %2$d min</string>
+    <string name="home_value_uptime_minutes_seconds">%1$d min %2$d s</string>
+    <string name="home_value_uptime_seconds">%1$d s</string>
+    <string name="home_value_used_of_total">%1$s of %2$s</string>
+</resources>

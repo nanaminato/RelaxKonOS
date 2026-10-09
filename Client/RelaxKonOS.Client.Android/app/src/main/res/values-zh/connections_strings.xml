@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="connections_actions_title">管理此登录记录</string>
+    <string name="connections_active">当前连接</string>
+    <string name="connections_connect">连接</string>
+    <string name="connections_delete_message">删除 %1$s（%2$s）的登录记录，以及为它保存的密码？</string>
+    <string name="connections_delete_title">删除这条登录记录</string>
+    <string name="connections_direct_server">直连服务器</string>
+    <string name="connections_empty">还没有保存任何服务器。</string>
+    <string name="connections_forget_message">删除为 %1$s（%2$s）保存的密码？连接记录会保留，下次登录需要重新输入密码。</string>
+    <string name="connections_forget_password">忘记密码</string>
+    <string name="connections_forget_title">忘记这个密码</string>
+    <string name="connections_managed_server">SSH 服务器</string>
+    <string name="connections_mutation_failed">未能完成本地更改，部分更改可能已经生效。请取消并重新打开列表核对当前记录；如果操作仍可用，也可以重试。</string>
+    <string name="connections_no_password">未保存密码</string>
+    <string name="connections_password_invalidated">已保存的密码已失效</string>
+    <string name="connections_password_unavailable">已保存密码，但本机当前无法解封</string>
+    <string name="connections_platform_trademarks">Ubuntu 是 Canonical 的商标；Windows、Windows Server、Windows 10 和 Windows 11 是 Microsoft 的商标。</string>
+    <string name="connections_saved_password">已保存密码，用指纹解封</string>
+    <string name="connections_saved_password_debug">密码未加密保存（调试构建、无锁屏）</string>
+    <string name="connections_saved_password_screen_lock">已保存密码，用锁屏解锁</string>
+    <string name="connections_sign_out_note">退出登录会保留已保存的连接及其密码。</string>
+    <string name="connections_swipe_actions">向左滑动可忘记密码或删除这条登录记录。</string>
+    <string name="connections_title">连接管理</string>
+    <string name="connections_use">使用</string>
+    <string name="connections_windows_device">Windows 10/11 设备</string>
+    <string name="connections_windows_device_support">Windows 10/11 · 已配对的设备密钥登录</string>
+</resources>

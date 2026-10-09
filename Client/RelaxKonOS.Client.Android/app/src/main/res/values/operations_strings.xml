@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="operation_error_title">Operation failed</string>
+    <string name="operation_info_title">Information</string>
+    <string name="operation_success_title">Operation completed</string>
+    <string name="operation_warning_title">Warning</string>
+    <string name="operations_acknowledge">Acknowledge</string>
+    <string name="operations_alert_action_failed">The alert action could not be confirmed.</string>
+    <string name="operations_alert_count">Occurrences: %1$d</string>
+    <string name="operations_alert_detail">Alert details</string>
+    <string name="operations_alert_event">%1$s · %2$s</string>
+    <string name="operations_alert_summary">%1$s · %2$s · %3$d occurrences</string>
+    <string name="operations_alerts">Alerts</string>
+    <string name="operations_alerts_empty">No alerts were found.</string>
+    <string name="operations_alerts_note">Alerts are read from the server when this page is open. Acknowledging one does not resolve the fault.</string>
+    <string name="operations_alerts_unavailable">Alerts could not be refreshed.</string>
+    <string name="operations_backup">Application backup</string>
+    <string name="operations_cancel_explanation">Cancellation is a request. Refresh the remote record to confirm the final result.</string>
+    <string name="operations_cancelled">Cancelled</string>
+    <string name="operations_check_target">Check the target resource before trying again. This task will not run automatically.</string>
+    <string name="operations_checked">Last verified: %1$s</string>
+    <string name="operations_compose">Compose project</string>
+    <string name="operations_deployment">Application deployment</string>
+    <string name="operations_detail">Operation</string>
+    <string name="operations_diagnostics">Diagnostics</string>
+    <string name="operations_empty">No deployment or publishing operations were found for this account.</string>
+    <string name="operations_export_diagnostics">Export diagnostics</string>
+    <string name="operations_export_failed">Could not save the diagnostic report</string>
+    <string name="operations_export_save">Choose destination</string>
+    <string name="operations_export_saved">Diagnostic report saved</string>
+    <string name="operations_export_warning">Review this report before saving. Diagnostic output may contain secrets. The time range is when this device first observed and last verified the operation, not the server log range.</string>
+    <string name="operations_failed">Failed</string>
+    <string name="operations_git_build">Git build</string>
+    <string name="operations_hide">Hide on this device</string>
+    <string name="operations_hide_explanation">This removes the task from this account’s list on this device. The server operation and its resources are unaffected.</string>
+    <!-- Unified runtime installation operations. -->
+    <string name="operations_installation">Runtime installation</string>
+    <string name="operations_interrupted">Interrupted; inspect the target</string>
+    <string name="operations_missing">Original operation record unavailable</string>
+    <string name="operations_more_alerts">More alerts</string>
+    <string name="operations_open_target">Open target</string>
+    <string name="operations_problem">Problem: %1$s</string>
+    <string name="operations_progress">Progress: %1$d%%</string>
+    <string name="operations_refresh_failed">Tasks could not be refreshed. The last result is unknown.</string>
+    <string name="operations_request_cancel">Request cancellation</string>
+    <string name="operations_running">Running</string>
+    <string name="operations_script">Script task</string>
+    <string name="operations_stage">Stage: %1$s</string>
+    <string name="operations_subtitle">Verify deployment and publishing results</string>
+    <string name="operations_succeeded">Succeeded</string>
+    <string name="operations_tasks">Tasks</string>
+    <string name="operations_title">Tasks &amp; recovery</string>
+    <string name="operations_unverified">Result awaiting verification</string>
+    <string name="operations_website">Website publication</string>
+</resources>

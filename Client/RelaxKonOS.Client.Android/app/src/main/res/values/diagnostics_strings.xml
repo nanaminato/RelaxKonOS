@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
+<resources>
+    <string name="diagnostics_capabilities">Capabilities reported by the server: %1$d</string>
+    <string name="diagnostics_export">Show report</string>
+    <string name="diagnostics_export_note">The report contains server addresses, capability names, record counts and the self-check result. It never contains a password, a token or stored ciphertext.</string>
+    <string name="diagnostics_export_title">Redacted report</string>
+    <string name="diagnostics_files_ok">File roots: reachable, %1$d entries</string>
+    <string name="diagnostics_files_problem">File roots: refused by the server</string>
+    <string name="diagnostics_files_transport">File roots: unreachable</string>
+    <string name="diagnostics_metrics_ok">Host metrics: reachable</string>
+    <string name="diagnostics_metrics_problem">Host metrics: refused by the server</string>
+    <string name="diagnostics_metrics_transport">Host metrics: unreachable</string>
+    <string name="diagnostics_no_session">Session: not signed in</string>
+    <string name="diagnostics_not_run">The self-check has not been run yet.</string>
+    <string name="diagnostics_run">Run</string>
+    <string name="diagnostics_self_check">Connection self-check</string>
+    <string name="diagnostics_session_ok">Session: %1$s</string>
+    <!-- Diagnostics -->
+    <string name="diagnostics_title">Diagnostics</string>
+    <string name="diagnostics_token_absent">Access token: none</string>
+    <string name="diagnostics_token_held">Access token: held in memory</string>
+    <string name="diagnostics_vault_summary">Stored records: %1$d server password(s) and %2$d administrator password(s).</string>
+</resources>
