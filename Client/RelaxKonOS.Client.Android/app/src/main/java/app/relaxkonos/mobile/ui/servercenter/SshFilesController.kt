@@ -108,7 +108,9 @@ class SshFilesController(private val app: RelaxKonApplication) {
     fun cancelCreateDirectory() = mutable.update { it.copy(newDirectory = null) }
     fun setNewDirectory(value: String) = mutable.update { it.copy(newDirectory = value) }
     fun createDirectory() {
-        val snapshot = state.value; val name = snapshot.newDirectory?.trim().orEmpty()
+        val snapshot = state.value
+        if (snapshot.busy || snapshot.unknown) return
+        val name = snapshot.newDirectory?.trim().orEmpty()
         if (!SshFileTransferRules.safeName(name)) { problem("invalid-name"); return }
         val path = SshFileTransferRules.child(snapshot.path, name); cancelCreateDirectory()
         execute(listOf(path)) { transport, dispatch -> check(transport.fileInfo(path) == null) { "destination-exists" }; dispatch(); transport.createDirectory(path); refreshed(transport, snapshot.path) }
@@ -121,6 +123,7 @@ class SshFilesController(private val app: RelaxKonApplication) {
     fun dismissDelete() = mutable.update { it.copy(deleteTarget = null, deleteEntries = emptyList()) }
     fun delete() {
         val snapshot = state.value; val roots = snapshot.deleteEntries
+        if (snapshot.busy || snapshot.unknown) return
         if (roots.isEmpty()) return
         dismissDelete()
         execute(roots.map(SshFileEntry::path)) { transport, dispatch ->
@@ -137,7 +140,9 @@ class SshFilesController(private val app: RelaxKonApplication) {
     fun cancelRename() = mutable.update { it.copy(renameTarget = null, renameName = "") }
     fun setRename(value: String) = mutable.update { it.copy(renameName = value) }
     fun rename() {
-        val snapshot = state.value; val entry = snapshot.renameTarget ?: return; val name = snapshot.renameName.trim()
+        val snapshot = state.value
+        if (snapshot.busy || snapshot.unknown) return
+        val entry = snapshot.renameTarget ?: return; val name = snapshot.renameName.trim()
         if (!SshFileTransferRules.safeName(name)) { problem("invalid-name"); return }
         val destination = SshFileTransferRules.child(parent(entry.path), name); cancelRename()
         execute(listOf(entry.path, destination)) { transport, dispatch ->

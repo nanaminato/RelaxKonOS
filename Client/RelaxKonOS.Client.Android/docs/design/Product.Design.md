@@ -234,6 +234,7 @@ Git 的受限编辑和构建链路已接入；其他应用的支持边界见 [�
 - 读取线上可空字段必须用 `JSONObject.isNull` 判定，不能只看 `optString` 的返回值：Android 的 `org.json` 把 JSON null 渲染成**字面字符串** `"null"`（`JSON.toString(JSONObject.NULL)` → `String.valueOf(NULL)`），因此「取值后判空串」这条守卫拦不住它，四个字母会一路进到界面（进程列表每一行的属主就是这样显示的）。`RelaxKonApi` 的 `optNullableString` / `optNullableLong` 是唯一入口。这条同时保护错误判定：`problemCode` 一旦被读成 `"null"`，`ProblemCodes.namesContractCode` 会认为服务端已经给出契约码，5xx 于是被读成 `Problem`，违反 Shell §5.8.2「5xx 不携带服务端问题码时不构成凭据判定」。
 - 仅按功能声明网络、通知等权限；不申请存储全盘访问、常驻后台或无关权限。
 - 高风险动作（删除、停止/重启服务、部署、关闭终端）必须二次确认；确认文本必须包含具体目标。
+- 共用危险操作确认窗口在 `busy` 期间禁用确认、取消、系统返回和窗口外点按关闭；操作结束后恢复关闭入口。权限门禁仅禁用确认而非忙碌时，取消仍可用。
 
 ---
 

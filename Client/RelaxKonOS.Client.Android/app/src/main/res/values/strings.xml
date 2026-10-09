@@ -43,7 +43,7 @@
     <string name="login_server_address">Server address</string>
     <string name="login_server_checking">Checking HTTPS and HTTP endpoints…</string>
     <string name="login_server_found">Server found. The preferred endpoint will be used.</string>
-    <string name="login_server_invalid">Enter a host name or an HTTP(S) address, for example: host:port.</string>
+    <string name="login_server_invalid">Enter a host or HTTP(S) root address. Ports must be 1–65535. Do not include user information, query parameters, fragments or subpaths.</string>
     <string name="login_server_unavailable">No RelaxKonOS login endpoint could be reached at this address.</string>
     <!--
       Managed-host logins. A login whose stable identity is an installation id has no persistable server
@@ -373,6 +373,7 @@
     <string name="connections_forget_title">Forget this password</string>
     <string name="connections_forget_message">Delete the password saved for %1$s (%2$s)? The connection stays, and the password will have to be typed again.</string>
     <string name="connections_delete_title">Delete this login</string>
+    <string name="connections_mutation_failed">The local change could not be completed. Some changes may already have taken effect. Cancel and reopen the list to check the current record, or retry if the action is still available.</string>
     <string name="connections_delete_message">Delete the saved login for %1$s (%2$s) together with the password stored for it?</string>
 
     <!-- Home -->
@@ -2827,7 +2828,7 @@
     <string name="login_tunnel_connecting">Connecting SSH…</string>
     <string name="login_tunnel_checking">SSH connected. Checking remote Server…</string>
     <string name="login_tunnel_not_saved">Connected, but SSH credentials could not be saved securely.</string>
-    <string name="login_tunnel_invalid">Enter a valid SSH host, port, username and remote HTTP(S) loopback URL.</string>
+    <string name="login_tunnel_invalid">Enter an SSH host, username and port (1–65535). The remote HTTP(S) URL must use localhost or 127.0.0.1 at the root path, without user information, query or fragment.</string>
     <string name="login_tunnel_auth_failed">SSH authentication failed. Check the SSH username, password or private key.</string>
     <string name="login_tunnel_configure">Configure SSH tunnel</string>
     <string name="server_install_firewall_choice">Add a firewall rule for the server TCP port</string>

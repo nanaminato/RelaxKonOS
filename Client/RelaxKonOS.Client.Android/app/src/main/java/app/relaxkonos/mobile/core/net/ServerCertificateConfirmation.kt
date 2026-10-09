@@ -24,7 +24,7 @@ object ServerCertificateConfirmation {
      * repeat the same answer.
      */
     fun pending(candidates: List<String>): CertificateReview? =
-        candidates.firstNotNullOfOrNull { ServerCertificateTrust.review(it) }
+        candidates.filter { java.net.URI(it).scheme.equals("https", ignoreCase = true) }.firstNotNullOfOrNull { ServerCertificateTrust.review(it) }
 
     /**
      * The review the user must answer before [candidates] may be used, or `null` when there is

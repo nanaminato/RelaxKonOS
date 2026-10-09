@@ -6,6 +6,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SshLoginTunnelProfileTest {
+    @Test fun `empty forbidden components and invalid remote ports are rejected without normalization loss`() {
+        listOf("http://@localhost:5000", "http://localhost:5000?", "http://localhost:5000#",
+            "http://localhost:0", "https://localhost:65536").forEach {
+            assertTrue(it, runCatching { SshLoginTunnelProfile.create("host.example", 22, "test", it) }.isFailure)
+        }
+        assertEquals("http://localhost:5000", SshLoginTunnelProfile.create("host.example", 22, "test", "http://localhost:5000/").remoteUrl)
+    }
+    @Test fun `valid scheme and localhost casing normalize to the same login identity`() {
+        val first = SshLoginTunnelProfile.create("host.example", 22, "test", "HTTPS://LOCALHOST:5000/")
+        val second = SshLoginTunnelProfile.create("host.example", 22, "test", "https://localhost:5000")
+        assertEquals(second, first)
+        assertEquals(second.serviceId, first.serviceId)
+    }
     @Test fun identityMatchesDesktopAndSurvivesPortChanges() {
         val profile = SshLoginTunnelProfile.create("EXAMPLE.COM", 22, " alice ", "http://127.0.0.1:5000/")
         assertEquals("ssh-tunnel:e464a6ec4a747c982d459dc9d7ec83753b59f5db781936ff6de3cb8809b83d65", profile.serviceId)

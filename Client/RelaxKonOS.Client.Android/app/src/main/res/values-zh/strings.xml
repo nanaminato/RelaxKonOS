@@ -33,7 +33,7 @@
     <string name="login_server_address">服务器地址</string>
     <string name="login_server_checking">正在检查服务器的 HTTPS 和 HTTP 连接地址…</string>
     <string name="login_server_found">已找到服务器，将使用首选连接地址。</string>
-    <string name="login_server_invalid">请输入主机名或 HTTP(S) 地址，例如：host:port。</string>
+    <string name="login_server_invalid">请输入主机名或 HTTP(S) 根地址，端口须为 1–65535。地址不能包含用户信息、查询参数、片段或子路径。</string>
     <string name="login_server_unavailable">此地址没有可访问的 RelaxKonOS 登录服务。</string>
     <!--
       受管宿主登录。稳定身份是安装标识的登录没有可持久化的服务器地址：它的本地隧道地址只在
@@ -348,6 +348,7 @@
     <string name="connections_forget_title">忘记这个密码</string>
     <string name="connections_forget_message">删除为 %1$s（%2$s）保存的密码？连接记录会保留，下次登录需要重新输入密码。</string>
     <string name="connections_delete_title">删除这条登录记录</string>
+    <string name="connections_mutation_failed">未能完成本地更改，部分更改可能已经生效。请取消并重新打开列表核对当前记录；如果操作仍可用，也可以重试。</string>
     <string name="connections_delete_message">删除 %1$s（%2$s）的登录记录，以及为它保存的密码？</string>
 
     <string name="home_session_title">会话</string>
@@ -2788,7 +2789,7 @@
     <string name="login_tunnel_connecting">正在连接 SSH…</string>
     <string name="login_tunnel_checking">SSH 已连接，正在检查远端服务…</string>
     <string name="login_tunnel_not_saved">已连接，但 SSH 凭据未能安全保存。</string>
-    <string name="login_tunnel_invalid">请填写有效的 SSH 主机、端口、用户名及远端 HTTP(S) 回环服务地址。</string>
+    <string name="login_tunnel_invalid">请填写 SSH 主机、用户名和端口（1–65535）。远端 HTTP(S) 地址须使用 localhost 或 127.0.0.1 根路径，不能包含用户信息、查询或片段。</string>
     <string name="login_tunnel_auth_failed">SSH 身份验证失败，请检查 SSH 用户名、密码或私钥。</string>
     <string name="login_tunnel_configure">配置 SSH 隧道</string>
     <string name="server_install_firewall_choice">添加服务器 TCP 端口防火墙规则</string>

@@ -33,7 +33,7 @@
     <string name="login_server_address">サーバーアドレス</string>
     <string name="login_server_checking">HTTPS と HTTP のエンドポイントを確認しています…</string>
     <string name="login_server_found">サーバーが見つかりました。優先エンドポイントを使用します。</string>
-    <string name="login_server_invalid">ホスト名または HTTP(S) アドレスを入力してください。例: host:port</string>
+    <string name="login_server_invalid">ホスト名または HTTP(S) のルートアドレスを入力してください。ポートは 1–65535 です。ユーザー情報、クエリ、フラグメント、サブパスは含めないでください。</string>
     <string name="login_server_unavailable">このアドレスで RelaxKonOS のログインエンドポイントに到達できません。</string>
     <!--
       管理対象ホストのログイン。安定した識別子がインストール ID のログインには、永続化できる
@@ -347,6 +347,7 @@
     <string name="connections_forget_title">このパスワードを忘れる</string>
     <string name="connections_forget_message">%1$s（%2$s）に保存したパスワードを削除しますか？接続は残り、次回はパスワードを入力する必要があります。</string>
     <string name="connections_delete_title">このログインを削除</string>
+    <string name="connections_mutation_failed">ローカルの変更を完了できませんでした。一部の変更は適用済みの可能性があります。キャンセルして一覧を開き直し、現在の記録を確認してください。操作が有効なら再試行もできます。</string>
     <string name="connections_delete_message">%1$s（%2$s）のログインと、それに保存したパスワードを削除しますか？</string>
 
     <string name="home_session_title">セッション</string>
@@ -2789,7 +2790,7 @@
     <string name="login_tunnel_connecting">SSH に接続中…</string>
     <string name="login_tunnel_checking">SSH 接続済み。リモートサーバーを確認中…</string>
     <string name="login_tunnel_not_saved">接続しましたが、SSH 認証情報を安全に保存できませんでした。</string>
-    <string name="login_tunnel_invalid">有効な SSH ホスト、ポート、ユーザー名、リモート HTTP(S) ループバック URL を入力してください。</string>
+    <string name="login_tunnel_invalid">SSH ホスト、ユーザー名、ポート（1–65535）を入力してください。リモート HTTP(S) URL は localhost または 127.0.0.1 のルートパスとし、ユーザー情報、クエリ、フラグメントは含めないでください。</string>
     <string name="login_tunnel_auth_failed">SSH 認証に失敗しました。ユーザー名、パスワード、秘密鍵を確認してください。</string>
     <string name="login_tunnel_configure">SSH トンネルを設定</string>
     <string name="server_install_firewall_choice">サーバー TCP ポートのファイアウォールルールを追加</string>

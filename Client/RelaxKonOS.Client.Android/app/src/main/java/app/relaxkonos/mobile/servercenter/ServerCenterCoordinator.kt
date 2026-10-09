@@ -56,9 +56,11 @@ class ServerCenterCoordinator(
 
     fun close() {
         isOpen = false
-        closeSshFiles()
-        verifiedSessionPasswords.values.forEach { it.fill('\u0000') }
-        verifiedSessionPasswords.clear()
+        try { closeSshFiles() }
+        finally {
+            verifiedSessionPasswords.values.forEach { it.fill('\u0000') }
+            verifiedSessionPasswords.clear()
+        }
     }
 
     /** Remembers a password only after a trusted handshake, and only until Server Centre closes. */
@@ -92,9 +94,11 @@ class ServerCenterCoordinator(
     var onWorkspaceClosed: () -> Unit = {}
 
     fun closeSshFiles() {
-        onWorkspaceClosed()
-        workspaceRevision++
-        sshFilesHostId = null
+        try { onWorkspaceClosed() }
+        finally {
+            workspaceRevision++
+            sshFilesHostId = null
+        }
     }
 
     fun hosts(): List<ServerHostTarget> {

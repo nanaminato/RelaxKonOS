@@ -10,6 +10,70 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SshLocalForwardsTest {
+    @Test fun `failed cleanup of a late cancelled session stays tracked after another listener started`() = runTest {
+        val h = Harness(backgroundScope)
+        val release = CompletableDeferred<Unit>()
+        h.connectGate = { release.await() }
+        h.manager.start(h.target.hostId, SshLocalForwardRequest(8080))
+        runCurrent()
+        h.transports.first().failTransportClose = true
+        h.manager.stopAll()
+        h.connectGate = null
+        h.manager.start(h.target.hostId, SshLocalForwardRequest(8081))
+        h.manager.state.first { !it.busy }
+        release.complete(Unit)
+        runCurrent()
+        assertTrue(h.manager.state.value.cleanupUncertain)
+        assertEquals("cleanup", h.manager.state.value.problem)
+        assertTrue(h.transports.first().isConnected)
+        h.manager.stopAll()
+        assertTrue(h.manager.state.value.cleanupUncertain)
+        assertFalse(h.transports.last().isConnected)
+        h.transports.first().failTransportClose = false
+        h.manager.stopAll()
+        assertFalse(h.manager.state.value.cleanupUncertain)
+        assertTrue(h.transports.none { it.isConnected })
+        h.manager.clearWorkspace()
+    }
+    @Test fun `batch stop attempts every resource and blocks starts until failed cleanup is retried`() = runTest {
+        val h = Harness(backgroundScope)
+        h.manager.start(h.target.hostId, SshLocalForwardRequest(8080, 12001)); h.manager.state.first { !it.busy }
+        h.manager.start(h.target.hostId, SshLocalForwardRequest(8081, 12002)); h.manager.state.first { !it.busy }
+        val firstId = h.manager.state.value.items.first().id
+        h.transports.first().failTunnelClose = true
+        h.manager.stopAll()
+        assertTrue(h.transports.none { it.isConnected })
+        assertFalse(h.manager.state.value.busy)
+        assertTrue(h.manager.state.value.cleanupUncertain)
+        assertEquals("cleanup", h.manager.state.value.problem)
+        assertEquals(listOf(SshForwardStatus.CleanupPending, SshForwardStatus.Stopped), h.manager.state.value.items.map { it.status })
+        val rejected = mutableListOf<Boolean>()
+        h.manager.start(h.target.hostId, SshLocalForwardRequest(8082), onComplete = { rejected += it })
+        assertEquals(listOf(false), rejected)
+        assertEquals(2, h.transports.size)
+        h.manager.remove(firstId)
+        assertTrue(h.manager.state.value.items.any { it.id == firstId })
+        h.transports.first().failTunnelClose = false
+        h.manager.stopAll()
+        assertFalse(h.manager.state.value.cleanupUncertain)
+        assertNull(h.manager.state.value.problem)
+        h.manager.clearWorkspace()
+    }
+
+    @Test fun `workspace clearing retains failed transport cleanup and can retry despite closed session wrapper`() = runTest {
+        val h = Harness(backgroundScope)
+        h.manager.start(h.target.hostId, SshLocalForwardRequest(8080)); h.manager.state.first { !it.busy }
+        h.transports.single().failTransportClose = true
+        h.manager.clearWorkspace()
+        assertTrue(h.manager.state.value.cleanupUncertain)
+        assertEquals(1, h.manager.state.value.items.size)
+        assertTrue(h.transports.single().isConnected)
+        h.transports.single().failTransportClose = false
+        h.manager.clearWorkspace()
+        assertFalse(h.manager.state.value.cleanupUncertain)
+        assertFalse(h.transports.single().isConnected)
+        assertTrue(h.manager.state.value.items.isEmpty())
+    }
     @Test fun `late cancelled handshake cannot replace a newer forward or stop its keeper`() = runTest {
         val h = Harness(backgroundScope)
         val release = CompletableDeferred<Unit>()
@@ -140,6 +204,8 @@ class SshLocalForwardsTest {
 private class ForwardTransport(private val key: ServerCenterHostKeyObservation, private val failPort: Boolean,
     private val connectGate: (suspend () -> Unit)? = null) : ServerCenterSshTransport {
     var connected = false; var opened = 0; var testedPort: Int? = null
+    var failTunnelClose = false
+    var failTransportClose = false
     override val isConnected get() = connected
     override val observedHostKey get() = key
     override suspend fun connect(endpoint: ServerCenterSshEndpoint, credential: SshCredential, hostKeyGuard: (ServerCenterHostKeyObservation) -> ServerHostKeyTrust) {
@@ -153,7 +219,7 @@ private class ForwardTransport(private val key: ServerCenterHostKeyObservation, 
         return object : ServerCenterSshTunnel {
             override val localPort = preferredLocalPort ?: 12000
             override val localBaseUrl = "http://127.0.0.1:$localPort"
-            override fun close() { }
+            override fun close() { if (failTunnelClose) throw IllegalStateException("test tunnel cleanup failed") }
         }
     }
     override suspend fun testLoopbackPort(remotePort: Int): Boolean { testedPort = remotePort; return connected }
@@ -161,7 +227,7 @@ private class ForwardTransport(private val key: ServerCenterHostKeyObservation, 
     override suspend fun uploadNew(content: InputStream, contentLength: Long?, remotePath: String, progress: ((Long) -> Unit)?) = error("not used")
     override suspend fun copyFile(sourcePath: String, destinationPath: String, maximumBytes: Long) = error("not used")
     override fun openLoopbackTunnel(remotePort: Int, basePath: String?): ServerCenterSshTunnel = error("Managed tunnel must not be used")
-    override fun close() { connected = false }
+    override fun close() { if (failTransportClose) throw IllegalStateException("test transport cleanup failed"); connected = false }
     override suspend fun run(command: String): ServerCenterSshCommandResult = error("No commands")
     override suspend fun runWithInput(command: String, inputLine: String?): ServerCenterSshCommandResult = error("No commands")
     override suspend fun openTerminal(): ServerCenterSshTerminal = error("No terminal")

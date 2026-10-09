@@ -65,10 +65,9 @@ enum class EndpointDiscoveryState { Idle, Checking, Found, InvalidAddress, Unava
  */
 class LoginViewModel(application: Application) : AndroidViewModel(application) {
     init { app.relaxkonos.mobile.core.net.ServerCertificateTrust.initialize(application) }
-    var certificateReview by mutableStateOf<app.relaxkonos.mobile.core.net.CertificateReview?>(null)
-        private set
-    private var certificateAnswer: kotlinx.coroutines.CompletableDeferred<Boolean>? = null
-    fun answerCertificate(accept: Boolean) { certificateAnswer?.complete(accept) }
+    private val certificateConsent = CertificateConsentWaiter()
+    val certificatePrompt: CertificateConsentRequest? get() = certificateConsent.current
+    fun answerCertificate(request: CertificateConsentRequest, accept: Boolean) { certificateConsent.answer(request, accept) }
     private val container: AppContainer get() = getApplication<RelaxKonApplication>().container
 
     private var revision by mutableStateOf(0)
@@ -978,13 +977,10 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
      * Shows a certificate review and waits for the answer.
      *
      * One prompt serves every TLS flow: the address probe, the SSH tunnel, owner-device pairing and
-     * owner-device sign-in all wait on this same pair of fields, so a second copy could only drift.
+     * owner-device sign-in share one request-scoped prompt slot, so a second copy could only drift.
      */
     private suspend fun askCertificateConsent(review: app.relaxkonos.mobile.core.net.CertificateReview): Boolean {
-        val pending = kotlinx.coroutines.CompletableDeferred<Boolean>()
-        certificateAnswer = pending
-        certificateReview = review
-        return try { pending.await() } finally { certificateAnswer = null; certificateReview = null }
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) { certificateConsent.ask(review) }
     }
 
     /**
@@ -1082,10 +1078,22 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             catch (_: TunnelCancelledException) { }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) { tunnel.configurationOpen = true; message = UiMessage((error as? LoginTunnelFailure)?.messageResource ?: R.string.login_tunnel_failed) }
-            finally { tunnel.close(); isLoggingIn = false }
+            finally {
+                try { tunnel.close() }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { message = UiMessage(R.string.login_tunnel_cleanup_failed) }
+                finally { isLoggingIn = false }
+            }
         }
     }
-    override fun onCleared() { tunnel.close(); tunnel.clearCredential(); super.onCleared() }
+    override fun onCleared() {
+        try { tunnel.close() }
+        catch (_: Exception) { container.showNotice(UiMessage(R.string.login_tunnel_cleanup_failed)) }
+        finally {
+            try { tunnel.clearCredential() }
+            finally { super.onCleared() }
+        }
+    }
 
     private fun promptSubtitle(target: String) =
         getApplication<Application>().getString(R.string.vault_unlock_subtitle, target)

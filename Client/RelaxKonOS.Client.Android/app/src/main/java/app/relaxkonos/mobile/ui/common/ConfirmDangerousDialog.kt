@@ -12,6 +12,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import app.relaxkonos.mobile.R
 
 /**
@@ -33,7 +34,8 @@ fun ConfirmDangerousDialog(
     extraContent: (@Composable () -> Unit)? = null,
 ) {
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!busy) onDismiss() },
+        properties = DialogProperties(dismissOnBackPress = !busy, dismissOnClickOutside = !busy),
         title = { Text(title) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {

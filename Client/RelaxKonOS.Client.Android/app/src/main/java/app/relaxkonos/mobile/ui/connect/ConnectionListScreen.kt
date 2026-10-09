@@ -26,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,6 +50,7 @@ import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.icons.hostPlatformMark
 import app.relaxkonos.mobile.ui.theme.Radius
 import app.relaxkonos.mobile.ui.theme.Spacing
+import kotlinx.coroutines.CancellationException
 
 /**
  * The saved-login picker shown from the sign-in screen.
@@ -82,6 +84,27 @@ fun ConnectionListScreen(
     var forgetTarget by remember { mutableStateOf<SavedLogin?>(null) }
     var deleteTarget by remember { mutableStateOf<SavedLogin?>(null) }
     var actionTarget by remember { mutableStateOf<SavedLogin?>(null) }
+    var mutationFailed by remember(forgetTarget, deleteTarget) { mutableStateOf(false) }
+
+    fun mutate(action: () -> Unit, completed: () -> Unit) {
+        try {
+            action()
+            completed()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            mutationFailed = true
+        }
+    }
+
+    fun currentRecord(target: SavedLogin?) = target?.let { selected ->
+        logins.firstOrNull { it.serviceId == selected.serviceId && it.identifier == selected.identifier }
+    }
+    LaunchedEffect(logins) {
+        if (currentRecord(actionTarget) == null) actionTarget = null
+        if (currentRecord(forgetTarget) == null) forgetTarget = null
+        if (currentRecord(deleteTarget) == null) deleteTarget = null
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -112,15 +135,16 @@ fun ConnectionListScreen(
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
     )
 
-    actionTarget?.let { login ->
+    currentRecord(actionTarget)?.let { login ->
         AlertDialog(
             onDismissRequest = { actionTarget = null },
             title = { Text(stringResource(R.string.connections_actions_title)) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text(login.displayName ?: login.serviceId)
                     Text(login.identifier, style = MaterialTheme.typography.bodyMedium)
                     OutlinedButton(
+                        enabled = credentialStatus(login) != CredentialStatus.None,
                         onClick = { actionTarget = null; forgetTarget = login },
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text(stringResource(R.string.connections_forget_password)) }
@@ -135,27 +159,38 @@ fun ConnectionListScreen(
         )
     }
 
-    forgetTarget?.let { login ->
+    currentRecord(forgetTarget)?.let { login ->
         ConfirmDangerousDialog(
             title = stringResource(R.string.connections_forget_title),
             message = stringResource(R.string.connections_forget_message, login.serviceId, login.identifier),
             confirmLabel = stringResource(R.string.connections_forget_password),
+            confirmEnabled = credentialStatus(login) != CredentialStatus.None,
+            extraContent = {
+                if (mutationFailed) Text(stringResource(R.string.connections_mutation_failed), color = MaterialTheme.colorScheme.error)
+            },
             onConfirm = {
-                forgetTarget = null
-                onForgetPassword(login)
+                currentRecord(login)?.let { current ->
+                    if (credentialStatus(current) != CredentialStatus.None) {
+                        mutate({ onForgetPassword(current) }, { forgetTarget = null })
+                    }
+                }
             },
             onDismiss = { forgetTarget = null },
         )
     }
 
-    deleteTarget?.let { login ->
+    currentRecord(deleteTarget)?.let { login ->
         ConfirmDangerousDialog(
             title = stringResource(R.string.connections_delete_title),
             message = stringResource(R.string.connections_delete_message, login.serviceId, login.identifier),
             confirmLabel = stringResource(R.string.common_delete),
+            extraContent = {
+                if (mutationFailed) Text(stringResource(R.string.connections_mutation_failed), color = MaterialTheme.colorScheme.error)
+            },
             onConfirm = {
-                deleteTarget = null
-                onDeleteLogin(login)
+                currentRecord(login)?.let { current ->
+                    mutate({ onDeleteLogin(current) }, { deleteTarget = null })
+                }
             },
             onDismiss = { deleteTarget = null },
         )

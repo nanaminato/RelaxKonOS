@@ -22,7 +22,8 @@ data class SshLoginTunnelProfile(val host: String, val port: Int, val userName: 
             require(ServerHostTargetRules.isValidEndpoint(host, port, userName))
             require(host.none(Char::isISOControl) && userName.none(Char::isISOControl) && URI("ssh://${host.trim()}").host != null)
             val uri = URI(remoteUrl.trim())
-            require(uri.scheme in listOf("http", "https") && uri.host in listOf("localhost", "127.0.0.1") &&
+            require(uri.scheme?.lowercase(java.util.Locale.ROOT) in listOf("http", "https") &&
+                uri.host?.lowercase(java.util.Locale.ROOT) in listOf("localhost", "127.0.0.1") &&
                 (uri.port == -1 || uri.port in 1..65535) && uri.rawUserInfo == null && uri.rawQuery == null && uri.rawFragment == null && uri.path in listOf("", "/"))
             return SshLoginTunnelProfile(ServerHostTrustRules.normalizeHost(host), port, userName.trim(),
                 ServerConnectionIdentityRules.normalizeServerUrl(remoteUrl))

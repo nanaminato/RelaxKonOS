@@ -36,6 +36,7 @@ import app.relaxkonos.mobile.ui.connect.OwnerDevicePairingScreen
 import app.relaxkonos.mobile.ui.connect.ServerCertificatePrompt
 import app.relaxkonos.mobile.ui.servercenter.ServerCenterScreen
 import app.relaxkonos.mobile.ui.servercenter.SshWorkspaceScreen
+import app.relaxkonos.mobile.ui.servercenter.ForwardCleanupNotice
 import app.relaxkonos.mobile.ui.nav.Routes
 import app.relaxkonos.mobile.ui.nav.ShellScaffold
 import app.relaxkonos.mobile.ui.nav.ShellViewModel
@@ -157,11 +158,16 @@ private fun RelaxKonApp(container: AppContainer) {
             }
         }
 
+        val forwardState = container.sshForwards.state.collectAsStateValue()
+        fun closeServerCenter(action: () -> Unit) {
+            try { action() }
+            catch (_: Exception) { container.showNotice(app.relaxkonos.mobile.ui.common.UiMessage(R.string.ssh_workspace_cleanup_failed)) }
+        }
         AppBackdrop {
             if (container.serverCenter.isOpen) {
                 container.serverCenter.sshFilesHostId?.let { hostId ->
-                    SshWorkspaceScreen(hostId = hostId, onClose = container.serverCenter::closeSshFiles)
-                } ?: ServerCenterScreen(onClose = container.serverCenter::close)
+                    SshWorkspaceScreen(hostId = hostId, onClose = { closeServerCenter(container.serverCenter::closeSshFiles) })
+                } ?: ServerCenterScreen(onClose = { closeServerCenter(container.serverCenter::close) })
             } else when (sessionState) {
                 is SessionState.Active -> ShellScaffold(
                     container = container,
@@ -187,7 +193,10 @@ private fun RelaxKonApp(container: AppContainer) {
             // flow waiting for the answer is the other (Shell.Design.md §3.4).
             ServerCertificatePrompt(login)
 
-            container.pendingNotice?.let { notice ->
+            if (forwardState.cleanupUncertain && (!container.serverCenter.isOpen || container.serverCenter.sshFilesHostId == null)) {
+                ForwardCleanupNotice(onRetry = container.sshForwards::stopAll,
+                    modifier = Modifier.align(Alignment.TopCenter).safeDrawingPadding().padding(Spacing.lg))
+            } else container.pendingNotice?.let { notice ->
                 ActionFeedback(
                     message = notice,
                     onRetry = null,

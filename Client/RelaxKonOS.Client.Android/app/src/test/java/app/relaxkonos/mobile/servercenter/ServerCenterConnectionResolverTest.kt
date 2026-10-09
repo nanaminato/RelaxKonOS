@@ -17,6 +17,24 @@ import org.junit.Test
  * 真机上的 JSch 行为由 G2 的端到端验收覆盖。
  */
 class ServerCenterConnectionResolverTest {
+    @Test fun `secondary close failure is suppressed without replacing the original or suppressing itself`() {
+        listOf(false, true).forEach { sameFailure ->
+            val harness = Harness()
+            harness.trust.trust(endpoint, observation(), now)
+            val session = runBlocking { harness.resolver.connect(target(installed = true), credential(), harness.resolver.prepareHostKeyGuard(target(installed = true))) }
+            session.openOrRebindTunnel(5000, null, now)
+            val primary = IllegalStateException("primary-close-failure")
+            val secondary = if (sameFailure) primary else IllegalStateException("transport-close-failure")
+            val transport = harness.factory.created.single()
+            transport.tunnels.single().closeFailure = primary
+            transport.closeFailure = secondary
+            assertTrue(runCatching { session.close() }.exceptionOrNull() === primary)
+            assertEquals(if (sameFailure) emptyList() else listOf(secondary), primary.suppressed.toList())
+            assertTrue(transport.closed)
+            assertFalse(session.hasTunnel)
+            session.close()
+        }
+    }
     @Test fun `tunnel close failure still closes transport and clears the owned tunnel`() {
         val harness = Harness()
         harness.trust.trust(endpoint, observation(), now)
@@ -184,6 +202,7 @@ class ServerCenterConnectionResolverTest {
 
 /** 假传输：记录连接与隧道生命周期，不触碰网络。 */
 private class FakeTransport(private val portSequence: List<Int>) : ServerCenterSshTransport {
+    var closeFailure: Exception? = null
 
     val tunnels = mutableListOf<FakeTunnel>()
     var closed = false
@@ -250,6 +269,7 @@ private class FakeTransport(private val portSequence: List<Int>) : ServerCenterS
     override fun close() {
         closed = true
         isConnected = false
+        closeFailure?.let { throw it }
     }
 }
 

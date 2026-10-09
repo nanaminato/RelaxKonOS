@@ -4,6 +4,8 @@ import java.net.HttpURLConnection
 import java.net.URI
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 /** The result of checking a server address without sending any credentials. */
 sealed interface EndpointDiscoveryResult {
@@ -43,9 +45,13 @@ object ServerEndpointDiscovery {
         if (candidates.isEmpty()) return@withContext EndpointDiscoveryResult.InvalidAddress
 
         for (candidate in candidates) {
-            ServerCertificateTrust.clear(candidate)
-            if (isLoginEndpointAvailable(candidate)) return@withContext EndpointDiscoveryResult.Found(candidate)
-            if (ServerCertificateTrust.review(candidate) != null) return@withContext EndpointDiscoveryResult.Unavailable
+            currentCoroutineContext().ensureActive()
+            val https = URI(candidate).scheme == "https"
+            if (https) ServerCertificateTrust.review(candidate)?.let(ServerCertificateTrust::clear)
+            val available = isLoginEndpointAvailable(candidate)
+            currentCoroutineContext().ensureActive()
+            if (available) return@withContext EndpointDiscoveryResult.Found(candidate)
+            if (https && ServerCertificateTrust.review(candidate) != null) return@withContext EndpointDiscoveryResult.Unavailable
         }
         EndpointDiscoveryResult.Unavailable
     }
@@ -70,11 +76,12 @@ object ServerEndpointDiscovery {
 
     private fun normalize(value: String): String? = runCatching {
         val uri = URI(value)
-        require(uri.scheme == "http" || uri.scheme == "https")
+        require(uri.scheme?.lowercase(java.util.Locale.ROOT) in setOf("http", "https"))
         require(!uri.host.isNullOrBlank())
-        require(uri.userInfo.isNullOrEmpty())
-        require(uri.query.isNullOrEmpty() && uri.fragment.isNullOrEmpty())
+        require(uri.rawUserInfo == null)
+        require(uri.rawQuery == null && uri.rawFragment == null)
         require(uri.path.isNullOrEmpty() || uri.path == "/")
-        "${uri.scheme}://${uri.rawAuthority}".trimEnd('/')
+        require(uri.port == -1 || uri.port in 1..65535)
+        app.relaxkonos.mobile.servercenter.ServerConnectionIdentityRules.normalizeServerUrl(value)
     }.getOrNull()
 }

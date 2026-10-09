@@ -31,6 +31,47 @@ import org.junit.Test
  * without a second question.
  */
 class ServerCertificateConfirmationTest {
+    @Test fun `actual http discovery preserves another flows pending https review`() = runTest {
+        ServerCertificateTrust.initialize(emptyPreferences())
+        val server = java.net.ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1"))
+        server.soTimeout = 8_000
+        val https = "https://127.0.0.1:${server.localPort}"
+        val http = "http://127.0.0.1:${server.localPort}"
+        runCatching { handshake(https, selfSigned(12)) }
+        val review = requireNotNull(ServerCertificateTrust.review(https))
+        val failure = java.util.concurrent.atomic.AtomicReference<Throwable?>()
+        val serving = kotlin.concurrent.thread(isDaemon = true, name = "http-discovery-scope-test") {
+            try {
+                server.accept().use { socket ->
+                    socket.soTimeout = 4_000
+                    check(socket.getInputStream().read() == 'O'.code)
+                    socket.getOutputStream().write("HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
+                    socket.getOutputStream().flush()
+                }
+            } catch (error: Throwable) { if (!server.isClosed) failure.set(error) }
+        }
+        try {
+            assertEquals(EndpointDiscoveryResult.Found(http), ServerEndpointDiscovery.discover(http))
+            serving.join(2_000)
+            assertFalse(serving.isAlive)
+            assertNull(failure.get())
+            assertTrue(ServerCertificateTrust.review(https) === review)
+        } finally { server.close(); serving.join(5_000) }
+    }
+    @Test fun `explicit http ignores but does not erase a pending https observation`() = runTest {
+        ServerCertificateTrust.initialize(emptyPreferences())
+        val https = "https://192.168.1.7:5501"
+        runCatching { handshake(https, selfSigned(11)) }
+        val review = requireNotNull(ServerCertificateTrust.review(https))
+        assertNull(ServerCertificateConfirmation.pending(listOf("http://192.168.1.7:5501")))
+        var probes = 0
+        assertNull(ServerCertificateConfirmation.reviewFor(listOf("http://192.168.1.7:5501")) { probes++ })
+        assertEquals(1, probes)
+        assertTrue(ServerCertificateTrust.review(https) === review)
+        assertTrue(ServerCertificateConfirmation.pending(listOf(https)) === review)
+        assertTrue(ServerCertificateConfirmation.pending(listOf("HTTPS://192.168.1.7:5501")) === review)
+        assertNull(ServerCertificateConfirmation.pending(listOf("HTTP://192.168.1.7:5501")))
+    }
 
     @Test
     fun `a self-signed pairing origin is pinned once and never asked again`() = runTest {

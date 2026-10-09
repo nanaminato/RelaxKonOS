@@ -22,4 +22,8 @@
     <string name="server_install_status_unverified">The installation succeeded, but its current health has not been verified. Check the original operation and current status; do not submit it again.</string>
     <string name="server_install_verify_original">Verify original installation</string>
     <string name="server_install_record_failed">The original installation record could not be read or updated. Verify it before starting another installation.</string>
+    <string name="ssh_forward_cleanup_failed">Some local forwarding resources could not be confirmed closed. Retry Stop all; if this persists, fully stop the app before creating another forward.</string>
+    <string name="ssh_forward_cleanup_pending">Stop result unverified</string>
+    <string name="ssh_workspace_cleanup_failed">SSH workspace cleanup could not be confirmed. Force stop this app in system settings before reconnecting.</string>
+    <string name="login_tunnel_cleanup_failed">The login SSH tunnel could not be confirmed closed. Force stop the app in system settings before connecting again.</string>
 </resources>

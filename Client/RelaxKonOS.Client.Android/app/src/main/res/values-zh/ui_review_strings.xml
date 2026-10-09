@@ -22,4 +22,8 @@
     <string name="server_install_status_unverified">安装已成功，但当前健康状态尚未核实。请核实原操作与当前状态，不要重复提交安装。</string>
     <string name="server_install_verify_original">核实原安装操作</string>
     <string name="server_install_record_failed">无法读取或更新原安装记录。请先核实原操作，暂时不能开始新的安装。</string>
+    <string name="ssh_forward_cleanup_failed">部分本地转发资源尚未确认关闭。请重试停止全部；仍失败时，请完全停止应用后再创建转发。</string>
+    <string name="ssh_forward_cleanup_pending">停止结果待核实</string>
+    <string name="ssh_workspace_cleanup_failed">SSH 工作区资源清理尚未确认。请在系统设置中强行停止本应用后重新连接。</string>
+    <string name="login_tunnel_cleanup_failed">登录 SSH 隧道尚未确认关闭。请在系统设置中强行停止应用后再连接。</string>
 </resources>

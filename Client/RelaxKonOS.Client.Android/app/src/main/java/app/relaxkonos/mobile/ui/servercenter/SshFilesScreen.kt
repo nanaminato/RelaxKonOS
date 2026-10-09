@@ -1,5 +1,7 @@
 package app.relaxkonos.mobile.ui.servercenter
 
+import app.relaxkonos.mobile.servercenter.SshFileTransferRules
+
 import app.relaxkonos.mobile.ui.common.rememberUsageCreateDocument
 import app.relaxkonos.mobile.ui.common.rememberUsageOpenDocumentTree
 import app.relaxkonos.mobile.ui.common.rememberUsageOpenMultipleDocuments
@@ -361,8 +363,8 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
         text = { Text(stringResource(R.string.ssh_files_adopt_note)) },
         confirmButton = { TextButton(enabled = !state.busy && !state.writesSettling && state.checked == checks && checks.isNotEmpty() && checks.all { it.exists != null }, onClick = { model.adoptFacts(); adoptConfirm = null }) { Text(stringResource(R.string.ssh_files_adopt_facts)) } },
         dismissButton = { TextButton({ adoptConfirm = null }) { Text(stringResource(R.string.common_cancel)) } }) }
-    state.newDirectory?.let { value -> NameDialog(stringResource(R.string.ssh_files_new_folder), value, model::setNewDirectory, model::createDirectory, model::cancelCreateDirectory) }
-    state.renameTarget?.let { NameDialog(stringResource(R.string.ssh_files_rename), state.renameName, model::setRename, model::rename, model::cancelRename) }
+    state.newDirectory?.let { value -> NameDialog(stringResource(R.string.ssh_files_new_folder), value, model::setNewDirectory, model::createDirectory, model::cancelCreateDirectory, state.busy, state.unknown) }
+    state.renameTarget?.let { NameDialog(stringResource(R.string.ssh_files_rename), state.renameName, model::setRename, model::rename, model::cancelRename, state.busy, state.unknown) }
     state.deleteTarget?.let { entry -> ConfirmDangerousDialog(stringResource(R.string.ssh_files_delete), if (state.deleteEntries.size == 1) stringResource(R.string.ssh_files_delete_note, entry.name) else stringResource(R.string.ssh_files_delete_many_note, state.deleteEntries.size), stringResource(R.string.ssh_files_delete), model::delete, model::dismissDelete, state.busy) }
 }
 
@@ -437,9 +439,10 @@ private fun SshFileDetail(
     }
 }
 
-@Composable private fun NameDialog(title: String, value: String, onValue: (String) -> Unit, onConfirm: () -> Unit, onDismiss: () -> Unit) = AlertDialog(
-    onDismissRequest = onDismiss, title = { Text(title) }, text = { OutlinedTextField(value, onValue, label = { Text(title) }, singleLine = true) },
-    confirmButton = { TextButton(onConfirm) { ActionLabel(R.string.common_save) } }, dismissButton = { TextButton(onDismiss) { Text(stringResource(R.string.common_cancel)) } },
+@Composable internal fun NameDialog(title: String, value: String, onValue: (String) -> Unit, onConfirm: () -> Unit, onDismiss: () -> Unit,
+    busy: Boolean, unknown: Boolean) = AlertDialog(
+    onDismissRequest = { if (!busy) onDismiss() }, title = { Text(title) }, text = { OutlinedTextField(value, onValue, label = { Text(title) }, singleLine = true, enabled = !busy) },
+    confirmButton = { TextButton(onConfirm, enabled = !busy && !unknown && SshFileTransferRules.safeName(value.trim())) { ActionLabel(R.string.common_save) } }, dismissButton = { TextButton(onDismiss, enabled = !busy) { Text(stringResource(R.string.common_cancel)) } },
 )
 
 @Composable private fun problemText(problem: String): String = stringResource(when (problem) {

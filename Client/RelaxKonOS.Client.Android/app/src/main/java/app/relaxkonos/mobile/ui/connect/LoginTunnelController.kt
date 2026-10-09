@@ -39,7 +39,7 @@ class LoginTunnelController(private val container: AppContainer) {
     private var answer: CompletableDeferred<Boolean>? = null
     private var session: ServerCenterHostSession? = null
     private var forward: ServerCenterSshTunnel? = null
-    private var certificateEndpoint: String? = null
+    private var certificateEndpoint: app.relaxkonos.mobile.core.net.TunnelCertificateBinding? = null
     private var verifiedEndpoint: String? = null
     private var verifiedCredential: SshCredential? = null
     var identity by mutableStateOf<ServerConnectionIdentity?>(null)
@@ -102,8 +102,7 @@ class LoginTunnelController(private val container: AppContainer) {
             val remotePort = if (remote.port != -1) remote.port else if (remote.scheme == "https") 443 else 80
             forward = withContext(Dispatchers.IO) { session!!.sshTransport.openLoopbackTunnel(remotePort, remote.path) }
             val resolved = profile.resolve(forward!!.localPort)
-            certificateEndpoint = resolved.effectiveBaseUrl
-            app.relaxkonos.mobile.core.net.ServerCertificateTrust.bindTunnel(resolved.effectiveBaseUrl, resolved.serviceId)
+            certificateEndpoint = app.relaxkonos.mobile.core.net.ServerCertificateTrust.bindTunnel(resolved.effectiveBaseUrl, resolved.serviceId)
             var probe = ServerEndpointDiscovery.discover(resolved.effectiveBaseUrl)
             app.relaxkonos.mobile.core.net.ServerCertificateTrust.review(resolved.effectiveBaseUrl)?.let { certificate ->
                 if (!confirmCertificate(certificate)) throw TunnelCancelledException()
@@ -138,11 +137,12 @@ class LoginTunnelController(private val container: AppContainer) {
     fun adopt() {
         val ownedForward = forward ?: return
         val ownedSession = session ?: return
+        val ownedIdentity = identity ?: return
         val ownedCertificateEndpoint = certificateEndpoint
         certificateEndpoint = null
         forward = null; session = null; identity = null
         clearCredential()
-        container.adoptLoginTunnel {
+        container.adoptLoginTunnel(ownedIdentity) {
             ownedCertificateEndpoint?.let(app.relaxkonos.mobile.core.net.ServerCertificateTrust::unbindTunnel)
             try { ownedForward.close() } finally { ownedSession.close() }
         }

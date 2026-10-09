@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -48,7 +49,7 @@ internal fun SshForwardsScreen(hostId: String, modifier: Modifier = Modifier) {
         Text(stringResource(R.string.ssh_forward_note))
         if (denied) Text(stringResource(R.string.ssh_forward_permission_note))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) TextButton(onClick = { permission.launch(Manifest.permission.POST_NOTIFICATIONS) }) { Text(stringResource(R.string.ssh_forward_notification_enable)) }
-        Button(enabled = !state.busy, onClick = { openEditor(null to SshLocalForwardRequest(8080)) }) { Text(stringResource(R.string.ssh_forward_add)) }
+        Button(enabled = !state.busy && !state.cleanupUncertain, onClick = { openEditor(null to SshLocalForwardRequest(8080)) }) { Text(stringResource(R.string.ssh_forward_add)) }
         if (state.busy) ActivityIndicator(stringResource(R.string.ssh_forward_busy))
         OperationMessageDialog(state.problem?.takeUnless { state.busy || editor != null }?.let { stringResource(forwardProblemMessage(it)) })
         val items = state.items.filter { it.hostId == hostId }
@@ -60,6 +61,7 @@ internal fun SshForwardsScreen(hostId: String, modifier: Modifier = Modifier) {
                 SshForwardStatus.Running -> R.string.ssh_forward_running
                 SshForwardStatus.Stopped -> R.string.ssh_forward_stopped
                 SshForwardStatus.Disconnected -> R.string.ssh_forward_disconnected
+                SshForwardStatus.CleanupPending -> R.string.ssh_forward_cleanup_pending
             }), row.status.name, task = false)
             Text(row.request.localUrl(row.localPort), style = MaterialTheme.typography.bodySmall)
             ExternalServiceAddresses.forward(row)?.let { address -> ServiceAccess(listOf(address), ready = !state.busy) {
@@ -69,15 +71,15 @@ internal fun SshForwardsScreen(hostId: String, modifier: Modifier = Modifier) {
                 stringResource(if (row.reachable == true) R.string.ssh_forward_reachable else R.string.ssh_forward_unreachable),
                 java.text.DateFormat.getDateTimeInstance().format(java.util.Date(time)))) }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                OutlinedButton(enabled = !state.busy, onClick = { openEditor(row.id to row.request) }) { Text(stringResource(R.string.ssh_forward_edit)) }
+                OutlinedButton(enabled = !state.busy && !state.cleanupUncertain, onClick = { openEditor(row.id to row.request) }) { Text(stringResource(R.string.ssh_forward_edit)) }
                 if (row.status == SshForwardStatus.Running) {
                     OutlinedButton(enabled = !state.busy, onClick = { manager.test(row.id) }) { Text(stringResource(R.string.ssh_forward_test)) }
                     OutlinedButton(enabled = !state.busy, onClick = { manager.stop(row.id) }) { Text(stringResource(R.string.ssh_forward_stop)) }
-                } else OutlinedButton(enabled = !state.busy, onClick = { manager.start(hostId, row.request, row.id) }) { Text(stringResource(R.string.ssh_forward_start)) }
-                TextButton(enabled = !state.busy, onClick = { manager.remove(row.id) }) { ActionLabel(R.string.common_delete) }
+                } else OutlinedButton(enabled = !state.busy && !state.cleanupUncertain, onClick = { manager.start(hostId, row.request, row.id) }) { Text(stringResource(R.string.ssh_forward_start)) }
+                TextButton(enabled = !state.busy && !state.cleanupUncertain, onClick = { manager.remove(row.id) }) { ActionLabel(R.string.common_delete) }
             }
         }
-        if (items.any { it.status == SshForwardStatus.Running } || state.busy) TextButton(onClick = manager::stopAll) { Text(stringResource(R.string.ssh_forward_stop_all)) }
+        if (items.any { it.status == SshForwardStatus.Running } || state.busy || state.cleanupUncertain) TextButton(onClick = manager::stopAll) { Text(stringResource(R.string.ssh_forward_stop_all)) }
     }
     editor?.let { (id, initial) ->
         SshForwardEditor(initial, id != null, !state.busy && !submitting, onDismiss = {
@@ -93,13 +95,17 @@ internal fun SshForwardsScreen(hostId: String, modifier: Modifier = Modifier) {
                     else editorProblem = manager.state.value.problem ?: "connect"
                 }
             }
-        }, problem = editorProblem)
+        }, problem = editorProblem, canStart = !state.cleanupUncertain, onRetryCleanup = {
+            manager.stopAll()
+            if (!manager.state.value.cleanupUncertain) editorProblem = null
+        })
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun SshForwardEditor(initial: SshLocalForwardRequest, editing: Boolean, ready: Boolean, onDismiss: () -> Unit, onSubmit: (SshLocalForwardRequest) -> Unit, problem: String? = null) {
+internal fun SshForwardEditor(initial: SshLocalForwardRequest, editing: Boolean, ready: Boolean, onDismiss: () -> Unit,
+    onSubmit: (SshLocalForwardRequest) -> Unit, problem: String? = null, canStart: Boolean = true, onRetryCleanup: (() -> Unit)? = null) {
     var remote by remember(initial) { mutableStateOf(initial.remotePort.toString()) }
     var local by remember(initial) { mutableStateOf(initial.preferredLocalPort?.toString().orEmpty()) }
     var scheme by remember(initial) { mutableStateOf(initial.scheme) }
@@ -120,6 +126,9 @@ internal fun SshForwardEditor(initial: SshLocalForwardRequest, editing: Boolean,
     AlertDialog(modifier = Modifier.imePadding(), onDismissRequest = requestClose, title = { Text(stringResource(if (editing) R.string.ssh_forward_edit else R.string.ssh_forward_add)) }, text = {
         Column(Modifier.heightIn(max = 460.dp).verticalScroll(scroll), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             problem?.let { Text(stringResource(forwardProblemMessage(it)), color = MaterialTheme.colorScheme.error) }
+            if (problem == "cleanup" && onRetryCleanup != null) OutlinedButton(enabled = ready, onClick = onRetryCleanup) {
+                Text(stringResource(R.string.ssh_forward_stop_all))
+            }
             if (editing) Text(stringResource(R.string.ssh_forward_edit_note))
             OutlinedTextField(value = remote, onValueChange = { if (it.length <= 5) remote = it }, enabled = ready, isError = !remoteValid, singleLine = true, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ssh_forward_remote_port)) })
             OutlinedTextField(value = local, onValueChange = { if (it.length <= 5) local = it }, enabled = ready, isError = !localValid, singleLine = true, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ssh_forward_local_port)) })
@@ -127,7 +136,7 @@ internal fun SshForwardEditor(initial: SshLocalForwardRequest, editing: Boolean,
             OutlinedTextField(value = path, onValueChange = { if (it.length <= 2048) path = it }, enabled = ready, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ssh_forward_path)) })
             if (request == null) Text(stringResource(R.string.ssh_forward_invalid), color = MaterialTheme.colorScheme.error)
         }
-    }, confirmButton = { TextButton(enabled = ready && request != null, onClick = { focus.clearFocus(); request?.let(onSubmit) }) { Text(stringResource(R.string.ssh_forward_start)) } },
+    }, confirmButton = { TextButton(enabled = ready && canStart && request != null, onClick = { focus.clearFocus(); request?.let(onSubmit) }) { Text(stringResource(R.string.ssh_forward_start)) } },
         dismissButton = { TextButton(enabled = ready, onClick = requestClose) { Text(stringResource(R.string.common_cancel)) } })
     }
 }
@@ -139,5 +148,28 @@ private fun forwardProblemMessage(problem: String): Int = when (problem) {
     "limit" -> R.string.ssh_forward_limit
     "test" -> R.string.ssh_forward_test_failed
     "service" -> R.string.ssh_forward_service_failed
+    "cleanup" -> R.string.ssh_forward_cleanup_failed
     else -> R.string.ssh_forward_connect_failed
+}
+
+/** Remains actionable after leaving SSH; stopping local resources needs no credential. */
+@Composable
+internal fun ForwardCleanupNotice(onRetry: () -> Unit, modifier: Modifier = Modifier) {
+    var details by remember { mutableStateOf(false) }
+    Surface(modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer, shape = MaterialTheme.shapes.medium) {
+        Row(Modifier.padding(Spacing.sm), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            TextButton(onClick = { details = true }, modifier = Modifier.weight(1f)) {
+                Text(stringResource(R.string.ssh_forward_title) + " · " + stringResource(R.string.ssh_forward_cleanup_pending),
+                    color = MaterialTheme.colorScheme.onErrorContainer)
+            }
+            OutlinedButton(onClick = onRetry) { Text(stringResource(R.string.ssh_forward_stop_all)) }
+        }
+    }
+    if (details) AlertDialog(onDismissRequest = { details = false },
+        title = { Text(stringResource(R.string.ssh_forward_cleanup_pending)) },
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text(stringResource(R.string.ssh_forward_cleanup_failed)) } },
+        confirmButton = { TextButton(onClick = onRetry) { Text(stringResource(R.string.ssh_forward_stop_all)) } },
+        dismissButton = { TextButton(onClick = { details = false }) { Text(stringResource(R.string.common_close)) } })
 }

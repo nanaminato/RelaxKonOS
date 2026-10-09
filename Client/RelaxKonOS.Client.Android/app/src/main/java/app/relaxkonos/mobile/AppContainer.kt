@@ -142,16 +142,16 @@ class AppContainer(context: Context) {
 
     val sshCredentials = ServerCenterSshCredentialStore(vault, vaultAccess)
     val loginTunnels = app.relaxkonos.mobile.servercenter.LoginTunnelStore(appContext.noBackupFilesDir)
-    private var loginTunnelClose: (() -> Unit)? = null
-    private val loginTunnelGate = Any()
-    fun adoptLoginTunnel(close: () -> Unit) {
-        val previous = synchronized(loginTunnelGate) {
-            val previous = loginTunnelClose
-            loginTunnelClose = close
-            previous
-        }
-        runCatching { previous?.invoke() }
-    }
+    private val loginTunnelOwnership = app.relaxkonos.mobile.servercenter.LoginTunnelOwnership(
+        matchesActiveConnection = { identity ->
+            val active = session.state.value as? SessionState.Active
+            active?.serviceId == identity.serviceId && active.effectiveBaseUrl == identity.effectiveBaseUrl
+        },
+        isSignedOut = { session.state.value is SessionState.SignedOut },
+        onCleanupFailure = { showNotice(UiMessage(R.string.login_tunnel_cleanup_failed)) },
+    )
+    fun adoptLoginTunnel(identity: app.relaxkonos.mobile.servercenter.ServerConnectionIdentity, close: () -> Unit) =
+        loginTunnelOwnership.adopt(identity, close)
 
     /**
      * 连接解析器：把宿主目标与 SSH 凭据变成一条会话，并维护 loopback 隧道的稳定身份。
@@ -201,7 +201,10 @@ class AppContainer(context: Context) {
         { appContext.stopService(android.content.Intent(appContext, app.relaxkonos.mobile.service.SshForwardForegroundService::class.java)) },
     )
     val sshFiles by lazy { app.relaxkonos.mobile.ui.servercenter.SshFilesController(context.applicationContext as RelaxKonApplication) }
-    init { serverCenter.onWorkspaceClosed = { sshForwards.clearWorkspace(); sshFiles.stop() } }
+    init { serverCenter.onWorkspaceClosed = {
+        try { sshForwards.clearWorkspace() }
+        finally { sshFiles.stop() }
+    } }
 
     /**
      * 受管登录的连接解析入口：把登录记录里的安装标识接到本机宿主资料。
@@ -288,14 +291,7 @@ class AppContainer(context: Context) {
         appScope.launch {
             session.state.collect { state ->
                 if (state is SessionState.SignedOut && session.state.value is SessionState.SignedOut) {
-                    val owned = synchronized(loginTunnelGate) {
-                        if (session.state.value is SessionState.SignedOut) {
-                            val owned = loginTunnelClose
-                            loginTunnelClose = null
-                            owned
-                        } else null
-                    }
-                    runCatching { owned?.invoke() }
+                    loginTunnelOwnership.releaseIfSignedOut()
                 }
             }
         }

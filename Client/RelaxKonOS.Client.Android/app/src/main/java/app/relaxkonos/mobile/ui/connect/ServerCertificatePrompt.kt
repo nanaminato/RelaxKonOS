@@ -8,6 +8,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import app.relaxkonos.mobile.R
@@ -27,9 +28,16 @@ import app.relaxkonos.mobile.ui.theme.Spacing
  */
 @Composable
 fun ServerCertificatePrompt(viewModel: LoginViewModel) {
-    val review = viewModel.certificateReview ?: return
+    val request = viewModel.certificatePrompt ?: return
+    CertificateConsentDialog(request, viewModel::answerCertificate)
+}
+
+@Composable
+internal fun CertificateConsentDialog(request: CertificateConsentRequest, onAnswer: (CertificateConsentRequest, Boolean) -> Unit) {
+    val review = request.review
+    key(request) {
     AlertDialog(
-        onDismissRequest = { viewModel.answerCertificate(false) },
+        onDismissRequest = { onAnswer(request, false) },
         title = { Text(stringResource(R.string.login_certificate_title)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
@@ -42,7 +50,8 @@ fun ServerCertificatePrompt(viewModel: LoginViewModel) {
                 review.previous?.let { Text(stringResource(R.string.login_certificate_previous, it)) }
             }
         },
-        confirmButton = { TextButton(onClick = { viewModel.answerCertificate(true) }) { Text(stringResource(R.string.login_certificate_trust)) } },
-        dismissButton = { TextButton(onClick = { viewModel.answerCertificate(false) }) { Text(stringResource(R.string.common_cancel)) } },
+        confirmButton = { TextButton(onClick = { onAnswer(request, true) }) { Text(stringResource(R.string.login_certificate_trust)) } },
+        dismissButton = { TextButton(onClick = { onAnswer(request, false) }) { Text(stringResource(R.string.common_cancel)) } },
     )
+    }
 }

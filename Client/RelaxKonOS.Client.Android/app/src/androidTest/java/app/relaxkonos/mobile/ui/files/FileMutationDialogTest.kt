@@ -1,5 +1,10 @@
 package app.relaxkonos.mobile.ui.files
 
+import android.os.SystemClock
+import android.graphics.Rect
+import android.view.InputDevice
+import android.view.MotionEvent
+
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
@@ -191,5 +196,65 @@ class FileMutationDialogTest {
         rule.onNodeWithText("Confirm").assertIsNotEnabled()
         rule.onNodeWithText(text(R.string.common_cancel)).performClick()
         rule.runOnIdle { assertTrue(dismissed); assertFalse(submitted) }
+    }
+
+    @Test fun busyDeleteConfirmationBlocksBackUntilOperationFinishes() {
+        val busy = mutableStateOf(true)
+        var dismissed = 0
+        var submitted = 0
+        rule.setContent { MaterialTheme {
+            ConfirmDangerousDialog("Delete", "/tmp/review", "Confirm",
+                { submitted++ }, { dismissed++ }, busy = busy.value)
+        } }
+        rule.onNodeWithText("Confirm").assertIsNotEnabled()
+        rule.onNodeWithText(text(R.string.common_cancel)).assertIsNotEnabled()
+        Espresso.pressBackUnconditionally()
+        rule.onNodeWithText("/tmp/review").assertExists()
+        rule.runOnIdle { assertEquals(0, dismissed); assertEquals(0, submitted); busy.value = false }
+        Espresso.pressBackUnconditionally()
+        rule.runOnIdle { assertEquals(1, dismissed); assertEquals(0, submitted) }
+    }
+
+    @Test fun busyDeleteConfirmationBlocksOutsideTouchUntilOperationFinishes() {
+        val busy = mutableStateOf(true)
+        val dismissed = java.util.concurrent.atomic.AtomicInteger()
+        var submitted = 0
+        rule.setContent { MaterialTheme {
+            androidx.compose.material3.Text("Review parent")
+            ConfirmDangerousDialog("Delete", "/tmp/review", "Confirm",
+                { submitted++ }, { dismissed.incrementAndGet() }, busy = busy.value)
+        } }
+        rule.onNodeWithText("/tmp/review").assertIsDisplayed()
+        fun touchOutside() {
+            val instrumentation = InstrumentationRegistry.getInstrumentation()
+            instrumentation.waitForIdleSync()
+            val bounds = Rect()
+            Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.isRoot())
+                .inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog())
+                .check { view, failure ->
+                    if (failure != null) throw failure
+                    val location = IntArray(2)
+                    view.getLocationOnScreen(location)
+                    bounds.set(location[0], location[1], location[0] + view.width, location[1] + view.height)
+                }
+            assertTrue("Confirmation must have space above it: $bounds", bounds.top > 24)
+            val x = bounds.exactCenterX()
+            val y = bounds.top - 24f
+            val downTime = SystemClock.uptimeMillis()
+            listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP).forEach { action ->
+                val event = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, x, y, 0)
+                try {
+                    event.source = InputDevice.SOURCE_TOUCHSCREEN
+                    assertTrue(instrumentation.uiAutomation.injectInputEvent(event, true))
+                } finally { event.recycle() }
+            }
+            rule.waitForIdle()
+        }
+        touchOutside()
+        rule.runOnIdle { assertEquals(0, dismissed.get()); assertEquals(0, submitted); busy.value = false }
+        rule.onNodeWithText("Confirm").assertIsEnabled()
+        touchOutside()
+        rule.waitUntil(5_000) { dismissed.get() == 1 }
+        rule.runOnIdle { assertEquals(1, dismissed.get()); assertEquals(0, submitted) }
     }
 }
