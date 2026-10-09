@@ -3,6 +3,7 @@ package app.relaxkonos.mobile.ui.terminal
 import androidx.compose.runtime.*
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.TerminalSettings
+import kotlinx.coroutines.CancellationException
 
 data class TerminalPasteReview(val sessionId: String, val payload: String, val clearDraft: Boolean)
 data class TerminalMatch(val start: Int, val end: Int)
@@ -11,6 +12,7 @@ data class TerminalMatch(val start: Int, val end: Int)
 class TerminalPresentation {
     private var owner: SessionState.Active? = null
     private var session: String? = null
+    private var sessionRevision = 0L
     private val drafts = linkedMapOf<String, String>()
     var input by mutableStateOf("")
         private set
@@ -31,6 +33,7 @@ class TerminalPresentation {
 
     fun bindOwner(active: SessionState.Active?) {
         if (owner === active) return
+        sessionRevision++
         owner = active; session = null; drafts.clear(); input = ""
         ctrlNext = false; altNext = false; pasteReview = null
         search = ""; searchOpen = false; searchIndex = 0; followOutput = true
@@ -40,6 +43,7 @@ class TerminalPresentation {
     fun matchesOwner(active: SessionState.Active) = owner === active
     fun bindSession(id: String?) {
         if (session == id) return
+        sessionRevision++
         session?.let { drafts[it] = input }
         while (drafts.size > 32) drafts.remove(drafts.keys.first())
         session = id; input = drafts[id].orEmpty()
@@ -47,6 +51,15 @@ class TerminalPresentation {
     }
     fun edit(value: String) { input = TerminalInputPolicy.boundedText(value, MAX_INPUT) }
     fun payload(): String = TerminalInputPolicy.payload(input, ctrlNext, altNext)
+    internal suspend fun readClipboard(active: SessionState.Active, id: String?, read: suspend () -> String?) {
+        val revision = sessionRevision
+        fun current() = matchesOwner(active) && matchesSession(id) && revision == sessionRevision
+        if (!current()) return
+        val value = try { read() }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { if (current()) clipboardFailed = true; return }
+        if (current() && (value == null || !preparePaste(value))) clipboardFailed = true
+    }
     fun preparePaste(value: String): Boolean {
         val id = session ?: return false
         if (value.isEmpty() || value.length > MAX_INPUT) return false
@@ -57,7 +70,8 @@ class TerminalPresentation {
         pasteReview = TerminalPasteReview(id, payload(), true); return true
     }
     fun acceptedPaste() { if (pasteReview?.clearDraft == true) sent() else pasteReview = null }
-    fun canPaste(id: String?) = pasteReview?.sessionId == id && id != null
+    fun matchesSession(id: String?) = id != null && session == id
+    fun canPaste(id: String?) = pasteReview?.sessionId == id && matchesSession(id)
     fun sent() { input = ""; session?.let { drafts.remove(it) }; ctrlNext = false; altNext = false; pasteReview = null }
     companion object { const val MAX_INPUT = 16_384 }
 }

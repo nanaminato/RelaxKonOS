@@ -90,6 +90,10 @@ SSH 凭据已按「新增独立 kind、文件与 Keystore alias，并同步每�
 
 判定本身是纯函数 `planSshHostOpen`（`servercenter/SshHostOpenRules.kt`）与 `shouldSaveSshPassword`（勾选 × 本机能保护 × 密码来源是本次输入），界面不自己发明结论；凭据的读写集中在 `ServerCenterCoordinator`，界面拿不到明文。
 
+工作区主机切换在解封、握手及打开目标期间保留进度窗口，禁用取消、系统返回与窗口外关闭，操作结束后恢复。切换遇到首次或变化的主机密钥时，在工作区直接呈现与服务器中心共用的指纹确认窗口，替代主机列表；明确确认后接续原验证，取消只清除待核对状态并返回主机列表，不关闭当前工作区。密钥变化仍展示旧指纹及确认日期与新指纹。握手失败在列表内显示按原因分类的提示，说明与列表整体可滚动，失败后允许重新选主机或取消。
+
+指纹确认同时显示本次观察对应的 SSH 主机与端口，允许完整换行，便于把指纹与连接目标核对；主机切换与服务器中心使用相同展示。缺少承载授权的 Activity 时禁止确认，仍允许取消返回。
+
 握手失败按**原因**上报，不用一句话让用户同时猜主机、账号、密码和网络：分类规则是纯函数 `SshFailureRules.classify`（`servercenter/SshFailureRules.kt`），把异常归为认证被拒、认证被中止、TCP 超时、端口不可达、主机名无法解析、算法协商失败、主机密钥未接受、握手失败与无法归因，每一项对应一句可执行的文案。
 
 判定顺序是**网络层原因优先于 SSH 库消息**：JSch 会把 `SocketTimeoutException`、`ConnectException` 包进 `JSchException`，先看库消息就会把「手机连不上主机」误报成「密码错误」。同一个分类名（`SshFailureReason.diagnosticName`）也是 `adb logcat -s RelaxKonSsh:D` 里的稳定标记，界面与诊断日志不会各说一套；异常原文、端点与用户名都不进入界面（`SshDiagnostics` 只记录阶段、SSH 配置与类型链）。

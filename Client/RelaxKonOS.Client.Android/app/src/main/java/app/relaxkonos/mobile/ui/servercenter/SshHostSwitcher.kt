@@ -22,9 +22,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.R
+import app.relaxkonos.mobile.servercenter.planSshHostKeyReview
+import app.relaxkonos.mobile.servercenter.ServerCenterSshVerification
 import app.relaxkonos.mobile.core.auth.SavedCredentialState
 import app.relaxkonos.mobile.core.auth.credentialStatus
 import app.relaxkonos.mobile.ui.common.ActionFeedback
@@ -56,27 +59,47 @@ fun SshHostSwitcherDialog(currentHostId: String, onDismiss: () -> Unit) {
     LaunchedEffect(openRevision) {
         if (openRevision != revisionOnOpen.intValue) onDismiss()
     }
+    SshHostSwitcherContent(currentHostId, state, activity != null,
+        onSwitch = { viewModel.switchWorkspaceHost(it, activity!!) },
+        onDismiss = onDismiss,
+        onConfirmHostKey = { activity?.let(viewModel::confirmHostKey) },
+        onDismissHostKey = viewModel::dismissHostKeyReview,
+        feedback = {
+            state.message?.let { message ->
+                ActionFeedback(message = message, onRetry = null,
+                    onDismiss = viewModel::dismissMessage, reminders = appContainer().notices)
+            }
+        })
+}
+
+@Composable
+internal fun SshHostSwitcherContent(currentHostId: String, state: ServerCenterUiState,
+    canSwitch: Boolean, onSwitch: (String) -> Unit, onDismiss: () -> Unit,
+    onConfirmHostKey: () -> Unit, onDismissHostKey: () -> Unit,
+    feedback: @Composable () -> Unit = {}) {
+    if (planSshHostKeyReview(state.verification) != null) {
+        SshHostKeyReviewDialog(state.verification, state.isVerifying,
+            onConfirmHostKey, onDismissHostKey, canConfirm = canSwitch)
+        return
+    }
     // 解封与握手期间留着选择器：它此时是唯一能显示进度的地方，也避免用户重复点。
     val switching = state.isVerifying || state.quickManaging
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!switching) onDismiss() },
+        properties = DialogProperties(dismissOnBackPress = !switching, dismissOnClickOutside = !switching),
         title = { Text(stringResource(R.string.server_center_switch_host_title)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Text(
                     stringResource(R.string.server_center_switch_host_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 // 解封被拒、握手失败或「已保存但没保存上」都要在这里说出来，不能让对话框空转。
-                state.message?.let { message ->
-                    ActionFeedback(
-                        message = message,
-                        onRetry = null,
-                        onDismiss = viewModel::dismissMessage,
-                        reminders = appContainer().notices,
-                    )
+                feedback()
+                (state.verification as? ServerCenterSshVerification.Failed)?.let {
+                    Text(stringResource(sshFailureMessage(it.reason)), color = MaterialTheme.colorScheme.error)
                 }
                 if (switching) {
                     Row(
@@ -90,10 +113,10 @@ fun SshHostSwitcherDialog(currentHostId: String, onDismiss: () -> Unit) {
                         )
                     }
                 }
-                Column(Modifier.verticalScroll(rememberScrollState())) {
+                Column {
                     state.hosts.forEach { host ->
                         val credential = state.credentialStates[host.hostId] ?: SavedCredentialState.Absent
-                        val selectable = host.hostId != currentHostId && activity != null && !switching
+                        val selectable = host.hostId != currentHostId && canSwitch && !switching
                         ListRow(
                             title = host.displayName,
                             subtitle = "${host.sshUserName}@${host.sshHost}:${host.sshPort}",
@@ -106,7 +129,7 @@ fun SshHostSwitcherDialog(currentHostId: String, onDismiss: () -> Unit) {
                                         tone = StatusTone.Primary,
                                     )
                                 } else if (selectable) {
-                                    TextButton(onClick = { viewModel.switchWorkspaceHost(host.hostId, activity!!) }) {
+                                    TextButton(onClick = { onSwitch(host.hostId) }) {
                                         Text(stringResource(R.string.server_center_connect))
                                     }
                                 }
@@ -114,7 +137,7 @@ fun SshHostSwitcherDialog(currentHostId: String, onDismiss: () -> Unit) {
                             selected = host.hostId == currentHostId,
                             // 当前主机的整行不做事：它在列表里存在只是为了说明「你正在这里」。
                             onClick = if (selectable) {
-                                { viewModel.switchWorkspaceHost(host.hostId, activity!!) }
+                                { onSwitch(host.hostId) }
                             } else {
                                 null
                             },
@@ -124,7 +147,7 @@ fun SshHostSwitcherDialog(currentHostId: String, onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
+            TextButton(enabled = !switching, onClick = { if (!switching) onDismiss() }) { Text(stringResource(R.string.common_cancel)) }
         },
     )
 }

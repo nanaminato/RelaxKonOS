@@ -187,6 +187,7 @@ Git 的受限编辑和构建链路已接入；其他应用的支持边界见 [�
 - **弹窗尺寸**：短确认与变更预览按内容确定高度，不用固定屏幕占比撑开正文。服务器设置的编辑、预览、回滚与放弃草稿弹窗最大宽度为 560dp，高度最多使用扣除键盘与外边距后可用高度的 85%；超出时仅正文滚动，标题与底部操作保持可见，操作按钮靠末端排列。
 - **语义色**：Material 3 没有 success / warning / info 角色，因此这三组颜色由 `MaterialTheme.relaxKon` 提供。业务页只选择 tone（`Neutral` / `Primary` / `Success` / `Warning` / `Danger` / `Info`），由调色板决定该 tone 在浅色、深色、高对比度下分别是什么；页面不得出现十六进制颜色。调色板必须显式填满 `surfaceContainer*` 阶梯——留空会沿用 Material 基线，把紫灰调带进蓝色体系。
 - **状态不靠颜色单独表达**：`StatusChip` 始终携带文字，图标只是补充。主机指标的阈值只在一处定义（`loadTone`）：<70% 正常、70–90% 需要留意、≥90% 视为问题。
+- **指标文本完整可读**：共用 `MetricTile` 的标题、数值与容量说明允许完整换行，不以省略号隐藏长磁盘路径或大字体下的读数；页面通过滚动承载增加的高度。
 - **页面构成**：每个目的地以同一个 `ScreenHeader` 开头（标题 + 可选副标题 + 可选返回圆钮）；`onBack` 为 `null` 时是平板分栏形态，此时不渲染返回钮——分栏没有「返回」可退。设置类页面用「分组标题 + 分组卡」（`SectionLabel` + `SectionGroup`），页面标题不在卡内重复。列表项统一为「图标徽章 + 标题 + 两行细节 + 尾部动作」，不再把多个事实用分隔符拼成一行。
 - **图标与桌面端同源**：Android 不自绘图标集。桌面端 `Client/RelaxKonOS.Client/Assets` 是唯一来源，`Tools/Mobile/sync-desktop-icons.py` 把它镜像到 `res/drawable-nodpi/`，`ui/icons/DesktopIcons.kt` 是按语义寻址的唯一映射点。改图标必须走这个脚本，不得在 `res/drawable/` 里另画一套。
   - **启动图标也走这条链路**：`android:icon` / `android:roundIcon` 指向 `@mipmap/ic_launcher` / `@mipmap/ic_launcher_round`，由同一脚本从 `RelaxKonOS-client-icon.png` 派生——`mipmap-*dpi/` 是 API 25 及以下的整块位图（圆角方形与圆形各一套），`mipmap-anydpi-v26/` 是自适应图标。

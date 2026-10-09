@@ -70,7 +70,7 @@ class ServerTerminalViewModel(application: Application) : AndroidViewModel(appli
         }
     }
     fun attach(id: String?) = controller.attach(id)
-    fun send(text: String) = controller.send(text)
+    fun send(sessionId: String?, text: String) = controller.send(sessionId, text)
     fun resize(columns: Int, rows: Int) = controller.resize(columns, rows)
     fun close(sessionId: String) = controller.close(sessionId)
     fun closeSessions(ids: List<String>) = controller.closeSessions(ids)

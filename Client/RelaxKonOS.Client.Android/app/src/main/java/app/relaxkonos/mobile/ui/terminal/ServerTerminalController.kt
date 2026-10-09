@@ -217,8 +217,9 @@ internal class ServerTerminalController(
     }
 
     /** False means input was not accepted. A failed or disconnected write is never retried. */
-    fun send(text: String): Boolean {
+    fun send(expectedSessionId: String?, text: String): Boolean {
         val connection = transport ?: return false
+        if (expectedSessionId == null || expectedSessionId != selectedId) return false
         if (!mutable.value.canInput) return false
         val current = generation
         val sessionId = selectedId

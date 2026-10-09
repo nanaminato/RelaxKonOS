@@ -313,13 +313,23 @@ class ServerTerminalControllerTest {
         val h = harness()
         h.controller.connect(h.owner); runCurrent()
         h.controller.attach("second"); runCurrent()
-        assertTrue(h.controller.send("echo hello\r")); runCurrent()
+        assertTrue(h.controller.send("second", "echo hello\r")); runCurrent()
         h.connections.first().closed(); runCurrent()
         assertEquals("second", h.controller.state.value.sessionId)
         assertEquals(listOf("second"), h.connections.last().attached)
         assertTrue(h.connections.last().inputs.isEmpty())
         assertEquals(listOf("echo hello\r"), h.connections.first().inputs)
         assertFalse(h.connections.flatMap { it.attached }.contains(null))
+    }
+
+    @Test fun `stale UI input cannot reach a newly selected session`() = runTest {
+        val h = harness()
+        h.controller.connect(h.owner); runCurrent()
+        h.controller.attach("second"); runCurrent()
+        assertFalse(h.controller.send("first", "stale command\r"))
+        assertFalse(h.controller.send(null, "unbound command\r"))
+        assertTrue(h.controller.send("second", "current command\r")); runCurrent()
+        assertEquals(listOf("current command\r"), h.connections.single().inputs)
     }
 
     @Test fun `disconnect during initial attachment cannot leave a dead connection marked ready`() = runTest {
@@ -361,7 +371,7 @@ class ServerTerminalControllerTest {
         h.connections.single().exited(0); runCurrent()
         assertTrue(h.controller.state.value.connected)
         assertEquals(0, h.controller.state.value.exitCode)
-        assertFalse(h.controller.send("dangerous\r"))
+        assertFalse(h.controller.send("first", "dangerous\r"))
         h.controller.attach("second"); runCurrent()
         assertTrue(h.controller.state.value.canInput)
     }
@@ -373,7 +383,7 @@ class ServerTerminalControllerTest {
         h.connections.single().attachGate = gate
         h.controller.attach(null); runCurrent()
         h.controller.attach(null)
-        assertFalse(h.controller.send("wrong session\r"))
+        assertFalse(h.controller.send("first", "wrong session\r"))
         assertTrue(h.controller.state.value.busy)
         gate.complete(Unit); runCurrent()
         assertEquals(listOf("first", null), h.connections.single().attached)
@@ -385,7 +395,7 @@ class ServerTerminalControllerTest {
         h.controller.connect(h.owner); runCurrent()
         val gate = CompletableDeferred<Unit>()
         h.connections.single().inputGate = gate
-        assertTrue(h.controller.send("old shell command\r")); runCurrent()
+        assertTrue(h.controller.send("first", "old shell command\r")); runCurrent()
         h.controller.attach("second"); runCurrent()
         assertEquals(listOf("first"), h.connections.single().attached)
         assertTrue(h.controller.state.value.busy)

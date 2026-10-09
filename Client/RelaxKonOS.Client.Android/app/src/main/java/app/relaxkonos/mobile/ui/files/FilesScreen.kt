@@ -10,6 +10,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -78,6 +80,16 @@ import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Spacing
 import kotlinx.coroutines.launch
 
+@Composable
+internal fun FilesDirectoryBackHandler(canGoUp: Boolean, busy: Boolean, selecting: Boolean,
+    onExitSelection: () -> Unit, onGoUp: () -> Unit) {
+    androidx.activity.compose.BackHandler(enabled = canGoUp || busy || selecting) {
+        if (!busy) {
+            if (selecting) onExitSelection() else onGoUp()
+        }
+    }
+}
+
 /**
  * The file list.
  *
@@ -118,6 +130,9 @@ fun FilesScreen(
     // resumable route is not awaited by this page, which is why its running state comes from the
     // coordinator's flow rather than from `transfer`.
     val uploadRunning = viewModel.uploadState.collectAsStateValue()?.isRunning == true
+
+    FilesDirectoryBackHandler(viewModel.canGoUp, viewModel.batchRunning || viewModel.mutationBusy,
+        viewModel.selectionMode, viewModel::toggleSelection, viewModel::goUp)
 
     var menuForPath by remember { mutableStateOf<String?>(null) }
     var locationOpen by remember { mutableStateOf(false) }
@@ -533,6 +548,7 @@ private fun FileEntryRow(
  * held sideways the two together are taller than the window. The header stays outside the scrolling
  * area so the way back never leaves the screen.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun FileDetailScreen(
     viewModel: FilesViewModel,
@@ -566,7 +582,8 @@ fun FileDetailScreen(
             verticalArrangement = Arrangement.spacedBy(Spacing.lg),
         ) {
             FileImagePreview(viewModel)
-            if (entry.isDirectory) OutlinedButton(onClick = { viewModel.open(entry.path) }) {
+            if (entry.isDirectory) OutlinedButton(onClick = { viewModel.open(entry.path) },
+                enabled = !viewModel.batchRunning && !viewModel.mutationBusy) {
                 Text(stringResource(R.string.files_open_directory))
             }
             if (!entry.isDirectory) OutlinedButton(onClick = { viewModel.editText(entry.path) }, enabled = !viewModel.batchRunning && !viewModel.mutationBusy) {
@@ -638,9 +655,10 @@ fun FileDetailScreen(
                 }
             }
 
-            Row(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(Spacing.xs),
             ) {
                 TextButton(onClick = { viewModel.requestTransfer(entry, move = false) }, enabled = viewModel.canMutate) {
                     Text(stringResource(R.string.files_action_copy))

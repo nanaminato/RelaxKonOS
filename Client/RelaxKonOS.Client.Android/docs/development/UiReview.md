@@ -47,8 +47,8 @@
 | connect/ConnectionListScreen.kt | 源码初审完成，待完整场景验收 |
 | connect/LoginScreen.kt | 源码初审完成，待完整场景验收 |
 | connect/OwnerDevicePairingScreen.kt | 源码初审完成，待完整场景验收 |
-| files/FilesScreen.kt | 源码初审完成，待完整场景验收 |
-| home/HomeScreen.kt | 源码初审完成，待完整场景验收 |
+| files/FilesScreen.kt | 目录系统返回已修复，组件及真实 /home 返回真机通过，完整场景待验收 |
+| home/HomeScreen.kt | 真实登录后指标读取与中文横屏视觉通过，完整场景待验收 |
 | manage/certificates/CertificatesScreen.kt | 源码初审完成，待完整场景验收 |
 | manage/deployments/DeploymentsScreen.kt | 源码初审完成，待完整场景验收 |
 | manage/docker/DockerControlScreen.kt | 源码初审完成，待完整场景验收 |
@@ -83,7 +83,7 @@
 | servercenter/ServerMaintenanceScreen.kt | 源码初审完成，待完整场景验收 |
 | servercenter/SshFilesScreen.kt | 源码初审完成，待完整场景验收 |
 | servercenter/SshForwardsScreen.kt | 源码初审完成，待完整场景验收 |
-| servercenter/SshSystemScreen.kt | 源码初审完成，待完整场景验收 |
+| servercenter/SshSystemScreen.kt | 主机切换忙碌门禁、指纹确认及失败恢复组件真机通过，完整场景待验收 |
 | servercenter/SshTerminalScreen.kt | 源码初审完成，待完整场景验收 |
 | servercenter/SshWorkspaceScreen.kt | 源码初审完成，待完整场景验收 |
 | terminal/ServerTerminalScreen.kt | 源码初审完成，待完整场景验收 |
@@ -427,5 +427,29 @@ ConnectionListReviewTest 五项在 emulator-5554 和重新连接的 Galaxy SM_X5
 共用确认窗口外部触摸补验：新增 busyDeleteConfirmationBlocksOutsideTouchUntilOperationFinishes，使用 Espresso 的 Dialog 根视图实际屏幕边界定位窗口上方点按，UiAutomation 注入真实触摸 down/up；忙碌时关闭/提交均为零，结束后同一外部点按只关闭一次，提交仍为零。最终测试 APK 构建与补丁检查通过，该用例在 Galaxy SM_X510 实体机通过。本轮仅修改测试，生产代码及上一轮 Lint 基线未变。
 
 手机尺寸模拟器该用例未通过：最终 Espresso 明确报告 RootViewWithoutFocusException，Dialog 根视图可见但 has-window-focus=false，10 秒仍未获得焦点；诊断截图显示桌面，不能把 Compose 节点存在当作系统窗口已呈现或系统触摸验收证据。初版使用固定坐标与无障碍根窗口定位不可靠，最终改用真实 Dialog 根视图；另曾在 waitUntil 中嵌套 runOnIdle，JDWP 转储确认卡在 Espresso 空闲检查后停止自己的测试实例，改用 AtomicInteger 等待，不再嵌套。所有诊断转发、脚本及截图已清理。模拟器焦点恢复与该触摸用例仍待处理，不以实体机通过替代窄屏验收。
+
+工作区主机切换接续深审：原切换窗口在解封与握手期间可被取消、系统返回或窗口外点击关闭，唯一进度入口随之消失；首次/变化的主机密钥核对仅在 ServerCenterScreen 呈现，MainActivity 展示工作区时该页面不在 Composition 中，切换无法接续；握手失败结果也未在切换窗口显示。现统一关闭门禁，共用 SshHostKeyReviewDialog，在指纹待核对时替代列表呈现，取消恢复列表，确认接续原 ViewModel 验证；失败按现有三语原因映射显示，说明与主机列表整体滚动。缺少 Activity 时仅禁用指纹确认，取消仍可用。
+
+2026-10-09：新增 SshHostSwitcherTest 三项受控设备回归，在 Galaxy SM-X510（R52X30D7XXL）与既有 SshForwardEditorTest 四项一起全部通过。覆盖验证/快速管理忙碌门禁、系统返回、超时提示与再次选主机，首次密钥取消回列表零确认，变化密钥新旧指纹展示、明确确认及忙碌返回门禁；转发用例继续覆盖草稿、清理恢复与输入纠正。应用/设备测试 APK 构建、最终 Lint（0 errors、239 warnings、11 hints）与补丁检查通过，匹配 APK 已安装实体机。首次新增测试编译漏传 hosts，修正后重新构建通过。测试使用受控状态与回调，不修改真实主机密钥/凭据或建立远端转发；不代表真实服务器换钥、网络故障、窗口外触摸以及三语/横屏/大字体/TalkBack 全矩阵完成。未重新执行完整 JVM 套件。
+
+主机切换追加验收：指纹窗口原仅展示指纹，切换时无法在窗口中核对目标。共用组件新增本次观察的 SSH 主机与端口，使用现有三语标签与可换行键值行。SshHostSwitcherTest 扩展为六项，在 Galaxy SM-X510 全部通过：首次/变更指纹中的主机和端口可显示；缺少 Activity 禁用确认但取消返回列表；1.5 倍字体、25 条长名称记录可滚动选择末项且取消可见；根据真实 Dialog 根视图边界向窗口上方注入触摸，忙碌时关闭为零，结束后关闭一次。最终应用/测试 APK 构建、Lint（0 errors、239 warnings、11 hints）与补丁检查通过，匹配 APK 已安装实体机。未改真实信任记录、凭据或远端资源；该证据仍不覆盖手机尺寸窗口焦点、三语/横屏/主题/TalkBack 或真实主机换钥全流程。
+
+共用指标文本接续审查：MetricTile 原标题/数值限定单行、说明限定两行，长磁盘路径及大字体读数可被永久省略。现移除这些截断，标题、数值、容量说明完整换行，适用于首页 CPU/内存与 SSH 系统页 CPU/内存/磁盘。新增 MetricTileTest 在 Galaxy SM-X510 通过：140dp 宽度、1.5 倍字体与长挂载路径，实际 TextLayoutResult 三类文本均多行且 hasVisualOverflow=false，滚动能访问各项。最终应用/测试构建、Lint（0 errors、239 warnings、11 hints）与补丁检查通过，匹配 APK 已安装。另读取实体机实际登录页及截图，当前测试服务器与账号可见；未提交认证，未读取或修改保存密码，临时截图与 UI XML 已清理。本轮证据不覆盖完整首页真实指标、主题/语言/TalkBack 或所有手机页面布局。
+
+真实 API 接续验收：Galaxy SM-X510 使用用户提供的测试服务与账号完成登录，保存密码选项未勾选。首页从加载状态进入 CPU、内存、运行时间及磁盘读数，中文横屏截图确认内容可读；进入文件页可读取根目录与 /home。原文件页在 /home 按系统返回直接离开应用，缺少目录返回处理。现 FilesDirectoryBackHandler 在子目录接到 goUp，文件变更/批量操作期间拦截返回，到根位置交给外层导航；详情页和独立对话框保持各自返回层级。
+
+FilesNavigationTest 实体机通过，覆盖忙碌拦截、空闲返回上级、根位置交给父层和根位置忙碌拦截。最终应用/测试构建与 Lint（0 errors、239 warnings、11 hints）通过。最终应用重新安装并真实登录后，按当前文件节点定位进入 /home，系统返回断言路径为 / 且文件浏览仍在前台，真实复验通过。自动化重新登录曾沿用安装前坐标导致未命中密码框并退出，改为逐步核对当前节点、焦点及键盘状态后完成；此为测试操作问题，未作为产品故障。未写远端文件，未保存测试密码；临时首页截图及 UI XML 已清理。真实网络失败、写入期间返回、手机详情返回、进程恢复及全视觉矩阵仍待验收。
+
+文件多选返回接续修复：目录返回门禁原未区分多选，系统返回会直接导航上级，根位置会交给外层退出。现忙碌优先拦截，其次通过现有 toggleSelection 退出多选并清空 checkedPaths，保留目录，再次返回才处理上级/外层；调用方和测试直接采用当前接口。FilesNavigationTest 扩展为两项，Galaxy SM-X510 全部通过，覆盖子目录/根位置多选返回顺序与忙碌门禁。最终应用/测试构建、Lint 与补丁检查通过，匹配 APK 已安装实体机。中间补丁因测试文件上下文顺序未应用，核对后修正；方法名误写导致一次编译失败，读取现有实现后修正并重新完成构建。测试为受控返回组件，未提交远端写操作，不代表真实批量执行或完整文件勾选流程验收。
+
+文件详情源码接续审查：复制/移动/删除原为不可换行的三按钮 Row，窄宽度与大字体存在挤压；现改为 FlowRow 保留全部操作与文案，按宽度换行。目录打开原显示可点但 open 在 mutationBusy/batchRunning 时直接忽略，现按钮使用同一忙碌禁用规则。应用构建、Lint 与补丁检查通过；此为源码及构建证据，未新增镜像实现的布局测试，详情实际大字体/多语言换行、手机详情返回与真实变更忙碌仍待设备验收。
+
+批量文件异常恢复深审：FileBatchRunner 原单项调用未捕获非取消异常，先前已确认完成项可能因后续网关/授权直接抛异常而丢失整批报告，ViewModel 只在 finally 解除忙碌。现非取消异常转为无详情的 Transport，当前项标结果未知并停止余项，保留此前确认成功项；原文不进入报告，取消继续传播，发布前仍核对账号归属。新增两项 JVM 回归覆盖部分成功后异常的 completed/unknown/skipped 与零重放，以及 CancellationException 继续传播。完整 1252 项 JVM 测试零失败，FileBatchRunnerTest 七项全部通过，应用构建、Lint 与补丁检查通过，APK 已安装 Galaxy SM-X510。没有在真实服务器注入写入异常；真实批量部分提交、报告设备交互与进程恢复仍待验收。
+
+批量报告设备接续验收：提取现有 FileBatchResultDialog 供受控设备验证，业务显示与关闭规则保持一致。FileBatchResultTest 在 Galaxy SM-X510 通过：1.5 倍字体、15 条长成功路径加结果未知/未执行项，可滚动到末项与未知提示，异常原文不呈现；系统返回不静默关闭，刷新回调一次且报告保留，显式关闭一次后父页面可见。最终应用/设备测试 APK 构建、Lint 与补丁检查通过，匹配 APK 已安装。受控回调没有刷新真实目录或执行远端批量写入，不能代替真实部分提交、拒绝授权或网络故障的整链路验收；手机尺寸、语言/主题与 TalkBack 仍待验证。
+
+终端会话输入深审：发送原先仅在调用时读取控制器当前会话，旧界面回调在切换完成后可能把命令送往新会话；界面状态变更与草稿 LaunchedEffect 绑定之间也存在提交旧草稿的间隙。现发送接口显式携带渲染时的会话 ID，拒绝未绑定或已切离目标，保留执行前连接/会话复核；草稿提交及粘贴核对当前绑定。新增两项回归验证旧/空目标拒绝、当前目标正常发送，以及草稿绑定与分会话保留。完整 1254 项 JVM 测试零失败，应用构建与 Lint 通过，APK 已安装 Galaxy SM-X510。此轮没有向真实终端发送命令；实体机会话切换、断线输入与关闭确认仍待整链路验收。
+
+终端剪贴板及关闭流程接续审查：异步剪贴板读取原先仅检查身份，切换会话后会把迟到内容绑定新目标。现读取冻结身份、会话及绑定版本，切离再切回也丢弃旧结果；迟到失败不污染新身份，CancellationException 继续传播。新增三项 JVM 回归，TerminalPresentationTest 13 项与完整 1257 项测试零失败，应用构建、Lint 和补丁检查通过。新增 TerminalSessionFlowTest：Galaxy SM-X510 上关闭其他会话的返回取消、忙碌门禁与确认目标快照通过；发送拒绝保留草稿的首次断线断言因禁用控件缺少 SetText 语义动作失败，已改按草稿文字定位并重建设备测试，但尚未重跑。随后设备前台切到其他应用，键盘布局组在首项未完成，核对 instrumentation 仍活跃后显式停止本应用，返回 Process crashed 为主动停止结果。设备使用时机已询问；未操作其他应用。最终剪贴板修复 APK 已构建，未覆盖安装占用中的设备。受控关闭测试不关闭真实远端会话，断线修正版、键盘组和真实终端整链路仍待验收。
 
 仍待专项完整验收：所有编辑器/子对话框的逐项检查；手机实体机、横屏、三语与深浅主题全矩阵；TalkBack；其他认证策略拒绝、保存授权取消/失效、主机密钥变化、断网/超时/进程回收及写操作结果未知。当前结论是本轮源码审查、已发现问题修复及列出的设备场景通过，不能据此把 43 个主入口全部标为完整验收。

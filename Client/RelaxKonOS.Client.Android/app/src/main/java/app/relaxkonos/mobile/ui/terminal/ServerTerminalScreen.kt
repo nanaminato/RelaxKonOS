@@ -103,11 +103,12 @@ import androidx.lifecycle.compose.LifecycleStartEffect
 fun ServerTerminalScreen(owner: SessionState.Active, modifier: Modifier = Modifier) {
     val model: ServerTerminalViewModel = viewModel()
     val state by model.state.collectAsStateWithLifecycle()
+    val inputSessionId = state.sessionId
     LifecycleStartEffect(owner) {
         model.connect(owner)
         onStopOrDispose { model.detach() }
     }
-        ServerTerminalContent(owner, state, { model.connect(owner) }, model::attach, model::send,
+        ServerTerminalContent(owner, state, { model.connect(owner) }, model::attach, { model.send(inputSessionId, it) },
             model::resize, model::close, model::closeSessions, modifier,
             presentation = model.presentation, onClearOutput = model::clearOutput,
             onReadSettings = { model.readSettings(owner) }, onSaveSettings = { model.saveSettings(owner, it) },
@@ -178,10 +179,9 @@ internal fun ServerTerminalContent(
             .onFailure { if (presentation.matchesOwner(owner)) presentation.clipboardFailed = true }
     } }
     fun reviewClipboard() { uiScope.launch {
-        runCatching {
-            val value = clipboard.getClipEntry()?.clipData?.getItemAt(0)?.coerceToText(clipboardContext)?.toString()
-            if (presentation.matchesOwner(owner) && (value == null || !presentation.preparePaste(value))) presentation.clipboardFailed = true
-        }.onFailure { if (presentation.matchesOwner(owner)) presentation.clipboardFailed = true }
+        presentation.readClipboard(owner, state.sessionId) {
+            clipboard.getClipEntry()?.clipData?.getItemAt(0)?.coerceToText(clipboardContext)?.toString()
+        }
     } }
 
 
@@ -231,7 +231,7 @@ internal fun ServerTerminalContent(
     }
     LaunchedEffect(state.output, presentation.followOutput) { if (presentation.followOutput) scroll.scrollTo(scroll.maxValue) }
     fun sendLine() {
-        if (!state.canInput) return
+        if (!state.canInput || !presentation.matchesSession(state.sessionId)) return
         val payload = presentation.payload()
         if (TerminalInputPolicy.needsReview(input)) presentation.prepareDraftReview()
         else if (onSend(payload)) presentation.sent()

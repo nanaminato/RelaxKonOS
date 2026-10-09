@@ -127,6 +127,13 @@ fun FileBatchOverlays(vm: FilesViewModel) {
             onSelect = { directory = it; browse = false })
     }
     vm.batchReport?.let { report ->
+        FileBatchResultDialog(report, vm::dismissBatchReport, vm::refresh)
+    }
+}
+
+@Composable
+internal fun FileBatchResultDialog(report: app.relaxkonos.mobile.data.FileBatchReport,
+    onClose: () -> Unit, onRefresh: () -> Unit) {
         AlertDialog(onDismissRequest = {}, title = { Text(stringResource(R.string.files_batch_result)) }, text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Text(stringResource(R.string.files_batch_summary, report.completed.size, report.failures.size, report.skipped.size))
@@ -139,9 +146,8 @@ fun FileBatchOverlays(vm: FilesViewModel) {
                 report.skipped.forEach { Text(stringResource(R.string.files_batch_skipped, it)) }
                 if (report.failures.any { it.unknown }) Text(stringResource(R.string.files_mutation_unknown))
             }
-        }, confirmButton = { TextButton(onClick = vm::dismissBatchReport) { Text(stringResource(R.string.common_close)) } },
-            dismissButton = { TextButton(onClick = vm::refresh) { ActionLabel(R.string.common_refresh) } })
-    }
+        }, confirmButton = { TextButton(onClick = onClose) { Text(stringResource(R.string.common_close)) } },
+            dismissButton = { TextButton(onClick = onRefresh) { ActionLabel(R.string.common_refresh) } })
 }
 
 @Composable

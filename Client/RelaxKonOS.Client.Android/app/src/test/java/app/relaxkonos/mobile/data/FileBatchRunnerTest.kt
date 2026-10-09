@@ -33,6 +33,31 @@ class FileBatchRunnerTest {
         assertEquals("/src/b", result.failures.single().path); assertFalse(result.failures.single().unknown)
         assertTrue(result.skipped.isEmpty())
     }
+
+    @Test fun `exception after a success retains completed item and stops with unknown result`() = runTest {
+        val owner = signIn()
+        var sends = 0
+        gateway.onDelete = { _, _, _ ->
+            sends++
+            if (sends == 1) ApiResult.Success(Unit) else throw IllegalStateException("private failure details")
+        }
+        val report = runner.run(owner, entries, FileBatchAction.Delete, { "" }, noElevation, { false }) { _, _ -> }
+        assertEquals(2, sends)
+        assertEquals(listOf("/src/a"), report.completed)
+        assertEquals("/src/b", report.failures.single().path)
+        assertTrue(report.failures.single().unknown)
+        assertEquals(ApiResult.Transport(null), report.failures.single().result)
+        assertEquals(listOf("/src/c"), report.skipped)
+    }
+
+    @Test fun `cancellation stays cancellation and cannot be presented as a batch report`() = runTest {
+        val owner = signIn()
+        var sends = 0
+        gateway.onDelete = { _, _, _ -> sends++; throw CancellationException("cancelled") }
+        val result = runCatching { runner.run(owner, entries, FileBatchAction.Delete, { "" }, noElevation, { false }) { _, _ -> } }
+        assertTrue(result.exceptionOrNull() is CancellationException)
+        assertEquals(1, sends)
+    }
     @Test fun `unknown transport stops with no replay and untouched remainder`() = runTest {
         val owner = signIn(); var sends = 0
         gateway.onMove = { _, _, _, _ -> sends++; ApiResult.Transport("timeout") }

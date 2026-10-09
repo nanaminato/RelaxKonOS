@@ -23,10 +23,15 @@ class FileBatchRunner(private val files: FilesRepository, private val session: A
             if (session.state.value !== owner) throw CancellationException("File operation owner changed.")
             if (stop()) break
             progress(attempted, entry)
-            val result = when (action) {
+            val result = try { when (action) {
                 FileBatchAction.Copy -> files.copy(entry.path, destination(entry), provider)
                 FileBatchAction.Move -> files.move(entry.path, destination(entry), provider)
                 FileBatchAction.Delete -> files.delete(entry.path, provider)
+            } } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // Dispatch may already have changed the host; retain confirmed items and stop.
+                ApiResult.Transport(null)
             }
             if (session.state.value !== owner) throw CancellationException("File operation owner changed.")
             attempted++

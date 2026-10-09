@@ -4,6 +4,10 @@ import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.ExecutionEligibility
 import org.junit.Assert.*
 import org.junit.Test
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runTest
 
 class TerminalPresentationTest {
     private fun owner() = SessionState.Active("host", "https://host", "alice", "work", emptySet(), "linux", ExecutionEligibility.Available,
@@ -16,6 +20,40 @@ class TerminalPresentationTest {
         p.bindSession("a"); assertEquals("echo a", p.input)
         assertTrue(p.preparePaste("echo safe\r")); assertTrue(p.canPaste("a")); assertFalse(p.canPaste("b"))
     }
+    @Test fun `draft submission requires the displayed session to be bound`() {
+        val p = TerminalPresentation(); p.bindOwner(owner())
+        assertFalse(p.matchesSession(null)); assertFalse(p.matchesSession("a"))
+        p.bindSession("a"); p.edit("draft a")
+        assertTrue(p.matchesSession("a")); assertFalse(p.matchesSession("b"))
+        p.bindSession("b"); assertTrue(p.matchesSession("b")); assertEquals("", p.input)
+        p.bindSession("a"); assertEquals("draft a", p.input)
+    }
+
+    @Test fun `late clipboard result is discarded even after returning to the original session`() = runTest {
+        val active = owner(); val p = TerminalPresentation(); p.bindOwner(active); p.bindSession("a")
+        val ready = CompletableDeferred<Unit>(); val value = CompletableDeferred<String>()
+        val job = launch { p.readClipboard(active, "a") { ready.complete(Unit); value.await() } }
+        ready.await(); p.bindSession("b"); p.bindSession("a"); value.complete("old clipboard"); job.join()
+        assertNull(p.pasteReview); assertFalse(p.clipboardFailed)
+        p.readClipboard(active, "a") { "current clipboard" }
+        assertEquals("current clipboard", p.pasteReview!!.payload)
+    }
+
+    @Test fun `late clipboard failure cannot affect a replacement owner`() = runTest {
+        val active = owner(); val p = TerminalPresentation(); p.bindOwner(active); p.bindSession("a")
+        val ready = CompletableDeferred<Unit>(); val finish = CompletableDeferred<Unit>()
+        val job = launch { p.readClipboard(active, "a") { ready.complete(Unit); finish.await(); error("read failed") } }
+        ready.await(); p.bindOwner(owner()); p.bindSession("a"); finish.complete(Unit); job.join()
+        assertFalse(p.clipboardFailed); assertNull(p.pasteReview)
+    }
+
+    @Test fun `clipboard cancellation propagates without showing failure`() = runTest {
+        val active = owner(); val p = TerminalPresentation(); p.bindOwner(active); p.bindSession("a")
+        try { p.readClipboard(active, "a") { throw CancellationException("cancelled") }; fail("must cancel") }
+        catch (_: CancellationException) { }
+        assertFalse(p.clipboardFailed); assertNull(p.pasteReview)
+    }
+
     @Test fun `owner replacement even same account clears drafts output search and settings`() {
         val p = TerminalPresentation(); val first = owner(); p.bindOwner(first); p.bindSession("a"); p.edit("secret")
         p.search = "secret"; p.searchOpen = true; p.localFontSize = 20.0; p.preparePaste("secret")

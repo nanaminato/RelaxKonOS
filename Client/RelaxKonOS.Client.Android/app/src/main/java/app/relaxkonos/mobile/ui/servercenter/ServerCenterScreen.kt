@@ -45,6 +45,7 @@ import app.relaxkonos.mobile.servercenter.planSshHostKeyReview
 import app.relaxkonos.mobile.ui.common.ConfirmDangerousDialog
 import app.relaxkonos.mobile.ui.common.ActionFeedback
 import app.relaxkonos.mobile.ui.common.IconBadge
+import app.relaxkonos.mobile.ui.common.KeyValueRow
 import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.common.PasswordTextField
 import app.relaxkonos.mobile.ui.common.ScreenHeader
@@ -115,10 +116,18 @@ fun ServerCenterScreen(onClose: () -> Unit) {
             onDismiss = viewModel::dismissForgetPassword,
         )
     }
+    SshHostKeyReviewDialog(state.verification, state.isVerifying,
+        onConfirm = { viewModel.confirmHostKey(activity) }, onDismiss = viewModel::dismissHostKeyReview)
+}
+
+@Composable
+internal fun SshHostKeyReviewDialog(verification: ServerCenterSshVerification?, busy: Boolean,
+    onConfirm: () -> Unit, onDismiss: () -> Unit, canConfirm: Boolean = true) {
+    val context = LocalContext.current
     // 首次固定与替换已固定的密钥共用一次核对：两者都必须由用户显式确认，区别只在是否需要
     // 并排展示被取代的旧指纹。密钥变更曾经只是一行红字、没有任何出口——在 DHCP 地址漂移或
     // 克隆/重装的主机上这属于常态，用户必须有办法接受新指纹并继续（SshHostKeyReviewRules）。
-    val hostKeyReview = planSshHostKeyReview(state.verification)
+    val hostKeyReview = planSshHostKeyReview(verification)
     if (hostKeyReview != null) {
         val previous = hostKeyReview.previous
         ConfirmDangerousDialog(
@@ -132,7 +141,7 @@ fun ServerCenterScreen(onClose: () -> Unit) {
                 stringResource(
                     R.string.server_center_host_key_replace_message,
                     ServerHostTrustRules.groupedFingerprint(previous.fingerprint),
-                    DateFormat.getDateFormat(activity).format(Date(previous.confirmedAtEpochMillis)),
+                    DateFormat.getDateFormat(context).format(Date(previous.confirmedAtEpochMillis)),
                     hostKeyReview.observation.groupedFingerprint,
                 )
             },
@@ -140,9 +149,14 @@ fun ServerCenterScreen(onClose: () -> Unit) {
                 if (previous != null) R.string.server_center_host_key_replace_confirm
                 else R.string.server_center_trust_and_verify,
             ),
-            onConfirm = { viewModel.confirmHostKey(activity) },
-            onDismiss = viewModel::dismissHostKeyReview,
-            busy = state.isVerifying,
+            onConfirm = onConfirm,
+            onDismiss = onDismiss,
+            busy = busy,
+            confirmEnabled = canConfirm,
+            extraContent = {
+                KeyValueRow(stringResource(R.string.server_center_ssh_host), hostKeyReview.observation.host)
+                KeyValueRow(stringResource(R.string.server_center_ssh_port), hostKeyReview.observation.port.toString())
+            },
         )
     }
 }
