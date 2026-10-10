@@ -59,7 +59,8 @@ class GitWorkspaceViewModelTest {
     }
     private val session = AuthSession(gateway)
     private val index = OperationIndex(IndexStorage())
-    private val workspace = GitWorkspaceRepository(gateway, session, GitWorkspaceJournal(Storage())) { ApiResult.Success(Unit) }
+    private val journal = GitWorkspaceJournal(Storage())
+    private val workspace = GitWorkspaceRepository(gateway, session, journal) { ApiResult.Success(Unit) }
     private val installations = InstallationRepository(gateway, session,
         ElevationRepository(gateway, session, CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto()), UsageMemoryStore(InMemoryUsageMemoryStorage())),
         index, InstallationRequestJournal(Storage()))
@@ -94,10 +95,12 @@ class GitWorkspaceViewModelTest {
         model.conflict("a.txt"); advanceUntilIdle()
         assertEquals(conflict, model.state.conflict); assertEquals("local resolution", model.conflictDraft.text)
         assertEquals("git.workspace.unverified", model.state.problem); assertFalse(model.state.busy)
+        val firstFeedback = model.state.feedbackVersion
         onConflict = { throw IllegalStateException("private detail") }
         model.conflict("a.txt"); advanceUntilIdle()
         assertEquals(conflict, model.state.conflict); assertEquals("local resolution", model.conflictDraft.text)
         assertNull(model.state.facts); assertFalse(model.state.busy); assertEquals(0, sends)
+        assertEquals("git.workspace.unverified", model.state.problem); assertTrue(model.state.feedbackVersion > firstFeedback)
     }
     @Test fun `late conflict response cannot restore an old identity editor`() = runTest {
         login(); runCurrent(); model.refresh(); advanceUntilIdle()
@@ -115,6 +118,34 @@ class GitWorkspaceViewModelTest {
         assertEquals("new identity message", model.commitMessage)
         assertFalse(model.state.busy); assertNull(model.state.problem); assertEquals(0, sends)
     }
+    @Test fun `conflict reload restores unavailable facts without replacing the resolution draft`() = runTest {
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        model.conflict("a.txt"); advanceUntilIdle(); model.editConflict(TextFieldValue("local resolution"))
+        onConflict = { throw IllegalStateException("private detail") }
+        model.conflict("a.txt"); advanceUntilIdle()
+        assertNull(model.state.facts)
+        val latest = conflict.copy(revision = "c".repeat(64), theirs = "new theirs")
+        onConflict = { ApiResult.Success(latest) }
+        model.conflict("a.txt"); advanceUntilIdle()
+        assertNotNull(model.state.facts); assertEquals(id, model.state.facts?.repositoryId)
+        assertEquals(latest, model.state.conflict); assertEquals("local resolution", model.conflictDraft.text)
+        assertNull(model.state.problem); assertFalse(model.state.busy); assertEquals(0, sends)
+    }
+    @Test fun `conflict recovery cannot clear a missing original repository failure`() = runTest {
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        model.conflict("a.txt"); advanceUntilIdle(); model.editConflict(TextFieldValue("local resolution"))
+        onConflict = { throw IllegalStateException("private detail") }
+        model.conflict("a.txt"); advanceUntilIdle()
+        var conflictReads = 0
+        onConflict = { conflictReads++; ApiResult.Success(conflict) }
+        missing = true; reads.clear()
+        model.conflict("a.txt"); advanceUntilIdle()
+        assertNull(model.state.facts); assertEquals(id, model.state.selectedId)
+        assertEquals(listOf(id), reads); assertEquals(0, conflictReads)
+        assertEquals("git.repository.not_found", model.state.problem)
+        assertEquals(conflict, model.state.conflict); assertEquals("local resolution", model.conflictDraft.text)
+        assertFalse(model.state.busy); assertEquals(0, sends)
+    }
     @Test fun `missing repository cannot retarget an open conflict draft`() = runTest {
         login(); runCurrent(); model.refresh(); advanceUntilIdle()
         model.conflict("a.txt"); advanceUntilIdle(); model.editConflict(TextFieldValue("local resolution"))
@@ -123,6 +154,36 @@ class GitWorkspaceViewModelTest {
         assertEquals(id, model.state.selectedId); assertEquals(listOf(id), reads)
         assertNull(model.state.facts); assertEquals(conflict, model.state.conflict)
         assertEquals("local resolution", model.conflictDraft.text); assertFalse(model.state.busy)
+        assertEquals(0, sends)
+    }
+    @Test fun `unknown resolution adoption preserves draft and failed verification keeps the marker`() = runTest {
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        model.conflict("a.txt"); advanceUntilIdle(); model.editConflict(TextFieldValue("local resolution"))
+        model.prepare(GitMutation(GitAction.Resolve, conflict = conflict, choice = "edited", content = "local resolution")); advanceUntilIdle()
+        assertNotNull(model.state.preview)
+        model.confirm(); advanceUntilIdle()
+        val marker = model.state.pending.single()
+        assertEquals(1, sends); assertEquals(conflict, model.state.conflict)
+        missing = true
+        model.accept(marker); advanceUntilIdle()
+        assertEquals(listOf(marker), model.state.pending); assertEquals("local resolution", model.conflictDraft.text)
+        assertEquals("git.repository.not_found", model.state.problem); assertFalse(model.state.busy)
+        missing = false
+        model.accept(marker); advanceUntilIdle()
+        assertTrue(model.state.pending.isEmpty()); assertEquals(id, model.state.selectedId)
+        assertEquals(conflict, model.state.conflict); assertEquals("local resolution", model.conflictDraft.text)
+        assertFalse(model.state.busy); assertEquals(1, sends)
+    }
+    @Test fun `adoption from another repository cannot retarget an open resolution draft`() = runTest {
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        model.conflict("a.txt"); advanceUntilIdle(); model.editConflict(TextFieldValue("local resolution"))
+        val owner = requireNotNull(model.state.owner)
+        val marker = journal.begin(owner, otherId, GitAction.Resolve)
+        model.accept(marker); advanceUntilIdle()
+        assertEquals(id, model.state.selectedId); assertEquals(id, model.state.facts?.repositoryId)
+        assertEquals(conflict, model.state.conflict); assertEquals("local resolution", model.conflictDraft.text)
+        assertEquals(listOf(marker), journal.pending(owner))
+        assertEquals("git.workspace.facts_changed", model.state.problem); assertFalse(model.state.busy)
         assertEquals(0, sends)
     }
 }
