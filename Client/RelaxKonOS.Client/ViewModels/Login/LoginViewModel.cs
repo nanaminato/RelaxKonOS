@@ -24,6 +24,7 @@ public partial class LoginViewModel : ObservableObject
         _windowLifetime.Cancel();
         _windowLifetime.Dispose();
         _windowLifetime = new();
+        StatusMessage = string.Empty;
     }
 
     public void CancelWindowOperations()
@@ -306,17 +307,37 @@ public partial class LoginViewModel : ObservableObject
 
     partial void OnServerUrlChanged(string value)
     {
+        if (!UseSshLogin && SelectedProfile is { ServiceIdKind: ServerServiceIdKind.DirectUrl } profile
+            && !SameDirectEndpoint(value, profile.DirectServerUrl))
+            DetachSelectedProfileCredential();
         ClearPendingHostKey();
         ClearError();
         if (!IsDiscoveringServer) StatusMessage = string.Empty;
     }
     partial void OnIdentifierChanged(string value)
     {
+        if (!UseSshLogin && SelectedProfile is { } profile
+            && !string.Equals(value.Trim(), profile.Identifier, StringComparison.Ordinal))
+            DetachSelectedProfileCredential();
         ClearPendingHostKey();
         ClearError();
         if (UseServerCredentialsForTunnel) _ = RefreshTunnelCredentialStatusAsync();
     }
     partial void OnPasswordChanged(string value) => ClearError();
+
+    private void DetachSelectedProfileCredential()
+    {
+        SelectedProfile = null;
+        Password = string.Empty;
+        RememberPassword = false;
+        ShowOptions = true;
+    }
+
+    private static bool SameDirectEndpoint(string entered, string? saved)
+        => Uri.TryCreate(entered, UriKind.Absolute, out var current) && Uri.TryCreate(saved, UriKind.Absolute, out var previous)
+            && current.Scheme == previous.Scheme && string.Equals(current.IdnHost, previous.IdnHost, StringComparison.OrdinalIgnoreCase)
+            && current.Port == previous.Port && current.AbsolutePath == previous.AbsolutePath
+            && current.UserInfo.Length == 0 && current.Query.Length == 0 && current.Fragment.Length == 0;
     partial void OnRememberServerChanged(bool value)
     {
         if (!value) RememberPassword = false;
@@ -637,7 +658,8 @@ public partial class LoginViewModel : ObservableObject
         RememberServer = true;
         var credential = await _sshCredentials.FindAsync(
             ServerCenterSshEndpoint.Create(profile.Host, profile.Port, profile.UserName));
-        if (!UseSshLogin || !ReferenceEquals(SelectedSshHost, profile)) return;
+        if (!UseSshLogin || !ReferenceEquals(SelectedSshHost, profile) || !profile.MatchesAddress(ServerUrl)
+            || !string.Equals(Identifier.Trim(), profile.UserName, StringComparison.Ordinal)) return;
         Password = credential is { Kind: SshCredentialKind.Password } ? credential.Secret : string.Empty;
         RememberPassword = !string.IsNullOrEmpty(Password);
     }

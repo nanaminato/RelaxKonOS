@@ -5,7 +5,7 @@
              x:Class="RelaxKonOS.Client.Apps.PortForwarding.Views.PortForwardingEditorDialogView"
              x:DataType="vm:PortForwardingViewModel" Classes="builtin-app">
     <Grid Margin="20" RowDefinitions="*,Auto">
-        <ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" IsEnabled="{Binding !IsBusy}">
             <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
                 <TextBlock Text="{loc:Loc port_forwarding.forward_service}" FontWeight="SemiBold" HorizontalAlignment="Left" Margin="0,0,0,8" />
                 <TextBlock Grid.Row="1" Text="{loc:Loc port_forwarding.editor_note}" FontSize="12" Opacity="0.65" TextWrapping="Wrap" HorizontalAlignment="Left" Margin="0,0,0,14" />
@@ -20,9 +20,13 @@
             </Grid>
         </ScrollViewer>
 
-        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,12,0,0">
+        <StackPanel Grid.Row="1" Spacing="8" Margin="0,12,0,0">
+            <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" />
+            <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" Height="3" />
+            <WrapPanel HorizontalAlignment="Right" ItemSpacing="8" LineSpacing="8" IsEnabled="{Binding !IsBusy}">
             <Button Content="{loc:Loc common.cancel}" Click="Cancel_Click" />
             <Button x:Name="SaveButton" Classes="primary" IsEnabled="{Binding !IsBusy}" />
+            </WrapPanel>
         </StackPanel>
     </Grid>
 </UserControl>

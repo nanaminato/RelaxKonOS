@@ -30,7 +30,9 @@ internal static class LoginWindowLifetimeChecks
                     targets, keys, new SshCredentialStore(directory),
                     new ServerCenterConnectionResolver(keys, targets, new SshNetServerCenterTransportFactory()),
                     new LoginTunnelStore(directory)) { ServerUrl = "https://test.invalid:5000", Identifier = "test", Password = "test" };
+                vm.StatusMessage = "Connected. Opening desktop...";
                 vm.BeginWindowSession();
+                check(vm.StatusMessage.Length == 0, "Reopened login clears the completed desktop handoff status.");
                 var window = new LoginWindow { DataContext = vm };
                 window.Show();
                 Dispatcher.UIThread.RunJobs();

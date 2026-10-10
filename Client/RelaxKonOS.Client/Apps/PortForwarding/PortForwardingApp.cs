@@ -44,6 +44,7 @@ public sealed class PortForwardingApp : RemoteApplicationBase
             finally
             {
                 viewModel.CloseForwardEditorAsync = null;
+                viewModel.SshPassword = string.Empty;
             }
         };
         EventHandler<RelaxKonOS.WindowManager.ManagedWindow>? closed = null;

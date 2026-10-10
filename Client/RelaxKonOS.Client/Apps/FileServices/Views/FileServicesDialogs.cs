@@ -3,6 +3,10 @@ using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Core.Primitives;
 using RelaxKonOS.WindowManager;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
+using RelaxKonOS.Client.Apps.Explorer;
+using RelaxKonOS.Client.Apps.Explorer.ViewModels;
+using RelaxKonOS.Client.Apps.Explorer.Views;
+using RelaxKonOS.Client.Services;
 
 namespace RelaxKonOS.Client.Apps.FileServices.Views;
 
@@ -23,10 +27,20 @@ internal static class FileServicesDialogs
                 {
                     vm.ConfirmSharePathAsync = path => dialog.ShowDialogAsync<bool>(LocalizedText.Get("file_services.path_warning_title"),
                         warning => new FileServicesPathWarningDialogView(path, warning));
+                    vm.ShowSharePathPickerAsync = () => context.Services.GetService(typeof(IExplorerClient)) is not IExplorerClient files
+                        ? Task.FromResult<string?>(null)
+                        : dialog.ShowDialogAsync<string?>(LocalizedText.Get("file_services.select_folder"), pickerDialog =>
+                        {
+                            var picker = new ExplorerViewModel(files, new ExplorerPickerOptions(ExplorerPickerMode.SelectFolder),
+                                paths => pickerDialog.Close(paths[0]), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "FileServices.share-folder")
+                            { CancelAction = pickerDialog.Cancel };
+                            _ = picker.LoadRootAsync();
+                            return new ExplorerMainView { DataContext = picker };
+                        });
                     return new FileServicesShareDialogView(vm, dialog, editing);
                 }, size);
         }
-        finally { vm.ConfirmSharePathAsync = null; }
+        finally { vm.ConfirmSharePathAsync = null; vm.ShowSharePathPickerAsync = null; }
     }
 
     public static Task<bool> ConfirmDeleteAsync(AppContext context, ManagedWindow owner, string name) =>

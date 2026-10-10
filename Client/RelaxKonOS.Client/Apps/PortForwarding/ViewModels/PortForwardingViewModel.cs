@@ -10,6 +10,11 @@ namespace RelaxKonOS.Client.Apps.PortForwarding.ViewModels;
 public sealed partial class PortForwardingViewModel : LocalizedObservableObject, IDisposable
 {
     private readonly IPortForwardingService _service;
+    private bool _editorOpen;
+    private bool _disposed;
+    private readonly CancellationTokenSource _windowLifetime = new();
+    private Guid? _editorForwardId;
+    private PortForwardInfo? _editorForwardBaseline;
 
     public PortForwardingViewModel(IPortForwardingService service)
     {
@@ -41,28 +46,38 @@ public sealed partial class PortForwardingViewModel : LocalizedObservableObject,
     public Func<Task>? CloseForwardEditorAsync { get; set; }
 
     [RelayCommand]
-    private Task OpenCreateForwardAsync()
+    private async Task OpenCreateForwardAsync()
     {
+        if (_disposed || IsBusy || _editorOpen) return;
         TargetAddress = "http://localhost:7000";
         PreferredLocalPortText = "7000";
         SelectedForward = null;
-        return ShowForwardEditorAsync?.Invoke(null) ?? Task.CompletedTask;
+        _editorOpen = true;
+        _editorForwardId = null;
+        try { await (ShowForwardEditorAsync?.Invoke(null) ?? Task.CompletedTask); }
+        finally { _editorOpen = false; _editorForwardId = null; }
     }
 
     [RelayCommand(CanExecute = nameof(HasSelectedForward))]
     private async Task OpenEditForwardAsync(PortForwardInfo? forward)
     {
+        if (_disposed || IsBusy || _editorOpen) return;
         forward ??= SelectedForward;
         if (forward is null) return;
         SelectedForward = forward;
         TargetAddress = $"{forward.Scheme}://{forward.RemoteHost}:{forward.RemotePort}{forward.PathAndQuery}";
         PreferredLocalPortText = forward.LocalPort.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        await (ShowForwardEditorAsync?.Invoke(forward) ?? Task.CompletedTask);
+        _editorOpen = true;
+        _editorForwardId = forward.Id;
+        _editorForwardBaseline = forward;
+        try { await (ShowForwardEditorAsync?.Invoke(forward) ?? Task.CompletedTask); }
+        finally { _editorOpen = false; _editorForwardId = null; _editorForwardBaseline = null; }
     }
 
     [RelayCommand]
     private void SaveConnectionSettings()
     {
+        if (_disposed || IsBusy) return;
         SaveConnectionSettingsCore(reportSuccess: true);
     }
 
@@ -73,7 +88,8 @@ public sealed partial class PortForwardingViewModel : LocalizedObservableObject,
             StatusText = LocalizedText.Ref("port_forwarding.error.ssh_port_invalid");
             return false;
         }
-        _service.SaveSettings(new PortForwardingSettings(SshHost, SshUser, sshPort));
+        try { _service.SaveSettings(new PortForwardingSettings(SshHost, SshUser, sshPort)); }
+        catch (Exception ex) { StatusText = ex.Message; return false; }
         if (reportSuccess)
             StatusText = LocalizedText.Ref("port_forwarding.status.settings_saved");
         return true;
@@ -82,10 +98,17 @@ public sealed partial class PortForwardingViewModel : LocalizedObservableObject,
     [RelayCommand]
     private async Task StartAsync()
     {
+        if (_disposed || IsBusy) return;
+        if (_editorOpen && _editorForwardId is not null)
+        { StatusText = LocalizedText.Ref("port_forwarding.error.target_changed"); return; }
+        PortForwardRequest request;
+        try { request = ParseRequest(); }
+        catch (ArgumentException ex) { StatusText = ex.Message; return; }
         if (!SaveConnectionSettingsCore(reportSuccess: false)) return;
         var succeeded = await RunAsync(async () =>
         {
-            var forward = await _service.StartAsync(ParseRequest(), SshPassword);
+            var forward = await _service.StartAsync(request, SshPassword);
+            if (_disposed) return;
             SelectedForward = forward;
             StatusText = LocalizedText.Ref("port_forwarding.status.started", forward.LocalUri);
         });
@@ -100,11 +123,20 @@ public sealed partial class PortForwardingViewModel : LocalizedObservableObject,
     [RelayCommand(CanExecute = nameof(HasSelectedForward))]
     private async Task UpdateSelectedAsync()
     {
-        if (SelectedForward is null) return;
+        if (_disposed || IsBusy) return;
+        var selectedId = _editorOpen ? _editorForwardId : SelectedForward?.Id;
+        if (selectedId is null || !_service.List().Any(forward => forward.Id == selectedId
+            && (_editorForwardBaseline is null || (forward.RemoteHost, forward.RemotePort, forward.LocalPort, forward.Scheme, forward.PathAndQuery)
+                == (_editorForwardBaseline.RemoteHost, _editorForwardBaseline.RemotePort, _editorForwardBaseline.LocalPort, _editorForwardBaseline.Scheme, _editorForwardBaseline.PathAndQuery))))
+        { StatusText = LocalizedText.Ref("port_forwarding.error.target_changed"); return; }
+        PortForwardRequest request;
+        try { request = ParseRequest(); }
+        catch (ArgumentException ex) { StatusText = ex.Message; return; }
         if (!SaveConnectionSettingsCore(reportSuccess: false)) return;
         var succeeded = await RunAsync(async () =>
         {
-            var forward = await _service.UpdateAsync(SelectedForward.Id, ParseRequest(), SshPassword);
+            var forward = await _service.UpdateAsync(selectedId.Value, request, SshPassword);
+            if (_disposed) return;
             SelectedForward = forward;
             StatusText = LocalizedText.Ref("port_forwarding.status.updated", forward.LocalUri);
         });
@@ -124,6 +156,7 @@ public sealed partial class PortForwardingViewModel : LocalizedObservableObject,
         await RunAsync(async () =>
         {
             await _service.RemoveAsync(selected.Id);
+            if (_disposed) return;
             SelectedForward = null;
             StatusText = LocalizedText.Ref("port_forwarding.status.stopped");
         });
@@ -148,7 +181,8 @@ public sealed partial class PortForwardingViewModel : LocalizedObservableObject,
             {
                 using var request = new HttpRequestMessage(HttpMethod.Head, forward.LocalUri);
                 using var response = await client.SendAsync(
-                    request, HttpCompletionOption.ResponseHeadersRead);
+                    request, HttpCompletionOption.ResponseHeadersRead, _windowLifetime.Token);
+                if (_disposed) return;
                 StatusText = LocalizedText.Ref("port_forwarding.status.test_succeeded", (int)response.StatusCode, response.ReasonPhrase ?? string.Empty);
             }
             catch (TaskCanceledException)
@@ -172,23 +206,23 @@ public sealed partial class PortForwardingViewModel : LocalizedObservableObject,
         UpdateSelectedCommand.NotifyCanExecuteChanged();
         RemoveSelectedCommand.NotifyCanExecuteChanged();
         TestSelectedCommand.NotifyCanExecuteChanged();
-        if (value is null) return;
+        if (value is null || _editorOpen) return;
         TargetAddress = $"{value.Scheme}://{value.RemoteHost}:{value.RemotePort}{value.PathAndQuery}";
         PreferredLocalPortText = value.LocalPort.ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private async Task<bool> RunAsync(Func<Task> operation)
     {
-        if (IsBusy) return false;
+        if (_disposed || IsBusy) return false;
         IsBusy = true;
         try
         {
             await operation();
-            return true;
+            return !_disposed;
         }
         catch (Exception ex)
         {
-            StatusText = ex.Message;
+            if (!_disposed) StatusText = ex.Message;
             return false;
         }
         finally
@@ -201,9 +235,8 @@ public sealed partial class PortForwardingViewModel : LocalizedObservableObject,
     private PortForwardRequest ParseRequest()
     {
         var raw = TargetAddress.Trim();
-        if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri))
-            Uri.TryCreate("http://" + raw, UriKind.Absolute, out uri);
-        if (uri is null || uri.Port is < 1 or > 65535)
+        Uri.TryCreate(raw.Contains("://", StringComparison.Ordinal) ? raw : "http://" + raw, UriKind.Absolute, out var uri);
+        if (uri is null || uri.Port is < 1 or > 65535 || !string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Fragment))
             throw new ArgumentException(LocalizedText.Get("port_forwarding.error.target_invalid"));
         int? preferred = null;
         if (!string.IsNullOrWhiteSpace(PreferredLocalPortText))
@@ -212,7 +245,9 @@ public sealed partial class PortForwardingViewModel : LocalizedObservableObject,
                 throw new ArgumentException(LocalizedText.Get("port_forwarding.error.local_port_invalid"));
             preferred = parsed;
         }
-        return new PortForwardRequest(uri.Host, uri.Port, uri.Scheme, preferred, uri.PathAndQuery);
+        var request = new PortForwardRequest(uri.Host, uri.Port, uri.Scheme, preferred, uri.PathAndQuery);
+        PortForwardingService.ValidateRequest(request);
+        return request;
     }
 
     private void OnForwardsChanged(object? sender, EventArgs args)
@@ -220,6 +255,7 @@ public sealed partial class PortForwardingViewModel : LocalizedObservableObject,
 
     private void RefreshForwards()
     {
+        if (_disposed) return;
         var current = _service.List();
         Forwards.Clear();
         foreach (var forward in current) Forwards.Add(forward);
@@ -227,5 +263,12 @@ public sealed partial class PortForwardingViewModel : LocalizedObservableObject,
             SelectedForward = current.FirstOrDefault(forward => forward.Id == selected.Id);
     }
 
-    public void Dispose() => _service.ForwardsChanged -= OnForwardsChanged;
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _windowLifetime.Cancel();
+        _service.ForwardsChanged -= OnForwardsChanged;
+        SshPassword = string.Empty;
+    }
 }

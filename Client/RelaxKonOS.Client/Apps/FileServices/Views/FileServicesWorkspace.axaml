@@ -10,18 +10,22 @@
             <Button Content="{loc:Loc file_services.refresh}" Command="{Binding RefreshCommand}" HorizontalAlignment="Left" />
         </StackPanel>
         <Grid x:Name="WorkspaceGrid" Grid.Row="1" ColumnDefinitions="190,*" ColumnSpacing="16">
-            <StackPanel x:Name="NavigationPanel" Orientation="Vertical" Spacing="8">
+            <WrapPanel x:Name="NavigationPanel" Orientation="Vertical" ItemSpacing="8" LineSpacing="8">
                 <Button Classes="workspace-nav" x:Name="OverviewButton" Content="{loc:Loc file_services.overview}" Tag="overview" Click="Navigation_Click" HorizontalAlignment="Stretch" />
-                <Button Classes="workspace-nav" x:Name="SharesButton" Content="{loc:Loc file_services.shares}" Tag="shares" Click="Navigation_Click" HorizontalAlignment="Stretch" />
+                <Button Classes="workspace-nav" x:Name="SharesButton" Tag="shares" Click="Navigation_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" MaxWidth="190">
+                    <TextBlock Text="{loc:Loc file_services.shares}" TextWrapping="Wrap" />
+                </Button>
                 <Button Classes="workspace-nav" x:Name="UsersButton" Content="{loc:Loc file_services.users}" Tag="users" Click="Navigation_Click" IsVisible="{Binding SupportsSambaCredentials}" HorizontalAlignment="Stretch" />
-            </StackPanel>
+            </WrapPanel>
             <ContentControl x:Name="ContentHost" Grid.Column="1" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
         </Grid>
-        <Border Grid.Row="2" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Height="38" Margin="0,8,0,0">
+        <Border Grid.Row="2" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" MinHeight="38" MaxHeight="120" Padding="0,8,0,0" Margin="0,8,0,0">
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
                 <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" Width="36" MinWidth="0" Height="3" VerticalAlignment="Center" />
-                <TextBlock Grid.Column="1" Text="{Binding StatusText}" ToolTip.Tip="{Binding StatusText}" TextTrimming="CharacterEllipsis" FontSize="12" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Text="{Binding StatusText}" TextWrapping="Wrap" FontSize="12" VerticalAlignment="Center" />
             </Grid>
+            </ScrollViewer>
         </Border>
     </Grid>
 </UserControl>

@@ -68,6 +68,28 @@ try
     Dispatcher.UIThread.RunJobs();
     Check(!vm.UseServerCredentialsForTunnel && separate.IsVisible,
         "Turning reuse off shows the independent SSH credential fields.");
+    var remembered = new SavedLoginProfile("https://first.example:5000", "saved-user", "saved-secret", DateTimeOffset.UtcNow);
+    vm.SavedProfiles.Add(remembered);
+    picker.SelectedItem = remembered;
+    Dispatcher.UIThread.RunJobs();
+    address.Text = "https://FIRST.example:5000/";
+    Dispatcher.UIThread.RunJobs();
+    Check(vm.SelectedProfile == remembered && vm.Password == "saved-secret",
+        "Equivalent URL normalization preserves the saved credential binding.");
+    address.Text = "https://second.example:5000";
+    Dispatcher.UIThread.RunJobs();
+    Check(vm.SelectedProfile is null && vm.Password.Length == 0 && !vm.RememberPassword && vm.ShowOptions && picker.SelectedItem is null,
+        "Editing the target detaches the old saved record and clears its hidden password.");
+    picker.SelectedItem = remembered;
+    Dispatcher.UIThread.RunJobs();
+    vm.Identifier = "different-user";
+    Dispatcher.UIThread.RunJobs();
+    Check(vm.SelectedProfile is null && vm.Password.Length == 0 && !vm.RememberPassword,
+        "Changing the account cannot reuse another saved account's password.");
+    vm.Password = "manual-secret";
+    address.Text = "https://third.example:5000";
+    Dispatcher.UIThread.RunJobs();
+    Check(vm.Password == "manual-secret", "Unbound manually entered credentials remain editable when correcting an address.");
     window.Close();
 }
 finally { Directory.Delete(directory, true); }

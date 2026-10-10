@@ -163,6 +163,7 @@ Unauthenticated ──Connect──>> Connecting ──成功──>> Authentica
 - **不 mutate `HttpClient.BaseAddress`**：`RelaxKonOSClient` 每个方法接收 `serverUrl` 构造绝对 URI（`new Uri(new Uri(serverUrl), route.TrimStart('/'))`），避免 typed HttpClient 共享实例并发竞态。
 - **登录窗用顶层 `Window`**，不用 `RemoteWindow`（`RemoteWindow` 必须挂在 `DesktopShellView` 的 `PART_WindowHost` Canvas，登录前桌面尚未建立）。
 - **已保存连接**：客户端可保存多组 `Server URL + 用户名`，并可选择通过平台安全存储加密保存密码；登录窗保持可见，用户从下拉列表选择任意已保存项以回填凭据，再明确点击“连接”登录。不会保存 `RefreshToken` 或任何可替代密码的令牌；登出不会删除已保存连接。Linux 即使 Secret Service 暂不可用，也会保留服务器和用户名，只禁用该记录的免密码登录。
+- **回填凭据归属**：手动改变直接登录的端点或账号时解除已保存记录绑定，并清空其回填密码，保留保险箱里的原记录。标准 URI 表示的等价端点保留绑定；未绑定记录的手动密码不会因更正地址而自动删除。SSH 的迟到回填必须同时核对原记录、当前地址和账号。
 - **HTTP 调用经 `IRelaxKonOSClient` 抽象**，业务代码不直接 `new HttpClient`（Architecture.md §4.8）。
 
 ---

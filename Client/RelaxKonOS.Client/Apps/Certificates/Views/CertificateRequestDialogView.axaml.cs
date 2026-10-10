@@ -15,14 +15,15 @@ internal partial class CertificateRequestDialogView : UserControl
         _dialog = dialog;
         InitializeComponent();
         DataContext = viewModel;
+        viewModel.EditorStatus = string.Empty;
+        var initial = (viewModel.Domains, viewModel.ContactEmail, viewModel.SelectedChallengeType?.Value,
+            viewModel.SelectedKeyAlgorithm?.Value, viewModel.AcceptedTerms, viewModel.PublicReachabilityConfirmed);
+        RelaxKonOS.Client.Services.Dialogs.DraftDialogGuard.Attach(dialog, () => !viewModel.CanEditCertificateDraft,
+            () => initial != (viewModel.Domains, viewModel.ContactEmail, viewModel.SelectedChallengeType?.Value,
+                viewModel.SelectedKeyAlgorithm?.Value, viewModel.AcceptedTerms, viewModel.PublicReachabilityConfirmed));
     }
 
-    private async void Cancel_Click(object? sender, RoutedEventArgs e)
-    {
-        if (_viewModel.IsOperationRunning)
-            await _viewModel.CancelActiveOperationAsync();
-        _dialog.Cancel();
-    }
+    private void Cancel_Click(object? sender, RoutedEventArgs e) => _dialog.Cancel();
 
     private async void Request_Click(object? sender, RoutedEventArgs e)
     {

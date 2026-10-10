@@ -4,7 +4,7 @@
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.PortForwarding.ViewModels"
              x:Class="RelaxKonOS.Client.Apps.PortForwarding.Views.PortForwardingConnectionView"
              x:DataType="vm:PortForwardingViewModel" Classes="builtin-app">
-    <StackPanel Spacing="18" MaxWidth="720">
+    <StackPanel Spacing="18" MaxWidth="720" IsEnabled="{Binding !IsBusy}">
         <StackPanel Spacing="3">
             <TextBlock Text="{loc:Loc port_forwarding.ssh_connection}" FontSize="20" FontWeight="SemiBold" />
             <TextBlock Text="{loc:Loc port_forwarding.ssh_note}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />

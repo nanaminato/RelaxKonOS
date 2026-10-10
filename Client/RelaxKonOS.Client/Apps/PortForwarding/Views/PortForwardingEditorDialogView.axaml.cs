@@ -24,6 +24,11 @@ public partial class PortForwardingEditorDialogView : UserControl
         _dialog = dialog;
         SaveButton.Content = LocalizedText.Get(isEditing ? "port_forwarding.update" : "port_forwarding.start");
         SaveButton.Command = isEditing ? viewModel.UpdateSelectedCommand : viewModel.StartCommand;
+        var initial = (viewModel.TargetAddress, viewModel.PreferredLocalPortText, viewModel.SshHost,
+            viewModel.SshUser, viewModel.SshPortText, viewModel.SshPassword);
+        RelaxKonOS.Client.Services.Dialogs.DraftDialogGuard.Attach(dialog, () => viewModel.IsBusy,
+            () => initial != (viewModel.TargetAddress, viewModel.PreferredLocalPortText, viewModel.SshHost,
+                viewModel.SshUser, viewModel.SshPortText, viewModel.SshPassword));
     }
 
     private void Cancel_Click(object? sender, RoutedEventArgs e) => _dialog?.Cancel();

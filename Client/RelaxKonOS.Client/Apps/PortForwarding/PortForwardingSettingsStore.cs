@@ -3,12 +3,10 @@ using System.Text.Json;
 namespace RelaxKonOS.Client.Apps.PortForwarding;
 
 /// <summary>Small, device-local settings file. No credentials, keys, or active forwards are written.</summary>
-public sealed class PortForwardingSettingsStore
+public sealed class PortForwardingSettingsStore(string settingsPath)
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
-    private static readonly string SettingsPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "RelaxKonOS", "port-forwarding.json");
+    private readonly string SettingsPath = Path.GetFullPath(settingsPath);
 
     public PortForwardingSettings Load()
     {
@@ -18,21 +16,24 @@ public sealed class PortForwardingSettingsStore
                 ?? new PortForwardingSettings();
         }
         catch (IOException) { return new PortForwardingSettings(); }
+        catch (UnauthorizedAccessException) { return new PortForwardingSettings(); }
         catch (JsonException) { return new PortForwardingSettings(); }
     }
 
     public void Save(PortForwardingSettings settings)
     {
+        Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
+        var temporary = SettingsPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
-            var temporary = SettingsPath + ".tmp";
             File.WriteAllText(temporary, JsonSerializer.Serialize(settings.Normalize(), JsonOptions));
             File.Move(temporary, SettingsPath, overwrite: true);
         }
-        catch (IOException)
+        finally
         {
-            // The active process remains valid when persistence is unavailable.
+            try { File.Delete(temporary); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
         }
     }
 }

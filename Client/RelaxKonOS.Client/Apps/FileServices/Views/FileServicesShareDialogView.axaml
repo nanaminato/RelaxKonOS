@@ -10,7 +10,7 @@
             <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" />
         </StackPanel>
         <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-            <StackPanel Spacing="10" MaxWidth="760" HorizontalAlignment="Stretch">
+            <StackPanel Spacing="10" MaxWidth="760" HorizontalAlignment="Stretch" IsEnabled="{Binding CanEditShareDraft}">
             <TextBlock Text="{loc:Loc file_services.share_name}" />
             <TextBox Text="{Binding ShareName, Mode=TwoWay}" />
             <TextBlock Text="{loc:Loc file_services.share_path}" />
@@ -49,9 +49,10 @@
             <CheckBox Content="{loc:Loc file_services.share_guest}" IsChecked="{Binding ShareGuestAllowed, Mode=TwoWay}" />
             </StackPanel>
         </ScrollViewer>
-        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-            <Button Content="{loc:Loc common.cancel}" Click="Cancel_Click" />
-            <Button x:Name="SaveButton" Content="{loc:Loc common.save}" Click="Save_Click" />
-        </StackPanel>
+        <WrapPanel Grid.Row="2" HorizontalAlignment="Right" IsEnabled="{Binding CanCloseShareDraft}">
+            <Button Content="{loc:Loc common.refresh}" Command="{Binding RefreshCommand}" Margin="0,0,8,8" />
+            <Button Content="{loc:Loc common.cancel}" Click="Cancel_Click" Margin="0,0,8,8" />
+            <Button x:Name="SaveButton" Content="{loc:Loc common.save}" Click="Save_Click" IsEnabled="{Binding CanManage}" />
+        </WrapPanel>
     </Grid>
 </UserControl>

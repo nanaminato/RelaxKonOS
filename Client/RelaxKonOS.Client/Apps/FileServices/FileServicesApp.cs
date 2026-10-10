@@ -2,9 +2,6 @@ using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Installation;
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Client.Apps.FileServices.Views;
-using RelaxKonOS.Client.Apps.Explorer;
-using RelaxKonOS.Client.Apps.Explorer.ViewModels;
-using RelaxKonOS.Client.Apps.Explorer.Views;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Auth;
@@ -29,10 +26,29 @@ public sealed class FileServicesApp : RemoteApplicationBase
             context.ShowWindow(LocalizedText.Get("file_services.title"), new FileServicesLoginRequiredView(), new Rect(180, 160, 440, 160), Manifest.IconGlyph, false, false, false);
             return;
         }
-        var vm = new FileServicesViewModel(client, context.Permissions);
+        var windowService = session.ServiceId;
+        var windowUser = session.CurrentUser;
+        var windowSession = session.CurrentSession;
+        bool IsWindowSessionCurrent() => session.State == AuthSessionState.Authenticated
+            && session.ServiceId == windowService && windowUser is not null && windowSession is not null
+            && ReferenceEquals(session.CurrentUser, windowUser) && ReferenceEquals(session.CurrentSession, windowSession);
+        var vm = new FileServicesViewModel(client, context.Permissions, IsWindowSessionCurrent);
         vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Smb, "relaxkonos.file-services", () => vm.RefreshCommand.ExecuteAsync(null));
-        var window = context.ShowWindow(LocalizedText.Get("file_services.title"), InstallationPanel.Wrap(new FileServicesWorkspace(vm), vm.Installation), new Rect(90, 80, 960, 720), Manifest.IconGlyph);
-        var files = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
+        var workspace = new FileServicesWorkspace(vm);
+        void SessionChanged(object? sender, AuthSessionStateChangedEventArgs args)
+        {
+            void Check() { if (!IsWindowSessionCurrent()) vm.InvalidateWindowSession(); }
+            if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess()) Check();
+            else Avalonia.Threading.Dispatcher.UIThread.Post(Check);
+        }
+        workspace.AttachedToVisualTree += (_, _) =>
+        {
+            session.StateChanged -= SessionChanged;
+            session.StateChanged += SessionChanged;
+            if (!IsWindowSessionCurrent()) vm.InvalidateWindowSession();
+        };
+        workspace.DetachedFromVisualTree += (_, _) => session.StateChanged -= SessionChanged;
+        var window = context.ShowWindow(LocalizedText.Get("file_services.title"), InstallationPanel.Wrap(workspace, vm.Installation), new Rect(90, 80, 960, 720), Manifest.IconGlyph);
         vm.RequestHostAdministratorCredentialsAsync = async error =>
         {
             var memory = UsageMemoryStore.Capture(context);
@@ -44,28 +60,8 @@ public sealed class FileServicesApp : RemoteApplicationBase
         };
         vm.RequestSambaPasswordAsync = () => FileServicesDialogs.RequestPasswordAsync(context, window, LocalizedText.Get("file_services.samba_password"));
         vm.ShowShareEditorAsync = editing => FileServicesDialogs.ShowShareEditorAsync(context, window, vm, editing);
-        vm.ShowSharePathPickerAsync = () => files is null
-            ? Task.FromResult<string?>(null)
-            : context.ShowDialogAsync<string?>(window, LocalizedText.Get("file_services.select_folder"), dialog =>
-            {
-                var picker = new ExplorerViewModel(files, new ExplorerPickerOptions(ExplorerPickerMode.SelectFolder),
-                    paths => dialog.Close(paths[0]), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "FileServices.share-folder")
-                {
-                    CancelAction = dialog.Cancel
-                };
-                _ = picker.LoadRootAsync();
-                return new ExplorerMainView { DataContext = picker };
-            }, PickerBounds(window));
         vm.ConfirmDeleteAsync = name => FileServicesDialogs.ConfirmDeleteAsync(context, window, name);
         _ = vm.StartAsync();
     }
 
-    private static Rect PickerBounds(RelaxKonOS.WindowManager.ManagedWindow owner)
-    {
-        var bounds = owner.Info.Bounds;
-        var width = Math.Min(820, Math.Max(480, bounds.Width - 40));
-        var height = Math.Min(600, Math.Max(340, bounds.Height - 48));
-        return new Rect(bounds.X + Math.Max(20, (bounds.Width - width) / 2),
-            bounds.Y + Math.Max(24, (bounds.Height - height) / 2), width, height);
-    }
 }

@@ -50,6 +50,34 @@ var service = new WorkspaceSettingsService(http, session, settings);
 await service.SaveAsync(identity.BaseUrl, "before-refresh", identity.Workspace.Id, settings.ToPreferences());
 await service.SaveAsync(identity.BaseUrl, identity.Tokens.AccessToken, identity.Workspace.Id, settings.ToPreferences());
 Check(settings.ToPreferences().Revision == 12 && writes == 2, "Saving did not acknowledge both rotated-token revisions.");
+foreach (var switchOnRetry in new[] { false, true })
+{
+    var isolatedSession = DispatchProxy.Create<IAuthSession, SessionProxy>();
+    var isolatedIdentity = (SessionProxy)isolatedSession;
+    var acquisitions = 0;
+    var dispatched = 0;
+    isolatedIdentity.OnAcquire = () =>
+    {
+        if (++acquisitions == (switchOnRetry ? 2 : 1)) isolatedIdentity.Session = isolatedIdentity.Session with { };
+    };
+    using var isolatedHttp = new HttpClient(new AuthenticatedHttpHandler(isolatedSession)
+    { InnerHandler = new ResponseHandler(_ => { dispatched++; return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Unauthorized)); }) });
+    try { await isolatedHttp.GetAsync("http://localhost:12345/test"); throw new Exception("New login was allowed to dispatch an old request."); }
+    catch (InvalidOperationException) { }
+    Check(dispatched == (switchOnRetry ? 1 : 0), "A same-id new login reached the initial/retry transport.");
+}
+var boundSession = DispatchProxy.Create<IAuthSession, SessionProxy>();
+var boundIdentity = (SessionProxy)boundSession;
+var boundAcquisitions = 0;
+boundIdentity.OnAcquire = () => boundAcquisitions++;
+using var boundRequest = new HttpRequestMessage(HttpMethod.Post, "http://localhost:12345/test");
+AuthenticatedHttpHandler.BindLogin(boundRequest, boundSession);
+boundIdentity.Session = boundIdentity.Session with { };
+using var boundHttp = new HttpClient(new AuthenticatedHttpHandler(boundSession)
+{ InnerHandler = new ResponseHandler(_ => throw new Exception("Stale bound request reached transport.")) });
+try { await boundHttp.SendAsync(boundRequest); throw new Exception("Stale bound request was accepted."); }
+catch (InvalidOperationException) { }
+Check(boundAcquisitions == 0, "Stale request binding acquired the new login's token.");
 
 // Exercise the actual settings page with real built-in descriptors, including their local
 // implementation versions. A synthetic ID-only request would miss the original 400 bug.

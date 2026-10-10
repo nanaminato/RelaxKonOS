@@ -57,6 +57,7 @@
     "port_forwarding.test": "Test connection",
     "port_forwarding.status.test_succeeded": "Forwarding is reachable (HTTP {0} {1}).",
     "port_forwarding.error.target_timeout": "The forwarded service did not respond within 5 seconds.",
-    "port_forwarding.error.target_unreachable": "The local tunnel is running, but the service on the server loopback address could not be reached. Check that the target service is listening on the configured port."
+    "port_forwarding.error.target_unreachable": "The local tunnel is running, but the service on the server loopback address could not be reached. Check that the target service is listening on the configured port.",
+    "port_forwarding.error.target_changed": "The original forward changed or is no longer available. Close this editor and select a forward again."
   }
 }

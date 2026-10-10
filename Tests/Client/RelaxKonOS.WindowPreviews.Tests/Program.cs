@@ -41,6 +41,12 @@ var localization = new LocalizationService(settings, new SshDesktopSession(null!
 using var services = new ServiceCollection().AddSingleton(localization).BuildServiceProvider();
 // The XAML localization extension resolves the host application's singleton provider.
 typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
+if (args.Contains("--forward-runtime-only"))
+{
+    SynchronizationContext.SetSynchronizationContext(null);
+    PortForwardRuntimeChecks.RunAsync().GetAwaiter().GetResult();
+    return;
+}
 // Check the actual activation paths, including the browser's signed-out window.
 foreach (var app in new RelaxKonOS.AppSDK.RemoteApplicationBase[]
 {
@@ -80,6 +86,9 @@ LocalInstallationCloseChecks.Run();
 WebSiteEditorChecks.Run();
 WebSiteReadRecoveryChecks.Run();
 WebSiteScopeChecks.Run();
+CertificateEditorChecks.Run();
+FileShareDialogChecks.Run();
+PortForwardSubmissionChecks.Run();
 if (args.Contains("--ui-review-only")) return;
 SettingsInteractionChecks.Run(settings, localization);
 SettingsWindowChecks.Run(settings, localization);
