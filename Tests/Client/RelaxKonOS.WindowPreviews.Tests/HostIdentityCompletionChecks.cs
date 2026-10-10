@@ -33,11 +33,11 @@ internal static class HostIdentityCompletionChecks
             vm.RequestAuthorizationAsync = _ => Task.FromResult(false);
             vm.ApplyCommand.ExecuteAsync(null).GetAwaiter().GetResult();
             Check(stub.ApplyCalls == 0 && vm.HasDraft && vm.CanEdit && vm.CanApply, "Cancelled authorization preserves draft without writing");
-            var preparedId = vm.OperationId;
+            var preparedId = stub.PlanId;
+            Check(preparedId != Guid.Empty, "Cancelled authorization retained the prepared plan");
             vm.RequestAuthorizationAsync = _ => Task.FromResult(true);
             var applying = vm.ApplyCommand.ExecuteAsync(null);
-            var completedId = vm.OperationId;
-            Check(preparedId == completedId && stub.ApplyCalls == 1, "Retry uses the prepared plan");
+            Check(stub.PlanId == preparedId && stub.ApplyCalls == 1, "Retry uses the prepared plan");
             Check(vm.IsBusy && !vm.CanEdit && !vm.CanReload && !vm.IsCompleted, "Applying state");
             stub.Pending.SetResult(stub.Result(SettingsOperationState.Applied, "r2"));
             applying.GetAwaiter().GetResult();
@@ -55,11 +55,21 @@ internal static class HostIdentityCompletionChecks
             Check(stub.Request!.ExpectedRevision == "r2", "Manual change uses confirmed revision");
             stub.Pending.SetResult(stub.Result(SettingsOperationState.Unknown, null));
             applying.GetAwaiter().GetResult();
-            Check(!vm.CanEdit && !vm.CanReload && !vm.IsCompleted && vm.ShowQueryAction && vm.HasOperation, "Unknown outcome retains query and disables reload");
+            Check(!vm.CanEdit && !vm.CanReload && !vm.IsCompleted && vm.ShowQueryAction, "Unknown outcome retains query and disables reload");
             Check(!vm.HasDraft && !vm.ResetDraftCommand.CanExecute(null), "Unknown submitted operation cannot be discarded as a draft");
             vm.QueryCommand.ExecuteAsync(null).GetAwaiter().GetResult();
             Check(vm.IsCompleted && vm.CanEdit && !vm.ShowQueryAction, "Query-confirmed completion");
-            Console.WriteLine($"PASS: Host name completion, revision reuse, manual changes and recovery ({effective}).");
+            stub.FailPreview = true;
+            string? reported = null;
+            vm.RequestReportProblemAsync = message => { reported = message; return Task.CompletedTask; };
+            vm.DraftName = "failed-host";
+            Check(vm.HasDraft && vm.CanApply, "A confirmed operation leaves a new editable draft");
+            vm.ApplyCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+            Check(reported is not null && reported.Contains("host name preview failed")
+                && vm.HasDraft && vm.CanApply && vm.CanEdit,
+                "A failed request reports one prompt and keeps the draft");
+            stub.FailPreview = false;
+            Console.WriteLine($"PASS: Host name completion, revision reuse, manual changes, recovery and failure prompt ({effective}).");
         }
     }
 
@@ -79,8 +89,10 @@ public class IdentityCompletionServiceStub : DispatchProxy
     public TaskCompletionSource<SettingsOperation> Pending = new();
     public HostnamePreviewRequest? Request;
     public int ApplyCalls;
+    public bool FailPreview;
     public Guid RollbackId;
     public string? RollbackRevision;
+    public Guid PlanId => _plan?.PlanId ?? Guid.Empty;
     public SettingsOperation Result(SettingsOperationState state, string? revision) =>
         new(_plan!.PlanId, "host.identity.hostname", _target, state, DateTimeOffset.UtcNow,
             revision, EffectiveState: Effective);
@@ -95,6 +107,7 @@ public class IdentityCompletionServiceStub : DispatchProxy
                 new("old-host", "old-host", MaximumLength, "r1", DateTimeOffset.UtcNow, "test"),
                 _target, new(SettingsCapabilityState.Available), Effective));
             case "PreviewAsync":
+                if (FailPreview) return Task.FromException<SettingsPlan>(new InvalidOperationException("host name preview failed"));
                 Request = (HostnamePreviewRequest)args![1]!;
                 _plan = new(Guid.NewGuid(), _target, Request.ExpectedRevision, DateTimeOffset.UtcNow.AddMinutes(5),
                     [new("host.identity.hostname", "old-host", Request.Change.HostName)], default, "test", Effective, "test-impact");

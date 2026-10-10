@@ -25,11 +25,11 @@ internal static class HostTimeCompletionChecks
         vm.RequestAuthorizationAsync = _ => Task.FromResult(false);
         vm.ApplyCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Check(stub.ApplyCalls == 0 && vm.HasDraft && vm.CanEdit && vm.CanApply, "Cancelled authorization preserves draft without writing");
-        var preparedId = vm.OperationId;
+        var preparedId = stub.PlanId;
+        Check(preparedId != Guid.Empty, "Cancelled authorization retained the prepared plan");
         vm.RequestAuthorizationAsync = _ => Task.FromResult(true);
         var applying = vm.ApplyCommand.ExecuteAsync(null);
-        var completedPlanId = vm.OperationId;
-        Check(preparedId == completedPlanId && stub.ApplyCalls == 1, "Retry uses the prepared plan");
+        Check(stub.PlanId == preparedId && stub.ApplyCalls == 1, "Retry uses the prepared plan");
         Check(vm.IsBusy && !vm.CanEdit && !vm.CanReload && !vm.IsCompleted, "Apply progress cannot be discarded by reloading");
         stub.Pending.SetResult(stub.Result(SettingsOperationState.Applied, "r2"));
         applying.GetAwaiter().GetResult();
@@ -44,11 +44,21 @@ internal static class HostTimeCompletionChecks
         Check(stub.Request!.ExpectedRevision == "r2", "Manual change uses confirmed revision");
         stub.Pending.SetResult(stub.Result(SettingsOperationState.Unknown, null));
         applying.GetAwaiter().GetResult();
-        Check(!vm.CanEdit && !vm.CanReload && !vm.IsCompleted && vm.ShowQueryAction && vm.HasOperation, "Unknown outcome locks edits and reload");
+        Check(!vm.CanEdit && !vm.CanReload && !vm.IsCompleted && vm.ShowQueryAction, "Unknown outcome locks edits and reload");
         Check(!vm.HasDraft && !vm.ResetDraftCommand.CanExecute(null), "Unknown submitted operation cannot be discarded as a draft");
         vm.QueryCommand.ExecuteAsync(null).GetAwaiter().GetResult();
         Check(vm.CanEdit && vm.IsCompleted && !vm.ShowQueryAction, "Query-confirmed completion");
-        Console.WriteLine("PASS: Time zone completion, revision reuse, manual changes and unknown-outcome recovery.");
+        stub.FailPreview = true;
+        string? reported = null;
+        vm.RequestReportProblemAsync = message => { reported = message; return Task.CompletedTask; };
+        vm.SelectedZone = "UTC";
+        Check(vm.HasDraft && vm.CanApply, "Confirmed completion leaves a new editable draft");
+        vm.ApplyCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Check(reported is not null && reported.Contains("host time preview failed")
+            && vm.HasDraft && vm.CanApply && vm.CanEdit,
+            "A failed request reports one prompt and keeps the draft");
+        stub.FailPreview = false;
+        Console.WriteLine("PASS: Time zone completion, revision reuse, manual changes, unknown-outcome recovery and failure prompt.");
     }
 
     private static void Check(bool condition, string message)
@@ -65,8 +75,10 @@ public class TimeCompletionServiceStub : DispatchProxy
     public TaskCompletionSource<SettingsOperation> Pending = new();
     public TimeZonePreviewRequest? Request;
     public int ApplyCalls;
+    public bool FailPreview;
     public string? RollbackRevision;
     public Guid RollbackId;
+    public Guid PlanId => _plan?.PlanId ?? Guid.Empty;
     public SettingsOperation Result(SettingsOperationState state, string? revision) =>
         new(_plan!.PlanId, "host/time", _target, state, DateTimeOffset.UtcNow, revision);
 
@@ -80,6 +92,7 @@ public class TimeCompletionServiceStub : DispatchProxy
                 new("Asia/Shanghai", ["Asia/Shanghai", "UTC"], "r1", DateTimeOffset.UtcNow, "test"),
                 _target, new(SettingsCapabilityState.Available)));
             case "PreviewAsync":
+                if (FailPreview) return Task.FromException<SettingsPlan>(new InvalidOperationException("host time preview failed"));
                 Request = (TimeZonePreviewRequest)args![1]!;
                 _plan = new(Guid.NewGuid(), _target, Request.ExpectedRevision, DateTimeOffset.UtcNow.AddMinutes(5),
                     [new("host/time", "Asia/Shanghai", Request.Change.TimeZoneId)],

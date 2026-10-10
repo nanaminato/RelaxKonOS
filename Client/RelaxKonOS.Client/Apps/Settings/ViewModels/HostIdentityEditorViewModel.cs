@@ -21,7 +21,6 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
     private HostSettingsConnection? _connection;
     private HostIdentitySnapshot? _snapshot;
     private SettingsPlan? _plan;
-    private SettingsPlan? _completedPlan;
     private SettingsOperation? _completedOperation;
     private bool _submitted;
     private bool _disposed;
@@ -38,6 +37,8 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
     }
 
     public Func<HostSettingsConnection, Task<bool>>? RequestAuthorizationAsync { get; set; }
+    /// <summary>Reports a failed request through a prompt; the page keeps no operation-details surface.</summary>
+    public Func<string, Task>? RequestReportProblemAsync { get; set; }
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _targetText = "";
     [ObservableProperty] private string _currentHostName = "";
@@ -46,7 +47,6 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
     [ObservableProperty] private int _maximumLength;
     [ObservableProperty] private string _problemCode = "";
     public string StatusText => _localization.Get(_statusKey, _statusKey);
-    public string OperationId => (_plan ?? _completedPlan)?.PlanId.ToString("D") ?? "";
     public bool HasDraft => _snapshot is not null && !_submitted && DraftName != PendingHostName;
     private bool CanResetDraft() => !IsBusy && HasDraft;
 
@@ -63,7 +63,6 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
     public bool ShowApplyAction => HasDraft;
     public bool ShowQueryAction => _submitted;
     public bool IsCompleted => !_submitted && !HasDraft && _plan is null && _completedOperation is not null;
-    public bool HasOperation => _plan is not null || _completedPlan is not null;
     public bool HasProblem => !string.IsNullOrEmpty(ProblemCode);
     public bool HasNameProblem => !string.IsNullOrEmpty(NameProblem);
     partial void OnProblemCodeChanged(string value) => OnPropertyChanged(nameof(HasProblem));
@@ -110,7 +109,6 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
         if (_disposed) return;
         _snapshot = snapshot;
         _plan = null;
-        _completedPlan = null;
         _completedOperation = null;
         _submitted = false;
         CurrentHostName = snapshot.Value.HostName;
@@ -162,7 +160,6 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
             var difference = _plan!.Differences.Single();
             PendingHostName = (operation.State == SettingsOperationState.Applied ? difference.After : difference.Before) ?? "";
             if (operation.EffectiveState == SettingsEffectiveState.Immediate) CurrentHostName = PendingHostName;
-            _completedPlan = _plan;
             _completedOperation = operation;
 
             // Preserve the live name for staged renames, and use the confirmed revision for the next edit.
@@ -201,8 +198,18 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
             if (lifetime != _lifetime || _disposed) return;
             ProblemCode = error is RelaxKonOSAuthException auth ? $"{auth.Status} · {auth.Type} · {auth.Title}" : error.Message;
             SetStatus(_submitted ? "settings.hostname.outcome_unknown" : "settings.hostname.failed");
+            await ReportProblemAsync();
         }
         finally { IsBusy = false; UpdateCommands(); }
+    }
+
+    /// <summary>Presents the failure as a prompt; a declined or unavailable prompt must not swallow the page state.</summary>
+    private async Task ReportProblemAsync()
+    {
+        if (RequestReportProblemAsync is null) return;
+        var message = ProblemCode.Length == 0 ? StatusText : $"{StatusText}\n\n{ProblemCode}";
+        try { await RequestReportProblemAsync(message); }
+        catch { /* The inline status line remains the fallback when no prompt can be shown. */ }
     }
 
     private void SetStatus(string key) { _statusKey = key; OnPropertyChanged(nameof(StatusText)); }
@@ -211,11 +218,9 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
         OnPropertyChanged(nameof(HasDraft));
         ResetDraftCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanEdit));
-        OnPropertyChanged(nameof(OperationId));
         OnPropertyChanged(nameof(ShowApplyAction));
         OnPropertyChanged(nameof(ShowQueryAction));
         OnPropertyChanged(nameof(IsCompleted));
-        OnPropertyChanged(nameof(HasOperation));
         OnPropertyChanged(nameof(HasNameProblem));
         OnPropertyChanged(nameof(NameLengthHint));
         OnPropertyChanged(nameof(HasNameLengthHint));
@@ -234,7 +239,7 @@ public sealed partial class HostIdentityEditorViewModel : ObservableObject, IDis
     {
         if (_disposed || _connection is null || _service.IsCurrent(_connection)) return;
         _lifetime.Cancel(); _lifetime.Dispose(); _lifetime = new();
-        _connection = null; _snapshot = null; _plan = null; _completedPlan = null; _completedOperation = null; _submitted = false;
+        _connection = null; _snapshot = null; _plan = null; _completedOperation = null; _submitted = false;
         CurrentHostName = ""; PendingHostName = ""; DraftName = ""; MaximumLength = 0;
         TargetText = ""; ProblemCode = "";
         OnPropertyChanged(nameof(RestartPending));

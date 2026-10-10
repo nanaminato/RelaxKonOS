@@ -155,3 +155,34 @@
 - 修复此前设备设置带来的颜色扫描回归：高对比度默认调色板归入 Shared 调色板数据来源，渲染服务只应用颜色数据，不修改 Workspace 偏好。
 
 已执行并通过：设置契约/构造规则/CLI 回归、服务端设置回归、Workspace 偏好与目标切换回归、完整窗口及新增 Workspace 编辑器 headless 检查。新增编辑器覆盖中英日 640×480 无横向滚动、底部应用按钮可达、空值/删除、PATH 确认、结果未知不重放、模式独立更新和关闭清理。原生人工验收、真实进程环境、DNS 独立恢复尚未完成。
+
+## 第八轮：时区页取消操作详情，失败改为弹窗
+
+- 时区卡片不再提供“操作详情”折叠区，页面不展示计划 ID；`HostTimeEditorViewModel` 同步移除 `HasOperation`、`OperationId` 与只服务该显示的计划留存字段，不保留仅供旧界面使用的别名。
+- 失败与结果未知改为一次性弹窗提示（复用既有确认对话框，标题为“远程时区”），内容为本地化状态行加上具体错误；弹窗不可用时仍保留页内状态行作为兜底。上一轮的“将低频恢复操作收进现有操作详情”只对主机名继续适用。
+- 三语文案删除 `settings.host_time.operation_details`，并把“按操作 ID 查询”改为不依赖 ID 的表述（界面已无处显示该 ID，查询入口仍按留存计划工作）。
+- 主机名编辑的折叠操作详情保持不变；本轮只调整时区。
+- 清理上一轮遗留的陈旧文案：`settings.host_time.loaded`、`settings.host_time.search_hint`、`settings.hostname.loaded` 三语都还写着“预览变更 / 预览确认后再授权应用”，而独立预览按钮早在第六轮已取消。统一改成“选择/修改后点击‘应用’，按需授权并提交”的表述，不再暗示存在预览步骤。
+- 验证：`RelaxKonOS.WindowPreviews.Tests` 编译 0 错误（保留原有 5 项无关警告），`--settings-interaction-only` 全量通过，含时区完成/草稿/未知结果保护、新增失败弹窗断言，以及中英日三尺寸时区页 headless 截图。原生人工验收、真实宿主写入仍未执行。
+
+## 第九轮：时区页取消完成卡片
+
+- 时区卡片移除成功后的完成卡片（“时区已更新，已从远程系统读回确认。”与确认后的时区行），确认结果只体现在「当前时区」行；执行进度条、失败/结果未知的页内状态行与错误行保留，失败仍以对话框提示。
+- `IsCompleted` 保留：确认成功后它负责抑制页内状态行，否则被移除的文案会从兜底行回流到页面。状态键 `settings.host_time.applied` / `settings.host_time.restored` 仍在使用（远程未回传确认 revision、仍需查询时该状态行可见），未删除文案。
+- 主机名编辑的完成卡片保持原样，本轮只调整时区。
+- 验证：`RelaxKonOS.WindowPreviews.Tests` 编译 0 错误；`--settings-interaction-only` 117 项 PASS / exit 0。新增断言要求“确认成功后页面可视树中不得出现完成文案、且确认后的时区值仍可见”（后者同时防止前一断言因可视树为空而失真）；把状态行临时改为完成时可见，该断言按预期失败，恢复后重新全绿。原生人工验收、真实宿主写入仍未执行。
+
+## 第十轮：主机名页同步取消完成卡片
+
+- 系统页主机名卡片移除成功后的完成卡片（“主机名已更新，已从远程系统读回确认。”/“新主机名已保存并确认，重启远程主机后生效。”与待生效名称）；确认成功只在“当前生效名称/待生效名称”两行以及需重启时的重启提示行体现。
+- 与第九轮同样保留 `IsCompleted` 用于抑制页内状态行，否则被移除的成功文案会从兜底行回流；`settings.hostname.applied`/`applied_pending`/`restored`/`restored_pending` 文案保留（远程未回传确认 revision、仍需查询时该状态行可见）。折叠操作详情保持不变。
+- 验证：新增 `CheckConfirmedHostNameStaysOffPage`，对 Immediate 与 HostRestart 两种生效方式各渲染一次系统页，断言无可见完成文案、名称值仍可见、HostRestart 时重启提示行仍在（避免把“重启后生效”这一必要信息一起删掉），并输出 `system-hostname-confirmed-1024x900.png`；把状态行临时改为完成时可见，该断言按预期失败，恢复后全绿。
+- 主机名失败目前仍只有页内错误行（时区在第八轮已改为对话框），本轮未改。
+
+## 第十一轮：主机名失败弹窗与取消操作详情
+
+- 主机名编辑的失败与结果未知改为一次性弹窗（`HostIdentityEditorViewModel.RequestReportProblemAsync`，在 `SettingsApp` 接到与远程时区同一套确认对话框，标题“主机名”），内容为本地化状态行加具体错误；弹窗不可用时页内状态行仍为兜底。
+- 系统页移除最后一段“操作详情”折叠区（内含计划 ID）；视图模型同步删除 `OperationId`、`HasOperation` 与只服务该显示留存的 `_completedPlan`，不保留仅供旧界面的别名。时区在第八轮已同样处理，现在两个编辑器都不再暴露计划 ID。
+- 三语文案：删除 `settings.hostname.operation_details`；`settings.hostname.outcome_unknown` 改为不依赖操作 ID 的表述；`settings.hostname.failed` 与 `settings.host_time.failed` 去掉“详见下方错误”（错误已随弹窗一并给出，页内状态行只是兜底）。
+- 检查：`HostIdentityCompletionChecks` 的计划 ID 改从 stub 读取（stub 新增 `PlanId`、`FailPreview`），并新增“失败只弹一次提示且草稿保留”的断言，Immediate 与 HostRestart 两种生效方式各跑一遍；`CheckConfirmedHostNameStaysOffPage` 继续覆盖确认态无完成文案与重启提示保留。`--settings-interaction-only` 117 项 PASS / exit 0，编译 0 错误。
+- 文档：`RelaxKonOS.Settings.md` 149/163 行不再声称页内保留操作详情或恢复入口。

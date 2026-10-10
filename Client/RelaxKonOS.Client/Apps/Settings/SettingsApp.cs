@@ -215,6 +215,12 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         }
         viewModel.Pages.OfType<TimeLanguagePageViewModel>().Single().HostTime.RequestAuthorizationAsync = connection =>
             AuthorizeHostSettingsAsync(hostTimeService.IsCurrent, connection, "settings.host_time.authorize", (password, administrator) => hostTimeService.AuthorizeAsync(connection, password, administrator));
+        // Failures are reported once, as a prompt; the page deliberately keeps no operation-details surface.
+        viewModel.Pages.OfType<TimeLanguagePageViewModel>().Single().HostTime.RequestReportProblemAsync = message =>
+            context.ShowDialogAsync<bool>(window, LocalizedText.Get("settings.host_time.title"), dialog => new ConfirmDialogView
+            {
+                DataContext = new ConfirmDialogViewModel(message, result => dialog.Close(result), LocalizedText.Get("common.ok")),
+            });
         var hostNetworkService = context.Services.GetRequiredService<Services.HostSettings.IHostNetworkService>();
         viewModel.Pages.OfType<NetworkPageViewModel>().Single().HostNetwork.RequestAuthorizationAsync = connection =>
             AuthorizeHostSettingsAsync(hostNetworkService.IsCurrent, connection, "settings.network.authorize", (password, administrator) => hostNetworkService.AuthorizeAsync(connection, password, administrator));
@@ -232,6 +238,12 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         systemPage.ClearUsageMemoryAction = () => context.Services.GetRequiredService<UsageMemoryStore>().Clear(session);
         systemPage.HostIdentity.RequestAuthorizationAsync = connection =>
             AuthorizeHostSettingsAsync(hostIdentityService.IsCurrent, connection, "settings.hostname.authorize", (password, administrator) => hostIdentityService.AuthorizeAsync(connection, password, administrator));
+        // Failures are reported once, as a prompt; the page deliberately keeps no operation-details surface.
+        systemPage.HostIdentity.RequestReportProblemAsync = message =>
+            context.ShowDialogAsync<bool>(window, LocalizedText.Get("settings.hostname"), dialog => new ConfirmDialogView
+            {
+                DataContext = new ConfirmDialogViewModel(message, result => dialog.Close(result), LocalizedText.Get("common.ok")),
+            });
         var aboutPage = viewModel.Pages.OfType<AboutPageViewModel>().Single();
         aboutPage.RequestOpenUriAsync = uri =>
         {

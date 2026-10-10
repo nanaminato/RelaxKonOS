@@ -17,7 +17,6 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
     private HostSettingsConnection? _connection;
     private HostTimeSnapshot? _snapshot;
     private SettingsPlan? _plan;
-    private SettingsPlan? _completedPlan;
     private SettingsOperation? _completedOperation;
     private bool _submitted;
     private bool _disposed;
@@ -34,6 +33,8 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
     }
 
     public Func<HostSettingsConnection, Task<bool>>? RequestAuthorizationAsync { get; set; }
+    /// <summary>Reports a failed request through a prompt; the page keeps no operation-details surface.</summary>
+    public Func<string, Task>? RequestReportProblemAsync { get; set; }
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _targetText = "";
     [ObservableProperty] private string _currentZone = "";
@@ -65,7 +66,6 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
     public bool ShowQueryAction => _submitted;
     public bool IsCompleted => !_submitted && !HasDraft && _plan is null && _completedOperation is not null;
     public bool HasProblem => !string.IsNullOrEmpty(ProblemCode);
-    public bool HasOperation => _plan is not null || _completedPlan is not null;
 
     private static string ZoneLabel(string id)
     {
@@ -83,7 +83,6 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
     partial void OnCurrentZoneChanged(string value) => OnPropertyChanged(nameof(CurrentZoneLabel));
     partial void OnProblemCodeChanged(string value) => OnPropertyChanged(nameof(HasProblem));
     public string StatusText => _localization.Get(_statusKey, _statusKey);
-    public string OperationId => (_plan ?? _completedPlan)?.PlanId.ToString("D") ?? "";
     public bool CanReload => !IsBusy && !_submitted;
     public bool CanApply => !IsBusy && !_submitted && _snapshot is not null
         && SelectedZone is not null && AvailableZones.Contains(SelectedZone, StringComparer.Ordinal) && SelectedZone != CurrentZone;
@@ -109,7 +108,6 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
         _connection = connection;
         _snapshot = snapshot;
         _plan = null;
-        _completedPlan = null;
         _completedOperation = null;
         _submitted = false;
         CurrentZone = snapshot.Value.TimeZoneId;
@@ -159,7 +157,6 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
         {
             var difference = _plan!.Differences.Single();
             CurrentZone = (operation.State == SettingsOperationState.Applied ? difference.After : difference.Before) ?? "";
-            _completedPlan = _plan;
             _completedOperation = operation;
 
             // Continue editing only with the revision confirmed by the remote operation.
@@ -194,8 +191,18 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
             if (lifetime != _lifetime || _disposed) return;
             ProblemCode = error is RelaxKonOSAuthException auth ? $"{auth.Status} · {auth.Type} · {auth.Title}" : error.Message;
             SetStatus(_submitted ? "settings.host_time.outcome_unknown" : "settings.host_time.failed");
+            await ReportProblemAsync();
         }
         finally { IsBusy = false; UpdateCommands(); }
+    }
+
+    /// <summary>Presents the failure as a prompt; a declined or unavailable prompt must not swallow the page state.</summary>
+    private async Task ReportProblemAsync()
+    {
+        if (RequestReportProblemAsync is null) return;
+        var message = ProblemCode.Length == 0 ? StatusText : $"{StatusText}\n\n{ProblemCode}";
+        try { await RequestReportProblemAsync(message); }
+        catch { /* The inline status line remains the fallback when no prompt can be shown. */ }
     }
 
     private void SetStatus(string key) { _statusKey = key; OnPropertyChanged(nameof(StatusText)); }
@@ -204,10 +211,8 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
         OnPropertyChanged(nameof(HasDraft));
         ResetDraftCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanEdit));
-        OnPropertyChanged(nameof(OperationId));
         OnPropertyChanged(nameof(ShowApplyAction));
         OnPropertyChanged(nameof(ShowQueryAction));
-        OnPropertyChanged(nameof(HasOperation));
         OnPropertyChanged(nameof(IsCompleted));
         ReloadCommand.NotifyCanExecuteChanged();
         ApplyCommand.NotifyCanExecuteChanged(); QueryCommand.NotifyCanExecuteChanged();
@@ -217,7 +222,7 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
     {
         if (_disposed || _connection is null || _service.IsCurrent(_connection)) return;
         _lifetime.Cancel(); _lifetime.Dispose(); _lifetime = new();
-        _connection = null; _snapshot = null; _plan = null; _completedPlan = null; _completedOperation = null; _submitted = false;
+        _connection = null; _snapshot = null; _plan = null; _completedOperation = null; _submitted = false;
         CurrentZone = ""; AvailableZones = Array.Empty<string>(); SelectedZone = null; TargetText = ""; ProblemCode = "";
         SetStatus("settings.host_time.load_prompt"); UpdateCommands();
     });
