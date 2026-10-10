@@ -224,7 +224,7 @@ public sealed class DeveloperPackageManager
     {
         var id = new AppId(appId);
         foreach (var window in _windowManager.Windows.Where(window => window.Info.OwnerAppId == id).ToArray())
-            _windowManager.Close(window);
+            _windowManager.ForceClose(window);
 
         _applications.Unregister(id);
         UnloadLoaded(appId);

@@ -84,7 +84,7 @@ public partial class App : Application
                         Services.GetRequiredService<RelaxKonOS.Client.Services.SystemUi.SystemUiCoordinator>().HideOverview();
                         var windows = Services.GetRequiredService<RelaxKonOS.WindowManager.IWindowManager>();
                         foreach (var window in windows.Windows.ToArray())
-                            windows.Close(window);
+                            windows.ForceClose(window);
                         mainWindow.Close();
                         mainWindow = null;
                         loginWindow = CreateLoginWindow();

@@ -374,12 +374,51 @@ public sealed class WindowManager : IWindowManager
         }, DispatcherPriority.Loaded);
     }
 
+    /// <summary>
+    /// Requests a user-initiated close. Modal dialog windows are cancelled through their session
+    /// guard; a regular window honours its optional <see cref="ManagedWindow.CanCloseAsync"/> guard
+    /// (title bar, Alt+F4, taskbar and window overview all funnel here). Teardown paths use
+    /// <see cref="ForceClose"/> instead so shutdown and app removal never block on a prompt.
+    /// </summary>
     public void Close(ManagedWindow window)
     {
         var modal = _modalSessions.LastOrDefault(s => ReferenceEquals(s.DialogWindow, window));
         if (modal is not null) { modal.RequestCancel(); return; }
         var shellModal = _shellModalSessions.LastOrDefault(s => ReferenceEquals(s.DialogWindow, window));
         if (shellModal is not null) { shellModal.RequestCancel(); return; }
+
+        if (window.CanCloseAsync is null)
+        {
+            ForceClose(window);
+            return;
+        }
+
+        _ = CloseWithGuardAsync(window);
+    }
+
+    private async Task CloseWithGuardAsync(ManagedWindow window)
+    {
+        if (window.IsCheckingClose) return;
+        window.IsCheckingClose = true;
+        try
+        {
+            if (!_windows.Contains(window)) return;
+            bool canClose;
+            try { canClose = await window.CanCloseAsync!(); }
+            // A guard that fails must not silently discard the window's state.
+            catch { canClose = false; }
+            if (canClose && _windows.Contains(window))
+                ForceClose(window);
+        }
+        finally { window.IsCheckingClose = false; }
+    }
+
+    /// <summary>
+    /// Closes a window immediately without consulting <see cref="ManagedWindow.CanCloseAsync"/>.
+    /// Used for owner/session teardown, application removal and automation.
+    /// </summary>
+    public void ForceClose(ManagedWindow window)
+    {
         if (!_windows.Remove(window))
             return;
 
@@ -420,7 +459,7 @@ public sealed class WindowManager : IWindowManager
         session.Host.Children.Remove(session.Blocker);
 
         if (_windows.Contains(session.DialogWindow))
-            Close(session.DialogWindow);
+            ForceClose(session.DialogWindow);
     }
 
     private void CloseShellModalSession(IShellModalSession session)
@@ -431,7 +470,7 @@ public sealed class WindowManager : IWindowManager
         session.Host.Children.Remove(session.Blocker);
 
         if (_windows.Contains(session.DialogWindow))
-            Close(session.DialogWindow);
+            ForceClose(session.DialogWindow);
 
         UpdateFullScreenHostInteractivity();
     }

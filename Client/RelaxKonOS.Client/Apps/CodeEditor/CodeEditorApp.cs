@@ -6,6 +6,7 @@ using RelaxKonOS.Client.Apps.TextEditor;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services;
+using RelaxKonOS.Client.Services.Dialogs;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
@@ -78,6 +79,11 @@ public sealed class CodeEditorApp : RemoteApplicationBase, IFileOpenApplication
                 || WindowShortcut.TryExecute(e, RemoteKey.Letter('S'), RemoteKeyModifiers.Control | RemoteKeyModifiers.Shift, viewModel.SaveAsCommand)
                 || WindowShortcut.TryExecute(e, RemoteKey.Letter('W'), RemoteKeyModifiers.Control, viewModel.CloseDocumentCommand);
         };
+        // The window guard covers every open tab, not just the active one, so closing the window
+        // cannot silently drop a background document; a write in flight blocks the close.
+        DraftWindowCloseGuard.Attach(context.WindowManager, window,
+            isBusy: () => viewModel.IsSaving,
+            hasChanges: () => viewModel.HasUnsavedDocuments);
 
         viewModel.RequestFileAsync = () => files is null
             ? Task.FromResult<string?>(null)

@@ -18,8 +18,16 @@ public sealed partial class CodeEditorDocument : ObservableObject
     [ObservableProperty] private string _encodingName;
     [ObservableProperty] private bool _isDirty;
 
+    /// <summary>
+    /// Bumped on every content change. A write snapshots this before it starts so that a
+    /// successful save cannot clear the dirty flag of an edit made while it was in flight.
+    /// </summary>
+    public int Revision { get; private set; }
+
     public string UntitledName { get; }
     public string DisplayName => string.IsNullOrWhiteSpace(Path) ? UntitledName : System.IO.Path.GetFileName(Path) ?? UntitledName;
 
     partial void OnPathChanged(string? value) => OnPropertyChanged(nameof(DisplayName));
+
+    partial void OnTextChanged(string value) => Revision++;
 }

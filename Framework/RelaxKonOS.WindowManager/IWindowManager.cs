@@ -79,7 +79,21 @@ public interface IWindowManager
         Func<ModalDialog<TResult>, Control> contentFactory,
         Size preferredSize);
 
+    /// <summary>
+    /// Requests a user-initiated close. Regular windows honour their optional
+    /// <see cref="ManagedWindow.CanCloseAsync"/> guard (title bar, Alt+F4, taskbar and window
+    /// overview all route here); a guard may veto the close, for example to confirm discarding
+    /// unsaved changes.
+    /// </summary>
     void Close(ManagedWindow window);
+
+    /// <summary>
+    /// Closes a window immediately without consulting its close guard. Use this for owner or
+    /// session teardown, application removal and automation, where a prompt would be wrong or
+    /// could block shutdown.
+    /// </summary>
+    void ForceClose(ManagedWindow window);
+
     void Focus(ManagedWindow window);
     void Minimize(ManagedWindow window);
     void Restore(ManagedWindow window);

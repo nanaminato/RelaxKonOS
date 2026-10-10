@@ -15,6 +15,10 @@ public sealed partial class CodeEditorViewModel : ObservableObject
     private bool _isLoadingDocument;
     private int _untitledSequence;
 
+    // Bumped for every read that will replace or add a document. A late read whose revision no
+    // longer matches must not activate its file over whatever the user opened meanwhile.
+    private int _openRevision;
+
     public CodeEditorViewModel(IExplorerClient? files, bool pathCaseSensitive = true, string defaultEncodingName = "UTF-8")
     {
         _files = files;
@@ -40,6 +44,18 @@ public sealed partial class CodeEditorViewModel : ObservableObject
     [ObservableProperty] private CodeEditorFolderNode? _selectedFolderNode;
     [ObservableProperty] private string _activeSidebar = "explorer";
     [ObservableProperty] private bool _isSidebarVisible = true;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanEditDocument))]
+    private bool _isSaving;
+
+    /// <summary>False while a write is in flight; the editor and its command surface bind to this.</summary>
+    public bool CanEditDocument => !IsSaving;
+
+    /// <summary>
+    /// True while any open tab holds unsaved edits. The window close guard uses this rather than
+    /// the active tab alone, so closing the window cannot silently drop a background document.
+    /// </summary>
+    public bool HasUnsavedDocuments => OpenDocuments.Any(document => document.IsDirty);
 
     public int CharCount => Text.Length;
     public int LineCount => string.IsNullOrEmpty(Text) ? 1 : Enumerable.Count<char>(Text, character => character == '\n') + 1;
@@ -139,6 +155,8 @@ public sealed partial class CodeEditorViewModel : ObservableObject
     [RelayCommand]
     private void NewDocument()
     {
+        // A new tab supersedes any read still in flight.
+        _openRevision++;
         var document = new CodeEditorDocument(null, string.Empty, DefaultEncodingName,
             LocalizedText.Format("code_editor.document.untitled_number", ++_untitledSequence));
         OpenDocuments.Add(document);
@@ -149,6 +167,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject
     [RelayCommand]
     private async Task OpenDocumentAsync()
     {
+        if (IsSaving) return;
         var path = await (RequestFileAsync?.Invoke() ?? Task.FromResult<string?>(null));
         if (!string.IsNullOrWhiteSpace(path)) await OpenPathAsync(path);
     }
@@ -182,6 +201,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject
     [RelayCommand]
     private async Task CloseDocumentAsync(CodeEditorDocument? document)
     {
+        if (IsSaving) return;
         document ??= ActiveDocument;
         if (document is null) return;
         if (document.IsDirty && !(await (RequestDiscardChangesAsync?.Invoke(document) ?? Task.FromResult(false)))) return;
@@ -195,26 +215,36 @@ public sealed partial class CodeEditorViewModel : ObservableObject
     [RelayCommand]
     private async Task SaveAsync()
     {
+        if (IsSaving) return;
         if (ActiveDocument is null) NewDocument();
-        var path = CurrentPath;
+        var document = ActiveDocument;
+        if (document is null) return;
+        if (_files is null) { StatusText = LocalizedText.Ref("code_editor.status.connect_before_save"); return; }
+        // Fix the document and its target before any picker opens, so the write cannot follow a
+        // tab the user switched to while the save-path picker was up.
+        var path = document.Path;
         if (string.IsNullOrWhiteSpace(path))
             path = await (RequestSavePathAsync?.Invoke("untitled.txt") ?? Task.FromResult<string?>(null));
-        if (!string.IsNullOrWhiteSpace(path)) await SaveToPathAsync(path);
+        if (!string.IsNullOrWhiteSpace(path)) await SaveToPathAsync(document, path);
     }
 
     [RelayCommand]
     private async Task SaveAsAsync()
     {
+        if (IsSaving) return;
         if (ActiveDocument is null) NewDocument();
-        var suggestedName = string.IsNullOrWhiteSpace(CurrentPath) ? "untitled.txt" : Path.GetFileName(CurrentPath) ?? "untitled.txt";
+        var document = ActiveDocument;
+        if (document is null) return;
+        if (_files is null) { StatusText = LocalizedText.Ref("code_editor.status.connect_before_save"); return; }
+        var suggestedName = string.IsNullOrWhiteSpace(document.Path) ? "untitled.txt" : Path.GetFileName(document.Path) ?? "untitled.txt";
         var path = await (RequestSavePathAsync?.Invoke(suggestedName) ?? Task.FromResult<string?>(null));
-        if (!string.IsNullOrWhiteSpace(path)) await SaveToPathAsync(path);
+        if (!string.IsNullOrWhiteSpace(path)) await SaveToPathAsync(document, path);
     }
 
     [RelayCommand]
     private async Task ChooseEncodingAsync()
     {
-        if (string.IsNullOrWhiteSpace(CurrentPath)) return;
+        if (IsSaving || string.IsNullOrWhiteSpace(CurrentPath)) return;
         var action = await (RequestEncodingActionAsync?.Invoke() ?? Task.FromResult<EncodingDialogAction?>(null));
         if (action is null) return;
         var encoding = await (RequestEncodingAsync?.Invoke() ?? Task.FromResult<string?>(null));
@@ -227,6 +257,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject
 
     private async Task ReopenWithEncodingAsync(string encodingName)
     {
+        if (IsSaving) return;
         if (string.IsNullOrWhiteSpace(CurrentPath) || !TextFileEncodings.IsSupported(encodingName)) return;
         if (IsDirty && ActiveDocument is not null && !(await (RequestDiscardChangesAsync?.Invoke(ActiveDocument) ?? Task.FromResult(false)))) return;
         EncodingName = encodingName;
@@ -235,9 +266,12 @@ public sealed partial class CodeEditorViewModel : ObservableObject
 
     private async Task SaveWithEncodingAsync(string encodingName)
     {
-        if (string.IsNullOrWhiteSpace(CurrentPath) || !TextFileEncodings.IsSupported(encodingName)) return;
+        if (IsSaving) return;
+        var document = ActiveDocument;
+        if (document is null || string.IsNullOrWhiteSpace(document.Path) || !TextFileEncodings.IsSupported(encodingName)) return;
+        // Assigning the view-model encoding propagates to the active document.
         EncodingName = encodingName;
-        await SaveToPathAsync(CurrentPath);
+        await SaveToPathAsync(document, document.Path!);
     }
 
     [RelayCommand]
@@ -275,9 +309,13 @@ public sealed partial class CodeEditorViewModel : ObservableObject
             StatusText = LocalizedText.Ref("code_editor.status.save_or_discard");
             return;
         }
+        // Reserve the next read revision: a newer open or a new tab wins over this late result.
+        var revision = ++_openRevision;
         try
         {
             var bytes = await _files.ReadFileAsync(path);
+            if (revision != _openRevision) return;
+            // A missing file leaves every open tab untouched instead of clearing the editor.
             if (bytes is null) { StatusText = LocalizedText.Ref("code_editor.status.file_missing"); return; }
             var encoding = existing?.EncodingName ?? DefaultEncodingName;
             var text = TextFileEncodings.Decode(bytes, encoding);
@@ -296,7 +334,11 @@ public sealed partial class CodeEditorViewModel : ObservableObject
             ActivateDocument(existing);
             StatusText = LocalizedText.Ref("code_editor.status.opened", Path.GetFileName(path), encoding);
         }
-        catch (Exception ex) { StatusText = LocalizedText.Ref("code_editor.status.open_failed", ex.Message); }
+        catch (Exception ex)
+        {
+            if (revision != _openRevision) return;
+            StatusText = LocalizedText.Ref("code_editor.status.open_failed", ex.Message);
+        }
     }
 
     private async Task LoadFolderAsync(CodeEditorFolderNode node, bool force)
@@ -328,21 +370,40 @@ public sealed partial class CodeEditorViewModel : ObservableObject
         return node;
     }
 
-    private async Task SaveToPathAsync(string path)
+    private async Task SaveToPathAsync(CodeEditorDocument document, string path)
     {
-        if (_files is null || ActiveDocument is null) { StatusText = LocalizedText.Ref("code_editor.status.connect_before_save"); return; }
+        if (_files is null) { StatusText = LocalizedText.Ref("code_editor.status.connect_before_save"); return; }
+        if (IsSaving) return;
+        // Snapshot the revision, bytes and encoding so the write describes exactly the tab the
+        // user asked to save.
+        var revision = document.Revision;
+        var content = TextFileEncodings.Encode(document.Text, document.EncodingName);
+        var encoding = document.EncodingName;
+        IsSaving = true;
         try
         {
-            await _files.WriteFileAsync(path, TextFileEncodings.Encode(Text, EncodingName));
-            ActiveDocument.Path = path;
-            ActiveDocument.EncodingName = EncodingName;
-            ActiveDocument.IsDirty = false;
-            CurrentPath = path;
-            IsDirty = false;
+            await _files.WriteFileAsync(path, content);
+            // An edit made while the write was in flight keeps its dirty flag.
+            if (document.Revision == revision)
+            {
+                document.Path = path;
+                document.EncodingName = encoding;
+                document.IsDirty = false;
+            }
+            if (ReferenceEquals(ActiveDocument, document))
+            {
+                CurrentPath = document.Path;
+                IsDirty = document.IsDirty;
+            }
             OnPropertyChanged(nameof(DocumentName));
-            StatusText = LocalizedText.Ref("code_editor.status.saved", Path.GetFileName(path), EncodingName);
+            StatusText = LocalizedText.Ref("code_editor.status.saved", Path.GetFileName(path), encoding);
         }
-        catch (Exception ex) { StatusText = LocalizedText.Ref("code_editor.status.save_failed", ex.Message); }
+        catch (Exception ex)
+        {
+            // The write is unconfirmed. Leave the tab dirty so the user verifies before retrying.
+            StatusText = LocalizedText.Ref("code_editor.status.save_failed", ex.Message);
+        }
+        finally { IsSaving = false; }
     }
 
     private static bool IsAncestor(CodeEditorFolderNode root, CodeEditorFolderNode node)

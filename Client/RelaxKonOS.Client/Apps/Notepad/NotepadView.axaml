@@ -9,7 +9,8 @@
     <Grid RowDefinitions="Auto,*,Auto">
         <Border Grid.Row="0" Classes="app-toolbar">
             <Grid ColumnDefinitions="Auto,*">
-                <Menu Grid.Column="0" Background="Transparent" BorderThickness="0">
+                <Menu Grid.Column="0" Background="Transparent" BorderThickness="0"
+                      IsEnabled="{Binding CanEditDocument}">
                     <MenuItem Header="{loc:Loc common.file}">
                         <MenuItem Header="{loc:Loc common.new}" Command="{Binding NewDocumentCommand}" InputGesture="Ctrl+N" />
                         <MenuItem Header="{loc:Loc common.open_ellipsis}" Command="{Binding OpenDocumentCommand}" InputGesture="Ctrl+O" />
@@ -35,6 +36,7 @@
                  Padding="12,10"
                  FontFamily="Consolas, Cascadia Mono, monospace"
                  FontSize="{Binding FontSize}"
+                 IsReadOnly="{Binding IsSaving}"
                  CaretBrush="{DynamicResource AccentBrush}" />
 
         <Border Grid.Row="2" Classes="app-statusbar">
@@ -42,6 +44,7 @@
                 <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
                 <Button Grid.Column="1" Content="{Binding EncodingName}" FontSize="12" Padding="4,0"
                         IsVisible="{Binding HasOpenFile}" ToolTip.Tip="{loc:Loc common.file_encoding}"
+                        IsEnabled="{Binding CanEditDocument}"
                         Command="{Binding ChooseEncodingCommand}" />
                 <TextBlock Grid.Column="2" Text="{Binding LineCountText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
                 <TextBlock Grid.Column="3" Text="{Binding CharacterCountText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />

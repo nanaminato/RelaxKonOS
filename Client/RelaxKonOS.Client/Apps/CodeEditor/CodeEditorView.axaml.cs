@@ -33,6 +33,7 @@ public partial class CodeEditorView : UserControl
         {
             _viewModel.PropertyChanged += OnViewModelPropertyChanged;
             Editor.Text = _viewModel.Text;
+            Editor.IsReadOnly = _viewModel.IsSaving;
             UpdateSyntaxHighlighting(_viewModel.CurrentPath);
             UpdateSidebarLayout(_viewModel.IsSidebarVisible);
         }
@@ -42,6 +43,8 @@ public partial class CodeEditorView : UserControl
     {
         if (eventArgs.PropertyName == nameof(CodeEditorViewModel.Text) && Editor.Text != _viewModel?.Text)
             Editor.Text = _viewModel?.Text ?? string.Empty;
+        else if (eventArgs.PropertyName == nameof(CodeEditorViewModel.IsSaving) && _viewModel is not null)
+            Editor.IsReadOnly = _viewModel.IsSaving;
         else if (eventArgs.PropertyName == nameof(CodeEditorViewModel.CurrentPath))
             UpdateSyntaxHighlighting(_viewModel?.CurrentPath);
         else if (eventArgs.PropertyName == nameof(CodeEditorViewModel.IsSidebarVisible) && _viewModel is not null)

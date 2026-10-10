@@ -4,6 +4,8 @@
 
 已完成入口盘点、逐文件结构扫描，并开始逐项实现。已修复模态取消守卫、Docker 编排提交回执、防火墙草稿保护，以及登录探测/认证/登出的迟到响应问题，受控回归通过；真实桌面及远端业务尚未验收。结构扫描不等于完整源码审查，所有界面均未完整验收。
 
+第二批在 WindowManager 增加顶层窗口关闭守卫，把标题栏、Alt+F4、任务栏与窗口总览统一到同一条用户关闭请求上，并为首批文本/代码编辑器与终端活跃会话接入草稿或会话确认；拆除路径改用无条件关闭，见 D-009。
+
 当前设计规则仍以 [内置应用 UI](RelaxKonOS.BuiltInApps.UI.md)、[桌面外壳](RelaxKonOS.Desktop.md)、[设置设计](RelaxKonOS.Settings.Design.md) 和 [操作反馈](../applications/RelaxKonOS.DesktopOperationFeedback.md) 为准。已有视觉调整不自动计为本专项流程验收。
 
 ## 范围与发现方法
@@ -164,6 +166,24 @@ P0；首批已实现并通过受控回归，完整故障与真实界面待验证
 
 进一步核查：`UsageMemoryScope.IsCurrent` 比较会话 ID、账号和工作区，适合偏好记忆的写入范围，不能代替窗口登录对象快照；Web 站点快照还比较当前用户及 Session DTO 对象引用。SMB 应采用后者的登录边界，并允许同一登录的隧道实际地址更新。需要验证同 ID 新对象、提权等待中换登录、读取间换登录和迟到写入回执；此项仍待实现。
 
+### D-009：顶层窗口关闭守卫与 P0-2 文本编辑器（P0-2）
+
+2026-10-10 局部实现并通过受控回归。此前 `DraftDialogGuard` 只作用于模态编辑器，因为关闭守卫挂在 `ModalDialog.CanCancelAsync` 上；Notepad、Code Editor、Terminal 等界面是 `AppContext.ShowWindow` 创建的顶层窗口，没有任何关闭门禁，标题栏关闭、Alt+F4、任务栏和窗口总览都会直接销毁窗口。仓库内不存在顶层窗口的等价机制，这是本批次的结构性缺口。
+
+修复分两层。框架层：`ManagedWindow` 新增可选的 `CanCloseAsync` 守卫与一次性检查标志；`WindowManager.Close` 改为用户关闭**请求**——模态窗口仍走会话守卫，普通窗口有守卫时异步等待、无守卫时立即关闭，重复手势只检查一次，守卫抛异常时保留窗口而不是静默丢弃状态；原无条件关闭体提取为 `IWindowManager.ForceClose`，会话结束（`App.axaml.cs` 登出/令牌失效清场）、应用卸载（`DeveloperPackageManager`）与自动化（`AutomationRunner`）改用它，避免拆除过程被提示阻塞。客户端新增 `DraftWindowCloseGuard`，为顶层窗口套用与模态编辑器相同的三语放弃确认，并允许替换标题、正文与确认文案。
+
+应用层首批三处：
+
+- **Notepad（UI-069/UI-070）**：接入草稿守卫（`IsDirty`）与保存忙碌门禁（`IsSaving`），保存期间编辑器只读、菜单与编码按钮禁用；保存方法改为先固定目标路径与内容快照再发起写入，新增文档修订号，迟到读取与写入结果不再覆盖或清理用户期间新建的文档；读取失败保留编辑器内容不再清空。
+- **Code Editor（UI-014/UI-015）**：窗口守卫覆盖**全部已打开标签**（`HasUnsavedDocuments`）而不是当前标签；`CodeEditorDocument` 新增内容修订号，写入完成后只有修订未变才清除脏标记，避免写完文件却把期间的新编辑标记为已保存；保存固定标签与目标路径；迟到读取不再抢占用户期间打开或新建的标签。
+- **Terminal（UI-125/UI-126）**：活跃会话关闭语义。关闭窗口会结束服务器上的 PTY，现在先显示专用的三语确认；登出与桌面拆除走 `ForceClose` 且此时会话已失效，不再提示、也不再结束进程，PTY 仍可供下次工作区恢复。
+
+证据：`TopLevelWindowCloseGuardChecks` 用真实 `WindowManager` 与真实放弃确认视图执行 12 项 headless 检查，覆盖无守卫立即关闭、忙碌阻止且不弹窗、无草稿直接关闭、草稿弹出一层确认、保留回到窗口、再次手势重新询问、确认放弃关闭、重复手势只检查一次、标题栏关闭命令走守卫、`ForceClose` 绕过守卫（守卫计数为 0）、守卫异常保留窗口。`EditorDraftStateChecks` 用真实 `NotepadView` 与两个 ViewModel 加文件接口替身执行 17 项检查，覆盖干净/脏状态、读取失败保留草稿、成功读取采用文件、保存忙碌锁定编辑器与菜单、重复提交不发送第二次写入、成功回执清理锁定与脏标记、未确认写入保留脏标记、迟到读取不覆盖新文档、多标签未保存状态、拒绝放弃保留标签、固定保存目标。完整 WindowPreviews 回归（含 `--ui-review-only`）通过；Desktop 与 9 个客户端测试项目增量构建 0 错误、5 个既有客户端警告。
+
+真实服务器只读复核：以指定测试账号完成认证（HTTP 200），`/files/drives`、`/files/special`（家目录 `/home/nanami`）、`/files/list`（家目录 5 目录 5 文件、`/tmp` 148 项）与 `/files/content` 均返回 200，读取 `.profile` 807 字节、`.bashrc` 3771 字节、`/etc/hostname` 7 字节，随后登出。该证据只证明编辑器读取路径与真实服务契约一致。
+
+未完成：原生桌面视觉与交互验收（标题栏、Alt+F4、任务栏、窗口总览四种手势的实际渲染与焦点返回）、真实写入/拒绝/断线后的未知结果核实、Code Editor 多标签保存策略细化（当前一次确认放弃全部）、Terminal 断线门禁与迟到输入，以及 Explorer 内联改名草稿在窗口关闭时的保护。不能据此把这些界面标为完整验收。
+
 ## 动态界面与复用路由补充清单
 
 每个分号分隔的场景需分别验收，不能因共用源码而合并结论。除已明确记录的局部修复外，以下状态均为已盘点待流程深审。
@@ -186,7 +206,7 @@ P0；首批已实现并通过受控回归，完整故障与真实界面待验证
 | 同上 | 壁纸；自定义/删除主题；卸载；清理数据确认 | 检查各调用点目标，不能只验收通用 ConfirmDialog |
 | 各 `*App.cs` 的文件选择回调 | 本地打开/保存/包上传；远端文件/目录选择 | 系统选择器与 Explorer 选择模式分别检查；迟到结果核对原身份 |
 | `Views/Shell/*ShellLayoutView.axaml` / `LauncherDesktopShells.cs` | 桌面菜单；启动器；任务栏/Dock；窗口菜单；通知区域 | 三套 Shell 分别验收鼠标/键盘、自动隐藏与窗口恢复 |
-| `Framework/RelaxKonOS.WindowManager/RemoteWindow.cs` / `WindowManager.cs` / `Themes/RemoteWindowTheme.axaml`（仓库根路径） | 标题栏；缩放；关闭；模态遮罩；嵌套弹窗 | owner 局部阻塞、业务关闭守卫、焦点返回、屏幕边界 |
+| `Framework/RelaxKonOS.WindowManager/RemoteWindow.cs` / `WindowManager.cs` / `Themes/RemoteWindowTheme.axaml`（仓库根路径） | 标题栏；缩放；关闭；模态遮罩；嵌套弹窗 | owner 局部阻塞、业务关闭守卫、焦点返回、屏幕边界；`Close` 是用户请求（走 `CanCloseAsync`），拆除用 `ForceClose`，见 D-009 |
 | `Framework/RelaxKonOS.UI/Themes/Controls/ControlThemeOverrides.axaml`（仓库根路径） | 共用控件/菜单/弹出层 | 三种风格、语义色、焦点、命中区域，随业务页验收 |
 
 ## 各模块深审重点
@@ -291,6 +311,15 @@ P0；首批已实现并通过受控回归，完整故障与真实界面待验证
 - Samba 密码提示返回时优先检查窗口会话，登录结束不再被用户状态变化提示覆盖，也不发送密码请求；新增对应受控回归，FileServices 整套构建/运行通过。未修改真实密码。
 - 路径/删除确认的取消结果及提权否定结果也先复查窗口会话，避免迟到取消或权限提示覆盖登录结束反馈。新增确认返回取消同时登录结束的受控检查，FileServices 整套构建/运行通过；原生事件生命周期仍待验证。
 
+### 2026-10-10：顶层窗口关闭守卫与 P0-2 文本编辑器
+
+- 框架：`ManagedWindow.CanCloseAsync`、`WindowManager.Close` 改为受守卫的用户请求、新增 `IWindowManager.ForceClose`；会话结束、应用卸载与自动化三处拆除调用点改用无条件关闭。客户端新增 `DraftWindowCloseGuard`（顶层窗口版放弃确认，支持自定义文案）。
+- 应用：Notepad、Code Editor 接入草稿守卫与保存忙碌/目标快照/修订号；Terminal 接入活跃会话关闭确认。另为 Terminal 新增 `terminal.close_active.title/message/confirm` 三语键，三语键一致性校验通过。
+- 回归：新增 `TopLevelWindowCloseGuardChecks`（12 项）与 `EditorDraftStateChecks`（17 项），`/d/tmp/rk-uicheck/RelaxKonOS.WindowPreviews.Tests.exe --ui-review-only` 与完整 WindowPreviews 套件均通过（exit 0）。Explorer（253 项）与 FileServices 整套回归也通过。
+- 构建：`dotnet build Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj -c Debug -o D:/tmp/rk-ui` 与 9 个客户端测试项目增量构建 0 错误、5 个既有客户端警告。
+- 真实服务只读复核：指定测试账号认证 200，`/files/drives`、`/files/special`、`/files/list`、`/files/content` 均 200，读取 `.profile`/`.bashrc`/`/etc/hostname` 成功，随后登出；未执行任何写入。
+- 未完成：原生四种关闭手势的视觉/焦点验收、未知写入核实、Explorer 内联改名草稿保护、Terminal 断线门禁。
+
 ## 后续逐项记录模板
 
 ### 2026-10-10：端口转发编辑器首批处理
@@ -384,7 +413,7 @@ P0；首批已实现并通过受控回归，完整故障与真实界面待验证
 | 编号 / 界面 | 结构证据 | 分别审查的重点 | 状态 |
 |---|---|---|---|
 | UI-014 [CodeEditorSettingsView](../../Client/RelaxKonOS.Client/Apps/CodeEditor/CodeEditorSettingsView.axaml) | 入口：CloseSettingsCommand | 草稿差异与校验；忙碌锁定；取消/Esc/窗口关闭；失败保留目标及输入 | 结构初查完成，待流程深审与运行验收 |
-| UI-015 [CodeEditorView](../../Client/RelaxKonOS.Client/Apps/CodeEditor/CodeEditorView.axaml) | TreeView；Menu；入口：NewDocumentCommand、OpenDocumentCommand、AddFolderCommand | 草稿差异与校验；忙碌锁定；取消/Esc/窗口关闭；失败保留目标及输入 | 结构初查完成，待流程深审与运行验收 |
+| UI-015 [CodeEditorView](../../Client/RelaxKonOS.Client/Apps/CodeEditor/CodeEditorView.axaml) | TreeView；Menu；入口：NewDocumentCommand、OpenDocumentCommand、AddFolderCommand | 全标签草稿关闭守卫、保存忙碌与目标快照、迟到读取已修复；继续未知写入与原生验收 | 首批实现/受控回归通过，完整流程及运行验收待完成 |
 
 ### Docker
 
@@ -469,7 +498,7 @@ P0；首批已实现并通过受控回归，完整故障与真实界面待验证
 | 编号 / 界面 | 结构证据 | 分别审查的重点 | 状态 |
 |---|---|---|---|
 | UI-069 [NotepadSettingsView](../../Client/RelaxKonOS.Client/Apps/Notepad/NotepadSettingsView.axaml) | 入口：CloseSettingsCommand | 导航状态；读取失败保留编辑器；窄窗口；切页与焦点返回 | 结构初查完成，待流程深审与运行验收 |
-| UI-070 [NotepadView](../../Client/RelaxKonOS.Client/Apps/Notepad/NotepadView.axaml) | TextBox；Menu；入口：NewDocumentCommand、OpenDocumentCommand、SaveCommand | 内容空间与焦点；未保存关闭；身份/会话绑定；断线输入与剪贴板 | 结构初查完成，待流程深审与运行验收 |
+| UI-070 [NotepadView](../../Client/RelaxKonOS.Client/Apps/Notepad/NotepadView.axaml) | TextBox；Menu；入口：NewDocumentCommand、OpenDocumentCommand、SaveCommand | 草稿关闭守卫、保存忙碌/目标快照、迟到读取与读取失败保留已修复；继续断线输入与原生验收 | 首批实现/受控回归通过，完整流程及运行验收待完成 |
 
 ### PortForwarding
 
@@ -560,7 +589,7 @@ P0；首批已实现并通过受控回归，完整故障与真实界面待验证
 | 编号 / 界面 | 结构证据 | 分别审查的重点 | 状态 |
 |---|---|---|---|
 | UI-125 [TerminalSettingsView](../../Client/RelaxKonOS.Client/Apps/Terminal/TerminalSettingsView.axaml) | 入口：CloseSettingsCommand | 导航状态；读取失败保留编辑器；窄窗口；切页与焦点返回 | 结构初查完成，待流程深审与运行验收 |
-| UI-126 [TerminalView](../../Client/RelaxKonOS.Client/Apps/Terminal/TerminalView.axaml) | Menu；入口：OpenAdministratorTerminalCommand、OpenSettingsCommand、OpenEnvironmentCommand | 内容空间与焦点；未保存关闭；身份/会话绑定；断线输入与剪贴板 | 结构初查完成，待流程深审与运行验收 |
+| UI-126 [TerminalView](../../Client/RelaxKonOS.Client/Apps/Terminal/TerminalView.axaml) | Menu；入口：OpenAdministratorTerminalCommand、OpenSettingsCommand、OpenEnvironmentCommand | 活跃会话关闭确认已接入窗口守卫；继续断线门禁、迟到输入与原生验收 | 会话关闭语义已实现，受控回归通过，完整验收待完成 |
 
 ### TextEditor
 

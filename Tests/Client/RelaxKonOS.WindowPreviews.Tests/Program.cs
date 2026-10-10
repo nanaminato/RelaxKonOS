@@ -89,6 +89,8 @@ WebSiteScopeChecks.Run();
 CertificateEditorChecks.Run();
 FileShareDialogChecks.Run();
 PortForwardSubmissionChecks.Run();
+TopLevelWindowCloseGuardChecks.Run();
+EditorDraftStateChecks.Run();
 if (args.Contains("--ui-review-only")) return;
 SettingsInteractionChecks.Run(settings, localization);
 SettingsWindowChecks.Run(settings, localization);

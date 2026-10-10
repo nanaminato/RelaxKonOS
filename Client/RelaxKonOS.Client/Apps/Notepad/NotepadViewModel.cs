@@ -12,6 +12,11 @@ public sealed partial class NotepadViewModel : ObservableObject
     private readonly IExplorerClient? _files;
     private bool _isLoading;
 
+    // Bumped whenever the edited document is replaced: a new document, an adopted read, or a
+    // save that moved the document to another path. A late read or write result whose revision
+    // no longer matches must not overwrite or clean the document that replaced it.
+    private int _documentRevision;
+
     public NotepadViewModel(IExplorerClient? files, string defaultEncodingName = "UTF-8")
     {
         _files = files;
@@ -26,6 +31,12 @@ public sealed partial class NotepadViewModel : ObservableObject
     [ObservableProperty] private double _fontSize = 14;
     [ObservableProperty] private bool _isDirty;
     [ObservableProperty] private LocalizedStatus _statusText;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanEditDocument))]
+    private bool _isSaving;
+
+    /// <summary>False while a write is in flight; the editor and its command surface bind to this.</summary>
+    public bool CanEditDocument => !IsSaving;
 
     public int CharCount => Text.Length;
     public int LineCount => string.IsNullOrEmpty(Text) ? 1 : Enumerable.Count<char>(Text, c => c == '\n') + 1;
@@ -60,13 +71,16 @@ public sealed partial class NotepadViewModel : ObservableObject
     [RelayCommand]
     private void NewDocument()
     {
+        if (IsSaving) return;
+        // A new document supersedes any in-flight read or write result.
+        _documentRevision++;
         _isLoading = true;
         Text = string.Empty;
         CurrentPath = null;
         EncodingName = DefaultEncodingName;
         IsDirty = false;
-        StatusText = LocalizedText.Ref("notepad.status.new_document");
         _isLoading = false;
+        StatusText = LocalizedText.Ref("notepad.status.new_document");
     }
 
     public Func<Task<string?>>? RequestFileAsync { get; set; }
@@ -81,6 +95,7 @@ public sealed partial class NotepadViewModel : ObservableObject
     [RelayCommand]
     private async Task OpenDocumentAsync()
     {
+        if (IsSaving) return;
         var path = await (RequestFileAsync?.Invoke() ?? Task.FromResult<string?>(null));
         if (!string.IsNullOrWhiteSpace(path)) await OpenPathAsync(path);
     }
@@ -88,6 +103,10 @@ public sealed partial class NotepadViewModel : ObservableObject
     [RelayCommand]
     private async Task SaveAsync()
     {
+        if (IsSaving) return;
+        if (_files is null) { StatusText = LocalizedText.Ref("notepad.status.connect_before_save"); return; }
+        // Fix the target before any picker opens: the write must not follow a document that was
+        // opened or re-targeted while the picker was up.
         var path = CurrentPath;
         if (string.IsNullOrWhiteSpace(path))
             path = await (RequestSavePathAsync?.Invoke("untitled.txt") ?? Task.FromResult<string?>(null));
@@ -97,6 +116,8 @@ public sealed partial class NotepadViewModel : ObservableObject
     [RelayCommand]
     private async Task SaveAsAsync()
     {
+        if (IsSaving) return;
+        if (_files is null) { StatusText = LocalizedText.Ref("notepad.status.connect_before_save"); return; }
         var suggestedName = string.IsNullOrWhiteSpace(CurrentPath) ? "untitled.txt" : Path.GetFileName(CurrentPath) ?? "untitled.txt";
         var path = await (RequestSavePathAsync?.Invoke(suggestedName) ?? Task.FromResult<string?>(null));
         if (!string.IsNullOrWhiteSpace(path)) await SaveToPathAsync(path);
@@ -105,7 +126,7 @@ public sealed partial class NotepadViewModel : ObservableObject
     [RelayCommand]
     private async Task ChooseEncodingAsync()
     {
-        if (string.IsNullOrWhiteSpace(CurrentPath)) return;
+        if (IsSaving || string.IsNullOrWhiteSpace(CurrentPath)) return;
         var action = await (RequestEncodingActionAsync?.Invoke() ?? Task.FromResult<EncodingDialogAction?>(null));
         if (action is null) return;
         var encoding = await (RequestEncodingAsync?.Invoke() ?? Task.FromResult<string?>(null));
@@ -118,6 +139,7 @@ public sealed partial class NotepadViewModel : ObservableObject
 
     private async Task ReopenWithEncodingAsync(string encodingName)
     {
+        if (IsSaving) return;
         if (string.IsNullOrWhiteSpace(CurrentPath) || !TextFileEncodings.IsSupported(encodingName)) return;
         if (IsDirty && !(await (RequestDiscardChangesAsync?.Invoke() ?? Task.FromResult(false)))) return;
         EncodingName = encodingName;
@@ -126,9 +148,10 @@ public sealed partial class NotepadViewModel : ObservableObject
 
     private async Task SaveWithEncodingAsync(string encodingName)
     {
+        if (IsSaving) return;
         if (string.IsNullOrWhiteSpace(CurrentPath) || !TextFileEncodings.IsSupported(encodingName)) return;
         EncodingName = encodingName;
-        await SaveToPathAsync(CurrentPath);
+        await SaveToPathAsync(CurrentPath!);
     }
 
     [RelayCommand]
@@ -141,33 +164,63 @@ public sealed partial class NotepadViewModel : ObservableObject
     public async Task OpenPathAsync(string path, string? requestedEncoding = null)
     {
         if (_files is null) { StatusText = LocalizedText.Ref("notepad.status.connect_before_open"); return; }
+        // Reserve the next document revision up front: this read supersedes any older in-flight
+        // read, and a document created while it runs is not overwritten by a late result.
+        var revision = ++_documentRevision;
         try
         {
             var bytes = await _files.ReadFileAsync(path);
+            if (revision != _documentRevision) return;
+            // A missing file leaves the current content untouched; the editor keeps its draft.
             if (bytes is null) { StatusText = LocalizedText.Ref("notepad.status.file_missing"); return; }
             var encoding = requestedEncoding ?? DefaultEncodingName;
             _isLoading = true;
-            Text = TextFileEncodings.Decode(bytes, encoding);
-            EncodingName = encoding;
-            CurrentPath = path;
-            IsDirty = false;
+            try
+            {
+                Text = TextFileEncodings.Decode(bytes, encoding);
+                EncodingName = encoding;
+                CurrentPath = path;
+                IsDirty = false;
+            }
+            finally { _isLoading = false; }
             StatusText = LocalizedText.Ref("notepad.status.opened", Path.GetFileName(path), encoding);
         }
-        catch (Exception ex) { StatusText = LocalizedText.Ref("notepad.status.open_failed", ex.Message); }
-        finally { _isLoading = false; }
+        catch (Exception ex)
+        {
+            // Keep whatever the editor already holds instead of clearing it on a failed read.
+            if (revision != _documentRevision) return;
+            StatusText = LocalizedText.Ref("notepad.status.open_failed", ex.Message);
+        }
     }
 
     private async Task SaveToPathAsync(string path)
     {
         if (_files is null) { StatusText = LocalizedText.Ref("notepad.status.connect_before_save"); return; }
+        if (IsSaving) return;
+        // Snapshot the revision, bytes and encoding so the write describes exactly the document
+        // that was on screen when the user asked to save it.
+        var revision = _documentRevision;
+        var content = TextFileEncodings.Encode(Text, EncodingName);
+        var encoding = EncodingName;
+        IsSaving = true;
         try
         {
-            await _files.WriteFileAsync(path, TextFileEncodings.Encode(Text, EncodingName));
-            CurrentPath = path;
-            IsDirty = false;
-            StatusText = LocalizedText.Ref("notepad.status.saved", Path.GetFileName(path), EncodingName);
+            await _files.WriteFileAsync(path, content);
+            // A document swapped in while the write was in flight keeps its own dirty state.
+            if (revision == _documentRevision)
+            {
+                CurrentPath = path;
+                IsDirty = false;
+            }
+            StatusText = LocalizedText.Ref("notepad.status.saved", Path.GetFileName(path), encoding);
         }
-        catch (Exception ex) { StatusText = LocalizedText.Ref("notepad.status.save_failed", ex.Message); }
+        catch (Exception ex)
+        {
+            // The write is unconfirmed. Leave IsDirty set so the user verifies before retrying
+            // rather than silently believing the file now matches the editor.
+            StatusText = LocalizedText.Ref("notepad.status.save_failed", ex.Message);
+        }
+        finally { IsSaving = false; }
     }
 
 }

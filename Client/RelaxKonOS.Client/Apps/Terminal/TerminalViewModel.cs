@@ -49,6 +49,14 @@ public partial class TerminalViewModel : LocalizedObservableObject
         && _session?.CurrentServer is { Platform: RelaxKonOS.Protocol.Common.HostPlatformKind.Windows,
             Host.Capabilities.PrivilegedOperations: true };
 
+    /// <summary>
+    /// True while closing the window would kill a live server PTY. Desktop teardown and logout
+    /// bypass the window guard and run with an unauthenticated session, so the process survives
+    /// and stays available for the next workspace restore — only a deliberate close prompts and
+    /// kills it.
+    /// </summary>
+    public bool HasLiveSession => _terminal is not null && !HasExited && _session is { State: AuthSessionState.Authenticated };
+
     public TerminalViewModel(
         IAuthSession? session,
         ITerminalSettingsClient settingsClient,

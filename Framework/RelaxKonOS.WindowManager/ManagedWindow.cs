@@ -38,6 +38,17 @@ public partial class ManagedWindow : ObservableObject
     /// <summary>Whether this window is a transient modal dialog rather than an application task.</summary>
     public bool IsModalDialog { get; }
 
+    /// <summary>
+    /// Optional guard consulted before a user-initiated close (title-bar button, Alt+F4, taskbar
+    /// or window overview). Return <c>false</c> to keep the window open, for example to confirm
+    /// discarding unsaved changes. Owner and session teardown bypass this guard through
+    /// <see cref="WindowManager.ForceClose"/>.
+    /// </summary>
+    public Func<Task<bool>>? CanCloseAsync { get; set; }
+
+    /// <summary>True while <see cref="CanCloseAsync"/> is running, so repeat gestures check once.</summary>
+    internal bool IsCheckingClose { get; set; }
+
     [ObservableProperty] private string _title = string.Empty;
     [ObservableProperty] private string? _iconGlyph;
     [ObservableProperty] private IImage? _iconImage;
