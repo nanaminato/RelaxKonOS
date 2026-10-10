@@ -8,6 +8,8 @@
 
 当前设计规则仍以 [内置应用 UI](RelaxKonOS.BuiltInApps.UI.md)、[桌面外壳](RelaxKonOS.Desktop.md)、[设置设计](RelaxKonOS.Settings.Design.md) 和 [操作反馈](../applications/RelaxKonOS.DesktopOperationFeedback.md) 为准。已有视觉调整不自动计为本专项流程验收。
 
+内置应用窗口的头部融合（把重复的 `app-header` / `app-toolbar` 搬进宿主标题栏）单独维护进度，见 [融合窗体头部接入计划](RelaxKonOS.FusedWindowHeader.md)；批次、验收标准与恢复指引都在该文件，本文件只保留其与审查清单交叉的部分。
+
 ## 范围与发现方法
 
 桌面启动项目是 `Client/RelaxKonOS.Client.Desktop`，业务界面主要位于共享客户端 `Client/RelaxKonOS.Client`。范围包括登录前窗口、宿主桌面、三套 Shell、内置应用、设置子路由、编辑器、对话框、选择器和通用窗口交互。
