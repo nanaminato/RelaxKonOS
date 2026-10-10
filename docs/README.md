@@ -6,6 +6,7 @@ Android 的设计、功能、支持范围和发布要求统一维护在 [Android
 
 专题补充：
 
+- [桌面界面与流程优化审查](./desktop/UiReview.md)
 - [移动端入口](./mobile/README.md)
 - [虚拟系统盘实施计划](./architecture/RelaxKonOS.VirtualSystemDrive.Goal.md)
 - [虚拟系统盘契约](./architecture/RelaxKonOS.VirtualSystemDrive.Contracts.md)
