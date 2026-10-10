@@ -123,7 +123,7 @@ class OwnerDeviceClientStub : DispatchProxy
     private static string Nonce() =>
         Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
 
-    private static LoginResponse Login()
+    internal static LoginResponse Login()
     {
         var now = DateTimeOffset.UtcNow;
         var userId = Guid.NewGuid();

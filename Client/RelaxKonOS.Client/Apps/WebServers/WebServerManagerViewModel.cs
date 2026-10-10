@@ -1,6 +1,8 @@
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Client.Services.Installation;
 using System.Collections.ObjectModel;
+using Avalonia.Threading;
+using Avalonia.Utilities;
 using RelaxKonOS.Client.Apps.Certificates;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Privileged;
@@ -13,6 +15,8 @@ using RelaxKonOS.Protocol.Certificates;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.WebServers;
+using RelaxKonOS.Protocol.Identity;
+using RelaxKonOS.Protocol.Workspace;
 
 namespace RelaxKonOS.Client.Apps.WebServers;
 
@@ -30,6 +34,37 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     private readonly IAuthSession _session;
     private readonly IAppPermissionScope _permissions;
     private readonly IHostElevationBroker _elevations;
+    private readonly SiteConnection? _windowConnection;
+    private long _siteTargetVersion;
+    private long _siteSelectionVersion;
+    private bool _siteEditorOpen;
+    private long _siteEditorTargetVersion;
+    private string? _siteEditorSiteId;
+    private WebServerSiteDto? _siteEditorSnapshot;
+    public bool SiteEditorTargetChanged => _siteEditorOpen && (_siteEditorTargetVersion != _siteTargetVersion
+        || SelectedSite?.Id != _siteEditorSiteId || _windowConnection?.IsCurrent(_session) != true);
+    public string SiteEditorTargetChangeText => LocalizedText.Get(_windowConnection?.IsCurrent(_session) == true
+        ? "webservers.site.editor_target_changed" : "webservers.site.editor_connection_changed");
+
+    public void BeginSiteEditing()
+    {
+        _siteEditorOpen = true;
+        _siteEditorTargetVersion = _siteTargetVersion;
+        _siteEditorSiteId = SelectedSite?.Id;
+        _siteEditorSnapshot = SelectedSite;
+        OnPropertyChanged(nameof(SiteEditorTargetChanged));
+        OnPropertyChanged(nameof(SiteEditorTargetChangeText));
+        SaveSiteCommand.NotifyCanExecuteChanged();
+    }
+
+    public void EndSiteEditing()
+    {
+        _siteEditorOpen = false;
+        _siteEditorSnapshot = null;
+        OnPropertyChanged(nameof(SiteEditorTargetChanged));
+        OnPropertyChanged(nameof(SiteEditorTargetChangeText));
+        SaveSiteCommand.NotifyCanExecuteChanged();
+    }
     [ObservableProperty] private bool _isOperationLogExpanded;
     [ObservableProperty] private string _operationLog = string.Empty;
     partial void OnOperationTextChanged(LocalizedStatus value)
@@ -52,6 +87,9 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         _session = session;
         _permissions = permissions;
         _elevations = elevations;
+        _windowConnection = SiteConnection.Capture(session);
+        WeakEventHandlerManager.Subscribe<IAuthSession, AuthSessionStateChangedEventArgs, WebServerManagerViewModel>(
+            session, nameof(IAuthSession.StateChanged), OnSessionChanged);
         InstallVersion = string.Empty;
         SelectedSiteCertificateSource = SiteCertificateSources[0];
     }
@@ -73,6 +111,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(EnableAcmeHttp01Command), nameof(StartManagedCommand), nameof(StopCommand), nameof(ToggleManagedCommand), nameof(RestartCommand), nameof(ReloadCommand), nameof(UninstallManagedCommand), nameof(TestConfigurationCommand), nameof(RefreshStatusCommand), nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand))]
     [NotifyPropertyChangedFor(nameof(IsIntegratedServer), nameof(IsManagedServer), nameof(IsIntegratedOrManagedServer), nameof(IsManagedServerRunning), nameof(ManagementHint), nameof(ManagedLifecycleActionText))]
+    [NotifyCanExecuteChangedFor(nameof(RefreshSitesCommand))]
     private WebServerDto? _selectedServer;
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(IntegrateCommand))]
     private WebServerIntegrationCandidateDto? _selectedIntegrationCandidate;
@@ -102,12 +141,22 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     private SiteCertificateSourceOption? _selectedSiteCertificateSource;
     [ObservableProperty] private string _siteCertificatePath = string.Empty;
     [ObservableProperty] private string _sitePrivateKeyPath = string.Empty;
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RefreshSitesCommand), nameof(RefreshCommand), nameof(DiscoverCommand))]
+    private bool _isSavingSite;
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand))]
+    private bool _siteFactsAvailable;
+    private long _siteReadVersion;
     [ObservableProperty] private LocalizedStatus _siteStatusText = string.Empty;
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(DiscoverCommand), nameof(InstallManagedCommand), nameof(RefreshWindowsVersionsCommand), nameof(ShowManagedDownloadCommand), nameof(SelectLocalPackageCommand), nameof(InstallManagedThroughHostCommand), nameof(IntegrateCommand), nameof(EnableAcmeHttp01Command), nameof(StartManagedCommand), nameof(StopCommand), nameof(ToggleManagedCommand), nameof(RestartCommand), nameof(ReloadCommand), nameof(UninstallManagedCommand), nameof(TestConfigurationCommand), nameof(RefreshStatusCommand), nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RefreshSitesCommand))]
     private bool _isLoading;
     // Every action uses IsOperationRunning in its CanExecute predicate. Keep the command state
     // in sync before and after polling, otherwise controls can retain a stale disabled state.
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(DiscoverCommand), nameof(InstallManagedCommand), nameof(RefreshWindowsVersionsCommand), nameof(ShowManagedDownloadCommand), nameof(SelectLocalPackageCommand), nameof(InstallManagedThroughHostCommand), nameof(IntegrateCommand), nameof(EnableAcmeHttp01Command), nameof(StartManagedCommand), nameof(StopCommand), nameof(ToggleManagedCommand), nameof(RestartCommand), nameof(ReloadCommand), nameof(UninstallManagedCommand), nameof(TestConfigurationCommand), nameof(RefreshStatusCommand), nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand), nameof(CancelOperationCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RefreshSitesCommand))]
     private bool _isOperationRunning;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsManagedInstallAvailable))]
     private bool _hasManagedInstallation;
@@ -272,6 +321,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     [RelayCommand(CanExecute = nameof(CanRefreshStatus))]
     private async Task RefreshStatusAsync()
     {
+        if (!HasReadPermission) return;
         var server = SelectedServer;
         if (server is null) return;
         IsLoading = true;
@@ -429,8 +479,12 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     [RelayCommand(CanExecute = nameof(CanOpenSiteEditor))]
     private async Task NewSiteAsync()
     {
+        if (!CanOpenSiteEditor) return;
         ResetSiteEditor();
+        var targetVersion = _siteTargetVersion;
+        var selectionVersion = _siteSelectionVersion;
         await LoadCertificatesAsync();
+        if (!CanOpenSiteEditor || targetVersion != _siteTargetVersion || selectionVersion != _siteSelectionVersion) return;
         SiteStatusText = LocalizedText.Ref("webservers.site.new_status");
         if (ShowSiteEditorAsync is not null) await ShowSiteEditorAsync(false);
     }
@@ -438,15 +492,33 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     [RelayCommand(CanExecute = nameof(CanEditSite))]
     private async Task EditSiteAsync()
     {
+        if (!CanEditSite) return;
         if (SelectedSite is null) return;
+        var targetVersion = _siteTargetVersion;
+        var selectionVersion = _siteSelectionVersion;
         await LoadCertificatesAsync();
+        if (!CanEditSite || targetVersion != _siteTargetVersion || selectionVersion != _siteSelectionVersion) return;
         if (ShowSiteEditorAsync is not null) await ShowSiteEditorAsync(true);
     }
 
     [RelayCommand(CanExecute = nameof(CanSaveSite))]
     private async Task SaveSiteAsync()
     {
+        if (!CanSaveSite) return;
+        IsSavingSite = true;
+        try { await SaveSiteCoreAsync(); }
+        finally { IsSavingSite = false; }
+    }
+
+    private async Task SaveSiteCoreAsync()
+    {
         var server = SelectedServer;
+        var site = _siteEditorSnapshot;
+        var siteId = site?.Id;
+        var targetVersion = _siteTargetVersion;
+        bool IsCurrentConnection() => _windowConnection?.IsCurrent(_session) == true
+            && targetVersion == _siteTargetVersion && SelectedServer?.Id == server?.Id;
+        bool IsCurrent() => IsCurrentConnection() && SelectedSite?.Id == siteId;
         if (server is null || !HasManagePermission) return;
         var bindings = SiteBindings
             .Select(binding => new WebServerSiteBindingDto(binding.Domain.Trim(), binding.Port))
@@ -465,32 +537,47 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         }
         try
         {
-            var request = new UpsertWebServerSiteRequest(SelectedSite?.Id, SiteName.Trim(), bindings,
+            var request = new UpsertWebServerSiteRequest(site?.Id, SiteName.Trim(), bindings,
                 string.IsNullOrWhiteSpace(SiteRootPath) ? null : SiteRootPath.Trim(), SiteGrantNginxReadAccess, SiteSpaFallback, routes,
                 SelectedSiteCertificateSource?.Value == SiteCertificateSource.Managed ? SelectedSiteCertificate?.Id : null, SiteHttpsEnabled, SiteRedirectHttpToHttps, SiteIpv6Enabled,
                 SelectedSiteCertificateSource?.Value == SiteCertificateSource.ServerFiles && !string.IsNullOrWhiteSpace(SiteCertificatePath) ? SiteCertificatePath : null,
-                SelectedSiteCertificateSource?.Value == SiteCertificateSource.ServerFiles && !string.IsNullOrWhiteSpace(SitePrivateKeyPath) ? SitePrivateKeyPath : null, SelectedSite?.UpdatedAt);
+                SelectedSiteCertificateSource?.Value == SiteCertificateSource.ServerFiles && !string.IsNullOrWhiteSpace(SitePrivateKeyPath) ? SitePrivateKeyPath : null, site?.UpdatedAt);
             var saved = await _elevations.ExecuteAsync(HostElevationCapability.NginxConfigurationWrite, server.Id,
-                () => _client.UpsertSiteAsync(server.Id, request));
+                () => IsCurrent() && HasManagePermission
+                    ? _client.UpsertSiteAsync(server.Id, request)
+                    : Task.FromException<WebServerSiteDto?>(new OperationCanceledException("The site editor target changed.")));
+            if (!IsCurrent()) return;
             if (saved is null) { await ReportSiteSaveErrorAsync(LocalizedText.Ref("webservers.site.save_failed")); return; }
-            await LoadSitesAsync();
+            var refreshed = await LoadSitesAsync();
+            if (!IsCurrentConnection()) return;
+            if (!refreshed)
+            {
+                var previous = Sites.FirstOrDefault(site => site.Id == saved.Id);
+                if (previous is not null) Sites.Remove(previous);
+                Sites.Add(saved);
+            }
             SelectedSite = Sites.FirstOrDefault(site => site.Id == saved.Id);
-            SiteStatusText = LocalizedText.Ref("webservers.site.save_succeeded");
+            SiteStatusText = LocalizedText.Ref(refreshed ? "webservers.site.save_succeeded" : "webservers.site.save_refresh_failed");
             if (CloseSiteEditorAsync is not null) await CloseSiteEditorAsync();
         }
         catch (WebServerApiException exception)
         {
+            if (!IsCurrent()) return;
             var message = IsConfigurationElevationRequired(exception)
                 ? LocalizedText.Get("webservers.problem.site_elevation_required")
                 : SiteSaveProblemText(exception.ProblemCode);
             await ReportSiteSaveErrorAsync(LocalizedStatus.Literal(message));
         }
-        catch (Exception) { await ReportSiteSaveErrorAsync(LocalizedText.Ref("webservers.site.save_failed")); }
+        catch (Exception)
+        {
+            if (IsCurrent()) await ReportSiteSaveErrorAsync(LocalizedText.Ref("webservers.site.save_failed"));
+        }
     }
 
     [RelayCommand(CanExecute = nameof(CanDeleteSite))]
     private async Task DeleteSiteAsync()
     {
+        if (!CanDeleteSite) return;
         var server = SelectedServer;
         var site = SelectedSite;
         if (server is null || site is null || !HasManagePermission) return;
@@ -553,6 +640,11 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
 
     partial void OnSelectedServerChanged(WebServerDto? value)
     {
+        _siteTargetVersion++;
+        OnPropertyChanged(nameof(SiteEditorTargetChanged));
+        OnPropertyChanged(nameof(SiteEditorTargetChangeText));
+        SiteFactsAvailable = false;
+        _siteReadVersion++;
         SelectedStatusText = LocalizedStatus.Literal(ManagementHint);
         SelectedRuntimeState = WebServerRuntimeState.Unknown;
         TestResultText = string.Empty;
@@ -567,6 +659,10 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
 
     partial void OnSelectedSiteChanged(WebServerSiteDto? value)
     {
+        _siteSelectionVersion++;
+        OnPropertyChanged(nameof(SiteEditorTargetChanged));
+        OnPropertyChanged(nameof(SiteEditorTargetChangeText));
+        if (_siteEditorOpen && !IsSavingSite) return;
         if (value is null) return;
         SiteName = value.Name;
         SiteBindingsBatch = string.Empty;
@@ -598,16 +694,18 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
 
     private async Task LoadCertificatesAsync()
     {
+        if (!HasReadPermission) return;
         try
         {
             var certificates = await _certificates.ListAsync();
+            if (!HasReadPermission) return;
             var selectedId = SelectedSiteCertificate?.Id ?? SelectedSite?.CertificateId;
             Certificates.Clear();
             foreach (var certificate in certificates.Where(certificate => certificate.Status is CertificateStatus.Active or CertificateStatus.Issued)) Certificates.Add(certificate);
             if (selectedId is { } id)
                 SelectedSiteCertificate = Certificates.FirstOrDefault(certificate => certificate.Id == id);
         }
-        catch { Certificates.Clear(); }
+        catch { if (HasReadPermission) Certificates.Clear(); }
     }
 
     [RelayCommand]
@@ -644,18 +742,44 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         }
     }
 
-    private async Task LoadSitesAsync()
+    [RelayCommand(CanExecute = nameof(CanRefreshSites))]
+    private async Task RefreshSitesAsync()
     {
-        Sites.Clear();
-        if (SelectedServer is null) return;
+        if (!CanRefreshSites) return;
+        IsLoading = true;
+        try { await LoadSitesAsync(); }
+        finally { IsLoading = false; }
+    }
+
+    private async Task<bool> LoadSitesAsync()
+    {
+        var server = SelectedServer;
+        var version = ++_siteReadVersion;
+        SiteFactsAvailable = false;
+        if (server is null || !HasReadPermission) return false;
         try
         {
-            foreach (var site in await _client.ListSitesAsync(SelectedServer.Id) ?? []) Sites.Add(site);
+            var sites = await _client.ListSitesAsync(server.Id);
+            if (!HasReadPermission || version != _siteReadVersion || SelectedServer?.Id != server.Id) return false;
+            if (sites is null)
+            {
+                SiteStatusText = LocalizedText.Ref("webservers.site.list_failed");
+                return false;
+            }
+            Sites.Clear();
+            foreach (var site in sites) Sites.Add(site);
+            SiteFactsAvailable = true;
             SiteStatusText = Sites.Count == 0
                 ? LocalizedText.Ref("webservers.site.list_empty")
                 : LocalizedText.Ref("webservers.site.list_ready", Sites.Count);
+            return true;
         }
-        catch (Exception) { SiteStatusText = LocalizedText.Ref("webservers.site.list_failed"); }
+        catch (Exception)
+        {
+            if (HasReadPermission && version == _siteReadVersion && SelectedServer?.Id == server.Id)
+                SiteStatusText = LocalizedText.Ref("webservers.site.list_failed");
+            return false;
+        }
     }
 
     private async Task ReportSiteSaveErrorAsync(LocalizedStatus message)
@@ -810,27 +934,29 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         return operation;
     }
 
-    private bool HasReadPermission => _permissions.IsGranted(AppPermissions.ServerWebServersRead);
+    private bool HasReadPermission => _windowConnection?.IsCurrent(_session) == true && _permissions.IsGranted(AppPermissions.ServerWebServersRead);
     private bool HasManagePermission => HasReadPermission && _permissions.IsGranted(AppPermissions.ServerWebServersManage);
-    private bool CanRefresh => HasReadPermission && !IsLoading && !IsOperationRunning;
-    private bool CanDiscover => HasReadPermission && !IsLoading && !IsOperationRunning;
+    private bool CanRefresh => HasReadPermission && !IsSavingSite && !IsLoading && !IsOperationRunning;
+    private bool CanRefreshSites => HasReadPermission && !IsSavingSite && !IsLoading && !IsOperationRunning && SelectedServer is not null;
+    private bool CanDiscover => HasReadPermission && !IsSavingSite && !IsLoading && !IsOperationRunning;
     // A server from an older deployment can omit the capabilities object. Treat that response as
     // read-only instead of letting command re-evaluation crash while the DataGrid selects it.
     private bool CanRefreshStatus => HasReadPermission && !IsLoading && !IsOperationRunning && SelectedServer?.Capabilities?.CanRead == true;
     private bool CanTestConfiguration => HasReadPermission && !IsLoading && !IsOperationRunning && SelectedServer?.Capabilities?.CanTestConfiguration == true;
     private bool CanInstallManaged => HasManagePermission && !IsLoading && !IsOperationRunning;
     private bool CanIntegrate => HasManagePermission && !IsLoading && !IsOperationRunning && SelectedIntegrationCandidate is not null;
-    private bool CanEnableAcmeHttp01 => CanSaveSite;
+    private bool CanEnableAcmeHttp01 => CanManageSites;
     private bool CanStart => HasManagePermission && !IsLoading && !IsOperationRunning && SelectedServer?.Capabilities?.CanStart == true;
     private bool CanStop => HasManagePermission && !IsLoading && !IsOperationRunning && SelectedServer?.Capabilities?.CanStop == true;
     private bool CanToggleManaged => IsManagedServerRunning ? CanStop : CanStart;
     private bool CanRestart => HasManagePermission && !IsLoading && !IsOperationRunning && SelectedServer?.Capabilities?.CanRestart == true;
     private bool CanReload => HasManagePermission && !IsLoading && !IsOperationRunning && SelectedServer?.Capabilities?.CanReload == true;
     private bool CanUninstallManaged => HasManagePermission && !IsLoading && !IsOperationRunning && SelectedServer?.Capabilities?.CanUninstall == true;
-    private bool CanSaveSite => HasManagePermission && !IsLoading && !IsOperationRunning && SelectedServer?.ManagementMode is WebServerManagementMode.Integrated or WebServerManagementMode.Managed;
-    private bool CanOpenSiteEditor => CanSaveSite;
-    private bool CanEditSite => CanSaveSite && SelectedSite is not null;
-    private bool CanDeleteSite => CanSaveSite && SelectedSite is not null;
+    private bool CanManageSites => HasManagePermission && SiteFactsAvailable && !IsSavingSite && !IsLoading && !IsOperationRunning && SelectedServer?.ManagementMode is WebServerManagementMode.Integrated or WebServerManagementMode.Managed;
+    private bool CanSaveSite => CanManageSites && _siteEditorOpen && _siteEditorTargetVersion == _siteTargetVersion && SelectedSite?.Id == _siteEditorSiteId;
+    private bool CanOpenSiteEditor => CanManageSites;
+    private bool CanEditSite => CanManageSites && SelectedSite is not null;
+    private bool CanDeleteSite => CanManageSites && SelectedSite is not null;
     private bool CanCancelOperation => IsOperationRunning;
 
     private static string OperationName(string kind) => kind switch
@@ -885,6 +1011,40 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
 
     // nginx -t + reload is fast; a tighter poll keeps the UI responsive without spamming the host.
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(750);
+
+    private void OnSessionChanged(object? sender, AuthSessionStateChangedEventArgs args)
+    {
+        void Invalidate()
+        {
+            if (_windowConnection?.IsCurrent(_session) == true) return;
+            _siteReadVersion++;
+            SiteFactsAvailable = false;
+            SelectedServer = null;
+            Servers.Clear();
+            Sites.Clear();
+            Certificates.Clear();
+            ResetSiteEditor();
+            SiteStatusText = string.Empty;
+            OnPropertyChanged(nameof(SiteEditorTargetChanged));
+            OnPropertyChanged(nameof(SiteEditorTargetChangeText));
+            try { _operationCts?.Cancel(); }
+            catch (ObjectDisposedException) { }
+        }
+        if (Dispatcher.UIThread.CheckAccess()) Invalidate();
+        else Dispatcher.UIThread.Post(Invalidate);
+    }
+
+    private sealed record SiteConnection(string ServiceId, SessionDto Session, UserDto User)
+    {
+        public static SiteConnection? Capture(IAuthSession session)
+            => session.State == AuthSessionState.Authenticated && session.ServiceId is { Length: > 0 } serviceId
+                && session.CurrentSession is { } current && session.CurrentUser is { } user
+                ? new(serviceId, current, user) : null;
+
+        public bool IsCurrent(IAuthSession session) => session.State == AuthSessionState.Authenticated
+            && session.ServiceId == ServiceId && ReferenceEquals(session.CurrentSession, Session)
+            && ReferenceEquals(session.CurrentUser, User);
+    }
 }
 
 /// <summary>Editable, UI-local representation of one domain and HTTP-port pair.</summary>

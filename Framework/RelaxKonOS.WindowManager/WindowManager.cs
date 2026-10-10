@@ -376,6 +376,10 @@ public sealed class WindowManager : IWindowManager
 
     public void Close(ManagedWindow window)
     {
+        var modal = _modalSessions.LastOrDefault(s => ReferenceEquals(s.DialogWindow, window));
+        if (modal is not null) { modal.RequestCancel(); return; }
+        var shellModal = _shellModalSessions.LastOrDefault(s => ReferenceEquals(s.DialogWindow, window));
+        if (shellModal is not null) { shellModal.RequestCancel(); return; }
         if (!_windows.Remove(window))
             return;
 
@@ -701,7 +705,7 @@ public sealed class WindowManager : IWindowManager
             var session = _modalSessions.LastOrDefault(candidate => ReferenceEquals(candidate.DialogWindow, window));
             if (session is not null)
             {
-                session.Cancel();
+                session.RequestCancel();
                 e.Handled = true;
                 return;
             }
@@ -709,7 +713,7 @@ public sealed class WindowManager : IWindowManager
             var shellSession = _shellModalSessions.LastOrDefault(candidate => ReferenceEquals(candidate.DialogWindow, window));
             if (shellSession is not null)
             {
-                shellSession.Cancel();
+                shellSession.RequestCancel();
                 e.Handled = true;
             }
             return;

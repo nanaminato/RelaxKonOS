@@ -14,6 +14,7 @@ using RelaxKonOS.Protocol.ServerCenter;
 await UsageMemoryChecks.RunAsync(Check);
 
 AppBuilder.Configure<PickerTestApp>().UseHeadless(new AvaloniaHeadlessPlatformOptions()).SetupWithoutStarting();
+LoginWindowLifetimeChecks.Run(Check);
 var directory = Path.Combine(Path.GetTempPath(), "rk-login-selection-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(directory);
 try

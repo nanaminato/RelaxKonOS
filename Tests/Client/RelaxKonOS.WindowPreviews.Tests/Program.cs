@@ -71,6 +71,16 @@ foreach (var app in new RelaxKonOS.AppSDK.RemoteApplicationBase[]
         throw new InvalidOperationException("Closed window retained its language subscription.");
 }
 Console.WriteLine("PASS: Image viewer, browser and welcome window titles follow three languages and unsubscribe on close.");
+ModalCancellationChecks.Run();
+DockerSubmissionChecks.Run();
+FirewallSubmissionChecks.Run();
+ServerCenterDialogChecks.Run();
+InstallationWizardDialogChecks.Run();
+LocalInstallationCloseChecks.Run();
+WebSiteEditorChecks.Run();
+WebSiteReadRecoveryChecks.Run();
+WebSiteScopeChecks.Run();
+if (args.Contains("--ui-review-only")) return;
 SettingsInteractionChecks.Run(settings, localization);
 SettingsWindowChecks.Run(settings, localization);
 RemoteClockChecks.Run(settings, localization, services);

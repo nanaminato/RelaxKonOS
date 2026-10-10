@@ -10,18 +10,21 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
 {
     private readonly ServerCenterViewModel _serverCenter;
     private readonly Action _close;
+    private readonly Func<Task<bool>> _cancelRequested;
+    private object?[] _initialDraft;
     private readonly Func<Task<string?>> _chooseServerBundle;
     private readonly Func<Task> _showHostAddresses;
     private readonly Func<ServerInstallationOptions, Task<bool>> _deploy;
     public bool IsLocalInstallation { get; }
     public bool CanShowHostAddresses => !IsLocalInstallation;
 
-    public ServerInstallationWizardViewModel(ServerCenterViewModel serverCenter, Action close,
+    public ServerInstallationWizardViewModel(ServerCenterViewModel serverCenter, Action close, Func<Task<bool>> cancelRequested,
         Func<Task<string?>> chooseServerBundle, Func<Task> showHostAddresses,
         Func<ServerInstallationOptions, Task<bool>>? localDeploy = null)
     {
         _serverCenter = serverCenter;
         _close = close;
+        _cancelRequested = cancelRequested;
         _chooseServerBundle = chooseServerBundle;
         _showHostAddresses = showHostAddresses;
         IsLocalInstallation = localDeploy is not null;
@@ -58,12 +61,28 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
             new(ServerCertificateMode.Custom, Text("server_center.wizard.certificate_custom", "Use a custom certificate")),
             new(ServerCertificateMode.SelfSigned, Text("server_center.wizard.certificate_self_signed", "Generate a self-signed certificate"))
         ];
-        var installedUrl = serverCenter.SelectedHost?.LastVerified?.ListenUrl;
+        var installedUrl = IsLocalInstallation ? null : serverCenter.SelectedHost?.LastVerified?.ListenUrl;
         SelectedCertificateMode = CertificateModes[installedUrl?.StartsWith("https://", StringComparison.OrdinalIgnoreCase) == true ? 2 : 0];
         if (Uri.TryCreate(installedUrl, UriKind.Absolute, out var installedUri)) ServerPortText = installedUri.Port.ToString();
         SelectedCertificateFormat = CertificateFormats[0];
         SelectedMode = Modes.FirstOrDefault(option => option.Mode == serverCenter.SelectedHost?.LastVerified?.Mode) ?? Modes[0];
+        _initialDraft = CaptureDraft();
     }
+
+    public bool HasDraftChanges => !_initialDraft.SequenceEqual(CaptureDraft());
+    public void ResetDraftBaseline() => _initialDraft = CaptureDraft();
+
+    private object?[] CaptureDraft() =>
+    [
+        SelectedSource?.Source, SelectedMode?.Mode, LocalBundlePath, RemoteBundlePath,
+        SelectedFileAccess?.Scope, SelectedNetwork?.Profile, SelectedCertificateMode?.Mode, SelectedCertificateFormat?.Format,
+        CertificatePath, CertificatePrivateKeyPath, CertificatePassword, SudoPassword, SelfSignedIdentities,
+        ServerPortText, PackageUri, PackageDigest, ReleaseCatalogBaseUri, InstallRoot, DataRoot, ConfigRoot, StateRoot, CacheRoot,
+        FileRoots, AdministratorFileRoots, RootFileRoots, SelectedAdministratorFileAccess?.Scope, SelectedRootFileAccess?.Scope,
+        AddFirewallRule, DockerAccess, AllowUnsupportedSystem
+    ];
+
+    public void ClearSecrets() => SudoPassword = CertificatePassword = string.Empty;
 
     public IReadOnlyList<InstallationSourceOption> Sources { get; }
     public IReadOnlyList<InstallationModeOption> Modes { get; }
@@ -120,7 +139,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     public string PersonalModeHint => Text("server_center.wizard.windows_personal_hint", "Your account owns this installation and is its RelaxKonOS administrator. Installation and maintenance request UAC; daily operations use an owner-bound privileged helper. Administrator terminals run as LocalSystem. Paired devices share this identity.");
     public bool IsUserMode => SelectedMode?.Mode == ServerInstallMode.LinuxUser;
     public bool IsLinuxSystemMode => SelectedMode?.Mode == ServerInstallMode.LinuxSystem;
-    public bool IsLinuxHost => _serverCenter.SelectedPlatform?.Platform == HostPlatformKind.Linux;
+    public bool IsLinuxHost => !IsLocalInstallation && _serverCenter.SelectedPlatform?.Platform == HostPlatformKind.Linux;
     public bool IsFileWhitelist => SelectedFileAccess?.Scope == ServerFileAccessScope.Whitelist;
     public bool IsAdministratorWhitelist => SelectedAdministratorFileAccess?.Scope == ServerFileAccessScope.Whitelist;
     public bool IsRootWhitelist => SelectedRootFileAccess?.Scope == ServerFileAccessScope.Whitelist;
@@ -270,16 +289,16 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void Cancel()
+    private async Task CancelAsync()
     {
-        SudoPassword = string.Empty;
-        CertificatePassword = string.Empty;
-        _close();
+        if (IsBusy || _serverCenter.IsBusy) return;
+        if (await _cancelRequested()) ClearSecrets();
     }
 
     [RelayCommand(CanExecute = nameof(CanInstall))]
     private async Task InstallAsync()
     {
+        if (!CanInstall()) return;
         if ((IsLocalBundle || IsRemoteBundle) && !HasBundle)
         {
             ErrorMessage = BundleRequiredText;

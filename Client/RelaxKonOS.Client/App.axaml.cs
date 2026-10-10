@@ -50,6 +50,7 @@ public partial class App : Application
             var shutdownRequested = false;
             LoginWindow CreateLoginWindow()
             {
+                loginViewModel.BeginWindowSession();
                 var window = new LoginWindow { DataContext = loginViewModel };
                 window.Closed += (_, _) =>
                 {
@@ -73,6 +74,7 @@ public partial class App : Application
                     if (shutdownRequested) return;
 
                     if (e.State == AuthSessionState.Unauthenticated
+                        && session.State == AuthSessionState.Unauthenticated
                         && e.EndReason is AuthSessionEndReason.RefreshTokenInvalid or AuthSessionEndReason.UserSignedOut
                         && mainWindow is not null)
                     {
@@ -95,18 +97,20 @@ public partial class App : Application
                         return;
                     }
 
-                    if (e.State != AuthSessionState.Authenticated || mainWindow is not null)
+                    if (e.State != AuthSessionState.Authenticated || session.State != AuthSessionState.Authenticated || mainWindow is not null)
                         return;
                     if (e.RememberedProfileSaveResult is { } saveResult
                         && saveResult != RememberedProfileSaveResult.Saved
                         && !notificationPreferences.IsPasswordSaveWarningDismissed())
                         await ShowRememberedProfileSaveWarningAsync(loginWindow, saveResult, notificationPreferences);
 
+                    if (shutdownRequested || session.State != AuthSessionState.Authenticated || mainWindow is not null) return;
+
                     var shell = Services.GetRequiredService<DesktopShellViewModel>();
                     mainWindow = new MainWindow { DataContext = shell };
                     desktop.MainWindow = mainWindow;
                     mainWindow.Show();
-                    loginWindow.Close();
+                    loginWindow.CloseForDesktop();
                     mainWindow.Closed += (_, _) =>
                     {
                         if (!replacingMainWindow)
@@ -118,14 +122,14 @@ public partial class App : Application
             Services.GetRequiredService<SshDesktopSession>().Connected += (_, _) =>
                 Dispatcher.UIThread.Post(() =>
                 {
-                    if (shutdownRequested || mainWindow is not null) return;
+                    if (shutdownRequested || mainWindow is not null || !Services.GetRequiredService<SshDesktopSession>().IsConnected) return;
                     var shell = Services.GetRequiredService<DesktopShellViewModel>();
                     shell.PopulateDesktop();
                     mainWindow = new MainWindow { DataContext = shell };
                     mainWindow.DesktopReady += (_, _) => shell.OpenTerminalCommand.Execute(null);
                     desktop.MainWindow = mainWindow;
                     mainWindow.Show();
-                    loginWindow.Close();
+                    loginWindow.CloseForDesktop();
                     mainWindow.Closed += (_, _) => desktop.Shutdown();
                 });
 

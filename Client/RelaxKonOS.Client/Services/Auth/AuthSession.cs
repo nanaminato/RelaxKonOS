@@ -15,6 +15,8 @@ public sealed class AuthSession : IAuthSession
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
 
     private ServerConnectionIdentity? _identity;
+    private long _loginGeneration;
+    private readonly Dictionary<long, AuthTokens> _pendingSignOuts = new();
 
     public AuthSession(IRelaxKonOSClient client, IRememberedSessionStore rememberedSessionStore,
         OwnerDeviceAuthenticationService ownerDevices)
@@ -51,19 +53,13 @@ public sealed class AuthSession : IAuthSession
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(identity);
-        lock (_gate)
-        {
-            if (State == AuthSessionState.Connecting)
-                throw new InvalidOperationException("A login request is already in progress.");
-            State = AuthSessionState.Connecting;
-        }
-        RaiseStateChanged();
+        var generation = BeginLogin(ct);
 
         try
         {
             // Requests always go to the resolved transport address; the credential key never does.
             var response = await _client.LoginAsync(identity.EffectiveBaseUrl, request, ct);
-            Apply(response, identity);
+            EnsureCurrentLogin(generation, ct);
 
             RememberedProfileSaveResult? saveResult = null;
             if (rememberServer)
@@ -73,7 +69,7 @@ public sealed class AuthSession : IAuthSession
                         rememberPassword ? request.Password : null, DateTimeOffset.UtcNow) { DisplayName = identity.DisplayName }, ct);
             }
 
-            State = AuthSessionState.Authenticated;
+            CompleteLogin(generation, ct, response, identity);
             // Saving a local credential is best-effort: it must not turn a successful remote login into an error,
             // but the UI needs the outcome so it can explain why the password will not be prefilled next time.
             RaiseStateChanged(saveResult);
@@ -81,8 +77,7 @@ public sealed class AuthSession : IAuthSession
         }
         catch
         {
-            State = AuthSessionState.Unauthenticated;
-            RaiseStateChanged();
+            ResetAfterLoginFailure(generation);
             throw;
         }
     }
@@ -91,34 +86,34 @@ public sealed class AuthSession : IAuthSession
         string clientVersion, bool rememberServer, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(identity);
-        BeginLogin();
+        var generation = BeginLogin(ct);
         try
         {
             var response = await _ownerDevices.BootstrapWindowsAsync(identity, deviceName, clientVersion, ct);
-            Apply(response, identity);
+            EnsureCurrentLogin(generation, ct);
             var saveResult = await RememberOwnerDeviceLoginAsync(identity, response, rememberServer, ct);
-            State = AuthSessionState.Authenticated;
+            CompleteLogin(generation, ct, response, identity);
             RaiseStateChanged(saveResult);
             return response;
         }
-        catch { ResetAfterLoginFailure(); throw; }
+        catch { ResetAfterLoginFailure(generation); throw; }
     }
 
     public async Task<LoginResponse> LoginWithOwnerDeviceAsync(ServerConnectionIdentity identity, string? keyPassphrase,
         bool rememberServer, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(identity);
-        BeginLogin();
+        var generation = BeginLogin(ct);
         try
         {
             var response = await _ownerDevices.SignInAsync(identity, keyPassphrase, ct);
-            Apply(response, identity);
+            EnsureCurrentLogin(generation, ct);
             var saveResult = await RememberOwnerDeviceLoginAsync(identity, response, rememberServer, ct);
-            State = AuthSessionState.Authenticated;
+            CompleteLogin(generation, ct, response, identity);
             RaiseStateChanged(saveResult);
             return response;
         }
-        catch { ResetAfterLoginFailure(); throw; }
+        catch { ResetAfterLoginFailure(generation); throw; }
     }
 
     public async Task<string> CreateOwnerDevicePairingPayloadAsync(string publicPairingUrl, CancellationToken ct = default)
@@ -132,20 +127,20 @@ public sealed class AuthSession : IAuthSession
     public async Task<LoginResponse> AcceptOwnerDevicePairingAsync(string payload, string deviceName, string platform,
         string clientVersion, string? keyPassphrase, bool rememberServer, CancellationToken ct = default)
     {
-        BeginLogin();
+        var generation = BeginLogin(ct);
         try
         {
             var response = await _ownerDevices.AcceptPairingPayloadAsync(payload, deviceName, platform, clientVersion,
                 keyPassphrase, ct);
             var pairing = OwnerDeviceAuthenticationService.ParsePairingPayload(payload);
             var identity = ServerConnectionIdentityRules.Direct(pairing.ServerUrl);
-            Apply(response, identity);
+            EnsureCurrentLogin(generation, ct);
             var saveResult = await RememberOwnerDeviceLoginAsync(identity, response, rememberServer, ct);
-            State = AuthSessionState.Authenticated;
+            CompleteLogin(generation, ct, response, identity);
             RaiseStateChanged(saveResult);
             return response;
         }
-        catch { ResetAfterLoginFailure(); throw; }
+        catch { ResetAfterLoginFailure(generation); throw; }
     }
 
     /// <summary>
@@ -193,21 +188,36 @@ public sealed class AuthSession : IAuthSession
 
     public async Task LogoutAsync(CancellationToken ct = default)
     {
-        await _refreshGate.WaitAsync(ct);
+        string? url;
+        AuthTokens? tokens;
+        long generation;
+        lock (_gate)
+        {
+            generation = _loginGeneration;
+            url = EffectiveBaseUrl;
+            tokens = Tokens;
+            if (url is not null && tokens is not null) _pendingSignOuts[generation] = tokens;
+            ClearSession();
+        }
+        RaiseStateChanged(endReason: AuthSessionEndReason.UserSignedOut);
+        if (url is null || tokens is null) return;
+        var ownsRefreshGate = false;
         try
         {
-            var url = EffectiveBaseUrl;
-            var tokens = Tokens;
-            if (url is null || tokens is null)
+            await _refreshGate.WaitAsync(ct);
+            ownsRefreshGate = true;
+            lock (_gate)
             {
-                Reset(AuthSessionEndReason.UserSignedOut);
-                return;
+                // An already-running refresh may have rotated the signed-out session's token.
+                tokens = _pendingSignOuts[generation];
             }
-
-            try { await _client.LogoutAsync(url, tokens.AccessToken, tokens.RefreshToken, ct); }
-            finally { Reset(AuthSessionEndReason.UserSignedOut); }
+            await _client.LogoutAsync(url, tokens.AccessToken, tokens.RefreshToken, ct);
         }
-        finally { _refreshGate.Release(); }
+        finally
+        {
+            lock (_gate) _pendingSignOuts.Remove(generation);
+            if (ownsRefreshGate) _refreshGate.Release();
+        }
     }
 
     public Task<bool> RefreshAsync(CancellationToken ct = default)
@@ -237,6 +247,7 @@ public sealed class AuthSession : IAuthSession
     private async Task<bool> RefreshCoreAsync(bool force, string? rejectedAccessToken, CancellationToken ct)
     {
         await _refreshGate.WaitAsync(ct);
+        long generation = 0;
         try
         {
             string? url;
@@ -244,6 +255,7 @@ public sealed class AuthSession : IAuthSession
             AuthTokens? tokens;
             lock (_gate)
             {
+                generation = _loginGeneration;
                 url = EffectiveBaseUrl;
                 serviceId = ServiceId;
                 tokens = State == AuthSessionState.Authenticated ? Tokens : null;
@@ -262,21 +274,30 @@ public sealed class AuthSession : IAuthSession
                 return true;
 
             var refreshed = (await _client.RefreshAsync(url, tokens.RefreshToken, ct)).Tokens;
+            ct.ThrowIfCancellationRequested();
             lock (_gate)
             {
                 // Logout or a new login wins over an in-flight refresh. A tunnel rebind keeps the same
                 // login identity, so it must not discard a refresh the server already accepted.
-                if (State != AuthSessionState.Authenticated
+                if (_loginGeneration != generation || State != AuthSessionState.Authenticated
                     || !string.Equals(ServiceId, serviceId, StringComparison.Ordinal)
                     || !string.Equals(Tokens?.RefreshToken, tokens.RefreshToken, StringComparison.Ordinal))
+                {
+                    if (_pendingSignOuts.ContainsKey(generation)) _pendingSignOuts[generation] = refreshed;
                     return false;
+                }
                 Tokens = refreshed;
             }
             return true;
         }
         catch (RelaxKonOSAuthException ex) when (ex.Status == 401)
         {
-            Reset(AuthSessionEndReason.RefreshTokenInvalid);
+            lock (_gate)
+            {
+                if (_loginGeneration != generation) return false;
+                ClearSession();
+            }
+            RaiseStateChanged(endReason: AuthSessionEndReason.RefreshTokenInvalid);
             return false;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
@@ -301,25 +322,57 @@ public sealed class AuthSession : IAuthSession
         ExecutionEligibility = response.ExecutionEligibility;
     }
 
-    private void BeginLogin()
+    private long BeginLogin(CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
+        long generation;
         lock (_gate)
         {
             if (State == AuthSessionState.Connecting)
                 throw new InvalidOperationException("A login request is already in progress.");
+            ClearSession();
+            generation = _loginGeneration;
             State = AuthSessionState.Connecting;
+        }
+        RaiseStateChanged();
+        return generation;
+    }
+
+    private void EnsureCurrentLogin(long generation, CancellationToken ct)
+    {
+        lock (_gate) EnsureCurrentLoginLocked(generation, ct);
+    }
+
+    private void EnsureCurrentLoginLocked(long generation, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (_loginGeneration != generation || State != AuthSessionState.Connecting)
+            throw new OperationCanceledException("This login no longer owns the session.");
+    }
+
+    private void CompleteLogin(long generation, CancellationToken ct, LoginResponse response, ServerConnectionIdentity identity)
+    {
+        lock (_gate)
+        {
+            EnsureCurrentLoginLocked(generation, ct);
+            Apply(response, identity);
+            State = AuthSessionState.Authenticated;
+        }
+    }
+
+    private void ResetAfterLoginFailure(long generation)
+    {
+        lock (_gate)
+        {
+            if (_loginGeneration != generation) return;
+            ClearSession();
         }
         RaiseStateChanged();
     }
 
-    private void ResetAfterLoginFailure()
+    private void ClearSession()
     {
-        State = AuthSessionState.Unauthenticated;
-        RaiseStateChanged();
-    }
-
-    private void Reset(AuthSessionEndReason endReason = AuthSessionEndReason.None)
-    {
+        _loginGeneration++;
         _identity = null;
         Tokens = null;
         CurrentUser = null;
@@ -330,7 +383,6 @@ public sealed class AuthSession : IAuthSession
         AssignedRole = DeviceRole.Observer;
         ExecutionEligibility = null;
         State = AuthSessionState.Unauthenticated;
-        RaiseStateChanged(endReason: endReason);
     }
 
     private void RaiseStateChanged(RememberedProfileSaveResult? rememberedProfileSaveResult = null,

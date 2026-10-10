@@ -358,7 +358,7 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         }, LocalizedText.Get("docker.stack.preview_unavailable"));
     }
 
-    /// <summary>Queues a Compose deployment and reports whether its dialog can close immediately.</summary>
+    /// <summary>Closes the editor only after the server returns a deployment receipt.</summary>
     public async Task<bool> TryDeployStackAsync()
     {
         if (IsLoading || !await EnsureDockerAvailableAsync()) return false;
@@ -367,25 +367,33 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         var title = LocalizedText.Format("docker.operation.stack", OperationText("deploy"), name);
         IsLoading = true;
         BeginOperation(title);
-        _ = DeployStackCoreAsync(name);
-        return true;
-    }
-
-    private async Task DeployStackCoreAsync(string name)
-    {
+        var definition = new DockerStackDefinitionDto(name, ComposeYaml);
         try
         {
             // The deployment carries the identity of the exact document the operator approved, so an
             // approval given for a different file is refused instead of applied. The parse is repeated
             // here rather than reusing an earlier click's answer.
-            var definition = new DockerStackDefinitionDto(name, ComposeYaml);
             var preview = await client.PreviewStackAsync(definition);
             AppendOperationLog(Lines(FormatPreview(preview)));
             var operation = await client.DeployStackAsync(
                 new DockerStackDeployRequest(definition, preview.DefinitionVersion),
                 StackKey(DockerStackOperationKind.Deploy, name, preview.DefinitionVersion));
-            await TrackStackOperationAsync(operation);
+            _ = TrackAcceptedDeploymentAsync(operation);
+            return true;
         }
+        catch (Exception exception)
+        {
+            await FailStackOperationAsync(exception);
+            CompleteOperation(StatusText);
+            IsOperationRunning = false;
+            IsLoading = false;
+            return false;
+        }
+    }
+
+    private async Task TrackAcceptedDeploymentAsync(DockerStackOperationDto operation)
+    {
+        try { await TrackStackOperationAsync(operation); }
         catch (Exception exception) { await FailStackOperationAsync(exception); }
         finally
         {

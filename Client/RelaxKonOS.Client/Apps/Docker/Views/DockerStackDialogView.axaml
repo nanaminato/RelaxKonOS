@@ -12,7 +12,7 @@
 
         <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" MinWidth="0" MinHeight="0">
             <!-- Fluent scrollbars overlay their content. Reserve a gutter so they never cover the fields. -->
-            <StackPanel Margin="0,0,20,0" MinWidth="0" Spacing="16">
+            <StackPanel Margin="0,0,20,0" MinWidth="0" Spacing="16" IsEnabled="{Binding !IsLoading}">
                 <StackPanel Spacing="4">
                     <TextBlock Text="{loc:Loc docker.stack.name}" Foreground="{DynamicResource TextSecondaryBrush}" />
                     <TextBox Text="{Binding StackName, Mode=TwoWay}" PlaceholderText="{loc:Loc docker.stack.name_placeholder}" />
@@ -33,10 +33,14 @@
             </StackPanel>
         </ScrollViewer>
 
-        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+
+        <StackPanel Grid.Row="2" Spacing="8">
+          <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" />
+          <WrapPanel HorizontalAlignment="Right" IsEnabled="{Binding !IsLoading}">
             <Button Content="{loc:Loc docker.stack.validate}" Command="{Binding ValidateStackCommand}" HorizontalContentAlignment="Center" />
             <Button Classes="primary" Content="{loc:Loc docker.stack.deploy}" Click="Deploy_Click" HorizontalContentAlignment="Center" />
             <Button Content="{loc:Loc common.cancel}" Click="Cancel_Click" HorizontalContentAlignment="Center" />
+          </WrapPanel>
         </StackPanel>
     </Grid>
 </UserControl>

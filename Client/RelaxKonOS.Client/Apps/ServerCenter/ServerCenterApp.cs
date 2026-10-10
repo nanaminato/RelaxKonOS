@@ -33,11 +33,12 @@ public sealed class ServerCenterApp : RemoteApplicationBase
             new Rect(70, 50, 1120, 760), Manifest.IconGlyph);
         viewModel.ShowManagementDialogAsync = section => context.ShowDialogAsync<bool>(window,
             section switch { "repair" => viewModel.RepairText, "uninstall" => viewModel.UninstallText, _ => viewModel.InstallationInfoTitle },
-            dialog => new ServerCenterManagementDialog(viewModel, section, dialog.Cancel), new Size(640, 600));
+            dialog => new ServerCenterManagementDialog(viewModel, section, dialog), new Size(640, 600));
         viewModel.ShowInstallationWizardAsync = () => context.ShowDialogAsync<bool>(window, viewModel.DeployText,
             dialog => new ServerInstallationWizardView(
                 new ServerInstallationWizardViewModel(viewModel, () => dialog.Close(true),
-                    () => context.ShowDialogAsync<string?>(window,
+                    async () => { await dialog.CancelAsync(); return dialog.Result.IsCompleted; },
+                    () => dialog.ShowDialogAsync<string?>(
                         viewModel.Text("server_center.wizard.choose_server_bundle", "Browse server files"),
                         picker => new SshFileBrowserView(sshSession, selectPackage: path => picker.Close(path),
                             cancelPicker: picker.Cancel),
@@ -46,7 +47,7 @@ public sealed class ServerCenterApp : RemoteApplicationBase
                     {
                         var addresses = await viewModel.GetHostIpAddressesAsync();
                         if (addresses is null) return;
-                        await context.ShowDialogAsync<bool>(window,
+                        await dialog.ShowDialogAsync<bool>(
                             viewModel.Text("server_center.host_addresses_title", "Host IP addresses"),
                             addressDialog =>
                             {
@@ -67,7 +68,7 @@ public sealed class ServerCenterApp : RemoteApplicationBase
                                     Child = content
                                 };
                             }, new Size(440, 280));
-                    })),
+                    }), dialog),
             new Size(620, 480));
         _ = viewModel.LoadAsync();
     }

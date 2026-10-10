@@ -82,7 +82,7 @@ static class HostKeyReviewChecks
                 "用户主动取消主机选择仍清除平台并禁止安装");
             viewModel.SelectedHost = refreshed;
             viewModel.SelectedPlatform = viewModel.Platforms.Single(p => p.Platform == HostPlatformKind.Linux);
-            var wizard = new ServerInstallationWizardViewModel(viewModel, () => { },
+            var wizard = new ServerInstallationWizardViewModel(viewModel, () => { }, () => Task.FromResult(true),
                 () => Task.FromResult<string?>("/home/alice/server.zip"), () => Task.CompletedTask);
             Check(!wizard.AddFirewallRule && !wizard.CanAddFirewallRule, "防火墙选项默认不勾选，本机监听不可添加");
             wizard.SelectedMode = wizard.Modes.Single(m => m.Mode == ServerInstallMode.LinuxSystem);

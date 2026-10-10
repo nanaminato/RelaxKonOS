@@ -185,10 +185,12 @@ owner 拖动/Resize ──→ OnDrag/OnResize ──→ UpdateDialogs(owner) ─
 | 触发 | 行为 |
 |---|---|
 | 对话框调 `dialog.Close(result)` | `TaskCompletionSource.TrySetResult(result)` → session 关闭 |
-| 对话框调 `dialog.Cancel()` / Esc / 取消按钮 | `TrySetResult(default)` → 返回 null |
+| 对话框调 `dialog.Cancel()` / Esc / 取消按钮 | 经 `CanCancelAsync` 守卫；允许后 `TrySetResult(default)`，返回默认结果 |
 | owner 被 `Close()` | `Close` 遍历 `_modalSessions` 取消相关 session |
 | owner 被 `Minimize()` | 最小化前取消该 owner 的 session（避免遮罩悬空） |
-| 对话框窗口被关闭 | `dialog.Result` 已完成 → `CloseModalSession` 移除遮罩 |
+| 对话框标题栏关闭 / Alt+F4 | 同样请求取消守卫，拒绝时窗口和结果保持未完成 |
+
+`ModalDialog<TResult>.CanCancelAsync` 可冻结忙碌关闭或异步确认放弃草稿；重复取消请求只进行一次检查。成功 `Close(result)` 不经过取消守卫。owner 的关闭、最小化及宿主销毁继续强制结束所属模态，避免留下失去 owner 的窗口。业务编辑器可复用客户端 `DraftDialogGuard`，确认窗口作为编辑器的子模态，取消确认返回原编辑器。
 
 ### 3.6 嵌套模态
 
