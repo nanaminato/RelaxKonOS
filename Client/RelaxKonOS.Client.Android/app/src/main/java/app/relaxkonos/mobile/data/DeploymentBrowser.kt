@@ -4,6 +4,7 @@ import app.relaxkonos.mobile.core.auth.AuthSession
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.*
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -37,7 +38,13 @@ data class DeploymentBrowserState(
     val operationDiagnostics: ApiResult<DeploymentOperationDiagnostics>? = null,
     val stagedArchive: ApiResult<DeploymentArchive>? = null,
     val archiveStaging: Boolean = false,
-)
+    val pendingControl: PendingDeploymentControl? = null,
+    val pendingControls: List<PendingDeploymentControl> = emptyList(),
+    val controlStorageUnavailable: Boolean = false,
+    val submissionVersion: Long = 0,
+) {
+    val controlBlocked get() = pendingControl != null || controlStorageUnavailable
+}
 
 /** A session-scoped, read-only browser. Failed refreshes discard old runtime claims. */
 class DeploymentBrowser(
@@ -76,8 +83,10 @@ class DeploymentBrowser(
     }
 
     fun refresh() {
+        if (mutableState.value.submitting) return
         val owner = mutableState.value.owner ?: return
         if (ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities) return
+        syncControlPending(owner)
         listJob?.cancel()
         val generation = ++listGeneration
         mutableState.update { it.copy(loading = true, applications = null, runtime = null, templates = null, catalog = null, checkedAtMillis = null) }
@@ -101,6 +110,7 @@ class DeploymentBrowser(
     }
 
     fun select(id: String?) {
+        if (mutableState.value.submitting) return
         val owner = mutableState.value.owner ?: return
         if (ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities) return
         detailJob?.cancel()
@@ -109,6 +119,7 @@ class DeploymentBrowser(
         val generation = ++detailGeneration
         logsGeneration++
         mutableState.update { it.copy(selectedId = id, detail = null, detailLoading = id != null, detailCheckedAtMillis = null, logsLoading = false, logs = null, loadedLogTail = null) }
+        syncControlPending(owner)
         if (id == null) return
         detailJob = scope.launch {
             try {
@@ -124,6 +135,7 @@ class DeploymentBrowser(
 
     /** Logs are opt-in: opening a deployment details page must not transfer container output. */
     fun loadLogs(tail: Int = INITIAL_LOG_TAIL) {
+        if (mutableState.value.logsLoading) return
         val owner = mutableState.value.owner ?: return
         val applicationId = mutableState.value.selectedId ?: return
         if (ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities) return
@@ -133,7 +145,9 @@ class DeploymentBrowser(
         mutableState.update { it.copy(logsLoading = true) }
         logsJob = scope.launch {
             try {
-                val logs = repository.logs(owner, applicationId, boundedTail)
+                val logs = try { repository.logs(owner, applicationId, boundedTail) }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { ApiResult.Transport(null) }
                 if (current(owner) && generation == logsGeneration && mutableState.value.selectedId == applicationId) {
                     mutableState.update { it.copy(logs = logs, loadedLogTail = boundedTail) }
                 }
@@ -143,6 +157,13 @@ class DeploymentBrowser(
                 }
             }
         }
+    }
+
+    /** Retries the failed tail, rather than silently shrinking an expanded request to 20 lines. */
+    fun retryLogs() {
+        val state = mutableState.value
+        if (state.logs !is ApiResult.Problem && state.logs !is ApiResult.Transport) return
+        loadLogs(state.loadedLogTail ?: INITIAL_LOG_TAIL)
     }
 
     /** A larger tail replaces the previous snapshot, keeping it ordered and current rather than appending duplicates. */
@@ -155,6 +176,7 @@ class DeploymentBrowser(
 
     /** Creates the same application definition fields as the desktop wizard, then queues its image revision. */
     fun createImage(definition: ImageDeploymentDefinition, imageReference: String) {
+        if (mutableState.value.submitting) return
         val owner = mutableState.value.owner ?: return
         if (ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities) return
         listJob?.cancel()
@@ -204,6 +226,7 @@ class DeploymentBrowser(
     }
 
     fun createDefinition(image: ImageDeploymentDefinition? = null, archive: ArchiveDeploymentDefinition? = null) {
+        if (mutableState.value.submitting) return
         val owner = mutableState.value.owner ?: return
         if (ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities || (image == null) == (archive == null)) return
         listJob?.cancel()
@@ -256,6 +279,7 @@ class DeploymentBrowser(
     }
 
     fun createArchive(definition: ArchiveDeploymentDefinition, archiveReferenceId: String) {
+        if (mutableState.value.submitting) return
         val owner = mutableState.value.owner ?: return
         val staged = (mutableState.value.stagedArchive as? ApiResult.Success)?.value ?: return
         if (staged.referenceId != archiveReferenceId || ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities) return
@@ -280,6 +304,7 @@ class DeploymentBrowser(
 
     /** Installs the exact server catalogue version. Field values live only in this request path. */
     fun installCatalog(template: CatalogTemplate, name: String, hostPort: Int, fields: List<CatalogFieldValue>) {
+        if (mutableState.value.submitting) return
         val owner = mutableState.value.owner ?: return
         if (ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities || template.schemaVersion != "1" || template.withdrawn) return
         listJob?.cancel()
@@ -299,6 +324,7 @@ class DeploymentBrowser(
     }
 
     fun revisionAccepted(operation: DeploymentOperation) {
+        if (mutableState.value.submitting) return
         val owner = mutableState.value.owner ?: return
         if (!current(owner) || mutableState.value.selectedId != operation.applicationId) return
         mutableState.update { it.copy(submission = ApiResult.Success(operation)) }
@@ -307,15 +333,17 @@ class DeploymentBrowser(
     }
 
     fun lifecycle(action: DeploymentLifecycleAction) {
+        if (mutableState.value.submitting || mutableState.value.controlBlocked) return
         val owner = mutableState.value.owner ?: return
         val applicationId = mutableState.value.selectedId ?: return
         if (ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities) return
         listJob?.cancel()
         val generation = ++listGeneration
-        mutableState.update { it.copy(submitting = true, submission = null) }
+        beginControl()
         listJob = scope.launch {
             try {
                 val result = repository.lifecycle(owner, applicationId, action, UUID.randomUUID().toString())
+                if (current(owner)) syncControlPending(owner)
                 if (current(owner) && generation == listGeneration) {
                     mutableState.update { it.copy(submitting = false, submission = result) }
                     if (result is ApiResult.Success) {
@@ -331,15 +359,19 @@ class DeploymentBrowser(
 
     /** Reuses a server-recorded immutable revision; the server retains volume data independently. */
     fun rollback(revision: DeploymentRevision) {
+        if (mutableState.value.submitting || mutableState.value.controlBlocked) return
         val owner = mutableState.value.owner ?: return
         val applicationId = mutableState.value.selectedId ?: return
         if (revision.isCurrent || ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities) return
+        val snapshot = (mutableState.value.detail as? ApiResult.Success)?.value ?: return
+        if (snapshot.application.id != applicationId || snapshot.activeOperation != null || revision !in snapshot.revisions) return
         listJob?.cancel()
         val generation = ++listGeneration
-        mutableState.update { it.copy(submitting = true, submission = null) }
+        beginControl()
         listJob = scope.launch {
             try {
                 val result = repository.rollback(owner, applicationId, revision.id, UUID.randomUUID().toString())
+                if (current(owner)) syncControlPending(owner)
                 if (current(owner) && generation == listGeneration) {
                     mutableState.update { it.copy(submitting = false, submission = result) }
                     if (result is ApiResult.Success) {
@@ -354,15 +386,17 @@ class DeploymentBrowser(
     }
 
     fun delete() {
+        if (mutableState.value.submitting || mutableState.value.controlBlocked) return
         val owner = mutableState.value.owner ?: return
         val applicationId = mutableState.value.selectedId ?: return
         if (ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities) return
         listJob?.cancel()
         val generation = ++listGeneration
-        mutableState.update { it.copy(submitting = true, submission = null) }
+        beginControl()
         listJob = scope.launch {
             try {
                 val result = repository.delete(owner, applicationId, UUID.randomUUID().toString())
+                if (current(owner)) syncControlPending(owner)
                 if (current(owner) && generation == listGeneration) {
                     mutableState.update { it.copy(submitting = false, submission = result, selectedId = if (result is ApiResult.Success) null else it.selectedId) }
                     if (result is ApiResult.Success) refresh()
@@ -374,14 +408,16 @@ class DeploymentBrowser(
     }
 
     fun cancel(operation: DeploymentOperation) {
+        if (mutableState.value.submitting || mutableState.value.controlBlocked) return
         val owner = mutableState.value.owner ?: return
-        if (!operation.cancellable || ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities) return
+        if (!operation.cancellable || mutableState.value.selectedId != operation.applicationId || ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities) return
         listJob?.cancel()
         val generation = ++listGeneration
-        mutableState.update { it.copy(submitting = true, submission = null) }
+        beginControl()
         listJob = scope.launch {
             try {
-                val result = repository.cancel(owner, operation.operationId, UUID.randomUUID().toString())
+                val result = repository.cancel(owner, operation.applicationId, operation.operationId, UUID.randomUUID().toString())
+                if (current(owner)) syncControlPending(owner)
                 if (current(owner) && generation == listGeneration) {
                     mutableState.update { it.copy(submitting = false, submission = result) }
                     if (result is ApiResult.Success) {
@@ -393,6 +429,43 @@ class DeploymentBrowser(
                 if (current(owner) && generation == listGeneration) mutableState.update { it.copy(submitting = false) }
             }
         }
+    }
+
+    fun retryControl() {
+        val owner = mutableState.value.owner ?: return
+        val pending = mutableState.value.pendingControl ?: return
+        if (mutableState.value.submitting || pending.applicationId != mutableState.value.selectedId) return
+        listJob?.cancel()
+        val generation = ++listGeneration
+        mutableState.update { it.copy(loading = false, submitting = true, submission = null, submissionVersion = it.submissionVersion + 1) }
+        listJob = scope.launch {
+            try {
+                val result = repository.retryControl(owner, pending.applicationId)
+                if (current(owner) && generation == listGeneration) {
+                    mutableState.update { it.copy(submitting = false, submission = result,
+                        selectedId = if (result is ApiResult.Success && pending.kind == DeploymentControlKind.Delete) null else it.selectedId) }
+                    if (result is ApiResult.Success) {
+                        syncControlPending(owner)
+                        refresh()
+                        observeOperation(owner, result.value)
+                    }
+                }
+            } finally {
+                if (current(owner)) syncControlPending(owner)
+                if (current(owner) && generation == listGeneration) mutableState.update { it.copy(submitting = false) }
+            }
+        }
+    }
+
+    private fun beginControl() {
+        mutableState.update { it.copy(loading = false, submitting = true, submission = null, submissionVersion = it.submissionVersion + 1) }
+    }
+
+    private fun syncControlPending(owner: SessionState.Active) {
+        val selected = mutableState.value.selectedId
+        val pending = runCatching { repository.pendingControls(owner) }
+        mutableState.update { it.copy(pendingControl = pending.getOrNull()?.singleOrNull { request -> request.applicationId == selected },
+            pendingControls = pending.getOrDefault(emptyList()), controlStorageUnavailable = pending.isFailure) }
     }
 
     /** Polls the durable record only while the server still reports this operation as active. */

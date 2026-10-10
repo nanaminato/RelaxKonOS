@@ -54,6 +54,21 @@ class DeploymentDefinitionEditorTest {
         finally { editor.close() }
     }
 
+    @Test fun `identical read failures each have a distinct feedback event without clearing input`() = runTest {
+        val owner = login()
+        gateway.onDeploymentSnapshot = { _, _, _ -> ApiResult.Transport(null) }
+        val editor = DeploymentDefinitionEditor(session, repository, owner, baseline, this, StandardTestDispatcher(testScheduler))
+        try {
+            edit(editor)
+            repeat(3) { index ->
+                editor.loadCurrent(); advanceUntilIdle()
+                assertEquals((index + 1).toLong(), editor.feedbackVersion)
+                assertEquals(ApiResult.Transport(null), editor.result)
+                assertRetained(editor)
+            }
+        } finally { editor.close() }
+    }
+
     @Test fun `only a matching successful read replaces the draft and clears unsubmitted input`() = runTest {
         val owner = login()
         val current = baseline.copy(name = "server-name")
@@ -73,5 +88,34 @@ class DeploymentDefinitionEditorTest {
         val editor = DeploymentDefinitionEditor(session, repository, owner, baseline, this, StandardTestDispatcher(testScheduler))
         try { edit(editor); editor.loadCurrent(); advanceUntilIdle(); assertRetained(editor); assertEquals(ApiResult.Transport(null), editor.result) }
         finally { editor.close() }
+    }
+    @Test fun `unknown save blocks subsequent save calls until explicit current definition adoption`() = runTest {
+        val owner = login()
+        var sends = 0
+        var callbacks = 0
+        gateway.onDeploymentSnapshot = { _, _, _ -> ApiResult.Success(DeploymentSnapshot(baseline, emptyList(), emptyList(), null)) }
+        gateway.onUpdateDeploymentDefinition = { _, _, _ -> sends++; ApiResult.Transport(null) }
+        val editor = DeploymentDefinitionEditor(session, repository, owner, baseline, this, StandardTestDispatcher(testScheduler))
+        try {
+            editor.draft.name = "edited-name"
+            editor.save { callbacks++ }; advanceUntilIdle()
+            assertTrue(editor.unknown); assertFalse(editor.editable)
+            editor.save { callbacks++ }; advanceUntilIdle()
+            assertEquals(1, sends); assertEquals(0, callbacks)
+            assertEquals("edited-name", editor.draft.name); assertFalse(editor.busy)
+            editor.loadCurrent(); advanceUntilIdle()
+            assertFalse(editor.unknown); assertTrue(editor.editable); assertEquals(baseline.name, editor.draft.name)
+            assertEquals(1, sends)
+        } finally { editor.close() }
+    }
+    @Test fun `unsubmitted configuration cannot be cleared by an invalid save call`() = runTest {
+        val owner = login()
+        var reads = 0
+        gateway.onDeploymentSnapshot = { _, _, _ -> reads++; ApiResult.Success(DeploymentSnapshot(baseline, emptyList(), emptyList(), null)) }
+        val editor = DeploymentDefinitionEditor(session, repository, owner, baseline, this, StandardTestDispatcher(testScheduler))
+        try {
+            edit(editor); editor.save {}; advanceUntilIdle()
+            assertRetained(editor); assertEquals(0, reads); assertNull(editor.result)
+        } finally { editor.close() }
     }
 }

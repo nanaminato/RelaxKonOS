@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
 <resources>
+    <string name="backup_recovery_reconcile_failed">The previous backup request could not be verified. Its pending request key is retained.</string>
     <string name="backup_recovery_blocked">Recovery is blocked. Resolve every requirement shown below first.</string>
     <string name="backup_recovery_create">Create definition backup</string>
     <string name="backup_recovery_create_failed">The backup request was not confirmed. Check the task list before retrying.</string>

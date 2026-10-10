@@ -323,7 +323,8 @@ class AppContainer(context: Context) {
 
     val system = SystemRepository(gateway, session)
     val operationIndex = OperationIndex(FileOperationIndexStorage(appContext.noBackupFilesDir))
-    val deployments = app.relaxkonos.mobile.data.DeploymentRepository(gateway, session, operationIndex)
+    val deployments = app.relaxkonos.mobile.data.DeploymentRepository(gateway, session, operationIndex,
+        app.relaxkonos.mobile.data.DeploymentControlJournal(app.relaxkonos.mobile.data.FileDeploymentControlStorage(appContext.noBackupFilesDir)))
     val git = app.relaxkonos.mobile.data.GitRepositoryClient(gateway, session, operationIndex)
     val gitWorkspace = app.relaxkonos.mobile.data.GitWorkspaceRepository(gateway, session,
         app.relaxkonos.mobile.data.GitWorkspaceJournal(app.relaxkonos.mobile.data.FileGitWorkspaceStorage(appContext.noBackupFilesDir))) { owner ->

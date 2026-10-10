@@ -93,4 +93,20 @@ class DeploymentDefinitionRepositoryTest {
         assertTrue(request.matchesReceipt(receipt, baseline))
         assertFalse(request.matchesReceipt(receipt.copy(configuration = baseline.configuration), baseline))
     }
+    @Test fun `unexpected preflight exception is safe and does not imply a dispatched save`() = runTest {
+        val owner = login()
+        gateway.onDeploymentSnapshot = { _, _, _ -> throw IllegalStateException("private read detail") }
+        val outcome = repository.saveDefinition(owner, baseline, request(), "save")
+        assertEquals(ApiResult.Transport(null), outcome.result)
+        assertFalse(outcome.mayHaveSaved); assertEquals(0, sends)
+    }
+    @Test fun `unexpected dispatched save exception is safe unknown and never automatically replayed`() = runTest {
+        val owner = login()
+        gateway.onUpdateDeploymentDefinition = { _, _, _ -> sends++; throw IllegalStateException("private save detail") }
+        val outcome = repository.saveDefinition(owner, baseline, request(), "save")
+        assertEquals(ApiResult.Transport(null), outcome.result)
+        assertTrue(outcome.mayHaveSaved); assertEquals(1, sends)
+        repository.snapshot(owner, baseline.id)
+        assertEquals(1, sends)
+    }
 }

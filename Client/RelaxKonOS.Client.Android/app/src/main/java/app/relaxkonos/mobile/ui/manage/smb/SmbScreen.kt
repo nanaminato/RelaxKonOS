@@ -3,8 +3,6 @@ package app.relaxkonos.mobile.ui.manage.smb
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -15,6 +13,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.ui.common.*
@@ -25,7 +25,11 @@ import java.util.Date
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable fun SmbScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
-    val model: SmbViewModel = viewModel(); val owner = appContainer().activeSession; val state = model.state
+    val container = appContainer()
+    val model: SmbViewModel = viewModel(factory = viewModelFactory {
+        initializer { SmbViewModel(container.session, container.smb, container.installations, container.operationIndex, container.elevationAnswers) }
+    })
+    val owner = container.activeSession; val state = model.state
     val visible = state.owner === owner; val facts = state.facts.takeIf { visible }
     val canManage = visible && owner?.privilegedOperations == true
     val ready = canManage && !state.busy && state.pending.isEmpty() && !state.pendingInstallation && state.installation?.state?.active != true &&

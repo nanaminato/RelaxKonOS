@@ -227,7 +227,7 @@ class OperationCenter(
             OperationDomain.Deployment -> {
                 val key = java.util.UUID.nameUUIDFromBytes(
                     "cancel:${owner.serviceId}:${owner.userName}:${item.reference.operationId}".toByteArray(Charsets.UTF_8)).toString()
-                deployments.cancel(owner, item.reference.operationId, key)
+                deployments.cancel(owner, item.reference.resourceId, item.reference.operationId, key)
             }
             OperationDomain.Certificate -> certificates.cancel(owner, item.reference.operationId)
             OperationDomain.WebServer -> webServers.cancel(owner, item.reference.operationId)

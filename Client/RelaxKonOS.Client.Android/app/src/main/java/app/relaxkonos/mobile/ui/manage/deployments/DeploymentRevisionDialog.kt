@@ -20,7 +20,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.R
-import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.ui.common.ScreenHeader
@@ -37,8 +36,17 @@ internal fun DeploymentRevisionDialog(
 ) {
     val container = appContainer()
     val scope = rememberCoroutineScope()
-    val editor = remember(DeploymentOwnerKey(owner), initial.application.id, scope) { DeploymentRevisionEditor(container, owner, initial, scope) }
+    val editor = remember(DeploymentOwnerKey(owner), initial.application.id, scope) { DeploymentRevisionEditor(container.session, container.deployments, owner, initial, scope) }
     DisposableEffect(editor) { onDispose { editor.close() } }
+    DeploymentRevisionContent(editor, template, stagedArchive, archiveStaging, onArchiveStage, onServerArchiveStage, onClearArchive, onDismiss, onAccepted)
+}
+
+@Composable
+internal fun DeploymentRevisionContent(
+    editor: DeploymentRevisionEditor, template: DeploymentTemplate?, stagedArchive: ApiResult<DeploymentArchive>?, archiveStaging: Boolean,
+    onArchiveStage: (Uri) -> Unit, onServerArchiveStage: (String) -> Unit, onClearArchive: () -> Unit,
+    onDismiss: () -> Unit, onAccepted: (DeploymentOperation) -> Unit,
+) {
     with(editor) {
         val archive = (stagedArchive as? ApiResult.Success)?.value
         val source = DeploymentRevisionSource(
@@ -73,10 +81,12 @@ internal fun DeploymentRevisionDialog(
                         when (val outcome = result) {
                             null -> Unit
                             is ApiResult.Success -> Text(stringResource(R.string.deployments_queued, outcome.value.operationId), color = MaterialTheme.colorScheme.primary)
-                            else -> OperationMessageDialog(outcome.deploymentFailure().text() + if (unknown) "\n\n${stringResource(R.string.deployments_revision_unknown)}" else "", eventKey = outcome)
+                            else -> OperationMessageDialog(outcome.deploymentFailure().text() + if (unknown) "\n\n${stringResource(R.string.deployments_revision_unknown)}" else "", eventKey = feedbackVersion)
                         }
                         if (unknown || result != null && result !is ApiResult.Success || snapshot.activeOperation != null)
-                            TextButton(onClick = { reload(onClearArchive) }, enabled = !busy) { Text(stringResource(R.string.deployments_revision_read_current)) }
+                            DraftCloseGuard(!busy && !archiveStaging, dirty, { reload(onClearArchive) }) { requestReload ->
+                                TextButton(onClick = requestReload, enabled = !busy && !archiveStaging) { Text(stringResource(R.string.deployments_revision_read_current)) }
+                            }
                         if (!preview) {
                             if (baseline.sourceKind == "image") {
                                 RevisionText(image, { image = it }, R.string.deployments_image_reference, editable)

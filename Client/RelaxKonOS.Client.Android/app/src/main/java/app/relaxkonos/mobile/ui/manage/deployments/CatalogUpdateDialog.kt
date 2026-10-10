@@ -14,7 +14,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.R
-import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.ui.common.ScreenHeader
@@ -28,6 +27,12 @@ internal fun CatalogUpdateDialog(owner: SessionState.Active, initial: Deployment
     val scope = rememberCoroutineScope()
     val editor = remember(DeploymentOwnerKey(owner), initial.id, templates, scope) { CatalogUpdateEditor(container.session, container.deployments, owner, initial, templates, scope) }
     DisposableEffect(editor) { onDispose { editor.close() } }
+    CatalogUpdateContent(editor, owner, runtime, onDismiss, onAccepted)
+}
+
+@Composable
+internal fun CatalogUpdateContent(editor: CatalogUpdateEditor, owner: SessionState.Active, runtime: DeploymentRuntime?,
+    onDismiss: () -> Unit, onAccepted: (DeploymentOperation) -> Unit) {
     with(editor) {
         LaunchedEffect(editor, selectedVersion, baseline, reload) { refreshPreview() }
         val diff = (preview as? ApiResult.Success)?.value
@@ -75,13 +80,13 @@ internal fun CatalogUpdateDialog(owner: SessionState.Active, initial: Deployment
                                 Text(stringResource(R.string.deployments_replacement_note), color = MaterialTheme.colorScheme.error)
                             }
                             null -> Unit
-                            else -> OperationMessageDialog(loaded.deploymentFailure().text(), eventKey = loaded, tone = loaded.deploymentFailure().tone)
+                            else -> OperationMessageDialog(loaded.deploymentFailure().text(), eventKey = previewVersion, tone = loaded.deploymentFailure().tone)
                         }
 
                         when (val outcome = result) {
                             is ApiResult.Success -> Text(stringResource(R.string.deployments_queued, outcome.value.operationId), color = MaterialTheme.colorScheme.primary)
                             null -> Unit
-                            else -> OperationMessageDialog(outcome.deploymentFailure().text() + if (unknown) "\n\n${stringResource(R.string.deployments_revision_unknown)}" else "", eventKey = outcome,
+                            else -> OperationMessageDialog(outcome.deploymentFailure().text() + if (unknown) "\n\n${stringResource(R.string.deployments_revision_unknown)}" else "", eventKey = feedbackVersion,
                                 tone = if (unknown) app.relaxkonos.mobile.ui.common.StatusTone.Warning else outcome.deploymentFailure().tone)
                         }
                         if (result !is ApiResult.Success) TextButton(onClick = { readCurrent() }, enabled = !busy) { Text(stringResource(R.string.deployments_revision_read_current)) }

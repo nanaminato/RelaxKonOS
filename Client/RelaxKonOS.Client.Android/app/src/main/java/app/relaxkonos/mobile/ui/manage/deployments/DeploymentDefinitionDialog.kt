@@ -14,13 +14,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.R
-import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.ui.common.ScreenHeader
@@ -34,6 +32,12 @@ internal fun DeploymentDefinitionDialog(owner: SessionState.Active, baseline: De
     val scope = rememberCoroutineScope()
     val editor = remember(DeploymentOwnerKey(owner), baseline.id, scope) { DeploymentDefinitionEditor(container.session, container.deployments, owner, baseline, scope) }
     DisposableEffect(editor) { onDispose { editor.close() } }
+    DeploymentDefinitionContent(editor, onDismiss, onSaved)
+}
+
+@Composable
+internal fun DeploymentDefinitionContent(editor: DeploymentDefinitionEditor, onDismiss: () -> Unit, onSaved: () -> Unit) {
+    val baseline = editor.draft.baseline
     with(editor) {
         val request = editor.request
         DraftCloseGuard(!busy, !saved && dirty, onDismiss) { requestClose ->
@@ -53,7 +57,7 @@ internal fun DeploymentDefinitionDialog(owner: SessionState.Active, baseline: De
                         when (val outcome = result) {
                             is ApiResult.Success -> Text(stringResource(R.string.deployments_definition_saved, outcome.value.name), color = MaterialTheme.colorScheme.primary)
                             null -> Unit
-                            else -> OperationMessageDialog(outcome.deploymentFailure().text() + if (unknown) "\n\n${stringResource(R.string.deployments_definition_unknown)}" else "", eventKey = outcome)
+                            else -> OperationMessageDialog(outcome.deploymentFailure().text() + if (unknown) "\n\n${stringResource(R.string.deployments_definition_unknown)}" else "", eventKey = feedbackVersion)
                         }
                         if (result != null && !saved || pending) DraftCloseGuard(!busy, dirty, ::loadCurrent) { requestReload ->
                             TextButton(onClick = requestReload, enabled = !busy) { Text(stringResource(R.string.deployments_definition_load_current)) }

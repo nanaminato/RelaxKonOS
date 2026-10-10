@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
 <resources>
+    <string name="backup_recovery_reconcile_failed">前回のバックアップ要求を確認できませんでした。保留中の要求キーは保持されています。</string>
     <string name="backup_recovery_blocked">復旧はブロックされています。表示されたすべての要件を先に解決してください。</string>
     <string name="backup_recovery_create">定義バックアップを作成</string>
     <string name="backup_recovery_create_failed">バックアップ要求を確認できませんでした。再試行前にタスク一覧を確認してください。</string>

@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
 <resources>
+    <string name="deployments_control_recovery">アプリの要求を確認中</string>
+    <string name="deployments_control_unknown">アプリ %1$s の要求結果は未確認です。元の操作と要求キーを保持しており、更新しても消去されません。再試行は同じ要求のみを送信します。</string>
+    <string name="deployments_control_retry">元の要求を再試行</string>
+    <string name="deployments_control_storage_failed">保存した要求の参照を読み取れません。新しい要求の送信を防ぐため、アプリの変更を停止しています。</string>
+    <string name="deployments_logs_read_failed">ログを読み取れませんでした。再読み込みできます。</string>
     <string name="deployment_activating">有効化中</string>
     <string name="deployment_building">ビルド中</string>
     <string name="deployment_cancelled">キャンセル済み</string>

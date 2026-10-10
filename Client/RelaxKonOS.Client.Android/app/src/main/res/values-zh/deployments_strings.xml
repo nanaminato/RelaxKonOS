@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
 <resources>
+    <string name="deployments_control_recovery">应用请求待确认</string>
+    <string name="deployments_control_unknown">应用 %1$s 的请求结果待确认。已保留原动作和请求键，刷新不会清除。重试只会发送同一请求。</string>
+    <string name="deployments_control_retry">重试原请求</string>
+    <string name="deployments_control_storage_failed">无法读取已保存的请求引用。为避免发送新请求，已阻止应用变更。</string>
+    <string name="deployments_logs_read_failed">无法读取日志，可以重新加载。</string>
     <string name="deployment_activating">激活中</string>
     <string name="deployment_building">构建中</string>
     <string name="deployment_cancelled">已取消</string>

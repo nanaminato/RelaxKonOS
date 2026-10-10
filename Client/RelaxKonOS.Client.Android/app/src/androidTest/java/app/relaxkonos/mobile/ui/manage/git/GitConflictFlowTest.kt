@@ -273,6 +273,8 @@ class GitConflictFlowTest {
             assertEquals(0, sends)
         }
         rule.onNodeWithText(text(R.string.common_cancel)).performClick()
+        // The preview is a platform Dialog; Compose idle alone does not wait for its focus handoff.
+        rule.waitForIdle(); SystemClock.sleep(500)
         Espresso.pressBack()
         rule.onNodeWithText(text(R.string.editor_unsaved)).assertIsDisplayed()
         rule.onNodeWithText(text(R.string.editor_continue_editing)).performClick()

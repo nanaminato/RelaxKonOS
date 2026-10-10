@@ -33,6 +33,25 @@ class DeploymentRevisionRepositoryTest {
         assertEquals(operation, (repository.deployRevision(owner, baseline, input, "revision-key").result as ApiResult.Success).value)
         assertEquals(1, sends); assertEquals(baseline, snapshot.application); assertEquals(0, gateway.elevationCount)
     }
+    @Test fun `unexpected preflight exception is safe and does not create an unknown revision`() = runTest {
+        val owner = login()
+        gateway.onDeploymentSnapshot = { _, _, _ -> throw IllegalStateException("private preflight detail") }
+        val result = repository.deployRevision(owner, baseline, input, "revision-key")
+        assertEquals(ApiResult.Transport(null), result.result)
+        assertFalse(result.mayHaveQueued); assertFalse(repository.hasUncertainRevision(owner, baseline.id))
+        assertEquals(0, sends)
+    }
+    @Test fun `unexpected dispatched exception returns unknown and prevents replay until explicit reconciliation`() = runTest {
+        val owner = login()
+        gateway.onDeployRevision = { _, _, _, _ -> sends++; throw IllegalStateException("private send detail") }
+        val result = repository.deployRevision(owner, baseline, input, "revision-key")
+        assertEquals(ApiResult.Transport(null), result.result)
+        assertTrue(result.mayHaveQueued); assertTrue(repository.hasUncertainRevision(owner, baseline.id))
+        repository.deployRevision(owner, baseline, input, "another-key")
+        assertEquals(1, sends)
+        repository.reconcileRevision(owner, baseline.id)
+        assertFalse(repository.hasUncertainRevision(owner, baseline.id)); assertEquals(1, sends)
+    }
     @Test fun `stale ticks or active operation block submission`() = runTest {
         val owner = login()
         snapshot = snapshot.copy(application = baseline.copy(updatedAt = "2026-10-01T00:00:00.1234568+00:00"))

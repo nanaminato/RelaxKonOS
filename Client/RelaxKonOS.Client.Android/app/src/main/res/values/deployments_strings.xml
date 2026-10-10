@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
 <resources>
+    <string name="deployments_control_recovery">Unconfirmed application request</string>
+    <string name="deployments_control_unknown">The request for application %1$s is unconfirmed. Its original action and request key are retained; refreshing does not clear it. Retry only to send that same request.</string>
+    <string name="deployments_control_retry">Retry the original request</string>
+    <string name="deployments_control_storage_failed">The saved request reference cannot be read. Application changes are blocked to avoid sending a new request.</string>
+    <string name="deployments_logs_read_failed">Logs could not be read. You can retry loading them.</string>
     <string name="deployment_activating">Activating</string>
     <string name="deployment_building">Building</string>
     <string name="deployment_cancelled">Cancelled</string>

@@ -26,6 +26,10 @@ internal class CatalogUpdateEditor(
     val target get() = targets.firstOrNull { it.version == selectedVersion }
     var preview by mutableStateOf<ApiResult<CatalogApplicationUpdatePreview>?>(null)
     var result by mutableStateOf<ApiResult<DeploymentOperation>?>(null)
+    var feedbackVersion by mutableLongStateOf(0L)
+        private set
+    var previewVersion by mutableLongStateOf(0L)
+        private set
     var busy by mutableStateOf(false)
     var unknown by mutableStateOf(deployments.hasUncertainRevision(owner, baseline.id))
     var reload by mutableIntStateOf(0)
@@ -36,11 +40,13 @@ internal class CatalogUpdateEditor(
             withContext(ioDispatcher) { deployments.previewCatalogUpdate(owner, baseline.id, selected.version) }
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { ApiResult.Transport(null) }
-        if (session.state.value === owner) preview = result
+        if (session.state.value === owner) { preview = result; previewVersion++ }
     }
     fun submit(confirmed: CatalogApplicationUpdatePreview, onAccepted: (DeploymentOperation) -> Unit) {
-        if (busy) return
+        if (busy || unknown || result is ApiResult.Success || confirmed.target != target ||
+            (preview as? ApiResult.Success)?.value != confirmed) return
 
+        feedbackVersion++
         busy = true; result = null
         scope.launch {
             try {
@@ -70,7 +76,10 @@ internal class CatalogUpdateEditor(
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { if (session.state.value === owner) result = ApiResult.Transport(null) }
-            finally { busy = false }
+            finally {
+                if (session.state.value === owner && result != null) feedbackVersion++
+                busy = false
+            }
         }
     }
 }

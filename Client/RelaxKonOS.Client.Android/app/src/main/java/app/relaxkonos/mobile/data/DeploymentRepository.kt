@@ -12,10 +12,14 @@ class DeploymentRepository(
     private val gateway: RelaxKonGateway,
     private val session: AuthSession,
     private val operationIndex: OperationIndex? = null,
+    private val controlJournal: DeploymentControlJournal = DeploymentControlJournal(MemoryDeploymentControlStorage()),
 ) {
     // A list refresh can overlap a detail refresh. Serialize their auth retries so both do not
     // try to rotate the same refresh token when the access token expires.
     private val reads = Mutex()
+    private val controlWrites = Mutex()
+    fun pendingControl(owner: SessionState.Active, applicationId: String): PendingDeploymentControl? = controlJournal.pending(owner, applicationId)
+    fun pendingControls(owner: SessionState.Active): List<PendingDeploymentControl> = controlJournal.pending(owner)
     suspend fun applications(owner: SessionState.Active): ApiResult<List<DeploymentApplication>> = read(owner) { url, token ->
         gateway.deploymentApplications(url, token)
     }
@@ -54,7 +58,8 @@ class DeploymentRepository(
     /** Each authentication retry repeats the baseline check; a lost response is never replayed. */
     suspend fun saveDefinition(owner: SessionState.Active, baseline: DeploymentApplication, definition: DeploymentDefinitionUpdate, key: String): DeploymentDefinitionSave {
         var dispatched = false
-        val result = read(owner) { url, token ->
+        val result = try { read(owner) { url, token ->
+            if (controlJournal.pending(owner, baseline.id) != null) return@read ApiResult.Problem(409, "application-deployment.resource_conflict", null)
             when (val before = gateway.deploymentSnapshot(url, token, baseline.id)) {
                 is ApiResult.Success -> {
                     verifyOwner(owner)
@@ -86,6 +91,10 @@ class DeploymentRepository(
                 is ApiResult.Problem -> saved
                 is ApiResult.Transport -> saved
             }
+        } } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            ApiResult.Transport(null)
         }
         return DeploymentDefinitionSave(result, dispatched && (result is ApiResult.Transport || result is ApiResult.Problem && result.status >= 500))
     }
@@ -142,6 +151,7 @@ class DeploymentRepository(
         var resolved = false
         try {
             val result = read(owner) { url, token ->
+                if (controlJournal.pending(owner, baseline.id) != null) return@read ApiResult.Problem(409, "application-deployment.resource_conflict", null)
                 when (val before = gateway.deploymentSnapshot(url, token, baseline.id)) {
                     is ApiResult.Success -> {
                         verifyOwner(owner)
@@ -163,6 +173,12 @@ class DeploymentRepository(
             if (unknown) uncertainRevisions.add(baseline.id)
             resolved = true
             DeploymentRevisionSubmission(result, unknown)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            if (dispatched && session.state.value === owner) uncertainRevisions.add(baseline.id)
+            resolved = true
+            DeploymentRevisionSubmission(ApiResult.Transport(null), dispatched)
         } finally {
             if (dispatched && !resolved && session.state.value === owner) uncertainRevisions.add(baseline.id)
         }
@@ -226,19 +242,58 @@ class DeploymentRepository(
     }
 
     suspend fun rollback(owner: SessionState.Active, applicationId: String, revisionId: String, idempotencyKey: String): ApiResult<DeploymentOperation> =
-        read(owner) { url, token -> gateway.rollbackDeployment(url, token, applicationId, revisionId, idempotencyKey) }
+        control(owner, applicationId, DeploymentControlKind.Rollback, revisionId, idempotencyKey)
 
     suspend fun delete(owner: SessionState.Active, applicationId: String, idempotencyKey: String): ApiResult<DeploymentOperation> =
-        read(owner) { url, token -> gateway.deleteDeployment(url, token, applicationId, idempotencyKey) }
+        control(owner, applicationId, DeploymentControlKind.Delete, "", idempotencyKey)
 
     suspend fun lifecycle(owner: SessionState.Active, applicationId: String, action: DeploymentLifecycleAction, idempotencyKey: String): ApiResult<DeploymentOperation> =
-        read(owner) { url, token -> gateway.deploymentLifecycle(url, token, applicationId, action, idempotencyKey) }
+        control(owner, applicationId, DeploymentControlKind.valueOf(action.name), "", idempotencyKey)
 
     suspend fun logs(owner: SessionState.Active, applicationId: String, tail: Int): ApiResult<DeploymentLog> =
         read(owner) { url, token -> gateway.deploymentLogs(url, token, applicationId, tail) }
 
-    suspend fun cancel(owner: SessionState.Active, operationId: String, idempotencyKey: String): ApiResult<DeploymentOperation> =
-        read(owner) { url, token -> gateway.cancelDeploymentOperation(url, token, operationId, idempotencyKey) }
+    suspend fun cancel(owner: SessionState.Active, applicationId: String, operationId: String, idempotencyKey: String): ApiResult<DeploymentOperation> =
+        control(owner, applicationId, DeploymentControlKind.Cancel, operationId, idempotencyKey)
+
+    suspend fun retryControl(owner: SessionState.Active, applicationId: String): ApiResult<DeploymentOperation> = controlWrites.withLock {
+        try {
+            verifyOwner(owner)
+            val pending = controlJournal.pending(owner, applicationId) ?: return@withLock ApiResult.Transport(null)
+            sendControl(owner, pending, retry = true)
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { ApiResult.Transport(null) }
+    }
+
+    private suspend fun control(owner: SessionState.Active, applicationId: String, kind: DeploymentControlKind, argument: String,
+        key: String): ApiResult<DeploymentOperation> = controlWrites.withLock {
+        try {
+            verifyOwner(owner)
+            if (controlJournal.pending(owner, applicationId) != null) return@withLock ApiResult.Transport(null)
+            val request = PendingDeploymentControl(owner.serviceId, owner.userName, applicationId, kind, argument, key)
+            controlJournal.begin(request) // Durable before any side effect; failure prevents sending.
+            sendControl(owner, request, retry = false)
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { ApiResult.Transport(null) }
+    }
+
+    private suspend fun sendControl(owner: SessionState.Active, request: PendingDeploymentControl, retry: Boolean): ApiResult<DeploymentOperation> {
+        val result = read(owner) { url, token ->
+            val response = when (request.kind) {
+                DeploymentControlKind.Rollback -> gateway.rollbackDeployment(url, token, request.applicationId, request.argument, request.key)
+                DeploymentControlKind.Delete -> gateway.deleteDeployment(url, token, request.applicationId, request.key)
+                DeploymentControlKind.Cancel -> gateway.cancelDeploymentOperation(url, token, request.argument, request.key)
+                else -> gateway.deploymentLifecycle(url, token, request.applicationId, DeploymentLifecycleAction.valueOf(request.kind.name), request.key)
+            }
+            if (response is ApiResult.Success && (response.value.applicationId != request.applicationId ||
+                    (request.kind == DeploymentControlKind.Cancel && response.value.operationId != request.argument) ||
+                    (request.kind != DeploymentControlKind.Cancel && response.value.kind != request.kind.name.lowercase()))) ApiResult.Transport(null)
+            else response
+        }
+        if (result is ApiResult.Success || !retry && result is ApiResult.Problem && result.status in 400..499 && result.status !in setOf(408, 429))
+            controlJournal.complete(request)
+        return result
+    }
 
     private suspend fun <T> read(owner: SessionState.Active, call: suspend (String, String) -> ApiResult<T>): ApiResult<T> = reads.withLock {
         fun verifyOwner() {

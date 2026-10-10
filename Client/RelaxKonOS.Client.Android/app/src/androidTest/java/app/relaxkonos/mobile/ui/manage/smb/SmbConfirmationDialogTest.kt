@@ -38,7 +38,7 @@ class SmbConfirmationDialogTest {
     private var received: CharArray? = null
     private val sample = "synthetic-review-password"
     private fun text(id: Int) = InstrumentationRegistry.getInstrumentation().targetContext.getString(id)
-    private fun field(label: Int) = rule.onNode(hasSetTextAction() and hasText(text(label)))
+    private fun field(label: Int) = rule.onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.EditableText) and hasText(text(label)))
     private fun action(label: Int) = rule.onNode(hasClickAction() and hasText(text(label)))
     private fun emptyFields() {
         listOf(R.string.smb_password, R.string.smb_password_again).forEach { label ->

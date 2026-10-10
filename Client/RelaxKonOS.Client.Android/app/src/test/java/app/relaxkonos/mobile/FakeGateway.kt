@@ -284,6 +284,15 @@ class FakeGateway : RelaxKonGateway {
     var onDeploymentTemplates: (suspend (String, String) -> ApiResult<List<DeploymentTemplate>>)? = null
     var onDeploymentLogs: (suspend (String, String, String, Int) -> ApiResult<DeploymentLog>)? = null
     var onRollbackDeployment: (suspend (String, String, String, String, String) -> ApiResult<DeploymentOperation>)? = null
+    var onDeploymentLifecycle: suspend (String, String, String, DeploymentLifecycleAction, String) -> ApiResult<DeploymentOperation> = { _, _, _, _, _ -> ApiResult.Transport(null) }
+    var onDeleteDeployment: suspend (String, String, String, String) -> ApiResult<DeploymentOperation> = { _, _, _, _ -> ApiResult.Transport(null) }
+    var onCancelDeploymentOperation: suspend (String, String, String, String) -> ApiResult<DeploymentOperation> = { _, _, _, _ -> ApiResult.Transport(null) }
+    override suspend fun deploymentLifecycle(serverUrl: String, accessToken: String, applicationId: String, action: DeploymentLifecycleAction, idempotencyKey: String) =
+        onDeploymentLifecycle(serverUrl, accessToken, applicationId, action, idempotencyKey)
+    override suspend fun deleteDeployment(serverUrl: String, accessToken: String, applicationId: String, idempotencyKey: String) =
+        onDeleteDeployment(serverUrl, accessToken, applicationId, idempotencyKey)
+    override suspend fun cancelDeploymentOperation(serverUrl: String, accessToken: String, operationId: String, idempotencyKey: String) =
+        onCancelDeploymentOperation(serverUrl, accessToken, operationId, idempotencyKey)
 
     override suspend fun deploymentApplications(serverUrl: String, accessToken: String) =
         requireNotNull(onDeploymentApplications)(serverUrl, accessToken)

@@ -82,9 +82,10 @@ fun DeploymentsScreen(
         state.submission?.let { result ->
             when (result) {
                 is ApiResult.Success -> Text(stringResource(R.string.deployments_queued, result.value.operationId), color = MaterialTheme.colorScheme.primary)
-                else -> OperationMessageDialog(result.deploymentFailure().text(), eventKey = result)
+                else -> OperationMessageDialog(result.deploymentFailure().text(), eventKey = state.submissionVersion to result)
             }
         }
+        DeploymentControlRecovery(state, browser::retryControl)
         if (expanded) {
             Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {
                 DeploymentList(state, { browser.select(it) }, Modifier.weight(1f))
@@ -528,7 +529,7 @@ internal fun ServerArchivePicker(onDismiss: () -> Unit, onSelect: (String) -> Un
 private fun isDeploymentArchive(name: String): Boolean = name.lowercase().let { it.endsWith(".zip") || it.endsWith(".jar") }
 
 @Composable
-private fun DeploymentList(state: DeploymentBrowserState, onSelect: (String) -> Unit, modifier: Modifier) {
+internal fun DeploymentList(state: DeploymentBrowserState, onSelect: (String) -> Unit, modifier: Modifier) {
     LazyColumn(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         item { Text(stringResource(R.string.deployments_image_deploy_note), style = MaterialTheme.typography.bodySmall) }
         item {
@@ -553,6 +554,14 @@ private fun DeploymentList(state: DeploymentBrowserState, onSelect: (String) -> 
         }
         item { RefreshProgressIndicator(visible = state.loading) }
         state.checkedAtMillis?.let { item { CheckedAt(it) } }
+        if (state.pendingControls.isNotEmpty()) {
+            item { Text(stringResource(R.string.deployments_control_recovery), style = MaterialTheme.typography.titleMedium) }
+            items(state.pendingControls, key = { "pending:${it.applicationId}" }) { pending ->
+                ListRow(title = pending.applicationId, subtitle = controlActionLabel(pending.kind),
+                    selected = state.selectedId == pending.applicationId,
+                    onClick = if (state.submitting) null else ({ onSelect(pending.applicationId) }))
+            }
+        }
         when (val result = state.applications) {
             is ApiResult.Success -> {
                 if (result.value.isEmpty()) item { EmptyHint(stringResource(R.string.deployments_empty)) }
@@ -563,7 +572,7 @@ private fun DeploymentList(state: DeploymentBrowserState, onSelect: (String) -> 
                             subtitle = stringResource(R.string.deployments_actual, label(application.actualState)),
                             supporting = stringResource(R.string.deployments_revision, revisionLabel(application.currentRevisionNumber)),
                             selected = state.selectedId == application.id,
-                            onClick = { onSelect(application.id) },
+                            onClick = if (state.submitting) null else ({ onSelect(application.id) }),
                         )
                     }
                 }
@@ -627,66 +636,38 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
                                             if (app.driftProblemCode != null) Text(stringResource(R.string.deployments_drift), color = MaterialTheme.colorScheme.error)
                                             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                                                 if (app.actualState == "running") {
-                                                    TextButton(onClick = { actionToConfirm = DeploymentLifecycleAction.Stop }, enabled = !state.submitting) {
+                                                    TextButton(onClick = { actionToConfirm = DeploymentLifecycleAction.Stop }, enabled = !state.submitting && !state.controlBlocked) {
                                                         Text(stringResource(R.string.deployment_stop))
                                                     }
-                                                    TextButton(onClick = { actionToConfirm = DeploymentLifecycleAction.Restart }, enabled = !state.submitting) {
+                                                    TextButton(onClick = { actionToConfirm = DeploymentLifecycleAction.Restart }, enabled = !state.submitting && !state.controlBlocked) {
                                                         Text(stringResource(R.string.deployment_restart))
                                                     }
                                                 } else if (app.actualState == "stopped") {
-                                                    TextButton(onClick = { browser.lifecycle(DeploymentLifecycleAction.Start) }, enabled = !state.submitting) {
+                                                    TextButton(onClick = { browser.lifecycle(DeploymentLifecycleAction.Start) }, enabled = !state.submitting && !state.controlBlocked) {
                                                         Text(stringResource(R.string.deployment_start))
                                                     }
                                                 }
                                             }
-                                            TextButton(onClick = { deleteConfirmation = true }, enabled = !state.submitting) {
+                                            TextButton(onClick = { deleteConfirmation = true }, enabled = !state.submitting && !state.controlBlocked) {
                                                 Text(stringResource(R.string.deployment_delete), color = MaterialTheme.colorScheme.error)
                                             }
-                                            if (app.catalogTemplateId != null) TextButton(onClick = { updateTemplate = app }, enabled = !state.submitting && snapshot.activeOperation == null && state.catalog is ApiResult.Success) {
+                                            if (app.catalogTemplateId != null) TextButton(onClick = { updateTemplate = app }, enabled = !state.submitting && !state.controlBlocked && snapshot.activeOperation == null && state.catalog is ApiResult.Success) {
                                                 Text(stringResource(R.string.catalog_update_title))
                                             }
-                                            TextButton(onClick = { viewModel.clearStagedArchive(); newRevision = snapshot }, enabled = !state.submitting && snapshot.activeOperation == null &&
+                                            TextButton(onClick = { viewModel.clearStagedArchive(); newRevision = snapshot }, enabled = !state.submitting && !state.controlBlocked && snapshot.activeOperation == null &&
                                             (state.runtime as? ApiResult.Success)?.value?.isAvailable == true) {
                                                 Text(stringResource(R.string.deployments_new_revision))
                                             }
-                                            TextButton(onClick = { editDefinition = app }, enabled = !state.submitting && snapshot.activeOperation == null) {
+                                            TextButton(onClick = { editDefinition = app }, enabled = !state.submitting && !state.controlBlocked && snapshot.activeOperation == null) {
                                                 Text(stringResource(R.string.deployments_edit_definition))
                                             }
                                         }
                                     }
                                     snapshot.activeOperation?.let { operation ->
-                                        item { OperationCard(operation, stringResource(R.string.deployments_active), if (operation.cancellable && !state.submitting) ({ browser.cancel(operation) }) else null) }
+                                        item { OperationCard(operation, stringResource(R.string.deployments_active), if (operation.cancellable && !state.submitting && !state.controlBlocked) ({ browser.cancel(operation) }) else null) }
                                     }
                                     if (pane == "logs") {
-                                        item { Text(stringResource(R.string.deployments_logs), style = MaterialTheme.typography.titleMedium) }
-                                        item { RefreshProgressIndicator(visible = state.logsLoading) }
-                                        when (val logs = state.logs) {
-                                            is ApiResult.Success -> item {
-                                                SectionCard(title = stringResource(if (logs.value.truncated) R.string.deployments_logs_truncated else R.string.deployments_logs_recent)) {
-                                                    if (logs.value.lines.isEmpty()) Text(stringResource(R.string.deployments_logs_empty))
-                                                    logs.value.lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
-                                                    state.loadedLogTail?.takeIf { logs.value.truncated && it < MAXIMUM_LOG_TAIL }?.let { tail ->
-                                                        TextButton(onClick = browser::loadMoreLogs, enabled = !state.logsLoading) {
-                                                            Text(stringResource(R.string.deployments_logs_load_more, nextLogTail(tail)))
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            null -> item {
-                                                SectionCard(title = stringResource(R.string.deployments_logs_recent)) {
-                                                    Text(stringResource(R.string.deployments_logs_on_demand), style = MaterialTheme.typography.bodySmall)
-                                                    TextButton(onClick = { browser.loadLogs() }, enabled = !state.logsLoading) {
-                                                        Text(stringResource(R.string.deployments_logs_load_initial, INITIAL_LOG_TAIL))
-                                                    }
-                                                }
-                                            }
-                                            else -> item {
-                                                OperationMessageDialog(logs.deploymentFailure().text(), eventKey = logs)
-                                                TextButton(onClick = { browser.loadLogs() }, enabled = !state.logsLoading) {
-                                                    Text(stringResource(R.string.deployments_logs_retry))
-                                                }
-                                            }
-                                        }
+                                        item { DeploymentLogsContent(state, { browser.loadLogs() }, browser::loadMoreLogs, browser::retryLogs) }
                                     }
                                     if (pane == "versions") {
                                         item { Text(stringResource(R.string.deployments_revisions), style = MaterialTheme.typography.titleMedium) }
@@ -698,7 +679,7 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
                                                 if (revision.isCurrent) {
                                                     Text(stringResource(R.string.deployments_current), color = MaterialTheme.colorScheme.primary)
                                                 } else {
-                                                    TextButton(onClick = { rollbackRevision = revision }, enabled = !state.submitting) {
+                                                    TextButton(onClick = { rollbackRevision = revision }, enabled = !state.submitting && !state.controlBlocked && snapshot.activeOperation == null) {
                                                         Text(stringResource(R.string.deployment_rollback))
                                                     }
                                                 }
@@ -741,7 +722,7 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
             title = { Text(stringResource(R.string.deployments_confirm_title)) },
             text = { Text(stringResource(R.string.deployments_confirm_action, label(action.name))) },
             confirmButton = {
-                TextButton(onClick = { browser.lifecycle(action); actionToConfirm = null }, enabled = !state.submitting) {
+                TextButton(onClick = { browser.lifecycle(action); actionToConfirm = null }, enabled = !state.submitting && !state.controlBlocked) {
                     Text(stringResource(R.string.deployments_confirm))
                 }
             },
@@ -754,7 +735,7 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
             title = { Text(stringResource(R.string.deployments_rollback_title)) },
             text = { Text(stringResource(R.string.deployments_rollback_note, revision.number)) },
             confirmButton = {
-                TextButton(onClick = { browser.rollback(revision); rollbackRevision = null }, enabled = !state.submitting) {
+                TextButton(onClick = { browser.rollback(revision); rollbackRevision = null }, enabled = !state.submitting && !state.controlBlocked) {
                     Text(stringResource(R.string.deployment_rollback))
                 }
             },
@@ -767,7 +748,7 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
             title = { Text(stringResource(R.string.deployments_delete_title)) },
             text = { Text(stringResource(R.string.deployments_delete_note)) },
             confirmButton = {
-                TextButton(onClick = { browser.delete(); deleteConfirmation = false }, enabled = !state.submitting) {
+                TextButton(onClick = { browser.delete(); deleteConfirmation = false }, enabled = !state.submitting && !state.controlBlocked) {
                     Text(stringResource(R.string.deployment_delete))
                 }
             },
@@ -791,8 +772,13 @@ private fun BackupRecoveryCard(owner: SessionState.Active?, applicationId: Strin
     val container = appContainer()
     val scope = rememberCoroutineScope()
     val ownerKey = DeploymentOwnerKey(owner)
-    val editor = remember(ownerKey, applicationId, scope) { BackupRecoveryEditor(container, owner, applicationId, scope) }
+    val editor = remember(ownerKey, applicationId, scope) { BackupRecoveryEditor(container.session, container.backupRecovery, owner, applicationId, scope) }
     DisposableEffect(editor) { onDispose { editor.close() } }
+    BackupRecoveryContent(editor)
+}
+
+@Composable
+internal fun BackupRecoveryContent(editor: BackupRecoveryEditor) {
     LaunchedEffect(editor) { editor.load() }
     val state = editor.state
     SectionCard(title = stringResource(R.string.backup_recovery_title), subtitle = stringResource(R.string.backup_recovery_note)) {
@@ -820,11 +806,13 @@ private fun BackupRecoveryCard(owner: SessionState.Active?, applicationId: Strin
             Text(stringResource(if (state.pendingRequest) R.string.backup_recovery_retry_create else R.string.backup_recovery_create))
         }
         RefreshProgressIndicator(visible = state.creating)
+        if (state.reconciliation is ApiResult.Problem || state.reconciliation is ApiResult.Transport)
+            Text(stringResource(R.string.backup_recovery_reconcile_failed), color = MaterialTheme.colorScheme.error)
         if (state.pendingRequest) Text(stringResource(R.string.backup_recovery_request_unknown), color = MaterialTheme.colorScheme.onSurfaceVariant)
         when (state.creation) {
             is ApiResult.Success -> Text(stringResource(R.string.backup_recovery_created))
             null -> Unit
-            else -> OperationMessageDialog(stringResource(R.string.backup_recovery_create_failed), eventKey = state.creation)
+            else -> OperationMessageDialog(stringResource(R.string.backup_recovery_create_failed), eventKey = editor.creationFeedbackVersion)
         }
         val selected = state.selectedBackupId
         if (selected != null && state.preflight == null) {
@@ -833,10 +821,10 @@ private fun BackupRecoveryCard(owner: SessionState.Active?, applicationId: Strin
         when (val preflight = state.preflight) {
             is ApiResult.Success -> {
                 if (preflight.value.canRestore) Text(stringResource(R.string.backup_recovery_ready_new_instance), color = MaterialTheme.colorScheme.primary)
-                else OperationMessageDialog((listOf(stringResource(R.string.backup_recovery_blocked)) + preflight.value.blockers).joinToString("\n"), eventKey = preflight, tone = StatusTone.Warning)
+                else OperationMessageDialog((listOf(stringResource(R.string.backup_recovery_blocked)) + preflight.value.blockers).joinToString("\n"), eventKey = editor.preflightFeedbackVersion, tone = StatusTone.Warning)
             }
             null -> Unit
-            else -> OperationMessageDialog(stringResource(R.string.backup_recovery_preflight_failed), eventKey = preflight)
+            else -> OperationMessageDialog(stringResource(R.string.backup_recovery_preflight_failed), eventKey = editor.preflightFeedbackVersion)
         }
     }
 }
@@ -872,11 +860,6 @@ internal fun catalogBlockerText(blocker: CatalogInstallBlocker): String = string
     },
 )
 
-private const val INITIAL_LOG_TAIL = 20
-private const val MAXIMUM_LOG_TAIL = 1_000
-private const val LOG_TAIL_GROWTH = 5
-
-private fun nextLogTail(current: Int): Int = (current * LOG_TAIL_GROWTH).coerceAtMost(MAXIMUM_LOG_TAIL)
 
 /** Drafts and confirmations belong to one login instance, even when its visible account fields match. */
 internal class DeploymentOwnerKey(private val owner: SessionState.Active?) {

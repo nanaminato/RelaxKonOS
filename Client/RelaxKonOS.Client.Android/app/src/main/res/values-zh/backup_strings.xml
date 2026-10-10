@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
 <resources>
+    <string name="backup_recovery_reconcile_failed">无法核对上次备份请求，待确认请求的键仍已保留。</string>
     <string name="backup_recovery_blocked">恢复已阻止。请先解决下列所有要求。</string>
     <string name="backup_recovery_create">创建定义备份</string>
     <string name="backup_recovery_create_failed">未能确认备份请求。重试前请检查任务列表。</string>

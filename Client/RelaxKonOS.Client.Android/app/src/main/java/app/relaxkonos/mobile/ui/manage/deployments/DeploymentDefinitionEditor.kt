@@ -22,6 +22,8 @@ internal class DeploymentDefinitionEditor(
     var draft by mutableStateOf(DeploymentDefinitionDraft(baseline))
     var busy by mutableStateOf(false)
     var result by mutableStateOf<ApiResult<DeploymentApplication>?>(null)
+    var feedbackVersion by mutableStateOf(0L)
+        private set
     var unknown by mutableStateOf(false)
     var loadedCurrent by mutableStateOf(false)
     var preview by mutableStateOf(false)
@@ -62,14 +64,18 @@ internal class DeploymentDefinitionEditor(
                 throw cancelled
             } catch (_: Exception) {
                 if (session.state.value === owner) result = ApiResult.Transport(null)
-            } finally { busy = false }
+            } finally {
+                if (session.state.value === owner && result != null) feedbackVersion++
+                busy = false
+            }
         }
     }
 
     fun save(onSaved: () -> Unit) {
-        if (busy) return
+        if (!editable || unstaged) return
 
         val submitted = draft.requestOrNull() ?: return
+        feedbackVersion++
         busy = true; result = null; loadedCurrent = false; configValue = ""
         scope.launch {
             try {
