@@ -101,6 +101,7 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
             }
             finally
             {
+                viewModel.EndSiteEditing();
                 viewModel.CloseSiteEditorAsync = null;
                 viewModel.ShowSiteSaveErrorAsync = null;
             }
