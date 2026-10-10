@@ -11,6 +11,31 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SystemRepositoryTest {
+    @Test fun `all metric reads return safe provider failures while cancellation still propagates`() = runTest {
+        val owner = login()
+        gateway.onPerformance = { _, _ -> error("private metrics provider detail") }
+        gateway.onPerformanceInfo = { _, _ -> error("private metrics provider detail") }
+        gateway.onPerformanceHistory = { _, _ -> error("private metrics provider detail") }
+        gateway.onNetworkAddresses = { _, _ -> error("private metrics provider detail") }
+        assertEquals(ApiResult.Transport(null), repository.performance())
+        assertEquals(ApiResult.Transport(null), repository.performance(owner))
+        assertEquals(ApiResult.Transport(null), repository.performanceInfo(owner))
+        assertEquals(ApiResult.Transport(null), repository.performanceHistory(owner))
+        assertEquals(ApiResult.Transport(null), repository.networkAddresses(owner))
+        gateway.onPerformance = { _, _ -> throw CancellationException("cancelled") }
+        assertTrue(runCatching { repository.performance(owner) }.exceptionOrNull() is CancellationException)
+    }
+    @Test fun `unexpected process read exception returns safe transport failure`() = runTest {
+        val owner = login()
+        gateway.onProcesses = { _, _, _, _, _, _, _ -> error("private process provider detail") }
+        assertEquals(ApiResult.Transport(null), repository.processes(owner, 1, 50, null, ProcessSort.Cpu, true))
+    }
+    @Test fun `unexpected process termination exception is unknown and is not replayed`() = runTest {
+        val owner = login()
+        gateway.onKill = { _, _, _, _ -> error("private process provider detail") }
+        assertEquals(ApiResult.Transport(null), repository.killProcess(owner, 42, time))
+        assertEquals(listOf(42 to time), gateway.killCalls)
+    }
     private val gateway = FakeGateway(); private val session = AuthSession(gateway)
     private val repository = SystemRepository(gateway, session)
     private val time = "2026-10-01T00:00:00.1234567Z"

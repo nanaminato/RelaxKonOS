@@ -20,6 +20,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import app.relaxkonos.mobile.AppContainer
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.auth.SessionState
@@ -187,7 +189,10 @@ private fun FilesDestination(navigator: MobileNavigator, layoutState: LayoutStat
 
 @Composable
 private fun ManageDestination(navigator: MobileNavigator, layoutState: LayoutState, clearTaskTarget: () -> Unit) {
-    val viewModel: ManageViewModel = viewModel()
+    val container = appContainer()
+    val viewModel: ManageViewModel = viewModel(factory = viewModelFactory {
+        initializer { ManageViewModel(container.session, container.system, container.recentOperations) }
+    })
 
     if (layoutState == LayoutState.Expanded) {
         Row(Modifier.fillMaxSize()) {

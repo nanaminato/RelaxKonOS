@@ -46,6 +46,12 @@ class SystemRepository(
     private suspend fun <T> owned(owner: SessionState.Active, call: suspend (String, String) -> ApiResult<T>): ApiResult<T> {
         fun guard() { if (session.state.value !== owner) throw CancellationException("System observer owner changed") }
         guard()
-        return session.authenticated { url, token -> guard(); call(url, token).also { guard() } }.also { guard() }
+        return try {
+            session.authenticated { url, token -> guard(); call(url, token).also { guard() } }.also { guard() }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) {
+            guard()
+            ApiResult.Transport(null)
+        }
     }
 }

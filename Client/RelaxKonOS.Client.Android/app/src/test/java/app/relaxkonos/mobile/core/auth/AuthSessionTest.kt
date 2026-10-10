@@ -13,7 +13,9 @@ import app.relaxkonos.mobile.servercenter.ServerConnectionIdentityRules
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.runCurrent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -26,6 +28,20 @@ import org.junit.Test
  * failure changes nothing.
  */
 class AuthSessionTest {
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test fun `same account relogin remains observable when authenticating is conflated`() = runTest {
+        gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession()) }
+        val observed = mutableListOf<SessionState.Active>()
+        backgroundScope.launch { session.state.collect { if (it is SessionState.Active) observed.add(it) } }
+        runCurrent()
+        session.login(direct(), "review", "test".toCharArray()) {}
+        runCurrent()
+        session.login(direct(), "review", "test".toCharArray()) {}
+        runCurrent()
+        assertEquals(2, observed.size)
+        assertTrue(observed[0].sessionInstanceId != observed[1].sessionInstanceId)
+        assertEquals(observed[1].sessionInstanceId, observed[1].copy(effectiveBaseUrl = "https://changed.invalid").sessionInstanceId)
+    }
     private val gateway = FakeGateway()
     private val session = AuthSession(gateway)
     private val server = "https://relaxkonos.local:5090"

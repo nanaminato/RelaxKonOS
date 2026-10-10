@@ -37,6 +37,8 @@ sealed interface SessionState {
         val executionEligibility: ExecutionEligibility,
         val privilegedOperations: Boolean = false,
         val workspaceId: String,
+        /** Distinguishes new logins even when StateFlow conflates their intermediate Authenticating state. */
+        val sessionInstanceId: String = java.util.UUID.randomUUID().toString(),
     ) : SessionState
 }
 

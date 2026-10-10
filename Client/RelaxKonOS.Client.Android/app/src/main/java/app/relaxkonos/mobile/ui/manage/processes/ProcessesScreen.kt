@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import app.relaxkonos.mobile.core.net.RemoteProcess
 import app.relaxkonos.mobile.ui.manage.monitor.monitorUsesTwoPanes
 import androidx.compose.foundation.layout.Arrangement
@@ -43,6 +44,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -82,7 +85,10 @@ fun ProcessesScreen(
     modifier: Modifier = Modifier,
     active: Boolean = true,
 ) {
-    val viewModel: ManageViewModel = viewModel()
+    val container = appContainer()
+    val viewModel: ManageViewModel = viewModel(factory = viewModelFactory {
+        initializer { ManageViewModel(container.session, container.system, container.recentOperations) }
+    })
 
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val auth by appContainer().session.state.collectAsStateWithLifecycle()
@@ -93,6 +99,16 @@ fun ProcessesScreen(
         }
     }
     DisposableEffect(viewModel) { onDispose { viewModel.stopProcessObserving() } }
+    ProcessesContent(viewModel, onBack, modifier, active)
+}
+
+@Composable
+internal fun ProcessesContent(
+    viewModel: ManageViewModel,
+    onBack: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+    active: Boolean = true,
+) {
     var sorting by remember { mutableStateOf(false) }
     val keyboard = LocalSoftwareKeyboardController.current
 
@@ -105,15 +121,8 @@ fun ProcessesScreen(
             onBack = if (viewModel.processSelected != null) ({ viewModel.selectProcess(null) }) else onBack,
         )
 
-        viewModel.processMessage?.let { banner ->
-            ActionFeedback(
-                message = banner,
-                onRetry = { viewModel.loadProcesses() },
-                onDismiss = { viewModel.dismissProcessMessage() },
-            )
-        }
-
-        viewModel.killMessage?.let { message -> ActionFeedback(message, onRetry = { viewModel.loadProcesses() }, onDismiss = { viewModel.dismissKillMessage() }) }
+        ProcessFeedback(viewModel.processMessage, viewModel.killMessage,
+            { viewModel.loadProcesses() }, viewModel::dismissProcessMessage, viewModel::dismissKillMessage)
 
         if (!viewModel.processesAvailable) {
             EmptyState(
@@ -225,6 +234,11 @@ fun ProcessesScreen(
         }
     }
 
+    ProcessTerminationConfirmation(viewModel)
+}
+
+@Composable
+internal fun ProcessTerminationConfirmation(viewModel: ManageViewModel) {
     viewModel.killTarget?.let { process ->
         ConfirmDangerousDialog(
             title = stringResource(R.string.manage_processes_kill_title),
@@ -236,6 +250,23 @@ fun ProcessesScreen(
                 viewModel.cancelKill()
             },
         )
+    }
+}
+
+@Composable
+internal fun ProcessFeedback(readMessage: UiMessage?, killMessage: UiMessage?, onRead: () -> Unit,
+    onDismissRead: () -> Unit, onDismissKill: () -> Unit) {
+    readMessage?.let { ActionFeedback(it, onRetry = onRead, onDismiss = onDismissRead) }
+    killMessage?.let { message ->
+        if (message.resId == R.string.manage_processes_kill_unknown) {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                Text(message.text(), color = MaterialTheme.colorScheme.error)
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    TextButton(onClick = onRead) { Text(stringResource(R.string.common_retry)) }
+                    TextButton(onClick = onDismissKill) { Text(stringResource(R.string.common_dismiss)) }
+                }
+            }
+        } else ActionFeedback(message, onRetry = onRead, onDismiss = onDismissKill)
     }
 }
 
@@ -271,7 +302,7 @@ private fun ProcessDetails(process: RemoteProcess, model: ManageViewModel, modif
         R.string.monitor_thread_count to stringResource(R.string.monitor_count, process.threadCount.toLong()),
         R.string.manage_processes_started_at to (process.startTime ?: stringResource(R.string.monitor_unknown)),
     )
-    LazyColumn(modifier, verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+    LazyColumn(modifier.testTag("process-details"), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         item {
             TextButton(onClick = { model.selectProcess(null) }) { Text(stringResource(R.string.taskmanager_back_to_list)) }
             Text(process.name, style = MaterialTheme.typography.titleLarge)

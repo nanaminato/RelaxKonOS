@@ -102,6 +102,12 @@ internal class OutboundProxyEditor(
                     }
                 }
             } catch (cancelled: CancellationException) {
+                if (!closed && isCurrentOwner()) {
+                    // Cancellation does not prove that a write never reached the host, and a
+                    // cancelled read cannot renew the authority of the previous snapshot.
+                    status = null
+                    message = UiMessage(if (write) R.string.proxy_result_unknown else R.string.error_connectivity)
+                }
                 throw cancelled
             } catch (_: Exception) {
                 if (!closed && isCurrentOwner()) {

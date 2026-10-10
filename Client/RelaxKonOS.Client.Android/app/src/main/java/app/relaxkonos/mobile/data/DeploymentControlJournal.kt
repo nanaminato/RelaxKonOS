@@ -44,9 +44,7 @@ class DeploymentControlJournal(private val storage: DeploymentControlStorage) {
         pending(owner).singleOrNull { it.applicationId == applicationId }
 
     @Synchronized fun begin(request: PendingDeploymentControl) {
-        require(request.serviceId.length in 1..128 && request.account.length in 1..256 && request.applicationId.length in 1..128 &&
-            request.argument.length <= 128 && request.key.length in 1..128 && request.key.all { it.code in 33..126 })
-        require(request.kind !in setOf(DeploymentControlKind.Rollback, DeploymentControlKind.Cancel) || request.argument.isNotBlank())
+        validate(request)
         val entries = entries()
         check(entries.none { it.serviceId == request.serviceId && it.account == request.account && it.applicationId == request.applicationId })
         check(entries.size < 100) // Unresolved requests must never be evicted to make room.
@@ -58,25 +56,32 @@ class DeploymentControlJournal(private val storage: DeploymentControlStorage) {
     private fun entries(): List<PendingDeploymentControl> {
         val bytes = storage.read() ?: return emptyList()
         require(bytes.size <= 262_144)
-        val root = JSONObject(String(bytes, Charsets.UTF_8))
+        val root = JSONObject(Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes)).toString())
         require(root.getInt("version") == 1)
         val array = root.getJSONArray("requests")
         require(array.length() <= 100)
         val result = (0 until array.length()).map { index ->
             val item = array.getJSONObject(index)
             PendingDeploymentControl(item.getString("serviceId"), item.getString("account"), item.getString("applicationId"),
-                DeploymentControlKind.valueOf(item.getString("kind")), item.getString("argument"), item.getString("key")).also {
-                require(it.serviceId.length in 1..128 && it.account.length in 1..256 && it.applicationId.length in 1..128 &&
-                    it.argument.length <= 128 && it.key.length in 1..128)
-            }
+                DeploymentControlKind.valueOf(item.getString("kind")), item.getString("argument"), item.getString("key")).also(::validate)
         }
         require(result.distinctBy { Triple(it.serviceId, it.account, it.applicationId) }.size == result.size)
         return result
+    }
+    private fun validate(request: PendingDeploymentControl) {
+        require(request.serviceId.length in 1..128 && request.account.length in 1..256 && request.applicationId.length in 1..128 &&
+            request.argument.length <= 128 && request.key.length in 1..128 && request.key.all { it.code in 33..126 })
+        require(when (request.kind) {
+            DeploymentControlKind.Rollback, DeploymentControlKind.Cancel -> request.argument.isNotBlank()
+            else -> request.argument.isEmpty()
+        })
     }
     private fun write(entries: List<PendingDeploymentControl>) {
         val array = JSONArray()
         entries.forEach { array.put(JSONObject().put("serviceId", it.serviceId).put("account", it.account)
             .put("applicationId", it.applicationId).put("kind", it.kind.name).put("argument", it.argument).put("key", it.key)) }
-        storage.write(JSONObject().put("version", 1).put("requests", array).toString().toByteArray(Charsets.UTF_8))
+        val bytes = JSONObject().put("version", 1).put("requests", array).toString().toByteArray(Charsets.UTF_8)
+        require(bytes.size <= 262_144)
+        storage.write(bytes)
     }
 }

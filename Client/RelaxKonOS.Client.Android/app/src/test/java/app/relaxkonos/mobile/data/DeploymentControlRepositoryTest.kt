@@ -11,6 +11,29 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DeploymentControlRepositoryTest {
+    @Test fun `unknown cancellation retries the exact original operation and key`() = runTest {
+        val owner = owner()
+        val requests = mutableListOf<Pair<String, String>>()
+        gateway.onCancelDeploymentOperation = { _, _, operationId, key ->
+            requests.add(operationId to key)
+            if (requests.size == 1) ApiResult.Transport(null)
+            else ApiResult.Success(DeploymentOperation(operationId, "review-app", "deploy", "cancelled", "cancelled", null, null, null, null, false))
+        }
+        repository.cancel(owner, "review-app", "original-operation", "original-key")
+        repository.cancel(owner, "review-app", "other-operation", "new-key")
+        assertEquals(1, requests.size)
+        assertTrue(repository.retryControl(owner, "review-app") is ApiResult.Success)
+        assertEquals(listOf("original-operation" to "original-key", "original-operation" to "original-key"), requests)
+        assertNull(repository.pendingControl(owner, "review-app"))
+    }
+    @Test fun `cancellation receipt for another operation retains the original request`() = runTest {
+        val owner = owner()
+        gateway.onCancelDeploymentOperation = { _, _, _, _ ->
+            ApiResult.Success(DeploymentOperation("other-operation", "review-app", "deploy", "cancelled", "cancelled", null, null, null, null, false))
+        }
+        assertEquals(ApiResult.Transport(null), repository.cancel(owner, "review-app", "original-operation", "original-key"))
+        assertEquals("original-operation", repository.pendingControl(owner, "review-app")?.argument)
+    }
     private val gateway = FakeGateway()
     private val session = AuthSession(gateway)
     private val repository = DeploymentRepository(gateway, session)

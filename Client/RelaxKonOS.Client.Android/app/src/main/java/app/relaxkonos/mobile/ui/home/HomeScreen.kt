@@ -28,6 +28,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.layout.LayoutState
@@ -74,9 +77,27 @@ fun HomeScreen(
     onOpenHelp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val viewModel: HomeViewModel = viewModel()
+    val container = appContainer()
+    val viewModel: HomeViewModel = viewModel(factory = viewModelFactory {
+        initializer { HomeViewModel(container.session, container.system, container.recentOperations) { serviceId ->
+            val tunnel = container.loginTunnels.all().firstOrNull { it.serviceId == serviceId }
+            if (tunnel != null) "${tunnel.host}:${tunnel.port} → ${tunnel.remoteUrl}"
+            else container.managedLogins.hostFor(serviceId)?.displayName
+                ?: serviceId.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+        } }
+    })
+    HomeContent(viewModel, session, layoutState, onOpenHelp, modifier)
+}
 
-    LaunchedEffect(session.effectiveBaseUrl) { viewModel.refresh() }
+@Composable
+internal fun HomeContent(
+    viewModel: HomeViewModel,
+    session: SessionState.Active,
+    layoutState: LayoutState,
+    onOpenHelp: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LaunchedEffect(session) { viewModel.refresh() }
 
     val snapshot = viewModel.snapshot
     val recentOperations = viewModel.recentOperations.collectAsStateValue()

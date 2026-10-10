@@ -18,6 +18,24 @@ import org.junit.Test
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class OutboundProxyEditorTest {
+    @Test fun `cancelled refresh invalidates old host facts until explicit reload`() = runTest {
+        val editor = editor()
+        gateway.onOutboundProxyStatus = { throw kotlinx.coroutines.CancellationException("cancelled read") }
+        editor.load(); runCurrent()
+        assertFalse(editor.busy); assertNull(editor.status); assertFalse(editor.canSubmit)
+        gateway.onOutboundProxyStatus = { ApiResult.Success(status) }
+        editor.refresh(); editor.confirm(null); runCurrent()
+        assertTrue(editor.canSubmit)
+    }
+    @Test fun `cancelled write requires verification and cannot be replayed directly`() = runTest {
+        val editor = editor(); var writes = 0
+        gateway.onClearOutboundProxy = { writes++; throw kotlinx.coroutines.CancellationException("cancelled write") }
+        editor.clear(); editor.confirm(null); runCurrent()
+        assertEquals(1, writes); assertFalse(editor.busy); assertNull(editor.status)
+        assertFalse(editor.canSubmit)
+        assertEquals(app.relaxkonos.mobile.R.string.proxy_result_unknown, editor.message?.resId)
+        editor.clear(); editor.confirm(null); runCurrent(); assertEquals(1, writes)
+    }
     private val gateway = FakeGateway()
     private val session = AuthSession(gateway)
     private val repository = DockerRepository(gateway, session, OperationIndex(object : OperationIndexStorage {

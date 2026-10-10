@@ -1,7 +1,5 @@
 package app.relaxkonos.mobile.ui.more
 
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.getValue
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -34,7 +32,16 @@ fun DiagnosticsScreen(
     onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-    val viewModel: DiagnosticsViewModel = viewModel()
+    val model: DiagnosticsViewModel = viewModel()
+    DiagnosticsContent(model.diagnostics, onBack, modifier)
+}
+
+@Composable
+internal fun DiagnosticsContent(
+    viewModel: DiagnosticsController,
+    onBack: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
 
     Column(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg),
@@ -54,7 +61,7 @@ fun DiagnosticsScreen(
             },
         ) {
             if (viewModel.lines.isEmpty()) {
-                EmptyHint(stringResource(R.string.diagnostics_not_run))
+                EmptyHint(stringResource(if (viewModel.running) R.string.common_loading else R.string.diagnostics_not_run))
             } else {
                 viewModel.lines.forEach { line ->
                     Text(line, style = MaterialTheme.typography.bodyMedium)

@@ -24,6 +24,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.ui.common.*
@@ -34,8 +36,10 @@ import kotlinx.coroutines.awaitCancellation
 
 @Composable
 fun MonitorScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, active: Boolean = true) {
-    val model: MonitorViewModel = viewModel()
-    val state by model.state.collectAsStateWithLifecycle()
+    val container = appContainer()
+    val model: MonitorViewModel = viewModel(factory = viewModelFactory {
+        initializer { MonitorViewModel(container.session, container.system) }
+    })
     val auth by appContainer().session.state.collectAsStateWithLifecycle()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(active, lifecycle, auth, model.available) {
@@ -45,6 +49,12 @@ fun MonitorScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, active: 
         }
     }
     DisposableEffect(model) { onDispose { model.stopObserving() } }
+    MonitorContent(model, onBack, modifier, active)
+}
+
+@Composable
+internal fun MonitorContent(model: MonitorViewModel, onBack: (() -> Unit)?, modifier: Modifier = Modifier, active: Boolean = true) {
+    val state by model.state.collectAsStateWithLifecycle()
     val resources = remember(state.info, state.snapshot) { performanceResources(state.info, state.snapshot) }
     Column(modifier.fillMaxSize().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         ScreenHeader(title = stringResource(R.string.manage_monitor_title),

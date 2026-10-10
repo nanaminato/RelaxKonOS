@@ -121,6 +121,20 @@ class PerformanceObserverTest {
         assertEquals(1, connections.single().stops)
         observer.stop()
     }
+    @Test fun `provider exception during REST fallback stays recoverable without exposing private detail`() = runTest {
+        val owner = login(); val connections = mutableListOf<Connection>()
+        val observer = observer(this, connections) { value, _ -> value.failure = Exception("offline") }
+        gateway.onPerformance = { _, _ -> error("private metrics provider detail") }
+        try {
+            observer.observe(owner); runCurrent()
+            assertEquals(PerformancePhase.Failed, observer.state.value.phase)
+            assertEquals(ApiResult.Transport(null), observer.state.value.problem)
+            gateway.onPerformance = { _, _ -> reads++; ApiResult.Success(sample(restSequence)) }
+            advanceTimeBy(1_000); runCurrent()
+            assertEquals(PerformancePhase.Snapshot, observer.state.value.phase)
+            assertNull(observer.state.value.problem)
+        } finally { observer.stop(); runCurrent() }
+    }
     @Test fun `history retains actual gaps and bounds both seconds and point count`() {
         val samples = (0L..100L).map { sample(it) }
         val merged = mergePerformanceHistory(samples, listOf(sample(100)))

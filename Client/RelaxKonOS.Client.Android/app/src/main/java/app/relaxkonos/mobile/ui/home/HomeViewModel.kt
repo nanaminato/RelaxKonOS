@@ -2,18 +2,21 @@ package app.relaxkonos.mobile.ui.home
 
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
-import android.app.Application
 import androidx.compose.runtime.mutableStateOf
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import app.relaxkonos.mobile.AppContainer
-import app.relaxkonos.mobile.RelaxKonApplication
+import app.relaxkonos.mobile.core.auth.AuthSession
+import app.relaxkonos.mobile.core.auth.SessionState
+import app.relaxkonos.mobile.data.SystemRepository
+import app.relaxkonos.mobile.data.RecentOperationJournal
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.PerformanceSnapshot
 import app.relaxkonos.mobile.core.net.ServerCapabilities
 import app.relaxkonos.mobile.ui.common.UiMessage
 import app.relaxkonos.mobile.ui.common.failureMessage
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 /**
  * Home destination state.
  *
@@ -21,8 +24,22 @@ import kotlinx.coroutines.launch
  * this holder only tracks what the screen must render. It keeps no host data beyond the last answer: a
  * stale snapshot rendered as fresh is worse than no snapshot.
  */
-class HomeViewModel(application: Application) : AndroidViewModel(application) {
-    private val container: AppContainer get() = getApplication<RelaxKonApplication>().container
+class HomeViewModel(
+    private val session: AuthSession,
+    private val system: SystemRepository,
+    private val recent: RecentOperationJournal,
+    val connectionDescription: (String) -> String?,
+) : ViewModel() {
+    private var owner = session.state.value as? SessionState.Active
+    private var generation = 0
+    private var readJob: Job? = null
+
+    private fun resetOwner(active: SessionState.Active?) {
+        generation++
+        readJob?.cancel(); readJob = null
+        owner = active
+        snapshot = null; message = null; loading = false
+    }
 
     var snapshot by mutableStateOf<PerformanceSnapshot?>(null)
         private set
@@ -33,30 +50,43 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     var loading by mutableStateOf(false)
         private set
 
-    val metricsAvailable: Boolean get() = container.capabilities.contains(ServerCapabilities.METRICS)
+    val metricsAvailable: Boolean get() = (session.state.value as? SessionState.Active)?.capabilities?.contains(ServerCapabilities.METRICS) == true
 
-    val recentOperations get() = container.recentOperations.entries
+    val recentOperations get() = recent.entries
 
-    fun connectionDescription(serviceId: String): String? {
-        container.loginTunnels.all().firstOrNull { it.serviceId == serviceId }?.let {
-            return "${it.host}:${it.port} → ${it.remoteUrl}"
+    init {
+        viewModelScope.launch {
+            session.state.collect { value ->
+                val active = value as? SessionState.Active
+                if (owner !== active) resetOwner(active)
+            }
         }
-        container.managedLogins.hostFor(serviceId)?.let { return it.displayName }
-        return serviceId.takeIf { it.startsWith("http://") || it.startsWith("https://") }
     }
 
     fun refresh() {
+        val active = session.state.value as? SessionState.Active ?: return
+        if (owner !== active) resetOwner(active)
         if (!metricsAvailable || loading) {
             return
         }
         loading = true
         message = null
-        viewModelScope.launch {
-            when (val result = container.system.performance()) {
-                is ApiResult.Success -> snapshot = result.value
-                else -> message = result.failureMessage()
+        val version = ++generation
+        fun current() = generation == version && session.state.value === active
+        readJob = viewModelScope.launch {
+            try {
+                val result = system.performance(active)
+                if (!current()) return@launch
+                when (result) {
+                    is ApiResult.Success -> snapshot = result.value
+                    else -> { snapshot = null; message = result.failureMessage() }
+                }
+            } catch (cancelled: CancellationException) {
+                if (current()) snapshot = null
+                throw cancelled
+            } finally {
+                if (current()) loading = false
             }
-            loading = false
         }
     }
 
