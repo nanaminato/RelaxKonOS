@@ -22,6 +22,7 @@
     <string name="gw_confirm">Confirm and execute</string>
     <string name="gw_confirm_note">Review the target and changes. Current facts and diff versions will be checked again before execution.</string>
     <string name="gw_conflict_editor">Conflict editor</string>
+    <string name="gw_conflict_no_longer_present">This file is no longer in the current conflict list. Your result draft is retained for review; no further resolution will be submitted from this editor.</string>
     <string name="gw_conflict_note">Compare the three versions and choose a result. Edited content must contain no conflict markers. Refreshing the revision preserves your draft; review it against the new versions before saving.</string>
     <string name="gw_conflicts">Resolve conflicts before continuing</string>
     <string name="gw_continue">Continue operation</string>

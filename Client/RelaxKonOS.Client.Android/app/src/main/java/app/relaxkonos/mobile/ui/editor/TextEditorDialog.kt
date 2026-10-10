@@ -11,15 +11,19 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.*
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -38,6 +42,13 @@ fun TextEditorDialog(owner: SessionState.Active, path: String?, repositoryId: St
     val editor: TextEditorViewModel = viewModel(key = "shared-text-editor", factory = viewModelFactory {
         initializer { TextEditorViewModel(container.session, container.textEditor) }
     })
+    LaunchedEffect(owner, path, repositoryId) { editor.start(owner, path, repositoryId) }
+    TextEditorContent(editor, path, repositoryId, onSaved, onClose)
+}
+
+@Composable
+internal fun TextEditorContent(editor: TextEditorViewModel, path: String?, repositoryId: String?,
+    onSaved: (RemoteTextFile) -> Unit = {}, onClose: () -> Unit) {
     var confirmClose by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var replacement by remember { mutableStateOf("") }
@@ -45,12 +56,12 @@ fun TextEditorDialog(owner: SessionState.Active, path: String?, repositoryId: St
     var formatDialog by remember { mutableStateOf(false) }
     var searchDialog by remember { mutableStateOf(false) }
     var saveAsDialog by remember { mutableStateOf(false) }
-    LaunchedEffect(owner, path, repositoryId) { editor.start(owner, path, repositoryId) }
     LaunchedEffect(editor.saved, editor.baseline) { if (editor.saved) editor.baseline?.let(onSaved) }
     fun close() { if (editor.dirty || editor.unknown) confirmClose = true else { editor.clear(); onClose() } }
-    Dialog(onDismissRequest = { if (!editor.busy) close() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = { if (!editor.busy) close() }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        EditorSystemBars()
         Surface(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize().imePadding().padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 ScreenHeader(stringResource(R.string.editor_title), onBack = { if (!editor.busy) close() })
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text(editor.verificationPath ?: editor.baseline?.path ?: stringResource(R.string.editor_new), style = MaterialTheme.typography.titleSmall)
@@ -118,7 +129,7 @@ fun TextEditorDialog(owner: SessionState.Active, path: String?, repositoryId: St
         if (diff) EditorToolDialog(stringResource(R.string.git_preview_diff), { diff = false }) {
             SelectionContainer { Text(lineDiff(editor.baseline?.content.orEmpty(), editor.value.text), fontFamily = FontFamily.Monospace) }
         }
-        if (saveAsDialog) AlertDialog(onDismissRequest = { if (!editor.busy) saveAsDialog = false },
+        if (saveAsDialog) AlertDialog(onDismissRequest = { if (!editor.busy) saveAsDialog = false }, modifier = Modifier.imePadding(),
             title = { Text(stringResource(R.string.editor_save_as)) },
             text = { OutlinedTextField(editor.destination, { editor.destination = it }, label = { Text(stringResource(R.string.editor_destination)) }, singleLine = true, enabled = !editor.busy) },
             confirmButton = { TextButton(onClick = { editor.save(true); saveAsDialog = false },
@@ -132,8 +143,22 @@ fun TextEditorDialog(owner: SessionState.Active, path: String?, repositoryId: St
 }
 
 @Composable
+internal fun EditorSystemBars() {
+    val view = LocalView.current
+    val lightSurface = MaterialTheme.colorScheme.surface.luminance() > 0.5f
+    SideEffect {
+        (view.parent as? DialogWindowProvider)?.window?.let { window ->
+            WindowCompat.getInsetsController(window, view).apply {
+                isAppearanceLightStatusBars = lightSurface
+                isAppearanceLightNavigationBars = lightSurface
+            }
+        }
+    }
+}
+
+@Composable
 private fun EditorToolDialog(title: String, onClose: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-    AlertDialog(onDismissRequest = onClose, title = { Text(title) },
+    AlertDialog(onDismissRequest = onClose, modifier = Modifier.imePadding(), title = { Text(title) },
         text = { Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm), content = content) },
         confirmButton = { TextButton(onClick = onClose) { Text(stringResource(R.string.common_close)) } })
 }

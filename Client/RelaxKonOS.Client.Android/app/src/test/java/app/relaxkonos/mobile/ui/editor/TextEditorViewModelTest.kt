@@ -23,6 +23,7 @@ class TextEditorViewModelTest {
     private val file = RemoteTextFile("/old", "remote", "a".repeat(64), "utf-8", false, "none")
     private var onRead: suspend (String) -> ApiResult<RemoteTextFile> = { ApiResult.Success(file.copy(path = it)) }
     private var onCreate: suspend () -> ApiResult<RemoteTextFile> = { ApiResult.Transport(null) }
+    private var onSave: suspend () -> ApiResult<RemoteTextFile> = { ApiResult.Transport(null) }
     private val gateway = object : RelaxKonGateway by base {
         override suspend fun textFile(serverUrl: String, accessToken: String, path: String): ApiResult<RemoteTextFile> {
             reads += path
@@ -33,6 +34,8 @@ class TextEditorViewModelTest {
             creates++
             return onCreate()
         }
+        override suspend fun saveTextFile(serverUrl: String, accessToken: String, file: RemoteTextFile,
+            content: String): ApiResult<RemoteTextFile> = onSave()
     }
     private val session = AuthSession(gateway)
     private val store = ViewModelStore()
@@ -59,6 +62,19 @@ class TextEditorViewModelTest {
         editor.compareLatest()
         assertEquals("local draft", editor.value.text); assertEquals("remote", editor.baseline?.content)
         assertNull(editor.latest); assertTrue(editor.dirty)
+    }
+    @Test fun `resolved conflict shows comparison but a subsequent read failure remains visible`() = runTest {
+        editor.start(login(), "/old", null); advanceUntilIdle()
+        editor.edit(TextFieldValue("local draft"))
+        onSave = { ApiResult.Problem(409, "text-file-changed", null) }
+        onRead = { ApiResult.Success(file.copy(path = it, content = "server revision", version = "b".repeat(64))) }
+        editor.save(); advanceUntilIdle()
+        assertFalse(editor.failed); assertFalse(editor.unknown); assertFalse(editor.busy)
+        assertEquals("server revision", editor.latest?.content); assertEquals("local draft", editor.value.text)
+        onRead = { ApiResult.Transport(null) }
+        editor.reload(); advanceUntilIdle()
+        assertTrue(editor.failed); assertFalse(editor.unknown); assertFalse(editor.busy)
+        assertEquals("server revision", editor.latest?.content); assertEquals("local draft", editor.value.text)
     }
     @Test fun `known create rejection refreshes a corrected destination rather than the rejected path`() = runTest {
         editor.start(login(), null, null)
@@ -124,5 +140,74 @@ class TextEditorViewModelTest {
         assertTrue(editor.failed); assertTrue(editor.unknown); assertFalse(editor.busy)
         assertEquals("/new", editor.verificationPath); assertEquals("local", editor.value.text)
         editor.save(); advanceUntilIdle(); assertEquals(1, creates)
+    }
+
+    @Test fun `late read cannot populate another file in the same login`() = runTest {
+        val active = login()
+        val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+        onRead = { path ->
+            entered.complete(Unit)
+            withContext(NonCancellable) { release.await() }
+            ApiResult.Success(file.copy(path = path))
+        }
+        editor.start(active, "/old", null); runCurrent(); entered.await()
+        editor.start(active, null, null)
+        editor.destination = "/new"; editor.edit(TextFieldValue("new draft"))
+        release.complete(Unit); advanceUntilIdle()
+        assertEquals("new draft", editor.value.text); assertEquals("/new", editor.destination)
+        assertNull(editor.baseline); assertNull(editor.latest)
+        assertFalse(editor.busy); assertFalse(editor.failed); assertFalse(editor.saved)
+        assertEquals(listOf("/old"), reads); assertEquals(0, creates)
+    }
+
+    @Test fun `late failure cannot unlock a newer read in the same login`() = runTest {
+        val active = login()
+        val oldEntered = CompletableDeferred<Unit>(); val oldRelease = CompletableDeferred<Unit>()
+        val newEntered = CompletableDeferred<Unit>(); val newRelease = CompletableDeferred<Unit>()
+        onRead = { path ->
+            if (path == "/old") {
+                oldEntered.complete(Unit)
+                withContext(NonCancellable) { oldRelease.await() }
+                throw IllegalStateException("old request detail")
+            } else {
+                newEntered.complete(Unit); newRelease.await()
+                ApiResult.Success(file.copy(path = path))
+            }
+        }
+        editor.start(active, "/old", null); runCurrent(); oldEntered.await()
+        editor.start(active, "/new", null); runCurrent()
+        oldRelease.complete(Unit); runCurrent(); newEntered.await()
+        assertTrue(editor.busy); assertFalse(editor.failed); assertNull(editor.baseline)
+        newRelease.complete(Unit); advanceUntilIdle()
+        assertEquals("/new", editor.baseline?.path); assertFalse(editor.busy); assertFalse(editor.failed)
+    }
+
+    @Test fun `busy gate blocks duplicate reads before the coroutine is dispatched`() = runTest {
+        editor.start(login(), "/old", null)
+        assertTrue(editor.busy)
+        editor.reload(); editor.reload()
+        advanceUntilIdle()
+        assertEquals(listOf("/old"), reads); assertFalse(editor.busy)
+        assertEquals("/old", editor.baseline?.path)
+    }
+
+    @Test fun `late create receipt cannot mark a reopened editor as saved`() = runTest {
+        val active = login()
+        editor.start(active, null, null)
+        editor.destination = "/created"; editor.edit(TextFieldValue("old draft"))
+        val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+        onCreate = {
+            entered.complete(Unit)
+            withContext(NonCancellable) { release.await() }
+            ApiResult.Success(file.copy(path = "/created", content = "old draft"))
+        }
+        editor.save(); runCurrent(); entered.await()
+        editor.clear(); editor.start(active, null, null)
+        editor.destination = "/new"; editor.edit(TextFieldValue("new draft"))
+        release.complete(Unit); advanceUntilIdle()
+        assertEquals("new draft", editor.value.text); assertEquals("/new", editor.destination)
+        assertNull(editor.baseline); assertNull(editor.latest)
+        assertFalse(editor.saved); assertFalse(editor.unknown); assertFalse(editor.failed)
+        assertEquals(1, creates)
     }
 }

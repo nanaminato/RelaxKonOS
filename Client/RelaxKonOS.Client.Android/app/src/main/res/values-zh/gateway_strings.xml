@@ -22,6 +22,7 @@
     <string name="gw_confirm">确认并执行</string>
     <string name="gw_confirm_note">请检查目标及修改，执行前会再次核对当前事实和差异版本。</string>
     <string name="gw_conflict_editor">冲突编辑器</string>
+    <string name="gw_conflict_no_longer_present">此文件已不在当前冲突列表中。结果草稿仍保留供核对，本编辑器不再提交该文件的解决操作。</string>
     <string name="gw_conflict_note">对照三个版本并选择结果，编辑结果不得包含冲突标记。刷新版本会保留草稿，请对照新版本检查后再保存。</string>
     <string name="gw_conflicts">先解决冲突再继续</string>
     <string name="gw_continue">继续操作</string>

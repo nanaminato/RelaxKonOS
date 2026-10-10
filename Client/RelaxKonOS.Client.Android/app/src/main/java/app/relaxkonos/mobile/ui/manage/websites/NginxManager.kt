@@ -238,50 +238,65 @@ private fun NginxInstallDialog(model: NginxViewModel, onSubmitted: () -> Unit, d
     val container = appContainer()
     val owner = remember { container.activeSession }
     val state = model.state
-    var version by remember { mutableStateOf(model.intentVersion.orEmpty()) }
-    var source by remember { mutableStateOf(if (model.intentUsesPackage) InstallationPackageSource.ServerFile else InstallationPackageSource.HostDownload) }
-    var remotePath by remember { mutableStateOf("") }
-    var confirmed by remember { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(rememberUsageOpenDocument("NginxManager.archive")) { uri ->
         if (uri != null && container.activeSession === owner && !model.hasIntent) model.upload(uri)
-    }
-    val windows = state.system in NginxViewModel.windowsSystems
-    val locked = state.busy || model.hasIntent
-    LaunchedEffect(state.catalog) {
-        if (!model.hasIntent && version.isBlank()) {
-            version = state.catalog?.stableVersion ?: state.catalog?.mainlineVersion ?: state.catalog?.versions?.firstOrNull().orEmpty()
-        }
     }
     val initialOperationId = remember { state.installation?.operationId }
     LaunchedEffect(state.installation?.operationId) {
         if (state.installation != null && state.installation.operationId != initialOperationId) onSubmitted()
     }
-    AlertDialog(onDismissRequest = dismiss, modifier = Modifier.imePadding(), title = { Text(stringResource(R.string.nginx_install)) },
+    NginxInstallForm(state, model.hasIntent, model.intentVersion, model.intentUsesPackage,
+        model::clearReference, model::download, model::fileReference,
+        { picker.launch(arrayOf("application/zip", "application/octet-stream")) },
+        { version, packageSource -> model.install(version, packageSource) }, dismiss)
+}
+
+@Composable
+internal fun NginxInstallForm(state: NginxState, hasIntent: Boolean, intentVersion: String?, intentUsesPackage: Boolean,
+    onClearReference: () -> Unit, onDownload: (String) -> Unit, onFileReference: (String) -> Unit,
+    onSelectDevicePackage: () -> Unit, onInstall: (String?, Boolean) -> Unit, dismiss: () -> Unit) {
+    var version by remember { mutableStateOf(intentVersion.orEmpty()) }
+    var source by remember { mutableStateOf(if (intentUsesPackage) InstallationPackageSource.ServerFile else InstallationPackageSource.HostDownload) }
+    var remotePath by remember { mutableStateOf("") }
+    var confirmed by remember { mutableStateOf(false) }
+    val windows = state.system in NginxViewModel.windowsSystems
+    val locked = state.busy || hasIntent
+    LaunchedEffect(state.catalog) {
+        if (!hasIntent && version.isBlank()) {
+            version = state.catalog?.stableVersion ?: state.catalog?.mainlineVersion ?: state.catalog?.versions?.firstOrNull().orEmpty()
+        }
+    }
+    AlertDialog(onDismissRequest = { if (!state.busy) dismiss() }, modifier = Modifier.imePadding(), title = { Text(stringResource(R.string.nginx_install)) },
+        properties = androidx.compose.ui.window.DialogProperties(dismissOnBackPress = !state.busy, dismissOnClickOutside = !state.busy),
         text = { Column(Modifier.heightIn(max = 430.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            if (!state.busy) {
+                state.problemCode?.let { Text(nginxProblemLabel(it), color = MaterialTheme.colorScheme.error) }
+                if (state.uncertain) Text(stringResource(R.string.nginx_uncertain), color = MaterialTheme.colorScheme.error)
+            }
             Text(stringResource(if (windows) R.string.nginx_windows_install else R.string.nginx_ubuntu_install))
             if (windows) {
                 state.catalog?.versions.orEmpty().forEach { item ->
-                    TextButton(enabled = !locked, onClick = { version = item; model.clearReference() }) { Text(item) }
+                    TextButton(enabled = !locked, onClick = { version = item; onClearReference() }) { Text(item) }
                 }
-                OutlinedTextField(version, { version = it; model.clearReference() }, enabled = !locked, modifier = Modifier.fillMaxWidth(),
+                OutlinedTextField(version, { version = it; onClearReference() }, enabled = !locked, modifier = Modifier.fillMaxWidth(),
                     label = { Text(stringResource(R.string.nginx_version)) }, singleLine = true)
                 ManualPackageDownload(version.trim(), !locked, state.busy,
                     (state.download as? ApiResult.Success)?.value?.takeIf { it.version == version.trim() }?.url,
-                    onRequest = { model.download(version.trim()) })
-                InstallationPackagePicker(source, !locked, { source = it; model.clearReference() },
-                    remotePath, { remotePath = it; model.clearReference() }, { model.fileReference(remotePath) },
-                    { picker.launch(arrayOf("application/zip", "application/octet-stream")) }, state.reference)
+                    onRequest = { onDownload(version.trim()) })
+                InstallationPackagePicker(source, !locked, { source = it; onClearReference() },
+                    remotePath, { remotePath = it; onClearReference() }, { onFileReference(remotePath) },
+                    onSelectDevicePackage, state.reference)
             }
             RefreshProgressIndicator(visible = state.busy)
             state.uploadBytes?.let { Text(stringResource(R.string.nginx_upload_bytes, it)) }
 
             CheckboxOption(confirmed, stringResource(R.string.nginx_install_confirm), !state.busy) { confirmed = it }
         } },
-        confirmButton = { Button(enabled = !state.busy && confirmed && (model.hasIntent || (!state.pendingInstallation &&
+        confirmButton = { Button(enabled = !state.busy && confirmed && (hasIntent || (!state.pendingInstallation &&
             (!windows || (version.trim().matches(Regex("[0-9]+\\.[0-9]+\\.[0-9]+")) && (source == InstallationPackageSource.HostDownload || state.reference?.expired() == false))))),
-            onClick = { model.install(if (windows) version.trim() else null, windows && source != InstallationPackageSource.HostDownload) }) {
-            Text(stringResource(if (model.hasIntent) R.string.common_retry else R.string.nginx_install))
-        } }, dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.common_close)) } })
+            onClick = { onInstall(if (windows) version.trim() else null, windows && source != InstallationPackageSource.HostDownload) }) {
+            Text(stringResource(if (hasIntent) R.string.common_retry else R.string.nginx_install))
+        } }, dismissButton = { TextButton(onClick = dismiss, enabled = !state.busy) { Text(stringResource(R.string.common_close)) } })
 }
 
 @Composable

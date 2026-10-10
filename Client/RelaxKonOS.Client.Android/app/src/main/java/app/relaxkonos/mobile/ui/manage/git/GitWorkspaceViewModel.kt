@@ -16,13 +16,14 @@ internal data class GitWorkspaceState(val owner: SessionState.Active? = null, va
     val engine: GitEngine? = null, val repositories: List<GitRepository> = emptyList(), val selectedId: String? = null,
     val facts: GitWorkspaceFacts? = null, val pending: List<PendingGitMutation> = emptyList(), val preview: GitMutationPreview? = null,
     val diff: GitDiff? = null, val commits: List<GitCommit> = emptyList(), val skip: Int = 0, val search: String = "", val historyLoaded: Boolean = false,
-    val detail: GitCommitDetail? = null, val conflict: GitConflictFile? = null, val problem: String? = null, val saved: Boolean = false,
+    val detail: GitCommitDetail? = null, val conflict: GitConflictFile? = null, val problem: String? = null, val saved: Boolean = false, val feedbackVersion: Long = 0,
     val installation: InstallationOperation? = null, val installationVerified: Boolean = false, val pendingInstallation: Boolean = false)
 internal class GitWorkspaceViewModel(private val session: AuthSession, private val git: GitRepositoryClient,
     private val gitWorkspace: GitWorkspaceRepository, private val installations: InstallationRepository,
     private val operationIndex: OperationIndex, private val elevationAnswers: ElevationAnswerProvider) : ViewModel() {
     private var job: Job? = null
     private var generation = 0
+    private var feedbackVersion = 0L
     private var installIntent: InstallationSubmission? = null
     var state by mutableStateOf(GitWorkspaceState()); private set
     var conflictDraft by mutableStateOf(TextFieldValue()); private set
@@ -85,6 +86,10 @@ internal class GitWorkspaceViewModel(private val session: AuthSession, private v
         if (state.facts == null) state = state.copy(problem = "git.workspace.unverified", saved = false)
     }
     fun accept(marker: PendingGitMutation) = work { owner ->
+        if (state.conflict != null && state.selectedId != marker.repositoryId) {
+            state = state.copy(problem = "git.workspace.facts_changed")
+            return@work
+        }
         val result = gitWorkspace.accept(owner, marker); verify(owner)
         if (result is ApiResult.Success) state = state.copy(selectedId = marker.repositoryId, facts = result.value, pending = gitWorkspace.pending(owner),
             diff = null, detail = null, commits = emptyList(), historyLoaded = false, preview = null)
@@ -111,6 +116,10 @@ internal class GitWorkspaceViewModel(private val session: AuthSession, private v
     fun conflict(path: String) = work { owner ->
         val id = state.selectedId ?: return@work
         val old = state.conflict
+        if (state.facts == null) {
+            load(owner)
+            if (state.facts == null) return@work
+        }
         val result = gitWorkspace.conflict(owner, id, path); verify(owner)
         if (result is ApiResult.Success) {
             if (old?.path != path) conflictDraft = TextFieldValue(result.value.result.orEmpty())
@@ -178,7 +187,7 @@ internal class GitWorkspaceViewModel(private val session: AuthSession, private v
     private fun work(block: suspend (SessionState.Active) -> Unit) {
         val owner = state.owner ?: return
         if (state.busy || ServerCapabilities.GIT !in owner.capabilities) return
-        val epoch = generation; state = state.copy(busy = true, problem = null, saved = false)
+        val epoch = generation; state = state.copy(busy = true, problem = null, saved = false, feedbackVersion = ++feedbackVersion)
         job = viewModelScope.launch {
             try { block(owner) }
             catch (cancelled: CancellationException) { throw cancelled }

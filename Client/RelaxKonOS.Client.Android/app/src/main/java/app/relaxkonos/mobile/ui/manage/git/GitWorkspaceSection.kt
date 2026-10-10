@@ -25,6 +25,7 @@ import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.data.*
 import app.relaxkonos.mobile.ui.common.*
 import app.relaxkonos.mobile.ui.editor.CodeTextField
+import app.relaxkonos.mobile.ui.editor.EditorSystemBars
 import app.relaxkonos.mobile.ui.editor.TextEditorDialog
 import app.relaxkonos.mobile.ui.theme.Spacing
 import kotlinx.coroutines.delay
@@ -71,7 +72,7 @@ internal fun GitWorkspaceSection(owner: SessionState.Active, section: String, on
     if (section == "build") return
     RefreshProgressIndicator(visible = state.busy)
     if (!owner.executionEligibility.available) Text(stringResource(R.string.gw_identity_unavailable), color = MaterialTheme.colorScheme.error)
-    if (state.conflict == null) GitWorkspaceProblem(state.problem.takeUnless { state.busy })
+    if (state.conflict == null) GitWorkspaceProblem(state.problem.takeUnless { state.busy }, state.feedbackVersion)
     if (state.saved) Text(stringResource(R.string.gw_receipt), color = MaterialTheme.colorScheme.primary)
     WorkspaceSection(section == "environment") {
         GitPanel(stringResource(R.string.git_environment)) {
@@ -120,13 +121,7 @@ internal fun GitWorkspaceSection(owner: SessionState.Active, section: String, on
     }
     WorkspaceSection(section == "workspace") {
         state.pending.forEach { entry ->
-            Card { Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    Text(state.repositories.firstOrNull { it.id == entry.repositoryId }?.name ?: entry.repositoryId)
-                    Text(stringResource(R.string.gw_unknown))
-                    Text(stringResource(actionLabel(entry.action)))
-                    Text(stringResource(R.string.gw_unknown_note), style = MaterialTheme.typography.bodySmall)
-                    OutlinedButton(onClick = { adoption = entry }, enabled = !state.busy) { Text(stringResource(R.string.gw_adopt)) }
-                } }
+            Card { GitPendingNotice(entry, state, Modifier.padding(Spacing.md)) { adoption = entry } }
         }
     }
     if (state.engine?.available == true && section != "environment") {
@@ -298,9 +293,33 @@ internal fun GitWorkspaceSection(owner: SessionState.Active, section: String, on
         text = { OutlinedTextField(path, { path = it }, label = { Text(stringResource(R.string.git_file_path)) }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
         confirmButton = { TextButton(onClick = { openFile = false; editor = path }, enabled = ordinary && GitWorkspacePolicy.path(path)) { Text(stringResource(R.string.git_open_file)) } },
         dismissButton = { TextButton(onClick = { openFile = false }) { Text(stringResource(R.string.common_cancel)) } })
-    adoption?.let { marker -> AlertDialog(onDismissRequest = { adoption = null }, title = { Text(stringResource(R.string.gw_adopt)) },
-            text = { Text(stringResource(R.string.gw_adopt_note)) }, confirmButton = { TextButton(onClick = { adoption = null; model.accept(marker) }) { Text(stringResource(R.string.gw_adopt)) } },
-            dismissButton = { TextButton(onClick = { adoption = null }) { Text(stringResource(R.string.common_cancel)) } }) }
+    adoption?.let { marker -> GitPendingAdoptionDialog(marker, model, { adoption = null }) }
+}
+
+@Composable
+private fun GitPendingNotice(marker: PendingGitMutation, state: GitWorkspaceState,
+    modifier: Modifier = Modifier, onAdopt: () -> Unit) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        Text(state.repositories.firstOrNull { it.id == marker.repositoryId }?.name ?: marker.repositoryId)
+        GitCode(marker.repositoryId)
+        Text(stringResource(R.string.gw_unknown), color = MaterialTheme.colorScheme.error)
+        Text(stringResource(actionLabel(marker.action)))
+        Text(stringResource(R.string.gw_unknown_note), style = MaterialTheme.typography.bodySmall)
+        OutlinedButton(onClick = onAdopt, enabled = !state.busy) { Text(stringResource(R.string.gw_adopt)) }
+    }
+}
+
+@Composable
+private fun GitPendingAdoptionDialog(marker: PendingGitMutation, model: GitWorkspaceViewModel, onClose: () -> Unit) {
+    AlertDialog(onDismissRequest = onClose, modifier = Modifier.imePadding(), title = { Text(stringResource(R.string.gw_adopt)) },
+        text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            Text(model.state.repositories.firstOrNull { it.id == marker.repositoryId }?.name ?: marker.repositoryId)
+            GitCode(marker.repositoryId)
+            Text(stringResource(actionLabel(marker.action)))
+            Text(stringResource(R.string.gw_adopt_note))
+        } },
+        confirmButton = { TextButton(onClick = { onClose(); model.accept(marker) }, enabled = !model.state.busy) { Text(stringResource(R.string.gw_adopt)) } },
+        dismissButton = { TextButton(onClick = onClose) { Text(stringResource(R.string.common_cancel)) } })
 }
 
 @Composable
@@ -361,18 +380,26 @@ private fun GitConfirmation(preview: GitMutationPreview, model: GitWorkspaceView
 }
 
 @Composable
-private fun GitConflictDialog(file: GitConflictFile, model: GitWorkspaceViewModel, writable: Boolean) {
+internal fun GitConflictDialog(file: GitConflictFile, model: GitWorkspaceViewModel, writable: Boolean) {
     var confirmClose by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var replacement by remember { mutableStateOf("") }
+    var adoption by remember(model.state.owner, model.state.selectedId) { mutableStateOf<PendingGitMutation?>(null) }
+    val pending = model.state.pending.filter { it.repositoryId == model.state.selectedId }
+    val currentConflict = model.state.facts?.let { file.path in it.conflicts.paths }
+    val contentScroll = rememberScrollState()
+    LaunchedEffect(pending.map { it.markerId }) { if (pending.isNotEmpty()) contentScroll.animateScrollTo(0) }
     val dirty = model.conflictDraft.text != file.result.orEmpty()
     fun close() { if (!model.state.busy) { if (dirty) confirmClose = true else model.closeConflict() } }
-    Dialog(onDismissRequest = ::close, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)) {
+    Dialog(onDismissRequest = ::close, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false, decorFitsSystemWindows = false)) {
+        EditorSystemBars()
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 ScreenHeader(stringResource(R.string.gw_conflict_editor), onBack = ::close, subtitle = file.path)
-                GitWorkspaceProblem(model.state.problem.takeUnless { model.state.busy })
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                GitWorkspaceProblem(model.state.problem.takeUnless { model.state.busy }, model.state.feedbackVersion)
+                Column(Modifier.weight(1f).verticalScroll(contentScroll), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    pending.forEach { marker -> GitPendingNotice(marker, model.state) { adoption = marker } }
+                    if (!model.state.busy && currentConflict == false) Text(stringResource(R.string.gw_conflict_no_longer_present), color = MaterialTheme.colorScheme.error)
                     Text(stringResource(R.string.gw_conflict_note), style = MaterialTheme.typography.bodySmall)
                     listOf(R.string.gw_base to file.base, R.string.gw_ours to file.ours, R.string.gw_theirs to file.theirs).forEach { (title, content) ->
                         Text(stringResource(title), style = MaterialTheme.typography.titleMedium)
@@ -397,12 +424,13 @@ private fun GitConflictDialog(file: GitConflictFile, model: GitWorkspaceViewMode
                     listOf("ours", "theirs", "delete", "edited").forEach { choice ->
                         val change = GitMutation(GitAction.Resolve, conflict = file, choice = choice, content = if (choice == "edited") model.conflictDraft.text else null)
                         val valid = runCatching { GitWorkspacePolicy.validate(change) }.isSuccess
-                        OutlinedButton(onClick = { model.prepare(change) }, enabled = writable && valid) { Text(stringResource(choiceLabel(choice))) }
+                        OutlinedButton(onClick = { model.prepare(change) }, enabled = writable && currentConflict == true && valid) { Text(stringResource(choiceLabel(choice))) }
                     }
                 }
             }
         }
         model.state.preview?.let { GitConfirmation(it, model) }
+        adoption?.let { marker -> GitPendingAdoptionDialog(marker, model, { adoption = null }) }
         if (confirmClose) AlertDialog(onDismissRequest = { confirmClose = false }, title = { Text(stringResource(R.string.editor_unsaved)) }, text = { Text(stringResource(R.string.editor_unsaved_note)) },
             confirmButton = { TextButton(onClick = { model.closeConflict() }) { Text(stringResource(R.string.editor_discard_changes)) } },
             dismissButton = { TextButton(onClick = { confirmClose = false }) { Text(stringResource(R.string.editor_continue_editing)) } })
@@ -447,8 +475,8 @@ private fun GitInstallation(state: GitWorkspaceState, model: GitWorkspaceViewMod
 }
 
 @Composable
-private fun GitWorkspaceProblem(code: String?) {
-    if (code == null) { OperationMessageDialog(null); return }
+private fun GitWorkspaceProblem(code: String?, eventKey: Long) {
+    if (code == null) { OperationMessageDialog(null, eventKey = eventKey); return }
     val label = when (code) {
         "git.workspace.credentials" -> R.string.gw_credentials
         "git.workspace.facts_changed", "git.conflict.revision_mismatch" -> R.string.gw_facts_changed
@@ -458,7 +486,7 @@ private fun GitWorkspaceProblem(code: String?) {
         "git.workspace.identity_unavailable" -> R.string.gw_identity_unavailable
         else -> R.string.gw_unverified
     }
-    OperationMessageDialog(stringResource(label))
+    OperationMessageDialog(stringResource(label), eventKey = eventKey)
 }
 private fun actionLabel(action: GitAction) = when (action) {
     GitAction.Checkout -> R.string.gw_checkout; GitAction.CreateBranch -> R.string.gw_create_branch; GitAction.DeleteBranch -> R.string.gw_delete_branch

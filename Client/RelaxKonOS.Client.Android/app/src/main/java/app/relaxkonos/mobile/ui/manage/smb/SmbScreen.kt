@@ -12,9 +12,6 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -26,7 +23,6 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 import java.text.DateFormat
 import java.util.Date
 
-private data class SmbConfirmation(val expected: SmbFacts, val change: SmbChange)
 @OptIn(ExperimentalLayoutApi::class)
 @Composable fun SmbScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     val model: SmbViewModel = viewModel(); val owner = appContainer().activeSession; val state = model.state
@@ -40,7 +36,6 @@ private data class SmbConfirmation(val expected: SmbFacts, val change: SmbChange
     var draft by remember(owner) { mutableStateOf<SmbDraft?>(null) }
     var draftFacts by remember(owner) { mutableStateOf<SmbFacts?>(null) }
     var confirmation by remember(owner) { mutableStateOf<SmbConfirmation?>(null) }
-    var password by remember(owner) { mutableStateOf("") }; var passwordAgain by remember(owner) { mutableStateOf("") }
     var leave by remember(owner) { mutableStateOf<(() -> Unit)?>(null) }
     var install by remember(owner) { mutableStateOf(false) }; var cancel by remember(owner) { mutableStateOf(false) }
     var recover by remember(owner) { mutableStateOf(false) }; var operationId by remember(owner) { mutableStateOf("") }; var identified by remember(owner) { mutableStateOf(false) }
@@ -50,7 +45,7 @@ private data class SmbConfirmation(val expected: SmbFacts, val change: SmbChange
     LaunchedEffect(owner, state.installation?.operationId, state.installation?.state, state.installationVerified, state.busy) {
         if (visible) model.observeInstallation()
     }
-    DisposableEffect(owner) { onDispose { model.stop(); password = ""; passwordAgain = "" } }
+    DisposableEffect(owner) { onDispose { model.stop() } }
     BackHandler(section == "shares" && (draft != null || selected != null)) { navigate { draft = null; selected = null } }
     val pages = buildList {
         add(WorkspaceDestination("overview", R.string.workspace_overview))
@@ -202,7 +197,7 @@ WorkspaceSection(section == "overview") {
                     if (!user.eligible) Text(stringResource(R.string.smb_user_ineligible))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     OutlinedButton(enabled = ready && user.eligible, onClick = { confirmation = SmbConfirmation(facts, SmbChange(if (user.enabled) SmbChangeKind.DisableUser else SmbChangeKind.EnableUser, user.username)) }) { Text(smbActionLabel(if (user.enabled) SmbChangeKind.DisableUser else SmbChangeKind.EnableUser)) }
-                    OutlinedButton(enabled = ready && user.eligible, onClick = { password = ""; passwordAgain = ""; confirmation = SmbConfirmation(facts, SmbChange(SmbChangeKind.Password, user.username)) }) { Text(stringResource(R.string.smb_password)) }
+                    OutlinedButton(enabled = ready && user.eligible, onClick = { confirmation = SmbConfirmation(facts, SmbChange(SmbChangeKind.Password, user.username)) }) { Text(stringResource(R.string.smb_password)) }
                     }
                     }
                 }
@@ -215,28 +210,10 @@ WorkspaceSection(section == "overview") {
             }
         }
     }
-    confirmation?.let { pending -> AlertDialog(onDismissRequest = { confirmation = null; password = ""; passwordAgain = "" }, modifier = Modifier.imePadding(),
-        title = { Text(stringResource(R.string.smb_confirm)) }, text = { Column(Modifier.heightIn(max = 450.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            Text(smbActionLabel(pending.change.kind)); pending.change.target?.let { Text(it) }
-            Text(stringResource(R.string.smb_host_warning))
-            pending.change.share?.let { request ->
-                Text(request.name); Text(request.path)
-                Text(stringResource(if (request.readOnly) R.string.smb_read_only else R.string.smb_read_write))
-                Text(stringResource(if (request.enabled) R.string.smb_enabled else R.string.smb_disabled))
-                if (request.enabled && SmbValidation.outsideSuggestedRoot(request.path, pending.expected.capabilities.windowsShareSecuritySupported)) Text(stringResource(R.string.smb_path_warning), color = MaterialTheme.colorScheme.error)
-                if (request.guestAllowed) Text(stringResource(R.string.smb_guest_note), color = MaterialTheme.colorScheme.error)
-                request.permissions.forEach { Text(it.principal + " · " + smbAccessLabel(it.access)) }
-            }
-            if (pending.change.kind == SmbChangeKind.DeleteShare) Text(stringResource(R.string.smb_delete_note))
-            if (pending.change.kind == SmbChangeKind.Password) {
-                Text(stringResource(R.string.smb_password_note))
-                OutlinedTextField(password, { password = it }, enabled = !state.busy, singleLine = true, label = { Text(stringResource(R.string.smb_password)) }, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
-                OutlinedTextField(passwordAgain, { passwordAgain = it }, enabled = !state.busy, singleLine = true, label = { Text(stringResource(R.string.smb_password_again)) }, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
-            }
-        } }, confirmButton = { Button(enabled = ready && (pending.change.kind != SmbChangeKind.Password || password == passwordAgain && password.length in 12..1024 && password.none(Char::isISOControl)), onClick = {
-            val secret = if (pending.change.kind == SmbChangeKind.Password) password.toCharArray() else null
-            password = ""; passwordAgain = ""; confirmation = null; model.change(pending.expected, pending.change, secret)
-        }) { Text(stringResource(R.string.smb_submit)) } }, dismissButton = { TextButton(onClick = { confirmation = null; password = ""; passwordAgain = "" }) { Text(stringResource(R.string.common_cancel)) } }) }
+    confirmation?.let { pending -> SmbConfirmationDialog(pending, state.busy, ready, { confirmation = null }) { secret ->
+        confirmation = null
+        model.change(pending.expected, pending.change, secret)
+    } }
     if (leave != null) AlertDialog(onDismissRequest = { leave = null }, title = { Text(stringResource(R.string.smb_discard)) }, text = { Text(stringResource(R.string.smb_discard_note)) },
         confirmButton = { TextButton(onClick = { val action = leave; leave = null; action?.invoke() }) { Text(stringResource(R.string.smb_discard_action)) } }, dismissButton = { TextButton(onClick = { leave = null }) { Text(stringResource(R.string.common_cancel)) } })
     if (install) AlertDialog(onDismissRequest = { install = false }, title = { Text(stringResource(R.string.smb_install)) }, text = { Text(stringResource(R.string.smb_install_note)) },

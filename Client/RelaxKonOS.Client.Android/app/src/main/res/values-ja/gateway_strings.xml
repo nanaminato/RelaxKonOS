@@ -22,6 +22,7 @@
     <string name="gw_confirm">確認して実行</string>
     <string name="gw_confirm_note">対象と変更を確認してください。実行前に現在の状態と差分バージョンを再確認します。</string>
     <string name="gw_conflict_editor">競合エディター</string>
+    <string name="gw_conflict_no_longer_present">このファイルは現在の競合一覧にありません。確認用の結果下書きは保持されます。このエディターから解決操作を再送信することはありません。</string>
     <string name="gw_conflict_note">三つのバージョンを比較して結果を選びます。編集結果に競合マーカーは使用できません。バージョンの再読み込み後も下書きを保持します。新しい内容と比較してから保存してください。</string>
     <string name="gw_conflicts">続行する前に競合を解決してください</string>
     <string name="gw_continue">操作を続行</string>

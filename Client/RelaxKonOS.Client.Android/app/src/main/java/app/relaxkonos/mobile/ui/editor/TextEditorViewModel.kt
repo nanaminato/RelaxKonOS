@@ -10,12 +10,15 @@ import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.*
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 class TextEditorViewModel(private val session: AuthSession, private val client: TextEditorRepository) : ViewModel() {
     private var owner: SessionState.Active? = null
     private var repositoryId: String? = null
     private var initialPath: String? = null
     private var job: Job? = null
+    private var operationVersion = 0L
     private var pendingPath: String? = null
     private var preferredNewline: String? = null
     var baseline by mutableStateOf<RemoteTextFile?>(null); private set
@@ -72,8 +75,11 @@ class TextEditorViewModel(private val session: AuthSession, private val client: 
     fun reload() {
         val session = owner ?: return
         val path = verificationPath ?: baseline?.path ?: initialPath ?: destination.trim().takeIf { it.isNotBlank() } ?: return
-        launch {
-            when (val result = client.read(session, path, repositoryId)) {
+        val gitId = repositoryId
+        launch { version ->
+            val result = client.read(session, path, gitId)
+            verifyOperation(session, version)
+            when (result) {
                 is ApiResult.Success -> {
                     if (dirty || unknown) {
                         if (result.value.content == value.text && result.value.encoding == encoding && result.value.bom == bom) {
@@ -98,17 +104,21 @@ class TextEditorViewModel(private val session: AuthSession, private val client: 
         val formatBom = bom
         if ((opened == null || asNew) && target.isBlank()) return
         pendingPath = if (opened == null || asNew) target else opened.path
-        launch(write = true) {
+        val gitId = repositoryId
+        launch(write = true) { version ->
             val result = if (opened == null || asNew) client.create(session, target, content, formatEncoding, formatBom)
-                else client.save(session, requireNotNull(format), content, repositoryId)
+                else client.save(session, requireNotNull(format), content, gitId)
+            verifyOperation(session, version)
             when (result) {
                 is ApiResult.Success -> { accept(result.value); saved = true; if (asNew) repositoryId = null }
                 is ApiResult.Problem -> {
                     failed = true
                     if (result.status >= 500) unknown = true
                     if (result.status == 409 && opened != null && !asNew) {
-                        when (val current = client.read(session, opened.path, repositoryId)) {
-                            is ApiResult.Success -> latest = current.value
+                        val current = client.read(session, opened.path, gitId)
+                        verifyOperation(session, version)
+                        when (current) {
+                            is ApiResult.Success -> { latest = current.value; failed = false }
                             else -> unknown = true
                         }
                     }
@@ -117,18 +127,28 @@ class TextEditorViewModel(private val session: AuthSession, private val client: 
             }
         }
     }
-    private fun launch(write: Boolean = false, action: suspend () -> Unit) {
+    private fun isCurrent(active: SessionState.Active, version: Long) =
+        operationVersion == version && owner === active && session.state.value === active
+
+    private suspend fun verifyOperation(active: SessionState.Active, version: Long) {
+        currentCoroutineContext().ensureActive()
+        if (!isCurrent(active, version)) throw CancellationException("Editor operation changed")
+    }
+
+    private fun launch(write: Boolean = false, action: suspend (Long) -> Unit) {
         if (busy) return
-        val session = owner
+        val active = owner ?: return
+        val version = ++operationVersion
+        busy = true; failed = false; saved = false
         job = viewModelScope.launch {
-            busy = true; failed = false; saved = false
-            try { action() }
+            try { verifyOperation(active, version); action(version) }
             catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { if (owner === session) { failed = true; if (write) unknown = true } }
-            finally { if (owner === session) busy = false }
+            catch (_: Exception) { if (isCurrent(active, version)) { failed = true; if (write) unknown = true } }
+            finally { if (isCurrent(active, version)) busy = false }
         }
     }
     fun clear() {
+        operationVersion++
         job?.cancel(); job = null; owner = null; initialPath = null; repositoryId = null
         baseline = null; latest = null; value = TextFieldValue(""); encoding = "utf-8"; bom = false
         destination = ""; busy = false; failed = false; unknown = false; saved = false; pendingPath = null; preferredNewline = null
