@@ -1,23 +1,18 @@
 using Avalonia.Controls;
-using Avalonia.Input;
-using RelaxKonOS.Client.Apps.Settings.ViewModels;
 
 namespace RelaxKonOS.Client.Apps.Settings.Views;
 
+/// <summary>
+/// The leading block of the Settings window's fused title bar. Keyboard navigation for the whole
+/// title bar lives in <see cref="SettingsView"/>, which owns both blocks and knows the view model.
+/// </summary>
 public partial class SettingsHeaderView : UserControl
 {
-    public SettingsHeaderView()
-    {
-        InitializeComponent();
-        SizeChanged += (_, args) => HeaderTitle.IsVisible = args.NewSize.Width >= 360;
-        KeyDown += (_, args) =>
-        {
-            if (args.Key == Key.F && args.KeyModifiers.HasFlag(KeyModifiers.Control))
-            { FocusSearch(); args.Handled = true; }
-            else if (args.Key == Key.Escape && DataContext is SettingsViewModel { HasSearch: true } model)
-            { model.SearchQuery = ""; args.Handled = true; }
-        };
-    }
-    public Action? BeforeFocusSearch { get; set; }
-    public void FocusSearch() { BeforeFocusSearch?.Invoke(); HeaderSearchBox.Focus(); HeaderSearchBox.SelectAll(); }
+    public SettingsHeaderView() => InitializeComponent();
+
+    /// <summary>The back action; also the element the title bar's leading edge is measured from.</summary>
+    public Button BackButton => HeaderBackButton;
+
+    /// <summary>The window's own title. Hidden once the bar is too narrow to carry it.</summary>
+    public TextBlock TitleText => HeaderTitle;
 }

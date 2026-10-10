@@ -101,6 +101,8 @@ Phase 2/3 完成迁移后，按 §10.2 的**精确口径**（`#[0-9A-Fa-f]{6,8}\
 | | `WindowFrameThickness` * | Thickness | 0–8 | 1 |
 | | `WindowCornerRadius` * | CornerRadius | 0–32 | 8 |
 | | `WindowControlWidth` * | Number | 28–96 | 52 |
+| | `WindowTrafficLightSize` | Number | 8–24 | 12 |
+| | `WindowTabHeight` | Number | 20–40 | 28 |
 | | `WindowInactiveOpacity` * | Opacity | 0.2–1 | 0.55 |
 | | `WindowShadowDepth` * | Number | 0–64 | 28 |
 | | `WindowShadowOpacity` * | Opacity | 0–1 | 0.4 |
@@ -158,7 +160,7 @@ recipe 只是「选择」，真正产生差异的是宿主审查过的模板。�
 
 | 槽位 | 消费方 | 实现机制 |
 |---|---|---|
-| `windowChrome` | `Framework/RelaxKonOS.WindowManager/Themes/RemoteWindowTheme.axaml` | `RemoteWindow` 把 `SystemStyle.WindowChrome` 资源镜像为 `:chrome-<值>` 伪类，模板只重新部署 `PART_WindowIcon` / `PART_TitleText` / `PART_WindowControls` 三个部件 |
+| `windowChrome` | `Framework/RelaxKonOS.WindowManager/Themes/RemoteWindowTheme.axaml` | `RemoteWindow` 把 `SystemStyle.WindowChrome` 资源镜像为 `:chrome-<值>` 伪类，模板重新部署它的七个部件：宿主窗口图标、宿主标题、应用交出的四个角色槽（`HeaderLeading` / `HeaderCenter` / `HeaderTrailing` / `HeaderTabs`）与宿主按钮组。取舍见 §4.2 |
 | `contextMenu` | `Framework/RelaxKonOS.UI/Themes/SystemStyle/SystemStyleResourceBuilder.cs` | 在令牌派生的命令面（菜单/子菜单/ToolTip/Flyout）密度之上再乘一组系数：边框权重、内边距、条目横向内缩、分隔线间距 |
 | `taskSwitcher` | `Client/RelaxKonOS.Client/Views/Shell/WindowOverviewView.axaml` | 概览视图把 `SystemStyle.TaskSwitcher` 镜像为根节点上的 `recipe-<值>` class，由样式决定卡片几何与遮罩 |
 | `shellChrome` | `Shared/RelaxKonOS.Protocol/Workspace/SystemStyles/BuiltInSystemStyles.cs` | 结构性槽位：三个内置 Shell 各自对应一种桌面 chrome；校验保证「Shell ↔ 推荐风格 ↔ shellChrome」三者一致 |
@@ -176,10 +178,34 @@ recipe 只是「选择」，真正产生差异的是宿主审查过的模板。�
 
 | 槽位 | 已实现值 |
 |---|---|
-| `windowChrome` | `caption-buttons-right`（默认：图标在前、标题居中偏左、按钮在右）、`traffic-lights-left`（按钮在左、图标在右、标题居中、按钮胶囊化）、`headerbar-right`（无图标、左对齐加粗标题） |
+| `windowChrome` | `caption-buttons-right`（默认：图标在前、标题居中偏左、按钮在右）、`traffic-lights-left`（按钮组在左、按「关 / 小 / 放大」排成红黄绿三枚圆点、字形仅在指针或键盘进入按钮组时显现、图标在右、标题居中）、`headerbar-right`（无图标、左对齐加粗标题） |
 | `contextMenu` | `compact-command-menu`（紧凑基准）、`rounded-command-menu`（内边距 ×1.35、条目再内缩 +4）、`gnome-popover-menu`（去掉边框、内边距 ×1.6、条目再内缩 +8） |
 | `taskSwitcher` | `windows-grid`（288×200 居中换行网格 + 标题）、`macos-strip`（372×252 大卡片、更重遮罩、隐藏标题）、`gnome-overview`（236×172 密集网格、网格顶端对齐） |
 | `shellChrome` | 三套内置 Shell 的自身布局 |
+
+### 4.2 融合标题栏：应用交角色，宿主定列
+
+`RemoteWindow` 暴露四个**角色槽**——`HeaderLeading` / `HeaderCenter` / `HeaderTrailing` / `HeaderTabs`，
+任一非空即进入融合态：宿主自己的窗口图标与标题让位，recipe 负责把这四块与宿主按钮组一起排布。
+
+- **应用只交角色，永不写列。** 接入入口只做一件事：`window.View.HeaderLeading = …; HeaderCenter = …;`。
+  9 个同构工作区接入时都不需要知道当前是哪个 recipe。
+- **宿主同时拥有槽的留白。** 融合态下 leading / trailing 的 `Margin` 由 recipe 给出；按钮在左时，
+  leading 天然落在按钮组右侧的列里（按钮组的右外边距就是那道间隔），应用不再用 `Margin` 去猜按钮在哪一侧。
+- **融合条的高度与底色同样属于 recipe。** 高度取派生键 `WindowFusedTitleBarHeight`
+  （`max(48, WindowTitleBarHeight + 14)`，紧凑风格自然得到更矮的融合条）；底色由每条 recipe 显式给出——
+  `headerbar-right` 用 `SurfaceRaisedBrush`（headerbar 是应用自己的工具条，与侧栏同层），其余用 `SurfaceBrush`。
+- **`HeaderTabs` 与 `HeaderCenter` 争同一个弹性列，仲裁权在宿主。** 多标签窗口交 `HeaderTabs`（标签条高度读
+  可选令牌 `WindowTabHeight`，默认 28），宿主置 `:header-tabs` 并让 `HeaderCenter` 让位，避免两块叠在同一格。
+  **「标签条内联在栏里」还是「栏外另起一行」由 recipe 决定**——目前三条都是内联，将来要另起一行只需加宿主规则，
+  应用零改动。平台依据与决策过程见 `RelaxKonOS.FusedWindowHeader.md` §8.5。
+- **覆盖检查不变**：`SystemStyleChecks.VerifyRecipeCoverage` 仍只要求 `:chrome-<值>` 在
+  `RemoteWindowTheme.axaml` 里留有实现痕迹；该文件把**每条 recipe 的七个部件全部显式写出**，
+  因此不存在「落到默认恰好正确」的隐式分支。
+- **验证落点**：`Tests/Client/RelaxKonOS.WindowPreviews.Tests/FusedWindowHeaderChecks.cs`
+  （三条 recipe 的槽列、按钮组顺序与配色、融合条几何、拖拽不被槽吃掉、标签条吃满弹性列且居中槽让位），
+  以及 `SettingsWindowChecks` 里「设置窗口 × 三条 recipe」的截图——这一格此前从未渲染过，
+  所以「按钮在左的 recipe 下融合头长什么样」一直没有被看过。
 
 ---
 
@@ -339,7 +365,8 @@ WorkspacePreferencesDto.DesktopExperience
   `SystemStyle.WindowChrome` / `SystemStyle.ContextMenu` / `SystemStyle.TaskSwitcher` / `SystemStyle.ShellChrome`。
 - 派生复合值（`SystemStyleDerivedKeys`）：`OverlayTopCornerRadius`、`OverlayBottomCornerRadius`、
   `ElevationShadow`（由 `FlyoutElevation` + 调色板 `Shadow` 合成）、`WindowCaptionCornerRadius`
-  （`min(WindowControlWidth, WindowTitleBarHeight)/2`）、`HostTitleBarMargin`。
+  （`min(WindowControlWidth, WindowTitleBarHeight)/2`）、`HostTitleBarMargin`、
+  `WindowFusedTitleBarHeight`（`max(48, WindowTitleBarHeight + 14)`，见 §4.2）。
 - 命令面厚度键（`SystemStyleCommandSurfaceKeys`）：Fluent 的菜单/子菜单/ToolTip/Flyout 模板只认
   **具名 thickness 键**，而 thickness 无法在 AXAML 里写 `Color="{DynamicResource ...}"`，
   所以由本类在代码中物化，并按 `contextMenu` recipe 缩放（见 §4.1）。
@@ -364,8 +391,12 @@ C# 构造的 UI 必须消费**会跟随主题变化**的令牌，因此：
 - `Themes/Styles.axaml` 的 caption/icon 按钮与 focus-visible 状态改用 `DynamicResource` 引用
   `Width` / `MinWidth` / `MinHeight` / `BorderThickness`。
 - `Framework/RelaxKonOS.WindowManager/Themes/RemoteWindowTheme.axaml`：
-  标题栏高度 → `{DynamicResource WindowTitleBarHeight}`、外框 `BorderThickness` → `{DynamicResource WindowFrameThickness}`、
+  标题栏高度 → `{DynamicResource WindowTitleBarHeight}`、融合标题栏高度 → `{DynamicResource WindowFusedTitleBarHeight}`、
+  交通灯直径 → `{DynamicResource WindowTrafficLightSize}`、外框 `BorderThickness` → `{DynamicResource WindowFrameThickness}`、
   非活动标题 `Opacity` → `{DynamicResource WindowInactiveOpacity}`、`:shadow` → `{DynamicResource WindowShadow}`。
+  **`WindowTabHeight` 是例外：本模板不消费它**，它发布给**应用的标签条视图**（`RemoteWindow.HeaderTabs` 的内容）
+  自行取用，这样标签的比例仍然是风格决策而不是应用里的常量。融合条高度由模板统一给定，因此本模板不需要
+  为「有没有标签条」再分支。
 - `Framework/RelaxKonOS.UI/Themes/Controls/ControlThemeOverrides.axaml`：Fluent 主题键桥接。
   菜单/子菜单/chevron/ToolTip/Flyout 的画刷键在这里重指向语义调色板；
   厚度键在此只放 Windows-like 的静态兜底，运行时由 `SystemStyleResourceBuilder` 覆盖。

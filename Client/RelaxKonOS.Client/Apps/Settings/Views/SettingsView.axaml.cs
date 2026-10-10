@@ -22,7 +22,11 @@ public partial class SettingsView : UserControl
     public SettingsView()
     {
         InitializeComponent();
-        SettingsHeader.BeforeFocusSearch = () => CloseNavigationDrawer(restoreFocus: false);
+        SettingsSearchBar.BeforeFocusSearch = () => CloseNavigationDrawer(restoreFocus: false);
+        // The window's title bar is not inside this view once it is fused, so the shortcut keys are
+        // attached to both blocks instead of being handled by the content view alone.
+        SettingsHeader.KeyDown += OnTitleBarKeyDown;
+        SettingsSearchBar.KeyDown += OnTitleBarKeyDown;
         _highlightTimer.Tick += (_, _) => ClearHighlight();
         DataContextChanged += (_, _) => ObserveModel(DataContext as SettingsViewModel);
         AttachedToVisualTree += (_, _) => ObserveModel(DataContext as SettingsViewModel);
@@ -34,6 +38,7 @@ public partial class SettingsView : UserControl
             NavigationLayout.ColumnDefinitions[0].Width = new GridLength(compact ? 0 : 250);
             Sidebar.IsVisible = !compact;
             CompactNavigation.IsVisible = compact;
+            SettingsHeader.TitleText.IsVisible = args.NewSize.Width >= 360;
             if (!compact) CloseNavigationDrawer(restoreFocus: false);
         };
         KeyDown += (_, args) =>
@@ -41,18 +46,40 @@ public partial class SettingsView : UserControl
             if (args.Key == Key.Escape && NavigationDrawer.IsVisible)
             { CloseNavigationDrawer(); args.Handled = true; }
             else if (args.Key == Key.F && args.KeyModifiers.HasFlag(KeyModifiers.Control))
-            { SettingsHeader.FocusSearch(); args.Handled = true; }
+            { SettingsSearchBar.FocusSearch(); args.Handled = true; }
             else if (args.Key == Key.Escape && DataContext is SettingsViewModel { HasSearch: true } model)
             { model.SearchQuery = ""; args.Handled = true; }
         };
     }
 
+    private void OnTitleBarKeyDown(object? sender, KeyEventArgs args)
+    {
+        if (args.Handled) return;
+        if (args.Key == Key.F && args.KeyModifiers.HasFlag(KeyModifiers.Control))
+        { SettingsSearchBar.FocusSearch(); args.Handled = true; }
+        else if (args.Key == Key.Escape && DataContext is SettingsViewModel { HasSearch: true } model)
+        { model.SearchQuery = ""; args.Handled = true; }
+    }
+
+    /// <summary>The leading title-bar block: the back action and this window's own name.</summary>
     public SettingsHeaderView Header => SettingsHeader;
+
+    /// <summary>The centre title-bar block: the search field.</summary>
+    public SettingsSearchBarView SearchBar => SettingsSearchBar;
+
+    /// <summary>
+    /// Hands the two title-bar blocks to the host's role slots. This is the whole application-side
+    /// contract: no view names a column, an inset or a bar height, so all three window-chrome
+    /// recipes - and any recipe the host adds later - place them without this file changing.
+    /// </summary>
     public void AttachWindowHeader(RelaxKonOS.WindowManager.ManagedWindow window)
     {
-        HeaderHost.Content = null;
         SettingsHeader.DataContext = DataContext;
-        window.View.TitleBarContent = SettingsHeader;
+        SettingsSearchBar.DataContext = DataContext;
+        HeaderHost.Children.Clear();
+        window.View.HeaderLeading = SettingsHeader;
+        window.View.HeaderCenter = SettingsSearchBar;
+        window.View.HeaderTrailing = null;
     }
 
     private void ObserveModel(SettingsViewModel? model)
@@ -98,7 +125,7 @@ public partial class SettingsView : UserControl
                 Dispatcher.UIThread.Post(() =>
                 {
                     if (searchGeneration != _navigationGeneration || _observedModel?.HasSearch != true) return;
-                    SettingsHeader.FocusSearch();
+                    SettingsSearchBar.FocusSearch();
                 }, DispatcherPriority.Loaded);
                 return;
             }

@@ -23,6 +23,7 @@ using RelaxKonOS.Client.Services.WorkspaceSettings;
 using RelaxKonOS.Protocol.Identity;
 using RelaxKonOS.Protocol.Settings;
 using RelaxKonOS.Protocol.Workspace;
+using RelaxKonOS.Protocol.Workspace.SystemStyles;
 using RelaxKonOS.Runtime;
 using RelaxKonOS.AppSDK;
 using AppContext = System.AppContext;
@@ -97,7 +98,7 @@ internal static class SettingsWindowChecks
             Check(model.SearchQuery.Length == 0 && Math.Abs(scroll.Offset.Y - rememberedOffset) < 1,
                 $"Escape did not restore pre-search page position: query={model.SearchQuery}, offset={scroll.Offset.Y}, expected={rememberedOffset}.");
             window.KeyPress(Key.F, RawInputModifiers.Control, PhysicalKey.F, null); Pump();
-            Check(ReferenceEquals(window.FocusManager?.GetFocusedElement(), view.Header.FindControl<TextBox>("HeaderSearchBox")), "Ctrl+F did not focus top search.");
+            Check(ReferenceEquals(window.FocusManager?.GetFocusedElement(), view.SearchBar.SearchBox), "Ctrl+F did not focus top search.");
 
             auth.State = AuthSessionState.Authenticated;
             model.OpenPageCommand.Execute("personalization/colors"); Pump();
@@ -205,7 +206,7 @@ internal static class SettingsWindowChecks
             Click(window, parentBreadcrumb);
             Check(model.SelectedPage?.Route == "personalization", "Parent breadcrumb did not navigate.");
             model.OpenPageCommand.Execute("personalization/colors"); Pump();
-            Click(window, view.Header.FindControl<Button>("HeaderBackButton")!);
+            Click(window, view.Header.BackButton!);
             Check(model.SelectedPage?.Route == "personalization", "Top title-bar back arrow did not navigate.");
             window.Content = null;
             var canvas = new Canvas();
@@ -217,15 +218,48 @@ internal static class SettingsWindowChecks
                 new RelaxKonOS.Core.Primitives.Rect(0, 0, 1080, 780)));
             view.AttachWindowHeader(managed);
             model.OpenPageCommand.Execute("personalization/colors"); Pump();
-            Check(ReferenceEquals(managed.View.TitleBarContent, view.Header), "Settings header was not embedded in host title bar.");
-            Check(view.Header.Bounds.Height >= 48 && view.Header.IsEffectivelyVisible, "Embedded title bar has no usable layout.");
-            Click(window, view.Header.FindControl<TextBox>("HeaderSearchBox")!);
+            Check(ReferenceEquals(managed.View.HeaderLeading, view.Header)
+                  && ReferenceEquals(managed.View.HeaderCenter, view.SearchBar) && managed.View.HeaderTrailing is null,
+                "Settings blocks were not handed to the host's title-bar role slots.");
+            Check(managed.View.HasTitleBarContent, "Role slots left the host title bar unfused.");
+            var titleBar = managed.View.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "PART_TitleBar");
+            // The fused bar takes its height from the style rather than from a literal in the window
+            // manager, so the assertion reads the same resource the host wrote.
+            var fusedHeight = (double)managed.View.FindResource("WindowFusedTitleBarHeight")!;
+            Check(Math.Abs(titleBar.Bounds.Height - fusedHeight) < 1 && view.Header.IsEffectivelyVisible && view.SearchBar.IsEffectivelyVisible,
+                $"Embedded title bar has no usable single-layer layout ({titleBar.Bounds.Height}, expected {fusedHeight}).");
+            Click(window, view.SearchBar.SearchBox);
             var oldBounds = managed.Info.Bounds;
-            view.Header.FindControl<TextBox>("HeaderSearchBox")!.Text = "wallpaper"; Pump();
+            view.SearchBar.SearchBox.Text = "wallpaper"; Pump();
             Check(model.HasSearch && managed.Info.Bounds == oldBounds, "Title-bar search input moved the window or lost binding.");
             window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null); Pump();
             Check(!model.HasSearch, "Escape in embedded search did not restore content.");
             Capture(window, new PixelSize(1100, 800), Path.Combine(output, "window-embedded-header-breadcrumb.png"));
+
+            // The same window under every window-chrome recipe. The Settings view names no column and
+            // no inset, so this is the assertion that the host's role slots really do the placing -
+            // and it is the only place the fused header is ever seen on the left-button recipes.
+            foreach (var styleId in new[] { SystemStyleIds.MacOsLike, SystemStyleIds.UbuntuLike, SystemStyleIds.WindowsLike })
+            {
+                settings.SystemStyleId = styleId; Pump();
+                BuiltInSystemStyles.TryGet(styleId, out var profile);
+                var recipe = profile.SupportedRecipes.WindowChrome;
+                Check((string)managed.View.FindResource("SystemStyle.WindowChrome")! == recipe,
+                    $"{styleId} selected {recipe} but the window did not adopt it.");
+                var bar = managed.View.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "PART_TitleBar");
+                var cluster = managed.View.GetVisualDescendants().OfType<Grid>().Single(grid => grid.Name == "PART_WindowControls");
+                var expectedFused = Math.Max(48, profile.ResolveTokens(dark: false)["WindowTitleBarHeight"] + 14);
+                Check(Math.Abs(bar.Bounds.Height - expectedFused) < 1,
+                    $"{styleId}: fused bar kept a single shared height ({bar.Bounds.Height}, expected {expectedFused}).");
+                Check(!Overlaps(view.Header, cluster, managed.View) && !Overlaps(view.SearchBar, cluster, managed.View),
+                    $"{styleId}: the application's title-bar blocks overlap the window controls.");
+                Check(recipe != "traffic-lights-left" || LeftEdge(view.Header, managed.View) >= RightEdge(cluster, managed.View) - 1,
+                    $"{styleId}: the leading block starts before the leading caption cluster ends.");
+                Check(view.SearchBar.SearchBox.Bounds.Width >= 80 && view.SearchBar.IsEffectivelyVisible,
+                    $"{styleId}: the title-bar search field collapsed.");
+                Capture(window, new PixelSize(1100, 800), Path.Combine(output, $"window-embedded-header-{recipe}.png"));
+            }
+            settings.SystemStyleId = SystemStyleIds.WindowsLike; Pump();
             var networkEditor = model.Pages.OfType<NetworkPageViewModel>().Single().HostNetwork;
             var adapter = new NetworkAdapterItem(new HostNetworkAdapter(Guid.NewGuid().ToString(), 2,
                 "Ethernet 2", "Remote network adapter", "ethernet", true, 1_000_000_000, "00:11:22:33:44:55",
@@ -347,6 +381,16 @@ internal static class SettingsWindowChecks
         screenshot.Save(path, PngBitmapEncoderOptions.Default);
     }
     private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
+
+    private static double LeftEdge(Visual visual, Visual ancestor) =>
+        visual.TranslatePoint(default, ancestor)!.Value.X;
+
+    private static double RightEdge(Visual visual, Visual ancestor) =>
+        LeftEdge(visual, ancestor) + visual.Bounds.Width;
+
+    /// <summary>Horizontal overlap only: the title bar is a single row, so vertical position carries no information.</summary>
+    private static bool Overlaps(Visual first, Visual second, Visual ancestor) =>
+        LeftEdge(first, ancestor) < RightEdge(second, ancestor) && LeftEdge(second, ancestor) < RightEdge(first, ancestor);
 }
 
 public class SettingsWindowSession : DispatchProxy

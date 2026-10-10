@@ -3,23 +3,17 @@
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.SettingsHeaderView"
-             x:DataType="vm:SettingsViewModel" MinHeight="56">
-    <Grid ColumnDefinitions="Auto,*,Auto" Margin="12,4" ColumnSpacing="12">
-        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-            <Button x:Name="HeaderBackButton" Command="{Binding BackCommand}" Background="Transparent" BorderThickness="0"
-                    Padding="10" AutomationProperties.Name="{loc:Loc settings.navigation.back}" ToolTip.Tip="{loc:Loc settings.navigation.back}">
-                <Path Data="M15,3 L6,12 L15,21 M6,12 L24,12" Stroke="{DynamicResource TextPrimaryBrush}"
-                      StrokeThickness="1.5" Width="18" Height="18" Stretch="Uniform" />
-            </Button>
-            <TextBlock x:Name="HeaderTitle" Text="{loc:Loc settings.title}" VerticalAlignment="Center" />
-        </StackPanel>
-        <Grid Grid.Column="1" MaxWidth="520" VerticalAlignment="Center">
-        <TextBox x:Name="HeaderSearchBox" Text="{Binding SearchQuery, Mode=TwoWay}" MaxLength="256"
-                 PlaceholderText="{loc:Loc settings.search.placeholder}" AutomationProperties.Name="{loc:Loc settings.search.placeholder}"
-                 CornerRadius="18" Padding="34,6,12,6" MinWidth="80" HorizontalAlignment="Stretch" VerticalAlignment="Center" />
-            <Path Data="M10,2 A8,8 0 1 0 10,18 A8,8 0 1 0 10,2 M16,16 L23,23"
-                  Width="14" Height="14" Stretch="Uniform" Stroke="{DynamicResource TextSecondaryBrush}"
-                  StrokeThickness="1.6" Margin="12,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center" IsHitTestVisible="False" />
-        </Grid>
-    </Grid>
+             x:DataType="vm:SettingsViewModel">
+    <!-- The leading block of the window's fused title bar: the back action and the window's own
+         identity. It holds no placement of its own - the host template decides which column it lands
+         in, how far it is inset from the caption buttons and how tall the bar is - so the same block
+         follows every window-chrome recipe without knowing which one is active. -->
+    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+        <Button x:Name="HeaderBackButton" Command="{Binding BackCommand}" Background="Transparent" BorderThickness="0"
+                Padding="10" AutomationProperties.Name="{loc:Loc settings.navigation.back}" ToolTip.Tip="{loc:Loc settings.navigation.back}">
+            <Path Data="M15,3 L6,12 L15,21 M6,12 L24,12" Stroke="{DynamicResource TextPrimaryBrush}"
+                  StrokeThickness="1.5" Width="18" Height="18" Stretch="Uniform" />
+        </Button>
+        <TextBlock x:Name="HeaderTitle" Text="{loc:Loc settings.title}" VerticalAlignment="Center" />
+    </StackPanel>
 </UserControl>

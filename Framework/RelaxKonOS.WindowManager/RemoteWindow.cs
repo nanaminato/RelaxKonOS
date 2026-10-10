@@ -24,13 +24,71 @@ public class RemoteWindow : TemplatedControl
 {
     public static readonly StyledProperty<object?> ContentProperty =
         AvaloniaProperty.Register<RemoteWindow, object?>(nameof(Content));
-    /// <summary>Application content inside the host title bar; caption buttons remain host-owned.</summary>
-    public static readonly StyledProperty<Control?> TitleBarContentProperty =
-        AvaloniaProperty.Register<RemoteWindow, Control?>(nameof(TitleBarContent));
-    public Control? TitleBarContent
+
+    // ----- Host title-bar content slots -----
+    //
+    // An application contributes *roles*, never columns. The host template decides where each role
+    // lands, exactly as it already does for PART_WindowIcon / PART_TitleText / PART_WindowControls,
+    // and the active chrome recipe redeploys them all together. That is what keeps "where do the
+    // caption buttons sit" a host decision: a new recipe is one host rule, and every application
+    // that hands over the same roles follows it without being touched.
+
+    /// <summary>
+    /// Leading identity block in the host title bar (typically a back action and the window's own
+    /// title). Rendered immediately after the caption cluster on recipes whose buttons lead, and
+    /// against the leading edge on the rest.
+    /// </summary>
+    public static readonly StyledProperty<Control?> HeaderLeadingProperty =
+        AvaloniaProperty.Register<RemoteWindow, Control?>(nameof(HeaderLeading));
+
+    /// <summary>
+    /// Centrally anchored block in the host title bar, rendered in the title bar's flexible column
+    /// (a search field, an address bar, a document name). Yields to <see cref="HeaderTabs"/> when an
+    /// application declares both, because a tab strip wants the whole flexible column.
+    /// </summary>
+    public static readonly StyledProperty<Control?> HeaderCenterProperty =
+        AvaloniaProperty.Register<RemoteWindow, Control?>(nameof(HeaderCenter));
+
+    /// <summary>
+    /// Trailing block in the host title bar, rendered just before the caption buttons on recipes
+    /// whose buttons trail (a status pill, a branch selector, a refresh action).
+    /// </summary>
+    public static readonly StyledProperty<Control?> HeaderTrailingProperty =
+        AvaloniaProperty.Register<RemoteWindow, Control?>(nameof(HeaderTrailing));
+
+    /// <summary>
+    /// The window's tab strip, rendered in the title bar's flexible column so it starts after
+    /// whatever the recipe put in the leading cells and stops before the trailing ones. Declaring it
+    /// is the whole contract: the host decides whether those tabs are drawn inline in the bar or
+    /// pushed onto a row of their own, which is exactly the difference between how a tabbed window
+    /// looks on each platform. The strip sizes itself from the <c>WindowTabHeight</c> token rather
+    /// than a literal, so its proportions stay a style decision.
+    /// </summary>
+    public static readonly StyledProperty<Control?> HeaderTabsProperty =
+        AvaloniaProperty.Register<RemoteWindow, Control?>(nameof(HeaderTabs));
+
+    public Control? HeaderLeading
     {
-        get => GetValue(TitleBarContentProperty);
-        set => SetValue(TitleBarContentProperty, value);
+        get => GetValue(HeaderLeadingProperty);
+        set => SetValue(HeaderLeadingProperty, value);
+    }
+
+    public Control? HeaderCenter
+    {
+        get => GetValue(HeaderCenterProperty);
+        set => SetValue(HeaderCenterProperty, value);
+    }
+
+    public Control? HeaderTrailing
+    {
+        get => GetValue(HeaderTrailingProperty);
+        set => SetValue(HeaderTrailingProperty, value);
+    }
+
+    public Control? HeaderTabs
+    {
+        get => GetValue(HeaderTabsProperty);
+        set => SetValue(HeaderTabsProperty, value);
     }
 
     public static readonly StyledProperty<bool> ShowShadowProperty =
@@ -110,8 +168,12 @@ public class RemoteWindow : TemplatedControl
 
     static RemoteWindow()
     {
-        TitleBarContentProperty.Changed.AddClassHandler<RemoteWindow>((window, _) =>
-            window.PseudoClasses.Set(":custom-title-content", window.TitleBarContent is not null));
+        // Any one slot puts the title bar into its fused form: the host icon and its own title text
+        // are replaced by the application's blocks, and the chrome recipe lays all of them out.
+        HeaderLeadingProperty.Changed.AddClassHandler<RemoteWindow>((window, _) => window.UpdateCustomTitleContent());
+        HeaderCenterProperty.Changed.AddClassHandler<RemoteWindow>((window, _) => window.UpdateCustomTitleContent());
+        HeaderTrailingProperty.Changed.AddClassHandler<RemoteWindow>((window, _) => window.UpdateCustomTitleContent());
+        HeaderTabsProperty.Changed.AddClassHandler<RemoteWindow>((window, _) => window.UpdateCustomTitleContent());
         ShowShadowProperty.Changed.AddClassHandler<RemoteWindow>((window, _) => window.UpdateVisualEffects());
         ShowContentWhileDraggingProperty.Changed.AddClassHandler<RemoteWindow>((window, _) => window.UpdateVisualEffects());
         ChromeRecipeProperty.Changed.AddClassHandler<RemoteWindow>((window, _) => window.UpdateChromeRecipe());
@@ -365,6 +427,21 @@ public class RemoteWindow : TemplatedControl
         PseudoClasses.Set(":shadow", ShowShadow);
         if (_contentHost is not null)
             _contentHost.Opacity = ShowContentWhileDragging || (!_dragging && !_resizing) ? 1 : 0;
+    }
+
+    /// <summary>True when at least one application block is present in the host title bar.</summary>
+    public bool HasTitleBarContent =>
+        HeaderLeading is not null || HeaderCenter is not null || HeaderTrailing is not null || HeaderTabs is not null;
+
+    /// <summary>
+    /// A tab strip claims the title bar's flexible column outright: it is the window's identity, so
+    /// the host's own title text is already gone and any centred block gives way rather than
+    /// overlapping it. Both are host decisions - the application never states either one.
+    /// </summary>
+    private void UpdateCustomTitleContent()
+    {
+        PseudoClasses.Set(":custom-title-content", HasTitleBarContent);
+        PseudoClasses.Set(":header-tabs", HeaderTabs is not null);
     }
 
     /// <summary>

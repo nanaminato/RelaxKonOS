@@ -126,7 +126,14 @@
     </UserControl.DataTemplates>
 
     <Grid RowDefinitions="Auto,*">
-        <ContentControl x:Name="HeaderHost"><views:SettingsHeaderView x:Name="SettingsHeader" /></ContentControl>
+        <!-- Fallback presentation for a Settings view that has not been attached to a managed window.
+             Once it is, both blocks move into the host title bar's leading and centre role slots and
+             this row collapses. Nothing here states a height or an inset for the fused bar: those
+             belong to the host template and follow the active window-chrome recipe. -->
+        <Grid x:Name="HeaderHost" ColumnDefinitions="Auto,*" ColumnSpacing="12" Margin="12,4">
+            <views:SettingsHeaderView x:Name="SettingsHeader" VerticalAlignment="Center" />
+            <views:SettingsSearchBarView x:Name="SettingsSearchBar" Grid.Column="1" />
+        </Grid>
     <Grid Grid.Row="1" x:Name="NavigationLayout" ColumnDefinitions="250,*">
         <Border x:Name="Sidebar" Grid.Column="0" Classes="app-sidebar" Padding="16" BorderThickness="0">
             <Grid RowDefinitions="Auto,*,Auto" RowSpacing="20">

@@ -186,6 +186,16 @@ P0；首批已实现并通过受控回归，完整故障与真实界面待验证
 
 未完成：原生桌面视觉与交互验收（标题栏、Alt+F4、任务栏、窗口总览四种手势的实际渲染与焦点返回）、真实写入/拒绝/断线后的未知结果核实、Code Editor 多标签保存策略细化（当前一次确认放弃全部）、Terminal 断线门禁与迟到输入，以及 Explorer 内联改名草稿在窗口关闭时的保护。不能据此把这些界面标为完整验收。
 
+### D-010：融合标题栏的角色槽、macOS 交通灯与多标签落位（2026-10-10）
+
+起因是设置顶栏在 macOS 风格下把 `− ▢ ×` 与「← 设置」挤成一串、右半条空白、搜索框无法居中。查证结论是：**安装桌面程序只增加「桌面布局」（shell），不增加「系统风格」**，系统风格严格三套内置，窗口 chrome recipe 是封闭三值（`caption-buttons-right` / `traffic-lights-left` / `headerbar-right`），因此需要防的不是「未知风格」而是「宿主将来新增第四条 recipe」。
+
+据此把融合标题栏的契约从「应用自绘头部」改为「**应用交角色，宿主定列**」（方案 A）：`RemoteWindow` 不再有单一的 `TitleBarContent`，改为 `HeaderLeading` / `HeaderCenter` / `HeaderTrailing` 三个角色槽，模板标题栏是 `Auto,Auto,*,Auto,Auto` 五列网格，**每条 recipe 把七个部件（图标 / 标题文本 / 三个角色槽 / 按钮组）全部显式写出**，不存在「落到默认恰好正确」的隐式分支。应用永远不写列、不写留白、不写融合条高度。`traffic-lights-left` 同时重做为红（关）/ 黄（小）/ 绿（放大）三枚圆点，配色取调色板语义角色 `Danger` / `Warning` / `Success`（不写十六进制），字形默认透明、指针或键盘进入按钮组时显现——自动截图核验通过。
+
+多标签是把这套契约往前推了一格：macOS 的两套标签机制在 API 层就分开（`NSWindowTabGroup` 属于**窗口 chrome**，官方措辞是「they are not an NSTabView inside the content area」，且 Apple 把 *document tabs* 与标题栏、工具栏并列计入 top chrome；`NSTabView` 才是内容区标签），Windows 11 资源管理器的标签条则在**最顶行**与窗口按钮同行。两个平台都把标签条放在「顶栏这一带、跟在 leading 之后」，差别只在按钮在左还是在右——那是 recipe 已经管的。因此新增**第四个角色槽 `HeaderTabs`**：标签条占标题栏的弹性列，声明后宿主置 `:header-tabs` 并让 `HeaderCenter` 让位，高度读可选令牌 `WindowTabHeight`（默认 28）。**同一份输入由宿主按 recipe 渲染成「内联在栏里」或「栏外另起一行」**，所以文件浏览器/编辑器的多标签不会出现「macOS 窗口里一条 Windows 形状带子」的不一致；应用侧零改动。窗口级 vs 视图级标签语义的差异已记入 `RelaxKonOS.FusedWindowHeader.md` §5.7，本实现取视图级（与 VS Code / Chrome / Edge 一致）。
+
+证据：`FusedWindowHeaderChecks` 逐 recipe 断言槽列、按钮组顺序与配色、交通灯几何、融合条几何与底色、拖拽不被槽吃掉，并新增标签条用例（弹性列、居中槽让位、宿主标题让位、不重叠、**吃满**弹性列、清空后居中槽恢复、只有标签条时仍融合）与 `fused-header-tabs-{recipe}.png` 截图。`RelaxKonOS.WindowPreviews.Tests` 196 PASS / 0 异常 / exit 0；`RelaxKonOS.Settings.Tests` 通过且 `recipe coverage`、`no hardcoded colours` **未被跳过**（`-o` 必须落在仓库内，否则会静默跳过）。未完成：第一批 9 个窗口与第二批 6 个窗口的接入尚未开始，`BrowserMainView` 的标签条仍是应用自排（已列入 §3.2 #15）。
+
 ## 动态界面与复用路由补充清单
 
 每个分号分隔的场景需分别验收，不能因共用源码而合并结论。除已明确记录的局部修复外，以下状态均为已盘点待流程深审。
@@ -577,7 +587,7 @@ P0；首批已实现并通过受控回归，完整故障与真实界面待验证
 | UI-119 [WorkspaceEnvironmentEditorView](../../Client/RelaxKonOS.Client/Apps/Settings/Views/Pages/WorkspaceEnvironmentEditorView.axaml) | ScrollViewer；TextBox；入口：StageSetCommand、StageDeleteCommand、ReloadCommand | 草稿差异与校验；忙碌锁定；取消/Esc/窗口关闭；失败保留目标及输入 | 结构初查完成，待流程深审与运行验收 |
 | UI-120 [PerformanceOptionsDialogView](../../Client/RelaxKonOS.Client/Apps/Settings/Views/PerformanceOptionsDialogView.axaml) | ScrollViewer；入口：CancelCommand、ApplyCommand、OkCommand | 草稿差异与校验；忙碌锁定；取消/Esc/窗口关闭；失败保留目标及输入 | 结构初查完成，待流程深审与运行验收 |
 | UI-121 [ServerHttpsDialogView](../../Client/RelaxKonOS.Client/Apps/Settings/Views/ServerHttpsDialogView.axaml) | TextBox；入口：RefreshCommand、DeployCommand | 草稿差异与校验；忙碌锁定；取消/Esc/窗口关闭；失败保留目标及输入 | 结构初查完成，待流程深审与运行验收 |
-| UI-122 [SettingsHeaderView](../../Client/RelaxKonOS.Client/Apps/Settings/Views/SettingsHeaderView.axaml) | TextBox；入口：BackCommand | 主要任务与状态；窄窗口/长文本；键盘/无障碍；刷新与身份切换 | 结构初查完成，待流程深审与运行验收 |
+| UI-122 设置顶栏（[SettingsHeaderView](../../Client/RelaxKonOS.Client/Apps/Settings/Views/SettingsHeaderView.axaml) / [SettingsSearchBarView](../../Client/RelaxKonOS.Client/Apps/Settings/Views/SettingsSearchBarView.axaml)） | TextBox；入口：BackCommand | 主要任务与状态；窄窗口/长文本；键盘/无障碍；刷新与身份切换；三套窗口 chrome recipe 下的槽位排布 | 结构初查完成，待流程深审与运行验收 |
 | UI-123 [SettingsView](../../Client/RelaxKonOS.Client/Apps/Settings/Views/SettingsView.axaml) | ScrollViewer；ContentControl；入口：OnQuickLinkClick、OpenPageCommand | 导航状态；读取失败保留编辑器；窄窗口；切页与焦点返回 | 结构初查完成，待流程深审与运行验收 |
 
 ### TaskManager

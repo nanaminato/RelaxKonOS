@@ -94,6 +94,7 @@ EditorDraftStateChecks.Run();
 if (args.Contains("--ui-review-only")) return;
 SettingsInteractionChecks.Run(settings, localization);
 SettingsWindowChecks.Run(settings, localization);
+FusedWindowHeaderChecks.Run(settings);
 RemoteClockChecks.Run(settings, localization, services);
 DesktopDeviceSettingsChecks.Run(settings, appearance);
 HostTimeCompletionChecks.Run(localization);

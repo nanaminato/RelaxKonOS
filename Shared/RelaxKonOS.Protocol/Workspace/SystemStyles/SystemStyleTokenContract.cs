@@ -52,6 +52,13 @@ public static class SystemStyleTokenContract
         new("WindowFrameThickness", SystemStyleTokenKind.Thickness, 0, 8, 1),
         new("WindowCornerRadius", SystemStyleTokenKind.CornerRadius, 0, 32, 8),
         new("WindowControlWidth", SystemStyleTokenKind.Number, 28, 96, 52),
+        // Diameter of one circle in the `traffic-lights-left` caption cluster. Optional: a style
+        // that never selects that recipe keeps the default without declaring anything.
+        new("WindowTrafficLightSize", SystemStyleTokenKind.Number, 8, 24, 12),
+        // Height of a window's tab strip. Optional, and published for the same reason: an
+        // application's tab view takes its proportions from the style instead of a literal, and the
+        // strip has to fit inside the fused title bar the host sizes.
+        new("WindowTabHeight", SystemStyleTokenKind.Number, 20, 40, 28),
         new("WindowInactiveOpacity", SystemStyleTokenKind.Opacity, 0.2, 1, 0.55),
         new("WindowShadowDepth", SystemStyleTokenKind.Number, 0, 64, 28),
         new("WindowShadowOpacity", SystemStyleTokenKind.Opacity, 0, 1, 0.4),

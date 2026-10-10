@@ -14,15 +14,18 @@
                             BorderThickness="{DynamicResource WindowFrameThickness}"
                             CornerRadius="{DynamicResource WindowCornerRadius}">
                         <Grid RowDefinitions="Auto,*">
-                            <!-- Title bar -->
+                            <!-- Title bar. Five columns keep the host's own parts (icon, title,
+                                 caption buttons) and the application's four role slots in one
+                                 layout, so a recipe can redeploy any of them together instead of
+                                 each application guessing where the host put its buttons. -->
                             <Border x:Name="PART_TitleBar"
                                     Grid.Row="0"
                                     Height="{DynamicResource WindowTitleBarHeight}"
                                     Background="{DynamicResource WindowTitleBarBackgroundBrush}"
                                     CornerRadius="{DynamicResource WindowCornerRadius}"
                                     IsVisible="{Binding !IsFullScreen}">
-                                <Grid ColumnDefinitions="Auto,*,Auto">
-                                    <Border x:Name="PART_TitleDrag" Grid.Column="0" Grid.ColumnSpan="2" Background="Transparent" />
+                                <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+                                    <Border x:Name="PART_TitleDrag" Grid.Column="0" Grid.ColumnSpan="5" Background="Transparent" />
                                     <Grid x:Name="PART_WindowIcon" Grid.Column="0" Width="22" Height="22" Margin="12,0,0,0"
                                           VerticalAlignment="Center">
                                         <Image Source="{Binding IconImage}" IsVisible="{Binding HasIconImage}" Stretch="Uniform" />
@@ -30,18 +33,35 @@
                                                    Text="{Binding IconGlyph}" IsVisible="{Binding !HasIconImage}" />
                                     </Grid>
                                     <TextBlock x:Name="PART_TitleText"
-                                               Grid.Column="1"
+                                               Grid.Column="2"
                                                Margin="10,0,0,0"
                                                VerticalAlignment="Center"
                                                FontSize="13"
                                                Foreground="{DynamicResource WindowTitleForegroundBrush}"
                                                Text="{Binding Title}" />
+                                    <!-- Application blocks. Roles, not columns: the recipe section
+                                         below decides which cell each one occupies, next to the
+                                         caption cluster the host keeps for itself. -->
+                                    <ContentPresenter x:Name="PART_HeaderLeading" Grid.Column="1"
+                                                      Content="{TemplateBinding HeaderLeading}"
+                                                      HorizontalAlignment="Left" VerticalAlignment="Stretch" />
+                                    <ContentPresenter x:Name="PART_HeaderCenter" Grid.Column="2"
+                                                      Content="{TemplateBinding HeaderCenter}"
+                                                      HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+                                    <!-- A tab strip is the window's identity rather than one more
+                                         control, so it takes the flexible column and the centred
+                                         block above gives way (see the `:header-tabs` rules below).
+                                         It stretches vertically so the application can decide
+                                         whether its tabs sit centred or flush with the content. -->
+                                    <ContentPresenter x:Name="PART_HeaderTabs" Grid.Column="2"
+                                                      Content="{TemplateBinding HeaderTabs}"
+                                                      HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+                                    <ContentPresenter x:Name="PART_HeaderTrailing" Grid.Column="3"
+                                                      Content="{TemplateBinding HeaderTrailing}"
+                                                      HorizontalAlignment="Right" VerticalAlignment="Stretch" />
                                     <!-- The chrome recipe redeploys this grid: applications never choose
                                          where their own window controls sit. -->
-                                    <ContentPresenter x:Name="PART_CustomTitleContent" Grid.Column="0" Grid.ColumnSpan="2"
-                                                      Content="{TemplateBinding TitleBarContent}" HorizontalAlignment="Stretch"
-                                                      VerticalAlignment="Stretch" />
-                                    <Grid x:Name="PART_WindowControls" Grid.Column="2" ColumnDefinitions="Auto,Auto,Auto"
+                                    <Grid x:Name="PART_WindowControls" Grid.Column="4" ColumnDefinitions="Auto,Auto,Auto"
                                           VerticalAlignment="Stretch">
                                         <Button x:Name="PART_Minimize"
                                                 Grid.Column="0"
@@ -121,73 +141,251 @@
          The template above is the single host-reviewed structure. A recipe only redeploys its
          parts; it cannot add markup, change the glyph set or move a control out of the frame that
          WindowManager owns. `RemoteWindow` mirrors the active `SystemStyle.WindowChrome` resource
-         into the `:chrome-*` pseudo-class. -->
+         into the `:chrome-*` pseudo-class.
 
-    <!-- caption-buttons-right (the default): the application icon leads, the title follows it and
-         the three caption buttons close the bar on the trailing edge. This variant is what the
-         template lays out naturally, and it is stated explicitly anyway so that every recipe value
-         the contract admits has a rendering rule of its own - which is what lets the coverage check
-         prove that no style can select a variant nobody implemented. -->
+         The bar carries seven parts: the host's window icon, the host's own title text, the four
+         application role slots (HeaderLeading / HeaderCenter / HeaderTrailing / HeaderTabs) and the
+         host caption cluster. Each recipe states all seven explicitly - including the ones that
+         coincide with the template default - so that every value the contract admits has a rendering
+         rule of its own, which is what lets `SystemStyleChecks.VerifyRecipeCoverage` prove that no
+         style can select a variant nobody implemented. -->
+
+    <!-- A tab strip owns the flexible column: the centred block yields so the two can never
+         overlap, and the host - not the application - decides that. Every recipe below still places
+         PART_HeaderTabs explicitly, so a future recipe is free to move the strip onto a row of its
+         own without any application changing. -->
+    <Style Selector="wm|RemoteWindow:header-tabs /template/ ContentPresenter#PART_HeaderCenter">
+        <Setter Property="IsVisible" Value="False" />
+    </Style>
+
+    <!-- caption-buttons-right (the default): the application icon leads, the host title follows it,
+         the application's blocks fill the middle and the three caption buttons close the bar on the
+         trailing edge. -->
     <Style Selector="wm|RemoteWindow:chrome-caption-buttons-right /template/ Grid#PART_WindowIcon">
         <Setter Property="Grid.Column" Value="0" />
         <Setter Property="HorizontalAlignment" Value="Left" />
         <Setter Property="Margin" Value="12,0,0,0" />
     </Style>
     <Style Selector="wm|RemoteWindow:chrome-caption-buttons-right /template/ TextBlock#PART_TitleText">
+        <Setter Property="Grid.Column" Value="2" />
         <Setter Property="FontWeight" Value="Normal" />
         <Setter Property="HorizontalAlignment" Value="Left" />
         <Setter Property="Margin" Value="10,0,0,0" />
     </Style>
-    <Style Selector="wm|RemoteWindow:chrome-caption-buttons-right /template/ Grid#PART_WindowControls">
+    <Style Selector="wm|RemoteWindow:chrome-caption-buttons-right /template/ ContentPresenter#PART_HeaderLeading">
+        <Setter Property="Grid.Column" Value="1" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:chrome-caption-buttons-right /template/ ContentPresenter#PART_HeaderCenter">
         <Setter Property="Grid.Column" Value="2" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:chrome-caption-buttons-right /template/ ContentPresenter#PART_HeaderTabs">
+        <Setter Property="Grid.Column" Value="2" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:chrome-caption-buttons-right /template/ ContentPresenter#PART_HeaderTrailing">
+        <Setter Property="Grid.Column" Value="3" />
+        <Setter Property="HorizontalAlignment" Value="Right" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:chrome-caption-buttons-right /template/ Grid#PART_WindowControls">
+        <Setter Property="Grid.Column" Value="4" />
         <Setter Property="HorizontalAlignment" Value="Stretch" />
         <Setter Property="Margin" Value="0" />
     </Style>
 
-    <!-- traffic-lights-left: caption buttons lead the title bar, the application icon moves to the
-         trailing edge and the title becomes optically centred. -->
+    <!-- traffic-lights-left: the caption cluster leads the bar and is drawn as the three coloured
+         circles that identify this variant (close / minimize / zoom, left to right). The
+         application icon moves to the trailing edge, the host title becomes optically centred and
+         the application's blocks start after the cluster instead of under it. -->
     <Style Selector="wm|RemoteWindow:chrome-traffic-lights-left /template/ Grid#PART_WindowControls">
         <Setter Property="Grid.Column" Value="0" />
-        <Setter Property="Margin" Value="10,0,0,0" />
+        <Setter Property="Margin" Value="12,0,10,0" />
         <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="wm|RemoteWindow:chrome-traffic-lights-left /template/ Grid#PART_WindowIcon">
-        <Setter Property="Grid.Column" Value="2" />
+        <Setter Property="Grid.Column" Value="4" />
         <Setter Property="HorizontalAlignment" Value="Right" />
         <Setter Property="Margin" Value="0,0,12,0" />
     </Style>
     <Style Selector="wm|RemoteWindow:chrome-traffic-lights-left /template/ TextBlock#PART_TitleText">
+        <Setter Property="Grid.Column" Value="2" />
         <Setter Property="HorizontalAlignment" Value="Center" />
         <Setter Property="Margin" Value="0" />
     </Style>
+    <Style Selector="wm|RemoteWindow:chrome-traffic-lights-left /template/ ContentPresenter#PART_HeaderLeading">
+        <Setter Property="Grid.Column" Value="1" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:chrome-traffic-lights-left /template/ ContentPresenter#PART_HeaderCenter">
+        <Setter Property="Grid.Column" Value="2" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:chrome-traffic-lights-left /template/ ContentPresenter#PART_HeaderTabs">
+        <Setter Property="Grid.Column" Value="2" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:chrome-traffic-lights-left /template/ ContentPresenter#PART_HeaderTrailing">
+        <Setter Property="Grid.Column" Value="3" />
+        <Setter Property="HorizontalAlignment" Value="Right" />
+    </Style>
+    <!-- One circle per action, sized by the style. The shared "fully rounded" caption radius is at
+         least half of any admitted traffic-light diameter, so the pill closes into an exact circle
+         at every profile's proportions. The cluster is read by colour, so the glyph stays hidden
+         until the pointer or the keyboard reaches it - the same trade the platform makes - while
+         `Content` keeps naming each button for automation and assistive technology. -->
     <Style Selector="wm|RemoteWindow:chrome-traffic-lights-left /template/ Button.caption">
+        <Setter Property="Width" Value="{DynamicResource WindowTrafficLightSize}" />
+        <Setter Property="MinWidth" Value="{DynamicResource WindowTrafficLightSize}" />
+        <Setter Property="Height" Value="{DynamicResource WindowTrafficLightSize}" />
+        <Setter Property="MinHeight" Value="{DynamicResource WindowTrafficLightSize}" />
         <Setter Property="CornerRadius" Value="{DynamicResource WindowCaptionCornerRadius}" />
-        <Setter Property="Margin" Value="3,0" />
+        <Setter Property="Margin" Value="0,0,8,0" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="FontSize" Value="9" />
+        <Setter Property="Foreground" Value="Transparent" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:chrome-traffic-lights-left /template/ Button#PART_Close">
+        <Setter Property="Grid.Column" Value="0" />
+        <Setter Property="Background" Value="{DynamicResource DangerBrush}" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:chrome-traffic-lights-left /template/ Button#PART_Minimize">
+        <Setter Property="Grid.Column" Value="1" />
+        <Setter Property="Background" Value="{DynamicResource WarningBrush}" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:chrome-traffic-lights-left /template/ Button#PART_Maximize">
+        <Setter Property="Grid.Column" Value="2" />
+        <Setter Property="Background" Value="{DynamicResource SuccessBrush}" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:chrome-traffic-lights-left /template/ Grid#PART_WindowControls TextBlock">
+        <Setter Property="FontSize" Value="9" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:chrome-traffic-lights-left /template/ Grid#PART_WindowControls:pointerover Button.caption">
+        <Setter Property="Foreground" Value="{DynamicResource SurfaceSunkenBrush}" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:chrome-traffic-lights-left /template/ Button.caption:focus-visible">
+        <Setter Property="Foreground" Value="{DynamicResource SurfaceSunkenBrush}" />
     </Style>
 
     <!-- headerbar-right: no application icon, a left-aligned emphasised title and a flatter bar,
          so the title bar reads as part of the application rather than as a separate strip. -->
     <Style Selector="wm|RemoteWindow:chrome-headerbar-right /template/ Grid#PART_WindowIcon">
+        <Setter Property="Grid.Column" Value="0" />
         <Setter Property="IsVisible" Value="False" />
     </Style>
     <Style Selector="wm|RemoteWindow:chrome-headerbar-right /template/ TextBlock#PART_TitleText">
+        <Setter Property="Grid.Column" Value="2" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="HorizontalAlignment" Value="Left" />
         <Setter Property="Margin" Value="12,0,0,0" />
     </Style>
+    <Style Selector="wm|RemoteWindow:chrome-headerbar-right /template/ ContentPresenter#PART_HeaderLeading">
+        <Setter Property="Grid.Column" Value="1" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:chrome-headerbar-right /template/ ContentPresenter#PART_HeaderCenter">
+        <Setter Property="Grid.Column" Value="2" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:chrome-headerbar-right /template/ ContentPresenter#PART_HeaderTabs">
+        <Setter Property="Grid.Column" Value="2" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:chrome-headerbar-right /template/ ContentPresenter#PART_HeaderTrailing">
+        <Setter Property="Grid.Column" Value="3" />
+        <Setter Property="HorizontalAlignment" Value="Right" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:chrome-headerbar-right /template/ Grid#PART_WindowControls">
+        <Setter Property="Grid.Column" Value="4" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="Margin" Value="0" />
+    </Style>
 
+    <!-- ══ Fused title bar (the application supplied at least one role slot) ══
+         The host's icon and its own title give way to the application's blocks, which the recipe
+         above has already placed. The bar's own geometry is part of the same recipe decision: its
+         height follows the style's title bar through `WindowFusedTitleBarHeight`, and each recipe
+         states the surface it wants rather than inheriting one bar for every style. -->
     <Style Selector="wm|RemoteWindow:custom-title-content /template/ Grid#PART_WindowIcon">
         <Setter Property="IsVisible" Value="False" />
     </Style>
     <Style Selector="wm|RemoteWindow:custom-title-content /template/ TextBlock#PART_TitleText">
         <Setter Property="IsVisible" Value="False" />
     </Style>
+    <!-- Keeps the very first frame complete if no recipe resource is installed yet; every recipe
+         below restates both properties, so this is a floor rather than the shared answer. -->
     <Style Selector="wm|RemoteWindow:custom-title-content /template/ Border#PART_TitleBar">
-        <Setter Property="Height" Value="56" />
+        <Setter Property="Height" Value="{DynamicResource WindowFusedTitleBarHeight}" />
         <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
     </Style>
-    <Style Selector="wm|RemoteWindow:custom-title-content:chrome-traffic-lights-left /template/ ContentPresenter#PART_CustomTitleContent">
+
+    <Style Selector="wm|RemoteWindow:custom-title-content:chrome-caption-buttons-right /template/ Border#PART_TitleBar">
+        <Setter Property="Height" Value="{DynamicResource WindowFusedTitleBarHeight}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+    </Style>
+    <!-- The fused slot insets are host-owned too: they are the gap between the application's blocks
+         and the caption cluster, and they differ per recipe because the cluster does. -->
+    <Style Selector="wm|RemoteWindow:custom-title-content:chrome-caption-buttons-right /template/ ContentPresenter#PART_HeaderLeading">
         <Setter Property="Grid.Column" Value="1" />
-        <Setter Property="Grid.ColumnSpan" Value="1" />
+        <Setter Property="Margin" Value="12,0,0,0" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:custom-title-content:chrome-caption-buttons-right /template/ ContentPresenter#PART_HeaderCenter">
+        <Setter Property="Grid.Column" Value="2" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:custom-title-content:chrome-caption-buttons-right /template/ ContentPresenter#PART_HeaderTabs">
+        <Setter Property="Grid.Column" Value="2" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:custom-title-content:chrome-caption-buttons-right /template/ ContentPresenter#PART_HeaderTrailing">
+        <Setter Property="Grid.Column" Value="3" />
+        <Setter Property="Margin" Value="0,0,8,0" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:custom-title-content:chrome-caption-buttons-right /template/ Grid#PART_WindowControls">
+        <Setter Property="Grid.Column" Value="4" />
+    </Style>
+
+    <Style Selector="wm|RemoteWindow:custom-title-content:chrome-traffic-lights-left /template/ Border#PART_TitleBar">
+        <Setter Property="Height" Value="{DynamicResource WindowFusedTitleBarHeight}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:custom-title-content:chrome-traffic-lights-left /template/ ContentPresenter#PART_HeaderLeading">
+        <Setter Property="Grid.Column" Value="1" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:custom-title-content:chrome-traffic-lights-left /template/ ContentPresenter#PART_HeaderCenter">
+        <Setter Property="Grid.Column" Value="2" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:custom-title-content:chrome-traffic-lights-left /template/ ContentPresenter#PART_HeaderTabs">
+        <Setter Property="Grid.Column" Value="2" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:custom-title-content:chrome-traffic-lights-left /template/ ContentPresenter#PART_HeaderTrailing">
+        <Setter Property="Grid.Column" Value="3" />
+        <Setter Property="Margin" Value="0,0,12,0" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:custom-title-content:chrome-traffic-lights-left /template/ Grid#PART_WindowControls">
+        <Setter Property="Grid.Column" Value="0" />
+    </Style>
+
+    <!-- A headerbar is the application's own toolbar, so a fused bar on this recipe is raised like
+         the sidebar it sits next to instead of receding below it. -->
+    <Style Selector="wm|RemoteWindow:custom-title-content:chrome-headerbar-right /template/ Border#PART_TitleBar">
+        <Setter Property="Height" Value="{DynamicResource WindowFusedTitleBarHeight}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:custom-title-content:chrome-headerbar-right /template/ ContentPresenter#PART_HeaderLeading">
+        <Setter Property="Grid.Column" Value="1" />
+        <Setter Property="Margin" Value="12,0,0,0" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:custom-title-content:chrome-headerbar-right /template/ ContentPresenter#PART_HeaderCenter">
+        <Setter Property="Grid.Column" Value="2" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:custom-title-content:chrome-headerbar-right /template/ ContentPresenter#PART_HeaderTabs">
+        <Setter Property="Grid.Column" Value="2" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:custom-title-content:chrome-headerbar-right /template/ ContentPresenter#PART_HeaderTrailing">
+        <Setter Property="Grid.Column" Value="3" />
+        <Setter Property="Margin" Value="0,0,8,0" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:custom-title-content:chrome-headerbar-right /template/ Grid#PART_WindowControls">
+        <Setter Property="Grid.Column" Value="4" />
     </Style>
 </Styles>

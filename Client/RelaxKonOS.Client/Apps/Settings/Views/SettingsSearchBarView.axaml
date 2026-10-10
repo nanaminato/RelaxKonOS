@@ -1,0 +1,18 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             x:Class="RelaxKonOS.Client.Apps.Settings.Views.SettingsSearchBarView"
+             x:DataType="vm:SettingsViewModel">
+    <!-- The centre block of the window's fused title bar. The host reserves the bar's flexible
+         column for it, so it lands symmetrically between whatever the leading and trailing blocks
+         hold; its own max width is the only geometry the application asks to keep. -->
+    <Grid MaxWidth="520" HorizontalAlignment="Stretch" VerticalAlignment="Center">
+        <TextBox x:Name="HeaderSearchBox" Text="{Binding SearchQuery, Mode=TwoWay}" MaxLength="256"
+                 PlaceholderText="{loc:Loc settings.search.placeholder}" AutomationProperties.Name="{loc:Loc settings.search.placeholder}"
+                 CornerRadius="18" Padding="34,6,12,6" MinWidth="80" HorizontalAlignment="Stretch" VerticalAlignment="Center" />
+        <Path Data="M10,2 A8,8 0 1 0 10,18 A8,8 0 1 0 10,2 M16,16 L23,23"
+              Width="14" Height="14" Stretch="Uniform" Stroke="{DynamicResource TextSecondaryBrush}"
+              StrokeThickness="1.6" Margin="12,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center" IsHitTestVisible="False" />
+    </Grid>
+</UserControl>

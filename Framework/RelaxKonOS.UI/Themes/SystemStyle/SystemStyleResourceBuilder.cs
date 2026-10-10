@@ -48,6 +48,15 @@ public static class SystemStyleDerivedKeys
     public const string WindowCaptionCornerRadius = "WindowCaptionCornerRadius";
 
     /// <summary>
+    /// Height of a title bar that carries application content. How a *fused* bar is shaped is a
+    /// per-recipe decision, so the height is derived from the style's own
+    /// <c>WindowTitleBarHeight</c> instead of being one number shared by every style: a compact
+    /// profile keeps a compact fused bar. Application headers read the same key, so a header never
+    /// has to hardcode the geometry the host gave it.
+    /// </summary>
+    public const string WindowFusedTitleBarHeight = "WindowFusedTitleBarHeight";
+
+    /// <summary>
     /// Top inset that reserves room for the host window's own title bar. The host shell uses the
     /// same <c>WindowTitleBarHeight</c> token as a managed window, so the outer frame and the
     /// managed windows it contains never disagree about how tall a title bar is.
@@ -55,7 +64,8 @@ public static class SystemStyleDerivedKeys
     public const string HostTitleBarMargin = "HostTitleBarMargin";
 
     public static IReadOnlyList<string> All { get; } =
-        [OverlayTopCornerRadius, OverlayBottomCornerRadius, ElevationShadow, WindowCaptionCornerRadius, HostTitleBarMargin];
+        [OverlayTopCornerRadius, OverlayBottomCornerRadius, ElevationShadow, WindowCaptionCornerRadius, HostTitleBarMargin,
+         WindowFusedTitleBarHeight];
 }
 
 /// <summary>
@@ -131,6 +141,9 @@ public static class SystemStyleResourceBuilder
         dictionary[SystemStyleDerivedKeys.WindowCaptionCornerRadius] =
             new CornerRadius(Math.Min(controlWidth, titleBarHeight) / 2);
         dictionary[SystemStyleDerivedKeys.HostTitleBarMargin] = new Thickness(0, titleBarHeight, 0, 0);
+        // A fused bar adds one control row of breathing room to the style's own title bar, but it
+        // never drops below a legible minimum even for a very slim profile.
+        dictionary[SystemStyleDerivedKeys.WindowFusedTitleBarHeight] = Math.Max(48, titleBarHeight + 14);
 
         var recipes = manifest.SupportedRecipes;
         BuildCommandSurfaceThicknessKeys(dictionary, tokens, recipes.ContextMenu);
