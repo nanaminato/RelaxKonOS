@@ -1,4 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using RelaxKonOS.Client.Apps.Explorer.Models;
+using RelaxKonOS.Protocol.Files;
 
 namespace RelaxKonOS.Client.Apps.CodeEditor;
 
@@ -27,7 +29,17 @@ public sealed partial class CodeEditorDocument : ObservableObject
     public string UntitledName { get; }
     public string DisplayName => string.IsNullOrWhiteSpace(Path) ? UntitledName : System.IO.Path.GetFileName(Path) ?? UntitledName;
 
-    partial void OnPathChanged(string? value) => OnPropertyChanged(nameof(DisplayName));
+    /// <summary>
+    /// The tab's file-type mark. An untitled document has no extension at all, so it falls to the
+    /// generic file asset — the same classification the file browser's list makes for that name.
+    /// </summary>
+    public ExplorerFileIconKind Kind => ExplorerFileIconKindResolver.ForEntry(FileSystemEntryType.File, DisplayName);
+
+    partial void OnPathChanged(string? value)
+    {
+        OnPropertyChanged(nameof(DisplayName));
+        OnPropertyChanged(nameof(Kind));
+    }
 
     partial void OnTextChanged(string value) => Revision++;
 }

@@ -3,6 +3,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using RelaxKonOS.Client.Apps.CodeEditor;
 using RelaxKonOS.Client.Apps.Explorer;
+using RelaxKonOS.Client.Apps.Explorer.Models;
 using RelaxKonOS.Client.Apps.Notepad;
 using RelaxKonOS.Protocol.Files;
 using IOPath = System.IO.Path;
@@ -99,6 +100,17 @@ internal static class EditorDraftStateChecks
         code.NewDocumentCommand.Execute(null);
         Check(!code.HasUnsavedDocuments && code.CanEditDocument,
             "A new Code Editor tab starts clean and editable.");
+
+        // A tab's mark is derived from the document's own name, so the same file carries the same
+        // mark on the tab that has it open as in the file browser's list.
+        Check(new CodeEditorDocument(null, string.Empty, "UTF-8", "Untitled 1").Kind == ExplorerFileIconKind.File,
+            "An untitled editor tab is marked as a generic file.");
+        Check(new CodeEditorDocument("/remote/app.cs", string.Empty, "UTF-8", "Untitled 1").Kind == ExplorerFileIconKind.Code,
+            "A source file editor tab is marked as code.");
+        var renamed = new CodeEditorDocument(null, string.Empty, "UTF-8", "Untitled 1");
+        renamed.Path = "/remote/notes.md";
+        Check(renamed.Kind == ExplorerFileIconKind.Document && renamed.DisplayName == "notes.md",
+            "Saving a draft under a name re-marks its tab.");
 
         code.Text = "class C {}";
         Check(code.HasUnsavedDocuments,

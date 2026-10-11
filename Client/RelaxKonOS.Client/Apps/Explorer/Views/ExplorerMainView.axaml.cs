@@ -93,7 +93,7 @@ public partial class ExplorerMainView : UserControl
         _compactSearch = compact;
         CompactSearchButton.IsVisible = compact;
         InlineSearchHost.IsVisible = !compact;
-        SearchBox.Width = e.NewSize.Width < 520 ? 110 : 150;
+        SearchBox.Width = e.NewSize.Width < 520 ? 130 : 180;
     }
 
     private async void FolderTabs_SelectionChanged(object? sender, SelectionChangedEventArgs e)
