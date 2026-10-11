@@ -53,9 +53,9 @@
                     </Grid>
                 </DataTemplate></ListBox.ItemTemplate>
             </ListBox>
-            <Button Grid.Column="1" Classes="header-action compact" Content="+" Command="{Binding AddTabCommand}" ToolTip.Tip="{loc:Loc browser.new_tab}" AutomationProperties.Name="{loc:Loc browser.new_tab}" />
+            <Button Grid.Column="1" Classes="header-action compact" Command="{Binding AddTabCommand}" ToolTip.Tip="{loc:Loc browser.new_tab}" AutomationProperties.Name="{loc:Loc browser.new_tab}"><Path Width="14" Height="14" Stretch="Uniform" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.3" Data="M7,0 V14 M0,7 H14" /></Button>
             <Button Grid.Column="2" x:Name="TabPickerButton" Classes="header-action compact" ToolTip.Tip="{loc:Loc explorer.all_tabs}" AutomationProperties.Name="{loc:Loc explorer.all_tabs}">
-                <PathIcon Width="14" Height="14" Data="{StaticResource BrowserChevronIcon}" />
+                <Path Width="12" Height="6" Stretch="Uniform" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.3" Data="M0,0 L6,6 L12,0" />
                 <Button.Flyout><Flyout Opened="MenuOpened" Closed="MenuClosed">
                     <ListBox MinWidth="220" MaxHeight="320" ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab, Mode=TwoWay}" SelectionChanged="TabPicker_SelectionChanged">
                         <ListBox.ItemTemplate><DataTemplate x:DataType="vm:BrowserTabViewModel"><TextBlock Text="{Binding Title}" MaxWidth="300" TextTrimming="CharacterEllipsis" /></DataTemplate></ListBox.ItemTemplate>
@@ -82,19 +82,23 @@
                                  Background="Transparent" BorderThickness="0" MinWidth="0" MinHeight="0" Padding="4,7"
                                  KeyDown="AddressBox_KeyDown" />
                         <Button x:Name="BookmarkButton" Grid.Column="2" Classes="browser-action"
-                                Content="{Binding IsCurrentBookmarked, Converter={x:Static conv:BookmarkStarConverter.Instance}}"
-                                Command="{Binding ToggleBookmarkCommand}" ToolTip.Tip="{loc:Loc browser.toggle_bookmark}" AutomationProperties.Name="{loc:Loc browser.toggle_bookmark}" />
+                                Command="{Binding ToggleBookmarkCommand}" ToolTip.Tip="{loc:Loc browser.toggle_bookmark}" AutomationProperties.Name="{loc:Loc browser.toggle_bookmark}">
+                            <Grid Width="18" Height="18">
+                                <Path Width="16" Height="16" Stretch="Uniform" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.3" Data="M10,1 L12.8,6.7 L19,7.6 L14.5,12 L15.6,18.2 L10,15.3 L4.4,18.2 L5.5,12 L1,7.6 L7.2,6.7 Z" />
+                                <Path Width="16" Height="16" Stretch="Uniform" Fill="{Binding $parent[Button].Foreground}" IsVisible="{Binding IsCurrentBookmarked}" Data="M10,1 L12.8,6.7 L19,7.6 L14.5,12 L15.6,18.2 L10,15.3 L4.4,18.2 L5.5,12 L1,7.6 L7.2,6.7 Z" />
+                            </Grid>
+                        </Button>
                     </Grid>
                 </Border>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" Margin="6,0,0,0">
                     <Button x:Name="SidebarButton" Classes="browser-action" Command="{Binding ToggleSidebarCommand}" ToolTip.Tip="{loc:Loc browser.toggle_sidebar}" AutomationProperties.Name="{loc:Loc browser.toggle_sidebar}">
-                        <Grid>
-                            <PathIcon Width="18" Height="18" Data="{StaticResource BrowserBookmarkIcon}" IsVisible="{Binding !IsHistorySidebar}" />
-                            <PathIcon Width="18" Height="18" Data="{StaticResource BrowserHistoryIcon}" IsVisible="{Binding IsHistorySidebar}" />
+                        <Grid Width="18" Height="18">
+                            <Path Width="12" Height="16" Stretch="Uniform" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.3" Data="M1,1 H13 V17 L7,13 L1,17 Z" IsVisible="{Binding !IsHistorySidebar}" />
+                            <PathIcon Width="16" Height="16" Data="{StaticResource BrowserHistoryIcon}" IsVisible="{Binding IsHistorySidebar}" />
                         </Grid>
                     </Button>
                     <Button x:Name="BrowserMenuButton" Classes="browser-action" ToolTip.Tip="{loc:Loc browser.menu}" AutomationProperties.Name="{loc:Loc browser.menu}">
-                        <Button.Content><PathIcon Width="18" Height="18" Data="{StaticResource BrowserMoreIcon}" /></Button.Content>
+                        <Button.Content><Grid Width="18" Height="18"><Path Width="3" Height="16" Stretch="Uniform" Fill="{Binding $parent[Button].Foreground}" Data="{StaticResource BrowserMoreIcon}" /></Grid></Button.Content>
                         <Button.Flyout>
                             <MenuFlyout Opened="MenuOpened" Closed="MenuClosed">
                                 <MenuItem Header="{loc:Loc common.forward}" Command="{Binding GoForwardCommand}" IsVisible="{Binding #Root.IsCompactNavigation}" />
@@ -142,8 +146,8 @@
                                 HorizontalAlignment="Left" HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
                             <StackPanel Orientation="Horizontal" Spacing="10">
                                 <Grid Width="18" Height="18" VerticalAlignment="Center">
-                                    <PathIcon Width="18" Height="18" Data="{StaticResource BrowserBookmarkIcon}" IsVisible="{Binding !IsHistorySidebar}" />
-                                    <PathIcon Width="18" Height="18" Data="{StaticResource BrowserHistoryIcon}" IsVisible="{Binding IsHistorySidebar}" />
+                                    <Path Width="12" Height="16" Stretch="Uniform" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.3" Data="M1,1 H13 V17 L7,13 L1,17 Z" IsVisible="{Binding !IsHistorySidebar}" />
+                                    <PathIcon Width="16" Height="16" Data="{StaticResource BrowserHistoryIcon}" IsVisible="{Binding IsHistorySidebar}" />
                                 </Grid>
                                 <TextBlock Text="{Binding SidebarTitle}" FontWeight="SemiBold" VerticalAlignment="Center" />
                                 <PathIcon Width="12" Height="12" Data="{StaticResource BrowserChevronIcon}" VerticalAlignment="Center" />

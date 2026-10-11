@@ -1,0 +1,29 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:terminal="clr-namespace:RelaxKonOS.Client.Apps.Terminal"
+             x:Class="RelaxKonOS.Client.Apps.Terminal.TerminalWorkspaceView"
+             Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
+    <Grid RowDefinitions="Auto,*">
+        <Grid ColumnDefinitions="*,Auto" Background="{DynamicResource SurfaceRaisedBrush}">
+            <ListBox x:Name="TabStrip" Classes="title-tabs" Height="36"
+                     ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                <ListBox.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ListBox.ItemsPanel>
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="terminal:TerminalViewModel">
+                        <Grid ColumnDefinitions="*,Auto" Width="180" ColumnSpacing="8">
+                            <TextBlock Text="{Binding Title}" ToolTip.Tip="{Binding Title}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Classes="tab-close" Click="CloseTab_Click" ToolTip.Tip="{loc:Loc terminal.close_tab}" AutomationProperties.Name="{loc:Loc terminal.close_tab}">
+                                <Path Width="10" Height="10" Stretch="Uniform" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Data="M0,0 L10,10 M10,0 L0,10" />
+                            </Button>
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+            <Button Grid.Column="1" Classes="header-action" Click="AddTab_Click" ToolTip.Tip="{loc:Loc terminal.new_tab}" AutomationProperties.Name="{loc:Loc terminal.new_tab}">
+                <Path Width="14" Height="14" Stretch="Uniform" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Data="M7,0 V14 M0,7 H14" />
+            </Button>
+        </Grid>
+        <Grid Grid.Row="1" x:Name="SessionHost" />
+    </Grid>
+</UserControl>

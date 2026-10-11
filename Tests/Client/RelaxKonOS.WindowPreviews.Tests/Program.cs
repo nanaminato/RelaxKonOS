@@ -44,9 +44,14 @@ AppBuilder.Configure<PreviewTestApp>().UseSkia()
 using var appearance = new AppearanceService(Application.Current!, new SystemStyleRegistry());
 var settings = new ShellSettings(appearance);
 var localization = new LocalizationService(settings, new SshDesktopSession(null!));
-using var services = new ServiceCollection().AddSingleton(localization).BuildServiceProvider();
+using var services = new ServiceCollection().AddSingleton(localization).AddSingleton(new SshDesktopSession(null!)).BuildServiceProvider();
 // The XAML localization extension resolves the host application's singleton provider.
 typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
+if (args.Contains("--terminal-tabs-only"))
+{
+    TerminalWorkspaceChecks.Run();
+    return;
+}
 if (args.Contains("--fused-apps-only"))
 {
     FusedWindowHeaderChecks.Run(settings);

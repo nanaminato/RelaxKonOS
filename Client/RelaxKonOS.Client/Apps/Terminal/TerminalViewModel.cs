@@ -11,8 +11,7 @@ using RelaxKonOS.Client.Services.ServerCenter;
 namespace RelaxKonOS.Client.Apps.Terminal;
 
 /// <summary>
-/// One view-model owns exactly one terminal session. Session switching is intentionally absent:
-/// each server PTY is represented by its own desktop window, like Windows Terminal.
+/// One view-model owns exactly one terminal session; a workspace can host several session tabs.
 /// </summary>
 public partial class TerminalViewModel : LocalizedObservableObject
 {
@@ -32,6 +31,7 @@ public partial class TerminalViewModel : LocalizedObservableObject
 
     [ObservableProperty] private LocalizedStatus _status = LocalizedText.Ref("terminal.status.ready");
     [ObservableProperty] private bool _hasExited;
+    [ObservableProperty] private string _title = string.Empty;
     [ObservableProperty] private TerminalSettingsDto _appearance = TerminalSettingsDto.Default;
     [ObservableProperty] private string _fontFamily = TerminalSettingsDto.Default.FontFamily;
     [ObservableProperty] private double _fontSize = TerminalSettingsDto.Default.FontSize;
@@ -73,6 +73,7 @@ public partial class TerminalViewModel : LocalizedObservableObject
         _initialSessionId = initialSessionId;
         _initialWorkingDirectory = initialWorkingDirectory;
         IsAdministrator = isAdministrator;
+        Title = LocalizedText.Get(isAdministrator ? "terminal.administrator_title" : "application.relaxkonos.terminal.display_name");
     }
 
     public static bool IsSessionOpen(string sessionId) => OpenSessions.ContainsKey(sessionId);
@@ -258,6 +259,9 @@ public partial class TerminalViewModel : LocalizedObservableObject
     private void OnTitleChanged(object? sender, string title)
     {
         if (!string.IsNullOrWhiteSpace(title))
+        {
+            Title = IsAdministrator ? LocalizedText.Format("terminal.administrator_shell", title) : title;
             Status = IsAdministrator ? LocalizedText.Ref("terminal.administrator_shell", title) : title;
+        }
     }
 }

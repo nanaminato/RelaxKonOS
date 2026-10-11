@@ -150,7 +150,12 @@ public partial class TerminalView : UserControl
         catch { /* best effort */ }
     }
 
-    private void FocusTerminal() => _terminal.Focus();
+    private void FocusTerminal()
+    {
+        if (IsVisible) _terminal.Focus();
+    }
+
+    public void FocusSession() => Dispatcher.UIThread.Post(FocusTerminal);
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
