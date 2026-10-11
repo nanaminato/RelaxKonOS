@@ -1,6 +1,8 @@
 {
     "Culture": "en-US",
     "Strings": {
+        "task_manager.process.administrator_mode": "Administrator mode",
+        "task_manager.process.normal_mode": "Normal mode",
         "task_manager.cpu": "🖥 CPU",
         "task_manager.performance": "Performance",
         "task_manager.processes": "Processes",

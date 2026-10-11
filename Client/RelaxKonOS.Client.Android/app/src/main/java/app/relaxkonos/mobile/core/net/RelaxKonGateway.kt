@@ -485,9 +485,10 @@ interface RelaxKonGateway {
         filter: String?,
         sort: ProcessSort,
         descending: Boolean,
+        elevated: Boolean = false,
     ): ApiResult<ProcessPage>
 
-    suspend fun killProcess(serverUrl: String, accessToken: String, pid: Int, expectedStartTime: String): ApiResult<ProcessKillResult>
+    suspend fun killProcess(serverUrl: String, accessToken: String, pid: Int, expectedStartTime: String, elevated: Boolean = false): ApiResult<ProcessKillResult>
 
     /** Streams a remote file into [sink]. [onProgress] receives written bytes and total bytes when known. */
     suspend fun download(

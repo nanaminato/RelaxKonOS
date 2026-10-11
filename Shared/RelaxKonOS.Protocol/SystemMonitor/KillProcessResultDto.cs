@@ -4,7 +4,8 @@ namespace RelaxKonOS.Protocol.SystemMonitor;
 
 /// <summary>Terminates the confirmed PID/start-time instance. Host OS permissions remain authoritative.</summary>
 public sealed record TerminateProcessRequest(
-    [property: JsonPropertyName("expectedStartTime")] DateTimeOffset ExpectedStartTime);
+    [property: JsonPropertyName("expectedStartTime")] DateTimeOffset ExpectedStartTime,
+    [property: JsonPropertyName("elevated")] bool Elevated = false);
 
 /// <summary>Success requires observed exit. An unverified outcome must not be automatically replayed.</summary>
 public sealed record KillProcessResultDto(

@@ -51,10 +51,15 @@ public sealed class WindowsNamedPipePrivilegedOperationTransport(PrivilegedHelpe
             var requestJson = JsonSerializer.SerializeToUtf8Bytes(request);
             var signed = new PipeEnvelope(Convert.ToBase64String(requestJson), Sign(secret, requestJson));
             await WriteFrameAsync(pipe, JsonSerializer.SerializeToUtf8Bytes(signed), CancellationToken.None);
+            using var processResponseTimeout = new CancellationTokenSource();
+            var isProcessOperation = request.Operation is PrivilegedOperationKind.ProcessSnapshot
+                or PrivilegedOperationKind.ProcessIcon or PrivilegedOperationKind.ProcessTerminate;
+            if (isProcessOperation)
+                processResponseTimeout.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(options.TimeoutSeconds, 1, 120)));
             for (var count = 0; count < PrivilegedOperationFrame.MaximumFrames; count++)
             {
                 // A submitted LocalSystem operation remains authoritative until its own deadline.
-                var responseBytes = await ReadFrameAsync(pipe, CancellationToken.None);
+                var responseBytes = await ReadFrameAsync(pipe, isProcessOperation ? processResponseTimeout.Token : CancellationToken.None);
                 var response = JsonSerializer.Deserialize<PipeEnvelope>(responseBytes);
                 if (response is null || !TryDecodeAndVerify(secret, response, out var payload))
                     return Complete(request, new(false, 65, ProblemCode: PrivilegedProblemCode.InvalidProtocol));

@@ -27,6 +27,56 @@ public static class ProcessTerminationChecks
         var receipt = new KillProcessResultDto(false, true, "process.permission_denied", null);
         Check(JsonSerializer.Deserialize<KillProcessResultDto>(JsonSerializer.Serialize(receipt, RelaxKonOSJsonOptions.Default), RelaxKonOSJsonOptions.Default) == receipt,
             "Current unsuccessful receipt retains permission and problem facts");
+        if (OperatingSystem.IsWindows())
+        {
+            using var current = Process.GetCurrentProcess();
+            var identity = new DateTimeOffset(current.StartTime.ToUniversalTime());
+            var snapshot = RelaxKonOS.Server.SystemPerformance.HostProcessSnapshotCollector.Capture();
+            Check(snapshot.Items.Any(item => item.Process.Id == current.Id && item.Process.StartTime == identity && item.Process.ParentProcessId is > 0),
+                "Windows helper snapshot contains the current instance and Toolhelp parent metadata");
+            Check(snapshot.Items.Single(item => item.Process.Id == current.Id).Process.UserName is { Length: > 0 },
+                "Windows token owner resolves to a nonempty account");
+            var icons = new RelaxKonOS.Server.SystemPerformance.ProcessIconProvider();
+            Check(await icons.GetIconAsync(current.Id, identity.AddMinutes(-1), default) is null,
+                "Windows icon lookup rejects a different process instance");
+            Check(await icons.GetIconAsync(current.Id, identity, default) is { Data.Length: > 0, ContentType: "image/png" },
+                "Windows confirmed instance icon is encoded as PNG");
+            foreach (var mode in new[] { RelaxKonOS.Protocol.Common.ServerMode.User, RelaxKonOS.Protocol.Common.ServerMode.System })
+            {
+                var transport = new ProcessTransport(snapshot);
+                var ordinaryControl = new OrdinaryControl();
+                var sampler = new RelaxKonOS.Server.SystemPerformance.ProcessSampler(ordinaryControl, new ProcessMode(mode), transport);
+                Check((await sampler.QueryAsync(1, 500, null, null, true)).Items.Any(item => item.Id == current.Id)
+                    && transport.Operations.Count == 0, $"Windows {mode} ordinary list works without the helper");
+                await sampler.GetIconAsync(current.Id, identity);
+                await sampler.KillAsync(current.Id, identity);
+                Check(transport.Operations.Count == 0 && ordinaryControl.Kills == 1,
+                    $"Windows {mode} ordinary icons and termination use the service account");
+                Check((await sampler.QueryAsync(1, 500, null, null, true, elevated: true)).TotalCount == snapshot.Items.Count,
+                    $"Windows {mode} administrator mode consumes the helper snapshot");
+                await sampler.GetIconAsync(current.Id, identity, elevated: true);
+                await sampler.KillAsync(current.Id, identity, elevated: true);
+                Check(transport.Operations.SequenceEqual(new[] {
+                    RelaxKonOS.Protocol.Privileged.PrivilegedOperationKind.ProcessSnapshot,
+                    RelaxKonOS.Protocol.Privileged.PrivilegedOperationKind.ProcessIcon,
+                    RelaxKonOS.Protocol.Privileged.PrivilegedOperationKind.ProcessTerminate }),
+                    $"Windows {mode} administrator query, icon and termination use dedicated helper operations");
+                transport.Fail = true;
+                // A successful mocked termination invalidates the sample cache.
+                var failed = false;
+                try { await sampler.QueryAsync(1, 500, null, null, true, elevated: true); }
+                catch (InvalidOperationException error) { failed = error.Message.Contains("HelperUnavailable"); }
+                Check(failed, "Unavailable helper reports failure instead of a successful empty or partial list");
+                transport.Fail = false;
+                Check((await sampler.QueryAsync(1, 500, null, null, true)).Items.Any(item => item.Id == current.Id),
+                    "Ordinary cache remains available when the administrator helper fails");
+                transport.Snapshot = snapshot with { Items = snapshot.Items.Append(snapshot.Items[0]).ToArray() };
+                failed = false;
+                try { await sampler.QueryAsync(1, 500, null, null, true, elevated: true); }
+                catch (InvalidOperationException error) { failed = error.Message.Contains("InvalidProtocol"); }
+                Check(failed, "Inconsistent helper snapshot is rejected rather than cached");
+            }
+        }
         var start = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true };
         start.ArgumentList.Add(Assembly.GetExecutingAssembly().Location); start.ArgumentList.Add("--process-termination-worker");
         using var child = Process.Start(start)!;
@@ -48,5 +98,38 @@ public static class ProcessTerminationChecks
             if (!child.HasExited) { child.Kill(); await child.WaitForExitAsync(); }
         }
         Console.WriteLine($"Process termination checks passed: {count}.");
+    }
+
+    private sealed class ProcessMode(RelaxKonOS.Protocol.Common.ServerMode mode) : RelaxKonOS.Server.HostMode.IServerModeResolver
+    {
+        public RelaxKonOS.Protocol.Common.ServerMode Mode => mode;
+        public RelaxKonOS.Protocol.Common.ServerCapabilitiesDto Describe() => throw new NotSupportedException();
+        public bool Supports(RelaxKonOS.Server.HostMode.ServerHostFeature feature) => true;
+    }
+
+    private sealed class OrdinaryControl : ISystemMetricsProvider
+    {
+        public int Kills { get; private set; }
+        public Task<SystemMetricsDto> GetMetricsAsync(CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<IReadOnlyList<ProcessInfoDto>> ListProcessesAsync(CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<KillProcessResultDto> KillProcessAsync(int id, DateTimeOffset startTime, CancellationToken ct = default)
+        { Kills++; return Task.FromResult(new KillProcessResultDto(false, true, "process.permission_denied", null)); }
+    }
+
+    private sealed class ProcessTransport(HostProcessSnapshotDto snapshot) : RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport
+    {
+        public HostProcessSnapshotDto Snapshot { get; set; } = snapshot;
+        public List<RelaxKonOS.Protocol.Privileged.PrivilegedOperationKind> Operations { get; } = [];
+        public bool Fail { get; set; }
+        public Task<RelaxKonOS.Protocol.Privileged.PrivilegedOperationResult> ExecuteAsync(
+            RelaxKonOS.Protocol.Privileged.PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
+        {
+            Operations.Add(request.Operation);
+            return Task.FromResult(Fail
+                ? new RelaxKonOS.Protocol.Privileged.PrivilegedOperationResult(false,
+                    ProblemCode: RelaxKonOS.Protocol.Privileged.PrivilegedProblemCode.HelperUnavailable)
+                : new RelaxKonOS.Protocol.Privileged.PrivilegedOperationResult(true, ProcessSnapshot: Snapshot,
+                    ProcessTermination: new(true, false, "", null)));
+        }
     }
 }

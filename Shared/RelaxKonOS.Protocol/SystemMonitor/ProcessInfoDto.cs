@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 namespace RelaxKonOS.Protocol.SystemMonitor;
 
 /// <summary>单个进程信息。CpuPercent 由服务端相邻采样差分计算（相对整机，0-100）。
-/// UserName 为进程属主（Linux 解析 /proc uid→用户名；Windows 暂留 null）。</summary>
+/// UserName 为进程属主（Linux 解析 /proc uid→用户名；Windows 读取进程 token）。</summary>
 public sealed record ProcessInfoDto(
     [property: JsonPropertyName("id")] int Id,
     [property: JsonPropertyName("name")] string Name,

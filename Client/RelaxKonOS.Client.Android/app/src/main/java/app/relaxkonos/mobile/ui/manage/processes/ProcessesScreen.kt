@@ -173,6 +173,9 @@ fun ProcessesScreen(
         viewModel.processSampledAt?.let { time -> Text(stringResource(R.string.manage_processes_sampled_at,
             formatTimestamp(IsoInstant.toEpochMillis(time)).orEmpty()), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        TextButton(onClick = { viewModel.toggleProcessMode() }, enabled = !viewModel.processesLoading) {
+            Text(stringResource(if (viewModel.processAdministratorMode) R.string.taskmanager_normal_mode else R.string.taskmanager_administrator_mode))
+        }
         RefreshProgressIndicator(visible = viewModel.processesLoading)
         if (viewModel.processItems.isEmpty()) {
             EmptyState(

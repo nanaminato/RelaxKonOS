@@ -1,4 +1,5 @@
 using Avalonia;
+using Microsoft.Extensions.DependencyInjection;
 using Avalonia.Controls;
 using Avalonia.Media;
 using RelaxKonOS.Client.Localization;
@@ -53,7 +54,8 @@ public sealed class TaskManagerApp : RemoteApplicationBase
             return;
         }
 
-        var viewModel = new TaskManagerViewModel(client, performanceStream);
+        var viewModel = new TaskManagerViewModel(client, performanceStream,
+            context.Services.GetRequiredService<RelaxKonOS.Client.Services.Privileged.IHostElevationBroker>(), session);
         var view = new TaskManagerMainView { DataContext = viewModel };
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.taskmanager.display_name"), view,
             bounds: new Rect(70, 55, 1080, 720),

@@ -35,6 +35,8 @@ internal static class WindowsPersonalAuthorizationChecks
             var grants = new HostElevationSessionStore(privileges, mode, new HostElevationSessionState());
             if (grants.IsGranted(principal, HostElevationCapability.HostEnvironmentChange, "host/environment/machine") != (method != "alias"))
                 throw new Exception("Personal owner operations must authorize without Windows administrator credentials.");
+            if (grants.IsGranted(principal, HostElevationCapability.ProcessManage, "host/processes") != (method != "alias"))
+                throw new Exception("Personal process mode must authorize trusted local or remote owner sessions without another password.");
             if (method != "alias")
             {
                 var http = new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = principal } };

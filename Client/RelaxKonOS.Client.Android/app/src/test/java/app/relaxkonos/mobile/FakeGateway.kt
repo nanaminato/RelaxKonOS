@@ -536,9 +536,10 @@ class FakeGateway : RelaxKonGateway {
         filter: String?,
         sort: ProcessSort,
         descending: Boolean,
+        elevated: Boolean,
     ): ApiResult<ProcessPage> = requireHandler(onProcesses, "queryProcesses")(serverUrl, accessToken, page, pageSize, filter, sort, descending)
 
-    override suspend fun killProcess(serverUrl: String, accessToken: String, pid: Int, expectedStartTime: String): ApiResult<ProcessKillResult> {
+    override suspend fun killProcess(serverUrl: String, accessToken: String, pid: Int, expectedStartTime: String, elevated: Boolean): ApiResult<ProcessKillResult> {
         killCalls += pid to expectedStartTime
         return requireHandler(onKill, "killProcess")(serverUrl, accessToken, pid, expectedStartTime)
     }

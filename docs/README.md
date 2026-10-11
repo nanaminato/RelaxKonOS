@@ -314,7 +314,7 @@ Application Package
 - **结构**：`TaskManagerApp → RemoteWindow → TaskManagerMainView`（性能 / 进程两个标签页）。
 - **数据源**：Server 端 `ISystemMetricsProvider` 以宿主 OS 进程身份实时采集（CPU/内存/磁盘/网络/GPU + 进程列表），**不持久化**（每次请求当下快照）。
 - **跨平台抽象**：与 `IIdentityProvider` 同模式——`WindowsMetricsProvider`（GetSystemTimes + GlobalMemoryStatusEx）/ `LinuxMetricsProvider`（/proc/stat + /proc/meminfo + /proc/[pid]/status），平台差异封装在 Provider 之后。
-- **已实现**：性能页（CPU 整机+每核+柱状图 / 内存柱状图 / 磁盘 / 网络速率 / GPU nvidia-smi / 运行时间，2s 自动刷新）+ 进程页（列表 + 按名称/PID/用户过滤 + 结束任务，权限不足提示需在宿主 OS 提权）；JWT via IAuthSession；未登录弹提示窗。详见 [`RelaxKonOS.TaskManager.md`](./applications/RelaxKonOS.TaskManager.md)。
+- **已实现**：性能页（CPU 整机+每核+柱状图 / 内存柱状图 / 磁盘 / 网络速率 / GPU nvidia-smi / 运行时间，2s 自动刷新）+ 进程页（列表 + 按名称/PID/用户过滤 + 结束任务，普通/管理员模式切换，复用宿主授权；已验证管理员免重复密码）；JWT via IAuthSession；未登录弹提示窗。详见 [`RelaxKonOS.TaskManager.md`](./applications/RelaxKonOS.TaskManager.md)。
 
 ### RemoteTerminal
 

@@ -5,6 +5,35 @@ namespace RelaxKonOS.Server.SystemPerformance;
 
 internal static class ProcessTreeMetadata
 {
+    public static string? ReadWindowsOwnerSid(int processId)
+    {
+        if (!OperatingSystem.IsWindows() || processId <= 0) return null;
+        var process = NativeMethods.OpenProcess(0x1000, false, (uint)processId);
+        if (process == IntPtr.Zero) return null;
+        try
+        {
+            if (!NativeMethods.OpenProcessToken(process, 0x0008, out var token)) return null;
+            try
+            {
+                NativeMethods.GetTokenInformation(token, 1, IntPtr.Zero, 0, out var size);
+                if (size == 0) return null;
+                var buffer = Marshal.AllocHGlobal(checked((int)size));
+                try
+                {
+                    if (!NativeMethods.GetTokenInformation(token, 1, buffer, size, out _)) return null;
+                    var sid = Marshal.ReadIntPtr(buffer);
+                    if (!NativeMethods.ConvertSidToStringSid(sid, out var sidText)) return null;
+                    try { return Marshal.PtrToStringUni(sidText); }
+                    finally { NativeMethods.LocalFree(sidText); }
+                }
+                finally { Marshal.FreeHGlobal(buffer); }
+            }
+            finally { NativeMethods.CloseHandle(token); }
+        }
+        catch { return null; }
+        finally { NativeMethods.CloseHandle(process); }
+    }
+
     public static IReadOnlyDictionary<int, int> CaptureParentIds()
     {
         if (OperatingSystem.IsWindows()) return CaptureWindowsParentIds();
@@ -69,6 +98,25 @@ internal static class ProcessTreeMetadata
 
     private static class NativeMethods
     {
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern IntPtr OpenProcess(uint desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, uint processId);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool OpenProcessToken(IntPtr processHandle, uint desiredAccess, out IntPtr tokenHandle);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool GetTokenInformation(IntPtr tokenHandle, int tokenInformationClass, IntPtr tokenInformation,
+            uint tokenInformationLength, out uint returnLength);
+
+        [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool ConvertSidToStringSid(IntPtr sid, out IntPtr stringSid);
+
+        [DllImport("kernel32.dll")]
+        public static extern IntPtr LocalFree(IntPtr memory);
+
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern IntPtr CreateToolhelp32Snapshot(uint flags, uint processId);
 

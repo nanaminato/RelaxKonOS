@@ -25,10 +25,10 @@ class ProcessHttpTest {
             ) as ApiResult.Success<ProcessPage>
 
             assertEquals(12.5, result.value.items.single().cpuPercent, 0.0)
-            RelaxKonApi("test", "test").queryProcesses("http://127.0.0.1:${server.address.port}", "token", 2, 50, "app user", ProcessSort.Name, false)
+            RelaxKonApi("test", "test").queryProcesses("http://127.0.0.1:${server.address.port}", "token", 2, 50, "app user", ProcessSort.Name, false, elevated = true)
             assertEquals(
-                listOf("GET /api/v1.0/system/processes/query?page=1&pageSize=50&sort=cpu&direction=desc",
-                    "GET /api/v1.0/system/processes/query?page=2&pageSize=50&sort=name&direction=asc&filter=app+user"),
+                listOf("GET /api/v1.0/system/processes/query?page=1&pageSize=50&sort=cpu&direction=desc&elevated=false",
+                    "GET /api/v1.0/system/processes/query?page=2&pageSize=50&sort=name&direction=asc&elevated=true&filter=app+user"),
                 requests,
             )
         } finally {

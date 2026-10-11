@@ -45,6 +45,8 @@ class ManageViewModel(application: Application) : AndroidViewModel(application) 
     private var processObserving = false
     private var appliedFilter: String? = null
     private var killOwner: SessionState.Active? = null
+    var processAdministratorMode by mutableStateOf(false)
+        private set
     var killMessage by mutableStateOf<UiMessage?>(null)
         private set
     private fun current(active: SessionState.Active) = owner === active && container.session.state.value === active
@@ -98,6 +100,7 @@ class ManageViewModel(application: Application) : AndroidViewModel(application) 
         val active = value as? SessionState.Active
         if (owner !== active) {
             stopProcessObserving(); killJob?.cancel(); owner = active
+            processAdministratorMode = false
             processSelected = null; appliedFilter = null; processSampledAt = null; processSort = ProcessSort.Cpu; processDescending = true; processItems = emptyList(); processTotalCount = 0; processPage = 1; processFilter = ""
             processesLoading = false; processMessage = null
             killTarget = null; killOwner = null; killMessage = null
@@ -134,6 +137,32 @@ class ManageViewModel(application: Application) : AndroidViewModel(application) 
         processSelected = null; processItems = emptyList(); processTotalCount = 0; processSampledAt = null; processPage = 1; cancelKill()
     }
     fun startProcessObserving() { processObserving = true; loadProcesses() }
+    fun toggleProcessMode() {
+        val active = owner ?: return
+        if (!current(active) || processesLoading || killJob?.isActive == true) return
+        if (processAdministratorMode) {
+            processAdministratorMode = false; clearProcessQuery(); loadProcesses(1); return
+        }
+        processesLoading = true
+        processJob = viewModelScope.launch {
+            var switched = false
+            try {
+                val outcome = container.elevations.elevateHost("ProcessManage", "host/processes",
+                    container.elevationAnswers, tryAutomatic = true)
+                if (!current(active)) return@launch
+                when (outcome) {
+                    is app.relaxkonos.mobile.data.ElevationOutcome.Granted -> {
+                        processAdministratorMode = true; clearProcessQuery(); switched = true
+                    }
+                    is app.relaxkonos.mobile.data.ElevationOutcome.Rejected ->
+                        processMessage = ApiResult.Problem(403, outcome.code, null).failureMessage()
+                    is app.relaxkonos.mobile.data.ElevationOutcome.Transport ->
+                        processMessage = ApiResult.Transport(outcome.detail).failureMessage()
+                    app.relaxkonos.mobile.data.ElevationOutcome.Cancelled -> Unit
+                }
+            } finally { if (current(active)) { processesLoading = false; if (switched) loadProcesses(1) } }
+        }
+    }
     fun stopProcessObserving() {
         processObserving = false
         processGeneration++; processJob?.cancel(); processJob = null
@@ -150,7 +179,7 @@ class ManageViewModel(application: Application) : AndroidViewModel(application) 
         processJob = viewModelScope.launch {
             var reload = false
             try {
-                val result = container.system.processes(active, requestedPage, PAGE_SIZE, filter, sort, descending)
+                val result = container.system.processes(active, requestedPage, PAGE_SIZE, filter, sort, descending, processAdministratorMode)
                 if (!current(active) || generation != processGeneration) return@launch
                 when (result) { is ApiResult.Success -> { processPage = minOf(requestedPage, (result.value.totalCount - 1).coerceAtLeast(0) / PAGE_SIZE + 1); reload = processPage != requestedPage; processSampledAt = if (reload) null else result.value.sampledAt; processItems = result.value.items; processSelected = refreshedProcessSelection(processSelected, processItems); processTotalCount = result.value.totalCount }
                     else -> processMessage = result.failureMessage() }
@@ -180,7 +209,7 @@ class ManageViewModel(application: Application) : AndroidViewModel(application) 
         killJob = viewModelScope.launch {
             var refresh = false
             try {
-                val result = container.system.killProcess(active, target.pid, startTime)
+                val result = container.system.killProcess(active, target.pid, startTime, processAdministratorMode)
                 if (!current(active)) return@launch
                 when (result) {
                     is ApiResult.Success -> {

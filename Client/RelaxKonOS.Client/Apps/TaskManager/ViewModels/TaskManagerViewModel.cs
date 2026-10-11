@@ -7,6 +7,9 @@ using RelaxKonOS.Client.Localization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Protocol.SystemMonitor;
+using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Client.Services.Privileged;
+using RelaxKonOS.Client.Services.Auth;
 
 namespace RelaxKonOS.Client.Apps.TaskManager.ViewModels;
 
@@ -22,11 +25,22 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
     private bool _rebuildingProcessRows;
     private long _lastSequence;
     private int _disposed;
+    private readonly IHostElevationBroker _elevation;
+    private readonly IAuthSession _session;
+    private int _processModeGeneration;
+    private Guid? _processSessionId;
+    private string? _processServiceId;
+    private bool _switchingProcessMode;
 
-    public TaskManagerViewModel(ITaskManagerClient client, PerformanceStream stream)
+    public TaskManagerViewModel(ITaskManagerClient client, PerformanceStream stream, IHostElevationBroker elevation, IAuthSession session)
     {
         _client = client;
         _stream = stream;
+        _elevation = elevation;
+        _session = session;
+        _processSessionId = session.CurrentSession?.Id;
+        _processServiceId = session.ServiceId;
+        _session.StateChanged += OnAuthSessionChanged;
         _stream.SnapshotReceived += OnSnapshotReceived;
         _stream.Reconnected += OnStreamReconnected;
         _stream.Disconnected += OnStreamDisconnected;
@@ -51,6 +65,44 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
     [ObservableProperty] private TaskManagerTab _activeTab = TaskManagerTab.Performance;
     [ObservableProperty] private string _processFilter = string.Empty;
     [ObservableProperty] private int _processTotalCount;
+    [ObservableProperty] private bool _isAdministratorMode;
+
+    public string ProcessModeLabel => LocalizedText.Get(IsAdministratorMode
+        ? "task_manager.process.normal_mode" : "task_manager.process.administrator_mode");
+    partial void OnIsAdministratorModeChanged(bool value) => OnPropertyChanged(nameof(ProcessModeLabel));
+
+    [RelayCommand]
+    private async Task ToggleProcessModeAsync()
+    {
+        if (IsLoading || KillProcessCommand.IsRunning) return;
+        var owner = _session.CurrentSession?.Id;
+        var service = _session.ServiceId;
+        var nextMode = !IsAdministratorMode;
+        _switchingProcessMode = true;
+        IsLoading = true;
+        try
+        {
+            // Probe a read, never a termination. The broker first asks for passwordless
+            // authorization; only the server's password-required response opens a prompt.
+            if (nextMode)
+                await _elevation.ExecuteAsync(HostElevationCapability.ProcessManage, "host/processes",
+                    () => _client.QueryProcessesAsync(pageSize: 1, elevated: true));
+            if (_disposed != 0 || owner != _session.CurrentSession?.Id || service != _session.ServiceId) return;
+            IsAdministratorMode = nextMode;
+            _processModeGeneration++;
+            foreach (var row in _processRows.Values) { row.ExpandedStateChanged -= OnProcessExpandedStateChanged; row.Dispose(); }
+            _processRows.Clear(); _allProcesses.Clear(); FilteredProcesses.Clear(); SelectedProcess = null;
+            ProcessTotalCount = 0; KillFeedback = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            if (_disposed == 0 && owner == _session.CurrentSession?.Id && service == _session.ServiceId)
+                StatusText = LocalizedText.Ref("task_manager.status.collect_failed", ex.Message);
+            return;
+        }
+        finally { _switchingProcessMode = false; IsLoading = false; }
+        await RefreshProcessesAsync();
+    }
 
     public async Task StartAsync()
     {
@@ -69,6 +121,7 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         _processTimer.Stop();
+        _session.StateChanged -= OnAuthSessionChanged;
         _stream.SnapshotReceived -= OnSnapshotReceived;
         _stream.Reconnected -= OnStreamReconnected;
         _stream.Disconnected -= OnStreamDisconnected;
@@ -88,16 +141,23 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
     {
         var process = SelectedProcess?.Process;
         if (process?.StartTime is null) return;
+        var owner = _session.CurrentSession?.Id;
+        var service = _session.ServiceId;
         KillFeedback = LocalizedText.Format("task_manager.process.terminating", process.Name, process.Id);
         try
         {
-            var result = await _client.KillProcessAsync(process.Id, process.StartTime.Value);
+            var result = await _client.KillProcessAsync(process.Id, process.StartTime.Value, IsAdministratorMode);
+            if (_disposed != 0 || owner != _session.CurrentSession?.Id || service != _session.ServiceId) return;
             if (result.Success) { KillFeedback = LocalizedText.Format("task_manager.process.terminated", process.Name, process.Id); SelectedProcess = null; }
             else if (result.RequiresElevation) KillFeedback = LocalizedText.Format("task_manager.process.elevation_required", process.Name, process.Id, TerminationProblem(result));
             else KillFeedback = LocalizedText.Format("task_manager.process.termination_failed", TerminationProblem(result));
             await RefreshProcessesAsync();
         }
-        catch (Exception ex) { KillFeedback = LocalizedText.Format("task_manager.process.termination_failed", ex.Message); }
+        catch (Exception ex)
+        {
+            if (_disposed == 0 && owner == _session.CurrentSession?.Id && service == _session.ServiceId)
+                KillFeedback = LocalizedText.Format("task_manager.process.termination_failed", ex.Message);
+        }
     }
 
     private static string TerminationProblem(KillProcessResultDto result) => LocalizedText.Get(result.ProblemCode switch
@@ -107,7 +167,8 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
         "process.termination_unverified" => "task_manager.termination.unverified",
         _ => "task_manager.termination.failed",
     });
-    private bool CanKill => SelectedProcess?.Process.StartTime is not null;
+    private bool CanKill => !IsLoading && SelectedProcess?.Process.StartTime is not null;
+    partial void OnIsLoadingChanged(bool value) => KillProcessCommand.NotifyCanExecuteChanged();
     partial void OnSelectedProcessChanged(ProcessTreeItemViewModel? value) => KillProcessCommand.NotifyCanExecuteChanged();
     [RelayCommand] private void SwitchToPerformance() => ActiveTab = TaskManagerTab.Performance;
     [RelayCommand] private void SwitchToProcesses() => ActiveTab = TaskManagerTab.Processes;
@@ -158,11 +219,16 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
 
     private async Task RefreshProcessesAsync()
     {
+        if (_switchingProcessMode) return;
         if (Interlocked.CompareExchange(ref _refreshingProcesses, 1, 0) != 0) return;
         IsLoading = true;
+        var generation = _processModeGeneration;
+        var owner = _session.CurrentSession?.Id;
+        var service = _session.ServiceId;
         try
         {
             var page = await QueryAllProcessesAsync();
+            if (_disposed != 0 || generation != _processModeGeneration || owner != _session.CurrentSession?.Id || service != _session.ServiceId) return;
             ProcessTotalCount = page.TotalCount;
             _allProcesses = page.Items.ToList();
             RebuildFilteredProcesses(SelectedProcess);
@@ -175,23 +241,31 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
     private async Task<ProcessPageDto> QueryAllProcessesAsync()
     {
         const int pageSize = 500;
-        var first = await _client.QueryProcessesAsync(page: 1, pageSize: pageSize, sort: "memory");
-        if (first.TotalCount <= first.Items.Count) return first;
-        var pageCount = (first.TotalCount + pageSize - 1) / pageSize;
-        var remaining = await Task.WhenAll(Enumerable.Range(2, pageCount - 1)
-            .Select(page => _client.QueryProcessesAsync(page: page, pageSize: pageSize, sort: "memory")));
-        return first with { Items = first.Items.Concat(remaining.SelectMany(page => page.Items)).ToArray() };
+        var elevated = IsAdministratorMode;
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var first = await _client.QueryProcessesAsync(page: 1, pageSize: pageSize, sort: "memory", elevated: elevated);
+            if (first.TotalCount <= first.Items.Count) return first;
+            var pageCount = (first.TotalCount + pageSize - 1) / pageSize;
+            var remaining = await Task.WhenAll(Enumerable.Range(2, pageCount - 1)
+                .Select(page => _client.QueryProcessesAsync(page: page, pageSize: pageSize, sort: "memory", elevated: elevated)));
+            var items = first.Items.Concat(remaining.SelectMany(page => page.Items)).ToArray();
+            if (remaining.All(page => page.SampledAt == first.SampledAt && page.TotalCount == first.TotalCount)
+                && items.Length == first.TotalCount && items.Select(item => item.Id).Distinct().Count() == items.Length)
+                return first with { Items = items };
+        }
+        throw new InvalidOperationException("Process snapshot changed during pagination; refresh to retry.");
     }
 
     public async Task LoadProcessIconAsync(ProcessTreeItemViewModel row)
     {
-        if (row.IsIconLoaded) return;
+        if (row.IsIconLoaded || row.IsDisposed) return;
         row.IsIconLoaded = true;
         if (row.Process.StartTime is not { } startTime) return;
         try
         {
-            var icon = await _client.GetProcessIconAsync(row.Process.Id, startTime);
-            if (icon is null || icon.Value.Data.Length == 0) return;
+            var icon = await _client.GetProcessIconAsync(row.Process.Id, startTime, IsAdministratorMode);
+            if (row.IsDisposed || icon is null || icon.Value.Data.Length == 0) return;
             using var stream = new MemoryStream(icon.Value.Data, writable: false);
             row.IconImage = icon.Value.ContentType == "image/svg+xml"
                 ? new SvgImage { Source = SvgSource.Load(stream) }
@@ -367,8 +441,20 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
                     foreach (var child in children[id]) AddVisible(child, depth + 1);
             }
 
-            foreach (var root in roots) AddVisible(root, 0);
-            foreach (var row in rows) AddVisible(row, 0); // Any malformed cycle is still visible as a root.
+            var reachable = new HashSet<int>();
+            void MarkSubtree(ProcessTreeItemViewModel root)
+            {
+                var pending = new Stack<ProcessTreeItemViewModel>();
+                pending.Push(root);
+                while (pending.TryPop(out var row))
+                    if (reachable.Add(row.Process.Id))
+                        foreach (var child in children[row.Process.Id]) pending.Push(child);
+            }
+            foreach (var root in roots) { MarkSubtree(root); AddVisible(root, 0); }
+            // Only disconnected cycles need a synthetic root. Collapsed descendants already
+            // belong to a root and must remain hidden.
+            foreach (var row in rows)
+                if (!reachable.Contains(row.Process.Id)) { MarkSubtree(row); AddVisible(row, 0); }
             SelectedProcess = selectedKey is { } identity
                 ? FilteredProcesses.FirstOrDefault(row => row.Process.Id == identity.Id && row.Process.StartTime == identity.StartTime)
                 : null;
@@ -377,6 +463,18 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
     }
 
     private void OnProcessExpandedStateChanged(object? sender, EventArgs e) => RebuildFilteredProcesses(SelectedProcess);
+
+    private void OnAuthSessionChanged(object? sender, AuthSessionStateChangedEventArgs args) => Dispatcher.UIThread.Post(() =>
+    {
+        if (_disposed != 0) return;
+        if (_session.State == AuthSessionState.Authenticated && _processSessionId == _session.CurrentSession?.Id
+            && _processServiceId == _session.ServiceId) return;
+        _processSessionId = _session.CurrentSession?.Id; _processServiceId = _session.ServiceId;
+        IsAdministratorMode = false; _processModeGeneration++;
+        foreach (var row in _processRows.Values) { row.ExpandedStateChanged -= OnProcessExpandedStateChanged; row.Dispose(); }
+        _processRows.Clear(); _allProcesses.Clear(); FilteredProcesses.Clear(); SelectedProcess = null;
+        ProcessTotalCount = 0; KillFeedback = string.Empty;
+    });
 
     private static string FormatBytes(long? bytes) => bytes is null or < 0 ? "—" : Converters.BytesConverter.FormatBytes(bytes.Value);
     private static string FormatRate(long bytes) => Converters.BytesConverter.FormatBytes(bytes) + LocalizedText.Get("task_manager.metric.per_second");

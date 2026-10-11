@@ -14,6 +14,7 @@ public sealed partial class ProcessTreeItemViewModel(ProcessInfoDto process) : O
     [ObservableProperty] private bool _isExpanded = true;
     [ObservableProperty] private IImage? _iconImage;
     [ObservableProperty] private bool _isIconLoaded;
+    public bool IsDisposed { get; private set; }
 
     public Thickness Indent => new(Depth * 18, 0, 0, 0);
     public string ExpandGlyph => IsExpanded ? "⌄" : "›";
@@ -41,6 +42,7 @@ public sealed partial class ProcessTreeItemViewModel(ProcessInfoDto process) : O
 
     public void Dispose()
     {
+        IsDisposed = true;
         (IconImage as IDisposable)?.Dispose();
         IconImage = null;
     }

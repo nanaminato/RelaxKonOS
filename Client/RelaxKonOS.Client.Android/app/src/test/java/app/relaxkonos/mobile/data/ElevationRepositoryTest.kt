@@ -27,6 +27,30 @@ import org.junit.Test
  * rejection but never on a transport failure or a user cancellation.
  */
 class ElevationRepositoryTest {
+    @Test fun `administrator process mode never prompts for credentials`() = runTest {
+        signIn()
+        gateway.onElevation = { _, _, capability, target, password, account ->
+            assertEquals("ProcessManage", capability); assertEquals("host/processes", target)
+            assertEquals(null, password); assertEquals(null, account)
+            ApiResult.Success(ElevationGrant(true, null))
+        }
+        var prompts = 0
+        val result = repository.elevateHost("ProcessManage", "host/processes",
+            ElevationAnswerProvider { _, _ -> prompts++; null }, tryAutomatic = true)
+        assertTrue(result is ElevationOutcome.Granted); assertEquals(0, prompts); assertEquals(1, gateway.elevationCount)
+    }
+
+    @Test fun `standard process user is prompted only after password required`() = runTest {
+        signIn()
+        gateway.onElevation = { _, _, _, _, password, _ ->
+            if (password == null) ApiResult.Problem(403, ProblemCodes.ELEVATION_PASSWORD_REQUIRED, null)
+            else ApiResult.Success(ElevationGrant(true, null))
+        }
+        var prompts = 0
+        val result = repository.elevateHost("ProcessManage", "host/processes",
+            ElevationAnswerProvider { _, _ -> prompts++; ElevationAnswer("admin", "secret".toCharArray()) }, tryAutomatic = true)
+        assertTrue(result is ElevationOutcome.Granted); assertEquals(1, prompts); assertEquals(2, gateway.elevationCount)
+    }
     private val server = "https://relaxkonos.local:5090"
     private val gateway = FakeGateway()
     private val vault = CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto())

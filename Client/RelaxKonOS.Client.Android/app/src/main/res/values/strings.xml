@@ -53,4 +53,6 @@
     <string name="password_show">Show the password</string>
     <string name="ui_discard_draft_message">This draft has not been submitted. Leaving clears its fields.</string>
     <string name="ui_discard_draft_title">Discard draft?</string>
+    <string name="taskmanager_administrator_mode">Administrator mode</string>
+    <string name="taskmanager_normal_mode">Normal mode</string>
 </resources>

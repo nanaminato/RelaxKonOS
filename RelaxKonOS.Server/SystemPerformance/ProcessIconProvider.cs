@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
+using Microsoft.Win32.SafeHandles;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
@@ -26,11 +28,26 @@ internal sealed class ProcessIconProvider
     {
         try
         {
-            using var process = Process.GetProcessById(processId);
-            if (process.StartTime.ToUniversalTime() != expectedStartTime.UtcDateTime) return null;
-            var path = GetExecutablePath(processId, process);
+            string? path;
+            if (OperatingSystem.IsWindows())
+            {
+                // Creation time and image path come from the same handle; module enumeration
+                // requires stronger access and can fail across process architectures.
+                using var handle = NativeMethods.OpenProcess(0x1000, false, processId);
+                if (handle.IsInvalid || !NativeMethods.GetProcessTimes(handle, out var creation, out _, out _, out _)
+                    || DateTime.FromFileTimeUtc(creation) != expectedStartTime.UtcDateTime) return null;
+                var buffer = new StringBuilder(32768);
+                var size = buffer.Capacity;
+                path = NativeMethods.QueryFullProcessImageName(handle, 0, buffer, ref size) ? buffer.ToString() : null;
+            }
+            else
+            {
+                using var process = Process.GetProcessById(processId);
+                if (process.StartTime.ToUniversalTime() != expectedStartTime.UtcDateTime) return null;
+                path = GetExecutablePath(processId, process);
+                if (process.StartTime.ToUniversalTime() != expectedStartTime.UtcDateTime) return null;
+            }
             if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return null;
-            if (process.StartTime.ToUniversalTime() != expectedStartTime.UtcDateTime) return null;
             var file = new FileInfo(path);
             var key = $"{file.FullName}|{file.Length}|{file.LastWriteTimeUtc.Ticks}";
             var lazy = IconCache.GetOrAdd(key, cacheKey =>
@@ -240,6 +257,7 @@ internal sealed class ProcessIconProvider
             var previous = NativeMethods.SelectObject(memory, dib);
             try
             {
+                Marshal.Copy(new byte[IconSize * IconSize * 4], 0, pixels, IconSize * IconSize * 4);
                 if (!NativeMethods.DrawIconEx(memory, 0, 0, shellInfo.Icon, IconSize, IconSize, 0, IntPtr.Zero, 0x0003)) return [];
                 var data = new byte[IconSize * IconSize * 4];
                 Marshal.Copy(pixels, data, 0, data.Length);
@@ -297,6 +315,12 @@ internal sealed class ProcessIconProvider
 
     private static class NativeMethods
     {
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern SafeProcessHandle OpenProcess(uint access, [MarshalAs(UnmanagedType.Bool)] bool inherit, int pid);
+        [DllImport("kernel32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool GetProcessTimes(SafeProcessHandle process, out long creation, out long exit, out long kernel, out long user);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool QueryFullProcessImageName(SafeProcessHandle process, uint flags, StringBuilder name, ref int size);
         [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
         public static extern IntPtr SHGetFileInfo(string path, uint attributes, out ShellFileInfo info, uint size, uint flags);
         [DllImport("user32.dll")] public static extern IntPtr GetDC(IntPtr window);
