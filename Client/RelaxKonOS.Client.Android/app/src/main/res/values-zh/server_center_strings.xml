@@ -153,7 +153,7 @@
     <string name="server_feature_files">文件管理</string>
     <string name="server_feature_firewall">防火墙管理</string>
     <string name="server_feature_git">Git 仓库</string>
-    <string name="server_feature_guardian">守护程序守护</string>
+    <string name="server_feature_guardian">工作负载守护</string>
     <string name="server_feature_metrics">性能监控</string>
     <string name="server_feature_posix_permissions">POSIX 文件权限</string>
     <string name="server_feature_processes">进程管理</string>

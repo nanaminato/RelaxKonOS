@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.*
 import org.junit.Assert.*
 import org.junit.Before
@@ -54,6 +55,36 @@ class CertificatesViewModelTest {
         }) }
         session.login(ServerConnectionIdentityRules.direct("https://host.test"), "alice", "pw".toCharArray()) {}
     }
+    private fun submitCurrentDraft() {
+        model.submitDraft(session.state.value as SessionState.Active, model.state.draft ?: draft)
+    }
+    @Test fun `submission confirmation cannot replace confirmed draft with edited draft`() = runTest {
+        login(); runCurrent(); model.create(true)
+        val original = draft.copy(selfSigned = true); model.update(original)
+        val owner = session.state.value as SessionState.Active
+        var sends = 0
+        gateway.onCertificateMutation = { _, _, _, _ -> sends++; ApiResult.Transport(null) }
+        val edited = original.copy(domainsText = "edited.example.test")
+        model.update(edited)
+        model.submitDraft(owner, original); advanceUntilIdle()
+        assertEquals(0, sends); assertEquals(edited, model.state.draft)
+        model.submitDraft(owner, edited); advanceUntilIdle()
+        assertEquals(1, sends)
+    }
+    @Test fun `submission confirmation cannot survive new login with identical draft`() = runTest {
+        login(); runCurrent(); model.create(true)
+        val original = draft.copy(selfSigned = true); model.update(original)
+        val owner = session.state.value as SessionState.Active
+        var sends = 0
+        gateway.onCertificateMutation = { _, _, _, _ -> sends++; ApiResult.Transport(null) }
+        login()
+        model.submitDraft(owner, original); advanceUntilIdle()
+        assertEquals(0, sends)
+        model.create(true); model.update(original)
+        model.submitDraft(owner, original); advanceUntilIdle()
+        assertEquals(0, sends)
+        submitCurrentDraft(); advanceUntilIdle(); assertEquals(1, sends)
+    }
     @Test fun `repeated preflight exception invalidates the old permission and cannot submit`() = runTest {
         login(); runCurrent(); model.create(false); model.update(draft)
         gateway.onCertificatePreflight = { _, _ -> ApiResult.Success(ready) }
@@ -66,7 +97,7 @@ class CertificatesViewModelTest {
         assertEquals("certificate.read_failed", model.state.problemCode)
         var sends = 0
         gateway.onCertificateMutation = { _, _, _, _ -> sends++; ApiResult.Transport(null) }
-        model.submitDraft(); advanceUntilIdle()
+        submitCurrentDraft(); advanceUntilIdle()
         assertEquals(0, sends)
     }
     @Test fun `unexpected submission retains a locked draft and the original recovery intent`() = runTest {
@@ -75,7 +106,7 @@ class CertificatesViewModelTest {
         model.update(requested)
         var sends = 0
         gateway.onCertificateMutation = { _, _, _, _ -> sends++; throw IllegalStateException("private detail") }
-        model.submitDraft(); advanceUntilIdle()
+        submitCurrentDraft(); advanceUntilIdle()
         assertEquals(1, sends); assertEquals(requested, model.state.draft)
         assertTrue(model.state.uncertain); assertTrue(model.state.draftLocked); assertFalse(model.state.busy)
         assertEquals(1, model.state.pending.size); assertTrue(model.state.pending.single().attempted)
@@ -88,7 +119,7 @@ class CertificatesViewModelTest {
         model.update(requested)
         var sends = 0
         gateway.onCertificateMutation = { _, _, _, _ -> sends++; ApiResult.Problem(403, "certificate.admin_required", null) }
-        model.submitDraft(); advanceUntilIdle()
+        submitCurrentDraft(); advanceUntilIdle()
         assertEquals(1, sends); assertEquals(requested, model.state.draft)
         assertFalse(model.state.uncertain); assertFalse(model.state.draftLocked); assertFalse(model.state.busy)
         assertTrue(model.state.pending.isEmpty()); assertEquals("certificate.admin_required", model.state.problemCode)
@@ -102,7 +133,7 @@ class CertificatesViewModelTest {
         model.update(requested)
         var sends = 0
         gateway.onCertificateMutation = { _, _, _, _ -> sends++; throw CancellationException("cancelled") }
-        model.submitDraft(); advanceUntilIdle()
+        submitCurrentDraft(); advanceUntilIdle()
         assertEquals(1, sends); assertEquals(requested, model.state.draft)
         assertFalse(model.state.busy); assertTrue(model.state.uncertain)
         assertTrue(model.state.draftLocked); assertFalse(model.state.operationVerified)
@@ -137,5 +168,196 @@ class CertificatesViewModelTest {
         assertEquals(changed, model.state.draft); assertFalse(model.state.draftLocked)
         assertFalse(model.state.uncertain); assertFalse(model.state.busy)
         assertEquals("certificate.read_failed", model.state.problemCode)
+    }
+    private suspend fun TestScope.acceptedSubmissionWithFailedRefresh(read: suspend () -> ApiResult<List<ManagedCertificate>>) {
+        login(); runCurrent(); model.create(true); model.update(draft.copy(selfSigned = true))
+        val receipt = CertificateOperation("11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222",
+            CertificateAction.SelfSigned, CertificateOperationState.Succeeded, "completed", "", 1, 2)
+        var sends = 0
+        gateway.onCertificateMutation = { _, _, _, _ -> sends++; ApiResult.Success(receipt) }
+        gateway.onCertificates = { read() }
+        submitCurrentDraft(); advanceUntilIdle()
+        assertEquals(1, sends); assertNull(model.state.draft); assertFalse(model.state.draftLocked)
+        assertEquals(receipt, model.state.operation); assertTrue(model.state.operationVerified)
+        assertTrue(model.state.pending.isEmpty()); assertFalse(model.state.uncertain); assertFalse(model.state.busy)
+        assertEquals("certificate.read_failed", model.state.problemCode)
+        submitCurrentDraft(); advanceUntilIdle(); assertEquals(1, sends)
+    }
+    @Test fun `accepted submission closes draft even when subsequent list refresh throws`() = runTest {
+        acceptedSubmissionWithFailedRefresh { throw IllegalStateException("private list detail") }
+    }
+    @Test fun `accepted submission closes draft even when subsequent list refresh is cancelled`() = runTest {
+        acceptedSubmissionWithFailedRefresh { throw CancellationException("private list detail") }
+    }
+    @Test fun `accepted submission reports subsequent list transport failure without losing receipt`() = runTest {
+        acceptedSubmissionWithFailedRefresh { ApiResult.Transport(null) }
+    }
+    private suspend fun TestScope.loadCertificate() {
+        login(); runCurrent()
+        val certificate = CertificateWire.certificate(CERTIFICATE_JSON)
+        gateway.onCertificates = { ApiResult.Success(listOf(certificate)) }
+        gateway.onCertificate = { ApiResult.Success(certificate) }
+        gateway.onKestrelDeployment = { ApiResult.Success(CertificateWire.kestrel(KESTREL_JSON)) }
+        model.refresh(); advanceUntilIdle(); model.select(certificate.id); advanceUntilIdle()
+        assertTrue(model.state.detail is ApiResult.Success)
+    }
+    @Test fun `refresh exception withdraws previous list detail and deployment facts`() = runTest {
+        loadCertificate()
+        val captured = (model.state.detail as ApiResult.Success).value
+        var sends = 0
+        gateway.onCertificateMutation = { _, _, _, _ -> sends++; ApiResult.Transport(null) }
+        gateway.onCertificates = { throw IllegalStateException("private list detail") }
+        model.refresh(); advanceUntilIdle()
+        assertNull(model.state.list); assertNull(model.state.detail); assertTrue(model.state.deployments.isEmpty())
+        assertEquals("certificate.read_failed", model.state.problemCode); assertFalse(model.state.busy)
+        model.action(session.state.value as SessionState.Active, captured, CertificateAction.Delete); advanceUntilIdle(); assertEquals(0, sends)
+    }
+    @Test fun `detail refresh cancellation withdraws previous detail and deployment facts`() = runTest {
+        loadCertificate()
+        gateway.onCertificate = { throw CancellationException("private detail") }
+        model.refresh(); advanceUntilIdle()
+        assertNull(model.state.detail); assertTrue(model.state.deployments.isEmpty())
+        assertEquals("certificate.read_failed", model.state.problemCode); assertFalse(model.state.busy)
+    }
+    @Test fun `deployment refresh exception withdraws previous deployment fact`() = runTest {
+        loadCertificate()
+        val id = requireNotNull(model.state.selectedId)
+        gateway.onKestrelDeployment = { throw IllegalStateException("private deployment") }
+        model.inspectDeployment(id); advanceUntilIdle()
+        assertNull(model.state.deployments[id]); assertTrue(model.state.detail is ApiResult.Success)
+        assertEquals("certificate.read_failed", model.state.problemCode); assertFalse(model.state.busy)
+    }
+    @Test fun `manual recovery of another operation preserves unsubmitted draft`() = runTest {
+        login(); runCurrent(); model.create(true)
+        val requested = draft.copy(selfSigned = true); model.update(requested)
+        val receipt = CertificateWire.operation(CERTIFICATE_OPERATION_JSON)
+        gateway.onCertificateOperation = { ApiResult.Success(receipt) }
+        model.recover(receipt.operationId); advanceUntilIdle()
+        assertEquals(requested, model.state.draft); assertFalse(model.state.draftLocked)
+        assertEquals(receipt, model.state.operation); assertTrue(model.state.operationVerified)
+    }
+    @Test fun `recovering original creation closes locked draft before failed followup refresh`() = runTest {
+        login(); runCurrent(); model.create(true); model.update(draft.copy(selfSigned = true))
+        gateway.onCertificateMutation = { _, _, _, _ -> throw CancellationException("private submit") }
+        submitCurrentDraft(); advanceUntilIdle()
+        val pending = model.state.pending.single(); assertTrue(model.state.draftLocked)
+        val receipt = CertificateWire.operation(CERTIFICATE_OPERATION_JSON).copy(kind = CertificateAction.SelfSigned, state = CertificateOperationState.Succeeded)
+        gateway.onCertificateOperation = { ApiResult.Success(receipt) }
+        gateway.onCertificates = { throw IllegalStateException("private list") }
+        model.recover(receipt.operationId, pending); advanceUntilIdle()
+        assertNull(model.state.draft); assertFalse(model.state.draftLocked); assertTrue(model.state.pending.isEmpty())
+        assertEquals(receipt, model.state.operation); assertTrue(model.state.operationVerified)
+        assertFalse(model.state.uncertain); assertEquals("certificate.read_failed", model.state.problemCode)
+    }
+    @Test fun `old confirmation cannot submit while new login awaits collection`() = runTest {
+        loadCertificate()
+        val originalOwner = session.state.value as SessionState.Active
+        val certificate = (model.state.detail as ApiResult.Success).value
+        var sends = 0
+        gateway.onCertificateMutation = { _, _, _, _ -> sends++; ApiResult.Transport(null) }
+        login()
+        model.action(originalOwner, certificate, CertificateAction.Delete); advanceUntilIdle()
+        assertEquals(0, sends); assertTrue(model.state.pending.isEmpty())
+    }
+    @Test fun `old confirmation cannot submit after same certificate is read by new login`() = runTest {
+        loadCertificate()
+        val originalOwner = session.state.value as SessionState.Active
+        val certificate = (model.state.detail as ApiResult.Success).value
+        var sends = 0
+        gateway.onCertificateMutation = { _, _, _, _ -> sends++; ApiResult.Transport(null) }
+        login(); runCurrent(); model.refresh(); advanceUntilIdle(); model.select(certificate.id); advanceUntilIdle()
+        model.action(originalOwner, certificate, CertificateAction.Delete); advanceUntilIdle()
+        assertEquals(0, sends); assertTrue(model.state.pending.isEmpty())
+        gateway.onCertificateMutation = { _, _, _, _ -> sends++; ApiResult.Problem(403, "certificate.admin_required", null) }
+        model.action(session.state.value as SessionState.Active, certificate, CertificateAction.Delete); advanceUntilIdle()
+        assertEquals(1, sends); assertEquals("certificate.admin_required", model.state.problemCode)
+    }
+    @Test fun `cancel confirmation cannot switch to a different current operation`() = runTest {
+        login(); runCurrent()
+        val original = CertificateWire.operation(CERTIFICATE_OPERATION_JSON)
+        val next = original.copy(operationId = "11111111-1111-1111-1111-111111111111")
+        gateway.onCertificateOperation = { id -> ApiResult.Success(if (id == original.operationId) original else next) }
+        val cancelled = mutableListOf<String>()
+        gateway.onCertificateCancel = { id -> cancelled += id; ApiResult.Success(next.copy(state = CertificateOperationState.Cancelled)) }
+        model.recover(original.operationId); advanceUntilIdle()
+        model.recover(next.operationId); advanceUntilIdle()
+        val owner = session.state.value as SessionState.Active
+        model.cancel(owner, original.operationId); advanceUntilIdle()
+        assertTrue(cancelled.isEmpty()); assertEquals(next, model.state.operation)
+        model.cancel(owner, next.operationId); advanceUntilIdle()
+        assertEquals(listOf(next.operationId), cancelled)
+    }
+    @Test fun `failed operation lookup pauses automatic polling and cancel until explicit retry`() = runTest {
+        login(); runCurrent()
+        val receipt = CertificateWire.operation(CERTIFICATE_OPERATION_JSON)
+        gateway.onCertificateOperation = { ApiResult.Success(receipt) }
+        model.recover(receipt.operationId); advanceUntilIdle()
+        var reads = 0; var cancellations = 0
+        gateway.onCertificateOperation = { reads++; ApiResult.Transport(null) }
+        gateway.onCertificateCancel = { cancellations++; ApiResult.Transport(null) }
+        model.poll(); advanceUntilIdle(); assertFalse(model.state.operationVerified)
+        model.observeOperation(); advanceUntilIdle()
+        assertEquals(1, reads); assertEquals("certificate.read_failed", model.state.problemCode)
+        model.cancel(session.state.value as SessionState.Active, receipt.operationId); advanceUntilIdle(); assertEquals(0, cancellations)
+        gateway.onCertificateOperation = { reads++; ApiResult.Success(receipt) }
+        model.poll(); advanceUntilIdle(); assertTrue(model.state.operationVerified); assertEquals(2, reads)
+    }
+    @Test fun `delayed observation cannot query replacement operation`() = runTest {
+        login(); runCurrent()
+        val original = CertificateWire.operation(CERTIFICATE_OPERATION_JSON)
+        val next = original.copy(operationId = "11111111-1111-1111-1111-111111111111")
+        var reads = 0
+        gateway.onCertificateOperation = { id -> reads++; ApiResult.Success(if (id == original.operationId) original else next) }
+        model.recover(original.operationId); advanceUntilIdle()
+        val observer = launch { model.observeOperation() }; runCurrent()
+        model.recover(next.operationId); runCurrent()
+        advanceUntilIdle(); observer.join()
+        assertEquals(2, reads); assertEquals(next, model.state.operation)
+    }
+    @Test fun `retry confirmation requires original login even when pending request survives relogin`() = runTest {
+        loadCertificate()
+        val originalOwner = session.state.value as SessionState.Active
+        val certificate = (model.state.detail as ApiResult.Success).value
+        var sends = 0
+        gateway.onCertificateMutation = { _, _, _, _ -> sends++; ApiResult.Transport(null) }
+        model.action(originalOwner, certificate, CertificateAction.Delete); advanceUntilIdle()
+        val pending = model.state.pending.single()
+        login()
+        model.retry(originalOwner, pending); advanceUntilIdle()
+        assertEquals(1, sends)
+        model.refresh(); advanceUntilIdle()
+        assertEquals(listOf(pending), model.state.pending)
+        model.retry(originalOwner, pending); advanceUntilIdle()
+        assertEquals(1, sends)
+        model.retry(session.state.value as SessionState.Active, pending); advanceUntilIdle()
+        assertEquals(2, sends)
+        assertEquals(pending.key, model.state.pending.single().key)
+    }
+    @Test fun `resolved original request cannot be replayed by stale retry confirmation`() = runTest {
+        loadCertificate()
+        val owner = session.state.value as SessionState.Active
+        val certificate = (model.state.detail as ApiResult.Success).value
+        var sends = 0
+        gateway.onCertificateMutation = { _, _, _, _ -> sends++; ApiResult.Transport(null) }
+        model.action(owner, certificate, CertificateAction.Delete); advanceUntilIdle()
+        val pending = model.state.pending.single()
+        journal.complete(pending)
+        model.retry(owner, pending); advanceUntilIdle()
+        assertEquals(1, sends)
+        model.refresh(); advanceUntilIdle()
+        assertTrue(model.state.pending.isEmpty())
+        model.retry(owner, pending); advanceUntilIdle()
+        assertEquals(1, sends)
+    }
+    @Test fun `editing a new draft pauses operation observation`() = runTest {
+        login(); runCurrent()
+        val receipt = CertificateWire.operation(CERTIFICATE_OPERATION_JSON)
+        var reads = 0
+        gateway.onCertificateOperation = { reads++; ApiResult.Success(receipt) }
+        model.recover(receipt.operationId); advanceUntilIdle()
+        model.create(true); model.observeOperation(); advanceUntilIdle()
+        assertEquals(1, reads); assertNotNull(model.state.draft)
+        model.closeDraft(); model.observeOperation(); advanceUntilIdle()
+        assertEquals(2, reads)
     }
 }

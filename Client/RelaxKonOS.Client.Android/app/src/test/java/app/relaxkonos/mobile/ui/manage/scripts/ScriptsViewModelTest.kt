@@ -22,12 +22,13 @@ class ScriptsViewModelTest {
     private var details: suspend (String) -> ApiResult<ScriptTaskResult> = { ApiResult.Success(ScriptTaskResult(true, "", task(it))) }
     private var submission: suspend () -> ApiResult<ScriptTaskResult> = { ApiResult.Transport(null) }
     private var cancellation: suspend () -> ApiResult<ScriptTaskResult> = { ApiResult.Transport(null) }
+    private var listing: suspend () -> ApiResult<ScriptTasksResult> = { ApiResult.Success(ScriptTasksResult(true, "", listOf(task("a")))) }
     private var reads = 0
     private var submissions = 0
     private var submittedKey = ""
     private var cancellations = 0
     private val gateway = object : RelaxKonGateway by base {
-        override suspend fun scriptTasks(serverUrl: String, accessToken: String) = ApiResult.Success(ScriptTasksResult(true, "", listOf(task("a"))))
+        override suspend fun scriptTasks(serverUrl: String, accessToken: String) = listing()
         override suspend fun scriptTask(serverUrl: String, accessToken: String, id: String): ApiResult<ScriptTaskResult> { reads++; return details(id) }
         override suspend fun scriptSubmit(serverUrl: String, accessToken: String, request: ScriptRequest, key: String): ApiResult<ScriptTaskResult> { submissions++; submittedKey = key; return submission() }
         override suspend fun scriptCancel(serverUrl: String, accessToken: String, id: String): ApiResult<ScriptTaskResult> { cancellations++; return cancellation() }
@@ -64,6 +65,72 @@ class ScriptsViewModelTest {
     private fun request(password: CharArray? = null) = ScriptRequest("/bin/true", emptyList(), "/tmp", emptyMap(), 30,
         "alice", password?.let { GuardianApproval("root", it) })
 
+    @Test fun `cancelled list read releases loading and can explicitly refresh`() = runTest {
+        val owner = login()
+        listing = { throw CancellationException("private list error") }
+        model.load(owner); runCurrent()
+        assertFalse(model.state.value.loading); assertTrue(model.state.value.error)
+        assertFalse(model.state.value.listVerified)
+        listing = { ApiResult.Success(ScriptTasksResult(true, "", listOf(task("a")))) }
+        model.load(owner); runCurrent()
+        assertFalse(model.state.value.loading); assertFalse(model.state.value.error)
+        assertEquals(1, model.state.value.tasks.size); assertTrue(model.state.value.listVerified)
+    }
+    @Test fun `cancelled submission preserves unknown intent and clears approval`() = runTest {
+        model.load(login()); runCurrent(); model.openEditor()
+        val password = "private".toCharArray()
+        submission = { throw CancellationException("private submit error") }
+        model.submit(request(password)); runCurrent()
+        assertFalse(model.state.value.loading); assertTrue(model.state.value.error)
+        assertEquals("scripts.write_unknown", model.state.value.problemCode)
+        assertTrue(requireNotNull(model.state.value.pending).attempted)
+        assertNotNull(model.state.value.draft); assertTrue(password.all { it == '\u0000' })
+        model.submit(request()); runCurrent(); assertEquals(1, submissions)
+        details = { throw CancellationException("private verify error") }
+        model.verifyRequest(); runCurrent()
+        assertFalse(model.state.value.loading); assertNotNull(model.state.value.pending)
+        details = { ApiResult.Success(ScriptTaskResult(true, "", task(it))) }
+        model.verifyRequest(); runCurrent()
+        assertNull(model.state.value.pending); assertNull(model.state.value.draft)
+        assertEquals(1, submissions)
+    }
+    @Test fun `cancelled task cancellation stays unknown until explicit verification`() = runTest {
+        model.load(login()); runCurrent(); model.select("a"); runCurrent()
+        cancellation = { throw CancellationException("private cancellation") }
+        model.cancel("a"); runCurrent()
+        assertFalse(model.state.value.loading)
+        assertEquals("scripts.write_unknown", model.state.value.problemCode)
+        assertNotNull(model.state.value.pending)
+        model.cancel("a"); runCurrent(); assertEquals(1, cancellations)
+        details = { ApiResult.Success(ScriptTaskResult(true, "", task(it, "cancelled"))) }
+        model.verifyRequest(); runCurrent()
+        assertNull(model.state.value.pending); assertEquals("cancelled", model.state.value.selected?.state)
+    }
+    @Test fun `failed selected task read withdraws cancel until successful reread`() = runTest {
+        model.load(login()); runCurrent(); model.select("a"); runCurrent()
+        details = { throw CancellationException("private detail error") }
+        model.select("a"); runCurrent()
+        assertTrue(model.state.value.error)
+        model.cancel("a"); runCurrent(); assertEquals(0, cancellations)
+        details = { ApiResult.Success(ScriptTaskResult(true, "", task(it))) }
+        model.select("a"); runCurrent()
+        model.cancel("a"); runCurrent(); assertEquals(1, cancellations)
+    }
+    @Test fun `list refresh cannot restore cancel after failed task detail`() = runTest {
+        val owner = login()
+        model.load(owner); runCurrent(); model.select("a"); runCurrent()
+        details = { ApiResult.Transport(null) }
+        model.select("a"); runCurrent()
+        assertNotNull(model.state.value.selected); assertTrue(model.state.value.error)
+        model.load(owner); runCurrent()
+        assertNull(model.state.value.selected); assertFalse(model.state.value.loading)
+        assertTrue(model.state.value.error)
+        model.cancel("a"); runCurrent(); assertEquals(0, cancellations)
+        details = { ApiResult.Success(ScriptTaskResult(true, "", task(it))) }
+        model.load(owner); runCurrent()
+        assertEquals("a", model.state.value.selected?.id); assertFalse(model.state.value.error)
+        model.cancel("a"); runCurrent(); assertEquals(1, cancellations)
+    }
     @Test fun `changing selection discards a slow old response`() = runTest {
         model.load(login()); runCurrent()
         val release = CompletableDeferred<Unit>()
@@ -79,6 +146,27 @@ class ScriptsViewModelTest {
         assertFalse(model.state.value.error)
     }
 
+    @Test fun `old observer cannot resume after switching away and back to same task`() = runTest {
+        model.load(login()); runCurrent(); model.select("a"); runCurrent()
+        val observer = launch { model.observeSelected() }; runCurrent()
+        model.select("b"); runCurrent(); model.select("a"); runCurrent()
+        val before = reads
+        advanceTimeBy(2001); runCurrent()
+        assertTrue(observer.isCompleted); assertEquals(before, reads)
+    }
+    @Test fun `stopping foreground observer during read does not mark task failed`() = runTest {
+        model.load(login()); runCurrent(); model.select("a"); runCurrent()
+        val entered = CompletableDeferred<Unit>()
+        details = { entered.complete(Unit); awaitCancellation() }
+        val observer = launch { model.observeSelected() }; runCurrent()
+        advanceTimeBy(2001); runCurrent(); entered.await()
+        observer.cancelAndJoin()
+        assertFalse(model.state.value.error); assertEquals("a", model.state.value.selected?.id)
+        details = { ApiResult.Success(ScriptTaskResult(true, "", task(it, "succeeded"))) }
+        val resumed = launch { model.observeSelected() }; runCurrent()
+        advanceTimeBy(4001); runCurrent()
+        assertTrue(resumed.isCompleted); assertEquals("succeeded", model.state.value.selected?.state)
+    }
     @Test fun `polling awaits slow reads and stops after read failure`() = runTest {
         model.load(login()); runCurrent(); model.select("a"); runCurrent()
         val release = CompletableDeferred<Unit>()

@@ -20,11 +20,14 @@ internal data class CertificatesState(val busy: Boolean = false, val list: ApiRe
 internal class CertificatesViewModel(private val session: AuthSession, private val repository: CertificateRepository,
     private val operationIndex: OperationIndex, private val elevationAnswers: ElevationAnswerProvider) : ViewModel() {
     suspend fun observeOperation() {
-        if (state.operation?.state?.active == true && !state.busy) {
-            kotlinx.coroutines.delay(1500)
-            poll()
-        }
+        val originalOwner = owner ?: return
+        val id = state.operation?.operationId ?: return
+        if (!canObserveOperation() || activeSession !== originalOwner) return
+        kotlinx.coroutines.delay(1500)
+        if (owner === originalOwner && activeSession === originalOwner && state.operation?.operationId == id && canObserveOperation()) poll()
     }
+    private fun canObserveOperation() = state.operationVerified && state.operation?.state?.active == true &&
+        !state.busy && !state.uncertain && state.problemCode == null && state.draft == null
 
     private val activeSession get() = session.state.value as? SessionState.Active
     private var owner: SessionState.Active? = null
@@ -36,6 +39,7 @@ internal class CertificatesViewModel(private val session: AuthSession, private v
         if (next !== owner) { owner = next as? SessionState.Active; state = CertificatesState(); sessionEpoch++ }
     } } }
     fun refresh() = work { active ->
+        state = state.copy(list = null, detail = null, deployments = emptyMap())
         val list = repository.list(active); verify(active)
         state = state.copy(list = list, pending = repository.pending(active))
         failure(list)
@@ -51,12 +55,14 @@ internal class CertificatesViewModel(private val session: AuthSession, private v
         if (id != null) work { active -> detail(active, id) }
     }
     private suspend fun detail(active: SessionState.Active, id: String) {
+        state = state.copy(detail = null, deployments = state.deployments - id)
         val result = repository.certificate(active, id); verify(active)
         state = state.copy(detail = result); if (result !is ApiResult.Success) failure(result)
         deployment(active, id)
     }
     fun inspectDeployment(id: String) = work { active -> deployment(active, id) }
     private suspend fun deployment(active: SessionState.Active, id: String) {
+        state = state.copy(deployments = state.deployments - id)
         val result = repository.kestrel(active, id); verify(active)
         state = state.copy(deployments = state.deployments + (id to result))
     }
@@ -76,53 +82,66 @@ internal class CertificatesViewModel(private val session: AuthSession, private v
         val result = repository.preflight(active, domains, draft.challenge); verify(active)
         state = state.copy(preflight = result, preflightAtMillis = System.currentTimeMillis()); failure(result)
     }
-    fun submitDraft() = work { active ->
-        val draft = state.draft ?: return@work
-        val body = draft.body() ?: return@work
-        if (!draft.selfSigned && (state.preflight as? ApiResult.Success)?.value?.canProceed != true) return@work
-        state = state.copy(draftLocked = true)
-        writing = true
-        val result = repository.submit(active, elevationAnswers, draft.action, null, body)
-        writing = false
-        observe(active, result, writeResult = true)
-        state = state.copy(draftLocked = state.pending.any { it.target == null && it.attempted } && (result as? ApiResult.Problem)?.code != "certificate.original_request_pending")
-        if (result is ApiResult.Success) closeAfterSubmit()
+    fun submitDraft(expectedOwner: SessionState.Active, expectedDraft: CertificateDraft) {
+        if (owner !== expectedOwner || activeSession !== expectedOwner || state.draft != expectedDraft) return
+        work { active ->
+            val draft = state.draft ?: return@work
+            val body = draft.body() ?: return@work
+            if (!draft.selfSigned && (state.preflight as? ApiResult.Success)?.value?.canProceed != true) return@work
+            state = state.copy(draftLocked = true)
+            writing = true
+            val result = repository.submit(active, elevationAnswers, draft.action, null, body)
+            writing = false
+            if (result is ApiResult.Success) { verify(active); closeAfterSubmit() }
+            observe(active, result, writeResult = true)
+            state = state.copy(draftLocked = state.pending.any { it.target == null && it.attempted } && (result as? ApiResult.Problem)?.code != "certificate.original_request_pending")
+        }
     }
     private fun closeAfterSubmit() { state = state.copy(draft = null, initialDraft = null, draftLocked = false, preflight = null, preflightAtMillis = null) }
-    fun action(certificate: ManagedCertificate, action: CertificateAction) = work { active ->
-        if (action == CertificateAction.DeployKestrel) {
-            val current = repository.certificate(active, certificate.id); verify(active)
-            deployment(active, certificate.id)
-            val facts = (state.deployments[certificate.id] as? ApiResult.Success)?.value
-            if (current !is ApiResult.Success || current.value.usageProblem() != null || facts?.httpsConfigured != true) {
-                failure(current); state = state.copy(problemCode = "certificate.deployment_not_ready"); return@work
+    fun action(expectedOwner: SessionState.Active, certificate: ManagedCertificate, action: CertificateAction) {
+        if (owner !== expectedOwner || activeSession !== expectedOwner || state.selectedId != certificate.id ||
+            (state.detail as? ApiResult.Success)?.value != certificate) return
+        work { active ->
+            if (action == CertificateAction.DeployKestrel) {
+                val current = repository.certificate(active, certificate.id); verify(active)
+                deployment(active, certificate.id)
+                val facts = (state.deployments[certificate.id] as? ApiResult.Success)?.value
+                if (current !is ApiResult.Success || current.value.usageProblem() != null || facts?.httpsConfigured != true) {
+                    failure(current); state = state.copy(problemCode = "certificate.deployment_not_ready"); return@work
+                }
             }
+            writing = true
+            val result = repository.submit(active, elevationAnswers, action, certificate.id, JsonBody().apply {
+                if (action in setOf(CertificateAction.Delete, CertificateAction.Revoke)) bool("confirmed", true)
+            })
+            writing = false
+            observe(active, result, writeResult = true)
         }
-        writing = true
-        val result = repository.submit(active, elevationAnswers, action, certificate.id, JsonBody().apply {
-            if (action in setOf(CertificateAction.Delete, CertificateAction.Revoke)) bool("confirmed", true)
-        })
-        writing = false
-        observe(active, result, writeResult = true)
     }
-    private suspend fun observe(active: SessionState.Active, result: ApiResult<CertificateOperation>, writeResult: Boolean = false) {
+    private suspend fun WorkStage.observe(active: SessionState.Active, result: ApiResult<CertificateOperation>, writeResult: Boolean = false) {
         verify(active); failure(result, writeResult)
         if (result is ApiResult.Problem && result.status == 404) state = state.copy(problemCode = "certificate.operation_not_found")
         state = state.copy(operationVerified = result is ApiResult.Success, pending = repository.pending(active))
         if (result is ApiResult.Success) {
             state = state.copy(operation = result.value, operationVerified = true)
+            receivedOperation = true
             if (result.value.kind == CertificateAction.DeployKestrel) result.value.certificateId?.let { deployment(active, it) }
             if (!result.value.state.active) {
-                val list = repository.list(active); verify(active); state = state.copy(list = list)
+                state = state.copy(list = null, detail = null)
+                val list = repository.list(active); verify(active); state = state.copy(list = list); failure(list)
                 state.selectedId?.let { detail(active, it) }
             }
         }
     }
     fun recover(id: String, pending: PendingCertificateRequest? = null) = work { active ->
-        val result = repository.recover(active, id.trim(), pending); observe(active, result)
-        if (result is ApiResult.Success && pending?.target == null) closeAfterSubmit()
+        val closesDraft = pending != null && pending.target == null && state.draftLocked
+        val result = repository.recover(active, id.trim(), pending)
+        if (result is ApiResult.Success && closesDraft) { verify(active); closeAfterSubmit() }
+        observe(active, result)
     }
-    fun retry(pending: PendingCertificateRequest) {
+    fun retry(expectedOwner: SessionState.Active, pending: PendingCertificateRequest) {
+        if (owner !== expectedOwner || activeSession !== expectedOwner || pending !in state.pending ||
+            pending !in repository.pending(expectedOwner)) return
         if (pending.operationId != null) { recover(pending.operationId, pending); return }
         val id = pending.target ?: return
         work { active ->
@@ -139,18 +158,21 @@ internal class CertificatesViewModel(private val session: AuthSession, private v
         val result = repository.operation(active, current.operationId); observe(active, result)
         if (result !is ApiResult.Success && current.kind == CertificateAction.DeployKestrel) current.certificateId?.let { deployment(active, it) }
     }
-    fun cancel() = work { active ->
-        val current = state.operation ?: return@work
-        writing = true
-        val result = repository.cancel(active, current.operationId)
-        writing = false
-        observe(active, result, writeResult = true)
+    fun cancel(expectedOwner: SessionState.Active, operationId: String) {
+        if (owner !== expectedOwner || activeSession !== expectedOwner || !state.operationVerified || state.uncertain ||
+            state.operation?.operationId != operationId || state.operation?.state?.active != true) return
+        work { active ->
+            writing = true
+            val result = repository.cancel(active, operationId)
+            writing = false
+            observe(active, result, writeResult = true)
+        }
     }
     private fun failure(result: ApiResult<*>, writeResult: Boolean = false) {
         val feedback = certificateFailure(result, writeResult)
         state = state.copy(problemCode = feedback.problemCode, uncertain = feedback.uncertain)
     }
-    private class WorkStage { var writing = false }
+    private class WorkStage { var writing = false; var receivedOperation = false }
     private fun work(block: suspend WorkStage.(SessionState.Active) -> Unit) {
         val active = activeSession ?: return
         if (owner !== active) { owner = active; state = CertificatesState(); sessionEpoch++ }
@@ -162,14 +184,14 @@ internal class CertificatesViewModel(private val session: AuthSession, private v
             catch (cancelled: CancellationException) {
                 if (activeSession === active) {
                     failure(ApiResult.Transport(null), stage.writing || state.uncertain)
-                    state = state.copy(operationVerified = false,
+                    state = state.copy(operationVerified = stage.receivedOperation && state.operationVerified,
                         pending = runCatching { repository.pending(active) }.getOrDefault(state.pending))
                 }
                 throw cancelled
             }
             catch (_: Exception) { if (activeSession === active) {
                 failure(ApiResult.Transport(null), stage.writing || state.uncertain)
-                state = state.copy(operationVerified = false,
+                state = state.copy(operationVerified = stage.receivedOperation && state.operationVerified,
                     pending = runCatching { repository.pending(active) }.getOrDefault(state.pending))
             } }
             finally { if (activeSession === active) state = state.copy(busy = false) }

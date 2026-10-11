@@ -29,6 +29,7 @@ class GuardianViewModelTest {
         gateway.onGuardianStatus = { ApiResult.Success(GuardianStatus(true, true, "", "test")) }
         gateway.onGuardianWorkloads = { ApiResult.Success(emptyList()) }
         gateway.onGuardianDefinition = { ApiResult.Success(GuardianDefinitionResult(true, "", definition)) }
+        gateway.onGuardianLogs = { ApiResult.Success(emptyList()) }
         gateway.onGuardianAction = { _, _ -> actions++; throw CancellationException("private action detail") }
     }
     @After fun cleanup() { store.clear(); Dispatchers.resetMain() }
@@ -85,5 +86,64 @@ class GuardianViewModelTest {
         gateway.onGuardianDefinition = { ApiResult.Success(GuardianDefinitionResult(true, "", definition)) }
         model.readEditor(); advanceUntilIdle()
         assertFalse(model.state.value.stale); assertFalse(model.state.value.error)
+    }
+    @Test fun `switching selection does not let cancelled old read revoke new facts`() = runTest {
+        login(); runCurrent(); model.load(owner); advanceUntilIdle()
+        val pending = CompletableDeferred<ApiResult<GuardianDefinitionResult>>()
+        var reads = 0
+        gateway.onGuardianDefinition = { id -> if (++reads == 1) pending.await()
+            else ApiResult.Success(GuardianDefinitionResult(true, "", definition.copy(id = id))) }
+        model.select("job"); runCurrent()
+        model.select("other"); model.select("job"); advanceUntilIdle()
+        assertEquals("job", model.state.value.definition?.id)
+        assertFalse(model.state.value.stale); assertFalse(model.state.value.error)
+    }
+    @Test fun `failed detail read revokes mutation permission and retains problem code`() = runTest {
+        login(); runCurrent(); model.load(owner); advanceUntilIdle()
+        gateway.onGuardianDefinition = { ApiResult.Problem(503, "guardian.agent_unavailable", null) }
+        model.select("job"); advanceUntilIdle()
+        assertTrue(model.state.value.stale)
+        assertEquals("guardian.agent_unavailable", model.state.value.problemCode)
+        model.act("job", "restart"); advanceUntilIdle(); assertEquals(0, actions)
+    }
+    @Test fun `failed log read revokes mutation permission and retains problem code`() = runTest {
+        login(); runCurrent(); model.load(owner); advanceUntilIdle()
+        gateway.onGuardianLogs = { ApiResult.Problem(503, "guardian.agent_unavailable", null) }
+        model.select("job"); advanceUntilIdle()
+        assertTrue(model.state.value.stale)
+        assertEquals("guardian.agent_unavailable", model.state.value.problemCode)
+        model.act("job", "restart"); advanceUntilIdle(); assertEquals(0, actions)
+    }
+    @Test fun `background polling preserves failed detail gate until explicit refresh`() = runTest {
+        login(); runCurrent(); model.load(owner); advanceUntilIdle()
+        gateway.onGuardianDefinition = { ApiResult.Problem(503, "guardian.agent_unavailable", null) }
+        model.select("job"); advanceUntilIdle()
+        model.load(owner, reconcile = false); advanceUntilIdle()
+        assertTrue(model.state.value.stale); assertTrue(model.state.value.error)
+        assertEquals("guardian.agent_unavailable", model.state.value.problemCode)
+        model.act("job", "restart"); advanceUntilIdle(); assertEquals(0, actions)
+        model.load(owner); advanceUntilIdle()
+        assertFalse(model.state.value.stale); assertFalse(model.state.value.error)
+    }
+    @Test fun `background polling preserves rejected action feedback until explicit refresh`() = runTest {
+        login(); runCurrent(); model.load(owner); advanceUntilIdle()
+        gateway.onGuardianAction = { _, _ -> actions++; ApiResult.Problem(403, "guardian.agent_permission_denied", null) }
+        model.act("job", "restart"); advanceUntilIdle()
+        model.load(owner, reconcile = false); advanceUntilIdle()
+        assertTrue(model.state.value.error)
+        assertEquals("guardian.agent_permission_denied", model.state.value.problemCode)
+        assertEquals(1, actions)
+        model.load(owner); advanceUntilIdle()
+        assertFalse(model.state.value.error); assertNull(model.state.value.problemCode)
+    }
+    @Test fun `observation initializes facts before starting background polling`() = runTest {
+        login(); runCurrent()
+        gateway.onGuardianStatus = { delay(100); ApiResult.Success(GuardianStatus(true, true, "", "test")) }
+        try {
+            model.observe(owner, true); runCurrent()
+            model.load(owner)
+            advanceTimeBy(101); runCurrent()
+            assertFalse(model.state.value.loading); assertFalse(model.state.value.stale)
+        } finally { model.stopObserving(); runCurrent() }
     }
 }

@@ -81,4 +81,5 @@
     <string name="terminal_type">ターミナルの種類</string>
     <string name="terminal_type_native">ネイティブ（Server モード）</string>
     <string name="terminal_type_xterm">xterm.js</string>
+    <string name="scripts_empty">スクリプトタスクはまだありません。新規タスクでサーバー上のプログラムを実行できます。</string>
 </resources>

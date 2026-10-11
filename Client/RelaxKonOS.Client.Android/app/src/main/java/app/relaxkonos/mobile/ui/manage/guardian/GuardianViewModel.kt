@@ -43,6 +43,7 @@ class GuardianViewModel(private val session: AuthSession, private val repository
     private var work: Job? = null
     private var reading: Job? = null
     private var selection: Job? = null
+    private var selectionGeneration = 0
     private var observation: Job? = null
     internal val logObserver = GuardianLogObserver(session, viewModelScope)
     init { viewModelScope.launch { session.state.collect { value ->
@@ -54,6 +55,7 @@ class GuardianViewModel(private val session: AuthSession, private val repository
         if (visible && session.state.value === active && owner !== active) load(active)
         observation?.cancel(); observation = null
         if (!visible || editing != null || !current(active)) { stopObserving(); return }
+        if (mutable.value.status == null && !mutable.value.error && !mutable.value.unknown) load(active)
         val id = mutable.value.selectedId
         if (id != null && mutable.value.definition == null && selection?.isActive != true) select(id)
         logObserver.observe(active, id)
@@ -69,7 +71,7 @@ class GuardianViewModel(private val session: AuthSession, private val repository
         if (session.state.value !== active) return
         if (owner !== active) { work?.cancel(); reading?.cancel(); selection?.cancel(); observation?.cancel(); logObserver.stop(); owner = active; editing = null; mutable.value = GuardianUiState() }
         if (mutable.value.loading) return
-        mutable.update { it.copy(loading = true, error = false, problemCode = null) }
+        mutable.update { it.copy(loading = true, error = !reconcile && it.error, problemCode = if (reconcile) null else it.problemCode) }
         reading = viewModelScope.launch {
             try {
                 val status = repository.status(active)
@@ -78,9 +80,10 @@ class GuardianViewModel(private val session: AuthSession, private val repository
                 mutable.update { old -> old.copy(status = (status as? ApiResult.Success)?.value,
                     workloads = (workloads as? ApiResult.Success)?.value ?: old.workloads,
                     unknown = if (reconcile && status is ApiResult.Success && workloads is ApiResult.Success) false else old.unknown,
-                    stale = status !is ApiResult.Success || workloads !is ApiResult.Success || status.value.running != true,
-                    error = status !is ApiResult.Success || workloads !is ApiResult.Success,
-                    problemCode = (workloads as? ApiResult.Problem)?.code ?: (status as? ApiResult.Problem)?.code
+                    stale = (!reconcile && old.stale) || status !is ApiResult.Success || workloads !is ApiResult.Success || status.value.running != true,
+                    error = (!reconcile && old.error) || status !is ApiResult.Success || workloads !is ApiResult.Success,
+                    problemCode = old.problemCode.takeIf { !reconcile && old.error }
+                        ?: (workloads as? ApiResult.Problem)?.code ?: (status as? ApiResult.Problem)?.code
                         ?: (status as? ApiResult.Success)?.value?.problemCode?.takeIf(String::isNotBlank)) }
                 if (workloads is ApiResult.Success && mutable.value.selectedId != null && workloads.value.none { it.id == mutable.value.selectedId }) select(null)
             } catch (cancelled: CancellationException) {
@@ -90,19 +93,22 @@ class GuardianViewModel(private val session: AuthSession, private val repository
         }
     }
     fun select(id: String?) {
+        val request = ++selectionGeneration
         selection?.cancel()
-        mutable.update { it.copy(selectedId = id, definition = null, logs = emptyList(), error = false) }
+        mutable.update { it.copy(selectedId = id, definition = null, logs = emptyList(), error = id == null && it.error) }
         val active = owner ?: return
         if (id == null || !current(active)) return
         selection = viewModelScope.launch {
             try {
                 val definition = repository.definition(active, id)
                 val logs = repository.logs(active, id)
-                if (!current(active) || mutable.value.selectedId != id) return@launch
+                if (!current(active) || request != selectionGeneration || mutable.value.selectedId != id) return@launch
                 mutable.update { it.copy(definition = (definition as? ApiResult.Success)?.value, logs = (logs as? ApiResult.Success)?.value.orEmpty(),
-                    error = definition !is ApiResult.Success || logs !is ApiResult.Success, problemCode = (definition as? ApiResult.Problem)?.code) }
+                    stale = it.stale || definition !is ApiResult.Success || logs !is ApiResult.Success,
+                    error = definition !is ApiResult.Success || logs !is ApiResult.Success,
+                    problemCode = (definition as? ApiResult.Problem)?.code ?: (logs as? ApiResult.Problem)?.code) }
             } catch (cancelled: CancellationException) {
-                if (current(active) && mutable.value.selectedId == id) readFailed(active)
+                if (current(active) && request == selectionGeneration && mutable.value.selectedId == id) readFailed(active)
                 throw cancelled
             }
         }

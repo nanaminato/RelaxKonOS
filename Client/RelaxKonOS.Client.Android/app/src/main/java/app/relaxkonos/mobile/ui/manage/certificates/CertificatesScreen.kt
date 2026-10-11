@@ -13,6 +13,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.core.auth.SessionState
@@ -37,6 +40,7 @@ internal fun CertificatesContent(model: CertificatesViewModel, owner: SessionSta
     initialOperationId: String? = null, serverHttpsOnly: Boolean = false, modifier: Modifier = Modifier) {
     val state = model.state
     val epoch = model.sessionEpoch
+    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     var section by rememberSaveable(owner, epoch) { mutableStateOf(if (initialOperationId != null) "operations" else if (serverHttpsOnly) "certificates" else "overview") }
     if (state.draft == null) CertificateFeedback(state)
     LaunchedEffect(initialOperationId) { if (initialOperationId != null) section = "operations" }
@@ -47,8 +51,8 @@ internal fun CertificatesContent(model: CertificatesViewModel, owner: SessionSta
     var recoverPending by remember(owner, epoch) { mutableStateOf<PendingCertificateRequest?>(null) }
     var recoverId by remember(owner, epoch) { mutableStateOf("") }
     LaunchedEffect(owner, epoch, initialOperationId) { if (available) { if (initialOperationId != null) model.recover(initialOperationId) else model.refresh() } }
-    LaunchedEffect(owner, epoch, state.operation?.operationId, state.operation?.state, state.busy) {
-        model.observeOperation()
+    LaunchedEffect(owner, epoch, state.operation?.operationId, state.operation?.state, state.busy, state.draft, lifecycleState) {
+        if (lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) model.observeOperation()
     }
     BackHandler(section == "certificates" && state.selectedId != null && state.draft == null && !state.busy) { model.select(null) }
     WorkspaceColumn(stringResource(if (serverHttpsOnly) R.string.server_https_title else R.string.certificates_title), onBack, listOf(*(if (serverHttpsOnly) emptyArray() else arrayOf(WorkspaceDestination("overview", R.string.workspace_overview))), WorkspaceDestination("certificates", R.string.workspace_certificates), WorkspaceDestination("operations", R.string.workspace_operations)), section, { section = it }, modifier, stateKey = owner to epoch) {
@@ -80,11 +84,11 @@ internal fun CertificatesContent(model: CertificatesViewModel, owner: SessionSta
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             if (maxWidth >= 600.dp) Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
                 Column(Modifier.weight(1f)) { CertificateList(state, model) }
-                Column(Modifier.weight(2f)) { CertificateDetail(state, model, canManage, serverHttpsOnly) { message, action -> confirm = message to action } }
+                Column(Modifier.weight(2f)) { CertificateDetail(state, model, owner, canManage, serverHttpsOnly) { message, action -> confirm = message to action } }
             } else Column {
                 if (state.selectedId == null) CertificateList(state, model) else {
                     TextButton(onClick = { model.select(null) }, enabled = !state.busy) { Text(stringResource(R.string.common_back)) }
-                    CertificateDetail(state, model, canManage, serverHttpsOnly) { message, action -> confirm = message to action }
+                    CertificateDetail(state, model, owner, canManage, serverHttpsOnly) { message, action -> confirm = message to action }
                 }
             }
         }
@@ -102,7 +106,9 @@ internal fun CertificatesContent(model: CertificatesViewModel, owner: SessionSta
             PageActionRow(refresh = {
                 TextButton(onClick = model::poll, enabled = !state.busy) { ActionLabel(R.string.common_refresh) }
             })
-            if (state.operationVerified && operation.state.active) TextButton(enabled = !state.busy, onClick = { confirm = R.string.certificates_cancel_confirm to model::cancel }) { Text(stringResource(R.string.common_cancel)) }
+            if (state.operationVerified && operation.state.active) TextButton(enabled = !state.busy && !state.uncertain, onClick = {
+                confirm = R.string.certificates_cancel_confirm to { model.cancel(owner, operation.operationId) }
+            }) { Text(stringResource(R.string.common_cancel)) }
             Text(stringResource(R.string.certificates_cancel_note), style = MaterialTheme.typography.bodySmall)
             if (operation.kind == CertificateAction.DeployKestrel) operation.certificateId?.let { id ->
                 KestrelFacts(state.deployments[id], (state.list as? ApiResult.Success)?.value?.firstOrNull { it.id == id })
@@ -114,14 +120,14 @@ internal fun CertificatesContent(model: CertificatesViewModel, owner: SessionSta
             ManagementCard {
             Text(stringResource(R.string.certificates_pending, certificateActionLabel(pending.action), pending.target ?: stringResource(R.string.certificates_new_target)), style = MaterialTheme.typography.bodySmall)
             if (pending.target != null && canManage) TextButton(enabled = !state.busy, onClick = {
-                confirm = R.string.certificates_retry_confirm to { model.retry(pending) }
+                confirm = R.string.certificates_retry_confirm to { model.retry(owner, pending) }
             }) { ActionLabel(R.string.common_retry) }
             TextButton(enabled = !state.busy, onClick = { recoverPending = pending; recoverId = pending.operationId.orEmpty(); recovery = true }) { Text(stringResource(R.string.certificates_recover)) }
             }
         }
         }
     }
-    if (state.draft != null) key(owner, epoch) { CertificateEditor(state, model) }
+    if (state.draft != null && owner != null) key(owner, epoch) { CertificateEditor(state, model, owner) }
     confirm?.let { request -> AlertDialog(onDismissRequest = { confirm = null }, title = { Text(stringResource(R.string.certificates_confirm)) },
         text = { Text(stringResource(request.first)) }, confirmButton = { Button(onClick = { confirm = null; request.second() }) { Text(stringResource(R.string.certificates_confirm)) } },
         dismissButton = { TextButton(onClick = { confirm = null }) { Text(stringResource(R.string.common_cancel)) } }) }
@@ -149,7 +155,7 @@ private fun CertificateList(state: CertificatesState, model: CertificatesViewMod
     }
 }
 @Composable
-private fun CertificateDetail(state: CertificatesState, model: CertificatesViewModel, canManage: Boolean, serverHttpsOnly: Boolean, confirm: (Int, () -> Unit) -> Unit) {
+private fun CertificateDetail(state: CertificatesState, model: CertificatesViewModel, owner: SessionState.Active?, canManage: Boolean, serverHttpsOnly: Boolean, confirm: (Int, () -> Unit) -> Unit) {
     if (state.selectedId == null) { Text(stringResource(R.string.certificates_select)); return }
     val certificate = (state.detail as? ApiResult.Success)?.value
     if (certificate == null) {
@@ -187,15 +193,15 @@ private fun CertificateDetail(state: CertificatesState, model: CertificatesViewM
         TextButton(enabled = !state.busy, onClick = { model.inspectDeployment(certificate.id) }) { Text(stringResource(R.string.certificates_deployment_refresh)) }
     }
     certificate.usageProblem()?.let { Text(certificateUsageLabel(it), color = MaterialTheme.colorScheme.error) }
-    if (canManage) {
+    if (canManage && owner != null) {
         val enabled = !state.busy && state.pending.none { it.target == certificate.id } && !(state.operation?.certificateId == certificate.id && state.operation.state.active)
         if (serverHttpsOnly) OutlinedButton(enabled = enabled && certificate.usageProblem() == null && (state.deployments[certificate.id] as? ApiResult.Success)?.value?.httpsConfigured == true,
-            onClick = { confirm(R.string.certificates_deploy_confirm) { model.action(certificate, CertificateAction.DeployKestrel) } }) { Text(stringResource(R.string.certificates_deploy)) }
+            onClick = { confirm(R.string.certificates_deploy_confirm) { model.action(owner, certificate, CertificateAction.DeployKestrel) } }) { Text(stringResource(R.string.certificates_deploy)) }
         if (!serverHttpsOnly && certificate.kind == CertificateKind.Acme && certificate.status != CertificateStatus.Revoked) {
-            OutlinedButton(enabled = enabled, onClick = { confirm(R.string.certificates_renew_confirm) { model.action(certificate, CertificateAction.Renew) } }) { Text(stringResource(R.string.certificates_renew)) }
-            OutlinedButton(enabled = enabled, onClick = { confirm(R.string.certificates_revoke_confirm) { model.action(certificate, CertificateAction.Revoke) } }) { Text(stringResource(R.string.certificates_revoke)) }
+            OutlinedButton(enabled = enabled, onClick = { confirm(R.string.certificates_renew_confirm) { model.action(owner, certificate, CertificateAction.Renew) } }) { Text(stringResource(R.string.certificates_renew)) }
+            OutlinedButton(enabled = enabled, onClick = { confirm(R.string.certificates_revoke_confirm) { model.action(owner, certificate, CertificateAction.Revoke) } }) { Text(stringResource(R.string.certificates_revoke)) }
         }
-        if (!serverHttpsOnly) TextButton(enabled = enabled, onClick = { confirm(R.string.certificates_delete_confirm) { model.action(certificate, CertificateAction.Delete) } }) { ActionLabel(R.string.common_delete) }
+        if (!serverHttpsOnly) TextButton(enabled = enabled, onClick = { confirm(R.string.certificates_delete_confirm) { model.action(owner, certificate, CertificateAction.Delete) } }) { ActionLabel(R.string.common_delete) }
     }
 }
 @Composable
@@ -240,11 +246,11 @@ private fun KestrelFacts(result: ApiResult<KestrelCertificateDeployment>?, certi
     Text(stringResource(R.string.certificates_deployment_evidence), style = MaterialTheme.typography.bodySmall)
 }
 @Composable
-private fun CertificateEditor(state: CertificatesState, model: CertificatesViewModel) {
+private fun CertificateEditor(state: CertificatesState, model: CertificatesViewModel, owner: SessionState.Active) {
     val draft = state.draft ?: return
     val locked = state.busy || state.draftLocked
     var discard by remember { mutableStateOf(false) }
-    var submit by remember { mutableStateOf(false) }
+    var submit by remember(draft) { mutableStateOf(false) }
     fun close() { if (!state.busy) { if (draft != state.initialDraft) discard = true else model.closeDraft() } }
     AlertDialog(onDismissRequest = ::close, modifier = Modifier.imePadding(), title = { Text(stringResource(if (draft.selfSigned) R.string.certificates_self_signed else R.string.certificates_issue)) },
         text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
@@ -284,7 +290,7 @@ private fun CertificateEditor(state: CertificatesState, model: CertificatesViewM
         } }, dismissButton = { TextButton(onClick = ::close, enabled = !state.busy) { Text(stringResource(R.string.common_close)) } })
     if (discard || submit) AlertDialog(onDismissRequest = { discard = false; submit = false }, title = { Text(stringResource(R.string.certificates_confirm)) },
         text = { Text(stringResource(if (submit) R.string.certificates_submit_confirm else R.string.certificates_discard_confirm)) },
-        confirmButton = { Button(onClick = { if (submit) model.submitDraft() else model.closeDraft(); submit = false; discard = false }) { Text(stringResource(R.string.certificates_confirm)) } },
+        confirmButton = { Button(enabled = !state.busy, onClick = { if (submit) model.submitDraft(owner, draft) else model.closeDraft(); submit = false; discard = false }) { Text(stringResource(R.string.certificates_confirm)) } },
         dismissButton = { TextButton(onClick = { discard = false; submit = false }) { Text(stringResource(R.string.common_cancel)) } })
 }
 @Composable

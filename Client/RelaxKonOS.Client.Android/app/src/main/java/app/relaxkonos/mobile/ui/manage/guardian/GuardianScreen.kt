@@ -117,7 +117,7 @@ internal fun GuardianContent(owner: SessionState.Active, onBack: () -> Unit, mod
         if (state.loading) ActivityIndicator(stringResource(R.string.guardian_loading))
         state.status?.let { status -> ExecutionStatusChip(stringResource(if (status.running) R.string.guardian_running else R.string.guardian_unavailable), if (status.running) "running" else null, task = false) }
         if (state.stale) Text(stringResource(R.string.guardian_stale), color = MaterialTheme.colorScheme.error)
-        OperationMessageDialog(if (state.loading) null else if (state.unknown) stringResource(R.string.guardian_unknown) else if (state.error) stringResource(guardianProblemLabel(state.problemCode)) else null, tone = if (state.unknown) StatusTone.Warning else StatusTone.Danger)
+        OperationMessageDialog(if (state.unknown) stringResource(R.string.guardian_unknown) else if (state.error) stringResource(guardianProblemLabel(state.problemCode)) else null, tone = if (state.unknown) StatusTone.Warning else StatusTone.Danger)
         PageActionRow(refresh = {
             OutlinedButton(onClick = { model.load(owner) }, enabled = !state.loading) { ActionLabel(R.string.common_refresh) }
         }, actions = {

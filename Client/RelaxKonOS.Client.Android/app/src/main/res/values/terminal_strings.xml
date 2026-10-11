@@ -81,4 +81,5 @@
     <string name="terminal_type">Terminal type</string>
     <string name="terminal_type_native">Native (Server mode)</string>
     <string name="terminal_type_xterm">xterm.js</string>
+    <string name="scripts_empty">No script tasks yet. Create a task to run a program on the server.</string>
 </resources>

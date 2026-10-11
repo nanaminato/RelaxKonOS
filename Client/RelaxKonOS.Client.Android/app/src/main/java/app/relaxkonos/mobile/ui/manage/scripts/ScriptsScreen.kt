@@ -36,6 +36,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -83,14 +86,23 @@ fun ScriptsScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modi
     val model: ScriptsViewModel = viewModel(factory = viewModelFactory {
         initializer { ScriptsViewModel(container.session, container.scriptTasks, container.scriptRequests) }
     })
+    ScriptsContent(model, owner, onBack, modifier, initialTaskId)
+}
+
+@Composable
+internal fun ScriptsContent(model: ScriptsViewModel, owner: SessionState.Active, onBack: () -> Unit,
+    modifier: Modifier = Modifier, initialTaskId: String? = null) {
     val state by model.state.collectAsStateWithLifecycle()
     val editing = state.draft != null
     LaunchedEffect(owner, initialTaskId) {
         model.load(owner)
         if (initialTaskId != null) model.select(initialTaskId)
     }
-    LaunchedEffect(owner, editing, state.selected?.id, state.selected?.state, state.error) {
-        if (!editing) model.observeSelected()
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(owner, editing, state.selectionEpoch, state.selected?.id, state.selected?.state, state.error, lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            if (!editing) model.observeSelected()
+        }
     }
     if (editing) {
         androidx.compose.runtime.key(owner) {
@@ -111,6 +123,9 @@ fun ScriptsScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modi
             Button(onClick = model::openEditor,
                 enabled = !state.loading && state.pending == null && state.journalAvailable) { Text(stringResource(R.string.scripts_new)) }
         })
+        if (state.listVerified && !state.loading && !state.error && state.pending == null && state.tasks.isEmpty() && state.selected == null) {
+            Text(stringResource(R.string.scripts_empty), style = MaterialTheme.typography.bodyMedium)
+        }
         state.tasks.forEach { task ->
             OutlinedCard(onClick = { model.select(task.id) }, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
@@ -126,7 +141,7 @@ fun ScriptsScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modi
             ExecutionStatusChip(stringResource(scriptStateLabel(task.state)), task.state)
             Text("${task.runAs} · ${task.exitCode?.toString() ?: "—"}")
             task.problemCode?.let { Text(stringResource(scriptProblemLabel(it))) }
-            if (task.state in setOf("queued", "running")) OutlinedButton(onClick = { model.cancel(task.id) }, enabled = !state.loading && state.pending == null && state.journalAvailable) {
+            if (task.state in setOf("queued", "running")) OutlinedButton(onClick = { model.cancel(task.id) }, enabled = !state.loading && !state.error && state.pending == null && state.journalAvailable) {
                 Text(stringResource(R.string.scripts_cancel))
             }
             if (task.outputTruncated) Text(stringResource(R.string.scripts_truncated))

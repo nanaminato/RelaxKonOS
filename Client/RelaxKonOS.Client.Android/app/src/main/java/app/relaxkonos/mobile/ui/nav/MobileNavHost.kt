@@ -1,7 +1,6 @@
 package app.relaxkonos.mobile.ui.nav
 
 import app.relaxkonos.mobile.ui.common.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import app.relaxkonos.mobile.ui.theme.Spacing
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,9 +61,9 @@ import app.relaxkonos.mobile.ui.terminal.ServerTerminalScreen
 /**
  * Maps the navigator's current route to a screen.
  *
- * The Expanded layout does not push sub-pages: `files/detail` becomes a second pane beside the list and
- * the manage and more destinations select a pane. Everything else is a pushed page with a back
- * affordance, which is the Compact and Medium shape (`Shell.Design.md` §3.2, §4.1).
+ * Expanded renders file details and management categories as panes. More keeps a settings route
+ * across layouts: a right pane in Expanded and a page with a back affordance in Compact/Medium
+ * (`Shell.Design.md` §3.2, §4.1).
  */
 @Composable
 fun MobileNavHost(
@@ -256,13 +254,10 @@ private fun MoreDestination(
     clearTaskTarget: () -> Unit,
     onOpenManagedProxy: () -> Unit,
 ) {
-    var pane by remember { mutableStateOf<String?>(navigator.route.takeIf { it.startsWith("more/") }) }
-    LaunchedEffect(navigator.route, layoutState) {
-        if(layoutState == LayoutState.Expanded && navigator.route.startsWith("more/")) pane = navigator.route
-    }
+    val route = navigator.route
     val openFeature: (String) -> Unit = { target ->
         if (target.startsWith("more/")) {
-            if(layoutState == LayoutState.Expanded) pane = target else navigator.replaceTop(target)
+            navigator.replaceTop(target)
         } else {
             clearTaskTarget()
             val destination = target.substringBefore('/')
@@ -275,26 +270,25 @@ private fun MoreDestination(
     if (layoutState == LayoutState.Expanded) {
         Row(Modifier.fillMaxSize()) {
             MoreScreen(
-                onOpenRoute = { pane = it },
+                onOpenRoute = openFeature,
                 onSignOut = onSignOut,
                 onSwitchLogin = { onSwitchLogin(null) },
                 modifier = Modifier.weight(1f),
             )
             Box(Modifier.weight(1.2f)) {
-                if (pane == null) {
+                if (route == Routes.MORE) {
                     EmptyHint(stringResource(R.string.more_select_section), Modifier.padding(16.dp))
                 } else {
-                    SettingsWorkspace(route = pane!!, onOpenRoute = openFeature, onBack = null, onSwitchLogin = onSwitchLogin, onOpenManagedProxy = onOpenManagedProxy)
+                    SettingsWorkspace(route = route, onOpenRoute = openFeature, onBack = null, onSwitchLogin = onSwitchLogin, onOpenManagedProxy = onOpenManagedProxy)
                 }
             }
         }
         return
     }
 
-    val route = navigator.route
     if (route == Routes.MORE) {
         MoreScreen(
-            onOpenRoute = { navigator.push(it) },
+            onOpenRoute = openFeature,
             onSignOut = onSignOut,
             onSwitchLogin = { onSwitchLogin(null) },
             modifier = Modifier.fillMaxSize(),

@@ -81,4 +81,5 @@
     <string name="terminal_type">终端类型</string>
     <string name="terminal_type_native">原生终端（Server 模式）</string>
     <string name="terminal_type_xterm">xterm.js</string>
+    <string name="scripts_empty">暂无脚本任务。新建任务可在服务器运行程序。</string>
 </resources>

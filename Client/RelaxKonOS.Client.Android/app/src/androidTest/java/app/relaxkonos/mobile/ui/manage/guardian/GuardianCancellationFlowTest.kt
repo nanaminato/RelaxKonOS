@@ -19,6 +19,7 @@ class GuardianCancellationFlowTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
     private val store = ViewModelStore()
     private lateinit var model: GuardianViewModel
+    private lateinit var owner: SessionState.Active
     private var cancelRead = false
     private var failDefinition = false
     private val definition = GuardianDefinition("job", "Job", "/bin/job", emptyList(), "/tmp", false, 15, 3, null, "review", "uid:1000")
@@ -32,6 +33,7 @@ class GuardianCancellationFlowTest {
                 LoginSession("review", "review", ServerDescriptor("linux", emptySet(), true),
                     AuthTokens("test-access", "test-refresh", null, null), workspaceId = "11111111-1111-1111-1111-111111111111"))
             override suspend fun guardianStatus(serverUrl: String, accessToken: String): ApiResult<GuardianStatus> {
+                delay(100)
                 if (cancelRead) throw CancellationException("private guardian detail")
                 return ApiResult.Success(GuardianStatus(true, true, "", "test"))
             }
@@ -41,7 +43,7 @@ class GuardianCancellationFlowTest {
         }
         val session = AuthSession(gateway)
         runBlocking { session.login(ServerConnectionIdentityRules.direct("https://guardian-review.invalid"), "review", "test".toCharArray()) {} }
-        val owner = session.state.value as SessionState.Active
+        owner = session.state.value as SessionState.Active
         rule.runOnUiThread { model = GuardianViewModel(session, GuardianRepository(gateway, session)); store.put("guardian", model) }
         rule.setContent { MaterialTheme { GuardianContent(owner, {}, model) } }
         rule.waitUntil(5_000) { !model.state.value.loading && !model.state.value.stale }
@@ -57,7 +59,11 @@ class GuardianCancellationFlowTest {
         rule.onNodeWithText(text(R.string.common_dismiss)).performClick()
         rule.onNodeWithText(text(R.string.guardian_stale)).assertIsDisplayed()
         rule.onNodeWithText(text(R.string.guardian_create)).assertIsNotEnabled()
-        rule.runOnIdle { cancelRead = false }
+        rule.runOnIdle { cancelRead = false; model.load(owner, reconcile = false) }
+        rule.waitUntil(5_000) { !model.state.value.loading }
+        rule.onNodeWithText(text(R.string.guardian_create)).assertIsNotEnabled()
+        rule.onNodeWithText(text(R.string.guardian_stale)).assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.common_dismiss)).assertDoesNotExist()
         rule.onNodeWithText(text(R.string.common_refresh)).performClick()
         rule.waitUntil(5_000) { !model.state.value.loading && !model.state.value.stale }
         rule.onNodeWithText(text(R.string.guardian_create)).assertIsEnabled()
