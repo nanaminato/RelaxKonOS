@@ -136,7 +136,7 @@ internal static class FusedWorkspaceChecks
                     Check(ReferenceEquals(hit, action) || hit?.GetVisualAncestors().Contains(action) == true,
                         $"{name}/{style}/{width}: header button {action.Name} is covered by {hit?.GetType().Name}.");
                 }
-                if (language == "en-US" && !dark && width is 960 or 320)
+                if (language == "en-US" && width is 960 or 320)
                 {
                     var directory = Path.Combine(System.AppContext.BaseDirectory, "preview-qa", "fused-workspaces"); Directory.CreateDirectory(directory);
                     using var image = new RenderTargetBitmap(new PixelSize(width + 20, 660)); image.Render(host);
@@ -145,6 +145,11 @@ internal static class FusedWorkspaceChecks
             }
             git.IsPickerMode = true; Pump(); Check(!gitWindow.View.HasTitleBarContent, "Git picker retained application chrome.");
             git.IsPickerMode = false; Pump(); Check(gitWindow.View.HasTitleBarContent, "Git repository did not restore fused chrome.");
+            git.Status = new RelaxKonOS.Protocol.Git.GitStatusDto("review/main", [], [], [], [], "review"); Pump();
+            Check(gitWindow.View.HeaderTrailing!.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == "review/main"),
+                "Detached Git branch badge did not follow the repository status binding.");
+            Check(gitWindow.View.HeaderTrailing!.GetVisualDescendants().OfType<Button>().Single().Command == git.RefreshCommand,
+                "Detached Git refresh button lost its command binding.");
             var identity = gitView.FindControl<WorkspaceWindowHeader>("Header")!;
             identity.Title = "Updated identity"; Pump();
             Check(((TextBlock)gitWindow.View.HeaderCenter!).Text == "Updated identity", "Detached title no longer follows identity changes.");

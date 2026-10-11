@@ -8,7 +8,7 @@
 
 **实施依据只有 §2–§7 的现行规范。**§8 保存历史方案与取舍，§9 保存各次执行记录；其中已经被替代的布局、测试断言和环境命令不作为新接入的指令。日志不能覆盖正文中的现行契约，发现实现变化应先更新正文再追加日志。
 
-设置、代码编辑器、Server 资源管理器与 SSH 文件浏览器已经接入。接下来的工作是迁移剩余窗口，不是重新设计五个角色槽。
+设置及本文列出的 17 个应用窗口已经接入；本轮完成原先剩余的 14 个窗口。五槽契约不变，接入与验证证据见 §9 最新记录。
 
 ## 1. 状态总览
 
@@ -16,9 +16,9 @@
 |---|---|---|---|
 | 前置 | 宿主角色槽 + 各 recipe 的融合条与交通灯（方案 A，见 §8） | — | **已完成** |
 | 前置 | `HeaderTabs` + `HeaderToolbar`：标签 / 导航共存与多行布局 | — | **已完成** |
-| 第一批 | 与设置同构的 `Border.app-header` 工作区 | 9 | 未开始 |
-| 第二批 | 菜单 / 地址栏型视图（其中 4 个带标签条） | 7 | 代码编辑器、资源管理器、SSH 文件浏览器已接入；其余未开始 |
-| 顺带 | `FileServicesWorkspace`（本就没有头部） | 1 | 未开始 |
+| 第一批 | 与设置同构的 `Border.app-header` 工作区 | 9 | **已接入；离线回归通过，真实会话证据见 §9** |
+| 第二批 | 菜单 / 地址栏型视图（其中 4 个带标签条） | 7 | **全部已接入；验收范围见 §9** |
+| 顺带 | `FileServicesWorkspace` | 1 | **已接入；平台信息保留在状态栏** |
 | 不做 | 模态对话框、登录窗口、远端桌面 Shell、Server / SSH 选择器模式 | — | 已定（见 3.4） |
 
 **目标（一句话）**：把内置应用窗口内容区里那条与窗口标题栏重复的身份条搬进宿主标题栏，使每个窗口只有一层头部。
@@ -89,19 +89,19 @@
 
 ### 3.1 第一批：`Border.app-header` 工作区（9 个，与设置同构）
 
-共同现状：窗口内容区第一行是一条 `Border.app-header`，内含 46px 应用图标 + `TextBlock.app-title` + `TextBlock.app-description`，部分窗口右侧还挂一个刷新按钮或状态胶囊。多数窗口使用 `Grid RowDefinitions="Auto,*,Auto"`；移除身份块后必须同步调整行编号与星号内容行，不能只删控件或只改 `Grid.Row`。
+接入前共同形态：窗口内容区第一行是一条 `Border.app-header`，内含 46px 应用图标 + `TextBlock.app-title` + `TextBlock.app-description`，部分窗口右侧还挂一个刷新按钮或状态胶囊。多数窗口使用 `Grid RowDefinitions="Auto,*,Auto"`；移除身份块后必须同步调整行编号与星号内容行，不能只删控件或只改 `Grid.Row`。
 
 | # | 窗口 | 视图文件（`Client/RelaxKonOS.Client/`） | 头部右侧内容 | 状态 |
 |---|---|---|---|---|
-| 1 | 服务器中心 | `Apps/ServerCenter/Views/ServerCenterWorkspace.axaml` | 无（仅 `Title`/`Subtitle` 绑定） | 未开始 |
-| 2 | Git | `Apps/Git/Views/GitClientWorkspace.axaml` | 分支胶囊 + 刷新（`IsPickerMode` 时隐藏） | 未开始 |
-| 3 | Docker | `Apps/Docker/Views/DockerManagerWorkspace.axaml` | 状态胶囊按钮（可打开安装向导） | 未开始 |
-| 4 | 代理 | `Apps/Proxy/Views/ProxyManagerWorkspace.axaml` | 刷新按钮 | 未开始 |
-| 5 | 隧道 | `Apps/Tunnels/Views/TunnelManagerView.axaml` | 刷新按钮 | 未开始 |
-| 6 | 端口转发 | `Apps/PortForwarding/Views/PortForwardingMainView.axaml` | 刷新按钮 | 未开始 |
-| 7 | 网站 | `Apps/WebServers/Views/WebServerManagerWorkspace.axaml` | 无 | 未开始 |
-| 8 | 证书 | `Apps/Certificates/Views/CertificateManagerWorkspace.axaml` | 无 | 未开始 |
-| 9 | 应用部署 | `Apps/ApplicationDeployments/Views/ApplicationDeploymentsWorkspace.axaml` | 无 | 未开始 |
+| 1 | 服务器中心 | `Apps/ServerCenter/Views/ServerCenterWorkspace.axaml` | 无（仅 `Title`/`Subtitle` 绑定） | **已接入** |
+| 2 | Git | `Apps/Git/Views/GitClientWorkspace.axaml` | 分支胶囊 + 刷新（`IsPickerMode` 时隐藏） | **已接入** |
+| 3 | Docker | `Apps/Docker/Views/DockerManagerWorkspace.axaml` | 状态胶囊按钮（可打开安装向导） | **已接入** |
+| 4 | 代理 | `Apps/Proxy/Views/ProxyManagerWorkspace.axaml` | 刷新按钮 | **已接入** |
+| 5 | 隧道 | `Apps/Tunnels/Views/TunnelManagerView.axaml` | 刷新按钮 | **已接入** |
+| 6 | 端口转发 | `Apps/PortForwarding/Views/PortForwardingMainView.axaml` | 刷新按钮 | **已接入** |
+| 7 | 网站 | `Apps/WebServers/Views/WebServerManagerWorkspace.axaml` | 无 | **已接入** |
+| 8 | 证书 | `Apps/Certificates/Views/CertificateManagerWorkspace.axaml` | 无 | **已接入** |
+| 9 | 应用部署 | `Apps/ApplicationDeployments/Views/ApplicationDeploymentsWorkspace.axaml` | 无 | **已接入** |
 
 排序理由：先做 #1（头部主要为两个文本，先验证信息重新归属与接入模式）与 #2（同时验证「标题栏内放交互控件」，且分支胶囊是这套里最有表现力的元素），跑通后 #3–#9 可复用模式，但仍逐个验收状态胶囊、刷新、选择器模式和紧凑布局。
 
@@ -113,10 +113,10 @@
 |---|---|---|---|---|---|
 | 10 | 资源管理器 | `Apps/Explorer/Views/ExplorerMainView.axaml` | 导航 / 地址 / 筛选交 `HeaderToolbar`；文件操作栏留在正文 | **已有**窗口内标签，独立历史 / 搜索 / 视图状态 | **已接入** |
 | 11 | 代码编辑器 | `Apps/CodeEditor/CodeEditorView.axaml` | 菜单栏 + 文档标签 | **已有** `ListBox.title-tabs` | **已接入** |
-| 12 | 记事本 | `Apps/Notepad/NotepadView.axaml` | 菜单栏 + 文档名 | 无 | 未开始 |
-| 13 | 任务管理器 | `Apps/TaskManager/Views/TaskManagerMainView.axaml` | 工具条 | 无 | 未开始 |
-| 14 | 图片查看器 | `Apps/ImageViewer/Views/ImageViewerView.axaml` | 查看工具条 | 无 | 未开始 |
-| 15 | 浏览器 | `Apps/Browser/Views/BrowserMainView.axaml` | `DockPanel.Dock="Top"` 的标签条 + 导航工具条与地址栏 | **已有** `ListBox.browser-tabs` | 未开始 |
+| 12 | 记事本 | `Apps/Notepad/NotepadView.axaml` | 菜单栏 + 文档名 | 无 | **已接入** |
+| 13 | 任务管理器 | `Apps/TaskManager/Views/TaskManagerMainView.axaml` | 工具条 | 无 | **已接入** |
+| 14 | 图片查看器 | `Apps/ImageViewer/Views/ImageViewerView.axaml` | 查看工具条 | 无 | **已接入** |
+| 15 | 浏览器 | `Apps/Browser/Views/BrowserMainView.axaml` | `DockPanel.Dock="Top"` 的标签条 + 导航工具条与地址栏 | **已有** `ListBox.browser-tabs` | **已接入** |
 | 16 | SSH 文件浏览器 | `Apps/ServerCenter/Views/SshFileBrowserView.axaml` | SFTP 导航 / 地址 / 筛选 | **已有**独立目录快照、历史 / 搜索 / 视图状态 | **已接入** |
 
 必读注意：
@@ -129,7 +129,7 @@
 
 ### 3.3 顺带：`FileServicesWorkspace`
 
-`Apps/FileServices/Views/FileServicesWorkspace.axaml` 根本没有 `app-header`，只用 `Margin="20"` 加一个 `PlatformText` 当标题。它不是「该不该融合」，而是这批里唯一没有头部的，观感最脱节，借这次统一。
+`FileServicesWorkspace` 已使用共享身份控件：leading 为文件服务图标，center 为标题，trailing 为刷新；平台信息在状态栏及身份提示中保留。原正文刷新 / 平台标题块已经移除，原有紧凑导航布局保留。
 
 ### 3.4 明确不做
 
@@ -157,7 +157,7 @@
 11. 在 `Tests/Client/RelaxKonOS.WindowPreviews.Tests` 增加有意义的行为与布局断言；渲染截图并人工检查。未接入真实后端的项目标记“待真实会话验证”，不写成完全验收。
 12. 更新 §1 / §3 状态和 §9 日志；在 `docs/desktop/UiReview.md` 有对应条目时同步结论。记录实际命令、范围、结果和尚未验证项。
 
-## 5. 剩余窗口的实施前决策与顺序
+## 5. 接入决策与后续扩展顺序
 
 五槽契约、标题行令牌、弹性列居中与视图级标签已定，不重新开放。以下信息须在相应窗口动工前写入接入清单：
 
@@ -166,7 +166,7 @@
 - **模式与关闭语义**：确认应用主窗口、选择器、模态任务的接入边界，以及草稿、忙碌和最后标签关闭策略。
 - **共享控件**：先接服务器中心和 Git，验证身份、分支与操作三类差异，再抽取小型共享身份控件；窗口按钮和槽布局不放进应用共享控件。不先做能包含所有窗口功能的通用头部框架。
 
-建议顺序：核对 §2 的组合与现有测试 → 服务器中心 → Git → 根据两者提取共享身份控件 → 第一批其余窗口 → 第二批其余窗口 → `FileServicesWorkspace`。已接入的设置、代码编辑器、Server / SSH 文件浏览器作为回归样例。复杂窗口的菜单折叠以实际槽宽度和操作可达性验收，不再泛泛保留“以后再定”的降级问题。
+本轮已按服务器中心 / Git 的形态验证共享身份方案，再完成其余工作区和菜单 / 导航型视图。共享 `WorkspaceWindowHeader` 仅提供图标、弹性标题和信息提示；应用操作仍由调用视图提交到 trailing。后续新增窗口先核对 §2 的组合与已有样例，再增加对应回归，不重新设计槽契约。复杂窗口的菜单折叠以实际槽宽度和操作可达性验收，不再泛泛保留“以后再定”的降级问题。
 
 ## 6. 与既有文档的关系
 
@@ -203,8 +203,11 @@ dotnet build Tests/Client/RelaxKonOS.WindowPreviews.Tests -c Release -m:1 -o .ar
 - `FusedWindowHeaderChecks.cs`：三种 recipe、角色组合、窗口按钮几何和拖拽。
 - `FusedApplicationChecks.cs`：实际代码编辑器与 Server Explorer、标签状态和选择器隔离。
 - `SshFileBrowserLayoutChecks.cs`：SSH 标签、筛选、忙碌限制与紧凑布局。
+- `FusedWorkspaceChecks.cs`：本轮 14 个视图 × 三种 recipe × 明暗主题 × 三语 × 960/640/320；身份绑定、实际按钮命中、紧凑导航和 Git 模式切换。
 
 新增断言应验证已声明角色与实例身份、未声明槽为空、对应部件实际可见和布局合理。重挂后的数据与输入必须另外验证。单行与多行高度按 §4 第 7 项分别处理；直接执行命令不能证明按钮能被鼠标命中。
+
+真实应用验收入口为 `--fused-all-apps-review`（Server 登录）和 `--fused-ssh-review`（SSH 桌面）。连接目标和凭据仅通过测试进程环境的 `RK_REVIEW_SERVER` / `RK_REVIEW_USER` / `RK_REVIEW_PASSWORD` 提供；不把实际值写入命令示例、文档或仓库。两种入口只读取远端状态、目录并检查窗口，Git 只打开已有注册项目，不创建测试仓库。SSH 使用生产宿主密钥判定；测试覆盖指纹选项只有用户明确核对指纹后才可使用，并且只在进程内保留。
 
 构建或检查失败时先解决失败，再更新状态。真实后端测试记录会话类型、交互范围与结果；凭据只通过既有安全输入方式提供，不写入文档、仓库或截图。
 
@@ -353,6 +356,20 @@ RemoteWindow.HeaderLeading / HeaderCenter / HeaderTrailing   （均为 Control?�
 截图 `preview-qa/fused-header/fused-header-tabs-{recipe}.png`。
 
 ## 9. 进度日志（只追加，倒序在上）
+
+### 2026-10-11（剩余十四个窗口接入与验收）
+
+- 第一批服务器中心、Git、Docker、代理、隧道、端口转发、网站、证书和应用部署全部接入；共享 `Controls/WorkspaceWindowHeader` 将 20px 身份图标交 leading、弹性标题交 center，原副标题保留为提示或正文信息。Git 分支 / 刷新、Docker 安装状态操作与其余刷新命令仍有各自绑定；Git 项目选择模式不显示应用融合头部，进入工作区时重新挂接。
+- 记事本保留 File / Settings 命令与保存锁定，紧凑宽度提供菜单入口；任务管理器的页面切换 / 刷新进入头部，连接与状态文字留在状态栏；图片查看器保留缩放、适应与原始尺寸，信息留在预览区，窄窗口不再由提示文字撑出横向滚动。
+- 浏览器交 `HeaderTabs` + `HeaderToolbar`，采用共享标签形状和动态缩短，提供全部标签入口；导航样式随控件移动，窄窗口将前进 / 主页 / 收藏操作收进菜单。原生 WebView 生命周期与菜单遮挡处理保留。
+- 文件服务身份 / 刷新进入宿主，平台信息保留。应用部署的替换策略及空闲状态说明继续显示在正文。八个侧栏型工作区增加紧凑页面菜单，复用原导航动作；保持完整内容宽度，避免 320px 下侧栏挤压正文。
+- `FusedWorkspaceChecks` 覆盖全部新接入视图的三 recipe、明暗、三语和 960/640/320 宽度；额外验证实际按钮命中、Git 选择器往返、重挂后的标题更新、紧凑导航及正文行几何。命中检查先提交 headless 渲染帧，避免用过期场景进行判断。
+- 已通过完整 WindowPreviews 套件及 Settings 套件；recipe coverage 和产品颜色扫描均实际执行，未 SKIP。对应最终记录为 `.artifacts/fused-window-final.log` 和 `.artifacts/fused-window-matrix-final.log`；本轮已有的客户端警告不属于头部改动。
+- 真实 Server 会话：正常证书验证成功，十四个融合窗口完成三 recipe、960/320 的实际客户端检查；代理、隧道、文件服务与任务管理器刷新针对已认证服务执行。Git 测试账号未提供已注册项目，真实会话验证项目选择器不融合；工作区的分支 / 刷新、模式往返与绑定由离线检查覆盖，没有创建或注册测试仓库。结果见 `.artifacts/live-fused-final.out.log`。
+- 真实 SSH 会话：正常宿主密钥校验成功，服务器中心与 SSH 文件浏览器完成三 recipe、960/320 检查；SFTP 主目录 / 根目录读取、独立筛选、标签切换与关闭相邻标签通过。未执行远端安装、删除、上传或其他写操作；记录为 `.artifacts/live-ssh-fused-review.out.log`。
+- 截图目录（相对预览测试输出目录）：`preview-qa/fused-workspaces/`、`preview-qa/live-fused-workspaces/`、`preview-qa/live-ssh-fused/`。实际截图已检查，凭据不写入这些产物。
+- 本轮完成融合接入与对应读取 / UI 回归，不将其扩大为各管理应用全部安装、修改、断线恢复或草稿未知结果的验收；D-009 尚未完成的后台写入场景仍保持原结论。
+
 
 ### 2026-10-11（接入规范整理；后续批次实施前优化）
 
