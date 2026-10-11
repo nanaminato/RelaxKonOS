@@ -14,6 +14,30 @@ namespace RelaxKonOS.Client.Apps.Browser.Views;
 /// <summary>Bridges browser navigation to the view-model and selects the supported native host per platform.</summary>
 public partial class BrowserMainView : UserControl
 {
+    public static readonly StyledProperty<double> TabContentWidthProperty = AvaloniaProperty.Register<BrowserMainView, double>(nameof(TabContentWidth), 210);
+    public double TabContentWidth { get => GetValue(TabContentWidthProperty); private set => SetValue(TabContentWidthProperty, value); }
+    public static readonly StyledProperty<bool> IsCompactNavigationProperty = AvaloniaProperty.Register<BrowserMainView, bool>(nameof(IsCompactNavigation));
+    public bool IsCompactNavigation { get => GetValue(IsCompactNavigationProperty); private set => SetValue(IsCompactNavigationProperty, value); }
+
+    public void AttachWindowHeader(RelaxKonOS.WindowManager.ManagedWindow window)
+    {
+        if (ReferenceEquals(window.View.HeaderTabs, HeaderTabs)) return;
+        HeaderTabs.DataContext = NavigationHeader.DataContext = DataContext;
+        ContentDock.Children.Remove(HeaderTabs);
+        ContentDock.Children.Remove(NavigationHeader);
+        window.View.HeaderLeading = window.View.HeaderCenter = window.View.HeaderTrailing = null;
+        window.View.HeaderTabs = HeaderTabs;
+        window.View.HeaderToolbar = NavigationHeader;
+    }
+
+    private void NavigationHeader_SizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        IsCompactNavigation = e.NewSize.Width < 520;
+        ForwardButton.IsVisible = HomeButton.IsVisible = BookmarkButton.IsVisible = SidebarButton.IsVisible = !IsCompactNavigation;
+    }
+
+    private void TabPicker_SelectionChanged(object? sender, SelectionChangedEventArgs e) => TabPickerButton.Flyout?.Hide();
+
     private const double DefaultSidebarWidth = 320;
     private const double SidebarSplitterWidth = 4;
 
@@ -33,6 +57,12 @@ public partial class BrowserMainView : UserControl
     public BrowserMainView()
     {
         InitializeComponent();
+        TabStrip.SizeChanged += (_, e) =>
+        {
+            TabContentWidth = Math.Clamp(e.NewSize.Width - 18, 46, 210);
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => { if (TabStrip.SelectedItem is { } tab) TabStrip.ScrollIntoView(tab); }, Avalonia.Threading.DispatcherPriority.Loaded);
+        };
+        TabStrip.SelectionChanged += (_, _) => { if (TabStrip.SelectedItem is { } tab) TabStrip.ScrollIntoView(tab); };
         BrowserDiagnostics.Record(_useExternalBrowser
             ? "BrowserMainView initialized; Linux will use the system browser process."
             : "BrowserMainView initialized; creating embedded NativeWebView.");
@@ -42,7 +72,6 @@ public partial class BrowserMainView : UserControl
         Unloaded += OnUnloaded;
         SizeChanged += (_, _) =>
         {
-            TabStrip.MaxWidth = Math.Max(120, Bounds.Width - 56);
             if (ViewModel is { } model) UpdateSidebarLayout(model.IsSidebarVisible);
         };
     }

@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+<UserControl xmlns:common="clr-namespace:RelaxKonOS.Client.Controls" xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:apps="clr-namespace:RelaxKonOS.Client.Apps.ApplicationDeployments"
@@ -47,24 +47,11 @@
 
     <Grid RowDefinitions="Auto,*,Auto">
         <!-- Header. The subtitle states the replacement policy so a stop-and-replace is never a surprise. -->
-        <Border Grid.Row="0" Classes="app-header">
-            <Grid ColumnDefinitions="Auto,*,Auto">
-                <Border Width="44" Height="44" Background="{DynamicResource AccentBrush}" CornerRadius="14">
-                    <TextBlock Text="&#x1F4E6;" FontSize="24" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                </Border>
-                <StackPanel Grid.Column="1" Spacing="2" Margin="14,0,0,0" VerticalAlignment="Center">
-                    <TextBlock Text="{loc:Loc application_deployments.title}"
-                               FontSize="21" FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextPrimaryBrush}" />
-                    <TextBlock Text="{loc:Loc application_deployments.subtitle}"
-                               FontSize="12" TextWrapping="Wrap"
-                               Foreground="{DynamicResource TextTertiaryBrush}" />
-                </StackPanel>
-                <TextBlock Grid.Column="2" Text="{Binding StatusText}"
-                           VerticalAlignment="Center" MaxWidth="320" TextWrapping="Wrap"
-                           Foreground="{DynamicResource TextTertiaryBrush}" />
-            </Grid>
-        </Border>
+        <Grid x:Name="HeaderHost" Grid.Row="0" RowDefinitions="Auto,Auto,Auto">
+            <common:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc application_deployments.title}" Subtitle="{loc:Loc application_deployments.subtitle}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/application-deployments.png" />
+            <TextBlock Grid.Row="1" Text="{loc:Loc application_deployments.subtitle}" Margin="12,8" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+            <TextBlock Grid.Row="2" Text="{Binding StatusText}" IsVisible="{Binding !HasActiveOperation}" Margin="12,0,12,6" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding StatusText}" FontSize="12" Foreground="{DynamicResource TextTertiaryBrush}" />
+        </Grid>
 
 <Border Grid.Row="2" IsVisible="{Binding HasActiveOperation}" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0">
  <Grid RowDefinitions="Auto,38">

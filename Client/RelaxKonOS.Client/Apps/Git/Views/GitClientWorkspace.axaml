@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+<UserControl xmlns:common="clr-namespace:RelaxKonOS.Client.Controls" xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
@@ -6,58 +6,18 @@
              x:Class="RelaxKonOS.Client.Apps.Git.Views.GitClientWorkspace"
              x:DataType="git:GitClientViewModel"
              Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
-    <!-- 顶部标题栏次级按钮：保留显式深色 Background，
-         hover/pressed 时仅微调亮度，避免被默认 Button:pointerover 样式覆盖成浅色背景导致浅色文字不可辨识 -->
-    <UserControl.Styles>
-        <!-- 基础状态 -->
-        <Style Selector="Button.titlebarAction">
-            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderDefaultBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-        </Style>
-
-        <!-- 悬停状态 (使用 /template/ 穿透默认模板防线) -->
-        <Style Selector="Button.titlebarAction:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderDefaultBrush}" />
-            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-        </Style>
-
-        <!-- 禁用状态 -->
-        <Style Selector="Button.titlebarAction:disabled">
-            <Setter Property="Opacity" Value="0.5" />
-        </Style>
-
-        <Style Selector="Button.titlebarAction:disabled /template/ ContentPresenter#PART_ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderDefaultBrush}" />
-            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-        </Style>
-    </UserControl.Styles>
     <Grid RowDefinitions="Auto,*,Auto">
         <!-- Top title bar -->
-        <Border Grid.Row="0" Classes="app-header">
-            <Grid ColumnDefinitions="Auto,*,Auto">
-                <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                    <TextBlock Text="🌿" FontSize="22" VerticalAlignment="Center" />
-                    <StackPanel Spacing="1">
-                        <TextBlock Text="{loc:Loc git.title}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
-                        <TextBlock Text="{loc:Loc git.subtitle}" FontSize="11" Foreground="{DynamicResource TextPrimaryBrush}" />
-                    </StackPanel>
-                </StackPanel>
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
-                            IsVisible="{Binding !IsPickerMode}">
-                    <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="4" Padding="8,3">
-                        <TextBlock Text="{Binding Status.Branch}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12" />
-                    </Border>
-                    <Button Content="{loc:Loc git.refresh}" Command="{Binding RefreshCommand}" Classes="titlebarAction" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimaryBrush}" />
-                </StackPanel>
-            </Grid>
-        </Border>
+        <Grid x:Name="HeaderHost" Grid.Row="0" ColumnDefinitions="*,Auto" IsVisible="{Binding !IsPickerMode}">
+            <common:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc git.title}" Subtitle="{loc:Loc git.subtitle}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/git.png" />
+            <StackPanel x:Name="HeaderActions" Grid.Column="1" Orientation="Horizontal" Spacing="6" IsVisible="{Binding !IsPickerMode}" VerticalAlignment="Center">
+                <Border x:Name="BranchBadge" Background="{DynamicResource SurfaceSunkenBrush}" CornerRadius="{DynamicResource ControlCornerRadius}" Padding="6,3"><TextBlock Text="{Binding Status.Branch}" MaxWidth="120" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Status.Branch}" /></Border>
+                <Button Classes="header-action" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc git.refresh}" AutomationProperties.Name="{loc:Loc git.refresh}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="16" Height="16" Data="M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14" /></Button>
+            </StackPanel>
+        </Grid>
 
         <!-- Main content -->
-        <Grid Grid.Row="1" ColumnDefinitions="190,*" IsVisible="{Binding !IsPickerMode}">
+        <Grid x:Name="WorkspaceBody" Grid.Row="1" ColumnDefinitions="190,*" IsVisible="{Binding !IsPickerMode}">
             <!-- Left navigation -->
             <Border Grid.Column="0" Background="{DynamicResource SurfaceSunkenBrush}">
                 <StackPanel Spacing="0" Margin="0,8">

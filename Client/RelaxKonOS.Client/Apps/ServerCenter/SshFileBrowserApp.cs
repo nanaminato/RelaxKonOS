@@ -32,5 +32,6 @@ public sealed class SshFileBrowserApp : RemoteApplicationBase
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.ssh-files.display_name", "SSH files"), view,
             bounds: new Rect(150, 100, 860, 580), iconGlyph: Manifest.IconGlyph);
         view.AttachWindowHeader(window);
+        view.CloseAction = () => Avalonia.Threading.Dispatcher.UIThread.Post(() => context.WindowManager.Close(window));
     }
 }

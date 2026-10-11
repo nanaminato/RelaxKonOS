@@ -10,21 +10,33 @@ namespace RelaxKonOS.Client.Apps.Git.Views;
 /// 通过监听 VM 的 ActivePage / IsPickerMode 属性变化来同步工作区 ContentHost，保证与 VM 状态一致。</summary>
 internal partial class GitClientWorkspace : UserControl
 {
+    public void AttachWindowHeader(RelaxKonOS.WindowManager.ManagedWindow window)
+    {
+        _headerWindow = window;
+        if (_viewModel.IsPickerMode) return;
+        Header.DataContext = DataContext;
+        Header.Attach(window, HeaderActions);
+    }
+
     private readonly GitClientViewModel _viewModel;
     private Button? _selectedButton;
     private bool _attached;
+    private RelaxKonOS.WindowManager.ManagedWindow? _headerWindow;
 
     private GitClientWorkspace(GitClientViewModel viewModel)
     {
         _viewModel = viewModel;
         InitializeComponent();
+        RelaxKonOS.Client.Controls.CompactWorkspaceNavigation.Install(this, WorkspaceBody);
         DataContext = viewModel;
         // 构造时 ContentHost 可能尚未注入（NameScope 未构建完整），等到 Loaded 再同步初始页面。
         // 同时 IsPickerMode=true 时导航栏默认隐藏，ContentHost 也不可见。
         Loaded += OnLoaded;
+        DetachedFromVisualTree += (_, _) => { _viewModel.PropertyChanged -= OnViewModelPropertyChanged; _attached = false; };
+        SizeChanged += (_, e) => BranchBadge.IsVisible = e.NewSize.Width >= 600;
     }
 
-    public static Control Create(GitClientViewModel viewModel) => new GitClientWorkspace(viewModel);
+    public static GitClientWorkspace Create(GitClientViewModel viewModel) => new GitClientWorkspace(viewModel);
 
     private void OnLoaded(object? sender, RoutedEventArgs e)
     {
@@ -38,6 +50,11 @@ internal partial class GitClientWorkspace : UserControl
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(GitClientViewModel.IsPickerMode) && _headerWindow is not null)
+        {
+            if (_viewModel.IsPickerMode) Header.Detach();
+            else AttachWindowHeader(_headerWindow);
+        }
         // IsPickerMode=false 切换为工作区：显示默认概览页 + 选中“概览”按钮
         if (e.PropertyName == nameof(GitClientViewModel.IsPickerMode) && !_viewModel.IsPickerMode)
         {

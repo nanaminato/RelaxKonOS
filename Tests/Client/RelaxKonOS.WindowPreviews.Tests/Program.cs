@@ -29,7 +29,7 @@ using WindowManagerService = RelaxKonOS.WindowManager.WindowManager;
 using WindowState = RelaxKonOS.Core.Windows.WindowState;
 using WindowRect = RelaxKonOS.Core.Primitives.Rect;
 
-if (args.Contains("--fused-live-review"))
+if (args.Contains("--fused-live-review") || args.Contains("--fused-all-apps-review") || args.Contains("--fused-ssh-review"))
 {
     LiveFusedApplicationReview.Run(args);
     return;
@@ -51,6 +51,7 @@ if (args.Contains("--fused-apps-only"))
 {
     FusedWindowHeaderChecks.Run(settings);
     FusedApplicationChecks.Run(settings);
+    FusedWorkspaceChecks.Run(settings);
     SshFileBrowserLayoutChecks.Run(settings);
     EditorDraftStateChecks.Run();
     return;
@@ -115,6 +116,7 @@ SettingsInteractionChecks.Run(settings, localization);
 SettingsWindowChecks.Run(settings, localization);
 FusedWindowHeaderChecks.Run(settings);
 FusedApplicationChecks.Run(settings);
+FusedWorkspaceChecks.Run(settings);
 SshFileBrowserLayoutChecks.Run(settings);
 HostTitleBarChecks.Run(settings, localization);
 RemoteClockChecks.Run(settings, localization, services);

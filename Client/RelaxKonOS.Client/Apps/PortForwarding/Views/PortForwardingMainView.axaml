@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+<UserControl xmlns:common="clr-namespace:RelaxKonOS.Client.Controls" xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.PortForwarding.ViewModels"
@@ -6,18 +6,12 @@
              x:DataType="vm:PortForwardingViewModel"
              Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
     <Grid RowDefinitions="Auto,*">
-        <Border Classes="app-header">
-            <Grid ColumnDefinitions="Auto,*,Auto">
-                <Image Width="46" Height="46" Source="avares://RelaxKonOS.Client/Assets/AppIcons/port-forwarding.png" Stretch="Uniform" />
-                <StackPanel Grid.Column="1" Spacing="2" Margin="14,0,0,0" VerticalAlignment="Center">
-                    <TextBlock Text="{loc:Loc port_forwarding.title}" Classes="app-title" />
-                    <TextBlock Text="{loc:Loc port_forwarding.description}" FontSize="13" TextWrapping="Wrap" Classes="app-description" />
-                </StackPanel>
-                <Button Grid.Column="2" Content="{loc:Loc common.refresh}" Command="{Binding RefreshCommand}" IsEnabled="{Binding !IsBusy}" Padding="12,6" CornerRadius="16" FontSize="12" VerticalAlignment="Center" />
-            </Grid>
-        </Border>
+        <Grid x:Name="HeaderHost" ColumnDefinitions="*,Auto">
+            <common:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc port_forwarding.title}" Subtitle="{loc:Loc port_forwarding.description}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/port-forwarding.png" />
+            <Button x:Name="HeaderActions" Grid.Column="1" Classes="header-action" Command="{Binding RefreshCommand}" IsEnabled="{Binding !IsBusy}" ToolTip.Tip="{loc:Loc common.refresh}" AutomationProperties.Name="{loc:Loc common.refresh}" VerticalAlignment="Center"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="16" Height="16" Data="M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14" /></Button>
+        </Grid>
 
-        <Grid Grid.Row="1" ColumnDefinitions="190,*">
+        <Grid x:Name="WorkspaceBody" Grid.Row="1" ColumnDefinitions="190,*">
             <Border Grid.Column="0" Classes="app-sidebar">
                 <StackPanel Spacing="4" Margin="14,22">
                     <TextBlock Text="{loc:Loc port_forwarding.workspace}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="11" FontWeight="SemiBold" Margin="10,0,0,6" />

@@ -9,8 +9,14 @@ namespace RelaxKonOS.Client.Apps.ApplicationDeployments.Views;
 /// </summary>
 internal partial class ApplicationDeploymentsWorkspace : UserControl
 {
+    public void AttachWindowHeader(RelaxKonOS.WindowManager.ManagedWindow window)
+    {
+        Header.DataContext = DataContext;
+        Header.Attach(window);
+    }
+
     public ApplicationDeploymentsWorkspace() => InitializeComponent();
 
-    public static Control Create(ApplicationDeploymentsViewModel viewModel) =>
+    public static ApplicationDeploymentsWorkspace Create(ApplicationDeploymentsViewModel viewModel) =>
         new ApplicationDeploymentsWorkspace { DataContext = viewModel };
 }

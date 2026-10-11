@@ -55,6 +55,7 @@ public sealed class ApplicationDeploymentsApp : RemoteApplicationBase
         var view = ApplicationDeploymentsWorkspace.Create(viewModel);
         window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.application-deployments.display_name"),
             view, new Rect(60, 50, 1220, 780), Manifest.IconGlyph);
+        view.AttachWindowHeader(window);
 
         viewModel.ConfirmAsync = async message =>
         {

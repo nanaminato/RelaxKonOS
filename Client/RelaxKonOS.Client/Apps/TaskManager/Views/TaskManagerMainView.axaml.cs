@@ -9,6 +9,17 @@ namespace RelaxKonOS.Client.Apps.TaskManager.Views;
 /// 主要逻辑在 <see cref="TaskManagerViewModel"/>；此处仅做轻量 UI 事件桥接。</summary>
 public partial class TaskManagerMainView : UserControl
 {
+    public void AttachWindowHeader(RelaxKonOS.WindowManager.ManagedWindow window)
+    {
+        if (ReferenceEquals(window.View.HeaderCenter, HeaderCenter)) return;
+        HeaderLeading.DataContext = HeaderCenter.DataContext = HeaderTrailing.DataContext = DataContext;
+        HeaderHost.Children.Clear();
+        window.View.HeaderLeading = HeaderLeading;
+        window.View.HeaderCenter = HeaderCenter;
+        window.View.HeaderTrailing = HeaderTrailing;
+        window.View.HeaderTabs = window.View.HeaderToolbar = null;
+    }
+
     public TaskManagerMainView()
     {
         InitializeComponent();

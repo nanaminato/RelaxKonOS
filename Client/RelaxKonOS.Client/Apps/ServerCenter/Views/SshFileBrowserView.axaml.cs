@@ -21,6 +21,9 @@ internal partial class SshFileBrowserView : UserControl
 {
     public static readonly StyledProperty<string> SearchTextProperty =
         AvaloniaProperty.Register<SshFileBrowserView, string>(nameof(SearchText), string.Empty);
+    public static readonly StyledProperty<double> TabContentWidthProperty =
+        AvaloniaProperty.Register<SshFileBrowserView, double>(nameof(TabContentWidth), 176);
+    public double TabContentWidth { get => GetValue(TabContentWidthProperty); private set => SetValue(TabContentWidthProperty, value); }
     public static readonly StyledProperty<double> EntriesTableWidthProperty =
         AvaloniaProperty.Register<SshFileBrowserView, double>(nameof(EntriesTableWidth));
     public static readonly StyledProperty<string> NameSortGlyphProperty =
@@ -61,6 +64,13 @@ internal partial class SshFileBrowserView : UserControl
     private double _pressedSortHeaderWidth;
     private readonly Flyout _searchFlyout;
     private bool _compactSearch;
+    private readonly ObservableCollection<SshFileBrowserTab> _tabs = [];
+    private SshFileBrowserTab _activeTab = new();
+    private bool _syncingTabs;
+    private int _treeSelectionRevision;
+    public Action? CloseAction { get; set; }
+    internal IReadOnlyList<SshFileBrowserTab> Tabs => _tabs;
+    internal SshFileBrowserTab ActiveTab => _activeTab;
 
     public string SearchText { get => GetValue(SearchTextProperty); set => SetValue(SearchTextProperty, value); }
 
@@ -85,6 +95,15 @@ internal partial class SshFileBrowserView : UserControl
         _selectPackage = selectPackage;
         _cancelPicker = cancelPicker;
         InitializeComponent();
+        HeaderTabs.IsVisible = !IsPackagePicker;
+        if (!IsPackagePicker) _tabs.Add(_activeTab);
+        FolderTabs.ItemsSource = FolderPicker.ItemsSource = _tabs;
+        FolderTabs.SelectedItem = _activeTab;
+        FolderTabs.SizeChanged += (_, e) =>
+        {
+            TabContentWidth = Math.Clamp(e.NewSize.Width - 18, 46, 176);
+            Dispatcher.UIThread.Post(() => FolderTabs.ScrollIntoView(_activeTab), DispatcherPriority.Loaded);
+        };
         _searchFlyout = (Flyout)CompactSearchButton.Flyout!;
         _searchFlyout.Opened += (_, _) => { CompactSearchBox.Focus(); CompactSearchBox.SelectAll(); };
         FileActions.IsVisible = !IsPackagePicker;
@@ -129,11 +148,95 @@ internal partial class SshFileBrowserView : UserControl
     {
         if (IsPackagePicker) return;
         BrowserRoot.Children.Remove(NavigationToolbar);
-        BrowserRoot.Children.Remove(HeaderIdentity);
-        HeaderIdentity.IsVisible = true;
-        window.View.HeaderLeading = HeaderIdentity;
+        BrowserRoot.Children.Remove(HeaderTabs);
+        window.View.HeaderTabs = HeaderTabs;
         window.View.HeaderToolbar = NavigationToolbar;
         NavigationToolbar.AddHandler(KeyDownEvent, View_KeyDown, RoutingStrategies.Bubble, handledEventsToo: true);
+        HeaderTabs.AddHandler(KeyDownEvent, View_KeyDown, RoutingStrategies.Bubble, handledEventsToo: true);
+    }
+
+    private void CaptureActiveTab()
+    {
+        _activeTab.Path = _path;
+        _activeTab.Entries = _entries;
+        _activeTab.History.Clear(); _activeTab.History.AddRange(_history);
+        _activeTab.HistoryIndex = _historyIndex;
+        _activeTab.SearchText = SearchText;
+        _activeTab.SortIndex = _sortIndex;
+        _activeTab.Descending = _descending;
+        _activeTab.ShowHidden = _showHidden;
+        _activeTab.ViewModeIndex = ViewModeBox.SelectedIndex;
+    }
+
+    internal void NewTab()
+    {
+        if (_busy || IsPackagePicker) return;
+        CaptureActiveTab();
+        var tab = new SshFileBrowserTab { Path = _path, Entries = _entries,
+            SortIndex = _sortIndex, Descending = _descending, ShowHidden = _showHidden,
+            ViewModeIndex = ViewModeBox.SelectedIndex, HistoryIndex = 0 };
+        tab.History.Add(_path);
+        _tabs.Add(tab);
+        SwitchTab(tab);
+    }
+
+    internal void SwitchTab(SshFileBrowserTab tab)
+    {
+        if (_busy || IsPackagePicker || ReferenceEquals(tab, _activeTab) || !_tabs.Contains(tab)) return;
+        CaptureActiveTab();
+        _activeTab = tab;
+        var hiddenChanged = _showHidden != tab.ShowHidden;
+        _syncingTabs = true;
+        var ready = _viewReady;
+        _viewReady = false;
+        try
+        {
+            _path = tab.Path; _entries = tab.Entries;
+            _history.Clear(); _history.AddRange(tab.History); _historyIndex = tab.HistoryIndex;
+            SearchText = tab.SearchText;
+            _sortIndex = tab.SortIndex; _descending = tab.Descending; _showHidden = tab.ShowHidden;
+            SortBox.SelectedIndex = _sortIndex; DescendingBox.IsChecked = _descending; HiddenBox.IsChecked = _showHidden;
+            ViewModeBox.SelectedIndex = tab.ViewModeIndex;
+            SetAddressEditing(false); AddressBox.Text = _path;
+            _searchFlyout.Hide();
+            BuildBreadcrumbs(); UpdateSortGlyphs();
+            FolderTabs.SelectedItem = FolderPicker.SelectedItem = tab;
+        }
+        finally { _viewReady = ready; _syncingTabs = false; }
+        ApplyView(); StatusText.Text = "";
+        FolderTabs.ScrollIntoView(tab);
+        _ = hiddenChanged ? RebuildNavigationTreeAsync() : SyncNavigationTreeAsync();
+    }
+
+    internal void CloseTab(SshFileBrowserTab tab)
+    {
+        if (_busy || IsPackagePicker || !_tabs.Contains(tab)) return;
+        if (_tabs.Count == 1) { CloseAction?.Invoke(); return; }
+        if (ReferenceEquals(tab, _activeTab))
+        {
+            var index = _tabs.IndexOf(tab);
+            SwitchTab(_tabs[index == _tabs.Count - 1 ? index - 1 : index + 1]);
+        }
+        _tabs.Remove(tab);
+    }
+
+    private void NewTab_Click(object? sender, RoutedEventArgs e) => NewTab();
+    private void CloseTab_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: SshFileBrowserTab tab }) CloseTab(tab);
+    }
+    private void FolderTabs_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_syncingTabs || !_viewReady) return;
+        if (FolderTabs.SelectedItem is SshFileBrowserTab tab) SwitchTab(tab);
+        FolderTabs.SelectedItem = _activeTab;
+    }
+    private void FolderPicker_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_syncingTabs || !_viewReady) return;
+        if (FolderPicker.SelectedItem is SshFileBrowserTab tab) SwitchTab(tab);
+        FolderPicker.SelectedItem = _activeTab;
+        FolderPickerButton.Flyout?.Hide();
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -393,6 +496,18 @@ internal partial class SshFileBrowserView : UserControl
 
     private async void View_KeyDown(object? sender, KeyEventArgs e)
     {
+        if (!e.Handled && !IsPackagePicker && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            if (e.Key == Key.T) { e.Handled = true; NewTab(); return; }
+            if (e.Key == Key.W) { e.Handled = true; CloseTab(_activeTab); return; }
+            if (e.Key == Key.Tab)
+            {
+                e.Handled = true;
+                var direction = e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? -1 : 1;
+                SwitchTab(_tabs[(_tabs.IndexOf(_activeTab) + direction + _tabs.Count) % _tabs.Count]);
+                return;
+            }
+        }
         if (e.Handled && e.Key == Key.Escape) return;
         if (e.Source is TextBox && e.Key is not (Key.F5 or Key.L)) return;
         if (e.Key == Key.F5) { e.Handled = true; await RefreshAsync(); }
@@ -474,6 +589,7 @@ internal partial class SshFileBrowserView : UserControl
             AddressBox.Text = _path;
             BuildBreadcrumbs();
             _entries = result.entries;
+            _activeTab.Path = _path;
             if (addHistory && (_historyIndex < 0 || _history[_historyIndex] != _path))
             {
                 _history.RemoveRange(_historyIndex + 1, _history.Count - _historyIndex - 1);
@@ -490,7 +606,7 @@ internal partial class SshFileBrowserView : UserControl
             AddressBox.Text = _path;
             StatusText.Text = $"{T("ssh_files.open_failed", "Unable to open folder")}: {ex.Message}";
         }
-        finally { _busy = false; UpdateControls(); }
+        finally { _busy = false; CaptureActiveTab(); UpdateControls(); }
     }
 
     private async Task RefreshAsync()
@@ -567,6 +683,7 @@ internal partial class SshFileBrowserView : UserControl
     private async Task SyncNavigationTreeAsync()
     {
         if (_homeNode is null || _rootNode is null) return;
+        var revision = ++_treeSelectionRevision;
         _syncingTreeSelection = true;
         try
         {
@@ -575,6 +692,7 @@ internal partial class SshFileBrowserView : UserControl
             foreach (var segment in remainingPath.Split('/', StringSplitOptions.RemoveEmptyEntries))
             {
                 await LoadTreeChildrenAsync(current);
+                if (revision != _treeSelectionRevision) return;
                 current.IsExpanded = true;
                 var child = current.Children.FirstOrDefault(item => string.Equals(item.Label, segment,
                     StringComparison.Ordinal) && !item.IsPlaceholder);
@@ -583,7 +701,7 @@ internal partial class SshFileBrowserView : UserControl
             }
             NavigationTree.SelectedItem = current;
         }
-        finally { _syncingTreeSelection = false; }
+        finally { if (revision == _treeSelectionRevision) _syncingTreeSelection = false; }
     }
 
     private async Task LoadTreeChildrenAsync(TreeNodeModel node)
@@ -692,6 +810,7 @@ internal partial class SshFileBrowserView : UserControl
         NavigationTree.IsEnabled = !_busy;
         NavigationToolbar.IsEnabled = CommandToolbar.IsEnabled = !_busy;
         OverflowProperties.IsEnabled = !_busy && selected.Length == 1;
+        FolderTabs.IsEnabled = FolderPickerButton.IsEnabled = NewTabButton.IsEnabled = !_busy;
     }
 
     private bool CanConfirmPackage() => IsPackagePicker && !_busy && Selection() is [var entry] &&

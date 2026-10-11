@@ -6,6 +6,12 @@ namespace RelaxKonOS.Client.Apps.Docker.Views;
 /// <summary>Docker Manager shell. Layout lives in AXAML; this class only switches pages.</summary>
 internal partial class DockerManagerWorkspace : UserControl
 {
+    public void AttachWindowHeader(RelaxKonOS.WindowManager.ManagedWindow window)
+    {
+        Header.DataContext = DataContext;
+        Header.Attach(window, HeaderActions);
+    }
+
     private readonly DockerManagerViewModel _viewModel;
     private readonly DockerProxyViewModel _proxyViewModel;
     private readonly DockerImageMirrorsViewModel _imageMirrorsViewModel;
@@ -27,11 +33,13 @@ internal partial class DockerManagerWorkspace : UserControl
         _showCreateNetwork = showCreateNetwork;
         _showCreateVolume = showCreateVolume;
         InitializeComponent();
+        RelaxKonOS.Client.Controls.CompactWorkspaceNavigation.Install(this, WorkspaceBody);
+        SizeChanged += (_, e) => { HeaderStatusLabel.IsVisible = e.NewSize.Width >= 600; HeaderActions.Width = HeaderStatusLabel.IsVisible ? double.NaN : 32; HeaderActions.Padding = HeaderStatusLabel.IsVisible ? new Avalonia.Thickness(8, 0) : new Avalonia.Thickness(0); };
         DataContext = viewModel;
         ShowPage("overview", OverviewButton);
     }
 
-    public static Control Create(DockerManagerViewModel viewModel, DockerProxyViewModel proxyViewModel, DockerImageMirrorsViewModel imageMirrorsViewModel, Func<Task> showCreateContainer, Func<Task> showDeployStack, Func<Task> showPullImage, Func<Task> showCreateNetwork, Func<Task> showCreateVolume) =>
+    public static DockerManagerWorkspace Create(DockerManagerViewModel viewModel, DockerProxyViewModel proxyViewModel, DockerImageMirrorsViewModel imageMirrorsViewModel, Func<Task> showCreateContainer, Func<Task> showDeployStack, Func<Task> showPullImage, Func<Task> showCreateNetwork, Func<Task> showCreateVolume) =>
         new DockerManagerWorkspace(viewModel, proxyViewModel, imageMirrorsViewModel, showCreateContainer, showDeployStack, showPullImage, showCreateNetwork, showCreateVolume);
 
     private void NavigationButton_Click(object? sender, RoutedEventArgs e)

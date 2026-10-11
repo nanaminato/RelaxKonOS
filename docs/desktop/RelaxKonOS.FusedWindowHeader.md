@@ -1,12 +1,14 @@
-# 桌面端融合窗体头部（TitleBarContent）接入计划
+# 桌面端融合窗体头部接入规范与进度
 
-建立日期：2026-10-10。分支：`windows_enhance`。
+建立日期：2026-10-10。现行规范核对日期：2026-10-11。开工前以实际 Git 分支与工作区状态为准。
 
 本文是这项工作的**唯一进度与恢复入口**。中断后请先读第 1 节的「状态总览」和第 9 节的「进度日志」，再按第 7 节「恢复工作指引」继续，不要凭记忆重排批次。
 
-**方案已定：A（宿主多段式角色槽）**，第 8.3 节的选择、第 8.4 节的落地清单与第 8.5 节的第 4 槽扩展均已执行完毕（见 §9 的 2026-10-10 日志）。
-宿主契约现在是**五个角色槽**：应用交 `HeaderLeading` / `HeaderCenter` / `HeaderTrailing` / `HeaderTabs` / `HeaderToolbar`，由 recipe 与声明角色决定标题、标签、导航行。2026-10-11 已完成代码编辑器与资源管理器接入（见最新进度日志）。
-因此第一批 9 个窗口接入时**不要再写任何列、留白或融合条高度**——那些都属于宿主。旧的单一 `TitleBarContent` 契约已删除，没有并存形态。
+**当前方案：宿主多段式角色槽，已经实现。**应用提交 `HeaderLeading` / `HeaderCenter` / `HeaderTrailing` / `HeaderTabs` / `HeaderToolbar`，宿主按 recipe 与角色组合安排标题、标签和导航行。旧 `TitleBarContent` 已删除，不保留兼容形态。
+
+**实施依据只有 §2–§7 的现行规范。**§8 保存历史方案与取舍，§9 保存各次执行记录；其中已经被替代的布局、测试断言和环境命令不作为新接入的指令。日志不能覆盖正文中的现行契约，发现实现变化应先更新正文再追加日志。
+
+设置、代码编辑器、Server 资源管理器与 SSH 文件浏览器已经接入。接下来的工作是迁移剩余窗口，不是重新设计五个角色槽。
 
 ## 1. 状态总览
 
@@ -15,46 +17,79 @@
 | 前置 | 宿主角色槽 + 各 recipe 的融合条与交通灯（方案 A，见 §8） | — | **已完成** |
 | 前置 | `HeaderTabs` + `HeaderToolbar`：标签 / 导航共存与多行布局 | — | **已完成** |
 | 第一批 | 与设置同构的 `Border.app-header` 工作区 | 9 | 未开始 |
-| 第二批 | 菜单 / 地址栏型视图（其中 3 个带标签条） | 6 | 代码编辑器、资源管理器已接入；其余未开始 |
+| 第二批 | 菜单 / 地址栏型视图（其中 4 个带标签条） | 7 | 代码编辑器、资源管理器、SSH 文件浏览器已接入；其余未开始 |
 | 顺带 | `FileServicesWorkspace`（本就没有头部） | 1 | 未开始 |
-| 不做 | 模态对话框、登录窗口、远端桌面 Shell、资源管理器选择器模式 | — | 已定（见 3.4） |
+| 不做 | 模态对话框、登录窗口、远端桌面 Shell、Server / SSH 选择器模式 | — | 已定（见 3.4） |
 
 **目标（一句话）**：把内置应用窗口内容区里那条与窗口标题栏重复的身份条搬进宿主标题栏，使每个窗口只有一层头部。
 
-**量化收益**：`Border.app-header`（`Framework/RelaxKonOS.UI/Themes/ApplicationStyles.axaml:14`）实高 78px（`Padding=24,16` + 46px 图标），叠在 32px 应用窗口标题栏（`Shared/RelaxKonOS.Protocol/Workspace/SystemStyles/BuiltInSystemStyles.cs` 的 `WindowCaptionHeight`）上共 110px；融合后由单层 `WindowFusedTitleBarHeight`（`max(48, WindowCaptionHeight + 14)`：Windows-like 48 / macOS-like 48 / Ubuntu-like 60）替代，Windows-like 下每个窗口省约 62px。默认窗口 820×560（`Client/RelaxKonOS.Client/Apps/Settings/SettingsApp.cs:80`）下约占窗口高度 11%。
+**单层身份头部的量化收益**：`Border.app-header`（`Framework/RelaxKonOS.UI/Themes/ApplicationStyles.axaml:14`）实高 78px（`Padding=24,16` + 46px 图标），叠在 32px 应用窗口标题栏（`Shared/RelaxKonOS.Protocol/Workspace/SystemStyles/BuiltInSystemStyles.cs` 的 `WindowCaptionHeight`）上共 110px；融合后由单层 `WindowFusedTitleBarHeight`（`max(48, WindowCaptionHeight + 14)`：Windows-like 48 / macOS-like 48 / Ubuntu-like 60）替代，Windows-like 下每个窗口省约 62px。此估算只适用于移除重复身份条的单行窗口；菜单、标签、导航共存时应按实际多行头部测量，不能套用 62px。默认窗口 820×560（`Client/RelaxKonOS.Client/Apps/Settings/SettingsApp.cs:80`）下约占窗口高度 11%。
 
-## 2. 机制（开工前必读，改模板前再读一遍）
+## 2. 现行契约（开工前必读）
 
-应用窗口的 `ManagedWindow.View` 是 `RemoteWindow`。它与应用之间只有一个契约：**五个角色槽**。
+### 2.1 角色与所有权
 
-- `RemoteWindow.HeaderLeading` / `HeaderCenter` / `HeaderTrailing` / `HeaderTabs` / `HeaderToolbar`（`Framework/RelaxKonOS.WindowManager/RemoteWindow.cs`）。
-  任一非空 → 置上 `:custom-title-content` 伪类，宿主自己的窗口图标与标题让位；单独声明 `HeaderTabs` 也足以触发融合
-  （多标签窗口里，标签就是标题）。
-- 标题栏网格是 `Auto,Auto,*,Auto,Auto`（`Framework/RelaxKonOS.WindowManager/Themes/RemoteWindowTheme.axaml`）：
-  `[按钮组或图标][leading][center * 与 tabs][trailing][按钮组或图标]`。模板显式定义角色部件，recipe 与角色组合决定行分配
-  （图标 / 标题文本 / 五个角色槽 / 按钮组），因此不存在「落到默认恰好正确」的隐式分支。
-- **应用永远不写列、不写留白、不写融合条高度**：槽的列分配与 `Margin`、融合条高度
-  （`WindowFusedTitleBarHeight`）与底色全部由 recipe 给出。新增一条 recipe = 宿主加一组规则，应用零改动。
-- **标签与中心内容共存**：没有中心控件时，标签可使用弹性列；声明中心控件时，标签放到下一行。
-  代码编辑器保留菜单 / 文档入口 / 查找操作与文档标签，不把所有控件塞进同一行。
-- **导航工具栏交 `HeaderToolbar`**：Windows-like / Ubuntu-like 把标签放标题行，地址导航工具栏放下面；
-  macOS-like 把完整导航工具栏放在交通灯右侧，标签另起一行。该角色占据 macOS 标题行时，
-  leading / center / trailing 让位；应用把导航、地址、搜索全部放在这个角色里。行列、留白与高度由宿主拥有。
-- 标签条高度读 `WindowTabHeight`，选中形状读 `ControlCornerRadius`；超出宽度可以从全部标签菜单或快捷键访问。
-- 窗口按钮（`PART_WindowControls`）始终由宿主拥有：`caption-buttons-right` / `headerbar-right` 排在最右列，
-  `traffic-lights-left` 排在最左列，并画成红（关）/ 黄（小）/ 绿（放大）三枚圆点，字形仅在指针或键盘进入按钮组时显现。
-- 接入入口沿用设置已跑通的模式：视图提供 `AttachWindowHeader(ManagedWindow)`，由 `*App.Activate` 在
-  `context.ShowWindow(...)` 之后调用，实现里只有几行赋值。参考实现：
-  `Client/RelaxKonOS.Client/Apps/Settings/Views/SettingsView.axaml.cs`（槽内容拆成 `SettingsHeaderView`＝leading「返回 + 标题」
-  与 `SettingsSearchBarView`＝center「搜索框」）、`Client/RelaxKonOS.Client/Apps/Settings/SettingsApp.cs:82`。
+`ManagedWindow.View` 是 `RemoteWindow`，五个角色槽的声明位于 `Framework/RelaxKonOS.WindowManager/RemoteWindow.cs`，模板位于 `Framework/RelaxKonOS.WindowManager/Themes/RemoteWindowTheme.axaml`。
 
-约束（`AGENTS.md`）：接口变化不保留兼容别名或双形态，同一次改动里改完仓库内所有调用者、测试与文档。
+| 角色 | 用途 | 应用提交内容 |
+|---|---|---|
+| `HeaderLeading` | 应用身份与前置操作 | 16–20px 图标、标题、返回、菜单 |
+| `HeaderCenter` | 可伸缩的中心内容 | 搜索框、文档入口；中心基准为可用弹性列 |
+| `HeaderTrailing` | 尾部操作 | 刷新、状态或其他少量操作 |
+| `HeaderTabs` | 窗口内视图或文档标签 | 标签列表、新建与全部标签入口 |
+| `HeaderToolbar` | 导航工具栏 | 导航、地址、筛选及该行必要操作 |
+
+任一槽非空会触发 `:custom-title-content`，宿主图标与可见标题让位，但 `RemoteWindow.Title` 仍用于任务栏、窗口总览与窗口身份。只声明标签也可触发融合。标签是窗口内视图状态，不包含拖出成窗口、合并窗口等窗口级标签能力。
+
+**宿主拥有**：槽的行列位置、槽外留白、与窗口按钮的避让、标题行高度、头部底色、拖拽规则以及 recipe 差异。窗口按钮永远由宿主渲染。
+
+**应用拥有**：槽内控件的行列、间距、内容优先级、折叠菜单、标签缩短、搜索弹出入口及自身命令语义。应用可以布局槽内部，但不能指定宿主部件的列、通过猜测按钮宽度补空白、或写死整个融合头部高度。自适应依据槽内容实际得到的宽度，不依据操作系统名分支。
+
+### 2.2 当前布局组合
+
+表中的“标题行”是 `PART_TitleRow` 所在的第 0 行；“标签独立行”为第 1 行；“导航独立行”为第 2 行。未使用的行自动收缩。Windows-like 对应 `caption-buttons-right`，macOS-like 对应 `traffic-lights-left`，Ubuntu-like 对应 `headerbar-right`。
+
+| 声明组合 | Windows-like / Ubuntu-like | macOS-like |
+|---|---|---|
+| leading / center / trailing，无标签、无导航 | 角色与窗口按钮共用标题行 | 角色在交通灯右侧的标题行 |
+| tabs，无 center、无 toolbar | 标签在标题行弹性列；leading / trailing 可共存 | 同左，交通灯在左 |
+| center + tabs，无 toolbar | 中心内容在标题行，标签独立一行 | 同左，交通灯在左 |
+| toolbar，无 tabs | 标题行保留宿主按钮及已声明的其他角色，导航独立一行 | 导航进入交通灯右侧标题行；leading / center / trailing 被隐藏 |
+| toolbar + tabs，无 center | 标签在标题行，导航独立一行 | 导航在标题行，标签独立一行 |
+| center + tabs + toolbar | 中心内容在标题行，标签与导航各占一行 | 导航在标题行，标签独立一行；center 与 leading / trailing 被隐藏 |
+
+实现判据：`toolbarInCaption = traffic-lights-left && HeaderToolbar != null`；`stackedTabs = HeaderTabs != null && (HeaderCenter != null || toolbarInCaption)`。`HeaderCenter` 和 `HeaderTabs` 可以同时声明，不能再按早期“互斥”方案接入。
+
+**操作可达性约束**：应用使用 `HeaderToolbar` 时，不得把必须在所有 recipe 下可达的操作仅放在 leading / center / trailing。应优先将完整导航操作放入 toolbar，再交 tabs；若某窗口确实需要同时保留独立身份或中心操作，接入前先明确 macOS 下的操作入口与信息归属。不能将同一个 Control 同时挂到两个槽，也不能以复制命令控件制造多个主入口。单独 toolbar 会隐藏宿主标题，身份表达需要在应用接入清单中明确。
+
+### 2.3 尺寸、样式与紧凑布局
+
+- `WindowFusedTitleBarHeight` 只定义融合**标题行**高度，目前 Windows/macOS/Ubuntu 为 48 / 48 / 60；`PART_TitleBar` 整个头部可能包含标签与导航行，不能与这个令牌直接比较。
+- 标签条读 `WindowTabHeight`，控件形状读 `ControlCornerRadius`。宿主按钮的尺寸和位置仍按 recipe 的窗口控制令牌确定。
+- Windows-like / macOS-like 头部底色为 `SurfaceBrush`，Ubuntu-like 为 `SurfaceRaisedBrush`。应用不能将自己的整行底色覆盖宿主头部。
+- 窄窗口先缩短可省略的文字，再折叠菜单或搜索；保留窗口按钮、当前标签关闭入口与主要任务入口。全部标签菜单与快捷键提供溢出访问，不能将关闭入口完全藏在被裁切的标签尾部。
+- 允许保留文件操作、图片预览等内容区工具栏；迁移对象是重复身份条或已经交给宿主的导航头部，不是所有 `app-toolbar`。
+
+### 2.4 `AttachWindowHeader` 接入与生命周期
+
+由 `*App` 在 `context.ShowWindow(...)` 后调用 `view.AttachWindowHeader(ManagedWindow)`。先判断普通应用 / 选择器 / 对话框模式；选择器和模态任务不移入应用头部。参考设置、代码编辑器、Explorer 与 SSH 浏览器的现行接入实现。
+
+控件移出原视图前后必须检查：
+
+1. **父级与模式**：从旧容器移除后再赋给槽；检查旧行是否归零、剩余 `Grid.Row` 是否匹配新的 `RowDefinitions`。再次挂接时不重复注册事件；若视图支持更换窗口，明确解除旧宿主槽的责任。
+2. **数据绑定**：显式确认头部控件的 `DataContext`、祖先绑定、名称作用域和弹出内容的数据源；不依赖原 UserControl 自动继承。检查后台状态、标题、命令参数与忙碌状态仍会更新。
+3. **样式与资源**：原视图局部样式可能在重挂后失效。将必要样式放在随控件移动的容器或共享资源中，验证图标、输入框、焦点和禁用态。检查主题及语言切换后仍有效。
+4. **输入与焦点**：键盘事件不再必然经过内容视图。覆盖内容区、融合头部和弹出菜单的快捷键路由，防止漏处理或重复执行；输入框中的编辑快捷键不应触发文件操作。弹出搜索关闭后恢复合理焦点。
+5. **命中与拖动**：按钮、输入框、标签关闭和菜单必须接收鼠标事件；空白区域应仍可拖动窗口。直接执行命令不能替代命中检查。
+6. **关闭与释放**：保留窗口及草稿关闭守卫；明确关闭最后一个标签的语义。窗口关闭时解除订阅、结束窗口持有的工作并释放图片等资源，避免控件移出内容树后遗漏清理。
+
+接口演进按 `AGENTS.md`：不保留旧契约别名或双形态，同一改动更新全部仓库调用者、测试与文档。选择器模式是产品语义分支，不是旧 API 的兼容路径。
 
 ## 3. 范围
 
 ### 3.1 第一批：`Border.app-header` 工作区（9 个，与设置同构）
 
-共同现状：窗口内容区第一行是一条 `Border.app-header`，内含 46px 应用图标 + `TextBlock.app-title` + `TextBlock.app-description`，部分窗口右侧还挂一个刷新按钮或状态胶囊。且多数窗口内容区第一行就是 `Grid RowDefinitions="Auto,*,Auto"`，删掉第 0 行即可。
+共同现状：窗口内容区第一行是一条 `Border.app-header`，内含 46px 应用图标 + `TextBlock.app-title` + `TextBlock.app-description`，部分窗口右侧还挂一个刷新按钮或状态胶囊。多数窗口使用 `Grid RowDefinitions="Auto,*,Auto"`；移除身份块后必须同步调整行编号与星号内容行，不能只删控件或只改 `Grid.Row`。
 
 | # | 窗口 | 视图文件（`Client/RelaxKonOS.Client/`） | 头部右侧内容 | 状态 |
 |---|---|---|---|---|
@@ -68,27 +103,27 @@
 | 8 | 证书 | `Apps/Certificates/Views/CertificateManagerWorkspace.axaml` | 无 | 未开始 |
 | 9 | 应用部署 | `Apps/ApplicationDeployments/Views/ApplicationDeploymentsWorkspace.axaml` | 无 | 未开始 |
 
-排序理由：先做 #1（头部只有两个文本，零信息损失，验证模式）与 #2（同时验证「标题栏内放交互控件」，且分支胶囊是这套里最有表现力的元素），跑通后 #3–#9 基本是机械替换。
+排序理由：先做 #1（头部主要为两个文本，先验证信息重新归属与接入模式）与 #2（同时验证「标题栏内放交互控件」，且分支胶囊是这套里最有表现力的元素），跑通后 #3–#9 可复用模式，但仍逐个验收状态胶囊、刷新、选择器模式和紧凑布局。
 
-### 3.2 第二批：`Border.app-toolbar` 视图（6 个，其中 3 个带标签条）
+### 3.2 第二批：菜单 / 导航型视图（7 个，其中 4 个带标签条）
 
-这些不是标题重复，而是菜单条 / 地址栏。融合后窗口按钮、拖拽区、菜单、地址栏要挤同一行，收益更高但正确性风险也更高，故排在第一批之后。
+这些不是标题重复，而是菜单条 / 地址栏。融合后窗口按钮、拖拽区、菜单、地址栏按 §2.2 分配到宿主头部的相应行，收益更高但正确性风险也更高，故排在第一批之后。
 
 | # | 窗口 | 视图文件 | 现头部 | 标签条 | 状态 |
 |---|---|---|---|---|---|
-| 10 | 资源管理器 | `Apps/Explorer/Views/ExplorerMainView.axaml` | `DockPanel.Dock="Top"` 的导航 + 地址栏（`app-toolbar`） | **已有**窗口内标签，独立历史 / 搜索 / 视图状态 | **已接入** |
-| 11 | 代码编辑器 | `Apps/CodeEditor/CodeEditorView.axaml` | 菜单栏 + 文档标签 | **已有** `ListBox.editor-tabs` | **已接入** |
+| 10 | 资源管理器 | `Apps/Explorer/Views/ExplorerMainView.axaml` | 导航 / 地址 / 筛选交 `HeaderToolbar`；文件操作栏留在正文 | **已有**窗口内标签，独立历史 / 搜索 / 视图状态 | **已接入** |
+| 11 | 代码编辑器 | `Apps/CodeEditor/CodeEditorView.axaml` | 菜单栏 + 文档标签 | **已有** `ListBox.title-tabs` | **已接入** |
 | 12 | 记事本 | `Apps/Notepad/NotepadView.axaml` | 菜单栏 + 文档名 | 无 | 未开始 |
 | 13 | 任务管理器 | `Apps/TaskManager/Views/TaskManagerMainView.axaml` | 工具条 | 无 | 未开始 |
 | 14 | 图片查看器 | `Apps/ImageViewer/Views/ImageViewerView.axaml` | 查看工具条 | 无 | 未开始 |
 | 15 | 浏览器 | `Apps/Browser/Views/BrowserMainView.axaml` | `DockPanel.Dock="Top"` 的标签条 + 导航工具条与地址栏 | **已有** `ListBox.browser-tabs` | 未开始 |
+| 16 | SSH 文件浏览器 | `Apps/ServerCenter/Views/SshFileBrowserView.axaml` | SFTP 导航 / 地址 / 筛选 | **已有**独立目录快照、历史 / 搜索 / 视图状态 | **已接入** |
 
 必读注意：
 
-- **带标签条的窗口（#11 / #15，将来 #10）一律走 `HeaderTabs` 角色槽**，不要各自 `DockPanel.Dock="Top"` 排一行：
-  那在 macOS 风格窗口里会是一条 Windows 形状的带子（详见 §8.5）。标签条高度读 `WindowTabHeight`，
-  选中态形状（现在是应用内写死的 `CornerRadius="12,12,0,0"`，Chrome 式上圆下方）要改成 token 驱动，否则外观扫描会拦。
-- **#10 同时是文件选择器宿主**。选择器模式（`ExplorerPickerOptions`）必须继续走旧路径——标题栏要说明「选择文件夹」这个任务，而不是应用身份。先确认调用方如何区分两种模式，再决定是同一个视图内分支，还是只在主窗口模式接入。
+- **带标签条的窗口（#10 / #11 / #15 / #16）一律交 `HeaderTabs`**，由宿主决定内联或独立行，不在正文重复排列标签。标签条高度读 `WindowTabHeight`，选中形状读 `ControlCornerRadius`；尚未接入的浏览器应移除自己的固定标签形状，已接入窗口以共享 `title-tabs` 样式回归。
+- **#10 同时是文件选择器宿主**。选择器模式（`ExplorerPickerOptions`）必须保留任务对话框布局——标题栏要说明「选择文件夹」这个任务，而不是应用身份。现行实现只在普通主窗口模式接入；后续改造保持这一边界。
+- **#16 也用于 SSH 安装包选择**：选择器隐藏应用标签，保留任务标题与独立导航布局；不能因主窗口增加标签改变 ZIP 包筛选和确认语义。
 - **#11 / #12 带草稿守卫**（`DraftWindowCloseGuard` / `DraftDialogGuard`，见 `docs/desktop/UiReview.md` D-009）。迁移头部时不要改关闭语义，也不要让新头部吃掉草稿提示。
 - #11 / #12 的融合形态等价于「菜单栏搬上标题栏」（VS Code、Win11 记事本的做法），是这套改动里视觉变化最大的一组，需要浅深色 + 三语单独截图确认。
 
@@ -103,27 +138,83 @@
 | 模态对话框（`ConfirmDialogView`、`TextInputDialogView` 及各 `*DialogView`） | 窗口本来就小，没有多余的条带可省；融合会丢掉模态层级与任务标题 |
 | `LoginWindow` | 自己绘制窗口、没有系统装饰 |
 | 远端桌面 `MainWindow` | 标题栏是 `WindowTitleBar` 与 mstsc 连接条的共享顶层，承担全屏切换（`_isFullScreen` 时整条隐藏）与断开操作，语义完全不同 |
-| 资源管理器的选择器模式 | 见 3.2 #10 |
+| Server 文件选择器 / SSH 安装包选择器 | 见 3.2 #10 / #16；保留任务标题与独立对话框布局 |
 
 ## 4. 验收标准
 
-每个窗口接入后逐条确认，缺一条不算完成：
+每个窗口接入后逐项确认，缺一项不算完成。测试结果分别记录为“代码 / 离线布局通过”与“真实会话交互通过”，离线截图不能替代真实 Server 或 SSH 会话验收。
 
-1. 头部块交给对应的**角色槽**（leading / center / trailing / tabs）；窗口图标与宿主的标题被模板隐藏，**窗口按钮仍在宿主那一侧**——由 recipe 决定在左还是在右，应用侧不需要也不应该知道。
-   带标签条的窗口（见 §3.2）交 `HeaderTabs`，**不要**自己 `DockPanel.Dock="Top"` 排一行；标签条和 `HeaderCenter` 共存时宿主会另起一行，因此两者共存时宿主会把标签放入独立一行。
-2. 头部空白区可拖动窗口，**头部内的交互控件不吃拖动**：点击按钮 / 在输入框打字时窗口位置不变（参考断言见第 7 节）。
-3. 内容区不再有第二条 `app-header` / `app-toolbar`，`Grid RowDefinitions` 同步删行，不留空行。
-4. 三语言（`zh-CN` / `en-US` / `ja-JP`）下标题与操作不溢出、不换行错位。
-5. 浅色与深色主题下文字对比度达标；头部与侧栏（`Border.app-sidebar`，`SurfaceRaisedBrush`）、状态栏的层级过渡自然。**注意融合后标题栏背景由模板强制改成 `SurfaceBrush`**（原先 `app-header` 是 `SurfaceRaisedBrush` + 下边框），这是最容易看起来「头部凹进去」的地方。
-6. 窄窗口（建议 640×480，以及极窄 320×240）下头部不裁切、操作仍可达。
-7. 三套窗口样式都复验：`caption-buttons-right`、`traffic-lights-left`、`headerbar-right`。**用 `settings.SystemStyleId = …` 直接切换**（`ShellSettings` 会立刻重装资源栈）；融合条会随风格变高（48 / 48 / 60），按钮组在左时 leading 自动落在按钮组右侧，`headerbar-right` 的融合条底色是 `SurfaceRaisedBrush`。
-8. 任务栏与窗口总览里的窗口标题不变（融合只影响标题栏内部，`Title` 仍由 `ShowWindow` 设置）。
-9. 在 `Tests/Client/RelaxKonOS.WindowPreviews.Tests` 里为该窗口补一条断言（模板见第 7 节）；形态跨 recipe 都要成立的窗口，照 `FusedWindowHeaderChecks.cs` 的写法补「三条 recipe」的断言与截图。
-10. 更新本文第 3 节状态列与第 8 节进度日志；若该窗口在 `docs/desktop/UiReview.md` 有对应条目，同步其结论。
+1. 声明的五个角色与 §2.2 一致，宿主窗口按钮没有被遮挡或由应用复制；窗口身份在任务栏与窗口总览中保持正确。
+2. 仅删除重复身份条或迁入宿主的导航头部，保留必要的内容区工具栏；旧容器为空时收缩，`Grid.Row` 与星号内容行正确，内容区不被挤压。
+3. 空白处可拖动；点击、输入、标签切换、关闭按钮与弹出菜单不会拖动窗口。验证鼠标命中和实际操作，不能只执行命令。
+4. 三种语言下文字正确、省略合理；切换主题或语言后绑定、图标、输入框、禁用态与焦点样式仍生效。
+5. 三种 recipe × 明暗主题 × 三种语言复验，覆盖角色组合的行列、按钮位置、头部与正文层次。
+6. 覆盖常规 960px、紧凑 640px、极窄 320px 宽度及各应用折叠断点附近；高度按宿主允许的最小值测试。窗口按钮、当前标签关闭、全部标签入口和主要操作可达，不以裁切隐藏代替降级。
+7. 单行融合断言 `PART_TitleRow.Height` 消费 `WindowFusedTitleBarHeight`；多行融合另外验证实际行分配、各行边界与整个头部高度，不能断言整个 `PART_TitleBar` 高度等于标题行令牌。
+8. 快捷键在正文、头部输入框与弹出内容中按语义执行一次；初始焦点、菜单关闭后的焦点、Tab 导航及控件无障碍名称正确。
+9. 标签切换保留各自状态，关闭选中项正确激活相邻项；忙碌、失败和延迟操作不能误改其他标签。缓存切换与重新读取的策略由应用明确记录，宿主不承担数据读取。
+10. 草稿守卫、关闭最后一个标签、选择器确认 / 取消与窗口关闭资源释放维持原有语义。
+11. 在 `Tests/Client/RelaxKonOS.WindowPreviews.Tests` 增加有意义的行为与布局断言；渲染截图并人工检查。未接入真实后端的项目标记“待真实会话验证”，不写成完全验收。
+12. 更新 §1 / §3 状态和 §9 日志；在 `docs/desktop/UiReview.md` 有对应条目时同步结论。记录实际命令、范围、结果和尚未验证项。
 
-2026-10-11 补充：以下 §5–§8 中关于第 4 槽的早期决策保留为历史。当前契约以 §2 与最新日志为准，`HeaderCenter` 与 `HeaderTabs` 已可共存，独立标签行已实现。
+## 5. 剩余窗口的实施前决策与顺序
 
-## 5. 开放问题
+五槽契约、标题行令牌、弹性列居中与视图级标签已定，不重新开放。以下信息须在相应窗口动工前写入接入清单：
+
+- **身份与信息归属**：图标保留为 16–20px，还是由标签表达身份；原副标题中的连接状态、版本或帮助文字移往正文、状态栏或提示，不能因搬迁直接丢弃。
+- **槽与操作入口**：列出需要的槽、操作优先级、最窄模式下的菜单入口；使用 toolbar 的窗口说明 macOS 隐藏其他槽后的信息和操作去向。
+- **模式与关闭语义**：确认应用主窗口、选择器、模态任务的接入边界，以及草稿、忙碌和最后标签关闭策略。
+- **共享控件**：先接服务器中心和 Git，验证身份、分支与操作三类差异，再抽取小型共享身份控件；窗口按钮和槽布局不放进应用共享控件。不先做能包含所有窗口功能的通用头部框架。
+
+建议顺序：核对 §2 的组合与现有测试 → 服务器中心 → Git → 根据两者提取共享身份控件 → 第一批其余窗口 → 第二批其余窗口 → `FileServicesWorkspace`。已接入的设置、代码编辑器、Server / SSH 文件浏览器作为回归样例。复杂窗口的菜单折叠以实际槽宽度和操作可达性验收，不再泛泛保留“以后再定”的降级问题。
+
+## 6. 与既有文档的关系
+
+- `docs/desktop/RelaxKonOS.Settings.md`（第 26 行）与 `docs/desktop/RelaxKonOS.Settings.Windows11.Progress.md` 记录了设置的顶栏融合，是本模式的先例与验收参考。
+- `docs/desktop/RelaxKonOS.BuiltInApps.UI.md`、`docs/desktop/RelaxKonOS.Desktop.md` 是设计规则来源；本文提供接入规范与进度，冲突时以设计规则为准，并同步修正本文。
+- `docs/desktop/UiReview.md` 是本专项的审查清单与 D-xxx 决定记录（D-009 顶层窗口关闭守卫与本工作有交集）。
+
+## 7. 恢复工作与验证指引
+
+先读 §1 / §3 的当前状态与 §9 最近日志，核对实际分支、用户未提交改动和接入视图。不要从历史日志复制已经过期的模板断言、环境路径或窗口清单。
+
+在仓库根目录使用当前可用的 .NET SDK；以下 PowerShell 命令不依赖个人 Python、Git Bash 或临时目录路径：
+
+```powershell
+git status --short
+git branch --show-current
+dotnet run --project Tests/Client/RelaxKonOS.WindowPreviews.Tests -c Release -p:BuildInParallel=false -- --fused-apps-only
+```
+
+`--fused-apps-only` 运行宿主角色槽、已融合应用、SSH 文件浏览器和编辑器草稿 / 预览检查，适合本专项的局部回归。更多测试入口以 `Tests/Client/RelaxKonOS.WindowPreviews.Tests/Program.cs` 为准；收尾按变更范围运行相应设置 / recipe 检查和完整窗口预览套件，不因文档中的历史 PASS 数固定预期。
+
+若运行中的客户端锁定构建产物，可在仓库内使用独立输出目录：
+
+```powershell
+dotnet build Tests/Client/RelaxKonOS.WindowPreviews.Tests -c Release -m:1 -o .artifacts/fused-header-review
+& ./.artifacts/fused-header-review/RelaxKonOS.WindowPreviews.Tests.exe --fused-apps-only
+```
+
+输出目录保持在仓库内，确保需要查找仓库根的扫描没有被静默跳过。检查退出码和异常，不仅统计 PASS。截图位于实际测试输出目录的 `preview-qa/` 下；本机未运行的命令不得记为已经验证。
+
+参考检查：
+
+- `SettingsWindowChecks.cs`：身份 / 搜索与设置交互。
+- `FusedWindowHeaderChecks.cs`：三种 recipe、角色组合、窗口按钮几何和拖拽。
+- `FusedApplicationChecks.cs`：实际代码编辑器与 Server Explorer、标签状态和选择器隔离。
+- `SshFileBrowserLayoutChecks.cs`：SSH 标签、筛选、忙碌限制与紧凑布局。
+
+新增断言应验证已声明角色与实例身份、未声明槽为空、对应部件实际可见和布局合理。重挂后的数据与输入必须另外验证。单行与多行高度按 §4 第 7 项分别处理；直接执行命令不能证明按钮能被鼠标命中。
+
+构建或检查失败时先解决失败，再更新状态。真实后端测试记录会话类型、交互范围与结果；凭据只通过既有安全输入方式提供，不写入文档、仓库或截图。
+
+## 8. 历史附录：系统风格与早期方案（非实施规范）
+
+2026-10-10 追加。起因：设置的融合顶栏在 `macOS 风格` 下明显不对（见下 D1–D2），而风格被认为可以随桌面程序扩展，因此不能只针对 macOS 打补丁。
+
+以下记录保留当时的论证；“三个 / 四个槽”“center 与 tabs 互斥”“暂不做独立行”等描述均不代表当前契约。当前行为、范围和验收只按 §2–§7 执行。历史中的旧章节编号指当时版本，不作为当前章节导航。
+
+### 8.0 早期问题与决定快照（已被现行规范替代）
 
 1. ~~**头部高度**~~ **已定**：不再硬编码。融合条高度取派生键 `WindowFusedTitleBarHeight = max(48, WindowCaptionHeight + 14)`，随风格得到 48 / 48 / 60；应用读同一个键，不自己写数字。
    融合条长高不会把窗口按钮一起拉长：按钮恒为 `WindowControlWidth × WindowCaptionHeight`，`caption-buttons-right` 下贴顶（见
@@ -144,59 +235,6 @@
    本实现取**视图级**（与 VS Code / Chrome / Edge 一致，业界通用做法）。若将来要做真正的窗口级标签，
    那是窗口管理器的职责（给 `RemoteWindow` 加标签组），**不属于本计划**，也不会改动 `HeaderTabs` 契约。
 
-## 6. 与既有文档的关系
-
-- `docs/desktop/RelaxKonOS.Settings.md`（第 26 行）与 `docs/desktop/RelaxKonOS.Settings.Windows11.Progress.md` 记录了设置的顶栏融合，是本模式的先例与验收参考。
-- `docs/desktop/RelaxKonOS.BuiltInApps.UI.md`、`docs/desktop/RelaxKonOS.Desktop.md` 是设计规则来源；本文只做接入计划，冲突时以设计规则为准。
-- `docs/desktop/UiReview.md` 是本专项的审查清单与 D-xxx 决定记录（D-009 顶层窗口关闭守卫与本工作有交集）。
-
-## 7. 恢复工作指引
-
-环境与构建（本机 Windows / Git Bash；PATH 被 shim 破坏，命令开头先补）：
-
-```bash
-export PATH="/usr/bin:/bin:/c/Windows/System32:/c/Program Files/Git/cmd"
-cd /d/RelaxKon/RelaxKonOS
-git status --short          # 用户可能并行改同一仓库，动别人的文件前先看
-git rev-parse --abbrev-ref HEAD   # 期望 windows_enhance
-```
-
-编译校验与运行窗口预览检查（该工程是控制台 exe，运行即整套断言；`-o` 用独立目录避开正在运行的客户端锁 bin）：
-
-```bash
-"/c/Program Files/dotnet/dotnet.exe" build \
-  Tests/Client/RelaxKonOS.WindowPreviews.Tests/RelaxKonOS.WindowPreviews.Tests.csproj \
-  -c Debug -o D:/tmp/rk-preview
-/d/tmp/rk-preview/RelaxKonOS.WindowPreviews.Tests.exe
-```
-
-可用 flag（`Tests/Client/RelaxKonOS.WindowPreviews.Tests/Program.cs:94,103`）：`--ui-review-only` 在设置交互检查前返回；`--settings-interaction-only` 在设置类检查后返回。改单个窗口时用 flag 缩短回路，收尾再跑完整套件。
-
-输出是 GBK，判定中文结论不要用 grep/tail，用受管 Python（本机 `python` 不在 PATH，直接用绝对路径）：
-
-```bash
-"/c/Users/betha/.workbuddy/binaries/python/versions/3.13.12/python.exe" -c \
-  "d=open(r'D:/tmp/rk-preview.txt','rb').read().decode('gbk','replace'); print(d.count('PASS:'), 'Exception' in d)"
-```
-
-断言失败时进程以非 0 退出且后续断言不再执行，要看最后一行的异常消息，别以为只是「报告没找到」。
-
-**断言模板**（复制它，替换成新窗口）：`Tests/Client/RelaxKonOS.WindowPreviews.Tests/SettingsWindowChecks.cs`——在 `Canvas` 上 `windows.Attach` 后 `Create` 一个 `ManagedWindow`，调用 `view.AttachWindowHeader(managed)`，然后断言：
-
-- `ReferenceEquals(managed.View.HeaderLeading, view.Header)`（center / trailing 同理；用不到的槽必须显式写成 `null`）
-- `managed.View.HasTitleBarContent`，且 `PART_TitleBar.Bounds.Height == managed.View.FindResource("WindowFusedTitleBarHeight")`
-  ——**别写死 48**，融合条高度随风格变（48 / 48 / 60）
-- 在头部输入框打字后 `managed.Info.Bounds` 不变（证明交互控件没吃拖动）
-- 截图落盘（`RenderTargetBitmap` → `preview-qa`），供浅深色与三语人工比对
-
-跨 recipe 的形态另有一份现成模板：`Tests/Client/RelaxKonOS.WindowPreviews.Tests/FusedWindowHeaderChecks.cs`——
-切 `settings.SystemStyleId`，断言槽列（1/2/3）、按钮组所在列（0 或 4）、按钮顺序与配色、融合条几何、以及「拖拽不被槽吃掉」，并按 recipe 落盘截图。
-
-常看的文件：`Framework/RelaxKonOS.WindowManager/RemoteWindow.cs`、`Framework/RelaxKonOS.WindowManager/Themes/RemoteWindowTheme.axaml`、`Framework/RelaxKonOS.UI/Themes/ApplicationStyles.axaml`、`Client/RelaxKonOS.Client/Apps/Settings/Views/SettingsView.axaml.cs`（参考实现）。
-
-## 8. 系统风格 × 融合头部：查证结论与优化方向
-
-2026-10-10 追加。起因：设置的融合顶栏在 `macOS 风格` 下明显不对（见下 D1–D2），而风格被认为可以随桌面程序扩展，因此不能只针对 macOS 打补丁。
 
 ### 8.1 查证：安装桌面程序会不会加系统风格 / 系统布局
 
@@ -315,6 +353,17 @@ RemoteWindow.HeaderLeading / HeaderCenter / HeaderTrailing   （均为 Control?�
 截图 `preview-qa/fused-header/fused-header-tabs-{recipe}.png`。
 
 ## 9. 进度日志（只追加，倒序在上）
+
+### 2026-10-11（接入规范整理；后续批次实施前优化）
+
+- 将现行五槽规则、角色组合与早期方案分开；旧开放问题归入 §8 历史附录，历史日志不再作为恢复执行指令。
+- 补齐三种 recipe 的组合布局表，说明 macOS toolbar 占据标题行时其他槽隐藏的可达性约束。
+- 明确宿主槽外布局与应用槽内布局的边界；保留必要的正文工具栏，分别验收标题行和整个多行头部高度。
+- 加入重挂后的数据绑定、样式资源、输入路由、焦点、命中及关闭清理检查，修正正文星号行和窄标签关闭按钮的验收要求。
+- 状态表加入已接入的 SSH 多标签浏览器；整理剩余窗口的实施前清单与共享控件提取顺序。
+- 恢复命令改用仓库内输出与当前 .NET 测试入口；区分离线验证和真实会话验收。
+- 本次仅优化文档，对照现有 `RemoteWindow`、模板及测试入口核对；未运行构建或真实会话测试，未宣布剩余窗口完成。
+
 
 ### 2026-10-11（代码编辑器 / 资源管理器优先接入）
 

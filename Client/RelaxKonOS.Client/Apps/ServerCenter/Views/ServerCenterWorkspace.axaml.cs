@@ -6,11 +6,18 @@ namespace RelaxKonOS.Client.Apps.ServerCenter.Views;
 /// <summary>Desktop-hosted server manager with the same sidebar navigation model as Docker Manager.</summary>
 public partial class ServerCenterWorkspace : UserControl
 {
+    public void AttachWindowHeader(RelaxKonOS.WindowManager.ManagedWindow window)
+    {
+        Header.DataContext = DataContext;
+        Header.Attach(window);
+    }
+
     private Button? _selectedButton;
 
     public ServerCenterWorkspace()
     {
         InitializeComponent();
+        RelaxKonOS.Client.Controls.CompactWorkspaceNavigation.Install(this, WorkspaceBody);
         ShowPage("hosts", HostsButton);
     }
 

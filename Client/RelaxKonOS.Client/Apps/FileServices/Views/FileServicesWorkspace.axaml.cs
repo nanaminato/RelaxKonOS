@@ -7,6 +7,12 @@ namespace RelaxKonOS.Client.Apps.FileServices.Views;
 
 internal partial class FileServicesWorkspace : UserControl
 {
+    public void AttachWindowHeader(ManagedWindow window)
+    {
+        Header.DataContext = DataContext;
+        Header.Attach(window, HeaderActions);
+    }
+
     private readonly FileServicesViewModel _viewModel;
     private Button? _selectedButton;
 

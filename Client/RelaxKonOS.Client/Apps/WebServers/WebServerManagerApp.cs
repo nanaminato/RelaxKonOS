@@ -50,6 +50,7 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
         var view = WebServerManagerWorkspace.Create(viewModel);
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.webservers.display_name"),
             InstallationPanel.Wrap(view, viewModel.Installation), new Rect(70, 55, 1080, 680), Manifest.IconGlyph);
+        view.AttachWindowHeader(window);
         viewModel.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window, problemCode);
         viewModel.RequestIntegrationConfirmationAsync = async () =>
         {

@@ -1,14 +1,14 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+<UserControl xmlns:common="clr-namespace:RelaxKonOS.Client.Controls" xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:fs="clr-namespace:RelaxKonOS.Client.Apps.FileServices"
              xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.FileServices.Views"
              x:Class="RelaxKonOS.Client.Apps.FileServices.Views.FileServicesWorkspace" x:DataType="fs:FileServicesViewModel" Classes="builtin-app">
     <Grid x:Name="RootGrid" RowDefinitions="Auto,*,Auto" Margin="20">
-        <StackPanel Spacing="8" Margin="0,0,0,16">
-            <TextBlock Text="{Binding PlatformText}" Classes="app-title" />
-            <Button Content="{loc:Loc file_services.refresh}" Command="{Binding RefreshCommand}" HorizontalAlignment="Left" />
-        </StackPanel>
+        <Grid x:Name="HeaderHost" ColumnDefinitions="*,Auto">
+            <common:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc file_services.title}" Subtitle="{Binding PlatformText}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/file-services.png" />
+            <Button x:Name="HeaderActions" Grid.Column="1" Classes="header-action" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc file_services.refresh}" AutomationProperties.Name="{loc:Loc file_services.refresh}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="16" Height="16" Data="M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14" /></Button>
+        </Grid>
         <Grid x:Name="WorkspaceGrid" Grid.Row="1" ColumnDefinitions="190,*" ColumnSpacing="16">
             <WrapPanel x:Name="NavigationPanel" Orientation="Vertical" ItemSpacing="8" LineSpacing="8">
                 <Button Classes="workspace-nav" x:Name="OverviewButton" Content="{loc:Loc file_services.overview}" Tag="overview" Click="Navigation_Click" HorizontalAlignment="Stretch" />
@@ -21,8 +21,9 @@
         </Grid>
         <Border Grid.Row="2" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" MinHeight="38" MaxHeight="120" Padding="0,8,0,0" Margin="0,8,0,0">
             <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
                 <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" Width="36" MinWidth="0" Height="3" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2" Text="{Binding PlatformText}" MaxWidth="140" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding PlatformText}" FontSize="11" VerticalAlignment="Center" Foreground="{DynamicResource TextTertiaryBrush}" />
                 <TextBlock Grid.Column="1" Text="{Binding StatusText}" TextWrapping="Wrap" FontSize="12" VerticalAlignment="Center" />
             </Grid>
             </ScrollViewer>

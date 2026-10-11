@@ -93,6 +93,7 @@ public sealed class GitClientApp : RemoteApplicationBase
         var view = GitClientWorkspace.Create(vm);
         window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.git.display_name"),
             InstallationPanel.Wrap(view, vm.Installation), new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
+        view.AttachWindowHeader(window);
         vm.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window, problemCode);
         _ = vm.StartAsync();
     }

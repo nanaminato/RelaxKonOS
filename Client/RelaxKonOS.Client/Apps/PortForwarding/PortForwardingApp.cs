@@ -26,6 +26,7 @@ public sealed class PortForwardingApp : RemoteApplicationBase
         var view = new PortForwardingMainView { DataContext = viewModel };
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.port-forwarding.display_name"), view,
             bounds: new Rect(160, 100, 760, 650), iconGlyph: Manifest.IconGlyph);
+        view.AttachWindowHeader(window);
         viewModel.ShowForwardEditorAsync = async forward =>
         {
             try

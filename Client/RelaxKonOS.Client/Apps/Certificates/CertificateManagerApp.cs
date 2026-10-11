@@ -43,6 +43,7 @@ public sealed class CertificateManagerApp : RemoteApplicationBase
             });
         window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.certificates.display_name"),
             view, new Rect(60, 50, 1180, 780), Manifest.IconGlyph);
+        view.AttachWindowHeader(window);
         _ = viewModel.StartAsync();
     }
 }

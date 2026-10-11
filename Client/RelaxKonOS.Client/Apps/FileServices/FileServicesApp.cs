@@ -49,6 +49,7 @@ public sealed class FileServicesApp : RemoteApplicationBase
         };
         workspace.DetachedFromVisualTree += (_, _) => session.StateChanged -= SessionChanged;
         var window = context.ShowWindow(LocalizedText.Get("file_services.title"), InstallationPanel.Wrap(workspace, vm.Installation), new Rect(90, 80, 960, 720), Manifest.IconGlyph);
+        workspace.AttachWindowHeader(window);
         vm.RequestHostAdministratorCredentialsAsync = async error =>
         {
             var memory = UsageMemoryStore.Capture(context);

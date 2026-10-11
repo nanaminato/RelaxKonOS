@@ -38,6 +38,7 @@ internal static class SshFileBrowserLayoutChecks
             host.Show(); Pump(); manager.Attach(canvas); manager.SetHostBounds(new CoreRect(0, 0, 1100, 800));
             var window = manager.Create(new WindowCreateOptions(new AppId("test.ssh-files"), "SSH files", view, new CoreRect(10, 10, 960, 640)));
             view.AttachWindowHeader(window);
+            CheckTabs();
             foreach (var style in new[] { SystemStyleIds.WindowsLike, SystemStyleIds.MacOsLike })
             foreach (var dark in new[] { false, true })
             foreach (var language in new[] { "zh-CN", "en-US", "ja-JP" })
@@ -50,6 +51,8 @@ internal static class SshFileBrowserLayoutChecks
                 window.Info.Bounds = new CoreRect(10, 10, width, 640);
                 Pump(); host.UpdateLayout(); Pump();
                 var bar = view.FindControl<Border>("CommandToolbar")!;
+                Check(bar.Bounds.Height <= 50 && view.FindControl<Grid>("EntriesHost")!.Bounds.Height > 250,
+                    "SSH tabs displaced the command bar or compressed the file list.");
                 var actions = bar.GetVisualDescendants().OfType<Button>().Where(button => button.IsEffectivelyVisible).ToArray();
                 foreach (var action in actions)
                 {
@@ -96,12 +99,67 @@ internal static class SshFileBrowserLayoutChecks
             picker.AttachWindowHeader(pickerWindow); Pump();
             Check(!pickerWindow.View.HasTitleBarContent && !picker.FindControl<StackPanel>("FileActions")!.IsVisible,
                 "Package picker acquired app chrome or file mutation buttons.");
+            picker.NewTab();
+            Check(picker.Tabs.Count == 0 && !picker.FindControl<Grid>("HeaderTabs")!.IsVisible,
+                "Package picker acquired multiple tabs.");
             Console.WriteLine("PASS: SSH file browser toolbar across styles, themes, languages and 5 widths; compact filtering, icon strokes and picker isolation.");
         }
         finally { host.Close(); settings.Apply(original); Pump(); }
 
         void Set(string name, object value) => typeof(SshFileBrowserView).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(view, value);
         void Invoke(string name) => typeof(SshFileBrowserView).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(view, null);
+
+        void CheckTabs()
+        {
+            var first = view.ActiveTab;
+            var history = (List<string>)typeof(SshFileBrowserView).GetField("_history", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(view)!;
+            history.AddRange(["/home/demo", "/home/demo/workspace"]); Set("_historyIndex", 1);
+            view.SearchText = "photo";
+            view.FindControl<ComboBox>("SortBox")!.SelectedIndex = 3;
+            view.FindControl<CheckBox>("DescendingBox")!.IsChecked = true;
+            view.FindControl<ComboBox>("ViewModeBox")!.SelectedIndex = 1;
+            view.NewTab(); Pump();
+            var second = view.ActiveTab;
+            Check(view.Tabs.Count == 2 && view.SearchText == "" && second.History.Count == 1,
+                "New SSH tab did not start with independent history and filtering.");
+            Set("_path", "/var/log");
+            history.Clear(); history.Add("/var/log"); Set("_historyIndex", 0);
+            view.SearchText = "app";
+            view.FindControl<ComboBox>("ViewModeBox")!.SelectedIndex = 0;
+            view.SwitchTab(first); Pump();
+            Check(view.SearchText == "photo" && first.Path == "/home/demo/workspace"
+                && first.History.Count == 2 && first.HistoryIndex == 1
+                && view.FindControl<ComboBox>("SortBox")!.SelectedIndex == 3
+                && view.FindControl<CheckBox>("DescendingBox")!.IsChecked == true
+                && view.FindControl<ComboBox>("ViewModeBox")!.SelectedIndex == 1,
+                "Switching SSH tabs lost location, history, filtering or view preferences.");
+            view.SwitchTab(second); Pump();
+            Check(view.SearchText == "app" && second.Path == "/var/log" && history.SequenceEqual(["/var/log"]),
+                "SSH tabs shared navigation history or search text.");
+            Set("_busy", true); Invoke("UpdateControls");
+            view.NewTab(); view.SwitchTab(first); view.CloseTab(second);
+            Check(view.Tabs.Count == 2 && ReferenceEquals(view.ActiveTab, second), "A busy SSH operation allowed tab changes.");
+            Set("_busy", false); Invoke("UpdateControls");
+            view.SwitchTab(first); view.CloseTab(second); Pump();
+            Check(view.Tabs.Count == 1 && ReferenceEquals(view.ActiveTab, first) && view.SearchText == "photo",
+                "Closing an inactive tab changed the active SSH location.");
+            var closeRequested = false;
+            view.CloseAction = () => closeRequested = true;
+            view.CloseTab(first);
+            Check(closeRequested, "Closing the last SSH tab did not request window closure.");
+            view.CloseAction = null;
+            view.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.T, KeyModifiers = KeyModifiers.Control });
+            Check(view.Tabs.Count == 2, "Ctrl+T did not create an SSH tab.");
+            view.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Tab, KeyModifiers = KeyModifiers.Control });
+            Check(ReferenceEquals(view.ActiveTab, first), "Ctrl+Tab did not cycle SSH tabs.");
+            view.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.W, KeyModifiers = KeyModifiers.Control });
+            Check(view.Tabs.Count == 1 && !ReferenceEquals(view.ActiveTab, first), "Ctrl+W did not close the active SSH tab.");
+            // Keep two distinct locations in the layout screenshots.
+            view.NewTab();
+            Set("_path", "/var/log"); Invoke("BuildBreadcrumbs");
+            view.NewTab(); view.CloseTab(view.ActiveTab); Pump();
+            view.FindControl<ComboBox>("ViewModeBox")!.SelectedIndex = 0;
+        }
     }
 
     private static void Pump() => Dispatcher.UIThread.RunJobs();

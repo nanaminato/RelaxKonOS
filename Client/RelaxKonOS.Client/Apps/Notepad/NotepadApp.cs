@@ -56,6 +56,7 @@ public sealed class NotepadApp : RemoteApplicationBase, IFileOpenApplication
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.notepad.display_name"), view,
             bounds: new Rect(160, 100, 820, 580),
             iconGlyph: Manifest.IconGlyph);
+        view.AttachWindowHeader(window);
         window.KeyDown += (_, e) =>
         {
             _ = WindowShortcut.TryExecute(e, RemoteKey.Letter('N'), RemoteKeyModifiers.Control, viewModel.NewDocumentCommand)
