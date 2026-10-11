@@ -146,17 +146,25 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
         KillFeedback = LocalizedText.Format("task_manager.process.terminating", process.Name, process.Id);
         try
         {
-            var result = await _client.KillProcessAsync(process.Id, process.StartTime.Value, IsAdministratorMode);
+            var result = await ProcessTerminationFlow.ExecuteAsync(IsAdministratorMode,
+                elevated => _client.KillProcessAsync(process.Id, process.StartTime.Value, elevated),
+                operation => _elevation.ExecuteAsync(HostElevationCapability.ProcessManage, "host/processes", operation),
+                () => _disposed == 0 && owner == _session.CurrentSession?.Id && service == _session.ServiceId);
             if (_disposed != 0 || owner != _session.CurrentSession?.Id || service != _session.ServiceId) return;
             if (result.Success) { KillFeedback = LocalizedText.Format("task_manager.process.terminated", process.Name, process.Id); SelectedProcess = null; }
             else if (result.RequiresElevation) KillFeedback = LocalizedText.Format("task_manager.process.elevation_required", process.Name, process.Id, TerminationProblem(result));
             else KillFeedback = LocalizedText.Format("task_manager.process.termination_failed", TerminationProblem(result));
-            await RefreshProcessesAsync();
         }
         catch (Exception ex)
         {
             if (_disposed == 0 && owner == _session.CurrentSession?.Id && service == _session.ServiceId)
                 KillFeedback = LocalizedText.Format("task_manager.process.termination_failed", ex.Message);
+        }
+        finally
+        {
+            // A transport failure leaves the outcome unknown. Reconcile without replaying the mutation.
+            if (_disposed == 0 && owner == _session.CurrentSession?.Id && service == _session.ServiceId)
+                await RefreshProcessesAsync();
         }
     }
 

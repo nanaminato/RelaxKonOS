@@ -46,7 +46,7 @@ Server 通过 `ProcessInstanceTermination` 校验并终止单个实例。Windows
 
 回执的四个字段均为当前契约：`success`、`requiresElevation`、`problemCode`、`error`（可空）。只有观察到目标退出才返回 `success=true`，同时 requiresElevation=false、problemCode 为空。权限不足返回 `process.permission_denied` 与 requiresElevation=true；未确认退出返回 `process.termination_unverified`；缺失/变化/无法验证实例分别明确失败。HTTP 200 的失败回执不能当作操作成功。
 
-查询和图标请求使用 elevated 布尔查询参数，终止正文使用 elevated 字段；默认 false。管理员请求每次以 ProcessManage 能力和 host/processes 目标检查授权，检查先于缓存、图标读取和终止。切换只探测读取并复用统一提权入口；Windows 11 User 模式（包括远程连接）按既有当前账户/owner-device 身份免密码授权。Windows Server、Linux 和 Windows 10/11 System 模式的普通账户需要管理员密码；已经系统认证的管理员/root 或仍有效的精确授权无需重复密码。普通模式即使当前账户是管理员也不自动切换。助手协议 v1.1 使用 ProcessSnapshot、ProcessIcon、ProcessTerminate 固定操作，不开放通用命令执行。客户端在确认时固定原登录会话、PID、启动时间，失败或传输结果未知不记录成功、不自动重放；重新读取列表用于核实。成功/明确回执后使进程缓存失效并刷新。未知响应不意味着进程一定还在运行。
+查询和图标请求使用 elevated 布尔查询参数，终止正文使用 elevated 字段；默认 false。管理员请求每次以 ProcessManage 能力和 host/processes 目标检查授权，检查先于缓存、图标读取和终止。切换只探测读取并复用统一提权入口；桌面结束进程在普通模式收到明确 RequiresElevation 回执后，自动通过统一提升入口以管理员权限重试原 PID/启动时间实例一次，不切换整个列表的模式。管理员模式的结束命令也经过统一提升入口，授权过期且服务端明确拒绝时可重新授权；取消提升、会话变化或传输结果未知均不重放结束操作。失败和未知结果后刷新列表核实状态；Windows 11 User 模式（包括远程连接）按既有当前账户/owner-device 身份免密码授权。Windows Server、Linux 和 Windows 10/11 System 模式的普通账户需要管理员密码；已经系统认证的管理员/root 或仍有效的精确授权无需重复密码。普通模式即使当前账户是管理员也不自动切换。助手协议 v1.1 使用 ProcessSnapshot、ProcessIcon、ProcessTerminate 固定操作，不开放通用命令执行。客户端在确认时固定原登录会话、PID、启动时间，失败或传输结果未知不记录成功、不自动重放；重新读取列表用于核实。成功/明确回执后使进程缓存失效并刷新。未知响应不意味着进程一定还在运行。
 
 原生语义依据：[Windows GetProcessTimes](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getprocesstimes)、[Linux pidfd_open](https://www.man7.org/linux/man-pages/man2/pidfd_open.2.html)、[pidfd_send_signal](https://www.man7.org/linux/man-pages/man2/pidfd_send_signal.2.html)。
 
