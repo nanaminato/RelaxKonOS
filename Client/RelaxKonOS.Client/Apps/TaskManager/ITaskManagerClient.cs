@@ -22,6 +22,7 @@ public interface ITaskManagerClient
     /// <summary>按页、过滤和排序查询进程；性能页不会调用此方法。</summary>
     Task<ProcessPageDto> QueryProcessesAsync(int page = 1, int pageSize = 100, string? filter = null,
         string? sort = null, bool descending = true, CancellationToken ct = default);
+    Task<(byte[] Data, string ContentType)?> GetProcessIconAsync(int processId, DateTimeOffset startTime, CancellationToken ct = default);
 
     /// <summary>结束已确认的 PID/启动时间实例。权限不足返回 RequiresElevation=true。</summary>
     Task<KillProcessResultDto> KillProcessAsync(int processId, DateTimeOffset expectedStartTime, CancellationToken ct = default);

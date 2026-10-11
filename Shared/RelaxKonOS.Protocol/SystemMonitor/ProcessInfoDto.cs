@@ -11,4 +11,5 @@ public sealed record ProcessInfoDto(
     [property: JsonPropertyName("memoryBytes")] long MemoryBytes,
     [property: JsonPropertyName("userName")] string? UserName,
     [property: JsonPropertyName("startTime")] DateTimeOffset? StartTime,
-    [property: JsonPropertyName("threadCount")] int ThreadCount);
+    [property: JsonPropertyName("threadCount")] int ThreadCount,
+    [property: JsonPropertyName("parentProcessId")] int? ParentProcessId);

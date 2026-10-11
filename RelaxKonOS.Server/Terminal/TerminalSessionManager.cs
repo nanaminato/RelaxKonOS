@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Protocol.Hubs;
 using RoyalTerminal.Terminal;
 using RelaxKonOS.Server.Hubs;
@@ -18,16 +19,17 @@ public sealed class TerminalSessionManager
     private readonly IPtyFactory _ptyFactory;
     private readonly IHubContext<TerminalHub, ITerminalHubClient> _hub;
     private readonly Settings.WorkspaceEnvironmentService _environment;
-    private readonly Storage.IWorkspaceRepository _workspaces;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     public TerminalSessionManager(
         IPtyFactory ptyFactory,
         IHubContext<TerminalHub, ITerminalHubClient> hub,
-        Settings.WorkspaceEnvironmentService environment, Storage.IWorkspaceRepository workspaces)
+        Settings.WorkspaceEnvironmentService environment, IServiceScopeFactory scopeFactory)
     {
         _ptyFactory = ptyFactory;
         _hub = hub;
-        _environment = environment; _workspaces = workspaces;
+        _environment = environment;
+        _scopeFactory = scopeFactory;
     }
 
     /// <summary>
@@ -74,7 +76,11 @@ public sealed class TerminalSessionManager
         {
             if (!administrator)
             {
-                if (!Guid.TryParse(userId, out var owner) || _workspaces.FindByUserId(owner) is not { } workspace || workspace.UserId != owner)
+                if (!Guid.TryParse(userId, out var owner))
+                    throw new InvalidOperationException("terminal.workspace_not_found");
+                using var scope = _scopeFactory.CreateScope();
+                var workspaces = scope.ServiceProvider.GetRequiredService<Storage.IWorkspaceRepository>();
+                if (workspaces.FindByUserId(owner) is not { } workspace || workspace.UserId != owner)
                     throw new InvalidOperationException("terminal.workspace_not_found");
                 var snapshot = _environment.Read(workspace);
                 if (pty is not IWorkspaceTerminalPty configurable) throw new InvalidOperationException("terminal.environment_backend_unavailable");

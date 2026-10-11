@@ -15,6 +15,7 @@ public sealed class ProcessSampler(
 {
     private readonly object _gate = new();
     private readonly SemaphoreSlim _collectionGate = new(1, 1);
+    private readonly ProcessIconProvider _icons = new();
     private static readonly TimeSpan SamplingInterval = TimeSpan.FromSeconds(5);
     private Dictionary<ProcessInstanceKey, ProcessSample> _previous = new();
     private ProcessPageDto _latest = new([], 0, DateTimeOffset.MinValue);
@@ -54,6 +55,11 @@ public sealed class ProcessSampler(
         return result;
     }
 
+    public Task<ProcessIconContent?> GetIconAsync(int processId, DateTimeOffset expectedStartTime, CancellationToken cancellationToken = default)
+        => IsVisibleToCurrentMode(processId)
+            ? _icons.GetIconAsync(processId, expectedStartTime, cancellationToken)
+            : Task.FromResult<ProcessIconContent?>(null);
+
     private async Task EnsureFreshAsync(CancellationToken cancellationToken)
     {
         ProcessPageDto latest;
@@ -85,6 +91,7 @@ public sealed class ProcessSampler(
         lock (_gate) previous = _previous;
         var next = new Dictionary<ProcessInstanceKey, ProcessSample>();
         var processes = new List<ProcessInfoDto>();
+        var windowsParentIds = ProcessTreeMetadata.CaptureParentIds();
         try
         {
             foreach (var process in Process.GetProcesses())
@@ -106,8 +113,11 @@ public sealed class ProcessSampler(
                         if (elapsed > 0)
                             cpuPercent = Math.Clamp((cpu - prior.Cpu).TotalSeconds / (elapsed * Environment.ProcessorCount) * 100, 0, 100);
                     }
+                    int? parentId = OperatingSystem.IsLinux()
+                        ? ProcessTreeMetadata.ReadParentId(process)
+                        : windowsParentIds.TryGetValue(process.Id, out var parentProcessId) ? parentProcessId : null;
                     processes.Add(new ProcessInfoDto(process.Id, TryGetName(process), Math.Round(cpuPercent, 1), TryGetMemory(process),
-                        linuxDetails.UserName, startTime, TryGetThreadCount(process, linuxDetails)));
+                        linuxDetails.UserName, startTime, TryGetThreadCount(process, linuxDetails), parentId));
                 }
                 catch { /* a terminated/protected single process cannot break the whole snapshot */ }
                 finally { process.Dispose(); }

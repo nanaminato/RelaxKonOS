@@ -55,6 +55,14 @@ public static class SystemMonitorEndpoints
            .RequireAuthorization()
            .WithTags("System Performance");
 
+        app.MapGet(SystemMonitorApiRoutes.ProcessIcon,
+            async (int id, DateTimeOffset startTime, IProcessService processes, CancellationToken ct) =>
+                await processes.GetIconAsync(id, startTime, ct) is { Data.Length: > 0 } icon
+                    ? Results.File(icon.Data, icon.ContentType)
+                    : Results.NotFound())
+           .RequireAuthorization()
+           .WithTags("System Performance");
+
         // DELETE system/processes/{id} with required expectedStartTime — terminate the confirmed instance.
         app.MapDelete(SystemMonitorApiRoutes.ProcessKill,
             (int id, [Microsoft.AspNetCore.Mvc.FromBody] TerminateProcessRequest request, IProcessService processes, CancellationToken ct)

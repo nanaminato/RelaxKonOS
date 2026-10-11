@@ -7,5 +7,9 @@ public interface IProcessService
 {
     Task<ProcessPageDto> QueryAsync(int page, int pageSize, string? filter, string? sort, bool descending, CancellationToken cancellationToken = default);
 
+    Task<ProcessIconContent?> GetIconAsync(int processId, DateTimeOffset expectedStartTime, CancellationToken cancellationToken = default);
+
     Task<KillProcessResultDto> KillAsync(int processId, DateTimeOffset expectedStartTime, CancellationToken cancellationToken = default);
 }
+
+public sealed record ProcessIconContent(byte[] Data, string ContentType);

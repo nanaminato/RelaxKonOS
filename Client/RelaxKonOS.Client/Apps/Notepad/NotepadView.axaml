@@ -8,7 +8,8 @@
              Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
     <Grid RowDefinitions="Auto,*,Auto">
         <Grid x:Name="HeaderHost" Grid.Row="0" ColumnDefinitions="Auto,*">
-            <StackPanel x:Name="HeaderLeading" Orientation="Horizontal" VerticalAlignment="Center" IsEnabled="{Binding CanEditDocument}">
+            <StackPanel x:Name="HeaderLeading" Orientation="Horizontal" VerticalAlignment="Center">
+                <Image Width="18" Height="18" Margin="0,0,6,0" Source="avares://RelaxKonOS.Client/Assets/AppIcons/notepad.png" VerticalAlignment="Center" />
                 <Menu x:Name="HeaderMenu" Background="Transparent" BorderThickness="0" IsEnabled="{Binding CanEditDocument}">
                     <MenuItem Header="{loc:Loc common.file}">
                         <MenuItem Header="{loc:Loc common.new}" Command="{Binding NewDocumentCommand}" InputGesture="Ctrl+N" />

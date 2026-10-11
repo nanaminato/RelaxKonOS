@@ -1,6 +1,8 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using RelaxKonOS.Client.Apps.TaskManager.ViewModels;
 
 namespace RelaxKonOS.Client.Apps.TaskManager.Views;
@@ -12,11 +14,11 @@ public partial class TaskManagerMainView : UserControl
     public void AttachWindowHeader(RelaxKonOS.WindowManager.ManagedWindow window)
     {
         if (ReferenceEquals(window.View.HeaderCenter, HeaderCenter)) return;
-        HeaderLeading.DataContext = HeaderCenter.DataContext = HeaderTrailing.DataContext = DataContext;
+        HeaderLeading.DataContext = HeaderCenter.DataContext = DataContext;
         HeaderHost.Children.Clear();
         window.View.HeaderLeading = HeaderLeading;
         window.View.HeaderCenter = HeaderCenter;
-        window.View.HeaderTrailing = HeaderTrailing;
+        window.View.HeaderTrailing = null;
         window.View.HeaderTabs = window.View.HeaderToolbar = null;
     }
 
@@ -34,6 +36,16 @@ public partial class TaskManagerMainView : UserControl
     }
 
     private TaskManagerViewModel? ViewModel => DataContext as TaskManagerViewModel;
+
+    private void ProcessIcon_DataContextChanged(object? sender, EventArgs e) => LoadVisibleProcessIcon(sender);
+
+    private void ProcessIcon_AttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e) => LoadVisibleProcessIcon(sender);
+
+    private void LoadVisibleProcessIcon(object? sender)
+    {
+        if (sender is Image { DataContext: ProcessTreeItemViewModel row })
+            _ = ViewModel?.LoadProcessIconAsync(row);
+    }
 
     private void FilterBox_KeyDown(object? sender, KeyEventArgs e)
     {

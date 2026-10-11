@@ -19,13 +19,16 @@
 | GET | `/api/v1.0/system/performance/history?seconds=60` | 最近有效点数组，上限 60 秒 |
 | GET | `/api/v1.0/system/network-addresses` | 非回环、非 IPv6 link-local 的当前接口地址数组 |
 | GET | `/api/v1.0/system/processes/query` | page、pageSize（1–500）、filter、sort（cpu/name/pid/memory）、direction（asc/desc）；`ProcessPageDto` |
+| GET | `/api/v1.0/system/processes/{id}/icon` | 必需 `startTime` 查询参数；返回宿主进程图标 PNG，无法解析时 404 |
 | DELETE | `/api/v1.0/system/processes/{id}` | 必需 JSON `TerminateProcessRequest`；`KillProcessResultDto` |
 
 性能 Hub 为 `/hubs/performance`，方法为 `Subscribe` / `Unsubscribe`，事件为 `OnPerformanceSnapshot`。断开会移除订阅；客户端离页/窗口卸载取消观察，重新进入或重连补取静态信息与历史。序列号仅在同一次 Server 生命周期内递增，重连不能永久沿用旧生命周期的序列基线。
 
 ## 进程查询与实例终止
 
-`ProcessSampler` 只在查询时枚举可见进程，缓存周期 5 秒，CPU 相对整机计算。差分键为 `(PID, StartTime)`，长时间无查询后重建基线。返回 `items`、`totalCount` 与 `sampledAt`；每项包含 id、name、cpuPercent、memoryBytes、userName、startTime、threadCount。无法读取启动时间时 startTime 为 null，客户端禁用终止。Linux User 模式只允许宿主执行 UID 所属进程；不可读取或畸形 UID 拒绝操作，制表符和空格使用同一状态解析器。
+`ProcessSampler` 只在查询时枚举可见进程，缓存周期 5 秒，CPU 相对整机计算。差分键为 `(PID, StartTime)`，长时间无查询后重建基线。返回 `items`、`totalCount` 与 `sampledAt`；每项包含 id、name、cpuPercent、memoryBytes、userName、startTime、threadCount、parentProcessId。客户端按父 PID 组装可展开进程树，过滤时保留匹配项的祖先，并逐页取齐快照以免分页拆散树。无法读取启动时间时 startTime 为 null，客户端禁用终止和图标查询。Linux User 模式只允许宿主执行 UID 所属进程；不可读取或畸形 UID 拒绝操作，制表符和空格使用同一状态解析器。
+
+进程图标单独按 `(PID, StartTime)` 请求，避免进程列表轮询反复传输图像。客户端仅在虚拟化列表需要显示该行时请求；Server 验证当前实例并按可执行文件缓存图标。Windows 从宿主可执行文件提取 PNG；Ubuntu 从匹配的 `.desktop` 项查找 PNG/SVG 图标。图标缺失、权限不足或不支持的图像格式返回 404，客户端使用类别图标回退。
 
 请求只接受当前实例契约：
 
@@ -49,6 +52,6 @@ Server 通过 `ProcessInstanceTermination` 校验并终止单个实例。Windows
 
 ## 客户端与维护约束
 
-Avalonia `TaskManagerClient` 使用当前共享 DTO/路由，性能页静态信息、历史与实时流独立于低频进程查询；过滤/排序/分页交由 Server。进程选择按 PID 与启动时间保留，缺少实例身份时无法执行结束命令；problemCode 映射为本地化反馈。
+Avalonia `TaskManagerClient` 使用当前共享 DTO/路由，性能页静态信息、历史与实时流独立于低频进程查询；Server 提供排序与分页，桌面进程树取齐当前可见快照后本地过滤以保留祖先行。进程选择按 PID 与启动时间保留，缺少实例身份时无法执行结束命令；problemCode 映射为本地化反馈。
 
 维护时同步 Shared、Server、桌面、Android、测试与文档；发布前直接采用当前协议，不保留旧路由/旧正文/双格式解析。数据不持久化，平台差异只归数据源与终止实现，客户端不自行计算 OS 计数器差分。编译、专项测试与真实设备/宿主验收分开记录。

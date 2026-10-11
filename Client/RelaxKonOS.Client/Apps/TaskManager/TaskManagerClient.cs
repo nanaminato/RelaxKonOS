@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Collections.Concurrent;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.Common;
@@ -15,6 +16,7 @@ public sealed class TaskManagerClient : ITaskManagerClient
 {
     private readonly HttpClient _http;
     private readonly IAuthSession _session;
+    private readonly ConcurrentDictionary<(int ProcessId, long StartTicks), Lazy<Task<(byte[] Data, string ContentType)?>>> _processIcons = new();
 
     public TaskManagerClient(HttpClient http, IAuthSession session)
     {
@@ -53,6 +55,27 @@ public sealed class TaskManagerClient : ITaskManagerClient
         => SendAsync<KillProcessResultDto>(HttpMethod.Delete,
             SystemMonitorApiRoutes.ProcessKill.Replace("{id}", processId.ToString(System.Globalization.CultureInfo.InvariantCulture)),
             body: new TerminateProcessRequest(expectedStartTime), ct: ct);
+
+    public Task<(byte[] Data, string ContentType)?> GetProcessIconAsync(int processId, DateTimeOffset startTime, CancellationToken ct = default)
+    {
+        if (_processIcons.Count > 512) _processIcons.Clear();
+        var key = (processId, startTime.UtcTicks);
+        return _processIcons.GetOrAdd(key, _ => new Lazy<Task<(byte[] Data, string ContentType)?>>(() => FetchProcessIconAsync(processId, startTime, ct),
+            LazyThreadSafetyMode.ExecutionAndPublication)).Value;
+    }
+
+    private async Task<(byte[] Data, string ContentType)?> FetchProcessIconAsync(int processId, DateTimeOffset startTime, CancellationToken ct)
+    {
+        var route = SystemMonitorApiRoutes.ProcessIcon.Replace("{id}", processId.ToString(System.Globalization.CultureInfo.InvariantCulture))
+            + "?startTime=" + Uri.EscapeDataString(startTime.ToString("O", System.Globalization.CultureInfo.InvariantCulture));
+        using var response = await SendRawAsync(HttpMethod.Get, route, ct: ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        if (!response.IsSuccessStatusCode) await EnsureSuccessAsync(response, ct);
+        var mediaType = response.Content.Headers.ContentType?.MediaType;
+        if (mediaType is not ("image/png" or "image/svg+xml")) return null;
+        var bytes = await response.Content.ReadAsByteArrayAsync(ct);
+        return bytes.Length is > 0 and <= 262_144 ? (bytes, mediaType) : null;
+    }
 
     // ---- helpers（与 BrowserClient 同模式）----
 
