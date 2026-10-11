@@ -2,13 +2,14 @@ package app.relaxkonos.mobile.ui.manage.guardian
 
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
-import android.app.Application
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.mutableStateOf
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import app.relaxkonos.mobile.RelaxKonApplication
+import app.relaxkonos.mobile.core.auth.AuthSession
+import app.relaxkonos.mobile.data.GuardianRepository
+import kotlinx.coroutines.CancellationException
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.GuardianApproval
@@ -33,9 +34,7 @@ data class GuardianUiState(
     val stale: Boolean = true,
 )
 
-class GuardianViewModel(application: Application) : AndroidViewModel(application) {
-    private val session = getApplication<RelaxKonApplication>().container.session
-    private val repository = getApplication<RelaxKonApplication>().container.guardian
+class GuardianViewModel(private val session: AuthSession, private val repository: GuardianRepository) : ViewModel() {
     private val mutable = MutableStateFlow(GuardianUiState())
     val state = mutable.asStateFlow()
     var editing by mutableStateOf<GuardianDraft?>(null)
@@ -84,6 +83,9 @@ class GuardianViewModel(application: Application) : AndroidViewModel(application
                     problemCode = (workloads as? ApiResult.Problem)?.code ?: (status as? ApiResult.Problem)?.code
                         ?: (status as? ApiResult.Success)?.value?.problemCode?.takeIf(String::isNotBlank)) }
                 if (workloads is ApiResult.Success && mutable.value.selectedId != null && workloads.value.none { it.id == mutable.value.selectedId }) select(null)
+            } catch (cancelled: CancellationException) {
+                readFailed(active)
+                throw cancelled
             } finally { if (current(active)) mutable.update { it.copy(loading = false) } }
         }
     }
@@ -93,11 +95,16 @@ class GuardianViewModel(application: Application) : AndroidViewModel(application
         val active = owner ?: return
         if (id == null || !current(active)) return
         selection = viewModelScope.launch {
-            val definition = repository.definition(active, id)
-            val logs = repository.logs(active, id)
-            if (!current(active) || mutable.value.selectedId != id) return@launch
-            mutable.update { it.copy(definition = (definition as? ApiResult.Success)?.value, logs = (logs as? ApiResult.Success)?.value.orEmpty(),
-                error = definition !is ApiResult.Success || logs !is ApiResult.Success, problemCode = (definition as? ApiResult.Problem)?.code) }
+            try {
+                val definition = repository.definition(active, id)
+                val logs = repository.logs(active, id)
+                if (!current(active) || mutable.value.selectedId != id) return@launch
+                mutable.update { it.copy(definition = (definition as? ApiResult.Success)?.value, logs = (logs as? ApiResult.Success)?.value.orEmpty(),
+                    error = definition !is ApiResult.Success || logs !is ApiResult.Success, problemCode = (definition as? ApiResult.Problem)?.code) }
+            } catch (cancelled: CancellationException) {
+                if (current(active) && mutable.value.selectedId == id) readFailed(active)
+                throw cancelled
+            }
         }
     }
     fun beginEdit(value: GuardianDefinition, creating: Boolean) { if (!mutable.value.loading && !mutable.value.unknown && !mutable.value.stale) editing = GuardianDraft(value, creating) }
@@ -112,13 +119,19 @@ class GuardianViewModel(application: Application) : AndroidViewModel(application
                 if (!current(active) || editing !== draft) return@launch
                 if (result is ApiResult.Success) { editing = GuardianDraft(result.value, false); mutable.update { it.copy(unknown = false, stale = false, error = false, definition = result.value) } }
                 else if (result is ApiResult.Problem && result.status == 404 && draft.creating) mutable.update { it.copy(unknown = false, stale = false, error = false) }
-                else mutable.update { it.copy(error = true, problemCode = (result as? ApiResult.Problem)?.code) }
+                else {
+                    readFailed(active)
+                    mutable.update { it.copy(problemCode = (result as? ApiResult.Problem)?.code) }
+                }
+            } catch (cancelled: CancellationException) {
+                readFailed(active)
+                throw cancelled
             } finally { if (current(active)) mutable.update { it.copy(loading = false) } }
         }
     }
     fun save(draft: GuardianDraft, definition: GuardianDefinition, approval: GuardianApproval?) {
         val active = owner
-        if (active == null || !current(active) || mutable.value.loading || mutable.value.unknown || editing !== draft) { approval?.password?.fill('\u0000'); return }
+        if (active == null || !current(active) || mutable.value.loading || mutable.value.unknown || mutable.value.stale || editing !== draft) { approval?.password?.fill('\u0000'); return }
         mutable.update { it.copy(loading = true, error = false, problemCode = null) }
         work = viewModelScope.launch {
             try {
@@ -127,6 +140,9 @@ class GuardianViewModel(application: Application) : AndroidViewModel(application
                 if (result is ApiResult.Success) {
                     editing = null; mutable.update { it.copy(definition = result.value, selectedId = result.value.id) }
                 } else failure(result)
+            } catch (cancelled: CancellationException) {
+                if (current(active)) failure(ApiResult.Transport(null))
+                throw cancelled
             } finally {
                 approval?.password?.fill('\u0000')
                 if (current(active)) { mutable.update { it.copy(loading = false) }; if (editing == null) load(active) }
@@ -141,9 +157,13 @@ class GuardianViewModel(application: Application) : AndroidViewModel(application
         mutable.update { it.copy(loading = true, error = false, problemCode = null) }
         work = viewModelScope.launch {
             try { val result = call(active); if (current(active) && result !is ApiResult.Success) failure(result) }
+            catch (cancelled: CancellationException) { if (current(active)) failure(ApiResult.Transport(null)); throw cancelled }
             finally { if (current(active)) { mutable.update { it.copy(loading = false) }; if (!mutable.value.error) load(active) } }
         }
     }
     private fun failure(result: ApiResult<*>) { mutable.update { it.copy(error = true, unknown = result is ApiResult.Transport || result is ApiResult.Problem && result.status >= 500,
         problemCode = (result as? ApiResult.Problem)?.code) } }
+    private fun readFailed(active: SessionState.Active) {
+        if (current(active)) mutable.update { it.copy(status = null, definition = null, logs = emptyList(), stale = true, error = true, problemCode = null) }
+    }
 }

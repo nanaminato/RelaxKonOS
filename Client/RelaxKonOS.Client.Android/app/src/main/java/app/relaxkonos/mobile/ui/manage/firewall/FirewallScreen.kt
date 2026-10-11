@@ -11,7 +11,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import app.relaxkonos.mobile.R
+import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.ui.common.*
 import app.relaxkonos.mobile.ui.theme.Spacing
@@ -19,10 +22,16 @@ import java.text.DateFormat
 import java.util.Date
 
 private data class FirewallConfirmation(val expected: FirewallFacts, val change: FirewallChange)
-@OptIn(ExperimentalLayoutApi::class)
 @Composable fun FirewallScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
-    val model: FirewallViewModel = viewModel()
-    val owner = appContainer().activeSession
+    val container = appContainer()
+    val model: FirewallViewModel = viewModel(factory = viewModelFactory {
+        initializer { FirewallViewModel(container.session, container.firewall, container.elevationAnswers) }
+    })
+    FirewallContent(model, container.activeSession, onBack, modifier)
+}
+@OptIn(ExperimentalLayoutApi::class)
+@Composable internal fun FirewallContent(model: FirewallViewModel, owner: SessionState.Active?,
+    onBack: () -> Unit, modifier: Modifier = Modifier) {
     val state = model.state
     val visible = state.owner === owner
     val facts = if (visible) state.facts else null

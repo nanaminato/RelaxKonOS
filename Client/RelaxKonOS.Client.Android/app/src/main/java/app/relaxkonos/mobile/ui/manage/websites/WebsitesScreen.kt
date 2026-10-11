@@ -17,6 +17,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import app.relaxkonos.mobile.ui.manage.certificates.*
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.ApiResult
@@ -31,7 +33,11 @@ import app.relaxkonos.mobile.ui.common.SectionCard
 
 @Composable
 fun WebsitesScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialApplicationId: String? = null) {
-    val viewModel: WebsitesViewModel = viewModel()
+    val dependencies = appContainer()
+    val viewModel: WebsitesViewModel = viewModel(factory = viewModelFactory {
+        initializer { WebsitesViewModel(dependencies.session, dependencies.webPublishing, dependencies.deployments,
+            dependencies.certificates, dependencies.elevationAnswers) }
+    })
     val state = viewModel.state
     val container = app.relaxkonos.mobile.ui.common.appContainer()
     var section by rememberSaveable(container.activeSession, viewModel.sessionEpoch) { mutableStateOf(if (initialApplicationId == null) "instances" else "publish") }
@@ -54,12 +60,12 @@ fun WebsitesScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initial
         RefreshProgressIndicator(visible = state.loading)
         WorkspaceSection(section != "publish") { NginxManager(onChanged = viewModel::refresh, section = section, onRecords = { section = "records" }) }
         WorkspaceSection(section == "publish") { androidx.compose.runtime.key(viewModel.sessionEpoch) { WebsitePublisher(state, viewModel) { section = "records" } } }
-        WorkspaceSection(section == "records") { SectionCard(stringResource(R.string.websites_publish_title)) { PublicationResult(state, viewModel) } }
+        WorkspaceSection(section == "records") { WebsitePublicationRecords(state, viewModel) }
     }
 }
 
 @Composable
-private fun WebsitePublisher(state: WebsitesState, viewModel: WebsitesViewModel, onSubmitted: () -> Unit) {
+internal fun WebsitePublisher(state: WebsitesState, viewModel: WebsitesViewModel, onSubmitted: () -> Unit) {
     val servers = (state.servers as? ApiResult.Success)?.value.orEmpty().filter { it.server.canRead && it.server.canTestConfiguration }
     val applications = (state.applications as? ApiResult.Success)?.value.orEmpty().filter { it.actualState.equals("running", true) }
     // Keep the draft in this composition while refresh temporarily shows prerequisite status.
@@ -112,7 +118,9 @@ private fun WebsitePublisher(state: WebsitesState, viewModel: WebsitesViewModel,
             CheckboxOption(publicReachability, stringResource(R.string.websites_public_reachability), !state.publishing) { publicReachability = it }
         }
         Button(
-            enabled = !state.publishing && domain.isNotBlank() && ((useExistingCertificate && certificateReady) || (!useExistingCertificate && email.isNotBlank() && acceptedTerms && publicReachability)),
+            enabled = !state.publishing && applications.any { it.id == state.selectedApplicationId } &&
+                servers.any { it.server.id == state.selectedServerId } && domain.isNotBlank() &&
+                ((useExistingCertificate && certificateReady) || (!useExistingCertificate && email.isNotBlank() && acceptedTerms && publicReachability)),
             onClick = { viewModel.publish(domain, email, if (useExistingCertificate) selectedCertificate?.id else null, acceptedTerms, publicReachability); onSubmitted() },
         ) { Text(stringResource(if (state.publishing) R.string.websites_publishing else R.string.websites_publish)) }
     }
@@ -127,22 +135,63 @@ internal fun websitePublicationPrerequisite(state: WebsitesState): Int? = when {
 }
 
 @Composable
-private fun PublicationResult(state: WebsitesState, viewModel: WebsitesViewModel) {
+internal fun WebsitePublicationRecords(state: WebsitesState, viewModel: WebsitesViewModel) {
+    SectionCard(stringResource(R.string.websites_publication_records)) {
+        Text(stringResource(R.string.websites_publish_application), style = MaterialTheme.typography.labelLarge)
+        val applications = state.applications
+        if (applications is ApiResult.Success) {
+            if (applications.value.isEmpty()) Text(stringResource(R.string.websites_records_no_applications))
+            applications.value.forEach { application ->
+                TextButton(enabled = !state.publishing && !state.loading,
+                    onClick = { viewModel.selectApplication(application.id) }) {
+                    Text(if (application.id == state.selectedApplicationId) "✓ ${application.name}" else application.name)
+                }
+            }
+        } else if (!state.loading) {
+            Text(stringResource(R.string.websites_load_failed), color = MaterialTheme.colorScheme.error)
+        }
+        TextButton(enabled = !state.loading && !state.publishing, onClick = viewModel::refresh) {
+            ActionLabel(R.string.common_refresh)
+        }
+        PublicationResult(state, viewModel)
+    }
+}
+
+@Composable
+internal fun PublicationResult(state: WebsitesState, viewModel: WebsitesViewModel) {
+    if (state.selectedApplicationId == null && state.publication == null && !state.publicationLoading && !state.publishing) {
+        Text(stringResource(R.string.websites_records_no_target), style = MaterialTheme.typography.bodyMedium)
+    }
     val result = state.publication
     if (result is ApiResult.Success) {
         val operation = result.value
         Text(stringResource(R.string.websites_operation, operation.state, operation.stage), style = MaterialTheme.typography.bodyMedium)
         if (operation.problemCode.isNotBlank()) Text(operation.problemCode, color = MaterialTheme.colorScheme.error)
         operation.checks.forEach { check -> Text(stringResource(R.string.websites_check, check.name, check.observer, check.state, check.problemCode.ifBlank { "—" }), style = MaterialTheme.typography.bodySmall) }
-        androidx.compose.runtime.LaunchedEffect(operation.operationId, operation.state) {
-            viewModel.observePublication(operation)
+        androidx.compose.runtime.LaunchedEffect(operation.operationId, operation.state, state.publicationLoading, state.publicationObservation) {
+            if (!state.publicationLoading) viewModel.observePublication(operation)
         }
     } else if (result is ApiResult.Problem) {
         Text(result.code, color = MaterialTheme.colorScheme.error)
     } else if (result is ApiResult.Transport) {
-        Text(stringResource(R.string.websites_publish_transport_failed), color = MaterialTheme.colorScheme.error)
+        Text(stringResource(if (state.publicationLookupId != null) R.string.websites_load_failed else R.string.websites_publish_transport_failed), color = MaterialTheme.colorScheme.error)
     }
-    (state.publicationHistory as? ApiResult.Success)?.value?.take(3)?.forEach { history ->
+    RefreshProgressIndicator(visible = state.publicationLoading)
+    state.publicationLookupId?.let { id ->
+        TextButton(enabled = !state.publicationLoading && !state.publishing, onClick = { viewModel.refreshPublication(id) }) {
+            ActionLabel(R.string.common_refresh)
+        }
+    }
+    RefreshProgressIndicator(visible = state.historyLoading)
+    if (state.publicationHistory is ApiResult.Transport || state.publicationHistory is ApiResult.Problem) {
+        Text(stringResource(R.string.websites_history_failed), color = MaterialTheme.colorScheme.error)
+        TextButton(enabled = !state.historyLoading, onClick = viewModel::refreshHistory) {
+            ActionLabel(R.string.common_retry)
+        }
+    }
+    val history = (state.publicationHistory as? ApiResult.Success)?.value
+    if (history?.isEmpty() == true) Text(stringResource(R.string.websites_history_empty), style = MaterialTheme.typography.bodySmall)
+    history?.forEach { history ->
         Text(stringResource(R.string.websites_operation_history, history.domain, history.state, history.stage), style = MaterialTheme.typography.bodySmall)
     }
 }

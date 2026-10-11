@@ -190,7 +190,11 @@ internal class GitWorkspaceViewModel(private val session: AuthSession, private v
         val epoch = generation; state = state.copy(busy = true, problem = null, saved = false, feedbackVersion = ++feedbackVersion)
         job = viewModelScope.launch {
             try { block(owner) }
-            catch (cancelled: CancellationException) { throw cancelled }
+            catch (cancelled: CancellationException) {
+                if (current(owner, epoch)) state = state.copy(facts = null, preview = null,
+                    problem = "git.workspace.unverified")
+                throw cancelled
+            }
             catch (_: Exception) { if (current(owner, epoch)) state = state.copy(facts = null, preview = null, problem = "git.workspace.unverified") }
             finally { if (current(owner, epoch)) state = state.copy(busy = false,
                 pending = runCatching { gitWorkspace.pending(owner) }.getOrDefault(state.pending),

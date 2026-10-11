@@ -107,7 +107,11 @@ internal class SmbViewModel(private val session: AuthSession, private val smb: S
         val request = generation; state = state.copy(busy = true, problem = null)
         job = viewModelScope.launch {
             try { verify(owner); block(owner) }
-            catch (cancelled: CancellationException) { throw cancelled }
+            catch (cancelled: CancellationException) {
+                if (current(owner, request)) state = state.copy(facts = null, installationVerified = false,
+                    problem = "file-services.smb.unverified")
+                throw cancelled
+            }
             catch (_: Exception) { if (current(owner, request)) state = state.copy(facts = null, installationVerified = false, problem = "file-services.smb.unverified") }
             finally { if (current(owner, request)) state = state.copy(busy = false,
                 pending = runCatching { smb.pending(owner) }.getOrDefault(state.pending),

@@ -3,13 +3,15 @@ package app.relaxkonos.mobile.ui.manage.websites
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import app.relaxkonos.mobile.ui.common.*
-import android.app.Application
+import app.relaxkonos.mobile.core.auth.AuthSession
+import app.relaxkonos.mobile.core.auth.SessionState
+import app.relaxkonos.mobile.data.*
 import androidx.compose.runtime.mutableStateOf
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import app.relaxkonos.mobile.AppContainer
+
 import app.relaxkonos.mobile.ui.manage.certificates.*
-import app.relaxkonos.mobile.RelaxKonApplication
+
 import app.relaxkonos.mobile.core.net.usageProblem
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.DeploymentApplication
@@ -39,112 +41,180 @@ internal data class WebsitesState(
     val selectedApplicationId: String? = null,
     val publication: ApiResult<WebsitePublicationOperation>? = null,
     val publicationHistory: ApiResult<List<WebsitePublicationOperation>>? = null,
+    val historyLoading: Boolean = false,
     val publishing: Boolean = false,
+    val publicationLookupId: String? = null,
+    val publicationLoading: Boolean = false,
+    val publicationObservation: Int = 0,
 )
 
-internal class WebsitesViewModel(application: Application) : AndroidViewModel(application) {
+internal class WebsitesViewModel(private val session: AuthSession, private val webPublishing: WebPublishingRepository,
+    private val deployments: DeploymentRepository, private val certificates: CertificateRepository,
+    private val elevationAnswers: ElevationAnswerProvider) : ViewModel() {
     suspend fun observePublication(operation: WebsitePublicationOperation) {
+        val owner = session.state.value as? SessionState.Active ?: return
+        val request = publicationReadGeneration
         if (!operation.isTerminal()) {
             kotlinx.coroutines.delay(1000)
-            refreshPublication(operation.operationId)
+            if (session.state.value === owner && request == publicationReadGeneration &&
+                state.publicationLookupId == operation.operationId) refreshPublication(operation.operationId)
         }
     }
 
-    private val container: AppContainer get() = getApplication<RelaxKonApplication>().container
+
     var state by mutableStateOf(WebsitesState())
         private set
+    private var publicationReadGeneration = 0
+    private var historyReadGeneration = 0
 
     var sessionEpoch by androidx.compose.runtime.mutableIntStateOf(0)
         private set
     init {
-        viewModelScope.launch { container.session.state.collect { state = WebsitesState(); sessionEpoch++ } }
+        viewModelScope.launch { session.state.collect { publicationReadGeneration++; historyReadGeneration++; state = WebsitesState(); sessionEpoch++ } }
     }
 
     fun refresh() {
-        val owner = container.activeSession ?: return
+        val owner = (session.state.value as? SessionState.Active) ?: return
         if (state.loading) return
         state = state.copy(loading = true)
         viewModelScope.launch {
-            val servers = container.webPublishing.servers(owner)
+            try {
+            val servers = webPublishing.servers(owner)
             val details = when (servers) {
                 is ApiResult.Success -> ApiResult.Success(servers.value.map { server ->
                     WebsiteServerState(
                         server = server,
-                        status = container.webPublishing.status(owner, server.id),
-                        configuration = if (server.canTestConfiguration) container.webPublishing.configTest(owner, server.id) else null,
-                        sites = if (server.canRead) container.webPublishing.sites(owner, server.id)
+                        status = webPublishing.status(owner, server.id),
+                        configuration = if (server.canTestConfiguration) webPublishing.configTest(owner, server.id) else null,
+                        sites = if (server.canRead) webPublishing.sites(owner, server.id)
                         else ApiResult.Transport("Server did not grant site-read capability."),
                     )
                 })
                 is ApiResult.Problem -> servers
                 is ApiResult.Transport -> servers
             }
-            val certificates = if (owner.capabilities.contains(ServerCapabilities.CERTIFICATES)) container.webPublishing.certificates(owner) else null
-            val applications = if (owner.capabilities.contains(ServerCapabilities.APPLICATION_DEPLOYMENTS)) container.deployments.applications(owner) else null
+            val certificates = if (owner.capabilities.contains(ServerCapabilities.CERTIFICATES)) webPublishing.certificates(owner) else null
+            val applications = if (owner.capabilities.contains(ServerCapabilities.APPLICATION_DEPLOYMENTS)) deployments.applications(owner) else null
             val serverIds = (details as? ApiResult.Success)?.value.orEmpty()
                 .filter { it.server.canRead && it.server.canTestConfiguration }.map { it.server.id }
             val applicationIds = (applications as? ApiResult.Success)?.value.orEmpty()
-                .filter { it.actualState.equals("running", true) }.map { it.id }
-            if (container.activeSession !== owner) return@launch
+                .map { it.id }
+            if ((session.state.value as? SessionState.Active) !== owner) return@launch
+            val applicationId = websitePublicationSelection(state.selectedApplicationId, applicationIds)
             state = state.copy(loading = false,
                 servers = details, certificates = certificates, applications = applications,
                 selectedServerId = websitePublicationSelection(state.selectedServerId, serverIds),
-                selectedApplicationId = websitePublicationSelection(state.selectedApplicationId, applicationIds),
             )
+            if (state.selectedApplicationId != applicationId) changeApplication(applicationId)
+            } catch (cancelled: CancellationException) {
+                refreshFailed(owner)
+                throw cancelled
+            } catch (_: Exception) {
+                refreshFailed(owner)
+            } finally {
+                if (session.state.value === owner) state = state.copy(loading = false)
+            }
         }
+    }
+
+    private fun refreshFailed(owner: SessionState.Active) {
+        if (session.state.value === owner) state = state.copy(servers = ApiResult.Transport(null),
+            certificates = null, applications = null)
     }
 
     fun selectServer(serverId: String) { state = state.copy(selectedServerId = serverId) }
     fun selectApplication(applicationId: String) {
-        state = state.copy(selectedApplicationId = applicationId, publication = null, publicationHistory = null)
-        loadHistory(applicationId)
+        changeApplication(applicationId)
+    }
+
+    private fun changeApplication(applicationId: String?) {
+        publicationReadGeneration++
+        historyReadGeneration++
+        state = state.copy(selectedApplicationId = applicationId, publication = null, publicationHistory = null,
+            publicationLookupId = null, publicationLoading = false, historyLoading = false)
+        if (applicationId != null) loadHistory(applicationId)
     }
 
     fun publish(domain: String, contactEmail: String, certificateId: String?, acceptedTerms: Boolean, publiclyReachable: Boolean) {
-        val owner = container.activeSession ?: return
+        val owner = (session.state.value as? SessionState.Active) ?: return
         val serverId = state.selectedServerId ?: return
         val applicationId = state.selectedApplicationId ?: return
+        if ((state.applications as? ApiResult.Success)?.value?.none {
+                it.id == applicationId && it.actualState.equals("running", true)
+            } != false) return
         if (state.publishing) return
-        state = state.copy(publishing = true, publication = null)
+        publicationReadGeneration++
+        state = state.copy(publishing = true, publication = null, publicationLookupId = null, publicationLoading = false)
         viewModelScope.launch {
             try {
                 if (certificateId != null) {
-                    val certificate = container.certificates.certificate(owner, certificateId)
-                    if (container.activeSession !== owner) return@launch
+                    val certificate = certificates.certificate(owner, certificateId)
+                    if ((session.state.value as? SessionState.Active) !== owner) return@launch
                     if (certificate !is ApiResult.Success || certificate.value.usageProblem(listOf(domain)) != null) {
                         state = state.copy(publishing = false, publication = ApiResult.Problem(409, "webserver.site_certificate_unverified", null)); return@launch
                     }
                 }
-                val result = container.webPublishing.publish(WebsitePublishRequest(
+                val result = webPublishing.publish(WebsitePublishRequest(
                     applicationId = applicationId, webServerId = serverId, domain = domain,
                     certificateId = certificateId, contactEmail = contactEmail, acceptedTerms = acceptedTerms,
                     publicReachabilityConfirmed = publiclyReachable, confirmed = true,
-                ), container.elevationAnswers)
-                if (container.activeSession !== owner) return@launch
-                state = state.copy(publishing = false, publication = result)
+                ), elevationAnswers)
+                if ((session.state.value as? SessionState.Active) !== owner) return@launch
+                state = state.copy(publishing = false, publication = result,
+                    publicationLookupId = (result as? ApiResult.Success)?.value?.operationId)
                 if (result is ApiResult.Success) loadHistory(result.value.applicationId)
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { if (container.activeSession === owner) state = state.copy(publication = ApiResult.Transport(null)) }
-            finally { if (container.activeSession === owner) state = state.copy(publishing = false) }
+            catch (_: Exception) { if ((session.state.value as? SessionState.Active) === owner) state = state.copy(publication = ApiResult.Transport(null)) }
+            finally { if ((session.state.value as? SessionState.Active) === owner) state = state.copy(publishing = false) }
         }
     }
 
     fun refreshPublication(operationId: String) {
-        val owner = container.activeSession ?: return
+        val owner = (session.state.value as? SessionState.Active) ?: return
+        val request = ++publicationReadGeneration
+        state = state.copy(publicationLookupId = operationId, publicationLoading = true)
         viewModelScope.launch {
-            val result = container.webPublishing.operation(owner, operationId)
-            if (container.activeSession !== owner) return@launch
-            state = state.copy(publication = result)
-            if (result is ApiResult.Success && result.value.isTerminal()) loadHistory(result.value.applicationId)
+            fun current() = session.state.value === owner && request == publicationReadGeneration
+            try {
+                val result = webPublishing.operation(owner, operationId)
+                if (!current()) return@launch
+                state = state.copy(publication = result)
+                if (result is ApiResult.Success && result.value.isTerminal()) loadHistory(result.value.applicationId)
+            } catch (cancelled: CancellationException) {
+                if (current()) state = state.copy(publication = ApiResult.Transport(null))
+                throw cancelled
+            } catch (_: Exception) {
+                if (current()) state = state.copy(publication = ApiResult.Transport(null))
+            } finally {
+                if (current()) state = state.copy(publicationLoading = false,
+                    publicationObservation = state.publicationObservation + 1)
+            }
         }
     }
 
     private fun loadHistory(applicationId: String) {
-        val owner = container.activeSession ?: return
+        val owner = (session.state.value as? SessionState.Active) ?: return
+        if (state.selectedApplicationId != applicationId) return
+        val request = ++historyReadGeneration
+        state = state.copy(publicationHistory = null, historyLoading = true)
         viewModelScope.launch {
-            val result = container.webPublishing.history(owner, applicationId)
-            if (container.activeSession === owner && state.selectedApplicationId == applicationId) state = state.copy(publicationHistory = result)
+            fun current() = session.state.value === owner && request == historyReadGeneration && state.selectedApplicationId == applicationId
+            try {
+                val result = webPublishing.history(owner, applicationId)
+                if (current()) state = state.copy(publicationHistory = result)
+            } catch (cancelled: CancellationException) {
+                if (current()) state = state.copy(publicationHistory = ApiResult.Transport(null))
+                throw cancelled
+            } catch (_: Exception) {
+                if (current()) state = state.copy(publicationHistory = ApiResult.Transport(null))
+            } finally {
+                if (current()) state = state.copy(historyLoading = false)
+            }
         }
+    }
+
+    fun refreshHistory() {
+        if (!state.historyLoading) state.selectedApplicationId?.let(::loadHistory)
     }
 
 }

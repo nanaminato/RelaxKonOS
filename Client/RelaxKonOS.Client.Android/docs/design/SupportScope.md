@@ -20,6 +20,6 @@ Android 提供定义备份创建、清单和只读预检，没有恢复提交界
 
 ## 平台与验证
 
-Windows 设备密钥针对 Windows 10/11 工作站，不代表 Windows Server 支持同一授权流程。SMB 在 Windows 外部或漂移共享上为只读；防火墙管理按当前 Server 的 UFW 能力门控。能力可见不等于获得写入授权。
+Windows 设备密钥针对 Windows 10/11 工作站，不代表 Windows Server 支持同一授权流程。SMB 在 Windows 外部或漂移共享上为只读；防火墙管理按 `server.firewall` 能力门控，由宿主提供 UFW 或 Windows Defender Firewall 后端。能力可见不等于获得写入授权。
 
 手机、平板、旋转、分屏、大字体、三语、主题、TalkBack、进程回收和真实宿主操作的验证要求见 [验证要求](../development/Verification.md)。文档中的功能描述不代表所有设备与宿主组合已经验证通过。

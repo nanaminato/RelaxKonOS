@@ -11,7 +11,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import app.relaxkonos.mobile.R
+import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.ui.common.*
 import app.relaxkonos.mobile.ui.manage.operations.*
@@ -23,10 +26,21 @@ private data class MirrorDraft(val id: String? = null, val name: String = "", va
     fun request() = DockerMirrorRequest(name.trim(), endpoint.trim())
 }
 private data class ControlConfirmation(val facts: DockerControlFacts, val change: DockerControlChange)
+@Composable internal fun dockerControlViewModel(): DockerControlViewModel {
+    val container = appContainer()
+    return viewModel(factory = viewModelFactory {
+        initializer { DockerControlViewModel(container.session, container.dockerControl, container.dockerResources,
+            container.installations, container.operationIndex, container.dockerMutationGate, container.elevationAnswers) }
+    })
+}
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable fun DockerControlScreen(onBack: () -> Unit, modifier: Modifier = Modifier, mirrorsOnly: Boolean = false, recordsOnly: Boolean = false, active: Boolean = true) {
-    val model: DockerControlViewModel = viewModel(); val owner = appContainer().activeSession; val state = model.state
+    DockerControlContent(dockerControlViewModel(), appContainer().activeSession, onBack, modifier, mirrorsOnly, recordsOnly, active)
+}
+@OptIn(ExperimentalLayoutApi::class)
+@Composable internal fun DockerControlContent(model: DockerControlViewModel, owner: SessionState.Active?, onBack: () -> Unit,
+    modifier: Modifier = Modifier, mirrorsOnly: Boolean = false, recordsOnly: Boolean = false, active: Boolean = true) {
+    val state = model.state
     val visible = state.owner === owner; val facts = state.facts.takeIf { visible }
     val manage = visible && owner?.privilegedOperations == true
     val ready = manage && !state.busy && state.pending.isEmpty() && !state.resourcePending && !state.pendingInstallation &&
@@ -89,7 +103,7 @@ WorkspaceSection(!mirrorsOnly && !recordsOnly) {
         }
 }
         WorkspaceSection(recordsOnly) {
-        val recordModel: DockerResourceViewModel = viewModel(key = "docker-resources-all")
+        val recordModel: DockerResourceViewModel = dockerResourceViewModel(key = "docker-resources-all")
         val recordState = recordModel.state
         LaunchedEffect(owner, recordState.owner, recordsOnly) { if (recordsOnly && recordState.owner === owner) recordModel.refresh() }
         if (recordState.owner === owner) recordState.pending.forEach { marker -> ManagementCard {
@@ -100,7 +114,7 @@ WorkspaceSection(!mirrorsOnly && !recordsOnly) {
             OutlinedButton(enabled = !recordState.busy && recordState.facts?.status?.available == true, onClick = { recordModel.accept(marker) }) { Text(stringResource(R.string.docker_control_accept)) }
         } }
         DockerResourceKind.entries.forEach { kind ->
-            val resourceModel: DockerResourceViewModel = viewModel(key = "docker-resources-${kind.name}")
+            val resourceModel: DockerResourceViewModel = dockerResourceViewModel(key = "docker-resources-${kind.name}")
             val resourceState = resourceModel.state
             if (resourceState.owner === owner) {
                 resourceState.result?.let { result -> ManagementCard {

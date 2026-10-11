@@ -15,6 +15,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.*
+import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.data.PendingCertificateRequest
 import app.relaxkonos.mobile.ui.common.*
 import app.relaxkonos.mobile.ui.theme.Spacing
@@ -28,9 +29,14 @@ fun CertificatesScreen(onBack: () -> Unit, initialOperationId: String? = null, s
     val model: CertificatesViewModel = viewModel(factory = viewModelFactory {
         initializer { CertificatesViewModel(container.session, container.certificates, container.operationIndex, container.elevationAnswers) }
     })
+    CertificatesContent(model, container.activeSession, onBack, initialOperationId, serverHttpsOnly, modifier)
+}
+
+@Composable
+internal fun CertificatesContent(model: CertificatesViewModel, owner: SessionState.Active?, onBack: () -> Unit,
+    initialOperationId: String? = null, serverHttpsOnly: Boolean = false, modifier: Modifier = Modifier) {
     val state = model.state
     val epoch = model.sessionEpoch
-    val owner = appContainer().activeSession
     var section by rememberSaveable(owner, epoch) { mutableStateOf(if (initialOperationId != null) "operations" else if (serverHttpsOnly) "certificates" else "overview") }
     if (state.draft == null) CertificateFeedback(state)
     LaunchedEffect(initialOperationId) { if (initialOperationId != null) section = "operations" }

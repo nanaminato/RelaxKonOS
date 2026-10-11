@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
 <resources>
+    <string name="websites_publication_records">Website publication records</string>
+    <string name="websites_records_no_target">Select an application to read its publication history. A submitted publication can also be tracked here.</string>
+    <string name="websites_records_no_applications">The server returned no applications. Refresh after checking applications in Application deployment.</string>
+    <string name="websites_history_empty">The server returned no publication history for this application.</string>
+    <string name="websites_history_failed">Publication history could not be read. Retry after checking the server connection and permission.</string>
     <string name="websites_accept_terms">I accept the certificate authority terms.</string>
     <string name="websites_application_association_unverified">The managed application association could not be verified through this connection.</string>
     <string name="websites_certificate_status">Certificate %1$s · %2$s</string>

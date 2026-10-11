@@ -17,7 +17,7 @@ import app.relaxkonos.mobile.ui.more.OutboundProxyScreen
 fun DockerWorkspace(initialSection: String, initialStack: String?, onBack: () -> Unit,
     onOpenApplication: (String) -> Unit, onOpenManagedProxy: () -> Unit, modifier: Modifier = Modifier) {
     val owner = appContainer().activeSession
-    val control: DockerControlViewModel = viewModel()
+    val control: DockerControlViewModel = dockerControlViewModel()
     var requestedStack by rememberSaveable(owner) { mutableStateOf(initialStack) }
     var section by rememberSaveable(owner) { mutableStateOf(initialSection) }
     LaunchedEffect(initialSection, initialStack) {

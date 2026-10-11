@@ -28,7 +28,12 @@ class WebPublishingRepository(
     suspend fun history(owner: SessionState.Active, applicationId: String) =
         read(owner) { url, token -> gateway.websitePublicationHistory(url, token, applicationId) }
     suspend fun operation(owner: SessionState.Active, operationId: String) =
-        read(owner) { url, token -> gateway.websitePublication(url, token, operationId) }
+        read(owner) { url, token ->
+            val result = gateway.websitePublication(url, token, operationId)
+            if (result is ApiResult.Success && result.value.operationId != operationId) {
+                ApiResult.Transport(null)
+            } else result
+        }
 
     suspend fun publish(request: WebsitePublishRequest, provider: ElevationAnswerProvider): ApiResult<WebsitePublicationOperation> {
         require(request.confirmed) { "Website publication must be confirmed." }

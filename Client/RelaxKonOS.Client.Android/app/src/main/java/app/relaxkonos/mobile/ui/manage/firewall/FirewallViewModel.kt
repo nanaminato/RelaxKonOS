@@ -1,10 +1,9 @@
 package app.relaxkonos.mobile.ui.manage.firewall
 
-import android.app.Application
 import androidx.compose.runtime.*
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import app.relaxkonos.mobile.RelaxKonApplication
+import app.relaxkonos.mobile.core.auth.AuthSession
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.data.*
@@ -13,22 +12,22 @@ import kotlinx.coroutines.*
 internal data class FirewallState(val owner: SessionState.Active? = null, val busy: Boolean = false,
     val facts: FirewallFacts? = null, val checkedAtMillis: Long? = null, val pending: List<PendingFirewallChange> = emptyList(),
     val problem: String? = null, val saved: Int = 0)
-internal class FirewallViewModel(application: Application) : AndroidViewModel(application) {
-    private val container get() = getApplication<RelaxKonApplication>().container
+internal class FirewallViewModel(private val session: AuthSession, private val firewall: FirewallRepository,
+    private val elevationAnswers: ElevationAnswerProvider) : ViewModel() {
     var state by mutableStateOf(FirewallState()); private set
     private var job: Job? = null
     private var generation = 0
-    init { viewModelScope.launch { container.session.state.collect { next ->
+    init { viewModelScope.launch { session.state.collect { next ->
         if (next !== state.owner) { job?.cancel(); generation++; state = FirewallState(owner = next as? SessionState.Active) }
     } } }
     fun stop() { job?.cancel(); generation++; state = state.copy(busy = false, facts = null, checkedAtMillis = null) }
     fun refresh() = work { owner -> load(owner) }
     fun accept(pending: PendingFirewallChange) = work { owner ->
-        container.firewall.acceptFacts(owner, pending); verify(owner); load(owner)
+        val result = firewall.acceptFacts(owner, pending); verify(owner); showFacts(owner, result)
     }
     fun change(expected: FirewallFacts, change: FirewallChange) {
         work { owner ->
-            val result = container.firewall.change(owner, expected, change, container.elevationAnswers)
+            val result = firewall.change(owner, expected, change, elevationAnswers)
             verify(owner)
             val problem = when (result) {
                 is ApiResult.Problem -> result.code
@@ -41,8 +40,11 @@ internal class FirewallViewModel(application: Application) : AndroidViewModel(ap
         }
     }
     private suspend fun load(owner: SessionState.Active) {
-        val result = container.firewall.facts(owner); verify(owner)
-        state = state.copy(facts = (result as? ApiResult.Success)?.value, checkedAtMillis = System.currentTimeMillis(), pending = container.firewall.pending(owner),
+        val result = firewall.facts(owner); verify(owner)
+        showFacts(owner, result)
+    }
+    private fun showFacts(owner: SessionState.Active, result: ApiResult<FirewallFacts>) {
+        state = state.copy(facts = (result as? ApiResult.Success)?.value, checkedAtMillis = System.currentTimeMillis(), pending = firewall.pending(owner),
             problem = when (result) { is ApiResult.Problem -> result.code; is ApiResult.Transport -> "firewall.unverified"; is ApiResult.Success -> result.value.status.problemCode.takeIf(String::isNotBlank) })
     }
     private fun work(block: suspend (SessionState.Active) -> Unit) {
@@ -52,11 +54,15 @@ internal class FirewallViewModel(application: Application) : AndroidViewModel(ap
         state = state.copy(busy = true, problem = null)
         job = viewModelScope.launch {
             try { verify(owner); block(owner) }
-            catch (cancelled: CancellationException) { throw cancelled }
+            catch (cancelled: CancellationException) {
+                if (current(owner, request)) state = state.copy(facts = null, problem = "firewall.unverified")
+                throw cancelled
+            }
             catch (_: Exception) { if (current(owner, request)) state = state.copy(facts = null, problem = "firewall.unverified") }
-            finally { if (current(owner, request)) state = state.copy(busy = false) }
+            finally { if (current(owner, request)) state = state.copy(busy = false,
+                pending = runCatching { firewall.pending(owner) }.getOrDefault(state.pending)) }
         }
     }
-    private fun current(owner: SessionState.Active, request: Int) = state.owner === owner && container.session.state.value === owner && generation == request
-    private fun verify(owner: SessionState.Active) { if (state.owner !== owner || container.session.state.value !== owner) throw CancellationException("Firewall session changed") }
+    private fun current(owner: SessionState.Active, request: Int) = state.owner === owner && session.state.value === owner && generation == request
+    private fun verify(owner: SessionState.Active) { if (state.owner !== owner || session.state.value !== owner) throw CancellationException("Firewall session changed") }
 }

@@ -9,6 +9,7 @@ import app.relaxkonos.mobile.data.*
 import app.relaxkonos.mobile.security.*
 import app.relaxkonos.mobile.servercenter.ServerConnectionIdentityRules
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.*
@@ -94,6 +95,19 @@ class CertificatesViewModelTest {
         val corrected = requested.copy(domainsText = "different.example.test")
         model.update(corrected)
         assertEquals(corrected, model.state.draft); assertEquals(1, sends)
+    }
+    @Test fun `cancelled submission exposes the original recovery intent and keeps draft locked`() = runTest {
+        login(); runCurrent(); model.create(true)
+        val requested = draft.copy(selfSigned = true)
+        model.update(requested)
+        var sends = 0
+        gateway.onCertificateMutation = { _, _, _, _ -> sends++; throw CancellationException("cancelled") }
+        model.submitDraft(); advanceUntilIdle()
+        assertEquals(1, sends); assertEquals(requested, model.state.draft)
+        assertFalse(model.state.busy); assertTrue(model.state.uncertain)
+        assertTrue(model.state.draftLocked); assertFalse(model.state.operationVerified)
+        assertEquals(1, model.state.pending.size); assertTrue(model.state.pending.single().attempted)
+        assertNull(model.state.problemCode)
     }
     @Test fun `old preflight response cannot grant permission to a new identity draft`() = runTest {
         login(); runCurrent(); model.create(false); model.update(draft)

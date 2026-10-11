@@ -17,6 +17,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.*
+import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.ui.common.*
 import app.relaxkonos.mobile.ui.manage.operations.*
 import app.relaxkonos.mobile.ui.theme.Spacing
@@ -29,7 +30,13 @@ import java.util.Date
     val model: SmbViewModel = viewModel(factory = viewModelFactory {
         initializer { SmbViewModel(container.session, container.smb, container.installations, container.operationIndex, container.elevationAnswers) }
     })
-    val owner = container.activeSession; val state = model.state
+    SmbContent(model, container.activeSession, onBack, modifier)
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun SmbContent(model: SmbViewModel, owner: SessionState.Active?, onBack: () -> Unit, modifier: Modifier = Modifier) {
+    val state = model.state
     val visible = state.owner === owner; val facts = state.facts.takeIf { visible }
     val canManage = visible && owner?.privilegedOperations == true
     val ready = canManage && !state.busy && state.pending.isEmpty() && !state.pendingInstallation && state.installation?.state?.active != true &&

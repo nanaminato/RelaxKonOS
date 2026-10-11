@@ -54,6 +54,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.ui.common.RemotePathField
 import app.relaxkonos.mobile.ui.common.RemotePathKind
@@ -76,7 +77,15 @@ private fun guardianProblemLabel(code: String?): Int = when (code) {
 }
 @Composable
 fun GuardianScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modifier = Modifier) {
-    val model: GuardianViewModel = viewModel()
+    val dependencies = app.relaxkonos.mobile.ui.common.appContainer()
+    val model: GuardianViewModel = viewModel(factory = androidx.lifecycle.viewmodel.viewModelFactory {
+        initializer { GuardianViewModel(dependencies.session, dependencies.guardian) }
+    })
+    GuardianContent(owner, onBack, model, modifier)
+}
+
+@Composable
+internal fun GuardianContent(owner: SessionState.Active, onBack: () -> Unit, model: GuardianViewModel, modifier: Modifier = Modifier) {
     val state by model.state.collectAsStateWithLifecycle()
     val editing = model.editing
     val liveLogs by model.logObserver.state.collectAsStateWithLifecycle()
@@ -113,7 +122,7 @@ fun GuardianScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Mod
             OutlinedButton(onClick = { model.load(owner) }, enabled = !state.loading) { ActionLabel(R.string.common_refresh) }
         }, actions = {
             Button(onClick = { model.beginEdit(GuardianDefinition(UUID.randomUUID().toString(), "", "", emptyList(), "", false, 15, 3, null, owner.userName, null), true) },
-                enabled = state.status?.running == true && !state.loading && !state.unknown) { Text(stringResource(R.string.guardian_create)) }
+                enabled = state.status?.running == true && !state.loading && !state.unknown && !state.stale) { Text(stringResource(R.string.guardian_create)) }
         })
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             if (maxWidth >= 840.dp && maxHeight >= 240.dp) {
@@ -222,7 +231,7 @@ private fun GuardianEditor(owner: SessionState.Active, draft: GuardianDraft, sta
             Text("${definition.name} · ${definition.runAs}")
             OutlinedTextField(adminName, { adminName = it }, singleLine = true, label = { Text(stringResource(R.string.guardian_admin_name)) })
             OutlinedTextField(password, { password = it }, singleLine = true, visualTransformation = PasswordVisualTransformation(), label = { Text(stringResource(R.string.guardian_admin_password)) })
-        } }, confirmButton = { TextButton(enabled = adminName.isNotBlank() && password.isNotEmpty() && !state.loading && !state.unknown, onClick = {
+        } }, confirmButton = { TextButton(enabled = adminName.isNotBlank() && password.isNotEmpty() && !state.loading && !state.unknown && !state.stale, onClick = {
             val approval = GuardianApproval(adminName.trim(), password.toCharArray()); password = ""; approvalTarget = null; onSave(definition, approval)
         }) { ActionLabel(R.string.common_save) } }, dismissButton = { TextButton(onClick = { approvalTarget = null; password = "" }) { Text(stringResource(R.string.common_cancel)) } }) }
     Column(modifier.fillMaxSize().windowInsetsPadding(WindowInsets.ime).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {

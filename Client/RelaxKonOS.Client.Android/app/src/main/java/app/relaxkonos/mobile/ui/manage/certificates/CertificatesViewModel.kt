@@ -159,7 +159,14 @@ internal class CertificatesViewModel(private val session: AuthSession, private v
         viewModelScope.launch {
             val stage = WorkStage()
             try { stage.block(active) }
-            catch (cancelled: CancellationException) { throw cancelled }
+            catch (cancelled: CancellationException) {
+                if (activeSession === active) {
+                    failure(ApiResult.Transport(null), stage.writing || state.uncertain)
+                    state = state.copy(operationVerified = false,
+                        pending = runCatching { repository.pending(active) }.getOrDefault(state.pending))
+                }
+                throw cancelled
+            }
             catch (_: Exception) { if (activeSession === active) {
                 failure(ApiResult.Transport(null), stage.writing || state.uncertain)
                 state = state.copy(operationVerified = false,

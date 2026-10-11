@@ -9,6 +9,7 @@ import app.relaxkonos.mobile.data.*
 import app.relaxkonos.mobile.security.*
 import app.relaxkonos.mobile.servercenter.ServerConnectionIdentityRules
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.*
 import org.junit.Assert.*
@@ -59,6 +60,29 @@ class SmbViewModelTest {
             it.copy(server = it.server.copy(capabilities = setOf(ServerCapabilities.FILE_SERVICES), privilegedOperations = true))
         }) }
         session.login(ServerConnectionIdentityRules.direct("https://review.invalid"), "review-user", "test".toCharArray()) {}
+    }
+
+    @Test fun `cancelled refresh clears previously verified facts and permits explicit recovery`() = runTest {
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        assertEquals(facts, model.state.facts)
+        gateway.onSmbCapabilities = { throw CancellationException("private cancelled read") }
+        model.refresh(); advanceUntilIdle()
+        assertNull(model.state.facts); assertFalse(model.state.busy)
+        assertFalse(model.state.installationVerified)
+        assertEquals("file-services.smb.unverified", model.state.problem)
+        gateway.onSmbCapabilities = { ApiResult.Success(facts.capabilities) }
+        model.refresh(); advanceUntilIdle()
+        assertEquals(facts, model.state.facts); assertNull(model.state.problem)
+        assertEquals(0, sends)
+    }
+
+    @Test fun `cancelled change retains recovery marker and revokes old facts`() = runTest {
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        gateway.onSmbChange = { _, _ -> sends++; throw CancellationException("private cancelled write") }
+        model.change(facts, SmbChange(SmbChangeKind.Stop)); advanceUntilIdle()
+        assertNull(model.state.facts); assertFalse(model.state.busy)
+        assertEquals("file-services.smb.unverified", model.state.problem)
+        assertEquals(1, sends); assertEquals(1, model.state.pending.size)
     }
 
     @Test fun `failed adoption cannot be hidden by a second successful read`() = runTest {

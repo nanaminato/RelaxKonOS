@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
 <resources>
+    <string name="websites_publication_records">网站发布记录</string>
+    <string name="websites_records_no_target">请选择应用以读取发布历史。提交发布后也可在此跟踪操作。</string>
+    <string name="websites_records_no_applications">服务器未返回应用。请在“应用部署”中核对应用后刷新。</string>
+    <string name="websites_history_empty">服务器未返回此应用的发布历史。</string>
+    <string name="websites_history_failed">无法读取发布历史。请检查服务器连接和权限后重试。</string>
     <string name="websites_accept_terms">我接受证书颁发机构条款。</string>
     <string name="websites_application_association_unverified">无法通过当前连接核实 RelaxKonOS 管理的应用关联。</string>
     <string name="websites_certificate_status">证书 %1$s · %2$s</string>

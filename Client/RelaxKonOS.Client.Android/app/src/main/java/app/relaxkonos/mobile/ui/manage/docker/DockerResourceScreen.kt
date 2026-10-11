@@ -11,17 +11,32 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import app.relaxkonos.mobile.R
+import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.ui.common.*
 import app.relaxkonos.mobile.ui.theme.Spacing
 import java.util.UUID
 
 private data class ResourceConfirmation(val facts: DockerResourceFacts, val target: DockerResourceTarget?, val change: DockerResourceChange)
-@OptIn(ExperimentalLayoutApi::class)
+@Composable internal fun dockerResourceViewModel(key: String): DockerResourceViewModel {
+    val container = appContainer()
+    return viewModel(key = key, factory = viewModelFactory {
+        initializer { DockerResourceViewModel(container.session, container.dockerResources, container.dockerMutationGate) }
+    })
+}
 @Composable fun DockerResourceScreen(onBack: () -> Unit, onOpenControl: () -> Unit, onOpenCompose: (String) -> Unit,
     onOpenApplication: (String) -> Unit, modifier: Modifier = Modifier, resourceKind: DockerResourceKind? = null, active: Boolean = true) {
-    val model: DockerResourceViewModel = viewModel(key = "docker-resources-${resourceKind?.name ?: "all"}"); val owner = appContainer().activeSession; val state = model.state
+    val model = dockerResourceViewModel(key = "docker-resources-${resourceKind?.name ?: "all"}")
+    DockerResourceContent(model, appContainer().activeSession, onBack, onOpenControl, onOpenCompose, onOpenApplication, modifier, resourceKind, active)
+}
+@OptIn(ExperimentalLayoutApi::class)
+@Composable internal fun DockerResourceContent(model: DockerResourceViewModel, owner: SessionState.Active?,
+    onBack: () -> Unit, onOpenControl: () -> Unit, onOpenCompose: (String) -> Unit, onOpenApplication: (String) -> Unit,
+    modifier: Modifier = Modifier, resourceKind: DockerResourceKind? = null, active: Boolean = true) {
+    val state = model.state
     val visible = owner === state.owner; val facts = state.facts.takeIf { visible }; val target = state.target.takeIf { visible }
     val ready = visible && owner?.privilegedOperations == true && !state.busy && state.blocked == null && state.pending.isEmpty() && facts?.status?.available == true
     var kind by remember(owner) { mutableStateOf(resourceKind ?: DockerResourceKind.Containers) }

@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
 <resources>
+    <string name="websites_publication_records">Web サイト公開記録</string>
+    <string name="websites_records_no_target">アプリを選択すると公開履歴を取得できます。送信した公開操作もここで確認できます。</string>
+    <string name="websites_records_no_applications">サーバーからアプリが返されませんでした。「アプリのデプロイ」でアプリを確認して更新してください。</string>
+    <string name="websites_history_empty">このアプリの公開履歴はサーバーから返されませんでした。</string>
+    <string name="websites_history_failed">公開履歴を取得できませんでした。サーバー接続と権限を確認して再試行してください。</string>
     <string name="websites_accept_terms">認証局の規約に同意します。</string>
     <string name="websites_application_association_unverified">現在の接続では、管理対象アプリケーションの関連付けを確認できませんでした。</string>
     <string name="websites_certificate_status">証明書 %1$s · %2$s</string>
