@@ -35,7 +35,7 @@
     <string name="help_guides_title">已有项目指南</string>
     <string name="help_install_body">在服务器中心核验 SSH 连接和主机指纹后，可选择官网包、手机 ZIP 或服务器 ZIP 安装 RelaxKonOS Server。部署页也提供确认式升级、修复与卸载。连接前核对原操作结果记录和服务器健康；登录后，运行时管理器提供各自的安装流程。</string>
     <string name="help_install_title">安装与包的范围</string>
-    <string name="help_open">打开功能</string>
+    <string name="help_open">打开%1$s</string>
     <string name="help_packages_body">应用部署安装远端工作负载。桌面 .roapp 属于另一类包，不能在此 Android 客户端运行。Web 服务交给外部应用打开，不附加客户端登录凭据。</string>
     <string name="help_recovery_body">操作结果记录丢失不代表失败。再次提交前先查询原操作或恢复记录；刷新只读取事实，不重复变更。Server 任务按各自取消规则继续运行。SSH 转发可从通知停止，进程退出后不会自动重启。</string>
     <string name="help_recovery_title">中断或结果不确定的操作</string>

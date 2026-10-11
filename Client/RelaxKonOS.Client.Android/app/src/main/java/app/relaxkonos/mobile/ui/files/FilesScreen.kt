@@ -613,6 +613,10 @@ fun FileDetailScreen(
                 }
                 properties?.attributes?.takeIf { it.isNotBlank() }?.let {
                     KeyValueRow(stringResource(R.string.files_label_attributes), it)
+                    if (it.split(',').any { attribute -> attribute.trim() == "ReparsePoint" }) {
+                        Text(stringResource(R.string.files_link_note), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
                 properties?.permissions?.takeIf { it.isNotBlank() }?.let {
                     KeyValueRow(stringResource(R.string.files_label_permissions), it)

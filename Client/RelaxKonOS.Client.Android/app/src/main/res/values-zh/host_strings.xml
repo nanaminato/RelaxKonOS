@@ -15,6 +15,7 @@
     <string name="host_settings_delete">删除此变量</string>
     <string name="host_settings_discard">放弃草稿</string>
     <string name="host_settings_effect">生效方式：%1$s</string>
+    <string name="host_settings_effect_label">生效方式</string>
     <string name="host_settings_environment">环境变量</string>
     <string name="host_settings_environment_authorization_required">需要授权</string>
     <string name="host_settings_environment_note">需要权限时会自动申请授权，授权后完整显示所有值。空字符串是有效值，删除会移除变量；编辑替换完整值。</string>

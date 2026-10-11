@@ -24,8 +24,9 @@ internal class DiagnosticsController(private val session: AuthSession, private v
     private val localized: (Int, Array<out Any>) -> String, private val scope: CoroutineScope) {
     val connectionCredentialCount get() = deviceFacts().connectionRecords
     val elevationCredentialCount get() = deviceFacts().elevationRecords
-    var lines by mutableStateOf<List<String>>(emptyList())
-        private set
+    private data class CheckLine(val resource: Int, val arguments: Array<out Any>)
+    private var checks by mutableStateOf<List<CheckLine>>(emptyList())
+    val lines: List<String> get() = checks.map { localized(it.resource, it.arguments) }
     var running by mutableStateOf(false)
         private set
     var export by mutableStateOf<String?>(null)
@@ -41,24 +42,24 @@ internal class DiagnosticsController(private val session: AuthSession, private v
     }
     private fun resetOwner(active: SessionState.Active?) {
         generation++; job?.cancel(); job = null; owner = active
-        lines = emptyList(); export = null; running = false
+        checks = emptyList(); export = null; running = false
     }
     private suspend fun <T> read(check: suspend () -> ApiResult<T>): ApiResult<T> =
         try { check() }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { ApiResult.Transport(null) }
-    private fun text(id: Int, vararg args: Any) = localized(id, args)
+    private fun text(id: Int, vararg args: Any) = CheckLine(id, args)
     fun run() {
         val active = session.state.value as? SessionState.Active
         if (owner !== active) resetOwner(active)
         if (running) return
-        running = true; lines = emptyList(); export = null
+        running = true; checks = emptyList(); export = null
         val version = ++generation
         fun current() = version == generation && (session.state.value as? SessionState.Active) === active
         fun guard() { if (!current()) throw CancellationException("Diagnostics owner changed") }
         job = scope.launch {
           try {
-            val collected = mutableListOf<String>()
+            val collected = mutableListOf<CheckLine>()
             guard()
             collected += if (active == null) text(R.string.diagnostics_no_session) else text(R.string.diagnostics_session_ok, active.serviceId)
             collected += text(if (session.accessToken != null) R.string.diagnostics_token_held else R.string.diagnostics_token_absent)
@@ -80,7 +81,7 @@ internal class DiagnosticsController(private val session: AuthSession, private v
                     is ApiResult.Transport -> text(R.string.diagnostics_files_transport)
                 }
             }
-            guard(); lines = collected
+            guard(); checks = collected
           } finally { if (current()) running = false }
         }
     }

@@ -35,7 +35,7 @@
     <string name="help_guides_title">既存のプロジェクトガイド</string>
     <string name="help_install_body">サーバーセンターで SSH 接続とホスト鍵を確認し、公式リリース、端末内の ZIP、ホスト上の ZIP から RelaxKonOS Server をインストールできます。展開画面では確認付きの更新・修復・削除も行えます。接続前に元の操作結果とホストの正常性を確認してください。ログイン後のランタイム管理は個別の手順で行います。</string>
     <string name="help_install_title">インストールとパッケージの範囲</string>
-    <string name="help_open">機能を開く</string>
+    <string name="help_open">%1$sを開く</string>
     <string name="help_packages_body">アプリ展開はリモートのワークロードを導入します。デスクトップの .roapp は別の形式で、この Android クライアントでは動作しません。Web サービスは認証情報を添付せず外部アプリで開きます。</string>
     <string name="help_recovery_body">応答の消失は失敗の証明ではありません。再送の前に元の操作や復旧記録を確認します。更新は状態の読み取りであり、変更の再実行ではありません。Server の操作はそれぞれの取消規則に従います。SSH 転送は通知から停止でき、プロセス終了後に自動再開しません。</string>
     <string name="help_recovery_title">中断または結果が不明な操作</string>

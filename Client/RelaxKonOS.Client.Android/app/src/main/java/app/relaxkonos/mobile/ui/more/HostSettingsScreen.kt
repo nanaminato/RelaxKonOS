@@ -45,6 +45,13 @@ fun HostSettingsScreen(onBack: (() -> Unit)?, onOpenServerHttps: () -> Unit = {}
         lifecycle.addObserver(observer); editor.lifecycle(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
         onDispose { lifecycle.removeObserver(observer); editor.close() }
     }
+    HostSettingsContent(editor, onBack, onOpenServerHttps, modifier)
+}
+
+@Composable
+internal fun HostSettingsContent(editor: HostSettingsEditor, onBack: (() -> Unit)?,
+    onOpenServerHttps: () -> Unit, modifier: Modifier = Modifier) {
+    val owner = editor.owner
     BackHandler(onBack != null) { onBack?.let { editor.leave(it) } }
     Column(modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(Spacing.lg),verticalArrangement=Arrangement.spacedBy(Spacing.md)) {
         ScreenHeader(stringResource(R.string.host_settings_title), onBack = onBack?.let { { editor.leave(it) } })
@@ -70,7 +77,7 @@ fun HostSettingsScreen(onBack: (() -> Unit)?, onOpenServerHttps: () -> Unit = {}
                 SectionCard(stringResource(R.string.host_settings_current)) {
                     KeyValueRow(stringResource(R.string.host_settings_zone), facts.zoneId)
                     KeyValueRow(stringResource(R.string.host_settings_zone_offset), HostTimeZoneChoices.offsetLabel(facts.zoneId,offsetAt) ?: "—")
-                    KeyValueRow(stringResource(R.string.host_settings_effect), stringResource(effectLabel(facts.effectiveState)))
+                    KeyValueRow(stringResource(R.string.host_settings_effect_label), stringResource(effectLabel(facts.effectiveState)))
                     KeyValueRow(stringResource(R.string.host_settings_observed), formatTimestamp(observedMillis).orEmpty())
                 }
                 SectionCard(stringResource(R.string.host_settings_zone), subtitle=stringResource(R.string.host_settings_zones,facts.zones.size)) {
@@ -214,7 +221,7 @@ fun HostSettingsScreen(onBack: (() -> Unit)?, onOpenServerHttps: () -> Unit = {}
     editor.rollbackReview?.let { review -> SettingsReview(stringResource(R.string.host_settings_rollback),stringResource(R.string.host_settings_rollback),editor::dismissRollback,editor::rollback) {
         Text(review.first.id); Text(review.first.target.resourceId); Text(stringResource(R.string.host_settings_rollback_note))
     } }
-    if(editor.leaveReview) SettingsReview(stringResource(R.string.host_settings_discard),stringResource(R.string.host_settings_discard),editor::dismissLeave,{editor.discard();editor.dismissLeave();onBack?.invoke()}) { Text(stringResource(R.string.host_settings_leave)) }
+    if(editor.leaveReview) SettingsReview(stringResource(R.string.host_settings_discard),stringResource(R.string.host_settings_discard),editor::dismissLeave,editor::confirmLeave) { Text(stringResource(R.string.host_settings_leave)) }
 }
 @Composable
 private fun SettingsReview(title:String,confirm:String,onDismiss:()->Unit,onConfirm:()->Unit,confirmEnabled:Boolean=true,dismissEnabled:Boolean=true,content:@Composable ColumnScope.()->Unit) {

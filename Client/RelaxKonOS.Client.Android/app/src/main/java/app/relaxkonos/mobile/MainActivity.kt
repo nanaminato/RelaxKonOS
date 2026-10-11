@@ -41,6 +41,7 @@ import app.relaxkonos.mobile.ui.nav.Routes
 import app.relaxkonos.mobile.ui.nav.ShellScaffold
 import app.relaxkonos.mobile.ui.nav.ShellViewModel
 import app.relaxkonos.mobile.ui.theme.RelaxKonOSTheme
+import app.relaxkonos.mobile.ui.theme.ActivitySystemBars
 import app.relaxkonos.mobile.ui.theme.Spacing
 import app.relaxkonos.mobile.ui.theme.applyAppLanguage
 import app.relaxkonos.mobile.ui.theme.applyAppNightMode
@@ -103,6 +104,8 @@ class MainActivity : AppCompatActivity() {
 private fun RelaxKonApp(container: AppContainer) {
     val appearance = container.appearance
     RelaxKonOSTheme(colorMode = appearance.colorMode, highContrast = appearance.highContrast) {
+        ActivitySystemBars()
+        LaunchedEffect(appearance.colorMode) { applyAppNightMode(appearance.colorMode) }
         val sessionState = container.session.state.collectAsStateValue()
         val shell: ShellViewModel = viewModel()
         val login: LoginViewModel = viewModel()

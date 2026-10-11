@@ -84,6 +84,7 @@
     <string name="files_kind_file">ファイル</string>
     <string name="files_label_accessed">アクセス日時</string>
     <string name="files_label_attributes">属性</string>
+    <string name="files_link_note">この項目はリンクまたは再解析ポイントです。属性やファイル操作はリンク先に適用される場合があり、サイズが一覧と異なることがあります。</string>
     <string name="files_label_created">作成日時</string>
     <string name="files_label_kind">種類</string>
     <string name="files_label_modified">更新日時</string>

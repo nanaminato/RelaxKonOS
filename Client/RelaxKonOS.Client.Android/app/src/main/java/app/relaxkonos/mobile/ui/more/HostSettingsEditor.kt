@@ -35,6 +35,7 @@ internal class HostSettingsEditor(val owner: SessionState.Active, private val re
     private var generation = 0
     private var closed = false
     private var writeInFlight = false
+    private var leaveDestination: (() -> Unit)? = null
     private val windows get() = owner.serverPlatform.equals("windows", true)
     val dirty get() = if (kind == HostSettingKind.Environment) name.isNotEmpty() || value.isNotEmpty() else
         value != when(kind) { HostSettingKind.Time -> time?.zoneId.orEmpty(); HostSettingKind.Identity -> identity?.pendingName.orEmpty(); else -> "" }
@@ -48,7 +49,7 @@ internal class HostSettingsEditor(val owner: SessionState.Active, private val re
         resumed = active
         if (active) load() else {
             generation++; job?.cancel(); busy = false; windowsEnvironments = emptyMap(); environmentAuthorizationScopes = emptySet(); environmentEditing = false; environment = null; time = null; identity = null; value = ""; name = ""; plan = null
-            rollbackReview = null; leaveReview = false; delete = false; expand = false
+            rollbackReview = null; dismissLeave(); delete = false; expand = false
         }
     }
     fun close() { lifecycle(false); closed = true }
@@ -60,7 +61,16 @@ internal class HostSettingsEditor(val owner: SessionState.Active, private val re
     }
     fun load() {
         if (!resumed || busy || dirty) return
-        execute { references = repository.references(owner); reloadFacts() }
+        execute {
+            // A new read must establish fresh facts before they can authorize another preview.
+            clearFacts(); discard()
+            references = repository.references(owner); reloadFacts()
+        }
+    }
+    private fun clearFacts() {
+        time = null; identity = null; environment = null
+        windowsEnvironments = emptyMap(); environmentAuthorizationScopes = emptySet()
+        environmentAuthorizationRequired = false
     }
     /**
      * Read the facts of the selected kind back from the host.
@@ -143,8 +153,17 @@ internal class HostSettingsEditor(val owner: SessionState.Active, private val re
                 references = repository.references(owner); time = null; identity = null; environment = null; discard(); reloadFacts()
             } } }
     }
-    fun leave(onBack: () -> Unit) { if (!busy) { if(dirty) leaveReview = true else onBack() } }
-    fun dismissLeave() { leaveReview = false }
+    fun leave(destination: () -> Unit) {
+        if (closed || !resumed || busy || !current() || leaveReview) return
+        if (dirty) { leaveDestination = destination; leaveReview = true } else destination()
+    }
+    fun dismissLeave() { leaveReview = false; leaveDestination = null }
+    fun confirmLeave() {
+        if (closed || !resumed || busy || !current() || !leaveReview) return
+        val destination = leaveDestination
+        dismissLeave(); discard()
+        destination?.invoke()
+    }
     private suspend fun <T> consume(result: ApiResult<T>, action: (T)->Unit) {
         currentCoroutineContext().ensureActive()
         if (!current() || !resumed) return
@@ -165,7 +184,18 @@ internal class HostSettingsEditor(val owner: SessionState.Active, private val re
         busy = true; writeInFlight = write; error = null; val version = ++generation
         job = scope.launch {
             try { action() }
-            catch(cancelled: CancellationException) { throw cancelled }
+            catch(cancelled: CancellationException) {
+                if (!closed && resumed && current() && version == generation) {
+                    // The repository records a dispatched write before sending it. Surface that
+                    // recovery reference even when cancellation skips the normal read-back.
+                    if (write) {
+                        references = repository.references(owner)
+                        clearFacts(); discard()
+                    }
+                    error = if(writeInFlight) R.string.host_settings_unknown else R.string.error_connectivity
+                }
+                throw cancelled
+            }
             catch(_: Exception) { if (current() && version == generation) error = if(writeInFlight) R.string.host_settings_unknown else R.string.error_generic }
             finally { if (current() && version == generation) busy = false }
         }

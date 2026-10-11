@@ -84,6 +84,7 @@
     <string name="files_kind_file">File</string>
     <string name="files_label_accessed">Accessed</string>
     <string name="files_label_attributes">Attributes</string>
+    <string name="files_link_note">This entry is a link or reparse point. Its properties and file operations may refer to the target; the size can differ from the directory listing.</string>
     <string name="files_label_created">Created</string>
     <string name="files_label_kind">Type</string>
     <string name="files_label_modified">Modified</string>

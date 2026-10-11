@@ -84,6 +84,7 @@
     <string name="files_kind_file">文件</string>
     <string name="files_label_accessed">访问时间</string>
     <string name="files_label_attributes">属性</string>
+    <string name="files_link_note">此条目是链接或重解析点。属性及文件操作可能作用于目标，因此大小可能与目录列表不同。</string>
     <string name="files_label_created">创建时间</string>
     <string name="files_label_kind">类型</string>
     <string name="files_label_modified">修改时间</string>

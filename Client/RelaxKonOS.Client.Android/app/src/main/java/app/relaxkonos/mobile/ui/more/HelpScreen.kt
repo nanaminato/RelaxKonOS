@@ -32,7 +32,7 @@ fun HelpScreen(onBack:(()->Unit)?,onOpenRoute:((String)->Unit)?,onOpenServerCent
                 MobileFeatureCatalog.entries.filter{it.available(owner.capabilities)}.forEach{feature->
                     Text(stringResource(feature.title),style=MaterialTheme.typography.titleSmall)
                     Text(stringResource(feature.description),style=MaterialTheme.typography.bodySmall)
-                    TextButton(onClick={if(container.activeSession===owner&&feature.available(container.capabilities)) onOpenRoute(feature.route)}) { Text(stringResource(R.string.help_open)) }
+                    TextButton(onClick={if(container.activeSession===owner&&feature.available(container.capabilities)) onOpenRoute(feature.route)}) { Text(stringResource(R.string.help_open, stringResource(feature.title))) }
                 }
             }
         }

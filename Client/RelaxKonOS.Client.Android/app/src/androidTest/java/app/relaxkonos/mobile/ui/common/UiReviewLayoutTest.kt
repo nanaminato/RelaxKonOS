@@ -2,6 +2,9 @@ package app.relaxkonos.mobile.ui.common
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -52,5 +55,38 @@ class UiReviewLayoutTest {
         assertTrue("The action must use its own row on narrow cards", action.top >= title.bottom)
         rule.onNodeWithText("Run diagnostics").assertIsDisplayed().performClick()
         rule.runOnIdle { assertTrue(clicked) }
+    }
+
+    @Test fun recordActionsLeaveLongIdentityReadableWithLargeText() {
+        val identity = "https://very-long-server-name.example.invalid:5000/account-with-a-long-name"
+        var deleted = false
+        rule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 1.6f)) {
+                MaterialTheme {
+                    Box(Modifier.width(320.dp).verticalScroll(rememberScrollState())) {
+                        RecordActionRow(
+                            leading = { Text("K") },
+                            actions = {
+                                Column {
+                                    TextButton(onClick = {}) { Text("Switch connection") }
+                                    TextButton(onClick = {}) { Text("Forget saved password") }
+                                    TextButton(onClick = { deleted = true }) { Text("Delete login") }
+                                }
+                            },
+                        ) { Text(identity) }
+                    }
+                }
+            }
+        }
+        val layouts = mutableListOf<TextLayoutResult>()
+        rule.onNodeWithText(identity).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        assertFalse("The full target must remain readable", layouts.single().hasVisualOverflow)
+        assertTrue("Identity must retain enough width", layouts.single().size.width > 180 * rule.density.density)
+        val target = rule.onNodeWithText(identity).fetchSemanticsNode().boundsInRoot
+        val action = rule.onNodeWithText("Switch connection").fetchSemanticsNode().boundsInRoot
+        assertTrue("Actions must follow the target on narrow screens", action.top >= target.bottom)
+        rule.onNodeWithText("Delete login").performScrollTo().assertIsDisplayed().performClick()
+        rule.runOnIdle { assertTrue(deleted) }
     }
 }

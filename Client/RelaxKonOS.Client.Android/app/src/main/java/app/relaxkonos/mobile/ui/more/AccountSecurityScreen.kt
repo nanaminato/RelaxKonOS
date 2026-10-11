@@ -3,7 +3,7 @@ package app.relaxkonos.mobile.ui.more
 import app.relaxkonos.mobile.ui.common.ActionLabel
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import app.relaxkonos.mobile.ui.common.RecordActionRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -19,7 +19,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import app.relaxkonos.mobile.R
@@ -148,49 +147,43 @@ fun AccountSecurityScreen(
                 EmptyHint(stringResource(R.string.account_security_connection_vault_empty))
             } else {
                 connectionRecords.forEach { record ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    RecordActionRow(
+                        leading = { ServerPlatformBadge(record.serviceId) },
+                        actions = {
+                            TextButton(onClick = { deleteTarget = DeletionTarget.Vault(record) }) {
+                                ActionLabel(R.string.common_delete)
+                            }
+                        },
                     ) {
-                        ServerPlatformBadge(record.serviceId)
-                        Column(Modifier.weight(1f)) {
-                            Text(record.serviceId, style = MaterialTheme.typography.bodyMedium)
-                            Text(
-                                listOfNotNull(record.account, formatTimestamp(record.lastUsedEpochMillis)).joinToString(" · "),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            InvalidatedNote(record)
-                        }
-                        TextButton(onClick = { deleteTarget = DeletionTarget.Vault(record) }) {
-                            ActionLabel(R.string.common_delete)
-                        }
+                        Text(record.serviceId, style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            listOfNotNull(record.account, formatTimestamp(record.lastUsedEpochMillis)).joinToString(" · "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        InvalidatedNote(record)
                     }
                 }
                 debugRecord?.let { record ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    RecordActionRow(
+                        leading = { ServerPlatformBadge(record.serviceId) },
+                        actions = {
+                            TextButton(onClick = { deleteTarget = DeletionTarget.DebugStore }) {
+                                ActionLabel(R.string.common_delete)
+                            }
+                        },
                     ) {
-                        ServerPlatformBadge(record.serviceId)
-                        Column(Modifier.weight(1f)) {
-                            Text(record.serviceId, style = MaterialTheme.typography.bodyMedium)
-                            Text(
-                                record.identifier,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Text(
-                                stringResource(R.string.account_security_debug_record_note),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error,
-                            )
-                        }
-                        TextButton(onClick = { deleteTarget = DeletionTarget.DebugStore }) {
-                            ActionLabel(R.string.common_delete)
-                        }
+                        Text(record.serviceId, style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            record.identifier,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            stringResource(R.string.account_security_debug_record_note),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
                     }
                 }
             }
@@ -201,24 +194,21 @@ fun AccountSecurityScreen(
                 EmptyHint(stringResource(R.string.account_security_elevation_vault_empty))
             } else {
                 elevationRecords.forEach { record ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    RecordActionRow(
+                        leading = { ServerPlatformBadge(record.serviceId) },
+                        actions = {
+                            TextButton(onClick = { deleteTarget = DeletionTarget.Vault(record) }) {
+                                ActionLabel(R.string.common_delete)
+                            }
+                        },
                     ) {
-                        ServerPlatformBadge(record.serviceId)
-                        Column(Modifier.weight(1f)) {
-                            Text(record.account, style = MaterialTheme.typography.bodyMedium)
-                            Text(
-                                listOfNotNull(record.serviceId, formatTimestamp(record.lastUsedEpochMillis)).joinToString(" · "),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            InvalidatedNote(record)
-                        }
-                        TextButton(onClick = { deleteTarget = DeletionTarget.Vault(record) }) {
-                            ActionLabel(R.string.common_delete)
-                        }
+                        Text(record.account, style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            listOfNotNull(record.serviceId, formatTimestamp(record.lastUsedEpochMillis)).joinToString(" · "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        InvalidatedNote(record)
                     }
                 }
             }

@@ -28,13 +28,22 @@ private class ProxyOwnerKey(private val owner: SessionState.Active?) {
 fun OutboundProxyScreen(onBack: (() -> Unit)?, onOpenManagedProxy: (() -> Unit)?, modifier: Modifier = Modifier) {
     val container = appContainer()
     val owner = container.activeSession
-    val available = owner?.capabilities?.contains(ServerCapabilities.DOCKER) == true
     val scope = rememberCoroutineScope()
     val ownerKey = ProxyOwnerKey(owner)
     val editor = remember(ownerKey, scope) {
         owner?.let { OutboundProxyEditor(container.docker, it, { container.activeSession === it }, scope) }
     }
     DisposableEffect(editor) { onDispose { editor?.close() } }
+    OutboundProxyContent(owner, editor, onBack, onOpenManagedProxy, modifier)
+}
+
+@Composable
+internal fun OutboundProxyContent(
+    owner: SessionState.Active?, editor: OutboundProxyEditor?, onBack: (() -> Unit)?,
+    onOpenManagedProxy: (() -> Unit)?, modifier: Modifier = Modifier,
+) {
+    val available = owner?.capabilities?.contains(ServerCapabilities.DOCKER) == true
+    val ownerKey = ProxyOwnerKey(owner)
     var showUrls by remember(ownerKey) { mutableStateOf(false) }
     LaunchedEffect(editor) { if (available) editor?.load() }
     BackHandler(enabled = onBack != null && editor != null) { editor?.leave { onBack?.invoke() } }

@@ -35,7 +35,7 @@
     <string name="help_guides_title">Existing project guides</string>
     <string name="help_install_body">Use Server Center to verify SSH access and the host key, then install RelaxKonOS Server from an official release, a ZIP on this phone, or a ZIP on the host. The deployment page also provides reviewed upgrade, repair and uninstall actions. Check the original receipt and host health before connecting; runtime managers provide separate installation flows after login.</string>
     <string name="help_install_title">Installation and package boundaries</string>
-    <string name="help_open">Open workflow</string>
+    <string name="help_open">Open %1$s</string>
     <string name="help_packages_body">Application deployment installs remote workloads. A desktop .roapp is a different package and cannot run in this Android client. Web services open through an external application without client login credentials.</string>
     <string name="help_recovery_body">A lost response does not prove failure. Read the original operation or recovery record before submitting again. Refresh observes facts; it does not repeat the change. Server tasks continue according to their own cancellation rules. SSH forwards have an explicit notification stop action and never restart automatically after process exit.</string>
     <string name="help_recovery_title">Interrupted or uncertain operations</string>

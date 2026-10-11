@@ -15,6 +15,7 @@
     <string name="host_settings_delete">Delete this variable</string>
     <string name="host_settings_discard">Discard draft</string>
     <string name="host_settings_effect">Takes effect: %1$s</string>
+    <string name="host_settings_effect_label">Takes effect</string>
     <string name="host_settings_environment">Environment variables</string>
     <string name="host_settings_environment_authorization_required">Authorization required</string>
     <string name="host_settings_environment_note">Authorization is requested automatically when needed. Authorized values are shown in full. An empty value is stored; Delete removes the variable. Edits replace the full value.</string>

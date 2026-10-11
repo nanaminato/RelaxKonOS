@@ -17,6 +17,7 @@ class DiagnosticsControllerTest {
     private val gateway = FakeGateway()
     private val session = AuthSession(gateway)
     private var files: suspend () -> ApiResult<Int> = { ApiResult.Success(3) }
+    private var language = ""
     private suspend fun login() {
         gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession().let {
             it.copy(server = it.server.copy(capabilities = setOf(ServerCapabilities.METRICS, ServerCapabilities.FILES)))
@@ -28,7 +29,19 @@ class DiagnosticsControllerTest {
         assertSame(session.state.value, owner); files()
     },
         { DiagnosticsDeviceFacts("test", 1, 2, false, "Unavailable", false) },
-        { id, args -> "$id:${args.joinToString()}" }, scope.backgroundScope)
+        { id, args -> "$language$id:${args.joinToString()}" }, scope.backgroundScope)
+    @Test fun `completed checks follow the current language without another server read`() = runTest {
+        login(); val model = model(this); model.run(); runCurrent()
+        val original = model.lines
+        assertTrue(original.isNotEmpty())
+        gateway.onPerformance = { _, _ -> error("must not reread") }
+        files = { error("must not reread") }
+        language = "ja:"
+        assertEquals(original.map { "ja:$it" }, model.lines)
+        model.buildExport()
+        original.forEach { assertTrue(model.export!!.contains("ja:$it")) }
+        assertFalse(model.running)
+    }
     @Test fun `new login clears old diagnostic lines and an open export`() = runTest {
         login(); val model = model(this); model.run(); runCurrent(); model.buildExport()
         assertTrue(model.lines.isNotEmpty()); assertNotNull(model.export)

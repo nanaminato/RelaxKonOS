@@ -15,6 +15,7 @@
     <string name="host_settings_delete">この変数を削除</string>
     <string name="host_settings_discard">下書きを破棄</string>
     <string name="host_settings_effect">反映方法：%1$s</string>
+    <string name="host_settings_effect_label">反映方法</string>
     <string name="host_settings_environment">環境変数</string>
     <string name="host_settings_environment_authorization_required">承認が必要です</string>
     <string name="host_settings_environment_note">必要な場合は自動的に承認を求め、承認後はすべての値を表示します。空の値は保存され、削除は変数を除去します。編集は値全体を置き換えます。</string>
