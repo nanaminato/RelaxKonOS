@@ -1,6 +1,10 @@
 {
     "Culture": "en-US",
     "Strings": {
+        "explorer.open_in_new_tab": "Open in new tab",
+        "explorer.all_tabs": "All tabs",
+        "explorer.new_tab": "New tab (Ctrl+T)",
+        "explorer.close_tab": "Close tab (Ctrl+W)",
         "explorer.view.details": "Details",
         "explorer.view.list": "List",
         "explorer.view.small_icons": "Small icons",

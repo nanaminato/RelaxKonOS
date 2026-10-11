@@ -67,12 +67,23 @@ public sealed class CodeEditorApp : RemoteApplicationBase, IFileOpenApplication
         {
             SaveDefaultEncodingAsync = encoding => encodingSettings?.SetCodeEditorDefaultEncodingAsync(encoding) ?? Task.CompletedTask,
         };
+        if (string.IsNullOrWhiteSpace(path)) viewModel.NewDocumentCommand.Execute(null);
         var view = new CodeEditorView { DataContext = viewModel };
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.codeeditor.display_name"), view,
             bounds: new Rect(140, 80, 920, 640),
             iconGlyph: Manifest.IconGlyph);
+        view.AttachWindowHeader(window);
         window.KeyDown += (_, e) =>
         {
+            if (!e.Handled && !e.IsRepeat && e.Key == new RemoteKey("Tab")
+                && (e.Modifiers == RemoteKeyModifiers.Control || e.Modifiers == (RemoteKeyModifiers.Control | RemoteKeyModifiers.Shift)))
+            {
+                view.CycleDocument(e.Modifiers.HasFlag(RemoteKeyModifiers.Shift) ? -1 : 1);
+                e.Handled = true;
+                return;
+            }
+            if (!e.Handled && !e.IsRepeat && e.Key == RemoteKey.Letter('F') && e.Modifiers == RemoteKeyModifiers.Control)
+            { view.FocusFind(); e.Handled = true; return; }
             _ = WindowShortcut.TryExecute(e, RemoteKey.Letter('N'), RemoteKeyModifiers.Control, viewModel.NewDocumentCommand)
                 || WindowShortcut.TryExecute(e, RemoteKey.Letter('O'), RemoteKeyModifiers.Control, viewModel.OpenDocumentCommand)
                 || WindowShortcut.TryExecute(e, RemoteKey.Letter('S'), RemoteKeyModifiers.Control, viewModel.SaveCommand)

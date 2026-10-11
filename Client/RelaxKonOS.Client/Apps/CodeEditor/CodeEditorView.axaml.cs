@@ -1,6 +1,10 @@
 using Avalonia;
 using System.ComponentModel;
 using Avalonia.Controls;
+using Avalonia.Interactivity;
+using Avalonia.Threading;
+using AvaloniaEdit.Search;
+using RelaxKonOS.WindowManager;
 using AvaloniaEdit.Highlighting;
 
 namespace RelaxKonOS.Client.Apps.CodeEditor;
@@ -11,6 +15,7 @@ public partial class CodeEditorView : UserControl
     private const double SidebarSplitterWidth = 6;
 
     private CodeEditorViewModel? _viewModel;
+    private readonly SearchPanel _searchPanel;
     private double _sidebarWidth = DefaultSidebarWidth;
 
     private ColumnDefinition SidebarColumn => EditorContentGrid.ColumnDefinitions[1];
@@ -19,9 +24,58 @@ public partial class CodeEditorView : UserControl
     public CodeEditorView()
     {
         InitializeComponent();
+        _searchPanel = SearchPanel.Install(Editor);
+        SizeChanged += (_, e) =>
+        {
+            HeaderMenu.IsVisible = e.NewSize.Width >= 600;
+            CompactMenu.IsVisible = !HeaderMenu.IsVisible;
+            SidebarColumn.MaxWidth = Math.Max(160, e.NewSize.Width - 320);
+            if (_viewModel?.IsSidebarVisible == true && (e.NewSize.Width < 600) != (SidebarColumn.Width.Value == 0))
+                UpdateSidebarLayout(true);
+        };
+        HeaderTabs.SizeChanged += (_, _) => Dispatcher.UIThread.Post(() =>
+        {
+            if (HeaderTabs.SelectedItem is { } document) HeaderTabs.ScrollIntoView(document);
+        }, DispatcherPriority.Loaded);
+        HeaderTabs.SelectionChanged += (_, _) =>
+        {
+            if (HeaderTabs.SelectedItem is { } document) HeaderTabs.ScrollIntoView(document);
+        };
         Editor.Document.TextChanged += OnEditorTextChanged;
         DataContextChanged += OnDataContextChanged;
     }
+
+    public void AttachWindowHeader(ManagedWindow window)
+    {
+        foreach (var block in new Control[] { HeaderLeading, HeaderCenter, HeaderTrailing, HeaderTabs })
+            block.DataContext = DataContext;
+        HeaderHost.Children.Clear();
+        window.View.HeaderLeading = HeaderLeading;
+        window.View.HeaderCenter = HeaderCenter;
+        window.View.HeaderTrailing = HeaderTrailing;
+        window.View.HeaderTabs = HeaderTabs;
+    }
+
+    public void FocusFind()
+    {
+        _searchPanel.Open();
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_searchPanel.IsOpened) _searchPanel.Reactivate();
+        }, DispatcherPriority.Loaded);
+    }
+
+    private void DocumentPicker_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+        => DocumentPickerButton.Flyout?.Hide();
+
+    public void CycleDocument(int direction)
+    {
+        if (_viewModel?.ActiveDocument is not { } active || _viewModel.OpenDocuments.Count == 0) return;
+        var documents = _viewModel.OpenDocuments;
+        _viewModel.ActiveDocument = documents[(documents.IndexOf(active) + direction + documents.Count) % documents.Count];
+    }
+
+    private void Find_Click(object? sender, RoutedEventArgs e) => FocusFind();
 
     private void OnDataContextChanged(object? sender, EventArgs eventArgs)
     {
@@ -33,7 +87,7 @@ public partial class CodeEditorView : UserControl
         {
             _viewModel.PropertyChanged += OnViewModelPropertyChanged;
             Editor.Text = _viewModel.Text;
-            Editor.IsReadOnly = _viewModel.IsSaving;
+            Editor.IsReadOnly = _viewModel.IsSaving || _viewModel.ActiveDocument is null;
             UpdateSyntaxHighlighting(_viewModel.CurrentPath);
             UpdateSidebarLayout(_viewModel.IsSidebarVisible);
         }
@@ -43,8 +97,9 @@ public partial class CodeEditorView : UserControl
     {
         if (eventArgs.PropertyName == nameof(CodeEditorViewModel.Text) && Editor.Text != _viewModel?.Text)
             Editor.Text = _viewModel?.Text ?? string.Empty;
-        else if (eventArgs.PropertyName == nameof(CodeEditorViewModel.IsSaving) && _viewModel is not null)
-            Editor.IsReadOnly = _viewModel.IsSaving;
+        else if ((eventArgs.PropertyName == nameof(CodeEditorViewModel.IsSaving)
+            || eventArgs.PropertyName == nameof(CodeEditorViewModel.ActiveDocument)) && _viewModel is not null)
+            Editor.IsReadOnly = _viewModel.IsSaving || _viewModel.ActiveDocument is null;
         else if (eventArgs.PropertyName == nameof(CodeEditorViewModel.CurrentPath))
             UpdateSyntaxHighlighting(_viewModel?.CurrentPath);
         else if (eventArgs.PropertyName == nameof(CodeEditorViewModel.IsSidebarVisible) && _viewModel is not null)
@@ -67,15 +122,15 @@ public partial class CodeEditorView : UserControl
     /// <summary>Collapsing the sidebar releases its space while retaining the user's dragged width.</summary>
     private void UpdateSidebarLayout(bool isVisible)
     {
-        if (isVisible)
+        if (isVisible && (Bounds.Width <= 0 || Bounds.Width >= 600))
         {
             SidebarColumn.Width = new GridLength(_sidebarWidth, GridUnitType.Pixel);
             SidebarSplitterColumn.Width = new GridLength(SidebarSplitterWidth, GridUnitType.Pixel);
             return;
         }
 
-        if (SidebarColumn.ActualWidth > 0)
-            _sidebarWidth = SidebarColumn.ActualWidth;
+        if (SidebarColumn.Width.Value > 0)
+            _sidebarWidth = SidebarColumn.Width.Value;
 
         SidebarColumn.Width = new GridLength(0, GridUnitType.Pixel);
         SidebarSplitterColumn.Width = new GridLength(0, GridUnitType.Pixel);

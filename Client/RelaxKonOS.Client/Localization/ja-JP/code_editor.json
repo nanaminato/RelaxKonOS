@@ -1,6 +1,7 @@
 {
     "Culture": "ja-JP",
     "Strings": {
+        "code_editor.find": "文書内を検索 (Ctrl+F)",
         "code_editor.settings.title": "コード エディターの設定",
         "code_editor.settings.font_size": "エディターのフォント サイズ",
         "code_editor.settings.default_encoding": "既定のエンコーディング",

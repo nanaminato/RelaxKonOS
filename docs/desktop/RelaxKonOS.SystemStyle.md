@@ -160,7 +160,7 @@ recipe 只是「选择」，真正产生差异的是宿主审查过的模板。�
 
 | 槽位 | 消费方 | 实现机制 |
 |---|---|---|
-| `windowChrome` | `Framework/RelaxKonOS.WindowManager/Themes/RemoteWindowTheme.axaml` | `RemoteWindow` 把 `SystemStyle.WindowChrome` 资源镜像为 `:chrome-<值>` 伪类，模板重新部署它的七个部件：宿主窗口图标、宿主标题、应用交出的四个角色槽（`HeaderLeading` / `HeaderCenter` / `HeaderTrailing` / `HeaderTabs`）与宿主按钮组。取舍见 §4.2 |
+| `windowChrome` | `Framework/RelaxKonOS.WindowManager/Themes/RemoteWindowTheme.axaml` | `RemoteWindow` 把 `SystemStyle.WindowChrome` 资源镜像为 `:chrome-<值>` 伪类，模板重新部署头部部件：宿主窗口图标、宿主标题、应用交出的五个角色槽（`HeaderLeading` / `HeaderCenter` / `HeaderTrailing` / `HeaderTabs` / `HeaderToolbar`）与宿主按钮组。取舍见 §4.2 |
 | `contextMenu` | `Framework/RelaxKonOS.UI/Themes/SystemStyle/SystemStyleResourceBuilder.cs` | 在令牌派生的命令面（菜单/子菜单/ToolTip/Flyout）密度之上再乘一组系数：边框权重、内边距、条目横向内缩、分隔线间距 |
 | `taskSwitcher` | `Client/RelaxKonOS.Client/Views/Shell/WindowOverviewView.axaml` | 概览视图把 `SystemStyle.TaskSwitcher` 镜像为根节点上的 `recipe-<值>` class，由样式决定卡片几何与遮罩 |
 | `shellChrome` | `Shared/RelaxKonOS.Protocol/Workspace/SystemStyles/BuiltInSystemStyles.cs` | 结构性槽位：三个内置 Shell 各自对应一种桌面 chrome；校验保证「Shell ↔ 推荐风格 ↔ shellChrome」三者一致 |
@@ -185,8 +185,8 @@ recipe 只是「选择」，真正产生差异的是宿主审查过的模板。�
 
 ### 4.2 融合标题栏：应用交角色，宿主定列
 
-`RemoteWindow` 暴露四个**角色槽**——`HeaderLeading` / `HeaderCenter` / `HeaderTrailing` / `HeaderTabs`，
-任一非空即进入融合态：宿主自己的窗口图标与标题让位，recipe 负责把这四块与宿主按钮组一起排布。
+`RemoteWindow` 暴露五个**角色槽**——`HeaderLeading` / `HeaderCenter` / `HeaderTrailing` / `HeaderTabs` / `HeaderToolbar`，
+任一非空即进入融合态：宿主自己的窗口图标与标题让位，recipe 负责把这些角色与宿主按钮组一起排布。
 
 - **应用只交角色，永不写列。** 接入入口只做一件事：`window.View.HeaderLeading = …; HeaderCenter = …;`。
   9 个同构工作区接入时都不需要知道当前是哪个 recipe。
@@ -195,15 +195,18 @@ recipe 只是「选择」，真正产生差异的是宿主审查过的模板。�
 - **融合条的高度与底色同样属于 recipe。** 高度取派生键 `WindowFusedTitleBarHeight`
   （`max(48, WindowTitleBarHeight + 14)`，紧凑风格自然得到更矮的融合条）；底色由每条 recipe 显式给出——
   `headerbar-right` 用 `SurfaceRaisedBrush`（headerbar 是应用自己的工具条，与侧栏同层），其余用 `SurfaceBrush`。
-- **`HeaderTabs` 与 `HeaderCenter` 争同一个弹性列，仲裁权在宿主。** 多标签窗口交 `HeaderTabs`（标签条高度读
-  可选令牌 `WindowTabHeight`，默认 28），宿主置 `:header-tabs` 并让 `HeaderCenter` 让位，避免两块叠在同一格。
-  **「标签条内联在栏里」还是「栏外另起一行」由 recipe 决定**——目前三条都是内联，将来要另起一行只需加宿主规则，
-  应用零改动。平台依据与决策过程见 `RelaxKonOS.FusedWindowHeader.md` §8.5。
+- **标签和中心内容可以共存。** `HeaderTabs` 单独声明时使用弹性列；同时声明 `HeaderCenter` 时，
+  宿主把标签放到独立一行，保留中心控件。代码编辑器以此保留命令中心和文档标签。
+- **导航工具栏使用 `HeaderToolbar`。** Windows-like / Ubuntu-like 把它放在标题和标签下方；
+  macOS-like 把它放在交通灯右侧的标题行，标签另起一行。这个完整导航角色拥有自身的导航、地址和搜索操作，
+  macOS-like 下不再显示竞争的 leading / center / trailing。应用不判断风格，不自己排宿主的行列。
+  多行头部仍是单一宿主头部，内容区域从整个头部下方开始；全屏时整个头部隐藏。
+- **头部内的响应式行为仍由内容控件负责。** 文件浏览器窄窗口把搜索收进可展开按钮；
+  代码编辑器收缩菜单和侧栏。标签列表提供所有标签菜单及 Ctrl+Tab / Ctrl+Shift+Tab，溢出时操作仍可达。
 - **覆盖检查不变**：`SystemStyleChecks.VerifyRecipeCoverage` 仍只要求 `:chrome-<值>` 在
-  `RemoteWindowTheme.axaml` 里留有实现痕迹；该文件把**每条 recipe 的七个部件全部显式写出**，
-  因此不存在「落到默认恰好正确」的隐式分支。
+  `RemoteWindowTheme.axaml` 里留有实现痕迹；模板显式定义角色与按钮组，recipe 与角色组合共同决定标题、标签及导航行的位置。
 - **验证落点**：`Tests/Client/RelaxKonOS.WindowPreviews.Tests/FusedWindowHeaderChecks.cs`
-  （三条 recipe 的槽列、按钮组顺序与配色、融合条几何、拖拽不被槽吃掉、标签条吃满弹性列且居中槽让位），
+  （三条 recipe 的槽列、按钮组顺序与配色、融合条几何、拖拽不被槽吃掉、单独标签条吃满弹性列），
   以及 `SettingsWindowChecks` 里「设置窗口 × 三条 recipe」的截图——这一格此前从未渲染过，
   所以「按钮在左的 recipe 下融合头长什么样」一直没有被看过。
 

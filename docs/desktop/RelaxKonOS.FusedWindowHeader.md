@@ -5,7 +5,7 @@
 本文是这项工作的**唯一进度与恢复入口**。中断后请先读第 1 节的「状态总览」和第 9 节的「进度日志」，再按第 7 节「恢复工作指引」继续，不要凭记忆重排批次。
 
 **方案已定：A（宿主多段式角色槽）**，第 8.3 节的选择、第 8.4 节的落地清单与第 8.5 节的第 4 槽扩展均已执行完毕（见 §9 的 2026-10-10 日志）。
-宿主契约现在是**四个角色槽**：应用只交 `HeaderLeading` / `HeaderCenter` / `HeaderTrailing` / `HeaderTabs`，由 recipe 决定它们与宿主按钮组的列分配。
+宿主契约现在是**五个角色槽**：应用交 `HeaderLeading` / `HeaderCenter` / `HeaderTrailing` / `HeaderTabs` / `HeaderToolbar`，由 recipe 与声明角色决定标题、标签、导航行。2026-10-11 已完成代码编辑器与资源管理器接入（见最新进度日志）。
 因此第一批 9 个窗口接入时**不要再写任何列、留白或融合条高度**——那些都属于宿主。旧的单一 `TitleBarContent` 契约已删除，没有并存形态。
 
 ## 1. 状态总览
@@ -13,9 +13,9 @@
 | 批次 | 范围 | 窗口数 | 状态 |
 |---|---|---|---|
 | 前置 | 宿主角色槽 + 各 recipe 的融合条与交通灯（方案 A，见 §8） | — | **已完成** |
-| 前置 | 第 4 槽 `HeaderTabs`：多标签窗口的形状（见 §8.5） | — | **已完成** |
+| 前置 | `HeaderTabs` + `HeaderToolbar`：标签 / 导航共存与多行布局 | — | **已完成** |
 | 第一批 | 与设置同构的 `Border.app-header` 工作区 | 9 | 未开始 |
-| 第二批 | `Border.app-toolbar` 菜单 / 地址栏型视图（其中 2 个带标签条） | 5 | 未开始 |
+| 第二批 | 菜单 / 地址栏型视图（其中 3 个带标签条） | 6 | 代码编辑器、资源管理器已接入；其余未开始 |
 | 顺带 | `FileServicesWorkspace`（本就没有头部） | 1 | 未开始 |
 | 不做 | 模态对话框、登录窗口、远端桌面 Shell、资源管理器选择器模式 | — | 已定（见 3.4） |
 
@@ -25,21 +25,22 @@
 
 ## 2. 机制（开工前必读，改模板前再读一遍）
 
-应用窗口的 `ManagedWindow.View` 是 `RemoteWindow`。它与应用之间只有一个契约：**四个角色槽**。
+应用窗口的 `ManagedWindow.View` 是 `RemoteWindow`。它与应用之间只有一个契约：**五个角色槽**。
 
-- `RemoteWindow.HeaderLeading` / `HeaderCenter` / `HeaderTrailing` / `HeaderTabs`（`Framework/RelaxKonOS.WindowManager/RemoteWindow.cs`）。
+- `RemoteWindow.HeaderLeading` / `HeaderCenter` / `HeaderTrailing` / `HeaderTabs` / `HeaderToolbar`（`Framework/RelaxKonOS.WindowManager/RemoteWindow.cs`）。
   任一非空 → 置上 `:custom-title-content` 伪类，宿主自己的窗口图标与标题让位；单独声明 `HeaderTabs` 也足以触发融合
   （多标签窗口里，标签就是标题）。
 - 标题栏网格是 `Auto,Auto,*,Auto,Auto`（`Framework/RelaxKonOS.WindowManager/Themes/RemoteWindowTheme.axaml`）：
-  `[按钮组或图标][leading][center * 与 tabs][trailing][按钮组或图标]`。**每条 recipe 都把七个部件显式写出**
-  （图标 / 标题文本 / 四个角色槽 / 按钮组），因此不存在「落到默认恰好正确」的隐式分支。
+  `[按钮组或图标][leading][center * 与 tabs][trailing][按钮组或图标]`。模板显式定义角色部件，recipe 与角色组合决定行分配
+  （图标 / 标题文本 / 五个角色槽 / 按钮组），因此不存在「落到默认恰好正确」的隐式分支。
 - **应用永远不写列、不写留白、不写融合条高度**：槽的列分配与 `Margin`、融合条高度
   （`WindowFusedTitleBarHeight`）与底色全部由 recipe 给出。新增一条 recipe = 宿主加一组规则，应用零改动。
-- **`HeaderTabs` 与 `HeaderCenter` 争同一个弹性列**，规则是宿主的：声明了标签条就置上 `:header-tabs`，
-  并让居中槽 `IsVisible=False`。应用不该同时交两者；宿主兜住这个组合，避免两块叠在同一格。
-  标签条自身高度读可选令牌 `WindowTabHeight`（默认 28），不写像素字面量。
-  目前的实现把标签条画在栏内（内联），但**「内联还是另起一行」由 recipe 决定**——将来某条 recipe 要把标签条
-  压到栏外一行，只需加宿主规则，应用零改动。见 §8.5。
+- **标签与中心内容共存**：没有中心控件时，标签可使用弹性列；声明中心控件时，标签放到下一行。
+  代码编辑器保留菜单 / 文档入口 / 查找操作与文档标签，不把所有控件塞进同一行。
+- **导航工具栏交 `HeaderToolbar`**：Windows-like / Ubuntu-like 把标签放标题行，地址导航工具栏放下面；
+  macOS-like 把完整导航工具栏放在交通灯右侧，标签另起一行。该角色占据 macOS 标题行时，
+  leading / center / trailing 让位；应用把导航、地址、搜索全部放在这个角色里。行列、留白与高度由宿主拥有。
+- 标签条高度读 `WindowTabHeight`，选中形状读 `ControlCornerRadius`；超出宽度可以从全部标签菜单或快捷键访问。
 - 窗口按钮（`PART_WindowControls`）始终由宿主拥有：`caption-buttons-right` / `headerbar-right` 排在最右列，
   `traffic-lights-left` 排在最左列，并画成红（关）/ 黄（小）/ 绿（放大）三枚圆点，字形仅在指针或键盘进入按钮组时显现。
 - 接入入口沿用设置已跑通的模式：视图提供 `AttachWindowHeader(ManagedWindow)`，由 `*App.Activate` 在
@@ -75,8 +76,8 @@
 
 | # | 窗口 | 视图文件 | 现头部 | 标签条 | 状态 |
 |---|---|---|---|---|---|
-| 10 | 资源管理器 | `Apps/Explorer/Views/ExplorerMainView.axaml` | `DockPanel.Dock="Top"` 的导航 + 地址栏（`app-toolbar`） | 暂无（计划加多标签） | 未开始 |
-| 11 | 代码编辑器 | `Apps/CodeEditor/CodeEditorView.axaml` | 菜单栏 + 文档标签 | **已有** `ListBox.editor-tabs` | 未开始 |
+| 10 | 资源管理器 | `Apps/Explorer/Views/ExplorerMainView.axaml` | `DockPanel.Dock="Top"` 的导航 + 地址栏（`app-toolbar`） | **已有**窗口内标签，独立历史 / 搜索 / 视图状态 | **已接入** |
+| 11 | 代码编辑器 | `Apps/CodeEditor/CodeEditorView.axaml` | 菜单栏 + 文档标签 | **已有** `ListBox.editor-tabs` | **已接入** |
 | 12 | 记事本 | `Apps/Notepad/NotepadView.axaml` | 菜单栏 + 文档名 | 无 | 未开始 |
 | 13 | 任务管理器 | `Apps/TaskManager/Views/TaskManagerMainView.axaml` | 工具条 | 无 | 未开始 |
 | 14 | 图片查看器 | `Apps/ImageViewer/Views/ImageViewerView.axaml` | 查看工具条 | 无 | 未开始 |
@@ -109,7 +110,7 @@
 每个窗口接入后逐条确认，缺一条不算完成：
 
 1. 头部块交给对应的**角色槽**（leading / center / trailing / tabs）；窗口图标与宿主的标题被模板隐藏，**窗口按钮仍在宿主那一侧**——由 recipe 决定在左还是在右，应用侧不需要也不应该知道。
-   带标签条的窗口（见 §3.2）交 `HeaderTabs`，**不要**自己 `DockPanel.Dock="Top"` 排一行；声明标签条后宿主会让 `HeaderCenter` 让位，所以同一窗口不要同时交这两者。
+   带标签条的窗口（见 §3.2）交 `HeaderTabs`，**不要**自己 `DockPanel.Dock="Top"` 排一行；标签条和 `HeaderCenter` 共存时宿主会另起一行，因此两者共存时宿主会把标签放入独立一行。
 2. 头部空白区可拖动窗口，**头部内的交互控件不吃拖动**：点击按钮 / 在输入框打字时窗口位置不变（参考断言见第 7 节）。
 3. 内容区不再有第二条 `app-header` / `app-toolbar`，`Grid RowDefinitions` 同步删行，不留空行。
 4. 三语言（`zh-CN` / `en-US` / `ja-JP`）下标题与操作不溢出、不换行错位。
@@ -119,6 +120,8 @@
 8. 任务栏与窗口总览里的窗口标题不变（融合只影响标题栏内部，`Title` 仍由 `ShowWindow` 设置）。
 9. 在 `Tests/Client/RelaxKonOS.WindowPreviews.Tests` 里为该窗口补一条断言（模板见第 7 节）；形态跨 recipe 都要成立的窗口，照 `FusedWindowHeaderChecks.cs` 的写法补「三条 recipe」的断言与截图。
 10. 更新本文第 3 节状态列与第 8 节进度日志；若该窗口在 `docs/desktop/UiReview.md` 有对应条目，同步其结论。
+
+2026-10-11 补充：以下 §5–§8 中关于第 4 槽的早期决策保留为历史。当前契约以 §2 与最新日志为准，`HeaderCenter` 与 `HeaderTabs` 已可共存，独立标签行已实现。
 
 ## 5. 开放问题
 
@@ -309,6 +312,31 @@ RemoteWindow.HeaderLeading / HeaderCenter / HeaderTrailing   （均为 Control?�
 截图 `preview-qa/fused-header/fused-header-tabs-{recipe}.png`。
 
 ## 9. 进度日志（只追加，倒序在上）
+
+### 2026-10-11（代码编辑器 / 资源管理器优先接入）
+
+- 宿主增加 `HeaderToolbar`，让导航和标签共存；中心控件和标签同时存在时不再隐藏中心控件。
+  模板为标题、标签、导航提供宿主行；macOS-like 导航进入交通灯右侧的标题行，Windows-like 标签在顶行、导航在下一行。
+- 代码编辑器：菜单和文档入口融入标题行，文档标签交宿主独立行；紧凑菜单、全部文档菜单、Ctrl+Tab / Ctrl+Shift+Tab、
+  文档内查找（Ctrl+F）。关闭选中标签前保存激活身份，修正 ListBox 回写 null 后无法激活相邻文档的问题；草稿守卫保持有效。
+- 资源管理器：加入窗口内多标签，每个标签保存路径、历史、过滤词和视图设置；目标目录读取成功后才提交切换，
+  失败保留当前目录，导航 / 文件操作忙碌或重命名时禁止切换。Ctrl+T / Ctrl+W / Ctrl+Tab / Ctrl+Shift+Tab；
+  全部标签菜单保证溢出时可达。导航、地址、当前目录名称过滤交给工具栏角色；窄窗口搜索收进可展开按钮，地址面包屑滚到当前目录。
+  文件夹右键菜单支持在新标签中打开。
+  视图 / 排序 / 隐藏项选项收进弹出面板。文件选择器保留任务标题与内容区导航，不接入应用标签。
+- 新检查 `FusedApplicationChecks.cs`：两款实际视图 × Windows/macOS × 浅深色 × 三语 × 960/640/320 宽度；
+  另验证历史 / 搜索隔离、失败与延迟目录读取、融合后关闭命令、未保存文档与选择器隔离。
+  预览测试补齐真实客户端使用的 DataGrid / AvaloniaEdit 样式。
+- 离线截图：`.artifacts/header-review/preview-qa/fused-apps/`。
+- 参考：[VS Code UI](https://code.visualstudio.com/docs/editing/getting-started/userinterface)、
+  [VS Code 布局](https://code.visualstudio.com/docs/configure/custom-layout)、
+  [Finder 文件组织](https://support.apple.com/guide/mac-help/organize-your-files-in-the-finder-mchle9f0a1b2/mac)、
+  [Finder 设置](https://support.apple.com/en-ie/guide/mac-help/mchlp2803/27/mac/27)。
+- 验证状态：窗口预览完整套件通过；资源管理器 253 项回归通过；设置 / recipe coverage / 产品颜色扫描通过；三语资源一致。
+  登录后实际 UI 验证被测试服务器的 TLS 证书校验阻止，等待本次进程临时信任的确认；不能以离线截图替代真实服务验收。
+  可选实际客户端入口：预览测试 exe 的 `--fused-live-review`，凭据仅通过进程环境变量
+  `RK_REVIEW_SERVER` / `RK_REVIEW_USER` / `RK_REVIEW_PASSWORD` 提供，不保存账号或密码。
+
 
 ### 2026-10-10（第三轮：第 4 槽 `HeaderTabs`，赶在第一批接入之前）
 

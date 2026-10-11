@@ -168,6 +168,7 @@ internal static class FusedWindowHeaderChecks
             // tabs in column 2" from the application's side - the recipe still owns that, which is
             // what leaves a future recipe free to push the strip onto a row of its own.
             var tabs = new Border { Height = 26, Background = Brushes.MediumPurple };
+            view.HeaderCenter = null;
             view.HeaderTabs = tabs;
             Pump();
             Check(view.HasTitleBarContent, "Declaring a tab strip did not put the host title bar into its fused form.");
@@ -209,7 +210,8 @@ internal static class FusedWindowHeaderChecks
             // Clearing the strip has to hand the flexible column back, and a tab strip alone - with
             // no other block - still fuses the bar, because on a tabbed window the tabs *are* the
             // title.
-            view.HeaderTabs = null; Pump();
+            view.HeaderTabs = null;
+            view.HeaderCenter = center; Pump();
             Check(Descendant<ContentPresenter>(view, "PART_HeaderCenter").IsVisible,
                 "Clearing the tab strip did not give the flexible column back to the centred block.");
 
@@ -223,7 +225,7 @@ internal static class FusedWindowHeaderChecks
 
             Console.WriteLine("PASS: fused title bar role slots under all three window-chrome recipes " +
                               "(placement, cluster order, traffic-light geometry and palette, bar geometry, drag, " +
-                              "tab strip column and the centred block yielding to it).");
+                              "inline tab strip placement).");
         }
         finally
         {

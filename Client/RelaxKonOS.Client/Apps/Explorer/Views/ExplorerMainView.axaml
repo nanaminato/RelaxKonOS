@@ -22,22 +22,51 @@
 
     <DockPanel LastChildFill="True">
         <!-- Navigation stays above the command bar, matching the Explorer workflow. -->
-        <Border DockPanel.Dock="Top" Classes="app-toolbar">
-            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+        <Grid DockPanel.Dock="Top" x:Name="HeaderHost" RowDefinitions="Auto,Auto">
+        <Grid x:Name="HeaderTabs" Grid.Row="0" ColumnDefinitions="*,Auto,Auto" IsVisible="{Binding !IsPickerMode}" Classes="builtin-app">
+            <ListBox x:Name="FolderTabs" ItemsSource="{Binding Tabs}" SelectedItem="{Binding ActiveTab, Mode=OneWay}"
+                     SelectionChanged="FolderTabs_SelectionChanged" IsEnabled="{Binding CanChangeTabs}"
+                     Height="{DynamicResource WindowTabHeight}" Padding="0" BorderThickness="0" Background="Transparent"
+                     ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                <ListBox.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ListBox.ItemsPanel>
+                <ListBox.Styles><Style Selector="ListBoxItem"><Setter Property="Padding" Value="8,0" /><Setter Property="MinHeight" Value="0" /><Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" /></Style></ListBox.Styles>
+                <ListBox.ItemTemplate><DataTemplate x:DataType="models:ExplorerTab">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <TextBlock Text="{Binding Title}" IsVisible="{Binding !IsComputer}" MaxWidth="160" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip.Tip="{Binding Path}" />
+                        <TextBlock Text="{loc:Loc explorer.computer}" IsVisible="{Binding IsComputer}" MaxWidth="160" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="×" Padding="3,0" MinWidth="20" MinHeight="0" Background="Transparent"
+                                Command="{ReflectionBinding $parent[ListBox].DataContext.CloseTabCommand}" CommandParameter="{Binding}" ToolTip.Tip="{loc:Loc explorer.close_tab}" />
+                    </Grid>
+                </DataTemplate></ListBox.ItemTemplate>
+            </ListBox>
+            <Button Grid.Column="1" Content="＋" Command="{Binding NewTabCommand}" ToolTip.Tip="{loc:Loc explorer.new_tab}" Padding="6,0" MinHeight="0" />
+            <Button Grid.Column="2" x:Name="FolderPickerButton" IsEnabled="{Binding CanChangeTabs}" Content="⌄" ToolTip.Tip="{loc:Loc explorer.all_tabs}" Padding="6,0" MinHeight="0">
+                <Button.Flyout><Flyout>
+                    <ListBox ItemsSource="{Binding Tabs}" SelectedItem="{Binding ActiveTab, Mode=OneWay}"
+                             MinWidth="220" MaxHeight="320" SelectionChanged="FolderPicker_SelectionChanged">
+                        <ListBox.ItemTemplate><DataTemplate x:DataType="models:ExplorerTab">
+                            <TextBlock Text="{Binding Title}" MaxWidth="300" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Path}" />
+                        </DataTemplate></ListBox.ItemTemplate>
+                    </ListBox>
+                </Flyout></Button.Flyout>
+            </Button>
+        </Grid>
+        <Border x:Name="NavigationToolbar" IsEnabled="{Binding !IsBusy}" Grid.Row="1" Classes="builtin-app" SizeChanged="NavigationToolbar_SizeChanged">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" ClipToBounds="True">
                 <StackPanel Orientation="Horizontal" Spacing="4">
                     <Button Classes="icon" Command="{Binding GoBackCommand}" ToolTip.Tip="{loc:Loc common.back}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-back.png" Width="18" Height="18" /></Button>
                     <Button Classes="icon" Command="{Binding GoForwardCommand}" ToolTip.Tip="{loc:Loc common.forward}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-forward.png" Width="18" Height="18" /></Button>
-                    <Button Classes="icon" Command="{Binding GoUpCommand}" ToolTip.Tip="{loc:Loc explorer.up}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-up.png" Width="18" Height="18" /></Button>
-                    <Button Classes="icon" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc common.refresh}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-refresh.png" Width="18" Height="18" /></Button>
+                    <Button x:Name="GoUpButton" Classes="icon" Command="{Binding GoUpCommand}" ToolTip.Tip="{loc:Loc explorer.up}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-up.png" Width="18" Height="18" /></Button>
+                    <Button x:Name="RefreshButton" Classes="icon" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc common.refresh}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-refresh.png" Width="18" Height="18" /></Button>
                 </StackPanel>
-                <Grid Grid.Column="1" MinWidth="100">
+                <Grid Grid.Column="1" MinWidth="0">
                     <TextBox x:Name="AddressBox" Text="{Binding AddressInput, Mode=TwoWay}"
                              IsVisible="{Binding IsEditingAddress}" PlaceholderText="{loc:Loc explorer.computer}"
                              KeyDown="AddressBox_KeyDown" LostFocus="AddressBox_LostFocus" />
                     <Border IsVisible="{Binding !IsEditingAddress}" CornerRadius="5" BorderThickness="1"
                             BorderBrush="{DynamicResource BorderDefaultBrush}" Padding="4,0">
                         <Grid ColumnDefinitions="*,Auto">
-                            <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
+                            <ScrollViewer x:Name="BreadcrumbScroll" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
                                 <ItemsControl ItemsSource="{Binding Breadcrumbs}">
                                     <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                                     <ItemsControl.ItemTemplate>
@@ -54,23 +83,42 @@
                         </Grid>
                     </Border>
                 </Grid>
-                <TextBox Grid.Column="2" x:Name="SearchBox" Width="180" Text="{Binding SearchText, Mode=TwoWay}"
-                         PlaceholderText="{loc:Loc explorer.filter_folder}" KeyDown="SearchBox_KeyDown" />
+                <Grid Grid.Column="2">
+                    <Border x:Name="InlineSearchHost">                <TextBox x:Name="SearchBox" Width="150" MinWidth="0" Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         PlaceholderText="{loc:Loc explorer.filter_folder}" KeyDown="SearchBox_KeyDown" /></Border>
+                    <Button x:Name="CompactSearchButton" Content="⌕" IsVisible="False" ToolTip.Tip="{loc:Loc explorer.filter_folder}" Padding="6,0">
+                        <Button.Flyout><Flyout>
+                            <TextBox x:Name="CompactSearchBox" Width="240" Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     PlaceholderText="{loc:Loc explorer.filter_folder}" KeyDown="SearchBox_KeyDown" />
+                        </Flyout></Button.Flyout>
+                    </Button>
+                </Grid>
             </Grid>
         </Border>
+        </Grid>
         <Border DockPanel.Dock="Top" Classes="app-toolbar">
             <WrapPanel Orientation="Horizontal" IsEnabled="{Binding !IsBusy}">
                 <StackPanel IsVisible="{Binding !IsPickerMode}" Orientation="Horizontal" Spacing="4" Margin="0,0,12,0">
                     <Button Command="{Binding NewFolderCommand}"><StackPanel Orientation="Horizontal" Spacing="5"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-new-folder.png" Width="18" Height="18" /><TextBlock Text="{loc:Loc explorer.new_folder}" /></StackPanel></Button>
-                    <Button Command="{Binding CutCommand}" ToolTip.Tip="{loc:Loc explorer.cut}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-cut.png" Width="18" Height="18" /></Button>
-                    <Button Command="{Binding CopyCommand}" ToolTip.Tip="{loc:Loc explorer.copy}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-copy.png" Width="18" Height="18" /></Button>
-                    <Button Command="{Binding PasteCommand}" ToolTip.Tip="{loc:Loc explorer.paste}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-paste.png" Width="18" Height="18" /></Button>
-                    <Button Command="{Binding RenameCommand}"><StackPanel Orientation="Horizontal" Spacing="5"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-rename.png" Width="18" Height="18" /><TextBlock Text="{loc:Loc common.rename}" /></StackPanel></Button>
-                    <Button Command="{Binding DeleteCommand}"><StackPanel Orientation="Horizontal" Spacing="5"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-delete.png" Width="18" Height="18" /><TextBlock Text="{loc:Loc common.delete}" /></StackPanel></Button>
-                    <Button ToolTip.Tip="{loc:Loc explorer.more}">
+                    <Button x:Name="CutAction" Command="{Binding CutCommand}" ToolTip.Tip="{loc:Loc explorer.cut}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-cut.png" Width="18" Height="18" /></Button>
+                    <Button x:Name="CopyAction" Command="{Binding CopyCommand}" ToolTip.Tip="{loc:Loc explorer.copy}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-copy.png" Width="18" Height="18" /></Button>
+                    <Button x:Name="PasteAction" Command="{Binding PasteCommand}" ToolTip.Tip="{loc:Loc explorer.paste}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-paste.png" Width="18" Height="18" /></Button>
+                    <Button x:Name="RenameAction" Command="{Binding RenameCommand}"><StackPanel Orientation="Horizontal" Spacing="5"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-rename.png" Width="18" Height="18" /><TextBlock Text="{loc:Loc common.rename}" /></StackPanel></Button>
+                    <Button x:Name="DeleteAction" Command="{Binding DeleteCommand}"><StackPanel Orientation="Horizontal" Spacing="5"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-delete.png" Width="18" Height="18" /><TextBlock Text="{loc:Loc common.delete}" /></StackPanel></Button>
+                    <Button x:Name="MoreActionsButton" ToolTip.Tip="{loc:Loc explorer.more}">
                         <Button.Content><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-more.png" Width="18" Height="18" /></Button.Content>
                         <Button.Flyout>
                             <MenuFlyout>
+                                <MenuItem Header="{loc:Loc explorer.new_folder}" Command="{Binding NewFolderCommand}" />
+                                <MenuItem Header="{loc:Loc explorer.cut}" Command="{Binding CutCommand}" />
+                                <MenuItem Header="{loc:Loc explorer.copy}" Command="{Binding CopyCommand}" />
+                                <MenuItem Header="{loc:Loc explorer.paste}" Command="{Binding PasteCommand}" />
+                                <MenuItem Header="{loc:Loc common.rename}" Command="{Binding RenameCommand}" />
+                                <MenuItem Header="{loc:Loc common.delete}" Command="{Binding DeleteCommand}" />
+                                <Separator />
+                                <MenuItem Header="{loc:Loc explorer.up}" Command="{Binding GoUpCommand}" />
+                                <MenuItem Header="{loc:Loc common.refresh}" Command="{Binding RefreshCommand}" />
+                                <Separator />
                                 <MenuItem Header="{loc:Loc explorer.operations.title}" Command="{Binding ShowOperationsCommand}" />
                                 <MenuItem Header="{loc:Loc common.download}" Command="{Binding DownloadCommand}" />
                                 <MenuItem Header="{loc:Loc common.upload}" Command="{Binding UploadCommand}" />
@@ -87,14 +135,16 @@
                         </Button.Flyout>
                     </Button>
                 </StackPanel>
-                <ComboBox x:Name="ViewModeBox" Width="112" Margin="0,0,10,0" SelectionChanged="ViewModeBox_SelectionChanged" SelectedIndex="{Binding ViewModeIndex, Mode=TwoWay}">
+                <Button Content="{loc:Loc common.view}">
+                    <Button.Flyout><Flyout><StackPanel Spacing="10" MinWidth="220">
+                <ComboBox x:Name="ViewModeBox" Width="200" Margin="0,0,10,0" SelectionChanged="ViewModeBox_SelectionChanged" SelectedIndex="{Binding ViewModeIndex, Mode=TwoWay}">
                     <ComboBoxItem Content="{loc:Loc explorer.view.details}" />
                     <ComboBoxItem Content="{loc:Loc explorer.view.list}" />
                     <ComboBoxItem Content="{loc:Loc explorer.view.small_icons}" />
                     <ComboBoxItem Content="{loc:Loc explorer.view.large_icons}" />
                 </ComboBox>
                 <TextBlock Text="{loc:Loc explorer.sort}" VerticalAlignment="Center" Margin="0,0,6,0" />
-                <ComboBox SelectedIndex="{Binding SortIndex, Mode=TwoWay}" Width="112" Margin="0,0,10,0">
+                <ComboBox SelectedIndex="{Binding SortIndex, Mode=TwoWay}" Width="200" Margin="0,0,10,0">
                     <ComboBoxItem Content="{loc:Loc common.name}" />
                     <ComboBoxItem Content="{loc:Loc explorer.modified}" />
                     <ComboBoxItem Content="{loc:Loc common.type}" />
@@ -103,6 +153,9 @@
                 <CheckBox Content="{loc:Loc explorer.descending}" IsChecked="{Binding SortDescending}" Margin="0,0,12,0" />
                 <CheckBox Content="{loc:Loc explorer.compact}" IsChecked="{Binding IsCompactView}" Margin="0,0,12,0" />
                 <CheckBox Content="{loc:Loc explorer.show_hidden}" IsChecked="{Binding ShowHiddenFiles}" />
+                    </StackPanel></Flyout></Button.Flyout>
+                </Button>
+
             </WrapPanel>
         </Border>
 
@@ -145,7 +198,7 @@
         </Border>
 
         <!-- 主体：左导航树 | 分隔 | 右条目列表 -->
-        <Grid ColumnDefinitions="210,Auto,*">
+        <Grid x:Name="FileContentGrid" ColumnDefinitions="210,Auto,*">
             <!-- 导航树 -->
             <TreeView Grid.Column="0"
                       x:Name="NavigationTree"
@@ -230,6 +283,7 @@
                 <DataGrid.ContextMenu>
                     <ContextMenu DataContext="{Binding #EntriesGrid.DataContext}" IsEnabled="{Binding !IsBusy}">
                         <MenuItem Header="{loc:Loc common.open}" Command="{Binding OpenCommand}" />
+                        <MenuItem Header="{loc:Loc explorer.open_in_new_tab}" Command="{Binding OpenFolderInTabCommand}" IsVisible="{Binding !IsPickerMode}" />
                         <MenuItem Header="{loc:Loc explorer.open_with}" Command="{Binding OpenWithSelectedCommand}" />
                         <MenuItem Header="{loc:Loc explorer.open_terminal}" Command="{Binding OpenTerminalCommand}" />
                         <Separator />

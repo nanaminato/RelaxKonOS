@@ -20,12 +20,11 @@
                                  each application guessing where the host put its buttons. -->
                             <Border x:Name="PART_TitleBar"
                                     Grid.Row="0"
-                                    Height="{DynamicResource WindowTitleBarHeight}"
                                     Background="{DynamicResource WindowTitleBarBackgroundBrush}"
                                     CornerRadius="{DynamicResource WindowCornerRadius}"
                                     IsVisible="{Binding !IsFullScreen}">
-                                <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
-                                    <Border x:Name="PART_TitleDrag" Grid.Column="0" Grid.ColumnSpan="5" Background="Transparent" />
+                                <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" RowDefinitions="Auto,Auto,Auto" ClipToBounds="True">
+                                    <Border x:Name="PART_TitleRow" Grid.Column="0" Grid.ColumnSpan="5" Height="{DynamicResource WindowTitleBarHeight}" Background="Transparent" />
                                     <Grid x:Name="PART_WindowIcon" Grid.Column="0" Width="22" Height="22" Margin="12,0,0,0"
                                           VerticalAlignment="Center">
                                         <Image Source="{Binding IconImage}" IsVisible="{Binding HasIconImage}" Stretch="Uniform" />
@@ -59,6 +58,9 @@
                                     <ContentPresenter x:Name="PART_HeaderTrailing" Grid.Column="3"
                                                       Content="{TemplateBinding HeaderTrailing}"
                                                       HorizontalAlignment="Right" VerticalAlignment="Stretch" />
+                                    <ContentPresenter x:Name="PART_HeaderToolbar" Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="5"
+                                                      Content="{TemplateBinding HeaderToolbar}" IsVisible="False"
+                                                      Margin="12,6" HorizontalAlignment="Stretch" VerticalAlignment="Center" />
                                     <!-- The chrome recipe redeploys this grid: applications never choose
                                          where their own window controls sit. -->
                                     <Grid x:Name="PART_WindowControls" Grid.Column="4" ColumnDefinitions="Auto,Auto,Auto"
@@ -154,7 +156,7 @@
          overlap, and the host - not the application - decides that. Every recipe below still places
          PART_HeaderTabs explicitly, so a future recipe is free to move the strip onto a row of its
          own without any application changing. -->
-    <Style Selector="wm|RemoteWindow:header-tabs /template/ ContentPresenter#PART_HeaderCenter">
+    <Style Selector="wm|RemoteWindow:header-tabs:not(:stacked-tabs) /template/ ContentPresenter#PART_HeaderCenter">
         <Setter Property="IsVisible" Value="False" />
     </Style>
 
@@ -316,12 +318,12 @@
     <!-- Keeps the very first frame complete if no recipe resource is installed yet; every recipe
          below restates both properties, so this is a floor rather than the shared answer. -->
     <Style Selector="wm|RemoteWindow:custom-title-content /template/ Border#PART_TitleBar">
-        <Setter Property="Height" Value="{DynamicResource WindowFusedTitleBarHeight}" />
+
         <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
     </Style>
 
     <Style Selector="wm|RemoteWindow:custom-title-content:chrome-caption-buttons-right /template/ Border#PART_TitleBar">
-        <Setter Property="Height" Value="{DynamicResource WindowFusedTitleBarHeight}" />
+
         <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
     </Style>
     <!-- The fused slot insets are host-owned too: they are the gap between the application's blocks
@@ -345,7 +347,7 @@
     </Style>
 
     <Style Selector="wm|RemoteWindow:custom-title-content:chrome-traffic-lights-left /template/ Border#PART_TitleBar">
-        <Setter Property="Height" Value="{DynamicResource WindowFusedTitleBarHeight}" />
+
         <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
     </Style>
     <Style Selector="wm|RemoteWindow:custom-title-content:chrome-traffic-lights-left /template/ ContentPresenter#PART_HeaderLeading">
@@ -368,7 +370,7 @@
     <!-- A headerbar is the application's own toolbar, so a fused bar on this recipe is raised like
          the sidebar it sits next to instead of receding below it. -->
     <Style Selector="wm|RemoteWindow:custom-title-content:chrome-headerbar-right /template/ Border#PART_TitleBar">
-        <Setter Property="Height" Value="{DynamicResource WindowFusedTitleBarHeight}" />
+
         <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
     </Style>
     <Style Selector="wm|RemoteWindow:custom-title-content:chrome-headerbar-right /template/ ContentPresenter#PART_HeaderLeading">
@@ -387,5 +389,33 @@
     </Style>
     <Style Selector="wm|RemoteWindow:custom-title-content:chrome-headerbar-right /template/ Grid#PART_WindowControls">
         <Setter Property="Grid.Column" Value="4" />
+    </Style>
+
+    <Style Selector="wm|RemoteWindow:custom-title-content /template/ Border#PART_TitleRow">
+        <Setter Property="Height" Value="{DynamicResource WindowFusedTitleBarHeight}" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:header-toolbar /template/ ContentPresenter#PART_HeaderToolbar">
+        <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:stacked-tabs /template/ ContentPresenter#PART_HeaderTabs">
+        <Setter Property="Grid.Row" Value="1" />
+        <Setter Property="Grid.Column" Value="0" />
+        <Setter Property="Grid.ColumnSpan" Value="5" />
+        <Setter Property="Margin" Value="8,0,8,4" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:toolbar-in-caption /template/ ContentPresenter#PART_HeaderToolbar">
+        <Setter Property="Grid.Row" Value="0" />
+        <Setter Property="Grid.Column" Value="1" />
+        <Setter Property="Grid.ColumnSpan" Value="3" />
+        <Setter Property="Margin" Value="8,0,12,0" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:toolbar-in-caption /template/ ContentPresenter#PART_HeaderLeading">
+        <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:toolbar-in-caption /template/ ContentPresenter#PART_HeaderCenter">
+        <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:toolbar-in-caption /template/ ContentPresenter#PART_HeaderTrailing">
+        <Setter Property="IsVisible" Value="False" />
     </Style>
 </Styles>

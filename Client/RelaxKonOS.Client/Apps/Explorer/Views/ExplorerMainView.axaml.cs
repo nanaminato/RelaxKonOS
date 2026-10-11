@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using RelaxKonOS.WindowManager;
 using RelaxKonOS.Client.Apps.Explorer.Controls;
 using Avalonia;
 using Avalonia.Controls;
@@ -32,6 +33,8 @@ public partial class ExplorerMainView : UserControl
     private ExplorerViewModel? _attachedViewModel;
     private DataGridColumnHeader? _pressedSortHeader;
     private double _pressedSortHeaderWidth;
+    private readonly Flyout _searchFlyout;
+    private bool _compactSearch;
 
     /// <summary>Combined live width of the details columns, used to constrain row layout.</summary>
     public double EntriesTableWidth
@@ -43,6 +46,13 @@ public partial class ExplorerMainView : UserControl
     public ExplorerMainView()
     {
         InitializeComponent();
+        BreadcrumbScroll.SizeChanged += (_, _) => ScrollBreadcrumbsToLocation();
+        FolderTabs.SizeChanged += (_, _) => Dispatcher.UIThread.Post(() =>
+        {
+            if (FolderTabs.SelectedItem is { } tab) FolderTabs.ScrollIntoView(tab);
+        }, DispatcherPriority.Loaded);
+        _searchFlyout = (Flyout)CompactSearchButton.Flyout!;
+        _searchFlyout.Opened += (_, _) => { CompactSearchBox.Focus(); CompactSearchBox.SelectAll(); };
         _entryContextMenu = EntriesGrid.ContextMenu;
         _presentation = new FileBrowserPresentation(EntriesScrollViewer, EntriesGrid, () => ViewModel is { IsBusy: false });
         _presentation.Items.AddHandler(PointerPressedEvent, EntriesGrid_PointerPressed, RoutingStrategies.Tunnel);
@@ -56,6 +66,52 @@ public partial class ExplorerMainView : UserControl
         EntriesGrid.AddHandler(PointerReleasedEvent, EntriesGrid_SortHeaderPointerReleased, RoutingStrategies.Tunnel);
         EntriesGrid.LayoutUpdated += EntriesGrid_LayoutUpdated;
         DataContextChanged += ExplorerMainView_DataContextChanged;
+        SizeChanged += (_, e) =>
+        {
+            RenameAction.IsVisible = DeleteAction.IsVisible = e.NewSize.Width >= 700;
+            CutAction.IsVisible = CopyAction.IsVisible = PasteAction.IsVisible = e.NewSize.Width >= 480;
+            FileContentGrid.ColumnDefinitions[0].Width = new GridLength(e.NewSize.Width < 620 ? 0 : 210);
+            FileContentGrid.ColumnDefinitions[1].Width = new GridLength(e.NewSize.Width < 620 ? 0 : 4);
+        };
+    }
+
+    public void AttachWindowHeader(ManagedWindow window)
+    {
+        if (ViewModel?.IsPickerMode != false) return;
+        HeaderTabs.DataContext = DataContext;
+        NavigationToolbar.DataContext = DataContext;
+        HeaderHost.Children.Clear();
+        window.View.HeaderTabs = HeaderTabs;
+        window.View.HeaderToolbar = NavigationToolbar;
+    }
+
+    private void NavigationToolbar_SizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        GoUpButton.IsVisible = RefreshButton.IsVisible = ViewModel?.IsPickerMode == true || e.NewSize.Width >= 520;
+        var compact = e.NewSize.Width < 420;
+        if (compact != _compactSearch) _searchFlyout.Hide();
+        _compactSearch = compact;
+        CompactSearchButton.IsVisible = compact;
+        InlineSearchHost.IsVisible = !compact;
+        SearchBox.Width = e.NewSize.Width < 520 ? 110 : 150;
+    }
+
+    private async void FolderTabs_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (ViewModel is not { } vm || FolderTabs.SelectedItem is not ExplorerTab tab
+            || ReferenceEquals(tab, vm.ActiveTab)) return;
+        await vm.SwitchTabAsync(tab);
+        FolderTabs.SetCurrentValue(ListBox.SelectedItemProperty, vm.ActiveTab);
+        if (vm.ActiveTab is { } active) FolderTabs.ScrollIntoView(active);
+    }
+
+    private async void FolderPicker_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (ViewModel is not { } vm || sender is not ListBox { SelectedItem: ExplorerTab tab } list
+            || ReferenceEquals(tab, vm.ActiveTab)) return;
+        await vm.SwitchTabAsync(tab);
+        list.SetCurrentValue(ListBox.SelectedItemProperty, vm.ActiveTab);
+        FolderPickerButton.Flyout?.Hide();
     }
 
     private void EntriesGrid_LayoutUpdated(object? sender, EventArgs e)
@@ -73,6 +129,7 @@ public partial class ExplorerMainView : UserControl
             _attachedViewModel.PropertyChanged -= ViewModel_PropertyChanged;
         }
         _attachedViewModel = ViewModel;
+        CompactSearchBox.DataContext = DataContext;
         if (_attachedViewModel is not null)
         {
             _attachedViewModel.RequestRenameFocus = FocusRenameEditor;
@@ -81,8 +138,23 @@ public partial class ExplorerMainView : UserControl
         }
     }
 
+    private void ScrollBreadcrumbsToLocation() => Dispatcher.UIThread.Post(() =>
+        BreadcrumbScroll.Offset = new Vector(Math.Max(0, BreadcrumbScroll.Extent.Width - BreadcrumbScroll.Viewport.Width), 0),
+        DispatcherPriority.Loaded);
+
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(ExplorerViewModel.IsBusy) && ViewModel is { IsBusy: false })
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (ViewModel is not { IsBusy: false }
+                    || this.GetVisualAncestors().OfType<RemoteWindow>().FirstOrDefault()?.DataContext is not ManagedWindow { IsActive: true }) return;
+                var focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement();
+                if (focused is not Control control || control is TopLevel or RemoteWindow || TopLevel.GetTopLevel(control) is null
+                    || !control.IsEffectivelyVisible || !control.IsEffectivelyEnabled)
+                    _presentation.Focus();
+            }, DispatcherPriority.Loaded);
+        if (e.PropertyName == nameof(ExplorerViewModel.AddressbarPath)) ScrollBreadcrumbsToLocation();
         if (e.PropertyName == nameof(ExplorerViewModel.ViewMode) && ViewModel is { } vm)
             _presentation.SetMode(vm.ViewMode);
     }
@@ -107,10 +179,13 @@ public partial class ExplorerMainView : UserControl
 
     public bool IsTextEditing => TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is TextBox;
 
+    public TextBox ActiveSearchBox => _compactSearch ? CompactSearchBox : SearchBox;
+
     public void FocusSearchBox()
     {
-        SearchBox.Focus();
-        SearchBox.SelectAll();
+        if (_compactSearch) _searchFlyout.ShowAt(CompactSearchButton);
+        ActiveSearchBox.Focus();
+        ActiveSearchBox.SelectAll();
     }
 
     private void EditAddress_Click(object? sender, RoutedEventArgs e) => FocusAddressBox();
@@ -126,6 +201,7 @@ public partial class ExplorerMainView : UserControl
     {
         if (e.Key != Key.Escape) return;
         if (ViewModel is { } vm) vm.SearchText = string.Empty;
+        _searchFlyout.Hide();
         _presentation.Focus();
         e.Handled = true;
     }

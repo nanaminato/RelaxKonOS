@@ -1,6 +1,7 @@
 {
     "Culture": "en-US",
     "Strings": {
+        "code_editor.find": "Find in document (Ctrl+F)",
         "code_editor.settings.title": "Code Editor settings",
         "code_editor.settings.font_size": "Editor font size",
         "code_editor.settings.default_encoding": "Default encoding",

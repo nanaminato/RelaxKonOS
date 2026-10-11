@@ -1,6 +1,7 @@
 {
     "Culture": "zh-CN",
     "Strings": {
+        "code_editor.find": "在文档中查找 (Ctrl+F)",
         "code_editor.settings.title": "代码编辑器设置",
         "code_editor.settings.font_size": "编辑器字体大小",
         "code_editor.settings.default_encoding": "默认打开编码",

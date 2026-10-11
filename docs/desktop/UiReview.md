@@ -196,6 +196,13 @@ P0；首批已实现并通过受控回归，完整故障与真实界面待验证
 
 证据：`FusedWindowHeaderChecks` 逐 recipe 断言槽列、按钮组顺序与配色、交通灯几何、融合条几何与底色、拖拽不被槽吃掉，并新增标签条用例（弹性列、居中槽让位、宿主标题让位、不重叠、**吃满**弹性列、清空后居中槽恢复、只有标签条时仍融合）与 `fused-header-tabs-{recipe}.png` 截图。`RelaxKonOS.WindowPreviews.Tests` 196 PASS / 0 异常 / exit 0；`RelaxKonOS.Settings.Tests` 通过且 `recipe coverage`、`no hardcoded colours` **未被跳过**（`-o` 必须落在仓库内，否则会静默跳过）。未完成：第一批 9 个窗口与第二批 6 个窗口的接入尚未开始，`BrowserMainView` 的标签条仍是应用自排（已列入 §3.2 #15）。
 
+### D-011：标签与导航共存，代码编辑器 / 资源管理器接入（2026-10-11）
+
+D-010 是早期四槽决策，现由五槽契约替代：新增 `HeaderToolbar`，`HeaderCenter` 与 `HeaderTabs` 可以共存，
+宿主把文档标签放到单独一行；Windows-like 文件标签在顶行、导航在下一行，macOS-like 导航融入交通灯右侧、标签在下一行。
+代码编辑器与资源管理器已接入，详情与进度只维护在 [融合计划](RelaxKonOS.FusedWindowHeader.md) 最新日志。
+此次同时验证融合后命令绑定、草稿守卫、独立导航历史、失败目录读取、窄窗口搜索与溢出操作；其余应用仍未接入。
+
 ## 动态界面与复用路由补充清单
 
 每个分号分隔的场景需分别验收，不能因共用源码而合并结论。除已明确记录的局部修复外，以下状态均为已盘点待流程深审。

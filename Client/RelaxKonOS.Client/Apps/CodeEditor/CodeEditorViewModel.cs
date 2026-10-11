@@ -207,8 +207,11 @@ public sealed partial class CodeEditorViewModel : ObservableObject
         if (document.IsDirty && !(await (RequestDiscardChangesAsync?.Invoke(document) ?? Task.FromResult(false)))) return;
 
         var index = OpenDocuments.IndexOf(document);
+        // Removing the selected ListBox item synchronously writes null through its two-way
+        // binding. Capture identity first so that notification cannot suppress selecting a neighbor.
+        var wasActive = ReferenceEquals(ActiveDocument, document);
         OpenDocuments.Remove(document);
-        if (!ReferenceEquals(ActiveDocument, document)) return;
+        if (!wasActive) return;
         ActiveDocument = OpenDocuments.Count == 0 ? null : OpenDocuments[Math.Clamp(index, 0, OpenDocuments.Count - 1)];
     }
 
