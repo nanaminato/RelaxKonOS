@@ -26,7 +26,7 @@
 
 ## 进程查询与实例终止
 
-`ProcessSampler` 只在查询时枚举进程，缓存周期 5 秒，CPU 相对整机计算。差分键为 `(PID, StartTime)`，长时间无查询后重建基线。返回 `items`、`totalCount` 与 `sampledAt`；每项包含 id、name、cpuPercent、memoryBytes、userName、startTime、threadCount、parentProcessId。客户端按父 PID 组装可展开进程树，过滤时保留匹配项的祖先，并逐页取齐快照以免分页拆散树；跨页采样时间或总数变化时重试一次，持续变化时明确失败。折叠节点的后代保持隐藏，仅脱离正常根节点的循环关系使用兜底根节点。无法读取启动时间时 startTime 为 null，客户端禁用终止和图标查询。Linux User 模式只允许宿主执行 UID 所属进程。默认普通模式使用 Server 当前 OS 账户读取和终止；管理员模式通过权限助手读取全机信息、图标并终止已确认实例。两个模式分别缓存并维护 CPU 基线；助手返回累计 CPU ticks，由长生命周期 Server 差分计算，兼容 Linux 一次性助手。管理员模式的助手不可用、协议不匹配或快照无效时返回 503，不静默降级。部署时 Server 与助手必须同时更新至当前协议并重启。
+`ProcessSampler` 只在查询时枚举进程，缓存周期 5 秒，CPU 相对整机计算。差分键为 `(PID, StartTime)`，长时间无查询后重建基线。返回 `items`、`totalCount` 与 `sampledAt`；每项包含 id、name、cpuPercent、memoryBytes、userName、startTime、threadCount、parentProcessId。桌面客户端仅将同名、同属主且父实例时间有效的父子进程组成默认折叠的进程组，组内后代平铺为一层，避免系统父进程形成巨大的展开树；名称显示组内进程数，资源列与结束操作仍针对该行的单个实例。过滤时保留匹配项的组首行，并临时展示匹配成员，不修改原有折叠状态，并逐页取齐快照以免分页拆散树；跨页采样时间或总数变化时重试一次，持续变化时明确失败。折叠节点的后代保持隐藏，仅脱离正常根节点的循环关系使用兜底根节点。无法读取启动时间时 startTime 为 null，客户端禁用终止和图标查询。Linux User 模式只允许宿主执行 UID 所属进程。默认普通模式使用 Server 当前 OS 账户读取和终止；管理员模式通过权限助手读取全机信息、图标并终止已确认实例。两个模式分别缓存并维护 CPU 基线；助手返回累计 CPU ticks，由长生命周期 Server 差分计算，兼容 Linux 一次性助手。管理员模式的助手不可用、协议不匹配或快照无效时返回 503，不静默降级。部署时 Server 与助手必须同时更新至当前协议并重启。
 
 进程图标单独按 `(PID, StartTime)` 请求，避免进程列表轮询反复传输图像。客户端仅在虚拟化列表需要显示该行时请求；Server 验证当前实例并按可执行文件缓存图标。Windows 在选定执行上下文中核对同一进程句柄的创建时间，并使用 QueryFullProcessImageName 读取可执行文件路径、提取 PNG；Ubuntu 从匹配的 `.desktop` 项查找 PNG/SVG 图标。图标缺失、权限不足或不支持的图像格式返回 404，客户端使用类别图标回退。
 

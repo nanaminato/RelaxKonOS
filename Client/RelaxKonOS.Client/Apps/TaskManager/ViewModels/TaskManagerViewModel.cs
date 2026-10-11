@@ -400,6 +400,8 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
             {
                 var process = row.Process;
                 if (process.ParentProcessId is { } parentId && parentId != process.Id && byId.TryGetValue(parentId, out var parent)
+                    && string.Equals(parent.Process.Name, process.Name, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(parent.Process.UserName, process.UserName, StringComparison.OrdinalIgnoreCase)
                     && (parent.Process.StartTime is null || process.StartTime is null || parent.Process.StartTime <= process.StartTime))
                 {
                     parentIds[process.Id] = parentId;
@@ -407,7 +409,24 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
                 }
                 else roots.Add(row);
             }
-            foreach (var row in rows) row.Update(row.Process, row.Depth, children[row.Process.Id].Count > 0);
+            // Present related instances as a shallow application group, rather than an OS ancestry tree.
+            foreach (var row in rows)
+            {
+                var id = row.Process.Id;
+                var ancestry = new HashSet<int> { id };
+                while (parentIds.TryGetValue(id, out var parentId) && ancestry.Add(parentId)) id = parentId;
+                if (id == row.Process.Id || parentIds.ContainsKey(id)) continue;
+                var previousParent = parentIds[row.Process.Id];
+                if (previousParent == id) continue;
+                children[previousParent].Remove(row);
+                children[id].Add(row);
+                parentIds[row.Process.Id] = id;
+            }
+            foreach (var row in rows)
+            {
+                row.Update(row.Process, row.Depth, children[row.Process.Id].Count > 0);
+                row.GroupProcessCount = 1 + children[row.Process.Id].Count;
+            }
 
             var filter = ProcessFilter.Trim();
             bool Matches(ProcessInfoDto process) => string.IsNullOrWhiteSpace(filter)
@@ -435,9 +454,9 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
                 if (!included.Contains(id) || !visited.Add(id)) return;
                 row.Update(row.Process, depth, children[id].Count > 0);
                 var hasIncludedChild = children[id].Any(child => included.Contains(child.Process.Id));
-                if (!string.IsNullOrWhiteSpace(filter) && hasIncludedChild) row.IsExpanded = true;
+                var showChildren = row.IsExpanded || (!string.IsNullOrWhiteSpace(filter) && hasIncludedChild);
                 FilteredProcesses.Add(row);
-                if (row.IsExpanded)
+                if (showChildren)
                     foreach (var child in children[id]) AddVisible(child, depth + 1);
             }
 
