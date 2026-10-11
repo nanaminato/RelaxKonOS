@@ -51,6 +51,7 @@ if (args.Contains("--fused-apps-only"))
 {
     FusedWindowHeaderChecks.Run(settings);
     FusedApplicationChecks.Run(settings);
+    SshFileBrowserLayoutChecks.Run(settings);
     EditorDraftStateChecks.Run();
     return;
 }
@@ -114,6 +115,7 @@ SettingsInteractionChecks.Run(settings, localization);
 SettingsWindowChecks.Run(settings, localization);
 FusedWindowHeaderChecks.Run(settings);
 FusedApplicationChecks.Run(settings);
+SshFileBrowserLayoutChecks.Run(settings);
 HostTitleBarChecks.Run(settings, localization);
 RemoteClockChecks.Run(settings, localization, services);
 DesktopDeviceSettingsChecks.Run(settings, appearance);

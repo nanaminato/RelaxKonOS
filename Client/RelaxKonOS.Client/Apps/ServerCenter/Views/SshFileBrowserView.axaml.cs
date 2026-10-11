@@ -7,6 +7,8 @@ using Avalonia.Input;
 using Avalonia.Platform.Storage;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
+using Avalonia.Threading;
+using RelaxKonOS.WindowManager;
 using RelaxKonOS.Client.Apps.Explorer.Models;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.ServerCenter;
@@ -17,6 +19,8 @@ namespace RelaxKonOS.Client.Apps.ServerCenter.Views;
 
 internal partial class SshFileBrowserView : UserControl
 {
+    public static readonly StyledProperty<string> SearchTextProperty =
+        AvaloniaProperty.Register<SshFileBrowserView, string>(nameof(SearchText), string.Empty);
     public static readonly StyledProperty<double> EntriesTableWidthProperty =
         AvaloniaProperty.Register<SshFileBrowserView, double>(nameof(EntriesTableWidth));
     public static readonly StyledProperty<string> NameSortGlyphProperty =
@@ -55,6 +59,10 @@ internal partial class SshFileBrowserView : UserControl
     private TreeNodeModel? _rootNode;
     private DataGridColumnHeader? _pressedSortHeader;
     private double _pressedSortHeaderWidth;
+    private readonly Flyout _searchFlyout;
+    private bool _compactSearch;
+
+    public string SearchText { get => GetValue(SearchTextProperty); set => SetValue(SearchTextProperty, value); }
 
     /// <summary>Combined live width of the details columns, used to constrain row layout.</summary>
     public double EntriesTableWidth
@@ -77,6 +85,16 @@ internal partial class SshFileBrowserView : UserControl
         _selectPackage = selectPackage;
         _cancelPicker = cancelPicker;
         InitializeComponent();
+        _searchFlyout = (Flyout)CompactSearchButton.Flyout!;
+        _searchFlyout.Opened += (_, _) => { CompactSearchBox.Focus(); CompactSearchBox.SelectAll(); };
+        FileActions.IsVisible = !IsPackagePicker;
+        BreadcrumbScroll.SizeChanged += (_, _) => ScrollBreadcrumbsToLocation();
+        SizeChanged += (_, e) =>
+        {
+            FileContentGrid.ColumnDefinitions[0].Width = new GridLength(e.NewSize.Width < 620 ? 0 : 210);
+            FileContentGrid.ColumnDefinitions[1].Width = new GridLength(e.NewSize.Width < 620 ? 0 : 4);
+            StatusText.MaxWidth = e.NewSize.Width * 0.55;
+        };
         PickerPanel.IsVisible = IsPackagePicker;
         PickerFilterText.Text = IsPackagePicker
             ? T("server_center.wizard.bundle_file_type", "RelaxKonOS release bundle") + " (*.zip)"
@@ -106,6 +124,65 @@ internal partial class SshFileBrowserView : UserControl
         };
         UpdateControls();
     }
+
+    public void AttachWindowHeader(ManagedWindow window)
+    {
+        if (IsPackagePicker) return;
+        BrowserRoot.Children.Remove(NavigationToolbar);
+        BrowserRoot.Children.Remove(HeaderIdentity);
+        HeaderIdentity.IsVisible = true;
+        window.View.HeaderLeading = HeaderIdentity;
+        window.View.HeaderToolbar = NavigationToolbar;
+        NavigationToolbar.AddHandler(KeyDownEvent, View_KeyDown, RoutingStrategies.Bubble, handledEventsToo: true);
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == SearchTextProperty && _viewReady) ApplyView();
+    }
+
+    private void NavigationToolbar_SizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        UpButton.IsVisible = RefreshButton.IsVisible = e.NewSize.Width >= 520;
+        var compact = e.NewSize.Width < 600;
+        if (compact != _compactSearch) _searchFlyout.Hide();
+        _compactSearch = compact;
+        CompactSearchButton.IsVisible = compact;
+        InlineSearchHost.IsVisible = !compact;
+        SearchBox.Width = Math.Clamp(e.NewSize.Width * 0.24, 140, 260);
+    }
+
+    private void CommandToolbar_SizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        var width = e.NewSize.Width;
+        RenameButton.IsVisible = DeleteButton.IsVisible = width >= 760;
+        CutButton.IsVisible = CopyButton.IsVisible = PasteButton.IsVisible = width >= 620;
+        EditingDivider.IsVisible = width >= 620;
+        ViewDivider.IsVisible = !IsPackagePicker && width >= 480;
+        NewFolderLabel.IsVisible = SortLabel.IsVisible = ViewLabel.IsVisible = width >= 480;
+        SortLabelChevron.IsVisible = ViewLabelChevron.IsVisible = width >= 480;
+    }
+
+    public void FocusSearchBox()
+    {
+        if (_compactSearch) _searchFlyout.ShowAt(CompactSearchButton);
+        var search = _compactSearch ? CompactSearchBox : SearchBox;
+        search.Focus(); search.SelectAll();
+    }
+
+    private void SearchBox_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape) return;
+        SearchText = string.Empty;
+        _searchFlyout.Hide();
+        _presentation.Focus();
+        e.Handled = true;
+    }
+
+    private void ScrollBreadcrumbsToLocation() => Dispatcher.UIThread.Post(() =>
+        BreadcrumbScroll.Offset = new Vector(Math.Max(0, BreadcrumbScroll.Extent.Width - BreadcrumbScroll.Viewport.Width), 0),
+        DispatcherPriority.Loaded);
 
     private void ViewModeBox_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
@@ -157,6 +234,7 @@ internal partial class SshFileBrowserView : UserControl
 
     private async void AddressBox_KeyDown(object? sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Escape) { e.Handled = true; SetAddressEditing(false); _presentation.Focus(); return; }
         if (e.Key != Key.Enter) return;
         e.Handled = true;
         var requestedPath = AddressBox.Text ?? ".";
@@ -181,11 +259,6 @@ internal partial class SshFileBrowserView : UserControl
     private async void Breadcrumb_Click(object? sender, RoutedEventArgs e)
     {
         if (sender is Button { Tag: string path }) await NavigateAsync(path);
-    }
-
-    private void SearchBox_TextChanged(object? sender, TextChangedEventArgs e)
-    {
-        if (_viewReady) ApplyView();
     }
 
     private void SortBox_SelectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -337,7 +410,7 @@ internal partial class SshFileBrowserView : UserControl
             e.Handled = true;
             if (!IsPackagePicker) EntriesGrid.SelectAll();
         }
-        else if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.Key == Key.F) { e.Handled = true; SearchBox.Focus(); }
+        else if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.Key == Key.F) { e.Handled = true; FocusSearchBox(); }
         else if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.Key == Key.L) { e.Handled = true; SetAddressEditing(true); }
         else if (e.Key == Key.Escape) { e.Handled = true; _presentation.ClearSelection(); }
     }
@@ -464,13 +537,17 @@ internal partial class SshFileBrowserView : UserControl
             path = path == "/" ? "/" + segment : path.TrimEnd('/') + "/" + segment;
             AddBreadcrumb(segment, path);
         }
+        ScrollBreadcrumbsToLocation();
     }
 
     private void AddBreadcrumb(string label, string path)
     {
         if (BreadcrumbsHost.Children.Count > 0)
-            BreadcrumbsHost.Children.Add(new TextBlock { Text = "›", VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, Opacity = 0.5 });
-        var button = new Button { Content = label, Tag = path, Padding = new Thickness(8, 5), Background = null, BorderThickness = new Thickness(0) };
+            BreadcrumbsHost.Children.Add(new PathIcon { Width = 10, Height = 10,
+                Data = Avalonia.Media.Geometry.Parse("M10 6 L8.59 7.41 L13.17 12 L8.59 16.59 L10 18 L16 12 Z"),
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, Opacity = 0.5 });
+        var button = new Button { Content = label, Tag = path, Padding = new Thickness(7, 0),
+            Height = 26, MinHeight = 0, Background = Avalonia.Media.Brushes.Transparent, BorderThickness = new Thickness(0) };
         button.Click += Breadcrumb_Click;
         BreadcrumbsHost.Children.Add(button);
     }
@@ -571,7 +648,7 @@ internal partial class SshFileBrowserView : UserControl
 
     private void ApplyView()
     {
-        var query = SearchBox.Text?.Trim();
+        var query = SearchText.Trim();
         IEnumerable<SshFileEntry> entries = _entries.Where(file =>
             (_showHidden || !file.Name.StartsWith('.')) &&
             (string.IsNullOrEmpty(query) || file.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase)) &&
@@ -613,6 +690,8 @@ internal partial class SshFileBrowserView : UserControl
         PickerEntryName.Text = IsPackagePicker && Selection() is [var picked] ? picked.Name : string.Empty;
         ConfirmPickerButton.IsEnabled = CanConfirmPackage();
         NavigationTree.IsEnabled = !_busy;
+        NavigationToolbar.IsEnabled = CommandToolbar.IsEnabled = !_busy;
+        OverflowProperties.IsEnabled = !_busy && selected.Length == 1;
     }
 
     private bool CanConfirmPackage() => IsPackagePicker && !_busy && Selection() is [var entry] &&

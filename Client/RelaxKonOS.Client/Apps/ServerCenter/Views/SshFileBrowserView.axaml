@@ -6,134 +6,135 @@
              x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.SshFileBrowserView"
              x:Name="Root"
              Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
-    <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
-        <!-- Keep SSH browsing visually aligned with the Server desktop Explorer: navigation,
-             breadcrumbs, and filtering share the same compact top bar. -->
-        <Border BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1" Padding="8">
-        <Grid ColumnDefinitions="Auto,*,180" ColumnSpacing="8">
-            <StackPanel Orientation="Horizontal" Spacing="4">
-                <StackPanel.Styles>
-                    <Style Selector="Button">
-                        <Setter Property="MinWidth" Value="42" />
-                    </Style>
-                </StackPanel.Styles>
-                <Button x:Name="BackButton" ToolTip.Tip="Alt+Left" Click="Back_Click">
-                    <Image Width="18" Height="18"
-                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-back.png" />
-                </Button>
-                <Button x:Name="ForwardButton" ToolTip.Tip="Alt+Right" Click="Forward_Click">
-                    <Image Width="18" Height="18"
-                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-forward.png" />
-                </Button>
-                <Button x:Name="UpButton" ToolTip.Tip="Alt+Up" Click="Up_Click">
-                    <Image Width="18" Height="18"
-                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-up.png" />
-                </Button>
-                <Button x:Name="RefreshButton" ToolTip.Tip="F5" Click="Refresh_Click">
-                    <Image Width="18" Height="18"
-                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-refresh.png" />
-                </Button>
-            </StackPanel>
-            <Grid Grid.Column="1" MinWidth="100">
-                <TextBox x:Name="AddressBox" IsVisible="False" PlaceholderText="{loc:Loc ssh_files.address}"
-                         KeyDown="AddressBox_KeyDown" LostFocus="AddressBox_LostFocus" />
-                <Border x:Name="AddressDisplay" CornerRadius="5" BorderThickness="1"
-                        BorderBrush="{DynamicResource BorderDefaultBrush}" Padding="4,0">
-                    <Grid ColumnDefinitions="*,Auto">
-                        <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
-                            <StackPanel x:Name="BreadcrumbsHost" Orientation="Horizontal" />
-                        </ScrollViewer>
-                        <Button Grid.Column="1" Click="EditAddress_Click" ToolTip.Tip="{loc:Loc ssh_files.address}"
-                                Background="Transparent" BorderThickness="0">
-                            <Image Width="16" Height="16"
-                                   Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-rename.png" />
-                        </Button>
-                    </Grid>
-                </Border>
+    <UserControl.Styles>
+        <StyleInclude Source="avares://RelaxKonOS.Client/Apps/Explorer/Controls/FileBrowserToolbarStyles.axaml" />
+    </UserControl.Styles>
+    <Grid x:Name="BrowserRoot" RowDefinitions="Auto,Auto,*,Auto,Auto">
+        <StackPanel x:Name="HeaderIdentity" IsVisible="False" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <explorer:ExplorerIcon EntryType="Directory" Width="16" Height="16" VerticalAlignment="Center" />
+            <TextBlock Text="{loc:Loc application.relaxkonos.ssh-files.display_name}" VerticalAlignment="Center" />
+        </StackPanel>
+        <Border x:Name="NavigationToolbar" Padding="4,8" SizeChanged="NavigationToolbar_SizeChanged">
+            <Border.Styles>
+                <!-- The address field and the search field are the header's two text surfaces. The search
+                     field's glyph lives inside the frame, so its TextBox stops painting a second frame of
+                     its own; the address field keeps one but is dressed as the same sunken field the
+                     breadcrumb uses, otherwise typing a path would swap a framed field for a bare one.
+                     Every interaction state is spelled out because the platform theme styles are just as
+                     specific and would otherwise repaint the field on hover or focus. -->
+                <Style Selector="TextBox#AddressBox">
+                    <Setter Property="Height" Value="32" />
+                    <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+                    <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource FocusBorderBrush}" />
+                </Style>
+                <Style Selector="TextBox#AddressBox:pointerover">
+                    <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource FocusBorderBrush}" />
+                </Style>
+                <Style Selector="TextBox#AddressBox:focus">
+                    <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource FocusBorderBrush}" />
+                </Style>
+                <Style Selector="TextBox#SearchBox">
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="BorderThickness" Value="0" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="MinHeight" Value="0" />
+                </Style>
+                <Style Selector="TextBox#SearchBox:focus /template/ Border#PART_BorderElement, TextBox#SearchBox:not(:focus) /template/ Border#PART_BorderElement">
+                    <Setter Property="BorderThickness" Value="0" />
+                    <Setter Property="Background" Value="Transparent" />
+                </Style>
+                <Style Selector="Border#AddressDisplay:focus-within">
+                    <Setter Property="BorderBrush" Value="{DynamicResource FocusBorderBrush}" />
+                </Style>
+                <Style Selector="Border#InlineSearchHost:focus-within">
+                    <Setter Property="BorderBrush" Value="{DynamicResource FocusBorderBrush}" />
+                    <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+                </Style>
+            </Border.Styles>
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" ClipToBounds="True">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+<Button x:Name="BackButton" Classes="header-action" Click="Back_Click" ToolTip.Tip="{loc:Loc common.back}" AutomationProperties.Name="{loc:Loc common.back}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeBackIcon}" /></Button>
+<Button x:Name="ForwardButton" Classes="header-action" Click="Forward_Click" ToolTip.Tip="{loc:Loc common.forward}" AutomationProperties.Name="{loc:Loc common.forward}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeForwardIcon}" /></Button>
+<Button x:Name="UpButton" Classes="header-action" Click="Up_Click" ToolTip.Tip="{loc:Loc explorer.up}" AutomationProperties.Name="{loc:Loc explorer.up}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeUpIcon}" /></Button>
+<Button x:Name="RefreshButton" Classes="header-action" Click="Refresh_Click" ToolTip.Tip="{loc:Loc common.refresh}" AutomationProperties.Name="{loc:Loc common.refresh}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeRefreshIcon}" /></Button>
+                </StackPanel>
+                <Grid Grid.Column="1" MinWidth="0">
+                    <TextBox x:Name="AddressBox" IsVisible="False" PlaceholderText="{loc:Loc ssh_files.address}" KeyDown="AddressBox_KeyDown" LostFocus="AddressBox_LostFocus" />
+                    <Border x:Name="AddressDisplay" Height="32" CornerRadius="{DynamicResource ControlCornerRadius}" BorderThickness="1" BorderBrush="{DynamicResource BorderDefaultBrush}" Background="{DynamicResource SurfaceSunkenBrush}" Padding="2,0">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <ScrollViewer x:Name="BreadcrumbScroll" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled"><StackPanel x:Name="BreadcrumbsHost" Orientation="Horizontal" /></ScrollViewer>
+                            <Button Grid.Column="1" Classes="header-action compact" Click="EditAddress_Click" ToolTip.Tip="{loc:Loc ssh_files.address}" AutomationProperties.Name="{loc:Loc ssh_files.address}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeEditIcon}" /></Button>
+                        </Grid>
+                    </Border>
+                </Grid>
+                <Grid Grid.Column="2">
+                    <Border x:Name="InlineSearchHost" Height="32" CornerRadius="{DynamicResource ControlCornerRadius}" Background="{DynamicResource SurfaceSunkenBrush}" BorderThickness="1" BorderBrush="Transparent" Padding="8,0,2,0">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                            <Path Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.2" StrokeLineCap="Round" Stretch="Uniform" Width="14" Height="14" VerticalAlignment="Center" Data="{StaticResource ChromeSearchIcon}" />
+                            <TextBox x:Name="SearchBox" Grid.Column="1" Width="180" MinWidth="0" VerticalContentAlignment="Center" Text="{Binding #Root.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{loc:Loc ssh_files.search}" KeyDown="SearchBox_KeyDown" />
+                        </Grid>
+                    </Border>
+                    <Button x:Name="CompactSearchButton" Classes="header-action" IsVisible="False" ToolTip.Tip="{loc:Loc ssh_files.search}" AutomationProperties.Name="{loc:Loc ssh_files.search}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeSearchIcon}" />
+                        <Button.Flyout><Flyout><TextBox x:Name="CompactSearchBox" Width="240" Text="{Binding #Root.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{loc:Loc ssh_files.search}" KeyDown="SearchBox_KeyDown" /></Flyout></Button.Flyout>
+                    </Button>
+                </Grid>
             </Grid>
-            <TextBox x:Name="SearchBox" Grid.Column="2" PlaceholderText="{loc:Loc ssh_files.search}"
-                     TextChanged="SearchBox_TextChanged" />
-        </Grid>
         </Border>
-
-        <Border Grid.Row="1" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1" Padding="8,6">
-        <WrapPanel Orientation="Horizontal">
-            <WrapPanel.Styles>
-                <Style Selector="Button">
-                    <Setter Property="Margin" Value="0,0,4,0" />
-                </Style>
-                <Style Selector="Button TextBlock">
-                    <Setter Property="VerticalAlignment" Value="Center" />
-                </Style>
-            </WrapPanel.Styles>
-            <Button x:Name="NewFolderButton" Click="NewFolder_Click" ToolTip.Tip="{loc:Loc ssh_files.new_folder}">
-                <StackPanel Orientation="Horizontal" Spacing="5">
-                    <Image Width="18" Height="18"
-                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-new-folder.png" />
-                    <TextBlock Text="{loc:Loc ssh_files.new_folder}" VerticalAlignment="Center" />
+        <Border Grid.Row="1" x:Name="CommandToolbar" Classes="app-toolbar" Padding="8,6" SizeChanged="CommandToolbar_SizeChanged">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+                <StackPanel x:Name="FileActions" Orientation="Horizontal" Spacing="4">
+                    <Button x:Name="NewFolderButton" Classes="command-action" Click="NewFolder_Click" ToolTip.Tip="{loc:Loc ssh_files.new_folder}" AutomationProperties.Name="{loc:Loc ssh_files.new_folder}"><StackPanel Orientation="Horizontal" Spacing="6"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeNewFolderIcon}" /><TextBlock x:Name="NewFolderLabel" Text="{loc:Loc ssh_files.new_folder}" VerticalAlignment="Center" /></StackPanel></Button>
+                    <Border x:Name="EditingDivider" Classes="command-divider" />
+<Button x:Name="CutButton" Classes="command-action icon-command" Click="Cut_Click" ToolTip.Tip="{loc:Loc ssh_files.cut}" AutomationProperties.Name="{loc:Loc ssh_files.cut}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeCutIcon}" /></Button>
+<Button x:Name="CopyButton" Classes="command-action icon-command" Click="Copy_Click" ToolTip.Tip="{loc:Loc ssh_files.copy}" AutomationProperties.Name="{loc:Loc ssh_files.copy}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeCopyIcon}" /></Button>
+<Button x:Name="PasteButton" Classes="command-action icon-command" Click="Paste_Click" ToolTip.Tip="{loc:Loc ssh_files.paste}" AutomationProperties.Name="{loc:Loc ssh_files.paste}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromePasteIcon}" /></Button>
+<Button x:Name="RenameButton" Classes="command-action icon-command" Click="Rename_Click" ToolTip.Tip="{loc:Loc ssh_files.rename}" AutomationProperties.Name="{loc:Loc ssh_files.rename}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeRenameIcon}" /></Button>
+<Button x:Name="DeleteButton" Classes="command-action icon-command" Click="Delete_Click" ToolTip.Tip="{loc:Loc ssh_files.delete}" AutomationProperties.Name="{loc:Loc ssh_files.delete}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeDeleteIcon}" /></Button>
                 </StackPanel>
-            </Button>
-            <Button x:Name="CopyButton" Click="Copy_Click" ToolTip.Tip="Ctrl+C">
-                <Image Width="18" Height="18"
-                       Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-copy.png" />
-            </Button>
-            <Button x:Name="CutButton" Click="Cut_Click" ToolTip.Tip="Ctrl+X">
-                <Image Width="18" Height="18"
-                       Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-cut.png" />
-            </Button>
-            <Button x:Name="PasteButton" Click="Paste_Click" ToolTip.Tip="Ctrl+V">
-                <Image Width="18" Height="18"
-                       Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-paste.png" />
-            </Button>
-            <Button x:Name="RenameButton" Click="Rename_Click" ToolTip.Tip="F2">
-                <StackPanel Orientation="Horizontal" Spacing="5">
-                    <Image Width="18" Height="18"
-                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-rename.png" />
-                    <TextBlock Text="{loc:Loc ssh_files.rename}" VerticalAlignment="Center" />
-                </StackPanel>
-            </Button>
-            <Button x:Name="DeleteButton" Click="Delete_Click" ToolTip.Tip="Delete">
-                <StackPanel Orientation="Horizontal" Spacing="5">
-                    <Image Width="18" Height="18"
-                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-delete.png" />
-                    <TextBlock Text="{loc:Loc ssh_files.delete}" VerticalAlignment="Center" />
-                </StackPanel>
-            </Button>
-            <Button ToolTip.Tip="{loc:Loc explorer.more}">
-                <Image Width="18" Height="18"
-                       Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-more.png" />
-                <Button.Flyout>
-                    <MenuFlyout>
+                <Border x:Name="ViewDivider" Classes="command-divider" />
+<Button x:Name="SortAction" Classes="command-action" ToolTip.Tip="{loc:Loc explorer.sort}" AutomationProperties.Name="{loc:Loc explorer.sort}">
+                    <StackPanel Orientation="Horizontal" Spacing="8"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="M7 3 V21 M3 17 L7 21 L11 17 M17 21 V3 M13 7 L17 3 L21 7" /><TextBlock x:Name="SortLabel" Text="{loc:Loc explorer.sort}" VerticalAlignment="Center" /><PathIcon x:Name="SortLabelChevron" Width="8" Height="8" Data="{StaticResource ChromeChevronDownIcon}" /></StackPanel>
+                    <Button.Flyout><Flyout><StackPanel Spacing="10" MinWidth="220">
+                        <ComboBox x:Name="SortBox" Width="220" SelectedIndex="0" SelectionChanged="SortBox_SelectionChanged">
+                            <ComboBoxItem Content="{loc:Loc ssh_files.name}" /><ComboBoxItem Content="{loc:Loc ssh_files.modified}" /><ComboBoxItem Content="{loc:Loc ssh_files.type}" /><ComboBoxItem Content="{loc:Loc ssh_files.size}" />
+                        </ComboBox>
+                        <CheckBox x:Name="DescendingBox" Content="{loc:Loc ssh_files.descending}" IsCheckedChanged="DescendingBox_Changed" />
+                    </StackPanel></Flyout></Button.Flyout>
+                </Button>
+<Button x:Name="ViewAction" Classes="command-action" ToolTip.Tip="{loc:Loc common.view}" AutomationProperties.Name="{loc:Loc common.view}">
+                    <StackPanel Orientation="Horizontal" Spacing="8"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="M3 5 H21 M3 10 H21 M3 15 H21 M3 20 H21" /><TextBlock x:Name="ViewLabel" Text="{loc:Loc common.view}" VerticalAlignment="Center" /><PathIcon x:Name="ViewLabelChevron" Width="8" Height="8" Data="{StaticResource ChromeChevronDownIcon}" /></StackPanel>
+                    <Button.Flyout><Flyout><StackPanel Spacing="10" MinWidth="220">
+                        <ComboBox x:Name="ViewModeBox" Width="220" SelectionChanged="ViewModeBox_SelectionChanged" SelectedIndex="0">
+                            <ComboBoxItem Content="{loc:Loc explorer.view.details}" /><ComboBoxItem Content="{loc:Loc explorer.view.list}" /><ComboBoxItem Content="{loc:Loc explorer.view.small_icons}" /><ComboBoxItem Content="{loc:Loc explorer.view.large_icons}" />
+                        </ComboBox>
+                        <CheckBox x:Name="HiddenBox" Content="{loc:Loc ssh_files.show_hidden}" IsCheckedChanged="HiddenBox_Changed" />
+                    </StackPanel></Flyout></Button.Flyout>
+                </Button>
+                <Button x:Name="MoreActionsButton" Classes="command-action icon-command" ToolTip.Tip="{loc:Loc explorer.more}" AutomationProperties.Name="{loc:Loc explorer.more}"><PathIcon Width="16" Height="16" Data="{StaticResource ChromeMoreIcon}" />
+                    <Button.Flyout><MenuFlyout>
+<MenuItem x:Name="OverflowNewFolder" Header="{loc:Loc ssh_files.new_folder}" Click="NewFolder_Click" IsEnabled="{Binding #NewFolderButton.IsEnabled}" />
+<MenuItem x:Name="OverflowCut" Header="{loc:Loc ssh_files.cut}" Click="Cut_Click" IsEnabled="{Binding #CutButton.IsEnabled}" />
+<MenuItem x:Name="OverflowCopy" Header="{loc:Loc ssh_files.copy}" Click="Copy_Click" IsEnabled="{Binding #CopyButton.IsEnabled}" />
+<MenuItem x:Name="OverflowPaste" Header="{loc:Loc ssh_files.paste}" Click="Paste_Click" IsEnabled="{Binding #PasteButton.IsEnabled}" />
+<MenuItem x:Name="OverflowRename" Header="{loc:Loc ssh_files.rename}" Click="Rename_Click" IsEnabled="{Binding #RenameButton.IsEnabled}" />
+<MenuItem x:Name="OverflowDelete" Header="{loc:Loc ssh_files.delete}" Click="Delete_Click" IsEnabled="{Binding #DeleteButton.IsEnabled}" />
+                        <Separator />
+<MenuItem x:Name="OverflowUp" Header="{loc:Loc explorer.up}" Click="Up_Click" IsEnabled="{Binding #UpButton.IsEnabled}" />
+<MenuItem x:Name="OverflowRefresh" Header="{loc:Loc common.refresh}" Click="Refresh_Click" IsEnabled="{Binding #RefreshButton.IsEnabled}" />
+                        <Separator />
                         <MenuItem x:Name="UploadButton" Header="{loc:Loc ssh_files.upload}" Click="Upload_Click" />
                         <MenuItem x:Name="UploadFolderButton" Header="{loc:Loc ssh_files.upload_folder}" Click="UploadFolder_Click" />
                         <MenuItem x:Name="DownloadButton" Header="{loc:Loc ssh_files.download}" Click="Download_Click" />
                         <Separator />
-                        <MenuItem Header="{loc:Loc ssh_files.properties}" Click="Properties_Click" />
-                    </MenuFlyout>
-                </Button.Flyout>
-            </Button>
-            <ComboBox x:Name="ViewModeBox" Width="112" Margin="0,0,10,0" SelectionChanged="ViewModeBox_SelectionChanged" SelectedIndex="0">
-                    <ComboBoxItem Content="{loc:Loc explorer.view.details}" />
-                    <ComboBoxItem Content="{loc:Loc explorer.view.list}" />
-                    <ComboBoxItem Content="{loc:Loc explorer.view.small_icons}" />
-                    <ComboBoxItem Content="{loc:Loc explorer.view.large_icons}" />
-                </ComboBox>
-                <TextBlock Text="{loc:Loc explorer.sort}" VerticalAlignment="Center" Margin="8,0,6,0" />
-            <ComboBox x:Name="SortBox" Width="112" SelectedIndex="0" Margin="0,0,10,0"
-                      SelectionChanged="SortBox_SelectionChanged">
-                <ComboBoxItem Content="{loc:Loc ssh_files.name}" />
-                <ComboBoxItem Content="{loc:Loc ssh_files.modified}" />
-                <ComboBoxItem Content="{loc:Loc ssh_files.type}" />
-                <ComboBoxItem Content="{loc:Loc ssh_files.size}" />
-            </ComboBox>
-            <CheckBox x:Name="DescendingBox" Content="{loc:Loc ssh_files.descending}" Margin="0,0,12,0"
-                      IsCheckedChanged="DescendingBox_Changed" />
-            <CheckBox x:Name="HiddenBox" Content="{loc:Loc ssh_files.show_hidden}"
-                      IsCheckedChanged="HiddenBox_Changed" />
-        </WrapPanel>
+                        <MenuItem x:Name="OverflowProperties" Header="{loc:Loc ssh_files.properties}" Click="Properties_Click" />
+                    </MenuFlyout></Button.Flyout>
+                </Button>
+            </StackPanel>
         </Border>
-
-        <Grid Grid.Row="2" ColumnDefinitions="210,Auto,*">
+        <Grid x:Name="FileContentGrid" Grid.Row="2" ColumnDefinitions="210,4,*">
             <Grid Grid.Column="0" Margin="8,4,4,4">
                 <TreeView x:Name="NavigationTree" SelectionChanged="NavigationTree_SelectionChanged"
                           ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -156,7 +157,7 @@
                 </TreeView>
             </Grid>
 
-            <GridSplitter Grid.Column="1" Width="4" Background="{DynamicResource SurfaceBrush}"
+            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" ResizeBehavior="PreviousAndNext" Background="{DynamicResource SurfaceBrush}"
                           ResizeDirection="Columns" />
 
             <!-- 与 Windows 资源管理器一致的详细信息列表：列使用固定像素宽度，视口剩余的宽度
@@ -174,13 +175,13 @@
                       CanUserSortColumns="False"
                       HorizontalScrollBarVisibility="Auto"
                       VerticalScrollBarVisibility="Auto"
-                      RowHeight="28"
+                      RowHeight="36"
                       ColumnHeaderHeight="30"
                       Background="{DynamicResource SurfaceBrush}"
                       BorderThickness="0" Classes="resource-table">
                 <DataGrid.Styles>
                     <Style Selector="DataGridColumnHeader">
-                        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+                        <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
                         <Setter Property="FontWeight" Value="SemiBold" />
                         <Setter Property="FontSize" Value="12" />
                     </Style>
@@ -296,14 +297,13 @@
         <!-- Picker mode follows the signed-in server Explorer: folders stay navigable, only a
              matching file may be confirmed, and mutating file commands are disabled. -->
         <Border x:Name="PickerPanel" Grid.Row="3" IsVisible="False" Classes="app-statusbar">
-            <Grid RowDefinitions="Auto,Auto" RowSpacing="8">
-                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+            <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                     <TextBlock Text="{loc:Loc server_center.wizard.bundle_file_label}" VerticalAlignment="Center" />
                     <TextBox x:Name="PickerEntryName" Grid.Column="1" IsReadOnly="True" />
-                    <TextBlock x:Name="PickerFilterText" Grid.Column="2" VerticalAlignment="Center"
-                               Foreground="{DynamicResource TextSecondaryBrush}" />
                 </Grid>
-                <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                <TextBlock x:Name="PickerFilterText" Grid.Row="1" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
                     <Button Content="{loc:Loc common.cancel}" Click="CancelPicker_Click" />
                     <Button x:Name="ConfirmPickerButton" Classes="primary" Content="{loc:Loc common.open}"
                             Click="ConfirmPicker_Click" />

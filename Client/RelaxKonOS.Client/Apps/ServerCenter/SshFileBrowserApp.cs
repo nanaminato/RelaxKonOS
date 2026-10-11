@@ -25,11 +25,12 @@ public sealed class SshFileBrowserApp : RemoteApplicationBase
         if (!session.IsConnected) return;
         var codeEditor = context.Services.GetRequiredService<CodeEditorApp>();
         var imageViewer = context.Services.GetRequiredService<ImageViewerApp>();
-        context.ShowWindow(LocalizedText.Get("application.relaxkonos.ssh-files.display_name", "SSH files"),
-            new SshFileBrowserView(session,
+        var view = new SshFileBrowserView(session,
                 path => codeEditor.Manifest.SupportsFile(path) || imageViewer.Manifest.SupportsFile(path),
                 path => context.Activations.Activate(RelaxKonOSActivationUris.OpenFile(
-                    imageViewer.Manifest.SupportsFile(path) ? imageViewer.Manifest.Id : codeEditor.Manifest.Id, path)).Succeeded),
+                    imageViewer.Manifest.SupportsFile(path) ? imageViewer.Manifest.Id : codeEditor.Manifest.Id, path)).Succeeded);
+        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.ssh-files.display_name", "SSH files"), view,
             bounds: new Rect(150, 100, 860, 580), iconGlyph: Manifest.IconGlyph);
+        view.AttachWindowHeader(window);
     }
 }

@@ -19,45 +19,11 @@
         <c:EntryIsEditingConverter x:Key="EntryIsEditingConverter" />
         <c:CutEntryOpacityConverter x:Key="CutEntryOpacityConverter" />
 
-        <!-- Toolbar marks use a consistent outline weight and inherit the button foreground. -->
-        <StreamGeometry x:Key="ChromeBackIcon">M19 12 H5 M11 6 L5 12 L11 18</StreamGeometry>
-        <StreamGeometry x:Key="ChromeForwardIcon">M5 12 H19 M13 6 L19 12 L13 18</StreamGeometry>
-        <StreamGeometry x:Key="ChromeUpIcon">M12 20 V4 M6 10 L12 4 L18 10</StreamGeometry>
-        <StreamGeometry x:Key="ChromeRefreshIcon">M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14</StreamGeometry>
-        <StreamGeometry x:Key="ChromeChevronRightIcon">M10 6 L8.59 7.41 L13.17 12 L8.59 16.59 L10 18 L16 12 Z</StreamGeometry>
-        <StreamGeometry x:Key="ChromeChevronDownIcon">M16.59 8.59 L12 13.17 L7.41 8.59 L6 10 L12 16 L18 10 Z</StreamGeometry>
-        <StreamGeometry x:Key="ChromeEditIcon">M4 16 L16 4 L20 8 L8 20 H4 Z M14 6 L18 10</StreamGeometry>
-        <StreamGeometry x:Key="ChromeSearchIcon">M17 10 A7 7 0 1 1 3 10 A7 7 0 1 1 17 10 M15 15 L21 21</StreamGeometry>
-        <StreamGeometry x:Key="ChromeAddIcon">M19 13 H13 V19 H11 V13 H5 V11 H11 V5 H13 V11 H19 Z</StreamGeometry>
-        <StreamGeometry x:Key="ChromeCloseIcon">M19 6.41 L17.59 5 L12 10.59 L6.41 5 L5 6.41 L10.59 12 L5 17.59 L6.41 19 L12 13.41 L17.59 19 L19 17.59 L13.41 12 Z</StreamGeometry>
-        <StreamGeometry x:Key="ChromeMoreIcon">M6 10 C4.9 10 4 10.9 4 12 C4 13.1 4.9 14 6 14 C7.1 14 8 13.1 8 12 C8 10.9 7.1 10 6 10 Z M18 10 C16.9 10 16 10.9 16 12 C16 13.1 16.9 14 18 14 C19.1 14 20 13.1 20 12 C20 10.9 19.1 10 18 10 Z M12 10 C10.9 10 10 10.9 10 12 C10 13.1 10.9 14 12 14 C13.1 14 14 13.1 14 12 C14 10.9 13.1 10 12 10 Z</StreamGeometry>
-        <StreamGeometry x:Key="ChromeNewFolderIcon">M21 12 A9 9 0 1 1 3 12 A9 9 0 1 1 21 12 M7 12 H17 M12 7 V17</StreamGeometry>
-        <StreamGeometry x:Key="ChromeCutIcon">M9 7 A3 3 0 1 1 3 7 A3 3 0 1 1 9 7 M9 17 A3 3 0 1 1 3 17 A3 3 0 1 1 9 17 M8 9 L20 21 M8 15 L20 3</StreamGeometry>
-        <StreamGeometry x:Key="ChromeCopyIcon">M9 8 H20 V21 H9 Z M15 4 H4 V17</StreamGeometry>
-        <StreamGeometry x:Key="ChromePasteIcon">M8 5 H5 V21 H19 V5 H16 M9 3 H15 V7 H9 Z</StreamGeometry>
 
-        <StreamGeometry x:Key="ChromeRenameIcon">M10 4 H16 M13 4 V20 M10 20 H16 M10 8 H3 V16 H10 M16 8 H21 V16 H16</StreamGeometry>
-        <StreamGeometry x:Key="ChromeDeleteIcon">M4 6 H20 M9 6 V3 H15 V6 M6 6 L7 21 H17 L18 6 M10 10 V17 M14 10 V17</StreamGeometry>
     </UserControl.Resources>
 
     <UserControl.Styles>
-        <Style Selector="Button.command-action">
-            <Setter Property="Height" Value="36" />
-            <Setter Property="MinHeight" Value="36" />
-            <Setter Property="MinWidth" Value="40" />
-            <Setter Property="Padding" Value="12,0" />
-        </Style>
-        <Style Selector="Button.command-action.icon-command">
-            <Setter Property="Width" Value="40" />
-            <Setter Property="Padding" Value="0" />
-        </Style>
-        <Style Selector="Border.command-divider">
-            <Setter Property="Width" Value="1" />
-            <Setter Property="Height" Value="24" />
-            <Setter Property="Margin" Value="8,0" />
-            <Setter Property="Background" Value="{DynamicResource BorderSubtleBrush}" />
-            <Setter Property="VerticalAlignment" Value="Center" />
-        </Style>
+        <StyleInclude Source="avares://RelaxKonOS.Client/Apps/Explorer/Controls/FileBrowserToolbarStyles.axaml" />
     </UserControl.Styles>
 
     <DockPanel LastChildFill="True">
