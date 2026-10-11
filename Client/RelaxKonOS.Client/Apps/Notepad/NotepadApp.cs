@@ -5,6 +5,7 @@ using RelaxKonOS.Client.Apps.Explorer.Views;
 using RelaxKonOS.Client.Apps.TextEditor;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
+using RelaxKonOS.Client.Services.Dialogs;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Input;
@@ -55,6 +56,7 @@ public sealed class NotepadApp : RemoteApplicationBase, IFileOpenApplication
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.notepad.display_name"), view,
             bounds: new Rect(160, 100, 820, 580),
             iconGlyph: Manifest.IconGlyph);
+        view.AttachWindowHeader(window);
         window.KeyDown += (_, e) =>
         {
             _ = WindowShortcut.TryExecute(e, RemoteKey.Letter('N'), RemoteKeyModifiers.Control, viewModel.NewDocumentCommand)
@@ -62,6 +64,12 @@ public sealed class NotepadApp : RemoteApplicationBase, IFileOpenApplication
                 || WindowShortcut.TryExecute(e, RemoteKey.Letter('S'), RemoteKeyModifiers.Control, viewModel.SaveCommand)
                 || WindowShortcut.TryExecute(e, RemoteKey.Letter('S'), RemoteKeyModifiers.Control | RemoteKeyModifiers.Shift, viewModel.SaveAsCommand);
         };
+        // A top-level window has no dialog handle, so the shared draft guard is attached to the
+        // window itself: title bar, Alt+F4, taskbar and window overview all confirm before a
+        // dirty document is discarded, and a write in flight blocks the close.
+        DraftWindowCloseGuard.Attach(context.WindowManager, window,
+            isBusy: () => viewModel.IsSaving,
+            hasChanges: () => viewModel.IsDirty);
 
         viewModel.RequestFileAsync = () => files is null
             ? Task.FromResult<string?>(null)

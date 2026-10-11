@@ -5,7 +5,8 @@
              x:Class="RelaxKonOS.Client.Apps.Certificates.Views.SelfSignedCertificateDialogView"
              x:DataType="certificates:CertificateManagerViewModel" Classes="builtin-app">
     <Grid Margin="20" RowDefinitions="*,Auto" RowSpacing="16">
-        <StackPanel Spacing="12">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="12" IsEnabled="{Binding CanEditCertificateDraft}">
             <TextBlock Text="{loc:Loc certificates.self_signed.help}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
             <StackPanel Spacing="4">
                 <TextBlock Text="{loc:Loc certificates.request.domains}" Foreground="{DynamicResource TextSecondaryBrush}" />
@@ -26,9 +27,14 @@
                 <TextBlock Text="{Binding OperationText}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
             </Border>
         </StackPanel>
-        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-            <Button Classes="primary" Content="{loc:Loc certificates.self_signed.create}" Click="Create_Click" />
-            <Button Content="{loc:Loc common.cancel}" Click="Cancel_Click" />
+        </ScrollViewer>
+        <StackPanel Grid.Row="1" Spacing="8">
+          <TextBlock x:Name="EditorValidationFeedback" Text="{Binding EditorStatus}" IsVisible="{Binding HasEditorStatus}" TextWrapping="Wrap" Classes="error" />
+          <WrapPanel HorizontalAlignment="Right">
+            <Button Classes="primary" Content="{loc:Loc certificates.self_signed.create}" Click="Create_Click" IsEnabled="{Binding CanEditCertificateDraft}" />
+            <Button Content="{loc:Loc common.stop}" Command="{Binding CancelOperationCommand}" IsVisible="{Binding IsOperationRunning}" />
+            <Button Content="{loc:Loc common.cancel}" Click="Cancel_Click" IsEnabled="{Binding CanEditCertificateDraft}" />
+          </WrapPanel>
         </StackPanel>
     </Grid>
 </UserControl>

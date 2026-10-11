@@ -15,6 +15,10 @@ internal partial class SelfSignedCertificateDialogView : UserControl
         _dialog = dialog;
         InitializeComponent();
         DataContext = viewModel;
+        viewModel.EditorStatus = string.Empty;
+        var initial = (viewModel.SelfSignedDomains, viewModel.SelfSignedValidityDays, viewModel.SelectedKeyAlgorithm?.Value);
+        RelaxKonOS.Client.Services.Dialogs.DraftDialogGuard.Attach(dialog, () => !viewModel.CanEditCertificateDraft,
+            () => initial != (viewModel.SelfSignedDomains, viewModel.SelfSignedValidityDays, viewModel.SelectedKeyAlgorithm?.Value));
     }
 
     private void Cancel_Click(object? sender, RoutedEventArgs e) => _dialog.Cancel();

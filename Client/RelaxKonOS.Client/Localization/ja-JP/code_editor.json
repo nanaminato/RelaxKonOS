@@ -1,6 +1,7 @@
 {
     "Culture": "ja-JP",
     "Strings": {
+        "code_editor.find": "文書内を検索 (Ctrl+F)",
         "code_editor.settings.title": "コード エディターの設定",
         "code_editor.settings.font_size": "エディターのフォント サイズ",
         "code_editor.settings.default_encoding": "既定のエンコーディング",
@@ -35,6 +36,14 @@
         "code_editor.discard_changes": "変更を破棄",
         "code_editor.save_remote_file": "リモートファイルを保存",
         "code_editor.remote_path_prompt": "完全なリモートパスを入力してください：",
-        "code_editor.source_file_filter": "ソースファイル"
+        "code_editor.source_file_filter": "ソースファイル",
+        "code_editor.preview.bytes": "{0:N0} バイト",
+        "code_editor.preview.opened": "{0} をプレビュー中",
+        "code_editor.preview.edit_source": "SVG ソースを編集",
+        "code_editor.preview.show_image": "画像を表示",
+        "code_editor.preview.actual_size": "実際のサイズ（オフでウィンドウに合わせる）",
+        "code_editor.preview.binary_hint": "バイナリファイルまたはプレビュー非対応の形式のため、テキストとして編集できません。対応するアプリで開いてください。",
+        "code_editor.preview.image_filter": "画像ファイル",
+        "code_editor.preview.all_files": "すべてのファイル"
     }
 }

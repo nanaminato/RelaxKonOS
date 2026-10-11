@@ -50,11 +50,17 @@
 
 `MainWindow.axaml` 设 `WindowDecorations="None"` + `WindowState="Maximized"` + `MinWidth=800 MinHeight=520`，自绘：
 
-- **标题栏**（`WindowTitleBar`，高 34）：`PointerPressed` → `BeginMoveDrag`（仅 `WindowState == Normal` 时）。
-- **系统按钮**（Segoe MDL2 Assets 字形）：
-  - 最小化（`&#xE921;`）→ `WindowState = Minimized`
-  - 最大化/还原（`&#xE922;` / `&#xE923;`）→ 切换 `Normal`/`Maximized`，按钮字形与 Tooltip 同步
-  - 关闭（`&#xE8BB;`，红底）→ 执行登出并关闭（见 §2.3）
+- **标题栏**（`WindowTitleBar`，高 `WindowTitleBarHeight`）：`PointerPressed` → `BeginMoveDrag`（仅 `WindowState == Normal` 时）。
+  桌面内容区在它下方，预留高度取自派生键 `HostTitleBarMargin`，与栏高同源；全屏时两者一起归零。
+- **系统按钮**（`Button.window-control`，`WindowControlWidth × WindowTitleBarHeight`，Windows-like `46 × 42`）：
+  - 最小化 → `WindowState = Minimized`
+  - 最大化/还原 → 切换 `Normal`/`Maximized`；按钮上同时挂两枚记号，画哪一枚、读屏念哪个动作名都由窗口状态决定
+  - 关闭（`window-close`，红底）→ 执行登出并关闭（见 §2.3）
+
+> 三枚记号是 `WindowCaptionMarks` 生成的宿主几何，记号盒由 `WindowCaptionGlyphSize` 决定，与受管应用窗口的标题栏按钮是同一批图形、
+> 同一条 1px 描边——理由与平台度量见[系统风格 §4.3](RelaxKonOS.SystemStyle.md)。本文档此前记作「Segoe MDL2 Assets 字形
+> `E921`/`E922`/`E923`/`E8BB`」，但代码实际画的是 `U+2212` / `U+2750` / `U+00D7` 三个标准字符（`U+2750` 在本机 374 个字体里只有 7 个有，
+> 多数机器上由字体回退绘制），文档与实现并不一致，已按实现更正。
 
 ### 2.2 8 向 resize
 
@@ -74,7 +80,7 @@
 
 ### 2.3 mstsc 风格连接栏
 
-连接栏（`ConnectionBar`）与标题栏同处顶层，居中悬浮顶部（520×34，下圆角 7，阴影）：
+连接栏（`ConnectionBar`）与标题栏同处顶层，居中悬浮顶部（宽 520、高 `WindowTitleBarHeight`，下圆角 7，阴影）：
 
 ```text
 [ 服务器信息 ][│][ 固定/已固定 ][   预留    ][ 全屏/退出全屏 ][│][ 关闭连接 ]
@@ -185,10 +191,12 @@ owner 拖动/Resize ──→ OnDrag/OnResize ──→ UpdateDialogs(owner) ─
 | 触发 | 行为 |
 |---|---|
 | 对话框调 `dialog.Close(result)` | `TaskCompletionSource.TrySetResult(result)` → session 关闭 |
-| 对话框调 `dialog.Cancel()` / Esc / 取消按钮 | `TrySetResult(default)` → 返回 null |
+| 对话框调 `dialog.Cancel()` / Esc / 取消按钮 | 经 `CanCancelAsync` 守卫；允许后 `TrySetResult(default)`，返回默认结果 |
 | owner 被 `Close()` | `Close` 遍历 `_modalSessions` 取消相关 session |
 | owner 被 `Minimize()` | 最小化前取消该 owner 的 session（避免遮罩悬空） |
-| 对话框窗口被关闭 | `dialog.Result` 已完成 → `CloseModalSession` 移除遮罩 |
+| 对话框标题栏关闭 / Alt+F4 | 同样请求取消守卫，拒绝时窗口和结果保持未完成 |
+
+`ModalDialog<TResult>.CanCancelAsync` 可冻结忙碌关闭或异步确认放弃草稿；重复取消请求只进行一次检查。成功 `Close(result)` 不经过取消守卫。owner 的关闭、最小化及宿主销毁继续强制结束所属模态，避免留下失去 owner 的窗口。业务编辑器可复用客户端 `DraftDialogGuard`，确认窗口作为编辑器的子模态，取消确认返回原编辑器。
 
 ### 3.6 嵌套模态
 

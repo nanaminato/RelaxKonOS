@@ -18,59 +18,219 @@
         <c:EntryDescriptionConverter x:Key="TypeTextConverter" />
         <c:EntryIsEditingConverter x:Key="EntryIsEditingConverter" />
         <c:CutEntryOpacityConverter x:Key="CutEntryOpacityConverter" />
+
+
     </UserControl.Resources>
 
+    <UserControl.Styles>
+        <StyleInclude Source="avares://RelaxKonOS.Client/Apps/Explorer/Controls/FileBrowserToolbarStyles.axaml" />
+    </UserControl.Styles>
+
     <DockPanel LastChildFill="True">
-        <!-- Navigation stays above the command bar, matching the Explorer workflow. -->
-        <Border DockPanel.Dock="Top" Classes="app-toolbar">
-            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
-                <StackPanel Orientation="Horizontal" Spacing="4">
-                    <Button Classes="icon" Command="{Binding GoBackCommand}" ToolTip.Tip="{loc:Loc common.back}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-back.png" Width="18" Height="18" /></Button>
-                    <Button Classes="icon" Command="{Binding GoForwardCommand}" ToolTip.Tip="{loc:Loc common.forward}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-forward.png" Width="18" Height="18" /></Button>
-                    <Button Classes="icon" Command="{Binding GoUpCommand}" ToolTip.Tip="{loc:Loc explorer.up}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-up.png" Width="18" Height="18" /></Button>
-                    <Button Classes="icon" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc common.refresh}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-refresh.png" Width="18" Height="18" /></Button>
+        <!-- Navigation stays above the command bar, matching the Explorer workflow. Neither row
+             paints a surface: both are drawn inside the host's title bar, beside the caption
+             cluster, so the bar stays one surface from the first tab to the close button. -->
+        <Grid DockPanel.Dock="Top" x:Name="HeaderHost" RowDefinitions="Auto,Auto">
+        <Grid x:Name="HeaderTabs" Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="2" IsVisible="{Binding !IsPickerMode}">
+            <ListBox x:Name="FolderTabs" Classes="title-tabs" ItemsSource="{Binding Tabs}" SelectedItem="{Binding ActiveTab, Mode=OneWay}"
+                     SelectionChanged="FolderTabs_SelectionChanged" IsEnabled="{Binding CanChangeTabs}"
+                     Height="{DynamicResource WindowTabHeight}" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                <ListBox.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ListBox.ItemsPanel>
+                <!-- Like Windows 11 and Finder, a tab states its location's own mark — the drive a
+                     location is rooted on, or the folder it is — and keeps a readable floor so a
+                     short name still produces a tab rather than a sliver. -->
+                <ListBox.ItemTemplate><DataTemplate x:DataType="models:ExplorerTab">
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6" MinWidth="176" VerticalAlignment="Center">
+                        <controls:ExplorerIcon TreeIconKind="{Binding IconKind}" Width="16" Height="16" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding Title}" IsVisible="{Binding !IsComputer}" MaxWidth="160" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip.Tip="{Binding Path}" />
+                        <TextBlock Grid.Column="1" Text="{loc:Loc explorer.computer}" IsVisible="{Binding IsComputer}" MaxWidth="160" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                        <Button Grid.Column="2" Classes="tab-close"
+                                Command="{ReflectionBinding $parent[ListBox].DataContext.CloseTabCommand}" CommandParameter="{Binding}"
+                                ToolTip.Tip="{loc:Loc explorer.close_tab}" AutomationProperties.Name="{loc:Loc explorer.close_tab}">
+                            <PathIcon Width="11" Height="11" Data="{StaticResource ChromeCloseIcon}" />
+                        </Button>
+                    </Grid>
+                </DataTemplate></ListBox.ItemTemplate>
+            </ListBox>
+            <Button Grid.Column="1" Classes="header-action compact" Command="{Binding NewTabCommand}"
+                    ToolTip.Tip="{loc:Loc explorer.new_tab}" AutomationProperties.Name="{loc:Loc explorer.new_tab}">
+                <PathIcon Width="14" Height="14" Data="{StaticResource ChromeAddIcon}" />
+            </Button>
+            <Button Grid.Column="2" x:Name="FolderPickerButton" Classes="header-action compact" IsEnabled="{Binding CanChangeTabs}"
+                    ToolTip.Tip="{loc:Loc explorer.all_tabs}" AutomationProperties.Name="{loc:Loc explorer.all_tabs}">
+                <PathIcon Width="14" Height="14" Data="{StaticResource ChromeChevronDownIcon}" />
+                <Button.Flyout><Flyout>
+                    <ListBox ItemsSource="{Binding Tabs}" SelectedItem="{Binding ActiveTab, Mode=OneWay}"
+                             MinWidth="220" MaxHeight="320" SelectionChanged="FolderPicker_SelectionChanged">
+                        <ListBox.ItemTemplate><DataTemplate x:DataType="models:ExplorerTab">
+                            <TextBlock Text="{Binding Title}" MaxWidth="300" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Path}" />
+                        </DataTemplate></ListBox.ItemTemplate>
+                    </ListBox>
+                </Flyout></Button.Flyout>
+            </Button>
+        </Grid>
+        <Border x:Name="NavigationToolbar" IsEnabled="{Binding !IsBusy}" Grid.Row="1" Padding="4,8" SizeChanged="NavigationToolbar_SizeChanged">
+            <Border.Styles>
+                <!-- The address field and the search field are the header's two text surfaces. The search
+                     field's glyph lives inside the frame, so its TextBox stops painting a second frame of
+                     its own; the address field keeps one but is dressed as the same sunken field the
+                     breadcrumb uses, otherwise typing a path would swap a framed field for a bare one.
+                     Every interaction state is spelled out because the platform theme styles are just as
+                     specific and would otherwise repaint the field on hover or focus. -->
+                <Style Selector="TextBox#AddressBox">
+                    <Setter Property="Height" Value="32" />
+                    <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+                    <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource FocusBorderBrush}" />
+                </Style>
+                <Style Selector="TextBox#AddressBox:pointerover">
+                    <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource FocusBorderBrush}" />
+                </Style>
+                <Style Selector="TextBox#AddressBox:focus">
+                    <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource FocusBorderBrush}" />
+                </Style>
+                <Style Selector="TextBox#SearchBox">
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="BorderThickness" Value="0" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="MinHeight" Value="0" />
+                </Style>
+                <Style Selector="TextBox#SearchBox:focus /template/ Border#PART_BorderElement, TextBox#SearchBox:not(:focus) /template/ Border#PART_BorderElement">
+                    <Setter Property="BorderThickness" Value="0" />
+                    <Setter Property="Background" Value="Transparent" />
+                </Style>
+                <Style Selector="Border#AddressBarFrame:focus-within">
+                    <Setter Property="BorderBrush" Value="{DynamicResource FocusBorderBrush}" />
+                </Style>
+                <Style Selector="Border#InlineSearchHost:focus-within">
+                    <Setter Property="BorderBrush" Value="{DynamicResource FocusBorderBrush}" />
+                    <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+                </Style>
+            </Border.Styles>
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" ClipToBounds="True">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Classes="header-action" Command="{Binding GoBackCommand}" ToolTip.Tip="{loc:Loc common.back}" AutomationProperties.Name="{loc:Loc common.back}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeBackIcon}" /></Button>
+                    <Button Classes="header-action" Command="{Binding GoForwardCommand}" ToolTip.Tip="{loc:Loc common.forward}" AutomationProperties.Name="{loc:Loc common.forward}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeForwardIcon}" /></Button>
+                    <Button x:Name="GoUpButton" Classes="header-action" Command="{Binding GoUpCommand}" ToolTip.Tip="{loc:Loc explorer.up}" AutomationProperties.Name="{loc:Loc explorer.up}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeUpIcon}" /></Button>
+                    <Button x:Name="RefreshButton" Classes="header-action" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc common.refresh}" AutomationProperties.Name="{loc:Loc common.refresh}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeRefreshIcon}" /></Button>
                 </StackPanel>
-                <Grid Grid.Column="1" MinWidth="100">
+                <Grid Grid.Column="1" MinWidth="0">
                     <TextBox x:Name="AddressBox" Text="{Binding AddressInput, Mode=TwoWay}"
                              IsVisible="{Binding IsEditingAddress}" PlaceholderText="{loc:Loc explorer.computer}"
                              KeyDown="AddressBox_KeyDown" LostFocus="AddressBox_LostFocus" />
-                    <Border IsVisible="{Binding !IsEditingAddress}" CornerRadius="5" BorderThickness="1"
-                            BorderBrush="{DynamicResource BorderDefaultBrush}" Padding="4,0">
+                    <Border x:Name="AddressBarFrame" IsVisible="{Binding !IsEditingAddress}" Height="32"
+                            CornerRadius="{DynamicResource ControlCornerRadius}" BorderThickness="1"
+                            BorderBrush="{DynamicResource BorderDefaultBrush}" Background="{DynamicResource SurfaceSunkenBrush}" Padding="2,0">
                         <Grid ColumnDefinitions="*,Auto">
-                            <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
+                            <ScrollViewer x:Name="BreadcrumbScroll" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
                                 <ItemsControl ItemsSource="{Binding Breadcrumbs}">
                                     <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="models:ExplorerBreadcrumb">
                                             <StackPanel Orientation="Horizontal">
-                                                <Button Content="{Binding Label}" Tag="{Binding Path}" Click="Breadcrumb_Click" Padding="8,5" Background="Transparent" BorderThickness="0" />
-                                                <TextBlock Text="›" VerticalAlignment="Center" Opacity="0.5" />
+                                                <Button Content="{Binding Label}" Tag="{Binding Path}" Click="Breadcrumb_Click" Padding="7,0" Height="26" MinHeight="0"
+                                                        Background="Transparent" BorderThickness="0" CornerRadius="{DynamicResource ControlCornerRadius}" />
+                                                <PathIcon Width="10" Height="10" VerticalAlignment="Center" Data="{StaticResource ChromeChevronRightIcon}"
+                                                          Foreground="{DynamicResource TextTertiaryBrush}" />
                                             </StackPanel>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                             </ScrollViewer>
-                            <Button Grid.Column="1" Click="EditAddress_Click" ToolTip.Tip="{loc:Loc explorer.edit_address}" Background="Transparent" BorderThickness="0"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-rename.png" Width="16" Height="16" /></Button>
+                            <Button Grid.Column="1" Classes="header-action compact" Click="EditAddress_Click"
+                                    ToolTip.Tip="{loc:Loc explorer.edit_address}" AutomationProperties.Name="{loc:Loc explorer.edit_address}">
+                                <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="14" Height="14" Data="{StaticResource ChromeEditIcon}" />
+                            </Button>
                         </Grid>
                     </Border>
                 </Grid>
-                <TextBox Grid.Column="2" x:Name="SearchBox" Width="180" Text="{Binding SearchText, Mode=TwoWay}"
-                         PlaceholderText="{loc:Loc explorer.filter_folder}" KeyDown="SearchBox_KeyDown" />
+                <Grid Grid.Column="2">
+                    <Border x:Name="InlineSearchHost" Height="32" CornerRadius="{DynamicResource ControlCornerRadius}"
+                            Background="{DynamicResource SurfaceSunkenBrush}" BorderThickness="1" BorderBrush="Transparent" Padding="8,0,2,0">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                            <Path StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="14" Height="14" Data="{StaticResource ChromeSearchIcon}"
+                                      Stroke="{DynamicResource TextSecondaryBrush}" />
+                            <TextBox x:Name="SearchBox" Grid.Column="1" Width="180" MinWidth="0" VerticalContentAlignment="Center"
+                                     Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     PlaceholderText="{loc:Loc explorer.filter_folder}" KeyDown="SearchBox_KeyDown" />
+                        </Grid>
+                    </Border>
+                    <!-- The glyph travels with the button, so a narrow toolbar keeps the same affordance. -->
+                    <Button x:Name="CompactSearchButton" Classes="header-action" IsVisible="False"
+                            ToolTip.Tip="{loc:Loc explorer.filter_folder}" AutomationProperties.Name="{loc:Loc explorer.filter_folder}">
+                        <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeSearchIcon}" />
+                        <Button.Flyout><Flyout>
+                            <TextBox x:Name="CompactSearchBox" Width="240" Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     PlaceholderText="{loc:Loc explorer.filter_folder}" KeyDown="SearchBox_KeyDown" />
+                        </Flyout></Button.Flyout>
+                    </Button>
+                </Grid>
             </Grid>
         </Border>
-        <Border DockPanel.Dock="Top" Classes="app-toolbar">
-            <WrapPanel Orientation="Horizontal" IsEnabled="{Binding !IsBusy}">
-                <StackPanel IsVisible="{Binding !IsPickerMode}" Orientation="Horizontal" Spacing="4" Margin="0,0,12,0">
-                    <Button Command="{Binding NewFolderCommand}"><StackPanel Orientation="Horizontal" Spacing="5"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-new-folder.png" Width="18" Height="18" /><TextBlock Text="{loc:Loc explorer.new_folder}" /></StackPanel></Button>
-                    <Button Command="{Binding CutCommand}" ToolTip.Tip="{loc:Loc explorer.cut}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-cut.png" Width="18" Height="18" /></Button>
-                    <Button Command="{Binding CopyCommand}" ToolTip.Tip="{loc:Loc explorer.copy}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-copy.png" Width="18" Height="18" /></Button>
-                    <Button Command="{Binding PasteCommand}" ToolTip.Tip="{loc:Loc explorer.paste}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-paste.png" Width="18" Height="18" /></Button>
-                    <Button Command="{Binding RenameCommand}"><StackPanel Orientation="Horizontal" Spacing="5"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-rename.png" Width="18" Height="18" /><TextBlock Text="{loc:Loc common.rename}" /></StackPanel></Button>
-                    <Button Command="{Binding DeleteCommand}"><StackPanel Orientation="Horizontal" Spacing="5"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-delete.png" Width="18" Height="18" /><TextBlock Text="{loc:Loc common.delete}" /></StackPanel></Button>
-                    <Button ToolTip.Tip="{loc:Loc explorer.more}">
-                        <Button.Content><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-more.png" Width="18" Height="18" /></Button.Content>
+        </Grid>
+        <Border DockPanel.Dock="Top" x:Name="CommandToolbar" Classes="app-toolbar" Padding="8,6" SizeChanged="CommandToolbar_SizeChanged">
+            <StackPanel Orientation="Horizontal" IsEnabled="{Binding !IsBusy}" Spacing="4">
+                <StackPanel IsVisible="{Binding !IsPickerMode}" Orientation="Horizontal" Spacing="4">
+                    <Button x:Name="NewFolderAction" Classes="command-action" Command="{Binding NewFolderCommand}" ToolTip.Tip="{loc:Loc explorer.new_folder}" AutomationProperties.Name="{loc:Loc explorer.new_folder}"><StackPanel Orientation="Horizontal" Spacing="6"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeNewFolderIcon}" /><TextBlock x:Name="NewFolderLabel" Text="{loc:Loc explorer.new_folder}" VerticalAlignment="Center" /></StackPanel></Button>
+                    <Border x:Name="EditingDivider" Classes="command-divider" />
+                    <Button x:Name="CutAction" Classes="command-action icon-command" Command="{Binding CutCommand}" ToolTip.Tip="{loc:Loc explorer.cut}" AutomationProperties.Name="{loc:Loc explorer.cut}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeCutIcon}" /></Button>
+                    <Button x:Name="CopyAction" Classes="command-action icon-command" Command="{Binding CopyCommand}" ToolTip.Tip="{loc:Loc explorer.copy}" AutomationProperties.Name="{loc:Loc explorer.copy}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeCopyIcon}" /></Button>
+                    <Button x:Name="PasteAction" Classes="command-action icon-command" Command="{Binding PasteCommand}" ToolTip.Tip="{loc:Loc explorer.paste}" AutomationProperties.Name="{loc:Loc explorer.paste}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromePasteIcon}" /></Button>
+                    <Button x:Name="RenameAction" Classes="command-action icon-command" Command="{Binding RenameCommand}" ToolTip.Tip="{loc:Loc common.rename}" AutomationProperties.Name="{loc:Loc common.rename}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeRenameIcon}" /></Button>
+                    <Button x:Name="DeleteAction" Classes="command-action icon-command" Command="{Binding DeleteCommand}" ToolTip.Tip="{loc:Loc common.delete}" AutomationProperties.Name="{loc:Loc common.delete}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeDeleteIcon}" /></Button>
+
+                </StackPanel>
+                <Border x:Name="ViewDivider" Classes="command-divider" IsVisible="{Binding !IsPickerMode}" />
+                <Button x:Name="SortAction" Classes="command-action" ToolTip.Tip="{loc:Loc explorer.sort}" AutomationProperties.Name="{loc:Loc explorer.sort}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="M7 3 V21 M3 17 L7 21 L11 17 M17 21 V3 M13 7 L17 3 L21 7" />
+                        <TextBlock x:Name="SortLabel" Text="{loc:Loc explorer.sort}" VerticalAlignment="Center" />
+                        <PathIcon x:Name="SortChevron" Width="8" Height="8" Data="{StaticResource ChromeChevronDownIcon}" />
+                    </StackPanel>
+                    <Button.Flyout><Flyout><StackPanel Spacing="10" MinWidth="220">
+                        <ComboBox SelectedIndex="{Binding SortIndex, Mode=TwoWay}" Width="220">
+                            <ComboBoxItem Content="{loc:Loc common.name}" />
+                            <ComboBoxItem Content="{loc:Loc explorer.modified}" />
+                            <ComboBoxItem Content="{loc:Loc common.type}" />
+                            <ComboBoxItem Content="{loc:Loc explorer.size}" />
+                        </ComboBox>
+                        <CheckBox Content="{loc:Loc explorer.descending}" IsChecked="{Binding SortDescending}" />
+                    </StackPanel></Flyout></Button.Flyout>
+                </Button>
+                <Button x:Name="ViewAction" Classes="command-action" ToolTip.Tip="{loc:Loc common.view}" AutomationProperties.Name="{loc:Loc common.view}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="M3 5 H21 M3 10 H21 M3 15 H21 M3 20 H21" />
+                        <TextBlock x:Name="ViewLabel" Text="{loc:Loc common.view}" VerticalAlignment="Center" />
+                        <PathIcon x:Name="ViewChevron" Width="8" Height="8" Data="{StaticResource ChromeChevronDownIcon}" />
+                    </StackPanel>
+                    <Button.Flyout><Flyout><StackPanel Spacing="10" MinWidth="220">
+                <ComboBox x:Name="ViewModeBox" Width="200" Margin="0,0,10,0" SelectionChanged="ViewModeBox_SelectionChanged" SelectedIndex="{Binding ViewModeIndex, Mode=TwoWay}">
+                    <ComboBoxItem Content="{loc:Loc explorer.view.details}" />
+                    <ComboBoxItem Content="{loc:Loc explorer.view.list}" />
+                    <ComboBoxItem Content="{loc:Loc explorer.view.small_icons}" />
+                    <ComboBoxItem Content="{loc:Loc explorer.view.large_icons}" />
+                </ComboBox>
+                <CheckBox Content="{loc:Loc explorer.compact}" IsChecked="{Binding IsCompactView}" Margin="0,0,12,0" />
+                <CheckBox Content="{loc:Loc explorer.show_hidden}" IsChecked="{Binding ShowHiddenFiles}" />
+                    </StackPanel></Flyout></Button.Flyout>
+                </Button>
+
+                    <Button x:Name="MoreActionsButton" Classes="command-action icon-command" ToolTip.Tip="{loc:Loc explorer.more}" AutomationProperties.Name="{loc:Loc explorer.more}">
+                        <Button.Content><PathIcon Width="16" Height="16" Data="{StaticResource ChromeMoreIcon}" /></Button.Content>
                         <Button.Flyout>
                             <MenuFlyout>
+                                <MenuItem Header="{loc:Loc explorer.new_folder}" Command="{Binding NewFolderCommand}" />
+                                <MenuItem Header="{loc:Loc explorer.cut}" Command="{Binding CutCommand}" />
+                                <MenuItem Header="{loc:Loc explorer.copy}" Command="{Binding CopyCommand}" />
+                                <MenuItem Header="{loc:Loc explorer.paste}" Command="{Binding PasteCommand}" />
+                                <MenuItem Header="{loc:Loc common.rename}" Command="{Binding RenameCommand}" />
+                                <MenuItem Header="{loc:Loc common.delete}" Command="{Binding DeleteCommand}" />
+                                <Separator />
+                                <MenuItem Header="{loc:Loc explorer.up}" Command="{Binding GoUpCommand}" />
+                                <MenuItem Header="{loc:Loc common.refresh}" Command="{Binding RefreshCommand}" />
+                                <Separator />
                                 <MenuItem Header="{loc:Loc explorer.operations.title}" Command="{Binding ShowOperationsCommand}" />
                                 <MenuItem Header="{loc:Loc common.download}" Command="{Binding DownloadCommand}" />
                                 <MenuItem Header="{loc:Loc common.upload}" Command="{Binding UploadCommand}" />
@@ -86,24 +246,7 @@
                             </MenuFlyout>
                         </Button.Flyout>
                     </Button>
-                </StackPanel>
-                <ComboBox x:Name="ViewModeBox" Width="112" Margin="0,0,10,0" SelectionChanged="ViewModeBox_SelectionChanged" SelectedIndex="{Binding ViewModeIndex, Mode=TwoWay}">
-                    <ComboBoxItem Content="{loc:Loc explorer.view.details}" />
-                    <ComboBoxItem Content="{loc:Loc explorer.view.list}" />
-                    <ComboBoxItem Content="{loc:Loc explorer.view.small_icons}" />
-                    <ComboBoxItem Content="{loc:Loc explorer.view.large_icons}" />
-                </ComboBox>
-                <TextBlock Text="{loc:Loc explorer.sort}" VerticalAlignment="Center" Margin="0,0,6,0" />
-                <ComboBox SelectedIndex="{Binding SortIndex, Mode=TwoWay}" Width="112" Margin="0,0,10,0">
-                    <ComboBoxItem Content="{loc:Loc common.name}" />
-                    <ComboBoxItem Content="{loc:Loc explorer.modified}" />
-                    <ComboBoxItem Content="{loc:Loc common.type}" />
-                    <ComboBoxItem Content="{loc:Loc explorer.size}" />
-                </ComboBox>
-                <CheckBox Content="{loc:Loc explorer.descending}" IsChecked="{Binding SortDescending}" Margin="0,0,12,0" />
-                <CheckBox Content="{loc:Loc explorer.compact}" IsChecked="{Binding IsCompactView}" Margin="0,0,12,0" />
-                <CheckBox Content="{loc:Loc explorer.show_hidden}" IsChecked="{Binding ShowHiddenFiles}" />
-            </WrapPanel>
+            </StackPanel>
         </Border>
 
         <!-- Compact operation status; details open upwards only on request. -->
@@ -145,7 +288,7 @@
         </Border>
 
         <!-- 主体：左导航树 | 分隔 | 右条目列表 -->
-        <Grid ColumnDefinitions="210,Auto,*">
+        <Grid x:Name="FileContentGrid" ColumnDefinitions="210,Auto,*">
             <!-- 导航树 -->
             <TreeView Grid.Column="0"
                       x:Name="NavigationTree"
@@ -230,6 +373,7 @@
                 <DataGrid.ContextMenu>
                     <ContextMenu DataContext="{Binding #EntriesGrid.DataContext}" IsEnabled="{Binding !IsBusy}">
                         <MenuItem Header="{loc:Loc common.open}" Command="{Binding OpenCommand}" />
+                        <MenuItem Header="{loc:Loc explorer.open_in_new_tab}" Command="{Binding OpenFolderInTabCommand}" IsVisible="{Binding !IsPickerMode}" />
                         <MenuItem Header="{loc:Loc explorer.open_with}" Command="{Binding OpenWithSelectedCommand}" />
                         <MenuItem Header="{loc:Loc explorer.open_terminal}" Command="{Binding OpenTerminalCommand}" />
                         <Separator />

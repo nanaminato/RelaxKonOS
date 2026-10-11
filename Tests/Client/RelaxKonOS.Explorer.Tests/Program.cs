@@ -25,6 +25,16 @@ Check(ExplorerBreadcrumb.ParentPath(@"\\host\share\folder") == @"\\host\share", 
 Check(ExplorerBreadcrumb.ParentPath(@"\\host\share") is null, "UNC share is a root");
 Check(ExplorerBreadcrumb.FromPath("/a/back\\slash")[^1].Path == "/a/back\\slash", "POSIX filenames can contain backslashes");
 
+// 标签条的图标与导航树同源。标签代表的是一个"位置"而不是一个文件，所以它只有三种身份：
+// 没有位置（此电脑）、位置本身是根（盘符）、其余都是目录。"是不是根"复用面包屑的判据，
+// 因为它已经同时覆盖 POSIX、Windows 盘符与 UNC 共享三种形态。
+Check(new ExplorerTab { Path = null }.IconKind == TreeNodeIconKind.Computer, "A tab without a location is the Computer");
+Check(new ExplorerTab { Path = "/" }.IconKind == TreeNodeIconKind.Drive, "The POSIX root tab is a drive");
+Check(new ExplorerTab { Path = @"C:\" }.IconKind == TreeNodeIconKind.Drive, "A Windows drive root tab is a drive");
+Check(new ExplorerTab { Path = @"\\host\share" }.IconKind == TreeNodeIconKind.Drive, "A UNC share root tab is a drive");
+Check(new ExplorerTab { Path = "/home/alice" }.IconKind == TreeNodeIconKind.Folder, "A nested location tab is a folder");
+Check(new ExplorerTab { Path = @"C:\Program Files" }.IconKind == TreeNodeIconKind.Folder, "A nested Windows location tab is a folder");
+
 // 用户执行被拒时，用户看到的必须是本地化的原因与出路，而不是服务端的英文 detail。
 // 这里只断言映射决策（键），文案由三语包与 verify-localization.py 保证。
 Check(UserExecutionProblemText.TryResolveKey(

@@ -45,6 +45,7 @@ public sealed class DockerManagerApp : RemoteApplicationBase
             () => DockerManagerDialogs.ShowCreateNetworkAsync(context, window!, vm),
             () => DockerManagerDialogs.ShowCreateVolumeAsync(context, window!, vm));
         window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.docker.display_name"), InstallationPanel.Wrap(view, vm.Installation), new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
+        view.AttachWindowHeader(window);
         // Stopping or restarting the engine terminates every running container on the host, so it
         // gets its own confirmation wording instead of the deletion dialog's.
         vm.RequestEngineConfirmationAsync = async message =>

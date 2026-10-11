@@ -10,8 +10,10 @@ public partial class LoginViewModel
     public Func<Task<string?>>? ShowLocalInstallationAsync { get; set; }
 
     [RelayCommand(CanExecute = nameof(CanInstallOnThisComputer))]
-    private async Task InstallOnThisComputerAsync()
+    private async Task InstallOnThisComputerAsync(CancellationToken ct)
     {
+        using var lifetime = LinkWindowCancellation(ct);
+        ct = lifetime.Token;
         if (ShowLocalInstallationAsync is null) return;
         string? endpoint = null;
         IsConnecting = true;
@@ -19,8 +21,10 @@ public partial class LoginViewModel
         try
         {
             endpoint = await ShowLocalInstallationAsync();
+            ct.ThrowIfCancellationRequested();
             if (endpoint is not null) await UseInstalledLocalServerAsync(endpoint);
         }
+        catch (OperationCanceledException) { StatusMessage = string.Empty; return; }
         catch (Exception)
         {
             ErrorMessage = T("login.local_install_open_failed", "Unable to open local installation. Check that this is the Windows desktop client.");
@@ -29,7 +33,8 @@ public partial class LoginViewModel
         finally { IsConnecting = false; }
         if (endpoint is null) return;
         // Resolve the API and keep the existing certificate-review flow; authentication remains explicit.
-        await DiscoverServerEndpointAsync();
+        await DiscoverServerEndpointAsync(ct);
+        if (ct.IsCancellationRequested) return;
         if (!HasError) StatusMessage = T("login.local_install_ready", "Connected to the local server. Sign in with your Windows account password (not a Hello PIN).");
     }
 

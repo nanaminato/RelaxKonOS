@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+<UserControl xmlns:common="clr-namespace:RelaxKonOS.Client.Controls" xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:proxy="clr-namespace:RelaxKonOS.Client.Apps.Proxy"
@@ -6,16 +6,10 @@
              x:DataType="proxy:ProxyManagerViewModel"
              Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
   <Grid RowDefinitions="Auto,Auto,*,Auto">
-    <Border Grid.Row="0" Classes="app-header">
-      <Grid ColumnDefinitions="Auto,*,Auto">
-        <Image Width="46" Height="46" Source="avares://RelaxKonOS.Client/Assets/AppIcons/proxy.png" Stretch="Uniform" />
-        <StackPanel Grid.Column="1" Spacing="2" Margin="14,0,0,0" VerticalAlignment="Center">
-          <TextBlock Text="{loc:Loc proxy.title}" Classes="app-title" />
-          <TextBlock Text="{loc:Loc proxy.subtitle}" FontSize="13" Classes="app-description" />
-        </StackPanel>
-        <Button Grid.Column="2" Content="{loc:Loc common.refresh}" Command="{Binding RefreshCommand}" VerticalAlignment="Center" />
-      </Grid>
-    </Border>
+    <Grid x:Name="HeaderHost" Grid.Row="0" ColumnDefinitions="*,Auto">
+            <common:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc proxy.title}" Subtitle="{loc:Loc proxy.subtitle}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/proxy.png" />
+            <Button x:Name="HeaderActions" Grid.Column="1" Classes="header-action" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc common.refresh}" AutomationProperties.Name="{loc:Loc common.refresh}" VerticalAlignment="Center"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="16" Height="16" Data="M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14" /></Button>
+        </Grid>
     <StackPanel Grid.Row="1" Spacing="0">
 
       <Border IsVisible="{Binding HasControllerAuthenticationFailure}" Background="{DynamicResource WarningMutedBrush}" BorderBrush="{DynamicResource WarningBrush}" BorderThickness="0,0,0,1" Padding="20,12">
@@ -28,7 +22,7 @@
         </Grid>
       </Border>
     </StackPanel>
-    <Grid Grid.Row="2" ClipToBounds="True" ColumnDefinitions="190,*">
+    <Grid x:Name="WorkspaceBody" Grid.Row="2" ClipToBounds="True" ColumnDefinitions="190,*">
       <Border Classes="app-sidebar">
         <StackPanel Spacing="4" Margin="14,22">
           <TextBlock Text="{loc:Loc proxy.workspace}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="11" FontWeight="SemiBold" Margin="10,0,0,6" />

@@ -38,6 +38,18 @@ public partial class App : Application
         // Install the sole palette + system-style source before the first (login) window is created.
         _ = Services.GetRequiredService<RelaxKonOS.Client.Services.Theming.AppearanceService>();
 
+        // The caption marks are geometry with no text in them, and the window manager owns the chrome
+        // but has no resource table - so the words for the three actions come from here, and follow the
+        // display language the same way every other string does.
+        var localization = Services.GetRequiredService<LocalizationService>();
+        void ApplyCaptionLabels() => RelaxKonOS.WindowManager.WindowCaptionLabels.Current.Apply(
+            localization.Get("common.minimize", "Minimize"),
+            localization.Get("common.maximize", "Maximize"),
+            localization.Get("common.restore", "Restore"),
+            localization.Get("common.close", "Close"));
+        ApplyCaptionLabels();
+        localization.LanguageChanged += (_, _) => ApplyCaptionLabels();
+
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             // 启动分叉（mstsc 风格）：先弹独立登录窗，登录成功后再进入桌面。
@@ -50,6 +62,7 @@ public partial class App : Application
             var shutdownRequested = false;
             LoginWindow CreateLoginWindow()
             {
+                loginViewModel.BeginWindowSession();
                 var window = new LoginWindow { DataContext = loginViewModel };
                 window.Closed += (_, _) =>
                 {
@@ -73,6 +86,7 @@ public partial class App : Application
                     if (shutdownRequested) return;
 
                     if (e.State == AuthSessionState.Unauthenticated
+                        && session.State == AuthSessionState.Unauthenticated
                         && e.EndReason is AuthSessionEndReason.RefreshTokenInvalid or AuthSessionEndReason.UserSignedOut
                         && mainWindow is not null)
                     {
@@ -82,7 +96,7 @@ public partial class App : Application
                         Services.GetRequiredService<RelaxKonOS.Client.Services.SystemUi.SystemUiCoordinator>().HideOverview();
                         var windows = Services.GetRequiredService<RelaxKonOS.WindowManager.IWindowManager>();
                         foreach (var window in windows.Windows.ToArray())
-                            windows.Close(window);
+                            windows.ForceClose(window);
                         mainWindow.Close();
                         mainWindow = null;
                         loginWindow = CreateLoginWindow();
@@ -95,18 +109,20 @@ public partial class App : Application
                         return;
                     }
 
-                    if (e.State != AuthSessionState.Authenticated || mainWindow is not null)
+                    if (e.State != AuthSessionState.Authenticated || session.State != AuthSessionState.Authenticated || mainWindow is not null)
                         return;
                     if (e.RememberedProfileSaveResult is { } saveResult
                         && saveResult != RememberedProfileSaveResult.Saved
                         && !notificationPreferences.IsPasswordSaveWarningDismissed())
                         await ShowRememberedProfileSaveWarningAsync(loginWindow, saveResult, notificationPreferences);
 
+                    if (shutdownRequested || session.State != AuthSessionState.Authenticated || mainWindow is not null) return;
+
                     var shell = Services.GetRequiredService<DesktopShellViewModel>();
                     mainWindow = new MainWindow { DataContext = shell };
                     desktop.MainWindow = mainWindow;
                     mainWindow.Show();
-                    loginWindow.Close();
+                    loginWindow.CloseForDesktop();
                     mainWindow.Closed += (_, _) =>
                     {
                         if (!replacingMainWindow)
@@ -118,14 +134,14 @@ public partial class App : Application
             Services.GetRequiredService<SshDesktopSession>().Connected += (_, _) =>
                 Dispatcher.UIThread.Post(() =>
                 {
-                    if (shutdownRequested || mainWindow is not null) return;
+                    if (shutdownRequested || mainWindow is not null || !Services.GetRequiredService<SshDesktopSession>().IsConnected) return;
                     var shell = Services.GetRequiredService<DesktopShellViewModel>();
                     shell.PopulateDesktop();
                     mainWindow = new MainWindow { DataContext = shell };
                     mainWindow.DesktopReady += (_, _) => shell.OpenTerminalCommand.Execute(null);
                     desktop.MainWindow = mainWindow;
                     mainWindow.Show();
-                    loginWindow.Close();
+                    loginWindow.CloseForDesktop();
                     mainWindow.Closed += (_, _) => desktop.Shutdown();
                 });
 

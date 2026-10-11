@@ -11,7 +11,7 @@
         <TextBlock Grid.Row="0" Text="{loc:Loc certificates.request.help}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
 
         <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" MinWidth="0" MinHeight="0">
-            <StackPanel Spacing="12" Margin="0,0,12,0">
+            <StackPanel Spacing="12" Margin="0,0,12,0" IsEnabled="{Binding CanEditCertificateDraft}">
                 <StackPanel Spacing="4">
                     <TextBlock Text="{loc:Loc certificates.request.domains}" Foreground="{DynamicResource TextSecondaryBrush}" />
                     <TextBox Text="{Binding Domains, Mode=TwoWay}" PlaceholderText="{loc:Loc certificates.request.domains_hint}" />
@@ -51,10 +51,14 @@
             </StackPanel>
         </ScrollViewer>
 
-        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        <StackPanel Grid.Row="2" Spacing="8">
+          <TextBlock x:Name="EditorValidationFeedback" Text="{Binding EditorStatus}" IsVisible="{Binding HasEditorStatus}" TextWrapping="Wrap" Classes="error" />
+          <WrapPanel HorizontalAlignment="Right">
             <Button Content="{loc:Loc certificates.request.preflight}" Command="{Binding PreflightCommand}" HorizontalContentAlignment="Center" />
-            <Button Classes="primary" Content="{loc:Loc certificates.request.submit}" Click="Request_Click" HorizontalContentAlignment="Center" />
-            <Button Content="{loc:Loc common.cancel}" Click="Cancel_Click" HorizontalContentAlignment="Center" />
+            <Button Classes="primary" Content="{loc:Loc certificates.request.submit}" Click="Request_Click" HorizontalContentAlignment="Center" IsEnabled="{Binding CanEditCertificateDraft}" />
+            <Button Content="{loc:Loc common.stop}" Command="{Binding CancelOperationCommand}" IsVisible="{Binding IsOperationRunning}" />
+            <Button Content="{loc:Loc common.cancel}" Click="Cancel_Click" HorizontalContentAlignment="Center" IsEnabled="{Binding CanEditCertificateDraft}" />
+          </WrapPanel>
         </StackPanel>
     </Grid>
 </UserControl>

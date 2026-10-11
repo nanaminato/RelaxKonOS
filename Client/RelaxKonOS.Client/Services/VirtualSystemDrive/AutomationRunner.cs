@@ -108,7 +108,7 @@ public sealed class AutomationRunner : IAutomationRunner
     {
         var window = _windows.Windows.FirstOrDefault(candidate => candidate.Info.Id.Value == windowId);
         if (window is null) return "vsd.script.window-unavailable";
-        _windows.Close(window);
+        _windows.ForceClose(window);
         return null;
     }
 

@@ -71,7 +71,7 @@ public abstract class SystemMetricsProviderBase : ISystemMetricsProvider
                 string name;
                 try { name = p.ProcessName; } catch { name = $"pid:{p.Id}"; }
 
-                list.Add(new ProcessInfoDto(p.Id, name, Math.Round(cpuPercent, 1), mem, GetProcessUserName(p), start, threads));
+                list.Add(new ProcessInfoDto(p.Id, name, Math.Round(cpuPercent, 1), mem, GetProcessUserName(p), start, threads, null));
             }
             catch { /* 单个进程读取失败跳过 */ }
             finally { try { p.Dispose(); } catch { } }

@@ -24,9 +24,11 @@ internal static class WorkspaceTerminalChecks
         var workspaces = new InMemoryWorkspaceRepository();
         var workspace = workspaces.Add(new Workspace { Id = Guid.NewGuid(), UserId = Guid.NewGuid() });
         environment.Save(workspace, new("0", new([new("TERMINAL_VALUE", EnvironmentMutationKind.Set, "first")]), EnvironmentPathMode.Append));
-        using var services = new ServiceCollection().AddLogging().AddSignalR().Services.BuildServiceProvider();
+        var serviceCollection = new ServiceCollection().AddLogging().AddSignalR().Services;
+        serviceCollection.AddScoped<IWorkspaceRepository>(_ => workspaces);
+        using var services = serviceCollection.BuildServiceProvider();
         var factory = new CapturingFactory();
-        var manager = new TerminalSessionManager(factory, services.GetRequiredService<IHubContext<TerminalHub, ITerminalHubClient>>(), environment, workspaces);
+        var manager = new TerminalSessionManager(factory, services.GetRequiredService<IHubContext<TerminalHub, ITerminalHubClient>>(), environment, services.GetRequiredService<IServiceScopeFactory>());
         var request = new StartTerminalRequest(80, 24, 0, 0, null, null);
         var first = manager.GetOrCreate(workspace.UserId.ToString("D"), null, request);
         Check(first.Created && factory.Last!.WorkspaceEnvironment!.Values.Single().Value == "first", "New terminals read Workspace overrides.");

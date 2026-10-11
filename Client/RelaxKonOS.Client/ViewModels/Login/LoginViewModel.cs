@@ -17,6 +17,25 @@ namespace RelaxKonOS.Client.ViewModels.Login;
 /// <summary>登录窗口视图模型。用户选择 RelaxKonOS Server 或 SSH，再用地址、用户名和密码连接。</summary>
 public partial class LoginViewModel : ObservableObject
 {
+    private CancellationTokenSource _windowLifetime = new();
+
+    public void BeginWindowSession()
+    {
+        _windowLifetime.Cancel();
+        _windowLifetime.Dispose();
+        _windowLifetime = new();
+        StatusMessage = string.Empty;
+    }
+
+    public void CancelWindowOperations()
+    {
+        _windowLifetime.Cancel();
+        ClearPendingHostKey();
+        _credentialLookupVersion++;
+    }
+
+    private CancellationTokenSource LinkWindowCancellation(CancellationToken token)
+        => CancellationTokenSource.CreateLinkedTokenSource(token, _windowLifetime.Token);
 #if DEBUG
     private const string DebugPasswordEnvironmentVariable = "password";
     private readonly string? _debugPassword = Environment.GetEnvironmentVariable(DebugPasswordEnvironmentVariable);
@@ -288,17 +307,37 @@ public partial class LoginViewModel : ObservableObject
 
     partial void OnServerUrlChanged(string value)
     {
+        if (!UseSshLogin && SelectedProfile is { ServiceIdKind: ServerServiceIdKind.DirectUrl } profile
+            && !SameDirectEndpoint(value, profile.DirectServerUrl))
+            DetachSelectedProfileCredential();
         ClearPendingHostKey();
         ClearError();
         if (!IsDiscoveringServer) StatusMessage = string.Empty;
     }
     partial void OnIdentifierChanged(string value)
     {
+        if (!UseSshLogin && SelectedProfile is { } profile
+            && !string.Equals(value.Trim(), profile.Identifier, StringComparison.Ordinal))
+            DetachSelectedProfileCredential();
         ClearPendingHostKey();
         ClearError();
         if (UseServerCredentialsForTunnel) _ = RefreshTunnelCredentialStatusAsync();
     }
     partial void OnPasswordChanged(string value) => ClearError();
+
+    private void DetachSelectedProfileCredential()
+    {
+        SelectedProfile = null;
+        Password = string.Empty;
+        RememberPassword = false;
+        ShowOptions = true;
+    }
+
+    private static bool SameDirectEndpoint(string entered, string? saved)
+        => Uri.TryCreate(entered, UriKind.Absolute, out var current) && Uri.TryCreate(saved, UriKind.Absolute, out var previous)
+            && current.Scheme == previous.Scheme && string.Equals(current.IdnHost, previous.IdnHost, StringComparison.OrdinalIgnoreCase)
+            && current.Port == previous.Port && current.AbsolutePath == previous.AbsolutePath
+            && current.UserInfo.Length == 0 && current.Query.Length == 0 && current.Fragment.Length == 0;
     partial void OnRememberServerChanged(bool value)
     {
         if (!value) RememberPassword = false;
@@ -331,6 +370,9 @@ public partial class LoginViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanConnect))]
     private async Task ConnectAsync(CancellationToken ct)
     {
+        using var lifetime = LinkWindowCancellation(ct);
+        ct = lifetime.Token;
+        if (!CanConnect()) return;
         // Normalize once at submission so authentication and saved profiles use the same values.
         Identifier = Identifier.Trim();
         Password = Password.Trim();
@@ -339,26 +381,25 @@ public partial class LoginViewModel : ObservableObject
             await ConnectSshAsync(ct);
             return;
         }
-        ServerConnectionIdentity? identity = null;
-        if (!UseLoginTunnel)
-        {
-            var resolution = await ResolveServerEndpointAsync(ct);
-            if (!resolution.IsResolved)
-            {
-                ErrorMessage = DescribeResolutionError(resolution);
-                HasError = true;
-                StatusMessage = string.Empty;
-                return;
-            }
-            identity = ServerConnectionIdentityRules.Direct(resolution.Endpoint!);
-        }
-
         IsConnecting = true;
         StatusMessage = T("login.status.connecting", "Connecting...");
         ClearError();
 
         try
         {
+            ServerConnectionIdentity? identity = null;
+            if (!UseLoginTunnel)
+            {
+                var resolution = await ResolveServerEndpointAsync(ct);
+                if (!resolution.IsResolved)
+                {
+                    ErrorMessage = DescribeResolutionError(resolution);
+                    HasError = true;
+                    StatusMessage = string.Empty;
+                    return;
+                }
+                identity = ServerConnectionIdentityRules.Direct(resolution.Endpoint!);
+            }
             if (UseLoginTunnel) identity = await OpenLoginTunnelAsync(ct);
             var request = new LoginRequest(
                 Identifier, Password,
@@ -425,24 +466,29 @@ public partial class LoginViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanBootstrapWindowsOwnerDevice))]
     private async Task BootstrapWindowsOwnerDeviceAsync(CancellationToken ct)
     {
-        var resolution = await ResolveServerEndpointAsync(ct);
-        if (!resolution.IsResolved)
-        {
-            ErrorMessage = DescribeResolutionError(resolution);
-            HasError = true;
-            return;
-        }
+        using var lifetime = LinkWindowCancellation(ct);
+        ct = lifetime.Token;
+        if (!CanBootstrapWindowsOwnerDevice()) return;
         IsConnecting = true;
         ClearError();
         StatusMessage = T("login.owner_device.setting_up", "Generating and registering this device key...");
         try
         {
+            var resolution = await ResolveServerEndpointAsync(ct);
+            if (!resolution.IsResolved)
+            {
+                ErrorMessage = DescribeResolutionError(resolution);
+                HasError = true;
+                StatusMessage = string.Empty;
+                return;
+            }
             var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0";
             await _session.BootstrapWindowsOwnerDeviceAsync(ServerConnectionIdentityRules.Direct(resolution.Endpoint!),
                 Environment.MachineName, version, RememberServer, ct);
             StatusMessage = T("login.status.opening_desktop", "Connected. Opening desktop...");
         }
         catch (RelaxKonOSAuthException ex) { ErrorMessage = MapProblemToMessage(ex); HasError = true; StatusMessage = string.Empty; }
+        catch (OperationCanceledException) { StatusMessage = string.Empty; }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException) { ErrorMessage = ex.Message; HasError = true; StatusMessage = string.Empty; }
         finally { IsConnecting = false; }
     }
@@ -450,18 +496,22 @@ public partial class LoginViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanConnectOwnerDevice))]
     private async Task ConnectOwnerDeviceAsync(CancellationToken ct)
     {
-        var resolution = await ResolveServerEndpointAsync(ct);
-        if (!resolution.IsResolved)
-        {
-            ErrorMessage = DescribeResolutionError(resolution);
-            HasError = true;
-            return;
-        }
+        using var lifetime = LinkWindowCancellation(ct);
+        ct = lifetime.Token;
+        if (!CanConnectOwnerDevice()) return;
         IsConnecting = true;
         ClearError();
         StatusMessage = T("login.owner_device.signing_in", "Signing the device challenge...");
         try
         {
+            var resolution = await ResolveServerEndpointAsync(ct);
+            if (!resolution.IsResolved)
+            {
+                ErrorMessage = DescribeResolutionError(resolution);
+                HasError = true;
+                StatusMessage = string.Empty;
+                return;
+            }
             await _session.LoginWithOwnerDeviceAsync(ServerConnectionIdentityRules.Direct(resolution.Endpoint!), OwnerDeviceKeyPassphrase,
                 RememberServer, ct);
             OwnerDeviceKeyPassphrase = string.Empty;
@@ -481,6 +531,7 @@ public partial class LoginViewModel : ObservableObject
             StatusMessage = string.Empty;
         }
         catch (RelaxKonOSAuthException ex) { ErrorMessage = MapProblemToMessage(ex); HasError = true; StatusMessage = string.Empty; }
+        catch (OperationCanceledException) { StatusMessage = string.Empty; }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or CryptographicException) { ErrorMessage = ex.Message; HasError = true; StatusMessage = string.Empty; }
         finally { IsConnecting = false; }
     }
@@ -488,6 +539,9 @@ public partial class LoginViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanAcceptOwnerDevicePairing))]
     private async Task AcceptOwnerDevicePairingAsync(CancellationToken ct)
     {
+        using var lifetime = LinkWindowCancellation(ct);
+        ct = lifetime.Token;
+        if (!CanAcceptOwnerDevicePairing()) return;
         IsConnecting = true;
         ClearError();
         StatusMessage = T("login.owner_device.pairing", "Pairing this device...");
@@ -509,6 +563,7 @@ public partial class LoginViewModel : ObservableObject
             StatusMessage = string.Empty;
         }
         catch (RelaxKonOSAuthException ex) { ErrorMessage = MapProblemToMessage(ex); HasError = true; StatusMessage = string.Empty; }
+        catch (OperationCanceledException) { StatusMessage = string.Empty; }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or CryptographicException) { ErrorMessage = ex.Message; HasError = true; StatusMessage = string.Empty; }
         finally { IsConnecting = false; }
     }
@@ -603,7 +658,8 @@ public partial class LoginViewModel : ObservableObject
         RememberServer = true;
         var credential = await _sshCredentials.FindAsync(
             ServerCenterSshEndpoint.Create(profile.Host, profile.Port, profile.UserName));
-        if (!UseSshLogin || !ReferenceEquals(SelectedSshHost, profile)) return;
+        if (!UseSshLogin || !ReferenceEquals(SelectedSshHost, profile) || !profile.MatchesAddress(ServerUrl)
+            || !string.Equals(Identifier.Trim(), profile.UserName, StringComparison.Ordinal)) return;
         Password = credential is { Kind: SshCredentialKind.Password } ? credential.Secret : string.Empty;
         RememberPassword = !string.IsNullOrEmpty(Password);
     }
@@ -652,11 +708,15 @@ public partial class LoginViewModel : ObservableObject
     /// <summary>Invoked by the address control when focus leaves it, before credentials are sent.</summary>
     public async Task DiscoverServerEndpointAsync(CancellationToken ct = default)
     {
+        using var lifetime = LinkWindowCancellation(ct);
+        ct = lifetime.Token;
         if (UseSshLogin || UseLoginTunnel || IsDiscoveringServer || IsConnecting) return;
         if (string.IsNullOrWhiteSpace(ServerUrl)) return;
 
         var enteredValue = ServerUrl;
-        var resolution = await ResolveServerEndpointAsync(ct);
+        ServerEndpointResolution resolution;
+        try { resolution = await ResolveServerEndpointAsync(ct); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
         if (UseSshLogin || UseLoginTunnel) return;
         if (resolution.IsResolved || !string.Equals(ServerUrl, enteredValue, StringComparison.Ordinal)) return;
 
@@ -785,6 +845,8 @@ public partial class LoginViewModel : ObservableObject
     [RelayCommand]
     private async Task ConfirmHostKeyAsync(CancellationToken ct)
     {
+        using var lifetime = LinkWindowCancellation(ct);
+        ct = lifetime.Token;
         var host = _pendingHost;
         var observation = _pendingHostKey;
         if (!UseSshLogin || IsConnecting || !NeedsHostKeyConfirmation || host is null || observation is null)
@@ -826,10 +888,12 @@ public partial class LoginViewModel : ObservableObject
         try
         {
             var resolution = await _endpointResolver.ResolveAsync(enteredValue, ct);
+            ct.ThrowIfCancellationRequested();
             if (resolution.CertificateIssue is { CanTrust: true } review && ConfirmServerCertificateAsync is { } confirm &&
                 !UseSshLogin && !UseLoginTunnel && string.Equals(ServerUrl, enteredValue, StringComparison.Ordinal))
             {
                 var accepted = await confirm(review);
+                ct.ThrowIfCancellationRequested();
                 if (accepted && !ct.IsCancellationRequested && !UseSshLogin && !UseLoginTunnel && string.Equals(ServerUrl, enteredValue, StringComparison.Ordinal))
                 {
                     try

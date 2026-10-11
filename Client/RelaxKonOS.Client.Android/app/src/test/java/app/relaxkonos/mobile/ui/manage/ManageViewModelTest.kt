@@ -6,6 +6,7 @@ import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.auth.*
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.data.*
+import app.relaxkonos.mobile.security.*
 import app.relaxkonos.mobile.servercenter.ServerConnectionIdentityRules
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
@@ -24,7 +25,7 @@ class ManageViewModelTest {
     private val process = RemoteProcess(42, "review-process", 0.0, 10, null, 1, "2026-10-01T00:00:00Z")
     @Before fun setup() {
         Dispatchers.setMain(StandardTestDispatcher())
-        model = ManageViewModel(session, SystemRepository(gateway, session), recent)
+        model = ManageViewModel(session, SystemRepository(gateway, session), recent, ElevationRepository(gateway, session, CredentialVault(InMemoryVaultStorage(), FakeVaultCrypto()), UsageMemoryStore(InMemoryUsageMemoryStorage())), ElevationAnswerProvider.Declines)
         store.put("manage", model)
         gateway.onProcesses = { _, _, _, _, _, _, _ -> ApiResult.Success(ProcessPage(listOf(process), 1, process.startTime!!)) }
     }

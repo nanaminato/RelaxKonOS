@@ -6,6 +6,7 @@
 
 | 任务 | 入口 |
 |---|---|
+| 盘点全部桌面界面、逐页审查流程与追踪优化验收 | [桌面 UI 审查](UiReview.md) |
 | 修改内置应用界面与查看逐项分析 | [BuiltInApps UI](RelaxKonOS.BuiltInApps.UI.md) |
 | 理解桌面、宿主窗口、全屏与模态交互 | [Desktop](RelaxKonOS.Desktop.md) |
 | 调整浅色/深色、调色板和强调色 | [Theming](RelaxKonOS.Theming.md) |

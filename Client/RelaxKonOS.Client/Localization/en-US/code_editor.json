@@ -1,6 +1,7 @@
 {
     "Culture": "en-US",
     "Strings": {
+        "code_editor.find": "Find in document (Ctrl+F)",
         "code_editor.settings.title": "Code Editor settings",
         "code_editor.settings.font_size": "Editor font size",
         "code_editor.settings.default_encoding": "Default encoding",
@@ -35,6 +36,14 @@
         "code_editor.discard_changes": "Discard changes",
         "code_editor.save_remote_file": "Save remote file",
         "code_editor.remote_path_prompt": "Enter a full remote path:",
-        "code_editor.source_file_filter": "Source files"
+        "code_editor.source_file_filter": "Source files",
+        "code_editor.preview.bytes": "{0:N0} bytes",
+        "code_editor.preview.opened": "Previewing {0}",
+        "code_editor.preview.edit_source": "Edit SVG source",
+        "code_editor.preview.show_image": "Show image",
+        "code_editor.preview.actual_size": "Actual size (turn off to fit the window)",
+        "code_editor.preview.binary_hint": "This binary file or unsupported format cannot be edited as text. Open it with an appropriate application.",
+        "code_editor.preview.image_filter": "Images",
+        "code_editor.preview.all_files": "All files"
     }
 }

@@ -30,14 +30,14 @@ class SystemRepository(
     suspend fun networkAddresses(owner: SessionState.Active): ApiResult<List<NetworkAddress>> =
         owned(owner) { url, token -> gateway.networkAddresses(url, token) }
 
-    suspend fun processes(owner: SessionState.Active, page: Int, pageSize: Int, filter: String?, sort: ProcessSort, descending: Boolean): ApiResult<ProcessPage> =
+    suspend fun processes(owner: SessionState.Active, page: Int, pageSize: Int, filter: String?, sort: ProcessSort, descending: Boolean, elevated: Boolean = false): ApiResult<ProcessPage> =
         owned(owner) { serverUrl, accessToken ->
-            gateway.queryProcesses(serverUrl, accessToken, page, pageSize, filter, sort, descending)
+            gateway.queryProcesses(serverUrl, accessToken, page, pageSize, filter, sort, descending, elevated)
         }
 
-    /** This endpoint uses host OS permissions, not the native-service elevation grant. */
-    suspend fun killProcess(owner: SessionState.Active, pid: Int, expectedStartTime: String): ApiResult<ProcessKillResult> {
-        return owned(owner) { url, token -> gateway.killProcess(url, token, pid, expectedStartTime) }
+    /** Administrator mode uses the exact ProcessManage host grant. */
+    suspend fun killProcess(owner: SessionState.Active, pid: Int, expectedStartTime: String, elevated: Boolean = false): ApiResult<ProcessKillResult> {
+        return owned(owner) { url, token -> gateway.killProcess(url, token, pid, expectedStartTime, elevated) }
     }
     private suspend fun <T> owned(call: suspend (String, String) -> ApiResult<T>): ApiResult<T> {
         val owner = session.state.value as? SessionState.Active ?: return ApiResult.Problem(401, ProblemCodes.UNAUTHORIZED, null)

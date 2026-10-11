@@ -1,6 +1,8 @@
 {
     "Culture": "zh-CN",
     "Strings": {
+        "task_manager.process.administrator_mode": "管理员模式",
+        "task_manager.process.normal_mode": "普通模式",
         "task_manager.cpu": "🖥 CPU",
         "task_manager.performance": "性能",
         "task_manager.processes": "进程",

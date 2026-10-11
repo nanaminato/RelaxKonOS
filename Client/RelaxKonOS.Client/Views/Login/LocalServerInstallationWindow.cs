@@ -9,13 +9,17 @@ using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Client.ViewModels.ServerCenter;
 using RelaxKonOS.Protocol.ServerCenter;
+using RelaxKonOS.Client.Services.Dialogs;
+using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 
 namespace RelaxKonOS.Client.Views.Login;
 
 /// <summary>Login-independent local lifecycle management with the existing source/options/review wizard.</summary>
 public sealed class LocalServerInstallationWindow : Window
 {
-    private readonly ServerInstallationWizardViewModel _wizard;
+    private ServerInstallationWizardViewModel _wizard;
+    private readonly Func<ServerInstallationWizardViewModel> _wizardFactory;
+    private readonly NativeDraftCloseGuard _closeGuard;
     private string? _endpoint;
     private readonly LocalWindowsServerInstaller _installer;
     private readonly LoginLocalizationService _localization;
@@ -32,7 +36,8 @@ public sealed class LocalServerInstallationWindow : Window
         _installer = installer;
         _installer.Mode = ServerInstallMode.WindowsUser;
         _localization = localization;
-        _wizard = new ServerInstallationWizardViewModel(progress, ShowManagement,
+        _wizardFactory = () => new ServerInstallationWizardViewModel(progress, FinishWizard,
+            CancelWizardAsync,
             () => Task.FromResult<string?>(null), () => Task.CompletedTask, async options =>
             {
                 progress.ErrorMessage = string.Empty;
@@ -71,6 +76,10 @@ public sealed class LocalServerInstallationWindow : Window
                     progress.ErrorMessage += "\n" + progress.Text("login.local_install_operation", "Operation ID") + ": " + operationId;
                 return false;
             });
+        _wizard = _wizardFactory();
+        _closeGuard = new NativeDraftCloseGuard(this, () => _wizard.IsBusy || _busy,
+            () => Content is ServerInstallationWizardView && _wizard.HasDraftChanges,
+            ConfirmDiscardAsync, () => _wizard.ClearSecrets());
         Title = T("title", "Manage this computer");
         Width = 820;
         Height = 720;
@@ -78,7 +87,43 @@ public sealed class LocalServerInstallationWindow : Window
         MinHeight = 480;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ShowManagement();
-        Closing += (_, args) => args.Cancel = _wizard.IsBusy || _busy;
+    }
+
+    private void FinishWizard()
+    {
+        _wizard.ClearSecrets();
+        ShowManagement();
+    }
+
+    private async Task<bool> CancelWizardAsync()
+    {
+        if (!await _closeGuard.TryDiscardAsync()) return false;
+        FinishWizard();
+        return true;
+    }
+
+    private Task<bool> ConfirmDiscardAsync()
+    {
+        var confirmation = new Window
+        {
+            Title = _localization.Get("common.discard_title", "Discard changes?"),
+            Width = 480, Height = 240, MinWidth = 460, MinHeight = 220,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            ShowInTaskbar = false
+        };
+        confirmation.Content = new ConfirmDialogView
+        {
+            DataContext = new ConfirmDialogViewModel(_localization.Get("common.discard_message", "Discard unsaved changes and close this editor?"),
+                accepted => confirmation.Close(accepted), _localization.Get("common.discard", "Discard"),
+                _localization.Get("common.cancel", "Cancel"))
+        };
+        confirmation.KeyDown += (_, args) =>
+        {
+            if (args.Key != Avalonia.Input.Key.Escape) return;
+            args.Handled = true;
+            confirmation.Close(false);
+        };
+        return confirmation.ShowDialog<bool>(this);
     }
 
     private void ShowManagement()
@@ -126,8 +171,17 @@ public sealed class LocalServerInstallationWindow : Window
         Add(T("refresh", "Refresh status"), T("refresh_hint", "Check the current installation and service health"), "monitor", () => _ = RunAsync(async () => _snapshot = await _installer.StatusAsync()));
         Add(T("install", "Install / update"), T("install_hint", "Choose a release package and review installation options"), "deployments", () =>
         {
+            _wizard.ClearSecrets();
+            _wizard = _wizardFactory();
             _wizard.SelectedMode = _wizard.Modes.First(option => option.Mode == _installer.Mode);
-            Content = new ServerInstallationWizardView(_wizard);
+            if (Uri.TryCreate(_snapshot?.ListenUrl, UriKind.Absolute, out var installedUrl))
+            {
+                _wizard.ServerPortText = installedUrl.Port.ToString();
+                _wizard.SelectedCertificateMode = _wizard.CertificateModes.First(option => option.Mode ==
+                    (installedUrl.Scheme == Uri.UriSchemeHttps ? ServerCertificateMode.SelfSigned : ServerCertificateMode.None));
+            }
+            _wizard.ResetDraftBaseline();
+            Content = new ServerInstallationWizardView(_wizard, null);
         });
         var installed = _snapshot is { Installed: true, Mode: ServerInstallMode.WindowsSystem or ServerInstallMode.WindowsUser } && ServerInstallationId.IsValid(_snapshot.InstallationId);
         Add(T("repair", "Repair"), T("repair_hint", "Restore services, certificates and firewall rules"), "diagnostics", () => _ = ReviewAsync(ServerDeploymentKind.Repair), installed);

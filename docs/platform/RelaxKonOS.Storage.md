@@ -454,7 +454,7 @@
 
 ### 6.3 生命周期
 
-业务仓储与 `RelaxKonOSDbContext` 均为 **Scoped**（每请求一个 DbContext）。Minimal API `[FromServices]` 每请求创建 scope，兼容。Singleton 服务（`AuthSessionStore` / `JwtTokenService` / `TerminalSessionManager` / `PerformanceSampler` / `TunnelService` / `FrpRuntimeManager`）只依赖抽象仓储接口，并不直接持有 DbContext。
+业务仓储与 `RelaxKonOSDbContext` 均为 **Scoped**（每请求一个 DbContext）。Minimal API `[FromServices]` 每请求创建 scope，兼容。Singleton 服务不能直接持有 Scoped 仓储或 DbContext；需要访问它们的长期服务（如 `TerminalSessionManager`）通过 `IServiceScopeFactory` 在操作期间创建短生命周期 scope。
 
 HostGlobal 库的 Repository 与 `HostGlobalDbContext` 也是 Scoped；后台长期运行的 Worker（`CertificateRenewalWorker` 等）通过 `IServiceScopeFactory` 为每个迭代周期创建独立 scope。
 

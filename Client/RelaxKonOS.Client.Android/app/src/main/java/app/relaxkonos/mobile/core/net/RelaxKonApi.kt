@@ -1397,12 +1397,14 @@ class RelaxKonApi(
         filter: String?,
         sort: ProcessSort,
         descending: Boolean,
+        elevated: Boolean,
     ): ApiResult<ProcessPage> {
         require(page > 0 && pageSize in 1..500 && (filter?.length ?: 0) <= 512)
         val query = buildString {
             append("?page=").append(page)
             append("&pageSize=").append(pageSize)
             append("&sort=").append(sort.wireName).append("&direction=").append(if (descending) "desc" else "asc")
+            append("&elevated=").append(elevated)
             if (!filter.isNullOrBlank()) {
                 append("&filter=").append(encode(filter))
             }
@@ -1415,10 +1417,10 @@ class RelaxKonApi(
         }
     }
 
-    override suspend fun killProcess(serverUrl: String, accessToken: String, pid: Int, expectedStartTime: String): ApiResult<ProcessKillResult> {
+    override suspend fun killProcess(serverUrl: String, accessToken: String, pid: Int, expectedStartTime: String, elevated: Boolean): ApiResult<ProcessKillResult> {
         require(pid > 0); SystemProcessWire.startTime(expectedStartTime)
         return when (val result = execute("DELETE", serverUrl, SystemRoutes.processKill(pid), accessToken,
-            JsonBody().string("expectedStartTime", expectedStartTime))) {
+            JsonBody().string("expectedStartTime", expectedStartTime).bool("elevated", elevated))) {
             is ApiResult.Success -> runCatching { SystemProcessWire.kill(result.value) }
                 .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed process termination receipt.") })
             is ApiResult.Problem -> result

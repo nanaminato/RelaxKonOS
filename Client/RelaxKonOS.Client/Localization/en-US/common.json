@@ -3,6 +3,9 @@
     "DisplayName": "English",
     "SortOrder": 0,
     "Strings": {
+        "common.discard_title": "Discard changes?",
+        "common.discard_message": "Discard unsaved changes and close this editor?",
+        "common.discard": "Discard",
         "common.apply": "Apply",
         "common.operation_running": "In progress",
         "common.operation_log": "Operation log",

@@ -41,21 +41,54 @@ public static class SystemStyleDerivedKeys
     public const string ElevationShadow = "ElevationShadow";
 
     /// <summary>
+    /// A window-caption mark as geometry, built from <c>WindowCaptionGlyphSize</c> by
+    /// <see cref="WindowCaptionMarks"/>. One key per action, so a view chooses which mark of a closed
+    /// set to show and never invents a shape - or a font - of its own.
+    /// </summary>
+    public const string WindowCaptionMinimizeGlyph = "WindowCaptionMinimizeGlyph";
+
+    /// <inheritdoc cref="WindowCaptionMinimizeGlyph"/>
+    public const string WindowCaptionMaximizeGlyph = "WindowCaptionMaximizeGlyph";
+
+    /// <inheritdoc cref="WindowCaptionMinimizeGlyph"/>
+    public const string WindowCaptionRestoreGlyph = "WindowCaptionRestoreGlyph";
+
+    /// <inheritdoc cref="WindowCaptionMinimizeGlyph"/>
+    public const string WindowCaptionCloseGlyph = "WindowCaptionCloseGlyph";
+
+    /// <summary>
     /// Fully-rounded caption-button radius for the left-side (traffic-light) chrome variant: half
-    /// of the smaller of the control width and the title-bar height, so the button stays a
+    /// of the smaller of the control width and the caption height, so the button stays a
     /// well-formed pill at every profile's proportions.
     /// </summary>
     public const string WindowCaptionCornerRadius = "WindowCaptionCornerRadius";
 
     /// <summary>
-    /// Top inset that reserves room for the host window's own title bar. The host shell uses the
-    /// same <c>WindowTitleBarHeight</c> token as a managed window, so the outer frame and the
-    /// managed windows it contains never disagree about how tall a title bar is.
+    /// Height of a title bar that carries application content. How a *fused* bar is shaped is a
+    /// per-recipe decision, so the height is derived from the style's own
+    /// <c>WindowCaptionHeight</c> instead of being one number shared by every style: a compact
+    /// profile keeps a compact fused bar. Application headers read the same key, so a header never
+    /// has to hardcode the geometry the host gave it.
+    /// </summary>
+    /// <remarks>
+    /// The caption - not the host's own bar - is what a fused bar grows from, because a fused bar is
+    /// a *window's* bar: Windows keeps its three buttons at 32px and lets the tab row grow around
+    /// them, so the row is the caption plus one control row of breathing room.
+    /// </remarks>
+    public const string WindowFusedTitleBarHeight = "WindowFusedTitleBarHeight";
+
+    /// <summary>
+    /// Top inset that reserves room for the host window's own title bar, from
+    /// <c>WindowTitleBarHeight</c>. This is the desktop frame's bar - the one that also carries the
+    /// connection bar - and it is sized independently of <c>WindowCaptionHeight</c>, which is what a
+    /// *managed* window's caption (and each of its three buttons) is measured by.
     /// </summary>
     public const string HostTitleBarMargin = "HostTitleBarMargin";
 
     public static IReadOnlyList<string> All { get; } =
-        [OverlayTopCornerRadius, OverlayBottomCornerRadius, ElevationShadow, WindowCaptionCornerRadius, HostTitleBarMargin];
+        [OverlayTopCornerRadius, OverlayBottomCornerRadius, ElevationShadow, WindowCaptionCornerRadius,
+         WindowCaptionMinimizeGlyph, WindowCaptionMaximizeGlyph, WindowCaptionRestoreGlyph, WindowCaptionCloseGlyph,
+         HostTitleBarMargin, WindowFusedTitleBarHeight];
 }
 
 /// <summary>
@@ -126,11 +159,25 @@ public static class SystemStyleResourceBuilder
         dictionary[SystemStyleDerivedKeys.OverlayBottomCornerRadius] = new CornerRadius(0, 0, overlayRadius, overlayRadius);
         dictionary[SystemStyleDerivedKeys.ElevationShadow] = BuildElevationShadow(tokens, paletteShadow);
 
-        var controlWidth = tokens.TryGetValue("WindowControlWidth", out var declaredControlWidth) ? declaredControlWidth : 52;
+        var controlWidth = tokens.TryGetValue("WindowControlWidth", out var declaredControlWidth) ? declaredControlWidth : 46;
         var titleBarHeight = tokens.TryGetValue("WindowTitleBarHeight", out var declaredTitleBarHeight) ? declaredTitleBarHeight : 42;
+        var captionHeight = tokens.TryGetValue("WindowCaptionHeight", out var declaredCaptionHeight) ? declaredCaptionHeight : 32;
         dictionary[SystemStyleDerivedKeys.WindowCaptionCornerRadius] =
-            new CornerRadius(Math.Min(controlWidth, titleBarHeight) / 2);
+            new CornerRadius(Math.Min(controlWidth, captionHeight) / 2);
+        // The caption marks themselves: a profile sizes the box, the shapes are the platform's.
+        // Geometry rather than characters, so a mark cannot change weight, size or position with
+        // whichever font the host resolves - see WindowCaptionMarks.
+        var glyphBox = tokens.TryGetValue("WindowCaptionGlyphSize", out var declaredGlyphBox)
+            ? declaredGlyphBox
+            : WindowCaptionMarks.PlatformBox;
+        foreach (var (key, build) in WindowCaptionMarks.All)
+            dictionary[key] = build(glyphBox);
+        // The host's own bar, not a window's caption: this is the inset the desktop content leaves
+        // for the frame the client draws around every window it contains.
         dictionary[SystemStyleDerivedKeys.HostTitleBarMargin] = new Thickness(0, titleBarHeight, 0, 0);
+        // A fused bar adds one control row of breathing room to the style's own caption, but it
+        // never drops below a legible minimum even for a very slim profile.
+        dictionary[SystemStyleDerivedKeys.WindowFusedTitleBarHeight] = Math.Max(48, captionHeight + 14);
 
         var recipes = manifest.SupportedRecipes;
         BuildCommandSurfaceThicknessKeys(dictionary, tokens, recipes.ContextMenu);

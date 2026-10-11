@@ -16,6 +16,13 @@ internal partial class FileServicesShareDialogView : UserControl
         _editing = editing;
         InitializeComponent();
         DataContext = viewModel;
+        var initial = (viewModel.ShareName, viewModel.SharePath, viewModel.ShareDescription,
+            viewModel.ShareReadOnly, viewModel.ShareEnabled, viewModel.ShareGuestAllowed);
+        var permissions = viewModel.SharePermissions.Select(permission => (permission.Principal, permission.SelectedAccess.Value)).ToArray();
+        RelaxKonOS.Client.Services.Dialogs.DraftDialogGuard.Attach(dialog, () => !viewModel.CanCloseShareDraft,
+            () => initial != (viewModel.ShareName, viewModel.SharePath, viewModel.ShareDescription,
+                viewModel.ShareReadOnly, viewModel.ShareEnabled, viewModel.ShareGuestAllowed)
+                || !permissions.SequenceEqual(viewModel.SharePermissions.Select(permission => (permission.Principal, permission.SelectedAccess.Value))));
     }
     private void Cancel_Click(object? sender, RoutedEventArgs e) => _dialog.Cancel();
     private async void BrowsePath_Click(object? sender, RoutedEventArgs e) => await _viewModel.PickSharePathAsync();
@@ -26,8 +33,6 @@ internal partial class FileServicesShareDialogView : UserControl
     }
     private async void Save_Click(object? sender, RoutedEventArgs e)
     {
-        SaveButton.IsEnabled = false;
-        try { if (await _viewModel.SaveShareAsync(_editing)) _dialog.Close(true); }
-        finally { SaveButton.IsEnabled = true; }
+        if (await _viewModel.SaveShareAsync(_editing)) _dialog.Close(true);
     }
 }

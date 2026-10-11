@@ -6,6 +6,12 @@ namespace RelaxKonOS.Client.Apps.Certificates.Views;
 /// <summary>Certificate Manager shell. Layout lives in AXAML; this class only attaches the view model.</summary>
 internal partial class CertificateManagerWorkspace : UserControl
 {
+    public void AttachWindowHeader(RelaxKonOS.WindowManager.ManagedWindow window)
+    {
+        Header.DataContext = DataContext;
+        Header.Attach(window);
+    }
+
     private readonly Func<Task> _showRequestCertificate;
     private readonly Func<Task> _showCreateSelfSignedCertificate;
     private readonly Action _showRenewalHistory;
@@ -17,10 +23,11 @@ internal partial class CertificateManagerWorkspace : UserControl
         _showCreateSelfSignedCertificate = showCreateSelfSignedCertificate;
         _showRenewalHistory = showRenewalHistory;
         InitializeComponent();
+        RelaxKonOS.Client.Controls.CompactWorkspaceNavigation.Install(this, WorkspaceBody);
         ShowPage("overview", OverviewButton);
     }
 
-    public static Control Create(CertificateManagerViewModel viewModel, Func<Task> showRequestCertificate, Func<Task> showCreateSelfSignedCertificate, Action showRenewalHistory)
+    public static CertificateManagerWorkspace Create(CertificateManagerViewModel viewModel, Func<Task> showRequestCertificate, Func<Task> showCreateSelfSignedCertificate, Action showRenewalHistory)
     {
         var view = new CertificateManagerWorkspace(showRequestCertificate, showCreateSelfSignedCertificate, showRenewalHistory)
         {

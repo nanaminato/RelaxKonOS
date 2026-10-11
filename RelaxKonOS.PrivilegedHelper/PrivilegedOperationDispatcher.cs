@@ -21,6 +21,42 @@ public static partial class PrivilegedOperationExecutor
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "operation id is required");
         if (request.Correlation is not { } correlation || !correlation.IsValid())
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "valid correlation metadata is required");
+        if (request.Operation is PrivilegedOperationKind.ProcessSnapshot or PrivilegedOperationKind.ProcessTerminate or PrivilegedOperationKind.ProcessIcon)
+        {
+            if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
+                return Fail(64, PrivilegedProblemCode.UnsupportedOperation, "process operations are unavailable on this platform");
+            var clean = request.Operation == PrivilegedOperationKind.ProcessSnapshot
+                ? new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId, Correlation: request.Correlation, Version: request.Version)
+                : new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId, Correlation: request.Correlation,
+                    Version: request.Version, ProcessId: request.ProcessId, ProcessExpectedStartTime: request.ProcessExpectedStartTime);
+            if (request != clean)
+                return Fail(64, PrivilegedProblemCode.InvalidRequest, "unexpected process operation fields");
+            try
+            {
+                if (request.Operation == PrivilegedOperationKind.ProcessSnapshot)
+                    return new(true, ProcessSnapshot: RelaxKonOS.Server.SystemPerformance.HostProcessSnapshotCollector.Capture());
+                if (request.ProcessId is not > 0 || request.ProcessExpectedStartTime is not { } expectedStartTime || expectedStartTime == default)
+                    return Fail(64, PrivilegedProblemCode.InvalidRequest, "process id and expected start time are required");
+                if (request.Operation == PrivilegedOperationKind.ProcessIcon)
+                {
+                    var icon = await new RelaxKonOS.Server.SystemPerformance.ProcessIconProvider().GetIconAsync(
+                        request.ProcessId.Value, expectedStartTime, CancellationToken.None);
+                    return new(true, OutputBase64: icon is null ? null : Convert.ToBase64String(icon.Data),
+                        ProcessIconContentType: icon?.ContentType);
+                }
+                if (request.ProcessId.Value == Environment.ProcessId)
+                    return new(false, 1, ProcessTermination: new(false, false, "process.helper_self_protected", null));
+                var termination = RelaxKonOS.Server.SystemMonitor.ProcessInstanceTermination.Terminate(
+                    request.ProcessId.Value, expectedStartTime, CancellationToken.None);
+                return new(termination.Success, ExitCode: termination.Success ? 0 : 1, ProcessTermination: termination);
+            }
+            catch (InvalidDataException)
+            { return Fail(1, PrivilegedProblemCode.ContentTooLarge, "host process snapshot exceeds the Helper response limit"); }
+            catch
+            { return Fail(1, PrivilegedProblemCode.InternalError, "process operation failed"); }
+        }
+        if (request.ProcessId is not null || request.ProcessExpectedStartTime is not null)
+            return Fail(64, PrivilegedProblemCode.InvalidRequest, "process fields require a dedicated operation");
         if (request.Operation != PrivilegedOperationKind.ManagedRuntime && request.ManagedRuntime is not null)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "runtime fields require a dedicated operation");
         if (request.Operation is PrivilegedOperationKind.HostNetworkRead or PrivilegedOperationKind.HostNetworkApply or PrivilegedOperationKind.HostNetworkConfirm)

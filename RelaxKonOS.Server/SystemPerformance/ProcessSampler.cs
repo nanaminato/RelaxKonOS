@@ -1,30 +1,30 @@
-using System.Diagnostics;
 using RelaxKonOS.Protocol.SystemMonitor;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.HostMode;
+using RelaxKonOS.Server.Privileged;
 
 namespace RelaxKonOS.Server.SystemPerformance;
 
-/// <summary>
-/// 按需的低频进程采样器。只有进程页查询才会枚举进程；PID 与 StartTime 共同作为实例身份，
-/// 避免 PID 重用继承旧进程 CPU 时间。
-/// </summary>
+/// <summary>Ordinary and privileged snapshots have separate caches and CPU baselines.
+/// Request authorization is checked before this singleton is called, including cached reads.</summary>
 public sealed class ProcessSampler(
     RelaxKonOS.Server.SystemMonitor.ISystemMetricsProvider legacyControl,
-    IServerModeResolver mode) : IProcessService
+    IServerModeResolver mode,
+    IPrivilegedOperationTransport privilegedOperations) : IProcessService
 {
-    private readonly object _gate = new();
-    private readonly SemaphoreSlim _collectionGate = new(1, 1);
     private static readonly TimeSpan SamplingInterval = TimeSpan.FromSeconds(5);
-    private Dictionary<ProcessInstanceKey, ProcessSample> _previous = new();
-    private ProcessPageDto _latest = new([], 0, DateTimeOffset.MinValue);
+    private readonly SampleCache _ordinary = new();
+    private readonly SampleCache _elevated = new();
+    private readonly ProcessIconProvider _icons = new();
 
     public async Task<ProcessPageDto> QueryAsync(int page, int pageSize, string? filter, string? sort, bool descending,
-        CancellationToken cancellationToken = default)
+        bool elevated = false, CancellationToken cancellationToken = default)
     {
-        await EnsureFreshAsync(cancellationToken);
+        var cache = elevated ? _elevated : _ordinary;
+        await EnsureFreshAsync(cache, elevated, cancellationToken);
         ProcessPageDto snapshot;
-        lock (_gate) snapshot = _latest;
+        lock (cache.Gate) snapshot = cache.Latest;
         IEnumerable<ProcessInfoDto> query = snapshot.Items;
         if (!string.IsNullOrWhiteSpace(filter))
         {
@@ -43,111 +43,114 @@ public sealed class ProcessSampler(
         var all = query.ToArray();
         var safePage = Math.Max(1, page);
         var safePageSize = Math.Clamp(pageSize, 1, 500);
-        return new ProcessPageDto(all.Skip((safePage - 1) * safePageSize).Take(safePageSize).ToArray(), all.Length, snapshot.SampledAt);
+        return new(all.Skip((int)Math.Min((long)(safePage - 1) * safePageSize, int.MaxValue)).Take(safePageSize).ToArray(),
+            all.Length, snapshot.SampledAt);
     }
 
-    public async Task<KillProcessResultDto> KillAsync(int processId, DateTimeOffset expectedStartTime, CancellationToken cancellationToken = default)
+    public async Task<KillProcessResultDto> KillAsync(int processId, DateTimeOffset expectedStartTime,
+        bool elevated = false, CancellationToken cancellationToken = default)
     {
-        if (!IsVisibleToCurrentMode(processId)) return new(false, false, "process.user_mode_not_owned", null);
-        var result = await legacyControl.KillProcessAsync(processId, expectedStartTime, cancellationToken);
-        lock (_gate) _latest = _latest with { SampledAt = DateTimeOffset.MinValue };
+        if (processId <= 0 || expectedStartTime == default) return new(false, false, "process.invalid_instance", null);
+        KillProcessResultDto result;
+        if (elevated)
+        {
+            var receipt = await privilegedOperations.ExecuteAsync(new(PrivilegedOperationKind.ProcessTerminate,
+                ProcessId: processId, ProcessExpectedStartTime: expectedStartTime), cancellationToken);
+            result = receipt.ProcessTermination ?? new(false, false, "process.operation_failed",
+                $"Process termination failed: {receipt.ProblemCode}.");
+        }
+        else
+        {
+            if (!IsVisibleOrdinarily(processId)) return new(false, false, "process.user_mode_not_owned", null);
+            result = await legacyControl.KillProcessAsync(processId, expectedStartTime, cancellationToken);
+        }
+        lock (_ordinary.Gate) _ordinary.Latest = _ordinary.Latest with { SampledAt = DateTimeOffset.MinValue };
+        lock (_elevated.Gate) _elevated.Latest = _elevated.Latest with { SampledAt = DateTimeOffset.MinValue };
         return result;
     }
 
-    private async Task EnsureFreshAsync(CancellationToken cancellationToken)
+    public async Task<ProcessIconContent?> GetIconAsync(int processId, DateTimeOffset expectedStartTime,
+        bool elevated = false, CancellationToken cancellationToken = default)
     {
-        ProcessPageDto latest;
-        lock (_gate) latest = _latest;
-        if (DateTimeOffset.UtcNow - latest.SampledAt < SamplingInterval) return;
-
-        await _collectionGate.WaitAsync(cancellationToken);
+        if (processId <= 0 || expectedStartTime == default) return null;
+        if (!elevated)
+            return IsVisibleOrdinarily(processId) ? await _icons.GetIconAsync(processId, expectedStartTime, cancellationToken) : null;
+        var result = await privilegedOperations.ExecuteAsync(new(PrivilegedOperationKind.ProcessIcon,
+            ProcessId: processId, ProcessExpectedStartTime: expectedStartTime), cancellationToken);
+        if (!result.Success || result.OutputBase64 is not { Length: > 0 } encoded
+            || result.ProcessIconContentType is not ("image/png" or "image/svg+xml")) return null;
         try
         {
-            lock (_gate) latest = _latest;
-            var age = DateTimeOffset.UtcNow - latest.SampledAt;
-            if (age >= SamplingInterval)
-            {
-                // A dormant process page has no useful adjacent baseline. Start a fresh one instead
-                // of reporting a long-term average as if it were the current CPU percentage.
-                if (age > SamplingInterval + SamplingInterval)
-                    lock (_gate) _previous = new();
-                await CollectAsync(cancellationToken);
-            }
+            var bytes = Convert.FromBase64String(encoded);
+            return bytes.Length is > 0 and <= 262_144 ? new(bytes, result.ProcessIconContentType) : null;
         }
-        finally { _collectionGate.Release(); }
+        catch (FormatException) { return null; }
     }
 
-    private Task CollectAsync(CancellationToken cancellationToken)
+    private async Task EnsureFreshAsync(SampleCache cache, bool elevated, CancellationToken ct)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var now = DateTimeOffset.UtcNow;
-        Dictionary<ProcessInstanceKey, ProcessSample> previous;
-        lock (_gate) previous = _previous;
-        var next = new Dictionary<ProcessInstanceKey, ProcessSample>();
-        var processes = new List<ProcessInfoDto>();
+        lock (cache.Gate) if (DateTimeOffset.UtcNow - cache.Latest.SampledAt < SamplingInterval) return;
+        await cache.CollectionGate.WaitAsync(ct);
         try
         {
-            foreach (var process in Process.GetProcesses())
+            lock (cache.Gate) if (DateTimeOffset.UtcNow - cache.Latest.SampledAt < SamplingInterval) return;
+            HostProcessSnapshotDto raw;
+            if (elevated)
             {
-                try
+                var result = await privilegedOperations.ExecuteAsync(new(PrivilegedOperationKind.ProcessSnapshot), ct);
+                ct.ThrowIfCancellationRequested();
+                if (!result.Success || result.ProcessSnapshot is not { Items: { Count: > 0 and <= 8192 } } snapshot
+                    || snapshot.SampledAt == DateTimeOffset.MinValue
+                    || snapshot.Items.Any(item => item is null || item.Process is null || item.Process.Id < 0 || item.CpuTicks < 0)
+                    || snapshot.Items.Select(item => item.Process.Id).Distinct().Count() != snapshot.Items.Count)
+                    throw new ProcessSnapshotUnavailableException($"Process snapshot failed: {(result.Success ? PrivilegedProblemCode.InvalidProtocol : result.ProblemCode)}. {result.Error}");
+                raw = snapshot;
+            }
+            else
+            {
+                ct.ThrowIfCancellationRequested();
+                try { raw = HostProcessSnapshotCollector.Capture(IsVisibleOrdinarily); }
+                catch (Exception error) { throw new ProcessSnapshotUnavailableException($"Process snapshot failed: {error.Message}"); }
+            }
+            var next = new Dictionary<ProcessInstanceKey, ProcessSample>();
+            var items = new List<ProcessInfoDto>(raw.Items.Count);
+            foreach (var item in raw.Items)
+            {
+                var key = new ProcessInstanceKey(item.Process.Id, item.Process.StartTime);
+                var cpuPercent = 0d;
+                if (key.StartTime is not null && item.CpuTicks is { } cpu && cache.Previous.TryGetValue(key, out var prior)
+                    && prior.CpuTicks is { } priorCpu)
                 {
-                    if (!IsVisibleToCurrentMode(process.Id)) continue;
-                    var startTime = TryGetStartTime(process);
-                    var key = new ProcessInstanceKey(process.Id, startTime);
-                    var linuxDetails = OperatingSystem.IsLinux()
-                        ? RelaxKonOS.Server.SystemMonitor.LinuxProcessMetadata.ReadDetails(process.Id)
-                        : new RelaxKonOS.Server.SystemMonitor.LinuxProcessDetails(null, 0);
-                    var cpu = TryGetCpu(process);
-                    next[key] = new ProcessSample(cpu, now);
-                    var cpuPercent = 0d;
-                    if (previous.TryGetValue(key, out var prior))
-                    {
-                        var elapsed = (now - prior.At).TotalSeconds;
-                        if (elapsed > 0)
-                            cpuPercent = Math.Clamp((cpu - prior.Cpu).TotalSeconds / (elapsed * Environment.ProcessorCount) * 100, 0, 100);
-                    }
-                    processes.Add(new ProcessInfoDto(process.Id, TryGetName(process), Math.Round(cpuPercent, 1), TryGetMemory(process),
-                        linuxDetails.UserName, startTime, TryGetThreadCount(process, linuxDetails)));
+                    var elapsed = (raw.SampledAt - prior.At).TotalSeconds;
+                    if (elapsed is > 0 and <= 10)
+                        cpuPercent = Math.Clamp((cpu - priorCpu) / (double)TimeSpan.TicksPerSecond / (elapsed * Environment.ProcessorCount) * 100, 0, 100);
                 }
-                catch { /* a terminated/protected single process cannot break the whole snapshot */ }
-                finally { process.Dispose(); }
+                next[key] = new(item.CpuTicks, raw.SampledAt);
+                items.Add(item.Process with { CpuPercent = Math.Round(cpuPercent, 1) });
             }
+            lock (cache.Gate) { cache.Previous = next; cache.Latest = new(items, items.Count, raw.SampledAt); }
         }
-        catch { /* Process.GetProcesses itself can fail under restricted hosts */ }
-        processes.Sort((left, right) => right.MemoryBytes.CompareTo(left.MemoryBytes));
-        lock (_gate)
-        {
-            _previous = next;
-            _latest = new ProcessPageDto(processes, processes.Count, now);
-        }
-        return Task.CompletedTask;
+        finally { cache.CollectionGate.Release(); }
     }
 
-    private static DateTimeOffset? TryGetStartTime(Process process)
+    private bool IsVisibleOrdinarily(int pid)
     {
-        try { return new DateTimeOffset(process.StartTime.ToUniversalTime()); }
-        catch { return null; }
-    }
-
-    private static TimeSpan TryGetCpu(Process process) { try { return process.TotalProcessorTime; } catch { return TimeSpan.Zero; } }
-    private static long TryGetMemory(Process process) { try { return process.WorkingSet64; } catch { return 0; } }
-    private static int TryGetThreadCount(Process process, RelaxKonOS.Server.SystemMonitor.LinuxProcessDetails linuxDetails)
-        => OperatingSystem.IsLinux()
-            ? linuxDetails.ThreadCount
-            : TryGetWindowsThreadCount(process);
-
-    private static int TryGetWindowsThreadCount(Process process) { try { return process.Threads.Count; } catch { return 0; } }
-    private static string TryGetName(Process process) { try { return process.ProcessName; } catch { return $"pid:{process.Id}"; } }
-
-    private bool IsVisibleToCurrentMode(int pid)
-    {
-        if (mode.Mode != ServerMode.User) return true;
+        if (mode.Mode != ServerMode.User || OperatingSystem.IsWindows()) return true;
         if (!OperatingSystem.IsLinux()) return false;
         var uid = RelaxKonOS.Server.SystemMonitor.LinuxProcessMetadata.ReadUid(pid);
         var owner = mode.Describe().ExecutionIdentity.Uid;
         return uid is { } actual && owner >= 0 && actual == (uint)owner;
     }
 
+    private sealed class SampleCache
+    {
+        public object Gate { get; } = new();
+        public SemaphoreSlim CollectionGate { get; } = new(1, 1);
+        public Dictionary<ProcessInstanceKey, ProcessSample> Previous { get; set; } = new();
+        public ProcessPageDto Latest { get; set; } = new([], 0, DateTimeOffset.MinValue);
+    }
     private readonly record struct ProcessInstanceKey(int Id, DateTimeOffset? StartTime);
-    private readonly record struct ProcessSample(TimeSpan Cpu, DateTimeOffset At);
+    private readonly record struct ProcessSample(long? CpuTicks, DateTimeOffset At);
 }
+
+public sealed class ProcessSnapshotUnavailableException(string message) : InvalidOperationException(message);

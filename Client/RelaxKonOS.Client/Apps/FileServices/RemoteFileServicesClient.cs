@@ -29,6 +29,7 @@ public sealed class RemoteFileServicesClient(HttpClient http, IAuthSession sessi
         if (session.State != AuthSessionState.Authenticated || session.EffectiveBaseUrl is null) throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
         using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(session.EffectiveBaseUrl), PrivilegedApiRoutes.Elevation.TrimStart('/')))
         { Content = JsonContent.Create(new HostElevationRequest(HostElevationCapability.SmbManage, "smb:managed", credentials.Password, credentials.Username), options: RelaxKonOSJsonOptions.Default) };
+        AuthenticatedHttpHandler.BindLogin(request, session);
         using var response = await http.SendAsync(request, ct);
         if (!response.IsSuccessStatusCode) throw await CreateApiExceptionAsync(response, ct);
         var elevated = (await response.Content.ReadFromJsonAsync<HostElevationResult>(RelaxKonOSJsonOptions.Default, ct))?.Elevated == true;
@@ -40,6 +41,7 @@ public sealed class RemoteFileServicesClient(HttpClient http, IAuthSession sessi
         if (session.State != AuthSessionState.Authenticated || session.EffectiveBaseUrl is null) throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
         using var request = new HttpRequestMessage(method, new Uri(new Uri(session.EffectiveBaseUrl), route.TrimStart('/')))
         { Content = body is null ? null : JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default) };
+        AuthenticatedHttpHandler.BindLogin(request, session);
         using var response = await http.SendAsync(request, ct);
         if (!response.IsSuccessStatusCode) throw await CreateApiExceptionAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, ct) ?? throw new InvalidOperationException("RelaxKonOS returned an empty response.");

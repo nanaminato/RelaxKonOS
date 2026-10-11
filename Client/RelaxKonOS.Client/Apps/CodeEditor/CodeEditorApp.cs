@@ -6,6 +6,7 @@ using RelaxKonOS.Client.Apps.TextEditor;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services;
+using RelaxKonOS.Client.Services.Dialogs;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
@@ -66,18 +67,42 @@ public sealed class CodeEditorApp : RemoteApplicationBase, IFileOpenApplication
         {
             SaveDefaultEncodingAsync = encoding => encodingSettings?.SetCodeEditorDefaultEncodingAsync(encoding) ?? Task.CompletedTask,
         };
+        if (string.IsNullOrWhiteSpace(path)) viewModel.NewDocumentCommand.Execute(null);
         var view = new CodeEditorView { DataContext = viewModel };
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.codeeditor.display_name"), view,
             bounds: new Rect(140, 80, 920, 640),
             iconGlyph: Manifest.IconGlyph);
+        view.AttachWindowHeader(window);
+        EventHandler<RelaxKonOS.WindowManager.ManagedWindow>? closed = null;
+        closed = (_, closedWindow) =>
+        {
+            if (!ReferenceEquals(closedWindow, window)) return;
+            context.WindowManager.WindowClosed -= closed;
+            viewModel.Dispose();
+        };
+        context.WindowManager.WindowClosed += closed;
         window.KeyDown += (_, e) =>
         {
+            if (!e.Handled && !e.IsRepeat && e.Key == new RemoteKey("Tab")
+                && (e.Modifiers == RemoteKeyModifiers.Control || e.Modifiers == (RemoteKeyModifiers.Control | RemoteKeyModifiers.Shift)))
+            {
+                view.CycleDocument(e.Modifiers.HasFlag(RemoteKeyModifiers.Shift) ? -1 : 1);
+                e.Handled = true;
+                return;
+            }
+            if (!e.Handled && !e.IsRepeat && e.Key == RemoteKey.Letter('F') && e.Modifiers == RemoteKeyModifiers.Control)
+            { view.FocusFind(); e.Handled = true; return; }
             _ = WindowShortcut.TryExecute(e, RemoteKey.Letter('N'), RemoteKeyModifiers.Control, viewModel.NewDocumentCommand)
                 || WindowShortcut.TryExecute(e, RemoteKey.Letter('O'), RemoteKeyModifiers.Control, viewModel.OpenDocumentCommand)
                 || WindowShortcut.TryExecute(e, RemoteKey.Letter('S'), RemoteKeyModifiers.Control, viewModel.SaveCommand)
                 || WindowShortcut.TryExecute(e, RemoteKey.Letter('S'), RemoteKeyModifiers.Control | RemoteKeyModifiers.Shift, viewModel.SaveAsCommand)
                 || WindowShortcut.TryExecute(e, RemoteKey.Letter('W'), RemoteKeyModifiers.Control, viewModel.CloseDocumentCommand);
         };
+        // The window guard covers every open tab, not just the active one, so closing the window
+        // cannot silently drop a background document; a write in flight blocks the close.
+        DraftWindowCloseGuard.Attach(context.WindowManager, window,
+            isBusy: () => viewModel.IsSaving,
+            hasChanges: () => viewModel.HasUnsavedDocuments);
 
         viewModel.RequestFileAsync = () => files is null
             ? Task.FromResult<string?>(null)
@@ -87,6 +112,8 @@ public sealed class CodeEditorApp : RemoteApplicationBase, IFileOpenApplication
                     new ExplorerPickerOptions(ExplorerPickerMode.OpenFile, Filters: [
                         new ExplorerFileFilter(LocalizedText.Get("code_editor.source_file_filter"), SupportedExtensions.Select(extension => $"*{extension}")
                             .Concat(SupportedFileNames).ToArray()),
+                        new ExplorerFileFilter(LocalizedText.Get("code_editor.preview.image_filter"), ImageViewer.ImageViewerApp.SupportedExtensions.Select(extension => $"*{extension}").ToArray()),
+                        new ExplorerFileFilter(LocalizedText.Get("code_editor.preview.all_files"), ["*"]),
                     ]),
                     paths => dialog.Close(paths[0]), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "CodeEditor.open-file")
                 {

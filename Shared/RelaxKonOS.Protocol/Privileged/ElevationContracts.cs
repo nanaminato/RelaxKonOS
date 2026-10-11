@@ -38,6 +38,7 @@ public enum HostElevationCapability
     HostIdentityChange,
     HostEnvironmentRead,
     HostEnvironmentChange,
+    ProcessManage,
 }
 
 /// <summary>Authenticated request for one non-file host capability and exact managed resource.</summary>

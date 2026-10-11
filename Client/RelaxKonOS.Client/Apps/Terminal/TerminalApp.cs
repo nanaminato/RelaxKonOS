@@ -1,5 +1,6 @@
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Diagnostics;
+using RelaxKonOS.Client.Services.Dialogs;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Client.Localization;
 using Microsoft.Extensions.DependencyInjection;
@@ -154,5 +155,13 @@ public sealed class TerminalApp : RemoteApplicationBase, IOpenTerminalApplicatio
                 return new TerminalSettingsView { DataContext = viewModel };
             }, new Size(460, 330));
         };
+        // Closing a terminal window kills its server process. Ask first when a session is live;
+        // logout and desktop teardown bypass this guard and leave the PTY restorable.
+        DraftWindowCloseGuard.Attach(context.WindowManager, window,
+            isBusy: () => false,
+            hasChanges: () => viewModel.HasLiveSession,
+            title: LocalizedText.Get("terminal.close_active.title"),
+            message: LocalizedText.Get("terminal.close_active.message"),
+            confirmLabel: LocalizedText.Get("terminal.close_active.confirm"));
     }
 }

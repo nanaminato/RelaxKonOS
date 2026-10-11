@@ -84,27 +84,36 @@ public static class ExplorerIconAssetResolver
         _ => "file-folder"
     };
 
-    private static string ForGeneralEntry(FileSystemEntryType type, string normalizedName)
+    /// <summary>
+    /// The artwork for a category the caller already decided on — for surfaces that hold a
+    /// classified entry rather than a file-system entry, such as an editor tab whose document may
+    /// never have been written anywhere.
+    /// </summary>
+    public static string ForKind(ExplorerFileIconKind kind) => kind switch
     {
-        var kind = ExplorerFileIconKindResolver.ForEntry(type, normalizedName);
-        return kind switch
-        {
-            ExplorerFileIconKind.Folder => "file-folder",
-            ExplorerFileIconKind.Document => "file-document",
-            ExplorerFileIconKind.Spreadsheet => "file-spreadsheet",
-            ExplorerFileIconKind.Presentation => "file-presentation",
-            ExplorerFileIconKind.Pdf => "file-pdf",
-            ExplorerFileIconKind.Image => "file-image",
-            ExplorerFileIconKind.Audio => "file-audio",
-            ExplorerFileIconKind.Video => "file-video",
-            ExplorerFileIconKind.Archive => "file-archive",
-            ExplorerFileIconKind.Data => "file-config",
-            ExplorerFileIconKind.Database => "file-database",
-            ExplorerFileIconKind.Application => "file-application",
-            ExplorerFileIconKind.DiskImage => "file-disk-image",
-            ExplorerFileIconKind.Font => "file-font",
-            ExplorerFileIconKind.Code => "file-code-generic",
-            _ => "file-generic"
-        };
-    }
+        ExplorerFileIconKind.Drive => "navigation-drive",
+        ExplorerFileIconKind.Folder => "file-folder",
+        ExplorerFileIconKind.Home => "navigation-home",
+        ExplorerFileIconKind.Desktop => "navigation-desktop",
+        ExplorerFileIconKind.Downloads => "file-folder",
+        ExplorerFileIconKind.Network => "navigation-network",
+        ExplorerFileIconKind.Document => "file-document",
+        ExplorerFileIconKind.Spreadsheet => "file-spreadsheet",
+        ExplorerFileIconKind.Presentation => "file-presentation",
+        ExplorerFileIconKind.Pdf => "file-pdf",
+        ExplorerFileIconKind.Image => "file-image",
+        ExplorerFileIconKind.Audio => "file-audio",
+        ExplorerFileIconKind.Video => "file-video",
+        ExplorerFileIconKind.Archive => "file-archive",
+        ExplorerFileIconKind.Data => "file-config",
+        ExplorerFileIconKind.Database => "file-database",
+        ExplorerFileIconKind.Application => "file-application",
+        ExplorerFileIconKind.DiskImage => "file-disk-image",
+        ExplorerFileIconKind.Font => "file-font",
+        ExplorerFileIconKind.Code => "file-code-generic",
+        _ => "file-generic"
+    };
+
+    private static string ForGeneralEntry(FileSystemEntryType type, string normalizedName) =>
+        ForKind(ExplorerFileIconKindResolver.ForEntry(type, normalizedName));
 }

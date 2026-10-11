@@ -8,6 +8,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.relaxkonos.mobile.core.auth.AuthSession
 import app.relaxkonos.mobile.data.SystemRepository
+import app.relaxkonos.mobile.data.ElevationRepository
+import app.relaxkonos.mobile.data.ElevationAnswerProvider
 import app.relaxkonos.mobile.data.RecentOperationJournal
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.ApiResult
@@ -27,7 +29,8 @@ import app.relaxkonos.mobile.core.auth.SessionState
  * The performance page owns its separate foreground read subscription.
  */
 class ManageViewModel(private val session: AuthSession, private val system: SystemRepository,
-    private val recentOperations: RecentOperationJournal) : ViewModel() {
+    private val recentOperations: RecentOperationJournal, private val elevations: ElevationRepository,
+    private val elevationAnswers: ElevationAnswerProvider) : ViewModel() {
     suspend fun observeProcesses() {
         try {
             startProcessObserving()
@@ -45,6 +48,8 @@ class ManageViewModel(private val session: AuthSession, private val system: Syst
     private var processObserving = false
     private var appliedFilter: String? = null
     private var killOwner: SessionState.Active? = null
+    var processAdministratorMode by mutableStateOf(false)
+        private set
     var killMessage by mutableStateOf<UiMessage?>(null)
         private set
     private fun current(active: SessionState.Active) = owner === active && session.state.value === active
@@ -98,6 +103,7 @@ class ManageViewModel(private val session: AuthSession, private val system: Syst
         val active = value as? SessionState.Active
         if (owner !== active) {
             stopProcessObserving(); killJob?.cancel(); owner = active
+            processAdministratorMode = false
             processSelected = null; appliedFilter = null; processSampledAt = null; processSort = ProcessSort.Cpu; processDescending = true; processItems = emptyList(); processTotalCount = 0; processPage = 1; processFilter = ""
             processesLoading = false; processMessage = null
             killTarget = null; killOwner = null; killMessage = null
@@ -134,6 +140,32 @@ class ManageViewModel(private val session: AuthSession, private val system: Syst
         processSelected = null; processItems = emptyList(); processTotalCount = 0; processSampledAt = null; processPage = 1; cancelKill()
     }
     fun startProcessObserving() { processObserving = true; loadProcesses() }
+    fun toggleProcessMode() {
+        val active = owner ?: return
+        if (!current(active) || processesLoading || killJob?.isActive == true) return
+        if (processAdministratorMode) {
+            processAdministratorMode = false; clearProcessQuery(); loadProcesses(1); return
+        }
+        processesLoading = true
+        processJob = viewModelScope.launch {
+            var switched = false
+            try {
+                val outcome = elevations.elevateHost("ProcessManage", "host/processes",
+                    elevationAnswers, tryAutomatic = true)
+                if (!current(active)) return@launch
+                when (outcome) {
+                    is app.relaxkonos.mobile.data.ElevationOutcome.Granted -> {
+                        processAdministratorMode = true; clearProcessQuery(); switched = true
+                    }
+                    is app.relaxkonos.mobile.data.ElevationOutcome.Rejected ->
+                        processMessage = ApiResult.Problem(403, outcome.code, null).failureMessage()
+                    is app.relaxkonos.mobile.data.ElevationOutcome.Transport ->
+                        processMessage = ApiResult.Transport(outcome.detail).failureMessage()
+                    app.relaxkonos.mobile.data.ElevationOutcome.Cancelled -> Unit
+                }
+            } finally { if (current(active)) { processesLoading = false; if (switched) loadProcesses(1) } }
+        }
+    }
     fun stopProcessObserving() {
         processObserving = false
         processGeneration++; processJob?.cancel(); processJob = null
@@ -150,7 +182,7 @@ class ManageViewModel(private val session: AuthSession, private val system: Syst
         processJob = viewModelScope.launch {
             var reload = false
             try {
-                val result = system.processes(active, requestedPage, PAGE_SIZE, filter, sort, descending)
+                val result = system.processes(active, requestedPage, PAGE_SIZE, filter, sort, descending, processAdministratorMode)
                 if (!current(active) || generation != processGeneration) return@launch
                 when (result) { is ApiResult.Success -> {
                     processPage = minOf(requestedPage, (result.value.totalCount - 1).coerceAtLeast(0) / PAGE_SIZE + 1)
@@ -188,7 +220,7 @@ class ManageViewModel(private val session: AuthSession, private val system: Syst
         killJob = viewModelScope.launch {
             var refresh = false
             try {
-                val result = system.killProcess(active, target.pid, startTime)
+                val result = system.killProcess(active, target.pid, startTime, processAdministratorMode)
                 if (!current(active)) return@launch
                 when (result) {
                     is ApiResult.Success -> {

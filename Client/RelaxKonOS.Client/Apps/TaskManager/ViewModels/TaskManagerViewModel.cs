@@ -1,10 +1,15 @@
 using System.Collections.ObjectModel;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Svg;
 using Avalonia.Threading;
 using RelaxKonOS.Client.Localization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Protocol.SystemMonitor;
+using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Client.Services.Privileged;
+using RelaxKonOS.Client.Services.Auth;
 
 namespace RelaxKonOS.Client.Apps.TaskManager.ViewModels;
 
@@ -15,14 +20,27 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
     private readonly PerformanceStream _stream;
     private readonly DispatcherTimer _processTimer;
     private List<ProcessInfoDto> _allProcesses = [];
+    private readonly Dictionary<(int Id, DateTimeOffset? StartTime), ProcessTreeItemViewModel> _processRows = [];
     private int _refreshingProcesses;
+    private bool _rebuildingProcessRows;
     private long _lastSequence;
     private int _disposed;
+    private readonly IHostElevationBroker _elevation;
+    private readonly IAuthSession _session;
+    private int _processModeGeneration;
+    private Guid? _processSessionId;
+    private string? _processServiceId;
+    private bool _switchingProcessMode;
 
-    public TaskManagerViewModel(ITaskManagerClient client, PerformanceStream stream)
+    public TaskManagerViewModel(ITaskManagerClient client, PerformanceStream stream, IHostElevationBroker elevation, IAuthSession session)
     {
         _client = client;
         _stream = stream;
+        _elevation = elevation;
+        _session = session;
+        _processSessionId = session.CurrentSession?.Id;
+        _processServiceId = session.ServiceId;
+        _session.StateChanged += OnAuthSessionChanged;
         _stream.SnapshotReceived += OnSnapshotReceived;
         _stream.Reconnected += OnStreamReconnected;
         _stream.Disconnected += OnStreamDisconnected;
@@ -32,12 +50,12 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
         PerformanceItems = [];
     }
 
-    public ObservableCollection<ProcessInfoDto> FilteredProcesses { get; }
+    public ObservableCollection<ProcessTreeItemViewModel> FilteredProcesses { get; }
     public ObservableCollection<PerformanceResourceItem> PerformanceItems { get; }
 
     [ObservableProperty] private PerformanceInfoDto? _info;
     [ObservableProperty] private PerformanceRealtimeSnapshotDto? _snapshot;
-    [ObservableProperty] private ProcessInfoDto? _selectedProcess;
+    [ObservableProperty] private ProcessTreeItemViewModel? _selectedProcess;
     [ObservableProperty] private PerformanceResourceItem? _selectedPerformanceItem;
     [ObservableProperty] private bool _isAutoRefresh = true;
     [ObservableProperty] private bool _isLoading;
@@ -47,6 +65,44 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
     [ObservableProperty] private TaskManagerTab _activeTab = TaskManagerTab.Performance;
     [ObservableProperty] private string _processFilter = string.Empty;
     [ObservableProperty] private int _processTotalCount;
+    [ObservableProperty] private bool _isAdministratorMode;
+
+    public string ProcessModeLabel => LocalizedText.Get(IsAdministratorMode
+        ? "task_manager.process.normal_mode" : "task_manager.process.administrator_mode");
+    partial void OnIsAdministratorModeChanged(bool value) => OnPropertyChanged(nameof(ProcessModeLabel));
+
+    [RelayCommand]
+    private async Task ToggleProcessModeAsync()
+    {
+        if (IsLoading || KillProcessCommand.IsRunning) return;
+        var owner = _session.CurrentSession?.Id;
+        var service = _session.ServiceId;
+        var nextMode = !IsAdministratorMode;
+        _switchingProcessMode = true;
+        IsLoading = true;
+        try
+        {
+            // Probe a read, never a termination. The broker first asks for passwordless
+            // authorization; only the server's password-required response opens a prompt.
+            if (nextMode)
+                await _elevation.ExecuteAsync(HostElevationCapability.ProcessManage, "host/processes",
+                    () => _client.QueryProcessesAsync(pageSize: 1, elevated: true));
+            if (_disposed != 0 || owner != _session.CurrentSession?.Id || service != _session.ServiceId) return;
+            IsAdministratorMode = nextMode;
+            _processModeGeneration++;
+            foreach (var row in _processRows.Values) { row.ExpandedStateChanged -= OnProcessExpandedStateChanged; row.Dispose(); }
+            _processRows.Clear(); _allProcesses.Clear(); FilteredProcesses.Clear(); SelectedProcess = null;
+            ProcessTotalCount = 0; KillFeedback = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            if (_disposed == 0 && owner == _session.CurrentSession?.Id && service == _session.ServiceId)
+                StatusText = LocalizedText.Ref("task_manager.status.collect_failed", ex.Message);
+            return;
+        }
+        finally { _switchingProcessMode = false; IsLoading = false; }
+        await RefreshProcessesAsync();
+    }
 
     public async Task StartAsync()
     {
@@ -65,9 +121,12 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         _processTimer.Stop();
+        _session.StateChanged -= OnAuthSessionChanged;
         _stream.SnapshotReceived -= OnSnapshotReceived;
         _stream.Reconnected -= OnStreamReconnected;
         _stream.Disconnected -= OnStreamDisconnected;
+        foreach (var row in _processRows.Values) row.Dispose();
+        _processRows.Clear();
         await _stream.DisposeAsync();
     }
 
@@ -80,18 +139,25 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
     [RelayCommand(CanExecute = nameof(CanKill))]
     private async Task KillProcessAsync()
     {
-        var process = SelectedProcess;
+        var process = SelectedProcess?.Process;
         if (process?.StartTime is null) return;
+        var owner = _session.CurrentSession?.Id;
+        var service = _session.ServiceId;
         KillFeedback = LocalizedText.Format("task_manager.process.terminating", process.Name, process.Id);
         try
         {
-            var result = await _client.KillProcessAsync(process.Id, process.StartTime.Value);
+            var result = await _client.KillProcessAsync(process.Id, process.StartTime.Value, IsAdministratorMode);
+            if (_disposed != 0 || owner != _session.CurrentSession?.Id || service != _session.ServiceId) return;
             if (result.Success) { KillFeedback = LocalizedText.Format("task_manager.process.terminated", process.Name, process.Id); SelectedProcess = null; }
             else if (result.RequiresElevation) KillFeedback = LocalizedText.Format("task_manager.process.elevation_required", process.Name, process.Id, TerminationProblem(result));
             else KillFeedback = LocalizedText.Format("task_manager.process.termination_failed", TerminationProblem(result));
             await RefreshProcessesAsync();
         }
-        catch (Exception ex) { KillFeedback = LocalizedText.Format("task_manager.process.termination_failed", ex.Message); }
+        catch (Exception ex)
+        {
+            if (_disposed == 0 && owner == _session.CurrentSession?.Id && service == _session.ServiceId)
+                KillFeedback = LocalizedText.Format("task_manager.process.termination_failed", ex.Message);
+        }
     }
 
     private static string TerminationProblem(KillProcessResultDto result) => LocalizedText.Get(result.ProblemCode switch
@@ -101,8 +167,9 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
         "process.termination_unverified" => "task_manager.termination.unverified",
         _ => "task_manager.termination.failed",
     });
-    private bool CanKill => SelectedProcess?.StartTime is not null;
-    partial void OnSelectedProcessChanged(ProcessInfoDto? value) => KillProcessCommand.NotifyCanExecuteChanged();
+    private bool CanKill => !IsLoading && SelectedProcess?.Process.StartTime is not null;
+    partial void OnIsLoadingChanged(bool value) => KillProcessCommand.NotifyCanExecuteChanged();
+    partial void OnSelectedProcessChanged(ProcessTreeItemViewModel? value) => KillProcessCommand.NotifyCanExecuteChanged();
     [RelayCommand] private void SwitchToPerformance() => ActiveTab = TaskManagerTab.Performance;
     [RelayCommand] private void SwitchToProcesses() => ActiveTab = TaskManagerTab.Processes;
     [RelayCommand] private void ClearFilter() => ProcessFilter = string.Empty;
@@ -152,18 +219,59 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
 
     private async Task RefreshProcessesAsync()
     {
+        if (_switchingProcessMode) return;
         if (Interlocked.CompareExchange(ref _refreshingProcesses, 1, 0) != 0) return;
         IsLoading = true;
+        var generation = _processModeGeneration;
+        var owner = _session.CurrentSession?.Id;
+        var service = _session.ServiceId;
         try
         {
-            var page = await _client.QueryProcessesAsync(filter: string.IsNullOrWhiteSpace(ProcessFilter) ? null : ProcessFilter, sort: "memory");
+            var page = await QueryAllProcessesAsync();
+            if (_disposed != 0 || generation != _processModeGeneration || owner != _session.CurrentSession?.Id || service != _session.ServiceId) return;
             ProcessTotalCount = page.TotalCount;
             _allProcesses = page.Items.ToList();
             RebuildFilteredProcesses(SelectedProcess);
-            StatusText = LocalizedText.Ref("task_manager.status.updated", page.SampledAt.LocalDateTime, Snapshot?.Cpu.TotalPercent ?? 0, page.TotalCount);
+            StatusText = LocalizedText.Ref("task_manager.status.updated", page.SampledAt.LocalDateTime, Snapshot?.Cpu.TotalPercent ?? 0, ProcessTotalCount);
         }
         catch (Exception ex) { StatusText = LocalizedText.Ref("task_manager.status.collect_failed", ex.Message); }
         finally { IsLoading = false; Interlocked.Exchange(ref _refreshingProcesses, 0); }
+    }
+
+    private async Task<ProcessPageDto> QueryAllProcessesAsync()
+    {
+        const int pageSize = 500;
+        var elevated = IsAdministratorMode;
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var first = await _client.QueryProcessesAsync(page: 1, pageSize: pageSize, sort: "memory", elevated: elevated);
+            if (first.TotalCount <= first.Items.Count) return first;
+            var pageCount = (first.TotalCount + pageSize - 1) / pageSize;
+            var remaining = await Task.WhenAll(Enumerable.Range(2, pageCount - 1)
+                .Select(page => _client.QueryProcessesAsync(page: page, pageSize: pageSize, sort: "memory", elevated: elevated)));
+            var items = first.Items.Concat(remaining.SelectMany(page => page.Items)).ToArray();
+            if (remaining.All(page => page.SampledAt == first.SampledAt && page.TotalCount == first.TotalCount)
+                && items.Length == first.TotalCount && items.Select(item => item.Id).Distinct().Count() == items.Length)
+                return first with { Items = items };
+        }
+        throw new InvalidOperationException("Process snapshot changed during pagination; refresh to retry.");
+    }
+
+    public async Task LoadProcessIconAsync(ProcessTreeItemViewModel row)
+    {
+        if (row.IsIconLoaded || row.IsDisposed) return;
+        row.IsIconLoaded = true;
+        if (row.Process.StartTime is not { } startTime) return;
+        try
+        {
+            var icon = await _client.GetProcessIconAsync(row.Process.Id, startTime, IsAdministratorMode);
+            if (row.IsDisposed || icon is null || icon.Value.Data.Length == 0) return;
+            using var stream = new MemoryStream(icon.Value.Data, writable: false);
+            row.IconImage = icon.Value.ContentType == "image/svg+xml"
+                ? new SvgImage { Source = SvgSource.Load(stream) }
+                : new Bitmap(stream);
+        }
+        catch { /* The row keeps its category glyph when the host has no matching icon. */ }
     }
 
     private void OnSnapshotReceived(PerformanceRealtimeSnapshotDto snapshot) => Dispatcher.UIThread.Post(() => ApplySnapshot(snapshot, false));
@@ -252,14 +360,121 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
         }
     }
 
-    private void RebuildFilteredProcesses(ProcessInfoDto? selected)
+    private void RebuildFilteredProcesses(ProcessTreeItemViewModel? selected)
     {
-        var filter = ProcessFilter.Trim();
-        var source = string.IsNullOrWhiteSpace(filter) ? _allProcesses : _allProcesses.Where(p => p.Name.Contains(filter, StringComparison.OrdinalIgnoreCase) || p.Id.ToString().Contains(filter, StringComparison.OrdinalIgnoreCase) || (p.UserName?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false));
-        FilteredProcesses.Clear();
-        foreach (var process in source) FilteredProcesses.Add(process);
-        SelectedProcess = selected is null ? null : FilteredProcesses.FirstOrDefault(p => p.Id == selected.Id && p.StartTime == selected.StartTime);
+        if (_rebuildingProcessRows) return;
+        _rebuildingProcessRows = true;
+        try
+        {
+            (int Id, DateTimeOffset? StartTime)? selectedKey = selected is null
+                ? null : (selected.Process.Id, selected.Process.StartTime);
+            var nextKeys = _allProcesses.Select(process => (process.Id, process.StartTime)).ToHashSet();
+            foreach (var stale in _processRows.Keys.Where(key => !nextKeys.Contains(key)).ToArray())
+            {
+                var old = _processRows[stale];
+                old.ExpandedStateChanged -= OnProcessExpandedStateChanged;
+                old.Dispose();
+                _processRows.Remove(stale);
+            }
+
+            var rows = new List<ProcessTreeItemViewModel>(_allProcesses.Count);
+            var byId = new Dictionary<int, ProcessTreeItemViewModel>();
+            foreach (var process in _allProcesses)
+            {
+                var key = (process.Id, process.StartTime);
+                if (!_processRows.TryGetValue(key, out var row))
+                {
+                    row = new ProcessTreeItemViewModel(process);
+                    row.ExpandedStateChanged += OnProcessExpandedStateChanged;
+                    _processRows.Add(key, row);
+                }
+                else row.Update(process, row.Depth, row.HasChildren);
+                rows.Add(row);
+                byId[process.Id] = row;
+            }
+
+            var parentIds = new Dictionary<int, int>();
+            var children = rows.ToDictionary(row => row.Process.Id, _ => new List<ProcessTreeItemViewModel>());
+            var roots = new List<ProcessTreeItemViewModel>();
+            foreach (var row in rows)
+            {
+                var process = row.Process;
+                if (process.ParentProcessId is { } parentId && parentId != process.Id && byId.TryGetValue(parentId, out var parent)
+                    && (parent.Process.StartTime is null || process.StartTime is null || parent.Process.StartTime <= process.StartTime))
+                {
+                    parentIds[process.Id] = parentId;
+                    children[parentId].Add(row);
+                }
+                else roots.Add(row);
+            }
+            foreach (var row in rows) row.Update(row.Process, row.Depth, children[row.Process.Id].Count > 0);
+
+            var filter = ProcessFilter.Trim();
+            bool Matches(ProcessInfoDto process) => string.IsNullOrWhiteSpace(filter)
+                || process.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)
+                || process.Id.ToString().Contains(filter, StringComparison.OrdinalIgnoreCase)
+                || (process.UserName?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false);
+            ProcessTotalCount = rows.Count(row => Matches(row.Process));
+
+            var included = new HashSet<int>();
+            if (string.IsNullOrWhiteSpace(filter)) included.UnionWith(byId.Keys);
+            else
+            {
+                foreach (var row in rows.Where(row => Matches(row.Process)))
+                {
+                    var id = row.Process.Id;
+                    while (included.Add(id) && parentIds.TryGetValue(id, out var parentId)) id = parentId;
+                }
+            }
+
+            FilteredProcesses.Clear();
+            var visited = new HashSet<int>();
+            void AddVisible(ProcessTreeItemViewModel row, int depth)
+            {
+                var id = row.Process.Id;
+                if (!included.Contains(id) || !visited.Add(id)) return;
+                row.Update(row.Process, depth, children[id].Count > 0);
+                var hasIncludedChild = children[id].Any(child => included.Contains(child.Process.Id));
+                if (!string.IsNullOrWhiteSpace(filter) && hasIncludedChild) row.IsExpanded = true;
+                FilteredProcesses.Add(row);
+                if (row.IsExpanded)
+                    foreach (var child in children[id]) AddVisible(child, depth + 1);
+            }
+
+            var reachable = new HashSet<int>();
+            void MarkSubtree(ProcessTreeItemViewModel root)
+            {
+                var pending = new Stack<ProcessTreeItemViewModel>();
+                pending.Push(root);
+                while (pending.TryPop(out var row))
+                    if (reachable.Add(row.Process.Id))
+                        foreach (var child in children[row.Process.Id]) pending.Push(child);
+            }
+            foreach (var root in roots) { MarkSubtree(root); AddVisible(root, 0); }
+            // Only disconnected cycles need a synthetic root. Collapsed descendants already
+            // belong to a root and must remain hidden.
+            foreach (var row in rows)
+                if (!reachable.Contains(row.Process.Id)) { MarkSubtree(row); AddVisible(row, 0); }
+            SelectedProcess = selectedKey is { } identity
+                ? FilteredProcesses.FirstOrDefault(row => row.Process.Id == identity.Id && row.Process.StartTime == identity.StartTime)
+                : null;
+        }
+        finally { _rebuildingProcessRows = false; }
     }
+
+    private void OnProcessExpandedStateChanged(object? sender, EventArgs e) => RebuildFilteredProcesses(SelectedProcess);
+
+    private void OnAuthSessionChanged(object? sender, AuthSessionStateChangedEventArgs args) => Dispatcher.UIThread.Post(() =>
+    {
+        if (_disposed != 0) return;
+        if (_session.State == AuthSessionState.Authenticated && _processSessionId == _session.CurrentSession?.Id
+            && _processServiceId == _session.ServiceId) return;
+        _processSessionId = _session.CurrentSession?.Id; _processServiceId = _session.ServiceId;
+        IsAdministratorMode = false; _processModeGeneration++;
+        foreach (var row in _processRows.Values) { row.ExpandedStateChanged -= OnProcessExpandedStateChanged; row.Dispose(); }
+        _processRows.Clear(); _allProcesses.Clear(); FilteredProcesses.Clear(); SelectedProcess = null;
+        ProcessTotalCount = 0; KillFeedback = string.Empty;
+    });
 
     private static string FormatBytes(long? bytes) => bytes is null or < 0 ? "—" : Converters.BytesConverter.FormatBytes(bytes.Value);
     private static string FormatRate(long bytes) => Converters.BytesConverter.FormatBytes(bytes) + LocalizedText.Get("task_manager.metric.per_second");

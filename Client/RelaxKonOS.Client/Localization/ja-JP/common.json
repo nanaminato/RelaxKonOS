@@ -3,6 +3,9 @@
     "DisplayName": "日本語",
     "SortOrder": 0,
     "Strings": {
+        "common.discard_title": "変更を破棄しますか？",
+        "common.discard_message": "未保存の変更を破棄してエディターを閉じますか？",
+        "common.discard": "破棄",
         "common.apply": "適用",
         "common.operation_running": "実行中",
         "common.operation_log": "操作ログ",

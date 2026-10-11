@@ -11,6 +11,8 @@ using RelaxKonOS.Client.Apps.Settings.Views;
 using RelaxKonOS.Client.Apps.Settings.Views.Pages;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Client.Services.HostSettings;
+using RelaxKonOS.Protocol.Settings;
 
 internal static class SettingsInteractionChecks
 {
@@ -87,7 +89,86 @@ internal static class SettingsInteractionChecks
         window.Close();
         settings.Language = original;
         Dispatcher.UIThread.RunJobs();
+        CheckConfirmedHostTimeStaysOffPage(settings, localization, session, output);
+        CheckConfirmedHostNameStaysOffPage(settings, localization, session, output);
         Console.WriteLine("PASS: Settings real targets, scrolling, keyboard focus, disabled/hidden controls and three languages. Headless page screenshots saved.");
+    }
+
+    /// <summary>A confirmed host time-zone write must not add a completion card or any success text to the page.</summary>
+    private static void CheckConfirmedHostTimeStaysOffPage(ShellSettings settings, LocalizationService localization,
+        IAuthSession session, string output)
+    {
+        var service = DispatchProxy.Create<IHostTimeService, TimeCompletionServiceStub>();
+        var stub = (TimeCompletionServiceStub)service;
+        using var hostTime = new HostTimeEditorViewModel(service, session, localization);
+        hostTime.RequestAuthorizationAsync = _ => Task.FromResult(true);
+        hostTime.ReloadCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        hostTime.SelectedZone = "UTC";
+        var applying = hostTime.ApplyCommand.ExecuteAsync(null);
+        stub.Pending.SetResult(stub.Result(SettingsOperationState.Applied, "r2"));
+        applying.GetAwaiter().GetResult();
+        Check(hostTime.IsCompleted, "Host time-zone apply did not reach the confirmed state.");
+        var page = new TimeLanguagePageView { DataContext = new TimeLanguagePageViewModel(settings, localization, null, hostTime) };
+        var scroll = new ScrollViewer { Content = page, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
+        var completionWindow = new Window { Content = scroll, Width = 1024, Height = 768 };
+        completionWindow.Show();
+        Dispatcher.UIThread.RunJobs();
+        var confirmed = localization.Get("settings.host_time.applied", "missing");
+        Check(confirmed != "missing", "Missing translated host time completion text.");
+        Check(!page.GetVisualDescendants().OfType<TextBlock>().Any(block => block.IsVisible && block.Text == confirmed),
+            "Confirmed host time-zone success rendered completion text on the page.");
+        Check(page.GetVisualDescendants().OfType<TextBlock>().Any(block => block.IsVisible && block.Text == hostTime.CurrentZoneLabel),
+            "Confirmed host time-zone value is no longer visible on the page.");
+        using (var screenshot = new RenderTargetBitmap(new PixelSize(1024, 768)))
+        {
+            screenshot.Render(scroll);
+            screenshot.Save(Path.Combine(output, "time-language-confirmed-1024x768.png"), PngBitmapEncoderOptions.Default);
+        }
+        completionWindow.Close();
+    }
+
+    /// <summary>A confirmed host rename must not add a completion card; a staged rename keeps only its restart notice.</summary>
+    private static void CheckConfirmedHostNameStaysOffPage(ShellSettings settings, LocalizationService localization,
+        IAuthSession session, string output)
+    {
+        foreach (var effective in new[] { SettingsEffectiveState.Immediate, SettingsEffectiveState.HostRestart })
+        {
+            var service = DispatchProxy.Create<IHostIdentityService, IdentityCompletionServiceStub>();
+            var stub = (IdentityCompletionServiceStub)service;
+            stub.Effective = effective;
+            using var hostIdentity = new HostIdentityEditorViewModel(service, session, localization);
+            hostIdentity.RequestAuthorizationAsync = _ => Task.FromResult(true);
+            hostIdentity.ReloadCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+            hostIdentity.DraftName = "new-host";
+            var applying = hostIdentity.ApplyCommand.ExecuteAsync(null);
+            stub.Pending.SetResult(stub.Result(SettingsOperationState.Applied, "r2"));
+            applying.GetAwaiter().GetResult();
+            Check(hostIdentity.IsCompleted, "Host name apply did not reach the confirmed state.");
+            var page = new SystemPageView
+            {
+                DataContext = new SystemPageViewModel(settings, session, null, hostIdentity),
+            };
+            var scroll = new ScrollViewer { Content = page, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
+            var window = new Window { Content = scroll, Width = 1024, Height = 900 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            var staged = effective == SettingsEffectiveState.HostRestart;
+            var confirmed = localization.Get(staged ? "settings.hostname.applied_pending" : "settings.hostname.applied", "missing");
+            Check(confirmed != "missing", "Missing translated host name completion text.");
+            var visible = page.GetVisualDescendants().OfType<TextBlock>()
+                .Where(block => block.IsVisible).Select(block => block.Text).ToArray();
+            Check(!visible.Contains(confirmed), "Confirmed host name success rendered completion text on the page.");
+            Check(visible.Contains(hostIdentity.PendingHostName), "Confirmed host name value is no longer visible on the page.");
+            Check(!staged || visible.Contains(localization.Get("settings.hostname.restart_pending", "missing")),
+                "A staged rename must keep its restart notice on the page.");
+            if (staged)
+            {
+                using var screenshot = new RenderTargetBitmap(new PixelSize(1024, 900));
+                screenshot.Render(scroll);
+                screenshot.Save(Path.Combine(output, "system-hostname-confirmed-1024x900.png"), PngBitmapEncoderOptions.Default);
+            }
+            window.Close();
+        }
     }
     private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
 }

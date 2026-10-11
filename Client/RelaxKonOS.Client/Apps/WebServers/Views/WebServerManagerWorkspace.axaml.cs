@@ -6,16 +6,23 @@ namespace RelaxKonOS.Client.Apps.WebServers.Views;
 /// <summary>Web Server Manager shell. Layout lives in AXAML; this class only switches pages.</summary>
 internal partial class WebServerManagerWorkspace : UserControl
 {
+    public void AttachWindowHeader(RelaxKonOS.WindowManager.ManagedWindow window)
+    {
+        Header.DataContext = DataContext;
+        Header.Attach(window);
+    }
+
     private Button? _selectedButton;
 
     private WebServerManagerWorkspace(WebServerManagerViewModel viewModel)
     {
         InitializeComponent();
+        RelaxKonOS.Client.Controls.CompactWorkspaceNavigation.Install(this, WorkspaceBody);
         DataContext = viewModel;
         ShowPage("instances", InstancesPageButton);
     }
 
-    public static Control Create(WebServerManagerViewModel viewModel) => new WebServerManagerWorkspace(viewModel);
+    public static WebServerManagerWorkspace Create(WebServerManagerViewModel viewModel) => new WebServerManagerWorkspace(viewModel);
 
     private void NavigationButton_Click(object? sender, RoutedEventArgs e)
     {

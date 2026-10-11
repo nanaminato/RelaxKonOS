@@ -9,13 +9,6 @@
              x:DataType="vm:TaskManagerViewModel"
              Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
 
-    <UserControl.Resources>
-        <ControlTheme x:Key="TabButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Padding" Value="16,7" />
-            <Setter Property="MinWidth" Value="0" />
-            <Setter Property="BorderThickness" Value="0" />
-        </ControlTheme>
-    </UserControl.Resources>
     <UserControl.Styles>
         <Style Selector="ListBox.performance-nav">
             <Setter Property="Background" Value="Transparent" />
@@ -36,21 +29,41 @@
     </UserControl.Styles>
 
     <DockPanel LastChildFill="True">
-        <Border DockPanel.Dock="Top" Classes="app-toolbar">
-            <Grid ColumnDefinitions="Auto,Auto,*,Auto" VerticalAlignment="Center">
-                <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,8,0">
-                    <Button Content="{loc:Loc task_manager.performance}" Theme="{StaticResource TabButton}" Command="{Binding SwitchToPerformanceCommand}" Background="{Binding ActiveTab, Converter={x:Static conv:TabBgConverter.Instance}, ConverterParameter=Performance}" />
-                    <Button Content="{loc:Loc task_manager.processes}" Theme="{StaticResource TabButton}" Command="{Binding SwitchToProcessesCommand}" Background="{Binding ActiveTab, Converter={x:Static conv:TabBgConverter.Instance}, ConverterParameter=Processes}" />
-                </StackPanel>
-                <Button Grid.Column="1" Content="{loc:Loc common.refresh}" Command="{Binding RefreshCommand}" Padding="12,5" ToolTip.Tip="F5" />
-                <StackPanel Grid.Column="2" Margin="12,0,0,0" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding ConnectionStatus}" FontSize="12" Opacity="0.8" TextTrimming="CharacterEllipsis" />
-                    <TextBlock Text="{Binding StatusText}" FontSize="11" Opacity="0.55" TextTrimming="CharacterEllipsis" />
-                </StackPanel>
+        <Grid x:Name="HeaderHost" DockPanel.Dock="Top" Height="0" IsVisible="False" ColumnDefinitions="Auto,*">
+            <Image x:Name="HeaderLeading" Width="20" Height="20" Source="avares://RelaxKonOS.Client/Assets/AppIcons/taskmanager.png" VerticalAlignment="Center" />
+            <TextBlock x:Name="HeaderCenter" Grid.Column="1" Margin="8,0,0,0" Text="{loc:Loc application.relaxkonos.taskmanager.display_name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+        </Grid>
+        <Border DockPanel.Dock="Bottom" Classes="app-statusbar">
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                <TextBlock Text="{Binding ConnectionStatus}" ToolTip.Tip="{Binding ConnectionStatus}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="1" Text="{Binding StatusText}" ToolTip.Tip="{Binding StatusText}" FontSize="11" TextTrimming="CharacterEllipsis" />
             </Grid>
         </Border>
 
-        <Grid>
+        <Grid ColumnDefinitions="196,*">
+            <Border Grid.Column="0" Classes="app-sidebar" Padding="10,16">
+                <StackPanel Spacing="4">
+                    <Button Classes="workspace-nav" Command="{Binding SwitchToProcessesCommand}" Background="{Binding ActiveTab, Converter={x:Static conv:TabBgConverter.Instance}, ConverterParameter=Processes}" HorizontalContentAlignment="Left" Padding="10,9" ToolTip.Tip="{loc:Loc task_manager.processes}">
+                        <StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="▤" FontSize="16" /><TextBlock Text="{loc:Loc task_manager.processes}" VerticalAlignment="Center" /></StackPanel>
+                    </Button>
+                    <Button Classes="workspace-nav" Command="{Binding SwitchToPerformanceCommand}" Background="{Binding ActiveTab, Converter={x:Static conv:TabBgConverter.Instance}, ConverterParameter=Performance}" HorizontalContentAlignment="Left" Padding="10,9" ToolTip.Tip="{loc:Loc task_manager.performance}">
+                        <StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="◷" FontSize="16" /><TextBlock Text="{loc:Loc task_manager.performance}" VerticalAlignment="Center" /></StackPanel>
+                    </Button>
+                </StackPanel>
+            </Border>
+
+            <Grid Grid.Column="1" RowDefinitions="Auto,*">
+                <Grid Grid.Row="0" Margin="18,8,18,6" ColumnDefinitions="*,Auto" IsVisible="{Binding ActiveTab, Converter={x:Static conv:TabVisibilityConverter.Instance}, ConverterParameter=Performance}">
+                    <TextBlock Text="{loc:Loc task_manager.performance}" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <Button Grid.Column="1" Classes="header-action" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc common.refresh}" AutomationProperties.Name="{loc:Loc common.refresh}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="16" Height="16" Data="M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14" /></Button>
+                </Grid>
+                <Grid Grid.Row="0" Margin="18,8,18,6" ColumnDefinitions="*,Auto,Auto" IsVisible="{Binding ActiveTab, Converter={x:Static conv:TabVisibilityConverter.Instance}, ConverterParameter=Processes}">
+                    <TextBlock Text="{loc:Loc task_manager.processes}" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <Button Grid.Column="1" Classes="header-action" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc common.refresh}" AutomationProperties.Name="{loc:Loc common.refresh}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="16" Height="16" Data="M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14" /></Button>
+                    <Button Grid.Column="2" Content="{loc:Loc task_manager.end_task}" Command="{Binding KillProcessCommand}" Classes="danger" Padding="14,6" Margin="8,0,0,0" ToolTip.Tip="{loc:Loc task_manager.end_task_tooltip}" />
+                </Grid>
+
+            <Grid Grid.Row="1">
             <Grid IsVisible="{Binding ActiveTab, Converter={x:Static conv:TabVisibilityConverter.Instance}, ConverterParameter=Performance}" ColumnDefinitions="236,*">
                 <Border Grid.Column="0" Padding="0,8" Classes="app-sidebar">
                     <ListBox Classes="performance-nav" ItemsSource="{Binding PerformanceItems}" SelectedItem="{Binding SelectedPerformanceItem, Mode=TwoWay}">
@@ -139,11 +152,13 @@
                         <TextBlock Grid.Column="1" VerticalAlignment="Center" Margin="8,0" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"><Run Text="{Binding ProcessTotalCount}" /><Run Text="{loc:Loc task_manager.process_count_suffix}" /></TextBlock>
                         <CheckBox Grid.Column="2" Content="{loc:Loc task_manager.auto_refresh}" IsChecked="{Binding IsAutoRefresh, Mode=TwoWay}" VerticalAlignment="Center" Margin="8,0" />
                         <Button Grid.Column="3" Content="{loc:Loc common.clear}" Command="{Binding ClearFilterCommand}" Padding="12,6" Margin="6,0,0,0" />
-                        <Button Grid.Column="4" Content="{loc:Loc task_manager.end_task}" Command="{Binding KillProcessCommand}" Classes="danger" Padding="16,6" Margin="6,0,0,0" />
+                        <Button Grid.Column="4" Content="{Binding ProcessModeLabel}" Command="{Binding ToggleProcessModeCommand}" IsEnabled="{Binding !IsLoading}" Padding="12,6" Margin="6,0,0,0" />
                     </Grid>
                 </Border>
                 <Border Grid.Row="1" Padding="8,4" IsVisible="{Binding KillFeedback, Converter={x:Static conv:StringNonEmptyVisibilityConverter.Instance}}"><TextBlock Text="{Binding KillFeedback}" FontSize="12" TextWrapping="Wrap" /></Border>
-                <Border Grid.Row="2"><Grid RowDefinitions="Auto,*"><Border Background="{DynamicResource SurfaceBrush}" Padding="8,6"><Grid ColumnDefinitions="2*,70,80,120,120,60"><TextBlock Text="{loc:Loc common.name}" FontSize="12" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text="PID" FontSize="12" FontWeight="SemiBold" /><TextBlock Grid.Column="2" Text="CPU" FontSize="12" FontWeight="SemiBold" /><TextBlock Grid.Column="3" Text="{loc:Loc task_manager.memory}" FontSize="12" FontWeight="SemiBold" /><TextBlock Grid.Column="4" Text="{loc:Loc task_manager.user}" FontSize="12" FontWeight="SemiBold" /><TextBlock Grid.Column="5" Text="{loc:Loc task_manager.threads}" FontSize="12" FontWeight="SemiBold" /></Grid></Border><ListBox Grid.Row="1" ItemsSource="{Binding FilteredProcesses}" SelectedItem="{Binding SelectedProcess, Mode=TwoWay}"><ListBox.ItemTemplate><DataTemplate x:DataType="dto:ProcessInfoDto"><Grid ColumnDefinitions="2*,70,80,120,120,60" Margin="8,5"><TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" /><TextBlock Grid.Column="1" Text="{Binding Id}" /><TextBlock Grid.Column="2" Text="{Binding CpuPercent, StringFormat='{}{0:0.0}%'}" /><TextBlock Grid.Column="3" Text="{Binding MemoryBytes, Converter={x:Static conv:BytesConverter.Instance}}" /><TextBlock Grid.Column="4" Text="{Binding UserName}" TextTrimming="CharacterEllipsis" /><TextBlock Grid.Column="5" Text="{Binding ThreadCount}" /></Grid></DataTemplate></ListBox.ItemTemplate></ListBox></Grid></Border>
+                <Border Grid.Row="2"><Grid RowDefinitions="Auto,*"><Border Background="{DynamicResource SurfaceBrush}" Padding="8,6"><Grid ColumnDefinitions="2*,70,80,120,120,60"><TextBlock Text="{loc:Loc common.name}" FontSize="12" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text="PID" FontSize="12" FontWeight="SemiBold" /><TextBlock Grid.Column="2" Text="CPU" FontSize="12" FontWeight="SemiBold" /><TextBlock Grid.Column="3" Text="{loc:Loc task_manager.memory}" FontSize="12" FontWeight="SemiBold" /><TextBlock Grid.Column="4" Text="{loc:Loc task_manager.user}" FontSize="12" FontWeight="SemiBold" /><TextBlock Grid.Column="5" Text="{loc:Loc task_manager.threads}" FontSize="12" FontWeight="SemiBold" /></Grid></Border><ListBox Grid.Row="1" ItemsSource="{Binding FilteredProcesses}" SelectedItem="{Binding SelectedProcess, Mode=TwoWay}"><ListBox.ItemTemplate><DataTemplate x:DataType="vm:ProcessTreeItemViewModel"><Grid ColumnDefinitions="2*,70,80,120,120,60" Margin="8,4"><Grid ColumnDefinitions="Auto,20,22,*" Margin="{Binding Indent}"><Button Content="{Binding ExpandGlyph}" Command="{Binding ToggleExpandedCommand}" IsVisible="{Binding HasChildren}" Width="20" Height="24" Padding="0" Background="Transparent" BorderThickness="0" /><Image Grid.Column="1" Source="{Binding IconImage}" IsVisible="{Binding HasIconImage}" Width="18" Height="18" Stretch="Uniform" Margin="1,0" DataContextChanged="ProcessIcon_DataContextChanged" AttachedToVisualTree="ProcessIcon_AttachedToVisualTree" /><TextBlock Grid.Column="1" Text="{Binding FallbackIcon}" IsVisible="{Binding !HasIconImage}" FontSize="14" Width="18" TextAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" /><TextBlock Grid.Column="3" Text="{Binding Process.Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" /></Grid><TextBlock Grid.Column="1" Text="{Binding Process.Id}" VerticalAlignment="Center" /><TextBlock Grid.Column="2" Text="{Binding Process.CpuPercent, StringFormat='{}{0:0.0}%'}" VerticalAlignment="Center" /><TextBlock Grid.Column="3" Text="{Binding Process.MemoryBytes, Converter={x:Static conv:BytesConverter.Instance}}" VerticalAlignment="Center" /><TextBlock Grid.Column="4" Text="{Binding Process.UserName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" /><TextBlock Grid.Column="5" Text="{Binding Process.ThreadCount}" VerticalAlignment="Center" /></Grid></DataTemplate></ListBox.ItemTemplate></ListBox></Grid></Border>
+            </Grid>
+            </Grid>
             </Grid>
         </Grid>
     </DockPanel>

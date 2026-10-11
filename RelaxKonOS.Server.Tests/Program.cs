@@ -176,6 +176,13 @@ if (args.Contains("--process-termination-worker"))
     await Task.Delay(Timeout.Infinite);
     return;
 }
+if (args.Contains("--installed-personal-processes-only"))
+{
+    var configArgument = Array.IndexOf(args, "--host-config");
+    if (configArgument < 0 || configArgument + 1 >= args.Length) throw new ArgumentException("--host-config is required");
+    await ProcessTerminationChecks.VerifyInstalledSnapshotsAsync(args[configArgument + 1]);
+    return;
+}
 if (args.Contains("--process-termination-only"))
 {
     await ProcessTerminationChecks.RunAsync();

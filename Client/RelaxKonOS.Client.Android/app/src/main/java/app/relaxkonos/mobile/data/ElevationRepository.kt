@@ -143,10 +143,27 @@ class ElevationRepository(
         capability: String,
         target: String,
         provider: ElevationAnswerProvider,
+        tryAutomatic: Boolean = false,
     ): ElevationOutcome {
         val owner = session.state.value as? SessionState.Active
             ?: return ElevationOutcome.Rejected(ProblemCodes.UNAUTHORIZED, credentialDiscarded = false)
         val memory = usageMemory.capture(owner) { session.state.value as? SessionState.Active }
+        if (tryAutomatic) {
+            val automatic = session.authenticated { url, token ->
+                verifyOwner(owner)
+                gateway.requestElevation(url, token, capability, target, null, null)
+            }
+            verifyOwner(owner)
+            when (automatic) {
+                is ApiResult.Success -> return if (automatic.value.elevated) {
+                    rememberGrant(capability, target, automatic.value.expiresAtMillis ?: (System.currentTimeMillis() + DEFAULT_GRANT_MILLIS))
+                    ElevationOutcome.Granted(automatic.value.expiresAtMillis)
+                } else ElevationOutcome.Rejected(ProblemCodes.ELEVATION_REQUIRED, false)
+                is ApiResult.Transport -> return ElevationOutcome.Transport(automatic.detail)
+                is ApiResult.Problem -> if (automatic.code != ProblemCodes.ELEVATION_PASSWORD_REQUIRED)
+                    return ElevationOutcome.Rejected(automatic.code, false)
+            }
+        }
         val answer = provider.answer(capability, target) ?: return ElevationOutcome.Cancelled
         val result = try {
             verifyOwner(owner)

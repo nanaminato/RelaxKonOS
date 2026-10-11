@@ -29,6 +29,12 @@ using WindowManagerService = RelaxKonOS.WindowManager.WindowManager;
 using WindowState = RelaxKonOS.Core.Windows.WindowState;
 using WindowRect = RelaxKonOS.Core.Primitives.Rect;
 
+if (args.Contains("--fused-live-review") || args.Contains("--fused-all-apps-review") || args.Contains("--fused-ssh-review"))
+{
+    LiveFusedApplicationReview.Run(args);
+    return;
+}
+
 try
 {
 LanguageSwitchDiagnostics.Initialize(Path.Combine(AppContext.BaseDirectory, "preview-qa", "logs"));
@@ -41,6 +47,26 @@ var localization = new LocalizationService(settings, new SshDesktopSession(null!
 using var services = new ServiceCollection().AddSingleton(localization).BuildServiceProvider();
 // The XAML localization extension resolves the host application's singleton provider.
 typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
+if (args.Contains("--fused-apps-only"))
+{
+    FusedWindowHeaderChecks.Run(settings);
+    FusedApplicationChecks.Run(settings);
+    FusedWorkspaceChecks.Run(settings);
+    SshFileBrowserLayoutChecks.Run(settings);
+    EditorDraftStateChecks.Run();
+    return;
+}
+if (args.Contains("--host-titlebar-only"))
+{
+    HostTitleBarChecks.Run(settings, localization);
+    return;
+}
+if (args.Contains("--forward-runtime-only"))
+{
+    SynchronizationContext.SetSynchronizationContext(null);
+    PortForwardRuntimeChecks.RunAsync().GetAwaiter().GetResult();
+    return;
+}
 // Check the actual activation paths, including the browser's signed-out window.
 foreach (var app in new RelaxKonOS.AppSDK.RemoteApplicationBase[]
 {
@@ -71,8 +97,28 @@ foreach (var app in new RelaxKonOS.AppSDK.RemoteApplicationBase[]
         throw new InvalidOperationException("Closed window retained its language subscription.");
 }
 Console.WriteLine("PASS: Image viewer, browser and welcome window titles follow three languages and unsubscribe on close.");
+ModalCancellationChecks.Run();
+DockerSubmissionChecks.Run();
+FirewallSubmissionChecks.Run();
+ServerCenterDialogChecks.Run();
+InstallationWizardDialogChecks.Run();
+LocalInstallationCloseChecks.Run();
+WebSiteEditorChecks.Run();
+WebSiteReadRecoveryChecks.Run();
+WebSiteScopeChecks.Run();
+CertificateEditorChecks.Run();
+FileShareDialogChecks.Run();
+PortForwardSubmissionChecks.Run();
+TopLevelWindowCloseGuardChecks.Run();
+EditorDraftStateChecks.Run();
+if (args.Contains("--ui-review-only")) return;
 SettingsInteractionChecks.Run(settings, localization);
 SettingsWindowChecks.Run(settings, localization);
+FusedWindowHeaderChecks.Run(settings);
+FusedApplicationChecks.Run(settings);
+FusedWorkspaceChecks.Run(settings);
+SshFileBrowserLayoutChecks.Run(settings);
+HostTitleBarChecks.Run(settings, localization);
 RemoteClockChecks.Run(settings, localization, services);
 DesktopDeviceSettingsChecks.Run(settings, appearance);
 HostTimeCompletionChecks.Run(localization);
@@ -436,6 +482,10 @@ public sealed class PreviewTestApp : Application
     public override void Initialize()
     {
         Styles.Add(new FluentTheme());
+        Styles.Add(new StyleInclude(new Uri("avares://Avalonia.Controls.DataGrid/"))
+            { Source = new Uri("avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml") });
+        Styles.Add(new StyleInclude(new Uri("avares://AvaloniaEdit/"))
+            { Source = new Uri("avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml") });
         Styles.Add(new StyleInclude(new Uri("avares://RelaxKonOS.UI/"))
             { Source = new Uri("avares://RelaxKonOS.UI/Themes/RelaxKonOSTheme.axaml") });
         Styles.Add(new StyleInclude(new Uri("avares://RelaxKonOS.WindowManager/"))

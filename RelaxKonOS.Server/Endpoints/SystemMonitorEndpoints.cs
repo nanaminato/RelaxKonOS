@@ -5,6 +5,8 @@ using System.Net.Sockets;
 using System.Security.Claims;
 using RelaxKonOS.Protocol.SystemMonitor;
 using RelaxKonOS.Server.SystemPerformance;
+using RelaxKonOS.Server.Privileged;
+using RelaxKonOS.Protocol.Privileged;
 
 namespace RelaxKonOS.Server.Endpoints;
 
@@ -49,21 +51,56 @@ public static class SystemMonitorEndpoints
            .WithTags("System");
 
         app.MapGet(SystemMonitorApiRoutes.ProcessQuery,
-            async (int? page, int? pageSize, string? filter, string? sort, string? direction,
-                IProcessService processes, CancellationToken ct) => Results.Ok(await processes.QueryAsync(page ?? 1, pageSize ?? 100,
-                    filter, sort, !string.Equals(direction, "asc", StringComparison.OrdinalIgnoreCase), ct)))
+            async (int? page, int? pageSize, string? filter, string? sort, string? direction, bool? elevated,
+                HttpContext http, IHostElevationSessionStore grants, IProcessService processes, CancellationToken ct) =>
+            {
+                if (elevated == true && !grants.IsGranted(http.User, HostElevationCapability.ProcessManage, "host/processes"))
+                    return ElevationRequired();
+                try
+                {
+                    return Results.Ok(await processes.QueryAsync(page ?? 1, pageSize ?? 100,
+                        filter, sort, !string.Equals(direction, "asc", StringComparison.OrdinalIgnoreCase), elevated == true, ct));
+                }
+                catch (ProcessSnapshotUnavailableException error)
+                {
+                    return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable,
+                        title: "Process snapshot is unavailable.", detail: error.Message,
+                        type: ProblemBase + "process-snapshot-unavailable");
+                }
+            })
+           .RequireAuthorization()
+           .WithTags("System Performance");
+
+        app.MapGet(SystemMonitorApiRoutes.ProcessIcon,
+            async (int id, DateTimeOffset startTime, bool? elevated, HttpContext http, IHostElevationSessionStore grants,
+                IProcessService processes, CancellationToken ct) =>
+            {
+                if (elevated == true && !grants.IsGranted(http.User, HostElevationCapability.ProcessManage, "host/processes"))
+                    return ElevationRequired();
+                return await processes.GetIconAsync(id, startTime, elevated == true, ct) is { Data.Length: > 0 } icon
+                    ? Results.File(icon.Data, icon.ContentType) : Results.NotFound();
+            })
            .RequireAuthorization()
            .WithTags("System Performance");
 
         // DELETE system/processes/{id} with required expectedStartTime — terminate the confirmed instance.
         app.MapDelete(SystemMonitorApiRoutes.ProcessKill,
-            (int id, [Microsoft.AspNetCore.Mvc.FromBody] TerminateProcessRequest request, IProcessService processes, CancellationToken ct)
-                => processes.KillAsync(id, request.ExpectedStartTime, ct))
+            async (int id, [Microsoft.AspNetCore.Mvc.FromBody] TerminateProcessRequest request, HttpContext http,
+                IHostElevationSessionStore grants, IProcessService processes, CancellationToken ct) =>
+            {
+                if (request.Elevated && !grants.IsGranted(http.User, HostElevationCapability.ProcessManage, "host/processes"))
+                    return ElevationRequired();
+                return Results.Ok(await processes.KillAsync(id, request.ExpectedStartTime, request.Elevated, ct));
+            })
            .RequireAuthorization()
            .WithTags("System");
 
         return app;
     }
+
+    private static IResult ElevationRequired() => Results.Problem(statusCode: StatusCodes.Status403Forbidden,
+        title: "Process administrator mode requires elevation.", type: ProblemBase + "elevation-required",
+        extensions: new Dictionary<string, object?> { ["problemCode"] = "elevation-required" });
 
     private static IReadOnlyList<NetworkAddressDto> GetNetworkAddresses()
     {

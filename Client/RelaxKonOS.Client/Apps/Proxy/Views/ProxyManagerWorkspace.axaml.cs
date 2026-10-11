@@ -6,10 +6,17 @@ namespace RelaxKonOS.Client.Apps.Proxy.Views;
 
 internal partial class ProxyManagerWorkspace : UserControl
 {
+    public void AttachWindowHeader(RelaxKonOS.WindowManager.ManagedWindow window)
+    {
+        Header.DataContext = DataContext;
+        Header.Attach(window, HeaderActions);
+    }
+
     private Button? _selectedButton;
     public ProxyManagerWorkspace(ProxyManagerViewModel viewModel)
     {
         InitializeComponent();
+        RelaxKonOS.Client.Controls.CompactWorkspaceNavigation.Install(this, WorkspaceBody);
         DataContext = viewModel;
         viewModel.NavigateRequested = section => Dispatcher.UIThread.Post(() => ShowPage(section, FindNavigationButton(section)));
         ShowPage("overview", OverviewButton);

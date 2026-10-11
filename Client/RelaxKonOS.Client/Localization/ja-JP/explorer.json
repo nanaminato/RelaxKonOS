@@ -1,6 +1,10 @@
 {
     "Culture": "ja-JP",
     "Strings": {
+        "explorer.open_in_new_tab": "新しいタブで開く",
+        "explorer.all_tabs": "すべてのタブ",
+        "explorer.new_tab": "新しいタブ (Ctrl+T)",
+        "explorer.close_tab": "タブを閉じる (Ctrl+W)",
         "explorer.view.details": "詳細",
         "explorer.view.list": "一覧",
         "explorer.view.small_icons": "小アイコン",

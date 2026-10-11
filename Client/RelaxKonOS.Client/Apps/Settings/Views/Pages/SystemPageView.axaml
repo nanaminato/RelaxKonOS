@@ -39,13 +39,6 @@
                 <TextBlock Text="{loc:Loc settings.hostname}" Classes="title" />
                 <TextBlock Text="{loc:Loc settings.hostname.scope}" TextWrapping="Wrap" />
                 <TextBlock Text="{Binding HostIdentity.TargetText}" TextWrapping="Wrap" />
-                <Border IsVisible="{Binding HostIdentity.IsCompleted}" Padding="12" BorderThickness="1" CornerRadius="6"
-                        BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
-                    <StackPanel Spacing="6">
-                        <TextBlock Text="{Binding HostIdentity.StatusText}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                        <SelectableTextBlock Text="{Binding HostIdentity.PendingHostName}" TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
                 <ProgressBar IsVisible="{Binding HostIdentity.IsBusy}" IsIndeterminate="True" Height="3" />
                 <Grid ColumnDefinitions="180,*">
                     <TextBlock Grid.Column="0" Text="{loc:Loc settings.hostname.current}" Opacity="0.7" VerticalAlignment="Center" />
@@ -74,11 +67,6 @@
                 </WrapPanel>
                 <TextBlock IsVisible="{Binding !HostIdentity.IsCompleted}" Text="{Binding HostIdentity.StatusText}" TextWrapping="Wrap" />
                 <TextBlock IsVisible="{Binding HostIdentity.HasProblem}" Text="{Binding HostIdentity.ProblemCode}" TextWrapping="Wrap" />
-                <Expander IsVisible="{Binding HostIdentity.HasOperation}" Header="{loc:Loc settings.hostname.operation_details}">
-                    <StackPanel Spacing="10">
-                        <SelectableTextBlock Text="{Binding HostIdentity.OperationId}" TextWrapping="Wrap" />
-                    </StackPanel>
-                </Expander>
             </StackPanel>
         </Border>
 

@@ -45,7 +45,9 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
         // the first request and waits for its decision before enabling server actions.
         var vm = new ProxyManagerViewModel(repository, canManage: false, canManageTun: false, systemMonitor);
         vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Mihomo, "relaxkonos.proxy", () => vm.RefreshCommand.ExecuteAsync(null));
-        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.proxy.display_name"), InstallationPanel.Wrap(new ProxyManagerWorkspace(vm), vm.Installation), new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
+        var view = new ProxyManagerWorkspace(vm);
+        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.proxy.display_name"), InstallationPanel.Wrap(view, vm.Installation), new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
+        view.AttachWindowHeader(window);
         vm.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window, problemCode);
         vm.Installation.ShowPrivilegedHelperUnavailableAsync = vm.ShowPrivilegedHelperUnavailableAsync;
         vm.SetServerRuntimePackageRequest(async () =>

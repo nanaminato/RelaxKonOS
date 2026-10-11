@@ -57,6 +57,7 @@
     "port_forwarding.test": "接続をテスト",
     "port_forwarding.status.test_succeeded": "転送に到達できました（HTTP {0} {1}）。",
     "port_forwarding.error.target_timeout": "転送先のサービスが 5 秒以内に応答しませんでした。",
-    "port_forwarding.error.target_unreachable": "ローカルトンネルは実行中ですが、サーバーの loopback アドレス上のサービスに到達できません。対象サービスが設定したポートでリッスンしているか確認してください。"
+    "port_forwarding.error.target_unreachable": "ローカルトンネルは実行中ですが、サーバーの loopback アドレス上のサービスに到達できません。対象サービスが設定したポートでリッスンしているか確認してください。",
+    "port_forwarding.error.target_changed": "元の転送が変更されたか利用できなくなりました。編集画面を閉じて転送を選び直してください。"
   }
 }

@@ -1,9 +1,12 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using RelaxKonOS.Client.Apps.Explorer.Models;
+using RelaxKonOS.Protocol.Files;
+using Avalonia.Media;
 
 namespace RelaxKonOS.Client.Apps.CodeEditor;
 
 /// <summary>In-memory state for one editor tab. Content is never persisted by the client.</summary>
-public sealed partial class CodeEditorDocument : ObservableObject
+public sealed partial class CodeEditorDocument : ObservableObject, IDisposable
 {
     public CodeEditorDocument(string? path, string text, string encodingName, string untitledName)
     {
@@ -17,9 +20,35 @@ public sealed partial class CodeEditorDocument : ObservableObject
     [ObservableProperty] private string _text;
     [ObservableProperty] private string _encodingName;
     [ObservableProperty] private bool _isDirty;
+    [ObservableProperty] private CodeEditorContentKind _contentKind;
+    [ObservableProperty] private IImage? _imageSource;
+    [ObservableProperty] private long _byteLength;
+    public bool ShowSource { get; set; }
+
+    public void Dispose() => (ImageSource as IDisposable)?.Dispose();
+
+    /// <summary>
+    /// Bumped on every content change. A write snapshots this before it starts so that a
+    /// successful save cannot clear the dirty flag of an edit made while it was in flight.
+    /// </summary>
+    public int Revision { get; private set; }
 
     public string UntitledName { get; }
     public string DisplayName => string.IsNullOrWhiteSpace(Path) ? UntitledName : System.IO.Path.GetFileName(Path) ?? UntitledName;
 
-    partial void OnPathChanged(string? value) => OnPropertyChanged(nameof(DisplayName));
+    /// <summary>
+    /// The tab's file-type mark. An untitled document has no extension at all, so it falls to the
+    /// generic file asset — the same classification the file browser's list makes for that name.
+    /// </summary>
+    public ExplorerFileIconKind Kind => ExplorerFileIconKindResolver.ForEntry(FileSystemEntryType.File, DisplayName);
+
+    partial void OnPathChanged(string? value)
+    {
+        OnPropertyChanged(nameof(DisplayName));
+        OnPropertyChanged(nameof(Kind));
+    }
+
+    partial void OnTextChanged(string value) => Revision++;
 }
+
+public enum CodeEditorContentKind { Text, Image, Binary }

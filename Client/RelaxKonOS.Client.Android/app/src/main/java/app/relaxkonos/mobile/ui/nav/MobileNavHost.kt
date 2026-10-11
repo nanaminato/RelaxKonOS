@@ -189,7 +189,7 @@ private fun FilesDestination(navigator: MobileNavigator, layoutState: LayoutStat
 private fun ManageDestination(navigator: MobileNavigator, layoutState: LayoutState, clearTaskTarget: () -> Unit) {
     val container = appContainer()
     val viewModel: ManageViewModel = viewModel(factory = viewModelFactory {
-        initializer { ManageViewModel(container.session, container.system, container.recentOperations) }
+        initializer { ManageViewModel(container.session, container.system, container.recentOperations, container.elevations, container.elevationAnswers) }
     })
 
     if (layoutState == LayoutState.Expanded) {

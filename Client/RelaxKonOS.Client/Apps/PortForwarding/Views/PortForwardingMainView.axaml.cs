@@ -6,11 +6,18 @@ namespace RelaxKonOS.Client.Apps.PortForwarding.Views;
 /// <summary>Docker-style workspace shell for the local port forward manager.</summary>
 public partial class PortForwardingMainView : UserControl
 {
+    public void AttachWindowHeader(RelaxKonOS.WindowManager.ManagedWindow window)
+    {
+        Header.DataContext = DataContext;
+        Header.Attach(window, HeaderActions);
+    }
+
     private Button? _selectedButton;
 
     public PortForwardingMainView()
     {
         InitializeComponent();
+        RelaxKonOS.Client.Controls.CompactWorkspaceNavigation.Install(this, WorkspaceBody);
         ShowPage("forwards", ForwardsButton);
     }
 

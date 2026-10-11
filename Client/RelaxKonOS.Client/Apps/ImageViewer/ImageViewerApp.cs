@@ -42,6 +42,7 @@ public sealed class ImageViewerApp : RemoteApplicationBase, IFileOpenApplication
         var window = context.ShowWindow(LocalizedText.Get("image_viewer.title"), view,
             bounds: new Rect(180, 100, 880, 640),
             iconGlyph: Manifest.IconGlyph);
+        view.AttachWindowHeader(window);
         LocalizedWindowTitle.Follow(window, context, "image_viewer.title");
         window.KeyDown += (_, e) =>
         {

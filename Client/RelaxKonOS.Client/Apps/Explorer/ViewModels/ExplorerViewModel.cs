@@ -83,6 +83,112 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         PickerEntryName = pickerOptions?.DefaultFileName ?? string.Empty;
         UpdateCutEntryPaths();
         _pickerInitialized = true;
+        if (!IsPickerMode)
+        {
+            ActiveTab = new ExplorerTab();
+            Tabs.Add(ActiveTab);
+        }
+    }
+
+    public ObservableCollection<ExplorerTab> Tabs { get; } = [];
+    private ExplorerTab? _activeTab;
+    public ExplorerTab? ActiveTab
+    {
+        get => _activeTab;
+        private set => SetProperty(ref _activeTab, value);
+    }
+    private bool _isSwitchingTabs;
+    public bool CanChangeTabs => !IsPickerMode && !IsBusy && !_isSwitchingTabs && !IsRenaming;
+
+    private void SaveTab(ExplorerTab tab)
+    {
+        tab.Path = AddressbarPath;
+        tab.History.Clear();
+        tab.History.AddRange(_history);
+        tab.HistoryIndex = _historyIndex;
+        tab.SearchText = SearchText;
+        tab.Preferences = ViewPreferences;
+    }
+
+    /// <summary>Commit selection only after the requested directory was successfully read.
+    /// Overlapping requests and file operations cannot replace the tab beneath one another.</summary>
+    public async Task<bool> SwitchTabAsync(ExplorerTab tab)
+    {
+        if (!CanChangeTabs || !Tabs.Contains(tab)) return false;
+        if (ReferenceEquals(tab, ActiveTab)) return true;
+        if (ActiveTab is { } previous) SaveTab(previous);
+        _isSwitchingTabs = true;
+        IsBusy = true;
+        try
+        {
+            bool navigated;
+            try { navigated = await NavigateToAsyncCore(tab.Path, tabSwitch: true); }
+            catch (RelaxKonOSAuthException ex) when (tab.Path is not null && ex.Type.EndsWith("/elevation-required", StringComparison.Ordinal))
+            {
+                if (RequestFileElevationAsync is null || !await RequestFileElevationAsync(tab.Path, FileElevationCapability.Read)) return false;
+                navigated = await NavigateToAsyncCore(tab.Path, tabSwitch: true);
+            }
+            if (!navigated) return false;
+            ActiveTab = tab;
+            tab.Path = AddressbarPath;
+            _history.Clear();
+            _history.AddRange(tab.History);
+            if (_history.Count == 0) _history.Add(AddressbarPath);
+            _historyIndex = Math.Clamp(tab.HistoryIndex, 0, _history.Count - 1);
+            if (tab.Preferences is { } preferences) ApplyViewPreferences(preferences);
+            SearchText = tab.SearchText;
+            RefreshHistoryCommands();
+            return true;
+        }
+        finally
+        {
+            _isSwitchingTabs = false;
+            IsBusy = false;
+            OnPropertyChanged(nameof(CanChangeTabs));
+            NewTabCommand.NotifyCanExecuteChanged();
+            CloseTabCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanChangeTabs))]
+    private async Task NewTabAsync()
+        => await OpenTabAsync(AddressbarPath);
+
+    public async Task OpenTabAsync(string? path)
+    {
+        if (!CanChangeTabs) return;
+        var tab = new ExplorerTab { Path = path, Preferences = ViewPreferences };
+        Tabs.Add(tab);
+        if (!await SwitchTabAsync(tab)) Tabs.Remove(tab);
+    }
+
+    public bool CanOpenFolderInTab => CanChangeTabs
+        && SelectedEntry is { Type: FileSystemEntryType.Directory or FileSystemEntryType.Drive };
+
+    [RelayCommand(CanExecute = nameof(CanOpenFolderInTab))]
+    private async Task OpenFolderInTabAsync()
+    {
+        if (SelectedEntry is { } entry) await OpenTabAsync(entry.Path);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanChangeTabs))]
+    private async Task CloseTabAsync(ExplorerTab? tab)
+    {
+        tab ??= ActiveTab;
+        if (tab is null || !Tabs.Contains(tab)) return;
+        if (Tabs.Count == 1) { CloseAction?.Invoke(); return; }
+        if (ReferenceEquals(tab, ActiveTab))
+        {
+            var index = Tabs.IndexOf(tab);
+            if (!await SwitchTabAsync(Tabs[index == Tabs.Count - 1 ? index - 1 : index + 1])) return;
+        }
+        Tabs.Remove(tab);
+    }
+
+    public Task<bool> CycleTabAsync(int direction)
+    {
+        if (ActiveTab is null || Tabs.Count == 0) return Task.FromResult(false);
+        return SwitchTabAsync(Tabs[(Tabs.IndexOf(ActiveTab) + direction + Tabs.Count) % Tabs.Count]);
     }
 
     /// <summary>导航树根节点集合（主目录组 / 此电脑 / 网络占位）。</summary>
@@ -204,6 +310,10 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     {
         RenameCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(IsRenaming));
+        OpenFolderInTabCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(CanChangeTabs));
+        NewTabCommand.NotifyCanExecuteChanged();
+        CloseTabCommand.NotifyCanExecuteChanged();
     }
 
     public bool IsRenaming => EditingEntry is not null;
@@ -530,6 +640,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
 
     partial void OnAddressbarPathChanged(string? value)
     {
+        if (!_isSwitchingTabs && ActiveTab is { } tab) tab.Path = value;
         // AddressbarPath is the committed location; the editable draft lives in AddressInput.
         // Synchronize the tree after a successful directory load, not from property notifications.
         GoUpCommand.NotifyCanExecuteChanged();
@@ -555,6 +666,9 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
 
     partial void OnIsBusyChanged(bool value)
     {
+        OnPropertyChanged(nameof(CanChangeTabs));
+        NewTabCommand.NotifyCanExecuteChanged();
+        CloseTabCommand.NotifyCanExecuteChanged();
         SaveDefaultViewCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(IsEmpty));
         OnPropertyChanged(nameof(HasSelection));
@@ -580,6 +694,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
 
     public async Task NavigateToAsync(string? path)
     {
+        if (_isSwitchingTabs) return;
         bool navigated;
         try
         {
@@ -599,11 +714,11 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         RefreshHistoryCommands();
     }
 
-    private async Task<bool> NavigateToAsyncCore(string? path, bool batchRefresh = false)
+    private async Task<bool> NavigateToAsyncCore(string? path, bool batchRefresh = false, bool tabSwitch = false)
     {
         // Keep the committed location and listing intact until the server accepts navigation.
         // Ignore overlapping navigation while a request (including tree synchronization) is active.
-        if (_isNavigating || _isRenameCommitInProgress || (IsBatchActive && !batchRefresh)) return false;
+        if ((_isSwitchingTabs && !tabSwitch) || _isNavigating || _isRenameCommitInProgress || (IsBatchActive && !batchRefresh)) return false;
         _isNavigating = true;
         var wasBusy = IsBusy;
         IsBusy = true;
@@ -1595,6 +1710,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
 
     private void NotifySelectionCommands()
     {
+        OpenFolderInTabCommand.NotifyCanExecuteChanged();
         DeleteCommand.NotifyCanExecuteChanged();
         RenameCommand.NotifyCanExecuteChanged();
         DownloadCommand.NotifyCanExecuteChanged();

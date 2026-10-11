@@ -59,6 +59,7 @@ public sealed class BrowserApp : RemoteApplicationBase
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.browser.display_name"), view,
             bounds: new Rect(60, 50, 1100, 720),
             iconGlyph: Manifest.IconGlyph);
+        view.AttachWindowHeader(window);
         LocalizedWindowTitle.Follow(window, context, "application.relaxkonos.browser.display_name");
         window.KeyDown += (_, e) =>
         {

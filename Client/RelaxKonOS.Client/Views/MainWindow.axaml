@@ -50,20 +50,42 @@
             <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
             <Setter Property="BorderThickness" Value="0,0,0,1" />
         </Style>
+        <!-- The outer desktop host draws its own caption, so its three buttons obey the same contract
+             as a managed window's: nothing about the mark comes from text. A character inherits its
+             weight from its designer and its ink from the font's line box, which is why the old
+             minus/restore/close characters needed a hand-tuned FontSize and still landed off centre.
+             The marks below are the host's own geometry (WindowCaptionMarks), sized by the style's
+             mark box, so the host and a managed caption are optically the same button. -->
         <Style Selector="Button.window-control">
             <Setter Property="Width" Value="{DynamicResource WindowControlWidth}" />
             <Setter Property="Height" Value="{DynamicResource WindowTitleBarHeight}" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="CornerRadius" Value="0" />
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-            <Setter Property="FontFamily" Value="{DynamicResource ContentFont}" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
-        <!-- This is the outer desktop-host control, rather than a managed app-window caption.
-             Its restore/maximize glyph is optically larger than the minus and close symbols. -->
+        <!-- One button, two actions: a maximized host offers "restore". The name and the tooltip are
+             declared here rather than on the button because a value set in the view outranks a style
+             setter, which would pin the host caption to "restore" for the rest of its life. -->
         <Style Selector="Button.window-control.window-maximize">
-            <Setter Property="FontSize" Value="11" />
+            <Setter Property="AutomationProperties.Name" Value="{loc:Loc common.maximize}" />
+            <Setter Property="ToolTip.Tip" Value="{loc:Loc common.maximize}" />
+        </Style>
+        <Style Selector="Button.window-control.window-maximize.maximized">
+            <Setter Property="AutomationProperties.Name" Value="{loc:Loc common.restore}" />
+            <Setter Property="ToolTip.Tip" Value="{loc:Loc common.restore}" />
+        </Style>
+        <!-- Exactly one of the two marks is ever painted, and the pair follows the host window's
+             state rather than the last click, so a snap layout or Win+Up cannot desynchronise them. -->
+        <Style Selector="Button.window-maximize Path.mark-restore">
+            <Setter Property="IsVisible" Value="False" />
+        </Style>
+        <Style Selector="Button.window-maximize.maximized Path.mark-restore">
+            <Setter Property="IsVisible" Value="True" />
+        </Style>
+        <Style Selector="Button.window-maximize.maximized Path.mark-maximize">
+            <Setter Property="IsVisible" Value="False" />
         </Style>
         <Style Selector="Button.window-control:pointerover">
             <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
@@ -72,13 +94,22 @@
             <Setter Property="Background" Value="{DynamicResource DangerBrush}" />
             <Setter Property="Foreground" Value="{DynamicResource TextOnDangerBrush}" />
         </Style>
+        <!-- The host reserves its own caption area, so the desktop begins below the host title bar.
+             The reservation is a style - not a literal written from code - for two reasons: a number
+             typed into SetFullScreen silently drifts from WindowTitleBarHeight, and a local value
+             permanently replaces the markup's own binding, so after the first full-screen round trip
+             the desktop slides 8px up under an opaque title bar. A style also keeps the reservation
+             live when the user switches system style. -->
+        <Style Selector="Grid#Root">
+            <Setter Property="Margin" Value="{DynamicResource HostTitleBarMargin}" />
+        </Style>
+        <Style Selector="Grid#Root.host-full-screen">
+            <Setter Property="Margin" Value="0" />
+        </Style>
     </Window.Styles>
 
     <Grid PointerMoved="Root_OnPointerMoved" KeyDown="Root_OnKeyDown">
-        <!-- Reserve the host window's caption area outside full screen.  The margin is
-             removed when entering full screen so the desktop fills the top edge behind
-             the connection bar. -->
-        <Grid x:Name="Root" Margin="{DynamicResource HostTitleBarMargin}" PointerMoved="Root_OnPointerMoved">
+        <Grid x:Name="Root" PointerMoved="Root_OnPointerMoved">
             <LayoutTransformControl LayoutTransform="{DynamicResource DesktopInterfaceTransform}">
                 <ContentControl x:Name="ShellHost" />
             </LayoutTransformControl>
@@ -120,11 +151,45 @@
                 <TextBlock Grid.Column="1" Text="{loc:Loc shell.window_title}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12"
                            VerticalAlignment="Center" />
                 <StackPanel Grid.Column="2" Orientation="Horizontal">
-                    <Button Classes="window-control" Content="&#x2212;" Click="Minimize_OnClick" ToolTip.Tip="{loc:Loc common.minimize}" />
-                    <Button x:Name="MaximizeButton" Classes="window-control window-maximize" Content="&#x2750;"
-                            Click="Maximize_OnClick" ToolTip.Tip="{loc:Loc common.restore}" />
-                    <Button Classes="window-control window-close" Content="&#x00D7;"
-                            Click="CloseWindow_OnClick" ToolTip.Tip="{loc:Loc shell.connection.close}" />
+                    <Button x:Name="MinimizeButton" Classes="window-control"
+                            AutomationProperties.Name="{loc:Loc common.minimize}"
+                            ToolTip.Tip="{loc:Loc common.minimize}"
+                            Click="Minimize_OnClick">
+                        <Path Classes="caption-glyph"
+                              Width="{DynamicResource WindowCaptionGlyphSize}"
+                              Height="{DynamicResource WindowCaptionGlyphSize}"
+                              Data="{DynamicResource WindowCaptionMinimizeGlyph}"
+                              Stroke="{Binding $parent[Button].Foreground}" />
+                    </Button>
+                    <!-- Two marks, one button: a maximized host offers "restore", and both the mark and
+                         the announced name have to say so. The mark box - not the ink - is what gets
+                         the button's centre line: a 1px-tall hairline centred by its own height would
+                         land on a half pixel and smear into two grey rows. -->
+                    <Button x:Name="MaximizeButton" Classes="window-control window-maximize"
+                            Click="Maximize_OnClick">
+                        <Panel>
+                            <Path Classes="caption-glyph mark-maximize"
+                                  Width="{DynamicResource WindowCaptionGlyphSize}"
+                                  Height="{DynamicResource WindowCaptionGlyphSize}"
+                                  Data="{DynamicResource WindowCaptionMaximizeGlyph}"
+                                  Stroke="{Binding $parent[Button].Foreground}" />
+                            <Path Classes="caption-glyph mark-restore"
+                                  Width="{DynamicResource WindowCaptionGlyphSize}"
+                                  Height="{DynamicResource WindowCaptionGlyphSize}"
+                                  Data="{DynamicResource WindowCaptionRestoreGlyph}"
+                                  Stroke="{Binding $parent[Button].Foreground}" />
+                        </Panel>
+                    </Button>
+                    <Button x:Name="CloseButton" Classes="window-control window-close"
+                            AutomationProperties.Name="{loc:Loc common.close}"
+                            ToolTip.Tip="{loc:Loc shell.connection.close}"
+                            Click="CloseWindow_OnClick">
+                        <Path Classes="caption-glyph"
+                              Width="{DynamicResource WindowCaptionGlyphSize}"
+                              Height="{DynamicResource WindowCaptionGlyphSize}"
+                              Data="{DynamicResource WindowCaptionCloseGlyph}"
+                              Stroke="{Binding $parent[Button].Foreground}" />
+                    </Button>
                 </StackPanel>
             </Grid>
         </Border>

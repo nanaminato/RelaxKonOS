@@ -2,13 +2,14 @@ using System.Text.Json.Serialization;
 using RelaxKonOS.Protocol.Settings;
 using RelaxKonOS.Protocol.Observability;
 using RelaxKonOS.Protocol.Proxy;
+using RelaxKonOS.Protocol.SystemMonitor;
 
 namespace RelaxKonOS.Protocol.Privileged;
 
 /// <summary>Versioning and size limits for the local Helper protocol.</summary>
 public static class PrivilegedOperationProtocol
 {
-    public const string Version = "1.0";
+    public const string Version = "1.1";
     public const int MaximumRequestBytes = 16 * 1024 * 1024;
     public const int MaximumFileContentBytes = 12 * 1024 * 1024;
 }
@@ -102,6 +103,12 @@ public enum PrivilegedOperationKind
     DockerEngineConfigureProxy,
     /// <summary>Starts, stops, or restarts the fixed Linux <c>docker.service</c> unit.</summary>
     DockerEngineServiceAction,
+    /// <summary>Returns bounded raw process measurements from the privileged host context.</summary>
+    ProcessSnapshot,
+    /// <summary>Terminates one host process instance after validating its PID and creation time.</summary>
+    ProcessTerminate,
+    /// <summary>Returns a PNG or SVG icon for one verified host process instance.</summary>
+    ProcessIcon,
 }
 
 /// <summary>
@@ -280,7 +287,9 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("version")] string Version = PrivilegedOperationProtocol.Version,
     [property: JsonPropertyName("managedRuntime")] ManagedRuntimeRequest? ManagedRuntime = null,
     [property: JsonPropertyName("networkChange")] HostNetworkChange? NetworkChange = null,
-    [property: JsonPropertyName("networkCheckpoint")] string? NetworkCheckpoint = null);
+    [property: JsonPropertyName("networkCheckpoint")] string? NetworkCheckpoint = null,
+    [property: JsonPropertyName("processId")] int? ProcessId = null,
+    [property: JsonPropertyName("processExpectedStartTime")] DateTimeOffset? ProcessExpectedStartTime = null);
 
 /// <summary>Versioned structured result returned by the local Helper.</summary>
 public sealed record PrivilegedOperationResult(
@@ -302,6 +311,9 @@ public sealed record PrivilegedOperationResult(
     [property: JsonPropertyName("hostAdministratorEligible")] bool? HostAdministratorEligible = null,
     [property: JsonPropertyName("nginxRunning")] bool? NginxRunning = null,
     [property: JsonPropertyName("componentProcess")] ManagedProcessSnapshot? ComponentProcess = null,
+    [property: JsonPropertyName("processSnapshot")] HostProcessSnapshotDto? ProcessSnapshot = null,
+    [property: JsonPropertyName("processTermination")] KillProcessResultDto? ProcessTermination = null,
+    [property: JsonPropertyName("processIconContentType")] string? ProcessIconContentType = null,
     [property: JsonPropertyName("version")] string Version = PrivilegedOperationProtocol.Version);
 
 /// <summary>Fixed Linux proxy writers; no executable, arbitrary variable, path, or target user can be supplied.</summary>

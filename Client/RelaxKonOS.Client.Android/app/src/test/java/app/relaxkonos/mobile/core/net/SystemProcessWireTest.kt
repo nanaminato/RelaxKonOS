@@ -29,10 +29,11 @@ class SystemProcessWireTest {
         }
         server.start()
         try {
-            val result = RelaxKonApi("test", "test").killProcess("http://127.0.0.1:${server.address.port}", "token", 42, timestamp) as ApiResult.Success
+            val result = RelaxKonApi("test", "test").killProcess("http://127.0.0.1:${server.address.port}", "token", 42, timestamp, elevated = true) as ApiResult.Success
             assertFalse(result.value.success); assertEquals("process.instance_changed", result.value.problemCode)
             val request = requests.single(); assertEquals("DELETE", request[0]); assertEquals("/api/v1.0/system/processes/42", request[1])
-            assertEquals(timestamp, JSONObject(request[2]).getString("expectedStartTime")); assertEquals(1, JSONObject(request[2]).length())
+            assertEquals(timestamp, JSONObject(request[2]).getString("expectedStartTime")); assertEquals(2, JSONObject(request[2]).length())
+            assertTrue(JSONObject(request[2]).getBoolean("elevated"))
             assertEquals("Bearer token", request[3])
         } finally { server.stop(0) }
     }

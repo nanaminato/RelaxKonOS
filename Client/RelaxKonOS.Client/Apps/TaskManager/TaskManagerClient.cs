@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Collections.Concurrent;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.Common;
@@ -15,6 +16,7 @@ public sealed class TaskManagerClient : ITaskManagerClient
 {
     private readonly HttpClient _http;
     private readonly IAuthSession _session;
+    private readonly ConcurrentDictionary<(string? Service, Guid? Session, int ProcessId, long StartTicks, bool Elevated), Lazy<Task<(byte[] Data, string ContentType)?>>> _processIcons = new();
 
     public TaskManagerClient(HttpClient http, IAuthSession session)
     {
@@ -36,23 +38,53 @@ public sealed class TaskManagerClient : ITaskManagerClient
         => SendAsync<IReadOnlyList<NetworkAddressDto>>(HttpMethod.Get, SystemMonitorApiRoutes.NetworkAddresses, ct: ct);
 
     public Task<ProcessPageDto> QueryProcessesAsync(int page = 1, int pageSize = 100, string? filter = null,
-        string? sort = null, bool descending = true, CancellationToken ct = default)
+        string? sort = null, bool descending = true, bool elevated = false, CancellationToken ct = default)
     {
         var query = new List<string>
         {
             "page=" + Math.Max(1, page).ToString(System.Globalization.CultureInfo.InvariantCulture),
             "pageSize=" + Math.Clamp(pageSize, 1, 500).ToString(System.Globalization.CultureInfo.InvariantCulture),
             "direction=" + (descending ? "desc" : "asc"),
+            "elevated=" + (elevated ? "true" : "false"),
         };
         if (!string.IsNullOrWhiteSpace(filter)) query.Add("filter=" + Uri.EscapeDataString(filter));
         if (!string.IsNullOrWhiteSpace(sort)) query.Add("sort=" + Uri.EscapeDataString(sort));
         return SendAsync<ProcessPageDto>(HttpMethod.Get, SystemMonitorApiRoutes.ProcessQuery + "?" + string.Join("&", query), ct: ct);
     }
 
-    public Task<KillProcessResultDto> KillProcessAsync(int processId, DateTimeOffset expectedStartTime, CancellationToken ct = default)
+    public Task<KillProcessResultDto> KillProcessAsync(int processId, DateTimeOffset expectedStartTime, bool elevated = false, CancellationToken ct = default)
         => SendAsync<KillProcessResultDto>(HttpMethod.Delete,
             SystemMonitorApiRoutes.ProcessKill.Replace("{id}", processId.ToString(System.Globalization.CultureInfo.InvariantCulture)),
-            body: new TerminateProcessRequest(expectedStartTime), ct: ct);
+            body: new TerminateProcessRequest(expectedStartTime, elevated), ct: ct);
+
+    public async Task<(byte[] Data, string ContentType)?> GetProcessIconAsync(int processId, DateTimeOffset startTime, bool elevated = false, CancellationToken ct = default)
+    {
+        if (_processIcons.Count > 512) _processIcons.Clear();
+        var key = (_session.ServiceId, _session.CurrentSession?.Id, processId, startTime.UtcTicks, elevated);
+        var pending = _processIcons.GetOrAdd(key, _ => new Lazy<Task<(byte[] Data, string ContentType)?>>(() => FetchProcessIconAsync(processId, startTime, elevated, ct),
+            LazyThreadSafetyMode.ExecutionAndPublication));
+        try
+        {
+            var icon = await pending.Value;
+            if (icon is null) _processIcons.TryRemove(new(key, pending));
+            return icon;
+        }
+        catch { _processIcons.TryRemove(new(key, pending)); throw; }
+    }
+
+    private async Task<(byte[] Data, string ContentType)?> FetchProcessIconAsync(int processId, DateTimeOffset startTime, bool elevated, CancellationToken ct)
+    {
+        var route = SystemMonitorApiRoutes.ProcessIcon.Replace("{id}", processId.ToString(System.Globalization.CultureInfo.InvariantCulture))
+            + "?startTime=" + Uri.EscapeDataString(startTime.ToString("O", System.Globalization.CultureInfo.InvariantCulture))
+            + "&elevated=" + (elevated ? "true" : "false");
+        using var response = await SendRawAsync(HttpMethod.Get, route, ct: ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        if (!response.IsSuccessStatusCode) await EnsureSuccessAsync(response, ct);
+        var mediaType = response.Content.Headers.ContentType?.MediaType;
+        if (mediaType is not ("image/png" or "image/svg+xml")) return null;
+        var bytes = await response.Content.ReadAsByteArrayAsync(ct);
+        return bytes.Length is > 0 and <= 262_144 ? (bytes, mediaType) : null;
+    }
 
     // ---- helpers（与 BrowserClient 同模式）----
 

@@ -3,12 +3,14 @@ using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.VisualTree;
 using RelaxKonOS.Core.Input;
 using RelaxKonOS.Core.Primitives;
 using RelaxKonOS.Core.Windows;
 using RelaxKonOS.UI.Themes.SystemStyle;
+using RelaxKonOS.Protocol.Workspace.SystemStyles;
 using Rect = RelaxKonOS.Core.Primitives.Rect;
 using Point = RelaxKonOS.Core.Primitives.Point;
 using WindowState = RelaxKonOS.Core.Windows.WindowState;
@@ -24,13 +26,82 @@ public class RemoteWindow : TemplatedControl
 {
     public static readonly StyledProperty<object?> ContentProperty =
         AvaloniaProperty.Register<RemoteWindow, object?>(nameof(Content));
-    /// <summary>Application content inside the host title bar; caption buttons remain host-owned.</summary>
-    public static readonly StyledProperty<Control?> TitleBarContentProperty =
-        AvaloniaProperty.Register<RemoteWindow, Control?>(nameof(TitleBarContent));
-    public Control? TitleBarContent
+
+    // ----- Host title-bar content slots -----
+    //
+    // An application contributes *roles*, never columns. The host template decides where each role
+    // lands, exactly as it already does for PART_WindowIcon / PART_TitleText / PART_WindowControls,
+    // and the active chrome recipe redeploys them all together. That is what keeps "where do the
+    // caption buttons sit" a host decision: a new recipe is one host rule, and every application
+    // that hands over the same roles follows it without being touched.
+
+    /// <summary>
+    /// Leading identity block in the host title bar (typically a back action and the window's own
+    /// title). Rendered immediately after the caption cluster on recipes whose buttons lead, and
+    /// against the leading edge on the rest.
+    /// </summary>
+    public static readonly StyledProperty<Control?> HeaderLeadingProperty =
+        AvaloniaProperty.Register<RemoteWindow, Control?>(nameof(HeaderLeading));
+
+    /// <summary>
+    /// Centrally anchored block in the host title bar, rendered in the title bar's flexible column
+    /// (a search field or a document command centre). When tabs are also present, the host gives
+    /// them a separate row so both roles remain reachable.
+    /// </summary>
+    public static readonly StyledProperty<Control?> HeaderCenterProperty =
+        AvaloniaProperty.Register<RemoteWindow, Control?>(nameof(HeaderCenter));
+
+    /// <summary>
+    /// Trailing block in the host title bar, rendered just before the caption buttons on recipes
+    /// whose buttons trail (a status pill, a branch selector, a refresh action).
+    /// </summary>
+    public static readonly StyledProperty<Control?> HeaderTrailingProperty =
+        AvaloniaProperty.Register<RemoteWindow, Control?>(nameof(HeaderTrailing));
+
+    /// <summary>
+    /// The window's tab strip, rendered in the title bar's flexible column so it starts after
+    /// whatever the recipe put in the leading cells and stops before the trailing ones. Declaring it
+    /// is the whole contract: the host decides whether those tabs are drawn inline in the bar or
+    /// pushed onto a row of their own, which is exactly the difference between how a tabbed window
+    /// looks on each platform. The strip sizes itself from the <c>WindowTabHeight</c> token rather
+    /// than a literal, so its proportions stay a style decision.
+    /// </summary>
+    public static readonly StyledProperty<Control?> HeaderTabsProperty =
+        AvaloniaProperty.Register<RemoteWindow, Control?>(nameof(HeaderTabs));
+
+    public Control? HeaderLeading
     {
-        get => GetValue(TitleBarContentProperty);
-        set => SetValue(TitleBarContentProperty, value);
+        get => GetValue(HeaderLeadingProperty);
+        set => SetValue(HeaderLeadingProperty, value);
+    }
+
+    public Control? HeaderCenter
+    {
+        get => GetValue(HeaderCenterProperty);
+        set => SetValue(HeaderCenterProperty, value);
+    }
+
+    public Control? HeaderTrailing
+    {
+        get => GetValue(HeaderTrailingProperty);
+        set => SetValue(HeaderTrailingProperty, value);
+    }
+
+    public Control? HeaderTabs
+    {
+        get => GetValue(HeaderTabsProperty);
+        set => SetValue(HeaderTabsProperty, value);
+    }
+
+    /// <summary>Navigation/address/search toolbar. The host places it below the caption row on
+    /// Windows-like chrome and inside that row on macOS-like chrome, with tabs below it.</summary>
+    public static readonly StyledProperty<Control?> HeaderToolbarProperty =
+        AvaloniaProperty.Register<RemoteWindow, Control?>(nameof(HeaderToolbar));
+
+    public Control? HeaderToolbar
+    {
+        get => GetValue(HeaderToolbarProperty);
+        set => SetValue(HeaderToolbarProperty, value);
     }
 
     public static readonly StyledProperty<bool> ShowShadowProperty =
@@ -88,6 +159,7 @@ public class RemoteWindow : TemplatedControl
     private Point _resizeStart;
     private Rect _resizeStartBounds;
     private readonly HashSet<RemoteKey> _pressedKeys = [];
+    private TopLevel? _keyReleaseRoot;
 
     /// <summary>Raised while the user drags the title bar. Carries the press-time bounds and current delta.</summary>
     public event EventHandler<DragBoundsEventArgs>? DragRequested;
@@ -110,8 +182,13 @@ public class RemoteWindow : TemplatedControl
 
     static RemoteWindow()
     {
-        TitleBarContentProperty.Changed.AddClassHandler<RemoteWindow>((window, _) =>
-            window.PseudoClasses.Set(":custom-title-content", window.TitleBarContent is not null));
+        // Any one slot puts the title bar into its fused form: the host icon and its own title text
+        // are replaced by the application's blocks, and the chrome recipe lays all of them out.
+        HeaderLeadingProperty.Changed.AddClassHandler<RemoteWindow>((window, _) => window.UpdateCustomTitleContent());
+        HeaderCenterProperty.Changed.AddClassHandler<RemoteWindow>((window, _) => window.UpdateCustomTitleContent());
+        HeaderTrailingProperty.Changed.AddClassHandler<RemoteWindow>((window, _) => window.UpdateCustomTitleContent());
+        HeaderTabsProperty.Changed.AddClassHandler<RemoteWindow>((window, _) => window.UpdateCustomTitleContent());
+        HeaderToolbarProperty.Changed.AddClassHandler<RemoteWindow>((window, _) => window.UpdateCustomTitleContent());
         ShowShadowProperty.Changed.AddClassHandler<RemoteWindow>((window, _) => window.UpdateVisualEffects());
         ShowContentWhileDraggingProperty.Changed.AddClassHandler<RemoteWindow>((window, _) => window.UpdateVisualEffects());
         ChromeRecipeProperty.Changed.AddClassHandler<RemoteWindow>((window, _) => window.UpdateChromeRecipe());
@@ -124,6 +201,20 @@ public class RemoteWindow : TemplatedControl
         VerticalAlignment = VerticalAlignment.Top;
         KeyDown += OnKeyDown;
         KeyUp += OnKeyUp;
+        // Child controls commonly handle pointer presses. Focus must run before them, otherwise
+        // clicking a background window's input, tab or file list never raises that window.
+        AddHandler(PointerPressedEvent, OnRootPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
+        AttachedToVisualTree += (_, _) =>
+        {
+            _keyReleaseRoot = TopLevel.GetTopLevel(this);
+            _keyReleaseRoot?.AddHandler(KeyUpEvent, OnHostKeyReleased, RoutingStrategies.Tunnel, handledEventsToo: true);
+        };
+        DetachedFromVisualTree += (_, _) =>
+        {
+            _keyReleaseRoot?.RemoveHandler(KeyUpEvent, OnHostKeyReleased);
+            _keyReleaseRoot = null;
+            _pressedKeys.Clear();
+        };
     }
 
     protected override void OnApplyTemplate(TemplateAppliedEventArgs e)
@@ -171,16 +262,15 @@ public class RemoteWindow : TemplatedControl
             }
         }
 
-        this.PointerPressed += OnRootPressed;
         UpdateResizeLayer();
         UpdateVisualEffects();
     }
 
     private void OnRootPressed(object? sender, PointerPressedEventArgs e)
     {
-        // Any press inside the window brings it to the front. Does not interfere with
-        // child controls because we never mark the event handled.
-        FocusRequested?.Invoke(this, EventArgs.Empty);
+        // Activate an inactive window before its child handles the click. Re-activating an
+        // already active window would focus the frame and blur inputs such as the address draft.
+        if (ViewModel?.IsActive != true) FocusRequested?.Invoke(this, EventArgs.Empty);
     }
 
     private void OnKeyDown(object? sender, KeyEventArgs e)
@@ -207,6 +297,12 @@ public class RemoteWindow : TemplatedControl
         if (input.Handled)
             e.Handled = true;
     }
+
+    // Loading can disable the focused control before the physical key is released. Track that
+    // release at the top level even when it is handled or routed outside this managed window.
+    // Application key-up delivery still follows the normal unhandled bubbling contract above.
+    private void OnHostKeyReleased(object? sender, KeyEventArgs e)
+        => _pressedKeys.Remove(new RemoteKey(e.Key.ToString()));
 
     private ManagedWindow? ViewModel => DataContext as ManagedWindow;
 
@@ -367,6 +463,22 @@ public class RemoteWindow : TemplatedControl
             _contentHost.Opacity = ShowContentWhileDragging || (!_dragging && !_resizing) ? 1 : 0;
     }
 
+    /// <summary>True when at least one application block is present in the host title bar.</summary>
+    public bool HasTitleBarContent =>
+        HeaderLeading is not null || HeaderCenter is not null || HeaderTrailing is not null || HeaderTabs is not null || HeaderToolbar is not null;
+
+    /// <summary>Derives header structure from declared roles and the active chrome recipe.</summary>
+    private void UpdateCustomTitleContent()
+    {
+        PseudoClasses.Set(":custom-title-content", HasTitleBarContent);
+        PseudoClasses.Set(":header-tabs", HeaderTabs is not null);
+        PseudoClasses.Set(":header-toolbar", HeaderToolbar is not null);
+        var toolbarInCaption = GetValue(ChromeRecipeProperty) as string == WindowChromeRecipes.TrafficLightsLeft
+            && HeaderToolbar is not null;
+        PseudoClasses.Set(":toolbar-in-caption", toolbarInCaption);
+        PseudoClasses.Set(":stacked-tabs", HeaderTabs is not null && (HeaderCenter is not null || toolbarInCaption));
+    }
+
     /// <summary>
     /// Mirrors the recipe value into a pseudo-class. Unknown or missing values clear every chrome
     /// variant, which leaves the default (Windows-like) template in place.
@@ -379,6 +491,7 @@ public class RemoteWindow : TemplatedControl
 
         if (!string.IsNullOrEmpty(recipe))
             PseudoClasses.Set(":chrome-" + recipe, true);
+        UpdateCustomTitleContent();
     }
 
     protected override void OnDataContextChanged(EventArgs e)

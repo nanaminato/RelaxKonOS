@@ -15,12 +15,6 @@ namespace RelaxKonOS.WindowManager;
 public partial class ManagedWindow : ObservableObject
 {
     private string? _loadedIconPath;
-    // Use standard Unicode symbols instead of Segoe MDL2 private-use code points.
-    // The latter render as arbitrary letters/boxes when the Windows-only font is absent.
-    public const string MinimizeGlyph = "\u2212";
-    public const string CloseGlyph = "\u00D7";
-    public const string MaximizeGlyphChar = "\u25A1";
-    public const string RestoreGlyphChar = "\u2750";
 
     public ManagedWindow(WindowInfo info, RemoteWindow view, bool isModalDialog = false)
     {
@@ -38,12 +32,23 @@ public partial class ManagedWindow : ObservableObject
     /// <summary>Whether this window is a transient modal dialog rather than an application task.</summary>
     public bool IsModalDialog { get; }
 
+    /// <summary>
+    /// Optional guard consulted before a user-initiated close (title-bar button, Alt+F4, taskbar
+    /// or window overview). Return <c>false</c> to keep the window open, for example to confirm
+    /// discarding unsaved changes. Owner and session teardown bypass this guard through
+    /// <see cref="WindowManager.ForceClose"/>.
+    /// </summary>
+    public Func<Task<bool>>? CanCloseAsync { get; set; }
+
+    /// <summary>True while <see cref="CanCloseAsync"/> is running, so repeat gestures check once.</summary>
+    internal bool IsCheckingClose { get; set; }
+
     [ObservableProperty] private string _title = string.Empty;
     [ObservableProperty] private string? _iconGlyph;
     [ObservableProperty] private IImage? _iconImage;
     public bool HasIconImage => IconImage is not null;
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(MaximizeGlyph))]
+    [NotifyPropertyChangedFor(nameof(IsMaximized))]
     [NotifyPropertyChangedFor(nameof(IsOnScreen))]
     [NotifyPropertyChangedFor(nameof(IsFullScreen))]
     private WindowState _state;
@@ -58,7 +63,8 @@ public partial class ManagedWindow : ObservableObject
     /// <summary>True when this window currently occupies the shell-wide full-screen overlay.</summary>
     public bool IsFullScreen => State == WindowState.FullScreen;
 
-    public string MaximizeGlyph => State == WindowState.Maximized ? RestoreGlyphChar : MaximizeGlyphChar;
+    /// <summary>True when this window occupies the whole work area, so its caption offers "restore".</summary>
+    public bool IsMaximized => State == WindowState.Maximized;
 
     /// <summary>Push authoritative state from <see cref="Info"/> into bindable properties.</summary>
     internal void Sync()

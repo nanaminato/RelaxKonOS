@@ -87,7 +87,7 @@ fun ProcessesScreen(
 ) {
     val container = appContainer()
     val viewModel: ManageViewModel = viewModel(factory = viewModelFactory {
-        initializer { ManageViewModel(container.session, container.system, container.recentOperations) }
+        initializer { ManageViewModel(container.session, container.system, container.recentOperations, container.elevations, container.elevationAnswers) }
     })
 
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -182,6 +182,9 @@ internal fun ProcessesContent(
         viewModel.processSampledAt?.let { time -> Text(stringResource(R.string.manage_processes_sampled_at,
             formatTimestamp(IsoInstant.toEpochMillis(time)).orEmpty()), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        TextButton(onClick = { viewModel.toggleProcessMode() }, enabled = !viewModel.processesLoading) {
+            Text(stringResource(if (viewModel.processAdministratorMode) R.string.taskmanager_normal_mode else R.string.taskmanager_administrator_mode))
+        }
         RefreshProgressIndicator(visible = viewModel.processesLoading)
         if (viewModel.processItems.isEmpty()) {
             EmptyState(

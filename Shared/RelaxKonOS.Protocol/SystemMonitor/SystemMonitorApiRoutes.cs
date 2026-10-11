@@ -19,6 +19,7 @@ public static class SystemMonitorApiRoutes
 
     /// <summary>分页、过滤、排序的进程查询端点（GET，需 JWT）。</summary>
     public const string ProcessQuery = $"/{V1}/system/processes/query";
+    public const string ProcessIcon = $"/{V1}/system/processes/{{id}}/icon";
 
     /// <summary>获取服务端所有可用的非回环 IPv4/IPv6 地址（GET，需 JWT）。</summary>
     public const string NetworkAddresses = $"/{V1}/system/network-addresses";

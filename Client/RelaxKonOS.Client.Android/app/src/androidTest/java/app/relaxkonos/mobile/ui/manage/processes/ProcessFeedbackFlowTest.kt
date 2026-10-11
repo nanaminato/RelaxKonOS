@@ -18,6 +18,8 @@ import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.core.auth.*
 import app.relaxkonos.mobile.core.net.*
+import app.relaxkonos.mobile.data.ElevationRepository
+import app.relaxkonos.mobile.data.ElevationAnswerProvider
 import app.relaxkonos.mobile.data.SystemRepository
 import app.relaxkonos.mobile.data.RecentOperationJournal
 import app.relaxkonos.mobile.ui.manage.ManageViewModel
@@ -48,19 +50,19 @@ class ProcessFeedbackFlowTest {
                 LoginSession("review", "review", ServerDescriptor("linux", setOf(ServerCapabilities.PROCESSES)),
                     AuthTokens("test-access", "test-refresh", null, null), workspaceId = "11111111-1111-1111-1111-111111111111"))
             override suspend fun queryProcesses(serverUrl: String, accessToken: String, page: Int, pageSize: Int,
-                filter: String?, sort: ProcessSort, descending: Boolean): ApiResult<ProcessPage> {
+                filter: String?, sort: ProcessSort, descending: Boolean, elevated: Boolean): ApiResult<ProcessPage> {
                 reads++
                 if (reads == 1 && failFirstRead) error("private process provider detail")
                 return ApiResult.Success(ProcessPage(listedProcesses, listedProcesses.size, process.startTime!!))
             }
-            override suspend fun killProcess(serverUrl: String, accessToken: String, pid: Int, expectedStartTime: String): ApiResult<ProcessKillResult> {
+            override suspend fun killProcess(serverUrl: String, accessToken: String, pid: Int, expectedStartTime: String, elevated: Boolean): ApiResult<ProcessKillResult> {
                 assertEquals(42, pid); kills++; error("private process provider detail")
             }
         }
         session = AuthSession(gateway)
         runBlocking { session.login(ServerConnectionIdentityRules.direct("https://process-review.invalid"), "review", "test".toCharArray()) {} }
         rule.runOnUiThread {
-            model = ManageViewModel(session, SystemRepository(gateway, session), recent)
+            model = ManageViewModel(session, SystemRepository(gateway, session), recent, ElevationRepository(gateway, session, app.container.vault, app.container.usageMemory), ElevationAnswerProvider.Declines)
             store.put("manage", model)
         }
         rule.setContent { MaterialTheme {

@@ -24,7 +24,9 @@ public static class BuiltInSystemStyles
             ("ControlHeight", 32), ("ControlCornerRadius", 4), ("ControlBorderThickness", 1), ("OverlayCornerRadius", 8),
             ("FocusRingThickness", 2), ("MinimumHitTarget", 40), ("TransitionFast", 120), ("ReducedMotionDuration", 0),
             ("WindowTitleBarHeight", 42), ("WindowFrameThickness", 1), ("WindowCornerRadius", 8),
-            ("WindowControlWidth", 52), ("WindowInactiveOpacity", 0.55),
+            // Windows 11's own caption: a 32px bar with three 46x32 buttons, each carrying a 10px glyph.
+            ("WindowCaptionHeight", 32), ("WindowCaptionGlyphSize", 10),
+            ("WindowControlWidth", 46), ("WindowInactiveOpacity", 0.55),
             ("WindowShadowDepth", 28), ("WindowShadowOpacity", 0.40),
             ("MenuCornerRadius", 6), ("MenuBorderThickness", 1), ("MenuItemHeight", 30), ("MenuPadding", 6),
             ("MenuSubmenuDelay", 250),
@@ -52,6 +54,9 @@ public static class BuiltInSystemStyles
             ("ControlHeight", 30), ("ControlCornerRadius", 6), ("ControlBorderThickness", 0), ("OverlayCornerRadius", 10),
             ("FocusRingThickness", 3), ("MinimumHitTarget", 40), ("TransitionFast", 200), ("ReducedMotionDuration", 0),
             ("WindowTitleBarHeight", 38), ("WindowFrameThickness", 1), ("WindowCornerRadius", 12),
+            // A macOS title-only window is 28px tall; the caption itself is the three 12px traffic
+            // lights, whose glyphs are only revealed on hover and stay around 6px.
+            ("WindowCaptionHeight", 28), ("WindowCaptionGlyphSize", 7),
             ("WindowControlWidth", 28), ("WindowInactiveOpacity", 0.6),
             ("WindowShadowDepth", 34), ("WindowShadowOpacity", 0.32),
             ("MenuCornerRadius", 10), ("MenuBorderThickness", 1), ("MenuItemHeight", 28), ("MenuPadding", 8),
@@ -80,6 +85,10 @@ public static class BuiltInSystemStyles
             ("ControlHeight", 34), ("ControlCornerRadius", 6), ("ControlBorderThickness", 1), ("OverlayCornerRadius", 12),
             ("FocusRingThickness", 2), ("MinimumHitTarget", 44), ("TransitionFast", 150), ("ReducedMotionDuration", 0),
             ("WindowTitleBarHeight", 46), ("WindowFrameThickness", 1), ("WindowCornerRadius", 10),
+            // A GNOME headerbar is as tall as the window's first row of chrome, so its caption fills
+            // the bar the way it always has - this profile is not the one the platform metrics above
+            // are modelled on, and it deliberately keeps its taller, square-button proportions.
+            ("WindowCaptionHeight", 46), ("WindowCaptionGlyphSize", 10),
             ("WindowControlWidth", 44), ("WindowInactiveOpacity", 0.5),
             ("WindowShadowDepth", 24), ("WindowShadowOpacity", 0.30),
             ("MenuCornerRadius", 12), ("MenuBorderThickness", 0), ("MenuItemHeight", 34), ("MenuPadding", 7),

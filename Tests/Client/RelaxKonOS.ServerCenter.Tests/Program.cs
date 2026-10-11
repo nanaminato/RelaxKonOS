@@ -17,6 +17,15 @@ if (args.Contains("--ssh-cancellation-only"))
     await SshCancellationChecks.RunAsync();
     return;
 }
+await AuthSessionCancellationChecks.RunAsync();
+await LoginDiscoveryCancellationChecks.RunAsync();
+await SshDesktopCancellationChecks.RunAsync();
+if (args.Contains("--auth-cancellation-only")) return;
+if (args.Contains("--owner-device-only"))
+{
+    await OwnerDeviceRememberedChecks.RunAsync();
+    return;
+}
 
 static void Check(bool condition, string message)
 {

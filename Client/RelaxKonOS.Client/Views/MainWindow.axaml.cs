@@ -62,6 +62,9 @@ public partial class MainWindow : Window
         // host-only keys below.
         Root.AddHandler(InputElement.KeyDownEvent, Root_OnKeyDown, RoutingStrategies.Tunnel);
         AttachSystemUi();
+        // The host opens maximized (see the markup), so the caption has to start in its restore form
+        // rather than waiting for the first click to correct itself.
+        SyncCaptionWindowState();
     }
 
     /// <summary>
@@ -182,12 +185,36 @@ public partial class MainWindow : Window
         ToolTip.SetTip(FullScreenButton, T(_isFullScreen ? "shell.full_screen.exit" : "shell.full_screen.enter_tooltip", _isFullScreen ? "Exit full screen" : "Enter full screen"));
         ConnectionInfo.IsVisible = false;
         WindowTitleBar.IsVisible = !_isFullScreen;
-        Root.Margin = new Thickness(0, _isFullScreen ? 0 : 34, 0, 0);
+        Root.Classes.Set("host-full-screen", _isFullScreen);
 
         if (_isFullScreen && !_isPinned)
             ScheduleConnectionBarHide();
         else
             ConnectionBar.IsVisible = true;
+    }
+
+    /// <summary>
+    /// Keeps the host caption in step with the window, whatever moved the window: entering or leaving
+    /// full screen runs through here too, so the caption cannot be left mid-way.
+    /// </summary>
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == WindowStateProperty)
+            SyncCaptionWindowState();
+    }
+
+    /// <summary>
+    /// Puts the host caption into its maximize or restore form. A maximized window's caption offers
+    /// "restore", so the mark, the accessible name and the tooltip all move together; the class is
+    /// what the markup keys the rest of the pair off.
+    /// </summary>
+    private void SyncCaptionWindowState()
+    {
+        // The markup assigns WindowState while the caption still does not exist, so this can be
+        // reached with no button yet; the constructor calls it again once the tree is complete.
+        if (MaximizeButton is not null)
+            MaximizeButton.Classes.Set("maximized", WindowState == WindowState.Maximized);
     }
 
     private async void Disconnect_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -268,13 +295,13 @@ public partial class MainWindow : Window
     private void Minimize_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
         => WindowState = WindowState.Minimized;
 
+    // The host caption's mark, its accessible name and its tooltip all follow WindowState rather
+    // than this click: the platform can maximize the host on its own (a snap layout, Win+Up, the
+    // taskbar's system menu), and a caption that only updated itself on a click would then be
+    // advertising the wrong action. OnPropertyChanged is the single place that translates the
+    // window's state into the caption's appearance.
     private void Maximize_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
-    {
-        var isMaximized = WindowState == WindowState.Maximized;
-        WindowState = isMaximized ? WindowState.Normal : WindowState.Maximized;
-        MaximizeButton.Content = isMaximized ? "\u25A1" : "\u2750";
-        ToolTip.SetTip(MaximizeButton, T(isMaximized ? "common.maximize" : "common.restore", isMaximized ? "Maximize" : "Restore"));
-    }
+        => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
 
     private void TitleBar_OnPointerPressed(object? sender, PointerPressedEventArgs e)
     {

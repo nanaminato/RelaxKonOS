@@ -49,9 +49,27 @@ public static class SystemStyleTokenContract
 
         // ── Managed window chrome ──
         new("WindowTitleBarHeight", SystemStyleTokenKind.Number, 24, 96, 42),
+        // Height of a *managed* window's caption: the bar a platform draws its own title into, which
+        // is also the height of one caption button. It is deliberately separate from
+        // `WindowTitleBarHeight`, which sizes the desktop chrome the host (not an application) owns:
+        // a platform's window caption is 32px on Windows and 28px on macOS, while the host's own bar
+        // stays as tall as the client designed it.
+        new("WindowCaptionHeight", SystemStyleTokenKind.Number, 20, 64, 32),
+        // Side of the box a caption mark is drawn in (Windows draws its own in 10px). The mark only
+        // ever carries the platform's optical shape - a minus / square / cross on Windows, a smaller
+        // one inside a macOS traffic light - and the whitespace a caption button leaves around it
+        // follows from this and the two sizes above. A profile varies the box, never the shapes.
+        new("WindowCaptionGlyphSize", SystemStyleTokenKind.Number, 4, 24, 10),
         new("WindowFrameThickness", SystemStyleTokenKind.Thickness, 0, 8, 1),
         new("WindowCornerRadius", SystemStyleTokenKind.CornerRadius, 0, 32, 8),
-        new("WindowControlWidth", SystemStyleTokenKind.Number, 28, 96, 52),
+        new("WindowControlWidth", SystemStyleTokenKind.Number, 28, 96, 46),
+        // Diameter of one circle in the `traffic-lights-left` caption cluster. Optional: a style
+        // that never selects that recipe keeps the default without declaring anything.
+        new("WindowTrafficLightSize", SystemStyleTokenKind.Number, 8, 24, 12),
+        // Height of a window's tab strip. Optional, and published for the same reason: an
+        // application's tab view takes its proportions from the style instead of a literal, and the
+        // strip has to fit inside the fused title bar the host sizes.
+        new("WindowTabHeight", SystemStyleTokenKind.Number, 20, 40, 28),
         new("WindowInactiveOpacity", SystemStyleTokenKind.Opacity, 0.2, 1, 0.55),
         new("WindowShadowDepth", SystemStyleTokenKind.Number, 0, 64, 28),
         new("WindowShadowOpacity", SystemStyleTokenKind.Opacity, 0, 1, 0.4),
@@ -94,7 +112,7 @@ public static class SystemStyleTokenContract
     [
         "ControlHeight", "ControlCornerRadius", "ControlBorderThickness", "OverlayCornerRadius", "FocusRingThickness", "MinimumHitTarget",
         "TransitionFast", "ReducedMotionDuration",
-        "WindowTitleBarHeight", "WindowFrameThickness", "WindowCornerRadius", "WindowControlWidth", "WindowInactiveOpacity",
+        "WindowTitleBarHeight", "WindowCaptionHeight", "WindowCaptionGlyphSize", "WindowFrameThickness", "WindowCornerRadius", "WindowControlWidth", "WindowInactiveOpacity",
         "WindowShadowDepth", "WindowShadowOpacity",
         "MenuCornerRadius", "MenuBorderThickness", "MenuItemHeight", "MenuPadding",
         "FlyoutCornerRadius", "FlyoutElevation", "DialogCornerRadius", "DialogMotionDuration",

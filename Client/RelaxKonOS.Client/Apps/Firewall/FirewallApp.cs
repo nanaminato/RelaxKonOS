@@ -104,6 +104,9 @@ public sealed class FirewallApp : RemoteApplicationBase
         context.ShowDialogAsync<bool>(owner,
             LocalizedText.Get(editing ? "firewall.rule.edit_dialog_title" : "firewall.rule.add_dialog_title"), dialog =>
             {
+                var original = (vm.SelectedAction, vm.SelectedDirection, vm.SelectedProtocol, vm.Source, vm.Destination, vm.Port);
+                RelaxKonOS.Client.Services.Dialogs.DraftDialogGuard.Attach(dialog, () => vm.IsLoading,
+                    () => original != (vm.SelectedAction, vm.SelectedDirection, vm.SelectedProtocol, vm.Source, vm.Destination, vm.Port));
                 var content = new DockPanel { Margin = new Avalonia.Thickness(20), LastChildFill = true, DataContext = vm };
                 var help = new TextBlock { Text = LocalizedText.Get("firewall.rule.help"), TextWrapping = Avalonia.Media.TextWrapping.Wrap, Margin = new Avalonia.Thickness(0, 0, 0, 12) };
                 DockPanel.SetDock(help, Dock.Top);
@@ -125,10 +128,13 @@ public sealed class FirewallApp : RemoteApplicationBase
                 };
                 actions.Children.Add(cancel);
                 actions.Children.Add(save);
+                save.Bind(Control.IsEnabledProperty, new Avalonia.Data.Binding("!IsLoading"));
+                cancel.Bind(Control.IsEnabledProperty, new Avalonia.Data.Binding("!IsLoading"));
                 DockPanel.SetDock(actions, Dock.Bottom);
                 content.Children.Add(actions);
 
                 var fields = new StackPanel { Spacing = 12 };
+                fields.Bind(Control.IsEnabledProperty, new Avalonia.Data.Binding("!IsLoading"));
                 fields.Children.Add(ChoiceField(vm, nameof(vm.SelectedAction), vm.Actions, "firewall.rule.action", 360));
                 fields.Children.Add(ChoiceField(vm, nameof(vm.SelectedDirection), vm.Directions, "firewall.rule.direction", 360));
                 fields.Children.Add(ChoiceField(vm, nameof(vm.SelectedProtocol), vm.Protocols, "firewall.rule.protocol", 360));

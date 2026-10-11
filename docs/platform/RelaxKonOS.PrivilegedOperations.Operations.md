@@ -23,7 +23,7 @@ Windows 当前用户自己的环境变量按 SID 归属授权，系统 store 单
 
 ### Linux 系统代理
 
-Mihomo 系统代理需要同步部署 Server 与 Helper 协议 1.0。`LinuxSystemProxyRead` 返回能力；`LinuxSystemProxyApply` 仅接受启用标记、本机 IP、端口、绕过选项及守护标记，不接受路径、用户 ID、程序或命令。无 Helper 的环境显示不可用，不切换到高权限 Server。代理关闭时，Helper 不可用不会阻断无关 Mihomo 设置保存；启动恢复仍会重试。
+Mihomo 系统代理需要同步部署 Server 与 Helper 协议 1.1。`LinuxSystemProxyRead` 返回能力；`LinuxSystemProxyApply` 仅接受启用标记、本机 IP、端口、绕过选项及守护标记，不接受路径、用户 ID、程序或命令。无 Helper 的环境显示不可用，不切换到高权限 Server。代理关闭时，Helper 不可用不会阻断无关 Mihomo 设置保存；启动恢复仍会重试。
 
 环境提供者要求可安全解析的 `/etc/environment` 和已配置默认文件读取的 PAM 栈。桌面发现使用 `/usr/bin/loginctl`；GNOME 要求 `dconf`、`dbus-run-session`，KDE 要求成对的 `kreadconfig6/kwriteconfig6` 或版本 5 及 `dbus-send`、`dbus-run-session`，并需 `getent`、`env`、`runuser`。
 

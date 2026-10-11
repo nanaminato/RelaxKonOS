@@ -17,6 +17,13 @@ public sealed class ExplorerIcon : Control
         AvaloniaProperty.Register<ExplorerIcon, TreeNodeIconKind?>(nameof(TreeIconKind));
 
     /// <summary>
+    /// A category the caller classified itself, for a surface that does not hold a file-system
+    /// entry. It outranks the other two because it states the answer instead of the question.
+    /// </summary>
+    public static readonly StyledProperty<ExplorerFileIconKind?> KindProperty =
+        AvaloniaProperty.Register<ExplorerIcon, ExplorerFileIconKind?>(nameof(Kind));
+
+    /// <summary>
     /// Marks a symbolic link. A link has no reliable extension-based identity — its target is
     /// unknown until the link is followed — so it draws the dedicated link asset instead.
     /// </summary>
@@ -24,19 +31,22 @@ public sealed class ExplorerIcon : Control
         AvaloniaProperty.Register<ExplorerIcon, bool>(nameof(Link));
 
     static ExplorerIcon() => AffectsRender<ExplorerIcon>(
-        EntryTypeProperty, FileNameProperty, TreeIconKindProperty, LinkProperty);
+        EntryTypeProperty, FileNameProperty, TreeIconKindProperty, KindProperty, LinkProperty);
 
     public FileSystemEntryType? EntryType { get => GetValue(EntryTypeProperty); set => SetValue(EntryTypeProperty, value); }
     public string? FileName { get => GetValue(FileNameProperty); set => SetValue(FileNameProperty, value); }
     public TreeNodeIconKind? TreeIconKind { get => GetValue(TreeIconKindProperty); set => SetValue(TreeIconKindProperty, value); }
+    public ExplorerFileIconKind? Kind { get => GetValue(KindProperty); set => SetValue(KindProperty, value); }
     public bool Link { get => GetValue(LinkProperty); set => SetValue(LinkProperty, value); }
 
     public override void Render(DrawingContext context)
     {
         base.Render(context);
-        var assetName = TreeIconKind is { } treeKind
-            ? ExplorerIconAssetResolver.ForTreeNode(treeKind)
-            : ExplorerIconAssetResolver.ForEntry(EntryType ?? FileSystemEntryType.File, FileName, Link);
+        var assetName = Kind is { } kind
+            ? ExplorerIconAssetResolver.ForKind(kind)
+            : TreeIconKind is { } treeKind
+                ? ExplorerIconAssetResolver.ForTreeNode(treeKind)
+                : ExplorerIconAssetResolver.ForEntry(EntryType ?? FileSystemEntryType.File, FileName, Link);
         var bitmap = ExplorerIconAssetLoader.Load(assetName);
         if (bitmap is not null && Bounds.Width > 0 && Bounds.Height > 0)
             // Drawing coordinates are local to the control; Bounds also contains its parent offset.

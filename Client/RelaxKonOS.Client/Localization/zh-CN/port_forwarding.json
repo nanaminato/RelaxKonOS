@@ -57,6 +57,7 @@
     "port_forwarding.test": "测试连接",
     "port_forwarding.status.test_succeeded": "转发可访问（HTTP {0} {1}）。",
     "port_forwarding.error.target_timeout": "转发的服务在 5 秒内未响应。",
-    "port_forwarding.error.target_unreachable": "本地隧道正在运行，但无法连接服务器 loopback 地址上的服务。请检查目标服务是否正在配置的端口上监听。"
+    "port_forwarding.error.target_unreachable": "本地隧道正在运行，但无法连接服务器 loopback 地址上的服务。请检查目标服务是否正在配置的端口上监听。",
+    "port_forwarding.error.target_changed": "原转发已变化或不可用。请关闭编辑器并重新选择转发。"
   }
 }

@@ -15,10 +15,11 @@ internal static class TerminalAdministratorAuthorizationChecks
         if (!OperatingSystem.IsWindows()) return;
         var services = new ServiceCollection();
         services.AddLogging(); services.AddSignalR();
+        services.AddScoped<RelaxKonOS.Server.Storage.IWorkspaceRepository, RelaxKonOS.Server.Storage.InMemoryWorkspaceRepository>();
         using var provider = services.BuildServiceProvider();
         var factory = new PassiveFactory();
         var context = provider.GetRequiredService<IHubContext<TerminalHub, ITerminalHubClient>>();
-        var manager = new TerminalSessionManager(factory, context, null!, null!);
+        var manager = new TerminalSessionManager(factory, context, null!, provider.GetRequiredService<IServiceScopeFactory>());
         var privileges = new TestHostAccountPrivilegeService { Level = HostAccountPrivilege.StandardUser };
         var caller = new Caller();
         var hub = new TerminalHub(manager, privileges) { Context = caller };

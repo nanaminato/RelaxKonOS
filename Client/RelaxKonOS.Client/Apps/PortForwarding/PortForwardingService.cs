@@ -15,6 +15,7 @@ public sealed class PortForwardingService : IPortForwardingService
     private readonly PortForwardingSettingsStore _settingsStore;
     private readonly ConcurrentDictionary<Guid, RunningForward> _forwards = new();
     private PortForwardingSettings _settings;
+    private readonly object _settingsGate = new();
 
     public PortForwardingService(IAuthSession session, PortForwardingSettingsStore settingsStore)
     {
@@ -30,25 +31,34 @@ public sealed class PortForwardingService : IPortForwardingService
         .OrderBy(forward => forward.LocalPort)
         .ToArray();
 
-    public PortForwardingSettings GetSettings() => _settings;
+    public PortForwardingSettings GetSettings() { lock (_settingsGate) return _settings; }
 
     public void SaveSettings(PortForwardingSettings settings)
     {
-        _settings = settings.Normalize();
-        _settingsStore.Save(_settings);
+        lock (_settingsGate)
+        {
+            var normalized = settings.Normalize();
+            _settingsStore.Save(normalized);
+            _settings = normalized;
+        }
     }
 
     public Task<PortForwardInfo> StartAsync(PortForwardRequest request, CancellationToken cancellationToken = default)
         => StartAsync(request, password: null, cancellationToken);
 
-    public async Task<PortForwardInfo> StartAsync(PortForwardRequest request, string? password, CancellationToken cancellationToken = default)
+    public Task<PortForwardInfo> StartAsync(PortForwardRequest request, string? password, CancellationToken cancellationToken = default)
+        => StartCoreAsync(request, password, cancellationToken, reuseExisting: true);
+
+    private async Task<PortForwardInfo> StartCoreAsync(PortForwardRequest request, string? password, CancellationToken cancellationToken, bool reuseExisting)
     {
-        Validate(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        ValidateRequest(request);
+        var server = ResolveSshServer();
         var existing = _forwards.Values.FirstOrDefault(forward =>
-            forward.Info.RemotePort == request.RemotePort
+            forward.Server == server && forward.Info.RemotePort == request.RemotePort
             && forward.Info.RemoteHost.Equals(request.RemoteHost, StringComparison.OrdinalIgnoreCase)
             && forward.Info.Scheme.Equals(request.Scheme, StringComparison.OrdinalIgnoreCase));
-        if (existing is not null)
+        if (reuseExisting && existing is not null)
         {
             // A URL path does not alter the SSH process, but it is part of the URL returned to
             // callers. Keep the in-memory list in sync when a caller reuses the same forward.
@@ -61,7 +71,6 @@ public sealed class PortForwardingService : IPortForwardingService
             return updatedInfo;
         }
 
-        var server = ResolveSshServer();
         var localPort = FindAvailablePort(request.PreferredLocalPort ?? request.RemotePort);
         var launch = CreateSshProcess(server, request, localPort, password);
         var process = launch.Process;
@@ -70,6 +79,7 @@ public sealed class PortForwardingService : IPortForwardingService
         {
             if (!process.Start())
                 throw new InvalidOperationException(LocalizedText.Get("port_forwarding.error.ssh_start_failed"));
+            process.StartInfo.Environment.Remove("RELAXKONOS_SSH_ASKPASS_PASSWORD");
             standardErrorRead = process.StandardError.ReadToEndAsync();
             // Password authentication must not fall back to an interactive terminal. The temporary
             // askpass program provides the password only to this SSH child process.
@@ -99,7 +109,7 @@ public sealed class PortForwardingService : IPortForwardingService
         var id = Guid.NewGuid();
         var info = new PortForwardInfo(id, request.RemoteHost, request.RemotePort, localPort,
             request.Scheme, request.PathAndQuery, DateTimeOffset.UtcNow, LocalizedText.Get("port_forwarding.status.running"));
-        var running = new RunningForward(info, process, launch.AskPassHelperPath);
+        var running = new RunningForward(info, process, launch.AskPassHelperPath, server);
         if (!_forwards.TryAdd(id, running))
         {
             Stop(process);
@@ -117,10 +127,37 @@ public sealed class PortForwardingService : IPortForwardingService
 
     public async Task<PortForwardInfo> UpdateAsync(Guid id, PortForwardRequest request, string? password, CancellationToken cancellationToken = default)
     {
-        // A modification replaces one owned SSH process. The requested local port is checked
-        // again, so an occupied port receives the same predictable fallback as a new request.
-        await RemoveAsync(id, cancellationToken);
-        return await StartAsync(request, password, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        ValidateRequest(request);
+        if (!_forwards.TryGetValue(id, out var original))
+            throw new InvalidOperationException(LocalizedText.Get("port_forwarding.error.target_changed"));
+        if (original.Server == ResolveSshServer() && original.Info.RemoteHost.Equals(request.RemoteHost, StringComparison.OrdinalIgnoreCase)
+            && original.Info.RemotePort == request.RemotePort && original.Info.Scheme.Equals(request.Scheme, StringComparison.OrdinalIgnoreCase)
+            && (request.PreferredLocalPort is null || request.PreferredLocalPort == original.Info.LocalPort))
+        {
+            var changed = original with { Info = original.Info with { PathAndQuery = request.PathAndQuery } };
+            if (!_forwards.TryUpdate(id, changed, original))
+                throw new InvalidOperationException(LocalizedText.Get("port_forwarding.error.target_changed"));
+            RaiseChanged();
+            return changed.Info;
+        }
+        // Keep the original alive until replacement startup succeeds. Its occupied local
+        // port participates in the normal fallback selection, so callers use the returned URL.
+        var replacement = await StartCoreAsync(request, password, cancellationToken, reuseExisting: false);
+        if (cancellationToken.IsCancellationRequested)
+        {
+            await RemoveAsync(replacement.Id, CancellationToken.None);
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+        if (!_forwards.TryRemove(new KeyValuePair<Guid, RunningForward>(id, original)))
+        {
+            await RemoveAsync(replacement.Id, CancellationToken.None);
+            throw new InvalidOperationException(LocalizedText.Get("port_forwarding.error.target_changed"));
+        }
+        Stop(original.Process);
+        DeleteAskPassHelper(original.AskPassHelperPath);
+        RaiseChanged();
+        return replacement;
     }
 
     public Task RemoveAsync(Guid id, CancellationToken cancellationToken = default)
@@ -137,8 +174,9 @@ public sealed class PortForwardingService : IPortForwardingService
 
     private (string Host, string? User, int Port) ResolveSshServer()
     {
-        var host = _settings.SshHost;
-        var user = _settings.SshUser;
+        var settings = GetSettings();
+        var host = settings.SshHost;
+        var user = settings.SshUser;
         if (string.IsNullOrWhiteSpace(host))
         {
             if (_session is not { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } serverUrl }
@@ -151,7 +189,7 @@ public sealed class PortForwardingService : IPortForwardingService
             || user?.StartsWith("-", StringComparison.Ordinal) == true
             || user?.Any(char.IsWhiteSpace) == true)
             throw new InvalidOperationException(LocalizedText.Get("port_forwarding.error.ssh_host_user_invalid"));
-        return (host, user, _settings.SshPort);
+        return (host, user, settings.SshPort);
     }
 
     private static SshLaunch CreateSshProcess((string Host, string? User, int Port) server, PortForwardRequest request, int localPort, string? password)
@@ -190,6 +228,8 @@ public sealed class PortForwardingService : IPortForwardingService
     {
         start.ArgumentList.Add("-o");
         start.ArgumentList.Add("ExitOnForwardFailure=yes");
+        start.ArgumentList.Add("-o");
+        start.ArgumentList.Add("StrictHostKeyChecking=yes");
         start.ArgumentList.Add("-p");
         start.ArgumentList.Add(server.Port.ToString(System.Globalization.CultureInfo.InvariantCulture));
         start.ArgumentList.Add("-L");
@@ -248,7 +288,7 @@ public sealed class PortForwardingService : IPortForwardingService
         finally { listener?.Stop(); }
     }
 
-    private static void Validate(PortForwardRequest request)
+    internal static void ValidateRequest(PortForwardRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
         var isLoopbackTarget = request.RemoteHost?.Equals("localhost", StringComparison.OrdinalIgnoreCase) == true
@@ -310,5 +350,5 @@ public sealed class PortForwardingService : IPortForwardingService
     private void RaiseChanged() => ForwardsChanged?.Invoke(this, EventArgs.Empty);
 
     private sealed record SshLaunch(Process Process, string? AskPassHelperPath);
-    private sealed record RunningForward(PortForwardInfo Info, Process Process, string? AskPassHelperPath);
+    private sealed record RunningForward(PortForwardInfo Info, Process Process, string? AskPassHelperPath, (string Host, string? User, int Port) Server);
 }

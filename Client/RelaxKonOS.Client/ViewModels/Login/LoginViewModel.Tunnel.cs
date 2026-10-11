@@ -165,10 +165,12 @@ public partial class LoginViewModel
                 if (ConfirmTunnelHostKeyAsync is null || !await ConfirmTunnelHostKeyAsync(rejected,
                     previous is null ? null : ServerHostTrustRules.GroupedFingerprint(previous.Fingerprint)))
                     throw new OperationCanceledException();
+                ct.ThrowIfCancellationRequested();
                 await _hostKeys.TrustAsync(endpoint, rejected.Observation, ct);
                 _loginTunnelSession = await resolver.ConnectAsync(target, credential, await resolver.PrepareHostKeyGuardAsync(target, ct), ct);
             }
             // Persist after SSH authentication, even if the remote Server probe or login fails.
+            ct.ThrowIfCancellationRequested();
             if (RememberSshCredential)
             {
                 ++_credentialLookupVersion;
@@ -191,10 +193,12 @@ public partial class LoginViewModel
             var check = await _endpointResolver.ResolveAsync(identity.EffectiveBaseUrl, ct);
             if (check.CertificateIssue is { CanTrust: true } review && ConfirmServerCertificateAsync is { } confirm && await confirm(review))
             {
+                ct.ThrowIfCancellationRequested();
                 _endpointResolver.TrustCertificate(review);
                 check = await _endpointResolver.ResolveAsync(identity.EffectiveBaseUrl, ct);
             }
             if (!check.IsResolved) throw new LoginTunnelException(DescribeResolutionError(check));
+            ct.ThrowIfCancellationRequested();
             _verifiedTunnelCredential = (SshCredentialRecord.CredentialIdentity(profile.Host, profile.Port, profile.UserName), credential);
             if (RememberServer) { _tunnelStore.Save(profile); OnPropertyChanged(nameof(SavedTunnels)); }
             return identity;
@@ -206,6 +210,8 @@ public partial class LoginViewModel
     [RelayCommand]
     private async Task TestTunnelAsync(CancellationToken ct)
     {
+        using var lifetime = LinkWindowCancellation(ct);
+        ct = lifetime.Token;
         if (IsConnecting || UseSshLogin || !UseLoginTunnel) return;
         IsConnecting = true;
         ClearError();

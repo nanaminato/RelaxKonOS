@@ -27,8 +27,26 @@ public sealed class ModalDialog<TResult>
     public ManagedWindow? Window => _window;
     public Task<TResult?> Result => _completion.Task;
 
+    /// <summary>Checks user cancellation (button, Escape or window chrome). Owner teardown bypasses this guard.</summary>
+    public Func<Task<bool>>? CanCancelAsync { get; set; }
+    private bool _checkingCancellation;
+
     public void Close(TResult result) => _completion.TrySetResult(result);
-    public void Cancel() => _completion.TrySetResult(default);
+    public void Cancel() => _ = CancelAsync();
+
+    public async Task CancelAsync()
+    {
+        if (_checkingCancellation || Result.IsCompleted) return;
+        _checkingCancellation = true;
+        try
+        {
+            if (CanCancelAsync is null || await CanCancelAsync())
+                ForceCancel();
+        }
+        finally { _checkingCancellation = false; }
+    }
+
+    internal void ForceCancel() => _completion.TrySetResult(default);
 
     /// <summary>Opens a child modal window whose owner is this dialog window.</summary>
     public Task<TChild?> ShowDialogAsync<TChild>(
@@ -62,6 +80,7 @@ internal interface IModalSession
     Canvas Host { get; }
     void Rehost(Canvas host);
     void Cancel();
+    void RequestCancel();
 }
 
 internal interface IShellModalSession
@@ -72,6 +91,7 @@ internal interface IShellModalSession
     void Rehost(Canvas host);
     bool CoversFullDesktop { get; }
     void Cancel();
+    void RequestCancel();
 }
 
 internal sealed class ModalSession<TResult>(
@@ -86,7 +106,8 @@ internal sealed class ModalSession<TResult>(
     public ModalBlocker Blocker { get; } = blocker;
     public Canvas Host { get; private set; } = host;
     public void Rehost(Canvas host) => Host = host;
-    public void Cancel() => dialog.Cancel();
+    public void Cancel() => dialog.ForceCancel();
+    public void RequestCancel() => dialog.Cancel();
 }
 
 internal sealed class ShellModalSession<TResult>(
@@ -101,7 +122,8 @@ internal sealed class ShellModalSession<TResult>(
     public Canvas Host { get; private set; } = host;
     public void Rehost(Canvas host) => Host = host;
     public bool CoversFullDesktop { get; } = coversFullDesktop;
-    public void Cancel() => dialog.Cancel();
+    public void Cancel() => dialog.ForceCancel();
+    public void RequestCancel() => dialog.Cancel();
 }
 
 /// <summary>A transparent input shield over a blocked owner window or the desktop host.</summary>

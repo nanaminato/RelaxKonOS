@@ -146,6 +146,7 @@ public sealed partial class FirewallViewModel : ObservableObject
 
     public async Task<bool> AddRuleAsync()
     {
+        if (!CanManage) return false;
         if (!TryBuildRule(out var rule)) return false;
         var success = await ApplyAsync(() => _client.CreateRuleAsync(rule));
         if (success) ClearEditor();
@@ -154,8 +155,10 @@ public sealed partial class FirewallViewModel : ObservableObject
 
     public async Task<bool> UpdateRuleAsync()
     {
+        if (!CanManage) return false;
+        var target = SelectedRule;
         if (SelectedRule is null || !TryBuildRule(out var rule)) return false;
-        var success = await ApplyAsync(() => _client.UpdateRuleAsync(SelectedRule.Number,
+        var success = await ApplyAsync(() => _client.UpdateRuleAsync(target!.Number,
             new UpdateFirewallRuleRequest(rule.Action, rule.Direction, rule.Protocol, rule.Source, rule.Destination, rule.Port)));
         if (success) ClearEditor();
         return success;
@@ -219,6 +222,7 @@ public sealed partial class FirewallViewModel : ObservableObject
 
     private async Task<bool> ApplyAsync(Func<Task<FirewallOperationResult>> operation)
     {
+        if (IsLoading || !IsAvailable) return false;
         // CanExecute only controls the UI. Check again here so invoking a command directly
         // can never turn a read-only firewall grant into a host configuration change.
         if (!HasManagePermission)

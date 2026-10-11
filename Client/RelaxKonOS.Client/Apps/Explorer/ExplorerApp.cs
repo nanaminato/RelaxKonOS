@@ -116,6 +116,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.explorer.display_name"), view,
             bounds: new Rect(80, 60, 960, 640),
             iconGlyph: Manifest.IconGlyph);
+        view.AttachWindowHeader(window);
         _windows[window] = viewModel;
         void RefreshAfterOperation(FileOperationDto result)
         {
@@ -136,6 +137,18 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         viewModel.CloseAction = () => Dispatcher.UIThread.Post(() => context.WindowManager.Close(window));
         window.KeyDown += (_, e) =>
         {
+            if (!e.Handled && !e.IsRepeat)
+            {
+                if (WindowShortcut.TryExecute(e, RemoteKey.Letter('T'), RemoteKeyModifiers.Control, viewModel.NewTabCommand)
+                    || WindowShortcut.TryExecute(e, RemoteKey.Letter('W'), RemoteKeyModifiers.Control, viewModel.CloseTabCommand)) return;
+                if (e.Key == new RemoteKey("Tab") && (e.Modifiers == RemoteKeyModifiers.Control
+                    || e.Modifiers == (RemoteKeyModifiers.Control | RemoteKeyModifiers.Shift)))
+                {
+                    _ = viewModel.CycleTabAsync(e.Modifiers.HasFlag(RemoteKeyModifiers.Shift) ? -1 : 1);
+                    e.Handled = true;
+                    return;
+                }
+            }
             if ((e.Key == RemoteKey.Letter('L') && e.Modifiers == RemoteKeyModifiers.Control)
                 || (e.Key == RemoteKey.Letter('D') && e.Modifiers == RemoteKeyModifiers.Alt))
             {

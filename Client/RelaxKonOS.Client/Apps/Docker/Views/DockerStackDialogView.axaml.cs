@@ -15,6 +15,11 @@ internal partial class DockerStackDialogView : UserControl
         _dialog = dialog;
         InitializeComponent();
         DataContext = viewModel;
+        var initialName = viewModel.StackName;
+        var initialYaml = viewModel.ComposeYaml;
+        RelaxKonOS.Client.Services.Dialogs.DraftDialogGuard.Attach(dialog,
+            () => viewModel.IsLoading,
+            () => viewModel.StackName != initialName || viewModel.ComposeYaml != initialYaml);
     }
 
     private void Cancel_Click(object? sender, RoutedEventArgs e) => _dialog.Cancel();

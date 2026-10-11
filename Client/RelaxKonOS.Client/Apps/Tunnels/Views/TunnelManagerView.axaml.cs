@@ -7,10 +7,17 @@ namespace RelaxKonOS.Client.Apps.Tunnels.Views;
 /// <summary>Shell for the tunnel manager. The individual views inherit one shared view model.</summary>
 public partial class TunnelManagerView : UserControl
 {
+    public void AttachWindowHeader(RelaxKonOS.WindowManager.ManagedWindow window)
+    {
+        Header.DataContext = DataContext;
+        Header.Attach(window, HeaderActions);
+    }
+
     private Button? _selectedButton;
     public TunnelManagerView()
     {
         InitializeComponent();
+        RelaxKonOS.Client.Controls.CompactWorkspaceNavigation.Install(this, WorkspaceBody);
         ShowPage("overview", OverviewButton);
     }
 

@@ -161,12 +161,17 @@ static class LocalWindowsInstallationChecks
             var localization = new LoginLocalizationService(new LocalLanguageStore());
             var center = new ServerCenterViewModel(targets, resolver, keys, credentials, new SshDesktopSession(null!),
                 new FileServerCenterReleaseSource(), journal, localization);
+            center.SelectedHost = ServerHostTargetRules.Create("remote.test", 22, "remote-user", null, DateTimeOffset.UtcNow)
+                with { LastVerified = ServerHostTargetRules.VerifiedStateFrom(Snapshot with { Mode = ServerInstallMode.LinuxSystem, ListenUrl = "https://remote.test:5443" }) };
+            center.SelectedPlatform = new HostPlatformOption(HostPlatformKind.Linux, "Linux");
             var closed = false;
             ServerInstallationOptions? selectedOptions = null;
-            var wizard = new ServerInstallationWizardViewModel(center, () => closed = true, () => Task.FromResult<string?>(null),
+            var wizard = new ServerInstallationWizardViewModel(center, () => closed = true, () => Task.FromResult(true), () => Task.FromResult<string?>(null),
                 () => Task.CompletedTask, options => { selectedOptions = options; return Task.FromResult(true); });
             Check(wizard.Sources.All(s => s.Source != ServerPackageSourceKind.RemoteBundle) && !wizard.CanShowHostAddresses &&
                 wizard.SelectedMode?.Mode == ServerInstallMode.WindowsUser && wizard.Modes.Count == 2, "The local wizard offers both Windows modes and defaults to Personal Mode.");
+            Check(!wizard.IsLinuxHost && wizard.ServerPortText == "5000" && wizard.SelectedCertificateMode?.Mode == ServerCertificateMode.None,
+                "Local installation does not inherit a stale remote Linux host, HTTPS port or certificate choice.");
             wizard.MoveNextCommand.Execute(null);
             wizard.MoveNextCommand.Execute(null);
             await wizard.InstallCommand.ExecuteAsync(null);

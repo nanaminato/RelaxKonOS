@@ -1,6 +1,7 @@
 {
     "Culture": "zh-CN",
     "Strings": {
+        "code_editor.find": "在文档中查找 (Ctrl+F)",
         "code_editor.settings.title": "代码编辑器设置",
         "code_editor.settings.font_size": "编辑器字体大小",
         "code_editor.settings.default_encoding": "默认打开编码",
@@ -35,6 +36,14 @@
         "code_editor.discard_changes": "放弃更改",
         "code_editor.save_remote_file": "保存远程文件",
         "code_editor.remote_path_prompt": "输入完整的远程路径：",
-        "code_editor.source_file_filter": "源代码文件"
+        "code_editor.source_file_filter": "源代码文件",
+        "code_editor.preview.bytes": "{0:N0} 字节",
+        "code_editor.preview.opened": "正在预览 {0}",
+        "code_editor.preview.edit_source": "编辑 SVG 源码",
+        "code_editor.preview.show_image": "显示图片",
+        "code_editor.preview.actual_size": "原始尺寸（关闭后适应窗口）",
+        "code_editor.preview.binary_hint": "此文件为二进制文件或暂不支持预览的格式，无法作为文本编辑。请使用对应的应用打开。",
+        "code_editor.preview.image_filter": "图片文件",
+        "code_editor.preview.all_files": "所有文件"
     }
 }

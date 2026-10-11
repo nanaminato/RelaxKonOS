@@ -34,7 +34,8 @@ public sealed class TunnelManagerApp : RemoteApplicationBase
         }
         var canManage = context.Permissions.IsGranted(AppPermissions.ServerTunnelsManage);
         var vm = new TunnelManagerViewModel(client, canManage);
-        vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Frp, "relaxkonos.tunnels", vm.RefreshAfterChildAsync); var window = context.ShowWindow(LocalizedText.Get("tunnels.title"), InstallationPanel.Wrap(new TunnelManagerView { DataContext = vm }, vm.Installation), new Rect(90, 65, 1040, 680), Manifest.IconGlyph);
+        vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Frp, "relaxkonos.tunnels", vm.RefreshAfterChildAsync); var view = new TunnelManagerView { DataContext = vm }; var window = context.ShowWindow(LocalizedText.Get("tunnels.title"), InstallationPanel.Wrap(view, vm.Installation), new Rect(90, 65, 1040, 680), Manifest.IconGlyph);
+        view.AttachWindowHeader(window);
         async Task<bool> ConfirmAsync(string title, string message, string confirmLabel)
         {
             var confirmed = false;

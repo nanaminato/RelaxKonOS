@@ -7,9 +7,10 @@
              x:DataType="notepad:NotepadViewModel"
              Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
     <Grid RowDefinitions="Auto,*,Auto">
-        <Border Grid.Row="0" Classes="app-toolbar">
-            <Grid ColumnDefinitions="Auto,*">
-                <Menu Grid.Column="0" Background="Transparent" BorderThickness="0">
+        <Grid x:Name="HeaderHost" Grid.Row="0" ColumnDefinitions="Auto,*">
+            <StackPanel x:Name="HeaderLeading" Orientation="Horizontal" VerticalAlignment="Center">
+                <Image Width="18" Height="18" Margin="0,0,6,0" Source="avares://RelaxKonOS.Client/Assets/AppIcons/notepad.png" VerticalAlignment="Center" />
+                <Menu x:Name="HeaderMenu" Background="Transparent" BorderThickness="0" IsEnabled="{Binding CanEditDocument}">
                     <MenuItem Header="{loc:Loc common.file}">
                         <MenuItem Header="{loc:Loc common.new}" Command="{Binding NewDocumentCommand}" InputGesture="Ctrl+N" />
                         <MenuItem Header="{loc:Loc common.open_ellipsis}" Command="{Binding OpenDocumentCommand}" InputGesture="Ctrl+O" />
@@ -21,10 +22,23 @@
                         <MenuItem Header="{loc:Loc common.preferences_ellipsis}" Command="{Binding OpenSettingsCommand}" />
                     </MenuItem>
                 </Menu>
-                <TextBlock Grid.Column="1" Text="{Binding DocumentName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
-                           Margin="10,0" Foreground="{DynamicResource TextSecondaryBrush}" />
-            </Grid>
-        </Border>
+                <Button x:Name="CompactMenu" Classes="header-action" Content="☰" IsVisible="False" IsEnabled="{Binding CanEditDocument}" ToolTip.Tip="{loc:Loc common.file}" AutomationProperties.Name="{loc:Loc common.file}">
+                    <Button.Flyout><MenuFlyout>
+                    <MenuItem Header="{loc:Loc common.file}">
+                        <MenuItem Header="{loc:Loc common.new}" Command="{Binding NewDocumentCommand}" InputGesture="Ctrl+N" />
+                        <MenuItem Header="{loc:Loc common.open_ellipsis}" Command="{Binding OpenDocumentCommand}" InputGesture="Ctrl+O" />
+                        <Separator />
+                        <MenuItem Header="{loc:Loc common.save}" Command="{Binding SaveCommand}" InputGesture="Ctrl+S" />
+                        <MenuItem Header="{loc:Loc common.save_as_ellipsis}" Command="{Binding SaveAsCommand}" InputGesture="Ctrl+Shift+S" />
+                    </MenuItem>
+                    <MenuItem Header="{loc:Loc common.settings}">
+                        <MenuItem Header="{loc:Loc common.preferences_ellipsis}" Command="{Binding OpenSettingsCommand}" />
+                    </MenuItem>
+                    </MenuFlyout></Button.Flyout>
+                </Button>
+            </StackPanel>
+            <TextBlock x:Name="HeaderCenter" Grid.Column="1" Text="{Binding DocumentName}" ToolTip.Tip="{Binding DocumentName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+        </Grid>
 
         <TextBox Grid.Row="1"
                  Text="{Binding Text}"
@@ -35,6 +49,7 @@
                  Padding="12,10"
                  FontFamily="Consolas, Cascadia Mono, monospace"
                  FontSize="{Binding FontSize}"
+                 IsReadOnly="{Binding IsSaving}"
                  CaretBrush="{DynamicResource AccentBrush}" />
 
         <Border Grid.Row="2" Classes="app-statusbar">
@@ -42,6 +57,7 @@
                 <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
                 <Button Grid.Column="1" Content="{Binding EncodingName}" FontSize="12" Padding="4,0"
                         IsVisible="{Binding HasOpenFile}" ToolTip.Tip="{loc:Loc common.file_encoding}"
+                        IsEnabled="{Binding CanEditDocument}"
                         Command="{Binding ChooseEncodingCommand}" />
                 <TextBlock Grid.Column="2" Text="{Binding LineCountText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
                 <TextBlock Grid.Column="3" Text="{Binding CharacterCountText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />

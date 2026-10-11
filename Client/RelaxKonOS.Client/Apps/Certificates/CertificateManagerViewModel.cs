@@ -122,12 +122,18 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
         }
     }
     [ObservableProperty] private LocalizedStatus _statusText = LocalizedText.Ref("certificates.status.loading");
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasEditorStatus))]
+    private LocalizedStatus _editorStatus;
+    public bool HasEditorStatus => !string.IsNullOrWhiteSpace(EditorStatus.Resolve());
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasOperationActivity))]
     private LocalizedStatus _operationText;
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(PreflightCommand), nameof(RequestCommand))]
     private bool _isLoading;
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(PreflightCommand), nameof(RequestCommand), nameof(DeployCommand), nameof(RenewCommand), nameof(RevokeCommand), nameof(DeleteCommand), nameof(CancelOperationCommand))]
     private bool _isOperationRunning;
+    public bool CanEditCertificateDraft => !IsLoading && !IsOperationRunning;
+    partial void OnIsLoadingChanged(bool value) => OnPropertyChanged(nameof(CanEditCertificateDraft));
+    partial void OnIsOperationRunningChanged(bool value) => OnPropertyChanged(nameof(CanEditCertificateDraft));
     [ObservableProperty] private string _domains = string.Empty;
     [ObservableProperty] private string _contactEmail = string.Empty;
     [ObservableProperty] private CertificateOption<CertificateChallengeType>? _selectedChallengeType;
@@ -178,7 +184,9 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
     [RelayCommand(CanExecute = nameof(CanManage))]
     private async Task PreflightAsync()
     {
-        if (!TryParseDomains(out var domains)) return;
+        if (!CanManage) return;
+        EditorStatus = string.Empty;
+        if (!TryParseDomains(out var domains)) { EditorStatus = StatusText; PreflightText = string.Empty; return; }
         if (SelectedChallengeType is not { } challengeType)
         {
             PreflightText = LocalizedText.Ref("certificates.validation.challenge_required");
@@ -208,26 +216,25 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
     /// <summary>Runs the request flow for the request dialog and reports whether issuance succeeded.</summary>
     public async Task<bool> TryRequestCertificateAsync()
     {
-        if (!TryParseDomains(out var domains)) return false;
+        if (!CanEditCertificateDraft) return false;
+        if (!HasManagePermission) return ReportEditorError(LocalizedText.Ref("certificates.permission.manage_required"));
+        EditorStatus = string.Empty;
+        if (!TryParseDomains(out var domains)) { EditorStatus = StatusText; return false; }
         if (SelectedChallengeType is not { } challengeType)
         {
-            StatusText = LocalizedText.Ref("certificates.validation.challenge_required");
-            return false;
+            return ReportEditorError(LocalizedText.Ref("certificates.validation.challenge_required"));
         }
         if (SelectedKeyAlgorithm is not { } keyAlgorithm)
         {
-            StatusText = LocalizedText.Ref("certificates.validation.key_algorithm_required");
-            return false;
+            return ReportEditorError(LocalizedText.Ref("certificates.validation.key_algorithm_required"));
         }
         if (!AcceptedTerms)
         {
-            StatusText = LocalizedText.Ref("certificates.validation.terms_required");
-            return false;
+            return ReportEditorError(LocalizedText.Ref("certificates.validation.terms_required"));
         }
         if (string.IsNullOrWhiteSpace(ContactEmail))
         {
-            StatusText = LocalizedText.Ref("certificates.validation.email_required");
-            return false;
+            return ReportEditorError(LocalizedText.Ref("certificates.validation.email_required"));
         }
 
         var request = new RequestCertificateRequest(
@@ -247,32 +254,39 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
     /// <summary>Creates a locally-issued certificate without contacting an ACME provider.</summary>
     public async Task<bool> TryCreateSelfSignedCertificateAsync()
     {
+        if (!CanEditCertificateDraft) return false;
+        if (!HasManagePermission) return ReportEditorError(LocalizedText.Ref("certificates.permission.manage_required"));
+        EditorStatus = string.Empty;
         var parsed = SelfSignedDomains.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(domain => domain.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         if (parsed.Length == 0)
         {
-            StatusText = LocalizedText.Ref("certificates.validation.domains_required");
-            return false;
+            return ReportEditorError(LocalizedText.Ref("certificates.validation.domains_required"));
         }
         if (SelectedKeyAlgorithm is not { } keyAlgorithm)
         {
-            StatusText = LocalizedText.Ref("certificates.validation.key_algorithm_required");
-            return false;
+            return ReportEditorError(LocalizedText.Ref("certificates.validation.key_algorithm_required"));
         }
         if (SelfSignedValidityDays is < 1 or > 825)
         {
-            StatusText = LocalizedText.Ref("certificates.validation.validity_days_invalid");
-            return false;
+            return ReportEditorError(LocalizedText.Ref("certificates.validation.validity_days_invalid"));
         }
+        var request = new CreateSelfSignedCertificateRequest(parsed, keyAlgorithm.Value, SelfSignedValidityDays);
         return await RunOperationAsync(
             LocalizedText.Get("certificates.operation.create_self_signed"),
-            ct => _client.CreateSelfSignedAsync(new CreateSelfSignedCertificateRequest(parsed, keyAlgorithm.Value, SelfSignedValidityDays), ct),
+            ct => _client.CreateSelfSignedAsync(request, ct),
             onSuccess: async op => { if (op.CertificateId is { } id) await SelectCertificateAsync(id, ct: default); }, ct: default);
     }
 
     [RelayCommand(CanExecute = nameof(CanActOnSelected))]
     private Task DeployAsync() => RunOperationForSelectedAsync("deploy",
         (id, ct) => _client.DeployKestrelAsync(id, ct));
+
+    private bool ReportEditorError(LocalizedStatus message)
+    {
+        StatusText = EditorStatus = message;
+        return false;
+    }
 
     [RelayCommand(CanExecute = nameof(CanRenewOrRevokeSelected))]
     private Task RenewAsync() => RunOperationForSelectedAsync("renew",
@@ -317,6 +331,7 @@ public sealed partial class CertificateManagerViewModel : LocalizedObservableObj
 
     private async Task<bool> RunOperationAsync(string label, Func<CancellationToken, Task<CertificateOperationDto>> start, Func<CertificateOperationDto, Task>? onSuccess, CancellationToken ct)
     {
+        if (IsLoading || IsOperationRunning) return false;
         if (!HasManagePermission)
         {
             StatusText = LocalizedText.Ref("certificates.permission.manage_required");

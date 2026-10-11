@@ -49,4 +49,6 @@
     <string name="password_show">パスワードを表示</string>
     <string name="ui_discard_draft_message">この下書きはまだ送信されていません。離れると入力内容が消去されます。</string>
     <string name="ui_discard_draft_title">下書きを破棄しますか？</string>
+    <string name="taskmanager_administrator_mode">管理者モード</string>
+    <string name="taskmanager_normal_mode">通常モード</string>
 </resources>
