@@ -441,6 +441,17 @@ D-013 只改了**受管应用窗口**的标题栏；D-012 则明确把宿主「�
 - 回归：`TerminalWorkspaceChecks` 扩到 17 项，新增「+ 紧跟标签条且同处滚动行」「下拉列出同一集合」「拥挤标签条溢出而非挤压」「活跃会话保持在视野内」「下拉切换会话并滚动到它」「滚轮横向滚动」等断言，`--terminal-tabs-only` exit 0；`RelaxKonOS.Client` 与测试项目 0 错误 0 警告。
 - 未完成：真实桌面（150%/200% DPI、三语、明暗主题）的视觉与命中验收；若终端窗口后续接入融合标题栏的 `HeaderTabs` 角色槽，这套应用自排标签条需要随之迁移。
 
+### 2026-10-11：浏览器与文件浏览器标签条的 + 落位与拥挤策略
+
+- 浏览器（`BrowserMainView`）：标签条与「新建标签」并入同一个横向 `ScrollViewer`（`TabScroller`），`+` 紧跟最后一个标签；「所有标签页」下拉移到条首（`HeaderTabs` 改为 `Auto,*`），展开器不再随标签数量移动。标签按数量等分整行宽度（`TabContentWidth` 由 `TabScroller` 宽度除以标签数得到并向下取整），标签越多越窄，窄到 96px 以下只剩前导标记；关闭标记与标记共用同一格，仅当前标签与指针悬停时显现（`ListBox#TabStrip ListBoxItem:selected/:pointerover Button.tab-close`），因此再窄的标签也留得住关闭目标，标题通过标签自身的 ToolTip 仍可读到。两枚字形共用一格，所以关闭标记起来时定位标记同时退场（`TextBlock.tab-mark` 的 `:selected/:pointerover` 透明度归零），不会出现 × 从 ◉ 里穿过去的花屏。落到 18px 下限后标签条横向滚动（滚轮隧道注册在 `TabScroller`），下拉列表是取回滚出视野标签的通道；停在最后一个标签时把整行滚到末端，`+` 因此不会留在视野之外。
+- 文件浏览器（`ExplorerMainView`）：标签条同样进 `TabScroller`，`+` 移到行末（`Auto,*,Auto,Auto`：左标记、滚动区、右标记、+）；标签按数量等分整行宽度并在 72px 处设下限，占满整行后转为横向滚动，同时出现左右切换标记（`TabScrollLeft`/`TabScrollRight`），到端的一侧自动变灰；滚轮同样只横向滚动标签条；活跃标签无论由用户、快捷键还是视图模型切换，都会滚入视野。原来的「所有标签页」下拉由这套滚动 + 切换标记取代。
+- 终端（`TerminalWorkspaceView`）：标签条结构未变（定宽 180、保留「所有标签页」下拉），只把同一条「停在最后一个会话时滚到行末」的规则补上，`+` 与浏览器一样不会被留在视野之外。
+- 资源：新增 `explorer.tab_scroll_left/right` 三语键（zh-CN/en-US/ja-JP），三语键集合与 JSON 校验一致；CRLF 行尾保持。
+- 回归：新增 `TabStripLayoutChecks`（31 项，`--tabstrip-only`）覆盖两套标签条的落位、等分收窄、下限、溢出滚动、滚轮往返、切换标记启用态、「仅当前标签显示关闭标记」、定位标记为关闭标记让位，以及停在末标签时 `+` 仍在视野内，exit 0；另有 `--tabstrip-preview` 把 1/6/13/33 个浏览器标签与 1/4/9/14 个文件夹标签的标签条渲染成 PNG（`preview-qa/tab-strip`）供肉眼复核。`--fused-apps-only` 与完整 `RelaxKonOS.WindowPreviews.Tests` 套件均 exit 0；`RelaxKonOS.Client` 与测试项目 0 错误 0 警告。
+- 踩坑：`ListBox.ItemCount` 在集合变更的同一拍会滞后一项（标签条布局用错数量会把最后一个标签留短），改为以视图模型的 `Tabs.Count` 为准；每项测量会向上取整到整像素，等分宽度必须向下取整，否则 `+` 会被挤出整行；关闭标记与定位标记共格时，定位标记写死的内联 `Opacity` 会压过样式表的 `:selected` setter（Avalonia 里 local 值优先于 style setter），必须把内联值删掉才能让位。
+- 顺带修复：`RelaxKonOS.ApplicationLayout.Tests` 原先**整套崩溃**（exit 127），原因是 `BrowserChecks` 的「More and collection icons are geometrically centered」断言用 `OfType<PathIcon>().First(visible)` 取字形，遇到两件必然对不上的事——菜单按钮的字形是 `Path` 而非 `PathIcon`，且位置切换按钮在 480px 宽的紧凑导航栏里被整体隐藏、根本没有可见字形。改为按「`Path` 或 `PathIcon` 且可见」取字形，并在按钮本身不可见时跳过测量。修好后 `--browser-only` 与完整套件均 exit 0，排在浏览器检查之后的 105 项 real-page layout 才第一次真正跑起来。
+- 未完成：真实桌面（150%/200% DPI、三语、明暗主题）的视觉与命中验收；`SshFileBrowserView` 的同类标签条未纳入本次调整。
+
 ## 后续逐项记录模板
 
 ### 2026-10-10：端口转发编辑器首批处理
@@ -516,6 +527,7 @@ D-013 只改了**受管应用窗口**的标题栏；D-012 则明确把宿主「�
 |---|---|---|---|
 | UI-005 [BrowserMainView](../../Client/RelaxKonOS.Client/Apps/Browser/Views/BrowserMainView.axaml) | TextBox；ContentControl；入口：CloseTab_Click、AddTabCommand、GoBackCommand | 主要任务与状态；窄窗口/长文本；键盘/无障碍；刷新与身份切换 | 结构初查完成，待流程深审与运行验收 |
 | UI-006 [BrowserSettingsView](../../Client/RelaxKonOS.Client/Apps/Browser/Views/BrowserSettingsView.axaml) | TextBox；入口：SaveBrowserSettingsCommand、CloseSettingsCommand | 导航状态；读取失败保留编辑器；窄窗口；切页与焦点返回 | 结构初查完成，待流程深审与运行验收 |
+| UI-161 [BrowserMainView 标签条](../../Client/RelaxKonOS.Client/Apps/Browser/Views/BrowserMainView.axaml) | Grid#HeaderTabs、Button#TabPickerButton、ScrollViewer#TabScroller、ListBox#TabStrip、Button#AddTabButton | 标签条落位（+ 跟随最后一个标签）、标签按数量等分收窄至只剩标记、仅当前标签显示关闭标记且定位标记同时让位、标签列表置于条首、停在末标签时 + 仍在视野内；窄窗口、滚轮、屏幕阅读器 | 标签栏行为已实现，TabStripLayoutChecks 浏览器 18 项通过，`--tabstrip-preview` 出图复核；原生视觉与命中待验收 |
 
 ### Certificates
 
@@ -573,6 +585,7 @@ D-013 只改了**受管应用窗口**的标题栏；D-012 则明确把宿主「�
 | UI-041 [TextInputDialogView](../../Client/RelaxKonOS.Client/Apps/Explorer/Dialogs/TextInputDialogView.axaml) | TextBox；入口：CancelCommand、ConfirmCommand | 草稿差异与校验；忙碌锁定；取消/Esc/窗口关闭；失败保留目标及输入 | 结构初查完成，待流程深审与运行验收 |
 | UI-042 [ExplorerMainView](../../Client/RelaxKonOS.Client/Apps/Explorer/Views/ExplorerMainView.axaml) | DataGrid；TreeView；ScrollViewer；TextBox；ContextMenu；入口：GoBackCommand、GoForwardCommand、GoUpCommand | 主要任务与状态；窄窗口/长文本；键盘/无障碍；刷新与身份切换 | 结构初查完成，待流程深审与运行验收 |
 | UI-043 [ExplorerOperationsView](../../Client/RelaxKonOS.Client/Apps/Explorer/Views/ExplorerOperationsView.axaml) | ScrollViewer；入口：CancelCommand、RetryCommand、ReplaceCommand | 时间/阶段/目标；空记录与失败区别；复制与刷新；持续订阅释放 | 结构初查完成，待流程深审与运行验收 |
+| UI-162 [ExplorerMainView 标签条](../../Client/RelaxKonOS.Client/Apps/Explorer/Views/ExplorerMainView.axaml) | Grid#HeaderTabs、Button#TabScrollLeft、ScrollViewer#TabScroller、ListBox#FolderTabs、Button#TabScrollRight、Button#AddTabButton | 标签条落位（+ 居末）、标签按数量等分收窄至最小宽度、占满后转为横向滚动并出现左右切换标记；窄窗口、滚轮、屏幕阅读器 | 标签栏行为已实现，TabStripLayoutChecks 文件浏览器 13 项通过，`--tabstrip-preview` 出图复核；原生视觉与命中待验收 |
 
 ### FileServices
 

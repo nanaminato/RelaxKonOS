@@ -18,8 +18,10 @@
         <c:EntryDescriptionConverter x:Key="TypeTextConverter" />
         <c:EntryIsEditingConverter x:Key="EntryIsEditingConverter" />
         <c:CutEntryOpacityConverter x:Key="CutEntryOpacityConverter" />
-
-
+        <!-- The strip's own scroll marks: thin chevrons, so they never read as the toolbar's
+             back/forward arrows that sit directly below them. -->
+        <StreamGeometry x:Key="TabScrollLeftIcon">M15.5 4 L7.5 12 L15.5 20</StreamGeometry>
+        <StreamGeometry x:Key="TabScrollRightIcon">M8.5 4 L16.5 12 L8.5 20</StreamGeometry>
     </UserControl.Resources>
 
     <UserControl.Styles>
@@ -31,42 +33,46 @@
              paints a surface: both are drawn inside the host's title bar, beside the caption
              cluster, so the bar stays one surface from the first tab to the close button. -->
         <Grid DockPanel.Dock="Top" x:Name="HeaderHost" RowDefinitions="Auto,Auto">
-        <Grid x:Name="HeaderTabs" Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="2" IsVisible="{Binding !IsPickerMode}">
-            <ListBox x:Name="FolderTabs" Classes="title-tabs" ItemsSource="{Binding Tabs}" SelectedItem="{Binding ActiveTab, Mode=OneWay}"
-                     SelectionChanged="FolderTabs_SelectionChanged" IsEnabled="{Binding CanChangeTabs}"
-                     Height="{DynamicResource WindowTabHeight}" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                <ListBox.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ListBox.ItemsPanel>
-                <!-- Like Windows 11 and Finder, a tab states its location's own mark — the drive a
-                     location is rooted on, or the folder it is — and keeps a readable floor so a
-                     short name still produces a tab rather than a sliver. -->
-                <ListBox.ItemTemplate><DataTemplate x:DataType="models:ExplorerTab">
-                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6" MinWidth="176" VerticalAlignment="Center">
-                        <controls:ExplorerIcon TreeIconKind="{Binding IconKind}" Width="16" Height="16" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="1" Text="{Binding Title}" IsVisible="{Binding !IsComputer}" MaxWidth="160" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip.Tip="{Binding Path}" />
-                        <TextBlock Grid.Column="1" Text="{loc:Loc explorer.computer}" IsVisible="{Binding IsComputer}" MaxWidth="160" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                        <Button Grid.Column="2" Classes="tab-close"
-                                Command="{ReflectionBinding $parent[ListBox].DataContext.CloseTabCommand}" CommandParameter="{Binding}"
-                                ToolTip.Tip="{loc:Loc explorer.close_tab}" AutomationProperties.Name="{loc:Loc explorer.close_tab}">
-                            <PathIcon Width="11" Height="11" Data="{StaticResource ChromeCloseIcon}" />
-                        </Button>
-                    </Grid>
-                </DataTemplate></ListBox.ItemTemplate>
-            </ListBox>
-            <Button Grid.Column="1" Classes="header-action compact" Command="{Binding NewTabCommand}"
-                    ToolTip.Tip="{loc:Loc explorer.new_tab}" AutomationProperties.Name="{loc:Loc explorer.new_tab}">
-                <PathIcon Width="14" Height="14" Data="{StaticResource ChromeAddIcon}" />
+        <Grid x:Name="HeaderTabs" Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="2" IsVisible="{Binding !IsPickerMode}">
+            <!-- The scroll marks only appear once the tabs have shrunk to their floor and still
+                 fill the row, so a short strip reads as tabs followed by + and nothing else. -->
+            <Button Grid.Column="0" x:Name="TabScrollLeft" Classes="header-action compact" IsVisible="False"
+                    Click="TabScrollLeft_Click" ToolTip.Tip="{loc:Loc explorer.tab_scroll_left}" AutomationProperties.Name="{loc:Loc explorer.tab_scroll_left}">
+                <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform"
+                      Width="11" Height="11" Data="{StaticResource TabScrollLeftIcon}" />
             </Button>
-            <Button Grid.Column="2" x:Name="FolderPickerButton" Classes="header-action compact" IsEnabled="{Binding CanChangeTabs}"
-                    ToolTip.Tip="{loc:Loc explorer.all_tabs}" AutomationProperties.Name="{loc:Loc explorer.all_tabs}">
-                <PathIcon Width="14" Height="14" Data="{StaticResource ChromeChevronDownIcon}" />
-                <Button.Flyout><Flyout>
-                    <ListBox ItemsSource="{Binding Tabs}" SelectedItem="{Binding ActiveTab, Mode=OneWay}"
-                             MinWidth="220" MaxHeight="320" SelectionChanged="FolderPicker_SelectionChanged">
+            <ScrollViewer Grid.Column="1" x:Name="TabScroller" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
+                <StackPanel Orientation="Horizontal">
+                    <ListBox x:Name="FolderTabs" Classes="title-tabs" ItemsSource="{Binding Tabs}" SelectedItem="{Binding ActiveTab, Mode=OneWay}"
+                             SelectionChanged="FolderTabs_SelectionChanged" IsEnabled="{Binding CanChangeTabs}"
+                             Height="{DynamicResource WindowTabHeight}" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                        <ListBox.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ListBox.ItemsPanel>
+                        <!-- Like Windows 11 and Finder, a tab states its location's own mark — the drive a
+                             location is rooted on, or the folder it is — and takes an equal share of the
+                             row, so a strip that fills up narrows every tab rather than hiding any. -->
                         <ListBox.ItemTemplate><DataTemplate x:DataType="models:ExplorerTab">
-                            <TextBlock Text="{Binding Title}" MaxWidth="300" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Path}" />
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6" Width="{Binding #Root.TabContentWidth}" VerticalAlignment="Center">
+                                <controls:ExplorerIcon TreeIconKind="{Binding IconKind}" Width="16" Height="16" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="{Binding Title}" IsVisible="{Binding !IsComputer}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip.Tip="{Binding Path}" />
+                                <TextBlock Grid.Column="1" Text="{loc:Loc explorer.computer}" IsVisible="{Binding IsComputer}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                <Button Grid.Column="2" Classes="tab-close"
+                                        Command="{ReflectionBinding $parent[ListBox].DataContext.CloseTabCommand}" CommandParameter="{Binding}"
+                                        ToolTip.Tip="{loc:Loc explorer.close_tab}" AutomationProperties.Name="{loc:Loc explorer.close_tab}">
+                                    <PathIcon Width="11" Height="11" Data="{StaticResource ChromeCloseIcon}" />
+                                </Button>
+                            </Grid>
                         </DataTemplate></ListBox.ItemTemplate>
                     </ListBox>
-                </Flyout></Button.Flyout>
+                </StackPanel>
+            </ScrollViewer>
+            <Button Grid.Column="2" x:Name="TabScrollRight" Classes="header-action compact" IsVisible="False"
+                    Click="TabScrollRight_Click" ToolTip.Tip="{loc:Loc explorer.tab_scroll_right}" AutomationProperties.Name="{loc:Loc explorer.tab_scroll_right}">
+                <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform"
+                      Width="11" Height="11" Data="{StaticResource TabScrollRightIcon}" />
+            </Button>
+            <Button Grid.Column="3" x:Name="AddTabButton" Classes="header-action compact" Command="{Binding NewTabCommand}"
+                    ToolTip.Tip="{loc:Loc explorer.new_tab}" AutomationProperties.Name="{loc:Loc explorer.new_tab}">
+                <PathIcon Width="14" Height="14" Data="{StaticResource ChromeAddIcon}" />
             </Button>
         </Grid>
         <Border x:Name="NavigationToolbar" IsEnabled="{Binding !IsBusy}" Grid.Row="1" Padding="4,8" SizeChanged="NavigationToolbar_SizeChanged">

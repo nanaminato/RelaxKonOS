@@ -52,6 +52,16 @@ if (args.Contains("--terminal-tabs-only"))
     TerminalWorkspaceChecks.Run();
     return;
 }
+if (args.Contains("--tabstrip-only"))
+{
+    TabStripLayoutChecks.Run();
+    return;
+}
+if (args.Contains("--tabstrip-preview"))
+{
+    TabStripPreviewCapture.Run(Path.Combine(AppContext.BaseDirectory, "preview-qa"));
+    return;
+}
 if (args.Contains("--fused-apps-only"))
 {
     FusedWindowHeaderChecks.Run(settings);

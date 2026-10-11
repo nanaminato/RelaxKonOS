@@ -71,7 +71,10 @@ public partial class TerminalWorkspaceView : UserControl
         var viewport = TabScroller.Viewport.Width;
         if (extent <= viewport || container.TranslatePoint(default, TabScroller) is not { } origin) return;
         var offset = TabScroller.Offset.X;
-        if (origin.X < 0) offset += origin.X;
+        // The + rides after the last session, so standing on that session has to bring the row's own
+        // end into the window too; scrolling to the tab's edge alone would leave the + just past it.
+        if (Tabs.Count > 0 && ReferenceEquals(Tabs[^1], model)) offset = extent;
+        else if (origin.X < 0) offset += origin.X;
         else if (origin.X + container.Bounds.Width > viewport) offset += origin.X + container.Bounds.Width - viewport;
         TabScroller.Offset = TabScroller.Offset.WithX(Math.Clamp(offset, 0, extent - viewport));
     }

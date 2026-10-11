@@ -3,6 +3,8 @@
     "Strings": {
         "explorer.open_in_new_tab": "Open in new tab",
         "explorer.all_tabs": "All tabs",
+        "explorer.tab_scroll_left": "Scroll tabs left",
+        "explorer.tab_scroll_right": "Scroll tabs right",
         "explorer.new_tab": "New tab (Ctrl+T)",
         "explorer.close_tab": "Close tab (Ctrl+W)",
         "explorer.view.details": "Details",
