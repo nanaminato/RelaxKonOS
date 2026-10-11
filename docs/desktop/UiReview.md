@@ -433,6 +433,14 @@ D-013 只改了**受管应用窗口**的标题栏；D-012 则明确把宿主「�
 - 真实服务只读复核：指定测试账号认证 200，`/files/drives`、`/files/special`、`/files/list`、`/files/content` 均 200，读取 `.profile`/`.bashrc`/`/etc/hostname` 成功，随后登出；未执行任何写入。
 - 未完成：原生四种关闭手势的视觉/焦点验收、未知写入核实、Explorer 内联改名草稿保护、Terminal 断线门禁。
 
+### 2026-10-11：终端标签栏的 + 落位与溢出浏览
+
+- 结构：`TerminalWorkspaceView` 把标签条与「新建标签」放进同一个横向 `ScrollViewer`（`TabScroller`），`+` 因此紧跟最后一个标签，而不是钉在窗口右缘；右侧新增「所有标签页」下拉（`TabPickerButton`/`TabPicker`），列出与标签条同一 `Tabs` 集合的会话。
+- 交互：标签栏内的滚轮只横向滚动标签条（隧道注册在 `TabScroller` 上，终端内容区的滚动不受影响）；切换标签（含 Ctrl+Tab 与下拉选择）后把该标签滚入视野；下拉用 `_syncingPicker` 区分「打开时回填当前标签」与「用户选择」，避免打开即自关。
+- 资源：新增 `terminal.all_tabs` 三语键（zh-CN/en-US/ja-JP），三语键集合校验一致。
+- 回归：`TerminalWorkspaceChecks` 扩到 17 项，新增「+ 紧跟标签条且同处滚动行」「下拉列出同一集合」「拥挤标签条溢出而非挤压」「活跃会话保持在视野内」「下拉切换会话并滚动到它」「滚轮横向滚动」等断言，`--terminal-tabs-only` exit 0；`RelaxKonOS.Client` 与测试项目 0 错误 0 警告。
+- 未完成：真实桌面（150%/200% DPI、三语、明暗主题）的视觉与命中验收；若终端窗口后续接入融合标题栏的 `HeaderTabs` 角色槽，这套应用自排标签条需要随之迁移。
+
 ## 后续逐项记录模板
 
 ### 2026-10-10：端口转发编辑器首批处理
@@ -703,6 +711,7 @@ D-013 只改了**受管应用窗口**的标题栏；D-012 则明确把宿主「�
 |---|---|---|---|
 | UI-125 [TerminalSettingsView](../../Client/RelaxKonOS.Client/Apps/Terminal/TerminalSettingsView.axaml) | 入口：CloseSettingsCommand | 导航状态；读取失败保留编辑器；窄窗口；切页与焦点返回 | 结构初查完成，待流程深审与运行验收 |
 | UI-126 [TerminalView](../../Client/RelaxKonOS.Client/Apps/Terminal/TerminalView.axaml) | Menu；入口：OpenAdministratorTerminalCommand、OpenSettingsCommand、OpenEnvironmentCommand | 活跃会话关闭确认已接入窗口守卫；继续断线门禁、迟到输入与原生验收 | 会话关闭语义已实现，受控回归通过，完整验收待完成 |
+| UI-160 [TerminalWorkspaceView](../../Client/RelaxKonOS.Client/Apps/Terminal/TerminalWorkspaceView.axaml) | ListBox#TabStrip、ScrollViewer#TabScroller、Button#AddTabButton、Button#TabPickerButton | 标签条落位（新建标签跟随最后一个标签）、标签溢出时的滚动与「所有标签页」列表；窄窗口、键盘与屏幕阅读器 | 标签栏行为已实现，TerminalWorkspaceChecks 17 项通过；原生视觉与命中待验收 |
 
 ### TextEditor
 

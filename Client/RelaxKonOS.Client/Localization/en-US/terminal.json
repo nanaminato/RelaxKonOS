@@ -6,6 +6,7 @@
         "terminal.status.administrator_connected": "Connected · Administrator",
         "terminal.administrator_shell": "Administrator · {0}",
         "terminal.new_tab": "New tab",
+        "terminal.all_tabs": "All tabs",
         "terminal.close_tab": "Close tab",
         "terminal.menu": "Terminal",
         "terminal.settings": "Terminal settings",

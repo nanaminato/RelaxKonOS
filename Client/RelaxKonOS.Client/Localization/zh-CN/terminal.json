@@ -6,6 +6,7 @@
         "terminal.status.administrator_connected": "已连接 · 管理员权限",
         "terminal.administrator_shell": "管理员权限 · {0}",
         "terminal.new_tab": "新建标签页",
+        "terminal.all_tabs": "所有标签页",
         "terminal.close_tab": "关闭标签页",
         "terminal.menu": "终端",
         "terminal.settings": "终端设置",

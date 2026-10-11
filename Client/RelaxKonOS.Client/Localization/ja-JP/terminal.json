@@ -6,6 +6,7 @@
         "terminal.status.administrator_connected": "接続済み · 管理者権限",
         "terminal.administrator_shell": "管理者権限 · {0}",
         "terminal.new_tab": "新しいタブ",
+        "terminal.all_tabs": "すべてのタブ",
         "terminal.close_tab": "タブを閉じる",
         "terminal.menu": "ターミナル",
         "terminal.settings": "ターミナル設定",

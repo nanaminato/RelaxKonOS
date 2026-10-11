@@ -5,6 +5,12 @@
         <LangVersion>latest</LangVersion>
         <ImplicitUsings>enable</ImplicitUsings>
         <RootNamespace>RelaxKonOS.Client</RootNamespace>
+        <!-- AVLN3001 只报一件事：这份 XAML 资源不能由运行时加载器按 URI 实例化（根类型没有公共无参构造）。
+             DockerImageMirrorsView / ServerCenterManagementDialog / ServerInstallationWizardView 三个视图
+             的构造必须拿到 ViewModel 与 ModalDialog，本来就是只能由 DI 构造的，因此这个警告描述的正是
+             预期状态而非缺陷。Avalonia 的 GenerateAvaloniaResources 会把全部 AvaloniaXaml 项一并并入
+             AvaloniaResource，无法按文件排除，所以只能在项目级抑制。 -->
+        <NoWarn>$(NoWarn);AVLN3001</NoWarn>
     </PropertyGroup>
 
     <ItemGroup>

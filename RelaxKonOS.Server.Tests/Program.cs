@@ -395,8 +395,14 @@ try
         await SettingsSystemVerification.RunAsync(root);
         return;
     }
-    await CertificateOperationReplayChecks.RunAsync(Path.Combine(root, "certificate-replay"));
-    await CertificateBindingChecks.RunAsync(Path.Combine(root, "certificate-binding"));
+    // TestHostEnvironment 会在构造时对 contentRoot 立刻建立 PhysicalFileProvider，目录不存在就直接抛
+    // DirectoryNotFoundException，因此这两个子目录必须先建出来（专用开关的分支各自建过，完整套件路径此前漏了）。
+    var certificateReplayRoot = Path.Combine(root, "certificate-replay");
+    var certificateBindingRoot = Path.Combine(root, "certificate-binding");
+    Directory.CreateDirectory(certificateReplayRoot);
+    Directory.CreateDirectory(certificateBindingRoot);
+    await CertificateOperationReplayChecks.RunAsync(certificateReplayRoot);
+    await CertificateBindingChecks.RunAsync(certificateBindingRoot);
     FrpcAppliedStateChecks.Run();
     ObservabilityChecks.VerifyProtocolAndSanitization();
     await BackupRecoveryKeyProviderChecks.RunAsync(root);
