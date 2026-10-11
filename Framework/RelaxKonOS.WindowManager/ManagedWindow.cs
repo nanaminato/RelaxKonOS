@@ -15,12 +15,6 @@ namespace RelaxKonOS.WindowManager;
 public partial class ManagedWindow : ObservableObject
 {
     private string? _loadedIconPath;
-    // Use standard Unicode symbols instead of Segoe MDL2 private-use code points.
-    // The latter render as arbitrary letters/boxes when the Windows-only font is absent.
-    public const string MinimizeGlyph = "\u2212";
-    public const string CloseGlyph = "\u00D7";
-    public const string MaximizeGlyphChar = "\u25A1";
-    public const string RestoreGlyphChar = "\u2750";
 
     public ManagedWindow(WindowInfo info, RemoteWindow view, bool isModalDialog = false)
     {
@@ -54,7 +48,7 @@ public partial class ManagedWindow : ObservableObject
     [ObservableProperty] private IImage? _iconImage;
     public bool HasIconImage => IconImage is not null;
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(MaximizeGlyph))]
+    [NotifyPropertyChangedFor(nameof(IsMaximized))]
     [NotifyPropertyChangedFor(nameof(IsOnScreen))]
     [NotifyPropertyChangedFor(nameof(IsFullScreen))]
     private WindowState _state;
@@ -69,7 +63,8 @@ public partial class ManagedWindow : ObservableObject
     /// <summary>True when this window currently occupies the shell-wide full-screen overlay.</summary>
     public bool IsFullScreen => State == WindowState.FullScreen;
 
-    public string MaximizeGlyph => State == WindowState.Maximized ? RestoreGlyphChar : MaximizeGlyphChar;
+    /// <summary>True when this window occupies the whole work area, so its caption offers "restore".</summary>
+    public bool IsMaximized => State == WindowState.Maximized;
 
     /// <summary>Push authoritative state from <see cref="Info"/> into bindable properties.</summary>
     internal void Sync()

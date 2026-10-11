@@ -54,6 +54,11 @@ if (args.Contains("--fused-apps-only"))
     EditorDraftStateChecks.Run();
     return;
 }
+if (args.Contains("--host-titlebar-only"))
+{
+    HostTitleBarChecks.Run(settings, localization);
+    return;
+}
 if (args.Contains("--forward-runtime-only"))
 {
     SynchronizationContext.SetSynchronizationContext(null);
@@ -109,6 +114,7 @@ SettingsInteractionChecks.Run(settings, localization);
 SettingsWindowChecks.Run(settings, localization);
 FusedWindowHeaderChecks.Run(settings);
 FusedApplicationChecks.Run(settings);
+HostTitleBarChecks.Run(settings, localization);
 RemoteClockChecks.Run(settings, localization, services);
 DesktopDeviceSettingsChecks.Run(settings, appearance);
 HostTimeCompletionChecks.Run(localization);

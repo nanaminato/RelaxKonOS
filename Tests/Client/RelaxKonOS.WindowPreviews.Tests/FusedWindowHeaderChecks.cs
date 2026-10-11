@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Headless;
@@ -7,11 +8,14 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using System.Runtime.InteropServices;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Workspace.SystemStyles;
+using RelaxKonOS.UI.Themes.SystemStyle;
 using RelaxKonOS.WindowManager;
 using Point = Avalonia.Point;
+using ShapePath = Avalonia.Controls.Shapes.Path;
 using WindowManagerService = RelaxKonOS.WindowManager.WindowManager;
 using WindowRect = RelaxKonOS.Core.Primitives.Rect;
 
@@ -110,11 +114,37 @@ internal static class FusedWindowHeaderChecks
                         $"{expectation.Recipe}: the caption cluster is not ordered minimize / maximize / close.");
                 }
 
-                // A fused bar takes its geometry from the style it belongs to, never from one shared
-                // number written into the window manager.
-                var expectedHeight = Math.Max(48, tokens["WindowTitleBarHeight"] + 14);
+                // A fused bar grows out of the style's own *window caption*, never out of one shared
+                // number written into the window manager - and never out of the host's desktop bar,
+                // which is a different surface with a different height.
+                var expectedHeight = Math.Max(48, tokens["WindowCaptionHeight"] + 14);
                 Check(Math.Abs(bar.Bounds.Height - expectedHeight) < 1,
                     $"{expectation.Recipe}: the fused bar is {bar.Bounds.Height} tall, expected {expectedHeight}.");
+
+                var captionHeight = tokens["WindowCaptionHeight"];
+                // The marks are the host's own geometry rather than characters, so nothing about them can
+                // move with a font: each button paints one of the style's marks, in the style's own box,
+                // with the platform's 1px hairline.
+                var glyphBox = tokens["WindowCaptionGlyphSize"];
+                var styleMarks = WindowCaptionMarks.All.Select(entry => view.FindResource(entry.Key)).ToArray();
+                foreach (var button in new[] { minimize, maximize, close })
+                {
+                    Check(!button.GetVisualDescendants().OfType<TextBlock>().Any(),
+                        $"{expectation.Recipe}: {button.Name} still draws its mark from text.");
+                    var painted = button.GetVisualDescendants().OfType<ShapePath>().ToArray();
+                    Check(painted.Length > 0, $"{expectation.Recipe}: {button.Name} paints no mark.");
+                    Check(painted.All(mark => styleMarks.Any(resource => ReferenceEquals(resource, mark.Data))),
+                        $"{expectation.Recipe}: {button.Name} does not paint one of the style's marks.");
+                    Check(painted.All(mark => Math.Abs(mark.StrokeThickness - 1) < 0.01),
+                        $"{expectation.Recipe}: {button.Name} strokes its mark at {painted[0].StrokeThickness}px, expected the platform's hairline.");
+                    Check(painted.All(mark => Math.Abs(mark.Width - glyphBox) < 0.01 && Math.Abs(mark.Height - glyphBox) < 0.01),
+                        $"{expectation.Recipe}: {button.Name}'s mark is not drawn in the style's {glyphBox}px box.");
+                }
+
+                // One button, two actions: a maximized caption offers "restore", a normal one "maximize",
+                // and exactly one of the two marks is showing.
+                Check(maximize.GetVisualDescendants().OfType<ShapePath>().Count(mark => mark.IsVisible) == 1,
+                    $"{expectation.Recipe}: the maximize button does not offer exactly one of its two marks.");
 
                 if (expectation.Recipe == WindowChromeRecipes.TrafficLightsLeft)
                 {
@@ -130,6 +160,11 @@ internal static class FusedWindowHeaderChecks
                           && ReferenceEquals(minimize.Background, view.FindResource("WarningBrush"))
                           && ReferenceEquals(maximize.Background, view.FindResource("SuccessBrush")),
                         $"{expectation.Recipe}: the traffic lights did not take their colours from the palette roles.");
+                    // macOS centres the three lights on the window's toolbar line, so a fused bar grows
+                    // symmetrically around them rather than pushing them to one edge.
+                    Check(Math.Abs(CentreY(cluster, view) - CentreY(bar, view)) < 1,
+                        $"{expectation.Recipe}: the traffic lights are not centred on the bar "
+                        + $"({CentreY(cluster, view)} vs {CentreY(bar, view)}).");
                     Check(Alpha(close.Foreground) == 0 && Alpha(maximize.Foreground) == 0,
                         $"{expectation.Recipe}: the glyphs are painted before the cluster is engaged.");
                     ((IPseudoClasses)cluster.Classes).Set(":pointerover", true); Pump();
@@ -139,8 +174,61 @@ internal static class FusedWindowHeaderChecks
                 }
                 else
                 {
-                    Check(Math.Abs(close.Bounds.Width - tokens["WindowControlWidth"]) < 0.5,
-                        $"{expectation.Recipe}: the caption buttons do not use the style's control width.");
+                    // A caption button is measured by the platform's caption, not by the bar it happens
+                    // to sit in: growing the bar around a tab strip must not inflate a 32px button, and
+                    // the whitespace left around the glyph is whatever remains once the two agree.
+                    var controlWidth = tokens["WindowControlWidth"];
+                    Check(Math.Abs(cluster.Bounds.Height - captionHeight) < 1,
+                        $"{expectation.Recipe}: the caption cluster is {cluster.Bounds.Height} tall, expected {captionHeight}.");
+                    Check(new[] { minimize, maximize, close }.All(button =>
+                              Math.Abs(button.Bounds.Width - controlWidth) < 0.5 && Math.Abs(button.Bounds.Height - captionHeight) < 0.5),
+                        $"{expectation.Recipe}: the caption buttons are not {controlWidth}x{captionHeight} "
+                        + $"({close.Bounds.Width}x{close.Bounds.Height}).");
+
+                    // Windows 11 pins its three buttons to the top of the window and lets the tab row
+                    // grow below them; a headerbar keeps its buttons on its own centre line instead.
+                    if (expectation.Recipe == WindowChromeRecipes.CaptionButtonsRight)
+                    {
+                        Check(Math.Abs(TopEdge(cluster, view) - TopEdge(bar, view)) < 1,
+                            $"{expectation.Recipe}: the trailing caption cluster did not take the top of the bar.");
+
+                        // What the buttons *render*, not just what they measure. The marks are geometry,
+                        // so the platform's own numbers apply exactly: the ink is the style's mark box,
+                        // the whitespace around it is whatever the button has left over, and the mark sits
+                        // on the button's centre line because it was placed there rather than by a font.
+                        var background = ((ISolidColorBrush)view.FindResource("SurfaceBrush")!).Color;
+                        var whitespace = (controlWidth - glyphBox) / 2;
+                        foreach (var (button, expected, slack) in new[]
+                                 {
+                                     // A hairline and an outline are grid-aligned, so they land on whole
+                                     // pixels: any half-pixel offset would smear them into two grey rows.
+                                     // Only the diagonal cross is antialiased by nature.
+                                     (minimize, new PixelSize((int)glyphBox, 1), 0),
+                                     (maximize, new PixelSize((int)glyphBox, (int)glyphBox), 0),
+                                     (close, new PixelSize((int)glyphBox, (int)glyphBox), 1),
+                                 })
+                        {
+                            var ink = InkBox(host, button, background);
+                            Check(ink is not null, $"{expectation.Recipe}: {button.Name} drew no mark.");
+                            var centreX = ink!.Value.X + ink.Value.Width / 2;
+                            var centreY = ink.Value.Y + ink.Value.Height / 2;
+                            Check(Math.Abs(centreX - (LeftEdge(button, host) + button.Bounds.Width / 2)) <= 1
+                                  && Math.Abs(centreY - (TopEdge(button, host) + button.Bounds.Height / 2)) <= 1,
+                                $"{expectation.Recipe}: {button.Name}'s mark is off the button's centre line "
+                                + $"({centreX - (LeftEdge(button, host) + button.Bounds.Width / 2):+0.#}, "
+                                + $"{centreY - (TopEdge(button, host) + button.Bounds.Height / 2):+0.#}).");
+                            Check(Math.Abs(ink.Value.Width - expected.Width) <= slack
+                                  && Math.Abs(ink.Value.Height - expected.Height) <= slack,
+                                $"{expectation.Recipe}: {button.Name}'s mark measures {ink.Value.Width}x{ink.Value.Height}, "
+                                + $"expected the style's {expected.Width}x{expected.Height} in a {glyphBox}px box.");
+                            Check(Math.Abs(ink.Value.X - (LeftEdge(button, host) + whitespace)) <= 1,
+                                $"{expectation.Recipe}: {button.Name} leaves {ink.Value.X - LeftEdge(button, host)}px of "
+                                + $"whitespace, expected the platform's {whitespace}.");
+                        }
+                    }
+                    else
+                        Check(Math.Abs(CentreY(cluster, view) - CentreY(bar, view)) < 1,
+                            $"{expectation.Recipe}: the headerbar buttons are not centred on their bar.");
                 }
 
                 // A headerbar is the application's own toolbar: the fused bar is raised like the
@@ -150,6 +238,19 @@ internal static class FusedWindowHeaderChecks
                     $"{expectation.Recipe}: the fused bar did not take the {expectedSurface} its recipe asks for.");
 
                 Capture(host, new PixelSize(1100, 800), Path.Combine(output, $"fused-header-{expectation.Recipe}.png"));
+
+                // The maximize button offers two actions, so what it announces and what it draws both
+                // have to follow the window state. It comes after the capture so the fixture's own
+                // screenshot stays the normal-state one.
+                windows.ToggleMaximize(managed); Pump();
+                Check(AutomationProperties.GetName(maximize) == WindowCaptionLabels.Current.Restore,
+                    $"{expectation.Recipe}: a maximized caption announces '{AutomationProperties.GetName(maximize)}', expected restore.");
+                Check(maximize.GetVisualDescendants().OfType<ShapePath>().Single(mark => mark.IsVisible).Data is { } shown
+                      && ReferenceEquals(shown, view.FindResource(SystemStyleDerivedKeys.WindowCaptionRestoreGlyph)),
+                    $"{expectation.Recipe}: a maximized caption still draws the maximize mark.");
+                windows.ToggleMaximize(managed); Pump();
+                Check(AutomationProperties.GetName(maximize) == WindowCaptionLabels.Current.Maximize,
+                    $"{expectation.Recipe}: a restored caption announces '{AutomationProperties.GetName(maximize)}', expected maximize.");
             }
 
             // Dragging has to survive the new slots: they exist so an application can put a control in
@@ -246,9 +347,50 @@ internal static class FusedWindowHeaderChecks
     private static double RightEdge(Visual visual, Visual ancestor) =>
         LeftEdge(visual, ancestor) + visual.Bounds.Width;
 
+    private static double TopEdge(Visual visual, Visual ancestor) =>
+        visual.TranslatePoint(default, ancestor)!.Value.Y;
+
+    private static double CentreY(Visual visual, Visual ancestor) =>
+        TopEdge(visual, ancestor) + visual.Bounds.Height / 2;
+
     /// <summary>Horizontal overlap only: the title bar is a single row, so vertical position carries no information.</summary>
     private static bool Overlaps(Visual first, Visual second, Visual ancestor) =>
         LeftEdge(first, ancestor) < RightEdge(second, ancestor) && LeftEdge(second, ancestor) < RightEdge(first, ancestor);
+
+    /// <summary>
+    /// Bounding box, in host coordinates, of everything painted inside <paramref name="target"/> that
+    /// is not the surface behind it. Read off a rendered frame rather than off the visual tree, because
+    /// the question - where did the glyph's ink land - has no answer in the visual tree.
+    /// </summary>
+    private static PixelRect? InkBox(Window host, Visual target, Color background, int tolerance = 32)
+    {
+        using var frame = host.CaptureRenderedFrame() ?? throw new Exception("The window did not render a frame.");
+        using var locked = frame.Lock();
+        var origin = target.TranslatePoint(default, host)!.Value;
+        // A trailing button reaches the frame's own border, which is not the surface behind it: the
+        // probe ignores the outermost two pixels so only the glyph itself can qualify.
+        const int inset = 2;
+        var left = (int)Math.Round(origin.X) + inset;
+        var top = (int)Math.Round(origin.Y) + inset;
+        var width = (int)Math.Round(target.Bounds.Width) - inset * 2;
+        var height = (int)Math.Round(target.Bounds.Height) - inset * 2;
+
+        int minX = int.MaxValue, minY = int.MaxValue, maxX = int.MinValue, maxY = int.MinValue;
+        for (var y = top; y < top + height; y++)
+        for (var x = left; x < left + width; x++)
+        {
+            var pixel = locked.Address + y * locked.RowBytes + x * 4;
+            // Channel order differs per platform; only "differs from the surface" matters here.
+            if (Math.Abs(Marshal.ReadByte(pixel) - background.B) <= tolerance
+                && Math.Abs(Marshal.ReadByte(pixel + 1) - background.G) <= tolerance
+                && Math.Abs(Marshal.ReadByte(pixel + 2) - background.R) <= tolerance)
+                continue;
+            minX = Math.Min(minX, x); minY = Math.Min(minY, y);
+            maxX = Math.Max(maxX, x); maxY = Math.Max(maxY, y);
+        }
+
+        return minX == int.MaxValue ? null : new PixelRect(minX, minY, maxX - minX + 1, maxY - minY + 1);
+    }
 
     private static void Capture(Window window, PixelSize size, string path)
     {

@@ -86,7 +86,7 @@ Phase 2/3 完成迁移后，按 §10.2 的**精确口径**（`#[0-9A-Fa-f]{6,8}\
 | `Duration` | `TimeSpan`（输入单位毫秒） |
 | `Opacity` | `double`（0..1） |
 
-### 3.1 令牌全表（33 项，`*` 为必需）
+### 3.1 令牌全表（35 项，`*` 为必需）
 
 | 分组 | 令牌 | Kind | 区间 | 默认 |
 |---|---|---|---|---|
@@ -98,9 +98,11 @@ Phase 2/3 完成迁移后，按 §10.2 的**精确口径**（`#[0-9A-Fa-f]{6,8}\
 | | `TransitionFast` * | Duration | 0–1000 | 120 |
 | | `ReducedMotionDuration` * | Duration | 0–1000 | 0 |
 | 受管窗口外壳 | `WindowTitleBarHeight` * | Number | 24–96 | 42 |
+| | `WindowCaptionHeight` * | Number | 20–64 | 32 |
+| | `WindowCaptionGlyphSize` * | Number | 4–24 | 10 |
 | | `WindowFrameThickness` * | Thickness | 0–8 | 1 |
 | | `WindowCornerRadius` * | CornerRadius | 0–32 | 8 |
-| | `WindowControlWidth` * | Number | 28–96 | 52 |
+| | `WindowControlWidth` * | Number | 28–96 | 46 |
 | | `WindowTrafficLightSize` | Number | 8–24 | 12 |
 | | `WindowTabHeight` | Number | 20–40 | 28 |
 | | `WindowInactiveOpacity` * | Opacity | 0.2–1 | 0.55 |
@@ -178,7 +180,7 @@ recipe 只是「选择」，真正产生差异的是宿主审查过的模板。�
 
 | 槽位 | 已实现值 |
 |---|---|
-| `windowChrome` | `caption-buttons-right`（默认：图标在前、标题居中偏左、按钮在右）、`traffic-lights-left`（按钮组在左、按「关 / 小 / 放大」排成红黄绿三枚圆点、字形仅在指针或键盘进入按钮组时显现、图标在右、标题居中）、`headerbar-right`（无图标、左对齐加粗标题） |
+| `windowChrome` | `caption-buttons-right`（默认：图标在前、标题居中偏左、按钮在右）、`traffic-lights-left`（按钮组在左、按「关 / 小 / 放大」排成红黄绿三枚圆点、记号仅在指针或键盘进入按钮组时显现、图标在右、标题居中）、`headerbar-right`（无图标、左对齐加粗标题） |
 | `contextMenu` | `compact-command-menu`（紧凑基准）、`rounded-command-menu`（内边距 ×1.35、条目再内缩 +4）、`gnome-popover-menu`（去掉边框、内边距 ×1.6、条目再内缩 +8） |
 | `taskSwitcher` | `windows-grid`（288×200 居中换行网格 + 标题）、`macos-strip`（372×252 大卡片、更重遮罩、隐藏标题）、`gnome-overview`（236×172 密集网格、网格顶端对齐） |
 | `shellChrome` | 三套内置 Shell 的自身布局 |
@@ -193,8 +195,11 @@ recipe 只是「选择」，真正产生差异的是宿主审查过的模板。�
 - **宿主同时拥有槽的留白。** 融合态下 leading / trailing 的 `Margin` 由 recipe 给出；按钮在左时，
   leading 天然落在按钮组右侧的列里（按钮组的右外边距就是那道间隔），应用不再用 `Margin` 去猜按钮在哪一侧。
 - **融合条的高度与底色同样属于 recipe。** 高度取派生键 `WindowFusedTitleBarHeight`
-  （`max(48, WindowTitleBarHeight + 14)`，紧凑风格自然得到更矮的融合条）；底色由每条 recipe 显式给出——
+  （`max(48, WindowCaptionHeight + 14)`，紧凑风格自然得到更矮的融合条）；底色由每条 recipe 显式给出——
   `headerbar-right` 用 `SurfaceRaisedBrush`（headerbar 是应用自己的工具条，与侧栏同层），其余用 `SurfaceBrush`。
+- **标题栏有多高，不等于按钮有多大。** 融合条因标签条/工具条而变高时，按钮仍是
+  `WindowControlWidth × WindowCaptionHeight`（Windows-like 46×32，见 §4.3）：`caption-buttons-right`
+  把它们贴顶（Windows 让标签行在按钮下方长出来），`traffic-lights-left` 与 `headerbar-right` 居中。
 - **标签和中心内容可以共存。** `HeaderTabs` 单独声明时使用弹性列；同时声明 `HeaderCenter` 时，
   宿主把标签放到独立一行，保留中心控件。代码编辑器以此保留命令中心和文档标签。
 - **导航工具栏使用 `HeaderToolbar`。** Windows-like / Ubuntu-like 把它放在标题和标签下方；
@@ -209,6 +214,51 @@ recipe 只是「选择」，真正产生差异的是宿主审查过的模板。�
   （三条 recipe 的槽列、按钮组顺序与配色、融合条几何、拖拽不被槽吃掉、单独标签条吃满弹性列），
   以及 `SettingsWindowChecks` 里「设置窗口 × 三条 recipe」的截图——这一格此前从未渲染过，
   所以「按钮在左的 recipe 下融合头长什么样」一直没有被看过。
+
+### 4.3 标题栏按钮的平台比例与记号的画法
+
+自绘 chrome 的意义在于「像那个平台的窗口」，所以三枚按钮的尺寸与记号都按平台自己的度量来，而不是按桌面的比例缩放：
+
+| | Windows-like | macOS-like | Ubuntu-like |
+|---|---|---|---|
+| 按钮（宽 × 高） | `46 × 32`（`WindowControlWidth × WindowCaptionHeight`） | `12 × 12` 圆点（`WindowTrafficLightSize`），间距 8 | `44 × 46` |
+| 宿主自己那三枚（宽 × 高） | `46 × 42`（`WindowControlWidth × WindowTitleBarHeight`） | `28 × 38` | `44 × 46` |
+| 记号盒（`WindowCaptionGlyphSize`） | 10（平台值） | 7 | 10 |
+| 记号四周留白 | 左右各 18px、上下各 11px | 圆点居中，记号仅悬停显现 | 左右各 17px、上下各 18px |
+| 按钮在栏内的位置 | 贴顶（Windows 让标签行在按钮下方长出来） | 垂直居中 | 垂直居中 |
+| 对齐依据 | Windows 11 标题栏 32px、按钮 46×32、记号 10px | macOS 交通灯 12px、间距 8px、记号约 7px | GNOME headerbar 方按钮，与栏同高 |
+
+三处此前不一致的地方随之修正：
+
+1. **按钮高度来自 `WindowCaptionHeight`，不再来自「它恰好坐在多高的栏里」**。融合条被标签条/工具条撑高时（Windows-like 48px），
+   按钮仍是 32px 贴顶——与资源管理器的「标签行 + 32px 按钮」一致，而不是被拉成 48px。
+2. **三枚记号是一个封闭的几何集合，既不是字符、也不再共用一个字号**。它们是 `WindowCaptionMarks` 按平台栅格生成的
+   `StreamGeometry`（10×1 的线 / 10×10 空心方 / 相交的两个方框 / 10×10 交叉），每个 `Path` 的描边取按钮自身的 `Foreground`，
+   于是「字号」这个自由度消失：几何由宿主给出，只有盒子大小由 `WindowCaptionGlyphSize` 决定。
+3. **记号的位置由几何决定，不再需要补偿**。字符的行盒自带下伸部，直接居中会让墨迹比中线低约 3px（32px 按钮里肉眼可见），
+   这正是曾经的派生键 `WindowCaptionGlyphShift` 要处理的问题；几何按坐标落位，该键已删除。
+   模板还给 `Path` 显式 `Width/Height = WindowCaptionGlyphSize`：若按墨迹自身高度居中，1px 的横线会落在半像素上糊成两行灰。
+
+**为什么不能直接用平台的图标字体。** Windows 自己确实是用字体画的——Segoe Fluent Icons（`SegoeIcons.ttf`）的
+`U+E921`/`U+E922`/`U+E923`/`U+E8BB` 在 10px 下的墨迹与平台截图逐像素一致（Windows 10 的 `segmdl2.ttf` 同码点、同度量）。
+但该字体 Windows 专有、不可再分发，Linux/macOS 宿主没有，E 段码点在普通字体里也不存在；
+退回标准 Unicode 字符同样不行（`▯` U+2750 在本机 374 个字体里只有 7 个有，Segoe UI 与 Noto Sans 都没有，
+还原记号实际靠字体回退由另一个字体绘制，度量与另两枚不同源）。所以宿主画图形、风格只给尺寸——
+「形状由宿主定义、比例由风格决定」这条边界没有变。
+
+`WindowTitleBarHeight` 与 `WindowCaptionHeight` 是两个不同的度量：前者是**宿主桌面窗口自己**的标题栏
+（连接栏与宿主按钮也在这一条上），后者是**受管应用窗口**的标题栏与其按钮。桌面外框不随应用窗口的标题栏一起变矮。
+
+**宿主窗口自己的标题栏吃同一套记号。** `Client/RelaxKonOS.Client/Views/MainWindow.axaml` 是宿主自绘的窗口装饰
+（`WindowDecorations="None"`），它的三枚按钮是 `WindowControlWidth × WindowTitleBarHeight`
+（Windows-like `46 × 42`、macOS-like `28 × 38`、Ubuntu-like `44 × 46`），记号用的是**同一批** `WindowCaption*Glyph` 派生键、
+同一个 `WindowCaptionGlyphSize` 记号盒和同一条 `Path.caption-glyph` 的 1px 描边——于是宿主与受管窗口是同一个按钮，
+只是坐在一条更高的栏里（左右留白仍各 18px，上下各 16px）。改动前它画的是 `U+2212` / `U+2750` / `U+00D7` 三个字符，
+并在还原记号上额外套了 `FontSize="11"`；实测墨迹只有 `8×1` / `9×8` / `7×5`，比平台小、且最低的一枚低 1px。
+宿主的「最大化/还原」与受管窗口同语义：一个按钮挂两枚记号，由**窗口状态**决定画哪一枚、读屏念哪个动作名
+（所以吸附布局、Win+Up、任务栏系统菜单都能跟上，而不是只跟上自己那一次点击）。
+全屏时这条栏收起、桌面内容区的上边距随之归零，两者都由 `Grid#Root` 上的样式切换，不再由代码写一个字面量
+——那正是 `34` 与令牌 `WindowTitleBarHeight` 脱节的来源（见 UiReview D-014）。
 
 ---
 
@@ -295,8 +345,10 @@ recipe 只是「选择」，真正产生差异的是宿主审查过的模板。�
 | 令牌 | Windows-like | macOS-like | Ubuntu-like |
 |---|---|---|---|
 | `WindowTitleBarHeight` | 42 | 38 | 46 |
+| `WindowCaptionHeight` | 32 | 28 | 46 |
+| `WindowCaptionGlyphSize` | 10 | 7 | 10 |
 | `WindowCornerRadius` | 8 | 12 | 10 |
-| `WindowControlWidth` | 52 | 28 | 44 |
+| `WindowControlWidth` | 46 | 28 | 44 |
 | `WindowInactiveOpacity` | 0.55 | 0.60 | 0.50 |
 | `WindowShadowDepth` / `Opacity` | 28 / 0.40 | 34 / 0.32 | 24 / 0.30 |
 | `MenuCornerRadius` | 6 | 10 | 12 |
@@ -368,8 +420,11 @@ WorkspacePreferencesDto.DesktopExperience
   `SystemStyle.WindowChrome` / `SystemStyle.ContextMenu` / `SystemStyle.TaskSwitcher` / `SystemStyle.ShellChrome`。
 - 派生复合值（`SystemStyleDerivedKeys`）：`OverlayTopCornerRadius`、`OverlayBottomCornerRadius`、
   `ElevationShadow`（由 `FlyoutElevation` + 调色板 `Shadow` 合成）、`WindowCaptionCornerRadius`
-  （`min(WindowControlWidth, WindowTitleBarHeight)/2`）、`HostTitleBarMargin`、
-  `WindowFusedTitleBarHeight`（`max(48, WindowTitleBarHeight + 14)`，见 §4.2）。
+  （`min(WindowControlWidth, WindowCaptionHeight)/2`）、
+  四个记号几何 `WindowCaptionMinimizeGlyph` / `WindowCaptionMaximizeGlyph` / `WindowCaptionRestoreGlyph` /
+  `WindowCaptionCloseGlyph`（`WindowCaptionMarks` 按 `WindowCaptionGlyphSize` 生成的 `StreamGeometry`，见 §4.3）、
+  `HostTitleBarMargin`（取 `WindowTitleBarHeight`，宿主桌面外框）、
+  `WindowFusedTitleBarHeight`（`max(48, WindowCaptionHeight + 14)`，见 §4.2）。
 - 命令面厚度键（`SystemStyleCommandSurfaceKeys`）：Fluent 的菜单/子菜单/ToolTip/Flyout 模板只认
   **具名 thickness 键**，而 thickness 无法在 AXAML 里写 `Color="{DynamicResource ...}"`，
   所以由本类在代码中物化，并按 `contextMenu` recipe 缩放（见 §4.1）。
@@ -392,9 +447,14 @@ C# 构造的 UI 必须消费**会跟随主题变化**的令牌，因此：
   形状值已全部移入 `SystemStyleTokens.axaml`。
 - `Themes/RelaxKonOSTheme.axaml` 同时合并两者，作为唯一入口。
 - `Themes/Styles.axaml` 的 caption/icon 按钮与 focus-visible 状态改用 `DynamicResource` 引用
-  `Width` / `MinWidth` / `MinHeight` / `BorderThickness`。
+  `Width` / `MinWidth` / `MinHeight` / `BorderThickness`；`Button.caption` 的 `Width` / `Height`
+  取 `WindowControlWidth` / `WindowCaptionHeight`，并新增 `Path.caption-glyph` 的 `StrokeThickness=1`
+  ——**`Button.caption` 不再设置 `FontSize`**，记号不是文字（见 §4.3）。
 - `Framework/RelaxKonOS.WindowManager/Themes/RemoteWindowTheme.axaml`：
-  标题栏高度 → `{DynamicResource WindowTitleBarHeight}`、融合标题栏高度 → `{DynamicResource WindowFusedTitleBarHeight}`、
+  受管窗口标题栏高度 → `{DynamicResource WindowCaptionHeight}`、融合标题栏高度 → `{DynamicResource WindowFusedTitleBarHeight}`、
+  三枚记号的 `Data` → `{DynamicResource WindowCaptionMinimizeGlyph}` / `…MaximizeGlyph` / `…RestoreGlyph` / `…CloseGlyph`
+  （`Path.caption-glyph`，`Width`/`Height` 取 `WindowCaptionGlyphSize`，描边取按钮自身的 `Foreground`，
+  因此悬停/按下/交通灯「指针进入才显现」三套状态无需改动）、
   交通灯直径 → `{DynamicResource WindowTrafficLightSize}`、外框 `BorderThickness` → `{DynamicResource WindowFrameThickness}`、
   非活动标题 `Opacity` → `{DynamicResource WindowInactiveOpacity}`、`:shadow` → `{DynamicResource WindowShadow}`。
   **`WindowTabHeight` 是例外：本模板不消费它**，它发布给**应用的标签条视图**（`RemoteWindow.HeaderTabs` 的内容）

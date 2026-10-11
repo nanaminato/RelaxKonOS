@@ -248,7 +248,7 @@ internal static class SettingsWindowChecks
                     $"{styleId} selected {recipe} but the window did not adopt it.");
                 var bar = managed.View.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "PART_TitleBar");
                 var cluster = managed.View.GetVisualDescendants().OfType<Grid>().Single(grid => grid.Name == "PART_WindowControls");
-                var expectedFused = Math.Max(48, profile.ResolveTokens(dark: false)["WindowTitleBarHeight"] + 14);
+                var expectedFused = Math.Max(48, profile.ResolveTokens(dark: false)["WindowCaptionHeight"] + 14);
                 Check(Math.Abs(bar.Bounds.Height - expectedFused) < 1,
                     $"{styleId}: fused bar kept a single shared height ({bar.Bounds.Height}, expected {expectedFused}).");
                 Check(!Overlaps(view.Header, cluster, managed.View) && !Overlaps(view.SearchBar, cluster, managed.View),

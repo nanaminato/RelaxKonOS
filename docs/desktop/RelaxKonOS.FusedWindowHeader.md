@@ -21,7 +21,7 @@
 
 **目标（一句话）**：把内置应用窗口内容区里那条与窗口标题栏重复的身份条搬进宿主标题栏，使每个窗口只有一层头部。
 
-**量化收益**：`Border.app-header`（`Framework/RelaxKonOS.UI/Themes/ApplicationStyles.axaml:14`）实高 78px（`Padding=24,16` + 46px 图标），叠在 42px 窗口标题栏（`Framework/RelaxKonOS.UI/Themes/Tokens/SystemStyleTokens.axaml` 的 `WindowTitleBarHeight`）上共 120px；融合后由单层 `WindowFusedTitleBarHeight`（`max(48, WindowTitleBarHeight + 14)`：Windows-like 56 / macOS-like 52 / Ubuntu-like 60）替代，Windows-like 下每个窗口省约 64px。默认窗口 820×560（`Client/RelaxKonOS.Client/Apps/Settings/SettingsApp.cs:80`）下约占窗口高度 11%。
+**量化收益**：`Border.app-header`（`Framework/RelaxKonOS.UI/Themes/ApplicationStyles.axaml:14`）实高 78px（`Padding=24,16` + 46px 图标），叠在 32px 应用窗口标题栏（`Shared/RelaxKonOS.Protocol/Workspace/SystemStyles/BuiltInSystemStyles.cs` 的 `WindowCaptionHeight`）上共 110px；融合后由单层 `WindowFusedTitleBarHeight`（`max(48, WindowCaptionHeight + 14)`：Windows-like 48 / macOS-like 48 / Ubuntu-like 60）替代，Windows-like 下每个窗口省约 62px。默认窗口 820×560（`Client/RelaxKonOS.Client/Apps/Settings/SettingsApp.cs:80`）下约占窗口高度 11%。
 
 ## 2. 机制（开工前必读，改模板前再读一遍）
 
@@ -116,7 +116,7 @@
 4. 三语言（`zh-CN` / `en-US` / `ja-JP`）下标题与操作不溢出、不换行错位。
 5. 浅色与深色主题下文字对比度达标；头部与侧栏（`Border.app-sidebar`，`SurfaceRaisedBrush`）、状态栏的层级过渡自然。**注意融合后标题栏背景由模板强制改成 `SurfaceBrush`**（原先 `app-header` 是 `SurfaceRaisedBrush` + 下边框），这是最容易看起来「头部凹进去」的地方。
 6. 窄窗口（建议 640×480，以及极窄 320×240）下头部不裁切、操作仍可达。
-7. 三套窗口样式都复验：`caption-buttons-right`、`traffic-lights-left`、`headerbar-right`。**用 `settings.SystemStyleId = …` 直接切换**（`ShellSettings` 会立刻重装资源栈）；融合条会随风格变高（56 / 52 / 60），按钮组在左时 leading 自动落在按钮组右侧，`headerbar-right` 的融合条底色是 `SurfaceRaisedBrush`。
+7. 三套窗口样式都复验：`caption-buttons-right`、`traffic-lights-left`、`headerbar-right`。**用 `settings.SystemStyleId = …` 直接切换**（`ShellSettings` 会立刻重装资源栈）；融合条会随风格变高（48 / 48 / 60），按钮组在左时 leading 自动落在按钮组右侧，`headerbar-right` 的融合条底色是 `SurfaceRaisedBrush`。
 8. 任务栏与窗口总览里的窗口标题不变（融合只影响标题栏内部，`Title` 仍由 `ShowWindow` 设置）。
 9. 在 `Tests/Client/RelaxKonOS.WindowPreviews.Tests` 里为该窗口补一条断言（模板见第 7 节）；形态跨 recipe 都要成立的窗口，照 `FusedWindowHeaderChecks.cs` 的写法补「三条 recipe」的断言与截图。
 10. 更新本文第 3 节状态列与第 8 节进度日志；若该窗口在 `docs/desktop/UiReview.md` 有对应条目，同步其结论。
@@ -125,7 +125,10 @@
 
 ## 5. 开放问题
 
-1. ~~**头部高度**~~ **已定**：不再硬编码。融合条高度取派生键 `WindowFusedTitleBarHeight = max(48, WindowTitleBarHeight + 14)`，随风格得到 56 / 52 / 60；应用读同一个键，不自己写数字。
+1. ~~**头部高度**~~ **已定**：不再硬编码。融合条高度取派生键 `WindowFusedTitleBarHeight = max(48, WindowCaptionHeight + 14)`，随风格得到 48 / 48 / 60；应用读同一个键，不自己写数字。
+   融合条长高不会把窗口按钮一起拉长：按钮恒为 `WindowControlWidth × WindowCaptionHeight`，`caption-buttons-right` 下贴顶（见
+   [系统风格 §4.3](RelaxKonOS.SystemStyle.md)）。三枚记号同样不再由字形决定——它们是宿主几何
+   （`WindowCaptionMarks`），尺寸只取 `WindowCaptionGlyphSize` 这个记号盒，所以融合条或字体怎么变都改不动记号的粗细与位置。
 2. ~~**居中基准**~~ **已定**：center 槽占标题栏的弹性列，即「leading 与 trailing 之间、宿主按钮之外的可用中段」。
    **不**把 center 锚到整条标题栏的几何中心——那样窄窗口下搜索框会压到宿主按钮上（640 宽时 520 的搜索框居中后与右侧按钮组重叠约 24px），
    而弹性列会随可用宽度收缩，永不重叠。副作用是 leading 与 trailing 不等宽时 center 会偏移（macOS-like 下约 +65px），这是可接受的取舍。
@@ -182,7 +185,7 @@ git rev-parse --abbrev-ref HEAD   # 期望 windows_enhance
 
 - `ReferenceEquals(managed.View.HeaderLeading, view.Header)`（center / trailing 同理；用不到的槽必须显式写成 `null`）
 - `managed.View.HasTitleBarContent`，且 `PART_TitleBar.Bounds.Height == managed.View.FindResource("WindowFusedTitleBarHeight")`
-  ——**别写死 56**，融合条高度随风格变（56 / 52 / 60）
+  ——**别写死 48**，融合条高度随风格变（48 / 48 / 60）
 - 在头部输入框打字后 `managed.Info.Bounds` 不变（证明交互控件没吃拖动）
 - 截图落盘（`RenderTargetBitmap` → `preview-qa`），供浅深色与三语人工比对
 
@@ -252,7 +255,7 @@ RemoteWindow.HeaderLeading / HeaderCenter / HeaderTrailing   （均为 Control?�
 
 ### 8.4 落地清单（全部完成，2026-10-10）
 
-1. **✔** 融合条的 `Height` / `Background` 不再一刀切：高度取派生键 `WindowFusedTitleBarHeight`（`max(48, WindowTitleBarHeight + 14)`），底色每条 recipe 显式给出（`headerbar-right` 用 `SurfaceRaisedBrush`，因为 headerbar 是应用自己的工具条）。
+1. **✔** 融合条的 `Height` / `Background` 不再一刀切：高度取派生键 `WindowFusedTitleBarHeight`（`max(48, WindowCaptionHeight + 14)`），底色每条 recipe 显式给出（`headerbar-right` 用 `SurfaceRaisedBrush`，因为 headerbar 是应用自己的工具条）。
 2. **✔** `headerbar-right` 有了完整的显式规则（图标、标题、三个槽、按钮组、融合条），不再依赖「落到默认恰好正确」；`SystemStyleChecks.VerifyRecipeCoverage` 通过。
 3. **✔（结论有修正）** 居中基准改为**标题栏的弹性列**，而不是原先写的内容列。原计划是「相对标题栏整体居中」，实测在 640 宽窗口下会与宿主按钮组重叠约 24px，故改为弹性列（随可用宽度收缩、永不重叠）。取舍与副作用见 §5.2。
 4. **✔** `traffic-lights-left` 的按钮组重做：红（关）/ 黄（小）/ 绿（放大）三枚圆形按钮，顺序按平台惯例重排（模板里按钮的 `Grid.Column` 由 recipe 赋值），字形默认透明、指针或键盘进入按钮组时显现。
@@ -300,7 +303,7 @@ RemoteWindow.HeaderLeading / HeaderCenter / HeaderTrailing   （均为 Control?�
 
 **明确不做（延后）**：
 
-- **不新增「有标签时的融合条高度」派生键**。三条内置风格的 `WindowFusedTitleBarHeight`（56 / 52 / 60）都大于
+- **不新增「有标签时的融合条高度」派生键**。三条内置风格的 `WindowFusedTitleBarHeight`（48 / 48 / 60）都大于
   `WindowTabHeight + 2×内边距`（默认 28 + 16 = 44），标签条放得下。将来某条风格真需要更高的栏，再加派生键——契约不变。
 - **不做窗口级标签**（见 §5.7）。
 - **不做「栏外另起一行」的模板分支**：目前没有 recipe 需要，先不加结构；接口已为此留好。

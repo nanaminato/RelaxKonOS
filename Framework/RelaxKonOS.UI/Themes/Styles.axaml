@@ -30,10 +30,18 @@
   <Style Selector="Button.workspace-nav.nav-selected:pointerover"><Setter Property="Background" Value="{DynamicResource SelectionBackgroundBrush}" /><Setter Property="Foreground" Value="{DynamicResource AccentBrush}" /></Style>
   <Style Selector="Button.workspace-nav.nav-selected:pressed"><Setter Property="Background" Value="{DynamicResource AccentMutedBrush}" /></Style>
   <Style Selector="Button.icon"><Setter Property="Padding" Value="0" /><Setter Property="MinWidth" Value="{DynamicResource MinimumHitTarget}" /><Setter Property="MinHeight" Value="{DynamicResource MinimumHitTarget}" /><Setter Property="Width" Value="{DynamicResource MinimumHitTarget}" /><Setter Property="Height" Value="{DynamicResource MinimumHitTarget}" /><Setter Property="HorizontalContentAlignment" Value="Center" /><Setter Property="VerticalContentAlignment" Value="Center" /></Style>
-  <!-- Managed application-window controls need a generous target as well as a legible glyph.
-       The RemoteWindow title bar supplies their height; keeping the controls stretched makes
-       this apply consistently to both built-in and external applications. -->
-  <Style Selector="Button.caption"><Setter Property="Padding" Value="0" /><Setter Property="MinWidth" Value="{DynamicResource WindowControlWidth}" /><Setter Property="Width" Value="{DynamicResource WindowControlWidth}" /><Setter Property="CornerRadius" Value="0" /><Setter Property="FontSize" Value="16" /><Setter Property="VerticalAlignment" Value="Stretch" /><Setter Property="HorizontalContentAlignment" Value="Center" /><Setter Property="VerticalContentAlignment" Value="Center" /></Style>
+  <!-- Managed application-window controls take a platform caption's own measure rather than the
+       height of whatever bar they happen to sit in: a button is `WindowControlWidth` by
+       `WindowCaptionHeight` (Windows 11: 46x32), and the glyph inside it is drawn at
+       `WindowCaptionGlyphSize` (Windows 11: a ~10px mark). Centring the glyph is what produces the
+       whitespace the platform leaves around it - 18px either side and 11px above and below on that
+       profile - so a fused bar can grow around a tab strip without stretching the buttons with it. -->
+  <Style Selector="Button.caption"><Setter Property="Padding" Value="0" /><Setter Property="MinWidth" Value="{DynamicResource WindowControlWidth}" /><Setter Property="Width" Value="{DynamicResource WindowControlWidth}" /><Setter Property="Height" Value="{DynamicResource WindowCaptionHeight}" /><Setter Property="MinHeight" Value="{DynamicResource WindowCaptionHeight}" /><Setter Property="CornerRadius" Value="0" /><Setter Property="VerticalAlignment" Value="Center" /><Setter Property="HorizontalContentAlignment" Value="Center" /><Setter Property="VerticalContentAlignment" Value="Center" /></Style>
+  <!-- A caption mark is stroked geometry sized by the style (WindowCaptionGlyphSize), not text: one
+       hairline, which is what the platform's own marks are drawn with, and it keeps that weight at
+       every caption size instead of inheriting a font's. The stroke follows the button's Foreground,
+       so hover, pressed and traffic-light reveal states keep working untouched. -->
+  <Style Selector="Path.caption-glyph"><Setter Property="StrokeThickness" Value="1" /></Style>
   <Style Selector="Button.caption.close:pointerover"><Setter Property="Background" Value="{DynamicResource DangerBrush}" /><Setter Property="Foreground" Value="{DynamicResource TextOnDangerBrush}" /></Style><Style Selector="Button.caption.close:pressed"><Setter Property="Background" Value="{DynamicResource DangerPressedBrush}" /></Style>
   <!-- Editable fields always need an outline, even when the system style makes ordinary
        controls borderless. Use a legible neutral palette colour rather than a subtle divider.

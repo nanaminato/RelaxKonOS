@@ -38,6 +38,18 @@ public partial class App : Application
         // Install the sole palette + system-style source before the first (login) window is created.
         _ = Services.GetRequiredService<RelaxKonOS.Client.Services.Theming.AppearanceService>();
 
+        // The caption marks are geometry with no text in them, and the window manager owns the chrome
+        // but has no resource table - so the words for the three actions come from here, and follow the
+        // display language the same way every other string does.
+        var localization = Services.GetRequiredService<LocalizationService>();
+        void ApplyCaptionLabels() => RelaxKonOS.WindowManager.WindowCaptionLabels.Current.Apply(
+            localization.Get("common.minimize", "Minimize"),
+            localization.Get("common.maximize", "Maximize"),
+            localization.Get("common.restore", "Restore"),
+            localization.Get("common.close", "Close"));
+        ApplyCaptionLabels();
+        localization.LanguageChanged += (_, _) => ApplyCaptionLabels();
+
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             // 启动分叉（mstsc 风格）：先弹独立登录窗，登录成功后再进入桌面。

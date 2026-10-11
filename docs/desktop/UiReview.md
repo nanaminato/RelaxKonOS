@@ -203,6 +203,98 @@ D-010 是早期四槽决策，现由五槽契约替代：新增 `HeaderToolbar`�
 代码编辑器与资源管理器已接入，详情与进度只维护在 [融合计划](RelaxKonOS.FusedWindowHeader.md) 最新日志。
 此次同时验证融合后命令绑定、草稿守卫、独立导航历史、失败目录读取、窄窗口搜索与溢出操作；其余应用仍未接入。
 
+### D-012：标题栏按钮按平台真实比例，融合态不再拉伸（2026-10-11）
+
+起因是对比 Windows 11 资源管理器与内置应用窗口的截图：**同一枚「最小化」在两边的尺度和留白差得很远**。实测渲染（`preview-qa/fused-header/*.png` 逐像素测量）确认了根因：
+
+- 按钮尺寸取自「它恰好坐在多高的标题栏里」——融合条被标签条撑到 56px 时，按钮也被拉成 **52×56**；Windows 11 是 **46×32**。
+- 三枚字形不共用一个度量：`PART_Maximize` 单独套了一层 `FontSize="11"` 的 `TextBlock`，于是「−」「×」按共享字号画、还原字形另按一个字号画；实测墨迹只有 **9×1 / 7×5 / 7×7**，而 Windows 是 10×10。
+- 字形墨迹因字体行盒自带下伸部，比按钮中线低约 3px（32px 按钮里肉眼可见）。
+
+据此把「平台比例」写进契约（新令牌 `WindowCaptionHeight`、`WindowCaptionGlyphSize`，派生键 `WindowCaptionGlyphShift`；详见
+[系统风格 §4.3](RelaxKonOS.SystemStyle.md)）：Windows-like 46×32、字形墨迹约 10px、四周留白约 18/11px、按钮贴顶；
+macOS-like 保持 12px 圆点 + 8px 间距、垂直居中；Ubuntu-like 保持方按钮。**`WindowTitleBarHeight` 保留给宿主桌面外框**
+（连接栏与宿主自己的三枚按钮仍在 42px 的条上），本次不改宿主窗口——两套度量从此各管各的，不再互相牵连。
+副作用一处：融合条高度改由 `max(48, WindowCaptionHeight + 14)` 得到，Windows-like 由 56 → 48、macOS-like 由 52 → 48（Ubuntu-like 仍 60），
+`RelaxKonOS.FusedWindowHeader.md` 与相关检查已同步。宿主窗口自身那三枚按钮与 `Root` 上边距由 **D-014** 收尾：
+结论是宿主记号的**画法**与受管窗口共用（同一批几何），但它的**按钮框**仍按 `WindowControlWidth × WindowTitleBarHeight` 走，
+所以「两套度量各管各的」这条边界保留，只是记号不再是其中一套。
+
+证据：`FusedWindowHeaderChecks` 新增按钮框、字形字号、贴顶/居中、以及**渲染帧内墨迹中心与按钮中线的偏差 ≤2px、墨迹宽度下限**的断言
+（去掉 `WindowCaptionGlyphShift` 时该断言会以「偏 +3px」失败），并复跑三条 recipe 与标签条用例；`SettingsWindowChecks` 的
+「设置窗口 × 三条 recipe」融合高度断言同步。未完成：宿主窗口自身的标题栏高度与 `Root` 上边距（代码里硬编码 34，令牌是 42）仍不一致，不在本次范围。
+
+### D-013：三枚窗口记号改为宿主几何，不再依赖字体（2026-10-11）
+
+D-012 把按钮比例对齐到平台后，剩下的是**记号本身**：它一直是字符（`−` U+2212 / `×` U+00D7 / `□` U+25A1 / 还原 `▯` U+2750），
+于是形状、粗细、位置全由字体决定。实测（`preview-qa/fused-header/*.png`）：平台是 **10×1 的线 / 10×10 空心方 / 11×11 交叉、1px 描边**，
+文字字形却是 **11×2 / 11×10 / 11×9、2px 描边**，还原态还低 1px。
+
+平台真身：Windows 11 的记号来自随系统分发的图标字体 **Segoe Fluent Icons**（`SegoeIcons.ttf`，码点 `U+E921`/`U+E922`/`U+E923`/`U+E8BB`，
+**10px** 字号；Windows 10 是同一批码点在 `segmdl2.ttf`，度量一致）。按 10px 渲染，其墨迹与用户截图逐像素一致；
+而 `segoeui.ttf` 里根本没有这些码点（渲染成 6×7 豆腐块）。
+
+照搬不可能：该字体 Windows 专有、不可再分发，Linux/macOS 宿主没有，E 段码点在普通字体里也不存在。
+退回标准 Unicode 字符同样不行：`▯` U+2750 在本机 **374 个字体里只有 7 个**有（SegoeIcons / segmdl2 / seguisym / meiryo…），
+Segoe UI 与 Noto Sans 都没有——还原按钮实际靠**字体回退**由另一个字体画，度量与另两枚不同源，
+共用的那一个 `−3px` 平移不可能同时正确，缺该字体的机器上直接显示豆腐块。
+
+结论：**记号改为宿主几何**（`Framework/RelaxKonOS.UI/Themes/SystemStyle/WindowCaptionMarks.cs`），按平台自己的栅格画——
+坐标落在半像素上，1px 描边正好覆盖整像素；闭合图形用斜接角，10×10 空心方的墨迹才恰好 10×10 且方角方正。
+派生键 `WindowCaptionGlyphShift` 连同它的补偿说明一并删除；`WindowCaptionGlyphSize` 语义由「字形字号」改为「记号盒边长」
+（windows-like 10 / macOS-like 7 / ubuntu-like 10，契约默认 22→10、范围 8–28→4–24）。
+`Button.caption` 不再设 `FontSize`；每个记号用 `Path` 绘制、描边取按钮自身的 `Foreground`，因此悬停、按下、
+以及交通灯「指针进入才显现」三套状态一行都没改就继续生效。
+
+两处连带修正：模板里给 `Path` 显式 `Width/Height = WindowCaptionGlyphSize`——若按墨迹自身高度居中，1px 的横线会落在半像素上糊成两行灰；
+`AutomationProperties.Name` 补上真正的动作名（本地化由客户端 `common.minimize/maximize/restore/close` 推入 `WindowCaptionLabels` 单例；
+最大化/还原两个名字必须走样式而非模板值，因为模板里的值优先级高于样式）。
+
+证据：新渲染实测最小化 10×1、最大化 10×10、左右留白 18/18、上下 11/11，与 Windows 11 参考完全一致；
+`FusedWindowHeaderChecks` 的断言由「字号相等」改为「按钮内无 `TextBlock`、画的是本风格的记号几何、描边 1px、
+记号盒等于令牌、墨迹尺寸与留白等于平台值（±1px）」；`RelaxKonOS.WindowPreviews.Tests` 197 项与 `RelaxKonOS.Settings.Tests` 风格校验全绿。
+
+### D-014：宿主窗口自己的标题栏也改成几何记号，并修掉 34px 的顶部留白（2026-10-11）
+
+D-013 只改了**受管应用窗口**的标题栏；D-012 则明确把宿主「自己的三枚按钮」留在 42px 的条上不改。实际上宿主窗口
+（`Client/RelaxKonOS.Client/Views/MainWindow.axaml`）声明 `WindowDecorations="None"`，标题栏与三枚按钮**全是自绘的**，
+而且一直是字符：`U+2212`（最小化）/ `U+2750`（最大化）/ `U+00D7`（关闭），还原态还会把 `Content` 换成 `U+25A1`，
+最大化那枚额外套一层 `FontSize="11"` 做光学补偿。改前的真实渲染实测墨迹为 **`8×1` / `9×8` / `7×5`**，
+最小化还比按钮中线低 1px——与 D-012/D-013 在受管窗口上遇到的问题同源。顺带一处文档与实现不符：
+`RelaxKonOS.Desktop.md` 记的是「Segoe MDL2 Assets 字形 `E921`/`E922`/`E923`/`E8BB`」，代码里从来没有这些码点。
+
+改法与受管窗口一致，且复用同一批资产：三个按钮的 `Content` 换成 `Path`，`Data` 取 `WindowCaptionMinimizeGlyph` /
+`…MaximizeGlyph` / `…RestoreGlyph` / `…CloseGlyph`，`Width/Height` 取 `WindowCaptionGlyphSize`，描边沿用共享的
+`Path.caption-glyph`（1px）并绑到按钮自身的 `Foreground`，于是悬停/按下/红底关闭三套状态一行都没改。
+按钮框仍是 `WindowControlWidth × WindowTitleBarHeight`（Windows-like `46 × 42`）——宿主的外框比例没变，变的只是记号。
+改后实测：最小化 `10×1`、最大化 `10×10`、关闭 `10×10`，左右留白 `18/18`、上下 `16/16`；三条系统风格各自成立。
+
+两处连带修正：
+
+1. **最大化的名字与记号必须跟状态，而不是跟点击**。原来的 `Maximize_OnClick` 手工改 `Content` 与 `ToolTip`，
+   于是平台自己最大化宿主时（吸附布局、Win+Up、任务栏系统菜单）按钮会一直挂着错误的那一枚。现在由
+   `OnPropertyChanged` 观察 `WindowState`，把 `maximized` 类打给按钮：样式用两条 `Path`（`mark-maximize` / `mark-restore`）
+   决定画哪一枚，用 `Button.window-control.window-maximize[.maximized]` 两条样式决定读屏念 `common.maximize` 还是
+   `common.restore`——**名字写在样式里而不是元素上**，因为视图里的值优先级高于样式，写在元素上会永久锁死一个动作名。
+   宿主窗口初始就是最大化的，构造完成时补一次同步，否则第一帧就念错。
+2. **`Root` 的顶部留白不再由代码写字面量**。`SetFullScreen` 原先 `Root.Margin = new Thickness(0, _isFullScreen ? 0 : 34, 0, 0)`：
+   34 与令牌 `WindowTitleBarHeight`（Windows-like 42）不一致，桌面内容会往标题栏底下钻 8px；而且它是**局部值**，
+   一旦写过就永久顶掉标记里的 `{DynamicResource HostTitleBarMargin}` 绑定，第一次进出全屏之后再也回不去。
+   现在改为 `Grid#Root` 上的两条样式（默认 `HostTitleBarMargin`，`.host-full-screen` 时为 0），代码只切类名，
+   既不再脱节，也保留了对系统风格切换的响应。
+
+证据：`HostTitleBarChecks`（`RelaxKonOS.WindowPreviews.Tests`，可用 `--host-titlebar-only` 单跑）在三条系统风格下断言
+按钮内无 `TextBlock`、画的是本风格的记号几何、描边 1px、记号盒等于令牌，并从渲染帧里量取墨迹与留白
+（按记号给容差：像素对齐的横线与空心方容差 0，只有对角线交叉给 1），另断言最大化态的名字与记号随 `WindowState` 切换、
+以及**全屏往返后 `Root` 顶部留白仍等于 `WindowTitleBarHeight`**。两个反向验证确认断言有效：
+把 `Middle(box)` 从 `floor(box/2)+0.5` 改成 `+1.0` → 「minimize mark measures 10x2, expected 10x1」；
+把上边距换回字面量 `34` → 「the desktop reserves 34px below the host title bar after a full-screen round trip, expected the style's 42」。
+`RelaxKonOS.WindowPreviews.Tests` 由 197 → **198 项全绿**，`RelaxKonOS.Settings.Tests` 风格校验通过，客户端编译 0 错误。
+改前/改后对照图：`D:/tmp/host-caption-geometry.png`。
+
+仍未纳入本次范围：`WindowOverviewView.axaml` 的 `overview-card-close`（任务视图卡片上的关闭）仍在用 `U+00D7` 字符——
+它不是标题栏按钮，但性质相同，需要时按同一手法处理。
+
 ## 动态界面与复用路由补充清单
 
 每个分号分隔的场景需分别验收，不能因共用源码而合并结论。除已明确记录的局部修复外，以下状态均为已盘点待流程深审。
@@ -671,7 +763,7 @@ D-010 是早期四槽决策，现由五槽契约替代：新增 `HeaderToolbar`�
 
 | 编号 / 界面 | 结构证据 | 分别审查的重点 | 状态 |
 |---|---|---|---|
-| UI-154 [MainWindow](../../Client/RelaxKonOS.Client/Views/MainWindow.axaml) | ContentControl；入口：Minimize_OnClick、Maximize_OnClick、CloseWindow_OnClick | 窗口/全屏/缩放；启动与断线；菜单和焦点；恢复窗口边界 | 结构初查完成，待流程深审与运行验收 |
+| UI-154 [MainWindow](../../Client/RelaxKonOS.Client/Views/MainWindow.axaml) | ContentControl；入口：Minimize_OnClick、Maximize_OnClick、CloseWindow_OnClick | 窗口/全屏/缩放；启动与断线；菜单和焦点；恢复窗口边界 | 三枚标题栏记号、状态跟随与全屏顶部留白已修复并受控回归通过（D-014）；继续全屏/缩放/断线的原生验收 |
 
 ### Shell
 

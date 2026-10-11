@@ -24,7 +24,9 @@
                                     CornerRadius="{DynamicResource WindowCornerRadius}"
                                     IsVisible="{Binding !IsFullScreen}">
                                 <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" RowDefinitions="Auto,Auto,Auto" ClipToBounds="True">
-                                    <Border x:Name="PART_TitleRow" Grid.Column="0" Grid.ColumnSpan="5" Height="{DynamicResource WindowTitleBarHeight}" Background="Transparent" />
+                                    <!-- The host's caption row, not the desktop frame's bar: a window's
+                                         title bar is exactly as tall as the platform makes its caption. -->
+                                    <Border x:Name="PART_TitleRow" Grid.Column="0" Grid.ColumnSpan="5" Height="{DynamicResource WindowCaptionHeight}" Background="Transparent" />
                                     <Grid x:Name="PART_WindowIcon" Grid.Column="0" Width="22" Height="22" Margin="12,0,0,0"
                                           VerticalAlignment="Center">
                                         <Image Source="{Binding IconImage}" IsVisible="{Binding HasIconImage}" Stretch="Uniform" />
@@ -65,26 +67,61 @@
                                          where their own window controls sit. -->
                                     <Grid x:Name="PART_WindowControls" Grid.Column="4" ColumnDefinitions="Auto,Auto,Auto"
                                           VerticalAlignment="Stretch">
+                                        <!-- Every mark is the host's own geometry, stroked in the button's own
+                                             Foreground, so minimize / maximize-restore / close stay optically
+                                             identical at every caption size and no host font can change their
+                                             weight or their position. Each mark is given the style's whole mark
+                                             box rather than its own ink bounds: a 1px-tall hairline centred by
+                                             its own height would land on a half pixel and blur. -->
                                         <Button x:Name="PART_Minimize"
                                                 Grid.Column="0"
                                                 Classes="caption"
-                                                Content="{x:Static wm:ManagedWindow.MinimizeGlyph}"
+                                                AutomationProperties.Name="{Binding Source={x:Static wm:WindowCaptionLabels.Current}, Path=Minimize}"
                                                 Command="{Binding MinimizeCommand}"
-                                                IsVisible="{Binding CanMinimize}" />
+                                                IsVisible="{Binding CanMinimize}">
+                                            <Path Classes="caption-glyph"
+                                                  Width="{DynamicResource WindowCaptionGlyphSize}"
+                                                  Height="{DynamicResource WindowCaptionGlyphSize}"
+                                                  Data="{DynamicResource WindowCaptionMinimizeGlyph}"
+                                                  Stroke="{Binding $parent[Button].Foreground}" />
+                                        </Button>
+                                        <!-- The maximize button's name comes from a style rather than from here:
+                                             a value set in the template outranks a style setter, and this button
+                                             announces "restore" while the window is maximized. -->
                                         <Button x:Name="PART_Maximize"
                                                 Grid.Column="1"
                                                 Classes="caption"
+                                                Classes.maximized="{Binding IsMaximized}"
                                                 Command="{Binding ToggleMaximizeCommand}"
                                                 IsVisible="{Binding CanMaximize}">
-                                            <!-- Explicit content keeps this optical size independent of Button's
-                                                 string-content template and the shared caption font size. -->
-                                            <TextBlock Text="{Binding MaximizeGlyph}" FontSize="11" />
+                                            <!-- Two marks, one button: a maximized window's caption offers
+                                                 "restore", and the mark has to say so. -->
+                                            <Panel>
+                                                <Path Classes="caption-glyph"
+                                                      Width="{DynamicResource WindowCaptionGlyphSize}"
+                                                      Height="{DynamicResource WindowCaptionGlyphSize}"
+                                                      Data="{DynamicResource WindowCaptionMaximizeGlyph}"
+                                                      Stroke="{Binding $parent[Button].Foreground}"
+                                                      IsVisible="{Binding !IsMaximized}" />
+                                                <Path Classes="caption-glyph"
+                                                      Width="{DynamicResource WindowCaptionGlyphSize}"
+                                                      Height="{DynamicResource WindowCaptionGlyphSize}"
+                                                      Data="{DynamicResource WindowCaptionRestoreGlyph}"
+                                                      Stroke="{Binding $parent[Button].Foreground}"
+                                                      IsVisible="{Binding IsMaximized}" />
+                                            </Panel>
                                         </Button>
                                         <Button x:Name="PART_Close"
                                                 Grid.Column="2"
                                                 Classes="caption close"
-                                                Content="{x:Static wm:ManagedWindow.CloseGlyph}"
-                                                Command="{Binding CloseCommand}" />
+                                                AutomationProperties.Name="{Binding Source={x:Static wm:WindowCaptionLabels.Current}, Path=Close}"
+                                                Command="{Binding CloseCommand}">
+                                            <Path Classes="caption-glyph"
+                                                  Width="{DynamicResource WindowCaptionGlyphSize}"
+                                                  Height="{DynamicResource WindowCaptionGlyphSize}"
+                                                  Data="{DynamicResource WindowCaptionCloseGlyph}"
+                                                  Stroke="{Binding $parent[Button].Foreground}" />
+                                        </Button>
                                     </Grid>
                                 </Grid>
                             </Border>
@@ -160,6 +197,19 @@
         <Setter Property="IsVisible" Value="False" />
     </Style>
 
+    <!-- The maximize button offers two different actions, so it announces the one it currently offers,
+         in the host's display language. These are style setters rather than values in the template
+         because a value in the template outranks a style, and the state-dependent name has to be able
+         to win over the other. -->
+    <Style Selector="wm|RemoteWindow /template/ Button#PART_Maximize">
+        <Setter Property="AutomationProperties.Name"
+                Value="{Binding Source={x:Static wm:WindowCaptionLabels.Current}, Path=Maximize}" />
+    </Style>
+    <Style Selector="wm|RemoteWindow /template/ Button#PART_Maximize.maximized">
+        <Setter Property="AutomationProperties.Name"
+                Value="{Binding Source={x:Static wm:WindowCaptionLabels.Current}, Path=Restore}" />
+    </Style>
+
     <!-- caption-buttons-right (the default): the application icon leads, the host title follows it,
          the application's blocks fill the middle and the three caption buttons close the bar on the
          trailing edge. -->
@@ -193,6 +243,10 @@
     <Style Selector="wm|RemoteWindow:chrome-caption-buttons-right /template/ Grid#PART_WindowControls">
         <Setter Property="Grid.Column" Value="4" />
         <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <!-- Windows pins its three buttons to the very top of the window and lets the tab row grow
+             underneath them, so a fused bar leaves the caption where the platform puts it instead of
+             stretching a 32px button over a taller strip. -->
+        <Setter Property="VerticalAlignment" Value="Top" />
         <Setter Property="Margin" Value="0" />
     </Style>
 
@@ -245,7 +299,6 @@
         <Setter Property="CornerRadius" Value="{DynamicResource WindowCaptionCornerRadius}" />
         <Setter Property="Margin" Value="0,0,8,0" />
         <Setter Property="VerticalAlignment" Value="Center" />
-        <Setter Property="FontSize" Value="9" />
         <Setter Property="Foreground" Value="Transparent" />
     </Style>
     <Style Selector="wm|RemoteWindow:chrome-traffic-lights-left /template/ Button#PART_Close">
@@ -259,9 +312,6 @@
     <Style Selector="wm|RemoteWindow:chrome-traffic-lights-left /template/ Button#PART_Maximize">
         <Setter Property="Grid.Column" Value="2" />
         <Setter Property="Background" Value="{DynamicResource SuccessBrush}" />
-    </Style>
-    <Style Selector="wm|RemoteWindow:chrome-traffic-lights-left /template/ Grid#PART_WindowControls TextBlock">
-        <Setter Property="FontSize" Value="9" />
     </Style>
     <Style Selector="wm|RemoteWindow:chrome-traffic-lights-left /template/ Grid#PART_WindowControls:pointerover Button.caption">
         <Setter Property="Foreground" Value="{DynamicResource SurfaceSunkenBrush}" />
@@ -301,6 +351,9 @@
     <Style Selector="wm|RemoteWindow:chrome-headerbar-right /template/ Grid#PART_WindowControls">
         <Setter Property="Grid.Column" Value="4" />
         <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <!-- A headerbar's buttons sit on the bar's centre line rather than filling it, so the cluster
+             keeps the caption's own height even when a fused header makes the row taller. -->
+        <Setter Property="VerticalAlignment" Value="Center" />
         <Setter Property="Margin" Value="0" />
     </Style>
 
