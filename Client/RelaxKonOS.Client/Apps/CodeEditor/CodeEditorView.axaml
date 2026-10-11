@@ -10,6 +10,21 @@
              Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
 
     <UserControl.Resources>
+        <DrawingBrush x:Key="PreviewCanvasBrush" TileMode="Tile" DestinationRect="0,0,16,16">
+            <DrawingBrush.Drawing>
+                <DrawingGroup>
+                    <GeometryDrawing Brush="{DynamicResource SurfaceRaisedBrush}">
+                        <GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,16,16" /></GeometryDrawing.Geometry>
+                    </GeometryDrawing>
+                    <GeometryDrawing Brush="{DynamicResource SurfaceSunkenBrush}">
+                        <GeometryDrawing.Geometry><GeometryGroup>
+                            <RectangleGeometry Rect="0,0,8,8" />
+                            <RectangleGeometry Rect="8,8,8,8" />
+                        </GeometryGroup></GeometryDrawing.Geometry>
+                    </GeometryDrawing>
+                </DrawingGroup>
+            </DrawingBrush.Drawing>
+        </DrawingBrush>
         <!-- Header-bar glyphs. The editor chrome imitates VS Code, so the marks are the same flat
              24x24 silhouettes the file browser uses rather than emoji: an emoji is drawn by
              whichever colour font the host happens to have, which is why a title bar built from
@@ -22,7 +37,11 @@
         <StreamGeometry x:Key="ChromeRemoveIcon">M19 11 H5 V13 H19 Z</StreamGeometry>
         <StreamGeometry x:Key="ChromeMenuIcon">M3 6 H21 V8 H3 Z M3 11 H21 V13 H3 Z M3 16 H21 V18 H3 Z</StreamGeometry>
         <StreamGeometry x:Key="ChromeFolderIcon">M10 4 H4 C2.9 4 2 4.9 2 6 V18 C2 19.1 2.9 20 4 20 H20 C21.1 20 22 19.1 22 18 V8 C22 6.9 21.1 6 20 6 H12 L10 4 Z</StreamGeometry>
-        <StreamGeometry x:Key="ChromeDocumentIcon">M14 2 H6 C4.9 2 4 2.9 4 4 V20 C4 21.1 4.9 22 6 22 H18 C19.1 22 20 21.1 20 20 V8 L14 2 Z M16 18 H8 V16 H16 V18 Z M16 14 H8 V12 H16 V14 Z M13 9 V3.5 L18.5 9 H13 Z</StreamGeometry>
+        <!-- The application's own mark: the editor's angle brackets. It is a flat silhouette for
+             the same reason as every other header mark — the 256px application bitmap goes soft
+             at header size — and it is the one header glyph drawn in the accent, because it is
+             identity rather than a command. -->
+        <StreamGeometry x:Key="ChromeCodeMarkIcon">M9.4 16.6 L4.8 12 L9.4 7.4 L8 6 L2 12 L8 18 Z M14.6 16.6 L19.2 12 L14.6 7.4 L16 6 L22 12 L16 18 Z</StreamGeometry>
     </UserControl.Resources>
 
     <UserControl.Styles>
@@ -46,6 +65,10 @@
     <Grid RowDefinitions="Auto,*,Auto">
         <Grid Grid.Row="0" x:Name="HeaderHost" ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
             <StackPanel x:Name="HeaderLeading" Orientation="Horizontal" VerticalAlignment="Center">
+                <!-- A fused bar hides the host's own window icon, so the application states its
+                     identity here, ahead of the menu it belongs to. -->
+                <PathIcon Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center"
+                          Foreground="{DynamicResource AccentBrush}" Data="{StaticResource ChromeCodeMarkIcon}" />
                 <Menu x:Name="HeaderMenu" Background="Transparent" VerticalAlignment="Center" BorderThickness="0"
                       IsEnabled="{Binding CanEditDocument}">
                     <MenuItem Header="{loc:Loc common.file}">
@@ -85,23 +108,16 @@
                 <TextBlock Text="{Binding DocumentName}" TextTrimming="CharacterEllipsis" />
             </Button>
             <StackPanel Grid.Column="2" x:Name="HeaderTrailing" Orientation="Horizontal" VerticalAlignment="Center">
-                <Button Classes="header-action" Click="Find_Click" ToolTip.Tip="{loc:Loc code_editor.find}" AutomationProperties.Name="{loc:Loc code_editor.find}">
+                <Button Classes="header-action" Click="Find_Click" IsEnabled="{Binding IsTextDocument}" ToolTip.Tip="{loc:Loc code_editor.find}" AutomationProperties.Name="{loc:Loc code_editor.find}">
                     <PathIcon Width="16" Height="16" Data="{StaticResource ChromeSearchIcon}" />
                 </Button>
-                <Button x:Name="DocumentPickerButton" Classes="header-action" ToolTip.Tip="{loc:Loc code_editor.sidebar.open_editors}"
-                        AutomationProperties.Name="{loc:Loc code_editor.sidebar.open_editors}">
-                    <Button.Content><PathIcon Width="16" Height="16" Data="{StaticResource ChromeChevronDownIcon}" /></Button.Content>
-                    <Button.Flyout><Flyout>
-                        <ListBox ItemsSource="{Binding OpenDocuments}" SelectedItem="{Binding ActiveDocument, Mode=TwoWay}"
-                                 MinWidth="220" MaxHeight="320" SelectionChanged="DocumentPicker_SelectionChanged">
-                            <ListBox.ItemTemplate><DataTemplate x:DataType="codeEditor:CodeEditorDocument">
-                                <TextBlock Text="{Binding DisplayName}" MaxWidth="300" TextTrimming="CharacterEllipsis" />
-                            </DataTemplate></ListBox.ItemTemplate>
-                        </ListBox>
-                    </Flyout></Button.Flyout>
-                </Button>
             </StackPanel>
-                    <ListBox x:Name="HeaderTabs" Classes="title-tabs" Grid.Row="1" Grid.ColumnSpan="3" Height="{DynamicResource WindowTabHeight}" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled" ItemsSource="{Binding OpenDocuments}" SelectedItem="{Binding ActiveDocument, Mode=TwoWay}" SelectionMode="Single">
+                    <!-- The strip and the list of what is open are one surface: the tabs run along
+                         the row and the full list hangs off its trailing edge, the way IDEA's open
+                         files popup does. That is why the list no longer needs a sidebar area of
+                         its own. -->
+                    <Grid x:Name="HeaderTabs" Grid.Row="1" Grid.ColumnSpan="3" ColumnDefinitions="*,Auto" ColumnSpacing="2">
+                    <ListBox x:Name="DocumentTabs" Classes="title-tabs" Height="{DynamicResource WindowTabHeight}" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled" ItemsSource="{Binding OpenDocuments}" SelectedItem="{Binding ActiveDocument, Mode=TwoWay}" SelectionMode="Single">
                         <ListBox.ItemsPanel>
                             <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
                         </ListBox.ItemsPanel>
@@ -123,6 +139,23 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
+                    <Button Grid.Column="1" x:Name="DocumentPickerButton" Classes="header-action compact"
+                            IsEnabled="{Binding CanEditDocument}" ToolTip.Tip="{loc:Loc code_editor.sidebar.open_editors}"
+                            AutomationProperties.Name="{loc:Loc code_editor.sidebar.open_editors}">
+                        <Button.Content><PathIcon Width="14" Height="14" Data="{StaticResource ChromeChevronDownIcon}" /></Button.Content>
+                        <Button.Flyout><Flyout>
+                            <ListBox ItemsSource="{Binding OpenDocuments}" SelectedItem="{Binding ActiveDocument, Mode=TwoWay}"
+                                     MinWidth="220" MaxHeight="320" SelectionChanged="DocumentPicker_SelectionChanged">
+                                <ListBox.ItemTemplate><DataTemplate x:DataType="codeEditor:CodeEditorDocument">
+                                    <DockPanel>
+                                        <explorer:ExplorerIcon DockPanel.Dock="Left" Kind="{Binding Kind}" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding DisplayName}" MaxWidth="300" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                    </DockPanel>
+                                </DataTemplate></ListBox.ItemTemplate>
+                            </ListBox>
+                        </Flyout></Button.Flyout>
+                    </Button>
+                    </Grid>
         </Grid>
 
         <Grid Grid.Row="1" x:Name="EditorContentGrid">
@@ -132,23 +165,16 @@
                 <ColumnDefinition Width="6" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-            <!-- Activity bar only exposes areas that are implemented. The active area is the only
-                 tinted mark, which is the editor's whole answer to "where am I" once the sidebar
-                 header no longer names the view. -->
+            <!-- One area, so its item is the sidebar's toggle and its tint says whether the panel
+                 is open. The open-file list moved to the tab strip's trailing edge, where it states
+                 the same thing without a panel of its own. -->
             <Border Grid.Column="0" Padding="4" Classes="app-sidebar">
                 <StackPanel Spacing="6">
                     <Button Classes="activity-item" ToolTip.Tip="{loc:Loc code_editor.sidebar.explorer}" AutomationProperties.Name="{loc:Loc code_editor.sidebar.explorer}"
-                            Command="{Binding SwitchSidebarCommand}" CommandParameter="explorer">
+                            Command="{Binding ToggleSidebarCommand}">
                         <Grid>
-                            <PathIcon Width="20" Height="20" Data="{StaticResource ChromeFolderIcon}" IsVisible="{Binding IsExplorerSidebar}" Foreground="{DynamicResource AccentBrush}" />
-                            <PathIcon Width="20" Height="20" Data="{StaticResource ChromeFolderIcon}" IsVisible="{Binding !IsExplorerSidebar}" />
-                        </Grid>
-                    </Button>
-                    <Button Classes="activity-item" ToolTip.Tip="{loc:Loc code_editor.sidebar.open_editors}" AutomationProperties.Name="{loc:Loc code_editor.sidebar.open_editors}"
-                            Command="{Binding SwitchSidebarCommand}" CommandParameter="openEditors">
-                        <Grid>
-                            <PathIcon Width="20" Height="20" Data="{StaticResource ChromeDocumentIcon}" IsVisible="{Binding IsOpenEditorsSidebar}" Foreground="{DynamicResource AccentBrush}" />
-                            <PathIcon Width="20" Height="20" Data="{StaticResource ChromeDocumentIcon}" IsVisible="{Binding !IsOpenEditorsSidebar}" />
+                            <PathIcon Width="20" Height="20" Data="{StaticResource ChromeFolderIcon}" IsVisible="{Binding IsSidebarVisible}" Foreground="{DynamicResource AccentBrush}" />
+                            <PathIcon Width="20" Height="20" Data="{StaticResource ChromeFolderIcon}" IsVisible="{Binding !IsSidebarVisible}" />
                         </Grid>
                     </Button>
                 </StackPanel>
@@ -156,57 +182,36 @@
 
             <Border Grid.Column="1"
                     IsVisible="{Binding IsSidebarVisible}" Classes="app-sidebar">
-                <Grid>
-                    <Grid IsVisible="{Binding IsExplorerSidebar}" RowDefinitions="Auto,*">
-                        <DockPanel Grid.Row="0" Margin="10,8,8,6">
-                            <TextBlock DockPanel.Dock="Left" Text="{loc:Loc code_editor.sidebar.folders}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2">
-                                <Button Classes="header-action compact" ToolTip.Tip="{loc:Loc code_editor.add_folder}" AutomationProperties.Name="{loc:Loc code_editor.add_folder}" Command="{Binding AddFolderCommand}">
-                                    <PathIcon Width="14" Height="14" Data="{StaticResource ChromeAddIcon}" />
-                                </Button>
-                                <Button Classes="header-action compact" ToolTip.Tip="{loc:Loc common.refresh}" AutomationProperties.Name="{loc:Loc common.refresh}" Command="{Binding RefreshFolderCommand}">
-                                    <PathIcon Width="14" Height="14" Data="{StaticResource ChromeRefreshIcon}" />
-                                </Button>
-                                <Button Classes="header-action compact" ToolTip.Tip="{loc:Loc code_editor.remove_folder}" AutomationProperties.Name="{loc:Loc code_editor.remove_folder}" Command="{Binding RemoveFolderCommand}">
-                                    <PathIcon Width="14" Height="14" Data="{StaticResource ChromeRemoveIcon}" />
-                                </Button>
-                            </StackPanel>
-                        </DockPanel>
-                        <TreeView Grid.Row="1" ItemsSource="{Binding WorkspaceRoots}" SelectedItem="{Binding SelectedFolderNode, Mode=TwoWay}" Margin="4,0,4,8">
-                            <TreeView.Styles>
-                                <Style Selector="TreeViewItem">
-                                    <Setter Property="IsExpanded" Value="{ReflectionBinding IsExpanded, Mode=TwoWay}" />
-                                </Style>
-                            </TreeView.Styles>
-                            <TreeView.ItemTemplate>
-                                <TreeDataTemplate ItemsSource="{Binding Children}">
-                                    <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding !IsPlaceholder}">
-                                        <TextBlock Text="{Binding Glyph}" />
-                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" MaxWidth="190" />
-                                    </StackPanel>
-                                </TreeDataTemplate>
-                            </TreeView.ItemTemplate>
-                        </TreeView>
-                    </Grid>
-
-                    <Grid IsVisible="{Binding IsOpenEditorsSidebar}" RowDefinitions="Auto,*">
-                        <TextBlock Grid.Row="0" Text="{loc:Loc code_editor.sidebar.open_editors}" FontWeight="SemiBold" Margin="10,10,8,8" />
-                        <ListBox Grid.Row="1" ItemsSource="{Binding OpenDocuments}" SelectedItem="{Binding ActiveDocument, Mode=TwoWay}" Margin="4,0,4,8">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate DataType="codeEditor:CodeEditorDocument">
-                                    <DockPanel Margin="6,4">
-                                        <Button DockPanel.Dock="Right" Classes="tab-close"
-                                                Command="{Binding DataContext.CloseDocumentCommand, ElementName=Root}" CommandParameter="{Binding}"
-                                                ToolTip.Tip="{loc:Loc common.close}" AutomationProperties.Name="{loc:Loc common.close}">
-                                            <PathIcon Width="11" Height="11" Data="{StaticResource ChromeCloseIcon}" />
-                                        </Button>
-                                        <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
-                                        <Ellipse Width="8" Height="8" Fill="{DynamicResource TextPrimaryBrush}" Margin="5,0,0,0" IsVisible="{Binding IsDirty}" />
-                                    </DockPanel>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                    </Grid>
+                <Grid RowDefinitions="Auto,*">
+                    <DockPanel Grid.Row="0" Margin="10,8,8,6">
+                        <TextBlock DockPanel.Dock="Left" Text="{loc:Loc code_editor.sidebar.folders}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2">
+                            <Button Classes="header-action compact" ToolTip.Tip="{loc:Loc code_editor.add_folder}" AutomationProperties.Name="{loc:Loc code_editor.add_folder}" Command="{Binding AddFolderCommand}">
+                                <PathIcon Width="14" Height="14" Data="{StaticResource ChromeAddIcon}" />
+                            </Button>
+                            <Button Classes="header-action compact" ToolTip.Tip="{loc:Loc common.refresh}" AutomationProperties.Name="{loc:Loc common.refresh}" Command="{Binding RefreshFolderCommand}">
+                                <PathIcon Width="14" Height="14" Data="{StaticResource ChromeRefreshIcon}" />
+                            </Button>
+                            <Button Classes="header-action compact" ToolTip.Tip="{loc:Loc code_editor.remove_folder}" AutomationProperties.Name="{loc:Loc code_editor.remove_folder}" Command="{Binding RemoveFolderCommand}">
+                                <PathIcon Width="14" Height="14" Data="{StaticResource ChromeRemoveIcon}" />
+                            </Button>
+                        </StackPanel>
+                    </DockPanel>
+                    <TreeView Grid.Row="1" ItemsSource="{Binding WorkspaceRoots}" SelectedItem="{Binding SelectedFolderNode, Mode=TwoWay}" Margin="4,0,4,8">
+                        <TreeView.Styles>
+                            <Style Selector="TreeViewItem">
+                                <Setter Property="IsExpanded" Value="{ReflectionBinding IsExpanded, Mode=TwoWay}" />
+                            </Style>
+                        </TreeView.Styles>
+                        <TreeView.ItemTemplate>
+                            <TreeDataTemplate ItemsSource="{Binding Children}">
+                                <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding !IsPlaceholder}">
+                                    <explorer:ExplorerIcon Kind="{Binding Kind}" Width="18" Height="18" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" MaxWidth="190" VerticalAlignment="Center" ToolTip.Tip="{Binding Path}" />
+                                </StackPanel>
+                            </TreeDataTemplate>
+                        </TreeView.ItemTemplate>
+                    </TreeView>
                 </Grid>
             </Border>
 
@@ -214,12 +219,48 @@
                           ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" Cursor="SizeWestEast"
                           IsVisible="{Binding IsSidebarVisible}" />
 
-            <Grid Grid.Column="3">
-
-
-                <editor:TextEditor Name="Editor" SearchResultsBrush="{DynamicResource AccentMutedBrush}" ShowLineNumbers="True" WordWrap="{Binding WordWrap}"
+            <Grid Grid.Column="3" RowDefinitions="Auto,*">
+                <Border IsVisible="{Binding HasImageSourceText}" Classes="app-toolbar" Padding="10,4">
+                    <Button Command="{Binding ToggleImageSourceCommand}" HorizontalAlignment="Left">
+                        <Grid>
+                            <TextBlock Text="{loc:Loc code_editor.preview.edit_source}" IsVisible="{Binding !ShowImageSource}" />
+                            <TextBlock Text="{loc:Loc code_editor.preview.show_image}" IsVisible="{Binding ShowImageSource}" />
+                        </Grid>
+                    </Button>
+                </Border>
+                <editor:TextEditor Grid.Row="1" Name="Editor" IsVisible="{Binding IsTextDocument}" SearchResultsBrush="{DynamicResource AccentMutedBrush}" ShowLineNumbers="True" WordWrap="{Binding WordWrap}"
                                    BorderThickness="0" Padding="12,10" FontFamily="Cascadia Code, Consolas, Menlo, monospace"
                                    FontSize="{Binding FontSize}" />
+                <Grid Grid.Row="1" IsVisible="{Binding IsImageDocument}" Background="{DynamicResource SurfaceSunkenBrush}" RowDefinitions="Auto,*">
+                    <Border Classes="app-toolbar" Padding="12,6">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding ImageDimensionsText}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock Text="{Binding FileSizeText}" Foreground="{DynamicResource TextTertiaryBrush}" />
+                            </StackPanel>
+                            <ToggleButton Grid.Column="1" Content="1:1" IsChecked="{Binding ImageAtActualSize, Mode=TwoWay}" ToolTip.Tip="{loc:Loc code_editor.preview.actual_size}" />
+                        </Grid>
+                    </Border>
+                    <Grid Grid.Row="1" Margin="24" Background="{StaticResource PreviewCanvasBrush}" ClipToBounds="True">
+                        <Border IsVisible="{Binding !ImageAtActualSize}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                            <Image Source="{Binding PreviewImage}" Stretch="Uniform" />
+                        </Border>
+                        <ScrollViewer IsVisible="{Binding ImageAtActualSize}" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                            <Image Source="{Binding PreviewImage}" Width="{Binding PreviewWidth}" Height="{Binding PreviewHeight}" Stretch="Fill" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </ScrollViewer>
+                    </Grid>
+                </Grid>
+                <Grid Grid.Row="1" IsVisible="{Binding IsBinaryDocument}" Background="{DynamicResource SurfaceSunkenBrush}">
+                    <Border Margin="24" Padding="28" MaxWidth="460" HorizontalAlignment="Center" VerticalAlignment="Center"
+                            Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1" CornerRadius="12">
+                        <StackPanel Spacing="12">
+                            <explorer:ExplorerIcon Kind="{Binding ActiveDocument.Kind}" Width="56" Height="56" HorizontalAlignment="Center" />
+                            <TextBlock Text="{Binding DocumentName}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" />
+                            <TextBlock Text="{Binding FileSizeText}" Foreground="{DynamicResource TextTertiaryBrush}" TextAlignment="Center" />
+                            <TextBlock Text="{loc:Loc code_editor.preview.binary_hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" TextAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
             </Grid>
         </Grid>
 
@@ -227,11 +268,11 @@
             <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="14">
                 <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
                 <Button Grid.Column="1" Content="{Binding EncodingName}" FontSize="12" Padding="4,0"
-                        IsVisible="{Binding HasOpenFile}" ToolTip.Tip="{loc:Loc common.file_encoding}"
-                        IsEnabled="{Binding CanEditDocument}"
+                        IsVisible="{Binding IsTextDocument}" ToolTip.Tip="{loc:Loc common.file_encoding}"
+                        IsEnabled="{Binding CanSaveDocument}"
                         Command="{Binding ChooseEncodingCommand}" />
-                <TextBlock Grid.Column="2" Text="{Binding LineCountText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
-                <TextBlock Grid.Column="3" Text="{Binding CharacterCountText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                <TextBlock Grid.Column="2" IsVisible="{Binding IsTextDocument}" Text="{Binding LineCountText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                <TextBlock Grid.Column="3" IsVisible="{Binding IsTextDocument}" Text="{Binding CharacterCountText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
             </Grid>
         </Border>
     </Grid>

@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using RelaxKonOS.Client.Apps.Explorer.Models;
+using RelaxKonOS.Protocol.Files;
 
 namespace RelaxKonOS.Client.Apps.CodeEditor;
 
@@ -31,7 +33,8 @@ public sealed partial class CodeEditorFolderNode : ObservableObject
     public bool IsDirectory { get; }
     public bool IsWorkspaceRoot { get; }
     public bool IsPlaceholder { get; }
-    public string Glyph => IsDirectory ? "📁" : "📄";
+    public ExplorerFileIconKind Kind => ExplorerFileIconKindResolver.ForEntry(
+        IsDirectory ? FileSystemEntryType.Directory : FileSystemEntryType.File, Name);
     public ObservableCollection<CodeEditorFolderNode> Children { get; } = [];
     public Func<CodeEditorFolderNode, Task>? ExpandRequested { get; set; }
 

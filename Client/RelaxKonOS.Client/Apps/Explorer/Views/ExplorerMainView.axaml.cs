@@ -68,8 +68,6 @@ public partial class ExplorerMainView : UserControl
         DataContextChanged += ExplorerMainView_DataContextChanged;
         SizeChanged += (_, e) =>
         {
-            RenameAction.IsVisible = DeleteAction.IsVisible = e.NewSize.Width >= 700;
-            CutAction.IsVisible = CopyAction.IsVisible = PasteAction.IsVisible = e.NewSize.Width >= 480;
             FileContentGrid.ColumnDefinitions[0].Width = new GridLength(e.NewSize.Width < 620 ? 0 : 210);
             FileContentGrid.ColumnDefinitions[1].Width = new GridLength(e.NewSize.Width < 620 ? 0 : 4);
         };
@@ -87,13 +85,26 @@ public partial class ExplorerMainView : UserControl
 
     private void NavigationToolbar_SizeChanged(object? sender, SizeChangedEventArgs e)
     {
-        GoUpButton.IsVisible = RefreshButton.IsVisible = ViewModel?.IsPickerMode == true || e.NewSize.Width >= 520;
-        var compact = e.NewSize.Width < 420;
+        GoUpButton.IsVisible = RefreshButton.IsVisible = e.NewSize.Width >= 520;
+        var compact = e.NewSize.Width < 600;
         if (compact != _compactSearch) _searchFlyout.Hide();
         _compactSearch = compact;
         CompactSearchButton.IsVisible = compact;
         InlineSearchHost.IsVisible = !compact;
-        SearchBox.Width = e.NewSize.Width < 520 ? 130 : 180;
+        SearchBox.Width = Math.Clamp(e.NewSize.Width * 0.24, 140, 260);
+    }
+
+    private void CommandToolbar_SizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        // Respond to this row's available width, including when the host reparents navigation.
+        var width = e.NewSize.Width;
+        RenameAction.IsVisible = DeleteAction.IsVisible = width >= 760;
+        CutAction.IsVisible = CopyAction.IsVisible = PasteAction.IsVisible = width >= 620;
+        EditingDivider.IsVisible = width >= 620;
+        ViewDivider.IsVisible = ViewModel?.IsPickerMode != true && width >= 480;
+        var labels = width >= 480;
+        NewFolderLabel.IsVisible = SortLabel.IsVisible = ViewLabel.IsVisible = labels;
+        SortChevron.IsVisible = ViewChevron.IsVisible = labels;
     }
 
     private async void FolderTabs_SelectionChanged(object? sender, SelectionChangedEventArgs e)

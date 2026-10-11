@@ -1,11 +1,12 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using RelaxKonOS.Client.Apps.Explorer.Models;
 using RelaxKonOS.Protocol.Files;
+using Avalonia.Media;
 
 namespace RelaxKonOS.Client.Apps.CodeEditor;
 
 /// <summary>In-memory state for one editor tab. Content is never persisted by the client.</summary>
-public sealed partial class CodeEditorDocument : ObservableObject
+public sealed partial class CodeEditorDocument : ObservableObject, IDisposable
 {
     public CodeEditorDocument(string? path, string text, string encodingName, string untitledName)
     {
@@ -19,6 +20,12 @@ public sealed partial class CodeEditorDocument : ObservableObject
     [ObservableProperty] private string _text;
     [ObservableProperty] private string _encodingName;
     [ObservableProperty] private bool _isDirty;
+    [ObservableProperty] private CodeEditorContentKind _contentKind;
+    [ObservableProperty] private IImage? _imageSource;
+    [ObservableProperty] private long _byteLength;
+    public bool ShowSource { get; set; }
+
+    public void Dispose() => (ImageSource as IDisposable)?.Dispose();
 
     /// <summary>
     /// Bumped on every content change. A write snapshots this before it starts so that a
@@ -43,3 +50,5 @@ public sealed partial class CodeEditorDocument : ObservableObject
 
     partial void OnTextChanged(string value) => Revision++;
 }
+
+public enum CodeEditorContentKind { Text, Image, Binary }

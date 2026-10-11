@@ -4,11 +4,13 @@ using RelaxKonOS.Client.Apps.TextEditor;
 using RelaxKonOS.Client.Localization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using RelaxKonOS.Client.Apps.ImageViewer;
+using Avalonia.Media;
 
 namespace RelaxKonOS.Client.Apps.CodeEditor;
 
 /// <summary>Owns the window-local multi-root workspace and the currently open editor documents.</summary>
-public sealed partial class CodeEditorViewModel : ObservableObject
+public sealed partial class CodeEditorViewModel : ObservableObject, IDisposable
 {
     private readonly IExplorerClient? _files;
     private readonly StringComparer _pathComparer;
@@ -18,6 +20,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject
     // Bumped for every read that will replace or add a document. A late read whose revision no
     // longer matches must not activate its file over whatever the user opened meanwhile.
     private int _openRevision;
+    private bool _disposed;
 
     public CodeEditorViewModel(IExplorerClient? files, bool pathCaseSensitive = true, string defaultEncodingName = "UTF-8")
     {
@@ -42,14 +45,27 @@ public sealed partial class CodeEditorViewModel : ObservableObject
     [ObservableProperty] private LocalizedStatus _statusText;
     [ObservableProperty] private CodeEditorDocument? _activeDocument;
     [ObservableProperty] private CodeEditorFolderNode? _selectedFolderNode;
-    [ObservableProperty] private string _activeSidebar = "explorer";
     [ObservableProperty] private bool _isSidebarVisible = true;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanEditDocument))]
     private bool _isSaving;
+    [ObservableProperty] private bool _showImageSource;
+    [ObservableProperty] private bool _imageAtActualSize;
 
     /// <summary>False while a write is in flight; the editor and its command surface bind to this.</summary>
     public bool CanEditDocument => !IsSaving;
+    public bool HasImageSourceText => ActiveDocument?.ContentKind == CodeEditorContentKind.Image
+        && string.Equals(Path.GetExtension(CurrentPath), ".svg", StringComparison.OrdinalIgnoreCase);
+    public bool IsTextDocument => ActiveDocument?.ContentKind == CodeEditorContentKind.Text || (HasImageSourceText && ShowImageSource);
+    public bool IsImageDocument => ActiveDocument?.ContentKind == CodeEditorContentKind.Image && !ShowImageSource;
+    public bool IsBinaryDocument => ActiveDocument?.ContentKind == CodeEditorContentKind.Binary;
+    public bool CanSaveDocument => !IsSaving && (ActiveDocument is null || IsTextDocument);
+    public IImage? PreviewImage => ActiveDocument?.ImageSource;
+    public double PreviewWidth => ImageAtActualSize ? PreviewImage?.Size.Width ?? double.NaN : double.NaN;
+    public double PreviewHeight => ImageAtActualSize ? PreviewImage?.Size.Height ?? double.NaN : double.NaN;
+    public string FileSizeText => LocalizedText.Format("code_editor.preview.bytes", ActiveDocument?.ByteLength ?? 0);
+    public string ImageDimensionsText => PreviewImage is { } image
+        ? LocalizedText.Format("image_viewer.dimensions", (int)Math.Ceiling(image.Size.Width), (int)Math.Ceiling(image.Size.Height)) : string.Empty;
 
     /// <summary>
     /// True while any open tab holds unsaved edits. The window close guard uses this rather than
@@ -62,8 +78,6 @@ public sealed partial class CodeEditorViewModel : ObservableObject
     public string LineCountText => LocalizedText.Format("common.line_count_format", LineCount);
     public string CharacterCountText => LocalizedText.Format("common.character_count_format", CharCount);
     public string DocumentName => ActiveDocument?.DisplayName ?? LocalizedText.Get("code_editor.document.untitled");
-    public bool IsExplorerSidebar => ActiveSidebar == "explorer";
-    public bool IsOpenEditorsSidebar => ActiveSidebar == "openEditors";
     public bool HasOpenFile => !string.IsNullOrWhiteSpace(CurrentPath);
 
     public Func<Task<string?>>? RequestFileAsync { get; set; }
@@ -82,7 +96,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject
         OnPropertyChanged(nameof(LineCount));
         OnPropertyChanged(nameof(LineCountText));
         OnPropertyChanged(nameof(CharacterCountText));
-        if (ActiveDocument is null) return;
+        if (ActiveDocument is null || !IsTextDocument) return;
         ActiveDocument.Text = value;
         if (!_isLoadingDocument)
         {
@@ -110,12 +124,64 @@ public sealed partial class CodeEditorViewModel : ObservableObject
     partial void OnActiveDocumentChanged(CodeEditorDocument? value)
     {
         _isLoadingDocument = true;
+        ShowImageSource = value?.ShowSource ?? false;
         Text = value?.Text ?? string.Empty;
         CurrentPath = value?.Path;
         EncodingName = value?.EncodingName ?? "UTF-8";
         IsDirty = value?.IsDirty ?? false;
         _isLoadingDocument = false;
         OnPropertyChanged(nameof(DocumentName));
+        ImageAtActualSize = false;
+        NotifyContentChanged();
+    }
+
+    partial void OnIsSavingChanged(bool value) => NotifySaveCommands();
+    partial void OnShowImageSourceChanged(bool value)
+    {
+        if (!_isLoadingDocument && ActiveDocument is { } document) document.ShowSource = value;
+        NotifyContentChanged();
+    }
+    partial void OnImageAtActualSizeChanged(bool value)
+    {
+        OnPropertyChanged(nameof(PreviewWidth));
+        OnPropertyChanged(nameof(PreviewHeight));
+    }
+
+    private void NotifySaveCommands()
+    {
+        OnPropertyChanged(nameof(CanSaveDocument));
+        SaveCommand.NotifyCanExecuteChanged();
+        SaveAsCommand.NotifyCanExecuteChanged();
+        ChooseEncodingCommand.NotifyCanExecuteChanged();
+    }
+
+    private void NotifyContentChanged()
+    {
+        foreach (var name in new[] { nameof(IsTextDocument), nameof(IsImageDocument), nameof(IsBinaryDocument),
+            nameof(HasImageSourceText), nameof(PreviewImage), nameof(PreviewWidth), nameof(PreviewHeight),
+            nameof(FileSizeText), nameof(ImageDimensionsText) }) OnPropertyChanged(name);
+        NotifySaveCommands();
+    }
+
+    [RelayCommand]
+    private void ToggleImageSource()
+    {
+        if (!HasImageSourceText || ActiveDocument is not { } document) return;
+        if (ShowImageSource)
+        {
+            try
+            {
+                var image = ImageViewerDecoder.Load(document.Path!, TextFileEncodings.Encode(document.Text, document.EncodingName));
+                (document.ImageSource as IDisposable)?.Dispose();
+                document.ImageSource = image;
+            }
+            catch (Exception ex)
+            {
+                StatusText = LocalizedText.Ref("code_editor.status.open_failed", ex.Message);
+                return;
+            }
+        }
+        ShowImageSource = !ShowImageSource;
     }
 
     partial void OnSelectedFolderNodeChanged(CodeEditorFolderNode? value)
@@ -129,28 +195,8 @@ public sealed partial class CodeEditorViewModel : ObservableObject
         _ = OpenPathAsync(value.Path);
     }
 
-    partial void OnActiveSidebarChanged(string value)
-    {
-        OnPropertyChanged(nameof(IsExplorerSidebar));
-        OnPropertyChanged(nameof(IsOpenEditorsSidebar));
-    }
-
     [RelayCommand]
-    private void SwitchSidebar(string? sidebar)
-    {
-        if (sidebar is not ("explorer" or "openEditors")) return;
-
-        // A second click on the active activity-bar item is a compact toggle, matching
-        // the expected folder/open-files behavior while retaining the selected view.
-        if (ActiveSidebar == sidebar && IsSidebarVisible)
-        {
-            IsSidebarVisible = false;
-            return;
-        }
-
-        ActiveSidebar = sidebar;
-        IsSidebarVisible = true;
-    }
+    private void ToggleSidebar() => IsSidebarVisible = !IsSidebarVisible;
 
     [RelayCommand]
     private void NewDocument()
@@ -211,14 +257,15 @@ public sealed partial class CodeEditorViewModel : ObservableObject
         // binding. Capture identity first so that notification cannot suppress selecting a neighbor.
         var wasActive = ReferenceEquals(ActiveDocument, document);
         OpenDocuments.Remove(document);
+        document.Dispose();
         if (!wasActive) return;
         ActiveDocument = OpenDocuments.Count == 0 ? null : OpenDocuments[Math.Clamp(index, 0, OpenDocuments.Count - 1)];
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanSaveDocument))]
     private async Task SaveAsync()
     {
-        if (IsSaving) return;
+        if (!CanSaveDocument) return;
         if (ActiveDocument is null) NewDocument();
         var document = ActiveDocument;
         if (document is null) return;
@@ -231,10 +278,10 @@ public sealed partial class CodeEditorViewModel : ObservableObject
         if (!string.IsNullOrWhiteSpace(path)) await SaveToPathAsync(document, path);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanSaveDocument))]
     private async Task SaveAsAsync()
     {
-        if (IsSaving) return;
+        if (!CanSaveDocument) return;
         if (ActiveDocument is null) NewDocument();
         var document = ActiveDocument;
         if (document is null) return;
@@ -244,10 +291,10 @@ public sealed partial class CodeEditorViewModel : ObservableObject
         if (!string.IsNullOrWhiteSpace(path)) await SaveToPathAsync(document, path);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanSaveDocument))]
     private async Task ChooseEncodingAsync()
     {
-        if (IsSaving || string.IsNullOrWhiteSpace(CurrentPath)) return;
+        if (!CanSaveDocument || string.IsNullOrWhiteSpace(CurrentPath)) return;
         var action = await (RequestEncodingActionAsync?.Invoke() ?? Task.FromResult<EncodingDialogAction?>(null));
         if (action is null) return;
         var encoding = await (RequestEncodingAsync?.Invoke() ?? Task.FromResult<string?>(null));
@@ -317,11 +364,37 @@ public sealed partial class CodeEditorViewModel : ObservableObject
         try
         {
             var bytes = await _files.ReadFileAsync(path);
-            if (revision != _openRevision) return;
+            if (_disposed || revision != _openRevision) return;
             // A missing file leaves every open tab untouched instead of clearing the editor.
             if (bytes is null) { StatusText = LocalizedText.Ref("code_editor.status.file_missing"); return; }
-            var encoding = existing?.EncodingName ?? DefaultEncodingName;
-            var text = TextFileEncodings.Decode(bytes, encoding);
+            var encoding = existing?.EncodingName ?? CodeEditorFileContent.DetectEncoding(bytes, DefaultEncodingName);
+            IImage? image = null;
+            var text = string.Empty;
+            var contentKind = CodeEditorContentKind.Text;
+            if (CodeEditorFileContent.IsImage(path))
+            {
+                var svg = string.Equals(Path.GetExtension(path), ".svg", StringComparison.OrdinalIgnoreCase);
+                try
+                {
+                    image = ImageViewerDecoder.Load(path, bytes);
+                    contentKind = CodeEditorContentKind.Image;
+                }
+                catch
+                {
+                    // Invalid SVG remains editable; unreadable raster files get the binary card.
+                    contentKind = svg ? CodeEditorContentKind.Text : CodeEditorContentKind.Binary;
+                }
+                if (svg) text = TextFileEncodings.Decode(bytes, encoding);
+            }
+            else
+            {
+                text = TextFileEncodings.Decode(bytes, encoding);
+                if (CodeEditorFileContent.IsBinary(path, text))
+                {
+                    contentKind = CodeEditorContentKind.Binary;
+                    text = string.Empty;
+                }
+            }
             if (existing is null)
             {
                 existing = new CodeEditorDocument(path, text, encoding,
@@ -330,12 +403,18 @@ public sealed partial class CodeEditorViewModel : ObservableObject
             }
             else
             {
+                (existing.ImageSource as IDisposable)?.Dispose();
                 existing.Text = text;
                 existing.EncodingName = encoding;
                 existing.IsDirty = false;
             }
+            existing.ContentKind = contentKind;
+            existing.ImageSource = image;
+            existing.ByteLength = bytes.LongLength;
             ActivateDocument(existing);
-            StatusText = LocalizedText.Ref("code_editor.status.opened", Path.GetFileName(path), encoding);
+            StatusText = contentKind == CodeEditorContentKind.Text
+                ? LocalizedText.Ref("code_editor.status.opened", Path.GetFileName(path), encoding)
+                : LocalizedText.Ref("code_editor.preview.opened", Path.GetFileName(path));
         }
         catch (Exception ex)
         {
@@ -353,7 +432,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject
             var directory = await _files.GetDirectoryAsync(node.Path);
             node.Children.Clear();
             foreach (var child in directory.Directories)
-                node.Children.Add(CreateFolderNode(child.Name, child.Path, true));
+                node.Children.Add(CreateFolderNode(child.Name, child.Path, false));
             foreach (var file in directory.Files)
                 node.Children.Add(new CodeEditorFolderNode(file.Name, file.Path, false));
             node.IsLoaded = true;
@@ -376,7 +455,8 @@ public sealed partial class CodeEditorViewModel : ObservableObject
     private async Task SaveToPathAsync(CodeEditorDocument document, string path)
     {
         if (_files is null) { StatusText = LocalizedText.Ref("code_editor.status.connect_before_save"); return; }
-        if (IsSaving) return;
+        if (IsSaving || (document.ContentKind != CodeEditorContentKind.Text
+            && !string.Equals(Path.GetExtension(document.Path), ".svg", StringComparison.OrdinalIgnoreCase))) return;
         // Snapshot the revision, bytes and encoding so the write describes exactly the tab the
         // user asked to save.
         var revision = document.Revision;
@@ -392,11 +472,20 @@ public sealed partial class CodeEditorViewModel : ObservableObject
                 document.Path = path;
                 document.EncodingName = encoding;
                 document.IsDirty = false;
+                document.ByteLength = content.LongLength;
+                if (document.ContentKind == CodeEditorContentKind.Image
+                    && !string.Equals(Path.GetExtension(path), ".svg", StringComparison.OrdinalIgnoreCase))
+                {
+                    document.ContentKind = CodeEditorContentKind.Text;
+                    (document.ImageSource as IDisposable)?.Dispose();
+                    document.ImageSource = null;
+                }
             }
             if (ReferenceEquals(ActiveDocument, document))
             {
                 CurrentPath = document.Path;
                 IsDirty = document.IsDirty;
+                NotifyContentChanged();
             }
             OnPropertyChanged(nameof(DocumentName));
             StatusText = LocalizedText.Ref("code_editor.status.saved", Path.GetFileName(path), encoding);
@@ -420,12 +509,21 @@ public sealed partial class CodeEditorViewModel : ObservableObject
             return;
         }
         _isLoadingDocument = true;
+        ShowImageSource = document.ShowSource;
         Text = document.Text;
         CurrentPath = document.Path;
         EncodingName = document.EncodingName;
         IsDirty = document.IsDirty;
         _isLoadingDocument = false;
         OnPropertyChanged(nameof(DocumentName));
+        NotifyContentChanged();
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _openRevision++;
+        foreach (var document in OpenDocuments) document.Dispose();
     }
 
     private bool PathEquals(string left, string right) => _pathComparer.Equals(left, right);

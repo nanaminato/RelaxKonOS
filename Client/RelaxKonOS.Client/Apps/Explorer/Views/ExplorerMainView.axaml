@@ -19,69 +19,44 @@
         <c:EntryIsEditingConverter x:Key="EntryIsEditingConverter" />
         <c:CutEntryOpacityConverter x:Key="CutEntryOpacityConverter" />
 
-        <!-- Header-bar glyphs. The command surface is 24x24 silhouette artwork rather than bitmaps:
-             it stays sharp at every display scale, follows the active appearance instead of baking
-             in one palette, and needs no per-platform fallback the way a font glyph or an emoji
-             would. The vocabulary matches the file-manager conventions the header imitates —
-             Windows 11 Explorer's command bar and Finder's toolbar are both flat monochrome. -->
-        <StreamGeometry x:Key="ChromeBackIcon">M20 11 H7.83 L13.42 5.41 L12 4 L4 12 L12 20 L13.42 18.59 L7.83 13 H20 Z</StreamGeometry>
-        <StreamGeometry x:Key="ChromeForwardIcon">M12 4 L10.59 5.41 L16.17 11 H4 V13 H16.17 L10.59 18.59 L12 20 L20 12 Z</StreamGeometry>
-        <StreamGeometry x:Key="ChromeUpIcon">M4 12 L5.41 13.41 L11 7.83 V20 H13 V7.83 L18.59 13.41 L20 12 L12 4 Z</StreamGeometry>
-        <StreamGeometry x:Key="ChromeRefreshIcon">M17.65 6.35 C16.2 4.9 14.21 4 12 4 C7.58 4 4.01 7.58 4.01 12 C4.01 16.42 7.58 20 12 20 C15.73 20 18.84 17.45 19.73 14 H17.65 C16.83 16.33 14.61 18 12 18 C8.69 18 6 15.31 6 12 C6 8.69 8.69 6 12 6 C13.66 6 15.14 6.69 16.22 7.78 L13 11 H20 V4 L17.65 6.35 Z</StreamGeometry>
+        <!-- Toolbar marks use a consistent outline weight and inherit the button foreground. -->
+        <StreamGeometry x:Key="ChromeBackIcon">M19 12 H5 M11 6 L5 12 L11 18</StreamGeometry>
+        <StreamGeometry x:Key="ChromeForwardIcon">M5 12 H19 M13 6 L19 12 L13 18</StreamGeometry>
+        <StreamGeometry x:Key="ChromeUpIcon">M12 20 V4 M6 10 L12 4 L18 10</StreamGeometry>
+        <StreamGeometry x:Key="ChromeRefreshIcon">M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14</StreamGeometry>
         <StreamGeometry x:Key="ChromeChevronRightIcon">M10 6 L8.59 7.41 L13.17 12 L8.59 16.59 L10 18 L16 12 Z</StreamGeometry>
         <StreamGeometry x:Key="ChromeChevronDownIcon">M16.59 8.59 L12 13.17 L7.41 8.59 L6 10 L12 16 L18 10 Z</StreamGeometry>
-        <StreamGeometry x:Key="ChromeEditIcon">M3 17.25 V21 H6.75 L17.81 9.94 L14.06 6.19 L3 17.25 Z M20.71 7.04 C21.1 6.65 21.1 6.02 20.71 5.63 L18.37 3.29 C17.98 2.9 17.35 2.9 16.96 3.29 L15.13 5.12 L18.88 8.87 L20.71 7.04 Z</StreamGeometry>
-        <StreamGeometry x:Key="ChromeSearchIcon">M15.5 14 H14.71 L14.43 13.73 C15.41 12.59 16 11.11 16 9.5 C16 5.91 13.09 3 9.5 3 C5.91 3 3 5.91 3 9.5 C3 13.09 5.91 16 9.5 16 C11.11 16 12.59 15.41 13.73 14.43 L14 14.71 V15.5 L19 20.49 L20.49 19 L15.5 14 Z M9.5 14 C7.01 14 5 11.99 5 9.5 C5 7.01 7.01 5 9.5 5 C11.99 5 14 7.01 14 9.5 C14 11.99 11.99 14 9.5 14 Z</StreamGeometry>
+        <StreamGeometry x:Key="ChromeEditIcon">M4 16 L16 4 L20 8 L8 20 H4 Z M14 6 L18 10</StreamGeometry>
+        <StreamGeometry x:Key="ChromeSearchIcon">M17 10 A7 7 0 1 1 3 10 A7 7 0 1 1 17 10 M15 15 L21 21</StreamGeometry>
         <StreamGeometry x:Key="ChromeAddIcon">M19 13 H13 V19 H11 V13 H5 V11 H11 V5 H13 V11 H19 Z</StreamGeometry>
         <StreamGeometry x:Key="ChromeCloseIcon">M19 6.41 L17.59 5 L12 10.59 L6.41 5 L5 6.41 L10.59 12 L5 17.59 L6.41 19 L12 13.41 L17.59 19 L19 17.59 L13.41 12 Z</StreamGeometry>
         <StreamGeometry x:Key="ChromeMoreIcon">M6 10 C4.9 10 4 10.9 4 12 C4 13.1 4.9 14 6 14 C7.1 14 8 13.1 8 12 C8 10.9 7.1 10 6 10 Z M18 10 C16.9 10 16 10.9 16 12 C16 13.1 16.9 14 18 14 C19.1 14 20 13.1 20 12 C20 10.9 19.1 10 18 10 Z M12 10 C10.9 10 10 10.9 10 12 C10 13.1 10.9 14 12 14 C13.1 14 14 13.1 14 12 C14 10.9 13.1 10 12 10 Z</StreamGeometry>
-        <StreamGeometry x:Key="ChromeNewFolderIcon">M20 6 H12 L10 4 H4 C2.9 4 2.11 4.9 2.11 6 L2 18 C2 19.1 2.9 20 4 20 H20 C21.1 20 22 19.1 22 18 V8 C22 6.9 21.1 6 20 6 Z M19 14 H16 V17 H14 V14 H11 V12 H14 V9 H16 V12 H19 Z</StreamGeometry>
-        <StreamGeometry x:Key="ChromeCutIcon">M9.64 7.64 C9.87 7.14 10 6.59 10 6 C10 3.79 8.21 2 6 2 C3.79 2 2 3.79 2 6 C2 8.21 3.79 10 6 10 C6.59 10 7.14 9.87 7.64 9.64 L10 12 L7.64 14.36 C7.14 14.13 6.59 14 6 14 C3.79 14 2 15.79 2 18 C2 20.21 3.79 22 6 22 C8.21 22 10 20.21 10 18 C10 17.41 9.87 16.86 9.64 16.36 L12 14 L19 21 H22 V20 L9.64 7.64 Z M6 8 C4.9 8 4 7.11 4 6 C4 4.9 4.9 4 6 4 C7.1 4 8 4.9 8 6 C8 7.11 7.1 8 6 8 Z M6 20 C4.9 20 4 19.11 4 18 C4 16.9 4.9 16 6 16 C7.1 16 8 16.9 8 18 C8 19.11 7.1 20 6 20 Z M12 12.5 C11.72 12.5 11.5 12.28 11.5 12 C11.5 11.72 11.72 11.5 12 11.5 C12.28 11.5 12.5 11.72 12.5 12 C12.5 12.28 12.28 12.5 12 12.5 Z M19 3 L13 9 L15 11 L22 4 V3 Z</StreamGeometry>
-        <StreamGeometry x:Key="ChromeCopyIcon">M16 1 H4 C2.9 1 2 1.9 2 3 V17 H4 V3 H16 V1 Z M19 5 H8 C6.9 5 6 5.9 6 7 V21 C6 22.1 6.9 23 8 23 H19 C20.1 23 21 22.1 21 21 V7 C21 5.9 20.1 5 19 5 Z M19 21 H8 V7 H19 V21 Z</StreamGeometry>
-        <StreamGeometry x:Key="ChromePasteIcon">M19 2 H15.82 C15.4 0.84 14.3 0 13 0 C11.7 0 10.6 0.84 10.18 2 H7 C5.9 2 5 2.9 5 4 V20 C5 21.1 5.9 22 7 22 H19 C20.1 22 21 21.1 21 20 V4 C21 2.9 20.1 2 19 2 Z M13 2 C13.55 2 14 2.45 14 3 C14 3.55 13.55 4 13 4 C12.45 4 12 3.55 12 3 C12 2.45 12.45 2 13 2 Z M19 20 H7 V4 H9 V7 H17 V4 H19 V20 Z</StreamGeometry>
-        <!-- Rename is the Windows name field mark: an outlined box holding a text caret. It has to
-             be drawn even-odd, otherwise the box interior would fill solid and swallow the caret. -->
-        <StreamGeometry x:Key="ChromeRenameIcon">F0 M5 5 H19 V19 H5 Z M7.6 7.6 H16.4 V16.4 H7.6 Z M11 8.4 H13 V15.6 H11 Z</StreamGeometry>
-        <StreamGeometry x:Key="ChromeDeleteIcon">M6 19 C6 20.1 6.9 21 8 21 H16 C17.1 21 18 20.1 18 19 V7 H6 V19 Z M19 4 H15.5 L14.5 3 H9.5 L8.5 4 H5 V6 H19 V4 Z</StreamGeometry>
+        <StreamGeometry x:Key="ChromeNewFolderIcon">M21 12 A9 9 0 1 1 3 12 A9 9 0 1 1 21 12 M7 12 H17 M12 7 V17</StreamGeometry>
+        <StreamGeometry x:Key="ChromeCutIcon">M9 7 A3 3 0 1 1 3 7 A3 3 0 1 1 9 7 M9 17 A3 3 0 1 1 3 17 A3 3 0 1 1 9 17 M8 9 L20 21 M8 15 L20 3</StreamGeometry>
+        <StreamGeometry x:Key="ChromeCopyIcon">M9 8 H20 V21 H9 Z M15 4 H4 V17</StreamGeometry>
+        <StreamGeometry x:Key="ChromePasteIcon">M8 5 H5 V21 H19 V5 H16 M9 3 H15 V7 H9 Z</StreamGeometry>
+
+        <StreamGeometry x:Key="ChromeRenameIcon">M10 4 H16 M13 4 V20 M10 20 H16 M10 8 H3 V16 H10 M16 8 H21 V16 H16</StreamGeometry>
+        <StreamGeometry x:Key="ChromeDeleteIcon">M4 6 H20 M9 6 V3 H15 V6 M6 6 L7 21 H17 L18 6 M10 10 V17 M14 10 V17</StreamGeometry>
     </UserControl.Resources>
 
     <UserControl.Styles>
-        <!-- The address field and the search field are the header's two text surfaces. The search
-             field's glyph lives inside the frame, so its TextBox stops painting a second frame of
-             its own; the address field keeps one but is dressed as the same sunken field the
-             breadcrumb uses, otherwise typing a path would swap a framed field for a bare one.
-             Every interaction state is spelled out because the platform theme styles are just as
-             specific and would otherwise repaint the field on hover or focus. -->
-        <Style Selector="TextBox#AddressBox">
-            <Setter Property="Height" Value="32" />
-            <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
-            <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource FocusBorderBrush}" />
+        <Style Selector="Button.command-action">
+            <Setter Property="Height" Value="36" />
+            <Setter Property="MinHeight" Value="36" />
+            <Setter Property="MinWidth" Value="40" />
+            <Setter Property="Padding" Value="12,0" />
         </Style>
-        <Style Selector="TextBox#AddressBox:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource FocusBorderBrush}" />
-        </Style>
-        <Style Selector="TextBox#AddressBox:focus">
-            <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource FocusBorderBrush}" />
-        </Style>
-        <Style Selector="TextBox#SearchBox">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
+        <Style Selector="Button.command-action.icon-command">
+            <Setter Property="Width" Value="40" />
             <Setter Property="Padding" Value="0" />
-            <Setter Property="MinHeight" Value="0" />
         </Style>
-        <Style Selector="TextBox#SearchBox /template/ Border#PART_BorderElement">
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Background" Value="Transparent" />
-        </Style>
-        <Style Selector="Border#AddressBarFrame:focus-within">
-            <Setter Property="BorderBrush" Value="{DynamicResource FocusBorderBrush}" />
-        </Style>
-        <Style Selector="Border#InlineSearchHost:focus-within">
-            <Setter Property="BorderBrush" Value="{DynamicResource FocusBorderBrush}" />
-            <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+        <Style Selector="Border.command-divider">
+            <Setter Property="Width" Value="1" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Margin" Value="8,0" />
+            <Setter Property="Background" Value="{DynamicResource BorderSubtleBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
     </UserControl.Styles>
 
@@ -128,13 +103,52 @@
                 </Flyout></Button.Flyout>
             </Button>
         </Grid>
-        <Border x:Name="NavigationToolbar" IsEnabled="{Binding !IsBusy}" Grid.Row="1" Padding="0,4" SizeChanged="NavigationToolbar_SizeChanged">
+        <Border x:Name="NavigationToolbar" IsEnabled="{Binding !IsBusy}" Grid.Row="1" Padding="4,8" SizeChanged="NavigationToolbar_SizeChanged">
+            <Border.Styles>
+                <!-- The address field and the search field are the header's two text surfaces. The search
+                     field's glyph lives inside the frame, so its TextBox stops painting a second frame of
+                     its own; the address field keeps one but is dressed as the same sunken field the
+                     breadcrumb uses, otherwise typing a path would swap a framed field for a bare one.
+                     Every interaction state is spelled out because the platform theme styles are just as
+                     specific and would otherwise repaint the field on hover or focus. -->
+                <Style Selector="TextBox#AddressBox">
+                    <Setter Property="Height" Value="32" />
+                    <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+                    <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource FocusBorderBrush}" />
+                </Style>
+                <Style Selector="TextBox#AddressBox:pointerover">
+                    <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource FocusBorderBrush}" />
+                </Style>
+                <Style Selector="TextBox#AddressBox:focus">
+                    <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource FocusBorderBrush}" />
+                </Style>
+                <Style Selector="TextBox#SearchBox">
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="BorderThickness" Value="0" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="MinHeight" Value="0" />
+                </Style>
+                <Style Selector="TextBox#SearchBox:focus /template/ Border#PART_BorderElement, TextBox#SearchBox:not(:focus) /template/ Border#PART_BorderElement">
+                    <Setter Property="BorderThickness" Value="0" />
+                    <Setter Property="Background" Value="Transparent" />
+                </Style>
+                <Style Selector="Border#AddressBarFrame:focus-within">
+                    <Setter Property="BorderBrush" Value="{DynamicResource FocusBorderBrush}" />
+                </Style>
+                <Style Selector="Border#InlineSearchHost:focus-within">
+                    <Setter Property="BorderBrush" Value="{DynamicResource FocusBorderBrush}" />
+                    <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+                </Style>
+            </Border.Styles>
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" ClipToBounds="True">
-                <StackPanel Orientation="Horizontal" Spacing="2">
-                    <Button Classes="header-action" Command="{Binding GoBackCommand}" ToolTip.Tip="{loc:Loc common.back}" AutomationProperties.Name="{loc:Loc common.back}"><PathIcon Width="16" Height="16" Data="{StaticResource ChromeBackIcon}" /></Button>
-                    <Button Classes="header-action" Command="{Binding GoForwardCommand}" ToolTip.Tip="{loc:Loc common.forward}" AutomationProperties.Name="{loc:Loc common.forward}"><PathIcon Width="16" Height="16" Data="{StaticResource ChromeForwardIcon}" /></Button>
-                    <Button x:Name="GoUpButton" Classes="header-action" Command="{Binding GoUpCommand}" ToolTip.Tip="{loc:Loc explorer.up}" AutomationProperties.Name="{loc:Loc explorer.up}"><PathIcon Width="16" Height="16" Data="{StaticResource ChromeUpIcon}" /></Button>
-                    <Button x:Name="RefreshButton" Classes="header-action" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc common.refresh}" AutomationProperties.Name="{loc:Loc common.refresh}"><PathIcon Width="16" Height="16" Data="{StaticResource ChromeRefreshIcon}" /></Button>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Classes="header-action" Command="{Binding GoBackCommand}" ToolTip.Tip="{loc:Loc common.back}" AutomationProperties.Name="{loc:Loc common.back}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeBackIcon}" /></Button>
+                    <Button Classes="header-action" Command="{Binding GoForwardCommand}" ToolTip.Tip="{loc:Loc common.forward}" AutomationProperties.Name="{loc:Loc common.forward}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeForwardIcon}" /></Button>
+                    <Button x:Name="GoUpButton" Classes="header-action" Command="{Binding GoUpCommand}" ToolTip.Tip="{loc:Loc explorer.up}" AutomationProperties.Name="{loc:Loc explorer.up}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeUpIcon}" /></Button>
+                    <Button x:Name="RefreshButton" Classes="header-action" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc common.refresh}" AutomationProperties.Name="{loc:Loc common.refresh}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeRefreshIcon}" /></Button>
                 </StackPanel>
                 <Grid Grid.Column="1" MinWidth="0">
                     <TextBox x:Name="AddressBox" Text="{Binding AddressInput, Mode=TwoWay}"
@@ -161,7 +175,7 @@
                             </ScrollViewer>
                             <Button Grid.Column="1" Classes="header-action compact" Click="EditAddress_Click"
                                     ToolTip.Tip="{loc:Loc explorer.edit_address}" AutomationProperties.Name="{loc:Loc explorer.edit_address}">
-                                <PathIcon Width="14" Height="14" Data="{StaticResource ChromeEditIcon}" />
+                                <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="14" Height="14" Data="{StaticResource ChromeEditIcon}" />
                             </Button>
                         </Grid>
                     </Border>
@@ -170,8 +184,8 @@
                     <Border x:Name="InlineSearchHost" Height="32" CornerRadius="{DynamicResource ControlCornerRadius}"
                             Background="{DynamicResource SurfaceSunkenBrush}" BorderThickness="1" BorderBrush="Transparent" Padding="8,0,2,0">
                         <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
-                            <PathIcon Width="14" Height="14" VerticalAlignment="Center" Data="{StaticResource ChromeSearchIcon}"
-                                      Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <Path StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="14" Height="14" Data="{StaticResource ChromeSearchIcon}"
+                                      Stroke="{DynamicResource TextSecondaryBrush}" />
                             <TextBox x:Name="SearchBox" Grid.Column="1" Width="180" MinWidth="0" VerticalContentAlignment="Center"
                                      Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                      PlaceholderText="{loc:Loc explorer.filter_folder}" KeyDown="SearchBox_KeyDown" />
@@ -180,7 +194,7 @@
                     <!-- The glyph travels with the button, so a narrow toolbar keeps the same affordance. -->
                     <Button x:Name="CompactSearchButton" Classes="header-action" IsVisible="False"
                             ToolTip.Tip="{loc:Loc explorer.filter_folder}" AutomationProperties.Name="{loc:Loc explorer.filter_folder}">
-                        <PathIcon Width="16" Height="16" Data="{StaticResource ChromeSearchIcon}" />
+                        <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeSearchIcon}" />
                         <Button.Flyout><Flyout>
                             <TextBox x:Name="CompactSearchBox" Width="240" Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                      PlaceholderText="{loc:Loc explorer.filter_folder}" KeyDown="SearchBox_KeyDown" />
@@ -190,16 +204,54 @@
             </Grid>
         </Border>
         </Grid>
-        <Border DockPanel.Dock="Top" Classes="app-toolbar">
-            <WrapPanel Orientation="Horizontal" IsEnabled="{Binding !IsBusy}">
-                <StackPanel IsVisible="{Binding !IsPickerMode}" Orientation="Horizontal" Spacing="2" Margin="0,0,10,0">
-                    <Button Classes="command-action" Command="{Binding NewFolderCommand}"><StackPanel Orientation="Horizontal" Spacing="6"><PathIcon Width="16" Height="16" Data="{StaticResource ChromeNewFolderIcon}" /><TextBlock Text="{loc:Loc explorer.new_folder}" VerticalAlignment="Center" /></StackPanel></Button>
-                    <Button x:Name="CutAction" Classes="command-action" Command="{Binding CutCommand}" ToolTip.Tip="{loc:Loc explorer.cut}" AutomationProperties.Name="{loc:Loc explorer.cut}"><PathIcon Width="16" Height="16" Data="{StaticResource ChromeCutIcon}" /></Button>
-                    <Button x:Name="CopyAction" Classes="command-action" Command="{Binding CopyCommand}" ToolTip.Tip="{loc:Loc explorer.copy}" AutomationProperties.Name="{loc:Loc explorer.copy}"><PathIcon Width="16" Height="16" Data="{StaticResource ChromeCopyIcon}" /></Button>
-                    <Button x:Name="PasteAction" Classes="command-action" Command="{Binding PasteCommand}" ToolTip.Tip="{loc:Loc explorer.paste}" AutomationProperties.Name="{loc:Loc explorer.paste}"><PathIcon Width="16" Height="16" Data="{StaticResource ChromePasteIcon}" /></Button>
-                    <Button x:Name="RenameAction" Classes="command-action" Command="{Binding RenameCommand}" AutomationProperties.Name="{loc:Loc common.rename}"><StackPanel Orientation="Horizontal" Spacing="6"><PathIcon Width="16" Height="16" Data="{StaticResource ChromeRenameIcon}" /><TextBlock Text="{loc:Loc common.rename}" VerticalAlignment="Center" /></StackPanel></Button>
-                    <Button x:Name="DeleteAction" Classes="command-action" Command="{Binding DeleteCommand}" AutomationProperties.Name="{loc:Loc common.delete}"><StackPanel Orientation="Horizontal" Spacing="6"><PathIcon Width="16" Height="16" Data="{StaticResource ChromeDeleteIcon}" /><TextBlock Text="{loc:Loc common.delete}" VerticalAlignment="Center" /></StackPanel></Button>
-                    <Button x:Name="MoreActionsButton" Classes="command-action" ToolTip.Tip="{loc:Loc explorer.more}" AutomationProperties.Name="{loc:Loc explorer.more}">
+        <Border DockPanel.Dock="Top" x:Name="CommandToolbar" Classes="app-toolbar" Padding="8,6" SizeChanged="CommandToolbar_SizeChanged">
+            <StackPanel Orientation="Horizontal" IsEnabled="{Binding !IsBusy}" Spacing="4">
+                <StackPanel IsVisible="{Binding !IsPickerMode}" Orientation="Horizontal" Spacing="4">
+                    <Button x:Name="NewFolderAction" Classes="command-action" Command="{Binding NewFolderCommand}" ToolTip.Tip="{loc:Loc explorer.new_folder}" AutomationProperties.Name="{loc:Loc explorer.new_folder}"><StackPanel Orientation="Horizontal" Spacing="6"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeNewFolderIcon}" /><TextBlock x:Name="NewFolderLabel" Text="{loc:Loc explorer.new_folder}" VerticalAlignment="Center" /></StackPanel></Button>
+                    <Border x:Name="EditingDivider" Classes="command-divider" />
+                    <Button x:Name="CutAction" Classes="command-action icon-command" Command="{Binding CutCommand}" ToolTip.Tip="{loc:Loc explorer.cut}" AutomationProperties.Name="{loc:Loc explorer.cut}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeCutIcon}" /></Button>
+                    <Button x:Name="CopyAction" Classes="command-action icon-command" Command="{Binding CopyCommand}" ToolTip.Tip="{loc:Loc explorer.copy}" AutomationProperties.Name="{loc:Loc explorer.copy}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeCopyIcon}" /></Button>
+                    <Button x:Name="PasteAction" Classes="command-action icon-command" Command="{Binding PasteCommand}" ToolTip.Tip="{loc:Loc explorer.paste}" AutomationProperties.Name="{loc:Loc explorer.paste}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromePasteIcon}" /></Button>
+                    <Button x:Name="RenameAction" Classes="command-action icon-command" Command="{Binding RenameCommand}" ToolTip.Tip="{loc:Loc common.rename}" AutomationProperties.Name="{loc:Loc common.rename}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeRenameIcon}" /></Button>
+                    <Button x:Name="DeleteAction" Classes="command-action icon-command" Command="{Binding DeleteCommand}" ToolTip.Tip="{loc:Loc common.delete}" AutomationProperties.Name="{loc:Loc common.delete}"><Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="{StaticResource ChromeDeleteIcon}" /></Button>
+
+                </StackPanel>
+                <Border x:Name="ViewDivider" Classes="command-divider" IsVisible="{Binding !IsPickerMode}" />
+                <Button x:Name="SortAction" Classes="command-action" ToolTip.Tip="{loc:Loc explorer.sort}" AutomationProperties.Name="{loc:Loc explorer.sort}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="M7 3 V21 M3 17 L7 21 L11 17 M17 21 V3 M13 7 L17 3 L21 7" />
+                        <TextBlock x:Name="SortLabel" Text="{loc:Loc explorer.sort}" VerticalAlignment="Center" />
+                        <PathIcon x:Name="SortChevron" Width="8" Height="8" Data="{StaticResource ChromeChevronDownIcon}" />
+                    </StackPanel>
+                    <Button.Flyout><Flyout><StackPanel Spacing="10" MinWidth="220">
+                        <ComboBox SelectedIndex="{Binding SortIndex, Mode=TwoWay}" Width="220">
+                            <ComboBoxItem Content="{loc:Loc common.name}" />
+                            <ComboBoxItem Content="{loc:Loc explorer.modified}" />
+                            <ComboBoxItem Content="{loc:Loc common.type}" />
+                            <ComboBoxItem Content="{loc:Loc explorer.size}" />
+                        </ComboBox>
+                        <CheckBox Content="{loc:Loc explorer.descending}" IsChecked="{Binding SortDescending}" />
+                    </StackPanel></Flyout></Button.Flyout>
+                </Button>
+                <Button x:Name="ViewAction" Classes="command-action" ToolTip.Tip="{loc:Loc common.view}" AutomationProperties.Name="{loc:Loc common.view}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" VerticalAlignment="Center" Width="16" Height="16" Data="M3 5 H21 M3 10 H21 M3 15 H21 M3 20 H21" />
+                        <TextBlock x:Name="ViewLabel" Text="{loc:Loc common.view}" VerticalAlignment="Center" />
+                        <PathIcon x:Name="ViewChevron" Width="8" Height="8" Data="{StaticResource ChromeChevronDownIcon}" />
+                    </StackPanel>
+                    <Button.Flyout><Flyout><StackPanel Spacing="10" MinWidth="220">
+                <ComboBox x:Name="ViewModeBox" Width="200" Margin="0,0,10,0" SelectionChanged="ViewModeBox_SelectionChanged" SelectedIndex="{Binding ViewModeIndex, Mode=TwoWay}">
+                    <ComboBoxItem Content="{loc:Loc explorer.view.details}" />
+                    <ComboBoxItem Content="{loc:Loc explorer.view.list}" />
+                    <ComboBoxItem Content="{loc:Loc explorer.view.small_icons}" />
+                    <ComboBoxItem Content="{loc:Loc explorer.view.large_icons}" />
+                </ComboBox>
+                <CheckBox Content="{loc:Loc explorer.compact}" IsChecked="{Binding IsCompactView}" Margin="0,0,12,0" />
+                <CheckBox Content="{loc:Loc explorer.show_hidden}" IsChecked="{Binding ShowHiddenFiles}" />
+                    </StackPanel></Flyout></Button.Flyout>
+                </Button>
+
+                    <Button x:Name="MoreActionsButton" Classes="command-action icon-command" ToolTip.Tip="{loc:Loc explorer.more}" AutomationProperties.Name="{loc:Loc explorer.more}">
                         <Button.Content><PathIcon Width="16" Height="16" Data="{StaticResource ChromeMoreIcon}" /></Button.Content>
                         <Button.Flyout>
                             <MenuFlyout>
@@ -228,29 +280,7 @@
                             </MenuFlyout>
                         </Button.Flyout>
                     </Button>
-                </StackPanel>
-                <Button Classes="command-action" Content="{loc:Loc common.view}">
-                    <Button.Flyout><Flyout><StackPanel Spacing="10" MinWidth="220">
-                <ComboBox x:Name="ViewModeBox" Width="200" Margin="0,0,10,0" SelectionChanged="ViewModeBox_SelectionChanged" SelectedIndex="{Binding ViewModeIndex, Mode=TwoWay}">
-                    <ComboBoxItem Content="{loc:Loc explorer.view.details}" />
-                    <ComboBoxItem Content="{loc:Loc explorer.view.list}" />
-                    <ComboBoxItem Content="{loc:Loc explorer.view.small_icons}" />
-                    <ComboBoxItem Content="{loc:Loc explorer.view.large_icons}" />
-                </ComboBox>
-                <TextBlock Text="{loc:Loc explorer.sort}" VerticalAlignment="Center" Margin="0,0,6,0" />
-                <ComboBox SelectedIndex="{Binding SortIndex, Mode=TwoWay}" Width="200" Margin="0,0,10,0">
-                    <ComboBoxItem Content="{loc:Loc common.name}" />
-                    <ComboBoxItem Content="{loc:Loc explorer.modified}" />
-                    <ComboBoxItem Content="{loc:Loc common.type}" />
-                    <ComboBoxItem Content="{loc:Loc explorer.size}" />
-                </ComboBox>
-                <CheckBox Content="{loc:Loc explorer.descending}" IsChecked="{Binding SortDescending}" Margin="0,0,12,0" />
-                <CheckBox Content="{loc:Loc explorer.compact}" IsChecked="{Binding IsCompactView}" Margin="0,0,12,0" />
-                <CheckBox Content="{loc:Loc explorer.show_hidden}" IsChecked="{Binding ShowHiddenFiles}" />
-                    </StackPanel></Flyout></Button.Flyout>
-                </Button>
-
-            </WrapPanel>
+            </StackPanel>
         </Border>
 
         <!-- Compact operation status; details open upwards only on request. -->

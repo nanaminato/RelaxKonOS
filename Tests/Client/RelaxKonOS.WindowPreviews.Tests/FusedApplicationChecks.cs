@@ -122,11 +122,23 @@ internal static class FusedApplicationChecks
                         Check(Grid.GetRow(toolbar) == (style == SystemStyleIds.MacOsLike ? 0 : 2), "Navigation toolbar ignored chrome recipe.");
                         var search = explorerView.FindControl<TextBox>("SearchBox")!;
                         var compactSearch = explorerView.FindControl<Button>("CompactSearchButton")!;
-                        Check(toolbar.Bounds.Width < 420 ? compactSearch.IsVisible && compactSearch.Bounds.Width > 0 : search.Bounds.Width > 0,
+                        Check(toolbar.Bounds.Width < 600 ? compactSearch.IsVisible && compactSearch.Bounds.Width > 0 : search.Bounds.Width > 0,
                             "Folder search disappeared.");
                         var more = explorerView.FindControl<Button>("MoreActionsButton")!;
                         Check(more.TranslatePoint(default, view)!.Value.X + more.Bounds.Width <= view.Bounds.Width,
                             "Narrow command toolbar lost its overflow actions.");
+                        var commandBar = explorerView.FindControl<Border>("CommandToolbar")!;
+                        var actions = commandBar.GetVisualDescendants().OfType<Button>()
+                            .Where(button => button.IsEffectivelyVisible).ToArray();
+                        Check(actions.Length >= 4, "Compact command bar lost new, sort, view or overflow.");
+                        foreach (var action in actions)
+                        {
+                            var position = action.TranslatePoint(default, commandBar)!.Value;
+                            Check(position.X >= 0 && position.X + action.Bounds.Width <= commandBar.Bounds.Width,
+                                $"{language}/{width}: command {action.Name} overflows the toolbar.");
+                            Check(Math.Abs(position.Y - actions[0].TranslatePoint(default, commandBar)!.Value.Y) < 1,
+                                "The command toolbar wrapped onto another row.");
+                        }
                     }
                     if (language == "en-US" && width != 640)
                     {
@@ -148,7 +160,9 @@ internal static class FusedApplicationChecks
             Check(ReferenceEquals(closeDocument.Command, code.CloseDocumentCommand), "Reparenting lost the document close command.");
             closeDocument.Command!.Execute(closeDocument.CommandParameter); Pump();
             Check(code.OpenDocuments.Count == 1 && code.Text == "class Draft {}", $"Closing a fused tab changed draft: count={code.OpenDocuments.Count}, text={code.Text}, active={code.ActiveDocument?.DisplayName}.");
-            var dirtyClose = codeWindow.View.HeaderTabs!.GetVisualDescendants().OfType<Button>().Single();
+            // The tab row also carries the open-file picker now, so name the tab's own close button.
+            var dirtyClose = codeWindow.View.HeaderTabs!.GetVisualDescendants().OfType<Button>()
+                .Single(button => button.CommandParameter is CodeEditorDocument);
             dirtyClose.Command!.Execute(dirtyClose.CommandParameter); Pump();
             Check(code.OpenDocuments.Count == 1 && code.HasUnsavedDocuments, "Fused tab bypassed discard guard.");
             var bounds = codeWindow.Info.Bounds;
@@ -170,10 +184,31 @@ internal static class FusedApplicationChecks
             documentSearch.FindNext(); Pump();
             var editor = codeView.FindControl<AvaloniaEdit.TextEditor>("Editor")!;
             Check(editor.SelectedText == "Draft", "Document find did not select the actual matching text.");
-            documentSearch.Close(); Pump();
+            // Check hit testing as well as commands: a working command does not help when
+            // the editor underneath intercepts the pointer before it reaches the button.
+            host.UpdateLayout(); Pump();
+            host.UpdateLayout();
+            host.CaptureRenderedFrame();
+            var searchClose = documentSearch.GetVisualDescendants().OfType<Button>()
+                .Single(button => ReferenceEquals(button.Command, AvaloniaEdit.Search.SearchCommands.CloseSearchPanel));
+            Check(searchClose.IsVisible && searchClose.Bounds.Width > 0 && searchClose.Bounds.Height > 0,
+                "The find panel's close button is not laid out inside the open panel.");
+            foreach (var button in documentSearch.GetVisualDescendants().OfType<Button>().Where(button => button.IsEffectivelyVisible && button.IsEffectivelyEnabled))
+            {
+                var centre = button.TranslatePoint(new Point(button.Bounds.Width / 2, button.Bounds.Height / 2), editor)!.Value;
+                var hit = editor.GetVisualAt(centre);
+                Check(ReferenceEquals(hit, button) || hit?.GetVisualAncestors().Contains(button) == true,
+                    $"The find panel button is covered by {hit?.GetType().Name}.");
+            }
+            var closePoint = searchClose.TranslatePoint(new Point(searchClose.Bounds.Width / 2, searchClose.Bounds.Height / 2), host)!.Value;
+            var closeHit = host.GetVisualAt(closePoint);
+            Check(ReferenceEquals(closeHit, searchClose) || closeHit?.GetVisualAncestors().Contains(searchClose) == true,
+                $"The find panel close button is covered in the window by {closeHit?.GetType().Name} at {closePoint}.");
+            searchClose.Command!.Execute(searchClose.CommandParameter); Pump();
+            Check(documentSearch.IsClosed, "The find panel's close command did not close it.");
             for (var index = 0; index < 12; index++) code.NewDocumentCommand.Execute(null);
             codeView.CycleDocument(-1); Pump();
-            Check(ReferenceEquals(codeView.FindControl<ListBox>("HeaderTabs")!.SelectedItem, code.ActiveDocument), "Cycling documents lost tab selection.");
+            Check(ReferenceEquals(codeView.FindControl<ListBox>("DocumentTabs")!.SelectedItem, code.ActiveDocument), "Cycling documents lost tab selection.");
             Resize(codeWindow, 320); Pump();
             var selected = codeWindow.View.HeaderTabs!.GetVisualDescendants().OfType<ListBoxItem>().Single(item => ReferenceEquals(item.DataContext, code.ActiveDocument));
             var selectedPoint = selected.TranslatePoint(default, codeWindow.View.HeaderTabs!)!.Value;

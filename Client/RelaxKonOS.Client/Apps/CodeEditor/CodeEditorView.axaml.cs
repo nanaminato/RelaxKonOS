@@ -25,6 +25,9 @@ public partial class CodeEditorView : UserControl
     {
         InitializeComponent();
         _searchPanel = SearchPanel.Install(Editor);
+        // Keep the interactive overlay above all text-area layers, including the caret.
+        // Otherwise those layers can intercept clicks on the search and replace controls.
+        _searchPanel.ZIndex = int.MaxValue;
         SizeChanged += (_, e) =>
         {
             HeaderMenu.IsVisible = e.NewSize.Width >= 600;
@@ -33,13 +36,13 @@ public partial class CodeEditorView : UserControl
             if (_viewModel?.IsSidebarVisible == true && (e.NewSize.Width < 600) != (SidebarColumn.Width.Value == 0))
                 UpdateSidebarLayout(true);
         };
-        HeaderTabs.SizeChanged += (_, _) => Dispatcher.UIThread.Post(() =>
+        DocumentTabs.SizeChanged += (_, _) => Dispatcher.UIThread.Post(() =>
         {
-            if (HeaderTabs.SelectedItem is { } document) HeaderTabs.ScrollIntoView(document);
+            if (DocumentTabs.SelectedItem is { } document) DocumentTabs.ScrollIntoView(document);
         }, DispatcherPriority.Loaded);
-        HeaderTabs.SelectionChanged += (_, _) =>
+        DocumentTabs.SelectionChanged += (_, _) =>
         {
-            if (HeaderTabs.SelectedItem is { } document) HeaderTabs.ScrollIntoView(document);
+            if (DocumentTabs.SelectedItem is { } document) DocumentTabs.ScrollIntoView(document);
         };
         Editor.Document.TextChanged += OnEditorTextChanged;
         DataContextChanged += OnDataContextChanged;
@@ -58,6 +61,7 @@ public partial class CodeEditorView : UserControl
 
     public void FocusFind()
     {
+        if (_viewModel?.IsTextDocument != true) return;
         _searchPanel.Open();
         Dispatcher.UIThread.Post(() =>
         {
@@ -87,7 +91,7 @@ public partial class CodeEditorView : UserControl
         {
             _viewModel.PropertyChanged += OnViewModelPropertyChanged;
             Editor.Text = _viewModel.Text;
-            Editor.IsReadOnly = _viewModel.IsSaving || _viewModel.ActiveDocument is null;
+            Editor.IsReadOnly = _viewModel.IsSaving || !_viewModel.IsTextDocument;
             UpdateSyntaxHighlighting(_viewModel.CurrentPath);
             UpdateSidebarLayout(_viewModel.IsSidebarVisible);
         }
@@ -98,8 +102,11 @@ public partial class CodeEditorView : UserControl
         if (eventArgs.PropertyName == nameof(CodeEditorViewModel.Text) && Editor.Text != _viewModel?.Text)
             Editor.Text = _viewModel?.Text ?? string.Empty;
         else if ((eventArgs.PropertyName == nameof(CodeEditorViewModel.IsSaving)
-            || eventArgs.PropertyName == nameof(CodeEditorViewModel.ActiveDocument)) && _viewModel is not null)
-            Editor.IsReadOnly = _viewModel.IsSaving || _viewModel.ActiveDocument is null;
+            || eventArgs.PropertyName == nameof(CodeEditorViewModel.IsTextDocument)) && _viewModel is not null)
+        {
+            Editor.IsReadOnly = _viewModel.IsSaving || !_viewModel.IsTextDocument;
+            if (!_viewModel.IsTextDocument) _searchPanel.Close();
+        }
         else if (eventArgs.PropertyName == nameof(CodeEditorViewModel.CurrentPath))
             UpdateSyntaxHighlighting(_viewModel?.CurrentPath);
         else if (eventArgs.PropertyName == nameof(CodeEditorViewModel.IsSidebarVisible) && _viewModel is not null)

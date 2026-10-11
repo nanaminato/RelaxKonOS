@@ -19,6 +19,7 @@ internal static class EditorDraftStateChecks
     {
         Notepad();
         CodeEditor();
+        CodeEditorPreviews();
         Console.WriteLine("Editor draft state checks passed.");
     }
 
@@ -146,6 +147,112 @@ internal static class EditorDraftStateChecks
         Pump(() => !saver.IsSaving);
         Check(!saver.HasUnsavedDocuments && saver.CurrentPath == "/remote/app.cs",
             "A completed write clears the dirty tab and records the fixed target.");
+    }
+
+    private static void CodeEditorPreviews()
+    {
+        var files = new RecordingExplorerClient();
+        using var code = new CodeEditorViewModel(files);
+        var view = new CodeEditorView { DataContext = code };
+        var host = new Window { Width = 960, Height = 640, Content = view };
+        try
+        {
+            var root = new CodeEditorFolderNode("workspace", "/remote", true) { IsLoaded = true, IsExpanded = true };
+            root.Children.Clear();
+            foreach (var name in new[] { "app.cs", "photo.png", "logo.svg", "package.zip", "README.md" })
+                root.Children.Add(new CodeEditorFolderNode(name, "/remote/" + name, false));
+            code.WorkspaceRoots.Add(root);
+            host.Show(); Dispatcher.UIThread.RunJobs();
+            code.NewDocumentCommand.Execute(null);
+            code.Text = "keep my draft";
+            var draft = code.ActiveDocument!;
+            using var bitmap = new Avalonia.Media.Imaging.WriteableBitmap(new Avalonia.PixelSize(64, 32),
+                new Avalonia.Vector(96, 96), Avalonia.Platform.PixelFormat.Bgra8888, Avalonia.Platform.AlphaFormat.Premul);
+            using var stream = new MemoryStream();
+            bitmap.Save(stream, new Avalonia.Media.Imaging.PngBitmapEncoderOptions());
+            files.ReadResult = stream.ToArray();
+            code.OpenPathAsync("/remote/photo.png").GetAwaiter().GetResult(); Dispatcher.UIThread.RunJobs();
+            Check(code.IsImageDocument && code.PreviewImage?.Size == new Avalonia.Size(64, 32)
+                && code.Text == "" && !code.ActiveDocument!.IsDirty,
+                "PNG opens as an image tab without decoding binary bytes into text.");
+            Check(!code.SaveCommand.CanExecute(null) && !code.SaveAsCommand.CanExecute(null)
+                && !code.ChooseEncodingCommand.CanExecute(null), "Image previews cannot be overwritten through text commands.");
+            code.SaveCommand.Execute(null);
+            Check(files.WriteCount == 0, "Executing Save on an image preview does not write empty text.");
+            Check(!view.FindControl<AvaloniaEdit.TextEditor>("Editor")!.IsVisible,
+                "Image tabs hide the text editing surface.");
+            var imageDocument = code.ActiveDocument!;
+            code.ActiveDocument = draft;
+            Check(code.IsTextDocument && code.Text == "keep my draft" && draft.IsDirty,
+                "Switching back from a preview preserves the dirty text draft.");
+            code.ActiveDocument = imageDocument;
+            Check(code.PreviewImage is not null && !code.IsDirty, "Switching tabs preserves the image preview.");
+
+            files.ReadResult = System.Text.Encoding.UTF8.GetBytes("<svg xmlns='http://www.w3.org/2000/svg' width='120' height='80'><rect width='120' height='80' fill='#387dec'/></svg>");
+            code.OpenPathAsync("/remote/logo.svg").GetAwaiter().GetResult(); Dispatcher.UIThread.RunJobs();
+            Check(code.IsImageDocument && code.HasImageSourceText, "SVG opens with a preview and an editable source entry.");
+            code.ToggleImageSourceCommand.Execute(null);
+            code.Text = code.Text.Replace("#387dec", "#ef873e");
+            Check(code.IsTextDocument && code.IsDirty && code.SaveCommand.CanExecute(null), "SVG source remains editable and tracks unsaved changes.");
+            code.ToggleImageSourceCommand.Execute(null);
+            Check(code.IsImageDocument && code.IsDirty, "Returning to SVG preview renders edits without discarding the dirty flag.");
+            Capture("image");
+            code.ToggleImageSourceCommand.Execute(null);
+            code.Text = "not valid SVG";
+            code.ToggleImageSourceCommand.Execute(null);
+            Check(code.IsTextDocument && code.Text == "not valid SVG", "A failed SVG render preserves editable source.");
+            var svgDocument = code.ActiveDocument!;
+            code.ActiveDocument = draft;
+            code.ActiveDocument = svgDocument;
+            Check(code.IsTextDocument && code.Text == "not valid SVG" && code.IsDirty,
+                "SVG source mode and unsaved edits survive switching away and back.");
+
+            files.ReadResult = [0x50, 0x4b, 3, 4, 0, 0, 1, 2];
+            code.OpenPathAsync("/remote/package.zip").GetAwaiter().GetResult(); Dispatcher.UIThread.RunJobs();
+            Check(code.IsBinaryDocument && code.Text == "" && !code.SaveCommand.CanExecute(null),
+                "Binary files show a read-only information card instead of garbage text.");
+            Capture("binary");
+            code.OpenPathAsync("/remote/unknown").GetAwaiter().GetResult();
+            Check(code.IsBinaryDocument, "Extensionless binary data is also kept out of the text editor.");
+            code.OpenPathAsync("/remote/broken.png").GetAwaiter().GetResult();
+            Check(code.IsBinaryDocument && code.Text == "", "A damaged image shows an information card instead of binary text.");
+            files.ReadResult = System.Text.Encoding.UTF8.GetBytes("<svg unfinished");
+            code.OpenPathAsync("/remote/broken.svg").GetAwaiter().GetResult();
+            Check(code.IsTextDocument && code.Text == "<svg unfinished", "A damaged SVG can still be repaired as source text.");
+            files.ReadResult = [0xff, 0xfe, 0x41, 0, 0x42, 0];
+            code.OpenPathAsync("/remote/unicode.txt").GetAwaiter().GetResult();
+            Check(code.IsTextDocument && code.Text == "AB" && code.EncodingName == "UTF-16 LE",
+                "UTF-16 BOM text is recognized before checking for binary control characters.");
+            Check(new CodeEditorFolderNode("photo.png", "/photo.png", false).Kind == ExplorerFileIconKind.Image
+                && new CodeEditorFolderNode("app.cs", "/app.cs", false).Kind == ExplorerFileIconKind.Code
+                && new CodeEditorFolderNode("src", "/src", true).Kind == ExplorerFileIconKind.Folder,
+                "Workspace files and folders use the same type icons as Explorer.");
+            files.PendingRead = new TaskCompletionSource<byte[]?>();
+            var pendingImage = code.OpenPathAsync("/remote/late.png");
+            code.NewDocumentCommand.Execute(null);
+            code.Text = "newer draft";
+            var count = code.OpenDocuments.Count;
+            files.PendingRead.SetResult(stream.ToArray());
+            pendingImage.GetAwaiter().GetResult();
+            Check(code.IsTextDocument && code.Text == "newer draft" && code.OpenDocuments.Count == count,
+                "A late image read cannot replace a newer draft or leave a phantom preview tab.");
+        }
+        finally { host.Close(); }
+
+        void Capture(string name)
+        {
+            var directory = IOPath.Combine(AppContext.BaseDirectory, "preview-qa", "code-editor");
+            Directory.CreateDirectory(directory);
+            foreach (var width in new[] { 960, 320 })
+            {
+                host.Width = width;
+                Dispatcher.UIThread.RunJobs(); host.UpdateLayout();
+                using var rendered = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(width, 640));
+                rendered.Render(host);
+                rendered.Save(IOPath.Combine(directory, $"{name}-{width}.png"), new Avalonia.Media.Imaging.PngBitmapEncoderOptions());
+            }
+            host.Width = 960; Dispatcher.UIThread.RunJobs();
+        }
     }
 
     private static void Pump(Func<bool> condition)

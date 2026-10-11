@@ -73,6 +73,14 @@ public sealed class CodeEditorApp : RemoteApplicationBase, IFileOpenApplication
             bounds: new Rect(140, 80, 920, 640),
             iconGlyph: Manifest.IconGlyph);
         view.AttachWindowHeader(window);
+        EventHandler<RelaxKonOS.WindowManager.ManagedWindow>? closed = null;
+        closed = (_, closedWindow) =>
+        {
+            if (!ReferenceEquals(closedWindow, window)) return;
+            context.WindowManager.WindowClosed -= closed;
+            viewModel.Dispose();
+        };
+        context.WindowManager.WindowClosed += closed;
         window.KeyDown += (_, e) =>
         {
             if (!e.Handled && !e.IsRepeat && e.Key == new RemoteKey("Tab")
@@ -104,6 +112,8 @@ public sealed class CodeEditorApp : RemoteApplicationBase, IFileOpenApplication
                     new ExplorerPickerOptions(ExplorerPickerMode.OpenFile, Filters: [
                         new ExplorerFileFilter(LocalizedText.Get("code_editor.source_file_filter"), SupportedExtensions.Select(extension => $"*{extension}")
                             .Concat(SupportedFileNames).ToArray()),
+                        new ExplorerFileFilter(LocalizedText.Get("code_editor.preview.image_filter"), ImageViewer.ImageViewerApp.SupportedExtensions.Select(extension => $"*{extension}").ToArray()),
+                        new ExplorerFileFilter(LocalizedText.Get("code_editor.preview.all_files"), ["*"]),
                     ]),
                     paths => dialog.Close(paths[0]), usageMemory: UsageMemoryStore.Capture(context), memoryPurpose: "CodeEditor.open-file")
                 {
