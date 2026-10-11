@@ -14,6 +14,8 @@ internal static class HostProcessSnapshotCollector
         var parentIds = ProcessTreeMetadata.CaptureParentIds();
         var userNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var items = new List<HostProcessSampleDto>();
+        Exception? firstFailure = null;
+        var visibleCount = 0;
         var processes = Process.GetProcesses();
         try
         {
@@ -23,6 +25,7 @@ internal static class HostProcessSnapshotCollector
                 try
                 {
                     if (visible is not null && !visible(process.Id)) continue;
+                    visibleCount++;
                     var linux = OperatingSystem.IsLinux() ? LinuxProcessMetadata.ReadDetails(process.Id) : default;
                     var owner = linux.UserName;
                     if (OperatingSystem.IsWindows() && ProcessTreeMetadata.ReadWindowsOwnerSid(process.Id) is { } sid)
@@ -42,10 +45,13 @@ internal static class HostProcessSnapshotCollector
                         OperatingSystem.IsLinux() ? linux.ThreadCount : Read(() => process.Threads.Count, 0), parent),
                         Read<long?>(() => process.TotalProcessorTime.Ticks, null)));
                 }
-                catch { /* Exited or protected processes must not hide other processes. */ }
+                catch (Exception error) { firstFailure ??= error; }
             }
         }
         finally { foreach (var process in processes) process.Dispose(); }
+        if (items.Count == 0 && (visibleCount > 0 || firstFailure is not null || OperatingSystem.IsWindows()))
+            throw new InvalidOperationException($"Process enumeration produced no readable entries ({processes.Length} enumerated, {visibleCount} visible).",
+                firstFailure);
         return new(items, sampledAt);
     }
 

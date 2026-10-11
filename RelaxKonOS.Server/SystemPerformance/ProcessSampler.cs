@@ -99,7 +99,7 @@ public sealed class ProcessSampler(
             {
                 var result = await privilegedOperations.ExecuteAsync(new(PrivilegedOperationKind.ProcessSnapshot), ct);
                 ct.ThrowIfCancellationRequested();
-                if (!result.Success || result.ProcessSnapshot is not { Items: { Count: <= 8192 } } snapshot
+                if (!result.Success || result.ProcessSnapshot is not { Items: { Count: > 0 and <= 8192 } } snapshot
                     || snapshot.SampledAt == DateTimeOffset.MinValue
                     || snapshot.Items.Any(item => item is null || item.Process is null || item.Process.Id < 0 || item.CpuTicks < 0)
                     || snapshot.Items.Select(item => item.Process.Id).Distinct().Count() != snapshot.Items.Count)
