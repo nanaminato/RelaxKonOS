@@ -24,6 +24,7 @@ import app.relaxkonos.mobile.security.CredentialVault
 import app.relaxkonos.mobile.security.InMemoryVaultStorage
 import app.relaxkonos.mobile.servercenter.ServerConnectionIdentityRules
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import org.junit.After
@@ -283,6 +284,31 @@ class GitConflictFlowTest {
         rule.onNodeWithText(text(R.string.editor_discard_changes)).performClick()
         rule.onNodeWithText("Parent page").assertIsDisplayed()
         rule.runOnIdle { assertEquals("", model.conflictDraft.text); assertEquals(0, sends) }
+    }
+
+    @Test fun cancelledReadKeepsDraftAndRequiresExplicitRecoveryBeforeResolution() {
+        showConflict()
+        rule.onNode(hasSetTextAction() and hasText("resolution result")).performScrollTo().performTextReplacement("local resolution")
+        Espresso.closeSoftKeyboard()
+        rule.runOnIdle { onConflict = { throw CancellationException("private cancelled read") } }
+        rule.onNodeWithText(text(R.string.gw_reload_revision)).performScrollTo().performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.facts == null }
+        rule.onNodeWithText(text(R.string.gw_unverified)).assertIsDisplayed()
+        rule.onNodeWithText("private cancelled read", substring = true).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.common_dismiss)).performClick()
+        rule.onNodeWithText(text(R.string.gw_choose_edited)).assertIsNotEnabled()
+        rule.onNodeWithText("local resolution").assertExists()
+        val latest = file.copy(revision = "c".repeat(64))
+        rule.runOnIdle { onConflict = { ApiResult.Success(latest) } }
+        rule.onNodeWithText(text(R.string.gw_reload_revision)).performScrollTo().performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.facts != null }
+        rule.onNodeWithText(text(R.string.gw_choose_edited)).assertIsEnabled().performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.preview != null }
+        rule.runOnIdle {
+            assertEquals("local resolution", model.state.preview!!.change.content)
+            assertEquals(latest.revision, model.state.preview!!.change.conflict!!.revision)
+            assertEquals(0, sends)
+        }
     }
 
     @Test fun adoptingAlreadyResolvedFactsRetainsDraftAndDisablesObsoleteResolution() {

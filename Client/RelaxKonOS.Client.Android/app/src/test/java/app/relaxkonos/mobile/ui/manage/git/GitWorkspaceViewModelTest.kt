@@ -10,6 +10,7 @@ import app.relaxkonos.mobile.data.*
 import app.relaxkonos.mobile.security.*
 import app.relaxkonos.mobile.servercenter.ServerConnectionIdentityRules
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -87,6 +88,21 @@ class GitWorkspaceViewModelTest {
         assertNull(model.state.preview); assertNotNull(model.state.facts)
         assertEquals("git.workspace.facts_changed", model.state.problem)
         assertFalse(model.state.busy); assertEquals(0, sends)
+    }
+    @Test fun `cancelled conflict reload revokes facts and preview while preserving local resolution`() = runTest {
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        model.conflict("a.txt"); advanceUntilIdle()
+        model.editConflict(TextFieldValue("local resolution"))
+        model.prepare(GitMutation(GitAction.Resolve, conflict = conflict, choice = "ours")); advanceUntilIdle()
+        assertNotNull(model.state.preview); assertNotNull(model.state.facts)
+        onConflict = { throw CancellationException("private cancelled read") }
+        model.conflict("a.txt"); advanceUntilIdle()
+        assertNull(model.state.facts); assertNull(model.state.preview)
+        assertEquals(conflict, model.state.conflict)
+        assertEquals("local resolution", model.conflictDraft.text)
+        assertFalse(model.state.busy)
+        assertEquals("git.workspace.unverified", model.state.problem)
+        assertEquals(0, sends)
     }
     @Test fun `failed conflict reload preserves the open file and resolution draft`() = runTest {
         login(); runCurrent(); model.refresh(); advanceUntilIdle()
