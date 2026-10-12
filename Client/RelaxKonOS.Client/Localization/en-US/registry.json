@@ -15,7 +15,6 @@
         "registry.cancel": "Cancel",
         "registry.save": "Save",
         "registry.tree.current_user": "Current User",
-        "registry.tree.other_users": "Other Users",
         "registry.status.loading": "Loading registry…",
         "registry.status.empty": "No values in this key.",
         "registry.status.count": "{0} value(s).",
@@ -31,6 +30,11 @@
         "registry.dialog.edit": "Edit Registry Value",
         "registry.dialog.new": "New Registry Value",
         "registry.menu.new_key": "New key",
-        "registry.menu.delete_key": "Delete key"
+        "registry.menu.delete_key": "Delete key",
+        "registry.reset": "Restore default",
+        "registry.apply.immediate": "Applies immediately",
+        "registry.apply.reopen": "Applies when the application is reopened",
+        "registry.error.conflict": "This document changed during editing. Current field value: {0}. Close and reopen the editor to merge changes.",
+        "registry.error.conflict_unknown": "The configuration revision changed. Reload before editing."
     }
 }

@@ -15,7 +15,6 @@
         "registry.cancel": "キャンセル",
         "registry.save": "保存",
         "registry.tree.current_user": "現在のユーザー",
-        "registry.tree.other_users": "他のユーザー",
         "registry.status.loading": "レジストリを読み込んでいます…",
         "registry.status.empty": "このキーに値はありません。",
         "registry.status.count": "{0} 個の値。",
@@ -31,6 +30,11 @@
         "registry.dialog.edit": "レジストリ値の編集",
         "registry.dialog.new": "新しいレジストリ値",
         "registry.menu.new_key": "キーを作成",
-        "registry.menu.delete_key": "キーを削除"
+        "registry.menu.delete_key": "キーを削除",
+        "registry.reset": "既定値に戻す",
+        "registry.apply.immediate": "即時に反映",
+        "registry.apply.reopen": "アプリを再度開くと反映",
+        "registry.error.conflict": "編集中に設定が変更されました。現在の値：{0}。エディターを開き直して変更を確認してください。",
+        "registry.error.conflict_unknown": "設定のバージョンが変更されました。再読み込みしてください。"
     }
 }

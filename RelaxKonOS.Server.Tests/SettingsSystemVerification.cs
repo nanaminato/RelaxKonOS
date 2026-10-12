@@ -180,11 +180,11 @@ internal static class SettingsSystemVerification
             Check(denied.StatusCode == HttpStatusCode.NotFound, "Cross-user HTTP writes must be rejected.");
 
             var value = System.Text.Json.JsonSerializer.SerializeToElement(initial!, RelaxKonOSJsonOptions.Default);
-            using var registryStale = await http.PutAsJsonAsync(RegistryApiRoutes.Entries,
+            using var registryStale = await http.PutAsJsonAsync(RegistryApiRoutes.ForUser(RegistryApiRoutes.Values, owner),
                 new PutRegistryEntryRequest(RegistryScope.Workspace, WorkspaceConfigurationRegistry.DesktopPath,
                     WorkspaceConfigurationRegistry.DefaultValueName, RegistryValueType.Json, value, initial!.Revision), RelaxKonOSJsonOptions.Default);
             Check(registryStale.StatusCode == HttpStatusCode.Conflict, "The registry editor must not bypass preference revisions.");
-            using var deleted = await http.DeleteAsync(RegistryApiRoutes.Entries + "?scope=Workspace&path=Workspace%5CDesktop&name=%28Default%29");
+            using var deleted = await http.DeleteAsync(RegistryApiRoutes.ForUser(RegistryApiRoutes.Values, owner) + "?scope=Workspace&path=Workspace%5CDesktop&name=%28Default%29");
             Check(deleted.StatusCode == HttpStatusCode.Conflict, "Deleting managed preferences must not reset their revision.");
             foreach (var preset in new[] { "alpine-lake", "ocean-waves", "desert-dunes", "bloom" })
             {

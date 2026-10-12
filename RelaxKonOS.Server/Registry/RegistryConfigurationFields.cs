@@ -31,7 +31,7 @@ public static class RegistryConfigurationFields
     public static IReadOnlyList<RegistryEntryDto> Values(RegistryEntry entry, string path)
     {
         var schema = RegistrySchema.Find(entry.Scope, entry.Path, entry.Name)!;
-        return ObjectAt(entry, path)?.Where(pair => pair.Key != "revision").Select(pair =>
+        return ObjectAt(entry, path)?.Where(pair => pair.Key is not ("revision" or "persistedRevision") && pair.Value is not JsonObject).Select(pair =>
         {
             var value = JsonSerializer.SerializeToElement(pair.Value, RelaxKonOSJsonOptions.Default);
             var type = value.ValueKind switch
@@ -42,8 +42,56 @@ public static class RegistryConfigurationFields
         }).ToArray() ?? [];
     }
     public static IEnumerable<RegistryKeyDto> Children(RegistryEntry entry, string path) =>
-        ObjectAt(entry, path)?.Where(pair => pair.Value is JsonObject && pair.Key != "revision")
+        ObjectAt(entry, path)?.Where(pair => pair.Value is JsonObject && pair.Key is not ("revision" or "persistedRevision"))
             .Select(pair => new RegistryKeyDto(entry.Scope, path + "\\" + pair.Key)) ?? [];
+    public static RegistryValueSchemaDto Describe(RegistryEntryDto value, JsonElement? defaultValue, bool managed)
+    {
+        var editor = value.ValueType switch
+        {
+            RegistryValueType.String => RegistryEditorKind.String,
+            RegistryValueType.Boolean => RegistryEditorKind.Boolean,
+            RegistryValueType.Number => RegistryEditorKind.Number,
+            _ => RegistryEditorKind.Json,
+        };
+        var choices = new List<RegistryValueChoiceDto>();
+        void Add(params string[] values) => choices.AddRange(values.Select(item => new RegistryValueChoiceDto(item, JsonSerializer.SerializeToElement(item))));
+        if (managed)
+        {
+            if (value.Path == WorkspaceConfigurationRegistry.DesktopPath)
+            {
+                if (value.Name == "timeFormat") Add("24h", "12h");
+                if (value.Name == "language") Add("follow-system", "zh-CN", "en-US", "ja-JP");
+            }
+            if (value.Path == WorkspaceConfigurationRegistry.ExplorerPath && value.Name is "SortField" or "ViewMode")
+                choices.AddRange(Enumerable.Range(0, 4).Select(index => new RegistryValueChoiceDto(index.ToString(), JsonSerializer.SerializeToElement(index))));
+            if (value.Path.EndsWith("\\appearance", StringComparison.Ordinal) && value.Name == "mode") Add("light", "dark");
+            if (value.Path == WorkspaceConfigurationRegistry.TerminalPath && value.Name.EndsWith("Color", StringComparison.Ordinal)) editor = RegistryEditorKind.Color;
+            if (value.DesiredValue.ValueKind == JsonValueKind.Array && value.DesiredValue.EnumerateArray().All(item => item.ValueKind == JsonValueKind.String)
+                && value.DesiredValue.GetArrayLength() > 0) editor = RegistryEditorKind.StringList;
+        }
+        return new(value.Name, true, !managed, false, defaultValue)
+        {
+            Editor = choices.Count > 0 ? RegistryEditorKind.Enum : editor, Choices = choices,
+            Minimum = value.Path == WorkspaceConfigurationRegistry.TerminalPath && value.Name == "fontSize" ? 8 : null,
+            Maximum = value.Path == WorkspaceConfigurationRegistry.TerminalPath && value.Name == "fontSize" ? 40 : null,
+        };
+    }
+    public static JsonElement? DefaultValue(string root, string path, string name)
+    {
+        object? defaults = root switch
+        {
+            WorkspaceConfigurationRegistry.DesktopPath => WorkspacePreferencesDto.Default,
+            WorkspaceConfigurationRegistry.TerminalPath => TerminalSettingsDto.Default,
+            WorkspaceConfigurationRegistry.ExplorerPath => WorkspaceConfigurationRegistry.ExplorerDefaults,
+            WorkspaceConfigurationRegistry.BrowserPath => BrowserSettingsDto.Default,
+            WorkspaceConfigurationRegistry.WindowManagerPath => WorkspaceWindowLayoutDto.Default,
+            _ => null,
+        };
+        var entry = new RegistryEntry { Path = root, ValueJson = JsonSerializer.Serialize(defaults, RelaxKonOSJsonOptions.Default) };
+        var node = ObjectAt(entry, path);
+        return node is not null && node.TryGetPropertyValue(name, out var value)
+            ? JsonSerializer.SerializeToElement(value, RelaxKonOSJsonOptions.Default) : null;
+    }
     public static string? Patch(RegistryEntry entry, string path, string name, JsonElement value)
     {
         var root = JsonNode.Parse(entry.ValueJson) as JsonObject;

@@ -45,15 +45,14 @@ internal static class RegistryAccessChecks
         await using var app = builder.Build(); app.Use((http, next) => { http.User = Principal(); return next(http); });
         app.UseAuthorization(); app.MapRegistryEndpoints(); app.MapAppSettingsEndpoints(); await app.StartAsync();
         using var http = new HttpClient { BaseAddress = new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single()) };
-        string Values(string path, Guid? target = null) => RegistryApiRoutes.Entries + "?scope=workspace&path=" + Uri.EscapeDataString(path)
-            + (target is { } id ? "&targetUserId=" + id.ToString("D") : "");
+        string Values(string path, Guid? target = null) => RegistryApiRoutes.ForUser(RegistryApiRoutes.Values, target ?? owner) + "?scope=workspace&path=" + Uri.EscapeDataString(path);
         async Task<RegistryEntryDto[]> Read(string path, Guid? target = null) => (await http.GetFromJsonAsync<RegistryEntryDto[]>(Values(path, target), RelaxKonOSJsonOptions.Default))!;
         async Task<HttpResponseMessage> Write(string path, string name, JsonElement value, long revision, Guid? target = null, RegistryValueType type = RegistryValueType.String) =>
             await http.PutAsJsonAsync(Values(path, target), new PutRegistryEntryRequest(RegistryScope.Workspace, path, name, type, value, revision), RelaxKonOSJsonOptions.Default);
         void Check(bool ok, string message) { if (!ok) throw new InvalidOperationException(message); }
         var initial = await Read(WorkspaceConfigurationRegistry.DesktopPath);
         var time = initial.Single(entry => entry.Name == "timeFormat");
-        Check(initial.Any(entry => entry.Name == "language") && initial.Any(entry => entry.Name == "desktopExperience"), "Desktop settings were not exposed as editable fields.");
+        Check(initial.Any(entry => entry.Name == "language") && !initial.Any(entry => entry.Name == "desktopExperience" || entry.Name == "(Default)"), "Desktop settings were not exposed as editable fields.");
         using (var ownWrite = await Write(time.Path, time.Name, JsonSerializer.SerializeToElement("12h"), time.Revision))
             Check(ownWrite.IsSuccessStatusCode, "Own configuration unexpectedly requires elevation.");
         using (var deniedRead = await http.GetAsync(Values(time.Path, other))) Check(deniedRead.StatusCode == HttpStatusCode.Forbidden, "Cross-user read bypassed elevation.");
@@ -69,7 +68,7 @@ internal static class RegistryAccessChecks
         using (var invalid = await Write(time.Path, time.Name, JsonSerializer.SerializeToElement("invalid"), revision, other)) Check(invalid.StatusCode == HttpStatusCode.BadRequest, "Field writes bypassed preferences validation.");
         var nested = await Read(time.Path + "\\desktopDisplay", other);
         Check(nested.Any(entry => entry.Name == "showWindowShadows"), "Nested desktop options are unreachable.");
-        using (var malformed = await http.GetAsync(Values(time.Path) + "&targetUserId=invalid")) Check(malformed.StatusCode == HttpStatusCode.BadRequest, "Invalid owner silently selected the caller.");
+        using (var malformed = await http.GetAsync(RegistryApiRoutes.Values.Replace("{userId:guid}", "invalid") + "?scope=workspace&path=Workspace")) Check(malformed.StatusCode == HttpStatusCode.NotFound, "Invalid owner silently selected the caller.");
         privileges.Level = HostAccountPrivilege.HostAdministrator;
         var automatic = (await Read(time.Path, third)).Single(entry => entry.Name == "language");
         using (var adminWrite = await Write(automatic.Path, automatic.Name, JsonSerializer.SerializeToElement("en-US"), automatic.Revision, third)) Check(adminWrite.IsSuccessStatusCode, "Administrator was not automatically authorized.");

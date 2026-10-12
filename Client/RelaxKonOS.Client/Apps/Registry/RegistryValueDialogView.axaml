@@ -1,20 +1,24 @@
-<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:registry="clr-namespace:RelaxKonOS.Client.Apps.Registry" xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" x:Class="RelaxKonOS.Client.Apps.Registry.RegistryValueDialogView" x:DataType="registry:RegistryValueDialogViewModel" Classes="builtin-app">
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:registry="clr-namespace:RelaxKonOS.Client.Apps.Registry" xmlns:protocol="clr-namespace:RelaxKonOS.Protocol.Registry;assembly=RelaxKonOS.Protocol" xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" x:Class="RelaxKonOS.Client.Apps.Registry.RegistryValueDialogView" x:DataType="registry:RegistryValueDialogViewModel" Classes="builtin-app">
   <Grid Margin="20" RowDefinitions="Auto,Auto,*,Auto,Auto">
-    <TextBlock Text="{Binding Path}" FontWeight="SemiBold" TextWrapping="Wrap" HorizontalAlignment="Left" Margin="0,0,0,12"/>
+    <TextBlock Text="{Binding TargetLabel}" FontWeight="SemiBold" TextWrapping="Wrap" HorizontalAlignment="Left" Margin="0,0,0,12"/>
 
     <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="8" HorizontalAlignment="Stretch">
-      <TextBox Text="{Binding Name, Mode=TwoWay}" MinWidth="0" HorizontalAlignment="Stretch"/>
-      <ComboBox Grid.Column="1" Width="120" HorizontalAlignment="Left" ItemsSource="{Binding ValueTypes}" SelectedItem="{Binding ValueType, Mode=TwoWay}"/>
+      <TextBox Text="{Binding Name, Mode=TwoWay}" IsReadOnly="{Binding !CanChangeIdentity}" MinWidth="0" HorizontalAlignment="Stretch"/>
+      <ComboBox Grid.Column="1" Width="120" HorizontalAlignment="Left" IsEnabled="{Binding CanChangeIdentity}" ItemsSource="{Binding ValueTypes}" SelectedItem="{Binding ValueType, Mode=TwoWay}"/>
     </Grid>
 
-    <!-- The value editor is the reason this dialog exists, so it takes the space the dialog has left
-         instead of a fixed height inside a scroll viewer: a long REG_BINARY or multi-line value is
-         edited in place, and the editor grows when the dialog is resized. -->
-    <TextBox Grid.Row="2" Margin="0,14,0,0" Text="{Binding ValueText, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="NoWrap" MinWidth="0" MinHeight="140" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Auto" FontFamily="Consolas"/>
+    <ComboBox Grid.Row="2" IsVisible="{Binding IsEnum}" ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedChoice, Mode=TwoWay}">
+      <ComboBox.ItemTemplate><DataTemplate x:DataType="protocol:RegistryValueChoiceDto"><TextBlock Text="{Binding Label}"/></DataTemplate></ComboBox.ItemTemplate>
+    </ComboBox>
+    <NumericUpDown Grid.Row="2" IsVisible="{Binding IsNumber}" Value="{Binding NumberValue, Mode=TwoWay}" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}"/>
+    <ToggleSwitch Grid.Row="2" IsVisible="{Binding IsBoolean}" IsChecked="{Binding BooleanValue, Mode=TwoWay}"/>
+    <TextBox IsVisible="{Binding IsText}" Grid.Row="2" Margin="0,14,0,0" Text="{Binding ValueText, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="NoWrap" MinWidth="0" MinHeight="140" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Auto" FontFamily="Consolas"/>
 
-    <TextBlock Grid.Row="3" Margin="0,8,0,0" Text="{Binding Error}" Foreground="IndianRed" TextWrapping="Wrap" HorizontalAlignment="Left"/>
+    <StackPanel Grid.Row="3"><Border Width="48" Height="24" HorizontalAlignment="Left" IsVisible="{Binding IsColor}" Background="{Binding ColorPreview}"/><TextBlock Text="{Binding ApplyText}"/>
+    <TextBlock Margin="0,8,0,0" Text="{Binding Error}" Foreground="IndianRed" TextWrapping="Wrap" HorizontalAlignment="Left"/></StackPanel>
 
     <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,12,0,0">
+      <Button Content="{loc:Loc registry.reset}" IsVisible="{Binding CanReset}" Command="{Binding ResetCommand}"/>
       <Button Content="{loc:Loc registry.cancel}" Command="{Binding CancelCommand}"/>
       <Button Classes="primary" Content="{loc:Loc registry.save}" Command="{Binding SaveCommand}"/>
     </StackPanel>

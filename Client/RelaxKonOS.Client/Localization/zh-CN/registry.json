@@ -15,7 +15,6 @@
         "registry.cancel": "取消",
         "registry.save": "保存",
         "registry.tree.current_user": "当前用户",
-        "registry.tree.other_users": "其他用户",
         "registry.status.loading": "正在加载注册表…",
         "registry.status.empty": "此键没有值。",
         "registry.status.count": "{0} 个值。",
@@ -31,6 +30,11 @@
         "registry.dialog.edit": "编辑注册表值",
         "registry.dialog.new": "新建注册表值",
         "registry.menu.new_key": "新建键",
-        "registry.menu.delete_key": "删除键"
+        "registry.menu.delete_key": "删除键",
+        "registry.reset": "恢复默认",
+        "registry.apply.immediate": "立即生效",
+        "registry.apply.reopen": "重新打开应用后生效",
+        "registry.error.conflict": "此字段已被其他编辑更新。当前值：{0}。请关闭并重新打开编辑器以合并更改。",
+        "registry.error.conflict_unknown": "配置版本已改变；请重新读取后编辑。"
     }
 }

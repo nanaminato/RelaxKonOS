@@ -18,15 +18,13 @@ public static partial class RegistryEndpoints
 {
     public static IEndpointRouteBuilder MapRegistryEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet(RegistryApiRoutes.Entries, (string? scope, string? path, HttpContext http, IHostElevationSessionStore elevations, IRegistryRepository registry, IWorkspaceRepository workspaces, IUserRepository users) =>
+        app.MapGet(RegistryApiRoutes.Values, (Guid userId, string? scope, string? path, HttpContext http, IHostElevationSessionStore elevations, IRegistryRepository registry, IWorkspaceRepository workspaces, IUserRepository users) =>
         {
             var principal = http.User;
             if (!TryUserId(principal, out var actorId)) return Results.Unauthorized();
-            if (http.Request.Query.ContainsKey("targetUserId") && !Guid.TryParse(http.Request.Query["targetUserId"], out _)) return Results.BadRequest();
-            var userId = TargetUserId(http) ?? actorId;
             if (userId != actorId && !elevations.IsGranted(principal, HostElevationCapability.RegistryManage, RegistryTarget(userId)))
                 return ElevationRequired();
-            if (userId != actorId && users.FindById(userId) is null) return Results.NotFound();
+            if (users.FindById(userId) is null) return Results.NotFound();
             RegistryScope? parsed = null;
             if (!string.IsNullOrWhiteSpace(scope) && (!Enum.TryParse<RegistryScope>(scope, true, out var requestedScope) || !Enum.IsDefined(requestedScope)))
                 return Results.BadRequest(new { message = "Scope must be user, workspace, or device." });
@@ -34,21 +32,19 @@ public static partial class RegistryEndpoints
             if (parsed is null || string.IsNullOrWhiteSpace(path) || !PathPattern().IsMatch(path) || !TryScopeId(principal, userId, workspaces, parsed.Value, out var scopeId))
                 return Results.BadRequest(new { message = "Scope and a valid key path are required." });
             EnsureWorkspaceDefaults(parsed.Value, userId, scopeId, workspaces, registry);
-            var direct = registry.List(userId, parsed).Where(x => x.ScopeId == scopeId && x.Path == path).Select(ToDto);
+            var direct = registry.List(userId, parsed).Where(x => x.ScopeId == scopeId && x.Path == path && RegistryConfigurationFields.Root(x.Path) is null).Select(ToDto);
             var root = parsed == RegistryScope.Workspace ? RegistryConfigurationFields.Root(path) : null;
             var backing = root is null ? null : registry.Find(userId, parsed.Value, scopeId, root, WorkspaceConfigurationRegistry.DefaultValueName);
-            return Results.Ok(backing is null ? direct : direct.Concat(RegistryConfigurationFields.Values(backing, path)));
+            return Results.Ok((backing is null ? direct : direct.Concat(RegistryConfigurationFields.Values(backing, path))).Select(value => Describe(http, users, userId, scopeId, value)));
         }).RequireAuthorization().WithTags("Registry");
 
-        app.MapGet(RegistryApiRoutes.Keys, (string? scope, string? path, HttpContext http, IHostElevationSessionStore elevations, IRegistryRepository registry, IWorkspaceRepository workspaces, IUserRepository users) =>
+        app.MapGet(RegistryApiRoutes.Keys, (Guid userId, string? scope, string? path, HttpContext http, IHostElevationSessionStore elevations, IRegistryRepository registry, IWorkspaceRepository workspaces, IUserRepository users) =>
         {
             var principal = http.User;
             if (!TryUserId(principal, out var actorId)) return Results.Unauthorized();
-            if (http.Request.Query.ContainsKey("targetUserId") && !Guid.TryParse(http.Request.Query["targetUserId"], out _)) return Results.BadRequest();
-            var userId = TargetUserId(http) ?? actorId;
             if (userId != actorId && !elevations.IsGranted(principal, HostElevationCapability.RegistryManage, RegistryTarget(userId)))
                 return ElevationRequired();
-            if (userId != actorId && users.FindById(userId) is null) return Results.NotFound();
+            if (users.FindById(userId) is null) return Results.NotFound();
             if (!Enum.TryParse<RegistryScope>(scope, true, out var parsed) || !Enum.IsDefined(parsed)
                 || string.IsNullOrWhiteSpace(path) || !PathPattern().IsMatch(path)
                 || !TryScopeId(principal, userId, workspaces, parsed, out var scopeId))
@@ -57,18 +53,16 @@ public static partial class RegistryEndpoints
             var direct = registry.ListChildKeys(userId, parsed, scopeId, path).Select(x => new RegistryKeyDto(x.Scope, x.Path));
             var root = parsed == RegistryScope.Workspace ? RegistryConfigurationFields.Root(path) : null;
             var backing = root is null ? null : registry.Find(userId, parsed, scopeId, root, WorkspaceConfigurationRegistry.DefaultValueName);
-            return Results.Ok((backing is null ? direct : direct.Concat(RegistryConfigurationFields.Children(backing, path))).DistinctBy(key => key.Path));
+            return Results.Ok((backing is null ? direct : direct.Concat(RegistryConfigurationFields.Children(backing, path))).DistinctBy(key => key.Path).Select(key => Describe(http, users, userId, scopeId, key)));
         }).RequireAuthorization().WithTags("Registry");
 
-        app.MapPost(RegistryApiRoutes.Keys, (CreateRegistryKeyRequest request, HttpContext http, IHostElevationSessionStore elevations, IRegistryRepository registry, IWorkspaceRepository workspaces, IUserRepository users) =>
+        app.MapPost(RegistryApiRoutes.Keys, (Guid userId, CreateRegistryKeyRequest request, HttpContext http, IHostElevationSessionStore elevations, IRegistryRepository registry, IWorkspaceRepository workspaces, IUserRepository users) =>
         {
             var principal = http.User;
             if (!TryUserId(principal, out var actorId)) return Results.Unauthorized();
-            if (http.Request.Query.ContainsKey("targetUserId") && !Guid.TryParse(http.Request.Query["targetUserId"], out _)) return Results.BadRequest();
-            var userId = TargetUserId(http) ?? actorId;
             if (userId != actorId && !elevations.IsGranted(principal, HostElevationCapability.RegistryManage, RegistryTarget(userId)))
                 return ElevationRequired();
-            if (userId != actorId && users.FindById(userId) is null) return Results.NotFound();
+            if (users.FindById(userId) is null) return Results.NotFound();
             if (request.Scope != RegistryScope.Workspace || !TryScopeId(principal, userId, workspaces, request.Scope, out var scopeId)
                 || !IsWorkspaceChildPath(request.Path) || RegistryConfigurationFields.Root(request.Path) is not null)
                 return Results.BadRequest(new { message = "Only keys below Workspace can be created." });
@@ -77,18 +71,16 @@ public static partial class RegistryEndpoints
                 UserId = userId, Scope = request.Scope, ScopeId = scopeId, Path = request.Path.Trim(),
                 CreatedAt = DateTimeOffset.UtcNow, CreatedBy = actorId.ToString("D"),
             });
-            return Results.Ok(new RegistryKeyDto(saved.Scope, saved.Path));
+            return Results.Ok(Describe(http, users, userId, scopeId, new RegistryKeyDto(saved.Scope, saved.Path)));
         }).RequireAuthorization().WithTags("Registry");
 
-        app.MapGet(RegistryApiRoutes.Summary, (HttpContext http, IHostElevationSessionStore elevations, IRegistryRepository registry, IWorkspaceRepository workspaces, IUserRepository users) =>
+        app.MapGet(RegistryApiRoutes.Summary, (Guid userId, HttpContext http, IHostElevationSessionStore elevations, IRegistryRepository registry, IWorkspaceRepository workspaces, IUserRepository users) =>
         {
             var principal = http.User;
             if (!TryUserId(principal, out var actorId)) return Results.Unauthorized();
-            if (http.Request.Query.ContainsKey("targetUserId") && !Guid.TryParse(http.Request.Query["targetUserId"], out _)) return Results.BadRequest();
-            var userId = TargetUserId(http) ?? actorId;
             if (userId != actorId && !elevations.IsGranted(principal, HostElevationCapability.RegistryManage, RegistryTarget(userId)))
                 return ElevationRequired();
-            if (userId != actorId && users.FindById(userId) is null) return Results.NotFound();
+            if (users.FindById(userId) is null) return Results.NotFound();
             var entries = registry.List(userId);
             return Results.Ok(new RegistrySummaryDto(
                 entries.Count(x => x.State is RegistryEntryState.PendingSync or RegistryEntryState.Applying),
@@ -96,15 +88,13 @@ public static partial class RegistryEndpoints
                 entries.Count(x => x.State == RegistryEntryState.RestartRequired)));
         }).RequireAuthorization().WithTags("Registry");
 
-        app.MapPut(RegistryApiRoutes.Entries, (PutRegistryEntryRequest request, HttpContext http, IHostElevationSessionStore elevations, IRegistryRepository registry, IWorkspaceRepository workspaces, IUserRepository users) =>
+        app.MapPut(RegistryApiRoutes.Values, (Guid userId, PutRegistryEntryRequest request, HttpContext http, IHostElevationSessionStore elevations, IRegistryRepository registry, IWorkspaceRepository workspaces, IUserRepository users) =>
         {
             var principal = http.User;
             if (!TryUserId(principal, out var actorId)) return Results.Unauthorized();
-            if (http.Request.Query.ContainsKey("targetUserId") && !Guid.TryParse(http.Request.Query["targetUserId"], out _)) return Results.BadRequest();
-            var userId = TargetUserId(http) ?? actorId;
             if (userId != actorId && !elevations.IsGranted(principal, HostElevationCapability.RegistryManage, RegistryTarget(userId)))
                 return ElevationRequired();
-            if (userId != actorId && users.FindById(userId) is null) return Results.NotFound();
+            if (users.FindById(userId) is null) return Results.NotFound();
             if (!TryScopeId(principal, userId, workspaces, request.Scope, out var scopeId)
                 || !PathPattern().IsMatch(request.Path) || !(request.Name == "(Default)" || NamePattern().IsMatch(request.Name))
                 || !IsCompatible(request.ValueType, request.Value))
@@ -119,21 +109,20 @@ public static partial class RegistryEndpoints
             {
                 EnsureWorkspaceDefaults(request.Scope, userId, scopeId, workspaces, registry);
                 var backing = registry.Find(userId, request.Scope, scopeId, root, WorkspaceConfigurationRegistry.DefaultValueName)!;
+                var field = RegistryConfigurationFields.Values(backing, request.Path).SingleOrDefault(value => value.Name == request.Name);
+                if (field is null || field.ValueType != request.ValueType) return Results.BadRequest();
+                var metadata = RegistryConfigurationFields.Describe(field, null, true);
+                if (metadata.Choices.Count > 0 && !metadata.Choices.Any(choice => choice.Value.GetRawText() == request.Value.GetRawText())) return Results.BadRequest();
                 var patched = RegistryConfigurationFields.Patch(backing, request.Path, request.Name, request.Value);
                 if (patched is null) return Results.BadRequest(new { message = "Unknown or invalid configuration field." });
                 backing.ValueJson = patched; backing.DesiredUpdatedAt = now; backing.DesiredUpdatedBy = actorId.ToString("D");
                 var updated = registry.CompareExchange(backing, request.ExpectedRevision.Value);
                 return updated is null ? Results.Problem(statusCode: 409, title: "settings.revision_conflict")
-                    : Results.Ok(RegistryConfigurationFields.Values(updated, request.Path).Single(entry => entry.Name == request.Name));
+                    : Results.Ok(Describe(http, users, userId, scopeId, RegistryConfigurationFields.Values(updated, request.Path).Single(entry => entry.Name == request.Name)));
             }
+            if (root is not null) return Results.Problem(statusCode: 409, title: "settings.managed_value");
+            if (request.Scope != RegistryScope.Workspace || !IsWorkspaceChildPath(request.Path)) return Results.BadRequest();
             var valueJson = request.Value.GetRawText();
-            if (root is not null)
-            {
-                if (request.ValueType != RegistryValueType.Json) return Results.BadRequest();
-                var normalized = RegistryConfigurationFields.Normalize(root, valueJson);
-                if (normalized is null) return Results.BadRequest(new { message = "Invalid configuration document." });
-                valueJson = normalized;
-            }
             var saved = registry.CompareExchange(new RelaxKonOS.Server.Domain.RegistryEntry
             {
                 UserId = userId, Scope = request.Scope, ScopeId = scopeId, Path = request.Path.Trim(), Name = request.Name.Trim(),
@@ -141,18 +130,16 @@ public static partial class RegistryEndpoints
                 DesiredUpdatedAt = now, DesiredUpdatedBy = actorId.ToString("D"), AppliedRevision = 1, AppliedAt = now,
             }, request.ExpectedRevision.Value);
             if (saved is null) return Results.Problem(statusCode: 409, title: "settings.revision_conflict");
-            return Results.Ok(ToDto(saved));
+            return Results.Ok(Describe(http, users, userId, scopeId, ToDto(saved)));
         }).RequireAuthorization().WithTags("Registry");
 
-        app.MapDelete(RegistryApiRoutes.Entries, (RegistryScope scope, string path, string name, HttpContext http, IHostElevationSessionStore elevations, IRegistryRepository registry, IWorkspaceRepository workspaces, IUserRepository users) =>
+        app.MapDelete(RegistryApiRoutes.Values, (Guid userId, RegistryScope scope, string path, string name, HttpContext http, IHostElevationSessionStore elevations, IRegistryRepository registry, IWorkspaceRepository workspaces, IUserRepository users) =>
         {
             var principal = http.User;
             if (!TryUserId(principal, out var actorId)) return Results.Unauthorized();
-            if (http.Request.Query.ContainsKey("targetUserId") && !Guid.TryParse(http.Request.Query["targetUserId"], out _)) return Results.BadRequest();
-            var userId = TargetUserId(http) ?? actorId;
             if (userId != actorId && !elevations.IsGranted(principal, HostElevationCapability.RegistryManage, RegistryTarget(userId)))
                 return ElevationRequired();
-            if (userId != actorId && users.FindById(userId) is null) return Results.NotFound();
+            if (users.FindById(userId) is null) return Results.NotFound();
             if (!TryScopeId(principal, userId, workspaces, scope, out var scopeId) || !PathPattern().IsMatch(path) || !(name == "(Default)" || NamePattern().IsMatch(name)))
                 return Results.BadRequest(new { message = "Invalid registry value." });
             if (scope == RegistryScope.Workspace && RegistryConfigurationFields.Root(path) is not null)
@@ -160,15 +147,13 @@ public static partial class RegistryEndpoints
             return registry.Delete(userId, scope, scopeId, path, name) ? Results.NoContent() : Results.NotFound();
         }).RequireAuthorization().WithTags("Registry");
 
-        app.MapDelete(RegistryApiRoutes.Keys, (RegistryScope scope, string path, HttpContext http, IHostElevationSessionStore elevations, IRegistryRepository registry, IWorkspaceRepository workspaces, IUserRepository users) =>
+        app.MapDelete(RegistryApiRoutes.Keys, (Guid userId, RegistryScope scope, string path, HttpContext http, IHostElevationSessionStore elevations, IRegistryRepository registry, IWorkspaceRepository workspaces, IUserRepository users) =>
         {
             var principal = http.User;
             if (!TryUserId(principal, out var actorId)) return Results.Unauthorized();
-            if (http.Request.Query.ContainsKey("targetUserId") && !Guid.TryParse(http.Request.Query["targetUserId"], out _)) return Results.BadRequest();
-            var userId = TargetUserId(http) ?? actorId;
             if (userId != actorId && !elevations.IsGranted(principal, HostElevationCapability.RegistryManage, RegistryTarget(userId)))
                 return ElevationRequired();
-            if (userId != actorId && users.FindById(userId) is null) return Results.NotFound();
+            if (users.FindById(userId) is null) return Results.NotFound();
             if (scope != RegistryScope.Workspace || !TryScopeId(principal, userId, workspaces, scope, out var scopeId) || !IsWorkspaceChildPath(path))
                 return Results.BadRequest(new { message = "Only keys below Workspace can be deleted." });
             if (RegistryConfigurationFields.Root(path) is not null
@@ -176,11 +161,18 @@ public static partial class RegistryEndpoints
                 return Results.Problem(statusCode: 409, title: "settings.managed_value", detail: "This key contains managed workspace preferences.");
             return registry.DeleteKeyTree(userId, scope, scopeId, path) ? Results.NoContent() : Results.NotFound();
         }).RequireAuthorization().WithTags("Registry");
-        app.MapGet(RegistryApiRoutes.Users, (HttpContext http, IUserRepository users, IHostElevationSessionStore elevations) =>
+        app.MapGet(RegistryApiRoutes.Users, (HttpContext http, IUserRepository users, IWorkspaceRepository workspaces, IHostElevationSessionStore elevations) =>
         {
-            if (!TryUserId(http.User, out _)) return Results.Unauthorized();
+            if (!TryUserId(http.User, out var actorId)) return Results.Unauthorized();
             if (!elevations.IsGranted(http.User, HostElevationCapability.RegistryManage, "registry/users")) return ElevationRequired();
-            return Results.Ok(users.List().Select(user => new RegistryUserDto(user.Id, user.Username)));
+            return Results.Ok(users.List().Select(user => new RegistryUserDto(user.Id, user.Username, user.Id == actorId, workspaces.FindByUserId(user.Id)?.Id)));
+        }).RequireAuthorization().WithTags("Registry");
+        app.MapGet(RegistryApiRoutes.Context, (HttpContext http, IUserRepository users, IWorkspaceRepository workspaces, IHostElevationSessionStore elevations) =>
+        {
+            if (!TryUserId(http.User, out var actorId)) return Results.Unauthorized();
+            var user = users.FindById(actorId);
+            return user is null ? Results.NotFound() : Results.Ok(new RegistryContextDto(ServerId(http), actorId, user.Username,
+                workspaces.FindByUserId(actorId)?.Id, elevations.IsGranted(http.User, HostElevationCapability.RegistryManage, "registry/users")));
         }).RequireAuthorization().WithTags("Registry");
         return app;
     }
@@ -201,7 +193,24 @@ public static partial class RegistryEndpoints
         return scopeId != Guid.Empty;
     }
 
-    private static Guid? TargetUserId(HttpContext http) => Guid.TryParse(http.Request.Query["targetUserId"], out var target) ? target : null;
+    // The server-issued origin identifies this connection's registry namespace.
+    private static string ServerId(HttpContext http) => $"{http.Request.Scheme}://{http.Request.Host}";
+    private static RegistryKeyDto Describe(HttpContext http, IUserRepository users, Guid owner, Guid scopeId, RegistryKeyDto key) => key with
+    {
+        Address = new(ServerId(http), owner, key.Scope, scopeId, key.Path),
+        CanCreateChild = key.Scope == RegistryScope.Workspace && RegistryConfigurationFields.Root(key.Path) is null,
+        CanDelete = key.Scope == RegistryScope.Workspace && IsWorkspaceChildPath(key.Path)
+            && RegistryConfigurationFields.Root(key.Path) is null
+            && !RegistrySchema.Definitions.Any(definition => definition.Path.StartsWith(key.Path + "\\", StringComparison.Ordinal)),
+    };
+    private static RegistryEntryDto Describe(HttpContext http, IUserRepository users, Guid owner, Guid scopeId, RegistryEntryDto value)
+    {
+        var root = value.Scope == RegistryScope.Workspace ? RegistryConfigurationFields.Root(value.Path) : null;
+        var defaultValue = root is null ? null : RegistryConfigurationFields.DefaultValue(root, value.Path, value.Name);
+        return value with { Address = new(ServerId(http), owner, value.Scope, scopeId, value.Path),
+            OwnerUsername = users.FindById(owner)!.Username,
+            Schema = RegistryConfigurationFields.Describe(value, defaultValue, root is not null) };
+    }
     private static string RegistryTarget(Guid user) => "registry/users/" + user.ToString("D");
     private static IResult ElevationRequired() => Results.Problem(statusCode: 403, title: "elevation-required",
         type: "https://relaxkonos.app/problems/elevation-required", detail: "Administrator authorization is required for another user's registry.");

@@ -26,10 +26,16 @@ public sealed class WorkspaceEnvironmentService
         if (OperatingSystem.IsWindows()) Directory.CreateDirectory(directory);
         else Directory.CreateDirectory(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         var path = Path.Combine(directory, "environment.db");
-        if (!File.Exists(path))
+        // SQLite atomically creates or opens its database on Windows, including installer data
+        // junctions. A separate Exists/CreateNew probe can fail before the Hub is activated.
+        // Unix needs an explicit owner-only creation mode before SQLite opens the file.
+        if (!OperatingSystem.IsWindows() && !File.Exists(path))
         {
-            var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write };
-            if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+            var options = new FileStreamOptions
+            {
+                Mode = FileMode.CreateNew, Access = FileAccess.Write,
+                UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite,
+            };
             using var file = new FileStream(path, options);
         }
         _connectionString = new SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString();

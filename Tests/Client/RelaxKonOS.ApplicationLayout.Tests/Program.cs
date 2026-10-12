@@ -47,6 +47,20 @@ var output = Path.Combine(AppContext.BaseDirectory, "layout-qa");
 Directory.CreateDirectory(output);
 var host = new Window { Width = 1000, Height = 700 };
 host.Show();
+if (args.Contains("--registry-only"))
+{
+    var checks = RegistryChecks.RunAsync();
+    var deadline = DateTime.UtcNow.AddSeconds(15);
+    while (!checks.IsCompleted && DateTime.UtcNow < deadline)
+    {
+        Dispatcher.UIThread.RunJobs();
+        Thread.Sleep(5);
+    }
+    if (!checks.IsCompleted) throw new TimeoutException("Registry checks did not finish.");
+    checks.GetAwaiter().GetResult();
+    host.Close();
+    return;
+}
 if (args.Contains("--browser-only"))
 {
     BrowserChecks.Run(host, settings, appearance, output);
