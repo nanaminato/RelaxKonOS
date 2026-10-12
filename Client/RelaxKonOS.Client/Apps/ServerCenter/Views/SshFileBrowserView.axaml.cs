@@ -51,6 +51,11 @@ internal partial class SshFileBrowserView : UserControl
     private SshFileEntry[]? _preservedDragSelection;
     private bool _toggleSelectionOnRelease;
     private Point _dragStart;
+    private readonly DirectoryListingCache<SshFileEntry[]> _listingCache = new();
+    private long _listingGeneration;
+    private ServerCenterSshEndpoint? _cacheEndpoint;
+    private bool _showingCachedFiles;
+    internal bool IsShowingCachedFiles => _showingCachedFiles;
     private readonly FileBrowserPresentation _presentation;
     private readonly SshDesktopSession _session;
     private readonly LocalizationService _localization;
@@ -222,6 +227,7 @@ internal partial class SshFileBrowserView : UserControl
             _localization.LanguageChanged -= LanguageChanged;
             _sessionClipboard.Changed -= ClipboardChanged;
             _sessionClipboard.Moved -= FilesMoved;
+            _listingGeneration++; _listingCache.Clear();
             CancelRename(); ClearPendingDrag();
         };
         AttachedToVisualTree += async (_, _) =>
@@ -360,6 +366,7 @@ internal partial class SshFileBrowserView : UserControl
     internal void SwitchTab(SshFileBrowserTab tab)
     {
         if (_busy || IsPackagePicker || ReferenceEquals(tab, _activeTab) || !_tabs.Contains(tab)) return;
+        _listingGeneration++;
         CancelRename();
         CaptureActiveTab();
         _activeTab = tab;
@@ -847,9 +854,23 @@ internal partial class SshFileBrowserView : UserControl
             StatusMessage = LocalizedStatus.Key("ssh_files.file_open_failed", "Unable to open this file with an associated application");
     }
 
-    private async Task NavigateAsync(string path, bool addHistory = true)
+    private async Task NavigateAsync(string path, bool addHistory = true, bool forceRefresh = false)
     {
         if (_busy || !_session.IsConnected) return;
+        if (!ReferenceEquals(_cacheEndpoint, _session.Endpoint))
+        { _cacheEndpoint = _session.Endpoint; _listingCache.Clear(); }
+        var generation = ++_listingGeneration;
+        var endpoint = _session.Endpoint;
+        var cachePath = path.StartsWith('/') ? path : path == "." ? _path : Child(_path, path);
+        if (CacheListingsMenu.IsChecked == true && !forceRefresh && _listingCache.TryGet(cachePath, out var cached))
+        {
+            CommitListing(cachePath, CloneEntries(cached), addHistory);
+            _showingCachedFiles = true;
+            StatusMessage = LocalizedStatus.Key("explorer.cache.refreshing");
+            _ = RevalidateDirectoryAsync(cachePath, generation);
+            return;
+        }
+        _showingCachedFiles = false;
         CancelRename();
         _busy = true;
         UpdateControls();
@@ -867,20 +888,9 @@ internal partial class SshFileBrowserView : UserControl
                         file.IsSymbolicLink, file.Length, file.LastWriteTime)).ToArray();
                 return (absolute, entries);
             });
-            if (_path != result.absolute) _presentation.ClearSelection();
-            _path = result.absolute;
-            _homePath ??= _path;
-            AddressBox.Text = _path;
-            BuildBreadcrumbs();
-            _entries = result.entries;
-            _activeTab.Path = _path;
-            if (addHistory && (_historyIndex < 0 || _history[_historyIndex] != _path))
-            {
-                _history.RemoveRange(_historyIndex + 1, _history.Count - _historyIndex - 1);
-                _history.Add(_path);
-                _historyIndex = _history.Count - 1;
-            }
-            ApplyView();
+            if (!ReferenceEquals(endpoint, _session.Endpoint)) return;
+            if (CacheListingsMenu.IsChecked == true) _listingCache.Put(result.absolute, CloneEntries(result.entries), result.entries.Length);
+            CommitListing(result.absolute, result.entries, addHistory);
             InitializeNavigationTree();
             await SyncNavigationTreeAsync();
             StatusMessage = "";
@@ -893,9 +903,61 @@ internal partial class SshFileBrowserView : UserControl
         finally { _busy = false; CaptureActiveTab(); UpdateControls(); }
     }
 
+    private void CommitListing(string absolute, SshFileEntry[] entries, bool addHistory)
+    {
+        CancelRename();
+            if (_path != absolute) _presentation.ClearSelection();
+            _path = absolute;
+            _homePath ??= _path;
+            AddressBox.Text = _path;
+            BuildBreadcrumbs();
+            _entries = entries;
+            _activeTab.Path = _path;
+            if (addHistory && (_historyIndex < 0 || _history[_historyIndex] != _path))
+            {
+                _history.RemoveRange(_historyIndex + 1, _history.Count - _historyIndex - 1);
+                _history.Add(_path);
+                _historyIndex = _history.Count - 1;
+            }
+            ApplyView();
+        CaptureActiveTab(); UpdateControls();
+    }
+
+    private static SshFileEntry[] CloneEntries(IEnumerable<SshFileEntry> entries) => entries
+        .Select(entry => new SshFileEntry(entry.Name, entry.Path, entry.IsDirectory, entry.IsLink, entry.Size, entry.Modified)).ToArray();
+
+    private async Task RevalidateDirectoryAsync(string path, long generation)
+    {
+        var endpoint = _session.Endpoint;
+        try
+        {
+            var entries = await ExecuteAsync(client => client.ListDirectory(path)
+                .Where(file => file.Name is not ("." or ".."))
+                .Select(file => new SshFileEntry(file.Name, file.FullName, file.IsDirectory, file.IsSymbolicLink, file.Length, file.LastWriteTime)).ToArray());
+            if (generation != _listingGeneration || _busy || _editingEntry is not null || !ReferenceEquals(endpoint, _session.Endpoint) || CacheListingsMenu.IsChecked != true) return;
+            _listingCache.Put(path, CloneEntries(entries), entries.Length);
+            CommitListing(path, entries, false); _showingCachedFiles = false; StatusMessage = "";
+        }
+        catch (Exception error)
+        {
+            if (generation != _listingGeneration || _busy) return;
+            if (error is Renci.SshNet.Common.SftpPermissionDeniedException || !_session.IsConnected)
+            { _listingCache.Clear(); _entries = []; ApplyView(); _showingCachedFiles = false; }
+            StatusMessage = LocalizedStatus.Key("explorer.cache.refresh_failed", "Could not refresh cached files: {0}", error.Message);
+        }
+    }
+
+    private void CacheListings_Click(object? sender, RoutedEventArgs e)
+    {
+        var refresh = _showingCachedFiles;
+        _listingGeneration++; _listingCache.Clear(); _showingCachedFiles = false;
+        if (refresh) _ = RefreshAsync();
+    }
+
     private async Task RefreshAsync()
     {
-        await NavigateAsync(_path, false);
+        _listingGeneration++; _listingCache.Clear();
+        await NavigateAsync(_path, false, forceRefresh: true);
         await RebuildNavigationTreeAsync();
     }
 
@@ -1272,6 +1334,7 @@ internal partial class SshFileBrowserView : UserControl
 
     private void FilesMoved(string[] paths)
     {
+        _listingGeneration++; _listingCache.Clear();
         if (paths.Length == 0) return;
         var moved = paths.ToHashSet(StringComparer.Ordinal);
         foreach (var tab in _tabs) tab.Entries = tab.Entries.Where(entry => !moved.Contains(entry.Path)).ToArray();
@@ -1531,6 +1594,7 @@ internal partial class SshFileBrowserView : UserControl
     private async Task<bool> ChangeAsync(Action<SftpClient> action)
     {
         if (_busy) return false;
+        _listingGeneration++; _listingCache.Clear();
         _busy = true; UpdateControls();
         var completed = false;
         try

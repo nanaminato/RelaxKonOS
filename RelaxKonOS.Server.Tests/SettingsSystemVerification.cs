@@ -108,6 +108,11 @@ internal static class SettingsSystemVerification
         });
         builder.Services.AddSingleton<IWorkspaceRepository>(workspaces);
         builder.Services.AddSingleton<IRegistryRepository, InMemoryRegistryRepository>();
+        builder.Services.AddSingleton<IUserRepository, InMemoryUserRepository>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IHostAccountPrivilegeService>(new TestHostAccountPrivilegeService());
+        builder.Services.AddSingleton<RelaxKonOS.Server.HostMode.IServerModeResolver>(new UploadSessionChecks.SystemMode());
+        builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.HostElevationSessionState>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IHostElevationSessionStore, RelaxKonOS.Server.Privileged.HostElevationSessionStore>();
         builder.Services.AddSingleton<IWorkspaceSettingsService, WorkspaceSettingsService>();
         builder.Services.AddSingleton(new WorkspaceEnvironmentService(root, Microsoft.AspNetCore.DataProtection.DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(root, "workspace-environment-keys")))));
         builder.Services.AddSingleton<WorkspaceWallpaperStore>();

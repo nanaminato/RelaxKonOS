@@ -79,6 +79,11 @@ if (args.Contains("--terminal-windows-only"))
     await WindowsTerminalChecks.RunAsync();
     return;
 }
+if (args.Contains("--registry-access-only"))
+{
+    await RegistryAccessChecks.RunAsync();
+    return;
+}
 if (args.Contains("--host-data-protection-only"))
 {
     var protectionRoot = Path.Combine(Path.GetTempPath(), "relaxkon-protection-" + Guid.NewGuid().ToString("N"));

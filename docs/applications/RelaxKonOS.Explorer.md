@@ -350,10 +350,21 @@ services.AddSingleton<IRemoteApplication, RelaxKonOS.Client.Apps.Explorer.Explor
 
 从条目区域的空白处按住左键拖动可框选，选择框与条目相交即选中；Ctrl / Shift 框选追加现有选择，普通空白点击清空选择。拖至上下边缘自动滚动；Escape 取消正在进行的框选并恢复原选择。列标题、滚动条、重命名编辑器和条目本身不启动框选。单选文件选择器限制选择数量为一。
 
-普通浏览器“设为默认视图”同时保存 `ViewMode`（Details=0、List=1、SmallIcons=2、LargeIcons=3）；设置契约 schemaVersion=2，直接采用当前格式，不解析旧版本设置。SSH 视图模式在当前窗口内保留。
+普通浏览器“设为默认视图”同时保存 `ViewMode`（Details=0、List=1、SmallIcons=2、LargeIcons=3）；设置契约 schemaVersion=3，直接采用当前格式，不解析旧版本设置。SSH 视图模式在当前窗口内保留。
 
 详细信息视图只显示整行选择背景，不额外绘制整行或单元格焦点轮廓；点击和框选激活的单元格焦点/当前状态均隐藏轮廓；列标题仍支持排序和拖动调整宽度。普通与 SSH 浏览器共用此样式，行内重命名保留文本输入焦点。
 
 Folder-tab overflow is decided against the row width before scroll arrows are added. Widening the window removes the arrows once the tabs fit again; arrow enabled states follow the actual scroll position and extent.
 
 The new-tab (+) button follows the last folder tab inside the scrolling row. Tab sizing reserves its space; selecting the last tab brings the button into view.
+
+
+## 文件列表缓存
+
+“更多”菜单提供默认关闭的“缓存文件列表”。开启后，访问已浏览过的目录或此电脑会先显示内存快照并后台读取新列表；迟到响应不能覆盖后来打开的位置，也不能打断重命名或正在执行的文件操作。窗口独立保存最多 64 个目录、合计 50,000 项，快照最长有效 5 分钟。只缓存目录元数据，不保存文件内容或授权凭据。
+
+刷新（F5）绕过快照并清理缓存；文件修改及后台操作完成后清理快照。读取被拒绝后撤下缓存条目，网络失败保留缓存并提示更新失败。关闭选项或窗口时清空缓存。选项属于窗口级策略，切换标签不会改变它；通过“设为默认视图”可保存给当前用户的 Workspace。
+
+默认视图的 schemaVersion=3 文档由 `Workspace\Explorer` 的 `(Default)` 值统一提供；应用设置 API 和注册表字段编辑都使用同一版本与同一存储，不读取旧 schemaVersion=2 文档。注册表可直接修改 `FileListCacheEnabled` 及其余视图选项。
+
+SSH 文件浏览器也在“更多”提供独立的窗口级缓存开关，默认关闭；同样限制容量、有效期和异步更新，连接身份变化、窗口关闭、显式刷新和文件操作后清理缓存。

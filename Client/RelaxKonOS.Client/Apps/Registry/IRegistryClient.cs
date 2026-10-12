@@ -5,6 +5,8 @@ namespace RelaxKonOS.Client.Apps.Registry;
 /// <summary>Host-only client for the schema-approved registry read model.</summary>
 public interface IRegistryClient
 {
+    IRegistryClient ForUser(Guid? targetUserId);
+    Task<IReadOnlyList<RegistryUserDto>> ListUsersAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<RegistryEntryDto>> ListValuesAsync(RegistryScope scope, string path, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<RegistryKeyDto>> ListKeysAsync(RegistryScope scope, string parentPath, CancellationToken cancellationToken = default);
     Task<RegistryKeyDto> CreateKeyAsync(CreateRegistryKeyRequest request, CancellationToken cancellationToken = default);

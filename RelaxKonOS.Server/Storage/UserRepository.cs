@@ -9,6 +9,7 @@ public interface IUserRepository
 {
     User? FindByUsername(string username, HostPlatformKind platform);
     User? FindById(Guid id);
+    IReadOnlyList<User> List();
     User? FindByIdentity(string identity, HostPlatformKind platform);
     void Update(User user);
     User Add(User user);
@@ -18,6 +19,7 @@ public interface IUserRepository
 /// <summary>内存实现。Singleton，ConcurrentDictionary。内存实现，重启丢失。</summary>
 public sealed class InMemoryUserRepository : IUserRepository
 {
+    public IReadOnlyList<User> List() => _byId.Values.OrderBy(user => user.Username, StringComparer.Ordinal).ToArray();
     private readonly ConcurrentDictionary<Guid, User> _byId = new();
     private readonly ConcurrentDictionary<(string username, HostPlatformKind platform), Guid> _byName = new();
 

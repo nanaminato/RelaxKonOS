@@ -1,3 +1,6 @@
+using System.Text.Json.Nodes;
+using RelaxKonOS.Protocol.Registry;
+using RelaxKonOS.Server.ConfigurationRegistry;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -17,11 +20,21 @@ public static partial class AppSettingsEndpoints
     public static IEndpointRouteBuilder MapAppSettingsEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet(AppSettingsApiRoutes.Document, (
-            string appId, string scope, string key, HttpContext context, ClaimsPrincipal principal, IAppSettingsRepository settings) =>
+            string appId, string scope, string key, HttpContext context, ClaimsPrincipal principal, IAppSettingsRepository settings, IRegistryRepository registry, IWorkspaceRepository workspaces) =>
         {
             if (!TryResolveRequest(appId, scope, key, principal, out var owner, out var resolvedScope, out var error))
                 return Results.BadRequest(new { message = error });
 
+            if (appId == "relaxkonos.explorer" && key == "view" && resolvedScope == AppSettingsScope.Workspace)
+            {
+                var workspace = workspaces.FindById(owner.ScopeId);
+                if (workspace?.UserId != owner.UserId) return Results.NotFound();
+                WorkspaceConfigurationRegistry.EnsureDefaults(registry, workspace);
+                var entry = registry.Find(owner.UserId, RegistryScope.Workspace, owner.ScopeId, WorkspaceConfigurationRegistry.ExplorerPath, "(Default)")!;
+                context.Response.Headers.ETag = ToETag(entry.Revision);
+                return Results.Ok(new AppSettingsDocumentDto(resolvedScope, key, JsonDocument.Parse(entry.ValueJson).RootElement.Clone(),
+                    WorkspaceConfigurationRegistry.ExplorerSchemaVersion, entry.Revision, entry.DesiredUpdatedAt));
+            }
             var found = settings.Find(owner.UserId, resolvedScope, owner.ScopeId, appId, key);
             if (found is null)
                 return Results.NotFound();
@@ -32,7 +45,7 @@ public static partial class AppSettingsEndpoints
 
         app.MapPut(AppSettingsApiRoutes.Document, (
             string appId, string scope, string key, PutAppSettingsRequest request, HttpContext context,
-            ClaimsPrincipal principal, IAppSettingsRepository settings) =>
+            ClaimsPrincipal principal, IAppSettingsRepository settings, IRegistryRepository registry, IWorkspaceRepository workspaces) =>
         {
             if (!TryResolveRequest(appId, scope, key, principal, out var owner, out var resolvedScope, out var error))
                 return Results.BadRequest(new { message = error });
@@ -45,6 +58,23 @@ public static partial class AppSettingsEndpoints
             if (!TryGetExpectedRevision(context.Request, out var expectedRevision))
                 return Results.BadRequest(new { message = "If-Match must be a non-negative numeric ETag." });
 
+            if (appId == "relaxkonos.explorer" && key == "view" && resolvedScope == AppSettingsScope.Workspace)
+            {
+                var workspace = workspaces.FindById(owner.ScopeId);
+                if (workspace?.UserId != owner.UserId) return Results.NotFound();
+                if (request.SchemaVersion != WorkspaceConfigurationRegistry.ExplorerSchemaVersion
+                    || !RegistryConfigurationFields.ValidExplorerDocument(JsonNode.Parse(json) as JsonObject)) return Results.BadRequest();
+                if (expectedRevision is null) return Results.Problem(statusCode: 428, title: "settings.revision_required");
+                var savedEntry = registry.CompareExchange(new RegistryEntry
+                {
+                    UserId = owner.UserId, Scope = RegistryScope.Workspace, ScopeId = owner.ScopeId,
+                    Path = WorkspaceConfigurationRegistry.ExplorerPath, Name = "(Default)", ValueType = RegistryValueType.Json,
+                    ValueJson = json, DesiredUpdatedAt = DateTimeOffset.UtcNow, DesiredUpdatedBy = owner.UserId.ToString("D"),
+                }, expectedRevision.Value);
+                if (savedEntry is null) return Results.Conflict();
+                context.Response.Headers.ETag = ToETag(savedEntry.Revision);
+                return Results.Ok(new AppSettingsDocumentDto(resolvedScope, key, request.Value, request.SchemaVersion, savedEntry.Revision, savedEntry.DesiredUpdatedAt));
+            }
             var result = settings.Upsert(new AppSetting
             {
                 UserId = owner.UserId,
@@ -63,7 +93,7 @@ public static partial class AppSettingsEndpoints
             return Results.Ok(ToDto(saved));
         }).RequireAuthorization().WithTags("Application settings");
 
-        app.MapDelete(AppSettingsApiRoutes.Application, (string appId, ClaimsPrincipal principal, IAppSettingsRepository settings) =>
+        app.MapDelete(AppSettingsApiRoutes.Application, (string appId, ClaimsPrincipal principal, IAppSettingsRepository settings, IRegistryRepository registry, IWorkspaceRepository workspaces) =>
         {
             if (!AppIdPattern().IsMatch(appId))
                 return Results.BadRequest(new { message = "Invalid application id." });
@@ -73,6 +103,9 @@ public static partial class AppSettingsEndpoints
                 return Results.Unauthorized();
 
             var deleted = settings.DeleteForApp(userId, appId);
+            if (appId == "relaxkonos.explorer")
+                foreach (var entry in registry.List(userId, RegistryScope.Workspace).Where(entry => entry.Path == WorkspaceConfigurationRegistry.ExplorerPath))
+                    if (registry.Delete(userId, entry.Scope, entry.ScopeId, entry.Path, entry.Name)) deleted++;
             return Results.Ok(new { deleted });
         }).RequireAuthorization().WithTags("Application settings");
 

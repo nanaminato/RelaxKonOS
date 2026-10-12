@@ -51,4 +51,6 @@
     <string name="ui_discard_draft_title">放弃草稿？</string>
     <string name="taskmanager_administrator_mode">管理员模式</string>
     <string name="taskmanager_normal_mode">普通模式</string>
+    <string name="files_cache_enabled">缓存文件列表</string>
+    <string name="files_cache_refreshing">正在显示缓存，后台更新中…</string>
 </resources>

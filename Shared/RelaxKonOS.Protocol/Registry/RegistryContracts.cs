@@ -35,6 +35,8 @@ public sealed record RegistryEntryDto(
 public sealed record RegistrySummaryDto(int PendingSyncCount, int FailedCount, int RestartRequiredCount);
 
 /// <summary>A direct child key returned for one opened registry key.</summary>
+public sealed record RegistryUserDto(Guid Id, string Username);
+
 public sealed record RegistryKeyDto(RegistryScope Scope, string Path);
 
 /// <summary>Creates an empty key. The server derives its concrete owner from the access token.</summary>
@@ -46,6 +48,7 @@ public static class RegistryApiRoutes
     private const string V1 = RelaxKonOSEndpoints.ApiVersionPrefix;
     public const string Entries = $"/{V1}/registry/entries";
     public const string Keys = $"/{V1}/registry/keys";
+    public const string Users = $"/{V1}/registry/users";
     public const string Summary = $"/{V1}/registry/summary";
 }
 

@@ -82,7 +82,7 @@ Path:     Software\\RelaxKonOS\\...
 Name:     value name
 ```
 
-`UserId` 是强制租户边界；服务端从 JWT 解析 `ScopeId`，客户端不得指定或伪造。任意读取、写入、同步记录、审计记录和“待重启”标记都必须携带 `UserId` 与 `ScopeId`。
+`UserId` 是强制租户边界；服务端从 JWT 解析 `ScopeId`，当前用户请求不能指定或伪造；管理员授权后的跨用户请求可指定 targetUserId，服务端仍从该用户的 Workspace 仓储解析 scopeId，不接受客户端提供的 Workspace ID。任意读取、写入、同步记录、审计记录和“待重启”标记都必须携带 `UserId` 与 `ScopeId`。
 
 建议唯一键：
 
@@ -236,3 +236,10 @@ server.registry.write
 - 并发编辑相同项时，`If-Match`/Revision 明确产生冲突而不静默覆盖。
 - 所有注册表写入均可追溯操作者、时间、来源与处理结果。
 - 无权限用户、未知路径、无效值和机密路径均不能通过注册表应用或 API 写入。
+
+
+## 当前字段编辑与跨用户管理
+
+托管键包含 Desktop、Terminal、Browser、Explorer 和 WindowManager。注册表在 JSON 对象上提供字段值和子对象键；全部字段更新仍对一个 `(Default)` 文档做校验和 CAS，不引入第二份配置。Explorer 的 schemaVersion=3 默认视图及文件列表缓存开关也由此文档提供，应用设置路由直接使用这一真源。
+
+REST 通过可选 `targetUserId` 选择目标用户；省略时选择当前用户。跨用户枚举、读取、新建、写入与删除均检查 RegistryManage，枚举目标为 `registry/users`，用户操作目标为 `registry/users/{userId}`。管理员自动授权，临时手工授权不能扩展到其他用户，审计的 updatedBy/createdBy 为认证操作者。跨用户 Device 范围不支持。托管键的结构与字段不允许删除，自定义键继续按 Workspace 范围隔离。

@@ -59,7 +59,7 @@ var saved = await context.SettingsStore.SetAsync(
     expectedRevision: current?.Revision);
 ```
 
-默认 scope 与 key 分别是 `workspace` 和 `default`。应用升级其 JSON 格式时增加 `schemaVersion`，并自行兼容旧版本；服务端只保存 JSON 与版本，不解释应用字段。
+默认 scope 与 key 分别是 `workspace` 和 `default`。应用升级其 JSON 格式时增加 `schemaVersion`，直接采用当前版本并更新所有调用者，不保留兼容解析；普通应用文档由服务端保存 JSON 与版本。
 
 ## 5. 服务端持久化
 
@@ -72,3 +72,6 @@ SQLite 的 `app_settings` 表使用上述五个隔离字段作为复合主键，
 Workspace preferences GET 返回 `revision`，PUT 必须携带读取时的 `revision`；缺失为 428、冲突为 409，不接受无版本覆盖。服务端 `Settings/WorkspaceSettingsService` 使用注册表 CompareExchange，客户端统一使用 `Services/WorkspaceSettings/IWorkspaceSettingsService`。
 
 偏好仍存 `Workspace\Desktop`，缓存接收不等同 SQLite 落盘。AppSettings 只负责应用私有数据；宿主真实配置与其操作恢复材料不放入 AppSettings 或 Workspace 偏好。设计与验收边界见 [Settings.Design](../desktop/RelaxKonOS.Settings.Design.md)。
+
+
+内置 `relaxkonos.explorer/workspace/view` 当前使用 schemaVersion=3，完整字段为 `SortField`、`SortDescending`、`ShowHiddenFiles`、`IsCompactView`、`ViewMode`、`FileListCacheEnabled`。该文档由注册表 `Workspace\Explorer` 的 `(Default)` 值统一读写，PUT 必须包含 If-Match，字段类型、枚举范围和当前 schema 由服务端校验。注册表单字段编辑与应用设置 API 共享 revision；其他应用私有文档仍按上面的通用契约存储。

@@ -160,6 +160,7 @@
                         <MenuItem x:Name="UploadFolderButton" Header="{loc:Loc ssh_files.upload_folder}" Click="UploadFolder_Click" />
                         <MenuItem x:Name="DownloadButton" Header="{loc:Loc ssh_files.download}" Click="Download_Click" />
                         <Separator />
+                        <MenuItem x:Name="CacheListingsMenu" Header="{loc:Loc explorer.cache.enabled}" ToggleType="CheckBox" Click="CacheListings_Click" />
                         <MenuItem x:Name="OverflowProperties" Header="{loc:Loc ssh_files.properties}" Click="Properties_Click" />
                     </MenuFlyout></Button.Flyout>
                 </Button>

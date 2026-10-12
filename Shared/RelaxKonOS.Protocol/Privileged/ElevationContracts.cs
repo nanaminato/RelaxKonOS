@@ -39,6 +39,7 @@ public enum HostElevationCapability
     HostEnvironmentRead,
     HostEnvironmentChange,
     ProcessManage,
+    RegistryManage,
 }
 
 /// <summary>Authenticated request for one non-file host capability and exact managed resource.</summary>

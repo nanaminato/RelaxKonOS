@@ -11,7 +11,6 @@
         "explorer.view.list": "列表",
         "explorer.view.small_icons": "小图标",
         "explorer.view.large_icons": "大图标",
-
         "explorer.operations.download": "下载到本机",
         "explorer.login_required": "文件资源管理器需要登录。\n请先连接到 RelaxKonOS Server，然后再启动此应用。",
         "explorer.error.not_signed_in": "未登录；文件服务不可用。",
@@ -220,6 +219,9 @@
         "explorer.operations.elevation_prompt": "此操作需要管理员权限。授权在当前会话中保留 5 分钟。",
         "explorer.operations.elevation_access_prompt": "此位置需要管理员权限才能读取。授权有效期为 5 分钟；文件夹授权也允许读取其中的子目录和文件。",
         "explorer.operations.elevation_failed": "管理员账户或密码不正确。",
-        "explorer.operations.elevation_not_administrator": "该账户在服务器上存在，但不是管理员。请改用管理员账户后重试。"
+        "explorer.operations.elevation_not_administrator": "该账户在服务器上存在，但不是管理员。请改用管理员账户后重试。",
+        "explorer.cache.enabled": "缓存文件列表",
+        "explorer.cache.refreshing": "正在显示缓存，后台更新中…",
+        "explorer.cache.refresh_failed": "缓存更新失败：{0}"
     }
 }

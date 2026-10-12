@@ -11,7 +11,6 @@
         "explorer.view.list": "List",
         "explorer.view.small_icons": "Small icons",
         "explorer.view.large_icons": "Large icons",
-
         "explorer.operations.download": "Downloading to host",
         "explorer.login_required": "File Explorer requires sign-in.\nConnect to a RelaxKonOS Server before starting this app.",
         "explorer.error.not_signed_in": "Not signed in; file services are unavailable.",
@@ -220,6 +219,9 @@
         "explorer.operations.elevation_prompt": "This operation requires administrator access. Authorization lasts 5 minutes in this session.",
         "explorer.operations.elevation_access_prompt": "Reading this location requires administrator access. Authorization lasts 5 minutes; folder authorization also covers reading its subfolders and files.",
         "explorer.operations.elevation_failed": "The administrator account or password is incorrect.",
-        "explorer.operations.elevation_not_administrator": "That account exists on the server but is not an administrator. Enter an administrator account and try again."
+        "explorer.operations.elevation_not_administrator": "That account exists on the server but is not an administrator. Enter an administrator account and try again.",
+        "explorer.cache.enabled": "Cache file listings",
+        "explorer.cache.refreshing": "Showing cached files; refreshing…",
+        "explorer.cache.refresh_failed": "Could not refresh cached files: {0}"
     }
 }

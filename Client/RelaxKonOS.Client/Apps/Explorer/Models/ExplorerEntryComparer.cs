@@ -67,4 +67,5 @@ public sealed record ExplorerViewPreferences(
     bool SortDescending = false,
     bool ShowHiddenFiles = false,
     bool IsCompactView = false,
-    ExplorerViewMode ViewMode = ExplorerViewMode.Details);
+    ExplorerViewMode ViewMode = ExplorerViewMode.Details,
+    bool FileListCacheEnabled = false);

@@ -13,6 +13,9 @@ public static class WorkspaceConfigurationRegistry
 {
     public const string TerminalPath = "Workspace\\Terminal";
     public const string DesktopPath = "Workspace\\Desktop";
+    public const string ExplorerPath = "Workspace\\Explorer";
+    public const int ExplorerSchemaVersion = 3;
+    public static object ExplorerDefaults => new Dictionary<string, object> { ["SortField"] = 0, ["SortDescending"] = false, ["ShowHiddenFiles"] = false, ["IsCompactView"] = false, ["ViewMode"] = 0, ["FileListCacheEnabled"] = false };
     public const string BrowserPath = "Workspace\\Browser";
     public const string WindowManagerPath = "Workspace\\WindowManager";
     public const string DefaultValueName = "(Default)";
@@ -21,6 +24,7 @@ public static class WorkspaceConfigurationRegistry
     {
         Ensure(registry, workspace, TerminalPath, TerminalSettingsDto.Default, updatedBy);
         Ensure(registry, workspace, DesktopPath, WorkspacePreferencesDto.Default, updatedBy);
+        Ensure(registry, workspace, ExplorerPath, ExplorerDefaults, updatedBy);
         Ensure(registry, workspace, BrowserPath, BrowserSettingsDto.Default, updatedBy);
         Ensure(registry, workspace, WindowManagerPath, WorkspaceWindowLayoutDto.Default, updatedBy);
     }

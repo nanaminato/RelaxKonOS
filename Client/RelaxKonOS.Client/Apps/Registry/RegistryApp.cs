@@ -31,21 +31,21 @@ public sealed class RegistryApp : RemoteApplicationBase
         {
             await context.ShowDialogAsync<bool>(window, LocalizedText.Get("registry.dialog.edit", "Edit Registry Value"), dialog => new RegistryValueDialogView
             {
-                DataContext = new RegistryValueDialogViewModel(row, client, dialog.Close, viewModel.ApplySaved),
+                DataContext = new RegistryValueDialogViewModel(row, client.ForUser(viewModel.SelectedKey?.TargetUserId), dialog.Close, viewModel.ApplySaved),
             }, new Size(720, 520));
         };
         viewModel.ShowNewValueDialogAsync = async (scope, path) =>
         {
             await context.ShowDialogAsync<bool>(window, LocalizedText.Get("registry.dialog.new", "New Registry Value"), dialog => new RegistryValueDialogView
             {
-                DataContext = new RegistryValueDialogViewModel(scope, path, client, dialog.Close, viewModel.ApplySaved),
+                DataContext = new RegistryValueDialogViewModel(scope, path, client.ForUser(viewModel.SelectedKey?.TargetUserId), dialog.Close, viewModel.ApplySaved),
             }, new Size(720, 520));
         };
         viewModel.ShowNewKeyDialogAsync = async (scope, parentPath) =>
         {
             await context.ShowDialogAsync<bool>(window, LocalizedText.Get("registry.menu.new_key"), dialog => new RegistryKeyDialogView
             {
-                DataContext = new RegistryKeyDialogViewModel(scope, parentPath, client, dialog.Close, viewModel.ApplyCreatedKey),
+                DataContext = new RegistryKeyDialogViewModel(scope, parentPath, client.ForUser(viewModel.SelectedKey?.TargetUserId), dialog.Close, viewModel.ApplyCreatedKey),
             });
         };
         _ = viewModel.RefreshAsync();

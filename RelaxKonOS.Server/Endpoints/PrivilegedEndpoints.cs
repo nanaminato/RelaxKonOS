@@ -27,6 +27,10 @@ public static class PrivilegedEndpoints
                 return Problem(400, "elevation-target-invalid", "目标资源无效。");
             if (request.Capability == HostElevationCapability.ProcessManage && request.Target != "host/processes")
                 return Problem(400, "elevation-target-invalid", "进程管理授权必须使用 host/processes 目标。");
+            if (request.Capability == HostElevationCapability.RegistryManage && request.Target != "registry/users"
+                && (!request.Target.StartsWith("registry/users/", StringComparison.Ordinal)
+                    || !Guid.TryParseExact(request.Target["registry/users/".Length..], "D", out _)))
+                return Problem(400, "elevation-target-invalid", "注册表授权必须指定用户。");
             var isEnvironmentCapability = request.Capability is HostElevationCapability.HostEnvironmentRead or HostElevationCapability.HostEnvironmentChange;
             if (isEnvironmentCapability)
             {

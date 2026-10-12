@@ -193,7 +193,7 @@ public static class WorkspaceEndpoints
             : null;
     }
 
-    private static bool TryNormalize(TerminalSettingsDto request, out TerminalSettingsDto settings)
+    public static bool TryNormalize(TerminalSettingsDto request, out TerminalSettingsDto settings)
     {
         settings = TerminalSettingsDto.Default;
         var fontFamily = request.FontFamily?.Trim();
@@ -239,7 +239,7 @@ public static class WorkspaceEndpoints
         && color[0] == '#'
         && color[1..].All(Uri.IsHexDigit);
 
-    private static bool TryNormalize(WorkspaceWindowLayoutDto request, out WorkspaceWindowLayoutDto layouts)
+    public static bool TryNormalize(WorkspaceWindowLayoutDto request, out WorkspaceWindowLayoutDto layouts)
     {
         layouts = WorkspaceWindowLayoutDto.Default;
         var source = request.Windows ?? Array.Empty<WindowSizeDto>();

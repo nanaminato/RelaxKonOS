@@ -29,6 +29,7 @@
     <Compile Include="../../../Client/RelaxKonOS.Client/Services/Auth/RelaxKonOSAuthException.cs" Link="RelaxKonOSAuthException.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Services/Privileged/PrivilegedHelperProblemText.cs" Link="PrivilegedHelperProblemText.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Services/UserExecution/UserExecutionProblemText.cs" Link="UserExecutionProblemText.cs" />
+    <Compile Include="../../../Client/RelaxKonOS.Client/Services/DirectoryListingCache.cs" Link="DirectoryListingCache.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Services/IUsageMemoryScope.cs" Link="IUsageMemoryScope.cs" />
   </ItemGroup>
 </Project>

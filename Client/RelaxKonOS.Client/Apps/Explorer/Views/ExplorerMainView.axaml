@@ -247,6 +247,7 @@
                                 <Separator />
                                 <MenuItem Header="{loc:Loc explorer.open_terminal}" Command="{Binding OpenTerminalCommand}" />
                                 <MenuItem Header="{loc:Loc explorer.properties}" Command="{Binding PropertiesCommand}" />
+                                <MenuItem Header="{loc:Loc explorer.cache.enabled}" ToggleType="CheckBox" IsChecked="{Binding FileListCacheEnabled, Mode=TwoWay}" />
                                 <MenuItem Header="{loc:Loc explorer.save_default_view}" Command="{Binding SaveDefaultViewCommand}" />
                                 <MenuItem Header="{loc:Loc explorer.menu.about}" Command="{Binding AboutCommand}" />
                                 <MenuItem Header="{loc:Loc explorer.menu.exit}" Command="{Binding CloseCommand}" />
