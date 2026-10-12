@@ -14,6 +14,34 @@ import org.junit.Assert.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class GuardianViewModelTest {
+    @Test fun `stopped detail read cannot restore definition or logs`() = runTest {
+        login(); runCurrent(); model.load(owner); advanceUntilIdle()
+        lateinit var reply: kotlin.coroutines.Continuation<ApiResult<List<GuardianLog>>>
+        gateway.onGuardianLogs = { kotlin.coroutines.suspendCoroutine { reply = it } }
+        model.select("job"); runCurrent()
+        model.stopObserving()
+        reply.resumeWith(Result.success(ApiResult.Success(emptyList())))
+        advanceUntilIdle()
+        assertNull(model.state.value.definition)
+        assertTrue(model.state.value.logs.isEmpty())
+        assertFalse(model.state.value.error)
+    }
+    @Test fun `stopping observation releases loading even when old read ignores cancellation`() = runTest {
+        login(); runCurrent()
+        lateinit var reply: kotlin.coroutines.Continuation<ApiResult<List<GuardianWorkload>>>
+        gateway.onGuardianWorkloads = { kotlin.coroutines.suspendCoroutine { reply = it } }
+        model.load(owner); runCurrent()
+        assertTrue(model.state.value.loading)
+        model.stopObserving(); runCurrent()
+        assertFalse(model.state.value.loading)
+        gateway.onGuardianWorkloads = { ApiResult.Success(emptyList()) }
+        model.load(owner); runCurrent()
+        reply.resumeWith(Result.success(ApiResult.Success(emptyList())))
+        advanceUntilIdle()
+        assertFalse(model.state.value.loading)
+        assertFalse(model.state.value.stale)
+        assertFalse(model.state.value.error)
+    }
     private val gateway = FakeGateway()
     private val session = AuthSession(gateway)
     private val store = ViewModelStore()

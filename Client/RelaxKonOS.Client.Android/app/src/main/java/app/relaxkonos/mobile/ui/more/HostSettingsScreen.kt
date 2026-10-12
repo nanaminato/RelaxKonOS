@@ -35,17 +35,26 @@ private class HostSettingsOwnerKey(private val owner: SessionState.Active) {
     override fun hashCode() = System.identityHashCode(owner)
 }
 @Composable
-fun HostSettingsScreen(onBack: (() -> Unit)?, onOpenServerHttps: () -> Unit = {}, modifier: Modifier = Modifier) {
+fun HostSettingsScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, onOpenServerHttps: () -> Unit = {},
+    active: Boolean = true) {
     val container = appContainer(); val owner = container.activeSession ?: return
     val scope = rememberCoroutineScope()
     val editor = remember(HostSettingsOwnerKey(owner),scope) { HostSettingsEditor(owner,container.hostSettings,{container.activeSession === owner},scope,container.elevationAnswers) }
+    HostSettingsPresentation(editor, active, onBack, onOpenServerHttps, modifier)
+}
+
+@Composable
+internal fun HostSettingsPresentation(editor: HostSettingsEditor, active: Boolean, onBack: (() -> Unit)?,
+    onOpenServerHttps: () -> Unit, modifier: Modifier = Modifier) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    DisposableEffect(editor,lifecycle) {
-        val observer = LifecycleEventObserver { _,_ -> editor.lifecycle(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
-        lifecycle.addObserver(observer); editor.lifecycle(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
-        onDispose { lifecycle.removeObserver(observer); editor.close() }
+    DisposableEffect(editor) { onDispose { editor.close() } }
+    DisposableEffect(editor,lifecycle,active) {
+        fun update() = editor.lifecycle(active && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+        val observer = LifecycleEventObserver { _,_ -> update() }
+        lifecycle.addObserver(observer); update()
+        onDispose { lifecycle.removeObserver(observer); editor.lifecycle(false) }
     }
-    HostSettingsContent(editor, onBack, onOpenServerHttps, modifier)
+    if (active) HostSettingsContent(editor, onBack, onOpenServerHttps, modifier)
 }
 
 @Composable

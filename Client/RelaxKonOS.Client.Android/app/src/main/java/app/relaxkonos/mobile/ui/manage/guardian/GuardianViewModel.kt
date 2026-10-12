@@ -42,6 +42,7 @@ class GuardianViewModel(private val session: AuthSession, private val repository
     private var owner: SessionState.Active? = null
     private var work: Job? = null
     private var reading: Job? = null
+    private var readingGeneration = 0
     private var selection: Job? = null
     private var selectionGeneration = 0
     private var observation: Job? = null
@@ -66,17 +67,30 @@ class GuardianViewModel(private val session: AuthSession, private val repository
             }
         }
     }
-    fun stopObserving() { observation?.cancel(); observation = null; reading?.cancel(); selection?.cancel(); logObserver.stop() }
+    fun stopObserving() {
+        observation?.cancel(); observation = null
+        val wasReading = reading?.isActive == true
+        readingGeneration++
+        selectionGeneration++
+        reading?.cancel(); reading = null
+        selection?.cancel(); selection = null
+        logObserver.stop()
+        if (wasReading) mutable.update {
+            it.copy(loading = false, status = null, definition = null, logs = emptyList(), stale = true)
+        }
+    }
     fun load(active: SessionState.Active, reconcile: Boolean = true) {
         if (session.state.value !== active) return
         if (owner !== active) { work?.cancel(); reading?.cancel(); selection?.cancel(); observation?.cancel(); logObserver.stop(); owner = active; editing = null; mutable.value = GuardianUiState() }
         if (mutable.value.loading) return
+        val request = ++readingGeneration
         mutable.update { it.copy(loading = true, error = !reconcile && it.error, problemCode = if (reconcile) null else it.problemCode) }
         reading = viewModelScope.launch {
             try {
                 val status = repository.status(active)
+                if (!current(active) || request != readingGeneration) return@launch
                 val workloads = repository.workloads(active)
-                if (!current(active)) return@launch
+                if (!current(active) || request != readingGeneration) return@launch
                 mutable.update { old -> old.copy(status = (status as? ApiResult.Success)?.value,
                     workloads = (workloads as? ApiResult.Success)?.value ?: old.workloads,
                     unknown = if (reconcile && status is ApiResult.Success && workloads is ApiResult.Success) false else old.unknown,
@@ -87,9 +101,9 @@ class GuardianViewModel(private val session: AuthSession, private val repository
                         ?: (status as? ApiResult.Success)?.value?.problemCode?.takeIf(String::isNotBlank)) }
                 if (workloads is ApiResult.Success && mutable.value.selectedId != null && workloads.value.none { it.id == mutable.value.selectedId }) select(null)
             } catch (cancelled: CancellationException) {
-                readFailed(active)
+                if (request == readingGeneration) readFailed(active)
                 throw cancelled
-            } finally { if (current(active)) mutable.update { it.copy(loading = false) } }
+            } finally { if (current(active) && request == readingGeneration) mutable.update { it.copy(loading = false) } }
         }
     }
     fun select(id: String?) {

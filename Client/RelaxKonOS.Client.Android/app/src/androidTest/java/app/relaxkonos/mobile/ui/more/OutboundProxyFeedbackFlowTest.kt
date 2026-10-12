@@ -1,9 +1,11 @@
 package app.relaxkonos.mobile.ui.more
 
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
@@ -17,6 +19,7 @@ import app.relaxkonos.mobile.core.auth.*
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.data.*
 import app.relaxkonos.mobile.servercenter.ServerConnectionIdentityRules
+import app.relaxkonos.mobile.ui.common.WorkspaceSection
 import android.graphics.Bitmap
 import java.io.File
 import kotlinx.coroutines.*
@@ -32,6 +35,9 @@ class OutboundProxyFeedbackFlowTest {
     private var reads = 0
     private var writes = 0
     private var cancelRead = false
+    private val active = mutableStateOf(true)
+    private var shellBacks = 0
+    private var pageBacks = 0
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     private fun text(id: Int) = context.getString(id)
     private val status = OutboundProxyStatus(
@@ -66,7 +72,11 @@ class OutboundProxyFeedbackFlowTest {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, 1.6f)) {
                 Box(Modifier.safeDrawingPadding().requiredSize(360.dp, 640.dp)) {
-                    OutboundProxyContent(owner, editor, {}, null)
+                    BackHandler { shellBacks++ }
+                    WorkspaceSection(active.value) {
+                        // Match MoreWorkspace: a retained hidden category receives no back callback.
+                        OutboundProxyContent(owner, editor, ({ pageBacks++; Unit }).takeIf { active.value }, null)
+                    }
                 }
             }
         } }
@@ -84,6 +94,32 @@ class OutboundProxyFeedbackFlowTest {
     private fun acknowledgeFeedback() {
         rule.onNodeWithText(text(R.string.common_dismiss)).performClick()
         rule.waitUntil(5_000) { rule.onAllNodesWithText(text(R.string.common_dismiss)).fetchSemanticsNodes().isEmpty() }
+    }
+    @Test fun hiddenProxyDraftDoesNotConsumeAnotherCategoriesBack() {
+        show()
+        rule.runOnIdle {
+            editor.change { it.copy(noProxy = "unsaved.invalid") }
+            assertTrue(editor.dirty)
+            active.value = false
+        }
+        rule.runOnIdle { rule.activity.onBackPressedDispatcher.onBackPressed() }
+        rule.runOnIdle {
+            assertEquals(1, shellBacks)
+            assertEquals(0, pageBacks)
+            assertNull(editor.review)
+            assertEquals("unsaved.invalid", editor.draft?.noProxy)
+            active.value = true
+        }
+        rule.runOnIdle { rule.activity.onBackPressedDispatcher.onBackPressed() }
+        rule.onNodeWithText(text(R.string.proxy_discard_title)).assertIsDisplayed()
+        rule.runOnIdle {
+            assertEquals(ProxyReview.Leave, editor.review)
+            assertEquals(1, shellBacks)
+            assertEquals(0, pageBacks)
+            assertEquals(0, writes)
+        }
+        rule.onNodeWithText(text(R.string.common_cancel)).performClick()
+        rule.runOnIdle { assertNull(editor.review); assertTrue(editor.dirty) }
     }
     @Test fun cancelledWriteShowsUnknownAndRequiresReadBeforeAnotherSubmission() {
         show()

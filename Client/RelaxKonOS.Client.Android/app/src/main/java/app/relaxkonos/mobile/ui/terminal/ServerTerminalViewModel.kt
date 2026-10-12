@@ -1,11 +1,8 @@
 package app.relaxkonos.mobile.ui.terminal
 
 import android.app.Application
-import androidx.compose.ui.input.key.*
-import androidx.compose.ui.semantics.selected
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.ui.theme.TerminalType
@@ -19,56 +16,25 @@ class ServerTerminalViewModel(application: Application) : AndroidViewModel(appli
     val state = controller.state
     val presentation = TerminalPresentation()
     private val container get() = getApplication<RelaxKonApplication>().container
-    private var settingsJob: kotlinx.coroutines.Job? = null
+    private val settingsController = TerminalSettingsController(presentation, viewModelScope,
+        { container.activeSession }, container.terminalSettings::read, container.terminalSettings::save)
     private var activeOwner: SessionState.Active? = null
     init {
         viewModelScope.launch { container.session.state.collect { state ->
             val owner = state as? SessionState.Active
             if (activeOwner !== owner) {
-                settingsJob?.cancel(); activeOwner = owner; presentation.bindOwner(owner)
+                activeOwner = owner; settingsController.bindOwner(owner)
                 controller.resetOwner()
             }
         } }
     }
     fun connect(owner: SessionState.Active) {
-        if (activeOwner !== owner) { settingsJob?.cancel(); activeOwner = owner; presentation.bindOwner(owner) }
+        if (activeOwner !== owner) { activeOwner = owner; settingsController.bindOwner(owner) }
         controller.connect(owner)
-        if (!presentation.settingsVerified && settingsJob?.isActive != true) readSettings(owner)
+        if (!presentation.settingsVerified) readSettings(owner)
     }
-    fun readSettings(owner: SessionState.Active) {
-        if (settingsJob?.isActive == true) return
-        presentation.settingsBusy = true
-        settingsJob = viewModelScope.launch {
-            try {
-                val result = container.terminalSettings.read(owner)
-                if (activeOwner !== owner) return@launch
-                presentation.settingsVerified = result is app.relaxkonos.mobile.core.net.ApiResult.Success
-                if (result is app.relaxkonos.mobile.core.net.ApiResult.Success) { presentation.settings = result.value; presentation.settingsMessage = null }
-                else presentation.settingsMessage = app.relaxkonos.mobile.ui.common.UiMessage(R.string.terminal_settings_unavailable)
-            } finally { if (activeOwner === owner) presentation.settingsBusy = false }
-        }
-    }
-    fun saveSettings(owner: SessionState.Active, value: app.relaxkonos.mobile.core.net.TerminalSettings) {
-        if (settingsJob?.isActive == true || !presentation.settingsVerified) return
-        val expected = presentation.settings
-        presentation.settingsBusy = true
-        settingsJob = viewModelScope.launch {
-            try {
-                val result = container.terminalSettings.save(owner, expected, value)
-                if (activeOwner !== owner) return@launch
-                when (result) {
-                    is app.relaxkonos.mobile.core.net.ApiResult.Success -> {
-                        presentation.settings = result.value; presentation.localFontSize = null; presentation.settingsMessage = app.relaxkonos.mobile.ui.common.UiMessage(R.string.terminal_settings_saved, tone = app.relaxkonos.mobile.ui.common.StatusTone.Success)
-                    }
-                    else -> {
-                        presentation.settingsVerified = false
-                        presentation.settingsMessage = app.relaxkonos.mobile.ui.common.UiMessage(
-                            if (result is app.relaxkonos.mobile.core.net.ApiResult.Problem && result.status < 500) R.string.terminal_settings_changed else R.string.terminal_settings_unknown)
-                    }
-                }
-            } finally { if (activeOwner === owner) presentation.settingsBusy = false }
-        }
-    }
+    fun readSettings(owner: SessionState.Active) = settingsController.read(owner)
+    fun saveSettings(owner: SessionState.Active, value: app.relaxkonos.mobile.core.net.TerminalSettings) = settingsController.save(owner, value)
     fun attach(id: String?) = controller.attach(id)
     fun send(sessionId: String?, text: String) = controller.send(sessionId, text)
     fun resize(columns: Int, rows: Int) = controller.resize(columns, rows)

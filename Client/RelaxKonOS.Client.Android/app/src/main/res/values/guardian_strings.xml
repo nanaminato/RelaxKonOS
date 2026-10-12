@@ -13,6 +13,7 @@
     <string name="guardian_boot">Enable on host boot</string>
     <string name="guardian_configuration_invalid">The executable, working directory or health check is invalid.</string>
     <string name="guardian_create">Create workload</string>
+    <string name="guardian_empty">No workloads yet. Use Create workload to add one.</string>
     <string name="guardian_definition_changed">The saved definition changed. Read the current configuration before saving.</string>
     <string name="guardian_delete_message">Delete this workload declaration?</string>
     <string name="guardian_delete_title">Delete workload</string>

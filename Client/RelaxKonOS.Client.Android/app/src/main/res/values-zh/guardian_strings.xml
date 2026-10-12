@@ -13,6 +13,7 @@
     <string name="guardian_boot">服务器启动时启用</string>
     <string name="guardian_configuration_invalid">可执行文件、工作目录或健康检查配置无效。</string>
     <string name="guardian_create">创建守护程序</string>
+    <string name="guardian_empty">暂无守护程序。点击“创建守护程序”添加。</string>
     <string name="guardian_definition_changed">已保存定义发生变化，请读取当前配置后再保存。</string>
     <string name="guardian_delete_message">删除此守护程序的配置？</string>
     <string name="guardian_delete_title">删除守护程序</string>

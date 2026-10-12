@@ -4,6 +4,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
@@ -32,6 +33,9 @@ class HostSettingsFeedbackFlowTest {
     private var queries = 0
     private var backNavigations = 0
     private var httpsNavigations = 0
+    private val active = mutableStateOf(true)
+    private var readGate: CompletableDeferred<Unit>? = null
+    private var readCancelled = false
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     private fun text(id: Int) = context.getString(id)
     private val target = HostSettingsTarget("host/time", "hostMachine", null)
@@ -49,6 +53,8 @@ class HostSettingsFeedbackFlowTest {
                     AuthTokens("test-access", "test-refresh", null, null), workspaceId = "11111111-1111-1111-1111-111111111111"))
             override suspend fun hostTime(serverUrl: String, accessToken: String): ApiResult<HostTimeSettings> {
                 if (cancelRead) throw CancellationException("private detail")
+                try { readGate?.await() }
+                catch (cancelled: CancellationException) { readCancelled = true; throw cancelled }
                 return ApiResult.Success(facts)
             }
             override suspend fun previewHostSettings(serverUrl: String, accessToken: String, kind: HostSettingKind,
@@ -76,13 +82,12 @@ class HostSettingsFeedbackFlowTest {
             ElevationRepository(gateway, session, app.container.vault, UsageMemoryStore(InMemoryUsageMemoryStorage())), journal)
         rule.runOnUiThread {
             editor = HostSettingsEditor(owner, repository, { session.state.value === owner }, scope, ElevationAnswerProvider.Declines)
-            editor.lifecycle(true)
         }
         rule.setContent { MaterialTheme {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, 1.6f)) {
                 Box(Modifier.safeDrawingPadding().requiredSize(360.dp, 640.dp)) {
-                    HostSettingsContent(editor, { backNavigations++ }, { httpsNavigations++ })
+                    HostSettingsPresentation(editor, active.value, { backNavigations++ }, { httpsNavigations++ })
                 }
             }
         } }
@@ -93,6 +98,38 @@ class HostSettingsFeedbackFlowTest {
     private fun acknowledge() {
         button(R.string.common_dismiss).performClick()
         rule.waitUntil(5_000) { rule.onAllNodesWithText(text(R.string.common_dismiss)).fetchSemanticsNodes().isEmpty() }
+    }
+    @Test fun hiddenCategoryClearsDraftAndConfirmationAndCanReadAgain() {
+        show()
+        rule.onNode(hasSetTextAction()).performScrollTo().performTextReplacement("Asia/Tokyo")
+        button(R.string.server_https_title).performScrollTo().performClick()
+        rule.waitUntil(5_000) { editor.leaveReview }
+        rule.runOnIdle { active.value = false }
+        rule.waitUntil(5_000) { !editor.resumed }
+        rule.runOnIdle {
+            assertNull(editor.time); assertNull(editor.environment)
+            assertEquals("", editor.value); assertEquals("", editor.name)
+            assertFalse(editor.leaveReview); assertFalse(editor.canPreview)
+            assertFalse(editor.busy); assertEquals(0, writes)
+        }
+        rule.onAllNodesWithText(text(R.string.host_settings_discard)).assertCountEquals(0)
+        rule.runOnIdle { active.value = true }
+        rule.waitUntil(5_000) { editor.resumed && editor.time != null && !editor.busy }
+        rule.runOnIdle {
+            assertEquals("UTC", editor.value)
+            assertEquals(0, httpsNavigations); assertEquals(0, backNavigations)
+        }
+    }
+    @Test fun hidingCategoryCancelsPendingReadAndReturnStartsFreshRead() {
+        show()
+        val gate = CompletableDeferred<Unit>()
+        rule.runOnIdle { readGate = gate; editor.load() }
+        rule.waitUntil(5_000) { editor.busy && editor.time == null }
+        rule.runOnIdle { active.value = false }
+        rule.waitUntil(5_000) { readCancelled && !editor.resumed && !editor.busy }
+        rule.runOnIdle { assertNull(editor.time); assertFalse(editor.canPreview); readGate = null; active.value = true }
+        rule.waitUntil(5_000) { editor.resumed && editor.time != null && !editor.busy }
+        rule.runOnIdle { assertEquals("UTC", editor.value); assertEquals(0, writes) }
     }
     @Test fun discardConfirmationKeepsTheRequestedHttpsDestination() {
         show()

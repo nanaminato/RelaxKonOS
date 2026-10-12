@@ -257,7 +257,7 @@ private fun MoreDestination(
     val route = navigator.route
     val openFeature: (String) -> Unit = { target ->
         if (target.startsWith("more/")) {
-            navigator.replaceTop(target)
+            navigator.openSettings(target)
         } else {
             clearTaskTarget()
             val destination = target.substringBefore('/')
@@ -279,7 +279,9 @@ private fun MoreDestination(
                 if (route == Routes.MORE) {
                     EmptyHint(stringResource(R.string.more_select_section), Modifier.padding(16.dp))
                 } else {
-                    SettingsWorkspace(route = route, onOpenRoute = openFeature, onBack = null, onSwitchLogin = onSwitchLogin, onOpenManagedProxy = onOpenManagedProxy)
+                    SettingsWorkspace(route = route, onOpenRoute = openFeature,
+                        onBack = if (route == Routes.MORE_SERVER_HTTPS) ({ navigator.pop(); Unit }) else null,
+                        onSwitchLogin = onSwitchLogin, onOpenManagedProxy = onOpenManagedProxy)
                 }
             }
         }
@@ -300,7 +302,7 @@ private fun MoreDestination(
 
 /** One settings page, rendered either as a pushed page ([onBack] non-null) or as a pane. */
 @Composable
-private fun MorePane(route: String, onOpenRoute: (String) -> Unit, onBack: (() -> Unit)?, onSwitchLogin: (SavedLogin?) -> Unit, onOpenManagedProxy: () -> Unit) {
+private fun MorePane(route: String, active: Boolean, onOpenRoute: (String) -> Unit, onBack: (() -> Unit)?, onSwitchLogin: (SavedLogin?) -> Unit, onOpenManagedProxy: () -> Unit) {
     val moreContainer = app.relaxkonos.mobile.ui.common.appContainer()
     when (route) {
         Routes.MORE_ACCOUNT_SECURITY -> AccountSecurityScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
@@ -314,8 +316,8 @@ private fun MorePane(route: String, onOpenRoute: (String) -> Unit, onBack: (() -
         Routes.MORE_HELP -> app.relaxkonos.mobile.ui.more.HelpScreen(onBack = onBack, onOpenRoute = onOpenRoute,
             onOpenServerCenter = { moreContainer.serverCenter.open() }, modifier = Modifier.fillMaxSize())
         Routes.MORE_SERVER_HTTPS -> CertificatesScreen(onBack = { onBack?.invoke() }, serverHttpsOnly = true, modifier = Modifier.fillMaxSize())
-        Routes.MORE_HOST_SETTINGS -> app.relaxkonos.mobile.ui.more.HostSettingsScreen(onBack = onBack, onOpenServerHttps = { onOpenRoute(Routes.MORE_SERVER_HTTPS) }, modifier = Modifier.fillMaxSize())
-        Routes.MORE_ABOUT -> AboutScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
+        Routes.MORE_HOST_SETTINGS -> app.relaxkonos.mobile.ui.more.HostSettingsScreen(onBack = onBack, onOpenServerHttps = { onOpenRoute(Routes.MORE_SERVER_HTTPS) }, modifier = Modifier.fillMaxSize(), active = active)
+        Routes.MORE_ABOUT -> AboutScreen(onBack = onBack, modifier = Modifier.fillMaxSize(), active = active)
         else -> EmptyHint(stringResource(R.string.more_select_section))
     }
 }
@@ -353,7 +355,7 @@ private fun SettingsWorkspace(route: String, onOpenRoute: (String) -> Unit, onBa
         androidx.compose.runtime.key(appContainer().activeSession) { Box(Modifier.weight(1f)) {
             pages.forEach { page -> androidx.compose.runtime.key(page.id) {
                 WorkspaceSection(route == page.id, Modifier.fillMaxSize()) {
-                    MorePane(page.id, onOpenRoute, onBack.takeIf { route == page.id }, onSwitchLogin, onOpenManagedProxy)
+                    MorePane(page.id, route == page.id, onOpenRoute, onBack.takeIf { route == page.id }, onSwitchLogin, onOpenManagedProxy)
                 }
             } }
         } }

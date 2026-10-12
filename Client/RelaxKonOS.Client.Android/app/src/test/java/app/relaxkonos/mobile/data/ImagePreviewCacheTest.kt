@@ -72,6 +72,22 @@ class ImagePreviewCacheTest {
         assertNull(cache.cached("https://host", "C:\\pics\\a.png", 10, 20))
     }
 
+    @Test fun `same length without modification time cannot establish an unchanged image`() {
+        cache.create("host", "/picture.png", 4, null).let { target ->
+            target.file.writeBytes(byteArrayOf(1, 2, 3, 4)); target.commit(4)
+        }
+        assertNull(cache.cached("host", "/picture.png", 4, null))
+        assertNull(cache.cached("host", "/picture.png", null, null))
+    }
+
+    @Test fun `same image path and revision in another workspace cannot reuse cached bytes`() {
+        cache.create("host\u0000alice\u0000workspace-one", "/picture.png", 4, 20).let { target ->
+            target.file.writeBytes(byteArrayOf(1, 2, 3, 4)); target.commit(4)
+        }
+        assertNotNull(cache.cached("host\u0000alice\u0000workspace-one", "/picture.png", 4, 20))
+        assertNull(cache.cached("host\u0000alice\u0000workspace-two", "/picture.png", 4, 20))
+    }
+
     @Test
     fun `a complete copy is reused`() {
         val bytes = byteArrayOf(1, 2, 3, 4)

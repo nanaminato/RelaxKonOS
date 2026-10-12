@@ -13,6 +13,7 @@
     <string name="guardian_boot">ホスト起動時に有効</string>
     <string name="guardian_configuration_invalid">実行ファイル、作業ディレクトリまたはヘルスチェックが無効です。</string>
     <string name="guardian_create">処理を作成</string>
+    <string name="guardian_empty">処理はまだありません。「処理を作成」から追加できます。</string>
     <string name="guardian_definition_changed">保存済み定義が変更されました。現在の設定を読み込んでから保存してください。</string>
     <string name="guardian_delete_message">この処理の定義を削除しますか？</string>
     <string name="guardian_delete_title">処理を削除</string>

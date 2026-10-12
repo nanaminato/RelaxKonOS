@@ -122,7 +122,7 @@ class FakeGateway : RelaxKonGateway {
     var onAlertDetail: ((String) -> ApiResult<OperationalAlertDetail>)? = null
     override suspend fun alertDetail(serverUrl: String, accessToken: String, id: String) = onAlertDetail?.invoke(id) ?: error("Unexpected alert detail")
     var onFirewallStatus: (() -> ApiResult<FirewallStatus>)? = null
-    var onFirewallRules: (() -> ApiResult<List<FirewallRule>>)? = null
+    var onFirewallRules: (suspend () -> ApiResult<List<FirewallRule>>)? = null
     var onChangeFirewall: ((FirewallChange) -> ApiResult<FirewallResult>)? = null
     override suspend fun firewallStatus(serverUrl: String, accessToken: String) = onFirewallStatus?.invoke() ?: error("Unexpected firewall status")
     override suspend fun firewallRules(serverUrl: String, accessToken: String) = onFirewallRules?.invoke() ?: error("Unexpected firewall rules")

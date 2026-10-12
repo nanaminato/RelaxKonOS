@@ -32,9 +32,10 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 fun AboutScreen(
     onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    active: Boolean = true,
 ) {
     var showLicenses by rememberSaveable { mutableStateOf(false) }
-    BackHandler(enabled = showLicenses) { showLicenses = false }
+    BackHandler(enabled = active && showLicenses) { showLicenses = false }
     if (showLicenses) {
         LicenseNoticesScreen(onBack = { showLicenses = false }, modifier = modifier)
         return

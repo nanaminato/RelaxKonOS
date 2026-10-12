@@ -94,6 +94,29 @@ class CertificateCancellationFlowTest {
         rule.onNodeWithText(text(R.string.certificates_submit)).performClick()
         rule.onAllNodesWithText(text(R.string.certificates_confirm)).filter(hasClickAction()).onFirst().performClick()
     }
+    private fun verifyChallengeDetails(kind: CertificateKind) {
+        val certificate = ManagedCertificate(requireNotNull(receipt.certificateId), "host.example.test", listOf("host.example.test"),
+            CertificateStatus.Active, CertificateChallenge.Dns01, 4102444800000L, null, null, null, 0,
+            CertificateKey.EcdsaP256, 4070908800000L, 4102444800000L, null, null, 0, 0, kind, "review-fingerprint")
+        show(certificate = certificate)
+        rule.onAllNodesWithText(text(R.string.workspace_certificates)).filter(hasClickAction()).onFirst().performClick()
+        rule.runOnIdle { model.select(certificate.id) }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.detail is ApiResult.Success }
+        rule.onAllNodesWithText(text(R.string.certificates_status_active)).onFirst().assertExists()
+        val challenge = rule.onNodeWithText(text(R.string.certificates_challenge_dns))
+        val start = rule.onNodeWithText(text(R.string.certificates_renewal_start).substringBefore('%'), substring = true)
+        val end = rule.onNodeWithText(text(R.string.certificates_renewal_end).substringBefore('%'), substring = true)
+        if (kind == CertificateKind.SelfSigned) {
+            challenge.assertDoesNotExist(); start.assertDoesNotExist(); end.assertDoesNotExist()
+            rule.onNodeWithText(text(R.string.certificates_self_signed_note)).performScrollTo().assertIsDisplayed()
+        } else {
+            challenge.performScrollTo().assertIsDisplayed()
+            start.performScrollTo().assertIsDisplayed(); end.performScrollTo().assertIsDisplayed()
+        }
+        rule.runOnIdle { assertEquals(0, writes) }
+    }
+    @Test fun selfSignedDetailOmitsAcmeChallengeAndRenewalWindows() = verifyChallengeDetails(CertificateKind.SelfSigned)
+    @Test fun acmeDetailRetainsChallengeAndRenewalWindows() = verifyChallengeDetails(CertificateKind.Acme)
     @Test fun changedDraftWithdrawsSubmissionConfirmation() {
         show()
         rule.onAllNodesWithText(text(R.string.workspace_certificates)).filter(hasClickAction()).onFirst().performClick()

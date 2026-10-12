@@ -124,6 +124,9 @@ internal fun GuardianContent(owner: SessionState.Active, onBack: () -> Unit, mod
             Button(onClick = { model.beginEdit(GuardianDefinition(UUID.randomUUID().toString(), "", "", emptyList(), "", false, 15, 3, null, owner.userName, null), true) },
                 enabled = state.status?.running == true && !state.loading && !state.unknown && !state.stale) { Text(stringResource(R.string.guardian_create)) }
         })
+        if (state.workloads.isEmpty() && state.selectedId == null && !state.loading && !state.stale && !state.error && !state.unknown) {
+            app.relaxkonos.mobile.ui.common.EmptyHint(stringResource(R.string.guardian_empty))
+        }
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             if (maxWidth >= 840.dp && maxHeight >= 240.dp) {
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {

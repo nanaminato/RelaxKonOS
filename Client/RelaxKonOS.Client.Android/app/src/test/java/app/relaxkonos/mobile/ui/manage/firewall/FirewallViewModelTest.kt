@@ -81,4 +81,21 @@ class FirewallViewModelTest {
         assertEquals("firewall.unverified", model.state.problem)
         assertEquals(listOf(pending), model.state.pending); assertEquals(1, reads)
     }
+    @Test fun `stopped read cannot republish old facts after a new refresh`() = runTest {
+        login(); runCurrent()
+        lateinit var reply: kotlin.coroutines.Continuation<ApiResult<List<FirewallRule>>>
+        gateway.onFirewallRules = { kotlin.coroutines.suspendCoroutine { reply = it } }
+        model.refresh(); runCurrent()
+        assertTrue(model.state.busy)
+        model.stop()
+        val latest = status.copy(defaultIncomingPolicy = "allow")
+        gateway.onFirewallStatus = { ApiResult.Success(latest) }
+        gateway.onFirewallRules = { ApiResult.Success(emptyList()) }
+        model.refresh(); runCurrent()
+        reply.resumeWith(Result.success(ApiResult.Success(emptyList())))
+        advanceUntilIdle()
+        assertEquals(latest, model.state.facts?.status)
+        assertFalse(model.state.busy)
+        assertNull(model.state.problem)
+    }
 }

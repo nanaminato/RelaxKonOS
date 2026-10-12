@@ -57,7 +57,10 @@ internal fun CertificatesContent(model: CertificatesViewModel, owner: SessionSta
     BackHandler(section == "certificates" && state.selectedId != null && state.draft == null && !state.busy) { model.select(null) }
     WorkspaceColumn(stringResource(if (serverHttpsOnly) R.string.server_https_title else R.string.certificates_title), onBack, listOf(*(if (serverHttpsOnly) emptyArray() else arrayOf(WorkspaceDestination("overview", R.string.workspace_overview))), WorkspaceDestination("certificates", R.string.workspace_certificates), WorkspaceDestination("operations", R.string.workspace_operations)), section, { section = it }, modifier, stateKey = owner to epoch) {
         if (!available) { Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn }
-        Text(stringResource(if (serverHttpsOnly) R.string.server_https_description else R.string.certificates_https_location), style = MaterialTheme.typography.bodySmall)
+        Text(if (serverHttpsOnly) stringResource(R.string.server_https_description) else stringResource(
+            R.string.certificates_https_location,
+            stringResource(R.string.more_title), stringResource(R.string.host_settings_title), stringResource(R.string.server_https_title),
+        ), style = MaterialTheme.typography.bodySmall)
         PageActionRow(refresh = {
             TextButton(onClick = model::refresh, enabled = !state.busy) { ActionLabel(R.string.common_refresh) }
         }, actions = {
@@ -169,7 +172,7 @@ private fun CertificateDetail(state: CertificatesState, model: CertificatesViewM
     Text(certificate.subjectAlternativeNames.joinToString(", "))
     Text(certificateStatusLabel(certificate.status))
     Text(stringResource(if (certificate.kind == CertificateKind.SelfSigned) R.string.certificates_self_signed_note else R.string.certificates_acme))
-    Text(certificateChallengeLabel(certificate.challengeType))
+    if (certificate.kind == CertificateKind.Acme) Text(certificateChallengeLabel(certificate.challengeType))
     Text(certificateKeyLabel(certificate.keyAlgorithm))
     certificate.issuer?.let { Text(stringResource(R.string.certificates_issuer, it)) }
     certificate.serialNumber?.let { Text(stringResource(R.string.certificates_serial, it)) }
@@ -181,8 +184,10 @@ private fun CertificateDetail(state: CertificatesState, model: CertificatesViewM
         if (expiry <= System.currentTimeMillis()) Text(stringResource(R.string.certificates_expired_warning), color = MaterialTheme.colorScheme.error)
         else if (expiry - System.currentTimeMillis() <= 30L * 86400000) Text(stringResource(R.string.certificates_expiring_warning), color = MaterialTheme.colorScheme.error)
     }
-    certificate.renewalWindowStartMillis?.let { Text(stringResource(R.string.certificates_renewal_start, date(it))) }
-    certificate.renewalWindowEndMillis?.let { Text(stringResource(R.string.certificates_renewal_end, date(it))) }
+    if (certificate.kind == CertificateKind.Acme) {
+        certificate.renewalWindowStartMillis?.let { Text(stringResource(R.string.certificates_renewal_start, date(it))) }
+        certificate.renewalWindowEndMillis?.let { Text(stringResource(R.string.certificates_renewal_end, date(it))) }
+    }
     certificate.lastRenewalAtMillis?.let { Text(stringResource(R.string.certificates_last_renewal, date(it))) }
     certificate.lastRenewalProblemCode?.takeIf(String::isNotBlank)?.let { Text(certificateProblemLabel(it), color = MaterialTheme.colorScheme.error) }
     RenewalHistory(certificate)

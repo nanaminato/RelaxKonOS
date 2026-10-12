@@ -64,5 +64,8 @@ internal class FirewallViewModel(private val session: AuthSession, private val f
         }
     }
     private fun current(owner: SessionState.Active, request: Int) = state.owner === owner && session.state.value === owner && generation == request
-    private fun verify(owner: SessionState.Active) { if (state.owner !== owner || session.state.value !== owner) throw CancellationException("Firewall session changed") }
+    private suspend fun verify(owner: SessionState.Active) {
+        currentCoroutineContext().ensureActive()
+        if (state.owner !== owner || session.state.value !== owner) throw CancellationException("Firewall session changed")
+    }
 }

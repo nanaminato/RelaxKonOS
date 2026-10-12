@@ -19,6 +19,31 @@ import org.junit.Test
  */
 class MobileNavigatorTest {
     @Test
+    fun `HTTPS returns to host settings and repeated opening does not nest`() {
+        val navigator = MobileNavigator(Routes.MORE)
+        navigator.openSettings(Routes.MORE_HOST_SETTINGS)
+        navigator.openSettings(Routes.MORE_SERVER_HTTPS)
+        navigator.openSettings(Routes.MORE_SERVER_HTTPS)
+        assertTrue(navigator.pop())
+        assertEquals(Routes.MORE_HOST_SETTINGS, navigator.route)
+        assertTrue(navigator.pop())
+        assertEquals(Routes.MORE, navigator.route)
+    }
+
+    @Test
+    fun `switching settings category from HTTPS discards its parent stack`() {
+        val navigator = MobileNavigator(Routes.MORE)
+        navigator.openSettings(Routes.MORE_HOST_SETTINGS)
+        navigator.openSettings(Routes.MORE_SERVER_HTTPS)
+        navigator.openSettings(Routes.MORE_HELP)
+        navigator.select(Routes.HOME)
+        navigator.select(Routes.MORE)
+        assertEquals(Routes.MORE_HELP, navigator.route)
+        assertTrue(navigator.pop())
+        assertEquals(Routes.MORE, navigator.route)
+    }
+
+    @Test
     fun `settings categories return directly to their directory`() {
         val navigator = MobileNavigator(Routes.MORE)
         navigator.push(Routes.MORE_APPEARANCE)

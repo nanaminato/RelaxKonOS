@@ -60,6 +60,17 @@ class MobileNavigator(initialDestination: String) {
         this.route = route
     }
 
+    /** HTTPS belongs to host settings; other settings pages are peer categories. */
+    fun openSettings(target: String) {
+        if (target == route) return
+        if (target == Routes.MORE_SERVER_HTTPS && route == Routes.MORE_HOST_SETTINGS) {
+            push(target)
+        } else {
+            popToDestinationRoot()
+            push(target)
+        }
+    }
+
     /** Pops one sub-route. Returns false when the destination is already at its root. */
     fun pop(): Boolean {
         val stack = stackOf(currentDestination)

@@ -109,7 +109,7 @@ fun FileImagePreview(viewModel: FilesViewModel, modifier: Modifier = Modifier) {
     ) {
         val preview = viewModel.preview
         PreviewFrame(viewModel, entry, preview)
-        PreviewActions(viewModel, preview)
+        PreviewActions(preview, viewModel::openViewer, viewModel::reloadPreview)
     }
 }
 
@@ -177,14 +177,14 @@ private fun PreviewFrame(viewModel: FilesViewModel, entry: RemoteEntry, preview:
 }
 
 /**
- * The only action the preview has: opening the file full-screen, which re-reads the same cached bytes
- * at the screen's size instead of fetching them again.
+ * Preview actions offer explicit retry or authorization after failure, or open cached bytes full-screen,
+ * decoded at the screen's size instead of fetching them again.
  */
 @Composable
-private fun PreviewActions(viewModel: FilesViewModel, preview: ImagePreview) {
+internal fun PreviewActions(preview: ImagePreview, onOpen: () -> Unit, onReload: (Boolean) -> Unit) {
     when (preview) {
         is ImagePreview.Ready -> TextButton(
-            onClick = viewModel::openViewer,
+            onClick = onOpen,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(stringResource(R.string.files_preview_open))
@@ -196,11 +196,11 @@ private fun PreviewActions(viewModel: FilesViewModel, preview: ImagePreview) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (preview.needsElevation) {
-                Button(onClick = { viewModel.reloadPreview(authorize = true) }) {
+                Button(onClick = { onReload(true) }) {
                     Text(stringResource(R.string.files_preview_authorize))
                 }
             } else {
-                TextButton(onClick = { viewModel.reloadPreview(authorize = false) }) {
+                TextButton(onClick = { onReload(false) }) {
                     ActionLabel(R.string.common_retry)
                 }
             }
@@ -339,7 +339,7 @@ fun ImagePreviewViewer(viewModel: FilesViewModel) {
                         is ImagePreview.Downloading -> DownloadProgress(preview)
                         is ImagePreview.Unavailable -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(preview.message.text(), modifier = Modifier.padding(Spacing.md))
-                            PreviewActions(viewModel, preview)
+                            PreviewActions(preview, viewModel::openViewer, viewModel::reloadPreview)
                         }
                         ImagePreview.Hidden -> ActivityIndicator(stringResource(R.string.common_loading))
                     }

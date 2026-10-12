@@ -3,6 +3,8 @@ package app.relaxkonos.mobile.ui.manage.firewall
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.ViewModelStore
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
@@ -25,6 +27,10 @@ class FirewallCancellationFlowTest {
     private lateinit var model: FirewallViewModel
     private var cancelRead = false
     private var writes = 0
+    private val visible = mutableStateOf(true)
+    private var delayRules = false
+    private var pendingRules: kotlin.coroutines.Continuation<ApiResult<List<FirewallRule>>>? = null
+    private var currentStatus = FirewallStatus(true, false, "ufw", null, "deny", "allow", "")
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     private fun text(id: Int) = context.getString(id)
     private class Storage : InstallationRequestStorage {
@@ -41,9 +47,11 @@ class FirewallCancellationFlowTest {
                     AuthTokens("test-access", "test-refresh", null, null), workspaceId = "11111111-1111-1111-1111-111111111111"))
             override suspend fun firewallStatus(serverUrl: String, accessToken: String): ApiResult<FirewallStatus> {
                 if (cancelRead) throw CancellationException("private cancelled read")
-                return ApiResult.Success(facts.status)
+                return ApiResult.Success(currentStatus)
             }
-            override suspend fun firewallRules(serverUrl: String, accessToken: String): ApiResult<List<FirewallRule>> = ApiResult.Success(emptyList())
+            override suspend fun firewallRules(serverUrl: String, accessToken: String): ApiResult<List<FirewallRule>> =
+                if (delayRules) kotlin.coroutines.suspendCoroutine { pendingRules = it }
+                else ApiResult.Success(emptyList())
             override suspend fun changeFirewall(serverUrl: String, accessToken: String, change: FirewallChange): ApiResult<FirewallResult> {
                 writes++; throw CancellationException("private cancelled write")
             }
@@ -56,7 +64,9 @@ class FirewallCancellationFlowTest {
             model = FirewallViewModel(session, FirewallRepository(gateway, session, elevation, FirewallMutationJournal(Storage())), ElevationAnswerProvider.Declines)
             store.put("firewall", model)
         }
-        rule.setContent { MaterialTheme { FirewallContent(model, owner, {}) } }
+        rule.setContent { MaterialTheme {
+            if (visible.value) FirewallContent(model, owner, {}) else Text("Other page")
+        } }
         rule.waitUntil(5_000) { model.state.facts != null && !model.state.busy }
     }
     @After fun cleanup() { rule.runOnUiThread { store.clear() } }
@@ -77,6 +87,29 @@ class FirewallCancellationFlowTest {
         rule.waitUntil(5_000) { !model.state.busy && model.state.facts != null }
         rule.onNodeWithText(text(R.string.firewall_enable)).performScrollTo().assertIsEnabled()
         rule.runOnIdle { assertEquals(0, writes) }
+    }
+    @Test fun leavingAndReopeningRejectsNonCooperativeOldRead() {
+        show()
+        rule.runOnIdle { delayRules = true }
+        refresh()
+        rule.waitUntil(5_000) { pendingRules != null }
+        rule.runOnIdle { visible.value = false }
+        rule.onNodeWithText("Other page").assertIsDisplayed()
+        rule.runOnIdle {
+            assertNull(model.state.facts)
+            delayRules = false
+            currentStatus = currentStatus.copy(defaultIncomingPolicy = "allow")
+            visible.value = true
+        }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.facts?.status == currentStatus }
+        rule.runOnUiThread { pendingRules!!.resumeWith(Result.success(ApiResult.Success(emptyList()))) }
+        rule.waitForIdle()
+        rule.onNodeWithText(text(R.string.firewall_enable)).performScrollTo().assertIsEnabled()
+        rule.runOnIdle {
+            assertEquals(currentStatus, model.state.facts?.status)
+            assertNull(model.state.problem)
+            assertEquals(0, writes)
+        }
     }
     @Test fun cancelledChangeRetainsMarkerAndRefreshDoesNotReplayWrite() {
         show()

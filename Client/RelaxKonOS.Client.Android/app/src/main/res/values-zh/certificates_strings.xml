@@ -49,7 +49,7 @@
     <string name="certificates_expires">到期：%1$s</string>
     <string name="certificates_expiring_warning">将在 30 天内到期，请核对续期与关联部署。</string>
     <string name="certificates_fingerprint">SHA-256：%1$s</string>
-    <string name="certificates_https_location">更换服务器证书请前往设置 → 系统 → 服务器 HTTPS。</string>
+    <string name="certificates_https_location">更换服务器证书请前往%1$s → %2$s → %3$s。</string>
     <string name="certificates_intro">管理服务端证书元数据，私钥和 PEM 留在服务器。</string>
     <string name="certificates_issue">申请 ACME 证书</string>
     <string name="certificates_issuer">签发方：%1$s</string>
@@ -123,7 +123,7 @@
     <string name="certificates_state_queued">排队中</string>
     <string name="certificates_state_running">执行中</string>
     <string name="certificates_state_succeeded">已成功</string>
-    <string name="certificates_status_active">已启用</string>
+    <string name="certificates_status_active">有效</string>
     <string name="certificates_status_expired">已到期</string>
     <string name="certificates_status_failed">失败</string>
     <string name="certificates_status_issued">已签发</string>

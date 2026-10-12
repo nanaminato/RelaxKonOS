@@ -2,7 +2,10 @@ package app.relaxkonos.mobile.ui.manage.guardian
 
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.Lifecycle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
@@ -22,6 +25,9 @@ class GuardianCancellationFlowTest {
     private lateinit var owner: SessionState.Active
     private var cancelRead = false
     private var failDefinition = false
+    private val visible = mutableStateOf(true)
+    private var delayWorkloads = false
+    private var pendingWorkloads: kotlin.coroutines.Continuation<ApiResult<List<GuardianWorkload>>>? = null
     private val definition = GuardianDefinition("job", "Job", "/bin/job", emptyList(), "/tmp", false, 15, 3, null, "review", "uid:1000")
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     private fun text(id: Int) = context.getString(id)
@@ -37,7 +43,9 @@ class GuardianCancellationFlowTest {
                 if (cancelRead) throw CancellationException("private guardian detail")
                 return ApiResult.Success(GuardianStatus(true, true, "", "test"))
             }
-            override suspend fun guardianWorkloads(serverUrl: String, accessToken: String): ApiResult<List<GuardianWorkload>> = ApiResult.Success(emptyList())
+            override suspend fun guardianWorkloads(serverUrl: String, accessToken: String): ApiResult<List<GuardianWorkload>> =
+                if (delayWorkloads) kotlin.coroutines.suspendCoroutine { pendingWorkloads = it }
+                else ApiResult.Success(emptyList())
             override suspend fun guardianDefinition(serverUrl: String, accessToken: String, id: String): ApiResult<GuardianDefinitionResult> =
                 if (failDefinition) ApiResult.Transport(null) else ApiResult.Success(GuardianDefinitionResult(true, "", definition))
         }
@@ -45,11 +53,14 @@ class GuardianCancellationFlowTest {
         runBlocking { session.login(ServerConnectionIdentityRules.direct("https://guardian-review.invalid"), "review", "test".toCharArray()) {} }
         owner = session.state.value as SessionState.Active
         rule.runOnUiThread { model = GuardianViewModel(session, GuardianRepository(gateway, session)); store.put("guardian", model) }
-        rule.setContent { MaterialTheme { GuardianContent(owner, {}, model) } }
+        rule.setContent { MaterialTheme {
+            if (visible.value) GuardianContent(owner, {}, model) else Text("Other page")
+        } }
         rule.waitUntil(5_000) { !model.state.value.loading && !model.state.value.stale }
     }
     @Test fun cancelledRefreshDisablesCreationAndExplicitRefreshRecovers() {
         show()
+        rule.onNodeWithText(text(R.string.guardian_empty)).assertIsDisplayed()
         rule.onNodeWithText(text(R.string.guardian_create)).assertIsEnabled()
         rule.runOnIdle { cancelRead = true }
         rule.onNodeWithText(text(R.string.common_refresh)).performClick()
@@ -58,6 +69,7 @@ class GuardianCancellationFlowTest {
         rule.onNodeWithText("private guardian detail", substring = true).assertDoesNotExist()
         rule.onNodeWithText(text(R.string.common_dismiss)).performClick()
         rule.onNodeWithText(text(R.string.guardian_stale)).assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.guardian_empty)).assertDoesNotExist()
         rule.onNodeWithText(text(R.string.guardian_create)).assertIsNotEnabled()
         rule.runOnIdle { cancelRead = false; model.load(owner, reconcile = false) }
         rule.waitUntil(5_000) { !model.state.value.loading }
@@ -67,6 +79,43 @@ class GuardianCancellationFlowTest {
         rule.onNodeWithText(text(R.string.common_refresh)).performClick()
         rule.waitUntil(5_000) { !model.state.value.loading && !model.state.value.stale }
         rule.onNodeWithText(text(R.string.guardian_create)).assertIsEnabled()
+        rule.onNodeWithText(text(R.string.guardian_empty)).assertIsDisplayed()
+    }
+    @Test fun leavingDuringNonCooperativeReadAllowsFreshPageToRecover() {
+        show()
+        rule.runOnIdle { delayWorkloads = true }
+        rule.onNodeWithText(text(R.string.common_refresh)).performClick()
+        rule.waitUntil(5_000) { pendingWorkloads != null }
+        rule.runOnIdle { visible.value = false }
+        rule.onNodeWithText("Other page").assertIsDisplayed()
+        rule.runOnIdle {
+            org.junit.Assert.assertFalse(model.state.value.loading)
+            org.junit.Assert.assertNull(model.state.value.status)
+            delayWorkloads = false
+            visible.value = true
+        }
+        rule.waitUntil(5_000) { model.state.value.loading }
+        rule.runOnUiThread { pendingWorkloads!!.resumeWith(Result.success(ApiResult.Success(emptyList()))) }
+        rule.waitUntil(5_000) { !model.state.value.loading && !model.state.value.stale }
+        rule.onNodeWithText(text(R.string.guardian_create)).assertIsEnabled()
+        rule.onNodeWithText(text(R.string.common_dismiss)).assertDoesNotExist()
+        rule.runOnIdle { org.junit.Assert.assertFalse(model.state.value.error) }
+    }
+    @Test fun pausedActivityRevokesReadAndResumingRestoresCreation() {
+        show()
+        rule.runOnIdle { delayWorkloads = true }
+        rule.onNodeWithText(text(R.string.common_refresh)).performClick()
+        rule.waitUntil(5_000) { pendingWorkloads != null }
+        rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+        rule.waitUntil(5_000) { !model.state.value.loading && model.state.value.status == null }
+        rule.runOnUiThread { delayWorkloads = false }
+        rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        rule.waitUntil(5_000) { model.state.value.loading }
+        rule.runOnUiThread { pendingWorkloads!!.resumeWith(Result.success(ApiResult.Success(emptyList()))) }
+        rule.waitUntil(5_000) { !model.state.value.loading && !model.state.value.stale }
+        rule.onNodeWithText(text(R.string.guardian_create)).assertIsEnabled()
+        rule.onNodeWithText(text(R.string.common_dismiss)).assertDoesNotExist()
+        rule.runOnIdle { org.junit.Assert.assertFalse(model.state.value.error) }
     }
     @Test fun failedEditorReadDisablesSaveUntilActualReadButtonRecovers() {
         show()

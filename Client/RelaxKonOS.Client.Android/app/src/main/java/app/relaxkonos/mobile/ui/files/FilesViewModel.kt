@@ -902,6 +902,8 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Invalidates whatever is loading and stops it from publishing anything further. */
     private fun cancelPreview() {
+        // Revoke publication before cancellation can resume a suspended request.
+        previewGeneration++
         previewJob?.cancel()
         previewJob = null
         previewUpgradeJob?.cancel()
@@ -910,7 +912,6 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         // of the previous selection has no meaning for the new one.
         thumbnailJob?.cancel()
         thumbnailJob = null
-        previewGeneration++
     }
 
     /**
@@ -922,27 +923,20 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     private fun loadPreview(entry: RemoteEntry, authorize: Boolean) {
         val generation = previewGeneration
         val owner = container.activeSession ?: return
-        val scope = "${owner.serviceId}\u0000${owner.userName}"
+        val scope = "${owner.serviceId}\u0000${owner.userName}\u0000${owner.workspaceId}"
+        val request = ImagePreviewRequest(
+            isCurrent = { generation == previewGeneration && container.activeSession === owner },
+            onFailure = { preview = ImagePreview.Unavailable(UiMessage(R.string.files_preview_failed), false) },
+        )
         previewJob = viewModelScope.launch {
-            try {
-            // Reading the cache is stat calls and, on a miss, a directory listing followed by an
-            // eviction pass. None of that belongs on the main thread, for the same reason the download
-            // destination is not created there.
-            val cached = withContext(Dispatchers.IO) {
-                container.imagePreviews.cached(scope, entry.path, entry.sizeBytes, entry.modifiedAtMillis)
-            }
-            // Only when a transfer is actually coming. A picture that is already in the cache decodes in
-            // milliseconds, and asking the server for a copy of it that cannot improve on that would be
-            // a request, a read and a render spent on a frame nobody would have noticed.
-            if (generation != previewGeneration || container.activeSession !== owner) return@launch
-            if (cached == null) {
-                prefetchThumbnail(entry, generation)
-            }
-            val file = cached ?: downloadPreview(entry, scope, generation, authorize, owner) ?: return@launch
-            decodePreview(file, generation)
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) {
-                if (generation == previewGeneration) preview = ImagePreview.Unavailable(UiMessage(R.string.files_preview_failed), false)
+            request.run {
+                val cached = withContext(Dispatchers.IO) {
+                    container.imagePreviews.cached(scope, entry.path, entry.sizeBytes, entry.modifiedAtMillis)
+                }
+                if (generation != previewGeneration || container.activeSession !== owner) return@run
+                if (cached == null) prefetchThumbnail(entry, generation)
+                val file = cached ?: downloadPreview(entry, scope, generation, authorize, owner, request) ?: return@run
+                decodePreview(file, generation)
             }
         }
     }
@@ -1009,6 +1003,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         generation: Int,
         authorize: Boolean,
         owner: SessionState.Active,
+        request: ImagePreviewRequest,
     ): File? {
         if (entry.sizeBytes != null && entry.sizeBytes > app.relaxkonos.mobile.data.ImagePreviewCache.CACHE_BUDGET_BYTES) {
             if (generation == previewGeneration) preview = ImagePreview.Unavailable(UiMessage(R.string.files_preview_too_large), false)
@@ -1017,13 +1012,18 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         val target = withContext(Dispatchers.IO) {
             container.imagePreviews.create(scope, entry.path, entry.sizeBytes, entry.modifiedAtMillis)
         }
+
         try {
             if (generation != previewGeneration || container.activeSession !== owner) return null
             if (generation == previewGeneration) preview = ImagePreview.Downloading(0, entry.sizeBytes, thumbnail)
-            val result = container.files.download(entry.path, target,
-                if (authorize) container.elevationAnswers else ElevationAnswerProvider.Declines) { written, total ->
-                viewModelScope.launch(Dispatchers.Main.immediate) {
-                    if (generation == previewGeneration) preview = ImagePreview.Downloading(written, total ?: entry.sizeBytes, thumbnail)
+            val result = request.transfer {
+                container.files.download(entry.path, target,
+                    if (authorize) container.elevationAnswers else ElevationAnswerProvider.Declines) { written, total ->
+                    viewModelScope.launch(Dispatchers.Main.immediate) {
+                        request.progress {
+                            preview = ImagePreview.Downloading(written, total ?: entry.sizeBytes, thumbnail)
+                        }
+                    }
                 }
             }
             if (generation != previewGeneration) return null
@@ -1035,7 +1035,9 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
             if (generation == previewGeneration) preview = ImagePreview.Unavailable(
                 if (elevation) UiMessage(R.string.files_preview_elevation) else UiMessage(R.string.files_preview_failed), elevation)
             return null
-        } finally { withContext(NonCancellable + Dispatchers.IO) { target.discard() } }
+        } finally {
+            withContext(NonCancellable + Dispatchers.IO) { target.discard() }
+        }
     }
 
     /**

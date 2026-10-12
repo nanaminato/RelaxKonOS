@@ -54,6 +54,8 @@ class ImagePreviewCache(private val directory: File) {
      * A file of the wrong length is not a hit: see [PreviewTarget] for why the length is the test.
      */
     fun cached(scope: String, remotePath: String, sizeBytes: Long?, modifiedMillis: Long?): File? {
+        // Length alone cannot prove that the host still contains the downloaded image.
+        if (modifiedMillis == null) return null
         val file = fileNameFor(scope, remotePath, sizeBytes, modifiedMillis)
         if (!file.isFile || file.length() == 0L) {
             return null

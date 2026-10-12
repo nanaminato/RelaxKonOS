@@ -147,7 +147,9 @@ class WorkspaceNavigationTest {
         var submissions = 0
         rule.setContent { MaterialTheme { Workspace { submissions++ } } }
         rule.onNodeWithTag("draft").performTextInput("unsubmitted draft")
-        rule.onNodeWithText("Submit once").performClick()
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        rule.onNodeWithText("Submit once").performScrollTo().assertIsDisplayed().performClick()
+        rule.runOnIdle { assertEquals(1, submissions) }
         tab(R.string.workspace_logs).performClick()
         rule.onNodeWithTag("draft").assertDoesNotExist()
         rule.onNodeWithText("Log row 0").assertIsDisplayed()
