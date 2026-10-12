@@ -12,13 +12,19 @@ public sealed record TerminalSettingsDto(
     [property: JsonPropertyName("colorScheme")] string ColorScheme,
     [property: JsonPropertyName("backgroundColor")] string BackgroundColor,
     [property: JsonPropertyName("foregroundColor")] string ForegroundColor,
-    [property: JsonPropertyName("cursorColor")] string CursorColor)
+    [property: JsonPropertyName("cursorColor")] string CursorColor,
+    [property: JsonPropertyName("backend")] string? Backend = null)
 {
+    /// <summary>The backend the workspace asks for, defaulting to the built-in control.</summary>
+    public string RequestedBackend =>
+        TerminalBackends.TryNormalize(Backend, out var backend) ? backend : TerminalBackends.BuiltIn;
+
     public static TerminalSettingsDto Default { get; } = new(
         FontFamily: "Cascadia Mono",
         FontSize: 14,
         ColorScheme: "Campbell",
         BackgroundColor: "#0C0C0C",
         ForegroundColor: "#CCCCCC",
-        CursorColor: "#FFFFFF");
+        CursorColor: "#FFFFFF",
+        Backend: TerminalBackends.BuiltIn);
 }

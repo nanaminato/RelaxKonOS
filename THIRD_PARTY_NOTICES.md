@@ -71,6 +71,55 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
+## xterm.js（终端渲染后端，内置 JS 资产）
+
+- **来源**：<https://github.com/xtermjs/xterm.js>
+- **许可**：MIT
+- **版权**：Copyright (c) 2017 The xterm.js authors. All rights reserved.；Copyright (c) 2012-2013, Christopher Jeffrey (MIT License)
+- **用途**：桌面终端应用的 **xterm.js 渲染后端**（Workspace 级设置 `terminal-settings` 的 `backend` 字段可选值 `xterm`）。与 RoyalTerminal 的内置托管终端并列存在，二者共用同一套 `ITerminalTransport`（SignalR 远端 PTY / SSH / 本地 PTY），后端只影响渲染层。
+- **引入方式**：JS/CSS 以原样文件内联进单页 HTML，经 `NativeWebView.NavigateToString` 加载，因此**不经过 npm 依赖树**、运行时无网络请求。分发时随客户端程序集嵌入（`AvaloniaResource`）。
+- **资产清单**（[`Client/RelaxKonOS.Client/Assets/Terminal/xterm/`](./Client/RelaxKonOS.Client/Assets/Terminal/xterm/)）：
+
+  | 文件 | 版本 | SHA-256 |
+  |------|------|---------|
+  | `xterm.js` | `@xterm/xterm` 5.5.0 | `1f991ac3b4b283ebf96e60ae23a00a52765dd3a2e46fa6fdda9f1aab032f7495` |
+  | `xterm.css` | `@xterm/xterm` 5.5.0 | `ba8e6985669488981ccf40c0cefe3aba80722cb6c92de7ad628b0bd717faf2b6` |
+  | `addon-fit.js` | `@xterm/addon-fit` 0.10.0 | `bdaefa370b1bfc42ee88d46fe6072400902a4d4b2d45cd93438dda9b23c97089` |
+
+- `terminal.html` / `terminal-bridge.js`（同目录）是 RelaxKonOS 原创代码，不属于 xterm.js，按项目根 [`LICENSE`](./LICENSE) 授权。
+- 许可全文另存于 [`Client/RelaxKonOS.Client/Assets/Terminal/xterm/LICENSE-xterm.txt`](./Client/RelaxKonOS.Client/Assets/Terminal/xterm/LICENSE-xterm.txt)，与资产一同随客户端分发。
+- **设计文档**：详见 [`RelaxKonOS.Terminal.md`](./docs/applications/RelaxKonOS.Terminal.md)。
+
+### MIT License（全文）
+
+```
+MIT License
+
+Copyright (c) 2017 The xterm.js authors. All rights reserved.
+Copyright (c) 2012-2013, Christopher Jeffrey (MIT License)
+https://github.com/chjj/term.js
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```
+
+---
+
 ## NuGet 包
 
 RelaxKonOS 通过 NuGet 引用以下第三方包（版本声明集中于 [`Directory.Packages.props`](./Directory.Packages.props)）：
@@ -78,6 +127,7 @@ RelaxKonOS 通过 NuGet 引用以下第三方包（版本声明集中于 [`Direc
 | 包 | 许可 | 用途 |
 |----|------|------|
 | `Avalonia` / `Avalonia.Themes.Fluent` / `Avalonia.Fonts.Inter` / `Avalonia.Desktop` | MIT | UI 框架 |
+| `Avalonia.Controls.WebView` | MIT | 桌面内置浏览器与 xterm.js 终端后端的原生 WebView 外壳（`NativeWebView`） |
 | `CommunityToolkit.Mvvm` | MIT | MVVM 源生成器（`[ObservableProperty]` / `[RelayCommand]`） |
 | `Microsoft.Extensions.DependencyInjection` / `.Abstractions` / `.Http` | MIT | DI 容器 |
 | `Microsoft.AspNetCore.SignalR.Client` | MIT | 终端 Remote Mode SignalR 客户端 |

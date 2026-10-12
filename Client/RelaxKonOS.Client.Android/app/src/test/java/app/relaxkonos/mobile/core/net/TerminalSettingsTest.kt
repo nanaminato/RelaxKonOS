@@ -20,6 +20,20 @@ class TerminalSettingsTest {
         assertTrue(runCatching { TerminalSettingsWire.validate(TerminalSettings.Default.copy(cursorColor = "red")) }.isFailure)
         assertTrue(runCatching { TerminalSettingsWire.route("1-1-1-1-1") }.isFailure)
     }
+    @Test fun `backend is optional on the wire and survives a roundtrip`() {
+        // A document written before the backend field existed, or one holding JSON null, stays on the built-in renderer.
+        assertEquals(TerminalBackends.BUILT_IN, TerminalSettingsWire.parse(payload).backend)
+        assertEquals(TerminalBackends.BUILT_IN, TerminalSettingsWire.parse(JSONObject(payload).put("backend", JSONObject.NULL).toString()).backend)
+        assertTrue(runCatching { TerminalSettingsWire.parse(JSONObject(payload).put("backend", 7).toString()) }.isFailure)
+        // Tokens are matched case-insensitively and trimmed, the same way the server normalizes them.
+        assertEquals(TerminalBackends.XTERM_JS, TerminalSettingsWire.parse(JSONObject(payload).put("backend", " XTerm ").toString()).backend)
+        // An unknown token must not fail the whole read: it degrades to the built-in renderer instead.
+        assertEquals(TerminalBackends.BUILT_IN, TerminalSettingsWire.parse(JSONObject(payload).put("backend", "xterm-wasm").toString()).backend)
+        assertTrue(runCatching { TerminalSettingsWire.validate(TerminalSettings.Default.copy(backend = "xterm-wasm")) }.isFailure)
+        assertNull(runCatching { TerminalSettingsWire.validate(TerminalSettings.Default.copy(backend = TerminalBackends.XTERM_JS)) }.exceptionOrNull())
+        // Saving an appearance change must not drop a backend picked on the desktop.
+        assertEquals(TerminalBackends.XTERM_JS, TerminalSettingsWire.scheme(TerminalSettings.Default.copy(backend = TerminalBackends.XTERM_JS), "Light").backend)
+    }
     @Test fun `workspace endpoint roundtrips appearance without any PTY command`() = runTest {
         val requests = mutableListOf<List<String>>(); val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         server.createContext("/") { e -> requests += listOf(e.requestMethod, e.requestURI.toString(), e.requestBody.readBytes().decodeToString(), e.requestHeaders.getFirst("Authorization"))
@@ -28,9 +42,10 @@ class TerminalSettingsTest {
         try {
             val api = RelaxKonApi("test", "test"); val url = "http://127.0.0.1:${server.address.port}"; val id = "11111111-1111-1111-1111-111111111111"
             assertTrue(api.terminalSettings(url, "token", id) is ApiResult.Success)
-            assertTrue(api.saveTerminalSettings(url, "token", id, TerminalSettings.Default) is ApiResult.Success)
+            assertTrue(api.saveTerminalSettings(url, "token", id, TerminalSettings.Default.copy(backend = TerminalBackends.XTERM_JS)) is ApiResult.Success)
             assertEquals(listOf("GET", "PUT"), requests.map { it[0] }); assertTrue(requests.all { it[1] == "/api/v1.0/workspaces/$id/terminal-settings" && it[3] == "Bearer token" })
-            assertEquals(6, JSONObject(requests[1][2]).length()); assertEquals(14.0, JSONObject(requests[1][2]).getDouble("fontSize"), 0.0)
+            assertEquals(7, JSONObject(requests[1][2]).length()); assertEquals(14.0, JSONObject(requests[1][2]).getDouble("fontSize"), 0.0)
+            assertEquals(TerminalBackends.XTERM_JS, JSONObject(requests[1][2]).getString("backend"))
         } finally { server.stop(0) }
     }
 }

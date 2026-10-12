@@ -65,6 +65,7 @@ public static class RegistryConfigurationFields
             if (value.Path == WorkspaceConfigurationRegistry.ExplorerPath && value.Name is "SortField" or "ViewMode")
                 choices.AddRange(Enumerable.Range(0, 4).Select(index => new RegistryValueChoiceDto(index.ToString(), JsonSerializer.SerializeToElement(index))));
             if (value.Path.EndsWith("\\appearance", StringComparison.Ordinal) && value.Name == "mode") Add("light", "dark");
+            if (value.Path == WorkspaceConfigurationRegistry.TerminalPath && value.Name == "backend") Add(TerminalBackends.All.ToArray());
             if (value.Path == WorkspaceConfigurationRegistry.TerminalPath && value.Name.EndsWith("Color", StringComparison.Ordinal)) editor = RegistryEditorKind.Color;
             if (value.DesiredValue.ValueKind == JsonValueKind.Array && value.DesiredValue.EnumerateArray().All(item => item.ValueKind == JsonValueKind.String)
                 && value.DesiredValue.GetArrayLength() > 0) editor = RegistryEditorKind.StringList;

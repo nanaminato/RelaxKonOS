@@ -15,6 +15,7 @@ public partial class TerminalWorkspaceView : UserControl
 
     private readonly Dictionary<TerminalViewModel, TerminalView> _views = [];
     private bool _syncingPicker;
+    private bool _nativeSurfacesVisible = true;
     public ObservableCollection<TerminalViewModel> Tabs { get; } = [];
     public Action? RequestNewTab { get; set; }
     public Func<TerminalViewModel, Task>? RequestCloseTabAsync { get; set; }
@@ -54,14 +55,31 @@ public partial class TerminalWorkspaceView : UserControl
     private void UpdateSelection()
     {
         foreach (var (model, view) in _views)
-            view.IsVisible = ReferenceEquals(TabStrip.SelectedItem, model);
-        if (TabStrip.SelectedItem is TerminalViewModel selected)
         {
-            if (_views.TryGetValue(selected, out var active)) active.FocusSession();
+            var selected = ReferenceEquals(TabStrip.SelectedItem, model);
+            view.IsVisible = selected;
+            // A session drawn in a WebView is an operating-system child window: it has to be
+            // withdrawn for an inactive tab as well, or it would keep covering the active one.
+            view.SetNativeSurfaceVisible(_nativeSurfacesVisible && selected);
+        }
+        if (TabStrip.SelectedItem is TerminalViewModel selectedModel)
+        {
+            if (_views.TryGetValue(selectedModel, out var active)) active.FocusSession();
             // A keyboard switch must never leave the newly active session scrolled out of sight.
             // Background runs after the strip has been laid out, so the offsets it reads are real.
-            Dispatcher.UIThread.Post(() => ScrollTabIntoView(selected), DispatcherPriority.Background);
+            Dispatcher.UIThread.Post(() => ScrollTabIntoView(selectedModel), DispatcherPriority.Background);
         }
+    }
+
+    /// <summary>
+    /// Tells every session whether a native child surface may show itself. Called when the window
+    /// loses or regains activation, while it is being dragged, and around a modal dialog.
+    /// </summary>
+    public void SetNativeSurfacesVisible(bool visible)
+    {
+        _nativeSurfacesVisible = visible;
+        foreach (var (model, view) in _views)
+            view.SetNativeSurfaceVisible(visible && ReferenceEquals(TabStrip.SelectedItem, model));
     }
 
     private void ScrollTabIntoView(TerminalViewModel model)

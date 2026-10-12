@@ -3,6 +3,7 @@ using RelaxKonOS.Client.Services.Diagnostics;
 using RelaxKonOS.Client.Services.Dialogs;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Client.Localization;
+using RelaxKonOS.WindowManager;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
@@ -138,6 +139,18 @@ public sealed class TerminalApp : RemoteApplicationBase, IOpenTerminalApplicatio
         var workspace = new TerminalWorkspaceView();
         var window = context.ShowWindow(LocalizedText.Get(isAdministrator ? "terminal.administrator_title" : "application.relaxkonos.terminal.display_name"), workspace,
             bounds: new Rect(120, 80, 820, 540), iconGlyph: Manifest.IconGlyph);
+        // A session rendered in a WebView is an operating-system child window that Avalonia does not
+        // compose: it is withdrawn while its window is inactive, being dragged or showing a dialog.
+        workspace.SetNativeSurfacesVisible(window.IsActive && window.IsOnScreen);
+        window.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(ManagedWindow.IsActive) or nameof(ManagedWindow.State))
+                workspace.SetNativeSurfacesVisible(window.IsActive && window.IsOnScreen);
+        };
+        window.FocusRequested += (_, _) => workspace.SetNativeSurfacesVisible(window.IsActive && window.IsOnScreen);
+        window.View.BoundsInteractionStarted += (_, _) => workspace.SetNativeSurfacesVisible(false);
+        window.View.BoundsInteractionCompleted += (_, _) =>
+            workspace.SetNativeSurfacesVisible(window.IsActive && window.IsOnScreen);
         var closingTab = false;
         void AddSession(string? restoredId, string? directory, bool administrator)
         {
@@ -148,11 +161,17 @@ public sealed class TerminalApp : RemoteApplicationBase, IOpenTerminalApplicatio
                 directory, isAdministrator: true);
             model.RequestSettingsAsync = async () =>
             {
-                await context.ShowDialogAsync<bool>(window, LocalizedText.Get("terminal.settings"), dialog =>
+                // A modal dialog is Avalonia chrome too, so the native surface steps aside for it.
+                workspace.SetNativeSurfacesVisible(false);
+                try
                 {
-                    model.CloseSettingsAction = () => dialog.Close(true);
-                    return new TerminalSettingsView { DataContext = model };
-                }, new Size(460, 330));
+                    await context.ShowDialogAsync<bool>(window, LocalizedText.Get("terminal.settings"), dialog =>
+                    {
+                        model.CloseSettingsAction = () => dialog.Close(true);
+                        return new TerminalSettingsView { DataContext = model };
+                    }, new Size(460, 440));
+                }
+                finally { workspace.SetNativeSurfacesVisible(window.IsActive && window.IsOnScreen); }
             };
             workspace.AddTab(model, new TerminalView { DataContext = model });
         }
