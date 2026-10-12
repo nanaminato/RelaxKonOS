@@ -26,7 +26,15 @@ public sealed partial class TreeNodeModel : ObservableObject
         Children = new ObservableCollection<TreeNodeModel>();
     }
 
-    public string? Label { get; }
+    private string? _label;
+    public string? Label
+    {
+        get => _label;
+        set
+        {
+            if (SetProperty(ref _label, value)) OnPropertyChanged(nameof(IsPlaceholder));
+        }
+    }
     public string? Path { get; }
     public bool IsDrive { get; }
     public bool IsComputer { get; }
