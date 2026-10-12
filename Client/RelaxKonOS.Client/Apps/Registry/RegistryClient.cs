@@ -31,6 +31,8 @@ public sealed class RegistryClient(HttpClient http, IAuthSession session, IHostE
         SendAsync<object>(HttpMethod.Delete, $"{RegistryApiRoutes.Keys}?scope={Uri.EscapeDataString(scope.ToString())}&path={Uri.EscapeDataString(path)}", null, cancellationToken);
     public Task<RegistryEntryDto> SaveAsync(PutRegistryEntryRequest request, CancellationToken cancellationToken = default) =>
         SendAsync<RegistryEntryDto>(HttpMethod.Put, RegistryApiRoutes.Values, request, cancellationToken);
+    public Task<RegistryEntryDto> RenameAsync(RenameRegistryEntryRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<RegistryEntryDto>(HttpMethod.Post, RegistryApiRoutes.RenameValue, request, cancellationToken);
     public Task DeleteAsync(RegistryScope scope, string path, string name, CancellationToken cancellationToken = default) =>
         SendAsync<object>(HttpMethod.Delete, $"{RegistryApiRoutes.Values}?scope={Uri.EscapeDataString(scope.ToString())}&path={Uri.EscapeDataString(path)}&name={Uri.EscapeDataString(name)}", null, cancellationToken);
 

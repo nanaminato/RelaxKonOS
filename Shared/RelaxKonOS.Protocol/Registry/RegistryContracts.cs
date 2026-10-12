@@ -64,6 +64,13 @@ public sealed record RegistryKeyDto(RegistryScope Scope, string Path)
 /// <summary>Creates an empty key. The server derives its concrete owner from the access token.</summary>
 public sealed record CreateRegistryKeyRequest(RegistryScope Scope, string Path);
 
+/// <summary>
+/// Renames a custom (non-managed) value in place. The value keeps its owner, scope and key path;
+/// only its name changes, so the whole operation stays inside one optimistic-concurrency revision.
+/// Managed field names and the internal <c>(Default)</c> document name are never renameable.
+/// </summary>
+public sealed record RenameRegistryEntryRequest(RegistryScope Scope, string Path, string Name, string NewName, long ExpectedRevision);
+
 /// <summary>Stable REST routes for the server-owned registry control plane.</summary>
 public static class RegistryApiRoutes
 {
@@ -73,6 +80,7 @@ public static class RegistryApiRoutes
     public const string Keys = $"/{V1}/registry/users/{{userId:guid}}/keys";
     public const string Users = $"/{V1}/registry/users";
     public const string Summary = $"/{V1}/registry/users/{{userId:guid}}/summary";
+    public const string RenameValue = $"/{V1}/registry/users/{{userId:guid}}/values/rename";
     public static string ForUser(string route, Guid userId) => route.Replace("{userId:guid}", userId.ToString("D"));
 }
 

@@ -17,6 +17,7 @@ public partial class RegistryView : UserControl
         if (DataContext is not RegistryViewModel vm) return;
         if (e.Key == Key.L && e.KeyModifiers == KeyModifiers.Control) { AddressBox.Focus(); AddressBox.SelectAll(); }
         else if (e.Key == Key.F5) vm.RefreshCommand.Execute(null);
+        else if (e.Key == Key.F2 && vm.CanRenameValue) vm.RenameSelectedCommand.Execute(null);
         else if (e.Key == Key.Left && e.KeyModifiers == KeyModifiers.Alt) vm.MoveHistory(-1);
         else if (e.Key == Key.Right && e.KeyModifiers == KeyModifiers.Alt) vm.MoveHistory(1);
         else if (e.Source is not TextBox && e.Key == Key.Enter && vm.CanEditValue) vm.EditSelectedCommand.Execute(null);
@@ -28,6 +29,8 @@ public partial class RegistryView : UserControl
         (DataContext as RegistryViewModel)?.EditSelectedCommand.Execute(null);
     private void NewValue_Click(object? sender, RoutedEventArgs e) => (DataContext as RegistryViewModel)?.NewValueCommand.Execute(null);
     private void ModifyValue_Click(object? sender, RoutedEventArgs e) => (DataContext as RegistryViewModel)?.EditSelectedCommand.Execute(null);
+    private void RenameValue_Click(object? sender, RoutedEventArgs e) => (DataContext as RegistryViewModel)?.RenameSelectedCommand.Execute(null);
+    private void ResetValue_Click(object? sender, RoutedEventArgs e) => (DataContext as RegistryViewModel)?.ResetSelectedCommand.Execute(null);
     private void DeleteValue_Click(object? sender, RoutedEventArgs e) => (DataContext as RegistryViewModel)?.DeleteCommand.Execute(null);
     private void NavigationPath_KeyDown(object? sender, KeyEventArgs e)
     {

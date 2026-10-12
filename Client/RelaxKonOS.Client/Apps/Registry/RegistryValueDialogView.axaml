@@ -1,26 +1,90 @@
-<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:registry="clr-namespace:RelaxKonOS.Client.Apps.Registry" xmlns:protocol="clr-namespace:RelaxKonOS.Protocol.Registry;assembly=RelaxKonOS.Protocol" xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" x:Class="RelaxKonOS.Client.Apps.Registry.RegistryValueDialogView" x:DataType="registry:RegistryValueDialogViewModel" Classes="builtin-app">
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:registry="clr-namespace:RelaxKonOS.Client.Apps.Registry"
+             xmlns:protocol="clr-namespace:RelaxKonOS.Protocol.Registry;assembly=RelaxKonOS.Protocol"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             x:Class="RelaxKonOS.Client.Apps.Registry.RegistryValueDialogView"
+             x:DataType="registry:RegistryValueDialogViewModel"
+             Classes="builtin-app">
   <Grid Margin="20" RowDefinitions="Auto,Auto,*,Auto,Auto">
-    <TextBlock Text="{Binding TargetLabel}" FontWeight="SemiBold" TextWrapping="Wrap" HorizontalAlignment="Left" Margin="0,0,0,12"/>
+    <TextBlock Grid.Row="0" Text="{Binding TargetLabel}" FontWeight="SemiBold" TextWrapping="Wrap" HorizontalAlignment="Left" Margin="0,0,0,12"/>
 
     <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="8" HorizontalAlignment="Stretch">
       <TextBox Text="{Binding Name, Mode=TwoWay}" IsReadOnly="{Binding !CanChangeIdentity}" MinWidth="0" HorizontalAlignment="Stretch"/>
       <ComboBox Grid.Column="1" Width="120" HorizontalAlignment="Left" IsEnabled="{Binding CanChangeIdentity}" ItemsSource="{Binding ValueTypes}" SelectedItem="{Binding ValueType, Mode=TwoWay}"/>
     </Grid>
 
+    <!-- Enum: localized candidate list, saved as the stable value. -->
     <ComboBox Grid.Row="2" IsVisible="{Binding IsEnum}" ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedChoice, Mode=TwoWay}">
       <ComboBox.ItemTemplate><DataTemplate x:DataType="protocol:RegistryValueChoiceDto"><TextBlock Text="{Binding Label}"/></DataTemplate></ComboBox.ItemTemplate>
     </ComboBox>
+
+    <!-- Number: bounded numeric entry. -->
     <NumericUpDown Grid.Row="2" IsVisible="{Binding IsNumber}" Value="{Binding NumberValue, Mode=TwoWay}" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}"/>
+
+    <!-- Integer: numeric entry with an optional hexadecimal display; the server always receives a number. -->
+    <StackPanel Grid.Row="2" IsVisible="{Binding IsInteger}" Spacing="8">
+      <NumericUpDown IsVisible="{Binding !IsHex}" Value="{Binding NumberValue, Mode=TwoWay}" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}"/>
+      <TextBox IsVisible="{Binding IsHex}" Text="{Binding HexText, Mode=TwoWay}" FontFamily="Consolas" PlaceholderText="0x0"/>
+      <CheckBox Content="{loc:Loc registry.editor.hex}" IsChecked="{Binding IsHex, Mode=TwoWay}"/>
+    </StackPanel>
+
     <ToggleSwitch Grid.Row="2" IsVisible="{Binding IsBoolean}" IsChecked="{Binding BooleanValue, Mode=TwoWay}"/>
+
+    <!-- String list: add and remove rows instead of hand-writing JSON. -->
+    <Border Grid.Row="2" IsVisible="{Binding IsStringList}" Padding="8" CornerRadius="4">
+      <DockPanel>
+        <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto" ColumnSpacing="6" Margin="0,8,0,0">
+          <TextBox Text="{Binding NewListItem, Mode=TwoWay}" MinWidth="0" PlaceholderText="{loc:Loc registry.editor.list_item}"/>
+          <Button Grid.Column="1" Content="{loc:Loc registry.editor.list_add}" Command="{Binding AddListItemCommand}"/>
+        </Grid>
+        <ScrollViewer MinHeight="140" VerticalScrollBarVisibility="Auto">
+          <StackPanel>
+            <TextBlock Text="{loc:Loc registry.editor.list_empty}" Opacity="0.6" IsVisible="{Binding !HasListItems}"/>
+            <ItemsControl ItemsSource="{Binding ListItems}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="registry:RegistryListItem">
+                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6" Margin="0,2">
+                    <TextBox Text="{Binding Value, Mode=TwoWay}" MinWidth="0"/>
+                    <Button Grid.Column="1" Content="✕" Click="RemoveListItem_Click"/>
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </ScrollViewer>
+      </DockPanel>
+    </Border>
+
+    <!-- Colour: preview, legal value text and a valid swatch set. -->
+    <StackPanel Grid.Row="2" IsVisible="{Binding IsColor}" Spacing="10">
+      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+        <Border Width="56" Height="26" CornerRadius="3" Background="{Binding ColorPreview}"/>
+        <TextBox Grid.Column="1" Text="{Binding ValueText, Mode=TwoWay}" MinWidth="0" FontFamily="Consolas" PlaceholderText="#RRGGBB"/>
+      </Grid>
+      <ItemsControl ItemsSource="{Binding Palette}">
+        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate DataType="registry:RegistryColorSwatch">
+            <Button Width="28" Height="24" Margin="0,0,4,4" Padding="0" Background="{Binding Brush}" Tag="{Binding Value}" Click="PickColor_Click"/>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+
     <TextBox IsVisible="{Binding IsText}" Grid.Row="2" Margin="0,14,0,0" Text="{Binding ValueText, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="NoWrap" MinWidth="0" MinHeight="140" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Auto" FontFamily="Consolas"/>
 
-    <StackPanel Grid.Row="3"><Border Width="48" Height="24" HorizontalAlignment="Left" IsVisible="{Binding IsColor}" Background="{Binding ColorPreview}"/><TextBlock Text="{Binding ApplyText}"/>
-    <TextBlock Margin="0,8,0,0" Text="{Binding Error}" Foreground="IndianRed" TextWrapping="Wrap" HorizontalAlignment="Left"/></StackPanel>
-
-    <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,12,0,0">
-      <Button Content="{loc:Loc registry.reset}" IsVisible="{Binding CanReset}" Command="{Binding ResetCommand}"/>
-      <Button Content="{loc:Loc registry.cancel}" Command="{Binding CancelCommand}"/>
-      <Button Classes="primary" Content="{loc:Loc registry.save}" Command="{Binding SaveCommand}"/>
+    <StackPanel Grid.Row="3" Margin="0,12,0,0">
+      <TextBlock Text="{Binding Error}" Foreground="IndianRed" TextWrapping="Wrap" HorizontalAlignment="Left"/>
     </StackPanel>
+
+    <Grid Grid.Row="4" ColumnDefinitions="*,Auto" Margin="0,12,0,0">
+      <TextBlock Text="{Binding ApplyText}" Opacity="0.7" VerticalAlignment="Center" TextWrapping="Wrap"/>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+        <Button Content="{loc:Loc registry.reset}" IsVisible="{Binding CanReset}" Command="{Binding ResetCommand}"/>
+        <Button Content="{loc:Loc registry.cancel}" Command="{Binding CancelCommand}"/>
+        <Button Classes="primary" Content="{loc:Loc registry.save}" Command="{Binding SaveCommand}"/>
+      </StackPanel>
+    </Grid>
   </Grid>
 </UserControl>

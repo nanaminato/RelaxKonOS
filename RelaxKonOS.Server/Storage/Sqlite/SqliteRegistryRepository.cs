@@ -44,6 +44,33 @@ public sealed class SqliteRegistryRepository(RelaxKonOSDbContext db) : IRegistry
         return true;
     }
 
+    public RegistryEntry? Rename(Guid userId, RegistryScope scope, Guid scopeId, string path, string name, string newName, long expectedRevision)
+    {
+        var entry = Find(userId, scope, scopeId, path, name);
+        if (entry is null || entry.Revision != expectedRevision) return null;
+        if (newName != name && Find(userId, scope, scopeId, path, newName) is not null) return null;
+        var renamed = new RegistryEntry
+        {
+            UserId = entry.UserId, Scope = entry.Scope, ScopeId = entry.ScopeId, Path = entry.Path, Name = newName,
+            ValueType = entry.ValueType, ValueJson = entry.ValueJson, Revision = expectedRevision + 1, State = entry.State,
+            DesiredUpdatedAt = entry.DesiredUpdatedAt, DesiredUpdatedBy = entry.DesiredUpdatedBy,
+            AppliedRevision = entry.AppliedRevision, AppliedAt = entry.AppliedAt,
+            LastErrorCode = entry.LastErrorCode, LastErrorMessage = entry.LastErrorMessage,
+        };
+        using var transaction = db.Database.BeginTransaction();
+        db.RegistryEntries.Remove(entry);
+        db.SaveChanges();
+        db.Entry(entry).State = EntityState.Detached;
+        db.RegistryEntries.Add(renamed);
+        try { db.SaveChanges(); transaction.Commit(); return renamed; }
+        catch (DbUpdateException ex) when (ex.InnerException is Microsoft.Data.Sqlite.SqliteException { SqliteErrorCode: 19 })
+        {
+            transaction.Rollback();
+            db.Entry(renamed).State = EntityState.Detached;
+            return null;
+        }
+    }
+
     public RegistryEntry? CompareExchange(RegistryEntry entry, long expectedRevision)
     {
         if (expectedRevision == 0)

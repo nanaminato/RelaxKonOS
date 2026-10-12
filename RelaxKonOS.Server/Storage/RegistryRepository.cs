@@ -10,6 +10,9 @@ public interface IRegistryRepository
     RegistryEntry? Find(Guid userId, RegistryScope scope, Guid scopeId, string path, string name);
     RegistryEntry Upsert(RegistryEntry entry);
     RegistryEntry? CompareExchange(RegistryEntry entry, long expectedRevision);
+
+    /// <summary>Renames one existing value in place. Returns null when the revision is stale or the new name is taken.</summary>
+    RegistryEntry? Rename(Guid userId, RegistryScope scope, Guid scopeId, string path, string name, string newName, long expectedRevision);
     bool Delete(Guid userId, RegistryScope scope, Guid scopeId, string path, string name);
     void SeedSynced(RegistryEntry entry);
     IReadOnlyList<RegistryKey> ListChildKeys(Guid userId, RegistryScope scope, Guid scopeId, string parentPath);
@@ -52,6 +55,22 @@ public sealed class InMemoryRegistryRepository : IRegistryRepository
     public bool Delete(Guid userId, RegistryScope scope, Guid scopeId, string path, string name)
     {
         lock (_gate) return _entries.TryRemove((userId, scope, scopeId, path, name), out _);
+    }
+    public RegistryEntry? Rename(Guid userId, RegistryScope scope, Guid scopeId, string path, string name, string newName, long expectedRevision)
+    {
+        lock (_gate)
+        {
+            var source = (userId, scope, scopeId, path, name);
+            if (!_entries.TryGetValue(source, out var current) || current.Revision != expectedRevision) return null;
+            var target = (userId, scope, scopeId, path, newName);
+            if (newName != name && _entries.ContainsKey(target)) return null;
+            _entries.TryRemove(source, out _);
+            var renamed = Copy(current);
+            renamed.Name = newName;
+            renamed.Revision = current.Revision + 1;
+            _entries[target] = renamed;
+            return Copy(renamed);
+        }
     }
     public void SeedSynced(RegistryEntry entry)
     {

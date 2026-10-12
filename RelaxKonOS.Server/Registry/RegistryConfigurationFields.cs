@@ -69,13 +69,24 @@ public static class RegistryConfigurationFields
             if (value.DesiredValue.ValueKind == JsonValueKind.Array && value.DesiredValue.EnumerateArray().All(item => item.ValueKind == JsonValueKind.String)
                 && value.DesiredValue.GetArrayLength() > 0) editor = RegistryEditorKind.StringList;
         }
-        return new(value.Name, true, !managed, false, defaultValue)
+        // A declared editor wins over the JSON shape: an empty string list serializes exactly like an
+        // empty object list, so the schema — not the payload — decides which control the field gets.
+        if (DeclaredEditor(value.Path, value.Name) is { } declared) editor = declared;
+        return new(value.Name, CanWrite: true, CanDelete: !managed,
+            CanRename: !managed && value.Name != WorkspaceConfigurationRegistry.DefaultValueName, defaultValue)
         {
             Editor = choices.Count > 0 ? RegistryEditorKind.Enum : editor, Choices = choices,
             Minimum = value.Path == WorkspaceConfigurationRegistry.TerminalPath && value.Name == "fontSize" ? 8 : null,
             Maximum = value.Path == WorkspaceConfigurationRegistry.TerminalPath && value.Name == "fontSize" ? 40 : null,
         };
     }
+
+    /// <summary>Logical editors that a value's JSON shape alone cannot express.</summary>
+    private static RegistryEditorKind? DeclaredEditor(string path, string name) => (path, name) switch
+    {
+        (WorkspaceConfigurationRegistry.DesktopDisplayPath, "visibleAppIds") => RegistryEditorKind.StringList,
+        _ => null,
+    };
     public static JsonElement? DefaultValue(string root, string path, string name)
     {
         object? defaults = root switch

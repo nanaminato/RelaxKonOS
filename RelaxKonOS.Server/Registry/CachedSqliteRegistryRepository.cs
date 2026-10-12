@@ -105,6 +105,33 @@ public sealed class CachedSqliteRegistryRepository(IDbContextFactory<RelaxKonOSD
         }
     }
 
+    public RegistryEntry? Rename(Guid userId, RegistryScope scope, Guid scopeId, string path, string name, string newName, long expectedRevision)
+    {
+        var source = new EntryKey(userId, scope, scopeId, path, name);
+        var target = new EntryKey(userId, scope, scopeId, path, newName);
+        lock (_gate)
+        {
+            if (!_entries.TryGetValue(source, out var current) || current.Revision != expectedRevision) return null;
+            if (source != target && _entries.ContainsKey(target)) return null;
+            var saved = Copy(current);
+            saved.Name = newName;
+            saved.Revision = current.Revision + 1;
+            // Same delayed-persistence contract as Upsert: the new name is pending until flushed.
+            saved.State = RegistryEntryState.PendingSync;
+            saved.AppliedRevision = null;
+            saved.AppliedAt = null;
+            saved.LastErrorCode = null;
+            saved.LastErrorMessage = null;
+            _entries.TryRemove(source, out _);
+            _dirty.Remove(source);
+            _deleted.Add(source);
+            _entries[target] = saved;
+            _deleted.Remove(target);
+            _dirty.Add(target);
+            return Copy(saved);
+        }
+    }
+
     public void SeedSynced(RegistryEntry entry)
     {
         var key = EntryKey.From(entry);

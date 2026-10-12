@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
+using System.Net.Http;
 using System.Text.Json;
 using RelaxKonOS.Client.Localization;
+using RelaxKonOS.Client.Services.Auth;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Protocol.Registry;
@@ -17,10 +19,55 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Localize
     private readonly List<RegistryKeyNode> _history = [];
     private int _historyIndex = -1;
     private bool _movingHistory;
-    public string TargetText => SelectedKey?.Address is { } address
-        ? $"{_context?.Username} → {OwnerName(address.OwnerUserId)} → {address.Scope} · {address.OwnerUserId:D}" : _context?.Username ?? "";
-    private string OwnerName(Guid owner) => owner == _context?.CurrentUserId ? _context.Username :
-        Keys.FirstOrDefault()?.Children.FirstOrDefault(node => node.Kind == RegistryKeyKind.Users)?.Children.FirstOrDefault(node => node.TargetUserId == owner)?.Name ?? owner.ToString("D");
+
+    public ObservableCollection<RegistryKeyNode> Keys { get; } = [];
+    public ObservableCollection<RegistryEntryRow> Entries { get; } = [];
+
+    [ObservableProperty] private LocalizedStatus _statusText = LocalizedText.RefWithFallback("registry.status.loading", "Loading registry…");
+    [ObservableProperty] private string _navigationPathInput = "HKEY_USERS";
+    [ObservableProperty] private bool _isLoading;
+    [ObservableProperty] private RegistryKeyNode? _selectedKey;
+    [ObservableProperty] private RegistryEntryRow? _selectedEntry;
+    [ObservableProperty] private RegistryPaneState _paneState = RegistryPaneState.Idle;
+
+    public Func<RegistryEntryRow, Task>? ShowEditDialogAsync { get; set; }
+    public Func<RegistryEntryRow, Task>? ShowRenameDialogAsync { get; set; }
+    public Func<RegistryScope, string, Task>? ShowNewValueDialogAsync { get; set; }
+    public Func<RegistryScope, string, Task>? ShowNewKeyDialogAsync { get; set; }
+
+    /// <summary>Server, signed-in account, target owner and scope, so a write never hides who it affects.</summary>
+    public LocalizedStatus TargetText => LocalizedStatus.Literal(_context is null ? "" : SelectedKey?.Address is { } address
+        ? $"{address.ServerId} · {_context.Username} → {OwnerName(address.OwnerUserId)} ({address.OwnerUserId:D}) · {ScopeLabel(address.Scope)}"
+        : $"{_context.ServerId} · {_context.Username}");
+
+    /// <summary>Values listed for the selected key. Empty text when the key has none, so it never reads as "0" noise.</summary>
+    public LocalizedStatus ValueCountText => Entries.Count == 0
+        ? LocalizedStatus.Literal("")
+        : LocalizedStatus.Key("registry.status.count", "{0} value(s).", Entries.Count);
+
+    /// <summary>True while the selected hive belongs to another account, where every operation needs a grant.</summary>
+    public bool ShowPermissionNotice => SelectedKey?.Address is { } address && _context is not null && address.OwnerUserId != _context.CurrentUserId;
+    public LocalizedStatus PermissionText => LocalizedText.RefWithFallback("registry.permission.required", "Administrator authorization required");
+
+    public bool CanCreateValue => SelectedKey?.CanCreateChildKey == true;
+    public bool CanDeleteValue => SelectedEntry?.Source.Schema.CanDelete == true;
+    public bool CanEditValue => SelectedEntry?.Source.Schema.CanWrite == true;
+    public bool CanRenameValue => SelectedEntry?.Source.Schema.CanRename == true;
+    public bool CanResetValue => SelectedEntry?.Source.Schema.DefaultValue is not null;
+    public bool CanCreateKey => SelectedKey?.CanCreateChildKey == true;
+    public bool CanDeleteKey => SelectedKey?.CanManageKey == true;
+
+    private string OwnerName(Guid owner) => owner == _context?.CurrentUserId ? _context.Username
+        : Keys.FirstOrDefault()?.Children.FirstOrDefault(node => node.Kind == RegistryKeyKind.Users)
+            ?.Children.FirstOrDefault(node => node.TargetUserId == owner)?.UserName ?? owner.ToString("D");
+
+    private static string ScopeLabel(RegistryScope scope) => scope switch
+    {
+        RegistryScope.User => LocalizedText.Get("registry.scope.user", "User"),
+        RegistryScope.Device => LocalizedText.Get("registry.scope.device", "Device"),
+        _ => LocalizedText.Get("registry.scope.workspace", "Workspace"),
+    };
+
     public void MoveHistory(int direction)
     {
         var next = _historyIndex + direction;
@@ -29,41 +76,26 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Localize
         try { _historyIndex = next; SelectedKey = _history[next]; }
         finally { _movingHistory = false; }
     }
-    public ObservableCollection<RegistryKeyNode> Keys { get; } = [];
-    public ObservableCollection<RegistryEntryRow> Entries { get; } = [];
-    [ObservableProperty] private LocalizedStatus _statusText = LocalizedText.RefWithFallback("registry.status.loading", "Loading registry…");
-    [ObservableProperty] private string _navigationPathInput = "HKEY_USERS";
-    [ObservableProperty] private bool _isLoading;
-    [ObservableProperty] private RegistryKeyNode? _selectedKey;
-    [ObservableProperty] private RegistryEntryRow? _selectedEntry;
-    [ObservableProperty] private string _path = "Workspace";
-    [ObservableProperty] private string _name = "(Default)";
-    [ObservableProperty] private RegistryScope _scope = RegistryScope.Workspace;
-    [ObservableProperty] private RegistryValueType _valueType = RegistryValueType.Json;
-    [ObservableProperty] private string _valueText = "{}";
-
-    public Func<RegistryEntryRow, Task>? ShowEditDialogAsync { get; set; }
-    public Func<RegistryScope, string, Task>? ShowNewValueDialogAsync { get; set; }
-    public Func<RegistryScope, string, Task>? ShowNewKeyDialogAsync { get; set; }
-    public bool CanCreateValue => SelectedKey?.CanCreateChildKey == true;
-    public bool CanDeleteValue => SelectedEntry?.Source.Schema.CanDelete == true;
-    public bool CanEditValue => SelectedEntry?.Source.Schema.CanWrite == true;
-    public bool CanCreateKey => SelectedKey?.CanCreateChildKey == true;
-    public bool CanDeleteKey => SelectedKey?.CanManageKey == true;
 
     [RelayCommand]
     public async Task RefreshAsync()
     {
         try
         {
-            if (_context is null) { _context = await client.GetContextAsync(); BuildStaticTree(); }
+            if (_context is null) { _context = await client.GetContextAsync(); BuildStaticTree(); NotifyContext(); }
             if (SelectedKey is { } key)
             {
                 if (key.Kind == RegistryKeyKind.Users) { key.ChildrenLoaded = false; await LoadChildrenAsync(key); }
                 else await LoadValuesAsync(key, refreshChildren: true);
             }
         }
-        catch (Exception error) { StatusText = LocalizedText.RefWithFallback("registry.status.unavailable", "Registry unavailable: {0}", error.Message); }
+        catch (Exception error) { SetFailure(error); }
+    }
+
+    private void NotifyContext()
+    {
+        OnPropertyChanged(nameof(TargetText));
+        OnPropertyChanged(nameof(ShowPermissionNotice));
     }
 
     partial void OnSelectedKeyChanged(RegistryKeyNode? value)
@@ -75,6 +107,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Localize
             _history.Add(value); _historyIndex = _history.Count - 1;
         }
         OnPropertyChanged(nameof(TargetText));
+        OnPropertyChanged(nameof(ShowPermissionNotice));
         NavigationPathInput = DisplayPath(value);
         OnPropertyChanged(nameof(CanCreateKey));
         OnPropertyChanged(nameof(CanDeleteKey));
@@ -87,12 +120,8 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Localize
     {
         OnPropertyChanged(nameof(CanDeleteValue));
         OnPropertyChanged(nameof(CanEditValue));
-        if (value is null) return;
-        Scope = value.Source.Scope;
-        Path = value.Source.Path;
-        Name = value.Source.Name;
-        ValueType = value.Source.ValueType;
-        ValueText = value.Source.DesiredValue.GetRawText();
+        OnPropertyChanged(nameof(CanRenameValue));
+        OnPropertyChanged(nameof(CanResetValue));
     }
 
     public async Task LoadChildrenAsync(RegistryKeyNode? key)
@@ -119,13 +148,14 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Localize
                     var label = user.Username + (users.Count(item => item.Username == user.Username) > 1 ? " [" + user.Id.ToString("N")[..8] + "]" : "")
                         + (user.IsCurrentUser ? " [" + LocalizedText.Get("registry.tree.current_user", "Current User") + "]" : "");
                     var owner = existingUsers.GetValueOrDefault(user.Id) ?? new RegistryKeyNode(label, null, null, key, RegistryKeyKind.User, user.Id);
+                    owner.UserName = user.Username;
                     if (user.WorkspaceId is { } workspaceId && !owner.Children.Any(node => node.Address?.ScopeId == workspaceId)) { owner.Children.Clear(); owner.Children.Add(WorkspaceNode(owner, user.Id, workspaceId)); }
                     if (user.WorkspaceId is null) owner.Children.Clear();
                     key.Children.Add(owner);
                 }
                 key.ChildrenLoaded = true;
             }
-            catch (Exception error) { if (ReferenceEquals(SelectedKey, key)) StatusText = LocalizedText.RefWithFallback("registry.status.unavailable", "Registry unavailable: {0}", error.Message); }
+            catch (Exception error) { if (ReferenceEquals(SelectedKey, key)) SetFailure(error); }
             finally { key.IsLoadingChildren = false; }
             return;
         }
@@ -161,6 +191,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Localize
             if (!ReferenceEquals(SelectedKey, key)) return;
             Entries.Remove(selected);
             SelectedEntry = null;
+            OnPropertyChanged(nameof(ValueCountText));
             StatusText = LocalizedText.RefWithFallback("registry.status.deleted", "Value deleted.");
         }
         catch (Exception ex) { if (ReferenceEquals(SelectedKey, key)) StatusText = LocalizedText.RefWithFallback("registry.status.delete_failed", "Could not delete value: {0}", ex.Message); }
@@ -186,13 +217,34 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Localize
             InvalidateOwner(Keys, key.Address!);
             if (!ReferenceEquals(SelectedKey, key)) return;
             SelectedKey = parent;
-            StatusText = LocalizedText.RefWithFallback("registry.status.deleted", "Value deleted.");
+            StatusText = LocalizedText.RefWithFallback("registry.status.key_deleted", "Key deleted.");
         }
         catch (Exception ex) { if (ReferenceEquals(SelectedKey, key)) StatusText = LocalizedText.RefWithFallback("registry.status.delete_failed", "Could not delete value: {0}", ex.Message); }
     }
 
     [RelayCommand]
     private Task EditSelectedAsync() => SelectedEntry?.Source.Schema.CanWrite == true && ShowEditDialogAsync is not null ? ShowEditDialogAsync(SelectedEntry) : Task.CompletedTask;
+
+    /// <summary>F2 is available only for a custom value the server declared renameable.</summary>
+    [RelayCommand]
+    private Task RenameSelectedAsync() => SelectedEntry is { Source.Schema.CanRename: true } row && ShowRenameDialogAsync is not null
+        ? ShowRenameDialogAsync(row) : Task.CompletedTask;
+
+    /// <summary>Restore default writes the schema default through the same versioned document write.</summary>
+    [RelayCommand]
+    private async Task ResetSelectedAsync()
+    {
+        if (SelectedEntry is not { Source.Schema.DefaultValue: { } defaultValue } selected) return;
+        var key = SelectedKey;
+        try
+        {
+            var result = await client.ForUser(selected.Source.Address.OwnerUserId).SaveAsync(new PutRegistryEntryRequest(
+                selected.Source.Scope, selected.Source.Path, selected.Source.Name, selected.Source.ValueType, defaultValue, selected.Source.Revision));
+            if (!ReferenceEquals(SelectedKey, key)) return;
+            ApplySaved(result, LocalizedText.RefWithFallback("registry.status.restored", "Default restored."));
+        }
+        catch (Exception ex) { if (ReferenceEquals(SelectedKey, key)) StatusText = LocalizedText.RefWithFallback("registry.status.save_failed", "Could not save value: {0}", ex.Message); }
+    }
 
     public void ApplyCreatedKey(RegistryKeyDto created)
     {
@@ -205,14 +257,27 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Localize
         InvalidateOwner(Keys, created.Address);
     }
 
-    public void ApplySaved(RegistryEntryDto entry)
+    public void ApplySaved(RegistryEntryDto entry, LocalizedStatus? status = null)
     {
         InvalidateOwner(Keys, entry.Address);
         if (SelectedKey?.Address != entry.Address) return;
         var index = Entries.ToList().FindIndex(x => x.Source.Name == entry.Name);
         if (index >= 0) Entries[index] = RegistryEntryRow.From(entry);
         else Entries.Add(RegistryEntryRow.From(entry));
-        _ = LoadValuesAsync(SelectedKey);
+        _ = ReloadAfterSaveAsync(SelectedKey, status ?? LocalizedText.RefWithFallback("registry.status.saved", "Value saved."));
+    }
+
+    public void ApplyRenamed(RegistryEntryDto entry)
+    {
+        InvalidateOwner(Keys, entry.Address);
+        if (SelectedKey?.Address != entry.Address) return;
+        _ = ReloadAfterSaveAsync(SelectedKey, LocalizedText.RefWithFallback("registry.status.renamed", "Value renamed."));
+    }
+
+    private async Task ReloadAfterSaveAsync(RegistryKeyNode? key, LocalizedStatus? status)
+    {
+        await LoadValuesAsync(key);
+        if (status is { } text && ReferenceEquals(SelectedKey, key)) StatusText = text;
     }
 
     [RelayCommand]
@@ -247,7 +312,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Localize
             if (current is null) StatusText = LocalizedText.RefWithFallback("registry.status.path_not_found", "Registry key not found: {0}", NavigationPathInput);
             else SelectedKey = current;
         }
-        catch (Exception error) { if (generation == _navigationGeneration) StatusText = LocalizedText.RefWithFallback("registry.status.unavailable", "Registry unavailable: {0}", error.Message); }
+        catch (Exception error) { if (generation == _navigationGeneration) SetFailure(error); }
     }
 
     private async Task LoadValuesAsync(RegistryKeyNode? key, bool refreshChildren = false)
@@ -255,13 +320,16 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Localize
         var generation = ++_loadGeneration;
         Entries.Clear();
         SelectedEntry = null;
+        OnPropertyChanged(nameof(ValueCountText));
         if (key is null || !key.IsRegistryKey || key.Scope is not { } scope || key.Path is not { } path)
         {
             IsLoading = false;
-            StatusText = LocalizedText.RefWithFallback("registry.status.empty", "No values in this key.");
+            PaneState = RegistryPaneState.Idle;
+            StatusText = LocalizedStatus.Literal("");
             return;
         }
         IsLoading = true;
+        PaneState = RegistryPaneState.Loading;
         StatusText = LocalizedText.RefWithFallback("registry.status.loading", "Loading registry…");
         try
         {
@@ -271,11 +339,43 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Localize
             if (generation != _loadGeneration || !ReferenceEquals(SelectedKey, key)) return;
             foreach (var entry in values) VerifyAddress(entry.Address, key, path);
             foreach (var entry in values) Entries.Add(RegistryEntryRow.From(entry));
-            StatusText = values.Count == 0 ? LocalizedText.RefWithFallback("registry.status.empty", "No values in this key.") : LocalizedText.RefWithFallback("registry.status.count", "{0} value(s).", values.Count);
+            PaneState = values.Count == 0 ? RegistryPaneState.Empty : RegistryPaneState.Ready;
+            StatusText = values.Count == 0 ? LocalizedText.RefWithFallback("registry.status.empty", "No values in this key.") : LocalizedStatus.Literal("");
+            OnPropertyChanged(nameof(ValueCountText));
         }
-        catch (Exception ex) { if (generation == _loadGeneration && ReferenceEquals(SelectedKey, key)) StatusText = LocalizedText.RefWithFallback("registry.status.unavailable", "Registry unavailable: {0}", ex.Message); }
+        catch (Exception ex) { if (generation == _loadGeneration && ReferenceEquals(SelectedKey, key)) SetFailure(ex); }
         finally { if (generation == _loadGeneration) IsLoading = false; }
     }
+
+    /// <summary>
+    /// Separates the read outcomes the design calls out: an authorization refusal and a transport
+    /// failure must never be rendered as "this key has no values".
+    /// </summary>
+    private void SetFailure(Exception error)
+    {
+        PaneState = Classify(error);
+        StatusText = PaneState switch
+        {
+            RegistryPaneState.Denied => LocalizedText.RefWithFallback("registry.status.access_denied",
+                "Access denied: administrator authorization is required to open another account's hive."),
+            RegistryPaneState.Disconnected => LocalizedText.RefWithFallback("registry.status.disconnected",
+                "Cannot reach the server: {0}", error.Message),
+            _ => LocalizedText.RefWithFallback("registry.status.failed", "Could not read this key: {0}", ErrorText(error)),
+        };
+        OnPropertyChanged(nameof(ValueCountText));
+    }
+
+    private static RegistryPaneState Classify(Exception error) => error switch
+    {
+        RelaxKonOSAuthException { Status: 403 } => RegistryPaneState.Denied,
+        HttpRequestException => RegistryPaneState.Disconnected,
+        TaskCanceledException => RegistryPaneState.Disconnected,
+        _ => RegistryPaneState.Failed,
+    };
+
+    private static string ErrorText(Exception error) => error is RelaxKonOSAuthException { Status: 401 }
+        ? LocalizedText.Get("registry.error.sign_in", "Sign in to browse the configuration registry.")
+        : error.Message;
 
     private void BuildStaticTree()
     {
@@ -318,6 +418,9 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Localize
     }
 }
 
+/// <summary>Read outcome of the value pane. Only <see cref="Ready"/> and <see cref="Empty"/> mean "we have data".</summary>
+public enum RegistryPaneState { Idle, Loading, Ready, Empty, Denied, Failed, Disconnected }
+
 public sealed record RegistryEntryRow(RegistryEntryDto Source, string Name, string DesiredValue, string Type)
 {
     public static RegistryEntryRow From(RegistryEntryDto entry) => new(entry, entry.Name, Format(entry.DesiredValue), entry.ValueType.ToString());
@@ -345,6 +448,8 @@ public sealed partial class RegistryKeyNode : ObservableObject
     public RegistryKeyNode? Parent { get; }
     public RegistryKeyKind Kind { get; }
     public bool IsRegistryKey => Kind == RegistryKeyKind.Key;
+    /// <summary>Raw account name for the status bar, without the tree's duplicate/current-user markers.</summary>
+    public string? UserName { get; set; }
     public RegistryAddress? Address { get; set; }
     public bool AllowCreate { get; set; }
     public bool AllowDelete { get; set; }

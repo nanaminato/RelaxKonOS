@@ -13,6 +13,7 @@ public static class WorkspaceConfigurationRegistry
 {
     public const string TerminalPath = "Workspace\\Terminal";
     public const string DesktopPath = "Workspace\\Desktop";
+    public const string DesktopDisplayPath = DesktopPath + "\\desktopDisplay";
     public const string ExplorerPath = "Workspace\\Explorer";
     public const int ExplorerSchemaVersion = 3;
     public static object ExplorerDefaults => new Dictionary<string, object> { ["SortField"] = 0, ["SortDescending"] = false, ["ShowHiddenFiles"] = false, ["IsCompactView"] = false, ["ViewMode"] = 0, ["FileListCacheEnabled"] = false };

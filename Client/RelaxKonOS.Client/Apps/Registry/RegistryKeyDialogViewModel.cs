@@ -1,10 +1,11 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Registry;
 
 namespace RelaxKonOS.Client.Apps.Registry;
 
-public sealed partial class RegistryKeyDialogViewModel : ObservableObject
+public sealed partial class RegistryKeyDialogViewModel : LocalizedObservableObject
 {
     private readonly IRegistryClient _client;
     private readonly Action<bool> _close;
@@ -21,7 +22,8 @@ public sealed partial class RegistryKeyDialogViewModel : ObservableObject
     private async Task SaveAsync()
     {
         var name = Name.Trim();
-        if (string.IsNullOrWhiteSpace(name) || name.IndexOfAny(['\\', '/', ':']) >= 0) { Error = "Enter a valid key name."; return; }
+        if (string.IsNullOrWhiteSpace(name) || name.IndexOfAny(['\\', '/', ':']) >= 0)
+        { Error = LocalizedText.Get("registry.key.invalid", "Enter a valid key name."); return; }
         try
         {
             var saved = await _client.CreateKeyAsync(new CreateRegistryKeyRequest(Scope, ParentPath + "\\" + name));

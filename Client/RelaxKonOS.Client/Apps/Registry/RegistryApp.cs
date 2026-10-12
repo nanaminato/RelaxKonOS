@@ -31,15 +31,22 @@ public sealed class RegistryApp : RemoteApplicationBase
         {
             await context.ShowDialogAsync<bool>(window, LocalizedText.Get("registry.dialog.edit", "Edit Registry Value"), dialog => new RegistryValueDialogView
             {
-                DataContext = new RegistryValueDialogViewModel(row, client.ForUser(row.Source.Address.OwnerUserId), dialog.Close, viewModel.ApplySaved),
+                DataContext = new RegistryValueDialogViewModel(row, client.ForUser(row.Source.Address.OwnerUserId), dialog.Close, entry => viewModel.ApplySaved(entry)),
             }, new Size(720, 520));
+        };
+        viewModel.ShowRenameDialogAsync = async row =>
+        {
+            await context.ShowDialogAsync<bool>(window, LocalizedText.Get("registry.dialog.rename", "Rename Registry Value"), dialog => new RegistryRenameDialogView
+            {
+                DataContext = new RegistryRenameDialogViewModel(row, client.ForUser(row.Source.Address.OwnerUserId), dialog.Close, viewModel.ApplyRenamed),
+            }, new Size(560, 320));
         };
         viewModel.ShowNewValueDialogAsync = async (scope, path) =>
         {
             var ownedClient = client.ForUser(viewModel.SelectedKey!.TargetUserId!.Value);
             await context.ShowDialogAsync<bool>(window, LocalizedText.Get("registry.dialog.new", "New Registry Value"), dialog => new RegistryValueDialogView
             {
-                DataContext = new RegistryValueDialogViewModel(scope, path, ownedClient, dialog.Close, viewModel.ApplySaved),
+                DataContext = new RegistryValueDialogViewModel(scope, path, ownedClient, dialog.Close, entry => viewModel.ApplySaved(entry)),
             }, new Size(720, 520));
         };
         viewModel.ShowNewKeyDialogAsync = async (scope, parentPath) =>

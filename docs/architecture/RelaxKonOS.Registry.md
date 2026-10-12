@@ -242,4 +242,6 @@ server.registry.write
 
 托管键包含 Desktop、Terminal、Browser、Explorer 和 WindowManager。注册表在 JSON 对象上提供字段值和子对象键；全部字段更新仍对一个 `(Default)` 文档做校验和 CAS，不引入第二份配置。Explorer 的 schemaVersion=3 默认视图及文件列表缓存开关也由此文档提供，应用设置路由直接使用这一真源。
 
-REST 通过可选 `targetUserId` 选择目标用户；省略时选择当前用户。跨用户枚举、读取、新建、写入与删除均检查 RegistryManage，枚举目标为 `registry/users`，用户操作目标为 `registry/users/{userId}`。管理员自动授权，临时手工授权不能扩展到其他用户，审计的 updatedBy/createdBy 为认证操作者。跨用户 Device 范围不支持。托管键的结构与字段不允许删除，自定义键继续按 Workspace 范围隔离。
+REST 路由以显式所有者为路径参数：`/registry/context` 返回当前会话上下文，`/registry/users` 受 `RegistryManage`（目标 `registry/users`）保护地枚举账户，`/registry/users/{userId}/keys` 与 `/registry/users/{userId}/values` 读写该用户的键和值。所有者由服务端解析，客户端不能通过传入任意 WorkspaceId 取得访问。跨用户读取、新建、写入、删除与重命名均检查 RegistryManage，目标为 `registry/users/{userId}`；管理员自动授权，临时手工授权不能扩展到其他用户，审计的 updatedBy/createdBy 为认证操作者。跨用户 Device 范围不支持。
+
+重新命名单个自定义值使用 `POST /registry/users/{userId}/values/rename`，携带 Scope、Path、Name、NewName 与 ExpectedRevision。重命名在同一所有者、作用域与键路径内就地完成，保留值内容并递增 revision；受托管字段名与内部 `(Default)` 文档载体不可重命名。schema 通过 `CanWrite` / `CanDelete` / `CanRename` 向客户端声明每一项的真实能力，界面据此决定菜单是否可用。托管键的结构与字段不允许删除，自定义键继续按 Workspace 范围隔离。

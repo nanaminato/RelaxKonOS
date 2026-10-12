@@ -69,6 +69,30 @@ internal static class RegistryAccessChecks
         var nested = await Read(time.Path + "\\desktopDisplay", other);
         Check(nested.Any(entry => entry.Name == "showWindowShadows"), "Nested desktop options are unreachable.");
         using (var malformed = await http.GetAsync(RegistryApiRoutes.Values.Replace("{userId:guid}", "invalid") + "?scope=workspace&path=Workspace")) Check(malformed.StatusCode == HttpStatusCode.NotFound, "Invalid owner silently selected the caller.");
+        async Task<HttpResponseMessage> RenameValue(string path, string name, string newName, long revision, Guid? target = null) =>
+            await http.PostAsJsonAsync(RegistryApiRoutes.ForUser(RegistryApiRoutes.RenameValue, target ?? owner),
+                new RenameRegistryEntryRequest(RegistryScope.Workspace, path, name, newName, revision), RelaxKonOSJsonOptions.Default);
+        using (var created = await Write("Workspace\\Custom", "Alpha", JsonSerializer.SerializeToElement("one"), 0))
+            Check(created.IsSuccessStatusCode, "A custom workspace value could not be created.");
+        var custom = (await Read("Workspace\\Custom")).Single(x => x.Name == "Alpha");
+        Check(custom.Schema is { CanRename: true, CanDelete: true }, "A custom value must be renameable and deletable.");
+        using (var renamed = await RenameValue("Workspace\\Custom", "Alpha", "Beta", custom.Revision))
+            Check(renamed.IsSuccessStatusCode, "A custom value could not be renamed.");
+        var renamedValue = (await Read("Workspace\\Custom")).Single();
+        Check(renamedValue.Name == "Beta" && renamedValue.Revision == custom.Revision + 1 && renamedValue.DesiredValue.GetString() == "one",
+            "Rename must move the value in place without touching its content.");
+        using (var managed = await RenameValue(time.Path, time.Name, "renamed", time.Revision))
+            Check(managed.StatusCode == HttpStatusCode.Conflict, "A managed field name must not be renameable.");
+        using (var carrier = await RenameValue(WorkspaceConfigurationRegistry.DesktopPath, "(Default)", "document", renamedValue.Revision))
+            Check(carrier.StatusCode == HttpStatusCode.BadRequest || carrier.StatusCode == HttpStatusCode.Conflict, "The internal document carrier must not be renameable.");
+        using (var stale = await RenameValue("Workspace\\Custom", "Beta", "Gamma", custom.Revision))
+            Check(stale.StatusCode == HttpStatusCode.Conflict, "Rename did not honour the expected revision.");
+        using (var second = await Write("Workspace\\Custom", "Gamma", JsonSerializer.SerializeToElement("two"), 0))
+            Check(second.IsSuccessStatusCode, "A second custom value could not be created.");
+        using (var collision = await RenameValue("Workspace\\Custom", "Beta", "Gamma", renamedValue.Revision))
+            Check(collision.StatusCode == HttpStatusCode.Conflict, "Rename onto an existing name must conflict.");
+        using (var cross = await RenameValue("Workspace\\Custom", "Beta", "Delta", renamedValue.Revision, third))
+            Check(cross.StatusCode == HttpStatusCode.Forbidden, "Cross-user rename bypassed elevation.");
         privileges.Level = HostAccountPrivilege.HostAdministrator;
         var automatic = (await Read(time.Path, third)).Single(entry => entry.Name == "language");
         using (var adminWrite = await Write(automatic.Path, automatic.Name, JsonSerializer.SerializeToElement("en-US"), automatic.Revision, third)) Check(adminWrite.IsSuccessStatusCode, "Administrator was not automatically authorized.");
@@ -79,6 +103,6 @@ internal static class RegistryAccessChecks
         var document = (await http.GetFromJsonAsync<AppSettingsDocumentDto>(documentRoute, RelaxKonOSJsonOptions.Default))!;
         Check(document.SchemaVersion == 3 && document.Value.GetProperty("FileListCacheEnabled").GetBoolean(), "Explorer settings API did not read the same canonical registry value.");
         await app.StopAsync();
-        Console.WriteLine("PASS: registry fields, nested options, canonical Explorer settings, cross-user elevation, administrator authorization, audit and revision conflicts.");
+        Console.WriteLine("PASS: registry fields, nested options, canonical Explorer settings, cross-user elevation, administrator authorization, audit, revision conflicts and custom-value rename.");
     }
 }

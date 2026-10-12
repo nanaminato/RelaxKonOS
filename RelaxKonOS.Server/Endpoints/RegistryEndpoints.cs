@@ -133,6 +133,28 @@ public static partial class RegistryEndpoints
             return Results.Ok(Describe(http, users, userId, scopeId, ToDto(saved)));
         }).RequireAuthorization().WithTags("Registry");
 
+        app.MapPost(RegistryApiRoutes.RenameValue, (Guid userId, RenameRegistryEntryRequest request, HttpContext http, IHostElevationSessionStore elevations, IRegistryRepository registry, IWorkspaceRepository workspaces, IUserRepository users) =>
+        {
+            var principal = http.User;
+            if (!TryUserId(principal, out var actorId)) return Results.Unauthorized();
+            if (userId != actorId && !elevations.IsGranted(principal, HostElevationCapability.RegistryManage, RegistryTarget(userId)))
+                return ElevationRequired();
+            if (users.FindById(userId) is null) return Results.NotFound();
+            if (!TryScopeId(principal, userId, workspaces, request.Scope, out var scopeId)
+                || request.Scope != RegistryScope.Workspace || !IsWorkspaceChildPath(request.Path)
+                || !NamePattern().IsMatch(request.Name) || !NamePattern().IsMatch(request.NewName)
+                || string.Equals(request.Name, request.NewName, StringComparison.Ordinal))
+                return Results.BadRequest(new { message = "Only a custom value can be renamed to a new name." });
+            if (RegistryConfigurationFields.Root(request.Path) is not null)
+                return Results.Problem(statusCode: 409, title: "settings.managed_value", detail: "Managed field names are fixed.");
+            if (!VerifyWorkspaceOwner(request.Scope, userId, scopeId, workspaces, out var ownershipError))
+                return Results.BadRequest(new { message = ownershipError });
+            if (request.ExpectedRevision <= 0) return Results.BadRequest();
+            var renamed = registry.Rename(userId, request.Scope, scopeId, request.Path, request.Name, request.NewName, request.ExpectedRevision);
+            return renamed is null ? Results.Problem(statusCode: 409, title: "settings.revision_conflict")
+                : Results.Ok(Describe(http, users, userId, scopeId, ToDto(renamed)));
+        }).RequireAuthorization().WithTags("Registry");
+
         app.MapDelete(RegistryApiRoutes.Values, (Guid userId, RegistryScope scope, string path, string name, HttpContext http, IHostElevationSessionStore elevations, IRegistryRepository registry, IWorkspaceRepository workspaces, IUserRepository users) =>
         {
             var principal = http.User;

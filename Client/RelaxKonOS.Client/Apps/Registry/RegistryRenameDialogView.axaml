@@ -1,0 +1,20 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:registry="clr-namespace:RelaxKonOS.Client.Apps.Registry"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             x:Class="RelaxKonOS.Client.Apps.Registry.RegistryRenameDialogView"
+             x:DataType="registry:RegistryRenameDialogViewModel"
+             Classes="builtin-app">
+  <Grid RowDefinitions="Auto,*,Auto" MinWidth="480">
+    <StackPanel Margin="20,20,20,0" Spacing="10">
+      <TextBlock Text="{Binding TargetLabel}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+      <TextBlock Text="{Binding ImpactText}" Opacity="0.7" TextWrapping="Wrap"/>
+      <TextBox Text="{Binding NewName, Mode=TwoWay}" PlaceholderText="{loc:Loc registry.rename.placeholder}"/>
+      <TextBlock Text="{Binding Error}" Foreground="IndianRed" TextWrapping="Wrap"/>
+    </StackPanel>
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="20">
+      <Button Content="{loc:Loc registry.cancel}" Command="{Binding CancelCommand}"/>
+      <Button Classes="primary" Content="{loc:Loc registry.rename}" Command="{Binding SaveCommand}"/>
+    </StackPanel>
+  </Grid>
+</UserControl>
