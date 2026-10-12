@@ -33,7 +33,7 @@
              paints a surface: both are drawn inside the host's title bar, beside the caption
              cluster, so the bar stays one surface from the first tab to the close button. -->
         <Grid DockPanel.Dock="Top" x:Name="HeaderHost" RowDefinitions="Auto,Auto">
-        <Grid x:Name="HeaderTabs" Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="2" IsVisible="{Binding !IsPickerMode}">
+        <Grid x:Name="HeaderTabs" Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="2" IsVisible="{Binding !IsPickerMode}">
             <!-- The scroll marks only appear once the tabs have shrunk to their floor and still
                  fill the row, so a short strip reads as tabs followed by + and nothing else. -->
             <Button Grid.Column="0" x:Name="TabScrollLeft" Classes="header-action compact" IsVisible="False"
@@ -63,6 +63,10 @@
                             </Grid>
                         </DataTemplate></ListBox.ItemTemplate>
                     </ListBox>
+            <Button x:Name="AddTabButton" Classes="header-action compact" Margin="4,0,0,0" VerticalAlignment="Center" Command="{Binding NewTabCommand}"
+                    ToolTip.Tip="{loc:Loc explorer.new_tab}" AutomationProperties.Name="{loc:Loc explorer.new_tab}">
+                <PathIcon Width="14" Height="14" Data="{StaticResource ChromeAddIcon}" />
+            </Button>
                 </StackPanel>
             </ScrollViewer>
             <Button Grid.Column="2" x:Name="TabScrollRight" Classes="header-action compact" IsVisible="False"
@@ -70,10 +74,7 @@
                 <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform"
                       Width="11" Height="11" Data="{StaticResource TabScrollRightIcon}" />
             </Button>
-            <Button Grid.Column="3" x:Name="AddTabButton" Classes="header-action compact" Command="{Binding NewTabCommand}"
-                    ToolTip.Tip="{loc:Loc explorer.new_tab}" AutomationProperties.Name="{loc:Loc explorer.new_tab}">
-                <PathIcon Width="14" Height="14" Data="{StaticResource ChromeAddIcon}" />
-            </Button>
+
         </Grid>
         <Border x:Name="NavigationToolbar" IsEnabled="{Binding !IsBusy}" Grid.Row="1" Padding="4,8" SizeChanged="NavigationToolbar_SizeChanged">
             <Border.Styles>

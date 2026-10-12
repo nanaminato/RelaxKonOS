@@ -22,7 +22,7 @@ internal static class TabStripLayoutChecks
     {
         BrowserStrip();
         ExplorerStrip();
-        Console.WriteLine("Tab strip layout checks passed (31 scenarios).");
+        Console.WriteLine("Tab strip layout checks passed (38 scenarios).");
     }
 
     private static void BrowserStrip()
@@ -51,6 +51,19 @@ internal static class TabStripLayoutChecks
             "The browser's tab list enumerates the same tabs as the strip");
         pickerFlyout.Hide();
         Dispatcher.UIThread.RunJobs();
+
+        // Production moves the header out of the UserControl into window chrome.
+        // Verify the strip keeps its own styles after that same ownership change.
+        header.DataContext = model;
+        view.FindControl<DockPanel>("ContentDock")!.Children.Remove(header);
+        host.Content = null;
+        host.Content = new DockPanel { Children = { header, view } };
+        Dispatcher.UIThread.RunJobs();
+        var wideTab = (Control)strip.ContainerFromIndex(0)!;
+        Check(CloseMark(wideTab) == 1, "A reparented wide browser tab keeps its close button");
+        var wideMark = wideTab.GetVisualDescendants().OfType<TextBlock>()
+            .First(text => text.Classes.Contains("tab-mark"));
+        Check(wideMark.IsVisible, "A wide browser tab keeps its site icon beside its close button");
 
         var lone = view.TabContentWidth;
         Check(view.IsTabTitleVisible && lone >= 200, $"A lone browser tab keeps the widest share ({lone})");
@@ -92,7 +105,7 @@ internal static class TabStripLayoutChecks
         // The location mark and the close mark share the tab's one slot, so the location mark has to
         // stand down while the close mark is up rather than being drawn through by it.
         static double MarkOpacity(Control tab) => tab.GetVisualDescendants().OfType<TextBlock>()
-            .First(text => text.Classes.Contains("tab-mark")).Opacity;
+            .First(text => text.Classes.Contains("tab-mark")).IsVisible ? 1 : 0;
         Check(MarkOpacity(active!) <= 0.1 && MarkOpacity(background!) > 0.1,
             "Only the browser tab the user is on hands its slot to the close mark");
 
@@ -117,9 +130,15 @@ internal static class TabStripLayoutChecks
         var add = view.FindControl<Button>("AddTabButton")!;
 
         Check(ReferenceEquals(header.Children[0], left) && ReferenceEquals(header.Children[2], right)
-            && ReferenceEquals(header.Children[3], add),
-            "The file browser's + is the last command on the tab row, inside its scroll marks");
+            && add.Parent is StackPanel row && ReferenceEquals(row.Parent, scroller)
+            && ReferenceEquals(row.Children[^1], add),
+            "The file browser's + follows the last tab inside the scrolling row");
         Check(!left.IsVisible && !right.IsVisible, "A short folder strip states no scroll marks");
+
+        var folders = view.FindControl<ListBox>("FolderTabs")!;
+        Check(add.TranslatePoint(default, scroller) is { } plusOrigin
+            && Math.Abs(plusOrigin.X - folders.Bounds.Width - 4) < 1,
+            "The folder + sits immediately after a short tab strip");
 
         var lone = view.TabContentWidth;
         for (var index = 0; index < 3; index++)
@@ -138,6 +157,16 @@ internal static class TabStripLayoutChecks
         Check(view.TabContentWidth == 72, "A folder tab stops at its floor instead of turning into a sliver");
         Check(left.IsVisible && right.IsVisible, "A filled folder strip states its scroll marks");
         Check(scroller.Extent.Width > scroller.Viewport.Width, "A filled folder strip scrolls instead of hiding a folder");
+        Check(add.TranslatePoint(default, scroller) is { } crowdedPlus
+            && crowdedPlus.X + add.Bounds.Width <= scroller.Viewport.Width + 1,
+            "Selecting the last folder keeps its trailing + visible");
+
+        host.Width = 1600;
+        Dispatcher.UIThread.RunJobs();
+        Check(!left.IsVisible && !right.IsVisible, "Widening a crowded folder strip removes its scroll arrows");
+        host.Width = 700;
+        Dispatcher.UIThread.RunJobs();
+        Check(left.IsVisible && right.IsVisible, "Narrowing the folder strip restores overflow navigation");
 
         explorer.SwitchTabAsync(explorer.Tabs[0]).GetAwaiter().GetResult();
         Dispatcher.UIThread.RunJobs();
@@ -173,7 +202,7 @@ internal static class TabStripLayoutChecks
     }
 
     private static double CloseMark(Control tab) =>
-        tab.GetVisualDescendants().OfType<Button>().First(button => button.Classes.Contains("tab-close")).Opacity;
+        tab.GetVisualDescendants().OfType<Button>().First(button => button.Classes.Contains("tab-close")).IsVisible ? 1 : 0;
 
     private static void Check(bool condition, string message)
     { if (!condition) throw new InvalidOperationException(message); }

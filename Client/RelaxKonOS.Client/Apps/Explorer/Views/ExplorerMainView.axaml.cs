@@ -39,6 +39,7 @@ public partial class ExplorerMainView : UserControl
     private const double MinimumTabWidth = 72;
     /// <summary>Per-tab chrome: the item's margin plus its content padding.</summary>
     private const double TabItemChrome = 18;
+    private const double TabRowChrome = 34;
     private const double TabMinimumPitch = MinimumTabWidth + TabItemChrome;
     /// <summary>Distance one wheel notch travels along a strip that only scrolls sideways.</summary>
     private const double TabWheelStep = 60;
@@ -66,6 +67,7 @@ public partial class ExplorerMainView : UserControl
     public ExplorerMainView()
     {
         InitializeComponent();
+        TabScroller.ScrollChanged += (_, _) => UpdateTabScrollMarks();
         BreadcrumbScroll.SizeChanged += (_, _) => ScrollBreadcrumbsToLocation();
         // The strip is exactly as wide as its tabs now, so the width the tabs divide between them
         // is the scroller's — and that is also what decides whether the row has filled up.
@@ -107,16 +109,20 @@ public partial class ExplorerMainView : UserControl
         // The share is floored: item measurement rounds every tab up to whole pixels, so a share
         // taken from an unrounded division would push the last tab past the edge of the row.
         TabContentWidth = count > 0 && available > 0
-            ? Math.Clamp(Math.Floor(available / count) - TabItemChrome, MinimumTabWidth, MaximumTabWidth)
+            ? Math.Clamp(Math.Floor(Math.Max(0, available - TabRowChrome) / count) - TabItemChrome, MinimumTabWidth, MaximumTabWidth)
             : MaximumTabWidth;
 
-        var filled = count > 0 && available > 0 && count * TabMinimumPitch > available + 0.5;
+        // Decide against the width without arrows so showing them cannot latch overflow on.
+        var unadornedWidth = available + (TabScrollLeft.IsVisible
+            ? TabScrollLeft.Bounds.Width + TabScrollRight.Bounds.Width + 4 : 0);
+        var filled = count > 0 && available > 0 && count * TabMinimumPitch + TabRowChrome > unadornedWidth + 0.5;
         if (TabScrollLeft.IsVisible != filled)
         {
             TabScrollLeft.IsVisible = TabScrollRight.IsVisible = filled;
             if (!filled) TabScroller.Offset = TabScroller.Offset.WithX(0);
         }
         UpdateTabScrollMarks();
+        Dispatcher.UIThread.Post(ScrollActiveTabIntoView, DispatcherPriority.Background);
     }
 
     /// <summary>Keeps the tab the user is on inside the strip's window, however it was chosen.</summary>
@@ -127,7 +133,8 @@ public partial class ExplorerMainView : UserControl
         var viewport = TabScroller.Viewport.Width;
         if (extent <= viewport || container.TranslatePoint(default, TabScroller) is not { } origin) return;
         var offset = TabScroller.Offset.X;
-        if (origin.X < 0) offset += origin.X;
+        if (ReferenceEquals(tab, ViewModel?.Tabs.LastOrDefault())) offset = extent - viewport;
+        else if (origin.X < 0) offset += origin.X;
         else if (origin.X + container.Bounds.Width > viewport) offset += origin.X + container.Bounds.Width - viewport;
         TabScroller.Offset = TabScroller.Offset.WithX(Math.Clamp(offset, 0, extent - viewport));
         UpdateTabScrollMarks();

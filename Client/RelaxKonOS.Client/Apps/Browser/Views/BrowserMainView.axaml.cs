@@ -16,13 +16,13 @@ public partial class BrowserMainView : UserControl
 {
     /// <summary>The widest a tab may become; past this a browser tab stops growing.</summary>
     private const double MaximumTabWidth = 210;
-    /// <summary>The narrowest a tab may become: exactly its leading mark, which doubles as close.</summary>
+    /// <summary>The narrowest a tab may become: one icon slot; the selected tab uses it for close.</summary>
     private const double MinimumTabWidth = 18;
-    /// <summary>Width of the leading mark slot, which the close target shares.</summary>
+    /// <summary>Width of each icon or close target slot.</summary>
     private const double TabMarkSlot = 18;
     private const double TabMarkSpacing = 6;
     /// <summary>Below this a tab has no room for a title and shows its mark alone.</summary>
-    private const double TabTitleFloor = 96;
+    private const double TabTitleFloor = 60;
     /// <summary>Per-tab chrome: the item's margin plus its content padding.</summary>
     private const double TabItemChrome = 18;
     /// <summary>The new-tab command plus the gap before it, reserved so + stays inside the window.</summary>
@@ -79,7 +79,11 @@ public partial class BrowserMainView : UserControl
         InitializeComponent();
         // The strip no longer measures itself: it is exactly as wide as its tabs, and the scroller
         // around it is what those tabs divide between them.
-        TabScroller.SizeChanged += (_, e) => UpdateTabLayout(e.NewSize.Width);
+        TabScroller.SizeChanged += (_, e) =>
+        {
+            UpdateTabLayout(e.NewSize.Width);
+            Avalonia.Threading.Dispatcher.UIThread.Post(ScrollActiveTabIntoView, Avalonia.Threading.DispatcherPriority.Background);
+        };
         TabStrip.SelectionChanged += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(ScrollActiveTabIntoView, Avalonia.Threading.DispatcherPriority.Background);
         // Tunnelling on the strip's own scroller keeps the wheel inside the tab row.
         TabScroller.AddHandler(PointerWheelChangedEvent, OnTabStripWheel, RoutingStrategies.Tunnel);
@@ -113,7 +117,7 @@ public partial class BrowserMainView : UserControl
             : MaximumTabWidth;
         TabContentWidth = Math.Clamp(share, MinimumTabWidth, MaximumTabWidth);
         IsTabTitleVisible = TabContentWidth >= TabTitleFloor;
-        TabTitleWidth = Math.Max(0, TabContentWidth - TabMarkSlot - TabMarkSpacing);
+        TabTitleWidth = Math.Max(0, TabContentWidth - 2 * TabMarkSlot - 2 * TabMarkSpacing);
     }
 
     /// <summary>Keeps the tab the user is on inside the strip's window, however it was chosen.</summary>

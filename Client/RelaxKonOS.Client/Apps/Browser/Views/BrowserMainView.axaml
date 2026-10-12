@@ -39,33 +39,16 @@
         <Style Selector="ListBox.browser-collection ListBoxItem">
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         </Style>
-        <!-- A browser tab only states its close mark on the tab the user is on, or on the tab the
-             pointer is over. The mark never moves: it sits on the tab's own leading mark, so a
-             tab narrow enough to have dropped its title still offers the same target. Both glyphs
-             share that one slot, so the location mark steps aside while the close mark is up
-             instead of the two being drawn through each other. -->
-        <Style Selector="ListBox#TabStrip Button.tab-close">
-            <Setter Property="Opacity" Value="0" />
-        </Style>
-        <Style Selector="ListBox#TabStrip ListBoxItem:selected Button.tab-close">
-            <Setter Property="Opacity" Value="1" />
-        </Style>
-        <Style Selector="ListBox#TabStrip ListBoxItem:pointerover Button.tab-close">
-            <Setter Property="Opacity" Value="1" />
-        </Style>
-        <Style Selector="ListBox#TabStrip TextBlock.tab-mark">
-            <Setter Property="Opacity" Value="0.6" />
-        </Style>
-        <Style Selector="ListBox#TabStrip ListBoxItem:selected TextBlock.tab-mark">
-            <Setter Property="Opacity" Value="0" />
-        </Style>
-        <Style Selector="ListBox#TabStrip ListBoxItem:pointerover TextBlock.tab-mark">
-            <Setter Property="Opacity" Value="0" />
-        </Style>
     </UserControl.Styles>
 
     <DockPanel x:Name="ContentDock" LastChildFill="True">
         <Grid x:Name="HeaderTabs" DockPanel.Dock="Top" ColumnDefinitions="Auto,*" ColumnSpacing="2">
+            <Grid.Styles>
+                <Style Selector="ListBox#TabStrip Button.tab-close"><Setter Property="IsVisible" Value="{Binding #Root.IsTabTitleVisible}" /></Style>
+                <Style Selector="ListBox#TabStrip ListBoxItem:selected Button.tab-close"><Setter Property="IsVisible" Value="True" /></Style>
+                <Style Selector="ListBox#TabStrip TextBlock.tab-mark"><Setter Property="IsVisible" Value="True" /></Style>
+                <Style Selector="ListBox#TabStrip ListBoxItem:selected TextBlock.tab-mark"><Setter Property="IsVisible" Value="{Binding #Root.IsTabTitleVisible}" /></Style>
+            </Grid.Styles>
             <!-- The list of every tab sits ahead of the strip, so the expander keeps one position
                  no matter how many tabs arrive. -->
             <Button Grid.Column="0" x:Name="TabPickerButton" Classes="header-action compact" ToolTip.Tip="{loc:Loc explorer.all_tabs}" AutomationProperties.Name="{loc:Loc explorer.all_tabs}">
@@ -86,13 +69,11 @@
                         <ListBox.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ListBox.ItemsPanel>
                         <ListBox.ItemTemplate><DataTemplate x:DataType="vm:BrowserTabViewModel">
                             <Grid VerticalAlignment="Center" Width="{Binding #Root.TabContentWidth}" ToolTip.Tip="{Binding Title}">
-                                <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
-                                    <Grid Width="18" Height="18" VerticalAlignment="Center">
-                                        <TextBlock Classes="tab-mark" Text="◉" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                        <Button Classes="tab-close" HorizontalAlignment="Center" VerticalAlignment="Center" Click="CloseTab_Click" ToolTip.Tip="{loc:Loc browser.close_tab}" AutomationProperties.Name="{loc:Loc browser.close_tab}"><PathIcon Width="11" Height="11" Data="{StaticResource BrowserCloseIcon}" /></Button>
-                                    </Grid>
-                                    <TextBlock Text="{Binding Title}" Width="{Binding #Root.TabTitleWidth}" IsVisible="{Binding #Root.IsTabTitleVisible}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                                </StackPanel>
+                                <Grid ColumnDefinitions="Auto,*,Auto">
+                                    <TextBlock Classes="tab-mark" Text="◉" Width="18" VerticalAlignment="Center" HorizontalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Margin="6,0" Text="{Binding Title}" IsVisible="{Binding #Root.IsTabTitleVisible}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                    <Button Grid.Column="2" Classes="tab-close" Click="CloseTab_Click" ToolTip.Tip="{loc:Loc browser.close_tab}" AutomationProperties.Name="{loc:Loc browser.close_tab}"><PathIcon Width="11" Height="11" Data="{StaticResource BrowserCloseIcon}" /></Button>
+                                </Grid>
                             </Grid>
                         </DataTemplate></ListBox.ItemTemplate>
                     </ListBox>

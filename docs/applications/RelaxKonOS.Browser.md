@@ -70,3 +70,5 @@ Windows/macOS 的每个有网页内容的标签按需创建独立 `NativeWebView
 条目支持单击打开、在新标签页打开、复制完整链接、删除；清空整个列表收纳到列表管理菜单。继续使用原来的有界分页和加载更多，数量明确表示已加载条目。历史标题随增删替换维护日期边界，保持来源 DTO 与持久化模型不变；没有新增文件夹或搜索功能契约。所有弹出菜单显示时统一隐藏原生网页 surface，关闭后恢复当前标签可见性。
 
 验证包括图标实际中心、菜单条目 DataContext、新标签/复制/删除动作、日期分组边界、3 语言 × 2 主题 × 3 宽度以及原有地址解析回归。面板图见 [亮色书签](../development/optimization-evidence/Browser-Bookmarks-Light-1100.png)、[亮色历史](../development/optimization-evidence/Browser-History-Light-1100.png) 和 [暗色窄窗口历史](../development/optimization-evidence/Browser-History-Dark-640.png)。截图使用 fixture 数据，不包含真实用户书签或历史。
+
+Browser tabs keep the site icon on the left and the close button on the right while titles fit. At icon-only widths the selected tab exposes its close button. Tab styles remain attached to the header when it moves into window chrome, and resizing keeps the selected tab visible.
