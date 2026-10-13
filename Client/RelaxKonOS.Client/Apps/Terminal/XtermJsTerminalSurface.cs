@@ -25,7 +25,6 @@ public sealed class TerminalSurfaceUnavailableException(string message, Exceptio
 /// </summary>
 public sealed class XtermJsTerminalSurface : ITerminalSurface
 {
-    private const int ScrollbackLimit = 10000;
     private const double MinimumFontSize = 8;
     private const double MaximumFontSize = 40;
     /// <summary>How long the page may take to announce itself before the window falls back.</summary>
@@ -248,7 +247,9 @@ public sealed class XtermJsTerminalSurface : ITerminalSurface
     {
         ["fontFamily"] = TerminalAppearance.ToCssFontStack(TerminalAppearance.ResolveFontFamily(appearance.FontFamily)),
         ["fontSize"] = Math.Clamp(appearance.FontSize, MinimumFontSize, MaximumFontSize),
-        ["scrollback"] = ScrollbackLimit,
+        ["scrollback"] = appearance.ScrollbackLines,
+        ["cursorStyle"] = appearance.CursorStyle,
+        ["cursorBlink"] = appearance.CursorBlink,
         ["theme"] = new Dictionary<string, string>
         {
             ["background"] = appearance.BackgroundColor,

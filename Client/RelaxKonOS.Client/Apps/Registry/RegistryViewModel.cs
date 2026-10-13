@@ -10,8 +10,23 @@ using RelaxKonOS.Protocol.Registry;
 namespace RelaxKonOS.Client.Apps.Registry;
 
 /// <summary>Windows-style, on-demand registry browser. Values are fetched only for the selected key.</summary>
-public sealed partial class RegistryViewModel(IRegistryClient client) : LocalizedObservableObject
+public sealed partial class RegistryViewModel(IRegistryClient client, RelaxKonOS.Client.Services.ClientPresentationPreferences? preferences = null) : LocalizedObservableObject
 {
+    public RegistryAppearanceSettings Appearance => preferences?.Registry ?? RegistryAppearanceSettings.Default;
+    public void StartAppearanceUpdates()
+    {
+        if (preferences is null) return;
+        preferences.Changed += OnAppearanceChanged;
+        preferences.Activate();
+    }
+    public void StopAppearanceUpdates()
+    {
+        if (preferences is null) return;
+        preferences.Changed -= OnAppearanceChanged;
+        preferences.Deactivate();
+    }
+    private void OnAppearanceChanged(object? sender, EventArgs args) => OnPropertyChanged(nameof(Appearance));
+    public Task SaveSidebarWidthAsync(int width) => preferences?.SaveSidebarWidthAsync(width) ?? Task.CompletedTask;
     private readonly Dictionary<RegistryKeyNode, Task> _childLoads = [];
     private long _loadGeneration;
     private long _navigationGeneration;
@@ -82,6 +97,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Localize
     {
         try
         {
+            if (preferences is not null) await preferences.RefreshAsync();
             if (_context is null) { _context = await client.GetContextAsync(); BuildStaticTree(); NotifyContext(); }
             if (SelectedKey is { } key)
             {
@@ -135,6 +151,11 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Localize
     }
     private async Task LoadChildrenCoreAsync(RegistryKeyNode? key)
     {
+        if (key?.Kind == RegistryKeyKind.Json)
+        {
+            if (!key.ChildrenLoaded) PopulateJsonChildren(key);
+            return;
+        }
         if (key is { Kind: RegistryKeyKind.Users, ChildrenLoaded: false, IsLoadingChildren: false })
         {
             key.IsLoadingChildren = true;
@@ -166,7 +187,11 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Localize
         {
             var children = await client.ForUser(key.TargetUserId!.Value).ListKeysAsync(scope, path);
             foreach (var child in children) VerifyAddress(child.Address, key, child.Path);
-            var existing = key.Children.Where(node => node.Path is not null).ToDictionary(node => node.Path!);
+            var values = await client.ForUser(key.TargetUserId!.Value).ListValuesAsync(scope, path);
+            foreach (var entry in values) VerifyAddress(entry.Address, key, path);
+            key.CachedValues = values;
+            var virtualRoots = key.Children.Where(node => node.Kind == RegistryKeyKind.Json).ToDictionary(node => node.Document!.Name);
+            var existing = key.Children.Where(node => node.Kind == RegistryKeyKind.Key && node.Path is not null).ToDictionary(node => node.Path!);
             key.Children.Clear();
             foreach (var child in children)
             {
@@ -175,6 +200,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Localize
                 node.Address = child.Address; node.AllowCreate = child.CanCreateChild; node.AllowDelete = child.CanDelete;
                 key.Children.Add(node);
             }
+            AddJsonRoots(key, values, virtualRoots);
             key.ChildrenLoaded = true;
         }
         finally { key.IsLoadingChildren = false; }
@@ -259,6 +285,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Localize
 
     public void ApplySaved(RegistryEntryDto entry, LocalizedStatus? status = null)
     {
+        UpdateJsonDocuments(Keys, entry);
         InvalidateOwner(Keys, entry.Address);
         if (SelectedKey?.Address != entry.Address) return;
         var index = Entries.ToList().FindIndex(x => x.Source.Name == entry.Name);
@@ -269,6 +296,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Localize
 
     public void ApplyRenamed(RegistryEntryDto entry)
     {
+        UpdateJsonDocuments(Keys, entry);
         InvalidateOwner(Keys, entry.Address);
         if (SelectedKey?.Address != entry.Address) return;
         _ = ReloadAfterSaveAsync(SelectedKey, LocalizedText.RefWithFallback("registry.status.renamed", "Value renamed."));
@@ -306,7 +334,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Localize
             {
                 await LoadChildrenAsync(current);
                 if (generation != _navigationGeneration) return;
-                current = current.Children.FirstOrDefault(node => LastSegment(node.Path ?? node.Name).Equals(input[i], StringComparison.OrdinalIgnoreCase));
+                current = current.Children.FirstOrDefault(node => node.NavigationName.Equals(input[i], StringComparison.OrdinalIgnoreCase));
             }
             if (generation != _navigationGeneration) return;
             if (current is null) StatusText = LocalizedText.RefWithFallback("registry.status.path_not_found", "Registry key not found: {0}", NavigationPathInput);
@@ -326,6 +354,44 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Localize
         Entries.Clear();
         SelectedEntry = null;
         OnPropertyChanged(nameof(ValueCountText));
+        if (key is { Kind: RegistryKeyKind.Json, Document: { } document })
+        {
+            IsLoading = true;
+            PaneState = RegistryPaneState.Loading;
+            try
+            {
+                if (refreshChildren)
+                {
+                    var latest = await client.ForUser(document.Address.OwnerUserId).ListValuesAsync(document.Scope, document.Path);
+                    if (generation != _loadGeneration || !ReferenceEquals(SelectedKey, key)) return;
+                    var updated = latest.SingleOrDefault(entry => entry.Name == document.Name)
+                        ?? throw new InvalidOperationException(LocalizedText.Get("registry.status.path_not_found", "Registry key not found: {0}"));
+                    if (updated.Address != document.Address) throw new InvalidOperationException("Registry response target mismatch.");
+                    UpdateJsonDocuments(Keys, updated);
+                }
+                PopulateJsonChildren(key);
+                var value = RegistryJsonProjection.Resolve(key.Document!.DesiredValue, key.JsonPath);
+                if (value.ValueKind == JsonValueKind.Object)
+                    foreach (var property in value.EnumerateObject())
+                        Entries.Add(RegistryJsonProjection.Row(key.Document, property.Name, [.. key.JsonPath, property.Name]));
+                else if (value.ValueKind == JsonValueKind.Array)
+                {
+                    var index = 0;
+                    foreach (var item in value.EnumerateArray())
+                    {
+                        var part = (index++).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                        Entries.Add(RegistryJsonProjection.Row(key.Document, RegistryJsonProjection.Label(part, item), [.. key.JsonPath, part]));
+                    }
+                }
+                else Entries.Add(RegistryJsonProjection.Row(key.Document, key.NavigationName, key.JsonPath));
+                PaneState = Entries.Count == 0 ? RegistryPaneState.Empty : RegistryPaneState.Ready;
+                StatusText = Entries.Count == 0 ? LocalizedText.RefWithFallback("registry.status.empty", "No values in this key.") : LocalizedStatus.Literal("");
+                OnPropertyChanged(nameof(ValueCountText));
+            }
+            catch (Exception error) { if (generation == _loadGeneration) SetFailure(error); }
+            finally { if (generation == _loadGeneration) IsLoading = false; }
+            return;
+        }
         if (key is null || !key.IsRegistryKey || key.Scope is not { } scope || key.Path is not { } path)
         {
             IsLoading = false;
@@ -340,10 +406,14 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Localize
         {
             if (refreshChildren) key.ChildrenLoaded = false;
             await LoadChildrenAsync(key);
-            var values = await client.ForUser(key.TargetUserId!.Value).ListValuesAsync(scope, path);
+            var values = key.CachedValues ?? await client.ForUser(key.TargetUserId!.Value).ListValuesAsync(scope, path);
+            key.CachedValues = null;
             if (generation != _loadGeneration || !ReferenceEquals(SelectedKey, key)) return;
             foreach (var entry in values) VerifyAddress(entry.Address, key, path);
             foreach (var entry in values) Entries.Add(RegistryEntryRow.From(entry));
+            var jsonRoots = key.Children.Where(node => node.Kind == RegistryKeyKind.Json).ToDictionary(node => node.Document!.Name);
+            foreach (var node in jsonRoots.Values) key.Children.Remove(node);
+            AddJsonRoots(key, values, jsonRoots);
             PaneState = values.Count == 0 ? RegistryPaneState.Empty : RegistryPaneState.Ready;
             StatusText = values.Count == 0 ? LocalizedText.RefWithFallback("registry.status.empty", "No values in this key.") : LocalizedStatus.Literal("");
             OnPropertyChanged(nameof(ValueCountText));
@@ -389,6 +459,9 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Localize
         var root = new RegistryKeyNode(context.ServerId, null, null, null, RegistryKeyKind.Root) { IsExpanded = true };
         var current = new RegistryKeyNode("HKEY_CURRENT_USER — " + context.Username, null, null, root, RegistryKeyKind.CurrentUser, context.CurrentUserId);
         if (context.WorkspaceId is { } workspace) current.Children.Add(WorkspaceNode(current, context.CurrentUserId, workspace));
+        if (context.DeviceId is { } device)
+            current.Children.Add(new RegistryKeyNode("Device", "Device", RegistryScope.Device, current)
+            { Address = new(context.ServerId, context.CurrentUserId, RegistryScope.Device, device, "Device") });
         root.Children.Add(current);
         root.Children.Add(new RegistryKeyNode("HKEY_USERS", null, null, root, RegistryKeyKind.Users));
         Keys.Add(root);
@@ -406,14 +479,86 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Localize
         foreach (var node in nodes)
         {
             if (node.Address is { } target && target.ServerId == address.ServerId && target.OwnerUserId == address.OwnerUserId
-                && target.Scope == address.Scope && target.ScopeId == address.ScopeId) node.ChildrenLoaded = false;
+                && target.Scope == address.Scope && target.ScopeId == address.ScopeId) { node.ChildrenLoaded = false; node.CachedValues = null; }
             InvalidateOwner(node.Children, address);
         }
     }
+    private static void AddJsonRoots(RegistryKeyNode key, IReadOnlyList<RegistryEntryDto> values, Dictionary<string, RegistryKeyNode> previous)
+    {
+        foreach (var entry in values.Where(entry => entry.DesiredValue.ValueKind == JsonValueKind.Array))
+        {
+            var node = previous.GetValueOrDefault(entry.Name) ?? JsonKey(key, entry, [], entry.Name);
+            UpdateJsonDocuments([node], entry);
+            node.Name = RegistryJsonProjection.NodeLabel(entry.Name, entry.DesiredValue);
+            key.Children.Add(node);
+        }
+    }
+
+    private static RegistryKeyNode JsonKey(RegistryKeyNode parent, RegistryEntryDto document, IReadOnlyList<string> path, string label)
+    {
+        var node = new RegistryKeyNode(RegistryJsonProjection.NodeLabel(label, RegistryJsonProjection.Resolve(document.DesiredValue, path)), document.Path, document.Scope, parent, RegistryKeyKind.Json)
+        { Document = document, Address = document.Address, JsonPath = path };
+        var value = RegistryJsonProjection.Resolve(document.DesiredValue, path);
+        if (value.ValueKind == JsonValueKind.Array && value.GetArrayLength() > 0 || value.ValueKind == JsonValueKind.Object && value.EnumerateObject().Any())
+            node.Children.Add(new RegistryKeyNode("…", null, null, node, RegistryKeyKind.Placeholder));
+        return node;
+    }
+
+    private static void PopulateJsonChildren(RegistryKeyNode key)
+    {
+        if (key.ChildrenLoaded) return;
+        var value = RegistryJsonProjection.Resolve(key.Document!.DesiredValue, key.JsonPath);
+        var previous = key.Children.Where(node => node.Kind == RegistryKeyKind.Json).ToDictionary(node => node.JsonPath[^1]);
+        key.Children.Clear();
+        void Add(string part, string label)
+        {
+            var node = previous.GetValueOrDefault(part) ?? JsonKey(key, key.Document, [.. key.JsonPath, part], label);
+            node.Name = RegistryJsonProjection.NodeLabel(label, RegistryJsonProjection.Resolve(key.Document.DesiredValue, node.JsonPath));
+            key.Children.Add(node);
+        }
+        if (value.ValueKind == JsonValueKind.Array)
+        {
+            var index = 0;
+            foreach (var item in value.EnumerateArray())
+            {
+                var part = (index++).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                Add(part, RegistryJsonProjection.Label(part, item));
+            }
+        }
+        else if (value.ValueKind == JsonValueKind.Object)
+            foreach (var property in value.EnumerateObject())
+                if (property.Value.ValueKind is JsonValueKind.Array or JsonValueKind.Object) Add(property.Name, property.Name);
+        key.ChildrenLoaded = true;
+    }
+
+    private static void UpdateJsonDocuments(IEnumerable<RegistryKeyNode> nodes, RegistryEntryDto entry)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.Document is { } document && document.Address == entry.Address && document.Name == entry.Name)
+            {
+                node.Document = entry;
+                node.ChildrenLoaded = false;
+                try
+                {
+                    var value = RegistryJsonProjection.Resolve(entry.DesiredValue, node.JsonPath);
+                    var label = node.JsonPath.Count == 0 ? entry.Name
+                        : node.Parent?.JsonValueKind == JsonValueKind.Array ? RegistryJsonProjection.Label(node.JsonPath[^1], value) : node.JsonPath[^1];
+                    node.Name = RegistryJsonProjection.NodeLabel(label, value);
+                    node.NotifyJsonChanged();
+                }
+                catch (Exception error) when (error is KeyNotFoundException or IndexOutOfRangeException or InvalidOperationException)
+                { /* Removed paths are reconciled when their parent is populated; selection reports the read failure. */ }
+            }
+            UpdateJsonDocuments(node.Children, entry);
+        }
+    }
+
     private static string ParentPath(string path) => path[..path.LastIndexOf('\\')];
     private static string LastSegment(string path) => path[(path.LastIndexOf('\\') + 1)..];
     private static string DisplayPath(RegistryKeyNode? node)
     {
+        if (node?.Kind == RegistryKeyKind.Json) return DisplayPath(node.Parent) + "\\" + node.NavigationName;
         if (node is null || node.Kind == RegistryKeyKind.Root) return "";
         if (node.Kind == RegistryKeyKind.Users) return "HKEY_USERS";
         var current = node;
@@ -428,6 +573,8 @@ public enum RegistryPaneState { Idle, Loading, Ready, Empty, Denied, Failed, Dis
 
 public sealed record RegistryEntryRow(RegistryEntryDto Source, string Name, string DesiredValue, string Type)
 {
+    public RegistryEntryDto? Document { get; init; }
+    public IReadOnlyList<string> JsonPath { get; init; } = [];
     public static RegistryEntryRow From(RegistryEntryDto entry) => new(entry, entry.Name, Format(entry.DesiredValue), entry.ValueType.ToString());
     private static string Format(JsonElement value)
     {
@@ -436,18 +583,31 @@ public sealed record RegistryEntryRow(RegistryEntryDto Source, string Name, stri
     }
 }
 
-public enum RegistryKeyKind { Root, CurrentUser, Users, User, Key, Placeholder }
+public enum RegistryKeyKind { Root, CurrentUser, Users, User, Key, Json, Placeholder }
 
 public sealed partial class RegistryKeyNode : ObservableObject
 {
     public RegistryKeyNode(string name, string? path, RegistryScope? scope, RegistryKeyNode? parent, RegistryKeyKind kind = RegistryKeyKind.Key, Guid? targetUserId = null)
     {
-        Name = name; Path = path; Scope = scope; Parent = parent; Kind = kind; TargetUserId = targetUserId ?? parent?.TargetUserId;
+        _name = name; Path = path; Scope = scope; Parent = parent; Kind = kind; TargetUserId = targetUserId ?? parent?.TargetUserId;
         if (kind is RegistryKeyKind.Key or RegistryKeyKind.Users)
             Children.Add(new RegistryKeyNode("…", null, null, this, RegistryKeyKind.Placeholder));
     }
+    public IReadOnlyList<RegistryEntryDto>? CachedValues { get; set; }
+    public RegistryEntryDto? Document { get; set; }
+    public IReadOnlyList<string> JsonPath { get; init; } = [];
+    public string NavigationName => Kind == RegistryKeyKind.Json
+        ? JsonPath.Count == 0 ? Document!.Name : Parent?.JsonValueKind == System.Text.Json.JsonValueKind.Array ? "[" + JsonPath[^1] + "]" : JsonPath[^1]
+        : (Path ?? Name)[((Path ?? Name).LastIndexOf('\\') + 1)..];
+    public JsonValueKind? JsonValueKind => Document is null ? null : RegistryJsonProjection.Resolve(Document.DesiredValue, JsonPath).ValueKind;
+    public string ToolTipText => Document is null ? Name : RegistryJsonProjection.Resolve(Document.DesiredValue, JsonPath).GetRawText();
+    public void NotifyJsonChanged()
+    {
+        OnPropertyChanged(nameof(ToolTipText));
+        OnPropertyChanged(nameof(JsonValueKind));
+    }
     public Guid? TargetUserId { get; }
-    public string Name { get; }
+    [ObservableProperty] private string _name;
     public string? Path { get; }
     public RegistryScope? Scope { get; }
     public RegistryKeyNode? Parent { get; }

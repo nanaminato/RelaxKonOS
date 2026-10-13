@@ -19,11 +19,11 @@ public static class RegistryConfigurationFields
         && new[] { "SortDescending", "ShowHiddenFiles", "IsCompactView", "FileListCacheEnabled" }
             .All(name => value[name] is JsonValue flag && flag.TryGetValue<bool>(out _));
 
-    public static string? Root(string path) => RegistrySchema.Definitions.Select(definition => definition.Path)
+    public static string? Root(RegistryScope scope, string path) => RegistrySchema.Definitions.Where(definition => definition.Scope == scope).Select(definition => definition.Path)
         .FirstOrDefault(root => path == root || path.StartsWith(root + "\\", StringComparison.Ordinal));
     private static JsonObject? ObjectAt(RegistryEntry entry, string path)
     {
-        JsonNode? node = JsonNode.Parse(entry.ValueJson);
+        JsonNode? node = Document(entry);
         foreach (var segment in path[entry.Path.Length..].Split('\\', StringSplitOptions.RemoveEmptyEntries))
             node = (node as JsonObject)?[segment];
         return node as JsonObject;
@@ -65,6 +65,7 @@ public static class RegistryConfigurationFields
             if (value.Path == WorkspaceConfigurationRegistry.ExplorerPath && value.Name is "SortField" or "ViewMode")
                 choices.AddRange(Enumerable.Range(0, 4).Select(index => new RegistryValueChoiceDto(index.ToString(), JsonSerializer.SerializeToElement(index))));
             if (value.Path.EndsWith("\\appearance", StringComparison.Ordinal) && value.Name == "mode") Add("light", "dark");
+            if (value.Path == WorkspaceConfigurationRegistry.TerminalPath && value.Name == "cursorStyle") Add("block", "underline", "bar");
             if (value.Path == WorkspaceConfigurationRegistry.TerminalPath && value.Name == "backend") Add(TerminalBackends.All.ToArray());
             if (value.Path == WorkspaceConfigurationRegistry.TerminalPath && value.Name.EndsWith("Color", StringComparison.Ordinal)) editor = RegistryEditorKind.Color;
             if (value.DesiredValue.ValueKind == JsonValueKind.Array && value.DesiredValue.EnumerateArray().All(item => item.ValueKind == JsonValueKind.String)
@@ -72,15 +73,29 @@ public static class RegistryConfigurationFields
         }
         // A declared editor wins over the JSON shape: an empty string list serializes exactly like an
         // empty object list, so the schema — not the payload — decides which control the field gets.
+        if (Bounds(value.Path, value.Name) is not null && value.Name != "fontSize") editor = RegistryEditorKind.Integer;
         if (DeclaredEditor(value.Path, value.Name) is { } declared) editor = declared;
         return new(value.Name, CanWrite: true, CanDelete: !managed,
             CanRename: !managed && value.Name != WorkspaceConfigurationRegistry.DefaultValueName, defaultValue)
         {
             Editor = choices.Count > 0 ? RegistryEditorKind.Enum : editor, Choices = choices,
-            Minimum = value.Path == WorkspaceConfigurationRegistry.TerminalPath && value.Name == "fontSize" ? 8 : null,
-            Maximum = value.Path == WorkspaceConfigurationRegistry.TerminalPath && value.Name == "fontSize" ? 40 : null,
+            Minimum = Bounds(value.Path, value.Name)?.Min,
+            Maximum = Bounds(value.Path, value.Name)?.Max,
         };
     }
+
+    private static (double Min, double Max)? Bounds(string path, string name) => (path, name) switch
+    {
+        (WorkspaceConfigurationRegistry.TerminalPath, "fontSize") => (8, 40),
+        (WorkspaceConfigurationRegistry.TerminalPath, "scrollbackLines") => (0, 100000),
+        (ClientPresentationPaths.Terminal, "paddingTop" or "paddingBottom" or "paddingHorizontal") => (0, 32),
+        (ClientPresentationPaths.Registry, "treeRowHeight") => (20, 40),
+        (ClientPresentationPaths.Registry, "valueRowHeight") => (22, 44),
+        (ClientPresentationPaths.Registry, "iconSize") => (12, 24),
+        (ClientPresentationPaths.Registry, "scrollbarThickness") => (4, 12),
+        (ClientPresentationPaths.Registry, "sidebarWidth") => (180, 600),
+        _ => null,
+    };
 
     /// <summary>Logical editors that a value's JSON shape alone cannot express.</summary>
     private static RegistryEditorKind? DeclaredEditor(string path, string name) => (path, name) switch
@@ -94,6 +109,8 @@ public static class RegistryConfigurationFields
         {
             WorkspaceConfigurationRegistry.DesktopPath => WorkspacePreferencesDto.Default,
             WorkspaceConfigurationRegistry.TerminalPath => TerminalSettingsDto.Default,
+            ClientPresentationPaths.Terminal => TerminalPaddingSettings.Default,
+            ClientPresentationPaths.Registry => RegistryAppearanceSettings.Default,
             WorkspaceConfigurationRegistry.ExplorerPath => WorkspaceConfigurationRegistry.ExplorerDefaults,
             WorkspaceConfigurationRegistry.BrowserPath => BrowserSettingsDto.Default,
             WorkspaceConfigurationRegistry.WindowManagerPath => WorkspaceWindowLayoutDto.Default,
@@ -106,7 +123,7 @@ public static class RegistryConfigurationFields
     }
     public static string? Patch(RegistryEntry entry, string path, string name, JsonElement value)
     {
-        var root = JsonNode.Parse(entry.ValueJson) as JsonObject;
+        var root = Document(entry);
         JsonObject? node = root;
         foreach (var segment in path[entry.Path.Length..].Split('\\', StringSplitOptions.RemoveEmptyEntries)) node = node?[segment] as JsonObject;
         if (node is null || !node.ContainsKey(name) || name == "revision") return null;
@@ -114,11 +131,19 @@ public static class RegistryConfigurationFields
         return Normalize(entry.Path, root!.ToJsonString());
     }
 
+    private static JsonObject? Document(RegistryEntry entry) => entry.Scope == RegistryScope.Workspace && entry.Path == WorkspaceConfigurationRegistry.TerminalPath
+        ? JsonSerializer.SerializeToNode(JsonSerializer.Deserialize<TerminalSettingsDto>(entry.ValueJson, RelaxKonOSJsonOptions.Default), RelaxKonOSJsonOptions.Default) as JsonObject
+        : JsonNode.Parse(entry.ValueJson) as JsonObject;
+
     public static string? Normalize(string path, string json)
     {
         var root = JsonNode.Parse(json) as JsonObject;
         try
         {
+            if (path == ClientPresentationPaths.Terminal)
+                return JsonSerializer.Deserialize<TerminalPaddingSettings>(json, RelaxKonOSJsonOptions.Default) is { IsValid: true } padding ? json : null;
+            if (path == ClientPresentationPaths.Registry)
+                return JsonSerializer.Deserialize<RegistryAppearanceSettings>(json, RelaxKonOSJsonOptions.Default) is { IsValid: true } appearance ? json : null;
             if (path == WorkspaceConfigurationRegistry.ExplorerPath)
                 return ValidExplorerDocument(root) ? json : null;
             if (path == WorkspaceConfigurationRegistry.DesktopPath)

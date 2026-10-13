@@ -33,3 +33,9 @@ SQLite 使用 `registry_keys` 持久化空键，`registry_entries` 以 `(UserId,
 受托管配置的字段结构不可通过创建或删除键和值破坏。自定义键仍只允许在非托管 Workspace 子树下管理。
 
 注册表浏览器采用紧凑的 24px 键树行、26px 值表行、16px 文件夹图标、6px 滚动条和 3px 分隔条。JSON 编辑器只在展开时构建下一层属性节点；未展开的分支完整保留，编辑字符串无需 JSON 引号，数字、布尔和 null 保留类型。切换编辑模式前校验当前输入，失败保留当前编辑状态。保存仍使用原文档地址和 revision。
+
+列表值在主界面的左侧键树中显示为虚拟分支，例如 `windows · 3 项`；展开时按需生成 `[0] 设置`、`[1] 终端` 等索引节点。显示名称优先取 displayName/name/title/key/id，索引是实际定位依据，简单元素显示值预览；嵌套对象及列表可继续展开。选中元素后，右侧显示其直接属性，双击使用对应类型编辑器修改。虚拟分支不提供创建键、删除键或属性改名，属性继承服务端写权限。属性修改保留文档其他内容，仍向原列表值提交完整 JSON、原所有者和 revision；F5 重新读取原值并按索引解析当前节点，列表缩短导致目标不存在时显示读取失败。
+
+客户端体验属性的后续扩展见[客户端设置实施计划](RelaxKonOS.RegistryApp.ClientSettings.Plan.md)，包含终端、注册表优先批次及其他应用的后续批次；计划中的待实施字段不代表当前已经开放。
+
+第一批客户端体验属性已开放：当前用户键树中的 `Device\Client\Registry` 包含 treeRowHeight、valueRowHeight、iconSize、scrollbarThickness、sidebarWidth；`Device\Client\Terminal` 包含 paddingTop、paddingBottom、paddingHorizontal。设备键使用登录客户端的 device_id 隔离，不属于其他用户的可浏览配置单元。字段可修改、恢复默认，不能改名或删除；本机成功保存立即更新已打开视图，外部修改在刷新或周期性读取后更新。

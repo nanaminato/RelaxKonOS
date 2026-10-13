@@ -11,6 +11,51 @@ public partial class RegistryView : UserControl
         InitializeComponent();
         AddHandler(KeyDownEvent, Registry_KeyDown);
         RegistryTree.AddHandler(TreeViewItem.ExpandedEvent, TreeItemExpanded);
+        SizeChanged += (_, _) => ApplyAppearance();
+    }
+    protected override void OnLoaded(RoutedEventArgs e)
+    {
+        base.OnLoaded(e);
+        if (DataContext is RegistryViewModel vm)
+        {
+            vm.PropertyChanged += OnViewModelChanged;
+            vm.StartAppearanceUpdates();
+            ApplyAppearance();
+        }
+    }
+    protected override void OnUnloaded(RoutedEventArgs e)
+    {
+        if (DataContext is RegistryViewModel vm)
+        {
+            vm.PropertyChanged -= OnViewModelChanged;
+            vm.StopAppearanceUpdates();
+        }
+        base.OnUnloaded(e);
+    }
+    private void OnViewModelChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(RegistryViewModel.Appearance)) ApplyAppearance();
+    }
+    private void ApplyAppearance()
+    {
+        if (DataContext is not RegistryViewModel vm) return;
+        var appearance = vm.Appearance;
+        Resources["RegistryScrollbarThickness"] = (double)appearance.ScrollbarThickness;
+        Resources["RegistryTreeRowHeight"] = (double)appearance.TreeRowHeight;
+        Resources["RegistryValueRowHeight"] = (double)appearance.ValueRowHeight;
+        Resources["RegistryIconSize"] = (double)appearance.IconSize;
+        var maximum = Bounds.Width > 0 ? Math.Max(180, Bounds.Width - 200) : 600;
+        RegistryPanes.ColumnDefinitions[0].Width = new GridLength(Math.Min(appearance.SidebarWidth, maximum));
+    }
+    private async void Sidebar_DragCompleted(object? sender, Avalonia.Input.VectorEventArgs e)
+    {
+        if (DataContext is not RegistryViewModel vm) return;
+        try { await vm.SaveSidebarWidthAsync((int)Math.Round(RegistryPanes.ColumnDefinitions[0].ActualWidth)); }
+        catch (Exception error)
+        {
+            vm.StatusText = RelaxKonOS.Client.Localization.LocalizedText.RefWithFallback("registry.status.save_failed", "Could not save value: {0}", error.Message);
+            ApplyAppearance();
+        }
     }
     private void Registry_KeyDown(object? sender, KeyEventArgs e)
     {

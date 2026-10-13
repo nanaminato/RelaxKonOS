@@ -12,7 +12,13 @@ internal static class TerminalWorkspaceChecks
         var workspace = new TerminalWorkspaceView();
         var first = new TerminalViewModel(null, new Settings(), null);
         var second = new TerminalViewModel(null, new Settings(), null);
+        first.Title = @"C:\WINDOWS\system32\WindowsPowerShell\v1.0\powershell.exe";
+        Check(first.DisplayTitle == "powershell.exe", "Executable paths should have compact labels while preserving their full title.");
+        first.Title = "user@host: ~/project";
+        Check(first.DisplayTitle == first.Title, "Shell-provided titles must remain intact.");
         var firstView = new TerminalView { DataContext = first };
+        Check(firstView.FindControl<Button>("SessionMenuButton")!.Flyout is MenuFlyout menu && menu.Items.Count >= 7,
+            "The named session menu exposes editing and settings actions.");
         var secondView = new TerminalView { DataContext = second };
         workspace.AddTab(first, firstView);
         workspace.AddTab(second, secondView);
@@ -82,7 +88,55 @@ internal static class TerminalWorkspaceChecks
         Dispatcher.UIThread.RunJobs();
         CheckBackendSelection();
         CheckOutputBuffer();
+        CheckRenderingPreferences();
         Console.WriteLine("Terminal workspace checks passed (17 scenarios).");
+    }
+
+    private static void CheckRenderingPreferences()
+    {
+        var transport = new PresentationTransport();
+        using var surface = new BuiltInTerminalSurface(new PresentationFactory(transport), new SshDesktopCredentialProvider(new RelaxKonOS.Client.Services.ServerCenter.SshDesktopSession(null!)), new RoyalTerminal.Terminal.Transport.Ssh.KnownHostsSshHostKeyValidator());
+        var settings = TerminalSettingsDto.Default with { ScrollbackLines = 50, CursorStyle = "bar", CursorBlink = false };
+        surface.ApplyAppearance(settings);
+        var window = new Window { Width = 640, Height = 320, Content = surface.View };
+        window.Show(); Dispatcher.UIThread.RunJobs();
+        var start = surface.StartSessionAsync(new RoyalTerminal.Terminal.PtyTransportOptions(null, null, null, new(80, 24, 640, 320)), CancellationToken.None);
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!start.IsCompleted && DateTime.UtcNow < deadline) { Dispatcher.UIThread.RunJobs(); Thread.Sleep(1); }
+        if (!start.IsCompleted) throw new TimeoutException("Fake terminal transport did not start.");
+        start.GetAwaiter().GetResult();
+        for (var index = 0; index < 20; index++) { Dispatcher.UIThread.RunJobs(); Thread.Sleep(5); }
+        var cursor = surface.Control.GetType().GetField("_vtProcessor", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(surface.Control) as RoyalTerminal.Terminal.ITerminalCursorStyleSource;
+        Check(cursor is not null && cursor.CursorStyle == RoyalTerminal.Terminal.TerminalCursorStyle.Bar && !cursor.CursorBlinking,
+            $"Built-in cursor preferences must reach the actual emulator state. source={surface.Control.TerminalSessionService.ModeSource?.GetType()} style={cursor?.CursorStyle} blink={cursor?.CursorBlinking}");
+        Check(surface.Control.ScrollbackLimit == 50 && surface.Control.Screen!.ScrollbackLimit == 50,
+            "Session startup must preserve the configured history limit.");
+        surface.ApplyAppearance(settings with { ScrollbackLines = 0, CursorStyle = "underline", CursorBlink = true });
+        for (var index = 0; index < 20; index++) { Dispatcher.UIThread.RunJobs(); Thread.Sleep(5); }
+        Check(surface.Control.Screen!.ScrollbackLimit == 0 && cursor!.CursorStyle == RoyalTerminal.Terminal.TerminalCursorStyle.Underline && cursor.CursorBlinking,
+            "Live appearance changes must affect history and cursor without restarting a transport.");
+        Check(transport.Starts == 1 && transport.InputBytes == 0, "Appearance changes must never become shell input or restart a session.");
+        var options = XtermJsTerminalSurface.DescribeOptions(settings with { ScrollbackLines = 0 }, new Dictionary<string, string>());
+        Check((int)options["scrollback"]! == 0 && (string)options["cursorStyle"]! == "bar" && !(bool)options["cursorBlink"]!,
+            "xterm.js must receive explicit zero history and disabled blinking.");
+        window.Close(); surface.StopSession();
+        Console.WriteLine("Terminal presentation checks passed (emulator cursor, blink, live history, no PTY input/restart).");
+    }
+    private sealed class PresentationFactory(PresentationTransport transport) : RoyalTerminal.Terminal.ITerminalTransportFactory
+    {
+        public RoyalTerminal.Terminal.ITerminalTransport Create(RoyalTerminal.Terminal.ITerminalTransportOptions options) => transport;
+    }
+    private sealed class PresentationTransport : RoyalTerminal.Terminal.ITerminalTransport
+    {
+        public int Starts; public int InputBytes;
+        public bool IsRunning { get; private set; }
+        public event Action<byte[], int>? DataReceived { add { } remove { } }
+        public event Action<int>? ProcessExited { add { } remove { } }
+        public ValueTask StartAsync(RoyalTerminal.Terminal.ITerminalTransportOptions options, CancellationToken cancellationToken) { Starts++; IsRunning = true; return ValueTask.CompletedTask; }
+        public void SendInput(ReadOnlySpan<byte> data) => InputBytes += data.Length;
+        public void Resize(RoyalTerminal.Terminal.TerminalSessionDimensions dimensions) { }
+        public ValueTask StopAsync() { IsRunning = false; return ValueTask.CompletedTask; }
+        public void Dispose() => IsRunning = false;
     }
 
     private static void CheckOutputBuffer()

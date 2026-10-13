@@ -13,10 +13,13 @@ public sealed record TerminalSettingsDto(
     [property: JsonPropertyName("backgroundColor")] string BackgroundColor,
     [property: JsonPropertyName("foregroundColor")] string ForegroundColor,
     [property: JsonPropertyName("cursorColor")] string CursorColor,
-    [property: JsonPropertyName("backend")] string? Backend = null)
+    [property: JsonPropertyName("backend")] string? Backend = null,
+    [property: JsonPropertyName("scrollbackLines")] int ScrollbackLines = 10000,
+    [property: JsonPropertyName("cursorStyle")] string CursorStyle = "block",
+    [property: JsonPropertyName("cursorBlink")] bool CursorBlink = true)
 {
     /// <summary>The backend the workspace asks for, defaulting to the built-in control.</summary>
-    public string RequestedBackend =>
+    [JsonIgnore] public string RequestedBackend =>
         TerminalBackends.TryNormalize(Backend, out var backend) ? backend : TerminalBackends.BuiltIn;
 
     public static TerminalSettingsDto Default { get; } = new(

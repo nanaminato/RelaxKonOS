@@ -204,6 +204,8 @@ public static class WorkspaceEndpoints
             || string.IsNullOrWhiteSpace(scheme) || scheme.Length > 64
             || !double.IsFinite(request.FontSize)
             || request.FontSize is < 8 or > 40
+            || request.ScrollbackLines is < 0 or > 100000
+            || request.CursorStyle is not ("block" or "underline" or "bar")
             || !TerminalBackends.TryNormalize(request.Backend, out var backend)
             || !IsHexColor(request.BackgroundColor) || !IsHexColor(request.ForegroundColor) || !IsHexColor(request.CursorColor))
             return false;
@@ -213,7 +215,7 @@ public static class WorkspaceEndpoints
             request.BackgroundColor.ToUpperInvariant(),
             request.ForegroundColor.ToUpperInvariant(),
             request.CursorColor.ToUpperInvariant(),
-            backend);
+            backend, request.ScrollbackLines, request.CursorStyle, request.CursorBlink);
         return true;
     }
 

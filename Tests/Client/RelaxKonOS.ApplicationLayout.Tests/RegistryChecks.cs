@@ -10,6 +10,7 @@ internal static class RegistryChecks
 {
     public static async Task RunAsync()
     {
+        await PresentationPreferencesChecks.RunAsync();
         var client = new FakeRegistryClient();
         var vm = new RegistryViewModel(client);
         await vm.RefreshAsync();
@@ -68,6 +69,8 @@ internal static class RegistryChecks
         await CheckEditorsAsync(client);
         await CheckJsonEditorAsync(client);
         CheckSurfaces(client, vm, entry);
+        CheckTreeScrollbars(client);
+        await CheckListNavigationAsync(client, vm, own);
 
         Console.WriteLine("PASS: registry aliases, stable-owner navigation, late-error isolation, fixed dialogs and typed default editing.");
         Console.WriteLine("PASS: registry read-outcome states, status bar owner/permission, rename, typed editors and lazy JSON editing/mode switching.");
@@ -157,6 +160,11 @@ internal static class RegistryChecks
         await integerDialog.SaveCommand.ExecuteAsync(null);
         Check(client.SavedRequest?.Value.ValueKind == JsonValueKind.Number && client.SavedRequest.Value.GetInt64() == 255,
             "An integer field must submit a number, never hexadecimal text.");
+        integerDialog.IsHex = false;
+        integerDialog.NumberValue = 1.5m;
+        await integerDialog.SaveCommand.ExecuteAsync(null);
+        Check(integerDialog.Error is not null && client.SavedRequest!.Value.GetInt64() == 255,
+            "Integer settings must reject fractional input instead of silently truncating it.");
 
         var colorEntry = CustomEntry(client, "backgroundColor", RegistryValueType.String, JsonSerializer.SerializeToElement("#0C0C0C"),
             RegistryEditorKind.Color, JsonSerializer.SerializeToElement("#0C0C0C"));
@@ -210,6 +218,114 @@ internal static class RegistryChecks
         Check(dialog.JsonRoots.Single().BuildValue()!.ToJsonString() == value.GetRawText(), "Reset did not rebuild the JSON document.");
     }
 
+    private static void CheckTreeScrollbars(FakeRegistryClient client)
+    {
+        var vm = new RegistryViewModel(client);
+        var root = new RegistryKeyNode("Root", null, null, null, RegistryKeyKind.Root) { IsExpanded = true };
+        for (var index = 0; index < 80; index++)
+            root.Children.Add(new RegistryKeyNode($"[{index}] A long registry node name that must remain accessible by horizontal scrolling", null, null, root, RegistryKeyKind.Root));
+        vm.Keys.Add(root);
+        var view = new RegistryView { DataContext = vm };
+        var window = new Window { Width = 700, Height = 380, Content = view };
+        window.Show();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var tree = view.FindControl<TreeView>("RegistryTree")!;
+        var bars = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(tree).OfType<Avalonia.Controls.Primitives.ScrollBar>().ToArray();
+        var vertical = bars.Single(bar => bar.Orientation == Avalonia.Layout.Orientation.Vertical);
+        var horizontal = bars.Single(bar => bar.Orientation == Avalonia.Layout.Orientation.Horizontal);
+        Check(vertical.IsVisible && horizontal.IsVisible, "Overflowing registry trees must retain both scrollbars.");
+        Check(vertical.Bounds.Width == 6 && horizontal.Bounds.Height == 6, "Registry scrollbar tracks must be 6px thick.");
+        var scroller = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(tree).OfType<ScrollViewer>().First();
+        Check(!scroller.AllowAutoHide && scroller.Extent.Width > scroller.Viewport.Width && scroller.Extent.Height > scroller.Viewport.Height,
+            "Tree scrollbars must remain visible when overflow exists.");
+        scroller.Offset = new Avalonia.Vector(100, 100);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Check(scroller.Offset.X > 0 && scroller.Offset.Y > 0, "Both tree scrolling axes must remain usable.");
+        var output = System.IO.Path.Combine(AppContext.BaseDirectory, "layout-qa");
+        System.IO.Directory.CreateDirectory(output);
+        using var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(700, 380));
+        bitmap.Render(window);
+        bitmap.Save(System.IO.Path.Combine(output, "registry-scrollbars.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+        window.Close();
+    }
+
+    private static async Task CheckListNavigationAsync(FakeRegistryClient client, RegistryViewModel vm, RegistryKeyNode own)
+    {
+        var document = client.Value(client.Owner, "") with
+        {
+            Name = "windows", ValueType = RegistryValueType.Json, Revision = 23,
+            DesiredValue = JsonSerializer.Deserialize<JsonElement>("""[{"key":"relaxkonos.settings:设置","width":1110,"layout":{"panes":[{"name":"左侧","size":240}]}},{"title":"终端","width":900},"bash",null]"""),
+            Schema = new("windows", true, false, false, null) { Editor = RegistryEditorKind.Json },
+        };
+        client.Values = [document];
+        vm.SelectedKey = own;
+        await vm.RefreshAsync();
+        var list = own.Children.Single(node => node.Kind == RegistryKeyKind.Json);
+        Check(list.Name.StartsWith("windows · 4") && list.Children.Single().Kind == RegistryKeyKind.Placeholder, "List roots need counts and lazy children.");
+        await vm.LoadChildrenAsync(list);
+        Check(list.Children.Select(node => node.Name).SequenceEqual(new[] { "[0] 设置", "[1] 终端", "[2] \"bash\"", "[3] null" }), "List labels must combine indexes with readable descriptions.");
+        var first = list.Children[0];
+        vm.SelectedKey = first;
+        await Until(() => vm.PaneState == RegistryPaneState.Ready && vm.Entries.Count == 3);
+        Check(!vm.CanCreateKey && !vm.CanDeleteKey && first.Children.Single().Name == "layout", "Virtual nodes must not expose real key mutations.");
+        var width = vm.Entries.Single(row => row.Name == "width");
+        vm.SelectedEntry = width;
+        Check(vm.CanEditValue && !vm.CanDeleteValue && !vm.CanRenameValue && !vm.CanResetValue, "Projected properties must inherit write permission without document-level destructive actions.");
+        var dialog = new RegistryValueDialogViewModel(width, client.ForUser(client.Owner), _ => { }, saved => vm.ApplySaved(saved));
+        dialog.NumberValue = 1280;
+        await dialog.SaveCommand.ExecuteAsync(null);
+        var request = client.SavedRequest!;
+        Check(dialog.Error is null && request.Name == "windows" && request.Path == "Workspace" && request.ExpectedRevision == 23 && client.SavedOwner == client.Owner,
+            "Editing a property must write the original document identity, owner and revision.");
+        Check(request.Value[0].GetProperty("width").GetInt32() == 1280 && request.Value[1].GetProperty("width").GetInt32() == 900 && request.Value[3].ValueKind == JsonValueKind.Null,
+            "Editing one property must preserve siblings and null items.");
+        await Until(() => vm.Entries.Any(row => row.Name == "width" && row.DesiredValue == "1280"));
+        own.Parent!.IsExpanded = true;
+        own.IsExpanded = true;
+        list.IsExpanded = true;
+        first.IsExpanded = true;
+        var preview = new Window { Width = 1120, Height = 700, Content = new RegistryView { DataContext = vm } };
+        preview.Show();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var output = System.IO.Path.Combine(AppContext.BaseDirectory, "layout-qa");
+        System.IO.Directory.CreateDirectory(output);
+        using (var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(1120, 700)))
+        {
+            bitmap.Render(preview);
+            bitmap.Save(System.IO.Path.Combine(output, "registry-list-tree.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+        }
+        preview.Close();
+        var layout = first.Children.Single();
+        await vm.LoadChildrenAsync(layout);
+        var panes = layout.Children.Single();
+        await vm.LoadChildrenAsync(panes);
+        vm.SelectedKey = panes.Children.Single();
+        await Until(() => vm.Entries.Any(row => row.Name == "size"));
+        var nestedRow = vm.Entries.Single(row => row.Name == "size");
+        var nestedRequest = RegistryJsonProjection.Write(nestedRow, JsonSerializer.SerializeToElement(300));
+        Check(nestedRequest.Value[0].GetProperty("layout").GetProperty("panes")[0].GetProperty("size").GetInt32() == 300
+            && nestedRequest.Value[0].GetProperty("width").GetInt32() == 1280, "Nested array edits must preserve the rest of the same document.");
+        Check(!RegistryJsonProjection.Row(document with { Schema = document.Schema with { CanWrite = false } }, "width", ["0", "width"]).Source.Schema.CanWrite,
+            "JSON properties must preserve the server's read-only capability.");
+        Check(vm.NavigationPathInput.EndsWith("\\windows\\[0]\\layout\\panes\\[0]"), "JSON addresses must use indexes rather than display names.");
+        vm.NavigationPathInput = "HKCU\\Workspace\\windows\\[2]";
+        await vm.NavigateCommand.ExecuteAsync(null);
+        await Until(() => vm.Entries.Count == 1 && vm.Entries[0].DesiredValue == "bash");
+        Check(vm.Entries[0].JsonPath.SequenceEqual(new[] { "2" }), "Primitive array elements must remain editable by index.");
+        client.Values = [document with { DesiredValue = JsonSerializer.Deserialize<JsonElement>("""[{"name":"更新"},1,"zsh"]""") }];
+        await vm.RefreshAsync();
+        Check(vm.Entries.Single().DesiredValue == "zsh", "Refresh must resolve the selected index against the latest document.");
+        await vm.LoadChildrenAsync(list);
+        Check(list.Children.Count == 3 && list.Children[0].Name == "[0] 更新", "Refresh must rebuild labels and remove old array elements.");
+        client.Values = [document with { DesiredValue = JsonSerializer.Deserialize<JsonElement>("[]") }];
+        await vm.RefreshAsync();
+        Check(vm.PaneState == RegistryPaneState.Failed && vm.Entries.Count == 0, "A removed index must report a read failure rather than stale data or an empty key.");
+        await vm.LoadChildrenAsync(list);
+        Check(list.Children.Count == 0, "An empty array must remove stale item nodes.");
+        client.Values = null;
+        Console.WriteLine("PASS: lazy main-tree list navigation, labels, nested property writes, owner/revision preservation and refresh.");
+    }
+
     private static RegistryEntryDto CustomEntry(FakeRegistryClient client, string name, RegistryValueType type, JsonElement value,
         RegistryEditorKind editor, JsonElement? defaultValue)
     {
@@ -259,16 +375,17 @@ internal static class RegistryChecks
                 appearance.Children.Single(node => node.Name == "colors").IsExpanded = true;
                 json.SelectedJsonNode = appearance.Children.Single(node => node.Name == "fontSize");
             }
-            var window = new Window { Width = 900, Height = 620, Content = surface };
+            var numeric = surface.DataContext is RegistryValueDialogViewModel { ValueType: RegistryValueType.Number };
+            var window = new Window { Width = numeric ? 600 : 900, Height = numeric ? 320 : 620, Content = surface };
             window.Show();
-            if (surface is RegistryView || surface.DataContext is RegistryValueDialogViewModel { IsStructuredJson: true })
+            if (numeric || surface is RegistryView || surface.DataContext is RegistryValueDialogViewModel { IsStructuredJson: true })
             {
                 Avalonia.Threading.Dispatcher.UIThread.RunJobs();
                 var output = System.IO.Path.Combine(AppContext.BaseDirectory, "layout-qa");
                 System.IO.Directory.CreateDirectory(output);
-                using var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(900, 620));
+                using var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(numeric ? 600 : 900, numeric ? 320 : 620));
                 bitmap.Render(window);
-                bitmap.Save(System.IO.Path.Combine(output, surface is RegistryView ? "registry-browser.png" : "registry-json.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+                bitmap.Save(System.IO.Path.Combine(output, numeric ? "registry-number.png" : surface is RegistryView ? "registry-browser.png" : "registry-json.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
             }
             window.Close();
         }
@@ -294,6 +411,7 @@ internal static class RegistryChecks
         public Guid OtherWorkspaceId => OtherWorkspace;
         public Task<IReadOnlyList<RegistryEntryDto>>? Pending { get; set; }
         public Exception? Failure { get; set; }
+        public IReadOnlyList<RegistryEntryDto>? Values { get; set; }
         public Guid? SavedOwner { get; private set; }
         public PutRegistryEntryRequest? SavedRequest { get; private set; }
         public Guid? RenameOwner { get; private set; }
@@ -301,13 +419,13 @@ internal static class RegistryChecks
         public FakeRegistryClient() { }
         private FakeRegistryClient(FakeRegistryClient root, Guid target) { _root = root; _target = target; }
         public IRegistryClient ForUser(Guid targetUserId) => new FakeRegistryClient(Root, targetUserId);
-        public Task<RegistryContextDto> GetContextAsync(CancellationToken cancellationToken = default) => Task.FromResult(new RegistryContextDto("server", Root.Owner, "nanami", Root.Workspace, true));
+        public Task<RegistryContextDto> GetContextAsync(CancellationToken cancellationToken = default) => Task.FromResult(new RegistryContextDto("server", Root.Owner, "nanami", Root.Workspace, true, null));
         public Task<IReadOnlyList<RegistryUserDto>> ListUsersAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<RegistryUserDto>>([
             new(Root.Owner, "nanami", true, Root.Workspace), new(Root.Other, "alice", false, Root.OtherWorkspace)]);
         public Task<IReadOnlyList<RegistryKeyDto>> ListKeysAsync(RegistryScope scope, string parentPath, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<RegistryKeyDto>>([]);
         public Task<IReadOnlyList<RegistryEntryDto>> ListValuesAsync(RegistryScope scope, string path, CancellationToken cancellationToken = default) =>
             Root.Failure is { } failure ? Task.FromException<IReadOnlyList<RegistryEntryDto>>(failure)
-            : Root.Pending ?? Task.FromResult<IReadOnlyList<RegistryEntryDto>>([Root.Value(_target, _target == Root.Owner ? "nanami" : "alice")]);
+            : Root.Pending ?? Task.FromResult<IReadOnlyList<RegistryEntryDto>>(Root.Values ?? [Root.Value(_target, _target == Root.Owner ? "nanami" : "alice")]);
         public RegistryEntryDto Value(Guid owner, string text) => new(RegistryScope.Workspace, "Workspace", "field", RegistryValueType.String,
             JsonSerializer.SerializeToElement(text), 1, RegistryEntryState.Synced, DateTimeOffset.UtcNow, null, RegistryApplyMode.Immediate, null, null, null)
         {

@@ -155,7 +155,7 @@ public sealed class TerminalApp : RemoteApplicationBase, IOpenTerminalApplicatio
         void AddSession(string? restoredId, string? directory, bool administrator)
         {
             var model = new TerminalViewModel(session, settingsClient, diagnostics,
-                context.Services.GetService<SshDesktopSession>(), restoredId, directory, administrator);
+                context.Services.GetService<SshDesktopSession>(), restoredId, directory, administrator, context.Services.GetRequiredService<RelaxKonOS.Client.Services.ClientPresentationPreferences>());
             model.RequestEnvironmentAsync = context.Services.GetRequiredService<ISettingsNavigation>().OpenEnvironmentAsync;
             model.RequestAdministratorTerminal = () => OpenWindow(context, session, diagnostics, null,
                 directory, isAdministrator: true);

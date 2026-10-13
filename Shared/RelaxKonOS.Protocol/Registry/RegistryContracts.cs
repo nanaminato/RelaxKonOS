@@ -16,7 +16,7 @@ public enum RegistryEntryState { Synced, PendingSync, Applying, Failed, RestartR
 public enum RegistryApplyMode { Immediate, RestartApplication, ReloadService, RestartServer }
 
 public sealed record RegistryAddress(string ServerId, Guid OwnerUserId, RegistryScope Scope, Guid ScopeId, string KeyPath);
-public sealed record RegistryContextDto(string ServerId, Guid CurrentUserId, string Username, Guid? WorkspaceId, bool CanDiscoverUsers);
+public sealed record RegistryContextDto(string ServerId, Guid CurrentUserId, string Username, Guid? WorkspaceId, bool CanDiscoverUsers, Guid? DeviceId);
 public enum RegistryEditorKind { String, Boolean, Number, Integer, Enum, Color, StringList, Json }
 public sealed record RegistryValueChoiceDto(string Label, JsonElement Value);
 public sealed record RegistryValueSchemaDto(string ValueId, bool CanWrite, bool CanDelete, bool CanRename, JsonElement? DefaultValue)

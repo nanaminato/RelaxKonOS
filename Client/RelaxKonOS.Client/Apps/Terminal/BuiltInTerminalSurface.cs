@@ -17,7 +17,9 @@ public sealed class BuiltInTerminalSurface : ITerminalSurface
 {
     private const int InitialColumns = 80;
     private const int InitialRows = 24;
-    private const int ScrollbackLimit = 10000;
+    private TerminalSettingsDto _appearance = TerminalSettingsDto.Default;
+    private bool _started;
+    private bool _cursorApplied;
     private const double MinimumSupportedFontSize = 8;
     private const double MaximumSupportedFontSize = 40;
 
@@ -46,7 +48,7 @@ public sealed class BuiltInTerminalSurface : ITerminalSurface
         // arranged host size; it never needs to reduce the configured font to fill the window.
         _control.Columns = InitialColumns;
         _control.Rows = InitialRows;
-        _control.ScrollbackLimit = ScrollbackLimit;
+        _control.ScrollbackLimit = _appearance.ScrollbackLines;
         _control.TerminalFontSize = TerminalSettingsDto.Default.FontSize;
         _control.FontFamilyName = TerminalAppearance.ResolveFontFamily(TerminalSettingsDto.Default.FontFamily);
         _control.ProcessExited += OnProcessExited;
@@ -67,7 +69,8 @@ public sealed class BuiltInTerminalSurface : ITerminalSurface
     public async Task StartSessionAsync(ITerminalTransportOptions options, CancellationToken cancellationToken)
     {
         await _control.StartSessionAsync(options, cancellationToken);
-        EnsureScrollback();
+        _started = true;
+        ApplyAppearance(_appearance);
     }
 
     /// <summary>
@@ -77,13 +80,15 @@ public sealed class BuiltInTerminalSurface : ITerminalSurface
     /// </summary>
     private void EnsureScrollback()
     {
-        _control.ScrollbackLimit = ScrollbackLimit;
+        _control.ScrollbackLimit = _appearance.ScrollbackLines;
         if (_control.Screen is { } screen)
-            screen.ScrollbackLimit = ScrollbackLimit;
+            screen.ScrollbackLimit = _appearance.ScrollbackLines;
     }
 
     public void StopSession()
     {
+        _started = false;
+        _cursorApplied = false;
         try { _control.StopPty(); } catch { /* best effort */ }
     }
 
@@ -118,6 +123,14 @@ public sealed class BuiltInTerminalSurface : ITerminalSurface
 
     public void ApplyAppearance(TerminalSettingsDto appearance)
     {
+        var cursorChanged = _appearance.CursorStyle != appearance.CursorStyle || _appearance.CursorBlink != appearance.CursorBlink;
+        _appearance = appearance;
+        EnsureScrollback();
+        if (_started && (!_cursorApplied || cursorChanged))
+        {
+            _control.WriteOutput(System.Text.Encoding.ASCII.GetBytes(CursorSequence(appearance)));
+            _cursorApplied = true;
+        }
         _control.FontFamilyName = TerminalAppearance.ResolveFontFamily(appearance.FontFamily);
         _control.TerminalFontSize = Math.Clamp(appearance.FontSize, MinimumSupportedFontSize, MaximumSupportedFontSize);
 
@@ -127,6 +140,12 @@ public sealed class BuiltInTerminalSurface : ITerminalSurface
         ApplyColor(_control.Theme, "BackgroundColor", appearance.BackgroundColor);
         ApplyColor(_control.Theme, "ForegroundColor", appearance.ForegroundColor);
         ApplyColor(_control.Theme, "CursorColor", appearance.CursorColor);
+    }
+
+    internal static string CursorSequence(TerminalSettingsDto appearance)
+    {
+        var steady = appearance.CursorStyle switch { "underline" => 4, "bar" => 6, _ => 2 };
+        return "\u001b[" + (appearance.CursorBlink ? steady - 1 : steady) + " q";
     }
 
     /// <summary>The built-in control draws its own chrome, so display-language labels do not apply.</summary>

@@ -2,7 +2,7 @@
 
 > 本文档定义 RelaxKonOS 的服务端注册表（Registry）架构：它如何成为可编辑配置的期望状态数据来源、如何在多用户/多设备下隔离，以及如何将变更安全地同步为有效配置与运行时状态。
 >
-> **状态：第一阶段已实现。** 已提供按用户/作用域隔离的持久化注册表、既有 Workspace 配置导入和可编辑的内置注册表应用。同步状态仅作为服务端实现细节，不在用户界面展示。
+> **状态：第一阶段已实现。** 已提供按用户/作用域隔离的持久化注册表、Workspace 配置的直接注册表存储、客户端 Device 偏好和可编辑的内置注册表应用。同步状态仅作为服务端实现细节，不在用户界面展示。
 
 - Workspace 的用户与设备模型见 [`RelaxKonOS.Workspace.md`](./RelaxKonOS.Workspace.md)
 - 当前持久化边界见 [`RelaxKonOS.Storage.md`](../platform/RelaxKonOS.Storage.md)
@@ -174,7 +174,7 @@ schema 是代码中注册的白名单，不允许用户创建任意可同步路�
 | ApplyMode | 行为 | 示例 |
 |---|---|---|
 | `Immediate` | 同步成功后通知运行时刷新 | Shell 主题、时钟格式 |
-| `RestartApplication` | 投影成功，标记指定 RelaxKonOS 应用需关闭并重开 | 浏览器设置、终端外观 |
+| `RestartApplication` | 投影成功，标记指定 RelaxKonOS 应用需关闭并重开 | 浏览器设置 |
 | `ReloadService` | 仅调用已受控的 reload 操作；失败进入 `Failed` | 未来可重载的服务配置 |
 | `RestartServer` | 只标记服务端待重启，绝不由注册表自动重启 | 影响服务启动参数的配置 |
 
@@ -184,13 +184,15 @@ schema 是代码中注册的白名单，不允许用户创建任意可同步路�
 
 ## 7. 首批接入范围
 
-| 注册表域 | Effective State 投影 | Scope | ApplyMode |
+| 注册表域 | 配置读取方 | Scope | ApplyMode |
 |---|---|---|---|
-| `Workspace\\Terminal\\Appearance` | `Workspace.TerminalSettings` | Workspace | `RestartApplication` |
-| `Workspace\\Desktop\\Preferences` | `Workspace.Preferences` | Workspace | 多数 `Immediate`；个别项按 schema 指定 |
-| `Workspace\\Browser\\Settings` | `Workspace.BrowserSettings` | Workspace | `RestartApplication` |
-| `AppSettings\\{appId}\\{key}` | `app_settings` | User / Workspace / Device | 应用声明 |
-| `User\\ImageMirrors` | `image_mirrors` | User | 下次 Docker 操作使用 |
+| `Workspace\Terminal` | 终端外观、光标和历史设置 | Workspace | `Immediate` |
+| `Workspace\Desktop` | 桌面偏好 | Workspace | `Immediate` |
+| `Workspace\Browser` | 浏览器设置 | Workspace | `RestartApplication` |
+| `Workspace\Explorer` | 文件浏览器设置 | Workspace | `RestartApplication` |
+| `Workspace\WindowManager` | 窗口布局 | Workspace | `Immediate` |
+| `Device\Client\Terminal` | 当前客户端终端边距 | Device | `Immediate` |
+| `Device\Client\Registry` | 当前客户端注册表外观 | Device | `Immediate` |
 
 第一阶段不接入：身份与会话、认证防护状态、refresh token、数据保护密文、隧道密钥、证书私钥、浏览器书签/历史、Git 仓库与操作日志。防火墙、网络、服务启停、证书签发等高影响操作继续使用专用 API；未来若纳入，只能作为受控命令型配置而不是可任意编辑的底层记录。
 
@@ -217,14 +219,14 @@ server.registry.write
 
 ---
 
-## 9. 迁移与实施顺序
+## 9. 接口演进与扩展顺序
 
-1. 建立 Protocol 契约、注册表表、schema 注册、读 API 和只读注册表应用；启动时将当前配置导入为 `Synced` 的初始 Desired State。
-2. 实现 `RegistryWriter`、`RegistrySyncWorker` 与 Workspace/应用设置的 Projection Handler；将既有配置 `PUT` 端点改为写注册表，保持外部 API 契约不变。
-3. 启用编辑、审计、失败重试、历史恢复、待重启提示和应用内刷新通知。
-4. 在验证隔离、并发与恢复行为后，逐项加入更多低风险配置域。
+1. 定义当前 Protocol 契约、托管路径、默认值、合法范围和生效方式。
+2. 所有读写路径使用唯一权威注册表文档，同步更新仓库内的调用方、测试、示例和文档。
+3. 将字段接入实际客户端行为、版本冲突检查和恢复默认，再开放编辑入口。
+4. 验证用户/设备隔离、并发、断线恢复和显示效果后，逐项加入更多客户端配置域。
 
-迁移期间的唯一数据来源切换必须按配置域完成：某个域一旦接入，所有写路径都改经 `RegistryWriter`；未接入域继续沿用现有仓储与端点。不得长期让同一配置域同时存在直接写和注册表写两条路径。
+正式发布前直接采用当前接口；不保留旧字段别名、备用路由、迁移适配器或双格式解析。同一配置域不能同时维护直接业务实体写入与注册表写入两份真源。
 
 ---
 
@@ -240,8 +242,10 @@ server.registry.write
 
 ## 当前字段编辑与跨用户管理
 
-托管键包含 Desktop、Terminal、Browser、Explorer 和 WindowManager。注册表在 JSON 对象上提供字段值和子对象键；全部字段更新仍对一个 `(Default)` 文档做校验和 CAS，不引入第二份配置。Explorer 的 schemaVersion=3 默认视图及文件列表缓存开关也由此文档提供，应用设置路由直接使用这一真源。
+Workspace 托管键包含 Desktop、Terminal、Browser、Explorer 和 WindowManager；Device 托管键包含 Client\Terminal 和 Client\Registry。注册表在 JSON 对象上提供字段值和子对象键；全部字段更新仍对一个 `(Default)` 文档做校验和 CAS，不引入第二份配置。Explorer 的 schemaVersion=3 默认视图及文件列表缓存开关也由此文档提供，应用设置路由直接使用这一真源。
 
 REST 路由以显式所有者为路径参数：`/registry/context` 返回当前会话上下文，`/registry/users` 受 `RegistryManage`（目标 `registry/users`）保护地枚举账户，`/registry/users/{userId}/keys` 与 `/registry/users/{userId}/values` 读写该用户的键和值。所有者由服务端解析，客户端不能通过传入任意 WorkspaceId 取得访问。跨用户读取、新建、写入、删除与重命名均检查 RegistryManage，目标为 `registry/users/{userId}`；管理员自动授权，临时手工授权不能扩展到其他用户，审计的 updatedBy/createdBy 为认证操作者。跨用户 Device 范围不支持。
 
 重新命名单个自定义值使用 `POST /registry/users/{userId}/values/rename`，携带 Scope、Path、Name、NewName 与 ExpectedRevision。重命名在同一所有者、作用域与键路径内就地完成，保留值内容并递增 revision；受托管字段名与内部 `(Default)` 文档载体不可重命名。schema 通过 `CanWrite` / `CanDelete` / `CanRename` 向客户端声明每一项的真实能力，界面据此决定菜单是否可用。托管键的结构与字段不允许删除，自定义键继续按 Workspace 范围隔离。
+
+Device 客户端偏好按 `(UserId, DeviceId, Path, Name)` 隔离，DeviceId 只从当前登录 JWT 的 `device_id` 取得，不映射服务器宿主设备、不接受任意设备 ID。设备范围在当前用户树下显示，跨用户 Device 访问即使具有管理员授权也不允许。默认文档通过 CAS 初始化；字段更新在原文档 revision 上完成校验和 CAS，字段不能删除或改名。客户端收到本机成功写入后更新当前界面，打开/刷新及活动视图的 30 秒读取修复外部变更；外观通知不会进入 PTY 输入通道。字段详情见[客户端设置实施计划](../applications/RelaxKonOS.RegistryApp.ClientSettings.Plan.md)。

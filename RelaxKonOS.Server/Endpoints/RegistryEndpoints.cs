@@ -32,8 +32,8 @@ public static partial class RegistryEndpoints
             if (parsed is null || string.IsNullOrWhiteSpace(path) || !PathPattern().IsMatch(path) || !TryScopeId(principal, userId, workspaces, parsed.Value, out var scopeId))
                 return Results.BadRequest(new { message = "Scope and a valid key path are required." });
             EnsureWorkspaceDefaults(parsed.Value, userId, scopeId, workspaces, registry);
-            var direct = registry.List(userId, parsed).Where(x => x.ScopeId == scopeId && x.Path == path && RegistryConfigurationFields.Root(x.Path) is null).Select(ToDto);
-            var root = parsed == RegistryScope.Workspace ? RegistryConfigurationFields.Root(path) : null;
+            var direct = registry.List(userId, parsed).Where(x => x.ScopeId == scopeId && x.Path == path && RegistryConfigurationFields.Root(x.Scope, x.Path) is null).Select(ToDto);
+            var root = RegistryConfigurationFields.Root(parsed.Value, path);
             var backing = root is null ? null : registry.Find(userId, parsed.Value, scopeId, root, WorkspaceConfigurationRegistry.DefaultValueName);
             return Results.Ok((backing is null ? direct : direct.Concat(RegistryConfigurationFields.Values(backing, path))).Select(value => Describe(http, users, userId, scopeId, value)));
         }).RequireAuthorization().WithTags("Registry");
@@ -51,7 +51,7 @@ public static partial class RegistryEndpoints
                 return Results.BadRequest(new { message = "Scope and a valid parent key path are required." });
             EnsureWorkspaceDefaults(parsed, userId, scopeId, workspaces, registry);
             var direct = registry.ListChildKeys(userId, parsed, scopeId, path).Select(x => new RegistryKeyDto(x.Scope, x.Path));
-            var root = parsed == RegistryScope.Workspace ? RegistryConfigurationFields.Root(path) : null;
+            var root = RegistryConfigurationFields.Root(parsed, path);
             var backing = root is null ? null : registry.Find(userId, parsed, scopeId, root, WorkspaceConfigurationRegistry.DefaultValueName);
             return Results.Ok((backing is null ? direct : direct.Concat(RegistryConfigurationFields.Children(backing, path))).DistinctBy(key => key.Path).Select(key => Describe(http, users, userId, scopeId, key)));
         }).RequireAuthorization().WithTags("Registry");
@@ -64,7 +64,7 @@ public static partial class RegistryEndpoints
                 return ElevationRequired();
             if (users.FindById(userId) is null) return Results.NotFound();
             if (request.Scope != RegistryScope.Workspace || !TryScopeId(principal, userId, workspaces, request.Scope, out var scopeId)
-                || !IsWorkspaceChildPath(request.Path) || RegistryConfigurationFields.Root(request.Path) is not null)
+                || !IsWorkspaceChildPath(request.Path) || RegistryConfigurationFields.Root(request.Scope, request.Path) is not null)
                 return Results.BadRequest(new { message = "Only keys below Workspace can be created." });
             var saved = registry.CreateKey(new RelaxKonOS.Server.Domain.RegistryKey
             {
@@ -104,7 +104,7 @@ public static partial class RegistryEndpoints
                 return Results.BadRequest(new { message = ownershipError });
             if (request.ExpectedRevision is null) return Results.Problem(statusCode: 428, title: "settings.revision_required");
             if (request.ExpectedRevision < 0) return Results.BadRequest();
-            var root = request.Scope == RegistryScope.Workspace ? RegistryConfigurationFields.Root(request.Path) : null;
+            var root = RegistryConfigurationFields.Root(request.Scope, request.Path);
             if (root is not null && (request.Path != root || request.Name != WorkspaceConfigurationRegistry.DefaultValueName))
             {
                 EnsureWorkspaceDefaults(request.Scope, userId, scopeId, workspaces, registry);
@@ -145,7 +145,7 @@ public static partial class RegistryEndpoints
                 || !NamePattern().IsMatch(request.Name) || !NamePattern().IsMatch(request.NewName)
                 || string.Equals(request.Name, request.NewName, StringComparison.Ordinal))
                 return Results.BadRequest(new { message = "Only a custom value can be renamed to a new name." });
-            if (RegistryConfigurationFields.Root(request.Path) is not null)
+            if (RegistryConfigurationFields.Root(request.Scope, request.Path) is not null)
                 return Results.Problem(statusCode: 409, title: "settings.managed_value", detail: "Managed field names are fixed.");
             if (!VerifyWorkspaceOwner(request.Scope, userId, scopeId, workspaces, out var ownershipError))
                 return Results.BadRequest(new { message = ownershipError });
@@ -164,7 +164,7 @@ public static partial class RegistryEndpoints
             if (users.FindById(userId) is null) return Results.NotFound();
             if (!TryScopeId(principal, userId, workspaces, scope, out var scopeId) || !PathPattern().IsMatch(path) || !(name == "(Default)" || NamePattern().IsMatch(name)))
                 return Results.BadRequest(new { message = "Invalid registry value." });
-            if (scope == RegistryScope.Workspace && RegistryConfigurationFields.Root(path) is not null)
+            if (RegistryConfigurationFields.Root(scope, path) is not null)
                 return Results.Problem(statusCode: 409, title: "settings.managed_value", detail: "Reset preferences through a versioned settings update.");
             return registry.Delete(userId, scope, scopeId, path, name) ? Results.NoContent() : Results.NotFound();
         }).RequireAuthorization().WithTags("Registry");
@@ -178,7 +178,7 @@ public static partial class RegistryEndpoints
             if (users.FindById(userId) is null) return Results.NotFound();
             if (scope != RegistryScope.Workspace || !TryScopeId(principal, userId, workspaces, scope, out var scopeId) || !IsWorkspaceChildPath(path))
                 return Results.BadRequest(new { message = "Only keys below Workspace can be deleted." });
-            if (RegistryConfigurationFields.Root(path) is not null
+            if (RegistryConfigurationFields.Root(scope, path) is not null
                 || RegistrySchema.Definitions.Any(definition => definition.Path.StartsWith(path + "\\", StringComparison.Ordinal)))
                 return Results.Problem(statusCode: 409, title: "settings.managed_value", detail: "This key contains managed workspace preferences.");
             return registry.DeleteKeyTree(userId, scope, scopeId, path) ? Results.NoContent() : Results.NotFound();
@@ -194,7 +194,8 @@ public static partial class RegistryEndpoints
             if (!TryUserId(http.User, out var actorId)) return Results.Unauthorized();
             var user = users.FindById(actorId);
             return user is null ? Results.NotFound() : Results.Ok(new RegistryContextDto(ServerId(http), actorId, user.Username,
-                workspaces.FindByUserId(actorId)?.Id, elevations.IsGranted(http.User, HostElevationCapability.RegistryManage, "registry/users")));
+                workspaces.FindByUserId(actorId)?.Id, elevations.IsGranted(http.User, HostElevationCapability.RegistryManage, "registry/users"),
+                Guid.TryParse(http.User.FindFirstValue("device_id"), out var deviceId) ? deviceId : null));
         }).RequireAuthorization().WithTags("Registry");
         return app;
     }
@@ -220,14 +221,14 @@ public static partial class RegistryEndpoints
     private static RegistryKeyDto Describe(HttpContext http, IUserRepository users, Guid owner, Guid scopeId, RegistryKeyDto key) => key with
     {
         Address = new(ServerId(http), owner, key.Scope, scopeId, key.Path),
-        CanCreateChild = key.Scope == RegistryScope.Workspace && RegistryConfigurationFields.Root(key.Path) is null,
+        CanCreateChild = key.Scope == RegistryScope.Workspace && RegistryConfigurationFields.Root(key.Scope, key.Path) is null,
         CanDelete = key.Scope == RegistryScope.Workspace && IsWorkspaceChildPath(key.Path)
-            && RegistryConfigurationFields.Root(key.Path) is null
+            && RegistryConfigurationFields.Root(key.Scope, key.Path) is null
             && !RegistrySchema.Definitions.Any(definition => definition.Path.StartsWith(key.Path + "\\", StringComparison.Ordinal)),
     };
     private static RegistryEntryDto Describe(HttpContext http, IUserRepository users, Guid owner, Guid scopeId, RegistryEntryDto value)
     {
-        var root = value.Scope == RegistryScope.Workspace ? RegistryConfigurationFields.Root(value.Path) : null;
+        var root = RegistryConfigurationFields.Root(value.Scope, value.Path);
         var defaultValue = root is null ? null : RegistryConfigurationFields.DefaultValue(root, value.Path, value.Name);
         return value with { Address = new(ServerId(http), owner, value.Scope, scopeId, value.Path),
             OwnerUsername = users.FindById(owner)!.Username,
@@ -262,6 +263,7 @@ public static partial class RegistryEndpoints
 
     private static void EnsureWorkspaceDefaults(RegistryScope scope, Guid userId, Guid scopeId, IWorkspaceRepository workspaces, IRegistryRepository registry)
     {
+        if (scope == RegistryScope.Device) DeviceConfigurationRegistry.EnsureDefaults(registry, userId, scopeId);
         if (scope == RegistryScope.Workspace && workspaces.FindById(scopeId) is { UserId: var owner } workspace && owner == userId)
             WorkspaceConfigurationRegistry.EnsureDefaults(registry, workspace, userId.ToString("D"));
     }

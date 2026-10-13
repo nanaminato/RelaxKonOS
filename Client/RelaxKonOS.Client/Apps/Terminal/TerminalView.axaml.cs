@@ -51,6 +51,7 @@ public partial class TerminalView : UserControl
         try { await vm.AttachAsync(_surfaces); }
         catch { /* keep the window usable if the first connection fails */ }
         HostBackground(vm.Appearance);
+        ApplyPadding(vm);
         FocusTerminal();
     }
 
@@ -111,6 +112,7 @@ public partial class TerminalView : UserControl
     /// <summary>The session menu is drawn by Avalonia, so the native surface steps aside while it is open.</summary>
     private void SessionMenu_Opened(object? sender, EventArgs e)
     {
+        MenuCopyItem.IsEnabled = _surface?.HasSelection == true;
         _openFlyouts++;
         ApplyNativeVisibility();
     }
@@ -119,6 +121,7 @@ public partial class TerminalView : UserControl
     {
         _openFlyouts = Math.Max(0, _openFlyouts - 1);
         ApplyNativeVisibility();
+        FocusSession();
     }
 
     private void ApplyNativeVisibility() => _surface?.SetNativeVisible(_nativeVisible && _openFlyouts == 0);
@@ -185,8 +188,11 @@ public partial class TerminalView : UserControl
 
     public void FocusSession() => Dispatcher.UIThread.Post(FocusTerminal);
 
+    private void ApplyPadding(TerminalViewModel vm) => TerminalFrame.Padding = new Avalonia.Thickness(vm.Padding.PaddingHorizontal, vm.Padding.PaddingTop, vm.Padding.PaddingHorizontal, vm.Padding.PaddingBottom);
+
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (sender is TerminalViewModel model && e.PropertyName == nameof(TerminalViewModel.Padding)) ApplyPadding(model);
         if (sender is TerminalViewModel { Appearance: var appearance }
             && e.PropertyName == nameof(TerminalViewModel.Appearance))
             HostBackground(appearance);
@@ -195,7 +201,12 @@ public partial class TerminalView : UserControl
     /// <summary>Matches the area around the session rows to the palette the engine is drawing with.</summary>
     private void HostBackground(TerminalSettingsDto appearance)
     {
-        try { TerminalHost.Background = new SolidColorBrush(Color.Parse(appearance.BackgroundColor)); }
+        try
+        {
+            var background = new SolidColorBrush(Color.Parse(appearance.BackgroundColor));
+            TerminalFrame.Background = background;
+            TerminalHost.Background = background;
+        }
         catch { /* an unparsable colour is rejected before it reaches the workspace */ }
     }
 }

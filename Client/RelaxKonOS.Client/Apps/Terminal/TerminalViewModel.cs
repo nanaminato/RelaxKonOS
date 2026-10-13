@@ -16,6 +16,18 @@ namespace RelaxKonOS.Client.Apps.Terminal;
 /// </summary>
 public partial class TerminalViewModel : LocalizedObservableObject
 {
+    private readonly RelaxKonOS.Client.Services.ClientPresentationPreferences? _preferences;
+    public RelaxKonOS.Protocol.Registry.TerminalPaddingSettings Padding => _preferences?.TerminalPadding ?? RelaxKonOS.Protocol.Registry.TerminalPaddingSettings.Default;
+    private void OnPreferencesChanged(object? sender, EventArgs args)
+    {
+        if (_session?.State != AuthSessionState.Authenticated) return;
+        OnPropertyChanged(nameof(Padding));
+        if (_preferences is null || Appearance == _preferences.Terminal) return;
+        var backendChanged = Appearance.RequestedBackend != _preferences.Terminal.RequestedBackend;
+        ApplyAppearance(_preferences.Terminal);
+        _surface?.ApplyAppearance(Appearance);
+        if (backendChanged) _ = ChangeBackendAsync();
+    }
     private const int Columns = 80;
     private const int Rows = 24;
     private static readonly ConcurrentDictionary<string, byte> OpenSessions = new();
@@ -28,6 +40,8 @@ public partial class TerminalViewModel : LocalizedObservableObject
     private readonly SshDesktopSession? _sshDesktop;
     private TerminalSurfaceFactory? _surfaceFactory;
     private ITerminalSurface? _surface;
+    private bool _attached;
+    private long _attachmentGeneration;
     private bool _loadingAppearance;
     private string? _backendNoticeKey;
     private object? _backendNoticeArgument;
@@ -35,6 +49,17 @@ public partial class TerminalViewModel : LocalizedObservableObject
     [ObservableProperty] private LocalizedStatus _status = LocalizedText.Ref("terminal.status.ready");
     [ObservableProperty] private bool _hasExited;
     [ObservableProperty] private string _title = string.Empty;
+    public string DisplayTitle
+    {
+        get
+        {
+            if (!Title.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                || !(Title.Contains(":\\", StringComparison.Ordinal) || Title.StartsWith('/'))) return Title;
+            var name = Title[(Math.Max(Title.LastIndexOf('\\'), Title.LastIndexOf('/')) + 1)..];
+            return IsAdministrator ? LocalizedText.Format("terminal.administrator_shell", name) : name;
+        }
+    }
+    partial void OnTitleChanged(string value) => OnPropertyChanged(nameof(DisplayTitle));
     [ObservableProperty] private TerminalSettingsDto _appearance = TerminalSettingsDto.Default;
     [ObservableProperty] private string _fontFamily = TerminalSettingsDto.Default.FontFamily;
     [ObservableProperty] private double _fontSize = TerminalSettingsDto.Default.FontSize;
@@ -92,8 +117,10 @@ public partial class TerminalViewModel : LocalizedObservableObject
         SshDesktopSession? sshDesktop = null,
         string? initialSessionId = null,
         string? initialWorkingDirectory = null,
-        bool isAdministrator = false)
+        bool isAdministrator = false,
+        RelaxKonOS.Client.Services.ClientPresentationPreferences? preferences = null)
     {
+        _preferences = session is { State: AuthSessionState.Authenticated } && sshDesktop?.IsConnected != true ? preferences : null;
         _session = session;
         _settingsClient = settingsClient;
         _diagnostics = diagnostics;
@@ -112,9 +139,21 @@ public partial class TerminalViewModel : LocalizedObservableObject
     /// <summary>Called once when the terminal control is loaded.</summary>
     public async Task AttachAsync(TerminalSurfaceFactory surfaceFactory)
     {
+        if (_attached) return;
+        _attached = true;
+        var generation = ++_attachmentGeneration;
         _surfaceFactory = surfaceFactory;
 
-        await LoadAppearanceAsync();
+        if (_preferences is not null)
+        {
+            _preferences.Changed += OnPreferencesChanged;
+            _preferences.Activate();
+            try { await _preferences.RefreshAsync(); }
+            catch { /* Keep the last valid appearance; connecting the PTY reports its own connection failure. */ }
+            OnPreferencesChanged(null, EventArgs.Empty);
+        }
+        else await LoadAppearanceAsync();
+        if (!_attached || generation != _attachmentGeneration) return;
 
         // The stored backend is a request from the workspace; this host decides which engine runs it.
         var selection = TerminalBackendSelector.Resolve(Backend);
@@ -131,12 +170,20 @@ public partial class TerminalViewModel : LocalizedObservableObject
     /// </summary>
     public void Detach()
     {
-        if (_surface is null)
-            return;
+        if (!_attached) return;
+        _attached = false;
+        ++_attachmentGeneration;
+        if (_preferences is not null)
+        {
+            _preferences.Changed -= OnPreferencesChanged;
+            _preferences.Deactivate();
+        }
+        if (_surface is null) { _surfaceFactory = null; return; }
 
         var kill = _session is { State: AuthSessionState.Authenticated };
         ReleaseActiveSession(kill);
         TeardownSurface();
+        _surfaceFactory = null;
     }
 
     /// <summary>Re-resolves the backend notice text; called when the display language changes.</summary>
@@ -352,6 +399,7 @@ public partial class TerminalViewModel : LocalizedObservableObject
     {
         OnPropertyChanged(nameof(IsBuiltInBackendSelected));
         OnPropertyChanged(nameof(IsXtermBackendSelected));
+        if (_loadingAppearance) return;
         UpdateAppearance();
         // Deferred: the engine swap detaches and re-attaches the session.
         _ = ChangeBackendAsync();
@@ -390,7 +438,6 @@ public partial class TerminalViewModel : LocalizedObservableObject
         if (!string.IsNullOrWhiteSpace(title))
         {
             Title = IsAdministrator ? LocalizedText.Format("terminal.administrator_shell", title) : title;
-            Status = IsAdministrator ? LocalizedText.Ref("terminal.administrator_shell", title) : title;
         }
     }
 }

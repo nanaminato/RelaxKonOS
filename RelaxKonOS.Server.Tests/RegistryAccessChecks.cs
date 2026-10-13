@@ -25,6 +25,7 @@ internal static class RegistryAccessChecks
     public static async Task RunAsync()
     {
         var owner = Guid.NewGuid(); var other = Guid.NewGuid(); var third = Guid.NewGuid();
+        var device = Guid.NewGuid();
         var users = new InMemoryUserRepository();
         foreach (var id in new[] { owner, other, third }) users.Add(new User { Id = id, Username = id.ToString("N"), PlatformIdentity = id.ToString("D") });
         var workspaces = new InMemoryWorkspaceRepository();
@@ -35,7 +36,7 @@ internal static class RegistryAccessChecks
         var privileges = new TestHostAccountPrivilegeService();
         var store = new HostElevationSessionStore(privileges, new UploadSessionChecks.SystemMode(), new HostElevationSessionState());
         ClaimsPrincipal Principal() => new(new ClaimsIdentity([new Claim("sub", owner.ToString("D")),
-            new Claim("jti", "registry-test"), new Claim("amr", "system"), new Claim("workspace_id", ownWorkspace.Id.ToString("D"))], "test"));
+            new Claim("jti", "registry-test"), new Claim("amr", "system"), new Claim("device_id", device.ToString("D")), new Claim("workspace_id", ownWorkspace.Id.ToString("D"))], "test"));
         var builder = WebApplication.CreateBuilder(); builder.Logging.ClearProviders(); builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddAuthorization();
         builder.Services.AddSingleton<IUserRepository>(users); builder.Services.AddSingleton<IWorkspaceRepository>(workspaces);
@@ -102,6 +103,42 @@ internal static class RegistryAccessChecks
         var documentRoute = AppSettingsApiRoutes.Document.Replace("{appId}", "relaxkonos.explorer").Replace("{scope}", "workspace").Replace("{key}", "view");
         var document = (await http.GetFromJsonAsync<AppSettingsDocumentDto>(documentRoute, RelaxKonOSJsonOptions.Default))!;
         Check(document.SchemaVersion == 3 && document.Value.GetProperty("FileListCacheEnabled").GetBoolean(), "Explorer settings API did not read the same canonical registry value.");
+        var context = (await http.GetFromJsonAsync<RegistryContextDto>(RegistryApiRoutes.Context, RelaxKonOSJsonOptions.Default))!;
+        Check(context.DeviceId == device, "Registry context must expose the authenticated client's device.");
+        string DeviceValues(string path, Guid? user = null) => RegistryApiRoutes.ForUser(RegistryApiRoutes.Values, user ?? owner) + "?scope=device&path=" + Uri.EscapeDataString(path);
+        async Task<RegistryEntryDto[]> DeviceRead(string path) => (await http.GetFromJsonAsync<RegistryEntryDto[]>(DeviceValues(path), RelaxKonOSJsonOptions.Default))!;
+        var appearance = await DeviceRead(ClientPresentationPaths.Registry);
+        var thickness = appearance.Single(field => field.Name == "scrollbarThickness");
+        Check(appearance.Length == 5 && thickness.DesiredValue.GetInt32() == 6 && thickness.Address.ScopeId == device
+            && thickness.Schema.Editor == RegistryEditorKind.Integer && thickness.Schema.Minimum == 4 && thickness.Schema.Maximum == 12
+            && thickness.Schema.DefaultValue!.Value.GetInt32() == 6 && !thickness.Schema.CanDelete && !thickness.Schema.CanRename,
+            "Device appearance defaults, bounds or managed permissions are incorrect.");
+        async Task<HttpResponseMessage> DeviceWrite(int value, long revision) => await http.PutAsJsonAsync(DeviceValues(thickness.Path),
+            new PutRegistryEntryRequest(RegistryScope.Device, thickness.Path, thickness.Name, RegistryValueType.Number, JsonSerializer.SerializeToElement(value), revision), RelaxKonOSJsonOptions.Default);
+        using (var invalid = await DeviceWrite(3, thickness.Revision)) Check(invalid.StatusCode == HttpStatusCode.BadRequest, "Device appearance must reject out-of-range values.");
+        using (var saved = await DeviceWrite(9, thickness.Revision)) Check(saved.IsSuccessStatusCode, "Device appearance field must be editable.");
+        using (var stale = await DeviceWrite(7, thickness.Revision)) Check(stale.StatusCode == HttpStatusCode.Conflict, "Device appearance writes require a current revision.");
+        var savedAppearance = await DeviceRead(thickness.Path);
+        Check(savedAppearance.Single(field => field.Name == "iconSize").DesiredValue.GetInt32() == 16, "Device writes must preserve sibling fields.");
+        var firstDevice = device;
+        device = Guid.NewGuid();
+        Check((await DeviceRead(thickness.Path)).Single(field => field.Name == thickness.Name).DesiredValue.GetInt32() == 6,
+            "Another client device inherited geometry settings.");
+        device = firstDevice;
+        Check((await DeviceRead(thickness.Path)).Single(field => field.Name == thickness.Name).DesiredValue.GetInt32() == 9,
+            "Device switching lost the original settings.");
+        using (var cross = await http.GetAsync(DeviceValues(thickness.Path, other))) Check(cross.StatusCode == HttpStatusCode.BadRequest, "Administrator authorization must not map another user's device to the caller's device.");
+        var padding = await DeviceRead(ClientPresentationPaths.Terminal);
+        Check(padding.Single(field => field.Name == "paddingTop").DesiredValue.GetInt32() == 8, "Terminal device padding defaults are missing.");
+        var terminalFields = await Read(WorkspaceConfigurationRegistry.TerminalPath);
+        Check(terminalFields.Any(field => field.Name == "scrollbackLines" && field.Schema.Maximum == 100000)
+            && terminalFields.Single(field => field.Name == "cursorStyle").Schema.Choices.Count == 3,
+            "Workspace terminal rendering preferences are missing.");
+        var cursor = terminalFields.Single(field => field.Name == "cursorStyle");
+        using (var saved = await Write(cursor.Path, cursor.Name, JsonSerializer.SerializeToElement("bar"), cursor.Revision)) Check(saved.IsSuccessStatusCode, "Cursor style must be registry-editable.");
+        var scrollback = (await Read(cursor.Path)).Single(field => field.Name == "scrollbackLines");
+        using (var saved = await Write(scrollback.Path, scrollback.Name, JsonSerializer.SerializeToElement(0), scrollback.Revision, type: RegistryValueType.Number)) Check(saved.IsSuccessStatusCode, "Zero scrollback is a valid preference.");
+        using (var invalid = await Write(scrollback.Path, scrollback.Name, JsonSerializer.SerializeToElement(1.5), scrollback.Revision, type: RegistryValueType.Number)) Check(invalid.StatusCode == HttpStatusCode.BadRequest, "Scrollback must be an integer.");
         await app.StopAsync();
         Console.WriteLine("PASS: registry fields, nested options, canonical Explorer settings, cross-user elevation, administrator authorization, audit, revision conflicts and custom-value rename.");
     }

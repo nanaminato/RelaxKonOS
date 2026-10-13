@@ -49,10 +49,11 @@
     var terminal = new Terminal({
         allowProposedApi: true,
         convertEol: false,
-        cursorBlink: true,
+        cursorBlink: options.cursorBlink !== false,
+        cursorStyle: options.cursorStyle || "block",
         fontFamily: options.fontFamily || 'monospace',
         fontSize: options.fontSize || 14,
-        scrollback: options.scrollback || 10000,
+        scrollback: typeof options.scrollback === "number" ? options.scrollback : 10000,
         theme: options.theme || undefined
     });
 
@@ -87,7 +88,9 @@
             if (next.fontFamily) terminal.options.fontFamily = next.fontFamily;
             if (next.fontSize) terminal.options.fontSize = next.fontSize;
             if (next.theme) terminal.options.theme = next.theme;
-            if (next.scrollback) terminal.options.scrollback = next.scrollback;
+            if (typeof next.scrollback === "number") terminal.options.scrollback = next.scrollback;
+            if (typeof next.cursorBlink === "boolean") terminal.options.cursorBlink = next.cursorBlink;
+            if (next.cursorStyle) terminal.options.cursorStyle = next.cursorStyle;
             if (next.labels) { labels = next.labels; renderMenu(); }
             fitNow();
         },

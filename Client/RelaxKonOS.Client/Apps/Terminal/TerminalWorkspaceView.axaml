@@ -17,7 +17,7 @@
                         <ListBox.ItemTemplate>
                             <DataTemplate x:DataType="terminal:TerminalViewModel">
                                 <Grid ColumnDefinitions="*,Auto" Width="180" ColumnSpacing="8">
-                                    <TextBlock Text="{Binding Title}" ToolTip.Tip="{Binding Title}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding DisplayTitle}" ToolTip.Tip="{Binding Title}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                     <Button Grid.Column="1" Classes="tab-close" Click="CloseTab_Click" ToolTip.Tip="{loc:Loc terminal.close_tab}" AutomationProperties.Name="{loc:Loc terminal.close_tab}">
                                         <Path Width="10" Height="10" Stretch="Uniform" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Data="M0,0 L10,10 M10,0 L0,10" />
                                     </Button>
@@ -40,7 +40,7 @@
                         <ListBox x:Name="TabPicker" MinWidth="220" MaxHeight="320" SelectionChanged="TabPicker_SelectionChanged">
                             <ListBox.ItemTemplate>
                                 <DataTemplate x:DataType="terminal:TerminalViewModel">
-                                    <TextBlock Text="{Binding Title}" ToolTip.Tip="{Binding Title}" MaxWidth="300" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding DisplayTitle}" ToolTip.Tip="{Binding Title}" MaxWidth="300" TextTrimming="CharacterEllipsis" />
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>

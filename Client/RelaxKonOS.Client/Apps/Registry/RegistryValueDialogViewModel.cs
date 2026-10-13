@@ -14,6 +14,7 @@ public sealed partial class RegistryValueDialogViewModel : LocalizedObservableOb
     private readonly IRegistryClient _client;
     private readonly Action<bool> _close;
     private readonly Action<RegistryEntryDto> _saved;
+    private readonly RegistryEntryRow? _row;
 
     [ObservableProperty] private string _valueText = "";
     [ObservableProperty] private string? _error;
@@ -105,6 +106,7 @@ public sealed partial class RegistryValueDialogViewModel : LocalizedObservableOb
     public string TargetLabel => Entry is { } entry
         ? $"{entry.Address.ServerId} → {entry.OwnerUsername} ({entry.Address.OwnerUserId:D}) → {entry.Address.Scope} → {Path}"
         : Path;
+    public string JsonTargetLabel => _row?.Document is { } document ? TargetLabel + " → " + document.Name + " → " + string.Join(" → ", _row.JsonPath) : TargetLabel;
     [ObservableProperty] private bool _booleanValue;
 
     partial void OnValueTypeChanged(RegistryValueType value)
@@ -125,6 +127,7 @@ public sealed partial class RegistryValueDialogViewModel : LocalizedObservableOb
 
     public RegistryValueDialogViewModel(RegistryEntryRow row, IRegistryClient client, Action<bool> close, Action<RegistryEntryDto> saved)
     {
+        _row = row;
         Entry = row.Source; _client = client; _close = close; _saved = saved; Scope = Entry.Scope; Path = Entry.Path; Name = Entry.Name; ValueType = Entry.ValueType;
         SetValue(Entry.DesiredValue);
     }
@@ -153,8 +156,9 @@ public sealed partial class RegistryValueDialogViewModel : LocalizedObservableOb
                     RegistryValueType.Number => JsonSerializer.SerializeToElement(NumberValue ?? throw new InvalidOperationException(LocalizedText.Get("registry.error.invalid_number", "Enter a valid number."))),
                     _ => !IsRawJson && JsonRoots.Count > 0 ? JsonSerializer.SerializeToElement(JsonRoots[0].BuildValue()) : JsonSerializer.Deserialize<JsonElement>(ValueText),
                 };
-            var result = await _client.SaveAsync(new PutRegistryEntryRequest(Scope, Path, Name, ValueType, value,
-                Entry is { } entry && entry.Name == Name ? entry.Revision : 0));
+            var request = _row is { Document: not null } projected ? RegistryJsonProjection.Write(projected, value)
+                : new PutRegistryEntryRequest(Scope, Path, Name, ValueType, value, Entry is { } entry && entry.Name == Name ? entry.Revision : 0);
+            var result = await _client.SaveAsync(request);
             if (Entry is { } expected && result.Address != expected.Address) throw new InvalidOperationException("Registry response target mismatch.");
             _saved(result);
             _close(true);
@@ -163,8 +167,10 @@ public sealed partial class RegistryValueDialogViewModel : LocalizedObservableOb
         {
             try
             {
-                var latest = (await _client.ListValuesAsync(Scope, Path)).SingleOrDefault(value => value.Name == Name);
-                Error = string.Format(LocalizedText.Get("registry.error.conflict"), latest?.DesiredValue.ToString() ?? "");
+                var latest = (await _client.ListValuesAsync(Scope, Path)).SingleOrDefault(value => value.Name == (_row?.Document?.Name ?? Name));
+                var current = latest is not null && _row?.Document is not null
+                    ? RegistryJsonProjection.Resolve(latest.DesiredValue, _row.JsonPath).ToString() : latest?.DesiredValue.ToString() ?? "";
+                Error = string.Format(LocalizedText.Get("registry.error.conflict"), current);
             }
             catch { Error = LocalizedText.Get("registry.error.conflict_unknown"); }
         }
@@ -194,7 +200,7 @@ public sealed partial class RegistryValueDialogViewModel : LocalizedObservableOb
         if (!string.IsNullOrWhiteSpace(color)) ValueText = color;
     }
 
-    private long ParseInteger() => NumberValue is { } number
+    private long ParseInteger() => NumberValue is { } number && decimal.Truncate(number) == number
         ? (long)number : throw new InvalidOperationException(LocalizedText.Get("registry.error.invalid_number", "Enter a valid number."));
 
     private static string FormatHex(long value) => "0x" + value.ToString("X", CultureInfo.InvariantCulture);

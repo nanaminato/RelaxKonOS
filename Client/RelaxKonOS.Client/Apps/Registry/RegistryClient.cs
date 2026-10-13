@@ -9,13 +9,14 @@ using RelaxKonOS.Protocol.Registry;
 
 namespace RelaxKonOS.Client.Apps.Registry;
 
-public sealed class RegistryClient(HttpClient http, IAuthSession session, IHostElevationBroker elevations) : IRegistryClient
+public sealed class RegistryClient(HttpClient http, IAuthSession session, IHostElevationBroker elevations, RelaxKonOS.Client.Services.PresentationSettingsChanges changes) : IRegistryClient
 {
     private Guid? TargetUserId { get; init; }
     private string? BoundBaseUrl { get; init; }
     private Guid? BoundActor { get; init; }
-    public IRegistryClient ForUser(Guid targetUserId) => new RegistryClient(http, session, elevations)
-    { TargetUserId = targetUserId, BoundBaseUrl = session.EffectiveBaseUrl, BoundActor = session.CurrentUser?.Id };
+    private Guid? BoundDevice { get; init; }
+    public IRegistryClient ForUser(Guid targetUserId) => new RegistryClient(http, session, elevations, changes)
+    { TargetUserId = targetUserId, BoundBaseUrl = session.EffectiveBaseUrl, BoundActor = session.CurrentUser?.Id, BoundDevice = session.CurrentDevice?.Id };
     public Task<RegistryContextDto> GetContextAsync(CancellationToken cancellationToken = default) => GetCoreAsync<RegistryContextDto>(RegistryApiRoutes.Context, cancellationToken);
     public Task<IReadOnlyList<RegistryUserDto>> ListUsersAsync(CancellationToken cancellationToken = default) =>
         elevations.ExecuteAsync(HostElevationCapability.RegistryManage, "registry/users",
@@ -29,8 +30,12 @@ public sealed class RegistryClient(HttpClient http, IAuthSession session, IHostE
         SendAsync<RegistryKeyDto>(HttpMethod.Post, RegistryApiRoutes.Keys, request, cancellationToken);
     public Task DeleteKeyAsync(RegistryScope scope, string path, CancellationToken cancellationToken = default) =>
         SendAsync<object>(HttpMethod.Delete, $"{RegistryApiRoutes.Keys}?scope={Uri.EscapeDataString(scope.ToString())}&path={Uri.EscapeDataString(path)}", null, cancellationToken);
-    public Task<RegistryEntryDto> SaveAsync(PutRegistryEntryRequest request, CancellationToken cancellationToken = default) =>
-        SendAsync<RegistryEntryDto>(HttpMethod.Put, RegistryApiRoutes.Values, request, cancellationToken);
+    public async Task<RegistryEntryDto> SaveAsync(PutRegistryEntryRequest request, CancellationToken cancellationToken = default)
+    {
+        var saved = await SendAsync<RegistryEntryDto>(HttpMethod.Put, RegistryApiRoutes.Values, request, cancellationToken);
+        changes.Publish(saved);
+        return saved;
+    }
     public Task<RegistryEntryDto> RenameAsync(RenameRegistryEntryRequest request, CancellationToken cancellationToken = default) =>
         SendAsync<RegistryEntryDto>(HttpMethod.Post, RegistryApiRoutes.RenameValue, request, cancellationToken);
     public Task DeleteAsync(RegistryScope scope, string path, string name, CancellationToken cancellationToken = default) =>
@@ -87,7 +92,7 @@ public sealed class RegistryClient(HttpClient http, IAuthSession session, IHostE
     }
     private void EnsureBoundSession()
     {
-        if (TargetUserId is not null && (session.EffectiveBaseUrl != BoundBaseUrl || session.CurrentUser?.Id != BoundActor))
+        if (TargetUserId is not null && (session.EffectiveBaseUrl != BoundBaseUrl || session.CurrentUser?.Id != BoundActor || session.CurrentDevice?.Id != BoundDevice))
             throw new InvalidOperationException("The registry session changed. Reopen the registry editor.");
     }
     private HttpRequestMessage CreateRequest(HttpMethod method, string route)

@@ -8,10 +8,10 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class TerminalSettingsTest {
-    private val payload = """{"fontFamily":"Cascadia Mono","fontSize":14,"colorScheme":"Campbell","backgroundColor":"#0C0C0C","foregroundColor":"#CCCCCC","cursorColor":"#FFFFFF"}"""
-    @Test fun `current appearance parser requires six fields and validates bounds`() {
+    private val payload = """{"fontFamily":"Cascadia Mono","fontSize":14,"colorScheme":"Campbell","backgroundColor":"#0C0C0C","foregroundColor":"#CCCCCC","cursorColor":"#FFFFFF","scrollbackLines":10000,"cursorStyle":"block","cursorBlink":true}"""
+    @Test fun `current appearance parser requires current presentation fields and validates bounds`() {
         assertEquals(TerminalSettings.Default, TerminalSettingsWire.parse(payload))
-        listOf("fontFamily", "fontSize", "colorScheme", "backgroundColor", "foregroundColor", "cursorColor").forEach { field ->
+        listOf("fontFamily", "fontSize", "colorScheme", "backgroundColor", "foregroundColor", "cursorColor", "scrollbackLines", "cursorStyle", "cursorBlink").forEach { field ->
             assertTrue(runCatching { TerminalSettingsWire.parse(JSONObject(payload).apply { remove(field) }.toString()) }.isFailure)
         }
         assertTrue(runCatching { TerminalSettingsWire.parse(JSONObject(payload).put("fontSize", "14").toString()) }.isFailure)
@@ -19,6 +19,14 @@ class TerminalSettingsTest {
         assertTrue(runCatching { TerminalSettingsWire.validate(TerminalSettings.Default.copy(fontSize = 41.0)) }.isFailure)
         assertTrue(runCatching { TerminalSettingsWire.validate(TerminalSettings.Default.copy(cursorColor = "red")) }.isFailure)
         assertTrue(runCatching { TerminalSettingsWire.route("1-1-1-1-1") }.isFailure)
+    }
+    @Test fun `desktop presentation fields survive mobile appearance changes`() {
+        val settings = TerminalSettings.Default.copy(scrollbackLines = 0, cursorStyle = "bar", cursorBlink = false)
+        val changed = TerminalSettingsWire.scheme(settings, "Light")
+        val decoded = TerminalSettingsWire.parse(TerminalSettingsWire.body(changed).toByteArray().toString(Charsets.UTF_8))
+        assertEquals(changed, decoded)
+        assertTrue(runCatching { TerminalSettingsWire.validate(settings.copy(scrollbackLines = -1)) }.isFailure)
+        assertTrue(runCatching { TerminalSettingsWire.validate(settings.copy(cursorStyle = "invalid")) }.isFailure)
     }
     @Test fun `backend is optional on the wire and survives a roundtrip`() {
         // A document written before the backend field existed, or one holding JSON null, stays on the built-in renderer.
@@ -44,7 +52,7 @@ class TerminalSettingsTest {
             assertTrue(api.terminalSettings(url, "token", id) is ApiResult.Success)
             assertTrue(api.saveTerminalSettings(url, "token", id, TerminalSettings.Default.copy(backend = TerminalBackends.XTERM_JS)) is ApiResult.Success)
             assertEquals(listOf("GET", "PUT"), requests.map { it[0] }); assertTrue(requests.all { it[1] == "/api/v1.0/workspaces/$id/terminal-settings" && it[3] == "Bearer token" })
-            assertEquals(7, JSONObject(requests[1][2]).length()); assertEquals(14.0, JSONObject(requests[1][2]).getDouble("fontSize"), 0.0)
+            assertEquals(10, JSONObject(requests[1][2]).length()); assertEquals(14.0, JSONObject(requests[1][2]).getDouble("fontSize"), 0.0)
             assertEquals(TerminalBackends.XTERM_JS, JSONObject(requests[1][2]).getString("backend"))
         } finally { server.stop(0) }
     }

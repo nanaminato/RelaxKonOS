@@ -25,14 +25,16 @@ public sealed class RegistryApp : RemoteApplicationBase
             context.ShowWindow(LocalizedText.Get("application.relaxkonos.registry.display_name", "Registry"), new TextBlock { Text = LocalizedText.Get("registry.error.sign_in", "Sign in to browse the configuration registry."), Margin = new Thickness(24) }, new Rect(200, 160, 460, 180), Manifest.IconGlyph, false, false, false);
             return;
         }
-        var viewModel = new RegistryViewModel(client);
+        var viewModel = new RegistryViewModel(client, (RelaxKonOS.Client.Services.ClientPresentationPreferences?)context.Services.GetService(typeof(RelaxKonOS.Client.Services.ClientPresentationPreferences)));
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.registry.display_name", "Registry"), new RegistryView { DataContext = viewModel }, new Rect(80, 60, 1120, 700), Manifest.IconGlyph);
         viewModel.ShowEditDialogAsync = async row =>
         {
+            if (row.Source.Scope == RelaxKonOS.Protocol.Registry.RegistryScope.Device && row.Source.Address.ScopeId != session.CurrentDevice?.Id)
+                throw new InvalidOperationException("The client device changed. Reopen the registry editor.");
             await context.ShowDialogAsync<bool>(window, LocalizedText.Get("registry.dialog.edit", "Edit Registry Value"), dialog => new RegistryValueDialogView
             {
                 DataContext = new RegistryValueDialogViewModel(row, client.ForUser(row.Source.Address.OwnerUserId), dialog.Close, entry => viewModel.ApplySaved(entry)),
-            }, new Size(720, 520));
+            }, row.Source.ValueType == RelaxKonOS.Protocol.Registry.RegistryValueType.Number ? new Size(600, 320) : new Size(720, 520));
         };
         viewModel.ShowRenameDialogAsync = async row =>
         {
