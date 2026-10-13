@@ -56,6 +56,7 @@
         "registry.key.create": "创建",
         "registry.key.invalid": "请输入有效的键名称。",
         "registry.reset": "恢复默认",
+        "registry.editor.raw_json": "编辑原始 JSON",
         "registry.editor.hex": "以十六进制显示",
         "registry.editor.list_item": "新增项",
         "registry.editor.list_add": "添加",

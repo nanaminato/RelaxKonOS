@@ -33,7 +33,37 @@ public sealed partial class RegistryValueDialogViewModel : LocalizedObservableOb
     public bool IsNumber => ValueType == RegistryValueType.Number && !IsEnum && !IsInteger;
     public bool IsColor => Editor == RegistryEditorKind.Color;
     public bool IsJson => !IsStringList && ValueType == RegistryValueType.Json;
-    public bool IsText => !IsBoolean && !IsEnum && !IsNumber && !IsInteger && !IsStringList && !IsColor;
+    public bool IsText => IsJson ? IsRawJson : !IsBoolean && !IsEnum && !IsNumber && !IsInteger && !IsStringList && !IsColor;
+    public bool IsStructuredJson => IsJson && !IsRawJson;
+    [ObservableProperty] private bool _isRawJson;
+
+    public ObservableCollection<RegistryJsonNode> JsonRoots { get; } = [];
+    [ObservableProperty] private RegistryJsonNode? _selectedJsonNode;
+
+    partial void OnIsRawJsonChanged(bool value)
+    {
+        try
+        {
+            if (value && JsonRoots.Count > 0)
+                ValueText = JsonSerializer.Serialize(JsonRoots[0].BuildValue(), new JsonSerializerOptions { WriteIndented = true });
+            else if (!value && IsJson)
+            {
+                var root = new RegistryJsonNode(Name, System.Text.Json.Nodes.JsonNode.Parse(ValueText)) { IsExpanded = true };
+                JsonRoots.Clear();
+                JsonRoots.Add(root);
+                SelectedJsonNode = root;
+            }
+            Error = null;
+        }
+        catch (Exception ex)
+        {
+            _isRawJson = !value;
+            OnPropertyChanged(nameof(IsRawJson));
+            Error = string.Format(LocalizedText.Get("registry.error.invalid_value", "Invalid registry value: {0}"), ex.Message);
+        }
+        OnPropertyChanged(nameof(IsText));
+        OnPropertyChanged(nameof(IsStructuredJson));
+    }
 
     public IReadOnlyList<RegistryValueChoiceDto> Choices => Entry?.Schema.Choices ?? [];
     [ObservableProperty] private RegistryValueChoiceDto? _selectedChoice;
@@ -79,6 +109,16 @@ public sealed partial class RegistryValueDialogViewModel : LocalizedObservableOb
 
     partial void OnValueTypeChanged(RegistryValueType value)
     {
+        JsonRoots.Clear();
+        SelectedJsonNode = null;
+        if (IsJson)
+        {
+            ValueText = "{}";
+            var root = new RegistryJsonNode(Name, new System.Text.Json.Nodes.JsonObject()) { IsExpanded = true };
+            JsonRoots.Add(root);
+            SelectedJsonNode = root;
+        }
+        OnPropertyChanged(nameof(IsStructuredJson));
         OnPropertyChanged(nameof(IsJson)); OnPropertyChanged(nameof(IsBoolean)); OnPropertyChanged(nameof(IsText));
         OnPropertyChanged(nameof(IsNumber)); OnPropertyChanged(nameof(IsInteger));
     }
@@ -111,7 +151,7 @@ public sealed partial class RegistryValueDialogViewModel : LocalizedObservableOb
                     RegistryValueType.String => JsonSerializer.SerializeToElement(ValueText),
                     RegistryValueType.Boolean => JsonSerializer.SerializeToElement(BooleanValue),
                     RegistryValueType.Number => JsonSerializer.SerializeToElement(NumberValue ?? throw new InvalidOperationException(LocalizedText.Get("registry.error.invalid_number", "Enter a valid number."))),
-                    _ => JsonSerializer.Deserialize<JsonElement>(ValueText),
+                    _ => !IsRawJson && JsonRoots.Count > 0 ? JsonSerializer.SerializeToElement(JsonRoots[0].BuildValue()) : JsonSerializer.Deserialize<JsonElement>(ValueText),
                 };
             var result = await _client.SaveAsync(new PutRegistryEntryRequest(Scope, Path, Name, ValueType, value,
                 Entry is { } entry && entry.Name == Name ? entry.Revision : 0));
@@ -169,6 +209,14 @@ public sealed partial class RegistryValueDialogViewModel : LocalizedObservableOb
 
     private void SetValue(JsonElement value)
     {
+        JsonRoots.Clear();
+        SelectedJsonNode = null;
+        if (IsJson)
+        {
+            var root = new RegistryJsonNode(Name, System.Text.Json.Nodes.JsonNode.Parse(value.GetRawText())) { IsExpanded = true };
+            JsonRoots.Add(root);
+            SelectedJsonNode = root;
+        }
         if (IsStringList)
         {
             ListItems.Clear();

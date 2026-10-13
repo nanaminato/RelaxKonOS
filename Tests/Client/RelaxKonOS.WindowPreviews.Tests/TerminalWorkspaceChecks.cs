@@ -81,7 +81,31 @@ internal static class TerminalWorkspaceChecks
         preview.Close();
         Dispatcher.UIThread.RunJobs();
         CheckBackendSelection();
+        CheckOutputBuffer();
         Console.WriteLine("Terminal workspace checks passed (17 scenarios).");
+    }
+
+    private static void CheckOutputBuffer()
+    {
+        using var surface = new XtermJsTerminalSurface(null!, new Dictionary<string, string>());
+        const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+        var receive = typeof(XtermJsTerminalSurface).GetMethod("OnTransportData", flags)!;
+        var take = typeof(XtermJsTerminalSurface).GetMethod("TakePending", flags)!;
+        var pending = (Queue<byte>)typeof(XtermJsTerminalSurface).GetField("_pending", flags)!.GetValue(surface)!;
+        const int limit = 4 * 1024 * 1024;
+        var burst = new byte[limit + 17];
+        burst[17] = 42;
+        burst[^1] = 99;
+        receive.Invoke(surface, [burst, burst.Length]);
+        Check(pending.Count == limit && pending.Peek() == 42, "An oversized burst must retain the bounded tail without throwing.");
+        var chunk = (byte[])take.Invoke(surface, null)!;
+        Check(chunk.Length == 96 * 1024 && chunk[0] == 42, "Terminal output must drain in ordered, bounded chunks.");
+        receive.Invoke(surface, [new byte[] { 1, 2, 3 }, 100]);
+        var tail = pending.ToArray();
+        Check(tail[^4] == 99 && tail[^1] == 3, "Subsequent output must preserve ordering and clamp the supplied count.");
+        surface.Dispose();
+        Dispatcher.UIThread.RunJobs();
+        Check(pending.Count == 0, "Closing the surface must release queued output.");
     }
 
     /// <summary>

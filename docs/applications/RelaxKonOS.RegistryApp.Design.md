@@ -120,7 +120,7 @@ HKEY_USERS\<UserId>\Workspace\Explorer
 | Number | 有范围与精度的数值框，如终端字号 |
 | Color | 色板、预览与合法色值输入 |
 | 字符串列表 | 可增删的列表 / 多行文本 |
-| Json | 仅真正的复杂或自定义 JSON 使用原始编辑器，带语法错误定位 |
+| Json | 属性树按层展开对象和数组，选中叶子编辑；可切换原始 JSON 增删结构，切换和保存时校验类型及语法 |
 
 继续显示真实的 RelaxKonOS 逻辑类型，不把 Boolean/JSON 冒充 REG_DWORD/REG_BINARY。借鉴 Windows Regedit 的名称、类型、数据列与双击编辑行为，不声称实现宿主注册表格式。
 

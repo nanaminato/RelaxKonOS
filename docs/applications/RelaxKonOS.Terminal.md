@@ -454,3 +454,5 @@ else
 - **剪贴板归宿主**：xterm.js 页面**不得**自行调用浏览器剪贴板 API（在 WebView 里不可靠且会绕过 Avalonia 的剪贴板策略）；页面只发 `copy`/`paste` 意图，读写由宿主完成。
 - **不引入 native Ghostty VT**（除非显式需求）：当前用托管 VT；引入 native 需按 RID 处理原生资产包。
 - **程序集名是 `RoyalTerminal.Avalonia`**（非 NuGet 包 id `RoyalApps.RoyalTerminal.Avalonia`）；`NullSshCredentialProvider` 在 `RoyalTerminal.Terminal.Transport.Ssh.SshNet` namespace，`KnownHostsSshHostKeyValidator` 在 `RoyalTerminal.Terminal.Transport.Ssh` namespace（abstractions 程序集，传递依赖可用）。
+
+WebView 输出采用有界 FIFO 缓冲：最多保留最近 4 MiB，每次向页面发送最多 96 KiB；单次超限输出也保留尾部，不对空缓冲执行越界裁剪。关闭会释放缓冲、结束等待页面就绪的流程，并尝试清理页面；后台脚本调用统一等待并处理失败。

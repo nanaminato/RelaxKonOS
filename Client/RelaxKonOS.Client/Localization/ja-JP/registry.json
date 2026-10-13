@@ -56,6 +56,7 @@
         "registry.key.create": "作成",
         "registry.key.invalid": "有効なキーの名前を入力してください。",
         "registry.reset": "既定値に戻す",
+        "registry.editor.raw_json": "JSON を直接編集",
         "registry.editor.hex": "16 進数で表示",
         "registry.editor.list_item": "新しい項目",
         "registry.editor.list_add": "追加",

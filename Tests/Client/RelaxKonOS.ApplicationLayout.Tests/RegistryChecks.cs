@@ -66,10 +66,11 @@ internal static class RegistryChecks
         await CheckPaneStatesAsync(client, vm, own, other);
         await CheckRenameAsync(client, vm, entry);
         await CheckEditorsAsync(client);
+        await CheckJsonEditorAsync(client);
         CheckSurfaces(client, vm, entry);
 
         Console.WriteLine("PASS: registry aliases, stable-owner navigation, late-error isolation, fixed dialogs and typed default editing.");
-        Console.WriteLine("PASS: registry read-outcome states, status bar owner/permission, rename, structured list, hexadecimal integer and colour palette.");
+        Console.WriteLine("PASS: registry read-outcome states, status bar owner/permission, rename, typed editors and lazy JSON editing/mode switching.");
     }
 
     /// <summary>A refused read, a transport failure and an empty key must never render as each other.</summary>
@@ -170,6 +171,45 @@ internal static class RegistryChecks
         Check(colorDialog.Error is null && client.SavedRequest?.Value.GetString() == "#3B78FF", "A palette colour must save as a string.");
     }
 
+    private static async Task CheckJsonEditorAsync(FakeRegistryClient client)
+    {
+        var value = JsonSerializer.Deserialize<JsonElement>("""{"nested":{"items":[{"text":"hello","enabled":true},null,1.25]},"untouched":{"large":9007199254740993}}""");
+        var entry = CustomEntry(client, "document", RegistryValueType.Json, value, RegistryEditorKind.Json, value);
+        var dialog = new RegistryValueDialogViewModel(RegistryEntryRow.From(entry), client.ForUser(client.Other), _ => { }, _ => { });
+        var root = dialog.JsonRoots.Single();
+        var nested = root.Children.Single(node => node.Name == "nested");
+        Check(nested.Children.Single().Name == "…", "Nested JSON was eagerly materialized.");
+        nested.IsExpanded = true;
+        var items = nested.Children.Single();
+        items.IsExpanded = true;
+        items.Children[0].IsExpanded = true;
+        items.Children[0].Children.Single(node => node.Name == "text").ValueText = "quoted \"text\"\n中文";
+        var flag = items.Children[0].Children.Single(node => node.Name == "enabled");
+        flag.ValueText = "false";
+        await dialog.SaveCommand.ExecuteAsync(null);
+        var saved = client.SavedRequest!.Value;
+        Check(saved.GetProperty("nested").GetProperty("items")[0].GetProperty("text").GetString() == "quoted \"text\"\n中文",
+            "Structured strings lost escaping or Unicode.");
+        Check(saved.GetProperty("untouched").GetProperty("large").GetInt64() == 9007199254740993,
+            "An unopened branch lost numeric precision.");
+        Check(saved.GetProperty("nested").GetProperty("items")[1].ValueKind == JsonValueKind.Null && client.SavedRequest.ExpectedRevision == 7,
+            "JSON null or versioned save was lost.");
+        flag.ValueText = "123";
+        dialog.IsRawJson = true;
+        Check(!dialog.IsRawJson && dialog.Error is not null, "Invalid property type escaped through mode switching.");
+        flag.ValueText = "true";
+        dialog.IsRawJson = true;
+        Check(dialog.IsRawJson && dialog.ValueText.Contains("9007199254740993"), "Raw mode discarded tree edits.");
+        dialog.ValueText = "{broken";
+        dialog.IsRawJson = false;
+        Check(dialog.IsRawJson && dialog.Error is not null, "Malformed JSON replaced the property tree.");
+        dialog.ValueText = "{\"new\": [false, null]}";
+        dialog.IsRawJson = false;
+        Check(dialog.IsStructuredJson && dialog.JsonRoots.Single().Children.Single().Name == "new", "Raw edits did not rebuild the tree.");
+        dialog.ResetCommand.Execute(null);
+        Check(dialog.JsonRoots.Single().BuildValue()!.ToJsonString() == value.GetRawText(), "Reset did not rebuild the JSON document.");
+    }
+
     private static RegistryEntryDto CustomEntry(FakeRegistryClient client, string name, RegistryValueType type, JsonElement value,
         RegistryEditorKind editor, JsonElement? defaultValue)
     {
@@ -193,6 +233,9 @@ internal static class RegistryChecks
         var surfaces = new Control[]
         {
             new RegistryView { DataContext = vm },
+            new RegistryValueDialogView { DataContext = new RegistryValueDialogViewModel(RegistryEntryRow.From(
+                CustomEntry(client, "document", RegistryValueType.Json, JsonSerializer.Deserialize<JsonElement>("""{"appearance":{"fontSize":14,"colors":{"background":"#101828"}},"shells":["pwsh","bash"],"enabled":true}"""),
+                    RegistryEditorKind.Json, null)), owned, _ => { }, _ => { }) },
             new RegistryValueDialogView { DataContext = new RegistryValueDialogViewModel(RegistryEntryRow.From(stringEntry), owned, _ => { }, _ => { }) },
             new RegistryValueDialogView { DataContext = new RegistryValueDialogViewModel(RegistryEntryRow.From(
                 CustomEntry(client, "visibleAppIds", RegistryValueType.Json, JsonSerializer.SerializeToElement(new[] { "relaxkonos.terminal" }),
@@ -209,8 +252,24 @@ internal static class RegistryChecks
         };
         foreach (var surface in surfaces)
         {
+            if (surface.DataContext is RegistryValueDialogViewModel { IsStructuredJson: true } json)
+            {
+                var appearance = json.JsonRoots.Single().Children.Single(node => node.Name == "appearance");
+                appearance.IsExpanded = true;
+                appearance.Children.Single(node => node.Name == "colors").IsExpanded = true;
+                json.SelectedJsonNode = appearance.Children.Single(node => node.Name == "fontSize");
+            }
             var window = new Window { Width = 900, Height = 620, Content = surface };
             window.Show();
+            if (surface is RegistryView || surface.DataContext is RegistryValueDialogViewModel { IsStructuredJson: true })
+            {
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                var output = System.IO.Path.Combine(AppContext.BaseDirectory, "layout-qa");
+                System.IO.Directory.CreateDirectory(output);
+                using var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(900, 620));
+                bitmap.Render(window);
+                bitmap.Save(System.IO.Path.Combine(output, surface is RegistryView ? "registry-browser.png" : "registry-json.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+            }
             window.Close();
         }
     }

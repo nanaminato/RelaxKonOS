@@ -267,7 +267,7 @@ public partial class TerminalViewModel : LocalizedObservableObject
         {
             // The engine failed on this host, not the session: open the very same request with the
             // engine every platform can host, and say why.
-            await FallBackToBuiltInAsync(exception);
+            await FallBackToBuiltInAsync(exception, sessionId);
         }
         catch (Exception ex)
         {
@@ -276,7 +276,7 @@ public partial class TerminalViewModel : LocalizedObservableObject
         }
     }
 
-    private async Task FallBackToBuiltInAsync(Exception exception)
+    private async Task FallBackToBuiltInAsync(Exception exception, string? sessionId)
     {
         if (_surface is null || _surfaceFactory is null || EffectiveBackend == TerminalBackendKind.BuiltIn)
         {
@@ -292,7 +292,7 @@ public partial class TerminalViewModel : LocalizedObservableObject
         EffectiveBackend = TerminalBackendKind.BuiltIn;
         ApplyBackendNotice(new TerminalBackendSelection(EffectiveBackend, _backendNoticeKey));
         CreateSurface(TerminalBackendKind.BuiltIn);
-        await StartSessionAsync(_initialSessionId);
+        await StartSessionAsync(sessionId);
     }
 
     private void ReleaseActiveSession(bool kill)

@@ -40,7 +40,7 @@ public sealed class XtermJsTerminalSurface : ITerminalSurface
     private readonly TaskCompletionSource<bool> _pageReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly DispatcherTimer _pump;
     private readonly object _bufferGate = new();
-    private readonly List<byte> _pending = [];
+    private readonly Queue<byte> _pending = new();
 
     private ITerminalTransport? _transport;
     private IReadOnlyDictionary<string, string> _labels;
@@ -197,13 +197,13 @@ public sealed class XtermJsTerminalSurface : ITerminalSurface
     {
         if (_disposed)
             return;
+        Invoke("window.rkTerminal.dispose()");
         _disposed = true;
         _pump.Stop();
         _view.WebMessageReceived -= OnWebMessageReceived;
         _view.Loaded -= OnViewLoaded;
         StopSession();
         _pageReady.TrySetResult(false);
-        Invoke("window.rkTerminal.dispose()");
         lock (_bufferGate) _pending.Clear();
     }
 
@@ -234,7 +234,8 @@ public sealed class XtermJsTerminalSurface : ITerminalSurface
             _pageReady.TrySetException(new TerminalSurfaceUnavailableException("The terminal page did not start within the allowed time."));
 
         // Surfaces an exception raised by NavigateToString as well as a page that came up.
-        await _pageReady.Task.ConfigureAwait(true);
+        if (!await _pageReady.Task.ConfigureAwait(true) || _disposed)
+            throw new TerminalSurfaceUnavailableException("The terminal surface closed before the page was ready.");
     }
 
     private Dictionary<string, object?> BuildOptions() => DescribeOptions(_appearance, _labels);
@@ -279,10 +280,13 @@ public sealed class XtermJsTerminalSurface : ITerminalSurface
 
         lock (_bufferGate)
         {
-            if (_pending.Count + count > MaximumPendingBytes)
-                _pending.RemoveRange(0, _pending.Count + count - MaximumPendingBytes);
-            for (var index = 0; index < count; index++)
-                _pending.Add(buffer[index]);
+            count = Math.Min(count, buffer.Length);
+            var start = Math.Max(0, count - MaximumPendingBytes);
+            var retained = count - start;
+            while (_pending.Count > MaximumPendingBytes - retained)
+                _pending.Dequeue();
+            for (var index = start; index < count; index++)
+                _pending.Enqueue(buffer[index]);
         }
 
         // Output arrives on a transport thread; the page can only be driven from the UI thread.
@@ -291,6 +295,7 @@ public sealed class XtermJsTerminalSurface : ITerminalSurface
             Dispatcher.UIThread.Post(() =>
             {
                 Interlocked.Exchange(ref _wakeQueued, 0);
+                if (_disposed) return;
                 if (!_pumping)
                 {
                     _pump.Start();
@@ -348,8 +353,8 @@ public sealed class XtermJsTerminalSurface : ITerminalSurface
                 return null;
             var length = Math.Min(_pending.Count, MaximumFlushBytes);
             var chunk = new byte[length];
-            _pending.CopyTo(0, chunk, 0, length);
-            _pending.RemoveRange(0, length);
+            for (var index = 0; index < length; index++)
+                chunk[index] = _pending.Dequeue();
             return chunk;
         }
     }
@@ -418,7 +423,12 @@ public sealed class XtermJsTerminalSurface : ITerminalSurface
     {
         if (_disposed)
             return;
-        try { _ = _view.InvokeScript(script); }
+        _ = InvokeAsync(script);
+    }
+
+    private async Task InvokeAsync(string script)
+    {
+        try { await _view.InvokeScript(script).ConfigureAwait(true); }
         catch { /* a page that is gone is reported by the session, not by chrome actions */ }
     }
 }

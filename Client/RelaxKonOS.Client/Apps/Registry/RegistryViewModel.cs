@@ -310,7 +310,12 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Localize
             }
             if (generation != _navigationGeneration) return;
             if (current is null) StatusText = LocalizedText.RefWithFallback("registry.status.path_not_found", "Registry key not found: {0}", NavigationPathInput);
-            else SelectedKey = current;
+            else
+            {
+                for (var ancestor = current.Parent; ancestor is not null; ancestor = ancestor.Parent)
+                    ancestor.IsExpanded = true;
+                SelectedKey = current;
+            }
         }
         catch (Exception error) { if (generation == _navigationGeneration) SetFailure(error); }
     }

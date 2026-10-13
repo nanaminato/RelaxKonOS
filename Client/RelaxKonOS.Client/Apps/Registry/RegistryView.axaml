@@ -5,7 +5,13 @@
              x:Class="RelaxKonOS.Client.Apps.Registry.RegistryView"
              x:DataType="registry:RegistryViewModel"
              Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
-  <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="12">
+  <UserControl.Styles>
+    <Style Selector="ScrollBar:vertical"><Setter Property="Width" Value="6"/><Setter Property="MinWidth" Value="6"/></Style>
+    <Style Selector="ScrollBar:horizontal"><Setter Property="Height" Value="6"/><Setter Property="MinHeight" Value="6"/></Style>
+    <Style Selector="TreeViewItem"><Setter Property="MinHeight" Value="24"/><Setter Property="Padding" Value="2,1"/><Setter Property="FontSize" Value="12"/></Style>
+    <Style Selector="DataGridRow"><Setter Property="MinHeight" Value="26"/><Setter Property="FontSize" Value="12"/></Style>
+  </UserControl.Styles>
+  <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="4">
     <Menu>
       <MenuItem Header="{loc:Loc registry.menu.file}">
         <MenuItem Header="{loc:Loc registry.menu.new}" Command="{Binding NewValueCommand}" IsEnabled="{Binding CanCreateValue}"/>
@@ -31,8 +37,8 @@
       <Button Grid.Column="1" Content="{loc:Loc registry.go}" Command="{Binding NavigateCommand}"/>
     </Grid>
 
-    <Grid Grid.Row="2" ColumnDefinitions="250,5,*" RowDefinitions="*,Auto">
-      <Border Padding="4" Classes="app-sidebar">
+    <Grid Grid.Row="2" ColumnDefinitions="280,3,*" RowDefinitions="*,Auto">
+      <Border Padding="0" Classes="app-sidebar">
         <TreeView x:Name="RegistryTree" ItemsSource="{Binding Keys}" SelectedItem="{Binding SelectedKey, Mode=TwoWay}">
           <TreeView.Styles><Style Selector="TreeViewItem"><Setter Property="IsExpanded" Value="{ReflectionBinding IsExpanded, Mode=TwoWay}"/></Style></TreeView.Styles>
           <TreeView.ContextMenu>
@@ -41,11 +47,11 @@
               <MenuItem Header="{loc:Loc registry.menu.delete_key}" Command="{Binding DeleteKeyCommand}" IsEnabled="{Binding CanDeleteKey}"/>
             </ContextMenu>
           </TreeView.ContextMenu>
-          <TreeView.ItemTemplate><TreeDataTemplate DataType="registry:RegistryKeyNode" ItemsSource="{Binding Children}"><TextBlock Text="{Binding Name}"/></TreeDataTemplate></TreeView.ItemTemplate>
+          <TreeView.ItemTemplate><TreeDataTemplate DataType="registry:RegistryKeyNode" ItemsSource="{Binding Children}"><StackPanel Orientation="Horizontal" Spacing="6"><Image Width="16" Height="16" Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/file-folder.png"/><TextBlock Text="{Binding Name}" VerticalAlignment="Center"/></StackPanel></TreeDataTemplate></TreeView.ItemTemplate>
         </TreeView>
       </Border>
-      <GridSplitter Grid.Column="1" Width="5" ResizeDirection="Columns"/>
-      <DataGrid Grid.Column="2" ItemsSource="{Binding Entries}" SelectedItem="{Binding SelectedEntry, Mode=TwoWay}" DoubleTapped="EntriesGrid_DoubleTapped" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True" CanUserSortColumns="True" Classes="resource-table">
+      <GridSplitter Grid.Column="1" Width="3" ResizeDirection="Columns"/>
+      <DataGrid Grid.Column="2" ItemsSource="{Binding Entries}" SelectedItem="{Binding SelectedEntry, Mode=TwoWay}" DoubleTapped="EntriesGrid_DoubleTapped" RowHeight="26" ColumnHeaderHeight="30" FontSize="12" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True" CanUserSortColumns="True" Classes="resource-table">
         <DataGrid.ContextMenu>
           <ContextMenu>
             <MenuItem Header="{loc:Loc registry.menu.new}" Click="NewValue_Click" IsEnabled="{Binding CanCreateValue}"/>
