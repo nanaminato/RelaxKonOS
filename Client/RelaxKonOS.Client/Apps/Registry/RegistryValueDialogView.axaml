@@ -1,22 +1,128 @@
-<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:registry="clr-namespace:RelaxKonOS.Client.Apps.Registry" xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" x:Class="RelaxKonOS.Client.Apps.Registry.RegistryValueDialogView" x:DataType="registry:RegistryValueDialogViewModel" Classes="builtin-app">
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:registry="clr-namespace:RelaxKonOS.Client.Apps.Registry"
+             xmlns:protocol="clr-namespace:RelaxKonOS.Protocol.Registry;assembly=RelaxKonOS.Protocol"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             x:Class="RelaxKonOS.Client.Apps.Registry.RegistryValueDialogView"
+             x:DataType="registry:RegistryValueDialogViewModel"
+             Classes="builtin-app">
+  <UserControl.Resources>
+    <x:Double x:Key="RegistryScrollbarThickness">6</x:Double>
+    <x:Double x:Key="RegistryTreeRowHeight">24</x:Double>
+    <x:Double x:Key="RegistryIconSize">16</x:Double>
+  </UserControl.Resources>
+  <UserControl.Styles>
+    <Style Selector="ScrollBar:vertical, ScrollViewer /template/ ScrollBar:vertical"><Setter Property="Width" Value="{DynamicResource RegistryScrollbarThickness}"/><Setter Property="MinWidth" Value="{DynamicResource RegistryScrollbarThickness}"/></Style>
+    <Style Selector="ScrollBar:horizontal, ScrollViewer /template/ ScrollBar:horizontal"><Setter Property="Height" Value="{DynamicResource RegistryScrollbarThickness}"/><Setter Property="MinHeight" Value="{DynamicResource RegistryScrollbarThickness}"/></Style>
+    <Style Selector="ScrollViewer"><Setter Property="AllowAutoHide" Value="False"/></Style>
+    <Style Selector="TreeViewItem"><Setter Property="MinHeight" Value="{DynamicResource RegistryTreeRowHeight}"/><Setter Property="Padding" Value="2,1"/></Style>
+  </UserControl.Styles>
   <Grid Margin="20" RowDefinitions="Auto,Auto,*,Auto,Auto">
-    <TextBlock Text="{Binding Path}" FontWeight="SemiBold" TextWrapping="Wrap" HorizontalAlignment="Left" Margin="0,0,0,12"/>
+    <TextBlock Grid.Row="0" Text="{Binding JsonTargetLabel}" FontWeight="SemiBold" TextWrapping="Wrap" HorizontalAlignment="Left" Margin="0,0,0,12"/>
 
     <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="8" HorizontalAlignment="Stretch">
-      <TextBox Text="{Binding Name, Mode=TwoWay}" MinWidth="0" HorizontalAlignment="Stretch"/>
-      <ComboBox Grid.Column="1" Width="120" HorizontalAlignment="Left" ItemsSource="{Binding ValueTypes}" SelectedItem="{Binding ValueType, Mode=TwoWay}"/>
+      <TextBox Text="{Binding Name, Mode=TwoWay}" IsReadOnly="{Binding !CanChangeIdentity}" MinWidth="0" HorizontalAlignment="Stretch"/>
+      <ComboBox Grid.Column="1" Width="120" HorizontalAlignment="Left" IsEnabled="{Binding CanChangeIdentity}" ItemsSource="{Binding ValueTypes}" SelectedItem="{Binding ValueType, Mode=TwoWay}"/>
     </Grid>
 
-    <!-- The value editor is the reason this dialog exists, so it takes the space the dialog has left
-         instead of a fixed height inside a scroll viewer: a long REG_BINARY or multi-line value is
-         edited in place, and the editor grows when the dialog is resized. -->
-    <TextBox Grid.Row="2" Margin="0,14,0,0" Text="{Binding ValueText, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="NoWrap" MinWidth="0" MinHeight="140" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Auto" FontFamily="Consolas"/>
+    <!-- Enum: localized candidate list, saved as the stable value. -->
+    <ComboBox Grid.Row="2" IsVisible="{Binding IsEnum}" ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedChoice, Mode=TwoWay}">
+      <ComboBox.ItemTemplate><DataTemplate x:DataType="protocol:RegistryValueChoiceDto"><TextBlock Text="{Binding Label}"/></DataTemplate></ComboBox.ItemTemplate>
+    </ComboBox>
 
-    <TextBlock Grid.Row="3" Margin="0,8,0,0" Text="{Binding Error}" Foreground="IndianRed" TextWrapping="Wrap" HorizontalAlignment="Left"/>
-
-    <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,12,0,0">
-      <Button Content="{loc:Loc registry.cancel}" Command="{Binding CancelCommand}"/>
-      <Button Classes="primary" Content="{loc:Loc registry.save}" Command="{Binding SaveCommand}"/>
+    <!-- Number: bounded numeric entry. -->
+    <StackPanel Grid.Row="2" IsVisible="{Binding IsNumber}" VerticalAlignment="Top" Spacing="6" Margin="0,12,0,0">
+      <TextBlock Text="{loc:Loc registry.column.data}"/>
+      <NumericUpDown Width="280" Height="34" HorizontalAlignment="Left" Value="{Binding NumberValue, Mode=TwoWay}" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}"/>
     </StackPanel>
+
+    <!-- Integer: numeric entry with an optional hexadecimal display; the server always receives a number. -->
+    <StackPanel Grid.Row="2" IsVisible="{Binding IsInteger}" VerticalAlignment="Top" Spacing="8" Margin="0,12,0,0">
+      <TextBlock Text="{loc:Loc registry.column.data}"/>
+      <NumericUpDown Width="280" Height="34" HorizontalAlignment="Left" IsVisible="{Binding !IsHex}" Value="{Binding NumberValue, Mode=TwoWay}" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}"/>
+      <TextBox Width="280" HorizontalAlignment="Left" IsVisible="{Binding IsHex}" Text="{Binding HexText, Mode=TwoWay}" FontFamily="Consolas" PlaceholderText="0x0"/>
+      <CheckBox Content="{loc:Loc registry.editor.hex}" IsChecked="{Binding IsHex, Mode=TwoWay}"/>
+    </StackPanel>
+
+    <ToggleSwitch Grid.Row="2" IsVisible="{Binding IsBoolean}" IsChecked="{Binding BooleanValue, Mode=TwoWay}"/>
+
+    <!-- String list: add and remove rows instead of hand-writing JSON. -->
+    <Border Grid.Row="2" IsVisible="{Binding IsStringList}" Padding="8" CornerRadius="4">
+      <DockPanel>
+        <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto" ColumnSpacing="6" Margin="0,8,0,0">
+          <TextBox Text="{Binding NewListItem, Mode=TwoWay}" MinWidth="0" PlaceholderText="{loc:Loc registry.editor.list_item}"/>
+          <Button Grid.Column="1" Content="{loc:Loc registry.editor.list_add}" Command="{Binding AddListItemCommand}"/>
+        </Grid>
+        <ScrollViewer MinHeight="140" VerticalScrollBarVisibility="Auto">
+          <StackPanel>
+            <TextBlock Text="{loc:Loc registry.editor.list_empty}" Opacity="0.6" IsVisible="{Binding !HasListItems}"/>
+            <ItemsControl ItemsSource="{Binding ListItems}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="registry:RegistryListItem">
+                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6" Margin="0,2">
+                    <TextBox Text="{Binding Value, Mode=TwoWay}" MinWidth="0"/>
+                    <Button Grid.Column="1" Content="✕" Click="RemoveListItem_Click"/>
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </ScrollViewer>
+      </DockPanel>
+    </Border>
+
+    <!-- Colour: preview, legal value text and a valid swatch set. -->
+    <StackPanel Grid.Row="2" IsVisible="{Binding IsColor}" Spacing="10">
+      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+        <Border Width="56" Height="26" CornerRadius="3" Background="{Binding ColorPreview}"/>
+        <TextBox Grid.Column="1" Text="{Binding ValueText, Mode=TwoWay}" MinWidth="0" FontFamily="Consolas" PlaceholderText="#RRGGBB"/>
+      </Grid>
+      <ItemsControl ItemsSource="{Binding Palette}">
+        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate DataType="registry:RegistryColorSwatch">
+            <Button Width="28" Height="24" Margin="0,0,4,4" Padding="0" Background="{Binding Brush}" Tag="{Binding Value}" Click="PickColor_Click"/>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+
+    <Grid Grid.Row="2" IsVisible="{Binding IsStructuredJson}" RowDefinitions="*,Auto" Margin="0,12,0,0">
+      <TreeView ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.AllowAutoHide="False" ItemsSource="{Binding JsonRoots}" SelectedItem="{Binding SelectedJsonNode, Mode=TwoWay}" MinHeight="180">
+        <TreeView.Styles>
+          <Style Selector="TreeViewItem"><Setter Property="IsExpanded" Value="{ReflectionBinding IsExpanded, Mode=TwoWay}"/></Style>
+        </TreeView.Styles>
+        <TreeView.ItemTemplate>
+          <TreeDataTemplate DataType="registry:RegistryJsonNode" ItemsSource="{Binding Children}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Image IsVisible="{Binding IsContainer}" Width="{DynamicResource RegistryIconSize}" Height="{DynamicResource RegistryIconSize}" Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/file-folder.png"/>
+              <TextBlock Text="{Binding Name}"/>
+              <TextBlock Text="{Binding Type}" Opacity="0.5" FontSize="11"/>
+              <TextBlock Text="{Binding ValueText}" MaxWidth="260" TextTrimming="CharacterEllipsis" Opacity="0.7"/>
+            </StackPanel>
+          </TreeDataTemplate>
+        </TreeView.ItemTemplate>
+      </TreeView>
+      <StackPanel Grid.Row="1" DataContext="{Binding SelectedJsonNode}" x:DataType="registry:RegistryJsonNode" IsVisible="{Binding IsLeaf}" Spacing="4" Margin="0,8,0,0">
+        <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+        <TextBox Text="{Binding ValueText, Mode=TwoWay}" AcceptsReturn="True" MinHeight="60" MaxHeight="150" FontFamily="Consolas"/>
+      </StackPanel>
+    </Grid>
+
+    <TextBox IsVisible="{Binding IsText}" Grid.Row="2" Margin="0,14,0,0" Text="{Binding ValueText, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="NoWrap" MinWidth="0" MinHeight="140" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Auto" FontFamily="Consolas"/>
+
+    <StackPanel Grid.Row="3" Margin="0,12,0,0">
+      <CheckBox IsVisible="{Binding IsJson}" Content="{loc:Loc registry.editor.raw_json}" IsChecked="{Binding IsRawJson, Mode=TwoWay}"/>
+      <TextBlock Text="{Binding Error}" Foreground="IndianRed" TextWrapping="Wrap" HorizontalAlignment="Left"/>
+    </StackPanel>
+
+    <Grid Grid.Row="4" ColumnDefinitions="*,Auto" Margin="0,12,0,0">
+      <TextBlock Text="{Binding ApplyText}" Opacity="0.7" VerticalAlignment="Center" TextWrapping="Wrap"/>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+        <Button Content="{loc:Loc registry.reset}" IsVisible="{Binding CanReset}" Command="{Binding ResetCommand}"/>
+        <Button Content="{loc:Loc registry.cancel}" Command="{Binding CancelCommand}"/>
+        <Button Classes="primary" Content="{loc:Loc registry.save}" Command="{Binding SaveCommand}"/>
+      </StackPanel>
+    </Grid>
   </Grid>
 </UserControl>

@@ -55,4 +55,6 @@
     <string name="ui_discard_draft_title">Discard draft?</string>
     <string name="taskmanager_administrator_mode">Administrator mode</string>
     <string name="taskmanager_normal_mode">Normal mode</string>
+    <string name="files_cache_enabled">Cache file listings</string>
+    <string name="files_cache_refreshing">Showing cached files; refreshing…</string>
 </resources>

@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.servercenter
 
+import app.relaxkonos.mobile.data.FileListSnapshots
 import android.graphics.BitmapFactory
 import android.net.Uri
 import app.relaxkonos.mobile.RelaxKonApplication
@@ -21,7 +22,9 @@ class SshFilesController(private val app: RelaxKonApplication) {
     private val container get() = app.container
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val documents = AndroidSshDocuments(app.contentResolver)
-    private val mutable = MutableStateFlow(SshFilesUiState())
+    private val cacheSettings = app.getSharedPreferences("file-list-cache", android.content.Context.MODE_PRIVATE)
+    private val directoryCache = FileListSnapshots<List<SshFileEntry>>()
+    private val mutable = MutableStateFlow(SshFilesUiState(cacheEnabled = cacheSettings.getBoolean("ssh-enabled", false)))
     val state = mutable.asStateFlow()
     @Volatile private var active = false
     @Volatile private var generation = 0
@@ -36,17 +39,27 @@ class SshFilesController(private val app: RelaxKonApplication) {
 
     fun resume(hostId: String) {
         val revision = container.serverCenter.workspaceRevision
-        if (state.value.hostId != hostId || workspaceRevision != revision) { stop(); mutable.value = SshFilesUiState(hostId = hostId, unknown = hostId in uncertain, writesSettling = writeRequests.any { it.hostId == hostId && it.sent }); workspaceRevision = revision }
-        active = true; if (!state.value.busy) reload()
+        if (state.value.hostId != hostId || workspaceRevision != revision) { stop(); directoryCache.clear(); mutable.value = SshFilesUiState(cacheEnabled = cacheSettings.getBoolean("ssh-enabled", false), hostId = hostId, unknown = hostId in uncertain, writesSettling = writeRequests.any { it.hostId == hostId && it.sent }); workspaceRevision = revision }
+        active = true; if (!state.value.busy) reload(force = false)
     }
     fun stop() { activeRequest?.takeIf { it.sent && it.targets != null }?.let(::markUnknown); active = false; generation++; job?.cancel(); connection?.close(); connection = null; mutable.update { it.copy(busy = false, connected = false, transfer = null) } }
     fun cancelTransfer() { stop(); active = true }
     fun detach() { if (!transferring) stop() }
     fun close() { stop(); scope.cancel() }
     fun keeperStopped(lease: Int) { if (lease == generation && transferring) cancelTransfer() }
-    fun reload() {
+    fun toggleFileListCache() {
+        val enabled = !state.value.cacheEnabled
+        cacheSettings.edit().putBoolean("ssh-enabled", enabled).apply()
+        val refresh = state.value.showingCachedFiles
+        directoryCache.clear(); mutable.update { it.copy(cacheEnabled = enabled, showingCachedFiles = false) }
+        if (refresh) reload()
+    }
+    fun reload(force: Boolean = true) {
+        if (force) directoryCache.clear()
         val path = state.value.path
-        execute { transport, _ -> val entries = transport.listDirectory(path); { old -> old.copy(entries = entries, connected = true, selectedPaths = emptySet(), checked = emptyList()) } }
+        val cached = if (state.value.cacheEnabled && !force) directoryCache.get(path) else null
+        if (cached != null) mutable.update { it.copy(entries = cached, showingCachedFiles = true) }
+        execute(listingRead = true) { transport, _ -> val entries = transport.listDirectory(path); { old -> old.copy(entries = entries, showingCachedFiles = false, connected = true, selectedPaths = emptySet(), checked = emptyList()) } }
     }
     fun open(entry: SshFileEntry) {
         if (state.value.busy) return
@@ -68,7 +81,7 @@ class SshFilesController(private val app: RelaxKonApplication) {
             val history = if (historyIndex == null) (old.history.take(old.historyIndex + 1) + normalized).takeLast(64) else old.history
             old.copy(path = normalized, entries = emptyList(), connected = false, detailEntry = null, selected = null, preview = SshPreview.None,
                 selectedPaths = emptySet(), history = history, historyIndex = historyIndex ?: history.lastIndex)
-        }; reload()
+        }; reload(force = false)
     }
     fun backDirectory() { val s = state.value; if (s.historyIndex > 0) navigate(s.history[s.historyIndex - 1], s.historyIndex - 1) }
     fun forwardDirectory() { val s = state.value; if (s.historyIndex < s.history.lastIndex) navigate(s.history[s.historyIndex + 1], s.historyIndex + 1) }
@@ -255,14 +268,16 @@ class SshFilesController(private val app: RelaxKonApplication) {
         mutable.update { if (epoch == generation && active && it.busy) it.copy(transfer = TransferProgress(name, bytes, total)) else it }
     }
 
-    private fun execute(writeTargets: List<String>? = null, transfer: TransferProgress? = null, uploading: Boolean = false,
+    private fun execute(writeTargets: List<String>? = null, listingRead: Boolean = false, transfer: TransferProgress? = null, uploading: Boolean = false,
         action: suspend (ServerCenterSshTransport, () -> Unit) -> (SshFilesUiState) -> SshFilesUiState) {
         val snapshot = state.value
         if (!active || snapshot.busy || writeTargets != null && snapshot.unknown || container.serverCenter.sshFilesHostId != snapshot.hostId) return
         val secret = container.serverCenter.verifiedPasswordCopy(snapshot.hostId) ?: run { problem("connection-failed"); return }
+        if (writeTargets != null) directoryCache.clear()
         val epoch = ++generation; val workspaceEpoch = workspaceRevision; val request = Request(snapshot.hostId, writeTargets); activeRequest = request; if (writeTargets != null) writeRequests += request; var completed = false
         fun verify() { if (!active || epoch != generation || container.serverCenter.workspaceRevision != workspaceEpoch || state.value.hostId != snapshot.hostId || container.serverCenter.sshFilesHostId != snapshot.hostId) throw CancellationException("SFTP workspace changed") }
-        mutable.update { it.copy(busy = true, problem = null, checked = emptyList(), transfer = transfer, uploading = uploading) }
+        val backgroundListing = listingRead && snapshot.showingCachedFiles
+        mutable.update { it.copy(busy = !backgroundListing, problem = null, checked = emptyList(), transfer = transfer, uploading = uploading) }
         job = scope.launch {
             var session: ServerCenterHostSession? = null
             try {
@@ -270,7 +285,9 @@ class SshFilesController(private val app: RelaxKonApplication) {
                 session = container.serverCenterConnections.connect(snapshot.hostId, SshCredential(SshCredentialKind.Password, secret, null), System.currentTimeMillis())
                 verify(); connection = session
                 val result = action(session.sshTransport) { verify(); request.sent = true }
-                verify(); mutable.update { result(it).copy(busy = false, problem = null) }; completed = true
+                verify(); mutable.update { result(it).copy(busy = false, problem = null, showingCachedFiles = false) }
+                if (state.value.cacheEnabled && listingRead) directoryCache.put(state.value.path, state.value.entries.toList(), state.value.entries.size)
+                completed = true
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) { if (epoch == generation) problem(error.message?.takeIf { it in SAFE_PROBLEMS } ?: "connection-failed") }
             finally {
@@ -285,6 +302,7 @@ class SshFilesController(private val app: RelaxKonApplication) {
         }.also { it.invokeOnCompletion { secret.fill('\u0000') } }
     }
     private fun markUnknown(request: Request) {
+        directoryCache.clear()
         uncertain[request.hostId] = (uncertain[request.hostId].orEmpty() + request.targets.orEmpty()).take(1000).toSet()
         if (state.value.hostId == request.hostId) mutable.update { it.copy(unknown = true, checked = emptyList(), writesSettling = writeRequests.any { pending -> pending.hostId == request.hostId && pending.sent }) }
     }

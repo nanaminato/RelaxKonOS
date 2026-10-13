@@ -82,3 +82,7 @@ Settings 错误响应现在包含稳定 problemCode 扩展；Android 不解析 t
 实际目录展示与失效提示由系统/文档提供程序处理。覆盖上传、包/证书/密钥/Compose 导入、配对图片和诊断导出。规则依据 [Android 文档](https://developer.android.com/training/data-storage/shared/documents-files)。
 
 重启后恢复使用记忆，不随 Workspace 同步；应用已禁用 Android 自动备份，因此不会通过系统备份迁移到其他设备。读取损坏或保存失败不阻断当前操作。测试与未关闭设备检查见 [验证要求](../development/Verification.md)。
+
+## 终端外观契约
+
+Workspace 终端设置包含 `scrollbackLines`（0–100000 整数）、`cursorStyle`（block/underline/bar）和 `cursorBlink`（布尔）。Android 解析当前契约，并在修改字体或配色时原样保留这些字段；当前手机终端界面不提供这些桌面渲染偏好的编辑控件。设备级桌面终端边距及注册表布局使用登录客户端的 Device 范围，不影响手机布局。契约验证覆盖字段必需性、类型、数值范围、配色修改后的字段保留和 HTTP 往返。

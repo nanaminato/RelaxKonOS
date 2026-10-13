@@ -244,6 +244,58 @@ await vm.AddressbarGoAsync("sub/folder");
 Check(vm.AddressbarPath == @"C:\data\sub\folder", "Relative address resolves against current remote directory");
 await vm.AddressbarGoAsync("D:");
 Check(vm.AddressbarPath == @"D:\", "Bare drive in address bar navigates to drive root");
+var cachedClient = DispatchProxy.Create<IExplorerClient, ExplorerFake>();
+var cacheFake = (ExplorerFake)(object)cachedClient;
+using (var cachedView = new ExplorerViewModel(cachedClient))
+{
+    Check(!cachedView.FileListCacheEnabled, "Directory snapshots default to disabled");
+    cachedView.FileListCacheEnabled = true;
+    await cachedView.NavigateToAsync("/slow");
+    await cachedView.NavigateToAsync("/other");
+    cacheFake.Pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    var cachedNavigation = cachedView.NavigateToAsync("/slow");
+    Check(cachedNavigation.IsCompleted && cachedView.IsShowingCachedFiles && !cachedView.IsBusy
+        && cachedView.AddressbarPath == "/slow", "Cached directory appears without waiting for the slow server");
+    var revalidation = (Task)typeof(ExplorerViewModel).GetField("_cacheRefreshTask", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(cachedView)!;
+    await cachedView.NavigateToAsync("/other");
+    cacheFake.Pending.SetResult(ExplorerFake.Directory("/slow"));
+    await revalidation;
+    Check(cachedView.AddressbarPath == "/other", "Late cached-directory refresh cannot replace newer navigation");
+    var reads = cacheFake.DirectoryReads;
+    await cachedView.RefreshCommand.ExecuteAsync(null);
+    Check(cacheFake.DirectoryReads > reads && !cachedView.IsShowingCachedFiles, "Explicit refresh bypasses and invalidates snapshots");
+    cachedView.FileListCacheEnabled = false;
+    reads = cacheFake.DirectoryReads;
+    await cachedView.NavigateToAsync("/other");
+    Check(cacheFake.DirectoryReads > reads, "Disabling snapshots restores server reads");
+}
+var scopeIdentity = "first-session";
+cacheFake.Pending = null;
+using (var scopedView = new ExplorerViewModel(cachedClient) { FileListCacheEnabled = true, FileListCacheScope = () => scopeIdentity })
+{
+    await scopedView.NavigateToAsync("/slow");
+    scopeIdentity = "second-session";
+    cacheFake.Pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    var newSessionRead = scopedView.NavigateToAsync("/slow");
+    Check(!newSessionRead.IsCompleted && !scopedView.IsShowingCachedFiles,
+        "A new authenticated session cannot reuse an earlier user's directory snapshot");
+    cacheFake.Pending.SetResult(ExplorerFake.Directory("/slow"));
+    await newSessionRead;
+}
+var bounded = new RelaxKonOS.Client.Services.DirectoryListingCache<int>();
+for (var index = 0; index < 65; index++) bounded.Put("/" + index, index, 1);
+Check(!bounded.TryGet("/0", out _) && bounded.TryGet("/64", out _), "Directory snapshots evict least-recently-used folders at their bound");
+bounded.Put("/oversize", 0, 50001);
+Check(!bounded.TryGet("/oversize", out _), "Oversized directory snapshots are not retained");
+
+var snapshotTime = DateTimeOffset.UtcNow;
+var expiring = new RelaxKonOS.Client.Services.DirectoryListingCache<int>(() => snapshotTime);
+expiring.Put("/ttl", 1, 1);
+snapshotTime += TimeSpan.FromMinutes(4);
+Check(expiring.TryGet("/ttl", out _), "Directory snapshot is available before its expiry");
+snapshotTime += TimeSpan.FromMinutes(1);
+Check(!expiring.TryGet("/ttl", out _), "Reading a snapshot does not extend its five-minute expiry");
+
 await ExplorerBatchChecks.RunAsync(Check);
 await ExplorerOperationCenterChecks.RunAsync(Check);
 await LargeUploadChecks.RunAsync(Check);
@@ -253,6 +305,7 @@ Console.WriteLine($"{passed} Explorer regression checks passed.");
 
 public class ExplorerFake : DispatchProxy
 {
+    public int DirectoryReads { get; private set; }
     public string? Denied { get; set; }
     public string? CreatedPath { get; set; }
     public bool RequireElevation { get; set; }
@@ -267,6 +320,7 @@ public class ExplorerFake : DispatchProxy
     {
         if (method!.Name == nameof(IExplorerClient.GetDirectoryAsync))
         {
+            DirectoryReads++;
             var path = (string)args![0]!;
             if (path == "/denied" || path == Denied) return Task.FromException<DirectoryDto>(new IOException("Denied"));
             if (path == ProtectedDirectory && path != ElevatedDirectory)

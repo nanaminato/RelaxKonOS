@@ -3,6 +3,7 @@ using RelaxKonOS.Client.Services.Diagnostics;
 using RelaxKonOS.Client.Services.Dialogs;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Client.Localization;
+using RelaxKonOS.WindowManager;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
@@ -14,7 +15,7 @@ namespace RelaxKonOS.Client.Apps.Terminal;
 
 /// <summary>
 /// Built-in terminal application. A restored server session always receives its own desktop
-/// window; the terminal never multiplexes multiple sessions inside a single window.
+/// window; manually created sessions can share that window as tabs.
 /// </summary>
 public sealed class TerminalApp : RemoteApplicationBase, IOpenTerminalApplication
 {
@@ -135,33 +136,75 @@ public sealed class TerminalApp : RemoteApplicationBase, IOpenTerminalApplicatio
         bool isAdministrator = false)
     {
         var settingsClient = context.Services.GetRequiredService<ITerminalSettingsClient>();
-        var viewModel = new TerminalViewModel(session, settingsClient, diagnostics,
-            context.Services.GetService<SshDesktopSession>(), sessionId, workingDirectory, isAdministrator);
-        viewModel.RequestEnvironmentAsync = context.Services.GetRequiredService<ISettingsNavigation>().OpenEnvironmentAsync;
-        viewModel.RequestAdministratorTerminal = () => OpenWindow(context, session, diagnostics, null,
-            workingDirectory, isAdministrator: true);
-        var view = new TerminalView
+        var workspace = new TerminalWorkspaceView();
+        var window = context.ShowWindow(LocalizedText.Get(isAdministrator ? "terminal.administrator_title" : "application.relaxkonos.terminal.display_name"), workspace,
+            bounds: new Rect(120, 80, 820, 540), iconGlyph: Manifest.IconGlyph);
+        // A session rendered in a WebView is an operating-system child window that Avalonia does not
+        // compose: it is withdrawn while its window is inactive, being dragged or showing a dialog.
+        workspace.SetNativeSurfacesVisible(window.IsActive && window.IsOnScreen);
+        window.PropertyChanged += (_, e) =>
         {
-            DataContext = viewModel,
+            if (e.PropertyName is nameof(ManagedWindow.IsActive) or nameof(ManagedWindow.State))
+                workspace.SetNativeSurfacesVisible(window.IsActive && window.IsOnScreen);
         };
-        var window = context.ShowWindow(LocalizedText.Get(isAdministrator ? "terminal.administrator_title" : "application.relaxkonos.terminal.display_name"), view,
-            bounds: new Rect(120, 80, 820, 540),
-            iconGlyph: Manifest.IconGlyph);
-        viewModel.RequestSettingsAsync = async () =>
+        window.FocusRequested += (_, _) => workspace.SetNativeSurfacesVisible(window.IsActive && window.IsOnScreen);
+        window.View.BoundsInteractionStarted += (_, _) => workspace.SetNativeSurfacesVisible(false);
+        window.View.BoundsInteractionCompleted += (_, _) =>
+            workspace.SetNativeSurfacesVisible(window.IsActive && window.IsOnScreen);
+        var closingTab = false;
+        void AddSession(string? restoredId, string? directory, bool administrator)
         {
-            await context.ShowDialogAsync<bool>(window, LocalizedText.Get("terminal.settings"), dialog =>
+            var model = new TerminalViewModel(session, settingsClient, diagnostics,
+                context.Services.GetService<SshDesktopSession>(), restoredId, directory, administrator, context.Services.GetRequiredService<RelaxKonOS.Client.Services.ClientPresentationPreferences>());
+            model.RequestEnvironmentAsync = context.Services.GetRequiredService<ISettingsNavigation>().OpenEnvironmentAsync;
+            model.RequestAdministratorTerminal = () => OpenWindow(context, session, diagnostics, null,
+                directory, isAdministrator: true);
+            model.RequestSettingsAsync = async () =>
             {
-                viewModel.CloseSettingsAction = () => dialog.Close(true);
-                return new TerminalSettingsView { DataContext = viewModel };
-            }, new Size(460, 330));
+                // A modal dialog is Avalonia chrome too, so the native surface steps aside for it.
+                workspace.SetNativeSurfacesVisible(false);
+                try
+                {
+                    await context.ShowDialogAsync<bool>(window, LocalizedText.Get("terminal.settings"), dialog =>
+                    {
+                        model.CloseSettingsAction = () => dialog.Close(true);
+                        return new TerminalSettingsView { DataContext = model };
+                    }, new Size(460, 440));
+                }
+                finally { workspace.SetNativeSurfacesVisible(window.IsActive && window.IsOnScreen); }
+            };
+            workspace.AddTab(model, new TerminalView { DataContext = model });
+        }
+        workspace.RequestNewTab = () => AddSession(null, workingDirectory, isAdministrator);
+        workspace.RequestCloseTabAsync = async model =>
+        {
+            if (closingTab || !workspace.Tabs.Contains(model)) return;
+            if (workspace.Tabs.Count == 1) { context.WindowManager.Close(window); return; }
+            closingTab = true;
+            try
+            {
+                if (model.HasLiveSession)
+                {
+                    var confirmed = await context.ShowDialogAsync<bool>(window,
+                        LocalizedText.Get("terminal.close_active.title"), dialog =>
+                            new RelaxKonOS.Client.Apps.Explorer.Dialogs.ConfirmDialogView
+                            {
+                                DataContext = new RelaxKonOS.Client.Apps.Explorer.Dialogs.ConfirmDialogViewModel(
+                                    LocalizedText.Get("terminal.close_tab.message"), result => dialog.Close(result),
+                                    LocalizedText.Get("terminal.close_active.confirm"))
+                            });
+                    if (!confirmed) return;
+                }
+                workspace.RemoveTab(model);
+            }
+            finally { closingTab = false; }
         };
-        // Closing a terminal window kills its server process. Ask first when a session is live;
-        // logout and desktop teardown bypass this guard and leave the PTY restorable.
         DraftWindowCloseGuard.Attach(context.WindowManager, window,
-            isBusy: () => false,
-            hasChanges: () => viewModel.HasLiveSession,
+            isBusy: () => closingTab,
+            hasChanges: () => workspace.Tabs.Any(model => model.HasLiveSession),
             title: LocalizedText.Get("terminal.close_active.title"),
             message: LocalizedText.Get("terminal.close_active.message"),
             confirmLabel: LocalizedText.Get("terminal.close_active.confirm"));
+        AddSession(sessionId, workingDirectory, isAdministrator);
     }
 }

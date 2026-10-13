@@ -1,13 +1,18 @@
 using System.Security.Principal;
 using System.Text;
+using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Hubs;
+using RelaxKonOS.Protocol.Registry;
 using RelaxKonOS.Protocol.Settings;
 using RelaxKonOS.Protocol.UserExecution;
+using RelaxKonOS.Protocol.Workspace;
+using RelaxKonOS.Server.ConfigurationRegistry;
 using RelaxKonOS.Server.Domain;
+using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Hubs;
 using RelaxKonOS.Server.Settings;
 using RelaxKonOS.Server.Storage;
@@ -55,7 +60,50 @@ internal static class WorkspaceTerminalChecks
             Check(!privileged.ContainsKey("DOTNET_STARTUP_HOOKS") && privileged["PATH"] == Environment.SystemDirectory, "Privileged terminals use the trusted fixed-path baseline.");
         }
         Console.WriteLine("PASS: Workspace terminal latest snapshot, existing-session preservation, closed Helper request shape and administrator isolation.");
+        VerifyTerminalBackendDocument();
         await VerifyLocalWindowsAsync();
+    }
+
+    /// <summary>
+    /// The desktop terminal chooses its rendering engine from this document. A workspace saved before
+    /// the field existed has to keep working, a shipped engine token has to survive the registry
+    /// round trip, and an unknown token has to be refused rather than silently pinning the workspace
+    /// to a fallback the user never asked for.
+    /// </summary>
+    private static void VerifyTerminalBackendDocument()
+    {
+        var defaults = TerminalSettingsDto.Default;
+        Check(WorkspaceEndpoints.TryNormalize(defaults with { Backend = null }, out var inherited)
+              && inherited.Backend == TerminalBackends.BuiltIn,
+            "A workspace saved before the backend field existed keeps the built-in terminal.");
+        Check(WorkspaceEndpoints.TryNormalize(defaults with { Backend = " Xterm " }, out var selected)
+              && selected.Backend == TerminalBackends.XtermJs,
+            "A shipped backend token is accepted and canonicalized.");
+        Check(!WorkspaceEndpoints.TryNormalize(defaults with { Backend = "xtermjs" }, out _),
+            "An unknown backend token is refused instead of silently falling back.");
+
+        var document = JsonSerializer.Serialize(defaults with { Backend = TerminalBackends.XtermJs }, RelaxKonOSJsonOptions.Default);
+        var normalized = RegistryConfigurationFields.Normalize(WorkspaceConfigurationRegistry.TerminalPath, document);
+        Check(normalized is not null
+              && JsonSerializer.Deserialize<TerminalSettingsDto>(normalized, RelaxKonOSJsonOptions.Default) is { } stored
+              && stored.Backend == TerminalBackends.XtermJs,
+            "The registry keeps a selected backend verbatim.");
+        Check(RegistryConfigurationFields.Normalize(WorkspaceConfigurationRegistry.TerminalPath,
+                JsonSerializer.Serialize(defaults with { Backend = "xtermjs" }, RelaxKonOSJsonOptions.Default)) is null,
+            "The registry refuses a document naming an unknown backend.");
+
+        var field = new RegistryEntryDto(RegistryScope.Workspace, WorkspaceConfigurationRegistry.TerminalPath, "backend",
+            RegistryValueType.String, JsonSerializer.SerializeToElement(TerminalBackends.BuiltIn, RelaxKonOSJsonOptions.Default),
+            Revision: 0, RegistryEntryState.Synced, DateTimeOffset.UtcNow, AppliedAt: null,
+            RegistryApplyMode.RestartApplication, RestartTarget: "relaxkonos.terminal", LastErrorCode: null, LastErrorMessage: null);
+        var schema = RegistryConfigurationFields.Describe(field, defaultValue: null, managed: true);
+        Check(schema.Editor == RegistryEditorKind.Enum && schema.Choices.Select(choice => choice.Label).SequenceEqual(TerminalBackends.All),
+            "The registry offers the shipped engines as a choice instead of a free-text field.");
+        Check(RegistryConfigurationFields
+                .DefaultValue(WorkspaceConfigurationRegistry.TerminalPath, WorkspaceConfigurationRegistry.TerminalPath, "backend") is { } declaredDefault
+              && declaredDefault.GetString() == TerminalBackends.BuiltIn,
+            "The registry reports the built-in terminal as the declared default.");
+        Console.WriteLine("PASS: Terminal backend document migration, registry round trip and registry choices.");
     }
 
     private static async Task VerifyLocalWindowsAsync()

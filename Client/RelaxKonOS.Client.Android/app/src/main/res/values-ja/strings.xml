@@ -51,4 +51,6 @@
     <string name="ui_discard_draft_title">下書きを破棄しますか？</string>
     <string name="taskmanager_administrator_mode">管理者モード</string>
     <string name="taskmanager_normal_mode">通常モード</string>
+    <string name="files_cache_enabled">ファイル一覧をキャッシュ</string>
+    <string name="files_cache_refreshing">キャッシュを表示中。更新しています…</string>
 </resources>

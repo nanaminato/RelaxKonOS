@@ -146,17 +146,25 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
         KillFeedback = LocalizedText.Format("task_manager.process.terminating", process.Name, process.Id);
         try
         {
-            var result = await _client.KillProcessAsync(process.Id, process.StartTime.Value, IsAdministratorMode);
+            var result = await ProcessTerminationFlow.ExecuteAsync(IsAdministratorMode,
+                elevated => _client.KillProcessAsync(process.Id, process.StartTime.Value, elevated),
+                operation => _elevation.ExecuteAsync(HostElevationCapability.ProcessManage, "host/processes", operation),
+                () => _disposed == 0 && owner == _session.CurrentSession?.Id && service == _session.ServiceId);
             if (_disposed != 0 || owner != _session.CurrentSession?.Id || service != _session.ServiceId) return;
             if (result.Success) { KillFeedback = LocalizedText.Format("task_manager.process.terminated", process.Name, process.Id); SelectedProcess = null; }
             else if (result.RequiresElevation) KillFeedback = LocalizedText.Format("task_manager.process.elevation_required", process.Name, process.Id, TerminationProblem(result));
             else KillFeedback = LocalizedText.Format("task_manager.process.termination_failed", TerminationProblem(result));
-            await RefreshProcessesAsync();
         }
         catch (Exception ex)
         {
             if (_disposed == 0 && owner == _session.CurrentSession?.Id && service == _session.ServiceId)
                 KillFeedback = LocalizedText.Format("task_manager.process.termination_failed", ex.Message);
+        }
+        finally
+        {
+            // A transport failure leaves the outcome unknown. Reconcile without replaying the mutation.
+            if (_disposed == 0 && owner == _session.CurrentSession?.Id && service == _session.ServiceId)
+                await RefreshProcessesAsync();
         }
     }
 
@@ -400,6 +408,8 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
             {
                 var process = row.Process;
                 if (process.ParentProcessId is { } parentId && parentId != process.Id && byId.TryGetValue(parentId, out var parent)
+                    && string.Equals(parent.Process.Name, process.Name, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(parent.Process.UserName, process.UserName, StringComparison.OrdinalIgnoreCase)
                     && (parent.Process.StartTime is null || process.StartTime is null || parent.Process.StartTime <= process.StartTime))
                 {
                     parentIds[process.Id] = parentId;
@@ -407,7 +417,24 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
                 }
                 else roots.Add(row);
             }
-            foreach (var row in rows) row.Update(row.Process, row.Depth, children[row.Process.Id].Count > 0);
+            // Present related instances as a shallow application group, rather than an OS ancestry tree.
+            foreach (var row in rows)
+            {
+                var id = row.Process.Id;
+                var ancestry = new HashSet<int> { id };
+                while (parentIds.TryGetValue(id, out var parentId) && ancestry.Add(parentId)) id = parentId;
+                if (id == row.Process.Id || parentIds.ContainsKey(id)) continue;
+                var previousParent = parentIds[row.Process.Id];
+                if (previousParent == id) continue;
+                children[previousParent].Remove(row);
+                children[id].Add(row);
+                parentIds[row.Process.Id] = id;
+            }
+            foreach (var row in rows)
+            {
+                row.Update(row.Process, row.Depth, children[row.Process.Id].Count > 0);
+                row.GroupProcessCount = 1 + children[row.Process.Id].Count;
+            }
 
             var filter = ProcessFilter.Trim();
             bool Matches(ProcessInfoDto process) => string.IsNullOrWhiteSpace(filter)
@@ -435,9 +462,9 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
                 if (!included.Contains(id) || !visited.Add(id)) return;
                 row.Update(row.Process, depth, children[id].Count > 0);
                 var hasIncludedChild = children[id].Any(child => included.Contains(child.Process.Id));
-                if (!string.IsNullOrWhiteSpace(filter) && hasIncludedChild) row.IsExpanded = true;
+                var showChildren = row.IsExpanded || (!string.IsNullOrWhiteSpace(filter) && hasIncludedChild);
                 FilteredProcesses.Add(row);
-                if (row.IsExpanded)
+                if (showChildren)
                     foreach (var child in children[id]) AddVisible(child, depth + 1);
             }
 

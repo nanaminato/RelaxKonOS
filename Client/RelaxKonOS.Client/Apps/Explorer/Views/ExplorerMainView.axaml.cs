@@ -18,10 +18,31 @@ public partial class ExplorerMainView : UserControl
     public static readonly StyledProperty<double> EntriesTableWidthProperty =
         AvaloniaProperty.Register<ExplorerMainView, double>(nameof(EntriesTableWidth));
 
+    public static readonly StyledProperty<double> TabContentWidthProperty =
+        AvaloniaProperty.Register<ExplorerMainView, double>(nameof(TabContentWidth), MaximumTabWidth);
+
+    /// <summary>Width every folder tab takes; it shrinks with the tab count down to its floor.</summary>
+    public double TabContentWidth
+    {
+        get => GetValue(TabContentWidthProperty);
+        private set => SetValue(TabContentWidthProperty, value);
+    }
+
     private sealed record ExplorerDragPayload(ExplorerViewModel Source, IReadOnlyList<FileSystemEntryDto> Entries);
     private static readonly DataFormat<ExplorerDragPayload> ExplorerEntriesFormat =
         DataFormat.CreateInProcessFormat<ExplorerDragPayload>("relaxkonos/explorer-entries");
     private const double MinimumDragDistance = 5;
+
+    /// <summary>A folder tab states its location's mark, its name and its close mark together.</summary>
+    private const double MaximumTabWidth = 200;
+    /// <summary>The floor a tab shrinks to before the strip starts scrolling instead.</summary>
+    private const double MinimumTabWidth = 72;
+    /// <summary>Per-tab chrome: the item's margin plus its content padding.</summary>
+    private const double TabItemChrome = 18;
+    private const double TabRowChrome = 34;
+    private const double TabMinimumPitch = MinimumTabWidth + TabItemChrome;
+    /// <summary>Distance one wheel notch travels along a strip that only scrolls sideways.</summary>
+    private const double TabWheelStep = 60;
 
     private readonly FileBrowserPresentation _presentation;
     private PointerPressedEventArgs? _dragTrigger;
@@ -46,11 +67,13 @@ public partial class ExplorerMainView : UserControl
     public ExplorerMainView()
     {
         InitializeComponent();
+        TabScroller.ScrollChanged += (_, _) => UpdateTabScrollMarks();
         BreadcrumbScroll.SizeChanged += (_, _) => ScrollBreadcrumbsToLocation();
-        FolderTabs.SizeChanged += (_, _) => Dispatcher.UIThread.Post(() =>
-        {
-            if (FolderTabs.SelectedItem is { } tab) FolderTabs.ScrollIntoView(tab);
-        }, DispatcherPriority.Loaded);
+        // The strip is exactly as wide as its tabs now, so the width the tabs divide between them
+        // is the scroller's — and that is also what decides whether the row has filled up.
+        TabScroller.SizeChanged += (_, e) => UpdateTabLayout(e.NewSize.Width);
+        // Tunnelling on the strip's own scroller keeps the wheel inside the tab row.
+        TabScroller.AddHandler(PointerWheelChangedEvent, OnTabStripWheel, RoutingStrategies.Tunnel);
         _searchFlyout = (Flyout)CompactSearchButton.Flyout!;
         _searchFlyout.Opened += (_, _) => { CompactSearchBox.Focus(); CompactSearchBox.SelectAll(); };
         _entryContextMenu = EntriesGrid.ContextMenu;
@@ -71,6 +94,78 @@ public partial class ExplorerMainView : UserControl
             FileContentGrid.ColumnDefinitions[0].Width = new GridLength(e.NewSize.Width < 620 ? 0 : 210);
             FileContentGrid.ColumnDefinitions[1].Width = new GridLength(e.NewSize.Width < 620 ? 0 : 4);
         };
+    }
+
+    /// <summary>
+    /// Gives every folder tab the same share of the row, down to a readable floor. Once the tabs
+    /// have reached that floor and still fill the row the strip becomes scrollable and the two
+    /// scroll marks appear, so a folder is never left unreachable — only moved out of sight.
+    /// </summary>
+    private void UpdateTabLayout(double available)
+    {
+        // The view model's tab list is the authority: a ListBox applies items a beat behind a
+        // collection change, and dividing the row by a stale count would leave the last tab short.
+        var count = ViewModel?.Tabs.Count ?? FolderTabs.ItemCount;
+        // The share is floored: item measurement rounds every tab up to whole pixels, so a share
+        // taken from an unrounded division would push the last tab past the edge of the row.
+        TabContentWidth = count > 0 && available > 0
+            ? Math.Clamp(Math.Floor(Math.Max(0, available - TabRowChrome) / count) - TabItemChrome, MinimumTabWidth, MaximumTabWidth)
+            : MaximumTabWidth;
+
+        // Decide against the width without arrows so showing them cannot latch overflow on.
+        var unadornedWidth = available + (TabScrollLeft.IsVisible
+            ? TabScrollLeft.Bounds.Width + TabScrollRight.Bounds.Width + 4 : 0);
+        var filled = count > 0 && available > 0 && count * TabMinimumPitch + TabRowChrome > unadornedWidth + 0.5;
+        if (TabScrollLeft.IsVisible != filled)
+        {
+            TabScrollLeft.IsVisible = TabScrollRight.IsVisible = filled;
+            if (!filled) TabScroller.Offset = TabScroller.Offset.WithX(0);
+        }
+        UpdateTabScrollMarks();
+        Dispatcher.UIThread.Post(ScrollActiveTabIntoView, DispatcherPriority.Background);
+    }
+
+    /// <summary>Keeps the tab the user is on inside the strip's window, however it was chosen.</summary>
+    private void ScrollActiveTabIntoView()
+    {
+        if (FolderTabs.SelectedItem is not { } tab || FolderTabs.ContainerFromItem(tab) is not Control container) return;
+        var extent = TabScroller.Extent.Width;
+        var viewport = TabScroller.Viewport.Width;
+        if (extent <= viewport || container.TranslatePoint(default, TabScroller) is not { } origin) return;
+        var offset = TabScroller.Offset.X;
+        if (ReferenceEquals(tab, ViewModel?.Tabs.LastOrDefault())) offset = extent - viewport;
+        else if (origin.X < 0) offset += origin.X;
+        else if (origin.X + container.Bounds.Width > viewport) offset += origin.X + container.Bounds.Width - viewport;
+        TabScroller.Offset = TabScroller.Offset.WithX(Math.Clamp(offset, 0, extent - viewport));
+        UpdateTabScrollMarks();
+    }
+
+    private void TabScrollLeft_Click(object? sender, RoutedEventArgs e) => ScrollTabsBy(-1);
+    private void TabScrollRight_Click(object? sender, RoutedEventArgs e) => ScrollTabsBy(1);
+
+    /// <summary>Scrolls the strip by whole tabs; reports whether it actually moved.</summary>
+    internal bool ScrollTabsBy(int direction)
+    {
+        var range = TabScroller.Extent.Width - TabScroller.Viewport.Width;
+        if (range <= 0) return false;
+        var next = Math.Clamp(TabScroller.Offset.X + direction * (TabContentWidth + TabItemChrome), 0, range);
+        if (next == TabScroller.Offset.X) return false;
+        TabScroller.Offset = TabScroller.Offset.WithX(next);
+        UpdateTabScrollMarks();
+        return true;
+    }
+
+    private void OnTabStripWheel(object? sender, PointerWheelEventArgs e)
+    {
+        if (ScrollTabsBy(e.Delta.Y > 0 ? -1 : 1)) e.Handled = true;
+    }
+
+    /// <summary>The marks stay on the row and go quiet at the end they have already reached.</summary>
+    private void UpdateTabScrollMarks()
+    {
+        var range = TabScroller.Extent.Width - TabScroller.Viewport.Width;
+        TabScrollLeft.IsEnabled = range > 0.5 && TabScroller.Offset.X > 0.5;
+        TabScrollRight.IsEnabled = range > 0.5 && TabScroller.Offset.X < range - 0.5;
     }
 
     public void AttachWindowHeader(ManagedWindow window)
@@ -109,20 +204,14 @@ public partial class ExplorerMainView : UserControl
 
     private async void FolderTabs_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
+        // However the active location changed — the user, a shortcut, or the view model itself —
+        // the tab that names it has to end up visible.
+        Dispatcher.UIThread.Post(ScrollActiveTabIntoView, DispatcherPriority.Background);
         if (ViewModel is not { } vm || FolderTabs.SelectedItem is not ExplorerTab tab
             || ReferenceEquals(tab, vm.ActiveTab)) return;
         await vm.SwitchTabAsync(tab);
         FolderTabs.SetCurrentValue(ListBox.SelectedItemProperty, vm.ActiveTab);
-        if (vm.ActiveTab is { } active) FolderTabs.ScrollIntoView(active);
-    }
-
-    private async void FolderPicker_SelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        if (ViewModel is not { } vm || sender is not ListBox { SelectedItem: ExplorerTab tab } list
-            || ReferenceEquals(tab, vm.ActiveTab)) return;
-        await vm.SwitchTabAsync(tab);
-        list.SetCurrentValue(ListBox.SelectedItemProperty, vm.ActiveTab);
-        FolderPickerButton.Flyout?.Hide();
+        Dispatcher.UIThread.Post(ScrollActiveTabIntoView, DispatcherPriority.Background);
     }
 
     private void EntriesGrid_LayoutUpdated(object? sender, EventArgs e)
@@ -138,6 +227,7 @@ public partial class ExplorerMainView : UserControl
         {
             _attachedViewModel.RequestRenameFocus = null;
             _attachedViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+            _attachedViewModel.Tabs.CollectionChanged -= TabsChanged;
         }
         _attachedViewModel = ViewModel;
         CompactSearchBox.DataContext = DataContext;
@@ -145,8 +235,18 @@ public partial class ExplorerMainView : UserControl
         {
             _attachedViewModel.RequestRenameFocus = FocusRenameEditor;
             _attachedViewModel.PropertyChanged += ViewModel_PropertyChanged;
+            // Every tab that arrives or leaves re-divides the row, so the share is recomputed from
+            // the tab count rather than from the strip's own size.
+            _attachedViewModel.Tabs.CollectionChanged += TabsChanged;
             _presentation.SetMode(_attachedViewModel.ViewMode);
+            UpdateTabLayout(TabScroller.Bounds.Width);
         }
+    }
+
+    private void TabsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        UpdateTabLayout(TabScroller.Bounds.Width);
+        Dispatcher.UIThread.Post(ScrollActiveTabIntoView, DispatcherPriority.Background);
     }
 
     private void ScrollBreadcrumbsToLocation() => Dispatcher.UIThread.Post(() =>

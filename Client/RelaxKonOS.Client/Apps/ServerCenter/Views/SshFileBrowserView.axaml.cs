@@ -1,3 +1,6 @@
+using Microsoft.Extensions.DependencyInjection;
+using RelaxKonOS.AppSDK;
+using System.Runtime.CompilerServices;
 using RelaxKonOS.Client.Services;
 using System.Collections.ObjectModel;
 using RelaxKonOS.Client.Apps.Explorer.Controls;
@@ -22,7 +25,7 @@ internal partial class SshFileBrowserView : UserControl
     public static readonly StyledProperty<string> SearchTextProperty =
         AvaloniaProperty.Register<SshFileBrowserView, string>(nameof(SearchText), string.Empty);
     public static readonly StyledProperty<double> TabContentWidthProperty =
-        AvaloniaProperty.Register<SshFileBrowserView, double>(nameof(TabContentWidth), 176);
+        AvaloniaProperty.Register<SshFileBrowserView, double>(nameof(TabContentWidth), MaximumTabWidth);
     public double TabContentWidth { get => GetValue(TabContentWidthProperty); private set => SetValue(TabContentWidthProperty, value); }
     public static readonly StyledProperty<double> EntriesTableWidthProperty =
         AvaloniaProperty.Register<SshFileBrowserView, double>(nameof(EntriesTableWidth));
@@ -35,20 +38,85 @@ internal partial class SshFileBrowserView : UserControl
     public static readonly StyledProperty<string> SizeSortGlyphProperty =
         AvaloniaProperty.Register<SshFileBrowserView, string>(nameof(SizeSortGlyph));
 
+    private const double MaximumTabWidth = 200;
+    private const double MinimumTabWidth = 72;
+    private const double TabItemChrome = 18;
+    private const double TabRowChrome = 34;
+    private const double TabMinimumPitch = MinimumTabWidth + TabItemChrome;
+    private sealed record SshDragPayload(SshFileBrowserView Source, SshFileEntry[] Entries);
+    private static readonly DataFormat<SshDragPayload> SshEntriesFormat =
+        DataFormat.CreateInProcessFormat<SshDragPayload>("relaxkonos/ssh-file-entries");
+    private PointerPressedEventArgs? _dragTrigger;
+    private SshFileEntry? _dragEntry;
+    private SshFileEntry[]? _preservedDragSelection;
+    private bool _toggleSelectionOnRelease;
+    private Point _dragStart;
+    private readonly DirectoryListingCache<SshFileEntry[]> _listingCache = new();
+    private long _listingGeneration;
+    private ServerCenterSshEndpoint? _cacheEndpoint;
+    private bool _showingCachedFiles;
+    internal bool IsShowingCachedFiles => _showingCachedFiles;
     private readonly FileBrowserPresentation _presentation;
     private readonly SshDesktopSession _session;
+    private readonly LocalizationService _localization;
     private readonly Func<string, bool> _canOpenFile;
     private readonly Func<string, bool> _openFile;
     private readonly Action<string>? _selectPackage;
     private readonly Action? _cancelPicker;
     private readonly List<string> _history = [];
-    private readonly List<SshFileEntry> _clipboard = [];
+    // Sharing is scoped to one live SSH session; different connections never exchange paths.
+    private sealed class SessionClipboard
+    {
+        public List<SshFileEntry> Entries { get; } = [];
+        public bool Cut { get; set; }
+        public int Revision { get; set; }
+        public ServerCenterSshEndpoint? Endpoint { get; set; }
+        public event Action? Changed;
+        public event Action<string[]>? Moved;
+        public void NotifyMoved(string[] paths)
+        {
+            if (paths.Length == 0) return;
+            var moved = paths.ToHashSet(StringComparer.Ordinal);
+            if (Cut && Entries.RemoveAll(entry => moved.Contains(entry.Path)) > 0)
+            {
+                Revision++;
+                Notify();
+            }
+            Moved?.Invoke(paths);
+        }
+        public void Notify() => Changed?.Invoke();
+    }
+    private static readonly ConditionalWeakTable<SshDesktopSession, SessionClipboard> Clipboards = new();
+    private readonly SessionClipboard _sessionClipboard;
+    private List<SshFileEntry> _clipboard
+    {
+        get
+        {
+            if (!ReferenceEquals(_sessionClipboard.Endpoint, _session.Endpoint))
+            {
+                _sessionClipboard.Endpoint = _session.Endpoint;
+                _sessionClipboard.Entries.Clear();
+                _sessionClipboard.Cut = false;
+                _sessionClipboard.Revision++;
+                _sessionClipboard.Notify();
+            }
+            return _sessionClipboard.Entries;
+        }
+    }
     private readonly ObservableCollection<TreeNodeModel> _navigationNodes = [];
     private readonly Dictionary<TreeNodeModel, Task> _treeLoads = [];
     private SshFileEntry[] _entries = [];
     private int _historyIndex = -1;
     private bool _showHidden;
-    private bool _cutMode;
+    private bool _cutMode { get => _sessionClipboard.Cut; set => _sessionClipboard.Cut = value; }
+    private SshFileEntry? _editingEntry;
+    private bool _renameCommitInProgress;
+    private LocalizedStatus _statusMessage;
+    private LocalizedStatus StatusMessage
+    {
+        get => _statusMessage;
+        set { _statusMessage = value; StatusText.Text = value.Resolve(); }
+    }
     private int _sortIndex;
     private bool _descending;
     private string _path = ".";
@@ -90,6 +158,8 @@ internal partial class SshFileBrowserView : UserControl
         Func<string, bool>? openFile = null, Action<string>? selectPackage = null, Action? cancelPicker = null)
     {
         _session = session;
+        _localization = App.Services.GetRequiredService<LocalizationService>();
+        _sessionClipboard = Clipboards.GetOrCreateValue(session);
         _canOpenFile = canOpenFile ?? (_ => false);
         _openFile = openFile ?? (_ => false);
         _selectPackage = selectPackage;
@@ -99,11 +169,11 @@ internal partial class SshFileBrowserView : UserControl
         if (!IsPackagePicker) _tabs.Add(_activeTab);
         FolderTabs.ItemsSource = FolderPicker.ItemsSource = _tabs;
         FolderTabs.SelectedItem = _activeTab;
-        FolderTabs.SizeChanged += (_, e) =>
-        {
-            TabContentWidth = Math.Clamp(e.NewSize.Width - 18, 46, 176);
-            Dispatcher.UIThread.Post(() => FolderTabs.ScrollIntoView(_activeTab), DispatcherPriority.Loaded);
-        };
+        TabScroller.SizeChanged += (_, e) => UpdateTabLayout(e.NewSize.Width);
+        TabScroller.ScrollChanged += (_, _) => UpdateTabScrollMarks();
+        TabScroller.AddHandler(PointerWheelChangedEvent, OnTabStripWheel, RoutingStrategies.Tunnel);
+        _tabs.CollectionChanged += (_, _) => UpdateTabLayout(TabScroller.Bounds.Width);
+        FolderTabs.AddHandler(PointerPressedEvent, Tab_PointerPressed, RoutingStrategies.Tunnel);
         _searchFlyout = (Flyout)CompactSearchButton.Flyout!;
         _searchFlyout.Opened += (_, _) => { CompactSearchBox.Focus(); CompactSearchBox.SelectAll(); };
         FileActions.IsVisible = !IsPackagePicker;
@@ -122,6 +192,16 @@ internal partial class SshFileBrowserView : UserControl
         _presentation = new FileBrowserPresentation(EntriesHost, EntriesGrid, () => !_busy);
         _presentation.Items.AddHandler(PointerPressedEvent, EntriesGrid_PointerPressed, RoutingStrategies.Tunnel);
         _presentation.Items.DoubleTapped += EntriesGrid_DoubleTapped;
+        foreach (var surface in new Control[] { EntriesGrid, _presentation.Items })
+        {
+            surface.PointerMoved += EntriesGrid_PointerMoved;
+            surface.AddHandler(PointerReleasedEvent, EntriesGrid_PointerReleased, RoutingStrategies.Tunnel);
+            surface.PointerCaptureLost += (_, _) => ClearPendingDrag();
+            DragDrop.SetAllowDrop(surface, true);
+        }
+        DragDrop.SetAllowDrop(BrowserRoot, true);
+        BrowserRoot.AddHandler(DragDrop.DragOverEvent, Files_DragOver);
+        BrowserRoot.AddHandler(DragDrop.DropEvent, Files_Drop);
         NavigationTree.ItemsSource = _navigationNodes;
         _viewReady = true;
         // The grid marks pointer presses as handled while it updates the selection, so the
@@ -135,6 +215,21 @@ internal partial class SshFileBrowserView : UserControl
         // Alt+arrows, Ctrl+C/X/V/A/F and Escape — working while the list has focus.
         AddHandler(KeyDownEvent, View_KeyDown, RoutingStrategies.Bubble, handledEventsToo: true);
         UpdateSortGlyphs();
+        AttachedToVisualTree += (_, _) =>
+        {
+            _localization.LanguageChanged += LanguageChanged;
+            _sessionClipboard.Changed += ClipboardChanged;
+            _sessionClipboard.Moved += FilesMoved;
+            ClipboardChanged();
+        };
+        DetachedFromVisualTree += (_, _) =>
+        {
+            _localization.LanguageChanged -= LanguageChanged;
+            _sessionClipboard.Changed -= ClipboardChanged;
+            _sessionClipboard.Moved -= FilesMoved;
+            _listingGeneration++; _listingCache.Clear();
+            CancelRename(); ClearPendingDrag();
+        };
         AttachedToVisualTree += async (_, _) =>
         {
             if (_initialized) return;
@@ -144,15 +239,103 @@ internal partial class SshFileBrowserView : UserControl
         UpdateControls();
     }
 
+    private void LanguageChanged(object? sender, SystemLanguageChangedEventArgs e)
+    {
+        foreach (var entry in _entries.Concat(_tabs.SelectMany(tab => tab.Entries)).Distinct()) entry.RefreshLocalizedText();
+        foreach (var tab in _tabs) tab.RefreshLocalizedText();
+        if (_homeNode is not null) _homeNode.Label = T("ssh_files.home", "Home");
+        if (_rootNode is not null) _rootNode.Label = T("ssh_files.root", "Root");
+        BuildBreadcrumbs();
+        StatusText.Text = StatusMessage.Resolve();
+        if (IsPackagePicker) PickerFilterText.Text = T("server_center.wizard.bundle_file_type", "RelaxKonOS release bundle") + " (*.zip)";
+        if (_editingEntry is { } editing && !ValidName(editing.RenameDraft))
+            StatusMessage = LocalizedStatus.Key("explorer.status.file_name_invalid", "Invalid file name");
+        UpdateControls();
+    }
+
     public void AttachWindowHeader(ManagedWindow window)
     {
-        if (IsPackagePicker) return;
+        if (IsPackagePicker || ReferenceEquals(window.View.HeaderTabs, HeaderTabs)) return;
         BrowserRoot.Children.Remove(NavigationToolbar);
         BrowserRoot.Children.Remove(HeaderTabs);
         window.View.HeaderTabs = HeaderTabs;
         window.View.HeaderToolbar = NavigationToolbar;
         NavigationToolbar.AddHandler(KeyDownEvent, View_KeyDown, RoutingStrategies.Bubble, handledEventsToo: true);
         HeaderTabs.AddHandler(KeyDownEvent, View_KeyDown, RoutingStrategies.Bubble, handledEventsToo: true);
+    }
+
+    private void UpdateTabLayout(double available)
+    {
+        // The view model's tab list is the authority: a ListBox applies items a beat behind a
+        // collection change, and dividing the row by a stale count would leave the last tab short.
+        var count = _tabs.Count;
+        // The share is floored: item measurement rounds every tab up to whole pixels, so a share
+        // taken from an unrounded division would push the last tab past the edge of the row.
+        TabContentWidth = count > 0 && available > 0
+            ? Math.Clamp(Math.Floor(Math.Max(0, available - TabRowChrome) / count) - TabItemChrome, MinimumTabWidth, MaximumTabWidth)
+            : MaximumTabWidth;
+
+        // Decide against the width without arrows so showing them cannot latch overflow on.
+        var unadornedWidth = available + (TabScrollLeft.IsVisible
+            ? TabScrollLeft.Bounds.Width + TabScrollRight.Bounds.Width + 4 : 0);
+        var filled = count > 0 && available > 0 && count * TabMinimumPitch + TabRowChrome > unadornedWidth + 0.5;
+        if (TabScrollLeft.IsVisible != filled)
+        {
+            TabScrollLeft.IsVisible = TabScrollRight.IsVisible = filled;
+            if (!filled) TabScroller.Offset = TabScroller.Offset.WithX(0);
+        }
+        UpdateTabScrollMarks();
+        Dispatcher.UIThread.Post(ScrollActiveTabIntoView, DispatcherPriority.Background);
+    }
+
+    /// <summary>Keeps the tab the user is on inside the strip's window, however it was chosen.</summary>
+    private void ScrollActiveTabIntoView()
+    {
+        if (FolderTabs.SelectedItem is not { } tab || FolderTabs.ContainerFromItem(tab) is not Control container) return;
+        var extent = TabScroller.Extent.Width;
+        var viewport = TabScroller.Viewport.Width;
+        if (extent <= viewport || container.TranslatePoint(default, TabScroller) is not { } origin) return;
+        var offset = TabScroller.Offset.X;
+        if (ReferenceEquals(tab, _tabs.LastOrDefault())) offset = extent - viewport;
+        else if (origin.X < 0) offset += origin.X;
+        else if (origin.X + container.Bounds.Width > viewport) offset += origin.X + container.Bounds.Width - viewport;
+        TabScroller.Offset = TabScroller.Offset.WithX(Math.Clamp(offset, 0, extent - viewport));
+        UpdateTabScrollMarks();
+    }
+
+    private void TabScrollLeft_Click(object? sender, RoutedEventArgs e) => ScrollTabsBy(-1);
+    private void TabScrollRight_Click(object? sender, RoutedEventArgs e) => ScrollTabsBy(1);
+
+    /// <summary>Scrolls the strip by whole tabs; reports whether it actually moved.</summary>
+    internal bool ScrollTabsBy(int direction)
+    {
+        var range = TabScroller.Extent.Width - TabScroller.Viewport.Width;
+        if (range <= 0) return false;
+        var next = Math.Clamp(TabScroller.Offset.X + direction * (TabContentWidth + TabItemChrome), 0, range);
+        if (next == TabScroller.Offset.X) return false;
+        TabScroller.Offset = TabScroller.Offset.WithX(next);
+        UpdateTabScrollMarks();
+        return true;
+    }
+
+    private void OnTabStripWheel(object? sender, PointerWheelEventArgs e)
+    {
+        if (ScrollTabsBy(e.Delta.Y > 0 ? -1 : 1)) e.Handled = true;
+    }
+
+    /// <summary>The marks stay on the row and go quiet at the end they have already reached.</summary>
+    private void UpdateTabScrollMarks()
+    {
+        var range = TabScroller.Extent.Width - TabScroller.Viewport.Width;
+        TabScrollLeft.IsEnabled = range > 0.5 && TabScroller.Offset.X > 0.5;
+        TabScrollRight.IsEnabled = range > 0.5 && TabScroller.Offset.X < range - 0.5;
+    }
+
+    private void Tab_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!_busy && !IsPackagePicker && e.GetCurrentPoint(FolderTabs).Properties.IsMiddleButtonPressed
+            && FindDataContext<SshFileBrowserTab>(e.Source) is { } tab)
+        { CloseTab(tab); e.Handled = true; }
     }
 
     private void CaptureActiveTab()
@@ -183,6 +366,8 @@ internal partial class SshFileBrowserView : UserControl
     internal void SwitchTab(SshFileBrowserTab tab)
     {
         if (_busy || IsPackagePicker || ReferenceEquals(tab, _activeTab) || !_tabs.Contains(tab)) return;
+        _listingGeneration++;
+        CancelRename();
         CaptureActiveTab();
         _activeTab = tab;
         var hiddenChanged = _showHidden != tab.ShowHidden;
@@ -191,6 +376,7 @@ internal partial class SshFileBrowserView : UserControl
         _viewReady = false;
         try
         {
+            _presentation.ClearSelection();
             _path = tab.Path; _entries = tab.Entries;
             _history.Clear(); _history.AddRange(tab.History); _historyIndex = tab.HistoryIndex;
             SearchText = tab.SearchText;
@@ -203,8 +389,8 @@ internal partial class SshFileBrowserView : UserControl
             FolderTabs.SelectedItem = FolderPicker.SelectedItem = tab;
         }
         finally { _viewReady = ready; _syncingTabs = false; }
-        ApplyView(); StatusText.Text = "";
-        FolderTabs.ScrollIntoView(tab);
+        ApplyView(); StatusMessage = "";
+        Dispatcher.UIThread.Post(ScrollActiveTabIntoView, DispatcherPriority.Background);
         _ = hiddenChanged ? RebuildNavigationTreeAsync() : SyncNavigationTreeAsync();
     }
 
@@ -289,6 +475,7 @@ internal partial class SshFileBrowserView : UserControl
 
     private void ViewModeBox_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
+        CancelRename();
         if (_presentation is not null && ViewModeBox.SelectedIndex >= 0)
             _presentation.SetMode((ExplorerViewMode)ViewModeBox.SelectedIndex);
     }
@@ -327,7 +514,7 @@ internal partial class SshFileBrowserView : UserControl
     {
         if (!CanConfirmPackage())
         {
-            StatusText.Text = T("server_center.wizard.bundle_required", "Choose a signed .zip release bundle to continue.");
+            StatusMessage = LocalizedStatus.Key("server_center.wizard.bundle_required", "Choose a signed .zip release bundle to continue.");
             return;
         }
         _selectPackage!(Selection()[0].Path);
@@ -402,10 +589,105 @@ internal partial class SshFileBrowserView : UserControl
 
     private void EntriesGrid_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (!e.GetCurrentPoint(EntriesGrid).Properties.IsRightButtonPressed) return;
+        ClearPendingDrag();
+        if (FindVisualAncestor<TextBox>(e.Source) is not null) return;
+        var point = e.GetCurrentPoint(EntriesGrid);
         var entry = FindDataContext<SshFileEntry>(e.Source);
-        if (entry is null) _presentation.ClearSelection();
-        else if (!Selection().Contains(entry)) EntriesGrid.SelectedItem = entry;
+        if (point.Properties.IsRightButtonPressed)
+        {
+            if (entry is null) _presentation.ClearSelection();
+            else if (!Selection().Contains(entry)) EntriesGrid.SelectedItem = entry;
+            return;
+        }
+        if (_busy || IsPackagePicker || !point.Properties.IsLeftButtonPressed || entry is null) return;
+        _dragTrigger = e; _dragEntry = entry; _dragStart = e.GetPosition(this);
+        if (Selection().Contains(entry) && Selection().Length > 1
+            && e.KeyModifiers is KeyModifiers.None or KeyModifiers.Control)
+        {
+            _preservedDragSelection = Selection();
+            _toggleSelectionOnRelease = e.KeyModifiers == KeyModifiers.Control;
+            _presentation.Focus(); e.Handled = true;
+        }
+    }
+
+    private void ClearPendingDrag()
+    {
+        _dragTrigger = null; _dragEntry = null; _preservedDragSelection = null;
+        _toggleSelectionOnRelease = false;
+    }
+
+    private async void EntriesGrid_PointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (_dragTrigger is null || _dragEntry is null) return;
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) { ClearPendingDrag(); return; }
+        var point = e.GetPosition(this);
+        if (Math.Abs(point.X - _dragStart.X) < 5 && Math.Abs(point.Y - _dragStart.Y) < 5) return;
+        var trigger = _dragTrigger;
+        var entries = _preservedDragSelection ?? (Selection().Contains(_dragEntry) ? Selection() : [_dragEntry]);
+        ClearPendingDrag();
+        if (_busy || IsPackagePicker) return;
+        var data = new DataTransfer();
+        data.Add(DataTransferItem.Create(SshEntriesFormat, new SshDragPayload(this, entries)));
+        await DragDrop.DoDragDropAsync(trigger, data, DragDropEffects.Copy | DragDropEffects.Move);
+    }
+
+    private void EntriesGrid_PointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_preservedDragSelection is not null && _dragEntry is { } entry)
+        {
+            if (_toggleSelectionOnRelease) EntriesGrid.SelectedItems.Remove(entry);
+            else { _presentation.ClearSelection(); EntriesGrid.SelectedItem = entry; }
+        }
+        ClearPendingDrag();
+    }
+
+    private string? DropTarget(object? source)
+    {
+        for (var control = source as Control; control is not null; control = control.GetVisualParent() as Control)
+        {
+            if (control.DataContext is SshFileEntry entry) return entry.IsDirectory && !entry.IsLink ? entry.Path : null;
+            if (control.DataContext is TreeNodeModel { IsPlaceholder: false, Path: { } path }) return path;
+            if (ReferenceEquals(control, EntriesGrid) || ReferenceEquals(control, _presentation.Items)
+                || ReferenceEquals(control, EntriesHost)) return _path;
+        }
+        return null;
+    }
+
+    internal bool CanTransferEntries(SshFileBrowserView source, IReadOnlyList<SshFileEntry> entries, string? target, bool copy)
+        => !_busy && !IsPackagePicker && !source._busy && !source.IsPackagePicker
+            && ReferenceEquals(source._session, _session) && !string.IsNullOrEmpty(target)
+            && entries.Count > 0 && entries.All(entry => (!copy || !entry.IsLink)
+                && (!entry.IsDirectory || !IsWithin(entry.Path, target))
+                && (copy || ParentPath(entry.Path) != target));
+
+    private bool TryGetDrop(DragEventArgs e, out SshDragPayload? payload, out string? target)
+    {
+        payload = e.DataTransfer.TryGetValue(SshEntriesFormat);
+        target = DropTarget(e.Source);
+        return !e.KeyModifiers.HasFlag(KeyModifiers.Alt)
+            && !(e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+            && payload is not null && CanTransferEntries(payload.Source, payload.Entries, target,
+                e.KeyModifiers.HasFlag(KeyModifiers.Control));
+    }
+
+    private void Files_DragOver(object? sender, DragEventArgs e)
+    {
+        e.DragEffects = TryGetDrop(e, out _, out _)
+            ? (e.KeyModifiers.HasFlag(KeyModifiers.Control) ? DragDropEffects.Copy : DragDropEffects.Move)
+            : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private async void Files_Drop(object? sender, DragEventArgs e)
+    {
+        var valid = TryGetDrop(e, out var payload, out var target);
+        var copy = e.KeyModifiers.HasFlag(KeyModifiers.Control);
+        e.DragEffects = valid ? (copy ? DragDropEffects.Copy : DragDropEffects.Move) : DragDropEffects.None;
+        e.Handled = true;
+        if (!valid || payload is null || target is null) return;
+        var moved = await TransferEntriesAsync(payload.Entries, target, copy);
+        if (!copy && moved.Length > 0 && !ReferenceEquals(payload.Source, this) && !payload.Source._busy)
+            await payload.Source.RefreshAsync();
     }
 
     private void EntriesGrid_SortHeaderPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -441,7 +723,7 @@ internal partial class SshFileBrowserView : UserControl
     {
         // Activate the row under the pointer rather than the previous selection.
         var entry = FindDataContext<SshFileEntry>(e.Source);
-        if (entry is not null) await OpenEntryAsync(entry);
+        if (FindVisualAncestor<TextBox>(e.Source) is null && entry is not null) await OpenEntryAsync(entry);
     }
 
     private static T? FindDataContext<T>(object? source) where T : class
@@ -509,8 +791,15 @@ internal partial class SshFileBrowserView : UserControl
             }
         }
         if (e.Handled && e.Key == Key.Escape) return;
-        if (e.Source is TextBox && e.Key is not (Key.F5 or Key.L)) return;
-        if (e.Key == Key.F5) { e.Handled = true; await RefreshAsync(); }
+        if (FindVisualAncestor<TextBox>(e.Source) is not null && e.Key is not (Key.F5 or Key.L)) return;
+        if (_busy) return;
+        if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.None && Selection() is [var entry])
+        { e.Handled = true; await OpenEntryAsync(entry); }
+        else if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.Alt)
+        { e.Handled = true; await ShowPropertiesAsync(); }
+        else if (e.Key == Key.Back && e.KeyModifiers == KeyModifiers.None)
+        { e.Handled = true; await BackAsync(); }
+        else if (e.Key == Key.F5) { e.Handled = true; await RefreshAsync(); }
         else if (e.Key == Key.F2) { e.Handled = true; await RenameAsync(); }
         else if (e.Key == Key.Delete) { e.Handled = true; await DeleteAsync(); }
         else if (e.Key == Key.Up && e.KeyModifiers.HasFlag(KeyModifiers.Alt))
@@ -562,15 +851,30 @@ internal partial class SshFileBrowserView : UserControl
             return;
         }
         if (_canOpenFile(entry.Path) && !_openFile(entry.Path))
-            StatusText.Text = T("ssh_files.file_open_failed", "Unable to open this file with an associated application");
+            StatusMessage = LocalizedStatus.Key("ssh_files.file_open_failed", "Unable to open this file with an associated application");
     }
 
-    private async Task NavigateAsync(string path, bool addHistory = true)
+    private async Task NavigateAsync(string path, bool addHistory = true, bool forceRefresh = false)
     {
         if (_busy || !_session.IsConnected) return;
+        if (!ReferenceEquals(_cacheEndpoint, _session.Endpoint))
+        { _cacheEndpoint = _session.Endpoint; _listingCache.Clear(); }
+        var generation = ++_listingGeneration;
+        var endpoint = _session.Endpoint;
+        var cachePath = path.StartsWith('/') ? path : path == "." ? _path : Child(_path, path);
+        if (CacheListingsMenu.IsChecked == true && !forceRefresh && _listingCache.TryGet(cachePath, out var cached))
+        {
+            CommitListing(cachePath, CloneEntries(cached), addHistory);
+            _showingCachedFiles = true;
+            StatusMessage = LocalizedStatus.Key("explorer.cache.refreshing");
+            _ = RevalidateDirectoryAsync(cachePath, generation);
+            return;
+        }
+        _showingCachedFiles = false;
+        CancelRename();
         _busy = true;
         UpdateControls();
-        StatusText.Text = T("ssh_files.loading", "Loading…");
+        StatusMessage = LocalizedStatus.Key("ssh_files.loading", "Loading…");
         try
         {
             var result = await ExecuteAsync(client =>
@@ -584,11 +888,30 @@ internal partial class SshFileBrowserView : UserControl
                         file.IsSymbolicLink, file.Length, file.LastWriteTime)).ToArray();
                 return (absolute, entries);
             });
-            _path = result.absolute;
+            if (!ReferenceEquals(endpoint, _session.Endpoint)) return;
+            if (CacheListingsMenu.IsChecked == true) _listingCache.Put(result.absolute, CloneEntries(result.entries), result.entries.Length);
+            CommitListing(result.absolute, result.entries, addHistory);
+            InitializeNavigationTree();
+            await SyncNavigationTreeAsync();
+            StatusMessage = "";
+        }
+        catch (Exception ex)
+        {
+            AddressBox.Text = _path;
+            StatusMessage = LocalizedStatus.Join(": ", [LocalizedStatus.Key("ssh_files.open_failed", "Unable to open folder"), LocalizedStatus.Literal(ex.Message)]);
+        }
+        finally { _busy = false; CaptureActiveTab(); UpdateControls(); }
+    }
+
+    private void CommitListing(string absolute, SshFileEntry[] entries, bool addHistory)
+    {
+        CancelRename();
+            if (_path != absolute) _presentation.ClearSelection();
+            _path = absolute;
             _homePath ??= _path;
             AddressBox.Text = _path;
             BuildBreadcrumbs();
-            _entries = result.entries;
+            _entries = entries;
             _activeTab.Path = _path;
             if (addHistory && (_historyIndex < 0 || _history[_historyIndex] != _path))
             {
@@ -597,21 +920,44 @@ internal partial class SshFileBrowserView : UserControl
                 _historyIndex = _history.Count - 1;
             }
             ApplyView();
-            InitializeNavigationTree();
-            await SyncNavigationTreeAsync();
-            StatusText.Text = "";
-        }
-        catch (Exception ex)
+        CaptureActiveTab(); UpdateControls();
+    }
+
+    private static SshFileEntry[] CloneEntries(IEnumerable<SshFileEntry> entries) => entries
+        .Select(entry => new SshFileEntry(entry.Name, entry.Path, entry.IsDirectory, entry.IsLink, entry.Size, entry.Modified)).ToArray();
+
+    private async Task RevalidateDirectoryAsync(string path, long generation)
+    {
+        var endpoint = _session.Endpoint;
+        try
         {
-            AddressBox.Text = _path;
-            StatusText.Text = $"{T("ssh_files.open_failed", "Unable to open folder")}: {ex.Message}";
+            var entries = await ExecuteAsync(client => client.ListDirectory(path)
+                .Where(file => file.Name is not ("." or ".."))
+                .Select(file => new SshFileEntry(file.Name, file.FullName, file.IsDirectory, file.IsSymbolicLink, file.Length, file.LastWriteTime)).ToArray());
+            if (generation != _listingGeneration || _busy || _editingEntry is not null || !ReferenceEquals(endpoint, _session.Endpoint) || CacheListingsMenu.IsChecked != true) return;
+            _listingCache.Put(path, CloneEntries(entries), entries.Length);
+            CommitListing(path, entries, false); _showingCachedFiles = false; StatusMessage = "";
         }
-        finally { _busy = false; CaptureActiveTab(); UpdateControls(); }
+        catch (Exception error)
+        {
+            if (generation != _listingGeneration || _busy) return;
+            if (error is Renci.SshNet.Common.SftpPermissionDeniedException || !_session.IsConnected)
+            { _listingCache.Clear(); _entries = []; ApplyView(); _showingCachedFiles = false; }
+            StatusMessage = LocalizedStatus.Key("explorer.cache.refresh_failed", "Could not refresh cached files: {0}", error.Message);
+        }
+    }
+
+    private void CacheListings_Click(object? sender, RoutedEventArgs e)
+    {
+        var refresh = _showingCachedFiles;
+        _listingGeneration++; _listingCache.Clear(); _showingCachedFiles = false;
+        if (refresh) _ = RefreshAsync();
     }
 
     private async Task RefreshAsync()
     {
-        await NavigateAsync(_path, false);
+        _listingGeneration++; _listingCache.Clear();
+        await NavigateAsync(_path, false, forceRefresh: true);
         await RebuildNavigationTreeAsync();
     }
 
@@ -739,7 +1085,7 @@ internal partial class SshFileBrowserView : UserControl
         catch (Exception ex)
         {
             if (revision == _treeRevision)
-                StatusText.Text = $"{T("ssh_files.tree_load_failed", "Unable to load folder tree")}: {ex.Message}";
+                StatusMessage = LocalizedStatus.Join(": ", [LocalizedStatus.Key("ssh_files.tree_load_failed", "Unable to load folder tree"), LocalizedStatus.Literal(ex.Message)]);
         }
         finally { node.IsLoading = false; }
     }
@@ -771,22 +1117,30 @@ internal partial class SshFileBrowserView : UserControl
             (_showHidden || !file.Name.StartsWith('.')) &&
             (string.IsNullOrEmpty(query) || file.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase)) &&
             (!IsPackagePicker || file.IsDirectory || file.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)));
-        var ordered = entries.OrderByDescending(file => file.IsDirectory);
-        entries = _descending ? ordered.ThenByDescending(file => _sortIndex switch
-        {
-            1 => (IComparable)file.Modified,
-            2 => file.Kind,
-            3 => file.Size,
-            _ => file.Name,
-        }, Comparer<IComparable>.Default) : ordered.ThenBy(file => _sortIndex switch
-        {
-            1 => (IComparable)file.Modified,
-            2 => file.Kind,
-            3 => file.Size,
-            _ => file.Name,
-        }, Comparer<IComparable>.Default);
-        EntriesGrid.ItemsSource = entries.ToArray();
+        var selectedPaths = Selection().Select(entry => entry.Path).ToHashSet(StringComparer.Ordinal);
+        var sorted = entries.ToArray();
+        UpdateCutAppearance();
+        Array.Sort(sorted, CompareEntries);
+        EntriesGrid.ItemsSource = sorted;
+        foreach (var entry in sorted)
+            if (selectedPaths.Contains(entry.Path)) EntriesGrid.SelectedItems.Add(entry);
         UpdateControls();
+    }
+
+    private int CompareEntries(SshFileEntry x, SshFileEntry y)
+    {
+        var group = y.IsDirectory.CompareTo(x.IsDirectory);
+        if (group != 0) return group;
+        var value = _sortIndex switch
+        {
+            1 => x.Modified.CompareTo(y.Modified),
+            2 => StringComparer.CurrentCultureIgnoreCase.Compare(ExplorerPath.Extension(x.Name), ExplorerPath.Extension(y.Name)),
+            3 => x.Size.CompareTo(y.Size),
+            _ => ExplorerEntryComparer.CompareNames(x.Name, y.Name),
+        };
+        if (value == 0) value = ExplorerEntryComparer.CompareNames(x.Name, y.Name);
+        if (value == 0) value = StringComparer.Ordinal.Compare(x.Path, y.Path);
+        return _descending ? -Math.Sign(value) : Math.Sign(value);
     }
 
     private void UpdateControls()
@@ -845,6 +1199,7 @@ internal partial class SshFileBrowserView : UserControl
 
     private async Task CreateDirectoryAsync()
     {
+        if (_busy || IsPackagePicker) return;
         var name = await PromptAsync(T("ssh_files.new_folder", "New folder"));
         if (!ValidName(name)) return;
         await ChangeAsync(client =>
@@ -855,24 +1210,99 @@ internal partial class SshFileBrowserView : UserControl
         });
     }
 
-    private async Task RenameAsync()
+    private Task RenameAsync()
     {
-        if (Selection() is not [var selected]) return;
-        var name = await PromptAsync(T("ssh_files.rename", "Rename"), selected.Name);
-        if (!ValidName(name) || name == selected.Name) return;
-        await ChangeAsync(client =>
+        if (_busy || IsPackagePicker || Selection() is not [var selected]) return Task.CompletedTask;
+        CancelRename();
+        _editingEntry = selected;
+        selected.RenameDraft = selected.Name;
+        selected.IsEditing = true;
+        if (EntriesGrid.IsVisible) EntriesGrid.ScrollIntoView(selected, null);
+        else _presentation.Items.ScrollIntoView(selected);
+        Dispatcher.UIThread.Post(() =>
         {
-            var target = Child(_path, name!);
-            if (client.Exists(target)) throw new IOException(T("ssh_files.exists", "Destination already exists"));
-            client.RenameFile(selected.Path, target);
-        });
+            var editor = FindRenameEditor(selected);
+            if (editor is null) return;
+            editor.Focus();
+            var extension = selected.IsDirectory ? -1 : selected.Name.LastIndexOf('.');
+            if (extension > 0) { editor.SelectionStart = 0; editor.SelectionEnd = extension; }
+            else editor.SelectAll();
+        }, DispatcherPriority.Background);
+        return Task.CompletedTask;
+    }
+
+    private TextBox? FindRenameEditor(SshFileEntry entry) => EntriesHost.GetVisualDescendants()
+        .OfType<TextBox>().FirstOrDefault(editor => editor.Classes.Contains("inline-rename")
+            && ReferenceEquals(editor.DataContext, entry) && editor.IsEffectivelyVisible);
+
+    private void CancelRename()
+    {
+        var entry = _editingEntry;
+        _editingEntry = null;
+        if (entry is not null)
+        {
+            entry.IsEditing = false;
+            StatusMessage = "";
+        }
+    }
+
+    private async void RenameBox_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        { e.Handled = true; CancelRename(); _presentation.Focus(); }
+        else if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.None)
+        { e.Handled = true; await CommitRenameAsync(); }
+    }
+
+    private async void RenameBox_LostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (!_renameCommitInProgress && sender is TextBox { DataContext: SshFileEntry entry }
+            && ReferenceEquals(entry, _editingEntry)) await CommitRenameAsync();
+    }
+
+    private async Task CommitRenameAsync()
+    {
+        if (_busy || _renameCommitInProgress || _editingEntry is not { } entry) return;
+        var name = entry.RenameDraft;
+        if (name == entry.Name) { CancelRename(); _presentation.Focus(); return; }
+        if (!ValidName(name))
+        {
+            StatusMessage = LocalizedStatus.Key("explorer.status.file_name_invalid", "Invalid file name");
+            Dispatcher.UIThread.Post(() => FindRenameEditor(entry)?.Focus());
+            return;
+        }
+        _renameCommitInProgress = true;
+        _busy = true; UpdateControls();
+        var target = Child(ParentPath(entry.Path), name);
+        var completed = false;
+        try
+        {
+            await ExecuteAsync(client =>
+            {
+                if (client.Exists(target)) throw new IOException(T("ssh_files.exists", "Destination already exists"));
+                client.RenameFile(entry.Path, target);
+                return true;
+            });
+            CancelRename();
+            completed = true;
+        }
+        catch (Exception ex) { StatusMessage = ex.Message; }
+        finally { _busy = false; _renameCommitInProgress = false; UpdateControls(); }
+        if (completed)
+        {
+            await RefreshAsync();
+            if (_entries.FirstOrDefault(file => file.Path == target) is { } renamed) EntriesGrid.SelectedItem = renamed;
+            _presentation.Focus();
+        }
+        else Dispatcher.UIThread.Post(() => FindRenameEditor(entry)?.Focus());
     }
 
     private static bool ValidName(string? name) => !string.IsNullOrWhiteSpace(name)
-        && name == name.Trim() && name is not ("." or "..") && !name.Contains('/') && !name.Contains('\\');
+        && name == name.Trim() && name is not ("." or "..") && !name.Contains('/') && !name.Contains('\\') && !name.Contains('\0');
 
     private async Task DeleteAsync()
     {
+        if (_busy || IsPackagePicker) return;
         var selected = Selection();
         if (selected.Length == 0 || TopLevel.GetTopLevel(this) is not Window owner) return;
         if (!await new SshFileDeleteDialog(selected.Length).ShowDialog<bool>(owner)) return;
@@ -890,48 +1320,83 @@ internal partial class SshFileBrowserView : UserControl
     private void CopySelection(bool cut)
     {
         var selected = Selection();
-        if (selected.Length == 0 || _busy) return;
+        if (selected.Length == 0 || _busy || IsPackagePicker) return;
         _clipboard.Clear();
         _clipboard.AddRange(selected);
         _cutMode = cut;
-        StatusText.Text = string.Format(T(cut ? "ssh_files.cut_ready" : "ssh_files.copy_ready",
-            cut ? "{0} items ready to move" : "{0} items ready to copy"), selected.Length);
+        _sessionClipboard.Revision++;
+        _sessionClipboard.Notify();
+        UpdateCutAppearance();
+        StatusMessage = LocalizedStatus.Key(cut ? "ssh_files.cut_ready" : "ssh_files.copy_ready",
+            cut ? "{0} items ready to move" : "{0} items ready to copy", selected.Length);
         UpdateControls();
+    }
+
+    private void FilesMoved(string[] paths)
+    {
+        _listingGeneration++; _listingCache.Clear();
+        if (paths.Length == 0) return;
+        var moved = paths.ToHashSet(StringComparer.Ordinal);
+        foreach (var tab in _tabs) tab.Entries = tab.Entries.Where(entry => !moved.Contains(entry.Path)).ToArray();
+        _entries = _entries.Where(entry => !moved.Contains(entry.Path)).ToArray();
+        if (_viewReady) ApplyView();
+    }
+
+    private void ClipboardChanged()
+    {
+        UpdateCutAppearance();
+        if (_viewReady) UpdateControls();
+    }
+
+    private void UpdateCutAppearance()
+    {
+        var paths = _cutMode ? _clipboard.Select(entry => entry.Path).ToHashSet(StringComparer.Ordinal) : [];
+        foreach (var entry in _entries.Concat(_tabs.SelectMany(tab => tab.Entries)).Distinct())
+            entry.CutOpacity = paths.Contains(entry.Path) ? 0.45 : 1;
     }
 
     private async Task PasteAsync()
     {
-        if (_clipboard.Count == 0 || _busy) return;
+        if (_clipboard.Count == 0 || _busy || IsPackagePicker) return;
         var source = _clipboard.ToArray();
-        var destination = _path;
+        var copy = !_cutMode;
+        var revision = _sessionClipboard.Revision;
+        var moved = await TransferEntriesAsync(source, _path, copy);
+        if (!copy && revision == _sessionClipboard.Revision)
+        {
+            foreach (var entry in moved) _clipboard.Remove(entry);
+            _sessionClipboard.Notify();
+        }
+        UpdateCutAppearance(); UpdateControls();
+    }
+
+    private async Task<SshFileEntry[]> TransferEntriesAsync(SshFileEntry[] source, string destination, bool copy)
+    {
         var moved = new List<SshFileEntry>();
-        var completed = await ChangeAsync(client =>
+        var changedPaths = new List<string>();
+        await ChangeAsync(client =>
         {
             foreach (var entry in source)
             {
-                if (entry.IsLink && !_cutMode)
+                if (entry.IsLink && copy)
                     throw new IOException($"{entry.Path}: {T("ssh_files.link_unsupported", "Symbolic link transfer is unsupported")}");
                 if (entry.IsDirectory && IsWithin(entry.Path, destination))
                     throw new IOException(T("ssh_files.circular_copy", "Cannot paste a folder into itself"));
                 var target = Child(destination, entry.Name);
-                if (entry.Path == target && _cutMode) continue;
-                if (entry.Path == target) target = UniqueCopyTarget(client, destination, entry.Name);
+                if (entry.Path == target && !copy) { moved.Add(entry); continue; }
+                if (entry.Path == target) target = UniqueCopyTarget(client, destination, entry.Name, entry.IsDirectory);
                 if (client.Exists(target)) throw new IOException($"{T("ssh_files.exists", "Destination already exists")}: {entry.Name}");
-                if (_cutMode) { client.RenameFile(entry.Path, target); moved.Add(entry); }
+                if (!copy) { client.RenameFile(entry.Path, target); moved.Add(entry); changedPaths.Add(entry.Path); }
                 else CopyTree(client, entry.Path, target, entry.IsDirectory && !entry.IsLink);
             }
         });
-        if (_cutMode)
-        {
-            foreach (var entry in moved) _clipboard.Remove(entry);
-            if (completed) _clipboard.Clear();
-        }
-        UpdateControls();
+        _sessionClipboard.NotifyMoved(changedPaths.ToArray());
+        return moved.ToArray();
     }
 
-    private static string UniqueCopyTarget(SftpClient client, string directory, string name)
+    private static string UniqueCopyTarget(SftpClient client, string directory, string name, bool directoryEntry)
     {
-        var dot = name.LastIndexOf('.');
+        var dot = directoryEntry ? -1 : name.LastIndexOf('.');
         var stem = dot > 0 ? name[..dot] : name;
         var extension = dot > 0 ? name[dot..] : "";
         for (var index = 1; ; index++)
@@ -964,6 +1429,7 @@ internal partial class SshFileBrowserView : UserControl
 
     private async Task UploadAsync()
     {
+        if (_busy || IsPackagePicker) return;
         if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage) return;
         var picked = await UsageFilePicker.OpenFilePickerAsync(storage, new FilePickerOpenOptions { AllowMultiple = true }, UsageMemoryStore.CaptureServices(App.Services), "SshFileBrowserView.axaml.0");
         if (picked.Count == 0 || _busy) return;
@@ -974,7 +1440,7 @@ internal partial class SshFileBrowserView : UserControl
         {
             foreach (var file in picked)
             {
-                StatusText.Text = string.Format(T("ssh_files.uploading", "Uploading {0} of {1}: {2}"), uploaded + 1, picked.Count, file.Name);
+                StatusMessage = LocalizedStatus.Key("ssh_files.uploading", "Uploading {0} of {1}: {2}", uploaded + 1, picked.Count, file.Name);
                 await using var input = await file.OpenReadAsync();
                 progress.Report(file.Name, 0, input.CanSeek ? input.Length : null);
                 await ExecuteAsync(client =>
@@ -988,16 +1454,17 @@ internal partial class SshFileBrowserView : UserControl
                 uploaded++;
             }
         }
-        catch (Exception ex) { StatusText.Text = $"{T("ssh_files.upload_failed", "Upload failed")}: {ex.Message}"; }
+        catch (Exception ex) { StatusMessage = LocalizedStatus.Join(": ", [LocalizedStatus.Key("ssh_files.upload_failed", "Upload failed"), LocalizedStatus.Literal(ex.Message)]); }
         finally { _busy = false; UpdateControls(); }
-        var message = StatusText.Text;
+        var message = StatusMessage;
         await NavigateAsync(_path, false);
-        if (uploaded == picked.Count) StatusText.Text = string.Format(T("ssh_files.uploaded", "Uploaded {0} files"), uploaded);
-        else StatusText.Text = message;
+        if (uploaded == picked.Count) StatusMessage = LocalizedStatus.Key("ssh_files.uploaded", "Uploaded {0} files", uploaded);
+        else StatusMessage = message;
     }
 
     private async Task UploadFolderAsync()
     {
+        if (_busy || IsPackagePicker) return;
         if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage || _busy) return;
         var folders = await UsageFilePicker.OpenFolderPickerAsync(storage, new FolderPickerOpenOptions { AllowMultiple = false }, UsageMemoryStore.CaptureServices(App.Services), "SshFileBrowserView.axaml.1");
         var localPath = folders.FirstOrDefault()?.TryGetLocalPath();
@@ -1007,7 +1474,7 @@ internal partial class SshFileBrowserView : UserControl
         _busy = true; UpdateControls();
         try
         {
-            StatusText.Text = string.Format(T("ssh_files.uploading_folder", "Uploading folder {0}"), folder.Name);
+            StatusMessage = LocalizedStatus.Key("ssh_files.uploading_folder", "Uploading folder {0}", folder.Name);
             await ExecuteAsync(client =>
             {
                 var target = Child(_path, folder.Name);
@@ -1015,13 +1482,13 @@ internal partial class SshFileBrowserView : UserControl
                 UploadTree(client, folder, target, progress);
                 return true;
             });
-            StatusText.Text = string.Format(T("ssh_files.uploaded_folder", "Uploaded folder {0}"), folder.Name);
+            StatusMessage = LocalizedStatus.Key("ssh_files.uploaded_folder", "Uploaded folder {0}", folder.Name);
         }
-        catch (Exception ex) { StatusText.Text = $"{T("ssh_files.upload_failed", "Upload failed")}: {ex.Message}"; }
+        catch (Exception ex) { StatusMessage = LocalizedStatus.Join(": ", [LocalizedStatus.Key("ssh_files.upload_failed", "Upload failed"), LocalizedStatus.Literal(ex.Message)]); }
         finally { _busy = false; UpdateControls(); }
-        var message = StatusText.Text;
+        var message = StatusMessage;
         await NavigateAsync(_path, false);
-        if (!string.IsNullOrEmpty(message)) StatusText.Text = message;
+        if (!string.IsNullOrEmpty(message)) StatusMessage = message;
     }
 
     private static void UploadTree(SftpClient client, DirectoryInfo directory, string target, SshTransferProgressWindow progress)
@@ -1045,11 +1512,12 @@ internal partial class SshFileBrowserView : UserControl
 
     private async Task DownloadAsync()
     {
+        if (_busy || IsPackagePicker) return;
         var selected = Selection();
         if (selected.Length == 0 || TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage || _busy) return;
         if (selected.FirstOrDefault(file => file.IsLink) is { } link)
         {
-            StatusText.Text = $"{link.Path}: {T("ssh_files.link_unsupported", "Symbolic link transfer is unsupported")}";
+            StatusMessage = LocalizedStatus.Join(": ", [LocalizedStatus.Literal(link.Path), LocalizedStatus.Key("ssh_files.link_unsupported", "Symbolic link transfer is unsupported")]);
             return;
         }
         if (selected.Length == 1 && !selected[0].IsDirectory)
@@ -1066,16 +1534,16 @@ internal partial class SshFileBrowserView : UserControl
         _busy = true; UpdateControls();
         try
         {
-            StatusText.Text = string.Format(T("ssh_files.downloading", "Downloading {0}"), string.Join(", ", selected.Select(file => file.Name)));
+            StatusMessage = LocalizedStatus.Key("ssh_files.downloading", "Downloading {0}", string.Join(", ", selected.Select(file => file.Name)));
             await ExecuteAsync(client =>
             {
                 foreach (var entry in selected)
                     DownloadTree(client, entry.Path, SafeLocalChild(folder, entry.Name), entry.IsDirectory && !entry.IsLink, progress);
                 return true;
             });
-            StatusText.Text = string.Format(T("ssh_files.downloaded", "Downloaded {0} items"), selected.Length);
+            StatusMessage = LocalizedStatus.Key("ssh_files.downloaded", "Downloaded {0} items", selected.Length);
         }
-        catch (Exception ex) { StatusText.Text = $"{T("ssh_files.download_failed", "Download failed")}: {ex.Message}"; }
+        catch (Exception ex) { StatusMessage = LocalizedStatus.Join(": ", [LocalizedStatus.Key("ssh_files.download_failed", "Download failed"), LocalizedStatus.Literal(ex.Message)]); }
         finally { _busy = false; UpdateControls(); }
     }
 
@@ -1089,9 +1557,9 @@ internal partial class SshFileBrowserView : UserControl
             await using var output = await file.OpenWriteAsync();
             await ExecuteAsync(client => { client.DownloadFile(entry.Path, output,
                 downloaded => progress.Report(entry.Name, (long)downloaded, entry.Size)); return true; });
-            StatusText.Text = string.Format(T("ssh_files.downloaded", "Downloaded {0} items"), 1);
+            StatusMessage = LocalizedStatus.Key("ssh_files.downloaded", "Downloaded {0} items", 1);
         }
-        catch (Exception ex) { StatusText.Text = $"{T("ssh_files.download_failed", "Download failed")}: {ex.Message}"; }
+        catch (Exception ex) { StatusMessage = LocalizedStatus.Join(": ", [LocalizedStatus.Key("ssh_files.download_failed", "Download failed"), LocalizedStatus.Literal(ex.Message)]); }
         finally { _busy = false; UpdateControls(); }
     }
 
@@ -1126,19 +1594,20 @@ internal partial class SshFileBrowserView : UserControl
     private async Task<bool> ChangeAsync(Action<SftpClient> action)
     {
         if (_busy) return false;
+        _listingGeneration++; _listingCache.Clear();
         _busy = true; UpdateControls();
         var completed = false;
         try
         {
             await ExecuteAsync(client => { action(client); return true; });
-            StatusText.Text = "";
+            StatusMessage = "";
             completed = true;
         }
-        catch (Exception ex) { StatusText.Text = ex.Message; }
+        catch (Exception ex) { StatusMessage = ex.Message; }
         finally { _busy = false; UpdateControls(); }
-        var message = StatusText.Text;
-        await NavigateAsync(_path, false);
-        if (!string.IsNullOrEmpty(message)) StatusText.Text = message;
+        var message = StatusMessage;
+        await RefreshAsync();
+        if (!string.IsNullOrEmpty(message)) StatusMessage = message;
         return completed;
     }
 }

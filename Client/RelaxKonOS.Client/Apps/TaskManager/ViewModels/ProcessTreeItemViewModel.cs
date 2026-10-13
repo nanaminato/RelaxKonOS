@@ -11,12 +11,14 @@ public sealed partial class ProcessTreeItemViewModel(ProcessInfoDto process) : O
     [ObservableProperty] private ProcessInfoDto _process = process;
     [ObservableProperty] private int _depth;
     [ObservableProperty] private bool _hasChildren;
-    [ObservableProperty] private bool _isExpanded = true;
+    [ObservableProperty] private bool _isExpanded;
     [ObservableProperty] private IImage? _iconImage;
     [ObservableProperty] private bool _isIconLoaded;
     public bool IsDisposed { get; private set; }
 
     public Thickness Indent => new(Depth * 18, 0, 0, 0);
+    [ObservableProperty] private int _groupProcessCount = 1;
+    public string DisplayName => GroupProcessCount > 1 ? $"{Process.Name} ({GroupProcessCount})" : Process.Name;
     public string ExpandGlyph => IsExpanded ? "⌄" : "›";
     public string FallbackIcon => IconFor(Process.Name);
     public bool HasIconImage => IconImage is not null;
@@ -35,6 +37,8 @@ public sealed partial class ProcessTreeItemViewModel(ProcessInfoDto process) : O
     [RelayCommand(CanExecute = nameof(HasChildren))]
     private void ToggleExpanded() => IsExpanded = !IsExpanded;
 
+    partial void OnGroupProcessCountChanged(int value) => OnPropertyChanged(nameof(DisplayName));
+    partial void OnProcessChanged(ProcessInfoDto value) => OnPropertyChanged(nameof(DisplayName));
     partial void OnDepthChanged(int value) => OnPropertyChanged(nameof(Indent));
     partial void OnIconImageChanged(IImage? value) => OnPropertyChanged(nameof(HasIconImage));
     partial void OnIsExpandedChanged(bool value) { OnPropertyChanged(nameof(ExpandGlyph)); ExpandedStateChanged?.Invoke(this, EventArgs.Empty); }

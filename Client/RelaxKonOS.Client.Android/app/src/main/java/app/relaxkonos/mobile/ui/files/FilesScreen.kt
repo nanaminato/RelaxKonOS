@@ -173,6 +173,7 @@ fun FilesScreen(
 
         // Above the list, not below it: an unfinished upload is a thing the user came here to act on,
         // and a card that only appears once every entry has been scrolled past is a card nobody sees.
+        if (viewModel.showingCachedFiles) Text(stringResource(R.string.files_cache_refreshing))
         FileResumableUploadsCard(viewModel)
 
         val listing = viewModel.listing

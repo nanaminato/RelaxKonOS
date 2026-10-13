@@ -193,15 +193,20 @@ public static class WorkspaceEndpoints
             : null;
     }
 
-    private static bool TryNormalize(TerminalSettingsDto request, out TerminalSettingsDto settings)
+    public static bool TryNormalize(TerminalSettingsDto request, out TerminalSettingsDto settings)
     {
         settings = TerminalSettingsDto.Default;
         var fontFamily = request.FontFamily?.Trim();
         var scheme = request.ColorScheme?.Trim();
+        // A missing backend (a document saved before the field existed) means the built-in control;
+        // an unknown token is refused so a typo cannot silently pin the workspace to a fallback.
         if (string.IsNullOrWhiteSpace(fontFamily) || fontFamily.Length > 128
             || string.IsNullOrWhiteSpace(scheme) || scheme.Length > 64
             || !double.IsFinite(request.FontSize)
             || request.FontSize is < 8 or > 40
+            || request.ScrollbackLines is < 0 or > 100000
+            || request.CursorStyle is not ("block" or "underline" or "bar")
+            || !TerminalBackends.TryNormalize(request.Backend, out var backend)
             || !IsHexColor(request.BackgroundColor) || !IsHexColor(request.ForegroundColor) || !IsHexColor(request.CursorColor))
             return false;
 
@@ -209,7 +214,8 @@ public static class WorkspaceEndpoints
             fontFamily, request.FontSize, scheme,
             request.BackgroundColor.ToUpperInvariant(),
             request.ForegroundColor.ToUpperInvariant(),
-            request.CursorColor.ToUpperInvariant());
+            request.CursorColor.ToUpperInvariant(),
+            backend, request.ScrollbackLines, request.CursorStyle, request.CursorBlink);
         return true;
     }
 
@@ -239,7 +245,7 @@ public static class WorkspaceEndpoints
         && color[0] == '#'
         && color[1..].All(Uri.IsHexDigit);
 
-    private static bool TryNormalize(WorkspaceWindowLayoutDto request, out WorkspaceWindowLayoutDto layouts)
+    public static bool TryNormalize(WorkspaceWindowLayoutDto request, out WorkspaceWindowLayoutDto layouts)
     {
         layouts = WorkspaceWindowLayoutDto.Default;
         var source = request.Windows ?? Array.Empty<WindowSizeDto>();

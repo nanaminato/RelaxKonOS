@@ -92,6 +92,20 @@ private val DEFAULT_PREVIEW_BOX = IntSize(1080, 1080)
 class FilesViewModel(application: Application) : AndroidViewModel(application) {
     private val container: AppContainer get() = getApplication<RelaxKonApplication>().container
 
+    private val fileCacheSettings = application.getSharedPreferences("file-list-cache", android.content.Context.MODE_PRIVATE)
+    private val directoryCache = app.relaxkonos.mobile.data.FileListSnapshots<DirectoryListing>()
+    var fileListCacheEnabled by mutableStateOf(fileCacheSettings.getBoolean("server-enabled", false))
+        private set
+    var showingCachedFiles by mutableStateOf(false)
+        private set
+    fun toggleFileListCache() {
+        fileListCacheEnabled = !fileListCacheEnabled
+        fileCacheSettings.edit().putBoolean("server-enabled", fileListCacheEnabled).apply()
+        val refresh = showingCachedFiles
+        directoryCache.clear(); showingCachedFiles = false
+        if (refresh) reload()
+    }
+
     var query by mutableStateOf("")
     var showHidden by mutableStateOf(false)
     var sort by mutableStateOf(FileSort.Name)
@@ -482,7 +496,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         query = ""
         checkedPaths = emptySet()
         select(null)
-        reload()
+        reload(force = false)
     }
 
     fun goUp() {
@@ -1131,16 +1145,23 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun reload() {
+    private fun reload(force: Boolean = true) {
+        if (force) directoryCache.clear()
         val request = ++directoryRequest
         val requestedPath = path
         directoryJob?.cancel()
-        loading = true
+        val cached = if (fileListCacheEnabled && !force) directoryCache.get(requestedPath) else null
+        if (cached != null) listing = cached
+        showingCachedFiles = cached != null
+        loading = cached == null
         directoryReadFailed = false
         directoryJob = viewModelScope.launch {
             try {
                 when (val result = container.files.list(requestedPath, container.elevationAnswers)) {
                     is ApiResult.Success -> if (request == directoryRequest) {
+                        if (mutationBusy || batchRunning) return@launch
+                        if (fileListCacheEnabled) directoryCache.put(result.value.path, result.value, result.value.entries.size)
+                        showingCachedFiles = false
                         listing = result.value
                         path = result.value.path
                         checkedPaths = checkedPaths.intersect(result.value.entries.map { it.path }.toSet())
@@ -1151,6 +1172,9 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
                     }
 
                     else -> if (request == directoryRequest) {
+                        if (result is ApiResult.Problem && result.status in listOf(401, 403)) {
+                            directoryCache.clear(); listing = null; showingCachedFiles = false
+                        }
                         directoryReadFailed = true
                         message = result.fileReadFailureMessage()
                     }
@@ -1173,6 +1197,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Clears every screen-owned value that is meaningful only to one authenticated server session. */
     private fun resetForSessionBoundary() {
+        directoryCache.clear(); showingCachedFiles = false
         mutationJob?.cancel(); mutationJob = null
         propertyRequest++; propertiesJob?.cancel(); propertiesJob = null
         checkedPaths = emptySet(); selectionMode = false; clipboard = null

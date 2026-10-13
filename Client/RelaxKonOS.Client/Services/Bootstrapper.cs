@@ -95,6 +95,8 @@ public static class Bootstrapper
             .AddHttpMessageHandler<AcceptLanguageHandler>();
         services.AddHttpClient<ServerEndpointResolver>()
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+        services.AddSingleton<PresentationSettingsChanges>();
+        services.AddSingleton<ClientPresentationPreferences>();
         services.AddHttpClient<ITerminalSettingsClient, TerminalSettingsClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "terminal-settings"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()

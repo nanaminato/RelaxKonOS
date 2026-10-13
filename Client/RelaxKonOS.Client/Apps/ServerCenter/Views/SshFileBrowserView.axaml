@@ -11,24 +11,34 @@
         <StyleInclude Source="avares://RelaxKonOS.Client/Apps/Explorer/Controls/FileBrowserToolbarStyles.axaml" />
     </UserControl.Styles>
     <Grid x:Name="BrowserRoot" RowDefinitions="Auto,Auto,Auto,*,Auto,Auto">
-        <Grid x:Name="HeaderTabs" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="2">
-            <ListBox x:Name="FolderTabs" Classes="title-tabs" Height="{DynamicResource WindowTabHeight}"
-                     SelectionChanged="FolderTabs_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                <ListBox.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ListBox.ItemsPanel>
-                <ListBox.ItemTemplate><DataTemplate DataType="ssh:SshFileBrowserTab">
-                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6" Width="{Binding #Root.TabContentWidth}" VerticalAlignment="Center">
-                        <explorer:ExplorerIcon TreeIconKind="{Binding IconKind}" Width="16" Height="16" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="1" Text="{Binding Title}" MaxWidth="160" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip.Tip="{Binding Path}" />
-                        <Button Grid.Column="2" Classes="tab-close" Tag="{Binding}" Click="CloseTab_Click" ToolTip.Tip="{loc:Loc explorer.close_tab}" AutomationProperties.Name="{loc:Loc explorer.close_tab}">
-                            <PathIcon Width="11" Height="11" Data="{StaticResource ChromeCloseIcon}" />
-                        </Button>
-                    </Grid>
-                </DataTemplate></ListBox.ItemTemplate>
-            </ListBox>
-            <Button Grid.Column="1" x:Name="NewTabButton" Classes="header-action compact" Click="NewTab_Click" ToolTip.Tip="{loc:Loc explorer.new_tab}" AutomationProperties.Name="{loc:Loc explorer.new_tab}">
-                <PathIcon Width="14" Height="14" Data="{StaticResource ChromeAddIcon}" />
+        <Grid x:Name="HeaderTabs" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="2">
+            <Button x:Name="TabScrollLeft" Classes="header-action compact" IsVisible="False" Click="TabScrollLeft_Click" ToolTip.Tip="{loc:Loc explorer.tab_scroll_left}" AutomationProperties.Name="{loc:Loc explorer.tab_scroll_left}">
+                <Path Width="11" Height="11" Stretch="Uniform" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.4" Data="M15.5 4 L7.5 12 L15.5 20" />
             </Button>
-            <Button Grid.Column="2" x:Name="FolderPickerButton" Classes="header-action compact" ToolTip.Tip="{loc:Loc explorer.all_tabs}" AutomationProperties.Name="{loc:Loc explorer.all_tabs}">
+            <ScrollViewer Grid.Column="1" x:Name="TabScroller" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
+                <StackPanel Orientation="Horizontal">
+                    <ListBox x:Name="FolderTabs" Classes="title-tabs" Height="{DynamicResource WindowTabHeight}"
+                             SelectionChanged="FolderTabs_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                        <ListBox.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ListBox.ItemsPanel>
+                        <ListBox.ItemTemplate><DataTemplate DataType="ssh:SshFileBrowserTab">
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6" Width="{Binding #Root.TabContentWidth}" VerticalAlignment="Center">
+                                <explorer:ExplorerIcon TreeIconKind="{Binding IconKind}" Width="16" Height="16" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="{Binding Title}" MaxWidth="160" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip.Tip="{Binding Path}" />
+                                <Button Grid.Column="2" Classes="tab-close" Tag="{Binding}" Click="CloseTab_Click" ToolTip.Tip="{loc:Loc explorer.close_tab}" AutomationProperties.Name="{loc:Loc explorer.close_tab}">
+                                    <PathIcon Width="11" Height="11" Data="{StaticResource ChromeCloseIcon}" />
+                                </Button>
+                            </Grid>
+                        </DataTemplate></ListBox.ItemTemplate>
+                    </ListBox>
+                    <Button x:Name="NewTabButton" Classes="header-action compact" Margin="4,0,0,0" VerticalAlignment="Center" Click="NewTab_Click" ToolTip.Tip="{loc:Loc explorer.new_tab}" AutomationProperties.Name="{loc:Loc explorer.new_tab}">
+                        <PathIcon Width="14" Height="14" Data="{StaticResource ChromeAddIcon}" />
+                    </Button>
+                </StackPanel>
+            </ScrollViewer>
+            <Button Grid.Column="2" x:Name="TabScrollRight" Classes="header-action compact" IsVisible="False" Click="TabScrollRight_Click" ToolTip.Tip="{loc:Loc explorer.tab_scroll_right}" AutomationProperties.Name="{loc:Loc explorer.tab_scroll_right}">
+                <Path Width="11" Height="11" Stretch="Uniform" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.4" Data="M8.5 4 L16.5 12 L8.5 20" />
+            </Button>
+            <Button Grid.Column="3" x:Name="FolderPickerButton" Classes="header-action compact" ToolTip.Tip="{loc:Loc explorer.all_tabs}" AutomationProperties.Name="{loc:Loc explorer.all_tabs}">
                 <PathIcon Width="14" Height="14" Data="{StaticResource ChromeChevronDownIcon}" />
                 <Button.Flyout><Flyout><ListBox x:Name="FolderPicker" MinWidth="220" MaxHeight="320" SelectionChanged="FolderPicker_SelectionChanged">
                     <ListBox.ItemTemplate><DataTemplate DataType="ssh:SshFileBrowserTab"><TextBlock Text="{Binding Title}" MaxWidth="300" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Path}" /></DataTemplate></ListBox.ItemTemplate>
@@ -150,6 +160,7 @@
                         <MenuItem x:Name="UploadFolderButton" Header="{loc:Loc ssh_files.upload_folder}" Click="UploadFolder_Click" />
                         <MenuItem x:Name="DownloadButton" Header="{loc:Loc ssh_files.download}" Click="Download_Click" />
                         <Separator />
+                        <MenuItem x:Name="CacheListingsMenu" Header="{loc:Loc explorer.cache.enabled}" ToggleType="CheckBox" Click="CacheListings_Click" />
                         <MenuItem x:Name="OverflowProperties" Header="{loc:Loc ssh_files.properties}" Click="Properties_Click" />
                     </MenuFlyout></Button.Flyout>
                 </Button>
@@ -241,11 +252,14 @@
                         </DataGridTemplateColumn.Header>
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate x:CompileBindings="False">
-                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" Margin="12,2">
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" Margin="12,2" Opacity="{Binding CutOpacity}">
                                     <explorer:ExplorerIcon EntryType="{Binding EntryType}" FileName="{Binding Name}"
                                                            Link="{Binding IsLink}" Width="20" Height="20"
                                                            VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis"
+                                    <TextBox Grid.Column="1" Classes="inline-rename" IsVisible="{Binding IsEditing}"
+                                             Text="{Binding RenameDraft, Mode=TwoWay}" MinWidth="0" MinHeight="0" Padding="2,0"
+                                             KeyDown="RenameBox_KeyDown" LostFocus="RenameBox_LostFocus" />
+                                    <TextBlock Grid.Column="1" IsVisible="{Binding !IsEditing}" Text="{Binding Name}" TextTrimming="CharacterEllipsis"
                                                MaxLines="1" VerticalAlignment="Center" />
                                 </Grid>
                             </DataTemplate>

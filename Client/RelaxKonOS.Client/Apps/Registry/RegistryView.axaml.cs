@@ -9,12 +9,73 @@ public partial class RegistryView : UserControl
     public RegistryView()
     {
         InitializeComponent();
+        AddHandler(KeyDownEvent, Registry_KeyDown);
         RegistryTree.AddHandler(TreeViewItem.ExpandedEvent, TreeItemExpanded);
+        SizeChanged += (_, _) => ApplyAppearance();
+    }
+    protected override void OnLoaded(RoutedEventArgs e)
+    {
+        base.OnLoaded(e);
+        if (DataContext is RegistryViewModel vm)
+        {
+            vm.PropertyChanged += OnViewModelChanged;
+            vm.StartAppearanceUpdates();
+            ApplyAppearance();
+        }
+    }
+    protected override void OnUnloaded(RoutedEventArgs e)
+    {
+        if (DataContext is RegistryViewModel vm)
+        {
+            vm.PropertyChanged -= OnViewModelChanged;
+            vm.StopAppearanceUpdates();
+        }
+        base.OnUnloaded(e);
+    }
+    private void OnViewModelChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(RegistryViewModel.Appearance)) ApplyAppearance();
+    }
+    private void ApplyAppearance()
+    {
+        if (DataContext is not RegistryViewModel vm) return;
+        var appearance = vm.Appearance;
+        Resources["RegistryScrollbarThickness"] = (double)appearance.ScrollbarThickness;
+        Resources["RegistryTreeRowHeight"] = (double)appearance.TreeRowHeight;
+        Resources["RegistryValueRowHeight"] = (double)appearance.ValueRowHeight;
+        Resources["RegistryIconSize"] = (double)appearance.IconSize;
+        var maximum = Bounds.Width > 0 ? Math.Max(180, Bounds.Width - 200) : 600;
+        RegistryPanes.ColumnDefinitions[0].Width = new GridLength(Math.Min(appearance.SidebarWidth, maximum));
+    }
+    private async void Sidebar_DragCompleted(object? sender, Avalonia.Input.VectorEventArgs e)
+    {
+        if (DataContext is not RegistryViewModel vm) return;
+        try { await vm.SaveSidebarWidthAsync((int)Math.Round(RegistryPanes.ColumnDefinitions[0].ActualWidth)); }
+        catch (Exception error)
+        {
+            vm.StatusText = RelaxKonOS.Client.Localization.LocalizedText.RefWithFallback("registry.status.save_failed", "Could not save value: {0}", error.Message);
+            ApplyAppearance();
+        }
+    }
+    private void Registry_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (DataContext is not RegistryViewModel vm) return;
+        if (e.Key == Key.L && e.KeyModifiers == KeyModifiers.Control) { AddressBox.Focus(); AddressBox.SelectAll(); }
+        else if (e.Key == Key.F5) vm.RefreshCommand.Execute(null);
+        else if (e.Key == Key.F2 && vm.CanRenameValue) vm.RenameSelectedCommand.Execute(null);
+        else if (e.Key == Key.Left && e.KeyModifiers == KeyModifiers.Alt) vm.MoveHistory(-1);
+        else if (e.Key == Key.Right && e.KeyModifiers == KeyModifiers.Alt) vm.MoveHistory(1);
+        else if (e.Source is not TextBox && e.Key == Key.Enter && vm.CanEditValue) vm.EditSelectedCommand.Execute(null);
+        else if (e.Source is not TextBox && e.Key == Key.Delete && vm.CanDeleteValue) vm.DeleteCommand.Execute(null);
+        else return;
+        e.Handled = true;
     }
     private void EntriesGrid_DoubleTapped(object? sender, RoutedEventArgs e) =>
         (DataContext as RegistryViewModel)?.EditSelectedCommand.Execute(null);
     private void NewValue_Click(object? sender, RoutedEventArgs e) => (DataContext as RegistryViewModel)?.NewValueCommand.Execute(null);
     private void ModifyValue_Click(object? sender, RoutedEventArgs e) => (DataContext as RegistryViewModel)?.EditSelectedCommand.Execute(null);
+    private void RenameValue_Click(object? sender, RoutedEventArgs e) => (DataContext as RegistryViewModel)?.RenameSelectedCommand.Execute(null);
+    private void ResetValue_Click(object? sender, RoutedEventArgs e) => (DataContext as RegistryViewModel)?.ResetSelectedCommand.Execute(null);
     private void DeleteValue_Click(object? sender, RoutedEventArgs e) => (DataContext as RegistryViewModel)?.DeleteCommand.Execute(null);
     private void NavigationPath_KeyDown(object? sender, KeyEventArgs e)
     {
@@ -25,6 +86,13 @@ public partial class RegistryView : UserControl
     private async void TreeItemExpanded(object? sender, RoutedEventArgs e)
     {
         if (e.Source is TreeViewItem { DataContext: RegistryKeyNode key })
-            await ((DataContext as RegistryViewModel)?.LoadChildrenAsync(key) ?? Task.CompletedTask);
+        {
+            try { await ((DataContext as RegistryViewModel)?.LoadChildrenAsync(key) ?? Task.CompletedTask); }
+            catch (Exception error)
+            {
+                if (DataContext is RegistryViewModel vm && ReferenceEquals(vm.SelectedKey, key))
+                    vm.StatusText = RelaxKonOS.Client.Localization.LocalizedText.RefWithFallback("registry.status.unavailable", "Registry unavailable: {0}", error.Message);
+            }
+        }
     }
 }

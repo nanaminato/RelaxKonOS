@@ -802,6 +802,7 @@ builder.Services.AddSignalR(options =>
 builder.Services.AddSingleton<GuardianLogSubscriptionRegistry>();
 builder.Services.AddHostedService<GuardianLogBroadcastService>();
 builder.Services.AddHostedService<PerformanceBroadcastService>();
+builder.Services.AddSingleton(sp => new RelaxKonOS.Server.Settings.ServerRuntimeSettingsStore(Path.Combine(builder.Environment.ContentRootPath, "data", "server-runtime-settings.json")));
 builder.Services.AddSingleton<SettingsSubscriptions>();
 builder.Services.AddHostedService<SettingsChangesBroadcastService>();
 
@@ -1103,6 +1104,7 @@ app.MapPrivilegedEndpoints();
 app.MapAppCapabilityEndpoints();
 app.MapAppSettingsEndpoints();
 app.MapRegistryEndpoints();
+app.MapServerRuntimeEndpoints();
 app.MapImageMirrorEndpoints();
 app.MapWorkspaceEndpoints();
 app.MapHostSettingsEndpoints();

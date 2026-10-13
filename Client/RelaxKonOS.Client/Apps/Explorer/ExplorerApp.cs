@@ -94,7 +94,14 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         }
 
         var clipboard = context.Services.GetService(typeof(IRemoteFileClipboard)) as IRemoteFileClipboard;
-        var viewModel = new ExplorerViewModel(client, fileClipboard: clipboard);
+        var viewModel = new ExplorerViewModel(client, fileClipboard: clipboard)
+        {
+            FileListCacheScope = () => session.State == AuthSessionState.Authenticated
+                ? $"{session.ServiceId}\n{session.CurrentUser?.Id}\n{session.CurrentWorkspace?.Id}\n{session.CurrentSession?.Id}" : null,
+        };
+        void InvalidateSessionCache(object? sender, AuthSessionStateChangedEventArgs change) =>
+            Dispatcher.UIThread.Post(viewModel.InvalidateFileListCache);
+        session.StateChanged += InvalidateSessionCache;
         // 大文件走分块上传会话；未注册时全部退回单发路由（仍可传，只是传不了大文件）。
         viewModel.LargeFileUploader = context.Services.GetService(typeof(Uploads.ILargeFileUploader)) as Uploads.ILargeFileUploader;
         WireDialogs(context, viewModel, client);
@@ -129,6 +136,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
             if (!ReferenceEquals(item, window)) return;
             context.WindowManager.WindowClosed -= closed;
             if (operations is not null) operations.Completed -= RefreshAfterOperation;
+            session.StateChanged -= InvalidateSessionCache;
             viewModel.Dispose();
             _windows.Remove(window);
             _initializations.Remove(window);
@@ -326,11 +334,11 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
                 if (revision is null)
                 {
                     var latest = await settings.GetAsync(appId, AppSettingsScope.Workspace, key);
-                    if (latest is { SchemaVersion: not 2 }) throw new InvalidOperationException(LocalizedText.Get("explorer.view_version_unsupported"));
+                    if (latest is { SchemaVersion: not 3 }) throw new InvalidOperationException(LocalizedText.Get("explorer.view_version_unsupported"));
                     revision = latest?.Revision ?? 0;
                 }
                 var saved = await settings.SaveAsync(appId, AppSettingsScope.Workspace, key,
-                    JsonSerializer.SerializeToElement(preferences), schemaVersion: 2, expectedRevision: revision);
+                    JsonSerializer.SerializeToElement(preferences), schemaVersion: 3, expectedRevision: revision);
                 revision = saved.Revision;
             };
             viewModel.IsBusy = true;
@@ -338,7 +346,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
             {
                 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
                 var stored = await settings.GetAsync(appId, AppSettingsScope.Workspace, key, timeout.Token);
-                if (stored is { SchemaVersion: not 2 }) throw new InvalidOperationException(LocalizedText.Get("explorer.view_version_unsupported"));
+                if (stored is { SchemaVersion: not 3 }) throw new InvalidOperationException(LocalizedText.Get("explorer.view_version_unsupported"));
                 revision = stored?.Revision ?? 0;
                 if (stored is not null && stored.Value.Deserialize<ExplorerViewPreferences>() is { } preferences)
                     viewModel.ApplyViewPreferences(preferences);

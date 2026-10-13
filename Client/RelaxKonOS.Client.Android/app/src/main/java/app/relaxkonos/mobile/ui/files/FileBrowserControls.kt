@@ -56,6 +56,8 @@ fun FileBrowserControls(
                 HorizontalDivider()
                 DropdownMenuItem(text = { Text(stringResource(if (vm.showHidden) R.string.files_hide_hidden else R.string.files_show_hidden)) },
                     onClick = { vm.showHidden = !vm.showHidden; options = false })
+                DropdownMenuItem(text = { Text(stringResource(R.string.files_cache_enabled) + if (vm.fileListCacheEnabled) " ✓" else "") },
+                    onClick = { vm.toggleFileListCache(); options = false })
                 FileSort.entries.forEach { sort ->
                     DropdownMenuItem(text = { Text(stringResource(when (sort) {
                         FileSort.Name -> R.string.files_sort_name

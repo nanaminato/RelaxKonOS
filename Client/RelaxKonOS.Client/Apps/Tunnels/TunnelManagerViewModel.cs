@@ -197,7 +197,7 @@ public sealed partial class TunnelManagerViewModel(IRemoteTunnelClient client, b
         {
             var saved = await client.UpdateManagedFrpsAsync(new(true, FrpsBindAddress, FrpsBindPort, ParsePortRanges(FrpsAllowPorts), FrpsHttpPort, FrpsHttpsPort, FrpsForceTls,
                 string.IsNullOrWhiteSpace(FrpsToken) ? null : FrpsToken, FrpsDashboardEnabled, FrpsDashboardAddress, FrpsDashboardPort,
-                string.IsNullOrWhiteSpace(FrpsDashboardUser) ? null : FrpsDashboardUser, string.IsNullOrWhiteSpace(FrpsDashboardPassword) ? null : FrpsDashboardPassword, _frpsEditingRevision ?? _frpsRevision), _lifetime.Token);
+                string.IsNullOrWhiteSpace(FrpsDashboardUser) ? null : FrpsDashboardUser, string.IsNullOrWhiteSpace(FrpsDashboardPassword) ? null : FrpsDashboardPassword, _frpsEditingRevision ?? FrpsRevision), _lifetime.Token);
             ApplyFrps(saved); _frpsEditingRevision = saved.Revision; StatusText = LocalizedText.Ref("tunnels.status.frps_saved");
         }
         catch (Exception ex) { StatusText = ProblemText(ex); }

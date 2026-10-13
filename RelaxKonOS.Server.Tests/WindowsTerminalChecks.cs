@@ -1,12 +1,16 @@
 using System.Collections;
 using System.Text;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.DataProtection;
 using RelaxKonOS.Server.Terminal;
+using RoyalTerminal.Terminal;
 
 internal static class WindowsTerminalChecks
 {
     internal static async Task RunAsync()
     {
         if (!OperatingSystem.IsWindows()) return;
+        VerifyHubActivation();
         var environment = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (DictionaryEntry entry in Environment.GetEnvironmentVariables())
             environment[(string)entry.Key] = (string)entry.Value!;
@@ -57,5 +61,30 @@ internal static class WindowsTerminalChecks
                 $"if ($env:SystemRoot -eq '{Environment.GetEnvironmentVariable("SystemRoot")?.Replace("'", "''")}') {{ [Console]::WriteLine('{powershellMarker}') }} else {{ exit 2 }}"]);
         await initialized.Task.WaitAsync(TimeSpan.FromSeconds(15));
         Console.WriteLine("Windows terminal input/output, resize, exit and startup cleanup checks passed.");
+    }
+
+    private static void VerifyHubActivation()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "relaxkon-terminal-activation-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+            services.AddLogging();
+            services.AddSignalR();
+            services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(root, "keys")));
+            services.AddSingleton<Microsoft.Extensions.Hosting.IHostEnvironment>(new TestHostEnvironment(root));
+            services.AddSingleton<RelaxKonOS.Server.Settings.WorkspaceEnvironmentService>();
+            services.AddSingleton<IPtyFactory>(new PlatformPtyFactory(null!, null!, null!, null!, null!));
+            services.AddSingleton<TerminalSessionManager>();
+            services.AddSingleton<RelaxKonOS.Server.Privileged.IHostAccountPrivilegeService>(new TestHostAccountPrivilegeService());
+            using var provider = services.BuildServiceProvider();
+            using var scope = provider.CreateScope();
+            _ = Microsoft.Extensions.DependencyInjection.ActivatorUtilities.CreateInstance<RelaxKonOS.Server.Hubs.TerminalHub>(scope.ServiceProvider);
+            // Existing databases survive repeated host activation without a separate create probe.
+            _ = new RelaxKonOS.Server.Settings.WorkspaceEnvironmentService(root,
+                provider.GetRequiredService<IDataProtectionProvider>());
+        }
+        finally { Directory.Delete(root, recursive: true); }
     }
 }

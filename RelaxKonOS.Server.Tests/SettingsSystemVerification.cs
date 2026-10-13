@@ -88,6 +88,8 @@ internal static class SettingsSystemVerification
         Console.WriteLine("PASS: Workspace environment HTTP ownership, no-store, typed snapshots, required revisions and conflict problems.");
     }
 
+    internal static Task VerifyQuietHttpAsync(string root) => VerifyHttpAsync(root);
+
     private static async Task VerifyHttpAsync(string root)
     {
         var owner = Guid.NewGuid();
@@ -99,6 +101,7 @@ internal static class SettingsSystemVerification
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddAuthorization();
         builder.Services.AddSignalR();
+        builder.Services.AddSingleton(new RelaxKonOS.Server.Settings.ServerRuntimeSettingsStore(Path.Combine(root, "runtime-settings.json")));
         builder.Services.AddSingleton<SettingsSubscriptions>();
         builder.Services.AddHostedService<SettingsChangesBroadcastService>();
         builder.Services.ConfigureHttpJsonOptions(options =>
@@ -108,6 +111,13 @@ internal static class SettingsSystemVerification
         });
         builder.Services.AddSingleton<IWorkspaceRepository>(workspaces);
         builder.Services.AddSingleton<IRegistryRepository, InMemoryRegistryRepository>();
+        var users = new InMemoryUserRepository();
+        users.Add(new User { Id = owner, Username = "settings-owner", PlatformIdentity = "settings-owner" });
+        builder.Services.AddSingleton<IUserRepository>(users);
+        builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IHostAccountPrivilegeService>(new TestHostAccountPrivilegeService());
+        builder.Services.AddSingleton<RelaxKonOS.Server.HostMode.IServerModeResolver>(new UploadSessionChecks.SystemMode());
+        builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.HostElevationSessionState>();
+        builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IHostElevationSessionStore, RelaxKonOS.Server.Privileged.HostElevationSessionStore>();
         builder.Services.AddSingleton<IWorkspaceSettingsService, WorkspaceSettingsService>();
         builder.Services.AddSingleton(new WorkspaceEnvironmentService(root, Microsoft.AspNetCore.DataProtection.DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(root, "workspace-environment-keys")))));
         builder.Services.AddSingleton<WorkspaceWallpaperStore>();
@@ -175,11 +185,11 @@ internal static class SettingsSystemVerification
             Check(denied.StatusCode == HttpStatusCode.NotFound, "Cross-user HTTP writes must be rejected.");
 
             var value = System.Text.Json.JsonSerializer.SerializeToElement(initial!, RelaxKonOSJsonOptions.Default);
-            using var registryStale = await http.PutAsJsonAsync(RegistryApiRoutes.Entries,
+            using var registryStale = await http.PutAsJsonAsync(RegistryApiRoutes.ForUser(RegistryApiRoutes.Values, owner),
                 new PutRegistryEntryRequest(RegistryScope.Workspace, WorkspaceConfigurationRegistry.DesktopPath,
                     WorkspaceConfigurationRegistry.DefaultValueName, RegistryValueType.Json, value, initial!.Revision), RelaxKonOSJsonOptions.Default);
             Check(registryStale.StatusCode == HttpStatusCode.Conflict, "The registry editor must not bypass preference revisions.");
-            using var deleted = await http.DeleteAsync(RegistryApiRoutes.Entries + "?scope=Workspace&path=Workspace%5CDesktop&name=%28Default%29");
+            using var deleted = await http.DeleteAsync(RegistryApiRoutes.ForUser(RegistryApiRoutes.Values, owner) + "?scope=Workspace&path=Workspace%5CDesktop&name=%28Default%29");
             Check(deleted.StatusCode == HttpStatusCode.Conflict, "Deleting managed preferences must not reset their revision.");
             foreach (var preset in new[] { "alpine-lake", "ocean-waves", "desert-dunes", "bloom" })
             {

@@ -5,14 +5,90 @@
              x:Class="RelaxKonOS.Client.Apps.Registry.RegistryView"
              x:DataType="registry:RegistryViewModel"
              Background="{DynamicResource SurfaceBrush}" Classes="builtin-app">
-  <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="12">
-    <Menu><MenuItem Header="{loc:Loc registry.menu.file}"><MenuItem Header="{loc:Loc registry.menu.new}" Command="{Binding NewValueCommand}"/><MenuItem Header="{loc:Loc registry.menu.new_key}" Command="{Binding NewKeyCommand}" IsEnabled="{Binding CanCreateKey}"/><MenuItem Header="{loc:Loc registry.menu.refresh}" Command="{Binding RefreshCommand}"/></MenuItem><MenuItem Header="{loc:Loc registry.menu.edit}"><MenuItem Header="{loc:Loc registry.menu.modify}" Command="{Binding EditSelectedCommand}"/><MenuItem Header="{loc:Loc registry.menu.delete}" Command="{Binding DeleteCommand}"/><MenuItem Header="{loc:Loc registry.menu.delete_key}" Command="{Binding DeleteKeyCommand}" IsEnabled="{Binding CanDeleteKey}"/></MenuItem><MenuItem Header="{loc:Loc registry.menu.view}"><MenuItem Header="{loc:Loc registry.menu.refresh}" Command="{Binding RefreshCommand}"/></MenuItem></Menu>
-    <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="0,6,0,8"><TextBox Text="{Binding NavigationPathInput, Mode=TwoWay}" KeyDown="NavigationPath_KeyDown"/><Button Grid.Column="1" Content="{loc:Loc registry.go}" Command="{Binding NavigateCommand}"/></Grid>
-    <Grid Grid.Row="2" ColumnDefinitions="250,5,*" RowDefinitions="*,Auto">
-      <Border Padding="4" Classes="app-sidebar"><TreeView x:Name="RegistryTree" ItemsSource="{Binding Keys}" SelectedItem="{Binding SelectedKey, Mode=TwoWay}"><TreeView.Styles><Style Selector="TreeViewItem"><Setter Property="IsExpanded" Value="{ReflectionBinding IsExpanded, Mode=TwoWay}"/></Style></TreeView.Styles><TreeView.ContextMenu><ContextMenu><MenuItem Header="{loc:Loc registry.menu.new_key}" Command="{Binding NewKeyCommand}" IsEnabled="{Binding CanCreateKey}"/><MenuItem Header="{loc:Loc registry.menu.delete_key}" Command="{Binding DeleteKeyCommand}" IsEnabled="{Binding CanDeleteKey}"/></ContextMenu></TreeView.ContextMenu><TreeView.ItemTemplate><TreeDataTemplate DataType="registry:RegistryKeyNode" ItemsSource="{Binding Children}"><TextBlock Text="{Binding Name}"/></TreeDataTemplate></TreeView.ItemTemplate></TreeView></Border>
-      <GridSplitter Grid.Column="1" Width="5" ResizeDirection="Columns"/>
-      <DataGrid Grid.Column="2" ItemsSource="{Binding Entries}" SelectedItem="{Binding SelectedEntry, Mode=TwoWay}" DoubleTapped="EntriesGrid_DoubleTapped" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True" Classes="resource-table"><DataGrid.ContextMenu><ContextMenu><MenuItem Header="{loc:Loc registry.menu.new}" Click="NewValue_Click"/><MenuItem Header="{loc:Loc registry.menu.modify}" Click="ModifyValue_Click"/><MenuItem Header="{loc:Loc registry.menu.delete}" Click="DeleteValue_Click"/></ContextMenu></DataGrid.ContextMenu><DataGrid.Columns><DataGridTextColumn Header="{loc:Loc registry.column.name}" Binding="{Binding Name}" Width="180"/><DataGridTextColumn Header="{loc:Loc registry.column.type}" Binding="{Binding Type}" Width="110"/><DataGridTextColumn Header="{loc:Loc registry.column.data}" Binding="{Binding DesiredValue}" Width="*"/></DataGrid.Columns></DataGrid>
+  <UserControl.Resources>
+    <x:Double x:Key="RegistryScrollbarThickness">6</x:Double>
+    <x:Double x:Key="RegistryTreeRowHeight">24</x:Double>
+    <x:Double x:Key="RegistryValueRowHeight">26</x:Double>
+    <x:Double x:Key="RegistryIconSize">16</x:Double>
+  </UserControl.Resources>
+  <UserControl.Styles>
+    <Style Selector="ScrollBar:vertical, ScrollViewer /template/ ScrollBar:vertical"><Setter Property="Width" Value="{DynamicResource RegistryScrollbarThickness}"/><Setter Property="MinWidth" Value="{DynamicResource RegistryScrollbarThickness}"/></Style>
+    <Style Selector="ScrollBar:horizontal, ScrollViewer /template/ ScrollBar:horizontal"><Setter Property="Height" Value="{DynamicResource RegistryScrollbarThickness}"/><Setter Property="MinHeight" Value="{DynamicResource RegistryScrollbarThickness}"/></Style>
+    <Style Selector="ScrollViewer"><Setter Property="AllowAutoHide" Value="False"/></Style>
+    <Style Selector="TreeViewItem"><Setter Property="MinHeight" Value="{DynamicResource RegistryTreeRowHeight}"/><Setter Property="Padding" Value="2,1"/><Setter Property="FontSize" Value="12"/></Style>
+    <Style Selector="DataGridRow"><Setter Property="MinHeight" Value="{DynamicResource RegistryValueRowHeight}"/><Setter Property="FontSize" Value="12"/></Style>
+  </UserControl.Styles>
+  <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="4">
+    <Menu>
+      <MenuItem Header="{loc:Loc registry.menu.file}">
+        <MenuItem Header="{loc:Loc registry.menu.new}" Command="{Binding NewValueCommand}" IsEnabled="{Binding CanCreateValue}"/>
+        <MenuItem Header="{loc:Loc registry.menu.new_key}" Command="{Binding NewKeyCommand}" IsEnabled="{Binding CanCreateKey}"/>
+        <Separator/>
+        <MenuItem Header="{loc:Loc registry.menu.refresh}" InputGesture="F5" Command="{Binding RefreshCommand}"/>
+      </MenuItem>
+      <MenuItem Header="{loc:Loc registry.menu.edit}">
+        <MenuItem Header="{loc:Loc registry.menu.modify}" InputGesture="Enter" Command="{Binding EditSelectedCommand}" IsEnabled="{Binding CanEditValue}"/>
+        <MenuItem Header="{loc:Loc registry.menu.rename}" InputGesture="F2" Command="{Binding RenameSelectedCommand}" IsEnabled="{Binding CanRenameValue}"/>
+        <MenuItem Header="{loc:Loc registry.menu.reset}" Command="{Binding ResetSelectedCommand}" IsEnabled="{Binding CanResetValue}"/>
+        <Separator/>
+        <MenuItem Header="{loc:Loc registry.menu.delete}" InputGesture="Delete" Command="{Binding DeleteCommand}" IsEnabled="{Binding CanDeleteValue}"/>
+        <MenuItem Header="{loc:Loc registry.menu.delete_key}" Command="{Binding DeleteKeyCommand}" IsEnabled="{Binding CanDeleteKey}"/>
+      </MenuItem>
+      <MenuItem Header="{loc:Loc registry.menu.view}">
+        <MenuItem Header="{loc:Loc registry.menu.refresh}" Command="{Binding RefreshCommand}"/>
+      </MenuItem>
+    </Menu>
+
+    <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="0,6,0,8">
+      <TextBox x:Name="AddressBox" Text="{Binding NavigationPathInput, Mode=TwoWay}" KeyDown="NavigationPath_KeyDown"/>
+      <Button Grid.Column="1" Content="{loc:Loc registry.go}" Command="{Binding NavigateCommand}"/>
     </Grid>
-    <TextBlock Grid.Row="3" Margin="2,8,0,0" Text="{Binding StatusText}" Opacity="0.7"/>
+
+    <Grid Grid.Row="2" x:Name="RegistryPanes" ColumnDefinitions="280,3,*" RowDefinitions="*,Auto">
+      <Border Padding="0" Classes="app-sidebar">
+        <TreeView ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.AllowAutoHide="False" x:Name="RegistryTree" ItemsSource="{Binding Keys}" SelectedItem="{Binding SelectedKey, Mode=TwoWay}">
+          <TreeView.Styles><Style Selector="TreeViewItem"><Setter Property="IsExpanded" Value="{ReflectionBinding IsExpanded, Mode=TwoWay}"/></Style></TreeView.Styles>
+          <TreeView.ContextMenu>
+            <ContextMenu>
+              <MenuItem Header="{loc:Loc registry.menu.new_key}" Command="{Binding NewKeyCommand}" IsEnabled="{Binding CanCreateKey}"/>
+              <MenuItem Header="{loc:Loc registry.menu.delete_key}" Command="{Binding DeleteKeyCommand}" IsEnabled="{Binding CanDeleteKey}"/>
+            </ContextMenu>
+          </TreeView.ContextMenu>
+          <TreeView.ItemTemplate><TreeDataTemplate DataType="registry:RegistryKeyNode" ItemsSource="{Binding Children}"><StackPanel Orientation="Horizontal" Spacing="6"><Image Width="{DynamicResource RegistryIconSize}" Height="{DynamicResource RegistryIconSize}" Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/file-folder.png"/><TextBlock Text="{Binding Name}" ToolTip.Tip="{Binding ToolTipText}" VerticalAlignment="Center"/></StackPanel></TreeDataTemplate></TreeView.ItemTemplate>
+        </TreeView>
+      </Border>
+      <GridSplitter DragCompleted="Sidebar_DragCompleted" Grid.Column="1" Width="3" ResizeDirection="Columns"/>
+      <DataGrid Grid.Column="2" ItemsSource="{Binding Entries}" SelectedItem="{Binding SelectedEntry, Mode=TwoWay}" DoubleTapped="EntriesGrid_DoubleTapped" RowHeight="{DynamicResource RegistryValueRowHeight}" ColumnHeaderHeight="30" FontSize="12" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True" CanUserSortColumns="True" Classes="resource-table">
+        <DataGrid.ContextMenu>
+          <ContextMenu>
+            <MenuItem Header="{loc:Loc registry.menu.new}" Click="NewValue_Click" IsEnabled="{Binding CanCreateValue}"/>
+            <MenuItem Header="{loc:Loc registry.menu.modify}" Click="ModifyValue_Click" IsEnabled="{Binding CanEditValue}"/>
+            <MenuItem Header="{loc:Loc registry.menu.rename}" Click="RenameValue_Click" IsEnabled="{Binding CanRenameValue}"/>
+            <MenuItem Header="{loc:Loc registry.menu.reset}" Click="ResetValue_Click" IsEnabled="{Binding CanResetValue}"/>
+            <MenuItem Header="{loc:Loc registry.menu.delete}" Click="DeleteValue_Click" IsEnabled="{Binding CanDeleteValue}"/>
+          </ContextMenu>
+        </DataGrid.ContextMenu>
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="{loc:Loc registry.column.name}" Binding="{Binding Name}" SortMemberPath="Name" Width="180"/>
+          <DataGridTextColumn Header="{loc:Loc registry.column.type}" Binding="{Binding Type}" SortMemberPath="Type" Width="110"/>
+          <DataGridTextColumn Header="{loc:Loc registry.column.data}" Binding="{Binding DesiredValue}" SortMemberPath="DesiredValue" Width="*"/>
+        </DataGrid.Columns>
+      </DataGrid>
+    </Grid>
+
+    <!-- Status bar: server/owner/scope, pane state and the permission requirement for another hive. -->
+    <Grid Grid.Row="3" ColumnDefinitions="*,Auto" Margin="2,8,0,0">
+      <StackPanel Spacing="3">
+        <TextBlock Text="{Binding TargetText}" TextTrimming="CharacterEllipsis"/>
+        <TextBlock Text="{Binding StatusText}" Opacity="0.7" TextTrimming="CharacterEllipsis"/>
+      </StackPanel>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center" Margin="12,0,0,0">
+        <TextBlock Text="{Binding ValueCountText}" Opacity="0.7"/>
+        <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding ShowPermissionNotice}">
+          <TextBlock Text="🔒"/>
+          <TextBlock Text="{Binding PermissionText}"/>
+        </StackPanel>
+      </StackPanel>
+    </Grid>
   </Grid>
 </UserControl>

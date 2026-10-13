@@ -93,10 +93,19 @@ internal static class BrowserChecks
             foreach (var name in new[] { "BrowserMenuButton", "SidebarButton" })
             {
                 var button = browser.FindControl<Button>(name)!;
-                var icon = button.GetVisualDescendants().OfType<PathIcon>().First(icon => icon.IsEffectivelyVisible);
+                // The compact bar drops the location toggle, so at the narrowest width there is no
+                // glyph on screen to measure; the menu button survives at every width.
+                if (!button.IsEffectivelyVisible) continue;
+                // The menu button draws its glyph as a Path, and the location toggle draws a Path in
+                // its bookmark face but a PathIcon once it switches to history: take whichever one is
+                // on screen rather than assuming the first PathIcon is the visible one.
+                var icon = button.GetVisualDescendants().OfType<Control>().First(control =>
+                    (control is Avalonia.Controls.Shapes.Path or PathIcon) && control.IsEffectivelyVisible);
                 var offset = icon.TranslatePoint(default, button)!.Value;
                 Check(Math.Abs(offset.X + icon.Bounds.Width / 2 - button.Bounds.Width / 2) < 1
-                    && Math.Abs(offset.Y + icon.Bounds.Height / 2 - button.Bounds.Height / 2) < 1, "More and collection icons are geometrically centered");
+                    && Math.Abs(offset.Y + icon.Bounds.Height / 2 - button.Bounds.Height / 2) < 1,
+                    $"More and collection icons are geometrically centered ({name}: icon={icon.Bounds.Width}x{icon.Bounds.Height}"
+                    + $" at {offset.X:F1},{offset.Y:F1} inside {button.Bounds.Width}x{button.Bounds.Height})");
             }
             var flyout = (MenuFlyout)menu.Flyout!;
             flyout.ShowAt(menu);

@@ -1393,7 +1393,8 @@ public partial class ServerCenterViewModel : ObservableObject
                          .ToArray())
                 certificates.Remove(existing);
             certificates.Add(leaf);
-            var bytes = certificates.Export(X509ContentType.Pkcs12, installation.CertificatePassword);
+            var bytes = certificates.Export(X509ContentType.Pkcs12, installation.CertificatePassword)
+                        ?? throw new InvalidOperationException("Exporting the certificate collection produced no PFX data.");
             await File.WriteAllBytesAsync(output, bytes, cancellationToken).ConfigureAwait(true);
             return output;
         }

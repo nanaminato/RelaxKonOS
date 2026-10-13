@@ -86,6 +86,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class SshFilesUiState(
+    val cacheEnabled: Boolean = false,
+    val showingCachedFiles: Boolean = false,
     val hostId: String = "",
     val path: String = "/",
     val entries: List<SshFileEntry> = emptyList(),
@@ -288,6 +290,8 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
                         DropdownMenu(expanded = fileActions, onDismissRequest = { fileActions = false }) {
                             DropdownMenuItem(text = { Text(stringResource(R.string.ssh_files_upload)) }, enabled = !state.unknown,
                                 onClick = { fileActions = false; pickUpload.launch(arrayOf("*/*")) })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.files_cache_enabled) + if (state.cacheEnabled) " ✓" else "") },
+                                onClick = { model.toggleFileListCache(); fileActions = false })
                             DropdownMenuItem(text = { Text(stringResource(R.string.ssh_files_sort)) },
                                 onClick = { fileActions = false; showSort = !showSort })
                             DropdownMenuItem(text = { Text(stringResource(if (state.selecting) R.string.ssh_files_selection_done else R.string.ssh_files_select_multiple)) },
@@ -317,6 +321,7 @@ private fun SshFilesContent(hostId: String, modifier: Modifier) {
                         TextButton(model::clearClipboard, enabled = !state.busy) { Text(stringResource(R.string.common_cancel)) }
                     }
                 }
+                if (state.showingCachedFiles) Text(stringResource(R.string.files_cache_refreshing))
                 LazyColumn(Modifier.fillMaxWidth().weight(1f), state = fileListState, verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                     items(state.visibleEntries, key = { it.path }) { entry ->
                         ListRow(

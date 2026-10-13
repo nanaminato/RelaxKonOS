@@ -5,12 +5,12 @@
     </PropertyGroup>
     <ItemGroup>
         <!-- Avalonia packages. Important: keep version in sync! -->
-        <!-- RoyalTerminal 0.5.2 requires Avalonia >= 12.1.1. -->
-        <PackageVersion Include="Avalonia" Version="12.1.3" />
-        <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.3" />
-        <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.3" />
-        <PackageVersion Include="Avalonia.Desktop" Version="12.1.3" />
-        <PackageVersion Include="Avalonia.Headless" Version="12.1.3" />
+        <!-- RoyalTerminal 0.6.3 requires Avalonia >= 12.1.3. -->
+        <PackageVersion Include="Avalonia" Version="12.1.4" />
+        <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+        <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.4" />
+        <PackageVersion Include="Avalonia.Desktop" Version="12.1.4" />
+        <PackageVersion Include="Avalonia.Headless" Version="12.1.4" />
         <!-- DataGrid is released separately; 12.1.2 is its current stable version. -->
         <PackageVersion Include="Avalonia.Controls.DataGrid" Version="12.1.2" />
         <PackageVersion Include="Avalonia.AvaloniaEdit" Version="12.0.0" />
@@ -28,6 +28,10 @@
         <!-- Server 端缩略图渲染。Six Labors Split License v1.0 第 2 条把「用于 Source Available 许可的软件」
              明确划入 Apache-2.0 分支，本项目即 Source-Available（见 THIRD_PARTY_NOTICES.md）。
              3.1.x 是首个提供 DecoderOptions.MaxFrames 的稳定线：动画图片只解一帧，内存上界才守得住。
+             **不要**升到 3.2.0 / 4.x：3.2.0 起包内多出一套 MSBuild 许可证校验
+             （SixLabors.ImageSharp.targets：No Six Labors license found / Release builds require a valid license），
+             会在 Server 与 PrivilegedHelper 上凭空引入警告，并要求为 Release 构建申请商业许可证，
+             与我们依赖的 Apache-2.0 分支互斥。3.1.12 是该线最后一个不带该校验的版本。
              纯托管、无原生依赖，Windows/Linux/macOS 行为一致。 -->
         <PackageVersion Include="SixLabors.ImageSharp" Version="3.1.12" />
 
@@ -47,14 +51,15 @@
         <PackageVersion Include="System.Management" Version="10.0.12" />
         <!-- Certificate manager: ACME v2 client, isolated behind RelaxKonOS.Server.Certificate. -->
         <PackageVersion Include="Webprofusion.Certify.ACME.Anvil" Version="3.3.3" />
-        <!-- RoyalTerminal 0.5.2 requires the .NET 10 package family. -->
+        <!-- RoyalTerminal 0.6.3 requires the .NET 10 package family. -->
         <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.12" />
 
         <!-- Terminal: RoyalTerminal 终端栈（Managed Avalonia terminal，含 TerminalControl + 默认会话组合） -->
-        <!-- 0.4.0 → 0.5.2：修复 Tab/光标渲染缺陷（0.4.1 PR #106 "Clear terminal selection when typing"） -->
-        <PackageVersion Include="RoyalApps.RoyalTerminal.Avalonia" Version="0.5.2" />
+        <!-- 0.4.0 → 0.5.2：修复 Tab/光标渲染缺陷（0.4.1 PR #106 "Clear terminal selection when typing"）
+             0.5.2 → 0.6.3：上游当前稳定线（Avalonia 依赖抬到 >= 12.1.3），客户端与服务端同步。 -->
+        <PackageVersion Include="RoyalApps.RoyalTerminal.Avalonia" Version="0.6.3" />
         <!-- Server 端 PTY 工厂（Windows ConPTY / Unix forkpty），Terminal Hub 哑中继用 -->
-        <PackageVersion Include="RoyalApps.RoyalTerminal.Terminal.Pty.Platform" Version="0.5.2" />
+        <PackageVersion Include="RoyalApps.RoyalTerminal.Terminal.Pty.Platform" Version="0.6.3" />
 
         <!-- Explorer: 移植自 Jaya 文件管理器（BSD-3）。Behaviors 用于双击导航等交互；Newtonsoft 保留 Jaya 配置模型序列化 -->
         <PackageVersion Include="Xaml.Behaviors.Avalonia" Version="12.0.7" />

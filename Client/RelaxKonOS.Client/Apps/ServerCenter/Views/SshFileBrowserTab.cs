@@ -11,6 +11,7 @@ internal sealed partial class SshFileBrowserTab : ObservableObject
     [NotifyPropertyChangedFor(nameof(Title))]
     [NotifyPropertyChangedFor(nameof(IconKind))]
     private string _path = ".";
+    public void RefreshLocalizedText() => OnPropertyChanged(nameof(Title));
     public string Title => Path == "." ? LocalizedText.Get("ssh_files.home")
         : Path == "/" ? "/" : Path.TrimEnd('/').Split('/').Last();
     public TreeNodeIconKind IconKind => Path == "/" ? TreeNodeIconKind.Drive : TreeNodeIconKind.Folder;

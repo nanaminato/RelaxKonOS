@@ -9,7 +9,8 @@ public sealed class TerminalSettingsClient : ITerminalSettingsClient
 {
     private readonly HttpClient _http;
 
-    public TerminalSettingsClient(HttpClient http) => _http = http;
+    private readonly RelaxKonOS.Client.Services.PresentationSettingsChanges _changes;
+    public TerminalSettingsClient(HttpClient http, RelaxKonOS.Client.Services.PresentationSettingsChanges changes) { _http = http; _changes = changes; }
 
     public Task<TerminalSettingsDto> GetAsync(
         string serverUrl, string accessToken, Guid workspaceId, CancellationToken ct = default) =>
@@ -31,7 +32,9 @@ public sealed class TerminalSettingsClient : ITerminalSettingsClient
         };
         using var response = await _http.SendAsync(request, ct);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<TerminalSettingsDto>(RelaxKonOSJsonOptions.Default, ct)
+        var saved = await response.Content.ReadFromJsonAsync<TerminalSettingsDto>(RelaxKonOSJsonOptions.Default, ct)
             ?? throw new InvalidOperationException("Server returned no terminal settings.");
+        if (method == HttpMethod.Put) _changes.Publish(new Uri(serverUrl).GetLeftPart(UriPartial.Authority), workspaceId, saved);
+        return saved;
     }
 }

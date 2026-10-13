@@ -13,6 +13,10 @@ namespace RelaxKonOS.Client.Services;
 /// 登出 → 重置为默认偏好。设置草稿与保存由独立 <c>WorkspacePreferencesEditor</c> 处理。</summary>
 public sealed class PreferencesSync : IDisposable
 {
+    private readonly ClientPresentationPreferences _presentation;
+    private readonly PresentationSettingsChanges _changes;
+    private string _syncMode = "event";
+    private bool _presentationActive;
     private readonly IAuthSession _session;
     private readonly IWorkspaceSettingsService _client;
     private readonly ShellSettings _settings;
@@ -24,6 +28,8 @@ public sealed class PreferencesSync : IDisposable
     private readonly object _loadGate = new();
     private Task _currentLoadTask = Task.CompletedTask;
     private string? _currentLoadScope;
+    private bool _desktopRetryScheduled;
+    private int _desktopRetrySeconds = 1;
 
     public PreferencesSync(
         IAuthSession session,
@@ -31,8 +37,11 @@ public sealed class PreferencesSync : IDisposable
         ShellSettings settings,
         DefaultAppRegistry registry,
         WallpaperService wallpapers,
-        WorkspacePreferencesEditor editor)
+        WorkspacePreferencesEditor editor, ClientPresentationPreferences presentation, PresentationSettingsChanges changes)
     {
+        _presentation = presentation; _changes = changes;
+        _presentation.Changed += OnPolicyChanged;
+        _changes.RecoveryRequested += OnRecoveryRequested;
         _session = session;
         _client = client;
         _settings = settings;
@@ -56,6 +65,7 @@ public sealed class PreferencesSync : IDisposable
                 _streamCancellation?.Cancel();
             }
             if (e.State != AuthSessionState.Unauthenticated) return;
+            if (_presentationActive) { _presentation.DeactivatePolicy(); _presentationActive = false; }
             _settings.Apply(WorkspacePreferencesDto.Default);
             _registry.SetMappings(WorkspacePreferencesDto.Default.DefaultApps);
         }
@@ -81,21 +91,57 @@ public sealed class PreferencesSync : IDisposable
             _streamCancellation?.Dispose();
             var cancellation = new CancellationTokenSource();
             _streamCancellation = cancellation;
-            _ = SettingsChangesStream.RunAsync(url, tokens.AccessToken, ws.Id,
+            if (!_presentationActive) { _presentation.ActivatePolicy(); _presentationActive = true; }
+            return _currentLoadTask = InitializeAsync(url, tokens.AccessToken, ws.Id, cancellation);
+
+        }
+    }
+
+    private void OnPolicyChanged(object? sender, EventArgs args)
+    {
+        if (_syncMode == _presentation.Synchronization.Mode) return;
+        _syncMode = _presentation.Synchronization.Mode;
+        lock (_loadGate) { _currentLoadScope = null; _streamCancellation?.Cancel(); }
+        _ = EnsureCurrentWorkspacePreferencesAsync();
+    }
+    private void OnRecoveryRequested(string origin, Guid workspace)
+    {
+        if (_session.State != AuthSessionState.Authenticated || _session.CurrentWorkspace?.Id != workspace || _session.EffectiveBaseUrl is not { } url || _session.Tokens is not { } tokens
+            || !string.Equals(new Uri(url).GetLeftPart(UriPartial.Authority), origin, StringComparison.OrdinalIgnoreCase)) return;
+        _ = LoadAsync(url, tokens.AccessToken, workspace, _streamCancellation?.Token ?? CancellationToken.None);
+    }
+    private async Task InitializeAsync(string url, string token, Guid workspace, CancellationTokenSource cancellation)
+    {
+        try { await _presentation.EnsureLoadedAsync(); }
+        catch { /* A failed presentation read does not erase the desktop's last valid settings. */ }
+        if (cancellation.IsCancellationRequested) return;
+        await LoadAsync(url, token, workspace, cancellation.Token);
+        if (cancellation.IsCancellationRequested || _presentation.Synchronization.Mode == "manual") return;
+        _ = ObserveAsync(url, token, workspace, cancellation.Token);
+    }
+    private async Task ObserveAsync(string url, string token, Guid workspace, CancellationToken cancellation)
+    {
+        try
+        {
+            await SettingsChangesStream.RunAsync(url, token, workspace,
                 async () =>
                 {
                     if (cancellation.IsCancellationRequested) return;
-                    await _session.GetAccessTokenAsync(TimeSpan.FromMinutes(1), ct: cancellation.Token);
+                    await LoadAsync(url, token, workspace, cancellation);
+                },
+                change =>
+                {
+                    if (!cancellation.IsCancellationRequested) _changes.Invalidate(new Uri(url).GetLeftPart(UriPartial.Authority), change);
+                    return Task.CompletedTask;
+                },
+                async () =>
+                {
                     if (cancellation.IsCancellationRequested) return;
-                    if (_session.Tokens?.AccessToken != tokens.AccessToken)
-                    {
-                        await EnsureCurrentWorkspacePreferencesAsync();
-                        return;
-                    }
-                    await LoadAsync(url, tokens.AccessToken, ws.Id, cancellation.Token);
-                }, cancellation.Token);
-            return _currentLoadTask = LoadAsync(url, tokens.AccessToken, ws.Id, cancellation.Token);
+                    await _session.GetAccessTokenAsync(TimeSpan.FromMinutes(1), ct: cancellation);
+                    if (!cancellation.IsCancellationRequested && _session.Tokens?.AccessToken != token) await EnsureCurrentWorkspacePreferencesAsync();
+                }, cancellation);
         }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
     }
 
     private async Task LoadAsync(string url, string accessToken, Guid workspaceId, CancellationToken cancellationToken)
@@ -108,6 +154,7 @@ public sealed class PreferencesSync : IDisposable
                 var readId = Guid.NewGuid();
                 LanguageSwitchDiagnostics.Record("sync.read.begin", new { readId, workspaceId, language = _settings.Language, hasDraft = _editor.HasDraft });
                 var prefs = await _client.GetAsync(url, accessToken, workspaceId, cancellationToken);
+                _desktopRetrySeconds = 1;
                 LanguageSwitchDiagnostics.Record("sync.read.received", new { readId, workspaceId, incoming = prefs.Language, prefs.Revision });
                 await Dispatcher.UIThread.InvokeAsync(async () =>
                 {
@@ -141,11 +188,30 @@ public sealed class PreferencesSync : IDisposable
                 if (_currentLoadScope == $"{url}\n{workspaceId}\n{accessToken}")
                     _currentLoadScope = null;
             }
+            ScheduleDesktopRetry(url, accessToken, workspaceId, cancellationToken);
         }
+    }
+
+    private async void ScheduleDesktopRetry(string url, string token, Guid workspace, CancellationToken cancellation)
+    {
+        if (_desktopRetryScheduled || cancellation.IsCancellationRequested || _presentation.Synchronization.Mode == "manual") return;
+        _desktopRetryScheduled = true;
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(_desktopRetrySeconds), cancellation);
+            _desktopRetrySeconds = Math.Min(60, _desktopRetrySeconds * 2);
+            _desktopRetryScheduled = false;
+            if (_session.State == AuthSessionState.Authenticated && _session.EffectiveBaseUrl == url && _session.CurrentWorkspace?.Id == workspace && _session.Tokens?.AccessToken == token)
+                await LoadAsync(url, token, workspace, cancellation);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { _desktopRetryScheduled = false; }
     }
 
     public void Dispose()
     {
+        _presentation.Changed -= OnPolicyChanged;
+        _changes.RecoveryRequested -= OnRecoveryRequested;
+        if (_presentationActive) _presentation.DeactivatePolicy();
         _session.StateChanged -= OnStateChanged;
         _streamCancellation?.Cancel();
         _streamCancellation?.Dispose();

@@ -14,6 +14,8 @@ public sealed class SqliteUserRepository : IUserRepository
     public User? FindByUsername(string username, HostPlatformKind platform)
         => _db.Users.AsNoTracking().FirstOrDefault(u => u.Username == username && u.Platform == platform);
 
+    public IReadOnlyList<User> List() => _db.Users.AsNoTracking().OrderBy(user => user.Username).ToArray();
+
     public User? FindById(Guid id)
         => _db.Users.AsNoTracking().FirstOrDefault(u => u.Id == id);
 

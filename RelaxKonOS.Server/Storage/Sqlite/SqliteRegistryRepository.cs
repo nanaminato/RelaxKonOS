@@ -6,6 +6,8 @@ namespace RelaxKonOS.Server.Storage.Sqlite;
 
 public sealed class SqliteRegistryRepository(RelaxKonOSDbContext db) : IRegistryRepository
 {
+    public event Action<RelaxKonOS.Protocol.Hubs.RegistrySettingsChanged>? Changed;
+    private void Notify(RegistryEntry entry) => Changed?.Invoke(new(entry.UserId, entry.Scope, entry.ScopeId, entry.Path, entry.Revision, entry.AppliedRevision));
     public IReadOnlyList<RegistryEntry> List(Guid userId, RegistryScope? scope = null)
     {
         var query = db.RegistryEntries.AsNoTracking().Where(x => x.UserId == userId);
@@ -33,6 +35,7 @@ public sealed class SqliteRegistryRepository(RelaxKonOSDbContext db) : IRegistry
             entry = existing;
         }
         db.SaveChanges();
+        Notify(entry);
         return entry;
     }
     public bool Delete(Guid userId, RegistryScope scope, Guid scopeId, string path, string name)
@@ -44,6 +47,33 @@ public sealed class SqliteRegistryRepository(RelaxKonOSDbContext db) : IRegistry
         return true;
     }
 
+    public RegistryEntry? Rename(Guid userId, RegistryScope scope, Guid scopeId, string path, string name, string newName, long expectedRevision)
+    {
+        var entry = Find(userId, scope, scopeId, path, name);
+        if (entry is null || entry.Revision != expectedRevision) return null;
+        if (newName != name && Find(userId, scope, scopeId, path, newName) is not null) return null;
+        var renamed = new RegistryEntry
+        {
+            UserId = entry.UserId, Scope = entry.Scope, ScopeId = entry.ScopeId, Path = entry.Path, Name = newName,
+            ValueType = entry.ValueType, ValueJson = entry.ValueJson, Revision = expectedRevision + 1, State = entry.State,
+            DesiredUpdatedAt = entry.DesiredUpdatedAt, DesiredUpdatedBy = entry.DesiredUpdatedBy,
+            AppliedRevision = entry.AppliedRevision, AppliedAt = entry.AppliedAt,
+            LastErrorCode = entry.LastErrorCode, LastErrorMessage = entry.LastErrorMessage,
+        };
+        using var transaction = db.Database.BeginTransaction();
+        db.RegistryEntries.Remove(entry);
+        db.SaveChanges();
+        db.Entry(entry).State = EntityState.Detached;
+        db.RegistryEntries.Add(renamed);
+        try { db.SaveChanges(); transaction.Commit(); Notify(renamed); return renamed; }
+        catch (DbUpdateException ex) when (ex.InnerException is Microsoft.Data.Sqlite.SqliteException { SqliteErrorCode: 19 })
+        {
+            transaction.Rollback();
+            db.Entry(renamed).State = EntityState.Detached;
+            return null;
+        }
+    }
+
     public RegistryEntry? CompareExchange(RegistryEntry entry, long expectedRevision)
     {
         if (expectedRevision == 0)
@@ -51,7 +81,7 @@ public sealed class SqliteRegistryRepository(RelaxKonOSDbContext db) : IRegistry
             if (db.RegistryEntries.AsNoTracking().Any(x => x.UserId == entry.UserId && x.Scope == entry.Scope
                 && x.ScopeId == entry.ScopeId && x.Path == entry.Path && x.Name == entry.Name)) return null;
             db.RegistryEntries.Add(entry);
-            try { db.SaveChanges(); return entry; }
+            try { db.SaveChanges(); Notify(entry); return entry; }
             catch (DbUpdateException ex) when (ex.InnerException is Microsoft.Data.Sqlite.SqliteException { SqliteErrorCode: 19 })
             {
                 db.Entry(entry).State = EntityState.Detached;
@@ -75,7 +105,9 @@ public sealed class SqliteRegistryRepository(RelaxKonOSDbContext db) : IRegistry
         var tracked = db.ChangeTracker.Entries<RegistryEntry>().FirstOrDefault(x => x.Entity.UserId == entry.UserId
             && x.Entity.Scope == entry.Scope && x.Entity.ScopeId == entry.ScopeId && x.Entity.Path == entry.Path && x.Entity.Name == entry.Name);
         if (tracked is not null) tracked.State = EntityState.Detached;
-        return Find(entry.UserId, entry.Scope, entry.ScopeId, entry.Path, entry.Name);
+        var saved = Find(entry.UserId, entry.Scope, entry.ScopeId, entry.Path, entry.Name);
+        if (saved is not null) Notify(saved);
+        return saved;
     }
     public void SeedSynced(RegistryEntry entry)
     {

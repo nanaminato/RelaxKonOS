@@ -39,6 +39,7 @@ internal static class SshFileBrowserLayoutChecks
             var window = manager.Create(new WindowCreateOptions(new AppId("test.ssh-files"), "SSH files", view, new CoreRect(10, 10, 960, 640)));
             view.AttachWindowHeader(window);
             CheckTabs();
+            CheckOptimizations();
             foreach (var style in new[] { SystemStyleIds.WindowsLike, SystemStyleIds.MacOsLike })
             foreach (var dark in new[] { false, true })
             foreach (var language in new[] { "zh-CN", "en-US", "ja-JP" })
@@ -50,6 +51,14 @@ internal static class SshFileBrowserLayoutChecks
                 window.View.Width = width;
                 window.Info.Bounds = new CoreRect(10, 10, width, 640);
                 Pump(); host.UpdateLayout(); Pump();
+                Check(view.FindControl<TextBlock>("StatusText")!.Text == string.Format(
+                    RelaxKonOS.Client.Localization.LocalizedText.Get("ssh_files.cut_ready", "{0} items ready to move"), 1),
+                    "SSH dynamic status retained the previous language.");
+                var rows = view.FindControl<DataGrid>("EntriesGrid")!;
+                var displayedText = rows.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text).ToArray();
+                Check(displayedText.Contains(RelaxKonOS.Client.Localization.LocalizedText.Get("ssh_files.folder", "Folder"))
+                    && displayedText.Contains(RelaxKonOS.Client.Localization.LocalizedText.Get("ssh_files.file", "File")),
+                    "SSH file type labels retained the previous language.");
                 var bar = view.FindControl<Border>("CommandToolbar")!;
                 Check(bar.Bounds.Height <= 50 && view.FindControl<Grid>("EntriesHost")!.Bounds.Height > 250,
                     "SSH tabs displaced the command bar or compressed the file list.");
@@ -102,12 +111,136 @@ internal static class SshFileBrowserLayoutChecks
             picker.NewTab();
             Check(picker.Tabs.Count == 0 && !picker.FindControl<Grid>("HeaderTabs")!.IsVisible,
                 "Package picker acquired multiple tabs.");
+            var pickedFixture = new SshFileEntry("release.zip", "/release.zip", false, false, 8, DateTime.Now);
+            typeof(SshFileBrowserView).GetField("_entries", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(picker, new[] { pickedFixture });
+            typeof(SshFileBrowserView).GetMethod("ApplyView", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(picker, null);
+            picker.FindControl<DataGrid>("EntriesGrid")!.SelectedItem = pickedFixture;
+            picker.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.F2 });
+            picker.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.X, KeyModifiers = KeyModifiers.Control });
+            picker.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Delete }); Pump();
+            Check(!pickedFixture.IsEditing && pickedFixture.CutOpacity == 1, "SSH package picker allowed rename/cut shortcuts.");
+            Check(!picker.CanTransferEntries(view, [pickedFixture], "/target", true), "SSH picker accepted a file drop.");
             Console.WriteLine("PASS: SSH file browser toolbar across styles, themes, languages and 5 widths; compact filtering, icon strokes and picker isolation.");
         }
         finally { host.Close(); settings.Apply(original); Pump(); }
 
         void Set(string name, object value) => typeof(SshFileBrowserView).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(view, value);
         void Invoke(string name) => typeof(SshFileBrowserView).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(view, null);
+
+        void CheckOptimizations()
+        {
+            Pump();
+            var originalEntries = (SshFileEntry[])typeof(SshFileBrowserView).GetField("_entries", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(view)!;
+            var grid = view.FindControl<DataGrid>("EntriesGrid")!;
+            var sort = view.FindControl<ComboBox>("SortBox")!;
+            var mode = view.FindControl<ComboBox>("ViewModeBox")!;
+            var tabs = view.FindControl<ListBox>("FolderTabs")!;
+            var scroller = view.FindControl<ScrollViewer>("TabScroller")!;
+            var add = view.FindControl<Button>("NewTabButton")!;
+            var left = view.FindControl<Button>("TabScrollLeft")!;
+            var right = view.FindControl<Button>("TabScrollRight")!;
+            Check(add.Parent is StackPanel row && ReferenceEquals(row.Parent, scroller)
+                && ReferenceEquals(row.Children[^1], add), "SSH + does not follow the tabs in their scroll row.");
+            Check(add.TranslatePoint(default, scroller) is { } origin && Math.Abs(origin.X - tabs.Bounds.Width - 4) < 1,
+                "SSH + is detached from the final tab in a short strip.");
+            var savedTabs = view.Tabs.ToArray();
+            for (var index = 0; index < 18; index++) view.NewTab();
+            Pump();
+            Check(view.TabContentWidth == 72 && left.IsVisible && right.IsVisible,
+                "Crowded SSH tabs did not stop at the Explorer floor and expose arrows.");
+            Check(scroller.Extent.Width > scroller.Viewport.Width && scroller.Offset.X > 0,
+                "Crowded SSH tabs did not scroll to their active tab.");
+            Check(add.TranslatePoint(default, scroller) is { } crowded
+                && crowded.X + add.Bounds.Width <= scroller.Viewport.Width + 1,
+                "The final SSH tab left + outside the viewport.");
+            var previewDirectory = Path.Combine(AppContext.BaseDirectory, "preview-qa", "ssh-files");
+            Directory.CreateDirectory(previewDirectory);
+            var tabHeader = view.FindControl<Grid>("HeaderTabs")!;
+            using (var rendered = new RenderTargetBitmap(new PixelSize((int)Math.Ceiling(tabHeader.Bounds.Width), (int)Math.Ceiling(tabHeader.Bounds.Height))))
+            {
+                rendered.Render(tabHeader);
+                rendered.Save(Path.Combine(previewDirectory, "crowded-tabs.png"), new PngBitmapEncoderOptions());
+            }
+            view.SwitchTab(view.Tabs[0]); Pump();
+            Check(scroller.Offset.X == 0 && !left.IsEnabled && right.IsEnabled,
+                "SSH first-tab selection did not reset scroll navigation.");
+            Check(view.ScrollTabsBy(1) && scroller.Offset.X > 0 && left.IsEnabled,
+                "SSH overflow scrolling did not update arrow states.");
+            Check(view.ScrollTabsBy(-1) && scroller.Offset.X == 0, "SSH tabs cannot scroll back.");
+            foreach (var tab in view.Tabs.Except(savedTabs).ToArray()) view.CloseTab(tab);
+            Pump();
+            Check(!left.IsVisible && !right.IsVisible && scroller.Offset.X == 0,
+                "SSH tab arrows remained after closing overflow tabs.");
+
+            var fixture = new[] {
+                new SshFileEntry("file10.txt", "/demo/file10.txt", false, false, 10, DateTime.Now),
+                new SshFileEntry("folder20", "/demo/folder20", true, false, 0, DateTime.Now),
+                new SshFileEntry("file2.txt", "/demo/file2.txt", false, false, 2, DateTime.Now),
+                new SshFileEntry("folder3", "/demo/folder3", true, false, 0, DateTime.Now) };
+            Set("_entries", fixture); view.SearchText = "";
+            sort.SelectedIndex = 0; view.FindControl<CheckBox>("DescendingBox")!.IsChecked = false;
+            Invoke("ApplyView"); Pump();
+            Check(grid.ItemsSource.Cast<SshFileEntry>().Select(entry => entry.Name)
+                .SequenceEqual(["folder3", "folder20", "file2.txt", "file10.txt"]),
+                "SSH names are not sorted naturally with folders first.");
+            grid.SelectedItem = fixture[2];
+            sort.SelectedIndex = 3; Pump();
+            Check(ReferenceEquals(grid.SelectedItem, fixture[2]), "SSH sorting discarded selection.");
+            view.FindControl<CheckBox>("DescendingBox")!.IsChecked = true; Pump();
+            Check(grid.ItemsSource.Cast<SshFileEntry>().Take(2).All(entry => entry.IsDirectory),
+                "Descending SSH sort moved folders behind files.");
+            view.FindControl<Button>("CutButton")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent)); Pump();
+            Check(fixture[2].CutOpacity < 1 && fixture[0].CutOpacity == 1, "SSH cut items did not fade individually.");
+            var session = (SshDesktopSession)typeof(SshFileBrowserView).GetField("_session", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(view)!;
+            var sibling = new SshFileBrowserView(session);
+            var clipboardProperty = typeof(SshFileBrowserView).GetProperty("_clipboard", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            Check(ReferenceEquals(clipboardProperty.GetValue(view), clipboardProperty.GetValue(sibling)),
+                "SSH windows in one session do not share the file clipboard.");
+            var isolated = new SshFileBrowserView(new SshDesktopSession(null!));
+            Check(!ReferenceEquals(clipboardProperty.GetValue(view), clipboardProperty.GetValue(isolated)),
+                "SSH clipboard crosses connection boundaries.");
+            Check(sibling.CanTransferEntries(view, [fixture[2]], "/elsewhere", true),
+                "SSH transfer between windows of the same session was rejected.");
+            view.FindControl<Button>("CopyButton")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent)); Pump();
+            Check(fixture[2].CutOpacity == 1, "Copy did not remove SSH cut dimming.");
+            foreach (var index in new[] { 0, 1, 2, 3 })
+            {
+                mode.SelectedIndex = index; Pump();
+                grid.SelectedItem = fixture[2];
+                view.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.F2 }); Pump();
+                var editor = view.GetVisualDescendants().OfType<TextBox>()
+                    .FirstOrDefault(text => text.Classes.Contains("inline-rename") && text.IsEffectivelyVisible
+                        && ReferenceEquals(text.DataContext, fixture[2]));
+                Check(fixture[2].IsEditing && editor is not null, $"SSH inline rename is missing in view {index}.");
+                Check(editor!.SelectionStart == 0 && editor.SelectionEnd == 5, "SSH rename did not preserve the file extension.");
+                fixture[2].RenameDraft = "bad/name";
+                editor.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter }); Pump();
+                Check(fixture[2].IsEditing, "Invalid SSH rename dismissed its editor.");
+                editor.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Escape }); Pump();
+                Check(!fixture[2].IsEditing && fixture[2].Name == "file2.txt", "Escape did not cancel SSH inline rename.");
+            }
+            grid.SelectedItem = fixture[2];
+            view.FindControl<Button>("CutButton")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            var sharedClipboard = typeof(SshFileBrowserView).GetField("_sessionClipboard", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(view)!;
+            sharedClipboard.GetType().GetMethod("NotifyMoved")!.Invoke(sharedClipboard, [new[] { fixture[2].Path }]); Pump();
+            Check(!grid.ItemsSource.Cast<SshFileEntry>().Any(entry => entry.Path == fixture[2].Path),
+                "Completed SSH move left the source file visible.");
+            Check(((System.Collections.IList)clipboardProperty.GetValue(sibling)!).Count == 0,
+                "Completed SSH move left stale cut entries in the shared clipboard.");
+            Check(view.CanTransferEntries(view, [fixture[2]], "/elsewhere", false), "Valid SSH move was rejected.");
+            Check(!view.CanTransferEntries(view, [fixture[1]], "/demo/folder20/child", true), "SSH allows a folder to be copied into itself.");
+            Check(!view.CanTransferEntries(view, [fixture[2]], "/demo", false), "SSH allows a no-op drag move.");
+            Check(view.CanTransferEntries(view, [fixture[2]], "/demo", true), "SSH rejects same-folder copy.");
+            var other = new SshFileBrowserView(new SshDesktopSession(null!));
+            Check(!other.CanTransferEntries(view, [fixture[2]], "/elsewhere", true), "SSH drag crosses connection boundaries.");
+            Set("_busy", true);
+            Check(!view.CanTransferEntries(view, [fixture[2]], "/elsewhere", true), "Busy SSH view accepts drops.");
+            Set("_busy", false);
+            mode.SelectedIndex = 0; sort.SelectedIndex = 0;
+            view.FindControl<CheckBox>("DescendingBox")!.IsChecked = false;
+            Set("_entries", originalEntries); view.SearchText = ""; Invoke("ApplyView"); Pump();
+            Console.WriteLine("PASS: SSH tab overflow, trailing +, natural sorting, selection retention, cut dimming, inline rename in four views and transfer guards.");
+        }
 
         void CheckTabs()
         {

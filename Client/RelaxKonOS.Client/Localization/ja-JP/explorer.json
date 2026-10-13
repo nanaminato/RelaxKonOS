@@ -3,13 +3,14 @@
     "Strings": {
         "explorer.open_in_new_tab": "新しいタブで開く",
         "explorer.all_tabs": "すべてのタブ",
+        "explorer.tab_scroll_left": "タブを左へスクロール",
+        "explorer.tab_scroll_right": "タブを右へスクロール",
         "explorer.new_tab": "新しいタブ (Ctrl+T)",
         "explorer.close_tab": "タブを閉じる (Ctrl+W)",
         "explorer.view.details": "詳細",
         "explorer.view.list": "一覧",
         "explorer.view.small_icons": "小アイコン",
         "explorer.view.large_icons": "大アイコン",
-
         "explorer.operations.download": "ホストにダウンロード",
         "explorer.login_required": "ファイル エクスプローラーを使用するにはサインインが必要です。\nこのアプリを起動する前に RelaxKonOS Server に接続してください。",
         "explorer.error.not_signed_in": "サインインしていないため、ファイルサービスを利用できません。",
@@ -218,6 +219,9 @@
         "explorer.operations.elevation_prompt": "この操作には管理者権限が必要です。認証は現在のセッションで5分間有効です。",
         "explorer.operations.elevation_access_prompt": "この場所を読み取るには管理者権限が必要です。認証は5分間有効で、フォルダー内のサブフォルダーとファイルの読み取りにも適用されます。",
         "explorer.operations.elevation_failed": "管理者アカウントまたはパスワードが正しくありません。",
-        "explorer.operations.elevation_not_administrator": "そのアカウントはサーバーに存在しますが管理者ではありません。管理者アカウントで再試行してください。"
+        "explorer.operations.elevation_not_administrator": "そのアカウントはサーバーに存在しますが管理者ではありません。管理者アカウントで再試行してください。",
+        "explorer.cache.enabled": "ファイル一覧をキャッシュ",
+        "explorer.cache.refreshing": "キャッシュを表示中。更新しています…",
+        "explorer.cache.refresh_failed": "キャッシュの更新に失敗しました: {0}"
     }
 }

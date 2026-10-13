@@ -29,6 +29,25 @@ namespace RelaxKonOS.Client.Apps.Explorer.ViewModels;
 /// + 此电脑节点（盘符懒加载）+ 网络占位节点。路径变化时由 <see cref="SyncTreeSelectionAsync"/> 反向同步树选中（防循环）。</summary>
 public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
 {
+    private readonly DirectoryListingCache<DirectoryDto> _listingCache = new();
+    private string? _listingScope;
+    public Func<string?>? FileListCacheScope { get; set; }
+    public void InvalidateFileListCache()
+    {
+        _listingGeneration++; _listingCache.Clear();
+        if (IsShowingCachedFiles) { _directoryEntries.Clear(); ApplyEntryFilter(); }
+        IsShowingCachedFiles = false;
+    }
+    private long _listingGeneration;
+    private Task _cacheRefreshTask = Task.CompletedTask;
+    [ObservableProperty] private bool _fileListCacheEnabled;
+    [ObservableProperty] private bool _isShowingCachedFiles;
+    partial void OnFileListCacheEnabledChanged(bool value)
+    {
+        var refresh = IsShowingCachedFiles && !value;
+        _listingGeneration++; _listingCache.Clear(); IsShowingCachedFiles = false;
+        if (refresh) _ = RefreshAsync();
+    }
     private readonly IExplorerClient _client;
     private readonly IRemoteFileClipboard _fileClipboard;
     private readonly ExplorerPickerOptions? _pickerOptions;
@@ -135,7 +154,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             _history.AddRange(tab.History);
             if (_history.Count == 0) _history.Add(AddressbarPath);
             _historyIndex = Math.Clamp(tab.HistoryIndex, 0, _history.Count - 1);
-            if (tab.Preferences is { } preferences) ApplyViewPreferences(preferences);
+            if (tab.Preferences is { } preferences) ApplyViewPreferences(preferences, applyCachePolicy: false);
             SearchText = tab.SearchText;
             RefreshHistoryCommands();
             return true;
@@ -232,9 +251,10 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         set { _saveViewPreferencesAsync = value; SaveDefaultViewCommand.NotifyCanExecuteChanged(); }
     }
     public bool CanSaveDefaultView => SaveViewPreferencesAsync is not null && !IsBusy;
-    public ExplorerViewPreferences ViewPreferences => new(SortField, SortDescending, ShowHiddenFiles, IsCompactView, ViewMode);
-    public void ApplyViewPreferences(ExplorerViewPreferences preferences)
+    public ExplorerViewPreferences ViewPreferences => new(SortField, SortDescending, ShowHiddenFiles, IsCompactView, ViewMode, FileListCacheEnabled);
+    public void ApplyViewPreferences(ExplorerViewPreferences preferences, bool applyCachePolicy = true)
     {
+        if (applyCachePolicy) FileListCacheEnabled = preferences.FileListCacheEnabled;
         SortField = Enum.IsDefined(preferences.SortField) ? preferences.SortField : ExplorerSortField.Name;
         SortDescending = preferences.SortDescending;
         ShowHiddenFiles = preferences.ShowHiddenFiles;
@@ -399,6 +419,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
 
     public void RefreshAfterOperation(FileOperationDto result)
     {
+        _listingGeneration++; _listingCache.Clear();
         // Navigation may still be loading a different directory: refresh its committed result too.
         if (!_isNavigating && !result.Items.Any(item =>
             ExplorerPath.IsAncestorOrEqual(item.SourcePath, AddressbarPath ?? string.Empty)
@@ -714,11 +735,22 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         RefreshHistoryCommands();
     }
 
-    private async Task<bool> NavigateToAsyncCore(string? path, bool batchRefresh = false, bool tabSwitch = false)
+    private async Task<bool> NavigateToAsyncCore(string? path, bool batchRefresh = false, bool tabSwitch = false, bool forceRefresh = false)
     {
         // Keep the committed location and listing intact until the server accepts navigation.
         // Ignore overlapping navigation while a request (including tree synchronization) is active.
         if ((_isSwitchingTabs && !tabSwitch) || _isNavigating || _isRenameCommitInProgress || (IsBatchActive && !batchRefresh)) return false;
+        var scope = FileListCacheScope?.Invoke();
+        if (scope != _listingScope) { _listingScope = scope; _listingCache.Clear(); }
+        var generation = ++_listingGeneration;
+        if (batchRefresh) _listingCache.Clear();
+        if (FileListCacheEnabled && !forceRefresh && _listingCache.TryGet(path ?? "\0roots", out var cached))
+        {
+            ApplyCachedDirectory(cached);
+            _cacheRefreshTask = RevalidateDirectoryAsync(path, generation);
+            return true;
+        }
+        IsShowingCachedFiles = false;
         _isNavigating = true;
         var wasBusy = IsBusy;
         IsBusy = true;
@@ -730,14 +762,19 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             if (path is null)
             {
                 var drives = GetNavigationDrives(await _client.GetDrivesAsync());
+                if (FileListCacheScope?.Invoke() != scope) return false;
                 loaded.AddRange(drives.Select(d => new FileSystemEntryDto(d.Path, d.Name, d.TotalSize,
                     FileSystemEntryType.Drive, null, null, null, false, false, null)));
+                if (FileListCacheEnabled) _listingCache.Put("\0roots", new DirectoryDto("", "", FileSystemEntryType.Drive,
+                    loaded.ToArray(), [], null, null), loaded.Count);
                 confirmedPath = null;
                 status = LocalizedText.Format("explorer.status.drives_ready", drives.Count);
             }
             else
             {
                 var dir = await _client.GetDirectoryAsync(path);
+                if (FileListCacheScope?.Invoke() != scope) return false;
+                if (FileListCacheEnabled) _listingCache.Put(dir.Path, dir, dir.Directories.Count + dir.Files.Count);
                 loaded.AddRange(dir.Directories);
                 if (!IsFolderPickerMode)
                     loaded.AddRange(dir.Files.Where(f => !IsFilePickerMode || MatchesSelectedFilter(f.Name, dir.Path))
@@ -779,6 +816,47 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         }
     }
 
+    private void ApplyCachedDirectory(DirectoryDto directory)
+    {
+        var confirmedPath = directory.Path.Length == 0 ? null : directory.Path;
+        var changed = !PathEquals(AddressbarPath, confirmedPath);
+        CancelRename(); _directoryEntries.Clear(); _directoryEntries.AddRange(directory.Directories);
+        if (!IsFolderPickerMode) _directoryEntries.AddRange(directory.Files
+            .Where(file => !IsFilePickerMode || MatchesSelectedFilter(file.Name, directory.Path))
+            .Select(file => new FileSystemEntryDto(file.Path, file.Name, file.Size, FileSystemEntryType.File,
+                file.Created, file.Modified, file.Accessed, file.IsHidden, file.IsSystem, file.MimeType)));
+        AddressbarPath = AddressInput = confirmedPath; IsEditingAddress = false;
+        if (changed) SearchText = string.Empty;
+        ApplyEntryFilter(); UpdatePickerEntryName(); UpdateBreadcrumbs();
+        IsShowingCachedFiles = true;
+        StatusText = LocalizedText.Ref("explorer.cache.refreshing");
+    }
+
+    private async Task RevalidateDirectoryAsync(string? path, long generation)
+    {
+        var scope = _listingScope;
+        try
+        {
+            var directory = path is not null ? await _client.GetDirectoryAsync(path)
+                : new DirectoryDto("", "", FileSystemEntryType.Drive,
+                    GetNavigationDrives(await _client.GetDrivesAsync()).Select(drive => new FileSystemEntryDto(drive.Path, drive.Name,
+                        drive.TotalSize, FileSystemEntryType.Drive, null, null, null, false, false, null)).ToArray(), [], null, null);
+            if (_disposed || generation != _listingGeneration || FileListCacheScope?.Invoke() != scope || !FileListCacheEnabled || IsBusy || IsRenaming || IsBatchActive) return;
+            _listingCache.Put(path ?? "\0roots", directory, directory.Directories.Count + directory.Files.Count);
+            ApplyCachedDirectory(directory); IsShowingCachedFiles = false;
+            StatusText = path is null ? LocalizedText.Ref("explorer.status.drives_ready", directory.Directories.Count)
+                : LocalizedText.Ref("explorer.status.directory_ready", directory.Directories.Count, directory.Files.Count);
+            await SyncTreeSelectionAsync(path is null ? null : directory.Path);
+        }
+        catch (Exception error)
+        {
+            if (_disposed || generation != _listingGeneration || FileListCacheScope?.Invoke() != scope) return;
+            if (error is RelaxKonOSAuthException { Status: 401 or 403 })
+            { _listingCache.Clear(); _directoryEntries.Clear(); ApplyEntryFilter(); IsShowingCachedFiles = false; }
+            StatusText = LocalizedText.Ref("explorer.cache.refresh_failed", error.Message);
+        }
+    }
+
     // ---- 树选中同步（防循环） ----
 
     /// <summary>路径变化后反向同步树选中：找到对应节点，必要时逐级懒加载祖先，最终设 SelectedNode。
@@ -793,7 +871,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         try
         {
             var node = await FindAndExpandNodeAsync(path);
-            if (node is not null && !ReferenceEquals(SelectedNode, node))
+            if (PathEquals(AddressbarPath, path) && node is not null && !ReferenceEquals(SelectedNode, node))
                 SelectedNode = node;   // 触发 OnSelectedNodeChanged，但被 _isSyncingTreeSelection 抑制
         }
         finally { _isSyncingTreeSelection = false; }
@@ -1050,7 +1128,10 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
 
     [RelayCommand]
     private async Task RefreshAsync()
-        => await NavigateToAsyncCore(_history.Count > 0 ? _history[_historyIndex] : AddressbarPath);
+    {
+        _listingCache.Clear();
+        await NavigateToAsyncCore(_history.Count > 0 ? _history[_historyIndex] : AddressbarPath, forceRefresh: true);
+    }
 
     /// <summary>地址栏回车跳转。</summary>
     public async Task AddressbarGoAsync(string? path)
@@ -1783,6 +1864,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _disposed = true;
+        _listingGeneration++; _listingCache.Clear();
         _fileClipboard.Changed -= FileClipboard_Changed;
     }
 

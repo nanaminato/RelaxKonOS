@@ -26,7 +26,7 @@
 
 ## 进程查询与实例终止
 
-`ProcessSampler` 只在查询时枚举进程，缓存周期 5 秒，CPU 相对整机计算。差分键为 `(PID, StartTime)`，长时间无查询后重建基线。返回 `items`、`totalCount` 与 `sampledAt`；每项包含 id、name、cpuPercent、memoryBytes、userName、startTime、threadCount、parentProcessId。客户端按父 PID 组装可展开进程树，过滤时保留匹配项的祖先，并逐页取齐快照以免分页拆散树；跨页采样时间或总数变化时重试一次，持续变化时明确失败。折叠节点的后代保持隐藏，仅脱离正常根节点的循环关系使用兜底根节点。无法读取启动时间时 startTime 为 null，客户端禁用终止和图标查询。Linux User 模式只允许宿主执行 UID 所属进程。默认普通模式使用 Server 当前 OS 账户读取和终止；管理员模式通过权限助手读取全机信息、图标并终止已确认实例。两个模式分别缓存并维护 CPU 基线；助手返回累计 CPU ticks，由长生命周期 Server 差分计算，兼容 Linux 一次性助手。管理员模式的助手不可用、协议不匹配或快照无效时返回 503，不静默降级。部署时 Server 与助手必须同时更新至当前协议并重启。
+`ProcessSampler` 只在查询时枚举进程，缓存周期 5 秒，CPU 相对整机计算。差分键为 `(PID, StartTime)`，长时间无查询后重建基线。返回 `items`、`totalCount` 与 `sampledAt`；每项包含 id、name、cpuPercent、memoryBytes、userName、startTime、threadCount、parentProcessId。桌面客户端仅将同名、同属主且父实例时间有效的父子进程组成默认折叠的进程组，组内后代平铺为一层，避免系统父进程形成巨大的展开树；名称显示组内进程数，资源列与结束操作仍针对该行的单个实例。过滤时保留匹配项的组首行，并临时展示匹配成员，不修改原有折叠状态，并逐页取齐快照以免分页拆散树；跨页采样时间或总数变化时重试一次，持续变化时明确失败。折叠节点的后代保持隐藏，仅脱离正常根节点的循环关系使用兜底根节点。无法读取启动时间时 startTime 为 null，客户端禁用终止和图标查询。Linux User 模式只允许宿主执行 UID 所属进程。默认普通模式使用 Server 当前 OS 账户读取和终止；管理员模式通过权限助手读取全机信息、图标并终止已确认实例。两个模式分别缓存并维护 CPU 基线；助手返回累计 CPU ticks，由长生命周期 Server 差分计算，兼容 Linux 一次性助手。管理员模式的助手不可用、协议不匹配或快照无效时返回 503，不静默降级。部署时 Server 与助手必须同时更新至当前协议并重启。
 
 进程图标单独按 `(PID, StartTime)` 请求，避免进程列表轮询反复传输图像。客户端仅在虚拟化列表需要显示该行时请求；Server 验证当前实例并按可执行文件缓存图标。Windows 在选定执行上下文中核对同一进程句柄的创建时间，并使用 QueryFullProcessImageName 读取可执行文件路径、提取 PNG；Ubuntu 从匹配的 `.desktop` 项查找 PNG/SVG 图标。图标缺失、权限不足或不支持的图像格式返回 404，客户端使用类别图标回退。
 
@@ -46,7 +46,7 @@ Server 通过 `ProcessInstanceTermination` 校验并终止单个实例。Windows
 
 回执的四个字段均为当前契约：`success`、`requiresElevation`、`problemCode`、`error`（可空）。只有观察到目标退出才返回 `success=true`，同时 requiresElevation=false、problemCode 为空。权限不足返回 `process.permission_denied` 与 requiresElevation=true；未确认退出返回 `process.termination_unverified`；缺失/变化/无法验证实例分别明确失败。HTTP 200 的失败回执不能当作操作成功。
 
-查询和图标请求使用 elevated 布尔查询参数，终止正文使用 elevated 字段；默认 false。管理员请求每次以 ProcessManage 能力和 host/processes 目标检查授权，检查先于缓存、图标读取和终止。切换只探测读取并复用统一提权入口；Windows 11 User 模式（包括远程连接）按既有当前账户/owner-device 身份免密码授权。Windows Server、Linux 和 Windows 10/11 System 模式的普通账户需要管理员密码；已经系统认证的管理员/root 或仍有效的精确授权无需重复密码。普通模式即使当前账户是管理员也不自动切换。助手协议 v1.1 使用 ProcessSnapshot、ProcessIcon、ProcessTerminate 固定操作，不开放通用命令执行。客户端在确认时固定原登录会话、PID、启动时间，失败或传输结果未知不记录成功、不自动重放；重新读取列表用于核实。成功/明确回执后使进程缓存失效并刷新。未知响应不意味着进程一定还在运行。
+查询和图标请求使用 elevated 布尔查询参数，终止正文使用 elevated 字段；默认 false。管理员请求每次以 ProcessManage 能力和 host/processes 目标检查授权，检查先于缓存、图标读取和终止。切换只探测读取并复用统一提权入口；桌面结束进程在普通模式收到明确 RequiresElevation 回执后，自动通过统一提升入口以管理员权限重试原 PID/启动时间实例一次，不切换整个列表的模式。管理员模式的结束命令也经过统一提升入口，授权过期且服务端明确拒绝时可重新授权；取消提升、会话变化或传输结果未知均不重放结束操作。失败和未知结果后刷新列表核实状态；Windows 11 User 模式（包括远程连接）按既有当前账户/owner-device 身份免密码授权。Windows Server、Linux 和 Windows 10/11 System 模式的普通账户需要管理员密码；已经系统认证的管理员/root 或仍有效的精确授权无需重复密码。普通模式即使当前账户是管理员也不自动切换。助手协议 v1.1 使用 ProcessSnapshot、ProcessIcon、ProcessTerminate 固定操作，不开放通用命令执行。客户端在确认时固定原登录会话、PID、启动时间，失败或传输结果未知不记录成功、不自动重放；重新读取列表用于核实。成功/明确回执后使进程缓存失效并刷新。未知响应不意味着进程一定还在运行。
 
 原生语义依据：[Windows GetProcessTimes](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getprocesstimes)、[Linux pidfd_open](https://www.man7.org/linux/man-pages/man2/pidfd_open.2.html)、[pidfd_send_signal](https://www.man7.org/linux/man-pages/man2/pidfd_send_signal.2.html)。
 

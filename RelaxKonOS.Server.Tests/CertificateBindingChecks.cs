@@ -64,7 +64,7 @@ internal static class CertificateBindingChecks
         TestAssert.Assert(facts.HttpsConfigured && facts.FingerprintSha256!.Equals(metadata.FingerprintSha256!.Replace(":", ""), StringComparison.OrdinalIgnoreCase), "GET used metadata rather than deployed certificate fingerprint.");
         TestAssert.Assert(!(await manager.GetAsync(created.CertificateId!.Value, CancellationToken.None))!.Renewal!.AutomaticEnabled,
             "Self-signed certificate was shown as automatically renewable.");
-        await VerifyReplacementEndpointAsync(unprivilegedManager, ledger, id, created.CertificateId!.Value);
+        await VerifyReplacementEndpointAsync(unprivilegedManager, ledger, id, created.CertificateId!.Value, environment);
         var automaticRenewal = await ledger.StartAsync("renewal-history-failure", id, "renew", "renewal-worker",
             _ => Task.FromResult("certificate.validation_failed"), CancellationToken.None);
         await TestOperations.WaitForCertificateOperationAsync(ledger, automaticRenewal.OperationId);
@@ -105,7 +105,7 @@ internal static class CertificateBindingChecks
         TestAssert.Assert(replay.OperationId == deployed.OperationId, "Lost deployment response could not recover original operation after facts changed.");
         TestAssert.Assert(registry.Select("one.example.test") == wildcard, "Deleted exact binding did not fall back to the surviving default.");
     }
-    private static async Task VerifyReplacementEndpointAsync(ICertificateManager manager, CertificateOperationStore ledger, Guid id, Guid selfSignedId)
+    private static async Task VerifyReplacementEndpointAsync(ICertificateManager manager, CertificateOperationStore ledger, Guid id, Guid selfSignedId, IHostEnvironment environment)
     {
         var mode = new UploadSessionChecks.SystemMode();
         var elevations = new HostElevationSessionStore(new TestHostAccountPrivilegeService(), mode, new HostElevationSessionState());
@@ -119,6 +119,10 @@ internal static class CertificateBindingChecks
             new System.Text.Json.Serialization.JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
         builder.Services.AddSingleton<ICertificateManager>(manager);
         builder.Services.AddSingleton(ledger);
+        // MapCertificateEndpoints 的续期扫描端点取 CertificateRenewalRunRepository。这个类型没有注册时
+        // ASP.NET Core 会把该复杂类型参数按「请求体」推断，而 MapGet 不允许推断请求体，
+        // 于是 AuthorizationPolicyCache 在枚举端点元数据时就抛 InvalidOperationException。生产的 DI 里注册过。
+        builder.Services.AddSingleton(new RelaxKonOS.Server.Certificate.CertificateRenewalRunRepository(environment, ledger));
         builder.Services.AddSingleton<IHostElevationSessionStore>(elevations);
         builder.Services.AddSingleton<IServerModeResolver>(mode);
         await using var app = builder.Build();

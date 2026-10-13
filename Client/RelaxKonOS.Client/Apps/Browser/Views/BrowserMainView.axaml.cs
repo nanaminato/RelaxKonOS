@@ -14,8 +14,28 @@ namespace RelaxKonOS.Client.Apps.Browser.Views;
 /// <summary>Bridges browser navigation to the view-model and selects the supported native host per platform.</summary>
 public partial class BrowserMainView : UserControl
 {
-    public static readonly StyledProperty<double> TabContentWidthProperty = AvaloniaProperty.Register<BrowserMainView, double>(nameof(TabContentWidth), 210);
+    /// <summary>The widest a tab may become; past this a browser tab stops growing.</summary>
+    private const double MaximumTabWidth = 210;
+    /// <summary>The narrowest a tab may become: one icon slot; the selected tab uses it for close.</summary>
+    private const double MinimumTabWidth = 18;
+    /// <summary>Width of each icon or close target slot.</summary>
+    private const double TabMarkSlot = 18;
+    private const double TabMarkSpacing = 6;
+    /// <summary>Below this a tab has no room for a title and shows its mark alone.</summary>
+    private const double TabTitleFloor = 60;
+    /// <summary>Per-tab chrome: the item's margin plus its content padding.</summary>
+    private const double TabItemChrome = 18;
+    /// <summary>The new-tab command plus the gap before it, reserved so + stays inside the window.</summary>
+    private const double TabRowChrome = 34;
+    /// <summary>Distance one wheel notch travels along a strip that only scrolls sideways.</summary>
+    private const double TabWheelStep = 60;
+
+    public static readonly StyledProperty<double> TabContentWidthProperty = AvaloniaProperty.Register<BrowserMainView, double>(nameof(TabContentWidth), MaximumTabWidth);
     public double TabContentWidth { get => GetValue(TabContentWidthProperty); private set => SetValue(TabContentWidthProperty, value); }
+    public static readonly StyledProperty<double> TabTitleWidthProperty = AvaloniaProperty.Register<BrowserMainView, double>(nameof(TabTitleWidth));
+    public double TabTitleWidth { get => GetValue(TabTitleWidthProperty); private set => SetValue(TabTitleWidthProperty, value); }
+    public static readonly StyledProperty<bool> IsTabTitleVisibleProperty = AvaloniaProperty.Register<BrowserMainView, bool>(nameof(IsTabTitleVisible), true);
+    public bool IsTabTitleVisible { get => GetValue(IsTabTitleVisibleProperty); private set => SetValue(IsTabTitleVisibleProperty, value); }
     public static readonly StyledProperty<bool> IsCompactNavigationProperty = AvaloniaProperty.Register<BrowserMainView, bool>(nameof(IsCompactNavigation));
     public bool IsCompactNavigation { get => GetValue(IsCompactNavigationProperty); private set => SetValue(IsCompactNavigationProperty, value); }
 
@@ -57,12 +77,16 @@ public partial class BrowserMainView : UserControl
     public BrowserMainView()
     {
         InitializeComponent();
-        TabStrip.SizeChanged += (_, e) =>
+        // The strip no longer measures itself: it is exactly as wide as its tabs, and the scroller
+        // around it is what those tabs divide between them.
+        TabScroller.SizeChanged += (_, e) =>
         {
-            TabContentWidth = Math.Clamp(e.NewSize.Width - 18, 46, 210);
-            Avalonia.Threading.Dispatcher.UIThread.Post(() => { if (TabStrip.SelectedItem is { } tab) TabStrip.ScrollIntoView(tab); }, Avalonia.Threading.DispatcherPriority.Loaded);
+            UpdateTabLayout(e.NewSize.Width);
+            Avalonia.Threading.Dispatcher.UIThread.Post(ScrollActiveTabIntoView, Avalonia.Threading.DispatcherPriority.Background);
         };
-        TabStrip.SelectionChanged += (_, _) => { if (TabStrip.SelectedItem is { } tab) TabStrip.ScrollIntoView(tab); };
+        TabStrip.SelectionChanged += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(ScrollActiveTabIntoView, Avalonia.Threading.DispatcherPriority.Background);
+        // Tunnelling on the strip's own scroller keeps the wheel inside the tab row.
+        TabScroller.AddHandler(PointerWheelChangedEvent, OnTabStripWheel, RoutingStrategies.Tunnel);
         BrowserDiagnostics.Record(_useExternalBrowser
             ? "BrowserMainView initialized; Linux will use the system browser process."
             : "BrowserMainView initialized; creating embedded NativeWebView.");
@@ -74,6 +98,59 @@ public partial class BrowserMainView : UserControl
         {
             if (ViewModel is { } model) UpdateSidebarLayout(model.IsSidebarVisible);
         };
+    }
+
+    /// <summary>
+    /// Gives every tab the same share of the strip. A browser answers one more tab by narrowing all
+    /// of them rather than by pushing the + off the row; only once a tab is down to its own mark
+    /// does the strip start scrolling, and the tab list stays the way to reach what scrolled away.
+    /// </summary>
+    private void UpdateTabLayout(double available)
+    {
+        // The view model's tab list is the authority: a ListBox applies items a beat behind a
+        // collection change, and dividing the row by a stale count would leave the last tab short.
+        var count = ViewModel?.Tabs.Count ?? TabStrip.ItemCount;
+        // The share is floored: item measurement rounds every tab up to whole pixels, so a share
+        // taken from an unrounded division would walk the + past the end of the row.
+        var share = count > 0 && available > 0
+            ? Math.Floor(Math.Max(0, available - TabRowChrome) / count) - TabItemChrome
+            : MaximumTabWidth;
+        TabContentWidth = Math.Clamp(share, MinimumTabWidth, MaximumTabWidth);
+        IsTabTitleVisible = TabContentWidth >= TabTitleFloor;
+        TabTitleWidth = Math.Max(0, TabContentWidth - 2 * TabMarkSlot - 2 * TabMarkSpacing);
+    }
+
+    /// <summary>Keeps the tab the user is on inside the strip's window, however it was chosen.</summary>
+    private void ScrollActiveTabIntoView()
+    {
+        if (TabStrip.SelectedItem is not { } tab || TabStrip.ContainerFromItem(tab) is not Control container) return;
+        var extent = TabScroller.Extent.Width;
+        var viewport = TabScroller.Viewport.Width;
+        if (extent <= viewport || container.TranslatePoint(default, TabScroller) is not { } origin) return;
+        var offset = TabScroller.Offset.X;
+        // The + rides after the last tab, so standing on that tab has to bring the row's own end
+        // into the window too; scrolling to the tab's edge alone would leave the + just past it.
+        var count = ViewModel?.Tabs.Count ?? TabStrip.ItemCount;
+        if (count > 0 && ReferenceEquals(TabStrip.ContainerFromIndex(count - 1), container)) offset = extent;
+        else if (origin.X < 0) offset += origin.X;
+        else if (origin.X + container.Bounds.Width > viewport) offset += origin.X + container.Bounds.Width - viewport;
+        TabScroller.Offset = TabScroller.Offset.WithX(Math.Clamp(offset, 0, extent - viewport));
+    }
+
+    /// <summary>Scrolls the strip by whole wheel notches; reports whether it actually moved.</summary>
+    internal bool ScrollTabsBy(double notches)
+    {
+        var range = TabScroller.Extent.Width - TabScroller.Viewport.Width;
+        if (range <= 0) return false;
+        var next = Math.Clamp(TabScroller.Offset.X - notches * TabWheelStep, 0, range);
+        if (next == TabScroller.Offset.X) return false;
+        TabScroller.Offset = TabScroller.Offset.WithX(next);
+        return true;
+    }
+
+    private void OnTabStripWheel(object? sender, PointerWheelEventArgs e)
+    {
+        if (ScrollTabsBy(e.Delta.Y)) e.Handled = true;
     }
 
     /// <summary>Moves keyboard focus to the address field and selects the current address.</summary>
@@ -175,6 +252,7 @@ public partial class BrowserMainView : UserControl
             return;
 
         _observedViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        _observedViewModel.Tabs.CollectionChanged -= TabsChanged;
         _observedViewModel = null;
     }
 
@@ -213,14 +291,27 @@ public partial class BrowserMainView : UserControl
             return;
 
         if (_observedViewModel is not null)
+        {
             _observedViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+            _observedViewModel.Tabs.CollectionChanged -= TabsChanged;
+        }
 
         _observedViewModel = viewModel;
         if (viewModel is null)
             return;
 
         viewModel.PropertyChanged += ViewModel_PropertyChanged;
+        // Every tab that arrives or leaves re-divides the row, so the share is recomputed from the
+        // tab count rather than from the strip's own size.
+        viewModel.Tabs.CollectionChanged += TabsChanged;
         UpdateSidebarLayout(viewModel.IsSidebarVisible);
+        UpdateTabLayout(TabScroller.Bounds.Width);
+    }
+
+    private void TabsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        UpdateTabLayout(TabScroller.Bounds.Width);
+        Avalonia.Threading.Dispatcher.UIThread.Post(ScrollActiveTabIntoView, Avalonia.Threading.DispatcherPriority.Background);
     }
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)

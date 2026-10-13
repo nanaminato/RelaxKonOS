@@ -11,8 +11,12 @@ public static class RegistrySchema
 {
     public static IReadOnlyList<RegistrySchemaDefinition> Definitions { get; } =
     [
-        new(RegistryScope.Workspace, WorkspaceConfigurationRegistry.TerminalPath, "(Default)", RegistryValueType.Json, RegistryApplyMode.RestartApplication, "relaxkonos.terminal"),
+        new(RegistryScope.Device, ClientPresentationPaths.Terminal, "(Default)", RegistryValueType.Json, RegistryApplyMode.Immediate),
+        new(RegistryScope.Device, ClientPresentationPaths.Synchronization, "(Default)", RegistryValueType.Json, RegistryApplyMode.Immediate),
+        new(RegistryScope.Device, ClientPresentationPaths.Registry, "(Default)", RegistryValueType.Json, RegistryApplyMode.Immediate),
+        new(RegistryScope.Workspace, WorkspaceConfigurationRegistry.TerminalPath, "(Default)", RegistryValueType.Json, RegistryApplyMode.Immediate),
         new(RegistryScope.Workspace, WorkspaceConfigurationRegistry.DesktopPath, "(Default)", RegistryValueType.Json, RegistryApplyMode.Immediate),
+        new(RegistryScope.Workspace, WorkspaceConfigurationRegistry.ExplorerPath, "(Default)", RegistryValueType.Json, RegistryApplyMode.RestartApplication, "relaxkonos.explorer"),
         new(RegistryScope.Workspace, WorkspaceConfigurationRegistry.BrowserPath, "(Default)", RegistryValueType.Json, RegistryApplyMode.RestartApplication, "relaxkonos.browser"),
         new(RegistryScope.Workspace, WorkspaceConfigurationRegistry.WindowManagerPath, "(Default)", RegistryValueType.Json, RegistryApplyMode.Immediate),
     ];

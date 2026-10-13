@@ -11,9 +11,13 @@ namespace RelaxKonOS.Server.ConfigurationRegistry;
 /// The configuration registry's authoritative runtime copy. Reads and mutations are served
 /// from memory; SQLite is a durable, delayed write-behind copy used for restart recovery.
 /// </summary>
-public sealed class CachedSqliteRegistryRepository(IDbContextFactory<RelaxKonOSDbContext> dbFactory) : IRegistryRepository, IHostedService
+public sealed class CachedSqliteRegistryRepository(IDbContextFactory<RelaxKonOSDbContext> dbFactory, RelaxKonOS.Server.Settings.ServerRuntimeSettingsStore? runtime = null) : IRegistryRepository, IHostedService
 {
-    private static readonly TimeSpan FlushInterval = TimeSpan.FromSeconds(5);
+    public event Action<RelaxKonOS.Protocol.Hubs.RegistrySettingsChanged>? Changed;
+    private readonly SemaphoreSlim _flushSignal = new(0, 1);
+    private void SignalFlush() { if (_flushSignal.CurrentCount == 0) _flushSignal.Release(); }
+    private void Notify(RegistryEntry entry) => Changed?.Invoke(new(entry.UserId, entry.Scope, entry.ScopeId, entry.Path, entry.Revision, entry.AppliedRevision));
+    private RelaxKonOS.Protocol.Registry.ServerRuntimeSettings Runtime => runtime?.Current.Settings ?? RelaxKonOS.Protocol.Registry.ServerRuntimeSettings.Default;
     private readonly object _gate = new();
     private readonly ConcurrentDictionary<EntryKey, RegistryEntry> _entries = new();
     private readonly ConcurrentDictionary<KeyKey, RegistryKey> _keys = new();
@@ -51,7 +55,7 @@ public sealed class CachedSqliteRegistryRepository(IDbContextFactory<RelaxKonOSD
             try { await _flushLoop; }
             catch (OperationCanceledException) { }
         }
-        await FlushAsync(cancellationToken);
+        if (!await FlushAsync(cancellationToken)) throw new InvalidOperationException("Registry shutdown persistence failed.");
         _stopping.Dispose();
     }
 
@@ -79,6 +83,8 @@ public sealed class CachedSqliteRegistryRepository(IDbContextFactory<RelaxKonOSD
             _entries[key] = saved;
             _deleted.Remove(key);
             _dirty.Add(key);
+            SignalFlush();
+            Notify(saved);
             return Copy(saved);
         }
     }
@@ -101,7 +107,37 @@ public sealed class CachedSqliteRegistryRepository(IDbContextFactory<RelaxKonOSD
             if (!_entries.TryRemove(key, out _)) return false;
             _dirty.Remove(key);
             _deleted.Add(key);
+            SignalFlush();
             return true;
+        }
+    }
+
+    public RegistryEntry? Rename(Guid userId, RegistryScope scope, Guid scopeId, string path, string name, string newName, long expectedRevision)
+    {
+        var source = new EntryKey(userId, scope, scopeId, path, name);
+        var target = new EntryKey(userId, scope, scopeId, path, newName);
+        lock (_gate)
+        {
+            if (!_entries.TryGetValue(source, out var current) || current.Revision != expectedRevision) return null;
+            if (source != target && _entries.ContainsKey(target)) return null;
+            var saved = Copy(current);
+            saved.Name = newName;
+            saved.Revision = current.Revision + 1;
+            // Same delayed-persistence contract as Upsert: the new name is pending until flushed.
+            saved.State = RegistryEntryState.PendingSync;
+            saved.AppliedRevision = null;
+            saved.AppliedAt = null;
+            saved.LastErrorCode = null;
+            saved.LastErrorMessage = null;
+            _entries.TryRemove(source, out _);
+            _dirty.Remove(source);
+            _deleted.Add(source);
+            _entries[target] = saved;
+            _deleted.Remove(target);
+            _dirty.Add(target);
+            SignalFlush();
+            Notify(saved);
+            return Copy(saved);
         }
     }
 
@@ -126,6 +162,7 @@ public sealed class CachedSqliteRegistryRepository(IDbContextFactory<RelaxKonOSD
             _keys[keyId] = saved;
             _deletedKeys.Remove(keyId);
             _dirtyKeys.Add(keyId);
+            SignalFlush();
             return Copy(saved);
         }
     }
@@ -152,22 +189,37 @@ public sealed class CachedSqliteRegistryRepository(IDbContextFactory<RelaxKonOSD
                 _dirtyKeys.Remove(key);
                 _deletedKeys.Add(key);
             }
+            SignalFlush();
             return true;
         }
     }
 
     private async Task FlushLoopAsync(CancellationToken cancellationToken)
     {
-        using var timer = new PeriodicTimer(FlushInterval);
         try
         {
-            while (await timer.WaitForNextTickAsync(cancellationToken))
-                await FlushAsync(cancellationToken);
+            while (true)
+            {
+                await _flushSignal.WaitAsync(cancellationToken);
+                await Task.Delay(Runtime.RegistryFlushDelayMilliseconds, cancellationToken);
+                while (true)
+                {
+                    var success = await FlushAsync(cancellationToken);
+                    bool pending;
+                    lock (_gate)
+                    {
+                        while (_flushSignal.Wait(0)) { }
+                        pending = _dirty.Count + _deleted.Count + _dirtyKeys.Count + _deletedKeys.Count > 0;
+                    }
+                    if (!pending) break;
+                    await Task.Delay(success ? Runtime.RegistryFlushDelayMilliseconds : Runtime.RetryDelaySeconds * 1000, cancellationToken);
+                }
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
     }
 
-    private async Task FlushAsync(CancellationToken cancellationToken)
+    private async Task<bool> FlushAsync(CancellationToken cancellationToken)
     {
         Dictionary<EntryKey, RegistryEntry> dirty;
         EntryKey[] deleted;
@@ -175,7 +227,7 @@ public sealed class CachedSqliteRegistryRepository(IDbContextFactory<RelaxKonOSD
         KeyKey[] deletedKeys;
         lock (_gate)
         {
-            if (_dirty.Count == 0 && _deleted.Count == 0 && _dirtyKeys.Count == 0 && _deletedKeys.Count == 0) return;
+            if (_dirty.Count == 0 && _deleted.Count == 0 && _dirtyKeys.Count == 0 && _deletedKeys.Count == 0) return true;
             dirty = _dirty
                 .Where(key => _entries.TryGetValue(key, out _))
                 .ToDictionary(key => key, key => Copy(_entries[key]));
@@ -232,6 +284,7 @@ public sealed class CachedSqliteRegistryRepository(IDbContextFactory<RelaxKonOSD
                         current.AppliedRevision = current.Revision;
                         current.AppliedAt = DateTimeOffset.UtcNow;
                         _dirty.Remove(key);
+                        Notify(current);
                     }
                 }
                 foreach (var key in deleted)
@@ -248,11 +301,13 @@ public sealed class CachedSqliteRegistryRepository(IDbContextFactory<RelaxKonOSD
                     if (!_keys.ContainsKey(key)) _deletedKeys.Remove(key);
                 }
             }
+            return true;
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
             // Keep the dirty snapshot in memory for the next scheduled retry. The runtime
             // registry remains usable even during a transient database outage.
+            return false;
         }
     }
 
