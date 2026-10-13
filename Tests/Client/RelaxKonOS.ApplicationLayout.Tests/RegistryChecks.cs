@@ -11,6 +11,7 @@ internal static class RegistryChecks
     public static async Task RunAsync()
     {
         await PresentationPreferencesChecks.RunAsync();
+        await ServerRuntimeClientChecks.RunAsync();
         var client = new FakeRegistryClient();
         var vm = new RegistryViewModel(client);
         await vm.RefreshAsync();
@@ -418,8 +419,9 @@ internal static class RegistryChecks
         public RenameRegistryEntryRequest? RenameRequest { get; private set; }
         public FakeRegistryClient() { }
         private FakeRegistryClient(FakeRegistryClient root, Guid target) { _root = root; _target = target; }
+        public IRegistryClient ForServer(Guid instanceId) => throw new NotSupportedException();
         public IRegistryClient ForUser(Guid targetUserId) => new FakeRegistryClient(Root, targetUserId);
-        public Task<RegistryContextDto> GetContextAsync(CancellationToken cancellationToken = default) => Task.FromResult(new RegistryContextDto("server", Root.Owner, "nanami", Root.Workspace, true, null));
+        public Task<RegistryContextDto> GetContextAsync(CancellationToken cancellationToken = default) => Task.FromResult(new RegistryContextDto("server", Root.Owner, "nanami", Root.Workspace, true, null, Guid.NewGuid()));
         public Task<IReadOnlyList<RegistryUserDto>> ListUsersAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<RegistryUserDto>>([
             new(Root.Owner, "nanami", true, Root.Workspace), new(Root.Other, "alice", false, Root.OtherWorkspace)]);
         public Task<IReadOnlyList<RegistryKeyDto>> ListKeysAsync(RegistryScope scope, string parentPath, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<RegistryKeyDto>>([]);

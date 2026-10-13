@@ -66,7 +66,9 @@ public sealed partial class RegistryValueDialogViewModel : LocalizedObservableOb
         OnPropertyChanged(nameof(IsStructuredJson));
     }
 
-    public IReadOnlyList<RegistryValueChoiceDto> Choices => Entry?.Schema.Choices ?? [];
+    public IReadOnlyList<RegistryValueChoiceDto> Choices => Entry is { Path: ClientPresentationPaths.Synchronization, Name: "mode" }
+        ? Entry.Schema.Choices.Select(choice => new RegistryValueChoiceDto(LocalizedText.Get("registry.sync.mode." + choice.Value.GetString(), choice.Label), choice.Value)).ToArray()
+        : Entry?.Schema.Choices ?? [];
     [ObservableProperty] private RegistryValueChoiceDto? _selectedChoice;
     [ObservableProperty] private decimal? _numberValue;
     public decimal Minimum => (decimal)(Entry?.Schema.Minimum ?? -1e12);
@@ -104,7 +106,8 @@ public sealed partial class RegistryValueDialogViewModel : LocalizedObservableOb
     public bool CanChangeIdentity => Entry is null;
     public bool CanReset => Entry?.Schema.DefaultValue is not null;
     public string TargetLabel => Entry is { } entry
-        ? $"{entry.Address.ServerId} → {entry.OwnerUsername} ({entry.Address.OwnerUserId:D}) → {entry.Address.Scope} → {Path}"
+        ? entry.Scope == RegistryScope.Server ? $"{entry.Address.ServerId} → {LocalizedText.Get("registry.scope.server", "Server instance")} ({entry.Address.ScopeId:D}) → {Path}"
+        : $"{entry.Address.ServerId} → {entry.OwnerUsername} ({entry.Address.OwnerUserId:D}) → {entry.Address.Scope} → {Path}"
         : Path;
     public string JsonTargetLabel => _row?.Document is { } document ? TargetLabel + " → " + document.Name + " → " + string.Join(" → ", _row.JsonPath) : TargetLabel;
     [ObservableProperty] private bool _booleanValue;

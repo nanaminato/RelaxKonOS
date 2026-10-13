@@ -37,6 +37,10 @@ internal static class PresentationPreferencesChecks
         var view = new RegistryView { DataContext = vm };
         var window = new Window { Width = 900, Height = 550, Content = view };
         window.Show(); Dispatcher.UIThread.RunJobs();
+        Check(preferences.Synchronization.Mode == "event" && !preferences.PollingActive, "The default event mode must not start a periodic timer.");
+        var readCount = client.ReadCount;
+        await preferences.EnsureLoadedAsync(); await preferences.EnsureLoadedAsync();
+        Check(client.ReadCount == readCount, "Opening another observer must reuse the already loaded settings.");
         var fields = await client.ListValuesAsync(RegistryScope.Device, ClientPresentationPaths.Registry);
         async Task Save(string name, int value)
         {
@@ -53,6 +57,33 @@ internal static class PresentationPreferencesChecks
             "Successful own-device writes must immediately change the displayed resources.");
         Check(view.FindControl<Grid>("RegistryPanes")!.ColumnDefinitions[0].Width.Value == 360,
             "The sidebar width must use the same preference as registry editing.");
+        var external = await client.ChangeExternallyAsync(ClientPresentationPaths.Registry, "iconSize", JsonSerializer.SerializeToElement(24));
+        var beforeNotification = client.ReadCount;
+        var notification = new RelaxKonOS.Protocol.Hubs.RegistrySettingsChanged(owner, RegistryScope.Device, firstDevice, external.Path, external.Revision, external.Revision);
+        changes.Invalidate("https://example.test", notification);
+        changes.Invalidate("https://example.test", notification);
+        await Until(() => preferences.Registry.IconSize == 24);
+        Check(client.ReadCount == beforeNotification + 1, "Duplicate invalidations must read only the affected document once.");
+        await Save("iconSize", 20);
+        async Task SetMode(string mode)
+        {
+            var field = (await client.ListValuesAsync(RegistryScope.Device, ClientPresentationPaths.Synchronization)).Single(entry => entry.Name == "mode");
+            await client.SaveAsync(new(field.Scope, field.Path, field.Name, field.ValueType, JsonSerializer.SerializeToElement(mode), field.Revision));
+        }
+        await SetMode("polling");
+        Check(preferences.PollingActive, "Explicit polling mode must activate the configured timer.");
+        await SetMode("manual");
+        Check(!preferences.PollingActive, "Manual mode must stop background polling.");
+        external = await client.ChangeExternallyAsync(ClientPresentationPaths.Registry, "iconSize", JsonSerializer.SerializeToElement(24));
+        beforeNotification = client.ReadCount;
+        changes.Invalidate("https://example.test", notification with { Revision = external.Revision });
+        Dispatcher.UIThread.RunJobs();
+        Check(client.ReadCount == beforeNotification && preferences.Registry.IconSize == 20, "Manual mode must ignore external automatic refreshes.");
+        await preferences.EnsureLoadedAsync();
+        Check(preferences.Registry.IconSize == 24, "Opening in manual mode must read the current configuration.");
+        await Save("iconSize", 20);
+        await SetMode("event");
+        Check(!preferences.PollingActive, "Returning to event mode must cancel the periodic timer.");
         var source = fields.Single(entry => entry.Name == "scrollbarThickness") with { DesiredValue = JsonSerializer.SerializeToElement(4) };
         changes.Publish(source with { Address = source.Address with { OwnerUserId = Guid.NewGuid() } });
         changes.Publish(source with { Address = source.Address with { ScopeId = Guid.NewGuid() } });
@@ -116,22 +147,30 @@ internal static class PresentationPreferencesChecks
         window.Close();
         Console.WriteLine("PASS: client-device settings, immediate appearance updates, sidebar persistence, reset and foreign-context isolation.");
     }
+    private static async Task Until(Func<bool> condition)
+    {
+        for (var index = 0; index < 200 && !condition(); index++) await Task.Delay(5);
+        Check(condition(), "A settings invalidation did not complete.");
+    }
     private static void Check(bool value, string message) { if (!value) throw new InvalidOperationException(message); }
 
     private sealed class Client(Guid owner, Guid workspace, PresentationSessionProxy state, PresentationSettingsChanges changes) : IRegistryClient
     {
         private readonly Dictionary<(Guid, string), (JsonObject Value, long Revision)> _documents = [];
+        public int ReadCount;
         public bool FailReads;
         public Task? PendingRead;
         private Guid Device => ((DeviceDto)state.Values["CurrentDevice"]!).Id;
+        public IRegistryClient ForServer(Guid instanceId) => throw new NotSupportedException();
         public IRegistryClient ForUser(Guid id) { Check(id == owner, "Wrong settings owner."); return this; }
-        public Task<RegistryContextDto> GetContextAsync(CancellationToken ct = default) => Task.FromResult(new RegistryContextDto("https://example.test", owner, "owner", workspace, false, Device));
+        public Task<RegistryContextDto> GetContextAsync(CancellationToken ct = default) => Task.FromResult(new RegistryContextDto("https://example.test", owner, "owner", workspace, false, Device, Guid.NewGuid()));
         public async Task<IReadOnlyList<RegistryEntryDto>> ListValuesAsync(RegistryScope scope, string path, CancellationToken ct = default)
         {
-            if (path is not (ClientPresentationPaths.Registry or ClientPresentationPaths.Terminal or "Workspace\\Terminal")) return [];
+            ++ReadCount;
+            if (path is not (ClientPresentationPaths.Registry or ClientPresentationPaths.Terminal or ClientPresentationPaths.Synchronization or "Workspace\\Terminal")) return [];
             var id = scope == RegistryScope.Device ? Device : workspace;
             var key = (id, path);
-            object defaults = path switch { ClientPresentationPaths.Registry => RegistryAppearanceSettings.Default, ClientPresentationPaths.Terminal => TerminalPaddingSettings.Default, _ => TerminalSettingsDto.Default };
+            object defaults = path switch { ClientPresentationPaths.Synchronization => ClientSynchronizationSettings.Default, ClientPresentationPaths.Registry => RegistryAppearanceSettings.Default, ClientPresentationPaths.Terminal => TerminalPaddingSettings.Default, _ => TerminalSettingsDto.Default };
             if (!_documents.TryGetValue(key, out var doc)) _documents[key] = doc = ((JsonObject)JsonSerializer.SerializeToNode(defaults, RelaxKonOSJsonOptions.Default)!, 1);
             var defaultFields = (JsonObject)JsonSerializer.SerializeToNode(defaults, RelaxKonOSJsonOptions.Default)!;
             var result = doc.Value.Select(pair =>
@@ -144,6 +183,12 @@ internal static class PresentationPreferencesChecks
             if (PendingRead is { } pending) await pending;
             if (FailReads) throw new System.Net.Http.HttpRequestException("disconnected");
             return result;
+        }
+        public async Task<RegistryEntryDto> ChangeExternallyAsync(string path, string name, JsonElement value)
+        {
+            var key = (Device, path); var doc = _documents[key];
+            doc.Value[name] = JsonNode.Parse(value.GetRawText()); _documents[key] = (doc.Value, doc.Revision + 1);
+            return (await ListValuesAsync(RegistryScope.Device, path)).Single(entry => entry.Name == name);
         }
         public async Task<RegistryEntryDto> SaveAsync(PutRegistryEntryRequest request, CancellationToken ct = default)
         {
@@ -160,7 +205,7 @@ internal static class PresentationPreferencesChecks
             var paths = scope == RegistryScope.Device ? path switch
             {
                 "Device" => new[] { "Device\\Client" },
-                "Device\\Client" => new[] { ClientPresentationPaths.Registry, ClientPresentationPaths.Terminal },
+                "Device\\Client" => new[] { ClientPresentationPaths.Registry, ClientPresentationPaths.Terminal, ClientPresentationPaths.Synchronization },
                 _ => Array.Empty<string>(),
             } : Array.Empty<string>();
             return Task.FromResult<IReadOnlyList<RegistryKeyDto>>(paths.Select(child => new RegistryKeyDto(scope, child)

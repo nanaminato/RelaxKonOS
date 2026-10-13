@@ -38,6 +38,7 @@ internal static class RegistryAccessChecks
         ClaimsPrincipal Principal() => new(new ClaimsIdentity([new Claim("sub", owner.ToString("D")),
             new Claim("jti", "registry-test"), new Claim("amr", "system"), new Claim("device_id", device.ToString("D")), new Claim("workspace_id", ownWorkspace.Id.ToString("D"))], "test"));
         var builder = WebApplication.CreateBuilder(); builder.Logging.ClearProviders(); builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Services.AddSingleton(new RelaxKonOS.Server.Settings.ServerRuntimeSettingsStore(Path.Combine(Path.GetTempPath(), "runtime-registry-" + Guid.NewGuid().ToString("N"), "settings.json")));
         builder.Services.AddAuthorization();
         builder.Services.AddSingleton<IUserRepository>(users); builder.Services.AddSingleton<IWorkspaceRepository>(workspaces);
         builder.Services.AddSingleton<IRegistryRepository>(registry); builder.Services.AddSingleton<IHostElevationSessionStore>(store);

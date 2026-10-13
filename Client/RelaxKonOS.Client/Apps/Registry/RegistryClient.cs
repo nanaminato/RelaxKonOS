@@ -17,6 +17,7 @@ public sealed class RegistryClient(HttpClient http, IAuthSession session, IHostE
     private Guid? BoundDevice { get; init; }
     public IRegistryClient ForUser(Guid targetUserId) => new RegistryClient(http, session, elevations, changes)
     { TargetUserId = targetUserId, BoundBaseUrl = session.EffectiveBaseUrl, BoundActor = session.CurrentUser?.Id, BoundDevice = session.CurrentDevice?.Id };
+    public IRegistryClient ForServer(Guid instanceId) => new ServerRuntimeRegistryClient(http, session, elevations, instanceId);
     public Task<RegistryContextDto> GetContextAsync(CancellationToken cancellationToken = default) => GetCoreAsync<RegistryContextDto>(RegistryApiRoutes.Context, cancellationToken);
     public Task<IReadOnlyList<RegistryUserDto>> ListUsersAsync(CancellationToken cancellationToken = default) =>
         elevations.ExecuteAsync(HostElevationCapability.RegistryManage, "registry/users",
@@ -43,20 +44,22 @@ public sealed class RegistryClient(HttpClient http, IAuthSession session, IHostE
 
     private async Task<T> GetAsync<T>(string route, CancellationToken cancellationToken)
     {
-        var context = await GetContextAsync(cancellationToken);
+        EnsureBoundSession();
+        var actor = session.CurrentUser?.Id ?? throw new InvalidOperationException("An authenticated registry actor is required.");
         var owner = TargetUserId ?? throw new InvalidOperationException("An explicit registry owner is required.");
         var ownedRoute = OwnedRoute(route, owner);
-        return owner != context.CurrentUserId
+        return owner != actor
             ? await elevations.ExecuteAsync(HostElevationCapability.RegistryManage, "registry/users/" + owner.ToString("D"),
                 () => GetCoreAsync<T>(ownedRoute, cancellationToken), cancellationToken)
             : await GetCoreAsync<T>(ownedRoute, cancellationToken);
     }
     private async Task<T> SendAsync<T>(HttpMethod method, string route, object? body, CancellationToken cancellationToken)
     {
-        var context = await GetContextAsync(cancellationToken);
+        EnsureBoundSession();
+        var actor = session.CurrentUser?.Id ?? throw new InvalidOperationException("An authenticated registry actor is required.");
         var owner = TargetUserId ?? throw new InvalidOperationException("An explicit registry owner is required.");
         var ownedRoute = OwnedRoute(route, owner);
-        return owner != context.CurrentUserId
+        return owner != actor
             ? await elevations.ExecuteAsync(HostElevationCapability.RegistryManage, "registry/users/" + owner.ToString("D"),
                 () => SendCoreAsync<T>(method, ownedRoute, body, cancellationToken), cancellationToken)
             : await SendCoreAsync<T>(method, ownedRoute, body, cancellationToken);

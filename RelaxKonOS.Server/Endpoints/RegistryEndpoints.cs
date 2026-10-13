@@ -189,13 +189,13 @@ public static partial class RegistryEndpoints
             if (!elevations.IsGranted(http.User, HostElevationCapability.RegistryManage, "registry/users")) return ElevationRequired();
             return Results.Ok(users.List().Select(user => new RegistryUserDto(user.Id, user.Username, user.Id == actorId, workspaces.FindByUserId(user.Id)?.Id)));
         }).RequireAuthorization().WithTags("Registry");
-        app.MapGet(RegistryApiRoutes.Context, (HttpContext http, IUserRepository users, IWorkspaceRepository workspaces, IHostElevationSessionStore elevations) =>
+        app.MapGet(RegistryApiRoutes.Context, (HttpContext http, IUserRepository users, IWorkspaceRepository workspaces, IHostElevationSessionStore elevations, RelaxKonOS.Server.Settings.ServerRuntimeSettingsStore runtime) =>
         {
             if (!TryUserId(http.User, out var actorId)) return Results.Unauthorized();
             var user = users.FindById(actorId);
             return user is null ? Results.NotFound() : Results.Ok(new RegistryContextDto(ServerId(http), actorId, user.Username,
                 workspaces.FindByUserId(actorId)?.Id, elevations.IsGranted(http.User, HostElevationCapability.RegistryManage, "registry/users"),
-                Guid.TryParse(http.User.FindFirstValue("device_id"), out var deviceId) ? deviceId : null));
+                Guid.TryParse(http.User.FindFirstValue("device_id"), out var deviceId) ? deviceId : null, runtime.Current.InstanceId));
         }).RequireAuthorization().WithTags("Registry");
         return app;
     }

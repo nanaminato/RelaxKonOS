@@ -31,6 +31,8 @@ public static class PrivilegedEndpoints
                 && (!request.Target.StartsWith("registry/users/", StringComparison.Ordinal)
                     || !Guid.TryParseExact(request.Target["registry/users/".Length..], "D", out _)))
                 return Problem(400, "elevation-target-invalid", "注册表授权必须指定用户。");
+            if (request.Capability == HostElevationCapability.ServerRuntimeConfigure && request.Target != RelaxKonOS.Protocol.Registry.ServerRuntimeRoutes.ElevationTarget)
+                return Problem(400, "elevation-target-invalid", "Invalid server runtime target.");
             var isEnvironmentCapability = request.Capability is HostElevationCapability.HostEnvironmentRead or HostElevationCapability.HostEnvironmentChange;
             if (isEnvironmentCapability)
             {

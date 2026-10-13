@@ -459,4 +459,4 @@ WebView 输出采用有界 FIFO 缓冲：最多保留最近 4 MiB，每次向页
 
 终端工具栏使用“终端”文字和下拉箭头作为菜单入口，集中提供复制、粘贴、全选、清屏及设置操作；复制随当前选区启用，关闭菜单后回到终端焦点。工具栏显示会话状态，完整 shell 标题通过悬停查看；标签中的可执行文件绝对路径缩短为文件名，其他 shell 标题保持原样，管理员标签仍保留标记。
 
-终端注册表支持 Workspace 范围的 scrollbackLines（0–100000）、cursorStyle（block/underline/bar）、cursorBlink（布尔）；Device 范围的 paddingTop/paddingBottom/paddingHorizontal（0–32）位于 `Device\Client\Terminal`。内置和 xterm.js 引擎均应用历史与光标偏好，布局边距影响实际行列计算。当前客户端保存后即时更新打开的终端，不重启 PTY；外部写入通过打开、刷新或最多 30 秒的周期性读取同步。
+终端注册表支持 Workspace 范围的 scrollbackLines（0–100000）、cursorStyle（block/underline/bar）、cursorBlink（布尔）；Device 范围的 paddingTop/paddingBottom/paddingHorizontal（0–32）位于 `Device\Client\Terminal`。内置和 xterm.js 引擎均应用历史与光标偏好，布局边距影响实际行列计算。当前客户端保存后即时更新打开的终端，不重启 PTY；外部写入默认通过共享设置连接的变更通知按需同步，额外标签复用配置缓存；定时兜底与手动模式由客户端设备的 Synchronization 配置决定。

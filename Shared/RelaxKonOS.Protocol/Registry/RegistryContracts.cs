@@ -4,7 +4,7 @@ using RelaxKonOS.Protocol.Common;
 namespace RelaxKonOS.Protocol.Registry;
 
 /// <summary>Owner boundary for a registry value. The server derives the concrete owner ID from the access token.</summary>
-public enum RegistryScope { User, Workspace, Device }
+public enum RegistryScope { User, Workspace, Device, Server }
 
 /// <summary>Strong value type declared by the server-side registry schema.</summary>
 public enum RegistryValueType { String, Boolean, Number, Json }
@@ -15,8 +15,8 @@ public enum RegistryEntryState { Synced, PendingSync, Applying, Failed, RestartR
 /// <summary>How an applied value becomes visible to a running component.</summary>
 public enum RegistryApplyMode { Immediate, RestartApplication, ReloadService, RestartServer }
 
-public sealed record RegistryAddress(string ServerId, Guid OwnerUserId, RegistryScope Scope, Guid ScopeId, string KeyPath);
-public sealed record RegistryContextDto(string ServerId, Guid CurrentUserId, string Username, Guid? WorkspaceId, bool CanDiscoverUsers, Guid? DeviceId);
+public sealed record RegistryAddress(string ServerId, Guid? OwnerUserId, RegistryScope Scope, Guid ScopeId, string KeyPath);
+public sealed record RegistryContextDto(string ServerId, Guid CurrentUserId, string Username, Guid? WorkspaceId, bool CanDiscoverUsers, Guid? DeviceId, Guid ServerInstanceId);
 public enum RegistryEditorKind { String, Boolean, Number, Integer, Enum, Color, StringList, Json }
 public sealed record RegistryValueChoiceDto(string Label, JsonElement Value);
 public sealed record RegistryValueSchemaDto(string ValueId, bool CanWrite, bool CanDelete, bool CanRename, JsonElement? DefaultValue)

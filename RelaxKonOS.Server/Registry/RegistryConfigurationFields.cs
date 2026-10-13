@@ -57,6 +57,7 @@ public static class RegistryConfigurationFields
         void Add(params string[] values) => choices.AddRange(values.Select(item => new RegistryValueChoiceDto(item, JsonSerializer.SerializeToElement(item))));
         if (managed)
         {
+            if (value.Path == ClientPresentationPaths.Synchronization && value.Name == "mode") Add("event", "polling", "manual");
             if (value.Path == WorkspaceConfigurationRegistry.DesktopPath)
             {
                 if (value.Name == "timeFormat") Add("24h", "12h");
@@ -89,6 +90,7 @@ public static class RegistryConfigurationFields
         (WorkspaceConfigurationRegistry.TerminalPath, "fontSize") => (8, 40),
         (WorkspaceConfigurationRegistry.TerminalPath, "scrollbackLines") => (0, 100000),
         (ClientPresentationPaths.Terminal, "paddingTop" or "paddingBottom" or "paddingHorizontal") => (0, 32),
+        (ClientPresentationPaths.Synchronization, "pollIntervalSeconds") => (60, 3600),
         (ClientPresentationPaths.Registry, "treeRowHeight") => (20, 40),
         (ClientPresentationPaths.Registry, "valueRowHeight") => (22, 44),
         (ClientPresentationPaths.Registry, "iconSize") => (12, 24),
@@ -110,6 +112,7 @@ public static class RegistryConfigurationFields
             WorkspaceConfigurationRegistry.DesktopPath => WorkspacePreferencesDto.Default,
             WorkspaceConfigurationRegistry.TerminalPath => TerminalSettingsDto.Default,
             ClientPresentationPaths.Terminal => TerminalPaddingSettings.Default,
+            ClientPresentationPaths.Synchronization => ClientSynchronizationSettings.Default,
             ClientPresentationPaths.Registry => RegistryAppearanceSettings.Default,
             WorkspaceConfigurationRegistry.ExplorerPath => WorkspaceConfigurationRegistry.ExplorerDefaults,
             WorkspaceConfigurationRegistry.BrowserPath => BrowserSettingsDto.Default,
@@ -140,6 +143,8 @@ public static class RegistryConfigurationFields
         var root = JsonNode.Parse(json) as JsonObject;
         try
         {
+            if (path == ClientPresentationPaths.Synchronization)
+                return JsonSerializer.Deserialize<ClientSynchronizationSettings>(json, RelaxKonOSJsonOptions.Default) is { IsValid: true } sync ? json : null;
             if (path == ClientPresentationPaths.Terminal)
                 return JsonSerializer.Deserialize<TerminalPaddingSettings>(json, RelaxKonOSJsonOptions.Default) is { IsValid: true } padding ? json : null;
             if (path == ClientPresentationPaths.Registry)

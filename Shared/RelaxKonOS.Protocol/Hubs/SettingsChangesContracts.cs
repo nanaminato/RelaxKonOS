@@ -7,13 +7,17 @@ public sealed record WorkspaceSettingsChanged(Guid WorkspaceId, long Revision, l
     public RelaxKonOS.Protocol.Settings.SettingsScope Scope => RelaxKonOS.Protocol.Settings.SettingsScope.Workspace;
 }
 
+public sealed record RegistrySettingsChanged(Guid UserId, RelaxKonOS.Protocol.Registry.RegistryScope Scope, Guid ScopeId, string Path, long Revision, long? PersistedRevision);
+
 public interface ISettingsChangesClient
 {
     Task OnWorkspaceSettingsChanged(WorkspaceSettingsChanged change);
+    Task OnRegistrySettingsChanged(RegistrySettingsChanged change);
 }
 
 public static class SettingsChangesMethods
 {
     public const string Subscribe = "Subscribe";
+    public const string RegistryChanged = nameof(ISettingsChangesClient.OnRegistrySettingsChanged);
     public const string Changed = nameof(ISettingsChangesClient.OnWorkspaceSettingsChanged);
 }

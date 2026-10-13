@@ -248,4 +248,6 @@ REST 路由以显式所有者为路径参数：`/registry/context` 返回当前�
 
 重新命名单个自定义值使用 `POST /registry/users/{userId}/values/rename`，携带 Scope、Path、Name、NewName 与 ExpectedRevision。重命名在同一所有者、作用域与键路径内就地完成，保留值内容并递增 revision；受托管字段名与内部 `(Default)` 文档载体不可重命名。schema 通过 `CanWrite` / `CanDelete` / `CanRename` 向客户端声明每一项的真实能力，界面据此决定菜单是否可用。托管键的结构与字段不允许删除，自定义键继续按 Workspace 范围隔离。
 
-Device 客户端偏好按 `(UserId, DeviceId, Path, Name)` 隔离，DeviceId 只从当前登录 JWT 的 `device_id` 取得，不映射服务器宿主设备、不接受任意设备 ID。设备范围在当前用户树下显示，跨用户 Device 访问即使具有管理员授权也不允许。默认文档通过 CAS 初始化；字段更新在原文档 revision 上完成校验和 CAS，字段不能删除或改名。客户端收到本机成功写入后更新当前界面，打开/刷新及活动视图的 30 秒读取修复外部变更；外观通知不会进入 PTY 输入通道。字段详情见[客户端设置实施计划](../applications/RelaxKonOS.RegistryApp.ClientSettings.Plan.md)。
+Device 客户端偏好按 `(UserId, DeviceId, Path, Name)` 隔离，DeviceId 只从当前登录 JWT 的 `device_id` 取得，不映射服务器宿主设备、不接受任意设备 ID。设备范围在当前用户树下显示，跨用户 Device 访问即使具有管理员授权也不允许。默认文档通过 CAS 初始化；字段更新在原文档 revision 上完成校验和 CAS，字段不能删除或改名。客户端收到本机成功写入后更新当前界面，默认事件通知、打开/刷新及可选定时兜底修复外部变更；外观通知不会进入 PTY 输入通道。字段详情见[客户端设置实施计划](../applications/RelaxKonOS.RegistryApp.ClientSettings.Plan.md)。
+
+设置通知由注册表事件驱动，客户端按文档版本读取；缓存持久化使用首次修改触发的延迟批次，空闲时无周期扫描。服务器实例参数在独立文件中先持久化再应用，地址使用 Server 范围和 InstanceId，OwnerUserId 为空；用户数据继续保留真实用户所有权。独立管理接口、授权与客户端策略见[静默同步与服务器实例配置](../applications/RelaxKonOS.RegistryApp.Synchronization.md)。

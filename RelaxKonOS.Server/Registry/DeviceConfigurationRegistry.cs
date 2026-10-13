@@ -11,6 +11,7 @@ public static class DeviceConfigurationRegistry
     public static void EnsureDefaults(IRegistryRepository registry, Guid user, Guid device)
     {
         Ensure(ClientPresentationPaths.Terminal, TerminalPaddingSettings.Default);
+        Ensure(ClientPresentationPaths.Synchronization, ClientSynchronizationSettings.Default);
         Ensure(ClientPresentationPaths.Registry, RegistryAppearanceSettings.Default);
         void Ensure<T>(string path, T value) => registry.CompareExchange(new RegistryEntry
         {

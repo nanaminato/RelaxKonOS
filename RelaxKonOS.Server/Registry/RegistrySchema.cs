@@ -12,6 +12,7 @@ public static class RegistrySchema
     public static IReadOnlyList<RegistrySchemaDefinition> Definitions { get; } =
     [
         new(RegistryScope.Device, ClientPresentationPaths.Terminal, "(Default)", RegistryValueType.Json, RegistryApplyMode.Immediate),
+        new(RegistryScope.Device, ClientPresentationPaths.Synchronization, "(Default)", RegistryValueType.Json, RegistryApplyMode.Immediate),
         new(RegistryScope.Device, ClientPresentationPaths.Registry, "(Default)", RegistryValueType.Json, RegistryApplyMode.Immediate),
         new(RegistryScope.Workspace, WorkspaceConfigurationRegistry.TerminalPath, "(Default)", RegistryValueType.Json, RegistryApplyMode.Immediate),
         new(RegistryScope.Workspace, WorkspaceConfigurationRegistry.DesktopPath, "(Default)", RegistryValueType.Json, RegistryApplyMode.Immediate),

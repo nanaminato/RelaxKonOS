@@ -26,5 +26,6 @@ public sealed record RegistryAppearanceSettings(
 public static class ClientPresentationPaths
 {
     public const string Terminal = "Device\\Client\\Terminal";
+    public const string Synchronization = "Device\\Client\\Synchronization";
     public const string Registry = "Device\\Client\\Registry";
 }

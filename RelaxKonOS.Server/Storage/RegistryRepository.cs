@@ -6,6 +6,7 @@ namespace RelaxKonOS.Server.Storage;
 
 public interface IRegistryRepository
 {
+    event Action<RelaxKonOS.Protocol.Hubs.RegistrySettingsChanged>? Changed;
     IReadOnlyList<RegistryEntry> List(Guid userId, RegistryScope? scope = null);
     RegistryEntry? Find(Guid userId, RegistryScope scope, Guid scopeId, string path, string name);
     RegistryEntry Upsert(RegistryEntry entry);
@@ -23,6 +24,8 @@ public interface IRegistryRepository
 /// <summary>Development fallback with the same tenant key as SQLite.</summary>
 public sealed class InMemoryRegistryRepository : IRegistryRepository
 {
+    public event Action<RelaxKonOS.Protocol.Hubs.RegistrySettingsChanged>? Changed;
+    private void Notify(RegistryEntry entry) => Changed?.Invoke(new(entry.UserId, entry.Scope, entry.ScopeId, entry.Path, entry.Revision, entry.AppliedRevision));
     private readonly object _gate = new();
     private readonly ConcurrentDictionary<(Guid, RegistryScope, Guid, string, string), RegistryEntry> _entries = new();
     private readonly ConcurrentDictionary<(Guid, RegistryScope, Guid, string), RegistryKey> _keys = new();
@@ -40,6 +43,7 @@ public sealed class InMemoryRegistryRepository : IRegistryRepository
                 entry.Revision = current.Revision + 1;
                 return Copy(entry);
             });
+            Notify(saved);
             return Copy(saved);
         }
     }
@@ -69,6 +73,7 @@ public sealed class InMemoryRegistryRepository : IRegistryRepository
             renamed.Name = newName;
             renamed.Revision = current.Revision + 1;
             _entries[target] = renamed;
+            Notify(renamed);
             return Copy(renamed);
         }
     }

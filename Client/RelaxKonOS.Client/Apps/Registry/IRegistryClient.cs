@@ -6,6 +6,7 @@ namespace RelaxKonOS.Client.Apps.Registry;
 public interface IRegistryClient
 {
     IRegistryClient ForUser(Guid targetUserId);
+    IRegistryClient ForServer(Guid instanceId);
     Task<RegistryContextDto> GetContextAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<RegistryUserDto>> ListUsersAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<RegistryEntryDto>> ListValuesAsync(RegistryScope scope, string path, CancellationToken cancellationToken = default);

@@ -52,7 +52,8 @@ public sealed partial class RegistryViewModel(IRegistryClient client, RelaxKonOS
 
     /// <summary>Server, signed-in account, target owner and scope, so a write never hides who it affects.</summary>
     public LocalizedStatus TargetText => LocalizedStatus.Literal(_context is null ? "" : SelectedKey?.Address is { } address
-        ? $"{address.ServerId} · {_context.Username} → {OwnerName(address.OwnerUserId)} ({address.OwnerUserId:D}) · {ScopeLabel(address.Scope)}"
+        ? address.Scope == RegistryScope.Server ? $"{address.ServerId} · {LocalizedText.Get("registry.scope.server", "Server instance")} ({address.ScopeId:D})"
+        : $"{address.ServerId} · {_context.Username} → {OwnerName(address.OwnerUserId!.Value)} ({address.OwnerUserId:D}) · {ScopeLabel(address.Scope)}"
         : $"{_context.ServerId} · {_context.Username}");
 
     /// <summary>Values listed for the selected key. Empty text when the key has none, so it never reads as "0" noise.</summary>
@@ -61,7 +62,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client, RelaxKonOS
         : LocalizedStatus.Key("registry.status.count", "{0} value(s).", Entries.Count);
 
     /// <summary>True while the selected hive belongs to another account, where every operation needs a grant.</summary>
-    public bool ShowPermissionNotice => SelectedKey?.Address is { } address && _context is not null && address.OwnerUserId != _context.CurrentUserId;
+    public bool ShowPermissionNotice => SelectedKey?.Address is { } address && _context is not null && (address.Scope == RegistryScope.Server || address.OwnerUserId != _context.CurrentUserId);
     public LocalizedStatus PermissionText => LocalizedText.RefWithFallback("registry.permission.required", "Administrator authorization required");
 
     public bool CanCreateValue => SelectedKey?.CanCreateChildKey == true;
@@ -72,12 +73,16 @@ public sealed partial class RegistryViewModel(IRegistryClient client, RelaxKonOS
     public bool CanCreateKey => SelectedKey?.CanCreateChildKey == true;
     public bool CanDeleteKey => SelectedKey?.CanManageKey == true;
 
+    private IRegistryClient ClientFor(RegistryAddress address) => address.Scope == RegistryScope.Server
+        ? client.ForServer(address.ScopeId) : client.ForUser(address.OwnerUserId!.Value);
+
     private string OwnerName(Guid owner) => owner == _context?.CurrentUserId ? _context.Username
         : Keys.FirstOrDefault()?.Children.FirstOrDefault(node => node.Kind == RegistryKeyKind.Users)
             ?.Children.FirstOrDefault(node => node.TargetUserId == owner)?.UserName ?? owner.ToString("D");
 
     private static string ScopeLabel(RegistryScope scope) => scope switch
     {
+        RegistryScope.Server => LocalizedText.Get("registry.scope.server", "Server instance"),
         RegistryScope.User => LocalizedText.Get("registry.scope.user", "User"),
         RegistryScope.Device => LocalizedText.Get("registry.scope.device", "Device"),
         _ => LocalizedText.Get("registry.scope.workspace", "Workspace"),
@@ -97,7 +102,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client, RelaxKonOS
     {
         try
         {
-            if (preferences is not null) await preferences.RefreshAsync();
+            if (preferences is not null) { if (_context is null) await preferences.EnsureLoadedAsync(); else await preferences.RefreshAsync(); }
             if (_context is null) { _context = await client.GetContextAsync(); BuildStaticTree(); NotifyContext(); }
             if (SelectedKey is { } key)
             {
@@ -185,9 +190,9 @@ public sealed partial class RegistryViewModel(IRegistryClient client, RelaxKonOS
         key.IsLoadingChildren = true;
         try
         {
-            var children = await client.ForUser(key.TargetUserId!.Value).ListKeysAsync(scope, path);
+            var children = await ClientFor(key.Address!).ListKeysAsync(scope, path);
             foreach (var child in children) VerifyAddress(child.Address, key, child.Path);
-            var values = await client.ForUser(key.TargetUserId!.Value).ListValuesAsync(scope, path);
+            var values = await ClientFor(key.Address!).ListValuesAsync(scope, path);
             foreach (var entry in values) VerifyAddress(entry.Address, key, path);
             key.CachedValues = values;
             var virtualRoots = key.Children.Where(node => node.Kind == RegistryKeyKind.Json).ToDictionary(node => node.Document!.Name);
@@ -213,7 +218,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client, RelaxKonOS
         var key = SelectedKey;
         try
         {
-            await client.ForUser(selected.Source.Address.OwnerUserId).DeleteAsync(selected.Source.Scope, selected.Source.Path, selected.Source.Name);
+            await ClientFor(selected.Source.Address).DeleteAsync(selected.Source.Scope, selected.Source.Path, selected.Source.Name);
             if (!ReferenceEquals(SelectedKey, key)) return;
             Entries.Remove(selected);
             SelectedEntry = null;
@@ -237,7 +242,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client, RelaxKonOS
         if (SelectedKey is not { CanManageKey: true, Scope: { } scope, Path: { } path } key) return;
         try
         {
-            await client.ForUser(key.TargetUserId!.Value).DeleteKeyAsync(scope, path);
+            await ClientFor(key.Address!).DeleteKeyAsync(scope, path);
             var parent = key.Parent;
             parent?.Children.Remove(key);
             InvalidateOwner(Keys, key.Address!);
@@ -264,7 +269,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client, RelaxKonOS
         var key = SelectedKey;
         try
         {
-            var result = await client.ForUser(selected.Source.Address.OwnerUserId).SaveAsync(new PutRegistryEntryRequest(
+            var result = await ClientFor(selected.Source.Address).SaveAsync(new PutRegistryEntryRequest(
                 selected.Source.Scope, selected.Source.Path, selected.Source.Name, selected.Source.ValueType, defaultValue, selected.Source.Revision));
             if (!ReferenceEquals(SelectedKey, key)) return;
             ApplySaved(result, LocalizedText.RefWithFallback("registry.status.restored", "Default restored."));
@@ -274,7 +279,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client, RelaxKonOS
 
     public void ApplyCreatedKey(RegistryKeyDto created)
     {
-        if (SelectedKey is { } parent && parent.Address?.OwnerUserId == created.Address.OwnerUserId && parent.Address.ServerId == created.Address.ServerId && parent.Address.ScopeId == created.Address.ScopeId && parent.Scope == created.Scope && string.Equals(parent.Path, ParentPath(created.Path), StringComparison.Ordinal))
+        if (SelectedKey is { } parent && parent.Address?.OwnerUserId == created.Address.OwnerUserId && parent.Address!.ServerId == created.Address.ServerId && parent.Address.ScopeId == created.Address.ScopeId && parent.Scope == created.Scope && string.Equals(parent.Path, ParentPath(created.Path), StringComparison.Ordinal))
         {
             parent.Children.Add(new RegistryKeyNode(LastSegment(created.Path), created.Path, created.Scope, parent) { Address = created.Address, AllowCreate = created.CanCreateChild, AllowDelete = created.CanDelete });
             parent.ChildrenLoaded = true;
@@ -316,7 +321,9 @@ public sealed partial class RegistryViewModel(IRegistryClient client, RelaxKonOS
         var server = Keys.SingleOrDefault();
         RegistryKeyNode? current = null;
         var start = 1;
-        if (input.Length > 0 && (input[0].Equals("HKCU", StringComparison.OrdinalIgnoreCase) || input[0].Equals("HKEY_CURRENT_USER", StringComparison.OrdinalIgnoreCase)))
+        if (input.Length >= 2 && input[0].Equals("Server", StringComparison.OrdinalIgnoreCase) && input[1].Equals("Runtime", StringComparison.OrdinalIgnoreCase))
+            { current = server?.Children.FirstOrDefault(node => node.Scope == RegistryScope.Server); start = 2; }
+        else if (input.Length > 0 && (input[0].Equals("HKCU", StringComparison.OrdinalIgnoreCase) || input[0].Equals("HKEY_CURRENT_USER", StringComparison.OrdinalIgnoreCase)))
             current = server?.Children.Single(node => node.Kind == RegistryKeyKind.CurrentUser);
         else if (input.Length > 0 && (input[0].Equals("HKU", StringComparison.OrdinalIgnoreCase) || input[0].Equals("HKEY_USERS", StringComparison.OrdinalIgnoreCase)))
         {
@@ -362,7 +369,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client, RelaxKonOS
             {
                 if (refreshChildren)
                 {
-                    var latest = await client.ForUser(document.Address.OwnerUserId).ListValuesAsync(document.Scope, document.Path);
+                    var latest = await ClientFor(document.Address).ListValuesAsync(document.Scope, document.Path);
                     if (generation != _loadGeneration || !ReferenceEquals(SelectedKey, key)) return;
                     var updated = latest.SingleOrDefault(entry => entry.Name == document.Name)
                         ?? throw new InvalidOperationException(LocalizedText.Get("registry.status.path_not_found", "Registry key not found: {0}"));
@@ -406,7 +413,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client, RelaxKonOS
         {
             if (refreshChildren) key.ChildrenLoaded = false;
             await LoadChildrenAsync(key);
-            var values = key.CachedValues ?? await client.ForUser(key.TargetUserId!.Value).ListValuesAsync(scope, path);
+            var values = key.CachedValues ?? await ClientFor(key.Address!).ListValuesAsync(scope, path);
             key.CachedValues = null;
             if (generation != _loadGeneration || !ReferenceEquals(SelectedKey, key)) return;
             foreach (var entry in values) VerifyAddress(entry.Address, key, path);
@@ -431,6 +438,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client, RelaxKonOS
         PaneState = Classify(error);
         StatusText = PaneState switch
         {
+            RegistryPaneState.Denied when SelectedKey?.Scope == RegistryScope.Server => LocalizedText.RefWithFallback("registry.status.server_access_denied", "Server runtime management requires administrator authorization."),
             RegistryPaneState.Denied => LocalizedText.RefWithFallback("registry.status.access_denied",
                 "Access denied: administrator authorization is required to open another account's hive."),
             RegistryPaneState.Disconnected => LocalizedText.RefWithFallback("registry.status.disconnected",
@@ -462,6 +470,8 @@ public sealed partial class RegistryViewModel(IRegistryClient client, RelaxKonOS
         if (context.DeviceId is { } device)
             current.Children.Add(new RegistryKeyNode("Device", "Device", RegistryScope.Device, current)
             { Address = new(context.ServerId, context.CurrentUserId, RegistryScope.Device, device, "Device") });
+        root.Children.Add(new RegistryKeyNode(LocalizedText.Get("registry.tree.server_runtime", "Server runtime"), "Server\\Runtime", RegistryScope.Server, root)
+        { Address = new(context.ServerId, null, RegistryScope.Server, context.ServerInstanceId, "Server\\Runtime") });
         root.Children.Add(current);
         root.Children.Add(new RegistryKeyNode("HKEY_USERS", null, null, root, RegistryKeyKind.Users));
         Keys.Add(root);
@@ -558,6 +568,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client, RelaxKonOS
     private static string LastSegment(string path) => path[(path.LastIndexOf('\\') + 1)..];
     private static string DisplayPath(RegistryKeyNode? node)
     {
+        if (node?.Scope == RegistryScope.Server) return node.Path ?? "Server\\Runtime";
         if (node?.Kind == RegistryKeyKind.Json) return DisplayPath(node.Parent) + "\\" + node.NavigationName;
         if (node is null || node.Kind == RegistryKeyKind.Root) return "";
         if (node.Kind == RegistryKeyKind.Users) return "HKEY_USERS";

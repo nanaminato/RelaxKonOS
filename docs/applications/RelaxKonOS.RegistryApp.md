@@ -38,4 +38,6 @@ SQLite 使用 `registry_keys` 持久化空键，`registry_entries` 以 `(UserId,
 
 客户端体验属性的后续扩展见[客户端设置实施计划](RelaxKonOS.RegistryApp.ClientSettings.Plan.md)，包含终端、注册表优先批次及其他应用的后续批次；计划中的待实施字段不代表当前已经开放。
 
-第一批客户端体验属性已开放：当前用户键树中的 `Device\Client\Registry` 包含 treeRowHeight、valueRowHeight、iconSize、scrollbarThickness、sidebarWidth；`Device\Client\Terminal` 包含 paddingTop、paddingBottom、paddingHorizontal。设备键使用登录客户端的 device_id 隔离，不属于其他用户的可浏览配置单元。字段可修改、恢复默认，不能改名或删除；本机成功保存立即更新已打开视图，外部修改在刷新或周期性读取后更新。
+第一批客户端体验属性已开放：当前用户键树中的 `Device\Client\Registry` 包含 treeRowHeight、valueRowHeight、iconSize、scrollbarThickness、sidebarWidth；`Device\Client\Terminal` 包含 paddingTop、paddingBottom、paddingHorizontal。设备键使用登录客户端的 device_id 隔离，不属于其他用户的可浏览配置单元。字段可修改、恢复默认，不能改名或删除；本机成功保存立即更新已打开视图，外部修改默认通过事件通知按需读取，也可配置定时或手动模式。
+
+静默同步策略及服务器实例级配置见[静默同步与服务器实例配置](RelaxKonOS.RegistryApp.Synchronization.md)。服务器运行配置不归属于虚拟用户，使用独立管理接口和实例地址，在服务器根节点下单独显示。

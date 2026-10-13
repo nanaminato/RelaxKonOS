@@ -1,4 +1,12 @@
 using RelaxKonOS.Protocol.Proxy;
+if (args.Contains("--quiet-settings-only"))
+{
+    var quietRoot = Path.Combine(Path.GetTempPath(), "relaxkon-quiet-settings-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(quietRoot);
+    try { await QuietSettingsVerification.RunAsync(quietRoot); }
+    finally { Directory.Delete(quietRoot, recursive: true); }
+    return;
+}
 if (args.Contains("--optimization-only") || args.Contains("--event-benchmark-only"))
 {
     var optimizationRoot = Path.Combine(Path.GetTempPath(), "relaxkonos-optimization-" + Guid.NewGuid().ToString("N"));

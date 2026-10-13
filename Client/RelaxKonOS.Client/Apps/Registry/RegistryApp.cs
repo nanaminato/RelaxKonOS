@@ -33,14 +33,14 @@ public sealed class RegistryApp : RemoteApplicationBase
                 throw new InvalidOperationException("The client device changed. Reopen the registry editor.");
             await context.ShowDialogAsync<bool>(window, LocalizedText.Get("registry.dialog.edit", "Edit Registry Value"), dialog => new RegistryValueDialogView
             {
-                DataContext = new RegistryValueDialogViewModel(row, client.ForUser(row.Source.Address.OwnerUserId), dialog.Close, entry => viewModel.ApplySaved(entry)),
+                DataContext = new RegistryValueDialogViewModel(row, row.Source.Scope == RelaxKonOS.Protocol.Registry.RegistryScope.Server ? client.ForServer(row.Source.Address.ScopeId) : client.ForUser(row.Source.Address.OwnerUserId!.Value), dialog.Close, entry => viewModel.ApplySaved(entry)),
             }, row.Source.ValueType == RelaxKonOS.Protocol.Registry.RegistryValueType.Number ? new Size(600, 320) : new Size(720, 520));
         };
         viewModel.ShowRenameDialogAsync = async row =>
         {
             await context.ShowDialogAsync<bool>(window, LocalizedText.Get("registry.dialog.rename", "Rename Registry Value"), dialog => new RegistryRenameDialogView
             {
-                DataContext = new RegistryRenameDialogViewModel(row, client.ForUser(row.Source.Address.OwnerUserId), dialog.Close, viewModel.ApplyRenamed),
+                DataContext = new RegistryRenameDialogViewModel(row, row.Source.Scope == RelaxKonOS.Protocol.Registry.RegistryScope.Server ? client.ForServer(row.Source.Address.ScopeId) : client.ForUser(row.Source.Address.OwnerUserId!.Value), dialog.Close, viewModel.ApplyRenamed),
             }, new Size(560, 320));
         };
         viewModel.ShowNewValueDialogAsync = async (scope, path) =>

@@ -88,6 +88,8 @@ internal static class SettingsSystemVerification
         Console.WriteLine("PASS: Workspace environment HTTP ownership, no-store, typed snapshots, required revisions and conflict problems.");
     }
 
+    internal static Task VerifyQuietHttpAsync(string root) => VerifyHttpAsync(root);
+
     private static async Task VerifyHttpAsync(string root)
     {
         var owner = Guid.NewGuid();
@@ -99,6 +101,7 @@ internal static class SettingsSystemVerification
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddAuthorization();
         builder.Services.AddSignalR();
+        builder.Services.AddSingleton(new RelaxKonOS.Server.Settings.ServerRuntimeSettingsStore(Path.Combine(root, "runtime-settings.json")));
         builder.Services.AddSingleton<SettingsSubscriptions>();
         builder.Services.AddHostedService<SettingsChangesBroadcastService>();
         builder.Services.ConfigureHttpJsonOptions(options =>
@@ -108,7 +111,9 @@ internal static class SettingsSystemVerification
         });
         builder.Services.AddSingleton<IWorkspaceRepository>(workspaces);
         builder.Services.AddSingleton<IRegistryRepository, InMemoryRegistryRepository>();
-        builder.Services.AddSingleton<IUserRepository, InMemoryUserRepository>();
+        var users = new InMemoryUserRepository();
+        users.Add(new User { Id = owner, Username = "settings-owner", PlatformIdentity = "settings-owner" });
+        builder.Services.AddSingleton<IUserRepository>(users);
         builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IHostAccountPrivilegeService>(new TestHostAccountPrivilegeService());
         builder.Services.AddSingleton<RelaxKonOS.Server.HostMode.IServerModeResolver>(new UploadSessionChecks.SystemMode());
         builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.HostElevationSessionState>();

@@ -148,7 +148,7 @@ public partial class TerminalViewModel : LocalizedObservableObject
         {
             _preferences.Changed += OnPreferencesChanged;
             _preferences.Activate();
-            try { await _preferences.RefreshAsync(); }
+            try { await _preferences.EnsureLoadedAsync(); }
             catch { /* Keep the last valid appearance; connecting the PTY reports its own connection failure. */ }
             OnPreferencesChanged(null, EventArgs.Empty);
         }
