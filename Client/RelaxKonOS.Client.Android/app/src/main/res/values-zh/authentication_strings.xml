@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
 <resources>
+    <string name="account_security_mutation_failed">未能完成本机变更，部分变更可能已生效。请核对当前记录，再重试或取消。</string>
     <string name="account_security_clear_all">删除全部已保存密码</string>
     <string name="account_security_clear_all_message">删除本机已保存的全部密码？已保存的连接会保留，但你需要重新输入密码。</string>
     <string name="account_security_clear_all_title">删除全部已保存密码</string>

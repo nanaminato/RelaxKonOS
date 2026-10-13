@@ -140,6 +140,16 @@ class DebugCredentialStoreTest {
     }
 
     @Test
+    fun `deleting a confirmed old identity preserves a replacement record`() {
+        store.save(server, "nana", "first".toCharArray())
+        val confirmed = requireNotNull(store.record())
+        store.save("https://replacement.invalid", "other", "replacement".toCharArray())
+        store.delete(confirmed.serviceId, confirmed.identifier)
+        assertEquals(DebugCredentialRecord("https://replacement.invalid", "other"), store.record())
+        assertArrayEquals("replacement".toCharArray(), store.reveal("https://replacement.invalid", "other"))
+    }
+
+    @Test
     fun `a truncated file decodes as nothing`() {
         store.save(server, "nana", "hunter2".toCharArray())
         storage.write(storage.read()!!.copyOf(12))

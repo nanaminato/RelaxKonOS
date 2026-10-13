@@ -20,6 +20,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
+import app.relaxkonos.mobile.core.auth.SessionState
+import kotlinx.coroutines.CancellationException
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.security.model.SavedLogin
 import app.relaxkonos.mobile.ui.common.ConfirmDangerousDialog
@@ -48,17 +53,31 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 fun ConnectionsScreen(
     onBack: (() -> Unit)?,
     onSwitchLogin: (SavedLogin) -> Unit,
+    active: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val container = appContainer()
     val controller = remember(container) { ConnectionsController(container) }
-    var revision by remember { mutableStateOf(0) }
-    var forgetTarget by remember { mutableStateOf<SavedLogin?>(null) }
-    var deleteTarget by remember { mutableStateOf<SavedLogin?>(null) }
+    ConnectionsContent(controller, container.activeSession, onBack, onSwitchLogin, container.serverCenter::open, active, modifier)
+}
 
-    val logins = remember(revision) { controller.logins }
-    val active = container.activeSession
-    LaunchedEffect(controller) { controller.resolvePlatforms() }
+@Composable
+internal fun ConnectionsContent(controller: ConnectionsActions, session: SessionState.Active?, onBack: (() -> Unit)?,
+    onSwitchLogin: (SavedLogin) -> Unit, onOpenServerCenter: () -> Unit, active: Boolean, modifier: Modifier = Modifier) {
+    var revision by remember { mutableStateOf(0) }
+    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    val resumed = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
+    var forgetTarget by remember(active, resumed, session) { mutableStateOf<SavedLogin?>(null) }
+    var deleteTarget by remember(active, resumed, session) { mutableStateOf<SavedLogin?>(null) }
+    var mutationFailed by remember(forgetTarget, deleteTarget) { mutableStateOf(false) }
+    fun mutate(action: () -> Unit, completed: () -> Unit) {
+        try { action(); completed() }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { mutationFailed = true; revision++ }
+    }
+
+    val logins = remember(revision, active, resumed) { controller.logins }
+    LaunchedEffect(controller, active, resumed) { if (active && resumed) controller.resolvePlatforms() }
 
     Column(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg),
@@ -105,7 +124,7 @@ fun ConnectionsScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        if (login.serviceId == active?.serviceId && login.identifier == active.userName) {
+                        if (login.serviceId == session?.serviceId && login.identifier == session.userName) {
                             Text(
                                 stringResource(R.string.connections_active),
                                 style = MaterialTheme.typography.bodySmall,
@@ -126,7 +145,7 @@ fun ConnectionsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
             )
-            OutlinedButton(onClick = container.serverCenter::open, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = onOpenServerCenter, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.server_center_open))
             }
         }
@@ -143,10 +162,9 @@ fun ConnectionsScreen(
             title = stringResource(R.string.connections_forget_title),
             message = stringResource(R.string.connections_forget_message, login.serviceId, login.identifier),
             confirmLabel = stringResource(R.string.connections_forget_password),
+            extraContent = { if (mutationFailed) Text(stringResource(R.string.connections_mutation_failed), color = MaterialTheme.colorScheme.error) },
             onConfirm = {
-                forgetTarget = null
-                controller.forgetPassword(login)
-                revision++
+                mutate({ controller.forgetPassword(login) }) { forgetTarget = null; revision++ }
             },
             onDismiss = { forgetTarget = null },
         )
@@ -157,10 +175,9 @@ fun ConnectionsScreen(
             title = stringResource(R.string.connections_delete_title),
             message = stringResource(R.string.connections_delete_message, login.serviceId, login.identifier),
             confirmLabel = stringResource(R.string.common_delete),
+            extraContent = { if (mutationFailed) Text(stringResource(R.string.connections_mutation_failed), color = MaterialTheme.colorScheme.error) },
             onConfirm = {
-                deleteTarget = null
-                controller.delete(login)
-                revision++
+                mutate({ controller.delete(login) }) { deleteTarget = null; revision++ }
             },
             onDismiss = { deleteTarget = null },
         )

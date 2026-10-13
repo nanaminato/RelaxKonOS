@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
 <resources>
+    <string name="account_security_mutation_failed">The local change could not be completed. Some changes may already have taken effect. Check the current records, then retry or cancel.</string>
     <string name="account_security_clear_all">Delete all saved passwords</string>
     <string name="account_security_clear_all_message">Delete every saved password from this device? Saved connections stay, and you will have to type the passwords again.</string>
     <string name="account_security_clear_all_title">Delete all saved passwords</string>

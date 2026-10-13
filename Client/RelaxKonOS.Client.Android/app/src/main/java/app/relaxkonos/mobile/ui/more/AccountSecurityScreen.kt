@@ -21,8 +21,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
+import app.relaxkonos.mobile.core.auth.SessionState
+import kotlinx.coroutines.CancellationException
+import app.relaxkonos.mobile.ui.common.OperationMessageDialog
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.security.BiometricCapability
+import app.relaxkonos.mobile.security.DebugCredentialRecord
 import app.relaxkonos.mobile.security.VaultRecord
 import app.relaxkonos.mobile.security.VaultRecordState
 import app.relaxkonos.mobile.security.VaultUnlockMode
@@ -50,29 +57,47 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 @Composable
 fun AccountSecurityScreen(
     onBack: (() -> Unit)?,
+    active: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val container = appContainer()
     val controller = remember(container) { AccountSecurityController(container) }
-    val appearance = container.appearance
+    AccountSecurityContent(controller, container.activeSession, onBack, active, modifier)
+}
+
+@Composable
+internal fun AccountSecurityContent(controller: AccountSecurityActions, session: SessionState.Active?, onBack: (() -> Unit)?,
+    active: Boolean, modifier: Modifier = Modifier) {
+    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    val resumed = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
 
     var revision by remember { mutableStateOf(0) }
-    var memoryCleared by remember(container.activeSession) { mutableStateOf(false) }
-    var confirmDisable by remember { mutableStateOf(false) }
-    var confirmClearAll by remember { mutableStateOf(false) }
-    var deleteTarget by remember { mutableStateOf<DeletionTarget?>(null) }
+    var memoryCleared by remember(session) { mutableStateOf(false) }
+    var confirmDisable by remember(active, resumed, session) { mutableStateOf(false) }
+    var confirmClearAll by remember(active, resumed, session) { mutableStateOf(false) }
+    var deleteTarget by remember(active, resumed, session) { mutableStateOf<DeletionTarget?>(null) }
+    var mutationFailed by remember(active, resumed, session, confirmDisable, confirmClearAll, deleteTarget) { mutableStateOf(false) }
+    fun mutate(action: () -> Unit, completed: () -> Unit = {}) {
+        mutationFailed = false
+        try { action(); completed(); revision++ }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { mutationFailed = true; revision++ }
+    }
+    if (!confirmDisable && !confirmClearAll && deleteTarget == null && mutationFailed) {
+        OperationMessageDialog(stringResource(R.string.account_security_mutation_failed), eventKey = revision)
+    }
 
     val capability = controller.capability
-    val connectionRecords = remember(revision, appearance.fingerprintEnabled) { controller.connectionRecords }
-    val elevationRecords = remember(revision, appearance.fingerprintEnabled) { controller.elevationRecords }
+    val connectionRecords = remember(revision, controller.fingerprintEnabled, active, resumed) { controller.connectionRecords }
+    val elevationRecords = remember(revision, controller.fingerprintEnabled, active, resumed) { controller.elevationRecords }
     // A debug build may hold one plaintext record in the case where the vault cannot exist at all. It
     // is listed here and nowhere else, because this page is the one place that answers "what is stored
     // on this device" — a plaintext password it does not mention would be the one dishonest thing on
     // the screen. `null` in every release build.
-    val debugRecord = remember(revision) { controller.debugRecord }
+    val debugRecord = remember(revision, active, resumed) { controller.debugRecord }
     val connectionMode = controller.connectionMode
     val elevationMode = controller.elevationMode
-    LaunchedEffect(controller) { controller.resolvePlatforms() }
+    LaunchedEffect(controller, active, resumed) { if (active && resumed) controller.resolvePlatforms() }
 
     Column(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg),
@@ -91,10 +116,10 @@ fun AccountSecurityScreen(
                 title = stringResource(R.string.account_security_fingerprint_subtitle),
                 trailing = {
                     Switch(
-                        checked = appearance.fingerprintEnabled,
+                        checked = controller.fingerprintEnabled,
                         onCheckedChange = { enabled ->
                             if (enabled) {
-                                controller.enableFingerprint()
+                                mutate(controller::enableFingerprint)
                             } else {
                                 confirmDisable = true
                             }
@@ -102,10 +127,10 @@ fun AccountSecurityScreen(
                     )
                 },
                 onClick = {
-                    if (appearance.fingerprintEnabled) {
+                    if (controller.fingerprintEnabled) {
                         confirmDisable = true
                     } else {
-                        controller.enableFingerprint()
+                        mutate(controller::enableFingerprint)
                     }
                 },
             )
@@ -168,7 +193,7 @@ fun AccountSecurityScreen(
                     RecordActionRow(
                         leading = { ServerPlatformBadge(record.serviceId) },
                         actions = {
-                            TextButton(onClick = { deleteTarget = DeletionTarget.DebugStore }) {
+                            TextButton(onClick = { deleteTarget = DeletionTarget.DebugStore(record) }) {
                                 ActionLabel(R.string.common_delete)
                             }
                         },
@@ -222,8 +247,8 @@ fun AccountSecurityScreen(
         SectionCard(title = stringResource(R.string.usage_memory_title)) {
             Text(stringResource(R.string.usage_memory_description))
             TextButton(onClick = {
-                controller.clearUsageMemory()
-                memoryCleared = true
+                memoryCleared = false
+                mutate(controller::clearUsageMemory) { memoryCleared = true }
             }) { Text(stringResource(R.string.usage_memory_clear)) }
             if (memoryCleared) Text(stringResource(R.string.usage_memory_cleared))
         }
@@ -235,13 +260,12 @@ fun AccountSecurityScreen(
 
         // 「不再提醒」是用户在某次提示里做的选择，所以这里必须能看见它、也能撤掉它。只在真的静音过
         // 东西时出现：一个空的分组只会让人以为自己关掉过什么（`Shell.Design.md` §3.4）。
-        val silenced = remember(revision) { controller.silenced }
+        val silenced = remember(revision, active, resumed) { controller.silenced }
         if (silenced.isNotEmpty()) {
             SectionCard(stringResource(R.string.account_security_reminders)) {
                 silenced.forEach { kind ->
                     val restore: () -> Unit = {
-                        controller.restoreReminder(kind)
-                        revision++
+                        mutate({ controller.restoreReminder(kind) })
                     }
                     ListRow(
                         title = reminderLabel(kind),
@@ -263,10 +287,9 @@ fun AccountSecurityScreen(
             title = stringResource(R.string.account_security_disable_title),
             message = stringResource(R.string.account_security_disable_message),
             confirmLabel = stringResource(R.string.account_security_disable_confirm),
+            extraContent = { if (mutationFailed) Text(stringResource(R.string.account_security_mutation_failed), color = MaterialTheme.colorScheme.error) },
             onConfirm = {
-                confirmDisable = false
-                controller.disableFingerprint()
-                revision++
+                mutate(controller::disableFingerprint) { confirmDisable = false }
             },
             onDismiss = { confirmDisable = false },
         )
@@ -277,10 +300,9 @@ fun AccountSecurityScreen(
             title = stringResource(R.string.account_security_clear_all_title),
             message = stringResource(R.string.account_security_clear_all_message),
             confirmLabel = stringResource(R.string.account_security_clear_all),
+            extraContent = { if (mutationFailed) Text(stringResource(R.string.account_security_mutation_failed), color = MaterialTheme.colorScheme.error) },
             onConfirm = {
-                confirmClearAll = false
-                controller.clearCredentials()
-                revision++
+                mutate(controller::clearCredentials) { confirmClearAll = false }
             },
             onDismiss = { confirmClearAll = false },
         )
@@ -296,20 +318,19 @@ fun AccountSecurityScreen(
                 { controller.delete(target.record) },
             )
 
-            DeletionTarget.DebugStore -> Triple(
-                debugRecord?.identifier.orEmpty(),
-                debugRecord?.serviceId.orEmpty(),
-                { controller.clearDebugCredential() },
+            is DeletionTarget.DebugStore -> Triple(
+                target.record.identifier,
+                target.record.serviceId,
+                { controller.deleteDebugCredential(target.record) },
             )
         }
         ConfirmDangerousDialog(
             title = stringResource(R.string.account_security_delete_title),
             message = stringResource(R.string.account_security_delete_message, identifier, serviceId),
             confirmLabel = stringResource(R.string.common_delete),
+            extraContent = { if (mutationFailed) Text(stringResource(R.string.account_security_mutation_failed), color = MaterialTheme.colorScheme.error) },
             onConfirm = {
-                deleteTarget = null
-                remove()
-                revision++
+                mutate(remove) { deleteTarget = null }
             },
             onDismiss = { deleteTarget = null },
         )
@@ -325,7 +346,7 @@ fun AccountSecurityScreen(
 private sealed interface DeletionTarget {
     data class Vault(val record: VaultRecord) : DeletionTarget
 
-    data object DebugStore : DeletionTarget
+    data class DebugStore(val record: DebugCredentialRecord) : DeletionTarget
 }
 
 /**

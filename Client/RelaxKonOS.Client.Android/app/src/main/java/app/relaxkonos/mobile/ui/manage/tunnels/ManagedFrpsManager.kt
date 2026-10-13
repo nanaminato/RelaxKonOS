@@ -18,14 +18,19 @@ import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.data.TunnelMutation
 import app.relaxkonos.mobile.ui.theme.Spacing
 import kotlinx.coroutines.delay
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun ManagedFrpsManager(model: TunnelsViewModel, state: TunnelsState, canManage: Boolean, active: Boolean, records: Boolean = false) {
-    var confirm by remember { mutableStateOf<Triple<Int, String, () -> Unit>?>(null) }
     var advanced by remember { mutableStateOf(false) }
     val current = (state.frps as? ApiResult.Success)?.value
-    LaunchedEffect(active, current?.state, state.frpsAtMillis, state.busy, state.editorOpen) {
-        if (active && current?.state?.active == true && !state.busy && !state.editorOpen) { delay(3000); model.observeFrps() }
+    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    val resumed = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
+    var confirm by remember(active, records, resumed, state.busy, current, state.frpsAtMillis, state.pending) { mutableStateOf<Triple<Int, String, () -> Unit>?>(null) }
+    LaunchedEffect(active, current?.state, state.frpsAtMillis, state.busy, state.editorOpen, resumed, state.uncertain, state.problemCode, confirm != null) {
+        if (resumed && active && current?.state?.active == true && !state.busy && !state.editorOpen && !state.uncertain && state.problemCode == null && confirm == null) { delay(3000); model.observeFrps() }
     }
     if (!records) {
     Text(stringResource(R.string.frps_intro))
@@ -34,7 +39,7 @@ import kotlinx.coroutines.delay
         Text(stringResource(R.string.frps_server_tab), style = MaterialTheme.typography.titleMedium)
         ExecutionStatusChip(frpsStateLabel(current.state), current.state.wire, task = false)
         Text(current.bindAddress + ":" + current.bindPort)
-        Text(stringResource(when {
+        if (current.state != ManagedFrpsState.NotConfigured) Text(stringResource(when {
             current.state == ManagedFrpsState.Unknown -> R.string.frps_process_unverified
             !current.state.active -> R.string.frps_saved_stopped
             current.appliedRevision == null -> R.string.frps_applied_unknown
@@ -113,8 +118,8 @@ import kotlinx.coroutines.delay
     }
     }
     confirm?.let { request -> AlertDialog(onDismissRequest = { confirm = null }, title = { Text(stringResource(R.string.tunnels_confirm)) },
-        text = { Column { Text(request.second); Text(stringResource(request.first)) } },
-        confirmButton = { Button(enabled = !state.busy, onClick = { confirm = null; request.third() }) { Text(stringResource(R.string.tunnels_confirm)) } },
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text(request.second); Text(stringResource(request.first)) } },
+        confirmButton = { Button(enabled = !state.busy && resumed, onClick = { confirm = null; request.third() }) { Text(stringResource(R.string.tunnels_confirm)) } },
         dismissButton = { TextButton(onClick = { confirm = null }) { Text(stringResource(R.string.common_cancel)) } }) }
 }
 @Composable internal fun ManagedFrpsEditor(model: TunnelsViewModel, state: TunnelsState) {

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
 <resources>
+    <string name="account_security_mutation_failed">端末内の変更を完了できませんでした。一部は反映済みの可能性があります。現在の記録を確認し、再試行またはキャンセルしてください。</string>
     <string name="account_security_clear_all">保存されたパスワードをすべて削除</string>
     <string name="account_security_clear_all_message">この端末に保存されたすべてのパスワードを削除しますか？保存された接続は残りますが、パスワードを入力し直す必要があります。</string>
     <string name="account_security_clear_all_title">保存されたパスワードをすべて削除</string>
