@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
 <resources>
+    <string name="docker_stack_recovery_title">核实原 Compose 请求</string>
+    <string name="docker_stack_result_unknown">原变更尚无已核实回执。新的变更前请先核实；不会重放请求。</string>
+    <string name="docker_stack_lookup_unresolved">原请求仍待核实，可能仍在处理或记录已超过保留期限。保留此记录并再次核实，不要提交新的变更。</string>
+    <string name="docker_stack_pending_unreadable">无法读取保存的请求身份，新的 Compose 变更已被阻止。</string>
+    <string name="docker_stack_verify_request">核实原请求</string>
     <string name="docker_access_restart_required">Docker 已安装并已授予访问权限。请在主机上重启 RelaxKonOS Server，再刷新验证连接。</string>
     <string name="docker_cancel">取消操作</string>
     <string name="docker_compose_note">仅支持镜像服务、命名卷和项目管理的网络。服务器会拒绝构建上下文、bind mount、外部文件、特权服务和 Docker socket 访问。</string>

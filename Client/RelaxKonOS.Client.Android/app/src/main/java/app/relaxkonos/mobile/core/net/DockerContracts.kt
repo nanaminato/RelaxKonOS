@@ -90,6 +90,7 @@ object DockerRoutes {
     const val STACKS = "$ROOT/stacks"
     const val STACK_DEPLOY = "$ROOT/stacks/deploy"
     const val STACK_PREVIEW = "$ROOT/stacks/preview"
+    const val STACK_OPERATION_BY_REQUEST = "$ROOT/stack-operations/by-request"
     fun containerAction(id: String, action: String) = "$CONTAINERS/${encodePath(id)}/$action"
     fun containerLogs(id: String, tail: Int) = "$CONTAINERS/${encodePath(id)}/logs?tail=$tail"
     fun stackServices(name: String) = "$STACKS/${encodePath(name)}/services"

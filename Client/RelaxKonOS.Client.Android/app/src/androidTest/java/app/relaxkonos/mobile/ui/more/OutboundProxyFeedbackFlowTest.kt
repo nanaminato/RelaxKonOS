@@ -27,6 +27,8 @@ import org.junit.After
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 
 class OutboundProxyFeedbackFlowTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
@@ -38,13 +40,20 @@ class OutboundProxyFeedbackFlowTest {
     private val active = mutableStateOf(true)
     private var shellBacks = 0
     private var pageBacks = 0
+    @Volatile private var foreground = true
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     private fun text(id: Int) = context.getString(id)
     private val status = OutboundProxyStatus(
         OutboundProxySettings(false, OutboundProxySource.Custom, "", "", "localhost", false, false, false, false),
         emptyList(), "", "", "", "", false, "linux", null)
 
-    private fun show() {
+    private fun show(initiallyActive: Boolean = true) {
+        active.value = initiallyActive
+        rule.activityRule.scenario.onActivity { activity ->
+            activity.lifecycle.addObserver(LifecycleEventObserver { owner, _ ->
+                foreground = owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+            })
+        }
         val app = context.applicationContext as RelaxKonApplication
         val gateway = object : RelaxKonGateway by app.container.gateway {
             override suspend fun login(serverUrl: String, identifier: String, password: CharArray) = ApiResult.Success(
@@ -75,12 +84,12 @@ class OutboundProxyFeedbackFlowTest {
                     BackHandler { shellBacks++ }
                     WorkspaceSection(active.value) {
                         // Match MoreWorkspace: a retained hidden category receives no back callback.
-                        OutboundProxyContent(owner, editor, ({ pageBacks++; Unit }).takeIf { active.value }, null)
+                        OutboundProxyContent(owner, editor, ({ pageBacks++; Unit }).takeIf { active.value }, null, active.value)
                     }
                 }
             }
         } }
-        rule.waitUntil(5_000) { editor.canSubmit }
+        if (initiallyActive) rule.waitUntil(5_000) { editor.canSubmit }
     }
     @After fun cleanup() {
         rule.runOnUiThread { if (::editor.isInitialized) editor.close(); scope.cancel() }
@@ -94,6 +103,49 @@ class OutboundProxyFeedbackFlowTest {
     private fun acknowledgeFeedback() {
         rule.onNodeWithText(text(R.string.common_dismiss)).performClick()
         rule.waitUntil(5_000) { rule.onAllNodesWithText(text(R.string.common_dismiss)).fetchSemanticsNodes().isEmpty() }
+    }
+    @Test fun retainedHiddenProxyDoesNotReadUntilSelected() {
+        show(false)
+        rule.runOnIdle { assertEquals(0, reads); assertNull(editor.draft); active.value = true }
+        rule.waitUntil(5_000) { editor.canSubmit }
+        rule.runOnIdle { assertEquals(1, reads); assertEquals(0, writes) }
+    }
+    @Test fun hiddenProxyWithdrawsApprovalButPreservesDraft() {
+        show()
+        rule.onNodeWithText(text(R.string.proxy_show_urls)).performScrollTo().performClick().assertIsOn()
+        rule.runOnIdle { editor.change { it.copy(noProxy = "unsaved.invalid") }; editor.save() }
+        rule.onNode(isDialog()).assertExists()
+        rule.runOnIdle { active.value = false }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.runOnIdle { assertNull(editor.review); active.value = true }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.proxy_show_urls)).performScrollTo().assertIsOff()
+        rule.runOnIdle {
+            assertEquals("unsaved.invalid", editor.draft?.noProxy)
+            assertEquals(1, reads); assertEquals(0, writes)
+            editor.save()
+        }
+        rule.onNode(isDialog()).assertExists()
+        rule.onNodeWithText(text(R.string.common_cancel)).performClick()
+    }
+    @Test fun pausedProxyWithdrawsApprovalWithoutRecomposition() {
+        show()
+        rule.onNodeWithText(text(R.string.proxy_show_urls)).performScrollTo().performClick().assertIsOn()
+        rule.runOnIdle { editor.change { it.copy(noProxy = "unsaved.invalid") }; editor.clear() }
+        rule.onNode(isDialog()).assertExists()
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+            rule.waitUntil(5_000) { !foreground }
+            rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+            rule.waitUntil(5_000) { foreground }
+        } finally { rule.mainClock.autoAdvance = true }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.proxy_show_urls)).performScrollTo().assertIsOff()
+        rule.runOnIdle {
+            assertNull(editor.review); assertEquals("unsaved.invalid", editor.draft?.noProxy)
+            assertEquals(1, reads); assertEquals(0, writes)
+        }
     }
     @Test fun hiddenProxyDraftDoesNotConsumeAnotherCategoriesBack() {
         show()

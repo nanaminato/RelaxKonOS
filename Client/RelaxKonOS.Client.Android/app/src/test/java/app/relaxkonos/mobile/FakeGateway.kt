@@ -91,6 +91,8 @@ class FakeGateway : RelaxKonGateway {
     override suspend fun dockerImages(serverUrl: String, accessToken: String) = onDockerImages()
     override suspend fun dockerNetworks(serverUrl: String, accessToken: String) = onDockerNetworks()
     override suspend fun dockerVolumes(serverUrl: String, accessToken: String) = onDockerVolumes()
+    var onStackRequest: (String) -> ApiResult<DockerStackOperation> = { error("Unexpected stack request lookup") }
+    override suspend fun dockerStackOperationByRequest(serverUrl: String, accessToken: String, requestKey: String) = onStackRequest(requestKey)
     var onDockerStatus: () -> ApiResult<DockerStatus> = { error("Unexpected Docker status read") }
     var onDockerEngineAction: (DockerEngineAction, Boolean) -> ApiResult<DockerEngineResult> = { _, _ -> error("Unexpected engine action") }
     var onDockerMirrors: () -> ApiResult<List<DockerImageMirror>> = { error("Unexpected mirrors read") }

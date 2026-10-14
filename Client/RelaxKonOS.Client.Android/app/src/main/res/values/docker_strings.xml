@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
 <resources>
+    <string name="docker_stack_recovery_title">Verify original Compose request</string>
+    <string name="docker_stack_result_unknown">The original change has no verified receipt. Verify it before another change. Nothing will be replayed.</string>
+    <string name="docker_stack_lookup_unresolved">The original request is still unverified. It may still be processing, or its record may no longer be retained. Keep this record and verify again; do not submit a new change.</string>
+    <string name="docker_stack_pending_unreadable">Saved request identities cannot be read. New Compose changes are blocked.</string>
+    <string name="docker_stack_verify_request">Verify original request</string>
     <string name="docker_access_restart_required">Docker is installed and access has been granted. Restart RelaxKonOS Server on the host, then refresh to verify the connection.</string>
     <string name="docker_cancel">Cancel operation</string>
     <string name="docker_compose_note">Only image services, named volumes and project-managed networks are supported. Build contexts, bind mounts, external files, privileged services and Docker socket access are rejected by the server.</string>

@@ -308,7 +308,7 @@ private fun MorePane(route: String, active: Boolean, onOpenRoute: (String) -> Un
         Routes.MORE_ACCOUNT_SECURITY -> AccountSecurityScreen(onBack = onBack, active = active, modifier = Modifier.fillMaxSize())
         Routes.MORE_CONNECTIONS -> ConnectionsScreen(onBack = onBack, onSwitchLogin = onSwitchLogin, active = active, modifier = Modifier.fillMaxSize())
         Routes.MORE_SERVER_INFORMATION -> ServerInformationScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
-        Routes.MORE_NETWORK -> OutboundProxyScreen(onBack = onBack, onOpenManagedProxy = onOpenManagedProxy, modifier = Modifier.fillMaxSize())
+        Routes.MORE_NETWORK -> OutboundProxyScreen(onBack = onBack, onOpenManagedProxy = onOpenManagedProxy, active = active, modifier = Modifier.fillMaxSize())
         Routes.MORE_APPEARANCE -> AppearanceScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
         Routes.MORE_DIAGNOSTICS -> DiagnosticsScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
         Routes.MORE_APPLICATIONS -> app.relaxkonos.mobile.ui.more.MobileApplicationsScreen(onBack = onBack,

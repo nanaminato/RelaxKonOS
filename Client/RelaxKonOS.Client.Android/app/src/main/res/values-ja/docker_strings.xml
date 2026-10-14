@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
 <resources>
+    <string name="docker_stack_recovery_title">元の Compose リクエストを確認</string>
+    <string name="docker_stack_result_unknown">元の変更の受付結果が未確認です。新しい変更の前に確認してください。リクエストは再送されません。</string>
+    <string name="docker_stack_lookup_unresolved">元のリクエストは未確認です。処理中、または記録の保存期間を超えている可能性があります。この記録を保持して再確認し、新しい変更を送信しないでください。</string>
+    <string name="docker_stack_pending_unreadable">保存されたリクエスト情報を読み取れないため、新しい Compose 変更を停止しています。</string>
+    <string name="docker_stack_verify_request">元のリクエストを確認</string>
     <string name="docker_access_restart_required">Docker をインストールし、アクセス権を付与しました。ホストの RelaxKonOS Server を再起動してから更新し、接続を確認してください。</string>
     <string name="docker_cancel">操作をキャンセル</string>
     <string name="docker_compose_note">イメージサービス、名前付きボリューム、プロジェクト管理ネットワークのみ対応します。ビルドコンテキスト、bind mount、外部ファイル、特権サービス、Docker socket へのアクセスはサーバーで拒否されます。</string>

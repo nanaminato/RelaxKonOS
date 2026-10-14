@@ -34,6 +34,9 @@ public static class DockerApiRoutes
     /// <summary>The single active operation of one project, or <c>404</c> when it has none.</summary>
     public const string StackActiveOperation = $"/{V1}/docker/stacks/{{name}}/operations/active";
     public const string StackOperationById = $"/{V1}/docker/stack-operations/{{operationId}}";
+    /// <summary>Read an existing operation for the current actor and the Idempotency-Key header.
+    /// A 404 does not establish that an in-flight submission will never be recorded.</summary>
+    public const string StackOperationByRequest = $"/{V1}/docker/stack-operations/by-request";
     public const string StackOperationDiagnostics = $"/{V1}/docker/stack-operations/{{operationId}}/diagnostics";
     public const string StackOperationCancel = $"/{V1}/docker/stack-operations/{{operationId}}/cancel";
     public const string StackServices = $"/{V1}/docker/stacks/{{name}}/services";

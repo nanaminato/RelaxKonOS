@@ -13,6 +13,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
 import app.relaxkonos.mobile.core.auth.SessionState
@@ -70,6 +72,18 @@ internal fun ConnectionsContent(controller: ConnectionsActions, session: Session
     var forgetTarget by remember(active, resumed, session) { mutableStateOf<SavedLogin?>(null) }
     var deleteTarget by remember(active, resumed, session) { mutableStateOf<SavedLogin?>(null) }
     var mutationFailed by remember(forgetTarget, deleteTarget) { mutableStateOf(false) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, active, resumed, session) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) {
+                forgetTarget = null
+                deleteTarget = null
+                mutationFailed = false
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     fun mutate(action: () -> Unit, completed: () -> Unit) {
         try { action(); completed() }
         catch (cancelled: CancellationException) { throw cancelled }

@@ -214,6 +214,7 @@ interface RelaxKonGateway {
     suspend fun dockerStackDeploy(serverUrl: String, accessToken: String, name: String, composeYaml: String, definitionVersion: String, idempotencyKey: String): ApiResult<DockerStackOperation> = ApiResult.Transport("Docker Compose is unavailable.")
     suspend fun dockerStackAction(serverUrl: String, accessToken: String, name: String, action: String, confirmed: Boolean, idempotencyKey: String): ApiResult<DockerStackOperation> = ApiResult.Transport("Docker Compose is unavailable.")
     suspend fun dockerStackOperations(serverUrl: String, accessToken: String, name: String, limit: Int): ApiResult<List<DockerStackOperation>> = ApiResult.Transport("Docker Compose is unavailable.")
+    suspend fun dockerStackOperationByRequest(serverUrl: String, accessToken: String, requestKey: String): ApiResult<DockerStackOperation>
     suspend fun dockerStackOperation(serverUrl: String, accessToken: String, operationId: String): ApiResult<DockerStackOperation> = ApiResult.Transport("Docker Compose is unavailable.")
     suspend fun dockerStackOperationDiagnostics(serverUrl: String, accessToken: String, operationId: String): ApiResult<DockerStackOperationDiagnostics> = ApiResult.Transport("Docker Compose is unavailable.")
     suspend fun dockerStackOperationCancel(serverUrl: String, accessToken: String, operationId: String, idempotencyKey: String): ApiResult<DockerStackOperation> = ApiResult.Transport("Docker Compose is unavailable.")

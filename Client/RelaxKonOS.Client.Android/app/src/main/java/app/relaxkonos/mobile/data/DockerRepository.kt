@@ -51,18 +51,15 @@ class DockerRepository(
         read(owner) { url, token -> gateway.dockerStackPreview(url, token, name, composeYaml) }
 
     /**
-     * Submits a deployment bound to the approved definition version. The key is generated per
-     * submission so a retried request returns the operation that was already created instead of
-     * starting a second deployment of the same stack.
+     * Persists a request identity before submission. Authentication retries keep that exact key;
+     * a lost receipt is recovered through the read-only lookup, never a fresh deployment.
      */
     suspend fun deployStack(owner: SessionState.Active, name: String, composeYaml: String, definitionVersion: String): ApiResult<DockerStackOperation> {
-        val key = UUID.randomUUID().toString()
-        return mutate(owner) { url, token -> gateway.dockerStackDeploy(url, token, name, composeYaml, definitionVersion, key) }
+        return mutate(owner, name, "deploy") { url, token, key -> gateway.dockerStackDeploy(url, token, name, composeYaml, definitionVersion, key) }
     }
 
     suspend fun stackAction(owner: SessionState.Active, name: String, action: String, confirmed: Boolean): ApiResult<DockerStackOperation> {
-        val key = UUID.randomUUID().toString()
-        return mutate(owner) { url, token -> gateway.dockerStackAction(url, token, name, action, confirmed, key) }
+        return mutate(owner, name, action) { url, token, key -> gateway.dockerStackAction(url, token, name, action, confirmed, key) }
     }
 
     suspend fun stackOperations(owner: SessionState.Active, name: String, limit: Int = 20): ApiResult<List<DockerStackOperation>> =
@@ -79,10 +76,45 @@ class DockerRepository(
         return read(owner) { url, token -> gateway.dockerStackOperationCancel(url, token, operationId, key) }
     }
 
-    private suspend fun mutate(owner: SessionState.Active, call: suspend (String, String) -> ApiResult<DockerStackOperation>): ApiResult<DockerStackOperation> = gate.mutex.withLock {
+    fun pendingRequests(owner: SessionState.Active) = gate.compose.pending(owner)
+
+    suspend fun recoverRequest(owner: SessionState.Active, record: PendingDockerCompose): ApiResult<DockerStackOperation> = gate.mutex.withLock {
+        require(record in gate.compose.pending(owner))
+        val result = read(owner) { url, token ->
+            gateway.dockerStackOperationByRequest(url, token, record.requestKey).also {
+                if (it is ApiResult.Success) require(it.value.projectName == record.project && it.value.kind.wire == record.action)
+            }
+        }
+        if (result is ApiResult.Success) {
+            operationIndex.record(owner, OperationDomain.Compose, result.value.projectName, result.value.operationId)
+            gate.compose.complete(record)
+        }
+        result
+    }
+
+    private suspend fun mutate(owner: SessionState.Active, project: String, action: String, call: suspend (String, String, String) -> ApiResult<DockerStackOperation>): ApiResult<DockerStackOperation> = gate.mutex.withLock {
         if (session.state.value !== owner) throw CancellationException("Docker session changed")
         val allowed = gate.check(owner)
-        when (allowed) { is ApiResult.Problem -> allowed; is ApiResult.Transport -> allowed; is ApiResult.Success -> read(owner, call) }
+        when (allowed) {
+            is ApiResult.Problem -> allowed
+            is ApiResult.Transport -> allowed
+            is ApiResult.Success -> {
+                var pending: PendingDockerCompose? = null
+                val result = read(owner) { url, token ->
+                    val record = pending ?: gate.compose.begin(owner, project, action).also { pending = it }
+                    call(url, token, record.requestKey)
+                }
+                pending?.let { record ->
+                    if (result is ApiResult.Success) {
+                        operationIndex.record(owner, OperationDomain.Compose, result.value.projectName, result.value.operationId)
+                        gate.compose.complete(record)
+                    } else if (result is ApiResult.Problem && result.status in 400..499 && result.code.startsWith("docker.stack_")) {
+                        gate.compose.complete(record)
+                    }
+                }
+                result
+            }
+        }
     }
     private suspend fun <T> read(owner: SessionState.Active, call: suspend (String, String) -> ApiResult<T>): ApiResult<T> = reads.withLock {
         fun verifyOwner() { if (session.state.value !== owner) throw CancellationException("Docker session changed") }

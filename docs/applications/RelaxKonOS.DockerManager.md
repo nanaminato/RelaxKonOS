@@ -159,6 +159,7 @@ IDockerEngineService ── IDockerRuntimeInstaller ── IDockerComposeService
 
 - **偏移/结果的唯一真相是服务端记录**，客户端不从自己的请求推断“部署成功”。
 - **幂等键绑定请求指纹**：`Idempotency-Key` 相同但请求不同（例如换了一份 YAML）返回 `docker.stack_idempotency_conflict`；不会把一次批准套用到另一份文档。客户端在为同一份文档重试时复用键，请求变了就换键。
+- **按原请求核实回执**：`GET /api/v1.0/docker/stack-operations/by-request` 携带原 `Idempotency-Key` 请求头，只查询当前认证操作者的现有账本记录，不创建或重放操作。404 不能证明原请求从未提交：请求可能仍在处理，旧终态记录也可能超过账本保留上限。
 - **部署绑定 `definitionVersion`**：`preview` 返回的版本随 `deploy` 回传；服务端重新计算不一致即拒绝（`docker.stack_definition_changed`）。所以“批准”的对象是一份确定的文档，而不是一次点击。
 - **按项目互斥 + 全局并发上限**：同一项目同时只有一个活动操作（`docker.stack_operation_conflict`）；`DockerCompose:MaximumConcurrentOperations`（默认 2）限制不同项目同时执行的数目。
 - **结果是观察到的服务状态**，不是命令退出码。命令成功但服务未达目标状态，或命令失败但有容器残留，都是 `partialFailed`；`RecoveryProblemCode` 只在需要操作者决策且能补充 `ProblemCode` 时出现，二者永不同值。**不声称整组原子回滚**；恢复旧定义也不等于回滚数据迁移。

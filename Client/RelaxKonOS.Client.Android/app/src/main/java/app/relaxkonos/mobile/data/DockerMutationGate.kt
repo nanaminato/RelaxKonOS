@@ -5,12 +5,12 @@ import app.relaxkonos.mobile.core.net.*
 import kotlinx.coroutines.sync.Mutex
 
 /** Shared serialization across engine, mirror, standalone resource and Compose submissions. */
-class DockerMutationGate(private val control: DockerControlJournal, private val resources: DockerResourceJournal,
+class DockerMutationGate(private val control: DockerControlJournal, private val resources: DockerResourceJournal, val compose: DockerComposeJournal,
     private val installationCheck: suspend (SessionState.Active) -> ApiResult<Unit>) {
     val mutex = Mutex()
     suspend fun check(owner: SessionState.Active): ApiResult<Unit> {
         require(owner.privilegedOperations && ServerCapabilities.DOCKER in owner.capabilities)
-        if (control.pending(owner).isNotEmpty() || resources.pending(owner).isNotEmpty())
+        if (control.pending(owner).isNotEmpty() || resources.pending(owner).isNotEmpty() || compose.pending(owner).isNotEmpty())
             return ApiResult.Problem(409, "docker.resources.pending", null)
         return installationCheck(owner)
     }

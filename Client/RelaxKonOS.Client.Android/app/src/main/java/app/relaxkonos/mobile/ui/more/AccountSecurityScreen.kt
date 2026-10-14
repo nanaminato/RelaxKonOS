@@ -10,10 +10,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
 import app.relaxkonos.mobile.core.auth.SessionState
@@ -36,7 +37,7 @@ import app.relaxkonos.mobile.security.VaultUnlockMode
 import app.relaxkonos.mobile.ui.common.ConfirmDangerousDialog
 import app.relaxkonos.mobile.ui.common.EmptyHint
 import app.relaxkonos.mobile.ui.common.KeyValueRow
-import app.relaxkonos.mobile.ui.common.ListRow
+import app.relaxkonos.mobile.ui.common.SwitchOption
 import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionCard
 import app.relaxkonos.mobile.ui.common.appContainer
@@ -77,6 +78,19 @@ internal fun AccountSecurityContent(controller: AccountSecurityActions, session:
     var confirmClearAll by remember(active, resumed, session) { mutableStateOf(false) }
     var deleteTarget by remember(active, resumed, session) { mutableStateOf<DeletionTarget?>(null) }
     var mutationFailed by remember(active, resumed, session, confirmDisable, confirmClearAll, deleteTarget) { mutableStateOf(false) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, active, resumed, session) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) {
+                confirmDisable = false
+                confirmClearAll = false
+                deleteTarget = null
+                mutationFailed = false
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     fun mutate(action: () -> Unit, completed: () -> Unit = {}) {
         mutationFailed = false
         try { action(); completed(); revision++ }
@@ -112,28 +126,9 @@ internal fun AccountSecurityContent(controller: AccountSecurityActions, session:
             title = stringResource(R.string.account_security_fingerprint),
             contentSpacing = Spacing.xs,
         ) {
-            ListRow(
-                title = stringResource(R.string.account_security_fingerprint_subtitle),
-                trailing = {
-                    Switch(
-                        checked = controller.fingerprintEnabled,
-                        onCheckedChange = { enabled ->
-                            if (enabled) {
-                                mutate(controller::enableFingerprint)
-                            } else {
-                                confirmDisable = true
-                            }
-                        },
-                    )
-                },
-                onClick = {
-                    if (controller.fingerprintEnabled) {
-                        confirmDisable = true
-                    } else {
-                        mutate(controller::enableFingerprint)
-                    }
-                },
-            )
+            SwitchOption(controller.fingerprintEnabled, stringResource(R.string.account_security_fingerprint_subtitle)) { enabled ->
+                if (enabled) mutate(controller::enableFingerprint) else confirmDisable = true
+            }
         }
 
         SectionCard(stringResource(R.string.account_security_device_title)) {
@@ -267,11 +262,7 @@ internal fun AccountSecurityContent(controller: AccountSecurityActions, session:
                     val restore: () -> Unit = {
                         mutate({ controller.restoreReminder(kind) })
                     }
-                    ListRow(
-                        title = reminderLabel(kind),
-                        trailing = { Switch(checked = true, onCheckedChange = { restore() }) },
-                        onClick = { restore() },
-                    )
+                    SwitchOption(true, reminderLabel(kind)) { restore() }
                 }
                 Text(
                     stringResource(R.string.account_security_reminders_note),

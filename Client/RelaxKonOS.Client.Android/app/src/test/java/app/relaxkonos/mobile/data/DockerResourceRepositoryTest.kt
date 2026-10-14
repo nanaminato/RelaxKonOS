@@ -18,7 +18,7 @@ class DockerResourceRepositoryTest {
     private val gateway = FakeGateway(); private val session = AuthSession(gateway); private val storage = Storage()
     private val journal = DockerResourceJournal(storage); private val control = DockerControlJournal(Storage())
     private var installation: ApiResult<Unit> = ApiResult.Success(Unit)
-    private val gate = DockerMutationGate(control, journal) { installation }
+    private val gate = DockerMutationGate(control, journal, DockerComposeJournal(Storage())) { installation }
     private val repository = DockerResourceRepository(gateway, session, journal, gate)
     private val status = DockerStatus(true, "", "28", "linux", "amd64")
     private val detail = DockerContainerDetails("abc123ffff", "web", "nginx", "now", "running", "Up", "serve", "", "no", emptyList(), emptyList(), listOf("bridge"), emptyList(), emptyMap())

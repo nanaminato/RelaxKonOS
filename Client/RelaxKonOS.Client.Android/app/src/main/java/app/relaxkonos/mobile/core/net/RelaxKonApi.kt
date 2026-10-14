@@ -595,6 +595,9 @@ class RelaxKonApi(
     override suspend fun dockerStackOperation(serverUrl: String, accessToken: String, operationId: String): ApiResult<DockerStackOperation> =
         dockerRead(serverUrl, accessToken, DockerRoutes.stackOperation(operationId), DockerWire::stackOperation)
 
+    override suspend fun dockerStackOperationByRequest(serverUrl: String, accessToken: String, requestKey: String): ApiResult<DockerStackOperation> =
+        dockerRead(serverUrl, accessToken, DockerRoutes.STACK_OPERATION_BY_REQUEST, DockerWire::stackOperation, mapOf("Idempotency-Key" to requestKey))
+
     override suspend fun dockerStackOperationDiagnostics(serverUrl: String, accessToken: String, operationId: String): ApiResult<DockerStackOperationDiagnostics> =
         dockerRead(serverUrl, accessToken, DockerRoutes.stackOperationDiagnostics(operationId), DockerWire::diagnostics)
 
@@ -850,8 +853,8 @@ class RelaxKonApi(
             is ApiResult.Transport -> result
         }
 
-    private suspend fun <T> dockerRead(serverUrl: String, accessToken: String, route: String, parse: (String) -> T): ApiResult<T> =
-        when (val result = execute("GET", serverUrl, route, accessToken, null)) {
+    private suspend fun <T> dockerRead(serverUrl: String, accessToken: String, route: String, parse: (String) -> T, headers: Map<String, String> = emptyMap()): ApiResult<T> =
+        when (val result = execute("GET", serverUrl, route, accessToken, null, headers)) {
             is ApiResult.Success -> runCatching { parse(result.value) }
                 .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed Docker response.") })
             is ApiResult.Problem -> result

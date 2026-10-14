@@ -22,7 +22,7 @@ class DockerResourceViewModelTest {
     private val gateway = FakeGateway()
     private val session = AuthSession(gateway)
     private val journal = DockerResourceJournal(Storage())
-    private val gate = DockerMutationGate(DockerControlJournal(Storage()), journal) { ApiResult.Success(Unit) }
+    private val gate = DockerMutationGate(DockerControlJournal(Storage()), journal, DockerComposeJournal(Storage())) { ApiResult.Success(Unit) }
     private val repository = DockerResourceRepository(gateway, session, journal, gate)
     private val facts = DockerResourceFacts(DockerStatus(true, "", "28", "linux", "amd64"), emptyList(), emptyList(), emptyList(), emptyList())
     private val change = DockerResourceChange(DockerResourceAction.CreateVolume, value = "review-data", driver = "local")

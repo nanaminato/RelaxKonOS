@@ -22,6 +22,41 @@ import org.junit.Test
 class SelectionOptionsTest {
     @get:Rule val rule = createComposeRule()
 
+    @Test fun switchLabelHasOneNamedActionAndChangesOnce() {
+        val checked = mutableStateOf(false)
+        var changes = 0
+        rule.setContent { MaterialTheme {
+            SwitchOption(checked.value, "High contrast") { checked.value = it; changes++ }
+        } }
+        rule.onAllNodes(hasClickAction(), useUnmergedTree = true).assertCountEquals(1)
+        rule.onNodeWithText("High contrast").assertIsOff()
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch)).performClick()
+        rule.onNodeWithText("High contrast").assertIsOn().performClick()
+        rule.onNodeWithText("High contrast").assertIsOff()
+        rule.runOnIdle { assertEquals(2, changes) }
+    }
+
+    @Test fun disabledSwitchLabelCannotChangeValue() {
+        var changes = 0
+        rule.setContent { MaterialTheme { SwitchOption(true, "Engine proxy", false) { changes++ } } }
+        rule.onNodeWithText("Engine proxy").assertIsNotEnabled().assertIsOn().performClick()
+        rule.runOnIdle { assertEquals(0, changes) }
+    }
+
+    @Test fun largeSwitchLabelWrapsWithoutLosingText() {
+        val label = "接続されたサーバーでエンジンの送信プロキシを有効にします。"
+        rule.setContent { MaterialTheme {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 1.8f)) {
+                Box(Modifier.width(320.dp)) { SwitchOption(false, label) {} }
+            }
+        } }
+        val layouts = mutableListOf<TextLayoutResult>()
+        rule.onNodeWithText(label, useUnmergedTree = true).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        assertTrue(layouts.single().lineCount > 1)
+        assertFalse(layouts.single().hasVisualOverflow)
+    }
+
     @Test fun checkboxLabelIsOneNamedActionAndTogglesExactlyOnce() {
         val checked = mutableStateOf(false)
         var changes = 0

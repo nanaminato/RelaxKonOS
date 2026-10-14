@@ -19,6 +19,7 @@ public interface IRemoteDockerClient
     Task<DockerStackOperationDto> DeployStackAsync(DockerStackDeployRequest request, string idempotencyKey, CancellationToken cancellationToken = default);
     Task<DockerStackOperationDto> ApplyStackActionAsync(string name, DockerStackOperationKind action, DockerStackActionRequest request, string idempotencyKey, CancellationToken cancellationToken = default);
     Task<DockerStackOperationDto?> GetStackOperationAsync(Guid operationId, CancellationToken cancellationToken = default);
+    Task<DockerStackOperationDto?> GetStackOperationByRequestAsync(string requestKey, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<DockerStackOperationDto>> ListStackOperationsAsync(string name, int limit = 20, CancellationToken cancellationToken = default);
     Task<DockerStackOperationDiagnosticsDto?> GetStackOperationDiagnosticsAsync(Guid operationId, CancellationToken cancellationToken = default);
     Task<DockerStackOperationDto> CancelStackOperationAsync(Guid operationId, string idempotencyKey, CancellationToken cancellationToken = default);

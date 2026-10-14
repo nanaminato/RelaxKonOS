@@ -94,11 +94,15 @@ public sealed class RemoteDockerClient(HttpClient http, IAuthSession session) : 
     }
 
     private Task<T> SendAsync<T>(string route, CancellationToken cancellationToken) => SendAsync<T>(HttpMethod.Get, route, null, cancellationToken);
-    private async Task<T?> TrySendAsync<T>(string route, CancellationToken cancellationToken) where T : class
+    public Task<DockerStackOperationDto?> GetStackOperationByRequestAsync(string requestKey, CancellationToken cancellationToken = default) =>
+        TrySendAsync<DockerStackOperationDto>(DockerApiRoutes.StackOperationByRequest, cancellationToken, requestKey);
+
+    private async Task<T?> TrySendAsync<T>(string route, CancellationToken cancellationToken, string? requestKey = null) where T : class
     {
         if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.EffectiveBaseUrl is null)
             throw new InvalidOperationException(LocalizedText.Get("docker.error.not_signed_in"));
         using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(new Uri(session.EffectiveBaseUrl), route.TrimStart('/')));
+        if (requestKey is not null) request.Headers.Add("Idempotency-Key", requestKey);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
         using var response = await http.SendAsync(request, cancellationToken);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;

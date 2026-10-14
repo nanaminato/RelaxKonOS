@@ -368,7 +368,8 @@ class AppContainer(context: Context) {
         app.relaxkonos.mobile.data.SmbMutationJournal(app.relaxkonos.mobile.data.FileSmbMutationStorage(appContext.noBackupFilesDir)))
     private val dockerControlJournal = app.relaxkonos.mobile.data.DockerControlJournal(app.relaxkonos.mobile.data.FileDockerControlStorage(appContext.noBackupFilesDir))
     private val dockerResourceJournal = app.relaxkonos.mobile.data.DockerResourceJournal(app.relaxkonos.mobile.data.FileDockerResourceStorage(appContext.noBackupFilesDir))
-    val dockerMutationGate = app.relaxkonos.mobile.data.DockerMutationGate(dockerControlJournal, dockerResourceJournal) { owner ->
+    private val dockerComposeJournal = app.relaxkonos.mobile.data.DockerComposeJournal(app.relaxkonos.mobile.data.FileDockerComposeStorage(appContext.noBackupFilesDir))
+    val dockerMutationGate = app.relaxkonos.mobile.data.DockerMutationGate(dockerControlJournal, dockerResourceJournal, dockerComposeJournal) { owner ->
         if (installations.pending(owner).any { it.service == app.relaxkonos.mobile.core.net.InstallationService.Docker })
             app.relaxkonos.mobile.core.net.ApiResult.Problem(409, "docker.resources.pending", null)
         else when (val active = installations.active(owner, app.relaxkonos.mobile.core.net.InstallationService.Docker)) {

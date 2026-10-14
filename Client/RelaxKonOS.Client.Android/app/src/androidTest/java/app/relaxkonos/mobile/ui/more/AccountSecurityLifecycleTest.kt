@@ -6,13 +6,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.compose.currentStateAsState
+import androidx.lifecycle.LifecycleEventObserver
 import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.data.ReminderKind
@@ -49,10 +46,13 @@ class AccountSecurityLifecycleTest {
     }
     private fun text(id: Int) = rule.activity.getString(id)
     private fun show() {
+        rule.activityRule.scenario.onActivity { activity ->
+            activity.lifecycle.addObserver(LifecycleEventObserver { owner, _ ->
+                foreground = owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+            })
+        }
         val container = (rule.activity.application as RelaxKonApplication).container
         rule.setContent { CompositionLocalProvider(LocalAppContainer provides container) { MaterialTheme {
-            val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
-            SideEffect { foreground = lifecycle.isAtLeast(Lifecycle.State.RESUMED) }
             Column {
                 WorkspaceSection(active.value) { AccountSecurityContent(actions, null, null, active.value) }
                 WorkspaceSection(!active.value) { Text("Other settings") }
@@ -77,10 +77,15 @@ class AccountSecurityLifecycleTest {
     private fun verifyWithdrawal(kind: String, background: Boolean) {
         show(); openConfirmation(kind)
         if (background) {
-            rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
-            rule.waitUntil(5_000) { !foreground }
-            rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
-            rule.waitUntil(5_000) { foreground }
+            rule.mainClock.autoAdvance = false
+            try {
+                rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+                rule.waitUntil(5_000) { !foreground }
+                rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+                rule.waitUntil(5_000) { foreground }
+            } finally {
+                rule.mainClock.autoAdvance = true
+            }
         } else {
             rule.runOnIdle { active.value = false }
             rule.onNodeWithText("Other settings").assertIsDisplayed()

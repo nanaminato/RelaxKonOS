@@ -67,6 +67,8 @@ class AccountSecurityFailureTest {
     }
     @Test fun partialDisableFailureKeepsConfirmationAndCanFinishCleanup() {
         val actions = Actions(original); show(actions)
+        rule.onAllNodes(isToggleable(), useUnmergedTree = true).assertCountEquals(1)
+        rule.onNodeWithText(text(R.string.account_security_fingerprint_subtitle)).assertIsOn()
         rule.onNodeWithText(text(R.string.account_security_fingerprint_subtitle)).performScrollTo().performClick()
         submit(R.string.account_security_disable_confirm)
         assertFailure(R.string.account_security_disable_title, actions)

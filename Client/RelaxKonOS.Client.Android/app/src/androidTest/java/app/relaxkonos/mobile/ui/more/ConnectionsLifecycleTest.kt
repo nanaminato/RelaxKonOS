@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import app.relaxkonos.mobile.AppContainer
 import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.R
@@ -26,10 +27,16 @@ class ConnectionsLifecycleTest {
     private var container: AppContainer? = null
     private var added = false
     private var switches = 0
+    @Volatile private var foreground = true
     private val service = "https://connections-lifecycle.invalid"
     private val account = "review-01a134ee"
     private fun text(id: Int) = rule.activity.getString(id)
     private fun show() {
+        rule.activityRule.scenario.onActivity { activity ->
+            activity.lifecycle.addObserver(LifecycleEventObserver { owner, _ ->
+                foreground = owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+            })
+        }
         val current = (rule.activity.application as RelaxKonApplication).container
         container = current
         assertFalse(current.profiles.all().any { it.serviceId == service && it.identifier == account })
@@ -65,9 +72,15 @@ class ConnectionsLifecycleTest {
         show()
         rule.onAllNodesWithText(text(R.string.common_delete)).filter(hasClickAction()).onFirst().performScrollTo().performClick()
         rule.onNodeWithText(rule.activity.getString(R.string.connections_delete_message, service, account)).assertIsDisplayed()
-        rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
-        rule.waitForIdle()
-        rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+            rule.waitUntil(5_000) { !foreground }
+            rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+            rule.waitUntil(5_000) { foreground }
+        } finally {
+            rule.mainClock.autoAdvance = true
+        }
         rule.onNodeWithText(text(R.string.connections_delete_title)).assertDoesNotExist()
         rule.runOnIdle { assertFixtureRemains() }
     }

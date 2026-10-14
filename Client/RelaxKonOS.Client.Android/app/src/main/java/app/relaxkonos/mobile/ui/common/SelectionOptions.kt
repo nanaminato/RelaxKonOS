@@ -8,11 +8,25 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.Arrangement
+import app.relaxkonos.mobile.ui.theme.Spacing
+
+@Composable
+fun SwitchOption(checked: Boolean, label: String, enabled: Boolean = true, onCheckedChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp)
+        .toggleable(checked, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+        verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1f))
+        Switch(checked, onCheckedChange = null, enabled = enabled)
+    }
+}
 
 /** One labelled target and one accessibility action, including when the label wraps. */
 @Composable

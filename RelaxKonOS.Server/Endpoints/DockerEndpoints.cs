@@ -58,6 +58,8 @@ public static class DockerEndpoints
             Handle(() => coordinator.GetActive(name) is { } operation ? Results.Ok(operation) : Results.NotFound()));
         group.MapGet("/stack-operations/{operationId:guid}", (Guid operationId, RelaxKonOS.Server.Docker.DockerStackOperationCoordinator coordinator) =>
             Handle(() => coordinator.Get(operationId) is { } operation ? Results.Ok(operation) : Results.NotFound()));
+        group.MapGet("/stack-operations/by-request", (HttpContext http, RelaxKonOS.Server.Docker.DockerStackOperationCoordinator coordinator) =>
+            Handle(() => coordinator.GetByRequest(Actor(http.User), Key(http)) is { } operation ? Results.Ok(operation) : Results.NotFound()));
         // Why a step failed is a read of the same operation, so it stays a separate call: listing
         // operations must not carry command output nobody asked to see.
         group.MapGet("/stack-operations/{operationId:guid}/diagnostics", (Guid operationId, RelaxKonOS.Server.Docker.DockerStackOperationCoordinator coordinator) =>

@@ -55,7 +55,7 @@ class DockerControlCancellationFlowTest {
         val elevation = ElevationRepository(gateway, session, app.container.vault, UsageMemoryStore(InMemoryUsageMemoryStorage()))
         val controlJournal = DockerControlJournal(Storage())
         val resourceJournal = DockerResourceJournal(Storage())
-        val gate = DockerMutationGate(controlJournal, resourceJournal) { ApiResult.Success(Unit) }
+        val gate = DockerMutationGate(controlJournal, resourceJournal, DockerComposeJournal(Storage())) { ApiResult.Success(Unit) }
         val index = OperationIndex(object : OperationIndexStorage {
             private var bytes: ByteArray? = null
             override fun read() = bytes

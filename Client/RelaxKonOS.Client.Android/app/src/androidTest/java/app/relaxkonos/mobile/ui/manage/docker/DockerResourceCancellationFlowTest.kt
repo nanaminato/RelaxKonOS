@@ -53,7 +53,7 @@ class DockerResourceCancellationFlowTest {
         runBlocking { session.login(ServerConnectionIdentityRules.direct("https://docker-review.invalid"), "review", "test".toCharArray()) {} }
         val owner = session.state.value as SessionState.Active
         val journal = DockerResourceJournal(Storage())
-        val gate = DockerMutationGate(DockerControlJournal(Storage()), journal) { ApiResult.Success(Unit) }
+        val gate = DockerMutationGate(DockerControlJournal(Storage()), journal, DockerComposeJournal(Storage())) { ApiResult.Success(Unit) }
         rule.runOnUiThread {
             model = DockerResourceViewModel(session, DockerResourceRepository(gateway, session, journal, gate), gate)
             store.put("resources", model)

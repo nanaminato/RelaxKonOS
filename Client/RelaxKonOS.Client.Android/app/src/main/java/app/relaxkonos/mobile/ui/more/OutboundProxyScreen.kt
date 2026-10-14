@@ -17,6 +17,9 @@ import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.ui.common.*
 import app.relaxkonos.mobile.ui.theme.Spacing
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 
 /** Compose keys normally compare Active structurally; login ownership is an identity boundary. */
 private class ProxyOwnerKey(private val owner: SessionState.Active?) {
@@ -25,7 +28,7 @@ private class ProxyOwnerKey(private val owner: SessionState.Active?) {
 }
 
 @Composable
-fun OutboundProxyScreen(onBack: (() -> Unit)?, onOpenManagedProxy: (() -> Unit)?, modifier: Modifier = Modifier) {
+fun OutboundProxyScreen(onBack: (() -> Unit)?, onOpenManagedProxy: (() -> Unit)?, active: Boolean, modifier: Modifier = Modifier) {
     val container = appContainer()
     val owner = container.activeSession
     val scope = rememberCoroutineScope()
@@ -34,19 +37,31 @@ fun OutboundProxyScreen(onBack: (() -> Unit)?, onOpenManagedProxy: (() -> Unit)?
         owner?.let { OutboundProxyEditor(container.docker, it, { container.activeSession === it }, scope) }
     }
     DisposableEffect(editor) { onDispose { editor?.close() } }
-    OutboundProxyContent(owner, editor, onBack, onOpenManagedProxy, modifier)
+    OutboundProxyContent(owner, editor, onBack, onOpenManagedProxy, active, modifier)
 }
 
 @Composable
 internal fun OutboundProxyContent(
     owner: SessionState.Active?, editor: OutboundProxyEditor?, onBack: (() -> Unit)?,
-    onOpenManagedProxy: (() -> Unit)?, modifier: Modifier = Modifier,
+    onOpenManagedProxy: (() -> Unit)?, active: Boolean, modifier: Modifier = Modifier,
 ) {
     val available = owner?.capabilities?.contains(ServerCapabilities.DOCKER) == true
     val ownerKey = ProxyOwnerKey(owner)
     var showUrls by remember(ownerKey) { mutableStateOf(false) }
-    LaunchedEffect(editor) { if (available) editor?.load() }
-    BackHandler(enabled = onBack != null && editor != null) { editor?.leave { onBack?.invoke() } }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(editor, lifecycle, active) {
+        fun withdraw() { editor?.dismiss(); showUrls = false }
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) withdraw()
+        }
+        lifecycle.addObserver(observer)
+        if (!active) withdraw()
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(editor, active) {
+        if (active && available && editor?.draft == null && editor?.busy == false) editor.load()
+    }
+    BackHandler(enabled = active && onBack != null && editor != null) { editor?.leave { onBack?.invoke() } }
     Column(modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         ScreenHeader(stringResource(R.string.proxy_title), onBack = onBack?.let { { editor?.leave(it) } },
@@ -100,7 +115,7 @@ internal fun OutboundProxyContent(
         }
         status?.let { ProxyStatusCard(it, showUrls) }
     }
-    editor?.review?.let { pending ->
+    editor?.review?.takeIf { active }?.let { pending ->
         val discard = pending == ProxyReview.Refresh || pending == ProxyReview.Leave
         AlertDialog(onDismissRequest = editor::dismiss,
             title = { Text(stringResource(if (discard) R.string.proxy_discard_title else R.string.proxy_confirm_title)) },
@@ -119,10 +134,7 @@ internal fun OutboundProxyContent(
 }
 
 @Composable private fun ProxyToggle(label: Int, checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.md), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-        Text(stringResource(label), Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
-    }
+    SwitchOption(checked, stringResource(label), enabled, onChange)
 }
 @Composable private fun ProxyUrlField(label: Int, value: String, enabled: Boolean, show: Boolean, onChange: (String) -> Unit) {
     OutlinedTextField(value, onChange, label = { Text(stringResource(label)) }, enabled = enabled,

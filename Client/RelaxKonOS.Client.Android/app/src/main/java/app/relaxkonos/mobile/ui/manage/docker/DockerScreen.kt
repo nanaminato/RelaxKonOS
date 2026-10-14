@@ -28,6 +28,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.viewmodel.initializer
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.key
@@ -95,14 +101,25 @@ private fun operationKind(kind: DockerStackOperationKind): String = stringResour
 )
 
 @Composable
-fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialStackName: String? = null, section: String = "overview") {
-    val viewModel: DockerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+fun DockerScreen(onBack: (() -> Unit)?, active: Boolean, modifier: Modifier = Modifier, initialStackName: String? = null, section: String = "overview") {
+    val container = appContainer()
+    val context = androidx.compose.ui.platform.LocalContext.current.applicationContext
+    val viewModel: DockerViewModel = androidx.lifecycle.viewmodel.compose.viewModel(factory =
+        androidx.lifecycle.viewmodel.viewModelFactory {
+            initializer { DockerViewModel(container.session, container.docker, context.contentResolver::openInputStream) }
+        })
+    DockerContent(viewModel, onBack, active, modifier, initialStackName, section)
+}
+
+@Composable
+internal fun DockerContent(viewModel: DockerViewModel, onBack: (() -> Unit)?, active: Boolean,
+    modifier: Modifier = Modifier, initialStackName: String? = null, section: String = "overview") {
     val state = viewModel.state
     val available = state.owner?.capabilities?.contains(ServerCapabilities.DOCKER) == true
     val notInstalled = (state.status as? ApiResult.Success)?.value?.problemCode == "docker.not_installed"
     var composer by remember(state.owner) { mutableStateOf(false) }
     var composeDraft by remember(state.owner) { mutableStateOf(DEFAULT_COMPOSE) }
-    var destructive by remember(state.owner) { mutableStateOf<Pair<DockerRemoval, () -> Unit>?>(null) }
+    var destructive by remember(state.owner, active) { mutableStateOf<Pair<DockerRemoval, () -> Unit>?>(null) }
     LaunchedEffect(initialStackName, state.stacks) {
         val stack = (state.stacks as? ApiResult.Success)?.value?.firstOrNull { it.name == initialStackName }
         if (stack != null && state.selectedStack?.name != stack.name) viewModel.selectStack(stack)
@@ -118,6 +135,7 @@ fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialSt
         if (!available) { EmptyHint(stringResource(R.string.error_capability_missing)); return@Column }
         if (!composer) state.message?.let { message -> ActionFeedback(message, viewModel::refresh, viewModel::dismissMessage) }
         RefreshProgressIndicator(visible = state.loading || state.busy)
+        if (!composer) ComposeRequestRecovery(state, viewModel)
         if (notInstalled) {
             EmptyHint(stringResource(R.string.runtime_install_hint, "Docker"))
         } else {
@@ -138,11 +156,50 @@ fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialSt
     if (composer) key(state.owner) { DockerComposer(
         initialYaml = composeDraft, preview = state.preview, busy = state.busy,
         message = state.message, onDismissMessage = viewModel::dismissMessage,
+        submissionAllowed = viewModel.canSubmit,
+        recoveryContent = { ComposeRequestRecovery(state, viewModel) },
         onPreview = viewModel::preview, onClearPreview = viewModel::clearPreview,
         onDismiss = { composer = false },
         onDeploy = { name, yaml -> viewModel.deploy(name, yaml) { composer = false } }) }
-    destructive?.let { (removal, confirm) -> AlertDialog(onDismissRequest = { destructive = null }, title = { Text(stringResource(R.string.docker_confirm_title)) }, text = { Text(removalMessage(removal)) },
-        confirmButton = { Button(onClick = { destructive = null; confirm() }) { ActionLabel(R.string.common_delete) } }, dismissButton = { TextButton(onClick = { destructive = null }) { Text(stringResource(R.string.common_cancel)) } }) }
+    destructive?.let { (removal, confirm) -> DockerRemovalConfirmation(removalMessage(removal), active,
+        onConfirm = { destructive = null; confirm() }, onDismiss = { destructive = null }) }
+}
+
+@Composable
+internal fun DockerRemovalConfirmation(message: String, active: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val dismiss by rememberUpdatedState(onDismiss)
+    DisposableEffect(lifecycle, active) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_PAUSE) dismiss() }
+        lifecycle.addObserver(observer)
+        if (!active) dismiss()
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+    if (active) AlertDialog(onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.docker_confirm_title)) }, text = { Text(message) },
+        confirmButton = { Button(onClick = onConfirm) { ActionLabel(R.string.common_delete) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } })
+}
+
+@Composable
+private fun ComposeRequestRecovery(state: DockerScreenState, model: DockerViewModel) {
+    state.recoveredOperation?.let { operation ->
+        SectionCard(stringResource(R.string.docker_stack_recovery_title)) {
+            Text(operation.projectName + " · " + operationKind(operation.kind))
+            Text(operationState(operation.state))
+            Text(operation.operationId, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+    if (state.pendingUnreadable) Text(stringResource(R.string.docker_stack_pending_unreadable), color = MaterialTheme.colorScheme.error)
+    state.pendingRequests.forEach { record ->
+        SectionCard(stringResource(R.string.docker_stack_recovery_title)) {
+            Text(record.project + " · " + operationKind(DockerStackOperationKind.fromWire(record.action)))
+            Text(stringResource(R.string.docker_stack_result_unknown))
+            TextButton(onClick = { model.recover(record) }, enabled = !state.busy) {
+                Text(stringResource(R.string.docker_stack_verify_request))
+            }
+        }
+    }
 }
 
 private const val DEFAULT_COMPOSE = "services:\n  app:\n    image: nginx:alpine\n"
@@ -155,7 +212,7 @@ private const val DEFAULT_COMPOSE = "services:\n  app:\n    image: nginx:alpine\
 @Composable private fun DockerStacks(state: DockerScreenState, viewModel: DockerViewModel, onDelete: (DockerStack) -> Unit, onCancel: (String) -> Unit) = SectionCard(stringResource(R.string.docker_stacks)) {
     when (val stacks = state.stacks) { is ApiResult.Success -> if (stacks.value.isEmpty()) Text(stringResource(R.string.docker_empty_stacks)) else stacks.value.forEach { stack ->
         ListRow(stack.name, subtitle = stack.status, leading = { DesktopIcon(R.drawable.ic_app_docker, size = 22.dp) }, onClick = { viewModel.selectStack(stack) },
-            trailing = { Row { TextButton(onClick = { viewModel.stackAction(stack, "restart", confirmed = false) }) { Text(stringResource(R.string.docker_restart)) }; TextButton(onClick = { onDelete(stack) }) { ActionLabel(R.string.common_delete) } } })
+            trailing = { Row { TextButton(onClick = { viewModel.stackAction(stack, "restart", confirmed = false) }, enabled = viewModel.canSubmit) { Text(stringResource(R.string.docker_restart)) }; TextButton(onClick = { onDelete(stack) }, enabled = viewModel.canSubmit) { ActionLabel(R.string.common_delete) } } })
         if (state.selectedStack?.name == stack.name) {
             StackServices(state.services, state.logs, viewModel::loadLogs)
             StackOperations(state.operations, state.diagnostics, viewModel, stack, onCancel)
@@ -233,9 +290,18 @@ private const val DEFAULT_COMPOSE = "services:\n  app:\n    image: nginx:alpine\
     onPreview: (String, String) -> Unit, onClearPreview: () -> Unit,
     onDismiss: () -> Unit, onDeploy: (String, String) -> Unit,
     message: UiMessage? = null, onDismissMessage: () -> Unit = {},
+    submissionAllowed: Boolean = true, recoveryContent: @Composable () -> Unit = {},
 ) {
     var name by remember { mutableStateOf("") }; var yaml by remember(initialYaml) { mutableStateOf(initialYaml) }
     var confirmLeave by remember { mutableStateOf(false) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) confirmLeave = false
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
     val leave = { if (!busy) { if (name.isNotEmpty() || yaml != initialYaml) confirmLeave = true else onDismiss() } }
     Dialog(onDismissRequest = leave, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize().safeDrawingPadding().imePadding(), color = MaterialTheme.colorScheme.surface) {
@@ -244,6 +310,7 @@ private const val DEFAULT_COMPOSE = "services:\n  app:\n    image: nginx:alpine\
                     modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.md))
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
                     message?.let { ActionFeedback(it, onRetry = null, onDismiss = onDismissMessage) }
+                    recoveryContent()
                     Text(stringResource(R.string.docker_compose_note), style = MaterialTheme.typography.bodySmall)
                     OutlinedTextField(name, { name = it; onClearPreview() }, enabled = !busy, label = { Text(stringResource(R.string.docker_stack_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(yaml, { yaml = it; onClearPreview() }, enabled = !busy, label = { Text(stringResource(R.string.docker_compose_yaml)) }, minLines = 8, modifier = Modifier.fillMaxWidth())
@@ -260,7 +327,7 @@ private const val DEFAULT_COMPOSE = "services:\n  app:\n    image: nginx:alpine\
                 FlowRow(Modifier.fillMaxWidth().padding(Spacing.lg), horizontalArrangement = Arrangement.End, verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                     TextButton(onClick = leave, enabled = !busy) { Text(stringResource(R.string.common_cancel)) }
                     TextButton(onClick = { onPreview(name, yaml) }, enabled = !busy && name.isNotBlank() && yaml.isNotBlank()) { Text(stringResource(R.string.docker_preview)) }
-                    Button(onClick = { onDeploy(name, yaml) }, enabled = !busy && name.isNotBlank() && yaml.isNotBlank()) { Text(stringResource(R.string.docker_deploy)) }
+                    Button(onClick = { onDeploy(name, yaml) }, enabled = !busy && submissionAllowed && name.isNotBlank() && yaml.isNotBlank()) { Text(stringResource(R.string.docker_deploy)) }
                 }
             }
         }

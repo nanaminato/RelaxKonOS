@@ -7,14 +7,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import app.relaxkonos.mobile.R
-import app.relaxkonos.mobile.ui.common.ListRow
+import app.relaxkonos.mobile.ui.common.SwitchOption
 import app.relaxkonos.mobile.ui.common.RadioOption
 import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionGroup
@@ -79,16 +77,8 @@ fun AppearanceScreen(
                 ChoiceRow(R.string.appearance_color_dark, appearance.colorMode == ColorMode.Dark) {
                     appearance.setColorMode(ColorMode.Dark)
                 }
-                ListRow(
-                    title = stringResource(R.string.appearance_high_contrast),
-                    trailing = {
-                        Switch(
-                            checked = appearance.highContrast,
-                            onCheckedChange = { appearance.setHighContrast(it) },
-                        )
-                    },
-                    onClick = { appearance.setHighContrast(!appearance.highContrast) },
-                )
+                SwitchOption(appearance.highContrast, stringResource(R.string.appearance_high_contrast),
+                    onCheckedChange = appearance::setHighContrast)
             }
         }
 

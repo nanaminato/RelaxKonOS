@@ -105,6 +105,16 @@ internal sealed class DockerStackOperationStore
 
     public bool DiagnosticsTruncated(Guid operationId) => Get(operationId)?.DiagnosticsTruncated ?? false;
 
+    /// <summary>Read an existing record for the exact actor and request key without creating work.</summary>
+    public StackOperationEntry? FindRequest(string actor, string key)
+    {
+        lock (gate)
+        {
+            EnsureAvailable();
+            return Find(key, actor);
+        }
+    }
+
     /// <summary>Looks up a replay before admission control, so a retried request still returns its
     /// original operation while the concurrency ceiling happens to be saturated.</summary>
     public StackOperationEntry? FindIdempotent(DockerStackOperationKind kind, string actor, string key, string requestReference)

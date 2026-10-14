@@ -60,6 +60,12 @@ internal sealed class DockerStackOperationCoordinator(
 
     public DockerStackOperationDto? Get(Guid operationId) => operations.Get(operationId)?.Operation;
 
+    public DockerStackOperationDto? GetByRequest(string actor, string key)
+    {
+        ValidateKey(key);
+        return operations.FindRequest(actor, key)?.Operation;
+    }
+
     public DockerStackOperationDto? GetActive(string project) => operations.GetActive(project)?.Operation;
 
     public IReadOnlyList<DockerStackOperationDto> History(string project, int limit)

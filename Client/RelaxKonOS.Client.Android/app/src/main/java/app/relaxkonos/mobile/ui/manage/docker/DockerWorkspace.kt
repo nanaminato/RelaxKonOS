@@ -62,7 +62,7 @@ fun DockerWorkspace(initialSection: String, initialStack: String?, onBack: () ->
                 DockerControlScreen(onBack, recordsOnly = true, active = section == "records")
             }
             WorkspaceSection(section == "compose", Modifier.fillMaxSize()) {
-                DockerScreen(onBack, initialStackName = requestedStack, section = "compose")
+                DockerScreen(onBack, active = section == "compose", initialStackName = requestedStack, section = "compose")
             }
             DockerResourceKind.entries.forEach { kind ->
                 val id = kind.name.lowercase()
@@ -72,7 +72,7 @@ fun DockerWorkspace(initialSection: String, initialStack: String?, onBack: () ->
                 } }
             }
             WorkspaceSection(section == "proxy", Modifier.fillMaxSize()) {
-                OutboundProxyScreen(onBack = onBack.takeIf { section == "proxy" }, onOpenManagedProxy = onOpenManagedProxy)
+                OutboundProxyScreen(onBack = onBack.takeIf { section == "proxy" }, onOpenManagedProxy = onOpenManagedProxy, active = section == "proxy")
             }
         } }
     }

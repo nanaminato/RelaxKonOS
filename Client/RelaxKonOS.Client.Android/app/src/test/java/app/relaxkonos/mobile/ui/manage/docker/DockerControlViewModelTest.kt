@@ -24,7 +24,7 @@ class DockerControlViewModelTest {
     private val session = AuthSession(gateway)
     private val journal = DockerControlJournal(Storage())
     private val resourceJournal = DockerResourceJournal(Storage())
-    private val gate = DockerMutationGate(journal, resourceJournal) { ApiResult.Success(Unit) }
+    private val gate = DockerMutationGate(journal, resourceJournal, DockerComposeJournal(Storage())) { ApiResult.Success(Unit) }
         private val repository = DockerControlRepository(gateway, session, journal, gate)
     private val resources = DockerResourceRepository(gateway, session, resourceJournal, gate)
     private val index = OperationIndex(object : OperationIndexStorage {
