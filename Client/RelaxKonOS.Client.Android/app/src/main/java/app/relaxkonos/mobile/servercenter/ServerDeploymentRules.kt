@@ -207,6 +207,7 @@ object ServerDeploymentRecordRules {
                     if (record.result?.dataRetained == null) return ServerDeploymentProblemCodes.INVALID_REQUEST
                 ServerDeploymentKind.Probe ->
                     if (record.probe == null) return ServerDeploymentProblemCodes.INVALID_REQUEST
+                ServerDeploymentKind.Firewall -> if (record.result?.firewallStatus == null) return ServerDeploymentProblemCodes.INVALID_REQUEST
                 ServerDeploymentKind.Status ->
                     if (record.snapshot == null) return ServerDeploymentProblemCodes.INVALID_REQUEST
             }

@@ -38,6 +38,7 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
     }
     var configuration by remember(host?.hostId) { mutableStateOf<ServerHostSnapshot?>(null) }
     var componentsOnly by remember(host?.hostId) { mutableStateOf(false) }
+    var repairPackagePath by remember(host?.hostId) { mutableStateOf("") }
     var repair by remember(host?.hostId) { mutableStateOf(false) }
     val identitiesValid = runCatching { normalizeRepairCertificateIdentities(certificateIdentities) }.isSuccess
     androidx.activity.compose.BackHandler(enabled = wizard || page != 0) {
@@ -114,6 +115,8 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
                             repairCertificate = false
                             repair = true
                         }, enabled = !state.busy) { Text(stringResource(R.string.server_maintenance_repair)) }
+                        if (snapshot.mode != ServerInstallMode.LinuxUser) OutlinedButton(onClick = { host?.let { model.run(it.hostId, ServerDeploymentKind.Firewall, sudo = sudo, removeFirewallRules = false) }; sudo = "" }, enabled = !state.busy) { Text(stringResource(R.string.server_configuration_ensure_firewall)) }
+                        if (snapshot.mode != ServerInstallMode.LinuxUser) OutlinedButton(onClick = { host?.let { model.run(it.hostId, ServerDeploymentKind.Firewall, sudo = sudo) }; sudo = "" }, enabled = !state.busy) { Text(stringResource(R.string.server_configuration_remove_firewall)) }
                         OutlinedButton(onClick = { purge = false; removeComponents = emptySet(); uninstall = true }, enabled = !state.busy) { Text(stringResource(R.string.server_maintenance_uninstall)) }
                     } else if (page == 2) Button(onClick = { wizard = true }, enabled = !state.busy && state.probe?.runtimeIdentifier != null) { Text(stringResource(R.string.ssh_workspace_deploy_install)) }
                 }
@@ -156,6 +159,7 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
             Text(host?.let { "${it.sshHost}:${it.sshPort}" }.orEmpty(), style = MaterialTheme.typography.bodySmall)
             PasswordTextField(sudo, { sudo = it }, stringResource(R.string.ssh_workspace_deploy_sudo_password), enabled = !state.busy)
+            OutlinedTextField(repairPackagePath, { repairPackagePath = it }, enabled = !state.busy, label = { Text(stringResource(R.string.server_configuration_repair_package)) })
             val certificateRepairSupported = state.snapshot?.mode == ServerInstallMode.LinuxSystem ||
                 state.snapshot?.mode == ServerInstallMode.WindowsSystem
             if (certificateRepairSupported) {
@@ -178,7 +182,7 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
             host?.let { model.run(it.hostId, ServerDeploymentKind.Repair, sudo = sudo,
                 repairCertificate = repairCertificate && certificateRepairSupported,
                 certificateIdentities = certificateIdentities,
-                addFirewallRule = addFirewallRule && certificateRepairSupported) }
+                addFirewallRule = addFirewallRule && certificateRepairSupported, repairPackagePath = repairPackagePath) }
             sudo = ""
         }, enabled = !state.busy && host != null && (!repairCertificate || identitiesValid)) {
             Text(stringResource(R.string.server_maintenance_repair))

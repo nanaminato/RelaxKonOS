@@ -364,7 +364,7 @@ function Assert-RequestShape {
         Stop-Launcher 'server-deployment.invalid_request' 'options must be a JSON object'
     }
     $allowedOptions = @('source', 'network', 'retention', 'mode', 'version', 'packageUri', 'stagedPackageName',
-        'packageDigest', 'remotePackagePath', 'expectedInstallationId', 'serverPort', 'fileAccess', 'certificateMode', 'selfSignedIdentities', 'confirmed', 'language', 'releaseCatalogBaseUri', 'installRoot', 'dataRoot', 'configRoot', 'stateRoot', 'cacheRoot', 'fileRoots', 'administratorFileAccess', 'administratorFileRoots', 'rootFileAccess', 'rootFileRoots', 'dockerAccess', 'allowUnsupportedSystem', 'addFirewallRule', 'removeComponents', 'guardianEnabled')
+        'packageDigest', 'remotePackagePath', 'expectedInstallationId', 'serverPort', 'fileAccess', 'certificateMode', 'selfSignedIdentities', 'confirmed', 'language', 'releaseCatalogBaseUri', 'installRoot', 'dataRoot', 'configRoot', 'stateRoot', 'cacheRoot', 'fileRoots', 'administratorFileAccess', 'administratorFileRoots', 'rootFileAccess', 'rootFileRoots', 'dockerAccess', 'allowUnsupportedSystem', 'addFirewallRule', 'removeComponents', 'guardianEnabled', 'autoStart', 'removeFirewallRules')
     foreach ($key in $request['options'].Keys) {
         if ($allowedOptions -notcontains [string]$key) {
             Stop-Launcher 'server-deployment.invalid_request' "unsupported request field: $key"
@@ -395,6 +395,8 @@ function Get-LiteralOption([string] $Name) {
 
 function Parse-Request {
     Assert-RequestShape
+    $script:optionsAutoStart = Get-LiteralOption 'autoStart'
+    if ($null -ne $script:optionsAutoStart -and $script:optionsAutoStart -isnot [bool]) { Stop-Launcher 'server-deployment.invalid_request' 'autoStart must be boolean or null.' }
     $script:optionsGuardianEnabled = Get-LiteralOption 'guardianEnabled'
     if ($null -ne $script:optionsGuardianEnabled -and $script:optionsGuardianEnabled -isnot [bool]) { Stop-Launcher 'server-deployment.invalid_request' 'guardianEnabled must be a boolean or null.' }
     if ($script:optionsGuardianEnabled -and (Get-StringOption 'mode') -eq 'windowsUser') { Stop-Launcher 'server-deployment.not_supported' 'Guardian is unavailable in Windows personal mode.' }
@@ -414,11 +416,18 @@ function Parse-Request {
 
     $kind = if ($request.Contains('kind') -and $request['kind'] -is [string]) { [string]$request['kind'] } else { '' }
     if ([string]::IsNullOrEmpty($kind)) { Stop-Launcher 'server-deployment.unknown_action' 'request kind is missing' }
-    if ($kind -notin @('probe', 'install', 'upgrade', 'repair', 'configure', 'uninstall', 'status', 'rollback')) {
+    if ($kind -notin @('probe', 'install', 'upgrade', 'repair', 'configure', 'firewall', 'uninstall', 'status', 'rollback')) {
         Stop-Launcher 'server-deployment.unknown_action' "unsupported action: $kind"
     }
     if ($null -ne $script:optionsGuardianEnabled -and $kind -notin @('install', 'configure')) { Stop-Launcher 'server-deployment.invalid_request' 'Guardian selection requires install or configure.' }
     if ($kind -eq 'configure' -and ($null -eq (Get-LiteralOption 'serverPort') -or -not (Get-LiteralOption 'confirmed'))) { Stop-Launcher 'server-deployment.invalid_request' 'Configure requires port and confirmation.' }
+    $script:optionsRemoveFirewallRules = Get-LiteralOption 'removeFirewallRules'
+    if ($null -ne $script:optionsRemoveFirewallRules -and $script:optionsRemoveFirewallRules -isnot [bool]) { Stop-Launcher 'server-deployment.invalid_request' 'removeFirewallRules must be boolean.' }
+    if ($null -ne $script:optionsAutoStart -and $kind -notin @('install', 'configure')) { Stop-Launcher 'server-deployment.invalid_request' 'Automatic startup requires install or configure.' }
+    if ($script:optionsRemoveFirewallRules -and $kind -ne 'firewall') { Stop-Launcher 'server-deployment.invalid_request' 'Firewall removal requires its dedicated action.' }
+    if ($kind -eq 'firewall' -and ((Get-LiteralOption 'removeFirewallRules') -eq $true) -eq ((Get-LiteralOption 'addFirewallRule') -eq $true)) { Stop-Launcher 'server-deployment.invalid_request' 'Choose exactly one firewall action.' }
+    if ($kind -eq 'firewall' -and (-not (Get-StringOption 'expectedInstallationId') -or (Get-LiteralOption 'confirmed') -ne $true -or
+        ($script:optionsRemoveFirewallRules -and (Get-LiteralOption 'addFirewallRule')))) { Stop-Launcher 'server-deployment.invalid_request' 'Review one firewall action bound to the installation.' }
     $script:record.kind = $kind
 
     $value = Get-StringOption 'source'; if ($value) { $script:optionsSource = $value }
@@ -444,7 +453,7 @@ function Parse-Request {
     $script:optionsExpectedInstallationId = Get-StringOption 'expectedInstallationId'
     $script:optionsFileAccess = Get-StringOption 'fileAccess'
     $script:optionsAddFirewallRule = Get-LiteralOption 'addFirewallRule'
-    if ($script:optionsAddFirewallRule -eq $true -and $kind -notin @('install', 'upgrade', 'repair')) { Stop-Launcher 'server-deployment.invalid_request' 'Firewall changes require install, upgrade or repair.' }
+    if ($script:optionsAddFirewallRule -eq $true -and $kind -notin @('install', 'upgrade', 'repair', 'firewall')) { Stop-Launcher 'server-deployment.invalid_request' 'Firewall changes require install, upgrade or repair.' }
     if ($null -ne $script:optionsAddFirewallRule -and $script:optionsAddFirewallRule -isnot [bool]) { Stop-Launcher 'server-deployment.invalid_request' 'addFirewallRule must be boolean' }
     $script:optionsCertificateMode = Get-StringOption 'certificateMode'
     $script:optionsSelfSignedIdentities = Get-StringOption 'selfSignedIdentities'
@@ -486,7 +495,7 @@ function Parse-Request {
     }
     if ($kind -eq 'configure') {
         if (-not $script:optionsExpectedInstallationId -or $script:optionsNetwork -notin @('loopback', 'lan') -or (Get-LiteralOption 'confirmed') -isnot [bool] -or -not (Get-LiteralOption 'confirmed')) { Stop-Launcher 'server-deployment.invalid_request' 'Configure requires installed identity, supported network and confirmation.' }
-        if ($script:optionsFileAccess -or $script:optionsCertificateMode -or $script:optionsSelfSignedIdentities -or $script:optionsRetention -ne 'retain') { Stop-Launcher 'server-deployment.invalid_request' 'Configure accepts only network, port and Guardian settings.' }
+        if ($script:optionsCertificateMode -or $script:optionsSelfSignedIdentities -or $script:optionsRetention -ne 'retain') { Stop-Launcher 'server-deployment.invalid_request' 'Configure accepts installation settings without certificate or data-retention changes.' }
     }
     $confirmed = Get-LiteralOption 'confirmed'
     if ($confirmed -is [bool] -and $confirmed) { $script:optionsConfirmed = $true }
@@ -550,7 +559,7 @@ function Parse-Request {
             default { Stop-Launcher 'server-deployment.invalid_request' 'unsupported installation source' }
         }
     }
-    if ($kind -in @('repair', 'configure', 'rollback', 'uninstall', 'status') -and -not $script:optionsMode) {
+    if ($kind -in @('repair', 'configure', 'firewall', 'rollback', 'uninstall', 'status') -and -not $script:optionsMode) {
         Stop-Launcher 'server-deployment.invalid_request' 'installation mode is required'
     }
 }
@@ -642,6 +651,15 @@ function Get-StateFlag($State, [string] $Name) {
 # live health, so the client is required to display this timestamp.
 function Get-SnapshotJson([string] $Mode, $State, [bool] $Healthy, [bool] $Installed, $DataRetained) {
     $serviceNames = @(Get-ModeServiceNames $Mode)
+    $fileAccess = Get-StateField $State 'fileAccess'
+    $fileRoots = $null
+    if ($fileAccess -eq 'whitelist') {
+        $policyPath = if ($Mode -eq 'windowsUser') {
+            $ownerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+            Join-Path $env:ProgramFiles ('RelaxKonOS-Personal\' + $ownerSid + '\helper.json')
+        } else { Join-Path (Get-ModeDataRoot $Mode) 'privileged-helper\helper.json' }
+        try { $fileRoots = @((Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json).fileAllowedRoots) } catch { $fileRoots = $null }
+    }
     $listenUrl = Get-StateField $State 'listenUrl'
     if (-not $listenUrl) { $listenUrl = Get-DefaultListenUrl $Mode }
     return [ordered]@{
@@ -657,6 +675,9 @@ function Get-SnapshotJson([string] $Mode, $State, [bool] $Healthy, [bool] $Insta
         dataRetained    = $DataRetained
         serviceNames    = $serviceNames
         guardianRunning = if ($Mode -eq 'windowsSystem' -and (Get-StateFlag $State 'guardianEnabled')) { $guardianService = Get-Service -Name RelaxKonOSGuardian -ErrorAction SilentlyContinue; $null -ne $guardianService -and $guardianService.Status -eq 'Running' } else { $null }
+        fileAccess = $fileAccess
+        fileRoots = $fileRoots
+        autoStart = Get-StateField $State 'autoStart'
         guardianEnabled = Get-StateField $State 'guardianEnabled'
         verifiedAtUtc   = Get-NowUtc
     }
@@ -664,6 +685,15 @@ function Get-SnapshotJson([string] $Mode, $State, [bool] $Healthy, [bool] $Insta
 
 function Get-ResultJson([string] $Mode, $State, [bool] $Healthy, $DataRetained) {
     $serviceNames = @(Get-ModeServiceNames $Mode)
+    $fileAccess = Get-StateField $State 'fileAccess'
+    $fileRoots = $null
+    if ($fileAccess -eq 'whitelist') {
+        $policyPath = if ($Mode -eq 'windowsUser') {
+            $ownerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+            Join-Path $env:ProgramFiles ('RelaxKonOS-Personal\' + $ownerSid + '\helper.json')
+        } else { Join-Path (Get-ModeDataRoot $Mode) 'privileged-helper\helper.json' }
+        try { $fileRoots = @((Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json).fileAllowedRoots) } catch { $fileRoots = $null }
+    }
     $listenUrl = Get-StateField $State 'listenUrl'
     if (-not $listenUrl) { $listenUrl = Get-DefaultListenUrl $Mode }
     return [ordered]@{
@@ -1143,7 +1173,7 @@ function Invoke-Preflight {
     $installed = Get-StateFlag $state 'installed'
     if ($script:record.kind -eq 'install') {
         if ($installed) { Stop-Launcher 'server-deployment.already_installed' 'RelaxKonOS is already installed on this host; use upgrade or repair' }
-    } elseif ($script:record.kind -in @('upgrade', 'repair', 'configure', 'rollback', 'uninstall')) {
+    } elseif ($script:record.kind -in @('upgrade', 'repair', 'configure', 'firewall', 'rollback', 'uninstall')) {
         if (-not $installed) { Stop-Launcher 'server-deployment.not_installed' 'RelaxKonOS is not installed on this host' }
     }
     if ($script:optionsMode -eq 'windowsUser' -and (Test-Administrator)) { Stop-Launcher 'server-deployment.invalid_request' 'Personal Mode must run without elevation' }
@@ -1186,9 +1216,35 @@ function Invoke-StatusAction {
     Write-Event 'completed' 'succeeded' 100 '' '状态查询完成'
 }
 
-function Apply-FirewallChoice($State) {
+function Invoke-FirewallAction {
+    Enter-WriteLock
+    Invoke-Preflight
+    Assert-ExpectedInstallationId
+    $state = Read-InstallState (Get-ModeInstallState $script:optionsMode)
+    $script:record.installationId = Get-StateField $state 'installationId'
     if ($script:optionsMode -eq 'windowsUser') {
-        $script:firewallStatus = if (([Uri](Get-StateField $State 'listenUrl')).IsLoopback) { 'notApplicable' } elseif ($script:optionsAddFirewallRule) { 'ruleAdded' } else { 'notRequested' }
+        $engine = Join-Path (Get-ModeInstallRoot $script:optionsMode) 'deployment\windows\RelaxKonOSPersonalPrivileges.ps1'
+        . $engine
+        if ($script:optionsRemoveFirewallRules) {
+            Set-PersonalPrivileges (Get-ModeInstallRoot $script:optionsMode) (Get-ModeDataRoot $script:optionsMode) (Get-StateField $state 'version') -Action firewall -ListenUrl (Get-StateField $state 'listenUrl') -RemoveFirewallRules $true
+            $script:firewallStatus = 'rulesRemoved'
+        } else {
+            Apply-FirewallChoice $state
+            if ($script:firewallStatus -eq 'ruleAdded') {
+                Set-PersonalPrivileges (Get-ModeInstallRoot $script:optionsMode) (Get-ModeDataRoot $script:optionsMode) (Get-StateField $state 'version') -Action firewall -ListenUrl (Get-StateField $state 'listenUrl') -AddFirewallRule $true
+            }
+        }
+    } else { Apply-FirewallChoice $state }
+    $healthy = Test-LoopbackHealth $script:optionsMode $state
+    $script:record.result = Get-ResultJson $script:optionsMode $state $healthy $null
+    $script:record.completedAtUtc = Get-NowUtc
+    Write-Event 'completed' 'succeeded' 100 '' '防火墙操作完成'
+}
+
+function Apply-FirewallChoice($State) {
+    if ($script:optionsRemoveFirewallRules) {
+        Get-NetFirewallRule -Group 'RelaxKonOS' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^RelaxKonOS-Server-TCP-[0-9]+$' } | Remove-NetFirewallRule -ErrorAction Stop
+        $script:firewallStatus = 'rulesRemoved'
         return
     }
     $script:firewallStatus = 'notRequested'
@@ -1201,12 +1257,14 @@ function Apply-FirewallChoice($State) {
     $enabledProfiles = @(Get-NetFirewallProfile -PolicyStore ActiveStore -ErrorAction Stop |
         Where-Object { $_.Enabled -eq $true -and $activeProfiles -contains [string]$_.Name } |
         ForEach-Object { [string]$_.Name })
+    if ($script:optionsMode -eq 'windowsUser') { $enabledProfiles = @($enabledProfiles | Where-Object { $_ -in @('Domain','Private') }) }
     if ($enabledProfiles.Count -eq 0) {
         $script:firewallStatus = 'disabled'
         Write-Note 'The host firewall is disabled on the active networks; no firewall rule was added.'
         return
     }
     if (-not $script:optionsAddFirewallRule) { return }
+    if ($script:optionsMode -eq 'windowsUser') { $script:firewallStatus = 'ruleAdded'; return }
     $name = 'RelaxKonOS-Server-TCP-' + $endpoint.Port
     $existing = Get-NetFirewallRule -Name $name -ErrorAction SilentlyContinue
     if ($existing) {
@@ -1227,9 +1285,9 @@ function Invoke-InstallLikeAction {
     Invoke-Preflight
     Assert-ExpectedInstallationId
 
-    # Only install and upgrade consume a staged package; repair and rollback replay the payload the
-    # engine already published on the host.
-    $needsPackage = ($script:record.kind -in @('install', 'upgrade'))
+    # Install and upgrade require a package; repair consumes one only when explicitly supplied.
+    $needsPackage = ($script:record.kind -in @('install', 'upgrade')) -or
+        ($script:record.kind -eq 'repair' -and ($script:optionsStagedName -or $script:optionsRemotePath))
     if ($needsPackage) {
         Write-Event 'verifyingPackage' 'running' $null '' '正在校验暂存包'
         Test-PackageAvailable
@@ -1240,10 +1298,12 @@ function Invoke-InstallLikeAction {
     if (-not $engine) { Stop-Launcher 'server-deployment.not_supported' 'no System Mode deployment engine is available on this host' }
 
     $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $engine, '-NonInteractive', '-Action', $script:record.kind, '-Mode', $script:optionsMode)
+    if ($null -ne $script:optionsAutoStart) { $arguments += @('-AutoStart', $script:optionsAutoStart.ToString().ToLowerInvariant()) }
     if ($null -ne $script:optionsGuardianEnabled) { $arguments += @('-GuardianEnabled', $script:optionsGuardianEnabled.ToString().ToLowerInvariant()) }
     $arguments += @('-Language', $script:optionsLanguage, '-InstallRoot', (Get-ModeInstallRoot $script:optionsMode), '-DataRoot', (Get-ModeDataRoot $script:optionsMode))
     if ($needsPackage) {
         $arguments += @('-BundlePath', $packageRoot)
+        if ($script:record.kind -eq 'repair') { $arguments += @('-RestorePayload') }
     }
     if ($null -ne $script:optionsServerPort) { $arguments += @('-ServerPort', [string]$script:optionsServerPort) }
     if ($script:optionsNetwork -and $script:record.kind -in @('install', 'upgrade', 'configure')) { $arguments += @('-NetworkProfile', (Get-EngineNetworkProfile $script:optionsNetwork)) }
@@ -1416,6 +1476,7 @@ try {
         'probe' { Invoke-ProbeAction }
         'status' { Invoke-StatusAction }
         { $_ -in @('install', 'upgrade', 'repair', 'configure', 'rollback') } { Invoke-InstallLikeAction }
+        'firewall' { Invoke-FirewallAction }
         'uninstall' { Invoke-UninstallAction }
     }
 } catch {

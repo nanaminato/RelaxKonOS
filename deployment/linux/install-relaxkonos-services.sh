@@ -40,6 +40,7 @@ CERTIFICATE_PASSWORD_FILE=
 SELF_SIGNED_IDENTITIES=
 DOCKER_ACCESS=false
 GUARDIAN_ENABLED=true
+AUTO_START=true
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --file-access)
@@ -97,6 +98,7 @@ while [[ $# -gt 0 ]]; do
       SELF_SIGNED_IDENTITIES="$2"
       shift 2
       ;;
+    --auto-start) AUTO_START="${2:-}"; shift 2 ;;
     --guardian-enabled) GUARDIAN_ENABLED="${2:-}"; shift 2 ;;
     --docker-access)
       DOCKER_ACCESS=true
@@ -109,6 +111,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+case "$AUTO_START" in true|false) ;; *) echo "Invalid automatic startup selection." >&2; exit 64 ;; esac
 case "$GUARDIAN_ENABLED" in true|false) ;; *) echo "Invalid Guardian selection." >&2; exit 64 ;; esac
 for access in "$FILE_ACCESS" "$ADMINISTRATOR_FILE_ACCESS" "$ROOT_FILE_ACCESS"; do
   case "$access" in restricted|full|whitelist) ;; *) echo "Invalid file access value: $access" >&2; usage ;; esac
@@ -507,9 +510,17 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
+chown root:root /etc/systemd/system/relaxkonos-server.service
+chmod 0644 /etc/systemd/system/relaxkonos-server.service
+if [[ "$GUARDIAN_ENABLED" == true ]]; then
+  chown root:root /etc/systemd/system/relaxkonos-guardian.service
+  chmod 0644 /etc/systemd/system/relaxkonos-guardian.service
+fi
 systemctl daemon-reload
-if [[ "$GUARDIAN_ENABLED" == true ]]; then systemctl enable --now relaxkonos-guardian.service; fi
-systemctl enable --now relaxkonos-server.service
+units=(relaxkonos-server.service)
+[[ "$GUARDIAN_ENABLED" != true ]] || units+=(relaxkonos-guardian.service)
+if [[ "$AUTO_START" == true ]]; then systemctl enable "${units[@]}"; else systemctl disable "${units[@]}"; fi
+systemctl start "${units[@]}"
 if [[ "$DOCKER_ACCESS" == true ]]; then
   # Supplementary groups are captured when systemd spawns the process. A restart is required
   # even when the account was already present in the docker group before this deployment.

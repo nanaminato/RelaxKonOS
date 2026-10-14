@@ -91,7 +91,10 @@ public sealed record ServerHostSnapshotDto(
     [property: JsonPropertyName("serviceNames")] IReadOnlyList<string>? ServiceNames,
     [property: JsonPropertyName("verifiedAtUtc")] DateTimeOffset VerifiedAtUtc,
     [property: JsonPropertyName("guardianEnabled")] bool? GuardianEnabled = null,
-    [property: JsonPropertyName("guardianRunning")] bool? GuardianRunning = null);
+    [property: JsonPropertyName("guardianRunning")] bool? GuardianRunning = null,
+    [property: JsonPropertyName("autoStart")] bool? AutoStart = null,
+    [property: JsonPropertyName("fileAccess")] ServerFileAccessScope? FileAccess = null,
+    [property: JsonPropertyName("fileRoots")] IReadOnlyList<string>? FileRoots = null);
 
 /// <summary>
 /// 四种安装模式的能力矩阵。客户端用它决定可选操作与前置条件，而不是靠猜测宿主行为。

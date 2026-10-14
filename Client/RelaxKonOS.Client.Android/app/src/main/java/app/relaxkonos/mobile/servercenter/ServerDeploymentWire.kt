@@ -109,6 +109,8 @@ internal object ServerDeploymentWire {
         append(",\"rootFileRoots\":").append(options.rootFileRoots.jsonStrings())
         append(",\"dockerAccess\":").append(options.dockerAccess)
         append(",\"allowUnsupportedSystem\":").append(options.allowUnsupportedSystem)
+        append(",\"removeFirewallRules\":").append(options.removeFirewallRules)
+        append(",\"autoStart\":").append(options.autoStart ?: "null")
         append(",\"guardianEnabled\":").append(options.guardianEnabled ?: "null")
         append(",\"addFirewallRule\":").append(options.addFirewallRule)
         append(",\"confirmed\":").append(options.confirmed).append('}')
@@ -137,6 +139,9 @@ internal object ServerDeploymentWire {
             verifiedAtUtc = fields.required("verifiedAtUtc").asString(),
             guardianEnabled = fields.nullableBoolean("guardianEnabled"),
             guardianRunning = fields.nullableBoolean("guardianRunning"),
+            fileAccess = fields.nullableString("fileAccess"),
+            fileRoots = if (fields["fileRoots"] == null || fields["fileRoots"] == ServerCenterJsonValue.NullValue) null else fields.stringList("fileRoots"),
+            autoStart = fields.nullableBoolean("autoStart"),
             installationId = fields.nullableString("installationId"),
             mode = fields.optionalEnum("mode", ServerInstallMode::class.java),
             version = fields.nullableString("version"),

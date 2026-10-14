@@ -130,3 +130,18 @@ if ($platform -eq 'linux') {
 Copy-Item -LiteralPath (Join-Path $projectRoot ("deployment\$platform")) -Destination (Join-Path $serverPackage.Directory ("deployment\$platform")) -Recurse -Force
 if ($platform -eq 'linux') { Convert-LinuxShellScriptsToLf $serverPackage.Directory }
 Complete-Package $serverPackage $serverPayload
+
+if ($platform -eq 'linux') {
+    $userPackage = New-PackageDirectory 'user-server'
+    $userPayloadRoot = Join-Path $userPackage.Directory 'payload\linux'
+    New-Item -ItemType Directory -Path $userPayloadRoot -Force | Out-Null
+    foreach ($component in @('server', 'guardian')) {
+        Copy-Item -LiteralPath (Join-Path $serverPackage.Directory ('payload\linux\' + $component)) -Destination (Join-Path $userPayloadRoot $component) -Recurse
+    }
+    $userDeployment = Join-Path $userPackage.Directory 'deployment'
+    New-Item -ItemType Directory -Path $userDeployment -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'deployment\verify-release-inventory.py') -Destination $userDeployment
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'deployment\user') -Destination (Join-Path $userDeployment 'user') -Recurse
+    Convert-LinuxShellScriptsToLf $userPackage.Directory
+    Complete-Package $userPackage @{ server = 'payload/linux/server/RelaxKonOS.Server'; guardian = 'payload/linux/guardian/RelaxKonOS.Guardian.Agent'; launcher = 'deployment/user/relaxkon' }
+}

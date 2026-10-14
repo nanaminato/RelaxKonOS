@@ -78,6 +78,13 @@ mode_service_names() {
 # The snapshot always carries the time it was verified; an offline cache must never be shown as
 # live health, so the client is required to display this timestamp.
 snapshot_json() { # mode stateFile healthy installed dataRetained
+  local file_access file_roots=null policy
+  file_access=$(state_field "$2" fileAccess)
+  if [[ $file_access == whitelist && $1 == linuxSystem ]]; then
+    if [[ $EUID == 0 ]]; then policy=$(cat /etc/relaxkonos/privileged-helper-roots); elif [[ $sudo_requested == true ]]; then policy=$(run_privileged cat /etc/relaxkonos/privileged-helper-roots); else policy=; fi
+    if [[ -n $policy ]]; then file_roots=$(python3 -c 'import json,sys; print(json.dumps([p.strip() for p in sys.argv[1].splitlines() if p.strip() and not p.strip().startswith("#")]))' "$policy"); fi
+  fi
+  local startup_choice; startup_choice=$(state_flag "$2" autoStart)
   local guardian_choice guardian_running=null; guardian_choice=$(state_flag "$2" guardianEnabled)
   if [[ $guardian_choice == true && $4 == true ]]; then
     if [[ $1 == linuxSystem ]]; then
@@ -88,11 +95,11 @@ snapshot_json() { # mode stateFile healthy installed dataRetained
       if [[ $pid =~ ^[0-9]+$ && -n $started && $(stat -c %u "/proc/$pid" 2>/dev/null || true) == $UID && $(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null || true) == "$started" ]]; then guardian_running=true; fi
     fi
   fi
-  printf '{"installationId":%s,"installed":%s,"mode":"%s","version":%s,"previousVersion":%s,"installRoot":%s,"dataRoot":%s,"listenUrl":%s,"healthy":%s,"dataRetained":%s,"serviceNames":%s,"verifiedAtUtc":"%s","guardianEnabled":%s,"guardianRunning":%s}' \
+  printf '{"installationId":%s,"installed":%s,"mode":"%s","version":%s,"previousVersion":%s,"installRoot":%s,"dataRoot":%s,"listenUrl":%s,"healthy":%s,"dataRetained":%s,"serviceNames":%s,"verifiedAtUtc":"%s","guardianEnabled":%s,"guardianRunning":%s,"autoStart":%s,"fileAccess":%s,"fileRoots":%s}' \
     "$(json_string_or_null "$(state_field "$2" installationId)")" "$4" "$1" \
     "$(json_string_or_null "$(state_field "$2" version)")" "$(json_string_or_null "$(state_field "$2" previousVersion)")" \
     "$(json_string_or_null "$(mode_install_root "$1")")" "$(json_string_or_null "$(mode_data_root "$1")")" \
-    "$(json_string_or_null "$(mode_listen_url "$1")")" "$3" "$5" "$(mode_service_names "$1")" "$(now_utc)" "${guardian_choice:-null}" "$guardian_running"
+    "$(json_string_or_null "$(mode_listen_url "$1")")" "$3" "$5" "$(mode_service_names "$1")" "$(now_utc)" "${guardian_choice:-null}" "$guardian_running" "${startup_choice:-null}" "$(json_string_or_null "$file_access")" "$file_roots"
 }
 result_json() { # mode stateFile healthy dataRetained
   printf '{"installationId":%s,"mode":"%s","version":%s,"previousVersion":%s,"installRoot":%s,"dataRoot":%s,"listenUrl":%s,"healthy":%s,"dataRetained":%s,"dataCompatible":null,"serviceNames":%s,"completedAtUtc":"%s","firewallStatus":%s}' \
@@ -108,7 +115,11 @@ health_probe() { # mode -> true|false
     linuxUser)
       local socket; socket="$(user_state_root)/run/server.sock"
       [[ -S $socket ]] || { printf 'false'; return; }
-      curl --unix-socket "$socket" --fail --silent --max-time 4 http://localhost/ready >/dev/null 2>&1 && printf 'true' || printf 'false'
+      local listen; listen=$(mode_listen_url linuxUser)
+      local port; port=$(python3 -c 'import sys,urllib.parse; print(urllib.parse.urlparse(sys.argv[1]).port or "")' "$listen")
+      [[ $port =~ ^[0-9]+$ ]] || { printf 'false'; return; }
+      curl --unix-socket "$socket" --fail --silent --max-time 4 http://localhost/ready >/dev/null 2>&1 &&
+        curl --fail --silent --max-time 4 "http://127.0.0.1:$port/healthz" >/dev/null 2>&1 && printf 'true' || printf 'false'
       ;;
     *)
       local url="http://127.0.0.1:${options_server_port:-5000}/healthz" arguments=(--fail --silent --max-time 4)
@@ -193,7 +204,7 @@ probe_json() {
     if (exec 3<>"/dev/tcp/127.0.0.1/$options_server_port") 2>/dev/null; then port_available=false; exec 3<&- 3>&- 2>/dev/null || true; fi
   fi
 
-  printf '{"hostPlatform":"linux","architecture":"%s","runtimeIdentifier":%s,"osId":%s,"osVersion":%s,"osSupported":%s,"elevated":%s,"sudoAvailable":%s,"systemdAvailable":%s,"diskAvailableBytes":%s,"requestedPort":%s,"requestedPortAvailable":%s,"existingInstallationId":%s,"existingMode":%s,"existingVersion":%s,"existingInstalled":%s,"missingDependencies":%s,"verifiedAtUtc":"%s","guardianEnabled":%s,"guardianRunning":%s}' \
+  printf '{"hostPlatform":"linux","architecture":"%s","runtimeIdentifier":%s,"osId":%s,"osVersion":%s,"osSupported":%s,"elevated":%s,"sudoAvailable":%s,"systemdAvailable":%s,"diskAvailableBytes":%s,"requestedPort":%s,"requestedPortAvailable":%s,"existingInstallationId":%s,"existingMode":%s,"existingVersion":%s,"existingInstalled":%s,"missingDependencies":%s,"verifiedAtUtc":"%s","guardianEnabled":%s,"guardianRunning":%s,"autoStart":%s,"fileAccess":%s,"fileRoots":%s}' \
     "$machine" "$(json_string_or_null "$runtime")" "$(json_string_or_null "$os_id")" "$(json_string_or_null "$os_version")" \
     "$os_supported" "$elevated" "$sudo_available" "$systemd_available" "$(json_number_or_null "$disk")" \
     "$(json_number_or_null "$options_server_port")" "$port_available" \

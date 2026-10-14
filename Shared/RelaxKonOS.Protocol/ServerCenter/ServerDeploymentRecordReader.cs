@@ -46,6 +46,8 @@ public static class ServerDeploymentRecordReader
                     || !ServerDeploymentInputRules.IsVersion(result.Version))
                     throw InvalidRecord("successful deployment lacks verified installation evidence");
             }
+            if (record.Kind == ServerDeploymentKind.Firewall && record.Result?.FirewallStatus is null)
+                throw InvalidRecord("firewall action lacks its result");
             if (record.Kind == ServerDeploymentKind.Uninstall && record.Result?.DataRetained is null)
                 throw InvalidRecord("successful uninstall lacks a data retention receipt");
             if (record.Kind == ServerDeploymentKind.Probe && record.Probe is null)

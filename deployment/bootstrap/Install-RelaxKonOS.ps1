@@ -1,5 +1,7 @@
 [CmdletBinding()]
 param(
+    [switch] $RestorePayload,
+    [ValidateSet('true', 'false')][string] $AutoStart,
     [ValidateSet('true', 'false')][string] $GuardianEnabled,
     [ValidateSet('auto', 'zh-CN', 'en-US', 'ja-JP')]
     [string] $Language = 'auto',
@@ -155,7 +157,8 @@ function Write-InstallState($State) {
         # Register sign-in startup only after the runtime has passed health and state was committed.
         $startup = Join-Path $InstallRoot 'Start-PersonalServer.ps1'
         $powerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-        New-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'RelaxKonOSPersonal' -Value ('"' + $powerShell + '" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $startup + '"') -PropertyType String -Force | Out-Null
+        if ($State.autoStart) { New-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'RelaxKonOSPersonal' -Value ('"' + $powerShell + '" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $startup + '"') -PropertyType String -Force | Out-Null }
+        else { Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'RelaxKonOSPersonal' -ErrorAction SilentlyContinue }
     }
 }
 
@@ -267,7 +270,7 @@ function Invoke-ServicesInstaller([string] $Version, [string] $ListenUrl) {
     & $engine -InstallRoot $InstallRoot -ServerExecutable $server -GuardianExecutable $guardian -PrivilegedHelperExecutable $helper `
         -ServerPort $ServerPort -ServerListenUrl $ListenUrl -DataRoot $DataRoot -CertificateMode $CertificateMode -CertificatePath $CertificatePath `
         -CertificatePassword $CertificatePassword -SelfSignedIdentities $SelfSignedIdentities -FileAccess $FileAccess -FileRootsFile $FileRootsFile `
-        -EnableWindowsUserExecution -GuardianEnabled ([bool]$GuardianEnabled)
+        -EnableWindowsUserExecution -GuardianEnabled ([bool]$GuardianEnabled) -AutoStart ([bool]$AutoStart)
     if ($LASTEXITCODE -ne 0) { throw "Service installer failed with exit code $LASTEXITCODE." }
 }
 
@@ -402,6 +405,8 @@ if ($Action -eq 'install') {
 if ($Action -ne 'install' -and (Get-StateValue $existingState 'guardianEnabled') -isnot [bool]) {
     throw 'The installation record lacks Guardian selection; redeploy using the current installation contract.'
 }
+$AutoStart = [string](Resolve-Setting 'AutoStart' $AutoStart (Get-StateValue $existingState 'autoStart') $true)
+$AutoStart = $AutoStart -eq 'true'
 $GuardianEnabled = [string](Resolve-Setting 'GuardianEnabled' $GuardianEnabled (Get-StateValue $existingState 'guardianEnabled') ($Mode -ne 'windowsUser'))
 $GuardianEnabled = $GuardianEnabled -eq 'true'
 if ($Mode -eq 'windowsUser' -and $GuardianEnabled) { throw 'Guardian is unavailable in Windows personal mode.' }
@@ -587,12 +592,18 @@ try {
                 schemaVersion = 1; installed = $true; mode = $Mode; installationId = $installationId
                 version = $targetVersion; previousVersion = $previousVersion; installedAtUtc = [DateTime]::UtcNow.ToString('O')
                 installRoot = $InstallRoot; dataRoot = $DataRoot; networkProfile = $NetworkProfile; listenUrl = $effectiveListenUrl
-                certificateMode = $CertificateMode; fileAccess = $FileAccess; guardianEnabled = [bool]$GuardianEnabled
+                certificateMode = $CertificateMode; fileAccess = $FileAccess; guardianEnabled = [bool]$GuardianEnabled; autoStart = [bool]$AutoStart
             })
             Write-Host "$($M.done) $effectiveListenUrl" -ForegroundColor Green
             exit 0
         }
     } elseif ($Action -eq 'configure') {
+        $originalFileAccess = Get-StateValue $existingState 'fileAccess'
+        $originalPolicyPath = if ($Mode -eq 'windowsUser') {
+            $ownerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+            Join-Path $env:ProgramFiles ('RelaxKonOS-Personal\' + $ownerSid + '\helper.json')
+        } else { Join-Path $DataRoot 'privileged-helper\helper.json' }
+        $originalRoots = @((Get-Content -LiteralPath $originalPolicyPath -Raw | ConvertFrom-Json).fileAllowedRoots)
         try {
             Stop-RelaxKonOSServices
             Invoke-ServicesInstaller $targetVersion $effectiveListenUrl
@@ -600,6 +611,17 @@ try {
         } catch {
             $configurationError = $_
             $GuardianEnabled = (Get-StateValue $existingState 'guardianEnabled') -eq $true
+            $FileAccess = $originalFileAccess
+            $FileRootsFile = $null
+            if ($FileAccess -eq 'whitelist') {
+                if (-not $maintenancePolicyDirectory) {
+                    $maintenancePolicyDirectory = Join-Path $DataRoot ('maintenance-' + [guid]::NewGuid().ToString('N'))
+                    New-Item -ItemType Directory -Path $maintenancePolicyDirectory | Out-Null
+                }
+                $FileRootsFile = Join-Path $maintenancePolicyDirectory 'previous-roots.json'
+                [IO.File]::WriteAllText($FileRootsFile, (ConvertTo-Json -InputObject @($originalRoots)), [Text.UTF8Encoding]::new($false))
+            }
+            $AutoStart = (Get-StateValue $existingState 'autoStart') -eq $true
             $ServerPort = ([Uri](Get-StateValue $existingState 'listenUrl')).Port
             Stop-RelaxKonOSServices
             Invoke-ServicesInstaller $targetVersion (Get-StateValue $existingState 'listenUrl')
@@ -607,6 +629,30 @@ try {
             throw "Configuration failed; previous settings restored: $configurationError"
         }
     } elseif ($Action -eq 'repair') {
+        if ($BundlePath) {
+            $repairManifest = Get-Content -LiteralPath (Join-Path $BundlePath 'manifest.json') -Raw | ConvertFrom-Json
+            if (-not $repairManifest.files -or @($repairManifest.files).Count -eq 0) { throw 'Repair package requires a complete file inventory.' }
+            if (-not $RestorePayload -or $repairManifest.version -ne $targetVersion -or $repairManifest.packageKind -ne 'server' -or $repairManifest.runtime -ne (Get-CurrentRuntime)) { throw 'Repair package must match the installed version and architecture.' }
+            foreach ($item in $repairManifest.files) {
+                $source = Resolve-ContainedPath $BundlePath $item.path
+                if ((Get-Item -LiteralPath $source).Length -ne $item.length -or (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne $item.sha256) { throw 'Repair package inventory mismatch.' }
+            }
+            Stop-RelaxKonOSServices
+            $versionRoot = Get-VersionRoot $targetVersion
+            foreach ($item in $repairManifest.files) {
+                if ($item.path -notmatch '^payload/windows/(server|guardian|privileged-helper)/(.+)$') { continue }
+                $relative = $Matches[1] + '\' + $Matches[2]
+                $destination = Resolve-ContainedPath $versionRoot $relative
+                $ancestor = $destination
+                while ($ancestor -and $ancestor.StartsWith([IO.Path]::GetFullPath($versionRoot), [StringComparison]::OrdinalIgnoreCase)) {
+                    if ((Test-Path -LiteralPath $ancestor) -and ((Get-Item -LiteralPath $ancestor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Repair must not traverse persistent data links.' }
+                    $ancestor = [IO.Path]::GetDirectoryName($ancestor)
+                }
+                if ((Test-Path -LiteralPath $destination) -and ((Get-Item -LiteralPath $destination -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Unsafe repair destination.' }
+                New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
+                Copy-Item -LiteralPath (Resolve-ContainedPath $BundlePath $item.path) -Destination $destination -Force
+            }
+        }
         Set-CurrentVersion $targetVersion
         Invoke-ServicesInstaller $targetVersion $effectiveListenUrl
     } elseif ($Action -eq 'rollback') {
@@ -632,7 +678,7 @@ try {
             schemaVersion = 1; installed = $true; mode = $Mode; installationId = $installationId
             version = $targetVersion; previousVersion = $fromVersion; installedAtUtc = [DateTime]::UtcNow.ToString('O')
             installRoot = $InstallRoot; dataRoot = $DataRoot; networkProfile = $NetworkProfile; listenUrl = $effectiveListenUrl
-            certificateMode = $CertificateMode; fileAccess = $FileAccess; guardianEnabled = [bool]$GuardianEnabled
+            certificateMode = $CertificateMode; fileAccess = $FileAccess; guardianEnabled = [bool]$GuardianEnabled; autoStart = [bool]$AutoStart
         })
         Write-Host "$($M.done) $effectiveListenUrl" -ForegroundColor Green
         exit 0
@@ -643,7 +689,7 @@ try {
         schemaVersion = 1; installed = $true; mode = $Mode; installationId = $installationId
         version = $targetVersion; previousVersion = (Get-StateValue $existingState 'previousVersion'); installedAtUtc = [DateTime]::UtcNow.ToString('O')
         installRoot = $InstallRoot; dataRoot = $DataRoot; networkProfile = $NetworkProfile; listenUrl = $effectiveListenUrl
-        certificateMode = $CertificateMode; fileAccess = $FileAccess; guardianEnabled = [bool]$GuardianEnabled
+        certificateMode = $CertificateMode; fileAccess = $FileAccess; guardianEnabled = [bool]$GuardianEnabled; autoStart = [bool]$AutoStart
     })
     Write-Host $M.health -ForegroundColor Green
     Write-Host "$($M.done) $effectiveListenUrl" -ForegroundColor Green

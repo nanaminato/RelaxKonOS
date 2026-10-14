@@ -453,7 +453,7 @@ public partial class ServerCenterViewModel : ObservableObject
     private async Task PerformInstalledOperationAsync(
         ServerDeploymentKind kind,
         ServerDataRetention retention,
-        CancellationToken cancellationToken, bool recovering = false)
+        CancellationToken cancellationToken, bool recovering = false, bool removeFirewallRules = true)
     {
         var target = SelectedHost;
         var platform = SelectedPlatform;
@@ -502,7 +502,7 @@ public partial class ServerCenterViewModel : ObservableObject
                 if (target.HostId != _reviewedConfigurationHostId || fresh.Snapshot is not { } current ||
                     _reviewedConfiguration is not { } reviewed || current.InstallationId != reviewed.InstallationId ||
                     current.Mode != reviewed.Mode || current.Version != reviewed.Version ||
-                    current.ListenUrl != reviewed.ListenUrl || current.GuardianEnabled != reviewed.GuardianEnabled ||
+                    current.FileAccess != reviewed.FileAccess || !(current.FileRoots ?? []).SequenceEqual(reviewed.FileRoots ?? []) || current.AutoStart != reviewed.AutoStart || current.ListenUrl != reviewed.ListenUrl || current.GuardianEnabled != reviewed.GuardianEnabled ||
                     current.InstallRoot != reviewed.InstallRoot || current.DataRoot != reviewed.DataRoot)
                 {
                     ErrorMessage = T("server_center.configuration_changed", "The installation changed. Refresh and review the settings again.");
@@ -522,7 +522,7 @@ public partial class ServerCenterViewModel : ObservableObject
                 Guid.NewGuid(),
                 kind,
                 new ServerDeploymentOptions(
-                    ServerPackageSourceKind.OfficialStable,
+                    kind == ServerDeploymentKind.Repair && !string.IsNullOrWhiteSpace(RepairPackagePath) ? ServerPackageSourceKind.RemoteBundle : ServerPackageSourceKind.OfficialStable,
                     kind == ServerDeploymentKind.Configure && ConfigurationLan ? ServerNetworkProfile.Lan : ServerNetworkProfile.Loopback,
                     retention,
                     operationMode,
@@ -532,14 +532,19 @@ public partial class ServerCenterViewModel : ObservableObject
                     null,
                     probe.ExistingInstallationId,
                     kind == ServerDeploymentKind.Configure ? int.Parse(ConfigurationPort) : null,
+                    FileAccess: kind == ServerDeploymentKind.Configure && CanConfigureFileAccess ? ConfigurationFileAccess?.Scope : null,
+                    FileRoots: kind == ServerDeploymentKind.Configure && CanConfigureFileAccess ? ConfiguredRoots : null,
                     CertificateMode: rotateCertificate ? ServerCertificateMode.SelfSigned : null,
                     SelfSignedIdentities: rotateCertificate ? RepairCertificateIdentities.Trim() : null,
                     Confirmed: true,
                     Language: _localization.CurrentLanguage,
                     AllowUnsupportedSystem: operationMode == ServerInstallMode.LinuxSystem && !probe.OsSupported,
-                    AddFirewallRule: kind == ServerDeploymentKind.Repair && !recovering && operationMode != ServerInstallMode.LinuxUser && MaintenanceAddFirewallRule,
+                    AddFirewallRule: kind == ServerDeploymentKind.Firewall ? !removeFirewallRules : kind == ServerDeploymentKind.Repair && !recovering && operationMode != ServerInstallMode.LinuxUser && MaintenanceAddFirewallRule,
                     RemoveComponents: kind == ServerDeploymentKind.Uninstall && operationMode != ServerInstallMode.LinuxUser ? SelectedComponents : "",
-                    GuardianEnabled: kind == ServerDeploymentKind.Configure ? ConfigurationGuardian : null));
+                    GuardianEnabled: kind == ServerDeploymentKind.Configure ? ConfigurationGuardian : null,
+                    RemotePackagePath: kind == ServerDeploymentKind.Repair && !string.IsNullOrWhiteSpace(RepairPackagePath) ? RepairPackagePath.Trim() : null,
+                    RemoveFirewallRules: kind == ServerDeploymentKind.Firewall && removeFirewallRules,
+                    AutoStart: kind == ServerDeploymentKind.Configure && CanConfigureAutoStart ? ConfigurationAutoStart : null));
             var receipt = await ExecuteFixedOperationAsync(session, tools, request, cancellationToken, sudoPassword).ConfigureAwait(true);
 
             // Read the separate status receipt even after uninstall. The install identity is retained
@@ -565,13 +570,28 @@ public partial class ServerCenterViewModel : ObservableObject
             }
             if (status.State != ServerDeploymentState.Succeeded ||
                 (kind == ServerDeploymentKind.Uninstall ? status.Snapshot.Installed :
-                    !status.Snapshot.Installed || !status.Snapshot.Healthy))
+                    !status.Snapshot.Installed || kind != ServerDeploymentKind.Firewall && !status.Snapshot.Healthy))
+            {
+                ErrorMessage = T("server_center.maintenance_verification_failed", "The host state after the operation does not confirm success. Check the operation record.");
+                return;
+            }
+            if (kind == ServerDeploymentKind.Configure &&
+                (status.Snapshot.InstallationId != request.Options!.ExpectedInstallationId ||
+                 status.Snapshot.GuardianEnabled != request.Options.GuardianEnabled ||
+                 request.Options.AutoStart.HasValue && status.Snapshot.AutoStart != request.Options.AutoStart ||
+                 request.Options.FileAccess.HasValue && status.Snapshot.FileAccess != request.Options.FileAccess ||
+                 request.Options.FileAccess == ServerFileAccessScope.Whitelist &&
+                     !(status.Snapshot.FileRoots ?? []).SequenceEqual(request.Options.FileRoots ?? []) ||
+                 !Uri.TryCreate(status.Snapshot.ListenUrl, UriKind.Absolute, out var configuredEndpoint) ||
+                 configuredEndpoint.Port != request.Options.ServerPort ||
+                 configuredEndpoint.Host != (request.Options.Network == ServerNetworkProfile.Lan ? "0.0.0.0" : "127.0.0.1")))
             {
                 ErrorMessage = T("server_center.maintenance_verification_failed", "The host state after the operation does not confirm success. Check the operation record.");
                 return;
             }
             StatusMessage = kind switch
             {
+                ServerDeploymentKind.Firewall => T("server_center.firewall_completed", "Managed Server firewall operation completed; other host rules were retained."),
                 ServerDeploymentKind.Configure => T("server_center.configuration_succeeded", "Installation settings applied and verified. Review the new connection address."),
                 ServerDeploymentKind.Repair => T("server_center.repair_succeeded", "The current installation was repaired and verified through SSH."),
                 ServerDeploymentKind.Rollback => T("server_center.rollback_succeeded", "The previous program version was restored and verified through SSH."),
@@ -1196,6 +1216,8 @@ public partial class ServerCenterViewModel : ObservableObject
         RecoverCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
         ConfigureCommand.NotifyCanExecuteChanged();
+        EnsureFirewallCommand.NotifyCanExecuteChanged();
+        RemoveFirewallCommand.NotifyCanExecuteChanged();
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
         LoadOperationHistoryCommand.NotifyCanExecuteChanged();
@@ -1215,6 +1237,8 @@ public partial class ServerCenterViewModel : ObservableObject
         RecoverCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
         ConfigureCommand.NotifyCanExecuteChanged();
+        EnsureFirewallCommand.NotifyCanExecuteChanged();
+        RemoveFirewallCommand.NotifyCanExecuteChanged();
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
         LoadOperationHistoryCommand.NotifyCanExecuteChanged();
@@ -1235,6 +1259,8 @@ public partial class ServerCenterViewModel : ObservableObject
         RecoverCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
         ConfigureCommand.NotifyCanExecuteChanged();
+        EnsureFirewallCommand.NotifyCanExecuteChanged();
+        RemoveFirewallCommand.NotifyCanExecuteChanged();
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
         RefreshOperationCommand.NotifyCanExecuteChanged();
@@ -1248,6 +1274,8 @@ public partial class ServerCenterViewModel : ObservableObject
         RecoverCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
         ConfigureCommand.NotifyCanExecuteChanged();
+        EnsureFirewallCommand.NotifyCanExecuteChanged();
+        RemoveFirewallCommand.NotifyCanExecuteChanged();
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
         RefreshOperationCommand.NotifyCanExecuteChanged();
@@ -1257,6 +1285,8 @@ public partial class ServerCenterViewModel : ObservableObject
         UpdateCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
         ConfigureCommand.NotifyCanExecuteChanged();
+        EnsureFirewallCommand.NotifyCanExecuteChanged();
+        RemoveFirewallCommand.NotifyCanExecuteChanged();
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
     }

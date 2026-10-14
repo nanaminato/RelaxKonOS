@@ -73,6 +73,7 @@ try {
         'probe' { Invoke-ProbeAction }
         'status' { Invoke-StatusAction }
         { $_ -in @('install', 'upgrade', 'repair', 'configure', 'rollback') } { Invoke-InstallLikeAction }
+        'firewall' { Invoke-FirewallAction }
         'uninstall' { Invoke-UninstallAction }
     }
 } catch {

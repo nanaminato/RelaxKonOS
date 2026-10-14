@@ -71,6 +71,7 @@ case "$operation_kind" in
   probe) action_probe;;
   status) action_status;;
   install|upgrade|repair|configure|rollback) action_install_like;;
+  firewall) action_firewall;;
   uninstall) action_uninstall;;
 esac
 exit 0

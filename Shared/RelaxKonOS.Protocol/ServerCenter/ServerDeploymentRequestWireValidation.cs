@@ -14,7 +14,7 @@ public static class ServerDeploymentRequestWireValidation
         "certificateMode", "selfSignedIdentities", "confirmed", "language", "releaseCatalogBaseUri",
         "installRoot", "dataRoot", "configRoot", "stateRoot", "cacheRoot", "fileRoots",
         "administratorFileAccess", "administratorFileRoots", "rootFileAccess", "rootFileRoots",
-        "dockerAccess", "allowUnsupportedSystem", "addFirewallRule", "removeComponents", "guardianEnabled"
+        "dockerAccess", "allowUnsupportedSystem", "addFirewallRule", "removeComponents", "guardianEnabled", "autoStart", "removeFirewallRules"
     ];
 
     public static bool IsStrictRequest(ReadOnlySpan<byte> json)
@@ -75,10 +75,10 @@ public static class ServerDeploymentRequestWireValidation
                     "installRoot" or "dataRoot" or "configRoot" or "stateRoot" or "cacheRoot" or
                     "administratorFileAccess" or "rootFileAccess" =>
                     type is JsonValueKind.String or JsonValueKind.Null,
-                "guardianEnabled" => type is JsonValueKind.True or JsonValueKind.False or JsonValueKind.Null,
+                "guardianEnabled" or "autoStart" => type is JsonValueKind.True or JsonValueKind.False or JsonValueKind.Null,
                 "serverPort" => type == JsonValueKind.Null ||
                                 type == JsonValueKind.Number && property.Value.TryGetInt32(out _),
-                "confirmed" or "dockerAccess" or "allowUnsupportedSystem" or "addFirewallRule" => type is JsonValueKind.True or JsonValueKind.False,
+                "removeFirewallRules" or "confirmed" or "dockerAccess" or "allowUnsupportedSystem" or "addFirewallRule" => type is JsonValueKind.True or JsonValueKind.False,
                 "fileRoots" or "administratorFileRoots" or "rootFileRoots" => type == JsonValueKind.Null ||
                     type == JsonValueKind.Array && property.Value.EnumerateArray().All(item => item.ValueKind == JsonValueKind.String),
                 _ => false

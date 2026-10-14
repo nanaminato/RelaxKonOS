@@ -263,6 +263,13 @@
     "server_center.configuration_changed": "インストール状態が変わりました。更新して設定を再確認してください。",
     "server_center.configuration_succeeded": "設定を適用して検証しました。新しい接続先を確認してください。",
     "server_center.guardian_running": "監視プロセスの実行状態",
-    "server_center.repair_plan": "修復では現在のバージョンのサービスと設定を再適用し、コンポーネント選択、ポート、ファイル権限と証明書を保持します。選択した監視は認証済み IPC 検証に合格する必要があります。証明書再生成とファイアウォール変更は明示的な追加操作です。"
+    "server_center.repair_plan": "修復では現在のバージョンのサービスと設定を再適用し、コンポーネント選択、ポート、ファイル権限と証明書を保持します。選択した監視は認証済み IPC 検証に合格する必要があります。証明書再生成とファイアウォール変更は明示的な追加操作です。",
+    "server_center.auto_start": "自動起動（システムは起動時、個人モードはログイン時）",
+    "server_center.remove_firewall": "RelaxKonOS Server のファイアウォール規則を削除",
+    "server_center.ensure_firewall": "現在の待受ポートの規則を追加",
+    "server_center.settings_first": "設定の変更を適用または破棄してから操作してください。",
+    "server_center.firewall_completed": "管理規則の操作が完了しました。他の規則は保持されます。",
+    "server_center.repair_package": "サーバー ZIP パス（任意、現在のバージョンのファイルを復元）",
+    "server_center.repair_package_local": "現在のバージョンのローカル ZIP（任意）"
   }
 }

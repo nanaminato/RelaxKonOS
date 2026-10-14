@@ -66,4 +66,8 @@
     <string name="server_configuration_note">Services restart when settings are applied. Removing Guardian stops its workloads and retains definitions and logs. TLS identity is preserved. Review the new connection address afterwards.</string>
     <string name="server_configuration_discard">Discard unsaved settings?</string>
     <string name="server_configuration_discard_confirm">Discard</string>
+    <string name="server_configuration_auto_start">Start automatically (at boot, or sign-in in personal mode)</string>
+    <string name="server_configuration_remove_firewall">Remove RelaxKonOS Server firewall rules</string>
+    <string name="server_configuration_ensure_firewall">Add rule for the current listener</string>
+    <string name="server_configuration_repair_package">Server ZIP path (optional; same installed version, restores program files)</string>
 </resources>

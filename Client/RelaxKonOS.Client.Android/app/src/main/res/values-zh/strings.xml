@@ -62,4 +62,8 @@
     <string name="server_configuration_note">应用后会重启服务。移除守护会停止工作负载，保留定义和日志。现有证书保持不变；完成后请核对新的连接地址。</string>
     <string name="server_configuration_discard">放弃未保存的设置？</string>
     <string name="server_configuration_discard_confirm">放弃</string>
+    <string name="server_configuration_auto_start">自动启动（系统模式开机启动，个人模式登录后启动）</string>
+    <string name="server_configuration_remove_firewall">移除 RelaxKonOS Server 防火墙规则</string>
+    <string name="server_configuration_ensure_firewall">为当前监听端口添加防火墙规则</string>
+    <string name="server_configuration_repair_package">服务器 ZIP 路径（可选；必须匹配当前版本，用于恢复程序文件）</string>
 </resources>

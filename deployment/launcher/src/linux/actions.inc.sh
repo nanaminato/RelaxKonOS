@@ -25,24 +25,94 @@ action_status() {
   emit_event completed succeeded 100 "" "状态查询完成"
 }
 
+action_firewall() {
+  acquire_write_lock
+  preflight_install
+  require_expected_installation_id
+  local file; file=$(mode_install_state "$options_mode")
+  installation_id=$(state_field "$file" installationId)
+  apply_firewall_choice "$file"
+  record_result=$(result_json "$options_mode" "$file" "$(health_probe "$options_mode")" null)
+  completed_at=$(now_utc)
+  emit_event completed succeeded 100 "" "防火墙操作完成"
+}
+
 apply_firewall_choice() { # authoritative installation state
   firewall_status='"notRequested"'
   [[ $options_mode != linuxUser ]] || { firewall_status='"notApplicable"'; return; }
   local url port result
   url=$(state_field "$1" listenUrl)
-  case "$url" in *://127.0.0.1:*|*://localhost:*) firewall_status='"notApplicable"'; return;; esac
+  case "$url" in *://127.0.0.1:*|*://localhost:*) [[ ${options_remove_firewall:-null} == true ]] || { firewall_status='"notApplicable"'; return; };; esac
   port=$(python3 -c 'import sys,urllib.parse; print(urllib.parse.urlparse(sys.argv[1]).port)' "$url")
   local -a firewall_command=(python3)
   [[ $sudo_requested != true ]] || firewall_command=(run_privileged python3)
   # sudo consumes stdin for authentication; pass the Python source as an argument.
   if ! result=$("${firewall_command[@]}" -c "$(cat <<'FIREWALL_PY'
 import json, os, pathlib, re, shutil, subprocess, sys
+remove=len(sys.argv)>3 and sys.argv[3]=='true'
 port=int(sys.argv[1]); requested=sys.argv[2]=='true'
 if not 1 <= port <= 65535: raise ValueError('Invalid server port')
 def run(*args, check=True, input=None):
     return subprocess.run(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=check, input=input, env={**os.environ, "LC_ALL": "C"})
 def active(unit):
     return run('systemctl','is-active','--quiet',unit,check=False).returncode==0
+ownership=pathlib.Path('/etc/relaxkonos/firewalld-owned.json')
+def owned_rules():
+    if not ownership.exists(): return []
+    if ownership.is_symlink() or ownership.stat().st_uid!=0 or ownership.stat().st_mode & 0o022: raise ValueError('Untrusted firewall ownership record')
+    data=json.loads(ownership.read_text())
+    if data.get('owner')!='relaxkonos-server': raise ValueError('Foreign firewall ownership record')
+    entries=data.get('rules',[])
+    for item in entries:
+        if set(item)!={'zone','rule','permanent'} or not re.fullmatch(r'[A-Za-z0-9_.-]+',item['zone']) or type(item['permanent']) is not bool or not re.fullmatch(r'rule family="ipv[46]" port port="[0-9]+" protocol="tcp" accept',item['rule']): raise ValueError('Invalid firewall ownership record')
+    return entries
+def save_owned(entries):
+    ownership.parent.mkdir(mode=0o755,exist_ok=True)
+    if ownership.parent.is_symlink() or ownership.parent.stat().st_uid!=0 or ownership.parent.stat().st_mode & 0o022: raise ValueError('Untrusted firewall ownership directory')
+    import tempfile
+    fd,name=tempfile.mkstemp(prefix='.firewalld-',dir=ownership.parent)
+    try:
+        with os.fdopen(fd,'w') as stream: json.dump({'owner':'relaxkonos-server','rules':entries},stream)
+        os.replace(name,ownership)
+    finally:
+        if os.path.exists(name): os.unlink(name)
+if remove:
+    entries=owned_rules()
+    if entries:
+        if not shutil.which('firewall-cmd'): raise RuntimeError('Managed firewalld rules cannot be removed without firewalld')
+        for item in entries:
+            args=['firewall-cmd',f"--zone={item['zone']}"]
+            if item['permanent']: args.append('--permanent')
+            if run(*args,'--query-rich-rule='+item['rule'],check=False).returncode==0: run(*args,'--remove-rich-rule='+item['rule'])
+        save_owned([])
+    # Delete only rules carrying our exact product marker; never delete an unlabelled port allowance.
+    if shutil.which('ufw'):
+        lines=run('ufw','status','numbered').stdout.splitlines()
+        owned=[]
+        for line in lines:
+            match=re.match(r'^\[\s*(\d+)\] .*# RelaxKonOS\s*$',line.strip())
+            if match: owned.append(int(match[1]))
+        for index in sorted(owned,reverse=True): run('ufw','--force','delete',str(index))
+    if shutil.which('nft'):
+        rules=json.loads(run('nft','-j','list','ruleset').stdout)['nftables']
+        for entry in rules:
+            rule=entry.get('rule',{})
+            if re.fullmatch(r'RelaxKonOS TCP [0-9]+',rule.get('comment','')):
+                run('nft','delete','rule',rule['family'],rule['table'],rule['chain'],'handle',str(rule['handle']))
+        managed=pathlib.Path('/etc/relaxkonos/firewall.nft')
+        if managed.exists():
+            lines=managed.read_text().splitlines()
+            remaining=[line for line in lines if not re.fullmatch(r'insert rule [A-Za-z0-9_.-]+ [A-Za-z0-9_.-]+ [A-Za-z0-9_.-]+ tcp dport [0-9]+ accept comment "RelaxKonOS TCP [0-9]+"',line)]
+            managed.write_text('\n'.join(remaining)+'\n')
+    if shutil.which('iptables'):
+        import shlex
+        for line in run('iptables','-S','INPUT').stdout.splitlines():
+            args=shlex.split(line)
+            if '--comment' in args and re.fullmatch(r'RelaxKonOS TCP [0-9]+',args[args.index('--comment')+1]):
+                run('iptables','-D',*args[1:])
+        if shutil.which('netfilter-persistent'): run('netfilter-persistent','save')
+    # Firewalld's historical bare-port allowances lack ownership markers and are deliberately retained.
+    print('rulesRemoved');sys.exit(0)
 backend=None
 if shutil.which('ufw') and re.search(r'^Status: active$',run('ufw','status').stdout,re.M): backend='ufw'
 elif shutil.which('firewall-cmd') and run('firewall-cmd','--state',check=False).returncode==0: backend='firewalld'
@@ -60,9 +130,19 @@ if backend=='ufw': run('ufw','allow',f'{port}/tcp','comment','RelaxKonOS')
 elif backend=='firewalld':
     zones=[line.strip() for line in run('firewall-cmd','--get-active-zones').stdout.splitlines() if line and not line[0].isspace()]
     if not zones: zones=[run('firewall-cmd','--get-default-zone').stdout.strip()]
+    entries=owned_rules()
     for zone in zones:
-        run('firewall-cmd',f'--zone={zone}',f'--add-port={port}/tcp','--permanent')
-        run('firewall-cmd',f'--zone={zone}',f'--add-port={port}/tcp')
+        if not re.fullmatch(r'[A-Za-z0-9_.-]+',zone): raise ValueError('Invalid firewall zone')
+        for family in ('ipv4','ipv6'):
+            rule=f'rule family="{family}" port port="{port}" protocol="tcp" accept'
+            for permanent in (True,False):
+                args=['firewall-cmd',f'--zone={zone}']
+                if permanent: args.append('--permanent')
+                if run(*args,'--query-rich-rule='+rule,check=False).returncode==0: continue
+                item={'zone':zone,'rule':rule,'permanent':permanent}
+                if item not in entries:
+                    entries.append(item);save_owned(entries)
+                run(*args,'--add-rich-rule='+rule)
 elif backend=='nftables':
     if not active('nftables') or not pathlib.Path('/etc/nftables.conf').is_file():
         raise RuntimeError('Active nftables rules have no managed persistent nftables service')
@@ -104,10 +184,10 @@ elif backend=='iptables':
     run('netfilter-persistent','save')
 print('ruleAdded')
 FIREWALL_PY
-  )" "$port" "$options_add_firewall" 2>>"$(diagnostics_path)"); then
+  )" "$port" "$options_add_firewall" "${options_remove_firewall:-false}" 2>>"$(diagnostics_path)"); then
     launcher_fail firewall_rule_failed 'The server is installed, but the requested firewall rule could not be added; inspect the host firewall configuration.'
   fi
-  case "$result" in disabled|ruleAdded|notRequested) firewall_status=$(json_string_or_null "$result");; *) launcher_fail firewall_rule_failed 'Invalid firewall result';; esac
+  case "$result" in disabled|ruleAdded|notRequested|rulesRemoved) firewall_status=$(json_string_or_null "$result");; *) launcher_fail firewall_rule_failed 'Invalid firewall result';; esac
 }
 
 action_install_like() {
@@ -117,9 +197,11 @@ action_install_like() {
   emit_event preflight running "" "" "正在执行权限与宿主预检"
   preflight_install
   require_expected_installation_id
-  # Only install and upgrade consume a staged package; repair and rollback replay the payload the
-  # engine already published on the host.
+  # Install and upgrade require a package; repair consumes one only when explicitly supplied.
   case "$operation_kind" in
+    repair)
+      if [[ -n $options_remote_path || -n $options_staged_name ]]; then require_package; fi
+      ;;
     install|upgrade)
       emit_event verifyingPackage running "" "" "正在校验暂存包"
       require_package
@@ -139,7 +221,7 @@ action_install_like() {
         install) run_engine "${user_env[@]}" bash "$engine" install --port "${options_server_port:-5000}" --bundle "$package_root" "${package_check_args[@]}" || status=$? ;;
         upgrade) run_engine "${user_env[@]}" bash "$engine" upgrade --bundle "$package_root" "${package_check_args[@]}" || status=$? ;;
         configure) run_engine "${user_env[@]}" bash "$engine" configure --port "$options_server_port" --network "$options_network" || status=$? ;;
-        repair) run_engine "${user_env[@]}" bash "$engine" repair || status=$? ;;
+        repair) local user_repair_args=(); [[ -z $package_root || ! -d $package_root ]] || user_repair_args+=(--bundle "$package_root"); run_engine "${user_env[@]}" bash "$engine" repair "${user_repair_args[@]}" || status=$? ;;
         rollback) run_engine "${user_env[@]}" bash "$engine" rollback || status=$? ;;
       esac
       ;;
@@ -152,6 +234,7 @@ action_install_like() {
       else
         engine=$(system_engine_path)
         arguments=(bash "$engine" --mode system --non-interactive --language "$options_language" --install-root "$(system_install_root)" --data-root "$(system_data_root)")
+        [[ "$options_auto_start" == null ]] || arguments+=(--auto-start "$options_auto_start")
         [[ "$options_guardian_enabled" == null ]] || arguments+=(--guardian-enabled "$options_guardian_enabled")
         [[ $options_allow_unsupported != true ]] || arguments+=(--allow-unsupported-system)
         # Upgrade and repair continue an existing installation; only install and upgrade consume the
@@ -184,11 +267,15 @@ action_install_like() {
             fi
             ;;
           configure)
+            [[ -z $options_file_access ]] || arguments+=(--file-access "$options_file_access")
+            write_roots_file fileRoots
+            [[ ! -f $staging_root/fileRoots.txt ]] || arguments+=(--file-roots "$staging_root/fileRoots.txt")
             arguments+=(--action configure --server-port "$options_server_port")
             case "$options_network" in lan) arguments+=(--network lan);; *) arguments+=(--network local);; esac
             ;;
           repair)
             arguments+=(--action repair)
+            [[ -z $package_root || ! -d $package_root ]] || arguments+=(--bundle "$package_root" --restore-payload)
             if [[ $options_certificate_mode == selfSigned ]]; then
               [[ -n $options_self_signed_identities ]] || launcher_fail invalid_request "self-signed certificate names are required"
               grep -Fq '"$CERTIFICATE_MODE_SET" == true && "$CERTIFICATE_MODE" == self-signed' "$engine" || launcher_fail not_supported "installed deployment scripts cannot regenerate certificates during repair; upgrade the server first"

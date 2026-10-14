@@ -32,7 +32,7 @@ function Stop-RelaxKonOSServices { }
 function Invoke-ServicesInstaller($Version, $Url) { $script:applied += "$Url/$GuardianEnabled" }
 function Get-StateValue($State, $Name) { $State[$Name] }
 function Test-LoopbackHealth { $script:healthCalls++; $script:healthCalls -gt 1 }
-$existingState = @{ guardianEnabled = $false; listenUrl = 'http://127.0.0.1:5000' }
+$existingState = @{ guardianEnabled = $false; autoStart = $true; fileAccess = 'restricted'; listenUrl = 'http://127.0.0.1:5000' }
 $GuardianEnabled = $true; $ServerPort = 5500; $targetVersion = '1.0.0'; $effectiveListenUrl = 'http://0.0.0.0:5500'
 $script:applied = @(); $script:healthCalls = 0
 $failed = $false

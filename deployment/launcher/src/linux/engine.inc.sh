@@ -72,9 +72,11 @@ run_engine() { # command...
   launcher_note "running deployment engine: $1"
   set +e
   if [[ $sudo_requested == true && $options_mode == linuxSystem && $EUID -ne 0 ]]; then
-    run_privileged "$@" > "$diagnostics" 2>&1
+    run_privileged "$@" > "$diagnostics" 2>&1 8>&-
   else
-    "$@" > "$diagnostics" 2>&1
+    # The launcher owns the deployment lock. Daemons started by the engine must
+    # not inherit it and keep all future maintenance locked out.
+    "$@" > "$diagnostics" 2>&1 8>&-
   fi
   local status=$?
   set -e

@@ -1,10 +1,12 @@
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Templates;
 using Avalonia.Media;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Protocol.ServerCenter;
+using RelaxKonOS.Client.ViewModels.ServerCenter;
 using RelaxKonOS.Client.Services.Dialogs;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 
@@ -66,6 +68,8 @@ public sealed class LocalServerMaintenanceWindow : Window
         removeData.IsCheckedChanged += (_, _) => { confirmDelete.IsVisible = removeData.IsChecked == true; confirmDelete.IsChecked = false; };
         panel.Children.Add(removeData);
         panel.Children.Add(confirmDelete);
+        var repairPackage = new TextBox { IsVisible = kind == ServerDeploymentKind.Repair, PlaceholderText = _localization.Get("server_center.repair_package_local", "Local ZIP of the installed version (optional)") };
+        panel.Children.Add(repairPackage);
         var regenerate = new CheckBox { Content = LocalManagementLayout.Text(T("regenerate_certificate", "Regenerate a self-signed TLS certificate")), IsVisible = kind == ServerDeploymentKind.Repair };
         var identities = new TextBox { Text = "localhost,127.0.0.1", IsVisible = false };
         var certificateNote = new TextBlock { Text = T("certificate_note", "Enter certificate DNS names or IP addresses, separated by commas. Regeneration enables HTTPS and changes the certificate fingerprint; clients must review trust again."), TextWrapping = TextWrapping.Wrap, IsVisible = false };
@@ -86,10 +90,35 @@ public sealed class LocalServerMaintenanceWindow : Window
         var port = new TextBox { Text = endpoint.Port.ToString(), IsVisible = kind == ServerDeploymentKind.Configure };
         var lan = new CheckBox { Content = T("lan", "Allow LAN access"), IsChecked = endpoint.Host == "0.0.0.0", IsVisible = kind == ServerDeploymentKind.Configure };
         var guardian = new CheckBox { Content = T("guardian", "Install process guardian"), IsChecked = reviewed.GuardianEnabled == true, IsVisible = kind == ServerDeploymentKind.Configure && reviewed.Mode == ServerInstallMode.WindowsSystem };
+        var autoStart = new CheckBox { Content = _localization.Get("server_center.auto_start", "Start automatically"), IsChecked = reviewed.AutoStart == true, IsVisible = kind == ServerDeploymentKind.Configure && reviewed.AutoStart != null };
+        var scopes = new[] {
+            new FileAccessOption(ServerFileAccessScope.Restricted, _localization.Get("server_center.wizard.file_access_restricted", "RelaxKonOS data only")),
+            new FileAccessOption(ServerFileAccessScope.Whitelist, _localization.Get("server_center.wizard.file_access_whitelist", "Selected directories")),
+            new FileAccessOption(ServerFileAccessScope.Full, _localization.Get("server_center.wizard.file_access_full", "All local files")) };
+        var access = new ComboBox { ItemsSource = scopes, ItemTemplate = new FuncDataTemplate<FileAccessOption>((option, _) => new TextBlock { Text = option?.Label }), SelectedItem = scopes.FirstOrDefault(option => option.Scope == reviewed.FileAccess), IsVisible = kind == ServerDeploymentKind.Configure && reviewed.FileAccess != null };
+        var roots = new TextBox { Text = string.Join("\n", reviewed.FileRoots ?? []), AcceptsReturn = true, MinHeight = 80, IsVisible = access.IsVisible };
+        bool SettingsChanged() => port.Text != endpoint.Port.ToString() || lan.IsChecked != (endpoint.Host == "0.0.0.0") || guardian.IsChecked != (reviewed.GuardianEnabled == true) || autoStart.IsChecked != (reviewed.AutoStart == true) || (access.SelectedItem as FileAccessOption)?.Scope != reviewed.FileAccess || roots.Text != string.Join("\n", reviewed.FileRoots ?? []);
+        if (kind == ServerDeploymentKind.Configure) {
+            var addRules = new Button { Content = _localization.Get("server_center.ensure_firewall", "Add rule for current listener") };
+            addRules.Click += (_, _) => {
+                if (SettingsChanged()) { _status.Text = _localization.Get("server_center.settings_first", "Apply or discard settings first."); return; }
+                _ = RunAsync(async () => Snapshot = await _installer.MaintainAsync(ServerDeploymentKind.Firewall, reviewed, _localization.CurrentLanguage, true, removeFirewallRules: false));
+            };
+            panel.Children.Add(addRules);
+            var removeRules = new Button { Content = _localization.Get("server_center.remove_firewall", "Remove managed Server firewall rules") };
+            removeRules.Click += (_, _) => {
+                if (SettingsChanged()) { _status.Text = _localization.Get("server_center.settings_first", "Apply or discard settings first."); return; }
+                _ = RunAsync(async () => Snapshot = await _installer.MaintainAsync(ServerDeploymentKind.Firewall, reviewed, _localization.CurrentLanguage, true));
+            };
+            panel.Children.Add(removeRules);
+        }
+        roots.IsVisible = access.IsVisible && (access.SelectedItem as FileAccessOption)?.Scope == ServerFileAccessScope.Whitelist;
+        access.SelectionChanged += (_, _) => roots.IsVisible = access.IsVisible && (access.SelectedItem as FileAccessOption)?.Scope == ServerFileAccessScope.Whitelist;
+        panel.Children.Add(autoStart); panel.Children.Add(access); panel.Children.Add(roots);
         panel.Children.Add(port); panel.Children.Add(lan); panel.Children.Add(guardian);
         if (kind == ServerDeploymentKind.Configure)
             _ = new NativeDraftCloseGuard(this, () => _busy, () => !_finished &&
-                (port.Text != endpoint.Port.ToString() || lan.IsChecked != (endpoint.Host == "0.0.0.0") || guardian.IsChecked != (reviewed.GuardianEnabled == true)),
+                (port.Text != endpoint.Port.ToString() || lan.IsChecked != (endpoint.Host == "0.0.0.0") || guardian.IsChecked != (reviewed.GuardianEnabled == true) || autoStart.IsChecked != (reviewed.AutoStart == true) || (access.SelectedItem as FileAccessOption)?.Scope != reviewed.FileAccess || roots.Text != string.Join("\n", reviewed.FileRoots ?? [])),
                 async () =>
                 {
                     var prompt = new Window { Title = _localization.Get("common.discard_title", "Discard changes?"), Width = 480, Height = 240, WindowStartupLocation = WindowStartupLocation.CenterOwner };
@@ -117,12 +146,14 @@ public sealed class LocalServerMaintenanceWindow : Window
             {
                 if (!int.TryParse(port.Text, out var configuredPort) || configuredPort is < 1 or > 65535) { error.Text = T("invalid_port", "Enter a port from 1 to 65535."); return; }
                 _ = RunAsync(async () => Snapshot = await _installer.ConfigureAsync(reviewed,
-                    _localization.CurrentLanguage, configuredPort, lan.IsChecked == true, guardian.IsChecked == true));
+                    _localization.CurrentLanguage, configuredPort, lan.IsChecked == true, guardian.IsChecked == true,
+                    autoStart: reviewed.AutoStart != null ? autoStart.IsChecked : null, fileAccess: (access.SelectedItem as FileAccessOption)?.Scope,
+                    fileRoots: roots.Text?.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)));
                 return;
             }
             _ = RunAsync(async () => Snapshot = await _installer.MaintainAsync(kind, reviewed,
                 _localization.CurrentLanguage, true, removeData.IsChecked == true ? ServerDataRetention.Delete : ServerDataRetention.Retain,
-                regenerate.IsChecked == true, identities.Text, firewall.IsChecked == true), firewall.IsChecked == true);
+                regenerate.IsChecked == true, identities.Text, firewall.IsChecked == true, repairPackagePath: repairPackage.Text), firewall.IsChecked == true);
         };
         confirm.Classes.Add("accent");
         confirm.Padding = new Thickness(16, 10);

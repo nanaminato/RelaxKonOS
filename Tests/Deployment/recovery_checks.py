@@ -37,7 +37,7 @@ class RecoverySafetyChecks(unittest.TestCase):
                 return {'FragmentPath':str(config/'unit'), 'ActiveState':'active' if active else 'failed',
                         'User':'relaxkonos-server' if folder == 'server' else '',
                         'ExecStart':'{ path='+str(current/folder/binary)+' ; }',
-                        'WorkingDirectory':str(current/'server'), 'Environment':'ASPNETCORE_URLS=http://127.0.0.1:5000'}[field]
+                        'WorkingDirectory':str(current/'server'), 'UnitFileState':'enabled', 'Environment':'ASPNETCORE_URLS=http://127.0.0.1:5000'}[field]
             with patch.dict(helper, recovery_trusted=lambda path: path.resolve()), patch.object(helper['os'],'geteuid',return_value=0,create=True), patch.object(Path,'resolve',resolve), patch.object(Path,'lstat') as link_stat, patch.object(helper['subprocess'],'check_output',side_effect=show), patch.object(helper['urllib'].request,'urlopen') as health:
                 link_stat.return_value.st_uid = 0
                 link_stat.return_value.st_mode = 0o040755

@@ -14,6 +14,21 @@ CODE = SOURCE.split("<<'FIREWALL_PY'\n", 1)[1].split('\nFIREWALL_PY', 1)[0]
 
 
 class FirewallChoiceChecks(unittest.TestCase):
+    def test_removal_preserves_unrelated_nft_rules(self):
+        calls = []
+        def run(args, **kwargs):
+            calls.append(args)
+            rules = {'nftables': [
+                {'rule': {'family': 'inet', 'table': 'filter', 'chain': 'input', 'handle': 11, 'comment': 'RelaxKonOS TCP 5100'}},
+                {'rule': {'family': 'inet', 'table': 'filter', 'chain': 'input', 'handle': 12, 'comment': 'SSH access'}},
+                {'rule': {'family': 'inet', 'table': 'filter', 'chain': 'input', 'handle': 13, 'comment': 'RelaxKonOS TCP invalid'}}]}
+            return subprocess.CompletedProcess(args, 0, json.dumps(rules) if args == ('nft', '-j', 'list', 'ruleset') else '', '')
+        with patch('shutil.which', side_effect=lambda name: name if name == 'nft' else None), patch('subprocess.run', side_effect=run), patch.object(pathlib.Path, 'exists', return_value=False), patch.object(sys, 'argv', ['firewall', '5100', 'false', 'true']), contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(SystemExit) as result:
+                exec(compile(CODE, 'production-firewall', 'exec'), {})
+            self.assertEqual(result.exception.code, 0)
+        self.assertEqual([c for c in calls if len(c) > 1 and c[1] == 'delete'], [('nft', 'delete', 'rule', 'inet', 'filter', 'input', 'handle', '11')])
+
     def exercise(self, backend, requested=True):
         calls = []
         available = {'ufw': ['ufw'], 'firewalld': ['firewall-cmd'], 'iptables': ['iptables', 'netfilter-persistent']}.get(backend, [])
@@ -58,12 +73,15 @@ class FirewallChoiceChecks(unittest.TestCase):
         self.assertIn(('ufw', 'allow', '5100/tcp', 'comment', 'RelaxKonOS'), calls)
         self.assertFalse(any('enable' in c for c in calls))
 
-    def test_firewalld_persistent_and_runtime(self):
+    def test_existing_firewalld_rich_rules_are_not_adopted_or_rewritten(self):
         status, calls = self.exercise('firewalld')
         self.assertEqual(status, 'ruleAdded')
         for zone in ('public', 'private'):
-            self.assertIn(('firewall-cmd', f'--zone={zone}', '--add-port=5100/tcp', '--permanent'), calls)
-            self.assertIn(('firewall-cmd', f'--zone={zone}', '--add-port=5100/tcp'), calls)
+            for family in ('ipv4', 'ipv6'):
+                rule = f'rule family="{family}" port port="5100" protocol="tcp" accept'
+                self.assertIn(('firewall-cmd', f'--zone={zone}', '--permanent', '--query-rich-rule=' + rule), calls)
+                self.assertIn(('firewall-cmd', f'--zone={zone}', '--query-rich-rule=' + rule), calls)
+        self.assertFalse(any(any('--add-rich-rule=' in a for a in c) for c in calls))
 
     def test_iptables_persisted(self):
         status, calls = self.exercise('iptables')
@@ -72,7 +90,7 @@ class FirewallChoiceChecks(unittest.TestCase):
         self.assertIn(('netfilter-persistent', 'save'), calls)
 
     def test_status_readonly(self):
-        body = SOURCE.split('action_status() {', 1)[1].split('apply_firewall_choice() {', 1)[0]
+        body = SOURCE.split('action_status() {', 1)[1].split('\n}', 1)[0]
         self.assertNotIn('apply_firewall_choice "$file"', body)
 
     def test_nftables_persistent_rule_and_idempotency(self):

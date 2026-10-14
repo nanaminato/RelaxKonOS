@@ -11,7 +11,7 @@ object ServerDeploymentProtocol {
 }
 
 /** 远端部署启动器接受的有限动作集合。客户端不能提交任意命令、脚本路径、服务名或删除路径。 */
-enum class ServerDeploymentKind { Probe, Install, Upgrade, Repair, Configure, Uninstall, Status, Rollback }
+enum class ServerDeploymentKind { Probe, Install, Upgrade, Repair, Configure, Firewall, Uninstall, Status, Rollback }
 
 /** 部署操作的持久状态。远端持久记录是权威来源，实时事件只用于展示。 */
 enum class ServerDeploymentState { Queued, Running, Succeeded, Failed, Cancelled, Interrupted }
@@ -155,6 +155,9 @@ data class ServerHostSnapshot(
     val serviceNames: List<String> = emptyList(),
     val guardianEnabled: Boolean? = null,
     val guardianRunning: Boolean? = null,
+    val fileAccess: String? = null,
+    val fileRoots: List<String>? = null,
+    val autoStart: Boolean? = null,
 )
 
 /** 与 C# `ServerHostProbeDto` 对齐的 SSH 宿主预检结果。 */
@@ -229,7 +232,9 @@ data class ServerDeploymentOptions(
     val allowUnsupportedSystem: Boolean = false,
     val addFirewallRule: Boolean = false,
     val removeComponents: String = "",
+    val removeFirewallRules: Boolean = false,
     val guardianEnabled: Boolean? = null,
+    val autoStart: Boolean? = null,
 )
 
 /** 远端部署启动器的唯一入口请求。[operationId] 同时作为幂等键。 */

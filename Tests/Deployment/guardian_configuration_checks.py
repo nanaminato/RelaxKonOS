@@ -25,6 +25,11 @@ LISTEN_URL=http://0.0.0.0:5500
 SERVER_PORT=5500
 LISTEN_SCHEME=http
 TARGET_VERSION=1.0.0
+TEMPORARY_DIRECTORY=$(mktemp -d)
+trap 'rm -rf -- "$TEMPORARY_DIRECTORY"' EXIT
+cp() { :; }
+ADMINISTRATOR_FILE_ACCESS=restricted
+ROOT_FILE_ACCESS=restricted
 calls=0
 systemctl() { :; }
 state_flag() { printf false; }

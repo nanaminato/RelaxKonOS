@@ -38,3 +38,27 @@ try { Apply-FirewallChoice @{ listenUrl = 'https://0.0.0.0:5100' }; throw 'Colli
 $status = $ast.Find({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Invoke-StatusAction' }, $true)
 if ($status.Extent.Text.Contains('Apply-FirewallChoice')) { throw 'Status query mutates firewall.' }
 Write-Output 'PASS: Windows firewall choice, disabled notice, active profile, loopback, managed update and read-only status.'
+$script:optionsMode = 'windowsUser'; $script:existing = $false
+foreach ($enabled in @($false, $true)) {
+    $script:enabled = $enabled; $script:mutations = 0
+    Apply-FirewallChoice @{ listenUrl = 'http://0.0.0.0:5100' }
+    if ($script:mutations -ne 0 -or $script:firewallStatus -ne $(if ($enabled) { 'ruleAdded' } else { 'disabled' })) {
+        throw 'Personal firewall plan ignored active enabled profiles or crossed UAC itself.'
+    }
+}
+$personalAst = [Management.Automation.Language.Parser]::ParseFile(
+    (Join-Path $PSScriptRoot '../../deployment/windows/Set-RelaxKonOSPersonalPrivileges.ps1'), [ref]$tokens, [ref]$errors)
+if ($errors.Count) { throw 'Personal helper syntax error.' }
+$personalFunction = $personalAst.Find({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Set-ManagedPersonalFirewall' }, $true)
+Invoke-Expression $personalFunction.Extent.Text
+$sid = 'S-1-5-21-1-2-3-4'
+function New-NetFirewallRule($Name, $Profile, $Protocol, $LocalPort) {
+    if ($Name -ne ('RelaxKonOS-Personal-' + $sid) -or $Profile -ne 'Private' -or $Protocol -ne 'TCP' -or $LocalPort -ne 5100) { throw 'Wrong personal rule scope.' }
+    $script:mutations++
+}
+foreach ($enabled in @($false, $true)) {
+    $script:enabled = $enabled; $script:mutations = 0
+    Set-ManagedPersonalFirewall 'http://0.0.0.0:5100'
+    if ($script:mutations -ne [int]$enabled) { throw 'Disabled personal firewall was modified.' }
+}
+Write-Output 'PASS: Personal firewall uses only enabled active private profiles and its owner-specific rule.'

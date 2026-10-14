@@ -230,7 +230,8 @@ def recovery_state(root=Path("/opt/relaxkonos"), data=Path("/var/lib/relaxkonos"
                  previousVersion=None,installedAtUtc=datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
                  installRoot=str(root),dataRoot=str(data),networkProfile='lan' if '0.0.0.0' in url else 'local',listenUrl=url,
                  certificateMode=certificate,fileAccess=access(''),administratorFileAccess=access('-administrator'),
-                 rootFileAccess=access('-root'),dockerAccess=docker.exists(),guardianEnabled=enabled=='true')
+                 rootFileAccess=access('-root'),dockerAccess=docker.exists(),guardianEnabled=enabled=='true',
+                 autoStart=show('relaxkonos-server.service','UnitFileState')=='enabled')
     trusted(data)
     # Publish atomically without overwriting a record created by another operation.
     descriptor, temporary = tempfile.mkstemp(prefix='.recovery-',dir=data)
@@ -262,20 +263,20 @@ def request(path):
     root = {'schemaVersion', 'operationId', 'kind', 'options'}
     keys = {'source','network','retention','mode','version','packageUri','stagedPackageName',
             'packageDigest','remotePackagePath','expectedInstallationId','serverPort','fileAccess',
-            'certificateMode','selfSignedIdentities','confirmed','language','releaseCatalogBaseUri','installRoot','dataRoot','configRoot','stateRoot','cacheRoot','fileRoots','administratorFileAccess','administratorFileRoots','rootFileAccess','rootFileRoots','dockerAccess','allowUnsupportedSystem','addFirewallRule','removeComponents','guardianEnabled'}
+            'certificateMode','selfSignedIdentities','confirmed','language','releaseCatalogBaseUri','installRoot','dataRoot','configRoot','stateRoot','cacheRoot','fileRoots','administratorFileAccess','administratorFileRoots','rootFileAccess','rootFileRoots','dockerAccess','allowUnsupportedSystem','addFirewallRule','removeComponents','guardianEnabled','autoStart','removeFirewallRules'}
     if type(value) is not dict or set(value) - root: raise ValueError('request fields')
     if type(value.get('schemaVersion')) is not int or value['schemaVersion'] != 1: raise ValueError('schema')
     if not isinstance(value.get('operationId'), str) or not re.fullmatch(r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}',value['operationId']): raise ValueError('id')
-    if value.get('kind') not in {'probe','install','upgrade','repair','configure','uninstall','status','rollback'}: raise ValueError('kind')
+    if value.get('kind') not in {'probe','install','upgrade','repair','configure','firewall','uninstall','status','rollback'}: raise ValueError('kind')
     options = value.get('options')
     if options is not None:
         if type(options) is not dict or set(options) - keys: raise ValueError('options fields')
         for key in ('source','network'):
             if type(options.get(key)) is not str: raise ValueError('required string')
         for key, item in options.items():
-            if key in ('confirmed','dockerAccess','allowUnsupportedSystem','addFirewallRule'): valid = type(item) is bool
+            if key in ('confirmed','dockerAccess','allowUnsupportedSystem','addFirewallRule','removeFirewallRules'): valid = type(item) is bool
             elif key in ('fileRoots','administratorFileRoots','rootFileRoots'): valid = item is None or type(item) is list and len(item) <= 128 and all(type(p) is str and p.startswith('/') and not any(ord(c)<32 for c in p) for p in item)
-            elif key == 'guardianEnabled': valid = item is None or type(item) is bool
+            elif key in ('guardianEnabled','autoStart'): valid = item is None or type(item) is bool
             elif key == 'serverPort': valid = item is None or type(item) is int
             elif key in ('source','network','retention'): valid = type(item) is str
             else: valid = item is None or type(item) is str
@@ -424,7 +425,7 @@ assert_request_keys() {
   while IFS= read -r key; do
     [[ -n $key ]] || continue
     case "$key" in
-      schemaVersion|operationId|kind|options|source|network|retention|mode|version|packageUri|stagedPackageName|packageDigest|remotePackagePath|expectedInstallationId|serverPort|fileAccess|certificateMode|selfSignedIdentities|confirmed|language|releaseCatalogBaseUri|installRoot|dataRoot|configRoot|stateRoot|cacheRoot|fileRoots|administratorFileAccess|administratorFileRoots|rootFileAccess|rootFileRoots|dockerAccess|allowUnsupportedSystem|addFirewallRule|removeComponents|guardianEnabled) ;;
+      schemaVersion|operationId|kind|options|source|network|retention|mode|version|packageUri|stagedPackageName|packageDigest|remotePackagePath|expectedInstallationId|serverPort|fileAccess|certificateMode|selfSignedIdentities|confirmed|language|releaseCatalogBaseUri|installRoot|dataRoot|configRoot|stateRoot|cacheRoot|fileRoots|administratorFileAccess|administratorFileRoots|rootFileAccess|rootFileRoots|dockerAccess|allowUnsupportedSystem|addFirewallRule|removeComponents|guardianEnabled|autoStart|removeFirewallRules) ;;
       *) launcher_fail invalid_request "unsupported request field: $key" ;;
     esac
   done <<< "$keys"
@@ -472,7 +473,7 @@ parse_request() {
   operation_id=${operation_raw,,}
   kind=$(json_text kind)
   case "$kind" in
-    probe|install|upgrade|repair|configure|uninstall|status|rollback) ;;
+    probe|install|upgrade|repair|configure|firewall|uninstall|status|rollback) ;;
     '') launcher_fail unknown_action "request kind is missing" ;;
     *) launcher_fail unknown_action "unsupported action: $kind" ;;
   esac
@@ -491,6 +492,16 @@ parse_request() {
   options_remote_path=$(json_text remotePackagePath)
   options_expected_installation_id=$(json_text expectedInstallationId)
   local port_raw; port_raw=$(json_literal serverPort); [[ $port_raw != null ]] && options_server_port=$port_raw
+  options_remove_firewall=$(json_literal removeFirewallRules)
+  [[ $options_remove_firewall != true || $kind == firewall ]] || launcher_fail invalid_request "Firewall removal requires its dedicated action"
+  if [[ $kind == firewall ]]; then
+    [[ -n $options_expected_installation_id && $(json_literal confirmed) == true && $options_mode != linuxUser ]] || launcher_fail invalid_request "Review a system firewall action bound to the installation"
+    [[ $options_remove_firewall != true || $(json_literal addFirewallRule) != true ]] || launcher_fail invalid_request "Choose one firewall action"
+    [[ $options_remove_firewall == true || $(json_literal addFirewallRule) == true ]] || launcher_fail invalid_request "Choose one firewall action"
+  fi
+  options_auto_start=$(json_literal autoStart)
+  case "$options_auto_start" in true|false|null) ;; *) launcher_fail invalid_request "autoStart must be boolean or null";; esac
+  if [[ "$options_auto_start" != null && ( $kind != install && $kind != configure || $options_mode == linuxUser ) ]]; then launcher_fail invalid_request "Automatic startup requires system install or configure"; fi
   options_guardian_enabled=$(json_literal guardianEnabled)
   case "$options_guardian_enabled" in true|false|null) ;; *) launcher_fail invalid_request "guardianEnabled must be a boolean or null" ;; esac
   if [[ "$options_guardian_enabled" != null && $kind != install && $kind != configure ]]; then launcher_fail invalid_request "Guardian selection requires install or configure"; fi
@@ -508,7 +519,7 @@ parse_request() {
   options_administrator_access=$(json_text administratorFileAccess)
   options_root_access=$(json_text rootFileAccess)
   [[ $(json_literal addFirewallRule) != true ]] || options_add_firewall=true
-  if [[ $options_add_firewall == true && $kind != install && $kind != upgrade && $kind != repair ]]; then launcher_fail invalid_request "Firewall changes require install, upgrade or repair"; fi
+  if [[ $options_add_firewall == true && $kind != install && $kind != upgrade && $kind != repair && $kind != firewall ]]; then launcher_fail invalid_request "Firewall changes require install, upgrade or repair"; fi
   [[ $(json_literal dockerAccess) != true ]] || options_docker=true
   [[ $(json_literal allowUnsupportedSystem) != true ]] || options_allow_unsupported=true
   case "$options_language" in auto|zh-CN|en-US|ja-JP) ;; *) launcher_fail invalid_request "unsupported language" ;; esac
@@ -563,9 +574,10 @@ parse_request() {
   if [[ $options_retention == delete && $options_confirmed != true ]]; then
     launcher_fail confirmation_required "deleting data requires explicit confirmation"
   fi
+  if [[ $operation_kind == configure && $options_mode == linuxUser && -n $options_file_access ]]; then launcher_fail invalid_request "User mode has no privileged file policy"; fi
   if [[ $operation_kind == configure ]]; then
     [[ -n $options_expected_installation_id && $options_confirmed == true && ( $options_network == loopback || $options_network == lan ) ]] || launcher_fail invalid_request "Configure requires installed identity, supported network and confirmation"
-    [[ -z $options_file_access$options_certificate_mode$options_self_signed_identities$options_administrator_access$options_root_access && $options_docker == false && $options_retention == retain ]] || launcher_fail invalid_request "Configure accepts only network, port and Guardian settings"
+    [[ -z $options_certificate_mode$options_self_signed_identities$options_administrator_access$options_root_access && $options_docker == false && $options_retention == retain ]] || launcher_fail invalid_request "Configure accepts only installation settings; certificate and elevated permission changes require their dedicated action"
   fi
   case "$operation_kind" in
     install|upgrade)
@@ -583,7 +595,7 @@ parse_request() {
       *) launcher_fail invalid_request "unsupported installation source" ;;
     esac
       ;;
-    repair|configure|rollback|uninstall|status) [[ -n $options_mode ]] || launcher_fail invalid_request "installation mode is required";;
+    repair|configure|firewall|rollback|uninstall|status) [[ -n $options_mode ]] || launcher_fail invalid_request "installation mode is required";;
   esac
 }
 
@@ -667,6 +679,13 @@ mode_service_names() {
 # The snapshot always carries the time it was verified; an offline cache must never be shown as
 # live health, so the client is required to display this timestamp.
 snapshot_json() { # mode stateFile healthy installed dataRetained
+  local file_access file_roots=null policy
+  file_access=$(state_field "$2" fileAccess)
+  if [[ $file_access == whitelist && $1 == linuxSystem ]]; then
+    if [[ $EUID == 0 ]]; then policy=$(cat /etc/relaxkonos/privileged-helper-roots); elif [[ $sudo_requested == true ]]; then policy=$(run_privileged cat /etc/relaxkonos/privileged-helper-roots); else policy=; fi
+    if [[ -n $policy ]]; then file_roots=$(python3 -c 'import json,sys; print(json.dumps([p.strip() for p in sys.argv[1].splitlines() if p.strip() and not p.strip().startswith("#")]))' "$policy"); fi
+  fi
+  local startup_choice; startup_choice=$(state_flag "$2" autoStart)
   local guardian_choice guardian_running=null; guardian_choice=$(state_flag "$2" guardianEnabled)
   if [[ $guardian_choice == true && $4 == true ]]; then
     if [[ $1 == linuxSystem ]]; then
@@ -677,11 +696,11 @@ snapshot_json() { # mode stateFile healthy installed dataRetained
       if [[ $pid =~ ^[0-9]+$ && -n $started && $(stat -c %u "/proc/$pid" 2>/dev/null || true) == $UID && $(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null || true) == "$started" ]]; then guardian_running=true; fi
     fi
   fi
-  printf '{"installationId":%s,"installed":%s,"mode":"%s","version":%s,"previousVersion":%s,"installRoot":%s,"dataRoot":%s,"listenUrl":%s,"healthy":%s,"dataRetained":%s,"serviceNames":%s,"verifiedAtUtc":"%s","guardianEnabled":%s,"guardianRunning":%s}' \
+  printf '{"installationId":%s,"installed":%s,"mode":"%s","version":%s,"previousVersion":%s,"installRoot":%s,"dataRoot":%s,"listenUrl":%s,"healthy":%s,"dataRetained":%s,"serviceNames":%s,"verifiedAtUtc":"%s","guardianEnabled":%s,"guardianRunning":%s,"autoStart":%s,"fileAccess":%s,"fileRoots":%s}' \
     "$(json_string_or_null "$(state_field "$2" installationId)")" "$4" "$1" \
     "$(json_string_or_null "$(state_field "$2" version)")" "$(json_string_or_null "$(state_field "$2" previousVersion)")" \
     "$(json_string_or_null "$(mode_install_root "$1")")" "$(json_string_or_null "$(mode_data_root "$1")")" \
-    "$(json_string_or_null "$(mode_listen_url "$1")")" "$3" "$5" "$(mode_service_names "$1")" "$(now_utc)" "${guardian_choice:-null}" "$guardian_running"
+    "$(json_string_or_null "$(mode_listen_url "$1")")" "$3" "$5" "$(mode_service_names "$1")" "$(now_utc)" "${guardian_choice:-null}" "$guardian_running" "${startup_choice:-null}" "$(json_string_or_null "$file_access")" "$file_roots"
 }
 result_json() { # mode stateFile healthy dataRetained
   printf '{"installationId":%s,"mode":"%s","version":%s,"previousVersion":%s,"installRoot":%s,"dataRoot":%s,"listenUrl":%s,"healthy":%s,"dataRetained":%s,"dataCompatible":null,"serviceNames":%s,"completedAtUtc":"%s","firewallStatus":%s}' \
@@ -697,7 +716,11 @@ health_probe() { # mode -> true|false
     linuxUser)
       local socket; socket="$(user_state_root)/run/server.sock"
       [[ -S $socket ]] || { printf 'false'; return; }
-      curl --unix-socket "$socket" --fail --silent --max-time 4 http://localhost/ready >/dev/null 2>&1 && printf 'true' || printf 'false'
+      local listen; listen=$(mode_listen_url linuxUser)
+      local port; port=$(python3 -c 'import sys,urllib.parse; print(urllib.parse.urlparse(sys.argv[1]).port or "")' "$listen")
+      [[ $port =~ ^[0-9]+$ ]] || { printf 'false'; return; }
+      curl --unix-socket "$socket" --fail --silent --max-time 4 http://localhost/ready >/dev/null 2>&1 &&
+        curl --fail --silent --max-time 4 "http://127.0.0.1:$port/healthz" >/dev/null 2>&1 && printf 'true' || printf 'false'
       ;;
     *)
       local url="http://127.0.0.1:${options_server_port:-5000}/healthz" arguments=(--fail --silent --max-time 4)
@@ -782,7 +805,7 @@ probe_json() {
     if (exec 3<>"/dev/tcp/127.0.0.1/$options_server_port") 2>/dev/null; then port_available=false; exec 3<&- 3>&- 2>/dev/null || true; fi
   fi
 
-  printf '{"hostPlatform":"linux","architecture":"%s","runtimeIdentifier":%s,"osId":%s,"osVersion":%s,"osSupported":%s,"elevated":%s,"sudoAvailable":%s,"systemdAvailable":%s,"diskAvailableBytes":%s,"requestedPort":%s,"requestedPortAvailable":%s,"existingInstallationId":%s,"existingMode":%s,"existingVersion":%s,"existingInstalled":%s,"missingDependencies":%s,"verifiedAtUtc":"%s","guardianEnabled":%s,"guardianRunning":%s}' \
+  printf '{"hostPlatform":"linux","architecture":"%s","runtimeIdentifier":%s,"osId":%s,"osVersion":%s,"osSupported":%s,"elevated":%s,"sudoAvailable":%s,"systemdAvailable":%s,"diskAvailableBytes":%s,"requestedPort":%s,"requestedPortAvailable":%s,"existingInstallationId":%s,"existingMode":%s,"existingVersion":%s,"existingInstalled":%s,"missingDependencies":%s,"verifiedAtUtc":"%s","guardianEnabled":%s,"guardianRunning":%s,"autoStart":%s,"fileAccess":%s,"fileRoots":%s}' \
     "$machine" "$(json_string_or_null "$runtime")" "$(json_string_or_null "$os_id")" "$(json_string_or_null "$os_version")" \
     "$os_supported" "$elevated" "$sudo_available" "$systemd_available" "$(json_number_or_null "$disk")" \
     "$(json_number_or_null "$options_server_port")" "$port_available" \
@@ -887,9 +910,11 @@ run_engine() { # command...
   launcher_note "running deployment engine: $1"
   set +e
   if [[ $sudo_requested == true && $options_mode == linuxSystem && $EUID -ne 0 ]]; then
-    run_privileged "$@" > "$diagnostics" 2>&1
+    run_privileged "$@" > "$diagnostics" 2>&1 8>&-
   else
-    "$@" > "$diagnostics" 2>&1
+    # The launcher owns the deployment lock. Daemons started by the engine must
+    # not inherit it and keep all future maintenance locked out.
+    "$@" > "$diagnostics" 2>&1 8>&-
   fi
   local status=$?
   set -e
@@ -914,7 +939,7 @@ preflight_install() {
   case "$operation_kind" in
     install) [[ $installed != true ]] || launcher_fail already_installed "RelaxKonOS is already installed on this host; use upgrade or repair";;
     repair) [[ $installed == true || $options_mode == linuxSystem ]] || launcher_fail not_installed "RelaxKonOS is not installed on this host";;
-    upgrade|configure|rollback|uninstall) [[ $installed == true ]] || launcher_fail not_installed "RelaxKonOS is not installed on this host";;
+    upgrade|configure|firewall|rollback|uninstall) [[ $installed == true ]] || launcher_fail not_installed "RelaxKonOS is not installed on this host";;
   esac
   case "$options_mode" in
     linuxSystem)
@@ -962,24 +987,94 @@ action_status() {
   emit_event completed succeeded 100 "" "状态查询完成"
 }
 
+action_firewall() {
+  acquire_write_lock
+  preflight_install
+  require_expected_installation_id
+  local file; file=$(mode_install_state "$options_mode")
+  installation_id=$(state_field "$file" installationId)
+  apply_firewall_choice "$file"
+  record_result=$(result_json "$options_mode" "$file" "$(health_probe "$options_mode")" null)
+  completed_at=$(now_utc)
+  emit_event completed succeeded 100 "" "防火墙操作完成"
+}
+
 apply_firewall_choice() { # authoritative installation state
   firewall_status='"notRequested"'
   [[ $options_mode != linuxUser ]] || { firewall_status='"notApplicable"'; return; }
   local url port result
   url=$(state_field "$1" listenUrl)
-  case "$url" in *://127.0.0.1:*|*://localhost:*) firewall_status='"notApplicable"'; return;; esac
+  case "$url" in *://127.0.0.1:*|*://localhost:*) [[ ${options_remove_firewall:-null} == true ]] || { firewall_status='"notApplicable"'; return; };; esac
   port=$(python3 -c 'import sys,urllib.parse; print(urllib.parse.urlparse(sys.argv[1]).port)' "$url")
   local -a firewall_command=(python3)
   [[ $sudo_requested != true ]] || firewall_command=(run_privileged python3)
   # sudo consumes stdin for authentication; pass the Python source as an argument.
   if ! result=$("${firewall_command[@]}" -c "$(cat <<'FIREWALL_PY'
 import json, os, pathlib, re, shutil, subprocess, sys
+remove=len(sys.argv)>3 and sys.argv[3]=='true'
 port=int(sys.argv[1]); requested=sys.argv[2]=='true'
 if not 1 <= port <= 65535: raise ValueError('Invalid server port')
 def run(*args, check=True, input=None):
     return subprocess.run(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=check, input=input, env={**os.environ, "LC_ALL": "C"})
 def active(unit):
     return run('systemctl','is-active','--quiet',unit,check=False).returncode==0
+ownership=pathlib.Path('/etc/relaxkonos/firewalld-owned.json')
+def owned_rules():
+    if not ownership.exists(): return []
+    if ownership.is_symlink() or ownership.stat().st_uid!=0 or ownership.stat().st_mode & 0o022: raise ValueError('Untrusted firewall ownership record')
+    data=json.loads(ownership.read_text())
+    if data.get('owner')!='relaxkonos-server': raise ValueError('Foreign firewall ownership record')
+    entries=data.get('rules',[])
+    for item in entries:
+        if set(item)!={'zone','rule','permanent'} or not re.fullmatch(r'[A-Za-z0-9_.-]+',item['zone']) or type(item['permanent']) is not bool or not re.fullmatch(r'rule family="ipv[46]" port port="[0-9]+" protocol="tcp" accept',item['rule']): raise ValueError('Invalid firewall ownership record')
+    return entries
+def save_owned(entries):
+    ownership.parent.mkdir(mode=0o755,exist_ok=True)
+    if ownership.parent.is_symlink() or ownership.parent.stat().st_uid!=0 or ownership.parent.stat().st_mode & 0o022: raise ValueError('Untrusted firewall ownership directory')
+    import tempfile
+    fd,name=tempfile.mkstemp(prefix='.firewalld-',dir=ownership.parent)
+    try:
+        with os.fdopen(fd,'w') as stream: json.dump({'owner':'relaxkonos-server','rules':entries},stream)
+        os.replace(name,ownership)
+    finally:
+        if os.path.exists(name): os.unlink(name)
+if remove:
+    entries=owned_rules()
+    if entries:
+        if not shutil.which('firewall-cmd'): raise RuntimeError('Managed firewalld rules cannot be removed without firewalld')
+        for item in entries:
+            args=['firewall-cmd',f"--zone={item['zone']}"]
+            if item['permanent']: args.append('--permanent')
+            if run(*args,'--query-rich-rule='+item['rule'],check=False).returncode==0: run(*args,'--remove-rich-rule='+item['rule'])
+        save_owned([])
+    # Delete only rules carrying our exact product marker; never delete an unlabelled port allowance.
+    if shutil.which('ufw'):
+        lines=run('ufw','status','numbered').stdout.splitlines()
+        owned=[]
+        for line in lines:
+            match=re.match(r'^\[\s*(\d+)\] .*# RelaxKonOS\s*$',line.strip())
+            if match: owned.append(int(match[1]))
+        for index in sorted(owned,reverse=True): run('ufw','--force','delete',str(index))
+    if shutil.which('nft'):
+        rules=json.loads(run('nft','-j','list','ruleset').stdout)['nftables']
+        for entry in rules:
+            rule=entry.get('rule',{})
+            if re.fullmatch(r'RelaxKonOS TCP [0-9]+',rule.get('comment','')):
+                run('nft','delete','rule',rule['family'],rule['table'],rule['chain'],'handle',str(rule['handle']))
+        managed=pathlib.Path('/etc/relaxkonos/firewall.nft')
+        if managed.exists():
+            lines=managed.read_text().splitlines()
+            remaining=[line for line in lines if not re.fullmatch(r'insert rule [A-Za-z0-9_.-]+ [A-Za-z0-9_.-]+ [A-Za-z0-9_.-]+ tcp dport [0-9]+ accept comment "RelaxKonOS TCP [0-9]+"',line)]
+            managed.write_text('\n'.join(remaining)+'\n')
+    if shutil.which('iptables'):
+        import shlex
+        for line in run('iptables','-S','INPUT').stdout.splitlines():
+            args=shlex.split(line)
+            if '--comment' in args and re.fullmatch(r'RelaxKonOS TCP [0-9]+',args[args.index('--comment')+1]):
+                run('iptables','-D',*args[1:])
+        if shutil.which('netfilter-persistent'): run('netfilter-persistent','save')
+    # Firewalld's historical bare-port allowances lack ownership markers and are deliberately retained.
+    print('rulesRemoved');sys.exit(0)
 backend=None
 if shutil.which('ufw') and re.search(r'^Status: active$',run('ufw','status').stdout,re.M): backend='ufw'
 elif shutil.which('firewall-cmd') and run('firewall-cmd','--state',check=False).returncode==0: backend='firewalld'
@@ -997,9 +1092,19 @@ if backend=='ufw': run('ufw','allow',f'{port}/tcp','comment','RelaxKonOS')
 elif backend=='firewalld':
     zones=[line.strip() for line in run('firewall-cmd','--get-active-zones').stdout.splitlines() if line and not line[0].isspace()]
     if not zones: zones=[run('firewall-cmd','--get-default-zone').stdout.strip()]
+    entries=owned_rules()
     for zone in zones:
-        run('firewall-cmd',f'--zone={zone}',f'--add-port={port}/tcp','--permanent')
-        run('firewall-cmd',f'--zone={zone}',f'--add-port={port}/tcp')
+        if not re.fullmatch(r'[A-Za-z0-9_.-]+',zone): raise ValueError('Invalid firewall zone')
+        for family in ('ipv4','ipv6'):
+            rule=f'rule family="{family}" port port="{port}" protocol="tcp" accept'
+            for permanent in (True,False):
+                args=['firewall-cmd',f'--zone={zone}']
+                if permanent: args.append('--permanent')
+                if run(*args,'--query-rich-rule='+rule,check=False).returncode==0: continue
+                item={'zone':zone,'rule':rule,'permanent':permanent}
+                if item not in entries:
+                    entries.append(item);save_owned(entries)
+                run(*args,'--add-rich-rule='+rule)
 elif backend=='nftables':
     if not active('nftables') or not pathlib.Path('/etc/nftables.conf').is_file():
         raise RuntimeError('Active nftables rules have no managed persistent nftables service')
@@ -1041,10 +1146,10 @@ elif backend=='iptables':
     run('netfilter-persistent','save')
 print('ruleAdded')
 FIREWALL_PY
-  )" "$port" "$options_add_firewall" 2>>"$(diagnostics_path)"); then
+  )" "$port" "$options_add_firewall" "${options_remove_firewall:-false}" 2>>"$(diagnostics_path)"); then
     launcher_fail firewall_rule_failed 'The server is installed, but the requested firewall rule could not be added; inspect the host firewall configuration.'
   fi
-  case "$result" in disabled|ruleAdded|notRequested) firewall_status=$(json_string_or_null "$result");; *) launcher_fail firewall_rule_failed 'Invalid firewall result';; esac
+  case "$result" in disabled|ruleAdded|notRequested|rulesRemoved) firewall_status=$(json_string_or_null "$result");; *) launcher_fail firewall_rule_failed 'Invalid firewall result';; esac
 }
 
 action_install_like() {
@@ -1054,9 +1159,11 @@ action_install_like() {
   emit_event preflight running "" "" "正在执行权限与宿主预检"
   preflight_install
   require_expected_installation_id
-  # Only install and upgrade consume a staged package; repair and rollback replay the payload the
-  # engine already published on the host.
+  # Install and upgrade require a package; repair consumes one only when explicitly supplied.
   case "$operation_kind" in
+    repair)
+      if [[ -n $options_remote_path || -n $options_staged_name ]]; then require_package; fi
+      ;;
     install|upgrade)
       emit_event verifyingPackage running "" "" "正在校验暂存包"
       require_package
@@ -1076,7 +1183,7 @@ action_install_like() {
         install) run_engine "${user_env[@]}" bash "$engine" install --port "${options_server_port:-5000}" --bundle "$package_root" "${package_check_args[@]}" || status=$? ;;
         upgrade) run_engine "${user_env[@]}" bash "$engine" upgrade --bundle "$package_root" "${package_check_args[@]}" || status=$? ;;
         configure) run_engine "${user_env[@]}" bash "$engine" configure --port "$options_server_port" --network "$options_network" || status=$? ;;
-        repair) run_engine "${user_env[@]}" bash "$engine" repair || status=$? ;;
+        repair) local user_repair_args=(); [[ -z $package_root || ! -d $package_root ]] || user_repair_args+=(--bundle "$package_root"); run_engine "${user_env[@]}" bash "$engine" repair "${user_repair_args[@]}" || status=$? ;;
         rollback) run_engine "${user_env[@]}" bash "$engine" rollback || status=$? ;;
       esac
       ;;
@@ -1089,6 +1196,7 @@ action_install_like() {
       else
         engine=$(system_engine_path)
         arguments=(bash "$engine" --mode system --non-interactive --language "$options_language" --install-root "$(system_install_root)" --data-root "$(system_data_root)")
+        [[ "$options_auto_start" == null ]] || arguments+=(--auto-start "$options_auto_start")
         [[ "$options_guardian_enabled" == null ]] || arguments+=(--guardian-enabled "$options_guardian_enabled")
         [[ $options_allow_unsupported != true ]] || arguments+=(--allow-unsupported-system)
         # Upgrade and repair continue an existing installation; only install and upgrade consume the
@@ -1121,11 +1229,15 @@ action_install_like() {
             fi
             ;;
           configure)
+            [[ -z $options_file_access ]] || arguments+=(--file-access "$options_file_access")
+            write_roots_file fileRoots
+            [[ ! -f $staging_root/fileRoots.txt ]] || arguments+=(--file-roots "$staging_root/fileRoots.txt")
             arguments+=(--action configure --server-port "$options_server_port")
             case "$options_network" in lan) arguments+=(--network lan);; *) arguments+=(--network local);; esac
             ;;
           repair)
             arguments+=(--action repair)
+            [[ -z $package_root || ! -d $package_root ]] || arguments+=(--bundle "$package_root" --restore-payload)
             if [[ $options_certificate_mode == selfSigned ]]; then
               [[ -n $options_self_signed_identities ]] || launcher_fail invalid_request "self-signed certificate names are required"
               grep -Fq '"$CERTIFICATE_MODE_SET" == true && "$CERTIFICATE_MODE" == self-signed' "$engine" || launcher_fail not_supported "installed deployment scripts cannot regenerate certificates during repair; upgrade the server first"
@@ -1293,6 +1405,7 @@ case "$operation_kind" in
   probe) action_probe;;
   status) action_status;;
   install|upgrade|repair|configure|rollback) action_install_like;;
+  firewall) action_firewall;;
   uninstall) action_uninstall;;
 esac
 exit 0

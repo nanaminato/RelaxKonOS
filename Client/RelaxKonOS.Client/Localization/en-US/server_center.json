@@ -263,6 +263,13 @@
     "server_center.configuration_changed": "The installation changed. Refresh and review the settings again.",
     "server_center.configuration_succeeded": "Installation settings applied and verified. Review the new connection address.",
     "server_center.guardian_running": "Guardian process running",
-    "server_center.repair_plan": "Repair reapplies the current version's services and configuration, retaining the selected components, port, file permissions and TLS identity. Selected Guardian must pass authenticated IPC verification. Certificate regeneration and firewall changes below are explicit additional actions."
+    "server_center.repair_plan": "Repair reapplies the current version's services and configuration, retaining the selected components, port, file permissions and TLS identity. Selected Guardian must pass authenticated IPC verification. Certificate regeneration and firewall changes below are explicit additional actions.",
+    "server_center.auto_start": "Start automatically (at boot, or sign-in in personal mode)",
+    "server_center.remove_firewall": "Remove RelaxKonOS Server firewall rules",
+    "server_center.ensure_firewall": "Add rule for the current listener",
+    "server_center.settings_first": "Apply or discard setting changes before firewall actions.",
+    "server_center.firewall_completed": "Managed firewall operation completed; other host rules were retained.",
+    "server_center.repair_package": "Server ZIP path (optional; same installed version, restores program files)",
+    "server_center.repair_package_local": "Local ZIP of the installed version (optional)"
   }
 }

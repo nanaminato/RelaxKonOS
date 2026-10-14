@@ -18,6 +18,7 @@ internal data class MaintenanceState(val busy: Boolean = false, val snapshot: Se
 
 internal fun maintenanceResultValid(kind: ServerDeploymentKind, snapshot: ServerHostSnapshot): Boolean = when (kind) {
     ServerDeploymentKind.Uninstall -> !snapshot.installed
+    ServerDeploymentKind.Firewall -> snapshot.installed
     ServerDeploymentKind.Repair, ServerDeploymentKind.Configure -> snapshot.installed && snapshot.healthy
     else -> true
 }
@@ -27,7 +28,7 @@ internal class ServerMaintenanceViewModel(application: Application) : AndroidVie
     private val mutable = MutableStateFlow(MaintenanceState())
     val state = mutable.asStateFlow()
     fun run(hostId: String, kind: ServerDeploymentKind = ServerDeploymentKind.Status, purge: Boolean = false, sudo: String = "",
-        repairCertificate: Boolean = false, certificateIdentities: String = "", addFirewallRule: Boolean = false, removeComponents: String = "", configuration: ServerConfigurationDraft? = null) {
+        repairCertificate: Boolean = false, certificateIdentities: String = "", addFirewallRule: Boolean = false, removeComponents: String = "", configuration: ServerConfigurationDraft? = null, removeFirewallRules: Boolean = true, repairPackagePath: String = "") {
         if (mutable.value.busy) return
         mutable.value = mutable.value.copy(busy = true, error = null, complete = false, firewallStatus = null,
             progress = R.string.server_progress_connecting)
@@ -68,15 +69,19 @@ internal class ServerMaintenanceViewModel(application: Application) : AndroidVie
                                 ServerDeploymentKind.Upgrade -> R.string.server_progress_upgrading
                                 else -> R.string.server_progress_repairing
                             })
-                            if (kind == ServerDeploymentKind.Configure) {
+                            if (kind == ServerDeploymentKind.Firewall) {
+                                action(kind, options.copy(expectedInstallationId = before.installationId, confirmed = true, removeFirewallRules = removeFirewallRules, addFirewallRule = !removeFirewallRules), password)
+                            } else if (kind == ServerDeploymentKind.Configure) {
                                 val draft = requireNotNull(configuration)
                                 check(before.copy(verifiedAtUtc = draft.reviewed.verifiedAtUtc) == draft.reviewed) { "server-deployment.configuration_changed" }
                                 check(draft.port in 1..65535 && before.guardianEnabled != null)
                                 action(kind, options.copy(expectedInstallationId = before.installationId, confirmed = true,
                                     serverPort = draft.port, network = if (draft.lan) ServerNetworkProfile.Lan else ServerNetworkProfile.Loopback,
-                                    guardianEnabled = draft.guardian), password)
+                                    guardianEnabled = draft.guardian, autoStart = draft.autoStart, fileAccess = draft.fileAccess, fileRoots = draft.fileRoots), password)
                             } else firewallStatus = action(kind, maintenanceOptions(kind, mode, requireNotNull(before.installationId), purge,
                                 repairCertificate, certificateIdentities, addFirewallRule, removeComponents).copy(
+                                    source = if (kind == ServerDeploymentKind.Repair && repairPackagePath.isNotBlank()) ServerPackageSourceKind.RemoteBundle else ServerPackageSourceKind.OfficialStable,
+                                    remotePackagePath = repairPackagePath.trim().takeIf { kind == ServerDeploymentKind.Repair && it.isNotEmpty() },
                                     allowUnsupportedSystem = mode == ServerInstallMode.LinuxSystem && !probe.osSupported), password).result?.firewallStatus
                         }
                         mutable.value = mutable.value.copy(progress = R.string.server_progress_verifying)
@@ -85,7 +90,10 @@ internal class ServerMaintenanceViewModel(application: Application) : AndroidVie
                         if (kind == ServerDeploymentKind.Configure) {
                             val draft = requireNotNull(configuration)
                             val endpoint = java.net.URI(requireNotNull(after.listenUrl))
-                            check(after.guardianEnabled == draft.guardian && endpoint.port == draft.port &&
+                            check((draft.autoStart == null || after.autoStart == draft.autoStart) &&
+                                (draft.fileAccess == null || after.fileAccess == draft.fileAccess) &&
+                                (draft.fileAccess != "whitelist" || after.fileRoots == draft.fileRoots) &&
+                                after.guardianEnabled == draft.guardian && endpoint.port == draft.port &&
                                 endpoint.host == if (draft.lan) "0.0.0.0" else "127.0.0.1") { "server-deployment.postcondition_failed" }
                         }
                         check(maintenanceResultValid(kind, after)) { "server-deployment.postcondition_failed" }

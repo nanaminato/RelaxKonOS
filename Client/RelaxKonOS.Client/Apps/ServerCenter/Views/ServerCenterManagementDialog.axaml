@@ -23,8 +23,19 @@
                     <SelectableTextBlock Text="{Binding CurrentConfigurationText}" TextWrapping="Wrap"/>
                     <TextBlock Text="{Binding ConfigurationNote}" TextWrapping="Wrap"/>
                     <StackPanel x:Name="NetworkSettingsPanel" Spacing="8">
+                        <StackPanel IsVisible="{Binding CanConfigureFileAccess}" Spacing="8">
+                            <TextBlock Text="{Binding FileAccessText}"/>
+                            <ComboBox ItemsSource="{Binding ConfigurationFileAccesses}" SelectedItem="{Binding ConfigurationFileAccess}">
+                                <ComboBox.ItemTemplate><DataTemplate x:DataType="vm:FileAccessOption"><TextBlock Text="{Binding Label}"/></DataTemplate></ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <TextBlock Text="{Binding FileRootsText}"/>
+                            <TextBox Text="{Binding ConfigurationFileRoots}" AcceptsReturn="True" MinHeight="80"/>
+                        </StackPanel>
                         <TextBlock Text="{Binding ConfigurationPortText}"/>
                         <TextBox Text="{Binding ConfigurationPort}"/>
+                        <Button IsVisible="{Binding CanManageFirewall}" Command="{Binding RemoveFirewallCommand}" Content="{Binding RemoveFirewallText}"/>
+                        <Button IsVisible="{Binding CanManageFirewall}" Command="{Binding EnsureFirewallCommand}" Content="{Binding EnsureFirewallText}"/>
+                        <CheckBox IsVisible="{Binding CanConfigureAutoStart}" IsChecked="{Binding ConfigurationAutoStart}" Content="{Binding AutoStartText}"/>
                         <CheckBox IsChecked="{Binding ConfigurationLan}" Content="{Binding ConfigurationLanText}"/>
                     </StackPanel>
                     <CheckBox x:Name="GuardianChoice" IsVisible="{Binding CanConfigureGuardian}" IsChecked="{Binding ConfigurationGuardian}" Content="{Binding GuardianChoiceText}"/>
@@ -32,6 +43,8 @@
                 <StackPanel Spacing="12" Margin="0,12,0,0" x:Name="RepairPanel" IsEnabled="{Binding !IsBusy}">
                     <TextBlock Text="{Binding RepairActionDescription}" Classes="action-description"/>
                     <TextBlock Text="{Binding RepairPlanText}" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding RepairPackageText}" TextWrapping="Wrap"/>
+                    <TextBox Text="{Binding RepairPackagePath}"/>
                     <CheckBox IsVisible="{Binding CanManageFirewall}" IsChecked="{Binding MaintenanceAddFirewallRule}">
                         <TextBlock Text="{Binding FirewallChoiceText}" TextWrapping="Wrap"/>
                     </CheckBox>

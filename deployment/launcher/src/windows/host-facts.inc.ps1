@@ -67,6 +67,15 @@ function Get-StateFlag($State, [string] $Name) {
 # live health, so the client is required to display this timestamp.
 function Get-SnapshotJson([string] $Mode, $State, [bool] $Healthy, [bool] $Installed, $DataRetained) {
     $serviceNames = @(Get-ModeServiceNames $Mode)
+    $fileAccess = Get-StateField $State 'fileAccess'
+    $fileRoots = $null
+    if ($fileAccess -eq 'whitelist') {
+        $policyPath = if ($Mode -eq 'windowsUser') {
+            $ownerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+            Join-Path $env:ProgramFiles ('RelaxKonOS-Personal\' + $ownerSid + '\helper.json')
+        } else { Join-Path (Get-ModeDataRoot $Mode) 'privileged-helper\helper.json' }
+        try { $fileRoots = @((Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json).fileAllowedRoots) } catch { $fileRoots = $null }
+    }
     $listenUrl = Get-StateField $State 'listenUrl'
     if (-not $listenUrl) { $listenUrl = Get-DefaultListenUrl $Mode }
     return [ordered]@{
@@ -82,6 +91,9 @@ function Get-SnapshotJson([string] $Mode, $State, [bool] $Healthy, [bool] $Insta
         dataRetained    = $DataRetained
         serviceNames    = $serviceNames
         guardianRunning = if ($Mode -eq 'windowsSystem' -and (Get-StateFlag $State 'guardianEnabled')) { $guardianService = Get-Service -Name RelaxKonOSGuardian -ErrorAction SilentlyContinue; $null -ne $guardianService -and $guardianService.Status -eq 'Running' } else { $null }
+        fileAccess = $fileAccess
+        fileRoots = $fileRoots
+        autoStart = Get-StateField $State 'autoStart'
         guardianEnabled = Get-StateField $State 'guardianEnabled'
         verifiedAtUtc   = Get-NowUtc
     }
@@ -89,6 +101,15 @@ function Get-SnapshotJson([string] $Mode, $State, [bool] $Healthy, [bool] $Insta
 
 function Get-ResultJson([string] $Mode, $State, [bool] $Healthy, $DataRetained) {
     $serviceNames = @(Get-ModeServiceNames $Mode)
+    $fileAccess = Get-StateField $State 'fileAccess'
+    $fileRoots = $null
+    if ($fileAccess -eq 'whitelist') {
+        $policyPath = if ($Mode -eq 'windowsUser') {
+            $ownerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+            Join-Path $env:ProgramFiles ('RelaxKonOS-Personal\' + $ownerSid + '\helper.json')
+        } else { Join-Path (Get-ModeDataRoot $Mode) 'privileged-helper\helper.json' }
+        try { $fileRoots = @((Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json).fileAllowedRoots) } catch { $fileRoots = $null }
+    }
     $listenUrl = Get-StateField $State 'listenUrl'
     if (-not $listenUrl) { $listenUrl = Get-DefaultListenUrl $Mode }
     return [ordered]@{

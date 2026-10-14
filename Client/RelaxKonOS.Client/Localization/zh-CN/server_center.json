@@ -263,6 +263,13 @@
     "server_center.configuration_changed": "安装状态已变化，请刷新并重新核对设置。",
     "server_center.configuration_succeeded": "安装设置已应用并验证，请核对新的连接地址。",
     "server_center.guardian_running": "守护进程运行中",
-    "server_center.repair_plan": "修复会重新应用当前版本的服务与配置，保留组件选择、端口、文件权限和现有证书。已选择的守护还需通过认证 IPC 检查。下方证书重新生成与防火墙更改是额外的显式操作。"
+    "server_center.repair_plan": "修复会重新应用当前版本的服务与配置，保留组件选择、端口、文件权限和现有证书。已选择的守护还需通过认证 IPC 检查。下方证书重新生成与防火墙更改是额外的显式操作。",
+    "server_center.auto_start": "自动启动（系统模式开机启动，个人模式登录后启动）",
+    "server_center.remove_firewall": "移除 RelaxKonOS Server 防火墙规则",
+    "server_center.ensure_firewall": "为当前监听端口添加防火墙规则",
+    "server_center.settings_first": "请先应用或放弃设置修改，再执行防火墙操作。",
+    "server_center.firewall_completed": "受管防火墙操作已完成；其他宿主规则保持不变。",
+    "server_center.repair_package": "服务器 ZIP 路径（可选；必须匹配当前版本，用于恢复程序文件）",
+    "server_center.repair_package_local": "本地当前版本 ZIP（可选）"
   }
 }

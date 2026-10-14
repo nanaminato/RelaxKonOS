@@ -130,7 +130,23 @@ builder.WebHost.ConfigureKestrel(options =>
     options.ConfigureHttpsDefaults(https => https.ServerCertificateSelector = (_, hostName) => kestrelCertificates.Select(hostName) ?? installerCertificate);
     // This is a private same-UID HTTP control channel. It is not an alternative public listener:
     // lifecycle status probes /ready through the socket while clients continue using loopback TCP.
-    if (userModeControlSocket is not null) options.ListenUnixSocket(userModeControlSocket);
+    if (userModeControlSocket is not null)
+    {
+        options.ListenUnixSocket(userModeControlSocket);
+        // Explicit socket endpoints override ASPNETCORE_URLS. Keep the public
+        // User Mode listener alongside the private lifecycle control channel.
+        var urls = builder.Configuration["urls"] ?? "http://127.0.0.1:5000";
+        foreach (var url in urls.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var endpoint) || endpoint.Scheme != "http" ||
+                endpoint.Port is < 1 or > 65535 || endpoint.AbsolutePath != "/" ||
+                endpoint.Query.Length != 0 || endpoint.UserInfo.Length != 0 || endpoint.Fragment.Length != 0 ||
+                endpoint.Host is not ("127.0.0.1" or "0.0.0.0" or "localhost"))
+                throw new InvalidOperationException("User Mode requires a supported HTTP listening address.");
+            if (endpoint.Host == "localhost") options.ListenLocalhost(endpoint.Port);
+            else options.Listen(System.Net.IPAddress.Parse(endpoint.Host), endpoint.Port);
+        }
+    }
 });
 
 // Persisted host secrets must survive upgrades that change the executable/content-root directory.
