@@ -301,6 +301,7 @@ internal fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier =
                         value = mode,
                         onValueChange = { mode = it; if (it == "linuxUser") { network = "loopback"; certificateMode = "none"; fileAccess = "restricted" } },
                     )
+                    if (host?.lastVerified?.installed != true) CheckboxOption(advanced.guardianEnabled, stringResource(R.string.server_guardian_choice)) { advanced = advanced.copy(guardianEnabled = it) }
                     if (mode == "linuxSystem") PasswordTextField(sudoPassword, { sudoPassword = it },
                         stringResource(R.string.ssh_workspace_deploy_sudo_password))
                     if (mode != "linuxUser") {
@@ -440,6 +441,7 @@ internal fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier =
                     ReviewLine(stringResource(R.string.server_install_package_digest), advanced.packageDigest)
                     if (mode == "linuxSystem") ReviewLine(stringResource(R.string.server_install_docker_access), advanced.dockerAccess.toString())
                     if (mode != "windowsSystem") ReviewLine(stringResource(R.string.server_install_allow_unsupported), advanced.allowUnsupportedSystem.toString())
+                    if (host?.lastVerified?.installed != true) ReviewLine(stringResource(R.string.server_guardian_choice), advanced.guardianEnabled.toString())
                     if (mode != "linuxUser" && network == "lan") ReviewLine(stringResource(R.string.server_install_firewall_choice), advanced.addFirewallRule.toString())
                     Text(stringResource(R.string.ssh_workspace_deploy_source_checks), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     installState.message?.takeUnless { installState.busy }?.let {

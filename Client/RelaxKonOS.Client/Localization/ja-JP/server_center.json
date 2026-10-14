@@ -251,6 +251,18 @@
     "server_center.remove_smb": "管理対象 SMB 共有を削除",
     "server_center.remove_nginx": "管理対象 Nginx を削除",
     "server_center.remove_frp": "管理対象 FRP を削除",
-    "server_center.remove_mihomo": "管理対象 Mihomo を削除"
+    "server_center.remove_mihomo": "管理対象 Mihomo を削除",
+    "server_center.components": "コンポーネント",
+    "server_center.installation_settings": "インストール設定",
+    "server_center.apply_configuration": "適用して検証",
+    "server_center.guardian_choice": "プロセス監視をインストール",
+    "server_center.configuration_lan": "LAN アクセスを許可（全ネットワークインターフェイス）",
+    "server_center.configuration_port": "待受ポート",
+    "server_center.configuration_note": "適用時にサービスを再起動します。監視を削除するとワークロードが停止し、定義とログは保持されます。証明書は保持されます。完了後に接続先を確認してください。",
+    "server_center.configuration_unknown": "インストール状態を更新し、完全な設定を取得してから保存してください。",
+    "server_center.configuration_changed": "インストール状態が変わりました。更新して設定を再確認してください。",
+    "server_center.configuration_succeeded": "設定を適用して検証しました。新しい接続先を確認してください。",
+    "server_center.guardian_running": "監視プロセスの実行状態",
+    "server_center.repair_plan": "修復では現在のバージョンのサービスと設定を再適用し、コンポーネント選択、ポート、ファイル権限と証明書を保持します。選択した監視は認証済み IPC 検証に合格する必要があります。証明書再生成とファイアウォール変更は明示的な追加操作です。"
   }
 }

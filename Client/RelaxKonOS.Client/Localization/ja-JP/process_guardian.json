@@ -64,6 +64,7 @@
     "guardian.logs.disconnected": "ライブ更新は切断されました。",
     "guardian.logs.show": "ログを表示",
     "guardian.logs.loaded": "{0} のマスク済みログを読み込みました。",
-    "guardian.logs.failed": "ログを読み込めませんでした: {0}"
+    "guardian.logs.failed": "ログを読み込めませんでした: {0}",
+    "guardian.install.manage": "サーバーセンターでインストール"
   }
 }

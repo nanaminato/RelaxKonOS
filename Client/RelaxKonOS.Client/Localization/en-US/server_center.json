@@ -251,6 +251,18 @@
     "server_center.remove_smb": "Remove managed SMB shares",
     "server_center.remove_nginx": "Remove managed Nginx",
     "server_center.remove_frp": "Remove managed FRP",
-    "server_center.remove_mihomo": "Remove managed Mihomo"
+    "server_center.remove_mihomo": "Remove managed Mihomo",
+    "server_center.components": "Components",
+    "server_center.installation_settings": "Installation settings",
+    "server_center.apply_configuration": "Apply and verify",
+    "server_center.guardian_choice": "Install process guardian",
+    "server_center.configuration_lan": "Allow LAN access (all network interfaces)",
+    "server_center.configuration_port": "Listening port",
+    "server_center.configuration_note": "Applying changes restarts services. Removing Guardian stops its workloads and retains definitions and logs. TLS identity is preserved. Review the address after applying.",
+    "server_center.configuration_unknown": "Refresh the installation first; complete configuration facts are required.",
+    "server_center.configuration_changed": "The installation changed. Refresh and review the settings again.",
+    "server_center.configuration_succeeded": "Installation settings applied and verified. Review the new connection address.",
+    "server_center.guardian_running": "Guardian process running",
+    "server_center.repair_plan": "Repair reapplies the current version's services and configuration, retaining the selected components, port, file permissions and TLS identity. Selected Guardian must pass authenticated IPC verification. Certificate regeneration and firewall changes below are explicit additional actions."
   }
 }

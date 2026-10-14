@@ -29,9 +29,13 @@ def recovery_state(root=Path("/opt/relaxkonos"), data=Path("/var/lib/relaxkonos"
         raise ValueError('Current version does not point to a managed version directory')
     def show(unit, field):
         return subprocess.check_output(['systemctl','show',unit,'--property='+field,'--value'],text=True).strip()
+    environment = dict(line.split('=',1) for line in trusted(config/'server.env').read_text().splitlines() if line and not line.startswith('#') and '=' in line)
+    enabled = environment.get('GuardianAgent__Enabled')
+    if enabled not in ('true','false'): raise ValueError('Guardian selection is missing from host configuration')
     for unit, folder, executable, user in (
         ('relaxkonos-server.service','server','RelaxKonOS.Server','relaxkonos-server'),
         ('relaxkonos-guardian.service','guardian','RelaxKonOS.Guardian.Agent','')):
+        if folder == 'guardian' and enabled == 'false': continue
         binary = trusted(current/folder/executable)
         with binary.open('rb') as binary_stream: magic = binary_stream.read(4)
         if magic != b'\x7fELF': raise ValueError('Invalid deployed executable: ' + executable)
@@ -79,7 +83,7 @@ def recovery_state(root=Path("/opt/relaxkonos"), data=Path("/var/lib/relaxkonos"
                  previousVersion=None,installedAtUtc=datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
                  installRoot=str(root),dataRoot=str(data),networkProfile='lan' if '0.0.0.0' in url else 'local',listenUrl=url,
                  certificateMode=certificate,fileAccess=access(''),administratorFileAccess=access('-administrator'),
-                 rootFileAccess=access('-root'),dockerAccess=docker.exists())
+                 rootFileAccess=access('-root'),dockerAccess=docker.exists(),guardianEnabled=enabled=='true')
     trusted(data)
     # Publish atomically without overwriting a record created by another operation.
     descriptor, temporary = tempfile.mkstemp(prefix='.recovery-',dir=data)
@@ -111,11 +115,11 @@ def request(path):
     root = {'schemaVersion', 'operationId', 'kind', 'options'}
     keys = {'source','network','retention','mode','version','packageUri','stagedPackageName',
             'packageDigest','remotePackagePath','expectedInstallationId','serverPort','fileAccess',
-            'certificateMode','selfSignedIdentities','confirmed','language','releaseCatalogBaseUri','installRoot','dataRoot','configRoot','stateRoot','cacheRoot','fileRoots','administratorFileAccess','administratorFileRoots','rootFileAccess','rootFileRoots','dockerAccess','allowUnsupportedSystem','addFirewallRule','removeComponents'}
+            'certificateMode','selfSignedIdentities','confirmed','language','releaseCatalogBaseUri','installRoot','dataRoot','configRoot','stateRoot','cacheRoot','fileRoots','administratorFileAccess','administratorFileRoots','rootFileAccess','rootFileRoots','dockerAccess','allowUnsupportedSystem','addFirewallRule','removeComponents','guardianEnabled'}
     if type(value) is not dict or set(value) - root: raise ValueError('request fields')
     if type(value.get('schemaVersion')) is not int or value['schemaVersion'] != 1: raise ValueError('schema')
     if not isinstance(value.get('operationId'), str) or not re.fullmatch(r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}',value['operationId']): raise ValueError('id')
-    if value.get('kind') not in {'probe','install','upgrade','repair','uninstall','status','rollback'}: raise ValueError('kind')
+    if value.get('kind') not in {'probe','install','upgrade','repair','configure','uninstall','status','rollback'}: raise ValueError('kind')
     options = value.get('options')
     if options is not None:
         if type(options) is not dict or set(options) - keys: raise ValueError('options fields')
@@ -124,6 +128,7 @@ def request(path):
         for key, item in options.items():
             if key in ('confirmed','dockerAccess','allowUnsupportedSystem','addFirewallRule'): valid = type(item) is bool
             elif key in ('fileRoots','administratorFileRoots','rootFileRoots'): valid = item is None or type(item) is list and len(item) <= 128 and all(type(p) is str and p.startswith('/') and not any(ord(c)<32 for c in p) for p in item)
+            elif key == 'guardianEnabled': valid = item is None or type(item) is bool
             elif key == 'serverPort': valid = item is None or type(item) is int
             elif key in ('source','network','retention'): valid = type(item) is str
             else: valid = item is None or type(item) is str
@@ -272,7 +277,7 @@ assert_request_keys() {
   while IFS= read -r key; do
     [[ -n $key ]] || continue
     case "$key" in
-      schemaVersion|operationId|kind|options|source|network|retention|mode|version|packageUri|stagedPackageName|packageDigest|remotePackagePath|expectedInstallationId|serverPort|fileAccess|certificateMode|selfSignedIdentities|confirmed|language|releaseCatalogBaseUri|installRoot|dataRoot|configRoot|stateRoot|cacheRoot|fileRoots|administratorFileAccess|administratorFileRoots|rootFileAccess|rootFileRoots|dockerAccess|allowUnsupportedSystem|addFirewallRule|removeComponents) ;;
+      schemaVersion|operationId|kind|options|source|network|retention|mode|version|packageUri|stagedPackageName|packageDigest|remotePackagePath|expectedInstallationId|serverPort|fileAccess|certificateMode|selfSignedIdentities|confirmed|language|releaseCatalogBaseUri|installRoot|dataRoot|configRoot|stateRoot|cacheRoot|fileRoots|administratorFileAccess|administratorFileRoots|rootFileAccess|rootFileRoots|dockerAccess|allowUnsupportedSystem|addFirewallRule|removeComponents|guardianEnabled) ;;
       *) launcher_fail invalid_request "unsupported request field: $key" ;;
     esac
   done <<< "$keys"
@@ -320,7 +325,7 @@ parse_request() {
   operation_id=${operation_raw,,}
   kind=$(json_text kind)
   case "$kind" in
-    probe|install|upgrade|repair|uninstall|status|rollback) ;;
+    probe|install|upgrade|repair|configure|uninstall|status|rollback) ;;
     '') launcher_fail unknown_action "request kind is missing" ;;
     *) launcher_fail unknown_action "unsupported action: $kind" ;;
   esac
@@ -339,6 +344,10 @@ parse_request() {
   options_remote_path=$(json_text remotePackagePath)
   options_expected_installation_id=$(json_text expectedInstallationId)
   local port_raw; port_raw=$(json_literal serverPort); [[ $port_raw != null ]] && options_server_port=$port_raw
+  options_guardian_enabled=$(json_literal guardianEnabled)
+  case "$options_guardian_enabled" in true|false|null) ;; *) launcher_fail invalid_request "guardianEnabled must be a boolean or null" ;; esac
+  if [[ "$options_guardian_enabled" != null && $kind != install && $kind != configure ]]; then launcher_fail invalid_request "Guardian selection requires install or configure"; fi
+  if [[ $kind == configure && ( -z $options_server_port || $(json_literal confirmed) != true ) ]]; then launcher_fail invalid_request "Configure requires port and confirmation"; fi
   options_file_access=$(json_text fileAccess)
   options_certificate_mode=$(json_text certificateMode)
   options_self_signed_identities=$(json_text selfSignedIdentities)
@@ -407,6 +416,10 @@ parse_request() {
   if [[ $options_retention == delete && $options_confirmed != true ]]; then
     launcher_fail confirmation_required "deleting data requires explicit confirmation"
   fi
+  if [[ $operation_kind == configure ]]; then
+    [[ -n $options_expected_installation_id && $options_confirmed == true && ( $options_network == loopback || $options_network == lan ) ]] || launcher_fail invalid_request "Configure requires installed identity, supported network and confirmation"
+    [[ -z $options_file_access$options_certificate_mode$options_self_signed_identities$options_administrator_access$options_root_access && $options_docker == false && $options_retention == retain ]] || launcher_fail invalid_request "Configure accepts only network, port and Guardian settings"
+  fi
   case "$operation_kind" in
     install|upgrade)
       [[ -n $options_mode ]] || launcher_fail invalid_request "installation mode is required"
@@ -423,7 +436,7 @@ parse_request() {
       *) launcher_fail invalid_request "unsupported installation source" ;;
     esac
       ;;
-    repair|rollback|uninstall|status) [[ -n $options_mode ]] || launcher_fail invalid_request "installation mode is required";;
+    repair|configure|rollback|uninstall|status) [[ -n $options_mode ]] || launcher_fail invalid_request "installation mode is required";;
   esac
 }
 

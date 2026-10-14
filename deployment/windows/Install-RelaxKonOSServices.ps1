@@ -1,5 +1,6 @@
 [CmdletBinding(SupportsShouldProcess)]
 param(
+    [bool] $GuardianEnabled = $true,
     [string] $InstallRoot = (Join-Path $env:ProgramFiles 'RelaxKonOS'),
     [string] $ServerExecutable,
     [string] $GuardianExecutable,
@@ -37,7 +38,7 @@ $PrivilegedHelperExecutable = if ([string]::IsNullOrWhiteSpace($PrivilegedHelper
 $ServerExecutable = [IO.Path]::GetFullPath($ServerExecutable)
 $GuardianExecutable = [IO.Path]::GetFullPath($GuardianExecutable)
 $PrivilegedHelperExecutable = [IO.Path]::GetFullPath($PrivilegedHelperExecutable)
-if (-not (Test-Path -LiteralPath $ServerExecutable -PathType Leaf) -or -not (Test-Path -LiteralPath $GuardianExecutable -PathType Leaf) -or -not (Test-Path -LiteralPath $PrivilegedHelperExecutable -PathType Leaf)) {
+if (-not (Test-Path -LiteralPath $ServerExecutable -PathType Leaf) -or ($GuardianEnabled -and -not (Test-Path -LiteralPath $GuardianExecutable -PathType Leaf)) -or -not (Test-Path -LiteralPath $PrivilegedHelperExecutable -PathType Leaf)) {
     throw 'ServerExecutable, GuardianExecutable, and PrivilegedHelperExecutable must all exist.'
 }
 if ($ServerPort -lt 1 -or $ServerPort -gt 65535) { throw 'ServerPort must be between 1 and 65535.' }
@@ -252,6 +253,7 @@ $serverSettings = [ordered]@{
         Secret = $jwtSecret
     }
     GuardianAgent = [ordered]@{
+        Enabled = $GuardianEnabled
         PipeName = 'relaxkonos-guardian'
         SharedSecret = $sharedSecret
     }
@@ -307,7 +309,13 @@ function Install-OrUpdateService([string] $Name, [string] $BinaryPath) {
     if ($LASTEXITCODE -ne 0) { throw "Could not configure recovery for service '$Name' (sc.exe exit code $LASTEXITCODE)." }
 }
 
-Install-OrUpdateService $GuardianServiceName ('"' + $GuardianExecutable + '" --config "' + $guardianConfig + '"')
+if ($GuardianEnabled) {
+    Install-OrUpdateService $GuardianServiceName ('"' + $GuardianExecutable + '" --config "' + $guardianConfig + '"')
+} elseif (Get-Service -Name $GuardianServiceName -ErrorAction SilentlyContinue) {
+    Stop-Service -Name $GuardianServiceName -Force
+    & sc.exe delete $GuardianServiceName | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Could not remove the Guardian service.' }
+}
 Install-OrUpdateService $ServerServiceName ('"' + $ServerExecutable + '" --urls "' + $serverListenUri.AbsoluteUri.TrimEnd('/') + '"')
 
 # The Server keeps a service SID even while running as LocalService. It is the sole non-admin
@@ -351,7 +359,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Unable to protect managed certificate storage.
 Install-OrUpdateService $PrivilegedHelperServiceName ('"' + $PrivilegedHelperExecutable + '" --windows-service --config "' + $privilegedConfig + '"')
 
 if ($PSCmdlet.ShouldProcess('RelaxKonOS services', 'Start or restart')) {
-    Restart-Service -Name $GuardianServiceName -Force
+    if ($GuardianEnabled) { Restart-Service -Name $GuardianServiceName -Force }
     Restart-Service -Name $PrivilegedHelperServiceName -Force
     Restart-Service -Name $ServerServiceName -Force
 }

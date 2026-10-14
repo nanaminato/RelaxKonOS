@@ -14,7 +14,7 @@ class RecoverySafetyChecks(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'Untrusted installation path'):
                 helper['recovery_trusted'](path)
 
-    def exercise_recovery(self, healthy=True, active=True):
+    def exercise_recovery(self, healthy=True, active=True, guardian=True):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory); root, data, config = [base/name for name in ('install','data','config')]
             current = root/'versions/0.1.3'
@@ -23,7 +23,7 @@ class RecoverySafetyChecks(unittest.TestCase):
             for name, content in files.items():
                 file = current/name; file.parent.mkdir(parents=True, exist_ok=True); file.write_bytes(content)
             (root/'current').mkdir(); (data/'server').mkdir(parents=True); (data/'server/relaxkonos.db').touch(); config.mkdir()
-            (config/'server.env').write_text('Storage__DatabasePath='+str(data/'server/relaxkonos.db'))
+            (config/'server.env').write_text('GuardianAgent__Enabled='+str(guardian).lower()+'\nStorage__DatabasePath='+str(data/'server/relaxkonos.db'))
             for suffix in ('','-administrator','-root'): (config/('privileged-helper-roots'+suffix)).write_text('/\n')
             original_resolve = Path.resolve
             def resolve(path, *args, **kwargs):
@@ -33,6 +33,7 @@ class RecoverySafetyChecks(unittest.TestCase):
             def show(arguments, **kwargs):
                 unit, field = arguments[2], arguments[3].split('=')[1]
                 folder, binary = ('server','RelaxKonOS.Server') if 'server' in unit else ('guardian','RelaxKonOS.Guardian.Agent')
+                if not guardian and folder == 'guardian': raise AssertionError('Unselected Guardian must not be required by recovery')
                 return {'FragmentPath':str(config/'unit'), 'ActiveState':'active' if active else 'failed',
                         'User':'relaxkonos-server' if folder == 'server' else '',
                         'ExecStart':'{ path='+str(current/folder/binary)+' ; }',
@@ -48,10 +49,12 @@ class RecoverySafetyChecks(unittest.TestCase):
                     helper['recovery_state'](root,data,config)
                     value=json.loads((data/'install-state.json').read_text())
                     self.assertRegex(value['installationId'],r'^rki-[0-9a-f]{32}$')
+                    self.assertEqual(value['guardianEnabled'], guardian)
                     self.assertEqual(value['version'],'0.1.3'); self.assertEqual(value['fileAccess'],'full')
                     self.assertEqual(value['listenUrl'],'http://127.0.0.1:5000')
 
     def test_verified_installation_publishes_current_state(self): self.exercise_recovery()
+    def test_skipped_guardian_is_not_required_for_recovery(self): self.exercise_recovery(guardian=False)
     def test_failed_health_does_not_publish(self): self.exercise_recovery(healthy=False)
     def test_inactive_service_does_not_publish(self): self.exercise_recovery(active=False)
 

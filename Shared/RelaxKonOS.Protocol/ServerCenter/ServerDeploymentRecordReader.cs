@@ -39,7 +39,7 @@ public static class ServerDeploymentRecordReader
             if (record.Phase != ServerDeploymentPhase.Completed)
                 throw InvalidRecord("successful operation has no completed phase");
             if (record.Kind is ServerDeploymentKind.Install or ServerDeploymentKind.Upgrade
-                or ServerDeploymentKind.Repair or ServerDeploymentKind.Rollback)
+                or ServerDeploymentKind.Repair or ServerDeploymentKind.Configure or ServerDeploymentKind.Rollback)
             {
                 if (record.Result is not { Healthy: true } result
                     || !ServerInstallationId.IsValid(result.InstallationId)

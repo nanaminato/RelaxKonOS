@@ -35,7 +35,11 @@ function Get-ModeDataRoot([string] $Mode) {
 }
 
 function Get-ModeServiceNames([string] $Mode) {
-    if ($Mode -eq 'windowsSystem') { return @('RelaxKonOSServer', 'RelaxKonOSGuardian', 'RelaxKonOSPrivilegedHelper') }
+    if ($Mode -eq 'windowsSystem') {
+        $names = @('RelaxKonOSServer', 'RelaxKonOSPrivilegedHelper')
+        if (Get-StateFlag (Read-InstallState (Get-ModeInstallState $Mode)) 'guardianEnabled') { $names += 'RelaxKonOSGuardian' }
+        return $names
+    }
     return @()
 }
 
@@ -77,6 +81,8 @@ function Get-SnapshotJson([string] $Mode, $State, [bool] $Healthy, [bool] $Insta
         healthy         = $Healthy
         dataRetained    = $DataRetained
         serviceNames    = $serviceNames
+        guardianRunning = if ($Mode -eq 'windowsSystem' -and (Get-StateFlag $State 'guardianEnabled')) { $guardianService = Get-Service -Name RelaxKonOSGuardian -ErrorAction SilentlyContinue; $null -ne $guardianService -and $guardianService.Status -eq 'Running' } else { $null }
+        guardianEnabled = Get-StateField $State 'guardianEnabled'
         verifiedAtUtc   = Get-NowUtc
     }
 }

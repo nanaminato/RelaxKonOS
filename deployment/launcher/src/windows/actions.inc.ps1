@@ -80,12 +80,13 @@ function Invoke-InstallLikeAction {
     if (-not $engine) { Stop-Launcher 'server-deployment.not_supported' 'no System Mode deployment engine is available on this host' }
 
     $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $engine, '-NonInteractive', '-Action', $script:record.kind, '-Mode', $script:optionsMode)
+    if ($null -ne $script:optionsGuardianEnabled) { $arguments += @('-GuardianEnabled', $script:optionsGuardianEnabled.ToString().ToLowerInvariant()) }
     $arguments += @('-Language', $script:optionsLanguage, '-InstallRoot', (Get-ModeInstallRoot $script:optionsMode), '-DataRoot', (Get-ModeDataRoot $script:optionsMode))
     if ($needsPackage) {
         $arguments += @('-BundlePath', $packageRoot)
     }
     if ($null -ne $script:optionsServerPort) { $arguments += @('-ServerPort', [string]$script:optionsServerPort) }
-    if ($script:optionsNetwork -and $script:record.kind -in @('install', 'upgrade')) { $arguments += @('-NetworkProfile', (Get-EngineNetworkProfile $script:optionsNetwork)) }
+    if ($script:optionsNetwork -and $script:record.kind -in @('install', 'upgrade', 'configure')) { $arguments += @('-NetworkProfile', (Get-EngineNetworkProfile $script:optionsNetwork)) }
     if ($script:optionsFileAccess) { $arguments += @('-FileAccess', $script:optionsFileAccess) }
     if ($Personal -and $script:optionsAddFirewallRule) { $arguments += @('-AddFirewallRule') }
     $roots = Get-LiteralOption 'fileRoots'

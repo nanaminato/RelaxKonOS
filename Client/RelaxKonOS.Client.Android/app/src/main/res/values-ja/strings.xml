@@ -53,4 +53,13 @@
     <string name="taskmanager_normal_mode">通常モード</string>
     <string name="files_cache_enabled">ファイル一覧をキャッシュ</string>
     <string name="files_cache_refreshing">キャッシュを表示中。更新しています…</string>
+    <string name="server_guardian_choice">プロセス監視をインストール</string>
+    <string name="server_configuration_components">コンポーネント</string>
+    <string name="server_configuration_settings">インストール設定</string>
+    <string name="server_configuration_port">待受ポート</string>
+    <string name="server_configuration_lan">LAN アクセスを許可</string>
+    <string name="server_configuration_apply">適用して検証</string>
+    <string name="server_configuration_note">適用時にサービスを再起動します。監視を削除するとワークロードが停止し、定義とログは保持されます。証明書は保持されます。新しい接続先を確認してください。</string>
+    <string name="server_configuration_discard">未保存の設定を破棄しますか？</string>
+    <string name="server_configuration_discard_confirm">破棄</string>
 </resources>

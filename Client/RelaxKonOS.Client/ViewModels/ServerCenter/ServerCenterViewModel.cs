@@ -101,6 +101,7 @@ public partial class ServerCenterViewModel : ObservableObject
     [ObservableProperty] private string _repairCertificateIdentities = "localhost,127.0.0.1";
     public string RepairCertificateText => T("server_center.repair_certificate", "Regenerate the LAN self-signed certificate during repair");
     public string RepairCertificateNote => T("server_center.repair_certificate_note", "Enter the current LAN IP or DNS names, separated by commas. Repair restarts the service; clients must trust the new certificate again.");
+    public bool CanManageCertificate => HasManagedInstallation && SelectedHost?.LastVerified?.Mode != ServerInstallMode.LinuxUser;
     public bool CanManageFirewall => HasManagedInstallation && SelectedHost?.LastVerified?.Mode is ServerInstallMode.WindowsSystem or ServerInstallMode.LinuxSystem;
     public bool HasManagedInstallation => SelectedHost?.LastVerified?.Installed == true;
     public string UpdateText => T("server_center.update", "Update RelaxKonOS");
@@ -495,6 +496,19 @@ public partial class ServerCenterViewModel : ObservableObject
                 return;
             }
 
+            if (kind == ServerDeploymentKind.Configure)
+            {
+                var fresh = await ExecuteReadOnlyAsync(session, tools, ServerDeploymentKind.Status, StatusOptions(probe.ExistingMode!.Value), cancellationToken, sudoPassword).ConfigureAwait(true);
+                if (target.HostId != _reviewedConfigurationHostId || fresh.Snapshot is not { } current ||
+                    _reviewedConfiguration is not { } reviewed || current.InstallationId != reviewed.InstallationId ||
+                    current.Mode != reviewed.Mode || current.Version != reviewed.Version ||
+                    current.ListenUrl != reviewed.ListenUrl || current.GuardianEnabled != reviewed.GuardianEnabled ||
+                    current.InstallRoot != reviewed.InstallRoot || current.DataRoot != reviewed.DataRoot)
+                {
+                    ErrorMessage = T("server_center.configuration_changed", "The installation changed. Refresh and review the settings again.");
+                    return;
+                }
+            }
             var operationMode = recovering ? ServerInstallMode.LinuxSystem : probe.ExistingMode!.Value;
             var rotateCertificate = kind == ServerDeploymentKind.Repair && !recovering && RepairLanCertificate;
             if (rotateCertificate && (operationMode == ServerInstallMode.LinuxUser ||
@@ -509,7 +523,7 @@ public partial class ServerCenterViewModel : ObservableObject
                 kind,
                 new ServerDeploymentOptions(
                     ServerPackageSourceKind.OfficialStable,
-                    ServerNetworkProfile.Loopback,
+                    kind == ServerDeploymentKind.Configure && ConfigurationLan ? ServerNetworkProfile.Lan : ServerNetworkProfile.Loopback,
                     retention,
                     operationMode,
                     null,
@@ -517,14 +531,15 @@ public partial class ServerCenterViewModel : ObservableObject
                     null,
                     null,
                     probe.ExistingInstallationId,
-                    null,
+                    kind == ServerDeploymentKind.Configure ? int.Parse(ConfigurationPort) : null,
                     CertificateMode: rotateCertificate ? ServerCertificateMode.SelfSigned : null,
                     SelfSignedIdentities: rotateCertificate ? RepairCertificateIdentities.Trim() : null,
                     Confirmed: true,
                     Language: _localization.CurrentLanguage,
                     AllowUnsupportedSystem: operationMode == ServerInstallMode.LinuxSystem && !probe.OsSupported,
                     AddFirewallRule: kind == ServerDeploymentKind.Repair && !recovering && operationMode != ServerInstallMode.LinuxUser && MaintenanceAddFirewallRule,
-                    RemoveComponents: kind == ServerDeploymentKind.Uninstall && operationMode != ServerInstallMode.LinuxUser ? SelectedComponents : ""));
+                    RemoveComponents: kind == ServerDeploymentKind.Uninstall && operationMode != ServerInstallMode.LinuxUser ? SelectedComponents : "",
+                    GuardianEnabled: kind == ServerDeploymentKind.Configure ? ConfigurationGuardian : null));
             var receipt = await ExecuteFixedOperationAsync(session, tools, request, cancellationToken, sudoPassword).ConfigureAwait(true);
 
             // Read the separate status receipt even after uninstall. The install identity is retained
@@ -557,6 +572,7 @@ public partial class ServerCenterViewModel : ObservableObject
             }
             StatusMessage = kind switch
             {
+                ServerDeploymentKind.Configure => T("server_center.configuration_succeeded", "Installation settings applied and verified. Review the new connection address."),
                 ServerDeploymentKind.Repair => T("server_center.repair_succeeded", "The current installation was repaired and verified through SSH."),
                 ServerDeploymentKind.Rollback => T("server_center.rollback_succeeded", "The previous program version was restored and verified through SSH."),
                 ServerDeploymentKind.Uninstall when retention == ServerDataRetention.Retain => T("server_center.uninstall_retained_succeeded", "The server was uninstalled. Managed data was retained on the host."),
@@ -761,7 +777,8 @@ public partial class ServerCenterViewModel : ObservableObject
                     RootFileRoots: mode == ServerInstallMode.LinuxSystem ? installation.RootFileRoots : null,
                     DockerAccess: mode == ServerInstallMode.LinuxSystem && installation.DockerAccess,
                     AllowUnsupportedSystem: platform.Platform == HostPlatformKind.Linux && installation.AllowUnsupportedSystem,
-                    AddFirewallRule: mode != ServerInstallMode.LinuxUser && installation.AddFirewallRule));
+                    AddFirewallRule: mode != ServerInstallMode.LinuxUser && installation.AddFirewallRule,
+                    GuardianEnabled: kind == ServerDeploymentKind.Install ? installation.GuardianEnabled && mode != ServerInstallMode.WindowsUser : null));
             await using var launcher = tools.OpenLauncher();
 
             await using var archive = release?.OpenArchive();
@@ -1178,6 +1195,7 @@ public partial class ServerCenterViewModel : ObservableObject
         OpenInstallationWizardCommand.NotifyCanExecuteChanged();
         RecoverCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
+        ConfigureCommand.NotifyCanExecuteChanged();
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
         LoadOperationHistoryCommand.NotifyCanExecuteChanged();
@@ -1196,6 +1214,7 @@ public partial class ServerCenterViewModel : ObservableObject
         OpenInstallationWizardCommand.NotifyCanExecuteChanged();
         RecoverCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
+        ConfigureCommand.NotifyCanExecuteChanged();
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
         LoadOperationHistoryCommand.NotifyCanExecuteChanged();
@@ -1215,6 +1234,7 @@ public partial class ServerCenterViewModel : ObservableObject
         OpenInstallationWizardCommand.NotifyCanExecuteChanged();
         RecoverCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
+        ConfigureCommand.NotifyCanExecuteChanged();
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
         RefreshOperationCommand.NotifyCanExecuteChanged();
@@ -1227,6 +1247,7 @@ public partial class ServerCenterViewModel : ObservableObject
         OpenInstallationWizardCommand.NotifyCanExecuteChanged();
         RecoverCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
+        ConfigureCommand.NotifyCanExecuteChanged();
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
         RefreshOperationCommand.NotifyCanExecuteChanged();
@@ -1235,6 +1256,7 @@ public partial class ServerCenterViewModel : ObservableObject
     {
         UpdateCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
+        ConfigureCommand.NotifyCanExecuteChanged();
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
     }
@@ -1463,4 +1485,4 @@ public sealed record ServerInstallationOptions(
     string? StateRoot = null, string? CacheRoot = null,
     IReadOnlyList<string>? FileRoots = null, ServerFileAccessScope? AdministratorFileAccess = null,
     IReadOnlyList<string>? AdministratorFileRoots = null, ServerFileAccessScope? RootFileAccess = null,
-    IReadOnlyList<string>? RootFileRoots = null, bool DockerAccess = false, bool AllowUnsupportedSystem = false, bool AddFirewallRule = false);
+    IReadOnlyList<string>? RootFileRoots = null, bool DockerAccess = false, bool AllowUnsupportedSystem = false, bool AddFirewallRule = false, bool GuardianEnabled = true);

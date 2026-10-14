@@ -67,6 +67,8 @@
                 </StackPanel>
             </Border>
             <views:ServerCenterActionPanel IsVisible="{Binding HasSelectedHost}">
+                <Button Classes="management-action" Click="Management_Click" Tag="components" IsVisible="{Binding HasManagedInstallation}" IsEnabled="{Binding !IsBusy}" Content="{Binding ComponentsText}"/>
+                <Button Classes="management-action" Click="Management_Click" Tag="settings" IsVisible="{Binding HasManagedInstallation}" IsEnabled="{Binding !IsBusy}" Content="{Binding SettingsText}"/>
                 <Button Classes="management-action" Command="{Binding ProbeHostCommand}" AutomationProperties.Name="{Binding ProbeText}">
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
                         <Image Width="28" Height="28" Source="avares://RelaxKonOS.Client/Assets/Icons/Fluent/monitor.png"/>

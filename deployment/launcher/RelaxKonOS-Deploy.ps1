@@ -364,7 +364,7 @@ function Assert-RequestShape {
         Stop-Launcher 'server-deployment.invalid_request' 'options must be a JSON object'
     }
     $allowedOptions = @('source', 'network', 'retention', 'mode', 'version', 'packageUri', 'stagedPackageName',
-        'packageDigest', 'remotePackagePath', 'expectedInstallationId', 'serverPort', 'fileAccess', 'certificateMode', 'selfSignedIdentities', 'confirmed', 'language', 'releaseCatalogBaseUri', 'installRoot', 'dataRoot', 'configRoot', 'stateRoot', 'cacheRoot', 'fileRoots', 'administratorFileAccess', 'administratorFileRoots', 'rootFileAccess', 'rootFileRoots', 'dockerAccess', 'allowUnsupportedSystem', 'addFirewallRule', 'removeComponents')
+        'packageDigest', 'remotePackagePath', 'expectedInstallationId', 'serverPort', 'fileAccess', 'certificateMode', 'selfSignedIdentities', 'confirmed', 'language', 'releaseCatalogBaseUri', 'installRoot', 'dataRoot', 'configRoot', 'stateRoot', 'cacheRoot', 'fileRoots', 'administratorFileAccess', 'administratorFileRoots', 'rootFileAccess', 'rootFileRoots', 'dockerAccess', 'allowUnsupportedSystem', 'addFirewallRule', 'removeComponents', 'guardianEnabled')
     foreach ($key in $request['options'].Keys) {
         if ($allowedOptions -notcontains [string]$key) {
             Stop-Launcher 'server-deployment.invalid_request' "unsupported request field: $key"
@@ -395,6 +395,9 @@ function Get-LiteralOption([string] $Name) {
 
 function Parse-Request {
     Assert-RequestShape
+    $script:optionsGuardianEnabled = Get-LiteralOption 'guardianEnabled'
+    if ($null -ne $script:optionsGuardianEnabled -and $script:optionsGuardianEnabled -isnot [bool]) { Stop-Launcher 'server-deployment.invalid_request' 'guardianEnabled must be a boolean or null.' }
+    if ($script:optionsGuardianEnabled -and (Get-StringOption 'mode') -eq 'windowsUser') { Stop-Launcher 'server-deployment.not_supported' 'Guardian is unavailable in Windows personal mode.' }
 
     if (-not $request.Contains('schemaVersion')) { Stop-Launcher 'server-deployment.invalid_request' 'schemaVersion is required' }
     $schema = $request['schemaVersion']
@@ -411,9 +414,11 @@ function Parse-Request {
 
     $kind = if ($request.Contains('kind') -and $request['kind'] -is [string]) { [string]$request['kind'] } else { '' }
     if ([string]::IsNullOrEmpty($kind)) { Stop-Launcher 'server-deployment.unknown_action' 'request kind is missing' }
-    if ($kind -notin @('probe', 'install', 'upgrade', 'repair', 'uninstall', 'status', 'rollback')) {
+    if ($kind -notin @('probe', 'install', 'upgrade', 'repair', 'configure', 'uninstall', 'status', 'rollback')) {
         Stop-Launcher 'server-deployment.unknown_action' "unsupported action: $kind"
     }
+    if ($null -ne $script:optionsGuardianEnabled -and $kind -notin @('install', 'configure')) { Stop-Launcher 'server-deployment.invalid_request' 'Guardian selection requires install or configure.' }
+    if ($kind -eq 'configure' -and ($null -eq (Get-LiteralOption 'serverPort') -or -not (Get-LiteralOption 'confirmed'))) { Stop-Launcher 'server-deployment.invalid_request' 'Configure requires port and confirmation.' }
     $script:record.kind = $kind
 
     $value = Get-StringOption 'source'; if ($value) { $script:optionsSource = $value }
@@ -479,6 +484,10 @@ function Parse-Request {
         if ($port -isnot [long] -and $port -isnot [int]) { Stop-Launcher 'server-deployment.invalid_request' 'serverPort must be an integer' }
         $script:optionsServerPort = [int]$port
     }
+    if ($kind -eq 'configure') {
+        if (-not $script:optionsExpectedInstallationId -or $script:optionsNetwork -notin @('loopback', 'lan') -or (Get-LiteralOption 'confirmed') -isnot [bool] -or -not (Get-LiteralOption 'confirmed')) { Stop-Launcher 'server-deployment.invalid_request' 'Configure requires installed identity, supported network and confirmation.' }
+        if ($script:optionsFileAccess -or $script:optionsCertificateMode -or $script:optionsSelfSignedIdentities -or $script:optionsRetention -ne 'retain') { Stop-Launcher 'server-deployment.invalid_request' 'Configure accepts only network, port and Guardian settings.' }
+    }
     $confirmed = Get-LiteralOption 'confirmed'
     if ($confirmed -is [bool] -and $confirmed) { $script:optionsConfirmed = $true }
     if ($script:optionsRemoveComponents -and -not $script:optionsConfirmed) {
@@ -541,7 +550,7 @@ function Parse-Request {
             default { Stop-Launcher 'server-deployment.invalid_request' 'unsupported installation source' }
         }
     }
-    if ($kind -in @('repair', 'rollback', 'uninstall', 'status') -and -not $script:optionsMode) {
+    if ($kind -in @('repair', 'configure', 'rollback', 'uninstall', 'status') -and -not $script:optionsMode) {
         Stop-Launcher 'server-deployment.invalid_request' 'installation mode is required'
     }
 }
@@ -601,7 +610,11 @@ function Get-ModeDataRoot([string] $Mode) {
 }
 
 function Get-ModeServiceNames([string] $Mode) {
-    if ($Mode -eq 'windowsSystem') { return @('RelaxKonOSServer', 'RelaxKonOSGuardian', 'RelaxKonOSPrivilegedHelper') }
+    if ($Mode -eq 'windowsSystem') {
+        $names = @('RelaxKonOSServer', 'RelaxKonOSPrivilegedHelper')
+        if (Get-StateFlag (Read-InstallState (Get-ModeInstallState $Mode)) 'guardianEnabled') { $names += 'RelaxKonOSGuardian' }
+        return $names
+    }
     return @()
 }
 
@@ -643,6 +656,8 @@ function Get-SnapshotJson([string] $Mode, $State, [bool] $Healthy, [bool] $Insta
         healthy         = $Healthy
         dataRetained    = $DataRetained
         serviceNames    = $serviceNames
+        guardianRunning = if ($Mode -eq 'windowsSystem' -and (Get-StateFlag $State 'guardianEnabled')) { $guardianService = Get-Service -Name RelaxKonOSGuardian -ErrorAction SilentlyContinue; $null -ne $guardianService -and $guardianService.Status -eq 'Running' } else { $null }
+        guardianEnabled = Get-StateField $State 'guardianEnabled'
         verifiedAtUtc   = Get-NowUtc
     }
 }
@@ -1128,7 +1143,7 @@ function Invoke-Preflight {
     $installed = Get-StateFlag $state 'installed'
     if ($script:record.kind -eq 'install') {
         if ($installed) { Stop-Launcher 'server-deployment.already_installed' 'RelaxKonOS is already installed on this host; use upgrade or repair' }
-    } elseif ($script:record.kind -in @('upgrade', 'repair', 'rollback', 'uninstall')) {
+    } elseif ($script:record.kind -in @('upgrade', 'repair', 'configure', 'rollback', 'uninstall')) {
         if (-not $installed) { Stop-Launcher 'server-deployment.not_installed' 'RelaxKonOS is not installed on this host' }
     }
     if ($script:optionsMode -eq 'windowsUser' -and (Test-Administrator)) { Stop-Launcher 'server-deployment.invalid_request' 'Personal Mode must run without elevation' }
@@ -1225,12 +1240,13 @@ function Invoke-InstallLikeAction {
     if (-not $engine) { Stop-Launcher 'server-deployment.not_supported' 'no System Mode deployment engine is available on this host' }
 
     $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $engine, '-NonInteractive', '-Action', $script:record.kind, '-Mode', $script:optionsMode)
+    if ($null -ne $script:optionsGuardianEnabled) { $arguments += @('-GuardianEnabled', $script:optionsGuardianEnabled.ToString().ToLowerInvariant()) }
     $arguments += @('-Language', $script:optionsLanguage, '-InstallRoot', (Get-ModeInstallRoot $script:optionsMode), '-DataRoot', (Get-ModeDataRoot $script:optionsMode))
     if ($needsPackage) {
         $arguments += @('-BundlePath', $packageRoot)
     }
     if ($null -ne $script:optionsServerPort) { $arguments += @('-ServerPort', [string]$script:optionsServerPort) }
-    if ($script:optionsNetwork -and $script:record.kind -in @('install', 'upgrade')) { $arguments += @('-NetworkProfile', (Get-EngineNetworkProfile $script:optionsNetwork)) }
+    if ($script:optionsNetwork -and $script:record.kind -in @('install', 'upgrade', 'configure')) { $arguments += @('-NetworkProfile', (Get-EngineNetworkProfile $script:optionsNetwork)) }
     if ($script:optionsFileAccess) { $arguments += @('-FileAccess', $script:optionsFileAccess) }
     if ($Personal -and $script:optionsAddFirewallRule) { $arguments += @('-AddFirewallRule') }
     $roots = Get-LiteralOption 'fileRoots'
@@ -1399,7 +1415,7 @@ try {
     switch ($script:record.kind) {
         'probe' { Invoke-ProbeAction }
         'status' { Invoke-StatusAction }
-        { $_ -in @('install', 'upgrade', 'repair', 'rollback') } { Invoke-InstallLikeAction }
+        { $_ -in @('install', 'upgrade', 'repair', 'configure', 'rollback') } { Invoke-InstallLikeAction }
         'uninstall' { Invoke-UninstallAction }
     }
 } catch {

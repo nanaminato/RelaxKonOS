@@ -134,9 +134,11 @@ action_install_like() {
     linuxUser)
       engine=$(user_engine_path)
       local user_env=(env "RELAXKONOS_PORT=${options_server_port:-$(state_field "$(mode_install_state linuxUser)" listenUrl | sed -nE 's/.*:([0-9]+)$/\1/p')}" "RELAXKONOS_USER_DATA_ROOT=$(user_data_root)" "RELAXKONOS_USER_STATE_ROOT=$(user_state_root)" "RELAXKONOS_USER_CONFIG_ROOT=$(user_config_root)" "RELAXKONOS_USER_CACHE_ROOT=$(user_cache_root)")
+      [[ "$options_guardian_enabled" == null ]] || user_env+=("RELAXKONOS_GUARDIAN_ENABLED=$options_guardian_enabled")
       case "$operation_kind" in
         install) run_engine "${user_env[@]}" bash "$engine" install --port "${options_server_port:-5000}" --bundle "$package_root" "${package_check_args[@]}" || status=$? ;;
         upgrade) run_engine "${user_env[@]}" bash "$engine" upgrade --bundle "$package_root" "${package_check_args[@]}" || status=$? ;;
+        configure) run_engine "${user_env[@]}" bash "$engine" configure --port "$options_server_port" --network "$options_network" || status=$? ;;
         repair) run_engine "${user_env[@]}" bash "$engine" repair || status=$? ;;
         rollback) run_engine "${user_env[@]}" bash "$engine" rollback || status=$? ;;
       esac
@@ -150,6 +152,7 @@ action_install_like() {
       else
         engine=$(system_engine_path)
         arguments=(bash "$engine" --mode system --non-interactive --language "$options_language" --install-root "$(system_install_root)" --data-root "$(system_data_root)")
+        [[ "$options_guardian_enabled" == null ]] || arguments+=(--guardian-enabled "$options_guardian_enabled")
         [[ $options_allow_unsupported != true ]] || arguments+=(--allow-unsupported-system)
         # Upgrade and repair continue an existing installation; only install and upgrade consume the
         # staged package, so repair and rollback still work when no package was uploaded.
@@ -179,6 +182,10 @@ action_install_like() {
               [[ -n $options_self_signed_identities ]] || launcher_fail invalid_request "self-signed certificate names are required"
               arguments+=(--certificate-mode self-signed --self-signed-identities "$options_self_signed_identities")
             fi
+            ;;
+          configure)
+            arguments+=(--action configure --server-port "$options_server_port")
+            case "$options_network" in lan) arguments+=(--network lan);; *) arguments+=(--network local);; esac
             ;;
           repair)
             arguments+=(--action repair)

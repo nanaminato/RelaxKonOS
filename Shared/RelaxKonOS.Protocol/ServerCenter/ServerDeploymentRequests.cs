@@ -56,7 +56,8 @@ public sealed record ServerDeploymentOptions(
     [property: JsonPropertyName("dockerAccess")] bool DockerAccess = false,
     [property: JsonPropertyName("allowUnsupportedSystem")] bool AllowUnsupportedSystem = false,
     [property: JsonPropertyName("addFirewallRule")] bool AddFirewallRule = false,
-    [property: JsonPropertyName("removeComponents")] string RemoveComponents = "");
+    [property: JsonPropertyName("removeComponents")] string RemoveComponents = "",
+    [property: JsonPropertyName("guardianEnabled")] bool? GuardianEnabled = null);
 
 /// <summary>
 /// 安装标识：由部署引擎在首次安装时签发并写入安装清单，此后作为受管隧道的稳定身份。

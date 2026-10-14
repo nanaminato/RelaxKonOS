@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+GUARDIAN_ENABLED=true
+GUARDIAN_ENABLED_SET=false
 
 is_supported_linux_system() {
   case "$1-$2" in
@@ -61,6 +63,7 @@ while [[ $# -gt 0 ]]; do
     --release-catalog-base) RELEASE_CATALOG_BASE="${2:-}"; shift 2 ;;
     --install-root) INSTALL_ROOT="${2:-}"; shift 2 ;;
     --data-root) DATA_ROOT="${2:-}"; shift 2 ;;
+    --guardian-enabled) GUARDIAN_ENABLED="${2:-}"; GUARDIAN_ENABLED_SET=true; shift 2 ;;
     --network) NETWORK_PROFILE="${2:-}"; NETWORK_PROFILE_SET=true; shift 2 ;;
     --server-port) SERVER_PORT="${2:-}"; SERVER_PORT_SET=true; shift 2 ;;
     --certificate-mode) CERTIFICATE_MODE="${2:-}"; CERTIFICATE_MODE_SET=true; shift 2 ;;
@@ -97,7 +100,7 @@ case "$MODE" in
 esac
 
 case "$ACTION" in
-  install|upgrade|repair|rollback) ;;
+  install|upgrade|repair|rollback|configure) ;;
   *) echo 'Invalid --action; expected install, upgrade, repair or rollback.' >&2; exit 64 ;;
 esac
 # Upgrade, repair and rollback continue an existing installation and are only driven by the
@@ -206,9 +209,9 @@ write_install_state() { # version previousVersion
   install -d -o root -g root -m 0755 "$DATA_ROOT"
   temporary="$(state_file).new"
   umask 077
-  printf '{"schemaVersion":2,"installed":true,"mode":"linuxSystem","installationId":"%s","version":"%s","previousVersion":%s,"installedAtUtc":"%s","installRoot":"%s","dataRoot":"%s","networkProfile":"%s","listenUrl":"%s","certificateMode":"%s","fileAccess":"%s","administratorFileAccess":"%s","rootFileAccess":"%s","dockerAccess":%s}\n' \
+  printf '{"schemaVersion":2,"installed":true,"mode":"linuxSystem","installationId":"%s","version":"%s","previousVersion":%s,"installedAtUtc":"%s","installRoot":"%s","dataRoot":"%s","networkProfile":"%s","listenUrl":"%s","certificateMode":"%s","fileAccess":"%s","administratorFileAccess":"%s","rootFileAccess":"%s","dockerAccess":%s,"guardianEnabled":%s}\n' \
     "$INSTALLATION_ID" "$version" "$(json_string_or_null "$previous")" "$(date -u +%FT%TZ)" "$INSTALL_ROOT" "$DATA_ROOT" \
-    "$NETWORK_PROFILE" "$LISTEN_URL" "$CERTIFICATE_MODE" "$FILE_ACCESS" "$ADMINISTRATOR_FILE_ACCESS" "$ROOT_FILE_ACCESS" "$DOCKER_ACCESS" > "$temporary"
+    "$NETWORK_PROFILE" "$LISTEN_URL" "$CERTIFICATE_MODE" "$FILE_ACCESS" "$ADMINISTRATOR_FILE_ACCESS" "$ROOT_FILE_ACCESS" "$DOCKER_ACCESS" "$GUARDIAN_ENABLED" > "$temporary"
   chmod 0600 "$temporary"; mv -f -- "$temporary" "$(state_file)"
 }
 
@@ -268,6 +271,11 @@ else
     [[ "$recorded_id" == "$EXPECTED_INSTALLATION_ID" ]] || { echo 'The host installation id does not match the request.' >&2; exit 65; }
   fi
 fi
+if [[ "$GUARDIAN_ENABLED_SET" != true && -f "$(state_file)" ]]; then
+  GUARDIAN_ENABLED="$(state_flag guardianEnabled)"
+  [[ -n "$GUARDIAN_ENABLED" ]] || { echo "Installation record lacks Guardian selection; upgrade the deployment record." >&2; exit 65; }
+fi
+case "$GUARDIAN_ENABLED" in true|false) ;; *) echo "Invalid Guardian selection." >&2; exit 64 ;; esac
 # Settings the caller did not explicitly pass are inherited from the recorded installation instead
 # of silently reset to defaults, so repair and rollback keep the verified configuration.
 [[ "$NETWORK_PROFILE_SET" == true ]] || NETWORK_PROFILE="$(state_field networkProfile)"
@@ -293,7 +301,7 @@ for access in "$FILE_ACCESS" "$ADMINISTRATOR_FILE_ACCESS" "$ROOT_FILE_ACCESS"; d
   case "$access" in restricted|full|whitelist) ;; *) usage ;; esac
 done
 case "$CERTIFICATE_MODE" in none|custom|self-signed) ;; *) usage ;; esac
-if [[ "$FILE_ACCESS" == whitelist && -z "$FILE_ROOTS_FILE" && ( "$ACTION" == repair || "$ACTION" == rollback ) ]]; then
+if [[ "$FILE_ACCESS" == whitelist && -z "$FILE_ROOTS_FILE" && ( "$ACTION" == repair || "$ACTION" == configure || "$ACTION" == rollback ) ]]; then
   # The effective whitelist is already installed; reuse it instead of asking for the source file.
   FILE_ROOTS_FILE=/etc/relaxkonos/privileged-helper-roots
 fi
@@ -413,6 +421,20 @@ LISTEN_URL="$LISTEN_SCHEME://$LISTEN_HOST:$SERVER_PORT"
 case "$ACTION" in
   install) TARGET_VERSION="$MANIFEST_VERSION"; PREVIOUS_VERSION= ;;
   upgrade) TARGET_VERSION="$MANIFEST_VERSION"; PREVIOUS_VERSION="$RECORDED_VERSION" ;;
+  configure)
+    systemctl stop relaxkonos-server.service relaxkonos-guardian.service 2>/dev/null || true
+    if ! { run_services_installer "$TARGET_VERSION" "$LISTEN_URL" && verify_health; }; then
+      GUARDIAN_ENABLED="$(state_flag guardianEnabled)"
+      LISTEN_URL="$(state_field listenUrl)"
+      SERVER_PORT="${LISTEN_URL##*:}"
+      LISTEN_SCHEME="${LISTEN_URL%%:*}"
+      systemctl stop relaxkonos-server.service relaxkonos-guardian.service 2>/dev/null || true
+      if ! { run_services_installer "$TARGET_VERSION" "$LISTEN_URL" && verify_health; }; then
+        echo 'Configuration failed and recovery requires attention.' >&2; exit 70
+      fi
+      echo 'Configuration failed; previous settings restored.' >&2; exit 70
+    fi
+    ;;
   repair)
     TARGET_VERSION="$RECORDED_VERSION"
     [[ -n "$TARGET_VERSION" ]] || { echo 'There is no recorded version for --action repair.' >&2; exit 65; }
@@ -439,10 +461,12 @@ run_services_installer() { # version listenUrl
   [[ -f "$engine" ]] || { echo 'The installed RelaxKonOS deployment scripts are missing; reinstall or repair is required.' >&2; exit 65; }
   local server="$root/server/RelaxKonOS.Server" guardian="$root/guardian/RelaxKonOS.Guardian.Agent" helper="$root/privileged-helper/RelaxKonOS.PrivilegedHelper"
   local file
-  for file in "$server" "$guardian" "$helper"; do
+  local required_payload=("$server" "$helper")
+  [[ "$GUARDIAN_ENABLED" != true ]] || required_payload+=("$guardian")
+  for file in "${required_payload[@]}"; do
     [[ -f "$file" ]] || { echo "The payload for version $version is incomplete: $file" >&2; exit 65; }
   done
-  local arguments=("$INSTALL_ROOT" "$server" "$guardian" "$helper" "$SERVER_PORT" "$listen" relaxkonos-server --data-root "$DATA_ROOT" --file-access "$FILE_ACCESS" --administrator-file-access "$ADMINISTRATOR_FILE_ACCESS" --root-file-access "$ROOT_FILE_ACCESS" --certificate-mode "$SERVICES_CERTIFICATE_MODE")
+  local arguments=("$INSTALL_ROOT" "$server" "$guardian" "$helper" "$SERVER_PORT" "$listen" relaxkonos-server --data-root "$DATA_ROOT" --file-access "$FILE_ACCESS" --administrator-file-access "$ADMINISTRATOR_FILE_ACCESS" --root-file-access "$ROOT_FILE_ACCESS" --certificate-mode "$SERVICES_CERTIFICATE_MODE" --guardian-enabled "$GUARDIAN_ENABLED")
   [[ "$DOCKER_ACCESS" == true ]] && arguments+=(--docker-access)
   [[ -n "$FILE_ROOTS_FILE" ]] && arguments+=(--file-roots "$FILE_ROOTS_FILE")
   [[ -n "$ADMINISTRATOR_FILE_ROOTS_FILE" ]] && arguments+=(--administrator-file-roots "$ADMINISTRATOR_FILE_ROOTS_FILE")
@@ -459,7 +483,9 @@ verify_health() {
   [[ "$LISTEN_SCHEME" != https ]] || arguments+=(--insecure)
   command -v curl >/dev/null || { echo 'curl is required to verify server health.' >&2; return 1; }
   while (( SECONDS < deadline )); do
-    if curl "${arguments[@]}" "${LISTEN_SCHEME}://127.0.0.1:$SERVER_PORT/healthz" >/dev/null; then return 0; fi
+    if curl "${arguments[@]}" "${LISTEN_SCHEME}://127.0.0.1:$SERVER_PORT/healthz" >/dev/null; then
+      if [[ "$GUARDIAN_ENABLED" != true ]] || "$(version_root "$TARGET_VERSION")/server/RelaxKonOS.Server" guardian-health --environment-file /etc/relaxkonos/server.env; then return 0; fi
+    fi
     sleep 1
   done
   echo 'Server health endpoint did not respond successfully within 60 seconds.' >&2
@@ -488,6 +514,20 @@ case "$ACTION" in
         run_services_installer "$PREVIOUS_VERSION" "$LISTEN_URL" || true
       fi
       exit 70
+    fi
+    ;;
+  configure)
+    systemctl stop relaxkonos-server.service relaxkonos-guardian.service 2>/dev/null || true
+    if ! { run_services_installer "$TARGET_VERSION" "$LISTEN_URL" && verify_health; }; then
+      GUARDIAN_ENABLED="$(state_flag guardianEnabled)"
+      LISTEN_URL="$(state_field listenUrl)"
+      SERVER_PORT="${LISTEN_URL##*:}"
+      LISTEN_SCHEME="${LISTEN_URL%%:*}"
+      systemctl stop relaxkonos-server.service relaxkonos-guardian.service 2>/dev/null || true
+      if ! { run_services_installer "$TARGET_VERSION" "$LISTEN_URL" && verify_health; }; then
+        echo 'Configuration failed and recovery requires attention.' >&2; exit 70
+      fi
+      echo 'Configuration failed; previous settings restored.' >&2; exit 70
     fi
     ;;
   repair)

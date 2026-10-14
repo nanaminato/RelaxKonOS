@@ -5,6 +5,8 @@ using Avalonia.Media;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Protocol.ServerCenter;
+using RelaxKonOS.Client.Services.Dialogs;
+using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 
 namespace RelaxKonOS.Client.Views.Login;
 
@@ -28,13 +30,13 @@ public sealed class LocalServerMaintenanceWindow : Window
     public LocalServerMaintenanceWindow(ServerDeploymentKind kind, ServerHostSnapshotDto reviewed,
         LocalWindowsServerInstaller installer, LoginLocalizationService localization)
     {
-        if (kind is not (ServerDeploymentKind.Repair or ServerDeploymentKind.Rollback or ServerDeploymentKind.Uninstall))
+        if (kind is not (ServerDeploymentKind.Repair or ServerDeploymentKind.Configure or ServerDeploymentKind.Rollback or ServerDeploymentKind.Uninstall))
             throw new ArgumentOutOfRangeException(nameof(kind));
         _kind = kind;
         Snapshot = reviewed;
         _installer = installer;
         _localization = localization;
-        Title = kind == ServerDeploymentKind.Repair ? T("repair", "Repair") :
+        Title = kind == ServerDeploymentKind.Configure ? T("settings", "Installation settings / components") : kind == ServerDeploymentKind.Repair ? T("repair", "Repair") :
             kind == ServerDeploymentKind.Rollback ? T("rollback", "Restore previous version") : T("uninstall", "Uninstall");
         Width = 640;
         Height = 620;
@@ -80,6 +82,23 @@ public sealed class LocalServerMaintenanceWindow : Window
         panel.Children.Add(firewallHeader);
         panel.Children.Add(firewall);
         panel.Children.Add(new TextBlock { Text = T("firewall_note", "Only network listeners need an inbound rule. Loopback listeners are skipped. Rules are repaired only on active networks with the firewall enabled; the firewall itself is never enabled automatically."), TextWrapping = TextWrapping.Wrap, IsVisible = kind == ServerDeploymentKind.Repair });
+        var endpoint = Uri.TryCreate(reviewed.ListenUrl, UriKind.Absolute, out var observedEndpoint) ? observedEndpoint : new Uri("http://127.0.0.1:5000");
+        var port = new TextBox { Text = endpoint.Port.ToString(), IsVisible = kind == ServerDeploymentKind.Configure };
+        var lan = new CheckBox { Content = T("lan", "Allow LAN access"), IsChecked = endpoint.Host == "0.0.0.0", IsVisible = kind == ServerDeploymentKind.Configure };
+        var guardian = new CheckBox { Content = T("guardian", "Install process guardian"), IsChecked = reviewed.GuardianEnabled == true, IsVisible = kind == ServerDeploymentKind.Configure && reviewed.Mode == ServerInstallMode.WindowsSystem };
+        panel.Children.Add(port); panel.Children.Add(lan); panel.Children.Add(guardian);
+        if (kind == ServerDeploymentKind.Configure)
+            _ = new NativeDraftCloseGuard(this, () => _busy, () => !_finished &&
+                (port.Text != endpoint.Port.ToString() || lan.IsChecked != (endpoint.Host == "0.0.0.0") || guardian.IsChecked != (reviewed.GuardianEnabled == true)),
+                async () =>
+                {
+                    var prompt = new Window { Title = _localization.Get("common.discard_title", "Discard changes?"), Width = 480, Height = 240, WindowStartupLocation = WindowStartupLocation.CenterOwner };
+                    prompt.Content = new ConfirmDialogView { DataContext = new ConfirmDialogViewModel(
+                        _localization.Get("common.discard_message", "Discard unsaved changes and close this editor?"),
+                        accepted => prompt.Close(accepted), _localization.Get("common.discard", "Discard"), _localization.Get("common.cancel", "Cancel")) };
+                    return await prompt.ShowDialog<bool>(this);
+                }, () => { });
+        if (kind == ServerDeploymentKind.Configure) panel.Children.Add(LocalManagementLayout.Text(T("settings_note", "Services restart. Removing Guardian stops its workloads and retains definitions and logs. TLS identity is preserved."), 13, true));
         var confirm = _confirm = new Button { Content = T("confirm", "Confirm and request administrator permission") };
         var error = new TextBlock { TextWrapping = TextWrapping.Wrap };
         confirm.Click += (_, _) =>
@@ -94,13 +113,20 @@ public sealed class LocalServerMaintenanceWindow : Window
                 error.Text = T("certificate_names_required", "Enter certificate DNS names or IP addresses.");
                 return;
             }
+            if (kind == ServerDeploymentKind.Configure)
+            {
+                if (!int.TryParse(port.Text, out var configuredPort) || configuredPort is < 1 or > 65535) { error.Text = T("invalid_port", "Enter a port from 1 to 65535."); return; }
+                _ = RunAsync(async () => Snapshot = await _installer.ConfigureAsync(reviewed,
+                    _localization.CurrentLanguage, configuredPort, lan.IsChecked == true, guardian.IsChecked == true));
+                return;
+            }
             _ = RunAsync(async () => Snapshot = await _installer.MaintainAsync(kind, reviewed,
                 _localization.CurrentLanguage, true, removeData.IsChecked == true ? ServerDataRetention.Delete : ServerDataRetention.Retain,
                 regenerate.IsChecked == true, identities.Text, firewall.IsChecked == true), firewall.IsChecked == true);
         };
         confirm.Classes.Add("accent");
         confirm.Padding = new Thickness(16, 10);
-        confirm.Content = LocalManagementLayout.Text(kind == ServerDeploymentKind.Repair ? T("repair", "Repair") : kind == ServerDeploymentKind.Rollback ? T("rollback", "Restore previous version") : T("uninstall", "Uninstall"));
+        confirm.Content = LocalManagementLayout.Text(kind == ServerDeploymentKind.Configure ? T("apply_settings", "Apply and verify") : kind == ServerDeploymentKind.Repair ? T("repair", "Repair") : kind == ServerDeploymentKind.Rollback ? T("rollback", "Restore previous version") : T("uninstall", "Uninstall"));
         ToolTip.SetTip(confirm, T("confirm", "Confirm and request administrator permission"));
         Avalonia.Automation.AutomationProperties.SetName(confirm, Title);
         panel.Children.Add(error);

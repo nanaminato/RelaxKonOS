@@ -14,7 +14,7 @@ preflight_install() {
   case "$operation_kind" in
     install) [[ $installed != true ]] || launcher_fail already_installed "RelaxKonOS is already installed on this host; use upgrade or repair";;
     repair) [[ $installed == true || $options_mode == linuxSystem ]] || launcher_fail not_installed "RelaxKonOS is not installed on this host";;
-    upgrade|rollback|uninstall) [[ $installed == true ]] || launcher_fail not_installed "RelaxKonOS is not installed on this host";;
+    upgrade|configure|rollback|uninstall) [[ $installed == true ]] || launcher_fail not_installed "RelaxKonOS is not installed on this host";;
   esac
   case "$options_mode" in
     linuxSystem)

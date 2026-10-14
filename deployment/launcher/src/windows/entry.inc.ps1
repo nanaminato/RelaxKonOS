@@ -72,7 +72,7 @@ try {
     switch ($script:record.kind) {
         'probe' { Invoke-ProbeAction }
         'status' { Invoke-StatusAction }
-        { $_ -in @('install', 'upgrade', 'repair', 'rollback') } { Invoke-InstallLikeAction }
+        { $_ -in @('install', 'upgrade', 'repair', 'configure', 'rollback') } { Invoke-InstallLikeAction }
         'uninstall' { Invoke-UninstallAction }
     }
 } catch {

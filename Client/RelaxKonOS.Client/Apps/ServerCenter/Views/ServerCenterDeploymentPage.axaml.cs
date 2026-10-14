@@ -23,6 +23,13 @@ public partial class ServerCenterDeploymentPage : UserControl
     {
         if (sender is Button { Tag: string section } && DataContext is ServerCenterViewModel { IsBusy: false } viewModel
             && viewModel.ShowManagementDialogAsync is { } show)
+        {
+            if (section is "settings" or "components" or "repair")
+            {
+                await viewModel.ProbeHostCommand.ExecuteAsync(null);
+                if (section is "settings" or "components" && !viewModel.PrepareConfiguration()) return;
+            }
             await show(section);
+        }
     }
 }

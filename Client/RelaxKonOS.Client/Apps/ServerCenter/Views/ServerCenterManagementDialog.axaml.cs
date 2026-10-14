@@ -15,13 +15,19 @@ public partial class ServerCenterManagementDialog : UserControl
         InitializeComponent();
         DataContext = viewModel;
         _close = dialog.Cancel;
+        var configuration = (viewModel.ConfigurationPort, viewModel.ConfigurationLan, viewModel.ConfigurationGuardian);
         var repair = (viewModel.MaintenanceAddFirewallRule, viewModel.RepairLanCertificate, viewModel.RepairCertificateIdentities);
         var uninstall = (viewModel.RemoveSmb, viewModel.RemoveNginx, viewModel.RemoveFrp, viewModel.RemoveMihomo, viewModel.DeleteServerData);
         DraftDialogGuard.Attach(dialog, () => viewModel.IsBusy,
-            () => section == "repair"
+            () => section is "settings" or "components"
+                ? configuration != (viewModel.ConfigurationPort, viewModel.ConfigurationLan, viewModel.ConfigurationGuardian)
+                : section == "repair"
                 ? repair != (viewModel.MaintenanceAddFirewallRule, viewModel.RepairLanCertificate, viewModel.RepairCertificateIdentities)
                 : section == "uninstall" && uninstall != (viewModel.RemoveSmb, viewModel.RemoveNginx, viewModel.RemoveFrp, viewModel.RemoveMihomo, viewModel.DeleteServerData));
-        DetailsPanel.IsVisible = section == "details";
+        ConfigurationPanel.IsVisible = ConfigureButton.IsVisible = section is "settings" or "components";
+        NetworkSettingsPanel.IsVisible = section == "settings";
+        GuardianChoice.IsVisible = section == "components" && viewModel.CanConfigureGuardian;
+        DetailsPanel.IsVisible = section is "details" or "repair";
         RepairPanel.IsVisible = RepairButton.IsVisible = section == "repair";
         UninstallPanel.IsVisible = UninstallButton.IsVisible = section == "uninstall";
     }

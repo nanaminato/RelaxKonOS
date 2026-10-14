@@ -31,6 +31,9 @@ public sealed partial class ProcessGuardianViewModel(IProcessGuardianClient clie
     [ObservableProperty] private string _runAs = string.Empty;
     [ObservableProperty] private bool _enabledOnBoot;
 
+    [ObservableProperty] private bool _agentNeedsInstallation;
+    public Action? OpenComponentManagement { get; set; }
+    [RelayCommand] private void ManageInstallation() => OpenComponentManagement?.Invoke();
     public Func<bool, Task>? ShowEditorAsync { get; set; }
     public Func<GuardianWorkloadDto, Task>? ShowLogsAsync { get; set; }
     public Func<Task>? CloseEditorAsync { get; set; }
@@ -50,7 +53,8 @@ public sealed partial class ProcessGuardianViewModel(IProcessGuardianClient clie
         {
             // These are deliberately sequential: the Agent's pipe server has one instance.
             var status = await client.GetStatusAsync();
-            var workloads = await client.ListWorkloadsAsync();
+            AgentNeedsInstallation = status.ProblemCode is "guardian.agent_not_configured" or "guardian.agent_not_installed";
+            var workloads = status.IsInstalled ? await client.ListWorkloadsAsync() : Array.Empty<GuardianWorkloadDto>();
             StatusText = status.IsInstalled
                 ? LocalizedText.Ref("guardian.status.available", status.Version ?? "")
                 : PrivilegedHelperProblemText.TryFormat(status.ProblemCode, out var helperMessage)

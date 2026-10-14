@@ -71,6 +71,35 @@ public sealed class LocalWindowsServerInstaller(
         return after;
     }
 
+    public async Task<ServerHostSnapshotDto> ConfigureAsync(ServerHostSnapshotDto reviewed, string language,
+        int port, bool lan, bool guardianEnabled, CancellationToken cancellationToken = default)
+    {
+        LastOperationId = null;
+        if (!reviewed.Installed || reviewed.Mode != Mode || reviewed.GuardianEnabled is null ||
+            !ServerInstallationId.IsValid(reviewed.InstallationId) || port is < 1 or > 65535 ||
+            Mode == ServerInstallMode.WindowsUser && guardianEnabled)
+            throw new ArgumentException("Review valid installation settings first.");
+        await using var session = await sessions.OpenAsync(Mode, cancellationToken).ConfigureAwait(false);
+        var current = await ReadStatusAsync(session, cancellationToken).ConfigureAwait(false);
+        if (current.InstallationId != reviewed.InstallationId || current.Version != reviewed.Version ||
+            current.ListenUrl != reviewed.ListenUrl || current.GuardianEnabled != reviewed.GuardianEnabled ||
+            current.InstallRoot != reviewed.InstallRoot || current.DataRoot != reviewed.DataRoot)
+            throw new InvalidDataException("The installation changed; refresh and review it again.");
+        var options = new ServerDeploymentOptions(ServerPackageSourceKind.OfficialStable,
+            lan ? ServerNetworkProfile.Lan : ServerNetworkProfile.Loopback, Mode: Mode,
+            ExpectedInstallationId: current.InstallationId, ServerPort: port, Confirmed: true,
+            Language: language, InstallRoot: current.InstallRoot, DataRoot: current.DataRoot,
+            GuardianEnabled: guardianEnabled);
+        await ExecuteRecordedAsync(session, new(ServerDeploymentProtocol.Version, Guid.NewGuid(),
+            ServerDeploymentKind.Configure, options), cancellationToken).ConfigureAwait(false);
+        var after = await ReadStatusAsync(session, cancellationToken).ConfigureAwait(false);
+        if (!after.Installed || !after.Healthy || after.InstallationId != current.InstallationId ||
+            after.GuardianEnabled != guardianEnabled || !Uri.TryCreate(after.ListenUrl, UriKind.Absolute, out var endpoint) ||
+            endpoint.Port != port || endpoint.Host != (lan ? "0.0.0.0" : "127.0.0.1"))
+            throw new InvalidDataException("Configured installation did not match the requested settings.");
+        return after;
+    }
+
     private async Task<ServerHostSnapshotDto> ReadStatusAsync(ILocalWindowsDeploymentSession session, CancellationToken ct)
     {
         var receipt = await ExecuteRecordedAsync(session, new(ServerDeploymentProtocol.Version, Guid.NewGuid(),
@@ -154,7 +183,8 @@ public sealed class LocalWindowsServerInstaller(
             CertificateMode: installation.CertificateMode, SelfSignedIdentities: installation.SelfSignedIdentities,
             Confirmed: true, Language: language, ReleaseCatalogBaseUri: installation.ReleaseCatalogBaseUri,
             InstallRoot: installation.InstallRoot, DataRoot: installation.DataRoot, FileRoots: installation.FileRoots,
-            AddFirewallRule: installation.Network == ServerNetworkProfile.Lan && installation.AddFirewallRule);
+            AddFirewallRule: installation.Network == ServerNetworkProfile.Lan && installation.AddFirewallRule,
+            GuardianEnabled: kind == ServerDeploymentKind.Install ? installation.GuardianEnabled && Mode != ServerInstallMode.WindowsUser : null);
         stage?.Report(kind == ServerDeploymentKind.Upgrade ? "upgrading" : "installing");
         var installed = await Execute(new(ServerDeploymentProtocol.Version, Guid.NewGuid(), kind, options), archive,
             preparedCertificate, installation.CertificatePassword);

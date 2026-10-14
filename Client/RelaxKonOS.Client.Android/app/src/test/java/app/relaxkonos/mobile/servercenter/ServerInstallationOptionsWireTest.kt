@@ -8,6 +8,12 @@ import java.util.UUID
 
 class ServerInstallationOptionsWireTest {
     @Test
+    fun `explicitly skipped Guardian stays false rather than preserve null`() {
+        val fields = wireOptions(ServerDeploymentOptions(ServerPackageSourceKind.OfficialStable,
+            ServerNetworkProfile.Loopback, guardianEnabled = false))
+        assertFalse(fields.getValue("guardianEnabled").asBoolean())
+    }
+    @Test
     fun `advanced options preserve types and escaped paths for the host launcher`() {
         val options = ServerDeploymentOptions(ServerPackageSourceKind.DirectUrl, ServerNetworkProfile.Lan,
             mode = ServerInstallMode.LinuxSystem, packageUri = "https://example.invalid/server.zip",

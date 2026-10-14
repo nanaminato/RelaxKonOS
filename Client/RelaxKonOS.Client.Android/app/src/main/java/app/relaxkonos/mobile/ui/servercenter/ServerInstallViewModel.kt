@@ -89,6 +89,7 @@ internal data class ServerInstallAdvancedOptions(
     val rootFileRoots: String = "",
     val dockerAccess: Boolean = false,
     val addFirewallRule: Boolean = false,
+    val guardianEnabled: Boolean = true,
     val allowUnsupportedSystem: Boolean = false,
 ) : java.io.Serializable
 
@@ -315,6 +316,7 @@ internal class ServerInstallViewModel(application: Application) : AndroidViewMod
                     administratorFileRoots = selection.advanced.administratorFileRoots.lines().map(String::trim).filter(String::isNotEmpty).takeIf { selection.advanced.administratorFileAccess == "whitelist" && mode == ServerInstallMode.LinuxSystem },
                     rootFileAccess = selection.advanced.rootFileAccess.takeIf { mode == ServerInstallMode.LinuxSystem },
                     rootFileRoots = selection.advanced.rootFileRoots.lines().map(String::trim).filter(String::isNotEmpty).takeIf { selection.advanced.rootFileAccess == "whitelist" && mode == ServerInstallMode.LinuxSystem },
+                    guardianEnabled = selection.advanced.guardianEnabled.takeIf { kind == ServerDeploymentKind.Install },
                     addFirewallRule = selection.advanced.addFirewallRule && mode != ServerInstallMode.LinuxUser && selection.network == "lan",
                     dockerAccess = selection.advanced.dockerAccess && mode == ServerInstallMode.LinuxSystem,
                     allowUnsupportedSystem = selection.advanced.allowUnsupportedSystem && platform == ServerHostPlatform.Linux,

@@ -193,8 +193,8 @@ internal static class ServerCenterContractChecks
 
     private static void VerifyModeMatrix()
     {
-        Check(ServerDeploymentModeMatrix.All.Count == 3, "能力矩阵覆盖三种模式");
-        Check(ServerDeploymentModeMatrix.All.Select(m => m.Mode).Distinct().Count() == 3, "三种模式互不相同");
+        Check(ServerDeploymentModeMatrix.All.Count == 4, "能力矩阵覆盖四种模式");
+        Check(ServerDeploymentModeMatrix.All.Select(m => m.Mode).Distinct().Count() == 4, "四种模式互不相同");
         foreach (var mode in Enum.GetValues<ServerInstallMode>())
             Check(ServerDeploymentModeMatrix.For(mode).Mode == mode, $"For({mode}) 返回同一模式");
 

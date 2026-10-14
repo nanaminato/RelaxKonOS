@@ -150,7 +150,7 @@ public static class LocalWindowsDeploymentBroker
         if (request.Kind is ServerDeploymentKind.Install or ServerDeploymentKind.Upgrade &&
             request.Options is not { Confirmed: true, Mode: ServerInstallMode.WindowsSystem or ServerInstallMode.WindowsUser })
             throw new InvalidDataException("An explicitly reviewed Windows installation is required.");
-        if (request.Kind is ServerDeploymentKind.Upgrade or ServerDeploymentKind.Repair or ServerDeploymentKind.Rollback or ServerDeploymentKind.Uninstall &&
+        if (request.Kind is ServerDeploymentKind.Upgrade or ServerDeploymentKind.Repair or ServerDeploymentKind.Configure or ServerDeploymentKind.Rollback or ServerDeploymentKind.Uninstall &&
             (request.Options is not { Confirmed: true, Mode: ServerInstallMode.WindowsSystem or ServerInstallMode.WindowsUser } ||
              !ServerInstallationId.IsValid(request.Options.ExpectedInstallationId)))
             throw new InvalidDataException("A reviewed lifecycle action bound to the installed identity is required.");

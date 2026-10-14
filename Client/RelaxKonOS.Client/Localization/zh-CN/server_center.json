@@ -251,6 +251,18 @@
     "server_center.remove_smb": "移除受管 SMB 共享",
     "server_center.remove_nginx": "移除受管 Nginx",
     "server_center.remove_frp": "移除受管 FRP",
-    "server_center.remove_mihomo": "移除受管 Mihomo"
+    "server_center.remove_mihomo": "移除受管 Mihomo",
+    "server_center.components": "组件",
+    "server_center.installation_settings": "安装设置",
+    "server_center.apply_configuration": "应用并验证",
+    "server_center.guardian_choice": "安装进程守护",
+    "server_center.configuration_lan": "允许局域网访问（所有网络接口）",
+    "server_center.configuration_port": "监听端口",
+    "server_center.configuration_note": "应用后将重启服务。移除进程守护会停止其工作负载，保留定义和日志。现有证书保持不变；完成后请核对连接地址。",
+    "server_center.configuration_unknown": "请先刷新安装状态；读取完整配置后才能保存。",
+    "server_center.configuration_changed": "安装状态已变化，请刷新并重新核对设置。",
+    "server_center.configuration_succeeded": "安装设置已应用并验证，请核对新的连接地址。",
+    "server_center.guardian_running": "守护进程运行中",
+    "server_center.repair_plan": "修复会重新应用当前版本的服务与配置，保留组件选择、端口、文件权限和现有证书。已选择的守护还需通过认证 IPC 检查。下方证书重新生成与防火墙更改是额外的显式操作。"
   }
 }

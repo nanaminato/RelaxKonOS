@@ -176,9 +176,13 @@ def recovery_state(root=Path("/opt/relaxkonos"), data=Path("/var/lib/relaxkonos"
         raise ValueError('Current version does not point to a managed version directory')
     def show(unit, field):
         return subprocess.check_output(['systemctl','show',unit,'--property='+field,'--value'],text=True).strip()
+    environment = dict(line.split('=',1) for line in trusted(config/'server.env').read_text().splitlines() if line and not line.startswith('#') and '=' in line)
+    enabled = environment.get('GuardianAgent__Enabled')
+    if enabled not in ('true','false'): raise ValueError('Guardian selection is missing from host configuration')
     for unit, folder, executable, user in (
         ('relaxkonos-server.service','server','RelaxKonOS.Server','relaxkonos-server'),
         ('relaxkonos-guardian.service','guardian','RelaxKonOS.Guardian.Agent','')):
+        if folder == 'guardian' and enabled == 'false': continue
         binary = trusted(current/folder/executable)
         with binary.open('rb') as binary_stream: magic = binary_stream.read(4)
         if magic != b'\x7fELF': raise ValueError('Invalid deployed executable: ' + executable)
@@ -226,7 +230,7 @@ def recovery_state(root=Path("/opt/relaxkonos"), data=Path("/var/lib/relaxkonos"
                  previousVersion=None,installedAtUtc=datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
                  installRoot=str(root),dataRoot=str(data),networkProfile='lan' if '0.0.0.0' in url else 'local',listenUrl=url,
                  certificateMode=certificate,fileAccess=access(''),administratorFileAccess=access('-administrator'),
-                 rootFileAccess=access('-root'),dockerAccess=docker.exists())
+                 rootFileAccess=access('-root'),dockerAccess=docker.exists(),guardianEnabled=enabled=='true')
     trusted(data)
     # Publish atomically without overwriting a record created by another operation.
     descriptor, temporary = tempfile.mkstemp(prefix='.recovery-',dir=data)
@@ -258,11 +262,11 @@ def request(path):
     root = {'schemaVersion', 'operationId', 'kind', 'options'}
     keys = {'source','network','retention','mode','version','packageUri','stagedPackageName',
             'packageDigest','remotePackagePath','expectedInstallationId','serverPort','fileAccess',
-            'certificateMode','selfSignedIdentities','confirmed','language','releaseCatalogBaseUri','installRoot','dataRoot','configRoot','stateRoot','cacheRoot','fileRoots','administratorFileAccess','administratorFileRoots','rootFileAccess','rootFileRoots','dockerAccess','allowUnsupportedSystem','addFirewallRule','removeComponents'}
+            'certificateMode','selfSignedIdentities','confirmed','language','releaseCatalogBaseUri','installRoot','dataRoot','configRoot','stateRoot','cacheRoot','fileRoots','administratorFileAccess','administratorFileRoots','rootFileAccess','rootFileRoots','dockerAccess','allowUnsupportedSystem','addFirewallRule','removeComponents','guardianEnabled'}
     if type(value) is not dict or set(value) - root: raise ValueError('request fields')
     if type(value.get('schemaVersion')) is not int or value['schemaVersion'] != 1: raise ValueError('schema')
     if not isinstance(value.get('operationId'), str) or not re.fullmatch(r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}',value['operationId']): raise ValueError('id')
-    if value.get('kind') not in {'probe','install','upgrade','repair','uninstall','status','rollback'}: raise ValueError('kind')
+    if value.get('kind') not in {'probe','install','upgrade','repair','configure','uninstall','status','rollback'}: raise ValueError('kind')
     options = value.get('options')
     if options is not None:
         if type(options) is not dict or set(options) - keys: raise ValueError('options fields')
@@ -271,6 +275,7 @@ def request(path):
         for key, item in options.items():
             if key in ('confirmed','dockerAccess','allowUnsupportedSystem','addFirewallRule'): valid = type(item) is bool
             elif key in ('fileRoots','administratorFileRoots','rootFileRoots'): valid = item is None or type(item) is list and len(item) <= 128 and all(type(p) is str and p.startswith('/') and not any(ord(c)<32 for c in p) for p in item)
+            elif key == 'guardianEnabled': valid = item is None or type(item) is bool
             elif key == 'serverPort': valid = item is None or type(item) is int
             elif key in ('source','network','retention'): valid = type(item) is str
             else: valid = item is None or type(item) is str
@@ -419,7 +424,7 @@ assert_request_keys() {
   while IFS= read -r key; do
     [[ -n $key ]] || continue
     case "$key" in
-      schemaVersion|operationId|kind|options|source|network|retention|mode|version|packageUri|stagedPackageName|packageDigest|remotePackagePath|expectedInstallationId|serverPort|fileAccess|certificateMode|selfSignedIdentities|confirmed|language|releaseCatalogBaseUri|installRoot|dataRoot|configRoot|stateRoot|cacheRoot|fileRoots|administratorFileAccess|administratorFileRoots|rootFileAccess|rootFileRoots|dockerAccess|allowUnsupportedSystem|addFirewallRule|removeComponents) ;;
+      schemaVersion|operationId|kind|options|source|network|retention|mode|version|packageUri|stagedPackageName|packageDigest|remotePackagePath|expectedInstallationId|serverPort|fileAccess|certificateMode|selfSignedIdentities|confirmed|language|releaseCatalogBaseUri|installRoot|dataRoot|configRoot|stateRoot|cacheRoot|fileRoots|administratorFileAccess|administratorFileRoots|rootFileAccess|rootFileRoots|dockerAccess|allowUnsupportedSystem|addFirewallRule|removeComponents|guardianEnabled) ;;
       *) launcher_fail invalid_request "unsupported request field: $key" ;;
     esac
   done <<< "$keys"
@@ -467,7 +472,7 @@ parse_request() {
   operation_id=${operation_raw,,}
   kind=$(json_text kind)
   case "$kind" in
-    probe|install|upgrade|repair|uninstall|status|rollback) ;;
+    probe|install|upgrade|repair|configure|uninstall|status|rollback) ;;
     '') launcher_fail unknown_action "request kind is missing" ;;
     *) launcher_fail unknown_action "unsupported action: $kind" ;;
   esac
@@ -486,6 +491,10 @@ parse_request() {
   options_remote_path=$(json_text remotePackagePath)
   options_expected_installation_id=$(json_text expectedInstallationId)
   local port_raw; port_raw=$(json_literal serverPort); [[ $port_raw != null ]] && options_server_port=$port_raw
+  options_guardian_enabled=$(json_literal guardianEnabled)
+  case "$options_guardian_enabled" in true|false|null) ;; *) launcher_fail invalid_request "guardianEnabled must be a boolean or null" ;; esac
+  if [[ "$options_guardian_enabled" != null && $kind != install && $kind != configure ]]; then launcher_fail invalid_request "Guardian selection requires install or configure"; fi
+  if [[ $kind == configure && ( -z $options_server_port || $(json_literal confirmed) != true ) ]]; then launcher_fail invalid_request "Configure requires port and confirmation"; fi
   options_file_access=$(json_text fileAccess)
   options_certificate_mode=$(json_text certificateMode)
   options_self_signed_identities=$(json_text selfSignedIdentities)
@@ -554,6 +563,10 @@ parse_request() {
   if [[ $options_retention == delete && $options_confirmed != true ]]; then
     launcher_fail confirmation_required "deleting data requires explicit confirmation"
   fi
+  if [[ $operation_kind == configure ]]; then
+    [[ -n $options_expected_installation_id && $options_confirmed == true && ( $options_network == loopback || $options_network == lan ) ]] || launcher_fail invalid_request "Configure requires installed identity, supported network and confirmation"
+    [[ -z $options_file_access$options_certificate_mode$options_self_signed_identities$options_administrator_access$options_root_access && $options_docker == false && $options_retention == retain ]] || launcher_fail invalid_request "Configure accepts only network, port and Guardian settings"
+  fi
   case "$operation_kind" in
     install|upgrade)
       [[ -n $options_mode ]] || launcher_fail invalid_request "installation mode is required"
@@ -570,7 +583,7 @@ parse_request() {
       *) launcher_fail invalid_request "unsupported installation source" ;;
     esac
       ;;
-    repair|rollback|uninstall|status) [[ -n $options_mode ]] || launcher_fail invalid_request "installation mode is required";;
+    repair|configure|rollback|uninstall|status) [[ -n $options_mode ]] || launcher_fail invalid_request "installation mode is required";;
   esac
 }
 
@@ -646,7 +659,7 @@ mode_listen_url() {
 }
 mode_service_names() {
   case "$1" in
-    linuxSystem) printf '["relaxkonos-server.service","relaxkonos-guardian.service"]';;
+    linuxSystem) if [[ $(state_flag "$(mode_install_state "$1")" guardianEnabled) == true ]]; then printf '["relaxkonos-server.service","relaxkonos-guardian.service"]'; else printf '["relaxkonos-server.service"]'; fi;;
     windowsSystem) printf '["RelaxKonOSServer","RelaxKonOSGuardian","RelaxKonOSPrivilegedHelper"]';;
     *) printf '[]';;
   esac
@@ -654,11 +667,21 @@ mode_service_names() {
 # The snapshot always carries the time it was verified; an offline cache must never be shown as
 # live health, so the client is required to display this timestamp.
 snapshot_json() { # mode stateFile healthy installed dataRetained
-  printf '{"installationId":%s,"installed":%s,"mode":"%s","version":%s,"previousVersion":%s,"installRoot":%s,"dataRoot":%s,"listenUrl":%s,"healthy":%s,"dataRetained":%s,"serviceNames":%s,"verifiedAtUtc":"%s"}' \
+  local guardian_choice guardian_running=null; guardian_choice=$(state_flag "$2" guardianEnabled)
+  if [[ $guardian_choice == true && $4 == true ]]; then
+    if [[ $1 == linuxSystem ]]; then
+      if systemctl is-active --quiet relaxkonos-guardian.service; then guardian_running=true; else guardian_running=false; fi
+    elif [[ $1 == linuxUser ]]; then
+      local pid started; pid=$(cat "$(user_state_root)/run/guardian.pid" 2>/dev/null || true); started=$(cat "$(user_state_root)/run/guardian.starttime" 2>/dev/null || true)
+      guardian_running=false
+      if [[ $pid =~ ^[0-9]+$ && -n $started && $(stat -c %u "/proc/$pid" 2>/dev/null || true) == $UID && $(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null || true) == "$started" ]]; then guardian_running=true; fi
+    fi
+  fi
+  printf '{"installationId":%s,"installed":%s,"mode":"%s","version":%s,"previousVersion":%s,"installRoot":%s,"dataRoot":%s,"listenUrl":%s,"healthy":%s,"dataRetained":%s,"serviceNames":%s,"verifiedAtUtc":"%s","guardianEnabled":%s,"guardianRunning":%s}' \
     "$(json_string_or_null "$(state_field "$2" installationId)")" "$4" "$1" \
     "$(json_string_or_null "$(state_field "$2" version)")" "$(json_string_or_null "$(state_field "$2" previousVersion)")" \
     "$(json_string_or_null "$(mode_install_root "$1")")" "$(json_string_or_null "$(mode_data_root "$1")")" \
-    "$(json_string_or_null "$(mode_listen_url "$1")")" "$3" "$5" "$(mode_service_names "$1")" "$(now_utc)"
+    "$(json_string_or_null "$(mode_listen_url "$1")")" "$3" "$5" "$(mode_service_names "$1")" "$(now_utc)" "${guardian_choice:-null}" "$guardian_running"
 }
 result_json() { # mode stateFile healthy dataRetained
   printf '{"installationId":%s,"mode":"%s","version":%s,"previousVersion":%s,"installRoot":%s,"dataRoot":%s,"listenUrl":%s,"healthy":%s,"dataRetained":%s,"dataCompatible":null,"serviceNames":%s,"completedAtUtc":"%s","firewallStatus":%s}' \
@@ -759,7 +782,7 @@ probe_json() {
     if (exec 3<>"/dev/tcp/127.0.0.1/$options_server_port") 2>/dev/null; then port_available=false; exec 3<&- 3>&- 2>/dev/null || true; fi
   fi
 
-  printf '{"hostPlatform":"linux","architecture":"%s","runtimeIdentifier":%s,"osId":%s,"osVersion":%s,"osSupported":%s,"elevated":%s,"sudoAvailable":%s,"systemdAvailable":%s,"diskAvailableBytes":%s,"requestedPort":%s,"requestedPortAvailable":%s,"existingInstallationId":%s,"existingMode":%s,"existingVersion":%s,"existingInstalled":%s,"missingDependencies":%s,"verifiedAtUtc":"%s"}' \
+  printf '{"hostPlatform":"linux","architecture":"%s","runtimeIdentifier":%s,"osId":%s,"osVersion":%s,"osSupported":%s,"elevated":%s,"sudoAvailable":%s,"systemdAvailable":%s,"diskAvailableBytes":%s,"requestedPort":%s,"requestedPortAvailable":%s,"existingInstallationId":%s,"existingMode":%s,"existingVersion":%s,"existingInstalled":%s,"missingDependencies":%s,"verifiedAtUtc":"%s","guardianEnabled":%s,"guardianRunning":%s}' \
     "$machine" "$(json_string_or_null "$runtime")" "$(json_string_or_null "$os_id")" "$(json_string_or_null "$os_version")" \
     "$os_supported" "$elevated" "$sudo_available" "$systemd_available" "$(json_number_or_null "$disk")" \
     "$(json_number_or_null "$options_server_port")" "$port_available" \
@@ -891,7 +914,7 @@ preflight_install() {
   case "$operation_kind" in
     install) [[ $installed != true ]] || launcher_fail already_installed "RelaxKonOS is already installed on this host; use upgrade or repair";;
     repair) [[ $installed == true || $options_mode == linuxSystem ]] || launcher_fail not_installed "RelaxKonOS is not installed on this host";;
-    upgrade|rollback|uninstall) [[ $installed == true ]] || launcher_fail not_installed "RelaxKonOS is not installed on this host";;
+    upgrade|configure|rollback|uninstall) [[ $installed == true ]] || launcher_fail not_installed "RelaxKonOS is not installed on this host";;
   esac
   case "$options_mode" in
     linuxSystem)
@@ -1048,9 +1071,11 @@ action_install_like() {
     linuxUser)
       engine=$(user_engine_path)
       local user_env=(env "RELAXKONOS_PORT=${options_server_port:-$(state_field "$(mode_install_state linuxUser)" listenUrl | sed -nE 's/.*:([0-9]+)$/\1/p')}" "RELAXKONOS_USER_DATA_ROOT=$(user_data_root)" "RELAXKONOS_USER_STATE_ROOT=$(user_state_root)" "RELAXKONOS_USER_CONFIG_ROOT=$(user_config_root)" "RELAXKONOS_USER_CACHE_ROOT=$(user_cache_root)")
+      [[ "$options_guardian_enabled" == null ]] || user_env+=("RELAXKONOS_GUARDIAN_ENABLED=$options_guardian_enabled")
       case "$operation_kind" in
         install) run_engine "${user_env[@]}" bash "$engine" install --port "${options_server_port:-5000}" --bundle "$package_root" "${package_check_args[@]}" || status=$? ;;
         upgrade) run_engine "${user_env[@]}" bash "$engine" upgrade --bundle "$package_root" "${package_check_args[@]}" || status=$? ;;
+        configure) run_engine "${user_env[@]}" bash "$engine" configure --port "$options_server_port" --network "$options_network" || status=$? ;;
         repair) run_engine "${user_env[@]}" bash "$engine" repair || status=$? ;;
         rollback) run_engine "${user_env[@]}" bash "$engine" rollback || status=$? ;;
       esac
@@ -1064,6 +1089,7 @@ action_install_like() {
       else
         engine=$(system_engine_path)
         arguments=(bash "$engine" --mode system --non-interactive --language "$options_language" --install-root "$(system_install_root)" --data-root "$(system_data_root)")
+        [[ "$options_guardian_enabled" == null ]] || arguments+=(--guardian-enabled "$options_guardian_enabled")
         [[ $options_allow_unsupported != true ]] || arguments+=(--allow-unsupported-system)
         # Upgrade and repair continue an existing installation; only install and upgrade consume the
         # staged package, so repair and rollback still work when no package was uploaded.
@@ -1093,6 +1119,10 @@ action_install_like() {
               [[ -n $options_self_signed_identities ]] || launcher_fail invalid_request "self-signed certificate names are required"
               arguments+=(--certificate-mode self-signed --self-signed-identities "$options_self_signed_identities")
             fi
+            ;;
+          configure)
+            arguments+=(--action configure --server-port "$options_server_port")
+            case "$options_network" in lan) arguments+=(--network lan);; *) arguments+=(--network local);; esac
             ;;
           repair)
             arguments+=(--action repair)
@@ -1262,7 +1292,7 @@ authenticate_sudo
 case "$operation_kind" in
   probe) action_probe;;
   status) action_status;;
-  install|upgrade|repair|rollback) action_install_like;;
+  install|upgrade|repair|configure|rollback) action_install_like;;
   uninstall) action_uninstall;;
 esac
 exit 0

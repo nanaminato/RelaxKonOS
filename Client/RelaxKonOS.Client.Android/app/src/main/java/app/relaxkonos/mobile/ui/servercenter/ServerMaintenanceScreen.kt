@@ -36,6 +36,8 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
     var certificateIdentities by rememberSaveable(host?.hostId) {
         mutableStateOf(listOf("localhost", "127.0.0.1", host?.sshHost.orEmpty()).filter(String::isNotBlank).distinct().joinToString(","))
     }
+    var configuration by remember(host?.hostId) { mutableStateOf<ServerHostSnapshot?>(null) }
+    var componentsOnly by remember(host?.hostId) { mutableStateOf(false) }
     var repair by remember(host?.hostId) { mutableStateOf(false) }
     val identitiesValid = runCatching { normalizeRepairCertificateIdentities(certificateIdentities) }.isSuccess
     androidx.activity.compose.BackHandler(enabled = wizard || page != 0) {
@@ -105,6 +107,8 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
                         Text(stringResource(R.string.server_maintenance_actions_note), style = MaterialTheme.typography.bodySmall)
                         PasswordTextField(sudo, { sudo = it }, stringResource(R.string.ssh_workspace_deploy_sudo_password), enabled = !state.busy)
                         Button(onClick = { wizard = true }, enabled = !state.busy) { Text(stringResource(R.string.installation_kind_upgrade)) }
+                        OutlinedButton(onClick = { componentsOnly = true; configuration = snapshot }, enabled = !state.busy && snapshot.guardianEnabled != null) { Text(stringResource(R.string.server_configuration_components)) }
+                        OutlinedButton(onClick = { componentsOnly = false; configuration = snapshot }, enabled = !state.busy && snapshot.guardianEnabled != null) { Text(stringResource(R.string.server_configuration_settings)) }
                         OutlinedButton(onClick = {
                             addFirewallRule = false
                             repairCertificate = false
@@ -122,6 +126,12 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
                     state.probe?.let { if (it.hostPlatform.equals("linux", true)) ServerHostPlatform.Linux else ServerHostPlatform.Windows })
             }
         }
+    }
+    configuration?.let { reviewed ->
+        ServerConfigurationDialog(reviewed, componentsOnly, state.busy, onDismiss = { configuration = null }, onApply = { draft ->
+            host?.let { model.run(it.hostId, ServerDeploymentKind.Configure, sudo = sudo, configuration = draft) }
+            configuration = null; sudo = ""
+        })
     }
     val cancelUninstall = { uninstall = false; sudo = "" }
     val cancelRepair = { if (!state.busy) { repair = false; sudo = "" } }

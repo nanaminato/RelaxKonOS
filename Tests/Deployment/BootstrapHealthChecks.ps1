@@ -8,6 +8,7 @@ $function = $source.Substring($start, $end - $start)
 $test = @'
 set -euo pipefail
 export PATH="/usr/bin:$PATH"
+GUARDIAN_ENABLED=false
 LISTEN_SCHEME=https
 SERVER_PORT=5500
 calls=0

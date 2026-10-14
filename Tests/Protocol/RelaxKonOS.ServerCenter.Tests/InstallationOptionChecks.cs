@@ -16,17 +16,18 @@ internal static class InstallationOptionChecks
                 AdministratorFileRoots: ["/srv/admin"], RootFileAccess: ServerFileAccessScope.Full,
                 InstallRoot: "/srv/program", DataRoot: "/srv/data", DockerAccess: true,
                 AllowUnsupportedSystem: true, AddFirewallRule: true, Language: "ja-JP",
-                ReleaseCatalogBaseUri: "https://example.invalid/releases"));
+                ReleaseCatalogBaseUri: "https://example.invalid/releases", GuardianEnabled: false));
         var bytes = JsonSerializer.SerializeToUtf8Bytes(request, RelaxKonOSJsonOptions.Default);
         Require(ServerDeploymentRequestWireValidation.IsStrictRequest(bytes), "Advanced request rejected.");
         var options = JsonSerializer.Deserialize<ServerDeploymentRequest>(bytes, RelaxKonOSJsonOptions.Default)!.Options!;
-        Require(options.ServerPort == 5100 && options.InstallRoot == "/srv/program" && options.DataRoot == "/srv/data" &&
+        Require(options.GuardianEnabled == false && options.ServerPort == 5100 && options.InstallRoot == "/srv/program" && options.DataRoot == "/srv/data" &&
             options.AddFirewallRule && options.DockerAccess && options.AllowUnsupportedSystem && options.Language == "ja-JP" &&
             options.FileRoots!.SequenceEqual(["/srv/shared space"]) &&
             options.AdministratorFileRoots!.SequenceEqual(["/srv/admin"]) &&
             options.RootFileAccess == ServerFileAccessScope.Full, "Advanced options lost in serialization.");
         var json = System.Text.Encoding.UTF8.GetString(bytes);
         foreach (var invalid in new[] {
+            json.Replace("\"guardianEnabled\":false", "\"guardianEnabled\":\"false\""),
             json.Replace("\"addFirewallRule\":true", "\"addFirewallRule\":\"true\""),
             json.Replace("\"dockerAccess\":true", "\"dockerAccess\":\"true\""),
             json.Replace("[\"/srv/admin\"]", "[42]"),

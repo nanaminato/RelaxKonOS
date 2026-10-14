@@ -70,7 +70,7 @@ authenticate_sudo
 case "$operation_kind" in
   probe) action_probe;;
   status) action_status;;
-  install|upgrade|repair|rollback) action_install_like;;
+  install|upgrade|repair|configure|rollback) action_install_like;;
   uninstall) action_uninstall;;
 esac
 exit 0

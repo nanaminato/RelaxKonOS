@@ -57,4 +57,13 @@
     <string name="taskmanager_normal_mode">Normal mode</string>
     <string name="files_cache_enabled">Cache file listings</string>
     <string name="files_cache_refreshing">Showing cached files; refreshing…</string>
+    <string name="server_guardian_choice">Install process guardian</string>
+    <string name="server_configuration_components">Components</string>
+    <string name="server_configuration_settings">Installation settings</string>
+    <string name="server_configuration_port">Listening port</string>
+    <string name="server_configuration_lan">Allow LAN access</string>
+    <string name="server_configuration_apply">Apply and verify</string>
+    <string name="server_configuration_note">Services restart when settings are applied. Removing Guardian stops its workloads and retains definitions and logs. TLS identity is preserved. Review the new connection address afterwards.</string>
+    <string name="server_configuration_discard">Discard unsaved settings?</string>
+    <string name="server_configuration_discard_confirm">Discard</string>
 </resources>

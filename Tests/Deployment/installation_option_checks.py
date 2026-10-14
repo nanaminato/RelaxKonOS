@@ -25,11 +25,11 @@ def function(name):
 
 
 class InstallationOptionChecks(unittest.TestCase):
-    def run_mapping(self, mode, options):
+    def run_mapping(self, mode, options, kind="install"):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             request = {"schemaVersion": 1, "operationId": "12345678-1234-1234-1234-123456789abc",
-                       "kind": "install", "options": {"source": "officialStable", "network": "loopback",
+                       "kind": kind, "options": {"source": "officialStable", "network": "loopback",
                        "mode": mode, "confirmed": True, **options}}
             (root / "request.json").write_text(json.dumps(request, separators=(",", ":")), encoding="utf-8")
             definitions = "\n".join(function(name) for name in [
@@ -78,6 +78,26 @@ run_engine() {{ printf '%s\\0' "$@" > "$staging_root/captured"; }}
             policies = {name: (root / (name + ".txt")).read_text() for name in
                         ("fileRoots", "administratorFileRoots", "rootFileRoots") if (root / (name + ".txt")).exists()}
             return args, policies
+
+    def test_guardian_false_reaches_both_deployment_modes(self):
+        args, _ = self.run_mapping("linuxSystem", {"guardianEnabled": False})
+        self.assertEqual(args[args.index("--guardian-enabled") + 1], "false")
+        args, _ = self.run_mapping("linuxUser", {"guardianEnabled": False})
+        self.assertIn("RELAXKONOS_GUARDIAN_ENABLED=false", args)
+
+    def test_configure_reuses_payload_and_maps_network_port_selection(self):
+        for mode in ["linuxSystem", "linuxUser"]:
+            args, _ = self.run_mapping(mode, {"guardianEnabled": True, "serverPort": 5500, "network": "lan",
+                "expectedInstallationId": "rki-0123456789abcdef0123456789abcdef"}, kind="configure")
+            self.assertNotIn("--bundle", args)
+            self.assertIn("configure", args)
+            self.assertIn("5500", args)
+            self.assertIn("lan", args)
+
+    def test_ordinary_repair_does_not_send_component_choice(self):
+        args, _ = self.run_mapping("linuxSystem", {}, kind="repair")
+        self.assertNotIn("--guardian-enabled", args)
+        self.assertNotIn("--network", args)
 
     def test_system_options_reach_engine_independently(self):
         args, policies = self.run_mapping("linuxSystem", {

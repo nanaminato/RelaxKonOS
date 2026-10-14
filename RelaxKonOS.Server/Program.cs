@@ -24,6 +24,7 @@ using RelaxKonOS.Server.Observability;
 using RelaxKonOS.Server.Secrets;
 
 if (args.FirstOrDefault() == "auth") { Environment.ExitCode = await AuthMaintenanceCommand.RunAsync(args); return; }
+if (args.FirstOrDefault() == "guardian-health") { Environment.ExitCode = await RelaxKonOS.Server.ProcessGuardian.GuardianHealthCommand.RunAsync(args); return; }
 
 static X509Certificate2? LoadInstallerCertificate(IConfiguration configuration)
 {

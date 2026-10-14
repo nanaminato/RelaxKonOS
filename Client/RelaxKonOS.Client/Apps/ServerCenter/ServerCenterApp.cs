@@ -27,14 +27,13 @@ public sealed class ServerCenterApp : RemoteApplicationBase
     public override void Activate(AppContext context)
     {
         var sshSession = context.Services.GetRequiredService<SshDesktopSession>();
-        if (!sshSession.IsConnected) return;
         var viewModel = context.Services.GetRequiredService<ServerCenterViewModel>();
         var view = new ServerCenterWorkspace { DataContext = viewModel };
         var window = context.ShowWindow(viewModel.Title, view,
             new Rect(70, 50, 1120, 760), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
         viewModel.ShowManagementDialogAsync = section => context.ShowDialogAsync<bool>(window,
-            section switch { "repair" => viewModel.RepairText, "uninstall" => viewModel.UninstallText, _ => viewModel.InstallationInfoTitle },
+            section switch { "components" => viewModel.ComponentsText, "settings" => viewModel.SettingsText, "repair" => viewModel.RepairText, "uninstall" => viewModel.UninstallText, _ => viewModel.InstallationInfoTitle },
             dialog => new ServerCenterManagementDialog(viewModel, section, dialog), new Size(640, 600));
         viewModel.ShowInstallationWizardAsync = () => context.ShowDialogAsync<bool>(window, viewModel.DeployText,
             dialog => new ServerInstallationWizardView(

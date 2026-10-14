@@ -50,6 +50,8 @@ public static class ServerInstallationDetails
         Add("install_root", "Program directory", snapshot?.InstallRoot);
         Add("data_root", "Managed data directory", snapshot?.DataRoot);
         Add("listen_url", "Server listening address", snapshot?.ListenUrl ?? cached?.ListenUrl);
+        Add("guardian", "Process guardian selected", snapshot?.GuardianEnabled is { } guardian ? YesNo(guardian) : null);
+        Add("guardian_running", "Guardian process running", snapshot?.GuardianRunning is { } running ? YesNo(running) : null);
         Add("services", "Managed service names", snapshot?.ServiceNames is { } services
             ? services.Count == 0 ? T("no_services", "No system services") : string.Join("\n", services) : null);
         Add("ssh_host", "SSH host", host.SshHost);

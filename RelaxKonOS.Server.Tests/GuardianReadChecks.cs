@@ -67,6 +67,9 @@ public static class GuardianReadChecks
         catch (InvalidOperationException) { rejectedTarget = true; }
         Check(rejectedTarget, "Desktop immutable editor target cannot change");
         var noConfiguration = new NamedPipeProcessGuardianService(new GuardianAgentOptions());
+        var notSelected = new NamedPipeProcessGuardianService(new GuardianAgentOptions { Enabled = false });
+        Check((await notSelected.GetStatusAsync()).ProblemCode == "guardian.agent_not_installed", "Optional Guardian is reported as not installed without attempting IPC");
+        await Reject(async () => { await notSelected.ListWorkloadsAsync(); }, "guardian.agent_not_installed", "Unselected Guardian does not return a fabricated workload list");
         await Reject(async () => { await noConfiguration.ListWorkloadsAsync(); }, "guardian.agent_not_configured", "Missing IPC configuration remains explicit");
         if (OperatingSystem.IsWindows())
         {

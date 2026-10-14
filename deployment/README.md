@@ -45,6 +45,12 @@ Windows 10/11 个人电脑可同时运行 Server 与 Client，具体步骤见[�
 
 发布制品分为 `client`、`server` 与 `user-server` 三种包。`server` 包是 System Mode，包含已 `dotnet publish` 的 Server、Guardian Agent、权限助手和平台部署引擎；`user-server` 是无 sudo 的 Linux User Mode，包含 Server、同 UID Guardian 和用户 launcher，但不包含权限助手、sudoers 或系统服务安装器；`client` 包只包含桌面 Client。
 
+Guardian 是可选部署组件，发布包仍携带同版本文件。首次向导可取消“安装进程守护”；之后在服务器中心的“组件”页选择并应用即可补装或移除，定义与日志保留。Windows 个人模式不支持 Guardian。升级、普通修复和回滚继承安装记录的 `guardianEnabled`，不会自动补装未选择的组件。
+
+“安装设置”可修改监听端口和本机 / 局域网访问，现有 TLS 身份与文件权限保持不变。独立 `configure` 动作使用已安装版本，无需重新下载包；应用失败尝试恢复原监听与组件选择，恢复失败保留失败回执。端口变更不自动移动防火墙规则，可按新监听端口显式执行防火墙修复。
+
+命令行：Windows 首次安装使用 `-GuardianEnabled false`；Linux System 使用 `--guardian-enabled false`；Linux User 使用 `relaxkon install --guardian-enabled false --bundle PATH`。系统模式后续配置使用 `-Action configure` / `--action configure`，配合端口、网络和 Guardian 选择；Linux User 使用 `relaxkon configure --port PORT --network loopback|lan --guardian-enabled true|false`。客户端通过固定启动器校验安装 ID、确认和独占锁。详细规则见 [安装管理设计](../docs/platform/RelaxKonOS.InstallationManagement.Design.md)。
+
 引导安装器会先把三个组件的完整 publish 输出复制到持久安装目录（Windows 默认 `C:\Program Files\RelaxKonOS`，Linux 默认 `/opt/relaxkonos`）；服务绝不会指向临时下载目录或离线介质。Linux System Mode 把每个版本及其配套部署引擎发布到独立的 `versions/<版本>` 目录，完整复制成功后才停止服务并用 `current` 符号链接原子切换，因此升级不会把新版覆盖到在用的版本目录；失败回滚也始终使用目标版本自己的部署引擎。
 
 ## 发布包布局

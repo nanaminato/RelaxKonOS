@@ -70,7 +70,7 @@ mode_listen_url() {
 }
 mode_service_names() {
   case "$1" in
-    linuxSystem) printf '["relaxkonos-server.service","relaxkonos-guardian.service"]';;
+    linuxSystem) if [[ $(state_flag "$(mode_install_state "$1")" guardianEnabled) == true ]]; then printf '["relaxkonos-server.service","relaxkonos-guardian.service"]'; else printf '["relaxkonos-server.service"]'; fi;;
     windowsSystem) printf '["RelaxKonOSServer","RelaxKonOSGuardian","RelaxKonOSPrivilegedHelper"]';;
     *) printf '[]';;
   esac
@@ -78,11 +78,21 @@ mode_service_names() {
 # The snapshot always carries the time it was verified; an offline cache must never be shown as
 # live health, so the client is required to display this timestamp.
 snapshot_json() { # mode stateFile healthy installed dataRetained
-  printf '{"installationId":%s,"installed":%s,"mode":"%s","version":%s,"previousVersion":%s,"installRoot":%s,"dataRoot":%s,"listenUrl":%s,"healthy":%s,"dataRetained":%s,"serviceNames":%s,"verifiedAtUtc":"%s"}' \
+  local guardian_choice guardian_running=null; guardian_choice=$(state_flag "$2" guardianEnabled)
+  if [[ $guardian_choice == true && $4 == true ]]; then
+    if [[ $1 == linuxSystem ]]; then
+      if systemctl is-active --quiet relaxkonos-guardian.service; then guardian_running=true; else guardian_running=false; fi
+    elif [[ $1 == linuxUser ]]; then
+      local pid started; pid=$(cat "$(user_state_root)/run/guardian.pid" 2>/dev/null || true); started=$(cat "$(user_state_root)/run/guardian.starttime" 2>/dev/null || true)
+      guardian_running=false
+      if [[ $pid =~ ^[0-9]+$ && -n $started && $(stat -c %u "/proc/$pid" 2>/dev/null || true) == $UID && $(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null || true) == "$started" ]]; then guardian_running=true; fi
+    fi
+  fi
+  printf '{"installationId":%s,"installed":%s,"mode":"%s","version":%s,"previousVersion":%s,"installRoot":%s,"dataRoot":%s,"listenUrl":%s,"healthy":%s,"dataRetained":%s,"serviceNames":%s,"verifiedAtUtc":"%s","guardianEnabled":%s,"guardianRunning":%s}' \
     "$(json_string_or_null "$(state_field "$2" installationId)")" "$4" "$1" \
     "$(json_string_or_null "$(state_field "$2" version)")" "$(json_string_or_null "$(state_field "$2" previousVersion)")" \
     "$(json_string_or_null "$(mode_install_root "$1")")" "$(json_string_or_null "$(mode_data_root "$1")")" \
-    "$(json_string_or_null "$(mode_listen_url "$1")")" "$3" "$5" "$(mode_service_names "$1")" "$(now_utc)"
+    "$(json_string_or_null "$(mode_listen_url "$1")")" "$3" "$5" "$(mode_service_names "$1")" "$(now_utc)" "${guardian_choice:-null}" "$guardian_running"
 }
 result_json() { # mode stateFile healthy dataRetained
   printf '{"installationId":%s,"mode":"%s","version":%s,"previousVersion":%s,"installRoot":%s,"dataRoot":%s,"listenUrl":%s,"healthy":%s,"dataRetained":%s,"dataCompatible":null,"serviceNames":%s,"completedAtUtc":"%s","firewallStatus":%s}' \
@@ -183,7 +193,7 @@ probe_json() {
     if (exec 3<>"/dev/tcp/127.0.0.1/$options_server_port") 2>/dev/null; then port_available=false; exec 3<&- 3>&- 2>/dev/null || true; fi
   fi
 
-  printf '{"hostPlatform":"linux","architecture":"%s","runtimeIdentifier":%s,"osId":%s,"osVersion":%s,"osSupported":%s,"elevated":%s,"sudoAvailable":%s,"systemdAvailable":%s,"diskAvailableBytes":%s,"requestedPort":%s,"requestedPortAvailable":%s,"existingInstallationId":%s,"existingMode":%s,"existingVersion":%s,"existingInstalled":%s,"missingDependencies":%s,"verifiedAtUtc":"%s"}' \
+  printf '{"hostPlatform":"linux","architecture":"%s","runtimeIdentifier":%s,"osId":%s,"osVersion":%s,"osSupported":%s,"elevated":%s,"sudoAvailable":%s,"systemdAvailable":%s,"diskAvailableBytes":%s,"requestedPort":%s,"requestedPortAvailable":%s,"existingInstallationId":%s,"existingMode":%s,"existingVersion":%s,"existingInstalled":%s,"missingDependencies":%s,"verifiedAtUtc":"%s","guardianEnabled":%s,"guardianRunning":%s}' \
     "$machine" "$(json_string_or_null "$runtime")" "$(json_string_or_null "$os_id")" "$(json_string_or_null "$os_version")" \
     "$os_supported" "$elevated" "$sudo_available" "$systemd_available" "$(json_number_or_null "$disk")" \
     "$(json_number_or_null "$options_server_port")" "$port_available" \

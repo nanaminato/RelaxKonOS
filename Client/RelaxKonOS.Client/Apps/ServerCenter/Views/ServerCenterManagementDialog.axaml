@@ -19,13 +19,24 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                 </StackPanel>
+                <StackPanel Spacing="12" x:Name="ConfigurationPanel" IsEnabled="{Binding !IsBusy}">
+                    <SelectableTextBlock Text="{Binding CurrentConfigurationText}" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding ConfigurationNote}" TextWrapping="Wrap"/>
+                    <StackPanel x:Name="NetworkSettingsPanel" Spacing="8">
+                        <TextBlock Text="{Binding ConfigurationPortText}"/>
+                        <TextBox Text="{Binding ConfigurationPort}"/>
+                        <CheckBox IsChecked="{Binding ConfigurationLan}" Content="{Binding ConfigurationLanText}"/>
+                    </StackPanel>
+                    <CheckBox x:Name="GuardianChoice" IsVisible="{Binding CanConfigureGuardian}" IsChecked="{Binding ConfigurationGuardian}" Content="{Binding GuardianChoiceText}"/>
+                </StackPanel>
                 <StackPanel Spacing="12" Margin="0,12,0,0" x:Name="RepairPanel" IsEnabled="{Binding !IsBusy}">
                     <TextBlock Text="{Binding RepairActionDescription}" Classes="action-description"/>
+                    <TextBlock Text="{Binding RepairPlanText}" TextWrapping="Wrap"/>
                     <CheckBox IsVisible="{Binding CanManageFirewall}" IsChecked="{Binding MaintenanceAddFirewallRule}">
                         <TextBlock Text="{Binding FirewallChoiceText}" TextWrapping="Wrap"/>
                     </CheckBox>
                     <TextBlock IsVisible="{Binding CanManageFirewall}" Text="{Binding FirewallHelpText}" TextWrapping="Wrap"/>
-                    <CheckBox IsChecked="{Binding RepairLanCertificate}">
+                    <CheckBox IsVisible="{Binding CanManageCertificate}" IsChecked="{Binding RepairLanCertificate}">
                         <TextBlock Text="{Binding RepairCertificateText}" TextWrapping="Wrap"/>
                     </CheckBox>
                     <TextBlock Text="{Binding RepairCertificateNote}" TextWrapping="Wrap" IsVisible="{Binding RepairLanCertificate}"/>
@@ -49,6 +60,7 @@
             <TextBlock Text="{Binding StatusMessage}" IsVisible="{Binding !HasError}" TextWrapping="Wrap"/>
             <TextBlock Text="{Binding ErrorMessage}" IsVisible="{Binding HasError}" TextWrapping="Wrap" Classes="error"/>
             <WrapPanel>
+                <Button x:Name="ConfigureButton" Command="{Binding ConfigureCommand}" Content="{Binding ApplyConfigurationText}" Classes="accent" Margin="0,0,12,8"/>
                 <Button x:Name="RepairButton" Command="{Binding RepairCommand}" Content="{Binding RepairText}" Classes="accent" Margin="0,0,12,8"/>
                 <Button x:Name="UninstallButton" Command="{Binding UninstallCommand}" Content="{Binding UninstallText}" Classes="danger" Margin="0,0,12,8"/>
                 <Button Content="{Binding CloseText}" Click="Close_Click" IsEnabled="{Binding !IsBusy}" Margin="0,0,0,8"/>

@@ -141,6 +141,7 @@ public sealed class LocalServerInstallationWindow : Window
             var selected = mode.SelectedIndex == 0 ? ServerInstallMode.WindowsUser : ServerInstallMode.WindowsSystem;
             if (selected == _installer.Mode) return;
             _installer.Mode = selected; _snapshot = null; _message = string.Empty;
+            _wizard.IsUpgrade = _snapshot?.Installed == true;
             _wizard.SelectedMode = _wizard.Modes.First(option => option.Mode == selected);
             ShowManagement();
         };
@@ -173,6 +174,7 @@ public sealed class LocalServerInstallationWindow : Window
         {
             _wizard.ClearSecrets();
             _wizard = _wizardFactory();
+            _wizard.IsUpgrade = _snapshot?.Installed == true;
             _wizard.SelectedMode = _wizard.Modes.First(option => option.Mode == _installer.Mode);
             if (Uri.TryCreate(_snapshot?.ListenUrl, UriKind.Absolute, out var installedUrl))
             {
@@ -184,6 +186,7 @@ public sealed class LocalServerInstallationWindow : Window
             Content = new ServerInstallationWizardView(_wizard, null);
         });
         var installed = _snapshot is { Installed: true, Mode: ServerInstallMode.WindowsSystem or ServerInstallMode.WindowsUser } && ServerInstallationId.IsValid(_snapshot.InstallationId);
+        Add(T("settings", "Installation settings / components"), T("settings_hint", "Change the port, network access and optional components"), "host_settings", () => _ = ReviewAsync(ServerDeploymentKind.Configure), installed && _snapshot?.GuardianEnabled is not null);
         Add(T("repair", "Repair"), T("repair_hint", "Restore services, certificates and firewall rules"), "diagnostics", () => _ = ReviewAsync(ServerDeploymentKind.Repair), installed);
         Add(T("rollback", "Restore previous version"), T("rollback_hint", "Switch back to the last verified version"), "operations", () => _ = ReviewAsync(ServerDeploymentKind.Rollback), installed && !string.IsNullOrWhiteSpace(_snapshot?.PreviousVersion));
         Add(T("uninstall", "Uninstall"), T("uninstall_hint", "Remove Server; keep data by default"), "host_settings", () => _ = ReviewAsync(ServerDeploymentKind.Uninstall), installed);

@@ -39,6 +39,7 @@ public sealed class ProcessGuardianApp : RemoteApplicationBase
         }
 
         var viewModel = new ProcessGuardianViewModel(client, session);
+        viewModel.OpenComponentManagement = () => (context.Services.GetService(typeof(RelaxKonOS.Runtime.ApplicationManager)) as RelaxKonOS.Runtime.ApplicationManager)?.Launch(new AppId("relaxkonos.server-center"));
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.processguardian.display_name"), CreateView(viewModel), new Rect(80, 60, 1240, 700), Manifest.IconGlyph);
         viewModel.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window, problemCode);
         viewModel.RequestAdministratorApprovalAsync = () => RequestAdministratorApprovalAsync(context, window, session);
@@ -83,6 +84,9 @@ public sealed class ProcessGuardianApp : RemoteApplicationBase
         var status = new TextBlock { Margin = new Avalonia.Thickness(0, 0, 0, 10), TextWrapping = TextWrapping.Wrap, Foreground = ThemeBrushes.Get("TextSecondaryBrush") };
         status.Bind(TextBlock.TextProperty, new Avalonia.Data.Binding(nameof(vm.StatusText)));
         DockPanel.SetDock(status, Dock.Top); root.Children.Add(status);
+        var manage = new Button { Content = LocalizedText.Get("guardian.install.manage"), Command = vm.ManageInstallationCommand, Margin = new Avalonia.Thickness(0, 0, 0, 10) };
+        manage.Bind(Control.IsVisibleProperty, new Avalonia.Data.Binding(nameof(vm.AgentNeedsInstallation)));
+        DockPanel.SetDock(manage, Dock.Top); root.Children.Add(manage);
         root.Children.Add(CreateWorkloadTable(vm));
         return root;
     }
