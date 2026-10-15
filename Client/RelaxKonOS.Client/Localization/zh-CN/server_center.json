@@ -1,6 +1,16 @@
 {
   "Culture": "zh-CN",
   "Strings": {
+    "server_center.configuration_current": "当前配置",
+    "server_center.guardian_description": "通过进程守护保持托管任务运行。应用更改将重启服务；移除守护将停止其工作负载，但保留定义和日志。",
+    "server_center.network_settings": "连接与启动",
+    "server_center.file_access_description": "选择特权操作可以访问的宿主文件。仅在选择指定目录时填写允许访问的目录。",
+    "server_center.rollback_confirm_note": "服务器将切换到上一个程序版本并重启，保留数据和配置。请核对以下版本后继续。",
+    "server_center.rollback_confirm": "确认恢复此版本",
+    "server_center.rollback_unavailable": "无法核实当前版本和上一个版本，请刷新安装状态后重试。",
+    "server_center.rollback_cancelled": "已取消恢复版本，未作更改。",
+    "server_center.rollback_changed": "安装或版本已发生变化，请重新核对版本后再恢复。",
+
     "server_center.progress.downloading": "正在下载安装包…",
     "server_center.progress.checking": "正在检查安装环境…",
     "server_center.progress.connecting": "正在连接服务器…",

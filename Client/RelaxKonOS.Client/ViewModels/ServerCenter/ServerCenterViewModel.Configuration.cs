@@ -6,6 +6,8 @@ namespace RelaxKonOS.Client.ViewModels.ServerCenter;
 
 public partial class ServerCenterViewModel
 {
+    public bool HasManagementStatus => !HasError && !string.IsNullOrWhiteSpace(StatusMessage);
+    partial void OnStatusMessageChanged(string value) => OnPropertyChanged(nameof(HasManagementStatus));
     private ServerHostSnapshotDto? _reviewedConfiguration;
     private string? _reviewedConfigurationHostId;
     [ObservableProperty] private string _configurationPort = "";
@@ -59,8 +61,25 @@ public partial class ServerCenterViewModel
     [ObservableProperty] private string _repairPackagePath = "";
     public string RepairPackageText => T("server_center.repair_package", "Server ZIP path (optional; same installed version, restores program files)");
     public string RepairPlanText => T("server_center.repair_plan", "Repair reapplies the current version's services and configuration, retaining the selected components, port, file permissions and TLS identity. Selected Guardian must pass authenticated IPC verification. Certificate regeneration and firewall changes below are explicit additional actions.");
-    public string CurrentConfigurationText => _reviewedConfiguration is { } s
-        ? $"{s.ListenUrl}\n{GuardianChoiceText}: {s.GuardianEnabled}\n{T("server_center.guardian_running", "Guardian process running")}: {s.GuardianRunning?.ToString() ?? T("server_center.installation.unknown", "Not provided")}" : InstallationInfoNote;
+    public string CurrentConfigurationTitle => T("server_center.configuration_current", "Current configuration");
+    public string GuardianDescription => T("server_center.guardian_description", "Keep managed workloads running with process supervision. Applying this choice restarts services; removing the guardian stops its workloads while retaining definitions and logs.");
+    public string NetworkSettingsTitle => T("server_center.network_settings", "Connection and startup");
+    public string FileAccessDescription => T("server_center.file_access_description", "Choose which host files privileged operations can access. List directories only when selected-directory access is enabled.");
+    public bool ShowConfigurationFileRoots => ConfigurationFileAccess?.Scope == ServerFileAccessScope.Whitelist;
+    partial void OnConfigurationFileAccessChanged(FileAccessOption? value) => OnPropertyChanged(nameof(ShowConfigurationFileRoots));
+    public IReadOnlyList<Services.ServerCenter.ServerInstallationDetail> CurrentConfigurationDetails
+    {
+        get
+        {
+            string State(bool? value) => value is { } enabled
+                ? T(enabled ? "server_center.installation.yes" : "server_center.installation.no", enabled ? "Yes" : "No")
+                : T("server_center.installation.unknown", "Not provided");
+            return [
+                new(T("server_center.installation.listen_url", "Server listening address"), _reviewedConfiguration?.ListenUrl ?? "—"),
+                new(GuardianChoiceText, State(_reviewedConfiguration?.GuardianEnabled)),
+                new(T("server_center.guardian_running", "Guardian process running"), State(_reviewedConfiguration?.GuardianRunning))];
+        }
+    }
     public bool CanConfigureGuardian => _reviewedConfiguration?.Mode is ServerInstallMode.WindowsSystem or ServerInstallMode.LinuxSystem or ServerInstallMode.LinuxUser;
     public bool HasConfigurationFacts => _reviewedConfiguration is { Installed: true, GuardianEnabled: not null };
 
@@ -86,7 +105,7 @@ public partial class ServerCenterViewModel
         ConfigurationFileRoots = string.Join("\n", snapshot.FileRoots ?? []);
         OnPropertyChanged(nameof(CanConfigureFileAccess));
         OnPropertyChanged(nameof(CanConfigureAutoStart));
-        OnPropertyChanged(nameof(CurrentConfigurationText));
+        OnPropertyChanged(nameof(CurrentConfigurationDetails));
         OnPropertyChanged(nameof(CanConfigureGuardian));
         OnPropertyChanged(nameof(HasConfigurationFacts));
         return true;

@@ -61,10 +61,11 @@ static class MaintenanceOutcomeChecks
 
 sealed class MaintenanceTransportFactory(string scenario, string installationId) : IServerCenterSshTransportFactory
 {
-    public IServerCenterSshTransport Create() => new MaintenanceTransport(scenario, installationId);
+    public List<ServerDeploymentRequest> Requests { get; } = [];
+    public IServerCenterSshTransport Create() => new MaintenanceTransport(scenario, installationId, Requests);
 }
 
-sealed class MaintenanceTransport(string scenario, string installationId) : IServerCenterSshTransport
+sealed class MaintenanceTransport(string scenario, string installationId, List<ServerDeploymentRequest> requests) : IServerCenterSshTransport
 {
     private readonly Dictionary<Guid, ServerDeploymentRequest> _requests = new();
     public bool IsConnected => true;
@@ -86,11 +87,13 @@ sealed class MaintenanceTransport(string scenario, string installationId) : ISer
             HostPlatformKind.Linux, "x86_64", ServerRuntimeIdentifier.LinuxX64, "ubuntu", "24.04", scenario != "removed-unsupported",
             true, true, true, null, null, null, installationId, ServerInstallMode.LinuxSystem, "0.1.3", true, [], time) : null;
         var snapshot = request.Kind == ServerDeploymentKind.Status ? new ServerHostSnapshotDto(
-            installationId, installed, ServerInstallMode.LinuxSystem, "0.1.3", null, "/opt/relaxkonos",
+            installationId, installed, ServerInstallMode.LinuxSystem,
+            requests.Any(r => r.Kind == ServerDeploymentKind.Rollback) ? "0.1.2" : scenario == "rollback-changed" && requests.Count(r => r.Kind == ServerDeploymentKind.Status) >= 2 ? "0.1.4" : "0.1.3",
+            scenario.StartsWith("rollback") && scenario != "rollback-missing" ? "0.1.2" : null, "/opt/relaxkonos",
             "/var/lib/relaxkonos", "http://127.0.0.1:5000", installed, null, [], time) : null;
-        var result = request.Kind == ServerDeploymentKind.Uninstall && !failed ? new ServerDeploymentResultDto(
-            installationId, ServerInstallMode.LinuxSystem, "0.1.3", null, "/opt/relaxkonos", "/var/lib/relaxkonos",
-            null, false, DataRetained: true) : null;
+        var result = request.Kind is ServerDeploymentKind.Uninstall or ServerDeploymentKind.Rollback && !failed ? new ServerDeploymentResultDto(
+            installationId, ServerInstallMode.LinuxSystem, request.Kind == ServerDeploymentKind.Rollback ? "0.1.2" : "0.1.3", null, "/opt/relaxkonos", "/var/lib/relaxkonos",
+            request.Kind == ServerDeploymentKind.Rollback ? "http://127.0.0.1:5000" : null, request.Kind == ServerDeploymentKind.Rollback, DataRetained: true) : null;
         var receipt = new ServerDeploymentOperationDto(1, operationId, installationId, request.Kind,
             failed ? ServerDeploymentPhase.Failed : ServerDeploymentPhase.Completed,
             failed ? ServerDeploymentState.Failed : ServerDeploymentState.Succeeded, 5, time, null,
@@ -109,6 +112,7 @@ sealed class MaintenanceTransport(string scenario, string installationId) : ISer
         var request = await JsonSerializer.DeserializeAsync<ServerDeploymentRequest>(content,
             RelaxKonOSJsonOptions.Default, cancellationToken);
         _requests[request!.OperationId] = request;
+        requests.Add(request);
         if (scenario == "removed-unsupported" && request.Kind == ServerDeploymentKind.Uninstall &&
             request.Options?.AllowUnsupportedSystem != true)
             throw new Exception("Maintenance lost the opted-in Linux platform option.");

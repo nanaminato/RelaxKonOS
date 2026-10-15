@@ -1,48 +1,80 @@
-<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:services="clr-namespace:RelaxKonOS.Client.Services.ServerCenter" xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter" x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterManagementDialog" x:DataType="vm:ServerCenterViewModel" Classes="builtin-app">
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:services="clr-namespace:RelaxKonOS.Client.Services.ServerCenter" xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter" x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterManagementDialog" x:DataType="vm:ServerCenterViewModel" Classes="builtin-app" Background="{DynamicResource AppBackgroundBrush}">
+    <UserControl.Styles>
+        <Style Selector="Border.management-section">
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Padding" Value="18"/>
+        </Style>
+        <Style Selector="TextBlock.action-description">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="LineHeight" Value="20"/>
+        </Style>
+        <Style Selector="Button"><Setter Property="MinHeight" Value="36"/><Setter Property="Padding" Value="16,8"/></Style>
+    </UserControl.Styles>
     <Grid RowDefinitions="Auto,*,Auto" Margin="22" RowSpacing="16">
-        <StackPanel Spacing="4">
+        <Border Classes="management-section"><StackPanel Spacing="6">
             <TextBlock Text="{Binding SelectedHost.DisplayName}" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap"/>
             <TextBlock Text="{Binding VerifiedStateText}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
-        </StackPanel>
+        </StackPanel></Border>
         <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
             <StackPanel Spacing="16">
-                <StackPanel Spacing="12" x:Name="DetailsPanel">
+                <Border Classes="management-section" x:Name="DetailsPanelCard"><StackPanel Spacing="12" x:Name="DetailsPanel"><TextBlock Text="{Binding InstallationInfoTitle}" FontSize="15" FontWeight="SemiBold"/>
                     <TextBlock Text="{Binding InstallationInfoNote}" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
                     <ItemsControl ItemsSource="{Binding InstallationDetails}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="services:ServerInstallationDetail">
-                                <Grid ColumnDefinitions="125,*" ColumnSpacing="18" Margin="0,5">
+                                <Grid ColumnDefinitions="150,*" ColumnSpacing="18" Margin="0,8">
                                     <TextBlock Text="{Binding Label}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
                                     <SelectableTextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap"/>
                                 </Grid>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
-                </StackPanel>
+                </StackPanel></Border>
                 <StackPanel Spacing="12" x:Name="ConfigurationPanel" IsEnabled="{Binding !IsBusy}">
-                    <SelectableTextBlock Text="{Binding CurrentConfigurationText}" TextWrapping="Wrap"/>
-                    <TextBlock Text="{Binding ConfigurationNote}" TextWrapping="Wrap"/>
-                    <StackPanel x:Name="NetworkSettingsPanel" Spacing="8">
+                    <Border Classes="management-section"><StackPanel Spacing="12">
+                        <TextBlock Text="{Binding CurrentConfigurationTitle}" FontSize="15" FontWeight="SemiBold"/>
+                        <ItemsControl ItemsSource="{Binding CurrentConfigurationDetails}"><ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="services:ServerInstallationDetail">
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="16" Margin="0,6">
+                                    <TextBlock Text="{Binding Label}" Classes="action-description"/>
+                                    <SelectableTextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate></ItemsControl>
+                    </StackPanel></Border>
+
+                    <Border Classes="management-section" x:Name="NetworkSettingsCard"><StackPanel x:Name="NetworkSettingsPanel" Spacing="12">
+                        <TextBlock Text="{Binding NetworkSettingsTitle}" FontSize="15" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding ConfigurationNote}" Classes="action-description"/>
                         <StackPanel IsVisible="{Binding CanConfigureFileAccess}" Spacing="8">
-                            <TextBlock Text="{Binding FileAccessText}"/>
-                            <ComboBox ItemsSource="{Binding ConfigurationFileAccesses}" SelectedItem="{Binding ConfigurationFileAccess}">
+                            <TextBlock Text="{Binding FileAccessText}" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding FileAccessDescription}" Classes="action-description"/>
+                            <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding ConfigurationFileAccesses}" SelectedItem="{Binding ConfigurationFileAccess}">
                                 <ComboBox.ItemTemplate><DataTemplate x:DataType="vm:FileAccessOption"><TextBlock Text="{Binding Label}"/></DataTemplate></ComboBox.ItemTemplate>
                             </ComboBox>
-                            <TextBlock Text="{Binding FileRootsText}"/>
-                            <TextBox Text="{Binding ConfigurationFileRoots}" AcceptsReturn="True" MinHeight="80"/>
+                            <TextBlock Text="{Binding FileRootsText}" IsVisible="{Binding ShowConfigurationFileRoots}"/>
+                            <TextBox IsVisible="{Binding ShowConfigurationFileRoots}" TextWrapping="Wrap" Text="{Binding ConfigurationFileRoots}" AcceptsReturn="True" MinHeight="80"/>
                         </StackPanel>
                         <TextBlock Text="{Binding ConfigurationPortText}"/>
                         <TextBox Text="{Binding ConfigurationPort}"/>
                         <Button IsVisible="{Binding CanManageFirewall}" Command="{Binding RemoveFirewallCommand}" Content="{Binding RemoveFirewallText}"/>
                         <Button IsVisible="{Binding CanManageFirewall}" Command="{Binding EnsureFirewallCommand}" Content="{Binding EnsureFirewallText}"/>
-                        <CheckBox IsVisible="{Binding CanConfigureAutoStart}" IsChecked="{Binding ConfigurationAutoStart}" Content="{Binding AutoStartText}"/>
-                        <CheckBox IsChecked="{Binding ConfigurationLan}" Content="{Binding ConfigurationLanText}"/>
-                    </StackPanel>
+                        <CheckBox IsVisible="{Binding CanConfigureAutoStart}" IsChecked="{Binding ConfigurationAutoStart}"><TextBlock Text="{Binding AutoStartText}" TextWrapping="Wrap"/></CheckBox>
+                        <CheckBox IsChecked="{Binding ConfigurationLan}"><TextBlock Text="{Binding ConfigurationLanText}" TextWrapping="Wrap"/></CheckBox>
+                    </StackPanel></Border>
+                    <Border Classes="management-section" x:Name="GuardianCard"><StackPanel Spacing="12">
+                    <TextBlock Text="{Binding ComponentsText}" FontSize="15" FontWeight="SemiBold"/>
                     <CheckBox x:Name="GuardianChoice" IsVisible="{Binding CanConfigureGuardian}" IsChecked="{Binding ConfigurationGuardian}" Content="{Binding GuardianChoiceText}"/>
+                    <TextBlock Text="{Binding GuardianDescription}" Classes="action-description"/>
+                    </StackPanel></Border>
                 </StackPanel>
-                <StackPanel Spacing="12" Margin="0,12,0,0" x:Name="RepairPanel" IsEnabled="{Binding !IsBusy}">
+                <Border Classes="management-section" x:Name="RepairPanelCard"><StackPanel Spacing="12" x:Name="RepairPanel" IsEnabled="{Binding !IsBusy}"><TextBlock Text="{Binding RepairText}" FontSize="15" FontWeight="SemiBold"/>
                     <TextBlock Text="{Binding RepairActionDescription}" Classes="action-description"/>
-                    <TextBlock Text="{Binding RepairPlanText}" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding RepairPlanText}" Classes="action-description"/>
                     <TextBlock Text="{Binding RepairPackageText}" TextWrapping="Wrap"/>
                     <TextBox Text="{Binding RepairPackagePath}"/>
                     <CheckBox IsVisible="{Binding CanManageFirewall}" IsChecked="{Binding MaintenanceAddFirewallRule}">
@@ -54,8 +86,8 @@
                     </CheckBox>
                     <TextBlock Text="{Binding RepairCertificateNote}" TextWrapping="Wrap" IsVisible="{Binding RepairLanCertificate}"/>
                     <TextBox Text="{Binding RepairCertificateIdentities}" IsVisible="{Binding RepairLanCertificate}"/>
-                </StackPanel>
-                <StackPanel Spacing="12" Margin="0,12,0,0" x:Name="UninstallPanel" IsEnabled="{Binding !IsBusy}">
+                </StackPanel></Border>
+                <Border Classes="management-section" x:Name="UninstallPanelCard"><StackPanel Spacing="12" x:Name="UninstallPanel" IsEnabled="{Binding !IsBusy}"><TextBlock Text="{Binding UninstallText}" FontSize="15" FontWeight="SemiBold"/>
                     <TextBlock Text="{Binding UninstallActionDescription}" Classes="action-description"/>
                     <TextBlock Text="{Binding ComponentSelectionText}" TextWrapping="Wrap"/>
                     <CheckBox IsChecked="{Binding RemoveSmb}" Content="{Binding RemoveSmbText}"/>
@@ -65,19 +97,19 @@
                     <CheckBox IsChecked="{Binding DeleteServerData}">
                         <TextBlock Text="{Binding DeleteServerDataText}" TextWrapping="Wrap"/>
                     </CheckBox>
-                </StackPanel>
+                </StackPanel></Border>
             </StackPanel>
         </ScrollViewer>
-        <StackPanel Grid.Row="2" Spacing="10">
+        <Border Grid.Row="2" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,1,0,0" Padding="0,14,0,0"><StackPanel Spacing="10">
             <ProgressBar IsVisible="{Binding IsBusy}" IsIndeterminate="True" Height="3"/>
-            <TextBlock Text="{Binding StatusMessage}" IsVisible="{Binding !HasError}" TextWrapping="Wrap"/>
+            <TextBlock Text="{Binding StatusMessage}" IsVisible="{Binding HasManagementStatus}" TextWrapping="Wrap"/>
             <TextBlock Text="{Binding ErrorMessage}" IsVisible="{Binding HasError}" TextWrapping="Wrap" Classes="error"/>
-            <WrapPanel>
+            <WrapPanel HorizontalAlignment="Right">
                 <Button x:Name="ConfigureButton" Command="{Binding ConfigureCommand}" Content="{Binding ApplyConfigurationText}" Classes="accent" Margin="0,0,12,8"/>
                 <Button x:Name="RepairButton" Command="{Binding RepairCommand}" Content="{Binding RepairText}" Classes="accent" Margin="0,0,12,8"/>
                 <Button x:Name="UninstallButton" Command="{Binding UninstallCommand}" Content="{Binding UninstallText}" Classes="danger" Margin="0,0,12,8"/>
                 <Button Content="{Binding CloseText}" Click="Close_Click" IsEnabled="{Binding !IsBusy}" Margin="0,0,0,8"/>
             </WrapPanel>
-        </StackPanel>
+        </StackPanel></Border>
     </Grid>
 </UserControl>

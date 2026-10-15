@@ -142,6 +142,7 @@ public partial class ServerCenterViewModel : ObservableObject
     /// <summary>Workspace-owned modal presentation; the view model owns the deployment action only.</summary>
     public Func<Task>? ShowInstallationWizardAsync { get; set; }
     public Func<string, Task>? ShowManagementDialogAsync { get; set; }
+    public Func<ServerRollbackReview, Task<bool>>? ConfirmRollbackAsync { get; set; }
 
     public string Title => T("server_center.title", "Server centre");
     public string Subtitle => T("server_center.subtitle", "Manage SSH hosts and RelaxKonOS server installations.");
@@ -459,6 +460,7 @@ public partial class ServerCenterViewModel : ObservableObject
         var platform = SelectedPlatform;
         if (target is null || platform is null) return;
 
+        string? rollbackVersion = null;
         IsBusy = true;
         ErrorMessage = string.Empty;
         StatusMessage = T("server_center.progress.connecting", "Connecting to the server…");
@@ -494,6 +496,34 @@ public partial class ServerCenterViewModel : ObservableObject
             {
                 ErrorMessage = T("server_center.maintenance_preflight_failed", "The host no longer reports a supported managed installation. This operation is blocked.");
                 return;
+            }
+
+            if (kind == ServerDeploymentKind.Rollback)
+            {
+                var before = await ExecuteReadOnlyAsync(session, tools, ServerDeploymentKind.Status, StatusOptions(probe.ExistingMode!.Value), cancellationToken, sudoPassword).ConfigureAwait(true);
+                if (before.State != ServerDeploymentState.Succeeded || before.Snapshot is not { Installed: true } reviewed ||
+                    reviewed.InstallationId != probe.ExistingInstallationId || reviewed.Mode != probe.ExistingMode ||
+                    string.IsNullOrWhiteSpace(reviewed.Version) || string.IsNullOrWhiteSpace(reviewed.PreviousVersion))
+                {
+                    ErrorMessage = T("server_center.rollback_unavailable", "Current and previous versions could not be verified. Refresh the installation and try again.");
+                    return;
+                }
+                var review = new ServerRollbackReview(target.DisplayName, reviewed.Version, reviewed.PreviousVersion);
+                if (ConfirmRollbackAsync is not { } confirm || !await confirm(review).ConfigureAwait(true))
+                {
+                    StatusMessage = T("server_center.rollback_cancelled", "Version restore canceled. No changes were made.");
+                    return;
+                }
+                cancellationToken.ThrowIfCancellationRequested();
+                var after = await ExecuteReadOnlyAsync(session, tools, ServerDeploymentKind.Status, StatusOptions(probe.ExistingMode.Value), cancellationToken, sudoPassword).ConfigureAwait(true);
+                if (after.State != ServerDeploymentState.Succeeded || SelectedHost?.HostId != target.HostId || after.Snapshot is not { Installed: true } current ||
+                    current.InstallationId != reviewed.InstallationId || current.Mode != reviewed.Mode ||
+                    current.Version != reviewed.Version || current.PreviousVersion != reviewed.PreviousVersion)
+                {
+                    ErrorMessage = T("server_center.rollback_changed", "The installation or versions changed. Review the versions again before restoring.");
+                    return;
+                }
+                rollbackVersion = reviewed.PreviousVersion;
             }
 
             if (kind == ServerDeploymentKind.Configure)
@@ -571,6 +601,12 @@ public partial class ServerCenterViewModel : ObservableObject
             if (status.State != ServerDeploymentState.Succeeded ||
                 (kind == ServerDeploymentKind.Uninstall ? status.Snapshot.Installed :
                     !status.Snapshot.Installed || kind != ServerDeploymentKind.Firewall && !status.Snapshot.Healthy))
+            {
+                ErrorMessage = T("server_center.maintenance_verification_failed", "The host state after the operation does not confirm success. Check the operation record.");
+                return;
+            }
+            if (kind == ServerDeploymentKind.Rollback &&
+                (status.Snapshot.Version != rollbackVersion || status.Snapshot.InstallationId != request.Options!.ExpectedInstallationId))
             {
                 ErrorMessage = T("server_center.maintenance_verification_failed", "The host state after the operation does not confirm success. Check the operation record.");
                 return;
@@ -1244,7 +1280,11 @@ public partial class ServerCenterViewModel : ObservableObject
         LoadOperationHistoryCommand.NotifyCanExecuteChanged();
         RefreshOperationCommand.NotifyCanExecuteChanged();
     }
-    partial void OnErrorMessageChanged(string value) => OnPropertyChanged(nameof(HasError));
+    partial void OnErrorMessageChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasError));
+        OnPropertyChanged(nameof(HasManagementStatus));
+    }
     partial void OnNeedsHostKeyConfirmationChanged(bool value) => ConfirmHostKeyCommand.NotifyCanExecuteChanged();
     partial void OnHostKeyReplacesPinnedKeyChanged(bool value)
     {
@@ -1516,3 +1556,5 @@ public sealed record ServerInstallationOptions(
     IReadOnlyList<string>? FileRoots = null, ServerFileAccessScope? AdministratorFileAccess = null,
     IReadOnlyList<string>? AdministratorFileRoots = null, ServerFileAccessScope? RootFileAccess = null,
     IReadOnlyList<string>? RootFileRoots = null, bool DockerAccess = false, bool AllowUnsupportedSystem = false, bool AddFirewallRule = false, bool GuardianEnabled = true);
+
+public sealed record ServerRollbackReview(string Host, string CurrentVersion, string PreviousVersion);

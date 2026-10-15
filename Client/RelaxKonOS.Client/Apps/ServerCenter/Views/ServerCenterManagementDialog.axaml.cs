@@ -25,11 +25,12 @@ public partial class ServerCenterManagementDialog : UserControl
                 ? repair != (viewModel.MaintenanceAddFirewallRule, viewModel.RepairLanCertificate, viewModel.RepairCertificateIdentities, viewModel.RepairPackagePath)
                 : section == "uninstall" && uninstall != (viewModel.RemoveSmb, viewModel.RemoveNginx, viewModel.RemoveFrp, viewModel.RemoveMihomo, viewModel.DeleteServerData));
         ConfigurationPanel.IsVisible = ConfigureButton.IsVisible = section is "settings" or "components";
-        NetworkSettingsPanel.IsVisible = section == "settings";
+        NetworkSettingsCard.IsVisible = NetworkSettingsPanel.IsVisible = section == "settings";
         GuardianChoice.IsVisible = section == "components" && viewModel.CanConfigureGuardian;
-        DetailsPanel.IsVisible = section is "details" or "repair";
-        RepairPanel.IsVisible = RepairButton.IsVisible = section == "repair";
-        UninstallPanel.IsVisible = UninstallButton.IsVisible = section == "uninstall";
+        DetailsPanelCard.IsVisible = DetailsPanel.IsVisible = section == "details";
+        GuardianCard.IsVisible = section == "components";
+        RepairPanelCard.IsVisible = RepairPanel.IsVisible = RepairButton.IsVisible = section == "repair";
+        UninstallPanelCard.IsVisible = UninstallPanel.IsVisible = UninstallButton.IsVisible = section == "uninstall";
     }
 
     private void Close_Click(object? sender, RoutedEventArgs e)

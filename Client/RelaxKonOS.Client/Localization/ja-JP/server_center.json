@@ -1,6 +1,16 @@
 {
   "Culture": "ja-JP",
   "Strings": {
+    "server_center.configuration_current": "現在の構成",
+    "server_center.guardian_description": "プロセス監視で管理対象の処理を維持します。適用するとサービスが再起動します。監視を削除すると処理は停止しますが、定義とログは保持されます。",
+    "server_center.network_settings": "接続と起動",
+    "server_center.file_access_description": "特権操作でアクセスできるホストファイルを選択します。指定ディレクトリを選んだ場合のみパスを入力します。",
+    "server_center.rollback_confirm_note": "以前のプログラムバージョンでサーバーを再起動します。データと設定は保持されます。続行する前に両方のバージョンを確認してください。",
+    "server_center.rollback_confirm": "このバージョンに戻す",
+    "server_center.rollback_unavailable": "現在と以前のバージョンを確認できません。インストール状態を更新して再試行してください。",
+    "server_center.rollback_cancelled": "バージョンの復元をキャンセルしました。変更はありません。",
+    "server_center.rollback_changed": "インストール状態またはバージョンが変わりました。再確認してから復元してください。",
+
     "server_center.progress.downloading": "インストールパッケージをダウンロードしています…",
     "server_center.progress.checking": "インストール環境を確認しています…",
     "server_center.progress.connecting": "サーバーに接続しています…",

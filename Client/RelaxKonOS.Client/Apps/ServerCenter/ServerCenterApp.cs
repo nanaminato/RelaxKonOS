@@ -32,6 +32,8 @@ public sealed class ServerCenterApp : RemoteApplicationBase
         var window = context.ShowWindow(viewModel.Title, view,
             new Rect(70, 50, 1120, 760), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
+        viewModel.ConfirmRollbackAsync = review => context.ShowDialogAsync<bool>(window, viewModel.RollbackText,
+            dialog => new ServerRollbackConfirmationView(review, dialog), new Size(560, 420));
         viewModel.ShowManagementDialogAsync = section => context.ShowDialogAsync<bool>(window,
             section switch { "components" => viewModel.ComponentsText, "settings" => viewModel.SettingsText, "repair" => viewModel.RepairText, "uninstall" => viewModel.UninstallText, _ => viewModel.InstallationInfoTitle },
             dialog => new ServerCenterManagementDialog(viewModel, section, dialog), new Size(640, 600));

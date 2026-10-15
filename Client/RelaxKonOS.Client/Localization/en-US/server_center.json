@@ -1,6 +1,16 @@
 {
   "Culture": "en-US",
   "Strings": {
+    "server_center.configuration_current": "Current configuration",
+    "server_center.guardian_description": "Keep managed workloads running with process supervision. Applying this choice restarts services; removing the guardian stops its workloads while retaining definitions and logs.",
+    "server_center.network_settings": "Connection and startup",
+    "server_center.file_access_description": "Choose which host files privileged operations can access. List directories only when selected-directory access is enabled.",
+    "server_center.rollback_confirm_note": "The server will restart using the previous program version. Data and configuration will be retained. Review both versions before continuing.",
+    "server_center.rollback_confirm": "Restore this version",
+    "server_center.rollback_unavailable": "Current and previous versions could not be verified. Refresh the installation and try again.",
+    "server_center.rollback_cancelled": "Version restore canceled. No changes were made.",
+    "server_center.rollback_changed": "The installation or versions changed. Review the versions again before restoring.",
+
     "server_center.progress.downloading": "Downloading the installation package…",
     "server_center.progress.checking": "Checking the installation environment…",
     "server_center.progress.connecting": "Connecting to the server…",

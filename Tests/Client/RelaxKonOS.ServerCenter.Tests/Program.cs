@@ -22,6 +22,11 @@ if (args.Contains("--ssh-cancellation-only"))
 AppBuilder.Configure<Application>().UseSkia().UseHeadless(new AvaloniaHeadlessPlatformOptions()).SetupWithoutStarting();
 SynchronizationContext.SetSynchronizationContext(null);
 using var appearance = new RelaxKonOS.Client.Services.Theming.AppearanceService(Application.Current!, new RelaxKonOS.Client.Services.Theming.SystemStyleRegistry());
+if (args.Contains("--rollback-only"))
+{
+    await RollbackConfirmationChecks.RunAsync();
+    return;
+}
 await AuthSessionCancellationChecks.RunAsync();
 await LoginDiscoveryCancellationChecks.RunAsync();
 await SshDesktopCancellationChecks.RunAsync(new RelaxKonOS.Client.Services.ShellSettings(appearance));
@@ -263,6 +268,7 @@ await LoginPickerChecks.RunAsync();
 await OwnerDeviceRememberedChecks.RunAsync();
 await HostKeyReviewChecks.RunAsync();
 await MaintenanceOutcomeChecks.RunAsync();
+await RollbackConfirmationChecks.RunAsync();
 SecretStoreChecks.Run();
 
 Console.WriteLine("桌面服务器中心传输检查通过。");
