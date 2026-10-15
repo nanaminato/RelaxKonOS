@@ -1558,9 +1558,14 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         catch (Exception ex) { StatusText = LocalizedText.Ref("explorer.status.move_failed", ex.Message); }
     }
 
-    private async Task UploadSourcesAsync(IReadOnlyList<LocalUploadSource> sources, string operationName)
+    /// <summary>Queues host files at a captured target, also used by the desktop shell.</summary>
+    public Task PasteHostFilesAsync(string targetDirectory, IReadOnlyList<LocalUploadSource> sources) =>
+        UploadSourcesAsync(sources, LocalizedText.Get("explorer.status.pasting_host_files"), targetDirectory);
+
+    private async Task UploadSourcesAsync(IReadOnlyList<LocalUploadSource> sources, string operationName, string? targetDirectory = null)
     {
-        if (string.IsNullOrWhiteSpace(AddressbarPath))
+        var destination = targetDirectory ?? AddressbarPath;
+        if (string.IsNullOrWhiteSpace(destination))
         {
             StatusText = LocalizedText.Ref("explorer.status.enter_target_directory_first");
             return;
@@ -1575,7 +1580,6 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var destination = AddressbarPath;
         if (QueueUpload is not null)
         {
             var items = plan.Directories.Select(path => new FileOperationItem(path, LocalUploadPlan.CombineRemotePath(destination, path)))
@@ -1637,9 +1641,9 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             {
                 var directory = plan.Directories[index];
                 TransferText = LocalizedText.Format("explorer.status.creating_folder", directory, index + 1, TransferItemTotal);
-                var remoteDirectory = LocalUploadPlan.CombineRemotePath(AddressbarPath, directory);
+                var remoteDirectory = LocalUploadPlan.CombineRemotePath(destination, directory);
                 if (!await RetryWithOperationElevationAsync(
-                        async () => { await _client.CreateDirectoryAsync(remoteDirectory); }, FileElevationCapability.CreateDirectory, AddressbarPath)) return;
+                        async () => { await _client.CreateDirectoryAsync(remoteDirectory); }, FileElevationCapability.CreateDirectory, destination)) return;
                 TransferItemCompleted = index + 1;
             }
 
@@ -1666,7 +1670,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
                     shown = value;
                     TransferBytesCompleted = currentFileStart + value;
                 }
-                if (!await UploadPlannedFileAsync(AddressbarPath, file, Report)) return;
+                if (!await UploadPlannedFileAsync(destination, file, Report)) return;
                 completedBytes += file.Length;
                 TransferBytesCompleted = completedBytes;
                 TransferItemCompleted = operationIndex;

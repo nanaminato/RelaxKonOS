@@ -330,6 +330,12 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
                 case ShortcutEntryViewModel shortcut: shortcut.ActivateCommand.Execute(null); break;
             }
         };
+        if (item is DesktopFileEntryViewModel entry)
+        {
+            button.KeyBindings.Add(new KeyBinding { Gesture = KeyGesture.Parse("Ctrl+C"), Command = vm.CopyDesktopEntryCommand, CommandParameter = entry });
+            button.KeyBindings.Add(new KeyBinding { Gesture = KeyGesture.Parse("Ctrl+X"), Command = vm.CutDesktopEntryCommand, CommandParameter = entry });
+            button.KeyBindings.Add(new KeyBinding { Gesture = KeyGesture.Parse("Ctrl+V"), Command = vm.PasteDesktopCommand, CommandParameter = entry });
+        }
         button.ContextMenu = CreateDesktopItemContextMenu(vm, item);
         return button;
     }

@@ -198,7 +198,8 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     public Func<IReadOnlyList<ApplicationInfo>, string, Task<OpenWithChoice?>>? RequestDesktopOpenWithAsync { get; set; }
     public Func<FilePropertiesDto, Task>? ShowDesktopPropertiesAsync { get; set; }
     public Func<Task<HostFileClipboardSnapshot>>? ReadHostFileClipboardAsync { get; set; }
-    public Func<Task>? MarkRemoteFileCopyAsync { get; set; }
+    public Func<IReadOnlyList<FileSystemEntryDto>, Task>? PublishRemoteFilesAsync { get; set; }
+    public Func<string, IReadOnlyList<LocalUploadSource>, Task>? PasteHostFilesAsync { get; set; }
     public Func<string, Task>? ShowDesktopPasteErrorAsync { get; set; }
 
     [ObservableProperty] private bool _isStartOpen;
@@ -525,7 +526,7 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     private async Task CopyDesktopEntryAsync(DesktopFileEntryViewModel? item)
     {
         if (item is null) return;
-        if (MarkRemoteFileCopyAsync is not null) await MarkRemoteFileCopyAsync();
+        if (!await PublishDesktopClipboardAsync(item.Entry)) return;
         _fileClipboard.Set([item.Entry], RemoteFileClipboardOperation.Copy);
         RecordDesktopFileMenuDiagnostic($"copy stored in desktop clipboard: entry={item.DisplayName}.");
     }
@@ -534,9 +535,25 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     private async Task CutDesktopEntryAsync(DesktopFileEntryViewModel? item)
     {
         if (item is null) return;
-        if (MarkRemoteFileCopyAsync is not null) await MarkRemoteFileCopyAsync();
+        if (!await PublishDesktopClipboardAsync(item.Entry)) return;
         _fileClipboard.Set([item.Entry], RemoteFileClipboardOperation.Cut);
         RecordDesktopFileMenuDiagnostic($"cut stored in desktop clipboard: entry={item.DisplayName}.");
+    }
+
+    private async Task<bool> PublishDesktopClipboardAsync(FileSystemEntryDto entry)
+    {
+        try
+        {
+            if (PublishRemoteFilesAsync is not null) await PublishRemoteFilesAsync([entry]);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            RecordDesktopFileMenuDiagnostic($"desktop clipboard publication failed: {ex.Message}");
+            if (ShowDesktopPasteErrorAsync is not null)
+                await ShowDesktopPasteErrorAsync(LocalizedText.Format("explorer.status.copy_failed", ex.Message));
+            return false;
+        }
     }
 
     [RelayCommand]
@@ -561,7 +578,7 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
                 await PasteHostFilesToDesktopAsync(targetDirectory, snapshot.Files);
                 return;
             }
-            if (!_fileClipboard.HasEntries)
+            if (!_fileClipboard.HasEntries || (!snapshot.IsRemoteCopy && ReadHostFileClipboardAsync is not null))
             {
                 RecordDesktopFileMenuDiagnostic("desktop paste stopped: clipboard has no files.");
                 return;
@@ -612,25 +629,8 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
 
     private async Task PasteHostFilesToDesktopAsync(string targetDirectory, IReadOnlyList<LocalUploadSource> sources)
     {
-        var plan = LocalUploadPlan.Build(sources);
-        var changed = false;
-        try
-        {
-            foreach (var directory in plan.Directories)
-            {
-                await _files.CreateDirectoryAsync(LocalUploadPlan.CombineRemotePath(targetDirectory, directory));
-                changed = true;
-            }
-            foreach (var file in plan.Files)
-            {
-                var destination = LocalUploadPlan.CombineRemotePath(targetDirectory, file.RelativePath);
-                using var stream = File.OpenRead(file.SourcePath);
-                await _files.UploadAsync(ExplorerPath.Parent(destination)!, Path.GetFileName(file.RelativePath), stream);
-                changed = true;
-            }
-            RecordDesktopFileMenuDiagnostic($"desktop host paste completed: files={plan.Files.Count}, folders={plan.Directories.Count}.");
-        }
-        finally { if (changed) RefreshDesktop(); }
+        if (PasteHostFilesAsync is null) throw new InvalidOperationException("Desktop file transfer is unavailable.");
+        await PasteHostFilesAsync(targetDirectory, sources);
     }
 
     [RelayCommand]

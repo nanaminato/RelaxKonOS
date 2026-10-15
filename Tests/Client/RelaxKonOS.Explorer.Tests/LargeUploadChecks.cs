@@ -352,6 +352,19 @@ public static class LargeUploadChecks
         check(fake.SingleShotUploads == 1, "The large file is not also sent through the single-shot route");
         check(capabilities.SequenceEqual([FileElevationCapability.Upload]),
             "The session asks the host for the upload capability, so authorization is settled before any chunk");
+        Func<Action<string, long, int>, CancellationToken, Task>? queued = null;
+        using var desktopTransfer = new ExplorerViewModel(client)
+        {
+            LargeFileUploader = uploader,
+            QueueUpload = (_, _, run) => queued = run,
+            RequestFileOperationElevationAsync = vm.RequestFileOperationElevationAsync,
+        };
+        await desktopTransfer.PasteHostFilesAsync("/desktop", [new(large)]);
+        check(queued is not null && string.IsNullOrEmpty(desktopTransfer.AddressbarPath),
+            "Desktop host paste queues without opening or navigating a file browser");
+        await queued!((_, _, _) => { }, CancellationToken.None);
+        check(uploader.Requests[^1].TargetDirectoryPath == "/desktop" && uploader.Requests[^1].Length == largeLength,
+            "Desktop large-file paste uses the resumable uploader and captured desktop destination");
     }
 
     private static async Task VerifyProgressNeverRewindsAsync(string root, Action<bool, string> check)

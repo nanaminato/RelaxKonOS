@@ -47,6 +47,11 @@ var localization = new LocalizationService(settings, new SshDesktopSession(null!
 using var services = new ServiceCollection().AddSingleton(localization).AddSingleton(new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!))).BuildServiceProvider();
 // The XAML localization extension resolves the host application's singleton provider.
 typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
+if (args.Contains("--desktop-clipboard-only"))
+{
+    DesktopClipboardChecks.RunAsync(settings, localization, services).GetAwaiter().GetResult();
+    return;
+}
 if (args.Contains("--terminal-tabs-only"))
 {
     TerminalWorkspaceChecks.Run();

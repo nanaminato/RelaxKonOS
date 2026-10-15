@@ -1,3 +1,4 @@
+using RelaxKonOS.Protocol.Files;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Platform.Storage;
@@ -14,6 +15,19 @@ public static class HostFileClipboard
         DataFormat.CreateStringApplicationFormat("relaxkonos.remote-file-copy");
     private static readonly string ProcessMarker = Guid.NewGuid().ToString("N");
 
+    public static async Task PublishAsync(IClipboard? clipboard, IExplorerClient client,
+        IReadOnlyList<FileSystemEntryDto> entries, Func<string?> sessionScope,
+        Func<string, long, ClipboardFileTransfer> beginTransfer)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            var scope = sessionScope();
+            await WindowsFileClipboard.PublishAsync(client, entries,
+                () => scope is not null && scope == sessionScope(), beginTransfer);
+        }
+        else await MarkRemoteCopyAsync(clipboard);
+    }
+
     public static async Task MarkRemoteCopyAsync(IClipboard? clipboard)
     {
         if (clipboard is null) return;
@@ -24,6 +38,7 @@ public static class HostFileClipboard
 
     public static async Task<HostFileClipboardSnapshot> ReadAsync(IClipboard? clipboard)
     {
+        if (OperatingSystem.IsWindows() && WindowsFileClipboard.IsCurrent) return new(true, []);
         if (clipboard is null) return new(false, []);
         var transfer = await clipboard.TryGetDataAsync();
         if (transfer is null) return new(false, []);

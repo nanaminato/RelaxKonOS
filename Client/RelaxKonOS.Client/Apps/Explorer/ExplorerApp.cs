@@ -108,7 +108,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         var operations = context.Services.GetService(typeof(ExplorerOperationCenter)) as ExplorerOperationCenter;
         if (operations is not null)
         {
-            ConfigureOperationsWindow(context, operations);
+            ConfigureOperationsWindow(context.WindowManager, operations);
             viewModel.QueueOperationAsync = operations.SubmitAsync;
             viewModel.QueueUpload = operations.QueueUpload;
             viewModel.QueueDownload = operations.QueueDownload;
@@ -203,7 +203,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         await viewModel.NavigateToAsync(path);
     }
 
-    private static async Task<bool> RequestOperationElevationAsync(AppContext context, IExplorerClient client,
+    internal static async Task<bool> RequestOperationElevationAsync(AppContext context, IExplorerClient client,
         IReadOnlyList<string> paths, FileElevationCapability capability)
     {
         try
@@ -296,26 +296,27 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         }, new Size(420, 230));
     }
 
-    private static void ConfigureOperationsWindow(AppContext context, ExplorerOperationCenter center)
+    internal static void ConfigureOperationsWindow(IWindowManager windows, ExplorerOperationCenter center)
     {
         if (center.ShowRequested is not null) return;
         ManagedWindow? progressWindow = null;
         center.CloseRequested = () =>
         {
-            if (progressWindow is not null && context.WindowManager.Windows.Contains(progressWindow))
-                context.WindowManager.Close(progressWindow);
+            if (progressWindow is not null && windows.Windows.Contains(progressWindow))
+                windows.Close(progressWindow);
             progressWindow = null;
         };
         center.ShowRequested = () =>
         {
-            if (progressWindow is not null && context.WindowManager.Windows.Contains(progressWindow))
+            if (progressWindow is not null && windows.Windows.Contains(progressWindow))
             {
-                context.WindowManager.Restore(progressWindow);
-                context.WindowManager.Focus(progressWindow);
+                windows.Restore(progressWindow);
+                windows.Focus(progressWindow);
                 return;
             }
-            progressWindow = context.ShowWindow(LocalizedText.Get("explorer.operations.title"),
-                new ExplorerOperationsView { DataContext = center }, bounds: new Rect(180, 90, 560, 400), iconGlyph: "📁");
+            progressWindow = windows.Create(new WindowCreateOptions(new AppId("relaxkonos.explorer"),
+                LocalizedText.Get("explorer.operations.title"), new ExplorerOperationsView { DataContext = center },
+                Bounds: new Rect(180, 90, 560, 400), IconGlyph: "📁"));
         };
     }
 
@@ -425,26 +426,12 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
             });
         };
 
-        vm.ReadHostFileClipboardAsync = async () =>
-        {
-            if (OperatingSystem.IsWindows() && WindowsFileClipboard.IsCurrent)
-                return new HostFileClipboardSnapshot(true, []);
-            return await HostFileClipboard.ReadAsync(GetTopLevel(context, vm)?.Clipboard);
-        };
-        vm.PublishRemoteFilesAsync = async entries =>
-        {
-            if (OperatingSystem.IsWindows())
-            {
-                var scope = vm.FileListCacheScope?.Invoke();
-                await WindowsFileClipboard.PublishAsync(client, entries,
-                    () => scope is not null && scope == vm.FileListCacheScope?.Invoke(),
-                    (path, size) =>
-                        (context.Services.GetService(typeof(ExplorerOperationCenter)) as ExplorerOperationCenter
-                            ?? throw new InvalidOperationException("File operation center is unavailable."))
-                        .BeginClipboardDownload(path, size, action => Dispatcher.UIThread.Post(action)));
-            }
-            else await HostFileClipboard.MarkRemoteCopyAsync(GetTopLevel(context, vm)?.Clipboard);
-        };
+        vm.ReadHostFileClipboardAsync = () => HostFileClipboard.ReadAsync(GetTopLevel(context, vm)?.Clipboard);
+        vm.PublishRemoteFilesAsync = entries => HostFileClipboard.PublishAsync(
+            GetTopLevel(context, vm)?.Clipboard, client, entries, () => vm.FileListCacheScope?.Invoke(),
+            (path, size) => context.Services.GetService(typeof(ExplorerOperationCenter)) is ExplorerOperationCenter center
+                ? center.BeginClipboardDownload(path, size, action => Dispatcher.UIThread.Post(action))
+                : throw new InvalidOperationException("File operation center is unavailable."));
 
         vm.RequestFileElevationAsync = async (path, capability) =>
         {

@@ -89,3 +89,12 @@ Windows 原生验收使用生产剪贴板实现与生成的测试内容，跨进
 可复现命令：运行 `Tests/Client/RelaxKonOS.Explorer.Tests` 的 `--clipboard-source` 模式（会替换系统剪贴板，90 秒有效），在另一个进程运行 `--clipboard-sink` 检查跨进程读取；`--clipboard-source-slow` 提供 32 MiB 限速文件，`--clipboard-source-tree` 提供中文目录及空文件样本，可在 Windows 文件管理器粘贴验收。验收模式不连接真实服务器或读取用户文件。
 
 Windows Shell 格式参考：[Shell Clipboard Formats](https://learn.microsoft.com/en-us/windows/win32/shell/clipboard)。
+
+
+### 桌面文件图标接入（2026-10-15）
+
+桌面文件图标和内置文件浏览器统一调用 `HostFileClipboard.PublishAsync/ReadAsync`，Windows 虚拟文件发布、会话校验与来源识别共用一处实现。桌面复制/剪切现在可在 Windows 文件管理器粘贴；外部复制文件后可在桌面背景或桌面文件夹粘贴。文件图标支持 Ctrl+C、Ctrl+X、Ctrl+V。外部剪贴板变为文字或空内容后，桌面不会再次使用过期的内部文件选择。
+
+桌面本机粘贴复用 Explorer 的传输编排，不打开文件浏览器、不先列举目标目录；目标路径在提交时固定，大于 4 MiB 的文件继续走分块上传，进度与取消由共享操作中心承载，权限确认沿用既有系统对话框。操作中心窗口在桌面初始化时即可使用，任务完成后刷新桌面，不要求先启动文件浏览器。跨系统剪切依旧按复制处理。
+
+验证：桌面专项 8 项检查通过（复制/剪切发布、发布失败保护、本机粘贴、文件夹目标、过期剪贴板、远程内部复制和快捷键）；301 项 Explorer 回归通过，含无需导航的桌面大文件目标捕获与分块调度。共享 HostFileClipboard 的跨进程 OLE 实际读取 256 KiB 内容通过；桌面客户端编译通过。桌面专项命令为 `dotnet run --project Tests/Client/RelaxKonOS.WindowPreviews.Tests -- --desktop-clipboard-only`；本轮未操作连接真实服务器的桌面会话。

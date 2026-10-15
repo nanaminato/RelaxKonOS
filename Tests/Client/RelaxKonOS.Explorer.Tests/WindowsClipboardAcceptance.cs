@@ -32,10 +32,10 @@ public static class WindowsClipboardAcceptance
             AcceptanceClient.Tree = mode == "--clipboard-source-tree";
             WindowsFileClipboard.Trace = message => { Console.WriteLine(message); Console.Out.Flush(); };
             var client = DispatchProxy.Create<IExplorerClient, AcceptanceClient>();
-            WindowsFileClipboard.PublishAsync(client, AcceptanceClient.Tree
+            HostFileClipboard.PublishAsync(null, client, AcceptanceClient.Tree
                 ? [new("/tree", "剪贴板验收", null, FileSystemEntryType.Directory, null, null, null, false, false, null)]
                 : [new("/acceptance.bin", AcceptanceClient.Slow ? "relaxkonos-progress.bin" : "relaxkonos-acceptance.bin", AcceptanceClient.Slow ? 32L * 1024 * 1024 : 262144, FileSystemEntryType.File, null, null, null, false, false, null)],
-                () => true, (path, size) => new ClipboardFileTransfer(
+                () => "clipboard-acceptance-session", (path, size) => new ClipboardFileTransfer(
                     bytes => { if (bytes % (1024 * 1024) == 0) { Console.WriteLine($"PROGRESS {bytes}/{size}"); Console.Out.Flush(); } },
                     error => { Console.WriteLine("TRANSFER_END " + (error?.GetType().Name ?? "success")); Console.Out.Flush(); }, CancellationToken.None)).GetAwaiter().GetResult();
             if (!WindowsFileClipboard.IsCurrent) throw new IOException("Published file clipboard does not own paste.");
