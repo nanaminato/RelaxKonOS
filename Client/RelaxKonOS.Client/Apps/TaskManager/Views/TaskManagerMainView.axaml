@@ -22,30 +22,6 @@
         <Style Selector="ListBox.performance-nav > ListBoxItem:selected">
             <Setter Property="Background" Value="{DynamicResource SelectionBackgroundBrush}" />
         </Style>
-        <Style Selector="ListBox.process-list">
-            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="0" />
-        </Style>
-        <Style Selector="ListBox.process-list > ListBoxItem">
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="Margin" Value="0" />
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="MinHeight" Value="32" />
-            <Setter Property="CornerRadius" Value="0" />
-        </Style>
-        <Style Selector="ListBox.process-list">
-            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="0" />
-        </Style>
-        <Style Selector="ListBox.process-list > ListBoxItem">
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="Margin" Value="0" />
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="MinHeight" Value="32" />
-            <Setter Property="CornerRadius" Value="0" />
-        </Style>
         <Style Selector="TextBlock.metric-label">
             <Setter Property="FontSize" Value="12" />
             <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
@@ -181,21 +157,16 @@
                 </Border>
                 <Border Grid.Row="1" Padding="8,4" IsVisible="{Binding KillFeedback, Converter={x:Static conv:StringNonEmptyVisibilityConverter.Instance}}"><TextBlock Text="{Binding KillFeedback}" FontSize="12" TextWrapping="Wrap" /></Border>
                 <Border Grid.Row="2" Background="{DynamicResource SurfaceBrush}">
-                    <Grid RowDefinitions="Auto,*">
-                        <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,1" Padding="8,8">
-                            <Grid ColumnDefinitions="2*,70,80,120,120,60">
-                                <TextBlock Text="{loc:Loc common.name}" FontSize="12" FontWeight="SemiBold" />
-                                <TextBlock Grid.Column="1" Text="PID" HorizontalAlignment="Right" Margin="0,0,12,0" FontSize="12" />
-                                <TextBlock Grid.Column="2" Text="CPU" HorizontalAlignment="Right" Margin="0,0,12,0" FontSize="12" />
-                                <TextBlock Grid.Column="3" Text="{loc:Loc task_manager.memory}" HorizontalAlignment="Right" Margin="0,0,12,0" FontSize="12" />
-                                <TextBlock Grid.Column="4" Text="{loc:Loc task_manager.user}" FontSize="12" />
-                                <TextBlock Grid.Column="5" Text="{loc:Loc task_manager.threads}" HorizontalAlignment="Right" Margin="0,0,12,0" FontSize="12" />
-                            </Grid>
-                        </Border>
-                        <ListBox Classes="process-list" Grid.Row="1" ItemsSource="{Binding FilteredProcesses}" SelectedItem="{Binding SelectedProcess, Mode=TwoWay}">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate x:DataType="vm:ProcessTreeItemViewModel">
-                                    <Grid ColumnDefinitions="2*,70,80,120,120,60" Margin="8,0" MinHeight="32">
+                    <DataGrid x:Name="ProcessesGrid" ItemsSource="{Binding FilteredProcesses}"
+                              SelectedItem="{Binding SelectedProcess, Mode=TwoWay}"
+                              AutoGenerateColumns="False" IsReadOnly="True" CanUserResizeColumns="True"
+                              CanUserSortColumns="False" CanUserReorderColumns="False"
+                              SelectionMode="Single" HeadersVisibility="Column" GridLinesVisibility="None"
+                              RowHeight="34" BorderThickness="0" HorizontalScrollBarVisibility="Auto">
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="{loc:Loc common.name}" SortMemberPath="Name" Width="2*" MinWidth="180">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate x:DataType="vm:ProcessTreeItemViewModel">
                                         <Grid ColumnDefinitions="20,20,*" Margin="{Binding Indent}" ColumnSpacing="6">
                                             <Button Content="{Binding ExpandGlyph}" Command="{Binding ToggleExpandedCommand}" IsVisible="{Binding HasChildren}" Width="20" Height="24" Padding="0" Background="Transparent" BorderThickness="0" VerticalAlignment="Center" />
                                             <Image Grid.Column="1" Source="{Binding IconImage}" IsVisible="{Binding HasIconImage}" Width="20" Height="20" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" DataContextChanged="ProcessIcon_DataContextChanged" AttachedToVisualTree="ProcessIcon_AttachedToVisualTree" />
@@ -204,16 +175,16 @@
                                             </Border>
                                             <TextBlock Grid.Column="2" Text="{Binding DisplayName}" ToolTip.Tip="{Binding Process.Name}" HorizontalAlignment="Stretch" TextAlignment="Left" Margin="0,0,12,0" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                         </Grid>
-                                        <TextBlock Grid.Column="1" Text="{Binding Process.Id}" HorizontalAlignment="Right" Margin="0,0,12,0" VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="2" Text="{Binding Process.CpuPercent, StringFormat='{}{0:0.0}%'}" HorizontalAlignment="Right" Margin="0,0,12,0" VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="3" Text="{Binding Process.MemoryBytes, Converter={x:Static conv:BytesConverter.Instance}}" HorizontalAlignment="Right" Margin="0,0,12,0" VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="4" Text="{Binding Process.UserName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="5" Text="{Binding Process.ThreadCount}" HorizontalAlignment="Right" Margin="0,0,12,0" VerticalAlignment="Center" />
-                                    </Grid>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                    </Grid>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="PID" SortMemberPath="Id" Binding="{Binding Process.Id}" Width="80" MinWidth="70" />
+                            <DataGridTextColumn Header="CPU" SortMemberPath="CpuPercent" Binding="{Binding Process.CpuPercent, StringFormat='{}{0:0.0}%'}" Width="90" MinWidth="70" />
+                            <DataGridTextColumn Header="{loc:Loc task_manager.memory}" SortMemberPath="MemoryBytes" Binding="{Binding Process.MemoryBytes, Converter={x:Static conv:BytesConverter.Instance}}" Width="120" MinWidth="70" />
+                            <DataGridTextColumn Header="{loc:Loc task_manager.user}" SortMemberPath="UserName" Binding="{Binding Process.UserName}" Width="120" MinWidth="70" />
+                            <DataGridTextColumn Header="{loc:Loc task_manager.threads}" SortMemberPath="ThreadCount" Binding="{Binding Process.ThreadCount}" Width="85" MinWidth="70" />
+                        </DataGrid.Columns>
+                    </DataGrid>
                 </Border>
             </Grid>
             </Grid>

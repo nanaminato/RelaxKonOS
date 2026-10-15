@@ -169,7 +169,7 @@ internal sealed class DesktopDisplayEditBuffer
 internal sealed partial class AppVisibilityItem : ObservableObject
 {
     public ApplicationInfo App { get; }
-    public string DisplayName => App.DisplayName;
+    public string DisplayName => LocalizedText.Get($"application.{App.Id.Value}.display_name", App.DisplayName);
     public string IconGlyph => string.IsNullOrWhiteSpace(App.IconGlyph) ? "📦" : App.IconGlyph;
 
     [ObservableProperty] private bool _isVisible;

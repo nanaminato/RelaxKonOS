@@ -47,6 +47,12 @@ var output = Path.Combine(AppContext.BaseDirectory, "layout-qa");
 Directory.CreateDirectory(output);
 var host = new Window { Width = 1000, Height = 700 };
 host.Show();
+if (args.Contains("--task-manager-only"))
+{
+    TaskManagerSortingChecks.Run(host);
+    host.Close();
+    return;
+}
 if (args.Contains("--registry-only"))
 {
     var checks = RegistryChecks.RunAsync();
