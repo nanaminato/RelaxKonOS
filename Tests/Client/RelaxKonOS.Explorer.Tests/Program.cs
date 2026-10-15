@@ -23,6 +23,7 @@ await PickerMemoryChecks.RunAsync(Check);
 FileBrowserPresentationChecks.Run(Check);
 ImageViewerChecks.Run(Check);
 await HostFileClipboardChecks.RunAsync(Check);
+FileTransferMetricsChecks.Run(Check);
 WindowsFileClipboardChecks.Run(Check);
 Check(ExplorerBreadcrumb.ParentPath("/home/alice") == "/home", "POSIX parent");
 Check(ExplorerBreadcrumb.ParentPath("/") is null, "POSIX root goes to Computer");
