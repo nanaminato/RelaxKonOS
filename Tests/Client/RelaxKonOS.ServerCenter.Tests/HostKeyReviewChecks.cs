@@ -60,7 +60,7 @@ static class HostKeyReviewChecks
             var resolver = new ServerCenterConnectionResolver(
                 hostKeys, targets, new RejectingTransportFactory(presented));
             var viewModel = new ServerCenterViewModel(
-                targets, resolver, hostKeys, new SshCredentialStore(directory), new SshDesktopSession(null!),
+                targets, resolver, hostKeys, new SshCredentialStore(directory), new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)),
                 new StubReleaseSource(), new ServerCenterOperationJournal(directory),
                 new LoginLocalizationService(new LocalLanguageStore()));
 

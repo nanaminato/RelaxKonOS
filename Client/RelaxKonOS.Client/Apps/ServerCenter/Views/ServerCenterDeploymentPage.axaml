@@ -18,6 +18,10 @@
             <Setter Property="Margin" Value="0"/>
             <Setter Property="MinHeight" Value="94"/>
         </Style>
+        <Style Selector="Button.management-action:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+        </Style>
         <Style Selector="TextBlock.action-description">
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
@@ -67,8 +71,26 @@
                 </StackPanel>
             </Border>
             <views:ServerCenterActionPanel IsVisible="{Binding HasSelectedHost}">
-                <Button Classes="management-action" Click="Management_Click" Tag="components" IsVisible="{Binding HasManagedInstallation}" IsEnabled="{Binding !IsBusy}" Content="{Binding ComponentsText}"/>
-                <Button Classes="management-action" Click="Management_Click" Tag="settings" IsVisible="{Binding HasManagedInstallation}" IsEnabled="{Binding !IsBusy}" Content="{Binding SettingsText}"/>
+                <Button Classes="management-action" Click="Management_Click" Tag="components" IsVisible="{Binding HasManagedInstallation}" IsEnabled="{Binding !IsBusy}" AutomationProperties.Name="{Binding ComponentsText}">
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.Client/Assets/Icons/Fluent/deployments.png"/>
+                        <StackPanel Grid.Column="1" Spacing="5">
+                            <TextBlock Text="{Binding ComponentsText}" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding VerifiedStateText}" Classes="action-description"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="2" Text="›" FontSize="22" VerticalAlignment="Center"/>
+                    </Grid>
+                </Button>
+                <Button Classes="management-action" Click="Management_Click" Tag="settings" IsVisible="{Binding HasManagedInstallation}" IsEnabled="{Binding !IsBusy}" AutomationProperties.Name="{Binding SettingsText}">
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                        <Image Width="28" Height="28" Source="avares://RelaxKonOS.Client/Assets/Icons/Fluent/host_settings.png"/>
+                        <StackPanel Grid.Column="1" Spacing="5">
+                            <TextBlock Text="{Binding SettingsText}" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding SelectedPlatformText}" Classes="action-description"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="2" Text="›" FontSize="22" VerticalAlignment="Center"/>
+                    </Grid>
+                </Button>
                 <Button Classes="management-action" Command="{Binding ProbeHostCommand}" AutomationProperties.Name="{Binding ProbeText}">
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
                         <Image Width="28" Height="28" Source="avares://RelaxKonOS.Client/Assets/Icons/Fluent/monitor.png"/>

@@ -43,8 +43,8 @@ AppBuilder.Configure<PreviewTestApp>().UseSkia()
     .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).SetupWithoutStarting();
 using var appearance = new AppearanceService(Application.Current!, new SystemStyleRegistry());
 var settings = new ShellSettings(appearance);
-var localization = new LocalizationService(settings, new SshDesktopSession(null!));
-using var services = new ServiceCollection().AddSingleton(localization).AddSingleton(new SshDesktopSession(null!)).BuildServiceProvider();
+var localization = new LocalizationService(settings, new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)));
+using var services = new ServiceCollection().AddSingleton(localization).AddSingleton(new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!))).BuildServiceProvider();
 // The XAML localization extension resolves the host application's singleton provider.
 typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
 if (args.Contains("--terminal-tabs-only"))
@@ -396,7 +396,7 @@ static void RunDesktopShellInteractionRegression(Window host, ShellSettings sett
     // This fixture exercises only the actual window/taskbar commands; no remote file,
     // workspace persistence, application launch or desktop restoration operation is invoked.
     var vm = new DesktopShellViewModel(windows, new ApplicationManager(windows, services), settings,
-        localization, session, new SshDesktopSession(null!), () => { },
+        localization, session, new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)), () => { },
         null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!);
     var store = new ShellStateStore();
     store.Publish(vm);

@@ -10,7 +10,7 @@ using Avalonia;
 AppBuilder.Configure<Application>().UsePlatformDetect().SetupWithoutStarting();
 SynchronizationContext.SetSynchronizationContext(null);
 using var services = new ServiceCollection()
-    .AddSingleton(new LocalizationService(new ShellSettings(null!), new SshDesktopSession(null!)))
+    .AddSingleton(new LocalizationService(new ShellSettings(null!), new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!))))
     .BuildServiceProvider();
 typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
 

@@ -24,7 +24,7 @@ static class LoginTunnelFlowChecks
             var credentials = new SshCredentialStore(directory);
             var vm = new LoginViewModel(auth, new LoginLocalizationService(new LocalLanguageStore()),
                 new ServerEndpointResolver(new HttpClient(new TunnelProbeHandler()), new ServerCertificateTrust(directory)),
-                new SshDesktopSession(null!), targets, keys,
+                new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)), targets, keys,
                 credentials, resolver, new LoginTunnelStore(directory))
             {
                 UseLoginTunnel = true, TunnelHost = "example.com", TunnelUserName = "ssh-user",
@@ -61,7 +61,7 @@ static class LoginTunnelFlowChecks
                 "Tunnel testing writes SSH credentials to platform storage and shows a persistent result.");
             var fresh = new LoginViewModel(auth, new LoginLocalizationService(new LocalLanguageStore()),
                 new ServerEndpointResolver(new HttpClient(new TunnelProbeHandler()), new ServerCertificateTrust(directory)),
-                new SshDesktopSession(null!), targets, keys, reloadedStore, resolver, new LoginTunnelStore(directory))
+                new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)), targets, keys, reloadedStore, resolver, new LoginTunnelStore(directory))
             {
                 UseLoginTunnel = true, TunnelHost = "example.com", TunnelUserName = "ssh-user",
                 ServerUrl = "http://127.0.0.1:5000", Identifier = "server-user", Password = "server-password"
@@ -97,7 +97,7 @@ static class LoginTunnelFlowChecks
 
             var unavailable = new LoginViewModel(auth, new LoginLocalizationService(new LocalLanguageStore()),
                 new ServerEndpointResolver(new HttpClient(new TunnelProbeHandler()), new ServerCertificateTrust(directory)),
-                new SshDesktopSession(null!), targets, keys, DispatchProxy.Create<ISshCredentialStore, TunnelCredentialProxy>(),
+                new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)), targets, keys, DispatchProxy.Create<ISshCredentialStore, TunnelCredentialProxy>(),
                 resolver, new LoginTunnelStore(directory))
             {
                 UseLoginTunnel = true, TunnelHost = "example.com", TunnelUserName = "ssh-user", TunnelSecret = "ssh-password",
@@ -110,7 +110,7 @@ static class LoginTunnelFlowChecks
 
             var probeFailure = new LoginViewModel(auth, new LoginLocalizationService(new LocalLanguageStore()),
                 new ServerEndpointResolver(new HttpClient(new TunnelProbeHandler(unreachable: true)), new ServerCertificateTrust(directory)),
-                new SshDesktopSession(null!), targets, keys, reloadedStore, resolver, new LoginTunnelStore(directory))
+                new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)), targets, keys, reloadedStore, resolver, new LoginTunnelStore(directory))
             {
                 UseLoginTunnel = true, TunnelHost = "example.com", TunnelUserName = "ssh-user", TunnelSecret = "saved-before-probe",
                 ServerUrl = "http://127.0.0.1:5000", RememberSshCredential = true

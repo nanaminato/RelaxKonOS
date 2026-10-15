@@ -7,10 +7,24 @@ namespace RelaxKonOS.Client.Services;
 
 /// <summary>将 Workspace 中的 <c>custom:{blobId}</c> 壁纸键解析为本机可渲染图片。
 /// 图片本身由服务端保存并按需下载；ShellSettings 只持有当前会话的渲染缓存。</summary>
-public sealed class WallpaperService(IAuthSession session, IWallpaperClient client, ShellSettings settings)
+public sealed class WallpaperService(IAuthSession session, IWallpaperClient client, ShellSettings settings, ServerCenter.SshDesktopSession sshDesktop)
 {
     public async Task UploadAndApplyAsync(Stream image, string fileName, CancellationToken ct = default)
     {
+        if (sshDesktop.IsConnected)
+        {
+            var directory = sshDesktop.PreferencesDirectory;
+            Directory.CreateDirectory(directory);
+            var path = Path.Combine(directory, "wallpaper");
+            using var bytes = new MemoryStream();
+            await image.CopyToAsync(bytes, ct);
+            bytes.Position = 0;
+            var bitmap = new Bitmap(bytes);
+            await File.WriteAllBytesAsync(path, bytes.ToArray(), ct);
+            settings.SetCustomWallpaper("custom:ssh-local", bitmap);
+            sshDesktop.SavePreferences();
+            return;
+        }
         if (session is not { State: AuthSessionState.Authenticated, ServiceId: { } serviceId, EffectiveBaseUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
             throw new InvalidOperationException("Sign in before setting a synchronized wallpaper.");
         var preferences = await client.UploadAsync(url, tokens.AccessToken, workspace.Id, image, fileName, ct);
@@ -21,6 +35,7 @@ public sealed class WallpaperService(IAuthSession session, IWallpaperClient clie
     public async Task ApplyAsync(WorkspacePreferencesDto preferences, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
+        if (sshDesktop.IsConnected) return;
         settings.Apply(preferences);
         if (!TryGetBlobId(preferences.WallpaperKey, out var blobId)) return;
         // Wallpaper blobs are immutable. A live image for this key remains valid across

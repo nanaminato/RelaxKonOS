@@ -1,3 +1,5 @@
+using Avalonia;
+using Avalonia.Headless;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.ServerCenter;
@@ -17,9 +19,12 @@ if (args.Contains("--ssh-cancellation-only"))
     await SshCancellationChecks.RunAsync();
     return;
 }
+AppBuilder.Configure<Application>().UseSkia().UseHeadless(new AvaloniaHeadlessPlatformOptions()).SetupWithoutStarting();
+SynchronizationContext.SetSynchronizationContext(null);
+using var appearance = new RelaxKonOS.Client.Services.Theming.AppearanceService(Application.Current!, new RelaxKonOS.Client.Services.Theming.SystemStyleRegistry());
 await AuthSessionCancellationChecks.RunAsync();
 await LoginDiscoveryCancellationChecks.RunAsync();
-await SshDesktopCancellationChecks.RunAsync();
+await SshDesktopCancellationChecks.RunAsync(new RelaxKonOS.Client.Services.ShellSettings(appearance));
 if (args.Contains("--auth-cancellation-only")) return;
 if (args.Contains("--owner-device-only"))
 {

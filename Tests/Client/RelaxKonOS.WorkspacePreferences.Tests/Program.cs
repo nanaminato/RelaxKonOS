@@ -83,7 +83,7 @@ Check(boundAcquisitions == 0, "Stale request binding acquired the new login's to
 // implementation versions. A synthetic ID-only request would miss the original 400 bug.
 var previousServices = RelaxKonOS.Client.App.Services;
 using (var provider = new ServiceCollection()
-    .AddSingleton(new LocalizationService(settings, new SshDesktopSession(null!))).BuildServiceProvider())
+    .AddSingleton(new LocalizationService(settings, new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)))).BuildServiceProvider())
 {
     typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, provider);
     var submissions = new List<WorkspacePreferencesDto>();

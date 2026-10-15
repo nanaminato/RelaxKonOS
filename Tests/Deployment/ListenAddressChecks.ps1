@@ -15,7 +15,8 @@ trap 'rm -rf -- "$root"' EXIT
 sudo_requested=false
 mode_install_state() { printf '%s/state.json' "$root"; }
 '@
-$test += $lf + ($functions -join $lf) + $lf
+$python = (Get-Command python).Source.Replace('\', '/')
+$test += $lf + "python3() { '$python' `"`$@`"; }" + $lf + ($functions -join $lf) + $lf
 $test += @'
 printf '{"listenUrl":"https://0.0.0.0:5000"}' > "$root/state.json"
 [[ $(mode_listen_url linuxSystem) == https://0.0.0.0:5000 ]]

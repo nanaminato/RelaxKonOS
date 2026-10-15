@@ -95,7 +95,7 @@ internal static class TerminalWorkspaceChecks
     private static void CheckRenderingPreferences()
     {
         var transport = new PresentationTransport();
-        using var surface = new BuiltInTerminalSurface(new PresentationFactory(transport), new SshDesktopCredentialProvider(new RelaxKonOS.Client.Services.ServerCenter.SshDesktopSession(null!)), new RoyalTerminal.Terminal.Transport.Ssh.KnownHostsSshHostKeyValidator());
+        using var surface = new BuiltInTerminalSurface(new PresentationFactory(transport), new SshDesktopCredentialProvider(new RelaxKonOS.Client.Services.ServerCenter.SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!))), new RoyalTerminal.Terminal.Transport.Ssh.KnownHostsSshHostKeyValidator());
         var settings = TerminalSettingsDto.Default with { ScrollbackLines = 50, CursorStyle = "bar", CursorBlink = false };
         surface.ApplyAppearance(settings);
         var window = new Window { Width = 640, Height = 320, Content = surface.View };

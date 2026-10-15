@@ -29,7 +29,7 @@ static class DesktopDisconnectChecks
 
     private static void RunCase(ShellSettings settings, bool ssh, bool throwNotification, bool stallSave = false)
     {
-        var sshSession = new SshDesktopSession(null!);
+        var sshSession = new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!));
         if (ssh)
             typeof(SshDesktopSession).GetProperty(nameof(SshDesktopSession.Endpoint))!.SetValue(
                 sshSession, ServerCenterSshEndpoint.Create("localhost", 22, "test"));

@@ -48,7 +48,7 @@ static class LoginPickerChecks
                 DispatchProxy.Create<IAuthSession, SavedProfileSessionStub>(),
                 new LoginLocalizationService(new LocalLanguageStore()),
                 new ServerEndpointResolver(new HttpClient(), new ServerCertificateTrust(directory)),
-                new SshDesktopSession(null!),
+                new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)),
                 targets,
                 new SshHostKeyTrustStore(directory),
                 credentials,

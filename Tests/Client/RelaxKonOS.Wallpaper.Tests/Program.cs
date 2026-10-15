@@ -14,7 +14,7 @@ using System.Text.Json;
 AppBuilder.Configure<Application>().UsePlatformDetect().SetupWithoutStarting();
 using var appearance = new AppearanceService(Application.Current!, new SystemStyleRegistry());
 var settings = new ShellSettings(appearance);
-var wallpapers = new WallpaperService(null!, new NoImageTransferClient(), settings);
+var wallpapers = new WallpaperService(null!, new NoImageTransferClient(), settings, new RelaxKonOS.Client.Services.ServerCenter.SshDesktopSession(null!, settings));
 
 Check(settings.CurrentWallpaperKey == WorkspacePreferencesDto.DefaultWallpaperKey
       && settings.CurrentWallpaper is ImageBrush && !settings.IsCustomWallpaper,

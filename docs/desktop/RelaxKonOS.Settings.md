@@ -15,6 +15,12 @@ Server `Settings/IWorkspaceSettingsService` 管理偏好验证和版本比较。
 
 `GET /api/v1.0/workspaces/{id}/preferences` 返回 `WorkspacePreferencesDto.revision`；PUT 使用同一 DTO，必须携带编辑基线 revision。缺失返回 428，冲突返回 409。不能先读取新 revision 再给旧草稿换版本强行保存。Workspace 归属由认证身份校验；AppSettings 仍仅存应用私有偏好，不能存 OS 配置。
 
+## SSH 桌面设置
+
+SSH 桌面的设置窗口仅开放个性化及设备本地设置，不读取设置目录、账号安全或 Workspace 偏好接口。连接信息显示 SSH 主机；个性化保存到 `%LOCALAPPDATA%/RelaxKonOS/ssh-desktop/preferences.json`，自定义壁纸保存到同目录的 `wallpaper` 文件，不上传到 RelaxKonOS Server。SSH 连接时读取此独立快照，断开时恢复进入 SSH 前的桌面偏好。设备级辅助功能仍由 `desktop-device.json` 管理。
+
+SSH 桌面右键的文件管理器入口打开 SSH 文件浏览器；依赖服务端桌面目录的粘贴、打开桌面文件夹和桌面显示配置不显示，相关快捷键也不会发送请求。
+
 ## 实时变化
 
 `/hubs/settings-changes` 使用现有 SignalR 与 JWT 认证。`Subscribe(workspaceId)` 验证认证用户拥有该 Workspace；服务端每秒观察已订阅资源的 revision 与持久 revision，因此普通偏好 API、壁纸更新和注册表编辑器的写入均能触发通知。通知只包含 Workspace 标识与版本，不携带偏好值，接收端使用授权 GET 重读。连接过期关闭，客户端重连重新订阅并读取；另有 30 秒只读恢复检查，修复丢失通知或失败读取，不排队重放写操作。

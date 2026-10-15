@@ -27,7 +27,7 @@ static class MaintenanceOutcomeChecks
                 var keys = new SshHostKeyTrustStore(directory);
                 var factory = new MaintenanceTransportFactory(scenario, id);
                 var vm = new ServerCenterViewModel(targets, new ServerCenterConnectionResolver(keys, targets, factory),
-                    keys, new SshCredentialStore(directory), new SshDesktopSession(null!), new StubReleaseSource(),
+                    keys, new SshCredentialStore(directory), new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)), new StubReleaseSource(),
                     new ServerCenterOperationJournal(directory), new LoginLocalizationService(new LocalLanguageStore()));
                 await vm.LoadAsync();
                 vm.SelectedPlatform = vm.Platforms.Single(p => p.Platform == HostPlatformKind.Linux);

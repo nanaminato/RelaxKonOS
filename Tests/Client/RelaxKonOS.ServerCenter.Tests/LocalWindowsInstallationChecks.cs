@@ -182,7 +182,7 @@ static class LocalWindowsInstallationChecks
             var resolver = new ServerCenterConnectionResolver(keys, targets, sshFactory);
             var credentials = new SshCredentialStore(directory);
             var localization = new LoginLocalizationService(new LocalLanguageStore());
-            var center = new ServerCenterViewModel(targets, resolver, keys, credentials, new SshDesktopSession(null!),
+            var center = new ServerCenterViewModel(targets, resolver, keys, credentials, new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)),
                 new FileServerCenterReleaseSource(), journal, localization);
             center.SelectedHost = ServerHostTargetRules.Create("remote.test", 22, "remote-user", null, DateTimeOffset.UtcNow)
                 with { LastVerified = ServerHostTargetRules.VerifiedStateFrom(Snapshot with { Mode = ServerInstallMode.LinuxSystem, ListenUrl = "https://remote.test:5443" }) };
@@ -202,7 +202,7 @@ static class LocalWindowsInstallationChecks
                 sshFactory.Transports.Count == 0 && (await targets.LoadAsync()).Count == 0, "Local wizard defaults are private and never resolve SSH or persist a fake SSH target.");
 
             var login = new LoginViewModel(DispatchProxy.Create<IAuthSession, TunnelAuthProxy>(), localization,
-                new ServerEndpointResolver(new HttpClient(), new ServerCertificateTrust(directory)), new SshDesktopSession(null!),
+                new ServerEndpointResolver(new HttpClient(), new ServerCertificateTrust(directory)), new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)),
                 targets, keys, credentials, resolver, new LoginTunnelStore(directory)) {
                 UseSshLogin = true, UseLoginTunnel = true, Identifier = "old-host-user", Password = "old-host-password" };
             await login.UseInstalledLocalServerAsync(endpoint);

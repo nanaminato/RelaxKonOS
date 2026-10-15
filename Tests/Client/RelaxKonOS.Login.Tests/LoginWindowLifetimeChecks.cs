@@ -26,7 +26,7 @@ internal static class LoginWindowLifetimeChecks
                 var keys = new SshHostKeyTrustStore(directory);
                 var targets = new HostTargetStore(directory);
                 var vm = new LoginViewModel(DispatchProxy.Create<IAuthSession, WindowAuthStub>(), localization,
-                    new ServerEndpointResolver(http, new ServerCertificateTrust(directory)), new SshDesktopSession(null!),
+                    new ServerEndpointResolver(http, new ServerCertificateTrust(directory)), new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)),
                     targets, keys, new SshCredentialStore(directory),
                     new ServerCenterConnectionResolver(keys, targets, new SshNetServerCenterTransportFactory()),
                     new LoginTunnelStore(directory)) { ServerUrl = "https://test.invalid:5000", Identifier = "test", Password = "test" };

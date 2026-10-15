@@ -18,7 +18,7 @@ internal static class LoginDiscoveryCancellationChecks
             var targets = new HostTargetStore(directory);
             var vm = new LoginViewModel(DispatchProxy.Create<IAuthSession, DiscoveryAuthStub>(),
                 new LoginLocalizationService(new LocalLanguageStore()),
-                new ServerEndpointResolver(http, new ServerCertificateTrust(directory)), new SshDesktopSession(null!),
+                new ServerEndpointResolver(http, new ServerCertificateTrust(directory)), new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)),
                 targets, keys, new SshCredentialStore(directory),
                 new ServerCenterConnectionResolver(keys, targets, new SshNetServerCenterTransportFactory()),
                 new LoginTunnelStore(directory)) { ServerUrl = "https://probe.test:5000", Identifier = "test", Password = "test" };

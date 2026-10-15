@@ -187,16 +187,16 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
             {
                 view,
                 new MenuItem { Header = LocalizedText.Get("common.refresh", "Refresh"), Command = vm.RefreshDesktopCommand },
-                new MenuItem { Header = LocalizedText.Get("common.paste", "Paste"), Command = vm.PasteDesktopCommand, InputGesture = KeyGesture.Parse("Ctrl+V") },
+                new MenuItem { Header = LocalizedText.Get("common.paste", "Paste"), IsVisible = vm.IsWorkspaceDesktop, Command = vm.PasteDesktopCommand, InputGesture = KeyGesture.Parse("Ctrl+V") },
                 new Separator(),
                 new MenuItem
                 {
                     Header = LocalizedText.Get("shell.desktop_display.configure_ellipsis", "Configure desktop display..."),
-                    Command = vm.OpenDesktopDisplaySettingsCommand,
+                    IsVisible = vm.IsWorkspaceDesktop, Command = vm.OpenDesktopDisplaySettingsCommand,
                     InputGesture = KeyGesture.Parse("Ctrl+Shift+D"),
                 },
                 new Separator(),
-                new MenuItem { Header = LocalizedText.Get("shell.desktop.context.open_folder", "Open desktop folder"), Command = vm.OpenDesktopFolderCommand },
+                new MenuItem { Header = LocalizedText.Get("shell.desktop.context.open_folder", "Open desktop folder"), IsVisible = vm.IsWorkspaceDesktop, Command = vm.OpenDesktopFolderCommand },
                 new MenuItem { Header = LocalizedText.Get("shell.desktop.context.open_explorer", "Open File Explorer"), Command = vm.OpenFileExplorerCommand },
                 new MenuItem { Header = LocalizedText.Get("shell.desktop.context.open_terminal", "Open Terminal"), Command = vm.OpenTerminalCommand },
                 new Separator(),
@@ -368,7 +368,7 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         items.Add(new MenuItem { Header = LocalizedText.Get("common.cut", "Cut"), Command = vm.CutDesktopEntryCommand, CommandParameter = file });
         items.Add(new MenuItem { Header = LocalizedText.Get("common.copy", "Copy"), Command = vm.CopyDesktopEntryCommand, CommandParameter = file });
         if (file.IsDirectory)
-            items.Add(new MenuItem { Header = LocalizedText.Get("common.paste", "Paste"), Command = vm.PasteDesktopCommand, CommandParameter = file });
+            items.Add(new MenuItem { Header = LocalizedText.Get("common.paste", "Paste"), IsVisible = vm.IsWorkspaceDesktop, Command = vm.PasteDesktopCommand, CommandParameter = file });
         items.Add(new Separator());
         items.Add(new MenuItem { Header = LocalizedText.Get("common.delete", "Delete"), Command = vm.DeleteDesktopEntryCommand, CommandParameter = file });
         items.Add(new MenuItem { Header = LocalizedText.Get("common.rename", "Rename"), Command = vm.RenameDesktopEntryCommand, CommandParameter = file });
@@ -782,11 +782,11 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
         {
             ItemsSource = new object[]
             {
-                new MenuItem { Header = LocalizedText.Get("shell.desktop.macos.view_options", "Show View Options..."), Command = vm.OpenDesktopDisplaySettingsCommand },
+                new MenuItem { Header = LocalizedText.Get("shell.desktop.macos.view_options", "Show View Options..."), IsVisible = vm.IsWorkspaceDesktop, Command = vm.OpenDesktopDisplaySettingsCommand },
                 DesktopIconsToggle(vm),
-                new MenuItem { Header = LocalizedText.Get("common.paste", "Paste"), Command = vm.PasteDesktopCommand, InputGesture = KeyGesture.Parse("Ctrl+V") },
+                new MenuItem { Header = LocalizedText.Get("common.paste", "Paste"), IsVisible = vm.IsWorkspaceDesktop, Command = vm.PasteDesktopCommand, InputGesture = KeyGesture.Parse("Ctrl+V") },
                 new Separator(),
-                new MenuItem { Header = LocalizedText.Get("shell.desktop.context.open_folder", "Open desktop folder"), Command = vm.OpenDesktopFolderCommand },
+                new MenuItem { Header = LocalizedText.Get("shell.desktop.context.open_folder", "Open desktop folder"), IsVisible = vm.IsWorkspaceDesktop, Command = vm.OpenDesktopFolderCommand },
                 new MenuItem { Header = LocalizedText.Get("shell.desktop.context.open_explorer", "Open File Explorer"), Command = vm.OpenFileExplorerCommand },
                 new MenuItem { Header = LocalizedText.Get("shell.desktop.context.open_terminal", "Open Terminal"), Command = vm.OpenTerminalCommand },
                 new Separator(),
@@ -1097,12 +1097,12 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
             {
                 DesktopIconsToggle(vm),
                 new MenuItem { Header = LocalizedText.Get("common.refresh", "Refresh"), Command = vm.RefreshDesktopCommand },
-                new MenuItem { Header = LocalizedText.Get("common.paste", "Paste"), Command = vm.PasteDesktopCommand, InputGesture = KeyGesture.Parse("Ctrl+V") },
+                new MenuItem { Header = LocalizedText.Get("common.paste", "Paste"), IsVisible = vm.IsWorkspaceDesktop, Command = vm.PasteDesktopCommand, InputGesture = KeyGesture.Parse("Ctrl+V") },
                 new Separator(),
-                new MenuItem { Header = LocalizedText.Get("shell.desktop.ubuntu.display_settings", "Display Settings"), Command = vm.OpenDesktopDisplaySettingsCommand },
+                new MenuItem { Header = LocalizedText.Get("shell.desktop.ubuntu.display_settings", "Display Settings"), IsVisible = vm.IsWorkspaceDesktop, Command = vm.OpenDesktopDisplaySettingsCommand },
                 new MenuItem { Header = LocalizedText.Get("shell.desktop.ubuntu.change_background", "Change Background..."), Command = vm.OpenPersonalizationCommand },
                 new Separator(),
-                new MenuItem { Header = LocalizedText.Get("shell.desktop.context.open_folder", "Open desktop folder"), Command = vm.OpenDesktopFolderCommand },
+                new MenuItem { Header = LocalizedText.Get("shell.desktop.context.open_folder", "Open desktop folder"), IsVisible = vm.IsWorkspaceDesktop, Command = vm.OpenDesktopFolderCommand },
                 new MenuItem { Header = LocalizedText.Get("shell.desktop.context.open_explorer", "Open File Explorer"), Command = vm.OpenFileExplorerCommand },
                 new MenuItem { Header = LocalizedText.Get("shell.desktop.context.open_terminal", "Open Terminal"), Command = vm.OpenTerminalCommand },
             },

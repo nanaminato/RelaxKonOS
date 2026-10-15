@@ -62,6 +62,8 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     private readonly Stopwatch _clockElapsed = new();
     private bool _clockSyncRunning;
     private long _lastClockAttempt = -60000;
+    public bool IsSshDesktop => _sshDesktop.IsConnected;
+    public bool IsWorkspaceDesktop => !IsSshDesktop;
     public bool IsServerConnected => _session.State == AuthSessionState.Authenticated || _sshDesktop.IsConnected;
     public string ServerConnectionStatus => IsServerConnected ? ConnectionServer : T("shell.connection.not_connected", "Not connected");
 
@@ -227,7 +229,7 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
                 && _applications.EvaluateCompatibility(manifest).IsCompatible
                 && (_sshDesktop.IsConnected
                     ? application.Id.Value is "relaxkonos.terminal" or "relaxkonos.server-center" or "relaxkonos.ssh-files"
-                        or "relaxkonos.codeeditor" or "relaxkonos.imageviewer"
+                        or "relaxkonos.codeeditor" or "relaxkonos.imageviewer" or "relaxkonos.settings"
                     : application.Id.Value is not ("relaxkonos.server-center" or "relaxkonos.ssh-files")))
             .Select(i =>
             {
@@ -297,7 +299,7 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     private void Launch(AppId id)
     {
         if (_sshDesktop.IsConnected && id.Value is not ("relaxkonos.terminal" or "relaxkonos.server-center" or "relaxkonos.ssh-files"
-            or "relaxkonos.codeeditor" or "relaxkonos.imageviewer")) return;
+            or "relaxkonos.codeeditor" or "relaxkonos.imageviewer" or "relaxkonos.settings")) return;
         _applications.Launch(id);
         IsStartOpen = false;
     }
@@ -542,6 +544,7 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
 
     private async Task PasteDesktopEntryAsync(DesktopFileEntryViewModel? item)
     {
+        if (_sshDesktop.IsConnected) return;
         var targetDirectory = item is { IsDirectory: true } ? item.Entry.Path : _desktopPath;
         if (string.IsNullOrWhiteSpace(targetDirectory))
         {
@@ -731,7 +734,7 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     }
 
     [RelayCommand]
-    private void OpenFileExplorer() => LaunchApplication("relaxkonos.explorer");
+    private void OpenFileExplorer() => LaunchApplication(_sshDesktop.IsConnected ? "relaxkonos.ssh-files" : "relaxkonos.explorer");
 
     [RelayCommand]
     private void OpenTerminal() => LaunchApplication("relaxkonos.terminal");
@@ -884,7 +887,7 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     private void LaunchApplication(string id)
     {
         if (_sshDesktop.IsConnected && id is not ("relaxkonos.terminal" or "relaxkonos.server-center" or "relaxkonos.ssh-files"
-            or "relaxkonos.codeeditor" or "relaxkonos.imageviewer")) return;
+            or "relaxkonos.codeeditor" or "relaxkonos.imageviewer" or "relaxkonos.settings")) return;
         _applications.Launch(new AppId(id));
         IsStartOpen = false;
         OpenTaskbarGroup = null;
@@ -895,7 +898,7 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     private async Task LoadDesktopFilesAsync()
     {
         var generation = ++_desktopFileLoadGeneration;
-        if (_session.State != AuthSessionState.Authenticated)
+        if (_sshDesktop.IsConnected || _session.State != AuthSessionState.Authenticated)
         {
             _desktopPath = null;
             DesktopFiles.Clear();
@@ -964,6 +967,7 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     [RelayCommand]
     private async Task OpenDesktopDisplaySettingsAsync()
     {
+        if (_sshDesktop.IsConnected) return;
         if (RequestOpenDesktopDisplaySettingsAsync is not null)
             await RequestOpenDesktopDisplaySettingsAsync();
     }
@@ -971,6 +975,7 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     /// <summary>保存桌面显示配置到服务端（fire-and-forget，忽略瞬时错误）。</summary>
     public async Task SavePreferencesFireAndForgetAsync()
     {
+        if (_sshDesktop.IsConnected) { _sshDesktop.SavePreferences(); return; }
         if (_session is not { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
             return;
         try

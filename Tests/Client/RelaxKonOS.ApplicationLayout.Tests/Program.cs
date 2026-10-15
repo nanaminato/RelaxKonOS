@@ -27,7 +27,7 @@ AppBuilder.Configure<LayoutApp>().UseSkia()
     .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).SetupWithoutStarting();
 using var appearance = new AppearanceService(Application.Current!, new SystemStyleRegistry());
 var settings = new ShellSettings(appearance);
-var localization = new LocalizationService(settings, new SshDesktopSession(null!));
+var localization = new LocalizationService(settings, new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)));
 using var services = new ServiceCollection().AddSingleton(localization).BuildServiceProvider();
 typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
 var vm = new DockerManagerViewModel(null!)

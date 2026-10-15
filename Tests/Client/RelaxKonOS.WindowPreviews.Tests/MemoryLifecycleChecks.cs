@@ -83,7 +83,7 @@ internal static class MemoryLifecycleChecks
         var windows = new WindowManagerService();
         var apps = new ApplicationManager(windows, services);
         apps.Register(new IconApplication("First"));
-        var ssh = new SshDesktopSession(null!);
+        var ssh = new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!));
         // Avoid network or user-system-drive access: exercise the actual SSH desktop's app list.
         typeof(SshDesktopSession).GetProperty(nameof(SshDesktopSession.Endpoint))!.SetValue(ssh,
             ServerCenterSshEndpoint.Create("127.0.0.1", 22, "memory-test"));

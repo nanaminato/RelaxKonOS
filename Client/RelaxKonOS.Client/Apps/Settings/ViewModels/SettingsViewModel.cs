@@ -32,6 +32,11 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     private readonly DeveloperPackageManager? _packages;
     private readonly WallpaperService? _wallpapers;
     private readonly WorkspacePreferencesEditor _editor;
+    private readonly Services.ServerCenter.SshDesktopSession? _sshDesktop;
+    private readonly bool _localMode;
+    private bool IsLocal => _localMode;
+    private static bool IsLocalRoute(string route) => route == "personalization" || route.StartsWith("personalization/") || route == "accessibility" || route == "system/preferences";
+    private string _localSaveError = "";
     private bool _initialized;
     private bool _disposed;
 
@@ -49,8 +54,11 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         IBrowserClient? browserClient,
         NetworkInspectorWindowService? networkInspector = null,
         LocalizationService? localization = null,
-        WallpaperService? wallpapers = null)
+        WallpaperService? wallpapers = null,
+        Services.ServerCenter.SshDesktopSession? sshDesktop = null)
     {
+        _sshDesktop = sshDesktop;
+        _localMode = sshDesktop?.IsConnected == true;
         _settings = settings;
         _client = client;
         _session = session;
@@ -111,7 +119,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         Pages = new SettingsPageViewModel[] { new SettingsHomePageViewModel(settings, Pages, _devicePreferences) }.Concat(Pages).ToArray();
         NavigationPages = new[] { "home", "system", "network", "personalization", "apps", "account-security", "time-language", "accessibility", "developer" }
             .Select(route => Pages.Single(page => page.Route == route)).ToArray();
-        _selectedPage = Pages[0];
+        if (IsLocal) NavigationPages = NavigationPages.Where(page => IsLocalRoute(page.Route)).ToArray();
+        _selectedPage = IsLocal ? Pages.Single(page => page.Route == "personalization") : Pages[0];
         InitializeNavigation(localization, App.Services.GetRequiredService<Services.HostSettings.IHostTimeService>());
         Pages.OfType<DefaultAppsPageViewModel>().Single().SetMappings(registry?.Snapshot);
         if (_registry is not null) _registry.Changed += OnMappingsChanged;
@@ -170,6 +179,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     public void SelectPage(string route)
     {
+        if (IsLocal && !IsLocalRoute(route)) return;
         if (route.StartsWith("network/adapter/", StringComparison.OrdinalIgnoreCase))
         {
             var editor = Pages.OfType<NetworkPageViewModel>().Single().HostNetwork;
@@ -223,6 +233,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     {
         if (_initialized) return;
         _initialized = true;
+        if (IsLocal) return;
         _ = RefreshCatalogAsync();
         _ = Pages.OfType<AccountSecurityPageViewModel>().Single().LoadAsync();
 
@@ -261,16 +272,16 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     /// than through the resource table: <c>LocalizedText.Get</c> uses the key as its own fallback,
     /// which would surface the literal text "settings.save.idle" for an empty translation.
     /// </summary>
-    public string SaveStatus => _editor.State is PreferencesSaveState.Idle or PreferencesSaveState.Saving or PreferencesSaveState.Accepted or PreferencesSaveState.Saved
+    public string SaveStatus => IsLocal ? _localSaveError : _editor.State is PreferencesSaveState.Idle or PreferencesSaveState.Saving or PreferencesSaveState.Accepted or PreferencesSaveState.Saved
         ? string.Empty
         : LocalizedText.Get("settings.save." + (_editor.State == PreferencesSaveState.Failed
             && _editor.Failure != PreferencesSaveFailure.Unexpected
                 ? "failed_" + _editor.Failure.ToString().ToLowerInvariant()
                 : _editor.State.ToString().ToLowerInvariant()));
-    public bool CanDiscard => _editor.HasDraft && _editor.State != PreferencesSaveState.Saving;
-    public bool CanRetry => _editor.State == PreferencesSaveState.Failed;
+    public bool CanDiscard => !IsLocal && _editor.HasDraft && _editor.State != PreferencesSaveState.Saving;
+    public bool CanRetry => IsLocal ? _localSaveError.Length > 0 : _editor.State == PreferencesSaveState.Failed;
 
-    public string? SaveSourceRoute => _editor.Source is { ApplicationId: "relaxkonos.settings" } source
+    public string? SaveSourceRoute => IsLocal ? SelectedPage?.Route : _editor.Source is { ApplicationId: "relaxkonos.settings" } source
         && Pages.Any(page => page.Route == source.PageRoute) ? source.PageRoute : null;
     public bool HasLocalSaveFeedback => SaveStatus.Length > 0 && SaveSourceRoute is { } route && route == SelectedPage?.Route;
     public bool HasOtherSaveFeedback => SaveStatus.Length > 0 && !HasLocalSaveFeedback && _editor.State != PreferencesSaveState.Saved;
@@ -342,12 +353,23 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private void RetrySave() => _editor.Retry();
+    private void RetrySave()
+    {
+        if (IsLocal) Save();
+        else _editor.Retry();
+    }
 
     /// <summary>Drafts, target binding, and debounce belong to the independent service.</summary>
     internal void Save()
     {
         if (!_initialized) return;
+        if (IsLocal)
+        {
+            try { _sshDesktop!.SavePreferences(); _localSaveError = ""; }
+            catch (Exception error) when (error is System.IO.IOException or UnauthorizedAccessException) { _localSaveError = error.Message; }
+            NotifySaveFeedback();
+            return;
+        }
         var mappings = Pages.OfType<DefaultAppsPageViewModel>().FirstOrDefault()?.ToMappings() ?? Array.Empty<DefaultAppMappingDto>();
         _editor.Schedule(_settings.ToPreferences(mappings), SelectedPage is { } page ? new PreferencesEditSource("relaxkonos.settings", page.Route) : null);
     }

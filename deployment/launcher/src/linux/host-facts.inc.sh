@@ -44,11 +44,11 @@ write_roots_file() {
 
 state_field() { # install-state file key
   local file=$1 key=$2
-  read_state "$file" | sed -nE "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" | head -n1
+  read_state "$file" | python3 -c 'import json,sys; text=sys.stdin.read(); value=json.loads(text).get(sys.argv[1]) if text.strip() else None; print(value if isinstance(value,str) else "",end="")' "$key"
 }
 state_flag() { # install-state file key
   local file=$1 key=$2
-  read_state "$file" | sed -nE "s/.*\"$key\"[[:space:]]*:[[:space:]]*(true|false).*/\1/p" | head -n1
+  read_state "$file" | python3 -c 'import json,sys; text=sys.stdin.read(); value=json.loads(text).get(sys.argv[1]) if text.strip() else None; print(json.dumps(value) if type(value) is bool else "",end="")' "$key"
 }
 read_state() {
   if [[ -r $1 ]]; then cat -- "$1"
@@ -188,15 +188,12 @@ probe_json() {
   [[ -n $existing_file && $(state_flag "$existing_file" installed) == true ]] && installed=true
   local existing_mode=
   if [[ -n $existing_file ]]; then
-    existing_mode=$(state_field "$existing_file" mode)
-    # A state file that predates the mode field, or one written by a foreign layout, still has to
-    # report the mode the client must use, so fall back to the root the state file was found under.
-    if [[ -z $existing_mode ]]; then
-      case "$existing_file" in
-        "$(system_data_root)/install-state.json") existing_mode=linuxSystem;;
-        "$(user_state_root)/install-state.json") existing_mode=linuxUser;;
-      esac
-    fi
+    # The deployment mode is determined by the managed layout we discovered.
+    # The engine's state mode describes its own runtime, not the wire enum.
+    case "$existing_file" in
+      "$(system_data_root)/install-state.json") existing_mode=linuxSystem;;
+      "$(user_state_root)/install-state.json") existing_mode=linuxUser;;
+    esac
   fi
   local port_available=null
   if [[ -n $options_server_port ]]; then
@@ -204,7 +201,7 @@ probe_json() {
     if (exec 3<>"/dev/tcp/127.0.0.1/$options_server_port") 2>/dev/null; then port_available=false; exec 3<&- 3>&- 2>/dev/null || true; fi
   fi
 
-  printf '{"hostPlatform":"linux","architecture":"%s","runtimeIdentifier":%s,"osId":%s,"osVersion":%s,"osSupported":%s,"elevated":%s,"sudoAvailable":%s,"systemdAvailable":%s,"diskAvailableBytes":%s,"requestedPort":%s,"requestedPortAvailable":%s,"existingInstallationId":%s,"existingMode":%s,"existingVersion":%s,"existingInstalled":%s,"missingDependencies":%s,"verifiedAtUtc":"%s","guardianEnabled":%s,"guardianRunning":%s,"autoStart":%s,"fileAccess":%s,"fileRoots":%s}' \
+  printf '{"hostPlatform":"linux","architecture":"%s","runtimeIdentifier":%s,"osId":%s,"osVersion":%s,"osSupported":%s,"elevated":%s,"sudoAvailable":%s,"systemdAvailable":%s,"diskAvailableBytes":%s,"requestedPort":%s,"requestedPortAvailable":%s,"existingInstallationId":%s,"existingMode":%s,"existingVersion":%s,"existingInstalled":%s,"missingDependencies":%s,"verifiedAtUtc":"%s"}' \
     "$machine" "$(json_string_or_null "$runtime")" "$(json_string_or_null "$os_id")" "$(json_string_or_null "$os_version")" \
     "$os_supported" "$elevated" "$sudo_available" "$systemd_available" "$(json_number_or_null "$disk")" \
     "$(json_number_or_null "$options_server_port")" "$port_available" \
