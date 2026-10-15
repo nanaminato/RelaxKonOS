@@ -14,9 +14,10 @@ public sealed partial class ExplorerViewModel
 
     public bool CanSaveToHost => HasSelection && !IsPickerMode;
 
-    [RelayCommand(CanExecute = nameof(CanSaveToHost))]
+    [RelayCommand]
     private async Task SaveToHostAsync()
     {
+        if (!CanSaveToHost) return;
         var entries = NormalizeBatchSelection(GetSelectedEntries());
         if (entries.Count == 0) return;
 
