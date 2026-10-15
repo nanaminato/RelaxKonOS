@@ -14,19 +14,21 @@ public static class HostFileClipboard
     private static readonly DataFormat<string> RemoteCopyFormat =
         DataFormat.CreateStringApplicationFormat("relaxkonos.remote-file-copy");
     private static readonly string ProcessMarker = Guid.NewGuid().ToString("N");
+    private static readonly IHostFileClipboardBackend Backend = CreateBackend();
 
-    public static async Task PublishAsync(IClipboard? clipboard, IExplorerClient client,
-        IReadOnlyList<FileSystemEntryDto> entries, Func<string?> sessionScope,
-        Func<string, long, ClipboardFileTransfer> beginTransfer)
+    private static IHostFileClipboardBackend CreateBackend()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            var scope = sessionScope();
-            await WindowsFileClipboard.PublishAsync(client, entries,
-                () => scope is not null && scope == sessionScope(), beginTransfer);
-        }
-        else await MarkRemoteCopyAsync(clipboard);
+        if (OperatingSystem.IsWindows()) return new WindowsHostFileClipboardBackend();
+        // macOS and Linux currently keep RelaxKonOS-internal ownership through the marker.
+        // Their native virtual-file implementations plug in here without leaking platform
+        // details back into Explorer or Desktop.
+        return new MarkerHostFileClipboardBackend();
     }
+
+    public static Task PublishAsync(IClipboard? clipboard, IExplorerClient client,
+        IReadOnlyList<FileSystemEntryDto> entries, Func<string?> sessionScope,
+        Func<string, long, ClipboardFileTransfer> beginTransfer) =>
+        Backend.PublishAsync(clipboard, client, entries, sessionScope, beginTransfer);
 
     public static async Task MarkRemoteCopyAsync(IClipboard? clipboard)
     {
@@ -38,7 +40,7 @@ public static class HostFileClipboard
 
     public static async Task<HostFileClipboardSnapshot> ReadAsync(IClipboard? clipboard)
     {
-        if (OperatingSystem.IsWindows() && WindowsFileClipboard.IsCurrent) return new(true, []);
+        if (Backend.IsCurrentRemoteCopy) return new(true, []);
         if (clipboard is null) return new(false, []);
         var transfer = await clipboard.TryGetDataAsync();
         if (transfer is null) return new(false, []);
