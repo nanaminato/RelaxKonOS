@@ -59,6 +59,35 @@ public partial class ServerCenterViewModel
     public string ConfigurationPortText => T("server_center.configuration_port", "Listening port");
     public string ConfigurationNote => T("server_center.configuration_note", "Applying changes restarts services. Removing Guardian stops its workloads and retains definitions and logs. TLS identity is preserved. Review the address after applying.");
     [ObservableProperty] private string _repairPackagePath = "";
+    public string BrowseRepairPackageText => T("server_center.browse_repair_package", "Browse server files…");
+    public async Task BrowseRepairPackageAsync(Func<Services.ServerCenter.SshDesktopSession, Task<string?>> pick)
+    {
+        if (IsBusy || SelectedHost is not { } target) return;
+        IsBusy = true;
+        ErrorMessage = "";
+        try
+        {
+            var credential = await ResolveCredentialAsync(target, default);
+            if (credential is not Services.ServerCenter.ServerCenterSshCredential.Password password)
+            {
+                if (!HasError) ErrorMessage = T("server_center.browser_password_required", "Enter an SSH password to browse this host's files.");
+                return;
+            }
+            await using var connection = await _connections.ConnectAsync(target, credential,
+                await _connections.PrepareHostKeyGuardAsync(target, default), default);
+            var browser = Services.ServerCenter.SshDesktopSession.ForFileBrowser(connection, password.Secret);
+            try
+            {
+                var path = await pick(browser);
+                if (SelectedHost?.HostId == target.HostId && !string.IsNullOrWhiteSpace(path)) RepairPackagePath = path;
+            }
+            finally { browser.Disconnect(); }
+        }
+        catch (Services.ServerCenter.ServerCenterHostKeyRejectedException rejected) { await ApplyHostKeyRejectionAsync(rejected, default); }
+        catch (OperationCanceledException) { }
+        catch (Exception) { ErrorMessage = T("server_center.browser_failed", "Could not browse server files. Check SSH access and try again."); }
+        finally { IsBusy = false; }
+    }
     public string RepairPackageText => T("server_center.repair_package", "Server ZIP path (optional; same installed version, restores program files)");
     public string RepairPlanText => T("server_center.repair_plan", "Repair reapplies the current version's services and configuration, retaining the selected components, port, file permissions and TLS identity. Selected Guardian must pass authenticated IPC verification. Certificate regeneration and firewall changes below are explicit additional actions.");
     public string CurrentConfigurationTitle => T("server_center.configuration_current", "Current configuration");
@@ -71,13 +100,10 @@ public partial class ServerCenterViewModel
     {
         get
         {
-            string State(bool? value) => value is { } enabled
-                ? T(enabled ? "server_center.installation.yes" : "server_center.installation.no", enabled ? "Yes" : "No")
-                : T("server_center.installation.unknown", "Not provided");
             return [
                 new(T("server_center.installation.listen_url", "Server listening address"), _reviewedConfiguration?.ListenUrl ?? "—"),
-                new(GuardianChoiceText, State(_reviewedConfiguration?.GuardianEnabled)),
-                new(T("server_center.guardian_running", "Guardian process running"), State(_reviewedConfiguration?.GuardianRunning))];
+                Services.ServerCenter.ServerInstallationDetails.GuardianStatus(T("server_center.installation.guardian", "Process guardian"), _reviewedConfiguration?.GuardianEnabled, false, T),
+                Services.ServerCenter.ServerInstallationDetails.GuardianStatus(T("server_center.guardian_running", "Guardian process running"), _reviewedConfiguration?.GuardianRunning, true, T)];
         }
     }
     public bool CanConfigureGuardian => _reviewedConfiguration?.Mode is ServerInstallMode.WindowsSystem or ServerInstallMode.LinuxSystem or ServerInstallMode.LinuxUser;

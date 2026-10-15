@@ -47,6 +47,14 @@ internal static class ServerCenterDialogChecks
             var output = Path.Combine(AppContext.BaseDirectory, "preview-qa", "server-center");
             Directory.CreateDirectory(output);
             var page = (Control)handle!.Window!.View.Content!;
+            if (section == "components")
+            {
+                var badges = page.GetVisualDescendants().OfType<ServerStatusBadge>().Select(b => b.DataContext).OfType<ServerInstallationDetail>().ToArray();
+                Check(badges.Any(row => row.IsPositive) && badges.Any(row => row.IsWarning) && badges.Any(row => row.IsUnknown),
+                    "Management shows health, uninstalled and unknown badges from structured facts.");
+            }
+            if (section == "repair") Check(page.GetVisualDescendants().OfType<Button>().Any(button => button.Content?.ToString() == vm.BrowseRepairPackageText),
+                "Repair path includes a server file browser button.");
             using (var bitmap = new RenderTargetBitmap(new PixelSize((int)Math.Ceiling(page.Bounds.Width), (int)Math.Ceiling(page.Bounds.Height))))
             {
                 bitmap.Render(page);

@@ -1,6 +1,8 @@
 {
     "Culture": "ja-JP",
     "Strings": {
+    "settings.device.ssh_terminal": "SSH ログイン後にターミナルを開く",
+    "settings.device.ssh_terminal_hint": "オフにすると、次回の SSH ログイン時はデスクトップのみ表示します。ターミナルは手動で開けます。この設定は SSH デスクトップ用にローカル保存されます。",
 "settings.network.remote_title": "リモートネットワークとインターネット",
   "settings.network.adapters": "ネットワークアダプター",
   "settings.network.remote_scope": "接続先のリモートホストに適用されます。イーサネットまたは Wi-Fi を選択し、プロパティと IP／DNS を設定します。",

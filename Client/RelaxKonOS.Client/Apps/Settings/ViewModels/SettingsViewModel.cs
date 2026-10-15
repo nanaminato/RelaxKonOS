@@ -97,7 +97,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             new DeveloperPageViewModel(settings, developerMode!, networkInspector!, localization, save),
             new AboutPageViewModel(settings),
             new AccessibilityPageViewModel(settings, _devicePreferences),
-            new DailySettingsPageViewModel(settings, _devicePreferences),
+            new DailySettingsPageViewModel(settings, _devicePreferences, IsLocal ? sshDesktop!.DevicePreferences : null),
         };
         var appsEditor = Pages.OfType<AppsPageViewModel>().Single();
         appsEditor.PropertyChanged += OnSelectedApplicationChanged;
@@ -119,7 +119,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         Pages = new SettingsPageViewModel[] { new SettingsHomePageViewModel(settings, Pages, _devicePreferences) }.Concat(Pages).ToArray();
         NavigationPages = new[] { "home", "system", "network", "personalization", "apps", "account-security", "time-language", "accessibility", "developer" }
             .Select(route => Pages.Single(page => page.Route == route)).ToArray();
-        if (IsLocal) NavigationPages = NavigationPages.Where(page => IsLocalRoute(page.Route)).ToArray();
+        if (IsLocal) NavigationPages = NavigationPages.Where(page => IsLocalRoute(page.Route)).Append(Pages.Single(page => page.Route == "system/preferences")).ToArray();
         _selectedPage = IsLocal ? Pages.Single(page => page.Route == "personalization") : Pages[0];
         InitializeNavigation(localization, App.Services.GetRequiredService<Services.HostSettings.IHostTimeService>());
         Pages.OfType<DefaultAppsPageViewModel>().Single().SetMappings(registry?.Snapshot);
@@ -164,11 +164,11 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     public IReadOnlyList<SettingsPageViewModel> NavigationPages { get; }
     public SettingsPageViewModel? SelectedCategory
     {
-        get => Pages.FirstOrDefault(page => page.Route == (SelectedPage is PersonalizationDetailPageViewModel ? "personalization" : SelectedPage?.Route == "default-apps" ? "apps" : SelectedPage?.Route == "system/preferences" ? "system" : SelectedPage?.Route == "network/adapter" ? "network" : SelectedPage?.Route is "apps/detail" or "apps/permissions" ? "apps" : SelectedPage?.Route));
+        get => IsLocal && SelectedPage?.Route == "system/preferences" ? SelectedPage : Pages.FirstOrDefault(page => page.Route == (SelectedPage is PersonalizationDetailPageViewModel ? "personalization" : SelectedPage?.Route == "default-apps" ? "apps" : SelectedPage?.Route == "system/preferences" ? "system" : SelectedPage?.Route == "network/adapter" ? "network" : SelectedPage?.Route is "apps/detail" or "apps/permissions" ? "apps" : SelectedPage?.Route));
         set { if (value is not null && value != SelectedCategory) SelectPage(value.Route); }
     }
     public bool IsAppsCategory => SelectedPage?.Route == "apps";
-    public string? ParentRoute => SelectedPage is PersonalizationDetailPageViewModel ? "personalization" : SelectedPage?.Route == "default-apps" ? "apps" : SelectedPage?.Route == "system/preferences" ? "system" : SelectedPage?.Route == "network/adapter" ? "network" : SelectedPage?.Route == "apps/detail" ? "apps" : SelectedPage?.Route == "apps/permissions" ? "apps/detail/" + Uri.EscapeDataString(Pages.OfType<AppsPageViewModel>().Single().SelectedApp!.Id.Value) : null;
+    public string? ParentRoute => IsLocal && SelectedPage?.Route == "system/preferences" ? null : SelectedPage is PersonalizationDetailPageViewModel ? "personalization" : SelectedPage?.Route == "default-apps" ? "apps" : SelectedPage?.Route == "system/preferences" ? "system" : SelectedPage?.Route == "network/adapter" ? "network" : SelectedPage?.Route == "apps/detail" ? "apps" : SelectedPage?.Route == "apps/permissions" ? "apps/detail/" + Uri.EscapeDataString(Pages.OfType<AppsPageViewModel>().Single().SelectedApp!.Id.Value) : null;
     public bool HasParentPage => ParentRoute is not null;
     public string ParentTitle => SelectedPage?.Route == "apps/permissions" ? Pages.OfType<AppsPageViewModel>().Single().SelectedApp?.DisplayName ?? "" : Pages.FirstOrDefault(page => page.Route == ParentRoute)?.LocalizedDisplayName ?? "";
     public bool HasGrandparentPage => SelectedPage?.Route == "apps/permissions";

@@ -36,6 +36,20 @@ public partial class ServerCenterViewModel : ObservableObject
     public string RollbackActionDescription => T("login.local_manage_rollback_hint", "Switch back to the last verified version");
     public string UninstallActionDescription => T("login.local_manage_uninstall_hint", "Remove Server; keep data by default");
     public string InstallationInfoNote => T("server_center.installation.note", "These facts reflect the SSH verification time. Use host preflight to refresh. Fields not returned by the host are shown as not provided.");
+    public ServerInstallationDetail HostStatus
+    {
+        get
+        {
+            var snapshot = SelectedHost is { } host ? _installationSnapshots.GetValueOrDefault(host.HostId) : null;
+            var installed = snapshot?.Installed ?? SelectedHost?.LastVerified?.Installed;
+            var healthy = snapshot?.Healthy ?? SelectedHost?.LastVerified?.Healthy;
+            return installed is null ? new("", T("server_center.installation.unknown", "Not provided"), ServerInstallationStatus.Unknown)
+                : installed == false ? new("", T("server_center.installation.not_installed", "Not installed"), ServerInstallationStatus.Warning)
+                : healthy == true ? new("", T("server_center.installation.healthy", "Health check passed"), ServerInstallationStatus.Positive)
+                : new("", T("server_center.installation.unhealthy", "Health check did not pass"), ServerInstallationStatus.Negative);
+        }
+    }
+    partial void OnVerifiedStateTextChanged(string value) => OnPropertyChanged(nameof(HostStatus));
     public IReadOnlyList<ServerInstallationDetail> InstallationDetails => SelectedHost is { } host
         ? ServerInstallationDetails.Build(host, _installationSnapshots.GetValueOrDefault(host.HostId),
             _hostProbes.GetValueOrDefault(host.HostId), T)
@@ -1244,6 +1258,7 @@ public partial class ServerCenterViewModel : ObservableObject
         OnPropertyChanged(nameof(HasManagedInstallation));
         OnPropertyChanged(nameof(CanManageFirewall));
         OnPropertyChanged(nameof(InstallationDetails));
+        OnPropertyChanged(nameof(HostStatus));
         UpdateCommand.NotifyCanExecuteChanged();
         RemoveHostCommand.NotifyCanExecuteChanged();
         ConfirmHostKeyCommand.NotifyCanExecuteChanged();
@@ -1435,6 +1450,7 @@ public partial class ServerCenterViewModel : ObservableObject
     {
         if (SelectedHost is { } host) _hostProbes[host.HostId] = probe;
         OnPropertyChanged(nameof(InstallationDetails));
+        OnPropertyChanged(nameof(HostStatus));
         return string.Format(
             T("server_center.probe_summary", "{0} · {1} · {2}"),
             probe.HostPlatform, probe.Architecture,

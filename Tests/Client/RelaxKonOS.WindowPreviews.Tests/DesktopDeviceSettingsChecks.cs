@@ -36,6 +36,19 @@ internal static class DesktopDeviceSettingsChecks
                 && transform is ScaleTransform { ScaleX: 1.5, ScaleY: 1.5 }, "Desktop scale is applied");
             Check(Application.Current.Resources.TryGetResource("TextPrimaryColor", null, out var text) && text is Color color
                 && color == Colors.White, "Contrast uses the live resource graph");
+            var sshPath = Path.Combine(directory, "ssh-" + Guid.NewGuid().ToString("N") + ".json");
+            var sshPreferences = new DesktopDevicePreferences(sshPath);
+            using (var sshDaily = new DailySettingsPageViewModel(settings, preferences, sshPreferences))
+            {
+                Check(sshDaily.IsSshDesktop && sshDaily.OpenTerminalOnSshLogin, "SSH terminal autostart defaults to enabled.");
+                sshDaily.OpenTerminalOnSshLogin = false;
+                Check(!new DesktopDevicePreferences(sshPath).Value.OpenTerminalOnSshLogin && preferences.Value.OpenTerminalOnSshLogin,
+                    "Disabling SSH terminal autostart persists independently from device settings.");
+                sshDaily.ResetDailySettingsCommand.Execute(null);
+                Check(sshDaily.OpenTerminalOnSshLogin && new DesktopDevicePreferences(sshPath).Value.OpenTerminalOnSshLogin,
+                    "Resetting SSH startup settings restores and persists the default.");
+            }
+            File.Delete(sshPath);
             daily.RestoreTerminals = false;
             daily.KeepConnectionBarVisible = true;
             preferences.Update(p => p with { PinnedSettings = ["home", "personalization/colors", "personalization/colors", "invalid"] });

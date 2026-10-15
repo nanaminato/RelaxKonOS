@@ -138,7 +138,12 @@ public partial class App : Application
                     var shell = Services.GetRequiredService<DesktopShellViewModel>();
                     shell.PopulateDesktop();
                     mainWindow = new MainWindow { DataContext = shell };
-                    mainWindow.DesktopReady += (_, _) => shell.OpenTerminalCommand.Execute(null);
+                    mainWindow.DesktopReady += (_, _) =>
+                    {
+                        var ssh = Services.GetRequiredService<SshDesktopSession>();
+                        if (ssh.IsConnected && ssh.DevicePreferences.Value.OpenTerminalOnSshLogin)
+                            shell.OpenTerminalCommand.Execute(null);
+                    };
                     desktop.MainWindow = mainWindow;
                     mainWindow.Show();
                     loginWindow.CloseForDesktop();

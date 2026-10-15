@@ -2,11 +2,35 @@ using RelaxKonOS.Protocol.ServerCenter;
 
 namespace RelaxKonOS.Client.Services.ServerCenter;
 
-public sealed record ServerInstallationDetail(string Label, string Value);
+public enum ServerInstallationStatus { None, Positive, Warning, Negative, Unknown }
+
+public sealed record ServerInstallationDetail(string Label, string Value, ServerInstallationStatus Status = ServerInstallationStatus.None)
+{
+    public bool HasStatus => Status != ServerInstallationStatus.None;
+    public bool IsPositive => Status == ServerInstallationStatus.Positive;
+    public bool IsWarning => Status == ServerInstallationStatus.Warning;
+    public bool IsNegative => Status == ServerInstallationStatus.Negative;
+    public bool IsUnknown => Status == ServerInstallationStatus.Unknown;
+    public string StatusGlyph => Status switch
+    {
+        ServerInstallationStatus.Positive => "✓",
+        ServerInstallationStatus.Warning => "−",
+        ServerInstallationStatus.Negative => "!",
+        _ => "?"
+    };
+}
 
 /// <summary>Displays observed installation facts; missing receipt fields stay unknown.</summary>
 public static class ServerInstallationDetails
 {
+    public static ServerInstallationDetail GuardianStatus(string label, bool? value, bool running, Func<string, string, string> translate)
+    {
+        var key = value is null ? "unknown" : running ? value == true ? "running" : "stopped" : value == true ? "installed" : "not_installed";
+        var fallback = value is null ? "Not provided" : running ? value == true ? "Running" : "Not running" : value == true ? "Installed" : "Not installed";
+        return new(label, translate("server_center.installation." + key, fallback), value is null ? ServerInstallationStatus.Unknown
+            : value == true ? ServerInstallationStatus.Positive : running ? ServerInstallationStatus.Negative : ServerInstallationStatus.Warning);
+    }
+
     public static IReadOnlyList<ServerInstallationDetail> Build(
         ServerHostTarget host, ServerHostSnapshotDto? snapshot, ServerHostProbeDto? probe,
         Func<string, string, string> translate)
@@ -19,8 +43,10 @@ public static class ServerInstallationDetails
         var cached = host.LastVerified;
         var mode = snapshot?.Mode ?? cached?.Mode;
         var time = snapshot?.VerifiedAtUtc ?? cached?.VerifiedAtUtc;
-        Add("status", "Installation status", (snapshot?.Installed ?? cached?.Installed) == true
-            ? T("installed", "Installed") : T("not_installed", "Not installed"));
+        var installed = snapshot?.Installed ?? cached?.Installed;
+        var healthy = snapshot?.Healthy ?? cached?.Healthy;
+        rows.Add(new(T("status", "Installation status"), installed is null ? T("unknown", "Not provided") : installed == true
+            ? T("installed", "Installed") : T("not_installed", "Not installed"), installed is null ? ServerInstallationStatus.Unknown : installed == true ? ServerInstallationStatus.Positive : ServerInstallationStatus.Warning));
         Add("verified_at", "SSH verified at", time?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss zzz"));
         Add("source", "Information source", snapshot is null
             ? T("cached", "Saved SSH verification; refresh to retrieve full details")
@@ -45,13 +71,13 @@ public static class ServerInstallationDetails
         Add("previous_version", "Previous version", snapshot is null ? null :
             string.IsNullOrWhiteSpace(snapshot.PreviousVersion) ? T("no_previous", "No previous version recorded") : snapshot.PreviousVersion);
         Add("id", "Installation ID", snapshot?.InstallationId ?? cached?.InstallationId);
-        Add("health", "Health at verification", (snapshot?.Healthy ?? cached?.Healthy) == true
-            ? T("healthy", "Health check passed") : T("unhealthy", "Health check did not pass"));
+        rows.Add(new(T("health", "Health at verification"), healthy is null || installed != true ? T("unknown", "Not provided") : healthy == true
+            ? T("healthy", "Health check passed") : T("unhealthy", "Health check did not pass"), healthy is null || installed != true ? ServerInstallationStatus.Unknown : healthy == true ? ServerInstallationStatus.Positive : ServerInstallationStatus.Negative));
         Add("install_root", "Program directory", snapshot?.InstallRoot);
         Add("data_root", "Managed data directory", snapshot?.DataRoot);
         Add("listen_url", "Server listening address", snapshot?.ListenUrl ?? cached?.ListenUrl);
-        Add("guardian", "Process guardian selected", snapshot?.GuardianEnabled is { } guardian ? YesNo(guardian) : null);
-        Add("guardian_running", "Guardian process running", snapshot?.GuardianRunning is { } running ? YesNo(running) : null);
+        rows.Add(GuardianStatus(T("guardian", "Process guardian selected"), snapshot?.GuardianEnabled, false, translate));
+        rows.Add(GuardianStatus(T("guardian_running", "Guardian process running"), snapshot?.GuardianRunning, true, translate));
         Add("services", "Managed service names", snapshot?.ServiceNames is { } services
             ? services.Count == 0 ? T("no_services", "No system services") : string.Join("\n", services) : null);
         Add("ssh_host", "SSH host", host.SshHost);

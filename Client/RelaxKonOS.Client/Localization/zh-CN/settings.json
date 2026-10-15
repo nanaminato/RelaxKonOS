@@ -1,6 +1,8 @@
 {
     "Culture": "zh-CN",
     "Strings": {
+    "settings.device.ssh_terminal": "SSH 登录后自动打开终端",
+    "settings.device.ssh_terminal_hint": "关闭后，下次 SSH 登录仅进入桌面。你仍可手动打开终端。此设置仅保存在本机 SSH 桌面中。",
 "settings.network.remote_title": "远程网络与 Internet",
   "settings.network.adapters": "网络适配器",
   "settings.network.remote_scope": "适用于当前连接的远程主机。选择以太网或 Wi-Fi 网卡查看属性及编辑 IP、DNS。",

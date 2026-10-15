@@ -1,6 +1,14 @@
 {
   "Culture": "en-US",
   "Strings": {
+    "server_center.installation.guardian": "Process guardian",
+    "server_center.installation.guardian_running": "Guardian runtime state",
+    "server_center.browse_repair_package": "Browse server files…",
+    "server_center.browser_password_required": "Enter an SSH password to browse this host's files.",
+    "server_center.browser_failed": "Could not browse server files. Check SSH access and try again.",
+    "server_center.installation.running": "Running",
+    "server_center.installation.stopped": "Not running",
+
     "server_center.configuration_current": "Current configuration",
     "server_center.guardian_description": "Keep managed workloads running with process supervision. Applying this choice restarts services; removing the guardian stops its workloads while retaining definitions and logs.",
     "server_center.network_settings": "Connection and startup",

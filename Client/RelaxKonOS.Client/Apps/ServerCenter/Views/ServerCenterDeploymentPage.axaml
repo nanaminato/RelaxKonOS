@@ -54,6 +54,7 @@
                             <Image Width="36" Height="36" Source="avares://RelaxKonOS.Client/Assets/Icons/Fluent/host.png"/>
                             <StackPanel Grid.Column="1" Spacing="4">
                                 <TextBlock Text="{Binding SelectedHost.DisplayName}" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <views:ServerStatusBadge DataContext="{Binding HostStatus}"/>
                                 <TextBlock Text="{Binding VerifiedStateText}" IsVisible="{Binding HasVerifiedState}" TextWrapping="Wrap"/>
                                 <TextBlock Text="{Binding CachedStateText}" Classes="action-description" IsVisible="{Binding HasVerifiedState}"/>
                             </StackPanel>

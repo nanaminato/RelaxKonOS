@@ -1,0 +1,29 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:services="clr-namespace:RelaxKonOS.Client.Services.ServerCenter"
+             x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerStatusBadge"
+             x:DataType="services:ServerInstallationDetail">
+    <UserControl.Styles>
+        <Style Selector="Border.status-badge">
+            <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderDefaultBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="10,5"/>
+        </Style>
+        <Style Selector="Border.status-badge.positive"><Setter Property="BorderBrush" Value="{DynamicResource SuccessBrush}"/></Style>
+        <Style Selector="Border.status-badge.warning"><Setter Property="BorderBrush" Value="{DynamicResource WarningBrush}"/></Style>
+        <Style Selector="Border.status-badge.negative"><Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}"/></Style>
+        <Style Selector="TextBlock.status-icon"><Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/></Style>
+        <Style Selector="TextBlock.status-icon.positive"><Setter Property="Foreground" Value="{DynamicResource SuccessBrush}"/></Style>
+        <Style Selector="TextBlock.status-icon.warning"><Setter Property="Foreground" Value="{DynamicResource WarningBrush}"/></Style>
+        <Style Selector="TextBlock.status-icon.negative"><Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/></Style>
+    </UserControl.Styles>
+    <Border Classes="status-badge" Classes.positive="{Binding IsPositive}" Classes.warning="{Binding IsWarning}" Classes.negative="{Binding IsNegative}"
+            HorizontalAlignment="Left" AutomationProperties.Name="{Binding Value}">
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+            <TextBlock Classes="status-icon" Classes.positive="{Binding IsPositive}" Classes.warning="{Binding IsWarning}" Classes.negative="{Binding IsNegative}"
+                       Text="{Binding StatusGlyph}" FontWeight="Bold" FontSize="16" VerticalAlignment="Center"/>
+            <TextBlock Grid.Column="1" Text="{Binding Value}" FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center"/>
+        </Grid>
+    </Border>
+</UserControl>

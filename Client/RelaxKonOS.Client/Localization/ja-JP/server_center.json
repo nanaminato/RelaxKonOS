@@ -1,6 +1,14 @@
 {
   "Culture": "ja-JP",
   "Strings": {
+    "server_center.installation.guardian": "プロセス監視",
+    "server_center.installation.guardian_running": "プロセス監視の実行状態",
+    "server_center.browse_repair_package": "サーバーファイルを参照…",
+    "server_center.browser_password_required": "このホストのファイルを参照するには SSH パスワードを入力してください。",
+    "server_center.browser_failed": "サーバーファイルを参照できません。SSH 接続を確認して再試行してください。",
+    "server_center.installation.running": "実行中",
+    "server_center.installation.stopped": "停止中",
+
     "server_center.configuration_current": "現在の構成",
     "server_center.guardian_description": "プロセス監視で管理対象の処理を維持します。適用するとサービスが再起動します。監視を削除すると処理は停止しますが、定義とログは保持されます。",
     "server_center.network_settings": "接続と起動",

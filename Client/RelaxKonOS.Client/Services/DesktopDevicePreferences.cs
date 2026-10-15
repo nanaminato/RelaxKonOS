@@ -77,6 +77,7 @@ public sealed record DesktopDeviceOptions
     public bool NotificationsEnabled { get; init; } = true;
     public bool DoNotDisturb { get; init; }
     public bool RestoreTerminals { get; init; } = true;
+    public bool OpenTerminalOnSshLogin { get; init; } = true;
     public bool KeepConnectionBarVisible { get; init; }
     public string[] PinnedSettings { get; init; } = [];
 }

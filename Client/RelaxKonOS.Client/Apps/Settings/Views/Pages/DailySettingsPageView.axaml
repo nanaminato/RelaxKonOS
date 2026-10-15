@@ -20,9 +20,16 @@
         </StackPanel></Border>
         <Border Classes="card"><StackPanel Spacing="12">
             <TextBlock Text="{loc:Loc settings.device.startup}" Classes="title" />
+            <StackPanel IsVisible="{Binding IsSshDesktop}" Spacing="8">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                    <TextBlock Text="{loc:Loc settings.device.ssh_terminal}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                    <ToggleSwitch Grid.Column="1" AutomationProperties.Name="{loc:Loc settings.device.ssh_terminal}" nav:SettingsSearchTarget.Id="client.sshTerminal" IsChecked="{Binding OpenTerminalOnSshLogin, Mode=TwoWay}"/>
+                </Grid>
+                <TextBlock Text="{loc:Loc settings.device.ssh_terminal_hint}" TextWrapping="Wrap" Classes="subtle"/>
+            </StackPanel>
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
                 <TextBlock Text="{loc:Loc settings.device.restore}" TextWrapping="Wrap" VerticalAlignment="Center" />
-                <ToggleSwitch Grid.Column="1" AutomationProperties.Name="{loc:Loc settings.device.restore}" nav:SettingsSearchTarget.Id="client.restoreTerminals" IsChecked="{Binding RestoreTerminals, Mode=TwoWay}" />
+                <ToggleSwitch IsEnabled="{Binding !IsSshDesktop}" Grid.Column="1" AutomationProperties.Name="{loc:Loc settings.device.restore}" nav:SettingsSearchTarget.Id="client.restoreTerminals" IsChecked="{Binding RestoreTerminals, Mode=TwoWay}" />
             </Grid>
             <TextBlock Text="{loc:Loc settings.device.restore_hint}" TextWrapping="Wrap" Classes="subtle" />
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">

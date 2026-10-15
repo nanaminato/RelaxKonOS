@@ -268,6 +268,7 @@ await LoginPickerChecks.RunAsync();
 await OwnerDeviceRememberedChecks.RunAsync();
 await HostKeyReviewChecks.RunAsync();
 await MaintenanceOutcomeChecks.RunAsync();
+await RepairPackagePickerChecks.RunAsync();
 await RollbackConfirmationChecks.RunAsync();
 SecretStoreChecks.Run();
 

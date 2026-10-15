@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:services="clr-namespace:RelaxKonOS.Client.Services.ServerCenter" xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter" x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterManagementDialog" x:DataType="vm:ServerCenterViewModel" Classes="builtin-app" Background="{DynamicResource AppBackgroundBrush}">
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.ServerCenter.Views" xmlns:services="clr-namespace:RelaxKonOS.Client.Services.ServerCenter" xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter" x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterManagementDialog" x:DataType="vm:ServerCenterViewModel" Classes="builtin-app" Background="{DynamicResource AppBackgroundBrush}">
     <UserControl.Styles>
         <Style Selector="Border.management-section">
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
@@ -16,7 +16,10 @@
     </UserControl.Styles>
     <Grid RowDefinitions="Auto,*,Auto" Margin="22" RowSpacing="16">
         <Border Classes="management-section"><StackPanel Spacing="6">
-            <TextBlock Text="{Binding SelectedHost.DisplayName}" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap"/>
+            <WrapPanel ItemSpacing="14" LineSpacing="8">
+                <TextBlock Text="{Binding SelectedHost.DisplayName}" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap" MaxWidth="340" VerticalAlignment="Center"/>
+                <views:ServerStatusBadge DataContext="{Binding HostStatus}" VerticalAlignment="Center"/>
+            </WrapPanel>
             <TextBlock Text="{Binding VerifiedStateText}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
         </StackPanel></Border>
         <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
@@ -28,7 +31,10 @@
                             <DataTemplate x:DataType="services:ServerInstallationDetail">
                                 <Grid ColumnDefinitions="150,*" ColumnSpacing="18" Margin="0,8">
                                     <TextBlock Text="{Binding Label}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
-                                    <SelectableTextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap"/>
+                                    <StackPanel Grid.Column="1">
+                                        <SelectableTextBlock Text="{Binding Value}" TextWrapping="Wrap" IsVisible="{Binding !HasStatus}"/>
+                                        <views:ServerStatusBadge IsVisible="{Binding HasStatus}"/>
+                                    </StackPanel>
                                 </Grid>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
@@ -39,9 +45,12 @@
                         <TextBlock Text="{Binding CurrentConfigurationTitle}" FontSize="15" FontWeight="SemiBold"/>
                         <ItemsControl ItemsSource="{Binding CurrentConfigurationDetails}"><ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="services:ServerInstallationDetail">
-                                <Grid ColumnDefinitions="*,*" ColumnSpacing="16" Margin="0,6">
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="16" Margin="0,3">
                                     <TextBlock Text="{Binding Label}" Classes="action-description"/>
-                                    <SelectableTextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap"/>
+                                    <StackPanel Grid.Column="1">
+                                        <SelectableTextBlock Text="{Binding Value}" TextWrapping="Wrap" IsVisible="{Binding !HasStatus}"/>
+                                        <views:ServerStatusBadge IsVisible="{Binding HasStatus}"/>
+                                    </StackPanel>
                                 </Grid>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate></ItemsControl>
@@ -76,7 +85,10 @@
                     <TextBlock Text="{Binding RepairActionDescription}" Classes="action-description"/>
                     <TextBlock Text="{Binding RepairPlanText}" Classes="action-description"/>
                     <TextBlock Text="{Binding RepairPackageText}" TextWrapping="Wrap"/>
-                    <TextBox Text="{Binding RepairPackagePath}"/>
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <TextBox Text="{Binding RepairPackagePath}" VerticalAlignment="Center"/>
+                        <Button Grid.Column="1" Content="{Binding BrowseRepairPackageText}" Click="BrowseRepairPackage_Click"/>
+                    </Grid>
                     <CheckBox IsVisible="{Binding CanManageFirewall}" IsChecked="{Binding MaintenanceAddFirewallRule}">
                         <TextBlock Text="{Binding FirewallChoiceText}" TextWrapping="Wrap"/>
                     </CheckBox>

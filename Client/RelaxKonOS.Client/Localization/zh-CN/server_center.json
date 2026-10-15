@@ -1,6 +1,14 @@
 {
   "Culture": "zh-CN",
   "Strings": {
+    "server_center.installation.guardian": "进程守护",
+    "server_center.installation.guardian_running": "进程守护运行状态",
+    "server_center.browse_repair_package": "浏览服务器文件…",
+    "server_center.browser_password_required": "请输入 SSH 密码以浏览此主机的文件。",
+    "server_center.browser_failed": "无法浏览服务器文件，请检查 SSH 连接后重试。",
+    "server_center.installation.running": "运行中",
+    "server_center.installation.stopped": "未运行",
+
     "server_center.configuration_current": "当前配置",
     "server_center.guardian_description": "通过进程守护保持托管任务运行。应用更改将重启服务；移除守护将停止其工作负载，但保留定义和日志。",
     "server_center.network_settings": "连接与启动",
