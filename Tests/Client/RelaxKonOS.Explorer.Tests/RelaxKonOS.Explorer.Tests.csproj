@@ -21,6 +21,7 @@
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/ImageViewer/ImageViewerDecoder.cs" Link="ImageViewerDecoder.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/RemoteFileClipboard.cs" Link="RemoteFileClipboard.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/WindowsFileClipboard.cs" Link="WindowsFileClipboard.cs" />
+    <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/IHostFileClipboardBackend.cs" Link="IHostFileClipboardBackend.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/HostFileClipboard.cs" Link="HostFileClipboard.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/ExplorerPickerOptions.cs" Link="ExplorerPickerOptions.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/Uploads/IExplorerUploadChannel.cs" Link="Uploads/IExplorerUploadChannel.cs" />
