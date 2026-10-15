@@ -10,6 +10,7 @@ import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.data.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 
 internal data class CertificatesState(val busy: Boolean = false, val list: ApiResult<List<ManagedCertificate>>? = null,
     val deployments: Map<String, ApiResult<KestrelCertificateDeployment>> = emptyMap(),
@@ -22,12 +23,15 @@ internal class CertificatesViewModel(private val session: AuthSession, private v
     suspend fun observeOperation() {
         val originalOwner = owner ?: return
         val id = state.operation?.operationId ?: return
-        if (!canObserveOperation() || activeSession !== originalOwner) return
-        kotlinx.coroutines.delay(1500)
-        if (owner === originalOwner && activeSession === originalOwner && state.operation?.operationId == id && canObserveOperation()) poll()
+        fun current() = owner === originalOwner && activeSession === originalOwner && state.operation?.operationId == id && canObserveOperation()
+        while (current()) {
+            kotlinx.coroutines.delay(1500)
+            if (!current()) return
+            if (!state.busy) poll()?.join()
+        }
     }
     private fun canObserveOperation() = state.operationVerified && state.operation?.state?.active == true &&
-        !state.busy && !state.uncertain && state.problemCode == null && state.draft == null
+        !state.uncertain && state.problemCode == null && state.draft == null
 
     private val activeSession get() = session.state.value as? SessionState.Active
     private var owner: SessionState.Active? = null
@@ -173,12 +177,12 @@ internal class CertificatesViewModel(private val session: AuthSession, private v
         state = state.copy(problemCode = feedback.problemCode, uncertain = feedback.uncertain)
     }
     private class WorkStage { var writing = false; var receivedOperation = false }
-    private fun work(block: suspend WorkStage.(SessionState.Active) -> Unit) {
-        val active = activeSession ?: return
+    private fun work(block: suspend WorkStage.(SessionState.Active) -> Unit): Job? {
+        val active = activeSession ?: return null
         if (owner !== active) { owner = active; state = CertificatesState(); sessionEpoch++ }
-        if (state.busy) return
+        if (state.busy) return null
         state = state.copy(busy = true, problemCode = null, uncertain = false)
-        viewModelScope.launch {
+        return viewModelScope.launch {
             val stage = WorkStage()
             try { stage.block(active) }
             catch (cancelled: CancellationException) {

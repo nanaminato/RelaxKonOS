@@ -2,9 +2,13 @@ package app.relaxkonos.mobile.ui.manage.certificates
 
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.Lifecycle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material3.Text
+import app.relaxkonos.mobile.ui.common.WorkspaceSection
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
@@ -29,6 +33,9 @@ class CertificateCancellationFlowTest {
     private lateinit var session: AuthSession
     private var writes = 0
     private var failList = false
+    private val visible = mutableStateOf(true)
+    private var identicalPolling = false
+    private val operationReads = java.util.concurrent.atomic.AtomicInteger()
     private val tasks = mutableMapOf<String, CertificateOperation>()
     private val cancellations = mutableListOf<String>()
     private val receipt = CertificateOperation("11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222",
@@ -37,7 +44,7 @@ class CertificateCancellationFlowTest {
     private fun text(id: Int) = context.getString(id)
     @After fun cleanup() { rule.runOnUiThread { store.clear() } }
 
-    private fun show(accepted: Boolean = false, certificate: ManagedCertificate? = null) {
+    private fun show(accepted: Boolean = false, certificate: ManagedCertificate? = null, serverHttpsOnly: Boolean = false) {
         val app = context.applicationContext as RelaxKonApplication
         val gateway = object : RelaxKonGateway by app.container.gateway {
             override suspend fun login(serverUrl: String, identifier: String, password: CharArray) = ApiResult.Success(
@@ -50,8 +57,11 @@ class CertificateCancellationFlowTest {
             override suspend fun certificate(serverUrl: String, accessToken: String, id: String): ApiResult<ManagedCertificate> =
                 certificate?.let { ApiResult.Success(it) } ?: ApiResult.Transport(null)
             override suspend fun kestrelCertificateDeployment(serverUrl: String, accessToken: String, id: String): ApiResult<KestrelCertificateDeployment> = ApiResult.Transport(null)
-            override suspend fun certificateOperation(serverUrl: String, accessToken: String, id: String): ApiResult<CertificateOperation> =
-                tasks[id]?.let { ApiResult.Success(it) } ?: ApiResult.Transport(null)
+            override suspend fun certificateOperation(serverUrl: String, accessToken: String, id: String): ApiResult<CertificateOperation> {
+                if (identicalPolling) return ApiResult.Success(receipt.copy(state =
+                    if (operationReads.incrementAndGet() < 5) CertificateOperationState.Running else CertificateOperationState.Succeeded))
+                return tasks[id]?.let { ApiResult.Success(it) } ?: ApiResult.Transport(null)
+            }
             override suspend fun cancelCertificateOperation(serverUrl: String, accessToken: String, id: String): ApiResult<CertificateOperation> {
                 cancellations += id
                 return tasks[id]?.let { ApiResult.Success(it.copy(state = CertificateOperationState.Cancelled)) } ?: ApiResult.Transport(null)
@@ -84,7 +94,10 @@ class CertificateCancellationFlowTest {
         }
         rule.setContent {
             val active by session.state.collectAsState()
-            MaterialTheme { CertificatesContent(model, active as? SessionState.Active, {}) }
+            MaterialTheme {
+                WorkspaceSection(visible.value) { CertificatesContent(model, active as? SessionState.Active, {}, visible.value, serverHttpsOnly = serverHttpsOnly) }
+                WorkspaceSection(!visible.value) { Text("Other settings") }
+            }
         }
         rule.waitUntil(5_000) { model.state.list is ApiResult.Success && !model.state.busy }
     }
@@ -93,6 +106,121 @@ class CertificateCancellationFlowTest {
         rule.onNodeWithText(text(R.string.certificates_domains)).performScrollTo().performTextInput("host.example.test")
         rule.onNodeWithText(text(R.string.certificates_submit)).performClick()
         rule.onAllNodesWithText(text(R.string.certificates_confirm)).filter(hasClickAction()).onFirst().performClick()
+    }
+    @Test fun hiddenEditorWithdrawsConfirmationAndPreservesDraftWithoutMutation() {
+        show()
+        rule.onNodeWithText(text(R.string.certificates_self_signed)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.certificates_domains)).performScrollTo().performTextInput("host.example.test")
+        rule.onNodeWithText(text(R.string.certificates_submit)).performClick()
+        rule.onNodeWithText(text(R.string.certificates_submit_confirm)).assertIsDisplayed()
+        rule.runOnIdle { visible.value = false }
+        rule.onNodeWithText("Other settings").assertIsDisplayed()
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.runOnIdle { visible.value = true }
+        rule.onNodeWithText("host.example.test").assertExists()
+        rule.onNodeWithText(text(R.string.certificates_submit_confirm)).assertDoesNotExist()
+        rule.runOnIdle { assertEquals(0, writes) }
+    }
+    @Test fun hiddenPageStopsObservationAndVisiblePageResumesOriginalOperation() {
+        show(); identicalPolling = true
+        rule.runOnIdle { model.recover(receipt.operationId) }
+        rule.waitUntil(5_000) { operationReads.get() == 1 && !model.state.busy }
+        rule.runOnIdle { visible.value = false }
+        rule.onNodeWithText("Other settings").assertIsDisplayed()
+        val before = operationReads.get()
+        rule.mainClock.advanceTimeBy(5_000)
+        rule.waitForIdle()
+        assertEquals(before, operationReads.get())
+        rule.runOnIdle { visible.value = true }
+        rule.waitUntil(10_000) { model.state.operation?.state == CertificateOperationState.Succeeded }
+        rule.runOnIdle { assertEquals(0, writes); assertTrue(cancellations.isEmpty()) }
+    }
+    @Test fun serverHttpsEmptyStateExplainsCertificateCreationAndWithdrawsHintOnReadFailure() {
+        show(serverHttpsOnly = true)
+        val guidance = context.getString(R.string.server_https_empty_guidance, text(R.string.nav_manage), text(R.string.certificates_title))
+        rule.onNodeWithText(guidance).assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.certificates_self_signed)).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.certificates_issue)).assertDoesNotExist()
+        rule.runOnIdle { failList = true }
+        rule.onNodeWithText(text(R.string.common_refresh)).performScrollTo().performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.problemCode == "certificate.read_failed" }
+        rule.onNodeWithText(text(R.string.common_dismiss)).performClick()
+        rule.onNodeWithText(guidance).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.certificates_unavailable)).assertIsDisplayed()
+        rule.runOnIdle { failList = false }
+        rule.onNodeWithText(text(R.string.common_refresh)).performScrollTo().performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.list is ApiResult.Success }
+        rule.onNodeWithText(guidance).assertIsDisplayed()
+        rule.runOnIdle { assertEquals(0, writes) }
+    }
+    @Test fun emptyCertificateListDoesNotAskForUnavailableSelectionAndRefreshDistinguishesFailure() {
+        show()
+        rule.onAllNodesWithText(text(R.string.workspace_certificates)).filter(hasClickAction()).onFirst().performClick()
+        rule.onNodeWithText(text(R.string.certificates_empty)).assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.certificates_select)).assertDoesNotExist()
+        rule.runOnIdle { failList = true }
+        rule.onNodeWithText(text(R.string.common_refresh)).performScrollTo().performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.problemCode == "certificate.read_failed" }
+        rule.onNodeWithText(text(R.string.common_dismiss)).performClick()
+        rule.onNodeWithText(text(R.string.certificates_empty)).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.certificates_select)).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.certificates_unavailable)).assertIsDisplayed()
+        rule.runOnIdle { failList = false }
+        rule.onNodeWithText(text(R.string.common_refresh)).performScrollTo().performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.list is ApiResult.Success }
+        rule.onNodeWithText(text(R.string.certificates_empty)).assertIsDisplayed()
+        rule.runOnIdle { assertEquals(0, writes) }
+    }
+    private fun pauseAndResumeWithoutComposeFrames() {
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+            rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        } finally { rule.mainClock.autoAdvance = true }
+    }
+    @Test fun pausedDeleteConfirmationIsWithdrawnAndFreshActionStillAvailable() {
+        val certificate = ManagedCertificate(requireNotNull(receipt.certificateId), "host.example.test", listOf("host.example.test"),
+            CertificateStatus.Issued, CertificateChallenge.DirectHttp01, 4102444800000L, null, null, null, 0,
+            CertificateKey.EcdsaP256, null, null, null, null, 0, 0, CertificateKind.SelfSigned, "review-fingerprint")
+        show(certificate = certificate)
+        rule.onAllNodesWithText(text(R.string.workspace_certificates)).filter(hasClickAction()).onFirst().performClick()
+        rule.runOnIdle { model.select(certificate.id) }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.detail is ApiResult.Success }
+        rule.onNodeWithText(text(R.string.common_delete)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.certificates_delete_confirm)).assertIsDisplayed()
+        pauseAndResumeWithoutComposeFrames()
+        rule.onNodeWithText(text(R.string.certificates_delete_confirm)).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.common_delete)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.certificates_delete_confirm)).assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.common_cancel)).performClick()
+        rule.runOnIdle { assertEquals(0, writes) }
+    }
+    private fun verifyEditorConfirmationWithdrawal(submitting: Boolean) {
+        show()
+        rule.onNodeWithText(text(R.string.certificates_self_signed)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.certificates_domains)).performScrollTo().performTextInput("host.example.test")
+        val action = if (submitting) R.string.certificates_submit else R.string.common_close
+        val message = if (submitting) R.string.certificates_submit_confirm else R.string.certificates_discard_confirm
+        rule.onNodeWithText(text(action)).performClick()
+        rule.onNodeWithText(text(message)).assertIsDisplayed()
+        pauseAndResumeWithoutComposeFrames()
+        rule.onNodeWithText(text(message)).assertDoesNotExist()
+        rule.onNodeWithText("host.example.test").assertExists()
+        rule.onNodeWithText(text(action)).performClick()
+        rule.onNodeWithText(text(message)).assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.common_cancel)).performClick()
+        rule.runOnIdle { assertEquals(0, writes); assertEquals("host.example.test", model.state.draft?.domainsText) }
+    }
+    @Test fun pausedSubmissionConfirmationPreservesDraftAndRequiresFreshConfirmation() = verifyEditorConfirmationWithdrawal(true)
+    @Test fun pausedDiscardConfirmationPreservesDraftAndRequiresFreshConfirmation() = verifyEditorConfirmationWithdrawal(false)
+    @Test fun identicalRunningResponsesReachTerminal() {
+        show(); identicalPolling = true
+        rule.runOnIdle { model.recover(receipt.operationId) }
+        rule.waitUntil(5_000) { operationReads.get() == 1 && !model.state.busy }
+        rule.waitForIdle()
+        rule.waitUntil(10_000) { model.state.operation?.state == CertificateOperationState.Succeeded }
+        assertEquals(5, operationReads.get())
+        assertEquals(0, writes); assertTrue(cancellations.isEmpty())
     }
     private fun verifyChallengeDetails(kind: CertificateKind) {
         val certificate = ManagedCertificate(requireNotNull(receipt.certificateId), "host.example.test", listOf("host.example.test"),

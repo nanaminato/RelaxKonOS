@@ -357,7 +357,22 @@ class CertificatesViewModelTest {
         model.recover(receipt.operationId); advanceUntilIdle()
         model.create(true); model.observeOperation(); advanceUntilIdle()
         assertEquals(1, reads); assertNotNull(model.state.draft)
+        gateway.onCertificateOperation = { reads++; ApiResult.Success(receipt.copy(state = CertificateOperationState.Succeeded)) }
         model.closeDraft(); model.observeOperation(); advanceUntilIdle()
         assertEquals(2, reads)
+    }
+    @Test fun `one observation follows identical running replies through terminal state`() = runTest {
+        login(); runCurrent()
+        val receipt = CertificateWire.operation(CERTIFICATE_OPERATION_JSON).copy(state = CertificateOperationState.Running)
+        gateway.onCertificateOperation = { ApiResult.Success(receipt) }
+        model.recover(receipt.operationId); advanceUntilIdle()
+        var reads = 0
+        gateway.onCertificateOperation = {
+            reads++
+            ApiResult.Success(if (reads < 4) receipt else receipt.copy(state = CertificateOperationState.Succeeded))
+        }
+        model.observeOperation(); advanceUntilIdle()
+        assertEquals(4, reads)
+        assertEquals(CertificateOperationState.Succeeded, model.state.operation?.state)
     }
 }

@@ -232,7 +232,7 @@ class OperationCenter(
             OperationDomain.Certificate -> certificates.cancel(owner, item.reference.operationId)
             OperationDomain.WebServer -> webServers.cancel(owner, item.reference.operationId)
             OperationDomain.Installation -> installations.cancel(owner, item.reference.operationId)
-            OperationDomain.Compose -> docker.cancelStackOperation(owner, item.reference.operationId)
+            OperationDomain.Compose -> docker.cancelStackOperation(owner, item.reference.resourceId, item.reference.operationId)
             OperationDomain.GitBuild -> git.cancelBuild(owner, item.reference.operationId)
             OperationDomain.Script -> when (val result = scripts.cancel(owner, item.reference.operationId)) {
                 is ApiResult.Success -> if (result.value.success) result else ApiResult.Transport(result.value.problemCode)
@@ -282,7 +282,7 @@ class OperationCenter(
                 is ApiResult.Problem -> unknown(reference, if (result.status == 404) OperationCheck.Missing else OperationCheck.Unavailable)
                 is ApiResult.Transport -> unknown(reference, OperationCheck.Unavailable)
             }
-            OperationDomain.Compose -> when (val result = docker.stackOperation(owner, reference.operationId)) {
+            OperationDomain.Compose -> when (val result = docker.stackOperation(owner, reference.resourceId, reference.operationId)) {
                 is ApiResult.Success -> if (result.value.projectName == reference.resourceId) fromCompose(owner, result.value)
                     else unknown(reference, OperationCheck.Missing)
                 is ApiResult.Problem -> unknown(reference, if (result.status == 404) OperationCheck.Missing else OperationCheck.Unavailable)

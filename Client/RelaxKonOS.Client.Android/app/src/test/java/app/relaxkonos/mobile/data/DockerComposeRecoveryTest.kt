@@ -22,17 +22,22 @@ class DockerComposeRecoveryTest {
     private val queries = mutableListOf<String>()
     private var response: ApiResult<DockerStackOperation> = ApiResult.Transport(null)
     private var cancelled = false
+    private var deploymentResponse: ApiResult<DockerStackOperation> = ApiResult.Transport(null)
     private val gateway = object : RelaxKonGateway by base {
         override suspend fun dockerStackDeploy(serverUrl: String, accessToken: String, name: String, composeYaml: String, definitionVersion: String, idempotencyKey: String): ApiResult<DockerStackOperation> {
             writes++
             assertEquals(idempotencyKey, journal.pending(owner).single().requestKey)
             assertFalse(storage.bytes!!.decodeToString().contains("private yaml"))
             if (cancelled) throw CancellationException("response lost")
-            return ApiResult.Transport(null)
+            return deploymentResponse
         }
         override suspend fun dockerStackOperationByRequest(serverUrl: String, accessToken: String, requestKey: String): ApiResult<DockerStackOperation> {
             queries += requestKey; return response
         }
+        override suspend fun dockerStackOperation(serverUrl: String, accessToken: String, operationId: String) = response
+        override suspend fun dockerStackOperationCancel(serverUrl: String, accessToken: String, operationId: String, idempotencyKey: String) = response
+        override suspend fun dockerStackOperations(serverUrl: String, accessToken: String, name: String, limit: Int) =
+            ApiResult.Success(listOf((response as ApiResult.Success).value))
     }
     private val session = AuthSession(gateway)
     private val journal = DockerComposeJournal(storage)
@@ -89,5 +94,32 @@ class DockerComposeRecoveryTest {
         login(); storage.failWrite = true
         try { repository().deployStack(owner, "review", "private yaml", "version"); fail() } catch (_: IllegalStateException) {}
         assertEquals(0, writes)
+    }
+    @Test fun `wrong operation or project cannot enter index through query or cancellation`() = runTest {
+        login(); val repo = repository()
+        for (wrong in listOf(operation.copy(operationId = "22222222-2222-2222-2222-222222222222"), operation.copy(projectName = "different"))) {
+            response = ApiResult.Success(wrong)
+            assertTrue(repo.stackOperation(owner, "review", operation.operationId) is ApiResult.Transport)
+            assertTrue(repo.cancelStackOperation(owner, "review", operation.operationId) is ApiResult.Transport)
+            assertTrue(index.forOwner(owner).isEmpty())
+        }
+        response = ApiResult.Success(operation)
+        assertTrue(repo.stackOperation(owner, "review", operation.operationId) is ApiResult.Success)
+        assertEquals(operation.operationId, index.forOwner(owner).single().operationId)
+    }
+    @Test fun `foreign project history is rejected without indexing`() = runTest {
+        login(); response = ApiResult.Success(operation.copy(projectName = "different"))
+        assertTrue(repository().stackOperations(owner, "review") is ApiResult.Transport)
+        assertTrue(index.forOwner(owner).isEmpty())
+    }
+    @Test fun `mismatched submission receipt preserves uncertainty without indexing`() = runTest {
+        login()
+        deploymentResponse = ApiResult.Success(operation.copy(kind = DockerStackOperationKind.STOP))
+        val repo = repository()
+        assertTrue(repo.deployStack(owner, "review", "private yaml", "version") is ApiResult.Transport)
+        assertEquals(1, journal.pending(owner).size)
+        assertTrue(index.forOwner(owner).isEmpty())
+        assertTrue(repo.deployStack(owner, "review", "private yaml", "version") is ApiResult.Problem)
+        assertEquals(1, writes)
     }
 }

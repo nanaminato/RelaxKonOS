@@ -102,7 +102,7 @@ fun MobileNavHost(
             Routes.MANAGE_FIREWALL -> app.relaxkonos.mobile.ui.manage.firewall.FirewallScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_PROXY -> ProxyScreen(onBack = { navigator.pop() }, initialOperationId = taskTarget, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_TUNNELS -> TunnelsScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
-            Routes.MANAGE_CERTIFICATES -> CertificatesScreen(onBack = { navigator.pop() }, initialOperationId = taskTarget, modifier = Modifier.fillMaxSize())
+            Routes.MANAGE_CERTIFICATES -> CertificatesScreen(onBack = { navigator.pop() }, active = true, initialOperationId = taskTarget, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_OPERATIONS -> OperationsScreen(owner = session, onBack = { navigator.pop() },
                 startOnAlerts = container.openAlertsOnNextScreen,
                 onStartOnAlertsConsumed = container::consumeAlertScreen,
@@ -315,7 +315,7 @@ private fun MorePane(route: String, active: Boolean, onOpenRoute: (String) -> Un
             onOpenRoute = onOpenRoute, modifier = Modifier.fillMaxSize())
         Routes.MORE_HELP -> app.relaxkonos.mobile.ui.more.HelpScreen(onBack = onBack, onOpenRoute = onOpenRoute,
             onOpenServerCenter = { moreContainer.serverCenter.open() }, modifier = Modifier.fillMaxSize())
-        Routes.MORE_SERVER_HTTPS -> CertificatesScreen(onBack = { onBack?.invoke() }, serverHttpsOnly = true, modifier = Modifier.fillMaxSize())
+        Routes.MORE_SERVER_HTTPS -> CertificatesScreen(onBack = { onBack?.invoke() }, active = active, serverHttpsOnly = true, modifier = Modifier.fillMaxSize())
         Routes.MORE_HOST_SETTINGS -> app.relaxkonos.mobile.ui.more.HostSettingsScreen(onBack = onBack, onOpenServerHttps = { onOpenRoute(Routes.MORE_SERVER_HTTPS) }, modifier = Modifier.fillMaxSize(), active = active)
         Routes.MORE_ABOUT -> AboutScreen(onBack = onBack, modifier = Modifier.fillMaxSize(), active = active)
         else -> EmptyHint(stringResource(R.string.more_select_section))

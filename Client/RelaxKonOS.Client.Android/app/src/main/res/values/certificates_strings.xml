@@ -45,6 +45,7 @@
     <string name="certificates_domains">Domains / SANs (separated by space or comma)</string>
     <string name="certificates_email">ACME contact email</string>
     <string name="certificates_empty">No certificates</string>
+    <string name="server_https_empty_guidance">Create or request a certificate in %1$s → %2$s, then return here to select it.</string>
     <string name="certificates_expired_warning">Validity period has ended. Verify dependent services before use.</string>
     <string name="certificates_expires">Expires: %1$s</string>
     <string name="certificates_expiring_warning">Expires within 30 days. Review renewal and linked deployments.</string>

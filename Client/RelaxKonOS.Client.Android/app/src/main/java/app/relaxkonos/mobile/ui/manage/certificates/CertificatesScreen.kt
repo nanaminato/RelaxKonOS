@@ -14,6 +14,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
 import app.relaxkonos.mobile.R
@@ -27,34 +28,35 @@ import java.util.Date
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun CertificatesScreen(onBack: () -> Unit, initialOperationId: String? = null, serverHttpsOnly: Boolean = false, modifier: Modifier = Modifier) {
+fun CertificatesScreen(onBack: () -> Unit, active: Boolean, initialOperationId: String? = null, serverHttpsOnly: Boolean = false, modifier: Modifier = Modifier) {
     val container = appContainer()
     val model: CertificatesViewModel = viewModel(factory = viewModelFactory {
         initializer { CertificatesViewModel(container.session, container.certificates, container.operationIndex, container.elevationAnswers) }
     })
-    CertificatesContent(model, container.activeSession, onBack, initialOperationId, serverHttpsOnly, modifier)
+    CertificatesContent(model, container.activeSession, onBack, active, initialOperationId, serverHttpsOnly, modifier)
 }
 
 @Composable
-internal fun CertificatesContent(model: CertificatesViewModel, owner: SessionState.Active?, onBack: () -> Unit,
+internal fun CertificatesContent(model: CertificatesViewModel, owner: SessionState.Active?, onBack: () -> Unit, active: Boolean,
     initialOperationId: String? = null, serverHttpsOnly: Boolean = false, modifier: Modifier = Modifier) {
     val state = model.state
     val epoch = model.sessionEpoch
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     var section by rememberSaveable(owner, epoch) { mutableStateOf(if (initialOperationId != null) "operations" else if (serverHttpsOnly) "certificates" else "overview") }
-    if (state.draft == null) CertificateFeedback(state)
+    if (active && state.draft == null) CertificateFeedback(state)
     LaunchedEffect(initialOperationId) { if (initialOperationId != null) section = "operations" }
     val available = owner?.capabilities?.contains(ServerCapabilities.CERTIFICATES) == true
     val canManage = available && owner?.privilegedOperations == true
     var confirm by remember(owner, epoch) { mutableStateOf<Pair<Int, () -> Unit>?>(null) }
+    WithdrawCertificateConfirmationOnPause(active) { confirm = null }
     var recovery by remember(owner, epoch) { mutableStateOf(false) }
     var recoverPending by remember(owner, epoch) { mutableStateOf<PendingCertificateRequest?>(null) }
     var recoverId by remember(owner, epoch) { mutableStateOf("") }
-    LaunchedEffect(owner, epoch, initialOperationId) { if (available) { if (initialOperationId != null) model.recover(initialOperationId) else model.refresh() } }
-    LaunchedEffect(owner, epoch, state.operation?.operationId, state.operation?.state, state.busy, state.draft, lifecycleState) {
-        if (lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) model.observeOperation()
+    LaunchedEffect(owner, epoch, initialOperationId, active) { if (active && available) { if (initialOperationId != null) model.recover(initialOperationId) else model.refresh() } }
+    LaunchedEffect(owner, epoch, active, state.operation?.operationId, state.operationVerified, state.problemCode, state.uncertain, state.draft, lifecycleState) {
+        if (active && lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) model.observeOperation()
     }
-    BackHandler(section == "certificates" && state.selectedId != null && state.draft == null && !state.busy) { model.select(null) }
+    BackHandler(active && section == "certificates" && state.selectedId != null && state.draft == null && !state.busy) { model.select(null) }
     WorkspaceColumn(stringResource(if (serverHttpsOnly) R.string.server_https_title else R.string.certificates_title), onBack, listOf(*(if (serverHttpsOnly) emptyArray() else arrayOf(WorkspaceDestination("overview", R.string.workspace_overview))), WorkspaceDestination("certificates", R.string.workspace_certificates), WorkspaceDestination("operations", R.string.workspace_operations)), section, { section = it }, modifier, stateKey = owner to epoch) {
         if (!available) { Text(stringResource(R.string.error_capability_missing)); return@WorkspaceColumn }
         Text(if (serverHttpsOnly) stringResource(R.string.server_https_description) else stringResource(
@@ -85,7 +87,9 @@ internal fun CertificatesContent(model: CertificatesViewModel, owner: SessionSta
         }
         WorkspaceSection(section == "certificates") {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
-            if (maxWidth >= 600.dp) Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+            val hasChoices = (state.list as? ApiResult.Success)?.value?.isNotEmpty() == true
+            if (state.selectedId == null && !hasChoices) CertificateList(state, model)
+            else if (maxWidth >= 600.dp) Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
                 Column(Modifier.weight(1f)) { CertificateList(state, model) }
                 Column(Modifier.weight(2f)) { CertificateDetail(state, model, owner, canManage, serverHttpsOnly) { message, action -> confirm = message to action } }
             } else Column {
@@ -94,6 +98,9 @@ internal fun CertificatesContent(model: CertificatesViewModel, owner: SessionSta
                     CertificateDetail(state, model, owner, canManage, serverHttpsOnly) { message, action -> confirm = message to action }
                 }
             }
+        }
+        if (serverHttpsOnly && (state.list as? ApiResult.Success)?.value?.isEmpty() == true) {
+            Text(stringResource(R.string.server_https_empty_guidance, stringResource(R.string.nav_manage), stringResource(R.string.certificates_title)))
         }
         }
         WorkspaceSection(section == "operations") {
@@ -130,11 +137,11 @@ internal fun CertificatesContent(model: CertificatesViewModel, owner: SessionSta
         }
         }
     }
-    if (state.draft != null && owner != null) key(owner, epoch) { CertificateEditor(state, model, owner) }
-    confirm?.let { request -> AlertDialog(onDismissRequest = { confirm = null }, title = { Text(stringResource(R.string.certificates_confirm)) },
+    if (active && state.draft != null && owner != null) key(owner, epoch) { CertificateEditor(state, model, owner) }
+    if (active) confirm?.let { request -> AlertDialog(onDismissRequest = { confirm = null }, title = { Text(stringResource(R.string.certificates_confirm)) },
         text = { Text(stringResource(request.first)) }, confirmButton = { Button(onClick = { confirm = null; request.second() }) { Text(stringResource(R.string.certificates_confirm)) } },
         dismissButton = { TextButton(onClick = { confirm = null }) { Text(stringResource(R.string.common_cancel)) } }) }
-    if (recovery) AlertDialog(onDismissRequest = { recovery = false }, title = { Text(stringResource(R.string.certificates_recover)) },
+    if (active && recovery) AlertDialog(onDismissRequest = { recovery = false }, title = { Text(stringResource(R.string.certificates_recover)) },
         text = { Column { Text(stringResource(R.string.certificates_recover_note)); OutlinedTextField(recoverId, { recoverId = it }, singleLine = true, label = { Text(stringResource(R.string.certificates_operation_id)) }) } },
         confirmButton = { Button(enabled = runCatching { InstallationRoutes.operation(recoverId.trim()) }.isSuccess, onClick = {
             model.recover(recoverId, recoverPending); recovery = false
@@ -256,6 +263,7 @@ private fun CertificateEditor(state: CertificatesState, model: CertificatesViewM
     val locked = state.busy || state.draftLocked
     var discard by remember { mutableStateOf(false) }
     var submit by remember(draft) { mutableStateOf(false) }
+    WithdrawCertificateConfirmationOnPause(true) { discard = false; submit = false }
     fun close() { if (!state.busy) { if (draft != state.initialDraft) discard = true else model.closeDraft() } }
     AlertDialog(onDismissRequest = ::close, modifier = Modifier.imePadding(), title = { Text(stringResource(if (draft.selfSigned) R.string.certificates_self_signed else R.string.certificates_issue)) },
         text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
@@ -303,6 +311,20 @@ private fun CertificateFeedback(state: CertificatesState) {
     OperationMessageDialog(if (state.busy) null else state.problemCode?.let { certificateProblemLabel(it) }
         ?: if (state.uncertain) stringResource(R.string.certificates_uncertain) else null,
         tone = if (state.problemCode == null) StatusTone.Warning else StatusTone.Danger)
+}
+
+@Composable
+private fun WithdrawCertificateConfirmationOnPause(active: Boolean, withdraw: () -> Unit) {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val currentWithdraw by rememberUpdatedState(withdraw)
+    DisposableEffect(lifecycle, active) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) currentWithdraw()
+        }
+        lifecycle.addObserver(observer)
+        if (!active) currentWithdraw()
+        onDispose { lifecycle.removeObserver(observer) }
+    }
 }
 
 private fun date(value: Long): String = DateFormat.getDateTimeInstance().format(Date(value))

@@ -38,7 +38,7 @@ fun WorkspaceFrame(
 ) {
     val header = remember(selected, screenTitle) { WorkspaceHeader(screenTitle, onBack) }
     Column(modifier.fillMaxSize().imePadding()) {
-        ScreenHeader(title, subtitle = subtitle, onBack = if (header.hasBack) ({ header.back?.invoke() }) else null,
+        ScreenHeader(title, subtitle = subtitle?.takeUnless { it == title }, onBack = if (header.hasBack) ({ header.back?.invoke() }) else null,
             modifier = Modifier.padding(Spacing.lg))
         WorkspaceBody(pages, selected, onSelect, Modifier.weight(1f)) {
             CompositionLocalProvider(LocalWorkspaceHeader provides header) { content() }

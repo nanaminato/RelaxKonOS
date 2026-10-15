@@ -45,6 +45,7 @@
     <string name="certificates_domains">ドメイン / SAN（空白またはカンマ区切り）</string>
     <string name="certificates_email">ACME 連絡先メール</string>
     <string name="certificates_empty">証明書がありません</string>
+    <string name="server_https_empty_guidance">%1$s → %2$s で証明書を作成または申請してから、この画面に戻って選択してください。</string>
     <string name="certificates_expired_warning">有効期間が終了しています。使用前に関連サービスを確認してください。</string>
     <string name="certificates_expires">有効期限: %1$s</string>
     <string name="certificates_expiring_warning">30 日以内に期限が切れます。更新と関連配備を確認してください。</string>

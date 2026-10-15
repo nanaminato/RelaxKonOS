@@ -5,7 +5,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import app.relaxkonos.mobile.ui.common.*
 import java.io.InputStream
-import android.net.Uri
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -62,11 +61,33 @@ data class DockerScreenState(
     val recoveredOperation: DockerStackOperation? = null,
 )
 
-class DockerViewModel(private val session: AuthSession, private val repository: DockerRepository, private val openDocument: (Uri) -> InputStream?) : ViewModel() {
+class DockerViewModel(private val session: AuthSession, private val repository: DockerRepository) : ViewModel() {
     var state by mutableStateOf(DockerScreenState(owner = (session.state.value as? SessionState.Active)))
         private set
     private var refreshJob: Job? = null
     private var refreshGeneration = 0
+    private var importGeneration = 0
+    private var importJob: Job? = null
+    fun cancelImport() { importGeneration++; importJob?.cancel() }
+    private var selectionGeneration = 0
+    private var selectionJob: Job? = null
+    private var trackingGeneration = 0
+    private var trackingJob: Job? = null
+    private var trackingActive = true
+    private var logsGeneration = 0
+    private var logsJob: Job? = null
+    private var logsTarget: String? = null
+    private fun clearLogs() { logsGeneration++; logsJob?.cancel(); logsTarget = null; state = state.copy(logs = null) }
+    private var trackedOperation: Pair<SessionState.Active, DockerStackOperation>? = null
+    private fun stopTracking() { trackingGeneration++; trackingJob?.cancel() }
+    fun setTrackingActive(active: Boolean) {
+        if (trackingActive == active) return
+        trackingActive = active
+        if (!active) stopTracking()
+        else trackedOperation?.let { (owner, operation) ->
+            if (session.state.value === owner) track(owner, operation)
+        }
+    }
     val canSubmit: Boolean get() = state.owner?.privilegedOperations == true && session.state.value === state.owner &&
         !state.busy && !state.pendingUnreadable && state.pendingRequests.isEmpty()
 
@@ -119,6 +140,12 @@ class DockerViewModel(private val session: AuthSession, private val repository: 
             session.state.collect {
                 refreshGeneration++
                 refreshJob?.cancel()
+                selectionGeneration++
+                selectionJob?.cancel()
+                stopTracking()
+                trackedOperation = null
+                clearLogs()
+                cancelImport()
                 state = DockerScreenState(owner = (session.state.value as? SessionState.Active))
                 state.owner?.let(::syncPending)
                 refresh()
@@ -126,12 +153,14 @@ class DockerViewModel(private val session: AuthSession, private val repository: 
         }
     }
 
-    fun refresh() {
+    fun refresh() = refresh(preserveMessage = false)
+
+    private fun refresh(preserveMessage: Boolean) {
         val owner = (session.state.value as? SessionState.Active) ?: return
         syncPending(owner)
         if (ServerCapabilities.DOCKER !in owner.capabilities || state.loading) return
         val generation = ++refreshGeneration
-        state = state.copy(owner = owner, loading = true, message = null)
+        state = state.copy(owner = owner, loading = true, message = if (preserveMessage) state.message else null)
         refreshJob = viewModelScope.launch {
             fun current() = session.state.value === owner && refreshGeneration == generation
             suspend fun <T> read(action: suspend () -> ApiResult<T>): ApiResult<T> {
@@ -152,12 +181,12 @@ class DockerViewModel(private val session: AuthSession, private val repository: 
             if (current()) state = state.copy(
                 loading = false, status = status, containers = containers, images = images,
                 networks = networks, volumes = volumes, stacks = stacks,
-                message = if (listOf(status, containers, images, networks, volumes, stacks).any { it is ApiResult.Transport })
+                message = state.message ?: if (listOf(status, containers, images, networks, volumes, stacks).any { it is ApiResult.Transport })
                     UiMessage(R.string.error_connectivity) else null,
             )
             } catch (cancelled: CancellationException) {
                 if (current()) state = state.copy(status = ApiResult.Transport(null), containers = ApiResult.Transport(null), images = ApiResult.Transport(null),
-                    networks = ApiResult.Transport(null), volumes = ApiResult.Transport(null), stacks = ApiResult.Transport(null), message = UiMessage(R.string.error_connectivity))
+                    networks = ApiResult.Transport(null), volumes = ApiResult.Transport(null), stacks = ApiResult.Transport(null), message = state.message ?: UiMessage(R.string.error_connectivity))
                 throw cancelled
             } finally { if (current()) state = state.copy(loading = false) }
         }
@@ -165,16 +194,31 @@ class DockerViewModel(private val session: AuthSession, private val repository: 
 
     fun selectStack(stack: DockerStack) {
         val owner = state.owner ?: return
+        if (session.state.value !== owner) return
+        val generation = ++selectionGeneration
+        selectionJob?.cancel()
+        stopTracking()
+        trackedOperation = null
+        clearLogs()
         state = state.copy(selectedStack = stack, services = null, operations = null, diagnostics = null, logs = null)
-        viewModelScope.launch {
+        selectionJob = viewModelScope.launch {
+            fun current() = session.state.value === owner && selectionGeneration == generation
+            try {
             val services = repository.services(owner, stack.name)
+            if (!current()) return@launch
             val operations = repository.stackOperations(owner, stack.name)
-            if ((session.state.value as? SessionState.Active) === owner && state.selectedStack?.name == stack.name) {
+            if (current()) {
                 state = state.copy(services = services, operations = operations)
                 // An operation started elsewhere (another phone, or before this device reconnected) is
                 // still running; keep reading the durable record rather than showing a stale snapshot.
                 val active = (operations as? ApiResult.Success)?.value?.firstOrNull { it.state.active }
                 if (active != null) track(owner, active)
+            }
+            } catch (cancelled: CancellationException) {
+                if (current()) state = state.copy(services = ApiResult.Transport(null), operations = ApiResult.Transport(null), message = UiMessage(R.string.error_connectivity))
+                throw cancelled
+            } catch (_: Exception) {
+                if (current()) state = state.copy(services = ApiResult.Transport(null), operations = ApiResult.Transport(null), message = UiMessage(R.string.error_generic))
             }
         }
     }
@@ -274,8 +318,9 @@ class DockerViewModel(private val session: AuthSession, private val repository: 
 
     fun cancelOperation(operationId: String) {
         val owner = state.owner ?: return
+        val operation = (state.operations as? ApiResult.Success)?.value?.firstOrNull { it.operationId == operationId } ?: return
         viewModelScope.launch {
-            val result = repository.cancelStackOperation(owner, operationId)
+            val result = repository.cancelStackOperation(owner, operation.projectName, operationId)
             if ((session.state.value as? SessionState.Active) !== owner) return@launch
             state = state.copy(message = when (result) {
                 is ApiResult.Success -> UiMessage(R.string.docker_stack_cancel_requested, tone = StatusTone.Neutral)
@@ -286,12 +331,24 @@ class DockerViewModel(private val session: AuthSession, private val repository: 
 
     fun loadLogs(id: String) {
         val owner = state.owner ?: return
-        viewModelScope.launch {
-            val result = repository.logs(owner, id, 200)
-            if ((session.state.value as? SessionState.Active) !== owner) return@launch
-            if (state.logs?.first == id) state = state.copy(logs = null)
-            else if (result is ApiResult.Success) state = state.copy(logs = id to result.value)
-            else state = state.copy(message = result.dockerFailure())
+        if (session.state.value !== owner) return
+        if (logsTarget == id) { clearLogs(); return }
+        clearLogs()
+        logsTarget = id
+        val generation = logsGeneration
+        logsJob = viewModelScope.launch {
+            fun current() = session.state.value === owner && logsGeneration == generation
+            try {
+                val result = repository.logs(owner, id, 200)
+                if (!current()) return@launch
+                if (result is ApiResult.Success) state = state.copy(logs = id to result.value)
+                else { logsTarget = null; state = state.copy(message = result.dockerFailure()) }
+            } catch (cancelled: CancellationException) {
+                if (current()) { logsTarget = null; state = state.copy(message = UiMessage(R.string.error_connectivity)) }
+                throw cancelled
+            } catch (_: Exception) {
+                if (current()) { logsTarget = null; state = state.copy(message = UiMessage(R.string.error_generic)) }
+            }
         }
     }
 
@@ -307,22 +364,26 @@ class DockerViewModel(private val session: AuthSession, private val repository: 
         }
     }
 
-    fun importCompose(uri: Uri, onImported: (String) -> Unit) {
-        val owner = (session.state.value as? SessionState.Active) ?: return
-        viewModelScope.launch {
+    fun importCompose(owner: SessionState.Active, openDocument: () -> InputStream?, onImported: (String) -> Unit): Job? {
+        if (session.state.value !== owner) return null
+        cancelImport()
+        val generation = importGeneration
+        importJob = viewModelScope.launch {
+            fun current() = session.state.value === owner && generation == importGeneration
             try {
                 val source = withContext(Dispatchers.IO) {
-                    openDocument(uri)?.use(::readComposeDocument)
+                    openDocument()?.use(::readComposeDocument)
                         ?: error("unreadable document")
                 }
-                if ((session.state.value as? SessionState.Active) === owner) onImported(source)
+                if (current()) onImported(source)
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: Exception) {
-                if ((session.state.value as? SessionState.Active) === owner) state = state.copy(message = UiMessage(
+                if (current()) state = state.copy(message = UiMessage(
                     if (error is ComposeDocumentTooLargeException) R.string.docker_import_too_large else R.string.docker_import_failed))
             }
         }
+        return importJob
     }
 
     fun dismissMessage() { state = state.copy(message = null) }
@@ -333,26 +394,44 @@ class DockerViewModel(private val session: AuthSession, private val repository: 
      * result is still readable from the project's operation list.
      */
     private fun track(owner: SessionState.Active, operation: DockerStackOperation) {
-        viewModelScope.launch {
+        stopTracking()
+        trackedOperation = owner to operation
+        if (!trackingActive) return
+        val generation = trackingGeneration
+        trackingJob = viewModelScope.launch {
+            fun valid() = session.state.value === owner && trackingGeneration == generation
+            try {
             var current = operation
             var elapsed = 0
             while (current.state.active && elapsed < POLL_LIMIT_SECONDS) {
                 delay(POLL_INTERVAL_MILLIS)
+                if (!valid()) return@launch
                 elapsed += POLL_INTERVAL_SECONDS
-                val next = repository.stackOperation(owner, current.operationId)
+                val next = repository.stackOperation(owner, current.projectName, current.operationId)
+                if (!valid()) return@launch
                 if (next is ApiResult.Success) current = next.value else break
+                trackedOperation = owner to current
             }
-            if ((session.state.value as? SessionState.Active) !== owner) return@launch
+            if (!valid()) return@launch
             val diagnostics = (repository.stackOperationDiagnostics(owner, current.operationId) as? ApiResult.Success)?.value
+            if (!valid()) return@launch
             state = state.copy(diagnostics = diagnostics, message = operationMessage(current),
                 recoveredOperation = if (state.recoveredOperation?.operationId == current.operationId) current else state.recoveredOperation)
             if (state.selectedStack?.name == current.projectName) {
                 val services = repository.services(owner, current.projectName)
+                if (!valid()) return@launch
                 val operations = repository.stackOperations(owner, current.projectName)
-                if ((session.state.value as? SessionState.Active) === owner && state.selectedStack?.name == current.projectName)
+                if (valid() && state.selectedStack?.name == current.projectName)
                     state = state.copy(services = services, operations = operations)
             }
-            refresh()
+            if (valid()) refresh(preserveMessage = true)
+            if (valid()) trackedOperation = null
+            } catch (cancelled: CancellationException) {
+                if (valid()) state = state.copy(message = UiMessage(R.string.error_connectivity))
+                throw cancelled
+            } catch (_: Exception) {
+                if (valid()) state = state.copy(message = UiMessage(R.string.error_generic))
+            }
         }
     }
 

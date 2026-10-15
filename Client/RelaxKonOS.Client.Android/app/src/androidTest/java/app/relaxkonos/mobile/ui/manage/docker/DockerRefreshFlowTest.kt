@@ -6,6 +6,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.Lifecycle
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicBoolean
 import androidx.test.espresso.Espresso
 import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.R
@@ -34,6 +37,11 @@ class DockerRefreshFlowTest {
     private var allowSubmission = false
     private var cancelSubmission = false
     private var lookupFound = false
+    private val observeOperation = AtomicBoolean()
+    private val operationReads = AtomicInteger()
+    private val operationBlocked = AtomicBoolean()
+    private fun runningOperation() = DockerStackOperation("22222222-2222-2222-2222-222222222222", "review-stack", DockerStackOperationKind.DEPLOY,
+        DockerStackOperationState.RUNNING, "running", null, null, "2026-10-15T00:00:00Z", true, emptyList())
     private var submittedKey: String? = null
     private val lookupKeys = mutableListOf<String>()
     private lateinit var journalDirectory: File
@@ -80,6 +88,17 @@ class DockerRefreshFlowTest {
             override suspend fun dockerNetworks(serverUrl: String, accessToken: String) = ApiResult.Success(emptyList<DockerNetwork>())
             override suspend fun dockerVolumes(serverUrl: String, accessToken: String) = ApiResult.Success(emptyList<DockerVolume>())
             override suspend fun dockerStacks(serverUrl: String, accessToken: String) = ApiResult.Success(listOf(DockerStack("review-stack", "running", "", "")))
+            override suspend fun dockerStackServices(serverUrl: String, accessToken: String, name: String) = ApiResult.Success(emptyList<DockerStackService>())
+            override suspend fun dockerStackOperations(serverUrl: String, accessToken: String, name: String, limit: Int) =
+                ApiResult.Success(if (observeOperation.get()) listOf(runningOperation()) else emptyList<DockerStackOperation>())
+            override suspend fun dockerStackOperation(serverUrl: String, accessToken: String, operationId: String): ApiResult<DockerStackOperation> {
+                assertEquals(runningOperation().operationId, operationId)
+                if (operationReads.incrementAndGet() == 1) { operationBlocked.set(true); awaitCancellation() }
+                observeOperation.set(false)
+                return ApiResult.Success(runningOperation().copy(state = DockerStackOperationState.SUCCEEDED))
+            }
+            override suspend fun dockerStackOperationDiagnostics(serverUrl: String, accessToken: String, operationId: String) =
+                ApiResult.Success(DockerStackOperationDiagnostics(emptyList(), false))
         }
         val session = AuthSession(gateway)
         runBlocking { session.login(ServerConnectionIdentityRules.direct("https://docker-review.invalid"), "review", "test".toCharArray()) {} }
@@ -88,7 +107,7 @@ class DockerRefreshFlowTest {
             override fun write(bytes: ByteArray) {}
         }), DockerMutationGate(DockerControlJournal(memoryStorage()), DockerResourceJournal(memoryStorage()),
             DockerComposeJournal(FileDockerComposeStorage(journalDirectory))) { ApiResult.Success(Unit) })
-        rule.runOnUiThread { model = DockerViewModel(session, repository) { null }; store.put("docker", model) }
+        rule.runOnUiThread { model = DockerViewModel(session, repository); store.put("docker", model) }
         rule.setContent { CompositionLocalProvider(LocalAppContainer provides app.container) { MaterialTheme {
             DockerContent(model, null, true, section = "compose")
         } } }
@@ -128,6 +147,24 @@ class DockerRefreshFlowTest {
         rule.runOnIdle { assertNull(model.state.preview); assertNotNull(model.state.message); assertEquals(0, deployments) }
     }
     @Test fun cancelledPreviewKeepsDraftAndRestoresEditorActions() = verifyPreviewRecovery(true)
+    @Test fun backgroundStopsPollingAndResumeReadsOriginalOperation() {
+        observeOperation.set(true); show()
+        rule.onNodeWithText("review-stack").performClick()
+        rule.waitUntil(6_000) { operationBlocked.get() }
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+            val before = operationReads.get()
+            android.os.SystemClock.sleep(2_300)
+            assertEquals(before, operationReads.get())
+            assertNull(model.state.message)
+            rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        } finally { rule.mainClock.autoAdvance = true }
+        rule.waitUntil(6_000) { operationReads.get() == 2 && model.state.diagnostics != null }
+        rule.waitUntil(5_000) { !model.state.loading }
+        rule.onNodeWithText(rule.activity.getString(R.string.docker_stack_operation_succeeded, "review-stack")).assertIsDisplayed()
+        rule.runOnIdle { assertEquals(0, deployments) }
+    }
     @Test fun exceptionInPreviewKeepsDraftAndRestoresEditorActions() = verifyPreviewRecovery(false)
     @Test fun cancelledDeploymentPreflightKeepsDraftWithoutSubmission() = verifyPreviewRecovery(true, true)
     private fun verifyReceiptRecovery(cancelled: Boolean) {

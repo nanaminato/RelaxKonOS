@@ -45,6 +45,7 @@
     <string name="certificates_domains">域名 / SAN（空格或逗号分隔）</string>
     <string name="certificates_email">ACME 联系邮箱</string>
     <string name="certificates_empty">暂无证书</string>
+    <string name="server_https_empty_guidance">请先在%1$s → %2$s中创建或申请证书，再返回此页选择。</string>
     <string name="certificates_expired_warning">有效期已结束，使用前核实关联服务。</string>
     <string name="certificates_expires">到期：%1$s</string>
     <string name="certificates_expiring_warning">将在 30 天内到期，请核对续期与关联部署。</string>

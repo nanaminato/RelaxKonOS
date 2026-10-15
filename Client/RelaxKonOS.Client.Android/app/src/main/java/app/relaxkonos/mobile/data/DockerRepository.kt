@@ -63,18 +63,27 @@ class DockerRepository(
     }
 
     suspend fun stackOperations(owner: SessionState.Active, name: String, limit: Int = 20): ApiResult<List<DockerStackOperation>> =
-        read(owner) { url, token -> gateway.dockerStackOperations(url, token, name, limit) }
+        read(owner) { url, token -> gateway.dockerStackOperations(url, token, name, limit).let {
+            if (it is ApiResult.Success && it.value.any { operation -> operation.projectName != name }) ApiResult.Transport(null) else it
+        } }
 
-    suspend fun stackOperation(owner: SessionState.Active, operationId: String): ApiResult<DockerStackOperation> =
-        read(owner) { url, token -> gateway.dockerStackOperation(url, token, operationId) }
+    suspend fun stackOperation(owner: SessionState.Active, project: String, operationId: String): ApiResult<DockerStackOperation> =
+        read(owner) { url, token -> checked(gateway.dockerStackOperation(url, token, operationId)) {
+            it.operationId == operationId && it.projectName == project
+        } }
 
     suspend fun stackOperationDiagnostics(owner: SessionState.Active, operationId: String): ApiResult<DockerStackOperationDiagnostics> =
         read(owner) { url, token -> gateway.dockerStackOperationDiagnostics(url, token, operationId) }
 
-    suspend fun cancelStackOperation(owner: SessionState.Active, operationId: String): ApiResult<DockerStackOperation> {
+    suspend fun cancelStackOperation(owner: SessionState.Active, project: String, operationId: String): ApiResult<DockerStackOperation> {
         val key = UUID.nameUUIDFromBytes("cancel:${owner.serviceId}:${owner.userName}:$operationId".toByteArray(Charsets.UTF_8)).toString()
-        return read(owner) { url, token -> gateway.dockerStackOperationCancel(url, token, operationId, key) }
+        return read(owner) { url, token -> checked(gateway.dockerStackOperationCancel(url, token, operationId, key)) {
+            it.operationId == operationId && it.projectName == project
+        } }
     }
+
+    private fun checked(result: ApiResult<DockerStackOperation>, matches: (DockerStackOperation) -> Boolean): ApiResult<DockerStackOperation> =
+        if (result is ApiResult.Success && !matches(result.value)) ApiResult.Transport(null) else result
 
     fun pendingRequests(owner: SessionState.Active) = gate.compose.pending(owner)
 
@@ -102,7 +111,7 @@ class DockerRepository(
                 var pending: PendingDockerCompose? = null
                 val result = read(owner) { url, token ->
                     val record = pending ?: gate.compose.begin(owner, project, action).also { pending = it }
-                    call(url, token, record.requestKey)
+                    checked(call(url, token, record.requestKey)) { it.projectName == project && it.kind.wire == action }
                 }
                 pending?.let { record ->
                     if (result is ApiResult.Success) {

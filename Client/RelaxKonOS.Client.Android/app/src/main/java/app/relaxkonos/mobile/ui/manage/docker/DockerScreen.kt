@@ -103,10 +103,9 @@ private fun operationKind(kind: DockerStackOperationKind): String = stringResour
 @Composable
 fun DockerScreen(onBack: (() -> Unit)?, active: Boolean, modifier: Modifier = Modifier, initialStackName: String? = null, section: String = "overview") {
     val container = appContainer()
-    val context = androidx.compose.ui.platform.LocalContext.current.applicationContext
     val viewModel: DockerViewModel = androidx.lifecycle.viewmodel.compose.viewModel(factory =
         androidx.lifecycle.viewmodel.viewModelFactory {
-            initializer { DockerViewModel(container.session, container.docker, context.contentResolver::openInputStream) }
+            initializer { DockerViewModel(container.session, container.docker) }
         })
     DockerContent(viewModel, onBack, active, modifier, initialStackName, section)
 }
@@ -115,21 +114,43 @@ fun DockerScreen(onBack: (() -> Unit)?, active: Boolean, modifier: Modifier = Mo
 internal fun DockerContent(viewModel: DockerViewModel, onBack: (() -> Unit)?, active: Boolean,
     modifier: Modifier = Modifier, initialStackName: String? = null, section: String = "overview") {
     val state = viewModel.state
+    val trackingLifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(viewModel, trackingLifecycle, active) {
+        viewModel.setTrackingActive(active && trackingLifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.setTrackingActive(active)
+            if (event == Lifecycle.Event.ON_PAUSE) viewModel.setTrackingActive(false)
+        }
+        trackingLifecycle.addObserver(observer)
+        onDispose { trackingLifecycle.removeObserver(observer); viewModel.setTrackingActive(false) }
+    }
     val available = state.owner?.capabilities?.contains(ServerCapabilities.DOCKER) == true
     val notInstalled = (state.status as? ApiResult.Success)?.value?.problemCode == "docker.not_installed"
     var composer by remember(state.owner) { mutableStateOf(false) }
     var composeDraft by remember(state.owner) { mutableStateOf(DEFAULT_COMPOSE) }
+    val documentContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
+    var importOwner by remember { mutableStateOf<app.relaxkonos.mobile.core.auth.SessionState.Active?>(null) }
+    DisposableEffect(viewModel, state.owner, active) {
+        if (!active) { importOwner = null; viewModel.cancelImport() }
+        onDispose { importOwner = null; viewModel.cancelImport() }
+    }
     var destructive by remember(state.owner, active) { mutableStateOf<Pair<DockerRemoval, () -> Unit>?>(null) }
     LaunchedEffect(initialStackName, state.stacks) {
         val stack = (state.stacks as? ApiResult.Success)?.value?.firstOrNull { it.name == initialStackName }
         if (stack != null && state.selectedStack?.name != stack.name) viewModel.selectStack(stack)
     }
-    val picker = rememberLauncherForActivityResult(rememberUsageOpenDocument("DockerScreen.compose-import")) { uri -> if (uri != null) viewModel.importCompose(uri) { yaml -> viewModel.clearPreview(); composeDraft = yaml; composer = true } }
+    val picker = rememberLauncherForActivityResult(rememberUsageOpenDocument("DockerScreen.compose-import")) { uri ->
+        val owner = importOwner
+        importOwner = null
+        if (uri != null && owner != null && active) viewModel.importCompose(owner, { documentContext.contentResolver.openInputStream(uri) }) { yaml ->
+            viewModel.clearPreview(); composeDraft = yaml; composer = true
+        }
+    }
     Column(modifier.fillMaxSize().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         ScreenHeader(
             title = stringResource(R.string.docker_title), onBack = onBack,
-            trailing = { Row { if (!notInstalled && section == "compose") { TextButton(onClick = { picker.launch(arrayOf("text/yaml", "application/x-yaml", "text/plain")) }, enabled = available) { Text(stringResource(R.string.docker_import)) }
-                TextButton(onClick = { viewModel.clearPreview(); composer = true }, enabled = available && !state.busy) { Text(stringResource(R.string.docker_new_stack)) } }
+            trailing = { Row { if (!notInstalled && section == "compose") { TextButton(onClick = { viewModel.cancelImport(); importOwner = state.owner; picker.launch(arrayOf("text/yaml", "application/x-yaml", "text/plain")) }, enabled = available && !state.busy && !composer && importOwner == null) { Text(stringResource(R.string.docker_import)) }
+                TextButton(onClick = { viewModel.cancelImport(); importOwner = null; viewModel.clearPreview(); composer = true }, enabled = available && !state.busy) { Text(stringResource(R.string.docker_new_stack)) } }
                 TextButton(onClick = viewModel::refresh, enabled = available && !state.loading) { ActionLabel(R.string.common_refresh) } } },
         )
         if (!available) { EmptyHint(stringResource(R.string.error_capability_missing)); return@Column }
@@ -159,8 +180,8 @@ internal fun DockerContent(viewModel: DockerViewModel, onBack: (() -> Unit)?, ac
         submissionAllowed = viewModel.canSubmit,
         recoveryContent = { ComposeRequestRecovery(state, viewModel) },
         onPreview = viewModel::preview, onClearPreview = viewModel::clearPreview,
-        onDismiss = { composer = false },
-        onDeploy = { name, yaml -> viewModel.deploy(name, yaml) { composer = false } }) }
+        onDismiss = { viewModel.cancelImport(); composer = false },
+        onDeploy = { name, yaml -> viewModel.deploy(name, yaml) { viewModel.cancelImport(); composer = false } }) }
     destructive?.let { (removal, confirm) -> DockerRemovalConfirmation(removalMessage(removal), active,
         onConfirm = { destructive = null; confirm() }, onDismiss = { destructive = null }) }
 }
