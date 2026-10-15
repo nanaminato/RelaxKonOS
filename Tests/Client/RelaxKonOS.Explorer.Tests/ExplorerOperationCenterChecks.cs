@@ -83,8 +83,8 @@ public static class ExplorerOperationCenterChecks
             vm.ReadHostFileClipboardAsync = () =>
                 Task.FromResult(new HostFileClipboardSnapshot(false, [new LocalUploadSource(localFile)]));
             fake.UploadCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            await vm.PasteFromHostCommand.ExecuteAsync(null);
-            check(center.Jobs.Single().IsUpload && !vm.IsBusy && !vm.PasteFromHostCommand.IsRunning,
+            await vm.PasteCommand.ExecuteAsync(null);
+            check(center.Jobs.Single().IsUpload && !vm.IsBusy && !vm.PasteCommand.IsRunning,
                 "Host paste uses shared operation window and releases Explorer");
             check(fake.UploadTarget == "/target", "Host upload captures its destination");
             await vm.NavigateToAsync("/next");
@@ -96,7 +96,7 @@ public static class ExplorerOperationCenterChecks
             check(center.Jobs.Count == 0, "Host upload clears and refreshes its destination on completion");
 
             fake.UploadCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            await vm.PasteFromHostCommand.ExecuteAsync(null);
+            await vm.PasteCommand.ExecuteAsync(null);
             await center.Jobs.Single().CancelCommand.ExecuteAsync(null);
             await Eventually(() => center.Jobs.Count == 0);
             check(fake.UploadToken.IsCancellationRequested, "Upload cancellation reaches the HTTP request");
@@ -115,6 +115,21 @@ public static class ExplorerOperationCenterChecks
                 "A newer remote copy takes precedence over the host clipboard");
             fake.Finish(center.Jobs.Single().Snapshot.Id, [file.Path]);
             await Eventually(() => center.Jobs.Count == 0);
+
+            vm.ReadHostFileClipboardAsync = () => Task.FromResult(new HostFileClipboardSnapshot(false, []));
+            await vm.PasteCommand.ExecuteAsync(null);
+            check(center.Jobs.Count == 0, "Copying host text cannot revive a stale remote selection");
+
+            var observedDownload = center.BeginClipboardDownload("/clipboard", 1000, action => action());
+            observedDownload.Report(400);
+            check(center.Jobs.Single().IsDownload && center.Jobs.Single().Snapshot.CurrentBytes == 400,
+                "Shell clipboard reads appear in the shared operation center with byte progress");
+            await center.Jobs.Single().CancelCommand.ExecuteAsync(null);
+            check(observedDownload.CancellationToken.IsCancellationRequested,
+                "Operation center cancellation reaches the Shell content stream");
+            observedDownload.Complete(new OperationCanceledException());
+            await Eventually(() => center.Jobs.Count == 0);
+            check(string.IsNullOrEmpty(center.Error), "Cancelled Shell copies finish without a failure notification");
 
             var uploadEnd = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             center.QueueUpload([new("host", "/target/host")], 1, (_, _) => uploadEnd.Task);

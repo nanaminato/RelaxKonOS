@@ -7,6 +7,8 @@ using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.ServerCenter;
 using Avalonia;
 
+await ExplorerDownloadChecks.RunAsync();
+
 AppBuilder.Configure<Application>().UsePlatformDetect().SetupWithoutStarting();
 SynchronizationContext.SetSynchronizationContext(null);
 using var services = new ServiceCollection()

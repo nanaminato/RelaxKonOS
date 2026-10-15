@@ -46,6 +46,35 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
     public void QueueDownload(IReadOnlyList<FileOperationItem> items, long totalBytes,
         Func<Action<string, long, int>, CancellationToken, Task> download) => QueueTransfer(items, totalBytes, download, true);
 
+    /// <summary>Observes Shell-driven reads without moving network callbacks onto the UI thread.</summary>
+    public ClipboardFileTransfer BeginClipboardDownload(string path, long size, Action<Action> dispatch)
+    {
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancellation = new CancellationTokenSource();
+        var token = cancellation.Token;
+        Action<long>? progress = null;
+        dispatch(() =>
+        {
+            try
+            {
+                QueueDownload([new(path)], size, async (report, cancel) =>
+                {
+                    progress = bytes => report(path, bytes, 0);
+                    using var registration = cancel.Register(() => cancellation.Cancel());
+                    try { await completion.Task; report(path, size, 1); }
+                    finally { cancellation.Dispose(); }
+                });
+            }
+            catch (Exception ex) { cancellation.Cancel(); completion.TrySetException(ex); }
+        });
+        return new(bytes => dispatch(() => progress?.Invoke(bytes)), error =>
+        {
+            if (error is OperationCanceledException) completion.TrySetCanceled();
+            else if (error is not null) completion.TrySetException(error);
+            else completion.TrySetResult();
+        }, token);
+    }
+
     private void QueueTransfer(IReadOnlyList<FileOperationItem> items, long totalBytes,
         Func<Action<string, long, int>, CancellationToken, Task> upload, bool downloading)
     {
@@ -74,7 +103,7 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
                 cancellation.Token.ThrowIfCancellationRequested();
                 dto = dto with { State = FileOperationState.Completed };
             }
-            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            catch (OperationCanceledException)
             {
                 dto = dto with { State = FileOperationState.Cancelled };
             }
@@ -261,7 +290,7 @@ public sealed partial class ExplorerOperationCard(ExplorerOperationCenter center
     public bool IsUpload { get; init; }
     public bool IsDownload { get; init; }
     public bool IsLocalTransfer => IsUpload || IsDownload;
-    public string Title => IsUpload ? LocalizedText.Get("explorer.operations.upload") : IsDownload ? LocalizedText.Get("explorer.operations.download") : LocalizedText.Get($"explorer.operations.kind.{Snapshot.Kind}");
+    public string Title => LocalizedText.Get($"explorer.operations.kind.{Snapshot.Kind}");
     public string StateText => Missing ? LocalizedText.Get("explorer.operations.missing") : LocalizedText.Get($"explorer.operations.state.{Snapshot.State}");
     public string Locations => string.Join(Environment.NewLine, Snapshot.Items.Take(3).Select(i =>
         i.DestinationPath is null ? i.SourcePath : $"{i.SourcePath} → {i.DestinationPath}"))

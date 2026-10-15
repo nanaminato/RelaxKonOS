@@ -70,3 +70,22 @@ git diff --check
 ```
 
 服务端测试的普通项目引用构建在本地出现既有 Protocol 传递引用缺失，因此使用项目已经提供的 `UsePrebuiltServerAssembly=true`，指向本轮刚编译的 Server/Protocol 程序集。只执行了文件操作专项，未将其他后端专项宣称为本轮验证。
+
+
+## 系统文件剪贴板（2026-10-15）
+
+文件浏览器统一使用复制、剪切、粘贴；“更多”菜单不再提供上传、下载、上传文件夹或单独的“从本机粘贴”。本机文件在系统文件管理器复制后，可在浏览器粘贴；文件及文件夹沿用现有操作中心的传输进度、取消与分块传输能力。同一服务器内的粘贴仍提交服务器复制/移动任务，内容不绕经客户端。
+
+Windows 客户端复制远程文件时，通过 OLE `IDataObject` 发布 `FileGroupDescriptorW`、按索引读取的 `FileContents` (`IStream`) 和复制效果。复制阶段只递归枚举元数据，支持目录、空目录、多文件、Unicode 相对名称及 64 位文件长度；Windows 不支持的名称、重名和超限选择会报错，不静默改名。上限为 100000 个条目、128 层目录及 Shell 描述符的 260 字符相对路径。
+
+系统文件管理器在粘贴时读取内容，客户端按请求拉取，使用临时磁盘缓存支持回读，内存缓冲为 128 KiB。缓存使用 DeleteOnClose，在 Shell `EndOperation`、流释放或进程退出时删除。OLE 数据对象由独立 STA 线程持有并泵送消息，网络回调不阻塞 Avalonia UI。HTTP 下载使用 `ResponseHeadersRead`，不在 `SendAsync` 阶段整包缓冲。外部目标通过 `FD_PROGRESSUI` 请求 Windows Shell 原生进度、剩余时间与取消窗口；同时把实际读取字节映射为 RelaxKonOS 操作中心的复制任务，支持从操作中心取消网络读取。重名决策由 Windows Shell 承担；取消后不会继续主动读取剩余内容，已经发出的单次网络读取仍需返回。剪贴板保持有效要求客户端进程运行且原登录会话未改变；会话变化后拒绝内容访问。
+
+跨系统剪切当前按**复制**发布，不删除远程源，也不因本机剪贴板的移动标记删除本机源；服务器内剪切继续使用原有完成确认及清理语义。其他桌面平台保留系统文件粘贴进服务器和服务器内复制/移动，尚未实现向系统发布远程虚拟文件。不依赖 RDP，不引入新的服务器文件传输协议。
+
+验证：299 项 Explorer 回归检查通过，包含 Windows HGLOBAL 描述符及 COM 流创建、延迟打开、顺序/回读/EOF、Unicode 与大于 4 GiB 的长度、会话变化拒绝读取、Shell 无索引探测与组合 aspect 探测、原生进度标志、操作中心进度/取消，以及系统剪贴板被文字替换后不得复活远程选择。FileServices 检查另覆盖真实 HttpClient 下载不整包缓冲与响应释放。桌面客户端（含 AXAML）编译通过，仍有既有 SignalR 依赖安全告警。
+
+Windows 原生验收使用生产剪贴板实现与生成的测试内容，跨进程 OLE 读取成功。通过真实 Windows 文件管理器粘贴：256 KiB 文件、32 MiB 限速文件、中文目录/文件名、空目录与空文件，落盘内容 SHA-256 全部匹配；限速复制弹出系统进度/剩余时间/取消窗口，取消后未完成目标被 Shell 清理。验收截图保存在本地 `.tmp/clipboard-progress-proof.png`。这验证了 Windows 剪贴板与 Shell 集成，未连接实际已部署服务器；真实服务器权限、断线以及外部重名决策仍需专项验收。
+
+可复现命令：运行 `Tests/Client/RelaxKonOS.Explorer.Tests` 的 `--clipboard-source` 模式（会替换系统剪贴板，90 秒有效），在另一个进程运行 `--clipboard-sink` 检查跨进程读取；`--clipboard-source-slow` 提供 32 MiB 限速文件，`--clipboard-source-tree` 提供中文目录及空文件样本，可在 Windows 文件管理器粘贴验收。验收模式不连接真实服务器或读取用户文件。
+
+Windows Shell 格式参考：[Shell Clipboard Formats](https://learn.microsoft.com/en-us/windows/win32/shell/clipboard)。

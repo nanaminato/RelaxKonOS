@@ -3,8 +3,8 @@ using RelaxKonOS.Protocol.Files;
 namespace RelaxKonOS.Client.Apps.Explorer;
 
 /// <summary>
-/// Process-wide clipboard for remote file-system entries. It intentionally remains separate from
-/// the host OS clipboard, which is used only for uploading local files into the remote workspace.
+/// Process-wide source selection for server-side copy and move. The host clipboard determines
+/// whether this selection still owns paste; Windows also exposes it as virtual files.
 /// </summary>
 public interface IRemoteFileClipboard
 {

@@ -391,15 +391,9 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     public Func<string, string, string, string, Task<string?>>? RequestTextInputAsync { get; set; }
     /// <summary>请求确认对话框。参数：(title, message, confirmLabel) → 返回 true/false。</summary>
     public Func<string, string, string, Task<bool>>? RequestConfirmAsync { get; set; }
-    /// <summary>请求选择客户端宿主机文件（可多选）。</summary>
-    public Func<Task<IReadOnlyList<LocalUploadSource>>>? RequestLocalUploadFilesAsync { get; set; }
-    /// <summary>请求选择客户端宿主机文件夹（可多选）。</summary>
-    public Func<Task<IReadOnlyList<LocalUploadSource>>>? RequestLocalUploadFoldersAsync { get; set; }
     /// <summary>读取宿主机剪贴板及最近一次远端复制的标记。</summary>
     public Func<Task<HostFileClipboardSnapshot>>? ReadHostFileClipboardAsync { get; set; }
-    public Func<Task>? MarkRemoteFileCopyAsync { get; set; }
-    /// <summary>请求本地保存路径（用于下载目标）。参数：默认文件名。返回本地路径或 null。</summary>
-    public Func<string, Task<string?>>? RequestLocalSaveFileAsync { get; set; }
+    public Func<IReadOnlyList<FileSystemEntryDto>, Task>? PublishRemoteFilesAsync { get; set; }
     /// <summary>Ensures direct or short-lived elevated access before a protected file is opened or downloaded.</summary>
     public Func<string, FileElevationCapability, Task<bool>>? RequestFileElevationAsync { get; set; }
     /// <summary>Requests a five-minute elevated directory grant after a mutating operation was denied.</summary>
@@ -667,7 +661,6 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         GoUpCommand.NotifyCanExecuteChanged();
         OpenTerminalCommand.NotifyCanExecuteChanged();
         PasteCommand.NotifyCanExecuteChanged();
-        PasteFromHostCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanGoUp));
     }
 
@@ -695,7 +688,6 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasSelection));
         NotifySelectionCommands();
         PasteCommand.NotifyCanExecuteChanged();
-        PasteFromHostCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnSelectedFilterChanged(ExplorerFileFilter? value)
@@ -1454,8 +1446,9 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private async Task CopyAsync()
     {
-        if (MarkRemoteFileCopyAsync is not null) await MarkRemoteFileCopyAsync();
-        _fileClipboard.Set(GetSelectedEntries(), RemoteFileClipboardOperation.Copy);
+        var entries = GetSelectedEntries();
+        if (!await PublishClipboardAsync(entries)) return;
+        _fileClipboard.Set(entries, RemoteFileClipboardOperation.Copy);
         PasteCommand.NotifyCanExecuteChanged();
         StatusText = LocalizedText.Ref("explorer.status.copied_to_clipboard", _fileClipboard.Entries.Count);
     }
@@ -1463,10 +1456,25 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private async Task CutAsync()
     {
-        if (MarkRemoteFileCopyAsync is not null) await MarkRemoteFileCopyAsync();
-        _fileClipboard.Set(GetSelectedEntries(), RemoteFileClipboardOperation.Cut);
+        var entries = GetSelectedEntries();
+        if (!await PublishClipboardAsync(entries)) return;
+        _fileClipboard.Set(entries, RemoteFileClipboardOperation.Cut);
         PasteCommand.NotifyCanExecuteChanged();
         StatusText = LocalizedText.Ref("explorer.status.cut_to_clipboard", _fileClipboard.Entries.Count);
+    }
+
+    private async Task<bool> PublishClipboardAsync(IReadOnlyList<FileSystemEntryDto> entries)
+    {
+        try
+        {
+            if (PublishRemoteFilesAsync is not null) await PublishRemoteFilesAsync(entries);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            StatusText = LocalizedText.Ref("explorer.status.copy_failed", ex.Message);
+            return false;
+        }
     }
 
     [RelayCommand(CanExecute = nameof(CanPaste))]
@@ -1480,7 +1488,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
 
         var snapshot = await (ReadHostFileClipboardAsync?.Invoke()
             ?? Task.FromResult(new HostFileClipboardSnapshot(false, Array.Empty<LocalUploadSource>())));
-        if (_fileClipboard.HasEntries && (snapshot.IsRemoteCopy || snapshot.Files.Count == 0))
+        if (_fileClipboard.HasEntries && (snapshot.IsRemoteCopy || ReadHostFileClipboardAsync is null))
         {
             await PasteRemoteClipboardAsync(AddressbarPath);
             return;
@@ -1488,9 +1496,6 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
 
         await PasteHostClipboardAsync(snapshot);
     }
-
-    [RelayCommand(CanExecute = nameof(CanPaste))]
-    private async Task PasteFromHostAsync() => await PasteHostClipboardAsync();
 
     private bool CanPaste() => !IsBusy && !string.IsNullOrWhiteSpace(AddressbarPath);
 
@@ -1551,76 +1556,6 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             await RefreshAsync();
         }
         catch (Exception ex) { StatusText = LocalizedText.Ref("explorer.status.move_failed", ex.Message); }
-    }
-
-    [RelayCommand(CanExecute = nameof(HasSingleFileSelection))]
-    private async Task DownloadAsync()
-    {
-        if (SelectedEntry is not { } entry) return;
-        if (entry.Type == FileSystemEntryType.Directory || entry.Type == FileSystemEntryType.Drive)
-        {
-            StatusText = LocalizedText.Ref("explorer.status.folder_download_unsupported");
-            return;
-        }
-        var localPath = await (RequestLocalSaveFileAsync?.Invoke(entry.Name) ?? Task.FromResult<string?>(null));
-        if (string.IsNullOrWhiteSpace(localPath)) return;
-        if (RequestFileElevationAsync is not null && !await RequestFileElevationAsync(entry.Path, FileElevationCapability.Read)) return;
-        if (QueueDownload is not null)
-        {
-            QueueDownload([new FileOperationItem(entry.Path, localPath)], entry.Size ?? 0,
-                async (report, ct) => await DownloadFileAsync(entry.Path, localPath, report, ct));
-            return;
-        }
-        try
-        {
-            BeginTransfer(entry.Name, 1, entry.Size ?? 0);
-            await DownloadFileAsync(entry.Path, localPath, (_, bytes, count) => { TransferBytesCompleted = bytes; TransferItemCompleted = count; }, CancellationToken.None);
-            StatusText = LocalizedText.Ref("explorer.status.downloaded", localPath);
-        }
-        catch (Exception ex) { StatusText = LocalizedText.Ref("explorer.status.download_failed", ex.Message); }
-        finally { IsTransferActive = false; }
-    }
-
-    private async Task DownloadFileAsync(string remotePath, string localPath, Action<string, long, int> report, CancellationToken ct)
-    {
-        report(remotePath, 0, 0);
-        var result = await _client.DownloadAsync(remotePath, ct);
-        if (result is not (var stream, _)) throw new IOException(LocalizedText.Get("explorer.status.download_file_missing"));
-        var partialPath = localPath + "." + Guid.NewGuid().ToString("N") + ".partial";
-        try
-        {
-            long received = 0;
-            using (stream)
-            await using (var output = File.Create(partialPath))
-            {
-                var buffer = new byte[128 * 1024];
-                int count;
-                while ((count = await stream.ReadAsync(buffer, ct)) != 0)
-                {
-                    await output.WriteAsync(buffer.AsMemory(0, count), ct);
-                    received += count;
-                    report(remotePath, received, 0);
-                }
-            }
-            ct.ThrowIfCancellationRequested();
-            File.Move(partialPath, localPath, overwrite: true);
-            report(remotePath, received, 1);
-        }
-        finally { if (File.Exists(partialPath)) File.Delete(partialPath); }
-    }
-
-    [RelayCommand]
-    private async Task UploadAsync()
-    {
-        var sources = await (RequestLocalUploadFilesAsync?.Invoke() ?? Task.FromResult<IReadOnlyList<LocalUploadSource>>([]));
-        if (sources.Count > 0) await UploadSourcesAsync(sources, LocalizedText.Get("explorer.status.uploading_files"));
-    }
-
-    [RelayCommand]
-    private async Task UploadFolderAsync()
-    {
-        var sources = await (RequestLocalUploadFoldersAsync?.Invoke() ?? Task.FromResult<IReadOnlyList<LocalUploadSource>>([]));
-        if (sources.Count > 0) await UploadSourcesAsync(sources, LocalizedText.Get("explorer.status.uploading_folders"));
     }
 
     private async Task UploadSourcesAsync(IReadOnlyList<LocalUploadSource> sources, string operationName)
@@ -1794,7 +1729,6 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         OpenFolderInTabCommand.NotifyCanExecuteChanged();
         DeleteCommand.NotifyCanExecuteChanged();
         RenameCommand.NotifyCanExecuteChanged();
-        DownloadCommand.NotifyCanExecuteChanged();
         CopyCommand.NotifyCanExecuteChanged();
         CutCommand.NotifyCanExecuteChanged();
         MoveCommand.NotifyCanExecuteChanged();

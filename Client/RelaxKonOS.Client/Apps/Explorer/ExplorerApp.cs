@@ -425,45 +425,25 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
             });
         };
 
-        vm.RequestLocalUploadFilesAsync = async () =>
+        vm.ReadHostFileClipboardAsync = async () =>
         {
-            var topLevel = GetTopLevel(context, vm);
-            if (topLevel is null) return [];
-            var files = await UsageFilePicker.OpenFilePickerAsync(topLevel.StorageProvider, new FilePickerOpenOptions
-            {
-                Title = LocalizedText.Get("explorer.select_upload_file"),
-                AllowMultiple = true,
-            }, UsageMemoryStore.Capture(context), "Explorer.upload-files");
-            return files.Select(file => file.TryGetLocalPath())
-                .OfType<string>().Select(path => new Models.LocalUploadSource(path)).ToArray();
+            if (OperatingSystem.IsWindows() && WindowsFileClipboard.IsCurrent)
+                return new HostFileClipboardSnapshot(true, []);
+            return await HostFileClipboard.ReadAsync(GetTopLevel(context, vm)?.Clipboard);
         };
-
-        vm.RequestLocalUploadFoldersAsync = async () =>
+        vm.PublishRemoteFilesAsync = async entries =>
         {
-            var topLevel = GetTopLevel(context, vm);
-            if (topLevel is null) return [];
-            var folders = await UsageFilePicker.OpenFolderPickerAsync(topLevel.StorageProvider, new FolderPickerOpenOptions
+            if (OperatingSystem.IsWindows())
             {
-                Title = LocalizedText.Get("explorer.select_upload_folder"),
-                AllowMultiple = true,
-            }, UsageMemoryStore.Capture(context), "Explorer.upload-folder");
-            return folders.Select(folder => folder.TryGetLocalPath())
-                .OfType<string>().Select(path => new Models.LocalUploadSource(path)).ToArray();
-        };
-
-        vm.ReadHostFileClipboardAsync = () => HostFileClipboard.ReadAsync(GetTopLevel(context, vm)?.Clipboard);
-        vm.MarkRemoteFileCopyAsync = () => HostFileClipboard.MarkRemoteCopyAsync(GetTopLevel(context, vm)?.Clipboard);
-
-        vm.RequestLocalSaveFileAsync = async defaultName =>
-        {
-            var topLevel = GetTopLevel(context, vm);
-            if (topLevel is null) return null;
-            var file = await UsageFilePicker.SaveFilePickerAsync(topLevel.StorageProvider, new FilePickerSaveOptions
-            {
-                Title = LocalizedText.Get("explorer.save_download_file"),
-                SuggestedFileName = defaultName,
-            }, UsageMemoryStore.Capture(context), "Explorer.download-file");
-            return file?.TryGetLocalPath();
+                var scope = vm.FileListCacheScope?.Invoke();
+                await WindowsFileClipboard.PublishAsync(client, entries,
+                    () => scope is not null && scope == vm.FileListCacheScope?.Invoke(),
+                    (path, size) =>
+                        (context.Services.GetService(typeof(ExplorerOperationCenter)) as ExplorerOperationCenter
+                            ?? throw new InvalidOperationException("File operation center is unavailable."))
+                        .BeginClipboardDownload(path, size, action => Dispatcher.UIThread.Post(action)));
+            }
+            else await HostFileClipboard.MarkRemoteCopyAsync(GetTopLevel(context, vm)?.Clipboard);
         };
 
         vm.RequestFileElevationAsync = async (path, capability) =>

@@ -55,7 +55,7 @@ public sealed class ExplorerClient : IExplorerClient
 
     public async Task<(Stream Stream, string FileName)?> DownloadAsync(string path, CancellationToken ct = default)
     {
-        var resp = await SendRawAsync(HttpMethod.Get, FileApiRoutes.Download, query: ("path", path), ct: ct);
+        var resp = await SendRawAsync(HttpMethod.Get, FileApiRoutes.Download, query: ("path", path), ct: ct, completion: HttpCompletionOption.ResponseHeadersRead);
         if (resp.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
             resp.Dispose();
@@ -67,8 +67,12 @@ public sealed class ExplorerClient : IExplorerClient
             finally { resp.Dispose(); }
         }
         var fileName = ContentDispositionFileName(resp.Content.Headers.ContentDisposition) ?? "download";
-        var stream = await resp.Content.ReadAsStreamAsync(ct);
-        return (new ResponseOwnedStream(stream, resp), fileName);
+        try
+        {
+            var stream = await resp.Content.ReadAsStreamAsync(ct);
+            return (new ResponseOwnedStream(stream, resp), fileName);
+        }
+        catch { resp.Dispose(); throw; }
     }
 
     public async Task<byte[]?> ReadFileAsync(string path, CancellationToken ct = default)
@@ -204,14 +208,15 @@ public sealed class ExplorerClient : IExplorerClient
     }
 
     private async Task<HttpResponseMessage> SendRawAsync(HttpMethod method, string route,
-        (string Key, string? Value)? query = null, object? body = null, CancellationToken ct = default)
+        (string Key, string? Value)? query = null, object? body = null, CancellationToken ct = default,
+        HttpCompletionOption completion = HttpCompletionOption.ResponseContentRead)
     {
         var serverUrl = RequireSession();
         using var req = new HttpRequestMessage(method, BuildUri(serverUrl, route, query));
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _session.Tokens!.AccessToken);
         if (body is not null)
             req.Content = JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default);
-        return await _http.SendAsync(req, ct);
+        return await _http.SendAsync(req, completion, ct);
     }
 
     private static async Task<T> ReadAsync<T>(HttpResponseMessage resp, CancellationToken ct)

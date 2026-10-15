@@ -7,6 +7,12 @@ using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.Protocol.UserExecution;
 
+if (OperatingSystem.IsWindows() && args.Length == 1 && args[0].StartsWith("--clipboard-"))
+{
+    Environment.ExitCode = WindowsClipboardAcceptance.Run(args[0]);
+    return;
+}
+
 var passed = 0;
 void Check(bool condition, string label)
 {
@@ -17,6 +23,7 @@ await PickerMemoryChecks.RunAsync(Check);
 FileBrowserPresentationChecks.Run(Check);
 ImageViewerChecks.Run(Check);
 await HostFileClipboardChecks.RunAsync(Check);
+WindowsFileClipboardChecks.Run(Check);
 Check(ExplorerBreadcrumb.ParentPath("/home/alice") == "/home", "POSIX parent");
 Check(ExplorerBreadcrumb.ParentPath("/") is null, "POSIX root goes to Computer");
 Check(ExplorerBreadcrumb.ParentPath(@"C:\Users\Alice") == @"C:\Users", "Windows parent on any client OS");
