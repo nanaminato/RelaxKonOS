@@ -8,6 +8,8 @@ public partial class ServerCenterViewModel
 {
     public bool HasManagementStatus => !HasError && !string.IsNullOrWhiteSpace(StatusMessage);
     partial void OnStatusMessageChanged(string value) => OnPropertyChanged(nameof(HasManagementStatus));
+    public event Action? ConfigurationApplied;
+
     private ServerHostSnapshotDto? _reviewedConfiguration;
     private string? _reviewedConfigurationHostId;
     [ObservableProperty] private string _configurationPort = "";

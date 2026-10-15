@@ -639,6 +639,7 @@ public partial class ServerCenterViewModel : ObservableObject
                 ErrorMessage = T("server_center.maintenance_verification_failed", "The host state after the operation does not confirm success. Check the operation record.");
                 return;
             }
+            if (kind == ServerDeploymentKind.Configure) ConfigurationApplied?.Invoke();
             StatusMessage = kind switch
             {
                 ServerDeploymentKind.Firewall => T("server_center.firewall_completed", "Managed Server firewall operation completed; other host rules were retained."),
@@ -1414,6 +1415,16 @@ public partial class ServerCenterViewModel : ObservableObject
         CancellationToken cancellationToken)
     {
         _installationSnapshots[target.HostId] = snapshot;
+        if (_reviewedConfigurationHostId == target.HostId)
+        {
+            // Refresh the verified facts without replacing the user's editable draft.
+            _reviewedConfiguration = snapshot;
+            OnPropertyChanged(nameof(CurrentConfigurationDetails));
+            OnPropertyChanged(nameof(CanConfigureFileAccess));
+            OnPropertyChanged(nameof(CanConfigureAutoStart));
+            OnPropertyChanged(nameof(CanConfigureGuardian));
+            OnPropertyChanged(nameof(HasConfigurationFacts));
+        }
         var verified = ServerHostTargetRules.ApplyVerifiedState(
             target, ServerHostTargetRules.VerifiedStateFrom(snapshot), DateTimeOffset.UtcNow);
         var saved = await _targets.UpsertAsync(verified, cancellationToken).ConfigureAwait(true);

@@ -18,6 +18,15 @@ public partial class ServerCenterManagementDialog : UserControl
         _close = dialog.Cancel;
         _dialog = dialog;
         var configuration = (viewModel.ConfigurationPort, viewModel.ConfigurationLan, viewModel.ConfigurationGuardian, viewModel.ConfigurationAutoStart, viewModel.ConfigurationFileAccess?.Scope, viewModel.ConfigurationFileRoots);
+        void AcceptConfiguration()
+        {
+            configuration = (viewModel.ConfigurationPort, viewModel.ConfigurationLan, viewModel.ConfigurationGuardian, viewModel.ConfigurationAutoStart, viewModel.ConfigurationFileAccess?.Scope, viewModel.ConfigurationFileRoots);
+        }
+        if (section is "settings" or "components")
+        {
+            viewModel.ConfigurationApplied += AcceptConfiguration;
+            DetachedFromVisualTree += (_, _) => viewModel.ConfigurationApplied -= AcceptConfiguration;
+        }
         var repair = (viewModel.MaintenanceAddFirewallRule, viewModel.RepairLanCertificate, viewModel.RepairCertificateIdentities, viewModel.RepairPackagePath);
         var uninstall = (viewModel.RemoveSmb, viewModel.RemoveNginx, viewModel.RemoveFrp, viewModel.RemoveMihomo, viewModel.DeleteServerData);
         DraftDialogGuard.Attach(dialog, () => viewModel.IsBusy,
