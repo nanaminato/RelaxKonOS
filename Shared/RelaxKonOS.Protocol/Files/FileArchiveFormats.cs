@@ -32,7 +32,8 @@ public static class FileArchiveFormats
     };
 
     public static bool IsBcl(FileArchiveFormat format) => format is FileArchiveFormat.Zip or FileArchiveFormat.Tar or FileArchiveFormat.TarGZip;
-    public static bool CanCreate(FileArchiveFormat format) => IsBcl(format);
+    public static bool CanCreate(FileArchiveFormat format) => IsBcl(format) || format == FileArchiveFormat.SevenZip;
+    public static bool CanEncrypt(FileArchiveFormat format) => format is FileArchiveFormat.Zip or FileArchiveFormat.SevenZip;
 
     public static string Stem(string name)
     {

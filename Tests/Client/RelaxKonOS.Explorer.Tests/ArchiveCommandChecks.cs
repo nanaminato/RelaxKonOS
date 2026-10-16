@@ -57,7 +57,44 @@ public static class ArchiveCommandChecks
         check(requests.Last().Items.Single().DestinationPath!.EndsWith(".tar", StringComparison.Ordinal), "TAR compression command selects TAR output");
         await vm.CompressTarGZipCommand.ExecuteAsync(null);
         check(requests.Last().Items.Single().DestinationPath!.EndsWith(".tar.gz", StringComparison.Ordinal), "TAR.GZ compression command selects compressed TAR output");
+        await vm.CompressSevenZipCommand.ExecuteAsync(null);
+        check(requests.Last().Items.Single().DestinationPath!.EndsWith(".7z", StringComparison.Ordinal) && requests.Last().Credentials is null,
+            "Plain 7z creation remains available without credentials");
+        vm.RequestArchivePasswordAsync = (format, _, _) => Task.FromResult<string?>(format == FileArchiveFormat.Zip ? " test password " : " 中文密码 ");
+        await vm.CompressEncryptedZipCommand.ExecuteAsync(null);
+        check(requests.Last().Credentials?.Password == " test password " && requests.Last().Items.Single().DestinationPath!.EndsWith(".zip", StringComparison.Ordinal),
+            "Encrypted ZIP command submits a request-only password without trimming");
+        await vm.CompressEncryptedSevenZipCommand.ExecuteAsync(null);
+        check(requests.Last().Credentials?.Password == " 中文密码 " && requests.Last().Items.Single().DestinationPath!.EndsWith(".7z", StringComparison.Ordinal),
+            "Encrypted 7z accepts Unicode passwords");
+        var beforePasswordCancel = requests.Count;
+        vm.RequestArchivePasswordAsync = (_, _, _) => Task.FromResult<string?>(null);
+        await vm.CompressEncryptedZipCommand.ExecuteAsync(null);
+        check(requests.Count == beforePasswordCancel, "Cancelling a password prompt submits no archive task");
+        vm.RequestArchivePasswordAsync = (_, _, _) => { scope = "changed-during-password"; return Task.FromResult<string?>("stale"); };
+        await vm.CompressEncryptedZipCommand.ExecuteAsync(null);
+        check(requests.Count == beforePasswordCancel, "Session changes during password entry discard the secret and task");
         vm.QueueOperationAsync = null;
         check(!vm.CanCompress && !vm.CanExtract, "Archive commands require the shared operation service");
+        await CheckPasswordRetryAsync(check);
+    }
+
+    private static async Task CheckPasswordRetryAsync(Action<bool, string> check)
+    {
+        var client = DispatchProxy.Create<IExplorerClient, OperationClientFake>();
+        var fake = (OperationClientFake)(object)client;
+        var issue = new FileOperationIssue(Guid.NewGuid(), "archive-password-required", "/encrypted.7z", "/output", "Password required", [FileOperationDecision.Retry, FileOperationDecision.Skip]);
+        var job = new FileOperationDto(Guid.NewGuid(), FileOperationKind.Extract, FileOperationState.WaitingForDecision,
+            [new("/encrypted.7z", "/output")], null, 0, 0, 0, 0, [], issue, [], false, DateTimeOffset.UtcNow);
+        fake.Jobs[job.Id] = job;
+        var center = new RelaxKonOS.Client.Apps.Explorer.Models.ExplorerOperationCenter(client);
+        await center.RestoreAsync();
+        var card = center.Jobs.Single(); card.ApplyToAll = true;
+        center.RequestArchivePasswordAsync = (_, _) => Task.FromResult<string?>(null);
+        await card.RetryCommand.ExecuteAsync(null);
+        check(fake.Decisions.Count == 0 && !card.CanApplyToAll, "Cancelling a task password prompt keeps the task waiting");
+        center.RequestArchivePasswordAsync = (_, _) => Task.FromResult<string?>("correct");
+        await card.RetryCommand.ExecuteAsync(null);
+        check(fake.Decisions.Single() is { Credentials.Password: "correct", ApplyToAll: false }, "Password retries carry credentials once and cannot apply to every task");
     }
 }

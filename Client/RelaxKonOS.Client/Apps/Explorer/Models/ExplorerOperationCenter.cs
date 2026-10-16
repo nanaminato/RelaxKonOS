@@ -12,6 +12,7 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
     public ObservableCollection<ExplorerOperationCard> Jobs { get; } = [];
     public Func<string?>? SessionKey { get; set; }
     public Func<FileOperationIssue, FileOperationKind, Task<bool>>? ElevateAsync { get; set; }
+    public Func<bool, CancellationToken, Task<string?>>? RequestArchivePasswordAsync { get; set; }
     public Action? ShowRequested { get; set; }
     public Action? CloseRequested { get; set; }
     private int _pendingRequests;
@@ -276,7 +277,16 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
                     if (!await ElevateAsync(issue, snapshot.Kind)) return;
                     if (!IsCurrent(session)) return;
                 }
-                dto = await client.DecideOperationAsync(snapshot.Id, new(snapshot.Issue.Id, action.Value, card.ApplyToAll), _sessionCancellation.Token);
+                ArchiveCredentials? credentials = null;
+                var passwordIssue = issue.Code is "archive-password-required" or "archive-password-invalid";
+                if (passwordIssue && action == FileOperationDecision.Retry)
+                {
+                    var password = await (RequestArchivePasswordAsync?.Invoke(issue.Code == "archive-password-invalid", _sessionCancellation.Token) ?? Task.FromResult<string?>(null));
+                    if (password is null || !IsCurrent(session)) return;
+                    credentials = new(password); credentials.Validate();
+                }
+                dto = await client.DecideOperationAsync(snapshot.Id, new(snapshot.Issue.Id, action.Value,
+                    passwordIssue ? false : card.ApplyToAll, credentials), _sessionCancellation.Token);
             }
             if (IsCurrent(session)) Update(dto);
         }
@@ -362,7 +372,10 @@ public sealed partial class ExplorerOperationCard(ExplorerOperationCenter center
     public bool CanReplace => Snapshot.Issue?.Choices.Contains(FileOperationDecision.Replace) == true;
     public bool CanKeepBoth => Snapshot.Issue?.Choices.Contains(FileOperationDecision.KeepBoth) == true;
     public bool CanRetry => Snapshot.Issue?.Choices.Contains(FileOperationDecision.Retry) == true;
-    public string RetryLabel => LocalizedText.Get(Snapshot.Issue?.Code == "access-denied" && Snapshot.Kind is not (FileOperationKind.Compress or FileOperationKind.Extract) ? "explorer.operations.retry_access" : "explorer.operations.retry");
+    public bool CanApplyToAll => Snapshot.Issue?.Code is not ("archive-password-required" or "archive-password-invalid");
+    public string RetryLabel => LocalizedText.Get(Snapshot.Issue?.Code is "archive-password-required" or "archive-password-invalid"
+        ? "explorer.archive.password_retry" : Snapshot.Issue?.Code == "access-denied" && Snapshot.Kind is not (FileOperationKind.Compress or FileOperationKind.Extract)
+        ? "explorer.operations.retry_access" : "explorer.operations.retry");
     public string IssueText => Snapshot.Issue is { } issue ? $"{LocalizedText.Get("explorer.operations.issue." + issue.Code)}\n{issue.SourcePath}\n{issue.DestinationPath}\n{issue.Message}" : string.Empty;
     public string Details => string.Join(Environment.NewLine, Snapshot.Details.Select(d => $"{d.Path}: {LocalizedText.Get("explorer.operations.outcome." + d.Outcome)} {d.Message}"))
         + (Snapshot.DetailsTruncated ? Environment.NewLine + LocalizedText.Get("explorer.operations.truncated") : string.Empty);
@@ -379,7 +392,7 @@ public sealed partial class ExplorerOperationCard(ExplorerOperationCenter center
         foreach (var name in new[] { nameof(Title), nameof(StateText), nameof(Locations), nameof(Counts), nameof(Bytes),
             nameof(DetailsToggleLabel), nameof(ShowTransferDetails), nameof(ShowSpeedGraph), nameof(HasError), nameof(NeedsAttention), nameof(HasDestination), nameof(HasMeasuredProgress), nameof(ProgressText), nameof(ProgressScope),
             nameof(Summary), nameof(CurrentFileName), nameof(SourceLocation), nameof(DestinationLocation), nameof(SpeedHistory), nameof(SpeedText),
-            nameof(TransferSize), nameof(RemainingTime), nameof(Progress), nameof(Indeterminate), nameof(CanCancel), nameof(HasIssue), nameof(CanReplace), nameof(CanKeepBoth), nameof(CanRetry), nameof(IssueText), nameof(RetryLabel), nameof(Details) })
+            nameof(TransferSize), nameof(RemainingTime), nameof(Progress), nameof(Indeterminate), nameof(CanCancel), nameof(HasIssue), nameof(CanReplace), nameof(CanKeepBoth), nameof(CanRetry), nameof(CanApplyToAll), nameof(IssueText), nameof(RetryLabel), nameof(Details) })
             OnPropertyChanged(name);
     }
     [RelayCommand] private void ToggleDetails() => DetailsExpanded = !DetailsExpanded;

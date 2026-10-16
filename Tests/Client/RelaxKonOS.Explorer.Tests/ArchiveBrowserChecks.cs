@@ -30,15 +30,43 @@ public static class ArchiveBrowserChecks
         check(fake.Reads.Count == 1, "Oversize archive entries are rejected before requesting content");
         list.SelectedItem = list.Items.Cast<object>().Single(item => item.ToString()!.Contains("app.exe"));
         check(fake.Reads.Count == 1, "Unsupported archive members are never executed or fetched for preview");
+        var encrypted = new EncryptedClientFake();
+        using var lockedView = new ArchiveBrowserView(encrypted, "/locked.7z");
+        var prompts = new List<bool>();
+        lockedView.RequestPasswordAsync = (invalid, _) => { prompts.Add(invalid); return Task.FromResult<string?>(invalid ? "correct" : "wrong"); };
+        await lockedView.LoadAsync();
+        check(prompts.SequenceEqual(new[] { false, true }) && encrypted.Attempts.SequenceEqual(new string?[] { null, "wrong", "correct" }),
+            "Archive browser prompts and retries incorrect passwords");
+        lockedView.Dispose();
+        using var cancelledView = new ArchiveBrowserView(new EncryptedClientFake(), "/locked.7z");
+        cancelledView.RequestPasswordAsync = (_, _) => Task.FromResult<string?>(null);
+        await cancelledView.LoadAsync();
+        var cancelledPanes = (Grid)((Grid)cancelledView.Content!).Children[1];
+        check(((ListBox)cancelledPanes.Children[0]).Items.Count == 0 && ((ContentControl)cancelledPanes.Children[1]).Content is TextBlock,
+            "Cancelled decryption leaves a readable empty preview state");
+    }
+
+    private sealed class EncryptedClientFake : IArchiveClient
+    {
+        public List<string?> Attempts { get; } = [];
+        public Task<IReadOnlyList<ArchiveEntryDto>> ListArchiveAsync(string path, ArchiveCredentials? credentials, CancellationToken ct)
+        {
+            Attempts.Add(credentials?.Password);
+            if (credentials?.Password == "correct") return Task.FromResult<IReadOnlyList<ArchiveEntryDto>>([new("note.txt", false, 1)]);
+            var code = credentials is null ? "archive-password-required" : "archive-password-invalid";
+            return Task.FromException<IReadOnlyList<ArchiveEntryDto>>(new RelaxKonOS.Client.Services.Auth.RelaxKonOSAuthException(
+                new RelaxKonOS.Protocol.Common.ProblemDetails("https://relaxkonos.app/problems/" + code, code, 422, code, null)));
+        }
+        public Task<byte[]> ReadArchiveEntryAsync(string path, string entryName, ArchiveCredentials? credentials, CancellationToken ct) => throw new NotSupportedException();
     }
 
     private sealed class ArchiveClientFake : IArchiveClient
     {
         public List<string> Reads { get; } = [];
-        public Task<IReadOnlyList<ArchiveEntryDto>> ListArchiveAsync(string path, CancellationToken ct) =>
+        public Task<IReadOnlyList<ArchiveEntryDto>> ListArchiveAsync(string path, ArchiveCredentials? credentials, CancellationToken ct) =>
             Task.FromResult<IReadOnlyList<ArchiveEntryDto>>([
                 new("folder/note.txt", false, 27), new("large.txt", false, ArchivePreviewLimits.MaximumBytes + 1), new("app.exe", false, 5)]);
-        public Task<byte[]> ReadArchiveEntryAsync(string path, string entryName, CancellationToken ct)
+        public Task<byte[]> ReadArchiveEntryAsync(string path, string entryName, ArchiveCredentials? credentials, CancellationToken ct)
         {
             Reads.Add(entryName);
             return Task.FromResult(System.Text.Encoding.UTF8.GetBytes("<script>plain text</script>"));

@@ -5,6 +5,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using RelaxKonOS.Client.Apps.ImageViewer;
 using RelaxKonOS.Client.Localization;
+using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.Files;
 
 namespace RelaxKonOS.Client.Apps.Explorer.Views;
@@ -22,6 +23,9 @@ public sealed class ArchiveBrowserView : UserControl, IDisposable
     private IReadOnlyList<ArchiveEntryDto> entries = [];
     private string prefix = "";
     private IDisposable? image;
+    private ArchiveCredentials? credentials;
+    private bool disposed;
+    public Func<bool, CancellationToken, Task<string?>>? RequestPasswordAsync { get; set; }
     private sealed record Row(string Path, string Name, bool Directory, long Size)
     { public override string ToString() => Directory ? "📁 " + Name : Name + "  (" + Size.ToString("N0") + " B)"; }
 
@@ -55,10 +59,10 @@ public sealed class ArchiveBrowserView : UserControl, IDisposable
         content.Content = Message("explorer.archive.loading");
         try
         {
-            entries = await client.ListArchiveAsync(archivePath, lifetime.Token);
+            entries = await WithPasswordAsync(secret => client.ListArchiveAsync(archivePath, secret, lifetime.Token), lifetime.Token);
             if (!lifetime.IsCancellationRequested) Navigate("");
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException) { if (!lifetime.IsCancellationRequested) content.Content = Message("explorer.archive.password_cancelled"); }
         catch (Exception ex) { if (!lifetime.IsCancellationRequested) content.Content = Error(ex); }
     }
 
@@ -92,7 +96,7 @@ public sealed class ArchiveBrowserView : UserControl, IDisposable
         content.Content = Message("explorer.archive.loading");
         try
         {
-            var bytes = await client.ReadArchiveEntryAsync(archivePath, row.Path, token);
+            var bytes = await WithPasswordAsync(secret => client.ReadArchiveEntryAsync(archivePath, row.Path, secret, token), token);
             token.ThrowIfCancellationRequested();
             if (isImage)
             {
@@ -109,12 +113,33 @@ public sealed class ArchiveBrowserView : UserControl, IDisposable
                 content.Content = new TextBox { Text = text, IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap };
             }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException) { if (!token.IsCancellationRequested) content.Content = Message("explorer.archive.password_cancelled"); }
         catch (Exception ex) { if (!token.IsCancellationRequested) content.Content = Error(ex); }
     }
 
     private static TextBlock Message(string key) => new() { Text = LocalizedText.Get(key), TextWrapping = TextWrapping.Wrap };
+    private async Task<T> WithPasswordAsync<T>(Func<ArchiveCredentials?, Task<T>> action, CancellationToken ct)
+    {
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+            try { return await action(credentials); }
+            catch (RelaxKonOSAuthException ex) when (ex.Type.EndsWith("/archive-password-required", StringComparison.Ordinal)
+                || ex.Type.EndsWith("/archive-password-invalid", StringComparison.Ordinal))
+            {
+                credentials = null;
+                var password = await (RequestPasswordAsync?.Invoke(ex.Type.EndsWith("-invalid", StringComparison.Ordinal), ct) ?? Task.FromResult<string?>(null));
+                ct.ThrowIfCancellationRequested();
+                if (password is null) throw new OperationCanceledException();
+                var secret = new ArchiveCredentials(password); secret.Validate(); credentials = secret;
+            }
+        }
+    }
     private static TextBlock Error(Exception ex) => new() { Text = LocalizedText.Ref("explorer.archive.failed", ex.Message).ToString(), TextWrapping = TextWrapping.Wrap };
     private void ClearImage() { content.Content = null; image?.Dispose(); image = null; }
-    public void Dispose() { lifetime.Cancel(); preview?.Cancel(); preview?.Dispose(); lifetime.Dispose(); ClearImage(); }
+    public void Dispose()
+    {
+        if (disposed) return; disposed = true;
+        credentials = null; RequestPasswordAsync = null; lifetime.Cancel(); preview?.Cancel(); preview?.Dispose(); lifetime.Dispose(); ClearImage();
+    }
 }

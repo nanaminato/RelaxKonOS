@@ -4,8 +4,10 @@ public enum FileOperationKind { Copy, Move, Delete, Compress, Extract }
 public enum FileOperationState { Queued, Running, WaitingForDecision, Cancelling, Completed, CompletedWithIssues, Cancelled, Failed }
 public enum FileOperationDecision { Retry, Skip, Replace, KeepBoth }
 public sealed record FileOperationItem(string SourcePath, string? DestinationPath = null);
-public sealed record StartFileOperationRequest(Guid RequestId, FileOperationKind Kind, IReadOnlyList<FileOperationItem> Items);
-public sealed record FileOperationDecisionRequest(Guid IssueId, FileOperationDecision Action, bool ApplyToAll = false);
+public sealed record StartFileOperationRequest(Guid RequestId, FileOperationKind Kind, IReadOnlyList<FileOperationItem> Items,
+    ArchiveCredentials? Credentials = null);
+public sealed record FileOperationDecisionRequest(Guid IssueId, FileOperationDecision Action, bool ApplyToAll = false,
+    ArchiveCredentials? Credentials = null);
 public sealed record FileOperationIssue(Guid Id, string Code, string SourcePath, string? DestinationPath,
     string Message, IReadOnlyList<FileOperationDecision> Choices);
 public sealed record FileOperationDetail(string Path, string Outcome, string? Message = null);

@@ -5,13 +5,16 @@ namespace RelaxKonOS.Server.Files;
 
 public static partial class FileArchiveService
 {
-    public static async Task<IArchiveReader> OpenReaderAsync(Stream input, string fileName, CancellationToken ct)
+    public static async Task<IArchiveReader> OpenReaderAsync(Stream input, string fileName, CancellationToken ct, ArchiveCredentials? credentials = null)
     {
+        credentials?.Validate();
         var format = FileArchiveFormats.Detect(fileName) ?? throw new NotSupportedException("Unsupported archive format.");
+        if (credentials is not null && !FileArchiveFormats.CanEncrypt(format) && format != FileArchiveFormat.Rar)
+            throw new ArgumentException("This archive format does not support passwords.");
         if (!input.CanSeek || input.Length > MaximumArchiveBytes) throw new InvalidDataException("Archive input is too large or not seekable.");
         return FileArchiveFormats.IsBcl(format)
-            ? await BclArchiveProvider.OpenAsync(input, format, fileName, ct)
-            : await SevenZipArchiveProvider.OpenAsync(input, format, ct, fileName);
+            ? await BclArchiveProvider.OpenAsync(input, format, fileName, ct, credentials)
+            : await SevenZipArchiveProvider.OpenAsync(input, format, ct, fileName, credentials);
     }
 
     public static async Task<byte[]> ReadPreviewAsync(IArchiveReader archive, string name, CancellationToken ct)
@@ -60,7 +63,8 @@ public static partial class FileArchiveService
         private ZipArchive? zip;
         public IReadOnlyList<ArchiveEntryDto> Entries { get; private set; } = [];
 
-        public static async Task<IArchiveReader> OpenAsync(Stream input, FileArchiveFormat format, string fileName, CancellationToken ct)
+        public static async Task<IArchiveReader> OpenAsync(Stream input, FileArchiveFormat format, string fileName, CancellationToken ct,
+            ArchiveCredentials? credentials)
         {
             var result = new BclArchiveProvider(input, format);
             try
@@ -95,7 +99,7 @@ public static partial class FileArchiveService
                 if (format == FileArchiveFormat.Zip && await ZipNeedsCliAsync(input, ct))
                 {
                     await result.DisposeAsync();
-                    return await SevenZipArchiveProvider.OpenAsync(input, format, ct, fileName);
+                    return await SevenZipArchiveProvider.OpenAsync(input, format, ct, fileName, credentials);
                 }
                 return result;
             }
@@ -139,8 +143,7 @@ public static partial class FileArchiveService
             if (System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(header) != 0x02014b50)
                 throw new InvalidDataException("Invalid ZIP central directory.");
             ushort Field(int offset) => System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(header.AsSpan(offset));
-            if ((Field(8) & 1) != 0) throw new NotSupportedException("Encrypted ZIP archives are not supported.");
-            needsCli |= Field(10) is not (0 or 8 or 9);
+            needsCli |= (Field(8) & 1) != 0 || Field(10) is not (0 or 8 or 9);
             var skip = Field(28) + Field(30) + Field(32);
             if (input.Position > input.Length - skip) throw new InvalidDataException("Truncated ZIP central directory.");
             input.Position += skip;

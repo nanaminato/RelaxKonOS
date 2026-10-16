@@ -444,12 +444,12 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         finally { _operationRefreshRunning = false; }
     }
 
-    private async Task SubmitOperationAsync(FileOperationKind kind, IReadOnlyList<FileOperationItem> items)
+    private async Task SubmitOperationAsync(FileOperationKind kind, IReadOnlyList<FileOperationItem> items, ArchiveCredentials? credentials = null)
     {
         var sharedClipboard = _fileClipboard;
         var clipboard = sharedClipboard.Entries;
         var clipboardOperation = sharedClipboard.Operation;
-        await QueueOperationAsync!(new(Guid.NewGuid(), kind, items), result =>
+        await QueueOperationAsync!(new(Guid.NewGuid(), kind, items, credentials), result =>
         {
             if (kind == FileOperationKind.Move && clipboardOperation == RemoteFileClipboardOperation.Cut
                 && ReferenceEquals(clipboard, sharedClipboard.Entries) && sharedClipboard.Operation == clipboardOperation)
@@ -1743,6 +1743,9 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         CompressCommand.NotifyCanExecuteChanged();
         CompressTarCommand.NotifyCanExecuteChanged();
         CompressTarGZipCommand.NotifyCanExecuteChanged();
+        CompressSevenZipCommand.NotifyCanExecuteChanged();
+        CompressEncryptedZipCommand.NotifyCanExecuteChanged();
+        CompressEncryptedSevenZipCommand.NotifyCanExecuteChanged();
         ExtractCommand.NotifyCanExecuteChanged();
     }
 
@@ -1805,7 +1808,9 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
         _disposed = true;
+        _archiveLifetime.Cancel(); _archiveLifetime.Dispose(); RequestArchivePasswordAsync = null;
         _listingGeneration++; _listingCache.Clear();
         _fileClipboard.Changed -= FileClipboard_Changed;
     }

@@ -110,6 +110,7 @@ public sealed partial class ExplorerApp : RemoteApplicationBase, IAppActivationH
         {
             ConfigureOperationsWindow(context.WindowManager, operations);
             viewModel.QueueOperationAsync = operations.SubmitAsync;
+            operations.RequestArchivePasswordAsync = (invalid, ct) => RequestArchivePasswordAsync(context, null, invalid, ct);
             viewModel.QueueUpload = operations.QueueUpload;
             viewModel.QueueDownload = operations.QueueDownload;
             viewModel.ShowFileOperations = operations.Show;
@@ -370,6 +371,7 @@ public sealed partial class ExplorerApp : RemoteApplicationBase, IAppActivationH
     /// <summary>将对话框回调注入 VM：文本输入 / 确认 / 本地文件选择（上传/下载） / 消息 / 关闭。</summary>
     private static void WireDialogs(AppContext context, ExplorerViewModel vm, IExplorerClient client)
     {
+        vm.RequestArchivePasswordAsync = (format, invalid, ct) => RequestArchivePasswordAsync(context, format, invalid, ct);
         vm.RequestTextInputAsync = async (title, prompt, defaultValue, confirmLabel) =>
         {
             string? result = null;

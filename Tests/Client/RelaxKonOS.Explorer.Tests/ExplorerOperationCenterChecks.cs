@@ -187,6 +187,7 @@ public static class ExplorerOperationCenterChecks
 public class OperationClientFake : DispatchProxy
 {
     public List<StartFileOperationRequest> Requests { get; } = [];
+    public List<FileOperationDecisionRequest> Decisions { get; } = [];
     public Dictionary<Guid, FileOperationDto> Jobs { get; } = [];
     public TaskCompletionSource<FileEntryDto>? UploadCompletion { get; set; }
     public string? UploadTarget { get; private set; }
@@ -220,6 +221,10 @@ public class OperationClientFake : DispatchProxy
             case nameof(IExplorerClient.CancelOperationAsync):
                 var id = (Guid)args![0]!;
                 return Task.FromResult(Jobs[id] = Jobs[id] with { State = FileOperationState.Cancelled, Revision = 4 });
+            case nameof(IExplorerClient.DecideOperationAsync):
+                var decisionId = (Guid)args![0]!;
+                Decisions.Add((FileOperationDecisionRequest)args[1]!);
+                return Task.FromResult(Jobs[decisionId] = Jobs[decisionId] with { State = FileOperationState.Completed, Issue = null, Revision = 5 });
             default: throw new NotSupportedException(method.Name);
         }
     }

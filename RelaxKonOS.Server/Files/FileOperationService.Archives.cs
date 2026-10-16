@@ -37,12 +37,20 @@ public sealed partial class FileOperationService
                     (path, bytes, total, finished) =>
                     {
                         lock (job.Gate) { job.CurrentPath = path; job.Bytes = bytes; job.TotalBytes = total; if (finished) job.Processed++; }
-                    }, (path, error) => job.Detail(path, "cleanup-failed", error.Message), ct);
+                    }, (path, error) => job.Detail(path, "cleanup-failed", error.Message), ct, job.Credentials);
                 lock (job.Gate) job.Completed.AddRange(sources);
                 foreach (var source in sources) job.Detail(source, "completed", null);
                 return;
             }
             catch (OperationCanceledException) { throw; }
+            catch (ArchivePasswordException ex)
+            {
+                job.Credentials = null;
+                var decision = await AskAsync(job, ex.Code, sources[0], destination, ex.Message,
+                    [FileOperationDecision.Retry, FileOperationDecision.Skip]);
+                if (decision == FileOperationDecision.Skip) { foreach (var source in sources) Skip(job, source, ex.Message); return; }
+                lock (job.Gate) { job.Processed = 0; job.Bytes = 0; job.TotalBytes = 0; }
+            }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or InvalidOperationException or TimeoutException)
             {
                 // Malformed archives cannot be repaired by retrying an unchanged request.

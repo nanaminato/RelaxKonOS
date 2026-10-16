@@ -91,6 +91,7 @@ public static class FileArchiveChecks
         catch (InvalidDataException) { Check(!Directory.Exists(Path.Combine(root, "metadata-result")), "Central directory is bounded before BCL metadata allocation"); }
         Check(!Directory.EnumerateFileSystemEntries(root).Any(path => Path.GetFileName(path).StartsWith(".archive.") || Path.GetFileName(path).StartsWith(".relaxkonos-archive-")), "Failed and cancelled staging is cleaned");
         await ArchiveProviderChecks.RunAsync(root);
+        await ArchiveEncryptionChecks.RunAsync(root);
         await CheckJobs(root, Check);
         await TarArchiveChecks.RunAsync(root);
     }
@@ -153,6 +154,32 @@ public static class FileArchiveChecks
         check(cliDeniedState.State == FileOperationState.WaitingForDecision && cliDeniedState.Issue?.Code == "access-denied"
             && !Directory.Exists(Path.Combine(root, "identity-cli-denied")), "CLI cannot bypass denied identity reads");
         jobs.Cancel("owner", cliDenied.Id);
+        transport.DenyReads = false;
+        var encryptedPath = Path.Combine(root, "encrypted.7z");
+        var encryptedOutput = Path.Combine(root, "identity-encrypted-output");
+        var encryptedRequest = new StartFileOperationRequest(Guid.NewGuid(), FileOperationKind.Extract, [new(encryptedPath, encryptedOutput)]);
+        var encryptedJob = jobs.Start("owner", new ClaimsPrincipal(), encryptedRequest);
+        var passwordIssue = await Wait(encryptedJob.Id, dto => dto.State == FileOperationState.WaitingForDecision || dto.IsTerminal);
+        check(passwordIssue.Issue?.Code == "archive-password-required", "Encrypted identity job asks for a password");
+        jobs.Decide("owner", encryptedJob.Id, new(passwordIssue.Issue!.Id, FileOperationDecision.Retry, Credentials: new("wrong")));
+        var invalidIssue = await Wait(encryptedJob.Id, dto => dto.Issue?.Id != passwordIssue.Issue.Id && (dto.State == FileOperationState.WaitingForDecision || dto.IsTerminal));
+        check(invalidIssue.Issue?.Code == "archive-password-invalid" && !Directory.Exists(encryptedOutput), "Wrong task password is retryable without publishing output");
+        var secret = new ArchiveCredentials(" 密码🔐 test -p@ ");
+        jobs.Decide("owner", encryptedJob.Id, new(invalidIssue.Issue!.Id, FileOperationDecision.Retry, Credentials: secret));
+        var decrypted = await Wait(encryptedJob.Id);
+        check(decrypted.State == FileOperationState.Completed && File.ReadAllText(Path.Combine(encryptedOutput, "encrypted-source", "中文.txt")) == "encrypted 内容",
+            "Password retry decrypts through captured identity writes");
+        var snapshotJson = JsonSerializer.Serialize(decrypted, RelaxKonOSJsonOptions.Default);
+        check(!snapshotJson.Contains("password", StringComparison.OrdinalIgnoreCase) && !snapshotJson.Contains("credentials", StringComparison.OrdinalIgnoreCase),
+            "Terminal operation snapshots exclude credentials and password errors");
+        var privateRequest = encryptedRequest with { RequestId = Guid.NewGuid(), Items = [new(encryptedPath, Path.Combine(root, "identity-encrypted-direct"))], Credentials = secret };
+        var privateJob = jobs.Start("owner", new ClaimsPrincipal(), privateRequest);
+        check(jobs.Start("owner", new ClaimsPrincipal(), privateRequest with { Credentials = new(secret.Password) }).Id == privateJob.Id,
+            "Secret-bearing archive submissions stay idempotent");
+        try { jobs.Start("owner", new ClaimsPrincipal(), privateRequest with { Credentials = new("different") }); throw new Exception("Reused credential request ID accepted"); }
+        catch (ArgumentException) { check(true, "Idempotency rejects changed credentials without exposing them"); }
+        check((await Wait(privateJob.Id)).State == FileOperationState.Completed, "Initial task credentials decrypt successfully");
+        transport.DenyReads = true;
         var deniedPath = Path.Combine(root, "denied.zip");
         var denied = jobs.Start("owner", new ClaimsPrincipal(new ClaimsIdentity()), request with { RequestId = Guid.NewGuid(), Items = [new(source, deniedPath)] });
         var deniedState = await Wait(denied.Id, dto => dto.State == FileOperationState.WaitingForDecision || dto.IsTerminal);

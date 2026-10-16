@@ -8,6 +8,8 @@ namespace RelaxKonOS.Client.Apps.Explorer.ViewModels;
 public sealed partial class ExplorerViewModel
 {
     private bool _archivePromptActive;
+    private readonly CancellationTokenSource _archiveLifetime = new();
+    public Func<FileArchiveFormat?, bool, CancellationToken, Task<string?>>? RequestArchivePasswordAsync { get; set; }
     public bool CanCompress => !IsPickerMode && !IsBusy && !IsBatchActive && !_archivePromptActive
         && QueueOperationAsync is not null && !string.IsNullOrEmpty(AddressbarPath) && HasSelection
         && GetSelectedEntries().All(entry => entry.Type != FileSystemEntryType.Drive);
@@ -21,10 +23,16 @@ public sealed partial class ExplorerViewModel
     private Task CompressTarAsync() => SubmitArchiveAsync(false, FileArchiveFormat.Tar);
     [RelayCommand(CanExecute = nameof(CanCompress))]
     private Task CompressTarGZipAsync() => SubmitArchiveAsync(false, FileArchiveFormat.TarGZip);
+    [RelayCommand(CanExecute = nameof(CanCompress))]
+    private Task CompressSevenZipAsync() => SubmitArchiveAsync(false, FileArchiveFormat.SevenZip);
+    [RelayCommand(CanExecute = nameof(CanCompress))]
+    private Task CompressEncryptedZipAsync() => SubmitArchiveAsync(false, FileArchiveFormat.Zip, true);
+    [RelayCommand(CanExecute = nameof(CanCompress))]
+    private Task CompressEncryptedSevenZipAsync() => SubmitArchiveAsync(false, FileArchiveFormat.SevenZip, true);
     [RelayCommand(CanExecute = nameof(CanExtract))]
     private Task ExtractAsync() => SubmitArchiveAsync(true);
 
-    private async Task SubmitArchiveAsync(bool extract, FileArchiveFormat format = FileArchiveFormat.Zip)
+    private async Task SubmitArchiveAsync(bool extract, FileArchiveFormat format = FileArchiveFormat.Zip, bool encrypt = false)
     {
         if (extract ? !CanExtract : !CanCompress) return;
         var selection = NormalizeBatchSelection(GetSelectedEntries()).ToArray();
@@ -47,9 +55,17 @@ public sealed partial class ExplorerViewModel
                 throw new ArgumentException(LocalizedText.Get("explorer.archive.invalid_name"));
             if (!extract && FileArchiveFormats.Detect(name) != format) name += extension;
             var destination = ExplorerPath.Combine(directory, name);
+            ArchiveCredentials? credentials = null;
+            if (encrypt)
+            {
+                var password = await (RequestArchivePasswordAsync?.Invoke(format, false, _archiveLifetime.Token) ?? Task.FromResult<string?>(null));
+                if (password is null || _disposed || scope != FileListCacheScope?.Invoke()) return;
+                credentials = new(password); credentials.ValidateForCreation(format);
+            }
             await SubmitOperationAsync(extract ? FileOperationKind.Extract : FileOperationKind.Compress,
-                selection.Select(entry => new FileOperationItem(entry.Path, destination)).ToArray());
+                selection.Select(entry => new FileOperationItem(entry.Path, destination)).ToArray(), credentials);
         }
+        catch (OperationCanceledException) { }
         catch (Exception ex) { StatusText = LocalizedText.Ref("explorer.archive.failed", ex.Message); }
         finally { _archivePromptActive = false; NotifySelectionCommands(); }
     }

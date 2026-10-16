@@ -55,7 +55,7 @@
                                 <Border IsVisible="{Binding HasIssue}" Background="{DynamicResource WarningMutedBrush}" Padding="12" CornerRadius="4">
                                     <StackPanel Spacing="8">
                                         <TextBlock Text="{Binding IssueText}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
-                                        <CheckBox Content="{loc:Loc explorer.operations.apply_all}" IsChecked="{Binding ApplyToAll}" />
+                                        <CheckBox Content="{loc:Loc explorer.operations.apply_all}" IsChecked="{Binding ApplyToAll}" IsVisible="{Binding CanApplyToAll}" />
                                         <WrapPanel>
                                             <Button Content="{Binding RetryLabel}" Command="{Binding RetryCommand}" IsVisible="{Binding CanRetry}" Margin="0,0,8,6" />
                                             <Button Content="{loc:Loc explorer.operations.replace}" Command="{Binding ReplaceCommand}" IsVisible="{Binding CanReplace}" Margin="0,0,8,6" />

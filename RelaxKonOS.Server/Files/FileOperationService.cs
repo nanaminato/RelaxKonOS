@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Files;
@@ -20,6 +22,7 @@ public sealed partial class FileOperationService(IPrivilegedFileService privileg
     private readonly HashSet<Job> _active = [];
     private readonly SemaphoreSlim _workers = new(2);
     private bool _disposed;
+    private readonly byte[] _credentialKey = RandomNumberGenerator.GetBytes(32);
     private static StringComparison Comparison => OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
     private static bool ContainsPath(string parent, string child) => string.Equals(parent, child, Comparison)
         || child.StartsWith(parent.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, Comparison);
@@ -43,6 +46,9 @@ public sealed partial class FileOperationService(IPrivilegedFileService privileg
         if (request.RequestId == Guid.Empty || !Enum.IsDefined(request.Kind) || request.Items is null
             || request.Items.Count is < 1 or > 1000 || request.Items.Any(item => item is null)) throw new ArgumentException("Invalid operation request (1–1000 items required).");
         var archive = request.Kind is FileOperationKind.Compress or FileOperationKind.Extract;
+        request.Credentials?.Validate();
+        if (!archive && request.Credentials is not null) throw new ArgumentException("Passwords are only valid for archive operations.");
+        var fingerprint = request.Credentials is null ? [] : HMACSHA256.HashData(_credentialKey, Encoding.UTF8.GetBytes(request.Credentials.Password));
         if (request.Kind == FileOperationKind.Extract && request.Items.Count != 1)
             throw new ArgumentException("Extraction requires one archive.");
         var items = request.Items.Select(item =>
@@ -74,7 +80,8 @@ public sealed partial class FileOperationService(IPrivilegedFileService privileg
             var existing = _jobs.Values.FirstOrDefault(j => j.Owner == owner && j.Request.RequestId == request.RequestId);
             if (existing is not null)
             {
-                if (existing.Request.Kind != request.Kind || !existing.Request.Items.SequenceEqual(items))
+                if (existing.Request.Kind != request.Kind || !existing.Request.Items.SequenceEqual(items)
+                    || !CryptographicOperations.FixedTimeEquals(existing.CredentialFingerprint, fingerprint))
                     throw new ArgumentException("Request ID was already used for a different operation.");
                 return existing.Snapshot();
             }
@@ -88,7 +95,7 @@ public sealed partial class FileOperationService(IPrivilegedFileService privileg
             }
             if (_jobs.Count >= 256 || _jobs.Values.Count(j => !j.Snapshot().IsTerminal) >= 32)
                 throw new InvalidOperationException("Operation capacity reached. Clear or wait for existing operations.");
-            var job = new Job(owner, new ClaimsPrincipal(principal), request, executionContext, rootExecution);
+            var job = new Job(owner, new ClaimsPrincipal(principal), request, executionContext, rootExecution, fingerprint);
             _jobs.Add(job.Id, job);
             _ = Task.Run(() => RunAsync(job));
             return job.Snapshot();
@@ -128,12 +135,20 @@ public sealed partial class FileOperationService(IPrivilegedFileService privileg
         var job = Find(owner, id);
         lock (job.Gate)
         {
-            if (job.LastDecision == request) return job.Snapshot();
+            if (job.LastDecision == request with { Credentials = null }) return job.Snapshot();
             if (job.State != FileOperationState.WaitingForDecision || job.Decision?.Task.IsCompleted == true || job.Issue?.Id != request.IssueId
                 || !job.Issue.Choices.Contains(request.Action)) throw new ArgumentException("The issue or decision is no longer valid.");
+            var passwordIssue = job.Issue.Code is "archive-password-required" or "archive-password-invalid";
+            if (passwordIssue && request.Action == FileOperationDecision.Retry)
+            {
+                if (request.Credentials is null || request.ApplyToAll) throw new ArgumentException("An archive password is required for this retry.");
+                request.Credentials.Validate();
+                job.Credentials = request.Credentials;
+            }
+            else if (request.Credentials is not null) throw new ArgumentException("Unexpected archive password.");
             if (principal is not null) job.Principal = new ClaimsPrincipal(principal);
-            job.LastDecision = request;
-            job.Decision!.TrySetResult(request);
+            job.LastDecision = request with { Credentials = null };
+            job.Decision!.TrySetResult(request with { Credentials = null });
             return job.Snapshot();
         }
     }
@@ -603,14 +618,17 @@ public sealed partial class FileOperationService(IPrivilegedFileService privileg
             foreach (var job in _jobs.Values) job.Cancellation.Cancel();
         }
     }
-    private sealed class Job(string owner, ClaimsPrincipal principal, StartFileOperationRequest request, UserExecutionContext? executionContext, bool rootExecution)
+    private sealed class Job(string owner, ClaimsPrincipal principal, StartFileOperationRequest request, UserExecutionContext? executionContext, bool rootExecution,
+        byte[] credentialFingerprint)
     {
         public readonly object Gate = new();
         public Guid Id { get; } = Guid.NewGuid();
         public DateTimeOffset CreatedAt { get; } = DateTimeOffset.UtcNow;
         public string Owner { get; } = owner;
         public ClaimsPrincipal Principal { get; set; } = principal;
-        public StartFileOperationRequest Request { get; } = request;
+        public StartFileOperationRequest Request { get; } = request with { Credentials = null };
+        public ArchiveCredentials? Credentials = request.Credentials;
+        public byte[] CredentialFingerprint { get; } = credentialFingerprint;
         public UserExecutionContext? ExecutionContext { get; } = executionContext;
         public bool RootExecution { get; } = rootExecution;
         public CancellationTokenSource Cancellation { get; } = new();
@@ -626,7 +644,15 @@ public sealed partial class FileOperationService(IPrivilegedFileService privileg
         public TaskCompletionSource<FileOperationDecisionRequest>? Decision;
         public FileOperationDecisionRequest? LastDecision;
         public Dictionary<string, FileOperationDecision> Defaults { get; } = [];
-        public void SetState(FileOperationState state) { lock (Gate) State = state; }
+        public void SetState(FileOperationState state)
+        {
+            lock (Gate)
+            {
+                State = state;
+                if (state is FileOperationState.Completed or FileOperationState.CompletedWithIssues or FileOperationState.Cancelled or FileOperationState.Failed)
+                    Credentials = null;
+            }
+        }
         public void ProcessedOne(string path, bool complete = true)
         {
             lock (Gate) Processed++;

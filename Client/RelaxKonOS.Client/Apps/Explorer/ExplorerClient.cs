@@ -29,13 +29,13 @@ public sealed class ExplorerClient : IExplorerClient, IArchiveClient
     public Task<FileOperationDto> StartOperationAsync(StartFileOperationRequest request, CancellationToken ct = default)
         => SendAsync<FileOperationDto>(HttpMethod.Post, FileApiRoutes.Operations, body: request, ct: ct);
 
-    public Task<IReadOnlyList<ArchiveEntryDto>> ListArchiveAsync(string path, CancellationToken ct)
-        => SendAsync<IReadOnlyList<ArchiveEntryDto>>(HttpMethod.Get, FileApiRoutes.ArchiveEntries, query: ("path", path), ct: ct);
+    public Task<IReadOnlyList<ArchiveEntryDto>> ListArchiveAsync(string path, ArchiveCredentials? credentials, CancellationToken ct)
+        => SendAsync<IReadOnlyList<ArchiveEntryDto>>(HttpMethod.Post, FileApiRoutes.ArchiveEntries, body: new ArchiveListRequest(path, credentials), ct: ct);
 
-    public async Task<byte[]> ReadArchiveEntryAsync(string path, string entryName, CancellationToken ct)
+    public async Task<byte[]> ReadArchiveEntryAsync(string path, string entryName, ArchiveCredentials? credentials, CancellationToken ct)
     {
         using var response = await SendRawAsync(HttpMethod.Post, FileApiRoutes.ArchiveContent,
-            body: new ArchiveReadRequest(path, entryName), ct: ct, completion: HttpCompletionOption.ResponseHeadersRead);
+            body: new ArchiveReadRequest(path, entryName, credentials), ct: ct, completion: HttpCompletionOption.ResponseHeadersRead);
         await EnsureSuccessAsync(response, ct);
         await using var input = await response.Content.ReadAsStreamAsync(ct);
         using var output = new MemoryStream();

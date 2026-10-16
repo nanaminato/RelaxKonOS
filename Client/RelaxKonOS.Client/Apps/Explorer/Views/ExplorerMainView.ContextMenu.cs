@@ -32,6 +32,9 @@ public partial class ExplorerMainView
         _compressMenuItem.Items.Add(new MenuItem { Header = "ZIP" });
         _compressMenuItem.Items.Add(new MenuItem { Header = "TAR" });
         _compressMenuItem.Items.Add(new MenuItem { Header = "TAR.GZ" });
+        _compressMenuItem.Items.Add(new MenuItem { Header = "7z" });
+        _compressMenuItem.Items.Add(new MenuItem { Header = LocalizedText.Get("explorer.archive.encrypted_zip") });
+        _compressMenuItem.Items.Add(new MenuItem { Header = LocalizedText.Get("explorer.archive.encrypted_7z") });
         _extractMenuItem = new MenuItem { Header = LocalizedText.Get("explorer.archive.extract") };
         items.Insert(insertAt + 1, _compressMenuItem);
         items.Insert(insertAt + 2, _extractMenuItem);
@@ -62,6 +65,9 @@ public partial class ExplorerMainView
             ((MenuItem)_compressMenuItem.Items[0]!).Command = vm.CompressCommand;
             ((MenuItem)_compressMenuItem.Items[1]!).Command = vm.CompressTarCommand;
             ((MenuItem)_compressMenuItem.Items[2]!).Command = vm.CompressTarGZipCommand;
+            ((MenuItem)_compressMenuItem.Items[3]!).Command = vm.CompressSevenZipCommand;
+            ((MenuItem)_compressMenuItem.Items[4]!).Command = vm.CompressEncryptedZipCommand;
+            ((MenuItem)_compressMenuItem.Items[5]!).Command = vm.CompressEncryptedSevenZipCommand;
             _compressMenuItem.IsVisible = !vm.IsPickerMode && vm.QueueOperationAsync is not null && selected > 0;
             _compressMenuItem.IsEnabled = vm.CanCompress;
             _extractMenuItem.Command = vm.ExtractCommand;

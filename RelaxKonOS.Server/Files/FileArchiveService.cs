@@ -28,8 +28,9 @@ public static partial class FileArchiveService
 
     public static async Task ExecuteAsync(ArchiveFileSystem fs, FileOperationKind kind,
         IReadOnlyList<string> sources, string destination, Action<string, long, long, bool> report,
-        Action<string, Exception> cleanupFailed, CancellationToken ct)
+        Action<string, Exception> cleanupFailed, CancellationToken ct, ArchiveCredentials? credentials = null)
     {
+        credentials?.Validate();
         if (kind is not (FileOperationKind.Compress or FileOperationKind.Extract)) throw new ArgumentException("Invalid archive operation.");
         await RejectLinksAsync(fs, destination, ct);
         if (await fs.Info(destination, ct) is not null) throw new IOException("Destination already exists.");
@@ -39,6 +40,9 @@ public static partial class FileArchiveService
             ?? throw new NotSupportedException("Unsupported archive format.");
         if (kind == FileOperationKind.Compress && !FileArchiveFormats.CanCreate(format))
             throw new NotSupportedException("This archive format is read-only.");
+        if (kind == FileOperationKind.Compress) credentials?.ValidateForCreation(format);
+        if (credentials is not null && !FileArchiveFormats.CanEncrypt(format) && format != FileArchiveFormat.Rar)
+            throw new ArgumentException("This archive format does not support passwords.");
         var staging = Path.Combine(parent, kind == FileOperationKind.Compress ? $".archive.{Guid.NewGuid():N}.rkup" : $".relaxkonos-archive-{Guid.NewGuid():N}");
         var created = false;
         try
@@ -71,7 +75,26 @@ public static partial class FileArchiveService
                 await fs.CreateFile(staging, ct); created = true;
                 await using (var output = new BufferedStream(new AppendStream(fs, staging, ct, MaximumArchiveBytes), 131072))
                 {
-                    if (format != FileArchiveFormat.Zip)
+                    if (format == FileArchiveFormat.SevenZip || credentials is not null)
+                        await SevenZipArchiveProvider.CreateAsync(format, credentials, async (root, token) =>
+                        {
+                            foreach (var item in plan)
+                            {
+                                token.ThrowIfCancellationRequested();
+                                var path = Path.Combine(root, item.Name.Replace('/', Path.DirectorySeparatorChar));
+                                if (item.Directory) Directory.CreateDirectory(path);
+                                else
+                                {
+                                    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                                    await RejectLinksAsync(fs, item.Path, token);
+                                    await using var source = await fs.Read(item.Path, token);
+                                    await using var target = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 131072, true);
+                                    await CopyAsync(source, target, item.Size, bytes => report(item.Path, bytes, item.Size, false), token);
+                                }
+                                report(item.Path, item.Size, item.Size, true);
+                            }
+                        }, output, ct);
+                    else if (format != FileArchiveFormat.Zip)
                         await WriteTarAsync(fs, output, plan, format, report, ct);
                     else
                     {
@@ -100,7 +123,7 @@ public static partial class FileArchiveService
                 if (!input.CanSeek || input.Length > MaximumArchiveBytes) throw new InvalidDataException("Archive input is too large or not seekable.");
                 if (!FileArchiveFormats.IsBcl(format))
                 {
-                    await using var archive = await SevenZipArchiveProvider.OpenAsync(input, format, ct, sources[0]);
+                    await using var archive = await SevenZipArchiveProvider.OpenAsync(input, format, ct, sources[0], credentials);
                     await fs.CreateDirectory(staging, ct); created = true;
                     await ExtractProviderAsync(fs, archive, staging, report, ct);
                 }
@@ -111,7 +134,7 @@ public static partial class FileArchiveService
                 }
                 else
                 {
-                    await using var archive = await OpenReaderAsync(input, sources[0], ct);
+                    await using var archive = await OpenReaderAsync(input, sources[0], ct, credentials);
                     await fs.CreateDirectory(staging, ct); created = true;
                     await ExtractProviderAsync(fs, archive, staging, report, ct);
                 }

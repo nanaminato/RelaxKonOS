@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using RelaxKonOS.Protocol.Files;
@@ -17,13 +19,16 @@ public sealed class SevenZipArchiveProvider : IArchiveReader
 {
     private static readonly SemaphoreSlim Workers = new(2);
     private readonly string workspace, archivePath, executable, type;
+    private ArchiveCredentials? credentials;
     private bool IsSingleStream => type is "xz" or "bzip2" or "zstd";
     private SevenZipArchiveProvider(string workspace, string executable, string type, string fileName)
     { this.workspace = workspace; archivePath = Path.Combine(workspace, fileName); this.executable = executable; this.type = type; }
     public IReadOnlyList<ArchiveEntryDto> Entries { get; private set; } = [];
 
-    public static async Task<IArchiveReader> OpenAsync(Stream input, FileArchiveFormat format, CancellationToken ct, string fileName)
+    public static async Task<IArchiveReader> OpenAsync(Stream input, FileArchiveFormat format, CancellationToken ct, string fileName,
+        ArchiveCredentials? credentials = null)
     {
+        credentials?.Validate();
         var type = format switch
         {
             FileArchiveFormat.Zip => "zip", FileArchiveFormat.SevenZip => "7z", FileArchiveFormat.Rar => "rar", FileArchiveFormat.Iso => "iso",
@@ -35,10 +40,9 @@ public sealed class SevenZipArchiveProvider : IArchiveReader
         fileName = Path.GetFileName(fileName);
         FileArchiveService.ValidateName(fileName);
         var executable = await ResolveExecutableAsync(ct);
-        var workspace = Path.Combine(Path.GetTempPath(), "relaxkonos-archive-" + Guid.NewGuid().ToString("N"));
-        if (OperatingSystem.IsWindows()) Directory.CreateDirectory(workspace);
-        else Directory.CreateDirectory(workspace, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var workspace = CreateWorkspace();
         var result = new SevenZipArchiveProvider(workspace, executable, type, fileName);
+        result.credentials = credentials;
         try
         {
             input.Position = 0;
@@ -56,8 +60,14 @@ public sealed class SevenZipArchiveProvider : IArchiveReader
             else
             {
                 using var metadata = new MemoryStream();
-                await result.RunAsync(["l", "-slt", "-ba", "-sccUTF-8", "-bd"], metadata, FileArchiveService.MaximumMetadataBytes, false, ct);
-                result.Entries = ParseListing(new UTF8Encoding(false, true).GetString(metadata.ToArray()));
+                await result.RunAsync(["l", "-slt", "-ba", "-bd"], metadata, FileArchiveService.MaximumMetadataBytes, false, ct);
+                var text = new UTF8Encoding(false, true).GetString(metadata.ToArray());
+                // The pinned CLI prompts on stdout while listing encrypted headers. Remove only
+                // its exact leading prompt, never arbitrary lines from the technical listing.
+                text = text.Replace("\r\n", "\n");
+                foreach (var prompt in new[] { "\nEnter password (will not be echoed):\n", "\nEnter password:\n" })
+                    if (text.StartsWith(prompt, StringComparison.Ordinal)) { text = text[prompt.Length..]; break; }
+                result.Entries = ParseListing(text, credentials is not null);
             }
             if (result.Entries.Sum(e => e.Size) > Math.Max(1, input.Length) * 1000)
                 throw new InvalidDataException("Archive expansion limit exceeded.");
@@ -66,7 +76,7 @@ public sealed class SevenZipArchiveProvider : IArchiveReader
         catch { await result.DisposeAsync(); throw; }
     }
 
-    public static IReadOnlyList<ArchiveEntryDto> ParseListing(string text)
+    public static IReadOnlyList<ArchiveEntryDto> ParseListing(string text, bool allowEncrypted = false)
     {
         if (Encoding.UTF8.GetByteCount(text) > FileArchiveService.MaximumMetadataBytes) throw new InvalidDataException("Archive metadata exceeds limits.");
         var entries = new List<ArchiveEntryDto>();
@@ -77,9 +87,10 @@ public sealed class SevenZipArchiveProvider : IArchiveReader
             if (!fields.TryGetValue("Path", out var name) || !fields.TryGetValue("Size", out var sizeText)
                 || !long.TryParse(sizeText, NumberStyles.None, CultureInfo.InvariantCulture, out var size))
                 throw new InvalidDataException("Invalid CLI archive metadata.");
-            if (fields.GetValueOrDefault("Encrypted") == "+" || fields.ContainsKey("Symbolic Link") || fields.ContainsKey("Hard Link")
+            if (fields.GetValueOrDefault("Encrypted") == "+" && !allowEncrypted) throw new ArchivePasswordException();
+            if (fields.ContainsKey("Symbolic Link") || fields.ContainsKey("Hard Link")
                 || fields.GetValueOrDefault("Alternate Stream") == "+" || fields.GetValueOrDefault("Anti") == "+")
-                throw new NotSupportedException("Encrypted archives, links, alternate streams and anti-items are not supported.");
+                throw new NotSupportedException("Links, alternate streams and anti-items are not supported.");
             var attributes = fields.GetValueOrDefault("Attributes", "");
             if (attributes.Split(' ')[0].Contains('L')) throw new InvalidDataException("Reparse entries are not supported.");
             var directory = fields.GetValueOrDefault("Folder") == "+" || attributes.StartsWith('D') || attributes.Split(' ').Any(a => a.StartsWith('d'));
@@ -118,7 +129,31 @@ public sealed class SevenZipArchiveProvider : IArchiveReader
         await RunAsync(["x", "-so", "-bd", "-bb0", "-spd"], output, entry.Size, true, ct, IsSingleStream ? null : name);
     }
 
-    private async Task<long> RunAsync(string[] arguments, Stream output, long maximum, bool exact, CancellationToken ct, string? entry = null)
+    public static async Task CreateAsync(FileArchiveFormat format, ArchiveCredentials? credentials,
+        Func<string, CancellationToken, Task> prepare, Stream output, CancellationToken ct)
+    {
+        if (!FileArchiveFormats.CanEncrypt(format)) throw new NotSupportedException("Only ZIP and 7z support encrypted creation.");
+        credentials?.ValidateForCreation(format);
+        var executable = await ResolveExecutableAsync(ct);
+        var workspace = CreateWorkspace();
+        await using var provider = new SevenZipArchiveProvider(workspace, executable, format == FileArchiveFormat.Zip ? "zip" : "7z",
+            "result" + FileArchiveFormats.Extension(format)) { credentials = credentials };
+        var sources = Path.Combine(workspace, "sources"); Directory.CreateDirectory(sources);
+        await prepare(sources, ct);
+        var arguments = new List<string> { "a", "-bd", "-bb0", "-mx=5", "-mmt=2" };
+        if (credentials is not null)
+        {
+            arguments.Add("-p"); // Bare -p prompts on stdin during creation. Never append the secret.
+            arguments.Add(format == FileArchiveFormat.Zip ? "-mem=AES256" : "-mhe=on");
+        }
+        await provider.RunAsync(arguments.ToArray(), Stream.Null, FileArchiveService.MaximumMetadataBytes, false, ct, creating: true);
+        await using var archive = File.OpenRead(provider.archivePath);
+        if (archive.Length > FileArchiveService.MaximumArchiveBytes) throw new InvalidDataException("Archive output exceeds limits.");
+        await CopyBoundedAsync(archive, output, archive.Length, ct);
+    }
+
+    private async Task<long> RunAsync(string[] arguments, Stream output, long maximum, bool exact, CancellationToken ct, string? entry = null,
+        bool creating = false)
     {
         await Workers.WaitAsync(ct);
         try
@@ -128,28 +163,59 @@ public sealed class SevenZipArchiveProvider : IArchiveReader
             var token = timeout.Token;
             var start = new ProcessStartInfo(executable)
             {
-                UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = workspace,
-                RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true
+                UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = creating ? Path.Combine(workspace, "sources") : workspace,
+                RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true,
+                StandardInputEncoding = new UTF8Encoding(false)
             };
             start.Environment.Clear();
             if (OperatingSystem.IsWindows()) start.Environment["SystemRoot"] = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
             start.Environment["TMPDIR"] = workspace; start.Environment["TEMP"] = workspace; start.Environment["TMP"] = workspace;
             foreach (var argument in arguments) start.ArgumentList.Add(argument);
+            start.ArgumentList.Add("-sccUTF-8");
             start.ArgumentList.Add("-t" + type);
             // A positional @name is a CLI listfile even after --. The explicit ! selector
             // forces literal member selection and prevents reads outside the snapshot.
             if (entry is not null) start.ArgumentList.Add("-i!" + entry);
             start.ArgumentList.Add("--"); start.ArgumentList.Add(archivePath);
+            if (creating) start.ArgumentList.Add(".");
             using var process = Process.Start(start) ?? throw new IOException("Could not start the archive decoder.");
-            process.StandardInput.Close(); // No interactive password or overwrite prompts.
             using var killed = token.Register(() => Kill(process));
             var errors = DrainErrorsAsync(process.StandardError.BaseStream, token);
+            async Task SendPasswordAsync()
+            {
+                try
+                {
+                    if (credentials is not null) await process.StandardInput.WriteLineAsync(credentials.Password.AsMemory(), token);
+                }
+                catch (IOException) { } // The decoder may reject a header before requesting input.
+                finally { try { process.StandardInput.Close(); } catch (IOException) { } }
+            }
+            var passwordInput = SendPasswordAsync();
+            using var monitorCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+            async Task MonitorOutputAsync()
+            {
+                if (!creating) return;
+                while (!process.HasExited)
+                {
+                    if (File.Exists(archivePath) && new FileInfo(archivePath).Length > FileArchiveService.MaximumArchiveBytes)
+                    { Kill(process); throw new InvalidDataException("Archive output exceeds limits."); }
+                    await Task.Delay(100, monitorCancellation.Token);
+                }
+            }
+            var monitor = MonitorOutputAsync();
             try
             {
-                var length = await CopyBoundedAsync(process.StandardOutput.BaseStream, output, maximum, token, exact);
+                var length = await CopyBoundedAsync(process.StandardOutput.BaseStream, output, maximum, token, false);
                 await process.WaitForExitAsync(token);
-                await errors;
-                if (process.ExitCode != 0) throw new InvalidDataException("7-Zip rejected the archive (exit " + process.ExitCode + ").");
+                await passwordInput;
+                var passwordError = await errors;
+                if (process.ExitCode != 0)
+                {
+                    var prompted = output is MemoryStream metadata && Encoding.UTF8.GetString(metadata.ToArray()).Contains("Enter password", StringComparison.Ordinal);
+                    if (passwordError || prompted) throw new ArchivePasswordException(credentials is not null);
+                    throw new InvalidDataException("7-Zip rejected the archive (exit " + process.ExitCode + ").");
+                }
+                if (exact && length != maximum) throw new InvalidDataException("Archive content length mismatch.");
                 return length;
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
@@ -158,7 +224,10 @@ public sealed class SevenZipArchiveProvider : IArchiveReader
             {
                 Kill(process);
                 await process.WaitForExitAsync(CancellationToken.None);
+                monitorCancellation.Cancel();
+                try { await monitor; } catch (OperationCanceledException) { }
                 try { await errors; } catch (OperationCanceledException) { }
+                try { await passwordInput; } catch (OperationCanceledException) { }
             }
         }
         finally { Workers.Release(); }
@@ -167,11 +236,33 @@ public sealed class SevenZipArchiveProvider : IArchiveReader
     private static void Kill(Process process)
     { try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { } }
 
-    private static async Task DrainErrorsAsync(Stream input, CancellationToken ct)
+    private static string CreateWorkspace()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "relaxkonos-archive-" + Guid.NewGuid().ToString("N"));
+        if (OperatingSystem.IsWindows())
+        {
+            using var identity = WindowsIdentity.GetCurrent();
+            var security = new DirectorySecurity();
+            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+            security.AddAccessRule(new FileSystemAccessRule(identity.User!, FileSystemRights.FullControl,
+                InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
+            new DirectoryInfo(path).Create(security);
+        }
+        else Directory.CreateDirectory(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        return path;
+    }
+
+    private static async Task<bool> DrainErrorsAsync(Stream input, CancellationToken ct)
     {
         // Drain without retaining archive-controlled messages, names or passwords in logs/memory.
-        var buffer = new byte[4096];
-        while (await input.ReadAsync(buffer, ct) != 0) { }
+        var buffer = new byte[4096]; string tail = ""; bool passwordError = false; int read;
+        while ((read = await input.ReadAsync(buffer, ct)) != 0)
+        {
+            var text = tail + Encoding.UTF8.GetString(buffer, 0, read);
+            passwordError |= text.Contains("Wrong password", StringComparison.OrdinalIgnoreCase);
+            tail = text[^Math.Min(64, text.Length)..];
+        }
+        return passwordError;
     }
 
     private static async Task<long> CopyBoundedAsync(Stream input, Stream output, long maximum, CancellationToken ct, bool exact = true)
@@ -207,6 +298,7 @@ public sealed class SevenZipArchiveProvider : IArchiveReader
 
     public ValueTask DisposeAsync()
     {
+        credentials = null;
         if (Directory.Exists(workspace)) Directory.Delete(workspace, recursive: true);
         return ValueTask.CompletedTask;
     }

@@ -12,7 +12,7 @@ public static class ArchiveProviderChecks
         async Task Reject(Func<Task> action, string message)
         {
             try { await action(); }
-            catch (Exception ex) when (ex is InvalidDataException or NotSupportedException or FileNotFoundException or OperationCanceledException)
+            catch (Exception ex) when (ex is InvalidDataException or NotSupportedException or FileNotFoundException or OperationCanceledException or ArchivePasswordException)
             { checks++; return; }
             throw new Exception(message);
         }
