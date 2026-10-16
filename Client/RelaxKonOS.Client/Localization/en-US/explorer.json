@@ -240,6 +240,14 @@
         "explorer.operations.elevation_not_administrator": "That account exists on the server but is not an administrator. Enter an administrator account and try again.",
         "explorer.cache.enabled": "Cache file listings",
         "explorer.cache.refreshing": "Showing cached files; refreshing…",
-        "explorer.cache.refresh_failed": "Could not refresh cached files: {0}"
+        "explorer.cache.refresh_failed": "Could not refresh cached files: {0}",
+        "explorer.archive.compress": "Compress to ZIP",
+        "explorer.archive.extract": "Extract to new folder",
+        "explorer.archive.compress_prompt": "Enter a ZIP filename in the current remote directory",
+        "explorer.archive.extract_prompt": "Enter a new extraction folder name",
+        "explorer.archive.invalid_name": "The name must not contain a path or control characters.",
+        "explorer.archive.failed": "Archive operation failed: {0}",
+        "explorer.operations.kind.Compress": "Compress",
+        "explorer.operations.kind.Extract": "Extract"
     }
 }

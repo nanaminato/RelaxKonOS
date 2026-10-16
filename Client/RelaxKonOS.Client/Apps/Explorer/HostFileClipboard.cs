@@ -11,7 +11,7 @@ public sealed record HostFileClipboardSnapshot(bool IsRemoteCopy, IReadOnlyList<
 /// <summary>Tracks which file clipboard was copied most recently across the client and host OS.</summary>
 public static class HostFileClipboard
 {
-    private static readonly DataFormat<string> RemoteCopyFormat =
+    internal static readonly DataFormat<string> RemoteCopyFormat =
         DataFormat.CreateStringApplicationFormat("relaxkonos.remote-file-copy");
     private static readonly string ProcessMarker = Guid.NewGuid().ToString("N");
     private static readonly IHostFileClipboardBackend Backend = CreateBackend();
@@ -19,9 +19,8 @@ public static class HostFileClipboard
     private static IHostFileClipboardBackend CreateBackend()
     {
         if (OperatingSystem.IsWindows()) return new WindowsHostFileClipboardBackend();
-        // macOS and Linux currently keep RelaxKonOS-internal ownership through the marker.
-        // Their native virtual-file implementations plug in here without leaking platform
-        // details back into Explorer or Desktop.
+        if (OperatingSystem.IsMacOS()) return new MacosHostFileClipboardBackend();
+        if (OperatingSystem.IsLinux()) return new LinuxHostFileClipboardBackend();
         return new MarkerHostFileClipboardBackend();
     }
 
@@ -33,9 +32,14 @@ public static class HostFileClipboard
     public static async Task MarkRemoteCopyAsync(IClipboard? clipboard)
     {
         if (clipboard is null) return;
+        await clipboard.SetDataAsync(CreateRemoteCopyData());
+    }
+
+    internal static DataTransfer CreateRemoteCopyData()
+    {
         var data = new DataTransfer();
         data.Add(DataTransferItem.Create(RemoteCopyFormat, ProcessMarker));
-        await clipboard.SetDataAsync(data);
+        return data;
     }
 
     public static async Task<HostFileClipboardSnapshot> ReadAsync(IClipboard? clipboard)

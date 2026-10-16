@@ -46,7 +46,7 @@ public sealed partial class ExplorerViewModel
                     Directory.CreateDirectory(Path.GetDirectoryName(item.LocalPath)!);
                     var download = await _client.DownloadAsync(item.RemotePath, cancellationToken)
                         ?? throw new FileNotFoundException(LocalizedText.Get("explorer.status.download_file_missing"), item.RemotePath);
-                    await using var source = download.Value.Stream;
+                    await using var source = download.Stream;
                     await using var target = new FileStream(item.LocalPath, FileMode.Create, FileAccess.Write, FileShare.None, 1024 * 128, true);
                     var buffer = new byte[1024 * 128];
                     long written = 0;

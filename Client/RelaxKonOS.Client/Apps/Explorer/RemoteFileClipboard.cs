@@ -4,7 +4,7 @@ namespace RelaxKonOS.Client.Apps.Explorer;
 
 /// <summary>
 /// Process-wide source selection for server-side copy and move. The host clipboard determines
-/// whether this selection still owns paste; Windows also exposes it as virtual files.
+/// whether this selection still owns paste; Windows exposes virtual files; macOS and Linux publish prepared file URLs.
 /// </summary>
 public interface IRemoteFileClipboard
 {

@@ -3,6 +3,8 @@ using RelaxKonOS.Protocol.Files;
 
 namespace RelaxKonOS.Client.Apps.Explorer;
 
+public sealed record ClipboardFileTransfer(Action<long> Report, Action<Exception?> Complete, CancellationToken CancellationToken);
+
 /// <summary>
 /// Platform boundary for publishing remote files to the host clipboard.
 /// Reading ordinary host files remains on Avalonia's cross-platform clipboard API.

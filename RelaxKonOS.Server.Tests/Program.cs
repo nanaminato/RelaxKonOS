@@ -1,4 +1,12 @@
 using RelaxKonOS.Protocol.Proxy;
+if (args.Contains("--archives-only"))
+{
+    var archiveRoot = Path.Combine(Environment.CurrentDirectory, ".tmp", "relaxkonos-archive-tests-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(archiveRoot);
+    try { await FileArchiveChecks.RunAsync(archiveRoot); }
+    finally { Directory.Delete(archiveRoot, true); }
+    return;
+}
 if (args.Contains("--quiet-settings-only"))
 {
     var quietRoot = Path.Combine(Path.GetTempPath(), "relaxkon-quiet-settings-" + Guid.NewGuid().ToString("N"));
@@ -479,6 +487,7 @@ try
     if (fileOperationsOnly)
     {
         await FileOperationChecks.RunAsync(root);
+        await FileArchiveChecks.RunAsync(root);
         return;
     }
     // Static contract checks first: they need no loopback listener, so a Hub rename regression is
@@ -487,6 +496,7 @@ try
     await AliasLoginVerification.RunAsync(root);
     await SettingsSystemVerification.RunAsync(root);
     await FileOperationChecks.RunAsync(root);
+    await FileArchiveChecks.RunAsync(root);
     await ServerCoreChecks.VerifyPrivilegedOperationProtocolAsync();
     await WindowsPrivilegeChecks.RunAsync(root);
     await DeveloperUserSidAllowListVerification.RunAsync();

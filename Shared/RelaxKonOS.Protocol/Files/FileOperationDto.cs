@@ -1,6 +1,6 @@
 namespace RelaxKonOS.Protocol.Files;
 
-public enum FileOperationKind { Copy, Move, Delete }
+public enum FileOperationKind { Copy, Move, Delete, Compress, Extract }
 public enum FileOperationState { Queued, Running, WaitingForDecision, Cancelling, Completed, CompletedWithIssues, Cancelled, Failed }
 public enum FileOperationDecision { Retry, Skip, Replace, KeepBoth }
 public sealed record FileOperationItem(string SourcePath, string? DestinationPath = null);

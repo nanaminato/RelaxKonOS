@@ -6,7 +6,7 @@ using RelaxKonOS.Protocol.Files;
 
 namespace RelaxKonOS.Client.Apps.Explorer;
 
-public sealed record ClipboardFileTransfer(Action<long> Report, Action<Exception?> Complete, CancellationToken CancellationToken);
+
 
 /// <summary>Windows Shell virtual files. Publishing only enumerates metadata; content is opened by paste.</summary>
 [SupportedOSPlatform("windows")]

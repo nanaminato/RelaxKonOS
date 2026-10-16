@@ -23,6 +23,8 @@ await PickerMemoryChecks.RunAsync(Check);
 FileBrowserPresentationChecks.Run(Check);
 ImageViewerChecks.Run(Check);
 await HostFileClipboardChecks.RunAsync(Check);
+await MacosClipboardChecks.RunAsync(Check);
+await LinuxClipboardChecks.RunAsync(Check);
 FileTransferMetricsChecks.Run(Check);
 WindowsFileClipboardChecks.Run(Check);
 Check(ExplorerBreadcrumb.ParentPath("/home/alice") == "/home", "POSIX parent");
@@ -306,6 +308,7 @@ Check(!expiring.TryGet("/ttl", out _), "Reading a snapshot does not extend its f
 
 await ExplorerBatchChecks.RunAsync(Check);
 await ExplorerOperationCenterChecks.RunAsync(Check);
+await ArchiveCommandChecks.RunAsync(Check);
 await LargeUploadChecks.RunAsync(Check);
 Console.WriteLine($"{passed} Explorer regression checks passed.");
 

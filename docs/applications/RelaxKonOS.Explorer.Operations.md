@@ -80,7 +80,7 @@ Windows 客户端复制远程文件时，通过 OLE `IDataObject` 发布 `FileGr
 
 系统文件管理器在粘贴时读取内容，客户端按请求拉取，使用临时磁盘缓存支持回读，内存缓冲为 128 KiB。缓存使用 DeleteOnClose，在 Shell `EndOperation`、流释放或进程退出时删除。OLE 数据对象由独立 STA 线程持有并泵送消息，网络回调不阻塞 Avalonia UI。HTTP 下载使用 `ResponseHeadersRead`，不在 `SendAsync` 阶段整包缓冲。外部目标通过 `FD_PROGRESSUI` 请求 Windows Shell 原生进度、剩余时间与取消窗口；同时把实际读取字节映射为 RelaxKonOS 操作中心的复制任务，支持从操作中心取消网络读取。重名决策由 Windows Shell 承担；取消后不会继续主动读取剩余内容，已经发出的单次网络读取仍需返回。剪贴板保持有效要求客户端进程运行且原登录会话未改变；会话变化后拒绝内容访问。
 
-跨系统剪切当前按**复制**发布，不删除远程源，也不因本机剪贴板的移动标记删除本机源；服务器内剪切继续使用原有完成确认及清理语义。其他桌面平台保留系统文件粘贴进服务器和服务器内复制/移动，尚未实现向系统发布远程虚拟文件。不依赖 RDP，不引入新的服务器文件传输协议。
+跨系统剪切当前按**复制**发布，不删除远程源，也不因本机剪贴板的移动标记删除本机源；服务器内剪切继续使用原有完成确认及清理语义。macOS 和 Linux 现已支持原生文件 URL 发布（见下文）。不依赖 RDP，不引入新的服务器文件传输协议。
 
 验证：299 项 Explorer 回归检查通过，包含 Windows HGLOBAL 描述符及 COM 流创建、延迟打开、顺序/回读/EOF、Unicode 与大于 4 GiB 的长度、会话变化拒绝读取、Shell 无索引探测与组合 aspect 探测、原生进度标志、操作中心进度/取消，以及系统剪贴板被文字替换后不得复活远程选择。FileServices 检查另覆盖真实 HttpClient 下载不整包缓冲与响应释放。桌面客户端（含 AXAML）编译通过，仍有既有 SignalR 依赖安全告警。
 
@@ -107,3 +107,44 @@ Windows Shell 格式参考：[Shell Clipboard Formats](https://learn.microsoft.c
 速度使用单调时钟与已观察字节差，约半秒采样、五秒平滑，保留最多 60 个曲线样本。可见窗口在没有新进度回调时仍更新采样，停滞速度逐步降至零。新文件、字节回退、等待决策和重新开始都会重置测量。测量不足一秒时显示计算中，不补造曲线或速度。客户端传输拥有全任务总字节时可估算剩余时间；服务端普通任务仅提供当前文件计数，界面明确标注“当前文件”，不据此估算整个任务完成时间。无法测量的排队、原子操作和删除显示状态与不确定进度。
 
 验证：314 项 Explorer 回归检查通过，包含速度测量、停滞、重置、等待时间排除及进度范围检查。真实 Avalonia 控件在中/英/日三语、浅/深色主题下生成预览，详情折叠及冲突按钮可见性检查通过。布局专项命令：`dotnet run --project Tests/Client/RelaxKonOS.ApplicationLayout.Tests -- --file-progress-only`。预览数据是测试任务，不代表某次真实服务器传输。
+
+## macOS 原生文件剪贴板（2026-10-16）
+
+`HostFileClipboard` 通过 `IHostFileClipboardBackend` 为 macOS 选择 `MacosHostFileClipboardBackend`，桌面图标和 Explorer 继续共用原有发布/读取入口。Linux 已接入文件管理器通用 MIME 后端，见下一节。
+
+macOS 通过 AppKit `NSPasteboard.generalPasteboard` / `writeObjects:` 发布 `NSURL` 文件 URL，Finder 可将文件或目录粘贴到本机。与 Windows OLE 延迟流不同，macOS 在复制阶段先准备完整临时快照，完成后才发布；不是 file promise。下载沿用 `IExplorerClient.DownloadAsync` 和 `ClipboardFileTransfer` 操作中心进度/取消机制，128 KiB 分块写盘，不整文件缓冲。目录递归包含空目录和空文件。外部剪切仍按复制处理，不删除远端源。
+
+准备前、目录查询后、每次读取前后和发布前检查捕获的登录会话；失效、取消、长度变化和下载失败会清理未发布快照，不发布半成品。准备期间系统剪贴板被其他应用替换时放弃发布。来源识别使用 pasteboard changeCount，避免将本应用发布的快照重新当成本机上传来源。已完整下载并发布的内容是本地快照；会话失效不会撤回已复制到本机的数据。成功快照保留到进程退出，以支持重复粘贴及剪贴板替换后的 Finder 在途读取；异常退出可能留下系统临时目录，当前不提供跨进程残留清理。大文件会占用相应本机磁盘空间，复制完成前 Finder 尚不能粘贴本次选择。
+
+拒绝路径分隔符、冒号、NUL、点目录、过长组件，以及忽略大小写和 Unicode 规范化后的重名，避免在常见 macOS 文件系统上覆盖同一目标。不会采用下载响应中的文件名。
+
+325 项 Explorer 回归通过，验证包括快照内容、进度完成、非法名称、规范化冲突、短流、会话失效和取消后的清理。本轮执行环境为 Windows，未验证 macOS AppKit ABI 或 Finder 实际粘贴。macOS 真机应分别验收 Apple Silicon / Intel、多文件、中文与 emoji、目录/空文件、重复粘贴、外部替换剪贴板、下载取消、切换会话和 Finder 重名决策；同时观察操作中心进度和退出后临时快照清理。
+
+
+## Linux 文件管理器剪贴板（2026-10-16）
+
+`LinuxHostFileClipboardBackend` 通过现有 `IHostFileClipboardBackend` 接入桌面图标和 Explorer，不按发行版或文件管理器拆分后端。使用 Avalonia `IClipboard` 传输原生 MIME 数据，不启动 xclip、wl-copy 或外部命令。目标格式覆盖 GNOME Files (Nautilus)、KDE Dolphin 和 Xfce Thunar：
+
+| 格式 | 内容及用途 |
+|---|---|
+| `text/uri-list` | UTF-8 文件 URI 列表，CRLF 分隔并结尾；提供通用文件列表 |
+| `x-special/gnome-copied-files` | `copy` 后跟 LF 分隔的 URI，无末尾空行；供 GNOME Files、Thunar 使用 |
+| `application/x-kde-cutselection` | ASCII `0`，明确按复制处理 |
+| RelaxKonOS 应用标记 | 与文件格式同次发布，供内部粘贴识别来源 |
+
+URI 只指向已下载的本机快照，转义空格、中文、emoji、`#`、`%` 和换行；不暴露远端路径为本机 URI。协议依据：[Nautilus 源码](https://github.com/GNOME/nautilus/blob/main/src/nautilus-clipboard.c)、[Thunar 源码](https://github.com/xfce-mirror/thunar/blob/master/thunar/thunar-clipboard-manager.c)、[KDE 剪贴板格式说明](https://api.kde.org/legacy/4.14-api/kde-baseapps-apidocs/lib/konq/html/classKonqMimeData.html)。
+
+Linux 与 macOS 共用 `HostFileClipboardStaging` 的递归下载、128 KiB 分块、操作中心进度与取消、会话检查、长度检查和失败清理。成功快照保留到进程退出，确保重复粘贴及替换剪贴板后的在途读取；异常退出可能留下临时文件。复制阶段需要下载和本机磁盘空间，跨系统剪切始终按复制发布，不删除远端源。已经下载的本地快照不因会话失效而撤回。
+
+文件名保留 POSIX 大小写及 Unicode 原始形式，允许冒号、反斜杠和换行；拒绝空名、点目录、斜杠、NUL、超过 255 UTF-8 字节的组件及完全同名冲突。若本机挂载点采用更严格规则，由文件系统拒绝并清理整个未发布快照，不覆盖现有文件。
+
+准备期间不修改原剪贴板。发布前重新检查本进程所有权、可用的 X11 `TIMESTAMP`、格式集合以及文本、应用标记和文件 MIME 内容，发现变化则放弃发布。不提供所有 Linux 传输下的原子比较交换；没有所有权时间戳的传输不能区分完全相同内容的外部重新复制，最后一次检查与发布之间也存在系统竞争窗口。
+
+当前桌面入口使用 Avalonia `UsePlatformDetect()`，实际 X11 / XWayland / Wayland 能力由部署的 Avalonia 平台提供。本轮未增加独立的原生 Wayland 协议实现，也未承诺绕过 compositor 的跨 XWayland 剪贴板限制。
+
+验证：341 项 Explorer 回归及客户端完整编译（含 AXAML）通过；修复了既有的 Avalonia 类型引用和宿主保存下载元组访问编译错误。涵盖 MIME 字节及 URI 转义、内部来源标记、完整下载、递归空目录/空文件、前次快照保留、会话失效、下载中会话切换和宿主剪贴板替换保护；macOS 的取消、短流和规范化重名检查继续覆盖共享下载路径。执行环境为 Windows，尚未在 Linux 文件管理器中实际粘贴验收。真机验收应在 GNOME Files、Dolphin、Thunar 分别检查中文/emoji/特殊字符、多文件、目录、空文件、重复粘贴、重名决策、取消和退出清理，并分别记录 X11、Wayland 会话下的实际平台及 XWayland 桥接结果。
+
+
+## 归档任务（2026-10-16）
+
+新增 `Compress` / `Extract` 任务类型，复用现有请求幂等、用户隔离、路径预留、取消和结果刷新。ZIP 实现在身份绑定的流式文件适配器上运行，临时输出完整校验后不覆盖发布。首版重名决策为保留两者/跳过，错误可重试，权限拒绝不自动弹出组合提权流程。详细格式、安全校验、资源限额和验收命令见 [压缩与解压缩设计](RelaxKonOS.Explorer.Archives.md)。

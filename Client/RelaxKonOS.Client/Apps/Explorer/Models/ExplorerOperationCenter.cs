@@ -270,7 +270,8 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
             else
             {
                 if (snapshot.Issue is not { } issue) return;
-                if (action == FileOperationDecision.Retry && issue.Code == "access-denied" && ElevateAsync is not null)
+                if (action == FileOperationDecision.Retry && issue.Code == "access-denied"
+                    && snapshot.Kind is not (FileOperationKind.Compress or FileOperationKind.Extract) && ElevateAsync is not null)
                 {
                     if (!await ElevateAsync(issue, snapshot.Kind)) return;
                     if (!IsCurrent(session)) return;
@@ -361,7 +362,7 @@ public sealed partial class ExplorerOperationCard(ExplorerOperationCenter center
     public bool CanReplace => Snapshot.Issue?.Choices.Contains(FileOperationDecision.Replace) == true;
     public bool CanKeepBoth => Snapshot.Issue?.Choices.Contains(FileOperationDecision.KeepBoth) == true;
     public bool CanRetry => Snapshot.Issue?.Choices.Contains(FileOperationDecision.Retry) == true;
-    public string RetryLabel => LocalizedText.Get(Snapshot.Issue?.Code == "access-denied" ? "explorer.operations.retry_access" : "explorer.operations.retry");
+    public string RetryLabel => LocalizedText.Get(Snapshot.Issue?.Code == "access-denied" && Snapshot.Kind is not (FileOperationKind.Compress or FileOperationKind.Extract) ? "explorer.operations.retry_access" : "explorer.operations.retry");
     public string IssueText => Snapshot.Issue is { } issue ? $"{LocalizedText.Get("explorer.operations.issue." + issue.Code)}\n{issue.SourcePath}\n{issue.DestinationPath}\n{issue.Message}" : string.Empty;
     public string Details => string.Join(Environment.NewLine, Snapshot.Details.Select(d => $"{d.Path}: {LocalizedText.Get("explorer.operations.outcome." + d.Outcome)} {d.Message}"))
         + (Snapshot.DetailsTruncated ? Environment.NewLine + LocalizedText.Get("explorer.operations.truncated") : string.Empty);
