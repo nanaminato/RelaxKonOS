@@ -37,6 +37,7 @@ class OutboundProxyFeedbackFlowTest {
     private var reads = 0
     private var writes = 0
     private var cancelRead = false
+    private var pendingRead: CompletableDeferred<ApiResult<OutboundProxyStatus>>? = null
     private val active = mutableStateOf(true)
     private var shellBacks = 0
     private var pageBacks = 0
@@ -61,6 +62,7 @@ class OutboundProxyFeedbackFlowTest {
                     AuthTokens("test-access", "test-refresh", null, null), workspaceId = "11111111-1111-1111-1111-111111111111"))
             override suspend fun outboundProxyStatus(serverUrl: String, accessToken: String): ApiResult<OutboundProxyStatus> {
                 reads++
+                pendingRead?.let { return it.await() }
                 if (cancelRead) throw CancellationException("private cancelled read")
                 return ApiResult.Success(status)
             }
@@ -109,6 +111,26 @@ class OutboundProxyFeedbackFlowTest {
         rule.runOnIdle { assertEquals(0, reads); assertNull(editor.draft); active.value = true }
         rule.waitUntil(5_000) { editor.canSubmit }
         rule.runOnIdle { assertEquals(1, reads); assertEquals(0, writes) }
+    }
+    @Test fun hiddenReadFailureWaitsForProxyPageBeforeShowingFeedback() {
+        show()
+        val response = CompletableDeferred<ApiResult<OutboundProxyStatus>>()
+        rule.runOnIdle { pendingRead = response; editor.refresh() }
+        rule.waitUntil(5_000) { reads == 2 && editor.busy }
+        rule.runOnIdle { active.value = false; response.complete(ApiResult.Transport(null)) }
+        rule.waitUntil(5_000) { !editor.busy && editor.message != null }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.runOnIdle { assertNull(editor.status); assertEquals(0, writes); active.value = true }
+        rule.onNodeWithText(text(R.string.error_connectivity)).assertIsDisplayed()
+        rule.runOnIdle { active.value = false }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.runOnIdle { active.value = true }
+        rule.onNodeWithText(text(R.string.error_connectivity)).assertIsDisplayed()
+        acknowledgeFeedback()
+        rule.onNodeWithText(text(R.string.common_save)).performScrollTo().assertIsNotEnabled()
+        rule.runOnIdle { pendingRead = null }
+        refreshAndVerify()
+        rule.runOnIdle { assertEquals(3, reads); assertEquals(0, writes) }
     }
     @Test fun hiddenProxyWithdrawsApprovalButPreservesDraft() {
         show()

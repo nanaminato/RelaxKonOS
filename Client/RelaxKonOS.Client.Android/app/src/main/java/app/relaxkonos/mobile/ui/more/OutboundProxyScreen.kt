@@ -72,7 +72,7 @@ internal fun OutboundProxyContent(
             EmptyHint(stringResource(R.string.error_capability_missing)); return@Column
         }
         Text(stringResource(R.string.proxy_host_scope))
-        editor.message?.let { ActionFeedback(it, onRetry = null, onDismiss = editor::dismissMessage) }
+        if (active) editor.message?.let { ActionFeedback(it, onRetry = null, onDismiss = editor::dismissMessage) }
         RefreshProgressIndicator(visible = editor.busy)
         val status = editor.status
         val draft = editor.draft

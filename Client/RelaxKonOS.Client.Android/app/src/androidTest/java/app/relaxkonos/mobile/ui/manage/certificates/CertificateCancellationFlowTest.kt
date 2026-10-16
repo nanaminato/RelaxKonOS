@@ -38,6 +38,7 @@ class CertificateCancellationFlowTest {
     private val operationReads = java.util.concurrent.atomic.AtomicInteger()
     private val tasks = mutableMapOf<String, CertificateOperation>()
     private val cancellations = mutableListOf<String>()
+    private val recoveredIds = mutableListOf<String>()
     private val receipt = CertificateOperation("11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222",
         CertificateAction.SelfSigned, CertificateOperationState.Succeeded, "completed", "", 1, 2)
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
@@ -58,6 +59,7 @@ class CertificateCancellationFlowTest {
                 certificate?.let { ApiResult.Success(it) } ?: ApiResult.Transport(null)
             override suspend fun kestrelCertificateDeployment(serverUrl: String, accessToken: String, id: String): ApiResult<KestrelCertificateDeployment> = ApiResult.Transport(null)
             override suspend fun certificateOperation(serverUrl: String, accessToken: String, id: String): ApiResult<CertificateOperation> {
+                recoveredIds += id
                 if (identicalPolling) return ApiResult.Success(receipt.copy(state =
                     if (operationReads.incrementAndGet() < 5) CertificateOperationState.Running else CertificateOperationState.Succeeded))
                 return tasks[id]?.let { ApiResult.Success(it) } ?: ApiResult.Transport(null)
@@ -106,6 +108,24 @@ class CertificateCancellationFlowTest {
         rule.onNodeWithText(text(R.string.certificates_domains)).performScrollTo().performTextInput("host.example.test")
         rule.onNodeWithText(text(R.string.certificates_submit)).performClick()
         rule.onAllNodesWithText(text(R.string.certificates_confirm)).filter(hasClickAction()).onFirst().performClick()
+    }
+    @Test fun recoveryEditorCanCloseReopenAndQueryEnteredOperationWithKeyboard() {
+        show()
+        tasks[receipt.operationId] = receipt
+        rule.onNodeWithText(text(R.string.workspace_operations)).performClick()
+        rule.onNodeWithText(text(R.string.certificates_recover)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.certificates_operation_id)).performScrollTo().performClick().performTextInput("invalid-id")
+        rule.onAllNodesWithText(text(R.string.certificates_recover)).filter(hasClickAction()).onLast().assertIsNotEnabled()
+        rule.onNodeWithText(text(R.string.common_close)).performClick()
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.certificates_recover)).performScrollTo().performClick()
+        rule.onNodeWithText("invalid-id").assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.certificates_operation_id)).performScrollTo().performClick().performTextInput(receipt.operationId)
+        rule.onAllNodesWithText(text(R.string.certificates_recover)).filter(hasClickAction()).onLast().assertIsDisplayed().performClick()
+        rule.waitUntil(5_000) { model.state.operation?.operationId == receipt.operationId && !model.state.busy }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.onNodeWithText(receipt.operationId).assertExists()
+        rule.runOnIdle { assertEquals(listOf(receipt.operationId), recoveredIds); assertEquals(0, writes); assertTrue(cancellations.isEmpty()) }
     }
     @Test fun hiddenEditorWithdrawsConfirmationAndPreservesDraftWithoutMutation() {
         show()

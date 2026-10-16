@@ -75,4 +75,61 @@ class DockerResourceViewModelTest {
         assertNull(model.state.facts); assertEquals(listOf(marker), model.state.pending)
         assertEquals(1, reads); assertEquals("docker.control.unverified", model.state.problem)
     }
+    @Test fun `old stats timer cannot query a newly selected container`() = runTest {
+        login(); runCurrent()
+        val first = "a".repeat(64); val second = "b".repeat(64)
+        val reads = mutableListOf<String>()
+        gateway.onDockerContainerDetails = { id -> ApiResult.Success(DockerContainerDetails(id, "review", "image", "", "running", "running", "", "", "",
+            emptyList(), emptyList(), emptyList(), emptyList(), emptyMap())) }
+        gateway.onDockerContainerStats = { id -> reads += id; ApiResult.Success(DockerContainerStats(id, "0", "0", "0", "0")) }
+        model.select(DockerResourceKind.Containers, first); runCurrent()
+        val timer = launch { model.observeStats { true } }
+        runCurrent()
+        model.select(DockerResourceKind.Containers, second); runCurrent()
+        advanceTimeBy(3_000); runCurrent(); timer.join()
+        assertEquals(listOf(first, second), reads)
+    }
+    @Test fun `stats timer rechecks foreground after delay`() = runTest {
+        login(); runCurrent()
+        val id = "a".repeat(64)
+        var foreground = true; var reads = 0
+        gateway.onDockerContainerDetails = { ApiResult.Success(DockerContainerDetails(id, "review", "image", "", "running", "running", "", "", "",
+            emptyList(), emptyList(), emptyList(), emptyList(), emptyMap())) }
+        gateway.onDockerContainerStats = { reads++; ApiResult.Success(DockerContainerStats(id, "0", "0", "0", "0")) }
+        model.select(DockerResourceKind.Containers, id); runCurrent()
+        val timer = launch { model.observeStats { foreground } }; runCurrent()
+        foreground = false
+        advanceTimeBy(3_000); runCurrent(); timer.join()
+        assertEquals(1, reads); assertFalse(model.state.busy)
+    }
+    @Test fun `identical stats replies continue until foreground is withdrawn`() = runTest {
+        login(); runCurrent()
+        val id = "a".repeat(64)
+        var foreground = true; var reads = 0
+        gateway.onDockerContainerDetails = { ApiResult.Success(DockerContainerDetails(id, "review", "image", "", "running", "running", "", "", "",
+            emptyList(), emptyList(), emptyList(), emptyList(), emptyMap())) }
+        gateway.onDockerContainerStats = { reads++; ApiResult.Success(DockerContainerStats(id, "0", "0", "0", "0")) }
+        model.select(DockerResourceKind.Containers, id); runCurrent()
+        val timer = launch { model.observeStats { foreground } }; runCurrent()
+        advanceTimeBy(6_000); runCurrent()
+        assertEquals(3, reads)
+        foreground = false
+        advanceTimeBy(3_000); runCurrent(); timer.join()
+        assertEquals(3, reads)
+    }
+    @Test fun `reselecting same container invalidates old stats deadline`() = runTest {
+        login(); runCurrent()
+        val id = "a".repeat(64)
+        var reads = 0
+        gateway.onDockerContainerDetails = { ApiResult.Success(DockerContainerDetails(id, "review", "image", "", "running", "running", "", "", "",
+            emptyList(), emptyList(), emptyList(), emptyList(), emptyMap())) }
+        gateway.onDockerContainerStats = { reads++; ApiResult.Success(DockerContainerStats(id, "0", "0", "0", "0")) }
+        model.select(DockerResourceKind.Containers, id); runCurrent()
+        val timer = launch { model.observeStats { true } }; runCurrent()
+        advanceTimeBy(2_000)
+        model.select(DockerResourceKind.Containers, id); runCurrent()
+        advanceTimeBy(1_000); runCurrent()
+        assertEquals(2, reads)
+        timer.cancelAndJoin()
+    }
 }

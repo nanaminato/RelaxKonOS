@@ -28,10 +28,30 @@ internal class DockerControlViewModel(private val session: AuthSession, private 
     private val resources: DockerResourceRepository, private val installations: InstallationRepository,
     private val operationIndex: OperationIndex, private val mutationGate: DockerMutationGate,
     private val elevationAnswers: ElevationAnswerProvider) : ViewModel() {
-    suspend fun observeInstallation() {
-        if (state.installationVerified && state.installation?.state?.active == true && !state.busy) {
-            kotlinx.coroutines.delay(1500)
+    suspend fun observeInstallation(canObserve: () -> Boolean) {
+        val owner = state.owner ?: return
+        val id = state.installation?.operationId ?: return
+        var observedGeneration = generation
+        fun eligible() = canObserve() && state.owner === owner && session.state.value === owner && state.problem == null &&
+            state.installationVerified && state.installation?.let { it.operationId == id && it.state.active } == true
+        while (eligible()) {
+            if (state.busy) {
+                val pending = job ?: return
+                pending.join()
+                observedGeneration = generation
+                continue
+            }
+            delay(1500)
+            if (!eligible()) return
+            if (state.busy || generation != observedGeneration) {
+                observedGeneration = generation
+                continue
+            }
             pollInstall()
+            if (generation == observedGeneration) return
+            val pending = job ?: return
+            pending.join()
+            observedGeneration = generation
         }
     }
 
@@ -88,10 +108,15 @@ internal class DockerControlViewModel(private val session: AuthSession, private 
         if (result is ApiResult.Success || result is ApiResult.Problem && !state.pendingInstallation) intent = null
     }
     fun pollInstall() = work { owner -> state.installation?.operationId?.let { installResult(owner, installations.operation(owner, it)) } }
-    fun cancelInstall() = work { owner ->
-        val operation = state.installation ?: return@work
-        require(state.installationVerified && operation.state.active && operation.cancellable)
-        installResult(owner, installations.cancel(owner, operation.operationId))
+    private fun canCancelInstallation(expectedOwner: SessionState.Active, operationId: String): Boolean =
+        state.owner === expectedOwner && session.state.value === expectedOwner && expectedOwner.privilegedOperations &&
+            state.installationVerified && state.installation?.let { it.operationId == operationId && it.state.active && it.cancellable } == true
+    fun cancelInstall(expectedOwner: SessionState.Active, operationId: String) {
+        if (state.busy || !canCancelInstallation(expectedOwner, operationId)) return
+        work { owner ->
+            if (!canCancelInstallation(expectedOwner, operationId)) return@work
+            installResult(owner, installations.cancel(owner, operationId))
+        }
     }
     fun recoverInstall(id: String, identified: Boolean) = work { owner ->
         val pending = installations.pending(owner).firstOrNull { it.service == InstallationService.Docker }
@@ -125,7 +150,7 @@ internal class DockerControlViewModel(private val session: AuthSession, private 
     private fun work(block: suspend (SessionState.Active) -> Unit) {
         val owner = state.owner ?: return
         if (state.busy || ServerCapabilities.DOCKER !in owner.capabilities) return
-        val request = generation; state = state.copy(busy = true, problem = null)
+        val request = ++generation; state = state.copy(busy = true, problem = null)
         job = viewModelScope.launch {
             try { block(owner) }
             catch (cancelled: CancellationException) {

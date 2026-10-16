@@ -25,6 +25,10 @@ class SmbCancellationFlowTest {
     private lateinit var model: SmbViewModel
     private var cancelRead = false
     private var writes = 0
+    private val task = InstallationOperation("11111111-1111-1111-1111-111111111111", InstallationService.Smb,
+        InstallationKind.Install, InstallationState.Running, InstallationStage.Installing, null, null, 1, 1, null, true)
+    private val tasks = mutableMapOf(task.operationId to task)
+    private val cancellations = mutableListOf<String>()
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     private fun text(id: Int) = context.getString(id)
     private class Storage : InstallationRequestStorage {
@@ -50,6 +54,14 @@ class SmbCancellationFlowTest {
             override suspend fun smbShares(serverUrl: String, accessToken: String): ApiResult<List<SmbShare>> = ApiResult.Success(emptyList())
             override suspend fun smbUsers(serverUrl: String, accessToken: String): ApiResult<List<SmbUser>> = ApiResult.Success(emptyList())
             override suspend fun activeInstallation(serverUrl: String, accessToken: String, service: InstallationService): ApiResult<InstallationOperation?> = ApiResult.Success(null)
+            override suspend fun installation(serverUrl: String, accessToken: String, operationId: String): ApiResult<InstallationOperation> =
+                tasks[operationId]?.let { ApiResult.Success(it) } ?: ApiResult.Problem(404, "installation.missing", null)
+            override suspend fun cancelInstallation(serverUrl: String, accessToken: String, operationId: String, idempotencyKey: String): ApiResult<InstallationOperation> {
+                cancellations += operationId
+                val cancelled = requireNotNull(tasks[operationId]).copy(state = InstallationState.Cancelled, stage = InstallationStage.Cancelled, completedAtMillis = 2)
+                tasks[operationId] = cancelled
+                return ApiResult.Success(cancelled)
+            }
             override suspend fun smbChange(serverUrl: String, accessToken: String, change: SmbChange, password: CharArray?): ApiResult<SmbReceipt> {
                 writes++; throw CancellationException("private cancelled write")
             }
@@ -73,6 +85,23 @@ class SmbCancellationFlowTest {
     }
     @After fun cleanup() { rule.runOnUiThread { store.clear() } }
     private fun refresh() = rule.onNodeWithText(text(R.string.common_refresh)).performScrollTo().performClick()
+    @Test fun replacingInstallationWithdrawsOldCancelAndNewConfirmationTargetsNewTask() {
+        show()
+        val next = task.copy(operationId = "22222222-2222-2222-2222-222222222222")
+        rule.runOnIdle { tasks[next.operationId] = next; model.recoverInstall(task.operationId, false) }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.installation?.operationId == task.operationId }
+        rule.onAllNodesWithText(text(R.string.smb_records)).filter(hasClickAction()).onFirst().performClick()
+        rule.onNodeWithText(text(R.string.operations_request_cancel)).performScrollTo().performClick()
+        rule.onNode(isDialog()).assertExists()
+        rule.runOnIdle { model.recoverInstall(next.operationId, false) }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.installation?.operationId == next.operationId }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.runOnIdle { assertTrue(cancellations.isEmpty()) }
+        rule.onNodeWithText(text(R.string.operations_request_cancel)).performScrollTo().performClick()
+        rule.onNode(hasText(text(R.string.common_cancel)) and hasAnyAncestor(isDialog())).performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.installation?.state == InstallationState.Cancelled }
+        rule.runOnIdle { assertEquals(listOf(next.operationId), cancellations); assertEquals(0, writes) }
+    }
     private fun dismissFailure() {
         rule.onNodeWithText(text(R.string.common_dismiss)).assertIsDisplayed().performClick()
         rule.onNodeWithText(text(R.string.smb_unverified)).assertIsDisplayed()

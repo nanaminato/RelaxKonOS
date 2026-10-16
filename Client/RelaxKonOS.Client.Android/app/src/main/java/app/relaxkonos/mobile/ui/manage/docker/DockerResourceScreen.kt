@@ -9,6 +9,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -44,12 +47,27 @@ private data class ResourceConfirmation(val facts: DockerResourceFacts, val targ
     var confirmation by remember(owner) { mutableStateOf<ResourceConfirmation?>(null) }
     var leave by remember(owner) { mutableStateOf<(() -> Unit)?>(null) }
     var reveal by remember(owner, target?.id) { mutableStateOf(false) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var lifecycleEpoch by remember(owner, lifecycle) { mutableIntStateOf(0) }
+    val observationEpoch = lifecycleEpoch
+    DisposableEffect(owner, target?.id, lifecycle, active) {
+        fun withdraw() { confirmation = null; leave = null; reveal = false }
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) { withdraw(); lifecycleEpoch++ }
+            if (event == Lifecycle.Event.ON_RESUME) lifecycleEpoch++
+        }
+        lifecycle.addObserver(observer)
+        if (!active) withdraw()
+        onDispose { lifecycle.removeObserver(observer) }
+    }
     val navigate: (() -> Unit) -> Unit = { action -> if (draft != null) leave = action else action() }
     fun confirm(change: DockerResourceChange) { facts?.let { confirmation = ResourceConfirmation(it, target.takeIf { change.target != null }, change) } }
     LaunchedEffect(owner, state.owner) { if (visible && owner != null) model.refresh() }
     LaunchedEffect(owner, state.saved) { if (visible && state.saved > 0) draft = null }
-    LaunchedEffect(active, owner, target?.id, target?.container?.state, state.busy, draft, confirmation) {
-        if (active && visible && draft == null && confirmation == null) model.observeStats()
+    LaunchedEffect(active, owner, observationEpoch, target?.id, target?.container?.state, state.busy, draft, confirmation) {
+        if (active && visible && draft == null && confirmation == null) model.observeStats {
+            active && lifecycleEpoch == observationEpoch && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && draft == null && confirmation == null
+        }
     }
     DisposableEffect(owner) { onDispose { model.stop() } }
     BackHandler(active && draft != null) { navigate { draft = null } }
@@ -60,7 +78,7 @@ private data class ResourceConfirmation(val facts: DockerResourceFacts, val targ
             TextButton(enabled = !state.busy, onClick = { navigate { draft = null; model.refresh() } }) { ActionLabel(R.string.common_refresh) }
         })
         RefreshProgressIndicator(visible = visible && state.busy)
-        OperationMessageDialog(state.problem?.takeIf { visible && !state.busy }?.let { controlProblem(it) })
+        if (active) OperationMessageDialog(state.problem?.takeIf { visible && !state.busy }?.let { controlProblem(it) })
         if (visible && state.blocked != null) Text(controlProblem(state.blocked), color = MaterialTheme.colorScheme.error)
         if (visible && (state.pending.isNotEmpty() || state.result != null)) TextButton(onClick = { navigate(onOpenControl) }) { Text(stringResource(R.string.workspace_records)) }
         if (facts == null) Text(stringResource(R.string.docker_control_unverified))
@@ -123,7 +141,7 @@ private data class ResourceConfirmation(val facts: DockerResourceFacts, val targ
             }
         }
     }
-    confirmation?.let { frozen -> AlertDialog(onDismissRequest = { confirmation = null }, title = { Text(resourceActionLabel(frozen.change.action)) }, text = { Column {
+    if (active) confirmation?.let { frozen -> AlertDialog(onDismissRequest = { confirmation = null }, title = { Text(resourceActionLabel(frozen.change.action)) }, text = { Column {
         Text(frozen.change.target ?: frozen.change.container?.name ?: frozen.change.value.orEmpty())
         Text(stringResource(R.string.docker_resources_confirm))
         if (frozen.change.action == DockerResourceAction.CreateContainer) Text(stringResource(R.string.docker_resources_create_only))
@@ -132,7 +150,7 @@ private data class ResourceConfirmation(val facts: DockerResourceFacts, val targ
         if (frozen.change.action == DockerResourceAction.DeleteVolume) Text(stringResource(R.string.docker_resources_volume_warning))
         if (frozen.change.action in listOf(DockerResourceAction.DeleteContainer, DockerResourceAction.Stop)) CheckboxOption(frozen.change.force, stringResource(if (frozen.change.action == DockerResourceAction.Stop) R.string.docker_resources_force_stop else R.string.docker_resources_force), !state.busy) { confirmation = frozen.copy(change = frozen.change.copy(force = it)) }
     } }, confirmButton = { Button(enabled = !state.busy, onClick = { confirmation = null; model.change(frozen.facts, frozen.target, frozen.change) }) { Text(stringResource(R.string.docker_resources_apply)) } }, dismissButton = { TextButton(onClick = { confirmation = null }) { Text(stringResource(R.string.common_cancel)) } }) }
-    leave?.let { action -> AlertDialog(onDismissRequest = { leave = null }, title = { Text(stringResource(R.string.docker_resources_discard)) },
+    if (active) leave?.let { action -> AlertDialog(onDismissRequest = { leave = null }, title = { Text(stringResource(R.string.docker_resources_discard)) },
         confirmButton = { Button(onClick = { leave = null; draft = null; confirmation = null; action() }) { Text(stringResource(R.string.docker_resources_discard)) } },
         dismissButton = { TextButton(onClick = { leave = null }) { Text(stringResource(R.string.common_cancel)) } }) }
 }

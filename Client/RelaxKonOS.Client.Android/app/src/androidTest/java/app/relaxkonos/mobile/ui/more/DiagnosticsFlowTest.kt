@@ -4,6 +4,8 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
@@ -17,6 +19,7 @@ import app.relaxkonos.mobile.core.auth.*
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.data.SystemRepository
 import app.relaxkonos.mobile.servercenter.ServerConnectionIdentityRules
+import app.relaxkonos.mobile.ui.common.WorkspaceSection
 import kotlinx.coroutines.*
 import org.junit.After
 import org.junit.Assert.*
@@ -28,6 +31,7 @@ class DiagnosticsFlowTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var model: DiagnosticsController
     private lateinit var session: AuthSession
+    private val active = mutableStateOf(true)
     private var check: suspend () -> ApiResult<Int> = { ApiResult.Success(3) }
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     private fun text(id: Int) = context.getString(id)
@@ -50,12 +54,32 @@ class DiagnosticsFlowTest {
         rule.setContent { MaterialTheme {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, 1.6f)) {
-                Box(Modifier.safeDrawingPadding().requiredSize(360.dp, 640.dp)) { DiagnosticsContent(model, null) }
+                Box(Modifier.safeDrawingPadding().requiredSize(360.dp, 640.dp)) {
+                    WorkspaceSection(active.value) { DiagnosticsContent(model, null, active.value) }
+                    WorkspaceSection(!active.value) { Text("Other settings") }
+                }
             }
         } }
     }
     @After fun cleanup() { rule.runOnUiThread { scope.cancel() } }
     private fun runCheck() = rule.onNodeWithText(text(R.string.diagnostics_run)).performScrollTo().performClick()
+    @Test fun hiddenDiagnosticsDoesNotCoverOtherSettingsAndRetainsExportSnapshot() {
+        var reads = 0
+        check = { reads++; ApiResult.Success(3) }
+        show(); runCheck()
+        rule.waitUntil(5_000) { !model.running && model.lines.isNotEmpty() }
+        rule.onNodeWithText(text(R.string.diagnostics_export)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.common_close)).assertIsDisplayed()
+        val report = model.export
+        rule.runOnIdle { active.value = false }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.onNodeWithText("Other settings").assertIsDisplayed()
+        rule.runOnIdle { assertEquals(report, model.export); active.value = true }
+        rule.onNodeWithText(text(R.string.common_close)).assertIsDisplayed().performClick()
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.runOnIdle { assertNull(model.export); assertEquals(1, reads) }
+        rule.onNodeWithText(context.getString(R.string.diagnostics_files_ok, 3)).performScrollTo().assertIsDisplayed()
+    }
     @Test fun busyCheckShowsLoadingAndDisablesRunAndExport() {
         val reply = CompletableDeferred<ApiResult<Int>>()
         check = { reply.await() }; show(); runCheck()
@@ -86,5 +110,19 @@ class DiagnosticsFlowTest {
         rule.waitUntil(5_000) { model.export == null && model.lines.isEmpty() }
         rule.onNodeWithText(text(R.string.common_close)).assertDoesNotExist()
         rule.onNodeWithText(text(R.string.diagnostics_not_run)).performScrollTo().assertIsDisplayed()
+    }
+    @Test fun newLoginWhileHiddenClearsExportBeforeDiagnosticsReturns() {
+        show(); runCheck(); rule.waitUntil(5_000) { !model.running && model.lines.isNotEmpty() }
+        rule.onNodeWithText(text(R.string.diagnostics_export)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.common_close)).assertIsDisplayed()
+        rule.runOnIdle { active.value = false }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.runOnIdle { login() }
+        rule.waitUntil(5_000) { model.export == null && model.lines.isEmpty() }
+        rule.runOnIdle { active.value = true }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.diagnostics_not_run)).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.diagnostics_export)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.common_close)).assertIsDisplayed().performClick()
     }
 }

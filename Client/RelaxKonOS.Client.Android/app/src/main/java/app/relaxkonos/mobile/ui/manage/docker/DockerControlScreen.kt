@@ -10,6 +10,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -26,6 +29,7 @@ private data class MirrorDraft(val id: String? = null, val name: String = "", va
     fun request() = DockerMirrorRequest(name.trim(), endpoint.trim())
 }
 private data class ControlConfirmation(val facts: DockerControlFacts, val change: DockerControlChange)
+private data class InstallationCancellation(val owner: SessionState.Active, val operationId: String)
 @Composable internal fun dockerControlViewModel(): DockerControlViewModel {
     val container = appContainer()
     return viewModel(factory = viewModelFactory {
@@ -48,13 +52,37 @@ private data class ControlConfirmation(val facts: DockerControlFacts, val change
     var draft by remember(owner) { mutableStateOf<MirrorDraft?>(null) }
     var confirmation by remember(owner) { mutableStateOf<ControlConfirmation?>(null) }
     var leave by remember(owner) { mutableStateOf<(() -> Unit)?>(null) }
-    var install by remember(owner) { mutableStateOf(false) }; var cancel by remember(owner) { mutableStateOf(false) }
+    var install by remember(owner) { mutableStateOf(false) }; var cancel by remember(owner) { mutableStateOf<InstallationCancellation?>(null) }
     var recover by remember(owner) { mutableStateOf(false) }; var id by remember(owner) { mutableStateOf("") }; var identified by remember(owner) { mutableStateOf(false) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var lifecycleEpoch by remember(owner, lifecycle) { mutableIntStateOf(0) }
+    val observationEpoch = lifecycleEpoch
+    DisposableEffect(owner, lifecycle, active) {
+        fun withdraw() { confirmation = null; leave = null; install = false; cancel = null; recover = false; identified = false }
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) { withdraw(); lifecycleEpoch++ }
+            if (event == Lifecycle.Event.ON_RESUME) lifecycleEpoch++
+        }
+        lifecycle.addObserver(observer)
+        if (!active) withdraw()
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(owner, state.installation?.operationId, state.installation?.state, state.installation?.cancellable, state.installationVerified) {
+        cancel?.let { request ->
+            if (request.owner !== owner || !state.installationVerified || state.installation?.let {
+                    it.operationId == request.operationId && it.state.active && it.cancellable
+                } != true) cancel = null
+        }
+    }
     val navigate: (() -> Unit) -> Unit = { action -> if (draft != null) leave = action else action() }
-    LaunchedEffect(owner, state.owner) { if (visible && owner != null) model.refresh() }
+    LaunchedEffect(owner, state.owner, active) {
+        if (active && visible && owner != null && state.facts == null && state.problem == null && !state.busy) model.refresh()
+    }
     LaunchedEffect(owner, state.saved) { if (visible && state.saved > 0) draft = null }
-    LaunchedEffect(owner, state.installation?.operationId, state.installation?.state, state.installationVerified, state.busy) {
-        if (visible) model.observeInstallation()
+    LaunchedEffect(owner, active, observationEpoch, state.installation?.operationId, state.installation?.state, state.installationVerified, state.busy) {
+        if (active && visible) model.observeInstallation {
+            active && lifecycleEpoch == observationEpoch && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        }
     }
     DisposableEffect(owner) { onDispose { model.stop() } }
     BackHandler(active && draft != null) { navigate { draft = null } }
@@ -65,7 +93,7 @@ private data class ControlConfirmation(val facts: DockerControlFacts, val change
             TextButton(enabled = !state.busy, onClick = { navigate { draft = null; model.refresh() } }) { ActionLabel(R.string.common_refresh) }
         })
         RefreshProgressIndicator(visible = visible && state.busy)
-        OperationMessageDialog(state.problem?.takeIf { visible && !state.busy }?.let { controlProblem(it) })
+        if (active) OperationMessageDialog(state.problem?.takeIf { visible && !state.busy }?.let { controlProblem(it) })
         if (visible && recordsOnly) state.pending.forEach { pending ->
             ManagementCard {
             Text(stringResource(R.string.docker_control_pending), color = MaterialTheme.colorScheme.error)
@@ -105,7 +133,7 @@ WorkspaceSection(!mirrorsOnly && !recordsOnly) {
         WorkspaceSection(recordsOnly) {
         val recordModel: DockerResourceViewModel = dockerResourceViewModel(key = "docker-resources-all")
         val recordState = recordModel.state
-        LaunchedEffect(owner, recordState.owner, recordsOnly) { if (recordsOnly && recordState.owner === owner) recordModel.refresh() }
+        LaunchedEffect(owner, recordState.owner, recordsOnly, active) { if (active && recordsOnly && recordState.owner === owner) recordModel.refresh() }
         if (recordState.owner === owner) recordState.pending.forEach { marker -> ManagementCard {
             Text(resourceActionLabel(marker.action)); marker.target?.let { Text(it) }
             PageActionRow(refresh = {
@@ -143,7 +171,7 @@ WorkspaceSection(!mirrorsOnly && !recordsOnly) {
                 ExecutionStatusChip(installationStateLabel(operation.state), operation.state.wire); Text(installationStageLabel(operation.stage))
                 operation.progress?.let { Text(stringResource(R.string.installation_stage_progress, it)) }
                 operation.problemCode?.let { Text(installationProblemLabel(it)) }
-                if (operation.state.active && operation.cancellable && manage) OutlinedButton(enabled = !state.busy, onClick = { cancel = true }) { Text(stringResource(R.string.operations_request_cancel)) }
+                if (operation.state.active && operation.cancellable && manage) OutlinedButton(enabled = !state.busy, onClick = { owner?.let { cancel = InstallationCancellation(it, operation.operationId) } }) { Text(stringResource(R.string.operations_request_cancel)) }
             } else Text(stringResource(R.string.operations_unverified))
             }
         }
@@ -187,7 +215,7 @@ WorkspaceSection(mirrorsOnly) {
         }
 }
             }
-    confirmation?.let { pending -> AlertDialog(onDismissRequest = { confirmation = null }, title = { Text(controlActionLabel(pending.change.kind)) }, text = { Column {
+    if (active) confirmation?.let { pending -> AlertDialog(onDismissRequest = { confirmation = null }, title = { Text(controlActionLabel(pending.change.kind)) }, text = { Column {
         if (pending.change.engine != null) Text(stringResource(R.string.docker_control_engine_warning))
         else {
             Text(stringResource(R.string.docker_control_mirror_warning))
@@ -198,14 +226,18 @@ WorkspaceSection(mirrorsOnly) {
         }
     } }, confirmButton = { Button(enabled = ready, onClick = { confirmation = null; model.change(pending.facts, pending.change) }) { Text(stringResource(R.string.docker_control_confirm)) } },
         dismissButton = { TextButton(onClick = { confirmation = null }) { Text(stringResource(R.string.common_cancel)) } }) }
-    if (leave != null) AlertDialog(onDismissRequest = { leave = null }, title = { Text(stringResource(R.string.docker_control_discard)) },
+    if (active && leave != null) AlertDialog(onDismissRequest = { leave = null }, title = { Text(stringResource(R.string.docker_control_discard)) },
         text = { Text(stringResource(R.string.docker_control_discard_note)) }, confirmButton = { TextButton(onClick = { val action = leave; leave = null; action?.invoke() }) { Text(stringResource(R.string.docker_control_confirm)) } },
         dismissButton = { TextButton(onClick = { leave = null }) { Text(stringResource(R.string.common_cancel)) } })
-    if (install) AlertDialog(onDismissRequest = { install = false }, title = { Text(stringResource(R.string.docker_control_install)) }, text = { Text(stringResource(R.string.docker_control_install_note)) },
+    if (active && install) AlertDialog(onDismissRequest = { install = false }, title = { Text(stringResource(R.string.docker_control_install)) }, text = { Text(stringResource(R.string.docker_control_install_note)) },
         confirmButton = { Button(enabled = !state.busy, onClick = { install = false; model.install() }) { Text(stringResource(R.string.docker_control_confirm)) } }, dismissButton = { TextButton(onClick = { install = false }) { Text(stringResource(R.string.common_cancel)) } })
-    if (cancel) AlertDialog(onDismissRequest = { cancel = false }, title = { Text(stringResource(R.string.operations_request_cancel)) }, text = { Text(stringResource(R.string.operations_cancel_explanation)) },
-        confirmButton = { Button(onClick = { cancel = false; model.cancelInstall() }) { Text(stringResource(R.string.common_cancel)) } }, dismissButton = { TextButton(onClick = { cancel = false }) { Text(stringResource(R.string.common_close)) } })
-    if (recover) AlertDialog(onDismissRequest = { recover = false }, title = { Text(stringResource(R.string.installation_recover)) }, text = { Column {
+    if (active) cancel?.let { request -> AlertDialog(onDismissRequest = { cancel = null }, title = { Text(stringResource(R.string.operations_request_cancel)) },
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text(request.operationId); Text(stringResource(R.string.operations_cancel_explanation)) } },
+        confirmButton = { Button(enabled = !state.busy && owner === request.owner && state.installationVerified && state.installation?.let {
+            it.operationId == request.operationId && it.state.active && it.cancellable
+        } == true, onClick = { cancel = null; model.cancelInstall(request.owner, request.operationId) }) { Text(stringResource(R.string.common_cancel)) } },
+        dismissButton = { TextButton(onClick = { cancel = null }) { Text(stringResource(R.string.common_close)) } }) }
+    if (active && recover) AlertDialog(onDismissRequest = { recover = false }, title = { Text(stringResource(R.string.installation_recover)) }, text = { Column {
         Text(stringResource(R.string.installation_recover_help)); OutlinedTextField(id, { id = it }, singleLine = true, label = { Text(stringResource(R.string.installation_operation_id)) })
         if (state.pendingInstallation) CheckboxOption(identified, stringResource(R.string.docker_control_identify)) { identified = it }
     } }, confirmButton = { Button(enabled = !state.busy && (!state.pendingInstallation || identified) && runCatching { InstallationRoutes.operation(id.trim()) }.isSuccess,

@@ -141,8 +141,8 @@ internal fun CertificatesContent(model: CertificatesViewModel, owner: SessionSta
     if (active) confirm?.let { request -> AlertDialog(onDismissRequest = { confirm = null }, title = { Text(stringResource(R.string.certificates_confirm)) },
         text = { Text(stringResource(request.first)) }, confirmButton = { Button(onClick = { confirm = null; request.second() }) { Text(stringResource(R.string.certificates_confirm)) } },
         dismissButton = { TextButton(onClick = { confirm = null }) { Text(stringResource(R.string.common_cancel)) } }) }
-    if (active && recovery) AlertDialog(onDismissRequest = { recovery = false }, title = { Text(stringResource(R.string.certificates_recover)) },
-        text = { Column { Text(stringResource(R.string.certificates_recover_note)); OutlinedTextField(recoverId, { recoverId = it }, singleLine = true, label = { Text(stringResource(R.string.certificates_operation_id)) }) } },
+    if (active && recovery) AlertDialog(onDismissRequest = { recovery = false }, modifier = Modifier.imePadding(), title = { Text(stringResource(R.string.certificates_recover)) },
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text(stringResource(R.string.certificates_recover_note)); OutlinedTextField(recoverId, { recoverId = it }, singleLine = true, label = { Text(stringResource(R.string.certificates_operation_id)) }) } },
         confirmButton = { Button(enabled = runCatching { InstallationRoutes.operation(recoverId.trim()) }.isSuccess, onClick = {
             model.recover(recoverId, recoverPending); recovery = false
         }) { Text(stringResource(R.string.certificates_recover)) } }, dismissButton = { TextButton(onClick = { recovery = false }) { Text(stringResource(R.string.common_close)) } })

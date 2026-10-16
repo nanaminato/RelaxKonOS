@@ -30,16 +30,18 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 @Composable
 fun DiagnosticsScreen(
     onBack: (() -> Unit)?,
+    active: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val model: DiagnosticsViewModel = viewModel()
-    DiagnosticsContent(model.diagnostics, onBack, modifier)
+    DiagnosticsContent(model.diagnostics, onBack, active, modifier)
 }
 
 @Composable
 internal fun DiagnosticsContent(
     viewModel: DiagnosticsController,
     onBack: (() -> Unit)?,
+    active: Boolean,
     modifier: Modifier = Modifier,
 ) {
 
@@ -88,7 +90,7 @@ internal fun DiagnosticsContent(
         }
     }
 
-    viewModel.export?.let { report ->
+    if (active) viewModel.export?.let { report ->
         AlertDialog(
             onDismissRequest = { viewModel.dismissExport() },
             title = { Text(stringResource(R.string.diagnostics_export_title)) },

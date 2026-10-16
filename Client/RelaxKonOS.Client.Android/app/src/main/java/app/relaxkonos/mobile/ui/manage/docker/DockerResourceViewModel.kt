@@ -15,10 +15,30 @@ internal data class DockerResourceState(val owner: SessionState.Active? = null, 
     val logs: DockerLogs? = null, val result: DockerOperation? = null, val pending: List<PendingDockerResource> = emptyList(),
     val blocked: String? = null, val problem: String? = null, val saved: Int = 0)
 internal class DockerResourceViewModel(private val session: AuthSession, private val resources: DockerResourceRepository, private val gate: DockerMutationGate) : ViewModel() {
-    suspend fun observeStats() {
-        if (state.target?.container?.state == "running" && !state.busy) {
-            kotlinx.coroutines.delay(3000)
+    suspend fun observeStats(canObserve: () -> Boolean) {
+        val owner = state.owner ?: return
+        val id = state.target?.id ?: return
+        var observedGeneration = generation
+        fun eligible() = canObserve() && state.owner === owner && session.state.value === owner && state.problem == null &&
+            state.target?.let { it.id == id && it.container?.state == "running" } == true
+        while (eligible()) {
+            if (state.busy) {
+                val pending = job ?: return
+                pending.join()
+                observedGeneration = generation
+                continue
+            }
+            delay(3000)
+            if (!eligible()) return
+            if (state.busy || generation != observedGeneration) {
+                observedGeneration = generation
+                continue
+            }
             pollStats()
+            if (generation == observedGeneration) return
+            val pending = job ?: return
+            pending.join()
+            observedGeneration = generation
         }
     }
 
@@ -73,7 +93,7 @@ internal class DockerResourceViewModel(private val session: AuthSession, private
     private fun work(block: suspend (SessionState.Active) -> Unit) {
         val owner = state.owner ?: return
         if (state.busy || ServerCapabilities.DOCKER !in owner.capabilities) return
-        val request = generation; state = state.copy(busy = true, problem = null)
+        val request = ++generation; state = state.copy(busy = true, problem = null)
         job = viewModelScope.launch {
             try { block(owner) }
             catch (cancelled: CancellationException) {
