@@ -52,10 +52,10 @@
     <string name="nginx_stopped">已停止</string>
     <!-- BP03 Nginx management -->
     <string name="nginx_title">Nginx 管理</string>
-    <string name="nginx_ubuntu_install">Ubuntu 通过 APT 安装 Nginx。安装系统包及配置需要服务器管理员授权。</string>
+    <string name="nginx_linux_install">Debian/Ubuntu 系通过 APT 安装 Nginx。安装系统包及配置需要服务器管理员授权。</string>
     <string name="nginx_uncertain">结果暂未核实。请先刷新服务器事实，再重试。离开页面不会取消服务器任务。</string>
     <string name="nginx_uninstall">卸载 Nginx</string>
-    <string name="nginx_uninstall_confirm">停止并卸载选中的 Nginx？托管网站将不可用。Ubuntu 会移除系统 Nginx 包及其包配置；Windows 会移除由 RelaxKonOS 安装的 Nginx。</string>
+    <string name="nginx_uninstall_confirm">停止并卸载选中的 Nginx？托管网站将不可用。Debian/Ubuntu 系会移除系统 Nginx 包及其包配置；Windows 会移除由 RelaxKonOS 安装的 Nginx。</string>
     <string name="nginx_unsupported">当前服务器或安装管理模式不支持此动作。</string>
     <string name="nginx_upload_bytes">已上传 %1$d 字节</string>
     <string name="nginx_version">版本（例如 1.31.3）</string>

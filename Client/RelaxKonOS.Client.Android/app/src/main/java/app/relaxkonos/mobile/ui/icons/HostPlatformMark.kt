@@ -8,14 +8,19 @@ import app.relaxkonos.mobile.core.net.HostOperatingSystemKind
 /**
  * The mark for one host operating system class.
  *
- * The four `ic_platform_*` vectors are this app's own artwork, not a copy of the desktop set: the
+ * The six `ic_platform_*` vectors are this app's own artwork, not a copy of the desktop set: the
  * desktop never shows what a host runs, so there is nothing to mirror. They are also why the list may
  * only claim what the server said out loud — a system this build has no mark for, and one nobody has
  * asked about yet, both get the generic connection mark instead of wearing somebody else's logo.
+ *
+ * The generic Linux mark is deliberately not a distribution's: it says "this host runs Linux" for hosts
+ * whose distribution the server did not name, and nothing more.
  */
 @DrawableRes
 fun hostPlatformMark(kind: HostOperatingSystemKind?): Int = when (kind) {
     HostOperatingSystemKind.Ubuntu -> R.drawable.ic_platform_ubuntu
+    HostOperatingSystemKind.Debian -> R.drawable.ic_platform_debian
+    HostOperatingSystemKind.Linux -> R.drawable.ic_platform_linux
     HostOperatingSystemKind.Windows10 -> R.drawable.ic_platform_windows10
     HostOperatingSystemKind.Windows11 -> R.drawable.ic_platform_windows11
     HostOperatingSystemKind.WindowsServer -> R.drawable.ic_platform_windows_server
@@ -31,6 +36,8 @@ fun hostPlatformMark(kind: HostOperatingSystemKind?): Int = when (kind) {
 @StringRes
 fun hostPlatformMarkLabel(kind: HostOperatingSystemKind?): Int? = when (kind) {
     HostOperatingSystemKind.Ubuntu -> R.string.host_platform_ubuntu
+    HostOperatingSystemKind.Debian -> R.string.host_platform_debian
+    HostOperatingSystemKind.Linux -> R.string.host_platform_linux
     HostOperatingSystemKind.Windows10 -> R.string.host_platform_windows10
     HostOperatingSystemKind.Windows11 -> R.string.host_platform_windows11
     HostOperatingSystemKind.WindowsServer -> R.string.host_platform_windows_server

@@ -16,7 +16,7 @@
     <string name="connections_no_password">No password saved</string>
     <string name="connections_password_invalidated">The saved password is no longer valid</string>
     <string name="connections_password_unavailable">A password is saved but cannot be unlocked on this device right now</string>
-    <string name="connections_platform_trademarks">Ubuntu is a Canonical trademark. Windows, Windows Server, Windows 10 and Windows 11 are Microsoft trademarks.</string>
+    <string name="connections_platform_trademarks">Ubuntu is a Canonical trademark. Debian is a trademark of Software in the Public Interest, Inc. Linux is a trademark of Linus Torvalds. Windows, Windows Server, Windows 10 and Windows 11 are Microsoft trademarks.</string>
     <string name="connections_saved_password">Password saved, unlocked by fingerprint</string>
     <string name="connections_saved_password_debug">Password saved unencrypted (debug build, no screen lock)</string>
     <string name="connections_saved_password_screen_lock">Password saved, unlocked by the screen lock</string>

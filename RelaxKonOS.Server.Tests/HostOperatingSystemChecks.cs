@@ -2,9 +2,10 @@
 /// Checks the host operating system classification behind `/server/host-operating-system`.
 ///
 /// The endpoint is anonymous, so its worst failure is not an exception but a confident wrong answer: a
-/// Windows Server that reports itself as Windows 11, or a Debian host presented with Ubuntu's mark. The
-/// checks below therefore pin the two things a client depends on — that the answer agrees with the host
-/// this suite is running on, and that the wire value is the exact camelCase name the clients parse.
+/// Windows Server that reports itself as Windows 11, or a Linux host wearing a distribution's mark it
+/// never claimed. The checks below therefore pin the two things a client depends on — that the answer
+/// agrees with the host this suite is running on, and that the wire value is the exact camelCase name
+/// the clients parse.
 /// </summary>
 public static class HostOperatingSystemChecks
 {
@@ -46,30 +47,52 @@ public static class HostOperatingSystemChecks
             return;
         }
 
-        True(kind is HostOperatingSystemKind.Ubuntu or HostOperatingSystemKind.Unknown,
+        True(kind is HostOperatingSystemKind.Ubuntu or HostOperatingSystemKind.Debian
+                or HostOperatingSystemKind.Linux or HostOperatingSystemKind.Unknown,
             $"A non-Windows host is never reported as Windows (actual={kind})");
         if (!OperatingSystem.IsLinux()) return;
 
-        // Read the distribution independently of the implementation: an Ubuntu host that answers
-        // `Unknown` is the whole feature failing quietly, and this is where that becomes visible.
-        var ubuntu = File.Exists("/etc/os-release")
-            && File.ReadAllLines("/etc/os-release").Any(line =>
-            {
-                var trimmed = line.Replace(" ", string.Empty).Trim();
-                return trimmed is "ID=ubuntu" or "ID=\"ubuntu\"";
-            });
-        if (ubuntu) Equal(HostOperatingSystemKind.Ubuntu, kind, "An Ubuntu host reports Ubuntu");
+        // Read the distribution independently of the implementation. Every Linux host has an answer, so
+        // a different one here — `Unknown` included — is the whole feature failing quietly.
+        Equal(ExpectedLinuxKind(ReadOsReleaseId()), kind,
+            "A Linux host reports the mark its distribution is");
+    }
+
+    /// <summary>A second reading of `/etc/os-release`, so this check has an answer of its own to compare.</summary>
+    private static HostOperatingSystemKind ExpectedLinuxKind(string? id) => id switch
+    {
+        "ubuntu" => HostOperatingSystemKind.Ubuntu,
+        "debian" => HostOperatingSystemKind.Debian,
+        // Anything else is still Linux, and the mark may only claim that much.
+        _ => HostOperatingSystemKind.Linux,
+    };
+
+    private static string? ReadOsReleaseId()
+    {
+        if (!File.Exists("/etc/os-release")) return null;
+        foreach (var line in File.ReadAllLines("/etc/os-release"))
+        {
+            var separator = line.IndexOf('=');
+            if (separator <= 0 || !line.AsSpan(0, separator).Trim().Equals("ID", StringComparison.Ordinal)) continue;
+            return line[(separator + 1)..].Trim().Trim('"', '\'').ToLowerInvariant();
+        }
+        return null;
     }
 
     private static void CheckTheWireValueIsTheCamelCaseEnumName()
     {
         // The clients parse this string case-insensitively but by name; a numeric value or a renamed
-        // member would leave every row on the generic mark.
-        var json = JsonSerializer.Serialize(
-            new HostOperatingSystemDto(HostOperatingSystemKind.WindowsServer),
-            RelaxKonOSJsonOptions.Default);
-        Equal("{\"kind\":\"windowsServer\"}", json, "The host operating system payload");
+        // member would leave every row on the generic mark. The Linux marks are pinned one by one
+        // because each of them needs a matching client mark to be worth answering.
+        Equal("{\"kind\":\"windowsServer\"}", Payload(HostOperatingSystemKind.WindowsServer),
+            "The Windows Server payload");
+        Equal("{\"kind\":\"ubuntu\"}", Payload(HostOperatingSystemKind.Ubuntu), "The Ubuntu payload");
+        Equal("{\"kind\":\"debian\"}", Payload(HostOperatingSystemKind.Debian), "The Debian payload");
+        Equal("{\"kind\":\"linux\"}", Payload(HostOperatingSystemKind.Linux), "The generic Linux payload");
     }
+
+    private static string Payload(HostOperatingSystemKind kind) =>
+        JsonSerializer.Serialize(new HostOperatingSystemDto(kind), RelaxKonOSJsonOptions.Default);
 
     private static void CheckWindowsFactsAndPredicateAreOneAnswer()
     {

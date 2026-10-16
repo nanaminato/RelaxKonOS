@@ -264,4 +264,4 @@ Debian 13 与 Linux Mint 的安装预检、发布清单和 Samba 权限助手使
 
 Docker Engine 内置安装使用固定的官方 APT 软件源：Debian 13 → Debian Trixie，Mint 21.x → Ubuntu Jammy，Mint 22.x → Ubuntu Noble。仍需在安装时显式授权 Docker 访问；已存在的外部运行时和冲突软件包不会自动接管或卸载。参考 [Docker Debian 安装说明](https://docs.docker.com/engine/install/debian/)和 [Mint 版本基础](https://linuxmint.com/download_all.php)。
 
-Linux SSH 提权支持 sudo 和 su：先验证当前账号的 sudo 授权，失败后使用同一管理员密码尝试 `su` 到 root。Debian 禁止 root SSH 登录且普通账号没有 sudo 授权时，可填写 root 密码进行检查和系统维护。探测字段 `privilegeElevationAvailable` 表示存在 sudo 或 su 工具，实际授权在执行时验证。su 命令参数按 Bash 参数逐个转义，部署引擎标准输入为 `/dev/null`；密码不进入命令、文件或日志。系统安装仍需 sudo/visudo 供运行时 Helper 使用，缺少依赖时按预检提示安装。
+Linux SSH 提权支持 sudo 和 su：先验证当前账号的 sudo 授权，失败后使用同一管理员密码尝试 `su` 到 root。Debian 禁止 root SSH 登录且普通账号没有 sudo 授权时，可填写 root 密码进行检查和系统维护。探测字段 `privilegeElevationAvailable` 表示存在 sudo 或 su 工具，实际授权在执行时验证。su 命令参数按 Bash 参数逐个转义，部署引擎标准输入为 `/dev/null`；密码不进入命令、文件或日志。提权命令总是在当前账号 `PATH` 之前补上标准管理目录 `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`：`su` 不重置环境，而非登录 SSH 会话的 `PATH` 通常到 `/usr/bin:/bin` 为止，否则以 root 运行的引擎会把 `/usr/sbin` 下已安装的 `visudo` 等工具判为缺失并拒绝安装。系统安装仍需 sudo/visudo 供运行时 Helper 使用，缺少依赖时按预检提示安装。

@@ -19,12 +19,21 @@ sudo_password=
 elevation_method=sudo
 run_privileged() {
   # Neither authentication method passes the password to the engine, even with NOPASSWD.
+  #
+  # The elevated command must also reach the host's administrative tools by name. util-linux `su` keeps
+  # the caller's environment, and a non-login SSH session's PATH routinely stops before `sbin` (Debian:
+  # /usr/local/bin:/usr/bin:/bin:/usr/games); the engine would then run as root without `/usr/sbin` and
+  # its `command -v` probe would report installed tools such as `visudo` as missing. sudoers need not set
+  # `secure_path` either, so both methods are given the standard directories in front of whatever the
+  # account already had — the standard ones keep precedence, and a tool installed elsewhere is kept.
+  local privileged_path='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+  local script='export PATH='"$privileged_path"':"$PATH"; exec "$@" </dev/null'
   if [[ ${elevation_method:-sudo} == su ]]; then
     local command
-    printf -v command '%q ' bash -c 'exec "$@" </dev/null' bash "$@"
+    printf -v command '%q ' bash -c "$script" bash "$@"
     su --shell /bin/bash --command "exec $command" root <<< "$sudo_password"
   else
-    sudo -S -k -p '' -- bash -c 'exec "$@" </dev/null' bash "$@" <<< "$sudo_password"
+    sudo -S -k -p '' -- bash -c "$script" bash "$@" <<< "$sudo_password"
   fi
 }
 authenticate_sudo() {

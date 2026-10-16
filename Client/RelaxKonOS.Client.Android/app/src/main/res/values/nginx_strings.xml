@@ -52,10 +52,10 @@
     <string name="nginx_stopped">Stopped</string>
     <!-- BP03 Nginx management -->
     <string name="nginx_title">Nginx management</string>
-    <string name="nginx_ubuntu_install">Ubuntu installs Nginx through APT. Package installation and configuration require host administrator authorization.</string>
+    <string name="nginx_linux_install">Debian/Ubuntu install Nginx through APT. Package installation and configuration require host administrator authorization.</string>
     <string name="nginx_uncertain">The result could not be verified. Refresh host facts before retrying. Leaving this page does not cancel a server task.</string>
     <string name="nginx_uninstall">Uninstall Nginx</string>
-    <string name="nginx_uninstall_confirm">Stop and uninstall the selected Nginx? Hosted websites will become unavailable. Ubuntu removes the system Nginx package and its package configuration; Windows removes the managed installation.</string>
+    <string name="nginx_uninstall_confirm">Stop and uninstall the selected Nginx? Hosted websites will become unavailable. On Debian/Ubuntu the system Nginx package and its package configuration are removed; on Windows the installation installed by RelaxKonOS is removed.</string>
     <string name="nginx_unsupported">This action is unavailable for this host or installation mode.</string>
     <string name="nginx_upload_bytes">Uploaded %1$d bytes</string>
     <string name="nginx_version">Version (for example 1.31.3)</string>

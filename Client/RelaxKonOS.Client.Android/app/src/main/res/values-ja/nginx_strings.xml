@@ -52,10 +52,10 @@
     <string name="nginx_stopped">停止中</string>
     <!-- BP03 Nginx management -->
     <string name="nginx_title">Nginx 管理</string>
-    <string name="nginx_ubuntu_install">Ubuntu では APT で Nginx をインストールします。パッケージのインストールと設定にはサーバーの管理者権限が必要です。</string>
+    <string name="nginx_linux_install">Debian/Ubuntu 系では APT で Nginx をインストールします。パッケージのインストールと設定にはサーバーの管理者権限が必要です。</string>
     <string name="nginx_uncertain">結果を確認できませんでした。再試行する前にサーバーの状態を更新してください。画面を閉じてもサーバーの処理は中止されません。</string>
     <string name="nginx_uninstall">Nginx をアンインストール</string>
-    <string name="nginx_uninstall_confirm">選択した Nginx を停止してアンインストールしますか？公開サイトが利用できなくなります。Ubuntu ではシステムの Nginx パッケージとその設定、Windows では管理対象のインストールを削除します。</string>
+    <string name="nginx_uninstall_confirm">選択した Nginx を停止してアンインストールしますか？公開サイトが利用できなくなります。Debian/Ubuntu 系ではシステムの Nginx パッケージとその設定、Windows では RelaxKonOS がインストールした Nginx を削除します。</string>
     <string name="nginx_unsupported">このサーバーまたは管理方式では、この操作を利用できません。</string>
     <string name="nginx_upload_bytes">%1$d バイトをアップロード済み</string>
     <string name="nginx_version">バージョン（例：1.31.3）</string>

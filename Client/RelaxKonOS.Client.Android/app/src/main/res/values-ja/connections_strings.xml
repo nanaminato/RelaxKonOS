@@ -16,7 +16,7 @@
     <string name="connections_no_password">パスワード未保存</string>
     <string name="connections_password_invalidated">保存したパスワードは無効になりました</string>
     <string name="connections_password_unavailable">パスワードは保存されていますが、この端末では現在解錠できません</string>
-    <string name="connections_platform_trademarks">Ubuntu は Canonical の商標です。Windows、Windows Server、Windows 10、Windows 11 は Microsoft の商標です。</string>
+    <string name="connections_platform_trademarks">Ubuntu は Canonical の商標です。Debian は Software in the Public Interest, Inc. の商標です。Linux は Linus Torvalds の商標です。Windows、Windows Server、Windows 10、Windows 11 は Microsoft の商標です。</string>
     <string name="connections_saved_password">パスワード保存済み、指紋で解錠</string>
     <string name="connections_saved_password_debug">パスワードは暗号化せず保存（デバッグビルド、画面ロックなし）</string>
     <string name="connections_saved_password_screen_lock">パスワード保存済み、画面ロックで解錠</string>

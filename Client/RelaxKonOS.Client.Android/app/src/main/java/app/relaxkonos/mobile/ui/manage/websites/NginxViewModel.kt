@@ -316,5 +316,15 @@ internal class NginxViewModel(application: Application) : AndroidViewModel(appli
         }
     }
     private fun verify(active: SessionState.Active) { if (container.activeSession !== active) throw CancellationException("Nginx session changed") }
-    companion object { val windowsSystems = setOf(HostOperatingSystemKind.Windows10, HostOperatingSystemKind.Windows11, HostOperatingSystemKind.WindowsServer) }
+    companion object {
+        val windowsSystems = setOf(HostOperatingSystemKind.Windows10, HostOperatingSystemKind.Windows11, HostOperatingSystemKind.WindowsServer)
+
+        /**
+         * The hosts that install Nginx from their own package manager, so an instance that is already
+         * there is taken over instead of a second one being installed beside it (`features/Nginx.md`,
+         * 安装来源). The generic Linux mark belongs here: it is what a supported Debian-family host that
+         * named no distribution reports.
+         */
+        val aptSystems = setOf(HostOperatingSystemKind.Ubuntu, HostOperatingSystemKind.Debian, HostOperatingSystemKind.Linux)
+    }
 }
