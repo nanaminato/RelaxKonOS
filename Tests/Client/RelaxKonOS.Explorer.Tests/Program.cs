@@ -22,6 +22,7 @@ void Check(bool condition, string label)
 await PickerMemoryChecks.RunAsync(Check);
 FileBrowserPresentationChecks.Run(Check);
 ImageViewerChecks.Run(Check);
+await ArchiveBrowserChecks.RunAsync(Check);
 await HostFileClipboardChecks.RunAsync(Check);
 await MacosClipboardChecks.RunAsync(Check);
 await LinuxClipboardChecks.RunAsync(Check);

@@ -43,7 +43,7 @@ public static class ArchiveCommandChecks
         await vm.ExtractCommand.ExecuteAsync(null);
         check(requests.Count == 2, "Archive prompt rejects path traversal before submission");
         var expectedCount = requests.Count;
-        foreach (var suffix in new[] { ".tar", ".tar.gz", ".TGZ" })
+        foreach (var suffix in new[] { ".tar", ".tar.gz", ".TGZ", ".7z", ".rar", ".iso", ".cab", ".xz", ".bz2", ".zst", ".wim" })
         {
             var item = archive with { Name = "bundle" + suffix, Path = "/source/bundle" + suffix };
             vm.SelectedEntry = item; vm.UpdatePickerSelection([item]);

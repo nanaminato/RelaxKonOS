@@ -32,7 +32,8 @@ public static partial class FileArchiveService
     }
 
     private static async Task ExtractTarAsync(ArchiveFileSystem fs, Stream input, string staging,
-        RelaxKonOS.Protocol.Files.FileArchiveFormat format, Action<string, long, long, bool> report, CancellationToken ct)
+        RelaxKonOS.Protocol.Files.FileArchiveFormat format, Action<string, long, long, bool> report, CancellationToken ct,
+        Func<TarEntry, string, bool, Task>? visit = null)
     {
         byte[]? footer = null;
         if (format == RelaxKonOS.Protocol.Files.FileArchiveFormat.TarGZip)
@@ -79,6 +80,11 @@ public static partial class FileArchiveService
                 throw new InvalidDataException("A TAR file is also a parent directory.");
             if (entry.Length < 0 || entry.Length > MaximumEntryBytes || (total = checked(total + entry.Length)) > MaximumTotalBytes
                 || directory && entry.Length != 0) throw new InvalidDataException("TAR expansion limit exceeded.");
+            if (visit is not null)
+            {
+                await visit(entry, name, directory);
+                continue;
+            }
             var target = Path.Combine(staging, name.Replace('/', Path.DirectorySeparatorChar));
             if (directory) await EnsureDirectory(target);
             else

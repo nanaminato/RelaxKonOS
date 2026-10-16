@@ -37,7 +37,7 @@ namespace RelaxKonOS.Client.Apps.Explorer;
 /// UI 结构移植自 Jaya File Manager (BSD-3)：导航树 + Explorer 网格 + 地址栏 + 工具栏 + 状态栏。
 /// 所有文件操作经 <see cref="IExplorerClient"/> 调用 Server 端 REST API（JWT via <see cref="IAuthSession"/>）。
 /// 未登录时弹提示窗；服务端以宿主 OS 进程身份执行 IO，复用宿主用户/权限（不另建 ACL）。</summary>
-public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
+public sealed partial class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
 {
     private readonly Dictionary<ManagedWindow, ExplorerViewModel> _windows = [];
     private sealed record AdministratorCredentials(string Username, string Password);
@@ -474,6 +474,11 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         };
         vm.OpenFileAsync = async entry =>
         {
+            if (!vm.IsPickerMode && client is IArchiveClient archives && FileArchiveFormats.Detect(entry.Name) is not null)
+            {
+                OpenArchiveWindow(context, archives, entry.Path, entry.Name);
+                return;
+            }
             var extension = ExplorerPath.Extension(entry.Name);
             var defaultApplicationId = string.IsNullOrEmpty(extension) ? null : defaults?.Resolve(extension);
             var applicationId = defaultApplicationId is not null && applications?.SupportsFile(new AppId(defaultApplicationId), entry.Path) == true

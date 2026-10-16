@@ -203,6 +203,7 @@ install_bundle() {
   cp -a -- "$bundle/deployment/user" "$stage/user"
   cp -- "$bundle/deployment/verify-release-inventory.py" "$stage/verify-release-inventory.py"
   chmod -R go-rwx -- "$stage"
+  chmod 0700 "$stage/server/Assets/SevenZip/linux-x64/7zz" "$stage/server/Assets/SevenZip/linux-arm64/7zz"
   mv -- "$stage" "$destination"
   printf '%s\n' "$version"
 }
@@ -393,7 +394,7 @@ for item in json.loads((bundle/'manifest.json').read_text())['files']:
     target=version/relative
     if target.is_symlink() or not target.resolve().is_relative_to(version.resolve()):raise ValueError('Unsafe repair destination')
     target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(bundle/path,target)
-    target.chmod(0o700 if target.name in ('RelaxKonOS.Server','RelaxKonOS.Guardian.Agent') else 0o600)
+    target.chmod(0o700 if target.name in ('RelaxKonOS.Server','RelaxKonOS.Guardian.Agent') or relative in ('server/Assets/SevenZip/linux-x64/7zz','server/Assets/SevenZip/linux-arm64/7zz') else 0o600)
 USER_REPAIR
   fi
   activate_version "$version"

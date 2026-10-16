@@ -90,6 +90,7 @@ public static class FileArchiveChecks
         try { await Run(FileOperationKind.Extract, [badDirectoryPath], Path.Combine(root, "metadata-result")); throw new Exception("Accepted oversized metadata"); }
         catch (InvalidDataException) { Check(!Directory.Exists(Path.Combine(root, "metadata-result")), "Central directory is bounded before BCL metadata allocation"); }
         Check(!Directory.EnumerateFileSystemEntries(root).Any(path => Path.GetFileName(path).StartsWith(".archive.") || Path.GetFileName(path).StartsWith(".relaxkonos-archive-")), "Failed and cancelled staging is cleaned");
+        await ArchiveProviderChecks.RunAsync(root);
         await CheckJobs(root, Check);
         await TarArchiveChecks.RunAsync(root);
     }
@@ -139,7 +140,19 @@ public static class FileArchiveChecks
         var tarWaiting = await Wait(tarConflict.Id, dto => dto.State == FileOperationState.WaitingForDecision || dto.IsTerminal);
         jobs.Decide("owner", tarConflict.Id, new(tarWaiting.Issue!.Id, FileOperationDecision.KeepBoth));
         check((await Wait(tarConflict.Id)).State == FileOperationState.Completed && File.Exists(Path.Combine(root, "job (2).tar.gz")), "TAR identity jobs preserve compound suffixes when keeping both");
+        var cliDestination = Path.Combine(root, "identity-cli-output");
+        var cliJob = jobs.Start("owner", new ClaimsPrincipal(), new(Guid.NewGuid(), FileOperationKind.Extract,
+            [new(Path.Combine(root, "actual.7z"), cliDestination)]));
+        check((await Wait(cliJob.Id)).State == FileOperationState.Completed
+            && File.ReadAllText(Path.Combine(cliDestination, "中文.txt")) == "7-Zip preview 内容",
+            "Real CLI extraction uses captured identity reads and writes");
         transport.DenyReads = true;
+        var cliDenied = jobs.Start("owner", new ClaimsPrincipal(), new(Guid.NewGuid(), FileOperationKind.Extract,
+            [new(Path.Combine(root, "actual.7z"), Path.Combine(root, "identity-cli-denied"))]));
+        var cliDeniedState = await Wait(cliDenied.Id, dto => dto.State == FileOperationState.WaitingForDecision || dto.IsTerminal);
+        check(cliDeniedState.State == FileOperationState.WaitingForDecision && cliDeniedState.Issue?.Code == "access-denied"
+            && !Directory.Exists(Path.Combine(root, "identity-cli-denied")), "CLI cannot bypass denied identity reads");
+        jobs.Cancel("owner", cliDenied.Id);
         var deniedPath = Path.Combine(root, "denied.zip");
         var denied = jobs.Start("owner", new ClaimsPrincipal(new ClaimsIdentity()), request with { RequestId = Guid.NewGuid(), Items = [new(source, deniedPath)] });
         var deniedState = await Wait(denied.Id, dto => dto.State == FileOperationState.WaitingForDecision || dto.IsTerminal);

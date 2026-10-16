@@ -33,10 +33,21 @@
 
     <!-- Pack the pinned GEO data with the RelaxKonOS.Server. Mihomo receives these files in its private -d directory. -->
     <ItemGroup>
+      <None Update="Assets\SevenZip\**\*">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </None>
       <None Update="Assets\Mihomo\GeoData\**\*">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
       </None>
     </ItemGroup>
+
+    <Target Name="SetSevenZipBuildPermissions" AfterTargets="Build" Condition="'$(OS)' != 'Windows_NT'">
+      <Exec Command="chmod 755 &quot;$(TargetDir)Assets/SevenZip/linux-x64/7zz&quot; &quot;$(TargetDir)Assets/SevenZip/linux-arm64/7zz&quot; &quot;$(TargetDir)Assets/SevenZip/osx-x64/7zz&quot; &quot;$(TargetDir)Assets/SevenZip/osx-arm64/7zz&quot;" />
+    </Target>
+    <Target Name="SetSevenZipPublishPermissions" AfterTargets="Publish" Condition="'$(OS)' != 'Windows_NT'">
+      <Exec Command="chmod 755 &quot;$(PublishDir)Assets/SevenZip/linux-x64/7zz&quot; &quot;$(PublishDir)Assets/SevenZip/linux-arm64/7zz&quot; &quot;$(PublishDir)Assets/SevenZip/osx-x64/7zz&quot; &quot;$(PublishDir)Assets/SevenZip/osx-arm64/7zz&quot;" Condition="Exists('$(PublishDir)Assets/SevenZip/runtime-files.json')" />
+    </Target>
 
 </Project>

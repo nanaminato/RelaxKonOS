@@ -1,79 +1,50 @@
-# 文件压缩与解压缩设计
+# 文件压缩、解压和包内预览
 
 日期：2026-10-16
 
-## 范围与交互
+## 后端与能力
 
-桌面文件管理器提供“压缩为…”子菜单，可选择 ZIP、TAR、TAR.GZ，以及“解压到新文件夹”。压缩可选择多个文件、目录，输入同目录归档文件名；单项默认 `<名称>.<格式后缀>`，多项默认 `Archive.<格式后缀>`。解压对单个 `.zip`、`.tar`、`.tar.gz`、`.tgz` 显示，移除完整归档后缀生成默认新文件夹名。选择和目标在打开输入框前固定，提交前复核会话。选择器与 SSH 浏览器不展示入口。
+`FileArchiveService` 统一调度归档操作。ZIP、TAR、TAR.GZ/TGZ 保留 .NET BCL；7z、RAR、ISO、CAB、XZ、BZIP2、ZSTD、WIM 的读取和解压使用随发行包携带的官方 7-Zip 26.04 CLI。`FileArchiveFormats` 区分识别、BCL 后端及创建能力；本阶段创建仍仅开放 ZIP/TAR/TAR.GZ，不能把识别后缀当作支持创建。没有全局解析异常后的静默重试或系统 PATH 后备，也没有新增 SharpCompress/native DLL 的进程内绑定。
 
-当前内置后端使用 .NET `System.IO.Compression` 与 `System.Formats.Tar`，支持 ZIP/ZIP64、TAR、TAR.GZ/TGZ、UTF-8 名称、递归目录、空目录与空文件。TAR 只打包，TAR.GZ 在外层加 GZip 压缩。暂不支持 RAR、7z、独立 GZ、TAR.XZ、TAR.BZ2、加密包、分卷、包内编辑、符号链接、权限/所有者恢复，以及将内容合并进已有目录；不执行宿主压缩命令。
+包内读取统一面对 `IArchiveReader`（验证后的条目列表与指定条目内容），BCL 和 CLI 对上层隐藏后端差异。受支持的后缀仍需要内容通过相应格式解码和安全验证；不是所有格式变体的支持承诺。暂不支持密码、分卷、链接、包内修改、权限/所有者恢复，以及解压合并已有目录。ZIP 中实际使用的非 BCL 压缩方法在完成 BCL 元数据安全验证后交给 CLI；加密 ZIP 明确拒绝。损坏和安全错误不触发后端重试。
 
-## 任务与契约
+## Explorer 交互与协议
 
-扩展 `FileOperationKind`：`Compress`、`Extract`，沿用 `/files/operations`、幂等请求、身份隔离、重叠路径串行、轮询、取消与完成刷新。压缩请求为多个 `FileOperationItem(SourcePath, 同一个归档目标路径)`；创建格式由目标完整后缀决定，解压格式由源文件完整后缀决定；共同使用 `FileArchiveFormats`，不增加双格式请求解析。解压请求严格为一个 `FileOperationItem(归档路径, 新目录路径)`。服务端再次规范化并校验源、目标和重叠选择。
+右键“压缩为…”继续提供 ZIP/TAR/TAR.GZ；识别的归档文件提供“解压到新文件夹”。解压默认名称去掉完整归档后缀。选择器及 SSH 文件浏览器不启用归档功能。
 
-同名目标只允许保留两者、跳过，或取消整个任务；不覆盖或合并。压缩使用目标同目录临时文件，解压使用同目录临时目录，完成后以不覆盖方式移动到目标。失败或取消删除临时输出，保留源和既有目标。发布后的取消不能撤销已经完成的移动。进度为当前输入文件的已处理字节；目录/文件处理数复用任务卡片，压缩比和总剩余时间不作估计。
+双击压缩包打开独立只读浏览窗口；从已验证的条目补出隐式父目录。双击文件夹或按 Enter 进入，向上按钮返回父目录。选择普通文件时按需请求内容，支持常见文本与位图图片；HTML/脚本仅显示文本，绝不执行。单文件预览上限为 16 MiB；PDF、视频、嵌套压缩包和其他类型需先解压。会话变化关闭窗口，关闭/切换选择取消未完成请求并释放图片。此阶段不跨请求缓存包内容。独立 XZ/BZIP2/ZSTD 没有成员路径，按源文件去后缀生成条目名；通过有界解码测量实际长度，避免信任缺失的大小元数据。
 
-## 权限与实现边界
+读取协议使用现有鉴权文件路由组和 Read 策略：
 
-压缩算法在 Server 进程中流式运行。用户路径全部通过任务捕获的 OS 身份访问：Personal Unix 沿用直接用户模式；Windows 和 System Mode 沿用既有 user-execution 请求（目录列举、分块读取、暂存追加、创建目录、移动和删除）。Root 会话沿用已授权 Helper。不会把后台任务变成 Server 服务账号的文件访问，也不新增任意命令执行能力或第二套 HTTP 文件接口。归档卡片不自动申请涵盖读、写、创建、移动和删除的组合提权；权限拒绝后可以调整权限再重试。已生效的授权仍按每个底层请求检查，不将解压获得的条目路径自动授权为 root。
+- `GET /api/v1.0/files/archive/entries?path=...`：返回相对路径、目录标记、未压缩大小。
+- `POST /api/v1.0/files/archive/content`：请求 `{ path, entryName }`，返回经过完整验证的有界内容。每次重新鉴权、打开归档和验证条目；成员路径不会作为宿主文件路径使用。
 
-读流可寻址（解压读取中央目录），算法缓冲与追加写块不超过 128 KiB；身份绑定读流复用现有最大 1 MiB 的读取缓存。任务清理使用独立取消令牌，即使任务被取消也尝试清理；清理失败记入任务详情，异常退出遗留不做跨重启自动回放。
+固实包提取单文件可能需要解码前面的块；TAR.GZ 的列表/预览仍需顺序验证整个 TAR 和 GZip 尾部，不能承诺随机读取或视频拖动播放。CLI 外部格式每次请求需要有界输入快照，首版大包性能还有优化空间。
 
-## 路径与资源策略
+## 权限与 CLI 执行边界
 
-压缩不跟随链接，不压缩目标自身；目录深度最多 128。ZIP 条目使用 `/` 分隔，拒绝空/点/父目录组件、绝对路径、盘符/冒号、反斜杠及控制字符；每个组件按可移植文件名校验，避免 Windows ADS 和设备名。解压校验规范化后重复名称、大小写碰撞和文件/目录祖先冲突，拒绝 Unix 符号链接、设备等非普通条目与 DOS reparse 属性。不恢复归档权限、所有者或可执行位；首版以内容和目录结构为准，不保证时间戳等元数据。
+压缩/解压继续沿用 `/files/operations` 的幂等、捕获身份、路径互斥、取消、进度和任务卡片。`ArchiveFileSystem` 决定所有用户源/目标访问；System Mode、Windows 和 root 会话的读写仍通过已有身份/授权适配器，权限拒绝不能切换到服务账号读取。
 
-首版限制：最多 10,000 条目，单文件最多 4 GiB，总未压缩数据最多 10 GiB；超过 1 MiB 的条目最大压缩比 1,000。声明值预检与实际写入计数双重检查，校验内容长度；ZIP 校验条目 CRC，TAR.GZ 通过完整读取校验 GZip trailer，裸 TAR 没有内容 CRC。整个包无效则不发布任何目标。归档输入和压缩输出上限均为 2 GiB；读取尾部 EOCD/ZIP64 记录，在 BCL 构造条目之前限制中央目录不超过 64 MiB。中央目录元数据由 BCL 解析，内存随受限元数据增长；正文始终分块。
+CLI 只收到一个通过已授权读流复制的随机私有临时输入。Unix 临时目录为 0700；Windows 使用当前账号临时目录。CLI 不接收原始用户路径、目标目录、密码或任意命令；固定格式选择器、ArgumentList、关闭 stdin、清空继承环境、禁用通配选择并使用显式字面 include，防止 `@` 成员名被解释为宿主 listfile，并从 stdout 返回指定条目内容。目标路径只由 Server 根据验证后的条目生成，写入仍经身份适配器。隔离快照中没有相邻分卷；不运行 SFX。
 
-## 验证与上线边界
+解码进程沿用 Server 的 OS 身份，只处理快照。这个设计隔离生命周期和崩溃，**不是 OS 安全沙盒**，没有内核内存/CPU 配额；不应把它描述为已完成针对解码器漏洞的低权限隔离。真实 System Helper、不同 OS/架构与资源耗尽场景仍需部署验收。并发 CLI 上限 2，每次 CLI 调用超时 2 分钟，取消/失败终止进程树并等待退出，最后删除快照。
 
-服务端测试：文件/目录往返、Unicode、空条目、多选、重名与保留两者、幂等、取消清理、路径穿越/绝对路径/反斜杠、重复和祖先冲突、链接、长度/容量限制、损坏包、权限拒绝、身份绑定分块请求。客户端测试：命令准入、固定源与目标、会话切换保护、任务提交与刷新。编译 Server、桌面及三种语言资源。
+## 资源、路径与发布策略
 
-安全依据：[.NET ZIP/TAR 最佳实践](https://learn.microsoft.com/en-us/dotnet/standard/io/zip-tar-best-practices)。真机 System Mode、权限提升及大包性能另行验收，不以单元测试代替。
+最多 10,000 条目，单文件 4 GiB，总未压缩数据 10 GiB，输入及创建输出 2 GiB，元数据 64 MiB，深度 128。ZIP 在 BCL 分配条目之前验证中央目录/ZIP64 边界；TAR 在 BCL 前逐个限制原始头与 PAX/GNU 扩展记录，完整检查结束块和 GZip CRC/ISIZE。CLI 列表有界且拒绝歧义、重复字段、加密、链接、reparse、ADS、anti-item；整体展开比与可用的逐条压缩大小受限。正文检查实际输出长度和 CLI 成功退出，ZIP 额外校验 CRC。
 
+所有后端拒绝绝对/父目录/设备名/控制字符/非法组件、大小写与 Unicode 规范化冲突、文件作为父目录。CLI 的目录分隔符统一后再校验，文本路径不会直接用于文件创建。解压先写目标同目录临时目录，全部成功后不覆盖移动；失败/取消清理整个暂存。清理错误写入任务详情。未做跨重启临时条目扫描或缓存恢复。
 
-## 实现与验收记录
+`Assets/SevenZip/` 携带 win-x64、win-arm64 的 `7z.exe`/`7z.dll`，Linux x64/arm64 的 `7zz`，以及 macOS universal `7zz`。`runtime-files.json` 记录逐文件 SHA-256，执行前验证；`provenance.json` 记录上游下载及包哈希，原版许可证、README、源码链接随包发布。构建与 Linux 安装/修复流程显式恢复执行权限。默认不依赖用户安装的 7-Zip。分发包版本升级必须整体替换执行文件、DLL、哈希及许可证。
 
-实现文件：`Shared/RelaxKonOS.Protocol/Files/FileOperationDto.cs`、Server 的 `FileArchiveService` / `ArchiveFileSystem`、`FileOperationService.Archives`、Client 的 `ExplorerViewModel.Archives` 及已有右键菜单。Linux Helper 的移动在不覆盖模式下使用 `renameat2(RENAME_NOREPLACE)`，防止校验后的目标竞争覆盖。
-
-专项命令：
+## 验证
 
 ```text
 dotnet build RelaxKonOS.Server.Tests -m:1
 dotnet run --project RelaxKonOS.Server.Tests --no-build -- --archives-only
 dotnet run --project Tests/Client/RelaxKonOS.Explorer.Tests
+dotnet build Client/RelaxKonOS.Client.Desktop -m:1
 python Tools/verify-localization.py
 ```
 
-测试使用工作区 `.tmp/relaxkonos-archive-tests-*` 的独立生成样本并在结束时清理，不读取用户文件；在当前受限 Windows 环境中，系统临时目录的文件发布被权限拒绝，因此专项改在工作区验证。身份绑定测试使用模拟 transport 检查请求契约和捕获身份；不代表已连接实际 Linux/Windows System Helper。实际系统账号、root Helper allowlist、断线、中途 Helper 进程终止和 GiB 级性能仍需部署验收。任务能报告清理失败；进程异常退出或创建请求在 IPC 取消时已执行但未确认，可能遗留临时条目，首版没有跨重启清理扫描。
-
-
-ZIP 阶段结果：37 项服务端归档专项、348 项 Explorer 回归、4291 个三语资源键一致性检查通过；Server（含测试）、PrivilegedHelper 和桌面客户端（含 AXAML）编译通过。构建仍报告仓库现有依赖安全告警。
-
-
-## TAR 的流式安全边界
-
-创建使用 PAX TAR，读取使用 BCL TarReader 处理 V7/UStar/PAX/GNU 常规记录。只写入普通文件和目录；不恢复归档身份或权限。支持常见 `./` 容器根及 `./文件`，不接受父路径或绝对路径。硬链接、符号链接、稀疏文件、设备、FIFO 等记录被拒绝。
-
-`TarFramingStream` 在 BCL 解析前逐个检查 512 字节原始头，限制单个 PAX/GNU 扩展记录不超过 1 MiB、累计扩展数据不超过 64 MiB，头记录不超过 40,000 个；约束实际解码总量和最大扩张比。避免 BCL 在返回条目前先分配巨型扩展头。条目在新临时目录中逐一校验及写入，不整包缓存；发现后续冲突会删除整个临时目录。必须读到至少两个零结束块，并消费剩余零填充及 GZip 尾部；独立比对解码 TAR 的 CRC32 和 ISIZE，以拒绝缺失的 GZip 尾部。拒绝解码后追加的第二个 TAR 或非零尾随内容；不支持多成员 GZip。相比 ZIP 元数据预检，TAR 在顺序读取时验证，但同样在全部成功前不发布目录。
-
-## 7z / RAR 的后端选型
-
-7z 是归档格式，7-Zip 是支持多种格式的工具，两者不是同一层；RAR 等格式的解压支持不等于支持创建对应格式。ZIP/TAR/TAR.GZ 保留在 BCL 内置后端，不需要随产品分发 7-Zip。
-
-| 方案 | 优点 | 对本项目的代价与取舍 |
-|---|---|---|
-| .NET BCL | 无新增原生依赖，已有可寻址读流/追加写流可直接使用 | 当前用于 ZIP、TAR、TAR.GZ；不负责 7z/RAR |
-| SharpCompress 托管库 | 支持 7z/RAR 等读取，流式 API 适合受控文件适配器；主许可证 MIT | 解码器和字典内存仍需限制，solid 包需顺序处理；优先在隔离 worker 中评估 |
-| 7-Zip 原生 DLL | 官方解码器和广泛格式支持 | 多平台 ABI、架构产物、原生崩溃、许可及补丁分发；不直接加载到 Server 主进程 |
-| 受限 `7zz` 子进程 | 官方工具格式覆盖较广，可终止单个解码进程 | 需要固定版本、签名/哈希及各架构打包；7z 通常需要可寻址输入，CLI 输出不能直接替代受控条目协议 |
-
-建议下一阶段先做**隔离归档解码 worker**，首选评估 SharpCompress 的 7z/RAR 读取能力；官方 7-Zip 作为特定格式/性能需求的可选后端。worker 必须具有操作级输入边界、内存/CPU/时限、强制终止与有限输出协议；仅“另开进程”不等于权限隔离。身份绑定读取和结果写入仍由现有文件适配器提供，worker 不直接操作目标目录。固实包顺序解码，逐条返回受限元数据及内容；不通过 CLI 文本列表推导任意目标路径，不自动打开相邻分卷，不运行 SFX。
-
-创建 7z 需要后端提供可寻址输出或受控私有暂存，不能直接套用当前追加写流。密码应在任务级内存中传递，禁止进入命令行、日志、任务持久化；分卷与加密作为后续独立能力设计。新增第三方组件前固定版本、补齐许可证及测试样本，不假定“库支持”即所有格式变体已验收。本轮没有下载或嵌入 7-Zip/SharpCompress，也未宣告 7z/RAR 已可用。
-
-依据：[.NET ZIP/TAR 文档](https://learn.microsoft.com/en-us/dotnet/standard/io/zip-tar-best-practices)、[SharpCompress 格式表](https://github.com/adamhathcock/sharpcompress/blob/master/docs/FORMATS.md)、[SharpCompress 许可](https://github.com/adamhathcock/sharpcompress/blob/master/LICENSE.txt)、[7-Zip 分发许可](https://www.7-zip.org/license.txt)。
-
-
-TAR 扩展验证：58 项归档专项（38 项共享/身份任务检查、20 项 TAR 检查）及 356 项 Explorer 回归通过；三语资源共 4292 键一致。覆盖 TAR/PAX 创建、UStar 读取、TAR.GZ/TGZ 往返、复合后缀重名、路径/链接/冲突、截断与 GZip CRC/尾部缺失、PAX 元数据限额及取消清理。Server（含测试）和桌面客户端（含 AXAML）编译通过。未执行 GiB 级性能及真实 System Helper 联调，7z/RAR worker 尚未实现。
+Windows 本地验证：40 项原有/身份任务检查、20 项 TAR 检查、39 项 provider 检查通过；真实 7-Zip 覆盖 Unicode、选项形文件名、空目录、列表、单文件预览、解压、取消、损坏包、BZIP2 方法 ZIP 分流、独立 XZ/BZIP2 及身份读拒绝。378 项 Explorer 回归包含包内目录导航、文本只读显示、预览限额及不获取可执行文件；4296 个三语键一致。Server 和桌面编译通过。其他格式变体、Linux/macOS/ARM64 实机、真实 Helper 及 GiB 级性能未在本轮验收；打包这些运行文件不代表完成对应平台运行验证。

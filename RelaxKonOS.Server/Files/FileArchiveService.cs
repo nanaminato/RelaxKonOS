@@ -36,7 +36,9 @@ public static partial class FileArchiveService
         var parent = Path.GetDirectoryName(destination) ?? throw new ArgumentException("Destination needs a parent directory.");
         if ((await fs.Info(parent, ct))?.Type != FileSystemEntryType.Directory) throw new DirectoryNotFoundException(parent);
         var format = FileArchiveFormats.Detect(kind == FileOperationKind.Compress ? destination : sources[0])
-            ?? throw new NotSupportedException("Supported archive formats: ZIP, TAR and TAR.GZ/TGZ.");
+            ?? throw new NotSupportedException("Unsupported archive format.");
+        if (kind == FileOperationKind.Compress && !FileArchiveFormats.CanCreate(format))
+            throw new NotSupportedException("This archive format is read-only.");
         var staging = Path.Combine(parent, kind == FileOperationKind.Compress ? $".archive.{Guid.NewGuid():N}.rkup" : $".relaxkonos-archive-{Guid.NewGuid():N}");
         var created = false;
         try
@@ -96,74 +98,22 @@ public static partial class FileArchiveService
                 await RejectLinksAsync(fs, sources[0], ct);
                 await using var input = await fs.Read(sources[0], ct);
                 if (!input.CanSeek || input.Length > MaximumArchiveBytes) throw new InvalidDataException("Archive input is too large or not seekable.");
-                if (format != FileArchiveFormat.Zip)
+                if (!FileArchiveFormats.IsBcl(format))
+                {
+                    await using var archive = await SevenZipArchiveProvider.OpenAsync(input, format, ct, sources[0]);
+                    await fs.CreateDirectory(staging, ct); created = true;
+                    await ExtractProviderAsync(fs, archive, staging, report, ct);
+                }
+                else if (format != FileArchiveFormat.Zip)
                 {
                     await fs.CreateDirectory(staging, ct); created = true;
                     await ExtractTarAsync(fs, input, staging, format, report, ct);
                 }
                 else
                 {
-                    await ValidateDirectoryBoundsAsync(input, ct);
-                    input.Position = 0;
-                    using var zip = new ZipArchive(input, ZipArchiveMode.Read);
-                    if (zip.Entries.Count > MaximumEntries) throw new InvalidDataException("Too many archive entries.");
-                    var entries = new Dictionary<string, bool>(Names);
-                    var plan = new List<(ZipArchiveEntry Entry, string Name, bool Directory)>();
-                    long total = 0;
-                    foreach (var entry in zip.Entries)
-                    {
-                        ct.ThrowIfCancellationRequested();
-                        var directory = entry.FullName.EndsWith('/');
-                        var name = directory ? entry.FullName[..^1] : entry.FullName;
-                        ValidateName(name);
-                        var type = (entry.ExternalAttributes >> 16) & 0xf000;
-                        if (type != 0 && type != (directory ? 0x4000 : 0x8000)
-                            || (entry.ExternalAttributes & (int)FileAttributes.ReparsePoint) != 0)
-                            throw new InvalidDataException("Links and special archive entries are not supported.");
-                        if (!entries.TryAdd(name.Normalize(System.Text.NormalizationForm.FormC), directory)) throw new InvalidDataException("Duplicate archive entries.");
-                        if (entry.Length < 0 || entry.Length > MaximumEntryBytes || (total = checked(total + entry.Length)) > MaximumTotalBytes
-                            || directory && entry.Length != 0 || entry.Length > 1024 * 1024 && entry.Length / Math.Max(1, entry.CompressedLength) > 1000)
-                            throw new InvalidDataException("Archive expansion limit exceeded.");
-                        plan.Add((entry, name, directory));
-                    }
-                    foreach (var name in entries.Keys)
-                    {
-                        for (var slash = name.IndexOf('/'); slash >= 0; slash = name.IndexOf('/', slash + 1))
-                            if (entries.TryGetValue(name[..slash], out var directory) && !directory)
-                                throw new InvalidDataException("An archive file is also a parent directory.");
-                    }
+                    await using var archive = await OpenReaderAsync(input, sources[0], ct);
                     await fs.CreateDirectory(staging, ct); created = true;
-                    var directories = new HashSet<string>(Names) { staging };
-                    async Task EnsureDirectory(string path)
-                    {
-                        if (!directories.Add(path)) return;
-                        var ancestor = Path.GetDirectoryName(path)!;
-                        await EnsureDirectory(ancestor);
-                        await RejectLinksAsync(fs, path, ct);
-                        await fs.CreateDirectory(path, ct);
-                    }
-                    foreach (var item in plan)
-                    {
-                        ct.ThrowIfCancellationRequested();
-                        var target = Path.Combine(staging, item.Name.Replace('/', Path.DirectorySeparatorChar));
-                        if (item.Directory) await EnsureDirectory(target);
-                        else
-                        {
-                            await EnsureDirectory(Path.GetDirectoryName(target)!);
-                            await RejectLinksAsync(fs, target, ct);
-                            var temporary = Path.Combine(Path.GetDirectoryName(target)!, $".entry.{Guid.NewGuid():N}.rkup");
-                            await fs.CreateFile(temporary, ct);
-                            await using (var output = new BufferedStream(new AppendStream(fs, temporary, ct, MaximumEntryBytes), 131072))
-                            await using (var content = item.Entry.Open())
-                            {
-                                var crc = await CopyAsync(content, output, item.Entry.Length,
-                                    bytes => report(item.Name, bytes, item.Entry.Length, false), ct);
-                                if (crc != item.Entry.Crc32) throw new InvalidDataException("ZIP content checksum mismatch.");
-                            }
-                            await fs.Move(temporary, target, ct);
-                        }
-                        report(item.Name, item.Entry.Length, item.Entry.Length, true);
-                    }
+                    await ExtractProviderAsync(fs, archive, staging, report, ct);
                 }
             }
             ct.ThrowIfCancellationRequested();
@@ -180,7 +130,7 @@ public static partial class FileArchiveService
     }
 
     // Bound the central directory before BCL materializes its entries, including ZIP64.
-    private static async Task ValidateDirectoryBoundsAsync(Stream input, CancellationToken ct)
+    internal static async Task<(long Start, long Count)> ValidateDirectoryBoundsAsync(Stream input, CancellationToken ct)
     {
         if (input.Length < 22) throw new InvalidDataException("ZIP end record is missing.");
         var tail = new byte[(int)Math.Min(input.Length, 65557)];
@@ -218,6 +168,7 @@ public static partial class FileArchiveService
         }
         if (count > MaximumEntries || size > MaximumMetadataBytes || start > (ulong)endPosition || size > (ulong)endPosition - start)
             throw new InvalidDataException("ZIP central directory exceeds archive limits.");
+        return ((long)start, (long)count);
     }
 
     public static void ValidateName(string name)
@@ -271,7 +222,7 @@ public static partial class FileArchiveService
         return ~crc;
     }
 
-    private sealed class AppendStream(ArchiveFileSystem fs, string path, CancellationToken token, long maximumBytes) : Stream
+    private sealed class AppendStream(ArchiveFileSystem fs, string path, CancellationToken token, long maximumBytes, Action<long>? report = null) : Stream
     {
         private long position;
         public override bool CanRead => false;
@@ -290,6 +241,7 @@ public static partial class FileArchiveService
                 var length = await fs.Append(path, position, chunk, token);
                 if (length != position + chunk.Length) throw new IOException("Archive append length mismatch.");
                 position = length; buffer = buffer[chunk.Length..];
+                report?.Invoke(position);
             }
         }
         public override void Flush() => token.ThrowIfCancellationRequested();

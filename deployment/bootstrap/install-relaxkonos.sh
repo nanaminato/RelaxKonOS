@@ -264,6 +264,7 @@ publish_payload() { # bundle version
   chmod 0755 "$INSTALL_ROOT" "$(versions_root)"
   chmod -R u=rwX,go=rX "$root"
   chmod 0755 "$root/server/RelaxKonOS.Server" "$root/guardian/RelaxKonOS.Guardian.Agent" "$root/privileged-helper/RelaxKonOS.PrivilegedHelper"
+  chmod 0755 "$root/server/Assets/SevenZip/linux-x64/7zz" "$root/server/Assets/SevenZip/linux-arm64/7zz"
 }
 
 # --- action eligibility --------------------------------------------------------------------------
@@ -577,7 +578,8 @@ for item in json.loads((bundle/'manifest.json').read_text())['files']:
     if not item['path'].startswith(prefix): continue
     relative=item['path'][len(prefix):]; target=version/component/relative
     if target.is_symlink() or not target.resolve().is_relative_to((version/component).resolve()): raise ValueError('Repair path escaped payload')
-    target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(bundle/item['path'],target);target.chmod(0o755 if target.name.startswith('RelaxKonOS.') and target.suffix not in ('.dll','.json','.pdb') else 0o644)
+    executable=(target.name.startswith('RelaxKonOS.') and target.suffix not in ('.dll','.json','.pdb')) or relative in ('Assets/SevenZip/linux-x64/7zz','Assets/SevenZip/linux-arm64/7zz')
+    target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(bundle/item['path'],target);target.chmod(0o755 if executable else 0o644)
 shutil.copyfile(bundle/'manifest.json',version/'manifest.json')
 REPAIR_FILES
       done
