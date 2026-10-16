@@ -168,7 +168,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         : IsDirectUrl ? $"{SelectedSource?.Label} · {PackageUri}" : SelectedSource?.Label ?? string.Empty;
     public string SelectedModeText => SelectedMode?.Label ?? string.Empty;
     public bool ShowsSudoPassword => SelectedMode?.Mode == ServerInstallMode.LinuxSystem;
-    public string SudoPasswordText => Text("server_center.wizard.sudo_password", "sudo password (leave blank to use the SSH password)");
+    public string SudoPasswordText => Text("server_center.wizard.sudo_password", "Administrator password (sudo user or root; blank uses SSH password)");
     public string TargetText => IsLocalInstallation ? Environment.MachineName : _serverCenter.SelectedHost is { } target
         ? $"{target.DisplayName} · {target.SshUserName}"
         : string.Empty;

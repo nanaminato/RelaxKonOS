@@ -169,7 +169,7 @@ data class ServerHostProbe(
     val osVersion: String?,
     val osSupported: Boolean,
     val elevated: Boolean,
-    val sudoAvailable: Boolean,
+    val privilegeElevationAvailable: Boolean,
     val systemdAvailable: Boolean,
     val diskAvailableBytes: Long?,
     val requestedPort: Int?,

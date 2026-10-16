@@ -95,7 +95,7 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
                     if (page == 1) state.probe?.let {
                         Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                         Text("${it.hostPlatform} · ${it.architecture} · ${it.osId.orEmpty()} ${it.osVersion.orEmpty()}\n${it.runtimeIdentifier}\n${it.verifiedAtUtc}")
-                        Text(stringResource(R.string.server_maintenance_probe, it.osSupported.toString(), it.sudoAvailable.toString(),
+                        Text(stringResource(R.string.server_maintenance_probe, it.osSupported.toString(), it.privilegeElevationAvailable.toString(),
                             it.systemdAvailable.toString(), it.diskAvailableBytes?.toString().orEmpty(), it.requestedPortAvailable?.toString().orEmpty(), it.missingDependencies.joinToString()))
                         HorizontalDivider()
                         MaintenanceDetail(R.string.server_maintenance_install_root, snapshot.installRoot)

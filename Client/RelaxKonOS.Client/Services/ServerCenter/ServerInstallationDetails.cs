@@ -91,7 +91,7 @@ public static class ServerInstallationDetails
             Add("runtime", "Runtime identifier", probe.RuntimeIdentifier?.ToString());
             Add("os_supported", "OS in supported matrix", YesNo(probe.OsSupported));
             Add("elevated", "SSH preflight has elevated privileges", YesNo(probe.Elevated));
-            Add("sudo", "sudo available", YesNo(probe.SudoAvailable));
+            Add("elevation", "privilege elevation available", YesNo(probe.PrivilegeElevationAvailable));
             Add("systemd", "systemd available", YesNo(probe.SystemdAvailable));
             Add("disk", "Available space on installation filesystem", probe.DiskAvailableBytes is { } bytes
                 ? $"{bytes / 1073741824d:F2} GiB ({bytes:N0} B)" : null);

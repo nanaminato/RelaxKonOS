@@ -115,8 +115,8 @@ var modeGate = typeof(RelaxKonOS.Client.ViewModels.ServerCenter.ServerCenterView
 var sudoProbe = new ServerHostProbeDto(HostPlatformKind.Linux, "x86_64", ServerRuntimeIdentifier.LinuxX64,
     "ubuntu", "26.04", true, false, true, true, null, null, null, null, null, null, false, [], DateTimeOffset.UtcNow);
 Check((bool)modeGate.Invoke(null, [HostPlatformKind.Linux, sudoProbe, ServerInstallMode.LinuxSystem])! &&
-    !(bool)modeGate.Invoke(null, [HostPlatformKind.Linux, sudoProbe with { SudoAvailable = false }, ServerInstallMode.LinuxSystem])!,
-    "普通 Linux SSH 账户有 sudo 时允许系统模式，没有 sudo 时仍阻止");
+    !(bool)modeGate.Invoke(null, [HostPlatformKind.Linux, sudoProbe with { PrivilegeElevationAvailable = false }, ServerInstallMode.LinuxSystem])!,
+    "普通 Linux SSH 账户有 sudo 或 su 工具时允许系统模式，没有提权工具时阻止");
 var client = new ServerCenterDeploymentClient(transport);
 var operationId = Guid.NewGuid();
 var request = new ServerDeploymentRequest(ServerDeploymentProtocol.Version, operationId,

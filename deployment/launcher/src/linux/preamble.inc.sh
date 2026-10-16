@@ -16,16 +16,29 @@ set -euo pipefail
 protocol_version=1
 sudo_requested=false
 sudo_password=
+elevation_method=sudo
 run_privileged() {
-  # Authenticate via stdin; the engine never inherits password input, including NOPASSWD policies.
-  sudo -S -k -p '' -- bash -c 'exec "$@" </dev/null' bash "$@" <<< "$sudo_password"
+  # Neither authentication method passes the password to the engine, even with NOPASSWD.
+  if [[ ${elevation_method:-sudo} == su ]]; then
+    local command
+    printf -v command '%q ' bash -c 'exec "$@" </dev/null' bash "$@"
+    su --shell /bin/bash --command "exec $command" root <<< "$sudo_password"
+  else
+    sudo -S -k -p '' -- bash -c 'exec "$@" </dev/null' bash "$@" <<< "$sudo_password"
+  fi
 }
 authenticate_sudo() {
   [[ $sudo_requested == true ]] || return 0
-  [[ $options_mode == linuxSystem || $operation_kind == probe ]] || launcher_fail invalid_request "sudo is only supported for Linux System Mode"
-  if ! command -v sudo >/dev/null || ! run_privileged true >/dev/null 2>&1; then
-    launcher_fail elevation_required "sudo 验证失败：请检查 sudo 密码以及当前账号的 sudo 权限。"
+  [[ $options_mode == linuxSystem || $operation_kind == probe ]] || launcher_fail invalid_request "Privilege elevation is only supported for Linux System Mode"
+  elevation_method=sudo
+  if command -v sudo >/dev/null && run_privileged true >/dev/null 2>&1; then
+    return 0
   fi
+  elevation_method=su
+  if command -v su >/dev/null && run_privileged true >/dev/null 2>&1; then
+    return 0
+  fi
+  launcher_fail elevation_required "管理员提权失败：请提供有 sudo 权限的当前账号密码，或可通过 su 提权的 root 密码。"
 }
 script_raw=${BASH_SOURCE[0]}
 staging_root=$(cd -- "$(dirname -- "$script_raw")" && pwd -P)

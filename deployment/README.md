@@ -98,7 +98,7 @@ Linux Mihomo 保留 systemd 策略和 `/etc/relaxkonos/proxy/`，重装不擅自
 
 本地维护入口 `--maintenance=remove-managed-components --maintenanceDataRoot <已核验数据根>` 不启动 HTTP 服务，仅允许 root/管理员或已配置的 Windows 个人安装所有者执行，必须在原 Server 已停止且原部署配置与 Helper 仍可用时运行。
 
-普通 SSH 账户通过 sudo 维护系统安装时，已安装引擎的文件和可执行权限检查也必须使用同一次经验证的 sudo 身份。部署目录仅 root 可遍历时，不能用普通 SSH 用户的 `test -x` 判断引擎缺失；无 sudo 授权或脚本实际缺失时仍须拒绝操作。
+普通 SSH 账户通过 sudo 维护系统安装时，已安装引擎的文件和可执行权限检查也必须使用同一次经验证的 sudo 身份。部署目录仅 root 可遍历时，不能用普通 SSH 用户的 `test -x` 判断引擎缺失；无法通过 sudo 或 su 提权，或脚本实际缺失时仍须拒绝操作。
 
 SSH 私有解压目录使用 `0700/0600` 权限；发布到系统模式安装目录后，必须让服务账户可遍历程序目录并读取运行库和程序集，同时保持程序文件仅 root 可写。程序的 `server/data` 必须链接到持久化的受管服务器数据目录。修复部署脚本后必须重新制作 Server ZIP，因为安装实际执行的是 ZIP 内的版本化引擎，仅更新桌面客户端不会更新旧 ZIP 中的安装器。安装器等待 HTTP/HTTPS 健康端点最多 60 秒，不能用 systemd 的 active 状态替代健康检查成功。
 
@@ -187,7 +187,7 @@ location /api/v1.0/files/uploads/ {
 
 System Mode（需要 root）使用显式模式：
 
-服务器中心可由普通 SSH 管理账户显式选择 Linux 系统模式：安装前验证 sudo 密码和权限，部署引擎通过 sudo 执行，系统状态文件通过 sudo 核验。向导中的 sudo 密码留空时使用 SSH 登录密码；密码只通过 SSH 标准输入传递，不写入命令、请求或日志。无需 root SSH 登录或配置免密 sudo。暂存与操作日志保留在原 SSH 账户下，安装器不会改变这些目录的所有者。
+服务器中心可由普通 SSH 管理账户显式选择 Linux 系统模式：安装前验证 sudo 或 su 密码和权限，部署引擎和系统状态读取通过同一提权身份执行。向导中的 管理员密码留空时使用 SSH 登录密码；密码只通过 SSH 标准输入传递，不写入命令、请求或日志。无需 root SSH 登录或配置免密 sudo。暂存与操作日志保留在原 SSH 账户下，安装器不会改变这些目录的所有者。
 
 桌面操作记录选中后显示操作 ID、阶段、问题码和完整摘要；“从宿主刷新所选操作”同时通过固定的 Linux `--diagnostics OPERATION_ID` 或 Windows `-DiagnosticsOperationId` 读取至多 64 KiB 部署日志。日志仅在当前界面显示，不写入本地索引，并遮盖密码、secret、token 和 authorization 字段。安装向导打开时，工作区隐藏重复进度条，由向导显示“安装中”和一个进度条。
 
@@ -263,3 +263,5 @@ or inconsistent installation must be repaired before its managed state can be re
 Debian 13 与 Linux Mint 的安装预检、发布清单和 Samba 权限助手使用相同的支持范围。Mint Debian Edition（LMDE）不在本次支持范围内；不会仅凭 `ID_LIKE=ubuntu/debian` 放行其他发行版。Linux 仍需 systemd、glibc、PAM，以及所选功能需要的 APT/UFW 等依赖。发行版识别的自动检查不替代目标系统上安装、升级、登录、终端及系统管理功能的实机验收。
 
 Docker Engine 内置安装使用固定的官方 APT 软件源：Debian 13 → Debian Trixie，Mint 21.x → Ubuntu Jammy，Mint 22.x → Ubuntu Noble。仍需在安装时显式授权 Docker 访问；已存在的外部运行时和冲突软件包不会自动接管或卸载。参考 [Docker Debian 安装说明](https://docs.docker.com/engine/install/debian/)和 [Mint 版本基础](https://linuxmint.com/download_all.php)。
+
+Linux SSH 提权支持 sudo 和 su：先验证当前账号的 sudo 授权，失败后使用同一管理员密码尝试 `su` 到 root。Debian 禁止 root SSH 登录且普通账号没有 sudo 授权时，可填写 root 密码进行检查和系统维护。探测字段 `privilegeElevationAvailable` 表示存在 sudo 或 su 工具，实际授权在执行时验证。su 命令参数按 Bash 参数逐个转义，部署引擎标准输入为 `/dev/null`；密码不进入命令、文件或日志。系统安装仍需 sudo/visudo 供运行时 Helper 使用，缺少依赖时按预检提示安装。

@@ -121,7 +121,7 @@ public partial class ServerCenterViewModel : ObservableObject
     public string UpdateText => T("server_center.update", "Update RelaxKonOS");
     public string RecoverText => T("server_center.recover", "Recover installation");
     public string IncompleteInstallationText => T("server_center.incomplete_installation", "Services exist but the managed installation record is missing. Recover the installation before updating or uninstalling.");
-    public string MaintenanceSudoPasswordText => T("server_center.wizard.sudo_password", "sudo password (leave blank to use the SSH password)");
+    public string MaintenanceSudoPasswordText => T("server_center.wizard.sudo_password", "Administrator password (sudo user or root; blank uses SSH password)");
     [ObservableProperty] private string _operationDiagnostics = string.Empty;
     public bool ShowWorkspaceProgress => IsBusy && !InstallationWizardOpen;
     public string OperationDetailsText => SelectedOperation is { } operation
@@ -497,7 +497,7 @@ public partial class ServerCenterViewModel : ObservableObject
             StatusMessage = T("server_center.progress.checking", "Checking the installation environment…");
             var probeReceipt = await ExecuteReadOnlyAsync(session, tools, ServerDeploymentKind.Probe, null, cancellationToken).ConfigureAwait(true);
             var probe = probeReceipt.Probe;
-            var sudoPassword = platform.Platform == HostPlatformKind.Linux && probe?.Elevated == false && probe.SudoAvailable && probe.ExistingMode != ServerInstallMode.LinuxUser
+            var sudoPassword = platform.Platform == HostPlatformKind.Linux && probe?.Elevated == false && probe.PrivilegeElevationAvailable && probe.ExistingMode != ServerInstallMode.LinuxUser
                 ? (!string.IsNullOrEmpty(MaintenanceSudoPassword) ? MaintenanceSudoPassword : (credential as ServerCenterSshCredential.Password)?.Secret ?? "") : null;
             if (sudoPassword is not null)
             {
@@ -769,7 +769,7 @@ public partial class ServerCenterViewModel : ObservableObject
                 if (probeReceipt.State != ServerDeploymentState.Succeeded || probeReceipt.Probe is null ||
                     probeReceipt.Probe.RuntimeIdentifier != runtime || (!probeReceipt.Probe.OsSupported && !installation.AllowUnsupportedSystem))
                 {
-                    ErrorMessage = probeReceipt.SafeMessage ?? T("server_center.sudo_failed", "sudo authentication failed. Check the sudo password and account permissions.");
+                    ErrorMessage = probeReceipt.SafeMessage ?? T("server_center.sudo_failed", "Privilege elevation failed. Check the sudo user password and permissions, or the root password for su.");
                     return false;
                 }
                 probe = probeReceipt.Probe;
@@ -978,7 +978,7 @@ public partial class ServerCenterViewModel : ObservableObject
                 DateTimeOffset.UtcNow,
                 cancellationToken).ConfigureAwait(true);
             var probe = await ExecuteReadOnlyAsync(session, tools, ServerDeploymentKind.Probe, null, cancellationToken).ConfigureAwait(true);
-            var sudoPassword = platform.Platform == HostPlatformKind.Linux && probe.Probe?.Elevated == false && probe.Probe.SudoAvailable && probe.Probe.ExistingMode != ServerInstallMode.LinuxUser
+            var sudoPassword = platform.Platform == HostPlatformKind.Linux && probe.Probe?.Elevated == false && probe.Probe.PrivilegeElevationAvailable && probe.Probe.ExistingMode != ServerInstallMode.LinuxUser
                 ? (!string.IsNullOrEmpty(MaintenanceSudoPassword) ? MaintenanceSudoPassword : (credential as ServerCenterSshCredential.Password)?.Secret ?? "") : null;
             if (sudoPassword is not null)
                 probe = await ExecuteReadOnlyAsync(session, tools, ServerDeploymentKind.Probe, null, cancellationToken, sudoPassword).ConfigureAwait(true);
@@ -1541,7 +1541,7 @@ public partial class ServerCenterViewModel : ObservableObject
         (platform, mode) switch
         {
             (HostPlatformKind.Windows, ServerInstallMode.WindowsSystem) => probe.Elevated,
-            (HostPlatformKind.Linux, ServerInstallMode.LinuxSystem) => probe.Elevated || probe.SudoAvailable,
+            (HostPlatformKind.Linux, ServerInstallMode.LinuxSystem) => probe.Elevated || probe.PrivilegeElevationAvailable,
             (HostPlatformKind.Linux, ServerInstallMode.LinuxUser) => true,
             _ => false
         };

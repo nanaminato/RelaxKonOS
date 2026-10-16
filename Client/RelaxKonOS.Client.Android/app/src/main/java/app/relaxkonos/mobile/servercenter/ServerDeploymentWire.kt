@@ -163,7 +163,7 @@ internal object ServerDeploymentWire {
             osVersion = fields.nullableString("osVersion"),
             osSupported = fields.required("osSupported").asBoolean(),
             elevated = fields.required("elevated").asBoolean(),
-            sudoAvailable = fields.required("sudoAvailable").asBoolean(),
+            privilegeElevationAvailable = fields.required("privilegeElevationAvailable").asBoolean(),
             systemdAvailable = fields.required("systemdAvailable").asBoolean(),
             diskAvailableBytes = fields.nullableLong("diskAvailableBytes"),
             requestedPort = fields.nullableLong("requestedPort")?.toIntExact(),

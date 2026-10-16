@@ -166,8 +166,8 @@ probe_json() {
   fi
   if is_supported_linux_system "$os_id" "$os_version"; then os_supported=true; fi
   local elevated=false; [[ $EUID -eq 0 ]] && elevated=true
-  local sudo_available=false
-  command -v sudo >/dev/null && sudo_available=true
+  local elevation_available=false
+  if command -v sudo >/dev/null || command -v su >/dev/null; then elevation_available=true; fi
   local systemd_available=false
   command -v systemctl >/dev/null && [[ -d /run/systemd/system ]] && systemd_available=true
   local disk
@@ -201,9 +201,9 @@ probe_json() {
     if (exec 3<>"/dev/tcp/127.0.0.1/$options_server_port") 2>/dev/null; then port_available=false; exec 3<&- 3>&- 2>/dev/null || true; fi
   fi
 
-  printf '{"hostPlatform":"linux","architecture":"%s","runtimeIdentifier":%s,"osId":%s,"osVersion":%s,"osSupported":%s,"elevated":%s,"sudoAvailable":%s,"systemdAvailable":%s,"diskAvailableBytes":%s,"requestedPort":%s,"requestedPortAvailable":%s,"existingInstallationId":%s,"existingMode":%s,"existingVersion":%s,"existingInstalled":%s,"missingDependencies":%s,"verifiedAtUtc":"%s"}' \
+  printf '{"hostPlatform":"linux","architecture":"%s","runtimeIdentifier":%s,"osId":%s,"osVersion":%s,"osSupported":%s,"elevated":%s,"privilegeElevationAvailable":%s,"systemdAvailable":%s,"diskAvailableBytes":%s,"requestedPort":%s,"requestedPortAvailable":%s,"existingInstallationId":%s,"existingMode":%s,"existingVersion":%s,"existingInstalled":%s,"missingDependencies":%s,"verifiedAtUtc":"%s"}' \
     "$machine" "$(json_string_or_null "$runtime")" "$(json_string_or_null "$os_id")" "$(json_string_or_null "$os_version")" \
-    "$os_supported" "$elevated" "$sudo_available" "$systemd_available" "$(json_number_or_null "$disk")" \
+    "$os_supported" "$elevated" "$elevation_available" "$systemd_available" "$(json_number_or_null "$disk")" \
     "$(json_number_or_null "$options_server_port")" "$port_available" \
     "$(json_string_or_null "$(state_field "$existing_file" installationId)")" "$(json_string_or_null "$existing_mode")" \
     "$(json_string_or_null "$(state_field "$existing_file" version)")" "$installed" "$missing" "$(now_utc)"

@@ -57,7 +57,7 @@ internal class ServerMaintenanceViewModel(application: Application) : AndroidVie
                         mutable.value = mutable.value.copy(progress = R.string.server_progress_checking)
                         val probe = requireNotNull(action(ServerDeploymentKind.Probe,
                             ServerDeploymentOptions(ServerPackageSourceKind.OfficialStable, ServerNetworkProfile.Loopback, serverPort = 5000)).probe)
-                        val mode = probe.existingMode ?: if (platform == ServerHostPlatform.Windows) ServerInstallMode.WindowsSystem else if (probe.elevated || probe.sudoAvailable) ServerInstallMode.LinuxSystem else ServerInstallMode.LinuxUser
+                        val mode = probe.existingMode ?: if (platform == ServerHostPlatform.Windows) ServerInstallMode.WindowsSystem else if (probe.elevated || probe.privilegeElevationAvailable) ServerInstallMode.LinuxSystem else ServerInstallMode.LinuxUser
                         val password = if (mode == ServerInstallMode.LinuxSystem && !probe.elevated) sudo.ifEmpty { String(secret) } else null
                         val options = ServerDeploymentOptions(ServerPackageSourceKind.OfficialStable, ServerNetworkProfile.Loopback, mode = mode)
                         val before = requireNotNull(action(ServerDeploymentKind.Status, options, password).snapshot)

@@ -269,7 +269,7 @@ internal class ServerInstallViewModel(application: Application) : AndroidViewMod
                     else -> if (platform == ServerHostPlatform.Windows) ServerInstallMode.WindowsSystem
                         else if (probe.elevated) ServerInstallMode.LinuxSystem else ServerInstallMode.LinuxUser
                 }
-                check(mode == ServerInstallMode.LinuxUser || probe.elevated || mode == ServerInstallMode.LinuxSystem && probe.sudoAvailable)
+                check(mode == ServerInstallMode.LinuxUser || probe.elevated || mode == ServerInstallMode.LinuxSystem && probe.privilegeElevationAvailable)
                 check(mode != ServerInstallMode.LinuxUser || !probe.elevated && selection.certificateMode != "custom")
                 val sudoPassword = if (mode == ServerInstallMode.LinuxSystem && !probe.elevated)
                     selection.sudoPassword.ifEmpty { String(secret) } else null

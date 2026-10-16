@@ -815,7 +815,7 @@ function Get-ProbeJson {
         osVersion               = $osVersion
         osSupported             = $osSupported
         elevated                = $elevated
-        sudoAvailable           = $false
+        privilegeElevationAvailable           = $false
         systemdAvailable        = $false
         diskAvailableBytes      = $disk
         requestedPort           = $script:optionsServerPort
