@@ -28,7 +28,10 @@ public partial class ExplorerMainView
             .FirstOrDefault(pair => ReferenceEquals(pair.item.Command, ViewModel?.RenameCommand)).index;
         if (insertAt <= 0) insertAt = Math.Max(0, items.Count - 2);
         items.Insert(insertAt, _saveToHostMenuItem);
-        _compressMenuItem = new MenuItem { Header = LocalizedText.Get("explorer.archive.compress") };
+        _compressMenuItem = new MenuItem { Header = LocalizedText.Get("explorer.archive.compress_as") };
+        _compressMenuItem.Items.Add(new MenuItem { Header = "ZIP" });
+        _compressMenuItem.Items.Add(new MenuItem { Header = "TAR" });
+        _compressMenuItem.Items.Add(new MenuItem { Header = "TAR.GZ" });
         _extractMenuItem = new MenuItem { Header = LocalizedText.Get("explorer.archive.extract") };
         items.Insert(insertAt + 1, _compressMenuItem);
         items.Insert(insertAt + 2, _extractMenuItem);
@@ -56,11 +59,13 @@ public partial class ExplorerMainView
 
         if (_compressMenuItem is not null && _extractMenuItem is not null)
         {
-            _compressMenuItem.Command = vm.CompressCommand;
+            ((MenuItem)_compressMenuItem.Items[0]!).Command = vm.CompressCommand;
+            ((MenuItem)_compressMenuItem.Items[1]!).Command = vm.CompressTarCommand;
+            ((MenuItem)_compressMenuItem.Items[2]!).Command = vm.CompressTarGZipCommand;
             _compressMenuItem.IsVisible = !vm.IsPickerMode && vm.QueueOperationAsync is not null && selected > 0;
             _compressMenuItem.IsEnabled = vm.CanCompress;
             _extractMenuItem.Command = vm.ExtractCommand;
-            _extractMenuItem.IsVisible = singleFile && vm.SelectedEntry!.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+            _extractMenuItem.IsVisible = singleFile && FileArchiveFormats.Detect(vm.SelectedEntry!.Name) is not null
                 && !vm.IsPickerMode && vm.QueueOperationAsync is not null;
             _extractMenuItem.IsEnabled = vm.CanExtract;
         }

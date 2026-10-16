@@ -91,6 +91,7 @@ public static class FileArchiveChecks
         catch (InvalidDataException) { Check(!Directory.Exists(Path.Combine(root, "metadata-result")), "Central directory is bounded before BCL metadata allocation"); }
         Check(!Directory.EnumerateFileSystemEntries(root).Any(path => Path.GetFileName(path).StartsWith(".archive.") || Path.GetFileName(path).StartsWith(".relaxkonos-archive-")), "Failed and cancelled staging is cleaned");
         await CheckJobs(root, Check);
+        await TarArchiveChecks.RunAsync(root);
     }
 
     private static async Task CheckJobs(string root, Action<bool, string> check)
@@ -130,6 +131,14 @@ public static class FileArchiveChecks
         try { jobs.Get("other", job.Id); throw new Exception("Leaked archive job"); } catch (KeyNotFoundException) { check(true, "Archive jobs remain identity-scoped"); }
         try { jobs.Start("owner", new ClaimsPrincipal(), new(Guid.NewGuid(), FileOperationKind.Extract, [new(destination, source), new(source, destination)])); throw new Exception("Accepted multi-archive extraction"); }
         catch (ArgumentException) { check(true, "Extraction request requires exactly one source"); }
+        var tarDestination = Path.Combine(root, "job.tar.gz");
+        var tarRequest = request with { RequestId = Guid.NewGuid(), Items = [new(source, tarDestination)] };
+        var tarJob = jobs.Start("owner", new ClaimsPrincipal(new ClaimsIdentity()), tarRequest);
+        if ((await Wait(tarJob.Id)).State != FileOperationState.Completed) throw new Exception("TAR identity job failed.");
+        var tarConflict = jobs.Start("owner", new ClaimsPrincipal(new ClaimsIdentity()), tarRequest with { RequestId = Guid.NewGuid() });
+        var tarWaiting = await Wait(tarConflict.Id, dto => dto.State == FileOperationState.WaitingForDecision || dto.IsTerminal);
+        jobs.Decide("owner", tarConflict.Id, new(tarWaiting.Issue!.Id, FileOperationDecision.KeepBoth));
+        check((await Wait(tarConflict.Id)).State == FileOperationState.Completed && File.Exists(Path.Combine(root, "job (2).tar.gz")), "TAR identity jobs preserve compound suffixes when keeping both");
         transport.DenyReads = true;
         var deniedPath = Path.Combine(root, "denied.zip");
         var denied = jobs.Start("owner", new ClaimsPrincipal(new ClaimsIdentity()), request with { RequestId = Guid.NewGuid(), Items = [new(source, deniedPath)] });

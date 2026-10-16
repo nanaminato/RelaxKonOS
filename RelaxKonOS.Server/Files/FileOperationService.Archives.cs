@@ -57,7 +57,9 @@ public sealed partial class FileOperationService
 
     private static string ReserveArchiveName(string name, bool directory, ISet<string> reserved)
     {
-        var dot = directory ? -1 : name.LastIndexOf('.');
+        var dot = directory ? -1 : FileArchiveFormats.Detect(name) is { } format
+            ? name.Length - (format == FileArchiveFormat.TarGZip && name.EndsWith(".tgz", StringComparison.OrdinalIgnoreCase) ? 4 : FileArchiveFormats.Extension(format).Length)
+            : name.LastIndexOf('.');
         var stem = dot > 0 ? name[..dot] : name;
         var extension = dot > 0 ? name[dot..] : string.Empty;
         for (long number = 2; ; number++)

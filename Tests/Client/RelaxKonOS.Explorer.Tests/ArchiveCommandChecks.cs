@@ -42,6 +42,21 @@ public static class ArchiveCommandChecks
         vm.RequestTextInputAsync = (_, _, _, _) => Task.FromResult<string?>("../escape");
         await vm.ExtractCommand.ExecuteAsync(null);
         check(requests.Count == 2, "Archive prompt rejects path traversal before submission");
+        var expectedCount = requests.Count;
+        foreach (var suffix in new[] { ".tar", ".tar.gz", ".TGZ" })
+        {
+            var item = archive with { Name = "bundle" + suffix, Path = "/source/bundle" + suffix };
+            vm.SelectedEntry = item; vm.UpdatePickerSelection([item]);
+            check(vm.CanExtract, suffix + " enables extraction");
+            vm.RequestTextInputAsync = (_, _, name, _) => Task.FromResult<string?>(name);
+            await vm.ExtractCommand.ExecuteAsync(null);
+            check(requests[++expectedCount - 1].Items.Single().DestinationPath == "/source/bundle", suffix + " uses its full archive suffix for the output folder");
+        }
+        vm.RequestTextInputAsync = (_, _, name, _) => Task.FromResult<string?>(name);
+        await vm.CompressTarCommand.ExecuteAsync(null);
+        check(requests.Last().Items.Single().DestinationPath!.EndsWith(".tar", StringComparison.Ordinal), "TAR compression command selects TAR output");
+        await vm.CompressTarGZipCommand.ExecuteAsync(null);
+        check(requests.Last().Items.Single().DestinationPath!.EndsWith(".tar.gz", StringComparison.Ordinal), "TAR.GZ compression command selects compressed TAR output");
         vm.QueueOperationAsync = null;
         check(!vm.CanCompress && !vm.CanExtract, "Archive commands require the shared operation service");
     }

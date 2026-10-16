@@ -1741,6 +1741,8 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         OpenTerminalCommand.NotifyCanExecuteChanged();
         PropertiesCommand.NotifyCanExecuteChanged();
         CompressCommand.NotifyCanExecuteChanged();
+        CompressTarCommand.NotifyCanExecuteChanged();
+        CompressTarGZipCommand.NotifyCanExecuteChanged();
         ExtractCommand.NotifyCanExecuteChanged();
     }
 

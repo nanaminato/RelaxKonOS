@@ -211,3 +211,8 @@ Explorer 自动化使用假客户端与本地化键替身；服务端专项使�
 ## 压缩与解压缩（2026-10-16）
 
 完成 ZIP/ZIP64 首版：多选压缩、解压到新目录、共享操作中心、进度/取消、保留两者或跳过、登录身份绑定分块文件访问，以及路径/链接/容量/CRC 校验。37 项归档专项与 348 项 Explorer 回归通过，三语资源一致；Server、Helper 和桌面客户端编译通过。实际部署身份与 GiB 级性能仍待真机验收。详见 [压缩与解压缩设计](RelaxKonOS.Explorer.Archives.md)。
+
+
+## TAR 与 TAR.GZ 扩展（2026-10-16）
+
+新增 .NET 原生 TAR/PAX、TAR.GZ/TGZ 创建及解压，压缩菜单可选择 ZIP、TAR、TAR.GZ。格式与复合后缀规则在共享协议层集中维护；复用身份绑定文件流、操作中心和临时目录发布，补齐 TAR 原始帧/元数据限额及 GZip 尾部验证。58 项归档专项、356 项 Explorer 回归、三语资源校验通过，Server 与桌面编译通过。7z/RAR 的隔离 worker 选型及尚未实现范围见 [归档设计](RelaxKonOS.Explorer.Archives.md#7z--rar-的后端选型)。

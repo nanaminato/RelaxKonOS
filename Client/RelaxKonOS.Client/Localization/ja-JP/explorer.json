@@ -241,13 +241,14 @@
         "explorer.cache.enabled": "ファイル一覧をキャッシュ",
         "explorer.cache.refreshing": "キャッシュを表示中。更新しています…",
         "explorer.cache.refresh_failed": "キャッシュの更新に失敗しました: {0}",
-        "explorer.archive.compress": "ZIP に圧縮",
+        "explorer.archive.compress": "圧縮",
         "explorer.archive.extract": "新しいフォルダーに展開",
-        "explorer.archive.compress_prompt": "現在のリモートフォルダーに作成する ZIP ファイル名",
+        "explorer.archive.compress_prompt": "現在のリモートフォルダーに作成するアーカイブ名",
         "explorer.archive.extract_prompt": "新しい展開先フォルダー名",
         "explorer.archive.invalid_name": "名前にパスや制御文字は使用できません。",
         "explorer.archive.failed": "アーカイブ操作に失敗しました: {0}",
         "explorer.operations.kind.Compress": "圧縮",
-        "explorer.operations.kind.Extract": "展開"
+        "explorer.operations.kind.Extract": "展開",
+        "explorer.archive.compress_as": "形式を指定して圧縮…"
     }
 }
