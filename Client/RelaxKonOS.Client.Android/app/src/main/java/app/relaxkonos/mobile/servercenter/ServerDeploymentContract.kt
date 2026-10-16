@@ -60,17 +60,16 @@ enum class ServerDataScope { Program, Configuration, Database, Secrets, Logs, Ca
 enum class ServerServiceIdKind { DirectUrl, ManagedInstallation, SshTunnelProfile }
 
 /** 发布包种类。 */
-enum class ServerReleasePackageKind { Server, UserServer }
+enum class ServerReleasePackageKind { Server }
 
 /** 发布制品运行时标识（RID）。 */
 enum class ServerRuntimeIdentifier { WinX64, WinArm64, LinuxX64, LinuxArm64 }
 
 /**
  * 枚举与线协议字符串互转：操作及安装模式使用 camelCase；RID 与发布包类型
- * 使用发布格式的连字符名称，例如 `win-x64` 与 `user-server`。
+ * 使用发布格式的连字符名称，例如 `win-x64` 与 `server`。
  */
 internal fun Enum<*>.wireName(): String = when (this) {
-    ServerReleasePackageKind.UserServer -> "user-server"
     ServerRuntimeIdentifier.WinX64 -> "win-x64"
     ServerRuntimeIdentifier.WinArm64 -> "win-arm64"
     ServerRuntimeIdentifier.LinuxX64 -> "linux-x64"

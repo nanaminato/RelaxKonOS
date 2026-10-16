@@ -249,7 +249,7 @@ RelaxKonOS/
 
 1. Get a matching client from [Downloads](https://relaxkon.com/downloads) and open **Server Center**.
 2. Add the target SSH address, port and account, verify the host key and run preflight.
-3. Choose official stable, a local ZIP, a server-side ZIP or custom HTTPS download. System Mode uses `*-server.zip`; User Mode uses `*-user-server.zip`.
+3. Choose official stable, a local ZIP, a server-side ZIP or custom HTTPS download. System Mode and User Mode share the `*-server.zip` for the target platform and architecture; choose the mode during installation.
 4. Choose Linux System, Linux User or Windows System. System Mode requires root/sudo or an elevated administrator session; Linux User Mode uses an ordinary account without sudo.
 5. Configure port, program/data directories, network, TLS and file access. Linux System Mode also offers separate administrator/root scopes, Docker authorization and unsupported-system opt-in. User Mode offers data, configuration, state and cache roots.
 6. Review and confirm, wait for the final receipt and health check, then return to sign-in.

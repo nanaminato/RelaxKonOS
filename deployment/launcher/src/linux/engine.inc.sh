@@ -8,7 +8,7 @@ require_package() {
     aarch64) architecture=linux-arm64;;
     *) launcher_fail package_runtime_mismatch "this Linux architecture is unsupported";;
   esac
-  case "$options_mode" in linuxUser) kind=user-server;; *) kind=server;; esac
+  kind=server
   case "$options_source" in
     localBundle) archive=$staging_root/$options_staged_name;;
     remoteBundle) archive=$options_remote_path;;

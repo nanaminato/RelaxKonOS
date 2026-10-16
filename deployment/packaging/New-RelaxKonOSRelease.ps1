@@ -51,7 +51,7 @@ function Convert-LinuxShellScriptsToLf([string] $Root) {
     # materialize shell scripts with CRLF, which makes Bash parse `pipefail\r` and
     # prevents a Linux release bundle from installing. Normalize only the staged
     # Linux payload; do not rewrite working-tree source files or Windows bundles.
-    Get-ChildItem -LiteralPath $Root -Recurse -File -Filter '*.sh' | ForEach-Object {
+    Get-ChildItem -LiteralPath $Root -Recurse -File | Where-Object { $_.Extension -eq '.sh' -or $_.Name -eq 'relaxkon' } | ForEach-Object {
         $original = [IO.File]::ReadAllText($_.FullName)
         $normalized = $original.Replace("`r`n", "`n").Replace("`r", "`n")
         if ($normalized -ne $original) {
@@ -128,20 +128,9 @@ if ($platform -eq 'linux') {
     Copy-Item -LiteralPath (Join-Path $projectRoot 'deployment\verify-release-inventory.py') -Destination (Join-Path $serverPackage.Directory 'deployment\verify-release-inventory.py') -Force
 }
 Copy-Item -LiteralPath (Join-Path $projectRoot ("deployment\$platform")) -Destination (Join-Path $serverPackage.Directory ("deployment\$platform")) -Recurse -Force
-if ($platform -eq 'linux') { Convert-LinuxShellScriptsToLf $serverPackage.Directory }
-Complete-Package $serverPackage $serverPayload
-
 if ($platform -eq 'linux') {
-    $userPackage = New-PackageDirectory 'user-server'
-    $userPayloadRoot = Join-Path $userPackage.Directory 'payload\linux'
-    New-Item -ItemType Directory -Path $userPayloadRoot -Force | Out-Null
-    foreach ($component in @('server', 'guardian')) {
-        Copy-Item -LiteralPath (Join-Path $serverPackage.Directory ('payload\linux\' + $component)) -Destination (Join-Path $userPayloadRoot $component) -Recurse
-    }
-    $userDeployment = Join-Path $userPackage.Directory 'deployment'
-    New-Item -ItemType Directory -Path $userDeployment -Force | Out-Null
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'deployment\verify-release-inventory.py') -Destination $userDeployment
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'deployment\user') -Destination (Join-Path $userDeployment 'user') -Recurse
-    Convert-LinuxShellScriptsToLf $userPackage.Directory
-    Complete-Package $userPackage @{ server = 'payload/linux/server/RelaxKonOS.Server'; guardian = 'payload/linux/guardian/RelaxKonOS.Guardian.Agent'; launcher = 'deployment/user/relaxkon' }
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'deployment\user') -Destination (Join-Path $serverPackage.Directory 'deployment\user') -Recurse
+    $serverPayload['launcher'] = 'deployment/user/relaxkon'
+    Convert-LinuxShellScriptsToLf $serverPackage.Directory
 }
+Complete-Package $serverPackage $serverPayload

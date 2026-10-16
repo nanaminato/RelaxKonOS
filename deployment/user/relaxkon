@@ -175,15 +175,15 @@ activate_version() {
 }
 verify_bundle() {
   local bundle=$1 manifest=$1/manifest.json
-  [[ -d $bundle && -f $manifest && -x $bundle/payload/linux/server/RelaxKonOS.Server && -x $bundle/payload/linux/guardian/RelaxKonOS.Guardian.Agent && -x $bundle/deployment/user/relaxkon ]] || fail "not a complete user-server bundle"
-  grep -Eq '"schemaVersion"[[:space:]]*:[[:space:]]*1' "$manifest" && grep -Eq '"packageKind"[[:space:]]*:[[:space:]]*"user-server"' "$manifest" || fail "bundle is not a user-server manifest"
+  [[ -d $bundle && -f $manifest && -x $bundle/payload/linux/server/RelaxKonOS.Server && -x $bundle/payload/linux/guardian/RelaxKonOS.Guardian.Agent && -x $bundle/deployment/user/relaxkon ]] || fail "not a complete server bundle"
+  grep -Eq '"schemaVersion"[[:space:]]*:[[:space:]]*1' "$manifest" && grep -Eq '"packageKind"[[:space:]]*:[[:space:]]*"server"' "$manifest" || fail "bundle is not a server manifest"
   grep -Eq '"files"[[:space:]]*:[[:space:]]*\[' "$manifest" || fail "bundle manifest has no file inventory"
   ! find "$bundle" -type l -print -quit | grep -q . || fail "bundle must not contain symbolic links"
   if [[ $skip_file_checks != true ]]; then
     command -v python3 >/dev/null || fail "Python 3 is required to verify the release inventory"
     local runtime
     case "$(uname -m)" in x86_64) runtime=linux-x64 ;; aarch64|arm64) runtime=linux-arm64 ;; *) fail "unsupported architecture" ;; esac
-    python3 "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/../verify-release-inventory.py" "$bundle" user-server "$runtime" >/dev/null || fail "bundle file inventory verification failed"
+    python3 "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/../verify-release-inventory.py" "$bundle" server "$runtime" >/dev/null || fail "bundle file inventory verification failed"
   fi
 }
 # Stage the new version beside the active one and switch the current symlink atomically, so an

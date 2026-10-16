@@ -88,7 +88,7 @@ $XDG_CACHE_HOME/relaxkonos/            # 默认为 ~/.cache/relaxkonos
   downloads/                            # 可安全清理的已校验发行包暂存
 ```
 
-发布流水线新增 `user-server` 包：仅含 Server 必需 publish 输出、用户 launcher、用户安装/卸载脚本和 manifest；不得包含或要求 Guardian、PrivilegedHelper、sudoers 模板或系统 service 安装引擎。manifest 必须包含 `packageKind: "user-server"`、RID、版本、文件清单和 SHA-256。现有 `server` 包继续代表 System Mode，不能用文件存在与否猜测模式。
+发布流水线提供统一的 `server` 包，包含两种模式所需组件，manifest 使用 `packageKind: "server"`、RID、版本、文件清单和 SHA-256。用户模式仅安装 Server、同 UID Guardian、用户 launcher 和用户脚本，不部署权限助手、sudoers 或系统服务；安装模式必须显式指定。
 
 安装器提供下列固定命令，均禁止接收任意命令、shell 片段或特权参数：
 

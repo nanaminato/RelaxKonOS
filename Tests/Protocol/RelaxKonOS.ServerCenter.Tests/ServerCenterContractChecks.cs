@@ -359,8 +359,8 @@ internal static class ServerCenterContractChecks
         Check(JsonSerializer.Serialize(ServerRuntimeIdentifier.WinX64, RelaxKonOSJsonOptions.Default) == "\"win-x64\""
               && JsonSerializer.Deserialize<ServerRuntimeIdentifier>("\"win-x64\"", RelaxKonOSJsonOptions.Default)
               == ServerRuntimeIdentifier.WinX64, "Windows 启动器的 RID 与发布包一致");
-        Check(JsonSerializer.Serialize(ServerReleasePackageKind.UserServer, RelaxKonOSJsonOptions.Default)
-              == "\"user-server\"", "User Mode 包类型与发布包一致");
+        Check(JsonSerializer.Serialize(ServerReleasePackageKind.Server, RelaxKonOSJsonOptions.Default)
+              == "\"server\"", "系统模式与用户模式共用服务端发布包");
     }
 
     private static void VerifyOperationRecovery()

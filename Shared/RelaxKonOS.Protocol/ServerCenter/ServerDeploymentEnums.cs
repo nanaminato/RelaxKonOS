@@ -107,8 +107,7 @@ public enum ServerServiceIdKind { DirectUrl, ManagedInstallation, SshTunnelProfi
 [JsonConverter(typeof(JsonStringEnumConverter<ServerReleasePackageKind>))]
 public enum ServerReleasePackageKind
 {
-    Server,
-    [JsonStringEnumMemberName("user-server")] UserServer
+    Server
 }
 
 /// <summary>发布制品的运行时标识（RID）。</summary>

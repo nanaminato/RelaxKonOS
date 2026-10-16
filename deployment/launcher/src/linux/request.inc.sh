@@ -178,7 +178,7 @@ def extract(source, runtime, kind, destination, archive, request_path=None):
         if digest != options['packageDigest'].lower(): raise ValueError('release checksum mismatch')
     if source == 'officialStable':
         descriptor_path = str(destination) + '.json'
-        suffix = ('user-server/' if kind == 'user-server' else '') + runtime + '.json'
+        suffix = runtime + '.json'
         download((options.get('releaseCatalogBaseUri') or 'https://downloads.relaxkon.com/relaxkonos/stable/latest').rstrip('/') + '/' + suffix, descriptor_path, 1024*1024)
         descriptor = load(Path(descriptor_path).read_text())
         if descriptor.get('schemaVersion') != 1 or descriptor.get('runtime') != runtime or descriptor.get('packageKind') != kind or not re.fullmatch('[0-9a-fA-F]{64}',descriptor.get('sha256','')): raise ValueError('descriptor')
@@ -209,7 +209,7 @@ def extract(source, runtime, kind, destination, archive, request_path=None):
         if source == 'officialStable' and manifest['version'] != descriptor.get('version'): raise ValueError('official version mismatch')
         required = ['payload/linux/server/RelaxKonOS.Server','payload/linux/guardian/RelaxKonOS.Guardian.Agent','deployment/verify-release-inventory.py']
         if kind == 'server': required += ['payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper','deployment/bootstrap/install-relaxkonos.sh','deployment/bootstrap/uninstall-relaxkonos.sh','deployment/linux/install-relaxkonos-services.sh']
-        else: required += ['deployment/user/relaxkon']
+        required += ['deployment/user/relaxkon']
         files = {e.filename:e for e in entries if not e.is_dir()}
         if any(name not in files for name in required): raise ValueError('incomplete package')
         if source == 'officialStable':
