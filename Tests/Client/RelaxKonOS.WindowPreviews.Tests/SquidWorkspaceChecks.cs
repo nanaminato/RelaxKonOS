@@ -131,11 +131,13 @@ internal static class SquidWorkspaceChecks
         var previewDirectory = Path.Combine(AppContext.BaseDirectory, "preview-qa"); Directory.CreateDirectory(previewDirectory);
         using (var image = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(960, 760)))
         { image.Render(view); image.Save(Path.Combine(previewDirectory, "squid.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
-        var boxes = view.GetVisualDescendants().OfType<TextBox>().ToList();
+        var boxes = new[] { "BindAddressBox", "PortBox", "NetworksBox", "AllowedDomainsBox", "DeniedDomainsBox", "UpstreamHostBox", "UpstreamPortBox", "PreviewBox", "DetailBox" }.Select(name => view.FindControl<TextBox>(name)!).ToList();
         Check(boxes.Count == 9, "The workspace renders seven editor fields plus the preview and detail panes.");
         Check(boxes.Count(box => box.IsReadOnly) == 2, "Only the rendered file and its details are read-only.");
-        var secondary = view.FindControl<StackPanel>("SecondaryColumn")!;
-        Check(Grid.GetColumn(secondary) == 1, "A wide workspace places the secondary cards beside the primary ones.");
+        var overview = view.FindControl<StackPanel>("Page0")!;
+        Check(overview.IsVisible && !view.FindControl<StackPanel>("Page4")!.IsVisible, "The workspace starts on the runtime overview.");
+        view.FindControl<Button>("PageButton2")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Check(!overview.IsVisible && view.FindControl<StackPanel>("Page2")!.IsVisible, "Navigation shows the selected page while retaining draft controls.");
         window.Height = 1080; Dispatcher.UIThread.RunJobs();
         using (var image = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(960, 1080)))
         { image.Render(view); image.Save(Path.Combine(previewDirectory, "squid-tall.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
@@ -144,14 +146,14 @@ internal static class SquidWorkspaceChecks
         using (var image = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(420, 760)))
         { image.Render(view); image.Save(Path.Combine(previewDirectory, "squid-compact.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
         Check(view.Bounds.Width > 0, "The scrollable editor must remain renderable at compact width.");
-        Check(Grid.GetColumn(secondary) == 0 && Grid.GetRow(secondary) == 1,
-            "A narrow workspace stacks the cards into one column instead of scrolling sideways.");
+        Check(view.GetVisualDescendants().OfType<Button>().Single(button => button.Name == "CompactWorkspaceMenu").IsVisible,
+            "A narrow workspace provides compact page navigation.");
         vm.AllowedDomains = "example.org";
         Complete(vm.PreviewCommand.ExecuteAsync(null));
         Dispatcher.UIThread.RunJobs();
         Check(vm.HasPreview && !vm.IsPreviewStale, "Previewing from the pinned action bar renders the edited draft and clears the stale mark.");
-        Check(view.FindControl<ScrollViewer>("BodyScroll")!.Offset.Y > 0,
-            "A preview requested from the pinned bar scrolls the rendered file into view.");
+        Check(view.FindControl<StackPanel>("Page4")!.IsVisible,
+            "A preview requested from the pinned bar opens the configuration publishing page.");
         using (var image = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(420, 760)))
         { image.Render(view); image.Save(Path.Combine(previewDirectory, "squid-preview-scroll.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
         window.Close();

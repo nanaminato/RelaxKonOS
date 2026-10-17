@@ -36,7 +36,7 @@
          for embedded/preview rendering. -->
     <Grid x:Name="HeaderHost" Grid.Row="0" ColumnDefinitions="*,Auto">
       <common:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc application.relaxkonos.squid.display_name}"
-                                    Subtitle="{loc:Loc squid.intro}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/proxy.png" />
+                                    Subtitle="{loc:Loc squid.intro}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/squid.png" />
       <Button x:Name="HeaderActions" Grid.Column="1" Classes="header-action" Command="{Binding RefreshCommand}"
               ToolTip.Tip="{loc:Loc squid.refresh}" AutomationProperties.Name="{loc:Loc squid.refresh}" VerticalAlignment="Center">
         <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="16" Height="16"
@@ -44,9 +44,65 @@
       </Button>
     </Grid>
 
-    <!-- Blocking notices. Each one explains why an action is unavailable instead of letting the
-         user submit it and read the host's refusal afterwards. -->
-    <StackPanel Grid.Row="1" Spacing="0">
+    <Grid x:Name="WorkspaceBody" Grid.Row="2" ColumnDefinitions="190,*" ClipToBounds="True">
+      <Border Classes="app-sidebar">
+        <StackPanel Spacing="4" Margin="14,22">
+          <Button x:Name="PageButton0" Classes="workspace-nav" Tag="0" Click="NavigationButton_Click" Content="{loc:Loc squid.section.runtime}" HorizontalContentAlignment="Left" Padding="10,8" />
+          <Button x:Name="PageButton1" Classes="workspace-nav" Tag="1" Click="NavigationButton_Click" Content="{loc:Loc squid.section.listener}" HorizontalContentAlignment="Left" Padding="10,8" />
+          <Button x:Name="PageButton2" Classes="workspace-nav" Tag="2" Click="NavigationButton_Click" Content="{loc:Loc squid.section.domains}" HorizontalContentAlignment="Left" Padding="10,8" />
+          <Button x:Name="PageButton3" Classes="workspace-nav" Tag="3" Click="NavigationButton_Click" Content="{loc:Loc squid.section.upstream}" HorizontalContentAlignment="Left" Padding="10,8" />
+          <Button x:Name="PageButton4" Classes="workspace-nav" Tag="4" Click="NavigationButton_Click" Content="{loc:Loc squid.section.preview}" HorizontalContentAlignment="Left" Padding="10,8" />
+        </StackPanel>
+      </Border>
+      <ScrollViewer x:Name="BodyScroll" Grid.Column="1" Padding="20,16" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Spacing="16">
+          <StackPanel x:Name="Page0" Spacing="16" IsVisible="True">
+<Border Classes="app-panel" Padding="18">
+            <StackPanel Spacing="12">
+              <StackPanel Spacing="2">
+                <TextBlock Classes="section-title" Text="{loc:Loc squid.section.runtime}" />
+                <TextBlock Classes="section-hint" Text="{loc:Loc squid.section.runtime_hint}" />
+              </StackPanel>
+              <StackPanel Spacing="0">
+                <Grid ColumnDefinitions="130,*">
+                  <TextBlock Classes="fact-label" Text="{loc:Loc squid.fact.service}" />
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <Ellipse Width="9" Height="9" Fill="{DynamicResource SuccessBrush}" IsVisible="{Binding IsRunning}" VerticalAlignment="Center" />
+                    <Ellipse Width="9" Height="9" Fill="{DynamicResource TextTertiaryBrush}" IsVisible="{Binding !IsRunning}" VerticalAlignment="Center" />
+                    <TextBlock Classes="fact-value" Text="{Binding ServiceStateText}" />
+                  </StackPanel>
+                </Grid>
+                <Border Classes="fact-row">
+                  <Grid ColumnDefinitions="130,*">
+                    <TextBlock Classes="fact-label" Text="{loc:Loc squid.fact.boot}" />
+                    <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding BootStateText}" />
+                  </Grid>
+                </Border>
+                <Border Classes="fact-row">
+                  <Grid ColumnDefinitions="130,*">
+                    <TextBlock Classes="fact-label" Text="{loc:Loc squid.fact.revisions}" />
+                    <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding RevisionText}" />
+                  </Grid>
+                </Border>
+                <Border Classes="fact-row">
+                  <Grid ColumnDefinitions="130,*">
+                    <TextBlock Classes="fact-label" Text="{loc:Loc squid.fact.disk}" />
+                    <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding DiskStateText}" />
+                  </Grid>
+                </Border>
+              </StackPanel>
+              <TextBlock Classes="section-hint" Text="{loc:Loc squid.runtime_note}" />
+              <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" />
+              <WrapPanel>
+                <Button Content="{loc:Loc squid.start}" Command="{Binding StartCommand}" Margin="0,0,8,8" />
+                <Button Content="{loc:Loc squid.stop}" Command="{Binding StopCommand}" Margin="0,0,8,8" />
+                <Button Content="{loc:Loc squid.restart}" Command="{Binding RestartCommand}" Margin="0,0,8,8" />
+                <Button Content="{loc:Loc squid.reload}" Command="{Binding ReloadCommand}" Margin="0,0,8,8" />
+                <Button Content="{Binding BootActionText}" Command="{Binding ToggleBootCommand}" Margin="0,0,8,8" />
+              </WrapPanel>
+            </StackPanel>
+          </Border>
+<StackPanel Spacing="0">
       <Border Classes="notice warning" IsVisible="{Binding HasPending}">
         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
           <StackPanel Spacing="3">
@@ -100,59 +156,9 @@
         </StackPanel>
       </Border>
     </StackPanel>
-
-    <ScrollViewer x:Name="BodyScroll" Grid.Row="2" Padding="20,16,18,16" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-      <Grid x:Name="CardLayout" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="16" RowSpacing="16">
-        <StackPanel x:Name="PrimaryColumn" Spacing="16">
-          <!-- Host facts and service lifecycle -->
-          <Border Classes="app-panel" Padding="18">
-            <StackPanel Spacing="12">
-              <StackPanel Spacing="2">
-                <TextBlock Classes="section-title" Text="{loc:Loc squid.section.runtime}" />
-                <TextBlock Classes="section-hint" Text="{loc:Loc squid.section.runtime_hint}" />
-              </StackPanel>
-              <StackPanel Spacing="0">
-                <Grid ColumnDefinitions="130,*">
-                  <TextBlock Classes="fact-label" Text="{loc:Loc squid.fact.service}" />
-                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                    <Ellipse Width="9" Height="9" Fill="{DynamicResource SuccessBrush}" IsVisible="{Binding IsRunning}" VerticalAlignment="Center" />
-                    <Ellipse Width="9" Height="9" Fill="{DynamicResource TextTertiaryBrush}" IsVisible="{Binding !IsRunning}" VerticalAlignment="Center" />
-                    <TextBlock Classes="fact-value" Text="{Binding ServiceStateText}" />
-                  </StackPanel>
-                </Grid>
-                <Border Classes="fact-row">
-                  <Grid ColumnDefinitions="130,*">
-                    <TextBlock Classes="fact-label" Text="{loc:Loc squid.fact.boot}" />
-                    <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding BootStateText}" />
-                  </Grid>
-                </Border>
-                <Border Classes="fact-row">
-                  <Grid ColumnDefinitions="130,*">
-                    <TextBlock Classes="fact-label" Text="{loc:Loc squid.fact.revisions}" />
-                    <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding RevisionText}" />
-                  </Grid>
-                </Border>
-                <Border Classes="fact-row">
-                  <Grid ColumnDefinitions="130,*">
-                    <TextBlock Classes="fact-label" Text="{loc:Loc squid.fact.disk}" />
-                    <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding DiskStateText}" />
-                  </Grid>
-                </Border>
-              </StackPanel>
-              <TextBlock Classes="section-hint" Text="{loc:Loc squid.runtime_note}" />
-              <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" />
-              <WrapPanel>
-                <Button Content="{loc:Loc squid.start}" Command="{Binding StartCommand}" Margin="0,0,8,8" />
-                <Button Content="{loc:Loc squid.stop}" Command="{Binding StopCommand}" Margin="0,0,8,8" />
-                <Button Content="{loc:Loc squid.restart}" Command="{Binding RestartCommand}" Margin="0,0,8,8" />
-                <Button Content="{loc:Loc squid.reload}" Command="{Binding ReloadCommand}" Margin="0,0,8,8" />
-                <Button Content="{Binding BootActionText}" Command="{Binding ToggleBootCommand}" Margin="0,0,8,8" />
-              </WrapPanel>
-            </StackPanel>
-          </Border>
-
-          <!-- Listener -->
-          <Border Classes="app-panel" Padding="18">
+          </StackPanel>
+          <StackPanel x:Name="Page1" Spacing="16" IsVisible="False">
+<Border Classes="app-panel" Padding="18">
             <StackPanel Spacing="12">
               <StackPanel Spacing="2">
                 <TextBlock Classes="section-title" Text="{loc:Loc squid.section.listener}" />
@@ -192,11 +198,9 @@
               </ItemsControl>
             </StackPanel>
           </Border>
-        </StackPanel>
-
-        <StackPanel x:Name="SecondaryColumn" Grid.Column="1" Spacing="16">
-          <!-- Domain rules -->
-          <Border Classes="app-panel" Padding="18">
+          </StackPanel>
+          <StackPanel x:Name="Page2" Spacing="16" IsVisible="False">
+<Border Classes="app-panel" Padding="18">
             <StackPanel Spacing="12">
               <StackPanel Spacing="2">
                 <TextBlock Classes="section-title" Text="{loc:Loc squid.section.domains}" />
@@ -221,9 +225,9 @@
               </ItemsControl>
             </StackPanel>
           </Border>
-
-          <!-- Optional HTTP parent -->
-          <Border Classes="app-panel" Padding="18">
+          </StackPanel>
+          <StackPanel x:Name="Page3" Spacing="16" IsVisible="False">
+<Border Classes="app-panel" Padding="18">
             <StackPanel Spacing="12">
               <StackPanel Spacing="2">
                 <TextBlock Classes="section-title" Text="{loc:Loc squid.section.upstream}" />
@@ -248,9 +252,9 @@
               </ItemsControl>
             </StackPanel>
           </Border>
-
-          <!-- Ownership of the on-disk file -->
-          <Border Classes="app-panel" Padding="18">
+          </StackPanel>
+          <StackPanel x:Name="Page4" Spacing="16" IsVisible="False">
+<Border Classes="app-panel" Padding="18">
             <StackPanel Spacing="10">
               <TextBlock Classes="section-title" Text="{loc:Loc squid.section.adoption}" />
               <TextBlock Classes="section-hint" Text="{loc:Loc squid.section.adoption_hint}" />
@@ -260,11 +264,7 @@
               <TextBlock Classes="problem" Text="{loc:Loc squid.adopt_required}" IsVisible="{Binding NeedsAdoption}" />
             </StackPanel>
           </Border>
-        </StackPanel>
-
-        <!-- The rendered file. Publishing lives in the pinned action bar below, so it stays reachable
-             without scrolling past the editor. -->
-        <Border x:Name="PreviewPanel" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Classes="app-panel" Padding="18">
+<Border x:Name="PreviewPanel" Classes="app-panel" Padding="18">
           <StackPanel Spacing="12">
             <StackPanel Spacing="2">
               <TextBlock Classes="section-title" Text="{loc:Loc squid.section.preview}" />
@@ -283,8 +283,10 @@
             </StackPanel>
           </StackPanel>
         </Border>
-      </Grid>
-    </ScrollViewer>
+          </StackPanel>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
 
     <!-- Publishing stays pinned: the editor scrolls, the actions and their result do not. The result
          line sits above the buttons so a narrow window wraps instead of clipping an action. -->
