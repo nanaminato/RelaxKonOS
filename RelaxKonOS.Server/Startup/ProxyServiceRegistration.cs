@@ -6,6 +6,7 @@ internal static class ProxyServiceRegistration
 {
     public static void AddProxyServices(this WebApplicationBuilder builder)
     {
+        builder.Services.AddSingleton<RelaxKonOS.Server.GatewayProxy.SquidGatewayService>();
         // Proxy Goal 2: a Server-only, loopback-only controller adapter. There is deliberately no
         // endpoint mapping or client registration until Goal 6, and no service/process management until Goal 3.
         var mihomoController = builder.Configuration.GetSection("Proxy:Mihomo:Controller").Get<RelaxKonOS.Server.Proxy.Mihomo.MihomoControllerOptions>()

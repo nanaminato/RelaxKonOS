@@ -369,6 +369,7 @@ dotnet run
 | 文档 | 说明 |
 |------|------|
 | [architecture.md](./docs/proxy/architecture.md) | 代理模块架构、引擎抽象（IProxyEngine）、Mihomo 集成 |
+| [squid.md](./docs/proxy/squid.md) | Squid HTTP 代理网关：首阶段后端、API、安全边界、恢复和后续计划 |
 | [installation.md](./docs/proxy/installation.md) | 代理运行时安装、部署与升级 |
 | [mihomo.md](./docs/proxy/mihomo.md) | Mihomo 引擎配置、控制面与运行时管理 |
 | [tun.md](./docs/proxy/tun.md) | TUN 模式、网络栈与透明代理 |

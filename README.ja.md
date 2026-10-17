@@ -365,6 +365,7 @@ dotnet run
 | ドキュメント | 説明 |
 |-------------|------|
 | [architecture.md](./docs/proxy/architecture.md) | プロキシモジュールアーキテクチャ、エンジン抽象（IProxyEngine）、Mihomo統合 |
+| [squid.en.md](./docs/proxy/squid.en.md) | Squid HTTP ゲートウェイ：初期バックエンド、API、セキュリティ、復旧と今後の実装 |
 | [installation.md](./docs/proxy/installation.md) | プロキシランタイムのインストール、デプロイ、アップグレード |
 | [mihomo.md](./docs/proxy/mihomo.md) | Mihomoエンジン設定、コントロールプレーン、ランタイム管理 |
 | [tun.md](./docs/proxy/tun.md) | TUNモード、ネットワークスタック、透過プロキシ |

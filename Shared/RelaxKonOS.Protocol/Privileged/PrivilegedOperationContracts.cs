@@ -109,6 +109,10 @@ public enum PrivilegedOperationKind
     ProcessTerminate,
     /// <summary>Returns a PNG or SVG icon for one verified host process instance.</summary>
     ProcessIcon,
+    SquidStatus,
+    SquidApplyConfiguration,
+    SquidServiceAction,
+    SquidValidateConfiguration,
 }
 
 /// <summary>
@@ -289,7 +293,9 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("networkChange")] HostNetworkChange? NetworkChange = null,
     [property: JsonPropertyName("networkCheckpoint")] string? NetworkCheckpoint = null,
     [property: JsonPropertyName("processId")] int? ProcessId = null,
-    [property: JsonPropertyName("processExpectedStartTime")] DateTimeOffset? ProcessExpectedStartTime = null);
+    [property: JsonPropertyName("processExpectedStartTime")] DateTimeOffset? ProcessExpectedStartTime = null,
+    [property: JsonPropertyName("squidConfiguration")] RelaxKonOS.Protocol.GatewayProxy.ApplySquidConfigurationRequest? SquidConfiguration = null,
+    [property: JsonPropertyName("squidServiceAction")] RelaxKonOS.Protocol.GatewayProxy.SquidServiceAction? SquidServiceAction = null);
 
 /// <summary>Versioned structured result returned by the local Helper.</summary>
 public sealed record PrivilegedOperationResult(

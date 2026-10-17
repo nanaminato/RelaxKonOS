@@ -21,6 +21,10 @@ public static partial class PrivilegedOperationExecutor
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "operation id is required");
         if (request.Correlation is not { } correlation || !correlation.IsValid())
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "valid correlation metadata is required");
+        if (request.Operation is PrivilegedOperationKind.SquidStatus or PrivilegedOperationKind.SquidApplyConfiguration or PrivilegedOperationKind.SquidServiceAction or PrivilegedOperationKind.SquidValidateConfiguration)
+            return await SquidOperations.ExecuteAsync(request);
+        if (request.SquidConfiguration is not null || request.SquidServiceAction is not null)
+            return Fail(64, PrivilegedProblemCode.InvalidRequest, "Squid fields require a dedicated operation");
         if (request.Operation is PrivilegedOperationKind.ProcessSnapshot or PrivilegedOperationKind.ProcessTerminate or PrivilegedOperationKind.ProcessIcon)
         {
             if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux())
