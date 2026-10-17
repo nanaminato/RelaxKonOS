@@ -39,13 +39,15 @@ public static class ServerDeploymentRecordReader
             if (record.Phase != ServerDeploymentPhase.Completed)
                 throw InvalidRecord("successful operation has no completed phase");
             if (record.Kind is ServerDeploymentKind.Install or ServerDeploymentKind.Upgrade
-                or ServerDeploymentKind.Repair or ServerDeploymentKind.Rollback)
+                or ServerDeploymentKind.Repair or ServerDeploymentKind.Configure or ServerDeploymentKind.Rollback)
             {
                 if (record.Result is not { Healthy: true } result
                     || !ServerInstallationId.IsValid(result.InstallationId)
                     || !ServerDeploymentInputRules.IsVersion(result.Version))
                     throw InvalidRecord("successful deployment lacks verified installation evidence");
             }
+            if (record.Kind == ServerDeploymentKind.Firewall && record.Result?.FirewallStatus is null)
+                throw InvalidRecord("firewall action lacks its result");
             if (record.Kind == ServerDeploymentKind.Uninstall && record.Result?.DataRetained is null)
                 throw InvalidRecord("successful uninstall lacks a data retention receipt");
             if (record.Kind == ServerDeploymentKind.Probe && record.Probe is null)

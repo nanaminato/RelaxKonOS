@@ -29,6 +29,7 @@ public class ClipboardFake : DispatchProxy
     {
         nameof(IClipboard.SetDataAsync) => SetData(args!),
         nameof(IClipboard.TryGetDataAsync) => Task.FromResult(Data),
+        nameof(IClipboard.TryGetInProcessDataAsync) => Task.FromResult(Data),
         _ => throw new NotSupportedException(method.Name),
     };
 

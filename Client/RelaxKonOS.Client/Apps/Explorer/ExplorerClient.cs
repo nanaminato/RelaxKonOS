@@ -13,7 +13,7 @@ namespace RelaxKonOS.Client.Apps.Explorer;
 /// 不 mutate HttpClient.BaseAddress，每个请求用 <see cref="IAuthSession.EffectiveBaseUrl"/> 构造绝对 URI（避免共享实例并发竞态）。
 /// Authorization 头从 <see cref="IAuthSession.Tokens"/> 取；未登录抛 <see cref="InvalidOperationException"/>。
 /// 失败读 ProblemDetails 抛 <see cref="RelaxKonOSAuthException"/>（与 <see cref="RelaxKonOSClient"/> 同源）。</summary>
-public sealed class ExplorerClient : IExplorerClient
+public sealed class ExplorerClient : IExplorerClient, IArchiveClient
 {
     private readonly HttpClient _http;
     private readonly IAuthSession _session;
@@ -28,6 +28,25 @@ public sealed class ExplorerClient : IExplorerClient
 
     public Task<FileOperationDto> StartOperationAsync(StartFileOperationRequest request, CancellationToken ct = default)
         => SendAsync<FileOperationDto>(HttpMethod.Post, FileApiRoutes.Operations, body: request, ct: ct);
+
+    public Task<IReadOnlyList<ArchiveEntryDto>> ListArchiveAsync(string path, ArchiveCredentials? credentials, CancellationToken ct)
+        => SendAsync<IReadOnlyList<ArchiveEntryDto>>(HttpMethod.Post, FileApiRoutes.ArchiveEntries, body: new ArchiveListRequest(path, credentials), ct: ct);
+
+    public async Task<byte[]> ReadArchiveEntryAsync(string path, string entryName, ArchiveCredentials? credentials, CancellationToken ct)
+    {
+        using var response = await SendRawAsync(HttpMethod.Post, FileApiRoutes.ArchiveContent,
+            body: new ArchiveReadRequest(path, entryName, credentials), ct: ct, completion: HttpCompletionOption.ResponseHeadersRead);
+        await EnsureSuccessAsync(response, ct);
+        await using var input = await response.Content.ReadAsStreamAsync(ct);
+        using var output = new MemoryStream();
+        var buffer = new byte[65536]; int read;
+        while ((read = await input.ReadAsync(buffer, ct)) > 0)
+        {
+            if (output.Length + read > ArchivePreviewLimits.MaximumBytes) throw new InvalidDataException("Archive preview exceeds limits.");
+            await output.WriteAsync(buffer.AsMemory(0, read), ct);
+        }
+        return output.ToArray();
+    }
     public Task<IReadOnlyList<FileOperationDto>> ListOperationsAsync(CancellationToken ct = default)
         => SendAsync<IReadOnlyList<FileOperationDto>>(HttpMethod.Get, FileApiRoutes.Operations, ct: ct);
     public Task<FileOperationDto> GetOperationAsync(Guid id, CancellationToken ct = default)
@@ -55,7 +74,7 @@ public sealed class ExplorerClient : IExplorerClient
 
     public async Task<(Stream Stream, string FileName)?> DownloadAsync(string path, CancellationToken ct = default)
     {
-        var resp = await SendRawAsync(HttpMethod.Get, FileApiRoutes.Download, query: ("path", path), ct: ct);
+        var resp = await SendRawAsync(HttpMethod.Get, FileApiRoutes.Download, query: ("path", path), ct: ct, completion: HttpCompletionOption.ResponseHeadersRead);
         if (resp.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
             resp.Dispose();
@@ -67,8 +86,12 @@ public sealed class ExplorerClient : IExplorerClient
             finally { resp.Dispose(); }
         }
         var fileName = ContentDispositionFileName(resp.Content.Headers.ContentDisposition) ?? "download";
-        var stream = await resp.Content.ReadAsStreamAsync(ct);
-        return (new ResponseOwnedStream(stream, resp), fileName);
+        try
+        {
+            var stream = await resp.Content.ReadAsStreamAsync(ct);
+            return (new ResponseOwnedStream(stream, resp), fileName);
+        }
+        catch { resp.Dispose(); throw; }
     }
 
     public async Task<byte[]?> ReadFileAsync(string path, CancellationToken ct = default)
@@ -204,14 +227,15 @@ public sealed class ExplorerClient : IExplorerClient
     }
 
     private async Task<HttpResponseMessage> SendRawAsync(HttpMethod method, string route,
-        (string Key, string? Value)? query = null, object? body = null, CancellationToken ct = default)
+        (string Key, string? Value)? query = null, object? body = null, CancellationToken ct = default,
+        HttpCompletionOption completion = HttpCompletionOption.ResponseContentRead)
     {
         var serverUrl = RequireSession();
         using var req = new HttpRequestMessage(method, BuildUri(serverUrl, route, query));
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _session.Tokens!.AccessToken);
         if (body is not null)
             req.Content = JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default);
-        return await _http.SendAsync(req, ct);
+        return await _http.SendAsync(req, completion, ct);
     }
 
     private static async Task<T> ReadAsync<T>(HttpResponseMessage resp, CancellationToken ct)

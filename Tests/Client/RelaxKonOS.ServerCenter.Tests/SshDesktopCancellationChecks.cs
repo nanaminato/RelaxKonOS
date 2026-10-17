@@ -4,11 +4,13 @@ using RelaxKonOS.Protocol.ServerCenter;
 
 internal static class SshDesktopCancellationChecks
 {
-    public static async Task RunAsync()
+    public static async Task RunAsync(RelaxKonOS.Client.Services.ShellSettings settings)
     {
         var resolver = DispatchProxy.Create<IServerCenterConnectionResolver, DelayedDesktopResolver>();
         var stub = (DelayedDesktopResolver)(object)resolver;
-        var desktop = new SshDesktopSession(resolver);
+        settings.TimeFormat = "12h";
+        var directory = Path.Combine(Path.GetTempPath(), "ssh-desktop-check-" + Guid.NewGuid().ToString("N"));
+        var desktop = new SshDesktopSession(resolver, settings, directory);
         var target = ServerHostTargetRules.Create("test-host", 22, "test-user", null, DateTimeOffset.UtcNow);
         var notifications = 0;
         desktop.Connected += (_, _) => notifications++;
@@ -43,7 +45,18 @@ internal static class SshDesktopCancellationChecks
         await ExpectCancellation(connecting);
         Check(desktop.IsConnected && desktop.Password == "new-password" && notifications == 1 && oldVerification.Transport.Disposed,
             "Late SSH verification cannot replace a newer connection to the same host.");
+        settings.DateFormat = "dd/MM/yyyy";
+        desktop.SavePreferences();
+        Check(File.Exists(Path.Combine(directory, "preferences.json")), "SSH preferences use their independent local directory.");
         desktop.Disconnect();
+        Check(settings.TimeFormat == "12h" && settings.DateFormat != "dd/MM/yyyy", "Disconnect restores the preferences from before the SSH session.");
+        stub.Pending = new();
+        connecting = desktop.ConnectAsync(target, "test-password", default);
+        stub.Pending.SetResult(Verification(target).Session);
+        await connecting;
+        Check(settings.DateFormat == "dd/MM/yyyy", "Reconnecting reloads SSH preferences independently of the server workspace.");
+        desktop.Disconnect();
+        Directory.Delete(directory, recursive: true);
     }
 
     private static (ServerCenterHostSession Session, DesktopVerificationTransport Transport) Verification(ServerHostTarget target)

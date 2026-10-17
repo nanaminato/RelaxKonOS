@@ -8,7 +8,7 @@ require_package() {
     aarch64) architecture=linux-arm64;;
     *) launcher_fail package_runtime_mismatch "this Linux architecture is unsupported";;
   esac
-  case "$options_mode" in linuxUser) kind=user-server;; *) kind=server;; esac
+  kind=server
   case "$options_source" in
     localBundle) archive=$staging_root/$options_staged_name;;
     remoteBundle) archive=$options_remote_path;;
@@ -72,9 +72,11 @@ run_engine() { # command...
   launcher_note "running deployment engine: $1"
   set +e
   if [[ $sudo_requested == true && $options_mode == linuxSystem && $EUID -ne 0 ]]; then
-    run_privileged "$@" > "$diagnostics" 2>&1
+    run_privileged "$@" > "$diagnostics" 2>&1 8>&-
   else
-    "$@" > "$diagnostics" 2>&1
+    # The launcher owns the deployment lock. Daemons started by the engine must
+    # not inherit it and keep all future maintenance locked out.
+    "$@" > "$diagnostics" 2>&1 8>&-
   fi
   local status=$?
   set -e

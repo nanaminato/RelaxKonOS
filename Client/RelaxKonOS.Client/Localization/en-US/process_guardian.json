@@ -64,6 +64,7 @@
     "guardian.logs.disconnected": "Live updates disconnected.",
     "guardian.logs.show": "Show logs",
     "guardian.logs.loaded": "Loaded sanitized logs for {0}.",
-    "guardian.logs.failed": "Could not load logs: {0}"
+    "guardian.logs.failed": "Could not load logs: {0}",
+    "guardian.install.manage": "Open Server Center to install"
   }
 }

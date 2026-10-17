@@ -7,6 +7,12 @@ using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.Protocol.UserExecution;
 
+if (OperatingSystem.IsWindows() && args.Length == 1 && args[0].StartsWith("--clipboard-"))
+{
+    Environment.ExitCode = WindowsClipboardAcceptance.Run(args[0]);
+    return;
+}
+
 var passed = 0;
 void Check(bool condition, string label)
 {
@@ -16,7 +22,12 @@ void Check(bool condition, string label)
 await PickerMemoryChecks.RunAsync(Check);
 FileBrowserPresentationChecks.Run(Check);
 ImageViewerChecks.Run(Check);
+await ArchiveBrowserChecks.RunAsync(Check);
 await HostFileClipboardChecks.RunAsync(Check);
+await MacosClipboardChecks.RunAsync(Check);
+await LinuxClipboardChecks.RunAsync(Check);
+FileTransferMetricsChecks.Run(Check);
+WindowsFileClipboardChecks.Run(Check);
 Check(ExplorerBreadcrumb.ParentPath("/home/alice") == "/home", "POSIX parent");
 Check(ExplorerBreadcrumb.ParentPath("/") is null, "POSIX root goes to Computer");
 Check(ExplorerBreadcrumb.ParentPath(@"C:\Users\Alice") == @"C:\Users", "Windows parent on any client OS");
@@ -298,6 +309,7 @@ Check(!expiring.TryGet("/ttl", out _), "Reading a snapshot does not extend its f
 
 await ExplorerBatchChecks.RunAsync(Check);
 await ExplorerOperationCenterChecks.RunAsync(Check);
+await ArchiveCommandChecks.RunAsync(Check);
 await LargeUploadChecks.RunAsync(Check);
 Console.WriteLine($"{passed} Explorer regression checks passed.");
 

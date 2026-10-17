@@ -19,6 +19,17 @@ namespace RelaxKonOS.Client.Services;
 /// 设置应用编辑后即时 <see cref="Apply"/> 反映到外壳，并 fire-and-forget 保存到服务端。</summary>
 public sealed partial class ShellSettings : ObservableObject
 {
+    // A read started before a local desktop write must never roll that write back.
+    public long DesktopWriteGeneration { get; private set; }
+    public bool IsDesktopWritePending => _pendingDesktopWrites > 0;
+    private int _pendingDesktopWrites;
+    public void BeginDesktopWrite() { DesktopWriteGeneration++; _pendingDesktopWrites++; }
+    public void EndDesktopWrite() { DesktopWriteGeneration++; _pendingDesktopWrites--; }
+
+    public bool CanApplySynchronizedPreferences(long readGeneration, long? revision) =>
+        !IsDesktopWritePending && readGeneration == DesktopWriteGeneration
+        && !(revision is { } incoming && PreferencesRevision is { } current && incoming < current);
+
     public IReadOnlyList<WallpaperOption> Wallpapers { get; }
 
     [ObservableProperty] private int _wallpaperIndex;
@@ -38,6 +49,7 @@ public sealed partial class ShellSettings : ObservableObject
     // ── 桌面显示配置 ──
     [ObservableProperty] private bool _showBuiltInApps = DesktopDisplaySettingsDto.Default.ShowBuiltInApps;
     [ObservableProperty] private List<string> _visibleAppIds = new(DesktopDisplaySettingsDto.Default.VisibleAppIds);
+    [ObservableProperty] private List<string> _pinnedAppIds = [];
     [ObservableProperty] private bool _showServerDesktopFiles = DesktopDisplaySettingsDto.Default.ShowServerDesktopFiles;
     [ObservableProperty] private bool _showServerDesktopShortcuts = DesktopDisplaySettingsDto.Default.ShowServerDesktopShortcuts;
     [ObservableProperty] private bool _hasCompletedFirstTimeSetup = DesktopDisplaySettingsDto.Default.HasCompletedFirstTimeSetup;
@@ -122,6 +134,15 @@ public sealed partial class ShellSettings : ObservableObject
     partial void OnShowServerDesktopFilesChanged(bool value) => NotifyDesktopDisplayChanged();
     partial void OnShowServerDesktopShortcutsChanged(bool value) => NotifyDesktopDisplayChanged();
     partial void OnVisibleAppIdsChanged(List<string> value) => NotifyDesktopDisplayChanged();
+    partial void OnPinnedAppIdsChanging(List<string>? oldValue, List<string> newValue) =>
+        TaskbarPreviewDiagnostics.Record("pin.settings.changing", new
+        {
+            before = oldValue?.ToArray(), after = newValue.ToArray(), PreferencesRevision,
+            DesktopWriteGeneration, IsDesktopWritePending,
+            callers = new System.Diagnostics.StackTrace().GetFrames().Take(8)
+                .Select(frame => frame.GetMethod()).Select(method => $"{method?.DeclaringType?.Name}.{method?.Name}").ToArray(),
+        });
+    partial void OnPinnedAppIdsChanged(List<string> value) => NotifyDesktopDisplayChanged();
     partial void OnShowWindowShadowsChanged(bool value) => NotifyVisualEffectsChanged();
     partial void OnShowWindowContentsWhileDraggingChanged(bool value) => NotifyVisualEffectsChanged();
     partial void OnShowTaskbarWindowPreviewsChanged(bool value) => NotifyVisualEffectsChanged();
@@ -167,6 +188,7 @@ public sealed partial class ShellSettings : ObservableObject
     /// <summary>将服务端偏好应用到本地活状态（登录加载 / 设置编辑后回写）。</summary>
     public void Apply(WorkspacePreferencesDto prefs)
     {
+        TaskbarPreviewDiagnostics.Record("pin.preferences.apply", new { before = PinnedAppIds.ToArray(), incoming = prefs.DesktopDisplay?.PinnedAppIds?.ToArray(), previousRevision = PreferencesRevision, incomingRevision = prefs.Revision, DesktopWriteGeneration, IsDesktopWritePending });
         LanguageSwitchDiagnostics.Record("preferences.apply", new { previous = Language, incoming = prefs.Language, previousRevision = PreferencesRevision, incomingRevision = prefs.Revision });
         PreferencesRevision = prefs.Revision;
         var experience = prefs.DesktopExperience ?? DesktopExperiencePreferencesDto.Default;
@@ -189,6 +211,8 @@ public sealed partial class ShellSettings : ObservableObject
         // A polling read of unchanged preferences must not rebuild the entire desktop.
         if (!VisibleAppIds.SequenceEqual(visibleAppIds, StringComparer.Ordinal))
             VisibleAppIds = new List<string>(visibleAppIds);
+        if (!PinnedAppIds.SequenceEqual(dd.PinnedAppIds ?? [], StringComparer.Ordinal))
+            PinnedAppIds = new List<string>(dd.PinnedAppIds ?? []);
         ShowServerDesktopFiles = dd.ShowServerDesktopFiles;
         ShowServerDesktopShortcuts = dd.ShowServerDesktopShortcuts;
         HasCompletedFirstTimeSetup = dd.HasCompletedFirstTimeSetup;
@@ -225,7 +249,8 @@ public sealed partial class ShellSettings : ObservableObject
             new DesktopDisplaySettingsDto
             {
                 ShowBuiltInApps = ShowBuiltInApps,
-                VisibleAppIds = VisibleAppIds,
+                VisibleAppIds = new(VisibleAppIds),
+                PinnedAppIds = new(PinnedAppIds),
                 ShowServerDesktopFiles = ShowServerDesktopFiles,
                 ShowServerDesktopShortcuts = ShowServerDesktopShortcuts,
                 HasCompletedFirstTimeSetup = HasCompletedFirstTimeSetup,
@@ -245,6 +270,7 @@ public sealed partial class ShellSettings : ObservableObject
     /// <summary>Acknowledge only the baseline that was actually submitted; an old response cannot replace a newer load.</summary>
     public void AcknowledgePreferences(long? expectedRevision, long? savedRevision)
     {
+        TaskbarPreviewDiagnostics.Record("pin.preferences.acknowledge", new { expectedRevision, savedRevision, currentRevision = PreferencesRevision, accepted = PreferencesRevision == expectedRevision });
         if (PreferencesRevision == expectedRevision) PreferencesRevision = savedRevision;
     }
 

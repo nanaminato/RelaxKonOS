@@ -11,7 +11,7 @@ object ServerDeploymentProtocol {
 }
 
 /** 远端部署启动器接受的有限动作集合。客户端不能提交任意命令、脚本路径、服务名或删除路径。 */
-enum class ServerDeploymentKind { Probe, Install, Upgrade, Repair, Uninstall, Status, Rollback }
+enum class ServerDeploymentKind { Probe, Install, Upgrade, Repair, Configure, Firewall, Uninstall, Status, Rollback }
 
 /** 部署操作的持久状态。远端持久记录是权威来源，实时事件只用于展示。 */
 enum class ServerDeploymentState { Queued, Running, Succeeded, Failed, Cancelled, Interrupted }
@@ -60,17 +60,16 @@ enum class ServerDataScope { Program, Configuration, Database, Secrets, Logs, Ca
 enum class ServerServiceIdKind { DirectUrl, ManagedInstallation, SshTunnelProfile }
 
 /** 发布包种类。 */
-enum class ServerReleasePackageKind { Server, UserServer }
+enum class ServerReleasePackageKind { Server }
 
 /** 发布制品运行时标识（RID）。 */
 enum class ServerRuntimeIdentifier { WinX64, WinArm64, LinuxX64, LinuxArm64 }
 
 /**
  * 枚举与线协议字符串互转：操作及安装模式使用 camelCase；RID 与发布包类型
- * 使用发布格式的连字符名称，例如 `win-x64` 与 `user-server`。
+ * 使用发布格式的连字符名称，例如 `win-x64` 与 `server`。
  */
 internal fun Enum<*>.wireName(): String = when (this) {
-    ServerReleasePackageKind.UserServer -> "user-server"
     ServerRuntimeIdentifier.WinX64 -> "win-x64"
     ServerRuntimeIdentifier.WinArm64 -> "win-arm64"
     ServerRuntimeIdentifier.LinuxX64 -> "linux-x64"
@@ -153,6 +152,11 @@ data class ServerHostSnapshot(
     val healthy: Boolean = false,
     val dataRetained: Boolean? = null,
     val serviceNames: List<String> = emptyList(),
+    val guardianEnabled: Boolean? = null,
+    val guardianRunning: Boolean? = null,
+    val fileAccess: String? = null,
+    val fileRoots: List<String>? = null,
+    val autoStart: Boolean? = null,
 )
 
 /** 与 C# `ServerHostProbeDto` 对齐的 SSH 宿主预检结果。 */
@@ -164,7 +168,7 @@ data class ServerHostProbe(
     val osVersion: String?,
     val osSupported: Boolean,
     val elevated: Boolean,
-    val sudoAvailable: Boolean,
+    val privilegeElevationAvailable: Boolean,
     val systemdAvailable: Boolean,
     val diskAvailableBytes: Long?,
     val requestedPort: Int?,
@@ -227,6 +231,9 @@ data class ServerDeploymentOptions(
     val allowUnsupportedSystem: Boolean = false,
     val addFirewallRule: Boolean = false,
     val removeComponents: String = "",
+    val removeFirewallRules: Boolean = false,
+    val guardianEnabled: Boolean? = null,
+    val autoStart: Boolean? = null,
 )
 
 /** 远端部署启动器的唯一入口请求。[operationId] 同时作为幂等键。 */

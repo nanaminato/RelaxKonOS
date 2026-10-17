@@ -22,7 +22,7 @@ internal static class SshFileBrowserLayoutChecks
     {
         var original = settings.ToPreferences();
         // Disconnected session and local fixtures keep layout checks independent of an SSH host.
-        var view = new SshFileBrowserView(new SshDesktopSession(null!));
+        var view = new SshFileBrowserView(new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)));
         Set("_path", "/home/demo/workspace");
         Set("_entries", new[] {
             new SshFileEntry("src", "/home/demo/workspace/src", true, false, 0, DateTime.Now),
@@ -103,7 +103,7 @@ internal static class SshFileBrowserLayoutChecks
             entries.SelectedItem = null; Pump();
             Check(!view.FindControl<MenuItem>("OverflowCopy")!.IsEnabled && !view.FindControl<MenuItem>("OverflowRename")!.IsEnabled,
                 "Overflow operations stayed enabled after clearing selection.");
-            var picker = new SshFileBrowserView(new SshDesktopSession(null!), selectPackage: _ => { });
+            var picker = new SshFileBrowserView(new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)), selectPackage: _ => { });
             var pickerWindow = manager.Create(new WindowCreateOptions(new AppId("test.ssh-picker"), "Choose package", picker, new CoreRect(0, 0, 320, 480)));
             picker.AttachWindowHeader(pickerWindow); Pump();
             Check(!pickerWindow.View.HasTitleBarContent && !picker.FindControl<StackPanel>("FileActions")!.IsVisible,
@@ -196,7 +196,7 @@ internal static class SshFileBrowserLayoutChecks
             var clipboardProperty = typeof(SshFileBrowserView).GetProperty("_clipboard", BindingFlags.Instance | BindingFlags.NonPublic)!;
             Check(ReferenceEquals(clipboardProperty.GetValue(view), clipboardProperty.GetValue(sibling)),
                 "SSH windows in one session do not share the file clipboard.");
-            var isolated = new SshFileBrowserView(new SshDesktopSession(null!));
+            var isolated = new SshFileBrowserView(new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)));
             Check(!ReferenceEquals(clipboardProperty.GetValue(view), clipboardProperty.GetValue(isolated)),
                 "SSH clipboard crosses connection boundaries.");
             Check(sibling.CanTransferEntries(view, [fixture[2]], "/elsewhere", true),
@@ -231,7 +231,7 @@ internal static class SshFileBrowserLayoutChecks
             Check(!view.CanTransferEntries(view, [fixture[1]], "/demo/folder20/child", true), "SSH allows a folder to be copied into itself.");
             Check(!view.CanTransferEntries(view, [fixture[2]], "/demo", false), "SSH allows a no-op drag move.");
             Check(view.CanTransferEntries(view, [fixture[2]], "/demo", true), "SSH rejects same-folder copy.");
-            var other = new SshFileBrowserView(new SshDesktopSession(null!));
+            var other = new SshFileBrowserView(new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)));
             Check(!other.CanTransferEntries(view, [fixture[2]], "/elsewhere", true), "SSH drag crosses connection boundaries.");
             Set("_busy", true);
             Check(!view.CanTransferEntries(view, [fixture[2]], "/elsewhere", true), "Busy SSH view accepts drops.");

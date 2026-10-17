@@ -12,6 +12,7 @@ config_root=${RELAXKONOS_USER_CONFIG_ROOT:-${XDG_CONFIG_HOME:-"$HOME/.config"}/r
 state_root=${RELAXKONOS_USER_STATE_ROOT:-${XDG_STATE_HOME:-"$HOME/.local/state"}/relaxkonos}
 cache_root=${RELAXKONOS_USER_CACHE_ROOT:-${XDG_CACHE_HOME:-"$HOME/.cache"}/relaxkonos}
 port=${RELAXKONOS_PORT:-5000}
+guardian_enabled=${RELAXKONOS_GUARDIAN_ENABLED:-}
 # Persistent opt-in for LAN listening; lifecycle restarts use the same address.
 listen_host=127.0.0.1
 lifecycle_lock_held=false
@@ -63,10 +64,10 @@ read_pid() {
 }
 server_binary() {
   local current=$data_root/server/current
-  [[ -L $current && ! -L $current/RelaxKonOS.Server ]] || fail "server/current is missing or unsafe"
+  [[ -L $current && ! -L $current/server/RelaxKonOS.Server ]] || fail "server/current is missing or unsafe"
   local binary
-  binary=$(realpath -e -- "$current/RelaxKonOS.Server") || fail "server binary is missing"
-  [[ $binary == "$data_root"/server/versions/*/RelaxKonOS.Server ]] || fail "server path escaped installation root"
+  binary=$(realpath -e -- "$current/server/RelaxKonOS.Server") || fail "server binary is missing"
+  [[ $binary == "$data_root"/server/versions/*/server/RelaxKonOS.Server ]] || fail "server path escaped installation root"
   printf '%s\n' "$binary"
 }
 guardian_binary() {
@@ -109,6 +110,13 @@ read_state_flag() {
 }
 json_string_or_null() { [[ -n ${1:-} ]] && printf '"%s"' "$1" || printf 'null'; }
 
+load_guardian_choice() {
+  if [[ -z $guardian_enabled ]]; then
+    guardian_enabled=$(read_state_flag guardianEnabled)
+    if [[ -z $guardian_enabled && ! -f $state_root/install-state.json ]]; then guardian_enabled=true; fi
+  fi
+  case "$guardian_enabled" in true|false) ;; *) fail "installation record lacks a valid Guardian selection";; esac
+}
 load_listen_host() {
   listen_host=127.0.0.1
   if [[ -f $config_root/listen-host ]]; then listen_host=$(<"$config_root/listen-host"); fi
@@ -117,13 +125,14 @@ load_listen_host() {
 
 write_install_state() {
   load_listen_host
+  load_guardian_choice
   local version=$1 previous_version=$2 installed=$3 id temporary
   id=$(installation_id)
   ensure_private_dir "$state_root"
   temporary="$state_root/install-state.json.new"
   umask 077
-  printf '{"schemaVersion":1,"installed":%s,"mode":"user","installationId":"%s","version":"%s","previousVersion":%s,"installRoot":"%s","dataRoot":"%s","configRoot":"%s","stateRoot":"%s","cacheRoot":"%s","listenUrl":"http://%s:%s","installedAtUtc":"%s"}\n' \
-    "$installed" "$id" "$version" "$(json_string_or_null "$previous_version")" "$data_root" "$data_root" "$config_root" "$state_root" "$cache_root" "$listen_host" "$port" "$(date -u +%FT%TZ)" > "$temporary"
+  printf '{"schemaVersion":1,"installed":%s,"mode":"user","installationId":"%s","version":"%s","previousVersion":%s,"installRoot":"%s","dataRoot":"%s","configRoot":"%s","stateRoot":"%s","cacheRoot":"%s","listenUrl":"http://%s:%s","installedAtUtc":"%s","guardianEnabled":%s}\n' \
+    "$installed" "$id" "$version" "$(json_string_or_null "$previous_version")" "$data_root" "$data_root" "$config_root" "$state_root" "$cache_root" "$listen_host" "$port" "$(date -u +%FT%TZ)" "$guardian_enabled" > "$temporary"
   chmod 600 "$temporary"; mv -f -- "$temporary" "$state_root/install-state.json"
 }
 # The install manifest is the only authority for what an uninstall may remove. The engine
@@ -166,15 +175,15 @@ activate_version() {
 }
 verify_bundle() {
   local bundle=$1 manifest=$1/manifest.json
-  [[ -d $bundle && -f $manifest && -x $bundle/payload/linux/server/RelaxKonOS.Server && -x $bundle/payload/linux/guardian/RelaxKonOS.Guardian.Agent && -x $bundle/deployment/user/relaxkon ]] || fail "not a complete user-server bundle"
-  grep -Eq '"schemaVersion"[[:space:]]*:[[:space:]]*1' "$manifest" && grep -Eq '"packageKind"[[:space:]]*:[[:space:]]*"user-server"' "$manifest" || fail "bundle is not a user-server manifest"
+  [[ -d $bundle && -f $manifest && -x $bundle/payload/linux/server/RelaxKonOS.Server && -x $bundle/payload/linux/guardian/RelaxKonOS.Guardian.Agent && -x $bundle/deployment/user/relaxkon ]] || fail "not a complete server bundle"
+  grep -Eq '"schemaVersion"[[:space:]]*:[[:space:]]*1' "$manifest" && grep -Eq '"packageKind"[[:space:]]*:[[:space:]]*"server"' "$manifest" || fail "bundle is not a server manifest"
   grep -Eq '"files"[[:space:]]*:[[:space:]]*\[' "$manifest" || fail "bundle manifest has no file inventory"
   ! find "$bundle" -type l -print -quit | grep -q . || fail "bundle must not contain symbolic links"
   if [[ $skip_file_checks != true ]]; then
     command -v python3 >/dev/null || fail "Python 3 is required to verify the release inventory"
     local runtime
     case "$(uname -m)" in x86_64) runtime=linux-x64 ;; aarch64|arm64) runtime=linux-arm64 ;; *) fail "unsupported architecture" ;; esac
-    python3 "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/../verify-release-inventory.py" "$bundle" user-server "$runtime" >/dev/null || fail "bundle file inventory verification failed"
+    python3 "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/../verify-release-inventory.py" "$bundle" server "$runtime" >/dev/null || fail "bundle file inventory verification failed"
   fi
 }
 # Stage the new version beside the active one and switch the current symlink atomically, so an
@@ -194,6 +203,7 @@ install_bundle() {
   cp -a -- "$bundle/deployment/user" "$stage/user"
   cp -- "$bundle/deployment/verify-release-inventory.py" "$stage/verify-release-inventory.py"
   chmod -R go-rwx -- "$stage"
+  chmod 0700 "$stage/server/Assets/SevenZip/linux-x64/7zz" "$stage/server/Assets/SevenZip/linux-arm64/7zz"
   mv -- "$stage" "$destination"
   printf '%s\n' "$version"
 }
@@ -211,12 +221,28 @@ start() {
   local foreground=${1:-false} pid binary guardian observability_instance_id observability_key observability_key_length
   acquire_lifecycle_lock
   if pid=$(read_pid); then echo "RelaxKonOS is already running (pid $pid)."; return; fi
-  binary=$(server_binary); guardian=$(guardian_binary); ensure_private_dir "$state_root/run"; ensure_private_dir "$state_root/logs"; ensure_private_dir "$state_root/logs/runtime"; ensure_private_dir "$state_root/guardian"; write_config
+  load_guardian_choice
+  binary=$(server_binary); guardian=; [[ $guardian_enabled != true ]] || guardian=$(guardian_binary); ensure_private_dir "$state_root/run"; ensure_private_dir "$state_root/logs"; ensure_private_dir "$state_root/logs/runtime"; ensure_private_dir "$state_root/guardian"; write_config
   load_listen_host
+  load_guardian_choice
   export ASPNETCORE_URLS="http://$listen_host:$port"
   rm -f -- "$state_root/run/server.sock"
   export Server__Mode=user Identity__LinuxPamTransport=in-process Identity__LinuxPamService=login Privileges__Backend=disabled UserMode__ControlSocketPath="$state_root/run/server.sock"
   export Storage__DatabasePath="$state_root/server/relaxkonos.db"
+  ensure_private_dir "$state_root/server"
+  if [[ ! -f $config_root/secrets/jwt.secret ]]; then
+    (umask 077; head -c 48 /dev/urandom | base64 > "$config_root/secrets/jwt.secret")
+  fi
+  export Jwt__Secret="$(<"$config_root/secrets/jwt.secret")"
+  # Relative stores remain persistent rather than living inside a versioned payload.
+  local data_link="$(dirname "$binary")/data"
+  if [[ -L $data_link ]]; then
+    [[ $(realpath -- "$data_link") == "$state_root/server" ]] || fail "server data link escaped the state root"
+  elif [[ -e $data_link ]]; then
+    fail "server data path must be a managed link"
+  else
+    ln -s -- "$state_root/server" "$data_link"
+  fi
   export RELAXKONOS_GUARDIAN_MODE=user RELAXKONOS_GUARDIAN_DATA_DIR="$state_root/guardian" RELAXKONOS_GUARDIAN_PIPE="relaxkonos-guardian-$UID"
   export RELAXKONOS_GUARDIAN_SHARED_SECRET="$(<"$config_root/secrets/guardian.secret" 2>/dev/null || true)"
   if [[ -z ${RELAXKONOS_GUARDIAN_SHARED_SECRET} ]]; then umask 077; head -c 32 /dev/urandom | base64 > "$config_root/secrets/guardian.secret"; export RELAXKONOS_GUARDIAN_SHARED_SECRET=$(<"$config_root/secrets/guardian.secret"); fi
@@ -235,12 +261,16 @@ start() {
     chmod 600 "$config_root/secrets/observability-audit-hmac.key"
   fi
   export Observability__InstanceId="$observability_instance_id" Observability__LogDirectory="$state_root/logs/runtime" Observability__AuditDatabasePath="$state_root/server/security-audit.db" Observability__AuditHmacKey="$observability_key"
+  export GuardianAgent__Enabled="$guardian_enabled"
+  if [[ $guardian_enabled == true ]]; then
   export GuardianAgent__PipeName="$RELAXKONOS_GUARDIAN_PIPE" GuardianAgent__SharedSecret="$RELAXKONOS_GUARDIAN_SHARED_SECRET"
-  nohup "$guardian" >> "$state_root/logs/guardian.log" 2>&1 &
+  nohup "$guardian" >> "$state_root/logs/guardian.log" 2>&1 9>&- &
   local guardian_pid=$!
   printf '%s\n' "$guardian_pid" > "$state_root/run/guardian.pid"; process_start_time "$guardian_pid" > "$state_root/run/guardian.starttime"
-  if [[ $foreground == true ]]; then exec "$binary"; fi
-  nohup "$binary" >> "$state_root/logs/server.log" 2>&1 & pid=$!
+  fi
+  cd -- "$(dirname "$binary")"
+  if [[ $foreground == true ]]; then exec 9>&-; exec "$binary"; fi
+  nohup "$binary" >> "$state_root/logs/server.log" 2>&1 9>&- & pid=$!
   printf '%s\n' "$pid" > "$state_root/run/server.pid"; process_start_time "$pid" > "$state_root/run/server.starttime"; chmod 600 "$state_root/run/"server.*
   echo "Started RelaxKonOS User Mode (pid $pid)."
 }
@@ -250,25 +280,37 @@ wait_ready() {
   for attempt in $(seq 1 30); do
     if [[ -S $state_root/run/server.sock ]]; then
       chmod 600 "$state_root/run/server.sock"
-      curl --unix-socket "$state_root/run/server.sock" --fail --silent --show-error --max-time 2 http://localhost/ready >/dev/null 2>&1 && return 0
+      curl --unix-socket "$state_root/run/server.sock" --fail --silent --show-error --max-time 2 http://localhost/ready >/dev/null 2>&1 &&
+        curl --fail --silent --show-error --max-time 2 "http://127.0.0.1:$port/healthz" >/dev/null 2>&1 && return 0
     fi
     sleep 1
   done
   return 1
 }
 stop() {
-  local pid guardian_pid
+  local pid guardian_pid= guardian_started= server_started= deadline
   pid=$(read_pid) || pid=
+  [[ -z $pid ]] || server_started=$(process_start_time "$pid" || true)
+  if [[ -r $state_root/run/guardian.pid && -r $state_root/run/guardian.starttime ]]; then
+    guardian_pid=$(<"$state_root/run/guardian.pid"); guardian_started=$(<"$state_root/run/guardian.starttime")
+    if [[ ! $guardian_pid =~ ^[0-9]+$ || $(stat -c %u -- "/proc/$guardian_pid" 2>/dev/null || true) != $UID || $(process_start_time "$guardian_pid" || true) != "$guardian_started" ]]; then guardian_pid=; fi
+  fi
   [[ -z $pid ]] || kill -TERM "$pid"
-  if [[ -r $state_root/run/guardian.pid ]]; then guardian_pid=$(<"$state_root/run/guardian.pid"); [[ $guardian_pid =~ ^[0-9]+$ && $(stat -c %u -- "/proc/$guardian_pid" 2>/dev/null || true) == $UID ]] && kill -TERM "$guardian_pid" || true; fi
+  [[ -z $guardian_pid ]] || kill -TERM "$guardian_pid"
+  deadline=$((SECONDS + 30))
+  while [[ -n $pid && $(process_start_time "$pid" || true) == "$server_started" || -n $guardian_pid && $(process_start_time "$guardian_pid" || true) == "$guardian_started" ]]; do
+    (( SECONDS < deadline )) || { echo 'Processes did not stop; retained PID records for recovery.' >&2; return 1; }
+    sleep 1
+  done
   rm -f -- "$state_root/run/server.pid" "$state_root/run/server.starttime" "$state_root/run/server.sock" "$state_root/run/guardian.pid" "$state_root/run/guardian.starttime"
   [[ -n $pid ]] && echo "Stopped RelaxKonOS." || echo "RelaxKonOS is not running."
 }
 status() {
   load_listen_host
+  load_guardian_choice
   local pid
   pid=$(read_pid) || { echo "RelaxKonOS User Mode is stopped."; return 1; }
-  if [[ -S $state_root/run/server.sock ]] && command -v curl >/dev/null && curl --unix-socket "$state_root/run/server.sock" --fail --silent --show-error --max-time 2 http://localhost/ready >/dev/null 2>&1; then
+  if [[ -S $state_root/run/server.sock ]] && command -v curl >/dev/null && curl --unix-socket "$state_root/run/server.sock" --fail --silent --show-error --max-time 2 http://localhost/ready >/dev/null 2>&1 && curl --fail --silent --max-time 2 "http://127.0.0.1:$port/healthz" >/dev/null 2>&1; then
     echo "RelaxKonOS User Mode is running (pid $pid, listening on $listen_host:$port)."
   else
     echo "RelaxKonOS User Mode process is running but its private control socket is not ready."
@@ -280,7 +322,8 @@ status() {
 # become ready, so callers can restore the previous version instead of leaving a broken install.
 start_and_verify() {
   start >/dev/null || return 1
-  wait_ready
+  wait_ready || return 1
+  [[ $guardian_enabled != true ]] || "$(server_binary)" guardian-health
 }
 
 install_or_upgrade() {
@@ -325,19 +368,40 @@ install_or_upgrade() {
 
 # Replay the verified active version and configuration without touching host resources.
 repair() {
-  local version previous_version
+  local bundle=${1:-} version previous_version
   canonicalize_roots
   acquire_lifecycle_lock
   [[ -f $state_root/install-state.json ]] || fail "cannot repair without an installation"
   version=$(read_state_field version)
   [[ -n $version && -d $data_root/server/versions/$version ]] || fail "the active version payload is missing"
   previous_version=$(read_state_field previousVersion)
-  stop >/dev/null || true
+  if [[ -n $bundle ]]; then
+    verify_bundle "$bundle"
+    local bundle_version
+    bundle_version=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["version"])' "$bundle/manifest.json")
+    [[ $bundle_version == "$version" ]] || fail "repair package must match the installed version"
+  fi
+  stop >/dev/null || return 1
+  if [[ -n $bundle ]]; then
+    python3 - "$bundle" "$data_root/server/versions/$version" <<'USER_REPAIR'
+import json,pathlib,shutil,sys
+bundle,version=pathlib.Path(sys.argv[1]),pathlib.Path(sys.argv[2])
+for item in json.loads((bundle/'manifest.json').read_text())['files']:
+    path=item['path']
+    if not path.startswith('payload/linux/'):continue
+    relative=path[len('payload/linux/'):]
+    if relative.split('/')[0] not in ('server','guardian'):continue
+    target=version/relative
+    if target.is_symlink() or not target.resolve().is_relative_to(version.resolve()):raise ValueError('Unsafe repair destination')
+    target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(bundle/path,target)
+    target.chmod(0o700 if target.name in ('RelaxKonOS.Server','RelaxKonOS.Guardian.Agent') or relative in ('server/Assets/SevenZip/linux-x64/7zz','server/Assets/SevenZip/linux-arm64/7zz') else 0o600)
+USER_REPAIR
+  fi
   activate_version "$version"
   write_config
+  start_and_verify || fail "the repaired installation did not become ready"
   write_install_state "$version" "$previous_version" true
   write_install_manifest "$version"
-  start_and_verify || fail "the repaired installation did not become ready"
   echo "Repaired RelaxKonOS User Mode $version."
 }
 
@@ -390,11 +454,44 @@ uninstall() {
   fi
 }
 
+configure() {
+  canonicalize_roots
+  acquire_lifecycle_lock
+  [[ -f $state_root/install-state.json ]] || fail "cannot configure without an installation"
+  local old_guardian old_port old_host version previous
+  old_guardian=$(read_state_flag guardianEnabled)
+  old_port=$(read_state_field listenUrl); old_port=${old_port##*:}
+  load_listen_host; old_host=$listen_host
+  version=$(read_state_field version); previous=$(read_state_field previousVersion)
+  stop >/dev/null || return 1
+  case "$configure_network" in loopback) listen_host=127.0.0.1;; lan) listen_host=0.0.0.0;; *) fail "invalid network profile";; esac
+  printf '%s\n' "$listen_host" > "$config_root/listen-host"
+  load_guardian_choice
+  if start_and_verify; then
+    write_install_state "$version" "$previous" true
+    return
+  fi
+  stop >/dev/null || true
+  guardian_enabled=$old_guardian; port=$old_port
+  printf '%s\n' "$old_host" > "$config_root/listen-host"
+  start_and_verify || fail "configuration failed and recovery requires attention"
+  fail "configuration failed; previous settings restored"
+}
 subcommand=${1:-}; shift || true
+if [[ -z ${RELAXKONOS_PORT:-} && $subcommand != install && $subcommand != configure ]]; then
+  recorded_port=$(read_state_field listenUrl); recorded_port=${recorded_port##*:}
+  [[ -z $recorded_port ]] || port=$recorded_port
+fi
 case "$subcommand" in
+  configure)
+    configure_network=loopback
+    while [[ $# -gt 0 ]]; do case "$1" in --guardian-enabled) guardian_enabled=${2:-}; shift 2;; --port) port=${2:-}; shift 2;; --network) configure_network=${2:-}; shift 2;; *) fail "unknown option: $1";; esac; done
+    [[ $port =~ ^[0-9]+$ ]] && (( port >= 1 && port <= 65535 )) || fail "invalid port"
+    configure
+    ;;
   install|upgrade)
     bundle= uri= sha=
-    while [[ $# -gt 0 ]]; do case "$1" in --skip-file-checks) skip_file_checks=true; shift;; --bundle) bundle=${2:-}; shift 2;; --release-uri) uri=${2:-}; shift 2;; --release-sha256) sha=${2:-}; shift 2;; --data-root) data_root=${2:-}; shift 2;; --config-root) config_root=${2:-}; shift 2;; --state-root) state_root=${2:-}; shift 2;; --cache-root) cache_root=${2:-}; shift 2;; --port) port=${2:-}; shift 2;; *) fail "unknown option: $1";; esac; done
+    while [[ $# -gt 0 ]]; do case "$1" in --guardian-enabled) [[ $subcommand == install ]] || fail "change components with configure"; guardian_enabled=${2:-}; shift 2;; --skip-file-checks) skip_file_checks=true; shift;; --bundle) bundle=${2:-}; shift 2;; --release-uri) uri=${2:-}; shift 2;; --release-sha256) sha=${2:-}; shift 2;; --data-root) data_root=${2:-}; shift 2;; --config-root) config_root=${2:-}; shift 2;; --state-root) state_root=${2:-}; shift 2;; --cache-root) cache_root=${2:-}; shift 2;; --port) port=${2:-}; shift 2;; *) fail "unknown option: $1";; esac; done
     [[ $port =~ ^[0-9]+$ ]] && (( port >= 1 && port <= 65535 )) || fail "invalid port"
     [[ -z $uri ]] || skip_file_checks=false
     install_or_upgrade "$subcommand" "$bundle" "$uri" "$sha"
@@ -402,12 +499,12 @@ case "$subcommand" in
   start) [[ ${1:-} == --foreground || -z ${1:-} ]] || fail "unknown option: ${1:-}"; start "$([[ ${1:-} == --foreground ]] && echo true || echo false)";;
   stop) [[ $# == 0 ]] || fail "stop accepts no options"; acquire_lifecycle_lock; stop;;
   status) [[ $# == 0 ]] || fail "status accepts no options"; canonicalize_roots; status;;
-  repair) [[ $# == 0 ]] || fail "repair accepts no options"; repair;;
+  repair) bundle=; if [[ $# == 2 && $1 == --bundle ]]; then bundle=$2; elif [[ $# != 0 ]]; then fail "repair accepts only --bundle"; fi; repair "$bundle";;
   rollback) [[ $# == 0 ]] || fail "rollback accepts no options"; rollback;;
   uninstall)
     retention=retain confirmed=false
     while [[ $# -gt 0 ]]; do case "$1" in --retain-data) retention=retain; shift;; --delete-data) retention=delete; shift;; --confirm-delete-data) confirmed=true; shift;; *) fail "unknown option: $1";; esac; done
     uninstall "$retention" "$confirmed"
     ;;
-  *) fail "usage: relaxkon {install|start|stop|status|upgrade|repair|rollback|uninstall}";;
+  *) fail "usage: relaxkon {install|start|stop|status|upgrade|configure|repair|rollback|uninstall}";;
 esac

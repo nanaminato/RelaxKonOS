@@ -1,6 +1,8 @@
 {
     "Culture": "en-US",
     "Strings": {
+    "settings.device.ssh_terminal": "Open a terminal after SSH sign-in",
+    "settings.device.ssh_terminal_hint": "Turn off to enter the desktop without opening a terminal on your next SSH sign-in. You can still open a terminal manually. Saved locally for the SSH desktop.",
 "settings.network.remote_title": "Remote network & Internet",
   "settings.network.adapters": "Network adapters",
   "settings.network.remote_scope": "Applies to the connected remote host. Select an Ethernet or Wi-Fi adapter to view properties and edit IP/DNS.",

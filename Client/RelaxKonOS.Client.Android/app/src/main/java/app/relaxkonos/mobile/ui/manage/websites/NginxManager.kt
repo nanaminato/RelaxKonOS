@@ -68,7 +68,7 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
         Text(stringResource(R.string.nginx_intro), style = MaterialTheme.typography.bodySmall)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             TextButton(onClick = model::refresh, enabled = !state.busy) { Text(stringResource(R.string.nginx_discover)) }
-            if (canManage && state.system != HostOperatingSystemKind.Unknown && state.servers.none { it.managementMode == "managed" } && (state.system != HostOperatingSystemKind.Ubuntu || (state.servers.isEmpty() && state.candidates.isEmpty())))
+            if (canManage && state.system != HostOperatingSystemKind.Unknown && state.servers.none { it.managementMode == "managed" } && (state.system !in NginxViewModel.aptSystems || (state.servers.isEmpty() && state.candidates.isEmpty())))
                 OutlinedButton(onClick = { installDialog = true }, enabled = !model.mutationsBlocked) { Text(stringResource(R.string.nginx_install)) }
         }
         }
@@ -273,7 +273,7 @@ internal fun NginxInstallForm(state: NginxState, hasIntent: Boolean, intentVersi
                 state.problemCode?.let { Text(nginxProblemLabel(it), color = MaterialTheme.colorScheme.error) }
                 if (state.uncertain) Text(stringResource(R.string.nginx_uncertain), color = MaterialTheme.colorScheme.error)
             }
-            Text(stringResource(if (windows) R.string.nginx_windows_install else R.string.nginx_ubuntu_install))
+            Text(stringResource(if (windows) R.string.nginx_windows_install else R.string.nginx_linux_install))
             if (windows) {
                 state.catalog?.versions.orEmpty().forEach { item ->
                     TextButton(enabled = !locked, onClick = { version = item; onClearReference() }) { Text(item) }

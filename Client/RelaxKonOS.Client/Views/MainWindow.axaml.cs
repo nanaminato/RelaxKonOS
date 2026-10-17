@@ -8,6 +8,11 @@ using Avalonia.Threading;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Client.Apps.Explorer;
+using RelaxKonOS.Client.Apps.Explorer.Models;
+using RelaxKonOS.Client.Apps.Explorer.Uploads;
+using RelaxKonOS.Client.Apps.Explorer.ViewModels;
+using RelaxKonOS.Protocol.Files;
+using RelaxKonOS.WindowManager;
 using RelaxKonOS.Client.Services.WindowLayout;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Developer;
@@ -95,12 +100,40 @@ public partial class MainWindow : Window
         {
             if (shell.RequestToggleHostFullScreen?.Target == this) shell.RequestToggleHostFullScreen = null;
             if (shell.ReadHostFileClipboardAsync?.Target == this) shell.ReadHostFileClipboardAsync = null;
-            if (shell.MarkRemoteFileCopyAsync?.Target == this) shell.MarkRemoteFileCopyAsync = null;
+            if (shell.PublishRemoteFilesAsync?.Target == this) shell.PublishRemoteFilesAsync = null;
+            if (shell.PasteHostFilesAsync?.Target == this) shell.PasteHostFilesAsync = null;
+            App.Services.GetRequiredService<ExplorerOperationCenter>().Completed -= OnDesktopFileOperationCompleted;
         }
         _attachedShell = null;
         if (App.Services.GetService<ShellRuntime>() is { } runtime)
             _ = runtime.DetachHostAsync(ShellHost);
     }
+
+    private Task PublishDesktopFilesAsync(IReadOnlyList<FileSystemEntryDto> entries)
+    {
+        var center = App.Services.GetRequiredService<ExplorerOperationCenter>();
+        return HostFileClipboard.PublishAsync(Clipboard, App.Services.GetRequiredService<IExplorerClient>(), entries,
+            () => center.SessionKey?.Invoke(),
+            (path, size) => center.BeginClipboardDownload(path, size, action => Dispatcher.UIThread.Post(action)));
+    }
+
+    private async Task PasteDesktopHostFilesAsync(string targetDirectory, IReadOnlyList<LocalUploadSource> sources)
+    {
+        // The queued transfer captures its own destination and dependencies; it does not
+        // need a visible browser window or a directory listing to start copying.
+        var client = App.Services.GetRequiredService<IExplorerClient>();
+        var context = new RelaxKonOS.AppSDK.AppContext(new RelaxKonOS.Core.Applications.AppId("relaxkonos.explorer"),
+            App.Services.GetRequiredService<IWindowManager>(), App.Services);
+        using var transfer = new ExplorerViewModel(client)
+        {
+            QueueUpload = App.Services.GetRequiredService<ExplorerOperationCenter>().QueueUpload,
+            LargeFileUploader = App.Services.GetRequiredService<ILargeFileUploader>(),
+            RequestFileOperationElevationAsync = (paths, capability) => ExplorerApp.RequestOperationElevationAsync(context, client, paths, capability),
+        };
+        await transfer.PasteHostFilesAsync(targetDirectory, sources);
+    }
+
+    private void OnDesktopFileOperationCompleted(FileOperationDto result) => _attachedShell?.RefreshDesktopCommand.Execute(null);
 
     private async Task AttachShellAsync()
     {
@@ -118,7 +151,12 @@ public partial class MainWindow : Window
         _attachedShell = shell;
         shell.RequestToggleHostFullScreen = () => SetFullScreen(!_isFullScreen);
         shell.ReadHostFileClipboardAsync = () => HostFileClipboard.ReadAsync(Clipboard);
-        shell.MarkRemoteFileCopyAsync = () => HostFileClipboard.MarkRemoteCopyAsync(Clipboard);
+        shell.PublishRemoteFilesAsync = PublishDesktopFilesAsync;
+        shell.PasteHostFilesAsync = PasteDesktopHostFilesAsync;
+        var fileOperations = App.Services.GetRequiredService<ExplorerOperationCenter>();
+        ExplorerApp.ConfigureOperationsWindow(App.Services.GetRequiredService<IWindowManager>(), fileOperations);
+        fileOperations.Completed -= OnDesktopFileOperationCompleted;
+        fileOperations.Completed += OnDesktopFileOperationCompleted;
         shell.IsHostFullScreen = _isFullScreen;
         try
         {

@@ -193,8 +193,8 @@ internal static class ServerCenterContractChecks
 
     private static void VerifyModeMatrix()
     {
-        Check(ServerDeploymentModeMatrix.All.Count == 3, "能力矩阵覆盖三种模式");
-        Check(ServerDeploymentModeMatrix.All.Select(m => m.Mode).Distinct().Count() == 3, "三种模式互不相同");
+        Check(ServerDeploymentModeMatrix.All.Count == 4, "能力矩阵覆盖四种模式");
+        Check(ServerDeploymentModeMatrix.All.Select(m => m.Mode).Distinct().Count() == 4, "四种模式互不相同");
         foreach (var mode in Enum.GetValues<ServerInstallMode>())
             Check(ServerDeploymentModeMatrix.For(mode).Mode == mode, $"For({mode}) 返回同一模式");
 
@@ -359,8 +359,8 @@ internal static class ServerCenterContractChecks
         Check(JsonSerializer.Serialize(ServerRuntimeIdentifier.WinX64, RelaxKonOSJsonOptions.Default) == "\"win-x64\""
               && JsonSerializer.Deserialize<ServerRuntimeIdentifier>("\"win-x64\"", RelaxKonOSJsonOptions.Default)
               == ServerRuntimeIdentifier.WinX64, "Windows 启动器的 RID 与发布包一致");
-        Check(JsonSerializer.Serialize(ServerReleasePackageKind.UserServer, RelaxKonOSJsonOptions.Default)
-              == "\"user-server\"", "User Mode 包类型与发布包一致");
+        Check(JsonSerializer.Serialize(ServerReleasePackageKind.Server, RelaxKonOSJsonOptions.Default)
+              == "\"server\"", "系统模式与用户模式共用服务端发布包");
     }
 
     private static void VerifyOperationRecovery()

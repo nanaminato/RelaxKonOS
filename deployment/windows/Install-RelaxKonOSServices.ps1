@@ -1,5 +1,7 @@
 [CmdletBinding(SupportsShouldProcess)]
 param(
+    [bool] $AutoStart = $true,
+    [bool] $GuardianEnabled = $true,
     [string] $InstallRoot = (Join-Path $env:ProgramFiles 'RelaxKonOS'),
     [string] $ServerExecutable,
     [string] $GuardianExecutable,
@@ -37,7 +39,7 @@ $PrivilegedHelperExecutable = if ([string]::IsNullOrWhiteSpace($PrivilegedHelper
 $ServerExecutable = [IO.Path]::GetFullPath($ServerExecutable)
 $GuardianExecutable = [IO.Path]::GetFullPath($GuardianExecutable)
 $PrivilegedHelperExecutable = [IO.Path]::GetFullPath($PrivilegedHelperExecutable)
-if (-not (Test-Path -LiteralPath $ServerExecutable -PathType Leaf) -or -not (Test-Path -LiteralPath $GuardianExecutable -PathType Leaf) -or -not (Test-Path -LiteralPath $PrivilegedHelperExecutable -PathType Leaf)) {
+if (-not (Test-Path -LiteralPath $ServerExecutable -PathType Leaf) -or ($GuardianEnabled -and -not (Test-Path -LiteralPath $GuardianExecutable -PathType Leaf)) -or -not (Test-Path -LiteralPath $PrivilegedHelperExecutable -PathType Leaf)) {
     throw 'ServerExecutable, GuardianExecutable, and PrivilegedHelperExecutable must all exist.'
 }
 if ($ServerPort -lt 1 -or $ServerPort -gt 65535) { throw 'ServerPort must be between 1 and 65535.' }
@@ -252,6 +254,7 @@ $serverSettings = [ordered]@{
         Secret = $jwtSecret
     }
     GuardianAgent = [ordered]@{
+        Enabled = $GuardianEnabled
         PipeName = 'relaxkonos-guardian'
         SharedSecret = $sharedSecret
     }
@@ -293,21 +296,27 @@ if ($bootstrapCertificate) {
 & icacls $composeData /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'Administrators:(OI)(CI)F' | Out-Null
 & icacls $privilegedData /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'Administrators:(OI)(CI)F' | Out-Null
 
-function Install-OrUpdateService([string] $Name, [string] $BinaryPath) {
+function Install-OrUpdateService([string] $Name, [string] $BinaryPath, [bool] $Automatic = $AutoStart) {
     if (Get-Service -Name $Name -ErrorAction SilentlyContinue) {
         # Pass the quoted executable path as a structured value; PowerShell 5.1 strips
         # embedded quotes when passing this value to sc.exe's native command line.
         $service = Get-CimInstance -ClassName Win32_Service | Where-Object { $_.Name -eq $Name }
-        $change = Invoke-CimMethod -InputObject $service -MethodName Change -Arguments @{ PathName = $BinaryPath; StartMode = 'Automatic' }
+        $change = Invoke-CimMethod -InputObject $service -MethodName Change -Arguments @{ PathName = $BinaryPath; StartMode = $(if ($Automatic) { 'Automatic' } else { 'Manual' }) }
         if ($change.ReturnValue -ne 0) { throw "Could not configure service '$Name' (Win32_Service.Change code $($change.ReturnValue))." }
     } else {
-        New-Service -Name $Name -DisplayName $Name -BinaryPathName $BinaryPath -StartupType Automatic | Out-Null
+        New-Service -Name $Name -DisplayName $Name -BinaryPathName $BinaryPath -StartupType $(if ($Automatic) { 'Automatic' } else { 'Manual' }) | Out-Null
     }
     & sc.exe failure $Name reset= 86400 actions= restart/60000/restart/60000/restart/60000 | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Could not configure recovery for service '$Name' (sc.exe exit code $LASTEXITCODE)." }
 }
 
-Install-OrUpdateService $GuardianServiceName ('"' + $GuardianExecutable + '" --config "' + $guardianConfig + '"')
+if ($GuardianEnabled) {
+    Install-OrUpdateService $GuardianServiceName ('"' + $GuardianExecutable + '" --config "' + $guardianConfig + '"')
+} elseif (Get-Service -Name $GuardianServiceName -ErrorAction SilentlyContinue) {
+    Stop-Service -Name $GuardianServiceName -Force
+    & sc.exe delete $GuardianServiceName | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Could not remove the Guardian service.' }
+}
 Install-OrUpdateService $ServerServiceName ('"' + $ServerExecutable + '" --urls "' + $serverListenUri.AbsoluteUri.TrimEnd('/') + '"')
 
 # The Server keeps a service SID even while running as LocalService. It is the sole non-admin
@@ -348,10 +357,10 @@ if ($LASTEXITCODE -ne 0) { throw 'Unable to protect managed certificate storage.
 # the Server service SID needs Modify so first installation does not fail before that boundary.
 & icacls $proxyData /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'Administrators:(OI)(CI)F' ("*" + $serverServiceSid + ':(OI)(CI)M') | Out-Null
 & icacls $privilegedConfig /inheritance:r /grant:r 'SYSTEM:F' 'Administrators:F' | Out-Null
-Install-OrUpdateService $PrivilegedHelperServiceName ('"' + $PrivilegedHelperExecutable + '" --windows-service --config "' + $privilegedConfig + '"')
+Install-OrUpdateService $PrivilegedHelperServiceName ('"' + $PrivilegedHelperExecutable + '" --windows-service --config "' + $privilegedConfig + '"') -Automatic $true
 
 if ($PSCmdlet.ShouldProcess('RelaxKonOS services', 'Start or restart')) {
-    Restart-Service -Name $GuardianServiceName -Force
+    if ($GuardianEnabled) { Restart-Service -Name $GuardianServiceName -Force }
     Restart-Service -Name $PrivilegedHelperServiceName -Force
     Restart-Service -Name $ServerServiceName -Force
 }

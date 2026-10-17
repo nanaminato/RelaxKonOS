@@ -214,7 +214,7 @@
     <string name="server_maintenance_install_root">インストール先</string>
     <string name="server_maintenance_mode">インストール方式</string>
     <string name="server_maintenance_overview">概要</string>
-    <string name="server_maintenance_probe">OS 対応：%1$s\nsudo 利用可能：%2$s\nsystemd 利用可能：%3$s\n空き容量（バイト）：%4$s\n5000 ポート利用可能：%5$s\n不足する依存関係：%6$s</string>
+    <string name="server_maintenance_probe">OS 対応：%1$s\nsudo / su による昇格が利用可能：%2$s\nsystemd 利用可能：%3$s\n空き容量（バイト）：%4$s\n5000 ポート利用可能：%5$s\n不足する依存関係：%6$s</string>
     <string name="server_maintenance_purge">管理データを完全に削除</string>
     <string name="server_maintenance_read_failed">インストール状態を読み取れませんでした。接続を確認してから再確認してください。</string>
     <string name="server_maintenance_repair">インストールを修復</string>

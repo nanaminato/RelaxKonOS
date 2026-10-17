@@ -1,6 +1,8 @@
 {
   "culture": "zh-CN",
   "strings": {
+    "taskbar.pin": "固定到任务栏",
+    "taskbar.unpin": "从任务栏取消固定",
     "taskbar.start": "开始",
     "taskbar.search": "搜索",
     "taskbar.task_view": "任务视图",
@@ -26,8 +28,6 @@
     "desktop.recycle_bin": "回收站",
     "start.back_to_pinned": "‹ 返回",
     "start.all_applications": "所有应用",
-    "loading.title": "正在准备桌面",
-    "loading.description": "正在载入应用和桌面项目…",
     "desktop.styles": "桌面样式",
     "common.view": "查看",
     "common.open": "打开",

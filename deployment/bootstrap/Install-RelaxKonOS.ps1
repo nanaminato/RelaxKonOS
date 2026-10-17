@@ -1,9 +1,12 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
+    [switch] $RestorePayload,
+    [ValidateSet('true', 'false')][string] $AutoStart,
+    [ValidateSet('true', 'false')][string] $GuardianEnabled,
     [ValidateSet('auto', 'zh-CN', 'en-US', 'ja-JP')]
     [string] $Language = 'auto',
     # The launcher drives a fixed action set; the default keeps the historical interactive install.
-    [ValidateSet('install', 'upgrade', 'repair', 'rollback')]
+    [ValidateSet('install', 'upgrade', 'repair', 'rollback', 'configure')]
     [string] $Action = 'install',
     [ValidateSet('linuxSystem', 'linuxUser', 'windowsSystem', 'windowsUser')]
     [string] $Mode = 'windowsSystem',
@@ -154,7 +157,8 @@ function Write-InstallState($State) {
         # Register sign-in startup only after the runtime has passed health and state was committed.
         $startup = Join-Path $InstallRoot 'Start-PersonalServer.ps1'
         $powerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-        New-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'RelaxKonOSPersonal' -Value ('"' + $powerShell + '" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $startup + '"') -PropertyType String -Force | Out-Null
+        if ($State.autoStart) { New-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'RelaxKonOSPersonal' -Value ('"' + $powerShell + '" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $startup + '"') -PropertyType String -Force | Out-Null }
+        else { Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'RelaxKonOSPersonal' -ErrorAction SilentlyContinue }
     }
 }
 
@@ -259,13 +263,14 @@ function Invoke-ServicesInstaller([string] $Version, [string] $ListenUrl) {
     $server = Join-Path $versionRoot 'server\RelaxKonOS.Server.exe'
     $guardian = Join-Path $versionRoot 'guardian\RelaxKonOS.Guardian.Agent.exe'
     $helper = Join-Path $versionRoot 'privileged-helper\RelaxKonOS.PrivilegedHelper.exe'
-    foreach ($file in @($server, $guardian, $helper)) {
+    $requiredPayload = @($server, $helper); if ($GuardianEnabled) { $requiredPayload += $guardian }
+    foreach ($file in $requiredPayload) {
         if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "The payload for version $Version is incomplete: $file" }
     }
     & $engine -InstallRoot $InstallRoot -ServerExecutable $server -GuardianExecutable $guardian -PrivilegedHelperExecutable $helper `
         -ServerPort $ServerPort -ServerListenUrl $ListenUrl -DataRoot $DataRoot -CertificateMode $CertificateMode -CertificatePath $CertificatePath `
         -CertificatePassword $CertificatePassword -SelfSignedIdentities $SelfSignedIdentities -FileAccess $FileAccess -FileRootsFile $FileRootsFile `
-        -EnableWindowsUserExecution
+        -EnableWindowsUserExecution -GuardianEnabled ([bool]$GuardianEnabled) -AutoStart ([bool]$AutoStart)
     if ($LASTEXITCODE -ne 0) { throw "Service installer failed with exit code $LASTEXITCODE." }
 }
 
@@ -307,7 +312,13 @@ public static class RelaxKonOSDeploymentHealthProbe {
     $endpoint.Path = '/healthz'
     $clock = [Diagnostics.Stopwatch]::StartNew()
     do {
-        if ([RelaxKonOSDeploymentHealthProbe]::Check($endpoint.Uri.AbsoluteUri)) { return $true }
+        if ([RelaxKonOSDeploymentHealthProbe]::Check($endpoint.Uri.AbsoluteUri)) {
+            if (-not $GuardianEnabled) { return $true }
+            $guardianCheckServer = Join-Path (Get-VersionRoot $targetVersion) 'server\RelaxKonOS.Server.exe'
+            $guardianCheckConfig = Join-Path (Split-Path -Parent $guardianCheckServer) 'appsettings.host.json'
+            & $guardianCheckServer guardian-health --host-config $guardianCheckConfig | Out-Null
+            if ($LASTEXITCODE -eq 0) { return $true }
+        }
         Start-Sleep -Milliseconds 500
     } while ($clock.Elapsed.TotalSeconds -lt 60)
     return $false
@@ -341,6 +352,7 @@ if ($Mode -eq 'windowsSystem' -and -not (Test-Administrator)) {
     $elevationArguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Quote-Argument $PSCommandPath), '-Language', $Language,
         '-Action', $Action, '-Mode', $Mode, '-InstallRoot', (Quote-Argument $InstallRoot), '-DataRoot', (Quote-Argument $DataRoot),
         '-NetworkProfile', $NetworkProfile, '-ServerPort', $ServerPort, '-CertificateMode', $CertificateMode, '-FileAccess', $FileAccess)
+    if ($PSBoundParameters.ContainsKey('GuardianEnabled')) { $elevationArguments += @('-GuardianEnabled', $GuardianEnabled) }
     if ($BundlePath) { $elevationArguments += @('-BundlePath', (Quote-Argument $BundlePath)) }
     if ($ReleaseUri) { $elevationArguments += @('-ReleaseUri', (Quote-Argument $ReleaseUri)) }
     if ($ReleaseSha256) { $elevationArguments += @('-ReleaseSha256', $ReleaseSha256) }
@@ -390,6 +402,14 @@ if ($Action -eq 'install') {
     }
 }
 
+if ($Action -ne 'install' -and (Get-StateValue $existingState 'guardianEnabled') -isnot [bool]) {
+    throw 'The installation record lacks Guardian selection; redeploy using the current installation contract.'
+}
+$AutoStart = [string](Resolve-Setting 'AutoStart' $AutoStart (Get-StateValue $existingState 'autoStart') $true)
+$AutoStart = $AutoStart -eq 'true'
+$GuardianEnabled = [string](Resolve-Setting 'GuardianEnabled' $GuardianEnabled (Get-StateValue $existingState 'guardianEnabled') ($Mode -ne 'windowsUser'))
+$GuardianEnabled = $GuardianEnabled -eq 'true'
+if ($Mode -eq 'windowsUser' -and $GuardianEnabled) { throw 'Guardian is unavailable in Windows personal mode.' }
 $NetworkProfile = Resolve-Setting 'NetworkProfile' $NetworkProfile (Get-StateValue $existingState 'networkProfile') 'local'
 $CertificateMode = Resolve-Setting 'CertificateMode' $CertificateMode (Get-StateValue $existingState 'certificateMode') 'none'
 $FileAccess = Resolve-Setting 'FileAccess' $FileAccess (Get-StateValue $existingState 'fileAccess') 'restricted'
@@ -437,7 +457,20 @@ if ($Action -ne 'install' -and $CertificateMode -ne 'none' -and -not $PSBoundPar
 }
 
 $temporaryDirectory = $null
+$maintenancePolicyDirectory = $null
 try {
+    if ($Action -ne 'install' -and $FileAccess -eq 'whitelist' -and -not $FileRootsFile) {
+        $policyPath = if ($Mode -eq 'windowsUser') {
+            $ownerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+            Join-Path $env:ProgramFiles ('RelaxKonOS-Personal\' + $ownerSid + '\helper.json')
+        } else { Join-Path $DataRoot 'privileged-helper\helper.json' }
+        $policy = Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json
+        if (-not $policy.fileAllowedRoots -or $policy.fileAllowedRoots.Count -eq 0) { throw 'The installed whitelist is missing; repair it before configuring.' }
+        $maintenancePolicyDirectory = Join-Path $DataRoot ('maintenance-' + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $maintenancePolicyDirectory | Out-Null
+        $FileRootsFile = Join-Path $maintenancePolicyDirectory 'file-roots.json'
+        [IO.File]::WriteAllText($FileRootsFile, (ConvertTo-Json -InputObject @($policy.fileAllowedRoots)), [Text.UTF8Encoding]::new($false))
+    }
     # --- resolve the release payload -----------------------------------------------------------------
     $manifest = $null
     $targetVersion = $null
@@ -559,12 +592,67 @@ try {
                 schemaVersion = 1; installed = $true; mode = $Mode; installationId = $installationId
                 version = $targetVersion; previousVersion = $previousVersion; installedAtUtc = [DateTime]::UtcNow.ToString('O')
                 installRoot = $InstallRoot; dataRoot = $DataRoot; networkProfile = $NetworkProfile; listenUrl = $effectiveListenUrl
-                certificateMode = $CertificateMode; fileAccess = $FileAccess
+                certificateMode = $CertificateMode; fileAccess = $FileAccess; guardianEnabled = [bool]$GuardianEnabled; autoStart = [bool]$AutoStart
             })
             Write-Host "$($M.done) $effectiveListenUrl" -ForegroundColor Green
             exit 0
         }
+    } elseif ($Action -eq 'configure') {
+        $originalFileAccess = Get-StateValue $existingState 'fileAccess'
+        $originalPolicyPath = if ($Mode -eq 'windowsUser') {
+            $ownerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+            Join-Path $env:ProgramFiles ('RelaxKonOS-Personal\' + $ownerSid + '\helper.json')
+        } else { Join-Path $DataRoot 'privileged-helper\helper.json' }
+        $originalRoots = @((Get-Content -LiteralPath $originalPolicyPath -Raw | ConvertFrom-Json).fileAllowedRoots)
+        try {
+            Stop-RelaxKonOSServices
+            Invoke-ServicesInstaller $targetVersion $effectiveListenUrl
+            if (-not (Test-LoopbackHealth $effectiveListenUrl)) { throw 'Configured Server is unhealthy.' }
+        } catch {
+            $configurationError = $_
+            $GuardianEnabled = (Get-StateValue $existingState 'guardianEnabled') -eq $true
+            $FileAccess = $originalFileAccess
+            $FileRootsFile = $null
+            if ($FileAccess -eq 'whitelist') {
+                if (-not $maintenancePolicyDirectory) {
+                    $maintenancePolicyDirectory = Join-Path $DataRoot ('maintenance-' + [guid]::NewGuid().ToString('N'))
+                    New-Item -ItemType Directory -Path $maintenancePolicyDirectory | Out-Null
+                }
+                $FileRootsFile = Join-Path $maintenancePolicyDirectory 'previous-roots.json'
+                [IO.File]::WriteAllText($FileRootsFile, (ConvertTo-Json -InputObject @($originalRoots)), [Text.UTF8Encoding]::new($false))
+            }
+            $AutoStart = (Get-StateValue $existingState 'autoStart') -eq $true
+            $ServerPort = ([Uri](Get-StateValue $existingState 'listenUrl')).Port
+            Stop-RelaxKonOSServices
+            Invoke-ServicesInstaller $targetVersion (Get-StateValue $existingState 'listenUrl')
+            if (-not (Test-LoopbackHealth (Get-StateValue $existingState 'listenUrl'))) { throw "Configuration failed and recovery requires attention: $configurationError" }
+            throw "Configuration failed; previous settings restored: $configurationError"
+        }
     } elseif ($Action -eq 'repair') {
+        if ($BundlePath) {
+            $repairManifest = Get-Content -LiteralPath (Join-Path $BundlePath 'manifest.json') -Raw | ConvertFrom-Json
+            if (-not $repairManifest.files -or @($repairManifest.files).Count -eq 0) { throw 'Repair package requires a complete file inventory.' }
+            if (-not $RestorePayload -or $repairManifest.version -ne $targetVersion -or $repairManifest.packageKind -ne 'server' -or $repairManifest.runtime -ne (Get-CurrentRuntime)) { throw 'Repair package must match the installed version and architecture.' }
+            foreach ($item in $repairManifest.files) {
+                $source = Resolve-ContainedPath $BundlePath $item.path
+                if ((Get-Item -LiteralPath $source).Length -ne $item.length -or (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne $item.sha256) { throw 'Repair package inventory mismatch.' }
+            }
+            Stop-RelaxKonOSServices
+            $versionRoot = Get-VersionRoot $targetVersion
+            foreach ($item in $repairManifest.files) {
+                if ($item.path -notmatch '^payload/windows/(server|guardian|privileged-helper)/(.+)$') { continue }
+                $relative = $Matches[1] + '\' + $Matches[2]
+                $destination = Resolve-ContainedPath $versionRoot $relative
+                $ancestor = $destination
+                while ($ancestor -and $ancestor.StartsWith([IO.Path]::GetFullPath($versionRoot), [StringComparison]::OrdinalIgnoreCase)) {
+                    if ((Test-Path -LiteralPath $ancestor) -and ((Get-Item -LiteralPath $ancestor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Repair must not traverse persistent data links.' }
+                    $ancestor = [IO.Path]::GetDirectoryName($ancestor)
+                }
+                if ((Test-Path -LiteralPath $destination) -and ((Get-Item -LiteralPath $destination -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Unsafe repair destination.' }
+                New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
+                Copy-Item -LiteralPath (Resolve-ContainedPath $BundlePath $item.path) -Destination $destination -Force
+            }
+        }
         Set-CurrentVersion $targetVersion
         Invoke-ServicesInstaller $targetVersion $effectiveListenUrl
     } elseif ($Action -eq 'rollback') {
@@ -590,7 +678,7 @@ try {
             schemaVersion = 1; installed = $true; mode = $Mode; installationId = $installationId
             version = $targetVersion; previousVersion = $fromVersion; installedAtUtc = [DateTime]::UtcNow.ToString('O')
             installRoot = $InstallRoot; dataRoot = $DataRoot; networkProfile = $NetworkProfile; listenUrl = $effectiveListenUrl
-            certificateMode = $CertificateMode; fileAccess = $FileAccess
+            certificateMode = $CertificateMode; fileAccess = $FileAccess; guardianEnabled = [bool]$GuardianEnabled; autoStart = [bool]$AutoStart
         })
         Write-Host "$($M.done) $effectiveListenUrl" -ForegroundColor Green
         exit 0
@@ -601,11 +689,15 @@ try {
         schemaVersion = 1; installed = $true; mode = $Mode; installationId = $installationId
         version = $targetVersion; previousVersion = (Get-StateValue $existingState 'previousVersion'); installedAtUtc = [DateTime]::UtcNow.ToString('O')
         installRoot = $InstallRoot; dataRoot = $DataRoot; networkProfile = $NetworkProfile; listenUrl = $effectiveListenUrl
-        certificateMode = $CertificateMode; fileAccess = $FileAccess
+        certificateMode = $CertificateMode; fileAccess = $FileAccess; guardianEnabled = [bool]$GuardianEnabled; autoStart = [bool]$AutoStart
     })
     Write-Host $M.health -ForegroundColor Green
     Write-Host "$($M.done) $effectiveListenUrl" -ForegroundColor Green
 }
 finally {
+    if ($maintenancePolicyDirectory -and (Test-Path -LiteralPath $maintenancePolicyDirectory)) {
+        if ([IO.Path]::GetFullPath((Split-Path -Parent $maintenancePolicyDirectory)) -ne [IO.Path]::GetFullPath($DataRoot)) { throw 'Maintenance fixture escaped the data root.' }
+        Remove-Item -LiteralPath $maintenancePolicyDirectory -Recurse -Force
+    }
     if ($temporaryDirectory -and (Test-Path -LiteralPath $temporaryDirectory)) { Remove-Item -LiteralPath $temporaryDirectory -Recurse -Force }
 }

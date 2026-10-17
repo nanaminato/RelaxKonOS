@@ -13,13 +13,21 @@
     <PackageReference Include="Svg.Controls.Avalonia" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <ProjectReference Include="../../../Shared/RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj" />
+    <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/ViewModels/ExplorerViewModel.Archives.cs" Link="ExplorerViewModel.Archives.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/ViewModels/ExplorerViewModel.cs" Link="ExplorerViewModel.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/Controls/ExplorerIcon.cs" Link="Controls/ExplorerIcon.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/Controls/FileBrowserPresentation.cs" Link="Controls/FileBrowserPresentation.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/IExplorerClient.cs" Link="IExplorerClient.cs" />
+    <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/IArchiveClient.cs" Link="IArchiveClient.cs" />
+    <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/Views/ArchiveBrowserView.cs" Link="ArchiveBrowserView.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/ImageViewer/ImageViewerDecoder.cs" Link="ImageViewerDecoder.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/RemoteFileClipboard.cs" Link="RemoteFileClipboard.cs" />
+    <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/WindowsFileClipboard.cs" Link="WindowsFileClipboard.cs" />
+    <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/HostFileClipboardStaging.cs" Link="HostFileClipboardStaging.cs" />
+    <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/LinuxHostFileClipboardBackend.cs" Link="LinuxHostFileClipboardBackend.cs" />
+    <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/MacosHostFileClipboardBackend.cs" Link="MacosHostFileClipboardBackend.cs" />
+    <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/IHostFileClipboardBackend.cs" Link="IHostFileClipboardBackend.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/HostFileClipboard.cs" Link="HostFileClipboard.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/ExplorerPickerOptions.cs" Link="ExplorerPickerOptions.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/Uploads/IExplorerUploadChannel.cs" Link="Uploads/IExplorerUploadChannel.cs" />

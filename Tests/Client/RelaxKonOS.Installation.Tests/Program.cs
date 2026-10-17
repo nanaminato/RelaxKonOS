@@ -19,7 +19,7 @@ SynchronizationContext.SetSynchronizationContext(null);
 // These tests only read localization; no appearance changes or desktop are needed.
 // The SSH desktop session is only consulted for desktop-language overrides, so it stays unconnected here.
 using var services = new ServiceCollection()
-    .AddSingleton(new LocalizationService(new ShellSettings(null!), new SshDesktopSession(null!)))
+    .AddSingleton(new LocalizationService(new ShellSettings(null!), new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!))))
     .BuildServiceProvider();
 typeof(App).GetProperty(nameof(App.Services))!.SetValue(null, services);
 var session = DispatchProxy.Create<IAuthSession, SessionStub>();

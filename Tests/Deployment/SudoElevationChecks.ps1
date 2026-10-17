@@ -16,6 +16,7 @@ sudo_password='test-secret'
 options_mode=linuxSystem
 operation_kind=install
 sudo_policy=password
+su_policy=denied
 launcher_note() { :; }
 launcher_fail() { printf '%s\n' "$1"; exit 77; }
 system_data_root() { printf /missing-system-state; }
@@ -46,6 +47,17 @@ sudo() {
     printf 'privileged-state'
   else "$@"; fi
 }
+su() {
+  local secret command
+  [[ $su_policy == allowed ]] || return 1
+  [[ $1 == --shell && $2 == /bin/bash && $3 == --command && $5 == root ]] || exit 97
+  command=$4
+  [[ $command != *test-secret* ]] || exit 90
+  IFS= read -r secret
+  [[ $secret == test-secret ]] || return 1
+  export TEST_ELEVATED=true
+  bash -c "$command"
+}
 '@
 $test += $lf + ($functions -join $lf) + $lf
 $test += @'
@@ -69,10 +81,32 @@ if failure=$(authenticate_sudo); then exit 92; else [[ $? == 77 && $failure == e
 sudo_password=test-secret
 sudo_policy=denied
 if failure=$(authenticate_sudo); then exit 93; else [[ $? == 77 && $failure == elevation_required ]]; fi
+# A Debian account without sudo authorization can use the root password.
+su_policy=allowed
+authenticate_sudo
+[[ $elevation_method == su ]]
+run_engine bash -c '[[ $TEST_ELEVATED == true ]]; if IFS= read -r leaked; then exit 91; fi; printf su-ok'
+[[ $(<"$TEST_DIAGNOSTICS") == *su-ok* && $(<"$TEST_DIAGNOSTICS") == *'exit status: 0'* ]]
+# `su` keeps the caller's environment verbatim, so the elevated command would otherwise inherit a PATH
+# with no sbin and the engine's `command -v visudo` probe would report an installed tool as missing.
+# The standard administrative directories go in front of what the account already had.
+elevated_path=$(run_privileged bash -c 'printf %s "$PATH"')
+[[ $elevated_path == "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH" ]]
+[[ $(run_privileged printf '%s' 'a b;$(exit 99)' "a'b") == 'a b;$(exit 99)'"a'b" ]]
+sudo_password=wrong
+if failure=$(authenticate_sudo); then exit 98; else [[ $? == 77 && $failure == elevation_required ]]; fi
+sudo_password=test-secret
+command() {
+  if [[ "$*" == '-v sudo' ]]; then return 1; fi
+  builtin command "$@"
+}
+authenticate_sudo
+[[ $elevation_method == su ]]
+unset -f command
 sudo_policy=password
 options_mode=linuxUser
 if failure=$(authenticate_sudo); then exit 94; else [[ $? == 77 && $failure == invalid_request ]]; fi
-printf 'PASS: sudo password and NOPASSWD elevation, engine stdin isolation, privileged state and firewall checks, rejected password/policy/User Mode.\n'
+printf 'PASS: sudo, NOPASSWD and su root elevation, elevated PATH, missing sudo, shell quoting, engine stdin isolation, privileged state and firewall checks, rejected password/policy/User Mode.\n'
 '@
 $path = Join-Path ([IO.Path]::GetTempPath()) ('relaxkonos-sudo-test-' + [guid]::NewGuid().ToString('N') + '.sh')
 $diagnostics = $path + '.log'

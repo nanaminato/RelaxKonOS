@@ -26,6 +26,14 @@ static class InstallationDetailsChecks
             Check(rows["Previous version"] == "1.2.2", "显示上一版本");
             Check(rows["Managed service names"] == (mode == ServerInstallMode.LinuxUser ? "No system services" : "custom.service"), "用户模式不虚构系统服务");
         }
+        var unknown = ServerInstallationDetails.Build(host, null, null, T);
+        Check(unknown.Single(row => row.Label == "Installation status").IsUnknown && unknown.Single(row => row.Label == "Health at verification").IsUnknown,
+            "Missing installation facts are visibly unknown, never inferred as not installed or unhealthy.");
+        Check(ServerInstallationDetails.GuardianStatus("Guardian", false, false, T).IsWarning
+            && ServerInstallationDetails.GuardianStatus("Guardian", false, true, T).IsNegative
+            && ServerInstallationDetails.GuardianStatus("Guardian", true, true, T).IsPositive
+            && ServerInstallationDetails.GuardianStatus("Guardian", null, true, T).IsUnknown,
+            "Uninstalled, stopped, running and unknown states have distinct semantic badges.");
         var cached = host with { LastVerified = new ServerHostVerifiedState(true, ServerInstallMode.LinuxUser, "saved-id", "1.0", null, true, time) };
         var cache = ServerInstallationDetails.Build(cached, null, null, T).ToDictionary(r => r.Label, r => r.Value);
         Check(cache["Information source"].Contains("Saved SSH verification") && cache["Program directory"] == "Not provided", "缓存标注来源且不推断默认目录");

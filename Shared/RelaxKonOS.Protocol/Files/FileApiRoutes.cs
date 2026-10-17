@@ -7,6 +7,8 @@ namespace RelaxKonOS.Protocol.Files;
 public static class FileApiRoutes
 {
     public const string Text = $"/{V1}/files/text";
+    public const string ArchiveEntries = $"/{V1}/files/archive/entries";
+    public const string ArchiveContent = $"/{V1}/files/archive/content";
     public const string Operations = $"/{RelaxKonOSEndpoints.ApiVersionPrefix}/files/operations";
 
     private const string V1 = RelaxKonOSEndpoints.ApiVersionPrefix;

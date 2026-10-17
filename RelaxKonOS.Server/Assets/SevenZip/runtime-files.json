@@ -1,0 +1,22 @@
+{
+  "win-x64": {
+    "7z.exe": "95fff19b73eff77c87c0d7bd32822e43fb90dd2932459f962eb532d8dfb6ba53",
+    "7z.dll": "899cd73d7fc60e1c1c35c7de0f5bed3dc69bfe2cecbd48014d868a347970a0b1"
+  },
+  "win-arm64": {
+    "7z.exe": "68dc77e7c597644b9f69ae954b3f057bf94ae172472996be438a1ee63ac9cd98",
+    "7z.dll": "eb84a6eb184c378d84742f372e7501d9a99c34a718ea81d4c71cd62b5a207dee"
+  },
+  "linux-x64": {
+    "7zz": "d1bc79f00e9815b24048ab167690bdd1dbc387de7dbc47e8d75d68689e49cf4f"
+  },
+  "linux-arm64": {
+    "7zz": "a01daa025fcf2dbb76ab40f2854f09b3462d1912add61ee2f4431ce11902d0cd"
+  },
+  "osx-x64": {
+    "7zz": "36ea959367d8f9ac51d47a56dc1f20bfb851f1cd22d6f206e85cb5cbc6ab4577"
+  },
+  "osx-arm64": {
+    "7zz": "36ea959367d8f9ac51d47a56dc1f20bfb851f1cd22d6f206e85cb5cbc6ab4577"
+  }
+}

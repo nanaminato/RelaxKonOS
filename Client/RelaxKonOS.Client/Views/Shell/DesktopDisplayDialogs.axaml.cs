@@ -159,9 +159,8 @@ internal sealed class DesktopDisplayEditBuffer
         settings.ShowServerDesktopFiles = ShowServerDesktopFiles;
         settings.ShowServerDesktopShortcuts = ShowServerDesktopShortcuts;
 
-        settings.VisibleAppIds = !ShowBuiltInApps || ShowAllBuiltInApps
-            ? []
-            : AppItems.Where(x => x.IsVisible).Select(x => x.App.Id.Value).ToList();
+        settings.VisibleAppIds = ShowAllBuiltInApps ? [] : AppItems.Where(x => x.IsVisible).Select(x => x.App.Id.Value).ToList();
+        if (!ShowAllBuiltInApps && settings.VisibleAppIds.Count == 0) settings.ShowBuiltInApps = false;
     }
 }
 
@@ -169,7 +168,7 @@ internal sealed class DesktopDisplayEditBuffer
 internal sealed partial class AppVisibilityItem : ObservableObject
 {
     public ApplicationInfo App { get; }
-    public string DisplayName => App.DisplayName;
+    public string DisplayName => LocalizedText.Get($"application.{App.Id.Value}.display_name", App.DisplayName);
     public string IconGlyph => string.IsNullOrWhiteSpace(App.IconGlyph) ? "📦" : App.IconGlyph;
 
     [ObservableProperty] private bool _isVisible;

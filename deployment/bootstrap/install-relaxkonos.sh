@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
+AUTO_START=true
+RESTORE_PAYLOAD=false
+AUTO_START_SET=false
+GUARDIAN_ENABLED=true
+GUARDIAN_ENABLED_SET=false
 
 is_supported_linux_system() {
   case "$1-$2" in
@@ -45,7 +50,7 @@ ORIGINAL_ARGUMENTS=("$@")
 MODE=
 
 usage() {
-  echo "usage: install-relaxkonos.sh --mode system [--action install|upgrade|repair|rollback] [--bundle PATH | --release-uri HTTPS_URL --release-sha256 SHA256] [--expected-installation-id rki-...] [system options] | --mode user [--bundle PATH | --release-uri HTTPS_URL --release-sha256 SHA256]" >&2
+  echo "usage: install-relaxkonos.sh --mode system [--action install|upgrade|configure|repair|rollback] [--bundle PATH | --release-uri HTTPS_URL --release-sha256 SHA256] [--expected-installation-id rki-...] [system options] | --mode user [--bundle PATH | --release-uri HTTPS_URL --release-sha256 SHA256]" >&2
   exit 64
 }
 
@@ -61,6 +66,9 @@ while [[ $# -gt 0 ]]; do
     --release-catalog-base) RELEASE_CATALOG_BASE="${2:-}"; shift 2 ;;
     --install-root) INSTALL_ROOT="${2:-}"; shift 2 ;;
     --data-root) DATA_ROOT="${2:-}"; shift 2 ;;
+    --restore-payload) RESTORE_PAYLOAD=true; shift ;;
+    --auto-start) AUTO_START="${2:-}"; AUTO_START_SET=true; shift 2 ;;
+    --guardian-enabled) GUARDIAN_ENABLED="${2:-}"; GUARDIAN_ENABLED_SET=true; shift 2 ;;
     --network) NETWORK_PROFILE="${2:-}"; NETWORK_PROFILE_SET=true; shift 2 ;;
     --server-port) SERVER_PORT="${2:-}"; SERVER_PORT_SET=true; shift 2 ;;
     --certificate-mode) CERTIFICATE_MODE="${2:-}"; CERTIFICATE_MODE_SET=true; shift 2 ;;
@@ -97,9 +105,10 @@ case "$MODE" in
 esac
 
 case "$ACTION" in
-  install|upgrade|repair|rollback) ;;
-  *) echo 'Invalid --action; expected install, upgrade, repair or rollback.' >&2; exit 64 ;;
+  install|upgrade|repair|rollback|configure) ;;
+  *) echo 'Invalid --action; expected install, upgrade, configure, repair or rollback.' >&2; exit 64 ;;
 esac
+command -v curl >/dev/null || { echo 'curl is required before any deployment changes are made.' >&2; exit 69; }
 # Upgrade, repair and rollback continue an existing installation and are only driven by the
 # deployment launcher, which cannot answer an interactive prompt.
 if [[ "$ACTION" != install && "$NON_INTERACTIVE" != true ]]; then
@@ -206,9 +215,9 @@ write_install_state() { # version previousVersion
   install -d -o root -g root -m 0755 "$DATA_ROOT"
   temporary="$(state_file).new"
   umask 077
-  printf '{"schemaVersion":2,"installed":true,"mode":"linuxSystem","installationId":"%s","version":"%s","previousVersion":%s,"installedAtUtc":"%s","installRoot":"%s","dataRoot":"%s","networkProfile":"%s","listenUrl":"%s","certificateMode":"%s","fileAccess":"%s","administratorFileAccess":"%s","rootFileAccess":"%s","dockerAccess":%s}\n' \
+  printf '{"schemaVersion":2,"installed":true,"mode":"linuxSystem","installationId":"%s","version":"%s","previousVersion":%s,"installedAtUtc":"%s","installRoot":"%s","dataRoot":"%s","networkProfile":"%s","listenUrl":"%s","certificateMode":"%s","fileAccess":"%s","administratorFileAccess":"%s","rootFileAccess":"%s","dockerAccess":%s,"guardianEnabled":%s,"autoStart":%s}\n' \
     "$INSTALLATION_ID" "$version" "$(json_string_or_null "$previous")" "$(date -u +%FT%TZ)" "$INSTALL_ROOT" "$DATA_ROOT" \
-    "$NETWORK_PROFILE" "$LISTEN_URL" "$CERTIFICATE_MODE" "$FILE_ACCESS" "$ADMINISTRATOR_FILE_ACCESS" "$ROOT_FILE_ACCESS" "$DOCKER_ACCESS" > "$temporary"
+    "$NETWORK_PROFILE" "$LISTEN_URL" "$CERTIFICATE_MODE" "$FILE_ACCESS" "$ADMINISTRATOR_FILE_ACCESS" "$ROOT_FILE_ACCESS" "$DOCKER_ACCESS" "$GUARDIAN_ENABLED" "$AUTO_START" > "$temporary"
   chmod 0600 "$temporary"; mv -f -- "$temporary" "$(state_file)"
 }
 
@@ -245,6 +254,8 @@ publish_payload() { # bundle version
   # binary set through the installer from the release that just failed.
   [[ -d "$bundle/deployment" ]] || { echo 'The release bundle has no deployment engine.' >&2; exit 65; }
   cp -a "$bundle/deployment" "$root/deployment"
+  cp -- "$bundle/manifest.json" "$root/manifest.json"
+  chmod 0644 "$root/manifest.json"
   # ZIP extraction on Windows-produced bundles may not preserve executable bits.
   chmod 0755 "$root/deployment/bootstrap/install-relaxkonos.sh" "$root/deployment/bootstrap/uninstall-relaxkonos.sh" "$root/deployment/linux/install-relaxkonos-services.sh"
   chown -R root:root "$root"
@@ -253,6 +264,7 @@ publish_payload() { # bundle version
   chmod 0755 "$INSTALL_ROOT" "$(versions_root)"
   chmod -R u=rwX,go=rX "$root"
   chmod 0755 "$root/server/RelaxKonOS.Server" "$root/guardian/RelaxKonOS.Guardian.Agent" "$root/privileged-helper/RelaxKonOS.PrivilegedHelper"
+  chmod 0755 "$root/server/Assets/SevenZip/linux-x64/7zz" "$root/server/Assets/SevenZip/linux-arm64/7zz"
 }
 
 # --- action eligibility --------------------------------------------------------------------------
@@ -268,6 +280,13 @@ else
     [[ "$recorded_id" == "$EXPECTED_INSTALLATION_ID" ]] || { echo 'The host installation id does not match the request.' >&2; exit 65; }
   fi
 fi
+if [[ "$GUARDIAN_ENABLED_SET" != true && -f "$(state_file)" ]]; then
+  GUARDIAN_ENABLED="$(state_flag guardianEnabled)"
+  [[ -n "$GUARDIAN_ENABLED" ]] || { echo "Installation record lacks Guardian selection; upgrade the deployment record." >&2; exit 65; }
+fi
+case "$GUARDIAN_ENABLED" in true|false) ;; *) echo "Invalid Guardian selection." >&2; exit 64 ;; esac
+if [[ "$AUTO_START_SET" != true && -f "$(state_file)" ]]; then AUTO_START="$(state_flag autoStart)"; fi
+case "$AUTO_START" in true|false) ;; *) echo "Installation record lacks automatic startup selection." >&2; exit 65 ;; esac
 # Settings the caller did not explicitly pass are inherited from the recorded installation instead
 # of silently reset to defaults, so repair and rollback keep the verified configuration.
 [[ "$NETWORK_PROFILE_SET" == true ]] || NETWORK_PROFILE="$(state_field networkProfile)"
@@ -293,7 +312,7 @@ for access in "$FILE_ACCESS" "$ADMINISTRATOR_FILE_ACCESS" "$ROOT_FILE_ACCESS"; d
   case "$access" in restricted|full|whitelist) ;; *) usage ;; esac
 done
 case "$CERTIFICATE_MODE" in none|custom|self-signed) ;; *) usage ;; esac
-if [[ "$FILE_ACCESS" == whitelist && -z "$FILE_ROOTS_FILE" && ( "$ACTION" == repair || "$ACTION" == rollback ) ]]; then
+if [[ "$FILE_ACCESS" == whitelist && -z "$FILE_ROOTS_FILE" && ( "$ACTION" == repair || "$ACTION" == configure || "$ACTION" == rollback ) ]]; then
   # The effective whitelist is already installed; reuse it instead of asking for the source file.
   FILE_ROOTS_FILE=/etc/relaxkonos/privileged-helper-roots
 fi
@@ -413,7 +432,7 @@ LISTEN_URL="$LISTEN_SCHEME://$LISTEN_HOST:$SERVER_PORT"
 case "$ACTION" in
   install) TARGET_VERSION="$MANIFEST_VERSION"; PREVIOUS_VERSION= ;;
   upgrade) TARGET_VERSION="$MANIFEST_VERSION"; PREVIOUS_VERSION="$RECORDED_VERSION" ;;
-  repair)
+  repair|configure)
     TARGET_VERSION="$RECORDED_VERSION"
     [[ -n "$TARGET_VERSION" ]] || { echo 'There is no recorded version for --action repair.' >&2; exit 65; }
     PREVIOUS_VERSION="$RECORDED_PREVIOUS_VERSION"
@@ -439,10 +458,12 @@ run_services_installer() { # version listenUrl
   [[ -f "$engine" ]] || { echo 'The installed RelaxKonOS deployment scripts are missing; reinstall or repair is required.' >&2; exit 65; }
   local server="$root/server/RelaxKonOS.Server" guardian="$root/guardian/RelaxKonOS.Guardian.Agent" helper="$root/privileged-helper/RelaxKonOS.PrivilegedHelper"
   local file
-  for file in "$server" "$guardian" "$helper"; do
+  local required_payload=("$server" "$helper")
+  [[ "$GUARDIAN_ENABLED" != true ]] || required_payload+=("$guardian")
+  for file in "${required_payload[@]}"; do
     [[ -f "$file" ]] || { echo "The payload for version $version is incomplete: $file" >&2; exit 65; }
   done
-  local arguments=("$INSTALL_ROOT" "$server" "$guardian" "$helper" "$SERVER_PORT" "$listen" relaxkonos-server --data-root "$DATA_ROOT" --file-access "$FILE_ACCESS" --administrator-file-access "$ADMINISTRATOR_FILE_ACCESS" --root-file-access "$ROOT_FILE_ACCESS" --certificate-mode "$SERVICES_CERTIFICATE_MODE")
+  local arguments=("$INSTALL_ROOT" "$server" "$guardian" "$helper" "$SERVER_PORT" "$listen" relaxkonos-server --data-root "$DATA_ROOT" --file-access "$FILE_ACCESS" --administrator-file-access "$ADMINISTRATOR_FILE_ACCESS" --root-file-access "$ROOT_FILE_ACCESS" --certificate-mode "$SERVICES_CERTIFICATE_MODE" --guardian-enabled "$GUARDIAN_ENABLED" --auto-start "$AUTO_START")
   [[ "$DOCKER_ACCESS" == true ]] && arguments+=(--docker-access)
   [[ -n "$FILE_ROOTS_FILE" ]] && arguments+=(--file-roots "$FILE_ROOTS_FILE")
   [[ -n "$ADMINISTRATOR_FILE_ROOTS_FILE" ]] && arguments+=(--administrator-file-roots "$ADMINISTRATOR_FILE_ROOTS_FILE")
@@ -459,7 +480,9 @@ verify_health() {
   [[ "$LISTEN_SCHEME" != https ]] || arguments+=(--insecure)
   command -v curl >/dev/null || { echo 'curl is required to verify server health.' >&2; return 1; }
   while (( SECONDS < deadline )); do
-    if curl "${arguments[@]}" "${LISTEN_SCHEME}://127.0.0.1:$SERVER_PORT/healthz" >/dev/null; then return 0; fi
+    if curl "${arguments[@]}" "${LISTEN_SCHEME}://127.0.0.1:$SERVER_PORT/healthz" >/dev/null; then
+      if [[ "$GUARDIAN_ENABLED" != true ]] || "$(version_root "$TARGET_VERSION")/server/RelaxKonOS.Server" guardian-health --environment-file /etc/relaxkonos/server.env; then return 0; fi
+    fi
     sleep 1
   done
   echo 'Server health endpoint did not respond successfully within 60 seconds.' >&2
@@ -490,8 +513,77 @@ case "$ACTION" in
       exit 70
     fi
     ;;
-  repair)
+  configure)
+    [[ -n "$TEMPORARY_DIRECTORY" ]] || TEMPORARY_DIRECTORY=$(mktemp -d)
+    for policy_suffix in '' '-administrator' '-root'; do
+      cp -- "/etc/relaxkonos/privileged-helper-roots$policy_suffix" "$TEMPORARY_DIRECTORY/roots$policy_suffix"
+    done
     systemctl stop relaxkonos-server.service relaxkonos-guardian.service 2>/dev/null || true
+    if ! { run_services_installer "$TARGET_VERSION" "$LISTEN_URL" && verify_health; }; then
+      GUARDIAN_ENABLED="$(state_flag guardianEnabled)"
+      AUTO_START="$(state_flag autoStart)"
+      FILE_ACCESS="$(state_field fileAccess)"
+      FILE_ROOTS_FILE="$TEMPORARY_DIRECTORY/roots"
+      ADMINISTRATOR_FILE_ROOTS_FILE="$TEMPORARY_DIRECTORY/roots-administrator"
+      ROOT_FILE_ROOTS_FILE="$TEMPORARY_DIRECTORY/roots-root"
+      [[ "$FILE_ACCESS" == whitelist ]] || FILE_ROOTS_FILE=
+      [[ "$ADMINISTRATOR_FILE_ACCESS" == whitelist ]] || ADMINISTRATOR_FILE_ROOTS_FILE=
+      [[ "$ROOT_FILE_ACCESS" == whitelist ]] || ROOT_FILE_ROOTS_FILE=
+      LISTEN_URL="$(state_field listenUrl)"
+      SERVER_PORT="${LISTEN_URL##*:}"
+      LISTEN_SCHEME="${LISTEN_URL%%:*}"
+      systemctl stop relaxkonos-server.service relaxkonos-guardian.service 2>/dev/null || true
+      if ! { run_services_installer "$TARGET_VERSION" "$LISTEN_URL" && verify_health; }; then
+        echo 'Configuration failed and recovery requires attention.' >&2; exit 70
+      fi
+      echo 'Configuration failed; previous settings restored.' >&2; exit 70
+    fi
+    ;;
+  repair)
+    if [[ -n "$BUNDLE_PATH" ]]; then
+      if [[ -f "$BUNDLE_PATH" ]]; then
+        [[ "$BUNDLE_PATH" == *.zip ]] || { echo 'Repair package must be ZIP.' >&2; exit 65; }
+        [[ -n "$TEMPORARY_DIRECTORY" ]] || TEMPORARY_DIRECTORY=$(mktemp -d)
+        mkdir "$TEMPORARY_DIRECTORY/repair-package"
+        python3 - "$BUNDLE_PATH" "$TEMPORARY_DIRECTORY/repair-package" <<'REPAIR_ZIP'
+import pathlib,stat,sys,zipfile
+root=pathlib.Path(sys.argv[2])
+with zipfile.ZipFile(sys.argv[1]) as archive:
+    seen=set(); total=0
+    if len(archive.infolist())>20000: raise ValueError('Repair ZIP contains too many entries')
+    for entry in archive.infolist():
+        name=entry.filename.rstrip('/')
+        total+=entry.file_size
+        if total>8*1024**3 or name in seen or '\\' in name or ':' in name or any(ord(c)<32 for c in name) or not name or name.startswith('/') or any(p in ('','.','..') for p in name.split('/')) or (entry.external_attr>>16)&0o170000 not in (0,stat.S_IFREG,stat.S_IFDIR): raise ValueError('Unsafe repair ZIP')
+        seen.add(name)
+    archive.extractall(root)
+REPAIR_ZIP
+        BUNDLE_PATH="$TEMPORARY_DIRECTORY/repair-package"
+      fi
+      [[ "$RESTORE_PAYLOAD" == true ]] || { echo 'Explicit payload repair is required when a repair package is supplied.' >&2; exit 65; }
+      repaired_version=$(python3 "$(dirname "$0")/../verify-release-inventory.py" "$BUNDLE_PATH" server "$CURRENT_RUNTIME")
+      [[ "$repaired_version" == "$TARGET_VERSION" ]] || { echo 'Repair package must match the installed version.' >&2; exit 65; }
+    fi
+    systemctl stop relaxkonos-server.service relaxkonos-guardian.service 2>/dev/null || true
+    if [[ -n "$BUNDLE_PATH" ]]; then
+      for component in server guardian privileged-helper; do
+        destination="$(version_root "$TARGET_VERSION")/$component"
+        [[ -d "$destination" && ! -L "$destination" ]] || { echo 'Unsafe repair destination.' >&2; exit 65; }
+        # Copy only declared payload files; never traverse the persistent data link.
+        python3 - "$BUNDLE_PATH" "$(version_root "$TARGET_VERSION")" "$component" <<'REPAIR_FILES'
+import json,pathlib,shutil,sys
+bundle,version,component=pathlib.Path(sys.argv[1]),pathlib.Path(sys.argv[2]),sys.argv[3]
+for item in json.loads((bundle/'manifest.json').read_text())['files']:
+    prefix='payload/linux/'+component+'/'
+    if not item['path'].startswith(prefix): continue
+    relative=item['path'][len(prefix):]; target=version/component/relative
+    if target.is_symlink() or not target.resolve().is_relative_to((version/component).resolve()): raise ValueError('Repair path escaped payload')
+    executable=(target.name.startswith('RelaxKonOS.') and target.suffix not in ('.dll','.json','.pdb')) or relative in ('Assets/SevenZip/linux-x64/7zz','Assets/SevenZip/linux-arm64/7zz')
+    target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(bundle/item['path'],target);target.chmod(0o755 if executable else 0o644)
+shutil.copyfile(bundle/'manifest.json',version/'manifest.json')
+REPAIR_FILES
+      done
+    fi
     activate_version "$TARGET_VERSION"
     run_services_installer "$TARGET_VERSION" "$LISTEN_URL"
     verify_health || { echo 'The repaired installation did not pass its health check.' >&2; exit 70; }

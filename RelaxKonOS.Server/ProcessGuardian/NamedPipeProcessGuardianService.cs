@@ -76,6 +76,7 @@ public sealed class NamedPipeProcessGuardianService(GuardianAgentOptions options
 
     private async Task<GuardianAgentResponse?> SendAsync(GuardianAgentRequest request, CancellationToken cancellationToken)
     {
+        if (!options.Enabled) return new GuardianAgentResponse(false, "guardian.agent_not_installed");
         if (string.IsNullOrWhiteSpace(options.SharedSecret)) return new GuardianAgentResponse(false, "guardian.agent_not_configured");
         request = request with
         {

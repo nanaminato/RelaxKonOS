@@ -29,7 +29,7 @@ using WindowManagerService = RelaxKonOS.WindowManager.WindowManager;
 using WindowState = RelaxKonOS.Core.Windows.WindowState;
 using WindowRect = RelaxKonOS.Core.Primitives.Rect;
 
-if (args.Contains("--fused-live-review") || args.Contains("--fused-all-apps-review") || args.Contains("--fused-ssh-review"))
+if (args.Contains("--desktop-live-review") || args.Contains("--fused-live-review") || args.Contains("--fused-all-apps-review") || args.Contains("--fused-ssh-review"))
 {
     LiveFusedApplicationReview.Run(args);
     return;
@@ -43,10 +43,29 @@ AppBuilder.Configure<PreviewTestApp>().UseSkia()
     .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).SetupWithoutStarting();
 using var appearance = new AppearanceService(Application.Current!, new SystemStyleRegistry());
 var settings = new ShellSettings(appearance);
-var localization = new LocalizationService(settings, new SshDesktopSession(null!));
-using var services = new ServiceCollection().AddSingleton(localization).AddSingleton(new SshDesktopSession(null!)).BuildServiceProvider();
+var localization = new LocalizationService(settings, new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)));
+using var services = new ServiceCollection().AddSingleton(localization).AddSingleton(new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!))).BuildServiceProvider();
 // The XAML localization extension resolves the host application's singleton provider.
 typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
+if (args.Contains("--desktop-actions-only"))
+{
+    var checks = DesktopActionsChecks.RunAsync(new ShellSettings(appearance), localization, services);
+    var deadline = DateTime.UtcNow.AddSeconds(30);
+    while (!checks.IsCompleted && DateTime.UtcNow < deadline) { Dispatcher.UIThread.RunJobs(); Thread.Sleep(1); }
+    if (!checks.IsCompleted) throw new TimeoutException("Desktop actions checks did not complete.");
+    checks.GetAwaiter().GetResult();
+    return;
+}
+if (args.Contains("--desktop-shell-switch-only"))
+{
+    DesktopShellSwitchChecks.RunAsync(settings, localization, services).GetAwaiter().GetResult();
+    return;
+}
+if (args.Contains("--desktop-clipboard-only"))
+{
+    DesktopClipboardChecks.RunAsync(settings, localization, services).GetAwaiter().GetResult();
+    return;
+}
 if (args.Contains("--terminal-tabs-only"))
 {
     TerminalWorkspaceChecks.Run();
@@ -135,6 +154,13 @@ FusedWorkspaceChecks.Run(settings);
 SshFileBrowserLayoutChecks.Run(settings);
 HostTitleBarChecks.Run(settings, localization);
 RemoteClockChecks.Run(settings, localization, services);
+DesktopClipboardChecks.RunAsync(settings, localization, services).GetAwaiter().GetResult();
+DesktopShellSwitchChecks.RunAsync(settings, localization, services).GetAwaiter().GetResult();
+var desktopActions = DesktopActionsChecks.RunAsync(new ShellSettings(appearance), localization, services);
+var actionsDeadline = DateTime.UtcNow.AddSeconds(30);
+while (!desktopActions.IsCompleted && DateTime.UtcNow < actionsDeadline) { Dispatcher.UIThread.RunJobs(); Thread.Sleep(1); }
+if (!desktopActions.IsCompleted) throw new TimeoutException("Desktop actions regression timed out.");
+desktopActions.GetAwaiter().GetResult();
 DesktopDeviceSettingsChecks.Run(settings, appearance);
 HostTimeCompletionChecks.Run(localization);
 HostIdentityCompletionChecks.Run(localization);
@@ -396,7 +422,7 @@ static void RunDesktopShellInteractionRegression(Window host, ShellSettings sett
     // This fixture exercises only the actual window/taskbar commands; no remote file,
     // workspace persistence, application launch or desktop restoration operation is invoked.
     var vm = new DesktopShellViewModel(windows, new ApplicationManager(windows, services), settings,
-        localization, session, new SshDesktopSession(null!), () => { },
+        localization, session, new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)), () => { },
         null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!);
     var store = new ShellStateStore();
     store.Publish(vm);

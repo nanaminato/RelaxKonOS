@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using RelaxKonOS.Client.Services.AppPackages;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
@@ -31,6 +33,9 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
     [ObservableProperty] private LocalizedStatus _status = LocalizedText.Ref("app_installer.status.choose_package");
     [ObservableProperty] private bool _isBusy;
 
+    public IImage? PackageIcon { get; private set; }
+    public bool HasPackageIcon => PackageIcon is not null;
+    public string PackageIconGlyph => string.IsNullOrWhiteSpace(CurrentPackage?.Manifest.IconGlyph) ? "📦" : CurrentPackage.Manifest.IconGlyph;
     public bool HasPackage => CurrentPackage is not null;
     public string ActionLabel => CurrentPackage?.IsUpdate == true ? LocalizedText.Get("common.update") : LocalizedText.Get("common.install");
     public string CurrentVersionText => CurrentPackage?.InstalledVersion is null ? LocalizedText.Get("app_installer.not_installed") : LocalizedText.Format("app_installer.current_version", CurrentPackage.InstalledVersion);
@@ -115,6 +120,20 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
 
     partial void OnCurrentPackageChanged(AppPackageCandidate? value)
     {
+        (PackageIcon as IDisposable)?.Dispose();
+        PackageIcon = null;
+        if (value?.IconData is { Length: > 0 } data)
+        {
+            try
+            {
+                using var stream = new MemoryStream(data);
+                PackageIcon = Bitmap.DecodeToWidth(stream, 72);
+            }
+            catch (Exception) { /* An invalid optional icon must not hide the installation review. */ }
+        }
+        OnPropertyChanged(nameof(PackageIcon));
+        OnPropertyChanged(nameof(HasPackageIcon));
+        OnPropertyChanged(nameof(PackageIconGlyph));
         OnPropertyChanged(nameof(HasPackage));
         OnPropertyChanged(nameof(ActionLabel));
         OnPropertyChanged(nameof(CurrentVersionText));
@@ -143,6 +162,8 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
     public void Dispose()
     {
         _localization.LanguageChanged -= OnLanguageChanged;
+        (PackageIcon as IDisposable)?.Dispose();
+        PackageIcon = null;
         if (CurrentPackage is not null)
             _installer.Discard(CurrentPackage);
         while (_pending.TryDequeue(out var candidate))

@@ -214,7 +214,7 @@
     <string name="server_maintenance_install_root">安装目录</string>
     <string name="server_maintenance_mode">安装模式</string>
     <string name="server_maintenance_overview">概览</string>
-    <string name="server_maintenance_probe">系统支持：%1$s\n可使用 sudo：%2$s\n可使用 systemd：%3$s\n磁盘可用字节数：%4$s\n5000 端口可用：%5$s\n缺少依赖：%6$s</string>
+    <string name="server_maintenance_probe">系统支持：%1$s\n可使用 sudo / su 提权：%2$s\n可使用 systemd：%3$s\n磁盘可用字节数：%4$s\n5000 端口可用：%5$s\n缺少依赖：%6$s</string>
     <string name="server_maintenance_purge">永久删除 RelaxKonOS 管理的数据</string>
     <string name="server_maintenance_read_failed">未能读取安装状态。请检查连接后重新检查。</string>
     <string name="server_maintenance_repair">修复当前安装</string>

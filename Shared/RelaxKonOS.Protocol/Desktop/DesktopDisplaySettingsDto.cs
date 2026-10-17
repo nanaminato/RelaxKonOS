@@ -22,6 +22,10 @@ public sealed record DesktopDisplaySettingsDto
     [property: JsonPropertyName("visibleAppIds")]
     public List<string> VisibleAppIds { get; set; } = [];
 
+    /// <summary>Ordered application shortcuts pinned to the workspace taskbar, independent of desktop visibility.</summary>
+    [JsonPropertyName("pinnedAppIds")]
+    public List<string> PinnedAppIds { get; set; } = [];
+
     /// <summary>是否显示服务器桌面一般文件（非快捷方式，默认 true）。</summary>
     [property: JsonPropertyName("showServerDesktopFiles")]
     public bool ShowServerDesktopFiles { get; set; } = true;

@@ -47,11 +47,19 @@ public static class HostOperatingSystemDescriptor
     }
 
     /// <summary>
-    /// 只认 Ubuntu：别的发行版（含 Debian）没有对应标记，硬套 Ubuntu 的标记就是给用户一个错答案。
-    /// `/etc/os-release` 是这类发行版的标准位置；读不到就保持未知，绝不从别的线索推发行版。
+    /// 按发行版身份分类，且只认 `ID`：Ubuntu 与 Debian 各有自己的标记，其余 Linux 宿主归入通用的 Linux 标记。
+    ///
+    /// 通用 Linux 标记只声明「这台宿主是 Linux」——<see cref="OperatingSystem.IsLinux"/> 已经证实这件事，
+    /// 所以它不冒充任何发行版，也不从 `ID_LIKE` 之类的线索推测发行版。`/etc/os-release` 在这里的唯一用途
+    /// 是把 Ubuntu 和 Debian 从其它发行版里分出来；读不到它同样是通用 Linux，不退回未知——后者表示
+    /// 「问不出来」，而在 Linux 上这个问题有答案。
     /// </summary>
-    private static HostOperatingSystemKind ClassifyLinux() =>
-        ReadOsReleaseId() == "ubuntu" ? HostOperatingSystemKind.Ubuntu : HostOperatingSystemKind.Unknown;
+    private static HostOperatingSystemKind ClassifyLinux() => ReadOsReleaseId() switch
+    {
+        "ubuntu" => HostOperatingSystemKind.Ubuntu,
+        "debian" => HostOperatingSystemKind.Debian,
+        _ => HostOperatingSystemKind.Linux,
+    };
 
     private static string? ReadOsReleaseId()
     {

@@ -1,4 +1,5 @@
 using RelaxKonOS.Client.Apps.Explorer;
+using System.IO.Compression;
 using RelaxKonOS.Client.Services.Developer;
 
 namespace RelaxKonOS.Client.Services.AppPackages;
@@ -28,7 +29,20 @@ public sealed class AppPackageInstallerService
             displayName ?? Path.GetFileName(localPath),
             manifest,
             installed?.Version,
-            deleteWhenFinished);
+            deleteWhenFinished,
+            await ReadIconAsync(localPath, manifest.IconPath, cancellationToken));
+    }
+
+    private static async Task<byte[]?> ReadIconAsync(string packagePath, string? iconPath, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(iconPath)) return null;
+        using var archive = ZipFile.OpenRead(packagePath);
+        var entry = archive.GetEntry(iconPath.Replace('\\', '/'));
+        if (entry is null || entry.Length is <= 0 or > 2 * 1024 * 1024) return null;
+        await using var stream = entry.Open();
+        using var output = new MemoryStream();
+        await stream.CopyToAsync(output, ct);
+        return output.ToArray();
     }
 
     public async Task<AppPackageCandidate> StageServerPackageAsync(string serverPath, CancellationToken cancellationToken = default)
@@ -77,7 +91,8 @@ public sealed record AppPackageCandidate(
     string SourceName,
     DeveloperPackageManifest Manifest,
     string? InstalledVersion,
-    bool DeleteWhenFinished)
+    bool DeleteWhenFinished,
+    byte[]? IconData = null)
 {
     public bool IsUpdate => InstalledVersion is not null;
 }

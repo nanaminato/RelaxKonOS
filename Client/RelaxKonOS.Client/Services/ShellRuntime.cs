@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using RelaxKonOS.Client.Services.Diagnostics;
 using Avalonia.Threading;
 using System.Collections.Specialized;
 using System.ComponentModel;
@@ -319,10 +320,15 @@ internal sealed class DesktopShellActions(ShellStateStore state, IWindowManager 
     public Task RefreshDesktopAsync(CancellationToken cancellationToken = default) { Vm.RefreshDesktopCommand.Execute(null); return Task.CompletedTask; }
     public Task PasteDesktopAsync(CancellationToken cancellationToken = default) { Vm.PasteDesktopCommand.Execute(null); return Task.CompletedTask; }
     public void ClearDesktopSelection() => Vm.ClearDesktopSelectionCommand.Execute(null);
-    public void SelectDesktopEntry(string entryId) { var entry = Find(entryId); if (entry is not null) Vm.SelectDesktopItemCommand.Execute(entry); }
+    public void SetDesktopSelection(IReadOnlyList<string> entryIds) => Vm.SetDesktopSelection(entryIds.Select(Find).OfType<object>());
     public void SetDesktopIconsVisible(bool visible) => Vm.AreDesktopIconsVisible = visible;
     public void ShowDesktop() => Vm.ShowDesktopCommand.Execute(null);
     public void ToggleWindowGroup(AppId appId) { var group = Vm.TaskbarGroups.FirstOrDefault(x => x.AppId == appId); if (group is not null) Vm.ToggleTaskbarGroupCommand.Execute(group); }
+    public Task SetTaskbarPinnedAsync(AppId appId, bool pinned, CancellationToken cancellationToken = default)
+    {
+        TaskbarPreviewDiagnostics.Record("pin.shell.request", new { app = appId.Value, requested = pinned, current = Vm.IsTaskbarPinned(appId), canExecute = Vm.ToggleTaskbarPinCommand.CanExecute(appId) });
+        return Vm.IsTaskbarPinned(appId) == pinned ? Task.CompletedTask : Vm.ToggleTaskbarPinCommand.ExecuteAsync(appId);
+    }
     public void ActivateWindow(WindowId windowId) { var w = windows.Windows.FirstOrDefault(x => x.Info.Id == windowId); if (w is not null) windows.Focus(w); }
     public void MinimizeWindow(WindowId windowId) { var w = windows.Windows.FirstOrDefault(x => x.Info.Id == windowId); if (w is not null) windows.Minimize(w); }
     public void CloseWindow(WindowId windowId) { var w = windows.Windows.FirstOrDefault(x => x.Info.Id == windowId); if (w is not null) windows.Close(w); }
@@ -334,6 +340,9 @@ internal sealed class DesktopShellActions(ShellStateStore state, IWindowManager 
     {
         var entry = Find(entryId);
         if (entry is null) return Task.CompletedTask;
+        if (action == DesktopEntryAction.Delete) return Vm.DeleteDesktopItemsCommand.ExecuteAsync(entry);
+        if (action is DesktopEntryAction.PinToTaskbar or DesktopEntryAction.UnpinFromTaskbar)
+            return Vm.DesktopApplicationId(entry) is { } appId ? SetTaskbarPinnedAsync(appId, action == DesktopEntryAction.PinToTaskbar, cancellationToken) : Task.CompletedTask;
         if (action == DesktopEntryAction.Open) return OpenDesktopEntryAsync(entryId, cancellationToken);
         if (action == DesktopEntryAction.Properties && entry is AppEntryViewModel app)
         {
@@ -347,7 +356,6 @@ internal sealed class DesktopShellActions(ShellStateStore state, IWindowManager 
             DesktopEntryAction.Copy => Vm.CopyDesktopEntryCommand,
             DesktopEntryAction.Cut => Vm.CutDesktopEntryCommand,
             DesktopEntryAction.Paste => Vm.PasteDesktopCommand,
-            DesktopEntryAction.Delete => Vm.DeleteDesktopEntryCommand,
             DesktopEntryAction.ShowInExplorer => Vm.ShowDesktopEntryInExplorerCommand,
             DesktopEntryAction.Properties => Vm.ShowDesktopEntryPropertiesCommand,
             _ => null,
@@ -357,7 +365,7 @@ internal sealed class DesktopShellActions(ShellStateStore state, IWindowManager 
     }
     private object? Find(string entryId) => Vm.DesktopItems.FirstOrDefault(x => string.Equals(EntryId(x), entryId, StringComparison.Ordinal));
     private void Entry(string id, System.Windows.Input.ICommand command) { var entry = Find(id); if (entry is not null) command.Execute(entry); }
-    private static string EntryId(object item) => item switch { DesktopFileEntryViewModel f => "file:" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(f.Entry.Path)))[..16], AppEntryViewModel a => "app:" + a.Id.Value, ShortcutEntryViewModel s => "shortcut:" + s.DisplayName, _ => string.Empty };
+    private static string EntryId(object item) => item switch { DesktopFileEntryViewModel f => "file:" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(f.Entry.Path)))[..16], AppEntryViewModel a => "app:" + a.Id.Value, ShortcutEntryViewModel s => "shortcut:" + s.Shortcut.Id, _ => string.Empty };
 }
 
 /// <summary>
@@ -379,6 +387,7 @@ internal sealed class DesktopShellStateAdapter : IDisposable
         _catalog = catalog;
         _workspace.StartApps.CollectionChanged += OnCollectionChanged;
         _workspace.DesktopItems.CollectionChanged += OnCollectionChanged;
+        _workspace.TaskbarGroups.CollectionChanged += OnCollectionChanged;
         _workspace.PropertyChanged += OnWorkspacePropertyChanged;
         _workspace.Settings.PropertyChanged += OnSettingsPropertyChanged;
         _catalog.Changed += OnCatalogChanged;
@@ -394,6 +403,7 @@ internal sealed class DesktopShellStateAdapter : IDisposable
         _disposed = true;
         _workspace.StartApps.CollectionChanged -= OnCollectionChanged;
         _workspace.DesktopItems.CollectionChanged -= OnCollectionChanged;
+        _workspace.TaskbarGroups.CollectionChanged -= OnCollectionChanged;
         _workspace.PropertyChanged -= OnWorkspacePropertyChanged;
         _workspace.Settings.PropertyChanged -= OnSettingsPropertyChanged;
         _catalog.Changed -= OnCatalogChanged;
@@ -416,7 +426,7 @@ internal sealed class DesktopShellStateAdapter : IDisposable
 
     private void OnSettingsPropertyChanged(object? sender, PropertyChangedEventArgs args)
     {
-        if (args.PropertyName is null or nameof(ShellSettings.CurrentWallpaper))
+        if (args.PropertyName is null or nameof(ShellSettings.CurrentWallpaper) or nameof(ShellSettings.PinnedAppIds))
             Publish();
     }
 
@@ -426,11 +436,12 @@ internal sealed class DesktopShellStateAdapter : IDisposable
             or nameof(DesktopFileEntryViewModel.IsDesktopSelected)
             or nameof(ShortcutEntryViewModel.IsDesktopSelected))
             Publish();
+        else if (sender is TaskbarGroupViewModel) Publish();
     }
 
     private void RefreshDesktopItemSubscriptions()
     {
-        var current = _workspace.DesktopItems.OfType<INotifyPropertyChanged>().ToHashSet();
+        var current = _workspace.DesktopItems.OfType<INotifyPropertyChanged>().Concat(_workspace.TaskbarGroups).ToHashSet();
         foreach (var item in _desktopItems.Except(current).ToArray())
         {
             item.PropertyChanged -= OnDesktopItemPropertyChanged;
@@ -446,7 +457,10 @@ internal sealed class DesktopShellStateAdapter : IDisposable
     private void Publish()
     {
         if (_disposed) return;
-        Current = CreateSnapshot();
+        var snapshot = CreateSnapshot();
+        if (!(Current.TaskbarEntries ?? []).SequenceEqual(snapshot.TaskbarEntries ?? []))
+            TaskbarPreviewDiagnostics.Record("pin.shell.publish", new { entries = snapshot.TaskbarEntries?.Select(entry => new { app = entry.Id.Value, entry.IsPinned, entry.IsRunning }).ToArray() });
+        Current = snapshot;
         _state.PublishDesktop(Current);
     }
 
@@ -461,17 +475,18 @@ internal sealed class DesktopShellStateAdapter : IDisposable
             .Select(shell => new ShellDesktopStyleEntry(shell.Id, shell.DisplayName, shell.Version))
             .ToArray();
         return new ShellDesktopState(applications, entries, _workspace.AreDesktopIconsVisible, desktopStyles,
-            _workspace.Settings.CurrentWallpaper, ThemeResources.Brush("DesktopItemLabelForegroundBrush"));
+            _workspace.Settings.CurrentWallpaper, ThemeResources.Brush("DesktopItemLabelForegroundBrush"),
+            _workspace.TaskbarGroups.Select(group => new ShellTaskbarEntry(group.AppId, group.DisplayName, group.IconGlyph, group.IconImage, group.IsPinned, group.WindowCount > 0, group.IsActive)).ToArray());
     }
 
-    private static ShellDesktopEntry? ToEntry(object item) => item switch
+    private ShellDesktopEntry? ToEntry(object item) => item switch
     {
         AppEntryViewModel app => new ShellDesktopEntry("app:" + app.Id.Value, app.DisplayName,
-            ShellDesktopEntryKind.Application, app.IconGlyph, app.Id, app.IsDesktopSelected, app.IconImage),
+            ShellDesktopEntryKind.Application, app.IconGlyph, app.Id, app.IsDesktopSelected, app.IconImage, _workspace.IsTaskbarPinned(app.Id)),
         DesktopFileEntryViewModel file => new ShellDesktopEntry("file:" + EntryHash(file.Entry.Path), file.DisplayName,
             file.IsDirectory ? ShellDesktopEntryKind.Folder : ShellDesktopEntryKind.File, file.IconGlyph, null, file.IsDesktopSelected, file.IconImage),
-        ShortcutEntryViewModel shortcut => new ShellDesktopEntry("shortcut:" + shortcut.DisplayName, shortcut.DisplayName,
-            ShellDesktopEntryKind.Shortcut, shortcut.IconGlyph, null, shortcut.IsDesktopSelected),
+        ShortcutEntryViewModel shortcut => new ShellDesktopEntry("shortcut:" + shortcut.Shortcut.Id, shortcut.DisplayName,
+            ShellDesktopEntryKind.Shortcut, shortcut.IconGlyph, _workspace.DesktopApplicationId(shortcut), shortcut.IsDesktopSelected, null, _workspace.DesktopApplicationId(shortcut) is { } appId && _workspace.IsTaskbarPinned(appId)),
         _ => null,
     };
 

@@ -8,6 +8,8 @@
 
 ## 1. Goal
 
+组件选择、安装后设置及修复保留语义遵循 [安装管理设计](RelaxKonOS.InstallationManagement.Design.md)。Guardian 可以在首次安装时跳过，之后通过组件管理补装；配置修改使用独立部署动作。
+
 用户只安装 RelaxKonOS 客户端，即可从桌面或手机完成服务端的**发现、首次安装、连接、更新、修复、卸载和结果确认**，不需要另装 SSH 客户端、终端或文件传输工具。产品入口称为 **「服务器中心」**：它是现有登录与连接管理旁的宿主生命周期入口，不替代桌面登录窗口或 Android 的登录表单、五项顶级导航和工作区。
 
 安装前没有 RelaxKonOS Server，因此首次部署必须从客户端与宿主机已有的管理入口建立信任。远程路径使用**客户端内置 SSH/SFTP 能力**；已登录后的服务端 API 只提供版本、健康及会话信息，不承担自身停机、替换或卸载的最终执行。安装、更新、卸载的控制通道始终独立于即将重启或删除的 Server 进程。
@@ -157,7 +159,7 @@ Android Compose UI ┘                  │
 
 - **共享契约**：定义操作种类、预检能力、阶段事件、结果及稳定错误码，明确协议版本。C# 与 Kotlin 可由一份 schema 生成或分别实现并运行契约测试；Android 继续保持独立 Gradle 工程，不依赖 .NET UI 工程。
 - **客户端传输**：封装 SSH 主机密钥验证、密码/密钥认证、交互式 sudo 所需 PTY、SFTP、loopback 转发、重连与取消。选用跨桌面平台和 Android 可维护的库或平台实现，最终能力必须以真实平台验证；不调用系统 `ssh/scp/sftp` 命令作为必需路径。
-- **远端启动器**：执行有限枚举动作 `probe / install / upgrade / repair / uninstall / status / rollback`，参数采用结构化 JSON 与固定枚举，不接受任意命令、脚本路径、服务名或删除路径。启动器校验请求、取得锁、写入仅目标账号可读的操作记录，调用已有部署引擎并输出机器可读事件。
+- **远端启动器**：执行有限枚举动作 `probe / install / upgrade / configure / firewall / repair / uninstall / status / rollback`，参数采用结构化 JSON 与固定枚举，不接受任意命令、脚本路径、服务名或删除路径。启动器校验请求、取得锁、写入仅目标账号可读的操作记录，调用已有部署引擎并输出机器可读事件。组件、设置与同版本文件修复遵循[安装管理规范](RelaxKonOS.InstallationManagement.Design.md)。
 - **部署引擎**：System Mode Windows/Linux 与 Linux User Mode 各自负责原子替换、服务管理、安装清单和数据策略。SSH 层只传输并启动，不能成为第二套部署实现。
 - **Server API**：已安装时可提供只读版本/能力信息，不能作为自更新或自卸载的唯一执行者。所有最终核验走独立 SSH 通道。
 

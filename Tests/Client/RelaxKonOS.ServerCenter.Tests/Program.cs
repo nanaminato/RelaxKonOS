@@ -1,3 +1,5 @@
+using Avalonia;
+using Avalonia.Headless;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.ServerCenter;
@@ -17,9 +19,17 @@ if (args.Contains("--ssh-cancellation-only"))
     await SshCancellationChecks.RunAsync();
     return;
 }
+AppBuilder.Configure<Application>().UseSkia().UseHeadless(new AvaloniaHeadlessPlatformOptions()).SetupWithoutStarting();
+SynchronizationContext.SetSynchronizationContext(null);
+using var appearance = new RelaxKonOS.Client.Services.Theming.AppearanceService(Application.Current!, new RelaxKonOS.Client.Services.Theming.SystemStyleRegistry());
+if (args.Contains("--rollback-only"))
+{
+    await RollbackConfirmationChecks.RunAsync();
+    return;
+}
 await AuthSessionCancellationChecks.RunAsync();
 await LoginDiscoveryCancellationChecks.RunAsync();
-await SshDesktopCancellationChecks.RunAsync();
+await SshDesktopCancellationChecks.RunAsync(new RelaxKonOS.Client.Services.ShellSettings(appearance));
 if (args.Contains("--auth-cancellation-only")) return;
 if (args.Contains("--owner-device-only"))
 {
@@ -105,8 +115,8 @@ var modeGate = typeof(RelaxKonOS.Client.ViewModels.ServerCenter.ServerCenterView
 var sudoProbe = new ServerHostProbeDto(HostPlatformKind.Linux, "x86_64", ServerRuntimeIdentifier.LinuxX64,
     "ubuntu", "26.04", true, false, true, true, null, null, null, null, null, null, false, [], DateTimeOffset.UtcNow);
 Check((bool)modeGate.Invoke(null, [HostPlatformKind.Linux, sudoProbe, ServerInstallMode.LinuxSystem])! &&
-    !(bool)modeGate.Invoke(null, [HostPlatformKind.Linux, sudoProbe with { SudoAvailable = false }, ServerInstallMode.LinuxSystem])!,
-    "普通 Linux SSH 账户有 sudo 时允许系统模式，没有 sudo 时仍阻止");
+    !(bool)modeGate.Invoke(null, [HostPlatformKind.Linux, sudoProbe with { PrivilegeElevationAvailable = false }, ServerInstallMode.LinuxSystem])!,
+    "普通 Linux SSH 账户有 sudo 或 su 工具时允许系统模式，没有提权工具时阻止");
 var client = new ServerCenterDeploymentClient(transport);
 var operationId = Guid.NewGuid();
 var request = new ServerDeploymentRequest(ServerDeploymentProtocol.Version, operationId,
@@ -258,6 +268,8 @@ await LoginPickerChecks.RunAsync();
 await OwnerDeviceRememberedChecks.RunAsync();
 await HostKeyReviewChecks.RunAsync();
 await MaintenanceOutcomeChecks.RunAsync();
+await RepairPackagePickerChecks.RunAsync();
+await RollbackConfirmationChecks.RunAsync();
 SecretStoreChecks.Run();
 
 Console.WriteLine("桌面服务器中心传输检查通过。");

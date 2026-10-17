@@ -27,7 +27,7 @@ AppBuilder.Configure<LayoutApp>().UseSkia()
     .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).SetupWithoutStarting();
 using var appearance = new AppearanceService(Application.Current!, new SystemStyleRegistry());
 var settings = new ShellSettings(appearance);
-var localization = new LocalizationService(settings, new SshDesktopSession(null!));
+var localization = new LocalizationService(settings, new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)));
 using var services = new ServiceCollection().AddSingleton(localization).BuildServiceProvider();
 typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
 var vm = new DockerManagerViewModel(null!)
@@ -47,6 +47,18 @@ var output = Path.Combine(AppContext.BaseDirectory, "layout-qa");
 Directory.CreateDirectory(output);
 var host = new Window { Width = 1000, Height = 700 };
 host.Show();
+if (args.Contains("--file-progress-only"))
+{
+    FileOperationProgressChecks.Run(host, settings, output, appearance);
+    host.Close();
+    return;
+}
+if (args.Contains("--task-manager-only"))
+{
+    TaskManagerSortingChecks.Run(host);
+    host.Close();
+    return;
+}
 if (args.Contains("--registry-only"))
 {
     var checks = RegistryChecks.RunAsync();

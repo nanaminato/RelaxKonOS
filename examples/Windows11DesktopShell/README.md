@@ -6,10 +6,11 @@ This project is a self-contained external RelaxKonOS desktop shell. It intention
 The example demonstrates:
 
 - the host's active wallpaper (including synchronized custom images), wallpaper-label foreground and the shared `TextBlock.desktop-label` shadow style, live desktop entries, and a desktop context menu;
-- a centered taskbar, live All apps menu, clock, quick-settings flyout, and a short startup transition;
+- a centered taskbar, live All apps menu, clock, and quick-settings flyout;
 - shell actions for settings, display settings, desktop refresh, and Show Desktop;
 - correct registration of normal-window, full-screen-window, overlay, and input-backdrop surfaces;
 - work-area reporting that reserves the taskbar.
+- Shell API 1.3 desktop/taskbar projections and pin actions, bulk desktop selection, marquee selection, modifier-click, shortcut badges, and stable icon controls during selection updates;
 - host-provided application artwork on desktop entries, with `iconGlyph` used only as the fallback;
 - detailed vector desktop icons for a computer, folder, document, and recycle bin.
 

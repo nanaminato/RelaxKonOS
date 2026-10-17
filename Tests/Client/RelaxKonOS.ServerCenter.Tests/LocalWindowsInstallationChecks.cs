@@ -19,7 +19,7 @@ static class LocalWindowsInstallationChecks
         "windows", "10.0", true, true, false, false, null, null, null, null, null, null, false, [], DateTimeOffset.UtcNow);
     private static readonly ServerHostSnapshotDto Snapshot = new(InstallationId, true, ServerInstallMode.WindowsSystem,
         "1.0.0", null, @"C:\Program Files\RelaxKonOS", @"C:\ProgramData\RelaxKonOS", "https://0.0.0.0:5443",
-        true, null, [], DateTimeOffset.UtcNow);
+        true, null, [], DateTimeOffset.UtcNow, GuardianEnabled: false);
     private static readonly ServerInstallationOptions Options = new(ServerPackageSourceKind.OfficialStable,
         ServerInstallMode.WindowsSystem, null, null, ServerFileAccessScope.Restricted, ServerNetworkProfile.Loopback,
         ServerCertificateMode.SelfSigned, ServerCertificateFormat.Pfx, null, null, "", "localhost,127.0.0.1", ServerPort: 5443);
@@ -144,6 +144,29 @@ static class LocalWindowsInstallationChecks
             await new LocalWindowsServerInstaller(deleting, new FileServerCenterReleaseSource(), journal)
                 .MaintainAsync(ServerDeploymentKind.Uninstall, Snapshot, "en-US", true, ServerDataRetention.Delete);
             Check(deleting.Session.Requests[1].Options!.Retention == ServerDataRetention.Delete, "Explicit data deletion reaches the fixed uninstall engine.");
+            var configurationFactory = new LocalTestFactory();
+            var configurationInstaller = new LocalWindowsServerInstaller(configurationFactory, new FileServerCenterReleaseSource(), journal);
+            var configured = await configurationInstaller.ConfigureAsync(Snapshot, "zh-CN", 5500, true, true,
+                autoStart: false, fileAccess: ServerFileAccessScope.Whitelist, fileRoots: [@"D:\Shared Files"]);
+            Check(configured.GuardianEnabled == true && configured.ListenUrl == "https://0.0.0.0:5500" &&
+                configurationFactory.Session.Requests.Select(r => r.Kind).SequenceEqual([ServerDeploymentKind.Status, ServerDeploymentKind.Configure, ServerDeploymentKind.Status]),
+                "Configure binds reviewed facts, installs Guardian and independently verifies the new listener.");
+            Check(configured.AutoStart == false && configured.FileAccess == ServerFileAccessScope.Whitelist &&
+                configured.FileRoots!.SequenceEqual([@"D:\Shared Files"]), "Startup and protected file policy are read back after configuration.");
+            var ignoredSettings = new LocalTestFactory { Session = new LocalTestSession { IgnoreConfigurationSettings = true } };
+            await RejectAsync<InvalidDataException>(() => new LocalWindowsServerInstaller(ignoredSettings, new FileServerCenterReleaseSource(), journal)
+                .ConfigureAsync(Snapshot, "en-US", 5500, true, true, autoStart: false));
+            Check(true, "A successful receipt cannot hide a startup setting that did not take effect.");
+            var repairFiles = new LocalTestFactory();
+            await new LocalWindowsServerInstaller(repairFiles, new FileServerCenterReleaseSource(), journal)
+                .MaintainAsync(ServerDeploymentKind.Repair, Snapshot, "en-US", true, repairPackagePath: bundlePath);
+            Check(repairFiles.Session.Archive!.SequenceEqual(new byte[] { 1, 2, 3, 4 }) &&
+                repairFiles.Session.Requests[1].Options is { Source: ServerPackageSourceKind.LocalBundle, StagedPackageName: "server.zip" },
+                "Payload repair streams the selected ZIP through fixed broker staging.");
+            var staleFactory = new LocalTestFactory { Session = new LocalTestSession { HostSnapshot = Snapshot with { GuardianEnabled = true } } };
+            await RejectAsync<InvalidDataException>(() => new LocalWindowsServerInstaller(staleFactory, new FileServerCenterReleaseSource(), journal)
+                .ConfigureAsync(Snapshot, "zh-CN", 5500, true, false));
+            Check(staleFactory.Session.Requests.All(r => r.Kind == ServerDeploymentKind.Status), "Changed component selection prevents a stale configuration write.");
             var changed = new LocalTestFactory { Session = new LocalTestSession { HostSnapshot = Snapshot with { InstallationId = ServerInstallationId.NewId() } } };
             await RejectAsync<InvalidDataException>(() => new LocalWindowsServerInstaller(changed, new FileServerCenterReleaseSource(), journal)
                 .MaintainAsync(ServerDeploymentKind.Uninstall, Snapshot, "en-US", true));
@@ -159,7 +182,7 @@ static class LocalWindowsInstallationChecks
             var resolver = new ServerCenterConnectionResolver(keys, targets, sshFactory);
             var credentials = new SshCredentialStore(directory);
             var localization = new LoginLocalizationService(new LocalLanguageStore());
-            var center = new ServerCenterViewModel(targets, resolver, keys, credentials, new SshDesktopSession(null!),
+            var center = new ServerCenterViewModel(targets, resolver, keys, credentials, new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)),
                 new FileServerCenterReleaseSource(), journal, localization);
             center.SelectedHost = ServerHostTargetRules.Create("remote.test", 22, "remote-user", null, DateTimeOffset.UtcNow)
                 with { LastVerified = ServerHostTargetRules.VerifiedStateFrom(Snapshot with { Mode = ServerInstallMode.LinuxSystem, ListenUrl = "https://remote.test:5443" }) };
@@ -179,7 +202,7 @@ static class LocalWindowsInstallationChecks
                 sshFactory.Transports.Count == 0 && (await targets.LoadAsync()).Count == 0, "Local wizard defaults are private and never resolve SSH or persist a fake SSH target.");
 
             var login = new LoginViewModel(DispatchProxy.Create<IAuthSession, TunnelAuthProxy>(), localization,
-                new ServerEndpointResolver(new HttpClient(), new ServerCertificateTrust(directory)), new SshDesktopSession(null!),
+                new ServerEndpointResolver(new HttpClient(), new ServerCertificateTrust(directory)), new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)),
                 targets, keys, credentials, resolver, new LoginTunnelStore(directory)) {
                 UseSshLogin = true, UseLoginTunnel = true, Identifier = "old-host-user", Password = "old-host-password" };
             await login.UseInstalledLocalServerAsync(endpoint);
@@ -269,6 +292,7 @@ static class LocalWindowsInstallationChecks
         public List<ServerDeploymentRequest> Requests = [];
         public ServerHostProbeDto HostProbe = Probe;
         public ServerHostSnapshotDto HostSnapshot = Snapshot;
+        public bool IgnoreConfigurationSettings;
         public bool Disposed, FailInstallation;
         public byte[]? Archive, Certificate;
         public async Task<ServerDeploymentOperationDto> ExecuteAsync(ServerDeploymentRequest request, Stream? archive,
@@ -276,6 +300,15 @@ static class LocalWindowsInstallationChecks
         {
             LocalWindowsDeploymentBroker.ValidateRequest(request);
             Requests.Add(request);
+            if (request.Kind == ServerDeploymentKind.Configure)
+            {
+                var endpoint = new UriBuilder(HostSnapshot.ListenUrl!) { Host = request.Options!.Network == ServerNetworkProfile.Lan ? "0.0.0.0" : "127.0.0.1", Port = request.Options.ServerPort!.Value };
+                HostSnapshot = HostSnapshot with { ListenUrl = endpoint.Uri.AbsoluteUri.TrimEnd('/'), GuardianEnabled = request.Options.GuardianEnabled };
+                if (!IgnoreConfigurationSettings) HostSnapshot = HostSnapshot with {
+                    AutoStart = request.Options.AutoStart ?? HostSnapshot.AutoStart,
+                    FileAccess = request.Options.FileAccess ?? HostSnapshot.FileAccess,
+                    FileRoots = request.Options.FileAccess == ServerFileAccessScope.Whitelist ? request.Options.FileRoots : HostSnapshot.FileRoots };
+            }
             if (request.Kind == ServerDeploymentKind.Uninstall) HostSnapshot = HostSnapshot with { Installed = false, Healthy = false };
             if (archive is not null) { using var copy = new MemoryStream(); await archive.CopyToAsync(copy, ct); Archive = copy.ToArray(); }
             if (certificate is not null) { using var copy = new MemoryStream(); await certificate.CopyToAsync(copy, ct); Certificate = copy.ToArray(); }

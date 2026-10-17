@@ -9,11 +9,17 @@ namespace RelaxKonOS.Protocol.Common;
 /// 文本，也不据此推断能力（能力由 <see cref="ServerCapabilitiesDto"/> 回答）。因此这里只列出客户端真的
 /// 有对应标记的系统；<see cref="Unknown"/> 同时表示「不是这几类」与「问不出来」，客户端对两者都必须
 /// 回落通用标记，不得猜成其中任何一个。
+///
+/// Linux 一侧按发行版身份给出三种答案：<see cref="Ubuntu"/> 与 <see cref="Debian"/> 各自写明了身份，
+/// 其它 Linux 宿主（Linux Mint 等）归入 <see cref="Linux"/>。后者只声明「这是一台 Linux 宿主」，
+/// 不冒充任何发行版。
 /// </summary>
 public enum HostOperatingSystemKind
 {
     Unknown,
     Ubuntu,
+    Debian,
+    Linux,
     Windows10,
     Windows11,
     WindowsServer

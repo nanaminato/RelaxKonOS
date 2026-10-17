@@ -13,7 +13,7 @@
 - User Mode 文件服务仅以当前 Unix home 为可浏览根；所有读写/移动/上传路径均在服务端规范化，并拒绝目录外路径及已存在符号链接逃逸。
 - 客户端内置应用根据新的服务端能力声明隐藏 Docker、文件服务、Web Server、证书、代理和隧道入口；Guardian 仍可用。
 - Guardian 的 User Mode 路径在 Server 与 Agent 两端均拒绝跨用户 `RunAs`，错误码为 `guardian.cross_user_unavailable`；User Agent 不运行受保护 system-service 监控。
-- 新增 `user-server` Linux 发布包，只包含 Server、Guardian、用户 launcher 和显式 `install-relaxkonos.sh --mode user` 安装脚本；不含 PrivilegedHelper、sudoers 或 system-service 安装器。
+- Linux 用户模式与系统模式共用 `server` 包；用户模式仅部署 Server、同 UID Guardian 与 `deployment/user`，不安装特权组件。
 - 新增 XDG 用户态 `relaxkon` lifecycle launcher：本地/HTTPS checksum 安装、逐文件清单校验、loopback 启动、同 UID Guardian、PID + UID + Linux start-time 校验、私有 Unix control socket、停止、状态、升级及失败回滚和卸载。目录、秘密、状态与日志使用用户私有权限。
 - 现有系统安装器改为强制显式 `--mode system`，不再隐式调用 sudo；`--mode user` 交给用户态 launcher，且 root 调用会被拒绝。
 - Settings 的只读系统页显示 Server 模式、执行 UID/用户名、监听范围和 User Mode 的 SSH tunnel 提示。
@@ -23,7 +23,7 @@
 - `dotnet build RelaxKonOS.Server/RelaxKonOS.Server.csproj --no-restore` 成功（仅现有平台分析警告）。
 - `dotnet build RelaxKonOS.Guardian.Agent/RelaxKonOS.Guardian.Agent.csproj --no-restore` 成功。
 - `bash -n deployment/user/relaxkon deployment/user/install-relaxkonos-user.sh deployment/bootstrap/install-relaxkonos.sh deployment/packaging/package-relaxkonos.sh` 成功。
-- `package-relaxkonos.sh 0.0.0-dev linux-x64 Debug … user-server` 成功生成 self-contained Linux 包；JSON manifest 的 604 项文件清单及每项 SHA-256 已验证，payload 只有 Server、Guardian 与 `deployment/user`，没有 Helper、sudoers 或 system-service 安装引擎。
+- 发布验证须使用统一 `server` 包，检查两种安装模式所需文件、manifest 与 SHA-256；旧的独立用户包验证记录不代表当前统一包已验收。
 - 对生成的 bundle 执行了用户态本地安装与卸载冒烟测试：XDG 覆盖目录为 `0700`，`install-state.json` 为 `0600`，且均由当前 UID 所有；卸载后四个 RelaxKonOS XDG 子目录均已移除。
 
 ## 暂未执行 / 跳过的测试

@@ -2,11 +2,11 @@
 # installer crosses UAC; another administrator's credentials never change the installation owner.
 function Set-PersonalPrivileges([string] $InstallRoot, [string] $DataRoot, [string] $Version,
     [string] $Action = 'install', [string] $FileAccess = 'restricted', [string] $FileRootsFile,
-    [string] $ListenUrl, [bool] $AddFirewallRule = $false) {
+    [string] $ListenUrl, [bool] $AddFirewallRule = $false, [bool] $RemoveFirewallRules = $false) {
     $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     $request = [ordered]@{
         ownerSid = $sid; action = $Action; helperSource = (Join-Path $InstallRoot ('versions\' + $Version + '\privileged-helper'))
-        fileAccess = $FileAccess; fileRoots = @(); listenUrl = $ListenUrl; addFirewallRule = $AddFirewallRule
+        fileAccess = $FileAccess; fileRoots = @(); listenUrl = $ListenUrl; addFirewallRule = $AddFirewallRule; removeFirewallRules = $RemoveFirewallRules
     }
     if ($FileAccess -eq 'whitelist' -and $FileRootsFile) { $request.fileRoots = @(Get-Content -LiteralPath $FileRootsFile -Raw | ConvertFrom-Json) }
     $requestPath = Join-Path $DataRoot ('privilege-request-' + [guid]::NewGuid().ToString('N') + '.json')

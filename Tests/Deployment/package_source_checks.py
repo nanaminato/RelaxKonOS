@@ -37,8 +37,12 @@ class PackageSourceChecks(unittest.TestCase):
         self.files = {'payload/linux/server/RelaxKonOS.Server':b'server',
                       'payload/linux/guardian/RelaxKonOS.Guardian.Agent':b'guardian',
                       'deployment/user/relaxkon':b'#!/bin/bash\n',
-                      'deployment/verify-release-inventory.py':b'# verifier\n'}
-        self.manifest = {'schemaVersion':1,'packageKind':'user-server','runtime':'linux-x64','version':'0.1.0',
+                      'deployment/verify-release-inventory.py':b'# verifier\n',
+                      'payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper':b'helper',
+                      'deployment/bootstrap/install-relaxkonos.sh':b'#!/bin/bash\n',
+                      'deployment/bootstrap/uninstall-relaxkonos.sh':b'#!/bin/bash\n',
+                      'deployment/linux/install-relaxkonos-services.sh':b'#!/bin/bash\n'}
+        self.manifest = {'schemaVersion':1,'packageKind':'server','runtime':'linux-x64','version':'0.1.0',
                          'files':[{'path':p,'length':len(v),'sha256':hashlib.sha256(v).hexdigest()} for p,v in self.files.items()]}
     def tearDown(self): self.temp.cleanup()
     def package(self,extra=None):
@@ -46,14 +50,14 @@ class PackageSourceChecks(unittest.TestCase):
             archive.writestr('manifest.json',json.dumps(self.manifest))
             for path,data in (self.files | (extra or {})).items(): archive.writestr(path,data)
     def extract(self,source='localBundle',runtime='linux-x64',target='out'):
-        helper['extract'](source,runtime,'user-server',self.root/target,str(self.archive))
+        helper['extract'](source,runtime,'server',self.root/target,str(self.archive))
     def test_user_sources_require_no_digest(self):
         self.manifest['files'][0]['sha256']='0'*64; self.package()
         for source in ('localBundle','remoteBundle'):
             self.extract(source,target=source)
             self.assertEqual((self.root/source/next(iter(self.files))).read_bytes(),b'server')
     def test_system_package_requires_uninstall_engine(self):
-        self.manifest['packageKind'] = 'server'
+        del self.files['deployment/bootstrap/uninstall-relaxkonos.sh']
         self.files.update({
             'payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper': b'helper',
             'deployment/bootstrap/install-relaxkonos.sh': b'#!/bin/bash\n',
@@ -74,20 +78,22 @@ class PackageSourceChecks(unittest.TestCase):
         self.assertFalse((self.root/'out').exists())
     def test_missing_inventory_verifier_is_rejected_before_extraction(self):
         del self.files['deployment/verify-release-inventory.py']
-        for kind in ('user-server', 'server'):
-            with self.subTest(kind=kind):
-                self.manifest['packageKind'] = kind
-                if kind == 'server':
-                    self.files.update({
-                        'payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper': b'helper',
-                        'deployment/bootstrap/install-relaxkonos.sh': b'#!/bin/bash\n',
-                        'deployment/bootstrap/uninstall-relaxkonos.sh': b'#!/bin/bash\n',
-                        'deployment/linux/install-relaxkonos-services.sh': b'#!/bin/bash\n',
-                    })
-                self.package()
-                with self.assertRaisesRegex(ValueError, 'incomplete package'):
-                    helper['extract']('localBundle', 'linux-x64', kind, self.root/kind, str(self.archive))
-                self.assertFalse((self.root/kind).exists())
+        self.package()
+        with self.assertRaisesRegex(ValueError, 'incomplete package'):
+            self.extract()
+        self.assertFalse((self.root/'out').exists())
+    def test_shared_server_package_requires_user_launcher(self):
+        del self.files['deployment/user/relaxkon']
+        self.package()
+        with self.assertRaisesRegex(ValueError, 'incomplete package'):
+            self.extract()
+        self.assertFalse((self.root/'out').exists())
+    def test_client_package_cannot_replace_shared_server(self):
+        self.manifest['packageKind'] = 'client'
+        self.package()
+        with self.assertRaises(ValueError):
+            self.extract()
+        self.assertFalse((self.root/'out').exists())
     def test_traversal(self):
         self.package({'../escaped':b'bad'})
         with self.assertRaises(ValueError): self.extract()
@@ -102,14 +108,14 @@ class PackageSourceChecks(unittest.TestCase):
         with self.assertRaises(ValueError):self.extract()
     def test_official_checks(self):
         self.package(); seen=[]
-        descriptor={'schemaVersion':1,'packageKind':'user-server','runtime':'linux-x64','version':'0.1.0',
+        descriptor={'schemaVersion':1,'packageKind':'server','runtime':'linux-x64','version':'0.1.0',
                     'url':'https://example.invalid/server.zip','sha256':hashlib.sha256(self.archive.read_bytes()).hexdigest()}
         original=helper['download']
         def download(url,path,limit,request_path=None):
             seen.append(url);Path(path).write_bytes(json.dumps(descriptor).encode() if url.endswith('.json') else self.archive.read_bytes())
         helper['download']=download
         try:
-            self.extract('officialStable');self.assertIn('/latest/user-server/linux-x64.json',seen[0])
+            self.extract('officialStable');self.assertIn('/latest/linux-x64.json',seen[0])
             descriptor['sha256']='0'*64
             with self.assertRaises(ValueError):self.extract('officialStable',target='bad-zip')
             self.manifest['files'][0]['sha256']='0'*64;self.package()
@@ -126,10 +132,10 @@ class PackageSourceChecks(unittest.TestCase):
         original=helper['download']
         helper['download']=lambda url,target,limit,request_path=None: Path(target).write_bytes(self.archive.read_bytes())
         try:
-            helper['extract']('directUrl','linux-x64','user-server',str(self.root/'custom'),'',str(path))
+            helper['extract']('directUrl','linux-x64','server',str(self.root/'custom'),'',str(path))
             self.assertTrue((self.root/'custom/manifest.json').is_file())
             options['packageDigest']='0'*64;write()
-            with self.assertRaises(ValueError):helper['extract']('directUrl','linux-x64','user-server',str(self.root/'bad-custom'),'',str(path))
+            with self.assertRaises(ValueError):helper['extract']('directUrl','linux-x64','server',str(self.root/'bad-custom'),'',str(path))
             self.assertFalse((self.root/'bad-custom').exists())
         finally:helper['download']=original
 

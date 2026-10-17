@@ -329,7 +329,7 @@ fun decideLogin(
 
 描述上一条身份的字段（地址、登录标识、密码、端点探测结论）同样随选择一起重置，避免用已经换掉的地址解释一次失败。
 
-连接管理在首部显示 Ubuntu、Windows Server、Windows 10、Windows 11 的平台标记，并在相邻商标声明中注明 Ubuntu 归 Canonical、Windows 系列归 Microsoft。图例与每条记录的标记来自**同一份映射**，所以图例不会宣传一条记录永远显示不出的标记，也不会漏掉记录能显示的标记。
+连接管理在首部显示 Ubuntu、Debian、Linux、Windows Server、Windows 10、Windows 11 的平台标记，并在相邻商标声明中注明 Ubuntu 归 Canonical、Debian 归 Software in the Public Interest, Inc.、Linux 归 Linus Torvalds、Windows 系列归 Microsoft。Linux 标记发给没有自报发行版的 Linux 宿主（受支持的 Linux Mint 等），它只声明这是一台 Linux 宿主，不冒充任何发行版；Ubuntu 与 Debian 则各自有明确标记。图例与每条记录的标记来自**同一份映射**，所以图例不会宣传一条记录永远显示不出的标记，也不会漏掉记录能显示的标记。
 
 登录选择列表、Shell 内连接管理和已保存密码列表只有在**服务器自己说过它运行什么系统**时才显示对应标记：答案来自 `GET /api/v1.0/server/host-operating-system`（匿名、只回答系统类别，见 [架构文档](../../../../docs/architecture/RelaxKonOS.Protocol.md)）。
 

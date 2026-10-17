@@ -17,6 +17,21 @@
   <Style Selector="Button:pressed"><Setter Property="Background" Value="{DynamicResource SurfacePressedBrush}" /></Style>
   <Style Selector="Button:disabled"><Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" /><Setter Property="Opacity" Value="0.65" /></Style>
   <Style Selector="Button:focus-visible"><Setter Property="BorderBrush" Value="{DynamicResource FocusRingBrush}" /><Setter Property="BorderThickness" Value="{DynamicResource FocusRingThickness}" /></Style>
+  <!-- Reserve the same border in every state: hover/focus/selection never moves desktop artwork. -->
+  <Style Selector="Button.desktop-shortcut">
+    <Setter Property="BorderThickness" Value="1" /><Setter Property="Padding" Value="5" />
+    <Setter Property="Background" Value="Transparent" /><Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="CornerRadius" Value="2" />
+  </Style>
+  <Style Selector="Button.desktop-shortcut:focus-visible"><Setter Property="BorderThickness" Value="1" /></Style>
+  <Style Selector="Button.desktop-shortcut:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource DesktopIconHoverBrush}" />
+    <Setter Property="BorderBrush" Value="#70FFFFFF" /><Setter Property="BorderThickness" Value="1" />
+  </Style>
+  <Style Selector="Button.desktop-shortcut.selected /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource DesktopIconSelectedBrush}" />
+    <Setter Property="BorderBrush" Value="#A0FFFFFF" /><Setter Property="BorderThickness" Value="1" />
+  </Style>
   <Style Selector="Button.primary"><Setter Property="Background" Value="{DynamicResource AccentBrush}" /><Setter Property="Foreground" Value="{DynamicResource TextOnAccentBrush}" /><Setter Property="MinHeight" Value="{DynamicResource MinimumHitTarget}" /><Setter Property="FontWeight" Value="SemiBold" /></Style>
   <Style Selector="Button.primary:pointerover"><Setter Property="Background" Value="{DynamicResource AccentHoverBrush}" /></Style><Style Selector="Button.primary:pressed"><Setter Property="Background" Value="{DynamicResource AccentPressedBrush}" /></Style>
   <Style Selector="Button.danger"><Setter Property="Background" Value="{DynamicResource DangerBrush}" /><Setter Property="Foreground" Value="{DynamicResource TextOnDangerBrush}" /></Style><Style Selector="Button.danger:pointerover"><Setter Property="Background" Value="{DynamicResource DangerHoverBrush}" /></Style><Style Selector="Button.danger:pressed"><Setter Property="Background" Value="{DynamicResource DangerPressedBrush}" /></Style>

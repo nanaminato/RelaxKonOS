@@ -168,8 +168,8 @@
     <string name="ssh_workspace_deploy_step_review">Review and install</string>
     <string name="ssh_workspace_deploy_step_source">Choose the release source</string>
     <string name="ssh_workspace_deploy_success">Installation completed and server health verified.</string>
-    <string name="ssh_workspace_deploy_sudo_failed">sudo authentication failed. Check the sudo password and account permissions.</string>
-    <string name="ssh_workspace_deploy_sudo_password">sudo password (leave blank to use the SSH password)</string>
+    <string name="ssh_workspace_deploy_sudo_failed">Privilege elevation failed. Check the sudo user password and permissions, or the root password for su.</string>
+    <string name="ssh_workspace_deploy_sudo_password">Administrator password (sudo user or root; blank uses SSH password)</string>
     <string name="ssh_workspace_deploy_target">Server and user</string>
     <string name="ssh_workspace_deploy_verify">Verify the SSH connection before installing.</string>
     <string name="ssh_workspace_deploy_version">Version (optional)</string>

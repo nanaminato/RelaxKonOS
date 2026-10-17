@@ -32,7 +32,7 @@ class ServerDeploymentRecordRulesTest {
     fun `release wire values match the package builders`() {
         assertEquals("win-x64", ServerRuntimeIdentifier.WinX64.wireName())
         assertEquals("linux-arm64", ServerRuntimeIdentifier.LinuxArm64.wireName())
-        assertEquals("user-server", ServerReleasePackageKind.UserServer.wireName())
+        assertEquals("server", ServerReleasePackageKind.Server.wireName())
         assertEquals(ServerRuntimeIdentifier.WinX64, enumFromWire<ServerRuntimeIdentifier>("win-x64"))
     }
 
@@ -41,7 +41,7 @@ class ServerDeploymentRecordRulesTest {
         val path = "payload/linux/server/RelaxKonOS.Server"
         val manifest = ServerReleaseManifest(
             schemaVersion = ServerDeploymentProtocol.VERSION,
-            packageKind = ServerReleasePackageKind.UserServer,
+            packageKind = ServerReleasePackageKind.Server,
             version = "0.1.0",
             runtime = ServerRuntimeIdentifier.LinuxX64,
             supportedSystems = listOf("debian-12"),

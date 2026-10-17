@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The user-server bundle intentionally ships this small explicit-mode entry point instead of
-# the System Mode bootstrapper, which would carry privileged installation dependencies.
+# The shared server bundle provides an explicit User Mode entry point.
+# Only the user launcher runs here; privileged system installers are not invoked.
 set -euo pipefail
 script_directory=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 [[ ${1:-} == --mode && ${2:-} == user ]] || {

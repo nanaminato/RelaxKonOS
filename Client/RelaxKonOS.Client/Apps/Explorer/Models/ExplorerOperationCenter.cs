@@ -12,6 +12,7 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
     public ObservableCollection<ExplorerOperationCard> Jobs { get; } = [];
     public Func<string?>? SessionKey { get; set; }
     public Func<FileOperationIssue, FileOperationKind, Task<bool>>? ElevateAsync { get; set; }
+    public Func<bool, CancellationToken, Task<string?>>? RequestArchivePasswordAsync { get; set; }
     public Action? ShowRequested { get; set; }
     public Action? CloseRequested { get; set; }
     private int _pendingRequests;
@@ -22,7 +23,10 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
     private string? _session;
     private bool _polling;
     private CancellationTokenSource _sessionCancellation = new();
-    [ObservableProperty] private string _error = string.Empty;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    private string _error = string.Empty;
+    public bool HasError => !string.IsNullOrWhiteSpace(Error);
 
     private string? CurrentSession => SessionKey?.Invoke() ?? (SessionKey is null ? "test" : null);
     private bool IsCurrent(string? session) => session is not null && session == CurrentSession;
@@ -45,6 +49,35 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
 
     public void QueueDownload(IReadOnlyList<FileOperationItem> items, long totalBytes,
         Func<Action<string, long, int>, CancellationToken, Task> download) => QueueTransfer(items, totalBytes, download, true);
+
+    /// <summary>Observes Shell-driven reads without moving network callbacks onto the UI thread.</summary>
+    public ClipboardFileTransfer BeginClipboardDownload(string path, long size, Action<Action> dispatch)
+    {
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancellation = new CancellationTokenSource();
+        var token = cancellation.Token;
+        Action<long>? progress = null;
+        dispatch(() =>
+        {
+            try
+            {
+                QueueDownload([new(path)], size, async (report, cancel) =>
+                {
+                    progress = bytes => report(path, bytes, 0);
+                    using var registration = cancel.Register(() => cancellation.Cancel());
+                    try { await completion.Task; report(path, size, 1); }
+                    finally { cancellation.Dispose(); }
+                });
+            }
+            catch (Exception ex) { cancellation.Cancel(); completion.TrySetException(ex); }
+        });
+        return new(bytes => dispatch(() => progress?.Invoke(bytes)), error =>
+        {
+            if (error is OperationCanceledException) completion.TrySetCanceled();
+            else if (error is not null) completion.TrySetException(error);
+            else completion.TrySetResult();
+        }, token);
+    }
 
     private void QueueTransfer(IReadOnlyList<FileOperationItem> items, long totalBytes,
         Func<Action<string, long, int>, CancellationToken, Task> upload, bool downloading)
@@ -74,7 +107,7 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
                 cancellation.Token.ThrowIfCancellationRequested();
                 dto = dto with { State = FileOperationState.Completed };
             }
-            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            catch (OperationCanceledException)
             {
                 dto = dto with { State = FileOperationState.Cancelled };
             }
@@ -238,12 +271,22 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
             else
             {
                 if (snapshot.Issue is not { } issue) return;
-                if (action == FileOperationDecision.Retry && issue.Code == "access-denied" && ElevateAsync is not null)
+                if (action == FileOperationDecision.Retry && issue.Code == "access-denied"
+                    && snapshot.Kind is not (FileOperationKind.Compress or FileOperationKind.Extract) && ElevateAsync is not null)
                 {
                     if (!await ElevateAsync(issue, snapshot.Kind)) return;
                     if (!IsCurrent(session)) return;
                 }
-                dto = await client.DecideOperationAsync(snapshot.Id, new(snapshot.Issue.Id, action.Value, card.ApplyToAll), _sessionCancellation.Token);
+                ArchiveCredentials? credentials = null;
+                var passwordIssue = issue.Code is "archive-password-required" or "archive-password-invalid";
+                if (passwordIssue && action == FileOperationDecision.Retry)
+                {
+                    var password = await (RequestArchivePasswordAsync?.Invoke(issue.Code == "archive-password-invalid", _sessionCancellation.Token) ?? Task.FromResult<string?>(null));
+                    if (password is null || !IsCurrent(session)) return;
+                    credentials = new(password); credentials.Validate();
+                }
+                dto = await client.DecideOperationAsync(snapshot.Id, new(snapshot.Issue.Id, action.Value,
+                    passwordIssue ? false : card.ApplyToAll, credentials), _sessionCancellation.Token);
             }
             if (IsCurrent(session)) Update(dto);
         }
@@ -257,17 +300,69 @@ public sealed partial class ExplorerOperationCard(ExplorerOperationCenter center
     [ObservableProperty] private bool _applyToAll;
     [ObservableProperty] private string _error = string.Empty;
     [ObservableProperty] private bool _missing;
-    partial void OnMissingChanged(bool value) { OnPropertyChanged(nameof(StateText)); OnPropertyChanged(nameof(CanCancel)); OnPropertyChanged(nameof(Indeterminate)); }
+    private readonly FileTransferMetrics _metrics = new();
+    [ObservableProperty] private bool _detailsExpanded = true;
+    public bool HasError => !string.IsNullOrWhiteSpace(Error);
+    public bool NeedsAttention => HasIssue || Missing || HasError;
+    public bool ShowTransferDetails => DetailsExpanded && !HasIssue;
+    public bool ShowSpeedGraph => ShowTransferDetails && HasMeasuredProgress && !NeedsAttention && Snapshot.State == FileOperationState.Running;
+    public bool HasDestination => !string.IsNullOrWhiteSpace(DestinationLocation);
+    public bool HasMeasuredProgress => Snapshot.CurrentTotalBytes > 0 && !Missing;
+    public string ProgressText => HasMeasuredProgress && Snapshot.State == FileOperationState.Running
+        ? LocalizedText.Format("explorer.operations.percent_complete", (int)Math.Floor(Progress)) : StateText;
+    public string ProgressScope => !HasMeasuredProgress ? string.Empty : LocalizedText.Get(IsLocalTransfer
+        ? "explorer.operations.entire_operation" : "explorer.operations.current_file_short");
+    public string Summary => LocalizedText.Format("explorer.operations.processing_items", Title, Snapshot.Items.Count);
+    public string CurrentFileName => string.IsNullOrWhiteSpace(Snapshot.CurrentPath)
+        ? StateText : FileName(Snapshot.CurrentPath);
+    public string SourceLocation => LocationsFor(false);
+    public string DestinationLocation => LocationsFor(true);
+    public IReadOnlyList<double> SpeedHistory => _metrics.History;
+    private bool CanShowSpeed => _metrics.IsReady && Snapshot.State == FileOperationState.Running && !Missing && !HasError;
+    public string SpeedText => CanShowSpeed ? FileTransferMetrics.FormatBytes(_metrics.BytesPerSecond) + "/s"
+        : LocalizedText.Get("explorer.operations.calculating");
+    public string TransferSize => HasMeasuredProgress
+        ? LocalizedText.Format("explorer.operations.transferred_size", FileTransferMetrics.FormatBytes(Snapshot.CurrentBytes), FileTransferMetrics.FormatBytes(Snapshot.CurrentTotalBytes))
+        : LocalizedText.Get("explorer.operations.calculating");
+    public string RemainingTime
+    {
+        get
+        {
+            // Server tasks report a current-file counter, not a recursively measured job total.
+            if (!IsLocalTransfer || !CanShowSpeed || _metrics.BytesPerSecond <= 0 || !HasMeasuredProgress)
+                return LocalizedText.Get("explorer.operations.calculating");
+            var seconds = Math.Max(0, Snapshot.CurrentTotalBytes - Snapshot.CurrentBytes) / _metrics.BytesPerSecond;
+            if (seconds >= 3600) return LocalizedText.Format("explorer.operations.remaining_hours", Math.Ceiling(seconds / 3600));
+            if (seconds >= 60) return LocalizedText.Format("explorer.operations.remaining_minutes", Math.Ceiling(seconds / 60));
+            return LocalizedText.Format("explorer.operations.remaining_seconds", Math.Ceiling(seconds));
+        }
+    }
+    public string DetailsToggleLabel => LocalizedText.Get(DetailsExpanded ? "explorer.operations.fewer_details" : "explorer.operations.more_details");
+    private static string FileName(string path)
+    {
+        var normalized = ExplorerPath.Normalize(path)!;
+        var name = normalized[(normalized.LastIndexOf(ExplorerPath.IsWindows(normalized) ? '\\' : '/') + 1)..];
+        return string.IsNullOrEmpty(name) ? path : name;
+    }
+    private string LocationsFor(bool destination)
+    {
+        var paths = Snapshot.Items.Select(item => destination ? item.DestinationPath : item.SourcePath)
+            .Where(path => !string.IsNullOrWhiteSpace(path)).Select(path => ExplorerPath.Parent(path!) ?? path!)
+            .Distinct(StringComparer.Ordinal).ToArray();
+        return paths.Length switch { 0 => string.Empty, 1 => paths[0], _ => LocalizedText.Get("explorer.operations.multiple_locations") };
+    }
+    partial void OnDetailsExpandedChanged(bool value) { OnPropertyChanged(nameof(DetailsToggleLabel)); OnPropertyChanged(nameof(ShowTransferDetails)); OnPropertyChanged(nameof(ShowSpeedGraph)); }
+    partial void OnMissingChanged(bool value) => RefreshPresentation();
+    partial void OnErrorChanged(string value) => RefreshPresentation();
     public bool IsUpload { get; init; }
     public bool IsDownload { get; init; }
     public bool IsLocalTransfer => IsUpload || IsDownload;
-    public string Title => IsUpload ? LocalizedText.Get("explorer.operations.upload") : IsDownload ? LocalizedText.Get("explorer.operations.download") : LocalizedText.Get($"explorer.operations.kind.{Snapshot.Kind}");
+    public string Title => LocalizedText.Get($"explorer.operations.kind.{Snapshot.Kind}");
     public string StateText => Missing ? LocalizedText.Get("explorer.operations.missing") : LocalizedText.Get($"explorer.operations.state.{Snapshot.State}");
     public string Locations => string.Join(Environment.NewLine, Snapshot.Items.Take(3).Select(i =>
         i.DestinationPath is null ? i.SourcePath : $"{i.SourcePath} → {i.DestinationPath}"))
         + (Snapshot.Items.Count > 3 ? Environment.NewLine + "…" : string.Empty);
-    public string Counts => LocalizedText.Format("explorer.operations.counts", Snapshot.ProcessedItems,
-        Snapshot.SkippedItems, Snapshot.CompletedSources.Count, Snapshot.Items.Count);
+    public string Counts => LocalizedText.Format("explorer.operations.items_processed", Snapshot.ProcessedItems, Snapshot.SkippedItems);
     public string Bytes => Snapshot.CurrentTotalBytes > 0 ? $"{Snapshot.CurrentBytes:N0} / {Snapshot.CurrentTotalBytes:N0} B" : string.Empty;
     public double Progress => Snapshot.CurrentTotalBytes > 0 ? Math.Clamp(Snapshot.CurrentBytes * 100d / Snapshot.CurrentTotalBytes, 0, 100) : 0;
     public bool Indeterminate => !Missing && (Snapshot.State is FileOperationState.Queued or FileOperationState.Running)
@@ -277,16 +372,30 @@ public sealed partial class ExplorerOperationCard(ExplorerOperationCenter center
     public bool CanReplace => Snapshot.Issue?.Choices.Contains(FileOperationDecision.Replace) == true;
     public bool CanKeepBoth => Snapshot.Issue?.Choices.Contains(FileOperationDecision.KeepBoth) == true;
     public bool CanRetry => Snapshot.Issue?.Choices.Contains(FileOperationDecision.Retry) == true;
-    public string RetryLabel => LocalizedText.Get(Snapshot.Issue?.Code == "access-denied" ? "explorer.operations.retry_access" : "explorer.operations.retry");
+    public bool CanApplyToAll => Snapshot.Issue?.Code is not ("archive-password-required" or "archive-password-invalid");
+    public string RetryLabel => LocalizedText.Get(Snapshot.Issue?.Code is "archive-password-required" or "archive-password-invalid"
+        ? "explorer.archive.password_retry" : Snapshot.Issue?.Code == "access-denied" && Snapshot.Kind is not (FileOperationKind.Compress or FileOperationKind.Extract)
+        ? "explorer.operations.retry_access" : "explorer.operations.retry");
     public string IssueText => Snapshot.Issue is { } issue ? $"{LocalizedText.Get("explorer.operations.issue." + issue.Code)}\n{issue.SourcePath}\n{issue.DestinationPath}\n{issue.Message}" : string.Empty;
     public string Details => string.Join(Environment.NewLine, Snapshot.Details.Select(d => $"{d.Path}: {LocalizedText.Get("explorer.operations.outcome." + d.Outcome)} {d.Message}"))
         + (Snapshot.DetailsTruncated ? Environment.NewLine + LocalizedText.Get("explorer.operations.truncated") : string.Empty);
-    partial void OnSnapshotChanged(FileOperationDto value)
+    partial void OnSnapshotChanged(FileOperationDto value) => RefreshMeasurements();
+    public void RefreshMeasurements()
+    {
+        _metrics.Observe(Snapshot.CurrentBytes, IsLocalTransfer ? null : Snapshot.CurrentPath,
+            Snapshot.State == FileOperationState.Running && !Missing && !HasError,
+            System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency);
+        RefreshPresentation();
+    }
+    private void RefreshPresentation()
     {
         foreach (var name in new[] { nameof(Title), nameof(StateText), nameof(Locations), nameof(Counts), nameof(Bytes),
-            nameof(Progress), nameof(Indeterminate), nameof(CanCancel), nameof(HasIssue), nameof(CanReplace), nameof(CanKeepBoth), nameof(CanRetry), nameof(IssueText), nameof(RetryLabel), nameof(Details) })
+            nameof(DetailsToggleLabel), nameof(ShowTransferDetails), nameof(ShowSpeedGraph), nameof(HasError), nameof(NeedsAttention), nameof(HasDestination), nameof(HasMeasuredProgress), nameof(ProgressText), nameof(ProgressScope),
+            nameof(Summary), nameof(CurrentFileName), nameof(SourceLocation), nameof(DestinationLocation), nameof(SpeedHistory), nameof(SpeedText),
+            nameof(TransferSize), nameof(RemainingTime), nameof(Progress), nameof(Indeterminate), nameof(CanCancel), nameof(HasIssue), nameof(CanReplace), nameof(CanKeepBoth), nameof(CanRetry), nameof(CanApplyToAll), nameof(IssueText), nameof(RetryLabel), nameof(Details) })
             OnPropertyChanged(name);
     }
+    [RelayCommand] private void ToggleDetails() => DetailsExpanded = !DetailsExpanded;
     [RelayCommand] private Task CancelAsync() => center.ActAsync(this, null);
     [RelayCommand] private Task RetryAsync() => center.ActAsync(this, FileOperationDecision.Retry);
     [RelayCommand] private Task SkipAsync() => center.ActAsync(this, FileOperationDecision.Skip);

@@ -1,6 +1,8 @@
 {
   "culture": "ja-JP",
   "strings": {
+    "taskbar.pin": "タスクバーにピン留め",
+    "taskbar.unpin": "タスクバーからピン留めを外す",
     "taskbar.start": "スタート",
     "taskbar.search": "検索",
     "taskbar.task_view": "タスク ビュー",
@@ -26,8 +28,6 @@
     "desktop.recycle_bin": "ごみ箱",
     "start.back_to_pinned": "‹ 戻る",
     "start.all_applications": "すべてのアプリ",
-    "loading.title": "デスクトップを準備しています",
-    "loading.description": "アプリとデスクトップ項目を読み込んでいます…",
     "desktop.styles": "デスクトップ スタイル",
     "common.view": "表示",
     "common.open": "開く",

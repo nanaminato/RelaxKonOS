@@ -30,14 +30,14 @@ public sealed partial class SettingsViewModel
     public event Action<SettingsSearchEntry>? SearchResultOpened;
     public event Action? NavigationContextReset;
     [ObservableProperty] private string _searchLocationStatus = "";
-    public string ConnectionAddress => _session.EffectiveBaseUrl ?? "";
+    public string ConnectionAddress => IsLocal ? "SSH · " + _sshDesktop!.Endpoint?.DisplayName : _session.EffectiveBaseUrl ?? "";
     public string CurrentNavigationRoute => SelectedPage?.Route == "network/adapter"
         && Pages.OfType<NetworkPageViewModel>().Single().HostNetwork.SelectedAdapter is { } adapter
             ? "network/adapter/" + Uri.EscapeDataString(adapter.Value.Id) : SelectedPage?.Route is "apps/detail" or "apps/permissions"
                 && Pages.OfType<AppsPageViewModel>().Single().SelectedApp is { } app
                     ? SelectedPage.Route + "/" + Uri.EscapeDataString(app.Id.Value) : SelectedPage?.Route ?? "home";
     public bool HasPageScopeDescription => PageScopeDescription.Length > 0;
-    public string PageScopeDescription => SelectedPage?.Route == "home" ? "" : _navigationLocalization.Get(SelectedPage?.Route switch
+    public string PageScopeDescription => IsLocal ? _navigationLocalization.Get("settings.scope_hint.device", "Saved on this device") : SelectedPage?.Route == "home" ? "" : _navigationLocalization.Get(SelectedPage?.Route switch
     {
         "personalization" or "default-apps" => "settings.scope_hint.workspace",
         string route when route.StartsWith("personalization/") => "settings.scope_hint.workspace",
@@ -49,7 +49,7 @@ public sealed partial class SettingsViewModel
         "apps" or "apps/detail" or "apps/permissions" => "settings.scope_hint.apps",
         _ => "settings.scope_hint.home"
     }, "Check the scope of each section before changing settings.");
-    public string ConnectionSummary => _session.State == AuthSessionState.Authenticated
+    public string ConnectionSummary => IsLocal ? "SSH · " + _sshDesktop!.Endpoint?.DisplayName : _session.State == AuthSessionState.Authenticated
         ? string.Format(_navigationLocalization.Get("settings.connection.summary", "Account: {0} · Workspace: {1}"), _session.CurrentUser?.Username ?? "—", _session.CurrentWorkspace?.Name ?? "—")
         : _navigationLocalization.Get("settings.value.not_connected", "Not connected");
 
@@ -129,7 +129,7 @@ public sealed partial class SettingsViewModel
     private void RebuildSearchIndex()
     {
         string T(string key) => _navigationLocalization.Get(key, key);
-        var entries = Pages.Where(page => page.Route is not ("apps/detail" or "apps/permissions")).Select(page => new SettingsSearchEntry("page." + page.Route, page.Route,
+        var entries = Pages.Where(page => (!IsLocal || IsLocalRoute(page.Route)) && page.Route is not ("apps/detail" or "apps/permissions")).Select(page => new SettingsSearchEntry("page." + page.Route, page.Route,
             page.LocalizedDisplayName, CategoryPath(page), T("settings.search.category"), "",
             page.LocalizedDisplayName + " " + page.DisplayName + " " + page.Route)).ToList();
         var local = LocalDescriptors().ToDictionary(descriptor => descriptor.SettingId);
@@ -140,9 +140,9 @@ public sealed partial class SettingsViewModel
         foreach (var descriptor in descriptors)
         {
             var page = Pages.FirstOrDefault(page => descriptor.Route == "relaxkonos://settings/" + page.Route);
-            if (page is null) continue; // Discovery cannot turn into arbitrary URI activation.
+            if (page is null || (IsLocal && !IsLocalRoute(page.Route))) continue; // Discovery cannot turn into arbitrary URI activation.
             var title = T(descriptor.TitleKey);
-            var scope = descriptor.SettingId == "host.environment" ? T("settings.scope.hostenvironment") : T("settings.scope." + descriptor.Scope.ToString().ToLowerInvariant());
+            var scope = IsLocal ? T("settings.scope.clientdevice") : descriptor.SettingId == "host.environment" ? T("settings.scope.hostenvironment") : T("settings.scope." + descriptor.Scope.ToString().ToLowerInvariant());
             var reason = descriptor.Capability.ReasonCode is { } code ? T(code) : "";
             entries.Add(new(descriptor.SettingId, page.Route, title, CategoryPath(page), scope, reason,
                 string.Join(' ', title, page.LocalizedDisplayName, scope, descriptor.SettingId, T(descriptor.DescriptionKey), string.Join(' ', descriptor.Keywords))));
@@ -193,6 +193,7 @@ public sealed partial class SettingsViewModel
 
     private async Task RefreshCatalogAsync()
     {
+        if (IsLocal) return;
         var lifetime = _catalogLifetime;
         try
         {

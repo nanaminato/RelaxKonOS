@@ -197,7 +197,7 @@ object ServerDeploymentRecordRules {
             if (record.phase != ServerDeploymentPhase.Completed) return ServerDeploymentProblemCodes.INVALID_REQUEST
             when (record.kind) {
                 ServerDeploymentKind.Install, ServerDeploymentKind.Upgrade,
-                ServerDeploymentKind.Repair, ServerDeploymentKind.Rollback -> {
+                ServerDeploymentKind.Repair, ServerDeploymentKind.Configure, ServerDeploymentKind.Rollback -> {
                     val result = record.result ?: return ServerDeploymentProblemCodes.INVALID_REQUEST
                     if (!result.healthy || !ServerInstallationId.isValid(result.installationId) ||
                         !ServerDeploymentInputRules.isVersion(result.version)
@@ -207,6 +207,7 @@ object ServerDeploymentRecordRules {
                     if (record.result?.dataRetained == null) return ServerDeploymentProblemCodes.INVALID_REQUEST
                 ServerDeploymentKind.Probe ->
                     if (record.probe == null) return ServerDeploymentProblemCodes.INVALID_REQUEST
+                ServerDeploymentKind.Firewall -> if (record.result?.firewallStatus == null) return ServerDeploymentProblemCodes.INVALID_REQUEST
                 ServerDeploymentKind.Status ->
                     if (record.snapshot == null) return ServerDeploymentProblemCodes.INVALID_REQUEST
             }

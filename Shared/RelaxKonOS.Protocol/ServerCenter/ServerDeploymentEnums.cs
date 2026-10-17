@@ -21,6 +21,8 @@ public enum ServerDeploymentKind
 
     /// <summary>重放已验证的当前版本与配置，不任意修改宿主资源。</summary>
     Repair,
+    Configure,
+    Firewall,
 
     /// <summary>卸载。默认保留数据，只有显式选择才删除受管数据根。</summary>
     Uninstall,
@@ -105,8 +107,7 @@ public enum ServerServiceIdKind { DirectUrl, ManagedInstallation, SshTunnelProfi
 [JsonConverter(typeof(JsonStringEnumConverter<ServerReleasePackageKind>))]
 public enum ServerReleasePackageKind
 {
-    Server,
-    [JsonStringEnumMemberName("user-server")] UserServer
+    Server
 }
 
 /// <summary>发布制品的运行时标识（RID）。</summary>

@@ -266,7 +266,7 @@ Nodes
 | `RequestConfirmAsync` | 删除确认 | `AppContext.ShowDialogAsync<bool?>` + `ConfirmDialogView` |
 | `ShowMessageAsync` | About 消息 | `ConfirmDialogView`（单按钮） |
 | `RequestLocalUploadFilesAsync` / `RequestLocalUploadFoldersAsync` | 上传本地文件（多选）/ 文件夹（多选） | `StorageProvider.OpenFilePickerAsync` / `OpenFolderPickerAsync`（TopLevel = MainWindow） |
-| `ReadHostFileClipboardAsync` / `MarkRemoteFileCopyAsync` | 判定最近复制来源并读取宿主机文件/文件夹 | Avalonia 跨平台 `IClipboard.SetDataAsync` / `TryGetDataAsync` + 应用专用格式标记 |
+| `ReadHostFileClipboardAsync` / `MarkRemoteFileCopyAsync` | 判定最近复制来源并读取宿主机文件/文件夹 | `HostFileClipboard` 平台边界：Windows OLE、macOS NSPasteboard 文件 URL、Linux 文件 URI + GNOME/KDE MIME 格式；本机读取使用 Avalonia |
 | `RequestLocalSaveFileAsync` | 下载本地保存路径 | `StorageProvider.SaveFilePickerAsync` |
 | `OpenFileAsync` | 根据默认关联或兼容应用打开远端文件 | `ApplicationManager.OpenFile` |
 | `RequestOpenWithAsync` | 显式选择兼容应用并可保存默认关联 | `OpenWithDialogView` + `DefaultAppRegistry` |
@@ -368,3 +368,8 @@ The new-tab (+) button follows the last folder tab inside the scrolling row. Tab
 默认视图的 schemaVersion=3 文档由 `Workspace\Explorer` 的 `(Default)` 值统一提供；应用设置 API 和注册表字段编辑都使用同一版本与同一存储，不读取旧 schemaVersion=2 文档。注册表可直接修改 `FileListCacheEnabled` 及其余视图选项。
 
 SSH 文件浏览器也在“更多”提供独立的窗口级缓存开关，默认关闭；同样限制容量、有效期和异步更新，连接身份变化、窗口关闭、显式刷新和文件操作后清理缓存。
+
+
+## 压缩与解压缩
+
+文件/目录右键菜单“压缩为…”可选择 ZIP、TAR、TAR.GZ；单个 ZIP/TAR/TAR.GZ/TGZ 文件提供“解压到新文件夹”。两者都在当前远端目录创建结果，使用共享操作中心显示当前文件进度和取消，完成后刷新目录。目标重名只允许保留两者或跳过，不覆盖原内容。当前不支持加密包、RAR/7z 或合并解压到已有目录。协议、资源限制和权限边界见 [压缩与解压缩设计](RelaxKonOS.Explorer.Archives.md)。

@@ -168,8 +168,8 @@
     <string name="ssh_workspace_deploy_step_review">核对并安装</string>
     <string name="ssh_workspace_deploy_step_source">选择发布来源</string>
     <string name="ssh_workspace_deploy_success">安装完成，服务器健康检查已通过。</string>
-    <string name="ssh_workspace_deploy_sudo_failed">sudo 验证失败，请检查 sudo 密码和当前账号的 sudo 权限。</string>
-    <string name="ssh_workspace_deploy_sudo_password">sudo 密码（留空使用 SSH 登录密码）</string>
+    <string name="ssh_workspace_deploy_sudo_failed">管理员提权失败，请检查 sudo 用户密码及权限，或用于 su 的 root 密码。</string>
+    <string name="ssh_workspace_deploy_sudo_password">管理员密码（sudo 用户密码或 root 密码；留空使用 SSH 密码）</string>
     <string name="ssh_workspace_deploy_target">服务器和用户</string>
     <string name="ssh_workspace_deploy_verify">请先验证此主机的 SSH 连接再安装。</string>
     <string name="ssh_workspace_deploy_version">版本（可选）</string>

@@ -1,0 +1,27 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerRollbackConfirmationView"
+             x:DataType="vm:ServerRollbackReview" Classes="builtin-app" Background="{DynamicResource AppBackgroundBrush}">
+    <Grid RowDefinitions="*,Auto" Margin="24" RowSpacing="20">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="16">
+                <TextBlock Text="{Binding Host}" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                <TextBlock Text="{loc:Loc server_center.rollback_confirm_note}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                <Border Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1" CornerRadius="12" Padding="20">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="{loc:Loc server_center.installation.version}" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                        <SelectableTextBlock Text="{Binding CurrentVersion}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                        <Separator/>
+                        <TextBlock Text="{loc:Loc server_center.installation.previous_version}" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                        <SelectableTextBlock Text="{Binding PreviousVersion}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+        <WrapPanel Grid.Row="1" HorizontalAlignment="Right" ItemSpacing="10" LineSpacing="8">
+            <Button Content="{loc:Loc common.cancel}" Click="Cancel_Click" MinHeight="36" Padding="16,8"/>
+            <Button Content="{loc:Loc server_center.rollback_confirm}" Click="Confirm_Click" Classes="accent" MinHeight="36" Padding="16,8"/>
+        </WrapPanel>
+    </Grid>
+</UserControl>

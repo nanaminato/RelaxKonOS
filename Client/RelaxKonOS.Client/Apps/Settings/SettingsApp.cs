@@ -40,7 +40,7 @@ namespace RelaxKonOS.Client.Apps.Settings;
 /// <summary>Built-in Settings application — Windows 11 / GNOME 风格的设置中心。
 /// 八个分类；用户偏好通过独立 Workspace 服务保存。用户偏好（壁纸/主题/时间格式/语言/区域/默认程序）
 /// 持久化到服务端 Workspace（<c>/workspaces/{id}/preferences</c>），多设备登录同一 Workspace 共享。
-/// 未登录时仍可打开（仅本地 ShellSettings，不持久化）。</summary>
+/// SSH 桌面使用独立本地个性化存储，不访问服务端设置。</summary>
 public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
 {
     private SettingsViewModel? _viewModel;
@@ -74,7 +74,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         var explorer = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
 
         var viewModel = new SettingsViewModel(settings, settingsClient, session, context.Services.GetRequiredService<WorkspacePreferencesEditor>(), apps, remote, system, registry, developerMode, packages,
-            browserClient, networkInspector, wallpapers: wallpapers);
+            browserClient, networkInspector, wallpapers: wallpapers, sshDesktop: context.Services.GetRequiredService<Services.ServerCenter.SshDesktopSession>());
         var view = new SettingsView { DataContext = viewModel };
         var window = context.ShowWindow(LocalizedText.Get("settings.title"), view,
             bounds: new Rect(180, 90, 820, 560),

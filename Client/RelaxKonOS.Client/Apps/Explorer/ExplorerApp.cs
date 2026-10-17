@@ -37,7 +37,7 @@ namespace RelaxKonOS.Client.Apps.Explorer;
 /// UI 结构移植自 Jaya File Manager (BSD-3)：导航树 + Explorer 网格 + 地址栏 + 工具栏 + 状态栏。
 /// 所有文件操作经 <see cref="IExplorerClient"/> 调用 Server 端 REST API（JWT via <see cref="IAuthSession"/>）。
 /// 未登录时弹提示窗；服务端以宿主 OS 进程身份执行 IO，复用宿主用户/权限（不另建 ACL）。</summary>
-public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
+public sealed partial class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
 {
     private readonly Dictionary<ManagedWindow, ExplorerViewModel> _windows = [];
     private sealed record AdministratorCredentials(string Username, string Password);
@@ -108,8 +108,9 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         var operations = context.Services.GetService(typeof(ExplorerOperationCenter)) as ExplorerOperationCenter;
         if (operations is not null)
         {
-            ConfigureOperationsWindow(context, operations);
+            ConfigureOperationsWindow(context.WindowManager, operations);
             viewModel.QueueOperationAsync = operations.SubmitAsync;
+            operations.RequestArchivePasswordAsync = (invalid, ct) => RequestArchivePasswordAsync(context, null, invalid, ct);
             viewModel.QueueUpload = operations.QueueUpload;
             viewModel.QueueDownload = operations.QueueDownload;
             viewModel.ShowFileOperations = operations.Show;
@@ -203,7 +204,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         await viewModel.NavigateToAsync(path);
     }
 
-    private static async Task<bool> RequestOperationElevationAsync(AppContext context, IExplorerClient client,
+    internal static async Task<bool> RequestOperationElevationAsync(AppContext context, IExplorerClient client,
         IReadOnlyList<string> paths, FileElevationCapability capability)
     {
         try
@@ -296,26 +297,27 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         }, new Size(420, 230));
     }
 
-    private static void ConfigureOperationsWindow(AppContext context, ExplorerOperationCenter center)
+    internal static void ConfigureOperationsWindow(IWindowManager windows, ExplorerOperationCenter center)
     {
         if (center.ShowRequested is not null) return;
         ManagedWindow? progressWindow = null;
         center.CloseRequested = () =>
         {
-            if (progressWindow is not null && context.WindowManager.Windows.Contains(progressWindow))
-                context.WindowManager.Close(progressWindow);
+            if (progressWindow is not null && windows.Windows.Contains(progressWindow))
+                windows.Close(progressWindow);
             progressWindow = null;
         };
         center.ShowRequested = () =>
         {
-            if (progressWindow is not null && context.WindowManager.Windows.Contains(progressWindow))
+            if (progressWindow is not null && windows.Windows.Contains(progressWindow))
             {
-                context.WindowManager.Restore(progressWindow);
-                context.WindowManager.Focus(progressWindow);
+                windows.Restore(progressWindow);
+                windows.Focus(progressWindow);
                 return;
             }
-            progressWindow = context.ShowWindow(LocalizedText.Get("explorer.operations.title"),
-                new ExplorerOperationsView { DataContext = center }, bounds: new Rect(180, 90, 560, 400), iconGlyph: "📁");
+            progressWindow = windows.Create(new WindowCreateOptions(new AppId("relaxkonos.explorer"),
+                LocalizedText.Get("explorer.operations.title"), new ExplorerOperationsView { DataContext = center },
+                Bounds: new Rect(180, 90, 580, 520), IconGlyph: "📁"));
         };
     }
 
@@ -369,6 +371,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
     /// <summary>将对话框回调注入 VM：文本输入 / 确认 / 本地文件选择（上传/下载） / 消息 / 关闭。</summary>
     private static void WireDialogs(AppContext context, ExplorerViewModel vm, IExplorerClient client)
     {
+        vm.RequestArchivePasswordAsync = (format, invalid, ct) => RequestArchivePasswordAsync(context, format, invalid, ct);
         vm.RequestTextInputAsync = async (title, prompt, defaultValue, confirmLabel) =>
         {
             string? result = null;
@@ -425,46 +428,12 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
             });
         };
 
-        vm.RequestLocalUploadFilesAsync = async () =>
-        {
-            var topLevel = GetTopLevel(context, vm);
-            if (topLevel is null) return [];
-            var files = await UsageFilePicker.OpenFilePickerAsync(topLevel.StorageProvider, new FilePickerOpenOptions
-            {
-                Title = LocalizedText.Get("explorer.select_upload_file"),
-                AllowMultiple = true,
-            }, UsageMemoryStore.Capture(context), "Explorer.upload-files");
-            return files.Select(file => file.TryGetLocalPath())
-                .OfType<string>().Select(path => new Models.LocalUploadSource(path)).ToArray();
-        };
-
-        vm.RequestLocalUploadFoldersAsync = async () =>
-        {
-            var topLevel = GetTopLevel(context, vm);
-            if (topLevel is null) return [];
-            var folders = await UsageFilePicker.OpenFolderPickerAsync(topLevel.StorageProvider, new FolderPickerOpenOptions
-            {
-                Title = LocalizedText.Get("explorer.select_upload_folder"),
-                AllowMultiple = true,
-            }, UsageMemoryStore.Capture(context), "Explorer.upload-folder");
-            return folders.Select(folder => folder.TryGetLocalPath())
-                .OfType<string>().Select(path => new Models.LocalUploadSource(path)).ToArray();
-        };
-
         vm.ReadHostFileClipboardAsync = () => HostFileClipboard.ReadAsync(GetTopLevel(context, vm)?.Clipboard);
-        vm.MarkRemoteFileCopyAsync = () => HostFileClipboard.MarkRemoteCopyAsync(GetTopLevel(context, vm)?.Clipboard);
-
-        vm.RequestLocalSaveFileAsync = async defaultName =>
-        {
-            var topLevel = GetTopLevel(context, vm);
-            if (topLevel is null) return null;
-            var file = await UsageFilePicker.SaveFilePickerAsync(topLevel.StorageProvider, new FilePickerSaveOptions
-            {
-                Title = LocalizedText.Get("explorer.save_download_file"),
-                SuggestedFileName = defaultName,
-            }, UsageMemoryStore.Capture(context), "Explorer.download-file");
-            return file?.TryGetLocalPath();
-        };
+        vm.PublishRemoteFilesAsync = entries => HostFileClipboard.PublishAsync(
+            GetTopLevel(context, vm)?.Clipboard, client, entries, () => vm.FileListCacheScope?.Invoke(),
+            (path, size) => context.Services.GetService(typeof(ExplorerOperationCenter)) is ExplorerOperationCenter center
+                ? center.BeginClipboardDownload(path, size, action => Dispatcher.UIThread.Post(action))
+                : throw new InvalidOperationException("File operation center is unavailable."));
 
         vm.RequestFileElevationAsync = async (path, capability) =>
         {
@@ -507,6 +476,11 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         };
         vm.OpenFileAsync = async entry =>
         {
+            if (!vm.IsPickerMode && client is IArchiveClient archives && FileArchiveFormats.Detect(entry.Name) is not null)
+            {
+                OpenArchiveWindow(context, archives, entry.Path, entry.Name);
+                return;
+            }
             var extension = ExplorerPath.Extension(entry.Name);
             var defaultApplicationId = string.IsNullOrEmpty(extension) ? null : defaults?.Resolve(extension);
             var applicationId = defaultApplicationId is not null && applications?.SupportsFile(new AppId(defaultApplicationId), entry.Path) == true

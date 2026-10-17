@@ -2,6 +2,7 @@
 
 > 本文档定义 RelaxKonOS 登录成功后的桌面外壳交互层：宿主窗口（`MainWindow`）的窗口控制与 mstsc 风格连接栏，以及 Framework 层的可复用模态对话框机制（`ModalDialog` / `ShowDialogAsync`）。
 >
+> - 桌面图标、快捷方式、框选与风格细则见 [`桌面交互`](RelaxKonOS.DesktopInteraction.md)
 > - 登录流程与认证会话见 [`RelaxKonOS.Login.md`](../platform/RelaxKonOS.Login.md)
 > - 架构原则见 [`RelaxKonOS.Architecture.md`](../architecture/RelaxKonOS.Architecture.md)
 > - 项目结构与当前进度见 [`文档总览`](../README.md)

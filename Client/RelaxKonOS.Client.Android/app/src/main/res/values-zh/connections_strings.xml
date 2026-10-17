@@ -16,7 +16,7 @@
     <string name="connections_no_password">未保存密码</string>
     <string name="connections_password_invalidated">已保存的密码已失效</string>
     <string name="connections_password_unavailable">已保存密码，但本机当前无法解封</string>
-    <string name="connections_platform_trademarks">Ubuntu 是 Canonical 的商标；Windows、Windows Server、Windows 10 和 Windows 11 是 Microsoft 的商标。</string>
+    <string name="connections_platform_trademarks">Ubuntu 是 Canonical 的商标；Debian 是 Software in the Public Interest, Inc. 的商标；Linux 是 Linus Torvalds 的商标；Windows、Windows Server、Windows 10 和 Windows 11 是 Microsoft 的商标。</string>
     <string name="connections_saved_password">已保存密码，用指纹解封</string>
     <string name="connections_saved_password_debug">密码未加密保存（调试构建、无锁屏）</string>
     <string name="connections_saved_password_screen_lock">已保存密码，用锁屏解锁</string>

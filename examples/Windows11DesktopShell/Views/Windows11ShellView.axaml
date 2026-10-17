@@ -34,7 +34,7 @@
     </UserControl.Styles>
 
     <Grid RowDefinitions="*,Auto" PointerPressed="Desktop_OnPointerPressed">
-        <Grid Grid.Row="0" ClipToBounds="True" Background="{Binding Wallpaper}">
+        <Grid x:Name="DesktopArea" Focusable="True" Grid.Row="0" ClipToBounds="True" Background="{Binding Wallpaper}">
             <Grid.ContextMenu>
                 <ContextMenu>
                     <MenuItem Header="{Binding View}">
@@ -58,7 +58,7 @@
                  ordinary desktop clicks while no modal dialog is active. -->
             <Border x:Name="InputBackdrop" IsHitTestVisible="False" />
 
-            <views:DesktopShortcutsView Margin="14" HorizontalAlignment="Left" VerticalAlignment="Top" />
+            <views:DesktopShortcutsView Margin="14" />
 
             <Border Margin="0,16,20,0" HorizontalAlignment="Right" VerticalAlignment="Top" IsVisible="{Binding HasDesktopStyles}"
                     Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}"
@@ -82,6 +82,10 @@
                 </StackPanel>
             </Border>
 
+            <Canvas IsHitTestVisible="False">
+                <Border x:Name="SelectionRectangle" IsVisible="False" BorderThickness="1"
+                        BorderBrush="{DynamicResource AccentBrush}" Background="{DynamicResource DesktopIconSelectedBrush}" />
+            </Canvas>
             <Canvas x:Name="WindowHost" ClipToBounds="True" />
         </Grid>
 
@@ -103,9 +107,23 @@
                     <Button Classes="taskbar" Command="{Binding ShowDesktopCommand}" ToolTip.Tip="{Binding TaskView}">
                         <Path Data="{StaticResource IconTaskView}" Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.7" Fill="Transparent" Width="22" Height="22" Stretch="Uniform" />
                     </Button>
-                    <Button Classes="taskbar" Command="{Binding OpenSettingsCommand}" ToolTip.Tip="{Binding Settings}">
-                        <Path Data="{StaticResource IconSettings}" Fill="{DynamicResource TextPrimaryBrush}" Width="22" Height="22" Stretch="Uniform" />
-                    </Button>
+                    <ScrollViewer x:Name="TaskbarApplicationScroller" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" MaxWidth="500">
+                        <ItemsControl ItemsSource="{Binding TaskbarEntries}">
+                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Classes="taskbar" ToolTip.Tip="{Binding DisplayName}" Command="{Binding $parent[UserControl].DataContext.ToggleTaskbarApplicationCommand}" CommandParameter="{Binding}"
+                                            AttachedToVisualTree="TaskbarApplication_OnAttachedToVisualTree">
+                                        <Grid RowDefinitions="*,3" Width="32" Height="34">
+                                            <Image Source="{Binding IconImage}" IsVisible="{Binding HasIconImage}" Width="24" Height="24" />
+                                            <TextBlock Text="{Binding IconGlyph}" IsVisible="{Binding !HasIconImage}" FontSize="23" HorizontalAlignment="Center" />
+                                            <Border Grid.Row="1" IsVisible="{Binding IsRunning}" Height="3" Width="18" CornerRadius="2" Background="{DynamicResource AccentBrush}" />
+                                        </Grid>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,8,0">
@@ -136,7 +154,7 @@
                     VerticalAlignment="Bottom" Background="{DynamicResource StartMenuBackgroundBrush}" BorderBrush="{DynamicResource BorderStrongBrush}"
                     BorderThickness="1" CornerRadius="{DynamicResource OverlayCornerRadius}" BoxShadow="{DynamicResource ElevationShadow}">
                 <Grid RowDefinitions="Auto,Auto,*,Auto">
-                    <TextBox PlaceholderText="{Binding SearchPlaceholder}" Margin="32,28,32,18" Height="38" CornerRadius="{DynamicResource ControlCornerRadius}" />
+                    <TextBox Text="{Binding SearchQuery, Mode=TwoWay}" PlaceholderText="{Binding SearchPlaceholder}" Margin="32,28,32,18" Height="38" CornerRadius="{DynamicResource ControlCornerRadius}" />
                     <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="38,0,38,12">
                         <TextBlock Classes="primary" Text="{Binding StartSectionTitle}" FontSize="15" FontWeight="SemiBold" />
                         <Button Grid.Column="1" Content="{Binding AllAppsButtonText}" Padding="12,5" Command="{Binding ToggleAllAppsCommand}" />
@@ -161,15 +179,15 @@
                             <StackPanel Spacing="7"><Path Data="{StaticResource IconInfo}" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.8" Fill="Transparent" Width="26" Height="26" Stretch="Uniform" HorizontalAlignment="Center" /><TextBlock Classes="primary" Text="{Binding About}" FontSize="12" TextAlignment="Center" /></StackPanel>
                         </Button>
                     </UniformGrid>
-                    <ScrollViewer Grid.Row="2" Margin="30,0,30,26" IsVisible="{Binding IsAllAppsOpen}"
+                    <ScrollViewer Grid.Row="2" Margin="30,0,30,26" IsVisible="{Binding IsApplicationListOpen}"
                                   HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-                        <ItemsControl ItemsSource="{Binding Applications}">
+                        <ItemsControl ItemsSource="{Binding FilteredApplications}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate><WrapPanel ItemWidth="150" ItemHeight="96" /></ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Button Classes="start-tile" Width="142" Height="88"
+                                    <Button Classes="start-tile" Width="142" Height="88" AttachedToVisualTree="AllApplication_OnAttachedToVisualTree"
                                         Command="{Binding $parent[UserControl].DataContext.OpenApplicationCommand}"
                                         CommandParameter="{Binding}">
                                         <StackPanel Spacing="6">
@@ -221,21 +239,7 @@
             </Border>
         </Grid>
 
-        <Canvas x:Name="FullScreenHost" Grid.RowSpan="2" ClipToBounds="True" IsHitTestVisible="False" />
-        <Canvas x:Name="ShellOverlayHost" Grid.RowSpan="2" ClipToBounds="True" IsHitTestVisible="False" />
-        <Border Grid.RowSpan="2" IsVisible="{Binding IsLoading}"
-                Background="{DynamicResource OverlayScrimBrush}">
-            <StackPanel Width="260" Spacing="14" HorizontalAlignment="Center" VerticalAlignment="Center">
-                <Border Width="56" Height="56" CornerRadius="{DynamicResource OverlayCornerRadius}" Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1">
-                    <UniformGrid Columns="2" Rows="2" Width="28" Height="28" HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <Border Background="{DynamicResource TextOnAccentBrush}" Margin="2" /><Border Background="{DynamicResource TextOnAccentBrush}" Margin="2" />
-                        <Border Background="{DynamicResource TextOnAccentBrush}" Margin="2" /><Border Background="{DynamicResource TextOnAccentBrush}" Margin="2" />
-                    </UniformGrid>
-                </Border>
-                <TextBlock Text="{Binding LoadingTitle}" Foreground="{DynamicResource TextOnAccentBrush}" FontSize="18" FontWeight="SemiBold" TextAlignment="Center" />
-                <TextBlock Text="{Binding LoadingDescription}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextAlignment="Center" TextWrapping="Wrap" />
-                <ProgressBar IsIndeterminate="True" Height="4" Foreground="{DynamicResource AccentBrush}" Background="{DynamicResource SurfaceSunkenBrush}" />
-            </StackPanel>
-        </Border>
+        <Canvas x:Name="FullScreenHost" Grid.RowSpan="2" ZIndex="20" ClipToBounds="True" IsHitTestVisible="False" />
+        <Canvas x:Name="ShellOverlayHost" Grid.RowSpan="2" ZIndex="30" ClipToBounds="True" IsHitTestVisible="False" />
     </Grid>
 </UserControl>

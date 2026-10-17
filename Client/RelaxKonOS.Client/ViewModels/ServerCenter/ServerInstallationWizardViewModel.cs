@@ -28,6 +28,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         _chooseServerBundle = chooseServerBundle;
         _showHostAddresses = showHostAddresses;
         IsLocalInstallation = localDeploy is not null;
+        IsUpgrade = !IsLocalInstallation && serverCenter.SelectedHost?.LastVerified?.Installed == true;
         _deploy = localDeploy ?? (options => serverCenter.DeployAsync(options));
         Sources =
         [
@@ -74,6 +75,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
 
     private object?[] CaptureDraft() =>
     [
+        GuardianEnabled,
         SelectedSource?.Source, SelectedMode?.Mode, LocalBundlePath, RemoteBundlePath,
         SelectedFileAccess?.Scope, SelectedNetwork?.Profile, SelectedCertificateMode?.Mode, SelectedCertificateFormat?.Format,
         CertificatePath, CertificatePrivateKeyPath, CertificatePassword, SudoPassword, SelfSignedIdentities,
@@ -133,6 +135,12 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     [ObservableProperty] private bool _allowUnsupportedSystem;
     public bool IsOfficialSource => SelectedSource?.Source == ServerPackageSourceKind.OfficialStable;
     public bool IsDirectUrl => SelectedSource?.Source == ServerPackageSourceKind.DirectUrl;
+    [ObservableProperty] private bool _guardianEnabled = true;
+    [ObservableProperty] private bool _isUpgrade;
+    partial void OnIsUpgradeChanged(bool value) => OnPropertyChanged(nameof(CanChooseGuardian));
+    public bool CanChooseGuardian => CanInstallGuardian && !IsUpgrade;
+    public bool CanInstallGuardian => SelectedMode?.Mode != ServerInstallMode.WindowsUser;
+    public string GuardianChoiceText => Text("server_center.guardian_choice", "Install process guardian");
     public bool IsSystemMode => SelectedMode?.Mode != ServerInstallMode.LinuxUser;
     public bool IsWindowsUserMode => SelectedMode?.Mode == ServerInstallMode.WindowsUser;
     public bool CanEditDataRoot => !IsWindowsUserMode;
@@ -160,7 +168,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         : IsDirectUrl ? $"{SelectedSource?.Label} · {PackageUri}" : SelectedSource?.Label ?? string.Empty;
     public string SelectedModeText => SelectedMode?.Label ?? string.Empty;
     public bool ShowsSudoPassword => SelectedMode?.Mode == ServerInstallMode.LinuxSystem;
-    public string SudoPasswordText => Text("server_center.wizard.sudo_password", "sudo password (leave blank to use the SSH password)");
+    public string SudoPasswordText => Text("server_center.wizard.sudo_password", "Administrator password (sudo user or root; blank uses SSH password)");
     public string TargetText => IsLocalInstallation ? Environment.MachineName : _serverCenter.SelectedHost is { } target
         ? $"{target.DisplayName} · {target.SshUserName}"
         : string.Empty;
@@ -187,6 +195,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     partial void OnSelectedNetworkChanged(NetworkOption? value) { OnPropertyChanged(nameof(CanAddFirewallRule)); if (!CanAddFirewallRule) AddFirewallRule = false; }
     public string AdvancedReviewText => string.Join("\n", new[] {
         IsSystemMode ? $"{FirewallChoiceText}: {CanAddFirewallRule && AddFirewallRule}" : string.Empty,
+        CanChooseGuardian ? $"{GuardianChoiceText}: {GuardianEnabled}" : string.Empty,
         $"{ServerPortLabel}: {ServerPortText}", $"{DataRootLabel}: {DataRoot}",
         IsSystemMode ? $"{InstallRootLabel}: {InstallRoot}" : $"{ConfigRootLabel}: {ConfigRoot}\n{StateRootLabel}: {StateRoot}\n{CacheRootLabel}: {CacheRoot}",
         IsFileWhitelist ? $"{FileRootsLabel}: {FileRoots}" : string.Empty,
@@ -332,7 +341,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
                 Optional(InstallRoot), Optional(DataRoot), Optional(ConfigRoot), Optional(StateRoot), Optional(CacheRoot),
                 IsFileWhitelist ? Roots(FileRoots) : null, SelectedAdministratorFileAccess?.Scope,
                 IsAdministratorWhitelist ? Roots(AdministratorFileRoots) : null, SelectedRootFileAccess?.Scope,
-                IsRootWhitelist ? Roots(RootFileRoots) : null, DockerAccess, AllowUnsupportedSystem, IsSystemMode && SelectedNetwork?.Profile == ServerNetworkProfile.Lan && AddFirewallRule));
+                IsRootWhitelist ? Roots(RootFileRoots) : null, DockerAccess, AllowUnsupportedSystem, IsSystemMode && SelectedNetwork?.Profile == ServerNetworkProfile.Lan && AddFirewallRule, GuardianEnabled: CanInstallGuardian && GuardianEnabled));
             if (!succeeded)
                 ErrorMessage = string.IsNullOrWhiteSpace(_serverCenter.ErrorMessage)
                     ? Text("server_center.wizard.install_blocked", "Installation is blocked until the SSH host key is confirmed on the Hosts page.")
@@ -384,6 +393,8 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         OnPropertyChanged(nameof(CanAddFirewallRule));
         OnPropertyChanged(nameof(SelectedModeText));
         OnPropertyChanged(nameof(ShowsSudoPassword));
+        OnPropertyChanged(nameof(CanChooseGuardian));
+        OnPropertyChanged(nameof(CanInstallGuardian));
         OnPropertyChanged(nameof(IsSystemMode)); OnPropertyChanged(nameof(IsUserMode)); OnPropertyChanged(nameof(IsLinuxSystemMode));
         if (value?.Mode == ServerInstallMode.LinuxUser) { SelectedNetwork = Networks[0]; SelectedCertificateMode = CertificateModes[0]; SelectedFileAccess = FileAccesses[0]; }
     }

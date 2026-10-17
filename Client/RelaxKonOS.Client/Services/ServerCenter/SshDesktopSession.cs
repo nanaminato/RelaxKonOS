@@ -3,9 +3,57 @@ using RelaxKonOS.Protocol.ServerCenter;
 namespace RelaxKonOS.Client.Services.ServerCenter;
 
 /// <summary>The SSH desktop's in-memory connection identity. Each terminal opens its own SSH channel.</summary>
-public sealed class SshDesktopSession(IServerCenterConnectionResolver connections)
+public sealed class SshDesktopSession(IServerCenterConnectionResolver connections, ShellSettings settings, string? preferencesDirectory = null)
 {
     private readonly object _gate = new();
+    private RelaxKonOS.Protocol.Workspace.WorkspacePreferencesDto? _previousPreferences;
+    public string PreferencesDirectory { get; } = preferencesDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "ssh-desktop");
+    public DesktopDevicePreferences DevicePreferences { get; } = new(Path.Combine(
+        preferencesDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelaxKonOS", "ssh-desktop"), "device.json"));
+    private string PreferencesPath => Path.Combine(PreferencesDirectory, "preferences.json");
+
+    /// <summary>Isolated SFTP identity from an already verified SSH connection; never changes desktop preferences.</summary>
+    public static SshDesktopSession ForFileBrowser(ServerCenterHostSession connection, string password)
+    {
+        var observation = connection.ObservedHostKey ?? throw new InvalidOperationException("SSH host key is unavailable.");
+        return new(null!, null!)
+        {
+            Endpoint = ServerCenterSshEndpoint.Create(connection.Target.SshHost, connection.Target.SshPort, connection.Target.SshUserName),
+            Password = password,
+            HostKeyFingerprint = observation.Fingerprint
+        };
+    }
+
+    public void SavePreferences()
+    {
+        if (!IsConnected) return;
+        var temporary = PreferencesPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        Directory.CreateDirectory(Path.GetDirectoryName(PreferencesPath)!);
+        try
+        {
+            File.WriteAllText(temporary, System.Text.Json.JsonSerializer.Serialize(settings.ToPreferences([])));
+            File.Move(temporary, PreferencesPath, overwrite: true);
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+    }
+
+    private void LoadPreferences()
+    {
+        _previousPreferences ??= settings.ToPreferences([]);
+        var preferences = RelaxKonOS.Protocol.Workspace.WorkspacePreferencesDto.Default;
+        try { preferences = System.Text.Json.JsonSerializer.Deserialize<RelaxKonOS.Protocol.Workspace.WorkspacePreferencesDto>(File.ReadAllText(PreferencesPath)) ?? preferences; }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+        catch (System.Text.Json.JsonException) { }
+        settings.Apply(preferences);
+        var wallpaper = Path.Combine(Path.GetDirectoryName(PreferencesPath)!, "wallpaper");
+        if (preferences.WallpaperKey == "custom:ssh-local" && File.Exists(wallpaper))
+        {
+            try { settings.SetCustomWallpaper("custom:ssh-local", new Avalonia.Media.Imaging.Bitmap(wallpaper)); }
+            catch (Exception error) when (error is IOException or ArgumentException) { }
+        }
+    }
+
     private long _connectionGeneration;
     public ServerCenterSshEndpoint? Endpoint { get; private set; }
     public string? Password { get; private set; }
@@ -32,6 +80,7 @@ public sealed class SshDesktopSession(IServerCenterConnectionResolver connection
             Endpoint = endpoint;
             Password = password;
             HostKeyFingerprint = observed.Fingerprint;
+            LoadPreferences();
         }
         Connected?.Invoke(this, EventArgs.Empty);
     }
@@ -45,6 +94,8 @@ public sealed class SshDesktopSession(IServerCenterConnectionResolver connection
             Endpoint = null;
             Password = null;
             HostKeyFingerprint = null;
+            if (_previousPreferences is { } previous) settings.Apply(previous);
+            _previousPreferences = null;
         }
         Disconnected?.Invoke(this, EventArgs.Empty);
     }

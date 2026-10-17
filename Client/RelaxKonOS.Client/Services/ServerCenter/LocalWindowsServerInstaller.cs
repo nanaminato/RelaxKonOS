@@ -39,10 +39,10 @@ public sealed class LocalWindowsServerInstaller(
     public async Task<ServerHostSnapshotDto> MaintainAsync(ServerDeploymentKind kind, ServerHostSnapshotDto reviewed,
         string language, bool confirmed, ServerDataRetention retention = ServerDataRetention.Retain,
         bool regenerateSelfSignedCertificate = false, string? selfSignedIdentities = null, bool repairFirewall = false,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, bool removeFirewallRules = true, string? repairPackagePath = null)
     {
         LastOperationId = null;
-        if (kind is not (ServerDeploymentKind.Repair or ServerDeploymentKind.Rollback or ServerDeploymentKind.Uninstall) ||
+        if (kind is not (ServerDeploymentKind.Repair or ServerDeploymentKind.Firewall or ServerDeploymentKind.Rollback or ServerDeploymentKind.Uninstall) ||
             !confirmed || !reviewed.Installed || reviewed.Mode != Mode ||
             !ServerInstallationId.IsValid(reviewed.InstallationId) || !Enum.IsDefined(retention) ||
             retention == ServerDataRetention.Delete && kind != ServerDeploymentKind.Uninstall ||
@@ -55,19 +55,57 @@ public sealed class LocalWindowsServerInstaller(
             current.InstallRoot != reviewed.InstallRoot || current.DataRoot != reviewed.DataRoot ||
             current.Version != reviewed.Version || current.PreviousVersion != reviewed.PreviousVersion || current.ListenUrl != reviewed.ListenUrl)
             throw new InvalidDataException("The local installation changed; refresh and review it again.");
-        var options = new ServerDeploymentOptions(ServerPackageSourceKind.OfficialStable, ServerNetworkProfile.Loopback,
+        await using var repairArchive = kind == ServerDeploymentKind.Repair && !string.IsNullOrWhiteSpace(repairPackagePath)
+            ? File.OpenRead(repairPackagePath) : null;
+        var options = new ServerDeploymentOptions(repairArchive is null ? ServerPackageSourceKind.OfficialStable : ServerPackageSourceKind.LocalBundle, ServerNetworkProfile.Loopback,
             retention, Mode, ExpectedInstallationId: current.InstallationId,
             Confirmed: true, Language: language, InstallRoot: current.InstallRoot, DataRoot: current.DataRoot,
             CertificateMode: regenerateSelfSignedCertificate ? ServerCertificateMode.SelfSigned : null,
             SelfSignedIdentities: regenerateSelfSignedCertificate ? selfSignedIdentities!.Trim() : null,
-            AddFirewallRule: repairFirewall);
-        var completed = await ExecuteRecordedAsync(session, new(ServerDeploymentProtocol.Version, Guid.NewGuid(), kind, options), cancellationToken)
+            StagedPackageName: repairArchive is null ? null : "server.zip",
+            AddFirewallRule: kind == ServerDeploymentKind.Firewall ? !removeFirewallRules : repairFirewall, RemoveFirewallRules: kind == ServerDeploymentKind.Firewall && removeFirewallRules);
+        var completed = await ExecuteRecordedAsync(session, new(ServerDeploymentProtocol.Version, Guid.NewGuid(), kind, options), cancellationToken, repairArchive)
             .ConfigureAwait(false);
         LastFirewallStatus = completed.Result?.FirewallStatus;
         var after = await ReadStatusAsync(session, cancellationToken).ConfigureAwait(false);
         if (kind == ServerDeploymentKind.Uninstall ? after.Installed :
-            !after.Installed || !after.Healthy || after.InstallationId != current.InstallationId)
+            !after.Installed || kind != ServerDeploymentKind.Firewall && !after.Healthy || after.InstallationId != current.InstallationId)
             throw new InvalidDataException("Local lifecycle status verification failed.");
+        return after;
+    }
+
+    public async Task<ServerHostSnapshotDto> ConfigureAsync(ServerHostSnapshotDto reviewed, string language,
+        int port, bool lan, bool guardianEnabled, CancellationToken cancellationToken = default,
+        bool? autoStart = null, ServerFileAccessScope? fileAccess = null, IReadOnlyList<string>? fileRoots = null)
+    {
+        LastOperationId = null;
+        if (!Uri.TryCreate(reviewed.ListenUrl, UriKind.Absolute, out var reviewedEndpoint) || reviewedEndpoint.Scheme is not ("http" or "https") || reviewedEndpoint.Host is not ("127.0.0.1" or "0.0.0.0") ||
+            !reviewed.Installed || reviewed.Mode != Mode || reviewed.GuardianEnabled is null ||
+            !ServerInstallationId.IsValid(reviewed.InstallationId) || port is < 1 or > 65535 ||
+            Mode == ServerInstallMode.WindowsUser && guardianEnabled)
+            throw new ArgumentException("Review valid installation settings first.");
+        await using var session = await sessions.OpenAsync(Mode, cancellationToken).ConfigureAwait(false);
+        var current = await ReadStatusAsync(session, cancellationToken).ConfigureAwait(false);
+        if (current.InstallationId != reviewed.InstallationId || current.Version != reviewed.Version ||
+            current.FileAccess != reviewed.FileAccess || !(current.FileRoots ?? []).SequenceEqual(reviewed.FileRoots ?? []) || current.AutoStart != reviewed.AutoStart ||
+            current.ListenUrl != reviewed.ListenUrl || current.GuardianEnabled != reviewed.GuardianEnabled ||
+            current.InstallRoot != reviewed.InstallRoot || current.DataRoot != reviewed.DataRoot)
+            throw new InvalidDataException("The installation changed; refresh and review it again.");
+        var options = new ServerDeploymentOptions(ServerPackageSourceKind.OfficialStable,
+            lan ? ServerNetworkProfile.Lan : ServerNetworkProfile.Loopback, Mode: Mode,
+            ExpectedInstallationId: current.InstallationId, ServerPort: port, Confirmed: true,
+            Language: language, InstallRoot: current.InstallRoot, DataRoot: current.DataRoot,
+            GuardianEnabled: guardianEnabled, AutoStart: autoStart, FileAccess: fileAccess, FileRoots: fileAccess == ServerFileAccessScope.Whitelist ? fileRoots : null);
+        await ExecuteRecordedAsync(session, new(ServerDeploymentProtocol.Version, Guid.NewGuid(),
+            ServerDeploymentKind.Configure, options), cancellationToken).ConfigureAwait(false);
+        var after = await ReadStatusAsync(session, cancellationToken).ConfigureAwait(false);
+        if (!after.Installed || !after.Healthy || after.InstallationId != current.InstallationId ||
+            (autoStart.HasValue && after.AutoStart != autoStart) ||
+            (fileAccess.HasValue && after.FileAccess != fileAccess) ||
+            (fileAccess == ServerFileAccessScope.Whitelist && !(after.FileRoots ?? []).SequenceEqual(fileRoots ?? [])) ||
+            after.GuardianEnabled != guardianEnabled || !Uri.TryCreate(after.ListenUrl, UriKind.Absolute, out var endpoint) ||
+            endpoint.Port != port || endpoint.Host != (lan ? "0.0.0.0" : "127.0.0.1"))
+            throw new InvalidDataException("Configured installation did not match the requested settings.");
         return after;
     }
 
@@ -84,13 +122,13 @@ public sealed class LocalWindowsServerInstaller(
     }
 
     private async Task<ServerDeploymentOperationDto> ExecuteRecordedAsync(ILocalWindowsDeploymentSession session,
-        ServerDeploymentRequest request, CancellationToken ct)
+        ServerDeploymentRequest request, CancellationToken ct, Stream? archive = null)
     {
         LastOperationId = request.OperationId;
         var now = DateTimeOffset.UtcNow;
         await journal.RecordAsync(new(request.OperationId, JournalHostId, request.Kind, ServerDeploymentState.Queued,
             ServerDeploymentPhase.Queued, 0, null, null, null, now, null, now), ct).ConfigureAwait(false);
-        var receipt = await session.ExecuteAsync(request, null, null, null, null, ct).ConfigureAwait(false);
+        var receipt = await session.ExecuteAsync(request, archive, null, null, null, ct).ConfigureAwait(false);
         await journal.RecordAsync(ServerCenterOperationRecord.From(JournalHostId, receipt), ct).ConfigureAwait(false);
         if (receipt.State != ServerDeploymentState.Succeeded) throw new LocalWindowsDeploymentFailedException(receipt);
         return receipt;
@@ -154,7 +192,8 @@ public sealed class LocalWindowsServerInstaller(
             CertificateMode: installation.CertificateMode, SelfSignedIdentities: installation.SelfSignedIdentities,
             Confirmed: true, Language: language, ReleaseCatalogBaseUri: installation.ReleaseCatalogBaseUri,
             InstallRoot: installation.InstallRoot, DataRoot: installation.DataRoot, FileRoots: installation.FileRoots,
-            AddFirewallRule: installation.Network == ServerNetworkProfile.Lan && installation.AddFirewallRule);
+            AddFirewallRule: installation.Network == ServerNetworkProfile.Lan && installation.AddFirewallRule,
+            GuardianEnabled: kind == ServerDeploymentKind.Install ? installation.GuardianEnabled && Mode != ServerInstallMode.WindowsUser : null);
         stage?.Report(kind == ServerDeploymentKind.Upgrade ? "upgrading" : "installing");
         var installed = await Execute(new(ServerDeploymentProtocol.Version, Guid.NewGuid(), kind, options), archive,
             preparedCertificate, installation.CertificatePassword);

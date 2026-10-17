@@ -99,6 +99,12 @@ internal static class LiveFusedApplicationReview
                 settings.Appearance = originalAppearance;
             };
             ApplyPreview();
+            if (args.Contains("--desktop-live-review"))
+            {
+                await DesktopLiveReview.RunAsync(services, desktop.MainWindow, timeout.Token);
+                desktop.Shutdown();
+                return;
+            }
             var apps = services.GetRequiredService<ApplicationManager>();
             apps.Launch(new AppId("relaxkonos.codeeditor"));
             apps.Launch(new AppId("relaxkonos.explorer"));

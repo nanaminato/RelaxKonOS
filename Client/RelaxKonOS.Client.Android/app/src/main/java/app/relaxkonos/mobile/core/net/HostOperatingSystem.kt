@@ -7,6 +7,10 @@ package app.relaxkonos.mobile.core.net
  * operating-system mark the connection list legends, and it decides nothing about what the server can
  * do — capabilities do that.
  *
+ * Linux carries three marks. [Ubuntu] and [Debian] are distributions the host names for itself; [Linux]
+ * is every other host on that kernel, and it claims no distribution at all. Windows keeps its two
+ * workstation builds and its Server family.
+ *
  * [Unknown] deliberately covers two cases: "the server answered that it is not one of these" and "this
  * build does not know the name the server gave". Both mean the same thing on screen — show the generic
  * mark and claim nothing — and keeping them apart would only invite a client to guess.
@@ -14,6 +18,8 @@ package app.relaxkonos.mobile.core.net
 enum class HostOperatingSystemKind {
     Unknown,
     Ubuntu,
+    Debian,
+    Linux,
     Windows10,
     Windows11,
     WindowsServer,

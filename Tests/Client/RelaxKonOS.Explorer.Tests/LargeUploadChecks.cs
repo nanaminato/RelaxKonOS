@@ -338,13 +338,13 @@ public static class LargeUploadChecks
         check(largeLength > FileUploadProtocol.SingleShotThresholdBytes,
             "The large test file is past the single-shot threshold");
 
-        vm.RequestLocalUploadFilesAsync = () => Task.FromResult<IReadOnlyList<LocalUploadSource>>([new(small)]);
-        await vm.UploadCommand.ExecuteAsync(null);
+        vm.ReadHostFileClipboardAsync = () => Task.FromResult(new HostFileClipboardSnapshot(false, [new(small)]));
+        await vm.PasteCommand.ExecuteAsync(null);
         check(fake.SingleShotUploads == 1 && uploader.Requests.Count == 0,
             "A small file stays on the single-shot route");
 
-        vm.RequestLocalUploadFilesAsync = () => Task.FromResult<IReadOnlyList<LocalUploadSource>>([new(large)]);
-        await vm.UploadCommand.ExecuteAsync(null);
+        vm.ReadHostFileClipboardAsync = () => Task.FromResult(new HostFileClipboardSnapshot(false, [new(large)]));
+        await vm.PasteCommand.ExecuteAsync(null);
         check(uploader.Requests.Count == 1 && uploader.Requests[0].Length == largeLength,
             "A file past the threshold is uploaded through a resumable session");
         check(uploader.Requests[0].TargetDirectoryPath == "/target" && uploader.Requests[0].FileName == "large.bin",
@@ -352,6 +352,19 @@ public static class LargeUploadChecks
         check(fake.SingleShotUploads == 1, "The large file is not also sent through the single-shot route");
         check(capabilities.SequenceEqual([FileElevationCapability.Upload]),
             "The session asks the host for the upload capability, so authorization is settled before any chunk");
+        Func<Action<string, long, int>, CancellationToken, Task>? queued = null;
+        using var desktopTransfer = new ExplorerViewModel(client)
+        {
+            LargeFileUploader = uploader,
+            QueueUpload = (_, _, run) => queued = run,
+            RequestFileOperationElevationAsync = vm.RequestFileOperationElevationAsync,
+        };
+        await desktopTransfer.PasteHostFilesAsync("/desktop", [new(large)]);
+        check(queued is not null && string.IsNullOrEmpty(desktopTransfer.AddressbarPath),
+            "Desktop host paste queues without opening or navigating a file browser");
+        await queued!((_, _, _) => { }, CancellationToken.None);
+        check(uploader.Requests[^1].TargetDirectoryPath == "/desktop" && uploader.Requests[^1].Length == largeLength,
+            "Desktop large-file paste uses the resumable uploader and captured desktop destination");
     }
 
     private static async Task VerifyProgressNeverRewindsAsync(string root, Action<bool, string> check)
@@ -365,13 +378,13 @@ public static class LargeUploadChecks
         var vm = new ExplorerViewModel(client, fileClipboard: new RemoteFileClipboard()) { LargeFileUploader = uploader };
         await vm.NavigateToAsync("/target");
         var (large, _) = WriteFile(root, "progress.bin", 32L * 1024 * 1024);
-        vm.RequestLocalUploadFilesAsync = () => Task.FromResult<IReadOnlyList<LocalUploadSource>>([new(large)]);
+        vm.ReadHostFileClipboardAsync = () => Task.FromResult(new HostFileClipboardSnapshot(false, [new(large)]));
         var samples = new List<long>();
         vm.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName == nameof(ExplorerViewModel.TransferBytesCompleted)) samples.Add(vm.TransferBytesCompleted);
         };
-        await vm.UploadCommand.ExecuteAsync(null);
+        await vm.PasteCommand.ExecuteAsync(null);
         check(samples.Count > 0, "Transfer progress is observable while an upload runs");
         check(samples.Zip(samples.Skip(1)).All(pair => pair.Second >= pair.First),
             "Reported progress never moves backwards, even when the server reports a smaller offset");

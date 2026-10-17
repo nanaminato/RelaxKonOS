@@ -47,6 +47,7 @@ public sealed class WorkspaceSettingsService : IWorkspaceSettingsService
     {
         var route = WorkspaceApiRoutes.Preferences.Replace("{id}", workspaceId.ToString("D"));
         var requestId = Guid.NewGuid();
+        TaskbarPreviewDiagnostics.Record("pin.http.begin", new { requestId, method = method.Method, workspaceId, revision = (body as WorkspacePreferencesDto)?.Revision });
         LanguageSwitchDiagnostics.Record("http.begin", new { requestId, method = method.Method, workspaceId, language = (body as WorkspacePreferencesDto)?.Language, revision = (body as WorkspacePreferencesDto)?.Revision });
         using var req = new HttpRequestMessage(method, new Uri(new Uri(serverUrl), route.TrimStart('/')))
         {
@@ -60,6 +61,7 @@ public sealed class WorkspaceSettingsService : IWorkspaceSettingsService
             using var resp = await _http.SendAsync(req, ct);
             if (resp.Headers.TryGetValues("X-RelaxKonOS-Correlation-Id", out var values)
                 && Guid.TryParse(values.FirstOrDefault(), out var id)) correlationId = id;
+            TaskbarPreviewDiagnostics.Record("pin.http.completed", new { requestId, status = (int)resp.StatusCode, correlationId });
             LanguageSwitchDiagnostics.Record("http.completed", new { requestId, status = (int)resp.StatusCode, correlationId });
             if (!resp.IsSuccessStatusCode) await EnsureSuccessAsync(resp, ct);
             return await resp.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, ct)
@@ -68,6 +70,7 @@ public sealed class WorkspaceSettingsService : IWorkspaceSettingsService
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception exception)
         {
+            TaskbarPreviewDiagnostics.Record("pin.http.failed", new { requestId, correlationId, failure = WorkspacePreferencesDiagnostics.Classify(exception).ToString(), exceptionType = exception.GetType().Name, httpStatus = (exception as RelaxKonOSAuthException)?.Status });
             WorkspacePreferencesDiagnostics.Record(method == HttpMethod.Put ? "save" : "load",
                 workspaceId, (body as WorkspacePreferencesDto)?.Revision, exception, correlationId);
             throw;

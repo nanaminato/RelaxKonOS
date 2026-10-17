@@ -368,6 +368,38 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
         }
     }
 
+    public string ProcessSortColumn { get; private set; } = "MemoryBytes";
+    public bool ProcessSortDescending { get; private set; } = true;
+
+    public void SortProcesses(string column)
+    {
+        ProcessSortDescending = column == ProcessSortColumn ? !ProcessSortDescending
+            : column is "CpuPercent" or "MemoryBytes" or "ThreadCount";
+        ProcessSortColumn = column;
+        RebuildFilteredProcesses(SelectedProcess);
+    }
+
+    private IEnumerable<ProcessTreeItemViewModel> SortProcessRows(IEnumerable<ProcessTreeItemViewModel> rows)
+    {
+        var comparer = Comparer<ProcessTreeItemViewModel>.Create((left, right) =>
+        {
+            var a = left.Process;
+            var b = right.Process;
+            var result = ProcessSortColumn switch
+            {
+                "Name" => StringComparer.CurrentCultureIgnoreCase.Compare(a.Name, b.Name),
+                "Id" => a.Id.CompareTo(b.Id),
+                "CpuPercent" => a.CpuPercent.CompareTo(b.CpuPercent),
+                "MemoryBytes" => a.MemoryBytes.CompareTo(b.MemoryBytes),
+                "UserName" => StringComparer.CurrentCultureIgnoreCase.Compare(a.UserName, b.UserName),
+                "ThreadCount" => a.ThreadCount.CompareTo(b.ThreadCount),
+                _ => 0,
+            };
+            return ProcessSortDescending ? -result : result;
+        });
+        return rows.OrderBy(row => row, comparer).ThenBy(row => row.Process.Id);
+    }
+
     private void RebuildFilteredProcesses(ProcessTreeItemViewModel? selected)
     {
         if (_rebuildingProcessRows) return;
@@ -465,7 +497,7 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
                 var showChildren = row.IsExpanded || (!string.IsNullOrWhiteSpace(filter) && hasIncludedChild);
                 FilteredProcesses.Add(row);
                 if (showChildren)
-                    foreach (var child in children[id]) AddVisible(child, depth + 1);
+                    foreach (var child in SortProcessRows(children[id])) AddVisible(child, depth + 1);
             }
 
             var reachable = new HashSet<int>();
@@ -477,10 +509,10 @@ public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IA
                     if (reachable.Add(row.Process.Id))
                         foreach (var child in children[row.Process.Id]) pending.Push(child);
             }
-            foreach (var root in roots) { MarkSubtree(root); AddVisible(root, 0); }
+            foreach (var root in SortProcessRows(roots)) { MarkSubtree(root); AddVisible(root, 0); }
             // Only disconnected cycles need a synthetic root. Collapsed descendants already
             // belong to a root and must remain hidden.
-            foreach (var row in rows)
+            foreach (var row in SortProcessRows(rows))
                 if (!reachable.Contains(row.Process.Id)) { MarkSubtree(row); AddVisible(row, 0); }
             SelectedProcess = selectedKey is { } identity
                 ? FilteredProcesses.FirstOrDefault(row => row.Process.Id == identity.Id && row.Process.StartTime == identity.StartTime)

@@ -39,6 +39,7 @@ public static class FileEndpoints
                 }
             });
 
+        files.MapArchiveEndpoints();
         files.MapGet(FileApiRoutes.Text, (string path, IFileService fs, CancellationToken ct) =>
             TextResult(async () => Results.Ok(await new TextFileEditor(fs).ReadAsync(path, ct))))
             .RequireAuthorization(FileAuthorizationPolicies.Read).WithTags("Files");

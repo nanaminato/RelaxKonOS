@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION=${1:?usage: package-relaxkonos.sh VERSION [linux-x64|linux-arm64] [Release|Debug] [OUTPUT_DIRECTORY] [all|client|server|user-server]}
+VERSION=${1:?usage: package-relaxkonos.sh VERSION [linux-x64|linux-arm64] [Release|Debug] [OUTPUT_DIRECTORY] [all|client|server]}
 RUNTIME=${2:-linux-x64}
 CONFIGURATION=${3:-Release}
 OUTPUT_DIRECTORY=${4:-"$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/artifacts"}
 PACKAGE_KIND=${5:-all}
 case "$RUNTIME" in linux-x64|linux-arm64) ;; *) echo 'Linux package script supports linux-x64 and linux-arm64.' >&2; exit 64 ;; esac
 case "$CONFIGURATION" in Release|Debug) ;; *) echo 'Configuration must be Release or Debug.' >&2; exit 64 ;; esac
-case "$PACKAGE_KIND" in all|client|server|user-server) ;; *) echo 'Package kind must be all, client, server, or user-server.' >&2; exit 64 ;; esac
+case "$PACKAGE_KIND" in all|client|server) ;; *) echo 'Package kind must be all, client, or server.' >&2; exit 64 ;; esac
 [[ "$VERSION" =~ ^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$ ]] || { echo 'Invalid version.' >&2; exit 64; }
 
 SCRIPT_DIRECTORY="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -85,16 +85,6 @@ if [[ $PACKAGE_KIND == all || $PACKAGE_KIND == server ]]; then
   cp -- "$PROJECT_ROOT/deployment/verify-release-inventory.py" "$BUNDLE/deployment/verify-release-inventory.py"
   cp -a "$PROJECT_ROOT/deployment/bootstrap" "$BUNDLE/deployment/bootstrap"
   cp -a "$PROJECT_ROOT/deployment/linux" "$BUNDLE/deployment/linux"
-  complete_package server '"server":"payload/linux/server/RelaxKonOS.Server","guardian":"payload/linux/guardian/RelaxKonOS.Guardian.Agent","privilegedHelper":"payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper"'
-fi
-
-# User Mode deliberately has no privileged helper, sudoers template, or system-service engine.
-if [[ $PACKAGE_KIND == all || $PACKAGE_KIND == user-server ]]; then
-  new_package user-server
-  publish_component 'RelaxKonOS.Server/RelaxKonOS.Server.csproj' server RelaxKonOS.Server
-  publish_component 'RelaxKonOS.Guardian.Agent/RelaxKonOS.Guardian.Agent.csproj' guardian RelaxKonOS.Guardian.Agent
-  mkdir -p "$BUNDLE/deployment"
-  cp -- "$PROJECT_ROOT/deployment/verify-release-inventory.py" "$BUNDLE/deployment/verify-release-inventory.py"
   cp -a "$PROJECT_ROOT/deployment/user" "$BUNDLE/deployment/user"
-  complete_package user-server '"server":"payload/linux/server/RelaxKonOS.Server","guardian":"payload/linux/guardian/RelaxKonOS.Guardian.Agent","launcher":"deployment/user/relaxkon"'
+  complete_package server '"server":"payload/linux/server/RelaxKonOS.Server","guardian":"payload/linux/guardian/RelaxKonOS.Guardian.Agent","privilegedHelper":"payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper","launcher":"deployment/user/relaxkon"'
 fi

@@ -17,7 +17,7 @@ function Invoke-Preflight {
     $installed = Get-StateFlag $state 'installed'
     if ($script:record.kind -eq 'install') {
         if ($installed) { Stop-Launcher 'server-deployment.already_installed' 'RelaxKonOS is already installed on this host; use upgrade or repair' }
-    } elseif ($script:record.kind -in @('upgrade', 'repair', 'rollback', 'uninstall')) {
+    } elseif ($script:record.kind -in @('upgrade', 'repair', 'configure', 'firewall', 'rollback', 'uninstall')) {
         if (-not $installed) { Stop-Launcher 'server-deployment.not_installed' 'RelaxKonOS is not installed on this host' }
     }
     if ($script:optionsMode -eq 'windowsUser' -and (Test-Administrator)) { Stop-Launcher 'server-deployment.invalid_request' 'Personal Mode must run without elevation' }

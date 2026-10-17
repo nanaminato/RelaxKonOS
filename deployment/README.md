@@ -20,7 +20,7 @@ Windows 10/11 个人电脑可同时运行 Server 与 Client，具体步骤见[�
 | `-BundlePath` / `--bundle` | 本地 ZIP 上传或服务器绝对 ZIP 路径，经安全解压后传递本次私有发布目录 |
 | `-ReleaseUri` / `--release-uri` | 自定义 HTTPS ZIP 下载来源，由启动器下载后传给安装引擎 |
 | `-ReleaseSha256` / `--release-sha256` | 自定义 HTTPS 来源必填的 SHA-256；官方来源自动取得描述符摘要 |
-| `-ReleaseCatalogBaseUri` / `--release-catalog-base` | 可选 HTTPS 发布目录地址；留空使用官网稳定通道。User Mode 自动追加 `user-server/` |
+| `-ReleaseCatalogBaseUri` / `--release-catalog-base` | 可选 HTTPS 发布目录地址；留空使用官网稳定通道；两种模式共用同一发布目录 |
 | `-InstallRoot` / `--install-root` | 系统模式的程序绝对目录 |
 | `-DataRoot` / `--data-root` | 系统持久数据目录或用户模式程序／数据根 |
 | `--config-root` / `--state-root` / `--cache-root` | 用户模式的配置、状态、缓存绝对目录；留空使用 XDG 默认值 |
@@ -43,7 +43,13 @@ Windows 10/11 个人电脑可同时运行 Server 与 Client，具体步骤见[�
 
 配置目录定位分别保存在 Windows `%ProgramData%\RelaxKonOS-Deployment\roots.json`、Linux System `/var/lib/relaxkonos-deployment-location/roots.json` 与 Linux User 默认 XDG 状态下的 `relaxkonos-deployment/user-roots.json`。后续探测、修复、更新、回滚和卸载读取这些定位及安装状态，不假定默认目录。定位由受管身份写入，保留数据卸载后也保留定位。部署锁与回执仍使用固定宿主目录，不随自定义数据根漂移。
 
-发布制品分为 `client`、`server` 与 `user-server` 三种包。`server` 包是 System Mode，包含已 `dotnet publish` 的 Server、Guardian Agent、权限助手和平台部署引擎；`user-server` 是无 sudo 的 Linux User Mode，包含 Server、同 UID Guardian 和用户 launcher，但不包含权限助手、sudoers 或系统服务安装器；`client` 包只包含桌面 Client。
+发布制品分为 `client` 与 `server` 两种包。`server` 包包含 Server、Guardian Agent、权限助手和平台部署引擎；Linux 包同时包含用户 launcher。两种模式共用服务端包，由显式安装选项决定模式。用户模式仅部署 Server、同 UID Guardian 和用户 launcher，不安装权限助手、sudoers 或系统服务；`client` 包只包含桌面 Client。
+
+Guardian 是可选部署组件，发布包仍携带同版本文件。首次向导可取消“安装进程守护”；之后在服务器中心的“组件”页选择并应用即可补装或移除，定义与日志保留。Windows 个人模式不支持 Guardian。升级、普通修复和回滚继承安装记录的 `guardianEnabled`，不会自动补装未选择的组件。
+
+“安装设置”可修改监听端口和本机 / 局域网访问，现有 TLS 身份与文件权限保持不变。独立 `configure` 动作使用已安装版本，无需重新下载包；应用失败尝试恢复原监听与组件选择，恢复失败保留失败回执。端口变更不自动移动防火墙规则，可按新监听端口显式执行防火墙修复。
+
+命令行：Windows 首次安装使用 `-GuardianEnabled false`；Linux System 使用 `--guardian-enabled false`；Linux User 使用 `relaxkon install --guardian-enabled false --bundle PATH`。系统模式后续配置使用 `-Action configure` / `--action configure`，配合端口、网络和 Guardian 选择；Linux User 使用 `relaxkon configure --port PORT --network loopback|lan --guardian-enabled true|false`。客户端通过固定启动器校验安装 ID、确认和独占锁。详细规则见 [安装管理设计](../docs/platform/RelaxKonOS.InstallationManagement.Design.md)。
 
 引导安装器会先把三个组件的完整 publish 输出复制到持久安装目录（Windows 默认 `C:\Program Files\RelaxKonOS`，Linux 默认 `/opt/relaxkonos`）；服务绝不会指向临时下载目录或离线介质。Linux System Mode 把每个版本及其配套部署引擎发布到独立的 `versions/<版本>` 目录，完整复制成功后才停止服务并用 `current` 符号链接原子切换，因此升级不会把新版覆盖到在用的版本目录；失败回滚也始终使用目标版本自己的部署引擎。
 
@@ -58,7 +64,7 @@ deployment/windows/Install-RelaxKonOSServices.ps1
 deployment/linux/install-relaxkonos-services.sh
 ```
 
-`manifest.json` 和下载描述文件使用 `schemaVersion: 1`，并明确标记 `packageKind`（`client`、`server` 或 `user-server`）；示例见 [release-manifest.example.json](./release-manifest.example.json)。
+`manifest.json` 和下载描述文件使用 `schemaVersion: 1`，并明确标记 `packageKind`（`client` 或 `server`）；示例见 [release-manifest.example.json](./release-manifest.example.json)。
 
 JSON 清单是唯一的逐文件清单，列出包内除 `manifest.json` 外每个文件的长度和 SHA-256；Linux System Mode 安装器与 User Mode launcher 用 Python 3 重算摘要并精确比对文件集合，拒绝缺失、额外、重复或不安全路径，不再依赖独立的 `manifest.sha256`。
 
@@ -92,7 +98,7 @@ Linux Mihomo 保留 systemd 策略和 `/etc/relaxkonos/proxy/`，重装不擅自
 
 本地维护入口 `--maintenance=remove-managed-components --maintenanceDataRoot <已核验数据根>` 不启动 HTTP 服务，仅允许 root/管理员或已配置的 Windows 个人安装所有者执行，必须在原 Server 已停止且原部署配置与 Helper 仍可用时运行。
 
-普通 SSH 账户通过 sudo 维护系统安装时，已安装引擎的文件和可执行权限检查也必须使用同一次经验证的 sudo 身份。部署目录仅 root 可遍历时，不能用普通 SSH 用户的 `test -x` 判断引擎缺失；无 sudo 授权或脚本实际缺失时仍须拒绝操作。
+普通 SSH 账户通过 sudo 维护系统安装时，已安装引擎的文件和可执行权限检查也必须使用同一次经验证的 sudo 身份。部署目录仅 root 可遍历时，不能用普通 SSH 用户的 `test -x` 判断引擎缺失；无法通过 sudo 或 su 提权，或脚本实际缺失时仍须拒绝操作。
 
 SSH 私有解压目录使用 `0700/0600` 权限；发布到系统模式安装目录后，必须让服务账户可遍历程序目录并读取运行库和程序集，同时保持程序文件仅 root 可写。程序的 `server/data` 必须链接到持久化的受管服务器数据目录。修复部署脚本后必须重新制作 Server ZIP，因为安装实际执行的是 ZIP 内的版本化引擎，仅更新桌面客户端不会更新旧 ZIP 中的安装器。安装器等待 HTTP/HTTPS 健康端点最多 60 秒，不能用 systemd 的 active 状态替代健康检查成功。
 
@@ -120,15 +126,15 @@ Linux 打包宿主还需提供 `zip`、`sha256sum` 与 `stat`。
 
 客户端的便携 ZIP 与 Windows MSIX 打包和升级流程见 [ClientDistribution.md](./ClientDistribution.md)。Linux 客户端通过便携 ZIP 分发；不提供 Debian/Ubuntu APT 仓库或 `.deb` 包。
 
-两者都会分别产出 Client 与 Server ZIP、`.sha256` 和同名 `.json` 下载描述文件。用户态 Linux 包可单独生成：
+两者都会分别产出 Client 与 Server ZIP、`.sha256` 和同名 `.json` 下载描述文件。统一的 Linux 服务端包可单独生成：
 
 ```bash
-./deployment/packaging/package-relaxkonos.sh 0.1.0 linux-x64 Release ./artifacts user-server
+./deployment/packaging/package-relaxkonos.sh 0.1.0 linux-x64 Release ./artifacts server
 ```
 
-System Mode 安装时请选择 `*-server.zip` 或对应的 Server 发布目录；User Mode 请选择 `*-user-server.zip` 解压后的发布目录。
+System Mode 与 User Mode 共用对应平台和架构的 `*-server.zip` 或其解压目录；安装时选择运行模式。
 
-Linux Server 和 User Server 发布包必须包含 `deployment/verify-release-inventory.py`。若操作诊断中出现 `can't open file .../verify-release-inventory.py` 和退出码 `65`，说明发布包不完整，应使用上述打包脚本重新生成 ZIP，并同步更新 `manifest.json` 文件清单、ZIP 校验值和下载描述文件；不要通过跳过校验来修复。服务器中心在解包前检查这个必要文件。
+Linux 服务端发布包必须包含 `deployment/verify-release-inventory.py`。若操作诊断中出现 `can't open file .../verify-release-inventory.py` 和退出码 `65`，说明发布包不完整，应使用上述打包脚本重新生成 ZIP，并同步更新 `manifest.json` 文件清单、ZIP 校验值和下载描述文件；不要通过跳过校验来修复。服务器中心在解包前检查这个必要文件。
 
 Linux System Mode 使用 SSH 用户及 sudo 安装时，安装后的防火墙探测和规则添加也必须通过同一 sudo 身份执行。防火墙诊断失败会写入该操作的受限诊断附件；主机防火墙未启用时，成功回执的 `firewallStatus` 为 `disabled`，不会启用防火墙或添加无效规则。
 
@@ -140,7 +146,7 @@ Linux System Mode 发布安装目录时，显式把安装、卸载和服务部�
 
 安装器默认从 `https://downloads.relaxkon.com/relaxkonos/stable/latest/{rid}.json` 读取当前稳定版，其中 `{rid}` 是 `win-x64`、`win-arm64`、`linux-x64` 或 `linux-arm64`。
 
-该描述文件包含 ZIP 的 HTTPS 地址和 SHA-256；将通过验证的版本描述文件同步为 `latest/{rid}.json`，即可完成稳定版切换，无需修改安装器。Linux User Mode 的服务器中心安装使用独立的 `latest/user-server/{rid}.json`，其 `packageKind` 必须为 `user-server`；发布时需同时部署这份描述符。
+该描述文件包含 ZIP 的 HTTPS 地址和 SHA-256；将通过验证的版本描述文件同步为 `latest/{rid}.json`，即可完成稳定版切换，无需修改安装器。Linux User Mode 与 System Mode 共用 `latest/{rid}.json`，其 `packageKind` 必须为 `server`。
 
 ## 反向代理与分块上传
 
@@ -181,7 +187,7 @@ location /api/v1.0/files/uploads/ {
 
 System Mode（需要 root）使用显式模式：
 
-服务器中心可由普通 SSH 管理账户显式选择 Linux 系统模式：安装前验证 sudo 密码和权限，部署引擎通过 sudo 执行，系统状态文件通过 sudo 核验。向导中的 sudo 密码留空时使用 SSH 登录密码；密码只通过 SSH 标准输入传递，不写入命令、请求或日志。无需 root SSH 登录或配置免密 sudo。暂存与操作日志保留在原 SSH 账户下，安装器不会改变这些目录的所有者。
+服务器中心可由普通 SSH 管理账户显式选择 Linux 系统模式：安装前验证 sudo 或 su 密码和权限，部署引擎和系统状态读取通过同一提权身份执行。向导中的 管理员密码留空时使用 SSH 登录密码；密码只通过 SSH 标准输入传递，不写入命令、请求或日志。无需 root SSH 登录或配置免密 sudo。暂存与操作日志保留在原 SSH 账户下，安装器不会改变这些目录的所有者。
 
 桌面操作记录选中后显示操作 ID、阶段、问题码和完整摘要；“从宿主刷新所选操作”同时通过固定的 Linux `--diagnostics OPERATION_ID` 或 Windows `-DiagnosticsOperationId` 读取至多 64 KiB 部署日志。日志仅在当前界面显示，不写入本地索引，并遮盖密码、secret、token 和 authorization 字段。安装向导打开时，工作区隐藏重复进度条，由向导显示“安装中”和一个进度条。
 
@@ -205,10 +211,10 @@ Docker 管理默认关闭，因为 Docker socket 等同高权限主机控制。�
 
 ### Linux User Mode（无 sudo）
 
-先解压 `*-user-server.zip`，然后以目标 Linux 账号运行：
+先解压 `*-server.zip`，然后以目标 Linux 账号运行：
 
 ```bash
-./deployment/user/install-relaxkonos.sh --mode user --bundle /path/to/RelaxKonOS-0.1.0-linux-x64-user-server
+./deployment/user/install-relaxkonos.sh --mode user --bundle /path/to/RelaxKonOS-0.1.0-linux-x64-server
 "${XDG_DATA_HOME:-$HOME/.local/share}/relaxkonos/bin/relaxkon" start
 "${XDG_DATA_HOME:-$HOME/.local/share}/relaxkonos/bin/relaxkon" status
 ```
@@ -257,3 +263,5 @@ or inconsistent installation must be repaired before its managed state can be re
 Debian 13 与 Linux Mint 的安装预检、发布清单和 Samba 权限助手使用相同的支持范围。Mint Debian Edition（LMDE）不在本次支持范围内；不会仅凭 `ID_LIKE=ubuntu/debian` 放行其他发行版。Linux 仍需 systemd、glibc、PAM，以及所选功能需要的 APT/UFW 等依赖。发行版识别的自动检查不替代目标系统上安装、升级、登录、终端及系统管理功能的实机验收。
 
 Docker Engine 内置安装使用固定的官方 APT 软件源：Debian 13 → Debian Trixie，Mint 21.x → Ubuntu Jammy，Mint 22.x → Ubuntu Noble。仍需在安装时显式授权 Docker 访问；已存在的外部运行时和冲突软件包不会自动接管或卸载。参考 [Docker Debian 安装说明](https://docs.docker.com/engine/install/debian/)和 [Mint 版本基础](https://linuxmint.com/download_all.php)。
+
+Linux SSH 提权支持 sudo 和 su：先验证当前账号的 sudo 授权，失败后使用同一管理员密码尝试 `su` 到 root。Debian 禁止 root SSH 登录且普通账号没有 sudo 授权时，可填写 root 密码进行检查和系统维护。探测字段 `privilegeElevationAvailable` 表示存在 sudo 或 su 工具，实际授权在执行时验证。su 命令参数按 Bash 参数逐个转义，部署引擎标准输入为 `/dev/null`；密码不进入命令、文件或日志。提权命令总是在当前账号 `PATH` 之前补上标准管理目录 `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`：`su` 不重置环境，而非登录 SSH 会话的 `PATH` 通常到 `/usr/bin:/bin` 为止，否则以 root 运行的引擎会把 `/usr/sbin` 下已安装的 `visudo` 等工具判为缺失并拒绝安装。系统安装仍需 sudo/visudo 供运行时 Helper 使用，缺少依赖时按预检提示安装。

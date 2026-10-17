@@ -27,7 +27,7 @@ try
     var vm = new LoginViewModel(DispatchProxy.Create<IAuthSession, SelectionAuthStub>(),
         new LoginLocalizationService(new LocalLanguageStore()),
         new ServerEndpointResolver(new HttpClient(), new ServerCertificateTrust(directory)),
-        new SshDesktopSession(null!), targets, keys, new SshCredentialStore(directory),
+        new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)), targets, keys, new SshCredentialStore(directory),
         new ServerCenterConnectionResolver(keys, targets, new SshNetServerCenterTransportFactory()), store);
     var tunnelLogin = new SavedLoginProfile(tunnel.ServiceId, "server-user", "server-password", DateTimeOffset.UtcNow) { DisplayName = tunnel.DisplayText };
     var directLogin = new SavedLoginProfile("https://192.168.1.2:5000", "direct-user", null, DateTimeOffset.UtcNow);

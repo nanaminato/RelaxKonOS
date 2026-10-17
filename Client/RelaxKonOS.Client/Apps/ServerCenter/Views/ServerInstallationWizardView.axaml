@@ -84,6 +84,7 @@
                         <CheckBox Content="{Binding DockerAccessLabel}" IsChecked="{Binding DockerAccess}" />
                     </StackPanel>
                     <CheckBox IsVisible="{Binding IsLinuxHost}" Content="{Binding AllowUnsupportedLabel}" IsChecked="{Binding AllowUnsupportedSystem}" />
+                    <CheckBox IsVisible="{Binding CanChooseGuardian}" IsChecked="{Binding GuardianEnabled}" Content="{Binding GuardianChoiceText}"/>
                     <CheckBox IsVisible="{Binding IsSystemMode}" IsEnabled="{Binding CanAddFirewallRule}" IsChecked="{Binding AddFirewallRule}" Content="{Binding FirewallChoiceText}" />
                     <TextBlock IsVisible="{Binding IsSystemMode}" Text="{Binding FirewallHelpText}" TextWrapping="Wrap" />
                     <TextBlock Text="{Binding NetworkText}" />

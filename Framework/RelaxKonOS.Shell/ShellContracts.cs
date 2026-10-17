@@ -9,7 +9,7 @@ namespace RelaxKonOS.Shell;
 /// <summary>Versioned, deliberately small contract shared by the client and desktop-shell packages.</summary>
 public static class ShellApi
 {
-    public const string Version = "1.1";
+    public const string Version = "1.3";
     public const string DefaultShellId = "relaxkonos.windows-like";
 
     /// <summary>Returns an explicit shell identifier, using the current built-in default only when no selection exists.</summary>
@@ -104,7 +104,13 @@ public sealed record ShellDesktopState(
     /// Wallpaper-label foreground, separate from window surface text. External shells can use
     /// the shared TextBlock.desktop-label style for the matching palette-resolved text shadow.
     /// </summary>
-    IBrush? DesktopItemLabelForeground = null);
+    IBrush? DesktopItemLabelForeground = null,
+    IReadOnlyList<ShellTaskbarEntry>? TaskbarEntries = null);
+
+public sealed record ShellTaskbarEntry(AppId Id, string DisplayName, string? IconGlyph, IImage? IconImage, bool IsPinned, bool IsRunning, bool IsActive)
+{
+    public bool HasIconImage => IconImage is not null;
+}
 
 /// <summary>A launchable application in an external shell's Start menu or application list.</summary>
 public sealed record ShellApplicationEntry(
@@ -130,17 +136,32 @@ public sealed record ShellDesktopEntry(
     AppId? ApplicationId = null,
     bool IsSelected = false,
     /// <summary>Host-loaded application artwork. Use this in preference to <see cref="IconGlyph"/>.</summary>
-    IImage? IconImage = null)
+    IImage? IconImage = null,
+    bool IsTaskbarPinned = false) : System.ComponentModel.INotifyPropertyChanged
 {
+    private bool _isSelected = IsSelected;
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (_isSelected == value) return;
+            _isSelected = value;
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsSelected)));
+        }
+    }
+
     /// <summary>Whether the entry has application artwork that should replace its glyph fallback.</summary>
     public bool HasIconImage => IconImage is not null;
+    public bool IsShortcut => Kind is ShellDesktopEntryKind.Application or ShellDesktopEntryKind.Shortcut;
 }
 
 /// <summary>An installed external desktop style that can be selected from another shell.</summary>
 public sealed record ShellDesktopStyleEntry(string Id, string DisplayName, string Version);
 
 public enum SettingsRoute { Root, Personalization }
-public enum DesktopEntryAction { Open, OpenWith, Copy, Cut, Paste, Delete, ShowInExplorer, Properties }
+public enum DesktopEntryAction { Open, OpenWith, Copy, Cut, Paste, Delete, ShowInExplorer, Properties, PinToTaskbar, UnpinFromTaskbar }
 
 public interface IShellActions
 {
@@ -150,7 +171,7 @@ public interface IShellActions
     Task RefreshDesktopAsync(CancellationToken cancellationToken = default);
     Task PasteDesktopAsync(CancellationToken cancellationToken = default);
     void ClearDesktopSelection();
-    void SelectDesktopEntry(string entryId);
+    void SetDesktopSelection(IReadOnlyList<string> entryIds);
     void SetDesktopIconsVisible(bool visible);
     void ShowDesktop();
     /// <summary>
@@ -160,6 +181,7 @@ public interface IShellActions
     /// </summary>
     bool ShowWindowOverview();
     void ToggleWindowGroup(AppId appId);
+    Task SetTaskbarPinnedAsync(AppId appId, bool pinned, CancellationToken cancellationToken = default);
     void ActivateWindow(WindowId windowId);
     void MinimizeWindow(WindowId windowId);
     void CloseWindow(WindowId windowId);

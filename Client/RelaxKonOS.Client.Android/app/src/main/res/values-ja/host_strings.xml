@@ -2,6 +2,8 @@
 <!-- Keep this feature file and its resource keys aligned across values, values-zh and values-ja. -->
 <resources>
     <string name="host_platform_ubuntu">Ubuntu</string>
+    <string name="host_platform_debian">Debian</string>
+    <string name="host_platform_linux">Linux</string>
     <string name="host_platform_windows10">Windows 10</string>
     <string name="host_platform_windows11">Windows 11</string>
     <string name="host_platform_windows_server">Windows Server</string>

@@ -51,7 +51,7 @@ internal static class FusedWorkspaceChecks
     {
         var original = settings.ToPreferences();
         var login = new LoginLocalizationService(new LocalLanguageStore());
-        var server = new ServerCenterViewModel(null!, null!, null!, null!, new SshDesktopSession(null!), null!, null!, login);
+        var server = new ServerCenterViewModel(null!, null!, null!, null!, new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!)), null!, null!, login);
         var git = new GitClientViewModel(null!) { IsPickerMode = false };
         var serverView = new ServerCenterWorkspace { DataContext = server };
         var gitView = GitClientWorkspace.Create(git);

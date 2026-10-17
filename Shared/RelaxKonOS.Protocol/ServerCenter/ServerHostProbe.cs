@@ -8,7 +8,7 @@ namespace RelaxKonOS.Protocol.ServerCenter;
 /// 由远端启动器在 SSH 侧读取，客户端据此决定可选操作与前置条件，而不是靠 IP、URL 或 DNS 猜测。
 /// </summary>
 /// <param name="Elevated">当前 SSH 会话是否已经具备 root（Linux）或已提升管理员（Windows）权限。</param>
-/// <param name="SudoAvailable">Linux System Mode 是否具备可用的 sudo/visudo，用于受控提权。</param>
+/// <param name="PrivilegeElevationAvailable">Linux 是否具备 sudo 或 su 提权工具；账号权限和密码在执行时验证。</param>
 /// <param name="DiskAvailableBytes">安装根所在文件系统的可用字节数；无法确定时为 null，UI 不得伪造。</param>
 /// <param name="RequestedPort">本次请求希望使用的服务端口；未指定时为 null。</param>
 /// <param name="RequestedPortAvailable">请求端口当前是否可用；未指定端口时为 null。</param>
@@ -21,7 +21,7 @@ public sealed record ServerHostProbeDto(
     [property: JsonPropertyName("osVersion")] string? OsVersion,
     [property: JsonPropertyName("osSupported")] bool OsSupported,
     [property: JsonPropertyName("elevated")] bool Elevated,
-    [property: JsonPropertyName("sudoAvailable")] bool SudoAvailable,
+    [property: JsonPropertyName("privilegeElevationAvailable")] bool PrivilegeElevationAvailable,
     [property: JsonPropertyName("systemdAvailable")] bool SystemdAvailable,
     [property: JsonPropertyName("diskAvailableBytes")] long? DiskAvailableBytes,
     [property: JsonPropertyName("requestedPort")] int? RequestedPort,

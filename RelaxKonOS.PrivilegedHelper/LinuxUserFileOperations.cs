@@ -289,8 +289,8 @@ public static class LinuxUserFileOperations
 
         try
         {
-            RenameAt(sourceReference.ParentHandle, sourceReference.Name, destinationParent,
-                destinationName);
+            if (overwrite) RenameAt(sourceReference.ParentHandle, sourceReference.Name, destinationParent, destinationName);
+            else RenameAtNoReplace(sourceReference.ParentHandle, sourceReference.Name, destinationParent, destinationName);
             return sourceIsDirectory;
         }
         catch (NativeFileIOException exception) when (exception.Errno == CrossDeviceLink)
@@ -1060,6 +1060,7 @@ public static class LinuxUserFileOperations
     {
         var attributes = IsDirectory(stat) ? FileAttributes.Directory : 0;
         if (reparsePoint) attributes |= FileAttributes.ReparsePoint;
+        if ((stat.Mode & FileTypeMask) is not (0x4000 or 0x8000 or 0xa000)) attributes |= FileAttributes.Device;
         if (Path.GetFileName(path).StartsWith(".", StringComparison.Ordinal))
             attributes |= FileAttributes.Hidden;
         if (attributes == 0) attributes = FileAttributes.Normal;

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Called by the signed package installer, not by RelaxKonOS HTTP endpoints. It registers
-# both units, generates the local IPC secret, and leaves end users no Agent setup step.
+# the selected units and generates authenticated local IPC configuration.
 if [[ ${EUID} -ne 0 ]]; then
   echo "Run as root through the host's approved elevation flow." >&2
   exit 1
@@ -39,6 +39,8 @@ CERTIFICATE_PATH=
 CERTIFICATE_PASSWORD_FILE=
 SELF_SIGNED_IDENTITIES=
 DOCKER_ACCESS=false
+GUARDIAN_ENABLED=true
+AUTO_START=true
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --file-access)
@@ -96,6 +98,8 @@ while [[ $# -gt 0 ]]; do
       SELF_SIGNED_IDENTITIES="$2"
       shift 2
       ;;
+    --auto-start) AUTO_START="${2:-}"; shift 2 ;;
+    --guardian-enabled) GUARDIAN_ENABLED="${2:-}"; shift 2 ;;
     --docker-access)
       DOCKER_ACCESS=true
       shift
@@ -107,6 +111,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+case "$AUTO_START" in true|false) ;; *) echo "Invalid automatic startup selection." >&2; exit 64 ;; esac
+case "$GUARDIAN_ENABLED" in true|false) ;; *) echo "Invalid Guardian selection." >&2; exit 64 ;; esac
 for access in "$FILE_ACCESS" "$ADMINISTRATOR_FILE_ACCESS" "$ROOT_FILE_ACCESS"; do
   case "$access" in restricted|full|whitelist) ;; *) echo "Invalid file access value: $access" >&2; usage ;; esac
 done
@@ -210,7 +216,9 @@ PRIVILEGED_HELPER_INSTALL_DIR=/usr/local/lib/relaxkonos/privileged-helper
 PRIVILEGED_HELPER="$PRIVILEGED_HELPER_INSTALL_DIR/$(basename -- "$PRIVILEGED_HELPER_EXECUTABLE")"
 SUDOERS_FILE=/etc/sudoers.d/relaxkonos-helpers
 
-for file in "$SERVER_EXECUTABLE" "$GUARDIAN_EXECUTABLE" "$PRIVILEGED_HELPER_EXECUTABLE"; do
+required_payload=("$SERVER_EXECUTABLE" "$PRIVILEGED_HELPER_EXECUTABLE")
+[[ "$GUARDIAN_ENABLED" != true ]] || required_payload+=("$GUARDIAN_EXECUTABLE")
+for file in "${required_payload[@]}"; do
   [[ -f "$file" ]] || { echo "Missing executable: $file" >&2; exit 1; }
 done
 [[ "$SERVER_PORT" =~ ^[0-9]+$ ]] && (( SERVER_PORT >= 1 && SERVER_PORT <= 65535 )) || { echo "Invalid server port." >&2; exit 1; }
@@ -371,6 +379,7 @@ RELAXKONOS_GUARDIAN_SERVER_HEALTH_URL=${SERVER_LISTEN_URL%%://*}://127.0.0.1:$SE
 EOF
 cat >/etc/relaxkonos/server.env <<EOF
 Jwt__Secret=$JWT_SECRET
+GuardianAgent__Enabled=$GUARDIAN_ENABLED
 GuardianAgent__SharedSecret=$SECRET
 GuardianAgent__PipeName=relaxkonos-guardian
 Storage__DatabasePath=$SERVER_DATA/relaxkonos.db
@@ -453,6 +462,9 @@ install -o root -g root -m 0440 "$SUDOERS_TEMP" "$SUDOERS_FILE"
 rm -f "$SUDOERS_TEMP"
 trap - EXIT
 
+GUARDIAN_DEPENDENCY=
+if [[ "$GUARDIAN_ENABLED" == true ]]; then
+GUARDIAN_DEPENDENCY=relaxkonos-guardian.service
 cat >/etc/systemd/system/relaxkonos-guardian.service <<EOF
 [Unit]
 Description=RelaxKonOS Guardian Agent
@@ -472,11 +484,15 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 EOF
+else
+  systemctl disable --now relaxkonos-guardian.service 2>/dev/null || true
+  rm -f -- /etc/systemd/system/relaxkonos-guardian.service
+fi
 cat >/etc/systemd/system/relaxkonos-server.service <<EOF
 [Unit]
 Description=RelaxKonOS Server
-After=network-online.target relaxkonos-guardian.service
-Wants=network-online.target relaxkonos-guardian.service
+After=network-online.target $GUARDIAN_DEPENDENCY
+Wants=network-online.target $GUARDIAN_DEPENDENCY
 
 [Service]
 Type=simple
@@ -494,8 +510,17 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
+chown root:root /etc/systemd/system/relaxkonos-server.service
+chmod 0644 /etc/systemd/system/relaxkonos-server.service
+if [[ "$GUARDIAN_ENABLED" == true ]]; then
+  chown root:root /etc/systemd/system/relaxkonos-guardian.service
+  chmod 0644 /etc/systemd/system/relaxkonos-guardian.service
+fi
 systemctl daemon-reload
-systemctl enable --now relaxkonos-guardian.service relaxkonos-server.service
+units=(relaxkonos-server.service)
+[[ "$GUARDIAN_ENABLED" != true ]] || units+=(relaxkonos-guardian.service)
+if [[ "$AUTO_START" == true ]]; then systemctl enable "${units[@]}"; else systemctl disable "${units[@]}"; fi
+systemctl start "${units[@]}"
 if [[ "$DOCKER_ACCESS" == true ]]; then
   # Supplementary groups are captured when systemd spawns the process. A restart is required
   # even when the account was already present in the docker group before this deployment.

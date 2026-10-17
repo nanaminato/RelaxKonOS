@@ -1,6 +1,8 @@
 {
   "culture": "en-US",
   "strings": {
+    "taskbar.pin": "Pin to taskbar",
+    "taskbar.unpin": "Unpin from taskbar",
     "taskbar.start": "Start",
     "taskbar.search": "Search",
     "taskbar.task_view": "Task view",
@@ -26,8 +28,6 @@
     "desktop.recycle_bin": "Recycle Bin",
     "start.back_to_pinned": "‹ Back",
     "start.all_applications": "All apps",
-    "loading.title": "Getting your desktop ready",
-    "loading.description": "Loading applications and desktop items…",
     "desktop.styles": "Desktop styles",
     "common.view": "View",
     "common.open": "Open",

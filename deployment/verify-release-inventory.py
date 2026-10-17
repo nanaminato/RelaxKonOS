@@ -72,7 +72,7 @@ def verify(bundle, kind, runtime, skip_checks=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("bundle")
-    parser.add_argument("kind", choices=("server", "user-server", "client"))
+    parser.add_argument("kind", choices=("server", "client"))
     parser.add_argument("runtime")
     parser.add_argument("--skip-checks", action="store_true")
     args = parser.parse_args()

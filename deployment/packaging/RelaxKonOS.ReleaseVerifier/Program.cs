@@ -19,7 +19,6 @@ if ((args.Length == 4 && args[0] == "verify") || (args.Length == 5 && args[0] ==
     var kind = args[2] switch
     {
         "server" => ServerReleasePackageKind.Server,
-        "user-server" => ServerReleasePackageKind.UserServer,
         _ => (ServerReleasePackageKind?)null
     };
     var runtime = args[3] switch

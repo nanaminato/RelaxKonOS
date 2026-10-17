@@ -5,7 +5,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 if ((Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\ProductOptions').ProductType -ne 'WinNT') { throw 'Personal mode is workstation-only.' }
 $request = Get-Content -LiteralPath $RequestPath -Raw | ConvertFrom-Json
 $sid = [string]$request.ownerSid
-if ($sid -notmatch '^S-1-5-21-\d+-\d+-\d+-\d+$' -or $request.action -notin @('install', 'uninstall')) { throw 'Invalid personal privilege request.' }
+if ($sid -notmatch '^S-1-5-21-\d+-\d+-\d+-\d+$' -or $request.action -notin @('install', 'uninstall', 'firewall')) { throw 'Invalid personal privilege request.' }
 $identity = [Security.Principal.SecurityIdentifier]::new($sid)
 $null = $identity.Translate([Security.Principal.NTAccount])
 $profile = [Environment]::ExpandEnvironmentVariables((Get-ItemProperty -LiteralPath ('HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\' + $sid)).ProfileImagePath)
@@ -13,6 +13,23 @@ $personalRoot = [IO.Path]::GetFullPath((Join-Path $profile 'AppData\Local\RelaxK
 $root = Join-Path $env:ProgramFiles ('RelaxKonOS-Personal\' + $sid)
 $service = 'RelaxKonOSPersonalHelper-' + $sid
 $configPath = Join-Path $root 'helper.json'
+function Set-ManagedPersonalFirewall([string] $ListenUrl) {
+    $endpoint = [Uri]$ListenUrl
+    if (-not $endpoint.IsAbsoluteUri -or $endpoint.Scheme -notin @('http','https')) { throw 'Invalid listener.' }
+    if ($endpoint.IsLoopback) { return }
+    $active = @(Get-NetConnectionProfile -ErrorAction Stop | ForEach-Object {
+        if ($_.NetworkCategory -eq 'DomainAuthenticated') { 'Domain' } else { [string]$_.NetworkCategory }
+    } | Select-Object -Unique)
+    $profiles = @(Get-NetFirewallProfile -PolicyStore ActiveStore -ErrorAction Stop | Where-Object {
+        $_.Enabled -eq $true -and $active -contains [string]$_.Name -and [string]$_.Name -in @('Domain','Private')
+    } | ForEach-Object { [string]$_.Name })
+    if ($profiles.Count -eq 0) { return }
+    $ruleName = 'RelaxKonOS-Personal-' + $sid
+    $rule = Get-NetFirewallRule -Name $ruleName -ErrorAction SilentlyContinue
+    if ($rule -and $rule.Group -ne 'RelaxKonOS') { throw 'Foreign firewall rule.' }
+    if ($rule) { Remove-NetFirewallRule -Name $ruleName }
+    New-NetFirewallRule -Name $ruleName -DisplayName ('RelaxKonOS Personal ' + $sid) -Group 'RelaxKonOS' -Direction Inbound -Action Allow -Protocol TCP -LocalPort $endpoint.Port -Profile $profiles -RemoteAddress LocalSubnet | Out-Null
+}
 function Assert-NoReparse([string] $Path) {
     $current = [IO.Path]::GetFullPath($Path)
     while ($current) {
@@ -25,6 +42,17 @@ $existing = if (Test-Path -LiteralPath $configPath) { Get-Content -LiteralPath $
 if ($existing -and ($existing.personalOwnerSid -ne $sid -or $existing.serviceName -ne $service)) { throw 'Foreign Helper installation.' }
 $installed = Get-Service -Name $service -ErrorAction SilentlyContinue
 if ($installed -and -not $existing) { throw 'Unrecognized Helper service.' }
+if ($request.action -eq 'firewall') {
+    if (-not $existing) { throw 'A managed personal installation is required.' }
+    $ruleName = 'RelaxKonOS-Personal-' + $sid
+    $rule = Get-NetFirewallRule -Name $ruleName -ErrorAction SilentlyContinue
+    if ($rule -and $rule.Group -ne 'RelaxKonOS') { throw 'Foreign firewall rule.' }
+    if ($request.removeFirewallRules) { if ($rule) { Remove-NetFirewallRule -Name $ruleName }; exit 0 }
+    if ($request.addFirewallRule) {
+        Set-ManagedPersonalFirewall $request.listenUrl
+    }
+    exit 0
+}
 if ($request.action -eq 'uninstall') {
     if ($installed) { Stop-Service -Name $service -Force; $installed.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30)) }
     if ($installed) { & sc.exe delete $service | Out-Null; if ($LASTEXITCODE -ne 0) { throw 'Helper service removal failed.' } }
@@ -114,15 +142,7 @@ Set-HelperService -BinaryPath $binary
 Start-Service -Name $service
 (Get-Service -Name $service).WaitForStatus('Running', [TimeSpan]::FromSeconds(30))
 if ($request.addFirewallRule) {
-    $endpoint = [Uri]$request.listenUrl
-    if (-not $endpoint.IsAbsoluteUri -or $endpoint.Scheme -notin @('http','https')) { throw 'Invalid listener.' }
-    $ruleName = 'RelaxKonOS-Personal-' + $sid
-    $rule = Get-NetFirewallRule -Name $ruleName -ErrorAction SilentlyContinue
-    if ($rule -and $rule.Group -ne 'RelaxKonOS') { throw 'Foreign firewall rule.' }
-    if ($rule) { Remove-NetFirewallRule -Name $ruleName }
-    if (-not $endpoint.IsLoopback) {
-        New-NetFirewallRule -Name $ruleName -DisplayName ('RelaxKonOS Personal ' + $sid) -Group 'RelaxKonOS' -Direction Inbound -Action Allow -Protocol TCP -LocalPort $endpoint.Port -Profile Domain,Private -RemoteAddress LocalSubnet | Out-Null
-    }
+    Set-ManagedPersonalFirewall $request.listenUrl
 }
 } catch {
     $failure = $_

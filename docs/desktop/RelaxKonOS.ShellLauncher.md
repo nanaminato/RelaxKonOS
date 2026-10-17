@@ -1,6 +1,6 @@
 # RelaxKonOS 桌面 Shell 与启动器设计
 
-> 当前实现：内置 Windows-like、macOS-like、Ubuntu-like 布局及外部桌面包。接口以 `Framework/RelaxKonOS.Shell/ShellContracts.cs` 为准，当前 Shell API 为 1.1。
+> 当前实现：内置 Windows-like、macOS-like、Ubuntu-like 布局及外部桌面包。接口以 `Framework/RelaxKonOS.Shell/ShellContracts.cs` 为准，当前 Shell API 为 1.3。
 
 ## 1. 职责与边界
 

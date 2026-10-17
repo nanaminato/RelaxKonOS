@@ -23,6 +23,16 @@ public sealed partial class TaskbarGroupViewModel : ObservableObject
         Update(windows);
     }
 
+    private AppEntryViewModel? _application;
+    public void SetApplication(AppEntryViewModel? application, bool pinned)
+    {
+        _application = application;
+        IsPinned = pinned;
+        OnPropertyChanged(nameof(IconGlyph));
+        OnPropertyChanged(nameof(IconImage));
+        OnPropertyChanged(nameof(HasIconImage));
+    }
+    [ObservableProperty] private bool _isPinned;
     public AppId AppId { get; }
     public string DisplayName { get; }
     public ObservableCollection<ManagedWindow> Windows { get; } = new();
@@ -30,8 +40,8 @@ public sealed partial class TaskbarGroupViewModel : ObservableObject
     public int WindowCount => Windows.Count;
     public bool HasMultipleWindows => WindowCount > 1;
     public bool IsActive => Windows.Any(window => window.IsActive);
-    public string? IconGlyph => Windows.FirstOrDefault()?.IconGlyph;
-    public IImage? IconImage => Windows.FirstOrDefault()?.IconImage;
+    public string? IconGlyph => Windows.FirstOrDefault()?.IconGlyph ?? _application?.IconGlyph;
+    public IImage? IconImage => Windows.FirstOrDefault()?.IconImage ?? _application?.IconImage;
     public bool HasIconImage => IconImage is not null;
 
     public void Update(IEnumerable<ManagedWindow> windows)

@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Files;
@@ -11,7 +13,7 @@ using RelaxKonOS.Server.HostMode;
 namespace RelaxKonOS.Server.Files;
 
 /// <summary>In-memory, identity-scoped file jobs. Never replays jobs after a server restart.</summary>
-public sealed class FileOperationService(IPrivilegedFileService privileged,
+public sealed partial class FileOperationService(IPrivilegedFileService privileged,
     IServerModeResolver mode,
     IServiceScopeFactory executionScopes, IUserExecutionTransport executionTransport) : IDisposable
 {
@@ -20,6 +22,7 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
     private readonly HashSet<Job> _active = [];
     private readonly SemaphoreSlim _workers = new(2);
     private bool _disposed;
+    private readonly byte[] _credentialKey = RandomNumberGenerator.GetBytes(32);
     private static StringComparison Comparison => OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
     private static bool ContainsPath(string parent, string child) => string.Equals(parent, child, Comparison)
         || child.StartsWith(parent.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, Comparison);
@@ -42,6 +45,12 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
         }
         if (request.RequestId == Guid.Empty || !Enum.IsDefined(request.Kind) || request.Items is null
             || request.Items.Count is < 1 or > 1000 || request.Items.Any(item => item is null)) throw new ArgumentException("Invalid operation request (1–1000 items required).");
+        var archive = request.Kind is FileOperationKind.Compress or FileOperationKind.Extract;
+        request.Credentials?.Validate();
+        if (!archive && request.Credentials is not null) throw new ArgumentException("Passwords are only valid for archive operations.");
+        var fingerprint = request.Credentials is null ? [] : HMACSHA256.HashData(_credentialKey, Encoding.UTF8.GetBytes(request.Credentials.Password));
+        if (request.Kind == FileOperationKind.Extract && request.Items.Count != 1)
+            throw new ArgumentException("Extraction requires one archive.");
         var items = request.Items.Select(item =>
         {
             var source = Normalize(item.SourcePath);
@@ -56,10 +65,14 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
             throw new ArgumentException("Overlapping source selections must be normalized before submission.");
         if (items.Select(x => x.SourcePath).Distinct(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal).Count() != items.Length)
             throw new ArgumentException("Duplicate sources.");
-        if (items.Any(item => item.DestinationPath is { } destination && items.Any(other => other != item
+        if (request.Kind == FileOperationKind.Compress && items.Select(i => i.DestinationPath).Distinct(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal).Count() != 1)
+            throw new ArgumentException("Compression requires one shared destination.");
+        if (!archive && items.Any(item => item.DestinationPath is { } destination && items.Any(other => other != item
             && (ContainsPath(other.SourcePath, destination) || ContainsPath(destination, other.SourcePath)
                 || other.DestinationPath is { } d && (ContainsPath(d, destination) || ContainsPath(destination, d))))))
             throw new ArgumentException("Overlapping source and destination selections.");
+        if (archive && items.Any(item => items.Any(other => ContainsPath(other.SourcePath, item.DestinationPath!) || ContainsPath(item.DestinationPath!, other.SourcePath))))
+            throw new ArgumentException("Archive source and destination trees overlap.");
         request = request with { Items = items };
         lock (_gate)
         {
@@ -67,7 +80,8 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
             var existing = _jobs.Values.FirstOrDefault(j => j.Owner == owner && j.Request.RequestId == request.RequestId);
             if (existing is not null)
             {
-                if (existing.Request.Kind != request.Kind || !existing.Request.Items.SequenceEqual(items))
+                if (existing.Request.Kind != request.Kind || !existing.Request.Items.SequenceEqual(items)
+                    || !CryptographicOperations.FixedTimeEquals(existing.CredentialFingerprint, fingerprint))
                     throw new ArgumentException("Request ID was already used for a different operation.");
                 return existing.Snapshot();
             }
@@ -81,7 +95,7 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
             }
             if (_jobs.Count >= 256 || _jobs.Values.Count(j => !j.Snapshot().IsTerminal) >= 32)
                 throw new InvalidOperationException("Operation capacity reached. Clear or wait for existing operations.");
-            var job = new Job(owner, new ClaimsPrincipal(principal), request, executionContext, rootExecution);
+            var job = new Job(owner, new ClaimsPrincipal(principal), request, executionContext, rootExecution, fingerprint);
             _jobs.Add(job.Id, job);
             _ = Task.Run(() => RunAsync(job));
             return job.Snapshot();
@@ -121,12 +135,20 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
         var job = Find(owner, id);
         lock (job.Gate)
         {
-            if (job.LastDecision == request) return job.Snapshot();
+            if (job.LastDecision == request with { Credentials = null }) return job.Snapshot();
             if (job.State != FileOperationState.WaitingForDecision || job.Decision?.Task.IsCompleted == true || job.Issue?.Id != request.IssueId
                 || !job.Issue.Choices.Contains(request.Action)) throw new ArgumentException("The issue or decision is no longer valid.");
+            var passwordIssue = job.Issue.Code is "archive-password-required" or "archive-password-invalid";
+            if (passwordIssue && request.Action == FileOperationDecision.Retry)
+            {
+                if (request.Credentials is null || request.ApplyToAll) throw new ArgumentException("An archive password is required for this retry.");
+                request.Credentials.Validate();
+                job.Credentials = request.Credentials;
+            }
+            else if (request.Credentials is not null) throw new ArgumentException("Unexpected archive password.");
             if (principal is not null) job.Principal = new ClaimsPrincipal(principal);
-            job.LastDecision = request;
-            job.Decision!.TrySetResult(request);
+            job.LastDecision = request with { Credentials = null };
+            job.Decision!.TrySetResult(request with { Credentials = null });
             return job.Snapshot();
         }
     }
@@ -152,15 +174,20 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
             await _workers.WaitAsync(ct);
             job.HasWorker = true;
             job.SetState(FileOperationState.Running);
-            foreach (var item in job.Request.Items)
+            if (job.Request.Kind is FileOperationKind.Compress or FileOperationKind.Extract)
+                await ProcessArchiveAsync(job);
+            else
             {
-                ct.ThrowIfCancellationRequested();
-                var destination = item.DestinationPath;
-                if (destination is not null && string.Equals(item.SourcePath, destination, Comparison))
-                    destination = job.ExecutionContext is not null || job.RootExecution
-                        ? await CopyNameUserAsync(job, destination, ct) : CopyName(destination);
-                if (await ProcessAsync(job, item.SourcePath, destination))
-                    lock (job.Gate) job.Completed.Add(item.SourcePath);
+                foreach (var item in job.Request.Items)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var destination = item.DestinationPath;
+                    if (destination is not null && string.Equals(item.SourcePath, destination, Comparison))
+                        destination = job.ExecutionContext is not null || job.RootExecution
+                            ? await CopyNameUserAsync(job, destination, ct) : CopyName(destination);
+                    if (await ProcessAsync(job, item.SourcePath, destination))
+                        lock (job.Gate) job.Completed.Add(item.SourcePath);
+                }
             }
             outcome = job.Cancellation.IsCancellationRequested ? FileOperationState.Cancelled
                 : job.Skipped > 0 ? FileOperationState.CompletedWithIssues : FileOperationState.Completed;
@@ -385,32 +412,35 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
     }
 
     private async Task<T> ExecuteUserAsync<T>(Job job, UserExecutionOperationKind operation, string? path = null,
-        string? destinationPath = null, bool overwrite = false, CancellationToken cancellationToken = default)
+        string? destinationPath = null, bool overwrite = false, CancellationToken cancellationToken = default,
+        long? offset = null, long? expectedBytes = null, string? content = null)
     {
         if (job.RootExecution)
             return await ExecutePrivilegedOperationAsync<T>(
                 TryAuthorize(job, path!, destinationPath, Capability(operation)) == PrivilegedFileAuthorizationSource.HostRoot
                     ? PrivilegedFileAuthorizationSource.HostRoot : throw new UnauthorizedAccessException("Root session is no longer authorized."),
-                operation, path, destinationPath, overwrite, cancellationToken);
+                operation, path, destinationPath, overwrite, cancellationToken, offset, expectedBytes, content);
         var context = job.ExecutionContext ?? throw new InvalidOperationException("A user-execution context is required.");
         if (mode.Mode == ServerMode.User && OperatingSystem.IsWindows())
         {
             var request = new UserExecutionRequest(context.Identity, operation, Path: path,
-                DestinationPath: destinationPath, Overwrite: overwrite, OperationId: Guid.NewGuid());
+                DestinationPath: destinationPath, Overwrite: overwrite, OperationId: Guid.NewGuid(),
+                Offset: offset, ExpectedBytes: expectedBytes, ContentBase64: content);
             if (!new DirectUserExecutionService(mode).Validate(context, request).Success)
                 throw new UnauthorizedAccessException("Personal execution identity changed.");
             try { return (T)(await DirectUserExecutionOperations.ExecuteAsync(new LocalFileService(mode), request, cancellationToken))!; }
             catch (UnauthorizedAccessException)
             {
                 if (TryAuthorize(job, path!, destinationPath, Capability(operation)) is not { } personalAuthorization) throw;
-                return await ExecutePrivilegedOperationAsync<T>(personalAuthorization, operation, path, destinationPath, overwrite, cancellationToken);
+                return await ExecutePrivilegedOperationAsync<T>(personalAuthorization, operation, path, destinationPath, overwrite, cancellationToken, offset, expectedBytes, content);
             }
         }
         var response = await executionTransport.ExecuteAsync(new UserExecutionRequest(context.Identity, operation,
-            Path: path, DestinationPath: destinationPath, Overwrite: overwrite, OperationId: Guid.NewGuid()), cancellationToken);
+            Path: path, DestinationPath: destinationPath, Overwrite: overwrite, OperationId: Guid.NewGuid(),
+            Offset: offset, ExpectedBytes: expectedBytes, ContentBase64: content), cancellationToken);
         if (!response.Success && response.ProblemCode == UserExecutionProblemCode.AccessDenied
             && TryAuthorize(job, path!, destinationPath, Capability(operation)) is { } authorized)
-            return await ExecutePrivilegedOperationAsync<T>(authorized, operation, path, destinationPath, overwrite, cancellationToken);
+            return await ExecutePrivilegedOperationAsync<T>(authorized, operation, path, destinationPath, overwrite, cancellationToken, offset, expectedBytes, content);
         if (!response.Success)
             throw response.ProblemCode switch
             {
@@ -534,13 +564,16 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
         UserExecutionOperationKind.FileCopy => FileElevationCapability.Copy,
         UserExecutionOperationKind.FileMove => FileElevationCapability.Move,
         UserExecutionOperationKind.FileDelete => FileElevationCapability.Delete,
+        UserExecutionOperationKind.FileCreateDirectory => FileElevationCapability.CreateDirectory,
+        UserExecutionOperationKind.FileCreateStaging or UserExecutionOperationKind.FileAppendStaging => FileElevationCapability.Upload,
         _ => FileElevationCapability.Read,
     };
     private static FileElevationCapability Capability(FileOperationKind kind) => kind switch
     {
         FileOperationKind.Copy => FileElevationCapability.Copy,
         FileOperationKind.Move => FileElevationCapability.Move,
-        _ => FileElevationCapability.Delete,
+        FileOperationKind.Delete => FileElevationCapability.Delete,
+        _ => throw new InvalidOperationException("Archive jobs authorize each filesystem request separately."),
     };
     private async Task ExecutePrivilegedAsync(Job job, PrivilegedFileAuthorizationSource authorization, string source, string? destination, bool replace)
     {
@@ -551,15 +584,22 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
         {
             case FileOperationKind.Copy: await privileged.CopyAsync(authorization, source, destination!, replace); break;
             case FileOperationKind.Move: await privileged.MoveAsync(authorization, source, destination!, replace); break;
-            default: await privileged.DeleteAsync(authorization, source); break;
+            case FileOperationKind.Delete: await privileged.DeleteAsync(authorization, source); break;
+            default: throw new InvalidOperationException("Unsupported privileged file job operation.");
         }
     }
     private async Task<T> ExecutePrivilegedOperationAsync<T>(PrivilegedFileAuthorizationSource source,
-        UserExecutionOperationKind operation, string? path, string? destination, bool overwrite, CancellationToken ct)
+        UserExecutionOperationKind operation, string? path, string? destination, bool overwrite, CancellationToken ct,
+        long? offset = null, long? expectedBytes = null, string? content = null)
     {
         object? result = operation switch
         {
             UserExecutionOperationKind.FileGetInfo => await privileged.GetInfoAsync(source, path!, ct),
+            UserExecutionOperationKind.FileGetProperties => await privileged.GetPropertiesAsync(source, path!, ct),
+            UserExecutionOperationKind.FileRead => await ReadPrivilegedArchiveChunkAsync(source, path!, offset!.Value, expectedBytes!.Value, ct),
+            UserExecutionOperationKind.FileCreateDirectory => await CreatePrivilegedArchiveDirectoryAsync(source, path!, ct),
+            UserExecutionOperationKind.FileCreateStaging => await CreatePrivilegedArchiveStagingAsync(source, path!, ct),
+            UserExecutionOperationKind.FileAppendStaging => await AppendPrivilegedArchiveChunkAsync(source, path!, offset!.Value, content!, ct),
             UserExecutionOperationKind.FileListDirectory => await privileged.ListDirectoryAsync(source, path!, ct),
             UserExecutionOperationKind.FileCopy => await privileged.CopyAsync(source, path!, destination!, overwrite, ct),
             UserExecutionOperationKind.FileMove => await privileged.MoveAsync(source, path!, destination!, overwrite, ct),
@@ -578,14 +618,17 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
             foreach (var job in _jobs.Values) job.Cancellation.Cancel();
         }
     }
-    private sealed class Job(string owner, ClaimsPrincipal principal, StartFileOperationRequest request, UserExecutionContext? executionContext, bool rootExecution)
+    private sealed class Job(string owner, ClaimsPrincipal principal, StartFileOperationRequest request, UserExecutionContext? executionContext, bool rootExecution,
+        byte[] credentialFingerprint)
     {
         public readonly object Gate = new();
         public Guid Id { get; } = Guid.NewGuid();
         public DateTimeOffset CreatedAt { get; } = DateTimeOffset.UtcNow;
         public string Owner { get; } = owner;
         public ClaimsPrincipal Principal { get; set; } = principal;
-        public StartFileOperationRequest Request { get; } = request;
+        public StartFileOperationRequest Request { get; } = request with { Credentials = null };
+        public ArchiveCredentials? Credentials = request.Credentials;
+        public byte[] CredentialFingerprint { get; } = credentialFingerprint;
         public UserExecutionContext? ExecutionContext { get; } = executionContext;
         public bool RootExecution { get; } = rootExecution;
         public CancellationTokenSource Cancellation { get; } = new();
@@ -601,7 +644,15 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
         public TaskCompletionSource<FileOperationDecisionRequest>? Decision;
         public FileOperationDecisionRequest? LastDecision;
         public Dictionary<string, FileOperationDecision> Defaults { get; } = [];
-        public void SetState(FileOperationState state) { lock (Gate) State = state; }
+        public void SetState(FileOperationState state)
+        {
+            lock (Gate)
+            {
+                State = state;
+                if (state is FileOperationState.Completed or FileOperationState.CompletedWithIssues or FileOperationState.Cancelled or FileOperationState.Failed)
+                    Credentials = null;
+            }
+        }
         public void ProcessedOne(string path, bool complete = true)
         {
             lock (Gate) Processed++;
