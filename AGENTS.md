@@ -15,3 +15,13 @@ copy under the repository-level `docs/` tree.
 to the Android-owned documentation. Repository-level architecture or protocol
 documents may link to Android documents, but must not duplicate their detailed
 mobile design.
+
+# Managed runtime lifecycle
+
+Before adding or changing a built-in application's managed software installation,
+uninstallation, version selection, update, repair, rollback, or release-source
+management, read `docs/platform/RelaxKonOS.ManagedRuntimes.Design.md` and follow
+its lifecycle, ownership, trust, and verification rules. Update the relevant
+tracking item and application documentation in the same change. Distinguish
+planned capabilities from implemented and verified behavior; a pinned single
+version or same-version reinstall does not constitute multi-version updates.
