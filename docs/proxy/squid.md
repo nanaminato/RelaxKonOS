@@ -1,6 +1,6 @@
 # Squid HTTP 代理网关
 
-状态：已实现后端 API、Avalonia 内置应用与 Android 管理应用。Squid 安装和主机恢复由管理员操作；运行时生效与 Linux 实机验收仍需验证。
+状态：已实现后端 API、Avalonia 内置应用与 Android 管理应用。桌面支持通过 APT 安装和卸载 Squid，主机恢复由管理员操作；运行时生效与 Linux 实机验收仍需验证。
 
 ## 定位与架构
 
@@ -35,7 +35,7 @@ flowchart LR
 | 应用配置、备份、reload 失败回滚、未完成事务阻断 | 已实现，Linux 实机验收待执行 |
 | start / stop / restart / reload / enable / disable | 已实现，固定 squid.service |
 | 操作 ID、幂等键、controller 写权限、observer 读权限、审计 | 复用现有基础设施 |
-| 软件包安装 / 卸载 | 未实现；由管理员使用系统包管理器安装 |
+| 软件包安装 / 卸载 | 桌面运行状态页支持 APT 安装和卸载；卸载保留配置 |
 | 编辑器读取结构化状态、desired/published 修订与磁盘漂移 | 已实现主机级持久化；尚未接入用户级 Configuration Registry，不宣称运行时 applied |
 | Avalonia / Android 独立应用入口与编辑器 | 已实现配置表单、预览、校验、发布、服务控制和操作查询；Android 文档见其自有目录 |
 | Basic 用户与密码哈希管理、凭据轮换 | 后续阶段 |
@@ -44,7 +44,7 @@ flowchart LR
 | 从 Mihomo 当前有效配置自动发现 HTTP 端口并跟踪变更 | 后续阶段；当前手工填写 HTTP parent |
 | 磁盘缓存、透明代理、SSL Bump、ICAP/eCAP、多实例、Windows Squid | 不在当前阶段；Windows 无 Squid 发行版，故不计划移植 |
 
-运行时应用证明、安装器、Basic 认证、日志和防火墙联动尚未实现。Android 产品设计和实现进度只维护在 `Client/RelaxKonOS.Client.Android/docs/`。
+运行时应用证明、Basic 认证、日志和防火墙联动尚未实现。Android 产品设计和实现进度只维护在 `Client/RelaxKonOS.Client.Android/docs/`。
 
 ## 安全与配置语义
 
@@ -157,3 +157,11 @@ dotnet run --project RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no
 8. 进程在发布窗口中断后状态显示 recoveryRequired；按恢复规程恢复，再验证可重新应用。
 
 实现入口：`Shared/RelaxKonOS.Protocol/GatewayProxy/`、`RelaxKonOS.Server/GatewayProxy/`、`RelaxKonOS.Server/Endpoints/GatewayProxyEndpoints.cs`、`RelaxKonOS.PrivilegedHelper/SquidOperations.cs`。
+
+### 桌面软件包控制
+
+运行状态页提供安装、卸载、启动、停止、重启、重载与开机启动切换。安装和卸载使用 `POST /lifecycle` 的 `install` / `uninstall` 动作，要求 `ProxyManage` 与 `Idempotency-Key`，通过现有操作队列查询结果并在完成后刷新状态。确认对话框期间锁定重复提交；取消不会发送请求。平台不支持、只读、已有待确认操作或恢复标记时不允许安装和卸载。
+
+自动包管理按 `/etc/os-release` 的 `ID`、`VERSION_ID` 和仓库共享的发行版清单判定，明确支持 Debian 12、13，Ubuntu 22.04、24.04、26.04，以及清单内的 Linux Mint 21.x、22.x。还须存在 `/usr/bin/apt-get` 和 `/usr/bin/systemctl`，不能仅凭 `ID_LIKE=debian` 将未知衍生版判为支持。状态契约的必需字段 `packageManagementSupported` 返回实际检测结果；桌面据此禁用安装、卸载并给出说明，配置与服务控制仍按各自条件判断。Helper 在执行时再次检查同一条件，仅调用固定 APT 路径和固定 `squid` 包名。安装先更新包索引，再以非交互方式安装并保留现有配置；单个包管理步骤最长十分钟。发行版安装脚本可能启动默认服务，安装后需检查实际状态，再预览和接管配置。其他发行版仍可通过管理员安装后使用现有配置与服务控制。
+
+卸载先停止 `squid.service`、禁用开机启动，再执行 `apt-get remove --yes squid`，不执行 purge 或 autoremove，保留 `/etc/squid` 文件及服务端保存的编辑配置。卸载中断或失败不会自动重启服务；以刷新后的主机状态为准。软件包操作与配置及服务操作共享 Helper 文件锁；安装成功必须检测到固定二进制，卸载成功必须确认其已移除。Linux 实机的包管理脚本、权限与服务行为仍需验收。

@@ -28,7 +28,7 @@
     "squid.pending": "Result is unconfirmed. Resume with the same request key; do not create a duplicate operation.",
     "squid.pending_title": "Unconfirmed server operation",
     "squid.unsupported": "Squid runs only on a Linux System Mode server, so this host cannot provide the gateway.",
-    "squid.install_required": "Squid is not installed. Install the distribution Squid package on the server before applying configuration.",
+    "squid.install_required": "Squid is not installed. Supported hosts can install it from the runtime page; an administrator can also install the distribution package.",
     "squid.recovery_required": "An interrupted configuration transaction requires host recovery. Stop and disable remain available. See the Squid recovery procedure.",
     "squid.status": "Service: {0}; boot: {1}; desired revision: {2}; published: {3}; disk: {4}. This does not verify runtime adoption.",
     "squid.running": "Running",
@@ -100,6 +100,12 @@
     "squid.operation_cancelled": "Cancelled",
     "squid.operation_interrupted": "Interrupted",
     "squid.revisions": "Desired revision: %1$d; published: %2$s",
-    "squid.runtime_note": "File matching does not verify runtime adoption or HTTP/CONNECT availability."
+    "squid.runtime_note": "File matching does not verify runtime adoption or HTTP/CONNECT availability.",
+    "squid.install": "Install Squid",
+    "squid.uninstall": "Uninstall Squid",
+    "squid.install_message": "Install Squid from the server APT repositories. Supported systems: Debian 12/13, Ubuntu 22.04/24.04/26.04 and Linux Mint 21.x/22.x. This may take several minutes. Distribution scripts may start the default service. Check status, then preview and apply managed configuration. Continue?",
+    "squid.uninstall_message": "Stop Squid, disable startup and remove the squid package. Proxy connections will be interrupted. Configuration files and saved editor state are retained; no purge or dependency autoremove is performed. Continue?",
+    "squid.package_support": "Automatic install/remove supports Debian 12/13, Ubuntu 22.04/24.04/26.04 and Linux Mint 21.x/22.x with APT and systemd.",
+    "squid.package_unsupported": "Automatic package management is unavailable: the distribution is outside the supported list, or APT/systemd is missing. An administrator can install Squid to use configuration and service controls."
   }
 }

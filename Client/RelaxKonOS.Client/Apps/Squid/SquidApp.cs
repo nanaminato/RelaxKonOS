@@ -32,6 +32,8 @@ public sealed class SquidApp : RemoteApplicationBase
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.squid.display_name"), view,
             new Rect(90, 55, 960, 760), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
+        vm.ConfirmPackageAsync = uninstall => ConfirmAsync(uninstall ? "squid.uninstall" : "squid.install",
+            uninstall ? "squid.uninstall_message" : "squid.install_message");
         vm.ConfirmApplyAsync = () => ConfirmAsync("squid.apply_title", "squid.apply_message");
         vm.ConfirmReloadAsync = () => ConfirmAsync("common.discard_title", "squid.reload_message");
         window.CanCloseAsync = () => vm.IsBusy || vm.HasPending || vm.HasUnsavedChanges

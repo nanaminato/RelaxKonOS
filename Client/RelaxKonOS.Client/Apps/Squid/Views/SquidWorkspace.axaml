@@ -92,8 +92,12 @@
                 </Border>
               </StackPanel>
               <TextBlock Classes="section-hint" Text="{loc:Loc squid.runtime_note}" />
+              <TextBlock Classes="section-hint" Text="{loc:Loc squid.package_support}" />
+              <TextBlock Classes="problem" Text="{loc:Loc squid.package_unsupported}" IsVisible="{Binding ShowPackageUnsupported}" />
               <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" />
               <WrapPanel>
+                <Button Content="{loc:Loc squid.install}" Command="{Binding InstallCommand}" IsVisible="{Binding ShowInstallRequired}" Margin="0,0,8,8" />
+                <Button Content="{loc:Loc squid.uninstall}" Command="{Binding UninstallCommand}" IsVisible="{Binding !ShowInstallRequired}" Margin="0,0,8,8" />
                 <Button Content="{loc:Loc squid.start}" Command="{Binding StartCommand}" Margin="0,0,8,8" />
                 <Button Content="{loc:Loc squid.stop}" Command="{Binding StopCommand}" Margin="0,0,8,8" />
                 <Button Content="{loc:Loc squid.restart}" Command="{Binding RestartCommand}" Margin="0,0,8,8" />

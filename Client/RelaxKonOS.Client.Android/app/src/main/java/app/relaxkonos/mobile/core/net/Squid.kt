@@ -13,7 +13,7 @@ data class SquidConfiguration(val bindAddress: String = "127.0.0.1", val port: I
     fun body(): JsonBody = SquidWire.body(json())
 }
 data class SquidStatus(val supported: Boolean, val installed: Boolean, val running: Boolean, val enabled: Boolean,
-    val managed: Boolean, val configurationRevision: String, val recoveryRequired: Boolean)
+    val managed: Boolean, val configurationRevision: String, val packageManagementSupported: Boolean, val recoveryRequired: Boolean)
 data class SquidSnapshot(val configuration: SquidConfiguration?, val desiredRevision: Long, val publishedRevision: Long?,
     val lastProblemCode: String?, val status: SquidStatus, val matchesPublishedConfiguration: Boolean)
 data class SquidPreview(val valid: Boolean, val configuration: String?, val errors: List<String>)
@@ -42,7 +42,7 @@ internal object SquidWire {
         SquidSnapshot(if (state.isNull("configuration")) null else configuration(state.getJSONObject("configuration")), state.getLong("desiredRevision"),
             if (state.isNull("publishedRevision")) null else state.getLong("publishedRevision"), state.optional("lastProblemCode"),
             SquidStatus(s.getBoolean("supported"), s.getBoolean("installed"), s.getBoolean("running"), s.getBoolean("enabled"), s.getBoolean("managed"),
-                s.getString("configurationRevision"), s.getBoolean("recoveryRequired")), root.getBoolean("matchesPublishedConfiguration"))
+                s.getString("configurationRevision"), s.getBoolean("packageManagementSupported"), s.getBoolean("recoveryRequired")), root.getBoolean("matchesPublishedConfiguration"))
     }
     fun preview(payload: String): SquidPreview = JSONObject(payload).let { SquidPreview(it.getBoolean("valid"), it.optional("configuration"), strings(it, "errors")) }
     fun validation(payload: String): SquidValidation = JSONObject(payload).let { SquidValidation(it.getBoolean("valid"), it.optional("problemCode"), it.getString("diagnostics")) }

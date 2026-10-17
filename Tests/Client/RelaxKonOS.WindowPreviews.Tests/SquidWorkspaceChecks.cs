@@ -99,6 +99,46 @@ internal static class SquidWorkspaceChecks
         fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { Supported = true } };
         Complete(vm.RefreshCommand.ExecuteAsync(null));
 
+        fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { PackageManagementSupported = false } };
+        Complete(vm.RefreshCommand.ExecuteAsync(null));
+        Check(!vm.CanInstall && !vm.CanUninstall && vm.ShowPackageUnsupported,
+            "A Linux host without supported package management explains why both package actions are disabled.");
+        var unavailablePackageRequests = fake.Submissions.Count;
+        Complete(vm.InstallCommand.ExecuteAsync(null));
+        Check(fake.Submissions.Count == unavailablePackageRequests, "Direct execution cannot bypass package capability gating.");
+        fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { PackageManagementSupported = true } };
+        Complete(vm.RefreshCommand.ExecuteAsync(null));
+        // Package actions do not depend on having an adopted configuration or valid editor draft.
+        Check(vm.CanInstall && !vm.CanUninstall, "A supported uninstalled host offers installation only.");
+        vm.CanManage = false;
+        Complete(vm.InstallCommand.ExecuteAsync(null));
+        Check(!vm.CanInstall, "Read-only users cannot install packages.");
+        vm.CanManage = true;
+        var beforePackage = fake.Submissions.Count;
+        vm.ConfirmPackageAsync = _ => Task.FromResult(false);
+        Complete(vm.InstallCommand.ExecuteAsync(null));
+        Check(fake.Submissions.Count == beforePackage, "Cancelling installation never submits a mutation.");
+        vm.ConfirmPackageAsync = _ => Task.FromResult(true);
+        fake.OperationFailed = true;
+        Complete(vm.InstallCommand.ExecuteAsync(null));
+        Check(vm.ShowOutcomeFailure && !vm.HasPending && vm.CanInstall,
+            "A failed package operation retains visible failure feedback and permits an explicit retry.");
+        fake.OperationFailed = false;
+        Complete(vm.InstallCommand.ExecuteAsync(null));
+        Check(fake.Submissions.Last().Body is SquidLifecycleRequest { Action: SquidServiceAction.Install },
+            "Installation uses the typed, idempotent lifecycle contract.");
+        fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { Installed = true, Managed = false } };
+        Complete(vm.RefreshCommand.ExecuteAsync(null));
+        Check(vm.CanUninstall && !vm.CanInstall, "Unmanaged installed packages can be uninstalled.");
+        vm.ConfirmPackageAsync = _ => Task.FromResult(false);
+        beforePackage = fake.Submissions.Count;
+        Complete(vm.UninstallCommand.ExecuteAsync(null));
+        Check(fake.Submissions.Count == beforePackage, "Cancelling uninstall preserves the package.");
+        vm.ConfirmPackageAsync = _ => Task.FromResult(true);
+        Complete(vm.UninstallCommand.ExecuteAsync(null));
+        Check(fake.Submissions.Last().Body is SquidLifecycleRequest { Action: SquidServiceAction.Uninstall },
+            "Uninstall uses the typed lifecycle contract.");
+
         // Draft problems are reported in the card that owns the field, and they gate every publish action.
         vm.Port = "999";
         Check(!vm.IsConfigurationValid && vm.ListenerProblems.Count == 1
@@ -161,7 +201,7 @@ internal static class SquidWorkspaceChecks
         Check(!vm.CanRead && !vm.CanManage && vm.AllowedDomains == "" && vm.Snapshot is null, "A changed login must clear old host facts and disable writes.");
 
         // Blocking host states get their own band so the reason an action is missing is visible.
-        fake.Snapshot = fake.Snapshot with { Status = new SquidStatus(true, true, true, true, false, "hash", true) };
+        fake.Snapshot = fake.Snapshot with { Status = new SquidStatus(true, true, true, true, false, "hash", true, true) };
         using (var noticeVm = new SquidViewModel(fake) { CanRead = true, CanManage = false })
         {
             Complete(noticeVm.RefreshCommand.ExecuteAsync(null));
@@ -208,8 +248,8 @@ internal static class SquidWorkspaceChecks
     private static void Check(bool value, string message) { if (!value) throw new InvalidOperationException(message); }
     private sealed class SquidClientStub : ISquidClient
     {
-        public SquidConfigurationSnapshot Snapshot = new(new(new SquidConfiguration { Port = 1270 }, 1, 1, "hash", null), new(true, true, true, true, true, "hash"), true);
-        public int Reads; public int OperationReads; public bool LoseFirstResponse;
+        public SquidConfigurationSnapshot Snapshot = new(new(new SquidConfiguration { Port = 1270 }, 1, 1, "hash", null), new(true, true, true, true, true, "hash", true), true);
+        public int Reads; public int OperationReads; public bool LoseFirstResponse; public bool OperationFailed;
         public List<(string Key, object Body)> Submissions = [];
         private readonly Guid _id = Guid.NewGuid();
         public Task<SquidConfigurationSnapshot> ReadAsync(CancellationToken ct) { Reads++; return Task.FromResult(Snapshot); }
@@ -223,7 +263,7 @@ internal static class SquidWorkspaceChecks
         }
         public Task<ProxyOperationDto> OperationAsync(Guid id, CancellationToken ct)
         {
-            OperationReads++; return Task.FromResult(new ProxyOperationDto(id, "squid.configuration.apply", ProxyOperationState.Succeeded, "completed", "", null, DateTimeOffset.UtcNow));
+            OperationReads++; return Task.FromResult(new ProxyOperationDto(id, "squid.configuration.apply", OperationFailed ? ProxyOperationState.Failed : ProxyOperationState.Succeeded, "completed", OperationFailed ? "squid.package.install_failed" : "", null, DateTimeOffset.UtcNow));
         }
     }
 }

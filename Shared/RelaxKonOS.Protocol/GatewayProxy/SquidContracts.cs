@@ -30,9 +30,9 @@ public sealed record ApplySquidConfigurationRequest(SquidConfiguration Configura
 public sealed record SquidConfigurationPreview(bool Valid, string? Configuration, string[] Errors);
 public sealed record SquidNativeValidation(bool Valid, string? ProblemCode, string Diagnostics);
 [JsonConverter(typeof(JsonStringEnumConverter<SquidServiceAction>))]
-public enum SquidServiceAction { Start, Stop, Restart, Reload, Enable, Disable }
+public enum SquidServiceAction { Start, Stop, Restart, Reload, Enable, Disable, Install, Uninstall }
 public sealed record SquidLifecycleRequest(SquidServiceAction Action);
-public sealed record SquidStatus(bool Supported, bool Installed, bool Running, bool Enabled, bool Managed, string ConfigurationRevision, bool RecoveryRequired = false);
+public sealed record SquidStatus(bool Supported, bool Installed, bool Running, bool Enabled, bool Managed, string ConfigurationRevision, [property: JsonRequired] bool PackageManagementSupported, bool RecoveryRequired = false);
 
 /// <summary>Last submitted editor state and publication receipt; never a runtime applied claim.</summary>
 public sealed record SquidConfigurationState(SquidConfiguration? Configuration, long DesiredRevision,

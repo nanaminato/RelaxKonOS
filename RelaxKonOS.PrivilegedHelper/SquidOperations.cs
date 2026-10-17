@@ -29,11 +29,14 @@ internal static class SquidOperations
         if (request != clean) return Failure("squid.request.invalid", PrivilegedProblemCode.InvalidRequest);
         if (!OperatingSystem.IsLinux())
             return request.Operation == PrivilegedOperationKind.SquidStatus
-                ? Json(new SquidStatus(false, false, false, false, false, ""))
+                ? Json(new SquidStatus(false, false, false, false, false, "", false))
                 : Failure("squid.platform.unsupported", PrivilegedProblemCode.UnsupportedOperation);
         try
         {
             if (request.Operation == PrivilegedOperationKind.SquidStatus) return Json(await StatusAsync());
+            if (request.Operation == PrivilegedOperationKind.SquidServiceAction
+                && request.SquidServiceAction is SquidServiceAction.Install or SquidServiceAction.Uninstall)
+                return await PackageAsync(request.SquidServiceAction.Value);
             if (!File.Exists(Binary) || !File.Exists(Systemctl)) return Failure("squid.runtime.unavailable", PrivilegedProblemCode.UnsupportedOperation);
             EnsurePlainProtectedPath(DirectoryPath);
             if (!System.IO.Directory.Exists(DirectoryPath)) return Failure("squid.configuration_directory.missing");
@@ -67,6 +70,43 @@ internal static class SquidOperations
     }
 
     [SupportedOSPlatform("linux")]
+    private static async Task<PrivilegedOperationResult> PackageAsync(SquidServiceAction action)
+    {
+        const string apt = "/usr/bin/apt-get";
+        if (!LinuxDistributionSupport.IsSquidPackageSupported())
+            return Failure("squid.package.unsupported", PrivilegedProblemCode.UnsupportedOperation);
+        EnsurePlainProtectedPath(apt);
+        EnsurePlainProtectedPath(DirectoryPath);
+        EnsurePlainProtectedPath(PendingPath);
+        // Shared with configuration and lifecycle operations, including across Helper processes.
+        System.IO.Directory.CreateDirectory(DirectoryPath);
+        var lockPath = DirectoryPath + "/relaxkonos.lock";
+        EnsurePlainProtectedPath(lockPath);
+        using var gate = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        File.SetUnixFileMode(lockPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        if (File.Exists(PendingPath)) return Failure("squid.recovery.required");
+        if (action == SquidServiceAction.Install)
+        {
+            if (File.Exists(Binary)) return new(true);
+            var update = await RunAsync(apt, ["update"], TimeSpan.FromMinutes(10));
+            if (!update.Success) return update with { Error = "squid.package.update_failed" };
+            var install = await RunAsync(apt,
+                ["install", "--yes", "--no-remove", "--no-install-recommends", "-o", "Dpkg::Options::=--force-confold", "squid"], TimeSpan.FromMinutes(10));
+            if (!install.Success) return install with { Error = "squid.package.install_failed" };
+            return File.Exists(Binary) ? new(true) : Failure("squid.package.install_incomplete");
+        }
+        if (!File.Exists(Binary)) return new(true);
+        var stop = await RunAsync(Systemctl, ["stop", "squid.service"]);
+        if (!stop.Success) return stop;
+        var disable = await RunAsync(Systemctl, ["disable", "squid.service"]);
+        if (!disable.Success) return disable;
+        // remove, never purge/autoremove: preserve the administrator's config and other packages.
+        var remove = await RunAsync(apt, ["remove", "--yes", "squid"], TimeSpan.FromMinutes(10));
+        if (!remove.Success) return remove with { Error = "squid.package.uninstall_failed" };
+        return !File.Exists(Binary) ? new(true) : Failure("squid.package.uninstall_incomplete");
+    }
+
+    [SupportedOSPlatform("linux")]
     private static async Task<SquidStatus> StatusAsync()
     {
         EnsurePlainProtectedPath(DirectoryPath);
@@ -76,7 +116,7 @@ internal static class SquidOperations
         var enabled = installed && File.Exists(Systemctl) && (await RunAsync(Systemctl, ["is-enabled", "--quiet", "squid.service"])).Success;
         if (File.Exists(ConfigurationPath) && new FileInfo(ConfigurationPath).Length > 1024 * 1024) throw new IOException();
         var content = File.Exists(ConfigurationPath) ? await File.ReadAllBytesAsync(ConfigurationPath) : [];
-        return new(true, installed, running, enabled, await IsManagedAsync(), Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant(), File.Exists(PendingPath));
+        return new(true, installed, running, enabled, await IsManagedAsync(), Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant(), LinuxDistributionSupport.IsSquidPackageSupported(), File.Exists(PendingPath));
     }
 
     private static async Task<bool> IsManagedAsync()
@@ -191,16 +231,17 @@ internal static class SquidOperations
     [DllImport("libc", SetLastError = true)]
     private static extern int statx(int directory, [MarshalAs(UnmanagedType.LPUTF8Str)] string path, int flags, uint mask, out FileMetadata metadata);
 
-    private static async Task<PrivilegedOperationResult> RunAsync(string executable, string[] arguments)
+    private static async Task<PrivilegedOperationResult> RunAsync(string executable, string[] arguments, TimeSpan? deadline = null)
     {
         using var process = new Process { StartInfo = new(executable)
         { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true } };
         TrustedProcessEnvironment.Apply(process.StartInfo);
+        process.StartInfo.Environment["DEBIAN_FRONTEND"] = "noninteractive";
         foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
         if (!process.Start()) return Failure("squid.process.start_failed");
         var stdout = ReadBoundedAsync(process.StandardOutput);
         var stderr = ReadBoundedAsync(process.StandardError);
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var timeout = new CancellationTokenSource(deadline ?? TimeSpan.FromSeconds(30));
         try { await process.WaitForExitAsync(timeout.Token); }
         catch (OperationCanceledException)
         {

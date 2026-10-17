@@ -68,6 +68,7 @@ public partial class SquidViewModel : ObservableObject, IDisposable
     public ObservableCollection<SquidProblem> DomainProblems { get; } = [];
     public ObservableCollection<SquidProblem> UpstreamProblems { get; } = [];
 
+    public Func<bool, Task<bool>>? ConfirmPackageAsync { get; set; }
     public Func<Task<bool>>? ConfirmApplyAsync { get; set; }
     public Func<Task<bool>>? ConfirmReloadAsync { get; set; }
 
@@ -120,6 +121,9 @@ public partial class SquidViewModel : ObservableObject, IDisposable
     public bool CanPreview => CanEdit && IsConfigurationValid;
     public bool CanValidate => CanControlService && IsConfigurationValid;
     public bool CanApply => CanMutate && IsConfigurationValid && !NeedsAdoption;
+    public bool CanInstall => CanEdit && Snapshot?.Status is { Supported: true, Installed: false, RecoveryRequired: false, PackageManagementSupported: true };
+    public bool CanUninstall => CanMutate && Snapshot?.Status.PackageManagementSupported == true;
+    public bool ShowPackageUnsupported => Snapshot?.Status is { Supported: true, PackageManagementSupported: false };
     public bool CanStart => CanMutate && !IsRunning && IsConfigurationAdopted;
     public bool CanStopService => CanControlService && IsRunning;
     public bool CanRestartService => CanMutate && IsRunning && IsConfigurationAdopted;
@@ -132,7 +136,7 @@ public partial class SquidViewModel : ObservableObject, IDisposable
 
     private static readonly string[] DerivedState =
     [
-        nameof(CanEdit), nameof(CanMutate), nameof(CanControlService), nameof(CanRefresh), nameof(CanResume),
+        nameof(ShowPackageUnsupported), nameof(CanInstall), nameof(CanUninstall), nameof(CanEdit), nameof(CanMutate), nameof(CanControlService), nameof(CanRefresh), nameof(CanResume),
         nameof(CanLoadStored), nameof(CanPreview), nameof(CanValidate), nameof(CanApply), nameof(CanStart),
         nameof(CanStopService), nameof(CanRestartService), nameof(CanReloadService), nameof(CanEnableService),
         nameof(CanDisableService), nameof(CanToggleBoot), nameof(BootActionText),
@@ -180,6 +184,8 @@ public partial class SquidViewModel : ObservableObject, IDisposable
     private void NotifyActions()
     {
         foreach (var property in DerivedState) OnPropertyChanged(property);
+        InstallCommand.NotifyCanExecuteChanged();
+        UninstallCommand.NotifyCanExecuteChanged();
         RefreshCommand.NotifyCanExecuteChanged();
         LoadStoredCommand.NotifyCanExecuteChanged();
         PreviewCommand.NotifyCanExecuteChanged();
@@ -359,6 +365,23 @@ public partial class SquidViewModel : ObservableObject, IDisposable
         await SubmitAndWatchAsync();
     });
 
+    [RelayCommand(CanExecute = nameof(CanInstall))]
+    private Task InstallAsync() => PackageAsync(false);
+
+    [RelayCommand(CanExecute = nameof(CanUninstall))]
+    private Task UninstallAsync() => PackageAsync(true);
+
+    private async Task PackageAsync(bool uninstall)
+    {
+        if (!(uninstall ? CanUninstall : CanInstall)) return;
+        // Lock submission while the confirmation is open, then re-check permissions/facts.
+        IsBusy = true;
+        bool accepted;
+        try { accepted = ConfirmPackageAsync is not null && await ConfirmPackageAsync(uninstall); }
+        finally { IsBusy = false; }
+        if (accepted) await LifecycleAsync(uninstall ? SquidServiceAction.Uninstall : SquidServiceAction.Install);
+    }
+
     [RelayCommand(CanExecute = nameof(CanStart))] private Task StartAsync() => LifecycleAsync(SquidServiceAction.Start);
     [RelayCommand(CanExecute = nameof(CanStopService))] private Task StopAsync() => LifecycleAsync(SquidServiceAction.Stop);
     [RelayCommand(CanExecute = nameof(CanRestartService))] private Task RestartAsync() => LifecycleAsync(SquidServiceAction.Restart);
@@ -373,6 +396,8 @@ public partial class SquidViewModel : ObservableObject, IDisposable
     /// <summary>Re-checks the gate here as well: CanExecute alone must never authorize a host mutation.</summary>
     private bool Allows(SquidServiceAction action) => action switch
     {
+        SquidServiceAction.Install => CanInstall,
+        SquidServiceAction.Uninstall => CanUninstall,
         SquidServiceAction.Start => CanStart,
         SquidServiceAction.Stop => CanStopService,
         SquidServiceAction.Restart => CanRestartService,
@@ -416,7 +441,7 @@ public partial class SquidViewModel : ObservableObject, IDisposable
                 ClearPending(); throw;
             }
         }
-        for (var attempt = 0; attempt < 90; attempt++)
+        for (var attempt = 0; attempt < 1500; attempt++)
         {
             var operation = await _client.OperationAsync(_operation.Value, _lifetime.Token);
             if (operation.OperationId != _operation || !operation.Kind.StartsWith("squid.", StringComparison.Ordinal))

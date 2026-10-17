@@ -28,7 +28,7 @@
     "squid.pending": "結果が未確認です。同じリクエストキーで再開し、操作を重複させないでください。",
     "squid.pending_title": "未確認のサーバー操作",
     "squid.unsupported": "Squid は Linux システムモードのサーバーでのみ動作するため、このホストではゲートウェイを提供できません。",
-    "squid.install_required": "Squid が未インストールです。サーバーにディストリビューションの Squid パッケージをインストールしてください。",
+    "squid.install_required": "Squid がインストールされていません。対応するサーバーでは実行状態ページからインストールできます。管理者による配布元パッケージのインストールも可能です。",
     "squid.recovery_required": "中断した設定処理の復旧が必要です。停止と自動起動の無効化は利用できます。Squid の復旧手順を参照してください。",
     "squid.status": "サービス：{0}、自動起動：{1}、希望リビジョン：{2}、公開済み：{3}、ディスク：{4}。実行時の反映を証明するものではありません。",
     "squid.running": "実行中",
@@ -100,6 +100,12 @@
     "squid.operation_cancelled": "キャンセル済み",
     "squid.operation_interrupted": "中断",
     "squid.revisions": "希望リビジョン：%1$d、公開済み：%2$s",
-    "squid.runtime_note": "ファイルの一致は実行時の反映や HTTP/CONNECT の利用を証明しません。"
+    "squid.runtime_note": "ファイルの一致は実行時の反映や HTTP/CONNECT の利用を証明しません。",
+    "squid.install": "Squid をインストール",
+    "squid.uninstall": "Squid をアンインストール",
+    "squid.install_message": "サーバーの APT リポジトリから Squid をインストールします。Debian 12・13、Ubuntu 22.04・24.04・26.04、Linux Mint 21.x・22.x に対応します。数分かかる場合があります。配布元のスクリプトが既定のサービスを起動することがあります。完了後に状態を確認し、管理対象の設定をプレビューして適用してください。続行しますか？",
+    "squid.uninstall_message": "Squid を停止し、自動起動を無効にして squid パッケージを削除します。プロキシ接続は切断されます。設定ファイルと保存済み設定は保持し、設定の完全削除や依存パッケージの自動削除は行いません。続行しますか？",
+    "squid.package_support": "自動インストール／削除は Debian 12・13、Ubuntu 22.04・24.04・26.04、Linux Mint 21.x・22.x に対応します（APT と systemd が必要）。",
+    "squid.package_unsupported": "このサーバーは自動パッケージ管理の条件を満たしていません。対象外のディストリビューション、または APT／systemd がありません。管理者が Squid をインストールすると設定とサービス操作を利用できます。"
   }
 }

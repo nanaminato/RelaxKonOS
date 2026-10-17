@@ -28,7 +28,7 @@
     "squid.pending": "操作结果尚未确认。请继续查询，原请求键将被复用，请勿重复操作。",
     "squid.pending_title": "待确认的服务器操作",
     "squid.unsupported": "Squid 仅在 Linux 系统模式服务器上运行，因此该主机无法提供网关。",
-    "squid.install_required": "尚未安装 Squid。请先在服务器安装发行版 Squid 软件包，再应用配置。",
+    "squid.install_required": "尚未安装 Squid。支持自动包管理的服务器可在运行状态页安装；也可由管理员安装发行版软件包。",
     "squid.recovery_required": "配置事务中断，需要在主机上恢复。仍可停止服务或禁用开机启动，请参阅 Squid 恢复规程。",
     "squid.status": "服务：{0}；开机启动：{1}；期望修订：{2}；已发布：{3}；磁盘：{4}。此状态不证明运行时已采用配置。",
     "squid.running": "运行中",
@@ -100,6 +100,12 @@
     "squid.operation_cancelled": "已取消",
     "squid.operation_interrupted": "已中断",
     "squid.revisions": "期望修订：%1$d；已发布：%2$s",
-    "squid.runtime_note": "文件一致不证明运行时已采用配置或 HTTP/CONNECT 可用。"
+    "squid.runtime_note": "文件一致不证明运行时已采用配置或 HTTP/CONNECT 可用。",
+    "squid.install": "安装 Squid",
+    "squid.uninstall": "卸载 Squid",
+    "squid.install_message": "将通过服务器的 APT 软件源安装 Squid。支持 Debian 12、13，Ubuntu 22.04、24.04、26.04 和 Linux Mint 21.x、22.x。可能需要数分钟，发行版脚本可能启动默认服务。安装后请检查状态，再预览并应用受管配置。是否继续？",
+    "squid.uninstall_message": "将停止 Squid、禁用开机启动并卸载 squid 软件包。代理连接会中断；保留配置文件和已保存的编辑配置，不执行清除配置或自动移除依赖。是否继续？",
+    "squid.package_support": "自动安装／卸载支持 Debian 12、13，Ubuntu 22.04、24.04、26.04 和 Linux Mint 21.x、22.x（须具备 APT 和 systemd）。",
+    "squid.package_unsupported": "此服务器未满足自动包管理条件：发行版不在支持清单内，或缺少 APT／systemd。可由管理员安装 Squid 后使用配置与服务控制。"
   }
 }
