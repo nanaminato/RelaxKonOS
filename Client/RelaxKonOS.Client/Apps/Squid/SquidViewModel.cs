@@ -103,11 +103,14 @@ public partial class SquidViewModel : ObservableObject, IDisposable
     public bool ShowInstallRequired => Snapshot?.Status is { Supported: true, Installed: false };
     public bool ShowRecoveryRequired => Snapshot?.Status is { RecoveryRequired: true };
     public bool ShowAdoptionRequired => Snapshot?.Status is { Supported: true, Installed: true, Managed: false };
-    public bool ShowReadOnly => CanRead && !CanManage && Snapshot is not null;
+    /// <summary>The unsupported notice already explains a host that cannot run Squid.</summary>
+    public bool ShowReadOnly => CanRead && !CanManage && Snapshot?.Status is { Supported: true };
     /// <summary>Replacing an unmanaged file requires the explicit ownership opt-in.</summary>
     public bool NeedsAdoption => Snapshot?.Status is { Installed: true, Managed: false } && !AdoptExistingConfiguration;
 
-    public bool CanEdit => !_disposed && !_lifetime.IsCancellationRequested && CanRead && CanManage && !IsBusy && !HasPending;
+    /// <summary>A host that cannot run Squid offers no draft to edit; the notice explains why instead.</summary>
+    public bool CanEdit => !_disposed && !_lifetime.IsCancellationRequested && CanRead && CanManage && !IsBusy && !HasPending
+        && Snapshot?.Status is not { Supported: false };
     public bool CanMutate => CanEdit && Snapshot?.Status is { Supported: true, Installed: true, RecoveryRequired: false };
     /// <summary>Stop and disable stay available during host recovery; nothing else does.</summary>
     public bool CanControlService => CanEdit && Snapshot?.Status is { Supported: true, Installed: true };

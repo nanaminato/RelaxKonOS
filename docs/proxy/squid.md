@@ -42,7 +42,7 @@ flowchart LR
 | access.log 解析、脱敏、保留策略、SignalR、统计 | 后续阶段；Squid 自身仍写标准 access.log |
 | Firewall 来源限定规则及所有权清理 | 后续阶段；当前不会修改防火墙 |
 | 从 Mihomo 当前有效配置自动发现 HTTP 端口并跟踪变更 | 后续阶段；当前手工填写 HTTP parent |
-| 磁盘缓存、透明代理、SSL Bump、ICAP/eCAP、多实例、Windows Squid | 不在当前阶段 |
+| 磁盘缓存、透明代理、SSL Bump、ICAP/eCAP、多实例、Windows Squid | 不在当前阶段；Windows 无 Squid 发行版，故不计划移植 |
 
 运行时应用证明、安装器、Basic 认证、日志和防火墙联动尚未实现。Android 产品设计和实现进度只维护在 `Client/RelaxKonOS.Client.Android/docs/`。
 
@@ -56,6 +56,7 @@ flowchart LR
 - 不开启 TLS 解密或磁盘缓存。CONNECT 是隧道，无法提供 HTTPS 内容审计。来源 CIDR 不是用户认证；Basic 功能完成前宜用于 loopback、受信 LAN 或 VPN。
 - Helper 再次验证结构化数据并重新渲染。固定 `/usr/sbin/squid`、`/usr/bin/systemctl`、`squid.service` 和 `/etc/squid`；相关配置路径必须是 root 所有、非符号链接且不可被 group/other 写入的普通文件/目录。
 - Linux User Mode 的 host 操作限制覆盖 `/api/v1.0/gateway-proxy`。Windows 可查询不支持状态，不能执行 Squid 变更。
+- Squid 5–7 只有类 Unix 版本，没有可维护的 Windows 移植，因此 Windows 宿主不提供网关的安装、配置与服务控制。为避免用户只能看到"应用消失了"，Server 在**每个**可判定网关契约的平台都下发 `server.gateway-proxy`（Linux User Mode 除外，那里连特权 Helper 都没有）；客户端据此**保留应用入口**，窗口内用"不支持该服务器"状态说明本机无法提供网关，所有配置与服务动作保持禁用。
 
 ## 配置接管与事务
 
@@ -106,7 +107,7 @@ apply 请求体在外层包装为 `{"configuration": {上述字段}, "adoptExist
 
 ## 客户端使用
 
-Avalonia 应用目录中的 Squid 使用独立 `relaxkonos.squid` 应用 ID 和 `squid` 内置工厂键，仅在声明 `server.gateway-proxy` 的 Linux 系统模式服务器显示。服务器预装发行版 Squid 后，打开应用，编辑监听地址、来源 CIDR、域名 ACL 和 HTTP parent，预览并按需原生校验，确认完整替换后应用；服务原本停止时，再点击启动。首次接管现有配置必须显式勾选接管。
+Avalonia 应用目录中的 Squid 使用独立 `relaxkonos.squid` 应用 ID 和 `squid` 内置工厂键，在所有声明 `server.gateway-proxy` 的服务器上可见（Windows 与 Linux 系统模式；Linux 用户模式没有特权 Helper，不声明）。Windows 上打开只会看到"不支持该服务器"提示，配置与服务动作全部禁用（前提是特权 Helper 正常应答；Helper 缺失或不可达时窗口显示"不可用"，不把部署故障说成平台限制）。服务器预装发行版 Squid 后，打开应用，编辑监听地址、来源 CIDR、域名 ACL 和 HTTP parent，预览并按需原生校验，确认完整替换后应用；服务原本停止时，再点击启动。首次接管现有配置必须显式勾选接管。
 
 桌面窗口为单页卡片布局：顶部是身份与刷新，其下按严重程度显示阻断提示（状态未知、平台不支持、未安装、需要接管、恢复中、只读、待确认操作），正文左侧为运行状态与代理入口、右侧为域名规则、HTTP 上游与配置归属，底部固定动作栏（载入已保存配置、原生校验、预览、应用）与状态栏。窗口宽度低于 900 像素时卡片改为单列，动作栏换行而不横向溢出。
 

@@ -23,7 +23,7 @@
     <string name="squid_disable">Disable at boot</string>
     <string name="squid_resume">Resume pending operation</string>
     <string name="squid_pending">Result is unconfirmed. Resume with the same request key; do not create a duplicate operation.</string>
-    <string name="squid_unsupported">Squid is supported only on a Linux System Mode server.</string>
+    <string name="squid_unsupported">Squid runs only on a Linux System Mode server, so this host cannot provide the gateway.</string>
     <string name="squid_install_required">Squid is not installed. Install the distribution Squid package on the server before applying configuration.</string>
     <string name="squid_recovery_required">An interrupted configuration transaction requires host recovery. Stop and disable remain available. See the Squid recovery procedure.</string>
     <string name="squid_running">Running</string>

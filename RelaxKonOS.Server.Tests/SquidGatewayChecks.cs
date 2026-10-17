@@ -9,12 +9,15 @@ using Microsoft.AspNetCore.Http;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.Endpoints;
+using RelaxKonOS.Server.EventAlerts;
+using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Proxy;
 
 internal static class SquidGatewayChecks
 {
     public static async Task RunAsync()
     {
+        VerifyGatewayCapabilityContract();
         var defaults = new SquidConfiguration();
         var result = SquidConfigurationRenderer.Preview(defaults);
         Check(result.Valid && result.Configuration!.Contains("http_port 127.0.0.1:3128\n"), "Defaults must bind loopback.");
@@ -195,6 +198,53 @@ internal static class SquidGatewayChecks
             context.Response.Body.Position = 0;
             return (context.Response.StatusCode, await new StreamReader(context.Response.Body).ReadToEndAsync());
         }
+    }
+
+    /// <summary>
+    /// Clients decide whether the Squid entry exists from these strings alone, so the Server must
+    /// advertise the gateway wherever it can answer the contract, and nowhere else.
+    /// </summary>
+    private static void VerifyGatewayCapabilityContract()
+    {
+        static ServerHostCapabilitiesDto Host(bool proxy) => new(
+            Files: true, Terminal: true, Git: true, Metrics: true, Processes: true, Guardian: true,
+            Docker: false, Firewall: false, FileServices: false, WebServer: false, Certificates: false,
+            Tunnels: false, Proxy: proxy, PrivilegedOperations: false);
+
+        var windows = ServerDescriptorFactory.Create(HostPlatformKind.Windows, new StubModeResolver(Host(proxy: true)),
+            new EventAlertsOptions(), new UnavailableBackupRecoveryKey());
+        Check(windows.Capabilities.Contains(ServerCapabilities.GatewayProxy),
+            "A Windows host answers the gateway contract with an unsupported status, so the capability must stay advertised; dropping it makes every client hide the application instead of explaining the host.");
+
+        var unprivileged = ServerDescriptorFactory.Create(HostPlatformKind.Linux, new StubModeResolver(Host(proxy: false)),
+            new EventAlertsOptions(), new UnavailableBackupRecoveryKey());
+        Check(!unprivileged.Capabilities.Contains(ServerCapabilities.GatewayProxy)
+            && !unprivileged.Capabilities.Contains(ServerCapabilities.Proxy),
+            "A Linux User Mode host has no privileged Helper and must not advertise the gateway at all.");
+        Check(!windows.Capabilities.Contains(ServerCapabilities.PosixPermissions) && windows.Platform == HostPlatformKind.Windows,
+            "The descriptor must keep reporting the requested platform rather than probing the executing host.");
+    }
+
+    private sealed class StubModeResolver(ServerHostCapabilitiesDto capabilities) : IServerModeResolver
+    {
+        public ServerMode Mode => ServerMode.System;
+        public ServerCapabilitiesDto Describe() => new(Mode, new ServerExecutionIdentityDto(1000, "server", "/home/server"),
+            new ServerListenerDto("loopback"), new ServerAuthenticationDto("hostAccount", "helper"), capabilities, []);
+        public bool Supports(ServerHostFeature feature) => feature switch
+        {
+            ServerHostFeature.Proxy => capabilities.Proxy,
+            ServerHostFeature.Firewall => capabilities.Firewall,
+            ServerHostFeature.PrivilegedOperations => capabilities.PrivilegedOperations,
+            ServerHostFeature.ApplicationDeployments => capabilities.ApplicationDeployments,
+            _ => false,
+        };
+    }
+
+    private sealed class UnavailableBackupRecoveryKey : RelaxKonOS.Server.BackupRecovery.IBackupRecoveryKeyProvider
+    {
+        public RelaxKonOS.Protocol.BackupRecovery.BackupRecoveryAvailabilityDto Availability { get; } = new(false);
+        public RelaxKonOS.Server.BackupRecovery.BackupDataKeyEnvelope Wrap(Guid backupId, ReadOnlySpan<byte> dataKey) => throw new NotSupportedException();
+        public byte[] Unwrap(Guid backupId, RelaxKonOS.Server.BackupRecovery.BackupDataKeyEnvelope envelope) => throw new NotSupportedException();
     }
 
     private static void Check(bool valid, string message) { if (!valid) throw new InvalidOperationException(message); }

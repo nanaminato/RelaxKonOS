@@ -23,7 +23,7 @@
     <string name="squid_disable">禁用开机启动</string>
     <string name="squid_resume">继续查询待确认操作</string>
     <string name="squid_pending">操作结果尚未确认。请继续查询，原请求键将被复用，请勿重复操作。</string>
-    <string name="squid_unsupported">Squid 仅支持 Linux 系统模式服务器。</string>
+    <string name="squid_unsupported">Squid 仅在 Linux 系统模式服务器上运行，因此该主机无法提供网关。</string>
     <string name="squid_install_required">尚未安装 Squid。请先在服务器安装发行版 Squid 软件包，再应用配置。</string>
     <string name="squid_recovery_required">配置事务中断，需要在主机上恢复。仍可停止服务或禁用开机启动，请参阅 Squid 恢复规程。</string>
     <string name="squid_running">运行中</string>

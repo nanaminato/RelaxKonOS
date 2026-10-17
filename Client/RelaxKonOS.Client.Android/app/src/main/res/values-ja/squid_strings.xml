@@ -23,7 +23,7 @@
     <string name="squid_disable">自動起動を無効化</string>
     <string name="squid_resume">保留中の操作を再開</string>
     <string name="squid_pending">結果が未確認です。同じリクエストキーで再開し、操作を重複させないでください。</string>
-    <string name="squid_unsupported">Squid は Linux システムモードのサーバーのみ対応しています。</string>
+    <string name="squid_unsupported">Squid は Linux システムモードのサーバーでのみ動作するため、このホストではゲートウェイを提供できません。</string>
     <string name="squid_install_required">Squid が未インストールです。サーバーにディストリビューションの Squid パッケージをインストールしてください。</string>
     <string name="squid_recovery_required">中断した設定処理の復旧が必要です。停止と自動起動の無効化は利用できます。Squid の復旧手順を参照してください。</string>
     <string name="squid_running">実行中</string>

@@ -47,6 +47,8 @@
         "application.relaxkonos.registry.description": "Browse supported RelaxKonOS configuration values",
         "application.relaxkonos.proxy.display_name": "Proxy Manager",
         "application.relaxkonos.proxy.description": "Manage the host proxy runtime, traffic, and network recovery state",
+        "application.relaxkonos.squid.display_name": "Squid Gateway",
+        "application.relaxkonos.squid.description": "Manage the Linux server HTTP/CONNECT gateway. Lists accept one entry per line. HTTPS is tunneled without decryption.",
         "application.relaxkonos.application-deployments.display_name": "Application Deployments",
         "application.relaxkonos.application-deployments.description": "Deploy and manage containerized applications on the RelaxKonOS Server",
         "application.relaxkonos.event-alerts.display_name": "Event & Alert Center",

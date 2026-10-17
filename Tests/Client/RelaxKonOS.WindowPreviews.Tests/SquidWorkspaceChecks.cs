@@ -16,6 +16,16 @@ internal static class SquidWorkspaceChecks
 {
     public static void Run()
     {
+        // The Server answers the gateway contract on every platform, so the manifest must not narrow
+        // itself back to Linux: that would hide the only window in which a Windows host can explain
+        // itself, and the application must not borrow another application's icon either.
+        var manifest = new SquidApp().Manifest;
+        Check(manifest.Server.SupportedPlatforms.Count == 0
+            && manifest.Server.RequiredCapabilities.SequenceEqual([ServerCapabilities.GatewayProxy]),
+            "Squid must reach every host that advertises gateway-proxy regardless of platform.");
+        Check(manifest.IconPath == "avares://RelaxKonOS.Client/Assets/AppIcons/squid.png",
+            "Squid must render its own icon instead of the proxy manager icon.");
+
         VerifyHttpContract();
         var fake = new SquidClientStub();
         using var vm = new SquidViewModel(fake);
@@ -78,6 +88,16 @@ internal static class SquidWorkspaceChecks
         vm.AdoptExistingConfiguration = true;
         Check(vm.ApplyCommand.CanExecute(null) && !vm.NeedsAdoption, "Selecting ownership unlocks apply only.");
         vm.AdoptExistingConfiguration = false;
+
+        // A host without Squid still opens the window; it must explain the host instead of offering
+        // a configuration or a lifecycle action that the Helper would reject anyway.
+        fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { Supported = false, Installed = false, Managed = false, Running = false, Enabled = false } };
+        Complete(vm.RefreshCommand.ExecuteAsync(null));
+        Check(vm.ShowUnsupported && !vm.CanEdit && !vm.ApplyCommand.CanExecute(null) && !vm.StartCommand.CanExecute(null)
+            && !vm.ValidateCommand.CanExecute(null) && !vm.ToggleBootCommand.CanExecute(null),
+            "An unsupported host shows the platform notice, offers no editable draft and disables every host action.");
+        fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { Supported = true } };
+        Complete(vm.RefreshCommand.ExecuteAsync(null));
 
         // Draft problems are reported in the card that owns the field, and they gate every publish action.
         vm.Port = "999";

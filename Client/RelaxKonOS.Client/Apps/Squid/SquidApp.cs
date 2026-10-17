@@ -12,13 +12,15 @@ using Rect = RelaxKonOS.Core.Primitives.Rect;
 
 namespace RelaxKonOS.Client.Apps.Squid;
 
-/// <summary>Built-in Linux server HTTP/CONNECT gateway console.</summary>
+/// <summary>Built-in HTTP/CONNECT gateway console. The Server answers the contract on every platform
+/// so a host without Squid opens this window and reads its own "unsupported" state instead of the
+/// shell hiding the application entirely.</summary>
 public sealed class SquidApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.squid"), "Squid", "1.0.0", "⇥", "HTTP and HTTPS forward proxy gateway",
         [AppPermissions.ServerProxyRead, AppPermissions.ServerProxyManage],
-        ServerRequirements: new ApplicationServerRequirements(Platforms: [ApplicationPlatformNames.Linux], Capabilities: [ServerCapabilities.GatewayProxy]),
-        IconPath: "avares://RelaxKonOS.Client/Assets/AppIcons/proxy.png", InstancePolicy: ApplicationInstancePolicy.SingleWindow);
+        ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.GatewayProxy]),
+        IconPath: "avares://RelaxKonOS.Client/Assets/AppIcons/squid.png", InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
     public override void Activate(AppContext context)
     {
@@ -53,11 +55,14 @@ public sealed class SquidApp : RemoteApplicationBase
         {
             var read = context.Permissions.GetStatus(AppPermissions.ServerProxyRead);
             if (read == AppPermissionStatus.Undecided) read = await context.Permissions.RequestAsync(AppPermissions.ServerProxyRead);
+            vm.CanRead = read == AppPermissionStatus.Granted;
+            if (vm.CanRead) await vm.RefreshCommand.ExecuteAsync(null);
+            // A host that reported "unsupported" can never accept a mutation, so do not ask for the
+            // manage grant there. An unavailable host keeps the prompt: the facts are merely unknown.
+            if (!vm.CanRead || vm.Snapshot?.Status is { Supported: false }) return;
             var manage = context.Permissions.GetStatus(AppPermissions.ServerProxyManage);
             if (manage == AppPermissionStatus.Undecided) manage = await context.Permissions.RequestAsync(AppPermissions.ServerProxyManage);
-            vm.CanRead = read == AppPermissionStatus.Granted;
             vm.CanManage = manage == AppPermissionStatus.Granted && session.AssignedRole == RelaxKonOS.Protocol.Workspace.DeviceRole.Controller;
-            if (vm.CanRead) await vm.RefreshCommand.ExecuteAsync(null);
         }
         async Task<bool> ConfirmAsync(string title, string message)
         {
