@@ -19,8 +19,7 @@ fun TaskManagerWorkspace(initialSection: String, onBack: (() -> Unit)?, modifier
         if (ServerCapabilities.PROCESSES in appContainer().capabilities) add(WorkspaceDestination("processes", R.string.workspace_processes))
     }
     if (pages.isEmpty()) return
-    var section by rememberSaveable(owner) { mutableStateOf(initialSection) }
-    LaunchedEffect(initialSection) { section = initialSection }
+    var section by rememberSaveable(owner, initialSection) { mutableStateOf(initialSection) }
     val selected = section.takeIf { id -> pages.any { it.id == id } } ?: pages.first().id
     WorkspaceFrame(stringResource(R.string.workspace_taskmanager),
         screenTitle = stringResource(if (selected == "performance") R.string.manage_monitor_title else R.string.manage_processes_title),

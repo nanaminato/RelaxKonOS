@@ -19,6 +19,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
 import app.relaxkonos.mobile.core.auth.SessionState
@@ -45,11 +46,18 @@ import java.util.Date
 @Composable internal fun TunnelsContent(model: TunnelsViewModel, owner: SessionState.Active?, onBack: () -> Unit, modifier: Modifier = Modifier) {
     val state = model.state
     val epoch = model.sessionEpoch
-    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val lifecycleState by lifecycle.currentStateAsState()
     val resumed = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
+    val cancellation = model.installationCancellation?.takeIf { it.owner === owner }
     val available = owner?.capabilities?.contains(ServerCapabilities.TUNNELS) == true
     val canManage = available && owner?.privilegedOperations == true
     var section by rememberSaveable(owner, epoch) { mutableStateOf("overview") }
+    DisposableEffect(owner, epoch, section, lifecycle) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_PAUSE) model.dismissInstallationCancellation() }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer); model.dismissInstallationCancellation() }
+    }
     var confirm by remember(owner, epoch, section, resumed, state.busy, state.facts, state.frpsAtMillis,
         state.installation, state.installationVerified, state.installationReadGeneration, state.pending) { mutableStateOf<TunnelConfirmation?>(null) }
     var advanced by rememberSaveable(owner, epoch) { mutableStateOf(false) }
@@ -62,14 +70,18 @@ import java.util.Date
     var originalIdentified by remember(owner, epoch) { mutableStateOf(false) }
     OperationMessageDialog(if (state.busy || state.editorOpen || install) null else state.problemCode?.let { tunnelProblemLabel(it) } ?: if (state.uncertain) stringResource(R.string.tunnels_uncertain) else null, tone = if (state.problemCode == null) StatusTone.Warning else StatusTone.Danger)
     LaunchedEffect(owner, epoch) { if (available) model.refresh() }
-    LaunchedEffect(owner, epoch, state.installation?.operationId, state.installation?.state, state.installationReadGeneration, state.busy, state.installationVerified, state.editorOpen, install, resumed, state.uncertain, state.problemCode, confirm != null) {
-        if (resumed && !install && confirm == null) model.observeInstallation()
+    LaunchedEffect(owner, epoch, state.installation?.operationId, state.installation?.state, state.installationReadGeneration, state.busy, state.installationVerified, state.editorOpen, install, resumed, state.uncertain, state.problemCode, confirm != null, cancellation) {
+        if (resumed && !install && confirm == null && cancellation == null) model.observeInstallation {
+            lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && !install && confirm == null && model.installationCancellation == null
+        }
     }
     val facts = (state.facts as? ApiResult.Success)?.value
     val runtime = (state.runtime as? ApiResult.Success)?.value
     val notInstalled = runtime?.state == TunnelRuntimeState.NotInstalled
     LaunchedEffect(owner, epoch, frpsSection, state.selectedId, state.busy, facts?.observedAtMillis, state.editorOpen, install, resumed, state.uncertain, state.problemCode, confirm != null) {
-        if (resumed && !frpsSection && !install && confirm == null) model.observeConnection()
+        if (resumed && !frpsSection && !install && confirm == null) model.observeConnection {
+            lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && !frpsSection && !install && confirm == null
+        }
     }
     BackHandler(section in setOf("profiles", "logs") && state.selectedId != null && state.profileDraft == null && state.definitionDraft == null && !state.busy) { model.select(null) }
     WorkspaceColumn(stringResource(R.string.tunnels_title), onBack, listOf(WorkspaceDestination("overview", R.string.workspace_overview), WorkspaceDestination("profiles", R.string.workspace_tunnels), WorkspaceDestination("runtime", R.string.workspace_runtime), WorkspaceDestination("logs", R.string.workspace_logs), WorkspaceDestination("frps", R.string.frps_server_tab), WorkspaceDestination("records", R.string.tunnels_records)), section, { section = it }, modifier, stateKey = owner to epoch,
@@ -132,7 +144,7 @@ WorkspaceSection(section in setOf("overview", "runtime")) {
                 TextButton(enabled = !state.busy, onClick = model::pollInstall) { ActionLabel(R.string.common_refresh) }
             })
             if (canManage && state.installationVerified && operation.state.active && operation.cancellable) TextButton(enabled = !state.busy,
-                onClick = { confirm = TunnelConfirmation(R.string.tunnels_cancel_install_confirm, operation.operationId, model::cancelInstall) }) { Text(stringResource(R.string.common_cancel)) }
+                onClick = { model.requestInstallationCancellation(requireNotNull(owner), operation) }) { Text(stringResource(R.string.common_cancel)) }
             }
         }
         if (state.pendingInstallation) TunnelCard {
@@ -199,6 +211,11 @@ WorkspaceSection(section in setOf("profiles", "logs")) {
         OutlinedTextField(operationId, { operationId = it }, singleLine = true, label = { Text(stringResource(R.string.certificates_operation_id)) })
     } }, confirmButton = { Button(enabled = !state.busy && (!state.pendingInstallation || originalIdentified) && runCatching { InstallationRoutes.canonicalId(operationId.trim()) }.isSuccess,
         onClick = { model.recoverInstall(operationId, originalIdentified); recover = false }) { ActionLabel(R.string.common_refresh) } }, dismissButton = { TextButton(onClick = { recover = false }) { Text(stringResource(R.string.common_cancel)) } })
+    cancellation?.let { review -> AlertDialog(onDismissRequest = model::dismissInstallationCancellation,
+        title = { Text(stringResource(R.string.tunnels_confirm)) },
+        text = { Column { Text(review.operation.operationId); Text(stringResource(R.string.tunnels_cancel_install_confirm)) } },
+        confirmButton = { Button(enabled = !state.busy && resumed, onClick = { model.cancelInstall(review) }) { Text(stringResource(R.string.tunnels_confirm)) } },
+        dismissButton = { TextButton(onClick = model::dismissInstallationCancellation) { Text(stringResource(R.string.common_cancel)) } }) }
     confirm?.let { request -> AlertDialog(onDismissRequest = { confirm = null }, title = { Text(stringResource(R.string.tunnels_confirm)) },
         text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text(request.target); Text(stringResource(request.message)) } }, confirmButton = { Button(enabled = !state.busy && resumed, onClick = { confirm = null; request.action() }) { Text(stringResource(R.string.tunnels_confirm)) } },
         dismissButton = { TextButton(onClick = { confirm = null }) { Text(stringResource(R.string.common_cancel)) } }) }

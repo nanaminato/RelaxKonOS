@@ -66,4 +66,12 @@
     <string name="server_configuration_remove_firewall">移除 RelaxKonOS Server 防火墙规则</string>
     <string name="server_configuration_ensure_firewall">为当前监听端口添加防火墙规则</string>
     <string name="server_configuration_repair_package">服务器 ZIP 路径（可选；必须匹配当前版本，用于恢复程序文件）</string>
+    <string name="docker_container_created">已创建</string>
+    <string name="docker_container_running">运行中</string>
+    <string name="docker_container_paused">已暂停</string>
+    <string name="docker_container_restarting">重启中</string>
+    <string name="docker_container_removing">移除中</string>
+    <string name="docker_container_exited">已退出</string>
+    <string name="docker_container_dead">已失效</string>
+    <string name="docker_container_unknown">未知状态（%1$s）</string>
 </resources>

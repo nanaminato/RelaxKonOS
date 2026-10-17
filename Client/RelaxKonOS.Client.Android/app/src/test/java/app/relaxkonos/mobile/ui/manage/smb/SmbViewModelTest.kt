@@ -11,6 +11,7 @@ import app.relaxkonos.mobile.servercenter.ServerConnectionIdentityRules
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.*
 import org.junit.Assert.*
 import org.junit.Before
@@ -79,7 +80,8 @@ class SmbViewModelTest {
     @Test fun `cancelled change retains recovery marker and revokes old facts`() = runTest {
         login(); runCurrent(); model.refresh(); advanceUntilIdle()
         gateway.onSmbChange = { _, _ -> sends++; throw CancellationException("private cancelled write") }
-        model.change(facts, SmbChange(SmbChangeKind.Stop)); advanceUntilIdle()
+        model.requestChange(requireNotNull(model.state.owner), facts, SmbChange(SmbChangeKind.Stop))
+        model.change(requireNotNull(model.changeReview)); advanceUntilIdle()
         assertNull(model.state.facts); assertFalse(model.state.busy)
         assertEquals("file-services.smb.unverified", model.state.problem)
         assertEquals(1, sends); assertEquals(1, model.state.pending.size)
@@ -98,6 +100,72 @@ class SmbViewModelTest {
         assertEquals("file-services.smb.unverified", model.state.problem)
         assertNull(model.state.facts); assertEquals(listOf(marker), model.state.pending)
         assertEquals(1, reads); assertEquals(0, sends); assertFalse(model.state.busy)
+    }
+    private suspend fun TestScope.review(): SmbChangeReview {
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        model.requestChange(requireNotNull(model.state.owner), facts, SmbChange(SmbChangeKind.Password, "review-user"))
+        return requireNotNull(model.changeReview)
+    }
+    @Test fun `replacement task withdraws cancellation and old callback cannot cancel new task`() = runTest {
+        login(); runCurrent()
+        val owner = requireNotNull(model.state.owner)
+        val first = InstallationOperation("11111111-1111-1111-1111-111111111111", InstallationService.Smb, InstallationKind.Install,
+            InstallationState.Running, InstallationStage.Installing, null, null, 1, 1, null, true)
+        val second = first.copy(operationId = "22222222-2222-2222-2222-222222222222")
+        val tasks = listOf(first, second).associateBy { it.operationId }
+        val cancellations = mutableListOf<String>()
+        gateway.onInstallation = { ApiResult.Success(requireNotNull(tasks[it])) }
+        gateway.onCancelInstallation = { id, _ -> cancellations += id; ApiResult.Success(requireNotNull(tasks[id]).copy(state = InstallationState.Cancelled)) }
+        model.recoverInstall(first.operationId, false); advanceUntilIdle()
+        model.requestInstallationCancellation(owner, first)
+        val old = requireNotNull(model.installationCancellation)
+        model.recoverInstall(second.operationId, false); advanceUntilIdle(); assertNull(model.installationCancellation)
+        model.cancelInstall(old); advanceUntilIdle(); assertTrue(cancellations.isEmpty())
+        model.requestInstallationCancellation(owner, second)
+        val fresh = requireNotNull(model.installationCancellation)
+        model.cancelInstall(fresh); model.cancelInstall(fresh); advanceUntilIdle()
+        assertEquals(listOf(second.operationId), cancellations)
+    }
+    @Test fun `installation timer rechecks foreground and original task after waiting`() = runTest {
+        login(); runCurrent()
+        val first = InstallationOperation("11111111-1111-1111-1111-111111111111", InstallationService.Smb, InstallationKind.Install,
+            InstallationState.Running, InstallationStage.Installing, null, null, 1, 1, null, true)
+        val second = first.copy(operationId = "22222222-2222-2222-2222-222222222222")
+        var reads = 0
+        gateway.onInstallation = { id -> reads++; ApiResult.Success(if (id == first.operationId) first else second) }
+        model.recoverInstall(first.operationId, false); advanceUntilIdle()
+        var foreground = true
+        val timer = backgroundScope.launch { model.observeInstallation { foreground } }; runCurrent()
+        foreground = false; advanceTimeBy(1500); runCurrent(); assertTrue(timer.isCompleted); assertEquals(1, reads)
+        val old = backgroundScope.launch { model.observeInstallation { true } }; runCurrent()
+        model.recoverInstall(second.operationId, false); runCurrent()
+        model.recoverInstall(first.operationId, false); runCurrent()
+        advanceTimeBy(1500); runCurrent(); assertTrue(old.isCompleted); assertEquals(3, reads)
+    }
+    @Test fun `new login rejects old confirmation and wipes supplied password`() = runTest {
+        val old = review(); login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        val password = "review-password".toCharArray()
+        model.change(old, password); advanceUntilIdle()
+        assertEquals(0, sends); assertTrue(password.all { it == '\u0000' }); assertTrue(model.state.pending.isEmpty())
+    }
+    @Test fun `refresh and dismissal cannot reuse old approval for identical change`() = runTest {
+        val old = review(); model.refresh(); advanceUntilIdle(); assertNull(model.changeReview)
+        model.requestChange(requireNotNull(model.state.owner), facts, old.confirmation.change)
+        val fresh = requireNotNull(model.changeReview)
+        val password = "review-password".toCharArray()
+        model.change(old, password); advanceUntilIdle()
+        assertEquals(0, sends); assertTrue(password.all { it == '\u0000' }); assertSame(fresh, model.changeReview)
+        model.dismissConfirmation(); model.change(fresh, password); advanceUntilIdle(); assertEquals(0, sends)
+    }
+    @Test fun `stop revokes review and fresh confirmation sends once then clears password`() = runTest {
+        val old = review(); model.stop()
+        val rejected = "review-password".toCharArray()
+        model.change(old, rejected); advanceUntilIdle(); assertEquals(0, sends); assertTrue(rejected.all { it == '\u0000' })
+        model.refresh(); advanceUntilIdle()
+        model.requestChange(requireNotNull(model.state.owner), facts, old.confirmation.change)
+        val fresh = requireNotNull(model.changeReview); val password = "review-password".toCharArray()
+        model.change(fresh, password); model.change(fresh, "duplicate-password".toCharArray()); advanceUntilIdle()
+        assertEquals(1, sends); assertEquals(1, model.state.pending.size); assertTrue(password.all { it == '\u0000' })
     }
 
     @Test fun `successful adoption uses the exact verified facts and does not read twice or replay`() = runTest {

@@ -74,7 +74,8 @@ class DockerControlViewModelTest {
         login(); runCurrent(); model.refresh(); advanceUntilIdle()
         var sends = 0
         gateway.onDockerEngineAction = { _, _ -> sends++; throw CancellationException("private write") }
-        model.change(facts, change); advanceUntilIdle()
+        model.requestChange(requireNotNull(model.state.owner), facts, change)
+        model.change(requireNotNull(model.confirmation)); advanceUntilIdle()
         assertNull(model.state.facts); assertEquals(1, model.state.pending.size)
         model.refresh(); advanceUntilIdle()
         assertEquals(facts, model.state.facts); assertEquals(1, model.state.pending.size)
@@ -88,6 +89,35 @@ class DockerControlViewModelTest {
         model.accept(marker); advanceUntilIdle()
         assertNull(model.state.facts); assertEquals(listOf(marker), model.state.pending)
         assertEquals(1, reads); assertEquals("docker.control.unverified", model.state.problem)
+    }
+    private suspend fun TestScope.review(): ControlConfirmation {
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        model.requestChange(requireNotNull(model.state.owner), facts, change)
+        return requireNotNull(model.confirmation)
+    }
+    @Test fun `new login with identical engine facts rejects old confirmation`() = runTest {
+        val old = review(); var sends = 0
+        gateway.onDockerEngineAction = { _, _ -> sends++; ApiResult.Transport(null) }
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        model.change(old); advanceUntilIdle(); assertEquals(0, sends); assertTrue(model.state.pending.isEmpty())
+    }
+    @Test fun `refresh and dismissal invalidate old confirmation even after reopening`() = runTest {
+        val old = review(); var sends = 0
+        gateway.onDockerEngineAction = { _, _ -> sends++; ApiResult.Transport(null) }
+        model.refresh(); advanceUntilIdle(); assertNull(model.confirmation)
+        model.requestChange(requireNotNull(model.state.owner), facts, change)
+        val fresh = requireNotNull(model.confirmation)
+        model.change(old); advanceUntilIdle(); assertEquals(0, sends)
+        model.dismissConfirmation(); model.change(fresh); advanceUntilIdle(); assertEquals(0, sends)
+    }
+    @Test fun `stop invalidates review and fresh confirmation is consumed once`() = runTest {
+        val old = review(); model.stop(); model.change(old); advanceUntilIdle()
+        model.refresh(); advanceUntilIdle()
+        model.requestChange(requireNotNull(model.state.owner), facts, change)
+        val fresh = requireNotNull(model.confirmation); var sends = 0
+        gateway.onDockerEngineAction = { _, _ -> sends++; ApiResult.Transport(null) }
+        model.change(fresh); model.change(fresh); advanceUntilIdle()
+        assertEquals(1, sends); assertEquals(1, model.state.pending.size)
     }
     @Test fun `old cancel cannot target a replacement installation while fresh confirmation can`() = runTest {
         login(); runCurrent()

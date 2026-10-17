@@ -70,4 +70,12 @@
     <string name="server_configuration_remove_firewall">Remove RelaxKonOS Server firewall rules</string>
     <string name="server_configuration_ensure_firewall">Add rule for the current listener</string>
     <string name="server_configuration_repair_package">Server ZIP path (optional; same installed version, restores program files)</string>
+    <string name="docker_container_created">Created</string>
+    <string name="docker_container_running">Running</string>
+    <string name="docker_container_paused">Paused</string>
+    <string name="docker_container_restarting">Restarting</string>
+    <string name="docker_container_removing">Removing</string>
+    <string name="docker_container_exited">Exited</string>
+    <string name="docker_container_dead">Dead</string>
+    <string name="docker_container_unknown">Unknown (%1$s)</string>
 </resources>

@@ -118,9 +118,11 @@ class DockerResourceCancellationFlowTest {
         rule.onNode(hasSetTextAction() and hasText(text(R.string.docker_resources_name))).performScrollTo().performTextInput("review-data")
         rule.onNodeWithText(text(R.string.docker_resources_review)).performScrollTo().performClick()
         rule.onNode(isDialog()).assertExists()
+        val old = requireNotNull(model.confirmation)
         rule.runOnIdle { active.value = false }
         rule.onNode(isDialog()).assertDoesNotExist()
         rule.onNodeWithText("Other Docker resources").assertIsDisplayed()
+        rule.runOnIdle { assertNull(model.confirmation); model.change(old); assertEquals(0, writes) }
         rule.runOnIdle { active.value = true }
         rule.onNode(isDialog()).assertDoesNotExist()
         rule.onNodeWithText("review-data").performScrollTo().assertIsDisplayed()
@@ -148,12 +150,15 @@ class DockerResourceCancellationFlowTest {
         rule.onNode(hasSetTextAction() and hasText(text(R.string.docker_resources_name))).performScrollTo().performTextInput("review-data")
         rule.onNodeWithText(text(R.string.docker_resources_review)).performScrollTo().performClick()
         rule.onNode(isDialog()).assertExists()
+        val old = requireNotNull(model.confirmation)
         pauseAndResume()
+        rule.runOnIdle { assertNull(model.confirmation); model.change(old); assertEquals(0, writes) }
         rule.onNode(isDialog()).assertDoesNotExist()
         rule.onNodeWithText("review-data").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText(text(R.string.docker_resources_review)).performScrollTo().performClick()
-        rule.onNode(hasText(text(R.string.common_cancel)) and hasAnyAncestor(isDialog())).performClick()
-        rule.runOnIdle { assertEquals(0, writes) }
+        rule.onNodeWithText(text(R.string.docker_resources_apply)).performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.pending.size == 1 }
+        rule.runOnIdle { model.change(old); assertEquals(1, writes) }
     }
     @Test fun hiddenReadFailureDoesNotCoverOtherResourcePageAndStillRequiresRefresh() {
         show()

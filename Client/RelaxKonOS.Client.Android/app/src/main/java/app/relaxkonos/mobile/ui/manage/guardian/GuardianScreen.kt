@@ -92,20 +92,24 @@ internal fun GuardianContent(owner: SessionState.Active, onBack: () -> Unit, mod
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var resumed by remember(lifecycle) { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
     DisposableEffect(lifecycle, model) {
-        val listener = LifecycleEventObserver { _, _ -> resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
+        val listener = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) model.dismissAction()
+            resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        }
         lifecycle.addObserver(listener)
         onDispose { lifecycle.removeObserver(listener); model.stopObserving() }
     }
     LaunchedEffect(owner, resumed, editing, state.selectedId) { model.observe(owner, resumed && editing == null) }
-    var actionTarget by remember(owner) { mutableStateOf<Pair<GuardianWorkload, String>?>(null) }
+    val actionReview = model.actionReview?.takeIf { it.owner === owner }
     LaunchedEffect(owner) { model.load(owner) }
-    actionTarget?.let { (target, action) ->
+    actionReview?.let { review ->
+        val target = review.target; val action = review.action
         val label = stringResource(when (action) { "start" -> R.string.guardian_start; "stop" -> R.string.guardian_stop; "restart" -> R.string.guardian_restart; else -> R.string.common_delete })
-        AlertDialog(onDismissRequest = { actionTarget = null }, title = { Text(label) },
+        AlertDialog(onDismissRequest = { model.dismissAction() }, title = { Text(label) },
             text = { Text(stringResource(R.string.guardian_action_confirm, label, target.name, target.id)) },
             confirmButton = { TextButton(enabled = !state.loading && !state.unknown && !state.stale, onClick = {
-                if (action == "delete") model.delete(target.id) else model.act(target.id, action); actionTarget = null
-            }) { Text(label) } }, dismissButton = { TextButton(onClick = { actionTarget = null }) { Text(stringResource(R.string.common_cancel)) } })
+                model.confirmAction(review)
+            }) { Text(label) } }, dismissButton = { TextButton(onClick = { model.dismissAction() }) { Text(stringResource(R.string.common_cancel)) } })
     }
     BackHandler(enabled = editing == null && state.selectedId != null) { model.select(null) }
     if (editing != null) {
@@ -134,13 +138,13 @@ internal fun GuardianContent(owner: SessionState.Active, onBack: () -> Unit, mod
                         items(state.workloads, key = { it.id }) { GuardianWorkloadRow(it, model::select) }
                     }
                     Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                        GuardianDetails(owner, state, liveLogs, model) { actionTarget = it }
+                        GuardianDetails(owner, state, liveLogs, model) { model.requestAction(owner, it.first, it.second) }
                     }
                 }
             } else {
                 LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
                     if (state.selectedId == null) items(state.workloads, key = { it.id }) { GuardianWorkloadRow(it, model::select) }
-                    else item { GuardianDetails(owner, state, liveLogs, model) { actionTarget = it } }
+                    else item { GuardianDetails(owner, state, liveLogs, model) { model.requestAction(owner, it.first, it.second) } }
                 }
             }
         }

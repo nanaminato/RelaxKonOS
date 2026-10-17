@@ -14,6 +14,8 @@ Linux 部署显式启用 `--docker-access` 时，即使 Docker 尚未安装，�
 
 Start/Stop/Restart 调用当前 `/docker/engine/{action}`，提交结构化 confirmed。确认指出整个宿主、所有容器、Compose 与应用部署受影响。Linux 使用宿主 Helper 的固定 Docker 服务；Windows 依赖 Docker Desktop 的受支持 CLI。
 
+引擎与镜像源变更确认绑定原登录、完整事实与动作，每次只能提交一次。暂停、隐藏页面、离页、刷新或关闭后撤销确认；旧回调不能复用重新打开的确认，也不能在新登录下对相同事实提交。提交前模型再次核对原登录与当前事实，远端并发变化仍按仓储预检处理。
+
 只有 Linux、`docker.not_installed` 和管理资格满足时提供自动安装；Windows 显示主机侧安装/配置说明。安装复用公共 `DockerInstallationRequest(confirmed)` / Install，没有包、版本、升级或隐藏重装参数。
 
 明确 `dockerInstall` / `docker` 提权后复用原幂等键。成功接受任务后按原 ID 查询，页面可见且记录已核验时每 1.5 秒观察；取消需要服务返回 active/cancellable 并再次确认，离页只停止观察。

@@ -66,4 +66,12 @@
     <string name="server_configuration_remove_firewall">RelaxKonOS Server のファイアウォール規則を削除</string>
     <string name="server_configuration_ensure_firewall">現在の待受ポートの規則を追加</string>
     <string name="server_configuration_repair_package">サーバー ZIP パス（任意、現在のバージョンのファイルを復元）</string>
+    <string name="docker_container_created">作成済み</string>
+    <string name="docker_container_running">実行中</string>
+    <string name="docker_container_paused">一時停止中</string>
+    <string name="docker_container_restarting">再起動中</string>
+    <string name="docker_container_removing">削除中</string>
+    <string name="docker_container_exited">終了</string>
+    <string name="docker_container_dead">無効</string>
+    <string name="docker_container_unknown">不明な状態（%1$s）</string>
 </resources>

@@ -63,7 +63,8 @@ class FirewallViewModelTest {
         login(); runCurrent(); model.refresh(); advanceUntilIdle()
         var sends = 0
         gateway.onChangeFirewall = { sends++; throw CancellationException("private cancelled write") }
-        model.change(facts, change); advanceUntilIdle()
+        model.requestChange(requireNotNull(model.state.owner), facts, change)
+        model.change(requireNotNull(model.confirmation)); advanceUntilIdle()
         assertNull(model.state.facts); assertFalse(model.state.busy)
         assertEquals("firewall.unverified", model.state.problem)
         assertEquals(1, model.state.pending.size)
@@ -80,6 +81,36 @@ class FirewallViewModelTest {
         assertNull(model.state.facts)
         assertEquals("firewall.unverified", model.state.problem)
         assertEquals(listOf(pending), model.state.pending); assertEquals(1, reads)
+    }
+    private suspend fun TestScope.review(): FirewallConfirmation {
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        model.requestChange(requireNotNull(model.state.owner), facts, change)
+        return requireNotNull(model.confirmation)
+    }
+    @Test fun `old login confirmation cannot write identical facts after relogin`() = runTest {
+        val old = review(); var sends = 0
+        gateway.onChangeFirewall = { sends++; ApiResult.Transport(null) }
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        model.change(old); advanceUntilIdle(); assertEquals(0, sends)
+        assertTrue(model.state.pending.isEmpty())
+    }
+    @Test fun `refresh and dismissal invalidate confirmation even after identical review reopens`() = runTest {
+        val old = review(); var sends = 0
+        gateway.onChangeFirewall = { sends++; ApiResult.Transport(null) }
+        model.refresh(); advanceUntilIdle(); assertNull(model.confirmation)
+        model.requestChange(requireNotNull(model.state.owner), facts, change)
+        val fresh = requireNotNull(model.confirmation)
+        model.change(old); advanceUntilIdle(); assertEquals(0, sends)
+        model.dismissConfirmation(); model.change(fresh); advanceUntilIdle(); assertEquals(0, sends)
+    }
+    @Test fun `confirmation is consumed only once and stop invalidates it`() = runTest {
+        val old = review(); model.stop(); model.change(old); advanceUntilIdle()
+        model.refresh(); advanceUntilIdle()
+        model.requestChange(requireNotNull(model.state.owner), facts, change)
+        val fresh = requireNotNull(model.confirmation); var sends = 0
+        gateway.onChangeFirewall = { sends++; ApiResult.Transport(null) }
+        model.change(fresh); model.change(fresh); advanceUntilIdle()
+        assertEquals(1, sends); assertEquals(1, model.state.pending.size)
     }
     @Test fun `stopped read cannot republish old facts after a new refresh`() = runTest {
         login(); runCurrent()

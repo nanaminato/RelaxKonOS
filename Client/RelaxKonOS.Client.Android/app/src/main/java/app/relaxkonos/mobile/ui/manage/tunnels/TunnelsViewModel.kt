@@ -23,35 +23,53 @@ internal data class TunnelsState(val busy: Boolean = false, val facts: ApiResult
     val initialFrps: ManagedFrpsDraft? = null, val frpsAction: ApiResult<TunnelResult>? = null,
     val frpsLogs: ApiResult<List<TunnelLog>>? = null, val frpsAudit: ApiResult<List<TunnelAudit>>? = null, val frpsDiagnosticsAtMillis: Long? = null,
     val problemCode: String? = null, val uncertain: Boolean = false)
+internal class TunnelInstallationCancellation(val owner: SessionState.Active, val operation: InstallationOperation)
 internal class TunnelsViewModel(private val session: AuthSession, private val tunnels: TunnelRepository,
     private val installations: InstallationRepository, private val operationIndex: OperationIndex,
     private val elevationAnswers: ElevationAnswerProvider, private val uploadDocuments: UploadDocumentOpener) : ViewModel() {
-    suspend fun observeConnection() {
+    var installationCancellation by mutableStateOf<TunnelInstallationCancellation?>(null); private set
+    fun dismissInstallationCancellation() { installationCancellation = null }
+    fun requestInstallationCancellation(active: SessionState.Active, operation: InstallationOperation) {
+        if (activeSession === active && owner === active && active.privilegedOperations && !state.busy &&
+            state.installationVerified && state.installation == operation && operation.state.active && operation.cancellable)
+            installationCancellation = TunnelInstallationCancellation(active, operation)
+    }
+    suspend fun observeConnection(canObserve: () -> Boolean) {
+        val active = activeSession ?: return
+        val id = state.selectedId ?: return
+        val request = workGeneration
         val facts = (state.facts as? ApiResult.Success)?.value
         if (state.selectedId != null && !state.busy && !state.editorOpen && !state.uncertain && state.problemCode == null && facts?.definitions?.any {
                 it.profileId == state.selectedId && it.state in setOf(TunnelConnectionState.Starting, TunnelConnectionState.Connected)
             } == true) {
             kotlinx.coroutines.delay(3000)
-            if (!state.editorOpen && !state.uncertain && state.problemCode == null) observe()
+            if (canObserve() && activeSession === active && owner === active && state.selectedId == id && request == workGeneration &&
+                !state.busy && !state.editorOpen && !state.uncertain && state.problemCode == null) observe()
         }
     }
 
-    suspend fun observeInstallation() {
+    suspend fun observeInstallation(canObserve: () -> Boolean) {
+        val active = activeSession ?: return
+        val id = state.installation?.operationId ?: return
+        val request = workGeneration
         if (state.installationVerified && state.installation?.state?.active == true && !state.busy && !state.editorOpen && !state.uncertain && state.problemCode == null) {
             kotlinx.coroutines.delay(1500)
-            if (!state.editorOpen && !state.uncertain && state.problemCode == null) pollInstall()
+            if (canObserve() && installationCancellation == null && activeSession === active && owner === active && request == workGeneration &&
+                state.installationVerified && state.installation?.let { it.operationId == id && it.state.active } == true &&
+                !state.busy && !state.editorOpen && !state.uncertain && state.problemCode == null) pollInstall()
         }
     }
 
     private val activeSession get() = session.state.value as? SessionState.Active
     private var owner: SessionState.Active? = null
     private var intent: InstallationSubmission? = null
+    private var workGeneration = 0L
     var state by mutableStateOf(TunnelsState())
         private set
     var sessionEpoch by mutableIntStateOf(0)
         private set
     init { viewModelScope.launch { session.state.collect { next ->
-        if (next !== owner) { owner = next as? SessionState.Active; intent = null; state = TunnelsState(); sessionEpoch++ }
+        if (next !== owner) { dismissInstallationCancellation(); owner = next as? SessionState.Active; intent = null; state = TunnelsState(); sessionEpoch++ }
     } } }
     fun refresh() = work { active ->
         state = state.copy(installationVerified = false)
@@ -212,7 +230,15 @@ internal class TunnelsViewModel(private val session: AuthSession, private val tu
         state = state.copy(installationVerified = false, uncertain = true)
         installationResult(active, installations.operation(active, id))
     }
-    fun cancelInstall() = work { active -> val id = state.installation?.operationId ?: return@work; installationResult(active, installations.cancel(active, id)) }
+    fun cancelInstall(review: TunnelInstallationCancellation) {
+        if (installationCancellation !== review) return
+        dismissInstallationCancellation()
+        if (activeSession !== review.owner || owner !== review.owner || !state.installationVerified || state.installation != review.operation) return
+        work { active ->
+            state = state.copy(installationVerified = false, uncertain = true)
+            installationResult(active, installations.cancel(active, review.operation.operationId))
+        }
+    }
     private suspend fun installationResult(active: SessionState.Active, result: ApiResult<InstallationOperation>) {
         verify(active); failure(result)
         if (result is ApiResult.Success && result.value.service == InstallationService.Frp) {
@@ -223,9 +249,11 @@ internal class TunnelsViewModel(private val session: AuthSession, private val tu
     }
     private fun failure(result: ApiResult<*>) { state = state.copy(problemCode = (result as? ApiResult.Problem)?.code, uncertain = result is ApiResult.Transport) }
     private fun work(block: suspend (SessionState.Active) -> Unit) {
+        dismissInstallationCancellation()
         val active = activeSession ?: return
         if (owner !== active) { owner = active; intent = null; state = TunnelsState(); sessionEpoch++ }
         if (state.busy) return
+        workGeneration++
         state = state.copy(busy = true, problemCode = null, uncertain = false)
         viewModelScope.launch {
             try { verify(active); block(active) }

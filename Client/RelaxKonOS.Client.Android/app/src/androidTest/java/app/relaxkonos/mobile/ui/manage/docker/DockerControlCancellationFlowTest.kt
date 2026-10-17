@@ -124,14 +124,32 @@ class DockerControlCancellationFlowTest {
         show()
         rule.onNodeWithText(text(R.string.docker_control_engine_restart)).performScrollTo().performClick()
         rule.onNode(isDialog()).assertExists()
+        val old = requireNotNull(model.confirmation)
         rule.runOnIdle { section.value = "other" }
         rule.onNode(isDialog()).assertDoesNotExist()
         rule.onNodeWithText("Other Docker resources").assertIsDisplayed()
+        rule.runOnIdle { assertNull(model.confirmation); model.change(old); assertEquals(0, writes) }
         rule.runOnIdle { section.value = "overview" }
         rule.onNode(isDialog()).assertDoesNotExist()
         rule.onNodeWithText(text(R.string.docker_control_engine_restart)).performScrollTo().performClick()
         rule.onNode(hasText(text(R.string.common_cancel)) and hasAnyAncestor(isDialog())).performClick()
         rule.runOnIdle { assertEquals(0, writes) }
+    }
+    @Test fun pausedEngineConfirmationRejectsOldCallbackAndFreshReviewSubmitsOnce() {
+        show()
+        rule.onNodeWithText(text(R.string.docker_control_engine_restart)).performScrollTo().performClick()
+        val old = requireNotNull(model.confirmation)
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+            rule.runOnUiThread { assertNull(model.confirmation); model.change(old); assertEquals(0, writes) }
+            rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        } finally { rule.mainClock.autoAdvance = true }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.docker_control_engine_restart)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.docker_control_confirm)).performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.pending.size == 1 }
+        rule.runOnIdle { model.change(old); assertEquals(1, writes) }
     }
     @Test fun sharedControlFailureHasNoHiddenDialogsAndOnlyOneVisibleFeedback() {
         show(includeMirrors = true)

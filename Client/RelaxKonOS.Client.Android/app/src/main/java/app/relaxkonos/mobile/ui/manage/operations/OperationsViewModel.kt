@@ -128,6 +128,9 @@ internal class OperationsViewModel(private val session: AuthSession, private val
                 val snapshot = withContext(ioDispatcher) { actions.refresh(owner) }
                 val items = snapshot.items
                 if (current(owner, request)) {
+                    val previousSelection = state.items.firstOrNull {
+                        (it.reference.domain to it.reference.operationId) == state.selectedKey
+                    }
                     state = state.copy(loading = false, items = items,
                         selectedKey = state.selectedKey?.takeIf { key -> items.any { (it.reference.domain to it.reference.operationId) == key } },
                         error = snapshot.incomplete || cancellationUnverified, pendingInstallations = snapshot.pendingInstallations, pendingSites = snapshot.pendingSites, pendingCertificates = snapshot.pendingCertificates, pendingTunnels = snapshot.pendingTunnels, pendingProxy = snapshot.pendingProxy, pendingWebServers = snapshot.pendingWebServers, pendingFirewall = snapshot.pendingFirewall, pendingSmb = snapshot.pendingSmb, pendingDockerControl = snapshot.pendingDockerControl, pendingDockerResources = snapshot.pendingDockerResources, pendingGit = snapshot.pendingGit)
@@ -135,7 +138,9 @@ internal class OperationsViewModel(private val session: AuthSession, private val
                     if (selected?.check != OperationCheck.Verified) {
                         diagnosticGeneration++
                         state = state.copy(diagnostics = null, diagnosticsLoading = false)
-                    } else if (!quiet) select(owner, selected)
+                    } else if (!quiet || selected.state != previousSelection?.state ||
+                        selected.reference.resourceId != previousSelection?.reference?.resourceId)
+                        select(owner, selected)
                 }
             } catch (cancelled: CancellationException) {
                 if (current(owner, request)) invalidateFacts()

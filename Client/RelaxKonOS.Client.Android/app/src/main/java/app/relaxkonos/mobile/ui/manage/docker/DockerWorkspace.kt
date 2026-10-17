@@ -18,11 +18,9 @@ fun DockerWorkspace(initialSection: String, initialStack: String?, onBack: () ->
     onOpenApplication: (String) -> Unit, onOpenManagedProxy: () -> Unit, modifier: Modifier = Modifier) {
     val owner = appContainer().activeSession
     val control: DockerControlViewModel = dockerControlViewModel()
-    var requestedStack by rememberSaveable(owner) { mutableStateOf(initialStack) }
-    var section by rememberSaveable(owner) { mutableStateOf(initialSection) }
-    LaunchedEffect(initialSection, initialStack) {
-        requestedStack = initialStack
-        section = if (initialStack != null) "compose" else initialSection
+    var requestedStack by rememberSaveable(owner, initialSection, initialStack) { mutableStateOf(initialStack) }
+    var section by rememberSaveable(owner, initialSection, initialStack) {
+        mutableStateOf(if (initialStack != null) "compose" else initialSection)
     }
     val pages = listOf(
         WorkspaceDestination("overview", R.string.workspace_overview),

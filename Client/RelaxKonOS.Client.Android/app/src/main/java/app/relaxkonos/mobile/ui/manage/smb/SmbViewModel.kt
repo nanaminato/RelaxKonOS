@@ -12,13 +12,36 @@ import kotlinx.coroutines.*
 internal data class SmbState(val owner: SessionState.Active? = null, val busy: Boolean = false, val facts: SmbFacts? = null,
     val pending: List<PendingSmbMutation> = emptyList(), val installation: InstallationOperation? = null, val installationVerified: Boolean = false,
     val pendingInstallation: Boolean = false, val receipt: SmbReceipt? = null, val problem: String? = null, val checkedAtMillis: Long? = null, val saved: Int = 0)
+internal class SmbChangeReview(val owner: SessionState.Active, val confirmation: SmbConfirmation)
+internal class SmbInstallationCancellation(val owner: SessionState.Active, val operation: InstallationOperation)
 internal class SmbViewModel(private val session: AuthSession, private val smb: SmbRepository,
     private val installations: InstallationRepository, private val operationIndex: OperationIndex,
     private val elevationAnswers: ElevationAnswerProvider) : ViewModel() {
-    suspend fun observeInstallation() {
-        if (state.installationVerified && state.installation?.state?.active == true && !state.busy) {
+    var changeReview by mutableStateOf<SmbChangeReview?>(null); private set
+    var installationCancellation by mutableStateOf<SmbInstallationCancellation?>(null); private set
+    fun dismissInstallationCancellation() { installationCancellation = null }
+    fun requestInstallationCancellation(owner: SessionState.Active, operation: InstallationOperation) {
+        if (session.state.value === owner && state.owner === owner && owner.privilegedOperations && !state.busy &&
+            state.installationVerified && state.installation == operation && operation.state.active && operation.cancellable)
+            installationCancellation = SmbInstallationCancellation(owner, operation)
+    }
+    fun dismissConfirmation() { changeReview = null }
+    fun requestChange(owner: SessionState.Active, expected: SmbFacts, change: SmbChange) {
+        if (session.state.value !== owner || state.owner !== owner || !owner.privilegedOperations || state.busy ||
+            state.facts != expected || state.pending.isNotEmpty() || state.pendingInstallation ||
+            state.installation?.state?.active == true || state.installation != null && !state.installationVerified ||
+            !expected.capabilities.supported || !expected.status.state.manageable) return
+        changeReview = SmbChangeReview(owner, SmbConfirmation(expected, change))
+    }
+    suspend fun observeInstallation(canObserve: () -> Boolean) {
+        val owner = state.owner ?: return
+        val id = state.installation?.operationId ?: return
+        val request = generation
+        fun eligible() = canObserve() && installationCancellation == null && session.state.value === owner && state.owner === owner &&
+            state.installationVerified && state.installation?.let { it.operationId == id && it.state.active } == true && !state.busy
+        if (eligible()) {
             kotlinx.coroutines.delay(1500)
-            pollInstall()
+            if (eligible() && generation == request) pollInstall()
         }
     }
 
@@ -27,9 +50,9 @@ internal class SmbViewModel(private val session: AuthSession, private val smb: S
     private var intent: InstallationSubmission? = null
     var state by mutableStateOf(SmbState()); private set
     init { viewModelScope.launch { session.state.collect { next ->
-        if (next !== state.owner) { job?.cancel(); generation++; intent = null; state = SmbState(owner = next as? SessionState.Active) }
+        if (next !== state.owner) { dismissConfirmation(); dismissInstallationCancellation(); job?.cancel(); generation++; intent = null; state = SmbState(owner = next as? SessionState.Active) }
     } } }
-    fun stop() { job?.cancel(); generation++; state = state.copy(busy = false, facts = null, installationVerified = false) }
+    fun stop() { dismissConfirmation(); dismissInstallationCancellation(); job?.cancel(); generation++; state = state.copy(busy = false, facts = null, installationVerified = false) }
     fun refresh() = work { owner ->
         load(owner)
         if (owner.privilegedOperations) {
@@ -52,8 +75,12 @@ internal class SmbViewModel(private val session: AuthSession, private val smb: S
         val result = smb.acceptFacts(owner, pending); verify(owner)
         showFacts(owner, result)
     }
-    fun change(expected: SmbFacts, change: SmbChange, password: CharArray? = null) {
-        if (state.busy || state.owner == null || ServerCapabilities.FILE_SERVICES !in state.owner!!.capabilities) { password?.fill('\u0000'); return }
+    fun change(review: SmbChangeReview, password: CharArray? = null) {
+        if (changeReview !== review) { password?.fill('\u0000'); return }
+        dismissConfirmation()
+        if (state.busy || session.state.value !== review.owner || state.owner !== review.owner ||
+            state.facts != review.confirmation.expected || ServerCapabilities.FILE_SERVICES !in review.owner.capabilities) { password?.fill('\u0000'); return }
+        val expected = review.confirmation.expected; val change = review.confirmation.change
         work { owner ->
             try {
                 val result = smb.change(owner, expected, change, password, elevationAnswers); verify(owner)
@@ -73,7 +100,13 @@ internal class SmbViewModel(private val session: AuthSession, private val smb: S
         if (result is ApiResult.Success || result is ApiResult.Problem && !state.pendingInstallation) intent = null
     }
     fun pollInstall() = work { owner -> state.installation?.operationId?.let { installResult(owner, installations.operation(owner, it)) } }
-    fun cancelInstall() = work { owner -> state.installation?.operationId?.let { installResult(owner, installations.cancel(owner, it)) } }
+    fun cancelInstall(review: SmbInstallationCancellation) {
+        if (installationCancellation !== review) return
+        dismissInstallationCancellation()
+        if (session.state.value !== review.owner || state.owner !== review.owner || !state.installationVerified ||
+            state.installation != review.operation || !review.operation.state.active || !review.operation.cancellable) return
+        work { owner -> installResult(owner, installations.cancel(owner, review.operation.operationId)) }
+    }
     fun recoverInstall(id: String, identified: Boolean) = work { owner ->
         val pending = installations.pending(owner).firstOrNull { it.service == InstallationService.Smb }
         if (pending != null && !identified) return@work
@@ -102,9 +135,11 @@ internal class SmbViewModel(private val session: AuthSession, private val smb: S
         is ApiResult.Success -> (result.value as? SmbReceipt)?.problemCode
     }
     private fun work(block: suspend (SessionState.Active) -> Unit) {
+        dismissConfirmation()
+        dismissInstallationCancellation()
         val owner = state.owner ?: return
         if (state.busy || ServerCapabilities.FILE_SERVICES !in owner.capabilities) return
-        val request = generation; state = state.copy(busy = true, problem = null)
+        val request = ++generation; state = state.copy(busy = true, problem = null)
         job = viewModelScope.launch {
             try { verify(owner); block(owner) }
             catch (cancelled: CancellationException) {

@@ -25,6 +25,9 @@ class GuardianCancellationFlowTest {
     private lateinit var owner: SessionState.Active
     private var cancelRead = false
     private var failDefinition = false
+    private var actions = 0
+    private val workload = GuardianWorkload("job", "Job", "running", "running", 10, 0, null, 0,
+        "/bin/job", "/tmp", false, "review", null, null)
     private val visible = mutableStateOf(true)
     private var delayWorkloads = false
     private var pendingWorkloads: kotlin.coroutines.Continuation<ApiResult<List<GuardianWorkload>>>? = null
@@ -32,7 +35,7 @@ class GuardianCancellationFlowTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     private fun text(id: Int) = context.getString(id)
     @After fun cleanup() { rule.runOnUiThread { store.clear() } }
-    private fun show() {
+    private fun show(withWorkload: Boolean = false) {
         val app = context.applicationContext as RelaxKonApplication
         val gateway = object : RelaxKonGateway by app.container.gateway {
             override suspend fun login(serverUrl: String, identifier: String, password: CharArray) = ApiResult.Success(
@@ -45,7 +48,11 @@ class GuardianCancellationFlowTest {
             }
             override suspend fun guardianWorkloads(serverUrl: String, accessToken: String): ApiResult<List<GuardianWorkload>> =
                 if (delayWorkloads) kotlin.coroutines.suspendCoroutine { pendingWorkloads = it }
-                else ApiResult.Success(emptyList())
+                else ApiResult.Success(if (withWorkload) listOf(workload) else emptyList())
+            override suspend fun guardianLogs(serverUrl: String, accessToken: String, id: String): ApiResult<List<GuardianLog>> = ApiResult.Success(emptyList())
+            override suspend fun guardianAction(serverUrl: String, accessToken: String, id: String, action: String): ApiResult<GuardianOperation> {
+                actions++; return ApiResult.Success(GuardianOperation(true, ""))
+            }
             override suspend fun guardianDefinition(serverUrl: String, accessToken: String, id: String): ApiResult<GuardianDefinitionResult> =
                 if (failDefinition) ApiResult.Transport(null) else ApiResult.Success(GuardianDefinitionResult(true, "", definition))
         }
@@ -80,6 +87,27 @@ class GuardianCancellationFlowTest {
         rule.waitUntil(5_000) { !model.state.value.loading && !model.state.value.stale }
         rule.onNodeWithText(text(R.string.guardian_create)).assertIsEnabled()
         rule.onNodeWithText(text(R.string.guardian_empty)).assertIsDisplayed()
+    }
+    @Test fun pausedActionReviewIsWithdrawnAndFreshConfirmationExecutesOnce() {
+        show(withWorkload = true)
+        rule.runOnIdle { model.select("job") }
+        rule.waitUntil(5_000) { model.state.value.definition != null }
+        rule.onNodeWithText(text(R.string.guardian_restart)).performScrollTo().performClick()
+        rule.onNode(isDialog()).assertExists()
+        val old = model.actionReview!!
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+            rule.runOnUiThread { org.junit.Assert.assertNull(model.actionReview); model.confirmAction(old) }
+            rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        } finally { rule.mainClock.autoAdvance = true }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.waitUntil(5_000) { !model.state.value.loading && !model.state.value.stale }
+        rule.runOnIdle { org.junit.Assert.assertEquals(0, actions) }
+        rule.onNodeWithText(text(R.string.guardian_restart)).performScrollTo().performClick()
+        rule.onNode(hasText(text(R.string.guardian_restart)) and hasAnyAncestor(isDialog()) and hasClickAction()).performClick()
+        rule.waitUntil(5_000) { actions == 1 && !model.state.value.loading }
+        rule.runOnIdle { model.confirmAction(old); org.junit.Assert.assertEquals(1, actions) }
     }
     @Test fun leavingDuringNonCooperativeReadAllowsFreshPageToRecover() {
         show()

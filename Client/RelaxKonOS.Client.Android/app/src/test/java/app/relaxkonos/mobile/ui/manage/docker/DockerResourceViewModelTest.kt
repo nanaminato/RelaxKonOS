@@ -60,7 +60,8 @@ class DockerResourceViewModelTest {
         login(); runCurrent(); model.refresh(); advanceUntilIdle()
         var sends = 0
         gateway.onDockerResourceChange = { sends++; throw CancellationException("private write") }
-        model.change(facts, null, change); advanceUntilIdle()
+        model.requestChange(requireNotNull(model.state.owner), facts, null, change)
+        model.change(requireNotNull(model.confirmation)); advanceUntilIdle()
         assertNull(model.state.facts); assertEquals(1, model.state.pending.size)
         model.refresh(); advanceUntilIdle()
         assertEquals(facts, model.state.facts); assertEquals(1, model.state.pending.size)
@@ -75,6 +76,35 @@ class DockerResourceViewModelTest {
         assertNull(model.state.facts); assertEquals(listOf(marker), model.state.pending)
         assertEquals(1, reads); assertEquals("docker.control.unverified", model.state.problem)
     }
+    private suspend fun TestScope.review(): ResourceConfirmation {
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        model.requestChange(requireNotNull(model.state.owner), facts, null, change)
+        return requireNotNull(model.confirmation)
+    }
+    @Test fun `same facts after relogin cannot reuse old resource confirmation`() = runTest {
+        val old = review(); var sends = 0
+        gateway.onDockerResourceChange = { sends++; ApiResult.Transport(null) }
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        model.change(old); advanceUntilIdle(); assertEquals(0, sends); assertTrue(model.state.pending.isEmpty())
+    }
+    @Test fun `refresh and dismissal reject old callback even when identical review reopens`() = runTest {
+        val old = review(); var sends = 0
+        gateway.onDockerResourceChange = { sends++; ApiResult.Transport(null) }
+        model.refresh(); advanceUntilIdle(); assertNull(model.confirmation)
+        model.requestChange(requireNotNull(model.state.owner), facts, null, change)
+        val fresh = requireNotNull(model.confirmation)
+        model.change(old); advanceUntilIdle(); assertEquals(0, sends)
+        model.dismissConfirmation(); model.change(fresh); advanceUntilIdle(); assertEquals(0, sends)
+    }
+    @Test fun `stopped review cannot execute and fresh confirmation is consumed once`() = runTest {
+        val old = review(); model.stop(); model.change(old); advanceUntilIdle()
+        model.refresh(); advanceUntilIdle()
+        model.requestChange(requireNotNull(model.state.owner), facts, null, change)
+        val fresh = requireNotNull(model.confirmation); var sends = 0
+        gateway.onDockerResourceChange = { sends++; ApiResult.Transport(null) }
+        model.change(fresh); model.change(fresh); advanceUntilIdle()
+        assertEquals(1, sends); assertEquals(1, model.state.pending.size)
+    }
     @Test fun `old stats timer cannot query a newly selected container`() = runTest {
         login(); runCurrent()
         val first = "a".repeat(64); val second = "b".repeat(64)
@@ -88,6 +118,25 @@ class DockerResourceViewModelTest {
         model.select(DockerResourceKind.Containers, second); runCurrent()
         advanceTimeBy(3_000); runCurrent(); timer.join()
         assertEquals(listOf(first, second), reads)
+    }
+    @Test fun `force edits replace approval and switching target revokes it`() = runTest {
+        review(); model.dismissConfirmation()
+        val id = "a".repeat(64)
+        gateway.onDockerContainerDetails = { target -> ApiResult.Success(DockerContainerDetails(target, "review", "image", "", "running", "running", "", "", "",
+            emptyList(), emptyList(), emptyList(), emptyList(), emptyMap())) }
+        gateway.onDockerContainerStats = { target -> ApiResult.Success(DockerContainerStats(target, "0", "0", "0", "0")) }
+        model.select(DockerResourceKind.Containers, id); advanceUntilIdle()
+        model.requestChange(requireNotNull(model.state.owner), facts, model.state.target,
+            DockerResourceChange(DockerResourceAction.Stop, target = id))
+        val old = requireNotNull(model.confirmation)
+        model.updateForce(old, true)
+        val forced = requireNotNull(model.confirmation)
+        assertNotSame(old, forced); assertTrue(forced.change.force)
+        model.updateForce(old, false); assertSame(forced, model.confirmation)
+        model.select(DockerResourceKind.Containers, "b".repeat(64)); advanceUntilIdle()
+        assertNull(model.confirmation)
+        model.updateForce(forced, false); assertNull(model.confirmation)
+        model.change(forced); advanceUntilIdle(); assertTrue(model.state.pending.isEmpty())
     }
     @Test fun `stats timer rechecks foreground after delay`() = runTest {
         login(); runCurrent()

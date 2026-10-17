@@ -12,6 +12,9 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -46,17 +49,30 @@ internal fun SmbContent(model: SmbViewModel, owner: SessionState.Active?, onBack
     var selected by remember(owner) { mutableStateOf<String?>(null) }
     var draft by remember(owner) { mutableStateOf<SmbDraft?>(null) }
     var draftFacts by remember(owner) { mutableStateOf<SmbFacts?>(null) }
-    var confirmation by remember(owner) { mutableStateOf<SmbConfirmation?>(null) }
+    val review = model.changeReview?.takeIf { it.owner === owner }
+    val confirmation = review?.confirmation
     var leave by remember(owner) { mutableStateOf<(() -> Unit)?>(null) }
-    var install by remember(owner) { mutableStateOf(false) }; var cancel by remember(owner) { mutableStateOf(false) }
+    var install by remember(owner) { mutableStateOf(false) }; val cancel = model.installationCancellation?.takeIf { it.owner === owner }
     var recover by remember(owner) { mutableStateOf(false) }; var operationId by remember(owner) { mutableStateOf("") }; var identified by remember(owner) { mutableStateOf(false) }
     val navigate: (() -> Unit) -> Unit = { action -> if (draft != null) leave = action else action() }
     LaunchedEffect(owner, state.owner) { if (visible && owner != null) model.refresh() }
     LaunchedEffect(owner, state.saved) { if (visible && state.saved > 0) draft = null }
-    LaunchedEffect(owner, state.installation?.operationId, state.installation?.state, state.installationVerified, state.busy) {
-        if (visible) model.observeInstallation()
-    }
     DisposableEffect(owner) { onDispose { model.stop() } }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var resumed by remember(lifecycle) { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
+    LaunchedEffect(owner, state.installation?.operationId, state.installation?.state, state.installationVerified, state.busy, resumed, cancel) {
+        if (visible && resumed && cancel == null) model.observeInstallation {
+            resumed && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && model.installationCancellation == null
+        }
+    }
+    DisposableEffect(owner, lifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+            if (event == Lifecycle.Event.ON_PAUSE) { model.dismissConfirmation(); leave = null; install = false; model.dismissInstallationCancellation(); recover = false; identified = false }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
     BackHandler(section == "shares" && (draft != null || selected != null)) { navigate { draft = null; selected = null } }
     val pages = buildList {
         add(WorkspaceDestination("overview", R.string.workspace_overview))
@@ -109,7 +125,7 @@ WorkspaceSection(section == "overview") {
                     facts.status.state == SmbRuntimeState.NotInstalled, onClick = { install = true }) { Text(stringResource(R.string.smb_install)) }
                 if (canManage) SmbChangeKind.entries.filter { it in setOf(SmbChangeKind.Start, SmbChangeKind.Stop, SmbChangeKind.Restart) }.forEach { action ->
                     val allowed = if (action == SmbChangeKind.Start) facts.status.state == SmbRuntimeState.Stopped else facts.status.state == SmbRuntimeState.Running
-                    OutlinedButton(enabled = ready && allowed && draft == null, onClick = { confirmation = SmbConfirmation(facts, SmbChange(action)) }) { Text(smbActionLabel(action)) }
+                    OutlinedButton(enabled = ready && allowed && draft == null, onClick = { model.requestChange(requireNotNull(owner), facts, SmbChange(action)) }) { Text(smbActionLabel(action)) }
                 }
             }
             }
@@ -140,7 +156,7 @@ WorkspaceSection(section == "overview") {
             if (state.installationVerified) {
                 ExecutionStatusChip(installationStateLabel(operation.state), operation.state.wire); Text(installationStageLabel(operation.stage)); operation.progress?.let { Text(stringResource(R.string.installation_stage_progress, it)) }
                 operation.problemCode?.let { Text(installationProblemLabel(it)) }
-                if (operation.state.active && operation.cancellable && canManage) OutlinedButton(enabled = !state.busy, onClick = { cancel = true }) { Text(stringResource(R.string.operations_request_cancel)) }
+                if (operation.state.active && operation.cancellable && canManage) OutlinedButton(enabled = !state.busy, onClick = { model.requestInstallationCancellation(requireNotNull(owner), operation) }) { Text(stringResource(R.string.operations_request_cancel)) }
             } else Text(stringResource(R.string.smb_unverified))
             }
         }
@@ -180,7 +196,7 @@ WorkspaceSection(section == "overview") {
                         val chosen = facts.shares?.firstOrNull { it.id == selected }
                         if (editing != null || chosen != null) Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                             if (editing != null) SmbShareEditor(editing, facts, ready, { draft = it }, {
-                                confirmation = SmbConfirmation(facts, SmbChange(if (editing.id == null) SmbChangeKind.CreateShare else SmbChangeKind.UpdateShare, editing.id, editing.request()))
+                                model.requestChange(requireNotNull(owner), facts, SmbChange(if (editing.id == null) SmbChangeKind.CreateShare else SmbChangeKind.UpdateShare, editing.id, editing.request()))
                             }, { navigate { draft = null } })
                             else if (chosen != null) SmbPanel {
                                 Text(chosen.name, style = MaterialTheme.typography.titleMedium); SelectionContainer { Text(chosen.path) }; chosen.description?.let { Text(it) }
@@ -191,7 +207,7 @@ WorkspaceSection(section == "overview") {
                                 if (!chosen.managed || chosen.drifted) Text(stringResource(if (chosen.drifted) R.string.smb_drifted else R.string.smb_external), color = MaterialTheme.colorScheme.error)
                                 FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                                     Button(enabled = ready && chosen.managed && !chosen.drifted, onClick = { draftFacts = facts; draft = SmbDraft.from(chosen, facts.capabilities.windowsShareSecuritySupported) }) { Text(stringResource(R.string.smb_edit)) }
-                                    OutlinedButton(enabled = ready && chosen.managed && !chosen.drifted, onClick = { confirmation = SmbConfirmation(facts, SmbChange(SmbChangeKind.DeleteShare, chosen.id)) }, colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) { ActionLabel(R.string.common_delete) }
+                                    OutlinedButton(enabled = ready && chosen.managed && !chosen.drifted, onClick = { model.requestChange(requireNotNull(owner), facts, SmbChange(SmbChangeKind.DeleteShare, chosen.id)) }, colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) { ActionLabel(R.string.common_delete) }
                                 }
                                 TextButton(onClick = { selected = null }) { Text(stringResource(R.string.common_close)) }
                             }
@@ -207,8 +223,8 @@ WorkspaceSection(section == "overview") {
                     SmbStatusBadge(stringResource(if (user.enabled) R.string.smb_user_enabled else R.string.smb_user_disabled), user.enabled)
                     if (!user.eligible) Text(stringResource(R.string.smb_user_ineligible))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    OutlinedButton(enabled = ready && user.eligible, onClick = { confirmation = SmbConfirmation(facts, SmbChange(if (user.enabled) SmbChangeKind.DisableUser else SmbChangeKind.EnableUser, user.username)) }) { Text(smbActionLabel(if (user.enabled) SmbChangeKind.DisableUser else SmbChangeKind.EnableUser)) }
-                    OutlinedButton(enabled = ready && user.eligible, onClick = { confirmation = SmbConfirmation(facts, SmbChange(SmbChangeKind.Password, user.username)) }) { Text(stringResource(R.string.smb_password)) }
+                    OutlinedButton(enabled = ready && user.eligible, onClick = { model.requestChange(requireNotNull(owner), facts, SmbChange(if (user.enabled) SmbChangeKind.DisableUser else SmbChangeKind.EnableUser, user.username)) }) { Text(smbActionLabel(if (user.enabled) SmbChangeKind.DisableUser else SmbChangeKind.EnableUser)) }
+                    OutlinedButton(enabled = ready && user.eligible, onClick = { model.requestChange(requireNotNull(owner), facts, SmbChange(SmbChangeKind.Password, user.username)) }) { Text(stringResource(R.string.smb_password)) }
                     }
                     }
                 }
@@ -221,16 +237,15 @@ WorkspaceSection(section == "overview") {
             }
         }
     }
-    confirmation?.let { pending -> SmbConfirmationDialog(pending, state.busy, ready, { confirmation = null }) { secret ->
-        confirmation = null
-        model.change(pending.expected, pending.change, secret)
+    confirmation?.let { pending -> SmbConfirmationDialog(pending, state.busy, ready, { model.dismissConfirmation() }) { secret ->
+        model.change(requireNotNull(review), secret)
     } }
     if (leave != null) AlertDialog(onDismissRequest = { leave = null }, title = { Text(stringResource(R.string.smb_discard)) }, text = { Text(stringResource(R.string.smb_discard_note)) },
         confirmButton = { TextButton(onClick = { val action = leave; leave = null; action?.invoke() }) { Text(stringResource(R.string.smb_discard_action)) } }, dismissButton = { TextButton(onClick = { leave = null }) { Text(stringResource(R.string.common_cancel)) } })
     if (install) AlertDialog(onDismissRequest = { install = false }, title = { Text(stringResource(R.string.smb_install)) }, text = { Text(stringResource(R.string.smb_install_note)) },
         confirmButton = { Button(enabled = !state.busy, onClick = { install = false; section = "records"; model.install() }) { Text(stringResource(R.string.smb_submit)) } }, dismissButton = { TextButton(onClick = { install = false }) { Text(stringResource(R.string.common_cancel)) } })
-    if (cancel) AlertDialog(onDismissRequest = { cancel = false }, title = { Text(stringResource(R.string.operations_request_cancel)) }, text = { Text(stringResource(R.string.operations_cancel_explanation)) },
-        confirmButton = { Button(onClick = { cancel = false; model.cancelInstall() }) { Text(stringResource(R.string.common_cancel)) } }, dismissButton = { TextButton(onClick = { cancel = false }) { Text(stringResource(R.string.common_close)) } })
+    cancel?.let { cancellation -> AlertDialog(onDismissRequest = { model.dismissInstallationCancellation() }, title = { Text(stringResource(R.string.operations_request_cancel)) }, text = { Text(stringResource(R.string.operations_cancel_explanation)) },
+        confirmButton = { Button(onClick = { model.cancelInstall(cancellation) }) { Text(stringResource(R.string.common_cancel)) } }, dismissButton = { TextButton(onClick = { model.dismissInstallationCancellation() }) { Text(stringResource(R.string.common_close)) } }) }
     if (recover) AlertDialog(onDismissRequest = { recover = false }, title = { Text(stringResource(R.string.installation_recover)) }, text = { Column {
         Text(stringResource(R.string.installation_recover_help)); OutlinedTextField(operationId, { operationId = it }, singleLine = true, label = { Text(stringResource(R.string.installation_operation_id)) })
         if (state.pendingInstallation) SmbCheck(identified, true, R.string.smb_identify_original) { identified = it }

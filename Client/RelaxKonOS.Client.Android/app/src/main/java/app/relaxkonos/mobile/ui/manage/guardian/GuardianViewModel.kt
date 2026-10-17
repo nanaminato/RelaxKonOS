@@ -34,7 +34,26 @@ data class GuardianUiState(
     val stale: Boolean = true,
 )
 
+internal class GuardianActionReview(val owner: SessionState.Active, val target: GuardianWorkload, val action: String)
+
 class GuardianViewModel(private val session: AuthSession, private val repository: GuardianRepository) : ViewModel() {
+    internal var actionReview by mutableStateOf<GuardianActionReview?>(null)
+        private set
+    internal fun dismissAction() { actionReview = null }
+    internal fun requestAction(active: SessionState.Active, target: GuardianWorkload, action: String) {
+        val state = mutable.value
+        if (current(active) && !state.loading && !state.stale && !state.unknown && editing == null &&
+            state.selectedId == target.id && target in state.workloads && action in setOf("start", "stop", "restart", "delete"))
+            actionReview = GuardianActionReview(active, target, action)
+    }
+    internal fun confirmAction(review: GuardianActionReview) {
+        val state = mutable.value
+        if (actionReview !== review) return
+        actionReview = null
+        if (!current(review.owner) || state.loading || state.stale || state.unknown || editing != null ||
+            state.selectedId != review.target.id || review.target !in state.workloads) return
+        if (review.action == "delete") delete(review.target.id) else act(review.target.id, review.action)
+    }
     private val mutable = MutableStateFlow(GuardianUiState())
     val state = mutable.asStateFlow()
     var editing by mutableStateOf<GuardianDraft?>(null)
@@ -49,7 +68,7 @@ class GuardianViewModel(private val session: AuthSession, private val repository
     internal val logObserver = GuardianLogObserver(session, viewModelScope)
     init { viewModelScope.launch { session.state.collect { value ->
         val active = value as? SessionState.Active
-        if (owner !== active) { work?.cancel(); reading?.cancel(); selection?.cancel(); observation?.cancel(); logObserver.stop(); owner = active; editing = null; mutable.value = GuardianUiState() }
+        if (owner !== active) { dismissAction(); work?.cancel(); reading?.cancel(); selection?.cancel(); observation?.cancel(); logObserver.stop(); owner = active; editing = null; mutable.value = GuardianUiState() }
     } } }
     private fun current(active: SessionState.Active) = owner === active && session.state.value === active
     fun observe(active: SessionState.Active, visible: Boolean) {
@@ -68,6 +87,7 @@ class GuardianViewModel(private val session: AuthSession, private val repository
         }
     }
     fun stopObserving() {
+        dismissAction()
         observation?.cancel(); observation = null
         val wasReading = reading?.isActive == true
         readingGeneration++
@@ -81,6 +101,7 @@ class GuardianViewModel(private val session: AuthSession, private val repository
     }
     fun load(active: SessionState.Active, reconcile: Boolean = true) {
         if (session.state.value !== active) return
+        if (reconcile) dismissAction() else if (actionReview != null) return
         if (owner !== active) { work?.cancel(); reading?.cancel(); selection?.cancel(); observation?.cancel(); logObserver.stop(); owner = active; editing = null; mutable.value = GuardianUiState() }
         if (mutable.value.loading) return
         val request = ++readingGeneration
@@ -107,6 +128,7 @@ class GuardianViewModel(private val session: AuthSession, private val repository
         }
     }
     fun select(id: String?) {
+        dismissAction()
         val request = ++selectionGeneration
         selection?.cancel()
         mutable.update { it.copy(selectedId = id, definition = null, logs = emptyList(), error = id == null && it.error) }

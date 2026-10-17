@@ -2,6 +2,7 @@ package app.relaxkonos.mobile.ui.manage.firewall
 
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.Lifecycle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableStateOf
@@ -75,6 +76,24 @@ class FirewallCancellationFlowTest {
         rule.onNodeWithText(text(R.string.common_dismiss)).assertIsDisplayed().performClick()
         rule.onNodeWithText(text(R.string.firewall_unverified)).assertIsDisplayed()
         rule.onNodeWithText(text(R.string.firewall_enable)).assertDoesNotExist()
+    }
+    @Test fun pausedConfirmationCannotWriteAndFreshConfirmationSubmitsOnce() {
+        show()
+        rule.onNodeWithText(text(R.string.firewall_enable)).performScrollTo().performClick()
+        rule.onNode(isDialog()).assertExists()
+        val old = requireNotNull(model.confirmation)
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+            rule.runOnUiThread { assertNull(model.confirmation); model.change(old) }
+            rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        } finally { rule.mainClock.autoAdvance = true }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.runOnIdle { assertEquals(0, writes) }
+        rule.onNodeWithText(text(R.string.firewall_enable)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.firewall_submit)).performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.pending.size == 1 }
+        rule.runOnIdle { model.change(old); assertEquals(1, writes) }
     }
     @Test fun cancelledRefreshRemovesOldActionsAndExplicitRefreshRecovers() {
         show()

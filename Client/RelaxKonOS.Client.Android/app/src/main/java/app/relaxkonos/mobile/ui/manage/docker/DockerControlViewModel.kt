@@ -24,10 +24,20 @@ internal fun DockerControlState.installationLookupFailure(id: String?, result: A
     installationLookupFailed = true,
 )
 
+internal class ControlConfirmation(val owner: SessionState.Active, val facts: DockerControlFacts, val change: DockerControlChange)
 internal class DockerControlViewModel(private val session: AuthSession, private val control: DockerControlRepository,
     private val resources: DockerResourceRepository, private val installations: InstallationRepository,
     private val operationIndex: OperationIndex, private val mutationGate: DockerMutationGate,
     private val elevationAnswers: ElevationAnswerProvider) : ViewModel() {
+    var confirmation by mutableStateOf<ControlConfirmation?>(null); private set
+    fun dismissConfirmation() { confirmation = null }
+    fun requestChange(owner: SessionState.Active, facts: DockerControlFacts, change: DockerControlChange) {
+        if (session.state.value !== owner || state.owner !== owner || !owner.privilegedOperations ||
+            state.busy || state.facts != facts || state.pending.isNotEmpty() || state.resourcePending ||
+            state.pendingInstallation || state.installation?.state?.active == true ||
+            state.installation != null && !state.installationVerified) return
+        confirmation = ControlConfirmation(owner, facts, change)
+    }
     suspend fun observeInstallation(canObserve: () -> Boolean) {
         val owner = state.owner ?: return
         val id = state.installation?.operationId ?: return
@@ -61,9 +71,9 @@ internal class DockerControlViewModel(private val session: AuthSession, private 
     private var intent: InstallationSubmission? = null
     var state by mutableStateOf(DockerControlState()); private set
     init { viewModelScope.launch { session.state.collect { next ->
-        if (next !== state.owner) { job?.cancel(); generation++; intent = null; state = DockerControlState(owner = next as? SessionState.Active) }
+        if (next !== state.owner) { dismissConfirmation(); job?.cancel(); generation++; intent = null; state = DockerControlState(owner = next as? SessionState.Active) }
     } } }
-    fun stop() { job?.cancel(); generation++; state = state.copy(busy = false, facts = null, installationVerified = false) }
+    fun stop() { dismissConfirmation(); job?.cancel(); generation++; state = state.copy(busy = false, facts = null, installationVerified = false) }
     fun refresh() = work { owner ->
         load(owner)
         if (owner.privilegedOperations) {
@@ -87,11 +97,17 @@ internal class DockerControlViewModel(private val session: AuthSession, private 
             } else state = state.installationLookupFailure(state.installationLookupId, active)
         }
     }
-    fun change(expected: DockerControlFacts, change: DockerControlChange) = work { owner ->
-        require(!state.pendingInstallation && state.installation?.state?.active != true && (state.installation == null || state.installationVerified))
-        val result = control.change(owner, expected, change); verify(owner)
-        load(owner)
-        state = state.copy(problem = problem(result) ?: state.problem, saved = state.saved + if (result is ApiResult.Success) 1 else 0)
+    fun change(review: ControlConfirmation) {
+        if (confirmation !== review) return
+        dismissConfirmation()
+        if (session.state.value !== review.owner || state.owner !== review.owner || state.facts != review.facts) return
+        val expected = review.facts; val change = review.change
+        work { owner ->
+            require(!state.pendingInstallation && state.installation?.state?.active != true && (state.installation == null || state.installationVerified))
+            val result = control.change(owner, expected, change); verify(owner)
+            load(owner)
+            state = state.copy(problem = problem(result) ?: state.problem, saved = state.saved + if (result is ApiResult.Success) 1 else 0)
+        }
     }
     fun accept(pending: PendingDockerControl) = work { owner ->
         val result = control.acceptFacts(owner, pending); verify(owner); showFacts(owner, result)
@@ -148,6 +164,7 @@ internal class DockerControlViewModel(private val session: AuthSession, private 
         is ApiResult.Problem -> result.code; is ApiResult.Transport -> "docker.control.unverified"; is ApiResult.Success -> null
     }
     private fun work(block: suspend (SessionState.Active) -> Unit) {
+        dismissConfirmation()
         val owner = state.owner ?: return
         if (state.busy || ServerCapabilities.DOCKER !in owner.capabilities) return
         val request = ++generation; state = state.copy(busy = true, problem = null)

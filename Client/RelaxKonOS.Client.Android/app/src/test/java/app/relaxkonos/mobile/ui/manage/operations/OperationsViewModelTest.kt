@@ -27,6 +27,8 @@ class OperationsViewModelTest {
     private var readDiagnostics: suspend () -> ApiResult<List<String>> = { ApiResult.Success(emptyList()) }
     private var diagnosticReads = 0
     private var refreshReads = 0
+    private var operationState = "running"
+    private var verifiedAt = 1L
     private val actions = object : OperationsActions {
         override suspend fun refresh(owner: SessionState.Active): OperationCenterSnapshot {
             refreshReads++
@@ -59,8 +61,8 @@ class OperationsViewModelTest {
         return owner
     }
     private fun item(owner: SessionState.Active) = ObservedOperation(
-        OperationReference(owner.serviceId, owner.userName, OperationDomain.Compose, "certificate", "operation", 1),
-        OperationCheck.Verified, "certificate", state = "running", cancellable = true)
+        OperationReference(owner.serviceId, owner.userName, OperationDomain.Compose, "certificate", "operation", 1, lastVerifiedAtMillis = verifiedAt),
+        OperationCheck.Verified, "certificate", state = operationState, cancellable = true)
     private fun otherItem(owner: SessionState.Active) = item(owner).let { it.copy(reference = it.reference.copy(operationId = "other")) }
     @Test fun `same account relogin clears old task facts and approval before page refresh`() = runTest {
         val owner = start(); model.select(owner, item(owner)); advanceUntilIdle(); model.requestHide(owner, item(owner))
@@ -137,9 +139,20 @@ class OperationsViewModelTest {
         val owner = start()
         readDiagnostics = { ApiResult.Success(listOf("diagnostic snapshot")) }
         model.select(owner, item(owner)); advanceUntilIdle()
+        verifiedAt++
         model.poll(owner); advanceUntilIdle()
         assertEquals(ApiResult.Success(listOf("diagnostic snapshot")), model.state.diagnostics)
         assertEquals(1, diagnosticReads)
+    }
+    @Test fun `quiet refresh reloads diagnostics when selected task finishes`() = runTest {
+        val owner = start()
+        readDiagnostics = { ApiResult.Success(listOf("diagnostic-$diagnosticReads")) }
+        model.select(owner, item(owner)); advanceUntilIdle()
+        operationState = "succeeded"
+        model.poll(owner); advanceUntilIdle()
+        assertEquals(2, diagnosticReads)
+        assertEquals(ApiResult.Success(listOf("diagnostic-2")), model.state.diagnostics)
+        assertEquals(0, writes)
     }
     @Test fun `quiet task refresh does not invalidate ongoing diagnostic read`() = runTest {
         val owner = start(); val gate = CompletableDeferred<ApiResult<List<String>>>()
@@ -152,6 +165,18 @@ class OperationsViewModelTest {
             assertEquals(ApiResult.Success(listOf("diagnostic snapshot")), model.state.diagnostics)
             assertFalse(model.state.diagnosticsLoading)
         } finally { gate.complete(ApiResult.Transport(null)) }
+    }
+    @Test fun `task completion rejects late running diagnostic response`() = runTest {
+        val owner = start(); val old = CompletableDeferred<ApiResult<List<String>>>()
+        readDiagnostics = { if (diagnosticReads == 1) old.await() else ApiResult.Success(listOf("final diagnostic")) }
+        try {
+            model.select(owner, item(owner)); runCurrent()
+            operationState = "succeeded"
+            model.poll(owner); runCurrent()
+            old.complete(ApiResult.Success(listOf("running diagnostic"))); advanceUntilIdle()
+            assertEquals(ApiResult.Success(listOf("final diagnostic")), model.state.diagnostics)
+            assertFalse(model.state.diagnosticsLoading); assertEquals(0, writes)
+        } finally { old.complete(ApiResult.Transport(null)) }
     }
     @Test fun `explicit task refresh reloads selected diagnostics`() = runTest {
         val owner = start()

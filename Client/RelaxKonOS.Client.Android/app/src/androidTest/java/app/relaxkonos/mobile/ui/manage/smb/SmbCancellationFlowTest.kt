@@ -2,6 +2,7 @@ package app.relaxkonos.mobile.ui.manage.smb
 
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.Lifecycle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -39,7 +40,7 @@ class SmbCancellationFlowTest {
     private val facts = SmbFacts(SmbCapabilities(true, true, true, true, false, null),
         SmbStatus(SmbRuntimeState.Running, "4", true, true, null), emptyList(), emptyList(),
         SmbConnection("review-host", 445, "prefix", "smb://review-host"))
-    private fun show() {
+    private fun show(includeUser: Boolean = false) {
         val app = context.applicationContext as RelaxKonApplication
         val gateway = object : RelaxKonGateway by app.container.gateway {
             override suspend fun login(serverUrl: String, identifier: String, password: CharArray) = ApiResult.Success(
@@ -52,7 +53,8 @@ class SmbCancellationFlowTest {
             override suspend fun smbStatus(serverUrl: String, accessToken: String) = ApiResult.Success(facts.status)
             override suspend fun smbConnection(serverUrl: String, accessToken: String) = ApiResult.Success(facts.connection)
             override suspend fun smbShares(serverUrl: String, accessToken: String): ApiResult<List<SmbShare>> = ApiResult.Success(emptyList())
-            override suspend fun smbUsers(serverUrl: String, accessToken: String): ApiResult<List<SmbUser>> = ApiResult.Success(emptyList())
+            override suspend fun smbUsers(serverUrl: String, accessToken: String): ApiResult<List<SmbUser>> =
+                ApiResult.Success(if (includeUser) listOf(SmbUser("review-user", true, true)) else emptyList())
             override suspend fun activeInstallation(serverUrl: String, accessToken: String, service: InstallationService): ApiResult<InstallationOperation?> = ApiResult.Success(null)
             override suspend fun installation(serverUrl: String, accessToken: String, operationId: String): ApiResult<InstallationOperation> =
                 tasks[operationId]?.let { ApiResult.Success(it) } ?: ApiResult.Problem(404, "installation.missing", null)
@@ -85,6 +87,34 @@ class SmbCancellationFlowTest {
     }
     @After fun cleanup() { rule.runOnUiThread { store.clear() } }
     private fun refresh() = rule.onNodeWithText(text(R.string.common_refresh)).performScrollTo().performClick()
+    @Test fun pausedPasswordConfirmationClearsInputsAndRejectsOldCallback() {
+        show(includeUser = true)
+        rule.onNodeWithText(text(R.string.workspace_users)).performClick()
+        rule.onNodeWithText(text(R.string.smb_password)).performScrollTo().performClick()
+        val old = requireNotNull(model.changeReview)
+        fun field(id: Int) = rule.onNode(hasSetTextAction() and hasText(text(id)))
+        field(R.string.smb_password).performTextInput("review-password")
+        field(R.string.smb_password_again).performTextInput("review-password")
+        rule.mainClock.autoAdvance = false
+        try {
+            rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+            rule.runOnUiThread {
+                assertNull(model.changeReview)
+                val password = "review-password".toCharArray()
+                model.change(old, password); assertTrue(password.all { it == '\u0000' }); assertEquals(0, writes)
+            }
+            rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        } finally { rule.mainClock.autoAdvance = true }
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.smb_password)).performScrollTo().performClick()
+        field(R.string.smb_password).assertTextEquals(text(R.string.smb_password), "")
+        field(R.string.smb_password_again).assertTextEquals(text(R.string.smb_password_again), "")
+        field(R.string.smb_password).performTextInput("review-password")
+        field(R.string.smb_password_again).performTextInput("review-password")
+        rule.onNodeWithText(text(R.string.smb_submit)).performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.pending.size == 1 }
+        rule.runOnIdle { assertEquals(1, writes) }
+    }
     @Test fun replacingInstallationWithdrawsOldCancelAndNewConfirmationTargetsNewTask() {
         show()
         val next = task.copy(operationId = "22222222-2222-2222-2222-222222222222")

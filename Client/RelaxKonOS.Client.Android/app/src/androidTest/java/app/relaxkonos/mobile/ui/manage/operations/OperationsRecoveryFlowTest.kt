@@ -39,6 +39,7 @@ class OperationsRecoveryFlowTest {
     private var writes = 0
     private var failDiagnostics = false
     private var diagnosticReads = 0
+    private var operationState = "running"
     private var exports = 0
     private var exportResult = false
     private val exportedReports = mutableListOf<String>()
@@ -64,14 +65,14 @@ class OperationsRecoveryFlowTest {
             override suspend fun refresh(owner: SessionState.Active): OperationCenterSnapshot {
                 refreshReads.incrementAndGet()
                 if (cancelRead) throw CancellationException("private read detail")
-                return OperationCenterSnapshot(listOfNotNull(item, if (includeSecond) item.copy(
+                return OperationCenterSnapshot(listOfNotNull(item.copy(state = operationState), if (includeSecond) item.copy(
                     reference = item.reference.copy(operationId = "33333333-3333-3333-3333-333333333333"), target = "other-operation") else null)
                     .filterNot { it.reference.operationId in hiddenIds }, false)
             }
             override suspend fun diagnostics(owner: SessionState.Active, item: ObservedOperation): ApiResult<List<String>> {
                 diagnosticReads++
                 if (failDiagnostics) throw IllegalStateException("private diagnostic detail")
-                return ApiResult.Success(listOf("review-diagnostic"))
+                return ApiResult.Success(listOf(if (item.state == "succeeded") "final-diagnostic" else "review-diagnostic"))
             }
             override suspend fun cancel(owner: SessionState.Active, item: ObservedOperation): ApiResult<*> {
                 writes++; throw CancellationException("private cancellation detail")
@@ -204,6 +205,16 @@ class OperationsRecoveryFlowTest {
         rule.onNode(hasText("\"diagnosticsAvailable\": true", substring = true) and hasAnyAncestor(isDialog())).assertExists()
         rule.onNode(hasText(text(R.string.common_cancel)) and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
         rule.runOnIdle { assertEquals(2, diagnosticReads); assertEquals(0, writes); assertEquals(0, exports) }
+    }
+    @Test fun completedTaskReloadsDiagnosticsInFullPage() {
+        show()
+        rule.onNodeWithText("review-operation").performScrollTo().performClick()
+        rule.onNodeWithText("review-diagnostic").performScrollTo().assertIsDisplayed()
+        rule.runOnIdle { operationState = "succeeded"; model.poll(owner) }
+        rule.waitUntil(5_000) { !model.state.diagnosticsLoading && model.state.diagnostics == ApiResult.Success(listOf("final-diagnostic")) }
+        rule.onNodeWithText("final-diagnostic").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("review-diagnostic").assertDoesNotExist()
+        rule.runOnIdle { assertEquals(2, diagnosticReads); assertEquals(0, writes) }
     }
     @Test fun backgroundStopsPollingAndResumeReadsOriginalTasks() {
         show()

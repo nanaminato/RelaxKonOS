@@ -14,6 +14,41 @@ import org.junit.Assert.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class GuardianViewModelTest {
+    private val workload = GuardianWorkload("job", "Job", "running", "running", 10, 0, null, 0,
+        "/bin/job", "/tmp", false, "review", null, null)
+    private suspend fun TestScope.review(): GuardianActionReview {
+        login(); runCurrent()
+        gateway.onGuardianWorkloads = { ApiResult.Success(listOf(workload)) }
+        model.load(owner); advanceUntilIdle(); model.select("job"); advanceUntilIdle()
+        model.requestAction(owner, workload, "restart")
+        return requireNotNull(model.actionReview)
+    }
+    @Test fun `stopped observation withdraws action and rejects old confirmation`() = runTest {
+        val review = review(); model.stopObserving()
+        assertNull(model.actionReview)
+        model.confirmAction(review); advanceUntilIdle(); assertEquals(0, actions)
+    }
+    @Test fun `explicit refresh withdraws action and old confirmation cannot consume reopened review`() = runTest {
+        val old = review(); model.load(owner); advanceUntilIdle()
+        assertNull(model.actionReview)
+        model.requestAction(owner, workload, "restart")
+        val fresh = requireNotNull(model.actionReview)
+        model.confirmAction(old); advanceUntilIdle(); assertEquals(0, actions)
+        model.confirmAction(fresh); model.confirmAction(fresh); advanceUntilIdle(); assertEquals(1, actions)
+    }
+    @Test fun `background reads pause during review and changing selection withdraws it`() = runTest {
+        val review = review()
+        var reads = 0
+        gateway.onGuardianStatus = { reads++; ApiResult.Success(GuardianStatus(true, true, "", "test")) }
+        model.load(owner, reconcile = false); advanceUntilIdle()
+        assertEquals(0, reads); assertSame(review, model.actionReview)
+        model.select(null); model.confirmAction(review); advanceUntilIdle(); assertEquals(0, actions)
+    }
+    @Test fun `same account login rejects old action confirmation immediately`() = runTest {
+        val review = review(); login()
+        model.confirmAction(review); advanceUntilIdle(); assertEquals(0, actions)
+        assertNull(model.actionReview)
+    }
     @Test fun `stopped detail read cannot restore definition or logs`() = runTest {
         login(); runCurrent(); model.load(owner); advanceUntilIdle()
         lateinit var reply: kotlin.coroutines.Continuation<ApiResult<List<GuardianLog>>>
