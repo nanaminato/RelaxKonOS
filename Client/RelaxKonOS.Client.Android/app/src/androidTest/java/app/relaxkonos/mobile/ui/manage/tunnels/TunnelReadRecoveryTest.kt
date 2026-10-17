@@ -35,6 +35,7 @@ class TunnelReadRecoveryTest {
     private var activeInstallationEmpty = false
     private var activeInstallationFailure = false
     private var installationStarts = 0
+    private val cancelledInstallationIds = mutableListOf<String>()
     private var lifecycleWrites = 0
     private val queriedInstallationIds = mutableListOf<String>()
     private val profileId = "22222222-2222-2222-2222-222222222222"
@@ -90,6 +91,10 @@ class TunnelReadRecoveryTest {
             override suspend fun startInstallation(serverUrl: String, accessToken: String, kind: InstallationKind, request: InstallationRequest, idempotencyKey: String): ApiResult<InstallationOperation> {
                 installationStarts++; return ApiResult.Problem(400, "installation.invalid_request", null)
             }
+            override suspend fun cancelInstallation(serverUrl: String, accessToken: String, operationId: String, idempotencyKey: String): ApiResult<InstallationOperation> {
+                cancelledInstallationIds += operationId
+                return ApiResult.Problem(403, "installation.forbidden", null)
+            }
             override suspend fun installation(serverUrl: String, accessToken: String, operationId: String): ApiResult<InstallationOperation> {
                 queriedInstallationIds += operationId
                 installationReads++
@@ -125,6 +130,52 @@ class TunnelReadRecoveryTest {
     private fun refresh() {
         rule.runOnUiThread { model.refresh() }
         rule.waitUntil(5_000) { !model.state.busy }
+    }
+
+    @Test fun installationCancellationRejectsDismissedAndReopenedReviewsAndSendsOnce() {
+        runningInstallation = true
+        start()
+        rule.runOnIdle {
+            model.requestInstallationCancellation(owner, operation)
+            val old = requireNotNull(model.installationCancellation)
+            model.dismissInstallationCancellation()
+            model.requestInstallationCancellation(owner, operation)
+            val current = requireNotNull(model.installationCancellation)
+            model.cancelInstall(old)
+            assertSame(current, model.installationCancellation)
+            assertTrue(cancelledInstallationIds.isEmpty())
+            model.cancelInstall(current)
+            model.cancelInstall(current)
+        }
+        rule.waitUntil(5_000) { !model.state.busy }
+        rule.runOnIdle { assertEquals(listOf(operation.operationId), cancelledInstallationIds) }
+    }
+
+    @Test fun installationConfirmationBlocksConnectionPollingAndIsRevokedOnPause() {
+        runningInstallation = true
+        runningConnection = true
+        start(); showPage()
+        rule.runOnIdle {
+            model.select(profileId)
+            model.requestInstallationCancellation(owner, operation)
+        }
+        rule.waitForIdle()
+        val before = profileReads
+        val reads = installationReads
+        Thread.sleep(3_800)
+        rule.runOnIdle {
+            assertEquals(before, profileReads)
+            assertEquals(reads, installationReads)
+            assertNotNull(model.installationCancellation)
+        }
+        val review = requireNotNull(model.installationCancellation)
+        rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+        rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        rule.runOnIdle {
+            assertNull(model.installationCancellation)
+            model.cancelInstall(review)
+            assertTrue(cancelledInstallationIds.isEmpty())
+        }
     }
 
     @Test fun cancelledAggregateReadNeverRestoresPreviousSuccessfulSnapshots() {
@@ -284,7 +335,8 @@ class TunnelReadRecoveryTest {
         runningInstallation = true
         start(); showPage()
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        rule.onAllNodesWithText(context.getString(R.string.tunnels_records)).filter(hasClickAction()).onFirst().performClick()
+        rule.onAllNodesWithText(context.getString(R.string.tunnels_records)).filter(hasClickAction()).onFirst()
+            .performScrollTo().performClick().assertIsSelected()
         rule.runOnUiThread { cancelledRead = "installation"; model.pollInstall() }
         rule.waitUntil(8_000) { model.state.uncertain && !model.state.busy && !model.state.installationVerified }
         rule.onNodeWithText(context.getString(R.string.common_dismiss)).performClick()

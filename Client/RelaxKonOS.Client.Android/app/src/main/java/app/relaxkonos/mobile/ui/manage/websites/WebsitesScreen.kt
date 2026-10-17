@@ -19,6 +19,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import app.relaxkonos.mobile.ui.manage.certificates.*
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.ApiResult
@@ -60,7 +63,7 @@ fun WebsitesScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initial
         RefreshProgressIndicator(visible = state.loading)
         WorkspaceSection(section != "publish") { NginxManager(onChanged = viewModel::refresh, section = section, onRecords = { section = "records" }) }
         WorkspaceSection(section == "publish") { androidx.compose.runtime.key(viewModel.sessionEpoch) { WebsitePublisher(state, viewModel) { section = "records" } } }
-        WorkspaceSection(section == "records") { WebsitePublicationRecords(state, viewModel) }
+        WorkspaceSection(section == "records") { WebsitePublicationRecords(state, viewModel, active = section == "records") }
     }
 }
 
@@ -135,7 +138,7 @@ internal fun websitePublicationPrerequisite(state: WebsitesState): Int? = when {
 }
 
 @Composable
-internal fun WebsitePublicationRecords(state: WebsitesState, viewModel: WebsitesViewModel) {
+internal fun WebsitePublicationRecords(state: WebsitesState, viewModel: WebsitesViewModel, active: Boolean) {
     SectionCard(stringResource(R.string.websites_publication_records)) {
         Text(stringResource(R.string.websites_publish_application), style = MaterialTheme.typography.labelLarge)
         val applications = state.applications
@@ -153,12 +156,14 @@ internal fun WebsitePublicationRecords(state: WebsitesState, viewModel: Websites
         TextButton(enabled = !state.loading && !state.publishing, onClick = viewModel::refresh) {
             ActionLabel(R.string.common_refresh)
         }
-        PublicationResult(state, viewModel)
+        PublicationResult(state, viewModel, active)
     }
 }
 
 @Composable
-internal fun PublicationResult(state: WebsitesState, viewModel: WebsitesViewModel) {
+internal fun PublicationResult(state: WebsitesState, viewModel: WebsitesViewModel, active: Boolean) {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val lifecycleState by lifecycle.currentStateAsState()
     if (state.selectedApplicationId == null && state.publication == null && !state.publicationLoading && !state.publishing) {
         Text(stringResource(R.string.websites_records_no_target), style = MaterialTheme.typography.bodyMedium)
     }
@@ -168,8 +173,10 @@ internal fun PublicationResult(state: WebsitesState, viewModel: WebsitesViewMode
         Text(stringResource(R.string.websites_operation, operation.state, operation.stage), style = MaterialTheme.typography.bodyMedium)
         if (operation.problemCode.isNotBlank()) Text(operation.problemCode, color = MaterialTheme.colorScheme.error)
         operation.checks.forEach { check -> Text(stringResource(R.string.websites_check, check.name, check.observer, check.state, check.problemCode.ifBlank { "—" }), style = MaterialTheme.typography.bodySmall) }
-        androidx.compose.runtime.LaunchedEffect(operation.operationId, operation.state, state.publicationLoading, state.publicationObservation) {
-            if (!state.publicationLoading) viewModel.observePublication(operation)
+        androidx.compose.runtime.LaunchedEffect(operation, state.publicationLoading, state.publicationObservation, state.publishing, active, lifecycleState) {
+            if (active && lifecycleState.isAtLeast(Lifecycle.State.RESUMED) && !state.publicationLoading) viewModel.observePublication(operation) {
+                active && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+            }
         }
     } else if (result is ApiResult.Problem) {
         Text(result.code, color = MaterialTheme.colorScheme.error)

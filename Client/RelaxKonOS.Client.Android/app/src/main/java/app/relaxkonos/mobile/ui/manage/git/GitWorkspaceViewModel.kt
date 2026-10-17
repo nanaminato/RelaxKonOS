@@ -18,6 +18,7 @@ internal data class GitWorkspaceState(val owner: SessionState.Active? = null, va
     val diff: GitDiff? = null, val commits: List<GitCommit> = emptyList(), val skip: Int = 0, val search: String = "", val historyLoaded: Boolean = false,
     val detail: GitCommitDetail? = null, val conflict: GitConflictFile? = null, val problem: String? = null, val saved: Boolean = false, val feedbackVersion: Long = 0,
     val installation: InstallationOperation? = null, val installationVerified: Boolean = false, val pendingInstallation: Boolean = false)
+internal class GitInstallationCancellation(val owner: SessionState.Active, val operation: InstallationOperation)
 internal class GitWorkspaceViewModel(private val session: AuthSession, private val git: GitRepositoryClient,
     private val gitWorkspace: GitWorkspaceRepository, private val installations: InstallationRepository,
     private val operationIndex: OperationIndex, private val elevationAnswers: ElevationAnswerProvider) : ViewModel() {
@@ -26,13 +27,31 @@ internal class GitWorkspaceViewModel(private val session: AuthSession, private v
     private var feedbackVersion = 0L
     private var installIntent: InstallationSubmission? = null
     var state by mutableStateOf(GitWorkspaceState()); private set
+    var installationCancellation by mutableStateOf<GitInstallationCancellation?>(null); private set
+    fun dismissInstallationCancellation() { installationCancellation = null }
+    fun requestInstallationCancellation(owner: SessionState.Active, operation: InstallationOperation) {
+        if (state.owner === owner && session.state.value === owner && owner.privilegedOperations && !state.busy &&
+            state.installationVerified && state.installation == operation && operation.state.active && operation.cancellable)
+            installationCancellation = GitInstallationCancellation(owner, operation)
+    }
+    suspend fun observeInstallation(canObserve: () -> Boolean) {
+        val owner = state.owner ?: return
+        val operation = state.installation ?: return
+        val epoch = generation
+        fun eligible() = current(owner, epoch) && state.installation == operation && state.installationVerified &&
+            operation.state.active && !state.busy && state.problem == null && installationCancellation == null && canObserve()
+        if (!eligible()) return
+        delay(2500)
+        if (eligible()) pollInstall()
+    }
     var conflictDraft by mutableStateOf(TextFieldValue()); private set
     var commitMessage by mutableStateOf("")
     init { viewModelScope.launch { session.state.collect { next ->
-        if (next !== state.owner) { job?.cancel(); generation++; installIntent = null; conflictDraft = TextFieldValue(); commitMessage = ""; state = GitWorkspaceState(owner = next as? SessionState.Active) }
+        if (next !== state.owner) { dismissInstallationCancellation(); job?.cancel(); generation++; installIntent = null; conflictDraft = TextFieldValue(); commitMessage = ""; state = GitWorkspaceState(owner = next as? SessionState.Active) }
     } } }
-    fun stop() { job?.cancel(); generation++; state = state.copy(busy = false, preview = null, diff = null, detail = null, facts = null, installationVerified = false) }
+    fun stop() { dismissInstallationCancellation(); job?.cancel(); generation++; state = state.copy(busy = false, preview = null, diff = null, detail = null, facts = null, installationVerified = false) }
     fun refresh() = work { owner ->
+        state = state.copy(installationVerified = false)
         val engine = gitWorkspace.engine(owner); verify(owner)
         state = state.copy(engine = (engine as? ApiResult.Success)?.value, problem = problem(engine))
         if (engine is ApiResult.Success && engine.value.available) {
@@ -138,25 +157,34 @@ internal class GitWorkspaceViewModel(private val session: AuthSession, private v
         }; verify(owner); installationResult(owner, result)
         if (result is ApiResult.Success || result is ApiResult.Problem && !state.pendingInstallation) installIntent = null
     }
-    fun pollInstall() = work { owner -> state.installation?.operationId?.let { installationResult(owner, installations.operation(owner, it)) } }
-    fun cancelInstall() = work { owner ->
-        val operation = state.installation ?: return@work
-        require(state.installationVerified && operation.state.active && operation.cancellable)
-        installationResult(owner, installations.cancel(owner, operation.operationId))
+    fun pollInstall() = work { owner -> state.installation?.operationId?.let {
+        state = state.copy(installationVerified = false)
+        installationResult(owner, installations.operation(owner, it))
+    } }
+    fun cancelInstall(review: GitInstallationCancellation) {
+        if (installationCancellation !== review) return
+        dismissInstallationCancellation()
+        if (state.owner !== review.owner || session.state.value !== review.owner || !state.installationVerified || state.installation != review.operation) return
+        work { owner ->
+            state = state.copy(installationVerified = false)
+            installationResult(owner, installations.cancel(owner, review.operation.operationId))
+        }
     }
     fun recoverInstall(id: String, identified: Boolean) = work { owner ->
         val pending = installations.pending(owner).firstOrNull { it.service == InstallationService.Git }
         if (pending != null && !identified) return@work
+        state = state.copy(installationVerified = false)
         installationResult(owner, if (pending == null) installations.recoverById(owner, id.trim()) else installations.identifyOriginal(owner, pending, id.trim()))
         if (!state.pendingInstallation) installIntent = null
     }
     private suspend fun loadInstallation(owner: SessionState.Active) {
+        state = state.copy(installationVerified = false)
         if (!owner.privilegedOperations) return
         val known = installations.pending(owner).firstOrNull { it.service == InstallationService.Git && it.operationId != null }
         if (known != null) {
             val result = installations.recover(owner, known); verify(owner)
             if (result is ApiResult.Success && result.value != null) installationResult(owner, ApiResult.Success(result.value))
-            else state = state.copy(installationVerified = false)
+            else state = state.copy(installationVerified = false, problem = problem(result))
         } else {
             val active = installations.active(owner, InstallationService.Git); verify(owner)
             if (active is ApiResult.Success && active.value != null) installationResult(owner, ApiResult.Success(active.value))
@@ -185,17 +213,18 @@ internal class GitWorkspaceViewModel(private val session: AuthSession, private v
     }
     private fun problem(result: ApiResult<*>): String? = when (result) { is ApiResult.Success -> null; is ApiResult.Problem -> result.code; is ApiResult.Transport -> "git.workspace.unverified" }
     private fun work(block: suspend (SessionState.Active) -> Unit) {
+        dismissInstallationCancellation()
         val owner = state.owner ?: return
         if (state.busy || ServerCapabilities.GIT !in owner.capabilities) return
-        val epoch = generation; state = state.copy(busy = true, problem = null, saved = false, feedbackVersion = ++feedbackVersion)
+        val epoch = ++generation; state = state.copy(busy = true, problem = null, saved = false, feedbackVersion = ++feedbackVersion)
         job = viewModelScope.launch {
-            try { block(owner) }
+            try { verify(owner); block(owner) }
             catch (cancelled: CancellationException) {
-                if (current(owner, epoch)) state = state.copy(facts = null, preview = null,
+                if (current(owner, epoch)) state = state.copy(facts = null, preview = null, installationVerified = false,
                     problem = "git.workspace.unverified")
                 throw cancelled
             }
-            catch (_: Exception) { if (current(owner, epoch)) state = state.copy(facts = null, preview = null, problem = "git.workspace.unverified") }
+            catch (_: Exception) { if (current(owner, epoch)) state = state.copy(facts = null, preview = null, installationVerified = false, problem = "git.workspace.unverified") }
             finally { if (current(owner, epoch)) state = state.copy(busy = false,
                 pending = runCatching { gitWorkspace.pending(owner) }.getOrDefault(state.pending),
                 pendingInstallation = runCatching { installations.pending(owner).any { it.service == InstallationService.Git } }.getOrDefault(state.pendingInstallation)) }

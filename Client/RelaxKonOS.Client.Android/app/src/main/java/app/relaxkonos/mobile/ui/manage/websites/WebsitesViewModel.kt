@@ -51,13 +51,15 @@ internal data class WebsitesState(
 internal class WebsitesViewModel(private val session: AuthSession, private val webPublishing: WebPublishingRepository,
     private val deployments: DeploymentRepository, private val certificates: CertificateRepository,
     private val elevationAnswers: ElevationAnswerProvider) : ViewModel() {
-    suspend fun observePublication(operation: WebsitePublicationOperation) {
+    suspend fun observePublication(operation: WebsitePublicationOperation, canObserve: () -> Boolean) {
         val owner = session.state.value as? SessionState.Active ?: return
         val request = publicationReadGeneration
-        if (!operation.isTerminal()) {
+        fun current() = session.state.value === owner && request == publicationReadGeneration &&
+            state.publicationLookupId == operation.operationId && (state.publication as? ApiResult.Success)?.value == operation &&
+            !state.publicationLoading && !state.publishing && canObserve()
+        if (!operation.isTerminal() && current()) {
             kotlinx.coroutines.delay(1000)
-            if (session.state.value === owner && request == publicationReadGeneration &&
-                state.publicationLookupId == operation.operationId) refreshPublication(operation.operationId)
+            if (current()) refreshPublication(operation.operationId)
         }
     }
 

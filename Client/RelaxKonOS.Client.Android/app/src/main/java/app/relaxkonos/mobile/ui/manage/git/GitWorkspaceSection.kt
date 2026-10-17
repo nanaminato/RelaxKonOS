@@ -19,6 +19,10 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.*
@@ -28,7 +32,6 @@ import app.relaxkonos.mobile.ui.editor.CodeTextField
 import app.relaxkonos.mobile.ui.editor.EditorSystemBars
 import app.relaxkonos.mobile.ui.editor.TextEditorDialog
 import app.relaxkonos.mobile.ui.theme.Spacing
-import kotlinx.coroutines.delay
 
 @Composable
 internal fun GitWorkspaceSection(owner: SessionState.Active, section: String, onSelectSection: (String) -> Unit) {
@@ -37,7 +40,15 @@ internal fun GitWorkspaceSection(owner: SessionState.Active, section: String, on
         initializer { GitWorkspaceViewModel(container.session, container.git, container.gitWorkspace,
             container.installations, container.operationIndex, container.elevationAnswers) }
     })
+    GitWorkspaceContent(model, owner, section, onSelectSection)
+}
+
+@Composable internal fun GitWorkspaceContent(model: GitWorkspaceViewModel, owner: SessionState.Active,
+    section: String, onSelectSection: (String) -> Unit) {
     val state = model.state
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val lifecycleState by lifecycle.currentStateAsState()
+    val resumed = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
     var name by remember(owner) { mutableStateOf("") }
     var directory by remember(owner) { mutableStateOf("") }
     var branchFilter by remember(owner) { mutableStateOf("") }
@@ -55,8 +66,13 @@ internal fun GitWorkspaceSection(owner: SessionState.Active, section: String, on
     var diffSection by remember(owner) { mutableStateOf<String?>(null) }
     LaunchedEffect(state.owner) { if (state.owner === owner) model.refresh() }
     DisposableEffect(model) { onDispose { model.stop() } }
-    LaunchedEffect(state.installation?.operationId, state.installation?.state, state.busy) {
-        if (state.installation?.state?.active == true && !state.busy) { delay(2500); model.pollInstall() }
+    DisposableEffect(owner, section, lifecycle) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_PAUSE) model.dismissInstallationCancellation() }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer); model.dismissInstallationCancellation() }
+    }
+    LaunchedEffect(owner, state.installation, state.installationVerified, state.busy, state.problem, resumed, model.installationCancellation) {
+        if (resumed) model.observeInstallation { lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
     }
     LaunchedEffect(section, state.selectedId, state.busy) {
         if (section == "history" && state.selectedId != null && !state.busy && !state.historyLoaded && !historyAttempt) {
@@ -83,7 +99,7 @@ internal fun GitWorkspaceSection(owner: SessionState.Active, section: String, on
             PageActionRow(refresh = {
                 OutlinedButton(onClick = model::refresh, enabled = !state.busy) { ActionLabel(R.string.common_refresh) }
             })
-            GitInstallation(state, model, owner)
+            GitInstallation(state, model, owner, section == "environment")
         }
     }
     if (section != "environment") {
@@ -438,10 +454,13 @@ internal fun GitConflictDialog(file: GitConflictFile, model: GitWorkspaceViewMod
 }
 
 @Composable
-private fun GitInstallation(state: GitWorkspaceState, model: GitWorkspaceViewModel, owner: SessionState.Active) {
-    var confirm by remember(owner) { mutableStateOf(false) }
+private fun GitInstallation(state: GitWorkspaceState, model: GitWorkspaceViewModel, owner: SessionState.Active, active: Boolean) {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val lifecycleState by lifecycle.currentStateAsState()
+    val resumed = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
+    var confirm by remember(owner, active, resumed, state.busy, state.installation) { mutableStateOf(false) }
     var originalId by rememberSaveable(owner) { mutableStateOf("") }
-    var identify by remember(owner) { mutableStateOf(false) }
+    var identify by remember(owner, active, resumed, state.busy, state.installation) { mutableStateOf(false) }
     val allowed = owner.privilegedOperations && owner.serverPlatform.equals("linux", true)
     if (allowed && state.engine?.let { !it.available && it.canInstall && it.problemCode == "not_installed" } == true && !state.pendingInstallation && state.installation?.state?.active != true) {
         OutlinedButton(onClick = { confirm = true }, enabled = !state.busy && state.pending.isEmpty()) { Text(stringResource(R.string.gw_install)) }
@@ -450,15 +469,16 @@ private fun GitInstallation(state: GitWorkspaceState, model: GitWorkspaceViewMod
     if (allowed && state.pendingInstallation) OutlinedButton(onClick = { confirm = true }, enabled = !state.busy && state.pending.isEmpty()) { Text(stringResource(R.string.gw_retry_install)) }
     state.installation?.let { operation ->
         Text(stringResource(R.string.gw_install_task, operation.operationId))
-        Text(app.relaxkonos.mobile.ui.manage.operations.installationStateLabel(operation.state))
-        Text(app.relaxkonos.mobile.ui.manage.operations.installationStageLabel(operation.stage))
-        operation.progress?.let { Text(stringResource(R.string.installation_stage_progress, it)) }
-        operation.problemCode?.let { Text(app.relaxkonos.mobile.ui.manage.operations.installationProblemLabel(it), color = MaterialTheme.colorScheme.error) }
-        if (!state.installationVerified) Text(stringResource(R.string.gw_install_unverified))
+        if (state.installationVerified) {
+            Text(app.relaxkonos.mobile.ui.manage.operations.installationStateLabel(operation.state))
+            Text(app.relaxkonos.mobile.ui.manage.operations.installationStageLabel(operation.stage))
+            operation.progress?.let { Text(stringResource(R.string.installation_stage_progress, it)) }
+            operation.problemCode?.let { Text(app.relaxkonos.mobile.ui.manage.operations.installationProblemLabel(it), color = MaterialTheme.colorScheme.error) }
+        } else Text(stringResource(R.string.gw_install_unverified))
         PageActionRow(refresh = {
             TextButton(onClick = model::pollInstall, enabled = !state.busy) { ActionLabel(R.string.common_refresh) }
         }, actions = {
-            OutlinedButton(onClick = model::cancelInstall, enabled = !state.busy && state.installationVerified && operation.state.active && operation.cancellable) { Text(stringResource(R.string.gw_cancel_install)) }
+            if (allowed) OutlinedButton(onClick = { model.requestInstallationCancellation(owner, operation) }, enabled = !state.busy && state.installationVerified && operation.state.active && operation.cancellable) { Text(stringResource(R.string.gw_cancel_install)) }
         })
     }
     if (allowed) {
@@ -467,10 +487,19 @@ private fun GitInstallation(state: GitWorkspaceState, model: GitWorkspaceViewMod
             OutlinedButton(onClick = { if (state.pendingInstallation) identify = true else model.recoverInstall(originalId, false) }, enabled = !state.busy && runCatching { InstallationRoutes.canonicalId(originalId.trim()) }.isSuccess) { Text(stringResource(R.string.gw_recover_install)) }
         }
     }
-    if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text(stringResource(if (state.pendingInstallation) R.string.gw_retry_install else R.string.gw_install)) },
+    if (active && resumed) model.installationCancellation?.takeIf { it.owner === owner }?.let { review ->
+        AlertDialog(onDismissRequest = model::dismissInstallationCancellation, title = { Text(stringResource(R.string.gw_cancel_install)) },
+            text = { Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(review.operation.operationId)
+                Text(stringResource(R.string.operations_cancel_explanation))
+            } },
+            confirmButton = { TextButton(onClick = { model.cancelInstall(review) }, enabled = !state.busy) { Text(stringResource(R.string.gw_confirm)) } },
+            dismissButton = { TextButton(onClick = model::dismissInstallationCancellation) { Text(stringResource(R.string.common_cancel)) } })
+    }
+    if (active && confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text(stringResource(if (state.pendingInstallation) R.string.gw_retry_install else R.string.gw_install)) },
         text = { Text(stringResource(if (state.pendingInstallation) R.string.gw_retry_install_note else R.string.gw_install_note)) },
         confirmButton = { TextButton(onClick = { confirm = false; model.install() }) { Text(stringResource(R.string.gw_confirm)) } }, dismissButton = { TextButton(onClick = { confirm = false }) { Text(stringResource(R.string.common_cancel)) } })
-    if (identify) AlertDialog(onDismissRequest = { identify = false }, title = { Text(stringResource(R.string.gw_recover_install)) }, text = { Text(stringResource(R.string.gw_identify_note, originalId)) },
+    if (active && identify) AlertDialog(onDismissRequest = { identify = false }, title = { Text(stringResource(R.string.gw_recover_install)) }, text = { Text(stringResource(R.string.gw_identify_note, originalId)) },
         confirmButton = { TextButton(onClick = { identify = false; model.recoverInstall(originalId, true) }) { Text(stringResource(R.string.gw_confirm)) } }, dismissButton = { TextButton(onClick = { identify = false }) { Text(stringResource(R.string.common_cancel)) } })
 }
 

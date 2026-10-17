@@ -2,6 +2,10 @@ package app.relaxkonos.mobile.ui.manage.websites
 
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.Lifecycle
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material3.Text
+import app.relaxkonos.mobile.ui.common.WorkspaceSection
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -25,6 +29,8 @@ class WebsitePublicationRecoveryFlowTest {
     private var historyReads = 0
     private val operationIds = mutableListOf<String>()
     private var repeatedState = false
+    private var keepRunning = false
+    private val visible = mutableStateOf(true)
     private val operation = WebsitePublicationOperation("11111111-1111-1111-1111-111111111111", "application-a", "server", "example.test",
         null, null, null, "succeeded", "completed", "", null, emptyList(), null, null, null)
     private var history = listOf(operation)
@@ -52,7 +58,7 @@ class WebsitePublicationRecoveryFlowTest {
             override suspend fun websitePublication(serverUrl: String, accessToken: String, operationId: String): ApiResult<WebsitePublicationOperation> {
                 operationIds += operationId
                 failure?.let { throw it }
-                return ApiResult.Success(if (repeatedState && operationIds.size < 4) operation.copy(state = "running", stage = "verifying") else operation)
+                return ApiResult.Success(if (keepRunning || repeatedState && operationIds.size < 4) operation.copy(state = "running", stage = "verifying") else operation)
             }
             override suspend fun websitePublicationHistory(serverUrl: String, accessToken: String, applicationId: String): ApiResult<List<WebsitePublicationOperation>> {
                 historyReads++
@@ -75,13 +81,44 @@ class WebsitePublicationRecoveryFlowTest {
             store.put("websites", model)
         }
         rule.setContent { MaterialTheme { androidx.compose.foundation.layout.Column {
-            if (recordsPage) WebsitePublicationRecords(model.state, model) else PublicationResult(model.state, model)
+            WorkspaceSection(visible.value) {
+                if (recordsPage) WebsitePublicationRecords(model.state, model, active = visible.value)
+                else PublicationResult(model.state, model, active = visible.value)
+            }
+            WorkspaceSection(!visible.value) { Text("Other website section") }
         } } }
         rule.runOnIdle { model.refresh() }
         rule.waitUntil(5_000) { !model.state.loading && model.state.servers is ApiResult.Success }
 
     }
     @After fun cleanup() { rule.runOnUiThread { store.clear() } }
+    @Test fun hiddenPublicationRecordsStopQueriesAndResumeSameTaskWhenShown() {
+        recordsPage = true; keepRunning = true; show()
+        rule.runOnIdle { model.refreshPublication(operation.operationId) }
+        rule.waitUntil(5_000) { operationIds.size >= 2 && !model.state.publicationLoading }
+        rule.runOnIdle { visible.value = false }
+        rule.waitForIdle()
+        rule.onNodeWithText("Other website section").assertIsDisplayed()
+        val hidden = operationIds.size
+        Thread.sleep(1_400)
+        assertEquals(hidden, operationIds.size)
+        rule.runOnIdle { visible.value = true }
+        rule.waitUntil(5_000) { operationIds.size > hidden && !model.state.publicationLoading }
+        rule.runOnIdle { assertTrue(operationIds.all { it == operation.operationId }) }
+    }
+    @Test fun backgroundStopsPublicationQueriesAndForegroundResumesOriginalTask() {
+        keepRunning = true; show()
+        rule.runOnIdle { model.refreshPublication(operation.operationId) }
+        rule.waitUntil(5_000) { operationIds.size >= 2 && !model.state.publicationLoading }
+        rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+        rule.waitForIdle(); rule.waitUntil(5_000) { !model.state.publicationLoading }
+        val paused = operationIds.size
+        Thread.sleep(1_400)
+        assertEquals(paused, operationIds.size)
+        rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        rule.waitUntil(5_000) { operationIds.size > paused && !model.state.publicationLoading }
+        rule.runOnIdle { assertTrue(operationIds.all { it == operation.operationId }) }
+    }
     @Test fun cancelledLookupCanRetryOriginalOperationWithoutPublishing() {
         show()
         rule.runOnIdle { model.refreshPublication(operation.operationId) }

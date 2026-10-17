@@ -34,7 +34,7 @@ class NginxInstallFormTest {
         rule.onNodeWithText(text(R.string.common_close)).assertIsNotEnabled()
         rule.onNodeWithText(text(R.string.common_retry)).assertIsNotEnabled()
         rule.onNodeWithText(text(R.string.nginx_install_confirm)).assertIsNotEnabled()
-        Espresso.pressBackUnconditionally()
+        pressDialogBack()
         touchOutside()
         rule.runOnIdle {
             assertEquals(0, closed); assertEquals(0, installs)
@@ -58,11 +58,11 @@ class NginxInstallFormTest {
             }, { closed++ })
         } }
         rule.onNodeWithText(text(R.string.nginx_version)).performScrollTo().performTextInput("1.27.5")
-        Espresso.closeSoftKeyboard()
+        Espresso.onView(isRoot()).inRoot(isDialog()).perform(androidx.test.espresso.action.ViewActions.closeSoftKeyboard())
         rule.onNodeWithText(text(R.string.nginx_install_confirm)).performScrollTo().performClick()
         rule.onNode(hasText(text(R.string.nginx_install)) and hasClickAction()).assertIsEnabled().performClick()
         rule.onNodeWithText(text(R.string.common_retry)).assertIsNotEnabled()
-        Espresso.pressBackUnconditionally()
+        pressDialogBack()
         rule.runOnIdle {
             assertEquals(listOf("1.27.5" to false), installs); assertEquals(0, closed)
             state.value = state.value.copy(busy = false, uncertain = true, pendingInstallation = true)
@@ -86,8 +86,12 @@ class NginxInstallFormTest {
         } }
         rule.onNodeWithText(text(R.string.error_elevation_required)).assertIsDisplayed()
         rule.onNode(hasText(text(R.string.nginx_install)) and hasClickAction()).assertIsNotEnabled()
-        Espresso.pressBackUnconditionally()
+        pressDialogBack()
         rule.runOnIdle { assertEquals(1, closed); assertEquals(0, installs) }
+    }
+
+    private fun pressDialogBack() {
+        Espresso.onView(isRoot()).inRoot(isDialog()).perform(androidx.test.espresso.action.ViewActions.pressBack())
     }
 
     private fun touchOutside() {

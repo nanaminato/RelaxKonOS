@@ -19,20 +19,22 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
+class ScriptCancellation(val owner: SessionState.Active, val task: ScriptTask)
 data class ScriptsUiState(val loading: Boolean = false, val listVerified: Boolean = false, val tasks: List<ScriptTask> = emptyList(),
     val selected: ScriptTask? = null, val selectionEpoch: Long = 0, val error: Boolean = false, val problemCode: String? = null,
-    val draft: ScriptDraft? = null, val pending: PendingScriptRequest? = null, val journalAvailable: Boolean = true)
+    val draft: ScriptDraft? = null, val pending: PendingScriptRequest? = null, val journalAvailable: Boolean = true,
+    val cancellation: ScriptCancellation? = null)
 
 class ScriptsViewModel(private val session: AuthSession, private val repository: ScriptTaskRepository,
     private val journal: ScriptRequestJournal) : ViewModel() {
-    suspend fun observeSelected() {
+    suspend fun observeSelected(canObserve: () -> Boolean) {
         val active = owner ?: return
         val id = state.value.selected?.id ?: return
         val version = selectionVersion
-        while (owns(active) && selectionVersion == version) {
+        while (owns(active) && selectionVersion == version && state.value.cancellation == null && canObserve()) {
             kotlinx.coroutines.delay(2000)
             val selected = state.value.selected ?: return
-            if (!owns(active) || selectionVersion != version || state.value.pending != null || selected.id != id || selected.state !in setOf("queued", "running", "cancelling") || state.value.error || state.value.draft != null) return
+            if (!owns(active) || selectionVersion != version || state.value.cancellation != null || !canObserve() || state.value.pending != null || selected.id != id || selected.state !in setOf("queued", "running", "cancelling") || state.value.error || state.value.draft != null) return
             if (!state.value.loading) readSelected(active, id, version)
         }
     }
@@ -64,12 +66,23 @@ class ScriptsViewModel(private val session: AuthSession, private val repository:
 
     private fun owns(active: SessionState.Active) = owner === active && session.state.value === active
 
+    fun dismissCancellation() { mutable.update { it.copy(cancellation = null) } }
+    private fun canCancel(active: SessionState.Active, task: ScriptTask) = owns(active) && state.value.journalAvailable &&
+        !state.value.loading && !state.value.error && state.value.selected == task && task.state in setOf("queued", "running") &&
+        writeJob?.isActive != true && state.value.pending == null && state.value.draft == null
+    fun requestCancellation(active: SessionState.Active, task: ScriptTask) {
+        if (!canCancel(active, task) || selectionJob?.isActive == true) return
+        selectionJob?.cancel()
+        val version = ++selectionVersion
+        mutable.update { it.copy(cancellation = ScriptCancellation(active, task), selectionEpoch = version) }
+    }
+
     fun openEditor() {
         val active = owner ?: return
         if (!owns(active) || !state.value.journalAvailable || state.value.loading || state.value.draft != null ||
             state.value.pending != null) return
         selectionJob?.cancel(); selectionVersion++
-        mutable.update { it.copy(draft = ScriptDraft(active.userName), error = false, problemCode = null) }
+        mutable.update { it.copy(draft = ScriptDraft(active.userName), error = false, problemCode = null, cancellation = null) }
     }
 
     fun updateDraft(draft: ScriptDraft) {
@@ -86,6 +99,7 @@ class ScriptsViewModel(private val session: AuthSession, private val repository:
     fun load(active: SessionState.Active) {
         if (session.state.value !== active) return
         if (owner !== active) reset(active)
+        dismissCancellation()
         if (mutable.value.loading || mutable.value.draft != null) return
         if (!restorePending(active)) return
         selectionJob?.cancel()
@@ -117,6 +131,7 @@ class ScriptsViewModel(private val session: AuthSession, private val repository:
     fun select(id: String) {
         val active = owner ?: return
         if (!owns(active) || !state.value.journalAvailable || writeJob?.isActive == true || state.value.draft != null || state.value.pending != null) return
+        dismissCancellation()
         selectionJob?.cancel()
         val version = ++selectionVersion
         selectedId = id
@@ -180,11 +195,12 @@ class ScriptsViewModel(private val session: AuthSession, private val repository:
         }.also { job -> job.invokeOnCompletion { request.approval?.password?.fill('\u0000') } }
     }
 
-    fun cancel(id: String) {
-        val active = owner ?: return
-        if (!owns(active) || !state.value.journalAvailable || state.value.loading || state.value.error ||
-            state.value.selected?.id != id || state.value.selected?.state !in setOf("queued", "running") ||
-            writeJob?.isActive == true || state.value.pending != null || state.value.draft != null) return
+    fun cancel(review: ScriptCancellation) {
+        if (state.value.cancellation !== review) return
+        dismissCancellation()
+        val active = review.owner
+        if (!canCancel(active, review.task)) return
+        val id = review.task.id
         val pending = PendingScriptRequest(id, true)
         if (!persistPending(active, pending)) return
         selectionJob?.cancel(); selectionVersion++

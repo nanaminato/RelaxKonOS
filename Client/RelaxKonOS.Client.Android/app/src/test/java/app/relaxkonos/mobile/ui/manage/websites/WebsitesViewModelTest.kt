@@ -157,6 +157,43 @@ class WebsitesViewModelTest {
         assertNull(model.state.publicationHistory)
         assertFalse(model.state.historyLoading)
     }
+    @Test fun `publication timer rechecks foreground before querying original id`() = runTest {
+        login(); runCurrent()
+        val operation = WebsitePublicationOperation("operation-a", "application-a", "server", "example.test",
+            null, null, null, "running", "verifying", "", null, emptyList(), null, null, null)
+        var queries = 0
+        publicationRead = { queries++; ApiResult.Success(operation) }
+        model.refreshPublication(operation.operationId); advanceUntilIdle()
+        var foreground = true
+        val observer = launch { model.observePublication(operation) { foreground } }; runCurrent()
+        foreground = false; advanceTimeBy(1100); runCurrent(); observer.join()
+        assertEquals(1, queries)
+        model.observePublication(operation) { true }; advanceUntilIdle()
+        assertEquals(2, queries)
+    }
+    @Test fun `stale running snapshot cannot restart terminal task observation`() = runTest {
+        login(); runCurrent()
+        val running = WebsitePublicationOperation("operation-a", "application-a", "server", "example.test",
+            null, null, null, "running", "verifying", "", null, emptyList(), null, null, null)
+        val terminal = running.copy(state = "succeeded")
+        var queries = 0
+        publicationRead = { queries++; ApiResult.Success(terminal) }
+        model.refreshPublication(running.operationId); advanceUntilIdle()
+        model.observePublication(running) { true }; advanceUntilIdle()
+        assertEquals(1, queries); assertEquals(ApiResult.Success(terminal), model.state.publication)
+    }
+    @Test fun `manual task read invalidates older scheduled observation`() = runTest {
+        login(); runCurrent()
+        val running = WebsitePublicationOperation("operation-a", "application-a", "server", "example.test",
+            null, null, null, "running", "verifying", "", null, emptyList(), null, null, null)
+        var queries = 0
+        publicationRead = { queries++; ApiResult.Success(running) }
+        model.refreshPublication(running.operationId); advanceUntilIdle()
+        val observer = launch { model.observePublication(running) { true } }; runCurrent()
+        model.refreshPublication(running.operationId); runCurrent()
+        advanceTimeBy(1100); runCurrent(); observer.join()
+        assertEquals(2, queries)
+    }
     @Test fun `delayed observer does not restore operation after changing application`() = runTest {
         login(); runCurrent()
         model.selectApplication("application-a"); advanceUntilIdle()
@@ -164,7 +201,7 @@ class WebsitesViewModelTest {
             null, null, null, "running", "verifying", "", null, emptyList(), null, null, null)
         publicationRead = { ApiResult.Success(operation) }
         model.refreshPublication(operation.operationId); advanceUntilIdle()
-        launch { model.observePublication(operation) }; runCurrent()
+        launch { model.observePublication(operation) { true } }; runCurrent()
         model.selectApplication("application-b"); advanceUntilIdle()
         assertNull(model.state.publicationLookupId)
         assertNull(model.state.publication)

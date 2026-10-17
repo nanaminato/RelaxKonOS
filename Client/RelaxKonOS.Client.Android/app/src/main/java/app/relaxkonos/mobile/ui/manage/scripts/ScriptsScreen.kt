@@ -35,9 +35,12 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -99,9 +102,17 @@ internal fun ScriptsContent(model: ScriptsViewModel, owner: SessionState.Active,
         if (initialTaskId != null) model.select(initialTaskId)
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    LaunchedEffect(owner, editing, state.selectionEpoch, state.selected?.id, state.selected?.state, state.error, lifecycle) {
+    val lifecycleState by lifecycle.currentStateAsState()
+    DisposableEffect(model, owner, lifecycle) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_PAUSE) model.dismissCancellation() }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer); model.dismissCancellation() }
+    }
+    LaunchedEffect(owner, editing, state.selectionEpoch, state.selected?.id, state.selected?.state, state.error, state.cancellation, lifecycle) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-            if (!editing) model.observeSelected()
+            if (!editing && state.cancellation == null) model.observeSelected {
+                lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && model.state.value.cancellation == null
+            }
         }
     }
     if (editing) {
@@ -141,7 +152,7 @@ internal fun ScriptsContent(model: ScriptsViewModel, owner: SessionState.Active,
             ExecutionStatusChip(stringResource(scriptStateLabel(task.state)), task.state)
             Text("${task.runAs} · ${task.exitCode?.toString() ?: "—"}")
             task.problemCode?.let { Text(stringResource(scriptProblemLabel(it))) }
-            if (task.state in setOf("queued", "running")) OutlinedButton(onClick = { model.cancel(task.id) }, enabled = !state.loading && !state.error && state.pending == null && state.journalAvailable) {
+            if (task.state in setOf("queued", "running")) OutlinedButton(onClick = { model.requestCancellation(owner, task) }, enabled = !state.loading && !state.error && state.pending == null && state.journalAvailable) {
                 Text(stringResource(R.string.scripts_cancel))
             }
             if (task.outputTruncated) Text(stringResource(R.string.scripts_truncated))
@@ -150,6 +161,16 @@ internal fun ScriptsContent(model: ScriptsViewModel, owner: SessionState.Active,
             } } }
             }
         }
+    }
+    state.cancellation?.takeIf { it.owner === owner }?.let { review ->
+        AlertDialog(onDismissRequest = model::dismissCancellation, title = { Text(stringResource(R.string.scripts_cancel)) },
+            text = { Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(review.task.executablePath)
+                Text(review.task.id)
+                Text(stringResource(R.string.operations_cancel_explanation))
+            } },
+            confirmButton = { TextButton(enabled = !state.loading && lifecycleState.isAtLeast(Lifecycle.State.RESUMED), onClick = { model.cancel(review) }) { Text(stringResource(R.string.tunnels_confirm)) } },
+            dismissButton = { TextButton(onClick = model::dismissCancellation) { Text(stringResource(R.string.common_cancel)) } })
     }
 }
 

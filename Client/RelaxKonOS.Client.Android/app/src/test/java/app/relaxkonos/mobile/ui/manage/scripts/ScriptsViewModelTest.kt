@@ -64,6 +64,53 @@ class ScriptsViewModelTest {
     }
     private fun request(password: CharArray? = null) = ScriptRequest("/bin/true", emptyList(), "/tmp", emptyMap(), 30,
         "alice", password?.let { GuardianApproval("root", it) })
+    private fun confirmCancel(id: String) {
+        val task = model.state.value.selected?.takeIf { it.id == id } ?: return
+        val owner = session.state.value as? SessionState.Active ?: return
+        model.requestCancellation(owner, task)
+        model.state.value.cancellation?.let(model::cancel)
+    }
+
+    @Test fun `reopened confirmation rejects old object and sends only once`() = runTest {
+        val owner = login(); model.load(owner); runCurrent(); model.select("a"); runCurrent()
+        model.requestCancellation(owner, requireNotNull(model.state.value.selected))
+        val old = requireNotNull(model.state.value.cancellation)
+        model.dismissCancellation(); model.requestCancellation(owner, old.task)
+        val current = requireNotNull(model.state.value.cancellation)
+        model.cancel(old); assertSame(current, model.state.value.cancellation)
+        model.cancel(current); model.cancel(current); runCurrent()
+        assertEquals(1, cancellations); assertNotNull(model.state.value.pending)
+    }
+    @Test fun `new login reading identical task cannot revive old confirmation`() = runTest {
+        val owner = login(); model.load(owner); runCurrent(); model.select("a"); runCurrent()
+        model.requestCancellation(owner, requireNotNull(model.state.value.selected))
+        val old = requireNotNull(model.state.value.cancellation)
+        val next = login(); runCurrent(); model.load(next); runCurrent(); model.select("a"); runCurrent()
+        model.cancel(old); runCurrent()
+        assertEquals(0, cancellations); assertNull(model.state.value.cancellation)
+    }
+    @Test fun `refresh and selection revoke confirmation without cancelling other task`() = runTest {
+        val owner = login(); model.load(owner); runCurrent(); model.select("a"); runCurrent()
+        model.requestCancellation(owner, requireNotNull(model.state.value.selected))
+        val old = requireNotNull(model.state.value.cancellation)
+        model.select("b"); runCurrent(); model.cancel(old); runCurrent()
+        assertEquals("b", model.state.value.selected?.id); assertEquals(0, cancellations)
+        model.requestCancellation(owner, requireNotNull(model.state.value.selected))
+        val refreshed = requireNotNull(model.state.value.cancellation)
+        model.load(owner); runCurrent(); model.cancel(refreshed); runCurrent()
+        assertNull(model.state.value.cancellation); assertEquals(0, cancellations)
+    }
+    @Test fun `confirmation blocks observation and pending timer rechecks foreground`() = runTest {
+        val owner = login(); model.load(owner); runCurrent(); model.select("a"); runCurrent()
+        val before = reads
+        var foreground = true
+        val observer = launch { model.observeSelected { foreground } }; runCurrent()
+        foreground = false; advanceTimeBy(2100); runCurrent(); observer.join()
+        assertEquals(before, reads)
+        model.requestCancellation(owner, requireNotNull(model.state.value.selected))
+        model.observeSelected { true }; runCurrent()
+        assertEquals(before, reads); assertNotNull(model.state.value.cancellation)
+    }
 
     @Test fun `cancelled list read releases loading and can explicitly refresh`() = runTest {
         val owner = login()
@@ -97,11 +144,11 @@ class ScriptsViewModelTest {
     @Test fun `cancelled task cancellation stays unknown until explicit verification`() = runTest {
         model.load(login()); runCurrent(); model.select("a"); runCurrent()
         cancellation = { throw CancellationException("private cancellation") }
-        model.cancel("a"); runCurrent()
+        confirmCancel("a"); runCurrent()
         assertFalse(model.state.value.loading)
         assertEquals("scripts.write_unknown", model.state.value.problemCode)
         assertNotNull(model.state.value.pending)
-        model.cancel("a"); runCurrent(); assertEquals(1, cancellations)
+        confirmCancel("a"); runCurrent(); assertEquals(1, cancellations)
         details = { ApiResult.Success(ScriptTaskResult(true, "", task(it, "cancelled"))) }
         model.verifyRequest(); runCurrent()
         assertNull(model.state.value.pending); assertEquals("cancelled", model.state.value.selected?.state)
@@ -111,10 +158,10 @@ class ScriptsViewModelTest {
         details = { throw CancellationException("private detail error") }
         model.select("a"); runCurrent()
         assertTrue(model.state.value.error)
-        model.cancel("a"); runCurrent(); assertEquals(0, cancellations)
+        confirmCancel("a"); runCurrent(); assertEquals(0, cancellations)
         details = { ApiResult.Success(ScriptTaskResult(true, "", task(it))) }
         model.select("a"); runCurrent()
-        model.cancel("a"); runCurrent(); assertEquals(1, cancellations)
+        confirmCancel("a"); runCurrent(); assertEquals(1, cancellations)
     }
     @Test fun `list refresh cannot restore cancel after failed task detail`() = runTest {
         val owner = login()
@@ -125,11 +172,11 @@ class ScriptsViewModelTest {
         model.load(owner); runCurrent()
         assertNull(model.state.value.selected); assertFalse(model.state.value.loading)
         assertTrue(model.state.value.error)
-        model.cancel("a"); runCurrent(); assertEquals(0, cancellations)
+        confirmCancel("a"); runCurrent(); assertEquals(0, cancellations)
         details = { ApiResult.Success(ScriptTaskResult(true, "", task(it))) }
         model.load(owner); runCurrent()
         assertEquals("a", model.state.value.selected?.id); assertFalse(model.state.value.error)
-        model.cancel("a"); runCurrent(); assertEquals(1, cancellations)
+        confirmCancel("a"); runCurrent(); assertEquals(1, cancellations)
     }
     @Test fun `changing selection discards a slow old response`() = runTest {
         model.load(login()); runCurrent()
@@ -148,7 +195,7 @@ class ScriptsViewModelTest {
 
     @Test fun `old observer cannot resume after switching away and back to same task`() = runTest {
         model.load(login()); runCurrent(); model.select("a"); runCurrent()
-        val observer = launch { model.observeSelected() }; runCurrent()
+        val observer = launch { model.observeSelected { true } }; runCurrent()
         model.select("b"); runCurrent(); model.select("a"); runCurrent()
         val before = reads
         advanceTimeBy(2001); runCurrent()
@@ -158,12 +205,12 @@ class ScriptsViewModelTest {
         model.load(login()); runCurrent(); model.select("a"); runCurrent()
         val entered = CompletableDeferred<Unit>()
         details = { entered.complete(Unit); awaitCancellation() }
-        val observer = launch { model.observeSelected() }; runCurrent()
+        val observer = launch { model.observeSelected { true } }; runCurrent()
         advanceTimeBy(2001); runCurrent(); entered.await()
         observer.cancelAndJoin()
         assertFalse(model.state.value.error); assertEquals("a", model.state.value.selected?.id)
         details = { ApiResult.Success(ScriptTaskResult(true, "", task(it, "succeeded"))) }
-        val resumed = launch { model.observeSelected() }; runCurrent()
+        val resumed = launch { model.observeSelected { true } }; runCurrent()
         advanceTimeBy(4001); runCurrent()
         assertTrue(resumed.isCompleted); assertEquals("succeeded", model.state.value.selected?.state)
     }
@@ -171,7 +218,7 @@ class ScriptsViewModelTest {
         model.load(login()); runCurrent(); model.select("a"); runCurrent()
         val release = CompletableDeferred<Unit>()
         details = { release.await(); ApiResult.Transport(null) }
-        val poll = launch { model.observeSelected() }
+        val poll = launch { model.observeSelected { true } }
         advanceTimeBy(10_001); runCurrent()
         assertEquals(2, reads)
         release.complete(Unit); runCurrent()
@@ -194,9 +241,9 @@ class ScriptsViewModelTest {
         cancellation = { ApiResult.Success(ScriptTaskResult(true, "", task("a", "cancelling"))) }
         val release = CompletableDeferred<Unit>()
         details = { release.await(); ApiResult.Success(ScriptTaskResult(true, "", task("a", "cancelled"))) }
-        model.cancel("a"); runCurrent()
+        confirmCancel("a"); runCurrent()
         assertTrue(model.state.value.loading)
-        model.cancel("a"); model.submit(request()); runCurrent()
+        confirmCancel("a"); model.submit(request()); runCurrent()
         assertEquals(1, cancellations); assertEquals(0, submissions)
         release.complete(Unit); runCurrent()
         assertFalse(model.state.value.loading)
@@ -371,7 +418,7 @@ class ScriptsViewModelTest {
         model.submit(request()); runCurrent(); val pending = model.state.value.pending
         model.closeEditor()
         details = { ApiResult.Success(ScriptTaskResult(false, "guardian.script_not_found", null)) }
-        model.load(owner); runCurrent(); model.openEditor(); model.cancel("a"); runCurrent()
+        model.load(owner); runCurrent(); model.openEditor(); confirmCancel("a"); runCurrent()
         assertEquals(pending, model.state.value.pending)
         assertNull(model.state.value.draft)
         assertEquals("scripts.write_unknown", model.state.value.problemCode)
@@ -380,11 +427,11 @@ class ScriptsViewModelTest {
 
     @Test fun `unknown cancellation remains pending while running and resolves on cancelled state`() = runTest {
         model.load(login()); runCurrent(); model.select("a"); runCurrent()
-        model.cancel("a"); runCurrent()
+        confirmCancel("a"); runCurrent()
         assertEquals(PendingScriptRequest("a", true, attempted = true), model.state.value.pending)
         model.verifyRequest(); runCurrent()
         assertNotNull(model.state.value.pending)
-        model.cancel("a"); runCurrent(); assertEquals(1, cancellations)
+        confirmCancel("a"); runCurrent(); assertEquals(1, cancellations)
         details = { ApiResult.Success(ScriptTaskResult(true, "", task(it, "cancelled"))) }
         model.verifyRequest(); runCurrent()
         assertNull(model.state.value.pending)
@@ -441,7 +488,7 @@ class ScriptsViewModelTest {
         val owner = login(); model.load(owner); runCurrent(); model.openEditor()
         model.submit(request()); runCurrent(); val pending = model.state.value.pending
         store.clear(); model = newModel(); store.put("recreated", model)
-        storage.failRead = true; model.load(owner); runCurrent(); model.openEditor(); model.cancel("a")
+        storage.failRead = true; model.load(owner); runCurrent(); model.openEditor(); confirmCancel("a")
         assertFalse(model.state.value.journalAvailable)
         assertEquals(0, cancellations); assertNull(model.state.value.draft)
         storage.failRead = false

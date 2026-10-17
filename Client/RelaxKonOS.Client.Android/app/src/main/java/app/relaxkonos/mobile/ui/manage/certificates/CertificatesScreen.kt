@@ -41,20 +41,25 @@ internal fun CertificatesContent(model: CertificatesViewModel, owner: SessionSta
     initialOperationId: String? = null, serverHttpsOnly: Boolean = false, modifier: Modifier = Modifier) {
     val state = model.state
     val epoch = model.sessionEpoch
-    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val lifecycleState by lifecycle.currentStateAsState()
     var section by rememberSaveable(owner, epoch) { mutableStateOf(if (initialOperationId != null) "operations" else if (serverHttpsOnly) "certificates" else "overview") }
     if (active && state.draft == null) CertificateFeedback(state)
     LaunchedEffect(initialOperationId) { if (initialOperationId != null) section = "operations" }
     val available = owner?.capabilities?.contains(ServerCapabilities.CERTIFICATES) == true
     val canManage = available && owner?.privilegedOperations == true
-    var confirm by remember(owner, epoch) { mutableStateOf<Pair<Int, () -> Unit>?>(null) }
-    WithdrawCertificateConfirmationOnPause(active) { confirm = null }
+    var confirm by remember(owner, epoch, section, state.busy, state.detail, state.operation, state.operationVerified) { mutableStateOf<Pair<Int, () -> Unit>?>(null) }
+    val cancellation = model.cancellation?.takeIf { it.owner === owner }
+    WithdrawCertificateConfirmationOnPause(active) { confirm = null; model.dismissCancellation() }
+    DisposableEffect(owner, epoch, section) { onDispose { model.dismissCancellation() } }
     var recovery by remember(owner, epoch) { mutableStateOf(false) }
     var recoverPending by remember(owner, epoch) { mutableStateOf<PendingCertificateRequest?>(null) }
     var recoverId by remember(owner, epoch) { mutableStateOf("") }
     LaunchedEffect(owner, epoch, initialOperationId, active) { if (active && available) { if (initialOperationId != null) model.recover(initialOperationId) else model.refresh() } }
-    LaunchedEffect(owner, epoch, active, state.operation?.operationId, state.operationVerified, state.problemCode, state.uncertain, state.draft, lifecycleState) {
-        if (active && lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) model.observeOperation()
+    LaunchedEffect(owner, epoch, active, state.operation?.operationId, state.operationVerified, state.problemCode, state.uncertain, state.draft, lifecycleState, confirm, cancellation, recovery) {
+        if (active && lifecycleState.isAtLeast(Lifecycle.State.RESUMED) && confirm == null && cancellation == null && !recovery) model.observeOperation {
+            active && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && confirm == null && model.cancellation == null && !recovery
+        }
     }
     BackHandler(active && section == "certificates" && state.selectedId != null && state.draft == null && !state.busy) { model.select(null) }
     WorkspaceColumn(stringResource(if (serverHttpsOnly) R.string.server_https_title else R.string.certificates_title), onBack, listOf(*(if (serverHttpsOnly) emptyArray() else arrayOf(WorkspaceDestination("overview", R.string.workspace_overview))), WorkspaceDestination("certificates", R.string.workspace_certificates), WorkspaceDestination("operations", R.string.workspace_operations)), section, { section = it }, modifier, stateKey = owner to epoch) {
@@ -123,8 +128,8 @@ internal fun CertificatesContent(model: CertificatesViewModel, owner: SessionSta
             PageActionRow(refresh = {
                 TextButton(onClick = model::poll, enabled = !state.busy) { ActionLabel(R.string.common_refresh) }
             })
-            if (state.operationVerified && operation.state.active) TextButton(enabled = !state.busy && !state.uncertain, onClick = {
-                confirm = R.string.certificates_cancel_confirm to { model.cancel(owner, operation.operationId) }
+            if (canManage && state.operationVerified && operation.state.active) TextButton(enabled = !state.busy && !state.uncertain, onClick = {
+                model.requestCancellation(owner, operation)
             }) { Text(stringResource(R.string.common_cancel)) }
             Text(stringResource(R.string.certificates_cancel_note), style = MaterialTheme.typography.bodySmall)
             if (operation.kind == CertificateAction.DeployKestrel) operation.certificateId?.let { id ->
@@ -146,8 +151,13 @@ internal fun CertificatesContent(model: CertificatesViewModel, owner: SessionSta
     }
     if (active && state.draft != null && owner != null) key(owner, epoch) { CertificateEditor(state, model, owner) }
     if (active) confirm?.let { request -> AlertDialog(onDismissRequest = { confirm = null }, title = { Text(stringResource(R.string.certificates_confirm)) },
-        text = { Text(stringResource(request.first)) }, confirmButton = { Button(onClick = { confirm = null; request.second() }) { Text(stringResource(R.string.certificates_confirm)) } },
+        text = { Text(stringResource(request.first)) }, confirmButton = { Button(enabled = !state.busy && lifecycleState.isAtLeast(Lifecycle.State.RESUMED), onClick = { confirm = null; request.second() }) { Text(stringResource(R.string.certificates_confirm)) } },
         dismissButton = { TextButton(onClick = { confirm = null }) { Text(stringResource(R.string.common_cancel)) } }) }
+    if (active) cancellation?.let { review -> AlertDialog(onDismissRequest = model::dismissCancellation,
+        title = { Text(stringResource(R.string.certificates_confirm)) },
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text(review.operation.operationId); Text(stringResource(R.string.certificates_cancel_confirm)) } },
+        confirmButton = { Button(enabled = !state.busy && lifecycleState.isAtLeast(Lifecycle.State.RESUMED), onClick = { model.cancel(review) }) { Text(stringResource(R.string.certificates_confirm)) } },
+        dismissButton = { TextButton(onClick = model::dismissCancellation) { Text(stringResource(R.string.common_cancel)) } }) }
     if (active && recovery) AlertDialog(onDismissRequest = { recovery = false }, modifier = Modifier.imePadding(), title = { Text(stringResource(R.string.certificates_recover)) },
         text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text(stringResource(R.string.certificates_recover_note)); OutlinedTextField(recoverId, { recoverId = it }, singleLine = true, label = { Text(stringResource(R.string.certificates_operation_id)) }) } },
         confirmButton = { Button(enabled = runCatching { InstallationRoutes.operation(recoverId.trim()) }.isSuccess, onClick = {

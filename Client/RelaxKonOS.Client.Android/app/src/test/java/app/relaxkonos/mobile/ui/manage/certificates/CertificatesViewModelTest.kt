@@ -327,9 +327,9 @@ class CertificatesViewModelTest {
         model.recover(original.operationId); advanceUntilIdle()
         model.recover(next.operationId); advanceUntilIdle()
         val owner = session.state.value as SessionState.Active
-        model.cancel(owner, original.operationId); advanceUntilIdle()
+        model.requestCancellation(owner, original); assertNull(model.cancellation)
         assertTrue(cancelled.isEmpty()); assertEquals(next, model.state.operation)
-        model.cancel(owner, next.operationId); advanceUntilIdle()
+        model.requestCancellation(owner, next); model.cancel(requireNotNull(model.cancellation)); advanceUntilIdle()
         assertEquals(listOf(next.operationId), cancelled)
     }
     @Test fun `failed operation lookup pauses automatic polling and cancel until explicit retry`() = runTest {
@@ -341,9 +341,9 @@ class CertificatesViewModelTest {
         gateway.onCertificateOperation = { reads++; ApiResult.Transport(null) }
         gateway.onCertificateCancel = { cancellations++; ApiResult.Transport(null) }
         model.poll(); advanceUntilIdle(); assertFalse(model.state.operationVerified)
-        model.observeOperation(); advanceUntilIdle()
+        model.observeOperation { true }; advanceUntilIdle()
         assertEquals(1, reads); assertEquals("certificate.read_failed", model.state.problemCode)
-        model.cancel(session.state.value as SessionState.Active, receipt.operationId); advanceUntilIdle(); assertEquals(0, cancellations)
+        model.requestCancellation(session.state.value as SessionState.Active, receipt); assertNull(model.cancellation); assertEquals(0, cancellations)
         gateway.onCertificateOperation = { reads++; ApiResult.Success(receipt) }
         model.poll(); advanceUntilIdle(); assertTrue(model.state.operationVerified); assertEquals(2, reads)
     }
@@ -354,7 +354,7 @@ class CertificatesViewModelTest {
         var reads = 0
         gateway.onCertificateOperation = { id -> reads++; ApiResult.Success(if (id == original.operationId) original else next) }
         model.recover(original.operationId); advanceUntilIdle()
-        val observer = launch { model.observeOperation() }; runCurrent()
+        val observer = launch { model.observeOperation { true } }; runCurrent()
         model.recover(next.operationId); runCurrent()
         advanceUntilIdle(); observer.join()
         assertEquals(2, reads); assertEquals(next, model.state.operation)
@@ -400,11 +400,56 @@ class CertificatesViewModelTest {
         var reads = 0
         gateway.onCertificateOperation = { reads++; ApiResult.Success(receipt) }
         model.recover(receipt.operationId); advanceUntilIdle()
-        model.create(true); model.observeOperation(); advanceUntilIdle()
+        model.create(true); model.observeOperation { true }; advanceUntilIdle()
         assertEquals(1, reads); assertNotNull(model.state.draft)
         gateway.onCertificateOperation = { reads++; ApiResult.Success(receipt.copy(state = CertificateOperationState.Succeeded)) }
-        model.closeDraft(); model.observeOperation(); advanceUntilIdle()
+        model.closeDraft(); model.observeOperation { true }; advanceUntilIdle()
         assertEquals(2, reads)
+    }
+    @Test fun `reopened cancellation rejects old object and each confirmation sends once`() = runTest {
+        login(); runCurrent()
+        val operation = CertificateWire.operation(CERTIFICATE_OPERATION_JSON).copy(state = CertificateOperationState.Running)
+        gateway.onCertificateOperation = { ApiResult.Success(operation) }
+        model.recover(operation.operationId); advanceUntilIdle()
+        val owner = session.state.value as SessionState.Active
+        model.requestCancellation(owner, operation)
+        val old = requireNotNull(model.cancellation)
+        model.dismissCancellation(); model.requestCancellation(owner, operation)
+        val current = requireNotNull(model.cancellation)
+        var sends = 0
+        gateway.onCertificateCancel = { sends++; ApiResult.Transport(null) }
+        model.cancel(old); assertSame(current, model.cancellation)
+        model.cancel(current); model.cancel(current); advanceUntilIdle()
+        assertEquals(1, sends); assertFalse(model.state.operationVerified)
+    }
+    @Test fun `refresh rereads known operation and revokes old cancellation`() = runTest {
+        login(); runCurrent()
+        val operation = CertificateWire.operation(CERTIFICATE_OPERATION_JSON).copy(state = CertificateOperationState.Running)
+        gateway.onCertificateOperation = { ApiResult.Success(operation) }
+        gateway.onCertificates = { ApiResult.Success(emptyList()) }
+        model.recover(operation.operationId); advanceUntilIdle()
+        model.requestCancellation(session.state.value as SessionState.Active, operation)
+        val old = requireNotNull(model.cancellation)
+        var reads = 0; var sends = 0
+        gateway.onCertificateOperation = { reads++; ApiResult.Transport(null) }
+        gateway.onCertificateCancel = { sends++; ApiResult.Transport(null) }
+        model.refresh(); advanceUntilIdle(); model.cancel(old); advanceUntilIdle()
+        assertEquals(1, reads); assertEquals(0, sends); assertNull(model.cancellation)
+        assertFalse(model.state.operationVerified)
+    }
+    @Test fun `delayed observation rechecks foreground and stops during confirmation`() = runTest {
+        login(); runCurrent()
+        val operation = CertificateWire.operation(CERTIFICATE_OPERATION_JSON).copy(state = CertificateOperationState.Running)
+        gateway.onCertificateOperation = { ApiResult.Success(operation) }
+        model.recover(operation.operationId); advanceUntilIdle()
+        var reads = 0; var foreground = true
+        gateway.onCertificateOperation = { reads++; ApiResult.Success(operation) }
+        val observer = launch { model.observeOperation { foreground } }; runCurrent()
+        foreground = false; advanceTimeBy(1600); runCurrent(); observer.join()
+        assertEquals(0, reads)
+        model.requestCancellation(session.state.value as SessionState.Active, operation)
+        model.observeOperation { true }; advanceUntilIdle()
+        assertEquals(0, reads); assertNotNull(model.cancellation)
     }
     @Test fun `one observation follows identical running replies through terminal state`() = runTest {
         login(); runCurrent()
@@ -416,7 +461,7 @@ class CertificatesViewModelTest {
             reads++
             ApiResult.Success(if (reads < 4) receipt else receipt.copy(state = CertificateOperationState.Succeeded))
         }
-        model.observeOperation(); advanceUntilIdle()
+        model.observeOperation { true }; advanceUntilIdle()
         assertEquals(4, reads)
         assertEquals(CertificateOperationState.Succeeded, model.state.operation?.state)
     }
