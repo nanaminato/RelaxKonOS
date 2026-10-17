@@ -366,6 +366,7 @@ The client will open a login dialog. Enter your host system username and passwor
 | Document | Description |
 |----------|-------------|
 | [architecture.md](./docs/proxy/architecture.md) | Proxy module architecture, engine abstraction (IProxyEngine), Mihomo integration |
+| [squid.en.md](./docs/proxy/squid.en.md) | Squid HTTP gateway: first backend phase, API, security, recovery and remaining work |
 | [installation.md](./docs/proxy/installation.md) | Proxy runtime installation, deployment, and upgrades |
 | [mihomo.md](./docs/proxy/mihomo.md) | Mihomo engine configuration, control plane, and runtime management |
 | [tun.md](./docs/proxy/tun.md) | TUN mode, network stack, and transparent proxy |

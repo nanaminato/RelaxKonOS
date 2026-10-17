@@ -39,6 +39,7 @@ sealed interface SessionState {
         val workspaceId: String,
         /** Distinguishes new logins even when StateFlow conflates their intermediate Authenticating state. */
         val sessionInstanceId: String = java.util.UUID.randomUUID().toString(),
+        val controller: Boolean = false,
     ) : SessionState
 }
 
@@ -282,6 +283,7 @@ class AuthSession(
             serverPlatform = session.server.platform,
             executionEligibility = session.executionEligibility,
             privilegedOperations = session.server.privilegedOperations,
+            controller = session.controller,
         )
     }
 }

@@ -39,6 +39,19 @@ internal static class AuthenticationServiceRegistration
                     QueueLimit = 0,
                     AutoReplenishment = true,
                 }));
+            // A public subscription download has no login of its own, so it is metered by source
+            // address: a client refreshing a large configuration must not be able to sweep tokens.
+            options.AddPolicy(RelaxKonOS.Server.Endpoints.ProxyServerEndpoints.SubscriptionRateLimitPolicy,
+                http => RateLimitPartition.GetTokenBucketLimiter(
+                    http.Connection.RemoteIpAddress?.MapToIPv6().ToString() ?? "unknown",
+                    _ => new TokenBucketRateLimiterOptions
+                    {
+                        TokenLimit = 60,
+                        TokensPerPeriod = 60,
+                        ReplenishmentPeriod = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0,
+                        AutoReplenishment = true,
+                    }));
         });
 
         var forwardedHeaders = new ForwardedHeadersOptions { ForwardedHeaders = ForwardedHeaders.XForwardedFor, ForwardLimit = 1 };
@@ -214,6 +227,8 @@ internal static class AuthenticationServiceRegistration
             options.AddPolicy("ProxyRead", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
                 context.User.HasClaim("role", "controller") || context.User.HasClaim("role", "observer")
                 || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "observer")));
+            options.AddPolicy("ProxyServerExport", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
+                context.User.HasClaim("role", "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")));
             options.AddPolicy("ProxyManage", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
                 context.User.HasClaim("role", "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")));
             options.AddPolicy("ProxyDangerous", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>

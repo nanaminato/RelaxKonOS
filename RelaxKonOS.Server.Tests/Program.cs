@@ -1,4 +1,9 @@
 using RelaxKonOS.Protocol.Proxy;
+if (args.Contains("--squid-only"))
+{
+    await SquidGatewayChecks.RunAsync();
+    return;
+}
 if (args.Contains("--archives-only"))
 {
     var archiveRoot = Path.Combine(Environment.CurrentDirectory, ".tmp", "relaxkonos-archive-tests-" + Guid.NewGuid().ToString("N"));
@@ -520,6 +525,7 @@ try
     await ProxyConfigurationChecks.VerifyMihomoGeoDataStagingAsync(root);
     await ProxyConfigurationChecks.VerifyMihomoGeoDataStartupProvisioningAsync();
     await ProxyConfigurationChecks.VerifyProxyConfigurationTransactionAsync(root);
+    await SquidGatewayChecks.RunAsync();
     await ProxyConfigurationChecks.VerifyProxyTunSafetyAsync(root);
     await ProxyConfigurationChecks.VerifyMihomoTunActivationPreservationAsync(root);
     await ProxyConfigurationChecks.VerifyHostNetworkSafetyDiscoveryAsync();

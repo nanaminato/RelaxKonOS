@@ -241,41 +241,14 @@ public static class AuthEndpoints
         var tokens = jwt.Issue(user, ws, device, role, session.Id, login.Method, now, login.SecurityVersion);
         await protection.RecordSuccessAsync(login.ProtectionKey, http.Connection.RemoteIpAddress, ct, user.Id);
         return Results.Ok(new LoginResponse(user.ToDto(), ws.ToDto(), session.ToDto(), device.ToDto(), tokens, role,
-            CreateServerDescriptor(serverMode, http.RequestServices.GetRequiredService<RelaxKonOS.Server.EventAlerts.EventAlertsOptions>(),
+            ServerDescriptorFactory.Create(
+                RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? HostPlatformKind.Windows : HostPlatformKind.Linux,
+                serverMode,
+                http.RequestServices.GetRequiredService<RelaxKonOS.Server.EventAlerts.EventAlertsOptions>(),
                 http.RequestServices.GetRequiredService<RelaxKonOS.Server.BackupRecovery.IBackupRecoveryKeyProvider>()),
             new ServerExecutionEligibilityDto(login.ExecutionEligibility.Available,
                 login.ExecutionEligibility.ReasonCode, serverMode.Mode == ServerMode.System && login.Method == "system"
                 && user.Platform == HostPlatformKind.Linux && user.PlatformIdentity == "0" && user.Username == "root")));
-    }
-
-    private static ServerDescriptorDto CreateServerDescriptor(IServerModeResolver serverMode, RelaxKonOS.Server.EventAlerts.EventAlertsOptions eventAlerts,
-        RelaxKonOS.Server.BackupRecovery.IBackupRecoveryKeyProvider backupRecovery)
-    {
-        var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-        var capabilities = new List<string>
-        {
-            ServerCapabilities.Files,
-            ServerCapabilities.Metrics,
-            ServerCapabilities.Processes,
-            ServerCapabilities.Terminal,
-            ServerCapabilities.Git,
-        };
-        if (!isWindows && serverMode.Supports(ServerHostFeature.Firewall)) capabilities.Add(ServerCapabilities.PosixPermissions);
-        if (serverMode.Supports(ServerHostFeature.Firewall)) capabilities.Add(ServerCapabilities.Firewall);
-
-        var host = serverMode.Describe();
-        if (host.Capabilities.Guardian) capabilities.Add(ServerCapabilities.Guardian);
-        if (host.Capabilities.Docker) capabilities.Add(ServerCapabilities.Docker);
-        if (host.Capabilities.FileServices) capabilities.Add(ServerCapabilities.FileServices);
-        if (host.Capabilities.WebServer) capabilities.Add(ServerCapabilities.WebServer);
-        if (host.Capabilities.Certificates) capabilities.Add(ServerCapabilities.Certificates);
-        if (host.Capabilities.Tunnels) capabilities.Add(ServerCapabilities.Tunnels);
-        if (host.Capabilities.Proxy) capabilities.Add(ServerCapabilities.Proxy);
-        if (host.Capabilities.ApplicationDeployments) capabilities.Add(ServerCapabilities.ApplicationDeployments);
-        if (eventAlerts.Enabled) capabilities.Add(ServerCapabilities.EventAlerts);
-        if (host.Capabilities.ApplicationDeployments && backupRecovery.Availability.Available)
-            capabilities.Add(ServerCapabilities.BackupRecovery);
-        return new ServerDescriptorDto(isWindows ? HostPlatformKind.Windows : HostPlatformKind.Linux, capabilities, host);
     }
 
     private static IResult Problem(HttpContext http, int status, string typeSuffix, string title, string detail)

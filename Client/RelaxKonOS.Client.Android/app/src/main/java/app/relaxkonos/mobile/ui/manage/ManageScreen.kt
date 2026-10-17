@@ -50,6 +50,8 @@ fun ManageScreen(
     onOpenCertificates: () -> Unit,
     onOpenTunnels: () -> Unit,
     onOpenProxy: () -> Unit,
+    onOpenProxyServer: () -> Unit,
+    onOpenSquid: () -> Unit,
     onOpenSmb: () -> Unit,
     onOpenFirewall: () -> Unit,
     onOpenGuardian: () -> Unit,
@@ -92,8 +94,16 @@ fun ManageScreen(
         if (container.capabilities.contains(ServerCapabilities.FIREWALL)) {
             add(ManageDomain(R.string.firewall_title, R.string.firewall_intro, DesktopIcons.firewall, onOpenFirewall))
         }
+        if (container.capabilities.contains(ServerCapabilities.GATEWAY_PROXY)) {
+            add(ManageDomain(R.string.squid_title, R.string.squid_intro, DesktopIcons.proxy, onOpenSquid))
+        }
         if (container.capabilities.contains(ServerCapabilities.PROXY)) {
             add(ManageDomain(R.string.mihomo_title, R.string.mihomo_intro, DesktopIcons.proxy, onOpenProxy))
+        }
+        if (container.capabilities.contains(ServerCapabilities.PROXY_SERVER)) {
+            // A different application from the client-side proxy above: this one is the sing-box
+            // server other devices connect to, so it carries the server glyph rather than the node mark.
+            add(ManageDomain(R.string.proxy_server_title, R.string.proxy_server_intro, DesktopIcons.proxyServer, onOpenProxyServer))
         }
         if (container.capabilities.contains(ServerCapabilities.GUARDIAN)) {
             add(ManageDomain(R.string.guardian_title, R.string.guardian_subtitle, DesktopIcons.guardian, onOpenGuardian))

@@ -60,9 +60,33 @@ function Convert-LinuxShellScriptsToLf([string] $Root) {
     }
 }
 
+function Compress-PortableArchive([string] $Source, [string] $Archive) {
+    # Compress-Archive on Windows PowerShell 5.1 writes `\` entry names. The target host's
+    # unzip treats those as literal characters instead of separators, and the release
+    # inventory then rejects every path, so build the archive with forward slashes.
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    if (Test-Path -LiteralPath $Archive) { Remove-Item -LiteralPath $Archive -Force }
+    $baseLength = $Source.Length + 1
+    $zip = [IO.Compression.ZipFile]::Open($Archive, [IO.Compression.ZipArchiveMode]::Create)
+    try {
+        Get-ChildItem -LiteralPath $Source -Recurse -File | Sort-Object FullName | ForEach-Object {
+            $relative = $_.FullName.Substring($baseLength).Replace('\', '/')
+            $entry = $zip.CreateEntry($relative, [IO.Compression.CompressionLevel]::Optimal)
+            $entry.LastWriteTime = $_.LastWriteTime
+            $output = $entry.Open()
+            try {
+                $input = [IO.File]::OpenRead($_.FullName)
+                try { $input.CopyTo($output) } finally { $input.Dispose() }
+            } finally { $output.Dispose() }
+        }
+    } finally { $zip.Dispose() }
+}
+
 function Complete-Package($Package, [hashtable] $Payload) {
+    $baseLength = $Package.Directory.Length + 1
     $files = @(Get-ChildItem -LiteralPath $Package.Directory -Recurse -File | Sort-Object FullName | ForEach-Object {
-        $relative = [IO.Path]::GetRelativePath($Package.Directory, $_.FullName).Replace('\', '/')
+        $relative = $_.FullName.Substring($baseLength).Replace('\', '/')
         if ($relative -notmatch '^[A-Za-z0-9._/+\-]+$' -or $relative.Contains('..')) {
             throw "Release file path cannot be represented safely in the manifest: $relative"
         }
@@ -87,7 +111,7 @@ function Complete-Package($Package, [hashtable] $Payload) {
     $manifest.payload[$platform] = $Payload
     $manifestPath = Join-Path $Package.Directory 'manifest.json'
     [IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
-    Compress-Archive -Path (Join-Path $Package.Directory '*') -DestinationPath $Package.Archive -CompressionLevel Optimal
+    Compress-PortableArchive -Source $Package.Directory -Archive $Package.Archive
     $hash = (Get-FileHash -LiteralPath $Package.Archive -Algorithm SHA256).Hash.ToLowerInvariant()
     [IO.File]::WriteAllText(($Package.Archive + '.sha256'), "$hash  $([IO.Path]::GetFileName($Package.Archive))`n", [Text.UTF8Encoding]::new($false))
     $descriptor = [ordered]@{

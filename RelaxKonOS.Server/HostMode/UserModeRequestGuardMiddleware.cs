@@ -11,6 +11,7 @@ public sealed class UserModeRequestGuardMiddleware(RequestDelegate next)
     [
         "/api/v1.0/docker", "/api/v1.0/firewall", "/api/v1.0/file-services",
         "/api/v1.0/webservers", "/api/v1.0/certificates", "/api/v1.0/tunnels", "/api/v1.0/proxy",
+        "/api/v1.0/gateway-proxy",
         "/api/v1.0/installations", "/api/v1.0/privileged", "/api/v1.0/host-settings",
         "/api/v1.0/settings/catalog", "/api/v1.0/settings/operations",
         AuthApiRoutes.LoginAlias, AuthApiRoutes.SystemLogin

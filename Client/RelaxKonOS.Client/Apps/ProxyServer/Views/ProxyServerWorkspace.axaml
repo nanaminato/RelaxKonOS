@@ -1,0 +1,381 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:common="clr-namespace:RelaxKonOS.Client.Controls"
+             xmlns:loc="using:RelaxKonOS.Client.Localization"
+             xmlns:vm="using:RelaxKonOS.Client.Apps.ProxyServer"
+             xmlns:protocol="clr-namespace:RelaxKonOS.Protocol.ProxyServer;assembly=RelaxKonOS.Protocol"
+             x:Class="RelaxKonOS.Client.Apps.ProxyServer.Views.ProxyServerWorkspace"
+             x:DataType="vm:ProxyServerViewModel"
+             Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
+  <UserControl.Styles>
+    <Style Selector="TextBlock.section-title"><Setter Property="FontSize" Value="16" /><Setter Property="FontWeight" Value="SemiBold" /></Style>
+    <Style Selector="TextBlock.section-hint"><Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" /><Setter Property="FontSize" Value="12" /><Setter Property="TextWrapping" Value="Wrap" /></Style>
+    <Style Selector="TextBlock.field-label"><Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" /><Setter Property="FontSize" Value="12" /><Setter Property="TextWrapping" Value="Wrap" /></Style>
+    <Style Selector="TextBlock.fact-label"><Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" /><Setter Property="TextWrapping" Value="Wrap" /><Setter Property="VerticalAlignment" Value="Center" /><Setter Property="Margin" Value="0,0,12,0" /></Style>
+    <Style Selector="TextBlock.fact-value"><Setter Property="FontWeight" Value="SemiBold" /><Setter Property="VerticalAlignment" Value="Center" /><Setter Property="TextWrapping" Value="Wrap" /></Style>
+    <Style Selector="TextBlock.problem"><Setter Property="Foreground" Value="{DynamicResource DangerBrush}" /><Setter Property="FontSize" Value="12" /><Setter Property="TextWrapping" Value="Wrap" /></Style>
+    <Style Selector="Border.notice"><Setter Property="Padding" Value="20,10" /><Setter Property="BorderThickness" Value="0,0,0,1" /></Style>
+    <Style Selector="Border.notice.warning"><Setter Property="Background" Value="{DynamicResource WarningMutedBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource WarningBrush}" /></Style>
+    <Style Selector="Border.notice.danger"><Setter Property="Background" Value="{DynamicResource WarningMutedBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" /></Style>
+    <Style Selector="Border.notice.neutral"><Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" /></Style>
+    <Style Selector="Border.badge"><Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" /><Setter Property="CornerRadius" Value="9" /><Setter Property="Padding" Value="8,2" /><Setter Property="VerticalAlignment" Value="Center" /></Style>
+    <Style Selector="Border.fact-row"><Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" /><Setter Property="BorderThickness" Value="0,1,0,0" /><Setter Property="Padding" Value="0,7" /></Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
+    <Grid x:Name="HeaderHost" Grid.Row="0" ColumnDefinitions="*,Auto">
+      <common:WorkspaceWindowHeader x:Name="Header" Title="{loc:Loc application.relaxkonos.proxy-server.display_name}"
+                                    Subtitle="{loc:Loc proxy_server.intro}" IconAsset="avares://RelaxKonOS.Client/Assets/AppIcons/proxy-server.png" />
+      <Button x:Name="HeaderActions" Grid.Column="1" Classes="header-action" Command="{Binding RefreshCommand}"
+              ToolTip.Tip="{loc:Loc proxy_server.refresh}" AutomationProperties.Name="{loc:Loc proxy_server.refresh}" VerticalAlignment="Center">
+        <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Stretch="Uniform" Width="16" Height="16"
+              Data="M19 8 A8 8 0 1 0 20 14 M19 3 V8 H14" />
+      </Button>
+    </Grid>
+
+    <StackPanel Grid.Row="1">
+      <Border Classes="notice warning" IsVisible="{Binding !IsSupported}">
+        <TextBlock Text="{loc:Loc proxy_server.problem.platform_unsupported}" TextWrapping="Wrap" />
+      </Border>
+      <Border Classes="notice danger" IsVisible="{Binding ShowRecovery}">
+        <StackPanel Spacing="3">
+          <TextBlock Classes="section-title" FontSize="13" Foreground="{DynamicResource DangerBrush}" Text="{loc:Loc proxy_server.state.recovery}" />
+          <TextBlock Text="{loc:Loc proxy_server.recovery_hint}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+        </StackPanel>
+      </Border>
+      <Border Classes="notice warning" IsVisible="{Binding ShowInstall}">
+        <StackPanel Spacing="3">
+          <TextBlock Classes="section-title" FontSize="13" Foreground="{DynamicResource WarningBrush}" Text="{loc:Loc proxy_server.state.not_installed}" />
+          <TextBlock Text="{loc:Loc proxy_server.install_hint}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+        </StackPanel>
+      </Border>
+    </StackPanel>
+
+    <Grid x:Name="WorkspaceBody" Grid.Row="2" ColumnDefinitions="190,*" ClipToBounds="True">
+      <Border Classes="app-sidebar">
+        <StackPanel Spacing="4" Margin="14,22">
+          <Button x:Name="PageButton0" Classes="workspace-nav" Tag="0" Click="NavigationButton_Click" Content="{loc:Loc proxy_server.section.overview}" HorizontalContentAlignment="Left" Padding="10,8" />
+          <Button x:Name="PageButton1" Classes="workspace-nav" Tag="1" Click="NavigationButton_Click" Content="{loc:Loc proxy_server.section.inbounds}" HorizontalContentAlignment="Left" Padding="10,8" />
+          <Button x:Name="PageButton2" Classes="workspace-nav" Tag="2" Click="NavigationButton_Click" Content="{loc:Loc proxy_server.section.access}" HorizontalContentAlignment="Left" Padding="10,8" />
+          <Button x:Name="PageButton3" Classes="workspace-nav" Tag="3" Click="NavigationButton_Click" Content="{loc:Loc proxy_server.section.connect}" HorizontalContentAlignment="Left" Padding="10,8" />
+          <Button x:Name="PageButton4" Classes="workspace-nav" Tag="4" Click="NavigationButton_Click" Content="{loc:Loc proxy_server.section.subscriptions}" HorizontalContentAlignment="Left" Padding="10,8" />
+        </StackPanel>
+      </Border>
+
+      <ScrollViewer x:Name="BodyScroll" Grid.Column="1" Padding="20,16" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Spacing="16">
+          <StackPanel x:Name="Page0" Spacing="16" IsVisible="True">
+            <Border Classes="app-panel" Padding="18">
+              <StackPanel Spacing="12">
+                <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.section.overview}" />
+                <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.status_text}" TextWrapping="Wrap" />
+                <StackPanel Spacing="0">
+                  <Grid ColumnDefinitions="150,*">
+                    <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.fact.service}" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                      <Ellipse Width="9" Height="9" Fill="{DynamicResource SuccessBrush}" IsVisible="{Binding IsRunning}" VerticalAlignment="Center" />
+                      <Ellipse Width="9" Height="9" Fill="{DynamicResource TextTertiaryBrush}" IsVisible="{Binding !IsRunning}" VerticalAlignment="Center" />
+                      <TextBlock Classes="fact-value" Text="{Binding ServiceStateText}" />
+                    </StackPanel>
+                  </Grid>
+                  <Border Classes="fact-row"><Grid ColumnDefinitions="150,*">
+                    <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.fact.version}" />
+                    <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding VersionText}" />
+                  </Grid></Border>
+                  <Border Classes="fact-row"><Grid ColumnDefinitions="150,*">
+                    <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.fact.revisions}" />
+                    <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding RevisionText}" />
+                  </Grid></Border>
+                  <Border Classes="fact-row"><Grid ColumnDefinitions="150,*">
+                    <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.fact.applied}" />
+                    <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding AppliedText}" />
+                  </Grid></Border>
+                  <Border Classes="fact-row"><Grid ColumnDefinitions="150,*">
+                    <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.fact.boot}" />
+                    <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding BootText}" />
+                  </Grid></Border>
+                  <Border Classes="fact-row"><Grid ColumnDefinitions="150,*">
+                    <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.fact.statistics}" />
+                    <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding StatisticsText}" />
+                  </Grid></Border>
+                </StackPanel>
+                <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" />
+                <WrapPanel>
+                  <Button Content="{loc:Loc proxy_server.install}" Command="{Binding InstallCommand}" IsVisible="{Binding ShowInstall}" Margin="0,0,8,8" />
+                  <Button Content="{loc:Loc proxy_server.upgrade}" Command="{Binding UpgradeCommand}" IsVisible="{Binding ShowUninstall}" Margin="0,0,8,8" />
+                  <Button Content="{loc:Loc proxy_server.start}" Command="{Binding RuntimeCommand}" CommandParameter="Start" IsVisible="{Binding ShowRuntimeActions}" Margin="0,0,8,8" />
+                  <Button Content="{loc:Loc proxy_server.stop}" Command="{Binding RuntimeCommand}" CommandParameter="Stop" IsVisible="{Binding ShowRuntimeActions}" Margin="0,0,8,8" />
+                  <Button Content="{loc:Loc proxy_server.restart}" Command="{Binding RuntimeCommand}" CommandParameter="Restart" IsVisible="{Binding ShowRuntimeActions}" Margin="0,0,8,8" />
+                  <Button Content="{loc:Loc proxy_server.enable}" Command="{Binding RuntimeCommand}" CommandParameter="Enable" IsVisible="{Binding ShowRuntimeActions}" Margin="0,0,8,8" />
+                  <Button Content="{loc:Loc proxy_server.disable}" Command="{Binding RuntimeCommand}" CommandParameter="Disable" IsVisible="{Binding ShowRuntimeActions}" Margin="0,0,8,8" />
+                  <Button Content="{loc:Loc proxy_server.recover}" Command="{Binding RecoverCommand}" IsVisible="{Binding ShowRecovery}" Margin="0,0,8,8" />
+                </WrapPanel>
+                <WrapPanel IsVisible="{Binding ShowUninstall}">
+                  <Button Content="{loc:Loc proxy_server.uninstall}" Command="{Binding UninstallCommand}" CommandParameter="keep" Margin="0,0,8,0"
+                          ToolTip.Tip="{loc:Loc proxy_server.uninstall_hint}" />
+                  <Button Content="{loc:Loc proxy_server.uninstall_delete}" Command="{Binding UninstallCommand}" CommandParameter="delete" />
+                </WrapPanel>
+              </StackPanel>
+            </Border>
+
+            <Border Classes="app-panel" Padding="18">
+              <StackPanel Spacing="10">
+                <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.section.validation}" />
+                <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.validation_hint}" TextWrapping="Wrap" />
+                <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.preview_hint}" TextWrapping="Wrap" />
+                <TextBox IsReadOnly="True" AcceptsReturn="True" MinHeight="150" MaxHeight="300" TextWrapping="Wrap"
+                         FontFamily="Consolas" Text="{Binding PreviewText}" BorderBrush="{DynamicResource BorderSubtleBrush}" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+          <StackPanel x:Name="Page1" Spacing="16" IsVisible="False">
+            <Border Classes="app-panel" Padding="18">
+              <StackPanel Spacing="10">
+                <DockPanel>
+                  <Button DockPanel.Dock="Right" Content="{loc:Loc proxy_server.new}" Command="{Binding NewInboundCommand}" IsEnabled="{Binding CanEdit}" />
+                  <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.inbounds}" />
+                </DockPanel>
+                <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.inbound_hint}" TextWrapping="Wrap" />
+                <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.inbounds_empty}" IsVisible="{Binding !HasInbounds}" />
+                <ListBox ItemsSource="{Binding Inbounds}" SelectedItem="{Binding SelectedInbound, Mode=TwoWay}" MinHeight="90" MaxHeight="180">
+                  <ListBox.ItemTemplate><DataTemplate x:DataType="protocol:ProxyServerInbound">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                      <TextBlock Text="{Binding Name}" />
+                      <TextBlock Grid.Column="1" Text="{Binding ListenPort}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" />
+                    </Grid>
+                  </DataTemplate></ListBox.ItemTemplate>
+                </ListBox>
+              </StackPanel>
+            </Border>
+
+            <Border Classes="app-panel" Padding="18" IsVisible="{Binding CanManage}">
+              <StackPanel Spacing="10">
+                <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.inbound_editor}" />
+                <Grid ColumnDefinitions="*,12,140" ColumnSpacing="0">
+                  <StackPanel Spacing="4">
+                    <TextBlock Classes="field-label" Text="{loc:Loc proxy_server.protocol}" />
+                    <ComboBox ItemsSource="{Binding ProtocolChoices}" SelectedIndex="{Binding ProtocolIndex, Mode=TwoWay}" HorizontalAlignment="Stretch">
+                      <ComboBox.ItemTemplate><DataTemplate x:DataType="vm:ProtocolChoice"><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate>
+                    </ComboBox>
+                  </StackPanel>
+                  <StackPanel Grid.Column="2" Spacing="4">
+                    <TextBlock Classes="field-label" Text="{loc:Loc proxy_server.listen_port}" />
+                    <TextBox Text="{Binding ListenPort, Mode=TwoWay}" />
+                  </StackPanel>
+                </Grid>
+                <StackPanel Spacing="4"><TextBlock Classes="field-label" Text="{loc:Loc proxy_server.name}" /><TextBox Text="{Binding InboundName, Mode=TwoWay}" MaxLength="128" /></StackPanel>
+                <StackPanel Spacing="4"><TextBlock Classes="field-label" Text="{loc:Loc proxy_server.listen_address}" /><TextBox Text="{Binding ListenAddress, Mode=TwoWay}" /></StackPanel>
+                <StackPanel Spacing="4"><TextBlock Classes="field-label" Text="{loc:Loc proxy_server.public_host}" /><TextBox Text="{Binding PublicHost, Mode=TwoWay}" /></StackPanel>
+                <StackPanel Spacing="4"><TextBlock Classes="field-label" Text="{loc:Loc proxy_server.public_port}" /><TextBox Text="{Binding PublicPort, Mode=TwoWay}" /></StackPanel>
+                <StackPanel Spacing="4"><TextBlock Classes="field-label" Text="{loc:Loc proxy_server.server_name}" /><TextBox Text="{Binding ServerName, Mode=TwoWay}" /></StackPanel>
+                <StackPanel Spacing="4" IsVisible="{Binding ShowCertificateField}">
+                  <TextBlock Classes="field-label" Text="{loc:Loc proxy_server.certificate}" />
+                  <TextBox Text="{Binding CertificateId, Mode=TwoWay}" Watermark="00000000-0000-0000-0000-000000000000" />
+                </StackPanel>
+                <StackPanel Spacing="4" IsVisible="{Binding ShowRealityFields}">
+                  <TextBlock Classes="field-label" Text="{loc:Loc proxy_server.handshake}" />
+                  <TextBox Text="{Binding HandshakeHost, Mode=TwoWay}" />
+                </StackPanel>
+                <StackPanel Spacing="4" IsVisible="{Binding ShowRealityFields}">
+                  <TextBlock Classes="field-label" Text="{loc:Loc proxy_server.handshake_port}" />
+                  <TextBox Text="{Binding HandshakePort, Mode=TwoWay}" />
+                </StackPanel>
+                <StackPanel Spacing="4" IsVisible="{Binding ShowWebSocketField}">
+                  <TextBlock Classes="field-label" Text="{loc:Loc proxy_server.websocket_path}" />
+                  <TextBox Text="{Binding WebSocketPath, Mode=TwoWay}" />
+                </StackPanel>
+                <CheckBox Content="{loc:Loc proxy_server.enabled}" IsChecked="{Binding InboundEnabled, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" />
+                <WrapPanel>
+                  <Button Content="{loc:Loc proxy_server.save}" Command="{Binding SaveInboundCommand}" IsEnabled="{Binding CanEdit}" Margin="0,0,8,0" />
+                  <Button Content="{loc:Loc proxy_server.delete}" Command="{Binding DeleteInboundCommand}" IsEnabled="{Binding CanEdit}" />
+                </WrapPanel>
+                <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.inbound_note}" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+          <StackPanel x:Name="Page2" Spacing="16" IsVisible="False">
+            <Border Classes="app-panel" Padding="18">
+              <StackPanel Spacing="10">
+                <DockPanel>
+                  <Button DockPanel.Dock="Right" Content="{loc:Loc proxy_server.new}" Command="{Binding NewPrincipalCommand}" IsEnabled="{Binding CanEdit}" />
+                  <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.principals}" />
+                </DockPanel>
+                <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.principal_hint}" TextWrapping="Wrap" />
+                <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.principals_empty}" IsVisible="{Binding !HasPrincipals}" />
+                <ListBox ItemsSource="{Binding Principals}" SelectedItem="{Binding SelectedPrincipal, Mode=TwoWay}" MinHeight="80" MaxHeight="160">
+                  <ListBox.ItemTemplate><DataTemplate x:DataType="protocol:ProxyServerPrincipal">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                      <TextBlock Text="{Binding DisplayName}" />
+                      <TextBlock Grid.Column="1" Text="{Binding CredentialCount}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" />
+                    </Grid>
+                  </DataTemplate></ListBox.ItemTemplate>
+                </ListBox>
+                <StackPanel Spacing="4"><TextBlock Classes="field-label" Text="{loc:Loc proxy_server.principal_name}" /><TextBox Text="{Binding PrincipalName, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" MaxLength="128" /></StackPanel>
+                <StackPanel Spacing="4"><TextBlock Classes="field-label" Text="{loc:Loc proxy_server.principal_user}" /><TextBox Text="{Binding PrincipalUserId, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" /></StackPanel>
+                <WrapPanel>
+                  <Button Content="{loc:Loc proxy_server.save}" Command="{Binding SavePrincipalCommand}" IsEnabled="{Binding CanEdit}" Margin="0,0,8,0" />
+                  <Button Content="{loc:Loc proxy_server.delete}" Command="{Binding DeletePrincipalCommand}" IsEnabled="{Binding CanEdit}" />
+                </WrapPanel>
+              </StackPanel>
+            </Border>
+
+            <Border Classes="app-panel" Padding="18">
+              <StackPanel Spacing="10">
+                <DockPanel>
+                  <Button DockPanel.Dock="Right" Content="{loc:Loc proxy_server.new}" Command="{Binding NewCredentialCommand}" IsEnabled="{Binding CanEdit}" />
+                  <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.credentials}" />
+                </DockPanel>
+                <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.credential_hint}" TextWrapping="Wrap" />
+                <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.credentials_empty}" IsVisible="{Binding !HasCredentials}" />
+                <ListBox ItemsSource="{Binding Credentials}" SelectedItem="{Binding SelectedCredential, Mode=TwoWay}" MinHeight="90" MaxHeight="180">
+                  <ListBox.ItemTemplate><DataTemplate x:DataType="protocol:ProxyServerCredential">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                      <StackPanel Spacing="1">
+                        <TextBlock Text="{Binding Name}" />
+                        <TextBlock Text="{Binding ExpiresAt}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" />
+                      </StackPanel>
+                      <TextBlock Grid.Column="1" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}"
+                                 Text="{loc:Loc proxy_server.credential_pending}" IsVisible="{Binding !Applied}" />
+                    </Grid>
+                  </DataTemplate></ListBox.ItemTemplate>
+                </ListBox>
+                <StackPanel Spacing="4"><TextBlock Classes="field-label" Text="{loc:Loc proxy_server.name}" /><TextBox Text="{Binding CredentialName, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" MaxLength="128" /></StackPanel>
+                <StackPanel Spacing="4">
+                  <TextBlock Classes="field-label" Text="{loc:Loc proxy_server.principal}" />
+                  <ComboBox ItemsSource="{Binding Principals}" SelectedItem="{Binding SelectedPrincipal, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Stretch">
+                    <ComboBox.ItemTemplate><DataTemplate x:DataType="protocol:ProxyServerPrincipal"><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
+                  </ComboBox>
+                </StackPanel>
+                <StackPanel Spacing="4">
+                  <TextBlock Classes="field-label" Text="{loc:Loc proxy_server.grants}" />
+                  <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.grants_hint}" TextWrapping="Wrap" />
+                  <ItemsControl ItemsSource="{Binding CredentialGrants}" IsEnabled="{Binding CanEdit}">
+                    <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:InboundGrant">
+                      <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}">
+                        <TextBlock Text="{Binding Name}" />
+                      </CheckBox>
+                    </DataTemplate></ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+                <StackPanel Spacing="4"><TextBlock Classes="field-label" Text="{loc:Loc proxy_server.expires}" /><TextBox Text="{Binding CredentialExpiresAt, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" Watermark="2026-12-31T00:00:00Z" /></StackPanel>
+                <CheckBox Content="{loc:Loc proxy_server.enabled}" IsChecked="{Binding CredentialEnabled, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" />
+                <WrapPanel>
+                  <Button Content="{loc:Loc proxy_server.save}" Command="{Binding SaveCredentialCommand}" IsEnabled="{Binding CanEdit}" Margin="0,0,8,0" />
+                  <Button Content="{loc:Loc proxy_server.rotate}" Command="{Binding RotateCredentialCommand}" IsEnabled="{Binding CanEdit}" Margin="0,0,8,0" />
+                  <Button Content="{loc:Loc proxy_server.delete}" Command="{Binding DeleteCredentialCommand}" IsEnabled="{Binding CanEdit}" />
+                </WrapPanel>
+                <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.rotation_note}" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+          <StackPanel x:Name="Page3" Spacing="16" IsVisible="False">
+            <Border Classes="app-panel" Padding="18">
+              <StackPanel Spacing="10">
+                <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.section.connect}" />
+                <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.export_hint}" TextWrapping="Wrap" />
+                <TextBlock Classes="problem" Text="{loc:Loc proxy_server.export_requires_permission}" IsVisible="{Binding !CanExport}" />
+                <ComboBox ItemsSource="{Binding Credentials}" SelectedItem="{Binding SelectedCredential, Mode=TwoWay}" HorizontalAlignment="Stretch">
+                  <ComboBox.ItemTemplate><DataTemplate x:DataType="protocol:ProxyServerCredential"><TextBlock Text="{Binding Name}" /></DataTemplate></ComboBox.ItemTemplate>
+                </ComboBox>
+                <WrapPanel IsEnabled="{Binding CanExport}">
+                  <Button Content="{loc:Loc proxy_server.format.uri}" Command="{Binding ExportCommand}" CommandParameter="uri" IsEnabled="{Binding UriEnabled}" Margin="0,0,8,8" />
+                  <Button Content="{loc:Loc proxy_server.format.sing_box}" Command="{Binding ExportCommand}" CommandParameter="sing-box" IsEnabled="{Binding SingBoxEnabled}" Margin="0,0,8,8" />
+                  <Button Content="{loc:Loc proxy_server.format.mihomo}" Command="{Binding ExportCommand}" CommandParameter="mihomo" IsEnabled="{Binding MihomoEnabled}" Margin="0,0,8,8" />
+                </WrapPanel>
+                <TextBlock Classes="problem" Text="{Binding ExportReasons}" TextWrapping="Wrap" IsVisible="{Binding !AllFormatsEnabled}" />
+                <TextBlock Classes="problem" Text="{Binding ExportWarning}" TextWrapping="Wrap" />
+                <Image Source="{Binding QrCode}" Width="240" Height="240" HorizontalAlignment="Left" IsVisible="{Binding HasExport}" />
+                <TextBox IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="150" FontFamily="Consolas"
+                         Text="{Binding ExportText}" IsVisible="{Binding HasExport}" BorderBrush="{DynamicResource BorderSubtleBrush}" />
+                <WrapPanel>
+                  <Button Content="{loc:Loc proxy_server.copy}" Click="CopyExport_Click" IsEnabled="{Binding HasExport}" Margin="0,0,8,0" />
+                  <Button Content="{loc:Loc proxy_server.clear}" Command="{Binding ClearExportCommand}" IsEnabled="{Binding HasExport}" />
+                </WrapPanel>
+                <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.export_secret_note}" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+          <StackPanel x:Name="Page4" Spacing="16" IsVisible="False">
+            <Border Classes="app-panel" Padding="18">
+              <StackPanel Spacing="10">
+                <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.section.subscriptions}" />
+                <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.subscription_hint}" TextWrapping="Wrap" />
+                <StackPanel Spacing="4">
+                  <TextBlock Classes="field-label" Text="{loc:Loc proxy_server.subscription_base_url}" />
+                  <TextBox Text="{Binding SubscriptionBaseUrl, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" Watermark="https://proxy.example.com" />
+                  <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.subscription_base_url_hint}" TextWrapping="Wrap" />
+                </StackPanel>
+                <Button Content="{loc:Loc proxy_server.save}" Command="{Binding SaveBaseUrlCommand}" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Left" />
+                <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" />
+                <TextBlock Classes="field-label" Text="{loc:Loc proxy_server.subscription_formats}" />
+                <ItemsControl ItemsSource="{Binding SubscriptionFormats}" IsEnabled="{Binding CanEdit}">
+                  <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:FormatChoice">
+                    <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" Content="{Binding Label}" Margin="0,0,16,0" />
+                  </DataTemplate></ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <Button Content="{loc:Loc proxy_server.subscription_issue}" Command="{Binding IssueSubscriptionCommand}"
+                        IsEnabled="{Binding CanExport}" HorizontalAlignment="Left" />
+                <StackPanel Spacing="4" IsVisible="{Binding HasIssuedToken}">
+                  <TextBlock Classes="field-label" Text="{loc:Loc proxy_server.subscription_token_once}" />
+                  <TextBox IsReadOnly="True" Text="{Binding IssuedToken}" FontFamily="Consolas" />
+                  <TextBox IsReadOnly="True" Text="{Binding IssuedUrls}" AcceptsReturn="True" MinHeight="70" TextWrapping="Wrap" FontFamily="Consolas" />
+                  <Button Content="{loc:Loc proxy_server.copy}" Click="CopyToken_Click" HorizontalAlignment="Left" />
+                </StackPanel>
+                <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" />
+                <TextBlock Classes="section-title" FontSize="14" Text="{loc:Loc proxy_server.subscription_list}" />
+                <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.subscriptions_empty}" IsVisible="{Binding !HasSubscriptions}" />
+                <ListBox ItemsSource="{Binding Subscriptions}" SelectedItem="{Binding SelectedSubscription, Mode=TwoWay}" MinHeight="90" MaxHeight="200">
+                  <ListBox.ItemTemplate><DataTemplate x:DataType="protocol:ProxyServerSubscription">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                      <StackPanel Spacing="1">
+                        <TextBlock Text="{Binding CredentialId}" FontFamily="Consolas" FontSize="11" />
+                        <TextBlock Text="{Binding ExpiresAt}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" />
+                      </StackPanel>
+                      <TextBlock Grid.Column="1" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}"
+                                 Text="{loc:Loc proxy_server.subscription_revoked}" IsVisible="{Binding Revoked}" />
+                    </Grid>
+                  </DataTemplate></ListBox.ItemTemplate>
+                </ListBox>
+                <Button Content="{loc:Loc proxy_server.subscription_revoke}" Command="{Binding RevokeSubscriptionCommand}"
+                        IsEnabled="{Binding CanEdit}" HorizontalAlignment="Left" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+
+    <Border Grid.Row="3" Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}"
+            BorderThickness="0,1,0,0" Padding="14,8">
+      <StackPanel Spacing="6">
+        <TextBlock Text="{Binding OutcomeText}" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+        <WrapPanel HorizontalAlignment="Right">
+          <Button Content="{loc:Loc proxy_server.validate}" Command="{Binding ValidateCommand}" IsEnabled="{Binding CanManage}" Margin="0,0,8,0" />
+          <Button Content="{loc:Loc proxy_server.rollback}" Command="{Binding RollbackCommand}" IsEnabled="{Binding ShowRollback}" Margin="0,0,8,0" />
+          <Button Classes="primary" Content="{loc:Loc proxy_server.apply}" Command="{Binding ApplyCommand}" IsEnabled="{Binding CanManage}"
+                  ToolTip.Tip="{loc:Loc proxy_server.apply_warning}" />
+        </WrapPanel>
+      </StackPanel>
+    </Border>
+
+    <Border Grid.Row="4" Classes="app-statusbar">
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+        <TextBlock Text="{Binding StatusText}" ToolTip.Tip="{Binding StatusText}" TextTrimming="CharacterEllipsis"
+                   FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+          <TextBlock Text="{Binding OperationText}" FontSize="12" VerticalAlignment="Center"
+                     Foreground="{DynamicResource TextTertiaryBrush}" MaxWidth="320" TextTrimming="CharacterEllipsis" />
+          <ProgressBar IsIndeterminate="True" Width="80" Height="3" VerticalAlignment="Center" IsVisible="{Binding IsBusy}" />
+          <Border Classes="badge" IsVisible="{Binding HasUnsavedChanges}">
+            <TextBlock Text="{loc:Loc proxy_server.dirty}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+          </Border>
+        </StackPanel>
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

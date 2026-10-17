@@ -104,6 +104,13 @@ object DesktopIcons {
     @DrawableRes
     val proxy = R.drawable.ic_fluent_proxy
 
+    /**
+     * Proxy Server: the host-side sing-box service other devices connect to. It is a different
+     * application from [proxy], so it keeps the desktop's own tile rather than sharing a glyph.
+     */
+    @DrawableRes
+    val proxyServer = R.drawable.ic_app_proxy_server
+
     @DrawableRes
     val guardian = R.drawable.ic_fluent_guardian
 

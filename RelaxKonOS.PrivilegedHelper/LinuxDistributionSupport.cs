@@ -12,6 +12,29 @@ internal static class LinuxDistributionSupport
         _ => null
     };
 
+    public static bool IsSquidPackageSupported() =>
+        File.Exists("/usr/bin/apt-get") && File.Exists("/usr/bin/systemctl")
+        && File.Exists("/etc/os-release") && IsSquidPackageSupported(File.ReadAllText("/etc/os-release"));
+
+    internal static bool IsSquidPackageSupported(string osRelease)
+    {
+        // Use the repository's explicit Debian/Ubuntu/Mint version matrix. ID_LIKE alone
+        // must not turn an unknown derivative into a supported package-management target.
+        var values = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var line in osRelease.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (line.StartsWith('#')) continue;
+            var parts = line.Split('=', 2);
+            if (parts.Length != 2 || parts[0] is not ("ID" or "VERSION_ID")) continue;
+            var value = parts[1].Trim();
+            if (value.Length >= 2 && (value[0] == '\"' && value[^1] == '\"' || value[0] == '\'' && value[^1] == '\''))
+                value = value[1..^1];
+            if (!values.TryAdd(parts[0], value)) return false;
+        }
+        return values.TryGetValue("ID", out var id) && values.TryGetValue("VERSION_ID", out var version)
+            && RelaxKonOS.Protocol.ServerCenter.ServerHostPlatformSupport.IsSupportedLinuxSystem(id, version);
+    }
+
     public static bool IsSambaSupported()
     {
         return File.Exists("/etc/os-release") && IsSambaSupported(File.ReadAllText("/etc/os-release"));

@@ -79,6 +79,8 @@ internal static class ServerPipeline
         app.MapTunnelEndpoints();
         if (eventAlertsOptions.Enabled) app.MapEventAlertEndpoints();
         app.MapProxyEndpoints();
+        app.MapGatewayProxyEndpoints();
+        app.MapProxyServerEndpoints();
         if (OperatingSystem.IsLinux() || OperatingSystem.IsWindows())
             app.MapFirewallEndpoints();
         app.MapHub<TerminalHub>("/hubs/terminals", options => options.CloseOnAuthenticationExpiration = true);

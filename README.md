@@ -360,6 +360,7 @@ dotnet run
 | [RelaxKonOS.GitClient.md](./docs/applications/RelaxKonOS.GitClient.md) | Git 客户端、仓库/分支/提交/冲突/历史 |
 | [RelaxKonOS.FRP_Integration.Design.md](./docs/applications/RelaxKonOS.FRP_Integration.Design.md) | FRP 内网穿透架构、安全与运维边界 |
 | [RelaxKonOS.ProxyManager.Design.md](./docs/applications/RelaxKonOS.ProxyManager.Design.md) | 代理管理器、Mihomo 运行时、TUN、订阅与配置档案 |
+| [RelaxKonOS.ProxyServer.Design.md](./docs/applications/RelaxKonOS.ProxyServer.Design.md) | 代理服务端内置应用设计：sing-box、入站、访问凭据、连接导出与订阅；尚未实现 |
 | [RelaxKonOS.RegistryApp.md](./docs/applications/RelaxKonOS.RegistryApp.md) | 配置注册表浏览、写入与隔离边界 |
 | [RelaxKonOS.CodeEditor.md](./docs/applications/RelaxKonOS.CodeEditor.md) | 代码编辑器、语法高亮、文件安全边界 |
 | [RelaxKonOS.NetworkInspector.md](./docs/applications/RelaxKonOS.NetworkInspector.md) | 网络检查器、诊断工具、网络分析 |
@@ -369,6 +370,7 @@ dotnet run
 | 文档 | 说明 |
 |------|------|
 | [architecture.md](./docs/proxy/architecture.md) | 代理模块架构、引擎抽象（IProxyEngine）、Mihomo 集成 |
+| [squid.md](./docs/proxy/squid.md) | Squid HTTP 代理网关：首阶段后端、API、安全边界、恢复和后续计划 |
 | [installation.md](./docs/proxy/installation.md) | 代理运行时安装、部署与升级 |
 | [mihomo.md](./docs/proxy/mihomo.md) | Mihomo 引擎配置、控制面与运行时管理 |
 | [tun.md](./docs/proxy/tun.md) | TUN 模式、网络栈与透明代理 |

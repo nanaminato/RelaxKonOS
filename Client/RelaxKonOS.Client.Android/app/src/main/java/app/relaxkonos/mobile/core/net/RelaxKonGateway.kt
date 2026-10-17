@@ -16,6 +16,12 @@ fun interface DownloadSink {
 }
 
 /**
+ * Answer of a gateway that does not carry the Proxy Server surface. A transport failure, not a problem
+ * code: nothing on the server rejected the request, so no credential or state decision may follow from it.
+ */
+private val ProxyServerUnavailable: ApiResult<Nothing> = ApiResult.Transport("Proxy Server is unavailable.")
+
+/**
  * The REST surface the app depends on. Declared as an interface so `AuthSession`, the repositories
  * and their unit tests can substitute a fake instead of a live server.
  *
@@ -48,6 +54,10 @@ interface RelaxKonGateway {
     suspend fun smbUsers(serverUrl: String, accessToken: String): ApiResult<List<SmbUser>>
     suspend fun smbConnection(serverUrl: String, accessToken: String): ApiResult<SmbConnection>
     suspend fun smbChange(serverUrl: String, accessToken: String, change: SmbChange, password: CharArray?): ApiResult<SmbReceipt>
+    suspend fun squidConfiguration(serverUrl: String, accessToken: String): ApiResult<SquidSnapshot>
+    suspend fun squidPreview(serverUrl: String, accessToken: String, configuration: SquidConfiguration): ApiResult<SquidPreview>
+    suspend fun squidValidate(serverUrl: String, accessToken: String, configuration: SquidConfiguration): ApiResult<SquidValidation>
+    suspend fun squidQueue(serverUrl: String, accessToken: String, request: SquidRequest, key: String): ApiResult<String>
     suspend fun firewallStatus(serverUrl: String, accessToken: String): ApiResult<FirewallStatus>
     suspend fun firewallRules(serverUrl: String, accessToken: String): ApiResult<List<FirewallRule>>
     suspend fun changeFirewall(serverUrl: String, accessToken: String, change: FirewallChange): ApiResult<FirewallResult>
@@ -80,6 +90,35 @@ interface RelaxKonGateway {
     suspend fun selectProxyNode(serverUrl: String, accessToken: String, group: String, proxy: String): ApiResult<Unit>
     suspend fun setProxyRouting(serverUrl: String, accessToken: String, mode: ProxyRoutingMode): ApiResult<Unit>
     suspend fun testProxyDelay(serverUrl: String, accessToken: String, group: String, proxy: String, url: String, timeout: Int): ApiResult<ProxyDelay>
+
+    /**
+     * Proxy Server (`relaxkonos.proxy-server`): the host-global sing-box inbound surface.
+     *
+     * Unlike the client-side proxy above, every mutation here is a queued host operation identified by
+     * an idempotency key, and only the applied revision may be exported. The block carries default
+     * answers so a gateway that does not implement the application (a test double, a preview) reports
+     * the surface as unavailable instead of failing to compile for a capability it does not have.
+     */
+    suspend fun proxyServerSnapshot(serverUrl: String, accessToken: String): ApiResult<ProxyServerSnapshot> = ProxyServerUnavailable
+    suspend fun proxyServerReleases(serverUrl: String, accessToken: String): ApiResult<List<ProxyServerRelease>> = ProxyServerUnavailable
+    suspend fun proxyServerOperation(serverUrl: String, accessToken: String, id: String): ApiResult<ProxyOperation> = ProxyServerUnavailable
+    suspend fun proxyServerValidate(serverUrl: String, accessToken: String): ApiResult<ProxyServerValidation> = ProxyServerUnavailable
+    suspend fun proxyServerApply(serverUrl: String, accessToken: String, idempotencyKey: String): ApiResult<String> = ProxyServerUnavailable
+    suspend fun proxyServerRollback(serverUrl: String, accessToken: String, idempotencyKey: String): ApiResult<String> = ProxyServerUnavailable
+    suspend fun proxyServerRecover(serverUrl: String, accessToken: String, idempotencyKey: String): ApiResult<String> = ProxyServerUnavailable
+    suspend fun proxyServerRuntime(serverUrl: String, accessToken: String, action: ProxyServerRuntimeAction, idempotencyKey: String): ApiResult<String> = ProxyServerUnavailable
+    suspend fun proxyServerInstall(serverUrl: String, accessToken: String, idempotencyKey: String): ApiResult<String> = ProxyServerUnavailable
+    suspend fun proxyServerUpgrade(serverUrl: String, accessToken: String, version: String, idempotencyKey: String): ApiResult<String> = ProxyServerUnavailable
+    suspend fun proxyServerUninstall(serverUrl: String, accessToken: String, keepData: Boolean, idempotencyKey: String): ApiResult<String> = ProxyServerUnavailable
+    suspend fun proxyServerSavePrincipal(serverUrl: String, accessToken: String, id: String?, request: SaveProxyServerPrincipal, idempotencyKey: String): ApiResult<String> = ProxyServerUnavailable
+    suspend fun proxyServerDeletePrincipal(serverUrl: String, accessToken: String, id: String, idempotencyKey: String): ApiResult<String> = ProxyServerUnavailable
+    suspend fun proxyServerSaveCredential(serverUrl: String, accessToken: String, id: String?, request: SaveProxyServerCredential, idempotencyKey: String): ApiResult<String> = ProxyServerUnavailable
+    suspend fun proxyServerRotateCredential(serverUrl: String, accessToken: String, id: String, request: RotateProxyServerCredential, idempotencyKey: String): ApiResult<String> = ProxyServerUnavailable
+    suspend fun proxyServerDeleteCredential(serverUrl: String, accessToken: String, id: String, idempotencyKey: String): ApiResult<String> = ProxyServerUnavailable
+    suspend fun proxyServerExportFormats(serverUrl: String, accessToken: String, credentialId: String): ApiResult<List<ProxyServerExportOption>> = ProxyServerUnavailable
+    suspend fun proxyServerExport(serverUrl: String, accessToken: String, credentialId: String, request: ProxyServerExportRequest): ApiResult<ProxyServerExport> = ProxyServerUnavailable
+    suspend fun proxyServerIssueSubscription(serverUrl: String, accessToken: String, request: IssueProxyServerSubscription, idempotencyKey: String): ApiResult<ProxyServerSubscriptionIssued> = ProxyServerUnavailable
+    suspend fun proxyServerRevokeSubscription(serverUrl: String, accessToken: String, id: String, idempotencyKey: String): ApiResult<String> = ProxyServerUnavailable
     suspend fun saveWebServerSite(serverUrl: String, accessToken: String, instanceId: String,
         request: WebServerSiteRequest): ApiResult<WebServerSite>
     suspend fun deleteWebServerSite(serverUrl: String, accessToken: String, instanceId: String, siteId: String,

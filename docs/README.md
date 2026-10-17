@@ -23,6 +23,7 @@ Android 的设计、功能、支持范围和发布要求统一维护在 [Android
 - [代理管理器实现说明（中文）](./applications/RelaxKonOS.ProxyManager.Discovery.md)
 - [代理管理器实现说明（英文）](./applications/RelaxKonOS.ProxyManager.Discovery.en.md)
 - [代理管理器设计](./applications/RelaxKonOS.ProxyManager.Design.md)
+- [代理服务端应用设计（sing-box，尚未实现）](./applications/RelaxKonOS.ProxyServer.Design.md)
 - [代理管理运维指南](./proxy/)
 - [优化与验收记录](./development/RelaxKonOS.Optimization.Progress.md)
 

@@ -60,6 +60,7 @@ class OperationCenter(
     private val certificates: CertificateRepository,
     private val tunnels: TunnelRepository,
     private val proxy: ProxyRepository,
+    private val proxyServers: ProxyServerRepository,
     private val firewall: FirewallRepository,
     private val smb: SmbRepository,
     private val dockerControl: DockerControlRepository,
@@ -252,6 +253,14 @@ class OperationCenter(
                 is ApiResult.Success -> if (result.value.kind == reference.resourceId)
                     verified(owner, OperationDomain.Proxy, result.value.kind, result.value.operationId, "Mihomo", result.value.state.wire,
                         result.value.stage, null, result.value.problemCode.takeIf(String::isNotBlank), false).copy(proxy = result.value)
+                    else unknown(reference, OperationCheck.Missing)
+                is ApiResult.Problem -> unknown(reference, if (result.status == 404) OperationCheck.Missing else OperationCheck.Unavailable)
+                is ApiResult.Transport -> unknown(reference, OperationCheck.Unavailable)
+            }
+            OperationDomain.ProxyServer -> when (val result = proxyServers.operation(owner, reference.operationId)) {
+                is ApiResult.Success -> if (result.value.kind == reference.resourceId)
+                    verified(owner, OperationDomain.ProxyServer, result.value.kind, result.value.operationId, "Proxy Server",
+                        result.value.state.wire, result.value.stage, null, result.value.problemCode.takeIf(String::isNotBlank), false)
                     else unknown(reference, OperationCheck.Missing)
                 is ApiResult.Problem -> unknown(reference, if (result.status == 404) OperationCheck.Missing else OperationCheck.Unavailable)
                 is ApiResult.Transport -> unknown(reference, OperationCheck.Unavailable)

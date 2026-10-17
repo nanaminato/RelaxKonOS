@@ -47,6 +47,8 @@
         "application.relaxkonos.registry.description": "浏览受支持的 RelaxKonOS 配置值",
         "application.relaxkonos.proxy.display_name": "代理管理器",
         "application.relaxkonos.proxy.description": "管理主机代理运行时、流量与网络恢复状态",
+        "application.relaxkonos.squid.display_name": "Squid 网关",
+        "application.relaxkonos.squid.description": "管理 Linux 服务器的 HTTP/CONNECT 代理入口。列表每行一项，HTTPS 仅建立隧道，不解密内容。",
         "application.relaxkonos.application-deployments.display_name": "应用部署",
         "application.relaxkonos.application-deployments.description": "在 RelaxKonOS Server 上部署和管理容器化应用",
         "application.relaxkonos.event-alerts.display_name": "事件与告警中心",

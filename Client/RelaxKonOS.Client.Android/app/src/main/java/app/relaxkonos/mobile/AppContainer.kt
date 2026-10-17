@@ -358,6 +358,7 @@ class AppContainer(context: Context) {
             app.relaxkonos.mobile.data.FileCertificateRequestStorage(appContext.noBackupFilesDir)), elevations)
     val tunnels = app.relaxkonos.mobile.data.TunnelRepository(gateway, session, elevations,
         app.relaxkonos.mobile.data.TunnelMutationJournal(app.relaxkonos.mobile.data.FileTunnelMutationStorage(appContext.noBackupFilesDir)))
+    val squid = app.relaxkonos.mobile.data.SquidRepository(gateway, session, java.io.File(appContext.noBackupFilesDir, "squid-requests"))
     val proxy = app.relaxkonos.mobile.data.ProxyRepository(gateway, session, operationIndex,
         app.relaxkonos.mobile.data.ProxyRequestJournal(app.relaxkonos.mobile.data.FileProxyRequestStorage(appContext.noBackupFilesDir)))
     val hostSettings = app.relaxkonos.mobile.data.HostSettingsRepository(gateway, session, elevations,
@@ -382,7 +383,8 @@ class AppContainer(context: Context) {
     val docker = app.relaxkonos.mobile.data.DockerRepository(gateway, session, operationIndex, dockerMutationGate)
     val dockerControl = app.relaxkonos.mobile.data.DockerControlRepository(gateway, session, dockerControlJournal, dockerMutationGate)
     val dockerResources = app.relaxkonos.mobile.data.DockerResourceRepository(gateway, session, dockerResourceJournal, dockerMutationGate)
-    val operationCenter = OperationCenter(session, operationIndex, deployments, webPublishing, docker, git, scriptTasks, backupRecovery, installations, webServers, webSites, certificates, tunnels, proxy, firewall, smb, dockerControl, dockerResources, gitWorkspace)
+    val proxyServer = app.relaxkonos.mobile.data.ProxyServerRepository(gateway, session, operationIndex)
+    val operationCenter = OperationCenter(session, operationIndex, deployments, webPublishing, docker, git, scriptTasks, backupRecovery, installations, webServers, webSites, certificates, tunnels, proxy, proxyServer, firewall, smb, dockerControl, dockerResources, gitWorkspace)
     val eventAlerts = EventAlertRepository(gateway, session)
     val alertNotificationStore = AlertNotificationStore(appContext)
     val foregroundAlertNotifier = ForegroundAlertNotifier(appContext, session, eventAlerts, alertNotificationStore, appScope)
