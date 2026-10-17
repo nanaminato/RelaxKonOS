@@ -15,6 +15,7 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     private readonly DispatcherTimer _clockTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private bool _isStartOpen;
     private bool _isAllAppsOpen;
+    private string _searchQuery = string.Empty;
     private bool _isQuickSettingsOpen;
     private bool _areDesktopIconsVisible = true;
     private bool _hasDesktopStyles;
@@ -71,6 +72,19 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     }
 
     public ObservableCollection<ShellApplicationEntry> Applications { get; } = new();
+    public ObservableCollection<ShellApplicationEntry> FilteredApplications { get; } = new();
+    public string SearchQuery
+    {
+        get => _searchQuery;
+        set
+        {
+            if (!SetProperty(ref _searchQuery, value ?? string.Empty)) return;
+            RefreshSearchResults();
+            OnPropertyChanged(nameof(IsApplicationListOpen));
+            OnPropertyChanged(nameof(IsPinnedOpen));
+            OnPropertyChanged(nameof(StartSectionTitle));
+        }
+    }
     public ObservableCollection<ShellDesktopEntry> DesktopEntries { get; } = new();
     public ObservableCollection<ShellDesktopStyleEntry> DesktopStyleEntries { get; } = new();
     public ObservableCollection<ShellTaskbarEntry> TaskbarEntries { get; } = new();
@@ -113,6 +127,7 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(StartSectionTitle));
             OnPropertyChanged(nameof(AllAppsButtonText));
             OnPropertyChanged(nameof(IsPinnedOpen));
+            OnPropertyChanged(nameof(IsApplicationListOpen));
         }
     }
     public bool IsQuickSettingsOpen { get => _isQuickSettingsOpen; private set => SetProperty(ref _isQuickSettingsOpen, value); }
@@ -140,9 +155,10 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     public string AllApps => T("start.all_apps", "All apps  ›");
     public string BackToPinned => T("start.back_to_pinned", "‹ Back");
     public string AllApplications => T("start.all_applications", "All apps");
-    public string StartSectionTitle => IsAllAppsOpen ? AllApplications : Pinned;
+    public string StartSectionTitle => IsApplicationListOpen ? AllApplications : Pinned;
     public string AllAppsButtonText => IsAllAppsOpen ? BackToPinned : AllApps;
-    public bool IsPinnedOpen => !IsAllAppsOpen;
+    public bool IsApplicationListOpen => IsAllAppsOpen || !string.IsNullOrWhiteSpace(SearchQuery);
+    public bool IsPinnedOpen => !IsApplicationListOpen;
     public string About => T("start.about", "About this shell");
     public string UserName => T("start.user", "RelaxKonOS");
     public string Wifi => T("quick.wifi", "Wi-Fi");
@@ -209,16 +225,25 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     {
         IsQuickSettingsOpen = false;
         IsStartOpen = !IsStartOpen;
-        if (!IsStartOpen) IsAllAppsOpen = false;
+        if (!IsStartOpen) { IsAllAppsOpen = false; SearchQuery = string.Empty; }
     }
     private void ToggleAllApps()
     {
         IsQuickSettingsOpen = false;
         IsStartOpen = true;
+        SearchQuery = string.Empty;
         IsAllAppsOpen = !IsAllAppsOpen;
     }
     private void ToggleQuickSettings() { IsStartOpen = false; IsQuickSettingsOpen = !IsQuickSettingsOpen; }
-    private void CloseFlyouts() { IsStartOpen = false; IsAllAppsOpen = false; IsQuickSettingsOpen = false; }
+    private void CloseFlyouts() { IsStartOpen = false; IsAllAppsOpen = false; SearchQuery = string.Empty; IsQuickSettingsOpen = false; }
+    private void RefreshSearchResults()
+    {
+        var query = SearchQuery.Trim();
+        FilteredApplications.Clear();
+        foreach (var app in Applications.Where(app => app.DisplayName.Contains(query, StringComparison.CurrentCultureIgnoreCase)
+                     || app.Id.Value.Contains(query, StringComparison.OrdinalIgnoreCase)))
+            FilteredApplications.Add(app);
+    }
     private void OnClockTick(object? sender, EventArgs args) => UpdateClock();
     private void OnLanguageChanged(object? sender, EventArgs args) { UpdateClock(); NotifyAll(); }
     private void OnDesktopStateChanged(object? sender, EventArgs args)
@@ -239,6 +264,7 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
         if (state is null)
         {
             Applications.Clear();
+            RefreshSearchResults();
             DesktopEntries.Clear();
             DesktopStyleEntries.Clear();
             AreDesktopIconsVisible = false;
@@ -251,6 +277,7 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
         {
             Applications.Clear();
             foreach (var application in state.Applications) Applications.Add(application);
+            RefreshSearchResults();
         }
         // Keep controls alive during selection changes so double-click, focus and context menus
         // survive host snapshot publication. Replace the catalog only when its contents change.

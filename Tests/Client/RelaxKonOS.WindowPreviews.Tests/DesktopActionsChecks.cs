@@ -87,6 +87,14 @@ internal static class DesktopActionsChecks
         manager.Close(manager.Windows.Single());
         Check(vm.TaskbarGroups.Single().WindowCount == 0 && vm.TaskbarGroups.Single().HasIconImage, "closing the last window retains the pinned application and artwork.");
         var snapshot = settings.ToPreferences();
+        var generation = settings.DesktopWriteGeneration;
+        settings.BeginDesktopWrite();
+        Check(!settings.CanApplySynchronizedPreferences(settings.DesktopWriteGeneration, snapshot.Revision), "sync cannot overwrite a pending taskbar write.");
+        settings.EndDesktopWrite();
+        Check(!settings.CanApplySynchronizedPreferences(generation, snapshot.Revision), "a read begun before pinning is rejected after the save completes.");
+        settings.Apply(snapshot with { Revision = 12 });
+        Check(!settings.CanApplySynchronizedPreferences(settings.DesktopWriteGeneration, 11), "sync rejects a revision older than the acknowledged pin save.");
+        Check(settings.CanApplySynchronizedPreferences(settings.DesktopWriteGeneration, 12), "a fresh read at the saved revision can synchronize.");
         settings.Apply(snapshot);
         Check(settings.PinnedAppIds.SequenceEqual(new[] { first.Id.Value }), "taskbar pins round-trip through workspace preferences.");
         vm.SelectDesktopItemCommand.Execute(second);

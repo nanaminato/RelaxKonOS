@@ -19,6 +19,17 @@ namespace RelaxKonOS.Client.Services;
 /// 设置应用编辑后即时 <see cref="Apply"/> 反映到外壳，并 fire-and-forget 保存到服务端。</summary>
 public sealed partial class ShellSettings : ObservableObject
 {
+    // A read started before a local desktop write must never roll that write back.
+    public long DesktopWriteGeneration { get; private set; }
+    public bool IsDesktopWritePending => _pendingDesktopWrites > 0;
+    private int _pendingDesktopWrites;
+    public void BeginDesktopWrite() { DesktopWriteGeneration++; _pendingDesktopWrites++; }
+    public void EndDesktopWrite() { DesktopWriteGeneration++; _pendingDesktopWrites--; }
+
+    public bool CanApplySynchronizedPreferences(long readGeneration, long? revision) =>
+        !IsDesktopWritePending && readGeneration == DesktopWriteGeneration
+        && !(revision is { } incoming && PreferencesRevision is { } current && incoming < current);
+
     public IReadOnlyList<WallpaperOption> Wallpapers { get; }
 
     [ObservableProperty] private int _wallpaperIndex;

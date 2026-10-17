@@ -152,6 +152,7 @@ public sealed class PreferencesSync : IDisposable
             try
             {
                 var readId = Guid.NewGuid();
+                var desktopWriteGeneration = _settings.DesktopWriteGeneration;
                 LanguageSwitchDiagnostics.Record("sync.read.begin", new { readId, workspaceId, language = _settings.Language, hasDraft = _editor.HasDraft });
                 var prefs = await _client.GetAsync(url, accessToken, workspaceId, cancellationToken);
                 _desktopRetrySeconds = 1;
@@ -169,6 +170,11 @@ public sealed class PreferencesSync : IDisposable
                     {
                         LanguageSwitchDiagnostics.Record("sync.read.skipped_draft", new { readId, incoming = prefs.Language, actual = _settings.Language });
                         _editor.ObserveExternalRevision(prefs.Revision);
+                        return;
+                    }
+                    if (!_settings.CanApplySynchronizedPreferences(desktopWriteGeneration, prefs.Revision))
+                    {
+                        ScheduleDesktopRetry(url, accessToken, workspaceId, cancellationToken);
                         return;
                     }
                     LanguageSwitchDiagnostics.Record("sync.read.apply", new { readId, incoming = prefs.Language, actual = _settings.Language });

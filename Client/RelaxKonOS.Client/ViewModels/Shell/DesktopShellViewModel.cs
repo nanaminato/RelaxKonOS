@@ -382,11 +382,16 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     [RelayCommand]
     private async Task ToggleTaskbarPinAsync(AppId id)
     {
-        _settings.PinnedAppIds = IsTaskbarPinned(id)
-            ? _settings.PinnedAppIds.Where(value => value != id.Value).ToList()
-            : _settings.PinnedAppIds.Append(id.Value).Distinct(StringComparer.Ordinal).ToList();
-        RefreshTaskbarGroups();
-        await SavePreferencesFireAndForgetAsync();
+        _settings.BeginDesktopWrite();
+        try
+        {
+            _settings.PinnedAppIds = IsTaskbarPinned(id)
+                ? _settings.PinnedAppIds.Where(value => value != id.Value).ToList()
+                : _settings.PinnedAppIds.Append(id.Value).Distinct(StringComparer.Ordinal).ToList();
+            RefreshTaskbarGroups();
+            await SavePreferencesFireAndForgetAsync();
+        }
+        finally { _settings.EndDesktopWrite(); }
     }
 
     [RelayCommand]

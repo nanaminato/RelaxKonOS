@@ -154,7 +154,7 @@
                     VerticalAlignment="Bottom" Background="{DynamicResource StartMenuBackgroundBrush}" BorderBrush="{DynamicResource BorderStrongBrush}"
                     BorderThickness="1" CornerRadius="{DynamicResource OverlayCornerRadius}" BoxShadow="{DynamicResource ElevationShadow}">
                 <Grid RowDefinitions="Auto,Auto,*,Auto">
-                    <TextBox PlaceholderText="{Binding SearchPlaceholder}" Margin="32,28,32,18" Height="38" CornerRadius="{DynamicResource ControlCornerRadius}" />
+                    <TextBox Text="{Binding SearchQuery, Mode=TwoWay}" PlaceholderText="{Binding SearchPlaceholder}" Margin="32,28,32,18" Height="38" CornerRadius="{DynamicResource ControlCornerRadius}" />
                     <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="38,0,38,12">
                         <TextBlock Classes="primary" Text="{Binding StartSectionTitle}" FontSize="15" FontWeight="SemiBold" />
                         <Button Grid.Column="1" Content="{Binding AllAppsButtonText}" Padding="12,5" Command="{Binding ToggleAllAppsCommand}" />
@@ -179,9 +179,9 @@
                             <StackPanel Spacing="7"><Path Data="{StaticResource IconInfo}" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.8" Fill="Transparent" Width="26" Height="26" Stretch="Uniform" HorizontalAlignment="Center" /><TextBlock Classes="primary" Text="{Binding About}" FontSize="12" TextAlignment="Center" /></StackPanel>
                         </Button>
                     </UniformGrid>
-                    <ScrollViewer Grid.Row="2" Margin="30,0,30,26" IsVisible="{Binding IsAllAppsOpen}"
+                    <ScrollViewer Grid.Row="2" Margin="30,0,30,26" IsVisible="{Binding IsApplicationListOpen}"
                                   HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-                        <ItemsControl ItemsSource="{Binding Applications}">
+                        <ItemsControl ItemsSource="{Binding FilteredApplications}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate><WrapPanel ItemWidth="150" ItemHeight="96" /></ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
