@@ -10,7 +10,7 @@ using RelaxKonOS.Protocol.Tunnels;
 
 namespace RelaxKonOS.PrivilegedHelper;
 
-internal enum ComponentKind { Nginx, Mihomo, Frpc, Frps }
+internal enum ComponentKind { Nginx, Mihomo, Frpc, Frps, SingBox }
 internal sealed record ComponentServiceConfiguration(ComponentKind Kind, string Name, string Root,
     string Executable, string Configuration, string? DataDirectory, string BinaryHash, string? AppliedIdentity);
 internal sealed record ComponentProcessState(int ProcessId, DateTime StartedAt, bool Connected,
@@ -54,7 +54,7 @@ internal sealed class WindowsComponentService : ServiceBase
     {
         if (!Enum.IsDefined(config.Kind) || config.Name != Name(config.Kind, config.Root, config.Kind == ComponentKind.Frpc ? Path.GetFileName(Path.GetDirectoryName(config.Configuration)) : null))
             throw new InvalidDataException("Invalid component service identity.");
-        var binary = config.Kind switch { ComponentKind.Nginx => "nginx.exe", ComponentKind.Mihomo => "mihomo.exe", ComponentKind.Frpc => "frpc.exe", _ => "frps.exe" };
+        var binary = config.Kind switch { ComponentKind.Nginx => "nginx.exe", ComponentKind.Mihomo => "mihomo.exe", ComponentKind.Frpc => "frpc.exe", ComponentKind.SingBox => "sing-box.exe", _ => "frps.exe" };
         if (!Path.IsPathFullyQualified(config.Root) || !WindowsManagedRuntimePolicy.Contains(config.Root, config.Executable)
             || !WindowsManagedRuntimePolicy.Contains(config.Root, config.Configuration) || Path.GetFileName(config.Executable) != binary
             || config.BinaryHash.Length != 64) throw new InvalidDataException("Invalid component paths.");
@@ -309,6 +309,7 @@ internal sealed class WindowsComponentService : ServiceBase
             var arguments = configuration.Kind switch {
                 ComponentKind.Nginx => new[] { "-p", configuration.Root.Replace('\\', '/') + "/", "-c", configuration.Configuration },
                 ComponentKind.Mihomo => new[] { "-d", configuration.DataDirectory!, "-f", configuration.Configuration },
+                ComponentKind.SingBox => new[] { "run", "-c", configuration.Configuration },
                 _ => new[] { "-c", configuration.Configuration }
             };
             foreach (var argument in arguments) info.ArgumentList.Add(argument);

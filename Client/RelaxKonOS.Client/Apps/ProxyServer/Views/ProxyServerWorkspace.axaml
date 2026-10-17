@@ -1,0 +1,92 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RelaxKonOS.Client.Apps.ProxyServer" xmlns:loc="using:RelaxKonOS.Client.Localization"
+             x:Class="RelaxKonOS.Client.Apps.ProxyServer.Views.ProxyServerWorkspace" x:DataType="vm:ProxyServerViewModel">
+  <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="20" RowSpacing="12">
+    <DockPanel>
+      <Button DockPanel.Dock="Right" Content="{loc:Loc proxy_server.refresh}" Command="{Binding RefreshCommand}" />
+      <StackPanel Spacing="5"><TextBlock FontSize="22" Text="{loc:Loc application.relaxkonos.proxy-server.display_name}" />
+        <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" /></StackPanel>
+    </DockPanel>
+    <TextBlock Grid.Row="1" Text="{Binding Message}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+    <TabControl Grid.Row="2">
+      <TabItem Header="{loc:Loc proxy_server.runtime}">
+        <ScrollViewer><StackPanel Spacing="16" Margin="12">
+          <TextBlock Text="{loc:Loc proxy_server.intro}" TextWrapping="Wrap" />
+          <WrapPanel IsEnabled="{Binding CanMutate}">
+            <Button Content="{loc:Loc proxy_server.install}" Command="{Binding RuntimeCommand}" CommandParameter="Install" Margin="0,0,8,8" />
+            <Button Content="{loc:Loc proxy_server.start}" Command="{Binding RuntimeCommand}" CommandParameter="Start" Margin="0,0,8,8" />
+            <Button Content="{loc:Loc proxy_server.stop}" Command="{Binding RuntimeCommand}" CommandParameter="Stop" Margin="0,0,8,8" />
+            <Button Content="{loc:Loc proxy_server.restart}" Command="{Binding RuntimeCommand}" CommandParameter="Restart" Margin="0,0,8,8" />
+            <Button Content="{loc:Loc proxy_server.enable}" Command="{Binding RuntimeCommand}" CommandParameter="Enable" Margin="0,0,8,8" />
+            <Button Content="{loc:Loc proxy_server.disable}" Command="{Binding RuntimeCommand}" CommandParameter="Disable" Margin="0,0,8,8" />
+            <Button Content="{loc:Loc proxy_server.recover}" Command="{Binding RuntimeCommand}" CommandParameter="Recover" Margin="0,0,8,8" />
+          </WrapPanel>
+          <TextBlock Text="{loc:Loc proxy_server.publish_hint}" TextWrapping="Wrap" />
+          <StackPanel Orientation="Horizontal" Spacing="8" IsEnabled="{Binding CanMutate}">
+            <Button Content="{loc:Loc proxy_server.validate}" Command="{Binding ValidateCommand}" />
+            <Button Content="{loc:Loc proxy_server.apply}" Command="{Binding ApplyCommand}" />
+          </StackPanel>
+        </StackPanel></ScrollViewer>
+      </TabItem>
+      <TabItem Header="{loc:Loc proxy_server.inbounds}">
+        <Grid ColumnDefinitions="240,*" ColumnSpacing="16" Margin="12">
+          <StackPanel Spacing="10"><Button Content="{loc:Loc proxy_server.new}" Command="{Binding NewInboundCommand}" IsEnabled="{Binding CanMutate}" />
+            <ListBox ItemsSource="{Binding Inbounds}" SelectedItem="{Binding SelectedInbound}"><ListBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate></ListBox.ItemTemplate></ListBox>
+          </StackPanel>
+          <ScrollViewer Grid.Column="1"><StackPanel Spacing="8" IsEnabled="{Binding CanMutate}">
+            <TextBlock Text="VLESS + REALITY + Vision" FontSize="18" />
+            <TextBlock Text="{loc:Loc proxy_server.name}" /><TextBox Text="{Binding InboundName}" />
+            <TextBlock Text="{loc:Loc proxy_server.listen_address}" /><TextBox Text="{Binding ListenAddress}" />
+            <TextBlock Text="{loc:Loc proxy_server.listen_port}" /><TextBox Text="{Binding ListenPort}" />
+            <TextBlock Text="{loc:Loc proxy_server.public_host}" /><TextBox Text="{Binding PublicHost}" />
+            <TextBlock Text="{loc:Loc proxy_server.public_port}" /><TextBox Text="{Binding PublicPort}" />
+            <TextBlock Text="{loc:Loc proxy_server.server_name}" /><TextBox Text="{Binding ServerName}" />
+            <TextBlock Text="{loc:Loc proxy_server.handshake}" /><TextBox Text="{Binding HandshakeHost}" />
+            <CheckBox Content="{loc:Loc proxy_server.enabled}" IsChecked="{Binding InboundEnabled}" />
+            <Button Content="{loc:Loc proxy_server.save}" Command="{Binding SaveInboundCommand}" />
+          </StackPanel></ScrollViewer>
+        </Grid>
+      </TabItem>
+      <TabItem Header="{loc:Loc proxy_server.credentials}">
+        <Grid ColumnDefinitions="240,*" ColumnSpacing="16" Margin="12">
+          <StackPanel Spacing="10"><Button Content="{loc:Loc proxy_server.new}" Command="{Binding NewCredentialCommand}" IsEnabled="{Binding CanMutate}" />
+            <ListBox ItemsSource="{Binding Credentials}" SelectedItem="{Binding SelectedCredential}"><ListBox.ItemTemplate><DataTemplate><StackPanel>
+              <TextBlock Text="{Binding Name}" /><TextBlock Text="{Binding ExpiresAt}" FontSize="11" />
+            </StackPanel></DataTemplate></ListBox.ItemTemplate></ListBox>
+          </StackPanel>
+          <ScrollViewer Grid.Column="1"><StackPanel Spacing="10" IsEnabled="{Binding CanMutate}">
+            <TextBlock Text="{loc:Loc proxy_server.name}" /><TextBox Text="{Binding CredentialName}" />
+            <TextBlock Text="{loc:Loc proxy_server.inbound}" />
+            <ComboBox ItemsSource="{Binding Inbounds}" SelectedItem="{Binding SelectedInbound}" HorizontalAlignment="Stretch">
+              <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate></ComboBox.ItemTemplate>
+            </ComboBox>
+            <TextBlock Text="{loc:Loc proxy_server.expires}" /><TextBox Text="{Binding ExpiresAt}" Watermark="2026-12-31T00:00:00Z" />
+            <CheckBox Content="{loc:Loc proxy_server.enabled}" IsChecked="{Binding CredentialEnabled}" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Content="{loc:Loc proxy_server.save}" Command="{Binding SaveCredentialCommand}" />
+              <Button Content="{loc:Loc proxy_server.rotate}" Command="{Binding RotateCredentialCommand}" />
+            </StackPanel>
+            <TextBlock Text="{loc:Loc proxy_server.credential_hint}" TextWrapping="Wrap" />
+          </StackPanel></ScrollViewer>
+        </Grid>
+      </TabItem>
+      <TabItem Header="{loc:Loc proxy_server.connect}">
+        <ScrollViewer><StackPanel Spacing="12" Margin="12">
+          <TextBlock Text="{loc:Loc proxy_server.export_hint}" TextWrapping="Wrap" />
+          <ComboBox ItemsSource="{Binding Credentials}" SelectedItem="{Binding SelectedCredential}" HorizontalAlignment="Stretch">
+            <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate></ComboBox.ItemTemplate>
+          </ComboBox>
+          <WrapPanel IsEnabled="{Binding CanExport}">
+            <Button Content="{loc:Loc proxy_server.uri}" Command="{Binding ExportCommand}" CommandParameter="uri" Margin="0,0,8,8" />
+            <Button Content="sing-box JSON" Command="{Binding ExportCommand}" CommandParameter="sing-box" Margin="0,0,8,8" />
+            <Button Content="Mihomo YAML" Command="{Binding ExportCommand}" CommandParameter="mihomo" Margin="0,0,8,8" />
+            <Button Content="{loc:Loc proxy_server.clear}" Command="{Binding ClearExportCommand}" Margin="0,0,8,8" />
+          </WrapPanel>
+          <Image Source="{Binding QrCode}" Width="240" Height="240" HorizontalAlignment="Left" />
+          <TextBox Text="{Binding ExportText}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="150" />
+        </StackPanel></ScrollViewer>
+      </TabItem>
+    </TabControl>
+    <TextBlock Grid.Row="3" Text="{Binding OperationText}" TextWrapping="Wrap" FontSize="11" />
+  </Grid>
+</UserControl>

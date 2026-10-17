@@ -21,6 +21,9 @@ public static partial class PrivilegedOperationExecutor
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "operation id is required");
         if (request.Correlation is not { } correlation || !correlation.IsValid())
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "valid correlation metadata is required");
+        if (request.Operation is PrivilegedOperationKind.ProxyServerStatus or PrivilegedOperationKind.ProxyServerAction or PrivilegedOperationKind.ProxyServerValidate or PrivilegedOperationKind.ProxyServerApply or PrivilegedOperationKind.ProxyServerGenerateKeys)
+            return await SingBoxOperations.ExecuteAsync(request);
+        if (request.ProxyServer is not null) return Fail(64, PrivilegedProblemCode.InvalidRequest, "ProxyServer fields require a dedicated operation");
         if (request.Operation is PrivilegedOperationKind.SquidStatus or PrivilegedOperationKind.SquidApplyConfiguration or PrivilegedOperationKind.SquidServiceAction or PrivilegedOperationKind.SquidValidateConfiguration or PrivilegedOperationKind.SquidAccountsRead or PrivilegedOperationKind.SquidAccountMutate)
             return await SquidOperations.ExecuteAsync(request);
         if (request.SquidConfiguration is not null || request.SquidServiceAction is not null || request.SquidAccount is not null)

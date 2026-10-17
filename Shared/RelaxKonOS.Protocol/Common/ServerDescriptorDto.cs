@@ -31,5 +31,6 @@ public static class ServerCapabilities
     public const string BackupRecovery = "server.backup-recovery";
     public const string Tunnels = "server.tunnels";
     public const string GatewayProxy = "server.gateway-proxy";
+    public const string ProxyServer = "server.proxy-server";
     public const string Proxy = "server.proxy";
 }

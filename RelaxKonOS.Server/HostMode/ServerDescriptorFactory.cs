@@ -39,6 +39,7 @@ public static class ServerDescriptorFactory
         // a host without Squid reports Supported=false, which is how the client explains the
         // situation instead of the application silently disappearing from its shell.
         if (host.Capabilities.Proxy) capabilities.Add(ServerCapabilities.GatewayProxy);
+        if (host.Capabilities.Proxy && serverMode.Mode == RelaxKonOS.Protocol.Common.ServerMode.System) capabilities.Add(ServerCapabilities.ProxyServer);
         if (host.Capabilities.ApplicationDeployments) capabilities.Add(ServerCapabilities.ApplicationDeployments);
         if (eventAlerts.Enabled) capabilities.Add(ServerCapabilities.EventAlerts);
         if (host.Capabilities.ApplicationDeployments && backupRecovery.Availability.Available)

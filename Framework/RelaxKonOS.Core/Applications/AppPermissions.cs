@@ -35,6 +35,7 @@ public static class AppPermissions
     public const string ServerRegistryRead = "server.registry.read";
     public const string ServerRegistryWrite = "server.registry.write";
     public const string ServerProxyRead = "server.proxy.read";
+    public const string ServerProxyServerExport = "server.proxy-server.export";
     public const string ServerProxyManage = "server.proxy.manage";
     public const string ServerProxyProfileRead = "server.proxy.profile.read";
     public const string ServerProxyProfileManage = "server.proxy.profile.manage";
@@ -84,6 +85,7 @@ public static class AppPermissions
         new(ServerRegistryRead, "Read configuration registry", "Browse supported RelaxKonOS configuration values and their synchronization state.", "server_management"),
         new(ServerRegistryWrite, "Modify configuration registry", "Change supported RelaxKonOS configuration values through the registry workflow.", "server_management"),
         new(ServerProxyRead, "Read proxy status", "View safe proxy runtime, health, and sanitized diagnostics.", "server_network"),
+        new(ServerProxyServerExport, "Export proxy credentials", "Reveal proxy server connection credentials and client configurations.", "server_network"),
         new(ServerProxyManage, "Manage proxy", "Manage proxy lifecycle and safe engine configuration.", "server_network"),
         new(ServerProxyProfileRead, "Read proxy profiles", "View proxy profile metadata without configuration content.", "server_network"),
         new(ServerProxyProfileManage, "Manage proxy profiles", "Create and change proxy profile metadata and configuration.", "server_network"),
