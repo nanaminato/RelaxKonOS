@@ -47,6 +47,11 @@ var localization = new LocalizationService(settings, new SshDesktopSession(null!
 using var services = new ServiceCollection().AddSingleton(localization).AddSingleton(new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!))).BuildServiceProvider();
 // The XAML localization extension resolves the host application's singleton provider.
 typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
+if (args.Contains("--squid-only"))
+{
+    SquidWorkspaceChecks.Run();
+    return;
+}
 if (args.Contains("--desktop-actions-only"))
 {
     var checks = DesktopActionsChecks.RunAsync(new ShellSettings(appearance), localization, services);

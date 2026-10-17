@@ -271,6 +271,7 @@ public static class AuthEndpoints
         if (host.Capabilities.Certificates) capabilities.Add(ServerCapabilities.Certificates);
         if (host.Capabilities.Tunnels) capabilities.Add(ServerCapabilities.Tunnels);
         if (host.Capabilities.Proxy) capabilities.Add(ServerCapabilities.Proxy);
+        if (!isWindows && host.Capabilities.Proxy) capabilities.Add(ServerCapabilities.GatewayProxy);
         if (host.Capabilities.ApplicationDeployments) capabilities.Add(ServerCapabilities.ApplicationDeployments);
         if (eventAlerts.Enabled) capabilities.Add(ServerCapabilities.EventAlerts);
         if (host.Capabilities.ApplicationDeployments && backupRecovery.Availability.Available)

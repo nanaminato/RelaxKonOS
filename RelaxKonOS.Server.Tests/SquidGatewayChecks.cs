@@ -5,6 +5,9 @@ using RelaxKonOS.Server.Privileged;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Http;
+using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Server.Endpoints;
 using RelaxKonOS.Server.Proxy;
 
@@ -71,7 +74,9 @@ internal static class SquidGatewayChecks
         Check(SquidConfigurationRenderer.Preview(roundTrip).Configuration == rendered, "Wire round trip changed policy.");
 
         var helper = new RecordingHelper();
-        var service = new SquidGatewayService(helper);
+        var directory = Path.Combine(Path.GetTempPath(), "squid-state-" + Guid.NewGuid().ToString("N"));
+        var paths = new TestProxyPaths(directory);
+        var service = new SquidGatewayService(helper, new SquidConfigurationStore(paths));
         Check(await service.ApplyAsync(new(invalid[0]), default) == "squid.configuration.invalid" && helper.Requests.Count == 0,
             "Invalid requests must be rejected before privilege escalation.");
         Check(await service.ApplyAsync(new(remote, true), default) is null, "Structured apply did not succeed.");
@@ -98,6 +103,23 @@ internal static class SquidGatewayChecks
         var validation = await service.ValidateAsync(defaults, default);
         Check(!validation.Valid && validation.Diagnostics == "line 12: parse error"
             && helper.Requests.Last().Operation == PrivilegedOperationKind.SquidValidateConfiguration, "Native parser diagnostics must be available without applying.");
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(rendered))).ToLowerInvariant();
+        helper.Result = new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(status with { ConfigurationRevision = hash, RecoveryRequired = false })));
+        var restarted = new SquidGatewayService(helper, new SquidConfigurationStore(paths));
+        var snapshot = (await restarted.GetConfigurationAsync(default))!;
+        Check(snapshot.State.DesiredRevision == 1 && snapshot.State.PublishedRevision == 1 && snapshot.MatchesPublishedConfiguration,
+            "Publication receipt and editor state must survive service recreation.");
+        Check(SquidConfigurationRenderer.Preview(snapshot.State.Configuration).Configuration == rendered, "Persisted editor configuration changed.");
+        helper.Result = new(false, Error: "squid.configuration.parse_failed");
+        Check(await restarted.ApplyAsync(new(defaults), default) == "squid.configuration.parse_failed", "Apply failure was hidden.");
+        helper.Result = new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(status with { RecoveryRequired = false })));
+        snapshot = (await restarted.GetConfigurationAsync(default))!;
+        Check(snapshot.State.DesiredRevision == 2 && snapshot.State.PublishedRevision == 1
+            && snapshot.State.LastProblemCode == "squid.configuration.parse_failed" && !snapshot.MatchesPublishedConfiguration,
+            "Failed publication must retain the previous receipt and expose drift.");
+        helper.Result = new(false);
+        Check(await restarted.GetConfigurationAsync(default) is null, "Unavailable Helper must not yield a verified snapshot.");
+        Directory.Delete(directory, recursive: true);
         await VerifyEndpointMetadataAsync();
         Console.WriteLine("Squid gateway configuration, injection, ACL ordering, wire and Helper boundary checks passed.");
     }
@@ -105,24 +127,78 @@ internal static class SquidGatewayChecks
     private static async Task VerifyEndpointMetadataAsync()
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
-        builder.Services.AddSingleton<IPrivilegedOperationTransport, RecordingHelper>();
+        var helper = new RecordingHelper();
+        builder.Services.AddSingleton<IPrivilegedOperationTransport>(helper);
+        builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase)));
+        builder.Services.AddSingleton<SquidConfigurationStore>();
         builder.Services.AddSingleton<SquidGatewayService>();
         builder.Services.AddSingleton<ProxyOperationStore>();
         builder.Services.AddSingleton<ProxyAuditStore>();
-        builder.Services.AddSingleton<IProxyPlatformPaths>(new TestProxyPaths(Path.Combine(Path.GetTempPath(), "squid-route-check")));
+        var directory = Path.Combine(Path.GetTempPath(), "squid-route-check-" + Guid.NewGuid().ToString("N"));
+        builder.Services.AddSingleton<IProxyPlatformPaths>(new TestProxyPaths(directory));
         await using var app = builder.Build();
         app.MapGatewayProxyEndpoints();
         var endpoints = ((IEndpointRouteBuilder)app).DataSources.SelectMany(source => source.Endpoints).OfType<RouteEndpoint>().ToArray();
-        Check(endpoints.Length == 5, "Every gateway route must be registered.");
+        Check(endpoints.Length == 6, "Every gateway route must be registered.");
         foreach (var endpoint in endpoints)
         {
-            var isStatus = endpoint.RoutePattern.RawText == GatewayProxyRoutes.Status;
+            var isStatus = endpoint.RoutePattern.RawText is GatewayProxyRoutes.Status or GatewayProxyRoutes.Configuration;
             var policy = endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>();
             Check(policy.Any(item => item.Policy == (isStatus ? "ProxyRead" : "ProxyManage")), "Gateway endpoint has an incorrect authorization boundary.");
+        }
+        var invalidPreview = await InvokeAsync(GatewayProxyRoutes.Preview, new SquidConfiguration { Port = 1 });
+        Check(invalidPreview.Status == 200 && !JsonSerializer.Deserialize<SquidConfigurationPreview>(invalidPreview.Body, RelaxKonOSJsonOptions.Default)!.Valid,
+            "Invalid previews must retain their structured HTTP 200 outcome for both clients.");
+        helper.Result = new(false, Error: "squid.configuration.parse_failed", OutputBase64: Convert.ToBase64String(Encoding.UTF8.GetBytes("native parse error")));
+        var native = await InvokeAsync(GatewayProxyRoutes.Validate, new SquidConfiguration());
+        Check(native.Status == 200 && JsonSerializer.Deserialize<SquidNativeValidation>(native.Body, RelaxKonOSJsonOptions.Default) is { Valid: false, Diagnostics: "native parse error" },
+            "Native parse failure must preserve structured diagnostics for client editors.");
+        helper.Result = new(true);
+        var request = new ApplySquidConfigurationRequest(new SquidConfiguration());
+        Check((await InvokeAsync(GatewayProxyRoutes.Apply, request)).Status == 400, "Mutations require a request key.");
+        var first = await InvokeAsync(GatewayProxyRoutes.Apply, request, "same-key");
+        var second = await InvokeAsync(GatewayProxyRoutes.Apply, request, "same-key");
+        var accepted = JsonSerializer.Deserialize<ProxyOperationAcceptedDto>(first.Body, RelaxKonOSJsonOptions.Default)!;
+        Check(first.Status == 202 && second.Status == 202 && first.Body == second.Body, "Replaying a request key must return the original operation.");
+        var operations = app.Services.GetRequiredService<ProxyOperationStore>();
+        ProxyOperationDto? operation = null;
+        for (var attempt = 0; attempt < 200; attempt++)
+        {
+            operation = await operations.GetAsync(accepted.OperationId, default);
+            if (operation?.State is ProxyOperationState.Succeeded or ProxyOperationState.Failed) break;
+            await Task.Delay(10);
+        }
+        Check(operation?.State == ProxyOperationState.Succeeded && helper.Requests.Count(item => item.Operation == PrivilegedOperationKind.SquidApplyConfiguration) == 1,
+            "An idempotent apply must execute once and complete in the operation ledger.");
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(SquidConfigurationRenderer.Preview(request.Configuration).Configuration!))).ToLowerInvariant();
+        helper.Result = new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new SquidStatus(true, true, false, false, true, hash))));
+        var read = await InvokeAsync(GatewayProxyRoutes.Configuration, null);
+        Check(read.Status == 200 && JsonSerializer.Deserialize<SquidConfigurationSnapshot>(read.Body, RelaxKonOSJsonOptions.Default) is { MatchesPublishedConfiguration: true, State.DesiredRevision: 1 },
+            "Configuration reads must expose the queued publication receipt and matching disk state.");
+        Directory.Delete(directory, recursive: true);
+
+        async Task<(int Status, string Body)> InvokeAsync(string route, object? body, string? key = null)
+        {
+            var endpoint = endpoints.Single(item => item.RoutePattern.RawText == route);
+            var context = new DefaultHttpContext { RequestServices = app.Services };
+            context.Request.Method = body is null ? "GET" : "POST";
+            context.Request.Path = route;
+            if (body is not null)
+            {
+                var bytes = JsonSerializer.SerializeToUtf8Bytes(body, RelaxKonOSJsonOptions.Default);
+                context.Features.Set<Microsoft.AspNetCore.Http.Features.IHttpRequestBodyDetectionFeature>(new SquidBodyDetection());
+                context.Request.Body = new MemoryStream(bytes); context.Request.ContentLength = bytes.Length; context.Request.ContentType = "application/json";
+            }
+            if (key is not null) context.Request.Headers["Idempotency-Key"] = key;
+            context.Response.Body = new MemoryStream();
+            await endpoint.RequestDelegate!(context);
+            context.Response.Body.Position = 0;
+            return (context.Response.StatusCode, await new StreamReader(context.Response.Body).ReadToEndAsync());
         }
     }
 
     private static void Check(bool valid, string message) { if (!valid) throw new InvalidOperationException(message); }
+    private sealed class SquidBodyDetection : Microsoft.AspNetCore.Http.Features.IHttpRequestBodyDetectionFeature { public bool CanHaveBody => true; }
     private sealed class RecordingHelper : IPrivilegedOperationTransport
     {
         public List<PrivilegedOperationRequest> Requests { get; } = [];

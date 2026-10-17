@@ -32,6 +32,7 @@
 | [Nginx 管理](features/Nginx.md) | 安装来源、实例发现与接管、维护、卸载与恢复 |
 | [站点管理](features/WebSites.md) | 静态站点、SPA、反向代理、版本冲突与提交结果核实 |
 | [证书管理](features/Certificates.md) | ACME 与自签名证书、续期、部署与任务恢复 |
+| [Squid HTTP 代理网关](features/Squid.md) | 监听、ACL、HTTP parent、校验发布、服务控制与待确认操作恢复 |
 | [Mihomo 代理管理器](features/Proxy.md) | 运行时安装、配置、订阅、节点与操作恢复 |
 | [SMB 文件服务](features/Smb.md) | 安装、共享、权限、凭据与操作结果核实 |
 | [宿主防火墙](features/Firewall.md) | 状态、默认策略、规则、提权与变更结果核实 |

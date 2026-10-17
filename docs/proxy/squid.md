@@ -1,6 +1,6 @@
 # Squid HTTP 代理网关
 
-状态：第一阶段后端实现，尚未完成完整产品 MVP。设计与实现范围以本文为准。
+状态：已实现后端 API、Avalonia 内置应用与 Android 管理应用。Squid 安装和主机恢复由管理员操作；运行时生效与 Linux 实机验收仍需验证。
 
 ## 定位与架构
 
@@ -36,15 +36,15 @@ flowchart LR
 | start / stop / restart / reload / enable / disable | 已实现，固定 squid.service |
 | 操作 ID、幂等键、controller 写权限、observer 读权限、审计 | 复用现有基础设施 |
 | 软件包安装 / 卸载 | 未实现；由管理员使用系统包管理器安装 |
-| Configuration Registry desired/applied 修订、编辑器读取结构化状态 | 后续阶段；当前 SHA 是磁盘配置摘要，不是运行时 applied 证明 |
-| Avalonia / Android 独立应用入口与编辑器 | 后续阶段；当前仅 API |
+| 编辑器读取结构化状态、desired/published 修订与磁盘漂移 | 已实现主机级持久化；尚未接入用户级 Configuration Registry，不宣称运行时 applied |
+| Avalonia / Android 独立应用入口与编辑器 | 已实现配置表单、预览、校验、发布、服务控制和操作查询；Android 文档见其自有目录 |
 | Basic 用户与密码哈希管理、凭据轮换 | 后续阶段 |
 | access.log 解析、脱敏、保留策略、SignalR、统计 | 后续阶段；Squid 自身仍写标准 access.log |
 | Firewall 来源限定规则及所有权清理 | 后续阶段；当前不会修改防火墙 |
 | 从 Mihomo 当前有效配置自动发现 HTTP 端口并跟踪变更 | 后续阶段；当前手工填写 HTTP parent |
 | 磁盘缓存、透明代理、SSL Bump、ICAP/eCAP、多实例、Windows Squid | 不在当前阶段 |
 
-下一阶段先实现 Registry 修订与运行时应用证明，再增加独立客户端应用；之后补安装器、Basic 认证、日志和防火墙联动。Android 产品设计和实现进度只维护在 `Client/RelaxKonOS.Client.Android/docs/`。
+运行时应用证明、安装器、Basic 认证、日志和防火墙联动尚未实现。Android 产品设计和实现进度只维护在 `Client/RelaxKonOS.Client.Android/docs/`。
 
 ## 安全与配置语义
 
@@ -79,11 +79,12 @@ flowchart LR
 
 | 方法 / 相对路径 | 权限 | 请求与结果 |
 | --- | --- | --- |
+| GET `/configuration` | ProxyRead | `SquidConfigurationSnapshot`：最后提交配置、desired/published 修订、发布摘要、最近错误及实时 Helper 状态 |
 | GET `/status` | ProxyRead | `SquidStatus`；Helper 不可达时 503，不伪装成停止 |
-| POST `/configuration/preview` | ProxyManage | `SquidConfiguration` → `valid/configuration/errors`；不调用 Helper |
-| POST `/configuration/validate` | ProxyManage | `SquidConfiguration` → `valid/problemCode/diagnostics`；只原生解析，不发布 |
+| POST `/configuration/preview` | ProxyManage | `SquidConfiguration` → `valid/configuration/errors`；校验结果均为 200，不调用 Helper |
+| POST `/configuration/validate` | ProxyManage | `SquidConfiguration` → `valid/problemCode/diagnostics`；校验结果均为 200，只原生解析，不发布 |
 | POST `/configuration/apply` | ProxyManage | `ApplySquidConfigurationRequest` → 202 / operationId |
-| POST `/lifecycle` | ProxyManage | `{"action":"Reload"}` 等 → 202 / operationId |
+| POST `/lifecycle` | ProxyManage | `{"action":"reload"}` 等 → 202 / operationId |
 
 apply/lifecycle 必须提供 1–160 字符的 `Idempotency-Key`。同一键只提交一个操作；不同配置或动作请使用新键。台账使用 `squid:` 键命名空间、`squid.*` 操作类型；202 的 `Location` 指向现有 `/api/v1.0/proxy/operations/{id}`，轮询至终态。台账和审计不保存原生配置、诊断或密码。validate 在请求中执行，诊断最多保留两个流各 8192 字符，单个进程超时 30 秒。
 
@@ -103,6 +104,20 @@ apply/lifecycle 必须提供 1–160 字符的 `Idempotency-Key`。同一键只�
 
 apply 请求体在外层包装为 `{"configuration": {上述字段}, "adoptExistingConfiguration": false}`。首次接管发行版自带配置时显式改为 true。链到 Mihomo 时将 upstream 设置为 `{"host":"127.0.0.1","port":7890}`，并确认这确实是该主机的 HTTP/mixed 监听端口；不依赖硬编码默认端口自动推断。
 
+## 客户端使用
+
+Avalonia 应用目录中的 Squid 使用独立 `relaxkonos.squid` 应用 ID 和 `squid` 内置工厂键，仅在声明 `server.gateway-proxy` 的 Linux 系统模式服务器显示。服务器预装发行版 Squid 后，打开应用，编辑监听地址、来源 CIDR、域名 ACL 和 HTTP parent，预览并按需原生校验，确认完整替换后应用；服务原本停止时，再点击启动。首次接管现有配置必须显式勾选接管。
+
+客户端请求现有 `server.proxy.read/manage` 应用权限；观察者只读。刷新状态不会覆盖编辑；显式载入已保存配置和丢弃修改需要确认。恢复标记阻断危险变更，仍可停止、禁用和校验。六种服务操作与应用均显示操作 ID 并轮询终态；请求不确定时保留原正文、原请求键和操作 ID，禁止发起新的变更，点击继续查询。桌面端待确认信息保留在当前窗口，关闭前须保留显示的操作标识；已提交服务器操作不会因关闭而停止。切换会话禁用旧窗口并清空旧主机表单。
+
+Android 当前行为、持久化待确认记录和验证要求见 [Android Squid](../../Client/RelaxKonOS.Client.Android/docs/features/Squid.md)。
+
+## 编辑器状态与发布记录
+
+Server 在受保护状态目录的 `squid-configuration.json` 保存主机级结构化配置，所有控制客户端共享。每次有效 apply 执行前持久化最后提交配置并递增 `desiredRevision`；成功后记录 `publishedRevision` 和渲染文本的 SHA-256，失败保留上次发布记录与错误码。中断后保留 `squid.publication.unconfirmed`，不自动重试。读取不会从现有原生配置反向推断表单值，尚未提交时 configuration 为 null、desiredRevision 为 0。
+
+GET `/configuration` 返回 `state`、实时 `status` 和 `matchesPublishedConfiguration`。只有受管文件摘要匹配上次成功发布摘要且没有恢复标记时，匹配值才为 true；这不代表最近的 desired 已发布，也不证明运行时加载成功。Helper 不可用返回 503。写入使用私有文件、同目录原子替换和进程内串行化；配置读取等待当前 apply 结束。该主机级状态不使用现有用户/设备/工作区 Registry，避免把共享 Squid 配置错误绑定到某个用户。
+
 ## 部署与验收
 
 先在独立 Linux 测试主机安装发行版 Squid 包，确认上述固定路径和 squid.service，部署同一版本的 Server 与 Helper。不要先启动不熟悉的发行版默认配置；审阅其访问规则。应用后再通过 lifecycle 启动。
@@ -115,9 +130,11 @@ dotnet build RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj --no
 dotnet run --project RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -- --squid-only
 ```
 
-专项测试覆盖注入输入、空/非法集合、远程监听 opt-in、无约束 CIDR、ACL 顺序、IPv6、上游不直连、协议 round trip、服务到 Helper 的结构化边界和原生诊断传播。它不执行 Linux 原生命令。
+专项测试覆盖注入输入、空/非法集合、远程监听 opt-in、无约束 CIDR、ACL 顺序、IPv6、上游不直连、协议 round trip、服务到 Helper 的结构化边界和原生诊断传播。它不执行 Linux 原生命令。端点检查同时验证 200 结构化校验结果、必需请求键、重复提交只执行一次、操作终态及发布回读。
 
-发布前必须完成以下实机验收（当前 Windows 开发环境尚未执行）：
+桌面专项检查：`dotnet run --project Tests/Client/RelaxKonOS.WindowPreviews.Tests/RelaxKonOS.WindowPreviews.Tests.csproj --no-restore -- --squid-only`，覆盖权限、编辑保留、替换确认、原键原正文重试、恢复限制和宽/窄窗口渲染。
+
+发布前必须完成以下实机验收（尚未在真实 Squid/systemd 部署执行）：
 
 1. observer 可读状态、不可 preview/validate/apply/lifecycle；匿名访问拒绝；Linux User Mode 拒绝网关 API。
 2. validate 成功不改 squid.conf，不 reload；解析失败返回诊断，旧配置哈希不变。

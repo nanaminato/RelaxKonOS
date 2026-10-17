@@ -1,6 +1,6 @@
 # Android 支持范围
 
-Android 使用原生 Compose 页面管理已有远端主机。生产容器、Nginx、FRP、Mihomo、SMB 和宿主防火墙运行在远端；手机提供交互、SSH/SFTP、本地转发和系统应用访问入口。
+Android 使用原生 Compose 页面管理已有远端主机。生产容器、Nginx、FRP、Mihomo、Squid、SMB 和宿主防火墙运行在远端；手机提供交互、SSH/SFTP、本地转发和系统应用访问入口。
 
 ## 应用组织
 
@@ -21,5 +21,7 @@ Android 提供定义备份创建、清单和只读预检，没有恢复提交界
 ## 平台与验证
 
 Windows 设备密钥针对 Windows 10/11 工作站，不代表 Windows Server 支持同一授权流程。SMB 在 Windows 外部或漂移共享上为只读；防火墙管理按 `server.firewall` 能力门控，由宿主提供 UFW 或 Windows Defender Firewall 后端。能力可见不等于获得写入授权。
+
+[Squid HTTP 网关](../features/Squid.md) 仅在声明 `server.gateway-proxy` 的 Linux 系统模式服务器可见，提供配置与服务管理。发行版软件包安装和恢复标记处理由宿主管理员执行，不提供 Windows Squid 管理。
 
 手机、平板、旋转、分屏、大字体、三语、主题、TalkBack、进程回收和真实宿主操作的验证要求见 [验证要求](../development/Verification.md)。文档中的功能描述不代表所有设备与宿主组合已经验证通过。

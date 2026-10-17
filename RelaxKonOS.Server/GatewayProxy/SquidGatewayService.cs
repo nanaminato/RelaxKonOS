@@ -6,7 +6,7 @@ using RelaxKonOS.Server.Privileged;
 
 namespace RelaxKonOS.Server.GatewayProxy;
 
-public sealed class SquidGatewayService(IPrivilegedOperationTransport helper)
+public sealed class SquidGatewayService(IPrivilegedOperationTransport helper, SquidConfigurationStore configurations)
 {
     public async Task<SquidStatus?> GetStatusAsync(CancellationToken ct)
     {
@@ -20,8 +20,36 @@ public sealed class SquidGatewayService(IPrivilegedOperationTransport helper)
     {
         var preview = SquidConfigurationRenderer.Preview(request.Configuration);
         if (!preview.Valid) return "squid.configuration.invalid";
-        var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.SquidApplyConfiguration, SquidConfiguration: request), ct);
-        return Problem(result);
+        await configurations.Gate.WaitAsync(ct);
+        try
+        {
+            var previous = await configurations.ReadAsync(ct);
+            var pending = previous with { Configuration = request.Configuration, DesiredRevision = checked(previous.DesiredRevision + 1), LastProblemCode = "squid.publication.unconfirmed" };
+            // Persist intent before invoking the Helper. An interruption must not look published.
+            await configurations.WriteAsync(pending, ct);
+            var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.SquidApplyConfiguration, SquidConfiguration: request), ct);
+            var problem = Problem(result);
+            var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(preview.Configuration!))).ToLowerInvariant();
+            await configurations.WriteAsync(problem is null
+                ? pending with { PublishedRevision = pending.DesiredRevision, PublishedConfigurationHash = hash, LastProblemCode = null }
+                : pending with { LastProblemCode = problem }, CancellationToken.None);
+            return problem;
+        }
+        finally { configurations.Gate.Release(); }
+    }
+
+    public async Task<SquidConfigurationSnapshot?> GetConfigurationAsync(CancellationToken ct)
+    {
+        await configurations.Gate.WaitAsync(ct);
+        try
+        {
+            var state = await configurations.ReadAsync(ct);
+            var status = await GetStatusAsync(ct);
+            return status is null ? null : new(state, status, status.Managed && !status.RecoveryRequired
+                && state.PublishedConfigurationHash is not null
+                && string.Equals(state.PublishedConfigurationHash, status.ConfigurationRevision, StringComparison.Ordinal));
+        }
+        finally { configurations.Gate.Release(); }
     }
 
     public async Task<SquidNativeValidation> ValidateAsync(SquidConfiguration configuration, CancellationToken ct)

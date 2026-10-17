@@ -50,6 +50,7 @@ data class LoginSession(
     val tokens: AuthTokens,
     val executionEligibility: ExecutionEligibility = ExecutionEligibility.Available,
     val workspaceId: String,
+    val controller: Boolean = false,
 )
 
 /** A short-lived nonce that an enrolled owner device signs instead of sending a host password. */
@@ -248,6 +249,7 @@ object ServerCapabilities {
     const val BACKUP_RECOVERY = "server.backup-recovery"
     const val FILE_SERVICES = "server.file-services"
     const val FIREWALL = "server.firewall"
+    const val GATEWAY_PROXY = "server.gateway-proxy"
     const val PROXY = "server.proxy"
     const val TUNNELS = "server.tunnels"
 }

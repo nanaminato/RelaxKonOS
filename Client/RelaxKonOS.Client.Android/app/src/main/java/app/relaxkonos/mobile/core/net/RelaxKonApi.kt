@@ -65,6 +65,10 @@ class RelaxKonApi(
     override suspend fun smbChange(serverUrl: String, accessToken: String, change: SmbChange, password: CharArray?): ApiResult<SmbReceipt> =
         webPublishingCall(SmbRoutes.method(change.kind), serverUrl, SmbRoutes.route(change), accessToken,
             if (change.kind == SmbChangeKind.Password) JsonBody().secret("password", requireNotNull(password)) else change.share?.body(), SmbWire::receipt)
+    override suspend fun squidConfiguration(serverUrl: String, accessToken: String): ApiResult<SquidSnapshot> = webPublishingRead(serverUrl, accessToken, SquidWire.ROOT + "/configuration", SquidWire::snapshot)
+    override suspend fun squidPreview(serverUrl: String, accessToken: String, configuration: SquidConfiguration): ApiResult<SquidPreview> = webPublishingCall("POST", serverUrl, SquidWire.ROOT + "/configuration/preview", accessToken, configuration.body(), SquidWire::preview)
+    override suspend fun squidValidate(serverUrl: String, accessToken: String, configuration: SquidConfiguration): ApiResult<SquidValidation> = webPublishingCall("POST", serverUrl, SquidWire.ROOT + "/configuration/validate", accessToken, configuration.body(), SquidWire::validation)
+    override suspend fun squidQueue(serverUrl: String, accessToken: String, request: SquidRequest, key: String): ApiResult<String> = deploymentMutation("POST", serverUrl, request.route, accessToken, request.body(), key, ProxyWire::accepted)
     override suspend fun firewallStatus(serverUrl: String, accessToken: String): ApiResult<FirewallStatus> = webPublishingRead(serverUrl, accessToken, FirewallRoutes.ROOT + "/status", FirewallWire::status)
     override suspend fun firewallRules(serverUrl: String, accessToken: String): ApiResult<List<FirewallRule>> = webPublishingRead(serverUrl, accessToken, FirewallRoutes.ROOT + "/rules", FirewallWire::rules)
     override suspend fun changeFirewall(serverUrl: String, accessToken: String, change: FirewallChange): ApiResult<FirewallResult> =
@@ -1638,6 +1642,7 @@ class RelaxKonApi(
             // `UserDto` names the field `username`; reading `name` left the account blank on the home page.
             userName = json.getJSONObject("user").optString("username"),
             workspaceName = json.getJSONObject("workspace").getString("name"),
+            controller = json.getString("assignedRole").let { require(it in setOf("controller", "observer")); it == "controller" },
             workspaceId = json.getJSONObject("workspace").getString("id").also { require(java.util.UUID.fromString(it).toString().equals(it, ignoreCase = true)) },
             server = ServerDescriptor(
                 platform = server.optString("platform"),

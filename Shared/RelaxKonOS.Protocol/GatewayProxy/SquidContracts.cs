@@ -5,6 +5,7 @@ namespace RelaxKonOS.Protocol.GatewayProxy;
 public static class GatewayProxyRoutes
 {
     public const string Root = $"/{RelaxKonOS.Protocol.Common.RelaxKonOSEndpoints.ApiVersionPrefix}/gateway-proxy/squid";
+    public const string Configuration = Root + "/configuration";
     public const string Status = Root + "/status";
     public const string Preview = Root + "/configuration/preview";
     public const string Apply = Root + "/configuration/apply";
@@ -32,3 +33,8 @@ public sealed record SquidNativeValidation(bool Valid, string? ProblemCode, stri
 public enum SquidServiceAction { Start, Stop, Restart, Reload, Enable, Disable }
 public sealed record SquidLifecycleRequest(SquidServiceAction Action);
 public sealed record SquidStatus(bool Supported, bool Installed, bool Running, bool Enabled, bool Managed, string ConfigurationRevision, bool RecoveryRequired = false);
+
+/// <summary>Last submitted editor state and publication receipt; never a runtime applied claim.</summary>
+public sealed record SquidConfigurationState(SquidConfiguration? Configuration, long DesiredRevision,
+    long? PublishedRevision, string? PublishedConfigurationHash, string? LastProblemCode);
+public sealed record SquidConfigurationSnapshot(SquidConfigurationState State, SquidStatus Status, bool MatchesPublishedConfiguration);

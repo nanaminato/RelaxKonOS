@@ -19,6 +19,7 @@ object MobileFeatureCatalog {
         MobileFeature(R.string.websites_title,R.string.websites_subtitle,Routes.MANAGE_WEBSITES,setOf(ServerCapabilities.WEB_SERVER)),
         MobileFeature(R.string.certificates_title,R.string.certificates_subtitle,Routes.MANAGE_CERTIFICATES,setOf(ServerCapabilities.CERTIFICATES)),
         MobileFeature(R.string.tunnels_title,R.string.tunnels_subtitle,Routes.MANAGE_TUNNELS,setOf(ServerCapabilities.TUNNELS)),
+        MobileFeature(R.string.squid_title,R.string.squid_intro,Routes.MANAGE_SQUID,setOf(ServerCapabilities.GATEWAY_PROXY)),
         MobileFeature(R.string.mihomo_title,R.string.mihomo_intro,Routes.MANAGE_PROXY,setOf(ServerCapabilities.PROXY)),
         MobileFeature(R.string.smb_title,R.string.smb_intro,Routes.MANAGE_SMB,setOf(ServerCapabilities.FILE_SERVICES)),
         MobileFeature(R.string.firewall_title,R.string.firewall_intro,Routes.MANAGE_FIREWALL,setOf(ServerCapabilities.FIREWALL)),

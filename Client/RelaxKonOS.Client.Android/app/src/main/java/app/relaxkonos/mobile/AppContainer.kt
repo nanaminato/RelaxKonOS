@@ -358,6 +358,7 @@ class AppContainer(context: Context) {
             app.relaxkonos.mobile.data.FileCertificateRequestStorage(appContext.noBackupFilesDir)), elevations)
     val tunnels = app.relaxkonos.mobile.data.TunnelRepository(gateway, session, elevations,
         app.relaxkonos.mobile.data.TunnelMutationJournal(app.relaxkonos.mobile.data.FileTunnelMutationStorage(appContext.noBackupFilesDir)))
+    val squid = app.relaxkonos.mobile.data.SquidRepository(gateway, session, java.io.File(appContext.noBackupFilesDir, "squid-requests"))
     val proxy = app.relaxkonos.mobile.data.ProxyRepository(gateway, session, operationIndex,
         app.relaxkonos.mobile.data.ProxyRequestJournal(app.relaxkonos.mobile.data.FileProxyRequestStorage(appContext.noBackupFilesDir)))
     val hostSettings = app.relaxkonos.mobile.data.HostSettingsRepository(gateway, session, elevations,

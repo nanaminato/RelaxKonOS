@@ -48,6 +48,10 @@ interface RelaxKonGateway {
     suspend fun smbUsers(serverUrl: String, accessToken: String): ApiResult<List<SmbUser>>
     suspend fun smbConnection(serverUrl: String, accessToken: String): ApiResult<SmbConnection>
     suspend fun smbChange(serverUrl: String, accessToken: String, change: SmbChange, password: CharArray?): ApiResult<SmbReceipt>
+    suspend fun squidConfiguration(serverUrl: String, accessToken: String): ApiResult<SquidSnapshot>
+    suspend fun squidPreview(serverUrl: String, accessToken: String, configuration: SquidConfiguration): ApiResult<SquidPreview>
+    suspend fun squidValidate(serverUrl: String, accessToken: String, configuration: SquidConfiguration): ApiResult<SquidValidation>
+    suspend fun squidQueue(serverUrl: String, accessToken: String, request: SquidRequest, key: String): ApiResult<String>
     suspend fun firewallStatus(serverUrl: String, accessToken: String): ApiResult<FirewallStatus>
     suspend fun firewallRules(serverUrl: String, accessToken: String): ApiResult<List<FirewallRule>>
     suspend fun changeFirewall(serverUrl: String, accessToken: String, change: FirewallChange): ApiResult<FirewallResult>
