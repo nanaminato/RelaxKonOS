@@ -400,13 +400,37 @@ class CertificateCancellationFlowTest {
         rule.onNodeWithText(text(R.string.workspace_operations)).performClick()
         rule.onNodeWithText(text(R.string.common_cancel)).performScrollTo().performClick()
         rule.onNodeWithText(text(R.string.certificates_cancel_confirm)).assertIsDisplayed()
+        val old = requireNotNull(model.cancellation)
         rule.runOnIdle { model.recover(next.operationId) }
         rule.waitUntil(5_000) { !model.state.busy && model.state.operation?.operationId == next.operationId }
-        rule.onAllNodesWithText(text(R.string.certificates_confirm)).filter(hasClickAction()).onFirst().performClick()
-        rule.runOnIdle { assertTrue(cancellations.isEmpty()); assertEquals(next, model.state.operation) }
+        rule.onNodeWithText(text(R.string.certificates_cancel_confirm)).assertDoesNotExist()
+        rule.runOnIdle { model.cancel(old); assertTrue(cancellations.isEmpty()); assertEquals(next, model.state.operation) }
         rule.onNodeWithText(text(R.string.common_cancel)).performScrollTo().performClick()
         rule.onAllNodesWithText(text(R.string.certificates_confirm)).filter(hasClickAction()).onFirst().performClick()
         rule.waitUntil(5_000) { !model.state.busy && model.state.operation?.state == CertificateOperationState.Cancelled }
         rule.runOnIdle { assertEquals(listOf(next.operationId), cancellations) }
+    }
+    @Test fun cancellationPausesPollingAndBackgroundRevokesOriginalCallback() {
+        show()
+        val running = receipt.copy(state = CertificateOperationState.Running, stage = "running")
+        rule.runOnIdle { tasks[running.operationId] = running; model.recover(running.operationId) }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.operationVerified }
+        rule.onNodeWithText(text(R.string.workspace_operations)).performScrollTo().performClick()
+        rule.onNodeWithText(text(R.string.common_cancel)).performScrollTo().performClick()
+        val old = requireNotNull(model.cancellation)
+        rule.onAllNodesWithText(running.operationId).onLast().assertIsDisplayed()
+        val reads = recoveredIds.size
+        Thread.sleep(2_000)
+        rule.runOnIdle { assertEquals(reads, recoveredIds.size); assertSame(old, model.cancellation) }
+        rule.mainClock.autoAdvance = false
+        rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+        rule.runOnUiThread { assertNull(model.cancellation); model.cancel(old); assertTrue(cancellations.isEmpty()) }
+        rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        rule.mainClock.autoAdvance = true
+        rule.onNodeWithText(text(R.string.certificates_cancel_confirm)).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.common_cancel)).performScrollTo().performClick()
+        rule.onAllNodesWithText(text(R.string.certificates_confirm)).filter(hasClickAction()).onFirst().performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.operation?.state == CertificateOperationState.Cancelled }
+        rule.runOnIdle { assertEquals(listOf(running.operationId), cancellations) }
     }
 }

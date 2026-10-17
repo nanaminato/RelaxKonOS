@@ -26,6 +26,8 @@ class ScriptLifecycleFlowTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
     private val store = ViewModelStore()
     private lateinit var model: ScriptsViewModel
+    private var blockSecondRead = true
+    private val cancelledIds = mutableListOf<String>()
     private val reads = AtomicInteger()
     private val blocked = AtomicBoolean()
     private val finished = AtomicBoolean()
@@ -48,13 +50,14 @@ class ScriptLifecycleFlowTest {
                 if (failList.get()) ApiResult.Transport(null) else ApiResult.Success(ScriptTasksResult(true, "", if (empty.get()) emptyList() else listOf(task())))
             override suspend fun scriptTask(serverUrl: String, accessToken: String, id: String): ApiResult<ScriptTaskResult> {
                 val count = reads.incrementAndGet()
-                if (count == 2) { blocked.set(true); awaitCancellation() }
-                return ApiResult.Success(ScriptTaskResult(true, "", task(if (finished.get()) "succeeded" else "running")))
+                if (count == 2 && blockSecondRead) { blocked.set(true); awaitCancellation() }
+                return ApiResult.Success(ScriptTaskResult(true, "", task(if (finished.get()) "succeeded" else "running").copy(id = id)))
             }
             override suspend fun scriptSubmit(serverUrl: String, accessToken: String, request: ScriptRequest, key: String): ApiResult<ScriptTaskResult> {
                 writes.incrementAndGet(); return ApiResult.Transport(null)
             }
             override suspend fun scriptCancel(serverUrl: String, accessToken: String, id: String): ApiResult<ScriptTaskResult> {
+                cancelledIds += id
                 writes.incrementAndGet(); return ApiResult.Transport(null)
             }
         }
@@ -76,6 +79,61 @@ class ScriptLifecycleFlowTest {
         }
         rule.setContent { MaterialTheme { ScriptsContent(model, owner, {}) } }
         rule.waitUntil(5_000) { !model.state.value.loading && model.state.value.listVerified }
+    }
+
+    @Test fun cancellationPausesObservationAndPauseOrSelectionRequiresNewConfirmation() {
+        blockSecondRead = false; show()
+        rule.runOnIdle { model.select("review-task") }
+        rule.waitUntil(5_000) { model.state.value.selected != null }
+        rule.onNodeWithText(text(R.string.scripts_cancel)).performScrollTo().performClick()
+        val paused = requireNotNull(model.state.value.cancellation)
+        rule.onNodeWithText("review-task").assertIsDisplayed()
+        val before = reads.get()
+        Thread.sleep(2_300)
+        rule.runOnIdle { assertEquals(before, reads.get()); assertSame(paused, model.state.value.cancellation) }
+        rule.mainClock.autoAdvance = false
+        rule.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+        rule.runOnUiThread { assertNull(model.state.value.cancellation); model.cancel(paused); assertEquals(0, writes.get()) }
+        rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        rule.mainClock.autoAdvance = true
+        rule.onNodeWithText(text(R.string.operations_cancel_explanation)).assertDoesNotExist()
+        rule.onNodeWithText(text(R.string.scripts_cancel)).performScrollTo().performClick()
+        val old = requireNotNull(model.state.value.cancellation)
+        rule.runOnIdle { model.select("replacement-task") }
+        rule.waitUntil(5_000) { model.state.value.selected?.id == "replacement-task" }
+        rule.onNodeWithText(text(R.string.operations_cancel_explanation)).assertDoesNotExist()
+        rule.runOnIdle { model.cancel(old); assertEquals(0, writes.get()) }
+        rule.onNodeWithText(text(R.string.scripts_cancel)).performScrollTo().performClick()
+        rule.onNodeWithText("replacement-task").assertIsDisplayed()
+        val current = requireNotNull(model.state.value.cancellation)
+        rule.onNode(hasText(text(R.string.tunnels_confirm)) and hasClickAction()).performClick()
+        rule.waitUntil(5_000) { !model.state.value.loading && model.state.value.pending != null }
+        rule.runOnIdle {
+            model.cancel(current)
+            assertEquals(listOf("replacement-task"), cancelledIds)
+            assertEquals(1, writes.get())
+            assertEquals("replacement-task", model.state.value.pending?.taskId)
+        }
+    }
+
+    @Test fun refreshDismissesCancellationWithoutSendingAndNewConfirmationStillWorks() {
+        blockSecondRead = false; show()
+        rule.runOnIdle { model.select("review-task") }
+        rule.waitUntil(5_000) { model.state.value.selected != null }
+        rule.onNodeWithText(text(R.string.scripts_cancel)).performScrollTo().performClick()
+        val old = requireNotNull(model.state.value.cancellation)
+        rule.onNode(hasText(text(R.string.common_cancel)) and hasClickAction()).performClick()
+        rule.runOnIdle { model.cancel(old); assertEquals(0, writes.get()) }
+        rule.onNodeWithText(text(R.string.scripts_cancel)).performScrollTo().performClick()
+        val refreshed = requireNotNull(model.state.value.cancellation)
+        rule.runOnIdle { model.load(refreshed.owner) }
+        rule.waitUntil(5_000) { !model.state.value.loading && model.state.value.selected != null }
+        rule.onNodeWithText(text(R.string.operations_cancel_explanation)).assertDoesNotExist()
+        rule.runOnIdle { model.cancel(refreshed); assertEquals(0, writes.get()) }
+        rule.onNodeWithText(text(R.string.scripts_cancel)).performScrollTo().performClick()
+        rule.onNode(hasText(text(R.string.tunnels_confirm)) and hasClickAction()).performClick()
+        rule.waitUntil(5_000) { !model.state.value.loading && model.state.value.pending != null }
+        rule.runOnIdle { assertEquals(listOf("review-task"), cancelledIds) }
     }
 
     @Test fun emptyListFeedbackWithdrawsOnFailureAndActualRefreshRestoresIt() {

@@ -78,9 +78,9 @@ import java.util.Date
     val facts = (state.facts as? ApiResult.Success)?.value
     val runtime = (state.runtime as? ApiResult.Success)?.value
     val notInstalled = runtime?.state == TunnelRuntimeState.NotInstalled
-    LaunchedEffect(owner, epoch, frpsSection, state.selectedId, state.busy, facts?.observedAtMillis, state.editorOpen, install, resumed, state.uncertain, state.problemCode, confirm != null) {
-        if (resumed && !frpsSection && !install && confirm == null) model.observeConnection {
-            lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && !frpsSection && !install && confirm == null
+    LaunchedEffect(owner, epoch, frpsSection, state.selectedId, state.busy, facts?.observedAtMillis, state.editorOpen, install, resumed, state.uncertain, state.problemCode, confirm != null, cancellation) {
+        if (resumed && !frpsSection && !install && confirm == null && cancellation == null) model.observeConnection {
+            lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && !frpsSection && !install && confirm == null && model.installationCancellation == null
         }
     }
     BackHandler(section in setOf("profiles", "logs") && state.selectedId != null && state.profileDraft == null && state.definitionDraft == null && !state.busy) { model.select(null) }

@@ -39,11 +39,11 @@ internal class TunnelsViewModel(private val session: AuthSession, private val tu
         val id = state.selectedId ?: return
         val request = workGeneration
         val facts = (state.facts as? ApiResult.Success)?.value
-        if (state.selectedId != null && !state.busy && !state.editorOpen && !state.uncertain && state.problemCode == null && facts?.definitions?.any {
+        if (installationCancellation == null && state.selectedId != null && !state.busy && !state.editorOpen && !state.uncertain && state.problemCode == null && facts?.definitions?.any {
                 it.profileId == state.selectedId && it.state in setOf(TunnelConnectionState.Starting, TunnelConnectionState.Connected)
             } == true) {
             kotlinx.coroutines.delay(3000)
-            if (canObserve() && activeSession === active && owner === active && state.selectedId == id && request == workGeneration &&
+            if (canObserve() && installationCancellation == null && activeSession === active && owner === active && state.selectedId == id && request == workGeneration &&
                 !state.busy && !state.editorOpen && !state.uncertain && state.problemCode == null) observe()
         }
     }

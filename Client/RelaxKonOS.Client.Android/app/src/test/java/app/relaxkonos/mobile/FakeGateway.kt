@@ -134,10 +134,12 @@ class FakeGateway : RelaxKonGateway {
     var onProxyRecovery: suspend () -> ApiResult<ProxyRecovery> = { error("Unexpected proxy diagnostic call") }
     override suspend fun proxyRecovery(serverUrl: String, accessToken: String): ApiResult<ProxyRecovery> = onProxyRecovery()
     override suspend fun proxyTun(serverUrl: String, accessToken: String): ApiResult<ProxyRecovery> = error("Unexpected proxy diagnostic call")
-    override suspend fun proxyTraffic(serverUrl: String, accessToken: String): ApiResult<ProxyTraffic> = error("Unexpected proxy diagnostic call")
+    var onProxyTraffic: suspend () -> ApiResult<ProxyTraffic> = { error("Unexpected proxy diagnostic call") }
+    override suspend fun proxyTraffic(serverUrl: String, accessToken: String): ApiResult<ProxyTraffic> = onProxyTraffic()
     var onProxyConnections: suspend () -> ApiResult<List<ProxyConnection>> = { error("Unexpected proxy diagnostic call") }
     override suspend fun proxyConnections(serverUrl: String, accessToken: String): ApiResult<List<ProxyConnection>> = onProxyConnections()
-    override suspend fun proxyLogs(serverUrl: String, accessToken: String): ApiResult<List<ProxyLog>> = error("Unexpected proxy diagnostic call")
+    var onProxyLogs: suspend () -> ApiResult<List<ProxyLog>> = { error("Unexpected proxy diagnostic call") }
+    override suspend fun proxyLogs(serverUrl: String, accessToken: String): ApiResult<List<ProxyLog>> = onProxyLogs()
     override suspend fun proxyDns(serverUrl: String, accessToken: String): ApiResult<ProxyDns> = error("Unexpected proxy diagnostic call")
     var onProxyGeoData: suspend () -> ApiResult<ProxyGeoData> = { error("Unexpected proxy diagnostic call") }
     override suspend fun proxyGeoData(serverUrl: String, accessToken: String): ApiResult<ProxyGeoData> = onProxyGeoData()
@@ -155,7 +157,8 @@ class FakeGateway : RelaxKonGateway {
     override suspend fun proxyGroups(serverUrl: String, accessToken: String): ApiResult<List<ProxyGroup>> = onProxyGroups()
     var onProxyRouting: suspend () -> ApiResult<ProxyRoutingMode> = { error("Unexpected proxy call") }
     override suspend fun proxyRouting(serverUrl: String, accessToken: String): ApiResult<ProxyRoutingMode> = onProxyRouting()
-    override suspend fun proxyDownloadOptions(serverUrl: String, accessToken: String): ApiResult<Boolean> = error("Unexpected proxy call")
+    var onProxyDownloadOptions: suspend () -> ApiResult<Boolean> = { error("Unexpected proxy call") }
+    override suspend fun proxyDownloadOptions(serverUrl: String, accessToken: String): ApiResult<Boolean> = onProxyDownloadOptions()
     var onProxyOperation: suspend (String) -> ApiResult<ProxyOperation> = { _ -> error("Unexpected proxy call") }
     override suspend fun proxyOperation(serverUrl: String, accessToken: String, id: String): ApiResult<ProxyOperation> = onProxyOperation(id)
     override suspend fun proxyReleases(serverUrl: String, accessToken: String): ApiResult<List<ProxyRelease>> = error("Unexpected proxy call")
@@ -292,7 +295,8 @@ class FakeGateway : RelaxKonGateway {
     override suspend fun integrateWebServer(serverUrl: String, accessToken: String, candidateId: String, confirmed: Boolean, idempotencyKey: String): ApiResult<WebServerOperation> = ApiResult.Transport(null)
     override suspend fun webServerLifecycle(serverUrl: String, accessToken: String, instanceId: String, action: WebServerAction, idempotencyKey: String): ApiResult<WebServerOperation> = onWebLifecycle(instanceId, action, idempotencyKey)
     override suspend fun webServerOperation(serverUrl: String, accessToken: String, operationId: String): ApiResult<WebServerOperation> = onWebOperation(operationId)
-    override suspend fun cancelWebServerOperation(serverUrl: String, accessToken: String, operationId: String, idempotencyKey: String): ApiResult<WebServerOperation> = ApiResult.Transport(null)
+    var onWebCancel: (String) -> ApiResult<WebServerOperation> = { ApiResult.Transport(null) }
+    override suspend fun cancelWebServerOperation(serverUrl: String, accessToken: String, operationId: String, idempotencyKey: String): ApiResult<WebServerOperation> = onWebCancel(operationId)
 
     var onOutboundProxyStatus: (suspend () -> ApiResult<OutboundProxyStatus>)? = null
     var onSaveOutboundProxy: (suspend (OutboundProxySettings, Boolean) -> ApiResult<OutboundProxyStatus>)? = null

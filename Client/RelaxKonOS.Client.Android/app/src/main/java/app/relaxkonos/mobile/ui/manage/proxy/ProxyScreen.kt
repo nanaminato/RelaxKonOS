@@ -12,6 +12,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
+import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.ui.common.*
@@ -24,11 +31,28 @@ private data class ProxyConfirmation(val action: () -> Unit)
 private data class ProxyEditRequest(val kind: String, val profile: ProxyProfile?)
 @OptIn(ExperimentalLayoutApi::class)
 @Composable fun ProxyScreen(onBack: () -> Unit, initialOperationId: String? = null, modifier: Modifier = Modifier) {
-    val model: ProxyViewModel = viewModel(); val state = model.state; val owner = appContainer().activeSession
+    val container = appContainer()
+    val model: ProxyViewModel = viewModel(factory = viewModelFactory {
+        initializer { ProxyViewModel(container.session, container.proxy, container.installations,
+            container.operationIndex, container.elevationAnswers, container.uploadDocuments) }
+    })
+    ProxyContent(model, container.activeSession, onBack, modifier, initialOperationId)
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable internal fun ProxyContent(model: ProxyViewModel, owner: SessionState.Active?, onBack: () -> Unit,
+    modifier: Modifier = Modifier, initialOperationId: String? = null) {
+    val state = model.state
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val lifecycleState by lifecycle.currentStateAsState()
+    val resumed = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
     val available = owner?.capabilities?.contains(ServerCapabilities.PROXY) == true
     val canManage = available && owner?.privilegedOperations == true
     val epoch = model.sessionEpoch
-    var confirm by remember(owner, epoch) { mutableStateOf<ProxyConfirmation?>(null) }
+    var section by rememberSaveable(owner, epoch) { mutableStateOf("overview") }
+    var confirm by remember(owner, epoch, section, resumed, state.busy, state.operation, state.installation,
+        state.installationVerified, state.operationVerified, state.pending, state.overview, state.profiles) { mutableStateOf<ProxyConfirmation?>(null) }
+    val cancellation = model.installationCancellation?.takeIf { it.owner === owner }
     var install by remember(owner, epoch) { mutableStateOf(false) }
     var editor by remember(owner, epoch) { mutableStateOf<ProxyEditRequest?>(null) }
     var selected by remember(owner, epoch) { mutableStateOf<String?>(null) }
@@ -37,20 +61,28 @@ private data class ProxyEditRequest(val kind: String, val profile: ProxyProfile?
     var identified by remember(owner, epoch) { mutableStateOf(false) }
     var recovering by remember(owner, epoch) { mutableStateOf(false) }
     var attemptedInitial by remember(owner, epoch, initialOperationId) { mutableStateOf(false) }
-    var section by rememberSaveable(owner, epoch) { mutableStateOf("overview") }
     val networkSection = section in setOf("connections", "logs", "settings")
     var networkEditing by remember(owner, epoch) { mutableStateOf(false) }
     var showRecovery by remember(owner, epoch) { mutableStateOf(false) }
+    DisposableEffect(owner, epoch, section, lifecycle) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_PAUSE) {
+            confirm = null; model.dismissInstallationCancellation(); model.stopDiagnostics()
+        } }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer); model.dismissInstallationCancellation(); model.stopDiagnostics() }
+    }
+    DisposableEffect(owner, epoch, section, resumed, networkEditing, editor, install, confirm, cancellation) {
+        onDispose { model.stopDiagnostics() }
+    }
     OperationMessageDialog(if (state.busy || editor != null || install || networkEditing) null else state.problemCode?.let { proxyProblemLabel(it) } ?: if (state.uncertain) stringResource(R.string.mihomo_uncertain) else null, tone = if (state.problemCode == null) StatusTone.Warning else StatusTone.Danger)
     LaunchedEffect(owner, epoch) { if (available) model.refresh() }
     LaunchedEffect(owner, epoch, initialOperationId, state.busy) {
         if (available && initialOperationId != null && !state.busy && !attemptedInitial) { attemptedInitial = true; section = "records"; model.recoverOperation(initialOperationId) }
     }
-    LaunchedEffect(owner, epoch, state.operation?.operationId, state.operation?.state, state.busy, state.operationVerified, editor, install, networkEditing) {
-        if (editor == null && !install && !networkEditing) model.observeOperation()
-    }
-    LaunchedEffect(owner, epoch, state.installation?.operationId, state.installation?.state, state.busy, state.installationVerified, editor, install, networkEditing) {
-        if (editor == null && !install && !networkEditing) model.observeInstallation()
+    LaunchedEffect(owner, epoch, state.operation, state.installation, state.busy, state.operationVerified, state.installationVerified, editor, install, networkEditing, resumed, confirm, cancellation, state.uncertain, state.problemCode) {
+        if (resumed && editor == null && !install && !networkEditing && confirm == null && cancellation == null) model.observeTasks {
+            lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && editor == null && !install && !networkEditing && confirm == null && model.installationCancellation == null
+        }
     }
     val overview = (state.overview as? ApiResult.Success)?.value
     val notInstalled = overview?.runtime?.state == ProxyRuntimeState.NotInstalled
@@ -61,8 +93,10 @@ private data class ProxyEditRequest(val kind: String, val profile: ProxyProfile?
         (state.operation == null || state.operationVerified && !state.operation.state.active) &&
         (state.installation == null || state.installationVerified && !state.installation.state.active) && !state.pendingInstallation
     val connected = overview?.controllerReachable == true
-    LaunchedEffect(owner, epoch, section, connected, state.uncertain, networkEditing) {
-        if (!networkEditing) model.observeDiagnostics(section)
+    LaunchedEffect(owner, epoch, section, connected, state.uncertain, state.problemCode, state.busy, networkEditing, resumed, editor, install, confirm, cancellation) {
+        if (resumed && !networkEditing && editor == null && !install && confirm == null && cancellation == null) model.observeDiagnostics(section) {
+            lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && !networkEditing && editor == null && !install && confirm == null && model.installationCancellation == null
+        }
     }
     BackHandler(section == "profiles" && selected != null && editor == null && !state.busy) { selected = null }
     // Retained sections own their item spacing; hidden sections must not add root gaps.
@@ -124,7 +158,7 @@ WorkspaceSection(section == "overview") {
                 TextButton(enabled = !state.busy, onClick = model::pollInstall) { ActionLabel(R.string.common_refresh) }
             })
             if (canManage && state.installationVerified && operation.state.active && operation.cancellable) TextButton(enabled = !state.busy,
-                onClick = { confirm = ProxyConfirmation(model::cancelInstall) }) { Text(stringResource(R.string.common_cancel)) }
+                onClick = { model.requestInstallationCancellation(requireNotNull(owner), operation) }) { Text(stringResource(R.string.common_cancel)) }
             }
         }
         if (state.pendingInstallation) {
@@ -214,8 +248,16 @@ WorkspaceSection(section == "profiles") {
         }) { editor = null }
     } }
     confirm?.let { request -> AlertDialog(onDismissRequest = { confirm = null }, title = { Text(stringResource(R.string.tunnels_confirm)) },
-        text = { Text(stringResource(R.string.mihomo_change_confirm)) }, confirmButton = { Button(enabled = !state.busy, onClick = { confirm = null; request.action() }) { Text(stringResource(R.string.tunnels_confirm)) } },
+        text = { Text(stringResource(R.string.mihomo_change_confirm)) }, confirmButton = { Button(enabled = !state.busy && resumed, onClick = { confirm = null; request.action() }) { Text(stringResource(R.string.tunnels_confirm)) } },
         dismissButton = { TextButton(onClick = { confirm = null }) { Text(stringResource(R.string.common_cancel)) } }) }
+    cancellation?.let { review -> AlertDialog(onDismissRequest = model::dismissInstallationCancellation,
+        title = { Text(stringResource(R.string.tunnels_confirm)) },
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) {
+            Text(review.operation.operationId)
+            Text(stringResource(R.string.operations_cancel_explanation))
+        } },
+        confirmButton = { Button(enabled = !state.busy && resumed, onClick = { model.cancelInstall(review) }) { Text(stringResource(R.string.tunnels_confirm)) } },
+        dismissButton = { TextButton(onClick = model::dismissInstallationCancellation) { Text(stringResource(R.string.common_cancel)) } }) }
     if (recovering) AlertDialog(onDismissRequest = { recovering = false }, title = { Text(stringResource(if (recoverInstallation) R.string.mihomo_recover_installation else R.string.mihomo_recover_operation)) },
         text = { Column { Text(stringResource(R.string.mihomo_recover_note)); OutlinedTextField(recoveredId, { recoveredId = it }, singleLine = true, label = { Text(stringResource(R.string.certificates_operation_id)) })
             if (recoverInstallation && state.pendingInstallation) ProxyCheck(identified, !state.busy, R.string.mihomo_identify) { identified = it }

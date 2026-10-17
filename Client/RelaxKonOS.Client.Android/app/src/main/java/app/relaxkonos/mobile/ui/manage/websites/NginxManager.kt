@@ -17,39 +17,65 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
+import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.ui.common.*
 import app.relaxkonos.mobile.ui.manage.operations.*
 import app.relaxkonos.mobile.ui.theme.Spacing
-import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () -> Unit) {
-    val model: NginxViewModel = viewModel()
+    val container = appContainer()
+    val model: NginxViewModel = viewModel(factory = viewModelFactory {
+        initializer { NginxViewModel(container.session, container.gateway, container.webServers, container.webPublishing,
+            container.webSites, container.certificates, container.installations, container.operationIndex,
+            container.elevationAnswers, container.uploadDocuments) }
+    })
+    NginxContent(model, container.activeSession, onChanged, section, onRecords)
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable internal fun NginxContent(model: NginxViewModel, owner: SessionState.Active?, onChanged: () -> Unit, section: String, onRecords: () -> Unit) {
     val state = model.state
     val sessionEpoch = model.sessionEpoch
-    val owner = appContainer().activeSession
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val lifecycleState by lifecycle.currentStateAsState()
+    val resumed = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
     val canManage = owner?.privilegedOperations == true
     var installDialog by remember(owner, sessionEpoch) { mutableStateOf(false) }
     var diagnostics by remember { mutableStateOf<String?>(null) }
     val clipboard = LocalClipboardManager.current
     var recoveryDialog by remember(owner, sessionEpoch) { mutableStateOf(false) }
     var instanceDetailsVisible by remember(owner, sessionEpoch) { mutableStateOf(false) }
-    var confirmation by remember(owner, sessionEpoch) { mutableStateOf<Pair<Int, () -> Unit>?>(null) }
+    var confirmation by remember(owner, sessionEpoch, section, resumed, state.busy, state.selectedId, state.operation,
+        state.installation, state.operationVerified, state.installationVerified) { mutableStateOf<Pair<Int, () -> Unit>?>(null) }
+    val cancellation = model.cancellation?.takeIf { it.owner === owner }
+    DisposableEffect(owner, sessionEpoch, section, lifecycle) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_PAUSE) model.dismissCancellation() }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer); model.dismissCancellation() }
+    }
     OperationMessageDialog(if (state.busy) null else state.problemCode?.let { nginxProblemLabel(it) } ?: if (state.uncertain) stringResource(R.string.nginx_uncertain) else null, tone = if (state.problemCode == null) StatusTone.Warning else StatusTone.Danger)
     LaunchedEffect(owner, sessionEpoch, section) { if (owner != null) model.refresh() }
-    LaunchedEffect(owner, sessionEpoch) {
-        while (owner != null) {
-            delay(1500)
-            if (!model.state.busy && (model.state.operation?.state?.active == true || model.state.installation?.state?.active == true)) {
-                model.pollTasks()
+    LaunchedEffect(owner, sessionEpoch, section, resumed, state.busy, state.operation, state.installation,
+        state.operationVerified, state.installationVerified, state.uncertain, state.problemCode, state.siteDraft,
+        installDialog, recoveryDialog, confirmation, cancellation) {
+        if (resumed && section in setOf("instances", "sites", "records") && !installDialog && !recoveryDialog && confirmation == null && cancellation == null) {
+            model.observeTasks {
+                lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && !installDialog && !recoveryDialog && confirmation == null && model.cancellation == null
             }
         }
     }
-    LaunchedEffect(state.operation?.operationId, state.operation?.state, state.installation?.operationId, state.installation?.state) {
-        if (state.operation?.state?.active == false || state.installation?.state?.active == false) {
+    LaunchedEffect(state.operation?.operationId, state.operation?.state, state.installation?.operationId, state.installation?.state, state.operationVerified, state.installationVerified) {
+        if (state.operationVerified && state.operation?.state?.active == false || state.installationVerified && state.installation?.state?.active == false) {
             onChanged()
         }
     }
@@ -130,28 +156,32 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
         if (state.pendingInstallation) Text(stringResource(R.string.nginx_pending_installation), style = MaterialTheme.typography.bodySmall)
         state.operation?.let { operation ->
             ManagementCard {
-            Text(stringResource(R.string.nginx_operation, operation.operationId, nginxOperationStateLabel(operation.state)))
-            if (operation.problemCode.isNotBlank()) Text(nginxProblemLabel(operation.problemCode), color = MaterialTheme.colorScheme.error)
-            operation.snapshotId?.let { Text(stringResource(R.string.nginx_snapshot, it), style = MaterialTheme.typography.bodySmall) }
+            Text(stringResource(R.string.nginx_operation, operation.operationId, if (state.operationVerified) nginxOperationStateLabel(operation.state) else stringResource(R.string.tunnels_unknown)))
+            if (state.operationVerified) {
+                if (operation.problemCode.isNotBlank()) Text(nginxProblemLabel(operation.problemCode), color = MaterialTheme.colorScheme.error)
+                operation.snapshotId?.let { Text(stringResource(R.string.nginx_snapshot, it), style = MaterialTheme.typography.bodySmall) }
+            }
             PageActionRow(refresh = {
                 TextButton(enabled = !state.busy, onClick = model::pollWeb) { ActionLabel(R.string.common_refresh) }
             })
-            if (operation.state.active && canManage) TextButton(enabled = !state.busy, onClick = {
-                confirmation = R.string.operations_cancel_explanation to model::cancelWeb
+            if (state.operationVerified && operation.state.active && canManage) TextButton(enabled = !state.busy, onClick = {
+                model.requestCancellation(NginxCancellation.Web(requireNotNull(owner), operation))
             }) { Text(stringResource(R.string.operations_request_cancel)) }
             }
         }
         state.installation?.let { operation ->
             ManagementCard {
-            Text(stringResource(R.string.nginx_operation, operation.operationId, installationStateLabel(operation.state)))
-            Text(installationStageLabel(operation.stage))
-            operation.progress?.let { Text(stringResource(R.string.installation_stage_progress, it)) }
-            operation.problemCode?.let { Text(nginxProblemLabel(it), color = MaterialTheme.colorScheme.error) }
+            Text(stringResource(R.string.nginx_operation, operation.operationId, if (state.installationVerified) installationStateLabel(operation.state) else stringResource(R.string.tunnels_unknown)))
+            if (state.installationVerified) {
+                Text(installationStageLabel(operation.stage))
+                operation.progress?.let { Text(stringResource(R.string.installation_stage_progress, it)) }
+                operation.problemCode?.let { Text(nginxProblemLabel(it), color = MaterialTheme.colorScheme.error) }
+            }
             PageActionRow(refresh = {
                 TextButton(enabled = !state.busy, onClick = model::pollInstallation) { ActionLabel(R.string.common_refresh) }
             })
-            if (operation.state.active && operation.cancellable && canManage) TextButton(enabled = !state.busy, onClick = {
-                confirmation = R.string.operations_cancel_explanation to model::cancelInstallation
+            if (state.installationVerified && operation.state.active && operation.cancellable && canManage) TextButton(enabled = !state.busy, onClick = {
+                model.requestCancellation(NginxCancellation.Installation(requireNotNull(owner), operation))
             }) { Text(stringResource(R.string.operations_request_cancel)) }
             }
         }
@@ -159,8 +189,17 @@ internal fun NginxManager(onChanged: () -> Unit, section: String, onRecords: () 
     }
     confirmation?.let { (message, action) ->
         AlertDialog(onDismissRequest = { confirmation = null }, title = { Text(stringResource(R.string.nginx_confirm)) },
-            text = { Text(stringResource(message)) }, confirmButton = { Button(onClick = { confirmation = null; action() }) { Text(stringResource(R.string.nginx_confirm)) } },
+            text = { Text(stringResource(message)) }, confirmButton = { Button(enabled = resumed && !state.busy, onClick = { confirmation = null; action() }) { Text(stringResource(R.string.nginx_confirm)) } },
             dismissButton = { TextButton(onClick = { confirmation = null }) { Text(stringResource(R.string.common_cancel)) } })
+    }
+    cancellation?.let { review ->
+        AlertDialog(onDismissRequest = model::dismissCancellation, title = { Text(stringResource(R.string.nginx_confirm)) },
+            text = { Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(review.id)
+                Text(stringResource(R.string.operations_cancel_explanation))
+            } },
+            confirmButton = { Button(enabled = resumed && !state.busy, onClick = { model.cancel(review) }) { Text(stringResource(R.string.nginx_confirm)) } },
+            dismissButton = { TextButton(onClick = model::dismissCancellation) { Text(stringResource(R.string.common_cancel)) } })
     }
     WebSiteEditor(state, model)
     if (installDialog) NginxInstallDialog(model, onSubmitted = { installDialog = false; onRecords() }) { installDialog = false }

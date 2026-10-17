@@ -20,20 +20,30 @@ internal data class CertificatesState(val busy: Boolean = false, val list: ApiRe
     val recoveryOperationId: String? = null,
     val pending: List<PendingCertificateRequest> = emptyList(), val problemCode: String? = null, val uncertain: Boolean = false,
     val feedbackVersion: Long = 0)
+internal class CertificateCancellation(val owner: SessionState.Active, val operation: CertificateOperation)
 internal class CertificatesViewModel(private val session: AuthSession, private val repository: CertificateRepository,
     private val operationIndex: OperationIndex, private val elevationAnswers: ElevationAnswerProvider) : ViewModel() {
-    suspend fun observeOperation() {
+    private var workGeneration = 0L
+    var cancellation by mutableStateOf<CertificateCancellation?>(null); private set
+    fun dismissCancellation() { cancellation = null }
+    fun requestCancellation(active: SessionState.Active, operation: CertificateOperation) {
+        if (owner === active && activeSession === active && active.privilegedOperations && !state.busy &&
+            state.operationVerified && !state.uncertain && state.operation == operation && operation.state.active)
+            cancellation = CertificateCancellation(active, operation)
+    }
+    suspend fun observeOperation(canObserve: () -> Boolean) {
         val originalOwner = owner ?: return
         val id = state.operation?.operationId ?: return
-        fun current() = owner === originalOwner && activeSession === originalOwner && state.operation?.operationId == id && canObserveOperation()
+        fun current() = owner === originalOwner && activeSession === originalOwner && state.operation?.operationId == id && canObserveOperation() && canObserve()
         while (current()) {
+            val generation = workGeneration
             kotlinx.coroutines.delay(1500)
-            if (!current()) return
+            if (!current() || generation != workGeneration) return
             if (!state.busy) poll()?.join()
         }
     }
     private fun canObserveOperation() = state.operationVerified && state.operation?.state?.active == true &&
-        !state.uncertain && state.problemCode == null && state.draft == null
+        !state.uncertain && state.problemCode == null && state.draft == null && cancellation == null
 
     private val activeSession get() = session.state.value as? SessionState.Active
     private var owner: SessionState.Active? = null
@@ -43,15 +53,15 @@ internal class CertificatesViewModel(private val session: AuthSession, private v
     var state by mutableStateOf(CertificatesState())
         private set
     init { viewModelScope.launch { session.state.collect { next ->
-        if (next !== owner) { owner = next as? SessionState.Active; state = CertificatesState(); sessionEpoch++ }
+        if (next !== owner) { dismissCancellation(); owner = next as? SessionState.Active; state = CertificatesState(); sessionEpoch++ }
     } } }
     fun refresh() = work { active ->
-        state = state.copy(list = null, detail = null, deployments = emptyMap())
+        state = state.copy(list = null, detail = null, deployments = emptyMap(), operationVerified = false)
         val list = repository.list(active); verify(active)
         state = state.copy(list = list, pending = repository.pending(active))
         failure(list)
         state.selectedId?.let { detail(active, it) }
-        if (state.operation == null) (state.recoveryOperationId ?: operationIndex.forOwner(active)
+        (state.operation?.operationId ?: state.recoveryOperationId ?: operationIndex.forOwner(active)
             .firstOrNull { it.domain == OperationDomain.Certificate }?.operationId)?.let { id ->
             state = state.copy(recoveryOperationId = id, operationVerified = false)
             val result = repository.operation(active, id); verify(active)
@@ -61,6 +71,7 @@ internal class CertificatesViewModel(private val session: AuthSession, private v
     }
     fun select(id: String?) {
         if (state.busy) return
+        dismissCancellation()
         state = state.copy(selectedId = id, detail = null)
         if (id != null) work { active -> detail(active, id) }
     }
@@ -78,6 +89,7 @@ internal class CertificatesViewModel(private val session: AuthSession, private v
     }
     fun create(selfSigned: Boolean) {
         if (state.busy) return
+        dismissCancellation()
         val draft = CertificateDraft(selfSigned)
         state = state.copy(draft = draft, initialDraft = draft, draftLocked = false, preflight = null, preflightAtMillis = null, problemCode = null, uncertain = false)
     }
@@ -144,6 +156,7 @@ internal class CertificatesViewModel(private val session: AuthSession, private v
         }
     }
     fun recover(id: String, pending: PendingCertificateRequest? = null) = work { active ->
+        state = state.copy(operationVerified = false)
         val closesDraft = pending != null && pending.target == null && state.draftLocked
         val result = repository.recover(active, id.trim(), pending)
         if (result is ApiResult.Success && closesDraft) { verify(active); closeAfterSubmit() }
@@ -165,15 +178,18 @@ internal class CertificatesViewModel(private val session: AuthSession, private v
     }
     fun poll() = work { active ->
         val current = state.operation ?: return@work
+        state = state.copy(operationVerified = false)
         val result = repository.operation(active, current.operationId); observe(active, result)
         if (result !is ApiResult.Success && current.kind == CertificateAction.DeployKestrel) current.certificateId?.let { deployment(active, it) }
     }
-    fun cancel(expectedOwner: SessionState.Active, operationId: String) {
-        if (owner !== expectedOwner || activeSession !== expectedOwner || !state.operationVerified || state.uncertain ||
-            state.operation?.operationId != operationId || state.operation?.state?.active != true) return
+    fun cancel(review: CertificateCancellation) {
+        if (cancellation !== review) return
+        dismissCancellation()
+        if (owner !== review.owner || activeSession !== review.owner || !state.operationVerified || state.uncertain || state.operation != review.operation) return
         work { active ->
+            state = state.copy(operationVerified = false)
             writing = true
-            val result = repository.cancel(active, operationId)
+            val result = repository.cancel(active, review.operation.operationId)
             writing = false
             observe(active, result, writeResult = true)
         }
@@ -184,13 +200,15 @@ internal class CertificatesViewModel(private val session: AuthSession, private v
     }
     private class WorkStage { var writing = false; var receivedOperation = false }
     private fun work(block: suspend WorkStage.(SessionState.Active) -> Unit): Job? {
+        dismissCancellation()
         val active = activeSession ?: return null
         if (owner !== active) { owner = active; state = CertificatesState(); sessionEpoch++ }
         if (state.busy) return null
+        workGeneration++
         state = state.copy(busy = true, problemCode = null, uncertain = false, feedbackVersion = ++feedbackSequence)
         return viewModelScope.launch {
             val stage = WorkStage()
-            try { stage.block(active) }
+            try { verify(active); stage.block(active) }
             catch (cancelled: CancellationException) {
                 if (activeSession === active) {
                     failure(ApiResult.Transport(null), stage.writing || state.uncertain)

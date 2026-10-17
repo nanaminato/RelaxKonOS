@@ -14,6 +14,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.*
 import org.junit.Assert.*
@@ -42,6 +43,10 @@ class GitWorkspaceViewModelTest {
     private var missing = false
     private val reads = mutableListOf<String>()
     private var sends = 0
+    private val cancelledInstallations = mutableListOf<String>()
+    private var installationReads = 0
+    private val installation = InstallationOperation("44444444-4444-4444-4444-444444444444", InstallationService.Git,
+        InstallationKind.Install, InstallationState.Running, InstallationStage.Downloading, 20, null, 1, 1, null, true)
     private val conflict = GitConflictFile("a.txt", "b".repeat(64), "base", "ours", "theirs", "result", true)
     private var onConflict: suspend () -> ApiResult<GitConflictFile> = { ApiResult.Success(conflict) }
     private val gateway = object : RelaxKonGateway by base {
@@ -71,14 +76,89 @@ class GitWorkspaceViewModelTest {
         Dispatchers.setMain(StandardTestDispatcher())
         model = GitWorkspaceViewModel(session, GitRepositoryClient(gateway, session, index), workspace, installations, index, ElevationAnswerProvider.Declines)
         store.put("git", model)
+        base.onActiveInstallation = { ApiResult.Success(installation) }
+        base.onInstallation = { installationReads++; ApiResult.Success(installation) }
+        base.onCancelInstallation = { id, _ -> cancelledInstallations += id; ApiResult.Transport(null) }
     }
     @After fun cleanup() { store.clear(); Dispatchers.resetMain() }
-    private suspend fun login() {
+    private suspend fun login(manage: Boolean = false) {
         base.onLogin = { _, _, _ -> ApiResult.Success(loginSession().let {
-            it.copy(server = it.server.copy(capabilities = setOf(ServerCapabilities.GIT), privilegedOperations = false),
+            it.copy(server = it.server.copy(capabilities = setOf(ServerCapabilities.GIT), privilegedOperations = manage),
                 executionEligibility = it.executionEligibility.copy(available = true))
         }) }
         session.login(ServerConnectionIdentityRules.direct("https://host.test"), "alice", "pw".toCharArray()) {}
+    }
+    @Test fun `replacement installation revokes old confirmation and new target cancels once`() = runTest {
+        login(true); runCurrent(); model.refresh(); advanceUntilIdle()
+        val owner = requireNotNull(model.state.owner)
+        model.requestInstallationCancellation(owner, installation)
+        val old = requireNotNull(model.installationCancellation)
+        val replacement = installation.copy(operationId = "66666666-6666-6666-6666-666666666666")
+        base.onActiveInstallation = { ApiResult.Success(replacement) }
+        model.refresh(); advanceUntilIdle(); model.cancelInstall(old); advanceUntilIdle()
+        assertNull(model.installationCancellation); assertTrue(cancelledInstallations.isEmpty())
+        model.requestInstallationCancellation(owner, replacement)
+        val current = requireNotNull(model.installationCancellation)
+        model.cancelInstall(current); model.cancelInstall(current); advanceUntilIdle()
+        assertEquals(listOf(replacement.operationId), cancelledInstallations)
+        assertFalse(model.state.installationVerified)
+    }
+    @Test fun `reopening same task does not revive dismissed confirmation`() = runTest {
+        login(true); runCurrent(); model.refresh(); advanceUntilIdle()
+        val owner = requireNotNull(model.state.owner)
+        model.requestInstallationCancellation(owner, installation)
+        val old = requireNotNull(model.installationCancellation)
+        model.dismissInstallationCancellation(); model.requestInstallationCancellation(owner, installation)
+        val current = requireNotNull(model.installationCancellation)
+        model.cancelInstall(old)
+        assertSame(current, model.installationCancellation); assertTrue(cancelledInstallations.isEmpty())
+    }
+    @Test fun `cancelled task query revokes old verified state until explicit recovery`() = runTest {
+        login(true); runCurrent(); model.refresh(); advanceUntilIdle()
+        base.onInstallation = { throw CancellationException("isolated cancelled query") }
+        model.pollInstall(); advanceUntilIdle()
+        assertFalse(model.state.installationVerified); assertFalse(model.state.busy)
+        model.requestInstallationCancellation(requireNotNull(model.state.owner), installation)
+        assertNull(model.installationCancellation); assertTrue(cancelledInstallations.isEmpty())
+        base.onInstallation = { ApiResult.Success(installation) }
+        model.pollInstall(); advanceUntilIdle()
+        assertTrue(model.state.installationVerified); assertNull(model.state.problem)
+    }
+    @Test fun `failed refresh withdraws old task qualification and confirmation`() = runTest {
+        login(true); runCurrent(); model.refresh(); advanceUntilIdle()
+        model.requestInstallationCancellation(requireNotNull(model.state.owner), installation)
+        base.onActiveInstallation = { throw IllegalStateException("isolated failed refresh") }
+        model.refresh(); advanceUntilIdle()
+        assertNull(model.installationCancellation); assertFalse(model.state.installationVerified)
+        assertEquals("git.workspace.unverified", model.state.problem)
+    }
+    @Test fun `same address relogin and stop reject old cancellation callbacks`() = runTest {
+        login(true); runCurrent(); model.refresh(); advanceUntilIdle()
+        model.requestInstallationCancellation(requireNotNull(model.state.owner), installation)
+        val old = requireNotNull(model.installationCancellation)
+        login(true); runCurrent(); model.cancelInstall(old); advanceUntilIdle()
+        assertNull(model.state.installation); assertNull(model.installationCancellation)
+        model.refresh(); advanceUntilIdle()
+        model.requestInstallationCancellation(requireNotNull(model.state.owner), installation)
+        val stopped = requireNotNull(model.installationCancellation)
+        model.stop(); model.cancelInstall(stopped); advanceUntilIdle()
+        assertNull(model.installationCancellation); assertTrue(cancelledInstallations.isEmpty())
+    }
+    @Test fun `installation timer rechecks foreground generation and pending confirmation`() = runTest {
+        login(true); runCurrent(); model.refresh(); advanceUntilIdle()
+        var foreground = true
+        val background = launch { model.observeInstallation { foreground } }; runCurrent()
+        foreground = false; advanceTimeBy(2600); runCurrent(); background.join()
+        assertEquals(0, installationReads)
+        val stale = launch { model.observeInstallation { true } }; runCurrent()
+        model.refresh(); runCurrent(); advanceTimeBy(2600); runCurrent(); stale.join()
+        assertEquals(0, installationReads)
+        model.requestInstallationCancellation(requireNotNull(model.state.owner), installation)
+        model.observeInstallation { true }; advanceUntilIdle()
+        assertEquals(0, installationReads)
+        model.dismissInstallationCancellation()
+        model.observeInstallation { true }; advanceUntilIdle()
+        assertEquals(1, installationReads)
     }
     @Test fun `preview refusal remains visible after successful fact refresh`() = runTest {
         login(); runCurrent(); model.refresh(); advanceUntilIdle()

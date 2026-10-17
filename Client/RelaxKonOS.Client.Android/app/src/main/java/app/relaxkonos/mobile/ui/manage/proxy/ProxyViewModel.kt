@@ -1,11 +1,11 @@
 package app.relaxkonos.mobile.ui.manage.proxy
 
-import android.app.Application
+import app.relaxkonos.mobile.core.auth.AuthSession
 import android.net.Uri
 import androidx.compose.runtime.*
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import app.relaxkonos.mobile.RelaxKonApplication
+
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.data.*
@@ -13,6 +13,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.Job
 
 internal data class ProxyState(val busy: Boolean = false, val overview: ApiResult<ProxyOverview>? = null,
     val profiles: ApiResult<List<ProxyProfile>>? = null, val subscriptions: ApiResult<List<ProxySubscription>>? = null,
@@ -27,87 +28,119 @@ internal data class ProxyState(val busy: Boolean = false, val overview: ApiResul
     val settings: ApiResult<ProxySettings>? = null, val recovery: ApiResult<ProxyRecovery>? = null,
     val traffic: ApiResult<ProxyTraffic>? = null, val connections: ApiResult<List<ProxyConnection>>? = null,
     val logs: ApiResult<List<ProxyLog>>? = null, val dns: ApiResult<ProxyDns>? = null, val geoData: ApiResult<ProxyGeoData>? = null,
-    val diagnosticsBusy: Boolean = false, val diagnosticsSection: String? = null, val diagnosticsAtMillis: Long? = null, val problemCode: String? = null, val uncertain: Boolean = false, val savedEpoch: Int = 0, val observedAtMillis: Long? = null)
-internal class ProxyViewModel(application: Application) : AndroidViewModel(application) {
-    suspend fun observeOperation() {
-        if (state.operationVerified && state.operation?.state?.active == true && !state.busy) {
+    val diagnosticsBusy: Boolean = false, val diagnosticsFailed: Boolean = false, val diagnosticsSection: String? = null, val diagnosticsAtMillis: Long? = null, val problemCode: String? = null, val uncertain: Boolean = false, val savedEpoch: Int = 0, val observedAtMillis: Long? = null)
+internal class ProxyInstallationCancellation(val owner: SessionState.Active, val operation: InstallationOperation)
+internal class ProxyViewModel(private val session: AuthSession, private val repository: ProxyRepository,
+    private val installations: InstallationRepository, private val operationIndex: OperationIndex,
+    private val elevationAnswers: ElevationAnswerProvider, private val uploadDocuments: UploadDocumentOpener) : ViewModel() {
+    private var workGeneration = 0L
+    private var diagnosticsGeneration = 0L
+    private var diagnosticsJob: Job? = null
+    var installationCancellation by mutableStateOf<ProxyInstallationCancellation?>(null); private set
+    fun dismissInstallationCancellation() { installationCancellation = null }
+    fun requestInstallationCancellation(active: SessionState.Active, operation: InstallationOperation) {
+        if (activeSession === active && owner === active && active.privilegedOperations && !state.busy &&
+            state.installationVerified && state.installation == operation && operation.state.active && operation.cancellable)
+            installationCancellation = ProxyInstallationCancellation(active, operation)
+    }
+    private fun canObserveTasks() = !state.busy && !state.uncertain && state.problemCode == null && installationCancellation == null
+    suspend fun observeTasks(canObserve: () -> Boolean) {
+        val active = activeSession ?: return
+        val operation = state.operation?.takeIf { state.operationVerified && it.state.active }
+        val installation = state.installation?.takeIf { state.installationVerified && it.state.active }
+        val generation = workGeneration
+        if ((operation != null || installation != null) && canObserveTasks() && canObserve()) {
             kotlinx.coroutines.delay(1500)
-            pollOperation()
+            if (activeSession === active && owner === active && generation == workGeneration &&
+                (operation == null || state.operationVerified && state.operation == operation) &&
+                (installation == null || state.installationVerified && state.installation == installation) && canObserveTasks() && canObserve()) {
+                work { current ->
+                    state = state.copy(operationVerified = if (operation != null) false else state.operationVerified,
+                        installationVerified = if (installation != null) false else state.installationVerified)
+                    val operationResponse = operation?.let { repository.operation(current, it.operationId) }
+                    if (operationResponse != null) operationResult(current, operationResponse)
+                    val installationResponse = installation?.let { installations.operation(current, it.operationId) }
+                    if (installationResponse != null) installationResult(current, installationResponse)
+                    if (operationResponse is ApiResult.Success && !operationResponse.value.state.active &&
+                        !(installationResponse is ApiResult.Success && !installationResponse.value.state.active)) load(current)
+                }
+            }
         }
     }
 
-    suspend fun observeDiagnostics(section: String) {
-        val overview = (state.overview as? ApiResult.Success)?.value
-        if (section !in setOf("connections", "logs", "settings") || overview?.controllerReachable != true || state.uncertain) return
-        while (true) {
+    suspend fun observeDiagnostics(section: String, canObserve: () -> Boolean) {
+        val active = activeSession ?: return
+        if (section !in setOf("connections", "logs", "settings")) return
+        while (activeSession === active && owner === active && canObserveTasks() && canObserve() &&
+            (state.overview as? ApiResult.Success)?.value?.controllerReachable == true) {
             diagnostics(section)
             kotlinx.coroutines.delay(3000)
         }
     }
 
-    suspend fun observeInstallation() {
-        if (state.installationVerified && state.installation?.state?.active == true && !state.busy) {
-            kotlinx.coroutines.delay(1500)
-            pollInstall()
-        }
-    }
-
-    private val container get() = getApplication<RelaxKonApplication>().container
+    private val activeSession get() = session.state.value as? SessionState.Active
     private var owner: SessionState.Active? = null
     private var intent: InstallationSubmission? = null
     var state by mutableStateOf(ProxyState())
         private set
     var sessionEpoch by mutableIntStateOf(0)
         private set
-    init { viewModelScope.launch { container.session.state.collect { next ->
-        if (next !== owner) { owner = next as? SessionState.Active; intent = null; state = ProxyState(); sessionEpoch++ }
+    init { viewModelScope.launch { session.state.collect { next ->
+        if (next !== owner) { dismissInstallationCancellation(); stopDiagnostics(); owner = next as? SessionState.Active; intent = null; state = ProxyState(); sessionEpoch++ }
     } } }
     fun refresh() = work { active ->
+        state = state.copy(operationVerified = false, installationVerified = false)
         load(active)
-        val id = container.operationIndex.forOwner(active).firstOrNull { it.domain == OperationDomain.Proxy }?.operationId ?: state.operation?.operationId
-        if (id != null) operationResult(active, container.proxy.operation(active, id))
+        val id = operationIndex.forOwner(active).firstOrNull { it.domain == OperationDomain.Proxy }?.operationId ?: state.operation?.operationId
+        if (id != null) operationResult(active, repository.operation(active, id))
         if (active.privilegedOperations) {
-            val result = container.installations.active(active, InstallationService.Mihomo); verify(active)
+            val result = installations.active(active, InstallationService.Mihomo); verify(active)
             if (result is ApiResult.Success && result.value != null) installationResult(active, ApiResult.Success(result.value))
-            else if (result !is ApiResult.Success) state = state.copy(installationVerified = false)
+            else if (result !is ApiResult.Success) { failure(result); state = state.copy(installationVerified = false) }
             else {
-                val old = state.installation?.operationId ?: container.operationIndex.forOwner(active).firstOrNull { it.domain == OperationDomain.Installation && it.resourceId == InstallationService.Mihomo.name }?.operationId
-                if (old != null) installationResult(active, container.installations.operation(active, old))
+                val old = state.installation?.operationId ?: operationIndex.forOwner(active).firstOrNull { it.domain == OperationDomain.Installation && it.resourceId == InstallationService.Mihomo.name }?.operationId
+                if (old != null) installationResult(active, installations.operation(active, old))
             }
         }
     }
     private suspend fun load(active: SessionState.Active) {
-        val overview = container.proxy.overview(active); val profiles = container.proxy.profiles(active); val subscriptions = container.proxy.subscriptions(active)
+        state = state.copy(overview = null, profiles = null, subscriptions = null, groups = null, routing = null,
+            settings = null, recovery = null, geoData = null, observedAtMillis = null)
+        val overview = repository.overview(active); val profiles = repository.profiles(active); val subscriptions = repository.subscriptions(active)
         verify(active)
         val facts = (overview as? ApiResult.Success)?.value
-        val groups = if (facts?.controllerReachable == true && facts.supportsGroups) container.proxy.groups(active) else null
-        val routing = if (facts?.controllerReachable == true) container.proxy.routing(active) else null
-        val options = if (active.privilegedOperations) container.proxy.downloadOptions(active) else null
-        val settings = container.proxy.settings(active); val recovery = container.proxy.recovery(active); val geoData = container.proxy.geoData(active)
+        val groups = if (facts?.controllerReachable == true && facts.supportsGroups) repository.groups(active) else null
+        val routing = if (facts?.controllerReachable == true) repository.routing(active) else null
+        val options = if (active.privilegedOperations) repository.downloadOptions(active) else null
+        val settings = repository.settings(active); val recovery = repository.recovery(active); val geoData = repository.geoData(active)
         verify(active)
         state = state.copy(overview = overview, profiles = profiles, subscriptions = subscriptions, groups = groups, routing = routing,
-            downloadOptions = (options as? ApiResult.Success)?.value == true, settings = settings, recovery = recovery, geoData = geoData, pending = container.proxy.pending(active),
-            pendingInstallation = container.installations.pending(active).any { it.service == InstallationService.Mihomo }, observedAtMillis = System.currentTimeMillis())
+            downloadOptions = (options as? ApiResult.Success)?.value == true, settings = settings, recovery = recovery, geoData = geoData, pending = repository.pending(active),
+            pendingInstallation = installations.pending(active).any { it.service == InstallationService.Mihomo }, observedAtMillis = System.currentTimeMillis())
         val failure = listOfNotNull(overview, profiles, subscriptions, groups, routing, options, settings, recovery, geoData).firstOrNull { it !is ApiResult.Success }
         if (failure != null) failure(failure)
     }
     fun queue(action: ProxyAction, target: String? = null) = work { active ->
-        operationResult(active, container.proxy.queue(active, action, target)); retainAccepted(active); load(active)
+        operationResult(active, repository.queue(active, action, target)); retainAccepted(active); load(active)
     }
-    fun resume(pending: PendingProxyRequest) = work { active -> operationResult(active, container.proxy.resume(active, pending)); retainAccepted(active); load(active) }
+    fun resume(pending: PendingProxyRequest) = work { active -> operationResult(active, repository.resume(active, pending)); retainAccepted(active); load(active) }
     private fun retainAccepted(active: SessionState.Active) {
         verify(active)
-        val reference = container.operationIndex.forOwner(active).firstOrNull { it.domain == OperationDomain.Proxy } ?: return
+        val reference = operationIndex.forOwner(active).firstOrNull { it.domain == OperationDomain.Proxy } ?: return
         if (reference.operationId != state.operation?.operationId) state = state.copy(
             operation = ProxyOperation(reference.operationId, reference.resourceId, ProxyOperationState.Queued, "queued", ""), operationVerified = false)
     }
     fun accept(pending: PendingProxyRequest) = work { active ->
-        val result = container.proxy.acceptFacts(active, pending); verify(active); failure(result); load(active)
+        val result = repository.acceptFacts(active, pending); verify(active); failure(result); load(active)
     }
-    fun recoverOperation(id: String) = work { active -> operationResult(active, container.proxy.operation(active, id.trim())) }
+    fun recoverOperation(id: String) = work { active ->
+        state = state.copy(operationVerified = false)
+        operationResult(active, repository.operation(active, id.trim()))
+    }
     fun pollOperation() = work { active ->
         val id = state.operation?.operationId ?: return@work
-        val result = container.proxy.operation(active, id); operationResult(active, result)
+        state = state.copy(operationVerified = false)
+        val result = repository.operation(active, id); operationResult(active, result)
         if (result is ApiResult.Success && !result.value.state.active) load(active)
     }
     private fun operationResult(active: SessionState.Active, result: ApiResult<ProxyOperation>) {
@@ -115,68 +148,79 @@ internal class ProxyViewModel(application: Application) : AndroidViewModel(appli
         state = state.copy(operationVerified = result is ApiResult.Success, operation = (result as? ApiResult.Success)?.value ?: state.operation)
         if (result is ApiResult.Success && result.value.problemCode.isNotBlank()) state = state.copy(problemCode = result.value.problemCode)
     }
-    fun saveProfile(profile: ProxyProfile?, name: String) = mutation { active -> container.proxy.saveProfile(active, profile?.id, ProxyProfileRequest(name.trim(), profile?.revision)) }
-    fun activate(profile: ProxyProfile) = mutation { active -> container.proxy.activateProfile(active, profile.id) }
-    fun delete(profile: ProxyProfile) = mutation { active -> container.proxy.deleteProfile(active, profile.id) }
-    fun apply(profile: ProxyProfile, yaml: String) = mutation { active -> container.proxy.apply(active, profile.id, yaml) }
-    fun import(url: String, name: String, route: ProxyDownloadRoute) = mutation { active -> container.proxy.import(active, ProxyImportRequest(url.trim(), name.trim(), route)) }
-    fun select(group: ProxyGroup, proxy: String) = mutation { active -> container.proxy.select(active, group, proxy) }
-    fun routing(mode: ProxyRoutingMode) = mutation { active -> container.proxy.routing(active, mode) }
-    fun saveSettings(settings: ProxySettings) = mutation { active -> container.proxy.saveSettings(active, settings) }
-    fun configureGeoData(path: String) = mutation { active -> container.proxy.configureGeoData(active, path) }
+    fun saveProfile(profile: ProxyProfile?, name: String) = mutation { active -> repository.saveProfile(active, profile?.id, ProxyProfileRequest(name.trim(), profile?.revision)) }
+    fun activate(profile: ProxyProfile) = mutation { active -> repository.activateProfile(active, profile.id) }
+    fun delete(profile: ProxyProfile) = mutation { active -> repository.deleteProfile(active, profile.id) }
+    fun apply(profile: ProxyProfile, yaml: String) = mutation { active -> repository.apply(active, profile.id, yaml) }
+    fun import(url: String, name: String, route: ProxyDownloadRoute) = mutation { active -> repository.import(active, ProxyImportRequest(url.trim(), name.trim(), route)) }
+    fun select(group: ProxyGroup, proxy: String) = mutation { active -> repository.select(active, group, proxy) }
+    fun routing(mode: ProxyRoutingMode) = mutation { active -> repository.routing(active, mode) }
+    fun saveSettings(settings: ProxySettings) = mutation { active -> repository.saveSettings(active, settings) }
+    fun configureGeoData(path: String) = mutation { active -> repository.configureGeoData(active, path) }
     fun closeConnection(id: String) = work { active ->
-        val result = container.proxy.closeConnection(active, id); verify(active); failure(result)
+        val result = repository.closeConnection(active, id); verify(active); failure(result)
         if (result is ApiResult.Success) {
             val current = (state.connections as? ApiResult.Success)?.value
             state = state.copy(connections = current?.let { ApiResult.Success(it.filterNot { connection -> connection.id == id }) })
         }
     }
     fun diagnostics(section: String) {
-        val active = container.activeSession ?: return
+        val active = activeSession ?: return
         val overview = (state.overview as? ApiResult.Success)?.value ?: return
-        if (state.busy || state.diagnosticsBusy || !overview.controllerReachable) return
-        state = state.copy(diagnosticsBusy = true)
-        viewModelScope.launch {
+        if (owner !== active || state.busy || state.diagnosticsBusy || !overview.controllerReachable || section !in setOf("connections", "logs", "settings")) return
+        val generation = ++diagnosticsGeneration
+        fun verifyRead() { verify(active); if (diagnosticsGeneration != generation) throw CancellationException("Proxy diagnostics changed") }
+        state = state.copy(diagnosticsBusy = true, diagnosticsFailed = false, diagnosticsAtMillis = null,
+            traffic = if (section == "connections") null else state.traffic)
+        diagnosticsJob = viewModelScope.launch {
             try {
                 coroutineScope {
                     when (section) {
                         "connections" -> {
-                            val traffic = async { container.proxy.traffic(active) }
-                            val connections = async { if (overview.supportsConnections) container.proxy.connections(active) else null }
-                            val rows = connections.await(); verify(active)
+                            val traffic = async { repository.traffic(active) }
+                            val connections = async { if (overview.supportsConnections) repository.connections(active) else null }
+                            val rows = connections.await(); verifyRead()
                             // Render connections before waiting for the flow counters.
                             state = state.copy(connections = rows)
-                            val counters = traffic.await(); verify(active)
-                            state = state.copy(traffic = counters)
+                            val counters = traffic.await(); verifyRead()
+                            state = state.copy(traffic = counters, diagnosticsFailed = rows != null && rows !is ApiResult.Success || counters !is ApiResult.Success)
                         }
                         "logs" -> {
-                            val logs = if (overview.supportsLogs) container.proxy.logs(active) else null; verify(active)
+                            val logs = if (overview.supportsLogs) repository.logs(active) else null; verifyRead()
                             val previous = (state.logs as? ApiResult.Success)?.value.orEmpty()
-                            state = state.copy(logs = if (logs is ApiResult.Success)
+                            state = state.copy(diagnosticsFailed = logs != null && logs !is ApiResult.Success, logs = if (logs is ApiResult.Success)
                                 ApiResult.Success((logs.value + previous).distinct().sortedByDescending { it.timestampMillis }.take(500)) else logs)
                         }
                         "settings" -> {
-                            val dns = if (overview.supportsDns) container.proxy.dns(active) else null; verify(active)
-                            state = state.copy(dns = dns)
+                            val dns = if (overview.supportsDns) repository.dns(active) else null; verifyRead()
+                            state = state.copy(dns = dns, diagnosticsFailed = dns != null && dns !is ApiResult.Success)
                         }
                     }
                 }
-                verify(active)
+                verifyRead()
                 state = state.copy(diagnosticsSection = section, diagnosticsAtMillis = System.currentTimeMillis())
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) {
-                if (container.activeSession === active) when (section) {
+                if (activeSession === active && diagnosticsGeneration == generation) {
+                    state = state.copy(diagnosticsFailed = true)
+                    when (section) {
                     "connections" -> state = state.copy(connections = ApiResult.Transport(null))
                     "logs" -> state = state.copy(logs = ApiResult.Transport(null))
                     "settings" -> state = state.copy(dns = ApiResult.Transport(null))
+                    }
                 }
             } finally {
-                if (container.activeSession === active) state = state.copy(diagnosticsBusy = false)
+                if (activeSession === active && diagnosticsGeneration == generation) state = state.copy(diagnosticsBusy = false)
             }
         }
     }
+    fun stopDiagnostics() {
+        diagnosticsGeneration++
+        diagnosticsJob?.cancel(); diagnosticsJob = null
+        state = state.copy(diagnosticsBusy = false)
+    }
     fun testGroup(group: ProxyGroup) {
-        val active = container.activeSession ?: return
+        val active = activeSession ?: return
         if (owner !== active) { owner = active; intent = null; state = ProxyState(); sessionEpoch++ }
         if (state.busy || state.testingGroup != null) return
         val names = group.proxies.toSet()
@@ -184,13 +228,13 @@ internal class ProxyViewModel(application: Application) : AndroidViewModel(appli
         viewModelScope.launch {
             try {
                 testProxyGroupLatency(group,
-                    test = { proxy -> container.proxy.delay(active, group.name, proxy, "https://www.gstatic.com/generate_204", 5000) },
+                    test = { proxy -> repository.delay(active, group.name, proxy, "https://www.gstatic.com/generate_204", 5000) },
                     onResult = { proxy, result ->
                         verify(active)
                         state = state.copy(delays = state.delays + (proxy to result), testingProxies = state.testingProxies - proxy)
                     })
             } finally {
-                if (container.activeSession === active) state = state.copy(testingGroup = null, testingProxies = emptySet())
+                if (activeSession === active) state = state.copy(testingGroup = null, testingProxies = emptySet())
             }
         }
     }
@@ -201,55 +245,68 @@ internal class ProxyViewModel(application: Application) : AndroidViewModel(appli
         if (result !is ApiResult.Success) failure(result)
     }
     fun loadReleases() = work { active ->
-        val result = container.proxy.releases(active); verify(active); failure(result); state = state.copy(releases = result)
+        val result = repository.releases(active); verify(active); failure(result); state = state.copy(releases = result)
     }
     fun download(version: String) = work { active ->
-        val result = container.proxy.download(active, version); verify(active); failure(result); state = state.copy(download = result)
+        val result = repository.download(active, version); verify(active); failure(result); state = state.copy(download = result)
     }
     fun clearReference() { if (!state.busy && intent == null) state = state.copy(reference = null, download = null) }
     fun reference(path: String) = work { active ->
-        val result = container.installations.fileReference(active, InstallationService.Mihomo, path); verify(active); failure(result)
+        val result = installations.fileReference(active, InstallationService.Mihomo, path); verify(active); failure(result)
         state = state.copy(reference = (result as? ApiResult.Success)?.value)
     }
     fun upload(uri: Uri) = work { active ->
-        val document = container.uploadDocuments.open(uri.toString()) ?: run { state = state.copy(problemCode = InstallationProblemCodes.FILE_REFERENCE_UNAVAILABLE); return@work }
-        val result = container.installations.upload(active, InstallationService.Mihomo, document) { bytes ->
-            viewModelScope.launch { if (container.activeSession === active && state.busy) state = state.copy(uploadBytes = bytes) }
+        val document = uploadDocuments.open(uri.toString()) ?: run { state = state.copy(problemCode = InstallationProblemCodes.FILE_REFERENCE_UNAVAILABLE); return@work }
+        val result = installations.upload(active, InstallationService.Mihomo, document) { bytes ->
+            viewModelScope.launch { if (activeSession === active && state.busy) state = state.copy(uploadBytes = bytes) }
         }; verify(active); failure(result); state = state.copy(reference = (result as? ApiResult.Success)?.value, uploadBytes = null)
     }
     fun install(kind: InstallationKind, version: String?, rollback: Boolean, packageSource: Boolean) = work { active ->
         if (intent == null) {
             if (packageSource && state.reference?.expired() != false) { state = state.copy(problemCode = InstallationProblemCodes.FILE_REFERENCE_UNAVAILABLE); return@work }
-            intent = container.installations.prepare(active, kind, MihomoInstallationRequest(true, version?.trim()?.takeIf(String::isNotEmpty), rollback, if (packageSource) state.reference?.id else null))
+            intent = installations.prepare(active, kind, MihomoInstallationRequest(true, version?.trim()?.takeIf(String::isNotEmpty), rollback, if (packageSource) state.reference?.id else null))
         }
-        val result = container.installations.submit(requireNotNull(intent), container.elevationAnswers); verify(active); failure(result)
-        state = state.copy(pendingInstallation = container.installations.pending(active).any { it.service == InstallationService.Mihomo })
+        val result = installations.submit(requireNotNull(intent), elevationAnswers); verify(active); failure(result)
+        state = state.copy(pendingInstallation = installations.pending(active).any { it.service == InstallationService.Mihomo })
         if (result is ApiResult.Success) { intent = null; installationResult(active, result); state = state.copy(reference = null, pendingInstallation = false) }
         else if (result is ApiResult.Problem && !state.pendingInstallation) intent = null
     }
     fun retryInstall() { val old = intent ?: return; val r = old.request as MihomoInstallationRequest; install(old.kind, r.version, r.rollback, r.fileReferenceId != null) }
     fun acceptInstallationFacts() = work { active ->
-        val pending = container.installations.pending(active).firstOrNull { it.service == InstallationService.Mihomo } ?: return@work
-        val overview = container.proxy.overview(active); verify(active); failure(overview)
+        val pending = installations.pending(active).firstOrNull { it.service == InstallationService.Mihomo } ?: return@work
+        val overview = repository.overview(active); verify(active); failure(overview)
         if (overview !is ApiResult.Success) return@work
-        val result = container.installations.acceptCurrentFacts(active, pending); verify(active); failure(result)
+        val result = installations.acceptCurrentFacts(active, pending); verify(active); failure(result)
         if (result is ApiResult.Success) { intent = null; load(active) }
     }
     val hasIntent get() = intent != null
     val currentIntent get() = intent
     fun recoverInstall(id: String, identified: Boolean) = work { active ->
-        val pending = container.installations.pending(active).firstOrNull { it.service == InstallationService.Mihomo }
+        val pending = installations.pending(active).firstOrNull { it.service == InstallationService.Mihomo }
         if (pending != null && !identified) return@work
-        val result = if (pending == null) container.installations.recoverById(active, id.trim()) else container.installations.identifyOriginal(active, pending, id.trim())
+        state = state.copy(installationVerified = false)
+        val result = if (pending == null) installations.recoverById(active, id.trim()) else installations.identifyOriginal(active, pending, id.trim())
         installationResult(active, result)
         if (result is ApiResult.Success && result.value.service == InstallationService.Mihomo) intent = null
     }
-    fun pollInstall() = work { active -> val id = state.installation?.operationId ?: return@work; installationResult(active, container.installations.operation(active, id)) }
-    fun cancelInstall() = work { active -> val id = state.installation?.operationId ?: return@work; installationResult(active, container.installations.cancel(active, id)) }
+    fun pollInstall() = work { active ->
+        val id = state.installation?.operationId ?: return@work
+        state = state.copy(installationVerified = false)
+        installationResult(active, installations.operation(active, id))
+    }
+    fun cancelInstall(review: ProxyInstallationCancellation) {
+        if (installationCancellation !== review) return
+        dismissInstallationCancellation()
+        if (activeSession !== review.owner || owner !== review.owner || !state.installationVerified || state.installation != review.operation) return
+        work { active ->
+            state = state.copy(installationVerified = false)
+            installationResult(active, installations.cancel(active, review.operation.operationId))
+        }
+    }
     private suspend fun installationResult(active: SessionState.Active, result: ApiResult<InstallationOperation>) {
         verify(active); failure(result)
         if (result is ApiResult.Success && result.value.service == InstallationService.Mihomo) {
-            state = state.copy(installation = result.value, installationVerified = true, pendingInstallation = container.installations.pending(active).any { it.service == InstallationService.Mihomo })
+            state = state.copy(installation = result.value, installationVerified = true, pendingInstallation = installations.pending(active).any { it.service == InstallationService.Mihomo })
             if (!result.value.state.active) load(active)
         } else state = state.copy(installationVerified = false, uncertain = true)
     }
@@ -258,18 +315,21 @@ internal class ProxyViewModel(application: Application) : AndroidViewModel(appli
         if (result is ApiResult.Transport) state = state.copy(uncertain = true)
     }
     private fun work(block: suspend (SessionState.Active) -> Unit) {
-        val active = container.activeSession ?: return
+        dismissInstallationCancellation()
+        val active = activeSession ?: return
         if (owner !== active) { owner = active; intent = null; state = ProxyState(); sessionEpoch++ }
         if (state.busy) return
+        stopDiagnostics()
+        workGeneration++
         state = state.copy(busy = true, problemCode = null, uncertain = false)
         viewModelScope.launch {
             try { verify(active); block(active) }
             catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { if (container.activeSession === active) state = state.copy(uncertain = true, operationVerified = false, installationVerified = false) }
-            finally { if (container.activeSession === active) state = state.copy(busy = false,
-                pending = runCatching { container.proxy.pending(active) }.getOrDefault(state.pending),
-                pendingInstallation = runCatching { container.installations.pending(active).any { it.service == InstallationService.Mihomo } }.getOrDefault(state.pendingInstallation)) }
+            catch (_: Exception) { if (activeSession === active) state = state.copy(uncertain = true, operationVerified = false, installationVerified = false) }
+            finally { if (activeSession === active) state = state.copy(busy = false,
+                pending = runCatching { repository.pending(active) }.getOrDefault(state.pending),
+                pendingInstallation = runCatching { installations.pending(active).any { it.service == InstallationService.Mihomo } }.getOrDefault(state.pendingInstallation)) }
         }
     }
-    private fun verify(active: SessionState.Active) { if (container.activeSession !== active) throw CancellationException("Proxy session changed") }
+    private fun verify(active: SessionState.Active) { if (activeSession !== active) throw CancellationException("Proxy session changed") }
 }

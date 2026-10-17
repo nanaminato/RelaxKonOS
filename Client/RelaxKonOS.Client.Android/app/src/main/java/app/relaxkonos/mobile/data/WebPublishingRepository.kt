@@ -35,19 +35,29 @@ class WebPublishingRepository(
             } else result
         }
 
-    suspend fun publish(request: WebsitePublishRequest, provider: ElevationAnswerProvider): ApiResult<WebsitePublicationOperation> {
+    suspend fun publish(owner: SessionState.Active, request: WebsitePublishRequest, idempotencyKey: String, provider: ElevationAnswerProvider): ApiResult<WebsitePublicationOperation> {
         require(request.confirmed) { "Website publication must be confirmed." }
-        val owner = session.state.value as? SessionState.Active
-        val idempotencyKey = UUID.randomUUID().toString()
-        val result = elevations.withElevation("nginxConfigurationWrite", request.webServerId, provider) { url, token ->
+        require(UUID.fromString(idempotencyKey).toString() == idempotencyKey)
+        fun verifyOwner() { if (session.state.value !== owner) throw CancellationException("Website publication session changed") }
+        verifyOwner()
+        val guarded = ElevationAnswerProvider { capability, target ->
+            verifyOwner()
+            val answer = provider.answer(capability, target)
+            if (session.state.value !== owner) { answer?.password?.fill('\u0000'); verifyOwner() }
+            answer
+        }
+        val result = elevations.withElevation("nginxConfigurationWrite", request.webServerId, guarded) { url, token ->
+            verifyOwner()
             gateway.publishWebsite(url, token, request, idempotencyKey)
         }
-        if (result is ApiResult.Success) {
-            if (owner != null && session.state.value === owner) runCatching {
-                operationIndex?.record(owner, OperationDomain.Website, result.value.applicationId, result.value.operationId)
-            }
-        }
+        verifyOwner()
+        if (result is ApiResult.Success && (result.value.applicationId != request.applicationId || result.value.webServerId != request.webServerId ||
+                result.value.domain != request.domain.trim().trimEnd('.').lowercase())) return ApiResult.Transport(null)
         return result
+    }
+    fun remember(owner: SessionState.Active, operation: WebsitePublicationOperation) {
+        if (session.state.value !== owner) throw CancellationException("Website publication session changed")
+        operationIndex?.record(owner, OperationDomain.Website, operation.applicationId, operation.operationId)
     }
 
     private suspend fun <T> read(owner: SessionState.Active, call: suspend (String, String) -> ApiResult<T>): ApiResult<T> = reads.withLock {
