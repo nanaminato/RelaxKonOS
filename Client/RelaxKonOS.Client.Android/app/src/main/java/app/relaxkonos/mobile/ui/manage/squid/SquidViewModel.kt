@@ -56,6 +56,8 @@ internal class SquidViewModel(private val session: AuthSession, private val repo
         state = if (result is ApiResult.Success) state.copy(validation = result.value) else state.copy(problem = problem(result))
     }
     fun apply() = work { owner ->
+        require(owner.controller && owner.privilegedOperations && state.pending == null)
+        require(state.snapshot?.status?.let { it.supported && it.installed && !it.recoveryRequired } == true)
         val request = SquidRequest(state.draft.configuration(), state.draft.adopt)
         val preview = repository.preview(owner, requireNotNull(request.configuration)); verify(owner)
         if (preview !is ApiResult.Success) { state = state.copy(problem = problem(preview)); return@work }
@@ -63,7 +65,13 @@ internal class SquidViewModel(private val session: AuthSession, private val repo
         if (!preview.value.valid) { state = state.copy(problem = "squid.invalid"); return@work }
         watch(owner, repository.begin(owner, request))
     }
-    fun lifecycle(action: SquidAction) = work { owner -> watch(owner, repository.begin(owner, SquidRequest(action = action))) }
+    fun lifecycle(action: SquidAction) = work { owner ->
+        require(owner.controller && owner.privilegedOperations && state.pending == null)
+        val status = requireNotNull(state.snapshot?.status)
+        require(status.supported && status.installed)
+        require(action in setOf(SquidAction.Stop, SquidAction.Disable) || (!status.recoveryRequired && status.managed))
+        watch(owner, repository.begin(owner, SquidRequest(action = action)))
+    }
     fun resume() = work { owner -> watch(owner, repository.resume(owner)) }
     private suspend fun watch(owner: SessionState.Active, result: ApiResult<String>) {
         verify(owner)
