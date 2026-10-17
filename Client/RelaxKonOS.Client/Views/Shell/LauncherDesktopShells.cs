@@ -1426,9 +1426,17 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
         var icon = UbuntuAppIcon(group, 32);
         icon.HorizontalAlignment = HorizontalAlignment.Center;
         icon.VerticalAlignment = VerticalAlignment.Center;
+        var content = new Grid();
+        content.Children.Add(icon);
+        content.Children.Add(new Border
+        {
+            Width = 3, Height = 16, CornerRadius = new CornerRadius(2),
+            Background = Brush.Parse("#E95420"), HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
         var button = new Button
         {
-            Content = icon,
+            Content = content,
             Command = vm.ToggleTaskbarGroupCommand,
             CommandParameter = group,
             Width = 48,
@@ -1438,15 +1446,6 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
             Background = Brushes.Transparent,
             BorderBrush = Brushes.Transparent,
         };
-        var content = new Grid();
-        content.Children.Add(icon);
-        content.Children.Add(new Border
-        {
-            Width = 3, Height = 16, CornerRadius = new CornerRadius(2),
-            Background = Brush.Parse("#E95420"), HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Center,
-        });
-        button.Content = content;
         ToolTip.SetTip(button, group.DisplayName);
         return button;
     }

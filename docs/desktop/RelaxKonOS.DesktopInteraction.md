@@ -59,3 +59,9 @@ dotnet build examples/Windows11DesktopShell -p:UsedAvaloniaProducts=
 专门回归覆盖三个内置桌面的正反框选、Ctrl 切换、全选、Esc，Windows 11 外壳的混合条目框选与控件保留，以及多文件复制／剪切和现有粘贴路由。实际服务复查使用 `--desktop-live-review`，通过 `RK_REVIEW_SERVER`、`RK_REVIEW_USER`、`RK_REVIEW_PASSWORD` 环境变量提供测试配置；凭据不写入文档、测试代码或截图文件名。该检查登录后暂时切换三个内置外壳，读取真实桌面并捕获截图，不创建、删除、移动远端条目。
 
 `UsedAvaloniaProducts` 为空仅禁用构建遥测，避免受限构建环境向用户配置目录写入遥测文件，不改变产品桌面行为。
+
+### 带运行窗口的桌面切换回归
+
+`--desktop-shell-switch-only` 覆盖打开图片图标和字形图标应用后，在三个内置桌面间连续切换两轮，并在 Ubuntu Dock 已挂载时新增和关闭应用。此检查必须执行实际布局，不能只检查 `InitializeAsync` 或 `SwitchAsync` 返回成功。运行项图标先加入包含运行状态标记的网格，再将完整网格一次性赋给按钮；禁止同一个控件在按钮内容和子网格间重复挂载，否则 Avalonia 在布局挂载逻辑树时会抛出 `AttachedToLogicalTreeCore` 异常。
+
+真实服务的 `--desktop-live-review` 也先打开文件管理器和代码编辑器，核对切换前后窗口 ID 保持不变，结束时仅关闭测试新建的窗口。空桌面切换无法覆盖运行项模板的控件父级错误。

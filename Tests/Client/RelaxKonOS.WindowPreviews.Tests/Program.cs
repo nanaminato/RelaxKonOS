@@ -47,6 +47,11 @@ var localization = new LocalizationService(settings, new SshDesktopSession(null!
 using var services = new ServiceCollection().AddSingleton(localization).AddSingleton(new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!))).BuildServiceProvider();
 // The XAML localization extension resolves the host application's singleton provider.
 typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
+if (args.Contains("--desktop-shell-switch-only"))
+{
+    DesktopShellSwitchChecks.RunAsync(settings, localization, services).GetAwaiter().GetResult();
+    return;
+}
 if (args.Contains("--desktop-clipboard-only"))
 {
     DesktopClipboardChecks.RunAsync(settings, localization, services).GetAwaiter().GetResult();
@@ -141,6 +146,7 @@ SshFileBrowserLayoutChecks.Run(settings);
 HostTitleBarChecks.Run(settings, localization);
 RemoteClockChecks.Run(settings, localization, services);
 DesktopClipboardChecks.RunAsync(settings, localization, services).GetAwaiter().GetResult();
+DesktopShellSwitchChecks.RunAsync(settings, localization, services).GetAwaiter().GetResult();
 DesktopDeviceSettingsChecks.Run(settings, appearance);
 HostTimeCompletionChecks.Run(localization);
 HostIdentityCompletionChecks.Run(localization);
