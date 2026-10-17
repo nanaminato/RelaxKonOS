@@ -43,7 +43,7 @@ public static class ProxyServerClientExport
 
     private static List<Node> Nodes(ProxyServerMaterial material, ProxyServerSecret credential)
     {
-        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var used = new HashSet<string>(["proxy", "direct", "PROXY", "mixed-in"], StringComparer.OrdinalIgnoreCase);
         var nodes = new List<Node>();
         foreach (var inbound in material.Configuration.Inbounds.Where(i => i.Enabled && credential.InboundIds.Contains(i.Id)))
         {
@@ -157,8 +157,8 @@ public static class ProxyServerClientExport
     }
 
     /// <summary>
-    /// Writes one proxy block. Every string is single-quoted and every quote inside it is doubled, so an
-    /// administrator-supplied name or WebSocket path can never change the document structure.
+    /// Writes one proxy block. JSON string literals are valid YAML double-quoted scalars and escape
+    /// control characters, so names and WebSocket paths cannot change the document structure.
     /// </summary>
     private static void Proxy(ProxyServerMaterial material, Node node, ProxyServerSecret credential, StringBuilder yaml)
     {
@@ -198,5 +198,5 @@ public static class ProxyServerClientExport
         }
     }
 
-    private static string Scalar(string value) => "'" + value.Replace("'", "''") + "'";
+    private static string Scalar(string value) => JsonSerializer.Serialize(value);
 }

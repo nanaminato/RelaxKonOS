@@ -17,7 +17,7 @@ public sealed record StoredSubscription(
     Guid Id, Guid CredentialId, string TokenHash, string[] Formats, DateTimeOffset CreatedAt,
     DateTimeOffset? ExpiresAt, bool Revoked);
 
-public sealed record ProxyServerReceipt(string Fingerprint, Guid OperationId, DateTimeOffset IssuedAt);
+public sealed record ProxyServerReceipt(string Fingerprint, Guid OperationId, DateTimeOffset IssuedAt, Guid? ResourceId = null);
 
 public sealed record ProxyServerState(
     ProxyServerConfiguration Configuration,
@@ -29,6 +29,8 @@ public sealed record ProxyServerState(
     StoredSubscription[] Subscriptions,
     Dictionary<string, ProxyServerReceipt> Receipts)
 {
+    public ProxyServerMaterial? PendingPublication { get; init; }
+    public bool PendingRollback { get; init; }
     public static ProxyServerState Empty => new(new(0, []), [], [], [], null, null, [], new(StringComparer.Ordinal));
 }
 

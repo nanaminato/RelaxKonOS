@@ -76,6 +76,8 @@ internal static class SingBoxOperations
                 }
                 if (action is ProxyServerAction.Start or ProxyServerAction.Restart)
                 {
+                    if ((await StatusAsync()).ProblemCode == "proxy_server.configuration_drift")
+                        return Failure("proxy_server.configuration_drift");
                     if (!File.Exists(Config)) return Failure("proxy_server.configuration_missing");
                     await CheckAsync(Config);
                     if (action == ProxyServerAction.Restart) await StopAsync();
@@ -135,7 +137,7 @@ internal static class SingBoxOperations
             finally { File.Delete(candidate); }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException
-            or ArgumentException or JsonException or HttpRequestException or TimeoutException or System.ComponentModel.Win32Exception)
+            or ArgumentException or JsonException or HttpRequestException or TimeoutException or OperationCanceledException or System.ComponentModel.Win32Exception)
         { return Failure("proxy_server.runtime_failed"); }
         finally { Gate.Release(); }
     }
@@ -185,20 +187,26 @@ internal static class SingBoxOperations
     {
         if (File.Exists(Binary)) { RequireInstalled(); return; }
         var release = SingBoxManifest.Current!;
+        // Administrators may stage the exact trusted archive for hosts with restricted Internet access.
+        // The fixed root-owned cache receives the same size, digest and extraction checks as a download.
+        var cachedArchive = Path.Combine(Root, "runtime.archive");
+        using var downloadDeadline = new CancellationTokenSource(TimeSpan.FromMinutes(4));
         using var http = new HttpClient(new SocketsHttpHandler { UseProxy = false }) { Timeout = TimeSpan.FromMinutes(4) };
-        using var response = await http.GetAsync(release.Url, HttpCompletionOption.ResponseHeadersRead);
-        response.EnsureSuccessStatusCode();
-        await using var input = await response.Content.ReadAsStreamAsync();
+        using var response = File.Exists(cachedArchive) ? null
+            : await http.GetAsync(release.Url, HttpCompletionOption.ResponseHeadersRead, downloadDeadline.Token);
+        response?.EnsureSuccessStatusCode();
+        await using var input = response is null ? File.OpenRead(cachedArchive)
+            : await response.Content.ReadAsStreamAsync(downloadDeadline.Token);
         var archive = Path.Combine(Root, "archive.download");
         try
         {
             await using (var output = new FileStream(archive, FileMode.Create, FileAccess.Write))
             {
                 var buffer = new byte[65536]; long total = 0; int read;
-                while ((read = await input.ReadAsync(buffer)) != 0)
+                while ((read = await input.ReadAsync(buffer, downloadDeadline.Token)) != 0)
                 {
                     if ((total += read) > SingBoxManifest.MaximumArchiveBytes) throw new IOException("Archive exceeds limit.");
-                    await output.WriteAsync(buffer.AsMemory(0, read));
+                    await output.WriteAsync(buffer.AsMemory(0, read), downloadDeadline.Token);
                 }
             }
             if (!Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(archive))).Equals(release.Sha256, StringComparison.OrdinalIgnoreCase))
@@ -276,7 +284,8 @@ internal static class SingBoxOperations
         if (keepData) return;
         // Only files this module owns. The directory itself stays: the prepared root is pinned by ACLs
         // and the running Helper still holds its operation lock inside it.
-        foreach (var path in new[] { Config, Previous, Path.Combine(Root, "candidate.json"), Path.Combine(Root, "installed.json") })
+        foreach (var path in new[] { Config, Previous, Path.Combine(Root, "candidate.json"), Path.Combine(Root, "installed.json"),
+                     Path.Combine(Root, "runtime.archive"), Path.Combine(Root, "archive.download") })
             File.Delete(path);
     }
 
@@ -297,7 +306,7 @@ internal static class SingBoxOperations
         NoLinks(UnitPath);
         if (File.Exists(UnitPath) && !File.ReadAllText(UnitPath).StartsWith("# RelaxKonOS proxy-server\n", StringComparison.Ordinal)) throw new IOException("Unowned service.");
         // DynamicUser supplies a dedicated unprivileged identity; systemd loads the private configuration as a credential.
-        var unit = $"# RelaxKonOS proxy-server\n[Unit]\nDescription=RelaxKonOS sing-box proxy server\nAfter=network-online.target\n[Service]\nDynamicUser=yes\nLoadCredential=config.json:{Config}\nExecStart={Binary} run -c %d/config.json\nRestart=on-failure\nNoNewPrivileges=yes\nPrivateTmp=yes\nProtectSystem=strict\nProtectHome=yes\nRestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX\n[Install]\nWantedBy=multi-user.target\n";
+        var unit = $"# RelaxKonOS proxy-server\n[Unit]\nDescription=RelaxKonOS sing-box proxy server\nAfter=network-online.target\n[Service]\nDynamicUser=yes\nLoadCredential=config.json:{Config}\nExecStart={Binary} run -c %d/config.json\nRestart=on-failure\nNoNewPrivileges=yes\nPrivateTmp=yes\nProtectSystem=strict\nProtectHome=yes\nRestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK\n[Install]\nWantedBy=multi-user.target\n";
         // The binary must be traversable by the DynamicUser; secrets stay 0600 and are loaded by PID 1.
         File.SetUnixFileMode(Root, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
         await WriteAsync(UnitPath, unit);
@@ -331,8 +340,13 @@ internal static class SingBoxOperations
                 // 2 = automatic, 3 = manual, 4 = disabled.
                 return key?.GetValue("Start") is int start ? start is 0 or 2 : null;
             }
-            var state = (await RunAsync("/usr/bin/systemctl", ["is-enabled", Unit])).Trim();
-            return state is "enabled" or "enabled-runtime" or "static" or "indirect" or "generated";
+            var state = (await RunAsync("/usr/bin/systemctl", ["is-enabled", Unit], allowedExitCode: 1)).Trim();
+            return state switch
+            {
+                "enabled" or "enabled-runtime" or "static" or "indirect" or "generated" => true,
+                "disabled" or "masked" or "masked-runtime" => false,
+                _ => null
+            };
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or System.ComponentModel.Win32Exception or UnauthorizedAccessException)
         { return null; }
@@ -351,14 +365,24 @@ internal static class SingBoxOperations
         {
             if (WindowsComponentService.Snapshot(ComponentKind.SingBox, Root).Running) await WindowsComponentService.StopAsync(ComponentKind.SingBox, Root);
         }
-        else if (await IsLinuxRunningAsync()) await SystemctlAsync("stop");
+        else if (File.Exists(UnitPath))
+        {
+            NoLinks(UnitPath);
+            if (!File.ReadAllText(UnitPath).StartsWith("# RelaxKonOS proxy-server\n", StringComparison.Ordinal))
+                throw new IOException("Unowned service.");
+            // Stop also cancels activating jobs and pending automatic restarts after a failed start.
+            await SystemctlAsync("stop");
+        }
     }
     private static async Task StartAsync()
     {
         if (OperatingSystem.IsWindows()) await WindowsComponentService.StartAsync(ComponentKind.SingBox, Root);
-        else
+        else if (OperatingSystem.IsLinux())
         {
             await InstallLinuxUnitAsync();
+            // A failed candidate may have exhausted systemd's restart burst before compensation.
+            // systemd may have garbage-collected a stopped unit; reset-failed then returns 1.
+            await RunAsync("/usr/bin/systemctl", ["reset-failed", Unit], allowedExitCode: 1);
             await SystemctlAsync("start");
             await Task.Delay(1500);
             if (!await IsLinuxRunningAsync()) throw new IOException("Service did not remain running.");
@@ -391,12 +415,17 @@ internal static class SingBoxOperations
             await CheckAsync(Config);
             if (OperatingSystem.IsWindows()) await WindowsComponentService.InstallAsync(ComponentKind.SingBox, Root, Binary, Config, appliedIdentity: Hash(await File.ReadAllTextAsync(Config)));
             if (publication.WasRunning) await StartAsync();
+            await WriteAsync(Published, Hash(await File.ReadAllTextAsync(Config)));
         }
-        else File.Delete(Config);
+        else
+        {
+            File.Delete(Config);
+            File.Delete(Published);
+        }
         File.Delete(Pending);
     }
 
-    private static async Task<string> RunAsync(string binary, string[] arguments)
+    private static async Task<string> RunAsync(string binary, string[] arguments, int? allowedExitCode = null)
     {
         using var process = new Process { StartInfo = new(binary) { UseShellExecute = false, CreateNoWindow = true,
             RedirectStandardOutput = true, RedirectStandardError = true } };
@@ -410,7 +439,7 @@ internal static class SingBoxOperations
         await errors;
         var text = await output;
         // Native diagnostics can contain secrets: never cross the privilege boundary.
-        if (process.ExitCode != 0) throw new InvalidOperationException("sing-box operation failed.");
+        if (process.ExitCode != 0 && process.ExitCode != allowedExitCode) throw new InvalidOperationException("sing-box operation failed.");
         return text;
     }
     private static async Task<string> ReadBoundedAsync(StreamReader reader)

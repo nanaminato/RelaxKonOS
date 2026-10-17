@@ -74,6 +74,8 @@ try
     Check(await service.SaveAsync(new(3, [reality]), default) == "proxy_server.inbound_has_credentials",
         "An inbound still named by a credential cannot be dropped");
     Check(await service.DeleteCredentialAsync(tablet.Id, default) is null, "Delete the second credential");
+    Check(await service.SaveAsync(new(3, [trojan with { Id = realityId }, reality2]), default) == "proxy_server.inbound_has_credentials",
+        "Changing an inbound authentication type cannot retain incompatible credentials");
     Check(await service.DeletePrincipalAsync(alice, default) == "proxy_server.principal_has_credentials",
         "A principal with credentials cannot be deleted");
     Check(await service.DeletePrincipalAsync(Guid.NewGuid(), default) == "proxy_server.principal_not_found",
@@ -90,10 +92,45 @@ try
     Check(export.Content.StartsWith("vless://") && export.Content.Contains("security=reality"), "VLESS export");
     var formats = await service.ExportFormatsAsync(phone.Id, default);
     Check(formats.Count == ProxyServerExportFormats.All.Count && formats.All(f => f.Supported), "A single-inbound credential supports every format");
+    var publishedMaterial = (await store.ReadAsync(default)).Published!;
+    var namedMaterial = publishedMaterial with { Configuration = publishedMaterial.Configuration with
+        { Inbounds = [reality with { Name = "proxy" }] } };
+    var namedClient = ProxyServerClientExport.Create(namedMaterial, namedMaterial.Credentials.Single(), "Phone", "sing-box");
+    using (var parsedClient = JsonDocument.Parse(namedClient.Content))
+    {
+        var tags = parsedClient.RootElement.GetProperty("outbounds").EnumerateArray()
+            .Select(o => o.GetProperty("tag").GetString()).ToArray();
+        Check(tags.Distinct(StringComparer.OrdinalIgnoreCase).Count() == tags.Length, "Export reserves built-in outbound tags");
+    }
+    namedMaterial = namedMaterial with { Configuration = namedMaterial.Configuration with
+        { Inbounds = [reality with { Name = "line\nbreak: injected" }] } };
+    var namedYaml = ProxyServerClientExport.Create(namedMaterial, namedMaterial.Credentials.Single(), "Phone", "mihomo");
+    Check(!namedYaml.Content.Contains("line\nbreak"), "YAML scalars escape line breaks");
+    Check(await service.SaveCredentialAsync(new(phone.Id, alice, "Phone", [realityId], Enabled: false), default) is null,
+        "Disable credential before publication");
+    Check(!(await service.ReadAsync(default)).Credentials.Single().Applied, "Disabled draft credential is not reported applied");
+    Check(await service.SaveCredentialAsync(new(phone.Id, alice, "Phone", [realityId]), default) is null,
+        "Restore credential for export checks");
 
     var validation = await service.ValidateAsync(default);
     Check(validation.Valid, "Draft validates once the runtime exists");
     var state = await store.ReadAsync(default);
+    var interruptedCandidate = state.Published! with { Configuration = state.Published!.Configuration with { Revision = 99 } };
+    // Revision and public export addresses are absent from native JSON; change an effective field.
+    interruptedCandidate = interruptedCandidate with { Configuration = interruptedCandidate.Configuration with
+        { Inbounds = [reality with { ListenPort = 24446 }] } };
+    await store.WriteAsync(state with { PendingPublication = interruptedCandidate }, default);
+    await helper.ExecuteAsync(new(PrivilegedOperationKind.ProxyServerApply, ProxyServer: new(Material: interruptedCandidate)));
+    Check((await service.ReadAsync(default)).PublishedRevision == 99 && (await store.ReadAsync(default)).PendingPublication is null,
+        "A Server restart reconciles a Helper commit before the domain commit");
+    await store.WriteAsync(state with { PendingPublication = interruptedCandidate, PendingRollback = true }, default);
+    Check((await service.ReadAsync(default)).PreviousRevision is null && !(await store.ReadAsync(default)).PendingRollback,
+        "Interrupted rollback finalization preserves the single-step rollback boundary");
+    await helper.ExecuteAsync(new(PrivilegedOperationKind.ProxyServerApply, ProxyServer: new(Material: state.Published)));
+    await store.WriteAsync(state with { PendingPublication = interruptedCandidate }, default);
+    Check((await service.ReadAsync(default)).PublishedRevision == state.Published!.Configuration.Revision
+        && (await store.ReadAsync(default)).PendingPublication is null, "Compensated publication clears the Server transaction marker");
+    await store.WriteAsync(state, default);
     Check(validation.Preview is not null && !validation.Preview.Contains(state.Credentials.Single().Value), "Preview excludes secrets");
     var safe = JsonSerializer.Serialize(await service.ReadAsync(default));
     Check(!safe.Contains(state.Credentials.Single().Value) && !safe.Contains(state.Keys.Single().PrivateKey), "Public reads exclude secrets");
@@ -101,14 +138,19 @@ try
     Check(!encrypted.Contains(state.Credentials.Single().Value) && !encrypted.Contains("Phone"), "Persisted state protected");
 
     // Subscriptions: only the issuing response ever carries the token.
-    await ThrowsAsync(() => service.IssueSubscriptionAsync(new(phone.Id, ["uri"]), default), "proxy_server.subscription_base_invalid");
+    await ThrowsAsync(() => service.IssueSubscriptionAsync(new(phone.Id, ["uri"]), "actor", Guid.NewGuid().ToString("N"), default), "proxy_server.subscription_base_invalid");
     var draft = (await service.ReadAsync(default)).Configuration;
     Check(await service.SaveAsync(new(draft.Revision, [reality], "https://subs.example.com/"), default) is null, "Record the share host");
-    await ThrowsAsync(() => service.IssueSubscriptionAsync(new(Guid.NewGuid(), ["uri"]), default), "proxy_server.credential_not_found");
-    await ThrowsAsync(() => service.IssueSubscriptionAsync(new(phone.Id, ["openvpn"]), default), "proxy_server.export_unsupported");
-    await ThrowsAsync(() => service.IssueSubscriptionAsync(new(phone.Id, ["uri"], DateTimeOffset.UtcNow.AddMinutes(-1)), default),
+    await ThrowsAsync(() => service.IssueSubscriptionAsync(new(Guid.NewGuid(), ["uri"]), "actor", Guid.NewGuid().ToString("N"), default), "proxy_server.credential_not_found");
+    await ThrowsAsync(() => service.IssueSubscriptionAsync(new(phone.Id, ["openvpn"]), "actor", Guid.NewGuid().ToString("N"), default), "proxy_server.export_unsupported");
+    await ThrowsAsync(() => service.IssueSubscriptionAsync(new(phone.Id, ["uri"], DateTimeOffset.UtcNow.AddMinutes(-1)), "actor", Guid.NewGuid().ToString("N"), default),
         "proxy_server.subscription_expiry_invalid");
-    var issued = await service.IssueSubscriptionAsync(new(phone.Id, ["uri"]), default);
+    var issued = await service.IssueSubscriptionAsync(new(phone.Id, ["uri"]), "actor", "subscription-key", default);
+    var issuedReplay = await service.IssueSubscriptionAsync(new(phone.Id, ["uri"]), "actor", "subscription-key", default);
+    Check(issuedReplay.Subscription.Id == issued.Subscription.Id && issuedReplay.Token == "" && issuedReplay.Urls.Count == 0,
+        "Subscription retry returns the original resource without reissuing or exposing its token");
+    await ThrowsAsync(() => service.IssueSubscriptionAsync(new(phone.Id, ["sing-box"]), "actor", "subscription-key", default),
+        "proxy_server.idempotency_conflict");
     Check(issued.Token.Length is >= 40 and <= 64, "Subscription token length");
     Check(issued.Urls.Single() == "https://subs.example.com" + ProxyServerRoutes.PublicSubscriptionRoot + "/" + issued.Token + "/uri",
         "Subscription url points at the anonymous route");
@@ -129,7 +171,7 @@ try
 
     Check(await service.SaveCredentialAsync(new(null, alice, "Laptop", [realityId]), default) is null, "Create a second credential");
     var laptop = (await service.ReadAsync(default)).Credentials.Single(c => c.Name == "Laptop");
-    var laptopSubscription = await service.IssueSubscriptionAsync(new(laptop.Id, ["uri", "sing-box"]), default);
+    var laptopSubscription = await service.IssueSubscriptionAsync(new(laptop.Id, ["uri", "sing-box"]), "actor", Guid.NewGuid().ToString("N"), default);
     Check(laptopSubscription.Urls.Count == 2, "Every requested format gets a url");
     Check(await service.DeleteCredentialAsync(laptop.Id, default) is null, "Delete the second credential");
     Check((await service.SubscriptionsAsync(default)).Single(s => s.Id == laptopSubscription.Subscription.Id).Revoked,
@@ -153,6 +195,26 @@ try
         var client = await service.ExportAsync(new(phone.Id, "sing-box"), default);
         await File.WriteAllTextAsync(nativePath, client.Content);
         await RunAsync(binary, ["check", "-c", nativePath]);
+        using var rsa = RSA.Create(2048);
+        var certificateRequest = new System.Security.Cryptography.X509Certificates.CertificateRequest(
+            "CN=proxy.example.com", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        var san = new System.Security.Cryptography.X509Certificates.SubjectAlternativeNameBuilder();
+        san.AddDnsName("proxy.example.com");
+        certificateRequest.CertificateExtensions.Add(san.Build());
+        using var certificate = certificateRequest.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddDays(1));
+        foreach (var protocol in Enum.GetValues<ProxyServerProtocol>().Where(ProxyServerPresets.RequiresCertificate))
+        {
+            var tlsInbound = trojan with { Protocol = protocol };
+            var secret = new ProxyServerSecret(Guid.NewGuid(), [tlsInbound.Id], ProxyServerPresets.IsVless(protocol)
+                ? Guid.NewGuid().ToString("D") : Convert.ToHexString(RandomNumberGenerator.GetBytes(32)));
+            var tlsMaterial = new ProxyServerMaterial(new(0, [tlsInbound]), [secret], [],
+                [new(tlsInbound.Id, certificate.ExportCertificatePem(), rsa.ExportPkcs8PrivateKeyPem(), "test")]);
+            await File.WriteAllTextAsync(nativePath, SingBoxConfiguration.Render(tlsMaterial));
+            await RunAsync(binary, ["check", "-c", nativePath]);
+            await File.WriteAllTextAsync(nativePath, ProxyServerClientExport.Create(tlsMaterial, secret, "TLS device", "sing-box").Content);
+            await RunAsync(binary, ["check", "-c", nativePath]);
+            Console.WriteLine("Native server and client configuration passed: " + protocol);
+        }
         Console.WriteLine("Native sing-box server and client configuration checks passed.");
     }
 
@@ -162,6 +224,7 @@ try
     Check(await service.SaveCredentialAsync(new(phone.Id, alice, "Phone", [realityId], ExpiresAt: DateTimeOffset.UtcNow.AddMinutes(-1)), default) is null,
         "Expire credential");
     await service.ReconcileExpiryAsync(default);
+    Check(await service.RollbackAsync(default) == "proxy_server.credential_unavailable", "Rollback cannot resurrect an expired credential");
     var afterExpiry = await store.ReadAsync(default);
     Check(afterExpiry.Published!.Credentials.Count == 0, "Expired credential removed from the published grant set");
     Check(afterExpiry.Published.Configuration.Inbounds.Single().PublicHost == "proxy.example.com", "Expiry does not publish unrelated draft edits");

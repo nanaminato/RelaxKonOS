@@ -183,7 +183,7 @@ public static class ProxyServerEndpoints
                 if (request is null) return Problem("proxy_server.request_invalid");
                 try
                 {
-                    var issued = await service.IssueSubscriptionAsync(request, ct);
+                    var issued = await service.IssueSubscriptionAsync(request, Actor(context), context.Request.Headers["Idempotency-Key"].ToString(), ct);
                     // Only the subscription id reaches the audit trail; the token does not.
                     await audit.RecordAsync(Actor(context), "proxy_server.subscription.issue", "succeeded", null, ct);
                     return Results.Created(ProxyServerRoutes.Subscriptions + "/" + issued.Subscription.Id, issued);
@@ -195,14 +195,10 @@ public static class ProxyServerEndpoints
                 }
             })
             .RequireAuthorization(ExportPolicy).WithTags("Proxy Server");
-        app.MapDelete(Route(ProxyServerRoutes.SubscriptionPattern), async (Guid id, HttpContext context, ProxyServerService service,
-                ProxyAuditStore audit, CancellationToken ct) =>
-            {
-                var problem = await service.RevokeSubscriptionAsync(id, ct);
-                await audit.RecordAsync(Actor(context), "proxy_server.subscription.revoke",
-                    problem is null ? "succeeded" : "failed", problem, ct);
-                return problem is null ? Results.NoContent() : Problem(problem);
-            })
+        app.MapDelete(Route(ProxyServerRoutes.SubscriptionPattern), (Guid id, HttpContext context, ProxyServerService service,
+                ProxyOperationStore operations, ProxyAuditStore audit, CancellationToken ct) =>
+                QueueAsync(context, service, operations, audit, "subscription.revoke", new { id },
+                    token => service.RevokeSubscriptionAsync(id, token), ct))
             .RequireAuthorization(ManagePolicy).WithTags("Proxy Server");
 
         // Anonymous download. The token is the only credential; the format is an explicit route value

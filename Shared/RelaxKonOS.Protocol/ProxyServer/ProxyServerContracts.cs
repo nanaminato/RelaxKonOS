@@ -149,6 +149,7 @@ public sealed record IssueProxyServerSubscription(
     IReadOnlyList<string> Formats,
     DateTimeOffset? ExpiresAt = null);
 
+/// <summary>A replay returns the original subscription with an empty token and URL list; secrets are disclosed once.</summary>
 public sealed record ProxyServerSubscriptionIssued(
     ProxyServerSubscription Subscription,
     string Token,

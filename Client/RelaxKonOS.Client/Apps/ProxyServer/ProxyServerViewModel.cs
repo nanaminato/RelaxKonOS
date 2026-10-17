@@ -493,9 +493,8 @@ public partial class ProxyServerViewModel(IProxyServerClient client) : Observabl
     {
         if (SelectedSubscription is null) return;
         if (!await ConfirmDestructiveAsync("proxy_server.revoke", "proxy_server.revoke_warning")) return;
-        await client.RevokeSubscriptionAsync(SelectedSubscription.Id, _lifetime.Token);
-        OutcomeText = LocalizedStatus.Key("proxy_server.subscription_revoke_done");
-        await LoadAsync();
+        await SubmitAsync(HttpMethod.Delete, WithId(ProxyServerRoutes.SubscriptionPattern, SelectedSubscription.Id),
+            new { }, "proxy_server.subscription_revoke_done");
     });
 
     private async Task SubmitAsync(HttpMethod method, string route, object body, string successKey)

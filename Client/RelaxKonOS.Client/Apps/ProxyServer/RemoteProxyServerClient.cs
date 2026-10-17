@@ -17,7 +17,6 @@ public interface IProxyServerClient
     Task<IReadOnlyList<ProxyServerExportFormatOption>> ExportFormatsAsync(Guid credentialId, CancellationToken ct);
     Task<ProxyServerExport> ExportAsync(Guid credentialId, string format, CancellationToken ct);
     Task<ProxyServerSubscriptionIssued> IssueSubscriptionAsync(IssueProxyServerSubscription request, CancellationToken ct);
-    Task RevokeSubscriptionAsync(Guid id, CancellationToken ct);
     Task<ProxyOperationAcceptedDto> SubmitAsync(HttpMethod method, string route, object body, string key, CancellationToken ct);
     Task<ProxyOperationDto> OperationAsync(Guid id, CancellationToken ct);
 }
@@ -44,9 +43,7 @@ public sealed class RemoteProxyServerClient(HttpClient http, IAuthSession sessio
         SendAsync<ProxyServerExport>(HttpMethod.Post, WithId(ProxyServerRoutes.CredentialExportPattern, credentialId),
             new ProxyServerExportRequest(credentialId, format), null, ct);
     public Task<ProxyServerSubscriptionIssued> IssueSubscriptionAsync(IssueProxyServerSubscription request, CancellationToken ct) =>
-        SendAsync<ProxyServerSubscriptionIssued>(HttpMethod.Post, ProxyServerRoutes.Subscriptions, request, null, ct);
-    public Task RevokeSubscriptionAsync(Guid id, CancellationToken ct) =>
-        SendAsync<bool>(HttpMethod.Delete, WithId(ProxyServerRoutes.SubscriptionPattern, id), null, null, ct);
+        SendAsync<ProxyServerSubscriptionIssued>(HttpMethod.Post, ProxyServerRoutes.Subscriptions, request, Guid.NewGuid().ToString("N"), ct);
     public Task<ProxyOperationDto> OperationAsync(Guid id, CancellationToken ct) =>
         SendAsync<ProxyOperationDto>(HttpMethod.Get, WithId(ProxyServerRoutes.OperationPattern, id), null, null, ct);
 

@@ -41,13 +41,14 @@ public sealed class ProxyServerService(
         await store.Gate.WaitAsync(ct);
         try
         {
-            var state = await store.ReadAsync(ct);
+            var state = await ReadStateAsync(ct);
             var status = await StatusAsync(ct);
             var hash = state.Published is null ? null : Hash(SingBoxConfiguration.Render(state.Published, false));
             var applied = status.Applied && status.ConfigurationHash == hash;
             var credentials = state.Credentials.Select(c => new ProxyServerCredential(c.Id, c.PrincipalId, c.Name,
-                c.InboundIds, c.Enabled, c.ExpiresAt, applied && state.Published!.Credentials.Any(p =>
-                    p.Id == c.Id && p.Value == c.Value && p.InboundIds.Order().SequenceEqual(c.InboundIds.Order())))).ToArray();
+                c.InboundIds, c.Enabled, c.ExpiresAt, applied && c.Enabled && (c.ExpiresAt is null || c.ExpiresAt > DateTimeOffset.UtcNow)
+                    && state.Published!.Credentials.Any(p => p.Id == c.Id && p.Value == c.Value
+                        && p.InboundIds.Order().SequenceEqual(c.InboundIds.Order())))).ToArray();
             var principals = state.Principals.Select(p => new ProxyServerPrincipal(p.Id, p.DisplayName, p.RelaxKonOSUserId,
                 credentials.Count(c => c.PrincipalId == p.Id))).ToArray();
             var subscriptions = state.Subscriptions.Select(s => new ProxyServerSubscription(s.Id, s.CredentialId,
@@ -83,7 +84,7 @@ public sealed class ProxyServerService(
         await store.Gate.WaitAsync(ct);
         try
         {
-            var state = await store.ReadAsync(ct);
+            var state = await ReadStateAsync(ct);
             if (request.ExpectedRevision != state.Configuration.Revision) return "proxy_server.revision_conflict";
             var next = new ProxyServerConfiguration(checked(state.Configuration.Revision + 1), request.Inbounds ?? [], request.SubscriptionBaseUrl);
             var validation = SingBoxConfiguration.Validate(next);
@@ -93,7 +94,9 @@ public sealed class ProxyServerService(
                 // A credential outlives the draft only while every inbound it names still exists with the same secret shape.
                 if (credential.InboundIds.Any(id => next.Inbounds.All(i => i.Id != id))) return "proxy_server.inbound_has_credentials";
                 var protocols = credential.InboundIds.Select(id => next.Inbounds.Single(i => i.Id == id).Protocol).ToArray();
-                if (!ProxyServerPresets.Shareable(protocols)) return "proxy_server.inbound_has_credentials";
+                if (!ProxyServerPresets.Shareable(protocols)
+                    || ProxyServerPresets.CredentialKind(protocols[0]) != SecretKind(credential.Value))
+                    return "proxy_server.inbound_has_credentials";
             }
             var keys = state.Keys.Where(k => next.Inbounds.Any(i => i.Id == k.InboundId)).ToList();
             foreach (var inbound in next.Inbounds.Where(i => i.Protocol == ProxyServerProtocol.VlessReality && !keys.Any(k => k.InboundId == i.Id)))
@@ -111,7 +114,7 @@ public sealed class ProxyServerService(
         {
             var name = request.DisplayName?.Trim() ?? "";
             if (name.Length == 0 || name.Length > 128 || request.RelaxKonOSUserId is { Length: > 256 }) return "proxy_server.principal_invalid";
-            var state = await store.ReadAsync(ct);
+            var state = await ReadStateAsync(ct);
             var id = request.Id ?? Guid.NewGuid();
             if (request.Id is not null && state.Principals.All(p => p.Id != id)) return "proxy_server.principal_not_found";
             var principal = new StoredPrincipal(id, name, string.IsNullOrWhiteSpace(request.RelaxKonOSUserId) ? null : request.RelaxKonOSUserId.Trim());
@@ -126,7 +129,7 @@ public sealed class ProxyServerService(
         await store.Gate.WaitAsync(ct);
         try
         {
-            var state = await store.ReadAsync(ct);
+            var state = await ReadStateAsync(ct);
             if (state.Principals.All(p => p.Id != id)) return "proxy_server.principal_not_found";
             if (state.Credentials.Any(c => c.PrincipalId == id)) return "proxy_server.principal_has_credentials";
             await store.WriteAsync(state with { Principals = state.Principals.Where(p => p.Id != id).ToArray() }, ct);
@@ -140,7 +143,7 @@ public sealed class ProxyServerService(
         await store.Gate.WaitAsync(ct);
         try
         {
-            var state = await store.ReadAsync(ct);
+            var state = await ReadStateAsync(ct);
             var name = request.Name?.Trim() ?? "";
             if (name.Length == 0 || name.Length > 128 || state.Credentials.Length >= 1024 && request.Id is null)
                 return "proxy_server.credential_invalid";
@@ -171,7 +174,7 @@ public sealed class ProxyServerService(
         await store.Gate.WaitAsync(ct);
         try
         {
-            var state = await store.ReadAsync(ct);
+            var state = await ReadStateAsync(ct);
             var prior = state.Credentials.SingleOrDefault(c => c.Id == id);
             if (prior is null) return "proxy_server.credential_not_found";
             var protocols = prior.InboundIds.Select(inboundId => state.Configuration.Inbounds.Single(i => i.Id == inboundId).Protocol).ToArray();
@@ -192,7 +195,7 @@ public sealed class ProxyServerService(
         await store.Gate.WaitAsync(ct);
         try
         {
-            var state = await store.ReadAsync(ct);
+            var state = await ReadStateAsync(ct);
             if (state.Credentials.All(c => c.Id != id)) return "proxy_server.credential_not_found";
             await store.WriteAsync(state with
             {
@@ -210,7 +213,7 @@ public sealed class ProxyServerService(
         await store.Gate.WaitAsync(ct);
         try
         {
-            var state = await store.ReadAsync(ct);
+            var state = await ReadStateAsync(ct);
             var problems = SingBoxConfiguration.Validate(state.Configuration).Problems.ToList();
             ProxyServerMaterial? material = null;
             string preview;
@@ -241,7 +244,7 @@ public sealed class ProxyServerService(
         await store.Gate.WaitAsync(ct);
         try
         {
-            var state = await store.ReadAsync(ct);
+            var state = await ReadStateAsync(ct);
             await CheckNetworkAsync(ct);
             return await PublishAsync(state, await MaterialAsync(state, ct), ct);
         }
@@ -253,14 +256,17 @@ public sealed class ProxyServerService(
         await store.Gate.WaitAsync(ct);
         try
         {
-            var state = await store.ReadAsync(ct);
+            var state = await ReadStateAsync(ct);
             if (state.Published is null || state.PreviousPublished is null) return "proxy_server.rollback_unavailable";
-            var status = await CallAsync<ProxyServerStatus>(PrivilegedOperationKind.ProxyServerAction,
-                new(Action: ProxyServerAction.Rollback), ct);
-            if (status.ConfigurationHash != Hash(SingBoxConfiguration.Render(state.PreviousPublished, false)) || status.RecoveryRequired)
-                return "proxy_server.publication_unconfirmed";
-            await store.WriteAsync(state with { Published = state.PreviousPublished, PreviousPublished = null }, ct);
-            return null;
+            // A rollback must not briefly restore a revoked, rotated or expired grant.
+            var now = DateTimeOffset.UtcNow;
+            if (state.PreviousPublished.Credentials.Any(secret => !state.Credentials.Any(c =>
+                    c.Id == secret.Id && c.Enabled && c.Value == secret.Value
+                    && (c.ExpiresAt is null || c.ExpiresAt > now)
+                    && secret.InboundIds.All(c.InboundIds.Contains))))
+                return "proxy_server.credential_unavailable";
+            await CheckNetworkAsync(ct);
+            return await PublishAsync(state, state.PreviousPublished, ct, rollback: true);
         }
         finally { store.Gate.Release(); }
     }
@@ -272,6 +278,7 @@ public sealed class ProxyServerService(
         {
             var status = await CallAsync<ProxyServerStatus>(PrivilegedOperationKind.ProxyServerAction,
                 new(Action: ProxyServerAction.Recover), ct);
+            if (!status.RecoveryRequired) await ReadStateAsync(ct);
             return status.RecoveryRequired ? "proxy_server.recovery_required" : null;
         }
         finally { store.Gate.Release(); }
@@ -285,7 +292,7 @@ public sealed class ProxyServerService(
         await store.Gate.WaitAsync(ct);
         try
         {
-            var state = await store.ReadAsync(ct);
+            var state = action == ProxyServerAction.Stop ? await store.ReadAsync(ct) : await ReadStateAsync(ct);
             if (action is ProxyServerAction.Start or ProxyServerAction.Restart)
             {
                 // Expired or revoked credentials are removed before a retained configuration is started again.
@@ -315,7 +322,7 @@ public sealed class ProxyServerService(
         await store.Gate.WaitAsync(ct);
         try
         {
-            var state = await store.ReadAsync(ct);
+            var state = await ReadStateAsync(ct);
             var status = await CallAsync<ProxyServerStatus>(PrivilegedOperationKind.ProxyServerAction,
                 new(Action: ProxyServerAction.Uninstall, KeepData: keepData), ct);
             if (status.Installed) return "proxy_server.uninstall_failed";
@@ -342,7 +349,7 @@ public sealed class ProxyServerService(
         await store.Gate.WaitAsync(ct);
         try
         {
-            var state = await store.ReadAsync(ct);
+            var state = await ReadStateAsync(ct);
             var material = state.Published ?? throw new ProxyServerException("proxy_server.configuration_not_applied");
             var secret = PublishedSecret(state, material, credentialId);
             return ProxyServerClientExport.Formats(material, secret);
@@ -355,7 +362,7 @@ public sealed class ProxyServerService(
         await store.Gate.WaitAsync(ct);
         try
         {
-            var state = await store.ReadAsync(ct);
+            var state = await ReadStateAsync(ct);
             var material = state.Published ?? throw new ProxyServerException("proxy_server.configuration_not_applied");
             var secret = PublishedSecret(state, material, request.CredentialId);
             await EnsureAppliedAsync(material, ct);
@@ -370,18 +377,30 @@ public sealed class ProxyServerService(
         await store.Gate.WaitAsync(ct);
         try
         {
-            var state = await store.ReadAsync(ct);
+            var state = await ReadStateAsync(ct);
             return state.Subscriptions.Select(s => new ProxyServerSubscription(s.Id, s.CredentialId, s.Formats, s.CreatedAt, s.ExpiresAt, s.Revoked)).ToArray();
         }
         finally { store.Gate.Release(); }
     }
 
-    public async Task<ProxyServerSubscriptionIssued> IssueSubscriptionAsync(IssueProxyServerSubscription request, CancellationToken ct)
+    public async Task<ProxyServerSubscriptionIssued> IssueSubscriptionAsync(IssueProxyServerSubscription request, string actor, string key, CancellationToken ct)
     {
+        if (string.IsNullOrWhiteSpace(key) || key.Length > 128) throw new ProxyServerException("proxy_server.idempotency_key_required");
+        var scope = Hash(actor + "\n" + key);
+        var fingerprint = Hash("subscription.issue\n" + JsonSerializer.Serialize(request));
         await store.Gate.WaitAsync(ct);
         try
         {
-            var state = await store.ReadAsync(ct);
+            var state = await ReadStateAsync(ct);
+            if (state.Receipts.TryGetValue(scope, out var receipt))
+            {
+                if (DateTimeOffset.UtcNow - receipt.IssuedAt > ReceiptLifetime || receipt.Fingerprint != fingerprint)
+                    throw new ProxyServerException("proxy_server.idempotency_conflict");
+                var prior = state.Subscriptions.SingleOrDefault(s => s.Id == receipt.ResourceId)
+                    ?? throw new ProxyServerException("proxy_server.subscription_not_found");
+                return new(new(prior.Id, prior.CredentialId, prior.Formats, prior.CreatedAt, prior.ExpiresAt, prior.Revoked), "", []);
+            }
+            if (state.Receipts.Count >= 10000) throw new ProxyServerException("proxy_server.operation_limit");
             if (!SingBoxConfiguration.BaseUrl(state.Configuration.SubscriptionBaseUrl) || state.Configuration.SubscriptionBaseUrl is null)
                 throw new ProxyServerException("proxy_server.subscription_base_invalid");
             var credential = state.Credentials.SingleOrDefault(c => c.Id == request.CredentialId)
@@ -395,6 +414,7 @@ public sealed class ProxyServerService(
             var subscription = new StoredSubscription(Guid.NewGuid(), credential.Id, Hash(token), formats, now,
                 request.ExpiresAt?.ToUniversalTime(), false);
             if (state.Subscriptions.Length >= 1024) throw new ProxyServerException("proxy_server.subscription_limit");
+            state.Receipts.Add(scope, new(fingerprint, Guid.Empty, now, subscription.Id));
             await store.WriteAsync(state with { Subscriptions = state.Subscriptions.Append(subscription).ToArray() }, ct);
             var baseUrl = state.Configuration.SubscriptionBaseUrl.TrimEnd('/');
             var urls = formats.Select(format => $"{baseUrl}{ProxyServerRoutes.PublicSubscriptionRoot}/{token}/{format}").ToArray();
@@ -409,7 +429,7 @@ public sealed class ProxyServerService(
         await store.Gate.WaitAsync(ct);
         try
         {
-            var state = await store.ReadAsync(ct);
+            var state = await ReadStateAsync(ct);
             if (state.Subscriptions.All(s => s.Id != id)) return "proxy_server.subscription_not_found";
             await store.WriteAsync(state with
             {
@@ -430,7 +450,7 @@ public sealed class ProxyServerService(
         try
         {
             var now = DateTimeOffset.UtcNow;
-            var state = await store.ReadAsync(ct);
+            var state = await ReadStateAsync(ct);
             var subscription = state.Subscriptions.SingleOrDefault(s => s.TokenHash == hash && !s.Revoked)
                 ?? throw new ProxyServerException("proxy_server.subscription_invalid");
             if (subscription.ExpiresAt is { } expires && expires <= now) throw new ProxyServerException("proxy_server.subscription_invalid");
@@ -493,7 +513,7 @@ public sealed class ProxyServerService(
         await store.Gate.WaitAsync(ct);
         try
         {
-            var state = await store.ReadAsync(ct);
+            var state = await ReadStateAsync(ct);
             var problem = await ReconcilePublishedAsync(state, ct);
             if (problem is not null) throw new ProxyServerException(problem);
         }
@@ -511,7 +531,7 @@ public sealed class ProxyServerService(
         return await PublishAsync(state, state.Published with { Credentials = live }, ct);
     }
 
-    private async Task<string?> PublishAsync(ProxyServerState state, ProxyServerMaterial material, CancellationToken ct)
+    private async Task<string?> PublishAsync(ProxyServerState state, ProxyServerMaterial material, CancellationToken ct, bool rollback = false)
     {
         var status = await StatusAsync(ct);
         if (!status.Supported) return "proxy_server.platform_unsupported";
@@ -519,10 +539,33 @@ public sealed class ProxyServerService(
         if (status.RecoveryRequired) return "proxy_server.recovery_required";
         if (status.ProblemCode == "proxy_server.configuration_drift") return status.ProblemCode;
         var rendered = SingBoxConfiguration.Render(material);
+        // Persist the candidate before the Helper can commit it. A Server crash after the Helper
+        // completes must not leave its applied revision permanently detached from the domain state.
+        await store.WriteAsync(state with { PendingPublication = material, PendingRollback = rollback }, ct);
         var updated = await CallAsync<ProxyServerStatus>(PrivilegedOperationKind.ProxyServerApply, new(Material: material), ct);
         if (updated.ConfigurationHash != Hash(rendered) || updated.RecoveryRequired) return "proxy_server.publication_unconfirmed";
-        await store.WriteAsync(state with { PreviousPublished = state.Published, Published = material }, ct);
+        await store.WriteAsync(state with { PreviousPublished = rollback ? null : state.Published, Published = material,
+            PendingPublication = null, PendingRollback = false }, CancellationToken.None);
         return null;
+    }
+
+    // Called with the domain gate held. Reconcile only a confirmed committed or compensated
+    // Helper transaction; uncertain state remains blocked until explicit recovery succeeds.
+    private async Task<ProxyServerState> ReadStateAsync(CancellationToken ct)
+    {
+        var state = await store.ReadAsync(ct);
+        if (state.PendingPublication is not { } candidate) return state;
+        var status = await StatusAsync(ct);
+        if (!status.Installed || status.RecoveryRequired || status.ProblemCode is not null)
+            throw new ProxyServerException("proxy_server.recovery_required");
+        if (status.ConfigurationHash == Hash(SingBoxConfiguration.Render(candidate, false)))
+            state = state with { PreviousPublished = state.PendingRollback ? null : state.Published, Published = candidate,
+                PendingPublication = null, PendingRollback = false };
+        else if (status.ConfigurationHash == (state.Published is null ? null : Hash(SingBoxConfiguration.Render(state.Published, false))))
+            state = state with { PendingPublication = null, PendingRollback = false };
+        else throw new ProxyServerException("proxy_server.recovery_required");
+        await store.WriteAsync(state, CancellationToken.None);
+        return state;
     }
 
     private async Task EnsureAppliedAsync(ProxyServerMaterial material, CancellationToken ct)

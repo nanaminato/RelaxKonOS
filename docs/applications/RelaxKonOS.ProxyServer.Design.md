@@ -1,6 +1,6 @@
 # RelaxKonOS 内置代理服务端应用设计
 
-> 状态：设计提案，尚未实现；本文不代表应用已注册、API 已上线或平台验收已通过。
+> 状态：首版实现与待验收设计；已实现范围见 §13，真实平台验收尚未完成。
 > 应用名称：代理服务端 / Proxy Server
 > 应用 ID：`relaxkonos.proxy-server`（拟定）
 > 首选内核：sing-box；管理端：Avalonia；服务端：RelaxKonOS.Server。
@@ -183,6 +183,8 @@ UI 先选择目标：VLESS/Trojan/Hysteria2 分享 URI、sing-box 配置、Mihom
 
 异步变更返回 202、operation ID 和 Location；校验及一次性导出可同步返回。所有有副作用 POST/PUT/DELETE 要求幂等键；创建秘密的重复请求返回原资源和操作元数据，不再次暴露秘密，丢失时走显式轮换。过期幂等键返回冲突而非隐式重复执行。修订冲突返回 409；数据校验返回字段级问题；权限失败与能力不支持分开表达。
 
+订阅签发同步返回 201，并要求 `Idempotency-Key`；同键同请求重放返回原订阅元数据，`token` 为空字符串、`urls` 为空数组，不重复签发或披露秘密。订阅撤销与其他异步变更一致返回 202，客户端按操作 ID 查询结果。
+
 拟定问题码前缀 `proxy_server.*`，至少覆盖 runtime_unavailable、feature_unsupported、config_invalid、revision_conflict、port_in_use、certificate_invalid、credential_apply_failed、export_unsupported、statistics_unavailable、network_conflict、recovery_required。审计仅保存操作者、对象 ID、动作、修订、操作 ID 与结果，不存原生配置、链接或秘密。
 
 ## 11. 实施顺序与验收要求
@@ -229,3 +231,7 @@ UI 先选择目标：VLESS/Trojan/Hysteria2 分享 URI、sing-box 配置、Mihom
 | Android | 概览、入站服务（只读）、访问凭据、连接与导出、订阅、记录；操作按 ID 恢复 | 不编辑入站定义、不生成二维码、不签发证书 |
 
 安全不变量由 `Tests/ProxyServer`（服务层：修订冲突、幂等重放与冲突、凭据形状约束、订阅 token 只存哈希、匿名读取与撤销、发布前拒绝导出、到期不夹带草稿、回滚单步、脱敏投影与受保护状态文件）与 Android `ProxyServerRepositoryTest`、`OperationCenterTest` 覆盖。真机验收项（Windows SCM / Linux systemd 安装与升级回滚、端口与防火墙共存、各协议互通矩阵、崩溃与断联恢复）仍需在目标主机执行。
+
+受限联网的 Linux/Windows 宿主可由管理员在 Helper 的固定受保护运行目录放置 `runtime.archive`。安装仍验证当前平台固定版本清单中的大小限制、SHA-256、归档条目和原生版本；缓存不提供自定义下载源或二进制路径。在线下载的四分钟总期限覆盖响应正文。删除数据卸载同时删除该缓存。
+
+2026-10-17 的 Linux systemd、REALITY/Vision 实际连接、轮换/停用/到期、端口冲突补偿及原生配置检查结果见 [验收记录](../testing/RelaxKonOS.ProxyServer.Acceptance.md)。该记录单独列出未验收的平台与协议组合，不扩大运行时已验证协议清单。
