@@ -10,7 +10,7 @@ import kotlinx.coroutines.*
 
 internal data class SquidDraft(val address: String = "127.0.0.1", val port: String = "3128", val remote: Boolean = false,
     val networks: String = "127.0.0.1/32\n::1/128", val allowed: String = "", val denied: String = "",
-    val parent: String = "", val parentPort: String = "7890", val adopt: Boolean = false) {
+    val parent: String = "", val parentPort: String = "7890", val adopt: Boolean = false, val accessMode: SquidAccessMode = SquidAccessMode.IpWhitelist) {
     fun configuration(): SquidConfiguration {
         fun lines(value: String) = value.split('\n', '\r', ',').map(String::trim).filter(String::isNotEmpty)
         val p = port.toIntOrNull(); require(p != null && p in 1024..65535) { "squid.invalid_port" }
@@ -18,12 +18,12 @@ internal data class SquidDraft(val address: String = "127.0.0.1", val port: Stri
             val upstreamPort = parentPort.toIntOrNull(); require(upstreamPort != null && upstreamPort in 1..65535) { "squid.invalid_port" }
             SquidUpstream(parent.trim(), upstreamPort)
         }
-        return SquidConfiguration(address.trim(), p, remote, lines(networks), lines(allowed), lines(denied), upstream)
+        return SquidConfiguration(address.trim(), p, remote, lines(networks), lines(allowed), lines(denied), upstream, accessMode)
     }
     companion object {
         fun from(c: SquidConfiguration) = SquidDraft(c.bindAddress, c.port.toString(), c.allowRemoteClients,
             c.allowedNetworks.joinToString("\n"), c.allowedDomains.joinToString("\n"), c.deniedDomains.joinToString("\n"),
-            c.upstream?.host ?: "", (c.upstream?.port ?: 7890).toString())
+            c.upstream?.host ?: "", (c.upstream?.port ?: 7890).toString(), accessMode = c.accessMode)
     }
 }
 internal data class SquidState(val owner: SessionState.Active? = null, val busy: Boolean = false,
