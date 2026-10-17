@@ -2,7 +2,7 @@ using RelaxKonOS.Protocol.Files;
 
 namespace RelaxKonOS.Client.Apps.Explorer;
 
-/// <summary>Private disk snapshots shared by file-URL clipboard backends.</summary>
+/// <summary>Private disk staging for Linux snapshots and macOS promise fulfillment.</summary>
 internal static class HostFileClipboardStaging
 {
     private static readonly string CacheRoot = Path.Combine(Path.GetTempPath(), "relaxkonos-clipboard-" + Guid.NewGuid().ToString("N"));

@@ -13,6 +13,8 @@ internal interface IHostFileClipboardBackend
 {
     bool IsCurrentRemoteCopy { get; }
 
+    // Native backends may retain sessionScope and beginTransfer until a later host paste.
+    // Callers must supply process/session services that survive the source window.
     Task PublishAsync(IClipboard? clipboard, IExplorerClient client,
         IReadOnlyList<FileSystemEntryDto> entries, Func<string?> sessionScope,
         Func<string, long, ClipboardFileTransfer> beginTransfer);

@@ -80,7 +80,7 @@ Windows 客户端复制远程文件时，通过 OLE `IDataObject` 发布 `FileGr
 
 系统文件管理器在粘贴时读取内容，客户端按请求拉取，使用临时磁盘缓存支持回读，内存缓冲为 128 KiB。缓存使用 DeleteOnClose，在 Shell `EndOperation`、流释放或进程退出时删除。OLE 数据对象由独立 STA 线程持有并泵送消息，网络回调不阻塞 Avalonia UI。HTTP 下载使用 `ResponseHeadersRead`，不在 `SendAsync` 阶段整包缓冲。外部目标通过 `FD_PROGRESSUI` 请求 Windows Shell 原生进度、剩余时间与取消窗口；同时把实际读取字节映射为 RelaxKonOS 操作中心的复制任务，支持从操作中心取消网络读取。重名决策由 Windows Shell 承担；取消后不会继续主动读取剩余内容，已经发出的单次网络读取仍需返回。剪贴板保持有效要求客户端进程运行且原登录会话未改变；会话变化后拒绝内容访问。
 
-跨系统剪切当前按**复制**发布，不删除远程源，也不因本机剪贴板的移动标记删除本机源；服务器内剪切继续使用原有完成确认及清理语义。macOS 和 Linux 现已支持原生文件 URL 发布（见下文）。不依赖 RDP，不引入新的服务器文件传输协议。
+跨系统剪切当前按**复制**发布，不删除远程源，也不因本机剪贴板的移动标记删除本机源；服务器内剪切继续使用原有完成确认及清理语义。macOS 通过原生 file promises 延迟下载，Linux 发布本地快照文件 URI（见下文）。不依赖 RDP，不引入新的服务器文件传输协议。
 
 验证：299 项 Explorer 回归检查通过，包含 Windows HGLOBAL 描述符及 COM 流创建、延迟打开、顺序/回读/EOF、Unicode 与大于 4 GiB 的长度、会话变化拒绝读取、Shell 无索引探测与组合 aspect 探测、原生进度标志、操作中心进度/取消，以及系统剪贴板被文字替换后不得复活远程选择。FileServices 检查另覆盖真实 HttpClient 下载不整包缓冲与响应释放。桌面客户端（含 AXAML）编译通过，仍有既有 SignalR 依赖安全告警。
 
@@ -108,18 +108,17 @@ Windows Shell 格式参考：[Shell Clipboard Formats](https://learn.microsoft.c
 
 验证：314 项 Explorer 回归检查通过，包含速度测量、停滞、重置、等待时间排除及进度范围检查。真实 Avalonia 控件在中/英/日三语、浅/深色主题下生成预览，详情折叠及冲突按钮可见性检查通过。布局专项命令：`dotnet run --project Tests/Client/RelaxKonOS.ApplicationLayout.Tests -- --file-progress-only`。预览数据是测试任务，不代表某次真实服务器传输。
 
-## macOS 原生文件剪贴板（2026-10-16）
+## macOS 原生文件剪贴板（2026-10-17）
 
-`HostFileClipboard` 通过 `IHostFileClipboardBackend` 为 macOS 选择 `MacosHostFileClipboardBackend`，桌面图标和 Explorer 继续共用原有发布/读取入口。Linux 已接入文件管理器通用 MIME 后端，见下一节。
+`IHostFileClipboardBackend` 仍是桌面和 Explorer 的统一边界。macOS 使用 AppKit `NSPasteboard.generalPasteboard` / `writeObjects:` 发布每个选中项的 `NSFilePromiseProvider`，文件类型为 `public.data` 或 `public.directory`。复制只验证顶层名称及规范化冲突，不查询目录、不下载内容、不启动传输任务；Finder 请求兑现 promise 时才递归读取目录并下载文件。原生接口依据：[NSFilePromiseProvider](https://developer.apple.com/documentation/appkit/nsfilepromiseprovider)、[写入回调](https://developer.apple.com/documentation/appkit/nsfilepromiseproviderdelegate/filepromiseprovider(_:writepromiseto:completionhandler:))。
 
-macOS 通过 AppKit `NSPasteboard.generalPasteboard` / `writeObjects:` 发布 `NSURL` 文件 URL，Finder 可将文件或目录粘贴到本机。与 Windows OLE 延迟流不同，macOS 在复制阶段先准备完整临时快照，完成后才发布；不是 file promise。下载沿用 `IExplorerClient.DownloadAsync` 和 `ClipboardFileTransfer` 操作中心进度/取消机制，128 KiB 分块写盘，不整文件缓冲。目录递归包含空目录和空文件。外部剪切仍按复制处理，不删除远端源。
+`filePromiseProvider:fileNameForType:` 返回来源基础名称；写入回调使用 Finder 提供的完整目标 URL，包括其重名决策后的名称，不信任下载响应文件名。内容通过现有 `IExplorerClient.DownloadAsync`、128 KiB 缓冲及 `ClipboardFileTransfer` 操作中心进度/取消机制写入目标目录旁的私有暂存目录，然后在 `NSFileCoordinator` 写入协调中以不覆盖的重命名完成兑现。文件、目录、空目录和空文件沿用共享下载校验。长度变化、会话失效、取消、下载或目标写入失败均完成失败通知并清理暂存；成功也立即清理暂存，不保留进程期快照。每个文件的操作中心成功通知延迟到目标提交成功。
 
-准备前、目录查询后、每次读取前后和发布前检查捕获的登录会话；失效、取消、长度变化和下载失败会清理未发布快照，不发布半成品。准备期间系统剪贴板被其他应用替换时放弃发布。来源识别使用 pasteboard changeCount，避免将本应用发布的快照重新当成本机上传来源。已完整下载并发布的内容是本地快照；会话失效不会撤回已复制到本机的数据。成功快照保留到进程退出，以支持重复粘贴及剪贴板替换后的 Finder 在途读取；异常退出可能留下系统临时目录，当前不提供跨进程残留清理。大文件会占用相应本机磁盘空间，复制完成前 Finder 尚不能粘贴本次选择。
+Objective-C delegate 通过 provider 的 retained association 存活，反向调用函数指针固定在进程期；delegate 释放时移除托管状态。写入使用后台 operation queue / Task，保留目标 URL 并复制 completion block，兑现结束后调用一次完成回调并释放原生引用。剪贴板替换不取消已经开始的请求；重复粘贴会重新下载。未开始的 promise 仍需客户端运行、原登录会话有效和远端内容可用。Explorer 发布时捕获进程服务，不依赖原浏览器窗口继续存在。来源识别继续使用 pasteboard changeCount；宿主替换剪贴板后不再判定为当前远端复制。跨系统剪切按复制处理，不删除远端源。
 
-拒绝路径分隔符、冒号、NUL、点目录、过长组件，以及忽略大小写和 Unicode 规范化后的重名，避免在常见 macOS 文件系统上覆盖同一目标。不会采用下载响应中的文件名。
+拒绝路径分隔符、冒号、NUL、点目录、过长组件，以及忽略大小写和 Unicode 规范化后的重名。递归选择上限为 100000 项、128 层。兑现期间目标卷需有完整内容的暂存空间；崩溃可能留下目标目录旁的 `.relaxkonos-promise-*` 暂存目录，目前不跨进程自动清理。
 
-325 项 Explorer 回归通过，验证包括快照内容、进度完成、非法名称、规范化冲突、短流、会话失效和取消后的清理。本轮执行环境为 Windows，未验证 macOS AppKit ABI 或 Finder 实际粘贴。macOS 真机应分别验收 Apple Silicon / Intel、多文件、中文与 emoji、目录/空文件、重复粘贴、外部替换剪贴板、下载取消、切换会话和 Finder 重名决策；同时观察操作中心进度和退出后临时快照清理。
-
+验证：400 项 Explorer 回归通过，新增 promise 发布零下载、所有权变化、Finder 目标名称、重复兑现、目标冲突、会话失效、短流、取消、协调失败、递归空目录/空文件及暂存清理检查。托管测试通过注入发布边界验证，未替代 AppKit ABI 验收。当前环境为 Windows；Apple Silicon / Intel 实机仍需通过实际桌面和 Explorer 复制，验证 Finder 粘贴、多选、中文/emoji、目录、大文件、重复粘贴、关闭源窗口、剪贴板替换、断线/切换会话、取消、重名决策、只读目标和原生对象释放。不能将本轮托管回归视为 Finder 实机验收完成。
 
 ## Linux 文件管理器剪贴板（2026-10-16）
 
@@ -134,7 +133,7 @@ macOS 通过 AppKit `NSPasteboard.generalPasteboard` / `writeObjects:` 发布 `N
 
 URI 只指向已下载的本机快照，转义空格、中文、emoji、`#`、`%` 和换行；不暴露远端路径为本机 URI。协议依据：[Nautilus 源码](https://github.com/GNOME/nautilus/blob/main/src/nautilus-clipboard.c)、[Thunar 源码](https://github.com/xfce-mirror/thunar/blob/master/thunar/thunar-clipboard-manager.c)、[KDE 剪贴板格式说明](https://api.kde.org/legacy/4.14-api/kde-baseapps-apidocs/lib/konq/html/classKonqMimeData.html)。
 
-Linux 与 macOS 共用 `HostFileClipboardStaging` 的递归下载、128 KiB 分块、操作中心进度与取消、会话检查、长度检查和失败清理。成功快照保留到进程退出，确保重复粘贴及替换剪贴板后的在途读取；异常退出可能留下临时文件。复制阶段需要下载和本机磁盘空间，跨系统剪切始终按复制发布，不删除远端源。已经下载的本地快照不因会话失效而撤回。
+Linux 与 macOS 共用 `HostFileClipboardStaging` 的递归下载、128 KiB 分块、操作中心进度与取消、会话检查、长度检查和失败清理。Linux 的成功快照保留到进程退出，确保重复粘贴及替换剪贴板后的在途读取；异常退出可能留下临时文件。Linux 复制阶段需要下载和本机磁盘空间；macOS 在兑现 promise 时下载并立即清理暂存。跨系统剪切始终按复制发布，不删除远端源。已经下载的本地快照不因会话失效而撤回。
 
 文件名保留 POSIX 大小写及 Unicode 原始形式，允许冒号、反斜杠和换行；拒绝空名、点目录、斜杠、NUL、超过 255 UTF-8 字节的组件及完全同名冲突。若本机挂载点采用更严格规则，由文件系统拒绝并清理整个未发布快照，不覆盖现有文件。
 

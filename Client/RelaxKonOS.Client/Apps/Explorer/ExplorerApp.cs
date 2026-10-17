@@ -429,11 +429,16 @@ public sealed partial class ExplorerApp : RemoteApplicationBase, IAppActivationH
         };
 
         vm.ReadHostFileClipboardAsync = () => HostFileClipboard.ReadAsync(GetTopLevel(context, vm)?.Clipboard);
-        vm.PublishRemoteFilesAsync = entries => HostFileClipboard.PublishAsync(
-            GetTopLevel(context, vm)?.Clipboard, client, entries, () => vm.FileListCacheScope?.Invoke(),
-            (path, size) => context.Services.GetService(typeof(ExplorerOperationCenter)) is ExplorerOperationCenter center
-                ? center.BeginClipboardDownload(path, size, action => Dispatcher.UIThread.Post(action))
-                : throw new InvalidOperationException("File operation center is unavailable."));
+        vm.PublishRemoteFilesAsync = entries =>
+        {
+            var center = context.Services.GetService(typeof(ExplorerOperationCenter)) as ExplorerOperationCenter
+                ?? throw new InvalidOperationException("File operation center is unavailable.");
+            // Native file promises may be requested after this browser window has closed.
+            // Capture process services rather than retaining the view model in the promise.
+            return HostFileClipboard.PublishAsync(GetTopLevel(context, vm)?.Clipboard, client, entries,
+                () => center.SessionKey?.Invoke(),
+                (path, size) => center.BeginClipboardDownload(path, size, action => Dispatcher.UIThread.Post(action)));
+        };
 
         vm.RequestFileElevationAsync = async (path, capability) =>
         {
