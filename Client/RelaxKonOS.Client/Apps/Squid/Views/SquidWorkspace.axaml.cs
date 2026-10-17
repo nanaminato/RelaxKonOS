@@ -26,7 +26,7 @@ public partial class SquidWorkspace : UserControl
 
     private void ShowPage(int page)
     {
-        for (var i = 0; i < 5; i++)
+        for (var i = 0; i < 6; i++)
         {
             this.FindControl<StackPanel>($"Page{i}")!.IsVisible = i == page;
             this.FindControl<Button>($"PageButton{i}")!.Classes.Set("nav-selected", i == page);

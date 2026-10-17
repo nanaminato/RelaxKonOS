@@ -39,6 +39,31 @@ public partial class SquidViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _upstreamPort = "7890";
     [ObservableProperty] private bool _adoptExistingConfiguration;
 
+    [ObservableProperty] private int _accessModeIndex;
+    [ObservableProperty] private string _newAccountName = "";
+    [ObservableProperty] private string _accountPassword = "";
+    [ObservableProperty] private SquidAccount? _selectedAccount;
+    public ObservableCollection<SquidAccount> Accounts { get; } = [];
+    public Func<string, Task<bool>>? ConfirmDeleteAccountAsync { get; set; }
+    public bool RequiresPassword => AccessModeIndex != (int)SquidAccessMode.IpWhitelist;
+    public bool HasAccountDraft => AccountPassword.Length > 0;
+    public bool HasAccounts => Accounts.Count > 0;
+    public bool IsLastEnabledAccountProtected => SelectedAccount is { Enabled: true } && Accounts.Count(x => x.Enabled) == 1
+        && Snapshot?.State.Configuration?.AccessMode is SquidAccessMode.Password or SquidAccessMode.PasswordAndIpWhitelist;
+    public bool HasEnabledAccounts => Accounts.Any(x => x.Enabled);
+    public bool ShowNoEnabledAccounts => RequiresPassword && !HasEnabledAccounts;
+    public bool CanManageAccounts => CanMutate;
+    public bool CanCreateAccount => CanManageAccounts && SquidAccountValidation.ValidUsername(NewAccountName) && SquidAccountValidation.ValidPassword(AccountPassword);
+    public bool CanResetAccountPassword => CanManageAccounts && SelectedAccount is not null && SquidAccountValidation.ValidPassword(AccountPassword);
+    public bool CanRemoveSelectedAccount => CanManageAccounts && SelectedAccount is not null
+        && !IsLastEnabledAccountProtected;
+    public bool CanToggleAccount => CanManageAccounts && SelectedAccount is not null && (!SelectedAccount.Enabled || CanRemoveSelectedAccount);
+    public LocalizedStatus ToggleAccountText => L(SelectedAccount?.Enabled == true ? "account_disable" : "account_enable");
+    partial void OnAccessModeIndexChanged(int value) => OnDraftChanged();
+    partial void OnNewAccountNameChanged(string value) => NotifyActions();
+    partial void OnAccountPasswordChanged(string value) { OnPropertyChanged(nameof(HasAccountDraft)); NotifyActions(); }
+    partial void OnSelectedAccountChanged(SquidAccount? value) => NotifyActions();
+
     [ObservableProperty] private SquidConfigurationSnapshot? _snapshot;
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private bool _canRead;
@@ -120,7 +145,7 @@ public partial class SquidViewModel : ObservableObject, IDisposable
     public bool CanLoadStored => CanEdit && HasUnsavedChanges;
     public bool CanPreview => CanEdit && IsConfigurationValid;
     public bool CanValidate => CanControlService && IsConfigurationValid;
-    public bool CanApply => CanMutate && IsConfigurationValid && !NeedsAdoption;
+    public bool CanApply => CanMutate && IsConfigurationValid && !NeedsAdoption && (!RequiresPassword || HasEnabledAccounts);
     public bool CanInstall => CanEdit && Snapshot?.Status is { Supported: true, Installed: false, RecoveryRequired: false, PackageManagementSupported: true };
     public bool CanUninstall => CanMutate && Snapshot?.Status.PackageManagementSupported == true;
     public bool ShowPackageUnsupported => Snapshot?.Status is { Supported: true, PackageManagementSupported: false };
@@ -136,6 +161,8 @@ public partial class SquidViewModel : ObservableObject, IDisposable
 
     private static readonly string[] DerivedState =
     [
+        nameof(HasAccounts), nameof(IsLastEnabledAccountProtected), nameof(RequiresPassword), nameof(HasEnabledAccounts), nameof(ShowNoEnabledAccounts), nameof(CanManageAccounts),
+        nameof(CanCreateAccount), nameof(CanResetAccountPassword), nameof(CanRemoveSelectedAccount), nameof(CanToggleAccount), nameof(ToggleAccountText),
         nameof(ShowPackageUnsupported), nameof(CanInstall), nameof(CanUninstall), nameof(CanEdit), nameof(CanMutate), nameof(CanControlService), nameof(CanRefresh), nameof(CanResume),
         nameof(CanLoadStored), nameof(CanPreview), nameof(CanValidate), nameof(CanApply), nameof(CanStart),
         nameof(CanStopService), nameof(CanRestartService), nameof(CanReloadService), nameof(CanEnableService),
@@ -184,6 +211,10 @@ public partial class SquidViewModel : ObservableObject, IDisposable
     private void NotifyActions()
     {
         foreach (var property in DerivedState) OnPropertyChanged(property);
+        CreateAccountCommand.NotifyCanExecuteChanged();
+        ResetAccountPasswordCommand.NotifyCanExecuteChanged();
+        ToggleAccountCommand.NotifyCanExecuteChanged();
+        DeleteAccountCommand.NotifyCanExecuteChanged();
         InstallCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
         RefreshCommand.NotifyCanExecuteChanged();
@@ -227,6 +258,7 @@ public partial class SquidViewModel : ObservableObject, IDisposable
 
         var configuration = new SquidConfiguration
         {
+            AccessMode = (SquidAccessMode)AccessModeIndex,
             BindAddress = BindAddress.Trim(),
             Port = port,
             AllowRemoteClients = AllowRemoteClients,
@@ -296,6 +328,12 @@ public partial class SquidViewModel : ObservableObject, IDisposable
         Snapshot = snapshot;
         IsUnavailable = false;
         var status = snapshot.Status;
+        var selectedName = SelectedAccount?.Username;
+        var accounts = status.Supported ? await _client.ReadAccountsAsync(_lifetime.Token) : [];
+        Accounts.Clear();
+        foreach (var account in accounts) Accounts.Add(account);
+        SelectedAccount = Accounts.FirstOrDefault(x => x.Username == selectedName);
+        NotifyActions();
         var installed = status is { Supported: true, Installed: true };
         ServiceStateText = installed ? L(status.Running ? "running" : "stopped") : Divider();
         BootStateText = installed ? L(status.Enabled ? "enabled" : "disabled") : Divider();
@@ -308,6 +346,7 @@ public partial class SquidViewModel : ObservableObject, IDisposable
                 snapshot.State.PublishedRevision?.ToString() ?? DividerText, DiskStateText);
         if (_initialized && !replaceDraft) return;
         var configuration = snapshot.State.Configuration ?? new SquidConfiguration();
+        AccessModeIndex = (int)configuration.AccessMode;
         BindAddress = configuration.BindAddress; Port = configuration.Port.ToString(); AllowRemoteClients = configuration.AllowRemoteClients;
         AllowedNetworks = string.Join('\n', configuration.AllowedNetworks); AllowedDomains = string.Join('\n', configuration.AllowedDomains);
         DeniedDomains = string.Join('\n', configuration.DeniedDomains); UpstreamHost = configuration.Upstream?.Host ?? "";
@@ -324,6 +363,7 @@ public partial class SquidViewModel : ObservableObject, IDisposable
             throw new InvalidOperationException(L("invalid_port").Resolve());
         var configuration = new SquidConfiguration
         {
+            AccessMode = (SquidAccessMode)AccessModeIndex,
             BindAddress = BindAddress.Trim(), Port = port, AllowRemoteClients = AllowRemoteClients,
             AllowedNetworks = Lines(AllowedNetworks), AllowedDomains = Lines(AllowedDomains), DeniedDomains = Lines(DeniedDomains),
             Upstream = string.IsNullOrWhiteSpace(UpstreamHost) ? null : new(UpstreamHost.Trim(), int.Parse(UpstreamPort)),
@@ -362,6 +402,39 @@ public partial class SquidViewModel : ObservableObject, IDisposable
         IsPreviewStale = false;
         if (ConfirmApplyAsync is null || !await ConfirmApplyAsync()) return;
         Begin(GatewayProxyRoutes.Apply, new ApplySquidConfigurationRequest(configuration, AdoptExistingConfiguration));
+        await SubmitAndWatchAsync();
+    });
+
+    [RelayCommand(CanExecute = nameof(CanCreateAccount))]
+    private Task CreateAccountAsync() => !CanCreateAccount ? Task.CompletedTask
+        : SubmitAccountAsync(new(SquidAccountAction.Create, NewAccountName, AccountPassword));
+
+    [RelayCommand(CanExecute = nameof(CanResetAccountPassword))]
+    private Task ResetAccountPasswordAsync() => !CanResetAccountPassword ? Task.CompletedTask
+        : SubmitAccountAsync(new(SquidAccountAction.SetPassword, SelectedAccount!.Username, AccountPassword));
+
+    [RelayCommand(CanExecute = nameof(CanToggleAccount))]
+    private Task ToggleAccountAsync() => !CanToggleAccount ? Task.CompletedTask
+        : SubmitAccountAsync(new(SquidAccountAction.SetEnabled, SelectedAccount!.Username, Enabled: !SelectedAccount.Enabled));
+
+    [RelayCommand(CanExecute = nameof(CanRemoveSelectedAccount))]
+    private async Task DeleteAccountAsync()
+    {
+        if (!CanRemoveSelectedAccount) return;
+        var username = SelectedAccount!.Username;
+        IsBusy = true;
+        bool accepted;
+        try { accepted = ConfirmDeleteAccountAsync is not null && await ConfirmDeleteAccountAsync(username); }
+        finally { IsBusy = false; }
+        if (accepted && CanRemoveSelectedAccount && SelectedAccount?.Username == username)
+            await SubmitAccountAsync(new(SquidAccountAction.Delete, username));
+    }
+
+    private Task SubmitAccountAsync(SquidAccountMutation request) => !CanManageAccounts ? Task.CompletedTask : WorkAsync(async () =>
+    {
+        Begin(GatewayProxyRoutes.Accounts, request);
+        // An uncertain request retains its original body only in this window's memory.
+        AccountPassword = "";
         await SubmitAndWatchAsync();
     });
 
@@ -514,6 +587,7 @@ public partial class SquidViewModel : ObservableObject, IDisposable
         _lifetime.Cancel();
         _pendingBody = null; _pendingKey = null; _pendingRoute = null; _operation = null; PendingReference = "";
         CanRead = false; CanManage = false; Snapshot = null; IsUnavailable = false;
+        AccountPassword = ""; NewAccountName = ""; SelectedAccount = null; Accounts.Clear();
         BindAddress = ""; AllowedNetworks = ""; AllowedDomains = ""; DeniedDomains = ""; UpstreamHost = "";
         PreviewText = ""; DetailText = ""; ActivityText = default; OutcomeText = default; OutcomeFailed = false;
         IsPreviewStale = false; _previewGenerated = false;
@@ -522,7 +596,7 @@ public partial class SquidViewModel : ObservableObject, IDisposable
         ListenerProblems.Clear(); SourceProblems.Clear(); DomainProblems.Clear(); UpstreamProblems.Clear();
     }
 
-    public void Dispose() { if (_disposed) return; _disposed = true; _lifetime.Cancel(); _lifetime.Dispose(); }
+    public void Dispose() { if (_disposed) return; InvalidateSession(); _disposed = true; _lifetime.Dispose(); }
 }
 
 /// <summary>One renderer problem, localized and attributed to the card that can fix it.</summary>

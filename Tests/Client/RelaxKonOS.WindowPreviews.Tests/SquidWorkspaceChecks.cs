@@ -64,6 +64,50 @@ internal static class SquidWorkspaceChecks
         Check(vm.LoadStoredCommand.CanExecute(null), "A dirty draft can be replaced by the saved configuration.");
         vm.Port = "1270";
 
+        // Credentials live outside configuration drafts and are never returned by account reads.
+        fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { RecoveryRequired = false, Managed = true } };
+        Complete(vm.RefreshCommand.ExecuteAsync(null));
+        vm.AccessModeIndex = (int)SquidAccessMode.Password;
+        vm.AllowedNetworks = "";
+        Check(vm.IsConfigurationValid && !vm.CanApply && vm.ShowNoEnabledAccounts,
+            "Password-only drafts do not require networks but cannot publish before an account is enabled.");
+        vm.NewAccountName = "desktop-test"; vm.AccountPassword = "test-only-Password!92";
+        vm.CanManage = false;
+        Complete(vm.CreateAccountCommand.ExecuteAsync(null));
+        Check(!vm.CanCreateAccount, "Read-only users cannot submit account mutations.");
+        vm.CanManage = true;
+        Check(vm.CanCreateAccount && vm.HasAccountDraft, "A valid proxy account can be created and its unsubmitted password participates in the close guard.");
+        Complete(vm.CreateAccountCommand.ExecuteAsync(null));
+        Check(vm.AccountPassword.Length == 0 && !vm.HasAccountDraft && vm.Accounts.Single().Username == "desktop-test" && vm.CanApply,
+            "Account creation clears the password field, refreshes metadata and unlocks password-mode publishing.");
+        Check(!SquidConfigurationRenderer.Preview(vm.BuildConfiguration()).Configuration!.Contains("test-only-Password!92"),
+            "Configuration previews never contain submitted account passwords.");
+        vm.SelectedAccount = vm.Accounts.Single();
+        vm.AccountPassword = "test-only-NewPass!93";
+        Complete(vm.ResetAccountPasswordCommand.ExecuteAsync(null));
+        Check(fake.Submissions.Last().Body is SquidAccountMutation { Action: SquidAccountAction.SetPassword } && vm.AccountPassword.Length == 0,
+            "Password reset is a separate typed mutation and clears the input.");
+        fake.Snapshot = fake.Snapshot with { State = fake.Snapshot.State with { Configuration = new SquidConfiguration { AccessMode = SquidAccessMode.Password } } };
+        Complete(vm.RefreshCommand.ExecuteAsync(null));
+        vm.SelectedAccount = vm.Accounts.Single();
+        Check(!vm.CanToggleAccount && !vm.CanRemoveSelectedAccount, "Active authentication protects the last enabled account.");
+        fake.Snapshot = fake.Snapshot with { State = fake.Snapshot.State with { Configuration = new SquidConfiguration { Port = 1270 } } };
+        Complete(vm.RefreshCommand.ExecuteAsync(null));
+        vm.SelectedAccount = vm.Accounts.Single();
+        Complete(vm.ToggleAccountCommand.ExecuteAsync(null));
+        Check(!vm.Accounts.Single().Enabled, "An account can be disabled while IP mode is active.");
+        Complete(vm.ToggleAccountCommand.ExecuteAsync(null));
+        Check(vm.Accounts.Single().Enabled, "A disabled account can be enabled again.");
+        vm.ConfirmDeleteAccountAsync = _ => Task.FromResult(false);
+        var beforeDelete = fake.Submissions.Count;
+        Complete(vm.DeleteAccountCommand.ExecuteAsync(null));
+        Check(fake.Submissions.Count == beforeDelete, "Cancelling account deletion preserves the account.");
+        vm.ConfirmDeleteAccountAsync = _ => Task.FromResult(true);
+        Complete(vm.DeleteAccountCommand.ExecuteAsync(null));
+        Check(vm.Accounts.Count == 0, "Confirmed deletion refreshes account metadata.");
+        vm.AccessModeIndex = (int)SquidAccessMode.IpWhitelist;
+        vm.AllowedNetworks = "127.0.0.1/32";
+
         // The lifecycle buttons follow the observed service state instead of offering every action.
         fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { RecoveryRequired = false, Managed = true, Running = true, Enabled = true } };
         Complete(vm.RefreshCommand.ExecuteAsync(null));
@@ -171,6 +215,13 @@ internal static class SquidWorkspaceChecks
         var previewDirectory = Path.Combine(AppContext.BaseDirectory, "preview-qa"); Directory.CreateDirectory(previewDirectory);
         using (var image = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(960, 760)))
         { image.Render(view); image.Save(Path.Combine(previewDirectory, "squid.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
+        view.FindControl<Button>("PageButton5")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+        Check(view.FindControl<StackPanel>("Page5")!.IsVisible && view.FindControl<ComboBox>("AccessModeBox")!.Bounds.Height > 0 && view.FindControl<TextBox>("AccountPasswordBox")!.PasswordChar != default,
+            "Access control has a dedicated page and a masked password input.");
+        using (var image = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(960, 760)))
+        { image.Render(view); image.Save(Path.Combine(previewDirectory, "squid-access.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
+        view.FindControl<Button>("PageButton0")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
         var boxes = new[] { "BindAddressBox", "PortBox", "NetworksBox", "AllowedDomainsBox", "DeniedDomainsBox", "UpstreamHostBox", "UpstreamPortBox", "PreviewBox", "DetailBox" }.Select(name => view.FindControl<TextBox>(name)!).ToList();
         Check(boxes.Count == 9, "The workspace renders seven editor fields plus the preview and detail panes.");
         Check(boxes.Count(box => box.IsReadOnly) == 2, "Only the rendered file and its details are read-only.");
@@ -252,17 +303,29 @@ internal static class SquidWorkspaceChecks
         public int Reads; public int OperationReads; public bool LoseFirstResponse; public bool OperationFailed;
         public List<(string Key, object Body)> Submissions = [];
         private readonly Guid _id = Guid.NewGuid();
+        private SquidAccountMutation? _pendingAccount;
+        public List<SquidAccount> Accounts = [];
+        public Task<SquidAccount[]> ReadAccountsAsync(CancellationToken ct) => Task.FromResult(Accounts.ToArray());
         public Task<SquidConfigurationSnapshot> ReadAsync(CancellationToken ct) { Reads++; return Task.FromResult(Snapshot); }
         public Task<SquidConfigurationPreview> PreviewAsync(SquidConfiguration configuration, CancellationToken ct) => Task.FromResult(SquidConfigurationRenderer.Preview(configuration));
         public Task<SquidNativeValidation> ValidateAsync(SquidConfiguration configuration, CancellationToken ct) => Task.FromResult(new SquidNativeValidation(true, null, "parsed"));
         public Task<ProxyOperationAcceptedDto> SubmitAsync(string route, object body, string key, CancellationToken ct)
         {
             Submissions.Add((key, body));
+            if (body is SquidAccountMutation mutation) _pendingAccount = mutation;
             if (LoseFirstResponse) { LoseFirstResponse = false; throw new HttpRequestException("response lost"); }
             return Task.FromResult(new ProxyOperationAcceptedDto(_id));
         }
         public Task<ProxyOperationDto> OperationAsync(Guid id, CancellationToken ct)
         {
+            if (!OperationFailed && _pendingAccount is { } mutation)
+            {
+                var existing = Accounts.FindIndex(x => x.Username == mutation.Username);
+                if (mutation.Action == SquidAccountAction.Create) Accounts.Add(new(mutation.Username, true));
+                else if (mutation.Action == SquidAccountAction.Delete && existing >= 0) Accounts.RemoveAt(existing);
+                else if (mutation.Action == SquidAccountAction.SetEnabled && existing >= 0) Accounts[existing] = Accounts[existing] with { Enabled = mutation.Enabled!.Value };
+                _pendingAccount = null;
+            }
             OperationReads++; return Task.FromResult(new ProxyOperationDto(id, "squid.configuration.apply", OperationFailed ? ProxyOperationState.Failed : ProxyOperationState.Succeeded, "completed", OperationFailed ? "squid.package.install_failed" : "", null, DateTimeOffset.UtcNow));
         }
     }

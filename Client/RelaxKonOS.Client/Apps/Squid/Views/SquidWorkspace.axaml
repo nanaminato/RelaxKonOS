@@ -3,6 +3,7 @@
              xmlns:common="clr-namespace:RelaxKonOS.Client.Controls"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:squid="clr-namespace:RelaxKonOS.Client.Apps.Squid"
+             xmlns:protocol="clr-namespace:RelaxKonOS.Protocol.GatewayProxy;assembly=RelaxKonOS.Protocol"
              x:Class="RelaxKonOS.Client.Apps.Squid.Views.SquidWorkspace"
              x:DataType="squid:SquidViewModel"
              Background="{DynamicResource AppBackgroundBrush}" Classes="builtin-app">
@@ -49,6 +50,7 @@
         <StackPanel Spacing="4" Margin="14,22">
           <Button x:Name="PageButton0" Classes="workspace-nav" Tag="0" Click="NavigationButton_Click" Content="{loc:Loc squid.section.runtime}" HorizontalContentAlignment="Left" Padding="10,8" />
           <Button x:Name="PageButton1" Classes="workspace-nav" Tag="1" Click="NavigationButton_Click" Content="{loc:Loc squid.section.listener}" HorizontalContentAlignment="Left" Padding="10,8" />
+          <Button x:Name="PageButton5" Classes="workspace-nav" Tag="5" Click="NavigationButton_Click" Content="{loc:Loc squid.section.access}" HorizontalContentAlignment="Left" Padding="10,8" />
           <Button x:Name="PageButton2" Classes="workspace-nav" Tag="2" Click="NavigationButton_Click" Content="{loc:Loc squid.section.domains}" HorizontalContentAlignment="Left" Padding="10,8" />
           <Button x:Name="PageButton3" Classes="workspace-nav" Tag="3" Click="NavigationButton_Click" Content="{loc:Loc squid.section.upstream}" HorizontalContentAlignment="Left" Padding="10,8" />
           <Button x:Name="PageButton4" Classes="workspace-nav" Tag="4" Click="NavigationButton_Click" Content="{loc:Loc squid.section.preview}" HorizontalContentAlignment="Left" Padding="10,8" />
@@ -256,6 +258,52 @@
               </ItemsControl>
             </StackPanel>
           </Border>
+          </StackPanel>
+          <StackPanel x:Name="Page5" Spacing="16" IsVisible="False">
+            <Border Classes="app-panel" Padding="18">
+              <StackPanel Spacing="12">
+                <TextBlock Classes="section-title" Text="{loc:Loc squid.section.access}" />
+                <TextBlock Classes="section-hint" Text="{loc:Loc squid.access_hint}" />
+                <ComboBox x:Name="AccessModeBox" SelectedIndex="{Binding AccessModeIndex, Mode=TwoWay}" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Stretch">
+                  <ComboBoxItem Content="{loc:Loc squid.mode_ip}" />
+                  <ComboBoxItem Content="{loc:Loc squid.mode_password}" />
+                  <ComboBoxItem Content="{loc:Loc squid.mode_both}" />
+                </ComboBox>
+                <TextBlock Classes="section-hint" Text="{loc:Loc squid.basic_transport_hint}" IsVisible="{Binding RequiresPassword}" />
+                <TextBlock Classes="problem" Text="{loc:Loc squid.no_enabled_accounts}" IsVisible="{Binding ShowNoEnabledAccounts}" />
+              </StackPanel>
+            </Border>
+            <Border Classes="app-panel" Padding="18">
+              <StackPanel Spacing="12">
+                <TextBlock Classes="section-title" Text="{loc:Loc squid.accounts}" />
+                <TextBlock Classes="section-hint" Text="{loc:Loc squid.accounts_hint}" />
+                <TextBlock Classes="section-hint" Text="{loc:Loc squid.accounts_empty}" IsVisible="{Binding !HasAccounts}" />
+                <TextBlock Classes="section-hint" Text="{loc:Loc squid.last_account_protected}" IsVisible="{Binding IsLastEnabledAccountProtected}" />
+                <ListBox IsVisible="{Binding HasAccounts}" x:Name="AccountsList" ItemsSource="{Binding Accounts}" SelectedItem="{Binding SelectedAccount, Mode=TwoWay}" MinHeight="80" MaxHeight="200">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="protocol:SquidAccount">
+                      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                        <TextBlock Text="{Binding Username}" />
+                        <TextBlock Grid.Column="1" Text="{loc:Loc squid.account_enabled}" IsVisible="{Binding Enabled}" />
+                        <TextBlock Grid.Column="1" Text="{loc:Loc squid.account_disabled}" IsVisible="{Binding !Enabled}" />
+                      </Grid>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+                <StackPanel Spacing="4" IsEnabled="{Binding CanManageAccounts}">
+                  <TextBlock Classes="field-label" Text="{loc:Loc squid.account_name}" />
+                  <TextBox x:Name="AccountNameBox" Text="{Binding NewAccountName, Mode=TwoWay}" MaxLength="64" />
+                  <TextBlock Classes="field-label" Text="{loc:Loc squid.account_password}" />
+                  <TextBox x:Name="AccountPasswordBox" Text="{Binding AccountPassword, Mode=TwoWay}" PasswordChar="●" MaxLength="128" />
+                </StackPanel>
+                <WrapPanel>
+                  <Button Content="{loc:Loc squid.account_create}" Command="{Binding CreateAccountCommand}" Margin="0,0,8,8" />
+                  <Button Content="{loc:Loc squid.account_reset}" Command="{Binding ResetAccountPasswordCommand}" Margin="0,0,8,8" />
+                  <Button Content="{Binding ToggleAccountText}" Command="{Binding ToggleAccountCommand}" Margin="0,0,8,8" />
+                  <Button Content="{loc:Loc squid.account_delete}" Command="{Binding DeleteAccountCommand}" Margin="0,0,8,8" />
+                </WrapPanel>
+              </StackPanel>
+            </Border>
           </StackPanel>
           <StackPanel x:Name="Page4" Spacing="16" IsVisible="False">
 <Border Classes="app-panel" Padding="18">

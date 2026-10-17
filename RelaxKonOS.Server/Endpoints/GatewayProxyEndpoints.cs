@@ -39,6 +39,15 @@ public static class GatewayProxyEndpoints
                 ? QueueAsync(context, operations, audit, "lifecycle." + request.Action.ToString().ToLowerInvariant(), token => service.ExecuteAsync(request.Action, token), ct)
                 : Task.FromResult<IResult>(Results.BadRequest(new { problemCode = "squid.action.invalid" })))
             .RequireAuthorization("ProxyManage").WithTags("Gateway Proxy");
+        app.MapGet(GatewayProxyRoutes.Accounts, async (SquidGatewayService service, CancellationToken ct) =>
+            await service.GetAccountsAsync(ct) is { } accounts ? Results.Ok(accounts) : Results.Problem(statusCode: 503, title: "squid.helper.unavailable"))
+            .RequireAuthorization("ProxyRead").WithTags("Gateway Proxy");
+        app.MapPost(GatewayProxyRoutes.Accounts, (SquidAccountMutation request, HttpContext context,
+            SquidGatewayService service, ProxyOperationStore operations, ProxyAuditStore audit, CancellationToken ct) =>
+            SquidAccountValidation.Valid(request)
+                ? QueueAsync(context, operations, audit, "accounts." + request.Action.ToString().ToLowerInvariant(), token => service.MutateAccountAsync(request, token), ct)
+                : Task.FromResult<IResult>(Results.BadRequest(new { problemCode = "squid.accounts.invalid" })))
+            .RequireAuthorization("ProxyManage").WithTags("Gateway Proxy");
         return app;
     }
 

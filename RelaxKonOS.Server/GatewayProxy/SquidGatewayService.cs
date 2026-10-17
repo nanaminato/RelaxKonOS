@@ -68,6 +68,22 @@ public sealed class SquidGatewayService(IPrivilegedOperationTransport helper, Sq
         return Problem(await helper.ExecuteAsync(new(PrivilegedOperationKind.SquidServiceAction, SquidServiceAction: action), ct));
     }
 
+    public async Task<SquidAccount[]?> GetAccountsAsync(CancellationToken ct)
+    {
+        var result = await helper.ExecuteAsync(new(PrivilegedOperationKind.SquidAccountsRead), ct);
+        if (!result.Success || result.OutputBase64 is null) return null;
+        try { return JsonSerializer.Deserialize<SquidAccount[]>(Convert.FromBase64String(result.OutputBase64)); }
+        catch (Exception ex) when (ex is JsonException or FormatException) { return null; }
+    }
+
+    public async Task<string?> MutateAccountAsync(SquidAccountMutation request, CancellationToken ct)
+    {
+        if (!SquidAccountValidation.Valid(request)) return "squid.accounts.invalid";
+        await configurations.Gate.WaitAsync(ct);
+        try { return Problem(await helper.ExecuteAsync(new(PrivilegedOperationKind.SquidAccountMutate, SquidAccount: request), ct)); }
+        finally { configurations.Gate.Release(); }
+    }
+
     private static string? Problem(PrivilegedOperationResult result) => result.Success ? null :
         result.Error is { } error && error.StartsWith("squid.", StringComparison.Ordinal) ? error : "squid.helper.unavailable";
 }

@@ -10,6 +10,7 @@ namespace RelaxKonOS.Client.Apps.Squid;
 
 public interface ISquidClient
 {
+    Task<SquidAccount[]> ReadAccountsAsync(CancellationToken ct);
     Task<SquidConfigurationSnapshot> ReadAsync(CancellationToken ct);
     Task<SquidConfigurationPreview> PreviewAsync(SquidConfiguration configuration, CancellationToken ct);
     Task<SquidNativeValidation> ValidateAsync(SquidConfiguration configuration, CancellationToken ct);
@@ -21,12 +22,13 @@ public interface ISquidClient
 public sealed class RemoteSquidClient(HttpClient http, IAuthSession session) : ISquidClient
 {
     private readonly object? _login = session.CurrentSession;
+    public Task<SquidAccount[]> ReadAccountsAsync(CancellationToken ct) => SendAsync<SquidAccount[]>(HttpMethod.Get, GatewayProxyRoutes.Accounts, null, null, ct);
     public Task<SquidConfigurationSnapshot> ReadAsync(CancellationToken ct) => SendAsync<SquidConfigurationSnapshot>(HttpMethod.Get, GatewayProxyRoutes.Configuration, null, null, ct);
     public Task<SquidConfigurationPreview> PreviewAsync(SquidConfiguration value, CancellationToken ct) => SendAsync<SquidConfigurationPreview>(HttpMethod.Post, GatewayProxyRoutes.Preview, value, null, ct);
     public Task<SquidNativeValidation> ValidateAsync(SquidConfiguration value, CancellationToken ct) => SendAsync<SquidNativeValidation>(HttpMethod.Post, GatewayProxyRoutes.Validate, value, null, ct);
     public Task<ProxyOperationAcceptedDto> SubmitAsync(string route, object body, string key, CancellationToken ct)
     {
-        if (route is not (GatewayProxyRoutes.Apply or GatewayProxyRoutes.Lifecycle)) throw new ArgumentException("Invalid Squid route.");
+        if (route is not (GatewayProxyRoutes.Apply or GatewayProxyRoutes.Lifecycle or GatewayProxyRoutes.Accounts)) throw new ArgumentException("Invalid Squid route.");
         return SendAsync<ProxyOperationAcceptedDto>(HttpMethod.Post, route, body, key, ct);
     }
     public Task<ProxyOperationDto> OperationAsync(Guid id, CancellationToken ct) => SendAsync<ProxyOperationDto>(HttpMethod.Get, ProxyApiRoutes.Proxy + "/operations/" + id, null, null, ct);

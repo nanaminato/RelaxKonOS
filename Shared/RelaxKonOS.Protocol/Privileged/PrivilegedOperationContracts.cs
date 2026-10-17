@@ -113,6 +113,8 @@ public enum PrivilegedOperationKind
     SquidApplyConfiguration,
     SquidServiceAction,
     SquidValidateConfiguration,
+    SquidAccountsRead,
+    SquidAccountMutate,
 }
 
 /// <summary>
@@ -295,7 +297,8 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("processId")] int? ProcessId = null,
     [property: JsonPropertyName("processExpectedStartTime")] DateTimeOffset? ProcessExpectedStartTime = null,
     [property: JsonPropertyName("squidConfiguration")] RelaxKonOS.Protocol.GatewayProxy.ApplySquidConfigurationRequest? SquidConfiguration = null,
-    [property: JsonPropertyName("squidServiceAction")] RelaxKonOS.Protocol.GatewayProxy.SquidServiceAction? SquidServiceAction = null);
+    [property: JsonPropertyName("squidServiceAction")] RelaxKonOS.Protocol.GatewayProxy.SquidServiceAction? SquidServiceAction = null,
+    [property: JsonPropertyName("squidAccount")] RelaxKonOS.Protocol.GatewayProxy.SquidAccountMutation? SquidAccount = null);
 
 /// <summary>Versioned structured result returned by the local Helper.</summary>
 public sealed record PrivilegedOperationResult(

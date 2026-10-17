@@ -31,6 +31,7 @@ internal static class SquidGatewayChecks
             Check(!RelaxKonOS.PrivilegedHelper.LinuxDistributionSupport.IsSquidPackageSupported(unsupported),
                 "Unknown, unsupported or ambiguous distributions must not advertise package control.");
         VerifyGatewayCapabilityContract();
+        VerifyAccessControl();
         var defaults = new SquidConfiguration();
         var result = SquidConfigurationRenderer.Preview(defaults);
         Check(result.Valid && result.Configuration!.Contains("http_port 127.0.0.1:3128\n"), "Defaults must bind loopback.");
@@ -154,6 +155,37 @@ internal static class SquidGatewayChecks
         Console.WriteLine("Squid gateway configuration, injection, ACL ordering, wire and Helper boundary checks passed.");
     }
 
+    private static void VerifyAccessControl()
+    {
+        var password = new SquidConfiguration { AccessMode = SquidAccessMode.Password, AllowedNetworks = [] };
+        var preview = SquidConfigurationRenderer.Preview(password);
+        Check(preview.Valid && preview.Configuration!.Contains("auth_param basic program /usr/lib/squid/basic_ncsa_auth /etc/squid/relaxkonos.passwd")
+            && preview.Configuration.Contains("auth_param basic credentialsttl 1 seconds")
+            && preview.Configuration.Contains("http_access allow rk_authenticated") && !preview.Configuration.Contains("rk_sources"),
+            "Password-only mode must authenticate without an IP allowlist or unauthenticated grant.");
+        var combined = SquidConfigurationRenderer.Preview(password with { AccessMode = SquidAccessMode.PasswordAndIpWhitelist, AllowedNetworks = ["192.168.1.8/32"] }).Configuration!;
+        Check(combined.IndexOf("http_access deny !rk_sources", StringComparison.Ordinal) < combined.IndexOf("http_access allow rk_authenticated", StringComparison.Ordinal),
+            "Combined mode must deny other sources before challenging for authentication.");
+        var restricted = SquidConfigurationRenderer.Preview(password with { AllowedDomains = ["example.com"], DeniedDomains = ["blocked.example.com"] }).Configuration!;
+        Check(restricted.IndexOf("http_access deny !rk_allowed", StringComparison.Ordinal) < restricted.IndexOf("http_access allow rk_authenticated", StringComparison.Ordinal)
+            && restricted.IndexOf("http_access deny rk_denied", StringComparison.Ordinal) < restricted.IndexOf("http_access allow rk_authenticated", StringComparison.Ordinal),
+            "Authentication must not bypass allowed or denied domains.");
+        Check(!SquidConfigurationRenderer.Preview(password with { AccessMode = (SquidAccessMode)999 }).Valid
+            && !SquidConfigurationRenderer.Preview(password with { AccessMode = SquidAccessMode.PasswordAndIpWhitelist }).Valid,
+            "Unknown modes and combined mode without networks must fail closed.");
+        Check(JsonSerializer.Serialize(password).Contains("\"password\""), "Access modes must use the current camel-case wire contract.");
+        try { JsonSerializer.Deserialize<SquidConfiguration>("{}"); throw new Exception("Missing mode was accepted."); }
+        catch (JsonException) { }
+        var request = new SquidAccountMutation(SquidAccountAction.Create, "proxy-user", "test-only-Password!92");
+        Check(SquidAccountValidation.Valid(request) && !request.ToString().Contains(request.Password!), "Account requests must validate and redact passwords from diagnostic strings.");
+        foreach (var invalid in new[] { request with { Username = "user\nhttp_access allow all" }, request with { Password = "short" },
+            request with { Password = "password\nvalue" }, request with { Username = "../admin" }, request with { Enabled = false },
+            request with { Action = SquidAccountAction.Delete }, request with { Action = (SquidAccountAction)999 } })
+            Check(!SquidAccountValidation.Valid(invalid), "Malformed account mutations must fail before queueing or privilege escalation.");
+        var metadata = JsonSerializer.Serialize(new SquidAccount("proxy-user", true));
+        Check(!metadata.Contains("Password", StringComparison.OrdinalIgnoreCase), "Account read contracts must not expose passwords or hashes.");
+    }
+
     private static async Task VerifyEndpointMetadataAsync()
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
@@ -169,10 +201,10 @@ internal static class SquidGatewayChecks
         await using var app = builder.Build();
         app.MapGatewayProxyEndpoints();
         var endpoints = ((IEndpointRouteBuilder)app).DataSources.SelectMany(source => source.Endpoints).OfType<RouteEndpoint>().ToArray();
-        Check(endpoints.Length == 6, "Every gateway route must be registered.");
+        Check(endpoints.Length == 8, "Every gateway route must be registered.");
         foreach (var endpoint in endpoints)
         {
-            var isStatus = endpoint.RoutePattern.RawText is GatewayProxyRoutes.Status or GatewayProxyRoutes.Configuration;
+            var isStatus = endpoint.Metadata.GetMetadata<HttpMethodMetadata>()!.HttpMethods.Contains("GET");
             var policy = endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>();
             Check(policy.Any(item => item.Policy == (isStatus ? "ProxyRead" : "ProxyManage")), "Gateway endpoint has an incorrect authorization boundary.");
         }
@@ -224,11 +256,36 @@ internal static class SquidGatewayChecks
         var read = await InvokeAsync(GatewayProxyRoutes.Configuration, null);
         Check(read.Status == 200 && JsonSerializer.Deserialize<SquidConfigurationSnapshot>(read.Body, RelaxKonOSJsonOptions.Default) is { MatchesPublishedConfiguration: true, State.DesiredRevision: 1 },
             "Configuration reads must expose the queued publication receipt and matching disk state.");
+        helper.Result = new(true);
+        var accountRequest = new SquidAccountMutation(SquidAccountAction.Create, "test-proxy", "test-only-Password!92");
+        Check((await InvokeAsync(GatewayProxyRoutes.Accounts, accountRequest with { Password = "short" }, "invalid-account")).Status == 400,
+            "Invalid account data must be rejected before queueing.");
+        Check((await InvokeAsync(GatewayProxyRoutes.Accounts, accountRequest)).Status == 400,
+            "Account mutations require an idempotency key.");
+        var created = await InvokeAsync(GatewayProxyRoutes.Accounts, accountRequest, "account-create");
+        var replayAccount = await InvokeAsync(GatewayProxyRoutes.Accounts, accountRequest, "account-create");
+        Check(created.Status == 202 && created.Body == replayAccount.Body && !created.Body.Contains(accountRequest.Password!),
+            "Account retries return one operation without echoing the secret.");
+        var accountId = JsonSerializer.Deserialize<ProxyOperationAcceptedDto>(created.Body, RelaxKonOSJsonOptions.Default)!.OperationId;
+        for (var attempt = 0; attempt < 200; attempt++)
+        {
+            operation = await operations.GetAsync(accountId, default);
+            if (operation?.State is ProxyOperationState.Succeeded or ProxyOperationState.Failed) break;
+            await Task.Delay(10);
+        }
+        Check(operation?.State == ProxyOperationState.Succeeded
+            && helper.Requests.Count(x => x.Operation == PrivilegedOperationKind.SquidAccountMutate) == 1
+            && helper.Requests.Last().SquidAccount?.Username == "test-proxy", "Account creation must execute once through the closed Helper boundary.");
+        helper.Result = new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new[] { new SquidAccount("test-proxy", true) })));
+        var accountRead = await InvokeAsync(GatewayProxyRoutes.Accounts, null);
+        Check(accountRead.Status == 200 && accountRead.Body.Contains("test-proxy") && !accountRead.Body.Contains("password", StringComparison.OrdinalIgnoreCase),
+            "Account reads return metadata only.");
         Directory.Delete(directory, recursive: true);
 
         async Task<(int Status, string Body)> InvokeAsync(string route, object? body, string? key = null)
         {
-            var endpoint = endpoints.Single(item => item.RoutePattern.RawText == route);
+            var endpoint = endpoints.Single(item => item.RoutePattern.RawText == route
+                && item.Metadata.GetMetadata<HttpMethodMetadata>()!.HttpMethods.Contains(body is null ? "GET" : "POST"));
             var context = new DefaultHttpContext { RequestServices = app.Services };
             context.Request.Method = body is null ? "GET" : "POST";
             context.Request.Path = route;

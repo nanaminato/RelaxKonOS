@@ -4,10 +4,12 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 data class SquidUpstream(val host: String, val port: Int)
+enum class SquidAccessMode(val wire: String) { IpWhitelist("ipWhitelist"), Password("password"), PasswordAndIpWhitelist("passwordAndIpWhitelist") }
+
 data class SquidConfiguration(val bindAddress: String = "127.0.0.1", val port: Int = 3128,
     val allowRemoteClients: Boolean = false, val allowedNetworks: List<String> = listOf("127.0.0.1/32", "::1/128"),
-    val allowedDomains: List<String> = emptyList(), val deniedDomains: List<String> = emptyList(), val upstream: SquidUpstream? = null) {
-    fun json(): JSONObject = JSONObject().put("bindAddress", bindAddress).put("port", port).put("allowRemoteClients", allowRemoteClients)
+    val allowedDomains: List<String> = emptyList(), val deniedDomains: List<String> = emptyList(), val upstream: SquidUpstream? = null, val accessMode: SquidAccessMode = SquidAccessMode.IpWhitelist) {
+    fun json(): JSONObject = JSONObject().put("accessMode", accessMode.wire).put("bindAddress", bindAddress).put("port", port).put("allowRemoteClients", allowRemoteClients)
         .put("allowedNetworks", JSONArray(allowedNetworks)).put("allowedDomains", JSONArray(allowedDomains)).put("deniedDomains", JSONArray(deniedDomains))
         .put("upstream", upstream?.let { JSONObject().put("host", it.host).put("port", it.port) } ?: JSONObject.NULL)
     fun body(): JsonBody = SquidWire.body(json())
@@ -34,7 +36,8 @@ internal object SquidWire {
     }
     fun configuration(j: JSONObject): SquidConfiguration = SquidConfiguration(j.getString("bindAddress"), j.getInt("port"), j.getBoolean("allowRemoteClients"),
         strings(j, "allowedNetworks"), strings(j, "allowedDomains"), strings(j, "deniedDomains"),
-        if (j.isNull("upstream")) null else j.getJSONObject("upstream").let { SquidUpstream(it.getString("host"), it.getInt("port")) })
+        if (j.isNull("upstream")) null else j.getJSONObject("upstream").let { SquidUpstream(it.getString("host"), it.getInt("port")) },
+        SquidAccessMode.entries.single { it.wire == j.getString("accessMode") })
     fun request(j: JSONObject): SquidRequest = if (j.has("action")) SquidRequest(action = SquidAction.entries.single { it.name.lowercase() == j.getString("action") })
         else SquidRequest(configuration(j.getJSONObject("configuration")), j.getBoolean("adoptExistingConfiguration"))
     fun snapshot(payload: String): SquidSnapshot = JSONObject(payload).let { root ->

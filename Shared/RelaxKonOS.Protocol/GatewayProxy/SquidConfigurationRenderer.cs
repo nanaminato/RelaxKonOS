@@ -17,7 +17,9 @@ public static partial class SquidConfigurationRenderer
         if (!bindValid) errors.Add("listener.address.invalid");
         if (value.Port is < 1024 or > 65535) errors.Add("listener.port.invalid");
         if (bindValid && !IPAddress.IsLoopback(bind!) && !value.AllowRemoteClients) errors.Add("listener.remote.opt_in_required");
-        if (value.AllowedNetworks is not { Length: > 0 and <= 128 }) errors.Add("networks.required_or_too_many");
+        if (!Enum.IsDefined(value.AccessMode)) errors.Add("access.mode.invalid");
+        var needsNetworks = value.AccessMode != SquidAccessMode.Password;
+        if (value.AllowedNetworks is null || value.AllowedNetworks.Length > 128 || (needsNetworks && value.AllowedNetworks.Length == 0)) errors.Add("networks.required_or_too_many");
         else foreach (var source in value.AllowedNetworks)
         {
             if (source is null || !IPNetwork.TryParse(source, out var network) || network.PrefixLength == 0
@@ -37,7 +39,17 @@ public static partial class SquidConfigurationRenderer
         var address = bind!.AddressFamily == AddressFamily.InterNetworkV6 ? $"[{bind}]" : bind.ToString();
         text.AppendLine($"http_port {address}:{value.Port}");
         text.AppendLine("visible_hostname relaxkonos-gateway");
-        text.AppendLine("acl rk_sources src " + string.Join(' ', value.AllowedNetworks.Select(x => IPNetwork.Parse(x).ToString())));
+        if (needsNetworks)
+            text.AppendLine("acl rk_sources src " + string.Join(' ', value.AllowedNetworks!.Select(x => IPNetwork.Parse(x).ToString())));
+        var needsPassword = value.AccessMode != SquidAccessMode.IpWhitelist;
+        if (needsPassword)
+        {
+            text.AppendLine("auth_param basic program /usr/lib/squid/basic_ncsa_auth /etc/squid/relaxkonos.passwd");
+            text.AppendLine("auth_param basic realm RelaxKonOS Squid");
+            text.AppendLine("auth_param basic credentialsttl 1 seconds");
+            text.AppendLine("auth_param basic casesensitive on");
+            text.AppendLine("acl rk_authenticated proxy_auth REQUIRED");
+        }
         text.AppendLine("acl rk_safe_ports port 80 443");
         text.AppendLine("acl rk_tls_ports port 443");
         text.AppendLine("acl rk_connect method CONNECT");
@@ -51,11 +63,15 @@ public static partial class SquidConfigurationRenderer
             text.AppendLine("acl rk_denied dstdomain " + Domains(value.DeniedDomains));
             text.AppendLine("http_access deny rk_denied");
         }
+        if (needsPassword && needsNetworks) text.AppendLine("http_access deny !rk_sources");
         if (value.AllowedDomains.Length > 0)
         {
             text.AppendLine("acl rk_allowed dstdomain " + Domains(value.AllowedDomains));
-            text.AppendLine("http_access allow rk_sources rk_allowed");
+            // Reject targets before challenging for credentials.
+            if (needsPassword) text.AppendLine("http_access deny !rk_allowed");
         }
+        if (needsPassword) text.AppendLine("http_access allow rk_authenticated");
+        else if (value.AllowedDomains.Length > 0) text.AppendLine("http_access allow rk_sources rk_allowed");
         else text.AppendLine("http_access allow rk_sources");
         text.AppendLine("http_access deny all");
         text.AppendLine("cache deny all");

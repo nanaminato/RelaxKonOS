@@ -34,9 +34,10 @@ public sealed class SquidApp : RemoteApplicationBase
         view.AttachWindowHeader(window);
         vm.ConfirmPackageAsync = uninstall => ConfirmAsync(uninstall ? "squid.uninstall" : "squid.install",
             uninstall ? "squid.uninstall_message" : "squid.install_message");
+        vm.ConfirmDeleteAccountAsync = username => ConfirmAsync("squid.account_delete", "squid.account_delete_message");
         vm.ConfirmApplyAsync = () => ConfirmAsync("squid.apply_title", "squid.apply_message");
         vm.ConfirmReloadAsync = () => ConfirmAsync("common.discard_title", "squid.reload_message");
-        window.CanCloseAsync = () => vm.IsBusy || vm.HasPending || vm.HasUnsavedChanges
+        window.CanCloseAsync = () => vm.IsBusy || vm.HasPending || vm.HasUnsavedChanges || vm.HasAccountDraft
             ? ConfirmAsync("common.discard_title", "squid.close_message") : Task.FromResult(true);
         var login = session.CurrentSession;
         EventHandler<AuthSessionStateChangedEventArgs> sessionChanged = (_, _) =>

@@ -1,6 +1,6 @@
 # Squid HTTP 代理网关
 
-状态：已实现后端 API、Avalonia 内置应用与 Android 管理应用。桌面支持通过 APT 安装和卸载 Squid，主机恢复由管理员操作；运行时生效与 Linux 实机验收仍需验证。
+状态：已实现后端 API、Avalonia 内置应用与 Android 管理应用。桌面支持通过 APT 安装和卸载 Squid，主机恢复由管理员操作；Ubuntu 26.04 / Squid 7.2 的包管理、配置、服务控制与 HTTP/CONNECT 已实机验证；Debian 等其他发行版及故障恢复场景仍需分别验收。
 
 ## 定位与架构
 
@@ -32,19 +32,19 @@ flowchart LR
 | 监听 IP / 1024–65535 端口 / 来源 CIDR | 已实现 |
 | 域名白名单、黑名单，拒绝优先；HTTPS CONNECT 仅 443 | 已实现 |
 | HTTP parent，上游不可用时不降级为直连 | 已实现 |
-| 应用配置、备份、reload 失败回滚、未完成事务阻断 | 已实现，Linux 实机验收待执行 |
+| 应用配置、备份、reload 失败回滚、未完成事务阻断 | 已实现；Ubuntu 26.04 配置应用已实测，回滚与中断故障注入待验收 |
 | start / stop / restart / reload / enable / disable | 已实现，固定 squid.service |
 | 操作 ID、幂等键、controller 写权限、observer 读权限、审计 | 复用现有基础设施 |
 | 软件包安装 / 卸载 | 桌面运行状态页支持 APT 安装和卸载；卸载保留配置 |
 | 编辑器读取结构化状态、desired/published 修订与磁盘漂移 | 已实现主机级持久化；尚未接入用户级 Configuration Registry，不宣称运行时 applied |
 | Avalonia / Android 独立应用入口与编辑器 | 已实现配置表单、预览、校验、发布、服务控制和操作查询；Android 文档见其自有目录 |
-| Basic 用户与密码哈希管理、凭据轮换 | 后续阶段 |
+| Basic 用户与密码哈希管理、凭据轮换 | 已实现独立账号创建、重置、启用／禁用、删除；桌面访问控制页 |
 | access.log 解析、脱敏、保留策略、SignalR、统计 | 后续阶段；Squid 自身仍写标准 access.log |
 | Firewall 来源限定规则及所有权清理 | 后续阶段；当前不会修改防火墙 |
 | 从 Mihomo 当前有效配置自动发现 HTTP 端口并跟踪变更 | 后续阶段；当前手工填写 HTTP parent |
 | 磁盘缓存、透明代理、SSL Bump、ICAP/eCAP、多实例、Windows Squid | 不在当前阶段；Windows 无 Squid 发行版，故不计划移植 |
 
-运行时应用证明、Basic 认证、日志和防火墙联动尚未实现。Android 产品设计和实现进度只维护在 `Client/RelaxKonOS.Client.Android/docs/`。
+运行时应用证明、日志和防火墙联动尚未实现。Android 产品设计和实现进度只维护在 `Client/RelaxKonOS.Client.Android/docs/`。
 
 ## 安全与配置语义
 
@@ -53,7 +53,7 @@ flowchart LR
 - 先拒绝 manager、80/443 以外的目标端口、443 以外的 CONNECT、loopback/link-local/组播目标，再拒绝黑名单，最后处理来源与白名单。未设置白名单时，允许来源可访问未被拒绝的域名。
 - `example.org` 匹配该域名；`.example.org` 使用 Squid 的域及子域语义。拒绝 `*.example.org`、URL、文件路径、换行及其他原生语法。国际域名先转换成 ASCII/Punycode。
 - HTTP parent 支持主机名、IP 与端口，不支持 SOCKS 或上游认证。同监听端口的 parent 被保守拒绝以减少自循环；跨主机/跨端口循环仍须由管理员避免。
-- 不开启 TLS 解密或磁盘缓存。CONNECT 是隧道，无法提供 HTTPS 内容审计。来源 CIDR 不是用户认证；Basic 功能完成前宜用于 loopback、受信 LAN 或 VPN。
+- 不开启 TLS 解密或磁盘缓存。CONNECT 是隧道，无法提供 HTTPS 内容审计。来源 CIDR 不是设备身份认证。Basic 代理认证不加密客户端到 HTTP 代理的凭据，即使目标为 HTTPS；应使用可信 LAN 或加密隧道。
 - Helper 再次验证结构化数据并重新渲染。固定 `/usr/sbin/squid`、`/usr/bin/systemctl`、`squid.service` 和 `/etc/squid`；相关配置路径必须是 root 所有、非符号链接且不可被 group/other 写入的普通文件/目录。
 - Linux User Mode 的 host 操作限制覆盖 `/api/v1.0/gateway-proxy`。Windows 可查询不支持状态，不能执行 Squid 变更。
 - Squid 5–7 只有类 Unix 版本，没有可维护的 Windows 移植，因此 Windows 宿主不提供网关的安装、配置与服务控制。为避免用户只能看到"应用消失了"，Server 在**每个**可判定网关契约的平台都下发 `server.gateway-proxy`（Linux User Mode 除外，那里连特权 Helper 都没有）；客户端据此**保留应用入口**，窗口内用"不支持该服务器"状态说明本机无法提供网关，所有配置与服务动作保持禁用。
@@ -93,6 +93,7 @@ apply/lifecycle 必须提供 1–160 字符的 `Idempotency-Key`。同一键只�
 
 ```json
 {
+  "accessMode": "ipWhitelist",
   "bindAddress": "127.0.0.1",
   "port": 3128,
   "allowRemoteClients": false,
@@ -109,7 +110,7 @@ apply 请求体在外层包装为 `{"configuration": {上述字段}, "adoptExist
 
 Avalonia 应用目录中的 Squid 使用独立 `relaxkonos.squid` 应用 ID 和 `squid` 内置工厂键，在所有声明 `server.gateway-proxy` 的服务器上可见（Windows 与 Linux 系统模式；Linux 用户模式没有特权 Helper，不声明）。Windows 上打开只会看到"不支持该服务器"提示，配置与服务动作全部禁用（前提是特权 Helper 正常应答；Helper 缺失或不可达时窗口显示"不可用"，不把部署故障说成平台限制）。服务器预装发行版 Squid 后，打开应用，编辑监听地址、来源 CIDR、域名 ACL 和 HTTP parent，预览并按需原生校验，确认完整替换后应用；服务原本停止时，再点击启动。首次接管现有配置必须显式勾选接管。
 
-桌面窗口采用与 mihomo 管理器一致的侧栏导航，分为运行状态、代理入口、域名规则、HTTP 上游和配置预览五页。阻断说明集中显示在运行状态页，不再占据所有页面顶部；底部状态栏始终保留当前状态。固定动作栏提供载入已保存配置、原生校验、预览和应用，生成预览后自动切到配置预览页（含配置接管）。切页保留编辑草稿；窗口宽度低于 620 像素时侧栏折叠为菜单。
+桌面窗口采用与 mihomo 管理器一致的侧栏导航，分为运行状态、代理入口、访问控制、域名规则、HTTP 上游和配置预览六页。阻断说明集中显示在运行状态页，不再占据所有页面顶部；底部状态栏始终保留当前状态。固定动作栏提供载入已保存配置、原生校验、预览和应用，生成预览后自动切到配置预览页（含配置接管）。切页保留编辑草稿；窗口宽度低于 620 像素时侧栏折叠为菜单。
 
 桌面操作逻辑的约束：
 
@@ -164,4 +165,18 @@ dotnet run --project RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no
 
 自动包管理按 `/etc/os-release` 的 `ID`、`VERSION_ID` 和仓库共享的发行版清单判定，明确支持 Debian 12、13，Ubuntu 22.04、24.04、26.04，以及清单内的 Linux Mint 21.x、22.x。还须存在 `/usr/bin/apt-get` 和 `/usr/bin/systemctl`，不能仅凭 `ID_LIKE=debian` 将未知衍生版判为支持。状态契约的必需字段 `packageManagementSupported` 返回实际检测结果；桌面据此禁用安装、卸载并给出说明，配置与服务控制仍按各自条件判断。Helper 在执行时再次检查同一条件，仅调用固定 APT 路径和固定 `squid` 包名。安装先更新包索引，再以非交互方式安装并保留现有配置；单个包管理步骤最长十分钟。发行版安装脚本可能启动默认服务，安装后需检查实际状态，再预览和接管配置。其他发行版仍可通过管理员安装后使用现有配置与服务控制。
 
-卸载先停止 `squid.service`、禁用开机启动，再执行 `apt-get remove --yes squid`，不执行 purge 或 autoremove，保留 `/etc/squid` 文件及服务端保存的编辑配置。卸载中断或失败不会自动重启服务；以刷新后的主机状态为准。软件包操作与配置及服务操作共享 Helper 文件锁；安装成功必须检测到固定二进制，卸载成功必须确认其已移除。Linux 实机的包管理脚本、权限与服务行为仍需验收。
+卸载先停止 `squid.service`、禁用开机启动，再执行 `apt-get remove --yes squid`，不执行 purge 或 autoremove，保留 `/etc/squid` 文件及服务端保存的编辑配置。卸载中断或失败不会自动重启服务；以刷新后的主机状态为准。软件包操作与配置及服务操作共享 Helper 文件锁；安装成功必须检测到固定二进制，卸载成功必须确认其已移除。Ubuntu 26.04 / Squid 7.2 的安装、卸载保留配置和服务控制已实测；Debian 12、13 等其他发行版仍需独立实机验收。
+
+服务控制以及卸载前的停止／禁用操作使用三分钟超时，以覆盖 Squid 默认 30 秒的连接排空期和 systemd 的停止、启动时间。配置原生解析和状态探测仍使用短超时。
+
+### 访问控制与独立代理账号
+
+`SquidConfiguration.accessMode` 是必需的当前协议字段：`ipWhitelist`（仅 IP）、`password`（仅账密）、`passwordAndIpWhitelist`（账密＋IP）。仅账密模式允许空来源列表，不输出来源 ACL；组合模式先拒绝不在白名单内的来源，再进行账号认证，密码不能绕过 IP 限制。域名与目标端口／地址限制在所有模式下保留。IP 模式不要求账号。认证模式在原生校验与应用时要求至少一个已启用账号，缺失时拒绝，绝不自动退回无认证模式。
+
+`GET /accounts`（ProxyRead）仅返回 `username`、`enabled`。`POST /accounts`（ProxyManage＋幂等键）接收独立的 `create`、`setPassword`、`setEnabled`、`delete` 动作，仍通过操作队列报告结果。用户名限 1–64 个 ASCII 字母、数字、点、下划线和连字符，首字符必须为字母或数字；密码限 8–128 个非控制字符。创建或重置才接收密码，其他动作不接受密码。账号操作保存后重载发布，与未提交的配置模式草稿分开。认证生效时禁止禁用或删除最后一个启用账号；先新增可用账号，或明确应用 IP 模式后再删除。代理账号不复用系统登录账号。
+
+密码只经认证的 HTTPS 管理 API 和 Helper 标准输入传输，不写入配置状态、预览、操作回执、审计内容或桌面持久文件。请求的诊断字符串将密码替换为 `[redacted]`。桌面提交后清空密码框；不确定请求仅在当前窗口内存中保留原请求和幂等键。关闭或会话失效清除该内存，已提交的服务器操作继续运行。
+
+Helper 在 root-owned `/etc/squid/relaxkonos-users.json`（0600）保存随机独立 salt、100000 轮 SHA-512 crypt 哈希；NCSA 文件 `/etc/squid/relaxkonos.passwd` 只包含启用账号，以 root:proxy 0640 供发行版 `/usr/lib/squid/basic_ncsa_auth` 读取。使用 `credentialsttl 1 seconds`，账号变更后重载，凭据空闲缓存设为一秒。已有已建立 CONNECT 隧道不会被密码重置主动终止，后续新请求重新认证。哈希实现与发行版 NCSA helper 兼容，不增加 Apache 或第三方密码工具依赖。原生行为参考 [Squid NCSA 认证](https://wiki.squid-cache.org/ConfigExamples/Authenticate/Ncsa) 与 [认证参数](https://www.squid-cache.org/Doc/config/auth_param/)。
+
+账号文件与 NCSA 文件发布共用 Squid 排他锁，生成 root-only 哈希备份，先写恢复标记再原子替换；重载失败时恢复原文件并重新重载，恢复失败保留标记。账号事务标记明确要求同时恢复 `relaxkonos-users.json.previous` 和 `relaxkonos.passwd.previous`（原先不存在的文件应删除），检查权限及认证行为后再移除标记。不可按单一 squid.conf 配置事务盲目处理账号事务。卸载保留这些文件与备份。

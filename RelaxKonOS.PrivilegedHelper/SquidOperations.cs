@@ -10,7 +10,7 @@ using RelaxKonOS.Protocol.Privileged;
 namespace RelaxKonOS.PrivilegedHelper;
 
 /// <summary>Fixed Linux package paths and service only. Never accepts native configuration or command arguments.</summary>
-internal static class SquidOperations
+internal static partial class SquidOperations
 {
     private const string DirectoryPath = "/etc/squid";
     private const string ConfigurationPath = DirectoryPath + "/squid.conf";
@@ -18,6 +18,9 @@ internal static class SquidOperations
     private const string PendingPath = DirectoryPath + "/relaxkonos.pending";
     private const string Binary = "/usr/sbin/squid";
     private const string Systemctl = "/usr/bin/systemctl";
+    // Squid drains connections for 30 seconds by default. Allow systemd its stop/start
+    // budget instead of reporting a successful graceful restart as a 30-second timeout.
+    private static readonly TimeSpan ServiceActionTimeout = TimeSpan.FromMinutes(3);
     private const UnixFileMode PublicRead = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead;
 
     public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request)
@@ -25,7 +28,8 @@ internal static class SquidOperations
         var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
             Correlation: request.Correlation, Version: request.Version,
             SquidConfiguration: request.Operation is PrivilegedOperationKind.SquidApplyConfiguration or PrivilegedOperationKind.SquidValidateConfiguration ? request.SquidConfiguration : null,
-            SquidServiceAction: request.Operation == PrivilegedOperationKind.SquidServiceAction ? request.SquidServiceAction : null);
+            SquidServiceAction: request.Operation == PrivilegedOperationKind.SquidServiceAction ? request.SquidServiceAction : null,
+            SquidAccount: request.Operation == PrivilegedOperationKind.SquidAccountMutate ? request.SquidAccount : null);
         if (request != clean) return Failure("squid.request.invalid", PrivilegedProblemCode.InvalidRequest);
         if (!OperatingSystem.IsLinux())
             return request.Operation == PrivilegedOperationKind.SquidStatus
@@ -34,6 +38,8 @@ internal static class SquidOperations
         try
         {
             if (request.Operation == PrivilegedOperationKind.SquidStatus) return Json(await StatusAsync());
+            if (request.Operation == PrivilegedOperationKind.SquidAccountsRead)
+                return Json((await ReadAccountsAsync()).Select(account => new SquidAccount(account.Username, account.Enabled)).ToArray());
             if (request.Operation == PrivilegedOperationKind.SquidServiceAction
                 && request.SquidServiceAction is SquidServiceAction.Install or SquidServiceAction.Uninstall)
                 return await PackageAsync(request.SquidServiceAction.Value);
@@ -48,6 +54,8 @@ internal static class SquidOperations
             EnsurePlainProtectedPath(ConfigurationPath);
             EnsurePlainProtectedPath(BackupPath);
             EnsurePlainProtectedPath(PendingPath);
+            if (request.Operation == PrivilegedOperationKind.SquidAccountMutate)
+                return File.Exists(PendingPath) ? Failure("squid.recovery.required") : await MutateAccountAsync(request.SquidAccount);
             if (request.Operation == PrivilegedOperationKind.SquidValidateConfiguration)
                 return await ValidateAsync(request.SquidConfiguration?.Configuration);
             // A process/host crash after publication requires operator recovery, never silently claim success.
@@ -60,12 +68,12 @@ internal static class SquidOperations
             if (action is not (SquidServiceAction.Stop or SquidServiceAction.Disable) && !await IsManagedAsync())
                 return Failure("squid.configuration.adoption_required");
             var command = action.ToString().ToLowerInvariant();
-            var result = await RunAsync(Systemctl, [command, "squid.service"]);
+            var result = await RunAsync(Systemctl, [command, "squid.service"], ServiceActionTimeout);
             return result.Success ? new(true) : result;
         }
         catch (UnauthorizedAccessException) { return Failure("squid.path.denied", PrivilegedProblemCode.ResourceNotAllowed); }
         catch (IOException) { return Failure("squid.io_or_busy"); }
-        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or DllNotFoundException or EntryPointNotFoundException or JsonException)
         { return Failure("squid.runtime.unavailable"); }
     }
 
@@ -96,9 +104,9 @@ internal static class SquidOperations
             return File.Exists(Binary) ? new(true) : Failure("squid.package.install_incomplete");
         }
         if (!File.Exists(Binary)) return new(true);
-        var stop = await RunAsync(Systemctl, ["stop", "squid.service"]);
+        var stop = await RunAsync(Systemctl, ["stop", "squid.service"], ServiceActionTimeout);
         if (!stop.Success) return stop;
-        var disable = await RunAsync(Systemctl, ["disable", "squid.service"]);
+        var disable = await RunAsync(Systemctl, ["disable", "squid.service"], ServiceActionTimeout);
         if (!disable.Success) return disable;
         // remove, never purge/autoremove: preserve the administrator's config and other packages.
         var remove = await RunAsync(apt, ["remove", "--yes", "squid"], TimeSpan.FromMinutes(10));
@@ -129,6 +137,8 @@ internal static class SquidOperations
     [SupportedOSPlatform("linux")]
     private static async Task<PrivilegedOperationResult> ValidateAsync(SquidConfiguration? configuration)
     {
+        var authProblem = await CheckAuthenticationAsync(configuration);
+        if (authProblem is not null) return Failure(authProblem);
         var preview = SquidConfigurationRenderer.Preview(configuration);
         if (!preview.Valid) return Failure("squid.configuration.invalid", PrivilegedProblemCode.InvalidRequest);
         var candidate = DirectoryPath + "/relaxkonos-" + Guid.NewGuid().ToString("N") + ".conf";
@@ -144,6 +154,8 @@ internal static class SquidOperations
     [SupportedOSPlatform("linux")]
     private static async Task<PrivilegedOperationResult> ApplyAsync(ApplySquidConfigurationRequest? request)
     {
+        var authProblem = await CheckAuthenticationAsync(request?.Configuration);
+        if (authProblem is not null) return Failure(authProblem);
         var preview = SquidConfigurationRenderer.Preview(request?.Configuration);
         if (!preview.Valid) return Failure("squid.configuration.invalid: " + string.Join(", ", preview.Errors), PrivilegedProblemCode.InvalidRequest);
         if (File.Exists(ConfigurationPath) && !await IsManagedAsync() && !request!.AdoptExistingConfiguration)
