@@ -319,7 +319,7 @@ internal sealed class DesktopShellActions(ShellStateStore state, IWindowManager 
     public Task RefreshDesktopAsync(CancellationToken cancellationToken = default) { Vm.RefreshDesktopCommand.Execute(null); return Task.CompletedTask; }
     public Task PasteDesktopAsync(CancellationToken cancellationToken = default) { Vm.PasteDesktopCommand.Execute(null); return Task.CompletedTask; }
     public void ClearDesktopSelection() => Vm.ClearDesktopSelectionCommand.Execute(null);
-    public void SelectDesktopEntry(string entryId) { var entry = Find(entryId); if (entry is not null) Vm.SelectDesktopItemCommand.Execute(entry); }
+    public void SetDesktopSelection(IReadOnlyList<string> entryIds) => Vm.SetDesktopSelection(entryIds.Select(Find).OfType<object>());
     public void SetDesktopIconsVisible(bool visible) => Vm.AreDesktopIconsVisible = visible;
     public void ShowDesktop() => Vm.ShowDesktopCommand.Execute(null);
     public void ToggleWindowGroup(AppId appId) { var group = Vm.TaskbarGroups.FirstOrDefault(x => x.AppId == appId); if (group is not null) Vm.ToggleTaskbarGroupCommand.Execute(group); }

@@ -1,6 +1,7 @@
 {
     "Culture": "en-US",
     "Strings": {
+        "shell.launcher.activities": "Activities",
         "shell.tray.audio_unavailable": "Remote audio unavailable",
         "shell.connection.not_connected": "Not connected",
         "shell.connection.unknown_user": "Unknown user",

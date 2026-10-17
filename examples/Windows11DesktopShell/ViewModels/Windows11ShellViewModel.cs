@@ -208,20 +208,45 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     private void ReloadDesktopState()
     {
         var state = _context.State.Desktop;
-        Applications.Clear();
-        DesktopEntries.Clear();
-        DesktopStyleEntries.Clear();
+
         if (state is null)
         {
+            Applications.Clear();
+            DesktopEntries.Clear();
+            DesktopStyleEntries.Clear();
             AreDesktopIconsVisible = false;
             HasDesktopStyles = false;
             Wallpaper = null;
             DesktopItemLabelForeground = null;
             return;
         }
-        foreach (var application in state.Applications) Applications.Add(application);
-        foreach (var entry in state.DesktopEntries) DesktopEntries.Add(entry);
-        foreach (var desktopStyle in state.DesktopStyles ?? []) DesktopStyleEntries.Add(desktopStyle);
+        if (!Applications.SequenceEqual(state.Applications))
+        {
+            Applications.Clear();
+            foreach (var application in state.Applications) Applications.Add(application);
+        }
+        // Keep controls alive during selection changes so double-click, focus and context menus
+        // survive host snapshot publication. Replace the catalog only when its contents change.
+        var sameEntries = DesktopEntries.Count == state.DesktopEntries.Count &&
+            DesktopEntries.Zip(state.DesktopEntries).All(pair =>
+                pair.First.Id == pair.Second.Id && pair.First.DisplayName == pair.Second.DisplayName &&
+                pair.First.Kind == pair.Second.Kind && pair.First.IconGlyph == pair.Second.IconGlyph &&
+                ReferenceEquals(pair.First.IconImage, pair.Second.IconImage));
+        if (sameEntries)
+        {
+            for (var index = 0; index < DesktopEntries.Count; index++)
+                DesktopEntries[index].IsSelected = state.DesktopEntries[index].IsSelected;
+        }
+        else
+        {
+            DesktopEntries.Clear();
+            foreach (var entry in state.DesktopEntries) DesktopEntries.Add(entry with { });
+        }
+        if (!DesktopStyleEntries.SequenceEqual(state.DesktopStyles ?? []))
+        {
+            DesktopStyleEntries.Clear();
+            foreach (var desktopStyle in state.DesktopStyles ?? []) DesktopStyleEntries.Add(desktopStyle);
+        }
         AreDesktopIconsVisible = state.AreDesktopIconsVisible;
         HasDesktopStyles = DesktopStyleEntries.Count > 0;
         Wallpaper = state.Wallpaper;
@@ -236,7 +261,7 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     /// <summary>Matches the host desktop: a primary click selects an item, and double-click opens it.</summary>
     public void SelectDesktopEntry(ShellDesktopEntry? entry)
     {
-        if (entry is not null) _context.Actions.SelectDesktopEntry(entry.Id);
+        if (entry is not null) _context.Actions.SetDesktopSelection([entry.Id]);
     }
 
     public async Task OpenDesktopEntryAsync(ShellDesktopEntry? entry)
@@ -245,6 +270,7 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
         await _context.Actions.OpenDesktopEntryAsync(entry.Id);
         _context.Actions.ClearDesktopSelection();
     }
+    public void SetDesktopSelection(IEnumerable<string> ids) => _context.Actions.SetDesktopSelection(ids.ToArray());
     public void ClearDesktopSelection() => _context.Actions.ClearDesktopSelection();
 
     private Task ExecuteDesktopEntryActionAsync(ShellDesktopEntry? entry, DesktopEntryAction action) =>

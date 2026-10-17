@@ -1,4 +1,5 @@
 using Avalonia.Reactive;
+using Avalonia.VisualTree;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
@@ -161,15 +162,126 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         workspace.Children.Add(_backdrop);
         var icons = new ItemsControl
         {
-            Margin = new Thickness(14),
-            ItemsPanel = new FuncTemplate<Panel?>(() => new WrapPanel { Orientation = Orientation.Vertical }),
+            Margin = this is MacosLikeDesktopShell ? new Thickness(14, 14, 14, 88) : new Thickness(14),
+            ItemsPanel = new FuncTemplate<Panel?>(() => new DesktopIconPanel(this is MacosLikeDesktopShell)),
             ItemTemplate = new FuncDataTemplate<object>((item, _) => Icon(vm, item)),
         };
         icons.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(vm.DesktopItems)));
         icons.Bind(Visual.IsVisibleProperty, new Binding(nameof(vm.AreDesktopIconsVisible)));
         workspace.Children.Add(icons);
+        if (this is MacosLikeDesktopShell) _windowHost.Margin = new Thickness(0, 0, 0, 88);
+        InstallDesktopSelection(workspace, icons, vm);
         workspace.Children.Add(_windowHost);
         return workspace;
+    }
+
+    private static void ActivateDesktopItem(DesktopShellViewModel vm, object item)
+    {
+        switch (item)
+        {
+            case AppEntryViewModel app: app.LaunchCommand.Execute(null); break;
+            case ShortcutEntryViewModel shortcut: shortcut.ActivateCommand.Execute(null); break;
+            case DesktopFileEntryViewModel file: vm.OpenDesktopEntryCommand.Execute(file); break;
+        }
+    }
+
+    private void InstallDesktopSelection(Grid workspace, ItemsControl icons, DesktopShellViewModel vm)
+    {
+        // A non-interactive overlay above icons, below managed windows; coordinates remain local
+        // to the desktop work area in every shell and at every display scale.
+        var overlay = new Canvas { IsHitTestVisible = false };
+        var rectangle = new Border { IsVisible = false, BorderThickness = new Thickness(1) };
+        ThemeResources.Bind(rectangle, Border.BackgroundProperty, "DesktopIconSelectedBrush");
+        ThemeResources.Bind(rectangle, Border.BorderBrushProperty, "AccentBrush");
+        overlay.Children.Add(rectangle);
+        workspace.Children.Add(overlay);
+        Point? origin = null;
+        IPointer? selectionPointer = null;
+        object[] initial = [];
+        bool dragging = false;
+        void Finish()
+        {
+            origin = null;
+            dragging = false;
+            rectangle.IsVisible = false;
+            var captured = selectionPointer;
+            selectionPointer = null;
+            captured?.Capture(null);
+        }
+        workspace.AddHandler(InputElement.PointerPressedEvent, (_, e) =>
+        {
+            if (!e.GetCurrentPoint(workspace).Properties.IsLeftButtonPressed) return;
+            // Only empty desktop starts a marquee. Windows, menus, and icon presses retain their input.
+            if (!ReferenceEquals(e.Source, _backdrop) && !ReferenceEquals(e.Source, icons) &&
+                e.Source is not DesktopIconPanel) return;
+            initial = vm.DesktopItems.Where(DesktopShellViewModel.IsDesktopItemSelected).ToArray();
+            if ((e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Meta | KeyModifiers.Shift)) == 0)
+            {
+                initial = [];
+                vm.ClearDesktopSelectionCommand.Execute(null);
+            }
+            origin = e.GetPosition(workspace);
+            _backdrop.Focus();
+            selectionPointer = e.Pointer;
+            e.Pointer.Capture(workspace);
+            e.Handled = true;
+        }, RoutingStrategies.Bubble, handledEventsToo: true);
+        workspace.PointerMoved += (_, e) =>
+        {
+            if (origin is not { } start) return;
+            var position = e.GetPosition(workspace);
+            var bounds = new Rect(start, position).Normalize();
+            if (!dragging && bounds.Width < 4 && bounds.Height < 4) return;
+            dragging = true;
+            rectangle.IsVisible = true;
+            Canvas.SetLeft(rectangle, bounds.X);
+            Canvas.SetTop(rectangle, bounds.Y);
+            rectangle.Width = bounds.Width;
+            rectangle.Height = bounds.Height;
+            var hits = icons.GetVisualDescendants().OfType<Button>()
+                .Where(button => button.IsEffectivelyVisible && ReferenceEquals(button.Tag, DesktopEntryMarker))
+                .Where(button => button.TranslatePoint(default, workspace) is { } point &&
+                    bounds.Intersects(new Rect(point, button.Bounds.Size)))
+                .Select(button => button.DataContext).OfType<object>();
+            vm.SetDesktopSelection(initial.Concat(hits));
+            e.Handled = true;
+        };
+        workspace.PointerReleased += (_, e) =>
+        {
+            if (origin is null) return;
+            Finish();
+            e.Pointer.Capture(null);
+            e.Handled = true;
+        };
+        workspace.PointerCaptureLost += (_, _) => Finish();
+        workspace.KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Escape)
+            {
+                Finish();
+                vm.ClearDesktopSelectionCommand.Execute(null);
+                e.Handled = true;
+            }
+            else if ((e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Meta)) != 0 && e.Key is Key.C or Key.X)
+            {
+                var file = vm.DesktopFiles.FirstOrDefault(item => item.IsDesktopSelected);
+                if (file is not null)
+                    (e.Key == Key.C ? vm.CopyDesktopEntryCommand : vm.CutDesktopEntryCommand).Execute(file);
+                e.Handled = true;
+            }
+            else if (e.Key == Key.F2)
+            {
+                var selected = vm.DesktopItems.Where(DesktopShellViewModel.IsDesktopItemSelected).ToArray();
+                if (selected.Length == 1 && selected[0] is DesktopFileEntryViewModel file)
+                    vm.RenameDesktopEntryCommand.Execute(file);
+                e.Handled = true;
+            }
+            else if (e.Key == Key.A && (e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Meta)) != 0)
+            {
+                if (vm.AreDesktopIconsVisible) vm.SetDesktopSelection(vm.DesktopItems);
+                e.Handled = true;
+            }
+        };
     }
 
     /// <summary>
@@ -301,26 +413,48 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
             content.Children.Add(new TextBlock { Text = glyph, FontSize = 42, Height = 48, HorizontalAlignment = HorizontalAlignment.Center, TextAlignment = TextAlignment.Center });
         var label = new TextBlock
         {
-            Text = name, MaxWidth = 108, MaxLines = 2, TextWrapping = TextWrapping.Wrap,
+            Text = name, MaxWidth = 88, MaxLines = 2, TextWrapping = TextWrapping.Wrap,
             TextAlignment = TextAlignment.Center, TextTrimming = DesktopNameTrimming,
         };
         label.Classes.Add("desktop-label");
         // Desktop icons are narrow, so a long name is shortened to a preview. The untouched name
         // stays reachable from the tooltip rather than being silently lost to the ellipsis.
         ToolTip.SetTip(label, name);
+        if (item is AppEntryViewModel or ShortcutEntryViewModel)
+        {
+            var artwork = content.Children[0];
+            content.Children.RemoveAt(0);
+            var badge = new Grid { Width = 48, Height = 48 };
+            badge.Children.Add(artwork);
+            badge.Children.Add(new Border
+            {
+                Background = Brushes.White, CornerRadius = new CornerRadius(2),
+                HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom,
+                Child = new TextBlock { Text = "↗", Foreground = Brushes.Black, FontSize = 13, Margin = new Thickness(1, 0) },
+            });
+            content.Children.Insert(0, badge);
+        }
         content.Children.Add(label);
-        var button = new Button { Content = content, Width = 116, Height = 108, Margin = new Thickness(3),
+        var button = new Button { Content = content, Width = 96, Height = 98, Margin = new Thickness(3),
             HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center,
             Tag = DesktopEntryMarker };
         button.Bind(Button.BackgroundProperty, new Binding("IsDesktopSelected") { Converter = DesktopSelectionBrushConverter.Instance });
         button.Bind(Button.BorderBrushProperty, new Binding("IsDesktopSelected") { Converter = DesktopSelectionBorderBrushConverter.Instance });
         button.Bind(Button.BorderThicknessProperty, new Binding("IsDesktopSelected") { Converter = DesktopSelectionBorderThicknessConverter.Instance });
-        button.PointerPressed += (_, args) =>
+        button.AddHandler(InputElement.PointerPressedEvent, (_, args) =>
         {
             var properties = args.GetCurrentPoint(button).Properties;
-            if (properties.IsLeftButtonPressed || properties.IsRightButtonPressed)
+            if (properties.IsLeftButtonPressed)
+            {
+                if ((args.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Meta)) != 0)
+                    vm.ToggleDesktopSelection(item);
+                else if ((args.KeyModifiers & KeyModifiers.Shift) != 0)
+                    vm.SetDesktopSelection(vm.DesktopItems.Where(DesktopShellViewModel.IsDesktopItemSelected).Append(item));
+                else vm.SelectDesktopItemCommand.Execute(item);
+            }
+            else if (properties.IsRightButtonPressed && !DesktopShellViewModel.IsDesktopItemSelected(item))
                 vm.SelectDesktopItemCommand.Execute(item);
-        };
+        }, RoutingStrategies.Bubble, handledEventsToo: true);
         button.DoubleTapped += (_, _) =>
         {
             switch (item)
@@ -336,6 +470,14 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
             button.KeyBindings.Add(new KeyBinding { Gesture = KeyGesture.Parse("Ctrl+X"), Command = vm.CutDesktopEntryCommand, CommandParameter = entry });
             button.KeyBindings.Add(new KeyBinding { Gesture = KeyGesture.Parse("Ctrl+V"), Command = vm.PasteDesktopCommand, CommandParameter = entry });
         }
+        button.KeyDown += (_, args) =>
+        {
+            if (args.Key == Key.Enter)
+            {
+                ActivateDesktopItem(vm, item);
+                args.Handled = true;
+            }
+        };
         button.ContextMenu = CreateDesktopItemContextMenu(vm, item);
         return button;
     }
@@ -397,6 +539,7 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
 
     private void OnRootPointerPressed(object? sender, PointerPressedEventArgs args)
     {
+        if (args.Handled) return;
         for (var current = args.Source as Control; current is not null; current = current.Parent as Control)
             if (current is Control { Tag: var tag } && ReferenceEquals(tag, DesktopEntryMarker)) return;
         _vm?.ClearDesktopSelectionCommand.Execute(null);
@@ -807,10 +950,7 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
     {
         var bar = new Border
         {
-            // TopBarHeight (macOS = 28) is smaller than the 35px menu buttons below; binding it
-            // would overflow/clip the buttons. Height stays hardcoded until a menu-button-height
-            // token exists to keep them in sync.
-            Height = 36,
+            Height = 28,
             BorderThickness = new Thickness(0, 0, 0, 1),
         };
         ThemeResources.Bind(bar, Border.BackgroundProperty, "SurfaceBrush");
@@ -973,8 +1113,8 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
         return MacosInteractiveButton(new Image
         {
             Source = image,
-            Width = 31,
-            Height = 31,
+            Width = 40,
+            Height = 40,
             Stretch = Stretch.Uniform,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
@@ -993,8 +1133,8 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
             Background = Brushes.Transparent,
             BorderBrush = Brushes.Transparent,
         };
-        ThemeResources.Bind(button, Control.WidthProperty, "TaskbarIconSize");
-        ThemeResources.Bind(button, Control.HeightProperty, "TaskbarIconSize");
+        button.Width = 48;
+        button.Height = 48;
         ToolTip.SetTip(button, tooltip);
         return button;
     }
@@ -1005,7 +1145,7 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
         {
             Content = title,
             Command = command,
-            Height = 35,
+            Height = 27,
             Padding = new Thickness(8, 0),
             FontSize = 14,
             FontWeight = bold ? FontWeight.SemiBold : FontWeight.Normal,
@@ -1046,7 +1186,7 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
             Content = glyph,
             Command = command,
             Width = 34,
-            Height = 35,
+            Height = 27,
             Padding = new Thickness(0),
             FontSize = 20,
             Background = Brushes.Transparent,
@@ -1171,48 +1311,33 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
     {
         var bar = new Border
         {
-            // TopBarHeight (Ubuntu = 32) is smaller than the 38px top-bar buttons below; binding
-            // it would overflow/clip them. Height stays hardcoded until a matching button-height
-            // token exists.
-            Height = 40,
+            Height = 32,
             BorderThickness = new Thickness(0, 0, 0, 1),
         };
-        ThemeResources.Bind(bar, Border.BackgroundProperty, "SurfaceBrush");
+        bar.Background = Brush.Parse("#1D1D1D");
         ThemeResources.Bind(bar, Border.BorderBrushProperty, "BorderSubtleBrush");
         var layout = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,*") };
-        var topBarTitle = new TextBlock
+        var activities = new Button
         {
-            Text = "RelaxKonOS",
-            Margin = new Thickness(14, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            FontSize = 14,
-            FontWeight = FontWeight.SemiBold,
+            Content = LocalizedText.Get("shell.launcher.activities", "Activities"),
+            Command = vm.ToggleStartCommand, Height = 30, Padding = new Thickness(14, 0),
+            Foreground = Brushes.White, Background = Brushes.Transparent, BorderBrush = Brushes.Transparent,
         };
-        ThemeResources.Bind(topBarTitle, TextBlock.ForegroundProperty, "TextPrimaryBrush");
-        layout.Children.Add(topBarTitle);
+        layout.Children.Add(activities);
 
         var clock = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
         var date = new TextBlock { FontSize = 14 };
-        ThemeResources.Bind(date, TextBlock.ForegroundProperty, "TextPrimaryBrush");
+        date.Foreground = Brushes.White;
         date.Bind(TextBlock.TextProperty, new Binding(nameof(vm.DateText)));
         var time = new TextBlock { FontSize = 14, FontWeight = FontWeight.SemiBold };
-        ThemeResources.Bind(time, TextBlock.ForegroundProperty, "TextPrimaryBrush");
+        time.Foreground = Brushes.White;
         time.Bind(TextBlock.TextProperty, new Binding(nameof(vm.Clock)));
         clock.Children.Add(date);
         clock.Children.Add(time);
         Grid.SetColumn(clock, 1);
         layout.Children.Add(clock);
 
-        // Running applications and the available system actions share one horizontal area at
-        // the top right, matching a GNOME status region instead of a second vertical dock.
         var right = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 3, Margin = new Thickness(0, 0, 9, 0) };
-        var runningApps = new ItemsControl
-        {
-            ItemsPanel = new FuncTemplate<Panel?>(() => new StackPanel { Orientation = Orientation.Horizontal }),
-            ItemTemplate = new FuncDataTemplate<TaskbarGroupViewModel>((group, _) => UbuntuRunningApp(vm, group)),
-        };
-        runningApps.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(vm.TaskbarGroups)));
-        right.Children.Add(runningApps);
         right.Children.Add(UbuntuTopButton("⌂", LocalizedText.Get("shell.launcher.show_desktop", "Show desktop"), vm.ShowDesktopCommand));
         right.Children.Add(UbuntuTopButton("⚙", LocalizedText.Get("common.settings", "Settings"), vm.OpenSettingsCommand));
         right.Children.Add(UbuntuPowerButton(vm.ShutdownCommand));
@@ -1229,7 +1354,7 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
             Width = 60,
             BorderThickness = new Thickness(0, 0, 1, 0),
         };
-        ThemeResources.Bind(dock, Border.BackgroundProperty, "SurfaceSunkenBrush");
+        dock.Background = Brush.Parse("#E62B2025");
         ThemeResources.Bind(dock, Border.BorderBrushProperty, "BorderSubtleBrush");
         var actions = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,*,Auto") };
         actions.Children.Add(UbuntuDockButton("explorer", LocalizedText.Get("shell.launcher.files", "Files"), vm.OpenFileExplorerCommand));
@@ -1242,6 +1367,17 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
         var settings = UbuntuDockButton("settings", LocalizedText.Get("common.settings", "Settings"), vm.OpenSettingsCommand);
         Grid.SetRow(settings, 3);
         actions.Children.Add(settings);
+
+        var running = new ItemsControl
+        {
+            ItemsPanel = new FuncTemplate<Panel?>(() => new StackPanel { Spacing = 4 }),
+            ItemTemplate = new FuncDataTemplate<TaskbarGroupViewModel>((group, _) => UbuntuRunningApp(vm, group)),
+            Margin = new Thickness(0, 8),
+        };
+        running.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(vm.TaskbarGroups)));
+        var runningScroll = new ScrollViewer { Content = running, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        Grid.SetRow(runningScroll, 4);
+        actions.Children.Add(runningScroll);
 
         var applications = UbuntuDockButton("launchpad", LocalizedText.Get("shell.launcher.show_applications", "Show Applications"), vm.ToggleStartCommand);
         Grid.SetRow(applications, 5);
@@ -1287,7 +1423,7 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
 
     private static Button UbuntuRunningApp(DesktopShellViewModel vm, TaskbarGroupViewModel group)
     {
-        var icon = UbuntuAppIcon(group, 22);
+        var icon = UbuntuAppIcon(group, 32);
         icon.HorizontalAlignment = HorizontalAlignment.Center;
         icon.VerticalAlignment = VerticalAlignment.Center;
         var button = new Button
@@ -1295,14 +1431,22 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
             Content = icon,
             Command = vm.ToggleTaskbarGroupCommand,
             CommandParameter = group,
-            // Sits in the top bar (not the dock); TaskbarIconSize would overflow the bar and is
-            // semantically a dock/taskbar token, so the size stays hardcoded.
-            Width = 36,
-            Height = 38,
+            Width = 48,
+            Height = 48,
+            HorizontalAlignment = HorizontalAlignment.Center,
             Padding = new Thickness(0),
             Background = Brushes.Transparent,
             BorderBrush = Brushes.Transparent,
         };
+        var content = new Grid();
+        content.Children.Add(icon);
+        content.Children.Add(new Border
+        {
+            Width = 3, Height = 16, CornerRadius = new CornerRadius(2),
+            Background = Brush.Parse("#E95420"), HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        button.Content = content;
         ToolTip.SetTip(button, group.DisplayName);
         return button;
     }
@@ -1330,8 +1474,8 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
             Background = Brushes.Transparent,
             BorderBrush = Brushes.Transparent,
         };
-        ThemeResources.Bind(button, Control.WidthProperty, "TaskbarIconSize");
-        ThemeResources.Bind(button, Control.HeightProperty, "TaskbarIconSize");
+        button.Width = 48;
+        button.Height = 48;
         ToolTip.SetTip(button, tooltip);
         return button;
     }
@@ -1345,13 +1489,13 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        ThemeResources.Bind(glyphText, TextBlock.ForegroundProperty, "TextPrimaryBrush");
+        glyphText.Foreground = Brushes.White;
         var button = new Button
         {
             Content = glyphText,
             Command = command,
             Width = 34,
-            Height = 38,
+            Height = 30,
             Padding = new Thickness(0),
             Background = Brushes.Transparent,
             BorderBrush = Brushes.Transparent,
@@ -1363,7 +1507,8 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
     private static Button UbuntuPowerButton(System.Windows.Input.ICommand command)
     {
         var button = UbuntuTopButton(string.Empty, LocalizedText.Get("shell.launcher.power", "Power"), command);
-        button.Content = ShellIconFactory.Power("TextPrimaryBrush", 18);
+        button.Resources["UbuntuPanelForegroundBrush"] = Brushes.White;
+        button.Content = ShellIconFactory.Power("UbuntuPanelForegroundBrush", 18);
         return button;
     }
 

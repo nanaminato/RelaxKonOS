@@ -1,7 +1,13 @@
 using RelaxKonOS.Runtime;
 using System.Reflection;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Headless;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
+using RelaxKonOS.Shell;
 using Avalonia.Input;
+using Avalonia.Input.Raw;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.Models;
@@ -51,6 +57,62 @@ internal static class DesktopClipboardChecks
         await shell.CopyDesktopEntryCommand.ExecuteAsync(icon);
         Check(errors == 1 && clipboard.Operation == RemoteFileClipboardOperation.Cut,
             "Failed system clipboard publication preserves the previous remote selection and reports the error.");
+        var second = new DesktopFileEntryViewModel(entry with { Path = "/source/b.bin", Name = "b.bin" });
+        shell.DesktopFiles.Add(icon);
+        shell.DesktopFiles.Add(second);
+        shell.DesktopItems.Add(icon);
+        shell.DesktopItems.Add(second);
+        shell.SetDesktopSelection([icon, second]);
+        Check(icon.IsDesktopSelected && second.IsDesktopSelected, "Desktop selection accepts multiple files.");
+        shell.ToggleDesktopSelection(icon);
+        Check(!icon.IsDesktopSelected && second.IsDesktopSelected, "Modifier toggle preserves other selected entries.");
+        shell.SetDesktopSelection([icon, second]);
+        shell.PublishRemoteFilesAsync = entries => { published = entries; return Task.CompletedTask; };
+        await shell.CopyDesktopEntryCommand.ExecuteAsync(icon);
+        Check(published?.Count == 2 && clipboard.Entries.Count == 2, "Copy publishes every selected desktop file.");
+        await shell.CutDesktopEntryCommand.ExecuteAsync(second);
+        Check(published?.Count == 2 && clipboard.Operation == RemoteFileClipboardOperation.Cut, "Cut preserves the complete multi-file move selection.");
+        shell.ClearDesktopSelectionCommand.Execute(null);
+        Check(!icon.IsDesktopSelected && !second.IsDesktopSelected, "Clear selection clears all desktop files.");
+        foreach (var presentation in new LauncherDesktopShellBase[] { new WindowsLikeDesktopShell(), new MacosLikeDesktopShell(), new UbuntuLikeDesktopShell() })
+        {
+            var state = new ShellStateStore();
+            state.Publish(shell);
+            var surfaces = new SelectionSurfaces();
+            await presentation.InitializeAsync(new ShellPresentationContext(state, null!, null!, surfaces, null!), CancellationToken.None);
+            var host = new Window { Width = 1000, Height = 700, Content = presentation.View };
+            host.Show();
+            host.UpdateLayout();
+            Dispatcher.UIThread.RunJobs();
+            var buttons = presentation.View.GetVisualDescendants().OfType<Button>().Where(button => button.DataContext is DesktopFileEntryViewModel).ToArray();
+            Check(buttons.Length == 2, presentation.Descriptor.Id + ": both file icons are laid out.");
+            var points = buttons.Select(button => button.TranslatePoint(default, host)!.Value).ToArray();
+            var start = new Point(points.Min(point => point.X) - 5, points.Min(point => point.Y) - 5);
+            var end = new Point(points.Max(point => point.X) + 103, points.Max(point => point.Y) + 105);
+            host.MouseDown(start, MouseButton.Left);
+            host.MouseMove(end);
+            host.MouseUp(end, MouseButton.Left);
+            Check(icon.IsDesktopSelected && second.IsDesktopSelected, presentation.Descriptor.Id + ": dragging empty space selects multiple icons.");
+            shell.ClearDesktopSelectionCommand.Execute(null);
+            host.MouseDown(end, MouseButton.Left);
+            host.MouseMove(start);
+            host.MouseUp(start, MouseButton.Left);
+            Check(icon.IsDesktopSelected && second.IsDesktopSelected, presentation.Descriptor.Id + ": reverse marquee uses normalized desktop coordinates.");
+            var center = buttons[0].TranslatePoint(new Point(45, 40), host)!.Value;
+            host.MouseDown(center, MouseButton.Left, RawInputModifiers.Control);
+            host.MouseUp(center, MouseButton.Left, RawInputModifiers.Control);
+            Check(!icon.IsDesktopSelected && second.IsDesktopSelected, presentation.Descriptor.Id + ": Ctrl-click toggles only the pointed icon.");
+            host.KeyPress(Key.A, RawInputModifiers.Control, PhysicalKey.A, null);
+            host.KeyRelease(Key.A, RawInputModifiers.Control, PhysicalKey.A, null);
+            Check(icon.IsDesktopSelected && second.IsDesktopSelected, presentation.Descriptor.Id + ": Ctrl+A selects every desktop entry.");
+            host.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+            host.KeyRelease(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+            Check(!icon.IsDesktopSelected && !second.IsDesktopSelected, presentation.Descriptor.Id + ": Escape clears desktop selection.");
+            host.Close();
+            await presentation.DisposeAsync();
+            shell.ClearDesktopSelectionCommand.Execute(null);
+        }
+        await Windows11DesktopChecks.RunAsync();
         var hostSource = new LocalUploadSource("host-selection.bin");
         shell.ReadHostFileClipboardAsync = () => Task.FromResult(new HostFileClipboardSnapshot(false, [hostSource]));
         string? target = null;
@@ -80,4 +142,11 @@ public class DesktopClipboardProxy : DispatchProxy
 {
     public Func<MethodInfo, object?[]?, object?> Handler = (_, _) => null;
     protected override object? Invoke(MethodInfo? method, object?[]? args) => Handler(method!, args);
+}
+
+internal sealed class SelectionSurfaces : IShellSurfaceRegistry
+{
+    public void Clear() { }
+    public void Register(ShellSurfaces surfaces) { }
+    public void UpdateWorkArea(RelaxKonOS.Core.Primitives.Rect area) { }
 }

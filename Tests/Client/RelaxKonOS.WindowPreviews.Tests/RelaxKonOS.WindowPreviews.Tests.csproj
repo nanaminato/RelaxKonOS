@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../../../examples/Windows11DesktopShell/RelaxKonOS.Example.Windows11DesktopShell.csproj" />
     <ProjectReference Include="../../../Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj" />
     <PackageReference Include="Avalonia.Headless" />
     <PackageReference Include="Avalonia.Desktop" />

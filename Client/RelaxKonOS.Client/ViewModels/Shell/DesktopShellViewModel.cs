@@ -343,13 +343,35 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     [RelayCommand]
     private void SelectDesktopItem(object? item)
     {
-        foreach (var app in DesktopIcons)
-            app.IsDesktopSelected = ReferenceEquals(app, item);
-        foreach (var shortcut in DesktopShortcuts)
-            shortcut.IsDesktopSelected = ReferenceEquals(shortcut, item);
-        foreach (var file in DesktopFiles)
-            file.IsDesktopSelected = ReferenceEquals(file, item);
+        SetDesktopSelection(item is null ? [] : [item]);
     }
+
+    public static bool IsDesktopItemSelected(object item) => item switch
+    {
+        AppEntryViewModel app => app.IsDesktopSelected,
+        ShortcutEntryViewModel shortcut => shortcut.IsDesktopSelected,
+        DesktopFileEntryViewModel file => file.IsDesktopSelected,
+        _ => false,
+    };
+
+    public void SetDesktopSelection(IEnumerable<object> items)
+    {
+        var selected = items.ToHashSet();
+        foreach (var item in DesktopItems)
+        {
+            var value = selected.Contains(item);
+            switch (item)
+            {
+                case AppEntryViewModel app: app.IsDesktopSelected = value; break;
+                case ShortcutEntryViewModel shortcut: shortcut.IsDesktopSelected = value; break;
+                case DesktopFileEntryViewModel file: file.IsDesktopSelected = value; break;
+            }
+        }
+    }
+
+    public void ToggleDesktopSelection(object item) => SetDesktopSelection(
+        DesktopItems.Where(IsDesktopItemSelected).Where(candidate => !ReferenceEquals(candidate, item))
+            .Concat(IsDesktopItemSelected(item) ? [] : new[] { item }));
 
     [RelayCommand]
     private void ClearDesktopSelection() => SelectDesktopItem(null);
@@ -526,8 +548,9 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     private async Task CopyDesktopEntryAsync(DesktopFileEntryViewModel? item)
     {
         if (item is null) return;
-        if (!await PublishDesktopClipboardAsync(item.Entry)) return;
-        _fileClipboard.Set([item.Entry], RemoteFileClipboardOperation.Copy);
+        var entries = GetDesktopClipboardEntries(item);
+        if (!await PublishDesktopClipboardAsync(entries)) return;
+        _fileClipboard.Set(entries, RemoteFileClipboardOperation.Copy);
         RecordDesktopFileMenuDiagnostic($"copy stored in desktop clipboard: entry={item.DisplayName}.");
     }
 
@@ -535,16 +558,20 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     private async Task CutDesktopEntryAsync(DesktopFileEntryViewModel? item)
     {
         if (item is null) return;
-        if (!await PublishDesktopClipboardAsync(item.Entry)) return;
-        _fileClipboard.Set([item.Entry], RemoteFileClipboardOperation.Cut);
+        var entries = GetDesktopClipboardEntries(item);
+        if (!await PublishDesktopClipboardAsync(entries)) return;
+        _fileClipboard.Set(entries, RemoteFileClipboardOperation.Cut);
         RecordDesktopFileMenuDiagnostic($"cut stored in desktop clipboard: entry={item.DisplayName}.");
     }
 
-    private async Task<bool> PublishDesktopClipboardAsync(FileSystemEntryDto entry)
+    private FileSystemEntryDto[] GetDesktopClipboardEntries(DesktopFileEntryViewModel item) =>
+        item.IsDesktopSelected ? DesktopFiles.Where(file => file.IsDesktopSelected).Select(file => file.Entry).ToArray() : [item.Entry];
+
+    private async Task<bool> PublishDesktopClipboardAsync(IReadOnlyList<FileSystemEntryDto> entries)
     {
         try
         {
-            if (PublishRemoteFilesAsync is not null) await PublishRemoteFilesAsync([entry]);
+            if (PublishRemoteFilesAsync is not null) await PublishRemoteFilesAsync(entries);
             return true;
         }
         catch (Exception ex)

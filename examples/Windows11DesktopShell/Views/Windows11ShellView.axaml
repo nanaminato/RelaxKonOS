@@ -34,7 +34,7 @@
     </UserControl.Styles>
 
     <Grid RowDefinitions="*,Auto" PointerPressed="Desktop_OnPointerPressed">
-        <Grid Grid.Row="0" ClipToBounds="True" Background="{Binding Wallpaper}">
+        <Grid x:Name="DesktopArea" Focusable="True" Grid.Row="0" ClipToBounds="True" Background="{Binding Wallpaper}">
             <Grid.ContextMenu>
                 <ContextMenu>
                     <MenuItem Header="{Binding View}">
@@ -58,7 +58,7 @@
                  ordinary desktop clicks while no modal dialog is active. -->
             <Border x:Name="InputBackdrop" IsHitTestVisible="False" />
 
-            <views:DesktopShortcutsView Margin="14" HorizontalAlignment="Left" VerticalAlignment="Top" />
+            <views:DesktopShortcutsView Margin="14" />
 
             <Border Margin="0,16,20,0" HorizontalAlignment="Right" VerticalAlignment="Top" IsVisible="{Binding HasDesktopStyles}"
                     Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}"
@@ -82,6 +82,10 @@
                 </StackPanel>
             </Border>
 
+            <Canvas IsHitTestVisible="False">
+                <Border x:Name="SelectionRectangle" IsVisible="False" BorderThickness="1"
+                        BorderBrush="{DynamicResource AccentBrush}" Background="{DynamicResource DesktopIconSelectedBrush}" />
+            </Canvas>
             <Canvas x:Name="WindowHost" ClipToBounds="True" />
         </Grid>
 

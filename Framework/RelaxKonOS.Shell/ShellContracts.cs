@@ -9,7 +9,7 @@ namespace RelaxKonOS.Shell;
 /// <summary>Versioned, deliberately small contract shared by the client and desktop-shell packages.</summary>
 public static class ShellApi
 {
-    public const string Version = "1.1";
+    public const string Version = "1.2";
     public const string DefaultShellId = "relaxkonos.windows-like";
 
     /// <summary>Returns an explicit shell identifier, using the current built-in default only when no selection exists.</summary>
@@ -130,10 +130,24 @@ public sealed record ShellDesktopEntry(
     AppId? ApplicationId = null,
     bool IsSelected = false,
     /// <summary>Host-loaded application artwork. Use this in preference to <see cref="IconGlyph"/>.</summary>
-    IImage? IconImage = null)
+    IImage? IconImage = null) : System.ComponentModel.INotifyPropertyChanged
 {
+    private bool _isSelected = IsSelected;
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (_isSelected == value) return;
+            _isSelected = value;
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsSelected)));
+        }
+    }
+
     /// <summary>Whether the entry has application artwork that should replace its glyph fallback.</summary>
     public bool HasIconImage => IconImage is not null;
+    public bool IsShortcut => Kind is ShellDesktopEntryKind.Application or ShellDesktopEntryKind.Shortcut;
 }
 
 /// <summary>An installed external desktop style that can be selected from another shell.</summary>
@@ -150,7 +164,7 @@ public interface IShellActions
     Task RefreshDesktopAsync(CancellationToken cancellationToken = default);
     Task PasteDesktopAsync(CancellationToken cancellationToken = default);
     void ClearDesktopSelection();
-    void SelectDesktopEntry(string entryId);
+    void SetDesktopSelection(IReadOnlyList<string> entryIds);
     void SetDesktopIconsVisible(bool visible);
     void ShowDesktop();
     /// <summary>

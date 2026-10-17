@@ -1,6 +1,7 @@
 {
     "Culture": "ja-JP",
     "Strings": {
+        "shell.launcher.activities": "アクティビティ",
         "shell.tray.audio_unavailable": "リモート音声は利用できません",
         "shell.connection.not_connected": "未接続",
         "shell.connection.unknown_user": "不明なユーザー",

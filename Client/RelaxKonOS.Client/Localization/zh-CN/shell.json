@@ -1,6 +1,7 @@
 {
     "Culture": "zh-CN",
     "Strings": {
+        "shell.launcher.activities": "活动",
         "shell.tray.audio_unavailable": "远程音频不可用",
         "shell.connection.not_connected": "未连接",
         "shell.connection.unknown_user": "未知用户",

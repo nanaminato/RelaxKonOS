@@ -10,6 +10,7 @@ The example demonstrates:
 - shell actions for settings, display settings, desktop refresh, and Show Desktop;
 - correct registration of normal-window, full-screen-window, overlay, and input-backdrop surfaces;
 - work-area reporting that reserves the taskbar.
+- Shell API 1.2 bulk desktop selection, marquee selection, modifier-click, shortcut badges, and stable icon controls during selection updates;
 - host-provided application artwork on desktop entries, with `iconGlyph` used only as the fallback;
 - detailed vector desktop icons for a computer, folder, document, and recycle bin.
 

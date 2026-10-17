@@ -5,8 +5,8 @@
              x:Name="DesktopShortcutsRoot">
     <UserControl.Styles>
         <Style Selector="Button.desktop-shortcut">
-            <Setter Property="Width" Value="116" />
-            <Setter Property="Height" Value="84" />
+            <Setter Property="Width" Value="96" />
+            <Setter Property="Height" Value="98" />
             <Setter Property="Margin" Value="3" />
             <Setter Property="Padding" Value="5" />
             <Setter Property="Background" Value="Transparent" />
@@ -47,13 +47,16 @@
             <DataTemplate x:DataType="shell:ShellDesktopEntry">
                 <Button Classes="desktop-shortcut" Classes.selected="{Binding IsSelected}"
                         AttachedToVisualTree="DesktopShortcut_OnAttachedToVisualTree"
-                        PointerPressed="DesktopShortcut_OnPointerPressed"
                         DoubleTapped="DesktopShortcut_OnDoubleTapped"
+                        KeyDown="DesktopShortcut_OnKeyDown"
                         ToolTip.Tip="{Binding DisplayName}">
                     <StackPanel Spacing="4">
                         <Grid Width="48" Height="48">
                             <Image Source="{Binding IconImage}" IsVisible="{Binding HasIconImage}" Stretch="Uniform" />
                             <TextBlock Classes="desktop-icon" Text="{Binding IconGlyph}" IsVisible="{Binding !HasIconImage}" />
+                            <Border IsVisible="{Binding IsShortcut}" HorizontalAlignment="Left" VerticalAlignment="Bottom" Background="White" CornerRadius="2">
+                                <TextBlock Text="↗" Foreground="Black" FontSize="13" Margin="1,0" />
+                            </Border>
                         </Grid>
                         <TextBlock Classes="desktop-label" Text="{Binding DisplayName}"
                                    Foreground="{Binding DataContext.DesktopItemLabelForeground, ElementName=DesktopShortcutsRoot}" />
