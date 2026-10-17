@@ -17,7 +17,9 @@ internal data class CertificatesState(val busy: Boolean = false, val list: ApiRe
     val selectedId: String? = null, val detail: ApiResult<ManagedCertificate>? = null,
     val draft: CertificateDraft? = null, val initialDraft: CertificateDraft? = null, val draftLocked: Boolean = false, val preflight: ApiResult<CertificatePreflight>? = null,
     val preflightAtMillis: Long? = null, val operation: CertificateOperation? = null, val operationVerified: Boolean = false,
-    val pending: List<PendingCertificateRequest> = emptyList(), val problemCode: String? = null, val uncertain: Boolean = false)
+    val recoveryOperationId: String? = null,
+    val pending: List<PendingCertificateRequest> = emptyList(), val problemCode: String? = null, val uncertain: Boolean = false,
+    val feedbackVersion: Long = 0)
 internal class CertificatesViewModel(private val session: AuthSession, private val repository: CertificateRepository,
     private val operationIndex: OperationIndex, private val elevationAnswers: ElevationAnswerProvider) : ViewModel() {
     suspend fun observeOperation() {
@@ -35,6 +37,7 @@ internal class CertificatesViewModel(private val session: AuthSession, private v
 
     private val activeSession get() = session.state.value as? SessionState.Active
     private var owner: SessionState.Active? = null
+    private var feedbackSequence = 0L
     var sessionEpoch by mutableIntStateOf(0)
         private set
     var state by mutableStateOf(CertificatesState())
@@ -48,9 +51,12 @@ internal class CertificatesViewModel(private val session: AuthSession, private v
         state = state.copy(list = list, pending = repository.pending(active))
         failure(list)
         state.selectedId?.let { detail(active, it) }
-        if (state.operation == null) operationIndex.forOwner(active).firstOrNull { it.domain == OperationDomain.Certificate }?.let {
-            val result = repository.operation(active, it.operationId); verify(active)
-            if (result is ApiResult.Success) state = state.copy(operation = result.value, operationVerified = true)
+        if (state.operation == null) (state.recoveryOperationId ?: operationIndex.forOwner(active)
+            .firstOrNull { it.domain == OperationDomain.Certificate }?.operationId)?.let { id ->
+            state = state.copy(recoveryOperationId = id, operationVerified = false)
+            val result = repository.operation(active, id); verify(active)
+            if (result is ApiResult.Success) state = state.copy(operation = result.value, operationVerified = true, recoveryOperationId = null)
+            else failure(result)
         }
     }
     fun select(id: String?) {
@@ -127,7 +133,7 @@ internal class CertificatesViewModel(private val session: AuthSession, private v
         if (result is ApiResult.Problem && result.status == 404) state = state.copy(problemCode = "certificate.operation_not_found")
         state = state.copy(operationVerified = result is ApiResult.Success, pending = repository.pending(active))
         if (result is ApiResult.Success) {
-            state = state.copy(operation = result.value, operationVerified = true)
+            state = state.copy(operation = result.value, operationVerified = true, recoveryOperationId = null)
             receivedOperation = true
             if (result.value.kind == CertificateAction.DeployKestrel) result.value.certificateId?.let { deployment(active, it) }
             if (!result.value.state.active) {
@@ -181,7 +187,7 @@ internal class CertificatesViewModel(private val session: AuthSession, private v
         val active = activeSession ?: return null
         if (owner !== active) { owner = active; state = CertificatesState(); sessionEpoch++ }
         if (state.busy) return null
-        state = state.copy(busy = true, problemCode = null, uncertain = false)
+        state = state.copy(busy = true, problemCode = null, uncertain = false, feedbackVersion = ++feedbackSequence)
         return viewModelScope.launch {
             val stage = WorkStage()
             try { stage.block(active) }

@@ -32,6 +32,8 @@ internal class OutboundProxyEditor(
         private set
     var message by mutableStateOf<UiMessage?>(null)
         private set
+    var feedbackVersion by mutableStateOf(0L)
+        private set
     var review by mutableStateOf<ProxyReview?>(null)
         private set
     private var activeJob: Job? = null
@@ -80,6 +82,7 @@ internal class OutboundProxyEditor(
     private fun call(write: Boolean, action: suspend () -> ApiResult<OutboundProxyStatus>) {
         if (closed || busy || !isCurrentOwner()) return
         busy = true
+        feedbackVersion++
         message = null
         activeJob = scope.launch {
             try {

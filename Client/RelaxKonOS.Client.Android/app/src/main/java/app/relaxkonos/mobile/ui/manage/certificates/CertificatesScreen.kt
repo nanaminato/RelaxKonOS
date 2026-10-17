@@ -74,9 +74,9 @@ internal fun CertificatesContent(model: CertificatesViewModel, owner: SessionSta
         })
         RefreshProgressIndicator(visible = state.busy)
 
-        if (section != "operations" && (state.pending.isNotEmpty() || state.operation != null)) {
+        if (section != "operations" && (state.pending.isNotEmpty() || state.operation != null || state.recoveryOperationId != null)) {
             TextButton(onClick = { section = "operations" }) {
-                Text(stringResource(R.string.workspace_operations) + " · " + (state.operation?.operationId ?: state.pending.size.toString()))
+                Text(stringResource(R.string.workspace_operations) + " · " + (state.operation?.operationId ?: state.recoveryOperationId ?: state.pending.size.toString()))
             }
         }
         WorkspaceSection(section == "overview") {
@@ -104,7 +104,14 @@ internal fun CertificatesContent(model: CertificatesViewModel, owner: SessionSta
         }
         }
         WorkspaceSection(section == "operations") {
-        if (state.operation == null && state.pending.isEmpty()) ManagementCard { Text(stringResource(R.string.workspace_records_empty)) }
+        if (state.operation == null && state.pending.isEmpty() && state.recoveryOperationId == null) ManagementCard { Text(stringResource(R.string.workspace_records_empty)) }
+        state.recoveryOperationId?.let { id ->
+            ManagementCard {
+                Text(id, style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.certificates_unknown), color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = { model.recover(id) }, enabled = !state.busy) { ActionLabel(R.string.common_refresh) }
+            }
+        }
         state.operation?.let { operation ->
             ManagementCard {
             Text(certificateActionLabel(operation.kind), style = MaterialTheme.typography.titleSmall)
@@ -310,6 +317,7 @@ private fun CertificateEditor(state: CertificatesState, model: CertificatesViewM
 private fun CertificateFeedback(state: CertificatesState) {
     OperationMessageDialog(if (state.busy) null else state.problemCode?.let { certificateProblemLabel(it) }
         ?: if (state.uncertain) stringResource(R.string.certificates_uncertain) else null,
+        eventKey = state.feedbackVersion,
         tone = if (state.problemCode == null) StatusTone.Warning else StatusTone.Danger)
 }
 

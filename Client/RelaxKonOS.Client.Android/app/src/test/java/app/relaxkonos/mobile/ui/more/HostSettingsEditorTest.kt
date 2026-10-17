@@ -50,6 +50,17 @@ class HostSettingsEditorTest {
         editor.load(); runCurrent()
         assertEquals(facts, editor.time)
     }
+    @Test fun `repeated identical failures belong to distinct feedback events`() = runTest {
+        val editor = editor()
+        gateway.onHostTime = { ApiResult.Transport(null) }
+        editor.load(); runCurrent()
+        val first = editor.feedbackVersion
+        assertEquals(R.string.error_connectivity, editor.error)
+        editor.load(); runCurrent()
+        assertEquals(R.string.error_connectivity, editor.error)
+        assertTrue(editor.feedbackVersion > first)
+        assertFalse(editor.busy); assertNull(editor.time); assertFalse(editor.canPreview)
+    }
     @Test fun `leave confirmation preserves destination and cancellation keeps draft`() = runTest {
         val editor = editor(); var first = 0; var second = 0
         editor.value = "Asia/Tokyo"

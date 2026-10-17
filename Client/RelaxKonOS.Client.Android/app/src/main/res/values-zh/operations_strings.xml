@@ -24,6 +24,7 @@
     <string name="operations_deployment">应用部署</string>
     <string name="operations_detail">操作详情</string>
     <string name="operations_diagnostics">诊断</string>
+    <string name="operations_diagnostics_failed">无法读取此任务的诊断信息，请重试。</string>
     <string name="operations_empty">此账号没有找到部署或发布操作。</string>
     <string name="operations_export_diagnostics">导出诊断</string>
     <string name="operations_export_failed">无法保存诊断报告</string>

@@ -18,6 +18,18 @@ import org.junit.Test
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class OutboundProxyEditorTest {
+    @Test fun `identical immediate failures have distinct feedback events`() = runTest {
+        val editor = editor()
+        gateway.onOutboundProxyStatus = { ApiResult.Transport(null) }
+        editor.load(); runCurrent()
+        val firstVersion = editor.feedbackVersion
+        val firstMessage = editor.message
+        editor.dismissMessage()
+        editor.load(); runCurrent()
+        assertEquals(firstMessage, editor.message)
+        assertTrue(editor.feedbackVersion > firstVersion)
+        assertFalse(editor.canSubmit)
+    }
     @Test fun `cancelled refresh invalidates old host facts until explicit reload`() = runTest {
         val editor = editor()
         gateway.onOutboundProxyStatus = { throw kotlinx.coroutines.CancellationException("cancelled read") }

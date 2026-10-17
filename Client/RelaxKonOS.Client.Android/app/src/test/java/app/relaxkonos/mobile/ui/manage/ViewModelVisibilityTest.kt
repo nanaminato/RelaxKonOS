@@ -2,7 +2,6 @@ package app.relaxkonos.mobile.ui.manage
 
 import android.app.Application
 import app.relaxkonos.mobile.ui.manage.operations.AlertViewModel
-import app.relaxkonos.mobile.ui.manage.operations.OperationsViewModel
 import app.relaxkonos.mobile.ui.manage.websites.NginxViewModel
 import app.relaxkonos.mobile.ui.manage.deployments.DeploymentsViewModel
 import app.relaxkonos.mobile.ui.manage.proxy.ProxyViewModel
@@ -14,7 +13,6 @@ class ViewModelVisibilityTest {
     @Test
     fun defaultFactoryCanAccessManageViewModels() {
         listOf(
-            OperationsViewModel::class.java,
             AlertViewModel::class.java,
             NginxViewModel::class.java,
             DeploymentsViewModel::class.java,

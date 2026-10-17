@@ -1,12 +1,14 @@
 package app.relaxkonos.mobile.ui.more
 
 import androidx.activity.ComponentActivity
+import android.graphics.Bitmap
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.Density
@@ -19,6 +21,7 @@ import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.data.*
 import app.relaxkonos.mobile.servercenter.ServerConnectionIdentityRules
 import kotlinx.coroutines.*
+import java.io.File
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Rule
@@ -92,12 +95,36 @@ class HostSettingsFeedbackFlowTest {
             }
         } }
         rule.waitUntil(5_000) { editor.time != null && !editor.busy }
+        rule.waitUntil(5_000) {
+            var focused = false
+            rule.runOnUiThread { focused = rule.activity.window.decorView.hasWindowFocus() }
+            focused
+        }
     }
     @After fun cleanup() { rule.runOnUiThread { if (::editor.isInitialized) editor.close(); scope.cancel() } }
     private fun button(id: Int) = rule.onNode(hasText(text(id)) and hasClickAction())
     private fun acknowledge() {
         button(R.string.common_dismiss).performClick()
         rule.waitUntil(5_000) { rule.onAllNodesWithText(text(R.string.common_dismiss)).fetchSemanticsNodes().isEmpty() }
+    }
+    @Test fun repeatedImmediateReadFailureReopensFeedback() {
+        show()
+        rule.runOnIdle { cancelRead = true; editor.load() }
+        rule.onNodeWithText(text(R.string.error_connectivity)).assertIsDisplayed()
+        val dismiss = button(R.string.common_dismiss).fetchSemanticsNode()
+            .config[SemanticsActions.OnClick].action!!
+        rule.runOnIdle { dismiss(); editor.load() }
+        rule.onNodeWithText(text(R.string.error_connectivity)).assertIsDisplayed()
+        rule.runOnIdle { assertFalse(editor.busy); assertFalse(editor.canPreview); assertNull(editor.time); assertEquals(0, writes) }
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        automation.waitForIdle(500, 5_000)
+        assertEquals(context.packageName, automation.rootInActiveWindow?.packageName?.toString())
+        val bitmap = automation.takeScreenshot()
+        try {
+            File(context.getExternalFilesDir(null), "host-read-failure-large-font.png").outputStream().use {
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+            }
+        } finally { bitmap.recycle() }
     }
     @Test fun hiddenCategoryClearsDraftAndConfirmationAndCanReadAgain() {
         show()

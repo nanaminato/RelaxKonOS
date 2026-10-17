@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.material3.Text
 import app.relaxkonos.mobile.ui.common.WorkspaceSection
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
 import app.relaxkonos.mobile.R
@@ -45,7 +46,8 @@ class CertificateCancellationFlowTest {
     private fun text(id: Int) = context.getString(id)
     @After fun cleanup() { rule.runOnUiThread { store.clear() } }
 
-    private fun show(accepted: Boolean = false, certificate: ManagedCertificate? = null, serverHttpsOnly: Boolean = false) {
+    private fun show(accepted: Boolean = false, certificate: ManagedCertificate? = null, serverHttpsOnly: Boolean = false,
+        restoreIndexedOperation: Boolean = false) {
         val app = context.applicationContext as RelaxKonApplication
         val gateway = object : RelaxKonGateway by app.container.gateway {
             override suspend fun login(serverUrl: String, identifier: String, password: CharArray) = ApiResult.Success(
@@ -88,6 +90,7 @@ class CertificateCancellationFlowTest {
             override fun read() = bytes
             override fun write(bytes: ByteArray) { this.bytes = bytes.copyOf() }
         })
+        if (restoreIndexedOperation) index.record(owner, OperationDomain.Certificate, requireNotNull(receipt.certificateId), receipt.operationId)
         val repository = CertificateRepository(gateway, session, index, journal,
             ElevationRepository(gateway, session, app.container.vault, UsageMemoryStore(InMemoryUsageMemoryStorage())))
         rule.runOnUiThread {
@@ -102,6 +105,35 @@ class CertificateCancellationFlowTest {
             }
         }
         rule.waitUntil(5_000) { model.state.list is ApiResult.Success && !model.state.busy }
+    }
+    @Test fun failedIndexedRestoreKeepsOriginalIdAndReadOnlyRetry() {
+        show(restoreIndexedOperation = true)
+        rule.waitUntil(5_000) { !model.state.busy && model.state.problemCode != null }
+        rule.onNodeWithText(text(R.string.common_dismiss)).performClick()
+        rule.onNodeWithText(text(R.string.workspace_operations) + " · " + receipt.operationId)
+            .performScrollTo().performClick()
+        rule.onNodeWithText(receipt.operationId).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.certificates_unknown)).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.workspace_records_empty)).assertDoesNotExist()
+        rule.runOnIdle { tasks[receipt.operationId] = receipt; assertEquals(0, writes) }
+        rule.onAllNodesWithText(text(R.string.common_refresh)).filter(hasClickAction()).onLast()
+            .performScrollTo().performClick()
+        rule.waitUntil(5_000) { !model.state.busy && model.state.operationVerified }
+        rule.runOnIdle {
+            assertEquals(listOf(receipt.operationId, receipt.operationId), recoveredIds)
+            assertEquals(receipt, model.state.operation); assertNull(model.state.recoveryOperationId)
+            assertEquals(0, writes); assertTrue(cancellations.isEmpty())
+        }
+    }
+    @Test fun repeatedImmediateListFailureReopensFeedback() {
+        show()
+        rule.runOnIdle { failList = true; model.refresh() }
+        rule.waitUntil(5_000) { !model.state.busy && model.state.problemCode != null }
+        val dismiss = rule.onNodeWithText(text(R.string.common_dismiss)).fetchSemanticsNode()
+            .config[SemanticsActions.OnClick].action!!
+        rule.runOnIdle { dismiss(); model.refresh() }
+        rule.onNodeWithText(text(R.string.common_dismiss)).assertIsDisplayed()
+        rule.runOnIdle { assertFalse(model.state.busy); assertNull(model.state.list); assertEquals(0, writes) }
     }
     private fun submitSelfSigned() {
         rule.onNodeWithText(text(R.string.certificates_self_signed)).performScrollTo().performClick()

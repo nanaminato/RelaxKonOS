@@ -24,6 +24,7 @@
     <string name="operations_deployment">アプリのデプロイ</string>
     <string name="operations_detail">操作の詳細</string>
     <string name="operations_diagnostics">診断</string>
+    <string name="operations_diagnostics_failed">このタスクの診断情報を読み取れませんでした。再試行してください。</string>
     <string name="operations_empty">このアカウントのデプロイまたは公開操作はありません。</string>
     <string name="operations_export_diagnostics">診断をエクスポート</string>
     <string name="operations_export_failed">診断レポートを保存できませんでした</string>

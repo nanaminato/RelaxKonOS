@@ -8,6 +8,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.Density
@@ -91,6 +92,11 @@ class OutboundProxyFeedbackFlowTest {
                 }
             }
         } }
+        rule.waitUntil(5_000) {
+            var focused = false
+            rule.runOnUiThread { focused = rule.activity.window.decorView.hasWindowFocus() }
+            focused
+        }
         if (initiallyActive) rule.waitUntil(5_000) { editor.canSubmit }
     }
     @After fun cleanup() {
@@ -203,6 +209,8 @@ class OutboundProxyFeedbackFlowTest {
         rule.onNodeWithText(text(R.string.proxy_result_unknown)).performScrollTo().assertIsDisplayed()
         rule.waitForIdle()
         InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(500, 5_000)
+        assertEquals(context.packageName, InstrumentationRegistry.getInstrumentation()
+            .uiAutomation.rootInActiveWindow?.packageName?.toString())
         File(context.getExternalFilesDir(null), "proxy-unknown-large-font.png").outputStream().use { output ->
             val bitmap = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
             try { bitmap.compress(Bitmap.CompressFormat.PNG, 100, output) } finally { bitmap.recycle() }
@@ -226,5 +234,20 @@ class OutboundProxyFeedbackFlowTest {
         rule.runOnIdle { cancelRead = false }
         refreshAndVerify()
         rule.runOnIdle { assertEquals(3, reads); assertEquals(0, writes) }
+    }
+    @Test fun repeatedImmediateFailureReopensAcknowledgedFeedback() {
+        show()
+        rule.runOnIdle { cancelRead = true; editor.load() }
+        rule.onNodeWithText(text(R.string.error_connectivity)).assertIsDisplayed()
+        // Acknowledge and finish the next immediate request before another frame can
+        // remove the old feedback composition. Identical wording is still a new event.
+        val dismiss = rule.onNodeWithText(text(R.string.common_dismiss))
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        rule.runOnIdle {
+            dismiss()
+            editor.load()
+        }
+        rule.onNodeWithText(text(R.string.error_connectivity)).assertIsDisplayed()
+        rule.runOnIdle { assertEquals(3, reads); assertEquals(0, writes); assertFalse(editor.canSubmit) }
     }
 }

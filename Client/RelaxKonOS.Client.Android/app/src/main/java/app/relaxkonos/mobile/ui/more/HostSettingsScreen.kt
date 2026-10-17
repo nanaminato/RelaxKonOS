@@ -73,7 +73,8 @@ internal fun HostSettingsContent(editor: HostSettingsEditor, onBack: (() -> Unit
             HostSettingKind.entries.forEach { kind -> FilterChip(selected=kind == editor.kind,onClick={editor.select(kind)},enabled=!editor.busy&&!editor.dirty,
                 label={Text(stringResource(kind.label()))}) }
         }
-        OperationMessageDialog(editor.error?.takeUnless { editor.busy }?.let { stringResource(it) })
+        OperationMessageDialog(editor.error?.takeUnless { editor.busy }?.let { stringResource(it) },
+            eventKey = editor.feedbackVersion)
         if (editor.references.any { it.unresolved }) Text(stringResource(R.string.host_settings_pending),color=MaterialTheme.colorScheme.error)
         RefreshProgressIndicator(visible = editor.busy)
         when(editor.kind) {

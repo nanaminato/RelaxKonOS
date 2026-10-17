@@ -24,6 +24,7 @@
     <string name="operations_deployment">Application deployment</string>
     <string name="operations_detail">Operation</string>
     <string name="operations_diagnostics">Diagnostics</string>
+    <string name="operations_diagnostics_failed">Could not read diagnostics for this task. Please retry.</string>
     <string name="operations_empty">No deployment or publishing operations were found for this account.</string>
     <string name="operations_export_diagnostics">Export diagnostics</string>
     <string name="operations_export_failed">Could not save the diagnostic report</string>

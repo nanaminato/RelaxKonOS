@@ -26,6 +26,7 @@ internal class HostSettingsEditor(val owner: SessionState.Active, private val re
     var busy by mutableStateOf(false); private set
     var resumed by mutableStateOf(false); private set
     var error by mutableStateOf<Int?>(null); private set
+    var feedbackVersion by mutableStateOf(0L); private set
     var plan by mutableStateOf<HostSettingsPlan?>(null); private set
     var references by mutableStateOf<List<HostSettingsReference>>(emptyList()); private set
     var operations by mutableStateOf<Map<String, HostSettingsOperation>>(emptyMap()); private set
@@ -181,7 +182,7 @@ internal class HostSettingsEditor(val owner: SessionState.Active, private val re
     }
     private fun execute(write: Boolean = false, action: suspend () -> Unit) {
         if (closed || !resumed || busy || !current()) return
-        busy = true; writeInFlight = write; error = null; val version = ++generation
+        busy = true; writeInFlight = write; error = null; feedbackVersion++; val version = ++generation
         job = scope.launch {
             try { action() }
             catch(cancelled: CancellationException) {

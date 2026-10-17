@@ -58,6 +58,51 @@ class CertificatesViewModelTest {
     private fun submitCurrentDraft() {
         model.submitDraft(session.state.value as SessionState.Active, model.state.draft ?: draft)
     }
+    @Test fun `identical failures and new login have distinct feedback events`() = runTest {
+        login(); runCurrent()
+        gateway.onCertificates = { ApiResult.Transport(null) }
+        model.refresh(); advanceUntilIdle()
+        val first = model.state.feedbackVersion
+        model.refresh(); advanceUntilIdle()
+        val second = model.state.feedbackVersion
+        assertTrue(second > first); assertEquals("certificate.read_failed", model.state.problemCode)
+        login(); runCurrent(); model.refresh(); advanceUntilIdle()
+        assertTrue(model.state.feedbackVersion > second)
+        assertEquals("certificate.read_failed", model.state.problemCode)
+        assertFalse(model.state.busy); assertTrue(model.state.list is ApiResult.Transport)
+    }
+    @Test fun `failed indexed operation restore reports failure and explicit refresh retries original id`() = runTest {
+        login(); runCurrent()
+        val id = "11111111-1111-1111-1111-111111111111"
+        val certificateId = "22222222-2222-2222-2222-222222222222"
+        val owner = session.state.value as SessionState.Active
+        index.record(owner, OperationDomain.Certificate, certificateId, id)
+        gateway.onCertificates = { ApiResult.Success(emptyList()) }
+        var reads = 0
+        gateway.onCertificateOperation = { requested ->
+            assertEquals(id, requested); reads++; ApiResult.Transport(null)
+        }
+        model.refresh(); advanceUntilIdle()
+        assertEquals("certificate.read_failed", model.state.problemCode)
+        assertEquals(id, model.state.recoveryOperationId)
+        assertFalse(model.state.busy); assertNull(model.state.operation)
+        for (failure in listOf(IllegalStateException("private restore detail"), CancellationException("private cancelled restore"))) {
+            gateway.onCertificateOperation = { requested -> assertEquals(id, requested); reads++; throw failure }
+            model.refresh(); advanceUntilIdle()
+            assertEquals(id, model.state.recoveryOperationId)
+            assertEquals("certificate.read_failed", model.state.problemCode)
+            assertFalse(model.state.busy); assertFalse(model.state.operationVerified)
+        }
+        gateway.onCertificateOperation = { requested ->
+            assertEquals(id, requested); reads++
+            ApiResult.Success(CertificateOperation(id, certificateId, CertificateAction.SelfSigned,
+                CertificateOperationState.Succeeded, "completed", "", 1, 2))
+        }
+        model.refresh(); advanceUntilIdle()
+        assertEquals(4, reads); assertEquals(id, model.state.operation?.operationId)
+        assertTrue(model.state.operationVerified); assertNull(model.state.problemCode)
+        assertNull(model.state.recoveryOperationId)
+    }
     @Test fun `submission confirmation cannot replace confirmed draft with edited draft`() = runTest {
         login(); runCurrent(); model.create(true)
         val original = draft.copy(selfSigned = true); model.update(original)

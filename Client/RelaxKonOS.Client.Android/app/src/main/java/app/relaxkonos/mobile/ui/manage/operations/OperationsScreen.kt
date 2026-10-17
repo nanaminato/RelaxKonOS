@@ -33,9 +33,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalContext
+import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.ApiResult
@@ -77,7 +85,42 @@ fun OperationsScreen(
     onOpenFirewall: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val viewModel: OperationsViewModel = viewModel()
+    val container = appContainer()
+    val resolver = LocalContext.current.applicationContext.contentResolver
+    val viewModel: OperationsViewModel = viewModel(factory = viewModelFactory {
+        initializer { OperationsViewModel(container.session, RepositoryOperationsActions(container, resolver)) }
+    })
+    OperationsContent(viewModel, owner, onBack, startOnAlerts, onStartOnAlertsConsumed,
+        onOpenDeployment, onOpenWebsite, onOpenWebServers, onOpenCertificates, onOpenTunnels,
+        onOpenProxy, onOpenCompose, onOpenGitBuild, onOpenGit, onOpenScript, onOpenDocker,
+        onOpenGuardian, onOpenDockerResources, onOpenDockerControl, onOpenSmb, onOpenFirewall, modifier)
+}
+
+@Composable
+internal fun OperationsContent(
+    viewModel: OperationsViewModel,
+    owner: SessionState.Active,
+    onBack: () -> Unit = {},
+    startOnAlerts: Boolean = false,
+    onStartOnAlertsConsumed: () -> Unit = {},
+    onOpenDeployment: (String) -> Unit = {},
+    onOpenWebsite: (String) -> Unit = {},
+    onOpenWebServers: () -> Unit = {},
+    onOpenCertificates: (String?) -> Unit = {},
+    onOpenTunnels: () -> Unit = {},
+    onOpenProxy: (String?) -> Unit = {},
+    onOpenCompose: (String) -> Unit = {},
+    onOpenGitBuild: (String) -> Unit = {},
+    onOpenGit: () -> Unit = {},
+    onOpenScript: (String) -> Unit = {},
+    onOpenDocker: () -> Unit = {},
+    onOpenGuardian: () -> Unit = {},
+    onOpenDockerResources: () -> Unit = {},
+    onOpenDockerControl: () -> Unit = {},
+    onOpenSmb: () -> Unit = {},
+    onOpenFirewall: () -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
     val state = viewModel.state
     LaunchedEffect(owner) { viewModel.refresh(owner) }
     val visible = state.owner === owner
@@ -112,8 +155,25 @@ fun OperationsScreen(
         }
     }
     DisposableEffect(owner) { onDispose { viewModel.stopObserving(owner) } }
-    LaunchedEffect(owner, tab) {
-        if (tab == 0) viewModel.observe(owner)
+    DisposableEffect(owner, tab) {
+        viewModel.dismissCancel(); viewModel.dismissHide()
+        onDispose { viewModel.dismissCancel(); viewModel.dismissHide() }
+    }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var lifecycleEpoch by remember(owner) { mutableIntStateOf(0) }
+    DisposableEffect(owner, lifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) { viewModel.dismissCancel(); viewModel.dismissHide() }
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_RESUME) lifecycleEpoch++
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+    val observationEpoch = lifecycleEpoch
+    LaunchedEffect(owner, tab, observationEpoch, visible) {
+        if (visible && tab == 0 && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) viewModel.observe(owner) {
+            lifecycleEpoch == observationEpoch && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        }
     }
     var recoverDialog by remember(owner) { mutableStateOf(false) }
     var recoverId by remember(owner) { mutableStateOf("") }
@@ -123,21 +183,21 @@ fun OperationsScreen(
     var pendingOperationId by remember(owner) { mutableStateOf("") }
     var exportFailed by remember(owner) { mutableStateOf(false) }
     var exportSaved by remember(owner) { mutableStateOf(false) }
-    val saveReport = rememberLauncherForActivityResult(rememberUsageCreateDocument("application/json", "OperationsScreen.export-report")) { uri ->
+    val saveReport = key(owner) { rememberLauncherForActivityResult(rememberUsageCreateDocument("application/json", "OperationsScreen.export-report")) { uri ->
         val report = pendingReport
         pendingReport = null
         if (uri != null && report != null) scope.launch {
             exportFailed = false
-            val saved = viewModel.exportReport(uri, report)
+            val saved = viewModel.exportReport(owner, uri, report)
             exportSaved = saved
             exportFailed = !saved
         }
-    }
+    } }
 
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         ScreenHeader(stringResource(R.string.operations_title), onBack = onBack,
-            trailing = { if (tab == 0) TextButton(onClick = { viewModel.refresh(owner) }, enabled = visible && !state.loading) {
+            trailing = { if (tab == 0) TextButton(onClick = { viewModel.refresh(owner) }, enabled = visible && !state.loading && !state.cancelling && !state.hiding) {
                 ActionLabel(R.string.common_refresh)
             } })
         if (hasAlerts) TabRow(selectedTabIndex = tab) {
@@ -145,12 +205,12 @@ fun OperationsScreen(
             Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text(stringResource(R.string.operations_alerts)) })
         }
         if (tab == 0) {
-        RefreshProgressIndicator(visible = !visible || state.loading)
+        RefreshProgressIndicator(visible = !visible || state.loading || state.hiding)
         OperationMessageDialog(if (visible && state.error && !state.loading) stringResource(R.string.operations_refresh_failed) else null)
         if (visible && !state.loading && state.items.isEmpty() && !state.error) {
             Text(stringResource(R.string.operations_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if (owner.privilegedOperations) OutlinedButton(onClick = { recoverDialog = true }, enabled = visible && !state.loading) {
+        if (owner.privilegedOperations) OutlinedButton(onClick = { recoverDialog = true }, enabled = visible && !state.loading && !state.cancelling && !state.hiding) {
             Text(stringResource(R.string.installation_recover))
         }
         if (visible) state.pendingCertificates.forEach { pending ->
@@ -271,12 +331,19 @@ fun OperationsScreen(
                 OutlinedButton(onClick = { openTarget(target) }) { Text(stringResource(R.string.operations_open_target)) }
             }
             if (selected.cancellable && selected.check == OperationCheck.Verified) {
-                OutlinedButton(onClick = viewModel::requestCancel, enabled = !state.cancelling) {
+                OutlinedButton(onClick = { viewModel.requestCancel(owner, selected) }, enabled = !state.loading && !state.cancelling && !state.hiding) {
                     Text(stringResource(R.string.operations_request_cancel))
                 }
             }
-            TextButton(onClick = viewModel::requestHide) { Text(stringResource(R.string.operations_hide)) }
+            TextButton(onClick = { viewModel.requestHide(owner, selected) }, enabled = !state.loading && !state.cancelling && !state.hiding) { Text(stringResource(R.string.operations_hide)) }
             val diagnostics = state.diagnostics
+            RefreshProgressIndicator(visible = state.diagnosticsLoading)
+            if (diagnostics is ApiResult.Transport || diagnostics is ApiResult.Problem) {
+                Text(stringResource(R.string.operations_diagnostics_failed), color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = { viewModel.select(owner, selected) }, enabled = !state.loading && !state.cancelling) {
+                    ActionLabel(R.string.common_retry)
+                }
+            }
             if (selected.reference.domain != OperationDomain.Website && selected.reference.domain != OperationDomain.Backup && diagnostics is ApiResult.Success && diagnostics.value.isNotEmpty()) {
                 Text(stringResource(R.string.operations_diagnostics), style = MaterialTheme.typography.titleSmall)
                 diagnostics.value.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -308,20 +375,26 @@ fun OperationsScreen(
         } },
         dismissButton = { TextButton(onClick = { recoverDialog = false }) { Text(stringResource(R.string.common_cancel)) } },
     )
-    if (selected != null && state.cancelRequested) AlertDialog(
+    state.cancelReview?.takeIf { visible }?.let { reviewed -> AlertDialog(
         onDismissRequest = viewModel::dismissCancel,
         title = { Text(stringResource(R.string.operations_request_cancel)) },
-        text = { Text(stringResource(R.string.operations_cancel_explanation)) },
-        confirmButton = { Button(onClick = { viewModel.cancel(owner, selected) }) { Text(stringResource(R.string.common_cancel)) } },
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) {
+            Text(stringResource(R.string.operations_cancel_explanation))
+            Text(reviewed.item.target); Text(reviewed.item.reference.operationId)
+        } },
+        confirmButton = { Button(onClick = { viewModel.cancel(owner, reviewed) }) { Text(stringResource(R.string.common_cancel)) } },
         dismissButton = { TextButton(onClick = viewModel::dismissCancel) { Text(stringResource(R.string.common_close)) } },
-    )
-    if (selected != null && state.hideRequested) AlertDialog(
+    ) }
+    state.hideReview?.takeIf { visible }?.let { reviewed -> AlertDialog(
         onDismissRequest = viewModel::dismissHide,
         title = { Text(stringResource(R.string.operations_hide)) },
-        text = { Text(stringResource(R.string.operations_hide_explanation)) },
-        confirmButton = { Button(onClick = { viewModel.hide(owner, selected) }) { Text(stringResource(R.string.operations_hide)) } },
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) {
+            Text(stringResource(R.string.operations_hide_explanation))
+            Text(reviewed.item.target); Text(reviewed.item.reference.operationId)
+        } },
+        confirmButton = { Button(onClick = { viewModel.hide(owner, reviewed) }) { Text(stringResource(R.string.operations_hide)) } },
         dismissButton = { TextButton(onClick = viewModel::dismissHide) { Text(stringResource(R.string.common_cancel)) } },
-    )
+    ) }
     if (exportPreview && pendingReport != null) AlertDialog(
         onDismissRequest = { exportPreview = false; pendingReport = null },
         title = { Text(stringResource(R.string.operations_export_diagnostics)) },
