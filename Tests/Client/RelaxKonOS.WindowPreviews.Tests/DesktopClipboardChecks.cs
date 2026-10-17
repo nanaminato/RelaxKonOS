@@ -113,6 +113,7 @@ internal static class DesktopClipboardChecks
             shell.ClearDesktopSelectionCommand.Execute(null);
         }
         await Windows11DesktopChecks.RunAsync();
+        InstallerIconChecks.Run();
         var hostSource = new LocalUploadSource("host-selection.bin");
         shell.ReadHostFileClipboardAsync = () => Task.FromResult(new HostFileClipboardSnapshot(false, [hostSource]));
         string? target = null;

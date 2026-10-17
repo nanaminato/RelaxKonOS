@@ -18,10 +18,8 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     private bool _isQuickSettingsOpen;
     private bool _areDesktopIconsVisible = true;
     private bool _hasDesktopStyles;
-    private bool _isLoading = true;
     private IBrush? _wallpaper;
     private IBrush? _desktopItemLabelForeground;
-    private int _loadGeneration;
     private string _clock = string.Empty;
     private string _date = string.Empty;
     private bool _disposed;
@@ -36,11 +34,11 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
         ToggleAllAppsCommand = new DelegateCommand(ToggleAllApps);
         ToggleQuickSettingsCommand = new DelegateCommand(ToggleQuickSettings);
         CloseFlyoutsCommand = new DelegateCommand(CloseFlyouts);
-        OpenSettingsCommand = new DelegateCommand(() => _context.Actions.OpenSettings(SettingsRoute.Root));
-        OpenPersonalizationCommand = new DelegateCommand(() => _context.Actions.OpenSettings(SettingsRoute.Personalization));
-        OpenDisplaySettingsCommand = new DelegateCommand(() => _context.Overlays.ShowDesktopDisplaySettingsAsync());
-        RefreshDesktopCommand = new DelegateCommand(() => _context.Actions.RefreshDesktopAsync());
-        ShowDesktopCommand = new DelegateCommand(_context.Actions.ShowDesktop);
+        OpenSettingsCommand = new DelegateCommand(() => RunAfterClosingFlyouts(() => _context.Actions.OpenSettings(SettingsRoute.Root)));
+        OpenPersonalizationCommand = new DelegateCommand(() => RunAfterClosingFlyouts(() => _context.Actions.OpenSettings(SettingsRoute.Personalization)));
+        OpenDisplaySettingsCommand = new DelegateCommand(() => RunAfterClosingFlyoutsAsync(() => _context.Overlays.ShowDesktopDisplaySettingsAsync()));
+        RefreshDesktopCommand = new DelegateCommand(() => RunAfterClosingFlyoutsAsync(() => _context.Actions.RefreshDesktopAsync()));
+        ShowDesktopCommand = new DelegateCommand(() => RunAfterClosingFlyouts(_context.Actions.ShowDesktop));
         OpenApplicationCommand = new DelegateCommand<ShellApplicationEntry>(OpenApplicationAsync);
         OpenDesktopEntryCommand = new DelegateCommand<ShellDesktopEntry>(OpenDesktopEntryAsync);
         OpenDesktopStyleCommand = new DelegateCommand<ShellDesktopStyleEntry>(OpenDesktopStyleAsync);
@@ -103,7 +101,6 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     public bool IsQuickSettingsOpen { get => _isQuickSettingsOpen; private set => SetProperty(ref _isQuickSettingsOpen, value); }
     public bool AreDesktopIconsVisible { get => _areDesktopIconsVisible; private set => SetProperty(ref _areDesktopIconsVisible, value); }
     public bool HasDesktopStyles { get => _hasDesktopStyles; private set => SetProperty(ref _hasDesktopStyles, value); }
-    public bool IsLoading { get => _isLoading; private set => SetProperty(ref _isLoading, value); }
     /// <summary>Host-owned wallpaper shared by every desktop shell, including custom images.</summary>
     public IBrush? Wallpaper { get => _wallpaper; private set => SetProperty(ref _wallpaper, value); }
     /// <summary>Theme-resolved label foreground supplied by the host's built-in desktop.</summary>
@@ -135,8 +132,6 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     public string Bluetooth => T("quick.bluetooth", "Bluetooth");
     public string Focus => T("quick.focus", "Focus");
     public string OpenSettings => T("quick.open_settings", "Open settings");
-    public string LoadingTitle => T("loading.title", "Getting your desktop ready");
-    public string LoadingDescription => T("loading.description", "Loading applications and desktop items…");
     public string DesktopStylesTitle => T("desktop.styles", "Desktop styles");
     public string View => T("common.view", "View");
     public string ShowDesktopIcons => T("desktop.context.show_icons", "Show desktop icons");
@@ -162,12 +157,9 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     {
         UpdateClock();
         _clockTimer.Start();
-        ShowLoadingTransition();
     }
     public void Deactivate()
     {
-        _loadGeneration++;
-        IsLoading = true;
         _clockTimer.Stop();
         CloseFlyouts();
     }
@@ -184,6 +176,16 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     }
 
     private string T(string key, string fallback) => _localizer.Get(key, fallback);
+    private void RunAfterClosingFlyouts(Action action)
+    {
+        CloseFlyouts();
+        action();
+    }
+    private async Task RunAfterClosingFlyoutsAsync(Func<Task> action)
+    {
+        CloseFlyouts();
+        await action();
+    }
     private void ToggleStart()
     {
         IsQuickSettingsOpen = false;
@@ -255,8 +257,8 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     private async Task OpenApplicationAsync(ShellApplicationEntry? application)
     {
         if (application is null) return;
-        await _context.Actions.LaunchAsync(application.Id);
         CloseFlyouts();
+        await _context.Actions.LaunchAsync(application.Id);
     }
     /// <summary>Matches the host desktop: a primary click selects an item, and double-click opens it.</summary>
     public void SelectDesktopEntry(ShellDesktopEntry? entry)
@@ -279,15 +281,6 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     {
         if (desktopStyle is null) return;
         await _context.Actions.ActivateDesktopStyleAsync(desktopStyle.Id);
-    }
-    private void ShowLoadingTransition()
-    {
-        IsLoading = true;
-        var generation = ++_loadGeneration;
-        DispatcherTimer.RunOnce(() =>
-        {
-            if (!_disposed && generation == _loadGeneration) IsLoading = false;
-        }, TimeSpan.FromMilliseconds(420));
     }
     private void UpdateClock()
     {

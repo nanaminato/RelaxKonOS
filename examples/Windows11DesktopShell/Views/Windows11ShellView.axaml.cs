@@ -13,9 +13,18 @@ public partial class Windows11ShellView : UserControl
     public Windows11ShellView()
     {
         InitializeComponent();
+        AddHandler(KeyDownEvent, (_, e) =>
+        {
+            if (e.Key == Key.Escape && DataContext is Windows11ShellViewModel vm && (vm.IsStartOpen || vm.IsQuickSettingsOpen))
+            {
+                vm.CloseFlyoutsCommand.Execute(null);
+                e.Handled = true;
+            }
+        }, RoutingStrategies.Tunnel);
         DesktopArea.AddHandler(PointerPressedEvent, (_, e) =>
         {
             if (!e.GetCurrentPoint(DesktopArea).Properties.IsLeftButtonPressed) return;
+            if (IsWindowInput(e.Source)) return;
             for (var control = e.Source as Control; control is not null && control != DesktopArea; control = control.Parent as Control)
                 if (control is Button || control == WindowHost) return;
             if (DataContext is not Windows11ShellViewModel vm) return;
@@ -54,6 +63,7 @@ public partial class Windows11ShellView : UserControl
         DesktopArea.PointerCaptureLost += (_, _) => EndSelection();
         DesktopArea.KeyDown += (_, e) =>
         {
+            if (IsWindowInput(e.Source) || e.Handled) return;
             if (DataContext is not Windows11ShellViewModel vm) return;
             if (e.Key == Key.A && (e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Meta)) != 0)
             {
@@ -79,6 +89,9 @@ public partial class Windows11ShellView : UserControl
             }
         };
     }
+
+    private bool IsWindowInput(object? source) => source is Visual visual &&
+        (ReferenceEquals(visual, WindowHost) || visual.GetVisualAncestors().Contains(WindowHost));
 
     private void EndSelection()
     {

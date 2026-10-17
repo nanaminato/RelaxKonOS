@@ -225,21 +225,7 @@
             </Border>
         </Grid>
 
-        <Canvas x:Name="FullScreenHost" Grid.RowSpan="2" ClipToBounds="True" IsHitTestVisible="False" />
-        <Canvas x:Name="ShellOverlayHost" Grid.RowSpan="2" ClipToBounds="True" IsHitTestVisible="False" />
-        <Border Grid.RowSpan="2" IsVisible="{Binding IsLoading}"
-                Background="{DynamicResource OverlayScrimBrush}">
-            <StackPanel Width="260" Spacing="14" HorizontalAlignment="Center" VerticalAlignment="Center">
-                <Border Width="56" Height="56" CornerRadius="{DynamicResource OverlayCornerRadius}" Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1">
-                    <UniformGrid Columns="2" Rows="2" Width="28" Height="28" HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <Border Background="{DynamicResource TextOnAccentBrush}" Margin="2" /><Border Background="{DynamicResource TextOnAccentBrush}" Margin="2" />
-                        <Border Background="{DynamicResource TextOnAccentBrush}" Margin="2" /><Border Background="{DynamicResource TextOnAccentBrush}" Margin="2" />
-                    </UniformGrid>
-                </Border>
-                <TextBlock Text="{Binding LoadingTitle}" Foreground="{DynamicResource TextOnAccentBrush}" FontSize="18" FontWeight="SemiBold" TextAlignment="Center" />
-                <TextBlock Text="{Binding LoadingDescription}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextAlignment="Center" TextWrapping="Wrap" />
-                <ProgressBar IsIndeterminate="True" Height="4" Foreground="{DynamicResource AccentBrush}" Background="{DynamicResource SurfaceSunkenBrush}" />
-            </StackPanel>
-        </Border>
+        <Canvas x:Name="FullScreenHost" Grid.RowSpan="2" ZIndex="20" ClipToBounds="True" IsHitTestVisible="False" />
+        <Canvas x:Name="ShellOverlayHost" Grid.RowSpan="2" ZIndex="30" ClipToBounds="True" IsHitTestVisible="False" />
     </Grid>
 </UserControl>

@@ -46,6 +46,8 @@ internal static class DesktopLiveReview
                 Console.WriteLine($"LIVE DESKTOP PASS: {id}; entries={vm.DesktopItems.Count}; selected={selected}; windows={running.Count}; screenshot captured.");
                 vm.ClearDesktopSelectionCommand.Execute(null);
             }
+            if (Environment.GetEnvironmentVariable("RK_REVIEW_EXTERNAL_PACKAGE") is { Length: > 0 } packagePath)
+                await Windows11LiveReview.RunAsync(services, host, packagePath, ct);
         }
         finally
         {

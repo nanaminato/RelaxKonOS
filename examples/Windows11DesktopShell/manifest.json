@@ -4,7 +4,7 @@
   "packageType": "desktopShell",
   "id": "com.example.windows11-desktop",
   "displayName": "Windows 11 Desktop (External)",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "iconPath": "assets/icon.png",
   "description": "Windows 11-inspired external desktop shell for RelaxKonOS",
   "entryAssembly": "lib/net10.0/RelaxKonOS.Example.Windows11DesktopShell.dll",

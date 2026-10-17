@@ -22,7 +22,10 @@
             <Border Classes="card" IsVisible="{Binding HasPackage}">
                 <StackPanel Spacing="12">
                     <Grid ColumnDefinitions="36,*,Auto" ColumnSpacing="10">
-                        <TextBlock Text="{Binding CurrentPackage.Manifest.IconGlyph}" FontSize="24" />
+                        <Grid Width="36" Height="36" VerticalAlignment="Center">
+                            <Image Source="{Binding PackageIcon}" IsVisible="{Binding HasPackageIcon}" Stretch="Uniform" />
+                            <TextBlock Text="{Binding PackageIconGlyph}" IsVisible="{Binding !HasPackageIcon}" FontSize="28" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Grid>
                         <StackPanel Grid.Column="1" Spacing="2">
                             <TextBlock Text="{Binding CurrentPackage.Manifest.DisplayName}" FontSize="18" FontWeight="SemiBold" />
                             <TextBlock Text="{Binding CurrentPackage.Manifest.Id}" FontSize="12" Opacity="0.62" />
