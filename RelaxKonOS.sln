@@ -22,6 +22,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.App.SDK", "Frame
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.Protocol", "Shared\RelaxKonOS.Protocol\RelaxKonOS.Protocol.csproj", "{1B0F59CE-C2BB-46DE-9C75-712A850E45CD}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.ManagedRuntimes", "Shared\RelaxKonOS.ManagedRuntimes\RelaxKonOS.ManagedRuntimes.csproj", "{239B09AB-FDCB-47B5-927A-663A25AA3EF5}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.Shell", "Framework\RelaxKonOS.Shell\RelaxKonOS.Shell.csproj", "{A15B80E6-BA16-4B7D-8D46-8B7E2CA03B79}"
 EndProject
 Global
@@ -30,6 +32,10 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{239B09AB-FDCB-47B5-927A-663A25AA3EF5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{239B09AB-FDCB-47B5-927A-663A25AA3EF5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{239B09AB-FDCB-47B5-927A-663A25AA3EF5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{239B09AB-FDCB-47B5-927A-663A25AA3EF5}.Release|Any CPU.Build.0 = Release|Any CPU
 		{46378F7B-965E-4C27-B39D-6978E711E8F0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{46378F7B-965E-4C27-B39D-6978E711E8F0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{46378F7B-965E-4C27-B39D-6978E711E8F0}.Release|Any CPU.ActiveCfg = Release|Any CPU

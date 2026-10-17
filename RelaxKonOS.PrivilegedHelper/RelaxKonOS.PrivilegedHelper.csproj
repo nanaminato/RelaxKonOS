@@ -16,6 +16,7 @@
     <Compile Include="../RelaxKonOS.Server/SystemPerformance/HostProcessSnapshotCollector.cs" Link="SystemPerformance/HostProcessSnapshotCollector.cs" />
     <Compile Include="../RelaxKonOS.Server/SystemMonitor/LinuxProcessMetadata.cs" Link="SystemMonitor/LinuxProcessMetadata.cs" />
     <ProjectReference Include="..\Shared\RelaxKonOS.Protocol\RelaxKonOS.Protocol.csproj" />
+    <ProjectReference Include="../Shared/RelaxKonOS.ManagedRuntimes/RelaxKonOS.ManagedRuntimes.csproj" />
     <PackageReference Include="RoyalApps.RoyalTerminal.Terminal.Pty.Platform" />
     <PackageReference Include="System.ServiceProcess.ServiceController" />
     <PackageReference Include="System.Management" />

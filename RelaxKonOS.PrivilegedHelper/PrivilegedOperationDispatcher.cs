@@ -21,6 +21,10 @@ public static partial class PrivilegedOperationExecutor
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "operation id is required");
         if (request.Correlation is not { } correlation || !correlation.IsValid())
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "valid correlation metadata is required");
+        if (request.Operation is PrivilegedOperationKind.RuntimeSources or PrivilegedOperationKind.RuntimeCatalogGet or PrivilegedOperationKind.RuntimeCatalogRefresh)
+            return await RuntimeSourceOperations.ExecuteAsync(request);
+        if (request.RuntimeSourceId is not null)
+            return Fail(64, PrivilegedProblemCode.InvalidRequest, "runtime source fields require a dedicated operation");
         if (request.Operation is PrivilegedOperationKind.ProxyServerStatus or PrivilegedOperationKind.ProxyServerAction or PrivilegedOperationKind.ProxyServerValidate or PrivilegedOperationKind.ProxyServerApply or PrivilegedOperationKind.ProxyServerGenerateKeys)
             return await SingBoxOperations.ExecuteAsync(request);
         if (request.ProxyServer is not null) return Fail(64, PrivilegedProblemCode.InvalidRequest, "ProxyServer fields require a dedicated operation");

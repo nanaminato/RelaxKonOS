@@ -5,6 +5,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.ProxyServer;
 
@@ -26,6 +27,8 @@ internal static class SingBoxOperations
     private sealed record Publication(string Hash, bool WasRunning);
     private sealed record Installed(string Version, string BinaryHash);
     private static readonly SemaphoreSlim Gate = new(1);
+    internal static ISingBoxArchiveHost CreateArchiveHost() => OperatingSystem.IsWindows()
+        ? new WindowsSingBoxArchiveHost(Root) : throw new RuntimePolicyException("runtime.platform_unsupported");
 
     public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request)
     {
@@ -121,7 +124,7 @@ internal static class SingBoxOperations
                     if (status.Running) await StopAsync();
                     File.Move(candidate, Config, true);
                     if (OperatingSystem.IsWindows())
-                        await WindowsComponentService.InstallAsync(ComponentKind.SingBox, Root, Binary, Config, appliedIdentity: publication.Hash);
+                        await WindowsComponentService.InstallAsync(ComponentKind.SingBox, Root, Binary, Config, true, appliedIdentity: publication.Hash);
                     if (status.Running) await StartAsync();
                     await WriteAsync(Published, publication.Hash);
                     File.Delete(Pending);
@@ -136,6 +139,7 @@ internal static class SingBoxOperations
             }
             finally { File.Delete(candidate); }
         }
+        catch (RuntimePolicyException ex) { return Failure(ex.ProblemCode); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException
             or ArgumentException or JsonException or HttpRequestException or TimeoutException or OperationCanceledException or System.ComponentModel.Win32Exception)
         { return Failure("proxy_server.runtime_failed"); }
@@ -238,9 +242,8 @@ internal static class SingBoxOperations
                     if (!found) throw new IOException("Missing runtime.");
                     File.SetUnixFileMode(temporary, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
                 }
-                var version = await RunAsync(temporary, ["version"]);
-                if (!version.StartsWith("sing-box version " + SingBoxManifest.Version + "\n", StringComparison.Ordinal)
-                    && !version.StartsWith("sing-box version " + SingBoxManifest.Version + "\r\n", StringComparison.Ordinal)) throw new IOException("Unexpected runtime version.");
+                SingBoxNativeValidation.Parse(await RunAsync(temporary, ["version"]), SingBoxManifest.Version,
+                    SingBoxManifest.PlatformName, SingBoxManifest.ArchitectureName);
                 File.Move(temporary, Binary);
                 await WriteAsync(Path.Combine(Root, "installed.json"), JsonSerializer.Serialize(new Installed(SingBoxManifest.Version, Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(Binary))))));
                 if (OperatingSystem.IsLinux()) await InstallLinuxUnitAsync();
@@ -318,11 +321,11 @@ internal static class SingBoxOperations
     {
         var installed = File.Exists(Binary) && File.Exists(Path.Combine(Root, "installed.json"));
         if (installed) RequireInstalled();
-        var running = installed && (OperatingSystem.IsWindows()
-            ? WindowsComponentService.Snapshot(ComponentKind.SingBox, Root).Running
-            : await IsLinuxRunningAsync());
+        var process = installed && OperatingSystem.IsWindows() ? WindowsComponentService.Snapshot(ComponentKind.SingBox, Root) : null;
+        var running = installed && (OperatingSystem.IsWindows() ? process!.Running : await IsLinuxRunningAsync());
         var hash = File.Exists(Published) ? (await File.ReadAllTextAsync(Published)).Trim() : null;
-        var drift = hash is not null && (!File.Exists(Config) || Hash(await File.ReadAllTextAsync(Config)) != hash);
+        var drift = hash is not null && (!File.Exists(Config) || Hash(await File.ReadAllTextAsync(Config)) != hash
+            || running && OperatingSystem.IsWindows() && process!.AppliedIdentity != hash);
         return new(true, installed, running, File.Exists(Pending), installed ? SingBoxManifest.Version : null,
             hash, running && !drift && !File.Exists(Pending), drift ? "proxy_server.configuration_drift" : null,
             StatisticsSupported: false, BootEnabled: installed ? await BootEnabledAsync() : null);
@@ -357,7 +360,13 @@ internal static class SingBoxOperations
         try { return (await RunAsync("/usr/bin/systemctl", ["is-active", Unit])).Trim() == "active"; }
         catch (InvalidOperationException) { return false; }
     }
-    private static Task CheckAsync(string path) => RunAsync(Binary, ["check", "-c", path]);
+    private static async Task CheckAsync(string path)
+    {
+        var build = SingBoxNativeValidation.Parse(await RunAsync(Binary, ["version"]), SingBoxManifest.Version,
+            SingBoxManifest.PlatformName, SingBoxManifest.ArchitectureName);
+        SingBoxNativeValidation.RequireConfigurationFeatures(build, await File.ReadAllBytesAsync(path));
+        await RunAsync(Binary, ["check", "-c", path]);
+    }
     private static Task SystemctlAsync(string action) => RunAsync("/usr/bin/systemctl", [action, Unit]);
     private static async Task StopAsync()
     {
@@ -399,7 +408,7 @@ internal static class SingBoxOperations
         await CheckAsync(Config);
         var hash = Hash(await File.ReadAllTextAsync(Config));
         if (OperatingSystem.IsWindows())
-            await WindowsComponentService.InstallAsync(ComponentKind.SingBox, Root, Binary, Config, appliedIdentity: hash);
+            await WindowsComponentService.InstallAsync(ComponentKind.SingBox, Root, Binary, Config, true, appliedIdentity: hash);
         await WriteAsync(Published, hash);
         if (status.Running) await StartAsync();
     }
@@ -413,7 +422,7 @@ internal static class SingBoxOperations
         {
             File.Copy(Previous, Config, true);
             await CheckAsync(Config);
-            if (OperatingSystem.IsWindows()) await WindowsComponentService.InstallAsync(ComponentKind.SingBox, Root, Binary, Config, appliedIdentity: Hash(await File.ReadAllTextAsync(Config)));
+            if (OperatingSystem.IsWindows()) await WindowsComponentService.InstallAsync(ComponentKind.SingBox, Root, Binary, Config, true, appliedIdentity: Hash(await File.ReadAllTextAsync(Config)));
             if (publication.WasRunning) await StartAsync();
             await WriteAsync(Published, Hash(await File.ReadAllTextAsync(Config)));
         }
@@ -425,10 +434,12 @@ internal static class SingBoxOperations
         File.Delete(Pending);
     }
 
-    private static async Task<string> RunAsync(string binary, string[] arguments, int? allowedExitCode = null)
+    internal static async Task<string> RunAsync(string binary, string[] arguments, int? allowedExitCode = null)
     {
         using var process = new Process { StartInfo = new(binary) { UseShellExecute = false, CreateNoWindow = true,
             RedirectStandardOutput = true, RedirectStandardError = true } };
+        TrustedProcessEnvironment.Apply(process.StartInfo);
+        process.StartInfo.WorkingDirectory = Path.GetDirectoryName(Path.GetFullPath(binary))!;
         foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
         foreach (var variable in new[] { "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy" }) process.StartInfo.Environment.Remove(variable);
         if (!process.Start()) throw new IOException();
@@ -436,7 +447,7 @@ internal static class SingBoxOperations
         var errors = ReadBoundedAsync(process.StandardError);
         try { await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(45)); }
         catch { try { process.Kill(true); } catch (InvalidOperationException) { } throw; }
-        await errors;
+        await Task.WhenAll(output, errors);
         var text = await output;
         // Native diagnostics can contain secrets: never cross the privilege boundary.
         if (process.ExitCode != 0 && process.ExitCode != allowedExitCode) throw new InvalidOperationException("sing-box operation failed.");
@@ -445,8 +456,13 @@ internal static class SingBoxOperations
     private static async Task<string> ReadBoundedAsync(StreamReader reader)
     {
         var result = new StringBuilder(); var buffer = new char[4096]; int read;
+        var oversized = false;
         while ((read = await reader.ReadAsync(buffer)) > 0)
+        {
+            if (result.Length + read > 8192) oversized = true;
             if (result.Length < 8192) result.Append(buffer, 0, Math.Min(read, 8192 - result.Length));
+        }
+        if (oversized) throw new IOException("sing-box output exceeds limit.");
         return result.ToString();
     }
     private static PrivilegedOperationResult Json<T>(T value) => new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(value, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default)));

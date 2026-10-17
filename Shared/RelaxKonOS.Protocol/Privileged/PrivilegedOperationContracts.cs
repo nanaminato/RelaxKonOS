@@ -22,6 +22,9 @@ public static class PrivilegedOperationProtocol
 [JsonConverter(typeof(JsonStringEnumConverter<PrivilegedOperationKind>))]
 public enum PrivilegedOperationKind
 {
+    RuntimeSources,
+    RuntimeCatalogGet,
+    RuntimeCatalogRefresh,
     ProxyServerStatus,
     ProxyServerAction,
     ProxyServerValidate,
@@ -304,7 +307,8 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("squidConfiguration")] RelaxKonOS.Protocol.GatewayProxy.ApplySquidConfigurationRequest? SquidConfiguration = null,
     [property: JsonPropertyName("squidServiceAction")] RelaxKonOS.Protocol.GatewayProxy.SquidServiceAction? SquidServiceAction = null,
     [property: JsonPropertyName("squidAccount")] RelaxKonOS.Protocol.GatewayProxy.SquidAccountMutation? SquidAccount = null,
-    [property: JsonPropertyName("proxyServer")] RelaxKonOS.Protocol.ProxyServer.ProxyServerHelperRequest? ProxyServer = null);
+    [property: JsonPropertyName("proxyServer")] RelaxKonOS.Protocol.ProxyServer.ProxyServerHelperRequest? ProxyServer = null,
+    [property: JsonPropertyName("runtimeSourceId")] string? RuntimeSourceId = null);
 
 /// <summary>Versioned structured result returned by the local Helper.</summary>
 public sealed record PrivilegedOperationResult(
