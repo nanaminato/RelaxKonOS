@@ -281,6 +281,7 @@ internal fun OperationsContent(
                     OperationDomain.WebServer -> R.string.nginx_title
                     OperationDomain.Certificate -> R.string.certificates_title
                     OperationDomain.Proxy -> R.string.mihomo_title
+                    OperationDomain.ProxyServer -> R.string.proxy_server_title
                 }),
                 trailing = { ExecutionStatusChip(operationStatus(item), if (item.check == OperationCheck.Verified) item.state else null) },
                 selected = (item.reference.domain to item.reference.operationId) == state.selectedKey,

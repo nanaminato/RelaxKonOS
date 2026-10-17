@@ -12,12 +12,14 @@ using Rect = RelaxKonOS.Core.Primitives.Rect;
 
 namespace RelaxKonOS.Client.Apps.ProxyServer;
 
+/// <summary>Built-in sing-box proxy server console. Publishing always runs on the Server, never in the client.</summary>
 public sealed class ProxyServerApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.proxy-server"), "Proxy Server", "1.0.0", "⇄", "sing-box proxy server",
         [AppPermissions.ServerProxyRead, AppPermissions.ServerProxyManage, AppPermissions.ServerProxyServerExport],
         ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.ProxyServer]),
-        InstancePolicy: ApplicationInstancePolicy.SingleWindow);
+        InstancePolicy: ApplicationInstancePolicy.SingleWindow,
+        IconPath: "avares://RelaxKonOS.Client/Assets/AppIcons/proxy-server.png");
 
     public override void Activate(AppContext context)
     {
@@ -25,34 +27,42 @@ public sealed class ProxyServerApp : RemoteApplicationBase
         var client = (IProxyServerClient?)context.Services.GetService(typeof(IProxyServerClient));
         if (session?.State != AuthSessionState.Authenticated || client is null) return;
         var vm = new ProxyServerViewModel(client);
-        var view = new ProxyServerWorkspace { DataContext = vm };
-        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.proxy-server.display_name"), view, new Rect(90, 55, 1040, 780), Manifest.IconGlyph);
-        vm.ConfirmApplyAsync = () => ConfirmAsync("proxy_server.apply_warning");
-        window.CanCloseAsync = () => vm.IsBusy || vm.HasUnsavedChanges ? ConfirmAsync("proxy_server.close_warning") : Task.FromResult(true);
+        var view = new ProxyServerWorkspace(vm);
+        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.proxy-server.display_name"), view,
+            new Rect(80, 45, 1060, 800), Manifest.IconGlyph);
+        view.AttachWindowHeader(window);
+        vm.ConfirmAsync = (title, message) => ConfirmAsync(title.Resolve(), message.Resolve());
+        window.CanCloseAsync = () => vm.IsBusy || vm.HasUnsavedChanges
+            ? ConfirmAsync(LocalizedText.Get("common.discard_title"), LocalizedText.Get("proxy_server.close_warning"))
+            : Task.FromResult(true);
         var login = session.CurrentSession;
-        EventHandler<AuthSessionStateChangedEventArgs> changed = (_, _) =>
+        EventHandler<AuthSessionStateChangedEventArgs> sessionChanged = (_, _) =>
         {
             if (!ReferenceEquals(login, session.CurrentSession) || session.State != AuthSessionState.Authenticated)
                 Avalonia.Threading.Dispatcher.UIThread.Post(vm.InvalidateSession);
         };
-        session.StateChanged += changed;
+        session.StateChanged += sessionChanged;
         EventHandler<RelaxKonOS.WindowManager.ManagedWindow>? closed = null;
         closed = (_, current) =>
         {
             if (!ReferenceEquals(current, window)) return;
-            context.WindowManager.WindowClosed -= closed; session.StateChanged -= changed; vm.Dispose();
+            context.WindowManager.WindowClosed -= closed; session.StateChanged -= sessionChanged; vm.Dispose();
         };
         context.WindowManager.WindowClosed += closed;
         _ = InitializeAsync();
         async Task InitializeAsync()
         {
             var read = await PermissionAsync(AppPermissions.ServerProxyRead);
+            vm.CanRead = read;
             if (!read) return;
             await vm.RefreshCommand.ExecuteAsync(null);
+            // A host that reports the capability as unsupported can never accept a mutation.
+            if (vm.Snapshot?.Capabilities.Supported != true) return;
             var controller = session.AssignedRole == RelaxKonOS.Protocol.Workspace.DeviceRole.Controller;
             if (!controller || !ReferenceEquals(login, session.CurrentSession)) return;
             vm.CanManage = await PermissionAsync(AppPermissions.ServerProxyManage);
             vm.CanExport = await PermissionAsync(AppPermissions.ServerProxyServerExport);
+            if (vm.SelectedCredential is null && vm.Credentials.Count > 0) vm.SelectedCredential = vm.Credentials[0];
         }
         async Task<bool> PermissionAsync(string permission)
         {
@@ -60,12 +70,15 @@ public sealed class ProxyServerApp : RemoteApplicationBase
             if (status == AppPermissionStatus.Undecided) status = await context.Permissions.RequestAsync(permission);
             return status == AppPermissionStatus.Granted && ReferenceEquals(login, session.CurrentSession);
         }
-        async Task<bool> ConfirmAsync(string key)
+        async Task<bool> ConfirmAsync(string title, string message)
         {
             var accepted = false;
-            await context.ShowDialogAsync<bool>(window, LocalizedText.Get("application.relaxkonos.proxy-server.display_name"), dialog => new ConfirmDialogView
-            { DataContext = new ConfirmDialogViewModel(LocalizedText.Get(key), value => { accepted = value; dialog.Close(value); }) }, new Size(520, 260));
+            await context.ShowDialogAsync<bool>(window, title, dialog => new ConfirmDialogView
+            { DataContext = new ConfirmDialogViewModel(message, value => { accepted = value; dialog.Close(value); }) }, new Size(560, 280));
             return accepted;
         }
     }
+
+    /// <summary>Used by the window-preview checks to render the real workspace without a window host.</summary>
+    internal static Avalonia.Controls.Control CreateView(ProxyServerViewModel vm) => new ProxyServerWorkspace(vm);
 }

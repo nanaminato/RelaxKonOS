@@ -11,25 +11,55 @@ namespace RelaxKonOS.Client.Apps.ProxyServer;
 public interface IProxyServerClient
 {
     Task<ProxyServerSnapshot> ReadAsync(CancellationToken ct);
-    Task<ProxyOperationAcceptedDto> SubmitAsync(string route, object body, string key, CancellationToken ct);
-    Task<ProxyOperationDto> OperationAsync(Guid id, CancellationToken ct);
+    Task<ProxyServerStatus> StatusAsync(CancellationToken ct);
+    Task<IReadOnlyList<ProxyServerRuntimeRelease>> ReleasesAsync(CancellationToken ct);
     Task<ProxyServerValidation> ValidateAsync(CancellationToken ct);
-    Task<ProxyServerExport> ExportAsync(ProxyServerExportRequest request, CancellationToken ct);
+    Task<IReadOnlyList<ProxyServerExportFormatOption>> ExportFormatsAsync(Guid credentialId, CancellationToken ct);
+    Task<ProxyServerExport> ExportAsync(Guid credentialId, string format, CancellationToken ct);
+    Task<ProxyServerSubscriptionIssued> IssueSubscriptionAsync(IssueProxyServerSubscription request, CancellationToken ct);
+    Task RevokeSubscriptionAsync(Guid id, CancellationToken ct);
+    Task<ProxyOperationAcceptedDto> SubmitAsync(HttpMethod method, string route, object body, string key, CancellationToken ct);
+    Task<ProxyOperationDto> OperationAsync(Guid id, CancellationToken ct);
 }
 
-/// <summary>A stale window cannot send requests using another login or host.</summary>
+/// <summary>
+/// Routes are closed to the management prefix: a view model cannot turn this client into a generic
+/// request proxy. A stale window can never send using another login or host.
+/// </summary>
 public sealed class RemoteProxyServerClient(HttpClient http, IAuthSession session) : IProxyServerClient
 {
     private readonly object? _login = session.CurrentSession;
-    public Task<ProxyServerSnapshot> ReadAsync(CancellationToken ct) => SendAsync<ProxyServerSnapshot>(HttpMethod.Get, ProxyServerRoutes.Configuration, null, null, ct);
-    public Task<ProxyOperationDto> OperationAsync(Guid id, CancellationToken ct) => SendAsync<ProxyOperationDto>(HttpMethod.Get, ProxyApiRoutes.Proxy + "/operations/" + id, null, null, ct);
-    public Task<ProxyServerValidation> ValidateAsync(CancellationToken ct) => SendAsync<ProxyServerValidation>(HttpMethod.Post, ProxyServerRoutes.Validate, new { }, null, ct);
-    public Task<ProxyServerExport> ExportAsync(ProxyServerExportRequest request, CancellationToken ct) => SendAsync<ProxyServerExport>(HttpMethod.Post, ProxyServerRoutes.Export, request, null, ct);
-    public Task<ProxyOperationAcceptedDto> SubmitAsync(string route, object body, string key, CancellationToken ct)
+
+    public Task<ProxyServerSnapshot> ReadAsync(CancellationToken ct) =>
+        SendAsync<ProxyServerSnapshot>(HttpMethod.Get, ProxyServerRoutes.Configuration, null, null, ct);
+    public Task<ProxyServerStatus> StatusAsync(CancellationToken ct) =>
+        SendAsync<ProxyServerStatus>(HttpMethod.Get, ProxyServerRoutes.Status, null, null, ct);
+    public Task<IReadOnlyList<ProxyServerRuntimeRelease>> ReleasesAsync(CancellationToken ct) =>
+        SendAsync<IReadOnlyList<ProxyServerRuntimeRelease>>(HttpMethod.Get, ProxyServerRoutes.RuntimeReleases, null, null, ct);
+    public Task<ProxyServerValidation> ValidateAsync(CancellationToken ct) =>
+        SendAsync<ProxyServerValidation>(HttpMethod.Post, ProxyServerRoutes.Validate, new { }, null, ct);
+    public Task<IReadOnlyList<ProxyServerExportFormatOption>> ExportFormatsAsync(Guid credentialId, CancellationToken ct) =>
+        SendAsync<IReadOnlyList<ProxyServerExportFormatOption>>(HttpMethod.Get, WithId(ProxyServerRoutes.CredentialExportFormatsPattern, credentialId), null, null, ct);
+    public Task<ProxyServerExport> ExportAsync(Guid credentialId, string format, CancellationToken ct) =>
+        SendAsync<ProxyServerExport>(HttpMethod.Post, WithId(ProxyServerRoutes.CredentialExportPattern, credentialId),
+            new ProxyServerExportRequest(credentialId, format), null, ct);
+    public Task<ProxyServerSubscriptionIssued> IssueSubscriptionAsync(IssueProxyServerSubscription request, CancellationToken ct) =>
+        SendAsync<ProxyServerSubscriptionIssued>(HttpMethod.Post, ProxyServerRoutes.Subscriptions, request, null, ct);
+    public Task RevokeSubscriptionAsync(Guid id, CancellationToken ct) =>
+        SendAsync<bool>(HttpMethod.Delete, WithId(ProxyServerRoutes.SubscriptionPattern, id), null, null, ct);
+    public Task<ProxyOperationDto> OperationAsync(Guid id, CancellationToken ct) =>
+        SendAsync<ProxyOperationDto>(HttpMethod.Get, WithId(ProxyServerRoutes.OperationPattern, id), null, null, ct);
+
+    public Task<ProxyOperationAcceptedDto> SubmitAsync(HttpMethod method, string route, object body, string key, CancellationToken ct)
     {
-        if (route is not (ProxyServerRoutes.Configuration or ProxyServerRoutes.Apply or ProxyServerRoutes.Credentials or ProxyServerRoutes.Runtime)) throw new ArgumentException(nameof(route));
-        return SendAsync<ProxyOperationAcceptedDto>(route == ProxyServerRoutes.Configuration ? HttpMethod.Put : HttpMethod.Post, route, body, key, ct);
+        if (!route.StartsWith(ProxyServerRoutes.Root + "/", StringComparison.Ordinal)
+            || route.Contains('{', StringComparison.Ordinal) || route.Length > 256)
+            throw new ArgumentException(nameof(route));
+        return SendAsync<ProxyOperationAcceptedDto>(method, route, body, key, ct);
     }
+
+    private static string WithId(string pattern, Guid id) => pattern.Replace("{id:guid}", id.ToString("D"), StringComparison.Ordinal);
+
     private async Task<T> SendAsync<T>(HttpMethod method, string route, object? body, string? key, CancellationToken ct)
     {
         Verify();
@@ -47,13 +77,19 @@ public sealed class RemoteProxyServerClient(HttpClient http, IAuthSession sessio
             try
             {
                 using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
-                if (json.RootElement.TryGetProperty("title", out var title)) problem = title.GetString() ?? problem;
+                if (json.RootElement.TryGetProperty("title", out var title) && !string.IsNullOrWhiteSpace(title.GetString()))
+                    problem = title.GetString()!;
+                else if (json.RootElement.TryGetProperty("problemCode", out var code) && !string.IsNullOrWhiteSpace(code.GetString()))
+                    problem = code.GetString()!;
             }
             catch (JsonException) { }
             throw new HttpRequestException(problem, null, response.StatusCode);
         }
-        return await response.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, ct) ?? throw new InvalidDataException("proxy_server.response_invalid");
+        if (typeof(T) == typeof(bool)) return (T)(object)true;
+        return await response.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, ct)
+            ?? throw new InvalidDataException("proxy_server.response_invalid");
     }
+
     private void Verify()
     {
         if (_login is null || !ReferenceEquals(_login, session.CurrentSession) || session.State != AuthSessionState.Authenticated)

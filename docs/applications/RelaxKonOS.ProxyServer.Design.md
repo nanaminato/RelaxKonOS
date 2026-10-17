@@ -27,7 +27,7 @@
 
 独立建立 ProxyServer 业务边界，不把服务端用户、入站和订阅发布塞进现有出站 `IProxyEngine`。仅提取确实通用的安装验证、操作台账与服务控制基础设施。首版只实现 sing-box，暂不添加无实现的多内核切换界面。
 
-本设计不包含手机本地 VPN/TUN、设备自动连接、商业计费、集群调度、任意原生 JSON 编辑、透明代理或自动接管外部 sing-box。Android 专属交互及支持范围由 [Android 文档](../../Client/RelaxKonOS.Client.Android/docs/README.md) 单独维护；本次不增加移动端已支持的声明。
+本设计不包含手机本地 VPN/TUN、设备自动连接、商业计费、集群调度、任意原生 JSON 编辑、透明代理或自动接管外部 sing-box。Android 只提供已连接服务器上的管理与导出（发布、回滚、运行时、凭据、导出、订阅），入站服务定义仍只在桌面编辑；Android 专属交互与支持范围由 [Android 文档](../../Client/RelaxKonOS.Client.Android/docs/README.md) 单独维护，见 [代理服务端](../../Client/RelaxKonOS.Client.Android/docs/features/ProxyServer.md)。
 
 ## 2. 协议与运行时能力
 
@@ -187,7 +187,7 @@ UI 先选择目标：VLESS/Trojan/Hysteria2 分享 URI、sing-box 配置、Mihom
 
 ## 11. 实施顺序与验收要求
 
-仓库当前尚未实现本应用，以下是工作拆分，不是已完成能力：
+首版分层已落地（见 §13 实施状态），以下是按依赖排序的交付顺序与仍需在真实主机上补齐的验收项：
 
 1. Shared Protocol、独立应用注册、权限及能力发现；受管运行时安装和固定服务宿主。
 2. VLESS + REALITY + Vision、结构化配置、凭据、发布补偿和桌面创建流程；打通第一台真实客户端。
@@ -215,3 +215,17 @@ UI 先选择目标：VLESS/Trojan/Hysteria2 分享 URI、sing-box 配置、Mihom
 - [Hysteria2 入站与认证兼容性](https://sing-box.sagernet.org/configuration/inbound/hysteria2/)
 - [V2Ray API 与构建要求](https://sing-box.sagernet.org/configuration/experimental/v2ray-api/)
 - [Clash API](https://sing-box.sagernet.org/configuration/experimental/clash-api/)
+
+## 13. 实施状态
+
+能力标识 `server.proxy-server`，应用 ID `relaxkonos.proxy-server`，路由前缀 `/api/v1.0/proxy-server`，公开订阅前缀 `/api/v1.0/proxy-subscriptions/{token}/{format}`。以下按层记录已实现内容与边界，未列出的条目视为未实现。
+
+| 层 | 已实现 | 边界 |
+| --- | --- | --- |
+| Shared Protocol | `ProxyServerRoutes`、结构化 DTO、`ProxyServerPresets` 闭集（五预设、UDP/证书/UUID-密码形状）、`SingBoxConfiguration` 的校验、渲染与脱敏投影 | 无 TUIC/AnyTLS/Shadowsocks，无原生 JSON 入口 |
+| Server | 草稿/发布/上一版三段修订、`ProxyServerStore` 受保护状态文件、事务发布与回滚、恢复、到期回收、幂等受理记录、订阅签发与匿名读取 | `/traffic`、`/logs` 未实现，能力响应中统计与日志恒为不支持 |
+| 特权 Helper | 固定操作：安装/升级/卸载、配置校验、原子发布、服务动作、REALITY 密钥生成 | 不接受任意参数或原生配置 |
+| 桌面端 | 概览、入站服务（含编辑器）、访问凭据、连接与订阅、校验；发布/回滚/恢复/运行时/卸载；三格式导出与订阅签发 | 统计与流量页按能力隐藏，操作结果留在状态栏与校验面板 |
+| Android | 概览、入站服务（只读）、访问凭据、连接与导出、订阅、记录；操作按 ID 恢复 | 不编辑入站定义、不生成二维码、不签发证书 |
+
+安全不变量由 `Tests/ProxyServer`（服务层：修订冲突、幂等重放与冲突、凭据形状约束、订阅 token 只存哈希、匿名读取与撤销、发布前拒绝导出、到期不夹带草稿、回滚单步、脱敏投影与受保护状态文件）与 Android `ProxyServerRepositoryTest`、`OperationCenterTest` 覆盖。真机验收项（Windows SCM / Linux systemd 安装与升级回滚、端口与防火墙共存、各协议互通矩阵、崩溃与断联恢复）仍需在目标主机执行。

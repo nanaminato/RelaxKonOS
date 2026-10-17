@@ -39,6 +39,19 @@ internal static class AuthenticationServiceRegistration
                     QueueLimit = 0,
                     AutoReplenishment = true,
                 }));
+            // A public subscription download has no login of its own, so it is metered by source
+            // address: a client refreshing a large configuration must not be able to sweep tokens.
+            options.AddPolicy(RelaxKonOS.Server.Endpoints.ProxyServerEndpoints.SubscriptionRateLimitPolicy,
+                http => RateLimitPartition.GetTokenBucketLimiter(
+                    http.Connection.RemoteIpAddress?.MapToIPv6().ToString() ?? "unknown",
+                    _ => new TokenBucketRateLimiterOptions
+                    {
+                        TokenLimit = 60,
+                        TokensPerPeriod = 60,
+                        ReplenishmentPeriod = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0,
+                        AutoReplenishment = true,
+                    }));
         });
 
         var forwardedHeaders = new ForwardedHeadersOptions { ForwardedHeaders = ForwardedHeaders.XForwardedFor, ForwardLimit = 1 };

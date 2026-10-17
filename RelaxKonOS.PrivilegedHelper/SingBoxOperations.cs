@@ -18,7 +18,9 @@ internal static class SingBoxOperations
         : "/var/lib/relaxkonos/proxy-server";
     private static string Binary => Path.Combine(Root, OperatingSystem.IsWindows() ? "sing-box.exe" : "sing-box");
     private static string Config => Path.Combine(Root, "config.json");
+    private static string Previous => Config + ".previous";
     private static string Pending => Path.Combine(Root, "pending.json");
+    private static string Published => Path.Combine(Root, "published.txt");
     private const string Unit = "relaxkonos-sing-box.service";
     private const string UnitPath = "/etc/systemd/system/" + Unit;
     private sealed record Publication(string Hash, bool WasRunning);
@@ -45,12 +47,33 @@ internal static class SingBoxOperations
             if (request.Operation == PrivilegedOperationKind.ProxyServerStatus) return Json(await StatusAsync());
             if (request.Operation == PrivilegedOperationKind.ProxyServerAction)
             {
-                if (request.ProxyServer is not { Action: { } action, Material: null } || !Enum.IsDefined(action)) return Failure("proxy_server.request_invalid");
-                if (action == ProxyServerAction.Install) { await InstallAsync(); return Json(await StatusAsync()); }
-                if (action == ProxyServerAction.Recover) { await RecoverAsync(); return Json(await StatusAsync()); }
-                if (action == ProxyServerAction.Stop) { await StopAsync(); return Json(await StatusAsync()); }
+                if (request.ProxyServer is not { Action: { } action, Material: null } || !Enum.IsDefined(action))
+                    return Failure("proxy_server.request_invalid");
+                switch (action)
+                {
+                    case ProxyServerAction.Install:
+                        await InstallAsync();
+                        return Json(await StatusAsync());
+                    case ProxyServerAction.Upgrade:
+                        await UpgradeAsync();
+                        return Json(await StatusAsync());
+                    case ProxyServerAction.Recover:
+                        await RecoverAsync();
+                        return Json(await StatusAsync());
+                    case ProxyServerAction.Uninstall:
+                        await UninstallAsync(request.ProxyServer.KeepData);
+                        return Json(await StatusAsync());
+                    case ProxyServerAction.Stop:
+                        await StopAsync();
+                        return Json(await StatusAsync());
+                }
                 RequireInstalled();
                 if (File.Exists(Pending)) return Failure("proxy_server.recovery_required");
+                if (action == ProxyServerAction.Rollback)
+                {
+                    await RollbackAsync();
+                    return Json(await StatusAsync());
+                }
                 if (action is ProxyServerAction.Start or ProxyServerAction.Restart)
                 {
                     if (!File.Exists(Config)) return Failure("proxy_server.configuration_missing");
@@ -88,8 +111,7 @@ internal static class SingBoxOperations
                 if (File.Exists(Pending)) return Failure("proxy_server.recovery_required");
                 var status = await StatusAsync();
                 if (status.ProblemCode == "proxy_server.configuration_drift") return Failure(status.ProblemCode);
-                var previous = Config + ".previous";
-                if (File.Exists(Config)) File.Copy(Config, previous, true); else File.Delete(previous);
+                if (File.Exists(Config)) File.Copy(Config, Previous, true); else File.Delete(Previous);
                 var publication = new Publication(Hash(rendered), status.Running);
                 await WriteAsync(Pending, JsonSerializer.Serialize(publication));
                 try
@@ -99,7 +121,7 @@ internal static class SingBoxOperations
                     if (OperatingSystem.IsWindows())
                         await WindowsComponentService.InstallAsync(ComponentKind.SingBox, Root, Binary, Config, appliedIdentity: publication.Hash);
                     if (status.Running) await StartAsync();
-                    await WriteAsync(Path.Combine(Root, "published.txt"), publication.Hash);
+                    await WriteAsync(Published, publication.Hash);
                     File.Delete(Pending);
                     return Json(await StatusAsync());
                 }
@@ -220,6 +242,44 @@ internal static class SingBoxOperations
         finally { File.Delete(archive); }
     }
 
+    /// <summary>Only the pinned version exists in the trust manifest, so an upgrade either repairs the runtime or is a no-op.</summary>
+    private static async Task UpgradeAsync()
+    {
+        if (File.Exists(Binary))
+        {
+            try { RequireInstalled(); return; }
+            catch (IOException) { File.Delete(Binary); }
+        }
+        File.Delete(Path.Combine(Root, "installed.json"));
+        await InstallAsync();
+    }
+
+    private static async Task UninstallAsync(bool keepData)
+    {
+        await StopAsync();
+        if (OperatingSystem.IsWindows())
+        {
+            await WindowsComponentService.RemoveAsync(ComponentKind.SingBox, Root);
+            File.Delete(Binary);
+            File.Delete(Path.Combine(Root, "installed.json"));
+        }
+        else
+        {
+            try { await SystemctlAsync("disable"); } catch (InvalidOperationException) { }
+            if (File.Exists(UnitPath)) File.Delete(UnitPath);
+            await RunAsync("/usr/bin/systemctl", ["daemon-reload"]);
+            File.Delete(Binary);
+            File.Delete(Path.Combine(Root, "installed.json"));
+        }
+        File.Delete(Pending);
+        File.Delete(Published);
+        if (keepData) return;
+        // Only files this module owns. The directory itself stays: the prepared root is pinned by ACLs
+        // and the running Helper still holds its operation lock inside it.
+        foreach (var path in new[] { Config, Previous, Path.Combine(Root, "candidate.json"), Path.Combine(Root, "installed.json") })
+            File.Delete(path);
+    }
+
     private static async Task CopyBinaryAsync(Stream input, string path)
     {
         await using var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write);
@@ -252,11 +312,30 @@ internal static class SingBoxOperations
         var running = installed && (OperatingSystem.IsWindows()
             ? WindowsComponentService.Snapshot(ComponentKind.SingBox, Root).Running
             : await IsLinuxRunningAsync());
-        var publishedPath = Path.Combine(Root, "published.txt");
-        var hash = File.Exists(publishedPath) ? (await File.ReadAllTextAsync(publishedPath)).Trim() : null;
+        var hash = File.Exists(Published) ? (await File.ReadAllTextAsync(Published)).Trim() : null;
         var drift = hash is not null && (!File.Exists(Config) || Hash(await File.ReadAllTextAsync(Config)) != hash);
         return new(true, installed, running, File.Exists(Pending), installed ? SingBoxManifest.Version : null,
-            hash, running && !drift && !File.Exists(Pending), drift ? "proxy_server.configuration_drift" : null);
+            hash, running && !drift && !File.Exists(Pending), drift ? "proxy_server.configuration_drift" : null,
+            StatisticsSupported: false, BootEnabled: installed ? await BootEnabledAsync() : null);
+    }
+
+    /// <summary>Reports the host's own start-on-boot registration; it never changes it.</summary>
+    private static async Task<bool?> BootEnabledAsync()
+    {
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+                    @"SYSTEM\CurrentControlSet\Services\" + WindowsComponentService.Name(ComponentKind.SingBox, Root));
+                // 2 = automatic, 3 = manual, 4 = disabled.
+                return key?.GetValue("Start") is int start ? start is 0 or 2 : null;
+            }
+            var state = (await RunAsync("/usr/bin/systemctl", ["is-enabled", Unit])).Trim();
+            return state is "enabled" or "enabled-runtime" or "static" or "indirect" or "generated";
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or System.ComponentModel.Win32Exception or UnauthorizedAccessException)
+        { return null; }
     }
 
     private static async Task<bool> IsLinuxRunningAsync()
@@ -286,14 +365,29 @@ internal static class SingBoxOperations
         }
     }
 
+    /// <summary>Restores the configuration file the last publication replaced; the Server owns the revision it maps to.</summary>
+    private static async Task RollbackAsync()
+    {
+        if (!File.Exists(Previous)) throw new IOException("No previous configuration.");
+        var status = await StatusAsync();
+        if (status.Running) await StopAsync();
+        File.Copy(Previous, Config, true);
+        await CheckAsync(Config);
+        var hash = Hash(await File.ReadAllTextAsync(Config));
+        if (OperatingSystem.IsWindows())
+            await WindowsComponentService.InstallAsync(ComponentKind.SingBox, Root, Binary, Config, appliedIdentity: hash);
+        await WriteAsync(Published, hash);
+        if (status.Running) await StartAsync();
+    }
+
     private static async Task RecoverAsync()
     {
         if (!File.Exists(Pending)) return;
         var publication = JsonSerializer.Deserialize<Publication>(await File.ReadAllTextAsync(Pending)) ?? throw new IOException();
         await StopAsync();
-        if (File.Exists(Config + ".previous"))
+        if (File.Exists(Previous))
         {
-            File.Copy(Config + ".previous", Config, true);
+            File.Copy(Previous, Config, true);
             await CheckAsync(Config);
             if (OperatingSystem.IsWindows()) await WindowsComponentService.InstallAsync(ComponentKind.SingBox, Root, Binary, Config, appliedIdentity: Hash(await File.ReadAllTextAsync(Config)));
             if (publication.WasRunning) await StartAsync();
@@ -326,6 +420,6 @@ internal static class SingBoxOperations
             if (result.Length < 8192) result.Append(buffer, 0, Math.Min(read, 8192 - result.Length));
         return result.ToString();
     }
-    private static PrivilegedOperationResult Json<T>(T value) => new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(value)));
+    private static PrivilegedOperationResult Json<T>(T value) => new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(value, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default)));
     private static PrivilegedOperationResult Failure(string code) => new(false, ExitCode: 1, ProblemCode: PrivilegedProblemCode.InvalidRequest, Error: code);
 }

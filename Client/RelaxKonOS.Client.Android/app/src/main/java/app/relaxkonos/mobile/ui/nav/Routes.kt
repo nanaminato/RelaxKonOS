@@ -34,6 +34,7 @@ object Routes {
     const val MANAGE_FIREWALL = "manage/firewall"
     const val MANAGE_SQUID = "manage/squid"
     const val MANAGE_PROXY = "manage/proxy"
+    const val MANAGE_PROXY_SERVER = "manage/proxy-server"
     const val MANAGE_CERTIFICATES = "manage/certificates"
     const val MANAGE_WEBSITES = "manage/websites"
     const val MANAGE_GUARDIAN = "manage/guardian"

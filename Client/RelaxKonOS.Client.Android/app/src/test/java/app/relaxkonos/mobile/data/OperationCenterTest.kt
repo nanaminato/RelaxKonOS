@@ -36,6 +36,7 @@ class OperationCenterTest {
         CertificateRepository(gateway, session, index, CertificateRequestJournal(Storage()), ElevationRepository(gateway, session, app.relaxkonos.mobile.security.CredentialVault(app.relaxkonos.mobile.security.InMemoryVaultStorage(), app.relaxkonos.mobile.security.FakeVaultCrypto()), app.relaxkonos.mobile.data.UsageMemoryStore(app.relaxkonos.mobile.data.InMemoryUsageMemoryStorage()))),
         TunnelRepository(gateway, session, elevation, TunnelMutationJournal(Storage())),
         ProxyRepository(gateway, session, index, proxyJournal),
+        ProxyServerRepository(gateway, session, index),
         FirewallRepository(gateway, session, elevation, FirewallMutationJournal(Storage())),
         SmbRepository(gateway, session, elevation, smbJournal),
         DockerControlRepository(gateway, session, dockerJournal, testDockerGate(dockerJournal)),

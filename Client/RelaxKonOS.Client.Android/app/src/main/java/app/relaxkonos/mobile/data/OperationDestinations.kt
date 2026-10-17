@@ -20,6 +20,7 @@ object OperationDestinations {
         OperationDomain.Backup -> ServerCapabilities.BACKUP_RECOVERY
         OperationDomain.Certificate -> ServerCapabilities.CERTIFICATES
         OperationDomain.Proxy -> ServerCapabilities.PROXY
+        OperationDomain.ProxyServer -> ServerCapabilities.PROXY_SERVER
         OperationDomain.Installation -> InstallationService.entries.firstOrNull { it.name == resourceId }?.capability
     }
 
@@ -35,6 +36,9 @@ object OperationDestinations {
             OperationDomain.WebServer -> OperationTarget(OperationDestination.WebServer)
             OperationDomain.Certificate -> OperationTarget(OperationDestination.Certificate, reference.operationId)
             OperationDomain.Proxy -> OperationTarget(OperationDestination.Proxy, reference.operationId)
+            // Proxy Server operations are reviewed inside their own workspace, which has no separate
+            // destination of its own in the shell, so an operation row never becomes a jump target.
+            OperationDomain.ProxyServer -> null
             OperationDomain.Installation -> installation(owner, reference.resourceId)
         }
         return target?.takeIf { it.destination != OperationDestination.Deployment || ServerCapabilities.APPLICATION_DEPLOYMENTS in owner.capabilities }

@@ -102,6 +102,8 @@ fun MobileNavHost(
             Routes.MANAGE_FIREWALL -> app.relaxkonos.mobile.ui.manage.firewall.FirewallScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_SQUID -> app.relaxkonos.mobile.ui.manage.squid.SquidScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_PROXY -> ProxyScreen(onBack = { navigator.pop() }, initialOperationId = taskTarget, modifier = Modifier.fillMaxSize())
+            Routes.MANAGE_PROXY_SERVER -> app.relaxkonos.mobile.ui.manage.proxyserver.ProxyServerScreen(
+                onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_TUNNELS -> TunnelsScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_CERTIFICATES -> CertificatesScreen(onBack = { navigator.pop() }, active = true, initialOperationId = taskTarget, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_OPERATIONS -> OperationsScreen(owner = session, onBack = { navigator.pop() },
@@ -206,6 +208,7 @@ private fun ManageDestination(navigator: MobileNavigator, layoutState: LayoutSta
             onOpenSmb = { clearTaskTarget(); navigator.push(Routes.MANAGE_SMB) },
             onOpenFirewall = { clearTaskTarget(); navigator.push(Routes.MANAGE_FIREWALL) },
             onOpenProxy = { clearTaskTarget(); navigator.push(Routes.MANAGE_PROXY) },
+            onOpenProxyServer = { clearTaskTarget(); navigator.push(Routes.MANAGE_PROXY_SERVER) },
             onOpenSquid = { clearTaskTarget(); navigator.push(Routes.MANAGE_SQUID) },
                 onOpenGuardian = { navigator.push(Routes.MANAGE_GUARDIAN) },
                 onOpenScripts = { clearTaskTarget(); navigator.push(Routes.MANAGE_SCRIPTS) },
@@ -239,6 +242,7 @@ private fun ManageDestination(navigator: MobileNavigator, layoutState: LayoutSta
             onOpenSmb = { clearTaskTarget(); navigator.push(Routes.MANAGE_SMB) },
             onOpenFirewall = { clearTaskTarget(); navigator.push(Routes.MANAGE_FIREWALL) },
             onOpenProxy = { clearTaskTarget(); navigator.push(Routes.MANAGE_PROXY) },
+            onOpenProxyServer = { clearTaskTarget(); navigator.push(Routes.MANAGE_PROXY_SERVER) },
             onOpenSquid = { clearTaskTarget(); navigator.push(Routes.MANAGE_SQUID) },
             onOpenGuardian = { navigator.push(Routes.MANAGE_GUARDIAN) },
             onOpenScripts = { clearTaskTarget(); navigator.push(Routes.MANAGE_SCRIPTS) },

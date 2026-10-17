@@ -102,6 +102,70 @@ class RelaxKonApi(
     override suspend fun selectProxyNode(serverUrl: String, accessToken: String, group: String, proxy: String): ApiResult<Unit> = tunnelEmpty("PUT", serverUrl, accessToken, ProxyRoutes.selection(group), JsonBody().string("proxy", proxy))
     override suspend fun setProxyRouting(serverUrl: String, accessToken: String, mode: ProxyRoutingMode): ApiResult<Unit> = tunnelEmpty("PUT", serverUrl, accessToken, ProxyRoutes.ROUTING, JsonBody().string("mode", mode.wire))
     override suspend fun testProxyDelay(serverUrl: String, accessToken: String, group: String, proxy: String, url: String, timeout: Int): ApiResult<ProxyDelay> = webPublishingCall("POST", serverUrl, ProxyRoutes.delay(group, proxy), accessToken, JsonBody().string("url", url).raw("timeoutMilliseconds", timeout.toString()), ProxyWire::delay)
+
+    override suspend fun proxyServerSnapshot(serverUrl: String, accessToken: String): ApiResult<ProxyServerSnapshot> =
+        proxyServerRead(serverUrl, accessToken, ProxyServerRoutes.ROOT, ProxyServerWire::snapshot)
+    override suspend fun proxyServerReleases(serverUrl: String, accessToken: String): ApiResult<List<ProxyServerRelease>> =
+        proxyServerRead(serverUrl, accessToken, ProxyServerRoutes.RUNTIME_RELEASES, ProxyServerWire::releases)
+    override suspend fun proxyServerOperation(serverUrl: String, accessToken: String, id: String): ApiResult<ProxyOperation> =
+        proxyServerRead(serverUrl, accessToken, ProxyServerRoutes.operation(id), ProxyWire::operation)
+    override suspend fun proxyServerValidate(serverUrl: String, accessToken: String): ApiResult<ProxyServerValidation> =
+        proxyServerRead(serverUrl, accessToken, ProxyServerRoutes.VALIDATE, ProxyServerWire::validation, method = "POST")
+    override suspend fun proxyServerApply(serverUrl: String, accessToken: String, idempotencyKey: String): ApiResult<String> =
+        proxyServerMutation("POST", serverUrl, ProxyServerRoutes.APPLY, accessToken, JsonBody(), idempotencyKey)
+    override suspend fun proxyServerRollback(serverUrl: String, accessToken: String, idempotencyKey: String): ApiResult<String> =
+        proxyServerMutation("POST", serverUrl, ProxyServerRoutes.ROLLBACK, accessToken, JsonBody(), idempotencyKey)
+    override suspend fun proxyServerRecover(serverUrl: String, accessToken: String, idempotencyKey: String): ApiResult<String> =
+        proxyServerMutation("POST", serverUrl, ProxyServerRoutes.RECOVERY, accessToken, JsonBody(), idempotencyKey)
+    override suspend fun proxyServerRuntime(serverUrl: String, accessToken: String, action: ProxyServerRuntimeAction, idempotencyKey: String): ApiResult<String> =
+        proxyServerMutation("POST", serverUrl, ProxyServerRoutes.runtimeAction(action), accessToken, JsonBody(), idempotencyKey)
+    override suspend fun proxyServerInstall(serverUrl: String, accessToken: String, idempotencyKey: String): ApiResult<String> =
+        proxyServerMutation("POST", serverUrl, ProxyServerRoutes.RUNTIME_INSTALL, accessToken, JsonBody(), idempotencyKey)
+    override suspend fun proxyServerUpgrade(serverUrl: String, accessToken: String, version: String, idempotencyKey: String): ApiResult<String> =
+        proxyServerMutation("POST", serverUrl, ProxyServerRoutes.RUNTIME_UPGRADE, accessToken, JsonBody().string("version", version.trim()), idempotencyKey)
+    override suspend fun proxyServerUninstall(serverUrl: String, accessToken: String, keepData: Boolean, idempotencyKey: String): ApiResult<String> =
+        proxyServerMutation("POST", serverUrl, ProxyServerRoutes.RUNTIME_UNINSTALL, accessToken, JsonBody().bool("keepData", keepData), idempotencyKey)
+    override suspend fun proxyServerSavePrincipal(serverUrl: String, accessToken: String, id: String?, request: SaveProxyServerPrincipal, idempotencyKey: String): ApiResult<String> =
+        proxyServerMutation(if (id == null) "POST" else "PUT", serverUrl,
+            id?.let(ProxyServerRoutes::principal) ?: ProxyServerRoutes.PRINCIPALS, accessToken, request.body(), idempotencyKey)
+    override suspend fun proxyServerDeletePrincipal(serverUrl: String, accessToken: String, id: String, idempotencyKey: String): ApiResult<String> =
+        proxyServerMutation("DELETE", serverUrl, ProxyServerRoutes.principal(id), accessToken, JsonBody(), idempotencyKey)
+    override suspend fun proxyServerSaveCredential(serverUrl: String, accessToken: String, id: String?, request: SaveProxyServerCredential, idempotencyKey: String): ApiResult<String> =
+        proxyServerMutation(if (id == null) "POST" else "PUT", serverUrl,
+            id?.let(ProxyServerRoutes::credential) ?: ProxyServerRoutes.CREDENTIALS, accessToken, request.body(), idempotencyKey)
+    override suspend fun proxyServerRotateCredential(serverUrl: String, accessToken: String, id: String, request: RotateProxyServerCredential, idempotencyKey: String): ApiResult<String> =
+        proxyServerMutation("POST", serverUrl, ProxyServerRoutes.rotate(id), accessToken, request.body(), idempotencyKey)
+    override suspend fun proxyServerDeleteCredential(serverUrl: String, accessToken: String, id: String, idempotencyKey: String): ApiResult<String> =
+        proxyServerMutation("DELETE", serverUrl, ProxyServerRoutes.credential(id), accessToken, JsonBody(), idempotencyKey)
+    override suspend fun proxyServerExportFormats(serverUrl: String, accessToken: String, credentialId: String): ApiResult<List<ProxyServerExportOption>> =
+        proxyServerRead(serverUrl, accessToken, ProxyServerRoutes.exportFormats(credentialId), ProxyServerWire::exportFormats)
+    override suspend fun proxyServerExport(serverUrl: String, accessToken: String, credentialId: String, request: ProxyServerExportRequest): ApiResult<ProxyServerExport> =
+        proxyServerRead(serverUrl, accessToken, ProxyServerRoutes.export(credentialId), ProxyServerWire::export, "POST", request.body())
+    override suspend fun proxyServerIssueSubscription(serverUrl: String, accessToken: String, request: IssueProxyServerSubscription, idempotencyKey: String): ApiResult<ProxyServerSubscriptionIssued> =
+        proxyServerQueued("POST", serverUrl, ProxyServerRoutes.SUBSCRIPTIONS, accessToken, request.body(), idempotencyKey, ProxyServerWire::issued)
+    override suspend fun proxyServerRevokeSubscription(serverUrl: String, accessToken: String, id: String, idempotencyKey: String): ApiResult<String> =
+        proxyServerMutation("DELETE", serverUrl, ProxyServerRoutes.subscription(id), accessToken, JsonBody(), idempotencyKey)
+
+    private suspend fun <T> proxyServerRead(serverUrl: String, accessToken: String, route: String, parse: (String) -> T,
+        method: String = "GET", body: JsonBody? = null): ApiResult<T> = when (val result = execute(method, serverUrl, route, accessToken, body)) {
+        is ApiResult.Success -> runCatching { parse(result.value) }
+            .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed Proxy Server response.") })
+        is ApiResult.Problem -> result
+        is ApiResult.Transport -> result
+    }
+
+    private suspend fun proxyServerMutation(method: String, serverUrl: String, route: String, accessToken: String,
+        body: JsonBody, idempotencyKey: String): ApiResult<String> =
+        proxyServerQueued(method, serverUrl, route, accessToken, body, idempotencyKey, ProxyWire::accepted)
+
+    private suspend fun <T> proxyServerQueued(method: String, serverUrl: String, route: String, accessToken: String,
+        body: JsonBody, idempotencyKey: String, parse: (String) -> T): ApiResult<T> =
+        when (val result = execute(method, serverUrl, route, accessToken, body, mapOf("Idempotency-Key" to idempotencyKey))) {
+            is ApiResult.Success -> runCatching { parse(result.value) }
+                .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed Proxy Server response.") })
+            is ApiResult.Problem -> result
+            is ApiResult.Transport -> result
+        }
     override suspend fun createDefinitionBackup(serverUrl: String, accessToken: String, applicationId: String, idempotencyKey: String): ApiResult<BackupManifest> =
         backupMutation(serverUrl, BackupRecoveryRoutes.definitionBackup(applicationId), accessToken, idempotencyKey, BackupRecoveryWire::manifest)
     override suspend fun definitionBackupRequest(serverUrl: String, accessToken: String, applicationId: String, idempotencyKey: String): ApiResult<BackupManifest?> =
