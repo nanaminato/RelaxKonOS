@@ -49,20 +49,109 @@ internal static class SquidWorkspaceChecks
         vm.ConfirmReloadAsync = () => Task.FromResult(true);
         Complete(vm.LoadStoredCommand.ExecuteAsync(null));
         Check(vm.Port == "1270" && !vm.HasUnsavedChanges, "Explicit reload must restore saved structured state.");
+        Check(!vm.LoadStoredCommand.CanExecute(null), "Nothing is offered to load while the draft matches the saved configuration.");
+        vm.Port = "1271";
+        Check(vm.LoadStoredCommand.CanExecute(null), "A dirty draft can be replaced by the saved configuration.");
+        vm.Port = "1270";
+
+        // The lifecycle buttons follow the observed service state instead of offering every action.
+        fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { RecoveryRequired = false, Managed = true, Running = true, Enabled = true } };
+        Complete(vm.RefreshCommand.ExecuteAsync(null));
+        Check(!vm.StartCommand.CanExecute(null) && vm.StopCommand.CanExecute(null)
+            && vm.RestartCommand.CanExecute(null) && vm.ReloadCommand.CanExecute(null)
+            && !vm.EnableCommand.CanExecute(null) && vm.DisableCommand.CanExecute(null),
+            "A running, enabled service offers stop, restart, reload and disable only.");
+        var bootLabelWhenEnabled = vm.BootActionText.ToString();
+        fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { Running = false, Enabled = false } };
+        Complete(vm.RefreshCommand.ExecuteAsync(null));
+        Check(vm.StartCommand.CanExecute(null) && vm.EnableCommand.CanExecute(null)
+            && !vm.StopCommand.CanExecute(null) && !vm.RestartCommand.CanExecute(null) && !vm.ReloadCommand.CanExecute(null),
+            "A stopped service offers start and enable only.");
+        Check(vm.ToggleBootCommand.CanExecute(null) && vm.BootActionText.ToString() != bootLabelWhenEnabled,
+            "The single boot control states the action the next click performs.");
+
+        // Lifecycle actions need a managed file; the host refuses them, so the window must not offer them.
+        fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { Managed = false } };
+        Complete(vm.RefreshCommand.ExecuteAsync(null));
+        Check(vm.ShowAdoptionRequired && vm.NeedsAdoption && !vm.StartCommand.CanExecute(null) && !vm.ApplyCommand.CanExecute(null),
+            "An unmanaged squid.conf blocks start and apply until ownership is selected.");
+        vm.AdoptExistingConfiguration = true;
+        Check(vm.ApplyCommand.CanExecute(null) && !vm.NeedsAdoption, "Selecting ownership unlocks apply only.");
+        vm.AdoptExistingConfiguration = false;
+
+        // Draft problems are reported in the card that owns the field, and they gate every publish action.
+        vm.Port = "999";
+        Check(!vm.IsConfigurationValid && vm.ListenerProblems.Count == 1
+            && !vm.ApplyCommand.CanExecute(null) && !vm.PreviewCommand.CanExecute(null) && !vm.ValidateCommand.CanExecute(null),
+            "An invalid port is reported in place and disables preview, validate and apply.");
+        vm.Port = "1270"; vm.AllowedNetworks = "";
+        Check(vm.SourceProblems.Count == 1 && !vm.IsConfigurationValid, "An empty source list is reported on the listener card.");
+        vm.AllowedNetworks = "127.0.0.1/32";
+        Check(vm.IsConfigurationValid && vm.SourceProblems.Count == 0 && vm.ListenerProblems.Count == 0,
+            "Correcting the draft clears the reported problems.");
+
+        // A rendered file must never look current after the draft changed underneath it.
+        Complete(vm.PreviewCommand.ExecuteAsync(null));
+        Check(vm.HasPreview && !vm.IsPreviewStale, "Preview renders the current draft.");
+        vm.AllowedDomains = "example.net";
+        Check(vm.IsPreviewStale, "Editing after a preview marks the rendered file stale.");
+
+        vm.CanManage = false;
+        Check(vm.ShowReadOnly && !vm.CanEdit && !vm.PreviewCommand.CanExecute(null),
+            "Observers get the read-only notice and no editable draft.");
+        vm.CanManage = true;
+
+        fake.Snapshot = fake.Snapshot with { Status = fake.Snapshot.Status with { Managed = true, Running = true, Enabled = true } };
+        Complete(vm.RefreshCommand.ExecuteAsync(null));
+        Complete(vm.PreviewCommand.ExecuteAsync(null));
+
         var view = SquidApp.CreateView(vm);
         var window = new Window { Width = 960, Height = 760, Content = view };
         window.Show(); Dispatcher.UIThread.RunJobs();
         var previewDirectory = Path.Combine(AppContext.BaseDirectory, "preview-qa"); Directory.CreateDirectory(previewDirectory);
         using (var image = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(960, 760)))
         { image.Render(view); image.Save(Path.Combine(previewDirectory, "squid.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
-        Check(view.GetVisualDescendants().OfType<TextBox>().Count() == 9, "The workspace must render every editor field and its native preview.");
+        var boxes = view.GetVisualDescendants().OfType<TextBox>().ToList();
+        Check(boxes.Count == 9, "The workspace renders seven editor fields plus the preview and detail panes.");
+        Check(boxes.Count(box => box.IsReadOnly) == 2, "Only the rendered file and its details are read-only.");
+        var secondary = view.FindControl<StackPanel>("SecondaryColumn")!;
+        Check(Grid.GetColumn(secondary) == 1, "A wide workspace places the secondary cards beside the primary ones.");
+        window.Height = 1080; Dispatcher.UIThread.RunJobs();
+        using (var image = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(960, 1080)))
+        { image.Render(view); image.Save(Path.Combine(previewDirectory, "squid-tall.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
+        window.Height = 760; Dispatcher.UIThread.RunJobs();
         window.Width = 420; Dispatcher.UIThread.RunJobs();
         using (var image = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(420, 760)))
         { image.Render(view); image.Save(Path.Combine(previewDirectory, "squid-compact.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
         Check(view.Bounds.Width > 0, "The scrollable editor must remain renderable at compact width.");
+        Check(Grid.GetColumn(secondary) == 0 && Grid.GetRow(secondary) == 1,
+            "A narrow workspace stacks the cards into one column instead of scrolling sideways.");
+        vm.AllowedDomains = "example.org";
+        Complete(vm.PreviewCommand.ExecuteAsync(null));
+        Dispatcher.UIThread.RunJobs();
+        Check(vm.HasPreview && !vm.IsPreviewStale, "Previewing from the pinned action bar renders the edited draft and clears the stale mark.");
+        Check(view.FindControl<ScrollViewer>("BodyScroll")!.Offset.Y > 0,
+            "A preview requested from the pinned bar scrolls the rendered file into view.");
+        using (var image = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(420, 760)))
+        { image.Render(view); image.Save(Path.Combine(previewDirectory, "squid-preview-scroll.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
         window.Close();
         vm.InvalidateSession();
         Check(!vm.CanRead && !vm.CanManage && vm.AllowedDomains == "" && vm.Snapshot is null, "A changed login must clear old host facts and disable writes.");
+
+        // Blocking host states get their own band so the reason an action is missing is visible.
+        fake.Snapshot = fake.Snapshot with { Status = new SquidStatus(true, true, true, true, false, "hash", true) };
+        using (var noticeVm = new SquidViewModel(fake) { CanRead = true, CanManage = false })
+        {
+            Complete(noticeVm.RefreshCommand.ExecuteAsync(null));
+            Check(noticeVm.ShowRecoveryRequired && noticeVm.ShowReadOnly && noticeVm.ShowAdoptionRequired && !noticeVm.CanEdit,
+                "Recovery, ownership and read-only states render as notices and disable the draft.");
+            var noticeView = SquidApp.CreateView(noticeVm);
+            var noticeWindow = new Window { Width = 960, Height = 520, Content = noticeView };
+            noticeWindow.Show(); Dispatcher.UIThread.RunJobs();
+            using (var image = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(960, 520)))
+            { image.Render(noticeView); image.Save(Path.Combine(previewDirectory, "squid-notices.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); }
+            noticeWindow.Close();
+        }
         Console.WriteLine("Squid workspace permissions, draft preservation, replacement confirmation, idempotent recovery, lifecycle and layout checks passed.");
     }
     private static void VerifyHttpContract()

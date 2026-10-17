@@ -108,6 +108,16 @@ apply 请求体在外层包装为 `{"configuration": {上述字段}, "adoptExist
 
 Avalonia 应用目录中的 Squid 使用独立 `relaxkonos.squid` 应用 ID 和 `squid` 内置工厂键，仅在声明 `server.gateway-proxy` 的 Linux 系统模式服务器显示。服务器预装发行版 Squid 后，打开应用，编辑监听地址、来源 CIDR、域名 ACL 和 HTTP parent，预览并按需原生校验，确认完整替换后应用；服务原本停止时，再点击启动。首次接管现有配置必须显式勾选接管。
 
+桌面窗口为单页卡片布局：顶部是身份与刷新，其下按严重程度显示阻断提示（状态未知、平台不支持、未安装、需要接管、恢复中、只读、待确认操作），正文左侧为运行状态与代理入口、右侧为域名规则、HTTP 上游与配置归属，底部固定动作栏（载入已保存配置、原生校验、预览、应用）与状态栏。窗口宽度低于 900 像素时卡片改为单列，动作栏换行而不横向溢出。
+
+桌面操作逻辑的约束：
+
+- 服务事实（运行、开机启动、期望/发布修订、磁盘一致性）与草稿分离。刷新只更新事实，不覆盖编辑；草稿与已保存配置不一致时状态栏显示未保存标记，且只有此时才能“载入已保存配置”。
+- 六种服务动作按宿主实际状态启用：运行中才提供停止、重启、重载；已停止才提供启动；单个开机启动按钮始终显示下一次点击会执行的动作。接管检查与 Helper 一致——未检测到受管 `squid.conf` 时启动、重启、重载、启用和开机启动按钮保持不可用，并提示先勾选接管并应用一次配置；停止、禁用仍可用。
+- 草稿由共享 `SquidConfigurationRenderer` 即时校验，问题显示在对应卡片内（监听、来源、域名、上游），未知问题码保留原始码；“应用”在未接管且未勾选接管时不可用，从不把宿主必然拒绝的请求发出去。
+- 预览与校验结果只代表当次草稿。预览后继续编辑会把动作栏标记为“预览已过期”，需要重新预览；“应用”自身重新渲染同一份草稿后再提交，因此提交内容始终等于当前草稿。
+- 阻断提示与动作栏承载结果：待确认操作带上操作 ID 和继续查询按钮；成功、失败与传输错误显示在固定动作栏，宿主事实不会被一次被拒绝的写入清空。
+
 客户端请求现有 `server.proxy.read/manage` 应用权限；观察者只读。刷新状态不会覆盖编辑；显式载入已保存配置和丢弃修改需要确认。恢复标记阻断危险变更，仍可停止、禁用和校验。六种服务操作与应用均显示操作 ID 并轮询终态；请求不确定时保留原正文、原请求键和操作 ID，禁止发起新的变更，点击继续查询。桌面端待确认信息保留在当前窗口，关闭前须保留显示的操作标识；已提交服务器操作不会因关闭而停止。切换会话禁用旧窗口并清空旧主机表单。
 
 Android 当前行为、持久化待确认记录和验证要求见 [Android Squid](../../Client/RelaxKonOS.Client.Android/docs/features/Squid.md)。
@@ -132,7 +142,7 @@ dotnet run --project RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no
 
 专项测试覆盖注入输入、空/非法集合、远程监听 opt-in、无约束 CIDR、ACL 顺序、IPv6、上游不直连、协议 round trip、服务到 Helper 的结构化边界和原生诊断传播。它不执行 Linux 原生命令。端点检查同时验证 200 结构化校验结果、必需请求键、重复提交只执行一次、操作终态及发布回读。
 
-桌面专项检查：`dotnet run --project Tests/Client/RelaxKonOS.WindowPreviews.Tests/RelaxKonOS.WindowPreviews.Tests.csproj --no-restore -- --squid-only`，覆盖权限、编辑保留、替换确认、原键原正文重试、恢复限制和宽/窄窗口渲染。
+桌面专项检查：`dotnet run --project Tests/Client/RelaxKonOS.WindowPreviews.Tests/RelaxKonOS.WindowPreviews.Tests.csproj --no-restore -- --squid-only`，覆盖权限、编辑保留、替换确认、原键原正文重试、恢复限制、按服务状态与接管状态启用的动作、就地字段问题、预览过期标记、预览后自动滚动到渲染结果和宽/窄窗口渲染。QA 截图输出到测试目录的 `preview-qa/`（`squid.png`、`squid-compact.png`、`squid-tall.png`、`squid-notices.png`、`squid-preview-scroll.png`）。
 
 发布前必须完成以下实机验收（尚未在真实 Squid/systemd 部署执行）：
 
