@@ -1,6 +1,8 @@
 {
   "culture": "zh-CN",
   "strings": {
+    "taskbar.pin": "固定到任务栏",
+    "taskbar.unpin": "从任务栏取消固定",
     "taskbar.start": "开始",
     "taskbar.search": "搜索",
     "taskbar.task_view": "任务视图",

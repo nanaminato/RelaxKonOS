@@ -76,5 +76,5 @@ public sealed class Windows11Shell(ShellDescriptor descriptor) : IDesktopShell
         if (_window is not null) _window.Deactivated += OnTopLevelDeactivated;
     }
 
-    private void OnTopLevelDeactivated(object? sender, EventArgs e) => _viewModel?.ClearDesktopSelection();
+    private void OnTopLevelDeactivated(object? sender, EventArgs e) => _viewModel?.CloseFlyoutsCommand.Execute(null);
 }

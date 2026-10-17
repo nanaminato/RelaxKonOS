@@ -1,6 +1,8 @@
 {
   "culture": "ja-JP",
   "strings": {
+    "taskbar.pin": "タスクバーにピン留め",
+    "taskbar.unpin": "タスクバーからピン留めを外す",
     "taskbar.start": "スタート",
     "taskbar.search": "検索",
     "taskbar.task_view": "タスク ビュー",

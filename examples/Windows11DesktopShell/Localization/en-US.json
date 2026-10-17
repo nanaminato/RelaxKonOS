@@ -1,6 +1,8 @@
 {
   "culture": "en-US",
   "strings": {
+    "taskbar.pin": "Pin to taskbar",
+    "taskbar.unpin": "Unpin from taskbar",
     "taskbar.start": "Start",
     "taskbar.search": "Search",
     "taskbar.task_view": "Task view",

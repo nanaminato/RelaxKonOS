@@ -38,6 +38,7 @@ public sealed partial class ShellSettings : ObservableObject
     // ── 桌面显示配置 ──
     [ObservableProperty] private bool _showBuiltInApps = DesktopDisplaySettingsDto.Default.ShowBuiltInApps;
     [ObservableProperty] private List<string> _visibleAppIds = new(DesktopDisplaySettingsDto.Default.VisibleAppIds);
+    [ObservableProperty] private List<string> _pinnedAppIds = [];
     [ObservableProperty] private bool _showServerDesktopFiles = DesktopDisplaySettingsDto.Default.ShowServerDesktopFiles;
     [ObservableProperty] private bool _showServerDesktopShortcuts = DesktopDisplaySettingsDto.Default.ShowServerDesktopShortcuts;
     [ObservableProperty] private bool _hasCompletedFirstTimeSetup = DesktopDisplaySettingsDto.Default.HasCompletedFirstTimeSetup;
@@ -122,6 +123,7 @@ public sealed partial class ShellSettings : ObservableObject
     partial void OnShowServerDesktopFilesChanged(bool value) => NotifyDesktopDisplayChanged();
     partial void OnShowServerDesktopShortcutsChanged(bool value) => NotifyDesktopDisplayChanged();
     partial void OnVisibleAppIdsChanged(List<string> value) => NotifyDesktopDisplayChanged();
+    partial void OnPinnedAppIdsChanged(List<string> value) => NotifyDesktopDisplayChanged();
     partial void OnShowWindowShadowsChanged(bool value) => NotifyVisualEffectsChanged();
     partial void OnShowWindowContentsWhileDraggingChanged(bool value) => NotifyVisualEffectsChanged();
     partial void OnShowTaskbarWindowPreviewsChanged(bool value) => NotifyVisualEffectsChanged();
@@ -189,6 +191,8 @@ public sealed partial class ShellSettings : ObservableObject
         // A polling read of unchanged preferences must not rebuild the entire desktop.
         if (!VisibleAppIds.SequenceEqual(visibleAppIds, StringComparer.Ordinal))
             VisibleAppIds = new List<string>(visibleAppIds);
+        if (!PinnedAppIds.SequenceEqual(dd.PinnedAppIds ?? [], StringComparer.Ordinal))
+            PinnedAppIds = new List<string>(dd.PinnedAppIds ?? []);
         ShowServerDesktopFiles = dd.ShowServerDesktopFiles;
         ShowServerDesktopShortcuts = dd.ShowServerDesktopShortcuts;
         HasCompletedFirstTimeSetup = dd.HasCompletedFirstTimeSetup;
@@ -225,7 +229,8 @@ public sealed partial class ShellSettings : ObservableObject
             new DesktopDisplaySettingsDto
             {
                 ShowBuiltInApps = ShowBuiltInApps,
-                VisibleAppIds = VisibleAppIds,
+                VisibleAppIds = new(VisibleAppIds),
+                PinnedAppIds = new(PinnedAppIds),
                 ShowServerDesktopFiles = ShowServerDesktopFiles,
                 ShowServerDesktopShortcuts = ShowServerDesktopShortcuts,
                 HasCompletedFirstTimeSetup = HasCompletedFirstTimeSetup,

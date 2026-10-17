@@ -29,10 +29,10 @@ internal static class Windows11DesktopChecks
             if (method.Name == nameof(IShellActions.SetDesktopSelection))
             {
                 var selected = (IReadOnlyList<string>)args![0]!;
-                state.PublishDesktop(state.Desktop! with { DesktopEntries = entries.Select(entry => entry with { IsSelected = selected.Contains(entry.Id) }).ToArray() });
+                state.PublishDesktop(state.Desktop! with { DesktopEntries = state.Desktop.DesktopEntries.Select(entry => entry with { IsSelected = selected.Contains(entry.Id) }).ToArray() });
             }
             if (method.Name == nameof(IShellActions.ClearDesktopSelection))
-                state.PublishDesktop(state.Desktop! with { DesktopEntries = entries.Select(entry => entry with { IsSelected = false }).ToArray() });
+                state.PublishDesktop(state.Desktop! with { DesktopEntries = state.Desktop.DesktopEntries.Select(entry => entry with { IsSelected = false }).ToArray() });
             return method.ReturnType == typeof(Task) ? Task.CompletedTask : null;
         };
         Windows11ShellViewModel? activeModel = null;
@@ -91,6 +91,15 @@ internal static class Windows11DesktopChecks
         host.UpdateLayout(); Dispatcher.UIThread.RunJobs();
         var columns = Icons().Select(button => button.TranslatePoint(default, host)!.Value.X).Distinct().Count();
         Check(columns > 1, "desktop grid wraps into additional columns within the available height.");
+        var before = Icons().Select(button => (button, point: button.TranslatePoint(default, host), button.Bounds)).ToArray();
+        vm.SetDesktopSelection(many.Take(12).Select(entry => entry.Id));
+        host.UpdateLayout();
+        foreach (var entry in before)
+            Check(entry.button.Bounds == entry.Bounds && entry.button.TranslatePoint(default, host) == entry.point, "multi-column shortcut positions do not change on selection.");
+        var selectedEntry = vm.DesktopEntries.First(entry => entry.IsSelected);
+        var batchMenu = (ContextMenu)typeof(DesktopShortcutsView).GetMethod("CreateContextMenu", BindingFlags.NonPublic | BindingFlags.Static)!.Invoke(null, [vm, selectedEntry])!;
+        Check(batchMenu.ItemsSource!.OfType<MenuItem>().Count() == 1, "multi-shortcut context menu exposes only the shared delete action.");
+
         foreach (var command in new[] { vm.OpenSettingsCommand, vm.OpenPersonalizationCommand, vm.RefreshDesktopCommand, vm.ShowDesktopCommand })
         {
             vm.ToggleStartCommand.Execute(null);
@@ -115,6 +124,29 @@ internal static class Windows11DesktopChecks
         view.GetVisualDescendants().OfType<TextBox>().First(text => text.IsEffectivelyVisible).Focus();
         host.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null); host.KeyRelease(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
         Check(!vm.IsStartOpen, "Escape dismisses Start.");
+        var taskbarId = new RelaxKonOS.Core.Applications.AppId("test.pinned");
+        state.PublishDesktop(state.Desktop! with { TaskbarEntries = [new ShellTaskbarEntry(taskbarId, "Pinned application", "P", null, true, false, false)] });
+        host.UpdateLayout();
+        using var taskbarFrame = host.CaptureRenderedFrame();
+        var taskbarButton = view.GetVisualDescendants().OfType<Button>().Single(button => button.DataContext is ShellTaskbarEntry);
+        Check(taskbarButton.IsEffectivelyVisible, "a pinned closed application is rendered in the taskbar.");
+        var forwarded = 0;
+        var beforeTaskbarHandler = ((DesktopClipboardProxy)(object)actions).Handler;
+        ((DesktopClipboardProxy)(object)actions).Handler = (method, values) =>
+        {
+            if (method.Name == nameof(IShellActions.ToggleWindowGroup)) { forwarded++; return null; }
+            if (method.Name == nameof(IShellActions.SetTaskbarPinnedAsync))
+            {
+                state.PublishDesktop(state.Desktop! with { TaskbarEntries = [] });
+                return Task.CompletedTask;
+            }
+            return beforeTaskbarHandler(method, values);
+        };
+        var taskbarPoint = taskbarButton.TranslatePoint(new Point(20, 20), host)!.Value;
+        host.MouseDown(taskbarPoint, MouseButton.Left); host.MouseUp(taskbarPoint, MouseButton.Left);
+        Check(forwarded == 1, "clicking a pinned application forwards activation to the host.");
+        vm.ToggleTaskbarPinCommand.Execute(vm.TaskbarEntries.Single());
+        Check(vm.TaskbarEntries.Count == 0, "unpinning a closed application removes the external taskbar entry.");
         var manager = new RelaxKonOS.WindowManager.WindowManager();
         manager.Attach(view.WindowHostSurface);
         manager.AttachFullScreenHost(view.FullScreenHostSurface);
@@ -125,6 +157,7 @@ internal static class Windows11DesktopChecks
         RelaxKonOS.WindowManager.ModalDialog<bool>? shellModal = null;
         var shellResult = manager.ShowShellDialogAsync<bool>("Shell dialog", handle => { shellModal = handle; return shellInput; }, new RelaxKonOS.Core.Primitives.Size(400, 300));
         host.UpdateLayout(); Dispatcher.UIThread.RunJobs();
+        using var shellFrame = host.CaptureRenderedFrame();
         var shellPoint = shellInput.TranslatePoint(new Point(30, 15), host)!.Value;
         var shellHit = host.InputHitTest(shellPoint) as Visual;
         Check(shellHit is not null && (ReferenceEquals(shellHit, shellInput) || shellHit.GetVisualAncestors().Contains(shellInput)), "shell dialog is above the desktop blocker.");

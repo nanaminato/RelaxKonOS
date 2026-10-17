@@ -17,6 +17,9 @@ using RelaxKonOS.Shell;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Server.Settings;
 
+var pinPrefs = WorkspacePreferencesDto.Default with { DesktopDisplay = RelaxKonOS.Protocol.Desktop.DesktopDisplaySettingsDto.Default with { PinnedAppIds = [" sample.app ", "sample.app"] } };
+Check(WorkspacePreferencesValidator.TryNormalize(pinPrefs, out var normalizedPins, out _) && normalizedPins!.DesktopDisplay!.PinnedAppIds.SequenceEqual(new[] { "sample.app" }), "Taskbar pin preferences normalize and deduplicate.");
+Check(!WorkspacePreferencesValidator.TryNormalize(pinPrefs with { DesktopDisplay = pinPrefs.DesktopDisplay! with { PinnedAppIds = [new string('x', 129)] } }, out _, out var pinField) && pinField == "desktopDisplay.pinnedAppIds", "Taskbar pins reject invalid IDs.");
 await WorkspaceEnvironmentTransportChecks.RunAsync();
 
 // Settings activation must reach the new detail routes without accepting arbitrary pages.

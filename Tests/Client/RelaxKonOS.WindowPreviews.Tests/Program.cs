@@ -47,6 +47,15 @@ var localization = new LocalizationService(settings, new SshDesktopSession(null!
 using var services = new ServiceCollection().AddSingleton(localization).AddSingleton(new SshDesktopSession(null!, new RelaxKonOS.Client.Services.ShellSettings(null!))).BuildServiceProvider();
 // The XAML localization extension resolves the host application's singleton provider.
 typeof(RelaxKonOS.Client.App).GetProperty(nameof(RelaxKonOS.Client.App.Services))!.SetValue(null, services);
+if (args.Contains("--desktop-actions-only"))
+{
+    var checks = DesktopActionsChecks.RunAsync(new ShellSettings(appearance), localization, services);
+    var deadline = DateTime.UtcNow.AddSeconds(30);
+    while (!checks.IsCompleted && DateTime.UtcNow < deadline) { Dispatcher.UIThread.RunJobs(); Thread.Sleep(1); }
+    if (!checks.IsCompleted) throw new TimeoutException("Desktop actions checks did not complete.");
+    checks.GetAwaiter().GetResult();
+    return;
+}
 if (args.Contains("--desktop-shell-switch-only"))
 {
     DesktopShellSwitchChecks.RunAsync(settings, localization, services).GetAwaiter().GetResult();
@@ -147,6 +156,11 @@ HostTitleBarChecks.Run(settings, localization);
 RemoteClockChecks.Run(settings, localization, services);
 DesktopClipboardChecks.RunAsync(settings, localization, services).GetAwaiter().GetResult();
 DesktopShellSwitchChecks.RunAsync(settings, localization, services).GetAwaiter().GetResult();
+var desktopActions = DesktopActionsChecks.RunAsync(new ShellSettings(appearance), localization, services);
+var actionsDeadline = DateTime.UtcNow.AddSeconds(30);
+while (!desktopActions.IsCompleted && DateTime.UtcNow < actionsDeadline) { Dispatcher.UIThread.RunJobs(); Thread.Sleep(1); }
+if (!desktopActions.IsCompleted) throw new TimeoutException("Desktop actions regression timed out.");
+desktopActions.GetAwaiter().GetResult();
 DesktopDeviceSettingsChecks.Run(settings, appearance);
 HostTimeCompletionChecks.Run(localization);
 HostIdentityCompletionChecks.Run(localization);

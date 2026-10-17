@@ -13,6 +13,7 @@ public partial class Windows11ShellView : UserControl
     public Windows11ShellView()
     {
         InitializeComponent();
+        SizeChanged += (_, _) => TaskbarApplicationScroller.MaxWidth = Math.Max(80, Bounds.Width - 440);
         AddHandler(KeyDownEvent, (_, e) =>
         {
             if (e.Key == Key.Escape && DataContext is Windows11ShellViewModel vm && (vm.IsStartOpen || vm.IsQuickSettingsOpen))
@@ -76,6 +77,12 @@ public partial class Windows11ShellView : UserControl
                 if (entry is not null) (e.Key == Key.C ? vm.CopyDesktopEntryCommand : vm.CutDesktopEntryCommand).Execute(entry);
                 e.Handled = true;
             }
+            else if (e.Key == Key.Delete)
+            {
+                var entry = vm.DesktopEntries.FirstOrDefault(item => item.IsSelected);
+                if (entry is not null) vm.DeleteDesktopEntryCommand.Execute(entry);
+                e.Handled = true;
+            }
             else if (e.Key == Key.V && (e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Meta)) != 0)
             {
                 vm.PasteDesktopCommand.Execute(null);
@@ -88,6 +95,26 @@ public partial class Windows11ShellView : UserControl
                 e.Handled = true;
             }
         };
+    }
+
+    private void AllApplication_OnAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        if (sender is not Control { DataContext: ShellApplicationEntry entry } control || DataContext is not Windows11ShellViewModel vm) return;
+        var menu = new ContextMenu();
+        menu.Opening += (_, _) => menu.ItemsSource = new object[]
+        {
+            new MenuItem { Header = vm.TaskbarEntries.Any(item => item.Id == entry.Id && item.IsPinned) ? vm.UnpinFromTaskbar : vm.PinToTaskbar, Command = vm.ToggleApplicationPinCommand, CommandParameter = entry },
+        };
+        control.ContextMenu = menu;
+    }
+
+    private void TaskbarApplication_OnAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        if (sender is not Control { DataContext: ShellTaskbarEntry entry } control || DataContext is not Windows11ShellViewModel vm) return;
+        control.ContextMenu = new ContextMenu { ItemsSource = new object[]
+        {
+            new MenuItem { Header = entry.IsPinned ? vm.UnpinFromTaskbar : vm.PinToTaskbar, Command = vm.ToggleTaskbarPinCommand, CommandParameter = entry },
+        } };
     }
 
     private bool IsWindowInput(object? source) => source is Visual visual &&

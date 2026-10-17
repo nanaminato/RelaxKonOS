@@ -159,9 +159,8 @@ internal sealed class DesktopDisplayEditBuffer
         settings.ShowServerDesktopFiles = ShowServerDesktopFiles;
         settings.ShowServerDesktopShortcuts = ShowServerDesktopShortcuts;
 
-        settings.VisibleAppIds = !ShowBuiltInApps || ShowAllBuiltInApps
-            ? []
-            : AppItems.Where(x => x.IsVisible).Select(x => x.App.Id.Value).ToList();
+        settings.VisibleAppIds = ShowAllBuiltInApps ? [] : AppItems.Where(x => x.IsVisible).Select(x => x.App.Id.Value).ToList();
+        if (!ShowAllBuiltInApps && settings.VisibleAppIds.Count == 0) settings.ShowBuiltInApps = false;
     }
 }
 

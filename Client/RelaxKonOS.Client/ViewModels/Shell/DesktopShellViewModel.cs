@@ -248,12 +248,7 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
 
         // ── 桌面图标：根据桌面显示配置过滤 ──
         DesktopIcons.Clear();
-        if (_sshDesktop.IsConnected)
-        {
-            foreach (var entry in compatibleEntries)
-                DesktopIcons.Add(entry);
-        }
-        else if (_settings.ShowBuiltInApps)
+        if (_settings.ShowBuiltInApps)
         {
             // 当 VisibleAppIds 为空时显示全部；否则仅显示列表中的
             var visibleSet = new HashSet<string>(_settings.VisibleAppIds, StringComparer.Ordinal);
@@ -372,6 +367,77 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     public void ToggleDesktopSelection(object item) => SetDesktopSelection(
         DesktopItems.Where(IsDesktopItemSelected).Where(candidate => !ReferenceEquals(candidate, item))
             .Concat(IsDesktopItemSelected(item) ? [] : new[] { item }));
+
+    public object[] DesktopSelectionFor(object item) => IsDesktopItemSelected(item)
+        ? DesktopItems.Where(IsDesktopItemSelected).ToArray() : [item];
+
+    public AppId? DesktopApplicationId(object item) => item switch
+    {
+        AppEntryViewModel app => app.Id,
+        ShortcutEntryViewModel shortcut when shortcut.Shortcut.Kind == RelaxKonOSShortcutKind.Application => new AppId(shortcut.Shortcut.Target),
+        _ => null,
+    };
+    public bool IsTaskbarPinned(AppId id) => _settings.PinnedAppIds.Contains(id.Value, StringComparer.Ordinal);
+
+    [RelayCommand]
+    private async Task ToggleTaskbarPinAsync(AppId id)
+    {
+        _settings.PinnedAppIds = IsTaskbarPinned(id)
+            ? _settings.PinnedAppIds.Where(value => value != id.Value).ToList()
+            : _settings.PinnedAppIds.Append(id.Value).Distinct(StringComparer.Ordinal).ToList();
+        RefreshTaskbarGroups();
+        await SavePreferencesFireAndForgetAsync();
+    }
+
+    [RelayCommand]
+    private async Task DeleteDesktopItemsAsync(object? item)
+    {
+        var selected = item is null ? DesktopItems.Where(IsDesktopItemSelected).ToArray() : DesktopSelectionFor(item);
+        if (selected.Length == 0) return;
+        var files = selected.OfType<DesktopFileEntryViewModel>().ToArray();
+        if (files.Length > 0)
+        {
+            if (RequestDesktopConfirmAsync is null) return;
+            var names = string.Join("\n", selected.Select(value => value switch
+            {
+                AppEntryViewModel app => app.DisplayName,
+                ShortcutEntryViewModel shortcut => shortcut.DisplayName,
+                DesktopFileEntryViewModel file => file.DisplayName,
+                _ => string.Empty,
+            }));
+            if (!await RequestDesktopConfirmAsync(T("common.delete", "Delete"),
+                LocalizedText.Format("shell.desktop.delete_selection", names), T("common.delete", "Delete"))) return;
+        }
+        try
+        {
+            foreach (var file in files) await _files.DeleteAsync(file.Entry.Path);
+            if (selected.Any(value => value is ShortcutEntryViewModel)) ++_shortcutLoadGeneration;
+            foreach (var shortcut in selected.OfType<ShortcutEntryViewModel>())
+            {
+                _shortcuts.Delete(shortcut.Shortcut.Id);
+                foreach (var existing in DesktopShortcuts.Where(value => value.Shortcut.Id == shortcut.Shortcut.Id).ToArray()) DesktopShortcuts.Remove(existing);
+            }
+            var appIds = selected.OfType<AppEntryViewModel>().Select(app => app.Id.Value).ToHashSet(StringComparer.Ordinal);
+            if (appIds.Count > 0)
+            {
+                var remaining = (_settings.VisibleAppIds.Count == 0 ? StartApps.Select(app => app.Id.Value) : _settings.VisibleAppIds)
+                    .Where(id => !appIds.Contains(id)).ToList();
+                _settings.VisibleAppIds = remaining;
+                if (remaining.Count == 0) _settings.ShowBuiltInApps = false;
+                foreach (var app in DesktopIcons.Where(app => appIds.Contains(app.Id.Value)).ToArray()) DesktopIcons.Remove(app);
+                await SavePreferencesFireAndForgetAsync();
+            }
+            foreach (var file in files) DesktopFiles.Remove(file);
+            if (files.Length > 0) await LoadDesktopFilesAsync();
+            RefreshDesktopItems();
+        }
+        catch (Exception exception)
+        {
+            // Reconcile a partially completed file batch; never retry an uncertain delete.
+            if (files.Length > 0) await LoadDesktopFilesAsync();
+            if (ShowDesktopPasteErrorAsync is not null) await ShowDesktopPasteErrorAsync(exception.Message);
+        }
+    }
 
     [RelayCommand]
     private void ClearDesktopSelection() => SelectDesktopItem(null);
@@ -549,6 +615,7 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     {
         if (item is null) return;
         var entries = GetDesktopClipboardEntries(item);
+        if (entries.Length == 0) return;
         if (!await PublishDesktopClipboardAsync(entries)) return;
         _fileClipboard.Set(entries, RemoteFileClipboardOperation.Copy);
         RecordDesktopFileMenuDiagnostic($"copy stored in desktop clipboard: entry={item.DisplayName}.");
@@ -559,13 +626,17 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     {
         if (item is null) return;
         var entries = GetDesktopClipboardEntries(item);
+        if (entries.Length == 0) return;
         if (!await PublishDesktopClipboardAsync(entries)) return;
         _fileClipboard.Set(entries, RemoteFileClipboardOperation.Cut);
         RecordDesktopFileMenuDiagnostic($"cut stored in desktop clipboard: entry={item.DisplayName}.");
     }
 
     private FileSystemEntryDto[] GetDesktopClipboardEntries(DesktopFileEntryViewModel item) =>
-        item.IsDesktopSelected ? DesktopFiles.Where(file => file.IsDesktopSelected).Select(file => file.Entry).ToArray() : [item.Entry];
+        item.IsDesktopSelected
+            ? DesktopSelectionFor(item).All(value => value is DesktopFileEntryViewModel)
+                ? DesktopFiles.Where(file => file.IsDesktopSelected).Select(file => file.Entry).ToArray() : []
+            : [item.Entry];
 
     private async Task<bool> PublishDesktopClipboardAsync(IReadOnlyList<FileSystemEntryDto> entries)
     {
@@ -658,38 +729,6 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     {
         if (PasteHostFilesAsync is null) throw new InvalidOperationException("Desktop file transfer is unavailable.");
         await PasteHostFilesAsync(targetDirectory, sources);
-    }
-
-    [RelayCommand]
-    private async Task DeleteDesktopEntryAsync(DesktopFileEntryViewModel? item)
-    {
-        if (item is null || RequestDesktopConfirmAsync is null)
-        {
-            RecordDesktopFileMenuDiagnostic($"delete stopped: entryAvailable={item is not null}, dialogAvailable={RequestDesktopConfirmAsync is not null}.");
-            return;
-        }
-        var confirmed = await RequestDesktopConfirmAsync(
-            T("common.delete", "Delete"),
-            LocalizedText.Format(item.IsDirectory
-                ? "explorer.delete_confirmation"
-                : "explorer.delete_file_confirmation", item.Entry.Name),
-            T("common.delete", "Delete"));
-        if (!confirmed)
-        {
-            RecordDesktopFileMenuDiagnostic($"delete cancelled: entry={item.DisplayName}.");
-            return;
-        }
-
-        try
-        {
-            await _files.DeleteAsync(item.Entry.Path);
-            RefreshDesktop();
-            RecordDesktopFileMenuDiagnostic($"delete completed: entry={item.DisplayName}; refresh requested.");
-        }
-        catch (Exception ex)
-        {
-            RecordDesktopFileMenuDiagnostic($"delete failed: entry={item.DisplayName}, error={ex.GetType().Name}: {ex.Message}");
-        }
     }
 
     [RelayCommand]
@@ -812,6 +851,12 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
         TraceTaskbar("vm.icon.toggle", new { app = group.AppId.ToString(), count = group.WindowCount });
         IsStartOpen = false;
 
+        if (group.WindowCount == 0)
+        {
+            OpenTaskbarGroup = null;
+            _applications.Launch(group.AppId);
+            return;
+        }
         if (group.HasMultipleWindows)
         {
             if (_settings.ShowTaskbarWindowPreviews)
@@ -1018,10 +1063,15 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
 
     private void RefreshDesktopItems()
     {
-        DesktopItems.Clear();
-        foreach (var app in DesktopIcons) DesktopItems.Add(app);
-        foreach (var shortcut in DesktopShortcuts) DesktopItems.Add(shortcut);
-        foreach (var file in DesktopFiles) DesktopItems.Add(file);
+        var desired = DesktopIcons.Cast<object>().Concat(DesktopShortcuts).Concat(DesktopFiles).ToArray();
+        for (var index = DesktopItems.Count - 1; index >= 0; index--)
+            if (!desired.Contains(DesktopItems[index])) DesktopItems.RemoveAt(index);
+        for (var index = 0; index < desired.Length; index++)
+        {
+            var current = DesktopItems.IndexOf(desired[index]);
+            if (current < 0) DesktopItems.Insert(index, desired[index]);
+            else if (current != index) DesktopItems.Move(current, index);
+        }
     }
 
     private async Task RefreshDesktopShortcutsAsync(int generation)
@@ -1086,6 +1136,11 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
             .GroupBy(window => window.Info.OwnerAppId)
             .ToDictionary(group => group.Key, group => group.ToList());
 
+        foreach (var id in _settings.PinnedAppIds)
+        {
+            var app = StartApps.FirstOrDefault(app => app.Id.Value == id);
+            if (app is not null) groupedWindows.TryAdd(app.Id, []);
+        }
         foreach (var group in TaskbarGroups.ToList())
         {
             if (groupedWindows.Remove(group.AppId, out var windows))
@@ -1104,13 +1159,22 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
         {
             var app = _applications.Get(appId);
             var displayName = app is null
-                ? windows[0].Title
+                ? StartApps.FirstOrDefault(item => item.Id == appId)?.DisplayName ?? windows.FirstOrDefault()?.Title ?? appId.Value
                 : T($"application.{app.Manifest.Id.Value}.display_name", app.Manifest.DisplayName);
             TaskbarGroups.Add(new TaskbarGroupViewModel(
                 appId,
                 displayName,
                 windows));
         }
+        foreach (var group in TaskbarGroups)
+            group.SetApplication(StartApps.FirstOrDefault(app => app.Id == group.AppId), IsTaskbarPinned(group.AppId));
+        var ordered = TaskbarGroups.OrderBy(group =>
+        {
+            var index = _settings.PinnedAppIds.IndexOf(group.AppId.Value);
+            return index < 0 ? int.MaxValue : index;
+        }).ToArray();
+        for (var index = 0; index < ordered.Length; index++)
+            if (!ReferenceEquals(TaskbarGroups[index], ordered[index])) TaskbarGroups.Move(TaskbarGroups.IndexOf(ordered[index]), index);
         TraceTaskbar("vm.groups.refresh.end", new { groups = TaskbarGroups.Select(group => new { app = group.AppId.ToString(), count = group.WindowCount }).ToArray() });
     }
 

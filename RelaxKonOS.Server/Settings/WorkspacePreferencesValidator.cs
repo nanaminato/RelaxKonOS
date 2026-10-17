@@ -84,10 +84,16 @@ public static class WorkspacePreferencesValidator
                 normalizedVisibleAppIds.Add(id);
         }
 
+        invalidField = "desktopDisplay.pinnedAppIds";
+        var pins = desktopDisplay.PinnedAppIds ?? [];
+        if (pins.Count > 256 || pins.Any(id => string.IsNullOrWhiteSpace(id) || id.Trim().Length > 128)) return false;
+        var normalizedPins = pins.Select(id => id.Trim()).Distinct(StringComparer.Ordinal).ToList();
+
         var normalizedDesktopDisplay = new DesktopDisplaySettingsDto
         {
             ShowBuiltInApps = desktopDisplay.ShowBuiltInApps,
             VisibleAppIds = normalizedVisibleAppIds,
+            PinnedAppIds = normalizedPins,
             ShowServerDesktopFiles = desktopDisplay.ShowServerDesktopFiles,
             ShowServerDesktopShortcuts = desktopDisplay.ShowServerDesktopShortcuts,
             HasCompletedFirstTimeSetup = desktopDisplay.HasCompletedFirstTimeSetup,

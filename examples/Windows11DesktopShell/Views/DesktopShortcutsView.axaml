@@ -9,13 +9,14 @@
             <Setter Property="Height" Value="98" />
             <Setter Property="Margin" Value="3" />
             <Setter Property="Padding" Value="5" />
+            <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
         </Style>
         <Style Selector="Button.desktop-shortcut:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+            <Setter Property="Background" Value="{DynamicResource DesktopIconHoverBrush}" />
+            <Setter Property="BorderBrush" Value="#70FFFFFF" />
         </Style>
         <Style Selector="Button.desktop-shortcut.selected /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource DesktopIconSelectedBrush}" />
@@ -40,7 +41,7 @@
     <ItemsControl ItemsSource="{Binding DesktopEntries}" IsVisible="{Binding AreDesktopIconsVisible}">
         <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
-                <WrapPanel Orientation="Vertical" />
+                <WrapPanel Orientation="Vertical" ItemWidth="102" ItemHeight="104" />
             </ItemsPanelTemplate>
         </ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>

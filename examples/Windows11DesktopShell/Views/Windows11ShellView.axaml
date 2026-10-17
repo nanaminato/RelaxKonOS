@@ -107,9 +107,23 @@
                     <Button Classes="taskbar" Command="{Binding ShowDesktopCommand}" ToolTip.Tip="{Binding TaskView}">
                         <Path Data="{StaticResource IconTaskView}" Stroke="{DynamicResource TextPrimaryBrush}" StrokeThickness="1.7" Fill="Transparent" Width="22" Height="22" Stretch="Uniform" />
                     </Button>
-                    <Button Classes="taskbar" Command="{Binding OpenSettingsCommand}" ToolTip.Tip="{Binding Settings}">
-                        <Path Data="{StaticResource IconSettings}" Fill="{DynamicResource TextPrimaryBrush}" Width="22" Height="22" Stretch="Uniform" />
-                    </Button>
+                    <ScrollViewer x:Name="TaskbarApplicationScroller" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" MaxWidth="500">
+                        <ItemsControl ItemsSource="{Binding TaskbarEntries}">
+                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Classes="taskbar" ToolTip.Tip="{Binding DisplayName}" Command="{Binding $parent[UserControl].DataContext.ToggleTaskbarApplicationCommand}" CommandParameter="{Binding}"
+                                            AttachedToVisualTree="TaskbarApplication_OnAttachedToVisualTree">
+                                        <Grid RowDefinitions="*,3" Width="32" Height="34">
+                                            <Image Source="{Binding IconImage}" IsVisible="{Binding HasIconImage}" Width="24" Height="24" />
+                                            <TextBlock Text="{Binding IconGlyph}" IsVisible="{Binding !HasIconImage}" FontSize="23" HorizontalAlignment="Center" />
+                                            <Border Grid.Row="1" IsVisible="{Binding IsRunning}" Height="3" Width="18" CornerRadius="2" Background="{DynamicResource AccentBrush}" />
+                                        </Grid>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,8,0">
@@ -173,7 +187,7 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Button Classes="start-tile" Width="142" Height="88"
+                                    <Button Classes="start-tile" Width="142" Height="88" AttachedToVisualTree="AllApplication_OnAttachedToVisualTree"
                                         Command="{Binding $parent[UserControl].DataContext.OpenApplicationCommand}"
                                         CommandParameter="{Binding}">
                                         <StackPanel Spacing="6">

@@ -31,7 +31,9 @@ public partial class DesktopShortcutsView : UserControl
         if (sender is Control { DataContext: ShellDesktopEntry entry } control
             && DataContext is Windows11ShellViewModel viewModel)
         {
-            control.ContextMenu = CreateContextMenu(viewModel, entry);
+            var menu = new ContextMenu();
+            menu.Opening += (_, _) => menu.ItemsSource = CreateContextMenu(viewModel, entry).ItemsSource;
+            control.ContextMenu = menu;
             control.RemoveHandler(PointerPressedEvent, DesktopShortcut_OnPointerPressed);
             control.AddHandler(PointerPressedEvent, DesktopShortcut_OnPointerPressed, RoutingStrategies.Bubble, handledEventsToo: true);
         }
@@ -54,6 +56,19 @@ public partial class DesktopShortcutsView : UserControl
 
     private static ContextMenu CreateContextMenu(Windows11ShellViewModel viewModel, ShellDesktopEntry entry)
     {
+        var selected = viewModel.SelectionFor(entry);
+        if (selected.Length > 1)
+        {
+            var batch = new List<object>();
+            if (selected.All(item => item.Kind is ShellDesktopEntryKind.File or ShellDesktopEntryKind.Folder))
+            {
+                batch.Add(new MenuItem { Header = viewModel.Copy, Command = viewModel.CopyDesktopEntryCommand, CommandParameter = entry });
+                batch.Add(new MenuItem { Header = viewModel.Cut, Command = viewModel.CutDesktopEntryCommand, CommandParameter = entry });
+                batch.Add(new Separator());
+            }
+            batch.Add(new MenuItem { Header = viewModel.Delete, Command = viewModel.DeleteDesktopEntryCommand, CommandParameter = entry });
+            return new ContextMenu { ItemsSource = batch };
+        }
         var items = new List<object>
         {
             new MenuItem { Header = viewModel.Open, Command = viewModel.OpenDesktopEntryCommand, CommandParameter = entry },
@@ -77,6 +92,14 @@ public partial class DesktopShortcutsView : UserControl
         {
             items.Add(new Separator());
             items.Add(new MenuItem { Header = viewModel.AppDetails, Command = viewModel.ShowDesktopEntryPropertiesCommand, CommandParameter = entry });
+        }
+        if (entry.IsShortcut)
+        {
+            items.Add(new Separator());
+            if (entry.ApplicationId is not null)
+                items.Add(new MenuItem { Header = entry.IsTaskbarPinned ? viewModel.UnpinFromTaskbar : viewModel.PinToTaskbar,
+                    Command = entry.IsTaskbarPinned ? viewModel.UnpinDesktopEntryCommand : viewModel.PinDesktopEntryCommand, CommandParameter = entry });
+            items.Add(new MenuItem { Header = viewModel.Delete, Command = viewModel.DeleteDesktopEntryCommand, CommandParameter = entry });
         }
         return new ContextMenu { ItemsSource = items };
     }

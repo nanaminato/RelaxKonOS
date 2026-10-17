@@ -39,6 +39,17 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
         OpenDisplaySettingsCommand = new DelegateCommand(() => RunAfterClosingFlyoutsAsync(() => _context.Overlays.ShowDesktopDisplaySettingsAsync()));
         RefreshDesktopCommand = new DelegateCommand(() => RunAfterClosingFlyoutsAsync(() => _context.Actions.RefreshDesktopAsync()));
         ShowDesktopCommand = new DelegateCommand(() => RunAfterClosingFlyouts(_context.Actions.ShowDesktop));
+        ToggleTaskbarApplicationCommand = new DelegateCommand<ShellTaskbarEntry>(entry =>
+        {
+            if (entry is null) return;
+            CloseFlyouts();
+            _context.Actions.ToggleWindowGroup(entry.Id);
+        });
+        ToggleTaskbarPinCommand = new DelegateCommand<ShellTaskbarEntry>(entry => entry is null ? Task.CompletedTask : _context.Actions.SetTaskbarPinnedAsync(entry.Id, !entry.IsPinned));
+        PinDesktopEntryCommand = new DelegateCommand<ShellDesktopEntry>(entry => ExecuteDesktopEntryActionAsync(entry, DesktopEntryAction.PinToTaskbar));
+        UnpinDesktopEntryCommand = new DelegateCommand<ShellDesktopEntry>(entry => ExecuteDesktopEntryActionAsync(entry, DesktopEntryAction.UnpinFromTaskbar));
+        ToggleApplicationPinCommand = new DelegateCommand<ShellApplicationEntry>(entry => entry is null ? Task.CompletedTask :
+            _context.Actions.SetTaskbarPinnedAsync(entry.Id, !TaskbarEntries.Any(item => item.Id == entry.Id && item.IsPinned)));
         OpenApplicationCommand = new DelegateCommand<ShellApplicationEntry>(OpenApplicationAsync);
         OpenDesktopEntryCommand = new DelegateCommand<ShellDesktopEntry>(OpenDesktopEntryAsync);
         OpenDesktopStyleCommand = new DelegateCommand<ShellDesktopStyleEntry>(OpenDesktopStyleAsync);
@@ -62,6 +73,11 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     public ObservableCollection<ShellApplicationEntry> Applications { get; } = new();
     public ObservableCollection<ShellDesktopEntry> DesktopEntries { get; } = new();
     public ObservableCollection<ShellDesktopStyleEntry> DesktopStyleEntries { get; } = new();
+    public ObservableCollection<ShellTaskbarEntry> TaskbarEntries { get; } = new();
+    public ICommand ToggleTaskbarApplicationCommand { get; }
+    public ICommand ToggleTaskbarPinCommand { get; }
+    public ICommand PinDesktopEntryCommand { get; }
+    public ICommand UnpinDesktopEntryCommand { get; }
     public ICommand ToggleStartCommand { get; }
     public ICommand ToggleAllAppsCommand { get; }
     public ICommand ToggleQuickSettingsCommand { get; }
@@ -72,6 +88,7 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     public ICommand RefreshDesktopCommand { get; }
     public ICommand ShowDesktopCommand { get; }
     public ICommand OpenApplicationCommand { get; }
+    public ICommand ToggleApplicationPinCommand { get; }
     public ICommand OpenDesktopEntryCommand { get; }
     public ICommand OpenDesktopStyleCommand { get; }
     public ICommand ToggleDesktopIconsCommand { get; }
@@ -140,6 +157,8 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     public string OpenDesktopFolder => T("desktop.context.open_folder", "Open desktop folder");
     public string OpenFileExplorer => T("desktop.context.open_explorer", "Open File Explorer");
     public string OpenTerminal => T("desktop.context.open_terminal", "Open Terminal");
+    public string PinToTaskbar => T("taskbar.pin", "Pin to taskbar");
+    public string UnpinFromTaskbar => T("taskbar.unpin", "Unpin from taskbar");
     public string Open => T("common.open", "Open");
     public string OpenWith => T("desktop.context.open_with", "Open with...");
     public string Copy => T("common.copy", "Copy");
@@ -199,7 +218,7 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
         IsAllAppsOpen = !IsAllAppsOpen;
     }
     private void ToggleQuickSettings() { IsStartOpen = false; IsQuickSettingsOpen = !IsQuickSettingsOpen; }
-    private void CloseFlyouts() { IsStartOpen = false; IsAllAppsOpen = false; IsQuickSettingsOpen = false; _context.Actions.ClearDesktopSelection(); }
+    private void CloseFlyouts() { IsStartOpen = false; IsAllAppsOpen = false; IsQuickSettingsOpen = false; }
     private void OnClockTick(object? sender, EventArgs args) => UpdateClock();
     private void OnLanguageChanged(object? sender, EventArgs args) { UpdateClock(); NotifyAll(); }
     private void OnDesktopStateChanged(object? sender, EventArgs args)
@@ -210,6 +229,12 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     private void ReloadDesktopState()
     {
         var state = _context.State.Desktop;
+        var taskbar = state?.TaskbarEntries ?? [];
+        if (!TaskbarEntries.SequenceEqual(taskbar))
+        {
+            TaskbarEntries.Clear();
+            foreach (var entry in taskbar) TaskbarEntries.Add(entry);
+        }
 
         if (state is null)
         {
@@ -233,6 +258,7 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
             DesktopEntries.Zip(state.DesktopEntries).All(pair =>
                 pair.First.Id == pair.Second.Id && pair.First.DisplayName == pair.Second.DisplayName &&
                 pair.First.Kind == pair.Second.Kind && pair.First.IconGlyph == pair.Second.IconGlyph &&
+                pair.First.IsTaskbarPinned == pair.Second.IsTaskbarPinned &&
                 ReferenceEquals(pair.First.IconImage, pair.Second.IconImage));
         if (sameEntries)
         {
@@ -261,6 +287,8 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
         await _context.Actions.LaunchAsync(application.Id);
     }
     /// <summary>Matches the host desktop: a primary click selects an item, and double-click opens it.</summary>
+    public ShellDesktopEntry[] SelectionFor(ShellDesktopEntry entry) => entry.IsSelected
+        ? DesktopEntries.Where(item => item.IsSelected).ToArray() : [entry];
     public void SelectDesktopEntry(ShellDesktopEntry? entry)
     {
         if (entry is not null) _context.Actions.SetDesktopSelection([entry.Id]);

@@ -46,6 +46,24 @@ internal static class Windows11LiveReview
         if (hit is null || !(ReferenceEquals(hit, field) || hit.GetVisualAncestors().Contains(field)))
             throw new Exception("External shell dialog is covered by another input surface.");
         Console.WriteLine("LIVE WINDOWS11 PASS: Start dismisses before Settings and display dialog; actual checkbox receives hit testing.");
+        var desktop = (RelaxKonOS.Client.ViewModels.Shell.DesktopShellViewModel)host.DataContext!;
+        var originalPins = desktop.Settings.PinnedAppIds.ToList();
+        var terminalId = new RelaxKonOS.Core.Applications.AppId("relaxkonos.terminal");
+        try
+        {
+            // Inspect the live taskbar without saving a QA pin to the user's remote preferences.
+            desktop.Settings.PinnedAppIds = originalPins.Append(terminalId.Value).Distinct().ToList();
+            await Task.Delay(200, ct);
+            host.UpdateLayout();
+            var pinnedButton = host.GetVisualDescendants().OfType<Button>().FirstOrDefault(button =>
+                button.DataContext is RelaxKonOS.Shell.ShellTaskbarEntry entry && entry.Id == terminalId && entry.IsPinned);
+            if (pinnedButton is null || !pinnedButton.IsEffectivelyVisible)
+                throw new Exception("Pinned closed application did not appear in the actual external taskbar.");
+            Console.WriteLine("LIVE WINDOWS11 PASS: a pinned closed application renders in the taskbar beside running applications.");
+        }
+        finally { desktop.Settings.PinnedAppIds = originalPins; }
+        await Task.Delay(200, ct);
+        host.UpdateLayout();
         var output = Path.Combine(AppContext.BaseDirectory, "preview-qa", "live-desktops", "windows11-display-dialog.png");
         using (var image = new RenderTargetBitmap(new PixelSize((int)host.Bounds.Width, (int)host.Bounds.Height)))
         { image.Render(host); image.Save(output, new PngBitmapEncoderOptions()); }
@@ -55,5 +73,15 @@ internal static class Windows11LiveReview
         for (var count = 0; count < 20 && manager.IsSystemModalOpen; count++) await Task.Delay(50, ct);
         if (manager.IsSystemModalOpen) throw new Exception("Display settings cancellation left the desktop blocked.");
         Console.WriteLine("LIVE WINDOWS11 PASS: dialog cancellation removes its blocker and restores application access.");
+        var icons = host.GetVisualDescendants().OfType<Button>().Where(button => button.DataContext is RelaxKonOS.Shell.ShellDesktopEntry).ToArray();
+        Console.WriteLine($"LIVE ICON DIAGNOSTIC: rendered={icons.Length}; hostItems={desktop.DesktopItems.Count}; applicationShortcuts={desktop.DesktopIcons.Count}; showApps={desktop.Settings.ShowBuiltInApps}; filterCount={desktop.Settings.VisibleAppIds.Count}; iconsVisible={desktop.AreDesktopIconsVisible}; projectionCount={((System.Collections.ICollection)model.GetType().GetProperty("DesktopEntries")!.GetValue(model)!).Count}");
+        if (icons.Length < 12) throw new Exception("Live multi-selection review requires twelve rendered desktop icons.");
+        var geometry = icons.Select(button => (button, button.Bounds, point: button.TranslatePoint(default, host))).ToArray();
+        desktop.SetDesktopSelection(desktop.DesktopItems.Take(12));
+        await Task.Delay(100, ct); host.UpdateLayout();
+        if (geometry.Any(entry => entry.button.Bounds != entry.Bounds || entry.button.TranslatePoint(default, host) != entry.point))
+            throw new Exception("Actual external desktop icon positions moved when selecting applications.");
+        desktop.ClearDesktopSelectionCommand.Execute(null);
+        Console.WriteLine("LIVE WINDOWS11 PASS: selecting twelve desktop applications preserves every icon position.");
     }
 }

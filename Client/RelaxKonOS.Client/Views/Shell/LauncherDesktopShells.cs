@@ -1,4 +1,5 @@
 using Avalonia.Reactive;
+using RelaxKonOS.Core.Applications;
 using Avalonia.VisualTree;
 using Avalonia;
 using Avalonia.Automation;
@@ -20,7 +21,6 @@ using RelaxKonOS.Shell;
 using RelaxKonOS.WindowManager;
 using RelaxKonOS.UI.Themes;
 using VectorPath = Avalonia.Controls.Shapes.Path;
-using System.Globalization;
 
 namespace RelaxKonOS.Client.Views.Shell;
 
@@ -256,6 +256,7 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         workspace.PointerCaptureLost += (_, _) => Finish();
         workspace.KeyDown += (_, e) =>
         {
+            if (e.Handled || e.Source is Visual source && (ReferenceEquals(source, _windowHost) || source.GetVisualAncestors().Contains(_windowHost))) return;
             if (e.Key == Key.Escape)
             {
                 Finish();
@@ -267,6 +268,11 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
                 var file = vm.DesktopFiles.FirstOrDefault(item => item.IsDesktopSelected);
                 if (file is not null)
                     (e.Key == Key.C ? vm.CopyDesktopEntryCommand : vm.CutDesktopEntryCommand).Execute(file);
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Delete)
+            {
+                vm.DeleteDesktopItemsCommand.Execute(null);
                 e.Handled = true;
             }
             else if (e.Key == Key.F2)
@@ -354,7 +360,7 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
             {
                 var button = new Button
                 {
-                    Content = app.DisplayName, Command = app.LaunchCommand, HorizontalContentAlignment = HorizontalAlignment.Left,
+                    Content = app.DisplayName, Command = app.LaunchCommand, ContextMenu = ApplicationPinMenu(vm, app.Id), HorizontalContentAlignment = HorizontalAlignment.Left,
                 };
                 ThemeResources.Bind(button, Avalonia.Controls.Documents.TextElement.ForegroundProperty, "TextPrimaryBrush");
                 return button;
@@ -438,9 +444,21 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         var button = new Button { Content = content, Width = 96, Height = 98, Margin = new Thickness(3),
             HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center,
             Tag = DesktopEntryMarker };
-        button.Bind(Button.BackgroundProperty, new Binding("IsDesktopSelected") { Converter = DesktopSelectionBrushConverter.Instance });
-        button.Bind(Button.BorderBrushProperty, new Binding("IsDesktopSelected") { Converter = DesktopSelectionBorderBrushConverter.Instance });
-        button.Bind(Button.BorderThicknessProperty, new Binding("IsDesktopSelected") { Converter = DesktopSelectionBorderThicknessConverter.Instance });
+        button.Classes.Add("desktop-shortcut");
+        button.BorderThickness = new Thickness(1);
+        button.Padding = new Thickness(5);
+        void UpdateSelection() => button.Classes.Set("selected", DesktopShellViewModel.IsDesktopItemSelected(item));
+        System.ComponentModel.PropertyChangedEventHandler selectionChanged = (_, args) =>
+        {
+            if (args.PropertyName == "IsDesktopSelected") UpdateSelection();
+        };
+        button.AttachedToVisualTree += (_, _) =>
+        {
+            ((System.ComponentModel.INotifyPropertyChanged)item).PropertyChanged += selectionChanged;
+            UpdateSelection();
+        };
+        button.DetachedFromVisualTree += (_, _) => ((System.ComponentModel.INotifyPropertyChanged)item).PropertyChanged -= selectionChanged;
+        UpdateSelection();
         button.AddHandler(InputElement.PointerPressedEvent, (_, args) =>
         {
             var properties = args.GetCurrentPoint(button).Properties;
@@ -478,13 +496,40 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
                 args.Handled = true;
             }
         };
-        button.ContextMenu = CreateDesktopItemContextMenu(vm, item);
+        var contextMenu = new ContextMenu();
+        contextMenu.Opening += (_, _) =>
+        {
+            var entries = CreateDesktopItemContextMenu(vm, item).ItemsSource!.Cast<object>().ToList();
+            if (item is ShortcutEntryViewModel && vm.DesktopSelectionFor(item).Length == 1 && vm.DesktopApplicationId(item) is { } appId)
+                entries.Add(new MenuItem { Header = LocalizedText.Get(vm.IsTaskbarPinned(appId) ? "shell.taskbar.unpin" : "shell.taskbar.pin"), Command = vm.ToggleTaskbarPinCommand, CommandParameter = appId });
+            contextMenu.ItemsSource = entries;
+        };
+        button.ContextMenu = contextMenu;
         return button;
     }
 
     /// <summary>All built-in shells use the same item operations; only their desktop chrome differs.</summary>
     private static ContextMenu CreateDesktopItemContextMenu(DesktopShellViewModel vm, object item)
     {
+        var selected = vm.DesktopSelectionFor(item);
+        if (selected.Length > 1)
+        {
+            var multiple = new List<object>();
+            if (selected.All(value => value is DesktopFileEntryViewModel) && item is DesktopFileEntryViewModel first)
+            {
+                multiple.Add(new MenuItem { Header = LocalizedText.Get("common.cut", "Cut"), Command = vm.CutDesktopEntryCommand, CommandParameter = first });
+                multiple.Add(new MenuItem { Header = LocalizedText.Get("common.copy", "Copy"), Command = vm.CopyDesktopEntryCommand, CommandParameter = first });
+                multiple.Add(new Separator());
+            }
+            multiple.Add(new MenuItem { Header = LocalizedText.Get("common.delete", "Delete"), Command = vm.DeleteDesktopItemsCommand, CommandParameter = item });
+            return new ContextMenu { ItemsSource = multiple };
+        }
+        MenuItem Delete() => new() { Header = LocalizedText.Get("common.delete", "Delete"), Command = vm.DeleteDesktopItemsCommand, CommandParameter = item };
+        MenuItem Pin(AppId id) => new()
+        {
+            Header = LocalizedText.Get(vm.IsTaskbarPinned(id) ? "shell.taskbar.unpin" : "shell.taskbar.pin", vm.IsTaskbarPinned(id) ? "Unpin from taskbar" : "Pin to taskbar"),
+            Command = vm.ToggleTaskbarPinCommand, CommandParameter = id,
+        };
         if (item is AppEntryViewModel app)
             return new ContextMenu
             {
@@ -493,6 +538,7 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
                     new MenuItem { Header = LocalizedText.Get("common.open", "Open"), Command = vm.OpenDesktopAppCommand, CommandParameter = app },
                     new Separator(),
                     new MenuItem { Header = LocalizedText.Get("shell.desktop.context.app_details", "App details"), Command = vm.ShowDesktopAppDetailsCommand, CommandParameter = app },
+                    Pin(app.Id), Delete(),
                 },
             };
 
@@ -502,6 +548,7 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
                 ItemsSource = new object[]
                 {
                     new MenuItem { Header = LocalizedText.Get("common.open", "Open"), Command = shortcut.ActivateCommand },
+                    new Separator(), Delete(),
                 },
             };
 
@@ -518,7 +565,7 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         if (file.IsDirectory)
             items.Add(new MenuItem { Header = LocalizedText.Get("common.paste", "Paste"), IsVisible = vm.IsWorkspaceDesktop, Command = vm.PasteDesktopCommand, CommandParameter = file });
         items.Add(new Separator());
-        items.Add(new MenuItem { Header = LocalizedText.Get("common.delete", "Delete"), Command = vm.DeleteDesktopEntryCommand, CommandParameter = file });
+        items.Add(new MenuItem { Header = LocalizedText.Get("common.delete", "Delete"), Command = vm.DeleteDesktopItemsCommand, CommandParameter = file });
         items.Add(new MenuItem { Header = LocalizedText.Get("common.rename", "Rename"), Command = vm.RenameDesktopEntryCommand, CommandParameter = file });
         items.Add(new Separator());
         items.Add(new MenuItem { Header = LocalizedText.Get("shell.desktop.context.show_in_explorer", "Show in File Explorer"), Command = vm.ShowDesktopEntryInExplorerCommand, CommandParameter = file });
@@ -535,7 +582,7 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         if (_topLevel is not null) _topLevel.Deactivated += OnTopLevelDeactivated;
     }
 
-    private void OnTopLevelDeactivated(object? sender, EventArgs args) => _vm?.ClearDesktopSelectionCommand.Execute(null);
+    private void OnTopLevelDeactivated(object? sender, EventArgs args) => _vm?.CloseStartCommand.Execute(null);
 
     private void OnRootPointerPressed(object? sender, PointerPressedEventArgs args)
     {
@@ -543,6 +590,41 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         for (var current = args.Source as Control; current is not null; current = current.Parent as Control)
             if (current is Control { Tag: var tag } && ReferenceEquals(tag, DesktopEntryMarker)) return;
         _vm?.ClearDesktopSelectionCommand.Execute(null);
+    }
+
+    protected static Control GroupArtwork(TaskbarGroupViewModel group, double size)
+    {
+        var content = new Grid { Width = size, Height = size };
+        var image = new Image { Width = size, Height = size };
+        image.Bind(Image.SourceProperty, new Binding(nameof(group.IconImage)) { Source = group });
+        image.Bind(Visual.IsVisibleProperty, new Binding(nameof(group.HasIconImage)) { Source = group });
+        var glyph = new TextBlock { FontSize = size - 3, TextAlignment = TextAlignment.Center };
+        glyph.Bind(TextBlock.TextProperty, new Binding(nameof(group.IconGlyph)) { Source = group });
+        glyph.Bind(Visual.IsVisibleProperty, new Binding("!" + nameof(group.HasIconImage)) { Source = group });
+        ThemeResources.Bind(glyph, TextBlock.ForegroundProperty, "TextPrimaryBrush");
+        content.Children.Add(image);
+        content.Children.Add(glyph);
+        return content;
+    }
+
+    protected static ContextMenu ApplicationPinMenu(DesktopShellViewModel vm, AppId id)
+    {
+        var menu = new ContextMenu();
+        menu.Opening += (_, _) => menu.ItemsSource = new object[]
+        {
+            new MenuItem { Header = LocalizedText.Get(vm.IsTaskbarPinned(id) ? "shell.taskbar.unpin" : "shell.taskbar.pin"), Command = vm.ToggleTaskbarPinCommand, CommandParameter = id },
+        };
+        return menu;
+    }
+
+    protected static ContextMenu TaskbarContextMenu(DesktopShellViewModel vm, TaskbarGroupViewModel group)
+    {
+        var menu = new ContextMenu();
+        menu.Opening += (_, _) => menu.ItemsSource = new object[]
+        {
+            new MenuItem { Header = LocalizedText.Get(group.IsPinned ? "shell.taskbar.unpin" : "shell.taskbar.pin"), Command = vm.ToggleTaskbarPinCommand, CommandParameter = group.AppId },
+        };
+        return menu;
     }
 
     private static Button TaskbarButton(DesktopShellViewModel vm, TaskbarGroupViewModel group)
@@ -554,6 +636,7 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
             Width = 38, Height = 34, Padding = new Thickness(2),
         };
         ThemeResources.Bind(button, Avalonia.Controls.Documents.TextElement.ForegroundProperty, "TextPrimaryBrush");
+        button.ContextMenu = TaskbarContextMenu(vm, group);
         ToolTip.SetTip(button, group.DisplayName);
         button.Content = group.IconImage is { } image
             ? new Image { Source = image, Width = 22, Height = 22 }
@@ -567,30 +650,6 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         var b = _windowHost.Bounds;
         _context.Surfaces.UpdateWorkArea(new RelaxKonOS.Core.Primitives.Rect(0, 0, b.Width, b.Height));
     }
-}
-
-internal sealed class DesktopSelectionBrushConverter : IValueConverter
-{
-    public static readonly DesktopSelectionBrushConverter Instance = new();
-    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
-        value is true ? ThemeResources.Brush("DesktopIconSelectedBrush") : Brushes.Transparent;
-    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
-}
-
-internal sealed class DesktopSelectionBorderBrushConverter : IValueConverter
-{
-    public static readonly DesktopSelectionBorderBrushConverter Instance = new();
-    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
-        value is true ? ThemeResources.Brush("DesktopIconSelectedBrush") : Brushes.Transparent;
-    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
-}
-
-internal sealed class DesktopSelectionBorderThicknessConverter : IValueConverter
-{
-    public static readonly DesktopSelectionBorderThicknessConverter Instance = new();
-    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
-        value is true ? new Thickness(1) : new Thickness(0);
-    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
 }
 
 public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltInShells.Windows)
@@ -843,7 +902,8 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
         ThemeResources.Bind(button, Control.WidthProperty, "TaskbarIconSize");
         ThemeResources.Bind(button, Control.HeightProperty, "TaskbarIconSize");
         AutomationProperties.SetName(button, group.DisplayName);
-        _previews?.Register(button, group);
+        button.ContextMenu = TaskbarContextMenu(vm, group);
+        if (group.WindowCount > 0) _previews?.Register(button, group);
         return button;
     }
 
@@ -901,14 +961,7 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
         return text;
     }
 
-    private static Control AppIcon(TaskbarGroupViewModel group, double size)
-    {
-        if (group.IconImage is { } image)
-            return new Image { Source = image, Width = size, Height = size };
-        var text = new TextBlock { Text = group.IconGlyph ?? "◼", FontSize = size - 3 };
-        ThemeResources.Bind(text, TextBlock.ForegroundProperty, "TextPrimaryBrush");
-        return text;
-    }
+    private static Control AppIcon(TaskbarGroupViewModel group, double size) => GroupArtwork(group, size);
 }
 
 public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInShells.Macos)
@@ -1088,6 +1141,7 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
             Margin = new Thickness(4),
             Command = vm.LaunchCommand,
             CommandParameter = app.Id,
+            ContextMenu = ApplicationPinMenu(vm, app.Id),
             Background = Brushes.Transparent,
             BorderBrush = Brushes.Transparent,
         };
@@ -1103,6 +1157,7 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
         icon.HorizontalAlignment = HorizontalAlignment.Center;
         icon.VerticalAlignment = VerticalAlignment.Center;
         var button = MacosInteractiveButton(icon, vm.ToggleTaskbarGroupCommand, group, group.DisplayName);
+        button.ContextMenu = TaskbarContextMenu(vm, group);
         return button;
     }
 
@@ -1215,14 +1270,7 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
         return text;
     }
 
-    private static Control MacosIcon(TaskbarGroupViewModel group, double size)
-    {
-        if (group.IconImage is { } image)
-            return new Image { Source = image, Width = size, Height = size };
-        var text = new TextBlock { Text = group.IconGlyph ?? "◼", FontSize = size - 4 };
-        ThemeResources.Bind(text, TextBlock.ForegroundProperty, "TextPrimaryBrush");
-        return text;
-    }
+    private static Control MacosIcon(TaskbarGroupViewModel group, double size) => GroupArtwork(group, size);
 }
 
 public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInShells.Ubuntu)
@@ -1416,6 +1464,7 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
             Margin = new Thickness(4),
             Command = vm.LaunchCommand,
             CommandParameter = app.Id,
+            ContextMenu = ApplicationPinMenu(vm, app.Id),
             Background = Brushes.Transparent,
             BorderBrush = Brushes.Transparent,
         };
@@ -1446,6 +1495,7 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
             Background = Brushes.Transparent,
             BorderBrush = Brushes.Transparent,
         };
+        button.ContextMenu = TaskbarContextMenu(vm, group);
         ToolTip.SetTip(button, group.DisplayName);
         return button;
     }
@@ -1520,14 +1570,7 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
         return text;
     }
 
-    private static Control UbuntuAppIcon(TaskbarGroupViewModel group, double size)
-    {
-        if (group.IconImage is { } image)
-            return new Image { Source = image, Width = size, Height = size };
-        var text = new TextBlock { Text = group.IconGlyph ?? "◼", FontSize = size - 3 };
-        ThemeResources.Bind(text, TextBlock.ForegroundProperty, "TextPrimaryBrush");
-        return text;
-    }
+    private static Control UbuntuAppIcon(TaskbarGroupViewModel group, double size) => GroupArtwork(group, size);
 }
 
 public static class BuiltInShells
