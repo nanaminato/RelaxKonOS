@@ -161,6 +161,25 @@ internal static class SettingsSystemVerification
             Check((int)missing.StatusCode == 428, "HTTP PUT without revision must return 428.");
             using var saved = await http.PutAsJsonAsync(route, WithMode(initial!, ThemeKind.Dark), RelaxKonOSJsonOptions.Default);
             Check(saved.IsSuccessStatusCode, "Versioned HTTP preference write failed.");
+            var pinBaseline = (await saved.Content.ReadFromJsonAsync<WorkspacePreferencesDto>(RelaxKonOSJsonOptions.Default))!;
+            var pinnedIds = new[] { "relaxkonos.tunnels", "relaxkonos.terminal" };
+            using var pinResponse = await http.PutAsJsonAsync(route, pinBaseline with
+            {
+                DesktopDisplay = pinBaseline.DesktopDisplay! with { PinnedAppIds = pinnedIds.ToList() }
+            }, RelaxKonOSJsonOptions.Default);
+            pinResponse.EnsureSuccessStatusCode();
+            var pinSaved = (await pinResponse.Content.ReadFromJsonAsync<WorkspacePreferencesDto>(RelaxKonOSJsonOptions.Default))!;
+            Check(pinSaved.DesktopDisplay!.PinnedAppIds.SequenceEqual(pinnedIds), "HTTP PUT must return the submitted taskbar pins in order.");
+            var pinReloaded = (await http.GetFromJsonAsync<WorkspacePreferencesDto>(route, RelaxKonOSJsonOptions.Default))!;
+            Check(pinReloaded.Revision == pinSaved.Revision && pinReloaded.DesktopDisplay!.PinnedAppIds.SequenceEqual(pinnedIds),
+                "HTTP GET must retain taskbar pins at the saved revision.");
+            using var unpinResponse = await http.PutAsJsonAsync(route, pinReloaded with
+            {
+                DesktopDisplay = pinReloaded.DesktopDisplay! with { PinnedAppIds = [pinnedIds[1]] }
+            }, RelaxKonOSJsonOptions.Default);
+            unpinResponse.EnsureSuccessStatusCode();
+            var unpinReloaded = (await http.GetFromJsonAsync<WorkspacePreferencesDto>(route, RelaxKonOSJsonOptions.Default))!;
+            Check(unpinReloaded.DesktopDisplay!.PinnedAppIds.SequenceEqual(pinnedIds.Skip(1)), "Unpinning must remove only the selected taskbar pin.");
             using var stale = await http.PutAsJsonAsync(route, initial!, RelaxKonOSJsonOptions.Default);
             Check(stale.StatusCode == HttpStatusCode.Conflict, "Stale HTTP PUT must return 409.");
             using var invalid = await http.PutAsJsonAsync(route, initial! with { TimeFormat = "invalid" }, RelaxKonOSJsonOptions.Default);

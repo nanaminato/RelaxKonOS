@@ -134,6 +134,14 @@ public sealed partial class ShellSettings : ObservableObject
     partial void OnShowServerDesktopFilesChanged(bool value) => NotifyDesktopDisplayChanged();
     partial void OnShowServerDesktopShortcutsChanged(bool value) => NotifyDesktopDisplayChanged();
     partial void OnVisibleAppIdsChanged(List<string> value) => NotifyDesktopDisplayChanged();
+    partial void OnPinnedAppIdsChanging(List<string>? oldValue, List<string> newValue) =>
+        TaskbarPreviewDiagnostics.Record("pin.settings.changing", new
+        {
+            before = oldValue?.ToArray(), after = newValue.ToArray(), PreferencesRevision,
+            DesktopWriteGeneration, IsDesktopWritePending,
+            callers = new System.Diagnostics.StackTrace().GetFrames().Take(8)
+                .Select(frame => frame.GetMethod()).Select(method => $"{method?.DeclaringType?.Name}.{method?.Name}").ToArray(),
+        });
     partial void OnPinnedAppIdsChanged(List<string> value) => NotifyDesktopDisplayChanged();
     partial void OnShowWindowShadowsChanged(bool value) => NotifyVisualEffectsChanged();
     partial void OnShowWindowContentsWhileDraggingChanged(bool value) => NotifyVisualEffectsChanged();
@@ -180,6 +188,7 @@ public sealed partial class ShellSettings : ObservableObject
     /// <summary>将服务端偏好应用到本地活状态（登录加载 / 设置编辑后回写）。</summary>
     public void Apply(WorkspacePreferencesDto prefs)
     {
+        TaskbarPreviewDiagnostics.Record("pin.preferences.apply", new { before = PinnedAppIds.ToArray(), incoming = prefs.DesktopDisplay?.PinnedAppIds?.ToArray(), previousRevision = PreferencesRevision, incomingRevision = prefs.Revision, DesktopWriteGeneration, IsDesktopWritePending });
         LanguageSwitchDiagnostics.Record("preferences.apply", new { previous = Language, incoming = prefs.Language, previousRevision = PreferencesRevision, incomingRevision = prefs.Revision });
         PreferencesRevision = prefs.Revision;
         var experience = prefs.DesktopExperience ?? DesktopExperiencePreferencesDto.Default;
@@ -261,6 +270,7 @@ public sealed partial class ShellSettings : ObservableObject
     /// <summary>Acknowledge only the baseline that was actually submitted; an old response cannot replace a newer load.</summary>
     public void AcknowledgePreferences(long? expectedRevision, long? savedRevision)
     {
+        TaskbarPreviewDiagnostics.Record("pin.preferences.acknowledge", new { expectedRevision, savedRevision, currentRevision = PreferencesRevision, accepted = PreferencesRevision == expectedRevision });
         if (PreferencesRevision == expectedRevision) PreferencesRevision = savedRevision;
     }
 

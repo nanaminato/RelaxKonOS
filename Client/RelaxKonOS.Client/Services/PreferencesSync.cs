@@ -153,8 +153,10 @@ public sealed class PreferencesSync : IDisposable
             {
                 var readId = Guid.NewGuid();
                 var desktopWriteGeneration = _settings.DesktopWriteGeneration;
+                TaskbarPreviewDiagnostics.Record("pin.sync.begin", new { readId, workspaceId, desktopWriteGeneration, _settings.PreferencesRevision, pins = _settings.PinnedAppIds.ToArray() });
                 LanguageSwitchDiagnostics.Record("sync.read.begin", new { readId, workspaceId, language = _settings.Language, hasDraft = _editor.HasDraft });
                 var prefs = await _client.GetAsync(url, accessToken, workspaceId, cancellationToken);
+                TaskbarPreviewDiagnostics.Record("pin.sync.received", new { readId, prefs.Revision, prefs.PersistedRevision, pins = prefs.DesktopDisplay?.PinnedAppIds?.ToArray() });
                 _desktopRetrySeconds = 1;
                 LanguageSwitchDiagnostics.Record("sync.read.received", new { readId, workspaceId, incoming = prefs.Language, prefs.Revision });
                 await Dispatcher.UIThread.InvokeAsync(async () =>
@@ -164,21 +166,25 @@ public sealed class PreferencesSync : IDisposable
                         || _session.Tokens?.AccessToken != accessToken)
                     {
                         LanguageSwitchDiagnostics.Record("sync.read.skipped_session", new { readId });
+                        TaskbarPreviewDiagnostics.Record("pin.sync.skipped", new { readId, reason = "session_changed" });
                         return;
                     }
                     if (_editor.HasDraft)
                     {
                         LanguageSwitchDiagnostics.Record("sync.read.skipped_draft", new { readId, incoming = prefs.Language, actual = _settings.Language });
                         _editor.ObserveExternalRevision(prefs.Revision);
+                        TaskbarPreviewDiagnostics.Record("pin.sync.skipped", new { readId, reason = "settings_draft" });
                         return;
                     }
                     if (!_settings.CanApplySynchronizedPreferences(desktopWriteGeneration, prefs.Revision))
                     {
+                        TaskbarPreviewDiagnostics.Record("pin.sync.skipped", new { readId, reason = "desktop_write_or_stale_revision", desktopWriteGeneration, currentGeneration = _settings.DesktopWriteGeneration, _settings.IsDesktopWritePending, incomingRevision = prefs.Revision, currentRevision = _settings.PreferencesRevision });
                         ScheduleDesktopRetry(url, accessToken, workspaceId, cancellationToken);
                         return;
                     }
                     LanguageSwitchDiagnostics.Record("sync.read.apply", new { readId, incoming = prefs.Language, actual = _settings.Language });
                     _registry.SetMappings(prefs.DefaultApps);
+                    TaskbarPreviewDiagnostics.Record("pin.sync.apply", new { readId });
                     await _wallpapers.ApplyAsync(prefs, cancellationToken);
                 });
             }

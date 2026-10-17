@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using RelaxKonOS.Client.Services.Diagnostics;
 using Avalonia.Threading;
 using System.Collections.Specialized;
 using System.ComponentModel;
@@ -323,8 +324,11 @@ internal sealed class DesktopShellActions(ShellStateStore state, IWindowManager 
     public void SetDesktopIconsVisible(bool visible) => Vm.AreDesktopIconsVisible = visible;
     public void ShowDesktop() => Vm.ShowDesktopCommand.Execute(null);
     public void ToggleWindowGroup(AppId appId) { var group = Vm.TaskbarGroups.FirstOrDefault(x => x.AppId == appId); if (group is not null) Vm.ToggleTaskbarGroupCommand.Execute(group); }
-    public Task SetTaskbarPinnedAsync(AppId appId, bool pinned, CancellationToken cancellationToken = default) =>
-        Vm.IsTaskbarPinned(appId) == pinned ? Task.CompletedTask : Vm.ToggleTaskbarPinCommand.ExecuteAsync(appId);
+    public Task SetTaskbarPinnedAsync(AppId appId, bool pinned, CancellationToken cancellationToken = default)
+    {
+        TaskbarPreviewDiagnostics.Record("pin.shell.request", new { app = appId.Value, requested = pinned, current = Vm.IsTaskbarPinned(appId), canExecute = Vm.ToggleTaskbarPinCommand.CanExecute(appId) });
+        return Vm.IsTaskbarPinned(appId) == pinned ? Task.CompletedTask : Vm.ToggleTaskbarPinCommand.ExecuteAsync(appId);
+    }
     public void ActivateWindow(WindowId windowId) { var w = windows.Windows.FirstOrDefault(x => x.Info.Id == windowId); if (w is not null) windows.Focus(w); }
     public void MinimizeWindow(WindowId windowId) { var w = windows.Windows.FirstOrDefault(x => x.Info.Id == windowId); if (w is not null) windows.Minimize(w); }
     public void CloseWindow(WindowId windowId) { var w = windows.Windows.FirstOrDefault(x => x.Info.Id == windowId); if (w is not null) windows.Close(w); }
@@ -453,7 +457,10 @@ internal sealed class DesktopShellStateAdapter : IDisposable
     private void Publish()
     {
         if (_disposed) return;
-        Current = CreateSnapshot();
+        var snapshot = CreateSnapshot();
+        if (!(Current.TaskbarEntries ?? []).SequenceEqual(snapshot.TaskbarEntries ?? []))
+            TaskbarPreviewDiagnostics.Record("pin.shell.publish", new { entries = snapshot.TaskbarEntries?.Select(entry => new { app = entry.Id.Value, entry.IsPinned, entry.IsRunning }).ToArray() });
+        Current = snapshot;
         _state.PublishDesktop(Current);
     }
 

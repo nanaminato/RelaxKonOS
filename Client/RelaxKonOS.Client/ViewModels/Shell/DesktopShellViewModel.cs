@@ -382,6 +382,8 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     [RelayCommand]
     private async Task ToggleTaskbarPinAsync(AppId id)
     {
+        var operationId = Guid.NewGuid();
+        TaskbarPreviewDiagnostics.Record("pin.toggle.begin", new { operationId, app = id.Value, wasPinned = IsTaskbarPinned(id), pins = _settings.PinnedAppIds.ToArray(), _settings.PreferencesRevision, ssh = _sshDesktop.IsConnected, authState = _session.State.ToString() });
         _settings.BeginDesktopWrite();
         try
         {
@@ -391,7 +393,11 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
             RefreshTaskbarGroups();
             await SavePreferencesFireAndForgetAsync();
         }
-        finally { _settings.EndDesktopWrite(); }
+        finally
+        {
+            _settings.EndDesktopWrite();
+            TaskbarPreviewDiagnostics.Record("pin.toggle.end", new { operationId, app = id.Value, isPinned = IsTaskbarPinned(id), pins = _settings.PinnedAppIds.ToArray(), _settings.PreferencesRevision });
+        }
     }
 
     [RelayCommand]
@@ -1052,16 +1058,23 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
     /// <summary>保存桌面显示配置到服务端（fire-and-forget，忽略瞬时错误）。</summary>
     public async Task SavePreferencesFireAndForgetAsync()
     {
-        if (_sshDesktop.IsConnected) { _sshDesktop.SavePreferences(); return; }
+        var saveId = Guid.NewGuid();
+        if (_sshDesktop.IsConnected) { TaskbarPreviewDiagnostics.Record("pin.save.ssh", new { saveId, pins = _settings.PinnedAppIds.ToArray() }); _sshDesktop.SavePreferences(); return; }
         if (_session is not { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
+        {
+            TaskbarPreviewDiagnostics.Record("pin.save.skipped", new { saveId, reason = "no_authenticated_workspace", authState = _session.State.ToString() });
             return;
+        }
         try
         {
-            await _settingsClient.SaveAsync(url, tokens.AccessToken, workspace.Id,
-                _settings.ToPreferences(_defaultApps.Snapshot));
+            var submitted = _settings.ToPreferences(_defaultApps.Snapshot);
+            TaskbarPreviewDiagnostics.Record("pin.save.begin", new { saveId, workspaceId = workspace.Id, submitted.Revision, pins = submitted.DesktopDisplay?.PinnedAppIds.ToArray() });
+            var saved = await _settingsClient.SaveAsync(url, tokens.AccessToken, workspace.Id, submitted);
+            TaskbarPreviewDiagnostics.Record("pin.save.completed", new { saveId, saved.Revision, saved.PersistedRevision, pins = saved.DesktopDisplay?.PinnedAppIds.ToArray() });
         }
-        catch
+        catch (Exception exception)
         {
+            TaskbarPreviewDiagnostics.Record("pin.save.failed", new { saveId, failure = WorkspacePreferencesDiagnostics.Classify(exception).ToString(), exceptionType = exception.GetType().Name, httpStatus = (exception as RelaxKonOSAuthException)?.Status });
             // 保存失败不阻塞用户操作，下次同步时回退
         }
     }
@@ -1180,7 +1193,7 @@ public partial class DesktopShellViewModel : ObservableObject, ITaskbarPreviewCo
         }).ToArray();
         for (var index = 0; index < ordered.Length; index++)
             if (!ReferenceEquals(TaskbarGroups[index], ordered[index])) TaskbarGroups.Move(TaskbarGroups.IndexOf(ordered[index]), index);
-        TraceTaskbar("vm.groups.refresh.end", new { groups = TaskbarGroups.Select(group => new { app = group.AppId.ToString(), count = group.WindowCount }).ToArray() });
+        TraceTaskbar("vm.groups.refresh.end", new { pins = _settings.PinnedAppIds.ToArray(), catalog = StartApps.Select(app => app.Id.Value).ToArray(), groups = TaskbarGroups.Select(group => new { app = group.AppId.ToString(), count = group.WindowCount, group.IsPinned }).ToArray() });
     }
 
     private void StartClock()
