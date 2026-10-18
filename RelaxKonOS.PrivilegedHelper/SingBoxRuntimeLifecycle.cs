@@ -75,6 +75,55 @@ internal sealed class SingBoxRuntimeLifecycle(string root, RuntimeArchiveStateSt
             : await Switch(channel, progress).RecoverAsync(operationId, ct);
     }
 
+    /// <summary>
+    /// Ledger facts plus the fixed host's live observation. A failed observation is reported as a problem
+    /// code rather than guessed: "unknown" must never be rendered as "stopped" or "not installed".
+    /// </summary>
+    internal async Task<RuntimeRecoverySnapshot> RecoveryAsync(CancellationToken ct)
+    {
+        var snapshot = RuntimeArchiveRecovery.Describe(await EnsureStateAsync(ct));
+        if (!snapshot.Required) return snapshot;
+        try
+        {
+            var observed = await host.ObserveAsync(ct);
+            return snapshot with { Service = new(observed.Exists, observed.Running, observed.BootEnabled) };
+        }
+        catch (RuntimePolicyException ex) { return snapshot with { ServiceProblem = ex.ProblemCode }; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException
+            or System.ComponentModel.Win32Exception)
+        { return snapshot with { ServiceProblem = "runtime.service_observation_failed" }; }
+    }
+
+    /// <summary>
+    /// Emergency stop of the managed service only. It reads no published credential, so it keeps working after
+    /// they are revoked, and it never touches the transaction ledger: the operation stays unresolved.
+    /// </summary>
+    internal async Task<RuntimeRecoverySnapshot> StopAsync(Guid operationId, CancellationToken ct)
+    {
+        var snapshot = RuntimeArchiveRecovery.Require(RuntimeArchiveRecovery.Describe(await EnsureStateAsync(ct)), operationId);
+        // A unit this installation does not own must not be stopped by its emergency entry.
+        var observed = await host.ObserveAsync(ct);
+        if (observed.Exists)
+        {
+            await host.StopAsync(CancellationToken.None);
+            try { await host.SetBootAsync(false, CancellationToken.None); }
+            catch (RuntimePolicyException ex) when (ex.ProblemCode == "runtime.state_unknown") { }
+            observed = await host.ObserveAsync(ct);
+        }
+        if (observed.Running) throw new RuntimePolicyException("runtime.recovery_stop_failed");
+        return snapshot with { Service = new(observed.Exists, observed.Running, observed.BootEnabled) };
+    }
+
+    /// <summary>Closes an unrecoverable transaction. The stop is re-observed here instead of trusted from an earlier call.</summary>
+    internal async Task<RuntimeSwitchResult> CloseAsync(Guid operationId, CancellationToken ct)
+    {
+        await EnsureStateAsync(ct);
+        var observed = await host.ObserveAsync(ct);
+        using var session = states.Acquire();
+        return RuntimeArchiveRecovery.Close(session, operationId, confirmed: true,
+            new(observed.Exists, observed.Running, observed.BootEnabled));
+    }
+
     private RuntimeArchiveRemoval Removal(Func<InstallationStage, Task>? progress) =>
         new(states, new SingBoxRemovalAdapter(root, host, protect), progress);
 

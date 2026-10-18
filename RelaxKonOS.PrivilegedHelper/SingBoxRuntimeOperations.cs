@@ -23,6 +23,11 @@ internal static class SingBoxRuntimeOperations
                 && (input.FrozenPlan.Release is not null || input.FrozenPlan.Request.Change == RuntimeChange.Uninstall),
             PrivilegedOperationKind.SingBoxRuntimeRecover => input is { SourceId: null, Plan: null, Authorization: not null, FrozenPlan: null, RecoveryOperationId: { } target }
                 && target != Guid.Empty,
+            PrivilegedOperationKind.SingBoxRuntimeRecoveryQuery => input is null,
+            PrivilegedOperationKind.SingBoxRuntimeRecoveryStop => input is { SourceId: null, Plan: null, Authorization: null, FrozenPlan: null, Confirmed: false, RecoveryOperationId: { } stopTarget }
+                && stopTarget != Guid.Empty,
+            PrivilegedOperationKind.SingBoxRuntimeRecoveryClose => input is { SourceId: null, Plan: null, Authorization: null, FrozenPlan: null, Confirmed: true, RecoveryOperationId: { } closeTarget }
+                && closeTarget != Guid.Empty,
             _ => false
         };
         if (clean != request || !valid || request.OperationId is not { } id || id == Guid.Empty
@@ -40,7 +45,10 @@ internal static class SingBoxRuntimeOperations
                 PrivilegedOperationKind.SingBoxRuntimeQuery => Json(await lifecycle.QueryAsync(default, id)),
                 PrivilegedOperationKind.SingBoxRuntimePlan => Json(await lifecycle.PlanAsync(input!.SourceId!, input.Plan!, default)),
                 PrivilegedOperationKind.SingBoxRuntimeExecute => Json(await lifecycle.ExecuteAsync(id, input!.FrozenPlan!, input.Authorization!, default, progress)),
-                _ => Json(await lifecycle.RecoverAsync(input!.Authorization!, input.RecoveryOperationId!.Value, default, progress))
+                PrivilegedOperationKind.SingBoxRuntimeRecover => Json(await lifecycle.RecoverAsync(input!.Authorization!, input.RecoveryOperationId!.Value, default, progress)),
+                PrivilegedOperationKind.SingBoxRuntimeRecoveryQuery => Json(await lifecycle.RecoveryAsync(default)),
+                PrivilegedOperationKind.SingBoxRuntimeRecoveryStop => Json(await lifecycle.StopAsync(input!.RecoveryOperationId!.Value, default)),
+                _ => Json(await lifecycle.CloseAsync(input!.RecoveryOperationId!.Value, default))
             };
         }
         catch (RuntimePolicyException ex) { return new(false, 1, Error: ex.ProblemCode, ProblemCode: PrivilegedProblemCode.Conflict); }

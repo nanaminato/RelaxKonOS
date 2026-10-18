@@ -22,7 +22,9 @@ public static partial class PrivilegedOperationExecutor
         if (request.Correlation is not { } correlation || !correlation.IsValid())
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "valid correlation metadata is required");
         if (request.Operation is PrivilegedOperationKind.SingBoxRuntimeQuery or PrivilegedOperationKind.SingBoxRuntimePlan
-            or PrivilegedOperationKind.SingBoxRuntimeExecute or PrivilegedOperationKind.SingBoxRuntimeRecover)
+            or PrivilegedOperationKind.SingBoxRuntimeExecute or PrivilegedOperationKind.SingBoxRuntimeRecover
+            or PrivilegedOperationKind.SingBoxRuntimeRecoveryQuery or PrivilegedOperationKind.SingBoxRuntimeRecoveryStop
+            or PrivilegedOperationKind.SingBoxRuntimeRecoveryClose)
             return await SingBoxRuntimeOperations.ExecuteAsync(request, report: progress);
         if (request.RuntimeLifecycle is not null)
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "runtime lifecycle fields require a dedicated operation");

@@ -100,9 +100,16 @@ internal static class RuntimeIntegrationChecks
             await using var app = builder.Build();
             app.MapRuntimeCatalogEndpoints();
             var endpoints = ((IEndpointRouteBuilder)app).DataSources.SelectMany(s => s.Endpoints).OfType<RouteEndpoint>().ToArray();
-            Check(endpoints.Length == 5 && endpoints.Any(e => e.RoutePattern.RawText == RuntimeRoutes.SingBoxInstallation)
+            Check(endpoints.Length == 9 && endpoints.Any(e => e.RoutePattern.RawText == RuntimeRoutes.SingBoxInstallation)
                 && endpoints.Any(e => e.RoutePattern.RawText == RuntimeRoutes.SingBoxPlan),
                 "Source/catalog, sing-box installation observation and frozen planning are exposed without a second execution ledger");
+            foreach (var route in new[] { RuntimeRoutes.SingBoxInstallation, RuntimeRoutes.SingBoxRecovery })
+                Check(endpoints.Count(e => e.RoutePattern.RawText == route) == 1, "Recovery observation route is readable exactly once: " + route);
+            foreach (var route in new[] { RuntimeRoutes.SingBoxRecoveryRetry, RuntimeRoutes.SingBoxRecoveryStop, RuntimeRoutes.SingBoxRecoveryClose })
+                Check(endpoints.Count(e => e.RoutePattern.RawText == route) == 1
+                    && endpoints.Single(e => e.RoutePattern.RawText == route).Metadata.GetMetadata<IHttpMethodMetadata>()!
+                        .HttpMethods.SequenceEqual(["POST"]),
+                    "Recovery action route is a single POST: " + route);
             foreach (var endpoint in endpoints)
             {
                 var isPost = endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()!.HttpMethods.Contains("POST");

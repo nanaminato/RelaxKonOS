@@ -5,6 +5,7 @@ using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.ManagedRuntimes;
+using RelaxKonOS.Protocol.Privileged;
 
 namespace RelaxKonOS.Client.Apps.ProxyServer;
 
@@ -22,6 +23,11 @@ public interface IRuntimeCatalogClient
     Task<InstallationOperationDto?> StartAsync(InstallationOperationKind kind, ManagedRuntimeInstallationRequest request,
         string key, CancellationToken ct);
     Task<InstallationOperationDto?> OperationAsync(Guid id, CancellationToken ct);
+    Task<RuntimeRecoverySnapshot> RecoveryAsync(CancellationToken ct);
+    Task<RuntimeSwitchResult> RetryRecoveryAsync(Guid operationId, CancellationToken ct);
+    Task<RuntimeRecoverySnapshot> StopRecoveryAsync(Guid operationId, CancellationToken ct);
+    Task<RuntimeSwitchResult> CloseRecoveryAsync(Guid operationId, CancellationToken ct);
+    Task<bool> ElevateAsync(string password, CancellationToken ct);
 }
 
 public sealed class RemoteRuntimeCatalogClient(HttpClient http, IAuthSession session) : IRuntimeCatalogClient
@@ -52,6 +58,26 @@ public sealed class RemoteRuntimeCatalogClient(HttpClient http, IAuthSession ses
 
     public Task<InstallationOperationDto?> OperationAsync(Guid id, CancellationToken ct) =>
         SendAsync<InstallationOperationDto?>(HttpMethod.Get, InstallationApiRoutes.Operation(id), null, null, ct);
+
+    public Task<RuntimeRecoverySnapshot> RecoveryAsync(CancellationToken ct) =>
+        SendAsync<RuntimeRecoverySnapshot>(HttpMethod.Get, RuntimeRoutes.SingBoxRecovery, null, null, ct);
+
+    public Task<RuntimeSwitchResult> RetryRecoveryAsync(Guid operationId, CancellationToken ct) =>
+        SendAsync<RuntimeSwitchResult>(HttpMethod.Post, RuntimeRoutes.SingBoxRecoveryRetry,
+            new RuntimeRecoveryActionRequest(operationId), Guid.NewGuid().ToString("N"), ct);
+
+    public Task<RuntimeRecoverySnapshot> StopRecoveryAsync(Guid operationId, CancellationToken ct) =>
+        SendAsync<RuntimeRecoverySnapshot>(HttpMethod.Post, RuntimeRoutes.SingBoxRecoveryStop,
+            new RuntimeRecoveryActionRequest(operationId), Guid.NewGuid().ToString("N"), ct);
+
+    public Task<RuntimeSwitchResult> CloseRecoveryAsync(Guid operationId, CancellationToken ct) =>
+        SendAsync<RuntimeSwitchResult>(HttpMethod.Post, RuntimeRoutes.SingBoxRecoveryClose,
+            new RuntimeRecoveryActionRequest(operationId, Confirmed: true), Guid.NewGuid().ToString("N"), ct);
+
+    /// <summary>The same elevation grant the installation ledger requires, requested in place of a silent failure.</summary>
+    public async Task<bool> ElevateAsync(string password, CancellationToken ct) =>
+        (await SendAsync<HostElevationResult>(HttpMethod.Post, PrivilegedApiRoutes.Elevation,
+            new HostElevationRequest(HostElevationCapability.SingBoxInstall, "singbox", password), null, ct)).Elevated;
 
     private static string CatalogRoute(string sourceId, bool includePrerelease) =>
         RuntimeRoutes.Catalog.Replace("{sourceId}", Segment(sourceId), StringComparison.Ordinal)

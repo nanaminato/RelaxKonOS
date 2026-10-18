@@ -1,6 +1,7 @@
 using Size = RelaxKonOS.Core.Primitives.Size;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
+using RelaxKonOS.Client.Apps.FileServices.Views;
 using RelaxKonOS.Client.Apps.ProxyServer.Views;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Auth;
@@ -35,7 +36,15 @@ public sealed class ProxyServerApp : RemoteApplicationBase
             new Rect(80, 45, 1060, 800), Manifest.IconGlyph);
         view.AttachWindowHeader(window);
         vm.ConfirmAsync = (title, message) => ConfirmAsync(title.Resolve(), message.Resolve());
-        if (runtime is not null) runtime.ConfirmAsync = (title, message) => ConfirmAsync(title.Resolve(), message.Resolve());
+        if (runtime is not null)
+        {
+            runtime.ConfirmAsync = (title, message) => ConfirmAsync(title.Resolve(), message.Resolve());
+            // Installation, removal and the recovery entry all need the same structured elevation grant.
+            runtime.PasswordPromptAsync = () => context.ShowDialogAsync<string?>(window,
+                LocalizedText.Get("installation.elevation_title"),
+                dialog => new FileServicesPasswordDialogView(dialog, LocalizedText.Get("installation.elevation_message")),
+                new Size(460, 230));
+        }
         window.CanCloseAsync = () => vm.IsBusy || vm.HasUnsavedChanges
             ? ConfirmAsync(LocalizedText.Get("common.discard_title"), LocalizedText.Get("proxy_server.close_warning"))
             : Task.FromResult(true);

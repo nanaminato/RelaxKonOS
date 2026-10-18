@@ -37,6 +37,12 @@ if (args is ["runtime-removal-only"])
     return;
 }
 
+if (args is ["runtime-recovery-only"])
+{
+    Console.WriteLine($"Runtime recovery entry checks passed: {await RecoveryChecks.RunAsync()}");
+    return;
+}
+
 if (args is ["run", "-c", var fixtureConfiguration])
 {
     await LinuxSystemdHostChecks.RunFixtureAsync(fixtureConfiguration);
@@ -148,3 +154,4 @@ Console.WriteLine($"Runtime lifecycle boundary checks passed: {await LifecycleCh
 Console.WriteLine($"Runtime installation coordinator checks passed: {await InstallationChecks.RunAsync()}");
 Console.WriteLine($"Managed runtime service checks passed: {await ManagedServiceChecks.RunAsync()}");
 Console.WriteLine($"Runtime archive removal checks passed: {await RemovalChecks.RunAsync()}");
+Console.WriteLine($"Runtime recovery entry checks passed: {await RecoveryChecks.RunAsync()}");

@@ -33,6 +33,7 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
 {
     private readonly CancellationTokenSource _lifetime = new();
     private RuntimeInstallationSnapshot? _installation;
+    private RuntimeRecoverySnapshot? _recovery;
     private RuntimeCatalogSnapshot? _catalog;
     private bool _invalidated;
     private bool _loading;
@@ -44,7 +45,10 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
         nameof(OwnershipText), nameof(TargetText), nameof(MeasuredVersionText), nameof(ActiveRevisionText),
         nameof(InstalledReleasesText), nameof(PendingText), nameof(RuntimeProblemText), nameof(PublishedConfigurationText),
         nameof(SourceSummary), nameof(CatalogText), nameof(CatalogProblem), nameof(ActionText), nameof(ShowPrereleaseToggle),
-        nameof(ReleaseCountText), nameof(HasRuntimeProblem), nameof(CanUninstall), nameof(NeedsRecovery), nameof(RecoveryText)
+        nameof(ReleaseCountText), nameof(HasRuntimeProblem), nameof(CanUninstall), nameof(NeedsRecovery), nameof(RecoveryText),
+        nameof(RecoveryOperationText), nameof(RecoveryChangeText), nameof(RecoveryStageText), nameof(RecoveryOriginalProblem),
+        nameof(RecoveryProblem), nameof(RecoveryServiceText), nameof(HasRecoveryServiceProblem),
+        nameof(CanRetryRecovery), nameof(CanEmergencyStop), nameof(CanCloseRecovery)
     ];
 
     private void NotifyDerived() { foreach (var name in DerivedProperties) OnPropertyChanged(name); }
@@ -60,6 +64,9 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
 
     /// <summary>Without a confirm host a destructive removal does nothing, exactly like the publication commands.</summary>
     public Func<LocalizedStatus, LocalizedStatus, Task<bool>>? ConfirmAsync { get; set; }
+
+    /// <summary>Collects the host administrator password when the Server answers "elevation-required".</summary>
+    public Func<Task<string?>>? PasswordPromptAsync { get; set; }
 
     public ObservableCollection<RuntimeSourceView> Sources { get; } = [];
     public ObservableCollection<RuntimeReleaseOption> Releases { get; } = [];
@@ -78,10 +85,30 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
     /// An interrupted operation or a recorded compensation failure is a recovery state: the Host keeps rejecting
     /// new lifecycle changes until its own recovery entry runs, so the page must say so instead of offering actions.
     /// </summary>
-    public bool NeedsRecovery => _installation is { Installation.RecoveryRequired: true }
-        or { PendingOperationId: not null, PendingStage: null };
+    public bool NeedsRecovery => _recovery?.Required == true
+        || _installation is { Installation.RecoveryRequired: true } or { PendingOperationId: not null, PendingStage: null };
     public LocalizedStatus RecoveryText => NeedsRecovery
         ? LocalizedStatus.Key("proxy_server.runtime.recovery_required") : LocalizedStatus.Literal("");
+
+    public LocalizedStatus RecoveryOperationText => LocalizedStatus.Literal(_recovery?.OperationId?.ToString("D") ?? "—");
+    public LocalizedStatus RecoveryChangeText => _recovery?.Change is { } change
+        ? LocalizedStatus.Key("proxy_server.runtime.change." + change, change.ToString()) : LocalizedStatus.Literal("—");
+    public LocalizedStatus RecoveryStageText => LocalizedStatus.Literal(_recovery?.Stage?.ToString() ?? "—");
+    public LocalizedStatus RecoveryOriginalProblem => _recovery?.ProblemCode is { } problem
+        ? ProblemText(problem) : LocalizedStatus.Literal("—");
+    public LocalizedStatus RecoveryProblem => _recovery?.RecoveryProblemCode is { } problem
+        ? ProblemText(problem) : LocalizedStatus.Literal("—");
+    /// <summary>Nothing running and nothing registered are different facts; an unobserved service is said to be unknown.</summary>
+    public LocalizedStatus RecoveryServiceText => _recovery?.ServiceProblem is { } problem ? ProblemText(problem)
+        : _recovery?.Service is not { } service ? LocalizedStatus.Key("proxy_server.runtime.recovery_service.Unknown")
+        : LocalizedStatus.Key(service.Running ? "proxy_server.runtime.recovery_service.Running"
+            : service.Exists ? "proxy_server.runtime.recovery_service.Stopped"
+            : "proxy_server.runtime.recovery_service.Absent");
+    public bool HasRecoveryServiceProblem => _recovery?.ServiceProblem is not null;
+    public bool CanRetryRecovery => CanManage && !IsBusy && !_invalidated && _recovery is { Required: true };
+    public bool CanEmergencyStop => CanRetryRecovery && _recovery?.Service is { Running: true };
+    /// <summary>Closing is only offered once the Host proves nothing runs and its own compensation already failed.</summary>
+    public bool CanCloseRecovery => CanRetryRecovery && _recovery is { NeedsOperatorDecision: true, Service.Running: false };
 
     public LocalizedStatus OwnershipText => _installation is null
         ? LocalizedStatus.Key("proxy_server.runtime.ownership.unknown")
@@ -153,6 +180,43 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
 
     [RelayCommand] private Task UninstallDeleteDataAsync() => UninstallAsync(keepData: false);
 
+    /// <summary>Replays the Host's own compensation. It never re-prepares a revision or new credentials.</summary>
+    [RelayCommand] private Task RetryRecoveryAsync() => RunAsync(() => RunElevatedAsync(async () =>
+    {
+        RequireManage();
+        if (_recovery?.OperationId is not { } id) return;
+        var receipt = await client.RetryRecoveryAsync(id, _lifetime.Token);
+        OutcomeText = receipt.Outcome == RuntimeSwitchOutcome.Succeeded
+            ? LocalizedStatus.Key("proxy_server.runtime.recovery_retried")
+            : receipt.ProblemCode is { } problem ? ProblemText(problem)
+            : LocalizedStatus.Key("proxy_server.runtime.recovery_still_required");
+        await ReloadStateAsync();
+    }));
+
+    /// <summary>The emergency stop is available precisely when compensation cannot be trusted.</summary>
+    [RelayCommand] private Task EmergencyStopAsync() => RunAsync(() => RunElevatedAsync(async () =>
+    {
+        RequireManage();
+        if (_recovery?.OperationId is not { } id) return;
+        _recovery = await client.StopRecoveryAsync(id, _lifetime.Token);
+        OutcomeText = LocalizedStatus.Key("proxy_server.runtime.recovery_stopped");
+        await ReloadStateAsync();
+    }));
+
+    [RelayCommand] private Task CloseRecoveryAsync() => RunAsync(() => RunElevatedAsync(async () =>
+    {
+        RequireManage();
+        if (_recovery?.OperationId is not { } id) return;
+        // A missed confirmation host must never turn into a silent close.
+        var accepted = ConfirmAsync is { } confirm && await confirm(
+            LocalizedStatus.Key("proxy_server.runtime.recovery_close_title"),
+            LocalizedStatus.Key("proxy_server.runtime.recovery_close_warning"));
+        if (!accepted) return;
+        await client.CloseRecoveryAsync(id, _lifetime.Token);
+        OutcomeText = LocalizedStatus.Key("proxy_server.runtime.recovery_closed");
+        await ReloadStateAsync();
+    }));
+
     private Task UninstallAsync(bool keepData) => RunAsync(async () =>
     {
         RequireManage();
@@ -183,9 +247,13 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
         }
         PlanText = release is null ? LocalizedStatus.Key("proxy_server.runtime.removal_ready")
             : LocalizedStatus.Key("proxy_server.runtime.plan_ready", null, release.OriginalVersion);
-        var operation = await client.StartAsync(Kind(change), new ManagedRuntimeInstallationRequest(true, plan.Plan),
-            Guid.NewGuid().ToString("N"), _lifetime.Token)
-            ?? throw new InvalidOperationException("runtime.operation_failed");
+        var key = Guid.NewGuid().ToString("N");
+        InstallationOperationDto? submitted = null;
+        await RunElevatedAsync(async () =>
+        {
+            submitted = await client.StartAsync(Kind(change), new ManagedRuntimeInstallationRequest(true, plan.Plan), key, _lifetime.Token);
+        });
+        var operation = submitted ?? throw new InvalidOperationException("runtime.operation_failed");
         OperationText = LocalizedStatus.Format("proxy_server.operation_pending", operation.OperationId.ToString("D"));
         for (var attempt = 0; ; attempt++)
         {
@@ -201,7 +269,7 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
             if (attempt >= 300) throw new InvalidOperationException("runtime.operation_pending");
             await Task.Delay(1000, _lifetime.Token);
         }
-        await LoadAsync();
+        await ReloadStateAsync();
         PlanText = LocalizedStatus.Literal("");
         OutcomeText = LocalizedStatus.Key(change == RuntimeChange.Uninstall
             ? "proxy_server.runtime.uninstalled" : "proxy_server.runtime.action_done");
@@ -210,14 +278,32 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
     /// <summary>Loads installation and sources once; the page is also reachable before anything is installed.</summary>
     public Task LoadAsync() => RunAsync(async () =>
     {
-        await LoadInstallationAsync();
+        await ReloadStateAsync();
         await LoadSourcesAsync();
     });
+
+    /// <summary>Re-reads Host state without re-entering the busy gate, so a finished command can refresh itself.</summary>
+    private async Task ReloadStateAsync()
+    {
+        await LoadInstallationAsync();
+        await LoadRecoveryAsync();
+    }
 
     private async Task LoadInstallationAsync()
     {
         _installation = await client.InstallationAsync(_lifetime.Token);
         RebuildReleases();
+        NotifyDerived();
+    }
+
+    /// <summary>
+    /// Recovery facts are asked for only while a transaction is unfinished, and the previous answer is never
+    /// reused: after every recovery action the Host is asked again instead of the page assuming an outcome.
+    /// </summary>
+    private async Task LoadRecoveryAsync()
+    {
+        _recovery = null;
+        if (NeedsRecovery) _recovery = await client.RecoveryAsync(_lifetime.Token);
         NotifyDerived();
     }
 
@@ -336,6 +422,23 @@ public partial class ProxyServerRuntimeViewModel(IRuntimeCatalogClient client) :
     private void RequireManage()
     {
         if (!CanManage) throw new InvalidOperationException("proxy_server.permission_denied");
+    }
+
+    /// <summary>
+    /// The Server keeps every privileged mutation behind a structured elevation grant. Prompting here turns a
+    /// denied grant into a visible decision instead of a silent no-op, and the action is retried exactly once.
+    /// </summary>
+    private async Task RunElevatedAsync(Func<Task> action)
+    {
+        try { await action(); }
+        catch (HttpRequestException ex) when (ex.Message == "elevation-required")
+        {
+            var password = PasswordPromptAsync is { } prompt ? await prompt() : null;
+            if (string.IsNullOrEmpty(password)) throw new InvalidOperationException("runtime.elevation_cancelled");
+            if (!await client.ElevateAsync(password, _lifetime.Token))
+                throw new InvalidOperationException("proxy_server.permission_denied");
+            await action();
+        }
     }
 
     internal static LocalizedStatus ProblemText(string code) => LocalizedStatus.Key(

@@ -2,6 +2,7 @@ using RelaxKonOS.ManagedRuntimes;
 using RelaxKonOS.Protocol.ManagedRuntimes;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.ManagedRuntimes;
+using RelaxKonOS.Server.Privileged;
 using RelaxKonOS.Protocol.Installations;
 using Microsoft.AspNetCore.Mvc;
 
@@ -38,8 +39,47 @@ public static class RuntimeCatalogEndpoints
                 : !RuntimeValidation.Identifier(request.SourceId)) return Results.BadRequest();
             return await RespondAsync(async () => Results.Ok(await service.PlanAsync(request.SourceId, request.Request, ct)));
         }).RequireAuthorization(ManagePolicy);
+        group.MapGet(RuntimeRoutes.SingBoxRecovery, async ([FromServices] SingBoxRuntimeService service, CancellationToken ct) =>
+            await RespondAsync(async () => Results.Ok(await service.RecoveryAsync(ct))))
+            .RequireAuthorization(ReadPolicy);
+        group.MapPost(RuntimeRoutes.SingBoxRecoveryRetry, async (RuntimeRecoveryActionRequest request, HttpContext http,
+            [FromServices] SingBoxRuntimeService service, [FromServices] IHostElevationSessionStore elevations, CancellationToken ct) =>
+        {
+            if (!RecoveryTarget(http, elevations)) return ElevationRequired();
+            if (request.OperationId == Guid.Empty) return Results.BadRequest();
+            return await RespondAsync(async () =>
+            {
+                // Retrying replays the Host's own compensation; it never prepares a revision or new credentials.
+                var receipt = await service.RecoverAsync(Guid.NewGuid(), request.OperationId, ct)
+                    ?? throw new RuntimeLifecycleException("runtime.recovery_absent");
+                return Results.Ok(receipt);
+            });
+        }).RequireAuthorization(ManagePolicy);
+        group.MapPost(RuntimeRoutes.SingBoxRecoveryStop, async (RuntimeRecoveryActionRequest request, HttpContext http,
+            [FromServices] SingBoxRuntimeService service, [FromServices] IHostElevationSessionStore elevations, CancellationToken ct) =>
+        {
+            if (!RecoveryTarget(http, elevations)) return ElevationRequired();
+            if (request.OperationId == Guid.Empty) return Results.BadRequest();
+            return await RespondAsync(async () => Results.Ok(await service.StopRecoveryAsync(request.OperationId, ct)));
+        }).RequireAuthorization(ManagePolicy);
+        group.MapPost(RuntimeRoutes.SingBoxRecoveryClose, async (RuntimeRecoveryActionRequest request, HttpContext http,
+            [FromServices] SingBoxRuntimeService service, [FromServices] IHostElevationSessionStore elevations, CancellationToken ct) =>
+        {
+            if (!RecoveryTarget(http, elevations)) return ElevationRequired();
+            if (request.OperationId == Guid.Empty) return Results.BadRequest();
+            return await RespondAsync(async () => Results.Ok(await service.CloseRecoveryAsync(request.OperationId, request.Confirmed, ct)));
+        }).RequireAuthorization(ManagePolicy);
         return app;
     }
+
+    /// <summary>Recovery mutates privileged host state, so it needs both the install claim and a live elevation.</summary>
+    private static bool RecoveryTarget(HttpContext http, IHostElevationSessionStore elevations) =>
+        InstallationEndpoints.CanInstall(http.User, InstallationServiceId.SingBox)
+        && elevations.IsGranted(http.User, InstallationEndpoints.Capability(InstallationServiceId.SingBox),
+            InstallationEndpoints.Target(InstallationServiceId.SingBox));
+
+    private static IResult ElevationRequired() => Results.Problem(statusCode: 403,
+        extensions: new Dictionary<string, object?> { ["code"] = "elevation-required" });
 
     private static async Task<IResult> RespondAsync(Func<Task<IResult>> action)
     {
@@ -59,8 +99,11 @@ public static class RuntimeCatalogEndpoints
             return Results.Problem(statusCode: ex.ProblemCode switch
             {
                 "runtime.source_not_found" => 404,
-                "runtime.source_invalid" or "runtime.request_invalid" => 400,
-                "runtime.instance_busy" or "runtime.recovery_required" => 409,
+                "runtime.source_invalid" or "runtime.request_invalid" or "runtime.recovery_confirmation_required" => 400,
+                "runtime.instance_busy" or "runtime.recovery_required" or "runtime.recovery_absent"
+                    or "runtime.recovery_target_conflict" or "runtime.recovery_not_required"
+                    or "runtime.recovery_stop_required" or "runtime.recovery_stop_failed"
+                    or "runtime.external_installation" or "runtime.state_unknown" => 409,
                 "runtime.platform_unsupported" => 403,
                 _ => 503
             }, extensions: new Dictionary<string, object?> { ["code"] = ex.ProblemCode });

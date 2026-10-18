@@ -15,6 +15,7 @@ using RelaxKonOS.Protocol.AppSettings;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.ManagedRuntimes;
+using RelaxKonOS.Protocol.Privileged;
 
 const string helperCode = "proxy.privileged_operation_unavailable";
 AppBuilder.Configure<Application>().UsePlatformDetect().SetupWithoutStarting();
@@ -112,6 +113,14 @@ var runtimeCalls = new List<string>();
 var runtimePlanBody = "";
 var runtimeRefreshFails = true;
 var runtimeNeedsRecovery = false;
+var runtimePendingId = Guid.NewGuid();
+var runtimeRecoveryBody = "";
+var runtimeElevations = 0;
+var runtimePrompts = 0;
+var runtimeElevationRequired = true;
+var runtimeRecovery = new RuntimeRecoverySnapshot(true, runtimePendingId, RuntimeChange.Update, InstallationStage.HealthChecking,
+    true, "runtime.switch_failed", "runtime.compensation_health_failed", "rel-1160", "rel-1143",
+    new RuntimeServiceObservation(true, true, true));
 RuntimePlanResult runtimePlan = new(new RuntimeChangePlan(new RuntimePlanRequest(runtimeInstallation.InstallationId,
     runtimeInstallation.HostId, RuntimeChange.Update, runtimeInstallation.StateRevision, runtimeCatalog.Revision, 7,
     "rel-1160", "idem", false), "sing-box", runtimeCatalog.Releases[0], "rel-1143"), []);
@@ -136,6 +145,37 @@ using (var runtimeHttp = new HttpClient(new Handler(request =>
         runtimePlanBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
         return Json(HttpStatusCode.OK, runtimePlan);
     }
+    // The first privileged recovery action is refused until the administrator grants elevation in place.
+    if (path.EndsWith("/sing-box/recovery/stop", StringComparison.Ordinal) && runtimeElevationRequired)
+    {
+        runtimeElevationRequired = false;
+        return Json(HttpStatusCode.Forbidden, new { code = "elevation-required" });
+    }
+    if (path.EndsWith("/privileged/elevation", StringComparison.Ordinal))
+    {
+        runtimeElevations++;
+        return Json(HttpStatusCode.OK, new HostElevationResult(true));
+    }
+    if (path.EndsWith("/sing-box/recovery/retry", StringComparison.Ordinal))
+    {
+        runtimeRecoveryBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+        return Json(HttpStatusCode.OK, new RuntimeSwitchResult(runtimePendingId, RuntimeSwitchOutcome.RecoveryRequired,
+            "runtime.recovery_required"));
+    }
+    if (path.EndsWith("/sing-box/recovery/stop", StringComparison.Ordinal))
+    {
+        runtimeRecoveryBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+        runtimeRecovery = runtimeRecovery with { Service = new RuntimeServiceObservation(true, false, false) };
+        return Json(HttpStatusCode.OK, runtimeRecovery);
+    }
+    if (path.EndsWith("/sing-box/recovery/close", StringComparison.Ordinal))
+    {
+        runtimeRecoveryBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+        return Json(HttpStatusCode.OK, new RuntimeSwitchResult(runtimePendingId, RuntimeSwitchOutcome.Failed,
+            "runtime.recovery_closed_by_operator"));
+    }
+    if (path.EndsWith("/sing-box/recovery", StringComparison.Ordinal))
+        return Json(HttpStatusCode.OK, runtimeRecovery);
     if (path.Contains("/installations/", StringComparison.Ordinal)
         && (request.Method == HttpMethod.Post || request.Method == HttpMethod.Put))
         return Json(HttpStatusCode.OK, new InstallationOperationDto(runtimeOperationId, InstallationServiceId.SingBox,
@@ -224,6 +264,46 @@ using (var runtimeHttp = new HttpClient(new Handler(request =>
     Check(runtimeVm.NeedsRecovery && !runtimeVm.CanAct && !runtimeVm.CanUninstall
         && runtimeVm.RecoveryText.Resolve() == LocalizedText.Get("proxy_server.runtime.recovery_required"),
         "A pending recovery is shown as its own state and blocks install, update and removal");
+    Check(runtimeVm.RecoveryOperationText.Resolve() == runtimePendingId.ToString("D")
+        && runtimeVm.RecoveryChangeText.Resolve() == LocalizedText.Get("proxy_server.runtime.change.Update")
+        && runtimeVm.RecoveryProblem.Resolve() == LocalizedText.Get("proxy_server.runtime_problem.compensation_health_failed")
+        && runtimeVm.RecoveryServiceText.Resolve() == LocalizedText.Get("proxy_server.runtime.recovery_service.Running"),
+        "The recovery panel names the transaction, its change, the compensation failure and the live service");
+    Check(runtimeVm.CanRetryRecovery && runtimeVm.CanEmergencyStop && !runtimeVm.CanCloseRecovery,
+        "A running service offers retry and the emergency stop, never a close");
+
+    await runtimeVm.RetryRecoveryCommand.ExecuteAsync(null);
+    Check(runtimeCalls.Contains("POST /api/v1.0/managed-runtimes/sing-box/recovery/retry")
+        && runtimeRecoveryBody.Contains(runtimePendingId.ToString("D"), StringComparison.Ordinal)
+        && runtimeVm.OutcomeText.Resolve() == LocalizedText.Get("proxy_server.runtime_problem.recovery_required"),
+        "Retrying names the exact transaction and reports the Host's repeated recovery requirement");
+
+    // The Server answers elevation-required once: the page asks for the password and retries exactly once.
+    runtimeVm.PasswordPromptAsync = () => { runtimePrompts++; return Task.FromResult<string?>("secret"); };
+    await runtimeVm.EmergencyStopCommand.ExecuteAsync(null);
+    Check(runtimeElevations == 1 && runtimePrompts == 1
+        && runtimeCalls.FindLastIndex(call => call == "POST /api/v1.0/managed-runtimes/sing-box/recovery/stop") > 0
+        && runtimeVm.RecoveryServiceText.Resolve() == LocalizedText.Get("proxy_server.runtime.recovery_service.Stopped")
+        && runtimeVm.OutcomeText.Resolve() == LocalizedText.Get("proxy_server.runtime.recovery_stopped"),
+        "The emergency stop asks for elevation once, then reports the observed stopped service");
+    Check(runtimeVm.CanCloseRecovery && !runtimeVm.CanEmergencyStop,
+        "A stopped service makes closing available and withdraws the stop");
+
+    // Closing needs its own confirmation: a missing confirmation host must not close a transaction.
+    var closesBefore = runtimeCalls.Count(call => call.EndsWith("/recovery/close", StringComparison.Ordinal));
+    runtimeVm.ConfirmAsync = null;
+    await runtimeVm.CloseRecoveryCommand.ExecuteAsync(null);
+    Check(runtimeCalls.Count(call => call.EndsWith("/recovery/close", StringComparison.Ordinal)) == closesBefore,
+        "A missing confirmation host never turns into a silent close");
+
+    runtimeVm.ConfirmAsync = (title, message) => { confirmations.Add(title.Resolve()); return Task.FromResult(true); };
+    await runtimeVm.CloseRecoveryCommand.ExecuteAsync(null);
+    Check(confirmations.Count == 2
+        && runtimeCalls.Count(call => call.EndsWith("/recovery/close", StringComparison.Ordinal)) == closesBefore + 1
+        && runtimeRecoveryBody.Contains("\"confirmed\":true", StringComparison.Ordinal)
+        && runtimeRecoveryBody.Contains(runtimePendingId.ToString("D"), StringComparison.Ordinal)
+        && runtimeVm.OutcomeText.Resolve() == LocalizedText.Get("proxy_server.runtime.recovery_closed"),
+        "Closing confirms first and carries the transaction and the acknowledgement to the Server");
 }
 
 sealed class BlockingTransferHandler : HttpMessageHandler

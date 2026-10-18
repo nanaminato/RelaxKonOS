@@ -38,7 +38,7 @@
 
 适配器失败后，框架记录 RollingBack。已经进入切换时先停止候选，然后要求 `ValidateRestoreAsync` 核对当前授权、证书、凭据和数据格式。恢复成功必须返回与旧实测版本、捕获的配置身份、原运行/启动状态匹配的证据，以及自有资源已恢复和健康结论。仅停止/启动成功或进程存活不能通过这些检查。
 
-不能恢复时设置 RecoveryRequired，保留原失败码和独立 RecoveryProblemCode；例如旧凭据已撤销时记录 `runtime.credentials_revoked`，不重启旧服务。此时后续生命周期变更仍被阻止，必须通过专门恢复/紧急停止入口处理；真实应用的入口接线尚待实现。
+不能恢复时设置 RecoveryRequired，保留原失败码和独立 RecoveryProblemCode；例如旧凭据已撤销时记录 `runtime.credentials_revoked`，不重启旧服务。此时后续生命周期变更仍被阻止，只能走[人工恢复入口](#人工恢复入口)：重试补偿、紧急停止，或由操作员确认后关账。
 
 `RecoverAsync` 从磁盘 pending 核对和补偿，不重新运行捕获/准备，不重新生成凭据，不因进程活着就提交新版本。切换前中断只清理本次准备；切换后中断重新验证旧状态后恢复，补偿失败继续待恢复。当前框架没有自动推断不可用的授权；运行时适配器无法取得恢复所需当前证据时必须拒绝恢复并保持停止。已拒绝候选从可回退修订记录中移除，旧程序及其历史证据保留。
 
@@ -81,17 +81,43 @@ Server 侧 `SingBoxRuntimeService.PlanAsync` 允许卸载不带来源（内部�
 
 客户端版本计划页在这条链路上只做三件事：显示四维状态与阻止原因、先取计划再入台账、卸载必须经二次确认并在确认宿主缺失时什么都不做。它不提交 URL、可执行路径或原生参数；刷新失败保留上次目录并明确显示失败，待恢复状态禁用安装/更新/卸载。
 
+## 人工恢复入口
+
+补偿失败（`RecoveryRequired=true`）后，`RuntimeArchiveRecovery` 提供三条互不替代的路径，全部复用既有安装 operationId、阶段词汇和幂等回执，不新增用户可见台账。
+
+| 入口 | 路由 | 规则 |
+| --- | --- | --- |
+| 查询 | `GET …/managed-runtimes/sing-box/recovery` | 只读快照：是否待恢复、事务与变更、阶段、切换是否已开始、原始失败、补偿失败、目标/原发布与实测服务状态；观测失败返回 `ServiceProblem`，不伪造"已停止" |
+| 重试 | `POST …/sing-box/recovery/retry` | 复用 `RecoverAsync`：重新核对授权、凭据、配置与数据格式后补偿；不重新捕获/准备，不重新生成凭据；仍失败则保持待恢复并返回新的补偿失败码 |
+| 紧急停止 | `POST …/sing-box/recovery/stop` | 只停服务并关闭开机启动，不读发布配置与凭据（凭据已撤销时仍可用）；只对本次观测存在的服务生效，复观测仍在运行报 `runtime.recovery_stop_failed`；不改台账，不宣称恢复 |
+| 关账 | `POST …/sing-box/recovery/close` | 只承认"已停止且不再自动恢复"，不假装恢复 |
+
+关账要求三个条件同时成立，缺一即拒：`RecoveryRequired=true`（补偿确实已失败）、请求体 `Confirmed=true`（操作员明确确认）、当前实测服务未运行（`Service.Running == false`）。对应问题码 `runtime.recovery_not_required` / `runtime.recovery_confirmation_required` / `runtime.recovery_stop_required`；操作 ID 为空、不存在、不匹配分别报 `runtime.operation_id_invalid` / `runtime.recovery_absent` / `runtime.recovery_target_conflict`。关账按不可逆边界分流，且只清理失败事务自身留下的候选，已提交指针不动：
+
+| 关账检查点 | 结果 |
+| --- | --- |
+| 切换已开始 | 保留 `Active` 与 `ConfigurationIdentity`，剔除未提交的候选修订，回执 `RuntimeSwitchOutcome.Failed` |
+| 切换尚未开始 | 保留旧修订与活动发布，候选不入回退记录 |
+| 卸载未开始 | 只清 `Removal`，保持受管与活动修订 |
+| 卸载已开始 | 转移为 `Ownership=Absent`、`Active=null`、`Revisions=[]`；`KeepData=false` 时连配置身份一并清空 |
+
+关账回执的 `ClosedProblemCode` 固定为 `runtime.recovery_closed_by_operator`，因此后续任何读取都能区分"恢复成功"与"由人放弃恢复"。三条写路由都要求 `CanInstall` 与该操作员的新鲜提权（缺失返回 `elevation-required`），查询只要读权限；Helper 侧对应 `SingBoxRuntimeRecoveryQuery/Stop/Close` 三种特权操作，Stop 要求 `Confirmed=false`、Close 要求 `Confirmed=true`，形状不符在下载与执行前即被拒。
+
+客户端 `ProxyServerRuntimeViewModel` 把这三条路径做成显式决策而不是静默失败：待恢复面板列出事务、变更、阶段、原始失败、补偿失败与实测服务；运行中只提供"重试"与"紧急停止"，只有实测停止后才出现"关账"并在关账前要求确认；`elevation-required` 弹出密码框并重试一次，操作员取消即失败而不重试；缺少确认宿主时关账什么都不做。
+
 ## 验证证据与剩余工作
 
 `Tests/ManagedRuntimes/SwitchChecks.cs` 有 96 项检查，覆盖真实磁盘状态、共享互斥锁、幂等回执、跨版本目标、同版本修复、保留版本回退、配置漂移、当前发布配置恢复、切换取消边界、独立版本/配置/运行/启动/原生健康失败、撤销恢复及待恢复阻断。
 
 其中四组测试启动独立子进程，分别在捕获、准备、激活、健康检查中 `Environment.Exit`，由父进程重新读取磁盘并恢复。服务和二进制使用文件适配器模拟，没有执行第三方运行时、操作真实服务或更改系统启动设置；不能据此宣称 Windows/Linux 生命周期验收通过。
 
-仍需将组件接入 Helper 的实际运行时路径及 Server 安装服务，开放冻结计划/操作查询，实施原生配置与监听/互通验证、下载取消与人工恢复入口，并完成各声明平台的故障与重启验收。总体进度继续以 [任务表](RelaxKonOS.ManagedRuntimes.Design.md) 为准。
+仍需将组件接入各声明平台的原生配置与监听/互通验收、下载取消与依赖预检，并完成真实服务的故障与重启验收。总体进度继续以 [任务表](RelaxKonOS.ManagedRuntimes.Design.md) 为准。
 
 `ManagedServiceChecks` 另有 13 项检查，覆盖受管安装的状态上报、只校验不发布、首次发布与身份递增、运行中再发布保留运行状态、仅改开机启动不重启、配置回滚、磁盘漂移拒绝覆盖、登记失败后的补偿与运行状态恢复、程序文件漂移拒绝执行、以及 Install/Uninstall 的边界；其原生检查使用记录型实现，不执行第三方程序。
 
 `RemovalChecks` 有 15 项检查，覆盖保留数据的卸载、程序/暂存/备份目录清理、实例根外文件不受影响、单回执与幂等重放、重复卸载被拒、删除发布配置与保留副本、移除登记失败后的补偿、清理开始前恢复、清理开始后中断关账、外部安装拒绝与程序漂移拒绝。测试使用文件适配器模拟服务，不操作真实 SCM/systemd。
+
+`RecoveryChecks` 有 16 项检查，覆盖无待恢复时快照为空、事实描述与双问题码、目标事务不符被拒、未确认/未停/目标错三种拒绝对状态无影响、未进入待恢复不可关账、跨过切换点关账保留活动修订、切换前关账保留旧修订且候选不入回退、重复关账被拒、卸载未开始关账保持受管、卸载已开始关账转移所有权、删除数据关账不留配置身份，以及卸载词汇与发布字段。关账一律返回 `runtime.recovery_closed_by_operator`，检查不执行第三方服务。
 
 ## sing-box 真实文件与原生命令适配器
 

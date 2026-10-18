@@ -71,4 +71,12 @@ public static class RuntimeRoutes
     public const string Refresh = Sources + "/{sourceId}/refresh";
     public const string SingBoxInstallation = Root + "/sing-box/installation";
     public const string SingBoxPlan = Root + "/sing-box/plan";
+    /// <summary>Read-only ledger and live service facts for an unfinished transaction.</summary>
+    public const string SingBoxRecovery = Root + "/sing-box/recovery";
+    /// <summary>Retries the Host's own compensation; never prepares a new revision.</summary>
+    public const string SingBoxRecoveryRetry = SingBoxRecovery + "/retry";
+    /// <summary>Stops the managed service; leaves the transaction ledger untouched.</summary>
+    public const string SingBoxRecoveryStop = SingBoxRecovery + "/stop";
+    /// <summary>Closes an unrecoverable transaction after the operator confirms the observed state.</summary>
+    public const string SingBoxRecoveryClose = SingBoxRecovery + "/close";
 }

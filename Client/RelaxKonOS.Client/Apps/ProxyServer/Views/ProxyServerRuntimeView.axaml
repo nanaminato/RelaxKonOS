@@ -54,6 +54,49 @@
       </StackPanel>
     </Border>
 
+    <Border Classes="app-panel" Padding="18" IsVisible="{Binding NeedsRecovery}">
+      <StackPanel Spacing="10">
+        <TextBlock Classes="section-title" Text="{loc:Loc proxy_server.runtime.recovery_title}" />
+        <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.recovery_intro}" TextWrapping="Wrap" />
+        <StackPanel Spacing="0">
+          <Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.fact.recovery_operation}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding RecoveryOperationText}" FontFamily="Consolas" FontSize="12" />
+          </Grid>
+          <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.fact.recovery_change}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding RecoveryChangeText}" />
+          </Grid></Border>
+          <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.fact.recovery_stage}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding RecoveryStageText}" />
+          </Grid></Border>
+          <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.fact.recovery_problem}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding RecoveryOriginalProblem}" TextWrapping="Wrap" />
+          </Grid></Border>
+          <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.fact.recovery_compensation}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding RecoveryProblem}" TextWrapping="Wrap" />
+          </Grid></Border>
+          <Border Classes="fact-row"><Grid ColumnDefinitions="170,*">
+            <TextBlock Classes="fact-label" Text="{loc:Loc proxy_server.runtime.fact.recovery_service}" />
+            <TextBlock Grid.Column="1" Classes="fact-value" Text="{Binding RecoveryServiceText}" TextWrapping="Wrap" />
+          </Grid></Border>
+        </StackPanel>
+        <TextBlock Classes="problem" Text="{Binding RecoveryServiceText}" IsVisible="{Binding HasRecoveryServiceProblem}" />
+        <WrapPanel>
+          <Button Content="{loc:Loc proxy_server.runtime.recovery_retry}" Command="{Binding RetryRecoveryCommand}"
+                  IsEnabled="{Binding CanRetryRecovery}" Margin="0,0,8,0" />
+          <Button Content="{loc:Loc proxy_server.runtime.recovery_stop}" Command="{Binding EmergencyStopCommand}"
+                  IsEnabled="{Binding CanEmergencyStop}" Margin="0,0,8,0" />
+          <Button Content="{loc:Loc proxy_server.runtime.recovery_close}" Command="{Binding CloseRecoveryCommand}"
+                  IsEnabled="{Binding CanCloseRecovery}" />
+        </WrapPanel>
+        <TextBlock Classes="section-hint" Text="{loc:Loc proxy_server.runtime.recovery_close_hint}" TextWrapping="Wrap" />
+      </StackPanel>
+    </Border>
+
     <Border Classes="app-panel" Padding="18">
       <StackPanel Spacing="10">
         <DockPanel>
